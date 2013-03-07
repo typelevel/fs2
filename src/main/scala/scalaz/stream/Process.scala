@@ -95,7 +95,7 @@ trait Process[+F[_],+O] {
    * values as they are demanded by `p2`. If `p2` signals termination, `this`
    * is killed using `kill`, giving it the opportunity to clean up. 
    */
-  final def pipe[O2 >: O, O3](p2: Process1[O2,O3]): Process[F,O3] = {
+  final def pipe[O2](p2: Process1[O,O2]): Process[F,O2] = {
     // if this is emitting values and p2 is consuming values,
     // we feed p2 in a loop to avoid using stack space
     @annotation.tailrec
@@ -124,8 +124,8 @@ trait Process[+F[_],+O] {
   }
 
   /** Operator alias for `pipe`. */
-  final def |>[O2 >: O, O3](p2: Process1[O2,O3]): Process[F,O3] = 
-    this |> p2
+  final def |>[O2](p2: Process1[O,O2]): Process[F,O2] = 
+    this pipe p2
 
   /* 
    * Use a `Tee` to interleave or combine the outputs of `this` and
@@ -169,6 +169,9 @@ trait Process[+F[_],+O] {
         }
         case p => (other tee Emit(emit.tail, tail))(p)
       }
+    // NB: lots of casts needed here because Scala pattern matching does not 
+    // properly refine types; my attempts at manually adding type equality 
+    // witnesses also failed; this actually worked better in 2.9.2
     t match {
       case Halt => this.kill ++ p2.kill ++ Halt 
       case Emit(h,t) => Emit(h, (this tee p2)(t))
