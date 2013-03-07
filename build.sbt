@@ -20,14 +20,13 @@ conflictWarning ~= { cw =>
 }
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.0-M8",
-  "org.specs2" %% "specs2" % "1.12.3" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.10.0" % "test",
-  "org.typelevel" %% "scalaz-specs2" % "0.1.1" % "test",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.0-M8" % "test"
+  "org.scalaz" %% "scalaz-core" % "7.0-SNAPSHOT",
+  "org.scalaz" %% "scalaz-concurrent" % "7.0-SNAPSHOT",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0-SNAPSHOT" % "test",
+  "org.scalacheck" %% "scalacheck" % "1.10.0" % "test"
 )
 
-resolvers += Resolver.sonatypeRepo("releases")
+resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 publishTo <<= (version).apply { v =>
   val nexus = "https://oss.sonatype.org/"
