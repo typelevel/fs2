@@ -261,7 +261,7 @@ trait Process[+F[_],+O] {
                   val recvR_ = recvR.asInstanceOf[Int => Process[F2,O2]]
                   val fbR_ = fbR.asInstanceOf[Process[F2,O2]]
                   val cR_ = fbR.asInstanceOf[Process[F2,O2]]
-                  await(F.choose(reqL_, reqR_))(emit(_)) flatMap {
+                  emit(F.choose(reqL_, reqR_)).eval.flatMap {
                     case Left((l,reqR2)) => 
                       (recvL_(l) wye Await(reqR2, recvR_, fbR_, cR_))(t)
                     case Right((reqL2,r)) => 
