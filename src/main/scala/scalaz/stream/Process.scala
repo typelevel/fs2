@@ -5,7 +5,7 @@ import scala.collection.immutable.IndexedSeq
 import scalaz.{Catchable,Monad,Liskov}
 import scalaz.concurrent.Task
 import scalaz.Leibniz.===
-import scalaz.Leibniz
+import scalaz.{\/, ~>, Leibniz}
 
 /** 
  * A `Process[F,O]` represents a stream of `O` values which can interleave 
@@ -95,33 +95,8 @@ trait Process[+F[_],+O] {
    * values as they are demanded by `p2`. If `p2` signals termination, `this`
    * is killed using `kill`, giving it the opportunity to clean up. 
    */
-  final def pipe[O2](p2: Process1[O,O2]): Process[F,O2] = {
-    // if this is emitting values and p2 is consuming values,
-    // we feed p2 in a loop to avoid using stack space
-    @annotation.tailrec
-    def feed[O,O2](emit: Seq[O], tail: Process[F,O], 
-             recv: O => Process1[O,O2], 
-             fb: Process1[O,O2],
-             cleanup: Process1[O,O2]): Process[F,O2] = 
-      if (emit isEmpty) tail |> receive1(recv, fb) 
-      else recv(emit.head) match {
-        case Await(_, recv2, fb2, c2) => 
-          feed(emit.tail, tail, recv2, fb2, c2)
-        case p => emitAll(emit.tail, tail) |> p
-      }
-    p2 match {
-      case Halt => this.kill ++ Halt
-      case Emit(h, t) => emitAll(h, this |> t)
-      case Await(req,recv,fb,c) => this match {
-        case Emit(h,t) => feed(h, t, Leibniz.witness(req) andThen recv, fb, c)
-        case Halt => Halt |> fb 
-        case Await(req0,recv0,fb0,c0) => 
-          await(req0)(i => recv0(i) |> p2, 
-                      fb0 |> fb,
-                      c0 |> c)
-      }
-    }
-  }
+  final def pipe[O2](p2: Process1[O,O2]): Process[F,O2] =
+    (this tee Halt)(p2)
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O,O2]): Process[F,O2] = 
@@ -200,6 +175,14 @@ trait Process[+F[_],+O] {
         }
       }
     }
+  }
+
+  /** Translate the request type from `F` to `G`, using the given polymorphic function. */
+  def translate[G[_]](f: F ~> G): Process[G,O] = this match {
+    case Emit(h, t) => Emit(h, t.translate(f))
+    case Halt => Halt
+    case Await(req, recv, fb, c) => 
+      Await(f(req), recv andThen (_ translate f), fb translate f, c translate f)
   }
 
   /** 
@@ -331,17 +314,45 @@ object Process {
 
   import annotation.unchecked.uncheckedVariance
 
-  case class Is[-I]() {
-    sealed trait f[-X]
-    case object Get extends f[I]
+  case class Two[-I,-I2]() {
+    sealed trait Y[-X] { def tag: Int }
+    sealed trait T[-X] extends Y[X] 
+    sealed trait Is[-X] extends T[X]
+    case object Left extends Is[I] { def tag = 0 }
+    case object Right extends T[I2] { def tag = 1 }  
+    case object Both extends Y[I \/ I2] { def tag = 2 }
   }
+
+  // Subtyping of various Process types:
+  // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])
+  // * Tee is a Wye that never requests Both (Tee[I,I2,O] <: Wye[I,I2,O])
+
+  type Process1[-I,+O] = Process[Two[I,Any]#Is, O]
+  type Tee[-I,-I2,+O] = Process[Two[I,I2]#T, O]
+  type Wye[-I,-I2,+O] = Process[Two[I,I2]#Y, O]
+
+  object Subtyping {
+    def asTee[I,O](p1: Process1[I,O]): Tee[I,Any,O] = p1 
+    def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t 
+  }
+
+  case class T[-I, -I2]() {
+    sealed trait f[-X] { def isRight: Boolean }
+    case object L extends f[I] { def isRight = false }
+    case object R extends f[I2] { def isRight = true } 
+  }
+
+  implicit def witnessT[I,I2,J](t: Two[I,I2]#T[J]): Either[I === J, I2 === J] = 
+    if (t.tag == 0) Left(Leibniz.refl[I].asInstanceOf[I === J])
+    else Right(Leibniz.refl[I2].asInstanceOf[I2 === J])
+
+  def Get[I] = Two[I,Any]().Left
+  def L[I] = Two[I,Any]().Left
+  def R[I2] = Two[Any,I2]().Right
+
   // obtain an equality witness from an Is[I].Get
-  implicit def witnessIs[I,J](req: Is[I]#f[J]): I === J = 
+  implicit def witnessIs[I,J](req: Two[I,Nothing]#Is[J]): I === J = 
     Leibniz.refl[I].asInstanceOf[I === J]
-
-  def Get[I] = Is[I]().Get
-
-  type Process1[-I,+O] = Process[Is[I]#f, O]
 
   def await1[I]: Process1[I,I] = 
     Await(Get[I], (i: I) => emit1(i).asInstanceOf[Process1[I,I]], Halt, Halt)
@@ -403,20 +414,6 @@ object Process {
 
                            */
 
-  case class T[-I, -I2]() {
-    sealed trait f[-X] { def isRight: Boolean }
-    case object L extends f[I] { def isRight = false }
-    case object R extends f[I2] { def isRight = true } 
-  }
-  implicit def witnessT[I,I2,J](t: T[I,I2]#f[J]): Either[I === J, I2 === J] = 
-    if (t.isRight) Right(Leibniz.refl[I2].asInstanceOf[I2 === J])
-    else Left(Leibniz.refl[I].asInstanceOf[I === J])
-
-  def L[I] = T[I,Any]().L
-  def R[I2] = T[Any,I2]().R
-
-  type Tee[-I,-I2,O] = Process[T[I,I2]#f, O]
-  
   /* Again some helper functions to improve type inference. */
 
   def awaitL[I]: Tee[I,Any,I] = 
@@ -429,13 +426,13 @@ object Process {
       recv: I => Tee[I,I2,O], 
       fallback: Tee[I,I2,O] = Halt,
       cleanup: Tee[I,I2,O] = Halt): Tee[I,I2,O] = 
-    await[T[I,I2]#f,I,O](L)(recv, fallback, cleanup)
+    await[Two[I,I2]#T,I,O](L)(recv, fallback, cleanup)
 
   def receiveR[I,I2,O](
       recv: I2 => Tee[I,I2,O], 
       fallback: Tee[I,I2,O] = Halt,
       cleanup: Tee[I,I2,O] = Halt): Tee[I,I2,O] = 
-    await[T[I,I2]#f,I2,O](R)(recv, fallback, cleanup)
+    await[Two[I,I2]#T,I2,O](R)(recv, fallback, cleanup)
 
   def emitT[O](h: O): Tee[Any,Any,O] = 
     emit(h)
