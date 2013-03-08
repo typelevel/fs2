@@ -36,9 +36,14 @@ publishTo <<= (version).apply { v =>
     Some("Releases" at nexus + "service/local/staging/deploy/maven2")
 }
 
-credentials += Credentials(
-  Option(System.getProperty("build.publish.credentials")) map (new File(_)) getOrElse (Path.userHome / ".ivy2" / ".credentials")
-)
+credentials += {
+  Seq("build.publish.user", "build.publish.password").map(k => Option(System.getProperty(k))) match {
+    case Seq(Some(user), Some(pass)) =>
+      Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", user, pass)
+    case _ =>
+      Credentials(Path.userHome / ".ivy2" / ".credentials")
+  }
+}
 
 pomIncludeRepository := Function.const(false)
 
