@@ -613,6 +613,9 @@ object Process {
   } yield r }
 
  
+  /** 
+   * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
+   */
   implicit class EvalProcess[F[_],O](self: Process[F,F[O]]) {
     def eval: Process[F,O] = self match {
       case Halt => Halt
@@ -623,6 +626,34 @@ object Process {
         await(req)(recv andThen (_ eval), fb.eval, c.eval) 
     }
   }
+  
+  /** 
+   * Provides infix syntax for applying a `Process1` to an arbitrary `Iterable`.
+   */
+  implicit class ApplyProcess[I,O](self: Process1[I,O]) {
+    def apply(input: Iterable[I]): IndexedSeq[O] = {
+      val iter = input.iterator
+      val src = wrap { Task.delay { if (iter.hasNext) iter.next else throw End } } 
+      src.pipe(self).collect.run
+    }
+  } 
+
+  /** 
+   * Provides infix syntax for applying a `Wye` to two `Iterable`s. 
+   */
+  implicit class Apply2Process[I,I2,O](self: Wye[I,I2,O]) {
+    def apply(input: Iterable[I], input2: Iterable[I2]): IndexedSeq[O] = {
+      val iter1 = input.iterator
+      val src1 = wrap { Task.delay { if (iter1.hasNext) iter1.next else throw End } } 
+      val iter2 = input2.iterator
+      val src2 = wrap { Task.delay { if (iter2.hasNext) iter2.next else throw End } } 
+      src1.wye(src2)(self).collect.run
+    }
+  }
+
+  /** Wrap an arbitrary effect in a `Process`. */
+  def wrap[F[_],O](t: F[O]): Process[F,O] = 
+    emit(t).eval.repeat
 
   /** 
    * Provides infix syntax for converting a `Wye` to a `Process1`, 
