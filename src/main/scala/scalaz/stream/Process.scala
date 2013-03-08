@@ -2,10 +2,11 @@ package scalaz.stream
 
 import scala.collection.immutable.IndexedSeq
 
-import scalaz.{Catchable,Monad,Liskov}
+import scalaz.{Catchable,Monad,MonadPlus,Nondeterminism}
 import scalaz.concurrent.Task
 import scalaz.Leibniz.===
-import scalaz.{\/, ~>, Leibniz}
+import scalaz.{\/,-\/,\/-,~>,Leibniz}
+import \/._
 
 /** 
  * A `Process[F,O]` represents a stream of `O` values which can interleave 
@@ -55,6 +56,16 @@ trait Process[+F[_],+O] {
     this append p2
 
   /** 
+   * Removes one layer of emitted elements from this `Process`,
+   * if this `Process` does not begin with an `Emit`, returns the empty
+   * sequence along with `this`. Useful when defining certain operations. 
+   */
+  final def unemit: (Seq[O], Process[F,O]) = this match {
+    case Emit(h,t) => (h, t)
+    case _ => (Seq(), this) 
+  }
+
+  /** 
    * Run this process until it halts, then run it again and again, as
    * long as no errors occurt. 
    */
@@ -96,11 +107,14 @@ trait Process[+F[_],+O] {
    * is killed using `kill`, giving it the opportunity to clean up. 
    */
   final def pipe[O2](p2: Process1[O,O2]): Process[F,O2] =
-    (this tee Halt)(p2)
+    (this tee Halt)(p2) // awesome - p2 will never await on the left
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O,O2]): Process[F,O2] = 
     this pipe p2
+  
+  final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = 
+    (this wye p2)(t)(null)
 
   /* 
    * Use a `Tee` to interleave or combine the outputs of `this` and
@@ -114,65 +128,153 @@ trait Process[+F[_],+O] {
    * which feed the `Tee` in a tail-recursive loop as long as
    * it is awaiting input from either side.
    */ 
-  final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
+  final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Wye[O,O2,O3])(implicit F: Nondeterminism[F2]): Process[F2,O3] = {
     @annotation.tailrec
     def feedL(emit: Seq[O], tail: Process[F,O], 
               other: Process[F2,O2],
-              recv: O => Tee[O,O2,O3], 
-              fb: Tee[O,O2,O3],
-              c: Tee[O,O2,O3]): Process[F2,O3] = 
-      if (emit isEmpty) (tail tee other)(receiveL(recv, fb, c))
+              recv: O => Wye[O,O2,O3], 
+              fb: Wye[O,O2,O3],
+              c: Wye[O,O2,O3]): Process[F2,O3] = 
+      if (emit isEmpty) (tail wye other)(Await(L[O], recv, fb, c))
       else recv(emit.head) match {
-        case t2@Await(e, recv2, fb2, c2) => witnessT(e) match {
-          case Left(isO) => 
-            feedL(emit.tail, tail, other, Leibniz.witness(isO) andThen recv2, fb2, c2)
-          case _ => (Emit(emit.tail, tail) tee other)(t2)
+        case t2@Await(e, recv2, fb2, c2) => (e.tag: @annotation.switch) match {
+          case 0 => 
+            feedL(emit.tail, tail, other, recv2, fb2, c2)
+          case _ => (Emit(emit.tail, tail) wye other)(t2)
         }
-        case p => (Emit(emit.tail, tail) tee other)(p)
+        case p => (Emit(emit.tail, tail) wye other)(p)
       }
     @annotation.tailrec
     def feedR(emit: Seq[O2], tail: Process[F2,O2], 
               other: Process[F,O],
-              recv: O2 => Tee[O,O2,O3], 
-              fb: Tee[O,O2,O3],
-              c: Tee[O,O2,O3]): Process[F2,O3] = 
-      if (emit isEmpty) (other tee tail)(receiveR(recv, fb, c))
+              recv: O2 => Wye[O,O2,O3], 
+              fb: Wye[O,O2,O3],
+              c: Wye[O,O2,O3]): Process[F2,O3] = 
+      if (emit isEmpty) (other wye tail)(Await(R[O2], recv, fb, c))
       else recv(emit.head) match {
-        case t2@Await(e, recv2, fb2, c2) => witnessT(e) match {
-          case Right(isO2) => feedR(emit.tail, tail, other, Leibniz.witness(isO2) andThen recv2, fb2, c2)
-          case _ => (other tee Emit(emit.tail, tail))(t2)
+        case t2@Await(e, recv2, fb2, c2) => (e.tag: @annotation.switch) match {
+          case 1 => feedR(emit.tail, tail, other, recv2, fb2, c2)
+          case _ => (other wye Emit(emit.tail, tail))(t2)
         }
-        case p => (other tee Emit(emit.tail, tail))(p)
+        case p => (other wye Emit(emit.tail, tail))(p)
       }
+    // we round 
+    def feedBoth(
+              emit1: Seq[O], tail1: Process[F,O], 
+              emit2: Seq[O2], tail2: Process[F2,O2], 
+              recv: These[O,O2] => Wye[O,O2,O3], 
+              fb: Wye[O,O2,O3],
+              c: Wye[O,O2,O3]): Process[F2,O3] = {
+      var curRecv = recv 
+      var curFb = fb
+      var curC = c
+      var emit1Cur: Seq[O] = emit1
+      var emit2Cur: Seq[O2] = emit2
+      while (!emit1Cur.isEmpty && emit2Cur.isEmpty) {
+        recv(These.Both(emit1Cur.head, emit2Cur.head)) match {
+          case t2@Await(e,recv2,fb2,c2) => (e.tag: @annotation.switch) match {
+            case 2 => emit1Cur = emit1Cur.tail; emit2Cur = emit2Cur.tail 
+                      curRecv = recv2; 
+                      curFb = fb2
+                      curC = c2
+            case _ => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t2) 
+          }
+          case t => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t) 
+        } 
+      }
+      while (!emit1Cur.isEmpty) {
+        recv(These.This(emit1Cur.head)) match {
+          case t2@Await(e,recv2,fb2,c2) => (e.tag: @annotation.switch) match {
+            case 2 => emit1Cur = emit1Cur.tail
+                      curRecv = recv2
+                      curFb = fb2
+                      curC = c2
+            case _ => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t2) 
+          }
+          case t => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t) 
+        }
+      }
+      while (!emit2Cur.isEmpty) {
+        recv(These.That(emit2Cur.head)) match {
+          case t2@Await(e,recv2,fb2,c2) => (e.tag: @annotation.switch) match {
+            case 2 => emit2Cur = emit2Cur.tail
+                      curRecv = recv2
+                      curFb = fb2
+                      curC = c2
+            case _ => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t2) 
+          }
+          case t => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t) 
+        }
+      }
+      (tail1 wye tail2)(Await(Both[O,O2], curRecv, curFb, curC))
+    }
     // NB: lots of casts needed here because Scala pattern matching does not 
     // properly refine types; my attempts at manually adding type equality 
     // witnesses also failed; this actually worked better in 2.9.2
     t match {
-      case Halt => this.kill ++ p2.kill ++ Halt 
-      case Emit(h,t) => Emit(h, (this tee p2)(t))
-      case Await(side, recv, fb, c) => witnessT(side) match {
-        case Left(isO) => this match {
-          case Halt => p2.kill ++ Halt
+      case Halt => this.kill ++ p2.kill
+      case Emit(h,t) => Emit(h, (this wye p2)(t))
+      case Await(side, recv, fb, c) => (side.tag: @annotation.switch) match {
+        case 0 => this match { // Left
+          case Halt => p2.kill
           case Emit(o,ot) => 
             feedL(o.asInstanceOf[Seq[O]], ot.asInstanceOf[Process[F,O]], p2, 
-                  recv.asInstanceOf[O => Tee[O,O2,O3]],
-                  fb.asInstanceOf[Tee[O,O2,O3]], c.asInstanceOf[Tee[O,O2,O3]]) 
+                  recv.asInstanceOf[O => Wye[O,O2,O3]],
+                  fb.asInstanceOf[Wye[O,O2,O3]], c.asInstanceOf[Wye[O,O2,O3]]) 
           case Await(reqL, recvL, fbL, cL) => 
-            Await(reqL, recvL andThen (pnext => (pnext tee p2)(t)), 
-                  (fbL tee p2)(t), (cL tee p2)(t))
+            Await(reqL, recvL andThen (pnext => (pnext wye p2)(t)), 
+                  (fbL wye p2)(t), (cL wye p2)(t))
         }
-        case Right(isO2) => p2 match {
+        case 1 => p2 match { // Right
           case Halt => this.kill ++ Halt
           case Emit(o,ot) => 
             feedR(o.asInstanceOf[Seq[O2]], ot.asInstanceOf[Process[F2,O2]], this, 
-                  recv.asInstanceOf[O2 => Tee[O,O2,O3]], 
-                  fb.asInstanceOf[Tee[O,O2,O3]], c.asInstanceOf[Tee[O,O2,O3]])
+                  recv.asInstanceOf[O2 => Wye[O,O2,O3]], 
+                  fb.asInstanceOf[Wye[O,O2,O3]], c.asInstanceOf[Wye[O,O2,O3]])
           case Await(reqR, recvR, fbR, cR) => 
             Await(reqR.asInstanceOf[F2[Int]], // really should be existential 
-                  recvR.asInstanceOf[Int => Process[F2,O2]] andThen (p3 => (this tee p3)(t)), 
-                  (this tee fbR.asInstanceOf[Process[F2,O2]])(t), 
-                  (this tee cR.asInstanceOf[Process[F2,O2]])(t))
+                  recvR.asInstanceOf[Int => Process[F2,O2]] andThen (p3 => (this wye p3)(t)), 
+                  (this wye fbR.asInstanceOf[Process[F2,O2]])(t), 
+                  (this wye cR.asInstanceOf[Process[F2,O2]])(t))
         }
+        case 2 => // Both 
+          val u1 = this.unemit; val h1 = u1._1; val t1 = u1._2
+          val u2 = p2.unemit; val h2 = u2._1; val t2 = u2._2
+          if (h1.isEmpty && h2.isEmpty) { 
+            // We have no elements queued up on either side
+            // There are two cases: 
+            //   * If either side has halted, we detach the Wye from 
+            //     that side and use `|>` to feed it the remainder
+            //     of the side that lives.
+            //   * If both sides are in the Await state, we use the
+            //     Nondeterminism instance to request both sides
+            //     concurrently.
+            // more casts required due to broken pattern matching
+            this match {
+              case Halt => p2 |> t.detachL 
+              case Await(reqL, recvL, fbL, cL) => p2 match {
+                case Halt => this |> t.detachR 
+                case Await(reqR, recvR, fbR, cR) => 
+                  val reqL_ = reqL.asInstanceOf[F[String]]
+                  val recvL_ = recvL.asInstanceOf[String => Process[F,O]]
+                  val reqR_ = reqR.asInstanceOf[F2[Int]] // making up some types here just to avoid confusion
+                  val recvR_ = recvR.asInstanceOf[Int => Process[F2,O2]]
+                  val fbR_ = fbR.asInstanceOf[Process[F2,O2]]
+                  val cR_ = fbR.asInstanceOf[Process[F2,O2]]
+                  await(F.choose(reqL_, reqR_))(emit(_)) flatMap {
+                    case Left((l,reqR2)) => 
+                      (recvL_(l) wye Await(reqR2, recvR_, fbR_, cR_))(t)
+                    case Right((reqL2,r)) => 
+                      (Await(reqL2, recvL_, fbL, cL) wye recvR_(r))(t)
+                  }
+              }
+            }
+          }
+          else feedBoth(
+                h1, t1, h2, t2.asInstanceOf[Process[F2,O2]],
+                recv.asInstanceOf[These[O,O2] => Wye[O,O2,O3]],
+                fb.asInstanceOf[Wye[O,O2,O3]],
+                c.asInstanceOf[Wye[O,O2,O3]])
       }
     }
   }
@@ -185,6 +287,13 @@ trait Process[+F[_],+O] {
       Await(f(req), recv andThen (_ translate f), fb translate f, c translate f)
   }
 
+  /** 
+   * Map over this `Process` to produce a stream of `F`-actions, 
+   * then evaluate these actions. 
+   */
+  def evalMap[F2[x]>:F[x],O2](f: O => F2[O2]): Process[F2,O2] = 
+    map(f).eval
+ 
   /** 
    * Collect the outputs of this `Process[F,O]`, given a `Monad[F]` in
    * which we can catch exceptions. This function is not tail recursive and
@@ -234,8 +343,8 @@ trait Process[+F[_],+O] {
 object Process {
   case class Await[F[_],A,+O] private[stream](
     req: F[A], recv: A => Process[F,O],
-    fallback: Process[F,O],
-    cleanup: Process[F,O]) extends Process[F,O]
+    fallback: Process[F,O] = Halt,
+    cleanup: Process[F,O] = Halt) extends Process[F,O]
 
   case class Emit[F[_],O] private[stream](
     head: Seq[O], 
@@ -261,8 +370,18 @@ object Process {
       cleanup: Process[F,O] = Halt): Process[F,O] = 
     Await(req, recv, fallback, cleanup)
 
+  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] = 
+  new MonadPlus[({type f[x] = Process[F,x]})#f] {
+    def empty[A] = Halt
+    def plus[A](a: Process[F,A], b: => Process[F,A]): Process[F,A] = 
+      a ++ b
+    def point[A](a: => A): Process[F,A] = emit(a)
+    def bind[A,B](a: Process[F,A])(f: A => Process[F,B]): Process[F,B] = 
+      a flatMap f
+  }
+
   /* Special exception indicating normal termination */
-  case object End extends Exception {
+  case object End extends scala.util.control.ControlThrowable {
     override def fillInStackTrace = this 
   }
  
@@ -312,15 +431,13 @@ object Process {
     await(acquire) ( r => go(step(r), release(r)), Halt, Halt )
   }
 
-  import annotation.unchecked.uncheckedVariance
-
   case class Two[-I,-I2]() {
     sealed trait Y[-X] { def tag: Int }
     sealed trait T[-X] extends Y[X] 
     sealed trait Is[-X] extends T[X]
     case object Left extends Is[I] { def tag = 0 }
     case object Right extends T[I2] { def tag = 1 }  
-    case object Both extends Y[I \/ I2] { def tag = 2 }
+    case object Both extends Y[These[I,I2]] { def tag = 2 }
   }
 
   // Subtyping of various Process types:
@@ -336,23 +453,33 @@ object Process {
     def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t 
   }
 
-  case class T[-I, -I2]() {
-    sealed trait f[-X] { def isRight: Boolean }
-    case object L extends f[I] { def isRight = false }
-    case object R extends f[I2] { def isRight = true } 
-  }
+  // a failed attempt to work around Scala's broken type refinement in 
+  // pattern matching by supplying the equality witnesses manually
 
-  implicit def witnessT[I,I2,J](t: Two[I,I2]#T[J]): Either[I === J, I2 === J] = 
-    if (t.tag == 0) Left(Leibniz.refl[I].asInstanceOf[I === J])
-    else Right(Leibniz.refl[I2].asInstanceOf[I2 === J])
-
-  def Get[I] = Two[I,Any]().Left
-  def L[I] = Two[I,Any]().Left
-  def R[I2] = Two[Any,I2]().Right
-
-  // obtain an equality witness from an Is[I].Get
-  implicit def witnessIs[I,J](req: Two[I,Nothing]#Is[J]): I === J = 
+  /** Obtain an equality witness from an `Is` request. */
+  def witnessIs[I,J](req: Two[I,Nothing]#Is[J]): I === J = 
     Leibniz.refl[I].asInstanceOf[I === J]
+
+  /** Obtain an equality witness from a `T` request. */
+  def witnessT[I,I2,J](t: Two[I,I2]#T[J]): 
+  (I === J) \/ (I2 === J) = 
+    if (t.tag == 0) left(Leibniz.refl[I].asInstanceOf[I === J])
+    else right(Leibniz.refl[I2].asInstanceOf[I2 === J])
+
+  /** Obtain an equality witness from a `Y` request. */
+  def witnessY[I,I2,J](t: Two[I,I2]#Y[J]): 
+  (I === J) \/ (I2 === J) \/ (These[I,I2] === J) = 
+    if (t.tag == 2) right(Leibniz.refl[I].asInstanceOf[These[I,I2] === J])
+    else left(witnessT(t.asInstanceOf[Two[I,I2]#T[J]]))
+
+  private val Left_ = Two[Any,Any]().Left
+  private val Right_ = Two[Any,Any]().Left
+  private val Both_ = Two[Any,Any]().Both
+
+  def Get[I]: Two[I,Any]#Is[I] = Left_ 
+  def L[I]: Two[I,Any]#Is[I] = Left_ 
+  def R[I2]: Two[Any,I2]#T[I2] = Right_  
+  def Both[I,I2]: Two[I,I2]#Y[These[I,I2]] = Both_ 
 
   def await1[I]: Process1[I,I] = 
     Await(Get[I], (i: I) => emit1(i).asInstanceOf[Process1[I,I]], Halt, Halt)
@@ -398,8 +525,7 @@ object Process {
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] = 
-    if (n <= 0) id[I]
-    else skip ++ drop(n-1)
+    skip.replicateM_(n).drain ++ id[I]
 
                           /*                       
 
@@ -486,20 +612,7 @@ object Process {
     r <- emitT(i1) ++ emitT(i2)
   } yield r }
 
-                          /*                       
-
-  Our `Process` type can also represent effectful sinks (like a file).
-  A `Sink` is simply a source of effectful functions! See the
-  definition of `to` in `Process` for an example of how to feed a 
-  `Process` to a `Sink`.
-
-                           */
-
-  type Sink[F[_],O] = Process[F, O => F[Unit]]
-
-  def eval[F[_],O](p: Process[F, F[O]]): Process[F,O] = p.eval
-  
-  /* Infix syntax for `eval`. */
+ 
   implicit class EvalProcess[F[_],O](self: Process[F,F[O]]) {
     def eval: Process[F,O] = self match {
       case Halt => Halt
@@ -511,6 +624,56 @@ object Process {
     }
   }
 
+  /** 
+   * Provides infix syntax for converting a `Wye` to a `Process1`, 
+   * by converting requests for the detached side into `Halt`.
+   */
+  implicit class DetachableWye[I,I2,O](self: Wye[I,I2,O]) {
+    def detachL: Process1[I2,O] = self match {
+      case Halt => Halt
+      case Emit(h, t) => Emit(h, t.detachL)
+      case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
+        case 0 => Halt
+        case 1 => Await(Get[I2], recv andThen (_ detachL), fb.detachL, c.detachL)
+        case 2 => Await(Get[I2], (These.That(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
+      } 
+    } 
+    def detachR: Process1[I,O] = self match {
+      case Halt => Halt
+      case Emit(h, t) => Emit(h, t.detachR)
+      case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
+        case 0 => Await(Get[I], recv andThen (_ detachR), fb.detachR, c.detachR)
+        case 1 => Halt
+        case 2 => Await(Get[I], (These.This(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
+      }
+    }
+  }
+                          /*                       
+
+  Our `Process` type can also represent effectful sinks (like a file).
+  A `Sink` is simply a source of effectful functions! See the
+  definition of `to` in `Process` for an example of how to feed a 
+  `Process` to a `Sink`.
+
+                           */
+
+  type Sink[F[_],O] = Process[F, O => F[Unit]]
+
   type Channel[F[_],I,O] = Process[F, I => F[O]]
+
+  // boilerplate to enable monadic infix syntax without explicit imports 
+
+  import scalaz.syntax.{ApplyOps, ApplicativeOps, FunctorOps, MonadOps}
+  
+  trait ProcessTC[F[_]] { type f[y] = Process[F,y] }
+
+  implicit def toMonadOps[F[_],A](f: Process[F,A]): MonadOps[ProcessTC[F]#f,A] = 
+    processInstance.monadSyntax.ToMonadOps(f)
+  implicit def toApplicativeOps[F[_],A](f: Process[F,A]): ApplicativeOps[ProcessTC[F]#f,A] = 
+    processInstance.applicativeSyntax.ToApplicativeOps(f)
+  implicit def toApplyOps[F[_],A](f: Process[F,A]): ApplyOps[ProcessTC[F]#f,A] = 
+    processInstance.applySyntax.ToApplyOps(f)
+  implicit def toFunctorOps[F[_],A](f: Process[F,A]): FunctorOps[ProcessTC[F]#f,A] =
+    processInstance.functorSyntax.ToFunctorOps(f)
 }
 
