@@ -359,27 +359,29 @@ trait Process[+F[_],+O] {
 
   /** Skips any output elements not matching the predicate. */
   def filter(f: O => Boolean): Process[F,O] = 
-    this |> Process.filter(f)
+    this |> process.filter(f)
 
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] = 
-    this |> Process.take[O](n)
+    this |> process.take[O](n)
 
   /** Halts this `Process` after emitting 1 element. */
   def once: Process[F,O] = take(1)
 
   /** Halts this `Process` as soon as the predicate tests false. */
   def takeWhile(f: O => Boolean): Process[F,O] = 
-    this |> Process.takeWhile(f)
+    this |> process.takeWhile(f)
 
   /** Ignores the first `n` elements output from this `Process`. */
   def drop(n: Int): Process[F,O] = 
-    this |> Process.drop[O](n)
+    this |> process.drop[O](n)
 
   /** Ignores elements from the output of this `Process` until `f` tests false. */
   def dropWhile(f: O => Boolean): Process[F,O] = 
-    this |> Process.dropWhile(f)
+    this |> process.dropWhile(f)
 }
+
+object process extends process1 with tee with wye with io
 
 object Process {
   case class Await[F[_],A,+O] private[stream](
@@ -507,176 +509,6 @@ object Process {
   }
 
   /** 
-   * A simple tail recursive function to collect all the output of a 
-   * `Process[Task,O]`. Because `Task` has a `run` function,
-   * we can implement this as a tail-recursive function. 
-   */
-  def collectTask[O](src: Process[Task,O]): IndexedSeq[O] = {
-    @annotation.tailrec
-    def go(cur: Process[Task,O], acc: IndexedSeq[O]): IndexedSeq[O] = 
-      cur match {
-        case Emit(h,t) => go(t, acc ++ h) 
-        case Halt => acc
-        case Await(req,recv,fb,err) =>
-          val next = 
-            try recv(req.run)
-            catch { 
-              case End => fb // Normal termination
-              case e: Exception => err ++ failTask(e) // Helper function, defined below
-            }
-          go(next, acc)
-      }
-    go(src, IndexedSeq()) 
-  }
-
-  def failTask[O](e: Throwable): Process[Task,O] = 
-    await[Task,O,O](Task(throw e))()
-
-  /** Prefix syntax for `p.repeat`. */
-  def repeat[F[_],O](p: Process[F,O]): Process[F,O] = p.repeat
-
-  /* 
-   * Generic combinator for producing a `Process[Task,O]` from some
-   * effectful `O` source. The source is tied to some resource,
-   * `R` (like a file handle) that we want to ensure is released.
-   * See `lines` below for an example use. 
-   */
-  def resource[R,O](acquire: Task[R])(
-                    release: R => Task[Unit])(
-                    step: R => Task[O]): Process[Task,O] = {
-    def go(step: Task[O], onExit: Task[Unit]): Process[Task,O] =
-      await[Task,O,O](step) ( 
-        o => emit(o) ++ go(step, onExit) // Emit the value and repeat 
-      , await[Task,Unit,O](onExit)()  // Release resource when exhausted
-      , await[Task,Unit,O](onExit)()) // or in event of error
-    await(acquire) ( r => go(step(r), release(r)), Halt, Halt )
-  }
-
-  // a failed attempt to work around Scala's broken type refinement in 
-  // pattern matching by supplying the equality witnesses manually
-
-  /** Obtain an equality witness from an `Is` request. */
-  def witnessIs[I,J](req: Env[I,Nothing]#Is[J]): I === J = 
-    Leibniz.refl[I].asInstanceOf[I === J]
-
-  /** Obtain an equality witness from a `T` request. */
-  def witnessT[I,I2,J](t: Env[I,I2]#T[J]): 
-  (I === J) \/ (I2 === J) = 
-    if (t.tag == 0) left(Leibniz.refl[I].asInstanceOf[I === J])
-    else right(Leibniz.refl[I2].asInstanceOf[I2 === J])
-
-  /** Obtain an equality witness from a `Y` request. */
-  def witnessY[I,I2,J](t: Env[I,I2]#Y[J]): 
-  (I === J) \/ (I2 === J) \/ (These[I,I2] === J) = 
-    if (t.tag == 2) right(Leibniz.refl[I].asInstanceOf[These[I,I2] === J])
-    else left(witnessT(t.asInstanceOf[Env[I,I2]#T[J]]))
-
-  /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
-  def id[I]: Process1[I,I] = 
-    await1[I].repeat
-
-  /** Transform the input using the given function, `f`. */
-  def lift[I,O](f: I => O): Process1[I,O] = 
-    id[I] map f
-  
-  /** Skips any elements of the input not matching the predicate. */
-  def filter[I](f: I => Boolean): Process1[I,I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) else Halt) repeat
-
-  /** Passes through `n` elements of the input, then halt. */
-  def take[I](n: Int): Process1[I,I] = 
-    if (n <= 0) Halt
-    else await1[I] ++ take(n-1)
-
-  /** Passes through elements of the input as long as the predicate is true, then halt. */
-  def takeWhile[I](f: I => Boolean): Process1[I,I] = 
-    await1[I] flatMap (i => if (f(i)) emit(i) ++ takeWhile(f) else Halt)
-
-  /** 
-   * Skips elements of the input while the predicate is true, 
-   * then passes through the remaining inputs. 
-   */
-  def dropWhile[I](f: I => Boolean): Process1[I,I] = 
-    await1[I] flatMap (i => if (f(i)) dropWhile(f) else id)
-
-  /** Reads a single element of the input, emits nothing, then halts. */
-  def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => Halt) 
-
-  /** Skips the first `n` elements of the input, then passes through the rest. */
-  def drop[I](n: Int): Process1[I,I] = 
-    skip.replicateM_(n).drain ++ id[I]
-
-  def zipWith[I,I2,O](f: (I,I2) => O): Tee[I,I2,O] = { for {
-    i <- awaitL[I]
-    i2 <- awaitR[I2]
-    r <- emit(f(i,i2))
-  } yield r } repeat
-
-  def zip[I,I2]: Tee[I,I2,(I,I2)] = zipWith((_,_))
-
-  /* 
-   * Like `zip` on lists, the above version halts as soon as either
-   * input is exhausted. Here is a version that pads the shorter
-   * stream with values. 
-   */
-   
-  def zipWithAll[I,I2,O](padI: I, padI2: I2)(
-                         f: (I,I2) => O): Tee[I,I2,O] = {
-    val fbR = passR[I2] map (f(padI, _    ))
-    val fbL = passL[I]  map (f(_   , padI2))
-    receiveLOr(fbR: Tee[I,I2,O])(i => 
-    receiveROr(fbL: Tee[I,I2,O])(i2 => emit(f(i,i2)))) repeat
-  }
-
-  def zipAll[I,I2](padI: I, padI2: I2): Tee[I,I2,(I,I2)] = 
-    zipWithAll(padI, padI2)((_,_))
-  
-  /* Ignores all input from left. */
-  def passR[I2]: Tee[Any,I2,I2] = awaitR[I2].repeat
-  
-  /* Ignores input from the right. */
-  def passL[I]: Tee[I,Any,I] = awaitL[I].repeat
-  
-  /* Alternate pulling values from the left and the right inputs. */
-  def interleaveT[I]: Tee[I,I,I] = repeat { for {
-    i1 <- awaitL[I]
-    i2 <- awaitR[I]
-    r <- emit(i1) ++ emit(i2)
-  } yield r }
-
-  /** Infix syntax for feeding a process a `Seq` of inputs. */
-  implicit class FeedProcess[F[_],O](self: Process[F,O]) {
-    final def feed[I](
-        input: Seq[I])(
-        f: Process[F,O] => (I => (Option[I], Option[Process[F,O]]))): (Process[F,O], Seq[I]) = {
-
-      @annotation.tailrec
-      def go(cur: Process[F,O], input: Seq[I], revisits: Vector[I]): (Process[F,O], Seq[I]) = {
-        if (!input.isEmpty) f(cur)(input.head) match {
-          case (_, None) => (cur, revisits ++ input)
-          case (revisit, Some(p2)) => go(p2, input.tail, revisits ++ revisit.toList)
-        }
-        else (cur, revisits)
-      }
-      go(self, input, Vector())
-    }
-  }
-
-  /** 
-   * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
-   */
-  implicit class EvalProcess[F[_],O](self: Process[F,F[O]]) {
-    def eval: Process[F,O] = self match {
-      case Halt => Halt
-      case Emit(h, t) => 
-        if (h.isEmpty) t.eval
-        else await[F,O,O](h.head)(o => emit(o) ++ emitAll(h.tail, t).eval)
-      case Await(req,recv,fb,c) => 
-        await(req)(recv andThen (_ eval), fb.eval, c.eval) 
-    }
-  }
-  
-  /** 
    * This class provides infix syntax specific to `Process0`. 
    */
   implicit class Process0Syntax[O](self: Process0[O]) {
@@ -752,6 +584,41 @@ object Process {
     }
   }
 
+  /** Infix syntax for feeding a process a `Seq` of inputs. */
+  implicit class FeedProcess[F[_],O](self: Process[F,O]) {
+    final def feed[I](
+        input: Seq[I])(
+        f: Process[F,O] => (I => (Option[I], Option[Process[F,O]]))): (Process[F,O], Seq[I]) = {
+
+      @annotation.tailrec
+      def go(cur: Process[F,O], input: Seq[I], revisits: Vector[I]): (Process[F,O], Seq[I]) = {
+        if (!input.isEmpty) f(cur)(input.head) match {
+          case (_, None) => (cur, revisits ++ input)
+          case (revisit, Some(p2)) => go(p2, input.tail, revisits ++ revisit.toList)
+        }
+        else (cur, revisits)
+      }
+      go(self, input, Vector())
+    }
+  }
+
+  /** 
+   * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
+   */
+  implicit class EvalProcess[F[_],O](self: Process[F,F[O]]) {
+    def eval: Process[F,O] = self match {
+      case Halt => Halt
+      case Emit(h, t) => 
+        if (h.isEmpty) t.eval
+        else await[F,O,O](h.head)(o => emit(o) ++ emitAll(h.tail, t).eval)
+      case Await(req,recv,fb,c) => 
+        await(req)(recv andThen (_ eval), fb.eval, c.eval) 
+    }
+  }
+  
+  /** Prefix syntax for `p.repeat`. */
+  def repeat[F[_],O](p: Process[F,O]): Process[F,O] = p.repeat
+
   /** Wrap an arbitrary effect in a `Process`. The resulting `Process` emits a single value. */
   def wrap[F[_],O](t: F[O]): Process[F,O] = 
     emit(t).eval
@@ -763,14 +630,25 @@ object Process {
   def wrap_*[F[_],O](t: F[O]): Process[F,O] =
     wrap(t).repeat
 
-                          /*                       
 
-  Our `Process` type can also represent effectful sinks (like a file).
-  A `Sink` is simply a source of effectful functions! See the
-  definition of `to` in `Process` for an example of how to feed a 
-  `Process` to a `Sink`.
+  // a failed attempt to work around Scala's broken type refinement in 
+  // pattern matching by supplying the equality witnesses manually
 
-                           */
+  /** Obtain an equality witness from an `Is` request. */
+  def witnessIs[I,J](req: Env[I,Nothing]#Is[J]): I === J = 
+    Leibniz.refl[I].asInstanceOf[I === J]
+
+  /** Obtain an equality witness from a `T` request. */
+  def witnessT[I,I2,J](t: Env[I,I2]#T[J]): 
+  (I === J) \/ (I2 === J) = 
+    if (t.tag == 0) left(Leibniz.refl[I].asInstanceOf[I === J])
+    else right(Leibniz.refl[I2].asInstanceOf[I2 === J])
+
+  /** Obtain an equality witness from a `Y` request. */
+  def witnessY[I,I2,J](t: Env[I,I2]#Y[J]): 
+  (I === J) \/ (I2 === J) \/ (These[I,I2] === J) = 
+    if (t.tag == 2) right(Leibniz.refl[I].asInstanceOf[These[I,I2] === J])
+    else left(witnessT(t.asInstanceOf[Env[I,I2]#T[J]]))
 
   type Sink[F[_],O] = Process[F, O => F[Unit]]
 
