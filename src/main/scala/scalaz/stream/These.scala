@@ -39,6 +39,12 @@ object These {
         case Both(x,y) => f(y).mapThis(x2 => X.append(x,x2)) 
       }
   }
+
+  def align[A,B](a: Seq[A], b: Seq[B]): Stream[These[A,B]] =
+    if (a.isEmpty) b.view.map(That(_)).toStream
+    else if (b.isEmpty) a.view.map(This(_)).toStream
+    else Both(a.head, b.head) #:: align(a.tail, b.tail)
+
   import scalaz.syntax.{ApplyOps, ApplicativeOps, FunctorOps, MonadOps}
   
   trait TheseT[X] { type f[y] = These[X,y] }

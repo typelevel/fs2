@@ -56,15 +56,15 @@ trait Process[+F[_],+O] {
     this append p2
 
   /** 
-   * Removes one layer of emitted elements from this `Process`,
-   * if this `Process` does not begin with an `Emit`, returns the empty
-   * sequence along with `this`. Useful when defining certain operations. 
+   * Removes one layer of emitted elements from this `Process`.
+   * If this `Process` does not begin with an `Emit`, returns the empty
+   * sequence along with `this`.
    */
   final def unemit: (Seq[O], Process[F,O]) = this match {
     case Emit(h,t) => (h, t)
     case _ => (Seq(), this) 
   }
-
+  
   /** 
    * Run this process until it halts, then run it again and again, as
    * long as no errors occurt. 
@@ -600,10 +600,10 @@ object Process {
     receiveR(recvR, fallback)
 
   /* Ignores all input from left. */
-  def passR[I2]: Tee[Any,I2,I2] = awaitR[I2].flatMap(emitT).repeat
+  def passR[I2]: Tee[Any,I2,I2] = awaitR[I2].repeat
   
   /* Ignores input from the right. */
-  def passL[I]: Tee[I,Any,I] = awaitL[I].flatMap(emitT).repeat
+  def passL[I]: Tee[I,Any,I] = awaitL[I].repeat
   
   /* Alternate pulling values from the left and the right inputs. */
   def interleaveT[I]: Tee[I,I,I] = repeat { for {
@@ -612,7 +612,22 @@ object Process {
     r <- emitT(i1) ++ emitT(i2)
   } yield r }
 
- 
+  /** Infix syntax for feeding a process a `Seq` of inputs. */
+  implicit class FeedProcess[F[_],O](self: Process[F,O]) {
+    final def feed[I](
+        input: Seq[I])(
+        f: Process[F,O] => Option[(I => Process[F,O])]): Process[F,O] = {
+
+      @annotation.tailrec
+      def go(cur: Process[F,O], input: Seq[I]): Process[F,O] = 
+        f(cur) match {
+          case Some(recv) if !input.isEmpty => go(recv(input.head), input.tail)
+          case _ => cur
+        }
+      go(self, input)
+    }
+  }
+
   /** 
    * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
    */
