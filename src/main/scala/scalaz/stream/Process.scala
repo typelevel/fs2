@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import scala.collection.immutable.{IndexedSeq,Vector}
+import scala.collection.immutable.{IndexedSeq,SortedMap,Vector}
 
 import scalaz.{Catchable,Monad,MonadPlus,Nondeterminism}
 import scalaz.concurrent.Task
@@ -171,7 +171,7 @@ trait Process[+F[_],+O] {
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O,O2]): Process[F,O2] = 
     this pipe p2
-  
+
   /** 
    * Use a `Tee` to interleave or combine the outputs of `this` and
    * `p2`. This can be used for zipping, interleaving, and so forth.
@@ -295,7 +295,9 @@ trait Process[+F[_],+O] {
           this match {
             case Halt => p2 |> y.detachL 
             case Await(reqL, recvL, fbL, cL) => p2 match {
-              case Halt => this |> y.detachR 
+              case Halt => 
+                val detached = y.detachR
+                Await(reqL, recvL andThen (_ |> detached), fbL |> detached, cL |> detached)
               case Await(reqR, recvR, fbR, cR) => 
                 val reqL_ = reqL.asInstanceOf[F[String]]
                 val recvL_ = recvL.asInstanceOf[String => Process[F,O]]
@@ -406,7 +408,7 @@ object Process {
       cleanup: Process[F,O] = Halt): Process[F,O] = 
     Await(req, recv, fallback, cleanup)
 
-  def apply[O](o: O*): Process[Nothing,O] = 
+  def apply[O](o: O*): Process0[O] = 
     emitAll[Nothing,O](o, Halt)
 
   def emit[O](head: O): Process[Nothing,O] = 
@@ -494,6 +496,7 @@ object Process {
   // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])
   // * Tee is a Wye that never requests Both (Tee[I,I2,O] <: Wye[I,I2,O])
 
+  type Process0[+O] = Process[Env[Any,Any]#Is,O]
   type Process1[-I,+O] = Process[Env[I,Any]#Is, O]
   type Tee[-I,-I2,+O] = Process[Env[I,I2]#T, O]
   type Wye[-I,-I2,+O] = Process[Env[I,I2]#Y, O]
@@ -674,15 +677,29 @@ object Process {
   }
   
   /** 
-   * Provides infix syntax for applying a `Process1` to an arbitrary `Iterable`.
+   * This class provides infix syntax specific to `Process0`. 
+   */
+  implicit class Process0Syntax[O](self: Process0[O]) {
+    def toIndexedSeq: IndexedSeq[O] = self(List())
+    def toList: List[O] = toIndexedSeq.toList 
+    def toSeq: Seq[O] = toIndexedSeq
+    def toMap[K,V](implicit isKV: O <:< (K,V)): Map[K,V] = toIndexedSeq.toMap(isKV)
+    def toSortedMap[K,V](implicit isKV: O <:< (K,V), ord: Ordering[K]): SortedMap[K,V] = 
+      SortedMap(toIndexedSeq.asInstanceOf[Seq[(K,V)]]: _*)
+  }
+
+  /** 
+   * This class provides infix syntax specific to `Process1`.
    */
   implicit class Process1Syntax[I,O](self: Process1[I,O]) {
+
+    /** Apply this `Process` to an `Iterable`. */
     def apply(input: Iterable[I]): IndexedSeq[O] = {
       val iter = input.iterator
       val src = wrap_* { Task.delay { if (iter.hasNext) iter.next else throw End } } 
       src.pipe(self).collect.run
     }
-  } 
+  }
 
   /** 
    * This class provides infix syntax specific to `Wye`. We put these here 
