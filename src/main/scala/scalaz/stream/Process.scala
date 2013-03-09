@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import scala.collection.immutable.IndexedSeq
+import scala.collection.immutable.{IndexedSeq,Vector}
 
 import scalaz.{Catchable,Monad,MonadPlus,Nondeterminism}
 import scalaz.concurrent.Task
@@ -64,10 +64,10 @@ trait Process[+F[_],+O] {
     case Emit(h,t) => (h, t)
     case _ => (Seq(), this) 
   }
-  
+
   /** 
    * Run this process until it halts, then run it again and again, as
-   * long as no errors occurt. 
+   * long as no errors occur. 
    */
   final def repeat[F2[x]>:F[x],O2>:O]: Process[F2,O2] = {
     def go(cur: Process[F,O]): Process[F,O] = cur match {
@@ -89,6 +89,63 @@ trait Process[+F[_],+O] {
     case Emit(h, t) => t.kill
   }
 
+  /** 
+   * Switch to the `fallback` case of the _next_ `Await` issued by this `Process`.
+   */
+  final def fallback: Process[F,O] = this match {
+    case Await(req,recv,fb,c) => fb 
+    case Halt => Halt
+    case Emit(h, t) => emitAll(h, t.fallback)
+  }
+
+  /**
+   * Switch to the `fallback` case of _all_ subsequent awaits.
+   */
+  final def disconnect: Process[Nothing,O] = this match {
+    case Await(req,recv,fb,c) => fb.disconnect 
+    case Halt => Halt
+    case Emit(h, t) => emitAll(h, t.disconnect) 
+  }
+
+  /** 
+   * Switch to the `cleanup` case of the next `Await` issued by this `Process`.
+   */
+  final def cleanup: Process[F,O] = this match {
+    case Await(req,recv,fb,c) => fb 
+    case Halt => Halt
+    case Emit(h, t) => emitAll(h, t.cleanup)
+  }
+
+  /**
+   * Switch to the `cleanup` case of _all_ subsequent awaits.
+   */
+  final def hardDisconnect: Process[Nothing,O] = this match {
+    case Await(req,recv,fb,c) => c.hardDisconnect 
+    case Halt => Halt
+    case Emit(h, t) => emitAll(h, t.hardDisconnect) 
+  }
+
+  /** 
+   * Remove any leading emitted values from this `Process`. 
+   */
+  @annotation.tailrec
+  final def trim: Process[F,O] = this match {
+    case Emit(h, t) => t.trim
+    case _ => this
+  }
+
+  /** 
+   * Alter the type of this `Process` using the provided function. 
+   * This function transforms the leading `Await` issued by this
+   * `Process`, or returns `None` if this `Process` does not begin
+   * with an `Await`.
+   */
+  def step: Option[(F[A], A => Process[F,O], Process[F,O], Process[F,O]) forSome { type A }] = 
+    this match {
+      case Await(req,recv,fb,c) => Some((req,recv,fb,c))
+      case _ => None
+    }
+
   /**
    * Ignores output of this `Process`. A drained `Process` will never `Emit`.  
    */
@@ -107,16 +164,15 @@ trait Process[+F[_],+O] {
    * is killed using `kill`, giving it the opportunity to clean up. 
    */
   final def pipe[O2](p2: Process1[O,O2]): Process[F,O2] =
-    (this tee Halt)(p2) // awesome - p2 will never await on the left
+    // Since `Process1[O,O2] <: Tee[O,Any,O2]`, but it is a `Tee` that
+    // never reads from its right input, we can define this in terms of `tee`!
+    (this tee Halt)(p2)
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O,O2]): Process[F,O2] = 
     this pipe p2
   
-  final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = 
-    (this wye p2)(t)(null)
-
-  /* 
+  /** 
    * Use a `Tee` to interleave or combine the outputs of `this` and
    * `p2`. This can be used for zipping, interleaving, and so forth.
    * Nothing requires that the `Tee` read elements from each 
@@ -124,158 +180,138 @@ trait Process[+F[_],+O] {
    * side, then two elements from the other, then combine or
    * interleave these values in some way, etc.
    * 
-   * The definition uses two helper functions, `feedL` and `feedR`,
-   * which feed the `Tee` in a tail-recursive loop as long as
-   * it is awaiting input from either side.
+   * If at any point the `Tee` awaits on a side that has halted, 
+   * we gracefully kill off the other side, then halt.
    */ 
-  final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Wye[O,O2,O3])(implicit F: Nondeterminism[F2]): Process[F2,O3] = {
-    @annotation.tailrec
-    def feedL(emit: Seq[O], tail: Process[F,O], 
-              other: Process[F2,O2],
-              recv: O => Wye[O,O2,O3], 
-              fb: Wye[O,O2,O3],
-              c: Wye[O,O2,O3]): Process[F2,O3] = 
-      if (emit isEmpty) (tail wye other)(Await(L[O], recv, fb, c))
-      else recv(emit.head) match {
-        case t2@Await(e, recv2, fb2, c2) => (e.tag: @annotation.switch) match {
-          case 0 => 
-            feedL(emit.tail, tail, other, recv2, fb2, c2)
-          case _ => (Emit(emit.tail, tail) wye other)(t2)
-        }
-        case p => (Emit(emit.tail, tail) wye other)(p)
-      }
-    @annotation.tailrec
-    def feedR(emit: Seq[O2], tail: Process[F2,O2], 
-              other: Process[F,O],
-              recv: O2 => Wye[O,O2,O3], 
-              fb: Wye[O,O2,O3],
-              c: Wye[O,O2,O3]): Process[F2,O3] = 
-      if (emit isEmpty) (other wye tail)(Await(R[O2], recv, fb, c))
-      else recv(emit.head) match {
-        case t2@Await(e, recv2, fb2, c2) => (e.tag: @annotation.switch) match {
-          case 1 => feedR(emit.tail, tail, other, recv2, fb2, c2)
-          case _ => (other wye Emit(emit.tail, tail))(t2)
-        }
-        case p => (other wye Emit(emit.tail, tail))(p)
-      }
-    // we round 
-    def feedBoth(
-              emit1: Seq[O], tail1: Process[F,O], 
-              emit2: Seq[O2], tail2: Process[F2,O2], 
-              recv: These[O,O2] => Wye[O,O2,O3], 
-              fb: Wye[O,O2,O3],
-              c: Wye[O,O2,O3]): Process[F2,O3] = {
-      var curRecv = recv 
-      var curFb = fb
-      var curC = c
-      var emit1Cur: Seq[O] = emit1
-      var emit2Cur: Seq[O2] = emit2
-      while (!emit1Cur.isEmpty && emit2Cur.isEmpty) {
-        recv(These.Both(emit1Cur.head, emit2Cur.head)) match {
-          case t2@Await(e,recv2,fb2,c2) => (e.tag: @annotation.switch) match {
-            case 2 => emit1Cur = emit1Cur.tail; emit2Cur = emit2Cur.tail 
-                      curRecv = recv2; 
-                      curFb = fb2
-                      curC = c2
-            case _ => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t2) 
-          }
-          case t => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t) 
-        } 
-      }
-      while (!emit1Cur.isEmpty) {
-        recv(These.This(emit1Cur.head)) match {
-          case t2@Await(e,recv2,fb2,c2) => (e.tag: @annotation.switch) match {
-            case 2 => emit1Cur = emit1Cur.tail
-                      curRecv = recv2
-                      curFb = fb2
-                      curC = c2
-            case _ => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t2) 
-          }
-          case t => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t) 
-        }
-      }
-      while (!emit2Cur.isEmpty) {
-        recv(These.That(emit2Cur.head)) match {
-          case t2@Await(e,recv2,fb2,c2) => (e.tag: @annotation.switch) match {
-            case 2 => emit2Cur = emit2Cur.tail
-                      curRecv = recv2
-                      curFb = fb2
-                      curC = c2
-            case _ => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t2) 
-          }
-          case t => return (Emit(emit1Cur, tail1) wye Emit(emit2Cur, tail2))(t) 
-        }
-      }
-      (tail1 wye tail2)(Await(Both[O,O2], curRecv, curFb, curC))
-    }
-    // NB: lots of casts needed here because Scala pattern matching does not 
-    // properly refine types; my attempts at manually adding type equality 
-    // witnesses also failed; this actually worked better in 2.9.2
-    t match {
+  final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = 
+    // Somewhat evil: we are passing `null` for the `Nondeterminism` here, 
+    // safe because the types guarantee that a `Tee` cannot issue a `Both` 
+    // request that would result in the `Nondeterminism` instance being used.  
+    // This lets us reuse a single function, `wye`, as the implementation for
+    // both `tee` and `pipe`!
+    (this wye p2)(t)(null)
+
+  /** 
+   * Like `tee`, but we allow the `Wye` to read nondeterministically 
+   * from both sides at once, using the supplied `Nondeterminism` 
+   * instance.
+   * 
+   * If `y` is in the state of awaiting `Both`, this implementation 
+   * will continue feeding `y` until either it halts or _both_ sides
+   * halt. 
+   * 
+   * If `y` is in the state of awaiting `L`, and the left 
+   * input has halted, we halt. Likewise for the right side. 
+   * 
+   * For as long as `y` permits it, this implementation will _always_ 
+   * feed it any leading `Emit` elements from either side before issuing
+   * new `F` requests. More sophisticated chunking and fairness 
+   * policies do not belong here, but should be built into the `Wye`
+   * and/or its inputs. 
+   */ 
+  final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(y: Wye[O,O2,O3])(implicit F: Nondeterminism[F2]): Process[F2,O3] = {
+    y match {
       case Halt => this.kill ++ p2.kill
-      case Emit(h,t) => Emit(h, (this wye p2)(t))
-      case Await(side, recv, fb, c) => (side.tag: @annotation.switch) match {
-        case 0 => this match { // Left
-          case Halt => p2.kill
-          case Emit(o,ot) => 
-            feedL(o.asInstanceOf[Seq[O]], ot.asInstanceOf[Process[F,O]], p2, 
-                  recv.asInstanceOf[O => Wye[O,O2,O3]],
-                  fb.asInstanceOf[Wye[O,O2,O3]], c.asInstanceOf[Wye[O,O2,O3]]) 
-          case Await(reqL, recvL, fbL, cL) => 
-            Await(reqL, recvL andThen (pnext => (pnext wye p2)(t)), 
-                  (fbL wye p2)(t), (cL wye p2)(t))
-        }
-        case 1 => p2 match { // Right
-          case Halt => this.kill ++ Halt
-          case Emit(o,ot) => 
-            feedR(o.asInstanceOf[Seq[O2]], ot.asInstanceOf[Process[F2,O2]], this, 
-                  recv.asInstanceOf[O2 => Wye[O,O2,O3]], 
-                  fb.asInstanceOf[Wye[O,O2,O3]], c.asInstanceOf[Wye[O,O2,O3]])
-          case Await(reqR, recvR, fbR, cR) => 
-            Await(reqR.asInstanceOf[F2[Int]], // really should be existential 
-                  recvR.asInstanceOf[Int => Process[F2,O2]] andThen (p3 => (this wye p3)(t)), 
-                  (this wye fbR.asInstanceOf[Process[F2,O2]])(t), 
-                  (this wye cR.asInstanceOf[Process[F2,O2]])(t))
-        }
-        case 2 => // Both 
-          val u1 = this.unemit; val h1 = u1._1; val t1 = u1._2
-          val u2 = p2.unemit; val h2 = u2._1; val t2 = u2._2
-          if (h1.isEmpty && h2.isEmpty) { 
-            // We have no elements queued up on either side
-            // There are two cases: 
-            //   * If either side has halted, we detach the Wye from 
-            //     that side and use `|>` to feed it the remainder
-            //     of the side that lives.
-            //   * If both sides are in the Await state, we use the
-            //     Nondeterminism instance to request both sides
-            //     concurrently.
-            // more casts required due to broken pattern matching
-            this match {
-              case Halt => p2 |> t.detachL 
-              case Await(reqL, recvL, fbL, cL) => p2 match {
-                case Halt => this |> t.detachR 
-                case Await(reqR, recvR, fbR, cR) => 
-                  val reqL_ = reqL.asInstanceOf[F[String]]
-                  val recvL_ = recvL.asInstanceOf[String => Process[F,O]]
-                  val reqR_ = reqR.asInstanceOf[F2[Int]] // making up some types here just to avoid confusion
-                  val recvR_ = recvR.asInstanceOf[Int => Process[F2,O2]]
-                  val fbR_ = fbR.asInstanceOf[Process[F2,O2]]
-                  val cR_ = fbR.asInstanceOf[Process[F2,O2]]
-                  emit(F.choose(reqL_, reqR_)).eval.flatMap {
-                    case Left((l,reqR2)) => 
-                      (recvL_(l) wye Await(reqR2, recvR_, fbR_, cR_))(t)
-                    case Right((reqL2,r)) => 
-                      (Await(reqL2, recvL_, fbL, cL) wye recvR_(r))(t)
-                  }
-              }
+      case Emit(h,y2) => Emit(h, this.wye(p2)(y2))
+      case Await(_,_,_,_) => 
+        val u1 = this.unemit; val h1 = u1._1; val t1 = u1._2
+        val u2 = p2.unemit; val h2 = u2._1; val t2 = u2._2
+        val ready = These.align(h1, h2)
+        if (!ready.isEmpty) { // we have some values queued up, try feeding them to the Wye
+          val (y2, ready2) = y.feed(ready) { // .feed is a tail recursive function
+            case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
+              case 0 => // Left 
+                val recv_ = recv.asInstanceOf[O => Wye[O,O2,O3]]
+                (e: These[O,O2]) => e match { 
+                  case These.This(o) => (None, Some(recv_(o)))
+                  case These.That(_) => (None, None)
+                  case These.Both(o,o2) => (Some(These.That(o2)), Some(recv_(o)))
+                }
+              case 1 => // Right 
+                val recv_ = recv.asInstanceOf[O2 => Wye[O,O2,O3]]
+                (e: These[O,O2]) => e match { 
+                  case These.This(_) => (None, None)
+                  case These.That(o2) => (None, Some(recv_(o2)))
+                  case These.Both(o,o2) => (Some(These.This(o)), Some(recv_(o2)))
+                }
+              case 2 => // Both 
+                val recv_ = recv.asInstanceOf[These[O,O2] => Wye[O,O2,O3]]
+                (e: These[O,O2]) => (None, Some(recv_(e)))
             }
           }
-          else feedBoth(
-                h1, t1, h2, t2.asInstanceOf[Process[F2,O2]],
-                recv.asInstanceOf[These[O,O2] => Wye[O,O2,O3]],
-                fb.asInstanceOf[Wye[O,O2,O3]],
-                c.asInstanceOf[Wye[O,O2,O3]])
-      }
+          if (y eq y2) { // no elements were consumed, that could be because of two reasons: 
+            ready.head match {
+              case These.This(_) => ???
+                // The Wye rejected `This`, but we know it is still waiting for input.
+                // Therefore it needs a `That` from the right side; request from the right and continue
+                require(h2.isEmpty) // if the result of an align begins with This, other arg must have been empty
+                t2 match {
+                  case Await(reqR,recvR,fbR,cR) => // unfortunately, casts required here
+                    val reqR_ = reqR.asInstanceOf[F2[Int]] // we make up a request type, should be existential
+                    val recvR_ = recvR.asInstanceOf[Int => Process[F2,O2]]
+                    val fbR_ = fbR.asInstanceOf[Process[F2,O2]]
+                    val cR_ = cR.asInstanceOf[Process[F2,O2]]
+                    // in the event of a fallback or error, `y` will end up running the right's fallback/cleanup
+                    // actions on the next cycle - it still needs that value on the right and will run any awaits
+                    // to try to obtain that value!
+                    await(reqR_)(recvR_ andThen (p2 => this.wye[F2,O2,O3](p2)(y)), this.wye(fbR_)(y), this.wye(cR_)(y))
+                  case Halt => this.kill ++ y.disconnect
+                  case e@Emit(_,_) =>  this.wye(t2)(y) 
+                }
+              case These.That(_) => 
+                // Other case is symmetric - 
+                // The Wye rejected `That`, but we know it is still waiting for input.
+                // Therefore it needs a `This` from the left side; request from the left and continue
+                require(h1.isEmpty) // if the result of an align begins with That, other arg must have been empty 
+                t1 match {
+                  case Await(reqL,recvL,fbL,cL) => // unfortunately, casts required here
+                    val reqL_ = reqL.asInstanceOf[F2[Int]] // we make up a request type, should be existential
+                    val recvL_ = recvL.asInstanceOf[Int => Process[F2,O]]
+                    val fbL_ = fbL.asInstanceOf[Process[F2,O]]
+                    val cL_ = cL.asInstanceOf[Process[F2,O]]
+                    await(reqL_)(recvL_ andThen (_.wye(p2)(y)), fbL_.wye(p2)(y), cL_.wye(p2)(y))
+                  case Halt => p2.kill ++ y.disconnect
+                  case e@Emit(_,_) =>  this.wye(t2)(y) 
+                }
+              case _ => 
+                sys.error("impossible: an awaiting Wye that isn't interested in Both " + y)
+            }
+          }
+          else { // some progress was made
+            val (h1Next, h2Next) = These.unalign(ready2)
+            (emitAll(h1Next, t1) wye emitAll(h2Next, t2))(y2)
+          }
+        }
+        else {
+          // We are awaiting but have no elements queued up on either side
+          // There are two cases: 
+          //   * If either side has halted, we detach the Wye from 
+          //     that side and use `|>` to feed it the remainder
+          //     from the side that lives.
+          //   * If both sides are in the Await state, we use the
+          //     Nondeterminism instance to request both sides
+          //     concurrently.
+          // Lots of casts unfortunately required here due to broken pattern matching
+          this match {
+            case Halt => p2 |> y.detachL 
+            case Await(reqL, recvL, fbL, cL) => p2 match {
+              case Halt => this |> y.detachR 
+              case Await(reqR, recvR, fbR, cR) => 
+                val reqL_ = reqL.asInstanceOf[F[String]]
+                val recvL_ = recvL.asInstanceOf[String => Process[F,O]]
+                val reqR_ = reqR.asInstanceOf[F2[Int]] // making up some types here just to avoid confusion
+                val recvR_ = recvR.asInstanceOf[Int => Process[F2,O2]]
+                val fbR_ = fbR.asInstanceOf[Process[F2,O2]]
+                val cR_ = fbR.asInstanceOf[Process[F2,O2]]
+                emit(F.choose(reqL_, reqR_)).eval.flatMap {
+                  case Left((l,reqR2)) => 
+                    (recvL_(l) wye Await(reqR2, recvR_, fbR_, cR_))(y)
+                  case Right((reqL2,r)) => 
+                    (Await(reqL2, recvL_, fbL, cL) wye recvR_(r))(y)
+                }
+            }
+          }
+        }
     }
   }
 
@@ -327,6 +363,9 @@ trait Process[+F[_],+O] {
   def take(n: Int): Process[F,O] = 
     this |> Process.take[O](n)
 
+  /** Halts this `Process` after emitting 1 element. */
+  def once: Process[F,O] = take(1)
+
   /** Halts this `Process` as soon as the predicate tests false. */
   def takeWhile(f: O => Boolean): Process[F,O] = 
     this |> Process.takeWhile(f)
@@ -343,8 +382,8 @@ trait Process[+F[_],+O] {
 object Process {
   case class Await[F[_],A,+O] private[stream](
     req: F[A], recv: A => Process[F,O],
-    fallback: Process[F,O] = Halt,
-    cleanup: Process[F,O] = Halt) extends Process[F,O]
+    fallback1: Process[F,O] = Halt,
+    cleanup1: Process[F,O] = Halt) extends Process[F,O]
 
   case class Emit[F[_],O] private[stream](
     head: Seq[O], 
@@ -355,20 +394,20 @@ object Process {
   def emitAll[F[_],O](
       head: Seq[O], 
       tail: Process[F,O] = Halt): Process[F,O] = 
-    tail match {
+    if (head.isEmpty) tail
+    else tail match {
       case Emit(h2,t) => Emit(head ++ h2.asInstanceOf[Seq[O]], t.asInstanceOf[Process[F,O]])
       case _ => Emit(head, tail)
     }
-  def emit[F[_],O](
-      head: O, 
-      tail: Process[F,O] = Halt): Process[F,O] = 
-    emitAll(Stream(head), tail)
 
   def await[F[_],A,O](req: F[A])(
       recv: A => Process[F,O] = (a: A) => Halt, 
       fallback: Process[F,O] = Halt,
       cleanup: Process[F,O] = Halt): Process[F,O] = 
     Await(req, recv, fallback, cleanup)
+
+  def emit[O](head: O): Process[Nothing,O] = 
+    Emit[Nothing,O](Stream(head), Halt)
 
   implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] = 
   new MonadPlus[({type f[x] = Process[F,x]})#f] {
@@ -380,11 +419,87 @@ object Process {
       a flatMap f
   }
 
-  /* Special exception indicating normal termination */
+  /** 
+   * Special exception indicating normal termination. Throwing this
+   * exception results in control switching to the `fallback` case of
+   * whatever `Process` is being run.
+   */
   case object End extends scala.util.control.ControlThrowable {
     override def fillInStackTrace = this 
   }
  
+  case class Env[-I,-I2]() {
+    sealed trait Y[-X] { def tag: Int }
+    sealed trait T[-X] extends Y[X] 
+    sealed trait Is[-X] extends T[X]
+    case object Left extends Is[I] { def tag = 0 }
+    case object Right extends T[I2] { def tag = 1 }  
+    case object Both extends Y[These[I,I2]] { def tag = 2 }
+  }
+
+  private val Left_ = Env[Any,Any]().Left
+  private val Right_ = Env[Any,Any]().Left
+  private val Both_ = Env[Any,Any]().Both
+
+  def Get[I]: Env[I,Any]#Is[I] = Left_ 
+  def L[I]: Env[I,Any]#Is[I] = Left_ 
+  def R[I2]: Env[Any,I2]#T[I2] = Right_  
+  def Both[I,I2]: Env[I,I2]#Y[These[I,I2]] = Both_ 
+
+  def await1[I]: Process1[I,I] = 
+    await(Get[I])(emit)
+
+  def awaitL[I]: Tee[I,Any,I] = 
+    await(L[I])(emit)
+
+  def awaitR[I2]: Tee[Any,I2,I2] = 
+    await(R[I2])(emit)
+
+  def awaitBoth[I,I2]: Wye[I,I2,These[I,I2]] = 
+    await(Both[I,I2])(emit) 
+
+  def receive1[I,O](recv: I => Process1[I,O], fallback: Process1[I,O] = Halt): Process1[I,O] = 
+    Await(Get[I], recv, fallback, Halt)
+
+  def receiveL[I,I2,O](
+      recv: I => Tee[I,I2,O], 
+      fallback: Tee[I,I2,O] = Halt,
+      cleanup: Tee[I,I2,O] = Halt): Tee[I,I2,O] = 
+    await[Env[I,I2]#T,I,O](L)(recv, fallback, cleanup)
+
+  def receiveR[I,I2,O](
+      recv: I2 => Tee[I,I2,O], 
+      fallback: Tee[I,I2,O] = Halt,
+      cleanup: Tee[I,I2,O] = Halt): Tee[I,I2,O] = 
+    await[Env[I,I2]#T,I2,O](R)(recv, fallback, cleanup)
+
+  def receiveLOr[I,I2,O](fallback: Tee[I,I2,O])(
+                       recvL: I => Tee[I,I2,O]): Tee[I,I2,O] =
+    receiveL(recvL, fallback)
+
+  def receiveROr[I,I2,O](fallback: Tee[I,I2,O])(
+                       recvR: I2 => Tee[I,I2,O]): Tee[I,I2,O] =
+    receiveR(recvR, fallback)
+
+  def receiveBoth[I,I2,O](
+      recv: These[I,I2] => Wye[I,I2,O], 
+      fallback: Wye[I,I2,O] = Halt,
+      cleanup: Wye[I,I2,O] = Halt): Wye[I,I2,O] = 
+    await[Env[I,I2]#Y,These[I,I2],O](Both[I,I2])(recv, fallback, cleanup)
+
+  // Subtyping of various Process types:
+  // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])
+  // * Tee is a Wye that never requests Both (Tee[I,I2,O] <: Wye[I,I2,O])
+
+  type Process1[-I,+O] = Process[Env[I,Any]#Is, O]
+  type Tee[-I,-I2,+O] = Process[Env[I,I2]#T, O]
+  type Wye[-I,-I2,+O] = Process[Env[I,I2]#Y, O]
+
+  object Subtyping {
+    def asTee[I,O](p1: Process1[I,O]): Tee[I,Any,O] = p1 
+    def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t 
+  }
+
   /** 
    * A simple tail recursive function to collect all the output of a 
    * `Process[Task,O]`. Because `Task` has a `run` function,
@@ -425,72 +540,30 @@ object Process {
                     step: R => Task[O]): Process[Task,O] = {
     def go(step: Task[O], onExit: Task[Unit]): Process[Task,O] =
       await[Task,O,O](step) ( 
-        o => emit(o, go(step, onExit)) // Emit the value and repeat 
+        o => emit(o) ++ go(step, onExit) // Emit the value and repeat 
       , await[Task,Unit,O](onExit)()  // Release resource when exhausted
       , await[Task,Unit,O](onExit)()) // or in event of error
     await(acquire) ( r => go(step(r), release(r)), Halt, Halt )
-  }
-
-  case class Two[-I,-I2]() {
-    sealed trait Y[-X] { def tag: Int }
-    sealed trait T[-X] extends Y[X] 
-    sealed trait Is[-X] extends T[X]
-    case object Left extends Is[I] { def tag = 0 }
-    case object Right extends T[I2] { def tag = 1 }  
-    case object Both extends Y[These[I,I2]] { def tag = 2 }
-  }
-
-  // Subtyping of various Process types:
-  // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])
-  // * Tee is a Wye that never requests Both (Tee[I,I2,O] <: Wye[I,I2,O])
-
-  type Process1[-I,+O] = Process[Two[I,Any]#Is, O]
-  type Tee[-I,-I2,+O] = Process[Two[I,I2]#T, O]
-  type Wye[-I,-I2,+O] = Process[Two[I,I2]#Y, O]
-
-  object Subtyping {
-    def asTee[I,O](p1: Process1[I,O]): Tee[I,Any,O] = p1 
-    def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t 
   }
 
   // a failed attempt to work around Scala's broken type refinement in 
   // pattern matching by supplying the equality witnesses manually
 
   /** Obtain an equality witness from an `Is` request. */
-  def witnessIs[I,J](req: Two[I,Nothing]#Is[J]): I === J = 
+  def witnessIs[I,J](req: Env[I,Nothing]#Is[J]): I === J = 
     Leibniz.refl[I].asInstanceOf[I === J]
 
   /** Obtain an equality witness from a `T` request. */
-  def witnessT[I,I2,J](t: Two[I,I2]#T[J]): 
+  def witnessT[I,I2,J](t: Env[I,I2]#T[J]): 
   (I === J) \/ (I2 === J) = 
     if (t.tag == 0) left(Leibniz.refl[I].asInstanceOf[I === J])
     else right(Leibniz.refl[I2].asInstanceOf[I2 === J])
 
   /** Obtain an equality witness from a `Y` request. */
-  def witnessY[I,I2,J](t: Two[I,I2]#Y[J]): 
+  def witnessY[I,I2,J](t: Env[I,I2]#Y[J]): 
   (I === J) \/ (I2 === J) \/ (These[I,I2] === J) = 
     if (t.tag == 2) right(Leibniz.refl[I].asInstanceOf[These[I,I2] === J])
-    else left(witnessT(t.asInstanceOf[Two[I,I2]#T[J]]))
-
-  private val Left_ = Two[Any,Any]().Left
-  private val Right_ = Two[Any,Any]().Left
-  private val Both_ = Two[Any,Any]().Both
-
-  def Get[I]: Two[I,Any]#Is[I] = Left_ 
-  def L[I]: Two[I,Any]#Is[I] = Left_ 
-  def R[I2]: Two[Any,I2]#T[I2] = Right_  
-  def Both[I,I2]: Two[I,I2]#Y[These[I,I2]] = Both_ 
-
-  def await1[I]: Process1[I,I] = 
-    Await(Get[I], (i: I) => emit1(i).asInstanceOf[Process1[I,I]], Halt, Halt)
-
-  def receive1[I,O](recv: I => Process1[I,O], fallback: Process1[I,O] = Halt): Process1[I,O] = 
-    Await(Get[I], recv, fallback, Halt)
-
-  def emit1[O](h: O): Process1[Any,O] = emit(h, Halt)
-  
-  def emitAll1[O](h: Seq[O]): Process1[Any,O] = 
-    emitAll(h)
+    else left(witnessT(t.asInstanceOf[Env[I,I2]#T[J]]))
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
   def id[I]: Process1[I,I] = 
@@ -502,7 +575,7 @@ object Process {
   
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I,I] =
-    await1[I] flatMap (i => if (f(i)) emit1(i) else Halt) repeat
+    await1[I] flatMap (i => if (f(i)) emit(i) else Halt) repeat
 
   /** Passes through `n` elements of the input, then halt. */
   def take[I](n: Int): Process1[I,I] = 
@@ -511,7 +584,7 @@ object Process {
 
   /** Passes through elements of the input as long as the predicate is true, then halt. */
   def takeWhile[I](f: I => Boolean): Process1[I,I] = 
-    await1[I] flatMap (i => if (f(i)) emit1(i) ++ takeWhile(f) else Halt)
+    await1[I] flatMap (i => if (f(i)) emit(i) ++ takeWhile(f) else Halt)
 
   /** 
    * Skips elements of the input while the predicate is true, 
@@ -527,49 +600,10 @@ object Process {
   def drop[I](n: Int): Process1[I,I] = 
     skip.replicateM_(n).drain ++ id[I]
 
-                          /*                       
-
-  We sometimes need to construct a `Process` that will pull values
-  from multiple input sources. For instance, suppose we want to 
-  'zip' together two files, `f1.txt` and `f2.txt`, combining
-  corresponding lines in some way. Using the same trick we used for
-  `Process1`, we can create a two-input `Process` which can request
-  values from either the 'left' stream or the 'right' stream. We'll
-  call this a `Tee`, after the letter 'T', which looks like a 
-  little diagram of two inputs being combined into one output. 
-
-                           */
-
-  /* Again some helper functions to improve type inference. */
-
-  def awaitL[I]: Tee[I,Any,I] = 
-    receiveL[I,Any,I](emitT)
-
-  def awaitR[I2]: Tee[Any,I2,I2] = 
-    receiveR[Any,I2,I2](emitT)
-
-  def receiveL[I,I2,O](
-      recv: I => Tee[I,I2,O], 
-      fallback: Tee[I,I2,O] = Halt,
-      cleanup: Tee[I,I2,O] = Halt): Tee[I,I2,O] = 
-    await[Two[I,I2]#T,I,O](L)(recv, fallback, cleanup)
-
-  def receiveR[I,I2,O](
-      recv: I2 => Tee[I,I2,O], 
-      fallback: Tee[I,I2,O] = Halt,
-      cleanup: Tee[I,I2,O] = Halt): Tee[I,I2,O] = 
-    await[Two[I,I2]#T,I2,O](R)(recv, fallback, cleanup)
-
-  def emitT[O](h: O): Tee[Any,Any,O] = 
-    emit(h)
-  
-  def emitAllT[O](h: Seq[O]): Tee[Any,Any,O] = 
-    emitAll(h, Halt)
-
   def zipWith[I,I2,O](f: (I,I2) => O): Tee[I,I2,O] = { for {
     i <- awaitL[I]
     i2 <- awaitR[I2]
-    r <- emitT(f(i,i2))
+    r <- emit(f(i,i2))
   } yield r } repeat
 
   def zip[I,I2]: Tee[I,I2,(I,I2)] = zipWith((_,_))
@@ -585,20 +619,12 @@ object Process {
     val fbR = passR[I2] map (f(padI, _    ))
     val fbL = passL[I]  map (f(_   , padI2))
     receiveLOr(fbR: Tee[I,I2,O])(i => 
-    receiveROr(fbL: Tee[I,I2,O])(i2 => emitT(f(i,i2)))) repeat
+    receiveROr(fbL: Tee[I,I2,O])(i2 => emit(f(i,i2)))) repeat
   }
 
   def zipAll[I,I2](padI: I, padI2: I2): Tee[I,I2,(I,I2)] = 
     zipWithAll(padI, padI2)((_,_))
   
-  def receiveLOr[I,I2,O](fallback: Tee[I,I2,O])(
-                       recvL: I => Tee[I,I2,O]): Tee[I,I2,O] =
-    receiveL(recvL, fallback)
-
-  def receiveROr[I,I2,O](fallback: Tee[I,I2,O])(
-                       recvR: I2 => Tee[I,I2,O]): Tee[I,I2,O] =
-    receiveR(recvR, fallback)
-
   /* Ignores all input from left. */
   def passR[I2]: Tee[Any,I2,I2] = awaitR[I2].repeat
   
@@ -609,22 +635,24 @@ object Process {
   def interleaveT[I]: Tee[I,I,I] = repeat { for {
     i1 <- awaitL[I]
     i2 <- awaitR[I]
-    r <- emitT(i1) ++ emitT(i2)
+    r <- emit(i1) ++ emit(i2)
   } yield r }
 
   /** Infix syntax for feeding a process a `Seq` of inputs. */
   implicit class FeedProcess[F[_],O](self: Process[F,O]) {
     final def feed[I](
         input: Seq[I])(
-        f: Process[F,O] => Option[(I => Process[F,O])]): Process[F,O] = {
+        f: Process[F,O] => (I => (Option[I], Option[Process[F,O]]))): (Process[F,O], Seq[I]) = {
 
       @annotation.tailrec
-      def go(cur: Process[F,O], input: Seq[I]): Process[F,O] = 
-        f(cur) match {
-          case Some(recv) if !input.isEmpty => go(recv(input.head), input.tail)
-          case _ => cur
+      def go(cur: Process[F,O], input: Seq[I], revisits: Vector[I]): (Process[F,O], Seq[I]) = {
+        if (!input.isEmpty) f(cur)(input.head) match {
+          case (_, None) => (cur, revisits ++ input)
+          case (revisit, Some(p2)) => go(p2, input.tail, revisits ++ revisit.toList)
         }
-      go(self, input)
+        else (cur, revisits)
+      }
+      go(self, input, Vector())
     }
   }
 
@@ -636,7 +664,7 @@ object Process {
       case Halt => Halt
       case Emit(h, t) => 
         if (h.isEmpty) t.eval
-        else await[F,O,O](h.head)(o => emit(o, emitAll(h.tail, t).eval))
+        else await[F,O,O](h.head)(o => emit(o) ++ emitAll(h.tail, t).eval)
       case Await(req,recv,fb,c) => 
         await(req)(recv andThen (_ eval), fb.eval, c.eval) 
     }
@@ -645,36 +673,39 @@ object Process {
   /** 
    * Provides infix syntax for applying a `Process1` to an arbitrary `Iterable`.
    */
-  implicit class ApplyProcess[I,O](self: Process1[I,O]) {
+  implicit class Process1Syntax[I,O](self: Process1[I,O]) {
     def apply(input: Iterable[I]): IndexedSeq[O] = {
       val iter = input.iterator
-      val src = wrap { Task.delay { if (iter.hasNext) iter.next else throw End } } 
+      val src = wrap_* { Task.delay { if (iter.hasNext) iter.next else throw End } } 
       src.pipe(self).collect.run
     }
   } 
 
   /** 
-   * Provides infix syntax for applying a `Wye` to two `Iterable`s. 
+   * This class provides infix syntax specific to `Wye`. We put these here 
+   * rather than trying to cram them into `Process` itself using implicit
+   * equality witnesses. This doesn't work out so well due to variance 
+   * issues.
    */
-  implicit class Apply2Process[I,I2,O](self: Wye[I,I2,O]) {
+  implicit class WyeSyntax[I,I2,O](self: Wye[I,I2,O]) {
+
+    /** 
+     * Apply a `Wye` to two `Iterable` inputs. 
+     */
     def apply(input: Iterable[I], input2: Iterable[I2]): IndexedSeq[O] = {
+      // note, this impl is prob really slow
       val iter1 = input.iterator
-      val src1 = wrap { Task.delay { if (iter1.hasNext) iter1.next else throw End } } 
+      val src1 = wrap_* { Task.delay { if (iter1.hasNext) iter1.next else throw End } } 
       val iter2 = input2.iterator
-      val src2 = wrap { Task.delay { if (iter2.hasNext) iter2.next else throw End } } 
+      val src2 = wrap_* { Task.delay { if (iter2.hasNext) iter2.next else throw End } } 
       src1.wye(src2)(self).collect.run
     }
-  }
 
-  /** Wrap an arbitrary effect in a `Process`. */
-  def wrap[F[_],O](t: F[O]): Process[F,O] = 
-    emit(t).eval.repeat
-
-  /** 
-   * Provides infix syntax for converting a `Wye` to a `Process1`, 
-   * by converting requests for the detached side into `Halt`.
-   */
-  implicit class DetachableWye[I,I2,O](self: Wye[I,I2,O]) {
+    /** 
+     * Convert a `Wye` to a `Process1`, by converting requests for the
+     * left input into `Halt`. Note that `Both` requests are rewritten 
+     * to fetch from the only input.
+     */
     def detachL: Process1[I2,O] = self match {
       case Halt => Halt
       case Emit(h, t) => Emit(h, t.detachL)
@@ -682,8 +713,14 @@ object Process {
         case 0 => Halt
         case 1 => Await(Get[I2], recv andThen (_ detachL), fb.detachL, c.detachL)
         case 2 => Await(Get[I2], (These.That(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
-      } 
+      }
     } 
+
+    /** 
+     * Convert a `Wye` to a `Process1`, by converting requests for the
+     * right input into `Halt`. Note that `Both` requests are rewritten
+     * to fetch from the only input. 
+     */
     def detachR: Process1[I,O] = self match {
       case Halt => Halt
       case Emit(h, t) => Emit(h, t.detachR)
@@ -694,6 +731,18 @@ object Process {
       }
     }
   }
+
+  /** Wrap an arbitrary effect in a `Process`. The resulting `Process` emits a single value. */
+  def wrap[F[_],O](t: F[O]): Process[F,O] = 
+    emit(t).eval
+
+  /** 
+   * Wrap an arbitrary effect in a `Process`. The resulting `Process` will emit values
+   * until evaluation of `t` signals termination with `End` or an error occurs. 
+   */
+  def wrap_*[F[_],O](t: F[O]): Process[F,O] =
+    wrap(t).repeat
+
                           /*                       
 
   Our `Process` type can also represent effectful sinks (like a file).

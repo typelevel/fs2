@@ -22,6 +22,16 @@ trait These[+A,+B] {
     case Both(a,b) => Both(a, f(b)) 
     case t@This(_) => t
   }
+
+  def isThis: Boolean = this match {
+    case This(_) => true
+    case _ => false
+  }
+
+  def isThat: Boolean = this match {
+    case That(_) => true
+    case _ => false
+  }
 }
 
 object These {
@@ -44,6 +54,15 @@ object These {
     if (a.isEmpty) b.view.map(That(_)).toStream
     else if (b.isEmpty) a.view.map(This(_)).toStream
     else Both(a.head, b.head) #:: align(a.tail, b.tail)
+
+  def unalign[A,B](s: Seq[These[A,B]]): (Stream[A], Stream[B]) = 
+    (concatThis(s), concatThat(s))
+
+  def concatThis[A,B](s: Seq[These[A,B]]): Stream[A] = 
+    s.view.flatMap { case This(a) => List(a); case _ => List() }.toStream
+
+  def concatThat[A,B](s: Seq[These[A,B]]): Stream[B] = 
+    s.view.flatMap { case That(b) => List(b); case _ => List() }.toStream
 
   import scalaz.syntax.{ApplyOps, ApplicativeOps, FunctorOps, MonadOps}
   
