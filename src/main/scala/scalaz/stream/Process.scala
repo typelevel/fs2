@@ -406,6 +406,9 @@ object Process {
       cleanup: Process[F,O] = Halt): Process[F,O] = 
     Await(req, recv, fallback, cleanup)
 
+  def apply[O](o: O*): Process[Nothing,O] = 
+    emitAll[Nothing,O](o, Halt)
+
   def emit[O](head: O): Process[Nothing,O] = 
     Emit[Nothing,O](Stream(head), Halt)
 
