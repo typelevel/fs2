@@ -255,7 +255,7 @@ trait Process[+F[_],+O] {
    * and/or its inputs. 
    */ 
   final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(y: Wye[O,O2,O3])(implicit F: Nondeterminism[F2]): Process[F2,O3] = {
-    y match {
+    try y match {
       case Halt => this.kill ++ p2.kill
       case Emit(h,y2) => Emit(h, this.wye(p2)(y2))
       case Await(_,_,_,_) => 
@@ -360,6 +360,7 @@ trait Process[+F[_],+O] {
           }
         }
     }
+    catch { case e: Throwable => this.kill ++ p2.kill ++ (throw e) }
   }
 
   /** Translate the request type from `F` to `G`, using the given polymorphic function. */
@@ -729,7 +730,7 @@ object Process {
 
     private def go[F3[_],O,O2,O3](src: Process[F3,(O,O => F3[O2])], q: Wye[O,O2,O3], bufIn: Seq[O], bufOut: Queue[F3[O2]])(
                   implicit F3: Nondeterminism[F3]): Process[F3,O3] = {
-      q match {
+      try q match {
         case Emit(out, q2) => emitAll(out) ++ go(src, q2, bufIn, bufOut) 
         case Halt => src.kill
         case Await(_,_,_,_) => 
@@ -785,6 +786,7 @@ object Process {
             }
           } 
       }
+      catch { case e: Throwable => src.kill ++ (throw e) }
     }
   }
 
