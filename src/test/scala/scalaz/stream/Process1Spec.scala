@@ -20,7 +20,7 @@ object Process1Spec extends Properties("Process1") {
   implicit def ArbProcess0[A:Arbitrary]: Arbitrary[Process0[A]] = 
     Arbitrary(Arbitrary.arbitrary[List[A]].map(a => Process(a: _*)))
 
-  property("basic processes") = forAll { (p: Process0[Int], n: Int) => 
+  property("basic processes") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) => 
     val f = (x: Int) => List.range(1, x.min(100))
     val g = (x: Int) => x % 7 == 0
     ("id" |: { 
@@ -47,7 +47,13 @@ object Process1Spec extends Properties("Process1") {
     }) &&
     ("dropWhile" |: {
       (p.toList.dropWhile(g) === p.dropWhile(g).toList)
+    }) && 
+    ("zip" |: {
+      (p.toList.zip(p2.toList) === p.zip(p2).toList)
     })
+    //("yip" |: {
+    //  (p.toList.zip(p2.toList) === p.toSource.yip(p2.toSource).collect.run.toList)
+    //})
   }
 }
 

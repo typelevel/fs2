@@ -280,8 +280,8 @@ trait Process[+F[_],+O] {
         val u1 = this.unemit; val h1 = u1._1; val t1 = u1._2
         val u2 = p2.unemit; val h2 = u2._1; val t2 = u2._2
         val ready = These.align(h1, h2)
-        if (!ready.isEmpty) { // we have some values queued up, try feeding them to the Wye
-          val (y2, ready2) = y.feed(ready) { // .feed is a tail recursive function
+        val (y2, ready2) = if (ready.isEmpty) (y, ready) else { // we have some values queued up, try feeding them to the Wye
+          y.feed(ready) { // .feed is a tail recursive function
             case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
               case 0 => // Left 
                 val recv_ = recv.asInstanceOf[O => Wye[O,O2,O3]]
@@ -303,80 +303,52 @@ trait Process[+F[_],+O] {
             }
             case _ => _ => (None, None)
           }
-          if (y eq y2) { // no elements were consumed, that could be because of two reasons: 
-            ready.head match {
-              case These.This(_) => ???
-                // The Wye rejected `This`, but we know it is still waiting for input.
-                // Therefore it needs a `That` from the right side; request from the right and continue
-                require(h2.isEmpty) // if the result of an align begins with This, other arg must have been empty
-                t2 match {
-                  case Await(reqR,recvR,fbR,cR) => // unfortunately, casts required here
-                    val reqR_ = reqR.asInstanceOf[F2[Int]] // we make up a request type, should be existential
-                    val recvR_ = recvR.asInstanceOf[Int => Process[F2,O2]]
-                    val fbR_ = fbR.asInstanceOf[Process[F2,O2]]
-                    val cR_ = cR.asInstanceOf[Process[F2,O2]]
-                    // in the event of a fallback or error, `y` will end up running the right's fallback/cleanup
-                    // actions on the next cycle - it still needs that value on the right and will run any awaits
-                    // to try to obtain that value!
-                    await(reqR_)(recvR_ andThen (p2 => this.wye[F2,O2,O3](p2)(y)), this.wye(fbR_)(y), this.wye(cR_)(y))
-                  case Halt => this.kill ++ y.disconnect
-                  case e@Emit(_,_) =>  this.wye(t2)(y) 
-                }
-              case These.That(_) => 
-                // Other case is symmetric - 
-                // The Wye rejected `That`, but we know it is still waiting for input.
-                // Therefore it needs a `This` from the left side; request from the left and continue
-                require(h1.isEmpty) // if the result of an align begins with That, other arg must have been empty 
-                t1 match {
-                  case Await(reqL,recvL,fbL,cL) => // unfortunately, casts required here
-                    val reqL_ = reqL.asInstanceOf[F2[Int]] // we make up a request type, should be existential
-                    val recvL_ = recvL.asInstanceOf[Int => Process[F2,O]]
-                    val fbL_ = fbL.asInstanceOf[Process[F2,O]]
-                    val cL_ = cL.asInstanceOf[Process[F2,O]]
-                    await(reqL_)(recvL_ andThen (_.wye(p2)(y)), fbL_.wye(p2)(y), cL_.wye(p2)(y))
-                  case Halt => p2.kill ++ y.disconnect
-                  case e@Emit(_,_) =>  this.wye(t2)(y) 
-                }
-              case _ => 
-                sys.error("impossible: an awaiting Wye that isn't interested in Both " + y)
-            }
-          }
-          else { // some progress was made
-            val (h1Next, h2Next) = These.unalign(ready2)
-            (emitSeq(h1Next, t1) wye emitSeq(h2Next, t2))(y2)
-          }
         }
-        else {
-          // We are awaiting but have no elements queued up on either side
-          // There are two cases: 
-          //   * If either side has halted, we detach the Wye from 
-          //     that side and use `|>` to feed it the remainder
-          //     from the side that lives.
-          //   * If both sides are in the Await state, we use the
-          //     Nondeterminism instance to request both sides
-          //     concurrently.
-          // Lots of casts unfortunately required here due to broken pattern matching
-          this match {
-            case Halt => p2 |> y.detachL 
-            case Await(reqL, recvL, fbL, cL) => p2 match {
-              case Halt => 
-                val detached = y.detachR
-                Await(reqL, recvL andThen (_ |> detached), fbL |> detached, cL |> detached)
-              case Await(reqR, recvR, fbR, cR) => 
-                val reqL_ = reqL.asInstanceOf[F[String]]
-                val recvL_ = recvL.asInstanceOf[String => Process[F,O]]
-                val reqR_ = reqR.asInstanceOf[F2[Int]] // making up some types here just to avoid confusion
-                val recvR_ = recvR.asInstanceOf[Int => Process[F2,O2]]
-                val fbR_ = fbR.asInstanceOf[Process[F2,O2]]
-                val cR_ = fbR.asInstanceOf[Process[F2,O2]]
-                emit(F.choose(reqL_, reqR_)).eval.flatMap {
-                  case Left((l,reqR2)) => 
-                    (recvL_(l) wye Await(reqR2, recvR_, fbR_, cR_))(y)
-                  case Right((reqL2,r)) => 
-                    (Await(reqL2, recvL_, fbL, cL) wye recvR_(r))(y)
-                }
+        val (h1Next, h2Next) = These.unalign(ready2)
+        val (thisNext_, p2Next_) = (emitSeq(h1Next, t1), emitSeq(h2Next, t2))
+        val thisNext = thisNext_.asInstanceOf[Process[F2,O]] 
+        val p2Next = p2Next_.asInstanceOf[Process[F2,O2]]
+        y2 match {
+          case Await(req,_,_,_) => (req.tag: @annotation.switch) match {
+            case 0 => // Left
+              thisNext match {
+                case AwaitF(reqL,recvL,fbL,cL) => // unfortunately, casts required here
+                  await(reqL)(recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
+                case Halt => p2Next.kill ++ y2.disconnect
+                case e@Emit(_,_) => thisNext.wye(p2Next)(y2) 
+              }
+            case 1 => // Right 
+              p2Next match {
+                case AwaitF(reqR,recvR,fbR,cR) => // unfortunately, casts required here
+                  // in the event of a fallback or error, `y` will end up running the right's fallback/cleanup
+                  // actions on the next cycle - it still needs that value on the right and will run any awaits
+                  // to try to obtain that value!
+                  await(reqR)(recvR andThen (p2 => thisNext.wye[F2,O2,O3](p2Next)(y2)), 
+                               thisNext.wye(fbR)(y2), 
+                               thisNext.wye(cR)(y2))
+                case Halt => thisNext.kill ++ y2.disconnect
+                case e@Emit(_,_) => thisNext.wye(p2Next)(y2) 
+              }
+            case 2 => thisNext match {
+              case Halt => p2Next |> y2.detachL
+              case AwaitF(reqL, recvL, fbL, cL) => p2Next match {
+                case Halt => 
+                  Await(reqL, recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
+                // If both sides are in the Await state, we use the
+                // Nondeterminism instance to request both sides
+                // concurrently.
+                // Lots of casts unfortunately required here due to broken pattern matching
+                case AwaitF(reqR, recvR, fbR, cR) => 
+                  emit(F.choose(reqL, reqR)).eval.flatMap {
+                    case Left((l,reqR2)) => 
+                      (recvL(l) wye Await(reqR2, recvR, fbR, cR))(y2)
+                    case Right((reqL2,r)) => 
+                      (Await(reqL2, recvL, fbL, cL) wye recvR(r))(y2)
+                  }
+              }
             }
           }
+          case _ => thisNext.wye(p2Next)(y2)
         }
     }
     catch { case e: Throwable => this.kill ++ p2.kill ++ (throw e) }
@@ -690,6 +662,11 @@ object Process {
     def toMap[K,V](implicit isKV: O <:< (K,V)): Map[K,V] = toIndexedSeq.toMap(isKV)
     def toSortedMap[K,V](implicit isKV: O <:< (K,V), ord: Ordering[K]): SortedMap[K,V] = 
       SortedMap(toIndexedSeq.asInstanceOf[Seq[(K,V)]]: _*)
+    def toStream: Stream[O] = toIndexedSeq.toStream
+    def toSource: Process[Task,O] = {
+      val iter = toIndexedSeq.iterator
+      repeatWrap { Task.delay { if (iter.hasNext) iter.next else throw End }}
+    }
   }
 
   /** 
@@ -715,10 +692,8 @@ object Process {
      */
     def apply(input: Iterable[I], input2: Iterable[I2]): IndexedSeq[O] = {
       // this is probably rather slow
-      val iter1 = input.iterator
-      val src1 = repeatWrap { Task.delay { if (iter1.hasNext) iter1.next else throw End } } 
-      val iter2 = input2.iterator
-      val src2 = repeatWrap { Task.delay { if (iter2.hasNext) iter2.next else throw End } } 
+      val src1 = Process.emitAll(input.toSeq).toSource
+      val src2 = Process.emitAll(input2.toSeq).toSource
       src1.wye(src2)(self).collect.run
     }
 
@@ -845,8 +820,7 @@ object Process {
    */
   def repeatWrap[F[_],O](t: F[O]): Process[F,O] =
     wrap(t).repeat
-
-
+  
   // a failed attempt to work around Scala's broken type refinement in 
   // pattern matching by supplying the equality witnesses manually
 
