@@ -43,7 +43,11 @@ trait Process[+F[_],+O] {
       Await(req, recv andThen (_ flatMap f), fb flatMap f, c flatMap f)
   }
   
-  /** Run this `Process`, then, if it halts without an error, run `p2`. */
+  /** 
+   * Run this `Process`, then, if it halts without an error, run `p2`. 
+   * Note that `p2` is appended to the `fallback` argument of any `Await`
+   * produced by this `Process`. If this is not desired, use `then`. 
+   */
   final def append[F2[x]>:F[x], O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
     case Halt => p2
     case Emit(h, t) => emitSeq(h, t append p2)
@@ -54,6 +58,20 @@ trait Process[+F[_],+O] {
   /** Operator alias for `append`. */
   final def ++[F2[x]>:F[x], O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = 
     this append p2
+
+  /** 
+   * Run this `Process`, then, if it self-terminates, run `p2`. 
+   * This differs from `append` in that `p2` is not consulted if this
+   * `Process` terminates due to the input being exhausted. That is, 
+   * we do not modify the `fallback` arguments to any `Await` produced
+   * by this `Process`.
+   */
+  final def then[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
+    case Halt => p2
+    case Emit(h, t) => emitSeq(h, t then p2)
+    case Await(req,recv,fb,c) => 
+      Await(req, recv andThen (_ then p2), fb, c)
+  }
 
   /** 
    * Removes all emitted elements from the front of this `Process`.
@@ -404,6 +422,26 @@ trait Process[+F[_],+O] {
   final def run[F2[x]>:F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] = 
     F.void(drain.collect(F, C))
 
+  /** Alias for `this |> process1.buffer(n)`. */
+  def buffer(n: Int): Process[F,O] = 
+    this |> process1.buffer(n)
+
+  /** Alias for `this |> process1.bufferBy(f)`. */
+  def bufferBy(f: O => Boolean): Process[F,O] = 
+    this |> process1.bufferBy(f)
+
+  /** Alias for `this |> process1.bufferBy(f)`. */
+  def bufferAll: Process[F,O] = 
+    this |> process1.bufferAll
+
+  /** Ignores the first `n` elements output from this `Process`. */
+  def drop(n: Int): Process[F,O] = 
+    this |> processes.drop[O](n)
+
+  /** Ignores elements from the output of this `Process` until `f` tests false. */
+  def dropWhile(f: O => Boolean): Process[F,O] = 
+    this |> processes.dropWhile(f)
+
   /** Skips any output elements not matching the predicate. */
   def filter(f: O => Boolean): Process[F,O] = 
     this |> processes.filter(f)
@@ -418,14 +456,6 @@ trait Process[+F[_],+O] {
   /** Halts this `Process` as soon as the predicate tests false. */
   def takeWhile(f: O => Boolean): Process[F,O] = 
     this |> processes.takeWhile(f)
-
-  /** Ignores the first `n` elements output from this `Process`. */
-  def drop(n: Int): Process[F,O] = 
-    this |> processes.drop[O](n)
-
-  /** Ignores elements from the output of this `Process` until `f` tests false. */
-  def dropWhile(f: O => Boolean): Process[F,O] = 
-    this |> processes.dropWhile(f)
 
   /** Call `tee` with the `zipWith` `Tee[O,O2,O3]` defined in `tee.scala`. */
   def zipWith[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(f: (O,O2) => O3): Process[F2,O3] = 
@@ -668,11 +698,8 @@ object Process {
   implicit class Process1Syntax[I,O](self: Process1[I,O]) {
 
     /** Apply this `Process` to an `Iterable`. */
-    def apply(input: Iterable[I]): IndexedSeq[O] = {
-      val iter = input.iterator
-      val src = wrap_* { Task.delay { if (iter.hasNext) iter.next else throw End } } 
-      src.pipe(self).collect.run
-    }
+    def apply(input: Iterable[I]): IndexedSeq[O] =
+      Process(input.toSeq: _*).pipe(self.bufferAll).disconnect.unemit._1.toIndexedSeq
   }
 
   /** 
@@ -687,24 +714,24 @@ object Process {
      * Apply a `Wye` to two `Iterable` inputs. 
      */
     def apply(input: Iterable[I], input2: Iterable[I2]): IndexedSeq[O] = {
-      // note, this impl is prob really slow
+      // this is probably rather slow
       val iter1 = input.iterator
-      val src1 = wrap_* { Task.delay { if (iter1.hasNext) iter1.next else throw End } } 
+      val src1 = repeatWrap { Task.delay { if (iter1.hasNext) iter1.next else throw End } } 
       val iter2 = input2.iterator
-      val src2 = wrap_* { Task.delay { if (iter2.hasNext) iter2.next else throw End } } 
+      val src2 = repeatWrap { Task.delay { if (iter2.hasNext) iter2.next else throw End } } 
       src1.wye(src2)(self).collect.run
     }
 
     /** 
      * Convert a `Wye` to a `Process1`, by converting requests for the
-     * left input into `Halt`. Note that `Both` requests are rewritten 
+     * left input into normal termination. Note that `Both` requests are rewritten 
      * to fetch from the only input.
      */
     def detachL: Process1[I2,O] = self match {
       case Halt => Halt
       case Emit(h, t) => Emit(h, t.detachL)
       case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
-        case 0 => Halt
+        case 0 => fb.detachL
         case 1 => Await(Get[I2], recv andThen (_ detachL), fb.detachL, c.detachL)
         case 2 => Await(Get[I2], (These.That(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
       }
@@ -712,7 +739,7 @@ object Process {
 
     /** 
      * Convert a `Wye` to a `Process1`, by converting requests for the
-     * right input into `Halt`. Note that `Both` requests are rewritten
+     * right input into normal termination. Note that `Both` requests are rewritten
      * to fetch from the only input. 
      */
     def detachR: Process1[I,O] = self match {
@@ -720,7 +747,7 @@ object Process {
       case Emit(h, t) => Emit(h, t.detachR)
       case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
         case 0 => Await(Get[I], recv andThen (_ detachR), fb.detachR, c.detachR)
-        case 1 => Halt
+        case 1 => fb.detachR
         case 2 => Await(Get[I], (These.This(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
       }
     }
@@ -816,7 +843,7 @@ object Process {
    * Wrap an arbitrary effect in a `Process`. The resulting `Process` will emit values
    * until evaluation of `t` signals termination with `End` or an error occurs. 
    */
-  def wrap_*[F[_],O](t: F[O]): Process[F,O] =
+  def repeatWrap[F[_],O](t: F[O]): Process[F,O] =
     wrap(t).repeat
 
 

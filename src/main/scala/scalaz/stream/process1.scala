@@ -8,14 +8,15 @@ trait process1 {
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] = 
-    skip.replicateM_(n).drain ++ id[I]
+    if (n <= 0) id[I]
+    else skip then drop(n-1)
 
   /** 
    * Skips elements of the input while the predicate is true, 
    * then passes through the remaining inputs. 
    */
   def dropWhile[I](f: I => Boolean): Process1[I,I] = 
-    await1[I] flatMap (i => if (f(i)) dropWhile(f) else id)
+    await1[I] flatMap (i => if (f(i)) dropWhile(f) else emit(i) then id)
 
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I,I] =
@@ -32,11 +33,11 @@ trait process1 {
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I,I] = 
     if (n <= 0) Halt
-    else await1[I] ++ take(n-1)
+    else await1[I] then take(n-1)
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
   def takeWhile[I](f: I => Boolean): Process1[I,I] = 
-    await1[I] flatMap (i => if (f(i)) emit(i) ++ takeWhile(f) else Halt)
+    await1[I] flatMap (i => if (f(i)) emit(i) then takeWhile(f) else Halt)
 
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => Halt) 
@@ -60,12 +61,16 @@ trait process1 {
   def chunkBy[I](f: I => Boolean): Process1[I,Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I,Vector[I]] = 
       await1[I].flatMap { i => 
+        val chunk = acc :+ i
         val cur = f(i)
-        if (!cur && last) emit(acc) ++ go(Vector(i), false)
-        else go(acc :+ i, cur)
-      } orElse (emit(acc)) 
+        if (!cur && last) emit(chunk) then go(Vector(), false)
+        else go(chunk, cur)
+      } orElse (emit(acc))
     go(Vector(), false)
   }
+  /** Collects up all output of this `Process1` into a single `Emit`. */
+  def chunkAll[I]: Process1[I,Vector[I]] = 
+    chunkBy[I](_ => false)
 
   /** Behaves like the identity process, but requests `n` elements at a time from its input. */
   def buffer[I](n: Int): Process1[I,I] =
@@ -77,6 +82,10 @@ trait process1 {
    */
   def bufferBy[I](f: I => Boolean): Process1[I,I] =
     chunkBy(f).flatMap(emitAll)
+
+  /** Behaves like the identity process, but batches all output into a single `Emit`. */
+  def bufferAll[I]: Process1[I,I] = 
+    chunkAll[I].flatMap(emitAll)
 }
 
 object process1 extends process1
