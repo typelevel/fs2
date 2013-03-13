@@ -283,6 +283,7 @@ trait Process[+F[_],+O] {
                 val recv_ = recv.asInstanceOf[These[O,O2] => Wye[O,O2,O3]]
                 (e: These[O,O2]) => (None, Some(recv_(e)))
             }
+            case _ => _ => (None, None)
           }
           if (y eq y2) { // no elements were consumed, that could be because of two reasons: 
             ready.head match {
