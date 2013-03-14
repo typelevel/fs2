@@ -462,7 +462,7 @@ object Process {
 
   object AwaitF {
     trait Req
-    private[stream] def unapply[F[_],O](self: Process[F,O]): 
+    def unapply[F[_],O](self: Process[F,O]): 
         Option[(F[Req], Req => Process[F,O], Process[F,O], Process[F,O])] = 
       self.asAwait
   }
@@ -549,7 +549,7 @@ object Process {
   }
 
   private val Left_ = Env[Any,Any]().Left
-  private val Right_ = Env[Any,Any]().Left
+  private val Right_ = Env[Any,Any]().Right
   private val Both_ = Env[Any,Any]().Both
 
   def Get[I]: Env[I,Any]#Is[I] = Left_ 
