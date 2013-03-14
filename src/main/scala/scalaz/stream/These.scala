@@ -59,10 +59,10 @@ object These {
     (concatThis(s), concatThat(s))
 
   def concatThis[A,B](s: Seq[These[A,B]]): Stream[A] = 
-    s.view.flatMap { case This(a) => List(a); case _ => List() }.toStream
+    s.view.flatMap { case This(a) => List(a); case Both(a,b) => List(a); case _ => List() }.toStream
 
   def concatThat[A,B](s: Seq[These[A,B]]): Stream[B] = 
-    s.view.flatMap { case That(b) => List(b); case _ => List() }.toStream
+    s.view.flatMap { case That(b) => List(b); case Both(a,b) => List(b); case _ => List() }.toStream
 
   import scalaz.syntax.{ApplyOps, ApplicativeOps, FunctorOps, MonadOps}
   

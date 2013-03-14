@@ -275,7 +275,8 @@ trait Process[+F[_],+O] {
   final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(y: Wye[O,O2,O3])(implicit F: Nondeterminism[F2]): Process[F2,O3] = {
     try y match {
       case Halt => this.kill ++ p2.kill
-      case Emit(h,y2) => Emit(h, this.wye(p2)(y2))
+      case Emit(h,y2) => 
+        Emit(h, this.wye(p2)(y2))
       case Await(_,_,_,_) => 
         val u1 = this.unemit; val h1 = u1._1; val t1 = u1._2
         val u2 = p2.unemit; val h2 = u2._1; val t2 = u2._2
@@ -337,7 +338,6 @@ trait Process[+F[_],+O] {
                 // If both sides are in the Await state, we use the
                 // Nondeterminism instance to request both sides
                 // concurrently.
-                // Lots of casts unfortunately required here due to broken pattern matching
                 case AwaitF(reqR, recvR, fbR, cR) => 
                   emit(F.choose(reqL, reqR)).eval.flatMap {
                     case Left((l,reqR2)) => 
@@ -641,14 +641,15 @@ object Process {
         f: Process[F,O] => (I => (Option[I], Option[Process[F,O]]))): (Process[F,O], Seq[I]) = {
 
       @annotation.tailrec
-      def go(cur: Process[F,O], input: Seq[I], revisits: Vector[I]): (Process[F,O], Seq[I]) = {
+      def go(cur: Process[F,O], input: Seq[I]): (Process[F,O], Seq[I]) = {
         if (!input.isEmpty) f(cur)(input.head) match {
-          case (_, None) => (cur, revisits ++ input)
-          case (revisit, Some(p2)) => go(p2, input.tail, revisits ++ revisit.toList)
+          case (_, None) => (cur, input)
+          case (Some(revisit), Some(p2)) => go(p2, revisit +: input.tail)
+          case (None, Some(p2)) => go(p2, input.tail)
         }
-        else (cur, revisits)
+        else (cur, input)
       }
-      go(self, input, Vector())
+      go(self, input)
     }
   }
 
