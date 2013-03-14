@@ -50,7 +50,7 @@ object Process1Spec extends Properties("Process1") {
     }) && 
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
-    }) &&
+    }) && 
     ("yip" |: {
       (p.toList.zip(p2.toList) === p.toSource.yip(p2.toSource).collect.run.toList)
     })

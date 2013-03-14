@@ -247,12 +247,12 @@ trait Process[+F[_],+O] {
    * we gracefully kill off the other side, then halt.
    */ 
   final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = 
-    // Somewhat evil: we are passing `null` for the `Nondeterminism` here, 
+    // Somewhat evil: we are passing `null` for the `Nondeterminism` and `Catchable` here, 
     // safe because the types guarantee that a `Tee` cannot issue a `Both` 
     // request that would result in the `Nondeterminism` instance being used.  
     // This lets us reuse a single function, `wye`, as the implementation for
     // both `tee` and `pipe`!
-    (this wye p2)(t)(null)
+    (this wye p2)(t)(null,null)
 
   /** 
    * Like `tee`, but we allow the `Wye` to read nondeterministically 
@@ -272,7 +272,8 @@ trait Process[+F[_],+O] {
    * policies do not belong here, but should be built into the `Wye`
    * and/or its inputs. 
    */ 
-  final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(y: Wye[O,O2,O3])(implicit F: Nondeterminism[F2]): Process[F2,O3] = {
+  final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(y: Wye[O,O2,O3])(implicit F2: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O3] = {
+    import F2.monadSyntax._
     try y match {
       case Halt => this.kill ++ p2.kill
       case Emit(h,y2) => 
@@ -338,12 +339,29 @@ trait Process[+F[_],+O] {
                 // If both sides are in the Await state, we use the
                 // Nondeterminism instance to request both sides
                 // concurrently.
-                case AwaitF(reqR, recvR, fbR, cR) => 
-                  emit(F.choose(reqL, reqR)).eval.flatMap {
-                    case Left((l,reqR2)) => 
-                      (recvL(l) wye Await(reqR2, recvR, fbR, cR))(y2)
-                    case Right((reqL2,r)) => 
-                      (Await(reqL2, recvL, fbL, cL) wye recvR(r))(y2)
+                case AwaitF(reqR, recvR, fbR, cR) =>
+                  wrap(
+                    F2.choose(
+                      E.attempt(reqL.map(recvL)).map { e => 
+                        if (e.isRight) e.right.get
+                        else e.left.get match {
+                          case End => fbL
+                          case e => cL ++ (throw e)
+                        } 
+                      },
+                      E.attempt(reqR.map(recvR)).map { e =>
+                        if (e.isRight) e.right.get
+                        else e.left.get match {
+                          case End => fbR
+                          case e => cR ++ (throw e)
+                        } 
+                      }
+                    )
+                  ).flatMap { e => 
+                    if (e.isLeft) { val l = e.left.get; wrap(l._2.map(p2 => l._1.wye(p2)(y2))).asInstanceOf[Process[F2,O3]] }
+                    else { val r = e.right.get; wrap(r._1.map(t => t.wye(r._2)(y2))).asInstanceOf[Process[F2,O3]] }
+                    // case Left((thisNext, p2Next)) => wrap(p2Next.map(p2 => thisNext.wye(p2)(y2))) 
+                    // case Right((thisNext, p2Next)) => wrap(thisNext.map(t => t.wye(p2Next)(y2))) 
                   }
               }
             }
@@ -380,11 +398,11 @@ trait Process[+F[_],+O] {
         case Emit(h,t) => go(t.asInstanceOf[Process[F2,O2]], acc ++ h.asInstanceOf[Seq[O2]]) 
         case Halt => F.point(acc)
         case Await(req,recv,fb,c) => 
-           F.bind (C.attempt(req.asInstanceOf[F2[Int]])) {
+           F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              case Left(End) => go(fb.asInstanceOf[Process[F2,O2]], acc)
              case Left(err) => 
                go(c.asInstanceOf[Process[F2,O2]] ++ await[F2,Nothing,O2](C.fail(err))(), acc)
-             case Right(o) => go(recv.asInstanceOf[Int => Process[F2,O2]](o), acc)
+             case Right(o) => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc)
            }
       }
     go(this, IndexedSeq())
@@ -438,11 +456,13 @@ trait Process[+F[_],+O] {
     this.tee(p2)(scalaz.stream.tee.zip)
 
   /** Nondeterministic version of `zipWith`. */ 
-  def yipWith[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(f: (O,O2) => O3)(implicit F: Nondeterminism[F2]): Process[F2,O3] = 
+  def yipWith[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(f: (O,O2) => O3)(
+  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O3] = 
     this.wye(p2)(scalaz.stream.wye.yipWith(f))
 
   /** Nondeterministic version of `zip`. */ 
-  def yip[F2[x]>:F[x],O2](p2: Process[F2,O2])(implicit F: Nondeterminism[F2]): Process[F2,(O,O2)] = 
+  def yip[F2[x]>:F[x],O2](p2: Process[F2,O2])(
+  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,(O,O2)] = 
     this.wye(p2)(scalaz.stream.wye.yip)
 }
 
@@ -535,8 +555,8 @@ object Process {
    * exception results in control switching to the `fallback` case of
    * whatever `Process` is being run.
    */
-  case object End extends scala.util.control.ControlThrowable {
-    override def fillInStackTrace = this 
+  case object End extends Exception { //scala.util.control.ControlThrowable {
+    //override def fillInStackTrace = this 
   }
  
   case class Env[-I,-I2]() {
@@ -840,6 +860,14 @@ object Process {
   (I === J) \/ (I2 === J) \/ (These[I,I2] === J) = 
     if (t.tag == 2) right(Leibniz.refl[I].asInstanceOf[These[I,I2] === J])
     else left(witnessT(t.asInstanceOf[Env[I,I2]#T[J]]))
+
+  /** Evidence that `F[x] <: G[x]` for all `x`. */
+  trait Subprotocol[F[_], G[_]] {
+    def subst[C[_[_],_],A](f: C[F,A]): C[G,A]
+
+    implicit def substProcess[A](p: Process[F,A]): Process[G,A] = 
+      subst[({type c[f[_],x] = Process[f,x]})#c, A](p)
+  }
 
   // boilerplate to enable monadic infix syntax without explicit imports 
 
