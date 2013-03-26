@@ -340,9 +340,9 @@ trait Process[+F[_],+O] {
                 // Lots of casts unfortunately required here due to broken pattern matching
                 case AwaitF(reqR, recvR, fbR, cR) => 
                   emit(F.choose(reqL, reqR)).eval.flatMap {
-                    case Left((l,reqR2)) => 
+                    case -\/((l,reqR2)) =>
                       (recvL(l) wye Await(reqR2, recvR, fbR, cR))(y2)
-                    case Right((reqL2,r)) => 
+                    case \/-((reqL2,r)) =>
                       (Await(reqL2, recvL, fbL, cL) wye recvR(r))(y2)
                   }
               }
@@ -381,10 +381,10 @@ trait Process[+F[_],+O] {
         case Halt => F.point(acc)
         case Await(req,recv,fb,c) => 
            F.bind (C.attempt(req.asInstanceOf[F2[Int]])) {
-             case Left(End) => go(fb.asInstanceOf[Process[F2,O2]], acc)
-             case Left(err) => 
+             case -\/(End) => go(fb.asInstanceOf[Process[F2,O2]], acc)
+             case -\/(err) =>
                go(c.asInstanceOf[Process[F2,O2]] ++ await[F2,Nothing,O2](C.fail(err))(), acc)
-             case Right(o) => go(recv.asInstanceOf[Int => Process[F2,O2]](o), acc)
+             case \/-(o) => go(recv.asInstanceOf[Int => Process[F2,O2]](o), acc)
            }
       }
     go(this, IndexedSeq())
@@ -775,8 +775,8 @@ object Process {
                     case AwaitF(reqsrc,recvsrc,fbsrc,csrc) => 
                       val (outH, outT) = bufOut.dequeue
                       await(F3.choose(reqsrc, outH))(
-                        { case Left((p,ro)) => go(recvsrc(p), q2, bufIn2, ro +: outT) 
-                          case Right((rp,o2)) => go(await(rp)(recvsrc, fbsrc, csrc), recv(These.That(o2)), bufIn2, outT) 
+                        { case -\/((p,ro)) => go(recvsrc(p), q2, bufIn2, ro +: outT)
+                          case \/-((rp,o2)) => go(await(rp)(recvsrc, fbsrc, csrc), recv(These.That(o2)), bufIn2, outT)
                         },
                         go(fbsrc, q2, bufIn2, bufOut),
                         go(csrc, q2, bufIn2, bufOut)
