@@ -355,9 +355,9 @@ trait Process[+F[_],+O] {
                                e => e)
                       }
                     )
-                  ).flatMap { e => 
-                    e.fold(l => wrap(l._2.map(p2 => l._1.wye(p2)(y2))).asInstanceOf[Process[F2,O3]],
-                           r => wrap(r._1.map(t => t.wye(r._2)(y2))).asInstanceOf[Process[F2,O3]])
+                  ).flatMap { 
+                    _.fold(l => wrap(l._2).flatMap(p2 => l._1.wye(p2)(y2)),
+                           r => wrap(r._1).flatMap(t => t.wye(r._2)(y2)))
                   }
               }
             }
