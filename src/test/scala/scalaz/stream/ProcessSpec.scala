@@ -8,7 +8,7 @@ import scalaz.std.list._
 import org.scalacheck._
 import Prop._
 
-object Process1Spec extends Properties("Process1") {
+object ProcessSpec extends Properties("Process1") {
   
   import Process._
   import process1._
