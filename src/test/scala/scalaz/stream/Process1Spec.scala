@@ -52,7 +52,9 @@ object Process1Spec extends Properties("Process1") {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
     }) && 
     ("yip" |: {
-      (p.toList.zip(p2.toList) === p.toSource.yip(p2.toSource).collect.run.toList)
+      val l = p.toList.zip(p2.toList)
+      val r = p.toSource.yip(p2.toSource).collect.run.toList
+      (l === r) || { println(s"Input: ${p.toList} ${p2.toList}, Left: $l, Right: $r"); false }
     })
   }
 }

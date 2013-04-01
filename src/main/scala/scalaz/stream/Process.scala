@@ -360,8 +360,6 @@ trait Process[+F[_],+O] {
                   ).flatMap { e => 
                     if (e.isLeft) { val l = e.left.get; wrap(l._2.map(p2 => l._1.wye(p2)(y2))).asInstanceOf[Process[F2,O3]] }
                     else { val r = e.right.get; wrap(r._1.map(t => t.wye(r._2)(y2))).asInstanceOf[Process[F2,O3]] }
-                    // case Left((thisNext, p2Next)) => wrap(p2Next.map(p2 => thisNext.wye(p2)(y2))) 
-                    // case Right((thisNext, p2Next)) => wrap(thisNext.map(t => t.wye(p2Next)(y2))) 
                   }
               }
             }
