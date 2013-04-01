@@ -331,7 +331,7 @@ trait Process[+F[_],+O] {
                 case Halt => thisNext.kill ++ y2.disconnect
                 case e@Emit(_,_) => thisNext.wye(p2Next)(y2) 
               }
-            case 2 => thisNext match {
+            case 2 => thisNext match { // Both
               case Halt => p2Next |> y2.detachL
               case AwaitF(reqL, recvL, fbL, cL) => p2Next match {
                 case Halt => 
@@ -342,24 +342,22 @@ trait Process[+F[_],+O] {
                 case AwaitF(reqR, recvR, fbR, cR) =>
                   wrap(
                     F2.choose(
-                      E.attempt(reqL.map(recvL)).map { e => 
-                        if (e.isRight) e.right.get
-                        else e.left.get match {
-                          case End => fbL
-                          case e => cL ++ (throw e)
-                        } 
+                      E.attempt(reqL.map(recvL)).map {
+                        _.fold({ case End => fbL 
+                                 case t: Throwable => cL ++ (throw t) 
+                               }, 
+                               e => e)
                       },
-                      E.attempt(reqR.map(recvR)).map { e =>
-                        if (e.isRight) e.right.get
-                        else e.left.get match {
-                          case End => fbR
-                          case e => cR ++ (throw e)
-                        } 
+                      E.attempt(reqR.map(recvR)).map {
+                        _.fold({ case End => fbR 
+                                 case t: Throwable => cR ++ (throw t) 
+                               }, 
+                               e => e)
                       }
                     )
                   ).flatMap { e => 
-                    if (e.isLeft) { val l = e.left.get; wrap(l._2.map(p2 => l._1.wye(p2)(y2))).asInstanceOf[Process[F2,O3]] }
-                    else { val r = e.right.get; wrap(r._1.map(t => t.wye(r._2)(y2))).asInstanceOf[Process[F2,O3]] }
+                    e.fold(l => wrap(l._2.map(p2 => l._1.wye(p2)(y2))).asInstanceOf[Process[F2,O3]],
+                           r => wrap(r._1.map(t => t.wye(r._2)(y2))).asInstanceOf[Process[F2,O3]])
                   }
               }
             }
@@ -397,10 +395,10 @@ trait Process[+F[_],+O] {
         case Halt => F.point(acc)
         case Await(req,recv,fb,c) => 
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
-             case Left(End) => go(fb.asInstanceOf[Process[F2,O2]], acc)
-             case Left(err) => 
-               go(c.asInstanceOf[Process[F2,O2]] ++ await[F2,Nothing,O2](C.fail(err))(), acc)
-             case Right(o) => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc)
+             _.fold(
+               { case End => go(fb.asInstanceOf[Process[F2,O2]], acc)
+                 case err => go(c.asInstanceOf[Process[F2,O2]] ++ await[F2,Nothing,O2](C.fail(err))(), acc) }
+               , o => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc))
            }
       }
     go(this, IndexedSeq())
@@ -794,9 +792,10 @@ object Process {
                     case AwaitF(reqsrc,recvsrc,fbsrc,csrc) => 
                       val (outH, outT) = bufOut.dequeue
                       await(F3.choose(reqsrc, outH))(
-                        { case Left((p,ro)) => go(recvsrc(p), q2, bufIn2, ro +: outT) 
-                          case Right((rp,o2)) => go(await(rp)(recvsrc, fbsrc, csrc), recv(These.That(o2)), bufIn2, outT) 
-                        },
+                        _.fold(
+                          { case (p,ro) => go(recvsrc(p), q2, bufIn2, ro +: outT) },
+                          { case (rp,o2) => go(await(rp)(recvsrc, fbsrc, csrc), recv(These.That(o2)), bufIn2, outT) }
+                        ), 
                         go(fbsrc, q2, bufIn2, bufOut),
                         go(csrc, q2, bufIn2, bufOut)
                       )
