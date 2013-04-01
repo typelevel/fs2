@@ -1,5 +1,7 @@
 package scalaz.stream
 
+import java.io.{InputStream,OutputStream}
+
 import scalaz.concurrent.Task
 import Process._
 
@@ -24,6 +26,57 @@ trait io {
       , await[Task,Unit,O](onExit)()) // or in event of error
     await(acquire) ( r => go(step(r), release(r)), Halt, Halt )
   }
+
+  /* 
+   * Create a `Process[Task,String]` from the lines of a file, using
+   * the `resource` combinator to ensure the file is closed
+   * when processing the stream of lines is finished. 
+   */
+  def linesR(filename: String): Process[Task,String] = 
+    resource(Task.delay(scala.io.Source.fromFile(filename)))(
+             src => Task.delay(src.close)) { src => 
+      lazy val lines = src.getLines // A stateful iterator 
+      Task.delay { if (lines.hasNext) lines.next else throw End }
+    }
+
+  /** 
+   * Create a `Process[Task,String]` from an `InputStream`, by 
+   * repeatedly requesting chunks of size `n`. The last chunk may 
+   * have size less than `n`. This implementation reuses the
+   * same buffer for consecutive reads, which is only safe if 
+   * whatever consumes this `Process` never stores the `Bytes` 
+   * returned or passes it to a combinator (like `buffer`) that
+   * does. Use `chunkR` for a safe version of this combinator.
+   * 
+   * This implementation closes the `InputStream` when finished
+   * or in the event of an error.
+   */
+  def unsafeChunkR(n: Int)(is: => InputStream): Process[Task,Bytes] = {
+    require(n > 0, "chunk size must be greater than 0, was: " + n)
+    resource(Task.delay((is, new Array[Byte](n))))(
+             src => Task.delay(src._1.close)) { case (src,buf) => 
+      Task.delay { val m = src.read(buf); if (m == -1) throw End else new Bytes(buf, m) } 
+    }
+  }
+
+  /** 
+   * Create a `Process[Task,String]` from an `InputStream`, by 
+   * repeatedly requesting chunks of size `n`. The last chunk may 
+   * have size less than `n`.
+   *
+   * This implementation closes the `InputStream` when finished
+   * or in the event of an error. 
+   */
+  def chunkR(n: Int)(is: => InputStream): Process[Task, Array[Byte]] =
+    unsafeChunkR(n)(is).map(_.toArray)
+
+  /** 
+   * Create a `Sink` from an `OutputStream`, which will be closed
+   * when this `Process` is halted. 
+   */
+  def chunkW(os: => OutputStream): Process[Task, Array[Byte] => Task[Unit]] = 
+    resource(Task.delay(os))(os => Task.delay(os.close))(
+      os => Task.now((bytes: Array[Byte]) => Task.delay(os.write(bytes))))
 
   /** 
    * A simple tail recursive function to collect all the output of a 
