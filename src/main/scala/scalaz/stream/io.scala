@@ -40,35 +40,46 @@ trait io {
     }
 
   /** 
-   * Create a `Process[Task,String]` from an `InputStream`, by 
-   * repeatedly requesting chunks of size `n`. The last chunk may 
-   * have size less than `n`. This implementation reuses the
-   * same buffer for consecutive reads, which is only safe if 
-   * whatever consumes this `Process` never stores the `Bytes` 
-   * returned or passes it to a combinator (like `buffer`) that
-   * does. Use `chunkR` for a safe version of this combinator.
+   * Create a `Channel[Task,Array[Byte],Bytes]` from an `InputStream` by 
+   * repeatedly filling the input buffer. The last chunk may be less 
+   * than the requested size.
+   * 
+   * Because this implementation returns a read-only view of the given
+   * buffer, it is safe to recyle the same buffer for consecutive reads
+   * as long as whatever consumes this `Process` never stores the `Bytes` 
+   * returned or pipes it to a combinator (like `buffer`) that does. 
+   * Use `chunkR` for a safe version of this combinator.
    * 
    * This implementation closes the `InputStream` when finished
    * or in the event of an error.
    */
-  def unsafeChunkR(n: Int)(is: => InputStream): Process[Task,Bytes] = {
-    require(n > 0, "chunk size must be greater than 0, was: " + n)
-    resource(Task.delay((is, new Array[Byte](n))))(
-             src => Task.delay(src._1.close)) { case (src,buf) => 
-      Task.delay { val m = src.read(buf); if (m == -1) throw End else new Bytes(buf, m) } 
+  def unsafeChunkR(is: => InputStream): Channel[Task,Array[Byte],Bytes] = {
+    resource(Task.delay(is))(
+             src => Task.delay(src.close)) { src =>
+      Task.now { (buf: Array[Byte]) => Task.delay {
+        val m = src.read(buf)
+        if (m == -1) throw End 
+        else new Bytes(buf, m) 
+      }} 
     }
   }
 
   /** 
-   * Create a `Process[Task,String]` from an `InputStream`, by 
-   * repeatedly requesting chunks of size `n`. The last chunk may 
-   * have size less than `n`.
+   * Create a `Channel[Task,Int,Bytes]` from an `InputStream` by 
+   * repeatedly requesting the given number of bytes. The last chunk 
+   * may be less than the requested size.
+   * 
+   * This implementation requires an array allocation for each read.
+   * To recycle the input buffer, use `unsafeChunkR`. 
    *
    * This implementation closes the `InputStream` when finished
    * or in the event of an error. 
    */
-  def chunkR(n: Int)(is: => InputStream): Process[Task, Array[Byte]] =
-    unsafeChunkR(n)(is).map(_.toArray)
+  def chunkR(is: => InputStream): Channel[Task, Int, Array[Byte]] =
+    unsafeChunkR(is).map(f => (n: Int) => { 
+      val buf = new Array[Byte](n)
+      f(buf).map(_.toArray)
+    })
 
   /** 
    * Create a `Sink` from an `OutputStream`, which will be closed
