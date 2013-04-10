@@ -5,6 +5,13 @@ import scala.collection.immutable.Vector
 import Process._
 
 trait process1 {
+  
+  // nb: methods are in alphabetical order, there are going to be so many that
+  // any other order will just going get confusing
+
+  /** Await a single value, returning `None` if the input has been exhausted. */
+  def awaitOption[I]: Process1[I,Option[I]] = 
+    await1[I].map(Some(_)).orElse(emit(None))
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] = 
@@ -26,6 +33,16 @@ trait process1 {
   def id[I]: Process1[I,I] = 
     await1[I].repeat
 
+  /** Skip all but the last element of the input. */
+  def last[I]: Process1[I,I] = {
+    def go(prev: I): Process1[I,I] = 
+      awaitOption[I].flatMap { 
+        case None => emit(prev)
+        case Some(prev2) => go(prev2)
+      }
+    await1[I].flatMap(go)
+  }
+
   /** Transform the input using the given function, `f`. */
   def lift[I,O](f: I => O): Process1[I,O] = 
     id[I] map f
@@ -41,6 +58,19 @@ trait process1 {
 
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => Halt) 
+
+  /** 
+   * Emit a running sum of the values seen so far. The first value emitted will be the 
+   * first number seen (not `0`). The length of the output `Process` always matches the 
+   * length of the input `Process`. 
+   */
+  def sum[N](implicit N: Numeric[N]): Process1[N,N] = {
+    def go(acc: N): Process1[N,N] = await1[N].flatMap { n => 
+      val acc2 = N.plus(acc, n)
+      emit(acc2) ++ go(acc2)
+    } 
+    go(N.zero)
+  }
 
   /** 
    * Groups inputs into chunks of size `n`. The last chunk may have size 

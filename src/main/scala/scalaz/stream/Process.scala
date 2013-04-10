@@ -397,8 +397,11 @@ trait Process[+F[_],+O] {
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              _.fold(
                { case End => go(fb.asInstanceOf[Process[F2,O2]], acc)
-                 case err => go(c.asInstanceOf[Process[F2,O2]] ++ await[F2,Nothing,O2](C.fail(err))(), acc) }
-               , o => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc))
+                 case err => c match {
+                   case Halt => C.fail(err)
+                   case _ => go(c.asInstanceOf[Process[F2,O2]] ++ wrap(C.fail(err)), IndexedSeq()) 
+                 }
+               }, o => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc))
            }
       }
     go(this, IndexedSeq())
@@ -527,7 +530,7 @@ object Process {
       cleanup: Process[F,O] = Halt): Process[F,O] = 
     Await(req, recv, fallback, cleanup)
 
-  def apply[O](o: O*): Process0[O] = 
+  def apply[O](o: O*): Process[Nothing,O] = 
     emitSeq[Nothing,O](o, Halt)
 
   def emit[O](head: O): Process[Nothing,O] = 
@@ -632,7 +635,8 @@ object Process {
   }
 
   /** 
-   *
+   * Various `Process` functions that aren't worth putting on `Process` 
+   * due to variance issues. 
    */
   implicit class ProcessSyntax[F[_],O](self: Process[F,O]) { 
     

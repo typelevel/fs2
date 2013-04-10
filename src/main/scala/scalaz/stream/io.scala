@@ -105,15 +105,16 @@ trait io {
             try recv(req.run)
             catch { 
               case End => fb // Normal termination
-              case e: Exception => err ++ failTask(e) // Helper function, defined below
+              case e: Exception => err match {
+                case Halt => throw e // ensure exception is eventually thrown;
+                                     // without this we'd infinite loop
+                case _ => err ++ wrap(Task.delay(throw e))
+              }
             }
           go(next, acc)
       }
     go(src, IndexedSeq()) 
   }
-
-  def failTask[O](e: Throwable): Process[Task,O] = 
-    await[Task,O,O](Task(throw e))()
 }
 
 object io extends io
