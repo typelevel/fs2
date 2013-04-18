@@ -2,6 +2,8 @@ package scalaz.stream
 
 import scala.collection.immutable.Vector
 
+import scalaz.{\/, -\/, \/-}
+
 import Process._
 
 trait process1 {
@@ -12,6 +14,52 @@ trait process1 {
   /** Await a single value, returning `None` if the input has been exhausted. */
   def awaitOption[I]: Process1[I,Option[I]] = 
     await1[I].map(Some(_)).orElse(emit(None))
+
+  /** Behaves like the identity process, but requests `n` elements at a time from its input. */
+  def buffer[I](n: Int): Process1[I,I] =
+    chunk[I](n).flatMap(emitAll)
+
+  /** 
+   * Behaves like the identity process, but requests elements from its 
+   * input in blocks that end whenever the predicate switches from true to false.
+   */
+  def bufferBy[I](f: I => Boolean): Process1[I,I] =
+    chunkBy(f).flatMap(emitAll)
+
+  /** Behaves like the identity process, but batches all output into a single `Emit`. */
+  def bufferAll[I]: Process1[I,I] = 
+    chunkAll[I].flatMap(emitAll)
+
+  /** 
+   * Groups inputs into chunks of size `n`. The last chunk may have size 
+   * less then `n`, depending on the number of elements in the input. 
+   */
+  def chunk[I](n: Int): Process1[I,Vector[I]] = {
+    def go(m: Int, acc: Vector[I]): Process1[I,Vector[I]] = 
+      if (m <= 0) emit(acc) ++ go(n, Vector())
+      else await1[I].flatMap(i => go(m-1, acc :+ i)).orElse(emit(acc))
+    if (n <= 0) sys.error("chunk size must be > 0, was: " + n)
+    go(n, Vector())
+  }
+
+  /** 
+   * Like `chunk`, but emits a chunk whenever the predicate switches from
+   * true to false.
+   */
+  def chunkBy[I](f: I => Boolean): Process1[I,Vector[I]] = {
+    def go(acc: Vector[I], last: Boolean): Process1[I,Vector[I]] = 
+      await1[I].flatMap { i => 
+        val chunk = acc :+ i
+        val cur = f(i)
+        if (!cur && last) emit(chunk) then go(Vector(), false)
+        else go(chunk, cur)
+      } orElse (emit(acc))
+    go(Vector(), false)
+  }
+
+  /** Collects up all output of this `Process1` into a single `Emit`. */
+  def chunkAll[I]: Process1[I,Vector[I]] = 
+    chunkBy[I](_ => false)
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] = 
@@ -56,6 +104,13 @@ trait process1 {
   def takeWhile[I](f: I => Boolean): Process1[I,I] = 
     await1[I] flatMap (i => if (f(i)) emit(i) then takeWhile(f) else Halt)
 
+  /** Throws any input exceptions and passes along successful results. */
+  def rethrow[A]: Process1[Throwable \/ A, A] = 
+    await1[Throwable \/ A].flatMap { 
+      case -\/(err) => throw err
+      case \/-(a) => emit(a)
+    } repeat
+
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => Halt) 
 
@@ -72,50 +127,6 @@ trait process1 {
     go(N.zero)
   }
 
-  /** 
-   * Groups inputs into chunks of size `n`. The last chunk may have size 
-   * less then `n`, depending on the number of elements in the input. 
-   */
-  def chunk[I](n: Int): Process1[I,Vector[I]] = {
-    def go(m: Int, acc: Vector[I]): Process1[I,Vector[I]] = 
-      if (m <= 0) emit(acc) ++ go(n, Vector())
-      else await1[I].flatMap(i => go(m-1, acc :+ i)).orElse(emit(acc))
-    if (n <= 0) sys.error("chunk size must be > 0, was: " + n)
-    go(n, Vector())
-  }
-
-  /** 
-   * Like `chunk`, but emits a chunk whenever the predicate switches from
-   * true to false.
-   */
-  def chunkBy[I](f: I => Boolean): Process1[I,Vector[I]] = {
-    def go(acc: Vector[I], last: Boolean): Process1[I,Vector[I]] = 
-      await1[I].flatMap { i => 
-        val chunk = acc :+ i
-        val cur = f(i)
-        if (!cur && last) emit(chunk) then go(Vector(), false)
-        else go(chunk, cur)
-      } orElse (emit(acc))
-    go(Vector(), false)
-  }
-  /** Collects up all output of this `Process1` into a single `Emit`. */
-  def chunkAll[I]: Process1[I,Vector[I]] = 
-    chunkBy[I](_ => false)
-
-  /** Behaves like the identity process, but requests `n` elements at a time from its input. */
-  def buffer[I](n: Int): Process1[I,I] =
-    chunk[I](n).flatMap(emitAll)
-
-  /** 
-   * Behaves like the identity process, but requests elements from its 
-   * input in blocks that end whenever the predicate switches from true to false.
-   */
-  def bufferBy[I](f: I => Boolean): Process1[I,I] =
-    chunkBy(f).flatMap(emitAll)
-
-  /** Behaves like the identity process, but batches all output into a single `Emit`. */
-  def bufferAll[I]: Process1[I,I] = 
-    chunkAll[I].flatMap(emitAll)
 }
 
 object process1 extends process1

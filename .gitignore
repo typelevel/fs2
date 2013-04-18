@@ -3,6 +3,7 @@
 target
 project/boot
 *.swp
+*.swo
 project.vim
 tags
 .lib
