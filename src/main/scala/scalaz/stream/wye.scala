@@ -23,7 +23,7 @@ trait wye {
    */ 
   def byipWith[I,O,O2](n: Int)(f: (I,O) => O2): Wye[I,O,O2] = {
     def go(buf: Queue[I]): Wye[I,O,O2] =
-      if (buf.size > n ) awaitR[O].flatMap { o => 
+      if (buf.size > n) awaitR[O].flatMap { o => 
         val (i,buf2) = buf.dequeue
         emit(f(i,o)) ++ go(buf2)
       } 
@@ -39,6 +39,9 @@ trait wye {
       }
     go(Queue())
   }
+
+  def boundedQueue[I](n: Int): Wye[Any,I,I] = 
+    byipWith(n)((i,i2) => i2) 
 }
 
 object wye extends wye

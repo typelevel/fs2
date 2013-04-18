@@ -20,7 +20,7 @@ object ProcessSpec extends Properties("Process1") {
   implicit def ArbProcess0[A:Arbitrary]: Arbitrary[Process0[A]] = 
     Arbitrary(Arbitrary.arbitrary[List[A]].map(a => Process(a: _*)))
 
-  property("basic processes") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) => 
+  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) => 
     val f = (x: Int) => List.range(1, x.min(100))
     val g = (x: Int) => x % 7 == 0
     ("id" |: { 
@@ -60,7 +60,7 @@ object ProcessSpec extends Properties("Process1") {
 
   import scalaz.concurrent.Task
 
-  property("exceptions handling") = secure { 
+  property("exception") = secure { 
     case object Err extends RuntimeException 
     val tasks = Process(Task(1), Task(2), Task(throw Err), Task(3))
     (try { tasks.eval.pipe(processes.sum).collect.run; false }
@@ -70,6 +70,11 @@ object ProcessSpec extends Properties("Process1") {
     (tasks.eval.pipe(processes.sum).
       handle { case e: Throwable => -6 }.
       collect.run.last == -6)
+  }
+
+  property("enqueue") = secure {
+    val tasks = Process.range(0,1000).map(i => Task { Thread.sleep(1); 1 })
+    tasks.sequence(50).pipe(processes.sum[Int].last).collect.run.head == 1000
   }
 }
 
