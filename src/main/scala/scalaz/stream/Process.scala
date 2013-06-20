@@ -325,7 +325,7 @@ sealed trait Process[+F[_],+O] {
                   // in the event of a fallback or error, `y` will end up running the right's fallback/cleanup
                   // actions on the next cycle - it still needs that value on the right and will run any awaits
                   // to try to obtain that value!
-                  await(reqR)(recvR andThen (p2 => thisNext.wye[F2,O2,O3](p2Next)(y2)), 
+                  await(reqR)(recvR andThen (p2 => thisNext.wye[F2,O2,O3](p2)(y2)), 
                                thisNext.wye(fbR)(y2), 
                                thisNext.wye(cR)(y2))
                 case Halt => thisNext.kill ++ y2.disconnect
@@ -422,7 +422,7 @@ sealed trait Process[+F[_],+O] {
    * relies on the `Monad[F]` to ensure stack safety. 
    */
   final def collect[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
-    def go(cur: Process[F2,O2], acc: IndexedSeq[O2]): F2[IndexedSeq[O2]] = 
+    def go(cur: Process[F2,O2], acc: IndexedSeq[O2]): F2[IndexedSeq[O2]] =
       cur match {
         case Emit(h,t) => go(t.asInstanceOf[Process[F2,O2]], acc ++ h.asInstanceOf[Seq[O2]]) 
         case Halt => F.point(acc)

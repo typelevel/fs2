@@ -74,7 +74,16 @@ object ProcessSpec extends Properties("Process1") {
 
   property("enqueue") = secure {
     val tasks = Process.range(0,1000).map(i => Task { Thread.sleep(1); 1 })
-    tasks.sequence(50).pipe(processes.sum[Int].last).collect.run.head == 1000
+    tasks.sequence(50).pipe(processes.sum[Int].last).collect.run.head == 1000 &&
+    tasks.gather(50).pipe(processes.sum[Int].last).collect.run.head == 1000
+  }
+
+  // ensure that zipping terminates when the smaller stream runs out
+  property("zip one side infinite") = secure {
+    val ones = Process.wrap(Task.now(1)).repeat 
+    val p = Process(1,2,3) 
+    ones.zip(p).collect.run == IndexedSeq(1 -> 1, 1 -> 2, 1 -> 3) &&
+    p.zip(ones).collect.run == IndexedSeq(1 -> 1, 2 -> 1, 3 -> 1) 
   }
 }
 
