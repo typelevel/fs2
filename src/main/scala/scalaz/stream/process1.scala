@@ -2,7 +2,7 @@ package scalaz.stream
 
 import scala.collection.immutable.Vector
 
-import scalaz.{\/, -\/, \/-}
+import scalaz.{\/, -\/, \/-, Monoid, Semigroup}
 
 import Process._
 
@@ -72,10 +72,54 @@ trait process1 {
    */
   def dropWhile[I](f: I => Boolean): Process1[I,I] = 
     await1[I] flatMap (i => if (f(i)) dropWhile(f) else emit(i) then id)
-
+  
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I,I] =
     await1[I] flatMap (i => if (f(i)) emit(i) else Halt) repeat
+
+  /** 
+   * `Process1` form of `List.scanLeft`. Like `List.scanLeft`, this
+   * always emits at least the given `b`, even if the input is empty.
+   */
+  def fold[A,B](b: B)(f: (B,A) => B): Process1[A,B] = 
+    emit(b) ++ await1[A].flatMap(a => fold(f(b,a))(f))
+  
+  /** 
+   * Like `fold`, but emits values starting with the first element it
+   * receives. If the input is empty, this emits no values.
+   */
+  def fold1[A](f: (A,A) => A): Process1[A,A] = {
+    def go(a: A): Process1[A,A] = 
+      emit(a) ++ await1[A].flatMap(go) 
+    await1[A].flatMap(go)
+  }
+
+  /** 
+   * Emits the `Monoid` identity, followed by a running total
+   * of the values seen so far, using the `Monoid` operation:
+   *
+   * `Process(1,2,3,4) |> fromMonoid(sumMonoid) == Process(0,1,3,6,10)`
+   */
+  def fromMonoid[A](implicit M: Monoid[A]): Process1[A,A] = 
+    fold(M.zero)((a,a2) => M.append(a,a2))
+
+  /** 
+   * Alias for `fromSemigroup`. Starts emitting when it receives
+   * its first value from the input. 
+   */
+  def fromMonoid1[A](implicit M: Semigroup[A]): Process1[A,A] = 
+    fromSemigroup[A] 
+
+  /**
+   * Emits the sum of the elements seen so far, using the 
+   * semigroup's operation, starting with the first element
+   * of the input sequence. If the input is empty, emits
+   * no values. 
+   * 
+   * `Process(1,2,3,4) |> fromSemigroup(sumMonoid) == Process(1,3,6,10)`
+   */
+  def fromSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] = 
+    fold1((a,a2) => M.append(a,a2))
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
   def id[I]: Process1[I,I] = 

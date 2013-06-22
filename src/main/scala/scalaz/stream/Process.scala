@@ -2,7 +2,7 @@ package scalaz.stream
 
 import scala.collection.immutable.{IndexedSeq,SortedMap,Queue,Vector}
 
-import scalaz.{Catchable,Monad,MonadPlus,Nondeterminism}
+import scalaz.{Catchable,Monad,MonadPlus,Monoid,Nondeterminism,Semigroup}
 import scalaz.concurrent.Task
 import scalaz.Leibniz.===
 import scalaz.{\/,-\/,\/-,~>,Leibniz}
@@ -468,6 +468,10 @@ sealed trait Process[+F[_],+O] {
   def filter(f: O => Boolean): Process[F,O] = 
     this |> processes.filter(f)
 
+  /** Connect this `Process` to `process1.fold(b)(f)`. */
+  def fold[B](b: B)(f: (B,O) => B): Process[F,B] = 
+    this |> process1.fold(b)(f)
+
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] = 
     this |> processes.take[O](n)
@@ -689,6 +693,18 @@ object Process {
     /** Feed this `Process` to a `Sink`. */
     def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] = 
       through(f)
+
+    def toMonoid[F2[x]>:F[x]](implicit M: Monoid[O]): Process[F2,O] = 
+      self |> process1.fromMonoid(M)
+
+    def fold1[F2[x]>:F[x]](f: (O,O) => O): Process[F2,O] = 
+      self |> process1.fold1(f)
+
+    def toMonoid1[F2[x]>:F[x]](implicit M: Semigroup[O]): Process[F2,O] = 
+      toSemigroup(M)
+
+    def toSemigroup[F2[x]>:F[x]](implicit M: Semigroup[O]): Process[F2,O] = 
+      self |> process1.fromSemigroup(M) 
 
     /** Attach a `Sink` to the output of this `Process` but echo the original signal. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] = 

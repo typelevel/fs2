@@ -55,6 +55,10 @@ object ProcessSpec extends Properties("Process1") {
       val l = p.toList.zip(p2.toList)
       val r = p.toSource.yip(p2.toSource).collect.run.toList
       (l === r)
+    }) &&
+    ("fold" |: {
+      p.toList.scanLeft(0)(_ - _) ===
+      p.toSource.fold(0)(_ - _).collect.run.toList
     })
   }
 
