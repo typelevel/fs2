@@ -440,6 +440,14 @@ sealed trait Process[+F[_],+O] {
     go(this, IndexedSeq())
   }
 
+  /** Run this `Process` solely for its final emitted value, if one exists. */
+  final def runLast[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[Option[O2]] = 
+    F.map(this.last.collect[F2,O2])(_.lastOption)
+
+  /** Run this `Process` solely for its final emitted value, if one exists, using `o2` otherwise. */
+  final def runLastOr[F2[x]>:F[x], O2>:O](o2: => O2)(implicit F: Monad[F2], C: Catchable[F2]): F2[O2] = 
+    F.map(this.last.collect[F2,O2])(_.lastOption.getOrElse(o2))
+
   /** Run this `Process`, purely for its effects. */
   final def run[F2[x]>:F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] = 
     F.void(drain.collect(F, C))
@@ -471,7 +479,6 @@ sealed trait Process[+F[_],+O] {
   /** Connect this `Process` to `process1.fold(b)(f)`. */
   def fold[B](b: B)(f: (B,O) => B): Process[F,B] = 
     this |> process1.fold(b)(f)
-
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] = 
     this |> processes.take[O](n)
