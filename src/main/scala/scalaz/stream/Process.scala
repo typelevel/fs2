@@ -695,8 +695,17 @@ object Process {
     
     /** Feed this `Process` through the given effectful `Channel`. */
     def through[F2[x]>:F[x],O2](f: Channel[F2,O,O2]): Process[F2,O2] = 
-      self.zipWith(f)((o,f) => f(o)).eval 
-    
+      self.zipWith(f)((o,f) => f(o)).eval
+
+
+     /** 
+      * Feed this `Process` through the given effectful `Channel` 
+      * that flushes its state before releasing its resource 
+      * Shall be used in conjunction with [[scalaz.stream.io.flushChannel]] combinator
+      */
+    def throughAndFlush[F2[x]>:F[x],O2](fch: Channel[F2,Option[O],Option[O2]]): Process[F2,O2] = 
+       ((self.map(Some(_)) ++ emit(None)) through fch).filter(_.isDefined).map(_.get)
+
     /** Feed this `Process` to a `Sink`. */
     def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] = 
       through(f)
