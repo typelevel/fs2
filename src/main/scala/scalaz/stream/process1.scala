@@ -125,6 +125,13 @@ trait process1 {
   def id[I]: Process1[I,I] = 
     await1[I].repeat
 
+  /** 
+   * Add `separator` between elements of the input. For example, 
+   * `Process(1,2,3,4) |> intersperse(0) == Process(1,0,2,0,3,0,4)`. 
+   */
+  def intersperse[A](separator: A): Process1[A,A] = 
+    await1[A].flatMap(head => emit(head) ++ id[A].flatMap(a => Process(separator, a)))
+
   /** Skip all but the last element of the input. */
   def last[I]: Process1[I,I] = {
     def go(prev: I): Process1[I,I] = 

@@ -4,6 +4,7 @@ import scalaz.Equal
 import scalaz.syntax.equal._
 import scalaz.std.anyVal._
 import scalaz.std.list._
+import scalaz.std.list.listSyntax._
 
 import org.scalacheck._
 import Prop._
@@ -59,6 +60,9 @@ object ProcessSpec extends Properties("Process1") {
     ("fold" |: {
       p.toList.scanLeft(0)(_ - _) ===
       p.toSource.fold(0)(_ - _).collect.run.toList
+    }) &&
+    ("intersperse" |: {
+      p.intersperse(0).toList == p.toList.intersperse(0) 
     })
   }
 

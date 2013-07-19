@@ -479,15 +479,20 @@ sealed trait Process[+F[_],+O] {
   /** Connect this `Process` to `process1.fold(b)(f)`. */
   def fold[B](b: B)(f: (B,O) => B): Process[F,B] = 
     this |> process1.fold(b)(f)
-  /** Halts this `Process` after emitting `n` elements. */
-  def take(n: Int): Process[F,O] = 
-    this |> processes.take[O](n)
+  
+  /** Insert `sep` between elements emitted by this `Process`. */
+  def intersperse[O2>:O](sep: O2): Process[F,O2] = 
+    this |> process1.intersperse(sep)
 
   /** Halts this `Process` after emitting 1 element. */
   def once: Process[F,O] = take(1)
 
   /** Skips all elements emitted by this `Process` except the last. */
   def last: Process[F,O] = this |> process1.last
+
+  /** Halts this `Process` after emitting `n` elements. */
+  def take(n: Int): Process[F,O] = 
+    this |> processes.take[O](n)
 
   /** Halts this `Process` as soon as the predicate tests false. */
   def takeWhile(f: O => Boolean): Process[F,O] = 
