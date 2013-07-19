@@ -28,9 +28,7 @@ object GzipSpec extends Properties("io.gzip") {
       Process(allContent:_*).map(v => Task(Bytes(v))).eval
 
     val deflateInflate =
-      source throughAndFlush
-        io.deflate() through
-        io.inflate()
+      source throughOption io.deflate() through io.inflate()
     
     deflateInflate.collect.run.map(_.toArray).reduce(_ ++ _).toSeq == allContent.reduce(_ ++ _).toSeq
   }

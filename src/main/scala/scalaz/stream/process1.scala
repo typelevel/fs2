@@ -146,6 +146,10 @@ trait process1 {
   def lift[I,O](f: I => O): Process1[I,O] = 
     id[I] map f
   
+  /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
+  def terminated[A]: Process1[A,Option[A]] = 
+    lift[A,Option[A]](Some(_)) ++ emit(None)
+
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I,I] = 
     if (n <= 0) Halt

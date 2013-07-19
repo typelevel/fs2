@@ -498,6 +498,10 @@ sealed trait Process[+F[_],+O] {
   def takeWhile(f: O => Boolean): Process[F,O] = 
     this |> processes.takeWhile(f)
 
+  /** Wraps all outputs in `Some`, then outputs a single `None` before halting. */
+  def terminated: Process[F,Option[O]] =
+    this |> processes.terminated
+
   /** Call `tee` with the `zipWith` `Tee[O,O2,O3]` defined in `tee.scala`. */
   def zipWith[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(f: (O,O2) => O3): Process[F2,O3] = 
     this.tee(p2)(scalaz.stream.tee.zipWith(f))
@@ -702,14 +706,14 @@ object Process {
     def through[F2[x]>:F[x],O2](f: Channel[F2,O,O2]): Process[F2,O2] = 
       self.zipWith(f)((o,f) => f(o)).eval
 
-
-     /** 
-      * Feed this `Process` through the given effectful `Channel` 
-      * that flushes its state before releasing its resource 
-      * Shall be used in conjunction with [[scalaz.stream.io.flushChannel]] combinator
-      */
-    def throughAndFlush[F2[x]>:F[x],O2](fch: Channel[F2,Option[O],Option[O2]]): Process[F2,O2] = 
-       ((self.map(Some(_)) ++ emit(None)) through fch).filter(_.isDefined).map(_.get)
+    /** 
+     * Feed this `Process` through the given effectful `Channel`, signaling
+     * termination to `f` via `None`. Useful to allow `f` to flush any 
+     * buffered values to the output when it detects termination, see
+     * [[scalaz.stream.io.bufferedChannel]] combinator.
+     */
+    def throughOption[F2[x]>:F[x],O2](f: Channel[F2,Option[O],O2]): Process[F2,O2] = 
+      self.terminated.through(f)
 
     /** Feed this `Process` to a `Sink`. */
     def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] = 

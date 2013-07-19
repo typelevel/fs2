@@ -19,32 +19,52 @@ trait io {
   def resource[R,O](acquire: Task[R])(
                     release: R => Task[Unit])(
                     step: R => Task[O]): Process[Task,O] = {
-    def go(step: Task[O], onExit: Task[Unit]): Process[Task,O] =
+    def go(step: Task[O], onExit: Process[Task,O]): Process[Task,O] =
       await[Task,O,O](step) ( 
         o => emit(o) ++ go(step, onExit) // Emit the value and repeat 
-      , await[Task,Unit,O](onExit)()  // Release resource when exhausted
-      , await[Task,Unit,O](onExit)()) // or in event of error
-    await(acquire) ( r => go(step(r), release(r)), Halt, Halt )
+      , onExit                           // Release resource when exhausted
+      , onExit)                          // or in event of error 
+    await(acquire)(r => {
+      val onExit = wrap(release(r)).drain
+      go(step(r), onExit)
+    }, Halt, Halt)
+  }
+  
+  /** 
+   * Like resource, but the `release` action may emit a final value,
+   * useful for flushing any internal buffers. NB: In the event of an 
+   * error, this final value is ignored.
+   */
+  def bufferedResource[R,O](acquire: Task[R])(
+                            flushAndRelease: R => Task[O])(
+                            step: R => Task[O]): Process[Task,O] = {
+    def go(step: Task[O], onExit: Process[Task,O], onFailure: Process[Task,O]): Process[Task,O] =
+      await[Task,O,O](step) ( 
+        o => emit(o) ++ go(step, onExit, onFailure) // Emit the value and repeat 
+      , onExit                                      // Release resource when exhausted
+      , onExit)                                     // or in event of error 
+    await(acquire)(r => {
+      val onExit = wrap(flushAndRelease(r))
+      val onFailure = onExit.drain
+      go(step(r), onExit, onFailure)
+    }, Halt, Halt)
   }
 
   /**
    * Implementation of resource for channels where resource needs to be
-   * flushed at the end of processing. Flush gives option to return any 
-   * leftover data that may be flushed on resource release to stream.
-   * 
-   * 
-   * This channel is supposed to be used with throughAndFlush combinator
+   * flushed at the end of processing.  
    */
-  def flushChannel[R,I,O](acquire: Task[R])(
-                        flush: R => Task[Option[O]])(
-                        release: R => Task[Unit])(
-                        step: R => Task[I => Task[O]]): Channel[Task,Option[I],Option[O]] = {
-    resource[R,Option[I]=>Task[Option[O]]](acquire)(release) {
+  def bufferedChannel[R,I,O](acquire: Task[R])(
+                             flush: R => Task[O])(
+                             release: R => Task[Unit])(
+                             step: R => Task[I => Task[O]]): Channel[Task,Option[I],O] = {
+    resource[R,Option[I] => Task[O]](acquire)(release) {
       r => 
-        Task.delay {
-          case Some(i) => step(r) flatMap (f=>f(i)) map (Some(_))
-          case None => flush(r) 
-      }
+        val s = step(r)
+        Task.now {
+          case Some(i) => s flatMap (f => f(i))
+          case None => flush(r)
+        }
     }
   }
 
