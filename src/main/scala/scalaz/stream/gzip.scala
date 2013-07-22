@@ -56,7 +56,7 @@ trait gzip {
    */
   def inflate(bufferSize: Int = 1024 * 32): Channel[Task, Bytes, Bytes] = {
 
-    resource(Task.delay(new Inflater))(i => Task.now(i.end())) {
+    resource(Task.delay(new Inflater))(i => Task.delay(i.end())) {
       inflater => {
         @tailrec
         def collectFromInflater(sofar: Array[Byte]): Array[Byte] = {
