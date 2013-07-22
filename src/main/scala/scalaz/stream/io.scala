@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import java.io.{InputStream,OutputStream}
+import java.io.{BufferedOutputStream,File,FileOutputStream,InputStream,OutputStream}
 
 import scalaz.concurrent.Task
 import Process._
@@ -9,27 +9,9 @@ import Process._
  * Module of `Process` functions and combinators for file and network I/O.
  */
 trait io {
-
-  /** 
-   * Generic combinator for producing a `Process[Task,O]` from some
-   * effectful `O` source. The source is tied to some resource,
-   * `R` (like a file handle) that we want to ensure is released.
-   * See `lines` below for an example use. 
-   */
-  def resource[R,O](acquire: Task[R])(
-                    release: R => Task[Unit])(
-                    step: R => Task[O]): Process[Task,O] = {
-    def go(step: Task[O], onExit: Process[Task,O]): Process[Task,O] =
-      await[Task,O,O](step) ( 
-        o => emit(o) ++ go(step, onExit) // Emit the value and repeat 
-      , onExit                           // Release resource when exhausted
-      , onExit)                          // or in event of error 
-    await(acquire)(r => {
-      val onExit = wrap(release(r)).drain
-      go(step(r), onExit)
-    }, Halt, Halt)
-  }
   
+  // NB: methods are in alphabetical order 
+
   /** 
    * Like resource, but the `release` action may emit a final value,
    * useful for flushing any internal buffers. NB: In the event of an 
@@ -68,55 +50,6 @@ trait io {
     }
   }
 
-  /**
-   * Convenience helper to get Array[Byte] out of Bytes 
-   */
-  def toByteArray: Process1[Bytes,Array[Byte]] = 
-    processes.lift(_.toArray)
-
-  /**
-   * Convenience helper to produce Bytes from the Array[Byte] 
-   */
-  def fromByteArray : Process1[Array[Byte],Bytes] = 
-    processes.lift(Bytes(_))
-
-  /** 
-   * Create a `Process[Task,String]` from the lines of a file, using
-   * the `resource` combinator to ensure the file is closed
-   * when processing the stream of lines is finished. 
-   */
-  def linesR(filename: String): Process[Task,String] = 
-    resource(Task.delay(scala.io.Source.fromFile(filename)))(
-             src => Task.delay(src.close)) { src => 
-      lazy val lines = src.getLines // A stateful iterator 
-      Task.delay { if (lines.hasNext) lines.next else throw End }
-    }
-
-  /** 
-   * Create a `Channel[Task,Array[Byte],Bytes]` from an `InputStream` by 
-   * repeatedly filling the input buffer. The last chunk may be less 
-   * than the requested size.
-   * 
-   * Because this implementation returns a read-only view of the given
-   * buffer, it is safe to recyle the same buffer for consecutive reads
-   * as long as whatever consumes this `Process` never stores the `Bytes` 
-   * returned or pipes it to a combinator (like `buffer`) that does. 
-   * Use `chunkR` for a safe version of this combinator.
-   * 
-   * This implementation closes the `InputStream` when finished
-   * or in the event of an error.
-   */
-  def unsafeChunkR(is: => InputStream): Channel[Task,Array[Byte],Bytes] = {
-    resource(Task.delay(is))(
-             src => Task.delay(src.close)) { src =>
-      Task.now { (buf: Array[Byte]) => Task.delay {
-        val m = src.read(buf)
-        if (m == -1) throw End 
-        else new Bytes(buf, m) 
-      }} 
-    }
-  }
-
   /** 
    * Create a `Channel[Task,Int,Bytes]` from an `InputStream` by 
    * repeatedly requesting the given number of bytes. The last chunk 
@@ -143,7 +76,7 @@ trait io {
       os => Task.now((bytes: Array[Byte]) => Task.delay(os.write(bytes))))
 
   /** 
-   * A simple tail recursive function to collect all the output of a 
+   * A simple tail-recursive function to collect all the output of a 
    * `Process[Task,O]`. Because `Task` has a `run` function,
    * we can implement this as a tail-recursive function. 
    */
@@ -167,6 +100,79 @@ trait io {
           go(next, acc)
       }
     go(src, IndexedSeq()) 
+  }
+
+  /** Create a `Sink` from a file name and optional buffer size in bytes. */
+  def fileChunkW(f: String, bufferSize: Int = 4096): Process[Task, Array[Byte] => Task[Unit]] = 
+    chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
+
+  /**
+   * Convenience helper to produce Bytes from the Array[Byte] 
+   */
+  def fromByteArray : Process1[Array[Byte],Bytes] = 
+    processes.lift(Bytes(_))
+
+  /** 
+   * Create a `Process[Task,String]` from the lines of a file, using
+   * the `resource` combinator to ensure the file is closed
+   * when processing the stream of lines is finished. 
+   */
+  def linesR(filename: String): Process[Task,String] = 
+    resource(Task.delay(scala.io.Source.fromFile(filename)))(
+             src => Task.delay(src.close)) { src => 
+      lazy val lines = src.getLines // A stateful iterator 
+      Task.delay { if (lines.hasNext) lines.next else throw End }
+    }
+
+  /** 
+   * Generic combinator for producing a `Process[Task,O]` from some
+   * effectful `O` source. The source is tied to some resource,
+   * `R` (like a file handle) that we want to ensure is released.
+   * See `lines` below for an example use. 
+   */
+  def resource[R,O](acquire: Task[R])(
+                    release: R => Task[Unit])(
+                    step: R => Task[O]): Process[Task,O] = {
+    def go(step: Task[O], onExit: Process[Task,O]): Process[Task,O] =
+      await[Task,O,O](step) ( 
+        o => emit(o) ++ go(step, onExit) // Emit the value and repeat 
+      , onExit                           // Release resource when exhausted
+      , onExit)                          // or in event of error 
+    await(acquire)(r => {
+      val onExit = wrap(release(r)).drain
+      go(step(r), onExit)
+    }, Halt, Halt)
+  }
+
+  /**
+   * Convenience helper to get Array[Byte] out of Bytes 
+   */
+  def toByteArray: Process1[Bytes,Array[Byte]] = 
+    processes.lift(_.toArray)
+
+  /** 
+   * Create a `Channel[Task,Array[Byte],Bytes]` from an `InputStream` by 
+   * repeatedly filling the input buffer. The last chunk may be less 
+   * than the requested size.
+   * 
+   * Because this implementation returns a read-only view of the given
+   * buffer, it is safe to recyle the same buffer for consecutive reads
+   * as long as whatever consumes this `Process` never stores the `Bytes` 
+   * returned or pipes it to a combinator (like `buffer`) that does. 
+   * Use `chunkR` for a safe version of this combinator.
+   * 
+   * This implementation closes the `InputStream` when finished
+   * or in the event of an error.
+   */
+  def unsafeChunkR(is: => InputStream): Channel[Task,Array[Byte],Bytes] = {
+    resource(Task.delay(is))(
+             src => Task.delay(src.close)) { src =>
+      Task.now { (buf: Array[Byte]) => Task.delay {
+        val m = src.read(buf)
+        if (m == -1) throw End 
+        else new Bytes(buf, m) 
+      }} 
+    }
   }
 }
 
