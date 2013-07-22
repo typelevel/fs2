@@ -589,6 +589,13 @@ object Process {
   def apply[O](o: O*): Process[Nothing,O] = 
     emitSeq[Nothing,O](o, Halt)
 
+  /** Produce a (potentially infinite) source from an unfold. */
+  def unfold[S,A](s0: S)(f: S => Option[(A,S)]): Process[Task,A] =
+    wrap(Task.delay(f(s0))).flatMap {
+      case None => Halt
+      case Some((h, sN)) => emit(h) ++ unfold(sN)(f) 
+    }
+    
   /** `Process.range(0,5) == Process(0,1,2,3,4).` */
   def range(start: Int, stopExclusive: Int): Process[Nothing,Int] = 
     emitSeq(Stream.range(start,stopExclusive))
