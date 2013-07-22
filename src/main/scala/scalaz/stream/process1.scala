@@ -1,6 +1,7 @@
 package scalaz.stream
 
-import scala.collection.immutable.Vector
+import collection.immutable.Vector
+import java.nio.charset.Charset
 
 import scalaz.{\/, -\/, \/-, Monoid, Semigroup}
 
@@ -181,7 +182,12 @@ trait process1 {
     } 
     go(N.zero)
   }
+  
+  private val utf8Charset = Charset.forName("UTF-8")
 
+  /** Convert `String` inputs to UTF-8 encoded byte arrays. */
+  val utf8Encode: Process1[String,Array[Byte]] = 
+    lift(_.getBytes(utf8Charset))
 }
 
 object process1 extends process1
