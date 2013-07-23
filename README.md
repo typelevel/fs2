@@ -3,7 +3,7 @@ scalaz-stream
 
 [![Build Status](https://travis-ci.org/scalaz/scalaz-stream.png?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
 
-`scalaz-stream` is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. The design for is meant to supercede or replace older iteratee or iteratee-style libraries. Here's a simple example of its use:
+`scalaz-stream` is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. The design is meant to supercede or replace older iteratee or iteratee-style libraries. Here's a simple example of its use:
 
 ``` scala
 import scalaz.stream._
