@@ -16,14 +16,15 @@ scalacOptions ++= Seq(
 
 // https://github.com/sbt/sbt/issues/603
 conflictWarning ~= { cw =>
-  cw.copy(filter = (id: ModuleID) => true, group = (id: ModuleID) => id.organization + ":" + id.name, level = Level.Error, failOnConflict = true)
+  cw.copy(filter = (id: ModuleID) => true, group = (id: ModuleID) => id.organization + ":" + id.name, level = Level.Error)
 }
 
 libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-core" % "7.0.2",
   "org.scalaz" %% "scalaz-concurrent" % "7.0.2",
   "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.2" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.10.0" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.10.0" % "test",
+  "org.typelevel" %% "scalaz-specs2" % "0.1.4" % "test"
 )
 
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
