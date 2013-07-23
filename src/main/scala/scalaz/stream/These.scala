@@ -50,12 +50,16 @@ object These {
   
   implicit def theseInstance[X](implicit X: Monoid[X]) = 
   new Monad[({type f[y] = These[X,y]})#f] {
-    def point[Y](x: => Y): These[X,Y] = That(x) 
+    def point[Y](x: => Y): These[X,Y] = That(x)
     def bind[Y,Y2](t: These[X,Y])(f: Y => These[X,Y2]): These[X,Y2] = 
       t match {
         case a@This(_) => a
         case That(x) => f(x)
-        case Both(x,y) => f(y).mapThis(x2 => X.append(x,x2)) 
+        case Both(x1, y1) => f(y1) match {
+          case This(x2) => This(X.append(x1, x2))
+          case That(y2) => Both(x1, y2)
+          case Both(x2, y2) => Both(X.append(x1, x2), y2)
+        }
       }
   }
 
