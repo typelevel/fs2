@@ -422,24 +422,23 @@ sealed abstract class Process[+F[_],+O] {
    * relies on the `Monad[F]` to ensure stack safety. 
    */
   final def collect[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
-    def go(cur: Process[F2,O2], acc: collection.mutable.ListBuffer[O2]): F2[IndexedSeq[O2]] =
+    def go(cur: Process[F2,O2], acc: Vector[O2]): F2[IndexedSeq[O2]] =
       cur match {
         case Emit(h,t) => 
-          acc ++= h.asInstanceOf[Seq[O2]]
-          go(t.asInstanceOf[Process[F2,O2]], acc)
-        case Halt => F.point(acc.toIndexedSeq)
+          go(t.asInstanceOf[Process[F2,O2]], h.asInstanceOf[Seq[O2]].foldLeft(acc)(_ :+ _))
+        case Halt => F.point(acc)
         case Await(req,recv,fb,c) => 
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              _.fold(
                { case End => go(fb.asInstanceOf[Process[F2,O2]], acc)
                  case err => c match {
                    case Halt => C.fail(err)
-                   case _ => go(c.asInstanceOf[Process[F2,O2]] ++ wrap(C.fail(err)), new collection.mutable.ListBuffer()) 
+                   case _ => go(c.asInstanceOf[Process[F2,O2]] ++ wrap(C.fail(err)), Vector()) 
                  }
                }, o => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc))
            }
       }
-    go(this, new collection.mutable.ListBuffer[O2]())
+    go(this, Vector[O2]())
   }
 
   /** Run this `Process` solely for its final emitted value, if one exists. */
