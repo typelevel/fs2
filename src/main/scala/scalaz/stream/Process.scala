@@ -462,9 +462,21 @@ sealed abstract class Process[+F[_],+O] {
   def bufferBy(f: O => Boolean): Process[F,O] = 
     this |> process1.bufferBy(f)
 
-  /** Alias for `this |> process1.bufferBy(f)`. */
+  /** Alias for `this |> process1.bufferAll`. */
   def bufferAll: Process[F,O] = 
     this |> process1.bufferAll
+
+  /** Alias for `this |> process1.chunk(n)`. */
+  def chunk(n: Int): Process[F,Vector[O]] = 
+    this |> process1.chunk(n)
+
+  /** Alias for `this |> process1.chunkBy(f)`. */
+  def chunkBy(f: O => Boolean): Process[F,Vector[O]] = 
+    this |> process1.chunkBy(f)
+
+  /** Alias for `this |> process1.chunkAll`. */
+  def chunkAll: Process[F,Vector[O]] = 
+    this |> process1.chunkAll
 
   /** Ignores the first `n` elements output from this `Process`. */
   def drop(n: Int): Process[F,O] = 
