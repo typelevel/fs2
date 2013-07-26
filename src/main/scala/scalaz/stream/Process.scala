@@ -18,7 +18,7 @@ import \/._
  * to evaluate some `F[A]` and resume processing once the result is available. 
  * See the constructor definitions in the `Process` companion object.
  */
-sealed trait Process[+F[_],+O] {
+sealed abstract class Process[+F[_],+O] {
   
   import Process._
 
@@ -422,22 +422,24 @@ sealed trait Process[+F[_],+O] {
    * relies on the `Monad[F]` to ensure stack safety. 
    */
   final def collect[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
-    def go(cur: Process[F2,O2], acc: IndexedSeq[O2]): F2[IndexedSeq[O2]] =
+    def go(cur: Process[F2,O2], acc: collection.mutable.ListBuffer[O2]): F2[IndexedSeq[O2]] =
       cur match {
-        case Emit(h,t) => go(t.asInstanceOf[Process[F2,O2]], acc ++ h.asInstanceOf[Seq[O2]]) 
-        case Halt => F.point(acc)
+        case Emit(h,t) => 
+          acc ++= h.asInstanceOf[Seq[O2]]
+          go(t.asInstanceOf[Process[F2,O2]], acc)
+        case Halt => F.point(acc.toIndexedSeq)
         case Await(req,recv,fb,c) => 
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              _.fold(
                { case End => go(fb.asInstanceOf[Process[F2,O2]], acc)
                  case err => c match {
                    case Halt => C.fail(err)
-                   case _ => go(c.asInstanceOf[Process[F2,O2]] ++ wrap(C.fail(err)), IndexedSeq()) 
+                   case _ => go(c.asInstanceOf[Process[F2,O2]] ++ wrap(C.fail(err)), new collection.mutable.ListBuffer()) 
                  }
                }, o => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc))
            }
       }
-    go(this, IndexedSeq())
+    go(this, new collection.mutable.ListBuffer[O2]())
   }
 
   /** Run this `Process` solely for its final emitted value, if one exists. */
@@ -591,14 +593,34 @@ object Process {
 
   /** Produce a (potentially infinite) source from an unfold. */
   def unfold[S,A](s0: S)(f: S => Option[(A,S)]): Process[Task,A] =
-    wrap(Task.delay(f(s0))).flatMap {
-      case None => Halt
-      case Some((h, sN)) => emit(h) ++ unfold(sN)(f) 
-    }
+    await(Task.delay(f(s0)))(o => 
+      o.map(ht => Emit(List(ht._1), unfold(ht._2)(f))).
+        getOrElse(Halt)
+    )
     
-  /** `Process.range(0,5) == Process(0,1,2,3,4).` */
-  def range(start: Int, stopExclusive: Int): Process[Nothing,Int] = 
+  /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
+  def emitRange(start: Int, stopExclusive: Int): Process[Nothing,Int] = 
     emitSeq(Stream.range(start,stopExclusive))
+  
+  /** Lazily produce the range `[start, stopExclusive)`. */
+  def range(start: Int, stopExclusive: Int, by: Int = 1): Process[Task, Int] = 
+    unfold(start)(i => if (i < stopExclusive) Some((i,i+by)) else None)
+
+  /** 
+   * Lazily produce a sequence of nonoverlapping ranges, where each range
+   * contains `size` integers, assuming the upper bound is exclusive. 
+   * Example: `ranges(0, 1000, 10)` results in the pairs 
+   * `(0, 10), (10, 20), (20, 30) ...`
+   *
+   * Note: The last emitted range may be truncated at `stopExclusive`. For
+   * instance, `ranges(0,5,4)` results in `(0,4), (4,5)`.
+   */
+  def ranges(start: Int, stopExclusive: Int, size: Int): Process[Task, (Int, Int)] =
+    unfold(start)(lower => 
+      if (lower < stopExclusive) 
+        Some((lower -> ((lower+size) min stopExclusive), lower+size))
+      else 
+        None)
 
   /** Emit a single value, then `Halt`. */
   def emit[O](head: O): Process[Nothing,O] = 
