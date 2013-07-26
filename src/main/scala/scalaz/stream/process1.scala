@@ -91,7 +91,7 @@ trait process1 {
    */
   def fold1[A](f: (A,A) => A): Process1[A,A] = {
     def go(a: A): Process1[A,A] = 
-      emit(a) ++ await1[A].flatMap(go) 
+      emit(a) ++ await1[A].flatMap(a2 => go(f(a, a2))) 
     await1[A].flatMap(go)
   }
 
