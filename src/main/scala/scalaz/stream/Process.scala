@@ -203,9 +203,9 @@ sealed abstract class Process[+F[_],+O] {
   }
 
   /** Correctly typed deconstructor for `Await`. */
-  def asAwait: Option[(F[AwaitF.Req], AwaitF.Req => Process[F,O], Process[F,O], Process[F,O])] = 
+  def asAwait: Option[(F[Any], Any => Process[F,O], Process[F,O], Process[F,O])] = 
     this match {
-      case Await(req,recv,fb,c) => Some((req.asInstanceOf[F[AwaitF.Req]],recv,fb,c))
+      case Await(req,recv,fb,c) => Some((req,recv,fb,c))
       case _ => None
     }
 
@@ -551,7 +551,7 @@ object Process {
   object AwaitF {
     trait Req
     def unapply[F[_],O](self: Process[F,O]): 
-        Option[(F[Req], Req => Process[F,O], Process[F,O], Process[F,O])] = 
+        Option[(F[Any], Any => Process[F,O], Process[F,O], Process[F,O])] = 
       self.asAwait
   }
   object Await1 {
