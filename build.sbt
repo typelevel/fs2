@@ -16,7 +16,7 @@ scalacOptions ++= Seq(
 
 // https://github.com/sbt/sbt/issues/603
 conflictWarning ~= { cw =>
-  cw.copy(filter = (id: ModuleID) => true, group = (id: ModuleID) => id.organization + ":" + id.name, level = Level.Error, failOnConflict = true)
+  cw.copy(filter = (id: ModuleID) => true, group = (id: ModuleID) => id.organization + ":" + id.name, level = Level.Error)
 }
 
 libraryDependencies ++= Seq(

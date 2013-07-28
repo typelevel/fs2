@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import scalaz.{Monad, Monoid}
+import scalaz.{Monad, Monoid, Equal}
 
 trait These[+A,+B] {
   import These._
@@ -38,15 +38,28 @@ object These {
   case class This[+X](left: X) extends These[X, Nothing]
   case class That[+Y](right: Y) extends These[Nothing, Y]
   case class Both[+X,+Y](left: X, right: Y) extends These[X, Y]
+
+  implicit def theseEqual[X, Y](implicit X: Equal[X], Y: Equal[Y]): Equal[These[X, Y]] =
+    Equal.equal{
+      case (This(a), This(b)) => X.equal(a, b)
+      case (That(a), That(b)) => Y.equal(a, b)
+      case (a @ Both(_, _), b @ Both(_, _)) =>
+        X.equal(a.left, b.left) && Y.equal(b.right, b.right)
+      case _ => false
+    }
   
   implicit def theseInstance[X](implicit X: Monoid[X]) = 
   new Monad[({type f[y] = These[X,y]})#f] {
-    def point[Y](x: => Y): These[X,Y] = That(x) 
+    def point[Y](x: => Y): These[X,Y] = That(x)
     def bind[Y,Y2](t: These[X,Y])(f: Y => These[X,Y2]): These[X,Y2] = 
       t match {
         case a@This(_) => a
         case That(x) => f(x)
-        case Both(x,y) => f(y).mapThis(x2 => X.append(x,x2)) 
+        case Both(x1, y1) => f(y1) match {
+          case This(x2) => This(X.append(x1, x2))
+          case That(y2) => Both(x1, y2)
+          case Both(x2, y2) => Both(X.append(x1, x2), y2)
+        }
       }
   }
 
