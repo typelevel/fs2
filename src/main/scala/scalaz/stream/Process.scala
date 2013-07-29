@@ -36,6 +36,7 @@ sealed abstract class Process[+F[_],+O] {
    */
   final def flatMap[F2[x]>:F[x], O2](f: O => Process[F2,O2]): Process[F2,O2] = this match {
     case Halt => Halt
+    case Emit(Seq(o), Halt) => f(o)
     case Emit(o, t) => 
       if (o.isEmpty) t.flatMap(f)
       else f(o.head) ++ emitSeq(o.tail, t).flatMap(f)
