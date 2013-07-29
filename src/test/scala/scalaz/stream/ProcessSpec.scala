@@ -61,6 +61,10 @@ object ProcessSpec extends Properties("Process1") {
       p.toList.scanLeft(0)(_ - _) ===
       p.toSource.fold(0)(_ - _).collect.run.toList
     }) &&
+    ("sum" |: {
+      p.toList.sum[Int] ===
+      p.toSource.pipe(process1.sum).runLastOr(0).run
+    }) &&
     ("intersperse" |: {
       p.intersperse(0).toList == p.toList.intersperse(0) 
     })

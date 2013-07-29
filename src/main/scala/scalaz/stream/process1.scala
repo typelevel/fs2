@@ -83,7 +83,7 @@ trait process1 {
    * always emits at least the given `b`, even if the input is empty.
    */
   def fold[A,B](b: B)(f: (B,A) => B): Process1[A,B] = 
-    emit(b) ++ await1[A].flatMap(a => fold(f(b,a))(f))
+    emit(b) then receive1((a: A) => fold(f(b,a))(f))
   
   /** 
    * Like `fold`, but emits values starting with the first element it
@@ -91,8 +91,8 @@ trait process1 {
    */
   def fold1[A](f: (A,A) => A): Process1[A,A] = {
     def go(a: A): Process1[A,A] = 
-      emit(a) ++ await1[A].flatMap(a2 => go(f(a, a2))) 
-    await1[A].flatMap(go)
+      emit(a) then receive1((a2: A) => go(f(a, a2)))
+    receive1((a: A) => go(a))
   }
 
   /** 
@@ -175,13 +175,8 @@ trait process1 {
    * first number seen (not `0`). The length of the output `Process` always matches the 
    * length of the input `Process`. 
    */
-  def sum[N](implicit N: Numeric[N]): Process1[N,N] = {
-    def go(acc: N): Process1[N,N] = await1[N].flatMap { n => 
-      val acc2 = N.plus(acc, n)
-      emit(acc2) ++ go(acc2)
-    } 
-    go(N.zero)
-  }
+  def sum[N](implicit N: Numeric[N]): Process1[N,N] =
+    fold1(N.plus)
   
   private val utf8Charset = Charset.forName("UTF-8")
 
