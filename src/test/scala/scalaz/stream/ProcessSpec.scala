@@ -70,6 +70,10 @@ object ProcessSpec extends Properties("Process1") {
     })
   }
 
+  property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) { 
+    case (n,chunkSize) => Process.fill(n)(42, chunkSize).collect.run.toList == List.fill(n)(42) 
+  }
+
   import scalaz.concurrent.Task
 
   property("exception") = secure { 

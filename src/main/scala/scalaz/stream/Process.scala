@@ -603,6 +603,27 @@ object Process {
   def apply[O](o: O*): Process[Nothing,O] = 
     emitSeq[Nothing,O](o, Halt)
 
+  /** The infinite `Process`, always emits `a`. */
+  def constant[A](a: A, chunkSize: Int = 1): Process[Task,A] = {
+    lazy val go: Process[Task,A] = 
+      if (chunkSize.max(1) == 1)
+        await(Task.now(a))(a => Emit(List(a), go))
+      else 
+        await(Task.now(List.fill(chunkSize)(a)))(emitSeq(_, go))
+    go
+  }
+
+  /** A `Process` which emits `n` repetitions of `a`. */
+  def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process[Task,A] = {
+    val chunkN = chunkSize max 1
+    val chunkTask = Task.now(List.fill(chunkN)(a)) // we can reuse this for each step
+    def go(m: Int): Process[Task,A] = 
+      if (m >= chunkN) await(chunkTask)(emitSeq(_, go(m - chunkN)))
+      else if (m <= 0) Halt
+      else await(Task.now(List.fill(m)(a)))(emitSeq(_, Halt))
+    go(n max 0)
+  }
+
   /** Produce a (potentially infinite) source from an unfold. */
   def unfold[S,A](s0: S)(f: S => Option[(A,S)]): Process[Task,A] =
     await(Task.delay(f(s0)))(o => 
