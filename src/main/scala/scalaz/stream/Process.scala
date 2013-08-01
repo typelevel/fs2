@@ -643,7 +643,7 @@ object Process {
    * Lazily produce a sequence of nonoverlapping ranges, where each range
    * contains `size` integers, assuming the upper bound is exclusive. 
    * Example: `ranges(0, 1000, 10)` results in the pairs 
-   * `(0, 10), (10, 20), (20, 30) ...`
+   * `(0, 10), (10, 20), (20, 30) ... (990, 1000)`
    *
    * Note: The last emitted range may be truncated at `stopExclusive`. For
    * instance, `ranges(0,5,4)` results in `(0,4), (4,5)`.
