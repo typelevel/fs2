@@ -41,7 +41,7 @@ trait actor {
         else {
           val (cb, l2) = listeners.dequeue
           listeners = l2
-          cb(\/-(a))
+          cb(right(a))
         }
       case Dequeue(cb) =>
         if (q.isEmpty && terminal.isEmpty) listeners = listeners.enqueue(cb)
@@ -52,12 +52,6 @@ trait actor {
           n -= 1
           cb(right(a))
         }
-      case Close() =>
-        q = Queue(-\/(Process.End))
-        n = 1
-      case Fail(e) =>
-        q = Queue(-\/(e))
-        n = 1
       case QueueSize(cb) => cb(n)
     }
     val p = Process.repeatWrap { Task.async[A] { cb => a ! Dequeue(cb) } }
@@ -89,7 +83,7 @@ trait actor {
     val a: Actor[Msg[A]] = Actor.actor { a =>
       if (!done) a match {
         case Set(a) =>
-          ref = \/-(a)
+          ref = right(a)
           if (!(listeners eq null)) {
             listeners.foreach { _(ref) }
             listeners = null
@@ -103,10 +97,10 @@ trait actor {
           else
             cb(ref)
         case Close() =>
-          ref = -\/(Process.End)
+          ref = left(Process.End)
           done = true
         case Fail(e) =>
-          ref = -\/(e)
+          ref = left(e)
           done = true
         case OnRead(cb) =>
           val h = onRead
