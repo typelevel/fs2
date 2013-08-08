@@ -541,6 +541,11 @@ sealed abstract class Process[+F[_],+O] {
   def yip[F2[x]>:F[x],O2](p2: Process[F2,O2])(
   implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,(O,O2)] =
     this.wye(p2)(scalaz.stream.wye.yip)
+
+  /** Nondeterministic interleave of both streams. Emits values  */ 
+  def merge[F2[x]>:F[x],O2>:O](p2: Process[F2,O2])(
+  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O2] = 
+    this.wye(p2)(scalaz.stream.wye.merge)
 }
 
 object processes extends process1 with tee with wye with io
@@ -663,6 +668,25 @@ object Process {
       else
         None)
 
+  /** 
+   * Produce a continuous stream from a discrete stream by using the
+   * most recent value.  
+   */
+  def forwardFill[A](p: Process[Task,A]): Process[Task,A] = {
+    import java.util.concurrent.atomic._
+    def go(ref: AtomicReference[A], p: Process[Task, A]): Process[Task,A] = 
+      p.map(a => { ref.set(a); a }).
+        merge(repeatWrap(Task.delay { ref.get }))   
+    p match {
+      case Halt => Halt
+      case Emit(h, t) => 
+        if (h.isEmpty) forwardFill(t)
+        else wrap(Task.delay { new AtomicReference(h.head) }).flatMap(go(_, Emit(h.tail, t))) 
+      case Await(req, recv, fb, c) =>
+        Await(req, recv andThen (forwardFill), forwardFill(fb), forwardFill(c))
+    }
+  }
+     
   /** Emit a single value, then `Halt`. */
   def emit[O](head: O): Process[Nothing,O] =
     Emit[Nothing,O](Stream(head), Halt)

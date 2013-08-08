@@ -6,16 +6,8 @@ import Process._
 
 trait wye {
 
-  /** Nondeterministic version of `zipWith` which requests both sides in parallel. */
-  def yipWith[I,I2,O](f: (I,I2) => O): Wye[I,I2,O] = 
-    awaitBoth[I,I2].flatMap {
-      case These.This(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)))  
-      case These.That(i2) => awaitL[I].flatMap(i => emit(f(i,i2)))  
-      case These.Both(i,i2) => emit(f(i,i2))
-    }.repeat
-
-  /** Nondeterministic version of `zip` which requests both sides in parallel. */
-  def yip[I,I2]: Wye[I,I2,(I,I2)] = yipWith((_,_))
+  def boundedQueue[I](n: Int): Wye[Any,I,I] = 
+    byipWith(n)((i,i2) => i2) 
 
   /** 
    * Buffered version of `yipWith`. Allows up to `n` elements to enqueue on the
@@ -40,8 +32,34 @@ trait wye {
     go(Queue())
   }
 
-  def boundedQueue[I](n: Int): Wye[Any,I,I] = 
-    byipWith(n)((i,i2) => i2) 
+  /** 
+   * Nondeterminstic interleave of both inputs. Emits values whenever either
+   * of the inputs is available.
+   */
+  def merge[I]: Wye[I,I,I] = {
+    def go(biasL: Boolean): Wye[I,I,I] = 
+      receiveBoth[I,I,I]({
+        case These.This(i) => emit(i) then (go(!biasL))
+        case These.That(i) => emit(i) then (go(!biasL))
+        case These.Both(i,i2) => 
+          if (biasL) emitSeq(List(i,i2)) then (go(!biasL)) 
+          else       emitSeq(List(i2,i)) then (go(!biasL)) 
+      } 
+    )
+    go(true)
+  }
+
+  /** Nondeterministic version of `zipWith` which requests both sides in parallel. */
+  def yipWith[I,I2,O](f: (I,I2) => O): Wye[I,I2,O] = 
+    awaitBoth[I,I2].flatMap {
+      case These.This(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)))  
+      case These.That(i2) => awaitL[I].flatMap(i => emit(f(i,i2)))  
+      case These.Both(i,i2) => emit(f(i,i2))
+    }.repeat
+
+  /** Nondeterministic version of `zip` which requests both sides in parallel. */
+  def yip[I,I2]: Wye[I,I2,(I,I2)] = yipWith((_,_))
+
 }
 
 object wye extends wye
