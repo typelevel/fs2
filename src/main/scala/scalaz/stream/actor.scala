@@ -12,14 +12,14 @@ trait actor {
    * Returns a discrete `Process` stream that can be added to or
    * halted asynchronously by sending the returned `Actor` messages.
    *
-   * `message.queue.enqueue(a)` adds an element to the stream in FIFO order, 
-   * `message.queue.close` terminates the stream, 
+   * `message.queue.enqueue(a)` adds an element to the stream in FIFO order,
+   * `message.queue.close` terminates the stream,
    * `message.queue.cancel` terminates the stream immediately, ignoring queued messages,
    * `message.queue.fail(e)` terminates the stream with the given error, and
-   * `message.queue.fail(e,true)` terminates the stream with the given error, ignoring queued messages. 
-   * 
-   * Note that the memory usage of the actor can grow unbounded if 
-   * `enqueue` messages are sent to the actor faster than 
+   * `message.queue.fail(e,true)` terminates the stream with the given error, ignoring queued messages.
+   *
+   * Note that the memory usage of the actor can grow unbounded if
+   * `enqueue` messages are sent to the actor faster than
    * they are dequeued by whatever consumes the output `Process`.
    * Use the `message.queue.size` message to asynchronously check the
    * queue size and throttle whatever is feeding the actor messages.
@@ -30,11 +30,11 @@ trait actor {
     var n = 0 // size of q
     var done = false
     var listeners: Queue[(Throwable \/ A) => Unit] = Queue()
-    val a: Actor[Msg[A]] = Actor.actor { 
+    val a: Actor[Msg[A]] = Actor.actor {
       case Enqueue(a) if !done =>
         if (listeners.isEmpty) { q = q.enqueue(right(a)); n += 1 }
-        else { 
-          val (cb, l2) = listeners.dequeue 
+        else {
+          val (cb, l2) = listeners.dequeue
           listeners = l2
           cb(right(a))
         }
@@ -46,13 +46,19 @@ trait actor {
           n -= 1
           cb(a)
         }
-      case Close(cancel) if !done => 
-        if (cancel) { q = Queue(-\/(Process.End)); n = 0 }
-        else q = q.enqueue(-\/(Process.End))
-        done = true
-      case Fail(e,cancel) if !done => 
-        if (cancel) { q = Queue(-\/(e)); n = 0 }
-        else q = q.enqueue(-\/(e))
+      case Close(cancel) if !done =>
+        if (listeners.isEmpty) {
+          if (cancel) { q = Queue(left(Process.End)); n = 0 }
+          else q = q.enqueue(left(Process.End))
+          done = true
+        } else {
+          val (cb, l2) = listeners.dequeue
+          listeners = l2
+          cb(left(Process.End))
+        }
+      case Fail(e,cancel) if !done =>
+        if (cancel) { q = Queue(left(e)); n = 0 }
+        else q = q.enqueue(left(e))
         done = true
       case QueueSize(cb) => cb(n)
       case _ => ()
