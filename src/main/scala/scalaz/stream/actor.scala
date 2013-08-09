@@ -11,8 +11,10 @@ trait actor {
    * Returns a discrete `Process` stream that can be added to or 
    * halted asynchronously by sending the returned `Actor` messages.
    * `message.queue.enqueue(a)` adds an element to the stream in FIFO order, 
-   * `message.queue.close` terminates the stream, and 
-   * `message.queue.fail(e)` terminates the stream with the given error. 
+   * `message.queue.close` terminates the stream, 
+   * `message.queue.cancel` terminates the stream immediately, ignoring queued messages,
+   * `message.queue.fail(e)` terminates the stream with the given error, and
+   * `message.queue.fail(e,true)` terminates the stream with the given error, ignoring queued messages. 
    * 
    * Note that the memory usage of the actor can grow unbounded if 
    * `enqueue` messages are sent to the actor faster than 
@@ -24,9 +26,10 @@ trait actor {
     import message.queue._
     var q = Queue[Throwable \/ A]()
     var n = 0 // size of q
+    var done = false
     var listeners: Queue[(Throwable \/ A) => Unit] = Queue()
-    val a: Actor[Msg[A]] = Actor.actor {
-      case Enqueue(a) =>
+    val a: Actor[Msg[A]] = Actor.actor { msg => println(msg); msg match {
+      case Enqueue(a) if !done =>
         if (listeners.isEmpty) { q = q.enqueue(\/-(a)); n += 1 }
         else { 
           val (cb, l2) = listeners.dequeue 
@@ -41,14 +44,17 @@ trait actor {
           n -= 1
           cb(a)
         }
-      case Close() => 
-        q = Queue(-\/(Process.End)) 
-        n = 1
-      case Fail(e) => 
-        q = Queue(-\/(e))
-        n = 1
+      case Close(cancel) if !done => 
+        if (cancel) { q = Queue(-\/(Process.End)); n = 0 }
+        else q = q.enqueue(-\/(Process.End))
+        done = true
+      case Fail(e,cancel) if !done => 
+        if (cancel) { q = Queue(-\/(e)); n = 0 }
+        else q = q.enqueue(-\/(e))
+        done = true
       case QueueSize(cb) => cb(n)
-    }
+      case _ => ()
+    }}
     val p = Process.repeatWrap { Task.async[A] { cb => a ! Dequeue(cb) } }
     (a, p)
   }
@@ -120,8 +126,8 @@ object message {
     trait Msg[A]
     case class Dequeue[A](callback: (Throwable \/ A) => Unit) extends Msg[A] 
     case class Enqueue[A](a: A) extends Msg[A]
-    case class Fail[A](error: Throwable) extends Msg[A]
-    case class Close[A]() extends Msg[A]
+    case class Fail[A](error: Throwable, cancel: Boolean) extends Msg[A]
+    case class Close[A](cancel: Boolean) extends Msg[A]
     case class QueueSize[A](callback: Int => Unit) extends Msg[A]
 
     def enqueue[A](a: A): Msg[A] =
@@ -135,8 +141,9 @@ object message {
 
     def size[A](cb: Int => Unit): Msg[A] = QueueSize(cb)
     
-    def close[A]: Msg[A] = Close[A]()
-    def fail[A](err: Throwable): Msg[A] = Fail(err)
+    def close[A]: Msg[A] = Close[A](false)
+    def cancel[A]: Msg[A] = Close[A](true)
+    def fail[A](err: Throwable, cancel: Boolean = false): Msg[A] = Fail(err, cancel)
   }
 
   object variable {
