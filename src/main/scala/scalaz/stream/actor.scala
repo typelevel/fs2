@@ -26,40 +26,56 @@ trait actor {
    */
   def queue[A](implicit S: Strategy): (Actor[message.queue.Msg[A]], Process[Task, A]) = {
     import message.queue._
-    var q = Queue[Throwable \/ A]()
+    var q: Queue[Throwable \/ A] \/ Queue[(Throwable \/ A) => Unit] = left(Queue())
+    // var q = Queue[Throwable \/ A]()
     var n = 0 // size of q
     var done = false
-    var listeners: Queue[(Throwable \/ A) => Unit] = Queue()
     val a: Actor[Msg[A]] = Actor.actor {
-      case Enqueue(a) if !done =>
-        if (listeners.isEmpty) { q = q.enqueue(right(a)); n += 1 }
-        else {
-          val (cb, l2) = listeners.dequeue
-          listeners = l2
-          cb(right(a))
-        }
-      case Dequeue(cb) =>
-        if (q.isEmpty) listeners = listeners.enqueue(cb)
-        else {
-          val (a, q2) = q.dequeue
-          q = q2
-          n -= 1
-          cb(a)
-        }
-      case Close(cancel) if !done =>
-        if (listeners.isEmpty) {
-          if (cancel) { q = Queue(left(Process.End)); n = 0 }
-          else q = q.enqueue(left(Process.End))
+      case Enqueue(a) if !done => q match {
+        case -\/(ready) => 
+          q = left(ready.enqueue(right(a)))
+          n += 1
+        case \/-(listeners) => 
+          if (listeners.isEmpty) q = left(Queue(right(a))) 
+          else {
+            val (cb, l2) = listeners.dequeue
+            q = if (l2.isEmpty) left(Queue()) else right(l2)
+            cb(right(a)) 
+          }
+      }
+      case Dequeue(cb) => q match {
+        case -\/(ready) =>
+          if (ready.isEmpty) q = right(Queue(cb))
+          else {
+            val (a, r2) = ready.dequeue
+            cb(a)
+            n -= 1
+            q = left(r2) 
+          }
+        case \/-(listeners) => q = right(listeners.enqueue(cb))
+      }
+      case Close(cancel) if !done => q match {
+        case -\/(ready) => 
+          if (cancel) { q = left(Queue(left(Process.End))); n = 0 }
+          else { q = left(ready.enqueue(left(Process.End))) }
           done = true
-        } else {
-          val (cb, l2) = listeners.dequeue
-          listeners = l2
-          cb(left(Process.End))
-        }
-      case Fail(e,cancel) if !done =>
-        if (cancel) { q = Queue(left(e)); n = 0 }
-        else q = q.enqueue(left(e))
-        done = true
+        case \/-(listeners) =>
+          val end = left(Process.End)
+          listeners.foreach(_(end)) 
+          q = left(Queue(end)) 
+          n = 0
+      }
+      case Fail(e,cancel) if !done => q match {
+        case -\/(ready) => 
+          if (cancel) { q = left(Queue(left(e))); n = 0 }
+          else q = left(ready.enqueue(left(e)))
+          done = true
+        case \/-(listeners) => 
+          val end = left(e)
+          listeners.foreach(_(end))
+          q = left(Queue(end))
+          n = 0
+      } 
       case QueueSize(cb) => cb(n)
       case _ => ()
     }
@@ -68,7 +84,7 @@ trait actor {
   }
 
   /**
-   * Returns a continuous `Process` stream whose value can be set
+   * Returns a continuous `Process` whose value can be set
    * asynchronously using the returned `Actor`.
    *
    * `message.variable.set(a)` sets the value of the stream,
@@ -76,12 +92,6 @@ trait actor {
    * `message.variable.fail(e)` terminates the stream with the given error, and
    * `message.variable.onRead(cb)` registers the given action to be run when
    * the variable is first read.
-   *
-   * Note that the memory usage of the actor can grow unbounded if
-   * `Msg.Enqueue` messages are sent to the actor faster than
-   * they are dequeued by whatever consumes the output `Process`.
-   * Use the `Msg.QueueSize` message to asynchronously check the
-   * queue size and throttle whatever is feeding the actor messages.
    */
   def variable[A](implicit S: Strategy): (Actor[message.variable.Msg[A]], Process[Task, A]) = {
     import message.variable._
@@ -89,32 +99,35 @@ trait actor {
     var done = false
     var listeners: Queue[(Throwable \/ A) => Unit] = null
     var onRead = () => { () }
-    val a: Actor[Msg[A]] = Actor.actor { a =>
-      if (!done) a match {
-        case Set(a) =>
-          ref = right(a)
-          if (!(listeners eq null)) {
-            listeners.foreach { _(ref) }
-            listeners = null
-          }
-        case Get(cb) =>
-          if (ref eq null) {
-            if (listeners eq null) listeners = Queue()
-            listeners = listeners.enqueue(cb)
-            onRead()
-          }
-          else
-            cb(ref)
-        case Close() =>
-          ref = left(Process.End)
-          done = true
-        case Fail(e) =>
-          ref = left(e)
-          done = true
-        case OnRead(cb) =>
-          val h = onRead
-          onRead = () => { h(); cb() }
-      }
+    val a: Actor[Msg[A]] = Actor.actor {
+      case Set(a) if !done =>
+        ref = right(a)
+        if (!(listeners eq null)) {
+          listeners.foreach { _(ref) }
+          listeners = null
+        }
+      case Get(cb) =>
+        if (ref eq null) {
+          if (listeners eq null) listeners = Queue()
+          listeners = listeners.enqueue(cb)
+          onRead()
+        }
+        else
+          cb(ref)
+      case Close() if !done =>
+        ref = left(Process.End)
+        done = true
+        if (listeners eq null) {}
+        else { listeners.foreach(_(ref)); listeners = null }
+      case Fail(e) if !done =>
+        ref = left(e)
+        done = true
+        if (listeners eq null) {}
+        else { listeners.foreach(_(ref)); listeners = null }
+      case OnRead(cb) if !done =>
+        val h = onRead
+        onRead = () => { h(); cb() }
+      case _ => ()
     }
     val p = Process.repeatWrap { Task.async[A] { cb => a ! Get(cb) } }
     (a, p)
