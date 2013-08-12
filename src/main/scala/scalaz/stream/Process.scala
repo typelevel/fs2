@@ -274,6 +274,7 @@ sealed abstract class Process[+F[_],+O] {
    * and/or its inputs.
    */
   final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(y: Wye[O,O2,O3])(implicit F2: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O3] = {
+    // Implementation is a horrifying mess, due mainly to Scala's broken pattern matching
     import F2.monadSyntax._
     try y match {
       case Halt => this.kill ++ p2.kill
@@ -341,24 +342,31 @@ sealed abstract class Process[+F[_],+O] {
                 // Nondeterminism instance to request both sides
                 // concurrently.
                 case AwaitF(reqR, recvR, fbR, cR) =>
-                  wrap(
-                    F2.choose(
-                      E.attempt(reqL.map(recvL)).map {
-                        _.fold({ case End => fbL
-                                 case t: Throwable => cL ++ (throw t)
-                               },
-                               e => e)
+                  wrap(F2.choose(E.attempt(reqL), E.attempt(reqR))).flatMap {
+                    _.fold(
+                      { case (winningReqL, losingReqR) => 
+                          winningReqL.fold(
+                            { case End => fbL.wye(Await(rethrow(losingReqR), recvR, fbR, cR))(y2)
+                              case t: Throwable => cL.wye(Await(rethrow(losingReqR), recvR, fbR, cR))(y2) ++ (throw t)
+                            },
+                            res => {
+                              val nextL = recvL(res)
+                              nextL.wye(Await(rethrow(losingReqR), recvR, fbR, cR))(y2) 
+                            }
+                          )
                       },
-                      E.attempt(reqR.map(recvR)).map {
-                        _.fold({ case End => fbR
-                                 case t: Throwable => cR ++ (throw t)
-                               },
-                               e => e)
+                      { case (losingReqL, winningReqR) => 
+                          winningReqR.fold(
+                            { case End => Await(rethrow(losingReqL), recvL, fbL, cL).wye(fbR)(y2)
+                              case t: Throwable => Await(rethrow(losingReqL), recvL, fbL, cL).wye(cR)(y2) ++ (throw t)
+                            },
+                            res => {
+                              val nextR = recvR(res)
+                              Await(rethrow(losingReqL), recvL, fbL, cL).wye(nextR)(y2)
+                            }
+                          )
                       }
-                    )
-                  ).flatMap {
-                    _.fold(l => wrap(l._2).flatMap(p2 => l._1.wye(p2)(y2)),
-                           r => wrap(r._1).flatMap(t => t.wye(r._2)(y2)))
+                    ) 
                   }
               }
             }
@@ -1074,6 +1082,9 @@ object Process {
     implicit def substProcess[A](p: Process[F,A]): Process[G,A] =
       subst[({type c[f[_],x] = Process[f,x]})#c, A](p)
   }
+
+  private[stream] def rethrow[F[_],A](f: F[Throwable \/ A])(implicit F: Nondeterminism[F], E: Catchable[F]): F[A] =
+    F.bind(f)(_.fold(E.fail, F.pure(_))) 
 
   // boilerplate to enable monadic infix syntax without explicit imports
 
