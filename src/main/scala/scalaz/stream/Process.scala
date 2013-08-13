@@ -3,7 +3,7 @@ package scalaz.stream
 import scala.collection.immutable.{IndexedSeq,SortedMap,Queue,Vector}
 
 import scalaz.{Catchable,Monad,MonadPlus,Monoid,Nondeterminism,Semigroup}
-import scalaz.concurrent.Task
+import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
 import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
 import \/._
@@ -670,28 +670,44 @@ object Process {
    * instance, `ranges(0,5,4)` results in `(0,4), (4,5)`.
    */
   def ranges(start: Int, stopExclusive: Int, size: Int): Process[Task, (Int, Int)] =
-    unfold(start)(lower =>
+    if (size <= 0) sys.error("size must be > 0, was: " + size)
+    else unfold(start)(lower =>
       if (lower < stopExclusive)
         Some((lower -> ((lower+size) min stopExclusive), lower+size))
       else
         None)
-
+  
+  /** 
+   * Convert a `Process` to a `Task` which can be run repeatedly to generate
+   * the elements of the `Process`.
+   */
+  def toTask[A](p: Process[Task,A]): Task[A] = {
+    var cur = p
+    def go: Task[A] = cur match {
+      case Halt => Task.fail(End) 
+      case Emit(h, t) => 
+        if (h.isEmpty) { cur = t; go }
+        else { val ret = Task.now(h.head); cur = Emit(h.tail, t); ret } 
+      case Await(req, recv, fb, c) => 
+        req.attempt.flatMap {
+          case -\/(End) => cur = fb; go 
+          case -\/(t: Throwable) => cur = c; go.flatMap(_ => Task.fail(t))
+          case \/-(resp) => cur = recv(resp); go
+        } 
+    }
+    Task.delay(go).flatMap(a => a)
+  }
+    
   /** 
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.  
    */
-  def forwardFill[A](p: Process[Task,A]): Process[Task,A] = {
-    import java.util.concurrent.atomic._
-    def go(ref: AtomicReference[A], p: Process[Task, A]): Process[Task,A] = 
-      p.map(a => { ref.set(a); a }).
-        merge(repeatWrap(Task.delay { ref.get }))   
-    p match {
-      case Halt => Halt
-      case Emit(h, t) => 
-        if (h.isEmpty) forwardFill(t)
-        else wrap(Task.delay { new AtomicReference(h.head) }).flatMap(go(_, Emit(h.tail, t))) 
-      case Await(req, recv, fb, c) =>
-        Await(req, recv andThen (forwardFill), forwardFill(fb), forwardFill(c))
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy): Process[Task,A] = {
+    wrap(Task.delay {}).flatMap { _ => 
+      val (v, pvar) = actor.variable[A]
+      val t = toTask(p).map(a => v ! message.variable.set(a))
+      val setvar = repeatWrap(t).drain
+      pvar.merge(setvar)
     }
   }
      
@@ -718,8 +734,8 @@ object Process {
    * exception results in control switching to the `fallback` case of
    * whatever `Process` is being run.
    */
-  case object End extends Exception { //scala.util.control.ControlThrowable {
-    //override def fillInStackTrace = this
+  case object End extends scala.util.control.ControlThrowable {
+    override def fillInStackTrace = this
   }
 
   case class Env[-I,-I2]() {
@@ -856,6 +872,18 @@ object Process {
       }
       go(self, input)
     }
+  }
+
+  /**
+   * This class provides infix syntax specific to `Process[Task, _]`.
+   */
+  implicit class SourceSyntax[O](self: Process[Task, O]) {
+
+    /** Infix syntax for `Process.forwardFill`. */
+    def forwardFill: Process[Task,O] = Process.forwardFill(self) 
+
+    /** Infix syntax for `Process.toTask`. */
+    def toTask: Task[O] = Process.toTask(self) 
   }
 
   /**
