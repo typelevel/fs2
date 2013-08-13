@@ -734,7 +734,7 @@ object Process {
    * exception results in control switching to the `fallback` case of
    * whatever `Process` is being run.
    */
-  case object End extends scala.util.control.ControlThrowable {
+  case object End extends Exception {
     override def fillInStackTrace = this
   }
 
