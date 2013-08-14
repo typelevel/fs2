@@ -2,6 +2,7 @@ package scalaz.stream
 
 import collection.immutable.Queue
 
+import scalaz.{\/, -\/, \/-}
 import Process._
 
 trait wye {
@@ -48,6 +49,10 @@ trait wye {
     )
     go(true)
   }
+
+  def either[I,I2]: Wye[I,I2,I \/ I2] = 
+    merge[I \/ I2].contramapL((i: I) => -\/(i)).
+                   contramapR((i2: I2) => \/-(i2))
 
   /** Nondeterministic version of `zipWith` which requests both sides in parallel. */
   def yipWith[I,I2,O](f: (I,I2) => O): Wye[I,I2,O] = 
