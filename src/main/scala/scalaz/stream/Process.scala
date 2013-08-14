@@ -914,6 +914,23 @@ object Process {
   }
 
   /**
+   * This class provides infix syntax specific to `Tee`. We put these here
+   * rather than trying to cram them into `Process` itself using implicit
+   * equality witnesses. This doesn't work out so well due to variance
+   * issues.
+   */
+  implicit class TeeSyntax[I,I2,O](self: Tee[I,I2,O]) {
+
+    /** Transform the left input to a `Tee`. */
+    def contramapL[I0](f: I0 => I): Tee[I,I2,O] = 
+      self.contramapL_(f).asInstanceOf[Tee[I,I2,O]]
+
+    /** Transform the right input to a `Tee`. */
+    def contramapR[I3](f: I3 => I2): Tee[I,I3,O] = 
+      self.contramapR_(f).asInstanceOf[Tee[I,I3,O]]
+  }
+
+  /**
    * This class provides infix syntax specific to `Wye`. We put these here
    * rather than trying to cram them into `Process` itself using implicit
    * equality witnesses. This doesn't work out so well due to variance
@@ -959,6 +976,32 @@ object Process {
         case 1 => fb.detachR
         case 2 => Await(Get[I], (These.This(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
       }
+    }
+
+    /** Transform the left input to a `Wye`. */
+    def contramapL[I0](f: I0 => I): Wye[I0, I2, O] =
+      contramapL_(f)
+
+    /** Transform the right input to a `Wye`. */
+    def contramapR[I3](f: I3 => I2): Wye[I, I3, O] =
+      contramapR_(f)
+
+    private[stream] def contramapL_[I0](f: I0 => I): Wye[I0, I2, O] = self match {
+      case Halt => Halt
+      case Emit(h, t) => Emit(h, t.contramapL_(f))
+      case AwaitL(recv, fb, c) => 
+        awaitL.flatMap(f andThen recv andThen (_.contramapL_(f))).
+               onFallback(fb.contramapL_(f)).
+               onError(c.contramapL_(f))
+    }
+
+    private[stream] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] = self match {
+      case Halt => Halt
+      case Emit(h, t) => Emit(h, t.contramapR_(f))
+      case AwaitR(recv, fb, c) => 
+        awaitR.flatMap(f andThen recv andThen (_.contramapR_(f))).
+               onFallback(fb.contramapR_(f)).
+               onError(c.contramapR_(f))
     }
   }
 
