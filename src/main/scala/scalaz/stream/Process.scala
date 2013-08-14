@@ -1127,6 +1127,14 @@ object Process {
   def repeatWrap[F[_],O](t: F[O]): Process[F,O] =
     wrap(t).repeat
 
+  /** 
+   * Produce `p` lazily, guarded by a single `Await`. Useful if 
+   * producing the process involves allocation of some mutable
+   * resource we want to ensure is accessed in a single-threaded way. 
+   */
+  def lazily[A](p: => Process[Task, A]): Process[Task, A] =
+    await(Task.now {})(_ => p) 
+
   // a failed attempt to work around Scala's broken type refinement in
   // pattern matching by supplying the equality witnesses manually
 
