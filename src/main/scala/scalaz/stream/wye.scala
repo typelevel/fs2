@@ -8,13 +8,23 @@ import Process._
 trait wye {
 
   def boundedQueue[I](n: Int): Wye[Any,I,I] = 
-    byipWith(n)((i,i2) => i2) 
+    byipWithL(n)((i,i2) => i2) 
 
   /** 
-   * Buffered version of `yipWith`. Allows up to `n` elements to enqueue on the
-   * left unanswered before requiring a response from the right. 
+   * Left-biased, buffered version of `yip`. Allows up to `n` elements to enqueue on the
+   * left unanswered before requiring a response from the right. If buffer is empty,
+   * always reads from the left. 
    */ 
-  def byipWith[I,O,O2](n: Int)(f: (I,O) => O2): Wye[I,O,O2] = {
+  def byipL[I,I2](n: Int): Wye[I,I2,(I,I2)] = 
+    byipWithL(n)((_,_))
+
+  /** 
+   * Left-biased, buffered version of `yipWith`. Allows up to `n` elements to enqueue on the
+   * left unanswered before requiring a response from the right. If buffer is empty,
+   * always reads from the left. 
+   */ 
+  def byipWithL[I,O,O2](n: Int)(f: (I,O) => O2): Wye[I,O,O2] = {
+    // todo: switch to vector, or track size
     def go(buf: Queue[I]): Wye[I,O,O2] =
       if (buf.size > n) awaitR[O].flatMap { o => 
         val (i,buf2) = buf.dequeue
@@ -64,7 +74,6 @@ trait wye {
 
   /** Nondeterministic version of `zip` which requests both sides in parallel. */
   def yip[I,I2]: Wye[I,I2,(I,I2)] = yipWith((_,_))
-
 }
 
 object wye extends wye
