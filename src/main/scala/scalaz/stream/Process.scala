@@ -135,36 +135,23 @@ sealed abstract class Process[+F[_],+O] {
   }
 
   /**
-   * Replaces the outermost `fallback` parameter of `Await`.
+   * Append to the `fallback` and `cleanup` arguments of the _next_ `Await`.
    */
-  final def orElse[F2[x]>:F[x],O2>:O](fallback: Process[F2,O2]): Process[F2,O2] = this match {
-    case Await(req,recv,fb,c) => Await(req,recv,fallback,c)
-    case Emit(h, t) => Emit(h, t.orElse(fallback))
+  final def orElse[F2[x]>:F[x],O2>:O](fallback: => Process[F2,O2], cleanup: => Process[F2,O2] = Halt): Process[F2,O2] = this match {
+    case Await(req,recv,fb,c) => Await(req, recv, fb ++ fallback, c ++ cleanup)
+    case Emit(h, t) => Emit(h, t.orElse(fallback, cleanup))
     case Halt => Halt
   }
 
   /**
-   * Replaces the outermost `fallback` parameter of `Await`.
+   * Run `p2` after this `Process` completes normally, or in the event of an error. 
+   * This behaves almost identically to `append`, except that `p1 append p2` will 
+   * not run `p2` if `p1` halts with an error. 
    */
-  final def onFallback[F2[x]>:F[x],O2>:O](fallback: Process[F2,O2]): Process[F2,O2] =
-    orElse(fallback)
-
-  /**
-   * Replaces the outermost `cleanup` parameter of `Await`.
-   */
-  final def onError[F2[x]>:F[x],O2>:O](handler: Process[F2,O2]): Process[F2,O2] = this match {
-    case Await(req,recv,fb,c) => Await(req,recv,fb,handler)
-    case Emit(h, t) => Emit(h, t.onError(handler))
-    case Halt => Halt
-  }
-
-  /**
-   * Replaces the outermost `fallback` and `cleanup` parameters of `Await`.
-   */
-  final def onFallbackOrError[F2[x]>:F[x],O2>:O](handler: Process[F2,O2]): Process[F2,O2] = this match {
-    case Await(req,recv,fb,c) => Await(req,recv,handler,handler)
-    case Emit(h, t) => Emit(h, t.onFallbackOrError(handler))
-    case Halt => Halt
+  final def onComplete[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
+    case Await(req,recv,fb,c) => Await(req, recv andThen (_.onComplete(p2)), fb.onComplete(p2), c.onComplete(p2))
+    case Emit(h, t) => Emit(h, t.onComplete(p2))
+    case Halt => p2
   }
 
   /**
@@ -991,8 +978,7 @@ object Process {
       case Emit(h, t) => Emit(h, t.contramapL_(f))
       case AwaitL(recv, fb, c) => 
         awaitL.flatMap(f andThen recv andThen (_.contramapL_(f))).
-               onFallback(fb.contramapL_(f)).
-               onError(c.contramapL_(f))
+               orElse(fb.contramapL_(f), c.contramapL_(f))
     }
 
     private[stream] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] = self match {
@@ -1000,8 +986,7 @@ object Process {
       case Emit(h, t) => Emit(h, t.contramapR_(f))
       case AwaitR(recv, fb, c) => 
         awaitR.flatMap(f andThen recv andThen (_.contramapR_(f))).
-               onFallback(fb.contramapR_(f)).
-               onError(c.contramapR_(f))
+               orElse(fb.contramapR_(f), c.contramapR_(f))
     }
   }
 
@@ -1084,13 +1069,17 @@ object Process {
      * action. To allow for concurrent evaluation, use `sequence`
      * or `gather`.
      */
-    def eval: Process[F,O] = self match {
-      case Halt => Halt
-      case Emit(h, t) =>
-        if (h.isEmpty) t.eval
-        else await[F,O,O](h.head)(o => emit(o) ++ emitSeq(h.tail, t).eval)
-      case Await(req,recv,fb,c) =>
-        await(req)(recv andThen (_ eval), fb.eval, c.eval)
+    def eval: Process[F,O] = {
+      def go(cur: Process[F,F[O]], fallback: Process[F,O], cleanup: Process[F,O]): Process[F,O] =
+        cur match {
+          case Halt => Halt
+          case Emit(h, t) => 
+            if (h.isEmpty) go(t, fallback, cleanup)
+            else await[F,O,O](h.head)(o => Emit(List(o), go(Emit(h.tail, t), fallback, cleanup)), fallback, cleanup)
+          case Await(req,recv,fb,c) => 
+            await(req)(recv andThen (go(_, fb.eval, c.eval)), fb.eval, c.eval)
+        }
+      go(self, Halt, Halt)
     }
 
     /**
