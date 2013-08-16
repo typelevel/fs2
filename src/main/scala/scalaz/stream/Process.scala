@@ -641,7 +641,7 @@ object Process {
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
   def emitRange(start: Int, stopExclusive: Int): Process[Nothing,Int] =
-    emitSeq(Stream.range(start,stopExclusive))
+    emitSeq(start until stopExclusive)
 
   /** Lazily produce the range `[start, stopExclusive)`. */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process[Task, Int] =
@@ -700,7 +700,7 @@ object Process {
      
   /** Emit a single value, then `Halt`. */
   def emit[O](head: O): Process[Nothing,O] =
-    Emit[Nothing,O](Stream(head), Halt)
+    Emit[Nothing,O](List(head), Halt)
 
   /** Emit a sequence of values, then `Halt`. */
   def emitAll[O](seq: Seq[O]): Process[Nothing,O] =
