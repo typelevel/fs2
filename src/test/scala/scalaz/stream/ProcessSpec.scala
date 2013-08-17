@@ -81,8 +81,6 @@ object ProcessSpec extends Properties("Process1") {
     val tasks = Process(Task(1), Task(2), Task(throw Err), Task(3))
     (try { tasks.eval.pipe(processes.sum).collect.run; false }
      catch { case Err => true }) &&
-    (try { io.collectTask(tasks.eval.pipe(processes.sum)); false }
-     catch { case Err => true }) &&
     (tasks.eval.pipe(processes.sum).
       handle { case e: Throwable => -6 }.
       collect.run.last == -6)

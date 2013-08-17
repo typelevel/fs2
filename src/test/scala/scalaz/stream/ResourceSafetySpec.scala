@@ -33,7 +33,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     val p1 = src.map(i => if ((i%3) == 0) die else i).onComplete(cleanup)
     val p2 = src.filter(i => if ((i%3) == 0) die else true).onComplete(cleanup)
     val p3 = src.pipe(process1.lift((i: Int) => if ((i%3) == 0) die else true)).onComplete(cleanup)
-    try { List(p1.run, p2.run, p3.run).sequence.run }
+    try List(p1.run, p2.run, p3.run).sequence.run
     catch { case e: Throwable => () }
     ok ?= 3
   }

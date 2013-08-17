@@ -29,7 +29,7 @@ trait io {
       val onExit = wrap(flushAndRelease(r))
       val onFailure = onExit.drain
       go(step(r), onExit, onFailure)
-    }, Halt, Halt)
+    }, halt, halt)
   }
 
   /**
@@ -75,33 +75,6 @@ trait io {
     resource(Task.delay(os))(os => Task.delay(os.close))(
       os => Task.now((bytes: Array[Byte]) => Task.delay(os.write(bytes))))
 
-  /**
-   * A simple tail-recursive function to collect all the output of a
-   * `Process[Task,O]`. Because `Task` has a `run` function,
-   * we can implement this as a tail-recursive function.
-   */
-  def collectTask[O](src: Process[Task,O]): IndexedSeq[O] = {
-    @annotation.tailrec
-    def go(cur: Process[Task,O], acc: IndexedSeq[O]): IndexedSeq[O] =
-      cur match {
-        case Emit(h,t) => go(t, acc ++ h)
-        case Halt => acc
-        case Await(req,recv,fb,err) =>
-          val next =
-            try recv(req.run)
-            catch {
-              case End => fb // Normal termination
-              case e: Exception => err match {
-                case Halt => throw e // ensure exception is eventually thrown;
-                                     // without this we'd infinite loop
-                case _ => err ++ wrap(Task.delay(throw e))
-              }
-            }
-          go(next, acc)
-      }
-    go(src, IndexedSeq())
-  }
-
   /** Create a `Sink` from a file name and optional buffer size in bytes. */
   def fileChunkW(f: String, bufferSize: Int = 4096): Process[Task, Array[Byte] => Task[Unit]] =
     chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
@@ -145,7 +118,7 @@ trait io {
     await(acquire)(r => {
       val onExit = wrap(release(r)).drain
       go(step(r), onExit)
-    }, Halt, Halt)
+    }, halt, halt)
   }
 
   /**
