@@ -506,14 +506,10 @@ sealed abstract class Process[+F[_],+O] {
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              _.fold(
                { case End => go(fb.asInstanceOf[Process[F2,O2]], acc)
-                 case err => c match {
-                   case Halt(e) => e match {
-                     case End => C.fail(err)
-                     case _ => C.fail(CausedBy(e, err))
-                   }
-                   case _ => go(c.asInstanceOf[Process[F2,O2]] ++ wrap(C.fail(err)), Vector())
-                 }
-               }, o => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc))
+                 case e => go(c.asInstanceOf[Process[F2,O2]].causedBy(e), acc)
+               },
+               o => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc)
+             )
            }
       }
     go(this, Vector[O2]())
@@ -808,7 +804,17 @@ object Process {
     override def fillInStackTrace = this
   }
 
-  case class CausedBy(e: Throwable, cause: Throwable) extends Exception
+  class CausedBy(e: Throwable, cause: Throwable) extends Exception {
+    override def toString = s"$e\n\ncaused by:\n\n$cause"
+  }
+  
+  object CausedBy {
+    def apply(e: Throwable, cause: Throwable): Throwable = 
+      cause match {
+        case End => e
+        case _ => new CausedBy(e, cause) 
+      }
+  }
 
   case class Env[-I,-I2]() {
     sealed trait Y[-X] { def tag: Int }

@@ -76,16 +76,6 @@ object ProcessSpec extends Properties("Process1") {
 
   import scalaz.concurrent.Task
 
-  property("exception") = secure { 
-    case object Err extends RuntimeException 
-    val tasks = Process(Task(1), Task(2), Task(throw Err), Task(3))
-    (try { tasks.eval.pipe(processes.sum).collect.run; false }
-     catch { case Err => true }) &&
-    (tasks.eval.pipe(processes.sum).
-      handle { case e: Throwable => -6 }.
-      collect.run.last == -6)
-  }
-
   property("enqueue") = secure {
     val tasks = Process.range(0,1000).map(i => Task { Thread.sleep(1); 1 })
     tasks.sequence(50).pipe(processes.sum[Int].last).collect.run.head == 1000 &&

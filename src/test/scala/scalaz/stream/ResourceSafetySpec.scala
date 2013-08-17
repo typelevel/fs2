@@ -59,4 +59,15 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     try p2.eval.collect.run catch { case e: Throwable => () }
     ok ?= 2
   }
+
+  property("handle") = secure { 
+    case object Err extends RuntimeException 
+    val tasks = Process(Task(1), Task(2), Task(throw Err), Task(3))
+    (try { tasks.eval.pipe(processes.sum).collect.run; false }
+     catch { case Err => true }) &&
+    (tasks.eval.pipe(processes.sum).
+      handle { case e: Throwable => -6 }.
+      collect.run.last == -6)
+  }
+
 }
