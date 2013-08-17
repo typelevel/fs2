@@ -1155,9 +1155,9 @@ object Process {
     def eval: Process[F,O] = {
       def go(cur: Process[F,F[O]], fallback: Process[F,O], cleanup: Process[F,O]): Process[F,O] =
         cur match {
-          case h@Halt(e) => e match {
-            case End => h
-            case _ => cleanup onComplete h 
+          case Halt(e) => e match {
+            case End => fallback
+            case _ => cleanup.causedBy(e)
           }
           case Emit(h, t) => 
             if (h.isEmpty) go(t, fallback, cleanup)
