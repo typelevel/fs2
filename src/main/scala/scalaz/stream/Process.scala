@@ -23,25 +23,52 @@ sealed abstract class Process[+F[_],+O] {
   import Process._
 
   /** Transforms the output values of this `Process` using `f`. */
-  final def map[O2](f: O => O2): Process[F,O2] = this match {
-    case Await(req,recv,fb,c) =>
-      Await[F,Any,O2](req, recv andThen (_ map f), fb map f, c map f)
-    case Emit(h, t) => Emit[F,O2](h map f, t map f)
-    case h@Halt(_) => h
+  final def map[O2](f: O => O2): Process[F,O2] = {
+    // a bit of trickness here - in the event that `f` itself throws an
+    // exception, we use the most recent fallback/cleanup from the prior `Await`
+    def go(cur: Process[F,O], fallback: Process[F,O], cleanup: Process[F,O]): Process[F,O2] = 
+      cur match {
+        case h@Halt(_) => h 
+        case Await(req,recv,fb,c) =>
+          Await[F,Any,O2](req, recv andThen (go(_, fb, c)), fb map f, c map f)
+        case Emit(h, t) => 
+          try Emit[F,O2](h map f, go(t, fallback, cleanup))
+          catch { 
+            case End => fallback.map(f)
+            case e: Throwable => cleanup.map(f).causedBy(e)
+          }
+      }
+    go(this, halt, halt)
   }
 
   /**
    * Generate a `Process` dynamically for each output of this `Process`, and
    * sequence these processes using `append`.
    */
-  final def flatMap[F2[x]>:F[x], O2](f: O => Process[F2,O2]): Process[F2,O2] = this match {
-    case h@Halt(_) => h
-    case Emit(Seq(o), Halt(End)) => f(o)
-    case Emit(o, t) =>
-      if (o.isEmpty) t.flatMap(f)
-      else f(o.head) ++ emitSeq(o.tail, t).flatMap(f)
-    case Await(req,recv,fb,c) =>
-      Await(req, recv andThen (_ flatMap f), fb flatMap f, c flatMap f)
+  final def flatMap[F2[x]>:F[x], O2](f: O => Process[F2,O2]): Process[F2,O2] = {
+    // a bit of trickness here - in the event that `f` itself throws an
+    // exception, we use the most recent fallback/cleanup from the prior `Await`
+    def go(cur: Process[F,O], fallback: Process[F,O], cleanup: Process[F,O]): Process[F2,O2] = 
+      cur match {
+        case h@Halt(_) => h
+        case Emit(Seq(o), Halt(End)) => 
+          try f(o)
+          catch {
+            case End => fallback.flatMap(f) 
+            case e: Throwable => cleanup.flatMap(f).causedBy(e)
+          }
+        case Emit(o, t) =>
+          if (o.isEmpty) go(t, fallback, cleanup)
+          else 
+            try { f(o.head) ++ go(emitSeq(o.tail, t), fallback, cleanup) }
+            catch {
+              case End => fallback.flatMap(f) 
+              case e: Throwable => cleanup.flatMap(f).causedBy(e)
+            }
+        case Await(req,recv,fb,c) =>
+          Await(req, recv andThen (go(_, fb, c)), fb flatMap f, c flatMap f)
+      }
+    go(this, halt, halt)
   }
 
   /**

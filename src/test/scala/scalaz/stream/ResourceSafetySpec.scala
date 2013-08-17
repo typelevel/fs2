@@ -27,23 +27,32 @@ object ResourceSafetySpec extends Properties("resource-safety") {
   def die = sys.error("bwahahahahaa!")
 
   property("pure code") = secure {
+    import Process._
     var ok = 0
     val cleanup = Process.wrap { Task.delay { ok += 1 } }.drain
     val src = Process.range(0,10) 
-    val p1 = src.map(i => if ((i%3) == 0) die else i).onComplete(cleanup)
-    val p2 = src.filter(i => if ((i%3) == 0) die else true).onComplete(cleanup)
-    val p3 = src.pipe(process1.lift((i: Int) => if ((i%3) == 0) die else true)).onComplete(cleanup)
-    try List(p1.run, p2.run, p3.run).sequence.run
-    catch { case e: Throwable => () }
-    ok ?= 3
+    val p1 = src.map(i => if (i == 3) die else i).onComplete(cleanup)
+    val p2 = src.filter(i => if (i == 3) throw End else true).onComplete(cleanup)
+    val p3 = src.pipe(process1.lift((i: Int) => if (i == 3) die else true)).onComplete(cleanup)
+    val p4 = src.flatMap(i => if (i == 3) die else emit(i)).onComplete(cleanup)
+    val p5 = src.onComplete(cleanup).flatMap(i => if (i == 3) die else emit(i))
+    val p6 = src.onComplete(cleanup).flatMap(i => if (i == 3) throw End else emit(i))
+    try p1.run.run catch { case e: Throwable => () }
+    try p2.run.run catch { case e: Throwable => () }
+    try p3.run.run catch { case e: Throwable => () }
+    try p4.run.run catch { case e: Throwable => () }
+    try p5.run.run catch { case e: Throwable => () }
+    try p6.run.run catch { case e: Throwable => () }
+    ok ?= 6
   }
 
   property("eval") = secure {
     var ok = 0
     val cleanup = Process.wrap { Task.delay { ok += 1 } }.drain
     val p = Process.range(0,10).onComplete(cleanup).map(i => if (i == 3) Task.delay(die) else Task.now(i))
-    try { p.eval.collect.run }
-    catch { case e => () }
-    ok ?= 1
+    val p2 = Process.range(0,10).onComplete(cleanup).map(i => if (i == 3) Task.delay(throw Process.End) else Task.now(i))
+    try p.eval.collect.run catch { case e: Throwable => () }
+    try p2.eval.collect.run catch { case e: Throwable => () }
+    ok ?= 2
   }
 }
