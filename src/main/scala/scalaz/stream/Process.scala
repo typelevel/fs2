@@ -78,7 +78,11 @@ sealed abstract class Process[+F[_],+O] {
    */
   final def append[F2[x]>:F[x], O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
     case h@Halt(e) => e match { 
-      case End => p2
+      case End => 
+        try p2
+        catch { case End => h
+                case e2: Throwable => Halt(e2) 
+              }
       case _ => h
     }
     case Emit(h, t) => emitSeq(h, t append p2)
@@ -211,7 +215,11 @@ sealed abstract class Process[+F[_],+O] {
   final def onComplete[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
     case Await(req,recv,fb,c) => Await(req, recv andThen (_.onComplete(p2)), fb.onComplete(p2), c.onComplete(p2))
     case Emit(h, t) => Emit(h, t.onComplete(p2))
-    case h@Halt(e) => p2.causedBy(e)
+    case h@Halt(e) => 
+      try p2.causedBy(e)
+      catch { case End => h
+              case e2: Throwable => Halt(CausedBy(e2, e)) 
+            }
   }
 
   /**

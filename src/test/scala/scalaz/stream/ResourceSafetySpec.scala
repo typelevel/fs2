@@ -31,19 +31,23 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     var ok = 0
     val cleanup = Process.wrap { Task.delay { ok += 1 } }.drain
     val src = Process.range(0,10) 
-    val p1 = src.map(i => if (i == 3) die else i).onComplete(cleanup)
-    val p2 = src.filter(i => if (i == 3) throw End else true).onComplete(cleanup)
-    val p3 = src.pipe(process1.lift((i: Int) => if (i == 3) die else true)).onComplete(cleanup)
-    val p4 = src.flatMap(i => if (i == 3) die else emit(i)).onComplete(cleanup)
-    val p5 = src.onComplete(cleanup).flatMap(i => if (i == 3) die else emit(i))
-    val p6 = src.onComplete(cleanup).flatMap(i => if (i == 3) throw End else emit(i))
-    try p1.run.run catch { case e: Throwable => () }
-    try p2.run.run catch { case e: Throwable => () }
-    try p3.run.run catch { case e: Throwable => () }
-    try p4.run.run catch { case e: Throwable => () }
-    try p5.run.run catch { case e: Throwable => () }
-    try p6.run.run catch { case e: Throwable => () }
-    ok ?= 6
+    val procs = List(
+      src.map(i => if (i == 3) die else i).onComplete(cleanup),
+      src.filter(i => if (i == 3) throw End else true).onComplete(cleanup),
+      src.pipe(process1.lift((i: Int) => if (i == 3) die else true)).onComplete(cleanup),
+      src.flatMap(i => if (i == 3) die else emit(i)).onComplete(cleanup),
+      src.onComplete(cleanup).flatMap(i => if (i == 3) die else emit(i)),
+      src.onComplete(cleanup).flatMap(i => if (i == 3) throw End else emit(i)),
+      emit(1) onComplete cleanup onComplete die,
+      (emit(2) append die) onComplete cleanup,
+      (src ++ die) onComplete cleanup,
+      src.onComplete(cleanup) onComplete die
+    )
+    procs.foreach { p => 
+      try p.run.run 
+      catch { case e: Throwable => () }
+    }
+    ok ?= procs.length
   }
 
   property("eval") = secure {
