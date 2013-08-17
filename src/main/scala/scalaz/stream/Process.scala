@@ -981,10 +981,8 @@ object Process {
     def toSortedMap[K,V](implicit isKV: O <:< (K,V), ord: Ordering[K]): SortedMap[K,V] =
       SortedMap(toIndexedSeq.asInstanceOf[Seq[(K,V)]]: _*)
     def toStream: Stream[O] = toIndexedSeq.toStream
-    def toSource: Process[Task,O] = {
-      val iter = toIndexedSeq.iterator
-      repeatWrap { Task.delay { if (iter.hasNext) iter.next else throw End }}
-    }
+    def toSource: Process[Task,O] = 
+      emitSeq(toIndexedSeq.map(o => Task.delay(o))).eval
   }
 
   /**
