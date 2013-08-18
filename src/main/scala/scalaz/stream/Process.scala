@@ -628,10 +628,15 @@ sealed abstract class Process[+F[_],+O] {
   implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,(O,O2)] =
     this.wye(p2)(scalaz.stream.wye.yip)
 
-  /** Nondeterministic interleave of both streams. Emits values  */ 
+  /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */ 
   def merge[F2[x]>:F[x],O2>:O](p2: Process[F2,O2])(
   implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O2] = 
     this.wye(p2)(scalaz.stream.wye.merge)
+
+  /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
+  def either[F2[x]>:F[x],O2>:O,O3](p2: Process[F2,O3])(
+  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O2 \/ O3] = 
+    this.wye(p2)(scalaz.stream.wye.either)
 }
 
 object processes extends process1 with tee with wye with io
