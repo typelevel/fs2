@@ -208,6 +208,19 @@ sealed abstract class Process[+F[_],+O] {
   }
 
   /**
+   * Run `p2` after this `Process` if this `Process` completes with an an error. 
+   */
+  final def onFailure[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
+    case Await(req,recv,fb,c) => Await(req, recv andThen (_.onFailure(p2)), fb, c ++ onFailure(p2))
+    case Emit(h, t) => Emit(h, t.onFailure(p2))
+    case h@Halt(e) => 
+      try p2.causedBy(e)
+      catch { case End => h
+              case e2: Throwable => Halt(CausedBy(e2, e)) 
+            }
+  }
+
+  /**
    * Run `p2` after this `Process` completes normally, or in the event of an error. 
    * This behaves almost identically to `append`, except that `p1 append p2` will 
    * not run `p2` if `p1` halts with an error. 
