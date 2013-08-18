@@ -1,8 +1,9 @@
 package scalaz.stream
 
 import scala.collection.immutable.{IndexedSeq,SortedMap,Queue,Vector}
+import scala.concurrent.duration._
 
-import scalaz.{Catchable,Monad,MonadPlus,Monoid,Nondeterminism,Semigroup}
+import scalaz.{Catchable,Functor,Monad,MonadPlus,Monoid,Nondeterminism,Semigroup}
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
 import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
@@ -735,6 +736,16 @@ object Process {
       o.map(ht => Emit(List(ht._1), unfold(ht._2)(f))).
         getOrElse(halt)
     )
+  
+  /** 
+   * A continuous stream of the elapsed time, computed using `System.currentTimeMilliseconds`. 
+   * Note that the actual granularity of these elapsed times depends on the OS, for instance
+   * the OS may only update the current time every ten milliseconds or so.  
+   */
+  def duration: Process[Task, Duration] = suspend {
+    val t0 = System.currentTimeMillis
+    repeatWrap { Task.delay { Duration(System.currentTimeMillis - t0, MILLISECONDS) }}
+  }
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
   def emitRange(start: Int, stopExclusive: Int): Process[Nothing,Int] =
@@ -955,8 +966,12 @@ object Process {
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
       self.zipWith(f)((o,f) => (o,f(o))).flatMap { case (orig,action) => emit(action).eval.drain ++ emit(orig) }
 
-    /** Feed this `Process` through the given `Channel`, using `q` to control the queueing strategy. */
+    /** Feed this `Process` through the given `Channel`, using `q` to control the queueing strategy. Alias for `connect`. */
     def through_y[F2[x]>:F[x],O2,O3](chan: Channel[F2,O,O2])(q: Wye[O,O2,O3])(implicit F2: Nondeterminism[F2]): Process[F2,O3] =
+      connect(chan)(q) 
+
+    /** Feed this `Process` through the given `Channel`, using `q` to control the queueing strategy. */
+    def connect[F2[x]>:F[x],O2,O3](chan: Channel[F2,O,O2])(q: Wye[O,O2,O3])(implicit F2: Nondeterminism[F2]): Process[F2,O3] =
       self.zip(chan).enqueue(q)
 
     final def feed[I](
@@ -980,6 +995,23 @@ object Process {
    * This class provides infix syntax specific to `Process[Task, _]`.
    */
   implicit class SourceSyntax[O](self: Process[Task, O]) {
+
+    /** 
+     * Feed this `Process` through the given `Channel`, using `q` to 
+     * control the queueing strategy. The `q` receives the duration
+     * since since the start of `self`, which may be used to decide 
+     * whether to block on the channel or allow more inputs to enqueue.
+     */
+    def connectTimed[O2,O3](chan: Channel[Task,O,O2])(q: Wye[(O,Duration),O2,O3]): Process[Task,O3] =
+      self.zip(duration).connect(chan.contramap(_._1))(q)
+
+    /** 
+     * Feed this `Process` through the given `Channel`, blocking on any
+     * queued values sent to the channel if either a response has not been 
+     * received within `maxAge` or if `maxSize` elements have enqueued.
+     */
+    def connectTimed[O2](maxAge: Duration, maxSize: Int = Int.MaxValue)(chan: Channel[Task,O,O2]): Process[Task,O2] = 
+      self.connectTimed(chan)(wye.timedQueue(maxAge, maxSize).contramapL(_._2))
 
     /** Infix syntax for `Process.forwardFill`. */
     def forwardFill: Process[Task,O] = Process.forwardFill(self) 
@@ -1101,6 +1133,16 @@ object Process {
         awaitR.flatMap(f andThen recv andThen (_.contramapR_(f))).
                orElse(fb.contramapR_(f), c.contramapR_(f))
     }
+  }
+
+  implicit class ChannelSyntax[F[_],I,O](self: Channel[F,I,O]) {
+    /** Transform the input of this `Channel`. */
+    def contramap[I0](f: I0 => I): Channel[F,I0,O] = 
+      self.map(f andThen _)
+
+    /** Transform the output of this `Channel` */
+    def mapOut[O2](f: O => O2)(implicit F: Functor[F]): Channel[F,I,O2] = 
+      self.map(_ andThen F.lift(f))
   }
 
   implicit class ChanneledProcess[F[_],O,O2](self: Process[F,(O, O => F[O2])]) {
