@@ -66,7 +66,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     (try { tasks.eval.pipe(processes.sum).collect.run; false }
      catch { case Err => true }) &&
     (tasks.eval.pipe(processes.sum).
-      handle { case e: Throwable => -6 }.
+      handle { case e: Throwable => Process.emit(-6) }.
       collect.run.last == -6)
   }
 
