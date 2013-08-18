@@ -84,10 +84,20 @@ trait actor {
   }
 
   /**
-   * Like `queue`, but runs the actor, locally, on whatever thread sends it messages.
+   * Like `queue`, but runs the actor locally, on whatever thread sends it messages.
    */
   def localQueue[A]: (Actor[message.queue.Msg[A]], Process[Task,A]) = 
     queue(Strategy.Sequential)
+
+  /**
+   * Like `variable`, but runs the actor locally, on whatever thread sends it messages.
+   */
+  def localVariable[A]: (Actor[message.variable.Msg[A]], Process[Task,A]) = 
+    variable(Strategy.Sequential)
+
+  /** Convert an `Actor[A]` to a `Sink[Task, A]`. */
+  def toSink[A](snk: Actor[A]): Process[Task, A => Task[Unit]] =
+    Process.repeatWrap { Task.now { (a: A) => Task.delay { snk ! a } } }
 
   /**
    * Returns a continuous `Process` whose value can be set
@@ -138,11 +148,6 @@ trait actor {
     val p = Process.repeatWrap { Task.async[A] { cb => a ! Get(cb) } }
     (a, p)
   }
-
-  /** Convert an `Actor[A]` to a `Sink[Task, A]`. */
-  def toSink[A](snk: Actor[A]): Process[Task, A => Task[Unit]] =
-    Process.repeatWrap { Task.now { (a: A) => Task.delay { snk ! a } } }
-
 }
 
 object actor extends actor
