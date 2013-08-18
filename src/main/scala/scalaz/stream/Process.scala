@@ -472,7 +472,7 @@ sealed abstract class Process[+F[_],+O] {
     }
     case Await(req, recv, fb, c) =>
       await(F.attempt(req))(
-        _.fold(err => f(err).map(right) onComplete c.drain, recv andThen (_.attempt[F2,O2](f))),
+        _.fold(err => c.drain onComplete f(err).map(right), recv andThen (_.attempt[F2,O2](f))),
         fb.attempt[F2,O2](f), c.attempt[F2,O2](f))
   }
 
