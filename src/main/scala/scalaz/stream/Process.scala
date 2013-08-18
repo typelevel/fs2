@@ -468,7 +468,10 @@ sealed abstract class Process[+F[_],+O] {
     case Emit(h, t) => Emit(h map (left), t.attempt[F2,O2](f))
     case Halt(e) => e match {
       case End => halt
-      case _ => f(e).map(right)
+      case _ => try f(e).map(right) 
+                catch { case End => halt
+                        case e2: Throwable => Halt(CausedBy(e2, e))
+                      }
     }
     case Await(req, recv, fb, c) =>
       await(F.attempt(req))(
