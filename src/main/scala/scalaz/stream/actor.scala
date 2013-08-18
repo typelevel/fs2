@@ -84,6 +84,12 @@ trait actor {
   }
 
   /**
+   * Like `queue`, but runs the actor, locally, on whatever thread sends it messages.
+   */
+  def localQueue[A]: (Actor[message.queue.Msg[A]], Process[Task,A]) = 
+    queue(Strategy.Sequential)
+
+  /**
    * Returns a continuous `Process` whose value can be set
    * asynchronously using the returned `Actor`.
    *

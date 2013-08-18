@@ -1235,6 +1235,16 @@ object Process {
   def suspend[A](p: => Process[Task, A]): Process[Task, A] =
     await(Task.now {})(_ => p) 
 
+  /** 
+   * Feed the output of `f` back in as its input. Note that deadlock 
+   * can occur if `f` tries to read from the looped back input
+   * before any output has been produced.
+   */
+  def fix[A](f: Process[Task,A] => Process[Task,A]): Process[Task,A] = Process.suspend {
+    val (snk, q) = actor.localQueue[A]
+    f(q).map { a => snk ! message.queue.enqueue(a); a }
+  }
+
   // a failed attempt to work around Scala's broken type refinement in
   // pattern matching by supplying the equality witnesses manually
 
