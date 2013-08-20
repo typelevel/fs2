@@ -106,6 +106,11 @@ object ProcessSpec extends Properties("Process1") {
       forall { case (actual,expected) => (actual - expected).abs < 500L }
   }
 
+  property("when") = secure {
+    val t = Process.duration
+    true
+  }
+
   property("range") = secure {
     Process.range(0, 100).collect.run == IndexedSeq.range(0, 100) &&
     Process.range(0, 1).collect.run == IndexedSeq.range(0, 1) && 

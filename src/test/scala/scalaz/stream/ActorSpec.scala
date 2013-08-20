@@ -25,9 +25,9 @@ object ActorSpec extends Properties("actor") {
     Nondeterminism[Task].both(t1, t2).run._2.toList == l
   }
 
-  property("variable") = forAll { l: List[Int] => 
-    val (v, s) = actor.variable[Int]
-    import message.variable._
+  property("ref") = forAll { l: List[Int] => 
+    val (v, s) = actor.ref[Int]
+    import message.ref._
     val t1 = Task { 
       l.foreach { i => v ! set(i); Thread.sleep(1) }
       v ! close

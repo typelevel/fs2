@@ -28,13 +28,11 @@ trait actor {
     import message.queue._
     var q: Queue[Throwable \/ A] \/ Queue[(Throwable \/ A) => Unit] = left(Queue())
     // var q = Queue[Throwable \/ A]()
-    var n = 0 // size of q
     var done = false
     val a: Actor[Msg[A]] = Actor.actor {
       case Enqueue(a) if !done => q match {
         case -\/(ready) => 
           q = left(ready.enqueue(right(a)))
-          n += 1
         case \/-(listeners) => 
           if (listeners.isEmpty) q = left(Queue(right(a))) 
           else {
@@ -49,34 +47,30 @@ trait actor {
           else {
             val (a, r2) = ready.dequeue
             cb(a)
-            n -= 1
             q = left(r2) 
           }
         case \/-(listeners) => q = right(listeners.enqueue(cb))
       }
       case Close(cancel) if !done => q match {
         case -\/(ready) => 
-          if (cancel) { q = left(Queue(left(Process.End))); n = 0 }
+          if (cancel) q = left(Queue(left(Process.End)))
           else { q = left(ready.enqueue(left(Process.End))) }
           done = true
         case \/-(listeners) =>
           val end = left(Process.End)
           listeners.foreach(_(end)) 
           q = left(Queue(end)) 
-          n = 0
       }
       case Fail(e,cancel) if !done => q match {
         case -\/(ready) => 
-          if (cancel) { q = left(Queue(left(e))); n = 0 }
+          if (cancel) q = left(Queue(left(e)))
           else q = left(ready.enqueue(left(e)))
           done = true
         case \/-(listeners) => 
           val end = left(e)
           listeners.foreach(_(end))
           q = left(Queue(end))
-          n = 0
       } 
-      case QueueSize(cb) => cb(n)
       case _ => ()
     }
     val p = Process.repeatWrap { Task.async[A] { cb => a ! Dequeue(cb) } }
@@ -92,8 +86,8 @@ trait actor {
   /**
    * Like `variable`, but runs the actor locally, on whatever thread sends it messages.
    */
-  def localVariable[A]: (Actor[message.variable.Msg[A]], Process[Task,A]) = 
-    variable(Strategy.Sequential)
+  def localVariable[A]: (Actor[message.ref.Msg[A]], Process[Task,A]) = 
+    ref(Strategy.Sequential)
 
   /** Convert an `Actor[A]` to a `Sink[Task, A]`. */
   def toSink[A](snk: Actor[A]): Process[Task, A => Task[Unit]] =
@@ -109,8 +103,8 @@ trait actor {
    * `message.variable.onRead(cb)` registers the given action to be run when
    * the variable is first read.
    */
-  def variable[A](implicit S: Strategy): (Actor[message.variable.Msg[A]], Process[Task, A]) = {
-    import message.variable._
+  def ref[A](implicit S: Strategy): (Actor[message.ref.Msg[A]], Process[Task, A]) = {
+    import message.ref._
     var ref: Throwable \/ A = null
     var done = false
     var listeners: Queue[(Throwable \/ A) => Unit] = null
@@ -160,7 +154,6 @@ object message {
     case class Enqueue[A](a: A) extends Msg[A]
     case class Fail[A](error: Throwable, cancel: Boolean) extends Msg[A]
     case class Close[A](cancel: Boolean) extends Msg[A]
-    case class QueueSize[A](callback: Int => Unit) extends Msg[A]
 
     def enqueue[A](a: A): Msg[A] =
       Enqueue(a)
@@ -171,13 +164,12 @@ object message {
         case \/-(a) => cb(a)
       }
 
-    def size[A](cb: Int => Unit): Msg[A] = QueueSize(cb)
     def close[A]: Msg[A] = Close[A](false)
     def cancel[A]: Msg[A] = Close[A](true)
     def fail[A](err: Throwable, cancel: Boolean = false): Msg[A] = Fail(err, cancel)
   }
 
-  object variable {
+  object ref {
     trait Msg[A]
     case class Set[A](a: A) extends Msg[A]
     case class Get[A](callback: (Throwable \/ A) => Unit) extends Msg[A]

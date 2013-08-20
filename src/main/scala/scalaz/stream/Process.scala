@@ -826,8 +826,8 @@ object Process {
    */
   def forwardFill[A](p: Process[Task,A])(implicit S: Strategy): Process[Task,A] = {
     suspend {
-      val (v, pvar) = actor.variable[A]
-      val t = toTask(p).map(a => v ! message.variable.set(a))
+      val (v, pvar) = async.ref[A]
+      val t = toTask(p).map(a => v.set(a))
       val setvar = repeatWrap(t).drain
       pvar.merge(setvar)
     }
