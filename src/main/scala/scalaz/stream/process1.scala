@@ -93,6 +93,13 @@ trait process1 {
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
 
   /**
+   * Split the input and send to either `chan1` or `chan2`, halting when
+   * either branch halts.
+   */
+  def multiplex[I,I2,O](chan1: Process1[I,O], chan2: Process1[I2,O]): Process1[I \/ I2, O] =
+    (liftL(chan1) pipe liftR(chan2)).map(_.fold(identity, identity))
+
+  /**
    * Break the input into chunks where the delimiter matches the predicate.
    * The delimiter does not appear in the output. Two adjacent delimiters in the
    * input result in an empty chunk in the output.
