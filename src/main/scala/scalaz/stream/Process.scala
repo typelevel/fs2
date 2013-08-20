@@ -1051,6 +1051,22 @@ object Process {
     /** Apply this `Process` to an `Iterable`. */
     def apply(input: Iterable[I]): IndexedSeq[O] =
       Process(input.toSeq: _*).pipe(self.bufferAll).disconnect.unemit._1.toIndexedSeq
+
+    /** 
+     * Transform `self` to operate on the left hand side of an `\/`, passing
+     * through any values it receives on the right. Note that this halts
+     * whenever `self` halts. 
+     */
+    def liftL[I2]: Process1[I \/ I2, O \/ I2] = 
+      process1.liftL(self)
+
+    /** 
+     * Transform `self` to operate on the right hand side of an `\/`, passing
+     * through any values it receives on the left. Note that this halts
+     * whenever `self` halts.
+     */
+    def liftR[I0]: Process1[I0 \/ I, I0 \/ O] = 
+      process1.liftR(self)
   }
 
   /**
