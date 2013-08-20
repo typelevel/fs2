@@ -77,6 +77,7 @@ trait process1 {
   def liftL[A,B,C](p: Process1[A,B]): Process1[A \/ C, B \/ C] = 
     p match {
       case h@Halt(_) => h
+      case Emit(h, t) => Emit(h map left, liftL(t))
       case _ => await1[A \/ C].flatMap {
         case -\/(a) => liftL(init(a) pipe p)  
         case \/-(c) => emit(right(c)) ++ liftL(p) 
