@@ -273,7 +273,7 @@ sealed abstract class Process[+F[_],+O] {
   }
 
   /** Correctly typed deconstructor for `Await`. */
-  def asAwait: Option[(F[Any], Any => Process[F,O], Process[F,O], Process[F,O])] =
+  private[stream] def asAwait: Option[(F[Any], Any => Process[F,O], Process[F,O], Process[F,O])] =
     this match {
       case Await(req,recv,fb,c) => Some((req,recv,fb,c))
       case _ => None
@@ -656,7 +656,7 @@ object Process {
     fallback1: Process[F,O] = halt,
     cleanup1: Process[F,O] = halt) extends Process[F,O]
 
-  case class Emit[F[_],O] private[stream](
+  case class Emit[F[_],O](
     head: Seq[O],
     tail: Process[F,O]) extends Process[F,O]
 
@@ -665,12 +665,12 @@ object Process {
 
   object AwaitF {
     trait Req
-    def unapply[F[_],O](self: Process[F,O]):
+    private[stream] def unapply[F[_],O](self: Process[F,O]):
         Option[(F[Any], Any => Process[F,O], Process[F,O], Process[F,O])] =
       self.asAwait
   }
   object Await1 {
-    private[stream] def unapply[I,O](self: Process1[I,O]):
+    def unapply[I,O](self: Process1[I,O]):
         Option[(I => Process1[I,O], Process1[I,O], Process1[I,O])] = self match {
 
       case Await(_,recv,fb,c) => Some((recv.asInstanceOf[I => Process1[I,O]], fb, c))
@@ -678,21 +678,21 @@ object Process {
     }
   }
   object AwaitL {
-    private[stream] def unapply[I,I2,O](self: Wye[I,I2,O]):
+    def unapply[I,I2,O](self: Wye[I,I2,O]):
         Option[(I => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
       case Await(req,recv,fb,c) if req.tag == 0 => Some((recv.asInstanceOf[I => Wye[I,I2,O]], fb, c))
       case _ => None
     }
   }
   object AwaitR {
-    private[stream] def unapply[I,I2,O](self: Wye[I,I2,O]):
+    def unapply[I,I2,O](self: Wye[I,I2,O]):
         Option[(I2 => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
       case Await(req,recv,fb,c) if req.tag == 1 => Some((recv.asInstanceOf[I2 => Wye[I,I2,O]], fb, c))
       case _ => None
     }
   }
   object AwaitBoth {
-    private[stream] def unapply[I,I2,O](self: Wye[I,I2,O]):
+    def unapply[I,I2,O](self: Wye[I,I2,O]):
         Option[(These[I,I2] => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
       case Await(req,recv,fb,c) if req.tag == 2 => Some((recv.asInstanceOf[These[I,I2] => Wye[I,I2,O]], fb, c))
       case _ => None
