@@ -646,6 +646,25 @@ sealed abstract class Process[+F[_],+O] {
   def either[F2[x]>:F[x],O2>:O,O3](p2: Process[F2,O3])(
   implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O2 \/ O3] = 
     this.wye(p2)(scalaz.stream.wye.either)
+
+  /** 
+   * When `condition` is `true`, lets through any values in this process, otherwise blocks
+   * until `condition` becomes true again. While condition is `true`, the returned `Process`
+   * will listen asynchronously for the condition to become false again. There is prefix
+   * syntax for this available in `Process` companion object.
+   */
+  def when[F2[x]>:F[x],O2>:O](condition: Process[F2,Boolean])(
+  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O2] = {
+    import scalaz.stream.{wye => w}; import w.Request
+    condition.wye(this)(w.dynamic(
+      ok => if (ok) Request.Both else Request.L,
+      _ => Request.Both
+    )).flatMap {
+      case These.This(_) => halt
+      case These.That(o2) => emit(o2)
+      case These.Both(_,o2) => emit(o2)
+    }
+  }
 }
 
 object processes extends process1 with tee with wye with io
@@ -1315,6 +1334,15 @@ object Process {
     val (snk, q) = actor.localQueue[A]
     f(q).map { a => snk ! message.queue.enqueue(a); a }
   }
+
+  /** 
+   * When `condition` is `true`, lets through any values in this process, otherwise blocks
+   * until `condition` becomes true again. While condition is `true`, the returned `Process`
+   * will listen asynchronously for the condition to become false again. There is infix
+   * syntax for this as well, `p.when(condition)` has the same effect. 
+   */
+  def when[F[_]:Nondeterminism:Catchable,O](condition: Process[F,Boolean])(p: Process[F,O]): Process[F,O] = 
+    p.when(condition)
 
   // a failed attempt to work around Scala's broken type refinement in
   // pattern matching by supplying the equality witnesses manually
