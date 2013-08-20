@@ -26,15 +26,15 @@ trait wye {
   def dynamic[I,I2](f: I => wye.Request, g: I2 => wye.Request): Wye[I,I2,These[I,I2]] = {
     import wye.Request._
     def go(signal: wye.Request): Wye[I,I2,These[I,I2]] = signal match {
-      case Left => awaitL[I].flatMap { i => emit(These.This(i)) then go(f(i)) }
-      case Right => awaitR[I2].flatMap { i2 => emit(These.That(i2)) then go(g(i2)) }
+      case L => awaitL[I].flatMap { i => emit(These.This(i)) then go(f(i)) }
+      case R => awaitR[I2].flatMap { i2 => emit(These.That(i2)) then go(g(i2)) }
       case Both => awaitBoth[I,I2].flatMap {
         case t@These.This(i) => emit(t) then go(f(i)) 
         case t@These.That(i2) => emit(t) then go(g(i2)) 
         case t@These.Both(i,_) => emit(t) then go(f(i)) // left-biased
       }
     }
-    go(Left)
+    go(L)
   }
 
   /** 
@@ -145,10 +145,11 @@ trait wye {
 }
 
 object wye extends wye {
+  /** Simple enumeration for dynamically generated `Wye` request types. See `wye.dynamic`. */
   trait Request
   object Request {
-    case object Left extends Request
-    case object Right extends Request
+    case object L extends Request
+    case object R extends Request
     case object Both extends Request
   }
 }
