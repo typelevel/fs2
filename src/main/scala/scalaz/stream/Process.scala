@@ -778,10 +778,10 @@ object Process {
       case (cur, prev) => (cur - prev) > d  
     }
 
-  // thread for scheduled events
-  // this thread is just used for timing, no logic is run on this Thread
+  // pool for event scheduling
+  // threads are just used for timing, no logic is run on this Thread
   private[stream] val _scheduler = {
-    Executors.newSingleThreadScheduledExecutor(new ThreadFactory {
+    Executors.newScheduledThreadPool(4, new ThreadFactory {
       def newThread(r: Runnable) = {
         val t = Executors.defaultThreadFactory.newThread(r)
         t.setDaemon(true)
