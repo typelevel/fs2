@@ -650,23 +650,15 @@ sealed abstract class Process[+F[_],+O] {
     this.wye(p2)(scalaz.stream.wye.either)
 
   /** 
-   * When `condition` is `true`, lets through any values in this process, otherwise blocks
-   * until `condition` becomes true again. While condition is `true`, the returned `Process`
-   * will listen asynchronously for the condition to become false again. There is prefix
-   * syntax for this available in `Process` companion object.
+   * When `condition` is `true`, lets through any values in `this` process, otherwise blocks
+   * until `condition` becomes true again. Note that the `condition` is checked before 
+   * each and every read from `this`, so `condition` should return very quickly or be 
+   * continuous to avoid holding up the output `Process`. Use `condition.forwardFill` to 
+   * convert an infrequent discrete `Process` to a continuous one for use with this
+   * function. 
    */
-  def when[F2[x]>:F[x],O2>:O](condition: Process[F2,Boolean])(
-  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O2] = {
-    import scalaz.stream.{wye => w}; import w.Request
-    condition.wye(this)(w.dynamic(
-      ok => if (ok) Request.Both else Request.L,
-      _ => Request.Both
-    )).flatMap {
-      case These.This(_) => halt
-      case These.That(o2) => emit(o2)
-      case These.Both(_,o2) => emit(o2)
-    }
-  }
+  def when[F2[x]>:F[x],O2>:O](condition: Process[F2,Boolean]): Process[F2,O2] =
+    condition.tee(this)(scalaz.stream.tee.guard)
 }
 
 object processes extends process1 with tee with wye with io
@@ -1406,7 +1398,7 @@ object Process {
    * will listen asynchronously for the condition to become false again. There is infix
    * syntax for this as well, `p.when(condition)` has the same effect. 
    */
-  def when[F[_]:Nondeterminism:Catchable,O](condition: Process[F,Boolean])(p: Process[F,O]): Process[F,O] = 
+  def when[F[_],O](condition: Process[F,Boolean])(p: Process[F,O]): Process[F,O] = 
     p.when(condition)
 
   // a failed attempt to work around Scala's broken type refinement in

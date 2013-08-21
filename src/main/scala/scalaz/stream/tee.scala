@@ -7,6 +7,10 @@ import Process._
  */
 trait tee {
   
+  /** Before reading from the `right`, checks that the left branch is `true`. */
+  def guard[I]: Tee[Boolean,I,I] = 
+    awaitL[Boolean].flatMap(ok => if (ok) awaitR[I] then guard else guard)
+    
   /** A `Tee` which alternates between emitting values from the left input and the right input. */
   def interleave[I]: Tee[I,I,I] = repeat { for {
     i1 <- awaitL[I]
