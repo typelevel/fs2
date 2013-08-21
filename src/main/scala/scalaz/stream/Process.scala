@@ -9,6 +9,8 @@ import scalaz.Leibniz.===
 import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
 import \/._
 
+import java.util.concurrent._
+
 /**
  * A `Process[F,O]` represents a stream of `O` values which can interleave
  * external requests to evaluate expressions of the form `F[A]`. It takes
@@ -765,13 +767,76 @@ object Process {
     )
   
   /** 
-   * A continuous stream of the elapsed time, computed using `System.currentTimeMilliseconds`. 
+   * A continuous stream of the elapsed time, computed using `System.nanoTime`. 
    * Note that the actual granularity of these elapsed times depends on the OS, for instance
-   * the OS may only update the current time every ten milliseconds or so.  
+   * the OS may only update the current time every ten milliseconds or so.
    */
   def duration: Process[Task, Duration] = suspend {
     val t0 = System.currentTimeMillis
-    repeatWrap { Task.delay { Duration(System.currentTimeMillis - t0, MILLISECONDS) }}
+    repeatWrap { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
+  }
+
+  /**
+   * A continuous stream which is true after `d, 2d, 3d...` elapsed duration.  
+   * If you'd like a discrete stream that will actually block until `d` has elapsed, 
+   * use `awakeEvery` instead.
+   */
+  def every(d: Duration): Process[Task, Boolean] = 
+    duration zip (emit(0 milliseconds) ++ duration) map {
+      case (cur, prev) => (cur - prev) > d  
+    }
+
+  // thread for scheduled events
+  // this thread is just used for timing, no logic is run on this Thread
+  private[stream] val _scheduler = {
+    Executors.newSingleThreadScheduledExecutor(new ThreadFactory {
+      def newThread(r: Runnable) = {
+        val t = Executors.defaultThreadFactory.newThread(r)
+        t.setDaemon(true)
+        t.setName("scheduled-task-thread")
+        t
+      }
+    })
+  }
+  
+  /** 
+   * A discrete tasks which emits elapsed durations at the given 
+   * regular duration. For example: `awakeEvery(5 seconds)` will 
+   * return (approximately) `5s, 10s, 20s`, and will lie dormant 
+   * between emitted values. By default, this uses a shared
+   * `ScheduledExecutorService` for the timed events, and runs the
+   * actual callbacks on `pool`, which avoids blocking a useful 
+   * thread simply to interpret the delays between events.
+   */
+  def awakeEvery(d: Duration)(
+      implicit pool: ExecutorService = Strategy.DefaultExecutorService,
+               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task, Duration] = suspend {
+    val (q, p) = async.queue[Boolean](Strategy.Executor(pool))
+    val (latest, _) = async.ref[Duration](Strategy.Sequential)
+    val t0 = Duration(System.nanoTime, NANOSECONDS)
+    val metronome = _scheduler.scheduleAtFixedRate(
+       new Runnable { def run = {
+         val d = Duration(System.nanoTime, NANOSECONDS) - t0
+         latest.set(d)
+         if (q.size == 0)
+           q.enqueue(true) // only produce one event at a time
+       }},
+       d.toNanos,
+       d.toNanos,
+       NANOSECONDS
+    )
+    repeatWrap {
+      Task.async[Duration] { cb => 
+        q.dequeue { r => 
+          r.fold(
+            e => cb(left(e)), 
+            _ => latest.get {
+              d => pool.submit(new Callable[Unit] { def call = cb(d) }) 
+            }
+          )
+        }
+      }
+    } onComplete { suspend { metronome.cancel(false); halt } }
   }
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
