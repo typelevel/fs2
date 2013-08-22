@@ -448,7 +448,6 @@ sealed abstract class Process[+F[_],+O] {
         }
     }
     catch { case e: Throwable => 
-      println("caught: " + e)
       this.kill onComplete p2.kill onComplete (Halt(e))
     }
   }
@@ -1161,6 +1160,12 @@ object Process {
      */
     def liftR[I0]: Process1[I0 \/ I, I0 \/ O] = 
       process1.liftR(self)
+
+    /** 
+     * Feed a single input to this `Process1`.
+     */
+    def feed1(i: I): Process1[I,O] = 
+      process1.feed1(i)(self)
   }
 
   /**

@@ -79,7 +79,7 @@ trait process1 {
       case h@Halt(_) => h
       case Emit(h, t) => Emit(h map left, liftL(t))
       case _ => await1[A \/ C].flatMap {
-        case -\/(a) => liftL(init(a) pipe p)  
+        case -\/(a) => liftL(feed1(a)(p))
         case \/-(c) => emit(right(c)) ++ liftL(p) 
       }
     }
@@ -98,6 +98,29 @@ trait process1 {
    */
   def multiplex[I,I2,O](chan1: Process1[I,O], chan2: Process1[I2,O]): Process1[I \/ I2, O] =
     (liftL(chan1) pipe liftR(chan2)).map(_.fold(identity, identity))
+
+  /** Feed a single input to a `Process1`. */
+  def feed1[I,O](i: I)(p: Process1[I,O]): Process1[I,O] =
+    p match {
+      case h@Halt(_) => h
+      case Emit(h, t) => Emit(h, feed1(i)(t))
+      case Await1(recv,fb,c) => 
+        try recv(i)
+        catch {
+          case End => fb 
+          case e: Throwable => c
+        }
+    }
+
+  /** 
+   * Record evaluation of `p`, emitting the current state along with the ouput of each step. 
+   */
+  def record[I,O](p: Process1[I,O]): Process1[I,(Seq[O], Process1[I,O])] = p match {
+    case h@Halt(_) => h
+    case Emit(h, t) => Emit(Seq((h, p)), record(t))
+    case Await1(recv, fb, c) => 
+      Emit(Seq((List(), p)), await1[I].flatMap(recv andThen (record[I,O])).orElse(record(fb),record(c)))
+  }
 
   /**
    * Break the input into chunks where the delimiter matches the predicate.

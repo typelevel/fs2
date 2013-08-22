@@ -125,5 +125,11 @@ object ProcessSpec extends Properties("Process1") {
     IndexedSeq.range(0, 100)
   }
 
+  property("liftL") = secure {
+    import scalaz.\/._
+    val s = Process.range(0, 100000)
+    val p = s.map(left) pipe process1.id[Int].liftL
+    true
+  }
 }
 
