@@ -765,6 +765,16 @@ object Process {
       o.map(ht => Emit(List(ht._1), unfold(ht._2)(f))).
         getOrElse(halt)
     )
+
+  /** 
+   * Produce a stream encapsulating some state, `S`. At each step, 
+   * produces the current state, and an effectful function to set the
+   * state that will be produced next step.
+   */
+  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = suspend {
+    val (v, p) = async.localRef[S]
+    p.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat 
+  }
   
   /** 
    * A continuous stream of the elapsed time, computed using `System.nanoTime`. 
