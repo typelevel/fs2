@@ -10,7 +10,7 @@ import These._
 object TheseSpec extends Properties("These") {
   implicit def theseArb[A: Arbitrary, B: Arbitrary]: Arbitrary[These[A, B]] =
     Arbitrary(Gen.oneOf(
-      arbitrary[A].map2(arbitrary[B])(Both(_,_)),
+      arbitrary[A].map2(arbitrary[B])(These(_,_)),
       arbitrary[A].map(This(_)),
       arbitrary[B].map(That(_))
     ))

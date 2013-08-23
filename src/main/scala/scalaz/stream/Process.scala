@@ -8,6 +8,7 @@ import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
 import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
 import \/._
+import These.{This,That}
 
 import java.util.concurrent._
 
@@ -361,16 +362,16 @@ sealed abstract class Process[+F[_],+O] {
               case 0 => // Left
                 val recv_ = recv.asInstanceOf[O => Wye[O,O2,O3]]
                 (e: These[O,O2]) => e match {
-                  case These.This(o) => (None, Some(recv_(o)))
-                  case These.That(_) => (None, None)
-                  case These.Both(o,o2) => (Some(These.That(o2)), Some(recv_(o)))
+                  case This(o) => (None, Some(recv_(o)))
+                  case That(_) => (None, None)
+                  case These(o,o2) => (Some(That(o2)), Some(recv_(o)))
                 }
               case 1 => // Right
                 val recv_ = recv.asInstanceOf[O2 => Wye[O,O2,O3]]
                 (e: These[O,O2]) => e match {
-                  case These.This(_) => (None, None)
-                  case These.That(o2) => (None, Some(recv_(o2)))
-                  case These.Both(o,o2) => (Some(These.This(o)), Some(recv_(o2)))
+                  case This(_) => (None, None)
+                  case That(o2) => (None, Some(recv_(o2)))
+                  case These(o,o2) => (Some(This(o)), Some(recv_(o2)))
                 }
               case 2 => // Both
                 val recv_ = recv.asInstanceOf[These[O,O2] => Wye[O,O2,O3]]
@@ -1214,7 +1215,7 @@ object Process {
       case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
         case 0 => fb.detachL
         case 1 => Await(Get[I2], recv andThen (_ detachL), fb.detachL, c.detachL)
-        case 2 => Await(Get[I2], (These.That(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
+        case 2 => Await(Get[I2], (That(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
       }
     }
 
@@ -1229,7 +1230,7 @@ object Process {
       case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
         case 0 => Await(Get[I], recv andThen (_ detachR), fb.detachR, c.detachR)
         case 1 => fb.detachR
-        case 2 => Await(Get[I], (These.This(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
+        case 2 => Await(Get[I], (This(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
       }
     }
 
@@ -1286,7 +1287,7 @@ object Process {
               case _ => (None, None)
             }}
             val (q2, bufIn2) = q1.feed(bufIn1) { q => o => q match {
-              case AwaitBoth(recv,fb,c) => (None, Some(recv(These.This(o))))
+              case AwaitBoth(recv,fb,c) => (None, Some(recv(This(o))))
               case _ => (None, None)
             }}
             q2 match {
@@ -1318,7 +1319,7 @@ object Process {
                       await(F3.choose(reqsrc, outH))(
                         _.fold(
                           { case (p,ro) => go(recvsrc(p), q2, bufIn2, ro +: outT) },
-                          { case (rp,o2) => go(await(rp)(recvsrc, fbsrc, csrc), recv(These.That(o2)), bufIn2, outT) }
+                          { case (rp,o2) => go(await(rp)(recvsrc, fbsrc, csrc), recv(That(o2)), bufIn2, outT) }
                         ),
                         go(fbsrc, q2, bufIn2, bufOut),
                         go(csrc, q2, bufIn2, bufOut)
