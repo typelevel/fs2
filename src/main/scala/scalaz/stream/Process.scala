@@ -1234,6 +1234,18 @@ object Process {
       }
     }
 
+    /** 
+     * Transform the left input of the given `Wye` using a `Process1`. 
+     */
+    def attachL[I0](f: Process1[I0,I]): Wye[I0, I2, O] = 
+      wye.attachL(f)(self)
+
+    /** 
+     * Transform the right input of the given `Wye` using a `Process1`. 
+     */
+    def attachR[I1](f: Process1[I1,I2]): Wye[I, I1, O] = 
+      wye.attachR(f)(self)
+
     /** Transform the left input to a `Wye`. */
     def contramapL[I0](f: I0 => I): Wye[I0, I2, O] =
       contramapL_(f)

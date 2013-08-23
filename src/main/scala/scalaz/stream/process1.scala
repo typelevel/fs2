@@ -278,6 +278,13 @@ trait process1 {
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => halt)
 
+  /** Remove any `None` inputs. */
+  def stripNone[A]: Process1[Option[A],A] = 
+    await1[Option[A]].flatMap {
+      case None => stripNone
+      case Some(a) => emit(a) ++ stripNone
+    }
+
   /**
    * Emit a running sum of the values seen so far. The first value emitted will be the
    * first number seen (not `0`). The length of the output `Process` always matches the

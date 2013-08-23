@@ -10,6 +10,30 @@ import These.{This,That}
 trait wye {
 
   /** 
+   * Transform the left input of the given `Wye` using a `Process1`. 
+   */
+  def attachL[I0,I,I2,O](p: Process1[I0,I])(w: Wye[I,I2,O]): Wye[I0,I2,O] = w match {
+    case h@Halt(_) => h
+    case Emit(h,t) => Emit(h, attachL(p)(t))
+    case w@AwaitL(recv, fb, c) => 
+      p match {
+        case Emit(h, t) => attachL(t)(feedL(h)(w))
+        case Await1(recvp, fbp, cp) => 
+          await(L[I0]: Env[I0,I2]#Y[I0])(
+            recvp andThen (attachL(_)(w)),
+            attachL(fbp)(w), 
+            attachL(cp)(w))
+        case h@Halt(_) => attachL(h)(fb)
+      }
+  }
+
+  /** 
+   * Transform the right input of the given `Wye` using a `Process1`. 
+   */
+  def attachR[I,I1,I2,O](p: Process1[I1,I2])(w: Wye[I,I2,O]): Wye[I,I1,O] =
+    flip(attachL(p)(flip(w)))
+
+  /** 
    * A `Wye` which emits values from its right branch, but allows up to `n`
    * elements from the left branch to enqueue unanswered before blocking
    * on the right branch.
@@ -67,7 +91,32 @@ trait wye {
       case These(i,i2) => feed1Both(i,i2)(w)
     }
 
-  // now implement `feed` very similarly to `process1.feed`
+  /** Feed a sequence of values to a `Wye`. */
+  def feedL[I,I2,O](i: Seq[I])(w: Wye[I,I2,O]): Wye[I,I2,O] = {
+    var buf = i
+    var cur = w
+    def ok(w: Wye[I,I2,O]): Boolean = w match {
+      case AwaitL(_,_,_) => true
+      case AwaitBoth(_,_,_) => true
+      case _ => false
+    }
+    while (!buf.isEmpty && ok(cur)) {
+      val h = buf.head
+      cur = feed1L(h)(cur) 
+      buf = buf.tail
+    }
+    if (buf.isEmpty) cur
+    else cur match {
+      case h@Halt(_) => h
+      case AwaitR(recv,fb,c) => 
+        await(R[I2]: Env[I,I2]#Y[I2])(recv andThen (feedL(buf)), fb, c) 
+      case Emit(o, t) => 
+        Emit(o, feedL(buf)(t))
+      case _ => sys.error("impossible! main `feedL` loop resulted in: " + cur)
+    }
+  }
+    
+    
 
   /** Feed a single value to the left branch of a `Wye`. */
   def feed1L[I,I2,O](i: I)(w: Wye[I,I2,O]): Wye[I,I2,O] = 
@@ -137,6 +186,20 @@ trait wye {
     }
 
   /** 
+   * Convert right requests to left requests and vice versa.
+   */
+  def flip[I,I2,O](w: Wye[I,I2,O]): Wye[I2,I,O] = w match {
+    case h@Halt(_) => h 
+    case Emit(h, t) => Emit(h, flip(t))
+    case AwaitL(recv, fb, c) => 
+      await(R[I]: Env[I2,I]#Y[I])(recv andThen (flip), flip(fb), flip(c))
+    case AwaitR(recv, fb, c) => 
+      await(L[I2]: Env[I2,I]#Y[I2])(recv andThen (flip), flip(fb), flip(c))
+    case AwaitBoth(recv, fb, c) => 
+      await(Both[I2,I])((t: These[I2,I]) => flip(recv(t.flip)), flip(fb), flip(c))
+  }
+
+  /** 
    * Nondeterminstic interleave of both inputs. Emits values whenever either
    * of the inputs is available.
    */
@@ -164,6 +227,18 @@ trait wye {
    */
   def observe[I](maxUnacknowledged: Int): Wye[I,Any,I] = 
     yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i)
+
+  /** 
+   * A `Wye` which echoes the right branch while draining the left,
+   * taking care to make sure that the left branch is never more 
+   * than `maxUnacknowledged` behind the right. For example: 
+   * `src.connect(snk)(observe(10))` will output the the same thing 
+   * as `src`, but will as a side effect direct output to `snk`, 
+   * blocking on `snk` if more than 10 elements have enqueued 
+   * without a response.
+   */ 
+  def observeR[I](maxUnacknowledged: Int): Wye[Any,I,I] =
+    flip(observe(maxUnacknowledged))
 
   /** 
    * A `Wye` which blocks on the right side when either a) the age of the oldest unanswered 
