@@ -225,7 +225,7 @@ trait wye {
    * blocking on `snk` if more than 10 elements have enqueued 
    * without a response.
    */
-  def observe[I](maxUnacknowledged: Int): Wye[I,Any,I] = 
+  def drainR[I](maxUnacknowledged: Int): Wye[I,Any,I] = 
     yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i)
 
   /** 
@@ -237,8 +237,8 @@ trait wye {
    * blocking on `snk` if more than 10 elements have enqueued 
    * without a response.
    */ 
-  def observeR[I](maxUnacknowledged: Int): Wye[Any,I,I] =
-    flip(observe(maxUnacknowledged))
+  def drainL[I](maxUnacknowledged: Int): Wye[Any,I,I] =
+    flip(drainR(maxUnacknowledged))
 
   /** 
    * A `Wye` which blocks on the right side when either a) the age of the oldest unanswered 

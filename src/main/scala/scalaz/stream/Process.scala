@@ -1110,6 +1110,20 @@ object Process {
     /** Feed the right side of this `Process` through the given `Channel`, using `q` to control the queueing strategy. */
     def connectR[F2[x]>:F[x],B2,O](chan: Channel[F2,B,B2])(q: Wye[A,B2,O])(implicit F2: Nondeterminism[F2]): Process[F2,O] =
       self.map(_.swap).connectL(chan)(q)
+
+    /** 
+     * Feed the left side of this `Process` to a `Sink`, allowing up to `maxUnacknowledged`
+     * elements to enqueue at the `Sink` before blocking on the `Sink`. 
+     */
+    def drainL[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,A])(implicit F2: Nondeterminism[F2]): Process[F2,B] =
+      self.connectL(s)(wye.drainR(maxUnacknowledged)) 
+
+    /** 
+     * Feed the right side of this `Process` to a `Sink`, allowing up to `maxUnacknowledged`
+     * elements to enqueue at the `Sink` before blocking on the `Sink`. 
+     */
+    def drainR[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,B])(implicit F2: Nondeterminism[F2]): Process[F2,A] =
+      self.connectR(s)(wye.drainR(maxUnacknowledged)) 
   }
 
   /**
