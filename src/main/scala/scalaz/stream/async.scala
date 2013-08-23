@@ -107,9 +107,21 @@ trait async {
       def close: Unit = actor ! message.ref.close
       def onRead(action: => Unit): Unit = actor ! message.ref.OnRead(() => action)
     }
+  
+  /** Convert an `Queue[A]` to a `Sink[Task, A]`. 
+    * Cleanup may be run to eventually terminate queue once the sink will stop or to perform another cleanup action */
+  def toSink[A](q:Queue[A], cleanUp: Queue[A] => Task[Unit] = (q:Queue[A]) => Task.delay {}):Process.Sink[Task,A] =
+    io.resource(Task.now(q))(cleanUp)(q=>Task.delay{(a:A)=>Task.now(q.enqueue(a))}) 
 }
 
 object async extends async {
+
+  /**
+   * Syntax ops for easier work with async.Queue
+   */
+  implicit class QueueOps[A](val q:Queue[A]) {
+    def toSink(cleanUp: Queue[A] => Task[Unit] = (q:Queue[A]) => Task.delay {}) = async.toSink(q,cleanUp)
+  }
   
   trait Queue[A] {
     protected def enqueueImpl(a: A): Unit
