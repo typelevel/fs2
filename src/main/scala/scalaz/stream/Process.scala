@@ -1093,6 +1093,25 @@ object Process {
     }
   }
 
+  implicit class SplitProcessSyntax[F[_],A,B](self: Process[F, A \/ B]) {
+
+    /** Feed the left side of this `Process` through the given `Channel`, using `q` to control the queueing strategy. */
+    def connectL[F2[x]>:F[x],A2,O](chan: Channel[F2,A,A2])(q: Wye[B,A2,O])(implicit F2: Nondeterminism[F2]): Process[F2,O] = {
+      val p: Process[F2, (Option[B], F2[Option[A2]])] = 
+        self.zipWith(chan) { (ab,f) => 
+          ab.fold(a => (None, F2.map(f(a))(Some(_))), 
+                  b => (Some(b), F2.pure(None)))
+        }
+      p map { (p: (Option[B], F2[Option[A2]])) => (p._1, (o2: Option[B]) => p._2) } enqueue (
+        q.attachL(process1.stripNone[B]).attachR(process1.stripNone[A2])
+      )
+    }
+
+    /** Feed the right side of this `Process` through the given `Channel`, using `q` to control the queueing strategy. */
+    def connectR[F2[x]>:F[x],B2,O](chan: Channel[F2,B,B2])(q: Wye[A,B2,O])(implicit F2: Nondeterminism[F2]): Process[F2,O] =
+      self.map(_.swap).connectL(chan)(q)
+  }
+
   /**
    * This class provides infix syntax specific to `Process[Task, _]`.
    */
