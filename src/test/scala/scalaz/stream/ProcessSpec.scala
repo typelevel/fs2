@@ -131,5 +131,11 @@ object ProcessSpec extends Properties("Process1") {
     val p = s.map(left) pipe process1.id[Int].liftL
     true
   }
+
+  property("feedL") = secure {
+    val w = wye.feedL(List.fill(10)(1))(process1.id)
+    val x = Process.range(0,100).wye(halt)(w).collect.run
+    x.toList == (List.fill(10)(1) ++ List.range(0,100))
+  }
 }
 
