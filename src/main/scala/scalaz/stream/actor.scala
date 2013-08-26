@@ -110,11 +110,21 @@ trait actor {
     var listeners: Queue[(Throwable \/ A) => Unit] = null
     var onRead = () => { () }
     val a: Actor[Msg[A]] = Actor.actor {
-      case Set(a) if !done =>
-        ref = right(a)
+      case Set(v) if !done =>
+        ref = right(v)
         if (!(listeners eq null)) {
           listeners.foreach { _(ref) }
           listeners = null
+        }
+      case Modify(f) if !done =>
+        if (ref ne null) ref match {
+          case -\/(e) => ()
+          case \/-(a) => 
+            ref = try right(f(a)) catch { case e: Throwable => left(e) }  
+            if (!(listeners eq null)) {
+              listeners.foreach { _(ref) }
+              listeners = null
+            }
         }
       case Get(cb) =>
         if (ref eq null) {
@@ -171,6 +181,7 @@ object message {
 
   object ref {
     trait Msg[A]
+    case class Modify[A](f: A => A) extends Msg[A]
     case class Set[A](a: A) extends Msg[A]
     case class Get[A](callback: (Throwable \/ A) => Unit) extends Msg[A]
     case class Close[A]() extends Msg[A]
@@ -178,6 +189,7 @@ object message {
     case class OnRead[A](action: () => Unit) extends Msg[A]
 
     def set[A](a: A): Msg[A] = Set(a)
+    def modify[A](f: A => A): Msg[A] = Modify(f)
     def get[A](callback: (Throwable \/ A) => Unit): Msg[A] = Get(callback)
     def onRead[A](action: () => Unit): Msg[A] = OnRead(action)
     def close[A]: Msg[A] = Close[A]()

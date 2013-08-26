@@ -59,6 +59,16 @@ trait async {
     val p = Process.repeatWrap { Task.async[A] { cb => obs.get(cb) } }
     (obs, p)
   }
+
+  /** 
+   * Returns a continuous `Process` that will emit `true` once 
+   * each time the returned `Ref[Boolean]` is set to `true`.
+   */
+  def event(implicit S: Strategy = Strategy.DefaultStrategy): (Ref[Boolean], Process[Task,Boolean]) = {
+    val (v, p) = ref[Boolean](S) 
+    v.set(false)
+    (v, p.map { b => if (b) { v.set(false); b } else b }) 
+  }
     
   /** 
    * Transforms this `Ref` to only generate a `get` event
@@ -102,6 +112,7 @@ trait async {
   def actorRef[A](actor: Actor[message.ref.Msg[A]]): Ref[A] =
     new Ref[A] {
       def setImpl(a: A): Unit = actor ! message.ref.set(a)
+      def modify(f: A => A): Unit = actor ! message.ref.Modify(f)
       def get(cb: (Throwable \/ A) => Unit): Unit = actor ! message.ref.Get(cb)
       def fail(err: Throwable): Unit = actor ! message.ref.fail(err)
       def close: Unit = actor ! message.ref.close
@@ -180,6 +191,12 @@ object async extends async {
      * `Ref` has not been `set`, the callback will be invoked later.
      */
     def get(callback: (Throwable \/ A) => Unit): Unit
+
+    /** 
+     * Asynchronously modify the current value of this `Ref`. If this `Ref`
+     * has not been set, this has no effect.
+     */
+    def modify(f: A => A): Unit
 
     /** 
      * Indicate that the value is no longer valid. Any attempts to `set` this
