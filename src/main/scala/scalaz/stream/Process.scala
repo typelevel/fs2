@@ -666,7 +666,17 @@ sealed abstract class Process[+F[_],+O] {
    * function. 
    */
   def when[F2[x]>:F[x],O2>:O](condition: Process[F2,Boolean]): Process[F2,O2] =
-    condition.tee(this)(scalaz.stream.tee.guard)
+    condition.tee(this)(scalaz.stream.tee.when)
+
+  /**
+   * Halts this `Process` as soon as `condition` becomes `true`. Note that `condition`
+   * is checked before each and every read from `this`, so `condition` should return
+   * very quickly or be continuous to avoid holding up the output `Process`. Use
+   * `condition.forwardFill` to convert an infrequent discrete `Process` to a 
+   * continuous one for use with this function.
+   */
+  def until[F2[x]>:F[x],O2>:O](condition: Process[F2,Boolean]): Process[F2,O2] = 
+    condition.tee(this)(scalaz.stream.tee.until)
 }
 
 object processes extends process1 with tee with wye with io
