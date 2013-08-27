@@ -304,5 +304,10 @@ object async extends async {
      * when the `value` is `set`.
      */
     def changes: Process[Task, Unit]
+
+    /** 
+     * Keep the value of this `Signal` the same, but notify any listeners.
+     */
+    def refresh: Unit = value.modify(a => a)
   }
 }
