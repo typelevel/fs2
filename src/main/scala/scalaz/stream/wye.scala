@@ -240,6 +240,16 @@ trait wye {
   def drainL[I](maxUnacknowledged: Int): Wye[Any,I,I] =
     flip(drainR(maxUnacknowledged))
 
+  /**
+   * Let through the right branch as long as the left branch is `false`,
+   * listening asynchronously for the left branch to become `true`. 
+   */
+  def interrupt[I]: Wye[Boolean, I, I] = awaitBoth[Boolean,I].flatMap {
+    case That(i) => emit(i)
+    case This(kill) => if (kill) halt else interrupt
+    case These(kill, i) => if (kill) halt else emit(i) then interrupt
+  }
+
   /** 
    * A `Wye` which blocks on the right side when either a) the age of the oldest unanswered 
    * element from the left size exceeds the given duration, or b) the number of unanswered 
