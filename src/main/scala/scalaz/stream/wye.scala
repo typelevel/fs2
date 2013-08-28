@@ -263,9 +263,9 @@ trait wye {
    * listening asynchronously for the left branch to become `true`. 
    */
   def interrupt[I]: Wye[Boolean, I, I] = awaitBoth[Boolean,I].flatMap {
-    case That(i) => emit(i)
+    case That(i) => emit(i) ++ interrupt
     case This(kill) => if (kill) halt else interrupt
-    case These(kill, i) => if (kill) halt else emit(i) then interrupt
+    case These(kill, i) => if (kill) halt else emit(i) ++ interrupt
   }
 
   /** 
