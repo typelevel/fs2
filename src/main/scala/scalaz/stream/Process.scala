@@ -1297,21 +1297,11 @@ object Process {
     def contramapR[I3](f: I3 => I2): Wye[I, I3, O] =
       contramapR_(f)
 
-    private[stream] def contramapL_[I0](f: I0 => I): Wye[I0, I2, O] = self match {
-      case h@Halt(_) => h
-      case Emit(h, t) => Emit(h, t.contramapL_(f))
-      case AwaitL(recv, fb, c) => 
-        awaitL.flatMap(f andThen recv andThen (_.contramapL_(f))).
-               orElse(fb.contramapL_(f), c.contramapL_(f))
-    }
+    private[stream] def contramapL_[I0](f: I0 => I): Wye[I0, I2, O] = 
+      self.attachL(process1.lift(f))
 
-    private[stream] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] = self match {
-      case h@Halt(_) => h
-      case Emit(h, t) => Emit(h, t.contramapR_(f))
-      case AwaitR(recv, fb, c) => 
-        awaitR.flatMap(f andThen recv andThen (_.contramapR_(f))).
-               orElse(fb.contramapR_(f), c.contramapR_(f))
-    }
+    private[stream] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] = 
+      self.attachR(process1.lift(f))
   }
 
   implicit class ChannelSyntax[F[_],I,O](self: Channel[F,I,O]) {

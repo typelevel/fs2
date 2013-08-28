@@ -137,5 +137,17 @@ object ProcessSpec extends Properties("Process1") {
     val x = Process.range(0,100).wye(halt)(w).collect.run
     x.toList == (List.fill(10)(1) ++ List.range(0,100))
   }
+
+  property("feedR") = secure {
+    val w = wye.feedR(List.fill(10)(1))(wye.merge[Int])
+    val x = Process.range(0,100).wye(halt)(w).collect.run
+    x.toList == (List.fill(10)(1) ++ List.range(0,100))
+  }
+
+  property("either") = secure {
+    val w = wye.either[Int,Int] 
+    val s = Process.constant(1).take(1)
+    s.wye(s)(w).collect.run.map(_.fold(identity, identity)).toList == List(1,1)
+  }
 }
 

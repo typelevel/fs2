@@ -15,12 +15,28 @@ trait wye {
   def attachL[I0,I,I2,O](p: Process1[I0,I])(w: Wye[I,I2,O]): Wye[I0,I2,O] = w match {
     case h@Halt(_) => h
     case Emit(h,t) => Emit(h, attachL(p)(t))
-    case w@AwaitL(recv, fb, c) => 
+    case AwaitL(recv, fb, c) => 
       p match {
         case Emit(h, t) => attachL(t)(feedL(h)(w))
         case Await1(recvp, fbp, cp) => 
           await(L[I0]: Env[I0,I2]#Y[I0])(
             recvp andThen (attachL(_)(w)),
+            attachL(fbp)(w), 
+            attachL(cp)(w))
+        case h@Halt(_) => attachL(h)(fb)
+      }
+    case AwaitR(recv, fb, c) => 
+      awaitR[I2].flatMap(recv andThen (attachL(p)(_))).
+      orElse(attachL(p)(fb), attachL(p)(c))
+    case AwaitBoth(recv, fb, c) => 
+      p match {
+        case Emit(h, t) => attachL(t)(feedL(h)(w))
+        case Await1(recvp, fbp, cp) => 
+          await(Both[I0,I2]: Env[I0,I2]#Y[These[I0,I2]])(
+            { case This(i0) => attachL(p.feed1(i0))(w)
+              case That(i2) => attachL(p)(feed1R(i2)(w))
+              case These(i0,i2) => attachL(p.feed1(i0))(feed1R(i2)(w))
+            }, 
             attachL(fbp)(w), 
             attachL(cp)(w))
         case h@Halt(_) => attachL(h)(fb)
@@ -91,7 +107,7 @@ trait wye {
       case These(i,i2) => feed1Both(i,i2)(w)
     }
 
-  /** Feed a sequence of values to a `Wye`. */
+  /** Feed a sequence of values to the left branch of a `Wye`. */
   def feedL[I,I2,O](i: Seq[I])(w: Wye[I,I2,O]): Wye[I,I2,O] = {
     var buf = i
     var cur = w
@@ -115,8 +131,10 @@ trait wye {
       case _ => sys.error("impossible! main `feedL` loop resulted in: " + cur)
     }
   }
-    
-    
+
+  /** Feed a sequence of values to the right branch of a `Wye`. */
+  def feedR[I,I2,O](i2: Seq[I2])(w: Wye[I,I2,O]): Wye[I,I2,O] = 
+    flip(feedL(i2)(flip(w)))
 
   /** Feed a single value to the left branch of a `Wye`. */
   def feed1L[I,I2,O](i: I)(w: Wye[I,I2,O]): Wye[I,I2,O] = 
