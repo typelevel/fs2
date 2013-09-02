@@ -25,7 +25,8 @@ object AsyncSpec extends Properties("async") {
   }
 
   property("ref") = forAll { l: List[Int] => 
-    val (v, s) = async.ref[Int]
+    val v = async.ref[Int]
+    val s = v.toSource
     val t1 = Task { 
       l.foreach { i => v.set(i); Thread.sleep(1) }
       v.close

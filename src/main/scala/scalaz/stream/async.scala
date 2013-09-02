@@ -1,11 +1,12 @@
 package scalaz.stream
 
-import scalaz.{\/-, \/}
+import scalaz.{Functor, Apply, \/-, \/}
 import scalaz.\/._
 import scalaz.concurrent._
 import java.util.concurrent.atomic._
 
-import scalaz.stream.Process.{End, Sink}
+import scalaz.stream.Process._
+import scala.Some
 
 trait async {
   import async.{Queue,Ref,Signal}
@@ -31,17 +32,12 @@ trait async {
     new Ref[A] {
       import message.ref._
       @volatile var init = false
-      protected[stream] def set_(f: (Option[A]) => Option[A], 
-                                 cb: (\/[Throwable, Option[A]]) => Unit, 
-                                 old: Boolean): Unit =  {
+      protected[stream] def set_(f: (Option[A]) => Option[A], cb: (\/[Throwable, Option[A]]) => Unit, old: Boolean): Unit =  {
         actor ! Set(f,cb,old)
         init = true
       }
 
-
-      protected[stream] def get_(cb: (\/[Throwable, (Int,A)]) => Unit, 
-                                 onlyChanged: Boolean, 
-                                 last: Int) : Unit = 
+      protected[stream] def get_(cb: (\/[Throwable, (Int,A)]) => Unit, onlyChanged: Boolean, last: Int) : Unit = 
         actor ! Get(cb,onlyChanged,last)
  
       protected[stream] def fail_(t: Throwable, cb: (Throwable) => Unit):Unit =  
@@ -52,72 +48,34 @@ trait async {
 
 
 
-  /**
-   * Transforms this `Ref` to only generate a `get` event
-   * whenever value of `Ref` changed. 
-   * Except for very first `Get` event that returns when the `Ref` was set, 
-   * otherwise will wait once the `Ref` is set.
-   * 
-   */
-  def changed[A](r: Ref[A]): Ref[A] = actorRef[A] {
-    import message.ref._
-    @volatile var ser = 0
-    @volatile var first = true
-    
-    def updateSer(cb:Throwable\/(Int,A) => Unit)(s:Throwable\/(Int,A)) : Unit = cb(s match {
-      case r@(\/-((s,a))) => ser = s ; r
-      case l => l
-    })
-    
-    //this wrap in another actor assures the last seen serial is kept individually for each
-    //`changed` reference
-    Actor.actor[message.ref.Msg[A]] {
-      case Get(cb,_,ser) => 
-        if (first) {
-          first = false; r.get_(updateSer(cb),false,ser)
-        } else {
-          r.get_(updateSer(cb),true,ser)
-        }
-      case Set(f,cb,o) => r.set_(f,cb,o)
-      case Fail(t,cb) => r.fail_(t,cb)
-    }(Strategy.Sequential)
-    
-  } 
-
   /** 
    * Create a new continuous signal which may be controlled asynchronously.
+   * Signal may create multiple type of processes 
+   * that are all controlled by single asynchronous reference
    */
   def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = {
-    val (value1, _) = ref[A](Strategy.Sequential)
-    val (event1, _) = event(Strategy.Sequential)
-    val discrete1 = changed(value1)
     
-    new Signal[A] {
-      import message.ref._
-      val value:Ref[A] = actorRef[A] {
-          Actor.actor[message.ref.Msg[A]] {
-          case Get(cb,ch,ser) =>  value1.get_(cb,ch,ser)
-          case Set(f,cb,o) => { discrete1.set_(f,rsv => {rsv.map(_.map(_=>event1.set(true)));cb(rsv)},o); }
-          case Fail(t,cb) => { discrete1.fail_(t,rsv => {event1.fail_(rsv); cb(rsv) })  }
-        }(S)
+    new Signal[A] { 
+      
+      val value: Ref[A] = ref[A](S)
+
+      def checkStampChange:Process1[(Int,A),Boolean] = {
+        def go(last:(Int,A)) : Process1[(Int,A),Boolean] = {
+          await1[(Int,A)].flatMap ( next => emit(next != last) then go(next) )
+        }
+        await1[(Int,A)].flatMap(next=> emit(true) then go(next))
       }
       
+      def changed =  value.toStampedSource |> checkStampChange 
+       
+      def discrete = value.toDiscreteSource
+ 
       def continuous = value.toSource
-      def discrete = discrete1.toSource
-      def changed = event1.toSource
-      def changes = discrete.map(_ => ())
+ 
+      def changes = value.toStampedDiscreteSource.map(_=>())
     }
+     
     
-  }
-
-  /** 
-   * Returns a continuous `Process` that will emit `true` once 
-   * each time the returned `Ref[Boolean]` is set to `true`.
-   */
-  def event(implicit S: Strategy = Strategy.DefaultStrategy): (Ref[Boolean], Process[Task,Boolean]) = {
-    val (v, p) = ref[Boolean](S) 
-    v.set(false)
-    (v, p.map { b => if (b) { v.set(false); b } else b }) 
   }
     
   /** 
@@ -140,20 +98,9 @@ trait async {
    * constant time. If this is not desired, use `ref` with a
    * `Strategy` other than `Strategy.Sequential`.
    */
-  def localRef[A]: (Ref[A], Process[Task,A]) = 
+  def localRef[A]: Ref[A] = 
     ref[A](Strategy.Sequential)
   
-  /** 
-   * Returns a discrete `Process` whose value can be set asynchronously
-   * using the returned `Ref`. Unlike `ref`, the returned `Process` will
-   * only emit a value immediately after being `set`.
-   */
-  def observable[A](implicit S: Strategy = Strategy.DefaultStrategy): (Ref[A], Process[Task,A]) = {
-    val (v, _) = ref[A](S)
-    val obs = changed(v)
-    val p = Process.repeatWrap { Task.async[A] { cb => obs.get(cb) } }
-    (obs, p)
-  }
 
   /** 
    * Create a source that may be added to or halted asynchronously 
@@ -166,12 +113,12 @@ trait async {
   def queue[A](implicit S: Strategy = Strategy.DefaultStrategy): (Queue[A], Process[Task,A]) = 
     actor.queue[A] match { case (snk, p) => (actorQueue(snk), p) }
 
-  /*
-   * Returns a continuous `Process` whose value can be set
+  /**
+   * Returns a ref, that can create continuous process, that can be set 
    * asynchronously using the returned `Ref`.
    */
-  def ref[A](implicit S: Strategy = Strategy.DefaultStrategy): (Ref[A], Process[Task,A]) = 
-    actor.ref[A](S) match { case (snk, p) => (actorRef(snk), p) }
+  def ref[A](implicit S: Strategy = Strategy.DefaultStrategy): Ref[A] = 
+    actor.ref[A](S) match { case (snk, p) => actorRef(snk)}
 
   /** 
    * Convert an `Queue[A]` to a `Sink[Task, A]`. The `cleanup` action will be 
@@ -253,7 +200,7 @@ object async extends async {
     protected[stream] def get_(cb: (Throwable \/  (Int,A)) => Unit, onlyChanged:Boolean, last:Int) : Unit
 
     protected[stream] def fail_(t:Throwable, cb:Throwable => Unit = _ => ())
-   
+    
 
     /**
      * Get the current value of this `Ref`. If this
@@ -328,19 +275,52 @@ object async extends async {
      * `r.toSource onComplete Process.wrap(Task.delay(r.close)).drain`
      */
     def toSource: Process[Task,A] =
-      Process.repeatWrap { Task.async[A] { cb => this.get(cb) } }
+      Process.repeatWrap[Task,A](async.get)
+
+    /**
+     * Returns a discrete stream, which emits the current value of this `Ref`, 
+     * but only when the `Ref` changes, except for very first emit, which is 
+     * emitted immediately once run, or after `ref` is set for the fist time . 
+     *  
+     */
+    def toDiscreteSource: Process[Task,A] = 
+      toStampedDiscreteSource.map(_._2)
+
+    /**
+     * Unlike the `toSource` will emit values with their stamp.
+     * @return
+     */
+    def toStampedSource: Process[Task,(Int,A)] =
+      Process.repeatWrap[Task,(Int,A)](async.getStamped)
+
+
+    /**
+     * Discrete (see `toDiscreteSource`) variant of `toStampedSource`
+     * @return
+     */
+    def toStampedDiscreteSource: Process[Task,(Int,A)] =  {
+      /* The implementation here may seem a redundant a bit, but we need to keep
+       * own serial number to make sure the Get events has own context for
+       * every `toStampedDiscreteSource` process. 
+       */
+      def go(ser:Int, changed:Boolean): Process[Task,(Int,A)] =
+        await[Task,(Int,A),(Int,A)](Task.async { cb => get_(cb,changed,ser) })(sa => emit(sa) ++ go(sa._1, true),halt, halt)
+
+      go(0,false)
+    }
+   
 
     /**
      * Returns asynchronous version of this `Ref`. Modifications are performed
-     * at the time when the resulting tasks are run. Moreover tasks will finish
-     * when all registered streams will get notified of that task change (in case
-     * task is changing the state of the `Ref`.
+     * at the time when the resulting tasks are run. 
      *
-     * If the `Ref` in in `finished` or `failed` state, tasks will fail with 
-     * respective state (`End` or `Throwable`) as their cause.
+     * If the `Ref` is in `finished` or `failed` state, tasks will fail with 
+     * respective state (`End` or `Throwable`) as their cause, 
+     * except for close and fail, that will never fail.
      * @return
      */
-    def async : AsyncRef[A] = new AsyncRef[A] {protected val ref = Ref.this}
+    lazy val  async : AsyncRef[A] = new AsyncRef[A] {protected val ref = Ref.this}
+   
 
   }
 
@@ -352,6 +332,14 @@ object async extends async {
      * only the value is get asynchronously when the resulting task will be run
      */
     def get : Task[A] = Task.async[A](ref.get)
+
+    /**
+     * Like a [[scalaz.stream.async.Ref.get]],
+     * only the value is get asynchronously when the resulting task will be run 
+     * and contains also the stamp of current value 
+     * @return
+     */
+    def getStamped :Task[(Int,A)] = Task.async[(Int,A)](ref.get_(_,false,0))
 
     /**
      * Like [[scalaz.stream.async.Ref.getAndSet]],
@@ -397,7 +385,7 @@ object async extends async {
    * A signal whose value may be set asynchronously. Provides continuous 
    * and discrete streams for responding to changes to this value. 
    */
-  trait Signal[A] {
+  trait Signal[A]  {
 
     /** The value of this `Signal`. May be set asynchronously. */
     def value: Ref[A]
@@ -425,7 +413,7 @@ object async extends async {
 
     /** 
      * Returns the discrete version of `changed`. Will emit `Unit` 
-     * when the `value` is `set`.
+     * when the `value` is changed.
      */
     def changes: Process[Task, Unit]
 
