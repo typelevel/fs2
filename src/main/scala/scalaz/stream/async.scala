@@ -1,10 +1,11 @@
 package scalaz.stream
 
-import scalaz.\/
+import scalaz.{\/-, \/}
+import scalaz.\/._
 import scalaz.concurrent._
 import java.util.concurrent.atomic._
 
-import Process.Sink
+import scalaz.stream.Process.{End, Sink}
 
 trait async {
   import async.{Queue,Ref,Signal}
@@ -28,62 +29,85 @@ trait async {
    */
   def actorRef[A](actor: Actor[message.ref.Msg[A]]): Ref[A] =
     new Ref[A] {
-      def setImpl(a: A): Unit = actor ! message.ref.set(a)
-      def modify(f: A => A): Unit = actor ! message.ref.Modify(f)
-      def get(cb: (Throwable \/ A) => Unit): Unit = actor ! message.ref.Get(cb)
-      def fail(err: Throwable): Unit = actor ! message.ref.fail(err)
-      def close: Unit = actor ! message.ref.close
-      def onRead(action: => Unit): Unit = actor ! message.ref.OnRead(() => action)
+      import message.ref._
+      @volatile var init = false
+      protected[stream] def set_(f: (Option[A]) => Option[A], 
+                                 cb: (\/[Throwable, Option[A]]) => Unit, 
+                                 old: Boolean): Unit =  {
+        actor ! Set(f,cb,old)
+        init = true
+      }
+
+
+      protected[stream] def get_(cb: (\/[Throwable, (Int,A)]) => Unit, 
+                                 onlyChanged: Boolean, 
+                                 last: Int) : Unit = 
+        actor ! Get(cb,onlyChanged,last)
+ 
+      protected[stream] def fail_(t: Throwable, cb: (Throwable) => Unit):Unit =  
+        actor ! Fail(t,cb)
+
+      def isSet = init
     }
-  
-  /** 
+
+
+
+  /**
    * Transforms this `Ref` to only generate a `get` event
-   * just after being `set`. 
+   * whenever value of `Ref` changed. 
+   * Except for very first `Get` event that returns when the `Ref` was set, 
+   * otherwise will wait once the `Ref` is set.
+   * 
    */
   def changed[A](r: Ref[A]): Ref[A] = actorRef[A] {
     import message.ref._
-    var listeners = Vector[(Throwable \/ A) => Unit]() 
-    def publishAndClear = {
-      val l2 = Vector[(Throwable \/ A) => Unit]() 
-      val l = listeners
-      listeners = l2
-      l.foreach(cb => r.get(cb))
-    }
+    @volatile var ser = 0
+    @volatile var first = true
+    
+    def updateSer(cb:Throwable\/(Int,A) => Unit)(s:Throwable\/(Int,A)) : Unit = cb(s match {
+      case r@(\/-((s,a))) => ser = s ; r
+      case l => l
+    })
+    
+    //this wrap in another actor assures the last seen serial is kept individually for each
+    //`changed` reference
     Actor.actor[message.ref.Msg[A]] {
-      case Get(cb) => listeners = listeners :+ cb 
-      case Set(a) => { r.set(a); publishAndClear }
-      case Modify(f) => { r.modify(f); publishAndClear }
-      case Close() => { r.close; publishAndClear } 
-      case Fail(e) => { r.fail(e); publishAndClear } 
-      case OnRead(cb) => { r.onRead(cb) }
-    } (Strategy.Sequential)
+      case Get(cb,_,ser) => 
+        if (first) {
+          first = false; r.get_(updateSer(cb),false,ser)
+        } else {
+          r.get_(updateSer(cb),true,ser)
+        }
+      case Set(f,cb,o) => r.set_(f,cb,o)
+      case Fail(t,cb) => r.fail_(t,cb)
+    }(Strategy.Sequential)
+    
   } 
 
   /** 
    * Create a new continuous signal which may be controlled asynchronously.
    */
   def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = {
-    val (value1, continuous1) = ref[A](Strategy.Sequential)
-    val (event1, eventSpikes1) = event(Strategy.Sequential)
+    val (value1, _) = ref[A](Strategy.Sequential)
+    val (event1, _) = event(Strategy.Sequential)
     val discrete1 = changed(value1)
     
     new Signal[A] {
       import message.ref._
-      val value = actorRef[A] {
-        Actor.actor[message.ref.Msg[A]] {
-          case Get(cb) => value1.get(cb) 
-          case Set(a) => { discrete1.set(a); event1.set(true) } 
-          case Modify(f) => { discrete1.modify(f); event1.set(true) } 
-          case Close() => { discrete1.close; event1.close } 
-          case Fail(e) => { discrete1.fail(e); event1.fail(e) }
-          case OnRead(cb) => { value1.onRead(cb) }
-        } (S)
+      val value:Ref[A] = actorRef[A] {
+          Actor.actor[message.ref.Msg[A]] {
+          case Get(cb,ch,ser) =>  value1.get_(cb,ch,ser)
+          case Set(f,cb,o) => { discrete1.set_(f,rsv => {rsv.map(_.map(_=>event1.set(true)));cb(rsv)},o); }
+          case Fail(t,cb) => { discrete1.fail_(t,rsv => {event1.fail_(rsv); cb(rsv) })  }
+        }(S)
       }
-      val continuous = value.toSource 
-      val discrete = discrete1.toSource
-      val changed = eventSpikes1  
-      val changes = discrete.map(_ => ())
+      
+      def continuous = value.toSource
+      def discrete = discrete1.toSource
+      def changed = event1.toSource
+      def changes = discrete.map(_ => ())
     }
+    
   }
 
   /** 
@@ -220,58 +244,155 @@ object async extends async {
   }
 
   trait Ref[A] {
-    protected def setImpl(a: A): Unit
+     
+   
+    protected[stream] def set_(f:Option[A] => Option[A],
+                               cb:(Throwable \/ Option[A]) => Unit =  (_) => (),
+                               old:Boolean ) : Unit
 
-    /** 
-     * Asynchronously get the current value of this `Ref`. If this
+    protected[stream] def get_(cb: (Throwable \/  (Int,A)) => Unit, onlyChanged:Boolean, last:Int) : Unit
+
+    protected[stream] def fail_(t:Throwable, cb:Throwable => Unit = _ => ())
+   
+
+    /**
+     * Get the current value of this `Ref`. If this
      * `Ref` has not been `set`, the callback will be invoked later.
      */
-    def get(callback: (Throwable \/ A) => Unit): Unit
+    def get(cb: (Throwable \/ A) => Unit): Unit = get_(r=>cb(r.map(_._2)),false,0)
 
-    /** 
-     * Asynchronously modify the current value of this `Ref`. If this `Ref`
-     * has not been set, this has no effect.
+
+    /**
+     * Modify the current value of this `Ref`. If this `Ref`
+     * has not been set, or is `finished` this has no effect. 
      */
-    def modify(f: A => A): Unit
+    def modify(f: A => A): Unit =
+      compareAndSet({ case Some(a) => Some(f(a)) ; case _ => None } , _ => ())
 
-    /** 
+    /**
+     * Sets the current value of this `Ref` and returns previous value of the `Ref`. If this `Ref`
+     * has not been set, cb is invoked with `None` and value is set. If this Ref 
+     * has been `finished` and is no longer valid this has no effect and cb will be called with `-\/(End)`
+     *
+     */
+    def getAndSet(a:A, cb: (Throwable \/ Option[A]) => Unit): Unit  =
+      set_({ case Some(ca) => Some(a); case _ => None } , cb, old = true)
+
+    /**
+     * Sets the current value of this `Ref` and invoke callback with result of `f`. 
+     * If this `Ref` has not been set the input to `f` is None. 
+     * Additionally if `f` returns None, its no-op and callback will be invoked with current value.
+     * In case the `Ref` is finished will invoke callback with `-\/(End)` and will be no-op
+     * If `Ref` is failed, callback is invoked with `-\/(ex)` where ex is reason for failed Ref.
+     */
+    def compareAndSet(f: Option[A] => Option[A],  cb: (Throwable \/ Option[A]) => Unit): Unit =
+      set_({ old => f(old)} , cb, old = false)
+
+
+    /**
      * Indicate that the value is no longer valid. Any attempts to `set` this
-     * `Ref` after a `close` will be ignored. 
+     * `Ref` after a `close` will be ignored. This `Ref` is `finished` from now on
      */
-    def close: Unit
+    def close: Unit  = fail(End)
 
-    /** 
+
+
+    /**
      * Raise an asynchronous error for readers of this `Ref`. Any attempts to 
-     * `set` this `Ref` after the `fail` shall be ignored.
+     * `set` this `Ref` after the `fail` are ignored. This `Ref` is `failed` from now on.  
      */
-    def fail(error: Throwable): Unit
+    def fail(error: Throwable): Unit =
+      fail_(error)
 
-    /** Registers the given action to be run when this `Ref` is first `set`. */
-    def onRead(action: => Unit): Unit
-    
-    /** 
+
+
+    /**
      * Sets the value inside this `ref`. If this is the first time the `Ref`
      * is `set`, this triggers evaluation of any `onRead` actions registered
-     * with the `Ref`. 
+     * with the `Ref`. If `Ref` is finished or `failed` this is no-op.  
      */
-    def set(a: A): Unit = {
-      init = true
-      setImpl(a)
-    }
+    def set(a: A): Unit =
+      set_ (_ => Some(a), old = false)
 
-    @volatile private var init = false 
-    def isSet: Boolean = init
 
-    /** 
+    /**
+     * Returns true, when this ref is set. 
+     * Will return true as well when this `Ref` is `failed` or `finished`
+     */
+    def isSet: Boolean
+
+    /**
      * Return a continuous stream which emits the current value in this `Ref`. 
      * Note that the `Ref` is left 'open'. If you wish to ensure that the value
      * cannot be used afterward, use the idiom 
-     * `r.toSource onComplete Process.wrap(Task.delay(r.close)).drain` 
+     * `r.toSource onComplete Process.wrap(Task.delay(r.close)).drain`
      */
     def toSource: Process[Task,A] =
       Process.repeatWrap { Task.async[A] { cb => this.get(cb) } }
+
+    /**
+     * Returns asynchronous version of this `Ref`. Modifications are performed
+     * at the time when the resulting tasks are run. Moreover tasks will finish
+     * when all registered streams will get notified of that task change (in case
+     * task is changing the state of the `Ref`.
+     *
+     * If the `Ref` in in `finished` or `failed` state, tasks will fail with 
+     * respective state (`End` or `Throwable`) as their cause.
+     * @return
+     */
+    def async : AsyncRef[A] = new AsyncRef[A] {protected val ref = Ref.this}
+
   }
 
+
+  trait AsyncRef[A] {
+    protected val ref:Ref[A]
+    /**
+     * Like a [[scalaz.stream.async.Ref.get]],
+     * only the value is get asynchronously when the resulting task will be run
+     */
+    def get : Task[A] = Task.async[A](ref.get)
+
+    /**
+     * Like [[scalaz.stream.async.Ref.getAndSet]],
+     * but unlike it it sets the value asynchronously when the resulting task is run 
+     */
+    def getAndSet(a:A) : Task[Option[A]] = Task.async[Option[A]](ref.getAndSet(a, _))
+
+    /**
+     * like [[scalaz.stream.async.Ref.compareAndSet]],
+     * but will be executed asynchronously, when resulting task is run
+     */
+    def compareAndSet(f: Option[A] => Option[A]) : Task[Option[A]] = Task.async[Option[A]](ref.compareAndSet(f, _))
+
+    /**
+     * Like [[scalaz.stream.async.Ref.close]],  
+     * but will be executed asynchronously, when resulting task is run
+     */
+    def close : Task[Unit] = fail(End)
+
+    /**
+     * Same as [[scalaz.stream.async.Ref.fail]],
+     * but the operation is done asynchronously when the task is run. 
+     */
+    def fail(error:Throwable):Task[Unit] =
+      Task.async[Unit] ( cb =>  ref.fail_(error,_=>cb(right(()))))
+
+    /**
+     * Same as [[scalaz.stream.async.Ref.set]],
+     * only that it will be set when the resulting task is run 
+     */
+    def set(a:A) : Task[Unit] =
+      Task.async[Unit](cb=>ref.set_(_ => Some(a),c=>cb(c.map(_=>())), false))
+
+    /**
+     * Same as [[scalaz.stream.async.Ref.isSet]],
+     * but the operation is done asynchronously when the task is run. 
+     * @return
+     */
+    def isSet: Task[Boolean] = Task.delay(ref.isSet)
+  }
+  
   /** 
    * A signal whose value may be set asynchronously. Provides continuous 
    * and discrete streams for responding to changes to this value. 
@@ -283,18 +404,21 @@ object async extends async {
 
     /** 
      * Returns a continuous stream, indicating whether the value has changed. 
-     * This will spike `true` once for each call to `value.set`.
+     * This will spike `true` once for each time the value ref was changed. 
+     * 
      */
     def changed: Process[Task, Boolean]
 
     /** 
      * Returns the discrete version of this signal, updated only when `value`
-     * is `set`.
+     * is changed.  Value may changed several times between reads, but it is
+     * guaranteed this will always get latest known value after any change. If you want
+     * to be notified about every single change use `async.queue` for signalling. 
      */
     def discrete: Process[Task, A]
 
     /** 
-     * Returns the continous version of this signal, always equal to the 
+     * Returns the continuous version of this signal, always equal to the 
      * current `A` inside `value`.
      */
     def continuous: Process[Task, A]
