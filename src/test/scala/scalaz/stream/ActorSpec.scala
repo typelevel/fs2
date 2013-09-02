@@ -10,7 +10,7 @@ import scalaz.\/._
 import org.scalacheck._
 import Prop._
 
-import scalaz.concurrent.Task
+import scalaz.concurrent.{Actor, Task}
 import scalaz.stream.Process.End
 
 import java.lang.Exception
@@ -19,6 +19,7 @@ import scalaz.\/-
 import scala.concurrent.SyncVar
 
 import scala.collection.JavaConverters._
+import scalaz.stream.message.ref.Fail
 
 object ActorSpec extends Properties("actor") {
   
@@ -37,7 +38,13 @@ object ActorSpec extends Properties("actor") {
   case object TestedEx extends Exception("expected in test") {
     override def fillInStackTrace = this
   }
- 
+  
+  def awaitClose[A](a:Actor[message.ref.Msg[A]]) : Option[Throwable] = {
+    Task.async[Option[Throwable]] { cb =>
+      a ! Fail(End, t=> cb(\/-(Some(t))))
+    }.run
+  }
+            
   //initial basic continuous  stream test
   property("ref.basic") = forAll { l: List[Int] =>
     val (v, s:Process[Task,Int]) = actor.ref[Int]
@@ -49,7 +56,7 @@ object ActorSpec extends Properties("actor") {
 
     val t1:Task[Unit] = Task {
       l.foreach { i => v ! Set(r => { read = read :+ (i,r); Some(i)}, cbv => {calledBack = calledBack :+ (i,cbv); cbv.leftMap(t=>t.printStackTrace()) },false); Thread.sleep(1) }
-      v ! Fail(End, t => (failCallBack = Some(t)))
+      failCallBack = awaitClose(v)
     }
 
     val t2 = Task.fork(s.takeWhile(_ % 23 != 0).collect)
@@ -64,7 +71,7 @@ object ActorSpec extends Properties("actor") {
     (failCallBack == Some(End))                           :| "FailCallBack is ok"
   }
 
-  
+   
 
   //checks that once terminated it will not feed anything else to process
   property("ref.stop-on-fail") = forAll { l: List[Int] =>
@@ -84,7 +91,8 @@ object ActorSpec extends Properties("actor") {
       include.foreach(feed)
       v ! Fail(TestedEx, recordFailCb)
       exclude.foreach(feed)
-      v ! Fail(End, recordFailCb)
+      val last = awaitClose(v).toSeq 
+      failCallBack = failCallBack ++ last.toSeq
     }
 
     val t2 = Task.fork(s.attempt().collect)
@@ -98,7 +106,6 @@ object ActorSpec extends Properties("actor") {
     (failCallBack == Vector(TestedEx,TestedEx))                            :| "FailCallBacks are ok"
   }
    
-    
 
   //checks it would never emit if the Set `f` would result in None
   property("ref.no-set-behaviour") = forAll { l: List[Int] =>
@@ -111,7 +118,7 @@ object ActorSpec extends Properties("actor") {
 
     val t1 = Task {
       l.foreach { i => v ! Set(r => { read = read :+ (i,r); None}, cbv => (calledBack = calledBack :+ (i,cbv)),false); Thread.sleep(1) }
-      v ! Fail(End, t => (failCallBack = Some(t)))
+      failCallBack = awaitClose(v)
     }
 
     val t2 = s.takeWhile(_ % 23 != 0).collect
@@ -153,7 +160,7 @@ object ActorSpec extends Properties("actor") {
         case i if i % 2 == 0 =>  v ! Set(r=> {read = read :+ (i,r); Some(i)}, cbv => (calledBack = calledBack :+ (i,cbv)),false) ; Thread.sleep(1)
         case i =>  v ! Set(r=> {read = read :+ (i,r); None}, cbv => (calledBack = calledBack :+ (i,cbv)),false) ; Thread.sleep(1)
       }
-      v ! Fail(End, t => (failCallBack = Some(t)))
+      failCallBack = awaitClose(v)
     }
 
     val t2 = Task.fork(s.collect)
@@ -204,7 +211,7 @@ object ActorSpec extends Properties("actor") {
       include.foreach(feed)
       v ! Set(r => { onFailRead = Some(r); throw TestedEx}, cbv => onFailCallBack = Some(cbv),false); Thread.sleep(1)
       exclude.foreach(feed)
-      v ! Fail(End, cb => endFailCallBack = Some(cb))
+      endFailCallBack = awaitClose(v)
     }
 
     val t2 = Task.fork(s.attempt().collect)
@@ -220,6 +227,5 @@ object ActorSpec extends Properties("actor") {
       (onFailCallBack == Some(left(TestedEx)))                               :| "Fail callBack is ok"      &&
       (endFailCallBack == Some(TestedEx))                                    :| "End FailCallBack is ok"
   }
-   
-
+  
 }
