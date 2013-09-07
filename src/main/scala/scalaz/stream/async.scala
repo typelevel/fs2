@@ -371,7 +371,7 @@ object async extends async {
      * only that it will be set when the resulting task is run 
      */
     def set(a:A) : Task[Unit] =
-      Task.async[Unit](cb=>ref.set_(_ => Some(a),c=>cb(c.map(_=>())), false))
+      compareAndSet(_=>Some(a)).map(_=>()) 
 
     /**
      * Same as [[scalaz.stream.async.Ref.isSet]],

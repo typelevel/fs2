@@ -1,10 +1,6 @@
 package scalaz.stream
 
 import scalaz._
-import scalaz.syntax.equal._
-import scalaz.std.anyVal._
-import scalaz.std.list._
-import scalaz.std.list.listSyntax._
 import scalaz.\/._
 
 import org.scalacheck._
@@ -14,218 +10,312 @@ import scalaz.concurrent.{Actor, Task}
 import scalaz.stream.Process.End
 
 import java.lang.Exception
-import scala.Some
-import scalaz.\/-
 import scala.concurrent.SyncVar
 
-import scala.collection.JavaConverters._
+import java.util.concurrent.{ConcurrentLinkedQueue, TimeUnit, CountDownLatch}
+
+import collection.JavaConverters._
+import collection.JavaConversions._
+import scala.Predef._
+import scala.Some
 import scalaz.stream.message.ref.Fail
+import scalaz.\/-
 
 object ActorSpec extends Properties("actor") {
-  
-  property("queue") = forAll { l: List[Int] => 
-    val (q, s) = actor.queue[Int]
-    import message.queue._
-    val t1 = Task { 
-      l.foreach(i => q ! enqueue(i))
-      q ! close
-    }
-    val t2 = s.collect
 
-    Nondeterminism[Task].both(t1, t2).run._2.toList == l
+  property("queue") = forAll {
+    l: List[Int] =>
+      val (q, s) = actor.queue[Int]
+      import message.queue._
+      val t1 = Task {
+        l.foreach(i => q ! enqueue(i))
+        q ! close
+      }
+      val t2 = s.collect
+
+      Nondeterminism[Task].both(t1, t2).run._2.toList == l
   }
- 
+
   case object TestedEx extends Exception("expected in test") {
     override def fillInStackTrace = this
   }
-  
-  def awaitClose[A](a:Actor[message.ref.Msg[A]]) : Option[Throwable] = {
-    Task.async[Option[Throwable]] { cb =>
-      a ! Fail(End, t=> cb(\/-(Some(t))))
+
+  def awaitFailure[A](a: Actor[message.ref.Msg[A]], t: Throwable): Seq[Throwable] = {
+    Task.async[Seq[Throwable]] {
+      cb =>
+        a ! Fail(t, t => cb(\/-(Seq(t))))
     }.run
   }
-            
-  //initial basic continuous  stream test
-  property("ref.basic") = forAll { l: List[Int] =>
-    val (v, s:Process[Task,Int]) = actor.ref[Int]
-    import message.ref._
 
-    @volatile var read = Vector[(Int,Option[Int])]()
-    @volatile var calledBack =  Vector[(Int,Throwable \/ Option[Int])]()
-    @volatile var failCallBack :Option[Throwable] = None
+  def awaitClose[A](a: Actor[message.ref.Msg[A]]): Seq[Throwable] = awaitFailure(a, End)
 
-    val t1:Task[Unit] = Task {
-      l.foreach { i => v ! Set(r => { read = read :+ (i,r); Some(i)}, cbv => {calledBack = calledBack :+ (i,cbv); cbv.leftMap(t=>t.printStackTrace()) },false); Thread.sleep(1) }
-      failCallBack = awaitClose(v)
-    }
 
-    val t2 = Task.fork(s.takeWhile(_ % 23 != 0).collect)
+  type CLQ[A] = ConcurrentLinkedQueue[A]
+  type Read = (Int, Option[Int])
+  type CallBack = (Int, Throwable \/ Option[Int])
+  type RefActor[A] = Actor[message.ref.Msg[A]]
 
-   
-   val res = Nondeterminism[Task].both(t1, t2).run._2.toList
 
-    
-    (res.forall(_ % 23 != 0))                             :| "Stream  got some elements"  &&
-    ((l zip (None +:l.map(Some(_)))) == read.toList)      :| "Initial values are ok" &&
-    ((l zip l.map(v=>right(Some(v)))) == calledBack)      :| "CallBacks are ok" &&
-    (failCallBack == Some(End))                           :| "FailCallBack is ok"
+  case class TestResult(result: List[Int]
+                        , read: List[Read]
+                        , calledBack: List[CallBack]
+                        , failCallBack: List[Throwable])
+
+  def example[A, B](l: List[Int], lsize: Int = -1, actorStream: (Actor[message.ref.Msg[A]], Process[Task, A]) = actor.ref[A])
+                   (pf: (Process[Task, A]) => Process[Task, B])
+                   (feeder: (RefActor[A], CLQ[Read], CLQ[CallBack], CLQ[Throwable], CountDownLatch) => Task[Unit])
+                   (vf: (List[B], List[Read], List[CallBack], List[Throwable], Long) => Prop): Prop = {
+
+
+    val (a, s) = actorStream
+
+    val read = new ConcurrentLinkedQueue[(Int, Option[Int])]()
+    val calledBack = new ConcurrentLinkedQueue[(Int, Throwable \/ Option[Int])]()
+    val failCallBack = new ConcurrentLinkedQueue[Throwable]()
+    val latch = new CountDownLatch(if (lsize < 0) l.size else lsize)
+
+    val t1: Task[Unit] = feeder(a, read, calledBack, failCallBack, latch).map(_ => {
+      latch.await(9, TimeUnit.SECONDS)
+    })
+    val t2 = pf(s).collect
+
+    val res = new SyncVar[Throwable \/ Seq[B]]
+    Nondeterminism[Task].both(t1, t2).runAsync(cb => res.put(cb.map(_._2)))
+
+    vf(res.get(10000).getOrElse(right(List[B]())).map(_.toList).getOrElse(List[B]())
+      , read.asScala.toList
+      , calledBack.asScala.toList
+      , failCallBack.asScala.toList
+      , latch.getCount)
+
+
   }
 
-   
+
+  //initial basic continuous stream test
+  //Just sets all the values from list and verify we have got expected order, callbacks, reads 
+  property("ref.basic") = forAll {
+    (l: List[Int]) =>
+      example[Int, Int](l)(s => s.takeWhile(_ % 23 != 0))({
+        import message.ref._
+        (a, read, callback, failedCallback, latch) =>
+          Task {
+            l.foreach {
+              i =>
+                a ! Set(r => {read.add(i, r); Some(i) }
+                  , cbv => {callback.add(i, cbv); latch.countDown() }
+                  , false)
+                Thread.sleep(1)
+            }
+            failedCallback.addAll(awaitClose(a))
+          }
+      })({
+        (res, read, callback, failedCallback, latch) =>
+          (latch == 0L) :| "All callbacks were called" &&
+            (res.forall(_ % 23 != 0)) :| "Stream  got some elements" &&
+            ((l zip (None +: l.map(Some(_)))) == read.toList) :| "Initial values are ok" &&
+            ((l zip l.map(v => right(Some(v)))).sortBy(_._1) == callback.sortBy(_._1)) :| "CallBacks are ok" &&
+            (failedCallback == List(End)) :| "FailCallBack is ok"
+      })
+  }
+
 
   //checks that once terminated it will not feed anything else to process
-  property("ref.stop-on-fail") = forAll { l: List[Int] =>
-    val (v, s) = actor.ref[Int]
-    import message.ref._
+  //first feed include, then fail the ref and send exclude. excludes are then verified to fail in result
+  property("ref.stop-on-fail") = forAll {
 
-    val include = l.takeWhile(_ % 23 != 0)
-    val exclude = l.filterNot(include.contains(_))
+    l: (List[Int]) =>
 
-    @volatile var read = Vector[(Int,Option[Int])]()
-    @volatile var calledBack =  Vector[(Int,Throwable \/ Option[Int])]()
-    @volatile var failCallBack  = Vector[Throwable]()
+      val include: List[Int] = l.takeWhile(_ % 23 != 0)
+      val exclude: List[Int] = l.filterNot(include.contains(_))
 
-    val t1 = Task {
-      def feed(i:Int) = {  v ! Set(r => { read = read :+ (i,r); Some(i)}, cbv => (calledBack = calledBack :+ (i,cbv)),false); Thread.sleep(1) }
-      def recordFailCb(t:Throwable) = (failCallBack = failCallBack :+ t)
-      include.foreach(feed)
-      v ! Fail(TestedEx, recordFailCb)
-      exclude.foreach(feed)
-      val last = awaitClose(v).toSeq 
-      failCallBack = failCallBack ++ last.toSeq
-    }
+      example[Int, Throwable \/ Int](l, include.size + exclude.size)(s => s.attempt())({
+        import message.ref._
+        (a, read, callback, failedCallback, latch) =>
+          Task {
+            def feed(i: Int) = {
+              a ! Set(r => {read.add(i, r); Some(i) }
+                , cbv => {callback.add(i, cbv); latch.countDown() }
+                , false)
+              Thread.sleep(1)
+            }
 
-    val t2 = Task.fork(s.attempt().collect)
-    val res = Nondeterminism[Task].both(t1, t2).run._2.toList
+            include.foreach(feed)
+            failedCallback.addAll(awaitFailure(a, TestedEx))
+            exclude.foreach(feed)
+            failedCallback.addAll(awaitClose(a))
+          }
+      })({
+        (res, read, callback, failedCallback, latch) =>
 
-    res.collect{case \/-(r) => r}.forall(e=> ! exclude.contains(e))        :| "Stream was fed before End" &&
-      (res.lastOption == Some(-\/(TestedEx)))                              :| "Last collected is Exception"  &&
-      ((include zip (None +: include.map(Some(_)))) == read.toList)        :| "Initial values are ok" &&
-      (((include zip include.map(v=>right(Some(v)))) ++
-        (exclude zip exclude.map(v=>left(TestedEx))) == calledBack))       :| "CallBacks are ok"
-    (failCallBack == Vector(TestedEx,TestedEx))                            :| "FailCallBacks are ok"
+
+
+          res.collect { case \/-(r) => r }.forall(e => !exclude.contains(e)) :| "Stream was fed before End" &&
+            (res.lastOption == Some(-\/(TestedEx))) :| "Last collected is Exception" &&
+            ((include zip (None +: include.map(Some(_)))) == read.toList) :| "Initial values are ok" &&
+            (latch == 0L) :| "All callbacks were called" &&
+            ((((include zip include.map(v => right(Some(v)))) ++
+              (exclude zip exclude.map(v => left(TestedEx)))).sortBy(_._1) == callback.sortBy(_._1))) :| "CallBacks are ok" &&
+            (failedCallback == List(TestedEx, TestedEx)) :| "FailCallBacks are ok"
+
+      })
+
+
   }
-   
+
 
   //checks it would never emit if the Set `f` would result in None
-  property("ref.no-set-behaviour") = forAll { l: List[Int] =>
-    val (v, s) = actor.ref[Int]
-    import message.ref._
+  property("ref.no-set-behaviour") = forAll {
+    l: List[Int] =>
 
-    @volatile var read = Vector[(Int,Option[Int])]()
-    @volatile var calledBack =  Vector[(Int,Throwable \/ Option[Int])]()
-    @volatile var failCallBack :Option[Throwable] = None
-
-    val t1 = Task {
-      l.foreach { i => v ! Set(r => { read = read :+ (i,r); None}, cbv => (calledBack = calledBack :+ (i,cbv)),false); Thread.sleep(1) }
-      failCallBack = awaitClose(v)
-    }
-
-    val t2 = s.takeWhile(_ % 23 != 0).collect
-
-
-    val res = Nondeterminism[Task].both(t1, t2).run._2.toList
-
-    (res.size == 0)                                    :| "Stream is empty"    &&
-      ((l zip (l.map(_=> None))) == read.toList)       :| "Initial values are ok" &&
-      ((l zip l.map(_=>right(None))) == calledBack)    :| "CallBacks are ok"  &&
-      (failCallBack == Some(End))                      :| "FailCallBack is ok"
-  }
-  
-   
-  //checks get only when changed. Like Get, only it will wait always for value to change.
-  //will also test if the None is result of Set(f,_,_) it would not et the value of ref
-  // odd values are == None, even values are set. 
-  property("ref.get-when-changed")  = forAll { l: List[Int] =>
-    val (v, _) = actor.ref[Int]
-    import message.ref._
-   
-  
-    @volatile var currentSerial = 0
-    @volatile var serialChanges = Vector[(Int,Int)]()
-    val s = Process.repeatWrap { Task.async[Int] { cb => v ! Get(cbv => cb(cbv.map(e =>{ 
-      serialChanges = serialChanges :+ (currentSerial, e._1 )
-      currentSerial = e._1; e._2 
-    })),true,currentSerial) } }
-
-
-    val feed:List[Int] = l.distinct.sorted
-
-    @volatile var read = Vector[(Int,Option[Int])]()
-    @volatile var calledBack =  Vector[(Int,Throwable \/ Option[Int])]()
-    @volatile var failCallBack :Option[Throwable] = None
-
-    val t1 = Task[Unit] {
-      feed.foreach {  
-        case i if i % 2 == 0 =>  v ! Set(r=> {read = read :+ (i,r); Some(i)}, cbv => (calledBack = calledBack :+ (i,cbv)),false) ; Thread.sleep(1)
-        case i =>  v ! Set(r=> {read = read :+ (i,r); None}, cbv => (calledBack = calledBack :+ (i,cbv)),false) ; Thread.sleep(1)
-      }
-      failCallBack = awaitClose(v)
-    }
-
-    val t2 = Task.fork(s.collect)
-
-    val res = Nondeterminism[Task].both(t1, t2).run._2.toList
-
-
-    //when `f` returns None (i is odd) next must see previous value
-    val (_,expectedRead) =
-      feed.foldLeft[(Option[Int],List[(Int,Option[Int])])]((None,Nil)){
-        case ((lastE,acc),i) if i %2 == 0 => (Some(i), acc :+ (i,lastE)) 
-        case ((lastE,acc),i) => (lastE,acc :+ (i,lastE))
-
-      }
-
-    //when `f` returns None (i is odd), the callback must see previous value, otherwise must be returned by `f` 
-    val (_, expectedCallBack) =
-      feed.foldLeft[(Option[Int],List[(Int,Throwable \/ Option[Int])])]((None,Nil)){ 
-        case ((lastE,acc),i) if i %2 == 0 => (Some(i), acc :+ (i,right(Some(i))))
-        case ((lastE,acc),i) => (lastE,acc :+ (i,right(lastE)))
-      }
-  
-
-    (res == res.filter(_ % 2 == 0).distinct.sorted)       :| "Stream has correct items (even only, distinct, sorted)"  &&
-      (serialChanges.filter(e=>(e._1 == e._2)).isEmpty)   :| "Get did not return with same serial" &&
-      (expectedRead == read.toList)                       :| "Initial values are ok"  &&
-      (expectedCallBack == calledBack.toList)             :| "CallBacks are ok" &&
-      (failCallBack == Some(End))                         :| "FailCallBack is ok"
-  }
-  
+      example[Int, Int](l)(s => s.takeWhile(_ % 23 != 0))({
+        import message.ref._
+        (a, read, callback, failedCallback, latch) =>
+          Task {
+            l.foreach {
+              i =>
+                a ! Set(r => {read.add(i, r); None }
+                  , cbv => {callback.add(i, cbv); latch.countDown() }
+                  , false)
+                Thread.sleep(1)
+            }
+            failedCallback.addAll(awaitClose(a))
+          }
+      })({
+        (res, read, callback, failedCallback, latch) =>
  
+          (res.size == 0) :| "Stream is empty" &&
+            ((l zip (l.map(_ => None))) == read.toList) :| "Initial values are ok" &&
+            (latch == 0L) :| "All callbacks were called" &&
+            ((l zip l.map(_ => right(None))).sortBy(_._1) == callback.sortBy(_._1)) :| "CallBacks are ok" &&
+            (failedCallback == List(End)) :| "FailCallBack is ok"
+      })
+
+  }
+
+
+  // checks Get-only-when-changed behaviour. Like Get, only it will wait always for value to change.
+  // will also test if the None is result of Set(f,_,_) it would not set the value of ref
+  // odd values are == None, even values are set (== Some(i)). 
+  property("ref.get-when-changed") = forAll {
+    l: List[Int] =>
+      import message.ref._
+
+      @volatile var currentSerial = 0
+      @volatile var serialChanges = Vector[(Int, Int)]()
+
+      val vs@(v, _) = actor.ref[Int]
+
+      val serials = Process.repeatWrap {
+        Task.async[Int] {
+          cb =>
+            v ! Get(cbv =>
+              cb(cbv.map(e => {
+                serialChanges = serialChanges :+(currentSerial, e._1)
+                currentSerial = e._1
+                e._2
+              }))
+              , true
+              , currentSerial)
+        }
+      }
+
+      val feed: List[Int] = l.distinct.sorted
+
+      example[Int, Int](l, feed.size, vs)(_ => serials)({
+        import message.ref._
+        (a, read, callback, failedCallback, latch) =>
+
+          Task[Unit] {
+            feed.foreach {
+              case i if i % 2 == 0 =>
+                a ! Set(r => {read.add((i, r)); Some(i) }
+                  , cbv => {callback.add((i, cbv)); latch.countDown() }
+                  , false)
+                Thread.sleep(1)
+              case i =>
+                a ! Set(r => {read.add((i, r)); None }
+                  , cbv => {callback.add((i, cbv)); latch.countDown() }
+                  , false)
+                Thread.sleep(1)
+            }
+            failedCallback.addAll(awaitClose(a))
+          }
+      })({
+        (res, read, callback, failedCallback, latch) =>
+
+        //when `f` returns None (i is odd) next must see previous value
+          val (_, expectedRead) =
+            feed.foldLeft[(Option[Int], List[(Int, Option[Int])])]((None, Nil)) {
+              case ((lastE, acc), i) if i % 2 == 0 => (Some(i), acc :+(i, lastE))
+              case ((lastE, acc), i) => (lastE, acc :+(i, lastE))
+
+            }
+
+          //when `f` returns None (i is odd), the callback must see previous value, otherwise must be returned by `f` 
+          val (_, expectedCallBack) =
+            feed.foldLeft[(Option[Int], List[(Int, Throwable \/ Option[Int])])]((None, Nil)) {
+              case ((lastE, acc), i) if i % 2 == 0 => (Some(i), acc :+(i, right(Some(i))))
+              case ((lastE, acc), i) => (lastE, acc :+(i, right(lastE)))
+            }
+
+          (res == res.filter(_ % 2 == 0).distinct.sorted) :| "Stream has correct items (even only, distinct, sorted)" &&
+            (serialChanges.filter(e => (e._1 == e._2)).isEmpty) :| "Get did not return with same serial" &&
+            (expectedRead == read.toList) :| "Initial values are ok" &&
+            (latch == 0L) :| "All callbacks were called" &&
+            (expectedCallBack.sortBy(_._1) == callback.toList.sortBy(_._1)) :| "CallBacks are ok" &&
+            (failedCallback == List(End)) :| "FailCallBack is ok"
+
+      })
+
+
+  }
+
+
+
   //checks it catch the exception on set and will `fail` the ref
-  property("ref.catch-ex-on-set") = forAll { l: List[Int] =>
-    val (v, s) = actor.ref[Int]
-    import message.ref._
+  property("ref.catch-ex-on-set") = forAll {
+    l: List[Int] =>
 
-    val include = l.filter (_ % 2 == 0)
-    val exclude = l.filterNot(_ %2 == 0)
+      val include = l.filter(_ % 2 == 0)
+      val exclude = l.filterNot(_ % 2 == 0)
 
-    @volatile var read = Vector[(Int,Option[Int])]()
-    @volatile var calledBack =  Vector[(Int,Throwable \/ Option[Int])]()
-    @volatile var onFailRead : Option[Option[Int]] = None
-    @volatile var onFailCallBack : Option[Throwable \/ Option[Int]] = None
-    @volatile var endFailCallBack  : Option[Throwable] = None
+      @volatile var onFailRead: Option[Option[Int]] = None
+      @volatile var onFailCallBack: Option[Throwable \/ Option[Int]] = None
 
-    val t1 = Task {
-      def feed(i:Int) = {  v ! Set(r => { read = read :+ (i,r); Some(i)}, cbv => (calledBack = calledBack :+ (i,cbv)),false); Thread.sleep(1) }
-      include.foreach(feed)
-      v ! Set(r => { onFailRead = Some(r); throw TestedEx}, cbv => onFailCallBack = Some(cbv),false); Thread.sleep(1)
-      exclude.foreach(feed)
-      endFailCallBack = awaitClose(v)
-    }
+      example[Int, Throwable \/ Int](l, include.size + exclude.size + 1)(s => s.attempt())({
+        import message.ref._
+        (a, read, callback, failedCallback, latch) =>
+          Task {
+            def feed(i: Int) = {
+              a ! Set(r => {read.add((i, r)); Some(i) }
+                , cbv => {callback.add((i, cbv)); latch.countDown() }
+                , false)
+              Thread.sleep(1)
+            }
+            include.foreach(feed)
+            a ! Set(r => {onFailRead = Some(r); throw TestedEx }
+              , cbv => {onFailCallBack = Some(cbv); latch.countDown() }
+              , false)
+            Thread.sleep(1)
+            exclude.foreach(feed)
+            failedCallback.addAll(awaitClose(a))
+          }
+      })({
+        (res, read, callback, failedCallback, latch) =>
 
-    val t2 = Task.fork(s.attempt().collect)
-    val res = Nondeterminism[Task].both(t1, t2).run._2.toList
- 
-    
-    res.collect{case \/-(r) => r}.forall(e=> ! exclude.contains(e))        :| "Stream was fed before exception" &&
-      (res.lastOption == Some(-\/(TestedEx)))                                :| "Last collected is Exception"  &&
-      ((include zip (None +: include.map(Some(_)))) == read.toList)          :| "Initial values are ok" &&
-      (((include zip include.map(v=>right(Some(v)))) ++
-        (exclude zip exclude.map(v=>left(TestedEx))) == calledBack))         :| "CallBacks are ok"  &&
-      (onFailRead == Some(include.lastOption))                               :| "Fail read value is ok"    &&
-      (onFailCallBack == Some(left(TestedEx)))                               :| "Fail callBack is ok"      &&
-      (endFailCallBack == Some(TestedEx))                                    :| "End FailCallBack is ok"
+          res.collect { case \/-(r) => r }.forall(e => !exclude.contains(e)) :| "Stream was fed before exception" &&
+            (res.lastOption == Some(-\/(TestedEx))) :| "Last collected is Exception" &&
+            ((include zip (None +: include.map(Some(_)))) == read.toList) :| "Initial values are ok" &&
+            (latch == 0L) :| "All callbacks were called" &&
+            ((((include zip include.map(v => right(Some(v)))) ++
+              (exclude zip exclude.map(v => left(TestedEx)))).sortBy(_._1) == callback.sortBy(_._1))) :| "CallBacks are ok" &&
+            (onFailRead == Some(include.lastOption)) :| "Fail read value is ok" &&
+            (onFailCallBack == Some(left(TestedEx))) :| "Fail callBack is ok" &&
+            (failedCallback == List(TestedEx)) :| "End FailCallBack is ok"
+      })
+
+
   }
-  
+
 }

@@ -3,11 +3,9 @@ package scalaz.stream
 import scalaz._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.\/._
-import scalaz.\/.{ fromTryCatch => safely }
 
 import collection.immutable.Queue
 import scalaz.stream.Process.End
-import scala.util.Try
 
 trait actor {
 
@@ -133,18 +131,14 @@ trait actor {
 
     /** publishes to the listeners waiting on first `Set` or on any change of `ser` 
      * If, any of the `callbacks` fail,  will fail and stop this reference as well
+     * Listeners are executed on different threads
      */
     def publishAndClear = { 
       if (listeners.nonEmpty) {
         ref.fold(
-          l =  t =>  listeners.foreach (lst=>safely(lst(left(t)))) 
+          l =  t =>  listeners.foreach (lst => S(lst(left(t)))) 
           , r = oa => {
-            oa.map { aa=> 
-              listeners.foreach(lst=>())
-              safely(listeners.foreach(_(right(ser,aa)))).leftMap{err=>
-                set(left(err)) 
-              } 
-            } 
+            oa.map (aa => listeners.foreach(lst => S(lst(right(ser,aa))))) 
           }
         )
         listeners = Vector()
@@ -158,9 +152,9 @@ trait actor {
      */
     def callBackOrListen(cb:(Throwable \/ (Int,A)) => Unit) =
       ref match {
-        case \/-(Some(aa)) => safely(cb(right((ser,aa)))).leftMap(err=>set(left(err)))
+        case \/-(Some(aa)) => S(cb(right((ser,aa))))
         case \/-(None) => listeners = listeners :+ cb
-        case -\/(err) => safely(cb(left(err)))
+        case -\/(err) => S(cb(left(err)))
       }
     
    
@@ -172,16 +166,17 @@ trait actor {
       case Set(f,cb,returnOld) if ! done => 
         val old = ref
       
-        def callBackOnSet =
+        def callBackOnSet =   {
+          val cref = ref //make the current ref stable for async callbacks that are run lazily on threads
           if (returnOld) {
-         //   println("#>>> CBO:")
-            cb(ref.map(_=>old.toOption.flatten))
+            S(cb(cref.map(_=>old.toOption.flatten)))
           } else {
-         //   println("#>>> CBN:")
-            cb(ref)
+            S(cb(cref))
           }
+        }
+         
 
-        safely(f(ref.toOption.flatten)).fold(
+        fromTryCatch(f(ref.toOption.flatten)).fold(
             l => { set(left(l)); callBackOnSet; publishAndClear},
             r => r match {
               case Some(a) =>
@@ -212,15 +207,21 @@ trait actor {
       //fails or closes (when t == End) the ref  
       case Fail(t,cb) if !done => 
         set(left(t))
-        safely(cb(t)).leftMap(err=>set(left(err))) 
+        S(cb(t)) 
         publishAndClear
 
       //fallback 
       //issues any callbacks when ref is failed or closed to prevent deadlock 
       //todo: we may probably further optimize it for having same callback types here..  
-      case Get(cb,_,_) => safely(cb(ref.fold(l=>left(l),oa=>left(End)))) 
-      case Set(_,cb,_) => safely(cb(ref.fold(l=>left(l),oa=>left(End))))
-      case Fail(_,cb) => safely(cb(ref.fold(l=>l,oa=>End)))
+      case Get(cb,_,_) => 
+        val cRef = ref
+        S(cb(cRef.fold(l=>left(l),oa=>left(End)))) 
+      case Set(_,cb,_) =>
+        val cRef = ref
+        S(cb(cRef.fold(l=>left(l),oa=>left(End))))
+      case Fail(_,cb) =>
+        val cRef = ref
+        S(cb(cRef.fold(l=>l,oa=>End)))
       
     }
     
