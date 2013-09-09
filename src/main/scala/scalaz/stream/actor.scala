@@ -138,7 +138,8 @@ trait actor {
         ref.fold(
           l =  t =>  listeners.foreach (lst => S(lst(left(t)))) 
           , r = oa => {
-            oa.map (aa => listeners.foreach(lst => S(lst(right(ser,aa))))) 
+            val cSer = ser //stabilize ser
+            oa.map (aa => listeners.foreach(lst => S(lst(right(cSer,aa))))) 
           }
         )
         listeners = Vector()
@@ -152,7 +153,9 @@ trait actor {
      */
     def callBackOrListen(cb:(Throwable \/ (Int,A)) => Unit) =
       ref match {
-        case \/-(Some(aa)) => S(cb(right((ser,aa))))
+        case \/-(Some(aa)) => 
+          val cSer = ser
+          S(cb(right((cSer,aa))))
         case \/-(None) => listeners = listeners :+ cb
         case -\/(err) => S(cb(left(err)))
       }
