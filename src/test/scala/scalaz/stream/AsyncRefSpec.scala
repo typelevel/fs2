@@ -88,9 +88,9 @@ object AsyncRefSpec extends Properties("async.ref") {
       ref.set(initial)
      
     
-      val d1 = ref.toDiscreteSource
+      val d1 = ref.signal.discrete
     
-      val d2 = ref.toDiscreteSource
+      val d2 = ref.signal.discrete
     
       val sync1 = new SyncVar[Throwable \/ Seq[Option[Int]]]
       d1.collect.runAsync(sync1.put)

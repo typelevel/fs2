@@ -91,19 +91,13 @@ object ProcessSpec extends Properties("Process1") {
   }
 
   property("merge") = secure {
-    val t0 = System.currentTimeMillis
-    val sleepsL = List(0L, 998L, 1000L) map (i => Task { Thread.sleep(i); i }) 
-    val sleepsR = List(500L, 999L, 1001L) map (i => Task { Thread.sleep(i); i })
-    val ts = emitSeq(sleepsL).eval.merge(emitSeq(sleepsR).eval).
-             map(i => (i, System.currentTimeMillis - t0)).
-             collect.run.toList
-    // println { 
-    //   "Actual vs expected elapsed times for merged stream; doing fuzzy compare:\n" + 
-    //   ts.map(_._2).zip(List(0L, 500L, 1000L, 1500L, 2000L, 2500L))
-    // }
-    ts.map(_._1) == List(0L, 500L, 998L, 999L, 1000L, 1001L) &&
-    ts.map(_._2).zip(List(0L, 500L, 1000L, 1500L, 2000L, 2500L)).
-      forall { case (actual,expected) => (actual - expected).abs < 500L }
+    import concurrent.duration._
+    val sleepsL = Process.awakeEvery(1 seconds).take(3)
+    val sleepsR = Process.awakeEvery(100 milliseconds).take(30)
+    val sleeps = sleepsL merge sleepsR
+    val p = sleeps.toTask
+    val tasks = List.fill(10)(p.timed(500 milliseconds).attemptRun)
+    tasks.forall(_.isRight)
   }
 
   property("forwardFill") = secure {

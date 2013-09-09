@@ -46,37 +46,13 @@ trait async {
       def isSet = init
     }
 
-
-
   /** 
    * Create a new continuous signal which may be controlled asynchronously.
-   * Signal may create multiple type of processes 
-   * that are all controlled by single asynchronous reference
+   * All views into the returned signal are backed by the same underlying
+   * asynchronous `Ref`.
    */
-  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = {
-    
-    new Signal[A] { 
-      
-      val value: Ref[A] = ref[A](S)
-
-      def checkStampChange:Process1[(Int,A),Boolean] = {
-        def go(last:(Int,A)) : Process1[(Int,A),Boolean] = {
-          await1[(Int,A)].flatMap ( next => emit(next != last) then go(next) )
-        }
-        await1[(Int,A)].flatMap(next=> emit(true) then go(next))
-      }
-      
-      def changed =  value.toStampedSource |> checkStampChange 
-       
-      def discrete = value.toDiscreteSource
- 
-      def continuous = value.toSource
- 
-      def changes = value.toStampedDiscreteSource.map(_=>())
-    }
-     
-    
-  }
+  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] =
+    ref[A].signal
     
   /** 
    * Create a source that may be added to or halted asynchronously 
@@ -190,9 +166,8 @@ object async extends async {
       async.toSink(this, cleanup)
   }
 
-  trait Ref[A] {
+  trait Ref[A] { self =>
      
-   
     protected[stream] def set_(f:Option[A] => Option[A],
                                cb:(Throwable \/ Option[A]) => Unit =  (_) => (),
                                old:Boolean ) : Unit
@@ -201,13 +176,11 @@ object async extends async {
 
     protected[stream] def fail_(t:Throwable, cb:Throwable => Unit = _ => ())
     
-
     /**
      * Get the current value of this `Ref`. If this
      * `Ref` has not been `set`, the callback will be invoked later.
      */
     def get(cb: (Throwable \/ A) => Unit): Unit = get_(r=>cb(r.map(_._2)),false,0)
-
 
     /**
      * Modify the current value of this `Ref`. If this `Ref`
@@ -268,45 +241,65 @@ object async extends async {
      */
     def isSet: Boolean
 
-    /**
-     * Return a continuous stream which emits the current value in this `Ref`. 
-     * Note that the `Ref` is left 'open'. If you wish to ensure that the value
-     * cannot be used afterward, use the idiom 
-     * `r.toSource onComplete Process.wrap(Task.delay(r.close)).drain`
-     */
-    def toSource: Process[Task,A] =
-      Process.repeatWrap[Task,A](async.get)
+    def signal: Signal[A] = new Signal[A] {
 
-    /**
-     * Returns a discrete stream, which emits the current value of this `Ref`, 
-     * but only when the `Ref` changes, except for very first emit, which is 
-     * emitted immediately once run, or after `ref` is set for the fist time . 
-     *  
-     */
-    def toDiscreteSource: Process[Task,A] = 
-      toStampedDiscreteSource.map(_._2)
+      def value = self
 
-    /**
-     * Unlike the `toSource` will emit values with their stamp.
-     * @return
-     */
-    def toStampedSource: Process[Task,(Int,A)] =
-      Process.repeatWrap[Task,(Int,A)](async.getStamped)
+      def checkStampChange:Process1[(Int,A),Boolean] = {
+        def go(last:(Int,A)) : Process1[(Int,A),Boolean] = {
+          await1[(Int,A)].flatMap ( next => emit(next != last) then go(next) )
+        }
+        await1[(Int,A)].flatMap(next=> emit(true) then go(next))
+      }
+      
+      def changed =  toStampedSource |> checkStampChange 
+       
+      def discrete = toDiscreteSource
+ 
+      def continuous = toSource
+ 
+      def changes = toStampedDiscreteSource.map(_=>())
 
-
-    /**
-     * Discrete (see `toDiscreteSource`) variant of `toStampedSource`
-     * @return
-     */
-    def toStampedDiscreteSource: Process[Task,(Int,A)] =  {
-      /* The implementation here may seem a redundant a bit, but we need to keep
-       * own serial number to make sure the Get events has own context for
-       * every `toStampedDiscreteSource` process. 
+      /**
+       * Return a continuous stream which emits the current value in this `Ref`. 
+       * Note that the `Ref` is left 'open'. If you wish to ensure that the value
+       * cannot be used afterward, use the idiom 
+       * `r.toSource onComplete Process.wrap(Task.delay(r.close)).drain`
        */
-      def go(ser:Int, changed:Boolean): Process[Task,(Int,A)] =
-        await[Task,(Int,A),(Int,A)](Task.async { cb => get_(cb,changed,ser) })(sa => emit(sa) ++ go(sa._1, true),halt, halt)
+      def toSource: Process[Task,A] =
+        Process.repeatWrap[Task,A](self.async.get)
 
-      go(0,false)
+      /**
+       * Returns a discrete stream, which emits the current value of this `Ref`, 
+       * but only when the `Ref` changes, except for very first emit, which is 
+       * emitted immediately once run, or after `ref` is set for the fist time . 
+       *  
+       */
+      def toDiscreteSource: Process[Task,A] = 
+        toStampedDiscreteSource.map(_._2)
+
+      /**
+       * Unlike the `toSource` will emit values with their stamp.
+       * @return
+       */
+      def toStampedSource: Process[Task,(Int,A)] =
+        Process.repeatWrap[Task,(Int,A)](async.getStamped)
+
+
+      /**
+       * Discrete (see `toDiscreteSource`) variant of `toStampedSource`
+       * @return
+       */
+      def toStampedDiscreteSource: Process[Task,(Int,A)] =  {
+        /* The implementation here may seem a redundant a bit, but we need to keep
+         * own serial number to make sure the Get events has own context for
+         * every `toStampedDiscreteSource` process. 
+         */
+        def go(ser:Int, changed:Boolean): Process[Task,(Int,A)] =
+          await[Task,(Int,A),(Int,A)](Task.async { cb => get_(cb,changed,ser) })(sa => emit(sa) ++ go(sa._1, true),halt, halt)
+
+        go(0,false)
+      }
     }
    
 
@@ -393,13 +386,12 @@ object async extends async {
     /** 
      * Returns a continuous stream, indicating whether the value has changed. 
      * This will spike `true` once for each time the value ref was changed. 
-     * 
      */
     def changed: Process[Task, Boolean]
 
     /** 
      * Returns the discrete version of this signal, updated only when `value`
-     * is changed.  Value may changed several times between reads, but it is
+     * is changed.  Value may change several times between reads, but it is
      * guaranteed this will always get latest known value after any change. If you want
      * to be notified about every single change use `async.queue` for signalling. 
      */

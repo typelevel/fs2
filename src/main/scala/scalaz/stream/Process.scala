@@ -783,7 +783,7 @@ object Process {
    */
   def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = suspend {
     val v = async.localRef[S]
-    v.toSource.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat 
+    v.signal.continuous.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat 
   }
   
   /** 
@@ -909,12 +909,12 @@ object Process {
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.  
    */
-  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy): Process[Task,A] = {
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] = {
     suspend {
-      val v= async.ref[A]
-      val t = toTask(p).map(a => v.set(a))
+      val v = async.signal[A](S)
+      val t = toTask(p).map(a => v.value.set(a))
       val setvar = repeatWrap(t).drain
-      v.toSource.merge(setvar)
+      v.continuous.merge(setvar)
     }
   }
      
