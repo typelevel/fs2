@@ -25,34 +25,35 @@ object AsyncRefSpec extends Properties("async.ref") {
     override def fillInStackTrace = this
   }
   
-  // tests all the operations on the ref (get,set,fail)
-  property("ops") = forAll {
+  // tests all the operations on the signal (get,set,fail)
+  // will also test all the `ref` ops
+  property("signal") = forAll {
     l: List[Int] =>
-      val ref = async.ref[Int]
+      val signal = async.signal[Int]
 
       val ops: List[Int => (String, Task[Boolean])] = l.map {
         v =>
           (v % 7).abs match {
-            case 0 => (o: Int) => ("get", ref.async.get.map(_ == o))
-            case 1 => (o: Int) => (s"set($v)", ref.async.set(v) *> ref.async.get.map(_ == v))
-            case 2 => (o: Int) => (s"getAndSet($v)", ref.async.getAndSet(v).map(r => r == Some(o)))
-            case 3 => (o: Int) => (s"compareAndSet(_=>Some($v))", ref.async.compareAndSet(_ => Some(v)).map(_ == Some(v)))
-            case 4 => (o: Int) => ("compareAndSet(_=>None)", ref.async.compareAndSet(_ => None).map(_ == Some(o)))
-            case 5 => (o: Int) => ("ref.async.close", ref.async.close.map(_ => true))
-            case 6 => (o: Int) => ("ref.async.fail(TestedEx)", ref.async.fail(TestedEx).map(_ => true))
+            case 0 => (o: Int) => ("get", signal.get.map(_ == o))
+            case 1 => (o: Int) => (s"set($v)", signal.set(v) *> signal.get.map(_ == v))
+            case 2 => (o: Int) => (s"getAndSet($v)", signal.getAndSet(v).map(r => r == Some(o)))
+            case 3 => (o: Int) => (s"compareAndSet(_=>Some($v))", signal.compareAndSet(_ => Some(v)).map(_ == Some(v)))
+            case 4 => (o: Int) => ("compareAndSet(_=>None)", signal.compareAndSet(_ => None).map(_ == Some(o)))
+            case 5 => (o: Int) => ("ref.async.close", signal.close.map(_ => true))
+            case 6 => (o: Int) => ("ref.async.fail(TestedEx)", signal.fail(TestedEx).map(_ => true))
           }
       }
 
       //initial set
-      ref.async.set(0).run
+      signal.set(0).run
 
       val (_, runned) =
-        ops.foldLeft[(Throwable \/ Int, Seq[(String, Boolean)])]((\/-(ref.async.get.run), Seq(("START", true)))) {
+        ops.foldLeft[(Throwable \/ Int, Seq[(String, Boolean)])]((\/-(signal.get.run), Seq(("START", true)))) {
           case ((\/-(last), acc), n) =>
             n(last) match {
               case (descr, action) =>
                 action.attemptRun match {
-                  case \/-(maybeOk) => (ref.async.get.attemptRun, acc :+(descr, maybeOk))
+                  case \/-(maybeOk) => (signal.get.attemptRun, acc :+(descr, maybeOk))
                   case -\/(failed) => (-\/(failed), acc :+(descr, false))
                 }
             }
