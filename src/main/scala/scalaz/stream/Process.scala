@@ -782,8 +782,8 @@ object Process {
    * state that will be produced next step.
    */
   def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = suspend {
-    val (v, p) = async.localRef[S]
-    p.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat 
+    val v = async.localRef[S]
+    v.signal.continuous.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat 
   }
   
   /** 
@@ -832,7 +832,7 @@ object Process {
       implicit pool: ExecutorService = Strategy.DefaultExecutorService,
                schedulerPool: ScheduledExecutorService = _scheduler): Process[Task, Duration] = suspend {
     val (q, p) = async.queue[Boolean](Strategy.Executor(pool))
-    val (latest, _) = async.ref[Duration](Strategy.Sequential)
+    val latest = async.ref[Duration](Strategy.Sequential)
     val t0 = Duration(System.nanoTime, NANOSECONDS)
     val metronome = _scheduler.scheduleAtFixedRate(
        new Runnable { def run = {
@@ -909,12 +909,12 @@ object Process {
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.  
    */
-  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy): Process[Task,A] = {
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] = {
     suspend {
-      val (v, pvar) = async.ref[A]
-      val t = toTask(p).map(a => v.set(a))
+      val v = async.signal[A](S)
+      val t = toTask(p).map(a => v.value.set(a))
       val setvar = repeatWrap(t).drain
-      pvar.merge(setvar)
+      v.continuous.merge(setvar)
     }
   }
      
