@@ -99,7 +99,12 @@ trait async {
   
   
   def topic[A,B](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A,B] = {
-    ???
+    val (a, s) = actor.topic[A,B](S)
+    
+    new Topic[A,B]{
+      private[stream] val actor = a
+      val subscribers = s
+    }
   }
 
   /** 
@@ -471,10 +476,10 @@ object async extends async {
      * Gets signal than can be used to get list of current subscribers. 
      * When this topic is `failed` or `finished` this signal is `failed` or `finished` as well.
      * The signal is set once the very first subscriber subscribes (actually is `run`). This can 
-     * be used also to start some process that will feed some `A` to subscribers, but only when 
+     * be used also to start some process that will feed some `A` to this topic and to subscribers, but only when 
      * there is at least one subscriber available.
      */
-    def subscribers : ReadOnlySignal[List[B]]
+    val subscribers : ReadOnlySignal[List[B]]
 
 
     /**
