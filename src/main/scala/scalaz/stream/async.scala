@@ -7,6 +7,7 @@ import java.util.concurrent.atomic._
 
 import scalaz.stream.Process._
 import scala.Some
+import scalaz.stream.async.Topic
 
 trait async {
   import async.{Queue,Ref,Signal}
@@ -95,6 +96,11 @@ trait async {
    */
   def ref[A](implicit S: Strategy = Strategy.DefaultStrategy): Ref[A] = 
     actor.ref[A](S) match { case (snk, p) => actorRef(snk)}
+  
+  
+  def topic[A,B](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A,B] = {
+    ???
+  }
 
   /** 
    * Convert an `Queue[A]` to a `Sink[Task, A]`. The `cleanup` action will be 
@@ -314,39 +320,8 @@ object async extends async {
    * A signal whose value may be set asynchronously. Provides continuous 
    * and discrete streams for responding to changes to this value. 
    */
-  trait Signal[A]  {
-
-    /** 
-     * Returns a continuous stream, indicating whether the value has changed. 
-     * This will spike `true` once for each time the value of `Signal` was changed.
-     * It will always start with `true` when the process is run or when the `Signal` is
-     * set for the first time. 
-     */
-    def changed: Process[Task, Boolean]
-
-    /** 
-     * Returns the discrete version of this signal, updated only when `value`
-     * is changed.  Value may change several times between reads, but it is
-     * guaranteed this will always get latest known value after any change. If you want
-     * to be notified about every single change use `async.queue` for signalling.
-     * 
-     * It will emit the current value of the Signal after being run or when the signal 
-     * is set for the first time
-     */
-    def discrete: Process[Task, A]
-
-    /** 
-     * Returns the continuous version of this signal, always equal to the 
-     * current `A` inside `value`.
-     */
-    def continuous: Process[Task, A]
-
-    /** 
-     * Returns the discrete version of `changed`. Will emit `Unit` 
-     * when the `value` is changed.
-     */
-    def changes: Process[Task, Unit]
-
+  trait Signal[A] extends ReadOnlySignal[A] {
+ 
     /** 
      * Asynchronously refreshes the value of the signal, 
      * keep the value of this `Signal` the same, but notify any listeners.
@@ -407,4 +382,117 @@ object async extends async {
     def value: Ref[A]
     
   }
+
+  /**
+   * Signal that can be only `read` 
+   */
+  trait ReadOnlySignal[A] {
+
+
+    /**
+     * Returns a continuous stream, indicating whether the value has changed. 
+     * This will spike `true` once for each time the value of `Signal` was changed.
+     * It will always start with `true` when the process is run or when the `Signal` is
+     * set for the first time. 
+     */
+    def changed: Process[Task, Boolean]
+    
+    /**
+     * Returns the discrete version of this signal, updated only when `value`
+     * is changed.  Value may change several times between reads, but it is
+     * guaranteed this will always get latest known value after any change. If you want
+     * to be notified about every single change use `async.queue` for signalling.
+     *
+     * It will emit the current value of the Signal after being run or when the signal 
+     * is set for the first time
+     */
+    def discrete: Process[Task, A]
+
+    /**
+     * Returns the continuous version of this signal, always equal to the 
+     * current `A` inside `value`.
+     */
+    def continuous: Process[Task, A]
+
+    /**
+     * Returns the discrete version of `changed`. Will emit `Unit`
+     * when the `value` is changed.
+     */
+    def changes: Process[Task, Unit]
+
+    /**
+     * Asynchronously get the current value of this `Signal`
+     */
+    def get : Task[A]  
+    
+  }
+
+
+  /**
+   * Represents topic, that asynchronously exchanges messages between one or more publisher(s) 
+   * and one or more subscriber(s). 
+   *
+   * Guarantees:
+   *    - Order of messages from publisher is guaranteed to be preserved to all subscribers
+   *    - Messages from publishers may interleave in nondeterministic order before they are read by subscribers
+   *    - Once the `subscriber` is run it will receive all messages from all `publishers`
+   *    
+   * Please not that topic is `active` even when there are no publishers or subscribers attached to it. However
+   * once the `close` or `fail` is called all the publishers and subscribers will terminate or fail.
+   *
+   * @tparam A
+   */
+  trait Topic[A,B] {
+    import message.topic._
+    
+    private[stream] val actor : Actor[Msg[A,B]]
+
+    /**
+     * Gets publisher to this topic. There may be mulitple publishers to this topic.
+     */
+    def publisher : Sink[Task,A] = repeatWrap(Task.now{ a:A => Task.async[Unit](reg => actor ! Publish(a,reg))})
+
+    /**
+     * Gets subscriber from this topic. Id can be used in subscribers to distinguish between 
+     * different subscribers, if necessary. Id may not be unique.
+     * @return
+     */
+    def subscriber(id:B) : Process[Task,A] = {
+      await(Task.async[SubscriberRef[A,B]](reg => actor ! Subscribe(id,reg)))(
+        sref => 
+          repeatWrap(Task.async[Seq[A]]{ reg => actor ! Get(sref,reg)})
+          .flatMap(l => emitAll(l)) 
+          .onComplete(wrap(Task.async[Unit](reg=> actor ! UnSubscribe(sref,reg))).drain)
+        , halt
+        , halt)      
+    }
+
+    /**
+     * Gets signal than can be used to get list of current subscribers. 
+     * When this topic is `failed` or `finished` this signal is `failed` or `finished` as well.
+     * The signal is set once the very first subscriber subscribes (actually is `run`). This can 
+     * be used also to start some process that will feed some `A` to subscribers, but only when 
+     * there is at least one subscriber available.
+     */
+    def subscribers : ReadOnlySignal[List[B]]
+
+
+    /**
+     * Will `finish` this topic. Once `finished` all publishers and subscribers are halted via `halt`.
+     * When this topic is `finished` or `failed` this is no-op
+     * @return
+     */
+    def close : Task[Unit] = fail(End)
+
+    /**
+     * Will `fail` this topic. Once `failed` all publishers and subscribers will terminate with cause `err`.
+     * When this topic is `finished` or `failed` this is no-op
+     * @param err
+     * @return
+     */
+    def fail(err:Throwable) : Task[Unit] = Task.async(reg => actor ! Fail(err,reg))
+
+
+  }
+  
 }
