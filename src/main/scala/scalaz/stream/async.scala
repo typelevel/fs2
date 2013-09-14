@@ -314,7 +314,7 @@ object async extends async {
    * A signal whose value may be set asynchronously. Provides continuous 
    * and discrete streams for responding to changes to this value. 
    */
-  trait Signal[A]  {
+  trait Signal[A]  { self =>
 
     /** 
      * Returns a continuous stream, indicating whether the value has changed. 
@@ -347,6 +347,20 @@ object async extends async {
      */
     def changes: Process[Task, Unit]
 
+
+    /**
+     * Returns sink that can be used to set this signal
+     */
+    def sink: Sink[Task,Signal.Msg[A]] = Process.repeatWrap[Task,Signal.Msg[A] => Task[Unit]] (Task.now{(msg:Signal.Msg[A]) => 
+      import Signal._
+      msg match {
+          case Set(a) =>  self.set(a)
+          case CompareAndSet(f) => self.compareAndSet(f).map(_=>())
+          case Fail(err) =>  self.fail(err)
+        }
+    })
+    
+    
     /** 
      * Asynchronously refreshes the value of the signal, 
      * keep the value of this `Signal` the same, but notify any listeners.
@@ -407,4 +421,33 @@ object async extends async {
     def value: Ref[A]
     
   }
+  
+  
+  object Signal {
+
+    sealed trait Msg[+A]
+
+    /**
+     * Sets the signal to given value 
+     */
+    case class Set[A](a:A) extends Msg[A]
+
+    /**
+     * Conditionally sets signal to given value. Acts similarly as `Signal.compareAndSet`
+     */
+    case class CompareAndSet[A](f:Option[A] => Option[A]) extends Msg[A]
+
+
+    /**
+     * Fails the current signal with supplied exception. Acts similarly as `Signal.fail`
+     */
+    case class Fail(err:Throwable) extends Msg[Nothing]
+
+    /**
+     * Special variant of Fail, that will close the signal. 
+     */
+    val Close = Fail(End)
+    
+  }
+  
 }
