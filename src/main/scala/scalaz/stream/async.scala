@@ -495,7 +495,7 @@ object async extends async {
      * @param err
      * @return
      */
-    def fail(err:Throwable) : Task[Unit] = Task.async(reg => actor ! Fail(err,reg))
+    def fail(err:Throwable) : Task[Unit] = Task.async[Unit](reg => actor ! Fail(err,reg)).attempt.map(_=>())
 
 
   }

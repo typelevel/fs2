@@ -319,7 +319,7 @@ trait actor {
       
       case Publish(_,cb) => S(cb(terminated))
 
-      case Get(_,cb) => S(cb(terminated.map(_=>Nil)))
+      case Get(ref:SubscriberRefInstance[A@unchecked,B@unchecked],cb) => ref.flush(cb,terminated)
 
       case Fail(_,cb) =>  S(cb(terminated))
 
@@ -391,6 +391,7 @@ object message {
     final class SubscriberRefInstance[A, B](@volatile var cbOrQueue : Queue[A] \/  ((Throwable \/ Seq[A]) => Unit)
                                             , val id: B)(implicit S:Strategy) extends SubscriberRef[A,B] {
 
+      //Publishes to subscriber or enqueue for next `Get`
       def publish(a:A)  = 
         cbOrQueue = cbOrQueue.fold(
          q => left(q.enqueue(a))
@@ -400,9 +401,10 @@ object message {
           }
         )
          
-
+      //fails the current call back, if any
       def fail(e:Throwable) = cbOrQueue.map(cb=>S(cb(left(e))))
 
+      //Gets new data or registers call back
       def get(cb:(Throwable \/ Seq[A]) => Unit) = 
         cbOrQueue = cbOrQueue.fold(
          q =>  
@@ -419,6 +421,21 @@ object message {
             cbOrQueue
           }
         )
+      
+      //Fails the callback, or when something in Q, flushes it to callback
+      def flush(cb:(Throwable \/ Seq[A]) => Unit, terminated: Throwable \/ Unit) =
+        cbOrQueue = cbOrQueue.fold(
+         q => {
+           if (q.isEmpty) cb(terminated.map(_=>Nil)) else cb(right(q)) 
+           left(Queue())
+         }
+         , cb => {
+            S(cb(left(new Exception("Only one callback allowed"))))
+            cbOrQueue
+          }  
+            
+        )
+      
 
     }
     
