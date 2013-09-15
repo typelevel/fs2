@@ -96,8 +96,12 @@ trait async {
    */
   def ref[A](implicit S: Strategy = Strategy.DefaultStrategy): Ref[A] = 
     actor.ref[A](S) match { case (snk, p) => actorRef(snk)}
-  
-  
+
+  /**
+   * Returns a topic, that can create publisher (sink) and subscriber (source)
+   * processes that can be used to publish and subscribe asynchronously. 
+   * Please see `Topic` for further info.
+   */
   def topic[A,B](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A,B] = {
     val (a, s) = actor.topic[A,B](S)
     
@@ -439,7 +443,7 @@ object async extends async {
    *
    * Guarantees:
    *    - Order of messages from publisher is guaranteed to be preserved to all subscribers
-   *    - Messages from publishers may interleave in nondeterministic order before they are read by subscribers
+   *    - Messages from publishers may interleave in non deterministic order before they are read by subscribers
    *    - Once the `subscriber` is run it will receive all messages from all `publishers`
    *    
    * Please not that topic is `active` even when there are no publishers or subscribers attached to it. However
@@ -453,9 +457,9 @@ object async extends async {
     private[stream] val actor : Actor[Msg[A,B]]
 
     /**
-     * Gets publisher to this topic. There may be mulitple publishers to this topic.
+     * Gets publisher to this topic. There may be multiple publishers to this topic.
      */
-    def publisher : Sink[Task,A] = repeatWrap(Task.now{ a:A => Task.async[Unit](reg => actor ! Publish(a,reg))})
+    val publisher : Sink[Task,A] = repeatWrap(Task.now{ a:A => Task.async[Unit](reg => actor ! Publish(a,reg))})
 
     /**
      * Gets subscriber from this topic. Id can be used in subscribers to distinguish between 
