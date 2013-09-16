@@ -20,6 +20,14 @@ trait tee {
   /* A `Tee` which ignores all input from the right. */
   def passL[I]: Tee[I,Any,I] = awaitL[I].repeat
 
+  /** Echoes the right branch until the left branch becomes `true`, then halts. */
+  def until[I]: Tee[Boolean,I,I] = 
+    awaitL[Boolean].flatMap(kill => if (kill) halt else awaitR[I] then until)
+
+  /** Echoes the right branch when the left branch is `true`. */ 
+  def when[I]: Tee[Boolean,I,I] = 
+    awaitL[Boolean].flatMap(ok => if (ok) awaitR[I] then when else when)
+    
   /** Defined as `zipWith((_,_))` */
   def zip[I,I2]: Tee[I,I2,(I,I2)] = zipWith((_,_))
 

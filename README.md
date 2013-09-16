@@ -3,6 +3,20 @@ scalaz-stream
 
 [![Build Status](https://travis-ci.org/scalaz/scalaz-stream.png?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
 
+### Where to get it ###
+
+To get the latest development version of the library, add the following to your SBT build:
+
+``` scala
+resolvers ++= Seq("snapshots" at "http://oss.sonatype.org/content/repositories/snapshots")
+
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.1-SNAPSHOT"
+```
+
+The library only builds against Scala 2.10, not earlier versions. There has not yet been a stable (non-snapshot) release, but we will probably cut a 0.1 release soon, after a few things stabilize.
+
+### About the library ###
+
 `scalaz-stream` is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. The design is meant to supercede or replace older iteratee or iteratee-style libraries. Here's a simple example of its use:
 
 ``` scala

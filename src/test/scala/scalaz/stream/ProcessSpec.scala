@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import scalaz.Equal
+import scalaz.{Equal, Nondeterminism}
 import scalaz.syntax.equal._
 import scalaz.std.anyVal._
 import scalaz.std.list._
@@ -76,18 +76,6 @@ object ProcessSpec extends Properties("Process1") {
 
   import scalaz.concurrent.Task
 
-  property("exception") = secure { 
-    case object Err extends RuntimeException 
-    val tasks = Process(Task(1), Task(2), Task(throw Err), Task(3))
-    (try { tasks.eval.pipe(processes.sum).collect.run; false }
-     catch { case Err => true }) &&
-    (try { io.collectTask(tasks.eval.pipe(processes.sum)); false }
-     catch { case Err => true }) &&
-    (tasks.eval.pipe(processes.sum).
-      handle { case e: Throwable => -6 }.
-      collect.run.last == -6)
-  }
-
   property("enqueue") = secure {
     val tasks = Process.range(0,1000).map(i => Task { Thread.sleep(1); 1 })
     tasks.sequence(50).pipe(processes.sum[Int].last).collect.run.head == 1000 &&
@@ -100,6 +88,60 @@ object ProcessSpec extends Properties("Process1") {
     val p = Process(1,2,3) 
     ones.zip(p).collect.run == IndexedSeq(1 -> 1, 1 -> 2, 1 -> 3) &&
     p.zip(ones).collect.run == IndexedSeq(1 -> 1, 2 -> 1, 3 -> 1) 
+  }
+
+  property("merge") = secure {
+    import concurrent.duration._
+    val sleepsL = Process.awakeEvery(1 seconds).take(3)
+    val sleepsR = Process.awakeEvery(100 milliseconds).take(30)
+    val sleeps = sleepsL merge sleepsR
+    val p = sleeps.toTask
+    val tasks = List.fill(10)(p.timed(500 milliseconds).attemptRun)
+    tasks.forall(_.isRight)
+  }
+
+  property("forwardFill") = secure {
+    import concurrent.duration._
+    val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
+             Process.awakeEvery(100 milliseconds).take(100)
+           }.run.run 
+    true
+  }
+
+  property("range") = secure {
+    Process.range(0, 100).collect.run == IndexedSeq.range(0, 100) &&
+    Process.range(0, 1).collect.run == IndexedSeq.range(0, 1) && 
+    Process.range(0, 0).collect.run == IndexedSeq.range(0, 0) 
+  }
+
+  property("ranges") = forAll(Gen.choose(1, 101)) { size => 
+    Process.ranges(0, 100, size).flatMap { case (i,j) => emitSeq(i until j) }.collect.run ==
+    IndexedSeq.range(0, 100)
+  }
+
+  property("liftL") = secure {
+    import scalaz.\/._
+    val s = Process.range(0, 100000)
+    val p = s.map(left) pipe process1.id[Int].liftL
+    true
+  }
+
+  property("feedL") = secure {
+    val w = wye.feedL(List.fill(10)(1))(process1.id)
+    val x = Process.range(0,100).wye(halt)(w).collect.run
+    x.toList == (List.fill(10)(1) ++ List.range(0,100))
+  }
+
+  property("feedR") = secure {
+    val w = wye.feedR(List.fill(10)(1))(wye.merge[Int])
+    val x = Process.range(0,100).wye(halt)(w).collect.run
+    x.toList == (List.fill(10)(1) ++ List.range(0,100))
+  }
+
+  property("either") = secure {
+    val w = wye.either[Int,Int] 
+    val s = Process.constant(1).take(1)
+    s.wye(s)(w).collect.run.map(_.fold(identity, identity)).toList == List(1,1)
   }
 }
 

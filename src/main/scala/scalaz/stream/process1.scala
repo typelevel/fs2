@@ -4,6 +4,7 @@ import collection.immutable.Vector
 import java.nio.charset.Charset
 
 import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal}
+import scalaz.\/._
 import scalaz.syntax.equal._
 
 import Process._
@@ -60,6 +61,90 @@ trait process1 {
   }
 
   /**
+   * Emit the given values, then echo the rest of the input. This is
+   * useful for feeding values incrementally to some other `Process1`:
+   * `init(1,2,3) |> p` returns a version of `p` which has been fed
+   * `1, 2, 3`.
+   */
+  def init[I](head: I*): Process1[I,I] =
+    emitSeq(head) ++ id
+
+  /**
+   * Transform `p` to operate on the left hand side of an `\/`, passing
+   * through any values it receives on the right. Note that this halts
+   * whenever `p` halts.
+   */
+  def liftL[A,B,C](p: Process1[A,B]): Process1[A \/ C, B \/ C] =
+    p match {
+      case h@Halt(_) => h
+      case Emit(h, t) => Emit(h map left, liftL(t))
+      case _ => await1[A \/ C].flatMap {
+        case -\/(a) => liftL(feed1(a)(p))
+        case \/-(c) => emit(right(c)) ++ liftL(p)
+      }
+    }
+
+  /**
+   * Transform `p` to operate on the right hand side of an `\/`, passing
+   * through any values it receives on the left. Note that this halts
+   * whenever `p` halts.
+   */
+  def liftR[A,B,C](p: Process1[B,C]): Process1[A \/ B, A \/ C] =
+    lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
+
+  /**
+   * Split the input and send to either `chan1` or `chan2`, halting when
+   * either branch halts.
+   */
+  def multiplex[I,I2,O](chan1: Process1[I,O], chan2: Process1[I2,O]): Process1[I \/ I2, O] =
+    (liftL(chan1) pipe liftR(chan2)).map(_.fold(identity, identity))
+
+  /** Feed a single input to a `Process1`. */
+  def feed1[I,O](i: I)(p: Process1[I,O]): Process1[I,O] =
+    p match {
+      case h@Halt(_) => h
+      case Emit(h, t) => Emit(h, feed1(i)(t))
+      case Await1(recv,fb,c) =>
+        try recv(i)
+        catch {
+          case End => fb
+          case e: Throwable => c.causedBy(e)
+        }
+    }
+
+  /** Feed a sequence of inputs to a `Process1`. */
+  def feed[I,O](i: Seq[I])(p: Process1[I,O]): Process1[I,O] =
+    p match {
+      case Halt(_) => p
+      case Emit(h, t) => Emit(h, feed(i)(t))
+      case _ =>
+        var buf = i
+        var cur = p
+        var ok = true
+        while (!buf.isEmpty && ok) {
+          val h = buf.head
+          buf = buf.tail
+          cur = feed1(h)(cur)
+          cur match {
+            case Halt(_)|Emit(_,_) => ok = false
+            case _ => ()
+          }
+        }
+        if (buf.isEmpty) cur
+        else feed(buf)(cur)
+    }
+
+  /**
+   * Record evaluation of `p`, emitting the current state along with the ouput of each step.
+   */
+  def record[I,O](p: Process1[I,O]): Process1[I,(Seq[O], Process1[I,O])] = p match {
+    case h@Halt(_) => h
+    case Emit(h, t) => Emit(Seq((h, p)), record(t))
+    case Await1(recv, fb, c) =>
+      Emit(Seq((List(), p)), await1[I].flatMap(recv andThen (record[I,O])).orElse(record(fb),record(c)))
+  }
+
+  /**
    * Break the input into chunks where the delimiter matches the predicate.
    * The delimiter does not appear in the output. Two adjacent delimiters in the
    * input result in an empty chunk in the output.
@@ -109,7 +194,7 @@ trait process1 {
 
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I,I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) else Halt) repeat
+    await1[I] flatMap (i => if (f(i)) emit(i) else halt) repeat
 
   /**
    * `Process1` form of `List.scanLeft`. Like `List.scanLeft`, this
@@ -186,12 +271,12 @@ trait process1 {
 
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I,I] =
-    if (n <= 0) Halt
+    if (n <= 0) halt
     else await1[I] then take(n-1)
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
   def takeWhile[I](f: I => Boolean): Process1[I,I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) then takeWhile(f) else Halt)
+    await1[I] flatMap (i => if (f(i)) emit(i) then takeWhile(f) else halt)
 
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
@@ -201,7 +286,14 @@ trait process1 {
     } repeat
 
   /** Reads a single element of the input, emits nothing, then halts. */
-  def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => Halt)
+  def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => halt)
+
+  /** Remove any `None` inputs. */
+  def stripNone[A]: Process1[Option[A],A] =
+    await1[Option[A]].flatMap {
+      case None => stripNone
+      case Some(a) => emit(a) ++ stripNone
+    }
 
   /**
    * Emit a running sum of the values seen so far. The first value emitted will be the
