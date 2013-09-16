@@ -85,6 +85,16 @@ trait process1 {
   def chunkAll[I]: Process1[I,Vector[I]] =
     chunkBy[I](_ => false)
 
+  /** Outputs a sliding window of size `n` onto the input. */
+  def window[I](n: Int): Process1[I,Vector[I]] = {
+    def go(acc: Vector[I], c: Int): Process1[I,Vector[I]] =
+      if (c > 0)
+        await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
+      else
+        emit(acc) then go(acc.tail, 1)
+    go(Vector(), n)
+  }
+
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] =
     if (n <= 0) id[I]
