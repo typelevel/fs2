@@ -528,10 +528,20 @@ sealed abstract class Process[+F[_],+O] {
    * relies on the `Monad[F]` to ensure stack safety.
    */
   final def collect[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
-    def go(cur: Process[F2,O2], acc: Vector[O2]): F2[IndexedSeq[O2]] =
+    import scalaz.std.indexedSeq._
+    foldMap[F2,IndexedSeq[O2]](IndexedSeq(_))
+  }
+
+  /**
+   * Collect the outputs of this `Process[F,O]` into a monoid `B`, given a `Monad[F]` in
+   * which we can catch exceptions. This function is not tail recursive and
+   * relies on the `Monad[F]` to ensure stack safety.
+   */
+  final def foldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
+    def go(cur: Process[F2,O], acc: B): F2[B] =
       cur match {
         case Emit(h,t) =>
-          go(t.asInstanceOf[Process[F2,O2]], h.asInstanceOf[Seq[O2]].foldLeft(acc)(_ :+ _))
+          go(t.asInstanceOf[Process[F2,O]], h.asInstanceOf[Seq[B]].foldLeft(acc)((x, y) => B.append(x, y)))
         case Halt(e) => e match {
           case End => F.point(acc)
           case _ => C.fail(e)
@@ -539,14 +549,14 @@ sealed abstract class Process[+F[_],+O] {
         case Await(req,recv,fb,c) =>
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              _.fold(
-               { case End => go(fb.asInstanceOf[Process[F2,O2]], acc)
-                 case e => go(c.asInstanceOf[Process[F2,O2]].causedBy(e), acc)
+               { case End => go(fb.asInstanceOf[Process[F2,O]], acc)
+                 case e => go(c.asInstanceOf[Process[F2,O]].causedBy(e), acc)
                },
-               o => go(recv.asInstanceOf[AnyRef => Process[F2,O2]](o), acc)
+               o => go(recv.asInstanceOf[AnyRef => Process[F2,O]](o), acc)
              )
            }
       }
-    go(this, Vector[O2]())
+    go(this, B.zero)
   }
 
   /** Run this `Process` solely for its final emitted value, if one exists. */
