@@ -541,7 +541,7 @@ sealed abstract class Process[+F[_],+O] {
     def go(cur: Process[F2,O], acc: B): F2[B] =
       cur match {
         case Emit(h,t) =>
-          go(t.asInstanceOf[Process[F2,O]], h.asInstanceOf[Seq[B]].foldLeft(acc)((x, y) => B.append(x, y)))
+          go(t.asInstanceOf[Process[F2,O]], h.asInstanceOf[Seq[O]].foldLeft(acc)((x, y) => B.append(x, f(y))))
         case Halt(e) => e match {
           case End => F.point(acc)
           case _ => C.fail(e)
