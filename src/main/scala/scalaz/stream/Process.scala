@@ -3,10 +3,12 @@ package scalaz.stream
 import scala.collection.immutable.{IndexedSeq,SortedMap,Queue,Vector}
 import scala.concurrent.duration._
 
-import scalaz.{Catchable,Functor,Monad,MonadPlus,Monoid,Nondeterminism,Semigroup}
+import scalaz.{Catchable,Functor,Monad,Cobind,MonadPlus,Monoid,Nondeterminism,Semigroup}
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
 import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
+import scalaz.std.stream._
+import scalaz.syntax.foldable._
 import \/._
 import These.{This,That}
 
@@ -607,6 +609,20 @@ sealed abstract class Process[+F[_],+O] {
   def filter(f: O => Boolean): Process[F,O] =
     this |> processes.filter(f)
 
+  /** Instead of emitting a value, emit the process itself. */
+  def tails: Process[F, Process[F, O]] = extend(x => x)
+
+  /**
+   * Maps over this process a function that can read the entire remainder of the process
+   * rather than just the element being emitted. If `p` emits a value, `p extend f` emits `f(p)`.
+   */
+  def extend[B](f: Process[F, O] => B): Process[F, B] =
+    this match {
+      case Emit(h, t) => h.tails.foldRight(t.extend(f))((a, b) => Emit(Seq(f(Emit(a, t))), t.extend(f)) then b)
+      case Await(req, recv, fb, c) => Await(req, (i: Any) => recv(i).extend(f), fb.extend(f), c.extend(f))
+      case Halt(e) => Halt(e)
+    }
+
   /** Connect this `Process` to `process1.fold(b)(f)`. */
   def fold[B](b: B)(f: (B,O) => B): Process[F,B] =
     this |> process1.fold(b)(f)
@@ -930,14 +946,16 @@ object Process {
   def emitAll[O](seq: Seq[O]): Process[Nothing,O] =
     emitSeq(seq, halt)
 
-  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] =
-  new MonadPlus[({type f[x] = Process[F,x]})#f] {
+  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] with Cobind[({type f[x] = Process[F,x]})#f] =
+  new MonadPlus[({type f[x] = Process[F,x]})#f] with Cobind[({type f[x] = Process[F,x]})#f] {
     def empty[A] = halt
     def plus[A](a: Process[F,A], b: => Process[F,A]): Process[F,A] =
       a ++ b
     def point[A](a: => A): Process[F,A] = emit(a)
     def bind[A,B](a: Process[F,A])(f: A => Process[F,B]): Process[F,B] =
       a flatMap f
+    def cobind[A,B](a: Process[F,A])(f: Process[F,A] => B): Process[F,B] =
+      a extend f
   }
 
   /**
