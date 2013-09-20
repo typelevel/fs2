@@ -60,8 +60,8 @@ trait process1 {
     go(Vector(), false)
   }
 
-  /** 
-   * Emit the given values, then echo the rest of the input. This is 
+  /**
+   * Emit the given values, then echo the rest of the input. This is
    * useful for feeding values incrementally to some other `Process1`:
    * `init(1,2,3) |> p` returns a version of `p` which has been fed
    * `1, 2, 3`.
@@ -69,27 +69,27 @@ trait process1 {
   def init[I](head: I*): Process1[I,I] =
     emitSeq(head) ++ id
 
-  /** 
+  /**
    * Transform `p` to operate on the left hand side of an `\/`, passing
    * through any values it receives on the right. Note that this halts
-   * whenever `p` halts. 
+   * whenever `p` halts.
    */
-  def liftL[A,B,C](p: Process1[A,B]): Process1[A \/ C, B \/ C] = 
+  def liftL[A,B,C](p: Process1[A,B]): Process1[A \/ C, B \/ C] =
     p match {
       case h@Halt(_) => h
       case Emit(h, t) => Emit(h map left, liftL(t))
       case _ => await1[A \/ C].flatMap {
         case -\/(a) => liftL(feed1(a)(p))
-        case \/-(c) => emit(right(c)) ++ liftL(p) 
+        case \/-(c) => emit(right(c)) ++ liftL(p)
       }
     }
 
-  /** 
+  /**
    * Transform `p` to operate on the right hand side of an `\/`, passing
    * through any values it receives on the left. Note that this halts
    * whenever `p` halts.
    */
-  def liftR[A,B,C](p: Process1[B,C]): Process1[A \/ B, A \/ C] = 
+  def liftR[A,B,C](p: Process1[B,C]): Process1[A \/ B, A \/ C] =
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
 
   /**
@@ -104,20 +104,20 @@ trait process1 {
     p match {
       case h@Halt(_) => h
       case Emit(h, t) => Emit(h, feed1(i)(t))
-      case Await1(recv,fb,c) => 
+      case Await1(recv,fb,c) =>
         try recv(i)
         catch {
-          case End => fb 
+          case End => fb
           case e: Throwable => c.causedBy(e)
         }
     }
 
   /** Feed a sequence of inputs to a `Process1`. */
-  def feed[I,O](i: Seq[I])(p: Process1[I,O]): Process1[I,O] = 
+  def feed[I,O](i: Seq[I])(p: Process1[I,O]): Process1[I,O] =
     p match {
       case Halt(_) => p
       case Emit(h, t) => Emit(h, feed(i)(t))
-      case _ => 
+      case _ =>
         var buf = i
         var cur = p
         var ok = true
@@ -126,7 +126,7 @@ trait process1 {
           buf = buf.tail
           cur = feed1(h)(cur)
           cur match {
-            case Halt(_)|Emit(_,_) => ok = false 
+            case Halt(_)|Emit(_,_) => ok = false
             case _ => ()
           }
         }
@@ -134,13 +134,13 @@ trait process1 {
         else feed(buf)(cur)
     }
 
-  /** 
-   * Record evaluation of `p`, emitting the current state along with the ouput of each step. 
+  /**
+   * Record evaluation of `p`, emitting the current state along with the ouput of each step.
    */
   def record[I,O](p: Process1[I,O]): Process1[I,(Seq[O], Process1[I,O])] = p match {
     case h@Halt(_) => h
     case Emit(h, t) => Emit(Seq((h, p)), record(t))
-    case Await1(recv, fb, c) => 
+    case Await1(recv, fb, c) =>
       Emit(Seq((List(), p)), await1[I].flatMap(recv andThen (record[I,O])).orElse(record(fb),record(c)))
   }
 
@@ -169,6 +169,16 @@ trait process1 {
   /** Collects up all output of this `Process1` into a single `Emit`. */
   def chunkAll[I]: Process1[I,Vector[I]] =
     chunkBy[I](_ => false)
+
+  /** Outputs a sliding window of size `n` onto the input. */
+  def window[I](n: Int): Process1[I,Vector[I]] = {
+    def go(acc: Vector[I], c: Int): Process1[I,Vector[I]] =
+      if (c > 0)
+        await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
+      else
+        emit(acc) then go(acc.tail, 1)
+    go(Vector(), n)
+  }
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] =
@@ -279,7 +289,7 @@ trait process1 {
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => halt)
 
   /** Remove any `None` inputs. */
-  def stripNone[A]: Process1[Option[A],A] = 
+  def stripNone[A]: Process1[Option[A],A] =
     await1[Option[A]].flatMap {
       case None => stripNone
       case Some(a) => emit(a) ++ stripNone
