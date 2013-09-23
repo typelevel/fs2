@@ -8,7 +8,7 @@ import java.lang.Exception
 
 import scalaz.syntax.monad._
 import scala.concurrent.SyncVar
-import scalaz.stream.async.Signal
+import scalaz.stream.async.mutable.Signal
 import scalaz.stream.Process.End
 
 
@@ -81,7 +81,6 @@ object AsyncRefSpec extends Properties("async.ref") {
   property("signal.sink") = forAll {
     l: List[Int] =>
       val signal = async.signal[(String, Int)]
-
 
       val last = if (l.size % 2 == 0) Signal.Close else Signal.Fail(TestedEx)
 
