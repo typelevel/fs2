@@ -103,7 +103,7 @@ object AsyncRefSpec extends Properties("async.ref") {
 
 
       val feeder =
-        Process.wrap(Task.now(Signal.Set[(String, Int)]("START", 0))) ++
+        Process.eval(Task.now(Signal.Set[(String, Int)]("START", 0))) ++
           Process.emitAll(messages).evalMap(e => Task.fork { Thread.sleep(1); Task.now(e) })
 
 

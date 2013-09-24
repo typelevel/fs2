@@ -40,7 +40,7 @@ object StartHere extends Properties("examples.StartHere") {
 
   */
 
-  property("simple file I/O") = secure {
+  property("dissected simple file I/O") = secure {
     
     /* 
 

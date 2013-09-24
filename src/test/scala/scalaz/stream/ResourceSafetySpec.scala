@@ -29,7 +29,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
   property("pure code") = secure {
     import Process._
     var ok = 0
-    val cleanup = Process.wrap { Task.delay { ok += 1 } }.drain
+    val cleanup = Process.eval { Task.delay { ok += 1 } }.drain
     val src = Process.range(0,10) 
     val procs = List(
       src.map(i => if (i == 3) die else i).onComplete(cleanup),
@@ -52,7 +52,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
 
   property("eval") = secure {
     var ok = 0
-    val cleanup = Process.wrap { Task.delay { ok += 1 } }.drain
+    val cleanup = Process.eval { Task.delay { ok += 1 } }.drain
     val p = Process.range(0,10).onComplete(cleanup).map(i => if (i == 3) Task.delay(die) else Task.now(i))
     val p2 = Process.range(0,10).onComplete(cleanup).map(i => if (i == 3) Task.delay(throw Process.End) else Task.now(i))
     try p.eval.collect.run catch { case e: Throwable => () }

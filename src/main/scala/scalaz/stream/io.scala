@@ -26,7 +26,7 @@ trait io {
       , onExit                                      // Release resource when exhausted
       , onExit)                                     // or in event of error
     await(acquire)(r => {
-      val onExit = suspend(wrap(flushAndRelease(r)))
+      val onExit = suspend(eval(flushAndRelease(r)))
       val onFailure = onExit.drain
       go(step(r), onExit, onFailure)
     }, halt, halt)
@@ -116,7 +116,7 @@ trait io {
       , onExit                           // Release resource when exhausted
       , onExit)                          // or in event of error
     await(acquire)(r => {
-      val onExit = Process.suspend(wrap(release(r)).drain)
+      val onExit = Process.suspend(eval(release(r)).drain)
       go(step(r), onExit)
     }, halt, halt)
   }

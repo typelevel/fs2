@@ -84,7 +84,7 @@ object ProcessSpec extends Properties("Process1") {
 
   // ensure that zipping terminates when the smaller stream runs out
   property("zip one side infinite") = secure {
-    val ones = Process.wrap(Task.now(1)).repeat 
+    val ones = Process.eval(Task.now(1)).repeat 
     val p = Process(1,2,3) 
     ones.zip(p).collect.run == IndexedSeq(1 -> 1, 1 -> 2, 1 -> 3) &&
     p.zip(ones).collect.run == IndexedSeq(1 -> 1, 2 -> 1, 3 -> 1) 

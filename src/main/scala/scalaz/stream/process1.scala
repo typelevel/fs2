@@ -60,6 +60,13 @@ trait process1 {
     go(Vector(), false)
   }
 
+  /** 
+   * Emits a single `true` value if all input matches the predicate.
+   * Halts with `false` as soon as a non-matching element is received. 
+   */
+  def forall[I](f: I => Boolean): Process1[I,Boolean] = 
+    await1[I].flatMap(i => if (f(i)) forall(f) else emit(false)) orElse (emit(true))
+
   /**
    * Emit the given values, then echo the rest of the input. This is
    * useful for feeding values incrementally to some other `Process1`:

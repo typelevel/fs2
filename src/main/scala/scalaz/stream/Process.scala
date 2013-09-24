@@ -418,7 +418,7 @@ sealed abstract class Process[+F[_],+O] {
                 // Nondeterminism instance to request both sides
                 // concurrently.
                 case AwaitF(reqR, recvR, fbR, cR) =>
-                  wrap(F2.choose(E.attempt(reqL), E.attempt(reqR))).flatMap {
+                  eval(F2.choose(E.attempt(reqL), E.attempt(reqR))).flatMap {
                     _.fold(
                       { case (winningReqL, losingReqR) =>
                           winningReqL.fold(
@@ -641,6 +641,10 @@ sealed abstract class Process[+F[_],+O] {
   def intersperse[O2>:O](sep: O2): Process[F,O2] =
     this |> process1.intersperse(sep)
 
+  /** Alternate emitting elements from `this` and `p2`, starting with `this`. */ 
+  def interleave[F2[x]>:F[x],O2>:O](p2: Process[F2,O2]): Process[F2,O2] =
+    this.tee(p2)(scalaz.stream.tee.interleave)
+
   /** Halts this `Process` after emitting 1 element. */
   def once: Process[F,O] = take(1)
 
@@ -697,6 +701,10 @@ sealed abstract class Process[+F[_],+O] {
    */
   def when[F2[x]>:F[x],O2>:O](condition: Process[F2,Boolean]): Process[F2,O2] =
     condition.tee(this)(scalaz.stream.tee.when)
+
+  /** Delay running this `Process` until `awaken` becomes true for the first time. */
+  def sleepUntil[F2[x]>:F[x],O2>:O](awaken: Process[F2,Boolean]): Process[F2,O2] =
+    Process.sleepUntil(awaken)(this)
 
   /**
    * Halts this `Process` as soon as `condition` becomes `true`. Note that `condition`
@@ -823,7 +831,7 @@ object Process {
    */
   def duration: Process[Task, Duration] = suspend {
     val t0 = System.currentTimeMillis
-    repeatWrap { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
+    repeatEval { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
   }
 
   /**
@@ -848,6 +856,24 @@ object Process {
       }
     })
   }
+
+  /** 
+   * A single-element `Process` that waits for the given number
+   * of milliseconds before emitting its value. This uses a shared
+   * `ScheduledThreadPoolExecutor` rather than calling `Thread.sleep`
+   * on the main `Process`.
+   */
+  def sleep(p: Duration)(
+      implicit pool: ExecutorService = Strategy.DefaultExecutorService,
+               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task,Nothing] = 
+    awakeEvery(p)(pool, schedulerPool).once.drain
+
+  /** 
+   * Delay running `p` until `awaken` becomes true for the first time.
+   * The `awaken` process may be discrete. 
+   */
+  def sleepUntil[F[_],A](awaken: Process[F,Boolean])(p: Process[F,A]): Process[F,A] = 
+    awaken.dropWhile(!_).once.flatMap(b => if (b) p else halt)
 
   /**
    * A discrete tasks which emits elapsed durations at the given
@@ -875,11 +901,11 @@ object Process {
        d.toNanos,
        NANOSECONDS
     )
-    repeatWrap {
+    repeatEval {
       Task.async[Duration] { cb =>
         q.dequeue { r =>
           r.fold(
-            e => cb(left(e)),
+            e => pool.submit(new Callable[Unit] { def call = cb(left(e)) }),
             _ => latest.get {
               d => pool.submit(new Callable[Unit] { def call = cb(d) })
             }
@@ -914,6 +940,20 @@ object Process {
       else
         None)
 
+<<<<<<< HEAD
+=======
+  /** 
+   * A supply of `Long` values, starting with `initial`. 
+   * Each read is guaranteed to retun a value which is unique 
+   * across all threads reading from this `supply`.
+   */
+  def supply(initial: Long): Process[Task, Long] = {
+    import java.util.concurrent.atomic.AtomicLong
+    val l = new AtomicLong(initial)
+    repeatEval { Task.delay { l.getAndIncrement }}
+  }
+
+>>>>>>> d1c562f... Documentation. As part of this, renamed wrap to eval.
   /**
    * Convert a `Process` to a `Task` which can be run repeatedly to generate
    * the elements of the `Process`.
@@ -943,7 +983,7 @@ object Process {
     suspend {
       val v = async.signal[A](S)
       val t = toTask(p).map(a => v.value.set(a))
-      val setvar = repeatWrap(t).drain
+      val setvar = repeatEval(t).drain
       v.continuous.merge(setvar)
     }
   }
@@ -977,7 +1017,7 @@ object Process {
     override def fillInStackTrace = this
   }
 
-  class CausedBy(e: Throwable, cause: Throwable) extends Exception {
+  class CausedBy(e: Throwable, cause: Throwable) extends Exception(cause) {
     override def toString = s"$e\n\ncaused by:\n\n$cause"
   }
 
@@ -1464,16 +1504,27 @@ object Process {
   /** Prefix syntax for `p.repeat`. */
   def repeat[F[_],O](p: Process[F,O]): Process[F,O] = p.repeat
 
-  /** Wrap an arbitrary effect in a `Process`. The resulting `Process` emits a single value. */
-  def wrap[F[_],O](t: F[O]): Process[F,O] =
-    emit(t).eval
+  /** 
+   * Evaluate an arbitrary effect in a `Process`. The resulting 
+   * `Process` emits a single value. To evaluate repeatedly, use 
+   * `repeateEval(t)` or equivalently `eval(t).repeat`.
+   */
+  def eval[F[_],O](t: F[O]): Process[F,O] =
+    await(t)(emit)
+
+  /** 
+   * Evaluate an arbitrary effect once, purely for its effects, 
+   * ignoring its return value. This `Process` emits no values.
+   */
+  def eval_[F[_],O](t: F[O]): Process[F,Nothing] =
+    await(t)(_ => halt)
 
   /**
-   * Wrap an arbitrary effect in a `Process`. The resulting `Process` will emit values
+   * eval an arbitrary effect in a `Process`. The resulting `Process` will emit values
    * until evaluation of `t` signals termination with `End` or an error occurs.
    */
-  def repeatWrap[F[_],O](t: F[O]): Process[F,O] =
-    wrap(t).repeat
+  def repeatEval[F[_],O](t: F[O]): Process[F,O] =
+    eval(t).repeat
 
   /**
    * Produce `p` lazily, guarded by a single `Await`. Useful if

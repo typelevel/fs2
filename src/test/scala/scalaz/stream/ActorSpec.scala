@@ -206,7 +206,7 @@ object ActorSpec extends Properties("actor") {
 
       val vs@(v, _) = actor.ref[Int]
 
-      val serials = Process.repeatWrap {
+      val serials = Process.repeatEval {
         Task.async[Int] {
           cb =>
             v ! Get(cbv =>

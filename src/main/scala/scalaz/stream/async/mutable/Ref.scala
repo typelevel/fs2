@@ -101,7 +101,7 @@ trait Ref[A] { self =>
     }
     
     private[stream] def toSource: Process[Task,A] =
-      Process.repeatWrap[Task,A](Task.async[A](value.get))
+      Process.repeatEval[Task,A](Task.async[A](value.get))
 
     /*
      * Returns a discrete stream, which emits the current value of this `Ref`, 
@@ -116,7 +116,7 @@ trait Ref[A] { self =>
      * Unlike the `toSource` will emit values with their stamp.
      */
     private[stream] def toStampedSource: Process[Task,(Int,A)] =
-      Process.repeatWrap[Task,(Int,A)](Task.async[(Int,A)](self.get_(_,false,0)))
+      Process.repeatEval[Task,(Int,A)](Task.async[(Int,A)](self.get_(_,false,0)))
 
 
     /*

@@ -17,7 +17,7 @@ trait Signal[A] extends scalaz.stream.async.immutable.Signal[A] { self =>
   /**
    * Returns sink that can be used to set this signal
    */
-  def sink: Sink[Task,Signal.Msg[A]] = Process.repeatWrap[Task,Signal.Msg[A] => Task[Unit]] (Task.now{(msg:Signal.Msg[A]) => 
+  def sink: Sink[Task,Signal.Msg[A]] = Process.repeatEval[Task,Signal.Msg[A] => Task[Unit]] (Task.now{(msg:Signal.Msg[A]) => 
     import Signal._
     msg match {
         case Set(a) =>  self.set(a)
