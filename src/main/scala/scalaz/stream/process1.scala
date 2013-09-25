@@ -110,7 +110,7 @@ trait process1 {
   def feed1[I,O](i: I)(p: Process1[I,O]): Process1[I,O] =
     p match {
       case h@Halt(_) => h
-      case Emit(h, t) => Emit(h, feed1(i)(t))
+      case Emit(h, t) => emitSeq(h, feed1(i)(t))
       case Await1(recv,fb,c) =>
         try recv(i)
         catch {

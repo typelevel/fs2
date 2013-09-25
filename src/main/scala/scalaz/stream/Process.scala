@@ -160,6 +160,16 @@ sealed abstract class Process[+F[_],+O] {
     go(this)
   }
 
+  /** 
+   * Return any elements emitted by this process after switching to the
+   * `fallback` case of any subsequent `Await`s. 
+   */
+  def flush[F2[x]>:F[x],O2>:O]: Seq[O2] = 
+    this.fallback match {
+      case Emit(h,t) => h ++ t.flush
+      case _ => Seq()
+    }
+
   /**
    * Halt this process, but give it an opportunity to run any requests it has
    * in the `cleanup` argument of its next `Await`.
@@ -940,8 +950,6 @@ object Process {
       else
         None)
 
-<<<<<<< HEAD
-=======
   /** 
    * A supply of `Long` values, starting with `initial`. 
    * Each read is guaranteed to retun a value which is unique 
@@ -953,7 +961,6 @@ object Process {
     repeatEval { Task.delay { l.getAndIncrement }}
   }
 
->>>>>>> d1c562f... Documentation. As part of this, renamed wrap to eval.
   /**
    * Convert a `Process` to a `Task` which can be run repeatedly to generate
    * the elements of the `Process`.
