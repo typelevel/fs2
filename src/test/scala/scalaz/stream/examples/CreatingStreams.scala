@@ -60,10 +60,10 @@ object CreatingStreams extends Properties("creating-streams") {
     val cycleZeroTo100: Process[Task,Int] = zeroTo100.repeat
     
     // A `Process[Task,A]` may also be backed by asynchronous tasks
-    // When run, this `Task` will submit `42` to an `ExecutorService`
+    // When run, this `Task` will submit `41 + 1` to an `ExecutorService`
     // for evaluation. The `ExecutorService` may be explicitly
     // specified as an optional second argument to `Task.apply`.
-    val expensiveInt: Task[Int] = Task { 42 }
+    val expensiveInt: Task[Int] = Task { 41 + 1 }
     val expensiveInts: Process[Task,Int] = Process.eval(expensiveInt).repeat
     
     /* 
