@@ -25,7 +25,7 @@ object GzipSpec extends Properties("io.gzip") {
     val allContent = for {_ <- 1 to 1024} yield (contentChunk)
     
     val source =
-      Process(allContent:_*).map(v => Task(Bytes(v))).eval
+      Process(allContent:_*).map(v => Task(v)).eval
 
     val deflateInflate =
       source throughOption io.deflate() through io.inflate()

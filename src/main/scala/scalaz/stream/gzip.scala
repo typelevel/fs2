@@ -9,14 +9,14 @@ import scala.annotation.tailrec
 trait gzip {
 
   /**
-   * Channel that deflates (compresses) its input Bytes, using 
+   * Channel that deflates (compresses) its input `Array[Byte]`, using 
    * a `java.util.zip.Deflater`. May emit empty arrays if the compressor 
    * is waiting for more data to produce a chunk. The returned `Channel`
    * flushes any buffered compressed data when it encounters a `None`.
    * 
    * @param bufferSize buffer to use when flushing data out of Deflater. Defaults to 32k
    */
-  def deflate(bufferSize: Int = 1024 * 32): Channel[Task, Option[Bytes], Bytes] = {
+  def deflate(bufferSize: Int = 1024 * 32): Channel[Task, Option[Array[Byte]], Array[Byte]] = {
 
     lazy val emptyArray = Array[Byte]() // ok to share this, since it cannot be modified
 
@@ -30,31 +30,32 @@ trait gzip {
       }
     }
 
-    bufferedChannel[Deflater, Bytes, Bytes](Task.delay { new Deflater }) {
+    bufferedChannel[Deflater, Array[Byte], Array[Byte]](Task.delay { new Deflater }) {
       deflater => Task.delay {
         deflater.finish()
-        Bytes(collectFromDeflater(deflater, emptyArray))
+        collectFromDeflater(deflater, emptyArray)
       }
     } (deflater => Task.delay(deflater.end())) {
       deflater => Task.now {
-        in => 
-          deflater.setInput(in.bytes, 0, in.n)
+        in => Task.delay {
+          deflater.setInput(in, 0, in.length)
           if (deflater.needsInput())
-            Task.now(Bytes.empty)
+            emptyArray  
           else
-            Task.now(Bytes(collectFromDeflater(deflater, emptyArray)))
+            collectFromDeflater(deflater, emptyArray)
         }
+      }
     }
   }
 
   /**
    * Channel that inflates (decompresses) the input Bytes. May emit empty 
-   * Bytes if decompressor is not ready to produce data. Last emit will always
+   * Array[Byte] if decompressor is not ready to produce data. Last emit will always
    * contain all data inflated.
    * @param bufferSize buffer to use when flushing data out of Inflater. Defaults to 32k
    * @return
    */
-  def inflate(bufferSize: Int = 1024 * 32): Channel[Task, Bytes, Bytes] = {
+  def inflate(bufferSize: Int = 1024 * 32): Channel[Task, Array[Byte], Array[Byte]] = {
 
     resource(Task.delay(new Inflater))(i => Task.delay(i.end())) {
       inflater => {
@@ -67,21 +68,19 @@ trait gzip {
           }
         }
 
-        Task.delay {
-          in =>
-            if (inflater.finished) {
-              throw End
-            } else {
-              inflater.setInput(in.bytes, 0, in.n)
-              if (inflater.needsInput()) {
-                Task.now(Bytes.empty)
-              } else {
-                Task.now(Bytes(collectFromInflater(Array[Byte]())))
-              }
+        Task.now {
+          in => Task.delay {
+            if (inflater.finished) throw End
+            else {
+              inflater.setInput(in, 0, in.length)
+              if (inflater.needsInput())
+                Array[Byte]()
+              else
+                collectFromInflater(Array[Byte]())
             }
+          }
         }
       }
     }
   }
-
 } 
