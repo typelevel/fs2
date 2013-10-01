@@ -6,7 +6,7 @@ import scalaz.\/._
 
 import collection.immutable.Queue
 import scalaz.stream.Process.End
-import scalaz.stream.async.Signal
+import scalaz.stream.async.immutable
 
 trait actor {
 
@@ -255,10 +255,10 @@ trait actor {
    * Signal is notified always when the count of subscribers changes, and is set with very first subscriber
    * 
    */
-  def topic[A,B](implicit S:Strategy) :(Actor[message.topic.Msg[A,B]],Signal[List[B]]) = {
+  def topic[A](implicit S:Strategy) :(Actor[message.topic.Msg[A]]) = {
     import message.topic._
     
-    var subs = List[SubscriberRefInstance[A,B]]()
+    var subs = List[SubscriberRefInstance[A]]()
 
     //just helper for callback
     val open : Throwable \/ Unit = right(())
@@ -268,14 +268,8 @@ trait actor {
     
     @inline def ready = terminated.isRight
     
-    val signal = async.signal[List[B]](S)
     
-    def updateSignal = {
-      val currentSubs = subs
-      S(signal.value.set(currentSubs.map(_.id)))
-    }
-    
-    val actor =  Actor.actor[Msg[A,B]] {
+    val actor =  Actor.actor[Msg[A]] {
 
       //Publishes message in the topic
       case Publish(a,cb) if ready =>
@@ -284,7 +278,7 @@ trait actor {
 
       //Gets the value of the reference 
       //it wil register call back if there are no messages to be published
-      case Get(ref:SubscriberRefInstance[A@unchecked,B@unchecked],cb) if ready =>
+      case Get(ref:SubscriberRefInstance[A@unchecked],cb) if ready =>
          ref.get(cb)                 
 
       //Stops or fails this topic  
@@ -292,16 +286,14 @@ trait actor {
         subs.foreach(_.fail(err))
         subs = Nil
         terminated = left(err)
-        signal.value.fail(err)
         S(cb(terminated))
         
       
       // Subscribes subscriber
       // When subscriber terminates it MUST send un-subscribe to release all it's resources
-      case Subscribe(subscriberId, cb) if ready =>
-        val subRef = new SubscriberRefInstance[A,B](left(Queue()),subscriberId)(S)
+      case Subscribe(cb) if ready =>
+        val subRef = new SubscriberRefInstance[A](left(Queue()))(S)
         subs = subs :+ subRef
-        updateSignal
         S(cb(right(subRef)))
 
       // UnSubscribes the subscriber. 
@@ -309,7 +301,6 @@ trait actor {
       // will also emit last collected data  
       case UnSubscribe(subRef, cb) => 
          subs = subs.filterNot(_ == subRef)
-         if (ready) updateSignal 
          S(cb(terminated))
 
 
@@ -319,17 +310,15 @@ trait actor {
       
       case Publish(_,cb) => S(cb(terminated))
 
-      case Get(ref:SubscriberRefInstance[A@unchecked,B@unchecked],cb) => ref.flush(cb,terminated)
+      case Get(ref:SubscriberRefInstance[A@unchecked],cb) => ref.flush(cb,terminated)
 
       case Fail(_,cb) =>  S(cb(terminated))
 
-      case Subscribe(_,cb) => S(cb(terminated.bimap(t=>t,r=>sys.error("impossible"))))
+      case Subscribe(cb) => S(cb(terminated.bimap(t=>t,r=>sys.error("impossible"))))
 
       
     }
-    
-    (actor,signal)
-    
+    actor
   }
   
   
@@ -370,26 +359,24 @@ object message {
   
   
   object topic {
-    sealed trait Msg[A,B]
-    case class Publish[A,B](a:A, cb:(Throwable \/ Unit) => Unit) extends Msg[A,B]
-    case class Fail[A,B](t:Throwable, cb:(Throwable \/ Unit) => Unit) extends Msg[A,B]
+    sealed trait Msg[A]
+    case class Publish[A](a:A, cb:(Throwable \/ Unit) => Unit) extends Msg[A]
+    case class Fail[A](t:Throwable, cb:(Throwable \/ Unit) => Unit) extends Msg[A]
     
-    case class Subscribe[A,B](id:B, cb:(Throwable \/ SubscriberRef[A,B]) => Unit) extends Msg[A,B]
-    case class UnSubscribe[A,B](ref:SubscriberRef[A,B], cb:(Throwable \/ Unit) => Unit) extends Msg[A,B]
-    case class Get[A,B](ref:SubscriberRef[A,B], cb: (Throwable \/ Seq[A]) => Unit) extends Msg[A,B]
+    case class Subscribe[A](cb:(Throwable \/ SubscriberRef[A]) => Unit) extends Msg[A]
+    case class UnSubscribe[A](ref:SubscriberRef[A], cb:(Throwable \/ Unit) => Unit) extends Msg[A]
+    case class Get[A](ref:SubscriberRef[A], cb: (Throwable \/ Seq[A]) => Unit) extends Msg[A]
 
     
     //For safety we just hide the mutable functionality from the ref which we passing around
-    sealed trait SubscriberRef[A,B] {
-       val id: B
-    }
+    sealed trait SubscriberRef[A] 
 
     
     // all operations on this class are guaranteed to run on single thread, 
     // however because actor`s handler closure is not capturing `cbOrQueue`
     // It must be tagged volatile
-    final class SubscriberRefInstance[A, B](@volatile var cbOrQueue : Queue[A] \/  ((Throwable \/ Seq[A]) => Unit)
-                                            , val id: B)(implicit S:Strategy) extends SubscriberRef[A,B] {
+    final class SubscriberRefInstance[A](@volatile var cbOrQueue : Queue[A] \/  ((Throwable \/ Seq[A]) => Unit))(implicit S:Strategy) 
+      extends SubscriberRef[A] {
 
       //Publishes to subscriber or enqueue for next `Get`
       def publish(a:A)  = 
@@ -435,13 +422,7 @@ object message {
           }  
             
         )
-      
-
     }
-    
-    
-    
-    
     
   }
 }
