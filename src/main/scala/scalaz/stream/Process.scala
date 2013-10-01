@@ -160,11 +160,11 @@ sealed abstract class Process[+F[_],+O] {
     go(this)
   }
 
-  /** 
+  /**
    * Return any elements emitted by this process after switching to the
-   * `fallback` case of any subsequent `Await`s. 
+   * `fallback` case of any subsequent `Await`s.
    */
-  def flush[F2[x]>:F[x],O2>:O]: Seq[O2] = 
+  def flush[F2[x]>:F[x],O2>:O]: Seq[O2] =
     this.fallback match {
       case Emit(h,t) => h ++ t.flush
       case _ => Seq()
@@ -629,20 +629,6 @@ sealed abstract class Process[+F[_],+O] {
   def filter(f: O => Boolean): Process[F,O] =
     this |> processes.filter(f)
 
-  /** Instead of emitting a value, emit the process itself. */
-  def tails: Process[F, Process[F, O]] = extend(x => x)
-
-  /**
-   * Maps over this process a function that can read the entire remainder of the process
-   * rather than just the element being emitted. If `p` emits a value, `p extend f` emits `f(p)`.
-   */
-  def extend[B](f: Process[F, O] => B): Process[F, B] =
-    this match {
-      case Emit(h, t) => h.tails.foldRight(t.extend(f))((a, b) => Emit(Seq(f(Emit(a, t))), t.extend(f)) then b)
-      case Await(req, recv, fb, c) => Await(req, (i: Any) => recv(i).extend(f), fb.extend(f), c.extend(f))
-      case Halt(e) => Halt(e)
-    }
-
   /** Connect this `Process` to `process1.fold(b)(f)`. */
   def fold[B](b: B)(f: (B,O) => B): Process[F,B] =
     this |> process1.fold(b)(f)
@@ -651,7 +637,7 @@ sealed abstract class Process[+F[_],+O] {
   def intersperse[O2>:O](sep: O2): Process[F,O2] =
     this |> process1.intersperse(sep)
 
-  /** Alternate emitting elements from `this` and `p2`, starting with `this`. */ 
+  /** Alternate emitting elements from `this` and `p2`, starting with `this`. */
   def interleave[F2[x]>:F[x],O2>:O](p2: Process[F2,O2]): Process[F2,O2] =
     this.tee(p2)(scalaz.stream.tee.interleave)
 
@@ -867,7 +853,7 @@ object Process {
     })
   }
 
-  /** 
+  /**
    * A single-element `Process` that waits for the given number
    * of milliseconds before emitting its value. This uses a shared
    * `ScheduledThreadPoolExecutor` rather than calling `Thread.sleep`
@@ -875,14 +861,14 @@ object Process {
    */
   def sleep(p: Duration)(
       implicit pool: ExecutorService = Strategy.DefaultExecutorService,
-               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task,Nothing] = 
+               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task,Nothing] =
     awakeEvery(p)(pool, schedulerPool).once.drain
 
-  /** 
+  /**
    * Delay running `p` until `awaken` becomes true for the first time.
-   * The `awaken` process may be discrete. 
+   * The `awaken` process may be discrete.
    */
-  def sleepUntil[F[_],A](awaken: Process[F,Boolean])(p: Process[F,A]): Process[F,A] = 
+  def sleepUntil[F[_],A](awaken: Process[F,Boolean])(p: Process[F,A]): Process[F,A] =
     awaken.dropWhile(!_).once.flatMap(b => if (b) p else halt)
 
   /**
@@ -950,9 +936,9 @@ object Process {
       else
         None)
 
-  /** 
-   * A supply of `Long` values, starting with `initial`. 
-   * Each read is guaranteed to retun a value which is unique 
+  /**
+   * A supply of `Long` values, starting with `initial`.
+   * Each read is guaranteed to retun a value which is unique
    * across all threads reading from this `supply`.
    */
   def supply(initial: Long): Process[Task, Long] = {
@@ -1003,16 +989,14 @@ object Process {
   def emitAll[O](seq: Seq[O]): Process[Nothing,O] =
     emitSeq(seq, halt)
 
-  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] with Cobind[({type f[x] = Process[F,x]})#f] =
-  new MonadPlus[({type f[x] = Process[F,x]})#f] with Cobind[({type f[x] = Process[F,x]})#f] {
+  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] =
+  new MonadPlus[({type f[x] = Process[F,x]})#f] {
     def empty[A] = halt
     def plus[A](a: Process[F,A], b: => Process[F,A]): Process[F,A] =
       a ++ b
     def point[A](a: => A): Process[F,A] = emit(a)
     def bind[A,B](a: Process[F,A])(f: A => Process[F,B]): Process[F,B] =
       a flatMap f
-    def cobind[A,B](a: Process[F,A])(f: Process[F,A] => B): Process[F,B] =
-      a extend f
   }
 
   /**
@@ -1511,16 +1495,16 @@ object Process {
   /** Prefix syntax for `p.repeat`. */
   def repeat[F[_],O](p: Process[F,O]): Process[F,O] = p.repeat
 
-  /** 
-   * Evaluate an arbitrary effect in a `Process`. The resulting 
-   * `Process` emits a single value. To evaluate repeatedly, use 
+  /**
+   * Evaluate an arbitrary effect in a `Process`. The resulting
+   * `Process` emits a single value. To evaluate repeatedly, use
    * `repeateEval(t)` or equivalently `eval(t).repeat`.
    */
   def eval[F[_],O](t: F[O]): Process[F,O] =
     await(t)(emit)
 
-  /** 
-   * Evaluate an arbitrary effect once, purely for its effects, 
+  /**
+   * Evaluate an arbitrary effect once, purely for its effects,
    * ignoring its return value. This `Process` emits no values.
    */
   def eval_[F[_],O](t: F[O]): Process[F,Nothing] =
