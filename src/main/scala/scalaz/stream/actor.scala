@@ -75,7 +75,7 @@ trait actor {
       } 
       case _ => ()
     }
-    val p = Process.repeatWrap { Task.async[A] { cb => a ! Dequeue(cb) } }
+    val p = Process.repeatEval { Task.async[A] { cb => a ! Dequeue(cb) } }
     (a, p)
   }
 
@@ -93,7 +93,7 @@ trait actor {
 
   /** Convert an `Actor[A]` to a `Sink[Task, A]`. */
   def toSink[A](snk: Actor[A]): Process[Task, A => Task[Unit]] =
-    Process.repeatWrap { Task.now { (a: A) => Task.delay { snk ! a } } }
+    Process.repeatEval { Task.now { (a: A) => Task.delay { snk ! a } } }
 
   /**
    * Returns a continuous `Process` whose value can be set
@@ -230,7 +230,7 @@ trait actor {
     }
     
     ///
-    val process = Process.repeatWrap[Task,A] { 
+    val process = Process.repeatEval[Task,A] { 
       Task.async[A] { cb => actor ! Get(sa=> {  cb(sa.map(_._2)) },false,0) } 
     }
     (actor, process)

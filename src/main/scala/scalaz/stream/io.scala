@@ -26,7 +26,7 @@ trait io {
       , onExit                                      // Release resource when exhausted
       , onExit)                                     // or in event of error
     await(acquire)(r => {
-      val onExit = suspend(wrap(flushAndRelease(r)))
+      val onExit = suspend(eval(flushAndRelease(r)))
       val onFailure = onExit.drain
       go(step(r), onExit, onFailure)
     }, halt, halt)
@@ -64,7 +64,7 @@ trait io {
   def chunkR(is: => InputStream): Channel[Task, Int, Array[Byte]] =
     unsafeChunkR(is).map(f => (n: Int) => {
       val buf = new Array[Byte](n)
-      f(buf).map(_.toArray)
+      f(buf)
     })
 
   /**
@@ -82,12 +82,6 @@ trait io {
   /** Create a `Source` from a file name and optional buffer size in bytes. */
   def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task, Int, Array[Byte]] =
     chunkR(new BufferedInputStream(new FileInputStream(f), bufferSize))
-
-  /**
-   * Convenience helper to produce Bytes from the Array[Byte]
-   */
-  def fromByteArray : Process1[Array[Byte],Bytes] =
-    processes.lift(Bytes(_))
 
   /**
    * Create a `Process[Task,String]` from the lines of a file, using
@@ -116,38 +110,33 @@ trait io {
       , onExit                           // Release resource when exhausted
       , onExit)                          // or in event of error
     await(acquire)(r => {
-      val onExit = Process.suspend(wrap(release(r)).drain)
+      val onExit = Process.suspend(eval(release(r)).drain)
       go(step(r), onExit)
     }, halt, halt)
   }
 
   /**
-   * Convenience helper to get Array[Byte] out of Bytes
-   */
-  def toByteArray: Process1[Bytes,Array[Byte]] =
-    processes.lift(_.toArray)
-
-  /**
-   * Create a `Channel[Task,Array[Byte],Bytes]` from an `InputStream` by
+   * Create a `Channel[Task,Array[Byte],Array[Bytes]]` from an `InputStream` by
    * repeatedly filling the input buffer. The last chunk may be less
    * than the requested size.
    *
-   * Because this implementation returns a read-only view of the given
-   * buffer, it is safe to recyle the same buffer for consecutive reads
-   * as long as whatever consumes this `Process` never stores the `Bytes`
+   * It is safe to recyle the same buffer for consecutive reads
+   * as long as whatever consumes this `Process` never stores the `Array[Byte]`
    * returned or pipes it to a combinator (like `buffer`) that does.
-   * Use `chunkR` for a safe version of this combinator.
+   * Use `chunkR` for a safe version of this combinator - this takes
+   * an `Int` number of bytes to read and allocates a fresh `Array[Byte]`
+   * for each read.
    *
    * This implementation closes the `InputStream` when finished
    * or in the event of an error.
    */
-  def unsafeChunkR(is: => InputStream): Channel[Task,Array[Byte],Bytes] = {
+  def unsafeChunkR(is: => InputStream): Channel[Task,Array[Byte],Array[Byte]] = {
     resource(Task.delay(is))(
              src => Task.delay(src.close)) { src =>
       Task.now { (buf: Array[Byte]) => Task.delay {
         val m = src.read(buf)
         if (m == -1) throw End
-        else new Bytes(buf, m)
+        else buf.take(m)
       }}
     }
   }

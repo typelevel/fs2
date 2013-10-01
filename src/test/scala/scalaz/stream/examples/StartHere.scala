@@ -22,13 +22,13 @@ object StartHere extends Properties("examples.StartHere") {
   property("simple file I/O") = secure {
 
     val converter: Task[Unit] = 
-      io.linesR("testdata/fahrenheit.txt").
-         filter(s => !s.trim.isEmpty && !s.startsWith("//")).
-         map(line => fahrenheitToCelsius(line.toDouble).toString).
-         intersperse("\n").
-         pipe(process1.utf8Encode).
-         to(io.fileChunkW("testdata/celsius.txt")).
-         run
+      io.linesR("testdata/fahrenheit.txt")
+        .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
+        .map(line => fahrenheitToCelsius(line.toDouble).toString)
+        .intersperse("\n")
+        .pipe(process1.utf8Encode)
+        .to(io.fileChunkW("testdata/celsius.txt"))
+        .run
 
     converter.run
     true
@@ -40,7 +40,7 @@ object StartHere extends Properties("examples.StartHere") {
 
   */
 
-  property("simple file I/O") = secure {
+  property("dissected simple file I/O") = secure {
     
     /* 
 
@@ -85,7 +85,7 @@ object StartHere extends Properties("examples.StartHere") {
     val mapped: Process[Task, String] = 
       filtered.map(line => fahrenheitToCelsius(line.toDouble).toString)
 
-    // adds a newline between emitted strings of `mapped`
+    /* Adds a newline between emitted strings of `mapped` */
     val withNewlines: Process[Task, String] = 
       mapped.intersperse("\n")
     
@@ -145,7 +145,7 @@ object StartHere extends Properties("examples.StartHere") {
     val task: Task[Unit] = 
       pipeline.run
     
-    // this is the only place we actually have a side effect
+    /* This is the only place we actually have a side effect */
     val result: Unit = task.run
 
     true
