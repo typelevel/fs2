@@ -1,15 +1,10 @@
 package scalaz.stream
 
-import scalaz.\/
-import scalaz.\/._
-import scalaz.concurrent._
-import java.util.concurrent.atomic._
-
-import scalaz.stream.Process._
-import scala.Some
+import scalaz.\/ 
+import scalaz.concurrent._  
 
 package object async {
-  import mutable.{Queue,Ref,Signal}
+  import mutable.{Queue,Ref,Signal,Topic}
 
   /** 
    * Convert from an `Actor` accepting `message.queue.Msg[A]` messages 
@@ -101,6 +96,17 @@ package object async {
    * run when the `Sink` is terminated.
    */
   def toSink[A](q: Queue[A], cleanup: Queue[A] => Task[Unit] = (q: Queue[A]) => Task.delay {}): Process.Sink[Task,A] =
-    io.resource(Task.now(q))(cleanup)(q => Task.delay { (a:A) => Task.now(q.enqueue(a)) }) 
+    io.resource(Task.now(q))(cleanup)(q => Task.delay { (a:A) => Task.now(q.enqueue(a)) })
+
+  /**
+   * Returns a topic, that can create publisher (sink) and subscriber (source)
+   * processes that can be used to publish and subscribe asynchronously. 
+   * Please see `Topic` for more info.
+   */
+  def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
+    new Topic[A]{
+      private[stream] val actor = scalaz.stream.actor.topic[A](S) 
+    }
+  }
 }
 

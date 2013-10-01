@@ -12,13 +12,7 @@ import scalaz.stream.async.mutable.Signal
 import scalaz.stream.Process.End
 
 
-/**
- *
- * User: pach
- * Date: 9/2/13
- * Time: 9:17 AM
- * (c) 2011-2013 Spinoco Czech Republic, a.s.
- */
+ 
 object AsyncRefSpec extends Properties("async.ref") {
 
   case object TestedEx extends Exception("expected in test") {
