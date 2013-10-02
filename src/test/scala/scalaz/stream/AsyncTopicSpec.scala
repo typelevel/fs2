@@ -67,9 +67,9 @@ object AsyncTopicSpec extends Properties("topic") {
       (oddResult.nonEmpty && oddResult.get.isRight                                   :| "Odd numbers were published") &&
         (evenResult.nonEmpty && evenResult.get.isRight                               :| "Even numbers were published") &&
         (verifySub(sub1, "1")) &&
-        (verifySub(sub1, "2")) &&
-        (verifySub(sub1, "3")) &&
-        (verifySub(sub1, "4"))  
+        (verifySub(sub2, "2")) &&
+        (verifySub(sub3, "3")) &&
+        (verifySub(sub4, "4"))
 
 
   }
