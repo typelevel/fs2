@@ -285,6 +285,10 @@ trait process1 {
   def takeWhile[I](f: I => Boolean): Process1[I,I] =
     await1[I] flatMap (i => if (f(i)) emit(i) then takeWhile(f) else halt)
 
+  /** Like `takeWhile`, but emits the first value which tests false. */
+  def takeThrough[I](f: I => Boolean): Process1[I,I] =
+    await1[I] flatMap (i => if (f(i)) emit(i) then takeThrough(f) else emit(i))
+
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
     await1[Throwable \/ A].flatMap {
