@@ -268,6 +268,14 @@ trait process1 {
     await1[I].flatMap(go)
   }
 
+  /** 
+   * Skip all but the last element of the input. 
+   * This `Process` will always emit exactly one value;
+   * If the input is empty, `i` is emitted. 
+   */
+  def lastOr[I](i: => I): Process1[I,I] = 
+    last |> await1[I].orElse(emit(i))
+
   /** Transform the input using the given function, `f`. */
   def lift[I,O](f: I => O): Process1[I,O] =
     id[I] map f
