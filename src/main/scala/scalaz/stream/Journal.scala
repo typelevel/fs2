@@ -41,6 +41,9 @@ object Writer {
   type TeeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#T,S,O] 
   type WyeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#Y,S,O]
 
+  def halt: Writer[Nothing,Nothing,Nothing] = 
+    Writer(Process.halt)
+
   def emit[O](o: O): Writer[Nothing,Nothing,O] = 
     lift(Process.emit(o))
 
@@ -88,14 +91,14 @@ object Writer {
  * distributed, or replicated streams. 
  */
 case class Journal[F[_],S,I,+O] private[stream](
-    resume: (S, Process[F,I]) => Writer[F,Entry[S,I],O]) {
+    resume: (Process[F,S], Process[F,I]) => Writer[F,Entry[S,I],O]) {
 
   def map[O2](f: O => O2): Journal[F,S,I,O2] =
     rewrite(_.map(f))
 
   def rewrite[O2](
       f: Writer[F,Entry[S,I],O] => Writer[F,Entry[S,I],O2]): Journal[F,S,I,O2] =
-    Journal((s: S, pending: Process[F,I]) => f(resume(s, pending)))
+    Journal((s, pending) => f(resume(s, pending)))
 
   def pipe[O2](f: Process1[O,O2]): Journal[F,S,I,O2] = 
     rewrite(_.pipe(f))
@@ -103,30 +106,17 @@ case class Journal[F[_],S,I,+O] private[stream](
   def |>[O2](f: Process1[O,O2]): Journal[F,S,I,O2] = 
     rewrite(_.pipe(f))
 
-  /** Replace each commit with a given stream of writes. */
-  def extend[O2>:O](f: S => Writer[F,Entry[S,I],O2]): 
+  def extend[O2>:O](f: (Process[F,S], Process[F,I]) => Writer[F,Entry[S,I],O2]): 
       Journal[F,S,I,O2] = 
-    Journal((s: S, pending: Process[F,I]) => Writer(resume(s,pending).run.flatMap {
-      case \/-(entry) => entry match {
-        case r@Reset => emit(right(r))
-        case l@Log(_) => emit(right(l))
-        case c@Commit(s) => f(s).run
-      } 
-      case o@(-\/(_)) => emit(o)
-    }))
+    Journal((s, pending) => 
+      Writer(resume(s,pending).run ++ f(s, pending).run)
+    )
 
   def ++[O2>:O](j2: Journal[F,S,I,O2]): Journal[F,S,I,O2] =
-    extend(s => j2.resume(s, halt))
+    extend((s,i) => j2.resume(s, i))
 
   def flatMap[O2](f: O => Writer[F,Entry[S,I],O2]): Journal[F,S,I,O2] = 
-    Journal((s: S, pending: Process[F,I]) => 
-      Writer { resume(s, pending).flatMap(f).run.pipe(
-        process1.takeThrough {
-          case \/-(Commit(_)) => false
-          case _ => true
-        }
-      )}
-    )
+    Journal((s, pending) => resume(s,pending).flatMap(f))
 }
 
 object Journal {
@@ -134,12 +124,8 @@ object Journal {
   val W = Writer
   val P = Process
 
-  def journal[F[_],S,I](initialize: S => Process1[I,S]): 
-    Journal[F,S,I,Nothing] = Journal[F,S,I,Nothing](
-      (s:S, pending: Process[F,I]) => 
-        Writer(pending.pipe(initialize(s)).pipe(process1.lastOr(s)).flatMap(s0 => 
-          P.emit(right(Commit(s0)))))
-    )
+  def empty[F[_],S,I]: Journal[F,S,I,Nothing] = 
+    Journal[F,S,I,Nothing]((s,pending) => W.halt)
 
   sealed trait Entry[+S,+A] { 
     def map[B](f: A => B): Entry[S,B] = this match {
