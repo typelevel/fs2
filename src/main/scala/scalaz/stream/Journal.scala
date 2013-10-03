@@ -1,5 +1,6 @@
 package scalaz.stream
 
+import collection.immutable.Vector
 import Process._
 import Journal._
 import scalaz.\/._
@@ -32,7 +33,9 @@ case class Writer[+F[_],+S,+A](run: Process[F, A \/ S]) {
     Writer(run then Writer.lift(w2).run)
 }
 
-object Writer extends Journals {
+object Writer {
+  
+  import Journal._
 
   type Process1W[+S,-I,+O] = Writer[Env[I,Any]#Is,S,O] 
   type TeeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#T,S,O] 
@@ -47,6 +50,9 @@ object Writer extends Journals {
   def lift[F[_],A](p: Process[F,A]): Writer[F,Nothing,A] = 
     Writer(p.map(left))
 
+  def logged[F[_],A](p: Process[F,A]): Writer[F,A,A] =
+    Writer(p.flatMap(a => emitAll(Vector(right(a), left(a)))))
+
   def await1[A]: Process1W[Nothing,A,A] =
     lift(Process.await1[A])
 
@@ -58,6 +64,18 @@ object Writer extends Journals {
 
   def awaitBoth[I,I2]: WyeW[Nothing,I,I2,These[I,I2]] =
     lift(Process.awaitBoth[I,I2])
+
+  /** Write a single (uncommited) value to the journal. */
+  def log[I](i: I): Writer[Nothing,Entry[Nothing,I],Nothing] = 
+    Writer(Process.emit(right(Log(i)))) 
+
+  /** Commit to a new state, clearing any uncommited values. */
+  def commit[S](s: S): Writer[Nothing,Entry[S,Nothing],Nothing] = 
+    Writer(Process.emit(right(Commit(s)))) 
+
+  /** Reset back to the last commited state. */
+  val reset: Writer[Nothing,Entry[Nothing,Nothing],Nothing] = 
+    Writer(Process.emit(right(Reset)))
 }
 
 /** 
@@ -85,6 +103,7 @@ case class Journal[-P[_],+F[_],S,I,+O] private[stream](
   def |>[O2](f: Process1[O,O2]): Journal[P,F,S,I,O2] = 
     rewrite(_.pipe(f))
 
+  /** Replace each commit with a given stream of writes. */
   def extend[F2[x]>:F[x],O2>:O](f: S => Writer[F2,Entry[S,I],O2]): 
       Journal[P,F2,S,I,O2] = 
     Journal((s: S, pending: Process[P,I]) => Writer(resume(s,pending).run.flatMap {
@@ -112,35 +131,21 @@ case class Journal[-P[_],+F[_],S,I,+O] private[stream](
     )
 }
 
-trait Journals {
-
-  import Writer._
-
-  /** Write a single (uncommited) value to the journal. */
-  def log[I](i: I): Writer[Nothing,Entry[Nothing,I],Nothing] = 
-    Writer(Process.emit(right(Log(i)))) 
-
-  /** Commit to a new state, clearing any uncommited values. */
-  def commit[S](s: S): Writer[Nothing,Entry[S,Nothing],Nothing] = 
-    Writer(Process.emit(right(Commit(s)))) 
-
-  /** Reset back to the last commited state. */
-  val reset: Writer[Nothing,Entry[Nothing,Nothing],Nothing] = 
-    Writer(Process.emit(right(Reset)))
-
-  def read[S]: Journal[Any,Nothing,S,Nothing,S] = 
-    Journal[Any,Nothing,S,Nothing,S](
-      (s:S, pending: Process[Any,Nothing]) => emit(s) ++ commit(s))
-}
-
-object Journal extends Journals {
+object Journal {
   
+  val W = Writer
+  val P = Process
+
   def journal[F[_],S,I](initialize: S => Process1[I,S]): 
     Journal[F,F,S,I,Nothing] = Journal[F,F,S,I,Nothing](
       (s:S, pending: Process[F,I]) => 
         Writer(pending.pipe(initialize(s)).flatMap(s0 => 
-          Process.emit(right(Commit(s0)))))
+          P.emit(right(Commit(s0)))))
     )
+
+  def read[S]: Journal[Any,Nothing,S,Nothing,S] = 
+    Journal[Any,Nothing,S,Nothing,S](
+      (s:S, pending: Process[Any,Nothing]) => W.emit(s) ++ W.commit(s))
 
   sealed trait Entry[+S,+A] { 
     def map[B](f: A => B): Entry[S,B] = this match {
@@ -163,10 +168,10 @@ object Journal extends Journals {
     p match {
       case h@Halt(_) => h
       case Emit(h, t) => Emit(h map (Log(_)), lift(t))
-      case _ => await1[Entry[S,A]].flatMap {
+      case _ => P.await1[Entry[S,A]].flatMap {
         case Log(a) => lift(process1.feed1(a)(p))
-        case c@Commit(_) => emit(c) ++ lift(p) 
-        case r@Reset => emit(r) ++ lift(p)
+        case c@Commit(_) => P.emit(c) ++ lift(p) 
+        case r@Reset => P.emit(r) ++ lift(p)
       }
     }
 }
