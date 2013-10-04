@@ -43,29 +43,33 @@ object Writer {
   type Process1W[+S,-I,+O] = Writer[Env[I,Any]#Is,S,O] 
   type TeeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#T,S,O] 
   type WyeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#Y,S,O]
-  type Journal[S,-I,+O] = WyeW[Entry[S], S, I, O]
-  // type Journal[S,-I,+O] = WyeW[Entry[S], R \/ S, I, O]
-  // case object Recover extends Entry
+  type Journal[S,-I,+O] = TeeW[Entry[S], S, I, O]
 
   case class Log[F[_],S,I](
     commit: Sink[F,S],
     commited: Process[F,S],
     reset: Sink[F,Unit],
+    recover: Sink[F,Unit],
     log: Sink[F,I],
     logged: Process[F,I])
 
   def journal[F[_],S,I,O](
     j: Journal[S,I,O])(log: Log[F,S,I]): Channel[F,I,O] = ???
 
-  def journal[F[_]:Nondeterminism:Catchable,S,I,O](
+  def journal[F[_],S,I,O](
     j: Journal[S,I,O])(input: Process[F,I])(l: Log[F,S,I]): Process[F,O] =
-    l.commited.wye(l.logged ++ input.observe(l.log))(j.run).flatMap {
+    l.commited.tee(l.logged ++ input.observe(l.log))(j.run).flatMap {
       case -\/(o) => Process.emit(o)
       case \/-(e) => e match {
+        case Recover => (Process.emitSeq[F,Unit](List(())) to l.recover).drain
         case Reset => (Process.emitSeq[F,Unit](List(())) to l.reset).drain
         case Commit(s) => (Process.emitSeq[F,S](List(s)) to l.commit).drain
       }
     }
+
+  // need to just add a journaling stage immediately after 
+  // reading some external stream which a transducer builds
+  // state
 
   def halt: Writer[Nothing,Nothing,Nothing] = 
     Writer(Process.halt)
@@ -98,8 +102,12 @@ object Writer {
   def commit[S](s: S): Writer[Nothing,Entry[S],Nothing] = 
     tell(Commit(s)) 
 
-  /** Reset back to the last commited state. */
+  /** Tell the driver to reset back to the last commited state. */
   val reset: Writer[Nothing,Entry[Nothing],Nothing] = 
+    tell(Reset)
+
+  /** Tell the driver to attempt to recover the current state. */ 
+  val recover: Writer[Nothing,Entry[Nothing],Nothing] = 
     tell(Reset)
 }
 
@@ -112,11 +120,13 @@ object Journal {
   sealed trait Entry[+S] { 
     def map[S2](f: S => S2): Entry[S2] = this match {
       case r@Reset => r
+      case r@Recover => r
       case Commit(s) => Commit(f(s))
     }
   }
   
   case class Commit[S](s: S) extends Entry[S]
   case object Reset extends Entry[Nothing]
+  case object Recover extends Entry[Nothing]
 
 }
