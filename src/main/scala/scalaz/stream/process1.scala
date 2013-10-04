@@ -8,6 +8,10 @@ import scalaz.\/._
 import scalaz.syntax.equal._
 
 import Process._
+import scalaz.stream.processes._
+import scalaz.stream.Process.Emit
+import scala.Some
+import scalaz.stream.Process.Halt
 
 trait process1 {
 
@@ -59,6 +63,18 @@ trait process1 {
       } orElse (emit(acc))
     go(Vector(), false)
   }
+
+  /**
+   * Like `collect` on scala collection. 
+   * Builds a new process by applying a partial function 
+   * to all elements of this process on which the function is defined.
+   * 
+   * Elements, for which the partial function is not defined are 
+   * filtered out from new process
+   * 
+   */
+  def collect[I,I2](pf:PartialFunction[I,I2]):Process1[I,I2] =
+    id[I].flatMap(pf.andThen(emit) orElse { case _ => halt})
 
   /** 
    * Emits a single `true` value if all input matches the predicate.

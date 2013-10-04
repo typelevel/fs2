@@ -30,7 +30,7 @@ object GzipSpec extends Properties("io.gzip") {
     val deflateInflate =
       source throughOption io.deflate() through io.inflate()
     
-    deflateInflate.collect.run.map(_.toArray).reduce(_ ++ _).toSeq == allContent.reduce(_ ++ _).toSeq
+    deflateInflate.runLog.run.map(_.toArray).reduce(_ ++ _).toSeq == allContent.reduce(_ ++ _).toSeq
   }
 
 }

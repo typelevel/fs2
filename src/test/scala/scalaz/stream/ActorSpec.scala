@@ -31,7 +31,7 @@ object ActorSpec extends Properties("actor") {
         l.foreach(i => q ! enqueue(i))
         q ! close
       }
-      val t2 = s.collect
+      val t2 = s.runLog
 
       Nondeterminism[Task].both(t1, t2).run._2.toList == l
   }
@@ -77,7 +77,7 @@ object ActorSpec extends Properties("actor") {
     val t1: Task[Unit] = feeder(a, read, calledBack, failCallBack, latch).map(_ => {
       latch.await(9, TimeUnit.SECONDS)
     })
-    val t2 = pf(s).collect
+    val t2 = pf(s).runLog
 
     val res = new SyncVar[Throwable \/ Seq[B]]
     Nondeterminism[Task].both(t1, t2).runAsync(cb => res.put(cb.map(_._2)))

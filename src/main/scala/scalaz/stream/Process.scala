@@ -537,9 +537,9 @@ sealed abstract class Process[+F[_],+O] {
    * which we can catch exceptions. This function is not tail recursive and
    * relies on the `Monad[F]` to ensure stack safety.
    */
-  final def collect[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
+  final def runLog[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
     import scalaz.std.indexedSeq._
-    foldMap[F2,IndexedSeq[O2]](IndexedSeq(_))
+    runFoldMap[F2,IndexedSeq[O2]](IndexedSeq(_))
   }
 
   /**
@@ -547,7 +547,7 @@ sealed abstract class Process[+F[_],+O] {
    * which we can catch exceptions. This function is not tail recursive and
    * relies on the `Monad[F]` to ensure stack safety.
    */
-  final def foldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
+  final def runFoldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2,O], acc: B): F2[B] =
       cur match {
         case Emit(h,t) =>
@@ -571,15 +571,15 @@ sealed abstract class Process[+F[_],+O] {
 
   /** Run this `Process` solely for its final emitted value, if one exists. */
   final def runLast[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[Option[O2]] =
-    F.map(this.last.collect[F2,O2])(_.lastOption)
+    F.map(this.last.runLog[F2,O2])(_.lastOption)
 
   /** Run this `Process` solely for its final emitted value, if one exists, using `o2` otherwise. */
   final def runLastOr[F2[x]>:F[x], O2>:O](o2: => O2)(implicit F: Monad[F2], C: Catchable[F2]): F2[O2] =
-    F.map(this.last.collect[F2,O2])(_.lastOption.getOrElse(o2))
+    F.map(this.last.runLog[F2,O2])(_.lastOption.getOrElse(o2))
 
   /** Run this `Process`, purely for its effects. */
   final def run[F2[x]>:F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] =
-    F.void(drain.collect(F, C))
+    F.void(drain.runLog(F, C))
 
   /** Alias for `this |> process1.buffer(n)`. */
   def buffer(n: Int): Process[F,O] =
@@ -601,6 +601,10 @@ sealed abstract class Process[+F[_],+O] {
   def chunkBy(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.chunkBy(f)
 
+  def collect[O2](pf:PartialFunction[O,O2]):Process[F,O2] = 
+    this |> process1.collect(pf)
+  
+  
   /** Alias for `this |> process1.split(f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.split(f)
@@ -1307,7 +1311,7 @@ object Process {
       // this is probably rather slow
       val src1 = Process.emitAll(input.toSeq).toSource
       val src2 = Process.emitAll(input2.toSeq).toSource
-      src1.wye(src2)(self).collect.run
+      src1.wye(src2)(self).runLog.run
     }
 
     /**
