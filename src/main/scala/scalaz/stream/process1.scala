@@ -58,7 +58,7 @@ trait process1 {
       await1[I].flatMap { i =>
         val chunk = acc :+ i
         val cur = f(i)
-        if (!cur && last) emit(chunk) then go(Vector(), false)
+        if (!cur && last) emit(chunk) fby go(Vector(), false)
         else go(chunk, cur)
       } orElse (emit(acc))
     go(Vector(), false)
@@ -175,7 +175,7 @@ trait process1 {
   def split[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I]): Process1[I, Vector[I]] =
       await1[I].flatMap { i =>
-        if (f(i)) emit(acc) then go(Vector())
+        if (f(i)) emit(acc) fby go(Vector())
         else go(acc :+ i)
       } orElse (emit(acc))
     go(Vector())
@@ -199,21 +199,21 @@ trait process1 {
       if (c > 0)
         await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
       else
-        emit(acc) then go(acc.tail, 1)
+        emit(acc) fby go(acc.tail, 1)
     go(Vector(), n)
   }
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] =
     if (n <= 0) id[I]
-    else skip then drop(n-1)
+    else skip fby drop(n-1)
 
   /**
    * Skips elements of the input while the predicate is true,
    * then passes through the remaining inputs.
    */
   def dropWhile[I](f: I => Boolean): Process1[I,I] =
-    await1[I] flatMap (i => if (f(i)) dropWhile(f) else emit(i) then id)
+    await1[I] flatMap (i => if (f(i)) dropWhile(f) else emit(i) fby id)
 
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I,I] =
@@ -269,7 +269,7 @@ trait process1 {
    */
   def reduce[A, B >: A](f: (B,B) => B): Process1[A,B] = {
     def go(b: B): Process1[A,B] =
-      emit(b) then await1[A].flatMap(b2 => go(f(b,b2)))
+      emit(b) fby await1[A].flatMap(b2 => go(f(b,b2)))
     await1[A].flatMap(go)
   }
 
@@ -317,7 +317,7 @@ trait process1 {
    * It will always emit `z`, even when the Process of `A` is empty
    */
   def scanLeft[A,B](z:B)(f:(B,A) => B) : Process1[A,B] =
-    emit(z) then await1[A].flatMap { a => scanLeft(f(z,a))(f) }
+    emit(z) fby await1[A].flatMap { a => scanLeft(f(z,a))(f) }
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A,Option[A]] =
@@ -326,11 +326,11 @@ trait process1 {
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I,I] =
     if (n <= 0) halt
-    else await1[I] then take(n-1)
+    else await1[I] fby take(n-1)
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
   def takeWhile[I](f: I => Boolean): Process1[I,I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) then takeWhile(f) else halt)
+    await1[I] flatMap (i => if (f(i)) emit(i) fby takeWhile(f) else halt)
 
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =

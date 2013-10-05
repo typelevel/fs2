@@ -107,15 +107,18 @@ sealed abstract class Process[+F[_],+O] {
    * we do not modify the `fallback` arguments to any `Await` produced
    * by this `Process`.
    */
-  final def then[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
+  final def fby[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
     case h@Halt(e) => e match {
       case End => p2
       case _ => h
     }
-    case Emit(h, t) => emitSeq(h, t then p2)
+    case Emit(h, t) => emitSeq(h, t fby p2)
     case Await(req,recv,fb,c) =>
-      Await(req, recv andThen (_ then p2), fb, c)
+      Await(req, recv andThen (_ fby p2), fb, c)
   }
+  
+  /** operator alias for `fby` */
+  final def |||[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = fby(p2) 
 
   /**
    * Removes all emitted elements from the front of this `Process`.

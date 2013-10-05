@@ -66,12 +66,12 @@ trait wye {
   def dynamic[I,I2](f: I => wye.Request, g: I2 => wye.Request): Wye[I,I2,These[I,I2]] = {
     import wye.Request._
     def go(signal: wye.Request): Wye[I,I2,These[I,I2]] = signal match {
-      case L => awaitL[I].flatMap { i => emit(This(i)) then go(f(i)) }
-      case R => awaitR[I2].flatMap { i2 => emit(That(i2)) then go(g(i2)) }
+      case L => awaitL[I].flatMap { i => emit(This(i)) fby go(f(i)) }
+      case R => awaitR[I2].flatMap { i2 => emit(That(i2)) fby go(g(i2)) }
       case Both => awaitBoth[I,I2].flatMap {
-        case t@This(i) => emit(t) then go(f(i)) 
-        case t@That(i2) => emit(t) then go(g(i2)) 
-        case t@These(i,_) => emit(t) then go(f(i)) // left-biased
+        case t@This(i) => emit(t) fby go(f(i)) 
+        case t@That(i2) => emit(t) fby go(g(i2)) 
+        case t@These(i,_) => emit(t) fby go(f(i)) // left-biased
       }
     }
     go(L)
@@ -224,11 +224,11 @@ trait wye {
   def merge[I]: Wye[I,I,I] = {
     def go(biasL: Boolean): Wye[I,I,I] = 
       receiveBoth[I,I,I]({
-        case This(i) => emit(i) then (go(!biasL))
-        case That(i) => emit(i) then (go(!biasL))
+        case This(i) => emit(i) fby (go(!biasL))
+        case That(i) => emit(i) fby (go(!biasL))
         case These(i,i2) => 
-          if (biasL) emitSeq(List(i,i2)) then (go(!biasL)) 
-          else       emitSeq(List(i2,i)) then (go(!biasL)) 
+          if (biasL) emitSeq(List(i,i2)) fby (go(!biasL)) 
+          else       emitSeq(List(i2,i)) fby (go(!biasL)) 
       } 
     )
     go(true)
@@ -278,11 +278,11 @@ trait wye {
       awaitBoth[Duration,I].flatMap {
         case This(d2) => 
           if (q.size >= maxSize || (d2 - q.headOption.getOrElse(d2) > d))
-            awaitR[I].flatMap(i => emit(i) then go(q.drop(1)))  
+            awaitR[I].flatMap(i => emit(i) fby go(q.drop(1)))  
           else
             go(q :+ d2)
-        case That(i) => emit(i) then (go(q.drop(1)))
-        case These(t,i) => emit(i) then (go(q.drop(1) :+ t))
+        case That(i) => emit(i) fby (go(q.drop(1)))
+        case These(t,i) => emit(i) fby (go(q.drop(1) :+ t))
       }
     go(Vector())
   }
@@ -295,8 +295,8 @@ trait wye {
   def unboundedQueue[I]: Wye[Any,I,I] = 
     awaitBoth[Any,I].flatMap {
       case This(any) => halt
-      case That(i) => emit(i) then unboundedQueue
-      case These(_,i) => emit(i) then unboundedQueue
+      case That(i) => emit(i) fby unboundedQueue
+      case These(_,i) => emit(i) fby unboundedQueue
     }
 
   /** Nondeterministic version of `zip` which requests both sides in parallel. */
