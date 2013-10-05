@@ -84,7 +84,10 @@ object ProcessSpec extends Properties("Process1") {
     }) &&
     ("reduce" |: {
       (p.reduce(_ + _).toList.lastOption.toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))  
-    })
+    }) &&
+     ("find" |: {
+       (p.find(_ % 2 == 0).toList == p.toList.find(_ % 2 == 0).toList)
+     })
   }
   
    property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) { 
