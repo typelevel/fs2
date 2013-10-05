@@ -62,9 +62,9 @@ object ProcessSpec extends Properties("Process1") {
       val r = p.toSource.yip(p2.toSource).runLog.run.toList
       (l === r)
     }) &&
-    ("scanLeft" |: {
-      p.toList.scanLeft(0)(_ - _) ===
-      p.toSource.scanLeft(0)(_ - _).runLog.run.toList
+    ("scan" |: {
+      p.toList.scan(0)(_ - _) ===
+      p.toSource.scan(0)(_ - _).runLog.run.toList
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===

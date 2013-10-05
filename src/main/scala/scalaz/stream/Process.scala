@@ -667,8 +667,8 @@ sealed abstract class Process[+F[_],+O] {
   def last: Process[F,O] = this |> process1.last
 
   /** Connect this `Process` to `process1.scanLeft(b)(f)`. */
-  def scanLeft[B](b: B)(f: (B,O) => B): Process[F,B] =
-    this |> process1.scanLeft(b)(f)
+  def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
+    this |> process1.scan(b)(f)
   
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] =

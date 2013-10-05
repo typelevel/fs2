@@ -240,7 +240,7 @@ trait process1 {
    *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(0,1,3,6,10)`
    */
   def fold[A,B >: A](z: B)(f: (B,B) => B): Process1[A,B] = 
-    scanLeft(z)(f)
+    scan(z)(f)
 
   /**
    * Like `fold` but uses Monoid for folding operation 
@@ -312,12 +312,12 @@ trait process1 {
     id[I] map f
 
   /** 
-   * Similar to List.scanLeft. 
+   * Similar to List.scan. 
    * Produces a process of `B` containing cumulative results of applying the operator to Process of `A`.
    * It will always emit `z`, even when the Process of `A` is empty
    */
-  def scanLeft[A,B](z:B)(f:(B,A) => B) : Process1[A,B] =
-    emit(z) fby await1[A].flatMap { a => scanLeft(f(z,a))(f) }
+  def scan[A,B](z:B)(f:(B,A) => B) : Process1[A,B] =
+    emit(z) fby await1[A].flatMap { a => scan(f(z,a))(f) }
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A,Option[A]] =
