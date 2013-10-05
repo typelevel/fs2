@@ -634,7 +634,7 @@ sealed abstract class Process[+F[_],+O] {
     this |> processes.filter(f)
 
   /** Connect this `Process` to `process1.fold(b)(f)`. */
-  def fold[B](b: B)(f: (B,O) => B): Process[F,B] =
+  def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold(b)(f)
 
   /** Alias for `this |> process1.foldMap(f)(M)`. */
@@ -655,6 +655,10 @@ sealed abstract class Process[+F[_],+O] {
   /** Skips all elements emitted by this `Process` except the last. */
   def last: Process[F,O] = this |> process1.last
 
+  /** Connect this `Process` to `process1.scanLeft(b)(f)`. */
+  def scanLeft[B](b: B)(f: (B,O) => B): Process[F,B] =
+    this |> process1.scanLeft(b)(f)
+  
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] =
     this |> processes.take[O](n)

@@ -28,7 +28,7 @@ object ProcessSpec extends Properties("Process1") {
     val pf : PartialFunction[Int,Int] = { case x : Int if x % 2 == 0 => x}
   
     val sm = Monoid[String]
-  
+   
    ("id" |: { 
       ((p |> id) === p) &&  ((id |> p) === p)
     }) &&
@@ -62,9 +62,9 @@ object ProcessSpec extends Properties("Process1") {
       val r = p.toSource.yip(p2.toSource).runLog.run.toList
       (l === r)
     }) &&
-    ("fold" |: {
+    ("scanLeft" |: {
       p.toList.scanLeft(0)(_ - _) ===
-      p.toSource.fold(0)(_ - _).runLog.run.toList
+      p.toSource.scanLeft(0)(_ - _).runLog.run.toList
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
@@ -75,13 +75,15 @@ object ProcessSpec extends Properties("Process1") {
     }) &&
     ("collect" |: {
       p.collect(pf).toList == p.toList.collect(pf)
-    }) &&         
+    }) && 
+    ("fold" |: { 
+      p.fold(0)(_ + _).toList.lastOption.toList == List(p.toList.fold(0)(_ + _))
+    })  &&
     ("foldMap" |: { 
       p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
-     
-    })
+    })   
   }
-
+  
    property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) { 
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42) 
   }

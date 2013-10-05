@@ -219,12 +219,35 @@ trait process1 {
   def filter[I](f: I => Boolean): Process1[I,I] =
     await1[I] flatMap (i => if (f(i)) emit(i) else halt) repeat
 
-  /**
-   * `Process1` form of `List.scanLeft`. Like `List.scanLeft`, this
-   * always emits at least the given `b`, even if the input is empty.
+  /** 
+   * Skips any elements not satisfying predicate and when found, will emit that 
+   * element and terminate
    */
-  def fold[A,B](b: B)(f: (B,A) => B): Process1[A,B] =
-    emit(b) then await1[A].flatMap { a => fold(f(b,a))(f) }
+  def find[I](f: I => Boolean): Process1[I,I] =  
+    await1[I] flatMap( i => if(f(i)) emit(i) else find(f))
+  
+  
+  /**
+   * `Process1` form of `List.fold`. 
+   *  Folds the elements of this sequence using the specified associative binary operator.
+   * 
+   *  Unlike List.fold the order is always from the `left` side, i.e. it will always 
+   *  honor order of `A`.
+   *  
+   *  If Process of `A` is empty, this will emit at least one `z`, then will emit 
+   *  running total `B` for every `A`. 
+   *  
+   *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(0,1,3,6,10)`
+   */
+  def fold[A,B >: A](z: B)(f: (B,B) => B): Process1[A,B] = 
+    scanLeft(z)(f)
+
+  /**
+   * Like `fold` but uses Monoid for folding operation 
+   */
+  def foldM[A](implicit M:Monoid[A]):Process1[A,A] =
+    fold(M.zero)(M.append(_,_))
+  
 
   /**
    * Maps the `A` with `f` to `B` and then uses `M` to produce `B` as in `fold` 
@@ -242,14 +265,6 @@ trait process1 {
     await1[A].flatMap(go)
   }
 
-  /**
-   * Emits the `Monoid` identity, followed by a running total
-   * of the values seen so far, using the `Monoid` operation:
-   *
-   * `Process(1,2,3,4) |> fromMonoid(sumMonoid) == Process(0,1,3,6,10)`
-   */
-  def fromMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
-    fold(M.zero)((a,a2) => M.append(a,a2))
 
   /**
    * Alias for `fromSemigroup`. Starts emitting when it receives
@@ -293,6 +308,14 @@ trait process1 {
   /** Transform the input using the given function, `f`. */
   def lift[I,O](f: I => O): Process1[I,O] =
     id[I] map f
+
+  /** 
+   * Similar to List.scanLeft. 
+   * Produces a process of `B` containing cumulative results of applying the operator to Process of `A`.
+   * It will always emit `z`, even when the Process of `A` is empty
+   */
+  def scanLeft[A,B](z:B)(f:(B,A) => B) : Process1[A,B] =
+    emit(z) then await1[A].flatMap { a => scanLeft(f(z,a))(f) }
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A,Option[A]] =
