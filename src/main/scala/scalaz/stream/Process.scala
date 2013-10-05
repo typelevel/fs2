@@ -644,6 +644,10 @@ sealed abstract class Process[+F[_],+O] {
   def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold(b)(f)
 
+  /** Connect this `Process` to `process1.fold1(f)`. */
+  def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.fold1(f)
+  
   /** Connect this `Process` to `process1.reduce(f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.reduce(f)

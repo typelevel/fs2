@@ -267,11 +267,14 @@ trait process1 {
    *  Unlike `List.reduce` will not fail when Process is empty.
    *   
    */
-  def reduce[A, B >: A](f: (B,B) => B): Process1[A,B] = {
-    def go(b: B): Process1[A,B] =
-      emit(b) fby await1[A].flatMap(b2 => go(f(b,b2)))
+  def reduce[A](f: (A,A) => A): Process1[A,A] = {
+    def go(a: A): Process1[A,A] =
+      emit(a) fby await1[A].flatMap(a2 => go(f(a,a2)))
     await1[A].flatMap(go)
   }
+  
+  /** alias for `reduce` **/
+  def fold1[A](f: (A,A) => A): Process1[A,A] = reduce(f)
 
 
   /**
@@ -284,7 +287,7 @@ trait process1 {
    * Like `reduce` but uses Semigroup associative operation
    */
   def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduce[A,A](M.append(_,_))
+    reduce[A](M.append(_,_))
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
   def id[I]: Process1[I,I] =
