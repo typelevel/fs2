@@ -601,9 +601,9 @@ sealed abstract class Process[+F[_],+O] {
   def chunkBy(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.chunkBy(f)
 
+  /** Alias for `this |> process1.collect(pf)`. */
   def collect[O2](pf:PartialFunction[O,O2]):Process[F,O2] = 
     this |> process1.collect(pf)
-  
   
   /** Alias for `this |> process1.split(f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
@@ -636,6 +636,10 @@ sealed abstract class Process[+F[_],+O] {
   /** Connect this `Process` to `process1.fold(b)(f)`. */
   def fold[B](b: B)(f: (B,O) => B): Process[F,B] =
     this |> process1.fold(b)(f)
+
+  /** Alias for `this |> process1.foldMap(f)(M)`. */
+  def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.foldMap(f)(M)
 
   /** Insert `sep` between elements emitted by this `Process`. */
   def intersperse[O2>:O](sep: O2): Process[F,O2] =

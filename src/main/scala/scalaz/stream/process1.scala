@@ -227,6 +227,12 @@ trait process1 {
     emit(b) then await1[A].flatMap { a => fold(f(b,a))(f) }
 
   /**
+   * Maps the `A` with `f` to `B` and then uses `M` to produce `B` as in `fold` 
+   */
+  def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] = 
+   id[A].map(f).fold(M.zero)((a,n) => M.append(a,n))
+
+  /**
    * Like `fold`, but emits values starting with the first element it
    * receives. If the input is empty, this emits no values.
    */

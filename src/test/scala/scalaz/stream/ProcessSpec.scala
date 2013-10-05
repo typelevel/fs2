@@ -1,10 +1,11 @@
 package scalaz.stream
 
-import scalaz.{Equal, Nondeterminism}
+import scalaz.{Monoid, Equal, Nondeterminism}
 import scalaz.syntax.equal._
 import scalaz.std.anyVal._
 import scalaz.std.list._
 import scalaz.std.list.listSyntax._
+import scalaz.std.string._
 
 import org.scalacheck._
 import Prop._
@@ -26,7 +27,9 @@ object ProcessSpec extends Properties("Process1") {
     val g = (x: Int) => x % 7 == 0
     val pf : PartialFunction[Int,Int] = { case x : Int if x % 2 == 0 => x}
   
-    ("id" |: { 
+    val sm = Monoid[String]
+  
+   ("id" |: { 
       ((p |> id) === p) &&  ((id |> p) === p)
     }) &&
     ("map" |: {
@@ -70,12 +73,16 @@ object ProcessSpec extends Properties("Process1") {
     ("intersperse" |: {
       p.intersperse(0).toList == p.toList.intersperse(0) 
     }) &&
-      ("collect" |: {
-        p.collect(pf).toList == p.toList.collect(pf)
-      })
+    ("collect" |: {
+      p.collect(pf).toList == p.toList.collect(pf)
+    }) &&         
+    ("foldMap" |: { 
+      p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
+     
+    })
   }
 
-  property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) { 
+   property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) { 
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42) 
   }
 
@@ -147,6 +154,6 @@ object ProcessSpec extends Properties("Process1") {
     val w = wye.either[Int,Int] 
     val s = Process.constant(1).take(1)
     s.wye(s)(w).runLog.run.map(_.fold(identity, identity)).toList == List(1,1)
-  }
+  }       
 }
 
