@@ -637,6 +637,10 @@ sealed abstract class Process[+F[_],+O] {
   def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold(b)(f)
 
+  /** Connect this `Process` to `process1.reduce(f)`. */
+  def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.reduce(f)
+
   /** Alias for `this |> process1.foldMap(f)(M)`. */
   def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.foldMap(f)(M)
@@ -1138,16 +1142,13 @@ object Process {
       through(f)
 
     def toMonoid[F2[x]>:F[x]](implicit M: Monoid[O]): Process[F2,O] =
-      self |> process1.fromMonoid(M)
-
-    def fold1[F2[x]>:F[x]](f: (O,O) => O): Process[F2,O] =
-      self |> process1.fold1(f)
+      self |> process1.foldM(M)
 
     def toMonoid1[F2[x]>:F[x]](implicit M: Semigroup[O]): Process[F2,O] =
       toSemigroup(M)
 
     def toSemigroup[F2[x]>:F[x]](implicit M: Semigroup[O]): Process[F2,O] =
-      self |> process1.fromSemigroup(M)
+      self |> process1.reduceSemigroup(M)
 
     /** Attach a `Sink` to the output of this `Process` but echo the original signal. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =

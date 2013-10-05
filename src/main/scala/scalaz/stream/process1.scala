@@ -256,33 +256,35 @@ trait process1 {
    id[A].map(f).fold(M.zero)((a,n) => M.append(a,n))
 
   /**
-   * Like `fold`, but emits values starting with the first element it
-   * receives. If the input is empty, this emits no values.
+   * `Process1` form of `List.reduce`.
+   * 
+   *  Reduces the elements of this Process using the specified associative binary operator.
+   * 
+   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(1,3,6,10)`
+   *  `Process(1) |> reduce(_ + _) == Process(1)`
+   *  `Process() |> reduce(_ + _) == Process()`
+   *  
+   *  Unlike `List.reduce` will not fail when Process is empty.
+   *   
    */
-  def fold1[A](f: (A,A) => A): Process1[A,A] = {
-    def go(a: A): Process1[A,A] =
-      emit(a) then await1[A].flatMap(a2 => go(f(a,a2)))
+  def reduce[A, B >: A](f: (B,B) => B): Process1[A,B] = {
+    def go(b: B): Process1[A,B] =
+      emit(b) then await1[A].flatMap(b2 => go(f(b,b2)))
     await1[A].flatMap(go)
   }
 
 
   /**
-   * Alias for `fromSemigroup`. Starts emitting when it receives
-   * its first value from the input.
+   * Like `reduce` but uses Monoid for reduce operation
    */
-  def fromMonoid1[A](implicit M: Semigroup[A]): Process1[A,A] =
-    fromSemigroup[A]
+  def reduceM[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduceSemigroup[A]
 
   /**
-   * Emits the sum of the elements seen so far, using the
-   * semigroup's operation, starting with the first element
-   * of the input sequence. If the input is empty, emits
-   * no values.
-   *
-   * `Process(1,2,3,4) |> fromSemigroup(sumMonoid) == Process(1,3,6,10)`
+   * Like `reduce` but uses Semigroup associative operation
    */
-  def fromSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
-    fold1((a,a2) => M.append(a,a2))
+  def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce[A,A](M.append(_,_))
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
   def id[I]: Process1[I,I] =
@@ -353,7 +355,7 @@ trait process1 {
    * length of the input `Process`.
    */
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
-    fold1(N.plus)
+    reduce(N.plus)
 
   private val utf8Charset = Charset.forName("UTF-8")
 
