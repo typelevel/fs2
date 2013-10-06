@@ -648,6 +648,10 @@ sealed abstract class Process[+F[_],+O] {
   def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.foldMonoid(M)
 
+  /** Alias for `this |> process1.foldMap(f)(M)`. */
+  def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.foldMap(f)(M)
+
   /** Connect this `Process` to `process1.fold1(f)`. */
   def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold1(f)
@@ -657,8 +661,12 @@ sealed abstract class Process[+F[_],+O] {
     this |> process1.fold1Monoid(M)
 
   /** Alias for `this |> process1.fold1Semigroup(M)`. */
-  def fold1Semigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
-    this |> process1.fold1Semigroup(M)  
+  def foldSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.foldSemigroup(M)
+
+  /** Alias for `this |> process1.fold1Map(f)(M)`. */
+  def fold1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.fold1Map(f)(M)
   
   /** Alias for `this |> process1.reduce(f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
@@ -671,10 +679,10 @@ sealed abstract class Process[+F[_],+O] {
   /** Alias for `this |> process1.reduceSemigroup(M)`. */
   def reduceSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
     this |> process1.reduceSemigroup(M)
-  
-  /** Alias for `this |> process1.foldMap(f)(M)`. */
-  def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
-    this |> process1.foldMap(f)(M)
+
+  /** Alias for `this |> process1.reduceMap(f)(M)`. */
+  def reduceMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.reduceMap(f)(M)
 
   /** Insert `sep` between elements emitted by this `Process`. */
   def intersperse[O2>:O](sep: O2): Process[F,O2] =
@@ -697,6 +705,26 @@ sealed abstract class Process[+F[_],+O] {
   /** Connect this `Process` to `process1.scanMonoid(M)`. */
   def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.scanMonoid(M)
+
+  /** Alias for `this |> process1.scanMap(f)(M)`. */
+  def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.scanMap(f)(M)
+
+  /** Connect this `Process` to `process1.scan1(f)`. */
+  def scan1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.scan1(f)
+
+  /** Connect this `Process` to `process1.scan1Monoid(M)`. */
+  def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.scan1Monoid(M)
+
+  /** Connect this `Process` to `process1.scan1Semigroup(M)`. */
+  def scanSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.scanSemigroup(M)
+
+  /** Alias for `this |> process1.scan1Map(f)(M)`. */
+  def scan1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.scan1Map(f)(M)
   
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] =

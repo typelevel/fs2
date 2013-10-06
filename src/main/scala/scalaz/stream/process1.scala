@@ -239,7 +239,7 @@ trait process1 {
    *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)`
    */
   def fold[A,B](b: B)(f: (B,A) => B): Process1[A,B] = 
-    await1[A] flatMap(a => fold(f(b,a))(f)) orElse emit(b)
+    scan(b)(f).last
 
   /**
    * Like `fold` but uses Monoid for folding operation 
@@ -253,47 +253,65 @@ trait process1 {
   def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] = 
    id[A].map(f).foldMonoid(M)
 
-  /** alias for `reduce` **/
+  /**
+   * `Process1` form of `List.reduce`.
+   *
+   *  Reduces the elements of this Process using the specified associative binary operator.
+   *
+   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(10)`
+   *  `Process(1) |> reduce(_ + _) == Process(1)`
+   *  `Process() |> reduce(_ + _) == Process()`
+   *
+   */
   def fold1[A](f: (A,A) => A): Process1[A,A] = 
     reduce(f)
 
   /** alias for `reduceMonoid` */
   def fold1Monoid[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduce[A](M.append(_,_))
+    reduce(M.append(_,_))
 
   /** alias for `reduceSemigroup` */
-  def fold1Semigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduce[A](M.append(_,_))
+  def foldSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce(M.append(_,_))
+
+  /**
+   * Like `fold1` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def fold1Map[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    reduceMap(f)(M)
 
   /**
    * `Process1` form of `List.reduce`.
    * 
    *  Reduces the elements of this Process using the specified associative binary operator.
    * 
-   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(1,3,6,10)`
+   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(10)`
    *  `Process(1) |> reduce(_ + _) == Process(1)`
    *  `Process() |> reduce(_ + _) == Process()`
    *  
    *  Unlike `List.reduce` will not fail when Process is empty.
    *   
    */
-  def reduce[A](f: (A,A) => A): Process1[A,A] = {
-    def go(a: A): Process1[A,A] =
-      emit(a) fby await1[A].flatMap(a2 => go(f(a,a2)))
-    await1[A].flatMap(go)
-  }
+  def reduce[A](f: (A,A) => A): Process1[A,A] = 
+    scan1(f).last
 
   /**
    * Like `reduce` but uses Monoid for reduce operation
    */
   def reduceMonoid[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduce[A](M.append(_,_))
+    reduce(M.append(_,_))
 
   /**
    * Like `reduce` but uses Semigroup associative operation
    */
   def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduce[A](M.append(_,_))
+    reduce(M.append(_,_))
+
+  /**
+   * Like `reduce` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def reduceMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    id[A].map(f).reduceMonoid(M)
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
   def id[I]: Process1[I,I] =
@@ -326,7 +344,7 @@ trait process1 {
    * It will always emit `z`, even when the Process of `A` is empty
    */
   def scan[A,B](z:B)(f:(B,A) => B) : Process1[A,B] =
-    emit(z) fby await1[A].flatMap { a => scan(f(z,a))(f) }
+    emit(z) fby await1[A].flatMap (a => scan(f(z,a))(f))
 
   /**
    * Like `scan` but uses Monoid for associative operation 
@@ -340,6 +358,37 @@ trait process1 {
   def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
     id[A].map(f).scanMonoid(M)
 
+  /**
+   * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
+   *
+   *  `Process(1,2,3,4) |> scan1(_ + _) == Process(1,3,6,10)`
+   *  `Process(1) |> scan1(_ + _) == Process(1)`
+   *  `Process() |> scan1(_ + _) == Process()`
+   * 
+   */
+  def scan1[A](f: (A,A) => A): Process1[A,A] = {
+    def go(a: A): Process1[A,A] = emit(a) fby await1[A].flatMap(a2 => go(f(a,a2)))
+    await1[A].flatMap(go)
+  }
+
+  /**
+   * Like `scan1` but uses Monoid for associative operation 
+   */
+  def scan1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    scan1(M.append(_,_))
+
+  /**
+   * Like `scan1` but uses Semigroup for associative operation 
+   */
+  def scanSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+    scan1(M.append(_,_))
+
+  /**
+   * Like `scan1` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def scan1Map[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    id[A].map(f).scan1Monoid(M)
+  
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A,Option[A]] =
     lift[A,Option[A]](Some(_)) ++ emit(None)

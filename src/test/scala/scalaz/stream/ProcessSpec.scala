@@ -29,7 +29,7 @@ object ProcessSpec extends Properties("Process1") {
   
     val sm = Monoid[String]
    
-   ("id" |: { 
+    ("id" |: { 
       ((p |> id) === p) &&  ((id |> p) === p)
     }) &&
     ("map" |: {
@@ -65,6 +65,10 @@ object ProcessSpec extends Properties("Process1") {
     ("scan" |: {
       p.toList.scan(0)(_ - _) ===
       p.toSource.scan(0)(_ - _).runLog.run.toList
+    }) &&   
+    ("scan1" |: {
+       p.toList.scan(0)(_ + _).tail ===
+       p.toSource.scan1(_ + _).runLog.run.toList
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
@@ -85,11 +89,11 @@ object ProcessSpec extends Properties("Process1") {
     ("reduce" |: {
       (p.reduce(_ + _).toList.lastOption.toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))  
     }) &&
-     ("find" |: {
+    ("find" |: {
        (p.find(_ % 2 == 0).toList == p.toList.find(_ % 2 == 0).toList)
-     })
+    }) 
   }
-  
+    
    property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) { 
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42) 
   }
@@ -162,6 +166,6 @@ object ProcessSpec extends Properties("Process1") {
     val w = wye.either[Int,Int] 
     val s = Process.constant(1).take(1)
     s.wye(s)(w).runLog.run.map(_.fold(identity, identity)).toList == List(1,1)
-  }       
+  }      
 }
 
