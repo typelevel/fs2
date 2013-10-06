@@ -77,7 +77,7 @@ object ProcessSpec extends Properties("Process1") {
       p.collect(pf).toList == p.toList.collect(pf)
     }) && 
     ("fold" |: { 
-      p.fold(0)(_ + _).toList.lastOption.toList == List(p.toList.fold(0)(_ + _))
+      p.fold(0)(_ + _).toList == List(p.toList.fold(0)(_ + _))
     }) &&
     ("foldMap" |: { 
       p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))

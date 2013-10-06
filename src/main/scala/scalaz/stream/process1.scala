@@ -73,8 +73,8 @@ trait process1 {
    * filtered out from new process
    * 
    */
-  def collect[I,I2](pf:PartialFunction[I,I2]):Process1[I,I2] =
-    id[I].flatMap(pf.andThen(emit) orElse { case _ => halt})
+  def collect[I,I2](pf: PartialFunction[I,I2]): Process1[I,I2] =
+    id[I].flatMap(pf andThen(emit) orElse { case _ => halt })
 
   /** 
    * Emits a single `true` value if all input matches the predicate.
@@ -224,8 +224,7 @@ trait process1 {
    * element and terminate
    */
   def find[I](f: I => Boolean): Process1[I,I] =  
-    await1[I] flatMap( i => if(f(i)) emit(i) else find(f))
-  
+    await1[I] flatMap (i => if(f(i)) emit(i) else find(f))
   
   /**
    * `Process1` form of `List.fold`. 
@@ -237,23 +236,34 @@ trait process1 {
    *  If Process of `A` is empty, this will emit at least one `z`, then will emit 
    *  running total `B` for every `A`. 
    *  
-   *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(0,1,3,6,10)`
+   *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)`
    */
-  def fold[A,B >: A](z: B)(f: (B,B) => B): Process1[A,B] = 
-    scan(z)(f)
+  def fold[A,B](b: B)(f: (B,A) => B): Process1[A,B] = 
+    await1[A] flatMap(a => fold(f(b,a))(f)) orElse emit(b)
 
   /**
    * Like `fold` but uses Monoid for folding operation 
    */
-  def foldM[A](implicit M:Monoid[A]):Process1[A,A] =
+  def foldMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
     fold(M.zero)(M.append(_,_))
   
-
   /**
-   * Maps the `A` with `f` to `B` and then uses `M` to produce `B` as in `fold` 
+   * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
    */
   def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] = 
-   id[A].map(f).fold(M.zero)((a,n) => M.append(a,n))
+   id[A].map(f).foldMonoid(M)
+
+  /** alias for `reduce` **/
+  def fold1[A](f: (A,A) => A): Process1[A,A] = 
+    reduce(f)
+
+  /** alias for `reduceMonoid` */
+  def fold1Monoid[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce[A](M.append(_,_))
+
+  /** alias for `reduceSemigroup` */
+  def fold1Semigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce[A](M.append(_,_))
 
   /**
    * `Process1` form of `List.reduce`.
@@ -272,16 +282,12 @@ trait process1 {
       emit(a) fby await1[A].flatMap(a2 => go(f(a,a2)))
     await1[A].flatMap(go)
   }
-  
-  /** alias for `reduce` **/
-  def fold1[A](f: (A,A) => A): Process1[A,A] = reduce(f)
-
 
   /**
    * Like `reduce` but uses Monoid for reduce operation
    */
-  def reduceM[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduceSemigroup[A]
+  def reduceMonoid[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce[A](M.append(_,_))
 
   /**
    * Like `reduce` but uses Semigroup associative operation
@@ -321,6 +327,18 @@ trait process1 {
    */
   def scan[A,B](z:B)(f:(B,A) => B) : Process1[A,B] =
     emit(z) fby await1[A].flatMap { a => scan(f(z,a))(f) }
+
+  /**
+   * Like `scan` but uses Monoid for associative operation 
+   */
+  def scanMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    scan(M.zero)(M.append(_,_))
+
+  /**
+   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    id[A].map(f).scanMonoid(M)
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A,Option[A]] =

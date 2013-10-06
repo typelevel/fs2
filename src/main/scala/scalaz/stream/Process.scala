@@ -80,7 +80,7 @@ sealed abstract class Process[+F[_],+O] {
   /**
    * Run this `Process`, then, if it halts without an error, run `p2`.
    * Note that `p2` is appended to the `fallback` argument of any `Await`
-   * produced by this `Process`. If this is not desired, use `then`.
+   * produced by this `Process`. If this is not desired, use `fby`.
    */
   final def append[F2[x]>:F[x], O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
     case h@Halt(e) => e match {
@@ -605,7 +605,7 @@ sealed abstract class Process[+F[_],+O] {
     this |> process1.chunkBy(f)
 
   /** Alias for `this |> process1.collect(pf)`. */
-  def collect[O2](pf:PartialFunction[O,O2]):Process[F,O2] = 
+  def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] = 
     this |> process1.collect(pf)
   
   /** Alias for `this |> process1.split(f)` */
@@ -644,14 +644,34 @@ sealed abstract class Process[+F[_],+O] {
   def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold(b)(f)
 
+  /** Alias for `this |> process1.foldMonoid(M)` */
+  def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.foldMonoid(M)
+
   /** Connect this `Process` to `process1.fold1(f)`. */
   def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold1(f)
+
+  /** Alias for `this |> process1.fold1Monoid(M)` */
+  def fold1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.fold1Monoid(M)
+
+  /** Alias for `this |> process1.fold1Semigroup(M)`. */
+  def fold1Semigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.fold1Semigroup(M)  
   
-  /** Connect this `Process` to `process1.reduce(f)`. */
+  /** Alias for `this |> process1.reduce(f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.reduce(f)
 
+  /** Alias for `this |> process1.reduceMonoid(M)`. */
+  def reduceMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.reduceMonoid(M)
+
+  /** Alias for `this |> process1.reduceSemigroup(M)`. */
+  def reduceSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.reduceSemigroup(M)
+  
   /** Alias for `this |> process1.foldMap(f)(M)`. */
   def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.foldMap(f)(M)
@@ -670,9 +690,13 @@ sealed abstract class Process[+F[_],+O] {
   /** Skips all elements emitted by this `Process` except the last. */
   def last: Process[F,O] = this |> process1.last
 
-  /** Connect this `Process` to `process1.scanLeft(b)(f)`. */
+  /** Connect this `Process` to `process1.scan(b)(f)`. */
   def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
     this |> process1.scan(b)(f)
+
+  /** Connect this `Process` to `process1.scanMonoid(M)`. */
+  def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.scanMonoid(M)
   
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] =
@@ -1151,15 +1175,6 @@ object Process {
     /** Feed this `Process` to a `Sink`. */
     def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] =
       through(f)
-
-    def toMonoid[F2[x]>:F[x]](implicit M: Monoid[O]): Process[F2,O] =
-      self |> process1.foldM(M)
-
-    def toMonoid1[F2[x]>:F[x]](implicit M: Semigroup[O]): Process[F2,O] =
-      toSemigroup(M)
-
-    def toSemigroup[F2[x]>:F[x]](implicit M: Semigroup[O]): Process[F2,O] =
-      self |> process1.reduceSemigroup(M)
 
     /** Attach a `Sink` to the output of this `Process` but echo the original signal. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
