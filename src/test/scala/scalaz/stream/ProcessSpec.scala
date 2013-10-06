@@ -87,7 +87,7 @@ object ProcessSpec extends Properties("Process1") {
       p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
     }) &&
     ("reduce" |: {
-      (p.reduce(_ + _).toList.lastOption.toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))  
+      (p.reduce(_ + _).toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))  
     }) &&
     ("find" |: {
        (p.find(_ % 2 == 0).toList == p.toList.find(_ % 2 == 0).toList)
