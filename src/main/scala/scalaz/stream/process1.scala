@@ -8,6 +8,10 @@ import scalaz.\/._
 import scalaz.syntax.equal._
 
 import Process._
+import scalaz.stream.processes._
+import scalaz.stream.Process.Emit
+import scala.Some
+import scalaz.stream.Process.Halt
 
 trait process1 {
 
@@ -54,11 +58,23 @@ trait process1 {
       await1[I].flatMap { i =>
         val chunk = acc :+ i
         val cur = f(i)
-        if (!cur && last) emit(chunk) then go(Vector(), false)
+        if (!cur && last) emit(chunk) fby go(Vector(), false)
         else go(chunk, cur)
       } orElse (emit(acc))
     go(Vector(), false)
   }
+
+  /**
+   * Like `collect` on scala collection. 
+   * Builds a new process by applying a partial function 
+   * to all elements of this process on which the function is defined.
+   * 
+   * Elements, for which the partial function is not defined are 
+   * filtered out from new process
+   * 
+   */
+  def collect[I,I2](pf: PartialFunction[I,I2]): Process1[I,I2] =
+    id[I].flatMap(pf andThen(emit) orElse { case _ => halt })
 
   /** 
    * Emits a single `true` value if all input matches the predicate.
@@ -159,7 +175,7 @@ trait process1 {
   def split[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I]): Process1[I, Vector[I]] =
       await1[I].flatMap { i =>
-        if (f(i)) emit(acc) then go(Vector())
+        if (f(i)) emit(acc) fby go(Vector())
         else go(acc :+ i)
       } orElse (emit(acc))
     go(Vector())
@@ -183,69 +199,118 @@ trait process1 {
       if (c > 0)
         await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
       else
-        emit(acc) then go(acc.tail, 1)
+        emit(acc) fby go(acc.tail, 1)
     go(Vector(), n)
   }
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] =
     if (n <= 0) id[I]
-    else skip then drop(n-1)
+    else skip fby drop(n-1)
 
   /**
    * Skips elements of the input while the predicate is true,
    * then passes through the remaining inputs.
    */
   def dropWhile[I](f: I => Boolean): Process1[I,I] =
-    await1[I] flatMap (i => if (f(i)) dropWhile(f) else emit(i) then id)
+    await1[I] flatMap (i => if (f(i)) dropWhile(f) else emit(i) fby id)
 
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I,I] =
     await1[I] flatMap (i => if (f(i)) emit(i) else halt) repeat
 
-  /**
-   * `Process1` form of `List.scanLeft`. Like `List.scanLeft`, this
-   * always emits at least the given `b`, even if the input is empty.
+  /** 
+   * Skips any elements not satisfying predicate and when found, will emit that 
+   * element and terminate
    */
-  def fold[A,B](b: B)(f: (B,A) => B): Process1[A,B] =
-    emit(b) then await1[A].flatMap { a => fold(f(b,a))(f) }
+  def find[I](f: I => Boolean): Process1[I,I] =  
+    await1[I] flatMap (i => if(f(i)) emit(i) else find(f))
+  
+  /**
+   * `Process1` form of `List.fold`. 
+   *  Folds the elements of this Process using the specified associative binary operator.
+   * 
+   *  Unlike List.fold the order is always from the `left` side, i.e. it will always 
+   *  honor order of `A`.
+   *  
+   *  If Process of `A` is empty, it will just emit `z` and terminate
+   *  
+   *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)`
+   */
+  def fold[A,B](z: B)(f: (B,A) => B): Process1[A,B] = 
+    scan(z)(f).last
 
   /**
-   * Like `fold`, but emits values starting with the first element it
-   * receives. If the input is empty, this emits no values.
+   * Like `fold` but uses Monoid for folding operation 
    */
-  def fold1[A](f: (A,A) => A): Process1[A,A] = {
-    def go(a: A): Process1[A,A] =
-      emit(a) then await1[A].flatMap(a2 => go(f(a,a2)))
-    await1[A].flatMap(go)
-  }
+  def foldMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    fold(M.zero)(M.append(_,_))
+  
+  /**
+   * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] = 
+   id[A].map(f).foldMonoid(M)
 
   /**
-   * Emits the `Monoid` identity, followed by a running total
-   * of the values seen so far, using the `Monoid` operation:
+   * `Process1` form of `List.reduce`.
    *
-   * `Process(1,2,3,4) |> fromMonoid(sumMonoid) == Process(0,1,3,6,10)`
-   */
-  def fromMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
-    fold(M.zero)((a,a2) => M.append(a,a2))
-
-  /**
-   * Alias for `fromSemigroup`. Starts emitting when it receives
-   * its first value from the input.
-   */
-  def fromMonoid1[A](implicit M: Semigroup[A]): Process1[A,A] =
-    fromSemigroup[A]
-
-  /**
-   * Emits the sum of the elements seen so far, using the
-   * semigroup's operation, starting with the first element
-   * of the input sequence. If the input is empty, emits
-   * no values.
+   *  Reduces the elements of this Process using the specified associative binary operator.
    *
-   * `Process(1,2,3,4) |> fromSemigroup(sumMonoid) == Process(1,3,6,10)`
+   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(10)`
+   *  `Process(1) |> reduce(_ + _) == Process(1)`
+   *  `Process() |> reduce(_ + _) == Process()`
+   *
    */
-  def fromSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
-    fold1((a,a2) => M.append(a,a2))
+  def fold1[A](f: (A,A) => A): Process1[A,A] = 
+    reduce(f)
+
+  /** alias for `reduceMonoid` */
+  def fold1Monoid[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce(M.append(_,_))
+
+  /** alias for `reduceSemigroup` */
+  def foldSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce(M.append(_,_))
+
+  /**
+   * Like `fold1` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def fold1Map[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    reduceMap(f)(M)
+
+  /**
+   * `Process1` form of `List.reduce`.
+   * 
+   *  Reduces the elements of this Process using the specified associative binary operator.
+   * 
+   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(10)`
+   *  `Process(1) |> reduce(_ + _) == Process(1)`
+   *  `Process() |> reduce(_ + _) == Process()`
+   *  
+   *  Unlike `List.reduce` will not fail when Process is empty.
+   *   
+   */
+  def reduce[A](f: (A,A) => A): Process1[A,A] = 
+    scan1(f).last
+
+  /**
+   * Like `reduce` but uses Monoid for reduce operation
+   */
+  def reduceMonoid[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce(M.append(_,_))
+
+  /**
+   * Like `reduce` but uses Semigroup associative operation
+   */
+  def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+    reduce(M.append(_,_))
+
+  /**
+   * Like `reduce` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def reduceMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    id[A].map(f).reduceMonoid(M)
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
   def id[I]: Process1[I,I] =
@@ -272,6 +337,57 @@ trait process1 {
   def lift[I,O](f: I => O): Process1[I,O] =
     id[I] map f
 
+  /** 
+   * Similar to List.scan. 
+   * Produces a process of `B` containing cumulative results of applying the operator to Process of `A`.
+   * It will always emit `z`, even when the Process of `A` is empty
+   */
+  def scan[A,B](z:B)(f:(B,A) => B) : Process1[A,B] =
+    emit(z) fby await1[A].flatMap (a => scan(f(z,a))(f))
+
+  /**
+   * Like `scan` but uses Monoid for associative operation 
+   */
+  def scanMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    scan(M.zero)(M.append(_,_))
+
+  /**
+   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    id[A].map(f).scanMonoid(M)
+
+  /**
+   * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
+   *
+   *  `Process(1,2,3,4) |> scan1(_ + _) == Process(1,3,6,10)`
+   *  `Process(1) |> scan1(_ + _) == Process(1)`
+   *  `Process() |> scan1(_ + _) == Process()`
+   * 
+   */
+  def scan1[A](f: (A,A) => A): Process1[A,A] = {
+    def go(a: A): Process1[A,A] = emit(a) fby await1[A].flatMap(a2 => go(f(a,a2)))
+    await1[A].flatMap(go)
+  }
+
+  /**
+   * Like `scan1` but uses Monoid for associative operation 
+   */
+  def scan1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    scan1(M.append(_,_))
+
+  /**
+   * Like `scan1` but uses Semigroup for associative operation 
+   */
+  def scanSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+    scan1(M.append(_,_))
+
+  /**
+   * Like `scan1` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   */
+  def scan1Map[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    id[A].map(f).scan1Monoid(M)
+  
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A,Option[A]] =
     lift[A,Option[A]](Some(_)) ++ emit(None)
@@ -279,11 +395,11 @@ trait process1 {
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I,I] =
     if (n <= 0) halt
-    else await1[I] then take(n-1)
+    else await1[I] fby take(n-1)
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
   def takeWhile[I](f: I => Boolean): Process1[I,I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) then takeWhile(f) else halt)
+    await1[I] flatMap (i => if (f(i)) emit(i) fby takeWhile(f) else halt)
 
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
@@ -308,7 +424,7 @@ trait process1 {
    * length of the input `Process`.
    */
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
-    fold1(N.plus)
+    reduce(N.plus)
 
   private val utf8Charset = Charset.forName("UTF-8")
 

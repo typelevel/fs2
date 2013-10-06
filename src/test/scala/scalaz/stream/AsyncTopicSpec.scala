@@ -101,7 +101,7 @@ object AsyncTopicSpec extends Properties("topic") {
 
         val sub1 = new SyncVar[Throwable \/ Seq[Int]]
 
-        Task(topic.subscribe.collect.runAsync(sub1.put)).run
+        Task(topic.subscribe.runLog.runAsync(sub1.put)).run
 
 
         emitted.get(3000)
