@@ -228,18 +228,17 @@ trait process1 {
   
   /**
    * `Process1` form of `List.fold`. 
-   *  Folds the elements of this sequence using the specified associative binary operator.
+   *  Folds the elements of this Process using the specified associative binary operator.
    * 
    *  Unlike List.fold the order is always from the `left` side, i.e. it will always 
    *  honor order of `A`.
    *  
-   *  If Process of `A` is empty, this will emit at least one `z`, then will emit 
-   *  running total `B` for every `A`. 
+   *  If Process of `A` is empty, it will just emit `z` and terminate
    *  
    *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)`
    */
-  def fold[A,B](b: B)(f: (B,A) => B): Process1[A,B] = 
-    scan(b)(f).last
+  def fold[A,B](z: B)(f: (B,A) => B): Process1[A,B] = 
+    scan(z)(f).last
 
   /**
    * Like `fold` but uses Monoid for folding operation 
