@@ -92,7 +92,7 @@ object AsyncRefSpec extends Properties("async.ref") {
       val feeded = new SyncVar[Throwable \/ Seq[(String, Int)]]
 
       Task {
-        signal.continuous.collect.runAsync(feeded.put)
+        signal.continuous.runLog.runAsync(feeded.put)
       }.run
 
 
@@ -137,10 +137,10 @@ object AsyncRefSpec extends Properties("async.ref") {
       val d2 = ref.signal.discrete
 
       val sync1 = new SyncVar[Throwable \/ Seq[Option[Int]]]
-      d1.collect.runAsync(sync1.put)
+      d1.runLog.runAsync(sync1.put)
 
       val sync2 = new SyncVar[Throwable \/ Seq[Option[Int]]]
-      d2.collect.runAsync(sync2.put)
+      d2.runLog.runAsync(sync2.put)
     
     
       Task {

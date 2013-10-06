@@ -55,19 +55,19 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     val cleanup = Process.eval { Task.delay { ok += 1 } }.drain
     val p = Process.range(0,10).onComplete(cleanup).map(i => if (i == 3) Task.delay(die) else Task.now(i))
     val p2 = Process.range(0,10).onComplete(cleanup).map(i => if (i == 3) Task.delay(throw Process.End) else Task.now(i))
-    try p.eval.collect.run catch { case e: Throwable => () }
-    try p2.eval.collect.run catch { case e: Throwable => () }
+    try p.eval.runLog.run catch { case e: Throwable => () }
+    try p2.eval.runLog.run catch { case e: Throwable => () }
     ok ?= 2
   }
 
   property("handle") = secure { 
     case object Err extends RuntimeException 
     val tasks = Process(Task(1), Task(2), Task(throw Err), Task(3))
-    (try { tasks.eval.pipe(processes.sum).collect.run; false }
+    (try { tasks.eval.pipe(processes.sum).runLog.run; false }
      catch { case Err => true }) &&
     (tasks.eval.pipe(processes.sum).
       handle { case e: Throwable => Process.emit(-6) }.
-      collect.run.last == -6)
+      runLog.run.last == -6)
   }
 
 }

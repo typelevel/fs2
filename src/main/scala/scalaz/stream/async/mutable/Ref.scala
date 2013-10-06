@@ -95,9 +95,9 @@ trait Ref[A] { self =>
      */
     private[stream] def checkStampChange:Process1[(Int,A),Boolean] = {
       def go(last:(Int,A)) : Process1[(Int,A),Boolean] = {
-        await1[(Int,A)].flatMap ( next => emit(next != last) then go(next) )
+        await1[(Int,A)].flatMap ( next => emit(next != last) fby go(next) )
       }
-      await1[(Int,A)].flatMap(next=> emit(true) then go(next))
+      await1[(Int,A)].flatMap(next=> emit(true) fby go(next))
     }
     
     private[stream] def toSource: Process[Task,A] =
