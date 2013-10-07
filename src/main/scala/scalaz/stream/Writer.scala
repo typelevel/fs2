@@ -2,26 +2,25 @@ package scalaz.stream
 
 import collection.immutable.Vector
 import Process._
-import Journal._
 import scalaz.\/._
 import scalaz._
 
-case class Writer[+F[_],+S,+A](run: Process[F, A \/ S]) {
+case class Writer[+F[_],+S,+A](run: Process[F, S \/ A]) {
 
   def map[B](f: A => B): Writer[F,S,B] = 
-    Writer(run.map(_.leftMap(f)))
-
-  def mapW[S2](f: S => S2): Writer[F,S2,A] = 
     Writer(run.map(_.map(f)))
 
+  def mapW[S2](f: S => S2): Writer[F,S2,A] = 
+    Writer(run.map(_.leftMap(f)))
+
   def flatMap[F2[x]>:F[x],S2>:S,B](f: A => Writer[F2,S2,B]): Writer[F2,S2,B] = 
-    Writer(run.flatMap(_.fold(f andThen (_.run), s => emit(right(s)))))
+    Writer(run.flatMap(_.fold(s => emit(left(s)), f andThen (_.run))))
 
   def flatMapW[F2[x]>:F[x],S2,A2>:A](f: S => Writer[F2,S2,A2]): Writer[F2,S2,A2] = 
-    Writer(run.flatMap(_.fold(a => emit(left(a)), f andThen (_.run))))
+    Writer(run.flatMap(_.fold(f andThen (_.run), a => emit(right(a)))))
 
   def pipe[B](f: Process1[A,B]): Writer[F,S,B] = 
-    Writer(run.pipe(process1.liftL(f)))
+    Writer(run.pipe(process1.liftR(f)))
 
   def ++[F2[x]>:F[x],S2>:S,A2>:A](w2: => Writer[F2,S2,A2]): Writer[F2,S2,A2] =
     Writer(run ++ w2.run)
@@ -37,13 +36,12 @@ case class Writer[+F[_],+S,+A](run: Process[F, A \/ S]) {
 }
 
 object Writer {
-  
-  import Journal._
 
   type Process1W[+S,-I,+O] = Writer[Env[I,Any]#Is,S,O] 
   type TeeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#T,S,O] 
   type WyeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#Y,S,O]
   type Journal[S,-I,+O] = TeeW[Entry[S], S, I, O]
+  import Entry._
 
   case class Log[F[_],S,I](
     commit: Sink[F,S],
@@ -59,17 +57,13 @@ object Writer {
   def journal[F[_],S,I,O](
     j: Journal[S,I,O])(input: Process[F,I])(l: Log[F,S,I]): Process[F,O] =
     l.commited.tee(l.logged ++ input.observe(l.log))(j.run).flatMap {
-      case -\/(o) => Process.emit(o)
-      case \/-(e) => e match {
+      case \/-(o) => Process.emit(o)
+      case -\/(e) => e match {
         case Recover => (Process.emitSeq[F,Unit](List(())) to l.recover).drain
         case Reset => (Process.emitSeq[F,Unit](List(())) to l.reset).drain
         case Commit(s) => (Process.emitSeq[F,S](List(s)) to l.commit).drain
       }
     }
-
-  // need to just add a journaling stage immediately after 
-  // reading some external stream which a transducer builds
-  // state
 
   def halt: Writer[Nothing,Nothing,Nothing] = 
     Writer(Process.halt)
@@ -78,13 +72,13 @@ object Writer {
     lift(Process.emit(o))
 
   def tell[S](s: S): Writer[Nothing,S,Nothing] = 
-    Writer(Process.emit(right(s)))
+    Writer(Process.emit(left(s)))
 
   def lift[F[_],A](p: Process[F,A]): Writer[F,Nothing,A] = 
-    Writer(p.map(left))
+    Writer(p.map(right))
 
   def logged[F[_],A](p: Process[F,A]): Writer[F,A,A] =
-    Writer(p.flatMap(a => emitAll(Vector(right(a), left(a)))))
+    Writer(p.flatMap(a => emitAll(Vector(left(a), right(a)))))
 
   def await1[A]: Process1W[Nothing,A,A] =
     lift(Process.await1[A])
@@ -109,13 +103,6 @@ object Writer {
   /** Tell the driver to attempt to recover the current state. */ 
   val recover: Writer[Nothing,Entry[Nothing],Nothing] = 
     tell(Reset)
-}
-
-
-object Journal {
-  
-  val W = Writer
-  val P = Process
 
   sealed trait Entry[+S] { 
     def map[S2](f: S => S2): Entry[S2] = this match {
@@ -124,9 +111,10 @@ object Journal {
       case Commit(s) => Commit(f(s))
     }
   }
-  
-  case class Commit[S](s: S) extends Entry[S]
-  case object Reset extends Entry[Nothing]
-  case object Recover extends Entry[Nothing]
 
+  object Entry {
+    case class Commit[S](s: S) extends Entry[S]
+    case object Reset extends Entry[Nothing]
+    case object Recover extends Entry[Nothing]
+  }
 }
