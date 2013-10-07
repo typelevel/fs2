@@ -20,10 +20,14 @@ object WritingAndLogging extends Properties("writing-and-logging") {
   want to emit some values 'on the side' while doing something
   else with the main output of a `Process`.
 
+  See `JournaledStreams.scala` for how `Writer` can be used
+  to create persistent, distributed, or resumable streams.
+
   */
 
   property("writer") = secure {
     val W = Writer
+    import W._
 
     val buf = new collection.mutable.ArrayBuffer[String] 
 
@@ -39,9 +43,9 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     The integers are still available for further transforms.
     */
     val ex: Process[Task,Int] = 
-      W.logged(Process.range(0,10))
-       .flatMapW { i => W.tell("Got input: " + i) }
-       .drainW(io.fillBuffer(buf))
+      Process.range(0,10)
+             .flatMap(i => W.tell("Got input: " + i) ++ W.emitO(i))
+             .drainW(io.fillBuffer(buf))
     
     /* This will have the side effect of filling `buf`. */  
     ex.run.run
@@ -52,28 +56,11 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     val step0: Process[Task,Int] = Process.range(0,10)
 
     /* 
-    `Writer.logged` promotes a `Process[F,A]` to a 
-    `Writer[F,A,A]`, by making all values available
-    to the 'write' side of the writer.
+    Log some output using `W.tell`, and echo the original 
+    input with `W.emitO` (`O` for 'output'). 
     */
-    val step1: Writer[Task,Int,Int] = 
-      W.logged(step0)
-
-    /*
-    Here, we modify the write side of the `Writer` 
-    by calling `flatMapW` (a `Writer` method). We
-    use the combinator `tell` to emit a value to 
-    the write side of the `Writer`. We could use
-    `W.emit` to emit to the output side of the
-    `Writer`.
-
-    Note that calling `W.tell` doesn't do anything,
-    and it doesn't involve any I/O or effects. 
-    We will later bind our `Writer` to a sink to
-    actually write the messages to a buffer.
-    */
-    val step2: Writer[Task,String,Int] = 
-      step1.flatMapW { i => W.tell("Got input: " + i) }
+    val step1: Writer[Task,String,Int] = 
+      step0.flatMap { i => W.tell("Got input: " + i) ++ W.emitO(i) }
 
     /*
     A `Sink` which as a side effects writes to a mutable
@@ -83,7 +70,7 @@ object WritingAndLogging extends Properties("writing-and-logging") {
 
     /* 
     Another `Sink` we could use for our `Writer`, if
-    we want to log the write side to standard out, with
+    we want to log the writes to standard out, with
     a newline after each `String`.
     */
     val snk2: Sink[Task,String] = io.stdOutLines
@@ -94,10 +81,10 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     write side of the writer to get back an ordinary 
     `Process`.
     */
-    val step3: Process[Task,Int] = 
-      step2.drainW(snk)
+    val step2: Process[Task,Int] = 
+      step1.drainW(snk)
 
-    /* Let's make sure all values got written to the buffer. */
+    /* Make sure all values got written to the buffer. */
     buf.toList == List.range(0,10).map("Got input: " + _) 
   }
 }

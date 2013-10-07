@@ -14,69 +14,19 @@ import scalaz._
  * want to emit some values 'on the side' while doing something
  * else with the main output of a `Process`.
  */
-case class Writer[+F[_],+W,+A](run: Process[F, W \/ A]) {
-
-  def map[B](f: A => B): Writer[F,W,B] =
-    Writer(run.map(_.map(f)))
-
-  def mapW[W2](f: W => W2): Writer[F,W2,A] = 
-    Writer(run.map(_.leftMap(f)))
-
-  def flatMap[F2[x]>:F[x],W2>:W,B](f: A => Writer[F2,W2,B]): Writer[F2,W2,B] = 
-    Writer(run.flatMap(_.fold(s => emit(left(s)), f andThen (_.run))))
-
-  def flatMapW[F2[x]>:F[x],W2,A2>:A](f: W => Writer[F2,W2,A2]): Writer[F2,W2,A2] = 
-    Writer(run.flatMap(_.fold(f andThen (_.run), a => emit(right(a)))))
-
-  def lower: Process[F,A] = 
-    run.flatMap(_.fold(_ => halt, emit))
-
-  def pipe[B](f: Process1[A,B]): Writer[F,W,B] = 
-    Writer(run.pipe(process1.liftR(f)))
-
-  def pipe[W2>:W,B](f: Writer.Process1W[W2,A,B]): Writer[F,W2,B] = 
-    Writer(run.pipe(f.run.liftR[W]).flatMap(
-      _.fold(
-        s => emit(left(s)), 
-        e => e.fold(s => emit(left(s)), 
-                    b => emit(right(b)))
-    )))
-
-  def ++[F2[x]>:F[x],W2>:W,A2>:A](w2: => Writer[F2,W2,A2]): Writer[F2,W2,A2] =
-    Writer(run ++ w2.run)
-
-  def w_++[F2[x]>:F[x],W2>:W,A2>:A](w2: => Process[F2, A2]): Writer[F2,W2,A2] =
-    Writer(run ++ Writer.lift[F2,A2](w2).run)
-
-  def fby[F2[x]>:F[x],W2>:W,A2>:A](w2: => Writer[F2,W2,A2]): Writer[F2,W2,A2] =
-    Writer(run fby w2.run)
-
-  def w_fby[F2[x]>:F[x],W2>:W,A2>:A](w2: => Process[F2, A2]): Writer[F2,W2,A2] =
-    Writer(run fby Writer.lift(w2).run)
-}
-
 object Writer {
 
-  type Process1W[+S,-I,+O] = Writer[Env[I,Any]#Is,S,O] 
-  type TeeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#T,S,O] 
-  type WyeW[+S,-I,-I2,+O] = Writer[Env[I,I2]#Y,S,O]
-  type Journal[S,-I,+O] = TeeW[Entry[S], S, I, O]
+  type Writer[+F[_],+W,+A] = Process[F, W \/ A]
+  type Process1W[+W,-I,+O] = Process1[I,W \/ O]
+  type TeeW[+W,-I,-I2,+O] = Tee[I,I2,W \/ O]
+  type WyeW[+W,-I,-I2,+O] = Wye[I,I2,W \/ O]
+  type Transaction[S,-I,+O] = TeeW[Entry[S], I, S, O]
+
   import Entry._
 
-  case class Log[F[_],S,I](
-    commit: Sink[F,S],
-    commited: Process[F,S],
-    reset: Sink[F,Unit],
-    recover: Sink[F,Unit],
-    log: Sink[F,I],
-    logged: Process[F,I])
-
-  def journal[F[_],S,I,O](
-    j: Journal[S,I,O])(log: Log[F,S,I]): Channel[F,I,O] = ???
-
-  def journal[F[_],S,I,O](
-    j: Journal[S,I,O])(input: Process[F,I])(l: Log[F,S,I]): Process[F,O] =
-    l.commited.tee(l.logged ++ input.observe(l.log))(j.run).flatMap {
+  def transaction[F[_],S,I,O](
+    j: Transaction[S,I,O])(input: Process[F,I])(l: Journal[F,S,I]): Process[F,O] =
+    (l.logged ++ input.observe(l.log)).tee(l.commited)(j).flatMap {
       case \/-(o) => Process.emit(o)
       case -\/(e) => e match {
         case Recover => (Process.emitSeq[F,Unit](List(())) to l.recover).drain
@@ -85,43 +35,43 @@ object Writer {
       }
     }
 
-  def halt: Writer[Nothing,Nothing,Nothing] = 
-    Writer(Process.halt)
+  def emitO[O](o: O): Process[Nothing, Nothing \/ O] = 
+    liftW(Process.emit(o))
 
-  def emit[O](o: O): Writer[Nothing,Nothing,O] = 
-    lift(Process.emit(o))
+  def emitW[S](s: S): Process[Nothing, S \/ Nothing] = 
+    Process.emit(left(s))
 
-  def tell[S](s: S): Writer[Nothing,S,Nothing] = 
-    Writer(Process.emit(left(s)))
+  def tell[S](s: S): Process[Nothing, S \/ Nothing] = 
+    emitW(s) 
 
-  def lift[F[_],A](p: Process[F,A]): Writer[F,Nothing,A] = 
-    Writer(p.map(right))
+  def liftW[F[_],A](p: Process[F,A]): Writer[F,Nothing,A] = 
+    p.map(right)
 
   def logged[F[_],A](p: Process[F,A]): Writer[F,A,A] =
-    Writer(p.flatMap(a => emitAll(Vector(left(a), right(a)))))
+    p.flatMap(a => emitAll(Vector(left(a), right(a))))
 
-  def await1[A]: Process1W[Nothing,A,A] =
-    lift(Process.await1[A])
+  def await1W[A]: Process1W[Nothing,A,A] =
+    liftW(Process.await1[A])
 
-  def awaitL[I]: TeeW[Nothing,I,Any,I] =
-    lift(Process.awaitL[I])
+  def awaitLW[I]: TeeW[Nothing,I,Any,I] =
+    liftW(Process.awaitL[I])
 
-  def awaitR[I2]: TeeW[Nothing,Any,I2,I2] =
-    lift(Process.awaitR[I2])
+  def awaitRW[I2]: TeeW[Nothing,Any,I2,I2] =
+    liftW(Process.awaitR[I2])
 
-  def awaitBoth[I,I2]: WyeW[Nothing,I,I2,These[I,I2]] =
-    lift(Process.awaitBoth[I,I2])
+  def awaitBothW[I,I2]: WyeW[Nothing,I,I2,These[I,I2]] =
+    liftW(Process.awaitBoth[I,I2])
 
   /** Commit to a new state. */
-  def commit[S](s: S): Writer[Nothing,Entry[S],Nothing] = 
+  def commit[S](s: S): Process[Nothing,Entry[S] \/ Nothing] = 
     tell(Commit(s)) 
 
   /** Tell the driver to reset back to the last commited state. */
-  val reset: Writer[Nothing,Entry[Nothing],Nothing] = 
+  val reset: Process[Nothing,Entry[Nothing] \/ Nothing] = 
     tell(Reset)
 
   /** Tell the driver to attempt to recover the current state. */ 
-  val recover: Writer[Nothing,Entry[Nothing],Nothing] = 
+  val recover: Process[Nothing,Entry[Nothing] \/ Nothing] = 
     tell(Reset)
 
   sealed trait Entry[+S] { 
@@ -140,17 +90,38 @@ object Writer {
 
   import scalaz.concurrent.Task
 
-  implicit class WriterSyntax[F[_],S,A](self: Writer[F,S,A]) {
-    def observeW(snk: Sink[F,S]): Writer[F,S,A] = {
-      Writer(self.run.zipWith(snk)((a,f) => 
-        a.fold(
-          (s: S) => eval_ { f(s) } ++ Process.emit(left(s)),
-          (a: A) => Process.emit(right(a))
-        )
-      ).flatMap(identity))
-    }
+  implicit class WriterSyntax[F[_],W,O](self: Writer[F,W,O]) {
 
-    def drainW(snk: Sink[F,S]): Process[F,A] = 
-      observeW(snk).lower
+    def observeW(snk: Sink[F,W]): Writer[F,W,O] =
+      self.zipWith(snk)((a,f) => 
+        a.fold(
+          (s: W) => eval_ { f(s) } ++ Process.emit(left(s)),
+          (a: O) => Process.emit(right(a))
+        )
+      ).flatMap(identity)
+
+    def drainW(snk: Sink[F,W]): Process[F,O] = 
+      observeW(snk).stripW
+
+    def mapW[W2](f: W => W2): Writer[F,W2,O] = 
+      self.map(_.leftMap(f))
+
+    def mapO[B](f: O => B): Writer[F,W,B] =
+      self.map(_.map(f))
+
+    def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] = 
+      self.flatMap(_.fold(s => emit(left(s)), f))
+
+    def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] = 
+      self.flatMap(_.fold(f, a => emit(right(a))))
+
+    def stripW: Process[F,O] = 
+      self.flatMap(_.fold(_ => halt, emit))
+
+    def stripO: Process[F,O] = 
+      self.flatMap(_.fold(_ => halt, emit))
+
+    def pipeO[B](f: Process1[O,B]): Writer[F,W,B] = 
+      self.pipe(process1.liftR(f))
   }
 }
