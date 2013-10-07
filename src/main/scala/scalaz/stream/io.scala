@@ -50,6 +50,10 @@ trait io {
     }
   }
 
+  /** Promote an effectful function to a `Channel`. */
+  def channel[A,B](f: A => Task[B]): Channel[Task, A, B] = 
+    Process.constant(f)
+
   /**
    * Create a `Channel[Task,Int,Bytes]` from an `InputStream` by
    * repeatedly requesting the given number of bytes. The last chunk
@@ -83,6 +87,10 @@ trait io {
   def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task, Int, Array[Byte]] =
     chunkR(new BufferedInputStream(new FileInputStream(f), bufferSize))
 
+  /** A `Sink` which, as a side effect, adds elements to the given `Buffer`. */
+  def fillBuffer[A](buf: collection.mutable.Buffer[A]): Sink[Task,A] = 
+    channel((a: A) => Task.delay { buf += a })
+
   /**
    * Create a `Process[Task,String]` from the lines of a file, using
    * the `resource` combinator to ensure the file is closed
@@ -114,6 +122,20 @@ trait io {
       go(step(r), onExit)
     }, halt, halt)
   }
+
+  /** 
+   * The standard output stream, as a `Sink`. This `Sink` does not 
+   * emit newlines after each element. For that, use `stdoutLines`.
+   */
+  def stdOut: Sink[Task,String] = 
+    channel((s: String) => Task.delay { print(s) })
+
+  /** 
+   * The standard output stream, as a `Sink`. This `Sink` emits 
+   * newlines after each element. If this is not desired, use `stdout`.
+   */
+  def stdOutLines: Sink[Task,String] = 
+    channel((s: String) => Task.delay { println(s) })
 
   /**
    * Create a `Channel[Task,Array[Byte],Array[Bytes]]` from an `InputStream` by

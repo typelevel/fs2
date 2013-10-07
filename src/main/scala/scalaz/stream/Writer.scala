@@ -5,33 +5,53 @@ import Process._
 import scalaz.\/._
 import scalaz._
 
-case class Writer[+F[_],+S,+A](run: Process[F, S \/ A]) {
+/** 
+ * A `Writer[F,W,A]` wraps a `Process[F, W \/ A]` with some 
+ * convenience functions for working with either the written
+ * values (the `W`) or the output values (the `A`).
+ * 
+ * This is useful for logging or other situations where we
+ * want to emit some values 'on the side' while doing something
+ * else with the main output of a `Process`.
+ */
+case class Writer[+F[_],+W,+A](run: Process[F, W \/ A]) {
 
-  def map[B](f: A => B): Writer[F,S,B] = 
+  def map[B](f: A => B): Writer[F,W,B] =
     Writer(run.map(_.map(f)))
 
-  def mapW[S2](f: S => S2): Writer[F,S2,A] = 
+  def mapW[W2](f: W => W2): Writer[F,W2,A] = 
     Writer(run.map(_.leftMap(f)))
 
-  def flatMap[F2[x]>:F[x],S2>:S,B](f: A => Writer[F2,S2,B]): Writer[F2,S2,B] = 
+  def flatMap[F2[x]>:F[x],W2>:W,B](f: A => Writer[F2,W2,B]): Writer[F2,W2,B] = 
     Writer(run.flatMap(_.fold(s => emit(left(s)), f andThen (_.run))))
 
-  def flatMapW[F2[x]>:F[x],S2,A2>:A](f: S => Writer[F2,S2,A2]): Writer[F2,S2,A2] = 
+  def flatMapW[F2[x]>:F[x],W2,A2>:A](f: W => Writer[F2,W2,A2]): Writer[F2,W2,A2] = 
     Writer(run.flatMap(_.fold(f andThen (_.run), a => emit(right(a)))))
 
-  def pipe[B](f: Process1[A,B]): Writer[F,S,B] = 
+  def lower: Process[F,A] = 
+    run.flatMap(_.fold(_ => halt, emit))
+
+  def pipe[B](f: Process1[A,B]): Writer[F,W,B] = 
     Writer(run.pipe(process1.liftR(f)))
 
-  def ++[F2[x]>:F[x],S2>:S,A2>:A](w2: => Writer[F2,S2,A2]): Writer[F2,S2,A2] =
+  def pipe[W2>:W,B](f: Writer.Process1W[W2,A,B]): Writer[F,W2,B] = 
+    Writer(run.pipe(f.run.liftR[W]).flatMap(
+      _.fold(
+        s => emit(left(s)), 
+        e => e.fold(s => emit(left(s)), 
+                    b => emit(right(b)))
+    )))
+
+  def ++[F2[x]>:F[x],W2>:W,A2>:A](w2: => Writer[F2,W2,A2]): Writer[F2,W2,A2] =
     Writer(run ++ w2.run)
 
-  def w_++[F2[x]>:F[x],S2>:S,A2>:A](w2: => Process[F2, A2]): Writer[F2,S2,A2] =
+  def w_++[F2[x]>:F[x],W2>:W,A2>:A](w2: => Process[F2, A2]): Writer[F2,W2,A2] =
     Writer(run ++ Writer.lift[F2,A2](w2).run)
 
-  def fby[F2[x]>:F[x],S2>:S,A2>:A](w2: => Writer[F2,S2,A2]): Writer[F2,S2,A2] =
+  def fby[F2[x]>:F[x],W2>:W,A2>:A](w2: => Writer[F2,W2,A2]): Writer[F2,W2,A2] =
     Writer(run fby w2.run)
 
-  def w_fby[F2[x]>:F[x],S2>:S,A2>:A](w2: => Process[F2, A2]): Writer[F2,S2,A2] =
+  def w_fby[F2[x]>:F[x],W2>:W,A2>:A](w2: => Process[F2, A2]): Writer[F2,W2,A2] =
     Writer(run fby Writer.lift(w2).run)
 }
 
@@ -116,5 +136,21 @@ object Writer {
     case class Commit[S](s: S) extends Entry[S]
     case object Reset extends Entry[Nothing]
     case object Recover extends Entry[Nothing]
+  }
+
+  import scalaz.concurrent.Task
+
+  implicit class WriterSyntax[F[_],S,A](self: Writer[F,S,A]) {
+    def observeW(snk: Sink[F,S]): Writer[F,S,A] = {
+      Writer(self.run.zipWith(snk)((a,f) => 
+        a.fold(
+          (s: S) => eval_ { f(s) } ++ Process.emit(left(s)),
+          (a: A) => Process.emit(right(a))
+        )
+      ).flatMap(identity))
+    }
+
+    def drainW(snk: Sink[F,S]): Process[F,A] = 
+      observeW(snk).lower
   }
 }
