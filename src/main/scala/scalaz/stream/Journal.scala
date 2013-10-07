@@ -30,10 +30,10 @@ case class Writer[+F[_],+S,+A](run: Process[F, A \/ S]) {
     Writer(run ++ Writer.lift[F2,A2](w2).run)
 
   def fby[F2[x]>:F[x],S2>:S,A2>:A](w2: => Writer[F2,S2,A2]): Writer[F2,S2,A2] =
-    Writer(run then w2.run)
+    Writer(run fby w2.run)
 
   def w_fby[F2[x]>:F[x],S2>:S,A2>:A](w2: => Process[F2, A2]): Writer[F2,S2,A2] =
-    Writer(run then Writer.lift(w2).run)
+    Writer(run fby Writer.lift(w2).run)
 }
 
 object Writer {
