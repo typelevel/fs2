@@ -122,11 +122,11 @@ object CreatingStreams extends Properties("creating-streams") {
                .map(_.toString)
     
     /* 
-    `collect` returns the sequence of values emitted by a source,
+    `runLog` returns the sequence of values emitted by a source,
     as a `Task`. Nothing happens until we run this `Task`, and
     we can run this `Task` again to repeat the entire `Process`
     */
-    val r: Task[collection.immutable.IndexedSeq[String]] = oddsGt10.collect
+    val r: Task[collection.immutable.IndexedSeq[String]] = oddsGt10.runLog
 
     /*
     At the end of the universe, we can `run` the `Task`

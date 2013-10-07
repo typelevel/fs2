@@ -80,7 +80,7 @@ sealed abstract class Process[+F[_],+O] {
   /**
    * Run this `Process`, then, if it halts without an error, run `p2`.
    * Note that `p2` is appended to the `fallback` argument of any `Await`
-   * produced by this `Process`. If this is not desired, use `then`.
+   * produced by this `Process`. If this is not desired, use `fby`.
    */
   final def append[F2[x]>:F[x], O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
     case h@Halt(e) => e match {
@@ -107,15 +107,18 @@ sealed abstract class Process[+F[_],+O] {
    * we do not modify the `fallback` arguments to any `Await` produced
    * by this `Process`.
    */
-  final def then[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
+  final def fby[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
     case h@Halt(e) => e match {
       case End => p2
       case _ => h
     }
-    case Emit(h, t) => emitSeq(h, t then p2)
+    case Emit(h, t) => emitSeq(h, t fby p2)
     case Await(req,recv,fb,c) =>
-      Await(req, recv andThen (_ then p2), fb, c)
+      Await(req, recv andThen (_ fby p2), fb, c)
   }
+  
+  /** operator alias for `fby` */
+  final def |||[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = fby(p2) 
 
   /**
    * Removes all emitted elements from the front of this `Process`.
@@ -537,9 +540,9 @@ sealed abstract class Process[+F[_],+O] {
    * which we can catch exceptions. This function is not tail recursive and
    * relies on the `Monad[F]` to ensure stack safety.
    */
-  final def collect[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
+  final def runLog[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
     import scalaz.std.indexedSeq._
-    foldMap[F2,IndexedSeq[O2]](IndexedSeq(_))
+    runFoldMap[F2,IndexedSeq[O2]](IndexedSeq(_))
   }
 
   /**
@@ -547,7 +550,7 @@ sealed abstract class Process[+F[_],+O] {
    * which we can catch exceptions. This function is not tail recursive and
    * relies on the `Monad[F]` to ensure stack safety.
    */
-  final def foldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
+  final def runFoldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2,O], acc: B): F2[B] =
       cur match {
         case Emit(h,t) =>
@@ -571,15 +574,15 @@ sealed abstract class Process[+F[_],+O] {
 
   /** Run this `Process` solely for its final emitted value, if one exists. */
   final def runLast[F2[x]>:F[x], O2>:O](implicit F: Monad[F2], C: Catchable[F2]): F2[Option[O2]] =
-    F.map(this.last.collect[F2,O2])(_.lastOption)
+    F.map(this.last.runLog[F2,O2])(_.lastOption)
 
   /** Run this `Process` solely for its final emitted value, if one exists, using `o2` otherwise. */
   final def runLastOr[F2[x]>:F[x], O2>:O](o2: => O2)(implicit F: Monad[F2], C: Catchable[F2]): F2[O2] =
-    F.map(this.last.collect[F2,O2])(_.lastOption.getOrElse(o2))
+    F.map(this.last.runLog[F2,O2])(_.lastOption.getOrElse(o2))
 
   /** Run this `Process`, purely for its effects. */
   final def run[F2[x]>:F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] =
-    F.void(drain.collect(F, C))
+    F.void(drain.runLog(F, C))
 
   /** Alias for `this |> process1.buffer(n)`. */
   def buffer(n: Int): Process[F,O] =
@@ -601,6 +604,10 @@ sealed abstract class Process[+F[_],+O] {
   def chunkBy(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.chunkBy(f)
 
+  /** Alias for `this |> process1.collect(pf)`. */
+  def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] = 
+    this |> process1.collect(pf)
+  
   /** Alias for `this |> process1.split(f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.split(f)
@@ -629,9 +636,53 @@ sealed abstract class Process[+F[_],+O] {
   def filter(f: O => Boolean): Process[F,O] =
     this |> processes.filter(f)
 
+  /** Alias for `this |> process1.find(f)` */
+  def find(f: O => Boolean): Process[F,O] =
+    this |> processes.find(f)
+
   /** Connect this `Process` to `process1.fold(b)(f)`. */
-  def fold[B](b: B)(f: (B,O) => B): Process[F,B] =
+  def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold(b)(f)
+
+  /** Alias for `this |> process1.foldMonoid(M)` */
+  def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.foldMonoid(M)
+
+  /** Alias for `this |> process1.foldMap(f)(M)`. */
+  def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.foldMap(f)(M)
+
+  /** Connect this `Process` to `process1.fold1(f)`. */
+  def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.fold1(f)
+
+  /** Alias for `this |> process1.fold1Monoid(M)` */
+  def fold1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.fold1Monoid(M)
+
+  /** Alias for `this |> process1.fold1Semigroup(M)`. */
+  def foldSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.foldSemigroup(M)
+
+  /** Alias for `this |> process1.fold1Map(f)(M)`. */
+  def fold1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.fold1Map(f)(M)
+  
+  /** Alias for `this |> process1.reduce(f)`. */
+  def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.reduce(f)
+
+  /** Alias for `this |> process1.reduceMonoid(M)`. */
+  def reduceMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.reduceMonoid(M)
+
+  /** Alias for `this |> process1.reduceSemigroup(M)`. */
+  def reduceSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.reduceSemigroup(M)
+
+  /** Alias for `this |> process1.reduceMap(f)(M)`. */
+  def reduceMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.reduceMap(f)(M)
 
   /** Insert `sep` between elements emitted by this `Process`. */
   def intersperse[O2>:O](sep: O2): Process[F,O2] =
@@ -647,6 +698,34 @@ sealed abstract class Process[+F[_],+O] {
   /** Skips all elements emitted by this `Process` except the last. */
   def last: Process[F,O] = this |> process1.last
 
+  /** Connect this `Process` to `process1.scan(b)(f)`. */
+  def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
+    this |> process1.scan(b)(f)
+
+  /** Connect this `Process` to `process1.scanMonoid(M)`. */
+  def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.scanMonoid(M)
+
+  /** Alias for `this |> process1.scanMap(f)(M)`. */
+  def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.scanMap(f)(M)
+
+  /** Connect this `Process` to `process1.scan1(f)`. */
+  def scan1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.scan1(f)
+
+  /** Connect this `Process` to `process1.scan1Monoid(M)`. */
+  def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.scan1Monoid(M)
+
+  /** Connect this `Process` to `process1.scan1Semigroup(M)`. */
+  def scanSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.scanSemigroup(M)
+
+  /** Alias for `this |> process1.scan1Map(f)(M)`. */
+  def scan1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.scan1Map(f)(M)
+  
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] =
     this |> processes.take[O](n)
@@ -1125,18 +1204,6 @@ object Process {
     def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] =
       through(f)
 
-    def toMonoid[F2[x]>:F[x]](implicit M: Monoid[O]): Process[F2,O] =
-      self |> process1.fromMonoid(M)
-
-    def fold1[F2[x]>:F[x]](f: (O,O) => O): Process[F2,O] =
-      self |> process1.fold1(f)
-
-    def toMonoid1[F2[x]>:F[x]](implicit M: Semigroup[O]): Process[F2,O] =
-      toSemigroup(M)
-
-    def toSemigroup[F2[x]>:F[x]](implicit M: Semigroup[O]): Process[F2,O] =
-      self |> process1.fromSemigroup(M)
-
     /** Attach a `Sink` to the output of this `Process` but echo the original signal. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
       self.zipWith(f)((o,f) => (o,f(o))).flatMap { case (orig,action) => emit(action).eval.drain ++ emit(orig) }
@@ -1307,7 +1374,7 @@ object Process {
       // this is probably rather slow
       val src1 = Process.emitAll(input.toSeq).toSource
       val src2 = Process.emitAll(input2.toSeq).toSource
-      src1.wye(src2)(self).collect.run
+      src1.wye(src2)(self).runLog.run
     }
 
     /**

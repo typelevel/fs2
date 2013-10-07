@@ -19,7 +19,7 @@ object AsyncSpec extends Properties("async") {
       l.foreach(i => q.enqueue(i))
       q.close
     }
-    val t2 = s.collect
+    val t2 = s.runLog
 
     Nondeterminism[Task].both(t1, t2).run._2.toList == l
   }
@@ -31,7 +31,7 @@ object AsyncSpec extends Properties("async") {
       l.foreach { i => v.set(i); Thread.sleep(1) }
       v.close
     }
-    val t2 = s.takeWhile(_ % 23 != 0).collect
+    val t2 = s.takeWhile(_ % 23 != 0).runLog
 
     Nondeterminism[Task].both(t1, t2).run._2.toList.forall(_ % 23 != 0)
   }
