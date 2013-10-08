@@ -72,14 +72,12 @@ trait process1 {
    * Like `chunkBy`, but the predicate depends on the current and previous elements.
    */
   def chunkBy2[I](f: (I, I) => Boolean): Process1[I, Vector[I]] = {
-    def go(acc: Vector[I], last: Option[I]): Process1[I,Vector[I]] =
+    def go(acc: Vector[I], last: I): Process1[I,Vector[I]] =
       await1[I].flatMap { i =>
-        last match {
-          case Some(l) if ! f(l, i) => emit(acc) fby go(Vector(i), Some(i))
-          case _ => go(acc :+ i, Some(i))
-        }
+        if (f(last, i)) go(acc :+ i, i)
+        else emit(acc) fby go(Vector(i), i)
       } orElse emit(acc)
-    go(Vector(), None)
+    await1[I].flatMap(i => go(Vector(i), i))
   }
 
   /**
