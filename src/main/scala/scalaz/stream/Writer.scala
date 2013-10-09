@@ -24,17 +24,6 @@ object Writer {
 
   import Entry._
 
-  def transaction[F[_],S,I,O](
-    j: Transaction[S,I,O])(input: Process[F,I])(l: Journal[F,S,I]): Process[F,O] =
-    (l.logged ++ input.observe(l.log)).tee(l.commited)(j).flatMap {
-      case \/-(o) => Process.emit(o)
-      case -\/(e) => e match {
-        case Recover => (Process.emitSeq[F,Unit](List(())) to l.recover).drain
-        case Reset => (Process.emitSeq[F,Unit](List(())) to l.reset).drain
-        case Commit(s) => (Process.emitSeq[F,S](List(s)) to l.commit).drain
-      }
-    }
-
   def emitO[O](o: O): Process[Nothing, Nothing \/ O] = 
     liftW(Process.emit(o))
 

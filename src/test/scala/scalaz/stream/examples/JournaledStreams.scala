@@ -10,6 +10,11 @@ import Prop._
 
 object JournaledStreams extends Properties("journaled-streams") {
 
+  // DISCLAIMER: this is a work in progress
+
+  val W = Writer
+  import W.Transaction
+
   /* 
   Message used to indicate arrival and departure of `A` values.
   We can 'sum' these messages to get the current set of available
@@ -26,10 +31,30 @@ object JournaledStreams extends Properties("journaled-streams") {
       case Depart(a) => val c2 = cur - a; emit(c2) 
     }.repeat
 
+  case class Journal[F[_],S,I](
+    commit: Sink[F,S],
+    commited: Process[F,S],
+    reset: Sink[F,Unit],
+    recover: Sink[F,Unit],
+    log: Sink[F,I],
+    logged: Process[F,I])
+  
+  def dummyJournal[F[_],S,I]: Journal[F,S,I] = 
+    Journal(halt, halt, halt, halt, halt, halt)
+
+  import W.Entry._
+  def transaction[F[_],S,I,O](
+    j: Transaction[S,I,O])(input: Process[F,I])(l: Journal[F,S,I]): Process[F,O] =
+    (l.logged ++ input.observe(l.log)).tee(l.commited)(j).flatMap {
+      case \/-(o) => Process.emit(o)
+      case -\/(e) => e match {
+        case Recover => (Process.emitSeq[F,Unit](List(())) to l.recover).drain
+        case Reset => (Process.emitSeq[F,Unit](List(())) to l.reset).drain
+        case Commit(s) => (Process.emitSeq[F,S](List(s)) to l.commit).drain
+      }
+    }
+
   property("transaction") = secure {
-    
-    val W = Writer
-    import W.Transaction
     
     /* 
     Update the availability, transactionally, and emit the 
@@ -42,12 +67,11 @@ object JournaledStreams extends Properties("journaled-streams") {
         n <- W.commit(s2) ++ W.emitO(s2.size)
       } yield n
     
-    val avail: Process[Task,Availability[Int]] = ???     
-    val j: Journal[Task,Set[Int],Availability[Int]] = ???
+    val avail: Process[Task,Availability[Int]] = halt 
+    val j: Journal[Task,Set[Int],Availability[Int]] = dummyJournal 
 
     /* This `Process` will be persisted. */
-    val numAvail: Process[Task,Int] = 
-      W.transaction(t)(avail)(j)
+    val numAvail: Process[Task,Int] = transaction(t)(avail)(j)
 
     true
   }
