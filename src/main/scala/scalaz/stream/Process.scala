@@ -1157,6 +1157,15 @@ object Process {
   def emitAll[O](seq: Seq[O]): Process[Nothing,O] =
     emitSeq(seq, halt)
 
+  def emitView[O](head: O): Process[Nothing,O] =
+    Emit[Nothing,O](List(head).view, halt) 
+
+  def emitLazy[O](head: => O): Process[Nothing,O] = {
+    lazy val hd = head 
+    Emit[Nothing,O](List(()).view.map(_ => hd), halt)
+  }
+
+
   implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] =
   new MonadPlus[({type f[x] = Process[F,x]})#f] {
     def empty[A] = halt

@@ -177,5 +177,11 @@ object ProcessSpec extends Properties("Process1") {
     val s = Process.constant(1).take(1)
     s.wye(s)(w).runLog.run.map(_.fold(identity, identity)).toList == List(1,1)
   }      
+
+  property("last") = secure {
+    var i = 0
+    Process.range(0,10).last.map(_ => i += 1).runLog.run 
+    i == 1
+  }
 }
 

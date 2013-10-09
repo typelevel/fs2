@@ -20,7 +20,7 @@ trait process1 {
 
   /** Await a single value, returning `None` if the input has been exhausted. */
   def awaitOption[I]: Process1[I,Option[I]] =
-    await1[I].map(Some(_)).orElse(emit(None))
+    await1[I].map(Some(_)).orElse(emitView(None))
 
   /** Behaves like the identity process, but requests `n` elements at a time from its input. */
   def buffer[I](n: Int): Process1[I,I] =
@@ -327,7 +327,7 @@ trait process1 {
   def last[I]: Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
       awaitOption[I].flatMap {
-        case None => emit(prev)
+        case None => emitView(prev)
         case Some(prev2) => go(prev2)
       }
     await1[I].flatMap(go)
