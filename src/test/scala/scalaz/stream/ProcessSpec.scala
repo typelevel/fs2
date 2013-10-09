@@ -96,7 +96,7 @@ object ProcessSpec extends Properties("Process1") {
     val sleepsR = Process.awakeEvery(100 milliseconds).take(30)
     val sleeps = sleepsL merge sleepsR
     val p = sleeps.toTask
-    val tasks = List.fill(10)(p.timed(500 milliseconds).attemptRun)
+    val tasks = List.fill(10)(p.timed(500).attemptRun)
     tasks.forall(_.isRight)
   }
 
