@@ -13,7 +13,8 @@ object JournaledStreams extends Properties("journaled-streams") {
   // DISCLAIMER: this is a work in progress
 
   val W = Writer
-  import W.Transaction
+  type Transaction[S,-I,+O] = TeeW[Entry[S], I, S, O]
+  import Entry._
 
   /* 
   Message used to indicate arrival and departure of `A` values.
@@ -42,7 +43,6 @@ object JournaledStreams extends Properties("journaled-streams") {
   def dummyJournal[F[_],S,I]: Journal[F,S,I] = 
     Journal(halt, halt, halt, halt, halt, halt)
 
-  import W.Entry._
   def transaction[F[_],S,I,O](
     j: Transaction[S,I,O])(input: Process[F,I])(l: Journal[F,S,I]): Process[F,O] =
     (l.logged ++ input.observe(l.log)).tee(l.commited)(j).flatMap {
@@ -64,7 +64,7 @@ object JournaledStreams extends Properties("journaled-streams") {
       for {
         s <- awaitR[Set[Int]]      // read current state
         s2 <- availability[Int](s) // compute current availability set
-        n <- W.commit(s2) ++ W.emitO(s2.size)
+        n <- commit(s2) ++ emitO(s2.size)
       } yield n
     
     val avail: Process[Task,Availability[Int]] = halt 
@@ -74,5 +74,31 @@ object JournaledStreams extends Properties("journaled-streams") {
     val numAvail: Process[Task,Int] = transaction(t)(avail)(j)
 
     true
+  }
+
+  /** Commit to a new state. */
+  def commit[S](s: S): Process[Nothing,Entry[S] \/ Nothing] = 
+    tell(Commit(s)) 
+
+  /** Tell the driver to reset back to the last commited state. */
+  val reset: Process[Nothing,Entry[Nothing] \/ Nothing] = 
+    tell(Reset)
+
+  /** Tell the driver to attempt to recover the current state. */ 
+  val recover: Process[Nothing,Entry[Nothing] \/ Nothing] = 
+    tell(Recover)
+
+  sealed trait Entry[+S] { 
+    def map[S2](f: S => S2): Entry[S2] = this match {
+      case r@Reset => r
+      case r@Recover => r
+      case Commit(s) => Commit(f(s))
+    }
+  }
+
+  object Entry {
+    case class Commit[S](s: S) extends Entry[S]
+    case object Reset extends Entry[Nothing]
+    case object Recover extends Entry[Nothing]
   }
 }

@@ -1,9 +1,8 @@
 package scalaz.stream 
 
 import scalaz.concurrent.Task
-import scalaz._
+import scalaz.\/
 import scalaz.\/._
-import Process.{Process1, Sink}
 
 import org.scalacheck._
 import Prop._
@@ -26,9 +25,11 @@ object WritingAndLogging extends Properties("writing-and-logging") {
   */
 
   property("writer") = secure {
-    val W = Writer
-    import W._
 
+    /* Give this a short name since we'll be using it a lot. */ 
+    val P = Process
+
+    /* For testing - we'll be accumulating into this buffer. */
     val buf = new collection.mutable.ArrayBuffer[String] 
 
     /* 
@@ -44,7 +45,7 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     */
     val ex: Process[Task,Int] = 
       Process.range(0,10)
-             .flatMap(i => W.tell("Got input: " + i) ++ W.emitO(i))
+             .flatMap(i => P.tell("Got input: " + i) ++ P.emitO(i))
              .drainW(io.fillBuffer(buf))
     
     /* This will have the side effect of filling `buf`. */  
@@ -53,14 +54,14 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     /* Let's break this down. */
 
     /* The original input. */
-    val step0: Process[Task,Int] = Process.range(0,10)
+    val step0: Process[Task,Int] = P.range(0,10)
 
     /* 
     Log some output using `W.tell`, and echo the original 
     input with `W.emitO` (`O` for 'output'). 
     */
     val step1: Writer[Task,String,Int] = 
-      step0.flatMap { i => W.tell("Got input: " + i) ++ W.emitO(i) }
+      step0.flatMap { i => P.tell("Got input: " + i) ++ P.emitO(i) }
 
     /*
     A `Sink` which as a side effects writes to a mutable

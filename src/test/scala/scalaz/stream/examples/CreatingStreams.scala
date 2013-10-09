@@ -3,7 +3,6 @@ package scalaz.stream
 import scalaz.concurrent.Task
 import scalaz._
 import scalaz.\/._
-import Process.{Process1, Sink}
 
 import org.scalacheck._
 import Prop._

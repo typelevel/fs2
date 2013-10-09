@@ -1,10 +1,8 @@
 package scalaz.stream
 
-import scalaz.concurrent.Task
-import Process.{Process1, Sink}
-
 import org.scalacheck._
 import Prop._
+import scalaz.concurrent.Task
 
 object StartHere extends Properties("examples.StartHere") {
   

@@ -1,18 +1,15 @@
 package scalaz.stream
 
+import collection.mutable
 import org.scalacheck.{Prop, Properties}
 import org.scalacheck.Prop._
 import scalaz.{\/, -\/}
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
-import java.lang.Exception
-import scala.Predef._
-import scalaz.stream.Process.Sink
-import scala.collection.mutable
 
 object AsyncTopicSpec extends Properties("topic") {
 
-  case object TestedEx extends Exception("expected in test") {
+  case object TestedEx extends Throwable {
     override def fillInStackTrace = this
   }
 

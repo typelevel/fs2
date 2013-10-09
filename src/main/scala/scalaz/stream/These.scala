@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import scalaz.{Monad, Monoid, Equal}
+import scalaz.{Applicative, Equal, Monad, Monoid}
 
 trait These[+A,+B] {
   import These._
@@ -31,6 +31,17 @@ trait These[+A,+B] {
   def isThat: Boolean = this match {
     case That(_) => true
     case _ => false
+  }
+
+  def bitraverse[F[_],A2,B2](
+      f: A => F[A2], g: B => F[B2])(
+      implicit F: Applicative[F]): F[These[A2,B2]] = {
+    import F.applicativeSyntax._                      
+    this match {
+      case This(a) => f(a) map (This(_))
+      case That(b) => g(b) map (That(_)) 
+      case These(a,b) => ^(f(a), g(b))(These(_,_))
+    }
   }
 }
 

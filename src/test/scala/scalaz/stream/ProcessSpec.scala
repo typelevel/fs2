@@ -15,6 +15,16 @@ object ProcessSpec extends Properties("Process1") {
   import Process._
   import process1._
 
+  // Subtyping of various Process types:
+  // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])
+  // * Tee is a Wye that never requests Both (Tee[I,I2,O] <: Wye[I,I2,O])
+  // This 'test' is just ensuring that this typechecks
+  object Subtyping {
+    def asTee[I,O](p1: Process1[I,O]): Tee[I,Any,O] = p1
+    def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t
+  }
+
+
   implicit def EqualProcess[A:Equal]: Equal[Process0[A]] = new Equal[Process0[A]] {
     def equal(a: Process0[A], b: Process0[A]): Boolean = 
       a.toList == b.toList

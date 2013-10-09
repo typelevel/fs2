@@ -4,6 +4,7 @@ import collection.immutable.Queue
 import concurrent.duration._
 
 import scalaz.{\/, -\/, \/-}
+import scalaz.\/._
 import Process._
 import These.{This,That}
 
@@ -94,8 +95,8 @@ trait wye {
    * of the inputs is available.
    */
   def either[I,I2]: Wye[I,I2,I \/ I2] = 
-    merge[I \/ I2].contramapL((i: I) => -\/(i)).
-                   contramapR((i2: I2) => \/-(i2))
+    merge[I \/ I2].contramapL((i: I) => left(i)).
+                   contramapR((i2: I2) => right(i2))
 
   /** 
    * Feed a single `These` value to a `Wye`.
@@ -339,6 +340,63 @@ trait wye {
 }
 
 object wye extends wye {
+  
+  // combinators that don't have globally unique names and
+  // shouldn't be mixed into `processes`
+
+  /** 
+   * Lift a `Wye` to operate on the left side of an `\/`, passing
+   * through any values it receives on the right from either branch.
+   */
+  def liftL[I0,I,I2,O](w: Wye[I,I2,O]): Wye[I \/ I0, I2 \/ I0, O \/ I0] = 
+    liftR[I0,I,I2,O](w)
+      .map(_.swap)
+      .contramapL((e: I \/ I0) => e.swap)
+      .contramapR((e: I2 \/ I0) => e.swap)
+
+  /** 
+   * Lift a `Wye` to operate on the right side of an `\/`, passing
+   * through any values it receives on the left from either branch.
+   */
+  def liftR[I0,I,I2,O](w: Wye[I,I2,O]): Wye[I0 \/ I, I0 \/ I2, I0 \/ O] =
+    w match {
+      case Emit(h, t) => Emit(h map right, liftR[I0,I,I2,O](t)) 
+      case h@Halt(_) => h
+      case AwaitL(recv, fb, c) => 
+        val w2: Wye[I0 \/ I, I0 \/ I2, I0 \/ O] =
+          awaitL[I0 \/ I].flatMap(_.fold(
+            i0 => emit(left(i0)) ++ liftR(w),
+            i => liftR[I0,I,I2,O](recv(i))
+          ))
+        val fb2 = liftR[I0,I,I2,O](fb)
+        val c2 = liftR[I0,I,I2,O](c)
+        w2.orElse(fb2, c2)
+      case AwaitR(recv, fb, c) => 
+        val w2: Wye[I0 \/ I, I0 \/ I2, I0 \/ O] =
+          awaitR[I0 \/ I2].flatMap(_.fold(
+            i0 => emit(left(i0)) ++ liftR(w),
+            i => liftR[I0,I,I2,O](recv(i))
+          ))
+        val fb2 = liftR[I0,I,I2,O](fb)
+        val c2 = liftR[I0,I,I2,O](c)
+        w2.orElse(fb2, c2)
+      case AwaitBoth(recv, fb, c) => 
+        val w2: Wye[I0 \/ I, I0 \/ I2, I0 \/ O] = awaitBoth[I0 \/ I, I0 \/ I2].flatMap {
+          case This(io) => feed1(This(io))(liftR(AwaitL(recv compose This.apply, fb, c))) 
+          case That(io) => feed1(That(io))(liftR(AwaitR(recv compose That.apply, fb, c))) 
+          case These(a,b) =>
+            (a, b) match {
+              case (-\/(i01), -\/(i02)) => emitSeq(Vector(left(i01), left(i02))) ++ liftR(w) 
+              case (-\/(i01), \/-(i2)) => emit(left(i01)) ++ liftR(recv(That(i2)))
+              case (\/-(i), \/-(i2)) => liftR(recv(These(i,i2)))
+              case (\/-(i), -\/(i02)) => emit(left(i02)) ++ liftR(recv(This(i)))
+            }
+        }
+        val fb2 = liftR[I0,I,I2,O](fb)
+        val c2 = liftR[I0,I,I2,O](c)
+        w2.orElse(fb2, c2)
+    }
+
   /** Simple enumeration for dynamically generated `Wye` request types. See `wye.dynamic`. */
   trait Request
   object Request {
