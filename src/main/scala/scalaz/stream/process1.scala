@@ -44,7 +44,7 @@ trait process1 {
   def chunk[I](n: Int): Process1[I,Vector[I]] = {
     def go(m: Int, acc: Vector[I]): Process1[I,Vector[I]] =
       if (m <= 0) emit(acc) ++ go(n, Vector())
-      else await1[I].flatMap(i => go(m-1, acc :+ i)).orElse(emit(acc))
+      else await1[I].flatMap(i => go(m-1, acc :+ i)).orElse(emitView(acc))
     if (n <= 0) sys.error("chunk size must be > 0, was: " + n)
     go(n, Vector())
   }
@@ -60,7 +60,7 @@ trait process1 {
         val cur = f(i)
         if (!cur && last) emit(chunk) fby go(Vector(), false)
         else go(chunk, cur)
-      } orElse (emit(acc))
+      } orElse (emitView(acc))
     go(Vector(), false)
   }
 
@@ -81,7 +81,7 @@ trait process1 {
    * Halts with `false` as soon as a non-matching element is received. 
    */
   def forall[I](f: I => Boolean): Process1[I,Boolean] = 
-    await1[I].flatMap(i => if (f(i)) forall(f) else emit(false)) orElse (emit(true))
+    await1[I].flatMap(i => if (f(i)) forall(f) else emit(false)) orElse (emitView(true))
 
   /**
    * Emit the given values, then echo the rest of the input. This is
@@ -177,7 +177,7 @@ trait process1 {
       await1[I].flatMap { i =>
         if (f(i)) emit(acc) fby go(Vector())
         else go(acc :+ i)
-      } orElse (emit(acc))
+      } orElse (emitView(acc))
     go(Vector())
   }
 
@@ -197,7 +197,7 @@ trait process1 {
   def window[I](n: Int): Process1[I,Vector[I]] = {
     def go(acc: Vector[I], c: Int): Process1[I,Vector[I]] =
       if (c > 0)
-        await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
+        await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emitView(acc)
       else
         emit(acc) fby go(acc.tail, 1)
     go(Vector(), n)
