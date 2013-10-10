@@ -10,8 +10,10 @@ To get the latest development version of the library, add the following to your 
 ``` scala
 resolvers ++= Seq("snapshots" at "http://oss.sonatype.org/content/repositories/snapshots")
 
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.1-SNAPSHOT"
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.2-SNAPSHOT"
 ```
+
+For the latest stable version, refer to the [latest release branch](https://github.com/scalaz/scalaz-stream/tree/series/0.1.x).
 
 The library only builds against Scala 2.10, not earlier versions. There has not yet been a stable (non-snapshot) release, but we will probably cut a 0.1 release soon, after a few things stabilize.
 
