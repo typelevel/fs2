@@ -64,7 +64,7 @@ object WritingAndLogging extends Properties("writing-and-logging") {
       step0.flatMap { i => P.tell("Got input: " + i) ++ P.emitO(i) }
 
     /*
-    A `Sink` which as a side effects writes to a mutable
+    A `Sink` which as a side effect writes to a mutable
     `Buffer`. This is more useful for testing.
     */
     val snk: Sink[Task,String] = io.fillBuffer(buf)
