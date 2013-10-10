@@ -220,10 +220,21 @@ sealed abstract class Process[+F[_],+O] {
   /**
    * Append to the `fallback` and `cleanup` arguments of the _next_ `Await`.
    */
-  final def orElse[F2[x]>:F[x],O2>:O](fallback: => Process[F2,O2], cleanup: => Process[F2,O2] = halt): Process[F2,O2] = this match {
-    case Await(req,recv,fb,c) => Await(req, recv, fb ++ fallback, c ++ cleanup)
-    case Emit(h, t) => Emit(h, t.orElse(fallback, cleanup))
-    case h@Halt(_) => h
+  final def orElse[F2[x]>:F[x],O2>:O](fallback0: => Process[F2,O2], cleanup0: => Process[F2,O2] = halt): Process[F2,O2] = {
+    lazy val fallback: Process[F2,O2] = fallback0 match {
+      case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
+      case _ => fallback0
+    } 
+    lazy val cleanup: Process[F2,O2] = cleanup0 match {
+      case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
+      case _ => cleanup0
+    }
+    def go(cur: Process[F,O]): Process[F2,O2] = cur match {
+      case Await(req,recv,fb,c) => Await(req, recv, fb ++ fallback, c ++ cleanup)
+      case Emit(h, t) => Emit(h, go(t))
+      case h@Halt(_) => h
+    }
+    go(this)
   }
 
   /**
