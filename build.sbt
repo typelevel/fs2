@@ -10,8 +10,6 @@ organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
-version := "0.1-SNAPSHOT"
-
 scalaVersion := "2.10.2"
 
 scalacOptions ++= Seq(
