@@ -1,3 +1,11 @@
+import sbtrelease._
+import sbtrelease.ReleasePlugin._
+import sbtrelease.ReleasePlugin.ReleaseKeys._
+import sbtrelease.ReleaseStateTransformations._
+import sbtrelease.Utilities._
+
+import com.typesafe.sbt.pgp.PgpKeys._
+
 organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
@@ -14,19 +22,12 @@ scalacOptions ++= Seq(
   "-language:postfixOps"
 )
 
-// https://github.com/sbt/sbt/issues/603
-conflictWarning ~= { cw =>
-  cw.copy(filter = (id: ModuleID) => true, group = (id: ModuleID) => id.organization + ":" + id.name, level = Level.Error)
-}
-
 libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-core" % "7.0.4",
   "org.scalaz" %% "scalaz-concurrent" % "7.0.4",
   "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.4" % "test",
   "org.scalacheck" %% "scalacheck" % "1.10.0" % "test"
 )
-
-resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 publishTo <<= (version).apply { v =>
   val nexus = "https://oss.sonatype.org/"
@@ -35,6 +36,36 @@ publishTo <<= (version).apply { v =>
   else
     Some("Releases" at nexus + "service/local/staging/deploy/maven2")
 }
+
+releaseSettings
+
+val publishSignedArtifacts = ReleaseStep(
+  action = st => {
+    val extracted = st.extract
+    val ref = extracted.get(thisProjectRef)
+    extracted.runAggregated(publishSigned in Global in ref, st)
+  },
+  check = st => {
+    // getPublishTo fails if no publish repository is set up.
+    val ex = st.extract
+    val ref = ex.get(thisProjectRef)
+    Classpaths.getPublishTo(ex.get(publishTo in Global in ref))
+    st
+  },
+  enableCrossBuild = true
+)
+
+releaseProcess := Seq[ReleaseStep](
+  checkSnapshotDependencies,
+  inquireVersions,
+  runTest,
+  setReleaseVersion,
+  commitReleaseVersion,
+  tagRelease,
+  publishSignedArtifacts,
+  setNextVersion,
+  commitNextVersion
+)
 
 credentials += {
   Seq("build.publish.user", "build.publish.password").map(k => Option(System.getProperty(k))) match {
