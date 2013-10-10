@@ -69,6 +69,21 @@ trait process1 {
   }
 
   /**
+   * Like `chunkBy`, but emits a chunk whenever `f` is false for current
+   * and previous.
+   */
+  def chunkWhen[I](f: (I,I) => Boolean): Process1[I,Vector[I]] = {
+    def go(acc: Vector[I]): Process1[I,Vector[I]] =
+      await1[I].flatMap { i =>
+        acc.lastOption match {
+          case Some(last) if !f(i,last) => emit(acc) fby go(Vector(i))
+          case _ => go(acc :+ i)
+        }
+      } orElse emit(acc)
+    go(Vector())
+  }
+
+  /**
    * Like `collect` on scala collection. 
    * Builds a new process by applying a partial function 
    * to all elements of this process on which the function is defined.
