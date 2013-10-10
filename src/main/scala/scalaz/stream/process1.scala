@@ -69,6 +69,18 @@ trait process1 {
   }
 
   /**
+   * Like `chunkBy`, but the predicate depends on the current and previous elements.
+   */
+  def chunkBy2[I](f: (I, I) => Boolean): Process1[I, Vector[I]] = {
+    def go(acc: Vector[I], last: I): Process1[I,Vector[I]] =
+      await1[I].flatMap { i =>
+        if (f(last, i)) go(acc :+ i, i)
+        else emit(acc) fby go(Vector(i), i)
+      } orElse emit(acc)
+    await1[I].flatMap(i => go(Vector(i), i))
+  }
+
+  /**
    * Like `collect` on scala collection. 
    * Builds a new process by applying a partial function 
    * to all elements of this process on which the function is defined.

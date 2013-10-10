@@ -615,6 +615,10 @@ sealed abstract class Process[+F[_],+O] {
   def chunkBy(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.chunkBy(f)
 
+  /** Alias for `this |> process1.chunkBy2(f)`. */
+  def chunkBy2(f: (O, O) => Boolean): Process[F,Vector[O]] =
+    this |> process1.chunkBy2(f)
+
   /** Alias for `this |> process1.collect(pf)`. */
   def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] = 
     this |> process1.collect(pf)
