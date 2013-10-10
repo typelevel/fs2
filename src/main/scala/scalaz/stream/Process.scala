@@ -842,16 +842,16 @@ object Process {
   type Channel[+F[_],-I,O] = Process[F, I => F[O]]
 
   /** 
-   * A `Writer[F,W,A]` is a `Process[F, W \/ A]`. See
+   * A `Writer[F,W,O]` is a `Process[F, W \/ O]`. See
    * `Process.WriterSyntax` for convenience functions 
    * for working with either the written values (the `W`) 
-   * or the output values (the `A`).
+   * or the output values (the `O`).
    * 
    * This is useful for logging or other situations where we
    * want to emit some values 'on the side' while doing something
    * else with the main output of a `Process`.
    */
-  type Writer[+F[_],+W,+A] = Process[F, W \/ A]
+  type Writer[+F[_],+W,+O] = Process[F, W \/ O]
 
   /** A `Process1` that writes values of type `W`. */
   type Process1W[+W,-I,+O] = Process1[I,W \/ O]

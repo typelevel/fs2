@@ -11,16 +11,16 @@ object WritingAndLogging extends Properties("writing-and-logging") {
 
   /*
   
-  A `Writer[F,W,A]` wraps a `Process[F, W \/ A]` with some 
-  convenience functions for working with either the written
-  values (the `W`) or the output values (the `A`).
-
+  A `Writer[F,W,O]` is a `Process[F, W \/ O]`. See
+  `Process.WriterSyntax` for convenience functions 
+  for working with either the written values (the `W`) 
+  or the output values (the `O`).
+  
   This is useful for logging or other situations where we
   want to emit some values 'on the side' while doing something
   else with the main output of a `Process`.
 
-  See `JournaledStreams.scala` for how `Writer` can be used
-  to create persistent, distributed, or resumable streams.
+  Let's look at an example:
 
   */
 
@@ -73,6 +73,11 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     Another `Sink` we could use for our `Writer`, if
     we want to log the writes to standard out, with
     a newline after each `String`.
+
+    Of course, rather than picking `snk` or `snk2`,
+    we could also take the `Sink` to use for logging 
+    as an argument, if we want our code to be agnostic 
+    to the logging strategy.
     */
     val snk2: Sink[Task,String] = io.stdOutLines
 
@@ -80,7 +85,8 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     The `drainW` function observes the write values of
     a `Writer` using some `Sink`, and then discards the
     write side of the writer to get back an ordinary 
-    `Process`.
+    `Process`. Notice the `Int` output is still available
+    for further transformation.
     */
     val step2: Process[Task,Int] = 
       step1.drainW(snk)
