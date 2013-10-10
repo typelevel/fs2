@@ -10,10 +10,8 @@ Usage
 
 This library is only available for Scala 2.10.
 
-To get the latest development version of the library, add the following to your SBT build:
+To get the latest stable version of the library, add the following to your SBT build:
 
 ``` scala
-resolvers ++= Seq("snapshots" at "http://oss.sonatype.org/content/repositories/snapshots")
-
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.1-SNAPSHOT"
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.1"
 ```
