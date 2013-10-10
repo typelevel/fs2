@@ -176,12 +176,17 @@ object ProcessSpec extends Properties("Process1") {
     val w = wye.either[Int,Int] 
     val s = Process.constant(1).take(1)
     s.wye(s)(w).runLog.run.map(_.fold(identity, identity)).toList == List(1,1)
-  }      
+  }
 
   property("last") = secure {
     var i = 0
     Process.range(0,10).last.map(_ => i += 1).runLog.run 
     i == 1
   }
-}
 
+  property("chunkBy2") = secure {
+    val s = Process(3, 5, 4, 3, 1, 2, 6)
+    s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
+    s.chunkBy2(_ > _).toList == List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
+  }
+}
