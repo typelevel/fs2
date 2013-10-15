@@ -189,4 +189,11 @@ object ProcessSpec extends Properties("Process1") {
     s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
     s.chunkBy2(_ > _).toList == List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
   }
+
+  property("zipAll") = secure {
+    val rangeI = Process.range(0,3)
+    val rangeI2 = Process.range(0,2)
+    rangeI.tee(rangeI2)(tee.zipAll(-1, 1)).runLog.run.toList == List((0,0),(1,1),(2,-1)) &&
+    rangeI2.tee(rangeI)(tee.zipAll(-1, 1)).runLog.run.toList == List((0,0),(1,1),(1,2))
+  }
 }
