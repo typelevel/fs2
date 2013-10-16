@@ -416,6 +416,7 @@ sealed abstract class Process[+F[_],+O] {
               thisNext match {
                 case AwaitF(reqL,recvL,fbL,cL) => // unfortunately, casts required here
                   await(reqL)(recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
+                case Halt(End) => thisNext.wye(p2Next)(y2.fallback)
                 case Halt(e) => p2Next.killBy(e) onComplete y2.disconnect
                 case e@Emit(_,_) => thisNext.wye(p2Next)(y2)
               }
@@ -428,6 +429,7 @@ sealed abstract class Process[+F[_],+O] {
                   await(reqR)(recvR andThen (p2 => thisNext.wye[F2,O2,O3](p2)(y2)),
                                thisNext.wye(fbR)(y2),
                                thisNext.wye(cR)(y2))
+                case Halt(End) => thisNext.wye(p2Next)(y2.fallback)
                 case Halt(e) => thisNext.killBy(e) onComplete y2.disconnect
                 case e@Emit(_,_) => thisNext.wye(p2Next)(y2)
               }

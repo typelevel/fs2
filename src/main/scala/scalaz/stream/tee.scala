@@ -50,11 +50,20 @@ trait tee {
   /** A version of `zipWith` that pads the shorter stream with values. */
   def zipWithAll[I,I2,O](padI: I, padI2: I2)(
                          f: (I,I2) => O): Tee[I,I2,O] = {
-    val fbR = passR[I2] map (f(padI, _    ))
-    val fbL = passL[I]  map (f(_   , padI2))
-    receiveLOr(fbR: Tee[I,I2,O])(i => 
-    receiveROr(fbL: Tee[I,I2,O])(i2 => emit(f(i,i2)))) repeat
+    val fbR: Tee[I,I2,O] = passR[I2] map (f(padI, _    ))
+    val fbL: Tee[I,I2,O] = passL[I]  map (f(_   , padI2))
+    receiveLOr(fbR)(i => 
+    receiveROr(tee.feed1L(i)(fbL))(i2 => emit(f(i,i2)))) repeat
   }
 }
 
-object tee extends tee
+object tee extends tee {
+
+  /** Feed one input to the left branch of this `Tee`. */
+  def feed1L[I,I2,O](i: I)(t: Tee[I,I2,O]): Tee[I,I2,O] =
+    wye.feed1L(i)(t).asInstanceOf[Tee[I,I2,O]]
+
+  /** Feed one input to the right branch of this `Tee`. */
+  def feed1R[I,I2,O](i2: I2)(t: Tee[I,I2,O]): Tee[I,I2,O] =
+    wye.feed1R(i2)(t).asInstanceOf[Tee[I,I2,O]]
+}
