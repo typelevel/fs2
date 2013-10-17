@@ -207,4 +207,14 @@ object ProcessSpec extends Properties("Process1") {
     a.tee(b)(tee.passL[Int]).runLog.run == List.range(0,10) &&
     b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
   }
+  
+  /*
+  This fails
+  property("interrupt") = secure {
+    val p1 = Process(1,2,3,4,6).toSource
+    val i1 = repeatEval(Task.now(false))  
+    val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
+    v == List(1,2,3,4,6)
+  }
+  */
 }
