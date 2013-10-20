@@ -262,11 +262,17 @@ trait wye {
   /**
    * Let through the right branch as long as the left branch is `false`,
    * listening asynchronously for the left branch to become `true`. 
+   * This halts as soon as the right branch halts.
    */
-  def interrupt[I]: Wye[Boolean, I, I] = awaitBoth[Boolean,I].flatMap {
-    case That(i) => emit(i) ++ interrupt
-    case This(kill) => if (kill) halt else interrupt
-    case These(kill, i) => if (kill) halt else emit(i) ++ interrupt
+  def interrupt[I]: Wye[Boolean, I, I] = {
+    def go[I]: Wye[Boolean, Option[I], I] = awaitBoth[Boolean,Option[I]].flatMap {
+      case That(None) => halt 
+      case That(Some(i)) => emit(i) ++ go
+      case This(kill) => if (kill) halt else go
+      case These(kill, Some(i)) => if (kill) halt else emit(i) ++ go
+      case These(kill, None) => halt 
+    }
+    attachR(process1.terminated[I])(go[I])
   }
 
   /** 

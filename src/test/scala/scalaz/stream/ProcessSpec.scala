@@ -9,6 +9,7 @@ import scalaz.std.string._
 
 import org.scalacheck._
 import Prop._
+import Arbitrary.arbitrary
 
 object ProcessSpec extends Properties("Process1") {
   
@@ -189,4 +190,31 @@ object ProcessSpec extends Properties("Process1") {
     s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
     s.chunkBy2(_ > _).toList == List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
   }
+
+  implicit def arbVec[A:Arbitrary]: Arbitrary[IndexedSeq[A]] =
+    Arbitrary(Gen.listOf(arbitrary[A]).map(_.toIndexedSeq))
+
+  property("zipAll") = forAll((l: IndexedSeq[Int], l2: IndexedSeq[Int]) => {
+    val a = Process.range(0,l.length).map(l(_))
+    val b = Process.range(0,l2.length).map(l2(_))
+    val r = a.tee(b)(tee.zipAll(-1, 1)).runLog.run.toList
+    r.toString |: (r == l.zipAll(l2, -1, 1).toList)
+  })
+
+  property("passL/R") = secure {
+    val a = Process.range(0,10) 
+    val b: Process[Task,Int] = halt
+    a.tee(b)(tee.passL[Int]).runLog.run == List.range(0,10) &&
+    b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
+  }
+  
+  /*
+  This fails
+  property("interrupt") = secure {
+    val p1 = Process(1,2,3,4,6).toSource
+    val i1 = repeatEval(Task.now(false))  
+    val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
+    v == List(1,2,3,4,6)
+  }
+  */
 }
