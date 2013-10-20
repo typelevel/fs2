@@ -6,7 +6,7 @@ import scalaz.concurrent._
 import java.util.concurrent.atomic._
 
 import scalaz.stream.Process
-import scalaz.stream.Process._
+import scalaz.stream.Process._ 
 
 trait Ref[A] { self =>
 
@@ -76,59 +76,17 @@ trait Ref[A] { self =>
   def signal: Signal[A] = new Signal[A] {
 
     val value:Ref[A] = self
-    
-    lazy val changed:Process[Task,Boolean] =  toStampedSource |> checkStampChange
-  
-    lazy val discrete: Process[Task,A] = toDiscreteSource
-  
-    lazy val continuous:Process[Task,A] = toSource
-    
-    lazy val changes:Process[Task,Unit] = toStampedDiscreteSource.map(_=>())
-    
-    
-    ////
-    //// PRIVATE scalaz-stream
-    
-    /*
-     * Process1 that keeps track of last serial and value and will emit true
-     * when the newly emitted value from signal changes
-     */
-    private[stream] def checkStampChange:Process1[(Int,A),Boolean] = {
-      def go(last:(Int,A)) : Process1[(Int,A),Boolean] = {
-        await1[(Int,A)].flatMap ( next => emit(next != last) fby go(next) )
-      }
-      await1[(Int,A)].flatMap(next=> emit(true) fby go(next))
-    }
-    
-    private[stream] def toSource: Process[Task,A] =
-      Process.repeatEval[Task,A](Task.async[A](value.get))
 
-    /*
-     * Returns a discrete stream, which emits the current value of this `Ref`, 
-     * but only when the `Ref` changes, except for very first emit, which is 
-     * emitted immediately once run, or after `ref` is set for the fist time . 
-     *  
-     */
-    private[stream] def toDiscreteSource: Process[Task,A] = 
-      toStampedDiscreteSource.map(_._2)
+    val continuous: Process[Task,A] =
+      Process.repeatEval[Task,A](Task.async[(Int,A)](self.get_(_,false,0)).map(_._2))
 
-    /*
-     * Unlike the `toSource` will emit values with their stamp.
-     */
-    private[stream] def toStampedSource: Process[Task,(Int,A)] =
-      Process.repeatEval[Task,(Int,A)](Task.async[(Int,A)](self.get_(_,false,0)))
-
-
-    /*
-     * Discrete (see `toDiscreteSource`) variant of `toStampedSource`
-     */
-    private[stream] def toStampedDiscreteSource: Process[Task,(Int,A)] =  {
+    val discrete: Process[Task,A] =  {
       /* The implementation here may seem a redundant a bit, but we need to keep
        * own serial number to make sure the Get events has own context for
        * every `toStampedDiscreteSource` process. 
        */
-      def go(ser:Int, changed:Boolean): Process[Task,(Int,A)] =
-        await[Task,(Int,A),(Int,A)](Task.async { cb => get_(cb,changed,ser) })(sa => emit(sa) ++ go(sa._1, true),halt, halt)
+      def go(ser:Int, changed:Boolean): Process[Task,A] =
+        await[Task,(Int,A),A](Task.async { cb => get_(cb,changed,ser) })(sa => emit(sa._2) ++ go(sa._1, true),halt, halt)
 
       go(0,false)
     }

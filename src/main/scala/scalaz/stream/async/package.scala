@@ -1,7 +1,8 @@
 package scalaz.stream
 
 import scalaz.\/ 
-import scalaz.concurrent._  
+import scalaz.concurrent._
+import scalaz.stream.async.generic
 
 package object async {
   import mutable.{Queue,Ref,Signal,Topic}
@@ -46,7 +47,7 @@ package object async {
    * All views into the returned signal are backed by the same underlying
    * asynchronous `Ref`.
    */
-  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] =
+  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): mutable.Signal[A] =
     ref[A].signal
     
   /** 
