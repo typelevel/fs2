@@ -4,7 +4,7 @@ name := "scalaz-stream"
 
 version := "0.2a"
 
-scalaVersion := "2.10.2"
+scalaVersion := "2.10.3"
 
 scalacOptions ++= Seq(
   "-feature",
