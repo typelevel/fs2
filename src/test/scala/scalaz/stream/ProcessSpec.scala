@@ -207,6 +207,12 @@ object ProcessSpec extends Properties("Process1") {
     a.tee(b)(tee.passL[Int]).runLog.run == List.range(0,10) &&
     b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
   }
+
+  property("cleanup") = secure {
+    val a = Process(false).toSource |> await1[Boolean]
+    val b = a.orElse(Process.emit(false), Process.emit(true))
+    b.cleanup.runLastOr(false).run
+  }
   
   /*
   This fails
