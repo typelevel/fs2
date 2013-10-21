@@ -17,9 +17,9 @@ scalacOptions ++= Seq(
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.4",
-  "org.scalaz" %% "scalaz-concurrent" % "7.0.4",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.4" % "test",
+  "org.scalaz" %% "scalaz-core" % "7.1.0-M2",
+  "org.scalaz" %% "scalaz-concurrent" % "7.1.0-M2",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.0-M2" % "test",
   "org.scalacheck" %% "scalacheck" % "1.10.0" % "test"
 )
 
