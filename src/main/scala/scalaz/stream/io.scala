@@ -104,6 +104,18 @@ trait io {
     }
 
   /**
+   * Create a `Process[Task,String]` from the lines of the `InputStream`, 
+   * using the `resource` combinator to ensure the file is closed
+   * when processing the stream of lines is finished.
+   */
+  def linesR(in: InputStream): Process[Task,String] =
+    resource(Task.delay(scala.io.Source.fromInputStream(filename)))(
+             src => Task.delay(src.close)) { src =>
+      lazy val lines = src.getLines // A stateful iterator
+      Task.delay { if (lines.hasNext) lines.next else throw End }
+    }
+
+  /**
    * Generic combinator for producing a `Process[Task,O]` from some
    * effectful `O` source. The source is tied to some resource,
    * `R` (like a file handle) that we want to ensure is released.
