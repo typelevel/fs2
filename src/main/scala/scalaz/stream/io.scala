@@ -51,7 +51,7 @@ trait io {
   }
 
   /** Promote an effectful function to a `Channel`. */
-  def channel[A,B](f: A => Task[B]): Channel[Task, A, B] = 
+  def channel[A,B](f: A => Task[B]): Channel[Task, A, B] =
     Process.constant(f)
 
   /**
@@ -88,7 +88,7 @@ trait io {
     chunkR(new BufferedInputStream(new FileInputStream(f), bufferSize))
 
   /** A `Sink` which, as a side effect, adds elements to the given `Buffer`. */
-  def fillBuffer[A](buf: collection.mutable.Buffer[A]): Sink[Task,A] = 
+  def fillBuffer[A](buf: collection.mutable.Buffer[A]): Sink[Task,A] =
     channel((a: A) => Task.delay { buf += a })
 
   /**
@@ -104,12 +104,12 @@ trait io {
     }
 
   /**
-   * Create a `Process[Task,String]` from the lines of the `InputStream`, 
+   * Create a `Process[Task,String]` from the lines of the `InputStream`,
    * using the `resource` combinator to ensure the file is closed
    * when processing the stream of lines is finished.
    */
   def linesR(in: InputStream): Process[Task,String] =
-    resource(Task.delay(scala.io.Source.fromInputStream(filename)))(
+    resource(Task.delay(scala.io.Source.fromInputStream(in)))(
              src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
       Task.delay { if (lines.hasNext) lines.next else throw End }
@@ -135,18 +135,18 @@ trait io {
     }, halt, halt)
   }
 
-  /** 
-   * The standard output stream, as a `Sink`. This `Sink` does not 
+  /**
+   * The standard output stream, as a `Sink`. This `Sink` does not
    * emit newlines after each element. For that, use `stdoutLines`.
    */
-  def stdOut: Sink[Task,String] = 
+  def stdOut: Sink[Task,String] =
     channel((s: String) => Task.delay { print(s) })
 
-  /** 
-   * The standard output stream, as a `Sink`. This `Sink` emits 
+  /**
+   * The standard output stream, as a `Sink`. This `Sink` emits
    * newlines after each element. If this is not desired, use `stdout`.
    */
-  def stdOutLines: Sink[Task,String] = 
+  def stdOutLines: Sink[Task,String] =
     channel((s: String) => Task.delay { println(s) })
 
   /**
