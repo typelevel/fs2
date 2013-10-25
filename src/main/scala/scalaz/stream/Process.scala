@@ -116,9 +116,9 @@ sealed abstract class Process[+F[_],+O] {
     case Await(req,recv,fb,c) =>
       Await(req, recv andThen (_ fby p2), fb, c)
   }
-  
+
   /** operator alias for `fby` */
-  final def |||[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = fby(p2) 
+  final def |||[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = fby(p2)
 
   /**
    * Removes all emitted elements from the front of this `Process`.
@@ -224,7 +224,7 @@ sealed abstract class Process[+F[_],+O] {
     lazy val fallback: Process[F2,O2] = fallback0 match {
       case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
       case _ => fallback0
-    } 
+    }
     lazy val cleanup: Process[F2,O2] = cleanup0 match {
       case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
       case _ => cleanup0
@@ -622,9 +622,9 @@ sealed abstract class Process[+F[_],+O] {
     this |> process1.chunkBy2(f)
 
   /** Alias for `this |> process1.collect(pf)`. */
-  def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] = 
+  def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
     this |> process1.collect(pf)
-  
+
   /** Alias for `this |> process1.split(f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.split(f)
@@ -684,7 +684,7 @@ sealed abstract class Process[+F[_],+O] {
   /** Alias for `this |> process1.fold1Map(f)(M)`. */
   def fold1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.fold1Map(f)(M)
-  
+
   /** Alias for `this |> process1.reduce(f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.reduce(f)
@@ -742,7 +742,7 @@ sealed abstract class Process[+F[_],+O] {
   /** Alias for `this |> process1.scan1Map(f)(M)`. */
   def scan1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.scan1Map(f)(M)
-  
+
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] =
     this |> processes.take[O](n)
@@ -815,7 +815,7 @@ object Process {
 
   type Process0[+O] = Process[Env[Any,Any]#Is,O]
 
-  /** 
+  /**
    * A single input stream transducer. Accepts input of type `I`,
    * and emits values of type `O`.
    */
@@ -828,9 +828,9 @@ object Process {
    */
   type Tee[-I,-I2,+O] = Process[Env[I,I2]#T, O]
 
-  /** 
+  /**
    * A stream transducer that can read from one of two inputs,
-   * nondeterministically. This 
+   * nondeterministically. This
    */
   type Wye[-I,-I2,+O] = Process[Env[I,I2]#Y, O]
 
@@ -847,12 +847,12 @@ object Process {
    */
   type Channel[+F[_],-I,O] = Process[F, I => F[O]]
 
-  /** 
+  /**
    * A `Writer[F,W,O]` is a `Process[F, W \/ O]`. See
-   * `Process.WriterSyntax` for convenience functions 
-   * for working with either the written values (the `W`) 
+   * `Process.WriterSyntax` for convenience functions
+   * for working with either the written values (the `W`)
    * or the output values (the `O`).
-   * 
+   *
    * This is useful for logging or other situations where we
    * want to emit some values 'on the side' while doing something
    * else with the main output of a `Process`.
@@ -868,9 +868,9 @@ object Process {
   /** A `Tee` that writes values of type `W`. */
   type WyeW[+W,-I,-I2,+O] = Wye[I,I2,W \/ O]
 
-  /** 
+  /**
    * The `Await` constructor instructs the driver to evaluate
-   * `req`. If it returns successfully, `recv` is called 
+   * `req`. If it returns successfully, `recv` is called
    * to transition to the next state. If the input has
    * been exhausted due to normal termination, `fallback1`
    * is the next state. If an exception occurs, `cleanup1`
@@ -890,9 +890,9 @@ object Process {
     head: Seq[O],
     tail: Process[F,O]) extends Process[F,O]
 
-  /** 
+  /**
    * The `Halt` constructor instructs the driver to stop
-   * due to the given `Throwable`. The special `Throwable` 
+   * due to the given `Throwable`. The special `Throwable`
    * `Process.End` indicates normal termination. It's
    * more typical to construct a `Halt` via `Process.halt`
    * (for normal termination) or `Process.fail(err)` (for
@@ -921,9 +921,9 @@ object Process {
       case Await(req,recv,fb,c) if req.tag == 0 => Some((recv.asInstanceOf[I => Wye[I,I2,O]], fb, c))
       case _ => None
     }
-    def apply[I,I2,O](recv: I => Wye[I,I2,O], 
-                      fallback: Wye[I,I2,O] = halt, 
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] = 
+    def apply[I,I2,O](recv: I => Wye[I,I2,O],
+                      fallback: Wye[I,I2,O] = halt,
+                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
       await(L[I]: Env[I,I2]#Y[I])(recv, fallback, cleanup)
   }
   object AwaitR {
@@ -932,9 +932,9 @@ object Process {
       case Await(req,recv,fb,c) if req.tag == 1 => Some((recv.asInstanceOf[I2 => Wye[I,I2,O]], fb, c))
       case _ => None
     }
-    def apply[I,I2,O](recv: I2 => Wye[I,I2,O], 
-                      fallback: Wye[I,I2,O] = halt, 
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] = 
+    def apply[I,I2,O](recv: I2 => Wye[I,I2,O],
+                      fallback: Wye[I,I2,O] = halt,
+                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
       await(R[I2]: Env[I,I2]#Y[I2])(recv, fallback, cleanup)
   }
   object AwaitBoth {
@@ -943,9 +943,9 @@ object Process {
       case Await(req,recv,fb,c) if req.tag == 2 => Some((recv.asInstanceOf[These[I,I2] => Wye[I,I2,O]], fb, c))
       case _ => None
     }
-    def apply[I,I2,O](recv: These[I,I2] => Wye[I,I2,O], 
-                      fallback: Wye[I,I2,O] = halt, 
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] = 
+    def apply[I,I2,O](recv: These[I,I2] => Wye[I,I2,O],
+                      fallback: Wye[I,I2,O] = halt,
+                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
       await(Both[I,I2])(recv, fallback, cleanup)
   }
 
@@ -1175,10 +1175,10 @@ object Process {
     emitSeq(seq, halt)
 
   def emitView[O](head: O): Process[Nothing,O] =
-    Emit[Nothing,O](List(head).view, halt) 
+    Emit[Nothing,O](List(head).view, halt)
 
   def emitLazy[O](head: => O): Process[Nothing,O] = {
-    lazy val hd = head 
+    lazy val hd = head
     Emit[Nothing,O](List(()).view.map(_ => hd), halt)
   }
 
@@ -1215,12 +1215,24 @@ object Process {
   }
 
   case class Env[-I,-I2]() {
-    sealed trait Y[-X] { def tag: Int }
+    sealed trait Y[-X] {
+      def tag: Int
+      def fold[R](l: => R, r: => R, both: => R): R
+    }
     sealed trait T[-X] extends Y[X]
     sealed trait Is[-X] extends T[X]
-    case object Left extends Is[I] { def tag = 0 }
-    case object Right extends T[I2] { def tag = 1 }
-    case object Both extends Y[These[I,I2]] { def tag = 2 }
+    case object Left extends Is[I] {
+      def tag = 0
+      def fold[R](l: => R, r: => R, both: => R): R = l
+    }
+    case object Right extends T[I2] {
+      def tag = 1
+      def fold[R](l: => R, r: => R, both: => R): R = r
+    }
+    case object Both extends Y[These[I,I2]] {
+      def tag = 2
+      def fold[R](l: => R, r: => R, both: => R): R = both
+    }
   }
 
   private val Left_ = Env[Any,Any]().Left
@@ -1280,24 +1292,24 @@ object Process {
     await[Env[I,I2]#Y,These[I,I2],O](Both[I,I2])(recv, fallback, cleanup)
 
   /** A `Writer` which emits one value to the output. */
-  def emitO[O](o: O): Process[Nothing, Nothing \/ O] = 
+  def emitO[O](o: O): Process[Nothing, Nothing \/ O] =
     liftW(Process.emit(o))
 
   /** A `Writer` which writes the given value. */
-  def emitW[W](s: W): Process[Nothing, W \/ Nothing] = 
+  def emitW[W](s: W): Process[Nothing, W \/ Nothing] =
     Process.emit(left(s))
 
   /** A `Writer` which writes the given value; alias for `emitW`. */
-  def tell[S](s: S): Process[Nothing, S \/ Nothing] = 
-    emitW(s) 
+  def tell[S](s: S): Process[Nothing, S \/ Nothing] =
+    emitW(s)
 
   /** Promote a `Process` to a `Writer` that writes nothing. */
-  def liftW[F[_],A](p: Process[F,A]): Writer[F,Nothing,A] = 
+  def liftW[F[_],A](p: Process[F,A]): Writer[F,Nothing,A] =
     p.map(right)
 
-  /** 
-   * Promote a `Process` to a `Writer` that writes and outputs 
-   * all values of `p`. 
+  /**
+   * Promote a `Process` to a `Writer` that writes and outputs
+   * all values of `p`.
    */
   def logged[F[_],A](p: Process[F,A]): Writer[F,A,A] =
     p.flatMap(a => emitAll(Vector(left(a), right(a))))
@@ -1370,34 +1382,34 @@ object Process {
     }
   }
 
-  /** 
-   * Infix syntax for working with `Writer[F,W,O]`. We call 
+  /**
+   * Infix syntax for working with `Writer[F,W,O]`. We call
    * the `W` parameter the 'write' side of the `Writer` and
-   * `O` the 'output' side. Many method in this class end 
+   * `O` the 'output' side. Many method in this class end
    * with either `W` or `O`, depending on what side they
    * operate on.
    */
   implicit class WriterSyntax[F[_],W,O](self: Writer[F,W,O]) {
 
     /** Transform the write side of this `Writer`. */
-    def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] = 
+    def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] =
       self.flatMap(_.fold(f, a => emit(right(a))))
 
     /** Remove the write side of this `Writer`. */
-    def stripW: Process[F,O] = 
+    def stripW: Process[F,O] =
       self.flatMap(_.fold(_ => halt, emit))
 
     /** Map over the write side of this `Writer`. */
-    def mapW[W2](f: W => W2): Writer[F,W2,O] = 
+    def mapW[W2](f: W => W2): Writer[F,W2,O] =
       self.map(_.leftMap(f))
 
-    /** 
-     * Observe the write side of this `Writer` using the 
-     * given `Sink`, keeping it available for subsequent 
+    /**
+     * Observe the write side of this `Writer` using the
+     * given `Sink`, keeping it available for subsequent
      * processing. Also see `drainW`.
      */
     def observeW(snk: Sink[F,W]): Writer[F,W,O] =
-      self.zipWith(snk)((a,f) => 
+      self.zipWith(snk)((a,f) =>
         a.fold(
           (s: W) => eval_ { f(s) } ++ Process.emit(left(s)),
           (a: O) => Process.emit(right(a))
@@ -1405,32 +1417,32 @@ object Process {
       ).flatMap(identity)
 
     /**
-     * Observe the write side of this `Writer` using the 
+     * Observe the write side of this `Writer` using the
      * given `Sink`, then discard it. Also see `observeW`.
      */
-    def drainW(snk: Sink[F,W]): Process[F,O] = 
+    def drainW(snk: Sink[F,W]): Process[F,O] =
       observeW(snk).stripW
 
-    /** 
-     * Observe the write side of this `Writer` nondeterministically 
-     * using the given `Sink`, allowing up to `maxUnacknowledged` 
+    /**
+     * Observe the write side of this `Writer` nondeterministically
+     * using the given `Sink`, allowing up to `maxUnacknowledged`
      * elements to enqueue at the `Sink` without a response.
      */
     def drainW[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,W])(implicit F2: Nondeterminism[F2]): Process[F2,O] =
       self.connectW(s)(wye.boundedQueue(maxUnacknowledged)).stripW
 
-    /** 
-     * Feed the write side of this `Process` through the given `Channel`, 
-     * using `q` to control the queueing strategy. 
+    /**
+     * Feed the write side of this `Process` through the given `Channel`,
+     * using `q` to control the queueing strategy.
      */
     def connectW[F2[x]>:F[x],W2,W3](
         chan: Channel[F2,W,W2])(
         q: Wye[W,W2,W3])(
         implicit F2: Nondeterminism[F2]): Writer[F2, W3, O] = {
-      val chan2: Channel[F2,W \/ O, W2 \/ O] = 
-        chan.map(f => 
+      val chan2: Channel[F2,W \/ O, W2 \/ O] =
+        chan.map(f =>
           (e: W \/ O) => e.fold(
-            w => F2.map(f(w))(left), 
+            w => F2.map(f(w))(left),
             o => F2.pure(right(o))))
       self.connect(chan2)(wye.liftL(q))
     }
@@ -1439,25 +1451,25 @@ object Process {
     def mapO[B](f: O => B): Writer[F,W,B] =
       self.map(_.map(f))
 
-    def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] = 
+    def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] =
       self.flatMap(_.fold(s => emit(left(s)), f))
 
-    def stripO: Process[F,W] = 
+    def stripO: Process[F,W] =
       self.flatMap(_.fold(emit, _ => halt))
 
-    def pipeO[B](f: Process1[O,B]): Writer[F,W,B] = 
+    def pipeO[B](f: Process1[O,B]): Writer[F,W,B] =
       self.pipe(process1.liftR(f))
 
     /**
-     * Feed the right side of this `Process` through the given 
-     * `Channel`, using `q` to control the queueing strategy. 
+     * Feed the right side of this `Process` through the given
+     * `Channel`, using `q` to control the queueing strategy.
      */
     def connectO[F2[x]>:F[x],O2,O3](chan: Channel[F2,O,O2])(q: Wye[O,O2,O3])(implicit F2: Nondeterminism[F2]): Writer[F2,W,O3] =
       self.map(_.swap).connectW(chan)(q).map(_.swap)
 
     /**
-     * Feed the right side of this `Process` to a `Sink`, allowing up 
-     * to `maxUnacknowledged` elements to enqueue at the `Sink` before 
+     * Feed the right side of this `Process` to a `Sink`, allowing up
+     * to `maxUnacknowledged` elements to enqueue at the `Sink` before
      * blocking on the `Sink`.
      */
     def drainO[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,O])(implicit F2: Nondeterminism[F2]): Process[F2,W] =
