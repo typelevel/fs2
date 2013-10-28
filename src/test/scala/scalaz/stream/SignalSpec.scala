@@ -13,15 +13,15 @@ import scalaz.stream.Process.End
 
 
  
-object AsyncRefSpec extends Properties("async.ref") {
+object SignalSpec extends Properties("signal") {
 
   case object TestedEx extends Exception("expected in test") {
     override def fillInStackTrace = this
-  }
+  } 
 
   // tests all the operations on the signal (get,set,fail)
   // will also test all the `ref` ops
-  property("signal") = forAll {
+  property("mutations") = forAll {
     l: List[Int] =>
       val signal = async.signal[Int]
 
@@ -72,7 +72,7 @@ object AsyncRefSpec extends Properties("async.ref") {
 
   }
   // tests sink
-  property("signal.sink") = forAll {
+  property("sink") = forAll {
     l: List[Int] =>
       val signal = async.signal[(String, Int)]
 
@@ -158,6 +158,36 @@ object AsyncRefSpec extends Properties("async.ref") {
       (sync2.get.toOption.get.head == initial )         :| "Second process got first Get immediately" &&
       (sync1.get.toOption.get.size <= feed.size + 1)    :| "First process got only elements when changed" &&
       (sync2.get.toOption.get.size <= feed.size + 1 )   :| "First process got only elements when changed" 
+  }
+ 
+  //tests that changed emits true, and then on every change spikes to true
+  property("changed") = forAll {
+    l: List[Int] =>
+      
+    val ref = async.ref[Int]
+
+    val sync = new SyncVar[Throwable \/ Seq[Boolean]]
+    Task.fork(ref.signal.changed.runLog).runAsync(sync.put)
+    
+    val syncAllChanges =  new SyncVar[Throwable \/ Seq[Boolean]]
+    Task.fork(ref.signal.changed.filter(_=>true).take(l.size+1).runLog).runAsync(syncAllChanges.put)
+      
+    Task { 
+      ref.set(0)
+      l.foreach { v => 
+        ref.set(v); Thread.sleep(10)
+      } 
+      Thread.sleep(100)
+      ref.close
+    }.run 
+
+    syncAllChanges.get(3000).nonEmpty  && sync.get(3000).nonEmpty     :| "Signal changed terminated" &&
+    (syncAllChanges.get.isRight && sync.get.isRight)                  :| "Changed terminated w/o exception" &&
+    (sync.get.toOption.get.head == true)                              :| "First emitted was true" &&
+    (syncAllChanges.get.toOption.get.size == l.size+1)                :| "All changes were captured"
+      
+      
+      
   }
 
 
