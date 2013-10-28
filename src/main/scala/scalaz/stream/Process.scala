@@ -278,7 +278,7 @@ sealed abstract class Process[+F[_],+O] {
    * Switch to the `cleanup` case of the next `Await` issued by this `Process`.
    */
   final def cleanup: Process[F,O] = this match {
-    case Await(req,recv,fb,c) => fb
+    case Await(req,recv,fb,c) => c
     case h@Halt(_) => h
     case Emit(h, t) => emitSeq(h, t.cleanup)
   }
