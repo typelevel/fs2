@@ -915,40 +915,6 @@ object Process {
     }
   }
 
-  object AwaitL {
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
-        Option[(I => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
-      case Await(req,recv,fb,c) if req.tag == 0 => Some((recv.asInstanceOf[I => Wye[I,I2,O]], fb, c))
-      case _ => None
-    }
-    def apply[I,I2,O](recv: I => Wye[I,I2,O],
-                      fallback: Wye[I,I2,O] = halt,
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
-      await(L[I]: Env[I,I2]#Y[I])(recv, fallback, cleanup)
-  }
-  object AwaitR {
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
-        Option[(I2 => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
-      case Await(req,recv,fb,c) if req.tag == 1 => Some((recv.asInstanceOf[I2 => Wye[I,I2,O]], fb, c))
-      case _ => None
-    }
-    def apply[I,I2,O](recv: I2 => Wye[I,I2,O],
-                      fallback: Wye[I,I2,O] = halt,
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
-      await(R[I2]: Env[I,I2]#Y[I2])(recv, fallback, cleanup)
-  }
-  object AwaitBoth {
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
-        Option[(These[I,I2] => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
-      case Await(req,recv,fb,c) if req.tag == 2 => Some((recv.asInstanceOf[These[I,I2] => Wye[I,I2,O]], fb, c))
-      case _ => None
-    }
-    def apply[I,I2,O](recv: These[I,I2] => Wye[I,I2,O],
-                      fallback: Wye[I,I2,O] = halt,
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
-      await(Both[I,I2])(recv, fallback, cleanup)
-  }
-
   def emitSeq[F[_],O](
       head: Seq[O],
       tail: Process[F,O] = halt): Process[F,O] =
@@ -1657,6 +1623,7 @@ object Process {
   implicit class ChanneledProcess[F[_],O,O2](self: Process[F,(O, O => F[O2])]) {
     def enqueue[O3](q: Wye[O,O2,O3])(implicit F: Nondeterminism[F]): Process[F,O3] = go(self, q, Queue(), Queue())
 
+    import wye.{AwaitL,AwaitR,AwaitBoth}
     private def go[F3[_],O,O2,O3](src: Process[F3,(O,O => F3[O2])], q: Wye[O,O2,O3], bufIn: Seq[O], bufOut: Queue[F3[O2]])(
                   implicit F3: Nondeterminism[F3]): Process[F3,O3] = {
       try q match {
