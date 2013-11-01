@@ -10,7 +10,25 @@ object Merge {
   type Partial[+A] = Throwable \/ A
   import Process._
 
-  def mergeN[F[_]:Nondeterminism,A](p: Process[F, Process[F, A]]): Process[F, A] = ???
+  def mergeN[F[_]:Nondeterminism,A](p: Process[F, Process[F, A]]): Process[F, A] = {
+    def go(k: Key[F, Process[F,A]], ks: Seq[Key[F,A]]): Process[M[F]#Nondeterministic, A] =
+      (either(read(k), any(ks))).flatMap { _.fold(
+        p => open(p) flatMap (k2 => go(k, ks :+ k2)),
+        arem => emit(arem._1) ++ go(k, arem._2)
+      )}
+    runNondet { open(p) flatMap (go(_, Vector())) }
+  }
+
+  private def either[F[_],A,B](a: Process[M[F]#Nondeterministic, A],
+                       b: Process[M[F]#Nondeterministic, B]):
+                       Process[M[F]#Nondeterministic, A \/ B] = {
+    val p1: Process[M[F]#Nondeterministic, Key[F,A]] = open(a)
+    val p2: Process[M[F]#Nondeterministic, Key[F,B]] = open(b)
+    p1 flatMap (k1 =>
+    p2 flatMap (k2 =>
+      readEither(k1, k2).repeat // onComplete close(k1) onComplete close(k2)
+    ))
+  }
 
   def pipe[F[_],A,B](src: Process[F,A])(f: Process1[A,B]): Process[F,B] = {
     def go(k: Key[F,A], cur: Process1[A,B]): Process[M[F]#Deterministic, B] =
@@ -169,7 +187,7 @@ object Merge {
       pk1 <- open(p1): Process[M[F]#Deterministic, Key[F, A \/ B]]
       pk2 <- open(p2): Process[M[F]#Deterministic, Key[F, A \/ B]]
       x <- any(Seq(pk1, pk2))
-      _ <- emitSeq(x._2) flatMap (k => close(k): Process[M[F]#Deterministic, A \/ B])
+      _ <- (close(pk1) ++ close(pk2)): Process[M[F]#Deterministic, A \/ B]
     } yield x._1
   }
 
