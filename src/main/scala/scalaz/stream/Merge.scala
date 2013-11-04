@@ -94,41 +94,30 @@ object Merge {
 
   case class M[-F[_]]() {
     trait Deterministic[+X] extends Nondeterministic[X] {
-      def handle[R](algebra: DetA[R]): R
-      def handle[R](dalg: DetA[R], nalg: NondetA[R]): R = handle(dalg)
+      def handle[F2[x]<:F[x],R](algebra: DetA[F2,R]): R
+      def handle[F2[x]<:F[x],R](dalg: DetA[F2,R], nalg: NondetA[F2,R]): R = handle(dalg)
     }
     trait Nondeterministic[+X] {
-      def handle[R](dalg: DetA[R], nalg: NondetA[R]): R
+      def handle[F2[x]<:F[x],R](dalg: DetA[F2,R], nalg: NondetA[F2,R]): R
     }
     case class Open[F2[x]<:F[x],A](s: Process[F2,A]) extends Deterministic[Key[A]] {
-      def handle[R](algebra: DetA[R]): R = algebra.open(s)
+      def handle[F3[x]<:F[x],R](algebra: DetA[F3,R]): R =
+        algebra.open(s.asInstanceOf[Process[F3,A]])
     }
     case class Close[A](key: Key[A]) extends Deterministic[Nothing] {
-      def handle[R](algebra: DetA[R]): R = algebra.close(key)
+      def handle[F2[x]<:F[x],R](algebra: DetA[F2,R]): R = algebra.close(key)
     }
     case class Read[A](key: Key[A]) extends Deterministic[A] {
-      def handle[R](algebra: DetA[R]): R = algebra.read(key)
+      def handle[F2[x]<:F[x],R](algebra: DetA[F2,R]): R = algebra.read(key)
     }
     case class Any[A](keys: Seq[Key[A]]) extends Nondeterministic[(A, Seq[Key[A]])] {
-      def handle[R](dalg: DetA[R], nalg: NondetA[R]): R = nalg.any(keys)
+      def handle[F2[x]<:F[x],R](dalg: DetA[F2,R], nalg: NondetA[F2,R]): R = nalg.any(keys)
     }
     case class Gather[A](keys: Seq[Key[A]]) extends Nondeterministic[Partial[Seq[A]]] {
-      def handle[R](dalg: DetA[R], nalg: NondetA[R]): R = nalg.gather(keys)
+      def handle[F2[x]<:F[x],R](dalg: DetA[F2,R], nalg: NondetA[F2,R]): R = nalg.gather(keys)
     }
     case class GatherUnordered[A](keys: Seq[Key[A]]) extends Nondeterministic[Partial[Seq[A]]] {
-      def handle[R](dalg: DetA[R], nalg: NondetA[R]): R = nalg.gatherUnordered(keys)
-    }
-
-    trait DetA[+R] {
-      def open[A](s: Process[F,A]): R
-      def close[A](k: Key[A]): R
-      def read[A](k: Key[A]): R
-    }
-
-    trait NondetA[+R] {
-      def any[A](ks: Seq[Key[A]]): R
-      def gather[A](ks: Seq[Key[A]]): R
-      def gatherUnordered[A](ks: Seq[Key[A]]): R
+      def handle[F2[x]<:F[x],R](dalg: DetA[F2,R], nalg: NondetA[F2,R]): R = nalg.gatherUnordered(keys)
     }
 
     class Key[A] private[stream](private[stream] ref: AtomicReference[Process[F,A]]) {
@@ -139,6 +128,19 @@ object Merge {
         new Key(new AtomicReference(p))
     }
   }
+
+  trait DetA[-F[_],+R] {
+    def open[F2[x]<:F[x],A](s: Process[F2,A]): R
+    def close[F2[x]<:F[x],A](k: Key[F2,A]): R
+    def read[F2[x]<:F[x],A](k: Key[F2,A]): R
+  }
+
+  trait NondetA[-F[_],+R] {
+    def any[F2[x]<:F[x],A](ks: Seq[Key[F2,A]]): R
+    def gather[F2[x]<:F[x],A](ks: Seq[Key[F2,A]]): R
+    def gatherUnordered[F2[x]<:F[x],A](ks: Seq[Key[F2,A]]): R
+  }
+
 
   def run[F[_],A](p: Process[M[F]#Deterministic, A]): Process[F,A] = {
     def go(ks: Seq[Key[F,Any]], cur: Process[M[F]#Deterministic, A]): Process[F, A] =
