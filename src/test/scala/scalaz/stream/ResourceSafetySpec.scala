@@ -70,4 +70,12 @@ object ResourceSafetySpec extends Properties("resource-safety") {
       runLog.run.last == -6)
   }
 
+  property("io.resource") = secure {
+    // Check that the cleanup task is called after normal termination
+    var cleanedUp = false
+    val a = io.resource(Task.now(()))(_ => Task.delay(cleanedUp = true))(_ => Task.delay(cleanedUp = false))
+    a.take(1).run.run
+    cleanedUp
+  }
+
 }
