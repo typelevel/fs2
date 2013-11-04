@@ -104,7 +104,7 @@ object Merge {
       def handle[F3[x]<:F[x],R](algebra: DetA[F3,R]): R =
         algebra.open(s.asInstanceOf[Process[F3,A]])
     }
-    case class Close[A](key: Key[A]) extends Deterministic[Nothing] {
+    case class Close[A](key: Key[A]) extends Deterministic[Unit] {
       def handle[F2[x]<:F[x],R](algebra: DetA[F2,R]): R = algebra.close(key)
     }
     case class Read[A](key: Key[A]) extends Deterministic[A] {
@@ -120,14 +120,27 @@ object Merge {
       def handle[F2[x]<:F[x],R](dalg: DetA[F2,R], nalg: NondetA[F2,R]): R = nalg.gatherUnordered(keys)
     }
 
-    class Key[A] private[stream](private[stream] ref: AtomicReference[Process[F,A]]) {
-      private[stream] def set(p: Process[F,A]): Unit = ref.set(p)
+    class Key[A] private[stream](ref: AtomicReference[Step[F,A]]) {
+      private[stream] def set(p: Process[F,A]): Unit = p match {
+        case Await(_,_,_,c) => ref.set(Step(p, c.kill))
+        case _ => modify(ref)(s => s.copy(current = p, cleanup = s.cleanup))
+      }
+      def get[F2[x]<:F[x]]: Step[F2,A] = ref.get.asInstanceOf[Step[F2,A]]
     }
     object Key {
       private[stream] def apply[A](p: Process[F,A]): Key[A] =
-        new Key(new AtomicReference(p))
+        new Key(new AtomicReference(Step(p, p.kill)))
     }
   }
+
+  @annotation.tailrec
+  def modify[A](a: AtomicReference[A])(f: A => A): Unit = {
+    val cur = a.get
+    if (a.compareAndSet(cur, f(cur))) ()
+    else modify(a)(f)
+  }
+
+  case class Step[+F[_],A](current: Process[F,A], cleanup: Process[F,Nothing])
 
   trait DetA[-F[_],+R] {
     def open[F2[x]<:F[x],A](s: Process[F2,A]): R
@@ -147,9 +160,20 @@ object Merge {
       cur match {
         case h@Halt(_) => closeAll(ks) ++ h
         case Emit(h, t) => Emit(h, go(ks, t.asInstanceOf[Process[M[F]#Deterministic, A]]))
-        case Await(req, recv, fb, c) => ???
+        case Await(req, recv, fb, c) =>
+          val fold = new DetA[F, Process[F,A]] {
+            def open[F2[x]<:F[x],A](s: Process[F2,A]) = ???
+
+            def close[F2[x]<:F[x],A](k: Key[F2,A]) = ???
+              // k.get[F2].cleanup ++ go(ks.filter(_ ne k), recv(()).orElse(fb, c))
+
+            def read[F2[x]<:F[x],A](k: Key[F2,A]) = ???
+          }
+          req.handle(fold)
       }
-    def closeAll(ks: Seq[Key[F,Any]]): Process[F, Nothing] = ???
+    def closeAll(ks: Seq[Key[F,Any]]): Process[F, Nothing] =
+      Process(ks.map(_.get.cleanup): _*).flatMap(identity)
+
     go(Vector(), p)
   }
 
@@ -161,7 +185,7 @@ object Merge {
   def Open[F[_],A](p: Process[F,A]): M[F]#Deterministic[Key[F,A]] =
     M_.Open(p)
 
-  def Close[F[_],A](k: Key[F,A]): M[F]#Deterministic[Nothing] =
+  def Close[F[_],A](k: Key[F,A]): M[F]#Deterministic[Unit] =
     M_.Close(k.asInstanceOf[M_.Key[A]])
 
   def Read[F[_],A](k: Key[F,A]): M[F]#Deterministic[A] =
@@ -182,7 +206,7 @@ object Merge {
     eval(Open(p))
 
   def close[F[_],A](k: Key[F,A]): Process[M[F]#Deterministic, Nothing] =
-    eval(Close(k))
+    eval(Close(k)).drain
 
   def read[F[_],A](k: Key[F,A]): Process[M[F]#Deterministic, A] =
     eval(Read(k))
