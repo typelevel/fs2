@@ -140,8 +140,16 @@ object Merge {
     }
   }
 
-  def run[F[_],A](p: Process[M[F]#Deterministic, A]): Process[F,A] =
-    ???
+  def run[F[_],A](p: Process[M[F]#Deterministic, A]): Process[F,A] = {
+    def go(ks: Seq[Key[F,Any]], cur: Process[M[F]#Deterministic, A]): Process[F, A] =
+      cur match {
+        case h@Halt(_) => closeAll(ks) ++ h
+        case Emit(h, t) => Emit(h, go(ks, t.asInstanceOf[Process[M[F]#Deterministic, A]]))
+        case Await(req, recv, fb, c) => ???
+      }
+    def closeAll(ks: Seq[Key[F,Any]]): Process[F, Nothing] = ???
+    go(Vector(), p)
+  }
 
   def runNondet[F[_]:Nondeterminism,A](p: Process[M[F]#Nondeterministic, A]): Process[F,A] =
     ???
