@@ -105,7 +105,7 @@ trait io {
 
   /**
    * Create a `Process[Task,String]` from the lines of the `InputStream`,
-   * using the `resource` combinator to ensure the file is closed
+   * using the `resource` combinator to ensure the `InputStream` is closed
    * when processing the stream of lines is finished.
    */
   def linesR(in: InputStream): Process[Task,String] =
@@ -119,7 +119,7 @@ trait io {
    * Generic combinator for producing a `Process[Task,O]` from some
    * effectful `O` source. The source is tied to some resource,
    * `R` (like a file handle) that we want to ensure is released.
-   * See `lines` below for an example use.
+   * See `linesR` for an example use.
    */
   def resource[R,O](acquire: Task[R])(
                     release: R => Task[Unit])(
@@ -137,14 +137,14 @@ trait io {
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
-   * emit newlines after each element. For that, use `stdoutLines`.
+   * emit newlines after each element. For that, use `stdOutLines`.
    */
   def stdOut: Sink[Task,String] =
     channel((s: String) => Task.delay { print(s) })
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` emits
-   * newlines after each element. If this is not desired, use `stdout`.
+   * newlines after each element. If this is not desired, use `stdOut`.
    */
   def stdOutLines: Sink[Task,String] =
     channel((s: String) => Task.delay { println(s) })
@@ -154,7 +154,7 @@ trait io {
    * repeatedly filling the input buffer. The last chunk may be less
    * than the requested size.
    *
-   * It is safe to recyle the same buffer for consecutive reads
+   * It is safe to recycle the same buffer for consecutive reads
    * as long as whatever consumes this `Process` never stores the `Array[Byte]`
    * returned or pipes it to a combinator (like `buffer`) that does.
    * Use `chunkR` for a safe version of this combinator - this takes
