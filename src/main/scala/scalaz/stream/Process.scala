@@ -1002,6 +1002,7 @@ object Process {
    */
   def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = suspend {
     val v = async.localRef[S]
+    v.set(s0)
     v.signal.continuous.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat
   }
 

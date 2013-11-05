@@ -185,6 +185,17 @@ object ProcessSpec extends Properties("Process1") {
     i == 1
   }
 
+  property("state") = secure {
+    val s = Process.state((0, 1))
+    val fib = Process(0, 1) ++ s.flatMap { case (get, set) =>
+      val (prev0, prev1) = get
+      val next = prev0 + prev1
+      eval(set((prev1, next))).drain ++ emit(next)
+    }
+    val l = fib.take(10).runLog.run.toList
+    l === List(0, 1, 1, 2, 3, 5, 8, 13, 21, 34)
+  }
+
   property("chunkBy2") = secure {
     val s = Process(3, 5, 4, 3, 1, 2, 6)
     s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
