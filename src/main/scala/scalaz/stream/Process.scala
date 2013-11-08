@@ -376,9 +376,13 @@ sealed abstract class Process[+F[_],+O] {
     // Implementation is a horrifying mess, due mainly to Scala's broken pattern matching
     import F2.monadSyntax._
     try y match {
-      case h@Halt(_) => this.kill onComplete p2.kill onComplete h
+      case h@Halt(_)  =>  this.kill onComplete p2.kill onComplete h
       case Emit(h,y2) =>
-        Emit(h, this.wye(p2)(y2))
+        // Emit(h, Await(F2.point(this.wye(p2)(y2)), identity[Process[F2,O3]])) // TODO: Don't have a Nondeterminism!
+        Emit(h, this.wye(p2)(y2))  // TODO: not stack safe!
+
+
+
       case Await(_,_,_,_) =>
         // Unfortunately mutable variables are the cleanest right here
         val u1 = this.unemit; var h1 = u1._1; val t1 = u1._2
@@ -423,18 +427,15 @@ sealed abstract class Process[+F[_],+O] {
           go(y)
         }
 
-
-        val thisNext_ = emitSeq(h1, t1)
-        val p2Next_ = emitSeq(h2, t2)
-        val thisNext = thisNext_.asInstanceOf[Process[F2,O]]
-        val p2Next = p2Next_.asInstanceOf[Process[F2,O2]]
+        val thisNext = emitSeq(h1, t1).asInstanceOf[Process[F2,O]]
+        val p2Next = emitSeq(h2, t2).asInstanceOf[Process[F2,O2]]
 
         y2 match {
           case Await(req,_,_,_) => (req.tag: @annotation.switch) match {
             case 0 => // Awaiting Left
               thisNext match {
                 case AwaitF(reqL,recvL,fbL,cL) => // unfortunately, casts required here
-                  await(reqL)(recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
+                  Await(reqL, recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
                 case Halt(End) => thisNext.wye(p2Next)(y2.fallback)
                 case Halt(e) => p2Next.killBy(e) onComplete y2.disconnect
                 case e@Emit(_,_) => sys.error("Shouldn't get here.")//thisNext.wye(p2Next)(y2)  // Shouldn't get here!
@@ -445,7 +446,7 @@ sealed abstract class Process[+F[_],+O] {
                   // in the event of a fallback or error, `y` will end up running the right's fallback/cleanup
                   // actions on the next cycle - it still needs that value on the right and will run any awaits
                   // to try to obtain that value!
-                  await(reqR)(recvR andThen (p2 => thisNext.wye[F2,O2,O3](p2)(y2)),
+                  Await(reqR, recvR andThen (thisNext.wye[F2,O2,O3](_)(y2)),
                                thisNext.wye(fbR)(y2),
                                thisNext.wye(cR)(y2))
                 case Halt(End) => thisNext.wye(p2Next)(y2.fallback)
