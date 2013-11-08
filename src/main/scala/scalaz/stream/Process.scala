@@ -379,11 +379,11 @@ sealed abstract class Process[+F[_],+O] {
       case h@Halt(_) => this.kill onComplete p2.kill onComplete h
       case Emit(h,y2) =>
         Emit(h, this.wye(p2)(y2))
-      case Await(_,_,_,_) =>      // Unfortunately mutable variables are the cleanest right here
+      case Await(_,_,_,_) =>
+        // Unfortunately mutable variables are the cleanest right here
         val u1 = this.unemit; var h1 = u1._1; val t1 = u1._2
         val u2 = p2.unemit; var h2 = u2._1; val t2 = u2._2
-        //val ready = These.align(h1, h2)
-        //val (y2, ready2) = if (ready.isEmpty) (y, ready) else { // we have some values queued up, try feeding them to the Wye
+
         val y2 = if (h1.isEmpty && h2.isEmpty) y else { // we have some values queued up, try feeding them to the Wye
           @tailrec
           def go(y: Wye[O, O2, O3]): Wye[O, O2, O3] = y match {
@@ -393,74 +393,37 @@ sealed abstract class Process[+F[_],+O] {
                   val next = h1.head
                   h1 = h1.tail
                   go(recv_(next))
-//                  (e: These[O,O2]) => e match {
-//                    case This(o) => (None, Some(recv_(o)))
-//                    case That(_) => (None, None)
-//                    case These(o,o2) => (Some(That(o2)), Some(recv_(o)))
-//                  }
+
                 case 1 if !h2.isEmpty => // Right
                   val recv_ = recv.asInstanceOf[O2 => Wye[O,O2,O3]]
                   val next = h2.head
                   h2 = h2.tail
                   go(recv_(next))
-//                  (e: These[O,O2]) => e match {
-//                    case This(_) => (None, None)
-//                    case That(o2) => (None, Some(recv_(o2)))
-//                    case These(o,o2) => (Some(This(o)), Some(recv_(o2)))
-//                  }
-                case 2 if !(h1.isEmpty || h2.isEmpty) => // Both
+
+                case 2 => // Awaiting either
                   val recv_ = recv.asInstanceOf[These[O,O2] => Wye[O,O2,O3]]
-                  val n1 = h1.head; val n2 = h2.head
-                  h1 = h1.tail; h2 = h2.tail
-                  go(recv_(These(n1, n2)))
-//                  (e: These[O,O2]) => (None, Some(recv_(e)))
+                  if (!(h1.isEmpty || h2.isEmpty)) {  // Both available
+                    val n1 = h1.head; val n2 = h2.head
+                    h1 = h1.tail; h2 = h2.tail
+                    go(recv_(These(n1, n2)))
+                  } else if (!h1.isEmpty) {          // Left available
+                    val n1 = h1.head
+                    h1 = h1.tail
+                    go(recv_(This(n1)))
+                  } else if (!h2.isEmpty) {          // Right available
+                    val n2 = h2.head
+                    h2 = h2.tail
+                    go(recv_(That(n2)))
+                  } else y
 
                 case _ => y // Input insufficient
               }
             case _ => y
-            }
+          }
           go(y)
         }
-//          final def feed[I](
-//                             input: Seq[I])(
-//                             f: Process[F,O] => (I => (Option[I], Option[Process[F,O]]))): (Process[F,O], Seq[I]) = {
-//
-//            @annotation.tailrec
-//            def go(cur: Process[F,O], input: Seq[I]): (Process[F,O], Seq[I]) = {
-//              if (!input.isEmpty) f(cur)(input.head) match {
-//                case (_, None) => (cur, input)
-//                case (Some(revisit), Some(p2)) => go(p2, revisit +: input.tail)
-//                case (None, Some(p2)) => go(p2, input.tail)
-//              }
-//              else (cur, input)
-//            }
-//            go(self, input)
-//          }
-//          y.feed(ready) { // .feed is a tail recursive function
-//            case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
-//              case 0 => // Left
-//                val recv_ = recv.asInstanceOf[O => Wye[O,O2,O3]]
-//                (e: These[O,O2]) => e match {
-//                  case This(o) => (None, Some(recv_(o)))
-//                  case That(_) => (None, None)
-//                  case These(o,o2) => (Some(That(o2)), Some(recv_(o)))
-//                }
-//              case 1 => // Right
-//                val recv_ = recv.asInstanceOf[O2 => Wye[O,O2,O3]]
-//                (e: These[O,O2]) => e match {
-//                  case This(_) => (None, None)
-//                  case That(o2) => (None, Some(recv_(o2)))
-//                  case These(o,o2) => (Some(This(o)), Some(recv_(o2)))
-//                }
-//              case 2 => // Both
-//                val recv_ = recv.asInstanceOf[These[O,O2] => Wye[O,O2,O3]]
-//                (e: These[O,O2]) => (None, Some(recv_(e)))
-//            }
-//            case _ => _ => (None, None)
-//          }
 
-        //val (h1Next, h2Next) = These.unalign(ready2)
-        //val (thisNext_, p2Next_) = (emitSeq(h1Next, t1), emitSeq(h2Next, t2))
+
         val thisNext_ = emitSeq(h1, t1)
         val p2Next_ = emitSeq(h2, t2)
         val thisNext = thisNext_.asInstanceOf[Process[F2,O]]
@@ -468,7 +431,7 @@ sealed abstract class Process[+F[_],+O] {
 
         y2 match {
           case Await(req,_,_,_) => (req.tag: @annotation.switch) match {
-            case 0 => // Left
+            case 0 => // Awaiting Left
               thisNext match {
                 case AwaitF(reqL,recvL,fbL,cL) => // unfortunately, casts required here
                   await(reqL)(recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
@@ -476,7 +439,7 @@ sealed abstract class Process[+F[_],+O] {
                 case Halt(e) => p2Next.killBy(e) onComplete y2.disconnect
                 case e@Emit(_,_) => sys.error("Shouldn't get here.")//thisNext.wye(p2Next)(y2)  // Shouldn't get here!
               }
-            case 1 => // Right
+            case 1 => // Awaiting Right
               p2Next match {
                 case AwaitF(reqR,recvR,fbR,cR) => // unfortunately, casts required here
                   // in the event of a fallback or error, `y` will end up running the right's fallback/cleanup
@@ -489,7 +452,7 @@ sealed abstract class Process[+F[_],+O] {
                 case Halt(e) => thisNext.killBy(e) onComplete y2.disconnect
                 case e@Emit(_,_) => sys.error("Shouldn't get here.")//thisNext.wye(p2Next)(y2)  // Shouldn't get here!
               }
-            case 2 => thisNext match { // Both
+            case 2 => thisNext match { // Await either Left or Right
               case Halt(e) => p2Next.causedBy(e) |> y2.detachL
 
               case e@Emit(_,_) => p2Next match { // other stream required and must be in Await or Halt state
@@ -551,8 +514,8 @@ sealed abstract class Process[+F[_],+O] {
         }
     }
     catch { case e: Throwable =>
-      println("Exception caught: " + e.getMessage)
-      println(e.getStackTraceString)
+      println("Exception caught: " + e.getMessage + ", " + e.getClass)
+      //println(e.getStackTraceString)
       this.kill onComplete p2.kill onComplete (Halt(e))
     }
   }
