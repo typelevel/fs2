@@ -438,7 +438,7 @@ sealed abstract class Process[+F[_],+O] {
                   Await(reqL, recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
                 case Halt(End) => thisNext.wye(p2Next)(y2.fallback)
                 case Halt(e) => p2Next.killBy(e) onComplete y2.disconnect
-                case e@Emit(_,_) => sys.error("Shouldn't get here.")//thisNext.wye(p2Next)(y2)  // Shouldn't get here!
+                case e@Emit(_,_) => sys.error("Shouldn't get here.")
               }
             case 1 => // Awaiting Right
               p2Next match {
@@ -451,7 +451,7 @@ sealed abstract class Process[+F[_],+O] {
                                thisNext.wye(cR)(y2))
                 case Halt(End) => thisNext.wye(p2Next)(y2.fallback)
                 case Halt(e) => thisNext.killBy(e) onComplete y2.disconnect
-                case e@Emit(_,_) => sys.error("Shouldn't get here.")//thisNext.wye(p2Next)(y2)  // Shouldn't get here!
+                case e@Emit(_,_) => sys.error("Shouldn't get here.")
               }
             case 2 => thisNext match { // Await either Left or Right
               case Halt(e) => p2Next.causedBy(e) |> y2.detachL
@@ -515,8 +515,6 @@ sealed abstract class Process[+F[_],+O] {
         }
     }
     catch { case e: Throwable =>
-      println("Exception caught: " + e.getMessage + ", " + e.getClass)
-      //println(e.getStackTraceString)
       this.kill onComplete p2.kill onComplete (Halt(e))
     }
   }
