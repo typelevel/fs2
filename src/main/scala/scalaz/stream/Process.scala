@@ -1893,25 +1893,3 @@ object Process {
   implicit def toFunctorOps[F[_],A](f: Process[F,A]): FunctorOps[ProcessTC[F]#f,A] =
     processInstance.functorSyntax.ToFunctorOps(f)
 }
-
-class TheseSeq[A, B](var s1: Seq[A], var s2: Seq[B]) {
-
-  def hasNext: Boolean = !(s1.isEmpty && s2.isEmpty)
-
-  def next(): These[A, B] = {
-    if (s1.isEmpty) {
-      val next = s2.head
-      s2 = s2.tail
-      That(next)
-    } else if (s2.isEmpty) {
-      val next = s1.head
-      s1 = s1.tail
-      This(next)
-    } else {
-      val n1 = s1.head; s1 = s1.tail
-      val n2 = s2.head; s2 = s2.tail
-      These(n1, n2)
-    }
-  }
-}
-
