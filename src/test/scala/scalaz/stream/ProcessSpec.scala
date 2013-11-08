@@ -33,41 +33,41 @@ object ProcessSpec extends Properties("Process1") {
   implicit def ArbProcess0[A:Arbitrary]: Arbitrary[Process0[A]] = 
     Arbitrary(Arbitrary.arbitrary[List[A]].map(a => Process(a: _*)))
 
-  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) => 
+  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
     val f = (x: Int) => List.range(1, x.min(100))
     val g = (x: Int) => x % 7 == 0
     val pf : PartialFunction[Int,Int] = { case x : Int if x % 2 == 0 => x}
-  
+
     val sm = Monoid[String]
-   
-    ("id" |: { 
+
+    ("id" |: {
       ((p |> id) === p) &&  ((id |> p) === p)
     }) &&
     ("map" |: {
-      (p.toList.map(_ + 1) === p.map(_ + 1).toList) && 
+      (p.toList.map(_ + 1) === p.map(_ + 1).toList) &&
       (p.map(_ + 1) === p.pipe(lift(_ + 1)))
     }) &&
     ("flatMap" |: {
       (p.toList.flatMap(f) === p.flatMap(f andThen Process.emitAll).toList)
-    }) && 
+    }) &&
     ("filter" |: {
       (p.toList.filter(g) === p.filter(g).toList)
-    }) && 
+    }) &&
     ("take" |: {
       (p.toList.take(n) === p.take(n).toList)
-    }) && 
+    }) &&
     ("takeWhile" |: {
       (p.toList.takeWhile(g) === p.takeWhile(g).toList)
-    }) && 
+    }) &&
     ("drop" |: {
       (p.toList.drop(n) === p.drop(n).toList)
     }) &&
     ("dropWhile" |: {
       (p.toList.dropWhile(g) === p.dropWhile(g).toList)
-    }) && 
+    }) &&
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
-    }) && 
+    }) &&
     ("yip" |: {
       val l = p.toList.zip(p2.toList)
       val r = p.toSource.yip(p2.toSource).runLog.run.toList
@@ -76,7 +76,7 @@ object ProcessSpec extends Properties("Process1") {
     ("scan" |: {
       p.toList.scan(0)(_ - _) ===
       p.toSource.scan(0)(_ - _).runLog.run.toList
-    }) &&   
+    }) &&
     ("scan1" |: {
        p.toList.scan(0)(_ + _).tail ===
        p.toSource.scan1(_ + _).runLog.run.toList
@@ -86,23 +86,23 @@ object ProcessSpec extends Properties("Process1") {
       p.toSource.pipe(process1.sum).runLastOr(0).run
     }) &&
     ("intersperse" |: {
-      p.intersperse(0).toList == p.toList.intersperse(0) 
+      p.intersperse(0).toList == p.toList.intersperse(0)
     }) &&
     ("collect" |: {
       p.collect(pf).toList == p.toList.collect(pf)
-    }) && 
-    ("fold" |: { 
+    }) &&
+    ("fold" |: {
       p.fold(0)(_ + _).toList == List(p.toList.fold(0)(_ + _))
     }) &&
-    ("foldMap" |: { 
+    ("foldMap" |: {
       p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
     }) &&
     ("reduce" |: {
-      (p.reduce(_ + _).toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))  
+      (p.reduce(_ + _).toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))
     }) &&
     ("find" |: {
        (p.find(_ % 2 == 0).toList == p.toList.find(_ % 2 == 0).toList)
-    }) 
+    })
   }
     
    property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) { 
