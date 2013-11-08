@@ -509,11 +509,13 @@ sealed abstract class Process[+F[_],+O] {
                   case End => Await(reqL, recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
                   case _ => thisNext.causedBy(e).wye(halt)(y2)
                 }
+
+                case e@Emit(_,_) =>
+                  Await(reqL, recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
+
                 // If both sides are in the Await state, we use the
                 // Nondeterminism instance to request both sides
                 // concurrently.
-
-                  // TODO: we need both sides,so we should wait for both!
                 case AwaitF(reqR, recvR, fbR, cR) =>
                   eval(F2.choose(E.attempt(reqL), E.attempt(reqR))).flatMap {
                     _.fold(
@@ -544,6 +546,7 @@ sealed abstract class Process[+F[_],+O] {
               }
             }
           }
+
           case _ => thisNext.wye(p2Next)(y2)
         }
     }
