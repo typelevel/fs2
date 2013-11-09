@@ -65,6 +65,12 @@ object ProcessSpec extends Properties("Process1") {
     ("dropWhile" |: {
       (p.toList.dropWhile(g) === p.dropWhile(g).toList)
     }) &&
+    ("exists" |: {
+      (List(p.toList.exists(g)) === p.exists(g).toList)
+    }) &&
+    ("forall" |: {
+      (List(p.toList.forall(g)) === p.forall(g).toList)
+    }) &&
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
     }) &&

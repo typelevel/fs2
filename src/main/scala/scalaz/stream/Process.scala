@@ -695,6 +695,14 @@ sealed abstract class Process[+F[_],+O] {
   def find(f: O => Boolean): Process[F,O] =
     this |> processes.find(f)
 
+  /** Alias for `this |> process1.exists(f)` */
+  def exists(f: O => Boolean): Process[F, Boolean] =
+    this |> process1.exists(f)
+
+  /** Alias for `this |> process1.forall(f)` */
+  def forall(f: O => Boolean): Process[F, Boolean] =
+    this |> process1.forall(f)
+
   /** Connect this `Process` to `process1.fold(b)(f)`. */
   def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold(b)(f)
