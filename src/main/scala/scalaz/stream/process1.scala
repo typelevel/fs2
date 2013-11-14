@@ -149,10 +149,17 @@ trait process1 {
    */
   def find[I](f: I => Boolean): Process1[I,I] =  
     await1[I] flatMap (i => if(f(i)) emit(i) else find(f))
-  
-  /** 
+
+  /**
+    * Halts with `true` as soon as a matching element is received.
+    * Emits a single `false` if no input matches the predicate.
+    */
+  def exists[I](f: I => Boolean): Process1[I,Boolean] =
+    forall[I](! f(_)).map(! _)
+
+  /**
    * Emits a single `true` value if all input matches the predicate.
-   * Halts with `false` as soon as a non-matching element is received. 
+   * Halts with `false` as soon as a non-matching element is received.
    */
   def forall[I](f: I => Boolean): Process1[I,Boolean] = 
     await1[I].flatMap(i => if (f(i)) forall(f) else emit(false)) orElse (emit(true))
