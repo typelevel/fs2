@@ -140,6 +140,9 @@ sealed abstract class Process[+F[_],+O] {
     go(Seq(), this)
   }
 
+  final def stepOr[F2[x]>:F[x]](p2: => Process[F2,Nothing]): Process[F2, Step[F2,O]] =
+    step.orElse(p2, p2)
+
   /**
    * Run this `Process` until it emits any values, then return the
    * paused computation. This function is not resource safe, and
@@ -337,16 +340,24 @@ sealed abstract class Process[+F[_],+O] {
       fb.drain, c.drain)
   }
 
+  final def isHalt: Boolean = this match {
+    case Halt(_) => true
+    case _ => false
+  }
+
   /**
    * Feed the output of this `Process` as input of `p2`. The implementation
    * will fuse the two processes, so this process will only generate
    * values as they are demanded by `p2`. If `p2` signals termination, `this`
    * is killed using `kill`, giving it the opportunity to clean up.
    */
-  final def pipe[O2](p2: Process1[O,O2]): Process[F,O2] =
-    // Since `Process1[O,O2] <: Tee[O,Any,O2]`, but it is a `Tee` that
-    // never reads from its right input, we can define this in terms of `tee`!
-    (this tee halt)(p2)
+  final def pipe[O2](p2: Process1[O,O2]): Process[F,O2] = p2 match {
+    case h@Halt(_) => this.kill ++ h
+    case Emit(h, t) => Emit(h, this pipe t)
+    case _ => this.step.flatMap { s =>
+      s.tail pipe (process1.feed(s.head)(p2))
+    }
+  }
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O,O2]): Process[F,O2] =
@@ -363,13 +374,19 @@ sealed abstract class Process[+F[_],+O] {
    * If at any point the `Tee` awaits on a side that has halted,
    * we gracefully kill off the other side, then halt.
    */
-  final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] =
-    // Somewhat evil: we are passing `null` for the `Nondeterminism` and `Catchable` here,
-    // safe because the types guarantee that a `Tee` cannot issue a `Both`
-    // request that would result in the `Nondeterminism` instance being used.
-    // This lets us reuse a single function, `wye`, as the implementation for
-    // both `tee` and `pipe`!
-    (this wye p2)(t)(null,null)
+  final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
+    import scalaz.stream.tee.{AwaitL,AwaitR}
+    t match {
+      case h@Halt(_) => this.kill onComplete p2.kill onComplete h
+      case Emit(h, t2) => Emit(h, this.tee(p2)(t2))
+      case AwaitL(recv,fb,c) => this.stepOr(p2.kill).flatMap { s =>
+        s.tail.tee(p2)(scalaz.stream.tee.feedL(s.head)(t))
+      }
+      case AwaitR(recv,fb,c) => p2.stepOr(this.kill).flatMap { s =>
+        this.tee(s.tail)(scalaz.stream.tee.feedR(s.head)(t))
+      }
+    }
+  }
 
   /**
    * Like `tee`, but we allow the `Wye` to read nondeterministically
@@ -978,40 +995,6 @@ object Process {
     }
   }
 
-  object AwaitL {
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
-        Option[(I => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
-      case Await(req,recv,fb,c) if req.tag == 0 => Some((recv.asInstanceOf[I => Wye[I,I2,O]], fb, c))
-      case _ => None
-    }
-    def apply[I,I2,O](recv: I => Wye[I,I2,O],
-                      fallback: Wye[I,I2,O] = halt,
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
-      await(L[I]: Env[I,I2]#Y[I])(recv, fallback, cleanup)
-  }
-  object AwaitR {
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
-        Option[(I2 => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
-      case Await(req,recv,fb,c) if req.tag == 1 => Some((recv.asInstanceOf[I2 => Wye[I,I2,O]], fb, c))
-      case _ => None
-    }
-    def apply[I,I2,O](recv: I2 => Wye[I,I2,O],
-                      fallback: Wye[I,I2,O] = halt,
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
-      await(R[I2]: Env[I,I2]#Y[I2])(recv, fallback, cleanup)
-  }
-  object AwaitBoth {
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
-        Option[(These[I,I2] => Wye[I,I2,O], Wye[I,I2,O], Wye[I,I2,O])] = self match {
-      case Await(req,recv,fb,c) if req.tag == 2 => Some((recv.asInstanceOf[These[I,I2] => Wye[I,I2,O]], fb, c))
-      case _ => None
-    }
-    def apply[I,I2,O](recv: These[I,I2] => Wye[I,I2,O],
-                      fallback: Wye[I,I2,O] = halt,
-                      cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
-      await(Both[I,I2])(recv, fallback, cleanup)
-  }
-
   def emitSeq[F[_],O](
       head: Seq[O],
       tail: Process[F,O] = halt): Process[F,O] =
@@ -1279,12 +1262,24 @@ object Process {
   }
 
   case class Env[-I,-I2]() {
-    sealed trait Y[-X] { def tag: Int }
+    sealed trait Y[-X] {
+      def tag: Int
+      def fold[R](l: => R, r: => R, both: => R): R
+    }
     sealed trait T[-X] extends Y[X]
     sealed trait Is[-X] extends T[X]
-    case object Left extends Is[I] { def tag = 0 }
-    case object Right extends T[I2] { def tag = 1 }
-    case object Both extends Y[These[I,I2]] { def tag = 2 }
+    case object Left extends Is[I] {
+      def tag = 0
+      def fold[R](l: => R, r: => R, both: => R): R = l
+    }
+    case object Right extends T[I2] {
+      def tag = 1
+      def fold[R](l: => R, r: => R, both: => R): R = r
+    }
+    case object Both extends Y[These[I,I2]] {
+      def tag = 2
+      def fold[R](l: => R, r: => R, both: => R): R = both
+    }
   }
 
   private val Left_ = Env[Any,Any]().Left
@@ -1709,6 +1704,7 @@ object Process {
   implicit class ChanneledProcess[F[_],O,O2](self: Process[F,(O, O => F[O2])]) {
     def enqueue[O3](q: Wye[O,O2,O3])(implicit F: Nondeterminism[F]): Process[F,O3] = go(self, q, Queue(), Queue())
 
+    import wye.{AwaitL,AwaitR,AwaitBoth}
     private def go[F3[_],O,O2,O3](src: Process[F3,(O,O => F3[O2])], q: Wye[O,O2,O3], bufIn: Seq[O], bufOut: Queue[F3[O2]])(
                   implicit F3: Nondeterminism[F3]): Process[F3,O3] = {
       try q match {
