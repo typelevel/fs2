@@ -377,22 +377,21 @@ sealed abstract class Process[+F[_],+O] {
    * we gracefully kill off the other side, then halt.
    */
   final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
-    this.wye(p2)(t)(null, null)
-    //import scalaz.stream.tee.{AwaitL,AwaitR}
-    //t match {
-    //  case h@Halt(_) => this.kill onComplete p2.kill onComplete h
-    //  case Emit(h, t2) => Emit(h, this.tee(p2)(t2))
-    //  case AwaitL(recv,fb,c) => this.step.flatMap { s =>
-    //    s.fold { hd =>
-    //      s.tail.tee(p2)(scalaz.stream.tee.feedL(hd)(t))
-    //    } (halt.tee(p2)(fb), halt.tee(p2)(c))
-    //  }
-    //  case AwaitR(recv,fb,c) => p2.step.flatMap { s =>
-    //    s.fold { hd =>
-    //      this.tee(s.tail)(scalaz.stream.tee.feedR(hd)(t))
-    //    } (this.tee(halt)(fb), this.tee(halt)(c))
-    //  }
-    //}
+    import scalaz.stream.tee.{AwaitL,AwaitR}
+    t match {
+      case h@Halt(_) => this.kill onComplete p2.kill onComplete h
+      case Emit(h, t2) => Emit(h, this.tee(p2)(t2))
+      case AwaitL(recv,fb,c) => this.step.flatMap { s =>
+        s.fold { hd =>
+          s.tail.tee(p2)(scalaz.stream.tee.feedL(hd)(t))
+        } (halt.tee(p2)(fb), halt.tee(p2)(c))
+      }
+      case AwaitR(recv,fb,c) => p2.step.flatMap { s =>
+        s.fold { hd =>
+          this.tee(s.tail)(scalaz.stream.tee.feedR(hd)(t))
+        } (this.tee(halt)(fb), this.tee(halt)(c))
+      }
+    }
   }
 
   /**

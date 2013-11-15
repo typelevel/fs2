@@ -76,9 +76,9 @@ object tee extends tee {
           go(in.tail, out, next)
         case AwaitR(recv, fb, c) =>
           emitSeq(out.flatten,
-          await(R[I2]: Env[I,I2]#T[I2])(recv, feedL(in)(fb), feedL(in)(c)))
+          await(R[I2]: Env[I,I2]#T[I2])(recv andThen (feedL(in)), feedL(in)(fb), feedL(in)(c)))
       }
-      else Emit(out.flatten, cur)
+      else emitSeq(out.flatten, cur)
     go(i, Vector(), p)
   }
 
@@ -99,9 +99,9 @@ object tee extends tee {
           go(in.tail, out, next)
         case AwaitL(recv, fb, c) =>
           emitSeq(out.flatten,
-          await(L[I]: Env[I,I2]#T[I])(recv, feedR(in)(fb), feedR(in)(c)))
+          await(L[I]: Env[I,I2]#T[I])(recv andThen (feedR(in)), feedR(in)(fb), feedR(in)(c)))
       }
-      else Emit(out.flatten, cur)
+      else emitSeq(out.flatten, cur)
     go(i, Vector(), p)
   }
 
