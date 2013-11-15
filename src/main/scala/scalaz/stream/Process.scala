@@ -355,9 +355,9 @@ sealed abstract class Process[+F[_],+O] {
     case h@Halt(_) => this.kill ++ h
     case Emit(h, t) => Emit(h, this pipe t)
     case Await1(recv,fb,c) => this.step.flatMap { s =>
-      s.fold[Process[F,O2]] (halt pipe fb, halt pipe c) { hd =>
+      s.fold { hd =>
         s.tail pipe (process1.feed(hd)(p2))
-      }
+      } (halt pipe fb, halt pipe c)
     }
   }
 
@@ -382,11 +382,15 @@ sealed abstract class Process[+F[_],+O] {
     //t match {
     //  case h@Halt(_) => this.kill onComplete p2.kill onComplete h
     //  case Emit(h, t2) => Emit(h, this.tee(p2)(t2))
-    //  case AwaitL(recv,fb,c) => this.stepOr(p2.kill).flatMap { s =>
-    //    s.tail.tee(p2)(scalaz.stream.tee.feedL(s.head)(t))
+    //  case AwaitL(recv,fb,c) => this.step.flatMap { s =>
+    //    s.fold { hd =>
+    //      s.tail.tee(p2)(scalaz.stream.tee.feedL(hd)(t))
+    //    } (halt.tee(p2)(fb), halt.tee(p2)(c))
     //  }
-    //  case AwaitR(recv,fb,c) => p2.stepOr(this.kill).flatMap { s =>
-    //    this.tee(s.tail)(scalaz.stream.tee.feedR(s.head)(t))
+    //  case AwaitR(recv,fb,c) => p2.step.flatMap { s =>
+    //    s.fold { hd =>
+    //      this.tee(s.tail)(scalaz.stream.tee.feedR(hd)(t))
+    //    } (this.tee(halt)(fb), this.tee(halt)(c))
     //  }
     //}
   }
