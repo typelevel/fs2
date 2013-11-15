@@ -140,26 +140,6 @@ sealed abstract class Process[+F[_],+O] {
     go(Seq(), this)
   }
 
-  final def stepOr[F2[x]>:F[x]](p2: => Process[F2,Nothing]): Process[F2, Step[F2,O]] =
-    step.orElse(p2, p2)
-
-  /**
-   * Run this `Process` until it emits any values, then return the
-   * paused computation. This function is not resource safe, and
-   * consumers of this function are responsible for invoking the
-   * cleanup action of any `Process` they are manually stepping.
-   */
-  final def step: Process[F, Step[F, O]] = {
-    def go(cleanup: Process[F,O], cur: Process[F,O]): Process[F, Step[F,O]] = cur match {
-      case h@Halt(_) => h
-      case Emit(h, t) =>
-        if (h.isEmpty) t.step
-        else emit(Step(h, t, cleanup))
-      case Await(req,recv,fb,c) => await(req)(recv andThen (go(c,_)), go(c, fb), go(c, c))
-    }
-    go(halt, this)
-  }
-
   private[stream] final def unconsAll: Process[F, (Seq[O], Process[F,O])] = this match {
     case h@Halt(_) => h
     case Emit(h, t) => if (h.isEmpty) t.unconsAll else emit((h,t))
@@ -345,6 +325,26 @@ sealed abstract class Process[+F[_],+O] {
     case _ => false
   }
 
+  final def stepOr[F2[x]>:F[x]](p2: => Process[F2,Nothing]): Process[F2, Step[F2,O]] =
+    step.orElse(p2, p2)
+
+  /**
+   * Run this `Process` until it emits any values, then return the
+   * paused computation. This function is not resource safe, and
+   * consumers of this function are responsible for invoking the
+   * cleanup action of any `Process` they are manually stepping.
+   */
+  final def step: Process[F, Step[F, O]] = {
+    def go(cleanup: Process[F,O], cur: Process[F,O]): Process[F, Step[F,O]] = cur match {
+      case h@Halt(e) => emit(Step(left(e), h, cleanup))
+      case Emit(h, t) =>
+        if (h.isEmpty) t.step
+        else emit(Step(right(h), t, cleanup))
+      case Await(req,recv,fb,c) => await(req)(recv andThen (go(c,_)), go(c, fb), go(c, c))
+    }
+    go(halt, this)
+  }
+
   /**
    * Feed the output of this `Process` as input of `p2`. The implementation
    * will fuse the two processes, so this process will only generate
@@ -354,8 +354,10 @@ sealed abstract class Process[+F[_],+O] {
   final def pipe[O2](p2: Process1[O,O2]): Process[F,O2] = p2 match {
     case h@Halt(_) => this.kill ++ h
     case Emit(h, t) => Emit(h, this pipe t)
-    case _ => this.step.flatMap { s =>
-      s.tail pipe (process1.feed(s.head)(p2))
+    case Await1(recv,fb,c) => this.step.flatMap { s =>
+      s.fold[Process[F,O2]] (halt pipe fb, halt pipe c) { hd =>
+        s.tail pipe (process1.feed(hd)(p2))
+      }
     }
   }
 
@@ -375,17 +377,18 @@ sealed abstract class Process[+F[_],+O] {
    * we gracefully kill off the other side, then halt.
    */
   final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
-    import scalaz.stream.tee.{AwaitL,AwaitR}
-    t match {
-      case h@Halt(_) => this.kill onComplete p2.kill onComplete h
-      case Emit(h, t2) => Emit(h, this.tee(p2)(t2))
-      case AwaitL(recv,fb,c) => this.stepOr(p2.kill).flatMap { s =>
-        s.tail.tee(p2)(scalaz.stream.tee.feedL(s.head)(t))
-      }
-      case AwaitR(recv,fb,c) => p2.stepOr(this.kill).flatMap { s =>
-        this.tee(s.tail)(scalaz.stream.tee.feedR(s.head)(t))
-      }
-    }
+    this.wye(p2)(t)(null, null)
+    //import scalaz.stream.tee.{AwaitL,AwaitR}
+    //t match {
+    //  case h@Halt(_) => this.kill onComplete p2.kill onComplete h
+    //  case Emit(h, t2) => Emit(h, this.tee(p2)(t2))
+    //  case AwaitL(recv,fb,c) => this.stepOr(p2.kill).flatMap { s =>
+    //    s.tail.tee(p2)(scalaz.stream.tee.feedL(s.head)(t))
+    //  }
+    //  case AwaitR(recv,fb,c) => p2.stepOr(this.kill).flatMap { s =>
+    //    this.tee(s.tail)(scalaz.stream.tee.feedR(s.head)(t))
+    //  }
+    //}
   }
 
   /**
