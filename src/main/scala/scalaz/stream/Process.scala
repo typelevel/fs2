@@ -394,171 +394,6 @@ sealed abstract class Process[+F[_],+O] {
     }
   }
 
-  /**
-   * Like `tee`, but we allow the `Wye` to read nondeterministically
-   * from both sides at once, using the supplied `Nondeterminism`
-   * instance.
-   *
-   * If `y` is in the state of awaiting `Both`, this implementation
-   * will continue feeding `y` until either it halts or _both_ sides
-   * halt.
-   *
-   * If `y` is in the state of awaiting `L`, and the left
-   * input has halted, we halt. Likewise for the right side.
-   *
-   * For as long as `y` permits it, this implementation will _always_
-   * feed it any leading `Emit` elements from either side before issuing
-   * new `F` requests. More sophisticated chunking and fairness
-   * policies do not belong here, but should be built into the `Wye`
-   * and/or its inputs.
-   */
-  final def wye[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(y: Wye[O,O2,O3])(implicit F2: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O3] = {
-    // Implementation is a horrifying mess, due mainly to Scala's broken pattern matching
-    import F2.monadSyntax._
-    try y match {
-      case h@Halt(_)  =>  this.kill onComplete p2.kill onComplete h
-      case Emit(h,y2) =>
-        // Emit(h, Await(F2.point(this.wye(p2)(y2)), identity[Process[F2,O3]])) // TODO: Don't have a Nondeterminism!
-        Emit(h, this.wye(p2)(y2))  // TODO: not stack safe!
-
-
-
-      case Await(_,_,_,_) =>
-        // Unfortunately mutable variables are the cleanest right here
-        val u1 = this.unemit; var h1 = u1._1; val t1 = u1._2
-        val u2 = p2.unemit; var h2 = u2._1; val t2 = u2._2
-
-        val y2 = if (h1.isEmpty && h2.isEmpty) y else { // we have some values queued up, try feeding them to the Wye
-          @tailrec
-          def go(y: Wye[O, O2, O3]): Wye[O, O2, O3] = y match {
-            case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
-                case 0 if !h1.isEmpty => // Left
-                  val recv_ = recv.asInstanceOf[O => Wye[O,O2,O3]]
-                  val next = h1.head
-                  h1 = h1.tail
-                  go(recv_(next))
-
-                case 1 if !h2.isEmpty => // Right
-                  val recv_ = recv.asInstanceOf[O2 => Wye[O,O2,O3]]
-                  val next = h2.head
-                  h2 = h2.tail
-                  go(recv_(next))
-
-                case 2 => // Awaiting either
-                  val recv_ = recv.asInstanceOf[These[O,O2] => Wye[O,O2,O3]]
-                  if (!(h1.isEmpty || h2.isEmpty)) {  // Both available
-                    val n1 = h1.head; val n2 = h2.head
-                    h1 = h1.tail; h2 = h2.tail
-                    go(recv_(These(n1, n2)))
-                  } else if (!h1.isEmpty) {          // Left available
-                    val n1 = h1.head
-                    h1 = h1.tail
-                    go(recv_(This(n1)))
-                  } else if (!h2.isEmpty) {          // Right available
-                    val n2 = h2.head
-                    h2 = h2.tail
-                    go(recv_(That(n2)))
-                  } else y
-
-                case _ => y // Input insufficient
-              }
-            case _ => y
-          }
-          go(y)
-        }
-
-        val thisNext = emitSeq(h1, t1).asInstanceOf[Process[F2,O]]
-        val p2Next = emitSeq(h2, t2).asInstanceOf[Process[F2,O2]]
-
-        y2 match {
-          case Await(req,_,_,_) => (req.tag: @annotation.switch) match {
-            case 0 => // Awaiting Left
-              thisNext match {
-                case AwaitF(reqL,recvL,fbL,cL) => // unfortunately, casts required here
-                  Await(reqL, recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
-                case Halt(End) => thisNext.wye(p2Next)(y2.fallback)
-                case Halt(e) => p2Next.killBy(e) onComplete y2.disconnect
-                case e@Emit(_,_) => sys.error("Shouldn't get here.")
-              }
-            case 1 => // Awaiting Right
-              p2Next match {
-                case AwaitF(reqR,recvR,fbR,cR) => // unfortunately, casts required here
-                  // in the event of a fallback or error, `y` will end up running the right's fallback/cleanup
-                  // actions on the next cycle - it still needs that value on the right and will run any awaits
-                  // to try to obtain that value!
-                  Await(reqR, recvR andThen (thisNext.wye[F2,O2,O3](_)(y2)),
-                               thisNext.wye(fbR)(y2),
-                               thisNext.wye(cR)(y2))
-                case Halt(End) => thisNext.wye(p2Next)(y2.fallback)
-                case Halt(e) => thisNext.killBy(e) onComplete y2.disconnect
-                case e@Emit(_,_) => sys.error("Shouldn't get here.")
-              }
-            case 2 => thisNext match { // Await either Left or Right
-              case Halt(e) => p2Next.causedBy(e) |> y2.detachL
-
-              case e@Emit(_,_) => p2Next match { // other stream required and must be in Await or Halt state
-                case Halt(e) => e match {
-                    case End => thisNext.causedBy(e) |> y2.detachR
-                    case _ => thisNext.causedBy(e).wye(halt)(y2)
-                  }
-
-                case AwaitF(reqR, recvR, fbR, cR) =>
-                  Await(reqR, recvR andThen (thisNext.wye(_)(y2)), thisNext.wye(fbR)(y2), thisNext.wye(cR)(y2))
-
-                case _ => sys.error("Shouldn't get here.")
-              }
-
-              case AwaitF(reqL, recvL, fbL, cL) => p2Next match {
-                case Halt(e) => e match {
-                  case End => Await(reqL, recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
-                  case _ => thisNext.causedBy(e).wye(halt)(y2)
-                }
-
-                case e@Emit(_,_) =>
-                  Await(reqL, recvL andThen (_.wye(p2Next)(y2)), fbL.wye(p2Next)(y2), cL.wye(p2Next)(y2))
-
-                // If both sides are in the Await state, we use the
-                // Nondeterminism instance to request both sides
-                // concurrently.
-                case AwaitF(reqR, recvR, fbR, cR) =>
-                  eval(F2.choose(E.attempt(reqL), E.attempt(reqR))).flatMap {
-                    _.fold(
-                      { case (winningReqL, losingReqR) =>
-                          winningReqL.fold(
-                            { case End => fbL.wye(Await(rethrow(losingReqR), recvR, fbR, cR))(y2)
-                              case t: Throwable => cL.wye(Await(rethrow(losingReqR), recvR, fbR, cR))(y2) onComplete (fail(t))
-                            },
-                            res => {
-                              val nextL = recvL(res)
-                              nextL.wye(Await(rethrow(losingReqR), recvR, fbR, cR))(y2)
-                            }
-                          )
-                      },
-                      { case (losingReqL, winningReqR) =>
-                          winningReqR.fold(
-                            { case End => Await(rethrow(losingReqL), recvL, fbL, cL).wye(fbR)(y2)
-                              case t: Throwable => Await(rethrow(losingReqL), recvL, fbL, cL).wye(cR)(y2) onComplete (fail(t))
-                            },
-                            res => {
-                              val nextR = recvR(res)
-                              Await(rethrow(losingReqL), recvL, fbL, cL).wye(nextR)(y2)
-                            }
-                          )
-                      }
-                    )
-                  }
-              }
-            }
-          }
-
-          case _ => thisNext.wye(p2Next)(y2)
-        }
-    }
-    catch { case e: Throwable =>
-      this.kill onComplete p2.kill onComplete (Halt(e))
-    }
-  }
-
   /** Translate the request type from `F` to `G`, using the given polymorphic function. */
   def translate[G[_]](f: F ~> G): Process[G,O] = this match {
     case Emit(h, t) => Emit(h, t.translate(f))
@@ -848,26 +683,6 @@ sealed abstract class Process[+F[_],+O] {
   /** Call `tee` with the `zip` `Tee[O,O2,O3]` defined in `tee.scala`. */
   def zip[F2[x]>:F[x],O2](p2: Process[F2,O2]): Process[F2,(O,O2)] =
     this.tee(p2)(scalaz.stream.tee.zip)
-
-  /** Nondeterministic version of `zipWith`. */
-  def yipWith[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(f: (O,O2) => O3)(
-  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O3] =
-    this.wye(p2)(scalaz.stream.wye.yipWith(f))
-
-  /** Nondeterministic version of `zip`. */
-  def yip[F2[x]>:F[x],O2](p2: Process[F2,O2])(
-  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,(O,O2)] =
-    this.wye(p2)(scalaz.stream.wye.yip)
-
-  /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
-  def merge[F2[x]>:F[x],O2>:O](p2: Process[F2,O2])(
-  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O2] =
-    this.wye(p2)(scalaz.stream.wye.merge)
-
-  /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
-  def either[F2[x]>:F[x],O2>:O,O3](p2: Process[F2,O3])(
-  implicit F: Nondeterminism[F2], E: Catchable[F2]): Process[F2,O2 \/ O3] =
-    this.wye(p2)(scalaz.stream.wye.either)
 
   /**
    * When `condition` is `true`, lets through any values in `this` process, otherwise blocks
@@ -1535,6 +1350,43 @@ object Process {
   implicit class SourceSyntax[O](self: Process[Task, O]) {
 
     /**
+     * Like `tee`, but we allow the `Wye` to read nondeterministically
+     * from both sides at once, using the supplied `Nondeterminism`
+     * instance.
+     *
+     * If `y` is in the state of awaiting `Both`, this implementation
+     * will continue feeding `y` until either it halts or _both_ sides
+     * halt.
+     *
+     * If `y` is in the state of awaiting `L`, and the left
+     * input has halted, we halt. Likewise for the right side.
+     *
+     * For as long as `y` permits it, this implementation will _always_
+     * feed it any leading `Emit` elements from either side before issuing
+     * new `F` requests. More sophisticated chunking and fairness
+     * policies do not belong here, but should be built into the `Wye`
+     * and/or its inputs.
+     */
+    final def wye[O2,O3](p2: Process[Task,O2])(y: Wye[O,O2,O3]): Process[Task,O3] =
+      wye2(self, p2)(y)
+
+    /** Nondeterministic version of `zipWith`. */
+    def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3): Process[Task,O3] =
+      self.wye(p2)(scalaz.stream.wye.yipWith(f))
+
+    /** Nondeterministic version of `zip`. */
+    def yip[O2](p2: Process[Task,O2]): Process[Task,(O,O2)] =
+      self.wye(p2)(scalaz.stream.wye.yip)
+
+    /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
+    def merge[O2>:O](p2: Process[Task,O2]): Process[Task,O2] =
+      self.wye(p2)(scalaz.stream.wye.merge)
+
+    /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
+    def either[O2>:O,O3](p2: Process[Task,O3]): Process[Task,O2 \/ O3] =
+      self.wye(p2)(scalaz.stream.wye.either)
+
+    /**
      * Feed this `Process` through the given `Channel`, using `q` to
      * control the queueing strategy. The `q` receives the duration
      * since since the start of `self`, which may be used to decide
@@ -1549,7 +1401,7 @@ object Process {
      * received within `maxAge` or if `maxSize` elements have enqueued.
      */
     def connectTimed[O2](maxAge: Duration, maxSize: Int = Int.MaxValue)(chan: Channel[Task,O,O2]): Process[Task,O2] =
-      self.connectTimed(chan)(wye.timedQueue(maxAge, maxSize).contramapL(_._2))
+      self.connectTimed(chan)(scalaz.stream.wye.timedQueue(maxAge, maxSize).contramapL(_._2))
 
     /** Infix syntax for `Process.forwardFill`. */
     def forwardFill: Process[Task,O] = Process.forwardFill(self)
@@ -1875,31 +1727,66 @@ object Process {
   def when[F[_],O](condition: Process[F,Boolean])(p: Process[F,O]): Process[F,O] =
     p.when(condition)
 
-  // a failed attempt to work around Scala's broken type refinement in
-  // pattern matching by supplying the equality witnesses manually
+  final def wye2[A,B,C](p: Process[Task,A], p2: Process[Task,B])(y: Wye[A,B,C]): Process[Task,C] = {
+    import scalaz.stream.wye.{AwaitL,AwaitR,AwaitBoth}
+    import scalaz.syntax.applicative._
+    import async.mutable.{Queue, Signal}
+    val qL = async.localQueue[Step[Task,A]]._1 // queue for left
+    val pendingL = async.signal[Boolean]; pendingL.value.set(false)
+    val qR = async.localQueue[Step[Task,B]]._1
+    val pendingR = async.signal[Boolean]; pendingL.value.set(true)
+    val q = async.localQueue[Boolean]._1 // false = L, right = R
 
-  /** Obtain an equality witness from an `Is` request. */
-  def witnessIs[I,J](req: Env[I,Nothing]#Is[J]): I === J =
-    Leibniz.refl[I].asInstanceOf[I === J]
+    def asyncPull[A](step: Process[Task,Step[Task,A]],
+                     branchQ: Queue[Step[Task,A]],
+                     pending: Signal[Boolean], side: Boolean): Unit =
+      pending.continuous.once.flatMap {
+        case true => halt
+        case false => eval { Task.delay(pending.value.set(true)) } *> step
+      }.evalMap { s => Task.delay {
+        branchQ.enqueue(s); q.enqueue(side); pending.value.set(false) } }
+       .run.runAsync(_ => ())
 
-  /** Obtain an equality witness from a `T` request. */
-  def witnessT[I,I2,J](t: Env[I,I2]#T[J]):
-  (I === J) \/ (I2 === J) =
-    if (t.tag == 0) left(Leibniz.refl[I].asInstanceOf[I === J])
-    else right(Leibniz.refl[I2].asInstanceOf[I2 === J])
-
-  /** Obtain an equality witness from a `Y` request. */
-  def witnessY[I,I2,J](t: Env[I,I2]#Y[J]):
-  (I === J) \/ (I2 === J) \/ (These[I,I2] === J) =
-    if (t.tag == 2) right(Leibniz.refl[I].asInstanceOf[These[I,I2] === J])
-    else left(witnessT(t.asInstanceOf[Env[I,I2]#T[J]]))
-
-  /** Evidence that `F[x] <: G[x]` for all `x`. */
-  trait Subprotocol[F[_], G[_]] {
-    def subst[C[_[_],_],A](f: C[F,A]): C[G,A]
-
-    implicit def substProcess[A](p: Process[F,A]): Process[G,A] =
-      subst[({type c[f[_],x] = Process[f,x]})#c, A](p)
+    def go(p: Process[Task,A], p2: Process[Task,B])(y: Wye[A,B,C]): Process[Task,C] = y match {
+      case h@Halt(_) => p.kill onComplete p2.kill onComplete h
+      case Emit(h, y2) => Emit(h, go(p, p2)(y2))
+      case AwaitL(recv,fb,c) =>
+        // If we're already running a computation on the left, block on that;
+        // if not, run the normal `tee` logic to read from the left
+        pendingL.continuous.once.flatMap {
+          case true => eval { Task.async(qL.dequeue) <* Task.delay(pendingL.value.set(false)) }
+          case false => p.step
+        }.flatMap { s =>
+          s.fold { hd => go(s.tail,p2)(wye.feedL(hd)(y))
+          } (go(halt,p2)(fb), go(halt,p2)(c))
+        }
+      case AwaitR(recv,fb,c) =>
+        // If we're already running a computation on the right, block on that;
+        // if not, run the normal `tee` logic to read from the right
+        pendingR.continuous.once.flatMap {
+          case true => eval { Task.async(qR.dequeue) <* Task.delay(pendingR.value.set(false)) }
+          case false => p2.step
+        }.flatMap { s =>
+          s.fold { hd => go(p,s.tail)(wye.feedR(hd)(y))
+          } (go(p,halt)(fb), go(p,halt)(c))
+        }
+      case AwaitBoth(recv,fb,c) =>
+        // Spin up a pull from the left and right branch, if one does not exist,
+        // then block on the shared queue to get a winner
+        asyncPull(p.step, qL, pendingL, false)
+        asyncPull(p2.step, qR, pendingR, true)
+        eval { Task.async(q.dequeue) } flatMap {
+          case false => // left won
+            eval { Task.async(qL.dequeue) } flatMap { s =>
+              s.fold { hd => go(s.tail, p2)(wye.feedL(hd)(y))
+            } (go(halt,p2)(fb), go(halt,p2)(c)) }
+          case true => // right won
+            eval { Task.async(qR.dequeue) } flatMap { s =>
+              s.fold { hd => go(p, s.tail)(wye.feedR(hd)(y))
+            } (go(p,halt)(fb), go(p,halt)(c)) }
+        }
+    }
+    go(p, p2)(y)
   }
 
   private[stream] def rethrow[F[_],A](f: F[Throwable \/ A])(implicit F: Nondeterminism[F], E: Catchable[F]): F[A] =

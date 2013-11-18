@@ -120,7 +120,7 @@ trait process1 {
             try recv(in.head)
             catch {
               case End => fb
-              case e: Throwable => Halt(e)
+              case e: Throwable => c.causedBy(e)
             }
           go(in.tail, out, next)
       }

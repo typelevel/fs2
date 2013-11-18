@@ -12,46 +12,6 @@ trait wye {
 
   import scalaz.stream.wye.{AwaitL, AwaitR, AwaitBoth}
   /**
-   * Transform the left input of the given `Wye` using a `Process1`.
-   */
-  def attachL[I0,I,I2,O](p: Process1[I0,I])(w: Wye[I,I2,O]): Wye[I0,I2,O] = w match {
-    case h@Halt(_) => h
-    case Emit(h,t) => Emit(h, attachL(p)(t))
-    case AwaitL(recv, fb, c) =>
-      p match {
-        case Emit(h, t) => attachL(t)(feedL(h)(w))
-        case Await1(recvp, fbp, cp) =>
-          await(L[I0]: Env[I0,I2]#Y[I0])(
-            recvp andThen (attachL(_)(w)),
-            attachL(fbp)(w),
-            attachL(cp)(w))
-        case h@Halt(_) => attachL(h)(fb)
-      }
-    case AwaitR(recv, fb, c) =>
-      awaitR[I2].flatMap(recv andThen (attachL(p)(_))).
-      orElse(attachL(p)(fb), attachL(p)(c))
-    case AwaitBoth(recv, fb, c) =>
-      p match {
-        case Emit(h, t) => attachL(t)(feedL(h)(w))
-        case Await1(recvp, fbp, cp) =>
-          await(Both[I0,I2]: Env[I0,I2]#Y[These[I0,I2]])(
-            { case This(i0) => attachL(p.feed1(i0))(w)
-              case That(i2) => attachL(p)(feed1R(i2)(w))
-              case These(i0,i2) => attachL(p.feed1(i0))(feed1R(i2)(w))
-            },
-            attachL(fbp)(w),
-            attachL(cp)(w))
-        case h@Halt(_) => attachL(h)(fb)
-      }
-  }
-
-  /**
-   * Transform the right input of the given `Wye` using a `Process1`.
-   */
-  def attachR[I,I1,I2,O](p: Process1[I1,I2])(w: Wye[I,I2,O]): Wye[I,I1,O] =
-    flip(attachL(p)(flip(w)))
-
-  /**
    * A `Wye` which emits values from its right branch, but allows up to `n`
    * elements from the left branch to enqueue unanswered before blocking
    * on the right branch.
@@ -80,6 +40,30 @@ trait wye {
   }
 
   /**
+   * A `Wye` which echoes the right branch while draining the left,
+   * taking care to make sure that the left branch is never more
+   * than `maxUnacknowledged` behind the right. For example:
+   * `src.connect(snk)(observe(10))` will output the the same thing
+   * as `src`, but will as a side effect direct output to `snk`,
+   * blocking on `snk` if more than 10 elements have enqueued
+   * without a response.
+   */
+  def drainL[I](maxUnacknowledged: Int): Wye[Any,I,I] =
+    wye.flip(drainR(maxUnacknowledged))
+
+  /**
+   * A `Wye` which echoes the left branch while draining the right,
+   * taking care to make sure that the right branch is never more
+   * than `maxUnacknowledged` behind the left. For example:
+   * `src.connect(snk)(observe(10))` will output the the same thing
+   * as `src`, but will as a side effect direct output to `snk`,
+   * blocking on `snk` if more than 10 elements have enqueued
+   * without a response.
+   */
+  def drainR[I](maxUnacknowledged: Int): Wye[I,Any,I] =
+    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i)
+
+  /**
    * Invokes `dynamic` with `I == I2`, and produces a single `I` output. Output is
    * left-biased: if a `These(i1,i2)` is emitted, this is translated to an
    * `emitSeq(List(i1,i2))`.
@@ -100,123 +84,19 @@ trait wye {
                    contramapR((i2: I2) => right(i2))
 
   /**
-   * Feed a single `These` value to a `Wye`.
+   * Let through the right branch as long as the left branch is `false`,
+   * listening asynchronously for the left branch to become `true`.
+   * This halts as soon as the right branch halts.
    */
-  def feed1[I,I2,O](i: These[I,I2])(w: Wye[I,I2,O]): Wye[I,I2,O] =
-    i match {
-      case This(i) => feed1L(i)(w)
-      case That(i2) => feed1R(i2)(w)
-      case These(i,i2) => feed1Both(i,i2)(w)
+  def interrupt[I]: Wye[Boolean, I, I] = {
+    def go[I]: Wye[Boolean, Option[I], I] = awaitBoth[Boolean,Option[I]].flatMap {
+      case That(None) => halt
+      case That(Some(i)) => emit(i) ++ go
+      case This(kill) => if (kill) halt else go
+      case These(kill, Some(i)) => if (kill) halt else emit(i) ++ go
+      case These(kill, None) => halt
     }
-
-  /** Feed a sequence of values to the left branch of a `Wye`. */
-  def feedL[I,I2,O](i: Seq[I])(w: Wye[I,I2,O]): Wye[I,I2,O] = {
-    var buf = i
-    var cur = w
-    def ok(w: Wye[I,I2,O]): Boolean = w match {
-      case AwaitL(_,_,_) => true
-      case AwaitBoth(_,_,_) => true
-      case _ => false
-    }
-    while (!buf.isEmpty && ok(cur)) {
-      val h = buf.head
-      cur = feed1L(h)(cur)
-      buf = buf.tail
-    }
-    if (buf.isEmpty) cur
-    else cur match {
-      case h@Halt(_) => h
-      case AwaitR(recv,fb,c) =>
-        await(R[I2]: Env[I,I2]#Y[I2])(recv andThen (feedL(buf)), fb, c)
-      case Emit(o, t) =>
-        Emit(o, feedL(buf)(t))
-      case _ => sys.error("impossible! main `feedL` loop resulted in: " + cur)
-    }
-  }
-
-  /** Feed a sequence of values to the right branch of a `Wye`. */
-  def feedR[I,I2,O](i2: Seq[I2])(w: Wye[I,I2,O]): Wye[I,I2,O] =
-    flip(feedL(i2)(flip(w)))
-
-  /** Feed a single value to the left branch of a `Wye`. */
-  def feed1L[I,I2,O](i: I)(w: Wye[I,I2,O]): Wye[I,I2,O] =
-    w match {
-      case Halt(_) => w
-      case Emit(h, t) => Emit(h, feed1L(i)(t))
-      case AwaitL(recv,fb,c) =>
-        try recv(i)
-        catch {
-          case End => fb
-          case e: Throwable => c.causedBy(e)
-        }
-      case AwaitBoth(recv,fb,c) =>
-        try recv(This(i))
-        catch {
-          case End => fb
-          case e: Throwable => c.causedBy(e)
-        }
-      case AwaitR(recv,fb,c) =>
-        await(R[I2]: Env[I,I2]#Y[I2])(recv andThen (feed1L(i)), feed1L(i)(fb), feed1L(i)(c))
-    }
-
-  /** Feed a single value to the right branch of a `Wye`. */
-  def feed1R[I,I2,O](i2: I2)(w: Wye[I,I2,O]): Wye[I,I2,O] =
-    w match {
-      case Halt(_) => w
-      case Emit(h, t) => Emit(h, feed1R(i2)(t))
-      case AwaitR(recv,fb,c) =>
-        try recv(i2)
-        catch {
-          case End => fb
-          case e: Throwable => c.causedBy(e)
-        }
-      case AwaitBoth(recv,fb,c) =>
-        try recv(That(i2))
-        catch {
-          case End => fb
-          case e: Throwable => c.causedBy(e)
-        }
-      case AwaitL(recv,fb,c) =>
-        await(L[I]: Env[I,I2]#Y[I])(recv andThen (feed1R(i2)), feed1R(i2)(fb), feed1R(i2)(c))
-    }
-
-  /** Feed a value to both the right and left branch of a `Wye`. */
-  def feed1Both[I,I2,O](i: I, i2: I2)(w: Wye[I,I2,O]): Wye[I,I2,O] =
-    w match {
-      case Halt(_) => w
-      case Emit(h, t) => Emit(h, feed1Both(i, i2)(t))
-      case AwaitL(recv,fb,c) =>
-        try feed1R(i2)(recv(i))
-        catch {
-          case End => feed1R(i2)(fb)
-          case e: Throwable => feed1R(i2)(c.causedBy(e))
-        }
-      case AwaitR(recv,fb,c) =>
-        try feed1L(i)(recv(i2))
-        catch {
-          case End => feed1L(i)(fb)
-          case e: Throwable => feed1L(i)(c.causedBy(e))
-        }
-      case AwaitBoth(recv,fb,c) =>
-        try recv(These(i,i2))
-        catch {
-          case End => fb
-          case e: Throwable => c.causedBy(e)
-        }
-    }
-
-  /**
-   * Convert right requests to left requests and vice versa.
-   */
-  def flip[I,I2,O](w: Wye[I,I2,O]): Wye[I2,I,O] = w match {
-    case h@Halt(_) => h
-    case Emit(h, t) => Emit(h, flip(t))
-    case AwaitL(recv, fb, c) =>
-      await(R[I]: Env[I2,I]#Y[I])(recv andThen (flip), flip(fb), flip(c))
-    case AwaitR(recv, fb, c) =>
-      await(L[I2]: Env[I2,I]#Y[I2])(recv andThen (flip), flip(fb), flip(c))
-    case AwaitBoth(recv, fb, c) =>
-      await(Both[I2,I])((t: These[I2,I]) => flip(recv(t.flip)), flip(fb), flip(c))
+    wye.attachR(process1.terminated[I])(go[I])
   }
 
   /**
@@ -234,46 +114,6 @@ trait wye {
       }
     )
     go(true)
-  }
-
-  /**
-   * A `Wye` which echoes the left branch while draining the right,
-   * taking care to make sure that the right branch is never more
-   * than `maxUnacknowledged` behind the left. For example:
-   * `src.connect(snk)(observe(10))` will output the the same thing
-   * as `src`, but will as a side effect direct output to `snk`,
-   * blocking on `snk` if more than 10 elements have enqueued
-   * without a response.
-   */
-  def drainR[I](maxUnacknowledged: Int): Wye[I,Any,I] =
-    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i)
-
-  /**
-   * A `Wye` which echoes the right branch while draining the left,
-   * taking care to make sure that the left branch is never more
-   * than `maxUnacknowledged` behind the right. For example:
-   * `src.connect(snk)(observe(10))` will output the the same thing
-   * as `src`, but will as a side effect direct output to `snk`,
-   * blocking on `snk` if more than 10 elements have enqueued
-   * without a response.
-   */
-  def drainL[I](maxUnacknowledged: Int): Wye[Any,I,I] =
-    flip(drainR(maxUnacknowledged))
-
-  /**
-   * Let through the right branch as long as the left branch is `false`,
-   * listening asynchronously for the left branch to become `true`.
-   * This halts as soon as the right branch halts.
-   */
-  def interrupt[I]: Wye[Boolean, I, I] = {
-    def go[I]: Wye[Boolean, Option[I], I] = awaitBoth[Boolean,Option[I]].flatMap {
-      case That(None) => halt
-      case That(Some(i)) => emit(i) ++ go
-      case This(kill) => if (kill) halt else go
-      case These(kill, Some(i)) => if (kill) halt else emit(i) ++ go
-      case These(kill, None) => halt
-    }
-    attachR(process1.terminated[I])(go[I])
   }
 
   /**
@@ -350,6 +190,166 @@ object wye extends wye {
 
   // combinators that don't have globally unique names and
   // shouldn't be mixed into `processes`
+
+  /**
+   * Transform the left input of the given `Wye` using a `Process1`.
+   */
+  def attachL[I0,I,I2,O](p: Process1[I0,I])(w: Wye[I,I2,O]): Wye[I0,I2,O] = w match {
+    case h@Halt(_) => h
+    case Emit(h,t) => Emit(h, attachL(p)(t))
+    case AwaitL(recv, fb, c) =>
+      p match {
+        case Emit(h, t) => attachL(t)(wye.feedL(h)(w))
+        case Await1(recvp, fbp, cp) =>
+          await(L[I0]: Env[I0,I2]#Y[I0])(
+            recvp andThen (attachL(_)(w)),
+            attachL(fbp)(w),
+            attachL(cp)(w))
+        case h@Halt(_) => attachL(h)(fb)
+      }
+    case AwaitR(recv, fb, c) =>
+      awaitR[I2].flatMap(recv andThen (attachL(p)(_))).
+      orElse(attachL(p)(fb), attachL(p)(c))
+    case AwaitBoth(recv, fb, c) =>
+      p match {
+        case Emit(h, t) => attachL(t)(scalaz.stream.wye.feedL(h)(w))
+        case Await1(recvp, fbp, cp) =>
+          await(Both[I0,I2]: Env[I0,I2]#Y[These[I0,I2]])(
+            { case This(i0) => attachL(p.feed1(i0))(w)
+              case That(i2) => attachL(p)(feed1R(i2)(w))
+              case These(i0,i2) => attachL(p.feed1(i0))(feed1R(i2)(w))
+            },
+            attachL(fbp)(w),
+            attachL(cp)(w))
+        case h@Halt(_) => attachL(h)(fb)
+      }
+  }
+
+  /**
+   * Transform the right input of the given `Wye` using a `Process1`.
+   */
+  def attachR[I,I1,I2,O](p: Process1[I1,I2])(w: Wye[I,I2,O]): Wye[I,I1,O] =
+    flip(attachL(p)(flip(w)))
+
+
+  /**
+   * Feed a single `These` value to a `Wye`.
+   */
+  def feed1[I,I2,O](i: These[I,I2])(w: Wye[I,I2,O]): Wye[I,I2,O] =
+    i match {
+      case This(i) => feed1L(i)(w)
+      case That(i2) => feed1R(i2)(w)
+      case These(i,i2) => feed1Both(i,i2)(w)
+    }
+
+  /** Feed a value to both the right and left branch of a `Wye`. */
+  def feed1Both[I,I2,O](i: I, i2: I2)(w: Wye[I,I2,O]): Wye[I,I2,O] =
+    w match {
+      case Halt(_) => w
+      case Emit(h, t) => Emit(h, feed1Both(i, i2)(t))
+      case AwaitL(recv,fb,c) =>
+        try feed1R(i2)(recv(i))
+        catch {
+          case End => feed1R(i2)(fb)
+          case e: Throwable => feed1R(i2)(c.causedBy(e))
+        }
+      case AwaitR(recv,fb,c) =>
+        try feed1L(i)(recv(i2))
+        catch {
+          case End => feed1L(i)(fb)
+          case e: Throwable => feed1L(i)(c.causedBy(e))
+        }
+      case AwaitBoth(recv,fb,c) =>
+        try recv(These(i,i2))
+        catch {
+          case End => fb
+          case e: Throwable => c.causedBy(e)
+        }
+    }
+
+  /** Feed a single value to the left branch of a `Wye`. */
+  def feed1L[I,I2,O](i: I)(w: Wye[I,I2,O]): Wye[I,I2,O] =
+    feedL(List(i))(w)
+
+  /** Feed a single value to the right branch of a `Wye`. */
+  def feed1R[I,I2,O](i2: I2)(w: Wye[I,I2,O]): Wye[I,I2,O] =
+    feedR(List(i2))(w)
+
+  /** Feed a sequence of inputs to the left side of a `Tee`. */
+  def feedL[I,I2,O](i: Seq[I])(p: Wye[I,I2,O]): Wye[I,I2,O] = {
+    @annotation.tailrec
+    def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] =
+      if (in.nonEmpty) cur match {
+        case h@Halt(_) => emitSeq(out.flatten, h)
+        case Emit(h, t) => go(in, out :+ h, t)
+        case AwaitL(recv, fb, c) =>
+          val next =
+            try recv(in.head)
+            catch {
+              case End => fb
+              case e: Throwable => c.causedBy(e)
+            }
+          go(in.tail, out, next)
+        case AwaitBoth(recv, fb, c) =>
+          val next =
+            try recv(These.This(in.head))
+            catch {
+              case End => fb
+              case e: Throwable => c.causedBy(e)
+            }
+          go(in.tail, out, next)
+        case AwaitR(recv, fb, c) =>
+          emitSeq(out.flatten,
+          await(R[I2]: Env[I,I2]#Y[I2])(recv andThen (feedL(in)), feedL(in)(fb), feedL(in)(c)))
+      }
+      else emitSeq(out.flatten, cur)
+    go(i, Vector(), p)
+  }
+
+  /** Feed a sequence of inputs to the right side of a `Tee`. */
+  def feedR[I,I2,O](i: Seq[I2])(p: Wye[I,I2,O]): Wye[I,I2,O] = {
+    @annotation.tailrec
+    def go(in: Seq[I2], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] =
+      if (in.nonEmpty) cur match {
+        case h@Halt(_) => emitSeq(out.flatten, h)
+        case Emit(h, t) => go(in, out :+ h, t)
+        case AwaitR(recv, fb, c) =>
+          val next =
+            try recv(in.head)
+            catch {
+              case End => fb
+              case e: Throwable => c.causedBy(e)
+            }
+          go(in.tail, out, next)
+        case AwaitBoth(recv, fb, c) =>
+          val next =
+            try recv(These.That(in.head))
+            catch {
+              case End => fb
+              case e: Throwable => c.causedBy(e)
+            }
+          go(in.tail, out, next)
+        case AwaitL(recv, fb, c) =>
+          emitSeq(out.flatten,
+          await(L[I]: Env[I,I2]#Y[I])(recv andThen (feedR(in)), feedR(in)(fb), feedR(in)(c)))
+      }
+      else emitSeq(out.flatten, cur)
+    go(i, Vector(), p)
+  }
+
+  /**
+   * Convert right requests to left requests and vice versa.
+   */
+  def flip[I,I2,O](w: Wye[I,I2,O]): Wye[I2,I,O] = w match {
+    case h@Halt(_) => h
+    case Emit(h, t) => Emit(h, flip(t))
+    case AwaitL(recv, fb, c) =>
+      await(R[I]: Env[I2,I]#Y[I])(recv andThen (flip), flip(fb), flip(c))
+    case AwaitR(recv, fb, c) =>
+      await(L[I2]: Env[I2,I]#Y[I2])(recv andThen (flip), flip(fb), flip(c))
+    case AwaitBoth(recv, fb, c) =>
+      await(Both[I2,I])((t: These[I2,I]) => flip(recv(t.flip)), flip(fb), flip(c))
+  }
 
   /**
    * Lift a `Wye` to operate on the left side of an `\/`, passing
