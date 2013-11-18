@@ -1,8 +1,9 @@
 package scalaz.stream.async.mutable
 
-import scalaz.stream.{Process, message}
+import scalaz.stream.Process
 import scalaz.concurrent.{Task, Actor}
 import scalaz.stream.Process._
+import scalaz.stream.actor.message
 
 /**
  * Represents topic, that asynchronously exchanges messages between one or more publisher(s) 

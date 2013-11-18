@@ -1,5 +1,7 @@
 package scalaz.stream
 
+import actor.message
+import actor.actors
 import scala.collection.immutable.{IndexedSeq,SortedMap,Queue,Vector}
 import scala.concurrent.duration._
 
@@ -1714,7 +1716,7 @@ object Process {
    * before any output has been produced.
    */
   def fix[A](f: Process[Task,A] => Process[Task,A]): Process[Task,A] = Process.suspend {
-    val (snk, q) = actor.localQueue[A]
+    val (snk, q) = actors.localQueue[A]
     f(q).map { a => snk ! message.queue.enqueue(a); a }
   }
 
