@@ -7,17 +7,28 @@ import scalaz.stream.Process
 import scalaz.stream.Process._
 import scalaz.stream.Step
 import scalaz.stream.Wye
-import scalaz.stream.actor.message.wye.Get
-import scalaz.stream.actor.message.wye.Ready
-import scalaz.stream.actor.message.wye.{Side, Msg}
+import scalaz.stream.actor.message.wye._
 import scalaz.stream.wye
 import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
 import scala.annotation.tailrec
+import scalaz.-\/
+import scalaz.stream.Process.Halt
+import scalaz.stream.Process.Emit
+import scalaz.stream.Step
+import scalaz.stream.Process.Env
+import scalaz.stream.actor.message.wye.Get
+import scala.Some
+import scalaz.Right3
+import scalaz.Middle3
+import scalaz.Left3
+import scalaz.stream.Process.Await
+import scalaz.\/-
+import scalaz.stream.actor.message.wye.Ready
 
 
 object debug {
   def apply(s: String, o:Any*) {
-      //println(s,o)
+      println(s,o)
   }
 }
 
@@ -254,6 +265,12 @@ trait WyeActor {
     // Actor that does the `main` job
     val a: Actor[Msg] = Actor.actor[Msg] {
 
+      // this is just to `start` the wye once `out` is run
+      case Run =>
+        pullL(p1,actor)
+        pullR(p2,actor)
+        runWye(actor)
+
       case Ready(Side.L, -\/(t)) =>
         sl = Some(-\/(t))
         runWye(actor)
@@ -282,8 +299,7 @@ trait WyeActor {
 
     actor = a
 
-    eval(Task.delay(pull(Side.L)(p1, actor))).drain ++
-      eval(Task.delay(pull(Side.R)(p2, actor))).drain ++
+    eval(Task.delay(actor ! Run)).drain ++
       repeatEval(Task.async[Seq[O]](cb => actor ! Get(cb))).flatMap(emitAll)
 
 
