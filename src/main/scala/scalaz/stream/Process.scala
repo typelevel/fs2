@@ -1031,7 +1031,7 @@ object Process {
     suspend {
       val v = async.signal[A](S)
       val t = toTask(p).map(a => v.value.set(a))
-      val setvar = repeatEval(t).drain
+      val setvar = eval(t).flatMap(_ => v.continuous.once)
       v.continuous.merge(setvar)
     }
   }
