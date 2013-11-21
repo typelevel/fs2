@@ -145,11 +145,7 @@ object ProcessSpec extends Properties("Process1") {
     import concurrent.duration._
     val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
              Process.awakeEvery(100 milliseconds).take(100)
-<<<<<<< HEAD
            }.run.timed(15000).run
-=======
-           }.run.run
->>>>>>> master
     true
   }
 
@@ -192,11 +188,7 @@ object ProcessSpec extends Properties("Process1") {
   property("last") = secure {
     var i = 0
     Process.range(0,10).last.map(_ => i += 1).runLog.run
-<<<<<<< HEAD
     i =? 1
-=======
-    i == 1
->>>>>>> master
   }
 
   property("state") = secure {
