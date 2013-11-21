@@ -145,7 +145,7 @@ object ProcessSpec extends Properties("Process1") {
     import concurrent.duration._
     val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
              Process.awakeEvery(100 milliseconds).take(100)
-           }.run.run
+           }.run.timed(15000).run
     true
   }
 

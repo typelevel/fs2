@@ -1,34 +1,18 @@
 package scalaz.stream.actor
 
-import scala.Some
-import scalaz._
-import scalaz.concurrent.{Actor, Task}
+import scalaz.concurrent.{Strategy, Actor, Task}
 import scalaz.stream.Process
 import scalaz.stream.Process._
-import scalaz.stream.Step
-import scalaz.stream.Wye
-import scalaz.stream.actor.message.wye._
-import scalaz.stream.wye
+import scalaz.stream.actor.message.wye.{Get, Run, Ready, Done, Side, Msg}
 import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
 import scala.annotation.tailrec
-import scalaz.-\/
-import scalaz.stream.Process.Halt
-import scalaz.stream.Process.Emit
-import scalaz.stream.Step
-import scalaz.stream.Process.Env
-import scalaz.stream.actor.message.wye.Get
-import scala.Some
-import scalaz.Right3
-import scalaz.Middle3
-import scalaz.Left3
-import scalaz.stream.Process.Await
-import scalaz.\/-
-import scalaz.stream.actor.message.wye.Ready
+import scalaz._
+import scalaz.stream.{Step, wye}
 
 
 object debug {
   def apply(s: String, o:Any*) {
-      println(s,o)
+     // println(s,o)
   }
 }
 
@@ -44,7 +28,7 @@ trait WyeActor {
     //when any of this is set, this indicates that side is ready to be `read`
     // left - process has terminated
     // right - process is ready for next read, with next state
-    // when unset, indicates the process is not ready to be ready and is likely in await, or is performing a cleanup
+    // when unset, indicates the process is likely in await, or is performing a cleanup
     // wye (out) shall end only in case both sl and sr are set to Some(-\/(e))
     var sl: Option[Throwable \/ (Seq[L], Process[Task, L])] = None
     var sr: Option[Throwable \/ (Seq[R], Process[Task, R])] = None
@@ -52,8 +36,12 @@ trait WyeActor {
     //state of wye
     var yy = y
 
-    //output to be takenM
-    var out: Either3[Throwable, Seq[O], (Throwable \/ Seq[O]) => Unit] = Middle3(Nil)
+    //output to be taken
+    // - left when wye fails, contains reason and `out` on next `Get` will fail with that reason.
+    //   If out terminated, this is set to reason, and callback that must be calles once left, right and wye terminate
+    // - middle - values to be emitted to out
+    // - right - waiting for either left right or both to be processed by wye
+    var out: Either3[(Throwable, Option[(Throwable \/ Unit) => Unit]), Seq[O], (Throwable \/ Seq[O]) => Unit] = Middle3(Nil)
     //var out: (Throwable \/ Seq[O]) \/ ((Throwable \/ Seq[O]) => Unit) = -\/(\/-(Nil))
 
     //bias to have fair queueing in case of AwaitBoth
@@ -82,6 +70,7 @@ trait WyeActor {
     //terminates the p1 or p2
     //this is called from wye in halt, and actually
     def kill[A](side: Side.Value, rsn: Throwable, actor: Actor[Msg]) = {
+      debug("KILL",side,sl,sr)
       val s = side match {
         case Side.L => sl
         case Side.R => sr
@@ -145,9 +134,12 @@ trait WyeActor {
               //both sides got killed we can `kill` the out side
               out match {
                 case Right3(cb) => cb(-\/(rsn))
-                case _          => out = Left3(rsn)
+                case Left3((rsn,Some(cb))) => cb(\/-()) //signal cleanups are done
+                case _          => //no-op
               }
+              out = Left3((rsn, None))
             } else {
+              debug("killing ********* ")
               kill(Side.L, rsn, actor)
               kill(Side.R, rsn, actor)
             }
@@ -159,10 +151,10 @@ trait WyeActor {
               out match {
                 //callback is waiting for out
                 case Right3(cb) => out = Middle3(Nil); cb(\/-(h)); debug("OUT !", out); go(nextY)
-                //some elements are waiting for out to be taken, or we add some
-                case Middle3(curr) => out = Middle3(curr ++ h); debug("OUT +", h, out); go(nextY)
+                //some elements are waiting for out to be taken, or we add some, wait for out to take it at next GET
+                case Middle3(curr) => out = Middle3(curr ++ h); debug("OUT +", h, out); nextY
                 //out failed
-                case Left3(err) => debug("OUT =", out); go(y2.killBy(err))
+                case Left3((err, _)) => debug("OUT =", out); go(y2.killBy(err))
               }
             } else {
               go(nextY)
@@ -231,8 +223,11 @@ trait WyeActor {
         }
       }
 
-      yy = go(yy)
-      debug("@Y@", yy)
+      //run go only has nothing emitted, otherwise wait for out`s Get
+      if (out.fold(_=>true,o=>o.isEmpty,_=>true)) {
+        yy = go(yy)
+        debug("@Y@", yy)
+      }
     }
 
     // seems like we can`t get inside actor handle for actor itself so this is nasty hack for now
@@ -263,7 +258,7 @@ trait WyeActor {
     def readyR(next:Step[Task,R]) = ready[R](Side.R, sr = _)(next)
 
     // Actor that does the `main` job
-    val a: Actor[Msg] = Actor.actor[Msg] {
+    val a: Actor[Msg] = Actor.actor[Msg]({
 
       // this is just to `start` the wye once `out` is run
       case Run =>
@@ -271,36 +266,53 @@ trait WyeActor {
         pullR(p2,actor)
         runWye(actor)
 
+      //Left side signalling failure to run Step
       case Ready(Side.L, -\/(t)) =>
+        debug("ERRR L", t)
         sl = Some(-\/(t))
         runWye(actor)
 
+      //Right side signalling failure to run Step
       case Ready(Side.R, -\/(t)) =>
+        debug("ERRR R", t)
         sr = Some(-\/(t))
         runWye(actor)
 
+      //Left side is having one step Done
       case Ready(Side.L, \/-(next: Step[Task, L]@unchecked)) =>
         debug("READY L", sl, sr, out)
         readyL(next)
 
+      //Right side is having one step done
       case Ready(Side.R, \/-(next: Step[Task, R]@unchecked)) =>
         debug("READY R", sl, sr, out)
         readyR(next)
 
+      //Out is trying to get next value after merge
       case Get(cb: ((Throwable \/ Seq[O]) => Unit)@unchecked) =>
         out match {
-          case Left3(t)     => cb(-\/(t))
+          case Left3((t,_))     => cb(-\/(t))
           case Middle3(Nil) => out = Right3(cb)
           case Middle3(hd)  => out = Middle3(Nil); cb(\/-(hd))
           case Right3(_)    => cb(-\/(new Exception("Only one callback for wye-out")))
         }
+        debug("GET",sl,sr,out,yy)
         runWye(actor)
-    }
+
+      //Out has finished, run cleanup on Left and Right and then complete
+      case Done(cb) =>
+        out = Left3((End,Some(cb))) //by default this is an end. We probably would rather get the exception and propagate it here
+        yy == yy.killBy(End)
+        runWye(actor)
+
+
+    })(Strategy.Sequential)
 
     actor = a
 
     eval(Task.delay(actor ! Run)).drain ++
-      repeatEval(Task.async[Seq[O]](cb => actor ! Get(cb))).flatMap(emitAll)
+      repeatEval(Task.async[Seq[O]](cb => actor ! Get(cb)).map { v=> debug("GETF",v);v}).flatMap(emitAll).map{v => debug("OUTP",v); v} onComplete
+    eval(Task.async[Unit](cb=> actor! Done(cb))).drain
 
 
   }

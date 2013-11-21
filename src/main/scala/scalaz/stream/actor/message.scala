@@ -45,6 +45,8 @@ object message {
     sealed trait Msg
     case class Ready[A](from:Side.Value,s:Throwable \/ Step[Task,A]) extends Msg
     case class Get[A](cb:(Throwable \/ Seq[A]) => Unit) extends Msg
+    case object Run extends Msg
+    case class Done(cb: (Throwable \/ Unit) => Unit) extends Msg
 
   }
 
