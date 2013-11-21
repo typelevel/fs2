@@ -259,7 +259,7 @@ sealed abstract class Process[+F[_],+O] {
    * Run `p2` after this `Process` if this `Process` completes with an an error.
    */
   final def onFailure[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
-    case Await(req,recv,fb,c) => Await(req, recv andThen (_.onFailure(p2)), fb, c ++ onFailure(p2))
+    case Await(req,recv,fb,c) => Await(req, recv andThen (_.onFailure(p2)), fb, c onComplete p2)
     case Emit(h, t) => Emit(h, t.onFailure(p2))
     case h@Halt(e) =>
       try p2.causedBy(e)
