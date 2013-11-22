@@ -11,9 +11,10 @@ import org.scalacheck.Prop._
 
 object WyeSpec extends Properties("wye") {
 
-  val expectedEx = new java.lang.Exception {
+  class Ex extends java.lang.Exception {
     override def fillInStackTrace(): Throwable = this
   }
+
 
 
   property("either.terminate-on-both") = secure {
@@ -45,9 +46,9 @@ object WyeSpec extends Properties("wye") {
 
   property("either.cleanup-on-left") = secure {
     val e = (
-      ((Process.range(0, 2) ++ eval(Task.fail(expectedEx))) attempt (_ => Process.range(100, 102))) either
+      ((Process.range(0, 2) ++ eval(Task.fail(new Ex))) attempt (_ => Process.range(100, 102))) either
         Process.range(10, 20)
-      ).runLog.timed(1000).run
+      ).runLog.timed(3000).run
     (e.collect { case -\/(\/-(v)) => v } == (0 until 2)) :| "Left side got collected before failure" &&
       (e.collect { case \/-(v) => v } == (10 until 20)) :| "Right side got collected after failure" &&
       (e.collect { case -\/(-\/(v)) => v } == (100 until 102)) :| "Left side cleanup was called"
@@ -56,8 +57,8 @@ object WyeSpec extends Properties("wye") {
 
   property("either.cleanup-on-right") = secure {
     val e = (Process.range(10, 20) either
-      ((Process.range(0, 2) ++ eval(Task.fail(expectedEx))) attempt (_ => Process.range(100, 102)))
-      ).runLog.timed(1000).run
+      ((Process.range(0, 2) ++ eval(Task.fail(new Ex))) attempt (_ => Process.range(100, 102)))
+      ).runLog.timed(3000).run
     (e.collect { case \/-(\/-(v)) => v } == (0 until 2)) :| "Right side got collected before failure" &&
       (e.collect { case -\/(v) => v } == (10 until 20)) :| "Left side got collected after failure" &&
       (e.collect { case \/-(-\/(v)) => v } == (100 until 102)) :| "Right side cleanup was called"
@@ -86,7 +87,54 @@ object WyeSpec extends Properties("wye") {
 
     (e.size == 10) :| "10 first was taken" &&
       (syncL.get(1000) == Some(100)) :| "Left side was cleaned" &&
-      (syncR.get(1000) == Some(200)) :| "Righ side was cleaned"
+      (syncR.get(1000) == Some(200)) :| "Right side was cleaned"
+
+  }
+
+
+
+  // checks we are safe on thread stack even after emitting million values nondet from both sides
+  property("merge.million") = secure {
+    val count = 1000000
+    val m =
+      (Process.range(0,count ) merge Process.range(0, count)).flatMap {
+        (v: Int) =>
+          if (v % 1000 == 0) {
+            val e = new java.lang.Exception
+            emit(e.getStackTrace.length)
+          } else {
+            halt
+          }
+      }.fold(0)(_ max _)
+
+    m.runLog.run.map(_ < 512) == Seq(true)
+
+  }
+
+  // checks we are able to handle reasonable number of deeply nested wye`s .
+  property("merge.deep-nested") = secure {
+    val count = 1000
+    val deep = 100
+
+    def src(of: Int) = Process.range(0, count).map((_, of))
+
+    val merged =
+      (1 until deep).foldLeft(src(0))({
+        case (p, x) => p merge src(x)
+      })
+
+    val m =
+      merged.flatMap {
+        case (v, of) =>
+          if (v % 1000 == 0) {
+            val e = new java.lang.Exception
+            emit(e.getStackTrace.length)
+          } else {
+            halt
+          }
+      }.fold(0)(_ max _)
+
+    m.runLog.run.map(_ < 512) == Seq(true)
 
   }
 

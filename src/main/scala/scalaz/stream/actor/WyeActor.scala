@@ -12,7 +12,7 @@ import scalaz.stream.{Step, wye}
 
 object debug {
   def apply(s: String, o:Any*) {
-     // println(s,o)
+     //println(s,o)
   }
 }
 
@@ -51,8 +51,10 @@ trait WyeActor {
 
     //we use step now, maybe shall optimize this a bit to avoid messaging in case of p being in Halt or Emit
     def pull[A](side: Side.Value)(p: Process[Task, A], actor: Actor[Msg]): Unit = {
+      debug("PULL " + side, p)
       p.step.runLast.runAsync {
         cb =>
+          debug("PULLED " + side,cb)
           val next = cb.fold(
           t => -\/(t)
           , {
@@ -82,7 +84,9 @@ trait WyeActor {
             case Side.L => sl = None
             case Side.R => sr = None
           }
-          step.killBy(rsn).run.runAsync { _ => actor ! Ready(side, -\/(rsn)) }
+          step.killBy(rsn).run.runAsync { _ =>
+            debug("Killed", side, sl, sr)
+            actor ! Ready(side, -\/(rsn)) }
         case _                              => //no-op hence we will run it once set (None=>Some) or is already failed
       }
 
@@ -303,10 +307,11 @@ trait WyeActor {
       case Done(cb) =>
         out = Left3((End,Some(cb))) //by default this is an end. We probably would rather get the exception and propagate it here
         yy == yy.killBy(End)
+        debug("DONE", yy, sl,sr,out)
         runWye(actor)
 
 
-    })(Strategy.Sequential)
+    })(Strategy.DefaultStrategy)
 
     actor = a
 
