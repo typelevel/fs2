@@ -1,7 +1,6 @@
 package scalaz.stream
 
-import actor.message
-import actor.actors
+import scalaz.stream.actor.{WyeActor, message, actors}
 import scala.collection.immutable.{IndexedSeq,SortedMap,Queue,Vector}
 import scala.concurrent.duration._
 
@@ -1371,7 +1370,7 @@ object Process {
      */
     final def wye[O2,O3](p2: Process[Task,O2])(y: Wye[O,O2,O3]): Process[Task,O3] =
       //wye2(self, p2)(y)
-      actor.actors.wyeActor[O,O2,O3](self,p2)(y)
+      WyeActor.wyeActor[O,O2,O3](self,p2)(y)
 
     /** Nondeterministic version of `zipWith`. */
     def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3): Process[Task,O3] =

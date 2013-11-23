@@ -1,12 +1,11 @@
 package scalaz.stream.actor
 
-import scalaz.{\/-, -\/, \/}
+import scalaz._
 import scala.collection.immutable.Queue
 import scalaz.concurrent.{Task, Strategy}
 import scalaz.\/._
 import scalaz.-\/
 import scalaz.\/-
-import scalaz.stream.Step
 
 object message {
 
@@ -40,15 +39,7 @@ object message {
     case class Fail[A](t:Throwable, callback:Throwable => Unit) extends Msg[A]
   }
 
-  object wye {
-    object Side extends Enumeration { val L, R = Value }
-    sealed trait Msg
-    case class Ready[A](from:Side.Value,s:Throwable \/ Step[Task,A]) extends Msg
-    case class Get[A](cb:(Throwable \/ Seq[A]) => Unit) extends Msg
-    case object Run extends Msg
-    case class Done(cb: (Throwable \/ Unit) => Unit) extends Msg
 
-  }
 
 
   object topic {
