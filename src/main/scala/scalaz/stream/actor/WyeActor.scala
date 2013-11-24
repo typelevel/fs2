@@ -7,11 +7,12 @@ import scalaz.stream.Process._
 import scalaz.stream.Step
 import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
 import scalaz.stream.{Process, wye}
+import java.util.concurrent.ForkJoinPool
 
 
 object debug {
   def apply(s: String, o:Any*) {
-   // println(s, o)
+  // println(s, o)
   }
 }
 
@@ -43,10 +44,17 @@ object WyeActor {
     var h: Seq[A] = Nil
 
     def ready(r: \/[Throwable, Step[Task, A]]): Unit = r match {
-      case -\/(e)    => state = Some(Halt(e))
-      case \/-(step) => step.head match {
-        case \/-(head) => h = head; state = Some(step.tail)
-        case -\/(e)    => state = Some(Halt(e))
+      case -\/(e)    =>
+        debug(">E>RDY", this, e)
+        state = Some(Halt(e))
+      case \/-(step) =>
+        step.head match {
+        case \/-(head) =>
+          debug(">->RDY", this, head)
+          h = head; state = Some(step.tail)
+        case -\/(e)    =>
+          debug(">e>RDY", this, e)
+          state = Some(Halt(e))
       }
     }
 
@@ -54,6 +62,7 @@ object WyeActor {
     //todo: maybe unemit first here ?
     def run(p: Process[Task, A]): Unit = {
       debug("<<RUN", this)
+      state = None
       p.step.runLast.runAsync(cb => actor ! Ready(this, cb.flatMap(r => r.map(\/-(_)).getOrElse(-\/(End)))))
     }
 
@@ -71,47 +80,52 @@ object WyeActor {
     }
 
     //tries to pull from process. If process is already pulling, it is no-op
-    def tryPull: Unit = state.foreach(pull)
+    def tryPull: Unit = if (! halted) state.foreach(pull)
 
     // eventually kills the process, if not killed yet or is not just running
     def kill(e: Throwable): Unit = {
-      state match {
-        case done@Some(Halt(_)) => //no-op
-        case Some(next)         => state = None; run(next.killBy(e))
-        case None               => //no-op
+      if (! halted) {
+        h = Nil
+        state.foreach(p=>run(p.killBy(e)))
       }
     }
 
     def haltedBy: Option[Throwable] = state.collect { case Halt(e) => e }
 
     def halted = state.exists {
-      case Halt(_) => true
+      case Halt(_) => true && h.isEmpty
       case _       => false
     }
 
-    // feeds to wye, even when data are not ready
-    def feed(y2: Wye[L, R, O]): Wye[L, R, O]
+    // feeds to wye. Shall be called only when data are ready to be fed
+    protected def feed0(y2: Wye[L, R, O]): Wye[L, R, O]
+
+    def feed(y2: Wye[L, R, O]): Wye[L, R, O] = {val ny = feed0(y2); h = Nil; ny}
 
     //tries to feed wye, if there are data ready. If data are not ready, returns None
     def tryFeed(y2: Wye[L, R, O]): Option[Wye[L, R, O]] =
-      if (h.nonEmpty) {val yn = Some(feed(y2)); h = Nil; yn } else None
+      if (h.nonEmpty) Some(feed(y2)) else None
 
     // feeds the wye with head
     def feedOrPull(y2: Process.Wye[L, R, O]): Option[Process.Wye[L, R, O]] = {
-      state match {
-        case Some(Halt(e)) => Some(y2.killBy(e))
-        case Some(next)    => tryFeed(y2) match {
-          case fed@Some(_) => h = Nil; fed
-          case None        => state = None; pull(next); None
+      if (h.nonEmpty) {
+         Some(feed(y2))
+      } else {
+        state match {
+          case Some(Halt(e)) => Some(y2.killBy(e))
+          case Some(next)    => tryFeed(y2) match {
+            case fed@Some(_) => h = Nil; fed
+            case None        => pull(next); None
+          }
+          case None          => None
         }
-        case None          => None
       }
     }
 
   }
 
 
-  def wyeActor[L, R, O](pl: Process[Task, L], pr: Process[Task, R])(y: Wye[L, R, O]): Process[Task, O] = {
+  def wyeActor[L, R, O](pl: Process[Task, L], pr: Process[Task, R])(y: Wye[L, R, O])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, O] = {
 
     //current state of the wye
     var yy: Wye[L, R, O] = y
@@ -126,14 +140,14 @@ object WyeActor {
       var state: Option[Process[Task, L]] = Some(pl)
       def switchBias: Unit = leftBias = false
       def bias: Boolean = leftBias
-      def feed(y2: Process.Wye[L, R, O]): Wye[L, R, O] = wye.feedL(h)(y2)
+      def feed0(y2: Process.Wye[L, R, O]): Wye[L, R, O] = wye.feedL(h)(y2)
       override def toString: String = "Left"
     }
     case class RightWyeSide(val actor: Actor[Msg]) extends WyeSideOps[R, L, R, O] {
       var state: Option[Process[Task, R]] = Some(pr)
       def switchBias: Unit = leftBias = true
       def bias: Boolean = !leftBias
-      def feed(y2: Process.Wye[L, R, O]): Wye[L, R, O] = wye.feedR(h)(y2)
+      def feed0(y2: Process.Wye[L, R, O]): Wye[L, R, O] = wye.feedR(h)(y2)
       override def toString: String = "Right"
     }
 
@@ -176,7 +190,7 @@ object WyeActor {
             }
 
           case Halt(e) =>
-            debug("##HLT", e)
+            debug("##HLT", e, left.halted, right.halted)
             left.kill(e)
             right.kill(e)
             if (left.halted && right.halted) {
@@ -213,8 +227,7 @@ object WyeActor {
         out = Some(done.cb)
         yy = yy.killBy(done.rsn)
         runWye(L, R)
-
-    })(Strategy.Sequential)
+    })(S)
 
     L = LeftWyeSide(a)
     R = RightWyeSide(a)
