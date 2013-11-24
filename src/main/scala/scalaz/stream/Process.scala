@@ -1009,7 +1009,7 @@ object Process {
    * the OS may only update the current time every ten milliseconds or so.
    */
   def duration: Process[Task, Duration] = suspend {
-    val t0 = System.currentTimeMillis
+    val t0 = System.nanoTime
     repeatEval { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
   }
 
