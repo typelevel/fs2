@@ -1,24 +1,15 @@
 package scalaz.stream.actor
 
 import scala._
+import scala.annotation.tailrec
 import scalaz._
 import scalaz.concurrent.{Strategy, Actor, Task}
 import scalaz.stream.Process._
 import scalaz.stream.Step
 import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
 import scalaz.stream.{Process, wye}
-import java.util.concurrent.ForkJoinPool
 
 
-object debug {
-  def apply(s: String, o:Any*) {
-  // println(s, o)
-  }
-}
-
-/**
- * Created by pach on 11/18/13.
- */
 object WyeActor {
 
   trait WyeSide[A] {
@@ -43,25 +34,19 @@ object WyeActor {
     //head that can be consumed before
     var h: Seq[A] = Nil
 
+    //called when the step of process completed  to collect results set next state
     def ready(r: \/[Throwable, Step[Task, A]]): Unit = r match {
-      case -\/(e)    =>
-        debug(">E>RDY", this, e)
-        state = Some(Halt(e))
+      case -\/(e)    =>  state = Some(Halt(e))
       case \/-(step) =>
         step.head match {
-        case \/-(head) =>
-          debug(">->RDY", this, head)
-          h = head; state = Some(step.tail)
-        case -\/(e)    =>
-          debug(">e>RDY", this, e)
-          state = Some(Halt(e))
+        case \/-(head) =>  h = head; state = Some(step.tail)
+        case -\/(e)    =>   state = Some(Halt(e))
       }
     }
 
     //runs single step
     //todo: maybe unemit first here ?
     def run(p: Process[Task, A]): Unit = {
-      debug("<<RUN", this)
       state = None
       p.step.runLast.runAsync(cb => actor ! Ready(this, cb.flatMap(r => r.map(\/-(_)).getOrElse(-\/(End)))))
     }
@@ -90,8 +75,10 @@ object WyeActor {
       }
     }
 
+    //if stream is halted, returns the reason for halt
     def haltedBy: Option[Throwable] = state.collect { case Halt(e) => e }
 
+    //returns true if stream is halt, and there are no more data to be consumed
     def halted = state.exists {
       case Halt(_) => true && h.isEmpty
       case _       => false
@@ -124,8 +111,20 @@ object WyeActor {
 
   }
 
-
-  def wyeActor[L, R, O](pl: Process[Task, L], pr: Process[Task, R])(y: Wye[L, R, O])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, O] = {
+  /**
+   * Actor that backs the `wye`. Actor is reading non-deterministically from both sides
+   * and interprets wye to produce output stream.
+   *
+   * @param pl left process
+   * @param pr right process
+   * @param y  wye to control queueing and merging
+   * @param S  strategy, preferably executor service
+   * @tparam L Type of left process element
+   * @tparam R Type of right process elements
+   * @tparam O Output type of resulting process
+   * @return Process with merged elements.
+   */
+  def wyeActor[L, R, O](pl: Process[Task, L], pr: Process[Task, R])(y: Wye[L, R, O])(implicit S: Strategy): Process[Task, O] = {
 
     //current state of the wye
     var yy: Wye[L, R, O] = y
@@ -152,26 +151,22 @@ object WyeActor {
     }
 
     def runWye(left: LeftWyeSide, right: RightWyeSide) = {
+      @tailrec
       def go(y2: Wye[L, R, O]): Wye[L, R, O] = {
         y2 match {
           case AwaitL(_, _, _) =>
-            debug("==AWL", left.state, right.state, y2)
             left.feedOrPull(y2) match {
               case Some(next) => go(next)
               case None       => y2
             }
 
           case AwaitR(_, _, _) =>
-            debug("==AWR", left.state, right.state, y2)
             right.feedOrPull(y2) match {
               case Some(next) => go(next)
               case None       => y2
             }
 
-
           case AwaitBoth(_, _, _) =>
-            debug("==AWB", left.bias, left.state, right.state, y2)
-
             (if (left.bias) {
               left.tryFeed(y2) orElse right.tryFeed(y2)
             } else {
@@ -183,19 +178,17 @@ object WyeActor {
             }
 
           case Emit(h, next) =>
-            debug("##EMT", h, next, out)
             out match {
-              case Some(cb) => out = None; cb(\/-(h)); next
+              case Some(cb) => out = None; S(cb(\/-(h))); next
               case None     => y2
             }
 
           case Halt(e) =>
-            debug("##HLT", e, left.halted, right.halted)
             left.kill(e)
             right.kill(e)
             if (left.halted && right.halted) {
               out match {
-                case Some(cb) => out = None; cb(-\/(e)); y2
+                case Some(cb) => out = None; S(cb(-\/(e))); y2
                 case None     => y2
               }
             } else {
@@ -206,36 +199,26 @@ object WyeActor {
       yy = go(yy)
     }
 
-    var L: LeftWyeSide = null
-    var R: RightWyeSide = null
-
+    //unfortunately L/R must be stored as var due forward-referencing actor below
+    var L: LeftWyeSide = null; var R: RightWyeSide = null
 
     val a = Actor.actor[Msg]({
-
       case Ready(side, step) =>
         side.ready(step)
-        debug(">>RDY", side, L.state, R.state, out.isDefined)
         runWye(L, R)
-
       case get: Get[O@unchecked] =>
-        debug(">>GET")
         out = Some(get.cb)
         runWye(L, R)
-
       case done: Done[O@unchecked] =>
-        debug("!!DONE")
         out = Some(done.cb)
         yy = yy.killBy(done.rsn)
         runWye(L, R)
     })(S)
 
-    L = LeftWyeSide(a)
-    R = RightWyeSide(a)
+    L = LeftWyeSide(a); R = RightWyeSide(a)
 
-    repeatEval(Task.async[Seq[O]](cb => a ! Get(cb)).map { v => debug("GETF", v); v }).flatMap(emitSeq(_)).map { v => debug("OUTP", v); v } onComplete
+    repeatEval(Task.async[Seq[O]](cb => a ! Get(cb))).flatMap(emitSeq(_)) onComplete
       suspend(eval(Task.async[Seq[O]](cb => a ! Done(End, cb))).drain)
-
-
   }
 
 

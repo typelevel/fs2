@@ -1367,10 +1367,12 @@ object Process {
      * new `F` requests. More sophisticated chunking and fairness
      * policies do not belong here, but should be built into the `Wye`
      * and/or its inputs.
+     *
+     * The strategy passed in must allow `fresh` stack on every processing of the
+     * element from each side. Preferrably use Executor-Based strategy
      */
-    final def wye[O2,O3](p2: Process[Task,O2])(y: Wye[O,O2,O3]): Process[Task,O3] =
-      //wye2(self, p2)(y)
-      WyeActor.wyeActor[O,O2,O3](self,p2)(y)
+    final def wye[O2,O3](p2: Process[Task,O2])(y: Wye[O,O2,O3])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,O3] =
+      WyeActor.wyeActor[O,O2,O3](self,p2)(y)(S)
 
     /** Nondeterministic version of `zipWith`. */
     def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3): Process[Task,O3] =
@@ -1729,67 +1731,6 @@ object Process {
   def when[F[_],O](condition: Process[F,Boolean])(p: Process[F,O]): Process[F,O] =
     p.when(condition)
 
-  final def wye2[A,B,C](p: Process[Task,A], p2: Process[Task,B])(y: Wye[A,B,C]): Process[Task,C] = {
-    import scalaz.stream.wye.{AwaitL,AwaitR,AwaitBoth}
-    import scalaz.syntax.applicative._
-    import async.mutable.{Queue, Signal}
-    val qL = async.localQueue[Step[Task,A]]._1 // queue for left
-    val pendingL = async.signal[Boolean]; pendingL.value.set(false)
-    val qR = async.localQueue[Step[Task,B]]._1
-    val pendingR = async.signal[Boolean]; pendingL.value.set(true)
-    val q = async.localQueue[Boolean]._1 // false = L, right = R
-
-    def asyncPull[A](step: Process[Task,Step[Task,A]],
-                     branchQ: Queue[Step[Task,A]],
-                     pending: Signal[Boolean], side: Boolean): Unit =
-      pending.continuous.once.flatMap {
-        case true => halt
-        case false => eval { Task.delay(pending.value.set(true)) } *> step
-      }.evalMap { s => Task.delay {
-        branchQ.enqueue(s); q.enqueue(side); pending.value.set(false) } }
-       .run.runAsync(_ => ())
-
-    def go(p: Process[Task,A], p2: Process[Task,B])(y: Wye[A,B,C]): Process[Task,C] = y match {
-      case h@Halt(_) => p.kill onComplete p2.kill onComplete h
-      case Emit(h, y2) => Emit(h, go(p, p2)(y2))
-      case AwaitL(recv,fb,c) =>
-        // If we're already running a computation on the left, block on that;
-        // if not, run the normal `tee` logic to read from the left
-        pendingL.continuous.once.flatMap {
-          case true => eval { Task.async(qL.dequeue) <* Task.delay(pendingL.value.set(false)) }
-          case false => p.step
-        }.flatMap { s =>
-          s.fold { hd => go(s.tail,p2)(wye.feedL(hd)(y))
-          } (go(halt,p2)(fb), go(halt,p2)(c))
-        }
-      case AwaitR(recv,fb,c) =>
-        // If we're already running a computation on the right, block on that;
-        // if not, run the normal `tee` logic to read from the right
-        pendingR.continuous.once.flatMap {
-          case true => eval { Task.async(qR.dequeue) <* Task.delay(pendingR.value.set(false)) }
-          case false => p2.step
-        }.flatMap { s =>
-          s.fold { hd => go(p,s.tail)(wye.feedR(hd)(y))
-          } (go(p,halt)(fb), go(p,halt)(c))
-        }
-      case AwaitBoth(recv,fb,c) =>
-        // Spin up a pull from the left and right branch, if one does not exist,
-        // then block on the shared queue to get a winner
-        asyncPull(p.step, qL, pendingL, false)
-        asyncPull(p2.step, qR, pendingR, true)
-        eval { Task.async(q.dequeue) } flatMap {
-          case false => // left won
-            eval { Task.async(qL.dequeue) } flatMap { s =>
-              s.fold { hd => go(s.tail, p2)(wye.feedL(hd)(y))
-            } (go(halt,p2)(fb), go(halt,p2)(c)) }
-          case true => // right won
-            eval { Task.async(qR.dequeue) } flatMap { s =>
-              s.fold { hd => go(p, s.tail)(wye.feedR(hd)(y))
-            } (go(p,halt)(fb), go(p,halt)(c)) }
-        }
-    }
-    go(p, p2)(y)
-  }
 
   private[stream] def rethrow[F[_],A](f: F[Throwable \/ A])(implicit F: Nondeterminism[F], E: Catchable[F]): F[A] =
     F.bind(f)(_.fold(E.fail, F.pure(_)))
