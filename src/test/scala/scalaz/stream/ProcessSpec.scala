@@ -9,6 +9,7 @@ import scalaz.std.string._
 
 import org.scalacheck._
 import Prop._
+import Arbitrary.arbitrary
 
 object ProcessSpec extends Properties("Process1") {
 
@@ -63,6 +64,12 @@ object ProcessSpec extends Properties("Process1") {
     }) &&
     ("dropWhile" |: {
       (p.toList.dropWhile(g) === p.dropWhile(g).toList)
+    }) &&
+    ("exists" |: {
+      (List(p.toList.exists(g)) === p.exists(g).toList)
+    }) &&
+    ("forall" |: {
+      (List(p.toList.forall(g)) === p.forall(g).toList)
     }) &&
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
@@ -184,6 +191,17 @@ object ProcessSpec extends Properties("Process1") {
     i == 1
   }
 
+  property("state") = secure {
+    val s = Process.state((0, 1))
+    val fib = Process(0, 1) ++ s.flatMap { case (get, set) =>
+      val (prev0, prev1) = get
+      val next = prev0 + prev1
+      eval(set((prev1, next))).drain ++ emit(next)
+    }
+    val l = fib.take(10).runLog.run.toList
+    l === List(0, 1, 1, 2, 3, 5, 8, 13, 21, 34)
+  }
+
   property("chunkBy2") = secure {
     val s = Process(3, 5, 4, 3, 1, 2, 6)
     s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
@@ -196,4 +214,45 @@ object ProcessSpec extends Properties("Process1") {
     (firstValueDiscrepancy.toNanos < reasonableError) :| "duration is near zero at first access"
   }
 
+  implicit def arbVec[A:Arbitrary]: Arbitrary[IndexedSeq[A]] =
+    Arbitrary(Gen.listOf(arbitrary[A]).map(_.toIndexedSeq))
+
+  property("zipAll") = forAll((l: IndexedSeq[Int], l2: IndexedSeq[Int]) => {
+    val a = Process.range(0,l.length).map(l(_))
+    val b = Process.range(0,l2.length).map(l2(_))
+    val r = a.tee(b)(tee.zipAll(-1, 1)).runLog.run.toList
+    r.toString |: (r == l.zipAll(l2, -1, 1).toList)
+  })
+
+  property("passL/R") = secure {
+    val a = Process.range(0,10)
+    val b: Process[Task,Int] = halt
+    a.tee(b)(tee.passL[Int]).runLog.run == List.range(0,10) &&
+    b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
+  }
+
+  property("cleanup") = secure {
+    val a = Process(false).toSource |> await1[Boolean]
+    val b = a.orElse(Process.emit(false), Process.emit(true))
+    b.cleanup.runLastOr(false).run
+  }
+
+  property("onFailure") = secure {
+    @volatile var i: Int = 0
+    val p = eval(Task.delay(sys.error("FAIL"))) onFailure (Process.emit(1)) map (j => i = j)
+    try { p.run.run; false }
+    catch { case e: Throwable =>
+      e.getMessage == "FAIL" && i == 1
+    }
+  }
+
+  /*
+  This fails
+  property("interrupt") = secure {
+    val p1 = Process(1,2,3,4,6).toSource
+    val i1 = repeatEval(Task.now(false))
+    val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
+    v == List(1,2,3,4,6)
+  }
+  */
 }
