@@ -11,7 +11,7 @@ import org.scalacheck._
 import Prop._
 
 object ProcessSpec extends Properties("Process1") {
-  
+
   import Process._
   import process1._
 
@@ -26,47 +26,47 @@ object ProcessSpec extends Properties("Process1") {
 
 
   implicit def EqualProcess[A:Equal]: Equal[Process0[A]] = new Equal[Process0[A]] {
-    def equal(a: Process0[A], b: Process0[A]): Boolean = 
+    def equal(a: Process0[A], b: Process0[A]): Boolean =
       a.toList == b.toList
   }
-  implicit def ArbProcess0[A:Arbitrary]: Arbitrary[Process0[A]] = 
+  implicit def ArbProcess0[A:Arbitrary]: Arbitrary[Process0[A]] =
     Arbitrary(Arbitrary.arbitrary[List[A]].map(a => Process(a: _*)))
 
-  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) => 
+  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
     val f = (x: Int) => List.range(1, x.min(100))
     val g = (x: Int) => x % 7 == 0
     val pf : PartialFunction[Int,Int] = { case x : Int if x % 2 == 0 => x}
-  
+
     val sm = Monoid[String]
-   
-    ("id" |: { 
+
+    ("id" |: {
       ((p |> id) === p) &&  ((id |> p) === p)
     }) &&
     ("map" |: {
-      (p.toList.map(_ + 1) === p.map(_ + 1).toList) && 
+      (p.toList.map(_ + 1) === p.map(_ + 1).toList) &&
       (p.map(_ + 1) === p.pipe(lift(_ + 1)))
     }) &&
     ("flatMap" |: {
       (p.toList.flatMap(f) === p.flatMap(f andThen Process.emitAll).toList)
-    }) && 
+    }) &&
     ("filter" |: {
       (p.toList.filter(g) === p.filter(g).toList)
-    }) && 
+    }) &&
     ("take" |: {
       (p.toList.take(n) === p.take(n).toList)
-    }) && 
+    }) &&
     ("takeWhile" |: {
       (p.toList.takeWhile(g) === p.takeWhile(g).toList)
-    }) && 
+    }) &&
     ("drop" |: {
       (p.toList.drop(n) === p.drop(n).toList)
     }) &&
     ("dropWhile" |: {
       (p.toList.dropWhile(g) === p.dropWhile(g).toList)
-    }) && 
+    }) &&
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
-    }) && 
+    }) &&
     ("yip" |: {
       val l = p.toList.zip(p2.toList)
       val r = p.toSource.yip(p2.toSource).runLog.run.toList
@@ -75,7 +75,7 @@ object ProcessSpec extends Properties("Process1") {
     ("scan" |: {
       p.toList.scan(0)(_ - _) ===
       p.toSource.scan(0)(_ - _).runLog.run.toList
-    }) &&   
+    }) &&
     ("scan1" |: {
        p.toList.scan(0)(_ + _).tail ===
        p.toSource.scan1(_ + _).runLog.run.toList
@@ -85,27 +85,27 @@ object ProcessSpec extends Properties("Process1") {
       p.toSource.pipe(process1.sum).runLastOr(0).run
     }) &&
     ("intersperse" |: {
-      p.intersperse(0).toList == p.toList.intersperse(0) 
+      p.intersperse(0).toList == p.toList.intersperse(0)
     }) &&
     ("collect" |: {
       p.collect(pf).toList == p.toList.collect(pf)
-    }) && 
-    ("fold" |: { 
+    }) &&
+    ("fold" |: {
       p.fold(0)(_ + _).toList == List(p.toList.fold(0)(_ + _))
     }) &&
-    ("foldMap" |: { 
+    ("foldMap" |: {
       p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
     }) &&
     ("reduce" |: {
-      (p.reduce(_ + _).toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))  
+      (p.reduce(_ + _).toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))
     }) &&
     ("find" |: {
        (p.find(_ % 2 == 0).toList == p.toList.find(_ % 2 == 0).toList)
-    }) 
+    })
   }
-    
-   property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) { 
-    case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42) 
+
+   property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
+    case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
   }
 
   import scalaz.concurrent.Task
@@ -118,10 +118,10 @@ object ProcessSpec extends Properties("Process1") {
 
   // ensure that zipping terminates when the smaller stream runs out
   property("zip one side infinite") = secure {
-    val ones = Process.eval(Task.now(1)).repeat 
-    val p = Process(1,2,3) 
+    val ones = Process.eval(Task.now(1)).repeat
+    val p = Process(1,2,3)
     ones.zip(p).runLog.run == IndexedSeq(1 -> 1, 1 -> 2, 1 -> 3) &&
-    p.zip(ones).runLog.run == IndexedSeq(1 -> 1, 2 -> 1, 3 -> 1) 
+    p.zip(ones).runLog.run == IndexedSeq(1 -> 1, 2 -> 1, 3 -> 1)
   }
 
   property("merge") = secure {
@@ -138,17 +138,17 @@ object ProcessSpec extends Properties("Process1") {
     import concurrent.duration._
     val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
              Process.awakeEvery(100 milliseconds).take(100)
-           }.run.run 
+           }.run.run
     true
   }
 
   property("range") = secure {
     Process.range(0, 100).runLog.run == IndexedSeq.range(0, 100) &&
-    Process.range(0, 1).runLog.run == IndexedSeq.range(0, 1) && 
-    Process.range(0, 0).runLog.run == IndexedSeq.range(0, 0) 
+    Process.range(0, 1).runLog.run == IndexedSeq.range(0, 1) &&
+    Process.range(0, 0).runLog.run == IndexedSeq.range(0, 0)
   }
 
-  property("ranges") = forAll(Gen.choose(1, 101)) { size => 
+  property("ranges") = forAll(Gen.choose(1, 101)) { size =>
     Process.ranges(0, 100, size).flatMap { case (i,j) => emitSeq(i until j) }.runLog.run ==
     IndexedSeq.range(0, 100)
   }
@@ -173,14 +173,14 @@ object ProcessSpec extends Properties("Process1") {
   }
 
   property("either") = secure {
-    val w = wye.either[Int,Int] 
+    val w = wye.either[Int,Int]
     val s = Process.constant(1).take(1)
     s.wye(s)(w).runLog.run.map(_.fold(identity, identity)).toList == List(1,1)
   }
 
   property("last") = secure {
     var i = 0
-    Process.range(0,10).last.map(_ => i += 1).runLog.run 
+    Process.range(0,10).last.map(_ => i += 1).runLog.run
     i == 1
   }
 
@@ -189,4 +189,11 @@ object ProcessSpec extends Properties("Process1") {
     s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
     s.chunkBy2(_ > _).toList == List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
   }
+
+  property("duration") =  {
+    val firstValueDiscrepancy = duration.take(1).runLast.run.get
+    val reasonableError = 200 * 1000000 // 200 millis
+    (firstValueDiscrepancy.toNanos < reasonableError) :| "duration is near zero at first access"
+  }
+
 }
