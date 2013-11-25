@@ -17,15 +17,16 @@ import java.util.concurrent.{ConcurrentLinkedQueue, TimeUnit, CountDownLatch}
 import collection.JavaConverters._
 import collection.JavaConversions._
 import scala.Predef._
-import scala.Some
-import scalaz.stream.message.ref.Fail
 import scalaz.\/-
+import scalaz.stream.actor.message
+import scalaz.stream.actor.message.ref.Fail
+import scalaz.stream.actor.actors
 
 object ActorSpec extends Properties("actor") {
 
   property("queue") = forAll {
     l: List[Int] =>
-      val (q, s) = actor.queue[Int]
+      val (q, s) = actors.queue[Int]
       import message.queue._
       val t1 = Task {
         l.foreach(i => q ! enqueue(i))
@@ -61,7 +62,7 @@ object ActorSpec extends Properties("actor") {
                         , calledBack: List[CallBack]
                         , failCallBack: List[Throwable])
 
-  def example[A, B](l: List[Int], lsize: Int = -1, actorStream: (Actor[message.ref.Msg[A]], Process[Task, A]) = actor.ref[A])
+  def example[A, B](l: List[Int], lsize: Int = -1, actorStream: (Actor[message.ref.Msg[A]], Process[Task, A]) = actors.ref[A])
                    (pf: (Process[Task, A]) => Process[Task, B])
                    (feeder: (RefActor[A], CLQ[Read], CLQ[CallBack], CLQ[Throwable], CountDownLatch) => Task[Unit])
                    (vf: (List[B], List[Read], List[CallBack], List[Throwable], Long) => Prop): Prop = {
@@ -204,7 +205,7 @@ object ActorSpec extends Properties("actor") {
       @volatile var currentSerial = 0
       @volatile var serialChanges = Vector[(Int, Int)]()
 
-      val vs@(v, _) = actor.ref[Int]
+      val vs@(v, _) = actors.ref[Int]
 
       val serials = Process.repeatEval {
         Task.async[Int] {
