@@ -208,6 +208,12 @@ object ProcessSpec extends Properties("Process1") {
     s.chunkBy2(_ > _).toList == List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
   }
 
+  property("duration") =  {
+    val firstValueDiscrepancy = duration.take(1).runLast.run.get
+    val reasonableError = 200 * 1000000 // 200 millis
+    (firstValueDiscrepancy.toNanos < reasonableError) :| "duration is near zero at first access"
+  }
+
   implicit def arbVec[A:Arbitrary]: Arbitrary[IndexedSeq[A]] =
     Arbitrary(Gen.listOf(arbitrary[A]).map(_.toIndexedSeq))
 
