@@ -11,7 +11,7 @@ import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
 import scalaz.std.stream._
 import scalaz.syntax.foldable._
 import \/._
-import These.{This,That}
+import ReceiveY.{ReceiveL,ReceiveR}
 
 import java.util.concurrent._
 import scala.annotation.tailrec
@@ -1098,7 +1098,7 @@ object Process {
       def tag = 1
       def fold[R](l: => R, r: => R, both: => R): R = r
     }
-    case object Both extends Y[These[I,I2]] {
+    case object Both extends Y[ReceiveY[I,I2]] {
       def tag = 2
       def fold[R](l: => R, r: => R, both: => R): R = both
     }
@@ -1111,7 +1111,7 @@ object Process {
   def Get[I]: Env[I,Any]#Is[I] = Left_
   def L[I]: Env[I,Any]#Is[I] = Left_
   def R[I2]: Env[Any,I2]#T[I2] = Right_
-  def Both[I,I2]: Env[I,I2]#Y[These[I,I2]] = Both_
+  def Both[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]] = Both_
 
   /** A `Process` that halts due to normal termination. */
   val halt: Process[Nothing,Nothing] = Halt(End)
@@ -1128,7 +1128,7 @@ object Process {
   def awaitR[I2]: Tee[Any,I2,I2] =
     await(R[I2])(emit)
 
-  def awaitBoth[I,I2]: Wye[I,I2,These[I,I2]] =
+  def awaitBoth[I,I2]: Wye[I,I2,ReceiveY[I,I2]] =
     await(Both[I,I2])(emit)
 
   def receive1[I,O](recv: I => Process1[I,O], fallback: Process1[I,O] = halt): Process1[I,O] =
@@ -1155,10 +1155,10 @@ object Process {
     receiveR(recvR, fallback)
 
   def receiveBoth[I,I2,O](
-      recv: These[I,I2] => Wye[I,I2,O],
+      recv: ReceiveY[I,I2] => Wye[I,I2,O],
       fallback: Wye[I,I2,O] = halt,
       cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
-    await[Env[I,I2]#Y,These[I,I2],O](Both[I,I2])(recv, fallback, cleanup)
+    await[Env[I,I2]#Y,ReceiveY[I,I2],O](Both[I,I2])(recv, fallback, cleanup)
 
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process[Nothing, Nothing \/ O] =
@@ -1196,7 +1196,7 @@ object Process {
     liftW(Process.awaitR[I2])
 
   /** `Writer` based version of `awaitBoth`. */
-  def awaitBothW[I,I2]: WyeW[Nothing,I,I2,These[I,I2]] =
+  def awaitBothW[I,I2]: WyeW[Nothing,I,I2,ReceiveY[I,I2]] =
     liftW(Process.awaitBoth[I,I2])
 
   /**
@@ -1507,7 +1507,7 @@ object Process {
       case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
         case 0 => fb.detachL
         case 1 => Await(Get[I2], recv andThen (_ detachL), fb.detachL, c.detachL)
-        case 2 => Await(Get[I2], (That(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
+        case 2 => Await(Get[I2], (ReceiveR(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
       }
     }
 
@@ -1522,7 +1522,7 @@ object Process {
       case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
         case 0 => Await(Get[I], recv andThen (_ detachR), fb.detachR, c.detachR)
         case 1 => fb.detachR
-        case 2 => Await(Get[I], (This(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
+        case 2 => Await(Get[I], (ReceiveL(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
       }
     }
 
@@ -1582,7 +1582,7 @@ object Process {
               case _ => (None, None)
             }}
             val (q2, bufIn2) = q1.feed(bufIn1) { q => o => q match {
-              case AwaitBoth(recv,fb,c) => (None, Some(recv(This(o))))
+              case AwaitBoth(recv,fb,c) => (None, Some(recv(ReceiveL(o))))
               case _ => (None, None)
             }}
             q2 match {
@@ -1614,7 +1614,7 @@ object Process {
                       await(F3.choose(reqsrc, outH))(
                         _.fold(
                           { case (p,ro) => go(recvsrc(p), q2, bufIn2, ro +: outT) },
-                          { case (rp,o2) => go(await(rp)(recvsrc, fbsrc, csrc), recv(That(o2)), bufIn2, outT) }
+                          { case (rp,o2) => go(await(rp)(recvsrc, fbsrc, csrc), recv(ReceiveR(o2)), bufIn2, outT) }
                         ),
                         go(fbsrc, q2, bufIn2, bufOut),
                         go(csrc, q2, bufIn2, bufOut)

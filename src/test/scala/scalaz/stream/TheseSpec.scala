@@ -5,15 +5,15 @@ import scalaz.Apply
 import scalaz.std.anyVal._
 import org.scalacheck.{Arbitrary, Gen, Properties}
 import Arbitrary.arbitrary
-import These._
+import ReceiveY._
 
 object TheseSpec extends Properties("These") {
-  implicit def theseArb[A: Arbitrary, B: Arbitrary]: Arbitrary[These[A, B]] =
+  implicit def theseArb[A: Arbitrary, B: Arbitrary]: Arbitrary[ReceiveY[A, B]] =
     Arbitrary(Gen.oneOf(
-      arbitrary[A].map2(arbitrary[B])(These(_,_)),
-      arbitrary[A].map(This(_)),
-      arbitrary[B].map(That(_))
+      arbitrary[A].map2(arbitrary[B])(ReceiveY(_,_)),
+      arbitrary[A].map(ReceiveL(_)),
+      arbitrary[B].map(ReceiveR(_))
     ))
 
-  property("monad laws") = monad.laws[({type f[y] = These[Int, y]})#f]
+  property("monad laws") = monad.laws[({type f[y] = ReceiveY[Int, y]})#f]
 }
