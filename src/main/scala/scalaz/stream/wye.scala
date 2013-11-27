@@ -6,7 +6,7 @@ import concurrent.duration._
 import scalaz.{\/, -\/, \/-}
 import scalaz.\/._
 import Process._
-import ReceiveY.{ReceiveL,ReceiveR}
+import scalaz.stream.ReceiveY.{HaltR, ReceiveL, ReceiveR}
 
 trait wye {
 
@@ -33,7 +33,7 @@ trait wye {
       case Both => awaitBoth[I,I2].flatMap {
         case t@ReceiveL(i) => emit(t) fby go(f(i))
         case t@ReceiveR(i2) => emit(t) fby go(g(i2))
-        case t@ReceiveY(i,_) => emit(t) fby go(f(i)) // left-biased
+        case _ => go(signal)
       }
     }
     go(L)
@@ -72,7 +72,6 @@ trait wye {
     dynamic(f, f).flatMap {
       case ReceiveL(i) => emit(i)
       case ReceiveR(i) => emit(i)
-      case ReceiveY(i1,i2) => emitSeq(List(i2,i2))
     }
 
   /**
@@ -89,14 +88,14 @@ trait wye {
    * This halts as soon as the right branch halts.
    */
   def interrupt[I]: Wye[Boolean, I, I] = {
-    def go[I]: Wye[Boolean, Option[I], I] = awaitBoth[Boolean,Option[I]].flatMap {
+    def go[I]: Wye[Boolean, I, I] = awaitBoth[Boolean,I].flatMap {
       case ReceiveR(None) => halt
-      case ReceiveR(Some(i)) => emit(i) ++ go
+      case ReceiveR(i) => emit(i) ++ go
       case ReceiveL(kill) => if (kill) halt else go
-      case ReceiveY(kill, Some(i)) => if (kill) halt else emit(i) ++ go
-      case ReceiveY(kill, None) => halt
+      case HaltR(rsn) => Halt(rsn)
+      case _ => go
     }
-    wye.attachR(process1.terminated[I])(go[I])
+    go
   }
 
   /**
@@ -104,16 +103,14 @@ trait wye {
    * of the inputs is available.
    */
   def merge[I]: Wye[I,I,I] = {
-    def go(biasL: Boolean): Wye[I,I,I] =
+    def go: Wye[I,I,I] =
       receiveBoth[I,I,I]({
-        case ReceiveL(i) => emit(i) fby (go(!biasL))
-        case ReceiveR(i) => emit(i) fby (go(!biasL))
-        case ReceiveY(i,i2) =>
-          if (biasL) emitSeq(List(i,i2)) fby (go(!biasL))
-          else       emitSeq(List(i2,i)) fby (go(!biasL))
+        case ReceiveL(i) => emit(i) fby go
+        case ReceiveR(i) => emit(i) fby go
+        case _ => go
       }
     )
-    go(true)
+    go
   }
 
   /**
@@ -130,7 +127,7 @@ trait wye {
           else
             go(q :+ d2)
         case ReceiveR(i) => emit(i) fby (go(q.drop(1)))
-        case ReceiveY(t,i) => emit(i) fby (go(q.drop(1) :+ t))
+        case _ => go(q)
       }
     go(Vector())
   }
@@ -142,9 +139,9 @@ trait wye {
    */
   def unboundedQueue[I]: Wye[Any,I,I] =
     awaitBoth[Any,I].flatMap {
-      case ReceiveL(any) => halt
+      case ReceiveL(_) => halt
       case ReceiveR(i) => emit(i) fby unboundedQueue
-      case ReceiveY(_,i) => emit(i) fby unboundedQueue
+      case _ => unboundedQueue
     }
 
   /** Nondeterministic version of `zip` which requests both sides in parallel. */
@@ -163,7 +160,7 @@ trait wye {
     awaitBoth[I,I2].flatMap {
       case ReceiveL(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)))
       case ReceiveR(i2) => awaitL[I].flatMap(i => emit(f(i,i2)))
-      case ReceiveY(i,i2) => emit(f(i,i2))
+      case _ => halt //todo: this has to be verified, not sure if we should not terminate once either of branches dies....
     }.repeat
 
   /**
@@ -180,7 +177,7 @@ trait wye {
       else awaitBoth[I,O].flatMap {
         case ReceiveL(i) => go(buf :+ i)
         case ReceiveR(o) => emit(f(buf.head,o)) ++ go(buf.tail)
-        case ReceiveY(i,o) => emit(f(buf.head,o)) ++ go(buf :+ i)
+        case _ => go(buf) //todo: need to check if this is really correct in haltL/R
       }
     go(Vector())
   }
@@ -217,7 +214,6 @@ object wye extends wye {
           await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]])(
             { case ReceiveL(i0) => attachL(p.feed1(i0))(w)
               case ReceiveR(i2) => attachL(p)(feed1R(i2)(w))
-              case ReceiveY(i0,i2) => attachL(p.feed1(i0))(feed1R(i2)(w))
             },
             attachL(fbp)(w),
             attachL(cp)(w))
@@ -239,7 +235,6 @@ object wye extends wye {
     i match {
       case ReceiveL(i) => feed1L(i)(w)
       case ReceiveR(i2) => feed1R(i2)(w)
-      case ReceiveY(i,i2) => feed1Both(i,i2)(w)
     }
 
   /** Feed a value to both the right and left branch of a `Wye`. */
@@ -259,12 +254,13 @@ object wye extends wye {
           case End => feed1L(i)(fb)
           case e: Throwable => feed1L(i)(c.causedBy(e))
         }
-      case AwaitBoth(recv,fb,c) =>
-        try recv(ReceiveY(i,i2))
+      case AwaitBoth(recv,fb,c) => ???
+        //todo : left/right
+        /*try recv(ReceiveY(i,i2))
         catch {
           case End => fb
           case e: Throwable => c.causedBy(e)
-        }
+        }*/
     }
 
   /** Feed a single value to the left branch of a `Wye`. */
@@ -391,13 +387,6 @@ object wye extends wye {
         val w2: Wye[I0 \/ I, I0 \/ I2, I0 \/ O] = awaitBoth[I0 \/ I, I0 \/ I2].flatMap {
           case ReceiveL(io) => feed1(ReceiveL(io))(liftR(AwaitL(recv compose ReceiveL.apply, fb, c)))
           case ReceiveR(io) => feed1(ReceiveR(io))(liftR(AwaitR(recv compose ReceiveR.apply, fb, c)))
-          case ReceiveY(a,b) =>
-            (a, b) match {
-              case (-\/(i01), -\/(i02)) => emitSeq(Vector(left(i01), left(i02))) ++ liftR(w)
-              case (-\/(i01), \/-(i2)) => emit(left(i01)) ++ liftR(recv(ReceiveR(i2)))
-              case (\/-(i), \/-(i2)) => liftR(recv(ReceiveY(i,i2)))
-              case (\/-(i), -\/(i02)) => emit(left(i02)) ++ liftR(recv(ReceiveL(i)))
-            }
         }
         val fb2 = liftR[I0,I,I2,O](fb)
         val c2 = liftR[I0,I,I2,O](c)

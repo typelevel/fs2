@@ -9,8 +9,7 @@ import ReceiveY._
 
 object TheseSpec extends Properties("These") {
   implicit def theseArb[A: Arbitrary, B: Arbitrary]: Arbitrary[ReceiveY[A, B]] =
-    Arbitrary(Gen.oneOf(
-      arbitrary[A].map2(arbitrary[B])(ReceiveY(_,_)),
+    Arbitrary(Gen.oneOf( 
       arbitrary[A].map(ReceiveL(_)),
       arbitrary[B].map(ReceiveR(_))
     ))
