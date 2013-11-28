@@ -2,22 +2,26 @@ package scalaz.stream
 
 import scalaz.{Applicative, Equal, Monad, Monoid}
 
-trait ReceiveY[+A,+B] {
+sealed trait ReceiveY[+A,+B] {
   import ReceiveY._
 
   def flip: ReceiveY[B,A] = this match {
     case ReceiveL(x) => ReceiveR(x)
-    case ReceiveR(x) => ReceiveL(x) 
+    case ReceiveR(x) => ReceiveL(x)
+    case HaltL(e) => HaltR(e)
+    case HaltR(e) => HaltL(e)
   }
 
   def mapL[A2](f: A => A2): ReceiveY[A2,B] = this match {
     case ReceiveL(a) => ReceiveL(f(a)) 
     case t@ReceiveR(_) => t
+    case h:HaltOne => h
   }
 
   def mapR[B2](f: B => B2): ReceiveY[A,B2] = this match {
     case ReceiveR(b) => ReceiveR(f(b)) 
     case t@ReceiveL(_) => t
+    case h:HaltOne => h
   }
 
   def isL: Boolean = this match {
@@ -37,21 +41,23 @@ trait ReceiveY[+A,+B] {
     case _ => None
   }
 
-  def bitraverse[F[_],A2,B2](
+  //todo: problem with Applicative for HaltL/R
+/*  def bitraverse[F[_],A2,B2](
       f: A => F[A2], g: B => F[B2])(
       implicit F: Applicative[F]): F[ReceiveY[A2,B2]] = {
     import F.applicativeSyntax._                      
     this match {
       case ReceiveL(a) => f(a) map (ReceiveL(_))
-      case ReceiveR(b) => g(b) map (ReceiveR(_)) 
+      case ReceiveR(b) => g(b) map (ReceiveR(_))
+      case h:HaltOne => h
     }
-  }
+  }*/
 }
 
 object ReceiveY {
   case class ReceiveL[+A](get: A) extends ReceiveY[A, Nothing]
   case class ReceiveR[+B](get: B) extends ReceiveY[Nothing, B]
-  trait HaltOne extends ReceiveY[Nothing, Nothing] {
+  sealed trait HaltOne extends ReceiveY[Nothing, Nothing] {
     val cause: Throwable
   }
   case class HaltL(cause:Throwable) extends HaltOne
@@ -78,7 +84,8 @@ object ReceiveY {
     def bind[Y,Y2](t: ReceiveY[X,Y])(f: Y => ReceiveY[X,Y2]): ReceiveY[X,Y2] =
       t match {
         case a@ReceiveL(_) => a
-        case ReceiveR(x) => f(x) 
+        case ReceiveR(x) => f(x)
+        case h:HaltOne => h
       }
   }
 
@@ -97,14 +104,14 @@ object ReceiveY {
 
   import scalaz.syntax.{ApplyOps, ApplicativeOps, FunctorOps, MonadOps}
   
-  trait TheseT[X] { type f[y] = ReceiveY[X,y] }
+  trait ReceiveT[X] { type f[y] = ReceiveY[X,y] }
 
-  implicit def toMonadOps[X:Monoid,A](f: ReceiveY[X,A]): MonadOps[TheseT[X]#f,A] =
+  implicit def toMonadOps[X:Monoid,A](f: ReceiveY[X,A]): MonadOps[ReceiveT[X]#f,A] =
     receiveYInstance.monadSyntax.ToMonadOps(f)
-  implicit def toApplicativeOps[X:Monoid,A](f: ReceiveY[X,A]): ApplicativeOps[TheseT[X]#f,A] =
+  implicit def toApplicativeOps[X:Monoid,A](f: ReceiveY[X,A]): ApplicativeOps[ReceiveT[X]#f,A] =
     receiveYInstance.applicativeSyntax.ToApplicativeOps(f)
-  implicit def toApplyOps[X:Monoid,A](f: ReceiveY[X,A]): ApplyOps[TheseT[X]#f,A] =
+  implicit def toApplyOps[X:Monoid,A](f: ReceiveY[X,A]): ApplyOps[ReceiveT[X]#f,A] =
     receiveYInstance.applySyntax.ToApplyOps(f)
-  implicit def toFunctorOps[X:Monoid,A](f: ReceiveY[X,A]): FunctorOps[TheseT[X]#f,A] =
+  implicit def toFunctorOps[X:Monoid,A](f: ReceiveY[X,A]): FunctorOps[ReceiveT[X]#f,A] =
     receiveYInstance.functorSyntax.ToFunctorOps(f)
 }

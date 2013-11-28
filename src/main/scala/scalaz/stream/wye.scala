@@ -6,7 +6,16 @@ import concurrent.duration._
 import scalaz.{\/, -\/, \/-}
 import scalaz.\/._
 import Process._
-import scalaz.stream.ReceiveY.{HaltR, ReceiveL, ReceiveR}
+import scalaz.stream.ReceiveY._
+import scalaz.stream.Process.Emit
+import scalaz.stream.ReceiveY.ReceiveL
+import scala.Some
+import scalaz.stream.ReceiveY.ReceiveR
+import scalaz.stream.Process.Halt
+import scalaz.stream.Process.Env
+import scalaz.stream.ReceiveY.HaltR
+import scalaz.stream.Process.Await
+import scalaz.stream.ReceiveY.HaltL
 
 trait wye {
 
@@ -204,6 +213,7 @@ object wye extends wye {
             attachL(cp)(w))
         case h@Halt(_) => attachL(h)(fb)
       }
+
     case AwaitR(recv, fb, c) =>
       awaitR[I2].flatMap(recv andThen (attachL(p)(_))).
       orElse(attachL(p)(fb), attachL(p)(c))
@@ -214,6 +224,8 @@ object wye extends wye {
           await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]])(
             { case ReceiveL(i0) => attachL(p.feed1(i0))(w)
               case ReceiveR(i2) => attachL(p)(feed1R(i2)(w))
+              case HaltL(e) => attachL(p.killBy(e))(w)
+              case HaltR(e) => attachL(p)(haltR(e)(w))
             },
             attachL(fbp)(w),
             attachL(cp)(w))
@@ -229,39 +241,16 @@ object wye extends wye {
 
 
   /**
-   * Feed a single `These` value to a `Wye`.
+   * Feed a single `ReceiveY` value to a `Wye`.
    */
   def feed1[I,I2,O](i: ReceiveY[I,I2])(w: Wye[I,I2,O]): Wye[I,I2,O] =
     i match {
       case ReceiveL(i) => feed1L(i)(w)
       case ReceiveR(i2) => feed1R(i2)(w)
+      case HaltL(e) => haltL(e)(w)
+      case HaltR(e) => haltR(e)(w)
     }
 
-  /** Feed a value to both the right and left branch of a `Wye`. */
-  def feed1Both[I,I2,O](i: I, i2: I2)(w: Wye[I,I2,O]): Wye[I,I2,O] =
-    w match {
-      case Halt(_) => w
-      case Emit(h, t) => Emit(h, feed1Both(i, i2)(t))
-      case AwaitL(recv,fb,c) =>
-        try feed1R(i2)(recv(i))
-        catch {
-          case End => feed1R(i2)(fb)
-          case e: Throwable => feed1R(i2)(c.causedBy(e))
-        }
-      case AwaitR(recv,fb,c) =>
-        try feed1L(i)(recv(i2))
-        catch {
-          case End => feed1L(i)(fb)
-          case e: Throwable => feed1L(i)(c.causedBy(e))
-        }
-      case AwaitBoth(recv,fb,c) => ???
-        //todo : left/right
-        /*try recv(ReceiveY(i,i2))
-        catch {
-          case End => fb
-          case e: Throwable => c.causedBy(e)
-        }*/
-    }
 
   /** Feed a single value to the left branch of a `Wye`. */
   def feed1L[I,I2,O](i: I)(w: Wye[I,I2,O]): Wye[I,I2,O] =
@@ -304,6 +293,7 @@ object wye extends wye {
 
   /** Feed a sequence of inputs to the right side of a `Tee`. */
   def feedR[I,I2,O](i: Seq[I2])(p: Wye[I,I2,O]): Wye[I,I2,O] = {
+
     @annotation.tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] =
       if (in.nonEmpty) cur match {
@@ -331,6 +321,36 @@ object wye extends wye {
       }
       else emitSeq(out.flatten, cur)
     go(i, Vector(), p)
+  }
+
+  /** Signal to wye that left side has terminated **/
+  def haltL[I,I2,O](e:Throwable)(p:Wye[I,I2,O]):Wye[I,I2,O] = {
+    p match {
+      case h@Halt(_) => h
+      case Emit(h, t) => Emit(h,haltL(e)(t)) //todo: SOE on nested emits?
+      case AwaitL(rcv,fb,c) => p.killBy(e)
+      case AwaitR(rcv,fb,c) => await(R[I2]: Env[I,I2]#Y[I2])(rcv, haltL(e)(fb), haltL(e)(c))
+      case AwaitBoth(rcv,fb,c) =>
+          try rcv(ReceiveY.HaltL(e))
+          catch {
+            case End => fb
+            case e: Throwable => c.causedBy(e)
+          }
+    }
+  }
+  def haltR[I,I2,O](e:Throwable)(p:Wye[I,I2,O]):Wye[I,I2,O] = {
+    p match {
+      case h@Halt(_) => h
+      case Emit(h, t) => Emit(h,haltL(e)(t)) //todo: SOE on nested emits?
+      case AwaitR(rcv,fb,c) => p.killBy(e)
+      case AwaitL(rcv,fb,c) => await(L[I]: Env[I,I2]#Y[I])(rcv, haltR(e)(fb), haltR(e)(c))
+      case AwaitBoth(rcv,fb,c) =>
+        try rcv(ReceiveY.HaltR(e))
+        catch {
+          case End => fb
+          case e: Throwable => c.causedBy(e)
+        }
+    }
   }
 
   /**

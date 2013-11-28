@@ -7,9 +7,9 @@ import org.scalacheck.{Arbitrary, Gen, Properties}
 import Arbitrary.arbitrary
 import ReceiveY._
 
-object TheseSpec extends Properties("These") {
+object ReceiveYSpec extends Properties("These") {
   implicit def theseArb[A: Arbitrary, B: Arbitrary]: Arbitrary[ReceiveY[A, B]] =
-    Arbitrary(Gen.oneOf( 
+    Arbitrary(Gen.oneOf(
       arbitrary[A].map(ReceiveL(_)),
       arbitrary[B].map(ReceiveR(_))
     ))
