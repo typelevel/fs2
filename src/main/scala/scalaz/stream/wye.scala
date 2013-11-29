@@ -81,6 +81,8 @@ trait wye {
     dynamic(f, f).flatMap {
       case ReceiveL(i) => emit(i)
       case ReceiveR(i) => emit(i)
+      case HaltR(_) => halt
+      case HaltL(_) => halt
     }
 
   /**
@@ -419,6 +421,8 @@ object wye extends wye {
         val w2: Wye[I0 \/ I, I0 \/ I2, I0 \/ O] = awaitBoth[I0 \/ I, I0 \/ I2].flatMap {
           case ReceiveL(io) => feed1(ReceiveL(io))(liftR(AwaitL(recv compose ReceiveL.apply, fb, c)))
           case ReceiveR(io) => feed1(ReceiveR(io))(liftR(AwaitR(recv compose ReceiveR.apply, fb, c)))
+          case HaltL(e) => liftR(w)
+          case HaltR(e) => liftR(w)
         }
         val fb2 = liftR[I0,I,I2,O](fb)
         val c2 = liftR[I0,I,I2,O](c)
