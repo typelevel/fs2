@@ -1098,14 +1098,6 @@ object Process {
       def tag = 1
       def fold[R](l: => R, r: => R, both: => R): R = r
     }
-    case object LeftY extends Y[ReceiveL[I]] {
-      def tag = 0
-      def fold[R](l: => R, r: => R, both: => R): R = l
-    }
-    case object RightY extends Y[ReceiveR[I2]] {
-      def tag = 1
-      def fold[R](l: => R, r: => R, both: => R): R = r
-    }
     case object Both extends Y[ReceiveY[I,I2]] {
       def tag = 2
       def fold[R](l: => R, r: => R, both: => R): R = both
@@ -1114,15 +1106,11 @@ object Process {
 
   private val Left_ = Env[Any,Any]().Left
   private val Right_ = Env[Any,Any]().Right
-  private val LeftY_ = Env[Any,Any]().LeftY
-  private val RightY_ = Env[Any,Any]().RightY
   private val Both_ = Env[Any,Any]().Both
 
   def Get[I]: Env[I,Any]#Is[I] = Left_
   def L[I]: Env[I,Any]#Is[I] = Left_
   def R[I2]: Env[Any,I2]#T[I2] = Right_
-  def LY[I]: Env[I,Any]#Y[ReceiveL[I]]= LeftY_
-  def RY[I2]: Env[Any,I2]#Y[ReceiveR[I2]] = RightY_
   def Both[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]] = Both_
 
   /** A `Process` that halts due to normal termination. */

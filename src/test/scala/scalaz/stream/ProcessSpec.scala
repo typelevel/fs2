@@ -10,11 +10,14 @@ import scalaz.std.string._
 import org.scalacheck._
 import Prop._
 import Arbitrary.arbitrary
+import scalaz.concurrent.Strategy
 
 object ProcessSpec extends Properties("Process1") {
 
   import Process._
   import process1._
+
+  implicit val S = Strategy.DefaultStrategy
 
   // Subtyping of various Process types:
   // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])

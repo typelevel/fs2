@@ -5,7 +5,7 @@ import org.scalacheck._
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
 import scalaz._
-import scalaz.concurrent.Task
+import scalaz.concurrent.{Strategy, Task}
 import org.scalacheck.Prop._
 
 
@@ -15,14 +15,12 @@ object WyeSpec extends Properties("wye") {
     override def fillInStackTrace(): Throwable = this
   }
 
-
+  implicit val S = Strategy.DefaultStrategy
 
   property("either.terminate-on-both") = secure {
     val e = (Process.range(0, 20) either Process.range(0, 20)).runLog.timed(1000).run
     (e.collect { case -\/(v) => v } == (0 until 20).toSeq) :| "Left side is merged ok" &&
-      (e.collect { case \/-(v) => v } == (0 until 20).toSeq) :| "Right side is merged ok" &&
-      (e.zipWithIndex.collect { case ((-\/(v), idx)) if idx % 2 != 0 => idx } == Nil) :| "Left side was first and fairly queued" &&
-      (e.zipWithIndex.collect { case ((\/-(v), idx)) if idx % 2 == 0 => idx } == Nil) :| "Right side was second and fairly queued"
+      (e.collect { case \/-(v) => v } == (0 until 20).toSeq) :| "Right side is merged ok"
   }
 
   property("either.terminate-on-out-terminating") = secure {
@@ -107,13 +105,13 @@ object WyeSpec extends Properties("wye") {
           }
       }.fold(0)(_ max _)
 
-    m.runLog.run.map(_ < 512) == Seq(true)
+    m.runLog.timed(60000).run.map(_ < 100) == Seq(true)
 
   }
 
   // checks we are able to handle reasonable number of deeply nested wye`s .
   property("merge.deep-nested") = secure {
-    val count = 1000
+    val count = 20
     val deep = 100
 
     def src(of: Int) = Process.range(0, count).map((_, of))
@@ -126,7 +124,7 @@ object WyeSpec extends Properties("wye") {
     val m =
       merged.flatMap {
         case (v, of) =>
-          if (v % 1000 == 0) {
+          if (v % 10 == 0) {
             val e = new java.lang.Exception
             emit(e.getStackTrace.length)
           } else {
@@ -134,7 +132,7 @@ object WyeSpec extends Properties("wye") {
           }
       }.fold(0)(_ max _)
 
-    m.runLog.run.map(_ < 512) == Seq(true)
+    m.runLog.timed(180000).run.map(_ < 100) == Seq(true)
 
   }
 

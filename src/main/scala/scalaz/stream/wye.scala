@@ -87,9 +87,15 @@ trait wye {
    * Nondeterminstic interleave of both inputs. Emits values whenever either
    * of the inputs is available.
    */
-  def either[I,I2]: Wye[I,I2,I \/ I2] =
-    merge[I \/ I2].contramapL((i: I) => left(i)).
-                   contramapR((i2: I2) => right(i2))
+  def either[I,I2]: Wye[I,I2,I \/ I2] = {
+    def go: Wye[I,I2,I \/ I2] =
+      receiveBoth[I,I2,I \/ I2]({
+        case ReceiveL(i) => emit(-\/(i)) fby go
+        case ReceiveR(i) => emit(\/-(i)) fby go
+        case other =>  go
+       })
+    go
+  }
 
   /**
    * Let through the right branch as long as the left branch is `false`,
@@ -101,7 +107,9 @@ trait wye {
       case ReceiveR(None) => halt
       case ReceiveR(i) => emit(i) ++ go
       case ReceiveL(kill) => if (kill) halt else go
-      case HaltR(rsn) => Halt(rsn)
+      case HaltR(rsn) =>
+        println("Halting", rsn)
+        Halt(rsn)
       case _ => go
     }
     go
@@ -116,7 +124,7 @@ trait wye {
       receiveBoth[I,I,I]({
         case ReceiveL(i) => emit(i) fby go
         case ReceiveR(i) => emit(i) fby go
-        case _ => go
+        case other => go
       }
     )
     go
@@ -224,14 +232,41 @@ object wye extends wye {
           await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]])(
             { case ReceiveL(i0) => attachL(p.feed1(i0))(w)
               case ReceiveR(i2) => attachL(p)(feed1R(i2)(w))
-              case HaltL(e) => attachL(p.killBy(e))(w)
+              case HaltL(End) => attachL(p.fallback)(w)
+              case HaltL(e) => attachL(p.causedBy(e))(haltL(e)(w))
               case HaltR(e) => attachL(p)(haltR(e)(w))
             },
             attachL(fbp)(w),
             attachL(cp)(w))
-        case h@Halt(_) => attachL(h)(fb)
+        case h@Halt(End) => attachL(h)(fb)
+        case h@Halt(e) => attachL(h)(c.causedBy(e))
       }
   }
+
+  /*
+   p match {
+        case Emit(h, t) => attachL(t)(scalaz.stream.wye.feedL(h)(w))
+        case Await1(recvp, fbp, cp) =>
+          await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]])(
+            { case ReceiveL(i0) => attachL(p.feed1(i0))(w)
+              case ReceiveR(i2) => attachL(p)(feed1R(i2)(w))
+              case HaltL(End) => attachL(p.fallback)(w)
+              case HaltL(e) => attachL(p.causedBy(e))(haltL(e)(w))
+              case HaltR(e) => attachL(p)(haltR(e)(w))
+            },
+            attachL(fbp)(w),
+            attachL(cp)(w))
+        case h@Halt(pe) =>
+          await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]])(
+          { case ReceiveL(i0) => attachL(h)(haltL(pe)(w)) // impossible?
+            case ReceiveR(i2) => attachL(h)(feed1R(i2)(w))
+            case HaltL(e) => attachL(h)(Halt(e))
+            case HaltR(End) => attachL(h)(fb)
+            case HaltR(e) => attachL(h)(c.causedBy(e))
+          },
+          attachL(h)(fb),
+          attachL(h)(c))
+   */
 
   /**
    * Transform the right input of the given `Wye` using a `Process1`.
@@ -327,14 +362,18 @@ object wye extends wye {
   def haltL[I,I2,O](e:Throwable)(p:Wye[I,I2,O]):Wye[I,I2,O] = {
     p match {
       case h@Halt(_) => h
-      case Emit(h, t) => Emit(h,haltL(e)(t)) //todo: SOE on nested emits?
+      case Emit(h, t) =>  Emit(h,haltL(e)(t)) //todo: SOE on nested emits?
       case AwaitL(rcv,fb,c) => p.killBy(e)
       case AwaitR(rcv,fb,c) => await(R[I2]: Env[I,I2]#Y[I2])(rcv, haltL(e)(fb), haltL(e)(c))
       case AwaitBoth(rcv,fb,c) =>
           try rcv(ReceiveY.HaltL(e))
           catch {
-            case End => fb
-            case e: Throwable => c.causedBy(e)
+            case End =>
+              println("HLTLB",End)
+              fb
+            case e: Throwable =>
+              println("HLTLB",e)
+              c.causedBy(e)
           }
     }
   }
@@ -347,8 +386,12 @@ object wye extends wye {
       case AwaitBoth(rcv,fb,c) =>
         try rcv(ReceiveY.HaltR(e))
         catch {
-          case End => fb
-          case e: Throwable => c.causedBy(e)
+          case End =>
+            println("HLTRB",End)
+            fb
+          case e: Throwable =>
+            println("HLTRB",End)
+            c.causedBy(e)
         }
     }
   }
