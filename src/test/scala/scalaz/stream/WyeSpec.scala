@@ -105,7 +105,7 @@ object WyeSpec extends Properties("wye") {
           }
       }.fold(0)(_ max _)
 
-    m.runLog.timed(60000).run.map(_ < 100) == Seq(true)
+    m.runLog.timed(180000).run.map(_ < 100) == Seq(true)
 
   }
 
@@ -132,7 +132,7 @@ object WyeSpec extends Properties("wye") {
           }
       }.fold(0)(_ max _)
 
-    m.runLog.timed(180000).run.map(_ < 100) == Seq(true)
+    m.runLog.timed(300000).run.map(_ < 100) == Seq(true)
 
   }
 
