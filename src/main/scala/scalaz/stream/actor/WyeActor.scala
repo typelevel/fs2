@@ -54,7 +54,10 @@ object WyeActor {
           case \/-(step) => step.head match {
             case \/-(h) =>
               p = Some(step.tail)
-              feedA(h)(y2)
+              step.tail match {
+                case Halt(e) =>  haltA(e)(feedA(h)(y2))
+                case _ => feedA(h)(y2)
+              }
             case -\/(e) =>
               p = Some(Halt(e))
               haltA(e)(y2)

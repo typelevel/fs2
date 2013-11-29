@@ -107,9 +107,7 @@ trait wye {
       case ReceiveR(None) => halt
       case ReceiveR(i) => emit(i) ++ go
       case ReceiveL(kill) => if (kill) halt else go
-      case HaltR(rsn) =>
-        println("Halting", rsn)
-        Halt(rsn)
+      case HaltR(rsn) => Halt(rsn)
       case _ => go
     }
     go
@@ -243,31 +241,6 @@ object wye extends wye {
       }
   }
 
-  /*
-   p match {
-        case Emit(h, t) => attachL(t)(scalaz.stream.wye.feedL(h)(w))
-        case Await1(recvp, fbp, cp) =>
-          await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]])(
-            { case ReceiveL(i0) => attachL(p.feed1(i0))(w)
-              case ReceiveR(i2) => attachL(p)(feed1R(i2)(w))
-              case HaltL(End) => attachL(p.fallback)(w)
-              case HaltL(e) => attachL(p.causedBy(e))(haltL(e)(w))
-              case HaltR(e) => attachL(p)(haltR(e)(w))
-            },
-            attachL(fbp)(w),
-            attachL(cp)(w))
-        case h@Halt(pe) =>
-          await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]])(
-          { case ReceiveL(i0) => attachL(h)(haltL(pe)(w)) // impossible?
-            case ReceiveR(i2) => attachL(h)(feed1R(i2)(w))
-            case HaltL(e) => attachL(h)(Halt(e))
-            case HaltR(End) => attachL(h)(fb)
-            case HaltR(e) => attachL(h)(c.causedBy(e))
-          },
-          attachL(h)(fb),
-          attachL(h)(c))
-   */
-
   /**
    * Transform the right input of the given `Wye` using a `Process1`.
    */
@@ -362,36 +335,32 @@ object wye extends wye {
   def haltL[I,I2,O](e:Throwable)(p:Wye[I,I2,O]):Wye[I,I2,O] = {
     p match {
       case h@Halt(_) => h
-      case Emit(h, t) =>  Emit(h,haltL(e)(t)) //todo: SOE on nested emits?
+      case Emit(h, t) =>
+        val (nh,nt) = t.unemit
+        Emit(h ++ nh, haltL(e)(nt))
       case AwaitL(rcv,fb,c) => p.killBy(e)
       case AwaitR(rcv,fb,c) => await(R[I2]: Env[I,I2]#Y[I2])(rcv, haltL(e)(fb), haltL(e)(c))
       case AwaitBoth(rcv,fb,c) =>
-          try rcv(ReceiveY.HaltL(e))
-          catch {
-            case End =>
-              println("HLTLB",End)
-              fb
-            case e: Throwable =>
-              println("HLTLB",e)
-              c.causedBy(e)
-          }
+        try rcv(ReceiveY.HaltL(e))
+        catch {
+          case End => fb
+          case e: Throwable =>  c.causedBy(e)
+        }
     }
   }
   def haltR[I,I2,O](e:Throwable)(p:Wye[I,I2,O]):Wye[I,I2,O] = {
     p match {
       case h@Halt(_) => h
-      case Emit(h, t) => Emit(h,haltL(e)(t)) //todo: SOE on nested emits?
+      case Emit(h, t) =>
+        val (nh,nt) = t.unemit
+        Emit(h ++ nh, haltR(e)(nt))
       case AwaitR(rcv,fb,c) => p.killBy(e)
       case AwaitL(rcv,fb,c) => await(L[I]: Env[I,I2]#Y[I])(rcv, haltR(e)(fb), haltR(e)(c))
       case AwaitBoth(rcv,fb,c) =>
         try rcv(ReceiveY.HaltR(e))
         catch {
-          case End =>
-            println("HLTRB",End)
-            fb
-          case e: Throwable =>
-            println("HLTRB",End)
-            c.causedBy(e)
+          case End => fb
+          case e: Throwable =>  c.causedBy(e)
         }
     }
   }

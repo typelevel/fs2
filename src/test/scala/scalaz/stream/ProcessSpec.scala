@@ -249,13 +249,11 @@ object ProcessSpec extends Properties("Process1") {
     }
   }
 
-  /*
-  This fails
   property("interrupt") = secure {
     val p1 = Process(1,2,3,4,6).toSource
     val i1 = repeatEval(Task.now(false))
     val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
     v == List(1,2,3,4,6)
   }
-  */
+
 }
