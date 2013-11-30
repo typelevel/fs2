@@ -1,13 +1,13 @@
 package scalaz.stream.actor
 
 import scala._
+import scala.annotation.tailrec
 import scalaz._
 import scalaz.concurrent.{Strategy, Actor, Task}
 import scalaz.stream.Process._
 import scalaz.stream.Step
 import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
 import scalaz.stream.{Process, wye}
-import scala.annotation.tailrec
 
 object WyeActor {
 
@@ -71,17 +71,15 @@ object WyeActor {
       def isHalt: Boolean = haltedBy.isDefined
       def haltedBy: Option[Throwable] = p.collect { case Halt(e) => e }
 
-      def isCleaned: Boolean = cleanup && isHalt
-
       //returns true when the process is cleaned, or runs the cleanup and returns false
       //if process is running is no-op and returns false
       def runCleanup(a: Actor[Msg], e: Throwable): Boolean = {
-        if (!cleanup)  p = p.map { ps => cleanup = true; ps.killBy(e) }
-
         p match {
           case Some(Halt(_)) => true
-          case Some(c)       => p = None; run(c, a); false
-          case None          => false
+          case None     => false
+          case Some(ps) =>
+            ps.killBy(e).run.runAsync { cb => a ! Ready(this, cb.map(_ => Step.failed(e)))}
+            false
         }
       }
 
@@ -93,9 +91,9 @@ object WyeActor {
         }
       }
 
-      def run(s: Process[Task, A], actor: Actor[Msg]): Unit = {
-        s.step.runLast.runAsync(cb => actor ! Ready(this, cb.flatMap(r => r.map(\/-(_)).getOrElse(-\/(End)))))
-      }
+      def run(s: Process[Task, A], actor: Actor[Msg]): Unit =
+        s.runStep.runAsync { cb => actor ! Ready(this, cb) }
+
     }
 
     //current state of the wye
@@ -161,8 +159,8 @@ object WyeActor {
           if (L.isHalt && R.isHalt) {
             tryCompleteOut(cb, ny.killBy(L.haltedBy.get))
           } else {
-            if (leftBias) {L.pull(a); R.pull(a) }
-            else {R.pull(a); L.pull(a) }
+            if (leftBias) { L.pull(a); R.pull(a) }
+            else { R.pull(a); L.pull(a) }
             ny
           }
 
