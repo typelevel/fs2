@@ -511,6 +511,41 @@ sealed abstract class Process[+F[_],+O] {
   final def run[F2[x]>:F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] =
     F.void(drain.runLog(F, C))
 
+  /**
+   * Runs the next step of process. This is guaranteed to always produce `next` step of process and will never fail.
+   * In case the process is halted, will just return Halt(e)
+   *
+   * Simillar in sense to `run`, exept it will return the next step of process immediatelly with values emitted.
+   *
+   * When abnormal failure occurs, the evaluation ends, and next step is guaranteed to contain in tail any cleanup
+   * that needs to be run.
+   * Consumer of this function is required to run this repeatedly unless tail of Step is in Halt(e)`
+   *
+   * Note the resulting Step has always the cleanup set to `halt`
+   */
+  final def runStep[F2[x]>:F[x], O2>:O](implicit  F: Monad[F2], C: Catchable[F2]): F2[Step[F2,O2]] = {
+    def go(cur:Process[F,O]): F2[Step[F2,O2]] = cur match {
+      case h@Halt(e) => F.point(Step(left(e),h,halt))
+
+      case Emit(h,t) =>
+        val (nh,nt) = t.unemit
+        val hh = h ++ nh
+        if (hh.isEmpty) go(nt)
+        else F.point(Step(right(hh), nt, halt))
+
+      case Await(req,recv,fb,c) =>
+        F.bind(C.attempt(req)) {
+          case -\/(End) => go(fb)
+          case -\/(e) => F.point(Step(left(e),c,halt))
+          case \/-(a) =>
+            try go(recv(a))
+            catch { case e : Throwable => F.point(Step(left(e),c,halt))}
+        }
+
+    }
+    go(this)
+  }
+
   /** Alias for `this |> process1.buffer(n)`. */
   def buffer(n: Int): Process[F,O] =
     this |> process1.buffer(n)
