@@ -258,10 +258,37 @@ object ProcessSpec extends Properties("Process1") {
     val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
     v == List(1,2,3,4,6)
   }
+   import scala.concurrent.duration._
+  val smallDelay = Gen.choose(10, 300) map {_.millis}
+  property("every") =
+    forAll(smallDelay) { delay: Duration =>
+      type BD = (Boolean, Duration)
+      val durationSinceLastTrue: Process1[BD, BD] = {
+        def go(lastTrue: Duration): Process1[BD,BD] = {
+          await1 flatMap { pair:(Boolean, Duration) => pair match {
+            case (true , d) => emit((true , d - lastTrue)) fby go(d)
+            case (false, d) => emit((false, d - lastTrue)) fby go(lastTrue)
+          } }
+        }
+        go(0.seconds)
+      }
 
+      val draws = (600.millis / delay) min 10 // don't take forever
 
+      val durationsSinceSpike = every(delay).
+                   tee(duration)(tee zipWith {(a,b) => (a,b)}).
+                   take(draws.toInt) |>
+                   durationSinceLastTrue
 
-  property("runStep") = secure {
+      val result = durationsSinceSpike.runLog.run.toList
+      val (head :: tail) = result
+
+      head._1 :| "every always emits true first" &&
+      tail.filter   (_._1).map(_._2).forall { _ >= delay } :| "true means the delay has passed" &&
+      tail.filterNot(_._1).map(_._2).forall { _ <= delay } :| "false means the delay has not passed"
+  }
+
+property("runStep") = secure {
     def go(p:Process[Task,Int], acc:Seq[Throwable \/ Int]) : Throwable \/ Seq[Throwable \/ Int] = {
       p.runStep.run match {
         case Step(-\/(e),Halt(_),_) => \/-(acc)

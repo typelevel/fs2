@@ -924,10 +924,15 @@ object Process {
    * If you'd like a discrete stream that will actually block until `d` has elapsed,
    * use `awakeEvery` instead.
    */
-  def every(d: Duration): Process[Task, Boolean] =
-    duration zip (emit(0 milliseconds) ++ duration) map {
-      case (cur, prev) => (cur - prev) > d
-    }
+  def every(d: Duration): Process[Task, Boolean] = {
+    def go(lastSpikeNanos: Long): Process[Task, Boolean] =
+      suspend {
+        val now = System.nanoTime
+        if ((now - lastSpikeNanos) > d.toNanos) emit(true) ++ go(now)
+        else emit(false) ++ go(lastSpikeNanos)
+      }
+    go(0)
+  }
 
   // pool for event scheduling
   // threads are just used for timing, no logic is run on this Thread
