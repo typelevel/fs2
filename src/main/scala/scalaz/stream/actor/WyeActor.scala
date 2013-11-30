@@ -36,7 +36,7 @@ object WyeActor {
    */
   def wyeActor[L, R, O](pl: Process[Task, L], pr: Process[Task, R])(y: Wye[L, R, O])(S: Strategy): Process[Task, O] = {
 
-    trait WyeSideOps3[A, L, R, O] extends WyeSide[A, L, R, O] {
+    trait WyeSideOps[A, L, R, O] extends WyeSide[A, L, R, O] {
 
       // Next step of process that feds into wye. If the is Empty, step is just running
       var p: Option[Process[Task, A]]
@@ -110,20 +110,20 @@ object WyeActor {
     //Bias for reading from either left or right.
     var leftBias: Boolean = true
 
-    case class LeftWyeSide3(var p: Option[Process[Task, L]]) extends WyeSideOps3[L, L, R, O] {
+    case class LeftWyeSide(var p: Option[Process[Task, L]]) extends WyeSideOps[L, L, R, O] {
       def feedA(as: Seq[L])(y2: Process.Wye[L, R, O]): Process.Wye[L, R, O] = wye.feedL(as)(y2)
       def haltA(e: Throwable)(y2: Process.Wye[L, R, O]): Process.Wye[L, R, O] = wye.haltL(e)(y2)
       override def toString: String = "Left"
     }
 
-    case class RightWyeSide3(var p: Option[Process[Task, R]]) extends WyeSideOps3[R, L, R, O] {
+    case class RightWyeSide(var p: Option[Process[Task, R]]) extends WyeSideOps[R, L, R, O] {
       def feedA(as: Seq[R])(y2: Process.Wye[L, R, O]): Process.Wye[L, R, O] = wye.feedR(as)(y2)
       def haltA(e: Throwable)(y2: Process.Wye[L, R, O]): Process.Wye[L, R, O] = wye.haltR(e)(y2)
       override def toString: String = "Right"
     }
 
-    val L: LeftWyeSide3 = LeftWyeSide3(Some(pl))
-    val R: RightWyeSide3 = RightWyeSide3(Some(pr))
+    val L: LeftWyeSide = LeftWyeSide(Some(pl))
+    val R: RightWyeSide = RightWyeSide(Some(pr))
 
     //switches right and left to cleanup (if not yet switched) and runs the cleanup
     def tryCleanup(e: Throwable): Boolean =
