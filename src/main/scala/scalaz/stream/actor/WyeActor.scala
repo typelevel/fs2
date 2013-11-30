@@ -163,7 +163,6 @@ object WyeActor {
           } else {
             if (leftBias) {L.pull(a); R.pull(a) }
             else {R.pull(a); L.pull(a) }
-            leftBias = !leftBias
             ny
           }
 
@@ -177,6 +176,7 @@ object WyeActor {
     a = Actor.actor[Msg]({
       case Ready(side: WyeSide[Any, L, R, O]@unchecked, stepr) =>
         val ny = side.receive(stepr)(yy)
+        leftBias = side == R
         yy = out match {
           case Some(cb) => ny.unemit match {
             case (h, y2@Halt(e)) if h.isEmpty =>
