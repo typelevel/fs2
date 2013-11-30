@@ -515,7 +515,7 @@ sealed abstract class Process[+F[_],+O] {
    * Runs the next step of process. This is guaranteed to always produce `next` step of process and will never fail.
    * In case the process is halted, will just return Halt(e)
    *
-   * Simillar in sense to `run`, exept it will return the next step of process immediatelly with values emitted.
+   * Simillar in sense to `run`, except it will return the next step of process immediatelly with values emitted.
    *
    * When abnormal failure occurs, the evaluation ends, and next step is guaranteed to contain in tail any cleanup
    * that needs to be run.
