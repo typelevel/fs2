@@ -24,6 +24,18 @@ import scalaz.stream.actor.actors
 
 object ActorSpec extends Properties("actor") {
 
+  property("queue") = forAll {
+    l: List[Int] =>
+      val (q, s) = actors.queue[Int]
+      import message.queue._
+      val t1 = Task {
+        l.foreach(i => q ! enqueue(i))
+        q ! close
+      }
+      val t2 = s.runLog
+
+      Nondeterminism[Task].both(t1, t2).run._2.toList == l
+  }
    
   case object TestedEx extends Exception("expected in test") {
     override def fillInStackTrace = this
