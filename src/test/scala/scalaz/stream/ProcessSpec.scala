@@ -82,20 +82,20 @@ object ProcessSpec extends Properties("Process1") {
     }) &&
     ("yip" |: {
       val l = p.toList.zip(p2.toList)
-      val r = p.toSource.yip(p2.toSource).runLog.run.toList
+      val r = p.toSource.yip(p2.toSource).runLog.timed(3000).run.toList
       (l === r)
     }) &&
     ("scan" |: {
       p.toList.scan(0)(_ - _) ===
-      p.toSource.scan(0)(_ - _).runLog.run.toList
+      p.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
     }) &&
     ("scan1" |: {
        p.toList.scan(0)(_ + _).tail ===
-       p.toSource.scan1(_ + _).runLog.run.toList
+       p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
-      p.toSource.pipe(process1.sum).runLastOr(0).run
+      p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
     }) &&
     ("intersperse" |: {
       p.intersperse(0).toList == p.toList.intersperse(0)
@@ -288,10 +288,11 @@ object ProcessSpec extends Properties("Process1") {
       tail.filterNot(_._1).map(_._2).forall { _ <= delay } :| "false means the delay has not passed"
   }
 
-property("runStep") = secure {
+  property("runStep") = secure {
     def go(p:Process[Task,Int], acc:Seq[Throwable \/ Int]) : Throwable \/ Seq[Throwable \/ Int] = {
       p.runStep.run match {
-        case Step(-\/(e),Halt(_),_) => \/-(acc)
+        case Step(-\/(e),Halt(_),Halt(_)) => \/-(acc)
+        case Step(-\/(e),Halt(_), c) => go(c,acc :+ -\/(e))
         case Step(-\/(e),t,_) => go(t,acc :+ -\/(e))
         case Step(\/-(a),t,_) => go(t,acc ++ a.map(\/-(_)))
       }
