@@ -4,9 +4,8 @@ import scalaz.concurrent.{Task, Actor, Strategy}
 import scalaz.stream.Process
 import scala.collection.immutable.Queue
 import scalaz.{\/-, -\/, \/}
-import scalaz.\/._
-
-
+import scalaz.\/._ 
+import scalaz.stream.Process.End
 
 trait QueueActor {
 
@@ -40,15 +39,15 @@ trait QueueActor {
           else {
             val (cb, l2) = listeners.dequeue
             q = if (l2.isEmpty) left(Queue()) else right(l2)
-            cb(right(a))
+            S(cb(right(a)))
           }
       }
-      case Dequeue(cb) => q match {
+      case Dequeue(cb) if !done => q match {
         case -\/(ready) =>
           if (ready.isEmpty) q = right(Queue(cb))
           else {
             val (a, r2) = ready.dequeue
-            cb(a)
+            S(cb(a))
             q = left(r2)
           }
         case \/-(listeners) => q = right(listeners.enqueue(cb))
@@ -60,7 +59,7 @@ trait QueueActor {
           done = true
         case \/-(listeners) =>
           val end = left(Process.End)
-          listeners.foreach(_(end))
+          listeners.foreach(cb=>S(cb(end)))
           q = left(Queue(end))
       }
       case Fail(e,cancel) if !done => q match {
@@ -70,10 +69,12 @@ trait QueueActor {
           done = true
         case \/-(listeners) =>
           val end = left(e)
-          listeners.foreach(_(end))
+          listeners.foreach(cb=>S(cb(end)))
           q = left(Queue(end))
       }
-      case _ => ()
+      //below in case queue is done
+      case Dequeue(cb) => cb(-\/(End))
+      case oth => ()
     }
     val p = Process.repeatEval { Task.async[A] { cb => a ! Dequeue(cb) } }
     (a, p)
