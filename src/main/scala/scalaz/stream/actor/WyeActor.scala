@@ -123,7 +123,7 @@ object WyeActor {
     private def run(s: Process[Task, A], actor: Actor[Msg]): Unit = {
       step = -\/(s.cleanup)
       debug("RUN",this,s)
-      s.runStep.runAsync { cb => actor ! Ready(this, cb) }
+      s.runStep.runAsyncInterruptibly ({ cb => actor ! Ready(this, cb) },cleanup)
     }
 
 
