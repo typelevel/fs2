@@ -109,8 +109,7 @@ trait wye {
       case ReceiveR(None) => halt
       case ReceiveR(i) => emit(i) ++ go
       case ReceiveL(kill) => if (kill) halt else go
-      case HaltR(rsn) => Halt(rsn)
-      case _ => go
+      case HaltOne(halted) => Halt(halted.cause)
     }
     go
   }
@@ -175,10 +174,10 @@ trait wye {
   /** Nondeterministic version of `zipWith` which requests both sides in parallel. */
   def yipWith[I,I2,O](f: (I,I2) => O): Wye[I,I2,O] =
     awaitBoth[I,I2].flatMap {
-      case ReceiveL(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)))
-      case ReceiveR(i2) => awaitL[I].flatMap(i => emit(f(i,i2)))
-      case _ => halt //todo: this has to be verified, not sure if we should not terminate once either of branches dies....
-    }.repeat
+      case ReceiveL(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)) ++ yipWith(f))
+      case ReceiveR(i2) => awaitL[I].flatMap(i => emit(f(i,i2)) ++ yipWith(f))
+      case _ => halt
+    }
 
   /**
    * Left-biased, buffered version of `yipWith`. Allows up to `n` elements to enqueue on the
@@ -194,7 +193,7 @@ trait wye {
       else awaitBoth[I,O].flatMap {
         case ReceiveL(i) => go(buf :+ i)
         case ReceiveR(o) => emit(f(buf.head,o)) ++ go(buf.tail)
-        case _ => go(buf) //todo: need to check if this is really correct in haltL/R
+        case _ => halt
       }
     go(Vector())
   }

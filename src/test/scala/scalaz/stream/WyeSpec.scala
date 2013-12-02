@@ -7,6 +7,7 @@ import scala.concurrent.duration._
 import scalaz._
 import scalaz.concurrent.{Strategy, Task}
 import org.scalacheck.Prop._
+import scalaz.stream.async.mutable.Queue
 
 
 object WyeSpec extends Properties("wye") {
@@ -136,5 +137,60 @@ object WyeSpec extends Properties("wye") {
 
   }
 
+
+
+
+  property("merged.queue-drain") = secure {
+    val(q1,s1) = async.queue[Int]
+    val(q2,s2) = async.queue[Int]
+
+    def close[A]( q:Queue[A]) =  (suspend(eval(Task.delay{  q.close}))).drain
+
+    val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    (s1 merge s2).take(4).runLog.timed(3000).runAsync(sync.put)
+
+    (Process.range(1,10) to q1.toSink()).run.runAsync(_=>())
+
+    sync.get(3000) == Some(\/-(Vector(1, 2, 3, 4)))
+
+  }
+
+
+  property("merge.queue.both-cleanup") = secure {
+    val(q1,s1) = async.queue[Int]
+    val(q2,s2) = async.queue[Int]
+
+    q1.enqueue(1)
+    q2.enqueue(2)
+
+    val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    (s1 merge s2).take(2).runLog.timed(3000).runAsync(sync.put)
+
+    ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
+    (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected"
+
+  }
+
+
+  // this tests the specific situation, where left side got killed by wye terminating earlier.
+  // Left is switched to `cleanup` where it waits for q2 to be filled with value or closed.
+  // Close of q2 is action of s3 (right side) and must be performed once the right side
+  // is executing its cleanup
+  property("merge.queue.left-cleanup-by-right-cleanup") = secure {
+    val(q1,s1) = async.queue[Int]
+    val(q2,s2) = async.queue[Int]
+    def close[A]( q:Queue[A]) =  (suspend(eval(Task.delay{  q.close}))).drain
+
+    q1.enqueue(1)
+
+    val s3 = Process(2).toSource onComplete(close(q2))
+
+
+    val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    ((s1 onComplete s2) merge s3).take(2).runLog.timed(3000).runAsync(sync.put)
+
+    ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
+    (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected"
+  }
 
 }
