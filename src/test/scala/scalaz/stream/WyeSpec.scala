@@ -144,8 +144,6 @@ object WyeSpec extends Properties("wye") {
     val(q1,s1) = async.queue[Int]
     val(q2,s2) = async.queue[Int]
 
-    def close[A]( q:Queue[A]) =  (suspend(eval(Task.delay{  q.close}))).drain
-
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
     (s1 merge s2).take(4).runLog.timed(3000).runAsync(sync.put)
 
@@ -163,11 +161,22 @@ object WyeSpec extends Properties("wye") {
     q1.enqueue(1)
     q2.enqueue(2)
 
+    var cup1 = false
+    var cup2 = false
+
+    def clean(side:Int) = suspend(eval(Task.delay(
+      side match {
+        case 1 => cup1 = true
+        case 2 => cup2 = true
+      }
+    ))).drain
+
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    (s1 merge s2).take(2).runLog.timed(3000).runAsync(sync.put)
+    ((s1 onComplete clean(1)) merge (s2 onComplete clean(2))).take(2).runLog.timed(3000).runAsync(sync.put)
 
     ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
-    (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected"
+    (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected" &&
+    (cup1 && cup2 == true) :| "Cleanup was called on both sides"
 
   }
 

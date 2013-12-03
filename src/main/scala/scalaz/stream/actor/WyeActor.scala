@@ -10,12 +10,6 @@ import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
 import scalaz.stream.{Process, wye}
 import java.util.concurrent.atomic.AtomicBoolean
 
-object debug {
-  def apply(s:String,o:AnyRef*) = {
-   //println(s,o.mkString(","))
-  }
-}
-
 object WyeActor {
 
   trait WyeSide[A, L, R, O] {
@@ -40,7 +34,9 @@ object WyeActor {
     var step: (Process[Task,A] \/ Step[Task, A])
 
     // when this is set to`true`
-    // it indicates the running task to be interrupted and cleanup process to start
+    // it indicates the running task to be interrupted and cleanup process will start as next step
+    // please not there is still slight chance that `cleanup` and last step will run in parallel.
+    // to solve this, we need a fix or resolution to https://github.com/scalaz/scalaz/issues/599.
     private val cleanup: AtomicBoolean = new AtomicBoolean(false)
 
     def feedA(as: Seq[A])(y2: Wye[L, R, O]): Wye[L, R, O]
@@ -52,19 +48,9 @@ object WyeActor {
         case \/-(s) =>
           step = \/-(s)
           s match {
-            case Step(\/-(h),Halt(e),c) =>
-              debug("HLTS", this, h, e, c,  y2)
-              haltA(e)(feedA(h)(y2))
-
-            case Step(\/-(h),t,c) =>
-              debug("RDYS", this, h, t, s, y2)
-              val fed = feedA(h)(y2)
-              debug("RDYS-FED", fed)
-              fed
-
-            case Step(-\/(e),t,c) =>
-              debug("HLTE", this, e, t,c, y2)
-              haltA(e)(y2)
+            case Step(\/-(h),Halt(e),c) =>    haltA(e)(feedA(h)(y2))
+            case Step(\/-(h),t,c) =>   feedA(h)(y2)
+            case Step(-\/(e),t,c) =>  haltA(e)(y2)
           }
 
         case -\/(e)    =>
@@ -81,52 +67,32 @@ object WyeActor {
 
     //returns true when the process is cleaned, or runs the cleanup and returns false
     //if process is running is no-op and returns false
-    def runCleanup(a: Actor[Msg], e: Throwable): Boolean = {
-      debug("CLNP", this, e, step)
-      step match {
+    def runCleanup(a: Actor[Msg], e: Throwable): Boolean =  step match {
         case \/-(s) if s.isCleaned => true
-
-        case \/-(s) =>
-          debug("CLNP!!!", this, s.tail , "|*|", s.cleanup)
-          runClean(s.cleanup,e,a)
-          false
-
+        case \/-(s) =>  runClean(s.cleanup,e,a) ; false
         case -\/(c) if cleanup.get == false =>
           cleanup.set(true) //interrupt
-          debug("CLNP!!!", this, cleanup.get.toString,  c)
-          a ! Ready(this,\/-(Step.failed(Interrupted))) //this will have to be removed once Task will return error once interrupted in scalaz.task
+          a ! Ready(this,\/-(Step.failed(Interrupted))) //this will have to be removed once Task will return error once interrupted in scalaz.task see comment to cleanup val above
           false
-
         case -\/(c) => false
-
       }
-    }
 
-    def pull(a: Actor[Msg]): Boolean = {
-      debug("PULLED",this, "|*|", step)
-      step match {
+    def pull(a: Actor[Msg]): Boolean =  step match {
         case \/-(s) if s.isCleaned => false
         case \/-(s) if s.isHalted => runClean(s.cleanup,End,a) ; true
         case \/-(s) => run(s.tail,a) ; true
-        case -\/(c) => false // in process
+        case -\/(c) => false // request`s task is in process
       }
-
-    }
 
     private def runClean(c:Process[Task,A], e: Throwable, actor: Actor[Msg]) : Unit = {
       step = -\/(halt)
-      debug("RUNC",this,c)
       c.causedBy(e).run.runAsync { cb => actor ! Ready(this, cb.map(_ => Step.failed(e)))}
     }
 
-
     private def run(s: Process[Task, A], actor: Actor[Msg]): Unit = {
       step = -\/(s.cleanup)
-      debug("RUN",this,s)
       s.runStep.runAsyncInterruptibly ({ cb => actor ! Ready(this, cb) },cleanup)
     }
-
-
   }
 
   /**
@@ -178,7 +144,6 @@ object WyeActor {
       l && r
     }
 
-
     def completeOut(cb: (Throwable \/ Seq[O]) => Unit, r: Throwable \/ Seq[O]): Unit = {
       out = None
       S(cb(r))
@@ -186,17 +151,8 @@ object WyeActor {
 
     @tailrec
     def tryCompleteOut(cb: (Throwable \/ Seq[O]) => Unit, y2: Wye[L, R, O]): Wye[L, R, O] = {
-      debug("CMPLTING", y2, "|*|", y2.unemit,"|*|", L.step, "|*|",R.step)
-
-      def tryPullBoth[A,B](a:Actor[Msg]) : Boolean = {
-        val f:java.lang.Boolean = (if (leftBias) L else R).pull(a)
-        val s:java.lang.Boolean = (if (leftBias) R else L).pull(a)
-        debug("TRYP",leftBias.asInstanceOf[java.lang.Boolean],f,s, L.step, R.step)
-        f || s
-      }
       y2.unemit match {
         case (h, ny) if h.nonEmpty =>
-          debug("EMIT", h, ny)
           completeOut(cb, \/-(h))
           ny
 
@@ -204,22 +160,17 @@ object WyeActor {
           if (tryCleanup(e)) completeOut(cb, -\/(e))
           ny
 
-        case (_, ny@AwaitL(_, _, _)) =>
-          debug("AWYL", R.haltedBy, L.step)
-          L.haltedBy match {
+        case (_, ny@AwaitL(_, _, _)) =>   L.haltedBy match {
             case Some(e) => tryCompleteOut(cb, ny.killBy(e))
             case None    => L.pull(a); ny
           }
 
-        case (_, ny@AwaitR(_, _, _)) =>
-          debug("AWYR", R.haltedBy, R.step)
-          R.haltedBy match {
+        case (_, ny@AwaitR(_, _, _)) =>   R.haltedBy match {
             case Some(e) => tryCompleteOut(cb, ny.killBy(e))
             case None    => R.pull(a); ny
           }
 
         case (_, ny@AwaitBoth(_, _, _)) =>
-          debug("AWB", L.isHalt.toString, R.isHalt.toString)
           if (L.isHalt && R.isHalt) {
             tryCompleteOut(cb, ny.killBy(L.haltedBy.get))
           } else {
@@ -257,12 +208,11 @@ object WyeActor {
         yy = tryCompleteOut(get.cb, yy)
 
       case Done(rsn, cb) =>
-        debug("DONE", rsn,"|*|", L.step, "|*|", R.step, "|*|", yy)
         val cbOut = cb compose ((_: Throwable \/ Seq[O]) => \/-(()))
         out = Some(cbOut)
         yy = tryCompleteOut(cbOut, yy.killBy(rsn))
 
-    }, err=> {println("FATAL!!!!!", err); err.printStackTrace()})(S)
+    })(S)
 
     repeatEval(Task.async[Seq[O]](cb => a ! Get(cb))).flatMap(emitSeq(_)) onComplete
       suspend(eval(Task.async[Unit](cb => a ! Done(End, cb)))).drain
