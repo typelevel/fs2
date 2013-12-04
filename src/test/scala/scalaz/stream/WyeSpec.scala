@@ -85,8 +85,8 @@ object WyeSpec extends Properties("wye") {
     val e = (l either r).take(10).runLog.timed(3000).run
 
     (e.size == 10) :| "10 first was taken" &&
-      (syncL.get(1000) == Some(100)) :| "Left side was cleaned" &&
-      (syncR.get(1000) == Some(200)) :| "Right side was cleaned"
+      (syncL.get(3000) == Some(100)) :| "Left side was cleaned" &&
+      (syncR.get(3000) == Some(200)) :| "Right side was cleaned"
 
   }
 

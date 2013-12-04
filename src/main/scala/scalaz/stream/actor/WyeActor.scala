@@ -156,7 +156,7 @@ object WyeActor {
           completeOut(cb, \/-(h))
           ny
 
-        case (_, ny@Halt(e)) =>
+        case (_, ny@Halt(e))  =>
           if (tryCleanup(e)) completeOut(cb, -\/(e))
           ny
 
@@ -188,18 +188,10 @@ object WyeActor {
 
     a = Actor.actor[Msg]({
       case Ready(side: WyeSide[Any, L, R, O]@unchecked, stepr) =>
-        val ny = side.receive(stepr)(yy)
         leftBias = side == R
+        val ny = side.receive(stepr)(yy)
         yy = out match {
-          case Some(cb) => ny.unemit match {
-            case (h, y2@Halt(e)) if h.isEmpty =>
-              if (tryCleanup(e)) completeOut(cb, -\/(e))
-              y2
-
-            case (h, y2) =>
-              completeOut(cb, \/-(h))
-              y2
-          }
+          case Some(cb) => tryCompleteOut(cb,ny)
           case None     => ny
         }
 
