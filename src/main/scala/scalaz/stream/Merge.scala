@@ -79,8 +79,8 @@ object Merge {
                   .orElse(go(k1, k2, fb), go(k1, k2, c))
         case AwaitBoth(recv, fb, c) =>
           readEither(k1, k2).flatMap(_.fold(
-            l => go(k1, k2, recv(These.This(l))),
-            r => go(k1, k2, recv(These.That(r)))
+            l => go(k1, k2, recv(ReceiveY.ReceiveL(l))),
+            r => go(k1, k2, recv(ReceiveY.ReceiveR(r)))
           )).orElse(go(k1, k2, fb), go(k1, k2, c))
       }
     runNondet {

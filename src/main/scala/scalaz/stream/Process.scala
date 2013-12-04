@@ -11,7 +11,7 @@ import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
 import scalaz.std.stream._
 import scalaz.syntax.foldable._
 import \/._
-import These.{This,That}
+import ReceiveY.{ReceiveL,ReceiveR}
 
 import java.util.concurrent._
 import scala.annotation.tailrec
@@ -510,6 +510,43 @@ sealed abstract class Process[+F[_],+O] {
   /** Run this `Process`, purely for its effects. */
   final def run[F2[x]>:F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] =
     F.void(drain.runLog(F, C))
+
+  /**
+   * Runs the next step of process. This is guaranteed to always produce `next` step of process and will never fail.
+   * In case the process is halted, will just return Halt(e)
+   *
+   * Simillar in sense to `run`, except it will return the next step of process immediatelly with values emitted.
+   *
+   * When abnormal failure occurs, the evaluation ends, and next step is guaranteed to contain in `cleanup` any cleanup
+   * that needs to be run. It is responsibility of consumer to run the cleanup process in such case
+   *
+   * Consumer of this function is required to run this repeatedly unless tail of Step is in Halt(e)`
+   *
+   * Step is guaranteed to contain in cleanup argument any code
+   * that needs to be run in case the tail evaluates to Halt.
+   */
+  final def runStep[F2[x]>:F[x], O2>:O](implicit  F: Monad[F2], C: Catchable[F2]): F2[Step[F2,O2]] = {
+    def go(cur:Process[F,O],cleanup:Process[F,O]): F2[Step[F2,O2]] = cur match {
+      case h@Halt(e) => F.point(Step(left(e),h,cleanup))
+
+      case Emit(h,t) =>
+        val (nh,nt) = t.unemit
+        val hh = h ++ nh
+        if (hh.isEmpty) go(nt, cleanup)
+        else F.point(Step(right(hh), nt, cleanup))
+
+      case Await(req,recv,fb,c) =>
+        F.bind(C.attempt(req)) {
+          case -\/(End) => go(fb,c)
+          case -\/(e) => F.point(Step(left(e),Halt(e),c))
+          case \/-(a) =>
+            try go(recv(a),c)
+            catch { case e : Throwable => F.point(Step(left(e),Halt(e),c))}
+        }
+
+    }
+    go(this, halt)
+  }
 
   /** Alias for `this |> process1.buffer(n)`. */
   def buffer(n: Int): Process[F,O] =
@@ -1103,7 +1140,7 @@ object Process {
       def tag = 1
       def fold[R](l: => R, r: => R, both: => R): R = r
     }
-    case object Both extends Y[These[I,I2]] {
+    case object Both extends Y[ReceiveY[I,I2]] {
       def tag = 2
       def fold[R](l: => R, r: => R, both: => R): R = both
     }
@@ -1116,7 +1153,7 @@ object Process {
   def Get[I]: Env[I,Any]#Is[I] = Left_
   def L[I]: Env[I,Any]#Is[I] = Left_
   def R[I2]: Env[Any,I2]#T[I2] = Right_
-  def Both[I,I2]: Env[I,I2]#Y[These[I,I2]] = Both_
+  def Both[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]] = Both_
 
   /** A `Process` that halts due to normal termination. */
   val halt: Process[Nothing,Nothing] = Halt(End)
@@ -1133,7 +1170,7 @@ object Process {
   def awaitR[I2]: Tee[Any,I2,I2] =
     await(R[I2])(emit)
 
-  def awaitBoth[I,I2]: Wye[I,I2,These[I,I2]] =
+  def awaitBoth[I,I2]: Wye[I,I2,ReceiveY[I,I2]] =
     await(Both[I,I2])(emit)
 
   def receive1[I,O](recv: I => Process1[I,O], fallback: Process1[I,O] = halt): Process1[I,O] =
@@ -1160,10 +1197,10 @@ object Process {
     receiveR(recvR, fallback)
 
   def receiveBoth[I,I2,O](
-      recv: These[I,I2] => Wye[I,I2,O],
+      recv: ReceiveY[I,I2] => Wye[I,I2,O],
       fallback: Wye[I,I2,O] = halt,
       cleanup: Wye[I,I2,O] = halt): Wye[I,I2,O] =
-    await[Env[I,I2]#Y,These[I,I2],O](Both[I,I2])(recv, fallback, cleanup)
+    await[Env[I,I2]#Y,ReceiveY[I,I2],O](Both[I,I2])(recv, fallback, cleanup)
 
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process[Nothing, Nothing \/ O] =
@@ -1201,7 +1238,7 @@ object Process {
     liftW(Process.awaitR[I2])
 
   /** `Writer` based version of `awaitBoth`. */
-  def awaitBothW[I,I2]: WyeW[Nothing,I,I2,These[I,I2]] =
+  def awaitBothW[I,I2]: WyeW[Nothing,I,I2,ReceiveY[I,I2]] =
     liftW(Process.awaitBoth[I,I2])
 
   /**
@@ -1512,7 +1549,7 @@ object Process {
       case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
         case 0 => fb.detachL
         case 1 => Await(Get[I2], recv andThen (_ detachL), fb.detachL, c.detachL)
-        case 2 => Await(Get[I2], (That(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
+        case 2 => Await(Get[I2], (ReceiveR(_:I2)) andThen recv andThen (_ detachL), fb.detachL, c.detachL)
       }
     }
 
@@ -1527,7 +1564,7 @@ object Process {
       case Await(req, recv, fb, c) => (req.tag: @annotation.switch) match {
         case 0 => Await(Get[I], recv andThen (_ detachR), fb.detachR, c.detachR)
         case 1 => fb.detachR
-        case 2 => Await(Get[I], (This(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
+        case 2 => Await(Get[I], (ReceiveL(_:I)) andThen recv andThen (_ detachR), fb.detachR, c.detachR)
       }
     }
 
@@ -1587,7 +1624,7 @@ object Process {
               case _ => (None, None)
             }}
             val (q2, bufIn2) = q1.feed(bufIn1) { q => o => q match {
-              case AwaitBoth(recv,fb,c) => (None, Some(recv(This(o))))
+              case AwaitBoth(recv,fb,c) => (None, Some(recv(ReceiveL(o))))
               case _ => (None, None)
             }}
             q2 match {
@@ -1619,7 +1656,7 @@ object Process {
                       await(F3.choose(reqsrc, outH))(
                         _.fold(
                           { case (p,ro) => go(recvsrc(p), q2, bufIn2, ro +: outT) },
-                          { case (rp,o2) => go(await(rp)(recvsrc, fbsrc, csrc), recv(That(o2)), bufIn2, outT) }
+                          { case (rp,o2) => go(await(rp)(recvsrc, fbsrc, csrc), recv(ReceiveR(o2)), bufIn2, outT) }
                         ),
                         go(fbsrc, q2, bufIn2, bufOut),
                         go(csrc, q2, bufIn2, bufOut)

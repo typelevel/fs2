@@ -4,9 +4,8 @@ import scalaz.concurrent.{Task, Actor, Strategy}
 import scalaz.stream.Process
 import scala.collection.immutable.Queue
 import scalaz.{\/-, -\/, \/}
-import scalaz.\/._
-
-
+import scalaz.\/._ 
+import scalaz.stream.Process.End
 
 trait QueueActor {
 
@@ -28,52 +27,48 @@ trait QueueActor {
    */
   def queue[A](implicit S: Strategy): (Actor[message.queue.Msg[A]], Process[Task, A]) = {
     import message.queue._
-    var q: Queue[Throwable \/ A] \/ Queue[(Throwable \/ A) => Unit] = left(Queue())
+    var q: (Queue[A] \/ Queue[(Throwable \/ A) => Unit]) = left(Queue())
+
     // var q = Queue[Throwable \/ A]()
-    var done = false
+    var done:Option[Throwable] = None
     val a: Actor[Msg[A]] = Actor.actor {
-      case Enqueue(a) if !done => q match {
+
+      case Enqueue(a) if done.isEmpty => q match {
         case -\/(ready) =>
-          q = left(ready.enqueue(right(a)))
+          q = left(ready :+ a)
         case \/-(listeners) =>
-          if (listeners.isEmpty) q = left(Queue(right(a)))
+          if (listeners.isEmpty) q = left(Queue(a))
           else {
             val (cb, l2) = listeners.dequeue
             q = if (l2.isEmpty) left(Queue()) else right(l2)
-            cb(right(a))
+            S(cb(right(a)))
           }
       }
+
       case Dequeue(cb) => q match {
+        case -\/(ready) if ready.isEmpty && done.isDefined => cb(left(done.get))
+        case -\/(ready) if ready.isEmpty => q = right(Queue(cb))
         case -\/(ready) =>
-          if (ready.isEmpty) q = right(Queue(cb))
-          else {
-            val (a, r2) = ready.dequeue
-            cb(a)
-            q = left(r2)
-          }
-        case \/-(listeners) => q = right(listeners.enqueue(cb))
+          val (a, r2) = ready.dequeue
+          q = left(r2)
+          S(cb(right(a)))
+
+        case \/-(listeners) => q = right(listeners :+ cb)
       }
-      case Close(cancel) if !done => q match {
+
+      case Close(rsn,cancel) if done.isEmpty => q match {
         case -\/(ready) =>
-          if (cancel) q = left(Queue(left(Process.End)))
-          else { q = left(ready.enqueue(left(Process.End))) }
-          done = true
+          if (cancel) q = left(Queue())
+          done = Some(rsn)
         case \/-(listeners) =>
-          val end = left(Process.End)
-          listeners.foreach(_(end))
-          q = left(Queue(end))
+          val end = left(rsn)
+          listeners.foreach(cb=>S(cb(end)))
+          q = -\/(Queue())
+          done = Some(rsn)
       }
-      case Fail(e,cancel) if !done => q match {
-        case -\/(ready) =>
-          if (cancel) q = left(Queue(left(e)))
-          else q = left(ready.enqueue(left(e)))
-          done = true
-        case \/-(listeners) =>
-          val end = left(e)
-          listeners.foreach(_(end))
-          q = left(Queue(end))
-      }
-      case _ => ()
+
+      //Close when `done` Enqueue when `done`
+      case oth => ()
     }
     val p = Process.repeatEval { Task.async[A] { cb => a ! Dequeue(cb) } }
     (a, p)

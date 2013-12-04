@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import scalaz.{Monoid, Equal, Nondeterminism}
+import scalaz._
 import scalaz.syntax.equal._
 import scalaz.std.anyVal._
 import scalaz.std.list._
@@ -10,11 +10,17 @@ import scalaz.std.string._
 import org.scalacheck._
 import Prop._
 import Arbitrary.arbitrary
+import scalaz.concurrent.Strategy
+import scala.concurrent
+import scalaz.\/-
+import scalaz.\/._
 
 object ProcessSpec extends Properties("Process1") {
 
   import Process._
   import process1._
+
+  implicit val S = Strategy.DefaultStrategy
 
   // Subtyping of various Process types:
   // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])
@@ -76,20 +82,20 @@ object ProcessSpec extends Properties("Process1") {
     }) &&
     ("yip" |: {
       val l = p.toList.zip(p2.toList)
-      val r = p.toSource.yip(p2.toSource).runLog.run.toList
+      val r = p.toSource.yip(p2.toSource).runLog.timed(3000).run.toList
       (l === r)
     }) &&
     ("scan" |: {
       p.toList.scan(0)(_ - _) ===
-      p.toSource.scan(0)(_ - _).runLog.run.toList
+      p.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
     }) &&
     ("scan1" |: {
        p.toList.scan(0)(_ + _).tail ===
-       p.toSource.scan1(_ + _).runLog.run.toList
+       p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
-      p.toSource.pipe(process1.sum).runLastOr(0).run
+      p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
     }) &&
     ("intersperse" |: {
       p.intersperse(0).toList == p.toList.intersperse(0)
@@ -132,7 +138,7 @@ object ProcessSpec extends Properties("Process1") {
   }
 
   property("merge") = secure {
-    import concurrent.duration._
+    import scala.concurrent.duration._
     val sleepsL = Process.awakeEvery(1 seconds).take(3)
     val sleepsR = Process.awakeEvery(100 milliseconds).take(30)
     val sleeps = sleepsL merge sleepsR
@@ -142,7 +148,7 @@ object ProcessSpec extends Properties("Process1") {
   }
 
   property("forwardFill") = secure {
-    import concurrent.duration._
+    import scala.concurrent.duration._
     val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
              Process.awakeEvery(100 milliseconds).take(100)
            }.run.timed(15000).run
@@ -246,17 +252,13 @@ object ProcessSpec extends Properties("Process1") {
     }
   }
 
-  /*
-  This fails
   property("interrupt") = secure {
     val p1 = Process(1,2,3,4,6).toSource
     val i1 = repeatEval(Task.now(false))
     val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
     v == List(1,2,3,4,6)
   }
-  */
-
-  import scala.concurrent.duration._
+   import scala.concurrent.duration._
   val smallDelay = Gen.choose(10, 300) map {_.millis}
   property("every") =
     forAll(smallDelay) { delay: Duration =>
@@ -285,5 +287,49 @@ object ProcessSpec extends Properties("Process1") {
       tail.filter   (_._1).map(_._2).forall { _ >= delay } :| "true means the delay has passed" &&
       tail.filterNot(_._1).map(_._2).forall { _ <= delay } :| "false means the delay has not passed"
   }
+
+  property("runStep") = secure {
+    def go(p:Process[Task,Int], acc:Seq[Throwable \/ Int]) : Throwable \/ Seq[Throwable \/ Int] = {
+      p.runStep.run match {
+        case Step(-\/(e),Halt(_),Halt(_)) => \/-(acc)
+        case Step(-\/(e),Halt(_), c) => go(c,acc :+ -\/(e))
+        case Step(-\/(e),t,_) => go(t,acc :+ -\/(e))
+        case Step(\/-(a),t,_) => go(t,acc ++ a.map(\/-(_)))
+      }
+    }
+
+    val ex = new java.lang.Exception("pure")
+
+    val p1 = Process.range(10,12)
+    val p2 = Process.range(20,22) ++ Process.suspend(eval(Task.fail(ex))) onFailure(Process(100).toSource)
+    val p3 = Process.await(Task.delay(1))(i=> throw ex,halt,emit(200)) //throws exception in `pure` code
+
+    go((p1 ++ p2) onComplete p3, Vector()) match {
+      case -\/(e) => false
+      case \/-(c) =>
+        c == List(
+          right(10),right(11)
+          , right(20),right(21),left(ex),right(100)
+          , left(ex), right(200)
+        )
+    }
+
+  }
+
+
+  property("runStep.stackSafety") = secure {
+    def go(p:Process[Task,Int], acc:Int) : Int = {
+      p.runStep.run match {
+        case Step(-\/(e),Halt(_),_) => acc
+        case Step(-\/(e),t,_) => go(t,acc)
+        case Step(\/-(a),t,_) => go(t,acc + a.sum)
+      }
+    }
+    val s = 1 until 10000
+    val p1 = s.foldLeft[Process[Task,Int]](halt)({case (p,n)=>Emit(Vector(n),p)})
+    go(p1,0) == s.sum
+  }
+
+
 
 }

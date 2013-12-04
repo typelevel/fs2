@@ -36,7 +36,7 @@ object ActorSpec extends Properties("actor") {
 
       Nondeterminism[Task].both(t1, t2).run._2.toList == l
   }
-
+   
   case object TestedEx extends Exception("expected in test") {
     override def fillInStackTrace = this
   }
