@@ -1169,13 +1169,7 @@ object Process {
 
   def awaitR[I2]: Tee[Any,I2,I2] =
     await(R[I2])(emit)
-/*
-  def awaitYL[I]: Wye[I,Nothing,ReceiveY[I,Nothing]] =
-    await(L[I])(emit)
 
-  def awaitYR[I2]: Wye[Nothing,I2,ReceiveY[Nothing,I2]] =
-    await(R[I2])(emit)
-*/
   def awaitBoth[I,I2]: Wye[I,I2,ReceiveY[I,I2]] =
     await(Both[I,I2])(emit)
 
