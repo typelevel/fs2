@@ -1,5 +1,6 @@
 package scalaz.stream.actor
 
+import java.util.concurrent.atomic.AtomicBoolean
 import scala._
 import scala.annotation.tailrec
 import scalaz._
@@ -8,7 +9,6 @@ import scalaz.stream.Process._
 import scalaz.stream.Step
 import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
 import scalaz.stream.{Process, wye}
-import java.util.concurrent.atomic.AtomicBoolean
 
 object WyeActor {
 
@@ -48,9 +48,9 @@ object WyeActor {
         case \/-(s) =>
           step = \/-(s)
           s match {
-            case Step(\/-(h),Halt(e),c) =>    haltA(e)(feedA(h)(y2))
-            case Step(\/-(h),t,c) =>   feedA(h)(y2)
-            case Step(-\/(e),t,c) =>  haltA(e)(y2)
+            case Step(\/-(h), Halt(e), c) => haltA(e)(feedA(h)(y2))
+            case Step(\/-(h),t,c) => feedA(h)(y2)
+            case Step(-\/(e), t, c) => haltA(e)(y2)
           }
 
         case -\/(e)    =>
@@ -69,9 +69,8 @@ object WyeActor {
     //if process is running is no-op and returns false
     def runCleanup(a: Actor[Msg], e: Throwable): Boolean =  step match {
         case \/-(s) if s.isCleaned => true
-        case \/-(s) =>  runClean(s.cleanup,e,a) ; false
+        case \/-(s) => runClean(s.cleanup, e, a); false
         case -\/(c) if cleanup.get == false =>
-          cleanup.set(true) //interrupt
           a ! Ready(this,\/-(Step.failed(Interrupted))) //this will have to be removed once Task will return error once interrupted in scalaz.task see comment to cleanup val above
           false
         case -\/(c) => false
@@ -85,6 +84,7 @@ object WyeActor {
       }
 
     private def runClean(c:Process[Task,A], e: Throwable, actor: Actor[Msg]) : Unit = {
+      cleanup.set(true)
       step = -\/(halt)
       c.causedBy(e).run.runAsync { cb => actor ! Ready(this, cb.map(_ => Step.failed(e)))}
     }
@@ -139,8 +139,8 @@ object WyeActor {
 
     //switches right and left to cleanup (if not yet switched) and runs the cleanup
     def tryCleanup(e: Throwable): Boolean = {
-      val l = L.runCleanup(a, e)
-      val r = R.runCleanup(a, e)
+      val l = L.runCleanup(a, e) && L.isClean
+      val r = R.runCleanup(a, e) && R.isClean
       l && r
     }
 

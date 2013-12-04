@@ -78,15 +78,17 @@ object WyeSpec extends Properties("wye") {
   property("either.cleanup-out-halts") = secure {
     val syncL = new SyncVar[Int]
     val syncR = new SyncVar[Int]
+    val syncO = new SyncVar[Int]
 
-    val l = Process.awakeEvery(10 millis) onComplete (eval(Task.delay(syncL.put(100))).drain)
-    val r = Process.awakeEvery(10 millis) onComplete (eval(Task.delay(syncR.put(200))).drain)
+    val l = Process.awakeEvery(10 millis) onComplete   (eval(Task.fork(Task.delay{ Thread.sleep(500);syncL.put(100)})).drain)
+    val r = Process.awakeEvery(10 millis) onComplete  (eval(Task.fork(Task.delay{ Thread.sleep(500);syncR.put(200)})).drain)
 
-    val e = (l either r).take(10).runLog.timed(3000).run
+    val e = ((l either r).take(10) onComplete (eval(Task.delay(syncO.put(1000))).drain)).runLog.timed(3000).run
 
     (e.size == 10) :| "10 first was taken" &&
-      (syncL.get(3000) == Some(100)) :| "Left side was cleaned" &&
-      (syncR.get(3000) == Some(200)) :| "Right side was cleaned"
+      (syncO.get(3000) == Some(1000)) :| "Out side was cleaned" &&
+      (syncL.get(0) == Some(100)) :| "Left side was cleaned" &&
+      (syncR.get(0) == Some(200)) :| "Right side was cleaned"
 
   }
 
