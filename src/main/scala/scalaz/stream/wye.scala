@@ -109,7 +109,7 @@ trait wye {
       case ReceiveR(None) => halt
       case ReceiveR(i) => emit(i) ++ go
       case ReceiveL(kill) => if (kill) halt else go
-      case HaltOne(halted) => Halt(halted.cause)
+      case HaltOne(e) => Halt(e)
     }
     go
   }
