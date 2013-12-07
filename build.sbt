@@ -29,5 +29,17 @@ publishMavenStyle := true
 
 licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
 
-bintray.Keys.packageLabels in bintray.Keys.bintray := 
+bintray.Keys.packageLabels in bintray.Keys.bintray :=
   Seq("stream processing", "functional I/O", "iteratees", "functional programming", "scala")
+
+osgiSettings
+
+OsgiKeys.bundleSymbolicName := "org.scalaz.stream"
+
+OsgiKeys.exportPackage := Seq("scalaz.stream.*")
+
+OsgiKeys.importPackage := Seq(
+  """scala.*;version="$<range;[===,=+);$<@>>"""",
+  """scalaz.*;version="$<range;[===,=+);$<@>>"""",
+  "*"
+)
