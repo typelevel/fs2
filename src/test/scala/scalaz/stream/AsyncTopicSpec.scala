@@ -1,12 +1,12 @@
 package scalaz.stream
 
 import collection.mutable
-import org.scalacheck.{Prop, Properties}
 import org.scalacheck.Prop._
-import scalaz.{\/-, \/, -\/}
+import org.scalacheck.{Prop, Properties}
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
 import scalaz.stream.Process._
+import scalaz.{\/-, \/, -\/}
 
 object AsyncTopicSpec extends Properties("topic") {
 
@@ -15,7 +15,7 @@ object AsyncTopicSpec extends Properties("topic") {
   }
 
 
-    //tests basic publisher and subscriber functionality
+  //tests basic publisher and subscriber functionality
     //have two publishers and four subscribers.
     //each publishers emits own half of elements (odd and evens) and all subscribers must
     //get that messages
@@ -136,7 +136,7 @@ object AsyncTopicSpec extends Properties("topic") {
         val signalContinuous = new SyncVar[Throwable \/ IndexedSeq[Long]]
         topic.signal.continuous.runLog.runAsync(signalContinuous.put)
 
-        Thread.sleep(30) //all has to have chance to register
+        Thread.sleep(100) //all has to have chance to register
 
         ((Process(l: _*).toSource to topic.publish) onComplete (eval(topic.close))).run.run
 
@@ -154,6 +154,31 @@ object AsyncTopicSpec extends Properties("topic") {
           ((signalContinuous.get(3000).map(_.map(signals diff _)) == Some(\/-(List()))) :| "Continuous signal published correct writes")
 
 
+      }
+  }
+
+
+  property("writer.state.startWith") = forAll {
+    l: List[String] =>
+      (l.size > 0 && l.size < 10000) ==> {
+
+        val w: Writer1[Long, String, Int] = {
+          def go(acc: Long): Writer1[Long, String, Int] = {
+            receive1[String, Long \/ Int] {
+              s =>
+                val t: Long = s.size.toLong + acc
+                emit(-\/(t)) fby
+                  emit(\/-(s.size)) fby
+                  go(t)
+            }
+          }
+          go(0L)
+        }
+
+        val topic = async.writerTopic(w)
+        ((Process(l: _*).toSource to topic.publish)).run.run
+
+        topic.subscribe.take(1).runLog.run == List(-\/(l.map(_.size).sum))
       }
   }
 

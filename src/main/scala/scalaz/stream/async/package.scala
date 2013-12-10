@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import scalaz.\/
+import scalaz.{\/-, \/}
 import scalaz.concurrent._
 import scalaz.stream.Process.Writer1
 import scalaz.stream.actor.TopicActor.Msg
@@ -111,7 +111,7 @@ package object async {
    * Please see `Topic` for more info.
    */
   def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = new Topic[A] {
-    private[stream] val actor: Actor[Msg[A, A]] = TopicActor.topic[A, A](process1.id)(S)
+    private[stream] val actor: Actor[Msg[Nothing,A, A]] = TopicActor.topic[Nothing,A, A](process1.lift{a=> \/-(a)})(S)
   }
 
 
@@ -126,7 +126,7 @@ package object async {
    * in addition when `close` or `fail` is called.
    */
   def writerTopic[S, A, B](w: Writer1[S, A, B])(implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[S, A, B] = new WriterTopic[S, A, B] {
-    private[stream] val actor: Actor[Msg[A, \/[S, B]]] = TopicActor.topic[A, S \/ B](w)(S)
+    private[stream] val actor: Actor[Msg[S,A,B]] = TopicActor.topic[S,A,B](w)(S)
   }
 }
 

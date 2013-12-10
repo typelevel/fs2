@@ -1,7 +1,6 @@
 package scalaz.stream.async.mutable
 
-import scalaz.-\/
-import scalaz.\/
+import scalaz.{\/-, -\/, \/}
 import scalaz.concurrent.{Actor, Task}
 import scalaz.stream.Process
 import scalaz.stream.Process._
@@ -23,21 +22,21 @@ import scalaz.stream.actor.TopicActor._
  * once the `close` or `fail` is called all the publishers and subscribers will terminate or fail.
  *
  */
-trait TopicOps[A, B] {
+trait TopicOps[S, A, B] {
 
-  private[stream] val actor: Actor[TopicActor.Msg[A, B]]
+  private[stream] val actor: Actor[TopicActor.Msg[S, A, B]]
 
   /**
    * Gets subscriber from this topic. There may be multiple subscribers to this topic. Subscriber
    * subscribes and un-subscribes when it is run or terminated.
    * @return
    */
-  val subscribe: Process[Task, B] = {
-    await(Task.async[SubscriberRef[B]](reg => actor ! Subscribe(reg)))(
+   val subscribe0: Process[Task,S \/ B] = {
+    await(Task.async[SubscriberRef[S \/ B]]( reg => actor ! Subscribe(reg)) )(
       sref =>
-        repeatEval(Task.async[Seq[B]] { reg => actor ! GetOne(sref, reg) })
+        repeatEval(Task.async[Seq[S \/ B]] { reg => actor ! GetOne(sref, reg) })
         .flatMap(l => emitAll(l))
-        .onComplete(eval(Task.async[Unit](reg => actor ! UnSubscribe(sref, reg))).drain)
+        .onComplete(eval(Task.async[Unit]( reg => actor ! UnSubscribe(sref, reg)) ).drain)
       , halt
       , halt)
   }
@@ -70,7 +69,14 @@ trait TopicOps[A, B] {
 
 }
 
-trait Topic[A] extends TopicOps[A, A]
+trait Topic[A] extends TopicOps[Nothing,A, A] {
+  /**
+   * Gets subscriber from this topic. There may be multiple subscribers to this topic. Subscriber
+   * subscribes and un-subscribes when it is run or terminated.
+   * @return
+   */
+  val subscribe: Process[Task,A] = subscribe0.collect { case \/-(a) => a }
+}
 
 
 /**
@@ -80,15 +86,24 @@ trait Topic[A] extends TopicOps[A, A]
  * @tparam S
  * @tparam A
  */
-trait WriterTopic[S, A, B] extends TopicOps[A, S \/ B] {
+trait WriterTopic[S, A, B] extends TopicOps[S,A,B] {
   self =>
+
+  /**
+   * Gets subscriber from this topic. There may be multiple subscribers to this topic. Subscriber
+   * subscribes and un-subscribes when it is run or terminated.
+   *
+   * WriterTopic guarantees, that the very first message received is always -\/(S) with A \/ S following.
+   */
+  val subscribe = subscribe0
+
   def signal: scalaz.stream.async.immutable.Signal[S] =
     new scalaz.stream.async.immutable.Signal[S] {
       def changed: Process[Task, Boolean] =
         discrete.map(_ => true).wye(Process.constant(false))(scalaz.stream.wye.merge)
 
       def discrete: Process[Task, S] =
-        self.subscribe.collect { case -\/(s) => s }
+        self.subscribe0.collect { case -\/(s) => s }
 
       def continuous: Process[Task, S] =
         discrete.wye(Process.constant(()))(scalaz.stream.wye.echoLeft)

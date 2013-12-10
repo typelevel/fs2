@@ -1,7 +1,7 @@
 package scalaz.stream.actor
 
 import scala.collection.immutable.{Iterable, Queue}
-import scalaz.\/
+import scalaz.{\/-, -\/, \/}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy}
 import scalaz.stream.Process._
@@ -9,13 +9,13 @@ import scalaz.stream.Process._
 
 object TopicActor {
 
-  sealed trait Msg[A, B]
-  case class Publish[A, B](a: A, cb: (Throwable \/ Unit) => Unit) extends Msg[A, B]
-  case class Fail[A, B](t: Throwable, cb: (Throwable \/ Unit) => Unit) extends Msg[A, B]
+  sealed trait Msg[S,A,B]
+  case class Publish[S,A,B](a: A, cb: (Throwable \/ Unit) => Unit) extends Msg[S,A,B]
+  case class Fail[S,A,B](t: Throwable, cb: (Throwable \/ Unit) => Unit) extends Msg[S,A,B]
 
-  case class Subscribe[A, B](cb: (Throwable \/ SubscriberRef[B]) => Unit) extends Msg[A, B]
-  case class UnSubscribe[A, B](ref: SubscriberRef[B], cb: (Throwable \/ Unit) => Unit) extends Msg[A, B]
-  case class GetOne[A, B](ref: SubscriberRef[B], cb: (Throwable \/ Seq[B]) => Unit) extends Msg[A, B]
+  case class Subscribe[S,A,B](cb: (Throwable \/ SubscriberRef[S \/ B]) => Unit) extends Msg[S,A,B]
+  case class UnSubscribe[S,A,B](ref: SubscriberRef[S \/ B], cb: (Throwable \/ Unit) => Unit) extends Msg[S,A,B]
+  case class GetOne[S,A,B](ref: SubscriberRef[S \/ B], cb: (Throwable \/ Seq[S \/ B]) => Unit) extends Msg[S,A,B]
 
   //For safety we just hide the mutable functionality from the ref which we passing around
   sealed trait SubscriberRef[A]
@@ -101,11 +101,12 @@ object TopicActor {
    * message.topic.GetOne       - Registers callback or gets messages in subscriber's queue
    *
    *
-   * @param p Process, that may transform A to another A when new `A` arrives.
+   * @param p Writer1, that may transform A to another B when new `A` arrives. It may also produce `S` that will
+   *          get memoized and will be emitted to every subscriber as their first message
    */
-  def topic[A, B](p: Process1[A, B])(implicit S: Strategy): Actor[Msg[A, B]] = {
+  def topic[S,A,B](p: Writer1[S,A,B])(implicit S: Strategy): Actor[Msg[S,A,B]] = {
 
-    var subs = List[SubscriberRefInstance[B]]()
+    var subs = List[SubscriberRefInstance[S \/ B]]()
 
     //just helper for callback
     val open : Throwable \/ Unit = right(())
@@ -115,37 +116,52 @@ object TopicActor {
 
     @inline def ready = terminated.isRight
 
-    var state: Process1[A, B] = p
+    var state: Writer1[S,A,B] = p
+    var lastW: Option[S] = None
 
-    val actor = Actor.actor[Msg[A, B]] {
+    def fail(err:Throwable) = {
+      subs.foreach(_.fail(err))
+      subs = Nil
+      terminated = left(err)
+    }
+
+    val actor = Actor.actor[Msg[S,A,B]] {
 
       //publishes message in the topic when there is state process defined
       case Publish(a, cb) if ready =>
-        val np = state.feed1(a)
-        val (xb, next) = np.unemit
-        if (xb.nonEmpty) {
-          subs.foreach(_.publishAll(xb.toList))
-          S(cb(open))
+        try {
+          val ns = state.feed1(a)
+          val (xb, next) = ns.unemit
+          xb.collect{ case -\/(s) => s}.lastOption.map {
+            s => lastW = Some(s)
+          }
+          if (xb.nonEmpty) {
+            subs.foreach(_.publishAll(xb.toList))
+            S(cb(open))
+          }
+          state = next
+        } catch {
+          case t : Throwable =>
+            terminated = -\/(t)
+            fail(t)
         }
-        state = next
 
       //Gets the value of the reference
       //it wil register call back if there are no messages to be published
-      case GetOne(ref: SubscriberRefInstance[B@unchecked], cb) if ready =>
-      ref.get(cb)
+      case GetOne(ref: SubscriberRefInstance[S\/B]@unchecked, cb) if ready =>
+       ref.get(cb)
 
       //Stops or fails this topic
       case Fail(err, cb) if ready =>
-        subs.foreach(_.fail(err))
-        subs = Nil
-        terminated = left(err)
+        fail(err)
         S(cb(terminated))
 
 
       // Subscribes subscriber
       // When subscriber terminates it MUST send un-subscribe to release all it's resources
       case Subscribe(cb) if ready =>
-        val subRef = new SubscriberRefInstance[B](left(Queue()))(S)
+        val q =  lastW.map(s=>Queue(-\/(s))).getOrElse(Queue())
+        val subRef = new SubscriberRefInstance[S\/B](left(q))(S)
         subs = subs :+ subRef
         S(cb(right(subRef)))
 
