@@ -157,19 +157,21 @@ object WyeSpec extends Properties("wye") {
 
 
   property("merge.queue.both-cleanup") = secure {
+    import java.util.concurrent.atomic.AtomicBoolean
+
     val(q1,s1) = async.queue[Int]
     val(q2,s2) = async.queue[Int]
 
     q1.enqueue(1)
     q2.enqueue(2)
 
-    var cup1 = false
-    var cup2 = false
+    val cup1 = new AtomicBoolean(false)
+    val cup2 = new AtomicBoolean(false)
 
     def clean(side:Int) = suspend(eval(Task.delay(
       side match {
-        case 1 => cup1 = true
-        case 2 => cup2 = true
+        case 1 => cup1.set(true)
+        case 2 => cup2.set(true)
       }
     ))).drain
 
@@ -178,7 +180,7 @@ object WyeSpec extends Properties("wye") {
 
     ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
     (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected" &&
-    (cup1 && cup2 == true) :| "Cleanup was called on both sides"
+    (cup1.get && cup2.get) :| "Cleanup was called on both sides"
 
   }
 

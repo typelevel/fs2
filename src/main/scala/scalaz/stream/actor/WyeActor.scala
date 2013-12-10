@@ -134,8 +134,14 @@ object WyeActor {
       override def toString: String = "Right"
     }
 
-    val L: LeftWyeSide = LeftWyeSide(\/-(Step.fromProcess(pl)))
-    val R: RightWyeSide = RightWyeSide(\/-(Step.fromProcess(pr)))
+    // We call suspend on both processes to ensure that processes are not halt at the beginning.
+    //
+    // Since if one process is halt at the beginning and wye repeatedly awaits both sides then
+    // wye won't get the notification about the halted process until the other process halts too.
+    // If the processes are not halt at the beginning then receive is called
+    // for each process at least once and this is sufficient to notify wye.
+    val L: LeftWyeSide = LeftWyeSide(\/-(Step.fromProcess(Process.suspend(pl))))
+    val R: RightWyeSide = RightWyeSide(\/-(Step.fromProcess(Process.suspend(pr))))
 
     //switches right and left to cleanup (if not yet switched) and runs the cleanup
     def tryCleanup(e: Throwable): Boolean = {
