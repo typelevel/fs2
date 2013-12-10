@@ -166,7 +166,7 @@ object WyeSpec extends Properties("wye") {
     q2.enqueue(2)
 
     val cup1 = new AtomicBoolean(false)
-    var cup2 = new AtomicBoolean(false)
+    val cup2 = new AtomicBoolean(false)
 
     def clean(side:Int) = suspend(eval(Task.delay(
       side match {
