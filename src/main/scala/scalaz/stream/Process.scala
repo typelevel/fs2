@@ -798,8 +798,16 @@ object Process {
    */
   type Writer[+F[_],+W,+O] = Process[F, W \/ O]
 
-  /** A `Process1` that writes values of type `W`. */
-  type Process1W[+W,-I,+O] = Process1[I,W \/ O]
+  /**
+   * Simillar to `Writer` except when fed with `I` will produce
+   * either new written value `W` or just produces the
+   * value `O`
+   *
+   * This is usefull in `WriterTopic` that allows to share common
+   * state between processes together with updates that created
+   * new state.
+   */
+  type Writer1[+W,-I,+O] = Process1[I,W \/ O]
 
   /** A `Tee` that writes values of type `W`. */
   type TeeW[+W,-I,-I2,+O] = Tee[I,I2,W \/ O]
@@ -1226,7 +1234,7 @@ object Process {
     p.flatMap(a => emitAll(Vector(left(a), right(a))))
 
   /** `Writer` based version of `await1`. */
-  def await1W[A]: Process1W[Nothing,A,A] =
+  def await1W[A]: Writer1[Nothing,A,A] =
     liftW(Process.await1[A])
 
   /** `Writer` based version of `awaitL`. */

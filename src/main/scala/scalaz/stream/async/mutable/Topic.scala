@@ -1,9 +1,13 @@
 package scalaz.stream.async.mutable
 
+import scalaz.-\/
+import scalaz.\/
+import scalaz.concurrent.{Actor, Task}
 import scalaz.stream.Process
-import scalaz.concurrent.{Task, Actor}
 import scalaz.stream.Process._
-import scalaz.stream.actor.message
+import scalaz.stream.actor.TopicActor
+import scalaz.stream.actor.TopicActor._
+
 
 /**
  * Represents topic, that asynchronously exchanges messages between one or more publisher(s) 
@@ -19,36 +23,25 @@ import scalaz.stream.actor.message
  * once the `close` or `fail` is called all the publishers and subscribers will terminate or fail.
  *
  */
-trait Topic[A] {
+trait TopicOps[A, B] {
 
-  import message.topic._
-
-  private[stream] val actor: Actor[Msg[A]]
-
-  /**
-   * Gets publisher to this topic. There may be multiple publishers to this topic.
-   */
-  val publish: Sink[Task, A] = repeatEval(Task.now ( publishOne _ ))
+  private[stream] val actor: Actor[TopicActor.Msg[A, B]]
 
   /**
    * Gets subscriber from this topic. There may be multiple subscribers to this topic. Subscriber
-   * subscribes and un-subscribes when it is run or terminated.  
+   * subscribes and un-subscribes when it is run or terminated.
    * @return
    */
-  val subscribe: Process[Task, A] = {
-    await(Task.async[SubscriberRef[A]](reg => actor ! Subscribe(reg)))(
+  val subscribe: Process[Task, B] = {
+    await(Task.async[SubscriberRef[B]](reg => actor ! Subscribe(reg)))(
       sref =>
-        repeatEval(Task.async[Seq[A]] { reg => actor ! Get(sref, reg) })
-          .flatMap(l => emitAll(l))
-          .onComplete(eval(Task.async[Unit](reg => actor ! UnSubscribe(sref, reg))).drain)
+        repeatEval(Task.async[Seq[B]] { reg => actor ! GetOne(sref, reg) })
+        .flatMap(l => emitAll(l))
+        .onComplete(eval(Task.async[Unit](reg => actor ! UnSubscribe(sref, reg))).drain)
       , halt
       , halt)
   }
 
-  /**
-   * publishes single `A` to this topic. 
-   */
-  def publishOne(a:A) : Task[Unit] = Task.async[Unit](reg => actor ! Publish(a, reg))
 
   /**
    * Will `finish` this topic. Once `finished` all publishers and subscribers are halted via `halt`.
@@ -64,6 +57,45 @@ trait Topic[A] {
    * @return
    */
   def fail(err: Throwable): Task[Unit] = Task.async[Unit](reg => actor ! Fail(err, reg)).attempt.map(_ => ())
+
+  /**
+   * Gets publisher to this topic. There may be multiple publishers to this topic.
+   */
+  val publish: Sink[Task, A] = Process.constant(publishOne _)
+
+  /**
+   * publishes single `A` to this topic.
+   */
+  def publishOne(a: A): Task[Unit] = Task.async[Unit](reg => actor ! Publish(a, reg))
+
+}
+
+trait Topic[A] extends TopicOps[A, A]
+
+
+/**
+ * Like a `Topic`, but allows to specify `Writer1` to eventually `write` the state `S` from arriving messages of `A`
+ * to topic
+ *
+ * @tparam S
+ * @tparam A
+ */
+trait WriterTopic[S, A, B] extends TopicOps[A, S \/ B] {
+  self =>
+  def signal: scalaz.stream.async.immutable.Signal[S] =
+    new scalaz.stream.async.immutable.Signal[S] {
+      def changed: Process[Task, Boolean] =
+        discrete.map(_ => true).wye(Process.constant(false))(scalaz.stream.wye.merge)
+
+      def discrete: Process[Task, S] =
+        self.subscribe.collect { case -\/(s) => s }
+
+      def continuous: Process[Task, S] =
+        discrete.wye(Process.constant(()))(scalaz.stream.wye.echoLeft)
+
+      def changes: Process[Task, Unit] =
+        discrete.map(_ => ())
+    }
 
 
 }
