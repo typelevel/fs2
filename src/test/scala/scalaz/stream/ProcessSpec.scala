@@ -103,6 +103,9 @@ object ProcessSpec extends Properties("Process1") {
     ("collect" |: {
       p.collect(pf).toList == p.toList.collect(pf)
     }) &&
+    ("collectFirst" |: {
+      p.collectFirst(pf).toList == p.toList.collectFirst(pf).toList
+    }) &&
     ("fold" |: {
       p.fold(0)(_ + _).toList == List(p.toList.fold(0)(_ + _))
     }) &&
