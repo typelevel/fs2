@@ -69,7 +69,7 @@ trait TopicOps[S, A, B] {
 
 }
 
-trait Topic[A] extends TopicOps[Nothing,A, A] {
+trait Topic[A] extends TopicOps[Unit,A, A] {
   /**
    * Gets subscriber from this topic. There may be multiple subscribers to this topic. Subscriber
    * subscribes and un-subscribes when it is run or terminated.

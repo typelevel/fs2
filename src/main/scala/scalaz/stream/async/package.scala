@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import scalaz.{\/-, \/}
+import scalaz.{-\/, \/-, \/}
 import scalaz.concurrent._
 import scalaz.stream.Process.Writer1
 import scalaz.stream.actor.TopicActor.Msg
@@ -111,7 +111,8 @@ package object async {
    * Please see `Topic` for more info.
    */
   def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = new Topic[A] {
-    private[stream] val actor: Actor[Msg[Nothing,A, A]] = TopicActor.topic[Nothing,A, A](process1.lift{a=> \/-(a)})(S)
+    private[stream] val actor: Actor[Msg[Unit,A, A]] =
+      TopicActor.topic[Unit,A, A](Process.emit(-\/(())) fby process1.lift{a=> \/-(a)})(S)
   }
 
 
@@ -121,6 +122,11 @@ package object async {
    * Receive tuple `(S,A)` instead of `A` when subscribed.
    *
    * Writer topic also provides signal of `S`.
+   *
+   * Please note that Writer is required to write `S` initially. If writer emits instead `B` they will get discarded
+   * until first `S` is emitted. That means subscriber will not see any `B` before `S` is seen for the first time.
+   * This can be also used to control whether topic is required to receive `A` before subscribers get `S` or `B`.
+   *
    *
    * Note the resulting topic will terminate whenever the `Writer1` terminates,
    * in addition when `close` or `fail` is called.

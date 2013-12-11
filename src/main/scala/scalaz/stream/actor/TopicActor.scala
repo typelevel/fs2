@@ -160,7 +160,19 @@ object TopicActor {
       // Subscribes subscriber
       // When subscriber terminates it MUST send un-subscribe to release all it's resources
       case Subscribe(cb) if ready =>
-        val q =  lastW.map(s=>Queue(-\/(s))).getOrElse(Queue())
+        val q = lastW match {
+          case Some(s) => Queue(-\/(s))
+          case None => state.unemit match {
+            case (xb, ns) =>
+              val xbsh = xb.dropWhile(_.isRight)
+              state = ns
+              //head is S or empty
+              if (xbsh.nonEmpty) {
+                lastW = xbsh.head.fold(s=>Some(s),_=> None)
+                Queue(xbsh:_*)
+              } else Queue() 
+          }
+        }
         val subRef = new SubscriberRefInstance[S\/B](left(q))(S)
         subs = subs :+ subRef
         S(cb(right(subRef)))

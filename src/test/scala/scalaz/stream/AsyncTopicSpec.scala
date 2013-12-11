@@ -125,7 +125,9 @@ object AsyncTopicSpec extends Properties("topic") {
           }
           go(0)
         }
-        val topic = async.writerTopic(w)
+
+        //emit 111 to be ignored and 0L as initial state
+        val topic = async.writerTopic(emit(\/-(111)) fby emit(-\/(0L)) fby w)
 
         val published = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
         topic.subscribe.runLog.runAsync(published.put)
@@ -146,10 +148,9 @@ object AsyncTopicSpec extends Properties("topic") {
             (t, acc :+ -\/(t) :+ \/-(s.size))
         })
 
-        val signals = expectPublish._2.collect { case -\/(s) => s }
+        val signals = 0L +: expectPublish._2.collect { case -\/(s) => s }
 
-
-        ((published.get(3000) == Some(\/-(expectPublish._2))) :| "All items were published") &&
+        ((published.get(3000).map(_.map(_.toList))  == Some(\/-(-\/(0L) +: expectPublish._2))) :| "All items were published") &&
           ((signalDiscrete.get(3000) == Some(\/-(signals))) :| "Discrete signal published correct writes") &&
           ((signalContinuous.get(3000).map(_.map(signals diff _)) == Some(\/-(List()))) :| "Continuous signal published correct writes")
 
@@ -175,7 +176,7 @@ object AsyncTopicSpec extends Properties("topic") {
           go(0L)
         }
 
-        val topic = async.writerTopic(w)
+        val topic = async.writerTopic(emit(-\/(0L)) fby w)
         ((Process(l: _*).toSource to topic.publish)).run.run
 
         topic.subscribe.take(1).runLog.run == List(-\/(l.map(_.size).sum))
