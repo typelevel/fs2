@@ -576,6 +576,10 @@ sealed abstract class Process[+F[_],+O] {
   def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
     this |> process1.collect(pf)
 
+  /** Alias for `this |> process1.collectFirst(pf)`. */
+  def collectFirst[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
+    this |> process1.collectFirst(pf)
+
   /** Alias for `this |> process1.split(f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.split(f)

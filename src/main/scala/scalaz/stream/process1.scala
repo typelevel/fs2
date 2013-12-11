@@ -92,6 +92,13 @@ trait process1 {
   def collect[I,I2](pf: PartialFunction[I,I2]): Process1[I,I2] =
     id[I].flatMap(pf andThen(emit) orElse { case _ => halt })
 
+  /**
+   * Like `collect`, but emits only the first element of this process on which
+   * the partial function is defined.
+   */
+  def collectFirst[I,I2](pf: PartialFunction[I,I2]): Process1[I,I2] =
+    collect(pf).take(1)
+
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] =
     if (n <= 0) id[I]
