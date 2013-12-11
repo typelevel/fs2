@@ -148,6 +148,25 @@ object ProcessSpec extends Properties("Process1") {
     one.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(())
   }
 
+  property("wye runs cleanup for both sides") = secure {
+    import ReceiveY._
+    import java.util.concurrent.atomic.AtomicBoolean
+    def eitherWhileBoth[A,B]: Wye[A,B,A \/ B] = {
+      def go: Wye[A,B,A \/ B] = receiveBoth[A,B,A \/ B] {
+        case HaltL(_) | HaltR(_) => halt
+        case ReceiveL(i) => emit(-\/(i)) fby go
+        case ReceiveR(i) => emit(\/-(i)) fby go
+      }
+      go
+    }
+    val completed = new AtomicBoolean(false)
+    val (_, qProc) = async.queue[Unit]
+    val left = qProc.onComplete(eval(Task.delay { completed.set(true) }))
+    val right = Process[Int](1)
+    left.wye(right)(eitherWhileBoth).run.run
+    completed.get
+  }
+
   // ensure that zipping terminates when the smaller stream runs out
   property("zip one side infinite") = secure {
     val ones = Process.eval(Task.now(1)).repeat
