@@ -72,9 +72,9 @@ trait StateProcess[S, A, B] {
   def wyeConnect[S2, C, D, E](ye: WyeW[S2, S \/ B, C, E], sc: Process[Task, C])(ya: WyeW[S2, S2 \/ E, D, A], sd: Process[Task, D])
 
 
-  type Connection[S,S2,A,B,C] = (Writer1[S2, S \/ B, C], Writer1[S, S2 \/ C, A])
+  type Connection[S2,C] = (Writer1[S2, S \/ B, C], Writer1[S, S2 \/ C, A])
 
-  type WyeConnection[S,S2,A,B,C,D,E] = (WyeW[S2, S \/ B, C, E], Process[Task, C],  WyeW[S2, S2 \/ E, D, A], Process[Task, D])
+  type WyeConnection[S2,C,D,E] = (WyeW[S2, S \/ B, C, E], Process[Task, C],  WyeW[S2, S2 \/ E, D, A], Process[Task, D])
 
   /**
    * Dynamically creates connected StateProcesses as defined by `d`. Once `d` emits new pair of `K` and `Connection`
@@ -84,11 +84,13 @@ trait StateProcess[S, A, B] {
    * that is consumed by `master` once the `worker` stops its job.
    *
    */
-  def dynamic[S2, K, C](d: Process1[S \/ B, (K,Connection[S,S2,A,B,C])]): StateProcess[Map[K,StateProcess[S2,B,C]], B, StateProcess[S2,B,C]]
+  def dynamic[S2, K, C](d: Process1[S \/ B, (K,Connection[S2,C])])
+  : StateProcess[Map[K,StateProcess[S2,B,C]], B, StateProcess[S2,B,C]]
 
 
   /** `wye` alternative of `dynamic` **/
-  def dynamicWye[S2,K, C, D, E](d:Process1[S \/ B, (K,Connection[S,S2,A,B,C])])
+  def dynamicWye[S2,K, C, D, E](d:Process1[S \/ B, (K,WyeConnection[S2,C,D,E])])
+  : StateProcess[Map[K,StateProcess[S2,B,C]], B, StateProcess[S2,B,C]]
 
 }
 
