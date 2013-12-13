@@ -167,6 +167,30 @@ object ProcessSpec extends Properties("Process1") {
     completed.get
   }
 
+  property("wye runs cleanup from last evaluated await") = secure {
+    import ReceiveY._
+    import java.util.concurrent.atomic.AtomicInteger
+    def whileBoth[A,B]: Wye[A,B,Nothing] = {
+      def go: Wye[A,B,Nothing] = receiveBoth[A,B,Nothing] {
+        case HaltL(_) | HaltR(_) => halt
+        case _ => go
+      }
+      go
+    }
+    val openComplete = new concurrent.SyncVar[Unit]
+    val nOpened = new AtomicInteger
+    val open: Task[Unit] = Task.delay { nOpened.incrementAndGet(); openComplete.put(()) }
+    val close: Task[Unit] = Task.delay { nOpened.decrementAndGet() }
+    val (q, qProc) = async.queue[Unit]
+    val (_, block) = async.queue[Unit]
+    val resourceProc = await(open)(_ => block, halt, halt).onComplete(eval_(close))
+    val complexProc = Process.suspend(resourceProc)
+    Task { openComplete.get; q.close }.runAsync(_ => ())
+    // Left side opens the resource and blocks, right side terminates. Resource must be closed.
+    complexProc.wye(qProc)(whileBoth).run.run
+    nOpened.get == 0
+  }
+
   // ensure that zipping terminates when the smaller stream runs out
   property("zip one side infinite") = secure {
     val ones = Process.eval(Task.now(1)).repeat
