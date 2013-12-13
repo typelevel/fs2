@@ -41,7 +41,10 @@ object ResourceSafetySpec extends Properties("resource-safety") {
       emit(1) onComplete cleanup onComplete die,
       (emit(2) append die) onComplete cleanup,
       (src ++ die) onComplete cleanup,
-      src.onComplete(cleanup) onComplete die
+      src.onComplete(cleanup) onComplete die,
+      src.fby(die) onComplete cleanup,
+      src.orElse(die) onComplete cleanup,
+      (src append die).orElse(halt,die) onComplete cleanup
     )
     procs.foreach { p => 
       try p.run.run 
