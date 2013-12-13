@@ -103,6 +103,9 @@ object ProcessSpec extends Properties("Process1") {
     ("collect" |: {
       p.collect(pf).toList == p.toList.collect(pf)
     }) &&
+    ("collectFirst" |: {
+      p.collectFirst(pf).toList == p.toList.collectFirst(pf).toList
+    }) &&
     ("fold" |: {
       p.fold(0)(_ + _).toList == List(p.toList.fold(0)(_ + _))
     }) &&
@@ -127,6 +130,25 @@ object ProcessSpec extends Properties("Process1") {
     val tasks = Process.range(0,1000).map(i => Task { Thread.sleep(1); 1 })
     tasks.sequence(50).pipe(processes.sum[Int].last).runLog.run.head == 1000 &&
     tasks.gather(50).pipe(processes.sum[Int].last).runLog.run.head == 1000
+  }
+
+  // ensure that wye terminates
+  property("wye one side infinite") = secure {
+    import ReceiveY._
+    def whileBoth[A,B]: Wye[A,B,Nothing] = {
+      def go: Wye[A,B,Nothing] = receiveBoth[A,B,Nothing] {
+        case HaltL(_) | HaltR(_) => halt
+        case _ => go
+      }
+      go
+    }
+    val inf = Process.constant(0)
+    val one = eval(Task.now(1))
+    val empty = Process[Int]()
+    inf.wye(empty)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
+    empty.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
+    inf.wye(one)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
+    one.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(())
   }
 
   // ensure that zipping terminates when the smaller stream runs out

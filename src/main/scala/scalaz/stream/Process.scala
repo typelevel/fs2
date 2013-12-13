@@ -111,7 +111,11 @@ sealed abstract class Process[+F[_],+O] {
    */
   final def fby[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = this match {
     case h@Halt(e) => e match {
-      case End => p2
+      case End =>
+        try p2
+          catch { case End => h
+          case e2: Throwable => Halt(e2)
+        }
       case _ => h
     }
     case Emit(h, t) => emitSeq(h, t fby p2)
@@ -223,20 +227,31 @@ sealed abstract class Process[+F[_],+O] {
    * Append to the `fallback` and `cleanup` arguments of the _next_ `Await`.
    */
   final def orElse[F2[x]>:F[x],O2>:O](fallback0: => Process[F2,O2], cleanup0: => Process[F2,O2] = halt): Process[F2,O2] = {
-    lazy val fallback: Process[F2,O2] = fallback0 match {
-      case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
-      case _ => fallback0
+    lazy val fallback: Process[F2,O2] = try {
+      fallback0 match {
+        case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
+        case _ => fallback0
+      }
+    } catch {
+      case e: Throwable => Halt(e)
     }
-    lazy val cleanup: Process[F2,O2] = cleanup0 match {
-      case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
-      case _ => cleanup0
+
+    lazy val cleanup: Process[F2,O2] = try {
+      cleanup0 match {
+        case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
+        case _ => cleanup0
+      }
+    } catch {
+      case e: Throwable => Halt(e)
     }
+
     def go(cur: Process[F,O]): Process[F2,O2] = cur match {
       case Await(req,recv,fb,c) => Await(req, recv, fb ++ fallback, c ++ cleanup)
       case Emit(h, t) => Emit(h, go(t))
       case h@Halt(_) => h
     }
     go(this)
+
   }
 
   /**
@@ -575,6 +590,10 @@ sealed abstract class Process[+F[_],+O] {
   /** Alias for `this |> process1.collect(pf)`. */
   def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
     this |> process1.collect(pf)
+
+  /** Alias for `this |> process1.collectFirst(pf)`. */
+  def collectFirst[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
+    this |> process1.collectFirst(pf)
 
   /** Alias for `this |> process1.split(f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
