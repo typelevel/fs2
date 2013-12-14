@@ -912,6 +912,16 @@ object Process {
     go(n max 0)
   }
 
+  /**
+   * An infinite `Process` that repeatedly applies a given function
+   * to a start value.
+   */
+  def iterate[A](start: A)(f: A => A): Process[Task,A] = {
+    def go(a: A): Process[Task,A] =
+      await(Task.now(a))(a => Emit(List(a), go(f(a))))
+    go(start)
+  }
+
   /** Produce a (potentially infinite) source from an unfold. */
   def unfold[S,A](s0: S)(f: S => Option[(A,S)]): Process[Task,A] =
     await(Task.delay(f(s0)))(o =>
