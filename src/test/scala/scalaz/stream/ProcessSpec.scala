@@ -130,8 +130,8 @@ object ProcessSpec extends Properties("Process1") {
 
   property("unfold") = secure {
     Process.unfold((0, 1)) {
-      case (f1, f2) => Some((f1, f2), (f2, f1 + f2))
-    }.map(_._1).take(8).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
+      case (f1, f2) => if (f1 <= 13) Some((f1, f2), (f2, f1 + f2)) else None
+    }.map(_._1).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
 
   import scalaz.concurrent.Task
