@@ -128,6 +128,12 @@ object ProcessSpec extends Properties("Process1") {
     Process.iterate(0)(_ + 1).take(100).runLog.run.toList == List.iterate(0, 100)(_ + 1)
   }
 
+  property("unfold") = secure {
+    Process.unfold((0, 1)) {
+      case (f1, f2) => Some((f1, f2), (f2, f1 + f2))
+    }.map(_._1).take(8).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
+  }
+
   import scalaz.concurrent.Task
 
   property("enqueue") = secure {
