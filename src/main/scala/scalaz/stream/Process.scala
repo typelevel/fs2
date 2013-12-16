@@ -1692,6 +1692,11 @@ object Process {
     }
   }
 
+  implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
+    /** converts sink to channel, that will perform the side effect and echo its input **/
+    def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
+  }
+
   /**
    * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
    */
