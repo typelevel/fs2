@@ -108,7 +108,7 @@ trait io {
    * using the `resource` combinator to ensure the `InputStream` is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(in: InputStream): Process[Task,String] =
+  def linesStream(in: InputStream): Process[Task,String] =
     resource(Task.delay(scala.io.Source.fromInputStream(in)))(
              src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
