@@ -136,6 +136,13 @@ trait io {
   }
 
   /**
+   * The standard input stream, as `Process`. This `Process` repeatedly awaits
+   * and emits lines from standard input.
+   */
+  def stdInLines: Process[Task,String] =
+    Process.repeatEval(Task.delay { Option(readLine()).getOrElse(throw End) })
+
+  /**
    * The standard output stream, as a `Sink`. This `Sink` does not
    * emit newlines after each element. For that, use `stdOutLines`.
    */
