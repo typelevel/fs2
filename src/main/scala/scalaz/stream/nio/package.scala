@@ -26,17 +26,23 @@ package object nio {
   def server(bind: InetSocketAddress
     , reuseAddress: Boolean = true
     , rcvBufferSize: Int = 256 * 1024
-    )(AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
+    )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
   : Process[Task, Process[Task, Exchange[Array[Byte], Array[Byte]]]] = {
 
+    println("GO, BABY GO")
+
     def setup(ch: AsynchronousServerSocketChannel): AsynchronousServerSocketChannel = {
+      println("SETTING UP")
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, rcvBufferSize)
+      ch.bind(bind)
       ch
     }
 
     def release(ch: AsynchronousChannel): Process[Task, Nothing] = {
-      suspend(eval(Task.now(ch.close()))).drain
+      suspend(
+        emit(println("clsoing")) fby
+          eval(Task.now(ch.close()))).drain
     }
 
     await(
@@ -52,10 +58,7 @@ package object nio {
           val ch: AsynchronousSocketChannel = ch1
         })) onComplete release(ch1)
 
-      } onComplete release(sch)
-        , halt
-        , halt
-      )
+      } onComplete release(sch))
   }
 
 
@@ -75,7 +78,7 @@ package object nio {
     , rcvBufferSize: Int = 256 * 1024
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
-    )(AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
+    )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
   : Process[Task, Exchange[Array[Byte], Array[Byte]]] = {
 
     def setup(ch: AsynchronousSocketChannel): AsynchronousSocketChannel = {
