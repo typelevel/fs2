@@ -17,6 +17,7 @@ object MergeXStrategies {
    */
   def publishSubscribe[A]: MergeXStrategy[Nothing, A, A] =
     mergeX[Nothing, A, A] {
+      case Open(mx, ref: UpRef) => mx.more(ref) fby publishSubscribe
       case Receive(mx, is, ref) => mx.more(ref) fby mx.broadcastAllO(is) fby publishSubscribe
       case DoneDown(mx, rsn)    => Halt(rsn)
       case _                    => publishSubscribe

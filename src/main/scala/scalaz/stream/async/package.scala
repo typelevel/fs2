@@ -4,6 +4,7 @@ import scalaz.{stream, \/}
 import scalaz.concurrent._
 import scalaz.stream.actor.message
 import scalaz.stream.actor.actors
+import scalaz.stream.merge.{MergeXStrategies, MergeX}
 
 package object async {
   import mutable.{Queue,Ref,Signal,Topic}
@@ -106,9 +107,13 @@ package object async {
    * Please see `Topic` for more info.
    */
   def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
-    new Topic[A]{
-      private[stream] val actor = actors.topic[A](S)
-    }
+     val mergex = MergeX(MergeXStrategies.publishSubscribe[A], Process.halt)(S)
+     new Topic[A] {
+       def publish: Process.Sink[Task, A] = mergex.upstreamSink
+       def subscribe: Process[Task, A] = mergex.downstreamO
+       def publishOne(a: A): Task[Unit] = mergex.receiveOne(a)
+       def fail(err: Throwable): Task[Unit] = mergex.downstreamClose(err)
+     }
   }
 }
 
