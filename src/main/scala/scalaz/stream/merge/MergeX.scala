@@ -1,9 +1,15 @@
 package scalaz.stream.merge
 
+import scala._
 import scala.collection.immutable.Queue
-import scalaz.concurrent.Task
-import scalaz.stream.Process
+import scalaz.-\/
+import scalaz.\/
+import scalaz.\/-
+import scalaz.\/._
+import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process._
+import scalaz.stream.actor.WyeActor
+import scalaz.stream.{Step, Process}
 
 
 object MergeX {
@@ -27,7 +33,7 @@ object MergeX {
   /** Write `W` value to downstream **/
   case class WriteW[W, O](sw: Seq[W], ref: DownRefW) extends MergeAction[W, O]
   /** Close the up/down stream **/
-  case class Close[W, O](ref: MergeRef, rsn: Throwable) extends MergeAction[W, O]
+  case class Close[W, O](rsn: Throwable, ref: MergeRef) extends MergeAction[W, O]
 
 
   /**
@@ -61,6 +67,8 @@ object MergeX {
    * @param downReadyW  All downstream processes that are ready to get next `W`
    * @param downO       All downstream processes that accept `O` values
    * @param downReadyO  All downstream processes that are ready to get next `O`
+   * @param doneDown    When downstream processes are closed this is set with reason
+   * @param doneUp      When upstream processes are closed this is set with reason
    */
   case class MX[W, I, O](
     up: Seq[UpRef]
@@ -69,6 +77,8 @@ object MergeX {
     , downReadyW: Seq[DownRefW]
     , downO: Seq[DownRefO]
     , downReadyO: Seq[DownRefO]
+    , doneDown: Option[Throwable]
+    , doneUp: Option[Throwable]
     ) {
 
     /** Distributes seq of `O` to supplied references.
@@ -127,7 +137,7 @@ object MergeX {
 
     /** Closes supplied reference with given reason **/
     def close(ref: MergeRef, rsn: Throwable): MergeXStrategy[W, I, O] =
-      emit(Close[W, O](ref, rsn))
+      emit(Close[W, O](rsn, ref))
 
     /** Closes all upstream  references **/
     def closeAllUp(rsn: Throwable): MergeXStrategy[W, I, O] =
@@ -139,9 +149,506 @@ object MergeX {
 
     /** Closes all supplied references **/
     def closeAll(refs: Seq[MergeRef], rsn: Throwable) =
-      emitSeq(refs.map(Close[W, O](_, rsn)))
+      emitSeq(refs.map(Close[W, O](rsn, _)))
 
 
+    /////
+
+    /** returns true when there are no active references in MX **/
+    private[merge] def isClear = up.isEmpty && downO.isEmpty && downW.isEmpty
+
+  }
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  val ok = right(())
+
+
+  def apply[W, I, O](strategy: MergeXStrategy[W, I, O], source: Process[Task, Process[Task, I]])
+    (S: Strategy = Strategy.DefaultStrategy): MergeX[W, I, O] = {
+
+
+    trait M
+    //next step of source
+    case class SourceStep(s: Step[Task, Process[Task, I]]) extends M
+
+    //upstream process is done
+    case class UpStreamDone(ref: ProcessRef, rsn: Throwable) extends M
+    //upstream process has seq of `I` to emit
+    case class UpStreamEmit(ref: UpRefInstance, si: Seq[I]) extends M
+
+    // `O`, `W` or `Both` get opened
+    case class DownOpenO(ref: DownRefOInstance, cb: Throwable \/ Unit => Unit) extends M
+    case class DownOpenW(ref: DownRefWInstance, cb: Throwable \/ Unit => Unit) extends M
+    case class DownOpenBoth(ref: DownRefBothInstance, cb: Throwable \/ Unit => Unit) extends M
+
+    // `O`, `W` or `Both` are ready to consume next value
+    case class DownReadyO(ref: DownRefOInstance, cb: Throwable \/ Seq[O] => Unit) extends M
+    case class DownReadyW(ref: DownRefWInstance, cb: Throwable \/ Seq[W] => Unit) extends M
+    case class DownReadyBoth(ref: DownRefBothInstance, cb: Throwable \/ Seq[W \/ O] => Unit) extends M
+
+    // `O`, `W` or `Both` are done
+    case class DownDoneO(ref: DownRefOInstance, rsn: Throwable) extends M
+    case class DownDoneW(ref: DownRefWInstance, rsn: Throwable) extends M
+    case class DownDoneBoth(ref: DownRefBothInstance, rsn: Throwable) extends M
+
+    //downstream is closed
+    case class DownDone(rsn: Throwable, cb: Throwable \/ Unit => Unit) extends M
+
+
+
+
+    sealed trait UpRefInstance extends UpRef {
+      def next[B](actor: Actor[M])(implicit S: Strategy): Unit
+      def close[B](actor: Actor[M], rsn: Throwable)(implicit S: Strategy): Unit
+    }
+
+    class UpstreamAsyncRef(val cb: Throwable \/ Unit => Unit) extends UpRefInstance {
+      def next[B](actor: Actor[M])(implicit S: Strategy): Unit = S(cb(ok))
+      def close[B](actor: Actor[M], rsn: Throwable)(implicit S: Strategy): Unit = S(cb(left(rsn)))
+    }
+
+
+    // Keeps state of upstream source
+    sealed trait UpSourceState[A]
+    // signals upstream source is ready to be run or cleaned
+    case class UpSourceReady[A](cont: Process[Task, A], cleanup: Process[Task, A]) extends UpSourceState[A]
+    // signals upstream source is running, and may be interrupted
+    case class UpSourceRunning[A](interrupt: () => Unit) extends UpSourceState[A]
+    // signals upstream source is done
+    case class UpSourceDone[A](rsn: Throwable) extends UpSourceState[A]
+
+
+    // Reference for processes provided by upstream source.
+    // state keeps state of the upstream and is guaranteed to be not accessed
+    // from multiple threads concurrently
+    class ProcessRef(@volatile var state: UpSourceState[I]) extends UpRefInstance {
+      private val self = this
+
+      def close[B](actor: Actor[M], rsn: Throwable)(implicit S: Strategy): Unit = state match {
+        case UpSourceReady(t, c) =>
+          S(WyeActor.runStepAsyncInterruptibly[I](c.causedBy(rsn)) {
+            _ => actor ! UpStreamDone(self, rsn)
+          })
+          state = UpSourceDone(rsn)
+
+        case UpSourceRunning(interrupt) =>
+          S(interrupt())
+          state = UpSourceDone(rsn)
+
+        case UpSourceDone(_) => //no-op
+      }
+
+      def next[B](actor: Actor[M])(implicit S: Strategy): Unit = {
+        state match {
+          case UpSourceReady(t, c) =>
+            state = UpSourceRunning[I](S(WyeActor.runStepAsyncInterruptibly(t) {
+              step => step match {
+                case Step(\/-(si), tail, cleanup) => actor ! UpStreamEmit(self, si)
+                case Step(-\/(rsn), _, _)         => actor ! UpStreamDone(self, rsn)
+              }
+            }))
+          case _                   => //no-op
+        }
+      }
+    }
+
+    trait DownRefInstance[A] extends DownRef {
+      def push(xb: Seq[A])(implicit S: Strategy): Unit
+      def close(rsn: Throwable)(implicit S: Strategy): Unit
+    }
+
+
+    // Reference for downstream. Internal mutable vars are protected and set only by mergeX actor
+    trait DownRefInstanceImpl[A] extends DownRefInstance[A] {
+      // State of reference, may be queueing (left) or waiting to be completed (right)
+      @volatile var state: Vector[A] \/ ((Throwable \/ Seq[A]) => Unit)
+      // When set, indicates reference is terminated and shall not receive more `B`
+      // except these in queue already.
+      @volatile var done: Option[Throwable] = None
+
+      // signals next `B` is ready. This may complete the step of reference
+      // or enqueues and waits for callback to be ready
+      def push(xb: Seq[A])(implicit S: Strategy): Unit =
+        done match {
+          case None =>
+            state = state.fold(
+              q => left(q ++ xb)
+              , cb => {
+                S(cb(right(xb)))
+                left(Vector())
+              }
+            )
+
+          case Some(rsn) => ()
+        }
+
+      // reference is ready to get more `B`
+      // this either supplies given callback or registers
+      // callback to be calles on `push` or `done`
+      def ready(cb: (Throwable \/ Seq[A]) => Unit)(implicit S: Strategy) =
+        state = state.fold(
+          q =>
+            if (q.isEmpty) {
+              done match {
+                case None      => right(cb)
+                case Some(rsn) =>
+                  S(cb(left(rsn)))
+                  state
+              }
+            } else {
+              S(cb(right(q)))
+              left(Vector())
+            }
+
+          , _ => {
+            // this is invalid state cannot have more than one callback
+            // new callback is failed immediatelly
+            S(cb(left(new Exception("Only one callback allowed"))))
+            state
+          }
+        )
+
+      // returns true if callback is registered
+      def withCallback = state.isLeft
+
+      // Signals done, this ref would not enqueue more elements than in queue from now on
+      // that means on next `get` it will get all remaining `A` queued, and then terminate
+      // or will just terminate now in case callback is registered.
+      def close(rsn: Throwable)(implicit S: Strategy) = {
+        done match {
+          case Some(_) => ()
+          case None    => done = Some(rsn)
+        }
+        state = state.fold(
+          q => state
+          , cb => {
+            S(cb(left(rsn)))
+            left(Vector())
+          }
+
+        )
+      }
+
+    }
+
+    class DownRefOInstance(
+      @volatile var state: \/[Vector[O], (\/[Throwable, Seq[O]]) => Unit] = left(Vector())
+      ) extends DownRefInstanceImpl[O] with DownRefO
+
+    class DownRefWInstance(
+      @volatile var state: \/[Vector[W], (\/[Throwable, Seq[W]]) => Unit] = left(Vector())
+      ) extends DownRefInstanceImpl[W] with DownRefW
+
+
+    class DownRefBothInstance(
+      @volatile var state: \/[Vector[W \/ O], (\/[Throwable, Seq[W \/ O]]) => Unit] = left(Vector())
+      ) extends DownRefInstanceImpl[W \/ O] {
+
+      val self = this
+
+      @volatile var doneO: Option[Throwable] = None
+      @volatile var doneW: Option[Throwable] = None
+
+      val oi = new DownRefInstance[O] with DownRefO {
+        def push(xb: Seq[O])(implicit S: Strategy): Unit = self.push(xb.map(right))
+        def close(rsn: Throwable)(implicit S: Strategy): Unit = {
+          doneO = Some(rsn)
+          if (doneW.isDefined) self.close(rsn)
+        }
+      }
+      val wi = new DownRefInstance[W] with DownRefW {
+        def push(xb: Seq[W])(implicit S: Strategy): Unit = self.push(xb.map(left))
+        def close(rsn: Throwable)(implicit S: Strategy): Unit = {
+          doneW = Some(rsn)
+          if (doneO.isDefined) self.close(rsn)
+        }
+      }
+    }
+
+
+
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+    var xstate: MergeXStrategy[W, I, O] = strategy
+
+    var mx: MX[W, I, O] = MX(Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), None, None)
+
+    //when set, indicates source of upstream was run and is in some state
+    var sourceState: Option[UpSourceState[Process[Task, I]]] = None
+
+    var downDoneSignals: Vector[Throwable \/ Unit => Unit] = Vector()
+
+    //decalred here because of forward-referencing below
+    var actor: Actor[M] = null
+
+    // runs next source step
+    def nextSource(p: Process[Task, Process[Task, I]], actor: Actor[M])(implicit S: Strategy): Unit =
+      sourceState = Some(UpSourceRunning(S(WyeActor.runStepAsyncInterruptibly(p) { s => actor ! SourceStep(s) })))
+
+
+    //cleans next source step
+    def cleanSource(rsn: Throwable, c: Process[Task, Process[Task, I]], a: Actor[M])(implicit S: Strategy): Unit =
+      sourceState = Some(UpSourceRunning(S(WyeActor.runStepAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) })))
+
+
+    /** Signals that all has been cleared, but only if mx is clear **/
+    def signalAllClearWhenDone: Unit = {
+      if (mx.isClear && sourceState.collect({case UpSourceDone(rsn) => rsn}).isDefined) {
+        downDoneSignals.foreach(cb=>S(cb(ok)))
+        downDoneSignals = Vector()
+      }
+    }
+
+    def process(signal: MergeSignal[W, I, O]): Unit = {
+      def run(acts: Seq[MergeAction[W, O]]): Unit = {
+        acts.foreach {
+          case More(ref: UpRefInstance)          =>
+            mx = mx.copy(upReady = mx.upReady.filterNot(_ == ref))
+            ref.next(actor)
+          case More(_) => //bacuse of pattern match warning
+          case WriteO(so, ref: DownRefOInstance) =>
+            mx = mx.copy(downReadyO = mx.downReadyO.filterNot(_ == ref))
+            ref.push(so)
+          case WriteW(sw, ref: DownRefWInstance) =>
+            mx = mx.copy(downReadyW = mx.downReadyW.filterNot(_ == ref))
+            ref.push(sw)
+          case Close(rsn, ref: UpRefInstance)    =>
+            mx = mx.copy(
+              up = mx.up.filterNot(_ == ref)
+              , upReady = mx.upReady.filterNot(_ == ref)
+            )
+            ref.close(actor, rsn)
+          case Close(rsn, ref: DownRefOInstance) =>
+            mx = mx.copy(
+              downO = mx.downO.filterNot(_ == ref)
+              , downReadyO = mx.downReadyO.filterNot(_ == ref)
+            )
+            ref.close(rsn)
+          case Close(rsn, ref: DownRefWInstance) =>
+            mx = mx.copy(
+              downW = mx.downW.filterNot(_ == ref)
+              , downReadyW = mx.downReadyW.filterNot(_ == ref)
+            )
+            ref.close(rsn)
+        }
+      }
+
+      if (!xstate.isHalt) {
+        xstate.feed1(signal).unemit match {
+          case (acts, hlt@Halt(rsn)) =>
+            run(acts)
+            mx.up.foreach { case ref: UpRefInstance => ref.close(actor, rsn) }
+            mx.downO.foreach { case ref: DownRefOInstance => ref.close(rsn) }
+            mx.downW.foreach { case ref: DownRefWInstance => ref.close(rsn) }
+            mx = mx.copy(upReady = Nil, downReadyO = Nil, downReadyW = Nil) //we keep the references except `ready` to callback on eventual downstreamClose signal once all are done.
+            sourceState match {
+              case Some(UpSourceReady(t, c))        => cleanSource(rsn,c, actor)
+              case Some(UpSourceRunning(interrupt)) => S(interrupt)
+              case None => sourceState = Some(UpSourceDone(End))
+              case _ => //no-op
+            }
+            signalAllClearWhenDone
+            xstate = hlt
+          case (acts, nx)            =>
+            run(acts)
+            xstate = nx
+        }
+      }
+    }
+
+
+    actor = Actor[M] {
+      msg =>
+        xstate match {
+          case Halt(rsn) =>
+            msg match {
+              case SourceStep(step) => step match {
+                case Step(\/-(ups), t, c)        =>
+                  mx = mx.copy(doneDown = Some(rsn))
+                  cleanSource(rsn, c, actor)
+                case Step(-\/(rsn0), _, Halt(_)) =>
+                  sourceState = Some(UpSourceDone(rsn))
+                  mx = mx.copy(doneDown = Some(rsn0))
+                case Step(-\/(_), _, c)          =>
+                  mx = mx.copy(doneDown = Some(rsn))
+                  cleanSource(rsn, c, actor)
+              }
+
+              case UpStreamEmit(ref, _)   => ref.close(actor, rsn)
+              case UpStreamDone(ref, rsn) => mx = mx.copy(up = mx.up.filterNot(_ == ref))
+              case DownOpenO(ref, cb)     => S(cb(left(rsn)))
+              case DownOpenW(ref, cb)     => S(cb(left(rsn)))
+              case DownOpenBoth(ref, cb)  => S(cb(left(rsn)))
+              case DownReadyO(ref, cb)    => ref.ready(cb); ref.close(rsn)
+              case DownReadyW(ref, cb)    => ref.ready(cb); ref.close(rsn)
+              case DownReadyBoth(ref, cb) => ref.ready(cb); ref.close(rsn)
+              case DownDoneO(ref, rsn)    => mx = mx.copy(downO = mx.downO.filterNot(_ == ref))
+              case DownDoneW(ref, rsn)    => mx = mx.copy(downW = mx.downW.filterNot(_ == ref))
+              case DownDoneBoth(ref, rsn) =>
+                mx = mx.copy(
+                  downO = mx.downO.filterNot(_ == ref.oi)
+                  , downW = mx.downW.filterNot(_ == ref.wi)
+                )
+              case DownDone(rsn, cb)      =>
+                if (mx.isClear) {
+                  S(cb(ok))
+                } else {
+                  downDoneSignals = downDoneSignals :+ cb
+                }
+            }
+            signalAllClearWhenDone
+
+
+          case _ => msg match {
+
+            case SourceStep(step) => step match {
+              case Step(\/-(ups), t, c) =>
+                val newUps = ups.map(t => new ProcessRef(UpSourceReady(t, halt)))
+                mx = mx.copy(up = mx.up ++ newUps, upReady = mx.upReady ++ newUps)
+                newUps.foreach(ref => process(Open(mx, ref)))
+                nextSource(t, actor)
+
+              case Step(-\/(rsn), _, Halt(_)) =>
+                sourceState = Some(UpSourceDone(rsn))
+                mx = mx.copy(doneDown = Some(rsn))
+                process(DoneDown(mx, rsn))
+
+              case Step(-\/(rsn), _, c) =>
+                cleanSource(rsn, c, actor)
+                mx = mx.copy(doneDown = Some(rsn))
+                process(DoneDown(mx, rsn))
+            }
+
+            case UpStreamEmit(ref, is) =>
+              mx = mx.copy(upReady = mx.upReady :+ ref)
+              process(Receive(mx, is, ref))
+
+            case UpStreamDone(ref, rsn) =>
+              mx = mx.copy(up = mx.up.filterNot(_ == ref), upReady = mx.upReady.filterNot(_ == ref))
+              process(Done(mx, ref, rsn))
+
+            case DownOpenO(ref, cb) =>
+              mx = mx.copy(downO = mx.downO :+ ref)
+              process(Open(mx, ref))
+              S(cb(ok))
+
+            case DownOpenW(ref, cb) =>
+              mx = mx.copy(downW = mx.downW :+ ref)
+              process(Open(mx, ref))
+              S(cb(ok))
+
+            case DownOpenBoth(ref, cb) =>
+              mx = mx.copy(downW = mx.downW :+ ref.wi, downO = mx.downO :+ ref.oi)
+              process(Open(mx, ref))
+              S(cb(ok))
+
+            case DownReadyO(ref, cb) =>
+              ref.ready(cb)
+              if (ref.withCallback) {
+                mx = mx.copy(downReadyO = mx.downReadyO :+ ref)
+                process(Ready(mx, ref))
+              }
+            case DownReadyW(ref, cb) =>
+              ref.ready(cb)
+              if (ref.withCallback) {
+                mx = mx.copy(downReadyW = mx.downReadyW :+ ref)
+                process(Ready(mx, ref))
+              }
+
+            case DownReadyBoth(ref, cb) =>
+              ref.ready(cb)
+              if (ref.withCallback) {
+                mx = mx.copy(downReadyW = mx.downReadyW :+ ref.wi)
+                process(Ready(mx, ref.wi))
+                mx = mx.copy(downReadyO = mx.downReadyO :+ ref.oi)
+                process(Ready(mx, ref.oi))
+              }
+
+            case DownDoneO(ref, rsn) =>
+              mx = mx.copy(
+                downO = mx.downO.filterNot(_ == ref)
+                , downReadyO = mx.downReadyO.filterNot(_ == ref)
+              )
+              process(Done(mx, ref, rsn))
+
+            case DownDoneW(ref, rsn) =>
+              mx = mx.copy(
+                downW = mx.downW.filterNot(_ == ref)
+                , downReadyW = mx.downReadyW.filterNot(_ == ref)
+              )
+              process(Done(mx, ref, rsn))
+
+            case DownDoneBoth(ref, rsn) =>
+              mx = mx.copy(
+                downO = mx.downO.filterNot(_ == ref.oi)
+                , downReadyO = mx.downReadyO.filterNot(_ == ref.oi)
+                , downW = mx.downW.filterNot(_ == ref.wi)
+                , downReadyW = mx.downReadyW.filterNot(_ == ref.wi)
+              )
+              process(Done(mx, ref.wi, rsn))
+              process(Done(mx, ref.oi, rsn))
+
+            case DownDone(rsn, cb) =>
+              if (downDoneSignals.isEmpty) {
+                mx = mx.copy(doneDown = Some(rsn))
+                downDoneSignals = Vector(cb)
+                process(DoneDown(mx, rsn))
+              } else {
+                downDoneSignals = downDoneSignals :+ cb
+              }
+
+          }
+
+        }
+    }
+
+
+    new MergeX[W, I, O] {
+      def receiveAll(si: Seq[I]): Task[Unit] =
+        Task.async { cb => actor ! UpStreamEmit(new UpstreamAsyncRef(cb), si) }
+      def upstreamSink: Process.Sink[Task, I] =
+        Process.constant(receiveOne _)
+
+      //todo: revisit this once cleanup will get reason passed
+      def downstream_[R, A](
+        getRef: => R
+        , open: (R, Throwable \/ Unit => Unit) => M
+        , ready: (R, Throwable \/ Seq[A] => Unit) => M
+        , close: (R, Throwable) => M): Process[Task, A] = {
+
+        def done(ref: R, rsn: Throwable) =
+          eval_(Task.delay(actor ! close(ref, rsn)))
+
+        await(Task.delay(getRef))(
+          ref => {
+            await(Task.async[Unit](cb => actor ! open(ref, cb)))(
+              //todo:  fix repeatEval endlessly here?
+              _ => repeatEval(Task.async[Seq[A]](cb => actor ! ready(ref, cb))).flatMap(emitAll) onComplete done(ref, End)
+              , done(ref, End)
+              , done(ref, End)
+            )
+          }
+          , halt
+          , halt
+        )
+      }
+
+      def downstreamO: Process[Task, O] =
+        downstream_[DownRefOInstance, O](new DownRefOInstance(), DownOpenO, DownReadyO, DownDoneO)
+
+      def downstreamW: Process[Task, W] =
+        downstream_[DownRefWInstance, W](new DownRefWInstance(), DownOpenW, DownReadyW, DownDoneW)
+
+      def downstreamBoth: Process.Writer[Task, W, O] =
+        downstream_[DownRefBothInstance, W \/ O](new DownRefBothInstance(), DownOpenBoth, DownReadyBoth, DownDoneBoth)
+
+      def downstreamClose(e: Throwable): Task[Unit] =
+        Task.async(cb => actor ! DownDone(e, cb))
+    }
   }
 
 
