@@ -1446,19 +1446,19 @@ object Process {
       WyeActor.wyeActor[O,O2,O3](self,p2)(y)(S)
 
     /** Nondeterministic version of `zipWith`. */
-    def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3): Process[Task,O3] =
+    def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3)(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O3] =
       self.wye(p2)(scalaz.stream.wye.yipWith(f))
 
     /** Nondeterministic version of `zip`. */
-    def yip[O2](p2: Process[Task,O2]): Process[Task,(O,O2)] =
+    def yip[O2](p2: Process[Task,O2])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,(O,O2)] =
       self.wye(p2)(scalaz.stream.wye.yip)
 
     /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
-    def merge[O2>:O](p2: Process[Task,O2]): Process[Task,O2] =
+    def merge[O2>:O](p2: Process[Task,O2])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O2] =
       self.wye(p2)(scalaz.stream.wye.merge)
 
     /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
-    def either[O2>:O,O3](p2: Process[Task,O3]): Process[Task,O2 \/ O3] =
+    def either[O2>:O,O3](p2: Process[Task,O3])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O2 \/ O3] =
       self.wye(p2)(scalaz.stream.wye.either)
 
     /**
