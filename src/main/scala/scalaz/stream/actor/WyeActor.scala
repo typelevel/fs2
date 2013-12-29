@@ -47,7 +47,7 @@ object WyeActor {
    * `free(r)` in outer `await` is interrupted after freeing the resource it will be called again.
    *
    */
-  final def runStepAsyncInterruptibly[O](p: Process[Task,O], cb: Step[Task,O] => Unit): () => Unit = {
+  final def runStepAsyncInterruptibly[O](p: Process[Task,O])(cb: Step[Task,O] => Unit): () => Unit = {
     val interruptedExn = new InterruptedException
 
     trait RunningTask {
@@ -206,7 +206,7 @@ object WyeActor {
     }
 
     private def runStep(p: Process[Task,A], actor: Actor[Msg]): Unit = {
-      val interrupt = runStepAsyncInterruptibly[A](p, step => actor ! StepCompleted(this, step))
+      val interrupt = runStepAsyncInterruptibly[A](p)(step => actor ! StepCompleted(this, step))
       state = Running(interrupt)
     }
   }
