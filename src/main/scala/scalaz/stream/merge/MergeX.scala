@@ -11,6 +11,12 @@ import scalaz.stream.Process._
 import scalaz.stream.actor.WyeActor
 import scalaz.stream.{Step, Process}
 
+object debug {
+  def apply(s:String,v:Any*) {
+//    println(s,v.mkString(","))
+  }
+}
+
 
 object MergeX {
 
@@ -156,7 +162,8 @@ object MergeX {
 
     /** returns true when there are no active references in MX **/
     private[merge] def isClear = up.isEmpty && downO.isEmpty && downW.isEmpty
-
+    override def toString: String =
+      s"MX[up=$up,upReady=$upReady,downO=$downO,downReadyO=$downReadyO,downW=$downW,downReadyW=$downReadyW,doneDown=$doneDown,doneUp=$doneUp]"
   }
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -287,7 +294,8 @@ object MergeX {
       // reference is ready to get more `B`
       // this either supplies given callback or registers
       // callback to be calles on `push` or `done`
-      def ready(cb: (Throwable \/ Seq[A]) => Unit)(implicit S: Strategy) =
+      def ready(cb: (Throwable \/ Seq[A]) => Unit)(implicit S: Strategy) = {
+        debug("DRFRDY",state)
         state = state.fold(
           q =>
             if (q.isEmpty) {
@@ -298,6 +306,7 @@ object MergeX {
                   state
               }
             } else {
+              debug("REFDWN-CBR",q)
               S(cb(right(q)))
               left(Vector())
             }
@@ -309,9 +318,10 @@ object MergeX {
             state
           }
         )
+      }
 
       // returns true if callback is registered
-      def withCallback = state.isLeft
+      def withCallback = state.isRight
 
       // Signals done, this ref would not enqueue more elements than in queue from now on
       // that means on next `get` it will get all remaining `A` queued, and then terminate
@@ -405,6 +415,7 @@ object MergeX {
 
     def process(signal: MergeSignal[W, I, O]): Unit = {
       def run(acts: Seq[MergeAction[W, O]]): Unit = {
+        acts.foreach(debug("ACT",_))
         acts.foreach {
           case More(ref: UpRefInstance)          =>
             mx = mx.copy(upReady = mx.upReady.filterNot(_ == ref))
@@ -440,6 +451,7 @@ object MergeX {
       if (!xstate.isHalt) {
         xstate.feed1(signal).unemit match {
           case (acts, hlt@Halt(rsn)) =>
+            debug(">>>>>>>>>>>>>>>>>>>>>>>>>>>", acts)
             run(acts)
             mx.up.foreach { case ref: UpRefInstance => ref.close(actor, rsn) }
             mx.downO.foreach { case ref: DownRefOInstance => ref.close(rsn) }
@@ -453,9 +465,12 @@ object MergeX {
             }
             signalAllClearWhenDone
             xstate = hlt
+            debug("##########@@", xstate,hlt)
           case (acts, nx)            =>
+            debug("<<<<<<<<<<<<<<<<<<<<<<<<<<<", acts)
             run(acts)
             xstate = nx
+            debug("##########", xstate,nx)
         }
       }
     }
@@ -463,6 +478,7 @@ object MergeX {
 
     actor = Actor[M] {
       msg =>
+        debug("MXA",msg,"|XS|",xstate,"|MX|",mx)
         xstate match {
           case Halt(rsn) =>
             msg match {
@@ -547,9 +563,11 @@ object MergeX {
               S(cb(ok))
 
             case DownReadyO(ref, cb) =>
+              debug("DRDY_O", ref, mx)
               ref.ready(cb)
               if (ref.withCallback) {
                 mx = mx.copy(downReadyO = mx.downReadyO :+ ref)
+                debug("WITH CB", ref, mx)
                 process(Ready(mx, ref))
               }
             case DownReadyW(ref, cb) =>

@@ -31,26 +31,39 @@ object MergeXStrategies {
    * @param max when <= 0, indicates queue is not bounded, otherwise controls when upstreams will get allowed to push more `A`
    */
   def boundedQ[A](max: Int): MergeXStrategy[Int, A, A] = {
-    val bounded = max <= 0
+    val bounded = max > 0
     def drain(q: Queue[A], rsn: Throwable): MergeXStrategy[Int, A, A] =
       mergeX[Int, A, A] {
+        case Open(mx, ref: UpRef)    => mx.close(ref, rsn) fby drain(q, rsn)
+        case Open(mx, ref: DownRefW) => mx.writeW(q.size, ref)  fby drain(q, rsn)
         case Receive(mx, _, ref)      => mx.close(ref, rsn) fby drain(q, rsn)
         case Ready(mx, ref: DownRefO) =>
           val (a, nq) = q.dequeue
           val next = mx.writeO(a, ref) fby mx.broadcastW(nq.size)
-          if (nq.size > 0) next fby go(nq)
+          if (nq.size > 0) next fby drain(nq, rsn)
           else next fby Halt(rsn)
-        case _                        => drain(q, rsn)
+        case o                        =>
+          debug("BQDRAIN", o)
+          drain(q, rsn)
       }
 
     def go(q: Queue[A]): MergeXStrategy[Int, A, A] =
       mergeX[Int, A, A] {
+        case Open(mx, ref: UpRef) =>
+          if (bounded && q.size >= max) go(q)
+          else mx.more(ref) fby go(q)
+
+        case Open(mx, ref: DownRefW) =>
+          mx.writeW(q.size, ref) fby go(q)
+
         case Receive(mx, sa, ref)     =>
           val (nq, distribute) = mx.distributeO(q ++ sa, mx.downReadyO)
           val next = distribute fby mx.broadcastW(nq.size) fby go(nq)
           if (!bounded || nq.size < max) mx.more(ref) fby next
           else next
+
         case Ready(mx, ref: DownRefO) =>
+          debug("BQRDY", ref, q, mx)
           if (q.nonEmpty) {
             val (a, nq) = q.dequeue
             val next = mx.writeO(a, ref) fby mx.broadcastW(nq.size) fby go(nq)
@@ -60,10 +73,16 @@ object MergeXStrategies {
             if (mx.upReady nonEmpty) mx.moreAll fby go(q)
             else go(q)
           }
+
         case DoneDown(mx, rsn)        =>
-          if (q.nonEmpty) mx.closeAllUp(rsn) fby drain(q, rsn)
-          else Halt(rsn)
-        case _                        => go(q)
+          val p =
+            if (q.nonEmpty) mx.closeAllUp(rsn) fby drain(q, rsn)
+            else Halt(rsn)
+          debug("BQDWNDONE", rsn, p, mx)
+          p
+        case o                        =>
+          debug("BQGO", o)
+          go(q)
       }
 
     go(Queue())

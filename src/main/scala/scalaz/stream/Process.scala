@@ -15,6 +15,7 @@ import ReceiveY.{ReceiveL,ReceiveR}
 
 import java.util.concurrent._
 import scala.annotation.tailrec
+import scalaz.stream.async.immutable.Signal
 
 /**
  * A `Process[F,O]` represents a stream of `O` values which can interleave
