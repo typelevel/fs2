@@ -66,7 +66,7 @@ object QueueSpec extends Properties("queue") {
       val (c2, c3) = Nondeterminism[Task].both(t1, t23).run._2
 
       ((c2 ++ c3).toSet == l.toSet) :| "all items has been received" &&
-        (Math.abs(c2.size - c3.size) <= 1) :| "Values were fairly distributed"
+        (Math.abs(c2.size - c3.size) <= 1) :| s"Values were fairly distributed c2: $c2, c3: $c3"
   }
 
 

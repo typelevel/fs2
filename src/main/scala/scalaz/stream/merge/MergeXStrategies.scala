@@ -34,7 +34,6 @@ object MergeXStrategies {
           if (nq.size > 0) next fby drain(nq, rsn)
           else next fby Halt(rsn)
         case o                        =>
-          debug("BQDRAIN", o)
           drain(q, rsn)
       }
 
@@ -54,7 +53,6 @@ object MergeXStrategies {
           else next
 
         case Ready(mx, ref: DownRefO) =>
-          debug("BQRDY", ref, q, mx)
           if (q.nonEmpty) {
             val (a, nq) = q.dequeue
             val next = mx.writeO(a, ref) fby mx.broadcastW(nq.size) fby go(nq)
@@ -66,14 +64,11 @@ object MergeXStrategies {
           }
 
         case DoneDown(mx, rsn)        =>
-          val p =
             if (q.nonEmpty) mx.closeAllUp(rsn) fby drain(q, rsn)
             else Halt(rsn)
-          debug("BQDWNDONE", rsn, p, mx)
-          p
-        case o                        =>
-          debug("BQGO", o)
-          go(q)
+
+        case o =>
+        go(q)
       }
 
     go(Queue())
@@ -136,9 +131,8 @@ object MergeXStrategies {
           if (mx.downO.size == 1) go(q,closedUp)
           else mx.close(ref,new Exception("Only one downstream allowed for mergeN"))
 
-        case Receive(mx,as,ref) =>
-          debug("MRGN-RCVUP",as,q,closedUp,mx)
-          if (mx.downReadyO.nonEmpty) {
+        case Receive(mx, as, ref) =>
+        if (mx.downReadyO.nonEmpty) {
             mx.writeAllO(as,mx.downO.head) fby mx.more(ref) fby go(q,closedUp)
           } else {
             val nq = q.enqueue(scala.collection.immutable.Iterable.concat(as))
