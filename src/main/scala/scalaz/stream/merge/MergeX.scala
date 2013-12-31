@@ -13,7 +13,7 @@ import scalaz.stream.{Step, Process}
 
 object debug {
   def apply(s:String,v:Any*) {
-//    println(s,v.mkString(","))
+    //println(s,v.mkString(","))
   }
 }
 
@@ -187,10 +187,13 @@ object MergeX {
     //next step of source
     case class SourceStep(s: Step[Task, Process[Task, I]]) extends M
 
-    //upstream process is done
+    //upstream source process is done
     case class UpStreamDone(ref: ProcessRef, rsn: Throwable) extends M
-    //upstream process has seq of `I` to emit
-    case class UpStreamEmit(ref: UpRefInstance, si: Seq[I]) extends M
+    //upstream source process is ready to Emit
+    case class UpStreamEmit(ref: ProcessRef, si: Seq[I], t:Process[Task,I],c:Process[Task,I]) extends M
+    
+    //upstream process has seq of `I` to emit. Tail and cleanup is passed to build the current state
+    case class UpEmit(ref: UpRefInstance, si: Seq[I]) extends M
 
     // `O`, `W` or `Both` get opened
     case class DownOpenO(ref: DownRefOInstance, cb: Throwable \/ Unit => Unit) extends M
@@ -259,12 +262,16 @@ object MergeX {
           case UpSourceReady(t, c) =>
             state = UpSourceRunning[I](S(WyeActor.runStepAsyncInterruptibly(t) {
               step => step match {
-                case Step(\/-(si), tail, cleanup) => actor ! UpStreamEmit(self, si)
+                case Step(\/-(si), t, c) => actor ! UpStreamEmit(self, si, t,c)
                 case Step(-\/(rsn), _, _)         => actor ! UpStreamDone(self, rsn)
               }
             }))
           case _                   => //no-op
         }
+      }
+      
+      def ready(t:Process[Task,I],c:Process[Task,I]) : Unit = {
+        state = UpSourceReady(t,c)
       }
     }
 
@@ -402,13 +409,20 @@ object MergeX {
     //decalred here because of forward-referencing below
     var actor: Actor[M] = null
 
+    //starts source if not yet started
+    def startSource(actor:Actor[M]) : Unit =
+      sourceState match {
+        case None =>  nextSource(source,actor)
+        case Some(_) => //no-op
+      }
+
     // runs next source step
-    def nextSource(p: Process[Task, Process[Task, I]], actor: Actor[M])(implicit S: Strategy): Unit =
+    def nextSource(p: Process[Task, Process[Task, I]], actor: Actor[M]) : Unit =
       sourceState = Some(UpSourceRunning(S(WyeActor.runStepAsyncInterruptibly(p) { s => actor ! SourceStep(s) })))
 
 
     //cleans next source step
-    def cleanSource(rsn: Throwable, c: Process[Task, Process[Task, I]], a: Actor[M])(implicit S: Strategy): Unit =
+    def cleanSource(rsn: Throwable, c: Process[Task, Process[Task, I]], a: Actor[M]): Unit =
       sourceState = Some(UpSourceRunning(S(WyeActor.runStepAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) })))
 
 
@@ -458,7 +472,7 @@ object MergeX {
       if (!xstate.isHalt) {
         xstate.feed1(signal).unemit match {
           case (acts, hlt@Halt(rsn)) =>
-            debug(">>>>>>>>>>>>>>>>>>>>>>>>>>>", acts)
+            debug("PROC_BEF_HALT", acts)
             run(acts)
             mx.up.foreach { case ref: UpRefInstance => ref.close(actor, rsn) }
             mx.downO.foreach { case ref: DownRefOInstance => ref.close(rsn) }
@@ -472,12 +486,12 @@ object MergeX {
             }
             signalAllClearWhenDone
             xstate = hlt
-            debug("##########@@", xstate,hlt)
+            debug("PROC_AFT_HALT", xstate,hlt)
           case (acts, nx)            =>
-            debug("<<<<<<<<<<<<<<<<<<<<<<<<<<<", acts)
+            debug("PROC_BEF_AWA", acts)
             run(acts)
             xstate = nx
-            debug("##########", xstate,nx)
+            debug("PROC_AFT_AWA", xstate,nx)
         }
       }
     }
@@ -501,7 +515,8 @@ object MergeX {
                   cleanSource(rsn, c, actor)
               }
 
-              case UpStreamEmit(ref, _)   => ref.close(actor, rsn)
+              case UpEmit(ref, _)   => ref.close(actor, rsn)
+              case UpStreamEmit(ref,_,t,c) => ref.ready(t,c); ref.close(actor,rsn)
               case UpStreamDone(ref, rsn) => mx = mx.copy(up = mx.up.filterNot(_ == ref))
               case DownOpenO(ref, cb)     => S(cb(left(rsn)))
               case DownOpenW(ref, cb)     => S(cb(left(rsn)))
@@ -538,15 +553,20 @@ object MergeX {
               case Step(-\/(rsn), _, Halt(_)) =>
                 sourceState = Some(UpSourceDone(rsn))
                 mx = mx.copy(doneDown = Some(rsn))
-                process(DoneDown(mx, rsn))
+                process(DoneUp(mx, rsn))
 
               case Step(-\/(rsn), _, c) =>
                 cleanSource(rsn, c, actor)
                 mx = mx.copy(doneDown = Some(rsn))
-                process(DoneDown(mx, rsn))
+                process(DoneUp(mx, rsn))
             }
 
-            case UpStreamEmit(ref, is) =>
+            case UpStreamEmit(ref,is,t,c) =>
+              ref.ready(t,c)
+              mx = mx.copy(upReady = mx.upReady :+ ref)
+              process(Receive(mx, is, ref))
+
+            case UpEmit(ref, is) =>
               mx = mx.copy(upReady = mx.upReady :+ ref)
               process(Receive(mx, is, ref))
 
@@ -555,6 +575,7 @@ object MergeX {
               process(Done(mx, ref, rsn))
 
             case DownOpenO(ref, cb) =>
+              startSource(actor)
               mx = mx.copy(downO = mx.downO :+ ref)
               process(Open(mx, ref))
               S(cb(ok))
@@ -634,7 +655,7 @@ object MergeX {
 
     new MergeX[W, I, O] {
       def receiveAll(si: Seq[I]): Task[Unit] =
-        Task.async { cb => actor ! UpStreamEmit(new UpstreamAsyncRef(cb), si) }
+        Task.async { cb => actor ! UpEmit(new UpstreamAsyncRef(cb), si) }
       def upstreamSink: Process.Sink[Task, I] =
         Process.constant(receiveOne _)
 

@@ -120,6 +120,60 @@ object MergeXStrategies {
     go(w, None)
   }
 
+
+  /**
+   * MergeN strategy for mergeN combinator. Please see [[scalaz.stream.merge.mergeN]] for more details.
+   */
+  def mergeN[A]:MergeXStrategy[Nothing,A,A] = {
+
+    def go(q:Queue[A],closedUp:Option[Throwable]) : MergeXStrategy[Nothing,A,A] = {
+      mergeX[Nothing,A,A] {
+        case Open(mx,ref:UpRef) =>
+          if (q.size < mx.up.size) mx.more(ref) fby go(q,closedUp)
+          else go(q,closedUp)
+
+        case Open(mx,ref:DownRefO) =>
+          if (mx.downO.size == 1) go(q,closedUp)
+          else mx.close(ref,new Exception("Only one downstream allowed for mergeN"))
+
+        case Receive(mx,as,ref) =>
+          debug("MRGN-RCVUP",as,q,closedUp,mx)
+          if (mx.downReadyO.nonEmpty) {
+            mx.writeAllO(as,mx.downO.head) fby mx.more(ref) fby go(q,closedUp)
+          } else {
+            val nq = q.enqueue(scala.collection.immutable.Iterable.concat(as))
+            if (nq.size < mx.up.size) mx.more(ref) fby go(nq,closedUp)
+            else go(nq,closedUp)
+          }
+
+        case Ready(mx,ref:DownRefO) =>
+          if (q.nonEmpty) mx.writeAllO(q,ref) fby mx.moreAll fby go(Queue(),closedUp)
+          else if (mx.up.isEmpty && closedUp.isDefined) Halt(closedUp.get)
+          else mx.moreAll fby go(q,closedUp)
+
+        case DoneUp(mx,rsn) =>
+          if (mx.up.nonEmpty || q.nonEmpty) go(q,Some(rsn))
+          else Halt(rsn)
+
+        case Done(mx,_:UpRef,End) => closedUp match {
+          case Some(rsn) if mx.up.isEmpty && q.isEmpty => Halt(rsn)
+          case _ => go(q,closedUp)
+        }
+
+        case Done(mx,_:UpRef,rsn) => Halt(rsn)
+
+        case Done(mx,_:DownRefO, rsn) =>
+          if (mx.downO.isEmpty) Halt(rsn)
+          else go(q,closedUp)
+
+        case _ => go(q, closedUp)
+
+      }
+    }
+
+    go(Queue(),None)
+  }
+
   /** various writers used in merge strategies **/
   object writers {
 
