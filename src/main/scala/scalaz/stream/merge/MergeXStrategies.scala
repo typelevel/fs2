@@ -1,27 +1,18 @@
 package scalaz.stream.merge
 
 import scala.collection.immutable.Queue
+import scalaz.\/._
 import scalaz.stream.Process._
+import scalaz.stream.async.mutable.Signal
 import scalaz.stream.merge.MergeX._
+import scalaz.stream.process1
+import scalaz.{\/, -\/}
 
 object MergeXStrategies {
 
   /** Typed constructor helper to create mergeX strategy */
   def mergeX[W, I, O](f: MergeSignal[W, I, O] => MergeXStrategy[W, I, O]): MergeXStrategy[W, I, O] =
     receive1[MergeSignal[W, I, O], MergeAction[W, O]](f)
-
-  /**
-   * Publish-subscribe merge strategy, where every `A` received from upstream is delivered to all downstream
-   * @tparam A
-   * @return
-   */
-  def publishSubscribe[A]: MergeXStrategy[Nothing, A, A] =
-    mergeX[Nothing, A, A] {
-      case Open(mx, ref: UpRef) => mx.more(ref) fby publishSubscribe
-      case Receive(mx, is, ref) => mx.more(ref) fby mx.broadcastAllO(is) fby publishSubscribe
-      case DoneDown(mx, rsn)    => Halt(rsn)
-      case _                    => publishSubscribe
-    }
 
 
   /**
@@ -88,5 +79,84 @@ object MergeXStrategies {
     go(Queue())
   }
 
+
+  /**
+   * Converts Writer1 to MergeXStrategy.
+   *
+   * Like publish-subscribe merging strategy backed by supplied Writer1.
+   * Any `I` received from upstream will be published to _all_ downstreams on `O` side if emmited by
+   * Writer1 as `O` or, to downstreams on `W` side if emitted by Writer1 as `W`.
+   *
+   * Additionally all `W` downstreams will see last `W` emitted from Writer1. If there is no `W` yet
+   * emitted by Writer1 downstreams on `W` side will wait until one will be available.
+   *
+   * Note this strategy terminates when Writer1 terminates or when downstream is closed.
+   *
+   * @return
+   */
+  def liftWriter1[W, I, O](w: Writer1[W, I, O]): MergeXStrategy[W, I, O] = {
+    def go(cur: Writer1[W, I, O], last: Option[W]): MergeXStrategy[W, I, O] = {
+      mergeX[W, I, O] {
+        case Open(mx, ref: UpRef)    => mx.more(ref) fby go(cur, last)
+        case Open(mx, ref: DownRefW) => last match {
+          case Some(w0) => mx.writeW(w0, ref) fby go(cur, last)
+          case None     => go(cur, last)
+        }
+        case Receive(mx, is, ref)    =>
+          process1.feed(is)(cur).unemit match {
+            case (swo, hlt@Halt(rsn)) =>
+              mx.more(ref) fby mx.broadcastAllBoth(swo) fby hlt
+            case (swo, next)          =>
+              mx.more(ref) fby mx.broadcastAllBoth(swo) fby go(next, swo.collect({ case -\/(w) => w }).lastOption orElse last)
+          }
+        case DoneDown(mx, rsn)       =>
+          val (swo, _) = cur.killBy(rsn).unemit
+          mx.broadcastAllBoth(swo) fby Halt(rsn)
+
+        case _ => go(cur, last)
+      }
+    }
+
+    go(w, None)
+  }
+
+  /** various writers used in merge strategies **/
+  object writers {
+
+    /** writer that only echoes `A` on `O` side **/
+    def echoO[A]: Writer1[Nothing, A, A] = process1.id[A].map(right)
+
+    /** Writer1 that interprets the Signal messages to provide discrete source of `A` **/
+    def signal[A]: Writer1[A, Signal.Msg[A], Nothing] = {
+      def go(oa: Option[A]): Writer1[A, Signal.Msg[A], Nothing] = {
+        receive1[Signal.Msg[A], A \/ Nothing] {
+          case Signal.Set(a)                                               => emit(left(a)) fby go(Some(a))
+          case Signal.CompareAndSet(f: (Option[A] => Option[A])@unchecked) => f(oa) match {
+            case Some(a) => emit(left(a)) fby go(Some(a))
+            case None    => go(oa)
+          }
+          case Signal.Fail(rsn)                                            => Halt(rsn)
+        }
+      }
+      go(None)
+    }
+
+  }
+
+
+  /**
+   * Publish-subscribe merge strategy, where every `A` received from upstream is delivered to all downstream
+   * @tparam A
+   * @return
+   */
+  def publishSubscribe[A]: MergeXStrategy[Nothing, A, A] = liftWriter1(writers.echoO[A])
+
+  /**
+   * Signal merge strategy, that interprets [[scalaz.stream.async.mutable.Signal]] algebra and produces discrete
+   * source of signal
+   * @tparam A
+   * @return
+   */
+  def signal[A]: MergeXStrategy[A, Signal.Msg[A], Nothing] = liftWriter1(writers.signal[A])
 
 }

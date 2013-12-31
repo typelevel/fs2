@@ -16,6 +16,7 @@ import ReceiveY.{ReceiveL,ReceiveR}
 import java.util.concurrent._
 import scala.annotation.tailrec
 import scalaz.stream.async.immutable.Signal
+import scalaz.stream.async.mutable
 
 /**
  * A `Process[F,O]` represents a stream of `O` values which can interleave
@@ -938,10 +939,11 @@ object Process {
    * produces the current state, and an effectful function to set the
    * state that will be produced next step.
    */
-  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = suspend {
-    val v = async.localRef[S]
-    v.set(s0)
-    v.signal.continuous.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat
+  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = {
+    await(Task.delay(async.signal[S]))(
+      sig => eval_(sig.set(s0)) fby
+        (sig.discrete.take(1) zip emit(sig.set _)).repeat
+    )
   }
 
   /**
@@ -1011,33 +1013,27 @@ object Process {
    */
   def awakeEvery(d: Duration)(
       implicit pool: ExecutorService = Strategy.DefaultExecutorService,
-               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task, Duration] = suspend {
-    val (q, p) = async.queue[Boolean](Strategy.Executor(pool))
-    val latest = async.ref[Duration](Strategy.Sequential)
-    val t0 = Duration(System.nanoTime, NANOSECONDS)
-    val metronome = _scheduler.scheduleAtFixedRate(
-       new Runnable { def run = {
-         val d = Duration(System.nanoTime, NANOSECONDS) - t0
-         latest.set(d)
-         if (q.size == 0)
-           q.enqueue(true) // only produce one event at a time
-       }},
-       d.toNanos,
-       d.toNanos,
-       NANOSECONDS
-    )
-    repeatEval {
-      Task.async[Duration] { cb =>
-        q.dequeue { r =>
-          r.fold(
-            e => pool.submit(new Callable[Unit] { def call = cb(left(e)) }),
-            _ => latest.get {
-              d => pool.submit(new Callable[Unit] { def call = cb(d) })
-            }
-          )
-        }
-      }
-    } onComplete { suspend { metronome.cancel(false); halt } }
+               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task, Duration] =  {
+
+    def metronomeAndSignal:(()=>Unit,mutable.Signal[Duration]) = {
+      val signal = async.signal[Duration](Strategy.Sequential)
+      val t0 = Duration(System.nanoTime, NANOSECONDS)
+
+      val metronome = _scheduler.scheduleAtFixedRate(
+        new Runnable { def run = {
+          val d = Duration(System.nanoTime, NANOSECONDS) - t0
+          signal.set(d).run
+        }},
+        d.toNanos,
+        d.toNanos,
+        NANOSECONDS
+      )
+      (()=>metronome.cancel(false), signal)
+    }
+
+    await(Task.delay(metronomeAndSignal))({
+      case (cm, signal) =>  signal.discrete onComplete eval_(signal.close.map(_=>cm()))
+    })
   }
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
@@ -1101,14 +1097,9 @@ object Process {
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.
    */
-  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] = {
-    suspend {
-      val v = async.signal[A](S)
-      val t = toTask(p).map(a => v.value.set(a))
-      val setvar = eval(t).flatMap(_ => v.continuous.once)
-      v.continuous.merge(setvar)
-    }
-  }
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] =
+    async.toSignal(p).continuous
+
 
   /** Emit a single value, then `Halt`. */
   def emit[O](head: O): Process[Nothing,O] =

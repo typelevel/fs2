@@ -117,6 +117,13 @@ object MergeX {
     def broadcastAllO(so: Seq[O]): MergeXStrategy[W, I, O] =
       emitSeq(downO.map(WriteO[W, O](so, _)))
 
+    /** Broadcasts sequence of either `W` or `O` values to either downstreams on `W` or `O` side respectively **/
+    def broadcastAllBoth(swo: Seq[W \/ O]): MergeXStrategy[W, I, O] =
+      swo.foldLeft[MergeXStrategy[W, I, O]](halt) {
+        case (p, \/-(o)) => p fby broadcastO(o)
+        case (p, -\/(w)) => p fby broadcastW(w)
+      }
+
     /** Write single `W` to supplied downstream **/
     def writeW(w: W, ref: DownRefW): MergeXStrategy[W, I, O] =
       writeAllW(List(w), ref)
@@ -295,7 +302,7 @@ object MergeX {
       // this either supplies given callback or registers
       // callback to be calles on `push` or `done`
       def ready(cb: (Throwable \/ Seq[A]) => Unit)(implicit S: Strategy) = {
-        debug("DRFRDY",state)
+        debug("DRFRDY",state, done)
         state = state.fold(
           q =>
             if (q.isEmpty) {
@@ -499,9 +506,9 @@ object MergeX {
               case DownOpenO(ref, cb)     => S(cb(left(rsn)))
               case DownOpenW(ref, cb)     => S(cb(left(rsn)))
               case DownOpenBoth(ref, cb)  => S(cb(left(rsn)))
-              case DownReadyO(ref, cb)    => ref.ready(cb); ref.close(rsn)
-              case DownReadyW(ref, cb)    => ref.ready(cb); ref.close(rsn)
-              case DownReadyBoth(ref, cb) => ref.ready(cb); ref.close(rsn)
+              case DownReadyO(ref, cb)    => ref.close(rsn); ref.ready(cb)
+              case DownReadyW(ref, cb)    => ref.close(rsn); ref.ready(cb)
+              case DownReadyBoth(ref, cb) => ref.close(rsn); ref.ready(cb)
               case DownDoneO(ref, rsn)    => mx = mx.copy(downO = mx.downO.filterNot(_ == ref))
               case DownDoneW(ref, rsn)    => mx = mx.copy(downW = mx.downW.filterNot(_ == ref))
               case DownDoneBoth(ref, rsn) =>

@@ -73,6 +73,7 @@ trait Ref[A] { self =>
    */
   def isSet: Boolean
 
+  /*
   def signal: Signal[A] = new Signal[A] {
 
     val value:Ref[A] = self
@@ -133,6 +134,8 @@ trait Ref[A] { self =>
       go(0,false)
     }
   }
+
+  */
 
   ////
   //// PRIVATE
