@@ -38,7 +38,7 @@ package object merge {
     (implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, A] = {
 
     await(Task.delay(MergeX(MergeXStrategies.mergeN[A],source)(S)))({
-      case mergeX => mergeX.downstreamO
+      case mergeX => mergeX.downstreamO onComplete eval_(mergeX.downstreamClose(End))
     })
 
 

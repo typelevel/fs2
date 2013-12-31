@@ -34,7 +34,7 @@ object MergeNSpec extends Properties("mergeN") {
 
     val ps =
       emitSeq(for (i <- 0 until 10) yield {
-        (Process.constant(i+100) onComplete eval(Task.delay(cleanups.incrementAndGet())))
+        (Process.constant(i+100) onComplete eval(Task.fork(Task.delay{Thread.sleep(100); cleanups.incrementAndGet()})))
       }).toSource onComplete eval_(Task.delay(srcCleanup.set(99)))
 
 
