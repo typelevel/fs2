@@ -13,13 +13,13 @@ import scalaz.stream.Process.End
 
 
  
-object AsyncRefSpec extends Properties("async.ref") {
+object AsyncSignalSpec extends Properties("async.signal") {
 
   case object TestedEx extends Exception("expected in test") {
     override def fillInStackTrace = this
   }
 
-  property("ref") = forAll { l: List[Int] =>
+  property("basic") = forAll { l: List[Int] =>
     val v = async.signal[Int]
     val s = v.continuous
     val t1 = Task {

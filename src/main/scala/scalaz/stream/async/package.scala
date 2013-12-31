@@ -12,7 +12,7 @@ import scalaz.stream.Process.End
 
 package object async {
 
-  import mutable.{Queue,Ref,Signal,Topic}
+  import mutable.{Queue,Signal,Topic}
 
   /**
    * Convert from an `Actor` accepting `message.queue.Msg[A]` messages 
