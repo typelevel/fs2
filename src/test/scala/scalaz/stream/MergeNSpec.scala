@@ -46,7 +46,7 @@ object MergeNSpec extends Properties("mergeN") {
        case (sum, next) => sum + next
      }).takeWhile(_.size < 10).runLog.timed(3000).run
 
-    (cleanups.get == 10) :| "Cleanups were called on upstreams" &&
+    (cleanups.get == 10) :| s"Cleanups were called on upstreams: ${cleanups.get}" &&
       (srcCleanup.get == 99) :| "Cleanup on source was called"
   }
 
