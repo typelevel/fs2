@@ -100,8 +100,8 @@ trait wye {
   }
 
   /**
-   * Continuous wye, that first reads from L,
-   * Then when L is not available it reads from R echoing any S that was received from `L`
+   * Continuous wye, that first reads from Left to get `A`,
+   * Then when `A` is not available it reads from R echoing any `A` that was received from Left
    * Will halt once the
    */
   def echoLeft[A]: Wye[A, Any, A] = {

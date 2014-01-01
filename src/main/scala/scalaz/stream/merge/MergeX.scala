@@ -248,6 +248,7 @@ object MergeX {
           S(interrupt())
           state = UpSourceDone(rsn)
 
+
         case UpSourceDone(_) => //no-op
       }
 
@@ -255,11 +256,12 @@ object MergeX {
         state match {
           case UpSourceReady(t, c) =>
             state = UpSourceRunning[I](S(WyeActor.runStepAsyncInterruptibly(t) {
-              step => step match {
-                case Step(\/-(si), t, c) => actor ! UpStreamEmit(self, si, t,c)
-                case Step(-\/(rsn), _, _)         => actor ! UpStreamDone(self, rsn)
-              }
-            }))
+              step =>
+                step match {
+                  case Step(\/-(si), t, c)  => actor ! UpStreamEmit(self, si, t, c)
+                  case Step(-\/(rsn), _, _) => actor ! UpStreamDone(self, rsn)
+                }
+            })())
           case _                   => //no-op
         }
       }
@@ -410,12 +412,14 @@ object MergeX {
 
     // runs next source step
     def nextSource(p: Process[Task, Process[Task, I]], actor: Actor[M]) : Unit =
-      sourceState = Some(UpSourceRunning(S(WyeActor.runStepAsyncInterruptibly(p) { s => actor ! SourceStep(s) })))
+      sourceState = Some(UpSourceRunning(S(WyeActor.runStepAsyncInterruptibly(p) { s => actor ! SourceStep(s) })()))
 
 
     //cleans next source step
-    def cleanSource(rsn: Throwable, c: Process[Task, Process[Task, I]], a: Actor[M]): Unit =
-      sourceState = Some(UpSourceRunning(S(WyeActor.runStepAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) })))
+    def cleanSource(rsn: Throwable, c: Process[Task, Process[Task, I]], a: Actor[M]): Unit = {
+      sourceState = Some(UpSourceRunning(() => ())) //set to noop so clean won`t get interrupted
+      S(WyeActor.runStepAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) })()
+    }
 
 
     /** Signals that all has been cleared, but only if mx is clear **/
@@ -470,7 +474,7 @@ object MergeX {
             mx = mx.copy(upReady = Nil, downReadyO = Nil, downReadyW = Nil) //we keep the references except `ready` to callback on eventual downstreamClose signal once all are done.
             sourceState match {
               case Some(UpSourceReady(t, c))        => cleanSource(rsn,c, actor)
-              case Some(UpSourceRunning(interrupt)) => S(interrupt)
+              case Some(UpSourceRunning(interrupt)) => S(interrupt())
               case None => sourceState = Some(UpSourceDone(End))
               case _ => //no-op
             }
@@ -491,13 +495,13 @@ object MergeX {
             msg match {
               case SourceStep(step) => step match {
                 case Step(\/-(ups), t, c)        =>
-                  mx = mx.copy(doneDown = Some(rsn))
+                  mx = mx.copy(doneUp = Some(rsn))
                   cleanSource(rsn, c, actor)
                 case Step(-\/(rsn0), _, Halt(_)) =>
                   sourceState = Some(UpSourceDone(rsn))
-                  mx = mx.copy(doneDown = Some(rsn0))
+                  mx = mx.copy(doneUp = Some(rsn0))
                 case Step(-\/(_), _, c)          =>
-                  mx = mx.copy(doneDown = Some(rsn))
+                  mx = mx.copy(doneUp = Some(rsn))
                   cleanSource(rsn, c, actor)
               }
 
