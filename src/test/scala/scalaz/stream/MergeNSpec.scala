@@ -80,7 +80,7 @@ object MergeNSpec extends Properties("mergeN") {
             Process.range(0,eachSize)
           }).toSource
 
-    val result = merge.mergeN(ps).fold(0)(_ + _).runLast.timed(60000).run
+    val result = merge.mergeN(ps).fold(0)(_ + _).runLast.timed(120000).run
 
     (result == Some(49500000)) :| "All items were emitted"
   }
