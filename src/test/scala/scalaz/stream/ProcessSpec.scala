@@ -120,8 +120,18 @@ object ProcessSpec extends Properties("Process1") {
     })
   }
 
-   property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
+  property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
+  }
+
+  property("iterate") = secure {
+    Process.iterate(0)(_ + 1).take(100).runLog.run.toList == List.iterate(0, 100)(_ + 1)
+  }
+
+  property("unfold") = secure {
+    Process.unfold((0, 1)) {
+      case (f1, f2) => if (f1 <= 13) Some((f1, f2), (f2, f1 + f2)) else None
+    }.map(_._1).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
 
   import scalaz.concurrent.Task
@@ -149,6 +159,49 @@ object ProcessSpec extends Properties("Process1") {
     empty.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
     inf.wye(one)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
     one.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(())
+  }
+
+  property("wye runs cleanup for both sides") = secure {
+    import ReceiveY._
+    import java.util.concurrent.atomic.AtomicBoolean
+    def eitherWhileBoth[A,B]: Wye[A,B,A \/ B] = {
+      def go: Wye[A,B,A \/ B] = receiveBoth[A,B,A \/ B] {
+        case HaltL(_) | HaltR(_) => halt
+        case ReceiveL(i) => emit(-\/(i)) fby go
+        case ReceiveR(i) => emit(\/-(i)) fby go
+      }
+      go
+    }
+    val completed = new AtomicBoolean(false)
+    val (_, qProc) = async.queue[Unit]
+    val left = qProc.onComplete(eval(Task.delay { completed.set(true) }))
+    val right = Process[Int](1)
+    left.wye(right)(eitherWhileBoth).run.run
+    completed.get
+  }
+
+  property("wye runs cleanup from last evaluated await") = secure {
+    import ReceiveY._
+    import java.util.concurrent.atomic.AtomicInteger
+    def whileBoth[A,B]: Wye[A,B,Nothing] = {
+      def go: Wye[A,B,Nothing] = receiveBoth[A,B,Nothing] {
+        case HaltL(_) | HaltR(_) => halt
+        case _ => go
+      }
+      go
+    }
+    val openComplete = new concurrent.SyncVar[Unit]
+    val nOpened = new AtomicInteger
+    val open: Task[Unit] = Task.delay { nOpened.incrementAndGet(); openComplete.put(()) }
+    val close: Task[Unit] = Task.delay { nOpened.decrementAndGet() }
+    val (q, qProc) = async.queue[Unit]
+    val (_, block) = async.queue[Unit]
+    val resourceProc = await(open)(_ => block, halt, halt).onComplete(eval_(close))
+    val complexProc = Process.suspend(resourceProc)
+    Task { openComplete.get; q.close }.runAsync(_ => ())
+    // Left side opens the resource and blocks, right side terminates. Resource must be closed.
+    complexProc.wye(qProc)(whileBoth).run.run
+    nOpened.get == 0
   }
 
   // ensure that zipping terminates when the smaller stream runs out

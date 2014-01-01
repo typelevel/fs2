@@ -15,9 +15,10 @@ import ReceiveY.{ReceiveL,ReceiveR}
 
 import java.util.concurrent._
 import scala.annotation.tailrec
+import scalaz.stream.async.immutable.Signal
+import scalaz.stream.async.mutable
 import scalaz.stream._
 import scalaz.stream.ReceiveY.ReceiveL
-import scala.Some
 import scalaz.\/-
 import scalaz.-\/
 import scalaz.stream.ReceiveY.ReceiveR
@@ -826,6 +827,9 @@ object Process {
   /** A `Process1` that writes values of type `W`. */
   type Process1W[+W,-I,+O] = Process1[I,W \/ O]
 
+  /** Alias for Process1W **/
+  type Writer1[+W,-I,+O] = Process1W[W,I,O]
+
   /** A `Tee` that writes values of type `W`. */
   type TeeW[+W,-I,-I2,+O] = Tee[I,I2,W \/ O]
 
@@ -918,6 +922,16 @@ object Process {
     go(n max 0)
   }
 
+  /**
+   * An infinite `Process` that repeatedly applies a given function
+   * to a start value.
+   */
+  def iterate[A](start: A)(f: A => A): Process[Task,A] = {
+    def go(a: A): Process[Task,A] =
+      await(Task.now(a))(a => Emit(List(a), go(f(a))))
+    go(start)
+  }
+
   /** Produce a (potentially infinite) source from an unfold. */
   def unfold[S,A](s0: S)(f: S => Option[(A,S)]): Process[Task,A] =
     await(Task.delay(f(s0)))(o =>
@@ -930,10 +944,11 @@ object Process {
    * produces the current state, and an effectful function to set the
    * state that will be produced next step.
    */
-  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = suspend {
-    val v = async.localRef[S]
-    v.set(s0)
-    v.signal.continuous.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat
+  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = {
+    await(Task.delay(async.signal[S]))(
+      sig => eval_(sig.set(s0)) fby
+        (sig.discrete.take(1) zip emit(sig.set _)).repeat
+    )
   }
 
   /**
@@ -1003,33 +1018,27 @@ object Process {
    */
   def awakeEvery(d: Duration)(
       implicit pool: ExecutorService = Strategy.DefaultExecutorService,
-               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task, Duration] = suspend {
-    val (q, p) = async.queue[Boolean](Strategy.Executor(pool))
-    val latest = async.ref[Duration](Strategy.Sequential)
-    val t0 = Duration(System.nanoTime, NANOSECONDS)
-    val metronome = _scheduler.scheduleAtFixedRate(
-       new Runnable { def run = {
-         val d = Duration(System.nanoTime, NANOSECONDS) - t0
-         latest.set(d)
-         if (q.size == 0)
-           q.enqueue(true) // only produce one event at a time
-       }},
-       d.toNanos,
-       d.toNanos,
-       NANOSECONDS
-    )
-    repeatEval {
-      Task.async[Duration] { cb =>
-        q.dequeue { r =>
-          r.fold(
-            e => pool.submit(new Callable[Unit] { def call = cb(left(e)) }),
-            _ => latest.get {
-              d => pool.submit(new Callable[Unit] { def call = cb(d) })
-            }
-          )
-        }
-      }
-    } onComplete { suspend { metronome.cancel(false); halt } }
+               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task, Duration] =  {
+
+    def metronomeAndSignal:(()=>Unit,mutable.Signal[Duration]) = {
+      val signal = async.signal[Duration](Strategy.Sequential)
+      val t0 = Duration(System.nanoTime, NANOSECONDS)
+
+      val metronome = _scheduler.scheduleAtFixedRate(
+        new Runnable { def run = {
+          val d = Duration(System.nanoTime, NANOSECONDS) - t0
+          signal.set(d).run
+        }},
+        d.toNanos,
+        d.toNanos,
+        NANOSECONDS
+      )
+      (()=>metronome.cancel(false), signal)
+    }
+
+    await(Task.delay(metronomeAndSignal))({
+      case (cm, signal) =>  signal.discrete onComplete eval_(signal.close.map(_=>cm()))
+    })
   }
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
@@ -1093,14 +1102,9 @@ object Process {
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.
    */
-  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] = {
-    suspend {
-      val v = async.signal[A](S)
-      val t = toTask(p).map(a => v.value.set(a))
-      val setvar = eval(t).flatMap(_ => v.continuous.once)
-      v.continuous.merge(setvar)
-    }
-  }
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] =
+    async.toSignal(p).continuous
+
 
   /** Emit a single value, then `Halt`. */
   def emit[O](head: O): Process[Nothing,O] =
@@ -1442,19 +1446,19 @@ object Process {
       WyeActor.wyeActor[O,O2,O3](self,p2)(y)(S)
 
     /** Nondeterministic version of `zipWith`. */
-    def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3): Process[Task,O3] =
+    def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3)(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O3] =
       self.wye(p2)(scalaz.stream.wye.yipWith(f))
 
     /** Nondeterministic version of `zip`. */
-    def yip[O2](p2: Process[Task,O2]): Process[Task,(O,O2)] =
+    def yip[O2](p2: Process[Task,O2])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,(O,O2)] =
       self.wye(p2)(scalaz.stream.wye.yip)
 
     /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
-    def merge[O2>:O](p2: Process[Task,O2]): Process[Task,O2] =
+    def merge[O2>:O](p2: Process[Task,O2])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O2] =
       self.wye(p2)(scalaz.stream.wye.merge)
 
     /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
-    def either[O2>:O,O3](p2: Process[Task,O3]): Process[Task,O2 \/ O3] =
+    def either[O2>:O,O3](p2: Process[Task,O3])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O2 \/ O3] =
       self.wye(p2)(scalaz.stream.wye.either)
 
     /**

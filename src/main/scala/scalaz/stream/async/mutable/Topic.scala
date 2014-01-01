@@ -15,44 +15,40 @@ import scalaz.stream.actor.message
  * - Once the `subscriber` is run it will receive all messages from all `publishers` starting with very first message
  *   arrived AFTER the subscriber was run
  *
- * Please not that topic is `active` even when there are no publishers or subscribers attached to it. However
+ * Please note that topic is `active` even when there are no publishers or subscribers attached to it. However
  * once the `close` or `fail` is called all the publishers and subscribers will terminate or fail.
+ *
+ * Once topic if closed or failed, all new publish or subscribe attempts will fail with reason that was used to
+ * close or fail the topic.
  *
  */
 trait Topic[A] {
 
-  import message.topic._
 
-  private[stream] val actor: Actor[Msg[A]]
 
   /**
    * Gets publisher to this topic. There may be multiple publishers to this topic.
    */
-  val publish: Sink[Task, A] = repeatEval(Task.now ( publishOne _ ))
+  def publish: Sink[Task, A]
 
   /**
    * Gets subscriber from this topic. There may be multiple subscribers to this topic. Subscriber
    * subscribes and un-subscribes when it is run or terminated.  
    * @return
    */
-  val subscribe: Process[Task, A] = {
-    await(Task.async[SubscriberRef[A]](reg => actor ! Subscribe(reg)))(
-      sref =>
-        repeatEval(Task.async[Seq[A]] { reg => actor ! Get(sref, reg) })
-          .flatMap(l => emitAll(l))
-          .onComplete(eval(Task.async[Unit](reg => actor ! UnSubscribe(sref, reg))).drain)
-      , halt
-      , halt)
-  }
+  def subscribe: Process[Task, A]
 
   /**
    * publishes single `A` to this topic. 
    */
-  def publishOne(a:A) : Task[Unit] = Task.async[Unit](reg => actor ! Publish(a, reg))
+  def publishOne(a:A) : Task[Unit]
 
   /**
    * Will `finish` this topic. Once `finished` all publishers and subscribers are halted via `halt`.
    * When this topic is `finished` or `failed` this is no-op
+   *
+   * The resulting task is completed _after_ all publishers and subscribers finished
+   *
    * @return
    */
   def close: Task[Unit] = fail(End)
@@ -60,10 +56,11 @@ trait Topic[A] {
   /**
    * Will `fail` this topic. Once `failed` all publishers and subscribers will terminate with cause `err`.
    * When this topic is `finished` or `failed` this is no-op
-   * @param err
-   * @return
+   *
+   * The resulting task is completed _after_ all publishers and subscribers finished
+   *
    */
-  def fail(err: Throwable): Task[Unit] = Task.async[Unit](reg => actor ! Fail(err, reg)).attempt.map(_ => ())
+  def fail(err: Throwable): Task[Unit]
 
 
 }
