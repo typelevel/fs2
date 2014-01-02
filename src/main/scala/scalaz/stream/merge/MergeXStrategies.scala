@@ -157,6 +157,7 @@ object MergeXStrategies {
         case Done(mx,_:UpRef,rsn) => Halt(rsn)
 
         case Done(mx,_:DownRefO, rsn) =>
+          println("DOWN DONE",rsn, mx.downO)
           if (mx.downO.isEmpty) Halt(rsn)
           else go(q,closedUp)
 

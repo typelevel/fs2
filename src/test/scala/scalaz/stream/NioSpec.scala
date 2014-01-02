@@ -4,52 +4,95 @@ import Process._
 import java.net.InetSocketAddress
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
+import scala.Some
 import scala.concurrent.SyncVar
 import scala.util.Random
 import scalaz.-\/
 import scalaz.\/
 import scalaz.\/-
 import scalaz.concurrent.Task
-import scalaz.stream.ReceiveY._
+import scalaz.stream.Process.Halt
+import scalaz.stream.ReceiveY.HaltL
+import scalaz.stream.ReceiveY.HaltR
+import scalaz.stream.ReceiveY.ReceiveL
+import scalaz.stream.ReceiveY.ReceiveR
 
 
-object EchoServer {
+object NioServer {
 
   import NioSpec._
 
-  def apply(address: InetSocketAddress) = {
-    def echo: Process1W[ByteData, ByteData, ByteData] = {
+  def apply(address: InetSocketAddress, w: Writer1[ByteData, ByteData, ByteData]): Process[Task, ByteData] = {
+    val srv =
+      for {
+        ep <- nio.server(address)
+        ex <- ep.once
+      } yield {
+        ex.readThrough(w).runReceive
+      }
+
+    merge.mergeN(srv)
+  }
+
+  def echo(address: InetSocketAddress): Process[Task, ByteData] = {
+    def echoAll: Writer1[ByteData, ByteData, ByteData] = {
       receive1[Array[Byte], ByteData \/ ByteData]({
-        i => emitSeq(Seq(\/-(i), -\/(i))) fby echo
+        i => emitSeq(Seq(\/-(i), -\/(i))) fby echoAll
       })
     }
 
+    apply(address, echoAll)
 
-
-
-    (for {
-      connections <- nio.server(address)
-      e <- connections
-      _ <- emit(println("Accepted"))
-      rcvd <- e.throughW(echo)
-      _ <- emit(println("received", rcvd.size))
-    } yield (rcvd))
   }
 
+  /*def limit(address: InetSocketAddress, size:Int) :  Process[Task, ByteData] = {
 
-  def server2(address:InetSocketAddress) = {
-    val (q, src) = async.queue[Array[Byte]]
+    def remianing(sz:Int): Writer1[ByteData, ByteData, ByteData] = {
+      receive1[Array[Byte], ByteData \/ ByteData]({
+        i => 
+          val toEcho = i.take(sz)
+          
+        
+          emitSeq(Seq(\/-(i), -\/(i))) fby echoAll
+      })
+    }
+    
+    apply(address,remianing(size))
+
+  }
+*/
+}
+
+object NioClient {
+
+  import NioSpec._
+
+  def echo(address: InetSocketAddress, data: ByteData): Process[Task, ByteData] = {
+
+    def echoSent: WyeW[ByteData, ByteData, ByteData, ByteData] = {
+      def go(collected: Int): WyeW[ByteData, ByteData, ByteData, ByteData] = {
+        receiveBoth {
+          case ReceiveL(rcvd) =>
+            emitO(rcvd) fby
+              (if (collected + rcvd.size >= data.size) halt
+              else go(collected + rcvd.size))
+          case ReceiveR(data) => tell(data) fby go(collected)
+          case HaltL(rsn)     => Halt(rsn)
+          case HaltR(_)       => go(collected)
+        }
+      }
+
+      go(0)
+    }
+
 
     for {
-      connections <- nio.server(address)
-      e : Exchange[Array[Byte],Array[Byte]] <- connections
-      unit <- eval_(Task.fork((e.read.map{v=> println("SERVER GOT", v.take(1).toList, v.size);v} to q.toSink()).run)) merge eval_(Task.fork((src.map{v=> println("SERVER ECHOED",v.take(1).toList, v.size);v} to e.write).run))
-    } yield (unit)
-
-
+      ex <- nio.connect(address)
+      rslt <- ex.wye(echoSent).run(emit(data))
+    } yield {
+      rslt
+    }
   }
-
-
 
 }
 
@@ -62,48 +105,27 @@ object NioSpec extends Properties("nio") {
 
   implicit val AG = nio.DefaultAsynchronousChannelGroup
 
-
+  //simple connect to server send size of bytes and got back what was sent
   property("connect-echo-done") = secure {
-    val size : Int = 2000000
+    val size: Int = 500000
+    val array1 = Array.fill[Byte](size)(1)
+    Random.nextBytes(array1)
 
     val stop = async.signal[Boolean]
     stop.set(false).run
-    val received = new SyncVar[Throwable \/ Unit]
-    val server = EchoServer.apply(local)
-    Task.fork(server.run).runAsync(received.put)
 
-    Thread.sleep(500) //give chance server to bind correctly
+    val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
+    stop.discrete.wye(NioServer.echo(local))(wye.interrupt)
+    .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
 
-    val array1 = Array.fill[Byte](size)(1)
-    val array2 = Array.fill[Byte](size)(2)
-    //Random.nextBytes(array)
+    Thread.sleep(300)
 
-    def sendRcvEcho(read:Int): WyeW[ByteData, ByteData, ByteData, ByteData] = {
-      println("Read so far", read)
-      awaitBoth[ByteData, ByteData].flatMap {
-        case ReceiveL(fromServer)
-          if (fromServer.size + read >= size*2) => println("#####>>>>",fromServer.take(1).toList, read, fromServer.size); emitO(fromServer)
-        case ReceiveL(fromServer) => println("S>>>>", fromServer.take(1).toList, fromServer.size, read); emitO(fromServer) fby sendRcvEcho(read + fromServer.size)
-        case ReceiveR(toServer)   => println("S<<<<", toServer.take(1).toList, toServer.size); emitW(toServer) fby sendRcvEcho(read)
-        case HaltR(rsn)           => sendRcvEcho(read)
-        case HaltL(rsn)           => Halt(rsn)
-      }
-    }
+    val clientGot =
+      NioClient.echo(local, array1).runLog.run.map(_.toSeq).flatten
+    stop.set(true).run
 
-    val client =
-      for {
-        e: Exchange[ByteData, ByteData] <- nio.connect(local)
-        got <- e.readAndWrite(Process(array1,array2).toSource)(sendRcvEcho(0))
-      } yield (got)
-
-    val clientCollected = new SyncVar[Throwable \/ IndexedSeq[ByteData]]
-
-    Task.fork(client.map{v => println("echoed", v.size);v}.runLog).runAsync(clientCollected.put)
-
-    clientCollected.get(3000) match {
-      case Some(\/-(got)) => println("DONE_OK", got.flatten.size);   got.flatten.toList == (array1 ++ array2).toList
-      case other => println("!!!!!!", other) ; false
-    }
+    (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
+      (clientGot == array1.toSeq) :| "client got what it sent"
 
   }
 

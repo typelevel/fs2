@@ -4,6 +4,7 @@ import Process._
 import processes._
 import scalaz._
 import scalaz.concurrent.{Strategy, Task}
+import scalaz.stream.ReceiveY.{HaltR, HaltL, ReceiveR, ReceiveL}
 
 /**
  * Exchange represents interconnection between two systems.
@@ -18,10 +19,10 @@ import scalaz.concurrent.{Strategy, Task}
  *
  * Exchange is currently specialized to [[scalaz.concurrent.Task]]
  *
- * @tparam I
- * @tparam O
+ * @tparam I  values read from remote system
+ * @tparam W  values written to remote system
  */
-trait Exchange[I,O] {
+trait Exchange[I,W] {
 
   self =>
 
@@ -32,26 +33,28 @@ trait Exchange[I,O] {
   def read: Process[Task, I]
 
   /**
-   * Provides sink, that sends(writes) the `O` values to external system
+   * Provides sink, that sends(writes) the `W` values to external system
    * @return
    */
-  def write: Sink[Task, O]
+  def write: Sink[Task, W]
 
+
+  //alphabetical order from now on
 
   /**
    * uses provided function `f` to be applied on any `I` received
    */
-  def mapO[A](f: I => A): Exchange[A, O] = new Exchange[A, O] {
-    def read: Process[Task, A] = self.read map f
-    def write: scalaz.stream.Sink[Task, O] = self.write
+  def mapO[I2](f: I => I2): Exchange[I2, W] = new Exchange[I2, W] {
+    def read: Process[Task, I2] = self.read map f
+    def write: scalaz.stream.Sink[Task, W] = self.write
   }
 
   /**
-   * applies provided function to any `A` that has to be written to provide an `O`
+   * applies provided function to any `W2` that has to be written to provide an `W`
    */
-  def mapW[A](f:A=>O) : Exchange[I,A] = new Exchange[I,A] {
+  def mapW[W2](f:W2=>W) : Exchange[I,W2] = new Exchange[I,W2] {
     def read: Process[Task, I] = self.read
-    def write: scalaz.stream.Sink[Task, A] = self.write contramap f
+    def write: scalaz.stream.Sink[Task, W2] = self.write contramap f
   }
 
 
@@ -59,16 +62,16 @@ trait Exchange[I,O] {
    * Creates exchange that `pipe` read `I` values through supplied p1.
    * @param p1   Process1 to be used when reading values
    */
-  def pipeO[A](p1: Process1[I, A]): Exchange[A, O] = new Exchange[A, O] {
-    def read: Process[Task, A] = self.read.pipe(p1)
-    def write: scalaz.stream.Sink[Task, O] = self.write
+  def pipeO[I2](p1: Process1[I, I2]): Exchange[I2, W] = new Exchange[I2, W] {
+    def read: Process[Task, I2] = self.read.pipe(p1)
+    def write: scalaz.stream.Sink[Task, W] = self.write
   }
 
 
   /**
    * Creates new exchange, that pipes all values to be sent through supplied `p1`
    */
-  def pipeW[A](p1: Process1[A, O]): Exchange[I, A] = new Exchange[I, A] {
+  def pipeW[W2](p1: Process1[W2, W]): Exchange[I, W2] = new Exchange[I, W2] {
     def read = self.read
     def write = self.write.pipeIn(p1)
   }
@@ -78,85 +81,118 @@ trait Exchange[I,O] {
    * @param r  Process1 to use on all read values
    * @param w  Process1 to use on all written values
    */
-  def pipeBoth[A, B](r: Process1[I, A], w: Process1[B, O]): Exchange[A, B] =
+  def pipeBoth[I2, W2](r: Process1[I, I2], w: Process1[W2, W]): Exchange[I2, W2] =
     self.pipeO(r).pipeW(w)
 
 
   /**
-   * Creates Exchange that runs read `I` through supplied effect channel.
-   * @param ch Channel producing process of `A` for each `I` received
-   * @tparam A
+   * Runs  supplied Process of `W` values by sending them to remote system.
+   * Any replies from remote system are received as `I` values of the resulting process.
+   * @param p
    * @return
    */
-  def through[A](ch:Channel[Task,I,Process[Task,A]]): Exchange[A,O] = new Exchange[A,O] {
+  def run(p:Process[Task,W]):Process[Task,I] =
+    self.read merge (p to self.write).drain
+
+  /**
+   * Runs this exchange in receive-only mode.
+   *
+   * Use when you want to sent to other party `W` only as result of receiving `I`. It is useful with
+   * other combinator such as `wye`, `readThrough` where they will produce a `W` as a result of receiving a `I`.
+   *
+   * @return
+   */
+  def runReceive : Process[Task,I] = run(halt)
+
+
+  /**
+   * Creates Exchange that runs read `I` through supplied effect channel.
+   * @param ch Channel producing process of `I2` for each `I` received
+   */
+  def through[I2](ch:Channel[Task,I,Process[Task,I2]]): Exchange[I2,W] = new Exchange[I2,W] {
     def read =  (self.read through ch) flatMap identity
     def write = self.write
   }
 
+  /**
+   * Transform this Exchange to another Exchange where queueing, and transformation of this `I` and `W`
+   * is controlled by supplied WyeW.
+   *
+   * Please note the `W` queue of values to be sent to server is unbounded any may cause excessive heap usage, if the
+   * remote system will read `W` too slow. If you want to control this flow, use rather `wyeFlow`.
+   *
+   * @param y WyeW to control queueing and transformation
+   *
+   */
+  def wye[I2,W2](y: WyeW[W, I, W2, I2])(implicit S: Strategy = Strategy.DefaultStrategy): Exchange[I2, W2] =
+    wyeFlow(y.attachL(collect { case \/-(i) => i }))
+
+
 
   /**
-   * Runs the exchange through supplied wye writer, merging with supplied stream. If Wye writer supplies `O` it is sent to
-   * external system. If WyeW supplies `B` it is sent to resulting process
+   * Transform this Exchange to another Exchange where queueing, flow control and transformation of this `I` and `W`
+   * is controlled by supplied WyeW.
    *
-   * Please note that `O` are concurrently written to external system once the WyeW `writes` them. This can lead to
-   * unbounded heap usage, if the external system is very slow on read. If you want to control flow and limit the
-   * written values in the queue, rather use `runFlow` with flow-control capabilities.
+   * Note this allows for fine-grained flow-control of written `W` to server based on Int passed to left side of
+   * supplied WyeW that contains actual size of queued values to be written to server.
    *
-   * This will terminate and close this Exchange once supplied `y` will halt
    *
-   * @param p     Process to be consulted in wye
-   * @param y     wye that merges `I` received from server or the `A`
-   * @param S     Wye strategy
+   * @param y WyeW to control queueing, flow control and transformation
    */
-  def run[A, B, C](p: Process[Task, A])(y: WyeW[O, I, A, B])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, B] = {
-    runFlow(p)(y.attachL(collect { case \/-(i) => i }))(S)
-  }
+  def wyeFlow[I2,W2](y: WyeW[W, Int \/ I, W2, I2])(implicit S: Strategy = Strategy.DefaultStrategy): Exchange[I2, W2] = {
+    val wq = async.boundedQueue[W](0)
+    val w2q = async.boundedQueue[W2](0)
 
-  /**
-   * Variant of `run` that allows WyeW to control flow of written values, to eventually compensate for slow
-   * reading external systems.
-   *
-   * After each value written to external system wyeW is notified on right side with number of `O` values waiting in queue.
-   * If wye decides that number of queued `O` is too high, it may start to switch to read only from left and
-   * wait on left side for signal (queue size of `O`) to start reading from both sides again.
-   *
-   * This will terminate and close this Exchange once supplied `y` will halt
-   *
-   * @param p     Process to be consulted in wye for writing the data to external system
-   * @param y     wye that merges `I` received from server or the `A`, This wye allows also to flow-control writes by
-   *              examining received `Int` on left side
-   * @param S     Wye strategy
-   */
-  def runFlow[A, B, C](p: Process[Task, A])(y: WyeW[O, Int \/ I, A, B])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, B] = {
-    val wq = async.boundedQueue[O](0)
-
+    def cleanup: Process[Task, Nothing] = eval_(wq.close) fby eval_(w2q.close)
+    def receive: Process[Task, I] = self.read onComplete cleanup
     def send: Process[Task, Unit] = wq.dequeue to self.write
 
-    def cleanup: Process[Task, Nothing] =
-      eval_(wq.close)
-
     def sendAndReceive =
-      (((wq.size.discrete either self.read).wye(p)(y)(S) onComplete cleanup) either send).flatMap {
+      (((wq.size.discrete either receive).wye(w2q.dequeue)(y)(S) onComplete cleanup) either send).flatMap {
         case \/-(_)      => halt
         case -\/(-\/(o)) => eval_(wq.enqueueOne(o))
         case -\/(\/-(b)) => emit(b)
       }
 
-    sendAndReceive onComplete cleanup
+    new Exchange[I2, W2] {
+      def read: Process[Task, I2] = sendAndReceive
+      def write: scalaz.stream.Sink[Task, W2] = w2q.enqueue
+    }
+
   }
 
   /**
-   * Runs received `I` and consults Writer1 `w` to eventually produce `O` that has to be written to external system or `A` that
-   * will be emitted as result when running this process.
+   * Transforms this exchange to another exchange, that for every received `I` will consult supplied Writer1
+   * and eventually transforms `I` to `I2` or to `W` that is sent to remote system.
    *
-   * Please note that if external system is slow on reading `O` this can lead to excessive heap usage. If you
-   * want to avoid for this to happen, please use `runFlow` instead.
    *
-   * @param w  Writer that processes received `I` and either echoes `A` or writes `O` to external system
+   * Please note that if external system is slow on reading `W` this can lead to excessive heap usage. If you
+   * want to avoid for this to happen, please use `wyeFlow` instead.
+   *
+   * @param w  Writer that processes received `I` and either echoes `I2` or writes `W` to external system
    *
    */
-  def runWriter[A](w: Process1W[O, I, A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, A] =
-    run(halt)(process1.liftY(w))(S)
+  def readThrough[I2](w: Writer1[W, I, I2])(implicit S: Strategy = Strategy.DefaultStrategy) : Exchange[I2,W]  = {
+    def liftWriter : WyeW[W, Int \/ I, W, I2] = {
+      def go(cur:Writer1[W, I, I2]):WyeW[W, Int \/ I, W, I2] = {
+        awaitBoth[Int\/I,W].flatMap{
+          case ReceiveL(-\/(_)) => go(cur)
+          case ReceiveL(\/-(i)) =>
+            cur.feed1(i).unemit match {
+              case (out,hlt@Halt(rsn)) => emitSeq(out, hlt)
+              case (out,next) => emitSeq(out) fby go(next)
+            }
+          case ReceiveR(w) => tell(w) fby go(cur)
+          case HaltL(rsn) => Halt(rsn)
+          case HaltR(rsn) => go(cur)
+        }
+      }
+      go(w)
+    }
+
+    self.wyeFlow[I2,W](liftWriter)(S)
+  }
+
 
 
 
