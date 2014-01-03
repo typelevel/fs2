@@ -80,8 +80,9 @@ object WyeSpec extends Properties("wye") {
     val syncR = new SyncVar[Int]
     val syncO = new SyncVar[Int]
 
+    // Left process terminates earlier.
     val l = Process.awakeEvery(10 millis) onComplete   (eval(Task.fork(Task.delay{ Thread.sleep(500);syncL.put(100)})).drain)
-    val r = Process.awakeEvery(10 millis) onComplete  (eval(Task.fork(Task.delay{ Thread.sleep(500);syncR.put(200)})).drain)
+    val r = Process.awakeEvery(10 millis) onComplete  (eval(Task.fork(Task.delay{ Thread.sleep(600);syncR.put(200)})).drain)
 
     val e = ((l either r).take(10) onComplete (eval(Task.delay(syncO.put(1000))).drain)).runLog.timed(3000).run
 
