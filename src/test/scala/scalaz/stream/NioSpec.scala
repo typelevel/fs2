@@ -45,22 +45,21 @@ object NioServer {
 
   }
 
-  /*def limit(address: InetSocketAddress, size:Int) :  Process[Task, ByteData] = {
+  def limit(address: InetSocketAddress, size:Int) :  Process[Task, ByteData] = {
 
-    def remianing(sz:Int): Writer1[ByteData, ByteData, ByteData] = {
+    def remaining(sz:Int): Writer1[ByteData, ByteData, ByteData] = {
       receive1[Array[Byte], ByteData \/ ByteData]({
         i => 
           val toEcho = i.take(sz)
-          
-        
-          emitSeq(Seq(\/-(i), -\/(i))) fby echoAll
+          if (sz - toEcho.size <= 0) emitSeq(Seq(\/-(toEcho), -\/(toEcho))) fby halt
+          else  emitSeq(Seq(\/-(toEcho), -\/(toEcho))) fby remaining(sz -toEcho.size)
       })
     }
     
-    apply(address,remianing(size))
+    apply(address,remaining(size))
 
   }
-*/
+
 }
 
 object NioClient {
@@ -105,29 +104,35 @@ object NioSpec extends Properties("nio") {
 
   implicit val AG = nio.DefaultAsynchronousChannelGroup
 
-  //simple connect to server send size of bytes and got back what was sent
-  property("connect-echo-done") = secure {
-    val size: Int = 500000
-    val array1 = Array.fill[Byte](size)(1)
-    Random.nextBytes(array1)
-
-    val stop = async.signal[Boolean]
-    stop.set(false).run
-
-    val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
-    stop.discrete.wye(NioServer.echo(local))(wye.interrupt)
-    .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
-
-    Thread.sleep(300)
-
-    val clientGot =
-      NioClient.echo(local, array1).runLog.run.map(_.toSeq).flatten
-    stop.set(true).run
-
-    (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
-      (clientGot == array1.toSeq) :| "client got what it sent"
-
+  property("loop-server") = secure {
+    NioServer.limit(local,3).run.run
+    false
   }
+
+
+  //simple connect to server send size of bytes and got back what was sent
+//  property("connect-echo-done") = secure {
+//    val size: Int = 500000
+//    val array1 = Array.fill[Byte](size)(1)
+//    Random.nextBytes(array1)
+//
+//    val stop = async.signal[Boolean]
+//    stop.set(false).run
+//
+//    val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
+//    stop.discrete.wye(NioServer.echo(local))(wye.interrupt)
+//    .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
+//
+//    Thread.sleep(300)
+//
+//    val clientGot =
+//      NioClient.echo(local, array1).runLog.run.map(_.toSeq).flatten
+//    stop.set(true).run
+//
+//    (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
+//      (clientGot == array1.toSeq) :| "client got what it sent"
+//
+//  }
 
 
 }

@@ -84,6 +84,7 @@ trait Exchange[I,W] {
   def pipeBoth[I2, W2](r: Process1[I, I2], w: Process1[W2, W]): Exchange[I2, W2] =
     self.pipeO(r).pipeW(w)
 
+  def done(s:String) = eval_(Task.delay(println("Close",s)))
 
   /**
    * Runs  supplied Process of `W` values by sending them to remote system.
@@ -92,7 +93,7 @@ trait Exchange[I,W] {
    * @return
    */
   def run(p:Process[Task,W]):Process[Task,I] =
-    self.read merge (p to self.write).drain
+    (self.read merge (p to self.write).drain) onComplete done("RUN")
 
   /**
    * Runs this exchange in receive-only mode.
