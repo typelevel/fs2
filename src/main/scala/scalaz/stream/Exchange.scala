@@ -84,7 +84,6 @@ trait Exchange[I,W] {
   def pipeBoth[I2, W2](r: Process1[I, I2], w: Process1[W2, W]): Exchange[I2, W2] =
     self.pipeO(r).pipeW(w)
 
-  def done(s:String) = eval_(Task.delay(println("Close",s)))
 
   /**
    * Runs  supplied Process of `W` values by sending them to remote system.
@@ -93,7 +92,7 @@ trait Exchange[I,W] {
    * @return
    */
   def run(p:Process[Task,W]):Process[Task,I] =
-    (self.read merge (p to self.write).drain) onComplete done("RUN")
+    (self.read merge (p to self.write).drain)
 
   /**
    * Runs this exchange in receive-only mode.
@@ -120,15 +119,13 @@ trait Exchange[I,W] {
    * is controlled by supplied WyeW.
    *
    * Please note the `W` queue of values to be sent to server is unbounded any may cause excessive heap usage, if the
-   * remote system will read `W` too slow. If you want to control this flow, use rather `wyeFlow`.
+   * remote system will read `W` too slow. If you want to control this flow, use rather `flow`.
    *
    * @param y WyeW to control queueing and transformation
    *
    */
   def wye[I2,W2](y: WyeW[W, I, W2, I2])(implicit S: Strategy = Strategy.DefaultStrategy): Exchange[I2, W2] =
-    wyeFlow(y.attachL(collect { case \/-(i) => i }))
-
-
+    flow(y.attachL(collect { case \/-(i) => i }))
 
   /**
    * Transform this Exchange to another Exchange where queueing, flow control and transformation of this `I` and `W`
@@ -140,7 +137,7 @@ trait Exchange[I,W] {
    *
    * @param y WyeW to control queueing, flow control and transformation
    */
-  def wyeFlow[I2,W2](y: WyeW[W, Int \/ I, W2, I2])(implicit S: Strategy = Strategy.DefaultStrategy): Exchange[I2, W2] = {
+  def flow[I2,W2](y: WyeW[W, Int \/ I, W2, I2])(implicit S: Strategy = Strategy.DefaultStrategy): Exchange[I2, W2] = {
     val wq = async.boundedQueue[W](0)
     val w2q = async.boundedQueue[W2](0)
 
@@ -191,12 +188,7 @@ trait Exchange[I,W] {
       go(w)
     }
 
-    self.wyeFlow[I2,W](liftWriter)(S)
+    self.flow[I2,W](liftWriter)(S)
   }
-
-
-
-
-
 
 }

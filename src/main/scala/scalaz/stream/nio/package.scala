@@ -29,21 +29,16 @@ package object nio {
     )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
   : Process[Task, Process[Task, Exchange[Array[Byte], Array[Byte]]]] = {
 
-    println("GO, BABY GO")
-
     def setup(ch: AsynchronousServerSocketChannel): AsynchronousServerSocketChannel = {
-      println("SETTING UP")
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, rcvBufferSize)
       ch.bind(bind)
       ch
     }
 
-    def release(ch: AsynchronousChannel): Process[Task, Nothing] = {
-      suspend(
-        emit(println("clsoing")) fby
-          eval(Task.now(ch.close()))).drain
-    }
+    def release(ch: AsynchronousChannel): Process[Task, Nothing] =
+      eval_(Task.delay(ch.close()))
+
 
     await(
       Task.delay(setup(AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)))
