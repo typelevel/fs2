@@ -112,10 +112,54 @@ object AsyncTopicSpec extends Properties("topic") {
   }
 
 
-
-  property("writer.state.startWith") = forAll {
+  property("writer.state") = forAll {
     l: List[String] =>
       (l.size > 0 && l.size < 10000) ==> {
+        val w: Writer1[Long, String, Int] = {
+          def go(acc: Long): Writer1[Long, String, Int] = {
+            receive1[String, Long \/ Int] {
+              s =>
+                val t: Long = s.size.toLong + acc
+                emit(-\/(t)) fby emit(\/-(s.size)) fby go(t)
+            }
+          }
+          go(0)
+        }
+
+        val topic = async.writerTopic(emit(-\/(0L)) fby w)
+
+        val published = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
+        topic.subscribe.runLog.runAsync(published.put)
+
+        val signalDiscrete = new SyncVar[Throwable \/ IndexedSeq[Long]]
+        topic.signal.discrete.runLog.runAsync(signalDiscrete.put)
+
+        val signalContinuous = new SyncVar[Throwable \/ IndexedSeq[Long]]
+        topic.signal.continuous.runLog.runAsync(signalContinuous.put)
+
+        Thread.sleep(100) //all has to have chance to register
+
+        ((Process(l: _*).toSource to topic.publish) onComplete(eval_(topic.close))).run.run
+
+        val expectPublish = l.foldLeft[(Long, Seq[Long \/ Int])]((0L, Nil))({
+          case ((sum, acc), s) =>
+            val t = sum + s.size
+            (t, acc :+ -\/(t) :+ \/-(s.size))
+        })
+
+        val signals = 0L +: expectPublish._2.collect { case -\/(s) => s }
+
+        ((published.get(3000).map(_.map(_.toList))  == Some(\/-(-\/(0L) +: expectPublish._2))) :| "All items were published") &&
+          ((signalDiscrete.get(3000) == Some(\/-(signals))) :| "Discrete signal published correct writes") &&
+          ((signalContinuous.get(3000).map(_.map(signals diff _)) == Some(\/-(List()))) :| "Continuous signal published correct writes")
+
+      }
+  }
+
+
+
+  property("writer.state.startWith") = forAll {
+    l: List[String] => (l.nonEmpty) ==> {
 
         val w: Writer1[Long, String, Int] = {
           def go(acc: Long): Writer1[Long, String, Int] = {
@@ -136,7 +180,6 @@ object AsyncTopicSpec extends Properties("topic") {
         val subscriber = topic.subscribe.take(1).runLog.run
 
         topic.close.run
-
 
         subscriber == List(-\/(l.map(_.size).sum))
       }

@@ -3,14 +3,12 @@ package scalaz.stream
 import java.util.concurrent.atomic.AtomicReference
 import scalaz.\/
 import scalaz.concurrent._
+import scalaz.stream.Process.End
 import scalaz.stream.actor.actors
 import scalaz.stream.actor.message
-import scalaz.stream.async.mutable.{WriterTopic, BoundedQueue}
 import scalaz.stream.async.mutable.Signal.Msg
+import scalaz.stream.async.mutable.{WriterTopic, BoundedQueue}
 import scalaz.stream.merge.{MergeXStrategies, MergeX}
-import scalaz.stream.Process.End
-import scalaz.stream.async.immutable
-import java.lang
 
 package object async {
 
@@ -79,12 +77,13 @@ package object async {
    * @param source
    * @tparam A
    */
-  def toSignal[A](source:Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): immutable.Signal[A] = new immutable.Signal[A] {
-    def changes: Process[Task, Unit] = discrete.map(_ => ())
-    def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
-    def discrete: Process[Task, A] = source
-    def changed: Process[Task, Boolean] = discrete.map(_ => true) merge Process.constant(false)
-  }
+  def toSignal[A](source: Process[Task, A])(implicit S: Strategy = Strategy.DefaultStrategy): immutable.Signal[A] =
+    new immutable.Signal[A] {
+      def changes: Process[Task, Unit] = discrete.map(_ => ())
+      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
+      def discrete: Process[Task, A] = source
+      def changed: Process[Task, Boolean] = (discrete.map(_ => true) merge Process.constant(false))
+   }
 
 
   /**
