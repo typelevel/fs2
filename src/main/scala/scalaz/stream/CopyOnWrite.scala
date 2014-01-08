@@ -100,34 +100,26 @@ object CopyOnWrite {
 
 
   /**
-   * Wraps ByteBuffer in CopyOnWrite
-   * @param from
+   * Creates Bytes CoW of supplied size
+   * @param size size of underlying array of bytes
    * @return
    */
-  def byteBuffer(from: ByteBuffer): CopyOnWrite[ByteBuffer, ByteBuffer] =
-    apply(
-      rw = from
-      , copy = {
-       orig =>
-          orig // ??? Really want to copy the whole source here ???
-      }, copyView = _ => ()
-      , read = _.asReadOnlyBuffer()
-      , copyViews = (_, _) => false
-    )
+  def bytes(size: Int): CopyOnWrite[Array[Byte], Bytes] = {
+    val buf = Array.ofDim[Byte](size)
+    // always just copy `buf` if there are live consumers of old value
+    CopyOnWrite[Array[Byte], Bytes](
+      rw = buf
+      , copy =
+        buf => {
+          val buf2 = Array.ofDim[Byte](size)
+          Array.copy(buf, 0, buf2, 0, size)
+          buf2
+        }
+      , copyView = _ => ()
+      , read = buf => ??? //new Bytes(buf)
+      , copyViews = (_, _) => false)
+  }
 
 }
 
 
-//trait Buffer[@specialized A] {
-//
-//  def view: View[A]
-//}
-//
-//trait View[@specialized A] {
-//  def valid(ind: Int): Boolean
-//  def at(i: Int): Byte
-//}
-//
-//object Bytes {
-//  def
-//}
