@@ -7,7 +7,7 @@ import scalaz.syntax.equal._
 import scalaz.syntax.show._
 import scalaz.std.list._
 import scalaz.std.string._
-import scalaz.std.anyVal._ 
+import scalaz.std.anyVal._
 
 
 object BytesSpec extends Properties("Bytes") {

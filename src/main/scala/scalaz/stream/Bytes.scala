@@ -97,6 +97,7 @@ final case class Bytes1 private[stream](
   , val length: Int
   ) extends Bytes {
 
+
   def apply(idx: Int): Byte = src(pos + idx)
   def append(that: Bytes): Bytes =
     if (that.isEmpty) this
@@ -192,7 +193,8 @@ final case class Bytes1 private[stream](
   override def foreach[@specialized U](f: (Byte) => U): Unit =
     for (i <- pos until pos + length) {f(src(i)) }
 
-
+  override def toString(): String =
+    s"Bytes1: pos=$pos, length=$length, src: ${src.take(10 min length).mkString("(",",",if(length > 10) "..." else ")" )}"
 }
 
 object Bytes1 {
@@ -407,9 +409,10 @@ object Bytes {
    * @return
    */
   def of(a: Array[Byte], pos: Int = 0, size: Int = Int.MaxValue): Bytes = {
-    val ca = Array.ofDim[Byte](a.size)
-    Array.copy(a, 0, ca, 0, size)
-    Bytes1(ca, 0, size)
+    val sz = if (size == Int.MaxValue) a.size else size
+    val ca = Array.ofDim[Byte](sz)
+    Array.copy(a, 0, ca, 0, sz)
+    Bytes1(ca, 0, sz)
   }
 
   /**
@@ -440,7 +443,7 @@ object Bytes {
   }
 
   /**
-   * Like `ofArray` only it does not copy `a`. Please note using this is unsafe if you will mutate the buffer
+   * Like `of` only it does not copy `a`. Please note using this is unsafe if you will mutate the buffer
    * outside the `Bytes`
    * @param a
    * @param pos when specified, indicates where the Bytes shall start reading from array
@@ -448,7 +451,8 @@ object Bytes {
    * @return
    */
   def unsafe(a: Array[Byte], pos: Int = 0, size: Int = Int.MaxValue): Bytes = {
-    Bytes1(a, pos, size min a.size)
+    val sz = if (size == Int.MaxValue) a.size else size
+    Bytes1(a, pos, sz)
   }
 
   //todo: place instances here

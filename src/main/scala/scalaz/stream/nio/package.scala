@@ -9,6 +9,7 @@ import scalaz.-\/
 import scalaz.\/-
 import scalaz.concurrent.Task
 import scalaz.stream.Process._
+import java.lang.Thread.UncaughtExceptionHandler
 
 
 package object nio {
@@ -27,7 +28,7 @@ package object nio {
     , reuseAddress: Boolean = true
     , rcvBufferSize: Int = 256 * 1024
     )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
-  : Process[Task, Process[Task, Exchange[Array[Byte], Array[Byte]]]] = {
+  : Process[Task, Process[Task, Exchange[Bytes, Bytes]]] = {
 
     def setup(ch: AsynchronousServerSocketChannel): AsynchronousServerSocketChannel = {
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
@@ -74,7 +75,7 @@ package object nio {
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
     )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
-  : Process[Task, Exchange[Array[Byte], Array[Byte]]] = {
+  : Process[Task, Exchange[Bytes, Bytes]] = {
 
     def setup(ch: AsynchronousSocketChannel): AsynchronousSocketChannel = {
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
