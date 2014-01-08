@@ -1,5 +1,7 @@
 package scalaz.stream
 
+import java.nio.ByteBuffer
+import java.nio.charset.Charset
 import scala._
 import scala.annotation.tailrec
 import scala.collection.immutable.IndexedSeq
@@ -31,10 +33,27 @@ sealed trait Bytes extends IndexedSeq[Byte] with IndexedSeqOptimized[Byte, Bytes
   def toArray: Array[Byte]
 
   /** shrinks internally segmented source to form single source of Array[Byte] **/
-  def shrink: Bytes
+  def compact: Bytes
 
   /** returns true, if internal representation is in single Array[Byte] **/
-  def shrinked: Boolean
+  def compacted: Boolean
+
+  /**
+   * Effectively decodes content of bytes with supplied charset to string
+   * @param chs Charset to use, default is UTF-8
+   */
+  def decode(chs: Charset = Charset.forName("UTF-8")): String
+
+  /**
+   * Converts Bytes to nio ByteBuffer.
+   * Please note the resulting ByteBuffer is read-only.
+   * Execution of this may allocate new Buffer
+   */
+  def asByteBuffer: ByteBuffer
+
+  /** converts all segments of this Bytes to read-only nio ByteBuffers **/
+  def asByteBuffers: Iterable[ByteBuffer]
+
 
   override def head: Byte = apply(0)
   override def tail: Bytes = drop(1)
@@ -75,10 +94,9 @@ final class BytesBuilder extends mutable.Builder[Byte, Bytes] {
 final case class Bytes1 private[stream](
   private[stream] val src: Array[Byte]
   , private[stream] val pos: Int
-  , private[stream] val sz: Int
+  , val length: Int
   ) extends Bytes {
 
-  def length: Int = sz
   def apply(idx: Int): Byte = src(pos + idx)
   def append(that: Bytes): Bytes =
     if (that.isEmpty) this
@@ -89,15 +107,27 @@ final case class Bytes1 private[stream](
     }
 
 
-  def shrink: Bytes =
-    if (shrinked) this
-    else Bytes1(this.toArray, 0, sz)
+  def compact: Bytes =
+    if (compacted) this
+    else Bytes1(this.toArray, 0, length)
 
-  def shrinked: Boolean = pos == 0 && length == sz
+  def compacted: Boolean = pos == 0 && src.length == length
 
+
+  def decode(chs: Charset): String =
+    if (compacted) new String(src, chs)
+    else new String(toArray, chs)
+
+  def asByteBuffer: ByteBuffer = {
+    val buffer = ByteBuffer.wrap(src, pos, length).asReadOnlyBuffer
+    if (buffer.remaining < src.length) buffer.slice
+    else buffer
+  }
+
+  def asByteBuffers: Iterable[ByteBuffer] = Seq(asByteBuffer)
 
   override def lastIndexWhere(p: (Byte) => Boolean, end: Int): Int = {
-    if (pos + end >= src.length) throw new IndexOutOfBoundsException(s"size: $sz, end: $end, must end < size")
+    if (pos + end >= src.length) throw new IndexOutOfBoundsException(s"size: $length, end: $end, must end < size")
     else {
       val idx = src.lastIndexWhere(p, pos + end)
       if (idx >= pos) idx - pos else -1
@@ -110,28 +140,28 @@ final case class Bytes1 private[stream](
   override def takeWhile(p: (Byte) => Boolean): Bytes = {
     val idx = src.indexWhere(!p(_), pos)
     if (idx < 0) this
-    else Bytes1(src, pos, (idx - pos) min sz)
+    else Bytes1(src, pos, (idx - pos) min length)
   }
 
 
   override def dropWhile(p: (Byte) => Boolean): Bytes = {
     val idx = src.indexWhere(!p(_), pos)
     if (idx < 0) Bytes.empty
-    else Bytes1(src, idx, (sz - (idx - pos)) max 0)
+    else Bytes1(src, idx, (length - (idx - pos)) max 0)
   }
 
   //(c takeWhile p, c dropWhile p)
   override def span(p: (Byte) => Boolean): (Bytes, Bytes) = {
     val idx = src.indexWhere(!p(_), pos)
     if (idx < 0) (this, Bytes.empty)
-    else (Bytes1(src, pos, (idx - pos) min sz), Bytes1(src, idx, (sz - (idx - pos)) max 0))
+    else (Bytes1(src, pos, (idx - pos) min length), Bytes1(src, idx, (length - (idx - pos)) max 0))
   }
 
   override def indexWhere(p: (Byte) => Boolean): Int = indexWhere(p, 0)
   override def indexWhere(p: (Byte) => Boolean, from: Int): Int = {
-    if (sz > 0) {
+    if (length > 0) {
       val idx = src.indexWhere(p, pos + from)
-      if (idx >= pos && (idx - pos) < sz) idx - pos else -1
+      if (idx >= pos && (idx - pos) < length) idx - pos else -1
     } else {
       -1
     }
@@ -141,8 +171,8 @@ final case class Bytes1 private[stream](
     src.indexOf(elem, pos) - pos max -1
 
   override def slice(from: Int, until: Int): Bytes = {
-    if (from >= sz) Bytes.empty
-    else Bytes1(src, pos + from, (until - from) min sz)
+    if (from >= length) Bytes.empty
+    else Bytes1(src, pos + from, (until - from) min length)
   }
 
 
@@ -150,17 +180,17 @@ final case class Bytes1 private[stream](
   def toArray: Array[Byte] = toArray[Byte]
 
   override def toArray[B >: Byte](implicit arg0: ClassTag[B]): Array[B] = {
-    val a = Array.ofDim(sz)
-    Array.copy(src, pos, a, 0, sz)
+    val a = Array.ofDim[B](length)
+    Array.copy(src, pos, a, 0, length)
     a
   }
   override def copyToArray[B >: Byte](xs: Array[B], start: Int, len: Int): Unit = {
-    val l1 = len min sz
+    val l1 = len min length
     val l2 = if (xs.length - start < l1) xs.length - start max 0 else l1
     Array.copy(repr, pos, xs, start, l2)
   }
   override def foreach[@specialized U](f: (Byte) => U): Unit =
-    for (i <- pos until pos + sz) {f(src(i)) }
+    for (i <- pos until pos + length) {f(src(i)) }
 
 
 }
@@ -185,13 +215,20 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
   def toArray: Array[Byte] = toArray[Byte]
 
   /** shrinks internally segmented source to form single source of Array[Byte] **/
-  def shrink: Bytes = {
+  def compact: Bytes =
     Bytes1(seg.map(_.toArray).flatten.toArray, 0, length)
-  }
+
 
   /** returns true, if internal representation is in single Array[Byte] **/
-  def shrinked: Boolean = false
+  def compacted: Boolean = false
 
+
+  def decode(chs: Charset): String = compact.decode(chs)
+
+
+  def asByteBuffer: ByteBuffer = compact.asByteBuffer
+
+  def asByteBuffers: Iterable[ByteBuffer] = seg.map(_.asByteBuffer)
 
   lazy val length: Int = {
     if (seg.size == 0) 0
@@ -205,7 +242,7 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
       rem.headOption match {
         case Some(one) =>
           val cur = idx - at
-          if (cur >= one.sz) go(at + one.sz, rem.tail)
+          if (cur >= one.length) go(at + one.length, rem.tail)
           else one(cur)
         case None      => throw new IndexOutOfBoundsException(s"Bytes has size of $length, but got idx of $idx")
       }
@@ -316,14 +353,14 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
     go(0, Vector(), seg)
   }
 
-  override def toArray[B >: Byte](implicit arg0: ClassTag[B]): Array[B] = shrink.toArray[B]
+  override def toArray[B >: Byte](implicit arg0: ClassTag[B]): Array[B] = compact.toArray[B]
   override def copyToArray[B >: Byte](xs: Array[B], start: Int, len: Int): Unit = {
     @tailrec
     def go(at: Int, rem: Vector[Bytes1]): Unit = {
       rem.headOption match {
         case Some(b1) =>
           b1.copyToArray(xs, at + start, len - at)
-          if (at + b1.sz < len) go(at + b1.sz, rem.tail)
+          if (at + b1.length < len) go(at + b1.length, rem.tail)
           else ()
 
         case None => //no-op
@@ -373,6 +410,33 @@ object Bytes {
     val ca = Array.ofDim[Byte](a.size)
     Array.copy(a, 0, ca, 0, size)
     Bytes1(ca, 0, size)
+  }
+
+  /**
+   * Creates immutable view of supplied byteBuffers.
+   * Note this will copy content of supplied byte buffers to guarantee immutability
+   * @param bb   first ByteBuffer
+   * @param bbn  next ByteBuffers
+   * @return
+   */
+  def of(bb: ByteBuffer, bbn: ByteBuffer*): Bytes = of(bb +: bbn)
+
+  /**
+   * Creates immutable view of supplied sequence of bytebuffers
+   * Note this will copy content of supplied byte buffers to guarantee immutability
+   * @param bbn
+   * @return
+   */
+  def of(bbn: Seq[ByteBuffer]): Bytes = {
+    def copyOne(bb: ByteBuffer): Bytes1 = {
+      val a = Array.ofDim[Byte](bb.remaining())
+      bb.get(a)
+      Bytes1(a, 0, a.length)
+    }
+
+    if (bbn.isEmpty) Bytes.empty
+    else if (bbn.size == 1) copyOne(bbn.head)
+    else BytesN(bbn.map(copyOne).toVector)
   }
 
   /**

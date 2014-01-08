@@ -6,11 +6,8 @@ import scalaz._
 import scalaz.syntax.equal._
 import scalaz.syntax.show._
 import scalaz.std.list._
-import scalaz.std.anyVal._
-
-//
-//import scalaz.std.list._
-//import scalaz.std.anyVal._
+import scalaz.std.string._
+import scalaz.std.anyVal._ 
 
 
 object BytesSpec extends Properties("Bytes") {
@@ -36,7 +33,7 @@ object BytesSpec extends Properties("Bytes") {
   }
 
   implicit val showBytes1: Show[Bytes1] = new Show[Bytes1] {
-    override def shows(f: Bytes1): String = s"Bytes1: pos=${f.pos }, sz=${f.sz }, src:${f.src.show }"
+    override def shows(f: Bytes1): String = s"Bytes1: pos=${f.pos }, sz=${f.length }, src:${f.src.show }"
   }
 
   implicit val showBytesN: Show[BytesN] = new Show[BytesN] {
@@ -144,7 +141,7 @@ object BytesSpec extends Properties("Bytes") {
 
 
   property("bytes1") = forAll { b: Bytes1 =>
-    val a = b.src.drop(b.pos).take(b.sz)
+    val a = b.src.drop(b.pos).take(b.length)
     allBytesOps(a, b)
   }
 
@@ -176,6 +173,44 @@ object BytesSpec extends Properties("Bytes") {
       val b = bl.map(_.asInstanceOf[Bytes]).reduce(_ ++ _).toArray.toList
       a === b
     }
+  }
+
+  property("decode-bytes1") = forAll { b: Bytes1 =>
+    new String(b.toArray) == b.decode()
+  }
+
+  property("decode-bytesN") = forAll { b: BytesN =>
+    new String(b.toArray) == b.decode()
+  }
+
+  property("decode-bytes1") = forAll { b: Bytes1 =>
+    new String(b.toArray) == b.decode()
+  }
+
+  property("asBuffer-bytes1") = forAll { b: Bytes1 =>
+    val ba = Array.ofDim[Byte](b.length)
+    b.asByteBuffer.get(ba)
+    val baa = b.asByteBuffers.map { bb =>
+      val a = Array.ofDim[Byte](bb.remaining())
+      bb.get(a)
+      a
+    }.flatten
+
+    b.toArray === ba &&
+      b.toArray.toList === baa.toList
+  }
+
+  property("asBuffer-bytesN") = forAll { b: BytesN =>
+    val ba = Array.ofDim[Byte](b.length)
+    b.asByteBuffer.get(ba)
+    val baa = b.asByteBuffers.map { bb =>
+      val a = Array.ofDim[Byte](bb.remaining())
+      bb.get(a)
+      a
+    }.flatten
+
+    b.toArray === ba &&
+      b.toArray.toList === baa.toList
   }
 
 

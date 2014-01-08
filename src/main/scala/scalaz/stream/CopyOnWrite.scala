@@ -116,7 +116,7 @@ object CopyOnWrite {
           buf2
         }
       , copyView = _ => ()
-      , read = buf => ??? //new Bytes(buf)
+      , read = buf => Bytes.unsafe(buf)
       , copyViews = (_, _) => false)
   }
 
