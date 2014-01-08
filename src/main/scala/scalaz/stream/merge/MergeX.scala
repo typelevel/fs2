@@ -190,18 +190,18 @@ object MergeX {
     case class UpEmit(ref: UpRefInstance, si: Seq[I]) extends M
 
     // `O`, `W` or `Both` get opened
-    case class DownOpenO(ref: DownRefOInstance, cb: Throwable \/ Unit => Unit) extends M
-    case class DownOpenW(ref: DownRefWInstance, cb: Throwable \/ Unit => Unit) extends M
+    case class DownOpenO(ref: DownRefOInstanceImpl, cb: Throwable \/ Unit => Unit) extends M
+    case class DownOpenW(ref: DownRefWInstanceImpl, cb: Throwable \/ Unit => Unit) extends M
     case class DownOpenBoth(ref: DownRefBothInstance, cb: Throwable \/ Unit => Unit) extends M
 
     // `O`, `W` or `Both` are ready to consume next value
-    case class DownReadyO(ref: DownRefOInstance, cb: Throwable \/ Seq[O] => Unit) extends M
-    case class DownReadyW(ref: DownRefWInstance, cb: Throwable \/ Seq[W] => Unit) extends M
+    case class DownReadyO(ref: DownRefOInstanceImpl, cb: Throwable \/ Seq[O] => Unit) extends M
+    case class DownReadyW(ref: DownRefWInstanceImpl, cb: Throwable \/ Seq[W] => Unit) extends M
     case class DownReadyBoth(ref: DownRefBothInstance, cb: Throwable \/ Seq[W \/ O] => Unit) extends M
 
     // `O`, `W` or `Both` are done
-    case class DownDoneO(ref: DownRefOInstance, rsn: Throwable) extends M
-    case class DownDoneW(ref: DownRefWInstance, rsn: Throwable) extends M
+    case class DownDoneO(ref: DownRefOInstanceImpl, rsn: Throwable) extends M
+    case class DownDoneW(ref: DownRefWInstanceImpl, rsn: Throwable) extends M
     case class DownDoneBoth(ref: DownRefBothInstance, rsn: Throwable) extends M
 
     //downstream is closed
@@ -351,13 +351,18 @@ object MergeX {
 
     }
 
-    class DownRefOInstance(
-      @volatile var state: \/[Vector[O], (\/[Throwable, Seq[O]]) => Unit] = left(Vector())
-      ) extends DownRefInstanceImpl[O] with DownRefO
+    trait DownRefOInstance extends DownRefInstance[O] with DownRefO
+    trait DownRefWInstance extends DownRefInstance[W] with DownRefW
 
-    class DownRefWInstance(
+    class DownRefOInstanceImpl(
+      @volatile var state: \/[Vector[O], (\/[Throwable, Seq[O]]) => Unit] = left(Vector())
+      ) extends DownRefInstanceImpl[O] with DownRefOInstance
+    
+  
+
+    class DownRefWInstanceImpl(
       @volatile var state: \/[Vector[W], (\/[Throwable, Seq[W]]) => Unit] = left(Vector())
-      ) extends DownRefInstanceImpl[W] with DownRefW
+      ) extends DownRefInstanceImpl[W] with DownRefWInstance
 
 
     class DownRefBothInstance(
@@ -369,15 +374,19 @@ object MergeX {
       @volatile var doneO: Option[Throwable] = None
       @volatile var doneW: Option[Throwable] = None
 
-      val oi = new DownRefInstance[O] with DownRefO {
-        def push(xb: Seq[O])(implicit S: Strategy): Unit = self.push(xb.map(right))
+      val oi = new DownRefOInstance {
+        def push(xb: Seq[O])(implicit S: Strategy): Unit =
+          if (doneO.isEmpty) self.push(xb.map(right))
+
         def close(rsn: Throwable)(implicit S: Strategy): Unit = {
           doneO = Some(rsn)
           if (doneW.isDefined) self.close(rsn)
         }
       }
-      val wi = new DownRefInstance[W] with DownRefW {
-        def push(xb: Seq[W])(implicit S: Strategy): Unit = self.push(xb.map(left))
+      val wi  = new DownRefWInstance {
+        def push(xb: Seq[W])(implicit S: Strategy): Unit =
+          if (doneW.isEmpty) self.push(xb.map(left))
+
         def close(rsn: Throwable)(implicit S: Strategy): Unit = {
           doneW = Some(rsn)
           if (doneO.isDefined) self.close(rsn)
@@ -577,7 +586,8 @@ object MergeX {
 
             case DownOpenBoth(ref, cb) =>
               mx = mx.copy(downW = mx.downW :+ ref.wi, downO = mx.downO :+ ref.oi)
-              process(Open(mx, ref))
+              process(Open(mx, ref.wi))
+              process(Open(mx, ref.oi))
               S(cb(ok))
 
             case DownReadyO(ref, cb) =>
@@ -671,10 +681,10 @@ object MergeX {
       }
 
       def downstreamO: Process[Task, O] =
-        downstream_[DownRefOInstance, O](new DownRefOInstance(), DownOpenO, DownReadyO, DownDoneO)
+        downstream_[DownRefOInstanceImpl, O](new DownRefOInstanceImpl(), DownOpenO, DownReadyO, DownDoneO)
 
       def downstreamW: Process[Task, W] =
-        downstream_[DownRefWInstance, W](new DownRefWInstance(), DownOpenW, DownReadyW, DownDoneW)
+        downstream_[DownRefWInstanceImpl, W](new DownRefWInstanceImpl(), DownOpenW, DownReadyW, DownDoneW)
 
       def downstreamBoth: Process.Writer[Task, W, O] =
         downstream_[DownRefBothInstance, W \/ O](new DownRefBothInstance(), DownOpenBoth, DownReadyBoth, DownDoneBoth)
