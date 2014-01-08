@@ -137,7 +137,7 @@ object CreatingStreams extends Properties("creating-streams") {
     /*
     Recall we can use `run` if we want to evaluate a stream just
     for its effects. Generally, we'll use `run` rather than using
-    `collect`. If we want to do something further with the values 
+    `runLog`. If we want to do something further with the values
     emitted from a stream, we can just feed the stream to another
     transformation, sink, or channel. See `TransformingStreams.scala`
     for more examples of this. Here's `t1` adapted:
