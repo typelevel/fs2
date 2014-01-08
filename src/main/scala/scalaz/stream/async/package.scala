@@ -1,14 +1,17 @@
 package scalaz.stream
 
-import scalaz.{stream, \/}
+import scalaz.{-\/, \/-, \/}
 import scalaz.concurrent._
-import scalaz.stream.actor.message
-import scalaz.stream.actor.actors
+import scalaz.stream.Process.Writer1
+import scalaz.stream.actor.TopicActor.Msg
+import scalaz.stream.actor.{TopicActor, message, actors}
+import scalaz.stream.async.mutable.WriterTopic
 
 package object async {
+
   import mutable.{Queue,Ref,Signal,Topic}
 
-  /** 
+  /**
    * Convert from an `Actor` accepting `message.queue.Msg[A]` messages 
    * to a `Queue[A]`. 
    */
@@ -27,7 +30,9 @@ package object async {
    */
   def actorRef[A](actor: Actor[message.ref.Msg[A]]): Ref[A] =
     new Ref[A] {
+
       import message.ref._
+
       @volatile var init = false
       protected[stream] def set_(f: (Option[A]) => Option[A], cb: (\/[Throwable, Option[A]]) => Unit, old: Boolean): Unit =  {
         actor ! Set(f,cb,old)
@@ -105,10 +110,29 @@ package object async {
    * processes that can be used to publish and subscribe asynchronously. 
    * Please see `Topic` for more info.
    */
-  def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
-    new Topic[A]{
-      private[stream] val actor = actors.topic[A](S)
-    }
+  def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = new Topic[A] {
+    private[stream] val actor: Actor[Msg[Unit,A, A]] =
+      TopicActor.topic[Unit,A, A](Process.emit(-\/(())) fby process1.lift{a=> \/-(a)})(S)
+  }
+
+
+  /**
+   * Returns a writer topic. Writer topic uses supplied Writer1 to keep
+   * state `S` from supplied `A` messages. Unlike `Topic` subscribers will always
+   * Receive tuple `(S,A)` instead of `A` when subscribed.
+   *
+   * Writer topic also provides signal of `S`.
+   *
+   * Please note that Writer is required to write `S` initially. If writer emits instead `B` they will get discarded
+   * until first `S` is emitted. That means subscriber will not see any `B` before `S` is seen for the first time.
+   * This can be also used to control whether topic is required to receive `A` before subscribers get `S` or `B`.
+   *
+   *
+   * Note the resulting topic will terminate whenever the `Writer1` terminates,
+   * in addition when `close` or `fail` is called.
+   */
+  def writerTopic[S, A, B](w: Writer1[S, A, B])(implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[S, A, B] = new WriterTopic[S, A, B] {
+    private[stream] val actor: Actor[Msg[S,A,B]] = TopicActor.topic[S,A,B](w)(S)
   }
 }
 

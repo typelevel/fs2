@@ -197,6 +197,25 @@ trait wye {
       }
     go(Vector())
   }
+
+
+  /**
+   * Continuous wye, that first reads from L,
+   * Then when L is not available it reads from R echoing any S that was received from `L`
+   * Will halt once the
+   */
+  def echoLeft[A]: Wye[A, Any, A] = {
+    def go(a: A): Wye[A, Any, A] =
+      receiveBoth({
+        case ReceiveL(l) => emit(l) fby go(l)
+        case ReceiveR(_)  => emit(a) fby go(a)
+        case HaltOne(rsn)   => Halt(rsn)
+      })
+    awaitL[A].flatMap(s => emit(s) fby go(s))
+  }
+
+
+
 }
 
 object wye extends wye {
