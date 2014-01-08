@@ -5,10 +5,12 @@ import scalaz.\/
 import scalaz.concurrent._
 import scalaz.stream.actor.actors
 import scalaz.stream.actor.message
-import scalaz.stream.async.mutable.BoundedQueue
+import scalaz.stream.async.mutable.{WriterTopic, BoundedQueue}
 import scalaz.stream.async.mutable.Signal.Msg
 import scalaz.stream.merge.{MergeXStrategies, MergeX}
 import scalaz.stream.Process.End
+import scalaz.stream.async.immutable
+import java.lang
 
 package object async {
 
@@ -136,6 +138,23 @@ package object async {
        def publishOne(a: A): Task[Unit] = mergex.receiveOne(a)
        def fail(err: Throwable): Task[Unit] = mergex.downstreamClose(err)
      }
+  }
+
+  /**
+   * Returns Writer topic, that can create publisher(sink) of `I` and subscriber with signal of `W` values.
+   * For more info see `WriterTopic`.
+   */
+  def writerTopic[W,I,O](w:Writer1[W,I,O])(implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[W,I,O] ={
+    val mergex = MergeX(MergeXStrategies.liftWriter1(w), Process.halt)(S)
+    new WriterTopic[W,I,O] {
+      def publish: Process.Sink[Task, I] = mergex.upstreamSink
+      def subscribe: Process.Writer[Task, W, O] = mergex.downstreamBoth
+      def subscribeO: Process[Task, O] = mergex.downstreamO
+      def subscribeW: Process[Task, W] = mergex.downstreamW
+      def signal: immutable.Signal[W] = toSignal(subscribeW)
+      def publishOne(i: I): Task[Unit] = mergex.receiveOne(i)
+      def fail(err: Throwable): Task[Unit] = mergex.downstreamClose(err)
+    }
   }
 }
 

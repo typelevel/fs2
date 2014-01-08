@@ -3,9 +3,10 @@ package scalaz.stream
 import collection.mutable
 import org.scalacheck.{Prop, Properties}
 import org.scalacheck.Prop._
-import scalaz.{\/, -\/}
+import scalaz.{\/-, \/, -\/}
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
+import scalaz.stream.Process._
 
 object AsyncTopicSpec extends Properties("topic") {
 
@@ -107,6 +108,37 @@ object AsyncTopicSpec extends Properties("topic") {
 
         (emitted.get(0).nonEmpty && emitted.get == -\/(TestedEx)) :| "publisher fails" &&
           (sub1.get(0).nonEmpty && sub1.get == -\/(TestedEx)) :| "subscriber fails"
+      }
+  }
+
+
+
+  property("writer.state.startWith") = forAll {
+    l: List[String] =>
+      (l.size > 0 && l.size < 10000) ==> {
+
+        val w: Writer1[Long, String, Int] = {
+          def go(acc: Long): Writer1[Long, String, Int] = {
+            receive1[String, Long \/ Int] {
+              s =>
+                val t: Long = s.size.toLong + acc
+                emit(-\/(t)) fby
+                  emit(\/-(s.size)) fby
+                  go(t)
+            }
+          }
+          go(0L)
+        }
+
+        val topic = async.writerTopic(emit(-\/(0L)) fby w)
+        ((Process(l: _*).toSource to topic.publish)).run.run
+
+        val subscriber = topic.subscribe.take(1).runLog.run
+
+        topic.close.run
+
+
+        subscriber == List(-\/(l.map(_.size).sum))
       }
   }
 
