@@ -2,9 +2,14 @@ package scalaz.stream
 
 import Process._
 import processes._
+import scalaz.\/._
 import scalaz._
 import scalaz.concurrent.{Strategy, Task}
-import scalaz.stream.ReceiveY.{HaltR, HaltL, ReceiveR, ReceiveL}
+import scalaz.stream.Process.Halt
+import scalaz.stream.ReceiveY.HaltL
+import scalaz.stream.ReceiveY.HaltR
+import scalaz.stream.ReceiveY.ReceiveL
+import scalaz.stream.ReceiveY.ReceiveR
 
 /**
  * Exchange represents interconnection between two systems.
@@ -88,6 +93,8 @@ trait Exchange[I,W] {
   /**
    * Runs  supplied Process of `W` values by sending them to remote system.
    * Any replies from remote system are received as `I` values of the resulting process.
+   *
+   * Please note this will terminate _after_ `read` side terminates
    * @param p
    * @return
    */
@@ -96,6 +103,8 @@ trait Exchange[I,W] {
 
   /**
    * Runs this exchange in receive-only mode.
+   *
+   * Please note this will terminate _after_ `read` side terminates
    *
    * Use when you want to sent to other party `W` only as result of receiving `I`. It is useful with
    * other combinator such as `wye`, `readThrough` where they will produce a `W` as a result of receiving a `I`.
@@ -141,16 +150,18 @@ trait Exchange[I,W] {
     val wq = async.boundedQueue[W](0)
     val w2q = async.boundedQueue[W2](0)
 
-    def cleanup: Process[Task, Nothing] = eval_(wq.close) fby eval_(w2q.close)
+    def cleanup: Process[Task, Nothing] = eval_(wq.close) fby eval_(Task.delay(w2q.close.runAsync(_ => ())))
     def receive: Process[Task, I] = self.read onComplete cleanup
     def send: Process[Task, Unit] = wq.dequeue to self.write
 
-    def sendAndReceive =
-      (((wq.size.discrete either receive).wye(w2q.dequeue)(y)(S) onComplete cleanup) either send).flatMap {
-        case \/-(_)      => halt
+    def sendAndReceive = {
+      val (o, ny) = y.unemit
+      (emitSeq(o) fby ((wq.size.discrete either receive).wye(w2q.dequeue)(ny)(S) onComplete cleanup) either send).flatMap {
+        case \/-(o) => halt
         case -\/(-\/(o)) => eval_(wq.enqueueOne(o))
         case -\/(\/-(b)) => emit(b)
       }
+    }
 
     new Exchange[I2, W2] {
       def read: Process[Task, I2] = sendAndReceive
@@ -165,7 +176,7 @@ trait Exchange[I,W] {
    *
    *
    * Please note that if external system is slow on reading `W` this can lead to excessive heap usage. If you
-   * want to avoid for this to happen, please use `wyeFlow` instead.
+   * want to avoid for this to happen, please use `flow` instead.
    *
    * @param w  Writer that processes received `I` and either echoes `I2` or writes `W` to external system
    *
@@ -189,6 +200,50 @@ trait Exchange[I,W] {
     }
 
     self.flow[I2,W](liftWriter)(S)
+  }
+
+}
+
+object Exchange {
+
+  /**
+   * Provides `loopBack` exchange, that loops data written to it back to `read` side, via supplied Process1.
+   *
+   * If process1 starts with emitting some data, they are `read` first.
+   *
+   * This exchange will terminate `read` side once the `p` terminates.
+   *
+   * Note that the `write` side is run off the thread that actually writes the messages, forcing the `read` side
+   * to be run on different thread.
+   *
+   * This primitive may be used also for asynchronous processing that needs to be forked to different thread.
+   *
+   * @param p   Process to consult when looping data through
+   */
+  def loopBack[I, W](p: Process1[W, I])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, Exchange[I, W]] = {
+
+    def loop(cur: Process1[W, I]): WyeW[Nothing, Nothing, W, I] = {
+      awaitR[W] flatMap {
+        case w => cur.feed1(w).unemit match {
+          case (o, hlt@Halt(rsn)) => emitSeq(o.map(right)) fby hlt
+          case (o, np)            => emitSeq(o.map(right)) fby loop(np)
+        }
+      }
+    }
+
+    await(Task.delay {
+      async.boundedQueue[W]()
+    })({ q =>
+      val (out, np) = p.unemit
+
+      val ex = new Exchange[Nothing, W] {
+        def read: Process[Task, Nothing] = halt
+        def write: Sink[Task, W] = q.enqueue
+      }
+
+      emit(ex.wye(emitSeq(out).map(right) fby loop(np))) onComplete eval_(Task.delay(q.close.run))
+    })
+
   }
 
 }
