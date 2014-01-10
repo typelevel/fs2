@@ -1712,7 +1712,7 @@ object Process {
     def pipeIn[I0](p1:Process1[I0,I]):Sink[Task,I0] = {
       constant {
         @volatile var cur: Process1[I0, I] = p1 //safe here hence at no moment 2 threads may access this at same time
-        (i0:I0) => Task.delay[Unit] {
+        (i0:I0) => {
           val (piped, next) = cur.feed1(i0).unemit
           cur = next
           (emitSeq(piped).toSource to self).run

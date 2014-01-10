@@ -335,6 +335,8 @@ object ProcessSpec extends Properties("Process1") {
   }
    import scala.concurrent.duration._
   val smallDelay = Gen.choose(10, 300) map {_.millis}
+
+
   property("every") =
     forAll(smallDelay) { delay: Duration =>
       type BD = (Boolean, Duration)
@@ -361,6 +363,18 @@ object ProcessSpec extends Properties("Process1") {
       head._1 :| "every always emits true first" &&
       tail.filter   (_._1).map(_._2).forall { _ >= delay } :| "true means the delay has passed" &&
       tail.filterNot(_._1).map(_._2).forall { _ <= delay } :| "false means the delay has not passed"
+  }
+
+  property("pipeIn") = secure {
+    val q = async.boundedQueue[String]()
+
+    val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
+
+    (Process.range(0,10) to sink).run.run
+    val res = q.dequeue.take(10).runLog.run.toList
+    q.close.run
+
+    res === (0 until 10).map(_.toString).toList
   }
 
   property("runStep") = secure {
