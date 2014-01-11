@@ -41,7 +41,10 @@ object ResourceSafetySpec extends Properties("resource-safety") {
       emit(1) onComplete cleanup onComplete die,
       (emit(2) append die) onComplete cleanup,
       (src ++ die) onComplete cleanup,
-      src.onComplete(cleanup) onComplete die
+      src.onComplete(cleanup) onComplete die,
+      src.fby(die) onComplete cleanup,
+      src.orElse(die) onComplete cleanup,
+      (src append die).orElse(halt,die) onComplete cleanup
     )
     procs.foreach { p =>
       try p.run.run
@@ -68,6 +71,14 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     (tasks.eval.pipe(processes.sum).
       handle { case e: Throwable => Process.emit(-6) }.
       runLog.run.last == -6)
+  }
+
+  property("io.resource") = secure {
+    // Check that the cleanup task is called after normal termination
+    var cleanedUp = false
+    val a = io.resource(Task.now(()))(_ => Task.delay(cleanedUp = true))(_ => Task.delay(cleanedUp = false))
+    a.take(1).run.run
+    cleanedUp
   }
 
 }

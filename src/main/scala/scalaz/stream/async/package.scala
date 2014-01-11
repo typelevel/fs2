@@ -1,7 +1,9 @@
 package scalaz.stream
 
-import scalaz.\/ 
-import scalaz.concurrent._  
+import scalaz.{stream, \/}
+import scalaz.concurrent._
+import scalaz.stream.actor.message
+import scalaz.stream.actor.actors
 
 package object async {
   import mutable.{Queue,Ref,Signal,Topic}
@@ -82,14 +84,14 @@ package object async {
    * `actor.queue`.
    */
   def queue[A](implicit S: Strategy = Strategy.DefaultStrategy): (Queue[A], Process[Task,A]) = 
-    actor.queue[A] match { case (snk, p) => (actorQueue(snk), p) }
+    actors.queue[A] match { case (snk, p) => (actorQueue(snk), p) }
 
   /**
    * Returns a ref, that can create continuous process, that can be set 
    * asynchronously using the returned `Ref`.
    */
   def ref[A](implicit S: Strategy = Strategy.DefaultStrategy): Ref[A] = 
-    actor.ref[A](S) match { case (snk, p) => actorRef(snk)}
+    actors.ref[A](S) match { case (snk, p) => actorRef(snk)}
 
   /** 
    * Convert an `Queue[A]` to a `Sink[Task, A]`. The `cleanup` action will be 
@@ -105,7 +107,7 @@ package object async {
    */
   def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
     new Topic[A]{
-      private[stream] val actor = scalaz.stream.actor.topic[A](S) 
+      private[stream] val actor = actors.topic[A](S)
     }
   }
 }
