@@ -20,10 +20,10 @@ conflictWarning ~= { cw =>
 }
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.4",
-  "org.scalaz" %% "scalaz-concurrent" % "7.0.4",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.4" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.10.0" % "test"
+  "org.scalaz" %% "scalaz-core" % "7.0.5",
+  "org.scalaz" %% "scalaz-concurrent" % "7.0.5",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.5" % "test",
+  "org.scalacheck" %% "scalacheck" % "1.10.1" % "test"
 )
 
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
