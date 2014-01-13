@@ -91,18 +91,29 @@ object MergeXStrategies {
    */
   def liftWriter1[W, I, O](w: Writer1[W, I, O]): MergeXStrategy[W, I, O] = {
     def go(cur: Writer1[W, I, O], last: Option[W]): MergeXStrategy[W, I, O] = {
+      def lastW(swo:Seq[W\/O]) : Option[W] =  swo.collect({ case -\/(w) => w }).lastOption
       mergeX[W, I, O] {
         case Open(mx, ref: UpRef)    => mx.more(ref) fby go(cur, last)
         case Open(mx, ref: DownRefW) => last match {
           case Some(w0) => mx.writeW(w0, ref) fby go(cur, last)
-          case None     => go(cur, last)
+          case None => cur.unemit match {
+            case (swo, next) =>
+              def goNext(ow: Option[W]) = next match {
+                case hlt@Halt(rsn) => hlt
+                case next          => go(next, ow)
+              }
+              lastW(swo) match {
+                case s@Some(w) => mx.writeW(w,ref) fby goNext(s)
+                case None      => goNext(None)
+              }
+          }
         }
         case Receive(mx, is, ref)    =>
           process1.feed(is)(cur).unemit match {
             case (swo, hlt@Halt(rsn)) =>
               mx.more(ref) fby mx.broadcastAllBoth(swo) fby hlt
             case (swo, next)          =>
-              mx.more(ref) fby mx.broadcastAllBoth(swo) fby go(next, swo.collect({ case -\/(w) => w }).lastOption orElse last)
+              mx.more(ref) fby mx.broadcastAllBoth(swo) fby go(next, lastW(swo) orElse last)
           }
         case DoneDown(mx, rsn)       =>
           val (swo, _) = cur.killBy(rsn).unemit
