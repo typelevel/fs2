@@ -1,12 +1,12 @@
 package scalaz.stream
 
 import collection.mutable
-import org.scalacheck.{Prop, Properties}
 import org.scalacheck.Prop._
-import scalaz.{\/-, \/, -\/}
+import org.scalacheck.{Prop, Properties}
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
 import scalaz.stream.Process._
+import scalaz.{\/-, \/, -\/}
 
 object AsyncTopicSpec extends Properties("topic") {
 
@@ -15,16 +15,16 @@ object AsyncTopicSpec extends Properties("topic") {
   }
 
 
-  //tests basic publisher and subscriber functionality 
-  //have two publishers and four subscribers. 
-  //each publishers emits own half of elements (odd and evens) and all subscribers must 
+  //tests basic publisher and subscriber functionality
+  //have two publishers and four subscribers.
+  //each publishers emits own half of elements (odd and evens) and all subscribers must
   //get that messages
   property("basic") = forAll {
     l: List[Int] =>
 
       case class SubscriberData(
-                                 endSyncVar: SyncVar[Throwable \/ Unit] = new SyncVar[Throwable \/ Unit],
-                                 data: mutable.Buffer[Int] = mutable.Buffer.empty)
+        endSyncVar: SyncVar[Throwable \/ Unit] = new SyncVar[Throwable \/ Unit],
+        data: mutable.Buffer[Int] = mutable.Buffer.empty)
 
       val (even, odd) = (l.filter(_ % 2 == 0), l.filter(_ % 2 != 0))
 
@@ -33,12 +33,13 @@ object AsyncTopicSpec extends Properties("topic") {
 
       def sink[A](f: A => Unit): Process.Sink[Task, A] = {
         io.resource[Unit, A => Task[Unit]](Task.now(()))(_ => Task.now(()))(
-          _ => Task.now {
-            (i: A) =>
-              Task.now {
-                f(i)
-              }
-          }
+          _ =>
+            Task.now {
+              (i: A) =>
+                Task.now {
+                  f(i)
+                }
+            }
         )
       }
 
@@ -69,7 +70,7 @@ object AsyncTopicSpec extends Properties("topic") {
         val result = result1.endSyncVar.get(3000)
 
         (result.nonEmpty && result.get.isRight :| s"Subscriber $subId finished") &&
-          ((result1.data.size == l.size) :| s"Subscriber $subId got all numbers ${result1.data} == ${l.size}") &&
+          ((result1.data.size == l.size) :| s"Subscriber $subId got all numbers ${result1.data } == ${l.size }") &&
           ((result1.data.filter(_ % 2 == 0) == even) :| s"Subscriber $subId got all even numbers") &&
           ((result1.data.filter(_ % 2 != 0) == odd) :| s"Subscriber $subId got all odd numbers")
       }
@@ -111,20 +112,20 @@ object AsyncTopicSpec extends Properties("topic") {
       }
   }
 
+  def w: Writer1[Long, String, Int] = {
+    def go(acc: Long): Writer1[Long, String, Int] = {
+      receive1[String, Long \/ Int] {
+        s =>
+          val t: Long = s.size.toLong + acc
+          emit(-\/(t)) fby emit(\/-(s.size)) fby go(t)
+      }
+    }
+    go(0)
+  }
 
   property("writer.state") = forAll {
     l: List[String] =>
-      (l.size > 0 && l.size < 10000) ==> {
-        val w: Writer1[Long, String, Int] = {
-          def go(acc: Long): Writer1[Long, String, Int] = {
-            receive1[String, Long \/ Int] {
-              s =>
-                val t: Long = s.size.toLong + acc
-                emit(-\/(t)) fby emit(\/-(s.size)) fby go(t)
-            }
-          }
-          go(0)
-        }
+      (l.nonEmpty) ==> {
 
         val topic = async.writerTopic(emit(-\/(0L)) fby w)
 
@@ -137,9 +138,9 @@ object AsyncTopicSpec extends Properties("topic") {
         val signalContinuous = new SyncVar[Throwable \/ IndexedSeq[Long]]
         topic.signal.continuous.runLog.runAsync(signalContinuous.put)
 
-        Thread.sleep(100) //all has to have chance to register
+        Thread.sleep(50) //all has to have chance to register
 
-        ((Process(l: _*).toSource to topic.publish) onComplete(eval_(topic.close))).run.run
+        ((Process(l: _*).toSource to topic.publish) onComplete (eval_(topic.close))).run.run
 
         val expectPublish = l.foldLeft[(Long, Seq[Long \/ Int])]((0L, Nil))({
           case ((sum, acc), s) =>
@@ -149,7 +150,7 @@ object AsyncTopicSpec extends Properties("topic") {
 
         val signals = 0L +: expectPublish._2.collect { case -\/(s) => s }
 
-        ((published.get(3000).map(_.map(_.toList))  == Some(\/-(-\/(0L) +: expectPublish._2))) :| "All items were published") &&
+        ((published.get(3000).map(_.map(_.toList)) == Some(\/-(-\/(0L) +: expectPublish._2))) :| "All items were published") &&
           ((signalDiscrete.get(3000) == Some(\/-(signals))) :| "Discrete signal published correct writes") &&
           ((signalContinuous.get(3000).map(_.map(signals diff _)) == Some(\/-(List()))) :| "Continuous signal published correct writes")
 
@@ -158,31 +159,24 @@ object AsyncTopicSpec extends Properties("topic") {
 
 
 
-  property("writer.state.startWith") = forAll {
-    l: List[String] => (l.nonEmpty) ==> {
-
-        val w: Writer1[Long, String, Int] = {
-          def go(acc: Long): Writer1[Long, String, Int] = {
-            receive1[String, Long \/ Int] {
-              s =>
-                val t: Long = s.size.toLong + acc
-                emit(-\/(t)) fby
-                  emit(\/-(s.size)) fby
-                  go(t)
-            }
-          }
-          go(0L)
-        }
-
+  property("writer.state.startWith.up") = forAll {
+    l: List[String] =>
+      (l.nonEmpty) ==> {
         val topic = async.writerTopic(emit(-\/(0L)) fby w)
         ((Process(l: _*).toSource to topic.publish)).run.run
 
         val subscriber = topic.subscribe.take(1).runLog.run
-
         topic.close.run
-
         subscriber == List(-\/(l.map(_.size).sum))
       }
+  }
+
+  property("writer.state.startWith.down") = secure {
+    val topic = async.writerTopic(emit(-\/(0L)) fby w)
+    val subscriber = topic.subscribe.take(1).runLog.run
+    topic.close.run
+    subscriber == List(-\/(0))
+
   }
 
 
