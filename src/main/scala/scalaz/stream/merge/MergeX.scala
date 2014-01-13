@@ -255,13 +255,13 @@ object MergeX {
       def next[B](actor: Actor[M])(implicit S: Strategy): Unit = {
         state match {
           case UpSourceReady(t, c) =>
-            state = UpSourceRunning[I](S(WyeActor.runStepAsyncInterruptibly(t) {
+            state = UpSourceRunning[I](WyeActor.runStepAsyncInterruptibly(t) {
               step =>
                 step match {
                   case Step(\/-(si), t, c)  => actor ! UpStreamEmit(self, si, t, c)
                   case Step(-\/(rsn), _, _) => actor ! UpStreamDone(self, rsn)
                 }
-            })())
+            })
           case _                   => //no-op
         }
       }
