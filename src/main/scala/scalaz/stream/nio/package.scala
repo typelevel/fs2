@@ -1,6 +1,7 @@
 package scalaz.stream
 
 import java.net.{StandardSocketOptions, InetSocketAddress}
+import java.nio.ByteBuffer
 import java.nio.channels._
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.util.concurrent.ThreadFactory
@@ -9,7 +10,6 @@ import scalaz.-\/
 import scalaz.\/-
 import scalaz.concurrent.Task
 import scalaz.stream.Process._
-import java.lang.Thread.UncaughtExceptionHandler
 
 
 package object nio {
@@ -40,7 +40,6 @@ package object nio {
     def release(ch: AsynchronousChannel): Process[Task, Nothing] =
       eval_(Task.delay(ch.close()))
 
-
     await(
       Task.delay(setup(AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)))
     )(sch =>
@@ -50,10 +49,7 @@ package object nio {
           def failed(exc: Throwable, attachment: Void): Unit = cb(-\/(exc))
         })
       }).map {
-        ch1 => eval(Task.now(new AsynchronousSocketExchange {
-          val ch: AsynchronousSocketChannel = ch1
-        })) onComplete release(ch1)
-
+        ch1 => eval(Task.now(nioExchange(ch1))) onComplete release(ch1)
       } onComplete release(sch))
   }
 
@@ -92,23 +88,17 @@ package object nio {
 
     await(
       Task.delay(setup(AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)))
-    )(ch1 => {
+    )({ ch1 =>
       await(Task.async[AsynchronousSocketChannel] {
         cb => ch1.connect(to, null, new CompletionHandler[Void, Void] {
           def completed(result: Void, attachment: Void): Unit = cb(\/-(ch1))
           def failed(exc: Throwable, attachment: Void): Unit = cb(-\/(exc))
         })
-      })(_ => eval(Task.now(
-        new AsynchronousSocketExchange {
-          val ch: AsynchronousSocketChannel = ch1
-        }))
+      })(_ => eval(Task.now(nioExchange(ch1)))
           , release(ch1)
           , release(ch1)
         )
-    }
-        , halt
-        , halt
-      )
+    })
 
   }
 
@@ -126,5 +116,51 @@ package object nio {
       }
     )
   }
+
+
+  private def nioExchange(ch: AsynchronousSocketChannel, readBufferSize: Int = 0): Exchange[Bytes, Bytes] = {
+
+    lazy val bufSz : Int =
+      if (readBufferSize <= 0) ch.getOption[java.lang.Integer](StandardSocketOptions.SO_RCVBUF)
+      else readBufferSize
+
+    lazy val a = Array.ofDim[Byte](bufSz)
+    lazy val buff = ByteBuffer.wrap(a)
+
+    def readOne: Task[Bytes] = {
+      Task.async { cb =>
+        buff.clear()
+        ch.read(buff, null, new CompletionHandler[Integer, Void] {
+          def completed(result: Integer, attachment: Void): Unit = {
+            buff.flip()
+            val bs = Bytes.of(buff)
+            if (result < 0) cb(-\/(End))
+            else cb(\/-(bs))
+          }
+
+          def failed(exc: Throwable, attachment: Void): Unit = cb(-\/(exc))
+        })
+      }
+    }
+
+    def writeOne(a: Bytes): Task[Unit] = {
+      Task.async[Int] { cb =>
+        ch.write(a.asByteBuffer, null, new CompletionHandler[Integer, Void] {
+          def completed(result: Integer, attachment: Void): Unit = cb(\/-(result))
+          def failed(exc: Throwable, attachment: Void): Unit = cb(-\/(exc))
+        })
+      }.flatMap { w =>
+        if (w == a.length) Task.now(())
+        else writeOne(a.drop(w))
+      }
+    }
+
+
+    def read: Process[Task, Bytes] = Process.repeatEval(readOne)
+    def write: Sink[Task, Bytes] = Process.constant((a: Bytes) => writeOne(a))
+
+    Exchange(read, write)
+  }
+
 
 }

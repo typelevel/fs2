@@ -24,62 +24,44 @@ import scalaz.stream.ReceiveY.ReceiveR
  *
  * Exchange is currently specialized to [[scalaz.concurrent.Task]]
  *
+ * @param read Process reading values from remote system
+ * @param write Process writing values to remote system
+ *
  * @tparam I  values read from remote system
  * @tparam W  values written to remote system
  */
-trait Exchange[I,W] {
+final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
 
   self =>
-
-  /**
-   * Provides process, that when run will supply received (read) values `I` from external system
-   *@return
-   */
-  def read: Process[Task, I]
-
-  /**
-   * Provides sink, that sends(writes) the `W` values to external system
-   * @return
-   */
-  def write: Sink[Task, W]
-
 
   //alphabetical order from now on
 
   /**
    * uses provided function `f` to be applied on any `I` received
    */
-  def mapO[I2](f: I => I2): Exchange[I2, W] = new Exchange[I2, W] {
-    def read: Process[Task, I2] = self.read map f
-    def write: scalaz.stream.Sink[Task, W] = self.write
-  }
+  def mapO[I2](f: I => I2): Exchange[I2, W] =
+    Exchange(self.read map f, self.write)
 
   /**
    * applies provided function to any `W2` that has to be written to provide an `W`
    */
-  def mapW[W2](f:W2=>W) : Exchange[I,W2] = new Exchange[I,W2] {
-    def read: Process[Task, I] = self.read
-    def write: scalaz.stream.Sink[Task, W2] = self.write contramap f
-  }
+  def mapW[W2](f: W2 => W): Exchange[I, W2] =
+    Exchange(self.read, self.write contramap f)
 
 
   /**
    * Creates exchange that `pipe` read `I` values through supplied p1.
    * @param p1   Process1 to be used when reading values
    */
-  def pipeO[I2](p1: Process1[I, I2]): Exchange[I2, W] = new Exchange[I2, W] {
-    def read: Process[Task, I2] = self.read.pipe(p1)
-    def write: scalaz.stream.Sink[Task, W] = self.write
-  }
+  def pipeO[I2](p1: Process1[I, I2]): Exchange[I2, W] =
+    Exchange(self.read.pipe(p1), self.write)
 
 
   /**
    * Creates new exchange, that pipes all values to be sent through supplied `p1`
    */
-  def pipeW[W2](p1: Process1[W2, W]): Exchange[I, W2] = new Exchange[I, W2] {
-    def read = self.read
-    def write = self.write.pipeIn(p1)
-  }
+  def pipeW[W2](p1: Process1[W2, W]): Exchange[I, W2] =
+    Exchange(self.read, self.write.pipeIn(p1))
 
   /**
    * Creates new exchange, that will pipe read values through supplied `r` and write values through `w`
@@ -118,10 +100,8 @@ trait Exchange[I,W] {
    * Creates Exchange that runs read `I` through supplied effect channel.
    * @param ch Channel producing process of `I2` for each `I` received
    */
-  def through[I2](ch:Channel[Task,I,Process[Task,I2]]): Exchange[I2,W] = new Exchange[I2,W] {
-    def read =  (self.read through ch) flatMap identity
-    def write = self.write
-  }
+  def through[I2](ch: Channel[Task, I, Process[Task, I2]]): Exchange[I2, W] =
+    Exchange((self.read through ch) flatMap identity, self.write)
 
   /**
    * Transform this Exchange to another Exchange where queueing, and transformation of this `I` and `W`
@@ -163,11 +143,7 @@ trait Exchange[I,W] {
       }
     }
 
-    new Exchange[I2, W2] {
-      def read: Process[Task, I2] = sendAndReceive
-      def write: scalaz.stream.Sink[Task, W2] = w2q.enqueue
-    }
-
+    Exchange(sendAndReceive, w2q.enqueue)
   }
 
   /**
@@ -235,15 +211,16 @@ object Exchange {
       async.boundedQueue[W]()
     })({ q =>
       val (out, np) = p.unemit
-
-      val ex = new Exchange[Nothing, W] {
-        def read: Process[Task, Nothing] = halt
-        def write: Sink[Task, W] = q.enqueue
-      }
-
+      val ex = Exchange[Nothing, W](halt, q.enqueue)
       emit(ex.wye(emitSeq(out).map(right) fby loop(np))) onComplete eval_(Task.delay(q.close.run))
     })
 
   }
+
+
+  /**
+   * Exchange that is always halted
+   */
+  def halted[I,W]: Exchange[I,W] = Exchange(halt,halt)
 
 }
