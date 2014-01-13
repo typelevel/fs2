@@ -64,7 +64,7 @@ object MergeXStrategies {
           }
 
         case DoneDown(mx, rsn)        =>
-            if (q.nonEmpty) mx.closeAllUp(rsn) fby drain(q, rsn)
+            if (q.nonEmpty && mx.downO.nonEmpty) mx.closeAllUp(rsn) fby drain(q, rsn)
             else Halt(rsn)
 
         case o =>
