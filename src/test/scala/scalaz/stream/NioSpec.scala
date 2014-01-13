@@ -97,7 +97,7 @@ object NioClient {
 
 object NioSpec extends Properties("nio") {
 
-  val local = new InetSocketAddress("127.0.0.1", 3476)
+  def localAddress(port:Int) = new InetSocketAddress("127.0.0.1", port)
 
   implicit val AG = nio.DefaultAsynchronousChannelGroup
 
@@ -107,8 +107,9 @@ object NioSpec extends Properties("nio") {
   //  }
 
 
-    //simple connect to server send size of bytes and got back what was sent
-    property("connect-echo-done") = secure {
+  //simple connect to server send size of bytes and got back what was sent
+  property("connect-echo-done") = secure {
+    val local = localAddress(11100)
     val size: Int = 500000
     val array1 = Array.fill[Byte](size)(1)
     Random.nextBytes(array1)
@@ -133,7 +134,7 @@ object NioSpec extends Properties("nio") {
 
 
     property("connect-server-terminates") = secure {
-
+      val local = localAddress(11101)
       val max: Int = 50
       val size: Int = 5000
       val array1 = Array.fill[Byte](size)(1)
@@ -162,7 +163,7 @@ object NioSpec extends Properties("nio") {
   // at the end server shall have callected all data from all clients and all clients shall get echoed back
   // what they have sent to server
   property("connect-server-many") = secure {
-
+    val local = localAddress(11102)
     val count: Int = 100
     val size: Int = 10000
     val array1 = Array.fill[Byte](size)(1)
