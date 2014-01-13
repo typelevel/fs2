@@ -80,20 +80,22 @@ object QueueSpec extends Properties("queue") {
     val t2 = q.dequeue.runLog
     val t3 = q.dequeue.runLog
 
-    val closed = new SyncVar[Throwable \/ Unit]
+    //t2 dequeues and must have all l in it
+    val dequeued = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    t2.runAsync(dequeued.put)
 
-    t1.runAsync(closed.put)
+    //start pushing ++ stop, and that should make t2 to stop too
+    t1.timed(3000).run
 
-    Thread.sleep(500)
-
-    val publishClosed = q.enqueueOne(1).attemptRun.isLeft
-    t2.run
-
+    //try publish, shall be empty, terminated
+    val publishClosed = q.enqueueOne(1).attemptRun
+    //subscribe, shall be terminated
     val subscribeClosed = t3.attemptRun
 
-    publishClosed :| "Publisher is closed before elements are drained" &&
-      (subscribeClosed == \/-(List())) :| "Subscriber is closed after elements are drained" &&
-      (closed.get(3000) == Some(\/-(()))) :| "Queue was terminated"
+    (dequeued.get(3000) == Some(\/-(Vector(1,2,3)))) :| "Queue was terminated" &&
+      (publishClosed == \/-(())) :| "Publisher is closed before elements are drained" &&
+      ((subscribeClosed == \/-(Vector()))) :| "Subscriber is closed after elements are drained"
+
 
   }
 
