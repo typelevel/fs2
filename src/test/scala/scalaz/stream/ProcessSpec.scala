@@ -269,7 +269,7 @@ object ProcessSpec extends Properties("Process1") {
   property("last") = secure {
     var i = 0
     Process.range(0,10).last.map(_ => i += 1).runLog.run
-    i =? 1
+    i == 1
   }
 
   property("state") = secure {
