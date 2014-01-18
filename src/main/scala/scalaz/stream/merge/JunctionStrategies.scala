@@ -8,7 +8,7 @@ import scalaz.stream.merge.Junction._
 import scalaz.stream.process1
 import scalaz.{\/, -\/}
 
-object JunctionStrategies {
+protected[stream] object JunctionStrategies {
 
   /** Typed constructor helper to create Junction.Strategy */
   def junction[W, I, O](f: JunctionSignal[W, I, O] => JunctionStrategy[W, I, O]): JunctionStrategy[W, I, O] =
@@ -130,13 +130,16 @@ object JunctionStrategies {
   /**
    * MergeN strategy for mergeN combinator. Please see [[scalaz.stream.merge.mergeN]] for more details.
    */
-  def mergeN[A]:JunctionStrategy[Nothing,A,A] = {
+  def mergeN[A](max:Int):JunctionStrategy[Nothing,A,A] = {
+
+    def openNextIfNeeded(current:Int) : JunctionStrategy[Nothing,A,A] =
+      if (max <= 0 || max > current)  emit(OpenNext) else halt
 
     def go(q:Queue[A],closedUp:Option[Throwable]) : JunctionStrategy[Nothing,A,A] = {
       junction[Nothing,A,A] {
         case Open(jx,ref:UpRef) =>
-          if (q.size < jx.up.size) jx.more(ref) fby go(q,closedUp)
-          else go(q,closedUp)
+          if (q.size < jx.up.size) openNextIfNeeded(jx.up.size) fby jx.more(ref) fby go(q,closedUp)
+          else openNextIfNeeded(jx.up.size) fby go(q,closedUp)
 
         case Open(jx,ref:DownRefO) =>
           if (jx.downO.size == 1) go(q,closedUp)
@@ -162,7 +165,7 @@ object JunctionStrategies {
 
         case Done(jx,_:UpRef,End) => closedUp match {
           case Some(rsn) if jx.up.isEmpty && q.isEmpty => Halt(rsn)
-          case _ => go(q,closedUp)
+          case _ => openNextIfNeeded(jx.up.size) fby go(q,closedUp)
         }
 
         case Done(jx,_:UpRef,rsn) => Halt(rsn)
@@ -176,7 +179,7 @@ object JunctionStrategies {
       }
     }
 
-    go(Queue(),None)
+    emit(OpenNext) fby go(Queue(),None)
   }
 
   /** various writers used in merge strategies **/

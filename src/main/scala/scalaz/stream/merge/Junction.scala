@@ -9,10 +9,10 @@ import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process._
 import scalaz.stream.actor.WyeActor
-import scalaz.stream.{Step, Process}
+import scalaz.stream.{process1, Step, Process}
 
 
-object Junction {
+protected[stream] object Junction {
 
   /** Strategy to merge up and down stream processes **/
   type JunctionStrategy[W, I, O] = Process1[JunctionSignal[W, I, O], JunctionAction[W, O]]
@@ -25,7 +25,7 @@ object Junction {
   trait DownRefW extends DownRef
 
   /** Reference indicating action for Junction to take **/
-  sealed trait JunctionAction[W, O]
+  sealed trait JunctionAction[+W, +O]
   /** Request more from supplied upstream **/
   case class More[W, O](ref: UpRef) extends JunctionAction[W, O]
   /** Write `O` value to downstream **/
@@ -34,6 +34,10 @@ object Junction {
   case class WriteW[W, O](sw: Seq[W], ref: DownRefW) extends JunctionAction[W, O]
   /** Close the up/down stream **/
   case class Close[W, O](rsn: Throwable, ref: JunctionRef) extends JunctionAction[W, O]
+  /**
+    * Requests next stream to be open from source. When this is emitted,
+    * Junction starts to run `source`, if source is not halted or not running already **/
+  case object OpenNext extends JunctionAction[Nothing,Nothing]
 
 
   /**
@@ -41,9 +45,7 @@ object Junction {
    * The `j` has helpers to be used when constructing actions and it allows to check
    * state of merged up/downstream.
    */
-  sealed trait JunctionSignal[W, I, O] {
-    val jx: JX[W, I, O]
-  }
+  sealed trait JunctionSignal[W, I, O] { val jx: JX[W, I, O] }
 
   /** sequence of `I` was received from upstream **/
   case class Receive[W, I, O](jx: JX[W, I, O], is: Seq[I], ref: UpRef) extends JunctionSignal[W, I, O]
@@ -138,6 +140,18 @@ object Junction {
     def more(ref: UpRef): JunctionStrategy[W, I, O] =
       emit(More(ref))
 
+    /** Like `more` accepting more refs **/
+    def moreSeq(ref: Seq[UpRef]): JunctionStrategy[W, I, O] =
+      emitSeq(ref.map(More[W,O](_)))
+
+    /** Signals more for upstream that is waiting for longest time, if any **/
+    def moreFirst: JunctionStrategy[W, I, O] =
+      upReady.headOption.map(more(_)).getOrElse(halt)
+
+    /** Signals more for upstream that is waiting for shortest time, if any **/
+    def moreLast: JunctionStrategy[W, I, O] =
+      upReady.lastOption.map(more(_)).getOrElse(halt)
+
     /** Signals more to all upstream references that are ready **/
     def moreAll: JunctionStrategy[W, I, O] =
       emitSeq(upReady.map(More[W, O](_)))
@@ -155,8 +169,12 @@ object Junction {
       closeAll(downO ++ downW, rsn)
 
     /** Closes all supplied references **/
-    def closeAll(refs: Seq[JunctionRef], rsn: Throwable) =
+    def closeAll(refs: Seq[JunctionRef], rsn: Throwable): JunctionStrategy[W, I, O] =
       emitSeq(refs.map(Close[W, O](rsn, _)))
+
+    /** Signals that next source may be openeed **/
+    def openNext: JunctionStrategy[W, I, O] =
+      emit(OpenNext)
 
 
     /////
@@ -416,10 +434,11 @@ object Junction {
     var actor: Actor[M] = null
 
     //starts source if not yet started
-    def startSource(actor:Actor[M]) : Unit =
+    def runSource : Unit =
       sourceState match {
-        case None =>  nextSource(source,actor)
-        case Some(_) => //no-op
+        case None => nextSource(source,actor)
+        case Some(UpSourceReady(t,c)) => nextSource(t,actor)
+        case _ => //no-op, already running or done
       }
 
     // runs next source step
@@ -442,62 +461,70 @@ object Junction {
       }
     }
 
-    def process(signal: JunctionSignal[W, I, O]): Unit = {
-      def run(acts: Seq[JunctionAction[W, O]]): Unit = {
-        acts.foreach {
-          case More(ref: UpRefInstance)          =>
-            jx = jx.copy(upReady = jx.upReady.filterNot(_ == ref))
-            ref.next(actor)
-          case More(_) => //bacuse of pattern match warning
-          case WriteO(so, ref: DownRefOInstance) =>
-            jx = jx.copy(downReadyO = jx.downReadyO.filterNot(_ == ref))
-            ref.push(so)
-          case WriteW(sw, ref: DownRefWInstance) =>
-            jx = jx.copy(downReadyW = jx.downReadyW.filterNot(_ == ref))
-            ref.push(sw)
-          case Close(rsn, ref: UpRefInstance)    =>
-            jx = jx.copy(
-              up = jx.up.filterNot(_ == ref)
-              , upReady = jx.upReady.filterNot(_ == ref)
-            )
-            ref.close(actor, rsn)
-          case Close(rsn, ref: DownRefOInstance) =>
-            jx = jx.copy(
-              downO = jx.downO.filterNot(_ == ref)
-              , downReadyO = jx.downReadyO.filterNot(_ == ref)
-            )
-            ref.close(rsn)
-          case Close(rsn, ref: DownRefWInstance) =>
-            jx = jx.copy(
-              downW = jx.downW.filterNot(_ == ref)
-              , downReadyW = jx.downReadyW.filterNot(_ == ref)
-            )
-            ref.close(rsn)
-        }
-      }
-
-      if (!xstate.isHalt) {
-        xstate.feed1(signal).unemit match {
-          case (acts, hlt@Halt(rsn)) =>
-            run(acts)
-            jx.up.foreach { case ref: UpRefInstance => ref.close(actor, rsn) }
-            jx.downO.foreach { case ref: DownRefOInstance => ref.close(rsn) }
-            jx.downW.foreach { case ref: DownRefWInstance => ref.close(rsn) }
-            jx = jx.copy(upReady = Nil, downReadyO = Nil, downReadyW = Nil) //we keep the references except `ready` to callback on eventual downstreamClose signal once all are done.
-            sourceState match {
-              case Some(UpSourceReady(t, c))        => cleanSource(rsn,c, actor)
-              case Some(UpSourceRunning(interrupt)) => S(interrupt())
-              case None => sourceState = Some(UpSourceDone(End))
-              case _ => //no-op
-            }
-            signalAllClearWhenDone
-            xstate = hlt
-          case (acts, nx)            =>
-            run(acts)
-            xstate = nx
-        }
+    // interprets junction algebra
+    def runAction(acts: Seq[JunctionAction[W, O]]): Unit = {
+      acts.foreach {
+        case More(ref: UpRefInstance)          =>
+          jx = jx.copy(upReady = jx.upReady.filterNot(_ == ref))
+          ref.next(actor)
+        case More(_) => //bacuse of pattern match warning
+        case WriteO(so, ref: DownRefOInstance) =>
+          jx = jx.copy(downReadyO = jx.downReadyO.filterNot(_ == ref))
+          ref.push(so)
+        case WriteW(sw, ref: DownRefWInstance) =>
+          jx = jx.copy(downReadyW = jx.downReadyW.filterNot(_ == ref))
+          ref.push(sw)
+        case Close(rsn, ref: UpRefInstance)    =>
+          jx = jx.copy(
+            up = jx.up.filterNot(_ == ref)
+            , upReady = jx.upReady.filterNot(_ == ref)
+          )
+          ref.close(actor, rsn)
+        case Close(rsn, ref: DownRefOInstance) =>
+          jx = jx.copy(
+            downO = jx.downO.filterNot(_ == ref)
+            , downReadyO = jx.downReadyO.filterNot(_ == ref)
+          )
+          ref.close(rsn)
+        case Close(rsn, ref: DownRefWInstance) =>
+          jx = jx.copy(
+            downW = jx.downW.filterNot(_ == ref)
+            , downReadyW = jx.downReadyW.filterNot(_ == ref)
+          )
+          ref.close(rsn)
+        case OpenNext => runSource
       }
     }
+
+
+    /** runs the strategy given it produces some Actions **/
+    def unemitAndRun(xsp: JunctionStrategy[W,I,O]): Unit = {
+      xsp.unemit match {
+        case (acts, hlt@Halt(rsn)) =>
+          runAction(acts)
+          jx.up.foreach { case ref: UpRefInstance => ref.close(actor, rsn) }
+          jx.downO.foreach { case ref: DownRefOInstance => ref.close(rsn) }
+          jx.downW.foreach { case ref: DownRefWInstance => ref.close(rsn) }
+          jx = jx.copy(upReady = Nil, downReadyO = Nil, downReadyW = Nil) //we keep the references except `ready` to callback on eventual downstreamClose signal once all are done.
+          sourceState match {
+            case Some(UpSourceReady(t, c))        => cleanSource(rsn,c, actor)
+            case Some(UpSourceRunning(interrupt)) => S(interrupt())
+            case None => sourceState = Some(UpSourceDone(End))
+            case _ => //no-op
+          }
+          signalAllClearWhenDone
+          xstate = hlt
+        case (acts, nx)            =>
+          runAction(acts)
+          xstate = nx
+      }
+    } 
+
+
+
+    /** processes signal and eventually runs the JunctionAction **/
+    def process(signal:  JunctionSignal[W,I,O]): Unit = 
+      if (!xstate.isHalt) unemitAndRun(xstate.feed1(signal))      
 
 
     actor = Actor[M] {
@@ -547,10 +574,10 @@ object Junction {
 
             case SourceStep(step) => step match {
               case Step(\/-(ups), t, c) =>
+                sourceState = Some(UpSourceReady(t,c))
                 val newUps = ups.map(t => new ProcessRef(UpSourceReady(t, halt)))
                 jx = jx.copy(up = jx.up ++ newUps, upReady = jx.upReady ++ newUps)
                 newUps.foreach(ref => process(Open(jx, ref)))
-                nextSource(t, actor)
 
               case Step(-\/(rsn), _, Halt(_)) =>
                 sourceState = Some(UpSourceDone(rsn))
@@ -577,7 +604,10 @@ object Junction {
               process(Done(jx, ref, rsn))
 
             case DownOpenO(ref, cb) =>
-              startSource(actor)
+              xstate match {
+                case Emit(_,_) => unemitAndRun(xstate) //try to unemit any head actions. i.e. OpenNext
+                case _ => //no op, waiting for signal
+              }
               jx = jx.copy(downO = jx.downO :+ ref)
               process(Open(jx, ref))
               S(cb(ok))
