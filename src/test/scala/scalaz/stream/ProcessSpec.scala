@@ -8,7 +8,7 @@ import scalaz.std.list.listSyntax._
 import scalaz.std.string._
 
 import org.scalacheck._
-import Prop._
+import Prop.{extendedAny => _, _}
 import Arbitrary.arbitrary
 import scalaz.concurrent.Strategy
 import scala.concurrent
@@ -269,7 +269,7 @@ object ProcessSpec extends Properties("Process1") {
   property("last") = secure {
     var i = 0
     Process.range(0,10).last.map(_ => i += 1).runLog.run
-    i == 1
+    i =? 1
   }
 
   property("state") = secure {
