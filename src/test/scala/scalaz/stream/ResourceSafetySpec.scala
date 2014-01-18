@@ -13,24 +13,24 @@ import Prop._
 import scalaz.concurrent.Task
 
 object ResourceSafetySpec extends Properties("resource-safety") {
-  
+
   // Tests to ensure resource safety in a variety of scenarios
   // We want to guarantee that `Process` cleanup actions get run
   // even if exceptions occur:
   //   * In pure code, `src.map(_ => sys.error("bwahahaha!!!")`
-  //   * In deterministic effectful code, i.e. `src.through(chan)`, where 
+  //   * In deterministic effectful code, i.e. `src.through(chan)`, where
   //      * effects produced by `src` may result in exceptions
   //      * `chan` may throw exceptions before generating each effect,
   //         or in the effect itself
   //   * In nondeterminstic effectful code
-  
+
   def die = sys.error("bwahahahahaa!")
 
   property("pure code") = secure {
     import Process._
     var ok = 0
     val cleanup = Process.eval { Task.delay { ok += 1 } }.drain
-    val src = Process.range(0,10) 
+    val src = Process.range(0,10)
     val procs = List(
       src.map(i => if (i == 3) die else i).onComplete(cleanup),
       src.filter(i => if (i == 3) throw End else true).onComplete(cleanup),
@@ -46,11 +46,11 @@ object ResourceSafetySpec extends Properties("resource-safety") {
       src.orElse(die) onComplete cleanup,
       (src append die).orElse(halt,die) onComplete cleanup
     )
-    procs.foreach { p => 
-      try p.run.run 
+    procs.foreach { p =>
+      try p.run.run
       catch { case e: Throwable => () }
     }
-    ok ?= procs.length
+    ok == procs.length
   }
 
   property("eval") = secure {
@@ -60,11 +60,11 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     val p2 = Process.range(0,10).onComplete(cleanup).map(i => if (i == 3) Task.delay(throw Process.End) else Task.now(i))
     try p.eval.runLog.run catch { case e: Throwable => () }
     try p2.eval.runLog.run catch { case e: Throwable => () }
-    ok ?= 2
+    ok == 2
   }
 
-  property("handle") = secure { 
-    case object Err extends RuntimeException 
+  property("handle") = secure {
+    case object Err extends RuntimeException
     val tasks = Process(Task(1), Task(2), Task(throw Err), Task(3))
     (try { tasks.eval.pipe(processes.sum).runLog.run; false }
      catch { case Err => true }) &&

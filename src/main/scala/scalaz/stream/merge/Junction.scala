@@ -9,60 +9,62 @@ import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process._
 import scalaz.stream.actor.WyeActor
-import scalaz.stream.{Step, Process}
+import scalaz.stream.{process1, Step, Process}
 
 
-object MergeX {
+protected[stream] object Junction {
 
   /** Strategy to merge up and down stream processes **/
-  type MergeXStrategy[W, I, O] = Process1[MergeSignal[W, I, O], MergeAction[W, O]]
+  type JunctionStrategy[W, I, O] = Process1[JunctionSignal[W, I, O], JunctionAction[W, O]]
 
   /** Reference indicating up or down-stream **/
-  trait MergeRef
-  trait UpRef extends MergeRef
-  trait DownRef extends MergeRef
+  trait JunctionRef
+  trait UpRef extends JunctionRef
+  trait DownRef extends JunctionRef
   trait DownRefO extends DownRef
   trait DownRefW extends DownRef
 
-  /** Reference indicating action for mergeX to take **/
-  sealed trait MergeAction[W, O]
+  /** Reference indicating action for Junction to take **/
+  sealed trait JunctionAction[+W, +O]
   /** Request more from supplied upstream **/
-  case class More[W, O](ref: UpRef) extends MergeAction[W, O]
+  case class More[W, O](ref: UpRef) extends JunctionAction[W, O]
   /** Write `O` value to downstream **/
-  case class WriteO[W, O](so: Seq[O], ref: DownRefO) extends MergeAction[W, O]
+  case class WriteO[W, O](so: Seq[O], ref: DownRefO) extends JunctionAction[W, O]
   /** Write `W` value to downstream **/
-  case class WriteW[W, O](sw: Seq[W], ref: DownRefW) extends MergeAction[W, O]
+  case class WriteW[W, O](sw: Seq[W], ref: DownRefW) extends JunctionAction[W, O]
   /** Close the up/down stream **/
-  case class Close[W, O](rsn: Throwable, ref: MergeRef) extends MergeAction[W, O]
+  case class Close[W, O](rsn: Throwable, ref: JunctionRef) extends JunctionAction[W, O]
+  /**
+    * Requests next stream to be open from source. When this is emitted,
+    * Junction starts to run `source`, if source is not halted or not running already **/
+  case object OpenNext extends JunctionAction[Nothing,Nothing]
 
 
   /**
-   * Signal to be processed by [[scalaz.stream.merge.MergeX.MergeXStrategy]].
-   * The `mx` has helpers to be used when constructing actions and it allows to check
+   * Signal to be processed by [[scalaz.stream.merge.Junction.JunctionStrategy]].
+   * The `j` has helpers to be used when constructing actions and it allows to check
    * state of merged up/downstream.
    */
-  sealed trait MergeSignal[W, I, O] {
-    val mx: MX[W, I, O]
-  }
+  sealed trait JunctionSignal[W, I, O] { val jx: JX[W, I, O] }
 
   /** sequence of `I` was received from upstream **/
-  case class Receive[W, I, O](mx: MX[W, I, O], is: Seq[I], ref: UpRef) extends MergeSignal[W, I, O]
+  case class Receive[W, I, O](jx: JX[W, I, O], is: Seq[I], ref: UpRef) extends JunctionSignal[W, I, O]
   /** downstream is ready to consume more `O` or `W` **/
-  case class Ready[W, I, O](mx: MX[W, I, O], ref: DownRef) extends MergeSignal[W, I, O]
+  case class Ready[W, I, O](jx: JX[W, I, O], ref: DownRef) extends JunctionSignal[W, I, O]
   /** downstream or upstream will start to be ready to get more `I` or consume `W`/`O` **/
-  case class Open[W, I, O](mx: MX[W, I, O], ref: MergeRef) extends MergeSignal[W, I, O]
+  case class Open[W, I, O](jx: JX[W, I, O], ref: JunctionRef) extends JunctionSignal[W, I, O]
   /** downstream or upstream is done with given reason. **/
-  case class Done[W, I, O](mx: MX[W, I, O], ref: MergeRef, rsn: Throwable) extends MergeSignal[W, I, O]
+  case class Done[W, I, O](jx: JX[W, I, O], ref: JunctionRef, rsn: Throwable) extends JunctionSignal[W, I, O]
   /** source of upstream is done with given reason **/
-  case class DoneUp[W, I, O](mx: MX[W, I, O], rsn: Throwable) extends MergeSignal[W, I, O]
+  case class DoneUp[W, I, O](jx: JX[W, I, O], rsn: Throwable) extends JunctionSignal[W, I, O]
   /** downstream has been forcefully closed with given reason **/
-  case class DoneDown[W, I, O](mx: MX[W, I, O], rsn: Throwable) extends MergeSignal[W, I, O]
+  case class DoneDown[W, I, O](jx: JX[W, I, O], rsn: Throwable) extends JunctionSignal[W, I, O]
 
 
   /**
-   * Helper for syntax and contains current sate of merged processes
+   * Helper for syntax and contains current state of merged processes
    * @param up          All upstream processes
-   * @param upReady     All upstream processes that wait for Ack ([[scalaz.stream.merge.MergeX.More]] to get next `I`
+   * @param upReady     All upstream processes that wait for Ack ([[scalaz.stream.merge.Junction.More]] to get next `I`
    * @param downW       All downstream processes that accept `W` values
    * @param downReadyW  All downstream processes that are ready to get next `W`
    * @param downO       All downstream processes that accept `O` values
@@ -70,7 +72,7 @@ object MergeX {
    * @param doneDown    When downstream processes are closed this is set with reason
    * @param doneUp      When upstream processes are closed this is set with reason
    */
-  case class MX[W, I, O](
+  case class JX[W, I, O](
     up: Seq[UpRef]
     , upReady: Seq[UpRef]
     , downW: Seq[DownRefW]
@@ -84,87 +86,103 @@ object MergeX {
     /** Distributes seq of `O` to supplied references.
       * Returns tuple of remaining items that were not distributed and strategy with actions
       * **/
-    def distributeO(so: Queue[O], ref: Seq[DownRefO]): (Queue[O], MergeXStrategy[W, I, O]) = {
+    def distributeO(so: Queue[O], ref: Seq[DownRefO]): (Queue[O], JunctionStrategy[W, I, O]) = {
       (so.drop(ref.size), emitSeq(so.zip(ref).map { case (o, r) => WriteO[W, O](List(o), r) }))
     }
 
     /** Distributes seq of `W` to supplied references.
       * Returns tuple of remaining items that were not distributed and strategy with actions
       * **/
-    def distributeW(sw: Queue[W], ref: Seq[DownRefW]): (Queue[W], MergeXStrategy[W, I, O]) = {
+    def distributeW(sw: Queue[W], ref: Seq[DownRefW]): (Queue[W], JunctionStrategy[W, I, O]) = {
       (sw.drop(ref.size), emitSeq(sw.zip(ref).map { case (w, r) => WriteW[W, O](List(w), r) }))
     }
 
     /** Broadcasts `W` value to all `W` downstream **/
-    def broadcastW(w: W): MergeXStrategy[W, I, O] =
+    def broadcastW(w: W): JunctionStrategy[W, I, O] =
       broadcastAllW(List(w))
 
     /** Broadcasts sequence of `W` values to all `W` downstream **/
-    def broadcastAllW(sw: Seq[W]): MergeXStrategy[W, I, O] =
+    def broadcastAllW(sw: Seq[W]): JunctionStrategy[W, I, O] =
       emitSeq(downW.map(WriteW[W, O](sw, _)))
 
     /** Broadcasts `O` value to all `O` downstream **/
-    def broadcastO(o: O): MergeXStrategy[W, I, O] =
+    def broadcastO(o: O): JunctionStrategy[W, I, O] =
       broadcastAllO(List(o))
 
     /** Broadcasts sequence of `O` values to all `O` downstream **/
-    def broadcastAllO(so: Seq[O]): MergeXStrategy[W, I, O] =
+    def broadcastAllO(so: Seq[O]): JunctionStrategy[W, I, O] =
       emitSeq(downO.map(WriteO[W, O](so, _)))
 
-    /** Broadcasts sequence of either `W` or `O` values to either downstreams on `W` or `O` side respectively **/
-    def broadcastAllBoth(swo: Seq[W \/ O]): MergeXStrategy[W, I, O] =
-      swo.foldLeft[MergeXStrategy[W, I, O]](halt) {
+    /** Broadcasts sequence of either `W` or `O` values to either down-streams on `W` or `O` side respectively **/
+    def broadcastAllBoth(swo: Seq[W \/ O]): JunctionStrategy[W, I, O] =
+      swo.foldLeft[JunctionStrategy[W, I, O]](halt) {
         case (p, \/-(o)) => p fby broadcastO(o)
         case (p, -\/(w)) => p fby broadcastW(w)
       }
 
     /** Write single `W` to supplied downstream **/
-    def writeW(w: W, ref: DownRefW): MergeXStrategy[W, I, O] =
+    def writeW(w: W, ref: DownRefW): JunctionStrategy[W, I, O] =
       writeAllW(List(w), ref)
 
     /** Write all `W` to supplied downstream **/
-    def writeAllW(sw: Seq[W], ref: DownRefW): MergeXStrategy[W, I, O] =
+    def writeAllW(sw: Seq[W], ref: DownRefW): JunctionStrategy[W, I, O] =
       emit(WriteW(sw, ref))
 
     /** Write single `W` to supplied downstream **/
-    def writeO(o: O, ref: DownRefO): MergeXStrategy[W, I, O] =
+    def writeO(o: O, ref: DownRefO): JunctionStrategy[W, I, O] =
       writeAllO(List(o), ref)
 
     /** Write all `W` to supplied downstream **/
-    def writeAllO(so: Seq[O], ref: DownRefO): MergeXStrategy[W, I, O] =
+    def writeAllO(so: Seq[O], ref: DownRefO): JunctionStrategy[W, I, O] =
       emit(WriteO(so, ref))
 
     /** Signals more to upstream reference **/
-    def more(ref: UpRef): MergeXStrategy[W, I, O] =
+    def more(ref: UpRef): JunctionStrategy[W, I, O] =
       emit(More(ref))
 
+    /** Like `more` accepting more refs **/
+    def moreSeq(ref: Seq[UpRef]): JunctionStrategy[W, I, O] =
+      emitSeq(ref.map(More[W,O](_)))
+
+    /** Signals more for upstream that is waiting for longest time, if any **/
+    def moreFirst: JunctionStrategy[W, I, O] =
+      upReady.headOption.map(more(_)).getOrElse(halt)
+
+    /** Signals more for upstream that is waiting for shortest time, if any **/
+    def moreLast: JunctionStrategy[W, I, O] =
+      upReady.lastOption.map(more(_)).getOrElse(halt)
+
     /** Signals more to all upstream references that are ready **/
-    def moreAll: MergeXStrategy[W, I, O] =
+    def moreAll: JunctionStrategy[W, I, O] =
       emitSeq(upReady.map(More[W, O](_)))
 
     /** Closes supplied reference with given reason **/
-    def close(ref: MergeRef, rsn: Throwable): MergeXStrategy[W, I, O] =
+    def close(ref: JunctionRef, rsn: Throwable): JunctionStrategy[W, I, O] =
       emit(Close[W, O](rsn, ref))
 
     /** Closes all upstream  references **/
-    def closeAllUp(rsn: Throwable): MergeXStrategy[W, I, O] =
+    def closeAllUp(rsn: Throwable): JunctionStrategy[W, I, O] =
       closeAll(up, rsn)
 
     /** Closes all upstream  references **/
-    def closeAllDown(rsn: Throwable): MergeXStrategy[W, I, O] =
+    def closeAllDown(rsn: Throwable): JunctionStrategy[W, I, O] =
       closeAll(downO ++ downW, rsn)
 
     /** Closes all supplied references **/
-    def closeAll(refs: Seq[MergeRef], rsn: Throwable) =
+    def closeAll(refs: Seq[JunctionRef], rsn: Throwable): JunctionStrategy[W, I, O] =
       emitSeq(refs.map(Close[W, O](rsn, _)))
+
+    /** Signals that next source may be openeed **/
+    def openNext: JunctionStrategy[W, I, O] =
+      emit(OpenNext)
 
 
     /////
 
-    /** returns true when there are no active references in MX **/
+    /** returns true when there are no active references in JX **/
     private[merge] def isClear = up.isEmpty && downO.isEmpty && downW.isEmpty
     override def toString: String =
-      s"MX[up=$up,upReady=$upReady,downO=$downO,downReadyO=$downReadyO,downW=$downW,downReadyW=$downReadyW,doneDown=$doneDown,doneUp=$doneUp]"
+      s"JX[up=$up,upReady=$upReady,downO=$downO,downReadyO=$downReadyO,downW=$downW,downReadyW=$downReadyW,doneDown=$doneDown,doneUp=$doneUp]"
   }
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -173,8 +191,8 @@ object MergeX {
   val ok = right(())
 
 
-  def apply[W, I, O](strategy: MergeXStrategy[W, I, O], source: Process[Task, Process[Task, I]])
-    (S: Strategy = Strategy.DefaultStrategy): MergeX[W, I, O] = {
+  def apply[W, I, O](strategy: JunctionStrategy[W, I, O], source: Process[Task, Process[Task, I]])
+    (S: Strategy = Strategy.DefaultStrategy): Junction[W, I, O] = {
 
 
     trait M
@@ -280,7 +298,7 @@ object MergeX {
     }
 
 
-    // Reference for downstream. Internal mutable vars are protected and set only by mergeX actor
+    // Reference for downstream. Internal mutable vars are protected and set only by Junction actor
     trait DownRefInstanceImpl[A] extends DownRefInstance[A] {
       // State of reference, may be queueing (left) or waiting to be completed (right)
       @volatile var state: Vector[A] \/ ((Throwable \/ Seq[A]) => Unit)
@@ -403,23 +421,24 @@ object MergeX {
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-    var xstate: MergeXStrategy[W, I, O] = strategy
+    var xstate: Junction.JunctionStrategy[W, I, O] = strategy
 
-    var mx: MX[W, I, O] = MX(Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), None, None)
+    var jx: JX[W, I, O] = JX(Vector(), Vector(), Vector(), Vector(), Vector(), Vector(), None, None)
 
     //when set, indicates source of upstream was run and is in some state
     var sourceState: Option[UpSourceState[Process[Task, I]]] = None
 
     var downDoneSignals: Vector[Throwable \/ Unit => Unit] = Vector()
 
-    //decalred here because of forward-referencing below
+    //declared here because of forward-referencing below
     var actor: Actor[M] = null
 
     //starts source if not yet started
-    def startSource(actor:Actor[M]) : Unit =
+    def runSource : Unit =
       sourceState match {
-        case None =>  nextSource(source,actor)
-        case Some(_) => //no-op
+        case None => nextSource(source,actor)
+        case Some(UpSourceReady(t,c)) => nextSource(t,actor)
+        case _ => //no-op, already running or done
       }
 
     // runs next source step
@@ -434,70 +453,78 @@ object MergeX {
     }
 
 
-    /** Signals that all has been cleared, but only if mx is clear **/
+    /** Signals that all has been cleared, but only if jx is clear **/
     def signalAllClearWhenDone: Unit = {
-      if (mx.isClear && sourceState.collect({case UpSourceDone(rsn) => rsn}).isDefined) {
+      if (jx.isClear && sourceState.collect({case UpSourceDone(rsn) => rsn}).isDefined) {
         downDoneSignals.foreach(cb=>S(cb(ok)))
         downDoneSignals = Vector()
       }
     }
 
-    def process(signal: MergeSignal[W, I, O]): Unit = {
-      def run(acts: Seq[MergeAction[W, O]]): Unit = {
-        acts.foreach {
-          case More(ref: UpRefInstance)          =>
-            mx = mx.copy(upReady = mx.upReady.filterNot(_ == ref))
-            ref.next(actor)
-          case More(_) => //bacuse of pattern match warning
-          case WriteO(so, ref: DownRefOInstance) =>
-            mx = mx.copy(downReadyO = mx.downReadyO.filterNot(_ == ref))
-            ref.push(so)
-          case WriteW(sw, ref: DownRefWInstance) =>
-            mx = mx.copy(downReadyW = mx.downReadyW.filterNot(_ == ref))
-            ref.push(sw)
-          case Close(rsn, ref: UpRefInstance)    =>
-            mx = mx.copy(
-              up = mx.up.filterNot(_ == ref)
-              , upReady = mx.upReady.filterNot(_ == ref)
-            )
-            ref.close(actor, rsn)
-          case Close(rsn, ref: DownRefOInstance) =>
-            mx = mx.copy(
-              downO = mx.downO.filterNot(_ == ref)
-              , downReadyO = mx.downReadyO.filterNot(_ == ref)
-            )
-            ref.close(rsn)
-          case Close(rsn, ref: DownRefWInstance) =>
-            mx = mx.copy(
-              downW = mx.downW.filterNot(_ == ref)
-              , downReadyW = mx.downReadyW.filterNot(_ == ref)
-            )
-            ref.close(rsn)
-        }
-      }
-
-      if (!xstate.isHalt) {
-        xstate.feed1(signal).unemit match {
-          case (acts, hlt@Halt(rsn)) =>
-            run(acts)
-            mx.up.foreach { case ref: UpRefInstance => ref.close(actor, rsn) }
-            mx.downO.foreach { case ref: DownRefOInstance => ref.close(rsn) }
-            mx.downW.foreach { case ref: DownRefWInstance => ref.close(rsn) }
-            mx = mx.copy(upReady = Nil, downReadyO = Nil, downReadyW = Nil) //we keep the references except `ready` to callback on eventual downstreamClose signal once all are done.
-            sourceState match {
-              case Some(UpSourceReady(t, c))        => cleanSource(rsn,c, actor)
-              case Some(UpSourceRunning(interrupt)) => S(interrupt())
-              case None => sourceState = Some(UpSourceDone(End))
-              case _ => //no-op
-            }
-            signalAllClearWhenDone
-            xstate = hlt
-          case (acts, nx)            =>
-            run(acts)
-            xstate = nx
-        }
+    // interprets junction algebra
+    def runAction(acts: Seq[JunctionAction[W, O]]): Unit = {
+      acts.foreach {
+        case More(ref: UpRefInstance)          =>
+          jx = jx.copy(upReady = jx.upReady.filterNot(_ == ref))
+          ref.next(actor)
+        case More(_) => //bacuse of pattern match warning
+        case WriteO(so, ref: DownRefOInstance) =>
+          jx = jx.copy(downReadyO = jx.downReadyO.filterNot(_ == ref))
+          ref.push(so)
+        case WriteW(sw, ref: DownRefWInstance) =>
+          jx = jx.copy(downReadyW = jx.downReadyW.filterNot(_ == ref))
+          ref.push(sw)
+        case Close(rsn, ref: UpRefInstance)    =>
+          jx = jx.copy(
+            up = jx.up.filterNot(_ == ref)
+            , upReady = jx.upReady.filterNot(_ == ref)
+          )
+          ref.close(actor, rsn)
+        case Close(rsn, ref: DownRefOInstance) =>
+          jx = jx.copy(
+            downO = jx.downO.filterNot(_ == ref)
+            , downReadyO = jx.downReadyO.filterNot(_ == ref)
+          )
+          ref.close(rsn)
+        case Close(rsn, ref: DownRefWInstance) =>
+          jx = jx.copy(
+            downW = jx.downW.filterNot(_ == ref)
+            , downReadyW = jx.downReadyW.filterNot(_ == ref)
+          )
+          ref.close(rsn)
+        case OpenNext => runSource
       }
     }
+
+
+    /** runs the strategy given it produces some Actions **/
+    def unemitAndRun(xsp: JunctionStrategy[W,I,O]): Unit = {
+      xsp.unemit match {
+        case (acts, hlt@Halt(rsn)) =>
+          runAction(acts)
+          jx.up.foreach { case ref: UpRefInstance => ref.close(actor, rsn) }
+          jx.downO.foreach { case ref: DownRefOInstance => ref.close(rsn) }
+          jx.downW.foreach { case ref: DownRefWInstance => ref.close(rsn) }
+          jx = jx.copy(upReady = Nil, downReadyO = Nil, downReadyW = Nil) //we keep the references except `ready` to callback on eventual downstreamClose signal once all are done.
+          sourceState match {
+            case Some(UpSourceReady(t, c))        => cleanSource(rsn,c, actor)
+            case Some(UpSourceRunning(interrupt)) => S(interrupt())
+            case None => sourceState = Some(UpSourceDone(End))
+            case _ => //no-op
+          }
+          signalAllClearWhenDone
+          xstate = hlt
+        case (acts, nx)            =>
+          runAction(acts)
+          xstate = nx
+      }
+    } 
+
+
+
+    /** processes signal and eventually runs the JunctionAction **/
+    def process(signal:  JunctionSignal[W,I,O]): Unit = 
+      if (!xstate.isHalt) unemitAndRun(xstate.feed1(signal))      
 
 
     actor = Actor[M] {
@@ -507,34 +534,34 @@ object MergeX {
             msg match {
               case SourceStep(step) => step match {
                 case Step(\/-(ups), t, c)        =>
-                  mx = mx.copy(doneUp = Some(rsn))
+                  jx = jx.copy(doneUp = Some(rsn))
                   cleanSource(rsn, c, actor)
                 case Step(-\/(rsn0), _, Halt(_)) =>
                   sourceState = Some(UpSourceDone(rsn))
-                  mx = mx.copy(doneUp = Some(rsn0))
+                  jx = jx.copy(doneUp = Some(rsn0))
                 case Step(-\/(_), _, c)          =>
-                  mx = mx.copy(doneUp = Some(rsn))
+                  jx = jx.copy(doneUp = Some(rsn))
                   cleanSource(rsn, c, actor)
               }
 
               case UpEmit(ref, _)   => ref.close(actor, rsn)
               case UpStreamEmit(ref,_,t,c) => ref.ready(t,c); ref.close(actor,rsn)
-              case UpStreamDone(ref, rsn) => mx = mx.copy(up = mx.up.filterNot(_ == ref))
+              case UpStreamDone(ref, rsn) => jx = jx.copy(up = jx.up.filterNot(_ == ref))
               case DownOpenO(ref, cb)     => S(cb(left(rsn)))
               case DownOpenW(ref, cb)     => S(cb(left(rsn)))
               case DownOpenBoth(ref, cb)  => S(cb(left(rsn)))
               case DownReadyO(ref, cb)    => ref.close(rsn); ref.ready(cb)
               case DownReadyW(ref, cb)    => ref.close(rsn); ref.ready(cb)
               case DownReadyBoth(ref, cb) => ref.close(rsn); ref.ready(cb)
-              case DownDoneO(ref, rsn)    => mx = mx.copy(downO = mx.downO.filterNot(_ == ref))
-              case DownDoneW(ref, rsn)    => mx = mx.copy(downW = mx.downW.filterNot(_ == ref))
+              case DownDoneO(ref, rsn)    => jx = jx.copy(downO = jx.downO.filterNot(_ == ref))
+              case DownDoneW(ref, rsn)    => jx = jx.copy(downW = jx.downW.filterNot(_ == ref))
               case DownDoneBoth(ref, rsn) =>
-                mx = mx.copy(
-                  downO = mx.downO.filterNot(_ == ref.oi)
-                  , downW = mx.downW.filterNot(_ == ref.wi)
+                jx = jx.copy(
+                  downO = jx.downO.filterNot(_ == ref.oi)
+                  , downW = jx.downW.filterNot(_ == ref.wi)
                 )
               case DownDone(rsn, cb)      =>
-                if (mx.isClear) {
+                if (jx.isClear) {
                   S(cb(ok))
                 } else {
                   downDoneSignals = downDoneSignals :+ cb
@@ -547,103 +574,106 @@ object MergeX {
 
             case SourceStep(step) => step match {
               case Step(\/-(ups), t, c) =>
+                sourceState = Some(UpSourceReady(t,c))
                 val newUps = ups.map(t => new ProcessRef(UpSourceReady(t, halt)))
-                mx = mx.copy(up = mx.up ++ newUps, upReady = mx.upReady ++ newUps)
-                newUps.foreach(ref => process(Open(mx, ref)))
-                nextSource(t, actor)
+                jx = jx.copy(up = jx.up ++ newUps, upReady = jx.upReady ++ newUps)
+                newUps.foreach(ref => process(Open(jx, ref)))
 
               case Step(-\/(rsn), _, Halt(_)) =>
                 sourceState = Some(UpSourceDone(rsn))
-                mx = mx.copy(doneDown = Some(rsn))
-                process(DoneUp(mx, rsn))
+                jx = jx.copy(doneDown = Some(rsn))
+                process(DoneUp(jx, rsn))
 
               case Step(-\/(rsn), _, c) =>
                 cleanSource(rsn, c, actor)
-                mx = mx.copy(doneDown = Some(rsn))
-                process(DoneUp(mx, rsn))
+                jx = jx.copy(doneDown = Some(rsn))
+                process(DoneUp(jx, rsn))
             }
 
             case UpStreamEmit(ref,is,t,c) =>
               ref.ready(t,c)
-              mx = mx.copy(upReady = mx.upReady :+ ref)
-              process(Receive(mx, is, ref))
+              jx = jx.copy(upReady = jx.upReady :+ ref)
+              process(Receive(jx, is, ref))
 
             case UpEmit(ref, is) =>
-              mx = mx.copy(upReady = mx.upReady :+ ref)
-              process(Receive(mx, is, ref))
+              jx = jx.copy(upReady = jx.upReady :+ ref)
+              process(Receive(jx, is, ref))
 
             case UpStreamDone(ref, rsn) =>
-              mx = mx.copy(up = mx.up.filterNot(_ == ref), upReady = mx.upReady.filterNot(_ == ref))
-              process(Done(mx, ref, rsn))
+              jx = jx.copy(up = jx.up.filterNot(_ == ref), upReady = jx.upReady.filterNot(_ == ref))
+              process(Done(jx, ref, rsn))
 
             case DownOpenO(ref, cb) =>
-              startSource(actor)
-              mx = mx.copy(downO = mx.downO :+ ref)
-              process(Open(mx, ref))
+              xstate match {
+                case Emit(_,_) => unemitAndRun(xstate) //try to unemit any head actions. i.e. OpenNext
+                case _ => //no op, waiting for signal
+              }
+              jx = jx.copy(downO = jx.downO :+ ref)
+              process(Open(jx, ref))
               S(cb(ok))
 
             case DownOpenW(ref, cb) =>
-              mx = mx.copy(downW = mx.downW :+ ref)
-              process(Open(mx, ref))
+              jx = jx.copy(downW = jx.downW :+ ref)
+              process(Open(jx, ref))
               S(cb(ok))
 
             case DownOpenBoth(ref, cb) =>
-              mx = mx.copy(downW = mx.downW :+ ref.wi, downO = mx.downO :+ ref.oi)
-              process(Open(mx, ref.wi))
-              process(Open(mx, ref.oi))
+              jx = jx.copy(downW = jx.downW :+ ref.wi, downO = jx.downO :+ ref.oi)
+              process(Open(jx, ref.wi))
+              process(Open(jx, ref.oi))
               S(cb(ok))
 
             case DownReadyO(ref, cb) =>
               ref.ready(cb)
               if (ref.withCallback) {
-                mx = mx.copy(downReadyO = mx.downReadyO :+ ref)
-                process(Ready(mx, ref))
+                jx = jx.copy(downReadyO = jx.downReadyO :+ ref)
+                process(Ready(jx, ref))
               }
             case DownReadyW(ref, cb) =>
               ref.ready(cb)
               if (ref.withCallback) {
-                mx = mx.copy(downReadyW = mx.downReadyW :+ ref)
-                process(Ready(mx, ref))
+                jx = jx.copy(downReadyW = jx.downReadyW :+ ref)
+                process(Ready(jx, ref))
               }
 
             case DownReadyBoth(ref, cb) =>
               ref.ready(cb)
               if (ref.withCallback) {
-                mx = mx.copy(downReadyW = mx.downReadyW :+ ref.wi)
-                process(Ready(mx, ref.wi))
-                mx = mx.copy(downReadyO = mx.downReadyO :+ ref.oi)
-                process(Ready(mx, ref.oi))
+                jx = jx.copy(downReadyW = jx.downReadyW :+ ref.wi)
+                process(Ready(jx, ref.wi))
+                jx = jx.copy(downReadyO = jx.downReadyO :+ ref.oi)
+                process(Ready(jx, ref.oi))
               }
 
             case DownDoneO(ref, rsn) =>
-              mx = mx.copy(
-                downO = mx.downO.filterNot(_ == ref)
-                , downReadyO = mx.downReadyO.filterNot(_ == ref)
+              jx = jx.copy(
+                downO = jx.downO.filterNot(_ == ref)
+                , downReadyO = jx.downReadyO.filterNot(_ == ref)
               )
-              process(Done(mx, ref, rsn))
+              process(Done(jx, ref, rsn))
 
             case DownDoneW(ref, rsn) =>
-              mx = mx.copy(
-                downW = mx.downW.filterNot(_ == ref)
-                , downReadyW = mx.downReadyW.filterNot(_ == ref)
+              jx = jx.copy(
+                downW = jx.downW.filterNot(_ == ref)
+                , downReadyW = jx.downReadyW.filterNot(_ == ref)
               )
-              process(Done(mx, ref, rsn))
+              process(Done(jx, ref, rsn))
 
             case DownDoneBoth(ref, rsn) =>
-              mx = mx.copy(
-                downO = mx.downO.filterNot(_ == ref.oi)
-                , downReadyO = mx.downReadyO.filterNot(_ == ref.oi)
-                , downW = mx.downW.filterNot(_ == ref.wi)
-                , downReadyW = mx.downReadyW.filterNot(_ == ref.wi)
+              jx = jx.copy(
+                downO = jx.downO.filterNot(_ == ref.oi)
+                , downReadyO = jx.downReadyO.filterNot(_ == ref.oi)
+                , downW = jx.downW.filterNot(_ == ref.wi)
+                , downReadyW = jx.downReadyW.filterNot(_ == ref.wi)
               )
-              process(Done(mx, ref.wi, rsn))
-              process(Done(mx, ref.oi, rsn))
+              process(Done(jx, ref.wi, rsn))
+              process(Done(jx, ref.oi, rsn))
 
             case DownDone(rsn, cb) =>
               if (downDoneSignals.isEmpty) {
-                mx = mx.copy(doneDown = Some(rsn))
+                jx = jx.copy(doneDown = Some(rsn))
                 downDoneSignals = Vector(cb)
-                process(DoneDown(mx, rsn))
+                process(DoneDown(jx, rsn))
               } else {
                 downDoneSignals = downDoneSignals :+ cb
               }
@@ -654,7 +684,7 @@ object MergeX {
     }
 
 
-    new MergeX[W, I, O] {
+    new Junction[W, I, O] {
       def receiveAll(si: Seq[I]): Task[Unit] =
         Task.async { cb => actor ! UpEmit(new UpstreamAsyncRef(cb), si) }
       def upstreamSink: Process.Sink[Task, I] =
@@ -709,22 +739,22 @@ object MergeX {
  * Please consider using its variants from [[scalaz.stream.async]] or [[scalaz.stream.merge]] package
  * before using this directly.
  *
- * Merging process is controlled by MergeXStrategy which takes form of
- * Process1, that on input side has [[scalaz.stream.merge.MergeX.MergeSignal]]
- * and on output side [[scalaz.stream.merge.MergeX.MergeAction]].
- * Please see [[scalaz.stream.merge.MergeXStrategies]] for more details.
+ * Merging process is controlled by JunctionStrategy which takes form of
+ * Process1, that on input side has [[scalaz.stream.merge.Junction.JunctionSignal]]
+ * and on output side [[scalaz.stream.merge.Junction.JunctionAction]].
+ * Please see [[scalaz.stream.merge.JunctionStrategies]] for more details.
  *
- * Processes that push to MergeX are called `upstream` processes and processes
+ * Processes that push to Junction are called `upstream` processes and processes
  * that take from the the merge are called `downstream` processes.
  *
- * The mergeX starts once at least one `downstream` Process is run, and will
- * stop when `MergeXStrategy` stops.
+ * The Junction starts when at least one `downstream` Process is run, and will
+ * stop once `JunctionStrategy` stops.
  *
- * At any time user of MergeX can call `downstreamClose` method, that will cause
- * [[scalaz.stream.merge.MergeX.DoneDown]] to be dispatched to `MergeXStrategy`.
+ * At any time user of Junction can call `downstreamClose` method, that will cause
+ * [[scalaz.stream.merge.Junction.DoneDown]] to be dispatched to `JunctionStrategy`.
  *
  * Similarly, when Process providing `upstream` processes (the `source`) will terminate, this
- * MergeX will signal to MergeStrategy [[scalaz.stream.merge.MergeX.DoneUp]] message to indicate that
+ * Junction will signal to JunctionStrategy [[scalaz.stream.merge.Junction.DoneUp]] message to indicate that
  * no more `Upstream` channels will provide values in the merge except those
  * providing already.
  *
@@ -732,19 +762,19 @@ object MergeX {
  *
  * - `from source`, created by running processes provided by source and
  * - `volatile` that are provided by `receiveOne` and `upstreamSink` methods. These are not
- * consulted when [[scalaz.stream.merge.MergeX.DoneUp]] is dispatched to MergeX strategy.
+ * consulted when [[scalaz.stream.merge.Junction.DoneUp]] is dispatched to JunctionStrategy.
  *
  *
  */
-trait MergeX[+W, -I, +O] {
+trait Junction[+W, -I, +O] {
 
   /**
-   * Creates task, that when evaluated will make mergeX to receive Seq of `I`.
-   * This will complete _after_ mergeX confirms that more `I` are needed
-   * by MergeXStrategy emitting [[scalaz.stream.actor.MergeStrategy.More]].
+   * Creates task, that when evaluated will make Junction to receive Seq of `I`.
+   * This will complete _after_ Junction confirms that more `I` are needed
+   * by JunctionStrategy emitting [[scalaz.stream.actor.MergeStrategy.More]].
    *
-   * Please note this creates `volatile` upstream reference that has no notion of
-   * being `first` or `done` like with references from upstream source.
+   * Please note this creates upstream reference that has no notion of
+   * being `open` or `done` like with references from upstream source.
    *
    * @param si
    * @return
@@ -755,7 +785,7 @@ trait MergeX[+W, -I, +O] {
   def receiveOne(i: I): Task[Unit] = receiveAll(List(i))
 
   /**
-   * Creates sink that feeds `I` into mergeX.
+   * Creates sink that feeds `I` into Junction.
    *
    * This sink can be attached to any Source of `I` and then resulting process may be run to feed this merge with `I`
    *
@@ -765,15 +795,15 @@ trait MergeX[+W, -I, +O] {
 
 
   /**
-   * Creates one downstream process that may be used to drain `O` from this mergeX.
-   * Please not once first `downstream` is run, the mergeX will start to run all of its
+   * Creates one downstream process that may be used to drain `O` from this Junction.
+   * Please not once first `downstream` is run, the Junction will start to run all of its
    * upstream processes.
    *
-   * Please note this will result in following messages to be emitted to `MergeXStrategy` :
+   * Please note this will result in following messages to be emitted to `JunctionStrategy` :
    *
-   * - [[scalaz.stream.merge.MergeX.Open]] on first attempt to read from MergeX
-   * - [[scalaz.stream.merge.MergeX.Ready]] repeatedly on subsequent reads
-   * - [[scalaz.stream.merge.MergeX.Done]] this stream terminates with supplied reason for termination
+   * - [[scalaz.stream.merge.Junction.Open]] on first attempt to read from Junction
+   * - [[scalaz.stream.merge.Junction.Ready]] repeatedly on subsequent reads
+   * - [[scalaz.stream.merge.Junction.Done]] this stream terminates with supplied reason for termination
    *
    */
   def downstreamO: Process[Task, O]
@@ -785,9 +815,9 @@ trait MergeX[+W, -I, +O] {
   def downstreamBoth: Writer[Task, W, O]
 
   /**
-   * Causes orderly termination of mergeX. This causes MergeStrategy to
-   * receive [[scalaz.stream.actor.MergeStrategy.DownstreamClosed]] signal.
-   * Based on MergeStrategy implementation this may or may not terminate downstream processes immediatelly.
+   * Causes orderly termination of Junction. This causes JunctionStrategy to
+   * receive [[scalaz.stream.merge.Junction.DoneDown]] signal.
+   * Based on MergeStrategy implementation this may or may not terminate downstream processes immediately.
    *
    * However please not this will complete after _all_ downstream processes have terminated.
    * Multiple invocation of this task will have no-op but will complete after the first task completes.

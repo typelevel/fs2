@@ -6,6 +6,8 @@ import scalaz.concurrent.Task
 import scalaz.stream.Process._
 import java.util.concurrent.atomic.AtomicInteger
 import concurrent.duration._
+import scala.concurrent.SyncVar
+import scalaz.\/
 
 
 object MergeNSpec extends Properties("mergeN") {
@@ -83,6 +85,42 @@ object MergeNSpec extends Properties("mergeN") {
     val result = merge.mergeN(ps).fold(0)(_ + _).runLast.timed(120000).run
 
     (result == Some(49500000)) :| "All items were emitted"
+  }
+
+  property("merge-maxOpen") = secure {
+    val count = 100
+    val eachSize = 10
+
+    val sizeSig = async.signal[Int]
+
+    def incrementOpen =
+      sizeSig.compareAndSet({
+        case Some(running) => Some(running + 1)
+        case None => Some(1)
+      })
+
+    def decrementDone =
+      sizeSig.compareAndSet({
+        case Some(running) => Some(running - 1)
+        case None => Some(0)
+      })
+
+    val ps =
+      emitSeq(for (i <- 0 until count) yield {
+        eval_(incrementOpen) fby
+        Process.range(0,eachSize).flatMap(i=> emit(i) fby sleep(5 millis)) onComplete
+          eval_(decrementDone)
+      }).toSource
+
+    val running = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    Task.fork(sizeSig.discrete.runLog).runAsync(running.put)
+
+    merge.mergeN(25)(ps).run.timed(10000).run
+    sizeSig.close.run
+
+    "mergeN and signal finished" |: running.get(3000).isDefined &&
+      ("max 25 were run in parallel" |: running.get.toList.flatten.filter(_ > 25).isEmpty)
+
   }
 
 }

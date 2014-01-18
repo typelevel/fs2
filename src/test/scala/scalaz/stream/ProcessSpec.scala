@@ -8,7 +8,7 @@ import scalaz.std.list.listSyntax._
 import scalaz.std.string._
 
 import org.scalacheck._
-import Prop._
+import Prop.{extendedAny => _, _}
 import Arbitrary.arbitrary
 import scalaz.concurrent.Strategy
 import scala.concurrent
