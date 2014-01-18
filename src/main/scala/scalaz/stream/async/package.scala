@@ -1,14 +1,20 @@
 package scalaz.stream
 
-import scalaz.{stream, \/}
+import java.util.concurrent.atomic.AtomicReference
+import scalaz.\/
 import scalaz.concurrent._
-import scalaz.stream.actor.message
+import scalaz.stream.Process.End
 import scalaz.stream.actor.actors
+import scalaz.stream.actor.message
+import scalaz.stream.async.mutable.Signal.Msg
+import scalaz.stream.async.mutable.{WriterTopic, BoundedQueue}
+import scalaz.stream.merge.{MergeXStrategies, MergeX}
 
 package object async {
-  import mutable.{Queue,Ref,Signal,Topic}
 
-  /** 
+  import mutable.{Queue,Signal,Topic}
+
+  /**
    * Convert from an `Actor` accepting `message.queue.Msg[A]` messages 
    * to a `Queue[A]`. 
    */
@@ -22,35 +28,38 @@ package object async {
     }
 
   /** 
-   * Convert from an `Actor` accepting `message.queue.Msg[A]` messages 
-   * to a `Queue[A]`. 
-   */
-  def actorRef[A](actor: Actor[message.ref.Msg[A]]): Ref[A] =
-    new Ref[A] {
-      import message.ref._
-      @volatile var init = false
-      protected[stream] def set_(f: (Option[A]) => Option[A], cb: (\/[Throwable, Option[A]]) => Unit, old: Boolean): Unit =  {
-        actor ! Set(f,cb,old)
-        init = true
-      }
-
-      protected[stream] def get_(cb: (\/[Throwable, (Int,A)]) => Unit, onlyChanged: Boolean, last: Int) : Unit = 
-        actor ! Get(cb,onlyChanged,last)
- 
-      protected[stream] def fail_(t: Throwable, cb: (Throwable) => Unit):Unit =  
-        actor ! Fail(t,cb)
-
-      def isSet = init
-    }
-
-  /** 
    * Create a new continuous signal which may be controlled asynchronously.
    * All views into the returned signal are backed by the same underlying
    * asynchronous `Ref`.
    */
-  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] =
-    ref[A].signal
-    
+  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = {
+    val mergeX = MergeX(MergeXStrategies.signal[A], Process.halt)(S)
+    new mutable.Signal[A] {
+      def changed: Process[Task, Boolean] = discrete.map(_ => true) merge Process.constant(false)
+      def discrete: Process[Task, A] = mergeX.downstreamW
+      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
+      def changes: Process[Task, Unit] = discrete.map(_ => ())
+      def sink: Process.Sink[Task, Msg[A]] = mergeX.upstreamSink
+      def get: Task[A] = discrete.take(1).runLast.flatMap {
+        case Some(a) => Task.now(a)
+        case None    => Task.fail(End)
+      }
+      def getAndSet(a: A): Task[Option[A]] = {
+        val refa = new AtomicReference[Option[A]](None)
+        val fa =  (oa: Option[A]) => {refa.set(oa); Some(a) }
+        mergeX.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
+      }
+      def set(a: A): Task[Unit] = mergeX.receiveOne(Signal.Set(a))
+      def compareAndSet(f: (Option[A]) => Option[A]): Task[Option[A]] = {
+        val refa = new AtomicReference[Option[A]](None)
+        val fa = (oa: Option[A]) => {val set = f(oa); refa.set(set orElse oa); set }
+        mergeX.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
+      }
+      def fail(error: Throwable): Task[Unit] = mergeX.downstreamClose(error)
+    }
+  }
+
+
   /** 
    * Create a source that may be added to or halted asynchronously 
    * using the returned `Queue`, `q`. On calling `q.enqueue(a)`, 
@@ -63,17 +72,37 @@ package object async {
   def localQueue[A]: (Queue[A], Process[Task,A]) = 
     queue[A](Strategy.Sequential)
 
-  /** 
-   * Returns a continuous `Process` whose value can be set 
-   * asynchronously using the returned `Ref`. Callbacks will be 
-   * run in the calling thread unless another thread is already
-   * reading from the `Ref`, so `set` is not guaranteed to take
-   * constant time. If this is not desired, use `ref` with a
-   * `Strategy` other than `Strategy.Sequential`.
+  /**
+   * Converts discrete process to signal.
+   * @param source
+   * @tparam A
    */
-  def localRef[A]: Ref[A] = 
-    ref[A](Strategy.Sequential)
-  
+  def toSignal[A](source: Process[Task, A])(implicit S: Strategy = Strategy.DefaultStrategy): immutable.Signal[A] =
+    new immutable.Signal[A] {
+      def changes: Process[Task, Unit] = discrete.map(_ => ())
+      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
+      def discrete: Process[Task, A] = source
+      def changed: Process[Task, Boolean] = (discrete.map(_ => true) merge Process.constant(false))
+   }
+
+
+  /**
+   * Creates bounded queue that is bound by supplied max size bound.
+   * Please see [[scalaz.stream.async.mutable.BoundedQueue]] for more details.
+   * @param max maximum size of queue. When <= 0 (default) queue is unbounded
+   */
+  def boundedQueue[A](max: Int = 0)(implicit S: Strategy = Strategy.DefaultStrategy): BoundedQueue[A] = {
+    val mergex = MergeX(MergeXStrategies.boundedQ[A](max), Process.halt)(S)
+    new BoundedQueue[A] {
+      def enqueueOne(a: A): Task[Unit] = mergex.receiveOne(a)
+      def dequeue: Process[Task, A] = mergex.downstreamO
+      def size: immutable.Signal[Int] = toSignal(mergex.downstreamW)
+      def enqueueAll(xa: Seq[A]): Task[Unit] = mergex.receiveAll(xa)
+      def enqueue: Process.Sink[Task, A] = mergex.upstreamSink
+      def fail(rsn: Throwable): Task[Unit] = mergex.downstreamClose(rsn)
+    }
+  }
+
 
   /** 
    * Create a source that may be added to or halted asynchronously 
@@ -83,15 +112,10 @@ package object async {
    * a separate logical thread. Current implementation is based on 
    * `actor.queue`.
    */
-  def queue[A](implicit S: Strategy = Strategy.DefaultStrategy): (Queue[A], Process[Task,A]) = 
+  def queue[A](implicit S: Strategy = Strategy.DefaultStrategy): (Queue[A], Process[Task, A]) =
     actors.queue[A] match { case (snk, p) => (actorQueue(snk), p) }
 
-  /**
-   * Returns a ref, that can create continuous process, that can be set 
-   * asynchronously using the returned `Ref`.
-   */
-  def ref[A](implicit S: Strategy = Strategy.DefaultStrategy): Ref[A] = 
-    actors.ref[A](S) match { case (snk, p) => actorRef(snk)}
+
 
   /** 
    * Convert an `Queue[A]` to a `Sink[Task, A]`. The `cleanup` action will be 
@@ -106,8 +130,29 @@ package object async {
    * Please see `Topic` for more info.
    */
   def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
-    new Topic[A]{
-      private[stream] val actor = actors.topic[A](S)
+     val mergex = MergeX(MergeXStrategies.publishSubscribe[A], Process.halt)(S)
+     new Topic[A] {
+       def publish: Process.Sink[Task, A] = mergex.upstreamSink
+       def subscribe: Process[Task, A] = mergex.downstreamO
+       def publishOne(a: A): Task[Unit] = mergex.receiveOne(a)
+       def fail(err: Throwable): Task[Unit] = mergex.downstreamClose(err)
+     }
+  }
+
+  /**
+   * Returns Writer topic, that can create publisher(sink) of `I` and subscriber with signal of `W` values.
+   * For more info see `WriterTopic`.
+   */
+  def writerTopic[W,I,O](w:Writer1[W,I,O])(implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[W,I,O] ={
+    val mergex = MergeX(MergeXStrategies.liftWriter1(w), Process.halt)(S)
+    new WriterTopic[W,I,O] {
+      def publish: Process.Sink[Task, I] = mergex.upstreamSink
+      def subscribe: Process.Writer[Task, W, O] = mergex.downstreamBoth
+      def subscribeO: Process[Task, O] = mergex.downstreamO
+      def subscribeW: Process[Task, W] = mergex.downstreamW
+      def signal: immutable.Signal[W] = toSignal(subscribeW)
+      def publishOne(i: I): Task[Unit] = mergex.receiveOne(i)
+      def fail(err: Throwable): Task[Unit] = mergex.downstreamClose(err)
     }
   }
 }

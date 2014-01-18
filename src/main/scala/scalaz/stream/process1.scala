@@ -12,6 +12,7 @@ import scalaz.stream.processes._
 import scalaz.stream.Process.Emit
 import scala.Some
 import scalaz.stream.Process.Halt
+import scalaz.stream.ReceiveY.{HaltL, HaltR, ReceiveR, ReceiveL}
 
 trait process1 {
 
@@ -454,6 +455,21 @@ trait process1 {
       else
         emit(acc) fby go(acc.tail, 1)
     go(Vector(), n)
+  }
+
+  /** Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
+   * Use `wye.flip` to convert it to right side **/
+  def liftY[I,O](p:Process1[I,O]) : Wye[I,Nothing,O] = {
+    def go(cur:Process1[I,O]) : Wye[I,Nothing,O] = {
+      awaitL[I].flatMap { i =>
+         cur.feed1(i).unemit match {
+           case (out,Halt(rsn)) => emitSeq(out) fby Halt(rsn)
+           case (out,next) => emitSeq(out) fby go(next)
+         }
+
+      }
+    }
+    go(p)
   }
 
 }
