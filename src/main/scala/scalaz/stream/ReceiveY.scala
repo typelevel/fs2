@@ -63,7 +63,7 @@ object ReceiveY {
   case class HaltL(cause:Throwable) extends HaltOne
   case class HaltR(cause:Throwable) extends HaltOne
   object HaltOne {
-    def unapply(ry:ReceiveY[Nothing@unchecked,Nothing@unchecked]) : Option[Throwable] = {
+    def unapply(ry:ReceiveY[Any,Any]) : Option[Throwable] = {
       ry match {
         case h:HaltOne => Some(h.cause)
         case _ => None
