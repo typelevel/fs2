@@ -8,7 +8,7 @@ import scalaz.stream.actor.actors
 import scalaz.stream.actor.message
 import scalaz.stream.async.mutable.Signal.Msg
 import scalaz.stream.async.mutable.{WriterTopic, BoundedQueue}
-import scalaz.stream.merge.{MergeXStrategies, MergeX}
+import scalaz.stream.merge.{JunctionStrategies, Junction}
 
 package object async {
 
@@ -33,13 +33,13 @@ package object async {
    * asynchronous `Ref`.
    */
   def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = {
-    val mergeX = MergeX(MergeXStrategies.signal[A], Process.halt)(S)
+    val junction = Junction(JunctionStrategies.signal[A], Process.halt)(S)
     new mutable.Signal[A] {
       def changed: Process[Task, Boolean] = discrete.map(_ => true) merge Process.constant(false)
-      def discrete: Process[Task, A] = mergeX.downstreamW
+      def discrete: Process[Task, A] = junction.downstreamW
       def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
       def changes: Process[Task, Unit] = discrete.map(_ => ())
-      def sink: Process.Sink[Task, Msg[A]] = mergeX.upstreamSink
+      def sink: Process.Sink[Task, Msg[A]] = junction.upstreamSink
       def get: Task[A] = discrete.take(1).runLast.flatMap {
         case Some(a) => Task.now(a)
         case None    => Task.fail(End)
@@ -47,15 +47,15 @@ package object async {
       def getAndSet(a: A): Task[Option[A]] = {
         val refa = new AtomicReference[Option[A]](None)
         val fa =  (oa: Option[A]) => {refa.set(oa); Some(a) }
-        mergeX.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
+        junction.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
       }
-      def set(a: A): Task[Unit] = mergeX.receiveOne(Signal.Set(a))
+      def set(a: A): Task[Unit] = junction.receiveOne(Signal.Set(a))
       def compareAndSet(f: (Option[A]) => Option[A]): Task[Option[A]] = {
         val refa = new AtomicReference[Option[A]](None)
         val fa = (oa: Option[A]) => {val set = f(oa); refa.set(set orElse oa); set }
-        mergeX.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
+        junction.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
       }
-      def fail(error: Throwable): Task[Unit] = mergeX.downstreamClose(error)
+      def fail(error: Throwable): Task[Unit] = junction.downstreamClose(error)
     }
   }
 
@@ -92,14 +92,14 @@ package object async {
    * @param max maximum size of queue. When <= 0 (default) queue is unbounded
    */
   def boundedQueue[A](max: Int = 0)(implicit S: Strategy = Strategy.DefaultStrategy): BoundedQueue[A] = {
-    val mergex = MergeX(MergeXStrategies.boundedQ[A](max), Process.halt)(S)
+    val junction = Junction(JunctionStrategies.boundedQ[A](max), Process.halt)(S)
     new BoundedQueue[A] {
-      def enqueueOne(a: A): Task[Unit] = mergex.receiveOne(a)
-      def dequeue: Process[Task, A] = mergex.downstreamO
-      def size: immutable.Signal[Int] = toSignal(mergex.downstreamW)
-      def enqueueAll(xa: Seq[A]): Task[Unit] = mergex.receiveAll(xa)
-      def enqueue: Process.Sink[Task, A] = mergex.upstreamSink
-      def fail(rsn: Throwable): Task[Unit] = mergex.downstreamClose(rsn)
+      def enqueueOne(a: A): Task[Unit] = junction.receiveOne(a)
+      def dequeue: Process[Task, A] = junction.downstreamO
+      def size: immutable.Signal[Int] = toSignal(junction.downstreamW)
+      def enqueueAll(xa: Seq[A]): Task[Unit] = junction.receiveAll(xa)
+      def enqueue: Process.Sink[Task, A] = junction.upstreamSink
+      def fail(rsn: Throwable): Task[Unit] = junction.downstreamClose(rsn)
     }
   }
 
@@ -130,12 +130,12 @@ package object async {
    * Please see `Topic` for more info.
    */
   def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
-     val mergex = MergeX(MergeXStrategies.publishSubscribe[A], Process.halt)(S)
+     val junction = Junction(JunctionStrategies.publishSubscribe[A], Process.halt)(S)
      new Topic[A] {
-       def publish: Process.Sink[Task, A] = mergex.upstreamSink
-       def subscribe: Process[Task, A] = mergex.downstreamO
-       def publishOne(a: A): Task[Unit] = mergex.receiveOne(a)
-       def fail(err: Throwable): Task[Unit] = mergex.downstreamClose(err)
+       def publish: Process.Sink[Task, A] = junction.upstreamSink
+       def subscribe: Process[Task, A] = junction.downstreamO
+       def publishOne(a: A): Task[Unit] = junction.receiveOne(a)
+       def fail(err: Throwable): Task[Unit] = junction.downstreamClose(err)
      }
   }
 
@@ -144,15 +144,15 @@ package object async {
    * For more info see `WriterTopic`.
    */
   def writerTopic[W,I,O](w:Writer1[W,I,O])(implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[W,I,O] ={
-    val mergex = MergeX(MergeXStrategies.liftWriter1(w), Process.halt)(S)
+    val junction = Junction(JunctionStrategies.liftWriter1(w), Process.halt)(S)
     new WriterTopic[W,I,O] {
-      def publish: Process.Sink[Task, I] = mergex.upstreamSink
-      def subscribe: Process.Writer[Task, W, O] = mergex.downstreamBoth
-      def subscribeO: Process[Task, O] = mergex.downstreamO
-      def subscribeW: Process[Task, W] = mergex.downstreamW
+      def publish: Process.Sink[Task, I] = junction.upstreamSink
+      def subscribe: Process.Writer[Task, W, O] = junction.downstreamBoth
+      def subscribeO: Process[Task, O] = junction.downstreamO
+      def subscribeW: Process[Task, W] = junction.downstreamW
       def signal: immutable.Signal[W] = toSignal(subscribeW)
-      def publishOne(i: I): Task[Unit] = mergex.receiveOne(i)
-      def fail(err: Throwable): Task[Unit] = mergex.downstreamClose(err)
+      def publishOne(i: I): Task[Unit] = junction.receiveOne(i)
+      def fail(err: Throwable): Task[Unit] = junction.downstreamClose(err)
     }
   }
 }

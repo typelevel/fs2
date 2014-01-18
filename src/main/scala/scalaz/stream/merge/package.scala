@@ -23,14 +23,12 @@ package object merge {
    * of active source streams. That does not mean that every `source` process is consulted in this read-ahead
    * cache, it just tries to be as much fair as possible when processes provide their `A` on almost the same speed.
    *
-   *
-   *
    */
   def mergeN[A](source: Process[Task, Process[Task, A]])
     (implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, A] = {
 
-    await(Task.delay(MergeX(MergeXStrategies.mergeN[A],source)(S)))({
-      case mergeX => mergeX.downstreamO onComplete eval_(mergeX.downstreamClose(End))
+    await(Task.delay(Junction(JunctionStrategies.mergeN[A],source)(S)))({
+      case junction => junction.downstreamO onComplete eval_(junction.downstreamClose(End))
     })
 
 
