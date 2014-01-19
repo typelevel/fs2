@@ -4,6 +4,9 @@ import java.io.{ InputStream, OutputStream }
 import java.lang.{ Process => JavaProcess, ProcessBuilder }
 import scala.io.{ Codec, Source }
 import scalaz.concurrent.Task
+import scalaz.std.option._
+import scalaz.std.string._
+import scalaz.syntax.semigroup._
 import Process._
 
 case class Subprocess[+R, -W](
@@ -12,30 +15,49 @@ case class Subprocess[+R, -W](
   error: Process[Task, R])
 
 object Subprocess {
-  def popen(args: String*)(implicit codec: Codec): Process[Task, Subprocess[String, String]] = {
-    io.resource(Task.delay(new ProcessBuilder(args: _*).start))(
-        p => Task.now(close(p)))(p => Task.now(mkSubprocess(p))).once
+  def popen2(args: String*): Process[Task, Subprocess[Array[Byte], Array[Byte]]] =
+    io.resource {
+      Task.delay(new ProcessBuilder(args: _*).start)
+    } {
+      p => Task.delay(close(p))
+    } {
+      p => Task.delay(mkSubprocess(p))
+    }.once
+
+  def popen3(args: String*)(implicit codec: Codec): Process[Task, Subprocess[String, String]] = {
+    popen2(args: _*).map { sp =>
+      Subprocess(
+        asStringSink(sp.input),
+        asLineSource(sp.output),
+        asLineSource(sp.error))
+    }
   }
 
-  private def mkSubprocess(p: JavaProcess)(implicit codec: Codec): Subprocess[String, String] = {
+  private def mkSubprocess(p: JavaProcess): Subprocess[Array[Byte], Array[Byte]] =
     Subprocess(
-      writeTo(p.getOutputStream),
-      readFrom(p.getInputStream),
-      readFrom(p.getErrorStream))
-  }
+      mkSink(p.getOutputStream),
+      mkSource(p.getInputStream),
+      mkSource(p.getErrorStream))
 
-  private def writeTo(os: OutputStream)(implicit codec: Codec): Sink[Task, String] =
+  private def mkSink(os: OutputStream): Sink[Task, Array[Byte]] =
     io.channel {
-      (s: String) => Task.delay {
-        os.write(s.getBytes(codec.charSet))
+      (bytes: Array[Byte]) => Task.delay {
+        os.write(bytes)
         os.flush
       }
     }
 
-  private def readFrom(is: InputStream)(implicit codec: Codec): Process[Task, String] = {
-    val lines = Source.fromInputStream(is).getLines
-    val readNext = Task.delay { if (lines.hasNext) lines.next else throw End }
-    repeatEval(readNext)
+  private def mkSource(is: InputStream): Process[Task, Array[Byte]] = {
+    val maxSize = 4096
+    val readChunk = Task.delay {
+      val size = math.min(is.available, maxSize)
+      if (size > 0) {
+        val buffer = Array.ofDim[Byte](size)
+        is.read(buffer)
+        buffer
+      } else throw End
+    }
+    repeatEval(readChunk)
   }
 
   private def close(p: JavaProcess): Int = {
@@ -43,5 +65,32 @@ object Subprocess {
     p.getInputStream.close
     p.getErrorStream.close
     p.waitFor
+  }
+
+  private def asStringSink(sink: Sink[Task, Array[Byte]])(implicit codec: Codec): Sink[Task, String] =
+    sink.contramap(_.getBytes(codec.charSet))
+
+  private def asLineSource(source: Process[Task, Array[Byte]])(implicit codec: Codec): Process[Task, String] = {
+    def isNewline(c: Char): Boolean = c == '\r' || c == '\n'
+
+    var carry: Option[String] = None
+    source.flatMap { bytes =>
+      val complete = bytes.lastOption.fold(true)(b => isNewline(b.toChar))
+      val lines = Source.fromBytes(bytes).getLines.toVector
+
+      val head = carry mappend lines.headOption
+      val tail = lines.drop(1)
+
+      val (completeLines, nextCarry) =
+        if (complete)
+          (head.toVector ++ tail, None)
+        else if (tail.nonEmpty)
+          (head.toVector ++ tail.init, tail.lastOption)
+        else
+          (Vector.empty, head)
+
+      carry = nextCarry
+      emitSeq(completeLines)
+    }.onComplete(emitSeq(carry.toSeq))
   }
 }
