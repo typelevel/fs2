@@ -15,25 +15,27 @@ case class Subprocess[+R, -W](
   error: Process[Task, R])
 
 object Subprocess {
-  def popen2(args: String*): Process[Task, Subprocess[Array[Byte], Array[Byte]]] =
+  type RawSubprocess = Subprocess[Array[Byte], Array[Byte]]
+  type LineSubprocess = Subprocess[String, String]
+
+  def createRawProcess(args: String*): Process[Task, RawSubprocess] =
     io.resource {
-      Task.delay(new ProcessBuilder(args: _*).start)
-    } {
-      p => Task.delay(close(p))
-    } {
-      p => Task.delay(mkSubprocess(p))
+      Task.delay((new ProcessBuilder(args: _*)).start)
+    } {(
+      p => Task.delay(close(p)))
+    } {(
+      p => Task.delay(mkSubprocess(p)))
     }.once
 
-  def popen3(args: String*)(implicit codec: Codec): Process[Task, Subprocess[String, String]] = {
-    popen2(args: _*).map { sp =>
+  def createLineProcess(args: String*)(implicit codec: Codec): Process[Task, LineSubprocess] =
+    createRawProcess(args: _*).map { sp =>
       Subprocess(
         asStringSink(sp.input),
         asLineSource(sp.output),
         asLineSource(sp.error))
     }
-  }
 
-  private def mkSubprocess(p: JavaProcess): Subprocess[Array[Byte], Array[Byte]] =
+  private def mkSubprocess(p: JavaProcess): RawSubprocess =
     Subprocess(
       mkSink(p.getOutputStream),
       mkSource(p.getInputStream),
