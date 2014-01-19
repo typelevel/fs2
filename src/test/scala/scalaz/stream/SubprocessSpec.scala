@@ -63,8 +63,6 @@ object SubprocessSpec extends Properties("Subprocess") {
 
     val p = Subprocess.createLineProcess("bc").flatMap { s =>
       calc1.to(s.input).drain ++
-      sleep ++
-      s.output ++
       calc2.to(s.input).drain ++
       sleep ++
       s.output ++
