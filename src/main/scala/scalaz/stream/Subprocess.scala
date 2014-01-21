@@ -9,6 +9,15 @@ import scalaz.std.string._
 import scalaz.syntax.semigroup._
 import Process._
 
+/*
+TODO:
+ - expose the return value of Process.waitFor
+ - support ProcessBuilder's directory and environment
+ - how to terminate a running Subprocess? (Process.destroy)
+ - create a process where output and error are merged?
+ - find a better name?
+*/
+
 case class Subprocess[+R, -W](
   input: Sink[Task, W],
   output: Process[Task, R],
@@ -19,13 +28,10 @@ object Subprocess {
   type LineSubprocess = Subprocess[String, String]
 
   def createRawProcess(args: String*): Process[Task, RawSubprocess] =
-    io.resource {
-      Task.delay((new ProcessBuilder(args: _*)).start)
-    } {(
-      p => Task.delay(close(p)))
-    } {(
-      p => Task.delay(mkSubprocess(p)))
-    }.once
+    io.resource(
+      Task.delay(new ProcessBuilder(args: _*).start))(
+      p => Task.delay(close(p)))(
+      p => Task.delay(mkSubprocess(p))).once
 
   def createLineProcess(args: String*)(implicit codec: Codec): Process[Task, LineSubprocess] =
     createRawProcess(args: _*).map { sp =>
@@ -73,8 +79,6 @@ object Subprocess {
     sink.contramap(_.getBytes(codec.charSet))
 
   private def asLineSource(source: Process[Task, Array[Byte]])(implicit codec: Codec): Process[Task, String] = {
-    def isNewline(c: Char): Boolean = c == '\r' || c == '\n'
-
     var carry: Option[String] = None
     source.flatMap { bytes =>
       val complete = bytes.lastOption.fold(true)(b => isNewline(b.toChar))
@@ -95,4 +99,6 @@ object Subprocess {
       emitSeq(completeLines)
     }.onComplete(emitSeq(carry.toSeq))
   }
+
+  private def isNewline(c: Char): Boolean = c == '\r' || c == '\n'
 }
