@@ -13,11 +13,15 @@ import scalaz.stream.{Process, wye}
 
 object WyeActor {
 
+  val Interrupted = new InterruptedException {
+    override def fillInStackTrace(): Throwable = this
+  }
+  
   /**
    * Evaluates one step of the process `p` and calls the callback `cb` with the evaluated step `s`.
    * Returns a function for interrupting the evaluation.
    *
-   * `s.tail` is `Halt` iff the process `p` halted (by itself or by interruption).
+   * `s.tail` is `Halt` if the process `p` halted (by itself or by interruption).
    * In such case `p` was also cleaned and `s.cleanup` is `Halt` too.
    *
    * Otherwise `s.cleanup` contains the cleanup from the last evaluated `Await`.
@@ -47,14 +51,14 @@ object WyeActor {
    * `free(r)` in outer `await` is interrupted after freeing the resource it will be called again.
    *
    */
-  final def runStepAsyncInterruptibly[O](p: Process[Task,O], cb: Step[Task,O] => Unit): () => Unit = {
-    val interruptedExn = new InterruptedException
+  final def runStepAsyncInterruptibly[O](p: Process[Task,O])(cb: Step[Task,O] => Unit): () => Unit = {
+   
 
     trait RunningTask {
       def interrupt: Unit
     }
     case class RunningTaskImpl[A](val complete: Throwable \/ A => Unit) extends RunningTask {
-      def interrupt: Unit = complete(-\/(interruptedExn))
+      def interrupt: Unit = complete(-\/(Interrupted))
     }
 
     val interrupted = new AtomicBoolean(false)
@@ -95,7 +99,7 @@ object WyeActor {
       }
 
       cur match {
-        case _ if interrupted.get => Task.now(Step(-\/(interruptedExn), Halt(interruptedExn), cleanup))
+        case _ if interrupted.get => Task.now(Step(-\/(Interrupted), Halt(Interrupted), cleanup))
         // Don't run cleanup from the last `Await` when process halts normally.
         case h@Halt(e) => Task.now(Step(-\/(e), h, halt))
         case Emit(h, t) =>
@@ -206,7 +210,7 @@ object WyeActor {
     }
 
     private def runStep(p: Process[Task,A], actor: Actor[Msg]): Unit = {
-      val interrupt = runStepAsyncInterruptibly[A](p, step => actor ! StepCompleted(this, step))
+      val interrupt = runStepAsyncInterruptibly[A](p)(step => actor ! StepCompleted(this, step))
       state = Running(interrupt)
     }
   }
