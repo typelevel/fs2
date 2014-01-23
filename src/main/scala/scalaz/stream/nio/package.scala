@@ -83,7 +83,7 @@ package object nio {
     }
 
     def release(ch: AsynchronousSocketChannel): Process[Task, Nothing] = {
-      suspend(eval(Task.now(ch.close()))).drain
+      eval_(Task.delay(ch.close()))
     }
 
     await(
@@ -94,7 +94,7 @@ package object nio {
           def completed(result: Void, attachment: Void): Unit = cb(\/-(ch1))
           def failed(exc: Throwable, attachment: Void): Unit = cb(-\/(exc))
         })
-      })(_ => eval(Task.now(nioExchange(ch1)))
+      })(_ => eval(Task.now(nioExchange(ch1))) onComplete release(ch1)
           , release(ch1)
           , release(ch1)
         )
