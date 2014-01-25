@@ -44,7 +44,7 @@ case class Subprocess[+R, -W](
 }
 
 object Subprocess {
-  def createRawProcess(args: String*): Process[Task, Subprocess[Array[Byte], Array[Byte]]] =
+  def createRawProcess(args: String*): Process[Task, Subprocess[Bytes, Bytes]] =
     io.resource(
       Task.delay(new ProcessBuilder(args: _*).start))(
       p => Task.delay(close(p)))(
@@ -52,31 +52,32 @@ object Subprocess {
 
   def createLineProcess(args: String*)(implicit codec: Codec): Process[Task, Subprocess[String, String]] =
     createRawProcess(args: _*).map {
-      _.mapSources(asLineSource).contramapW(_.getBytes(codec.charSet))
+      _.mapSources(asLineSource).contramapW(s => Bytes.unsafe(s.getBytes(codec.charSet)))
     }
 
-  private def mkRawSubprocess(p: SysProcess): Subprocess[Array[Byte], Array[Byte]] =
+  private def mkRawSubprocess(p: SysProcess): Subprocess[Bytes, Bytes] =
     Subprocess(
       mkRawSink(p.getOutputStream),
       mkRawSource(p.getInputStream),
       mkRawSource(p.getErrorStream))
 
-  private def mkRawSink(os: OutputStream): Sink[Task, Array[Byte]] =
+  private def mkRawSink(os: OutputStream): Sink[Task, Bytes] =
     io.channel {
-      (bytes: Array[Byte]) => Task.delay {
-        os.write(bytes)
+      (bytes: Bytes) => Task.delay {
+        os.write(bytes.toArray)
         os.flush
       }
     }
 
-  private def mkRawSource(is: InputStream): Process[Task, Array[Byte]] = {
+  private def mkRawSource(is: InputStream): Process[Task, Bytes] = {
     val maxSize = 4096
+    val buffer = Array.ofDim[Byte](maxSize)
+
     val readChunk = Task.delay {
       val size = math.min(is.available, maxSize)
       if (size > 0) {
-        val buffer = Array.ofDim[Byte](size)
-        is.read(buffer)
-        buffer
+        is.read(buffer, 0, size)
+        Bytes.of(buffer, 0, size)
       } else throw End
     }
     repeatEval(readChunk)
@@ -89,11 +90,11 @@ object Subprocess {
     p.waitFor
   }
 
-  private def asLineSource(source: Process[Task, Array[Byte]])(implicit codec: Codec): Process[Task, String] = {
+  private def asLineSource(source: Process[Task, Bytes])(implicit codec: Codec): Process[Task, String] = {
     var carry: Option[String] = None
     source.flatMap { bytes =>
       val complete = bytes.lastOption.fold(true)(b => isNewline(b.toChar))
-      val lines = Source.fromBytes(bytes).getLines.toVector
+      val lines = Source.fromBytes(bytes.toArray).getLines.toVector
 
       val head = carry mappend lines.headOption
       val tail = lines.drop(1)
