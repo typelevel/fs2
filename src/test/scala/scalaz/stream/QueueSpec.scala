@@ -15,9 +15,15 @@ object QueueSpec extends Properties("queue") {
         l.foreach(i => q.enqueueOne(i).run)
         q.close.run
       }
-      val t2 = q.dequeue.runLog
 
-      Nondeterminism[Task].both(t1, t2).run._2.toList == l
+      val collected = new SyncVar[Throwable\/IndexedSeq[Int]]
+
+      q.dequeue.runLog.runAsync(collected.put)
+      t1.runAsync(_=>())
+ 
+      "Items were collected" |:  collected.get(3000).nonEmpty &&
+        (s"All values were collected, all: ${collected.get(0)}, l: $l " |: collected.get.getOrElse(Nil) == l)
+
   }
 
 
@@ -58,14 +64,16 @@ object QueueSpec extends Properties("queue") {
         l.foreach(i => q.enqueueOne(i).run)
         q.close.run
       }
-      val t2 = q.dequeue.runLog
-      val t3 = q.dequeue.runLog
 
-      val t23 = Nondeterminism[Task].both(t2, t3)
+      val c2 = new SyncVar[Throwable\/IndexedSeq[Int]]
+      val c3 = new SyncVar[Throwable\/IndexedSeq[Int]]
+      q.dequeue.runLog.runAsync(c2.put)
+      q.dequeue.runLog.runAsync(c3.put)
+      t1.runAsync(_=>())
 
-      val (c2, c3) = Nondeterminism[Task].both(t1, t23).run._2
-
-      ((c2 ++ c3).toSet == l.toSet) :| "all items has been received"
+      "Both partial collections were collected" |: (c2.get(3000).nonEmpty && c3.get(3000).nonEmpty) &&
+        (s"all items has been received, c2: $c2, c3: $c3, l: $l" |:
+          (c2.get.getOrElse(Nil) ++ c3.get.getOrElse(Nil)).sorted == l.sorted)
   }
 
 
