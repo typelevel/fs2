@@ -443,13 +443,13 @@ protected[stream] object Junction {
 
     // runs next source step
     def nextSource(p: Process[Task, Process[Task, I]], actor: Actor[M]) : Unit =
-      sourceState = Some(UpSourceRunning(S(WyeActor.runStepAsyncInterruptibly(p) { s => actor ! SourceStep(s) })()))
+      sourceState = Some(UpSourceRunning(WyeActor.runStepAsyncInterruptibly(p) { s => actor ! SourceStep(s) }))
 
 
     //cleans next source step
     def cleanSource(rsn: Throwable, c: Process[Task, Process[Task, I]], a: Actor[M]): Unit = {
       sourceState = Some(UpSourceRunning(() => ())) //set to noop so clean won`t get interrupted
-      S(WyeActor.runStepAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) })()
+      WyeActor.runStepAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) }
     }
 
 

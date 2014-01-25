@@ -17,6 +17,11 @@ import java.util.concurrent._
 import scala.annotation.tailrec
 import scalaz.stream.async.immutable.Signal
 import scalaz.stream.async.mutable
+import scalaz.stream._
+import scalaz.stream.ReceiveY.ReceiveL
+import scalaz.\/-
+import scalaz.-\/
+import scalaz.stream.ReceiveY.ReceiveR
 
 /**
  * A `Process[F,O]` represents a stream of `O` values which can interleave
@@ -1695,6 +1700,26 @@ object Process {
       }
       catch { case e: Throwable => src.killBy(e) }
     }
+  }
+
+
+  /** Syntax for Sink, that is specialized for Task */
+  implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
+    /** converts sink to channel, that will perform the side effect and echo its input **/
+    def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
+
+    /** converts channel to channel that first pipes received `I0` to supplied p1 **/
+    def pipeIn[I0](p1:Process1[I0,I]):Sink[Task,I0] = {
+      constant {
+        @volatile var cur: Process1[I0, I] = p1 //safe here hence at no moment 2 threads may access this at same time
+        (i0:I0) => {
+          val (piped, next) = cur.feed1(i0).unemit
+          cur = next
+          (emitSeq(piped).toSource to self).run
+        }
+      }
+    }
+
   }
 
   /**
