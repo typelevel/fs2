@@ -395,7 +395,7 @@ object BytesN {
 
 object Bytes {
 
-  val empty = Bytes1(Array.emptyByteArray, 0, 0)
+  val empty: Bytes = Bytes1(Array.emptyByteArray, 0, 0)
 
   /**
    * Creates immutable view of supplied array and wraps it into bytes.
