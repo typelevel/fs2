@@ -52,7 +52,7 @@ object Subprocess {
 
   def createLineProcess(args: String*)(implicit codec: Codec): Process[Task, Subprocess[String, String]] =
     createRawProcess(args: _*).map {
-      _.mapSources(asLineSource).contramapW(s => Bytes.unsafe(s.getBytes(codec.charSet)))
+      _.mapSources(_.pipe(lines)).contramapW(s => Bytes.unsafe(s.getBytes(codec.charSet)))
     }
 
   private def mkRawSubprocess(p: SysProcess): Subprocess[Bytes, Bytes] =
@@ -90,10 +90,15 @@ object Subprocess {
     p.waitFor
   }
 
-  private def asLineSource(source: Process[Task, Bytes])(implicit codec: Codec): Process[Task, String] = {
+  def lines(implicit codec: Codec): Process1[Bytes, String] = {
+    def isNewline(b: Byte): Boolean = {
+      val c = b.toChar
+      c == '\r' || c == '\n'
+    }
+
     var carry: Option[String] = None
-    source.flatMap { bytes =>
-      val complete = bytes.lastOption.fold(true)(b => isNewline(b.toChar))
+    process1.id[Bytes].flatMap { bytes =>
+      val complete = bytes.lastOption.fold(true)(isNewline)
       val lines = Source.fromBytes(bytes.toArray).getLines.toVector
 
       val head = carry mappend lines.headOption
@@ -111,6 +116,4 @@ object Subprocess {
       emitSeq(completeLines)
     }.onComplete(emitSeq(carry.toSeq))
   }
-
-  private def isNewline(c: Char): Boolean = c == '\r' || c == '\n'
 }
