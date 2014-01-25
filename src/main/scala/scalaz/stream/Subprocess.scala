@@ -8,6 +8,7 @@ import scalaz.std.option._
 import scalaz.std.string._
 import scalaz.syntax.semigroup._
 import Process._
+import process1._
 
 /*
 TODO:
@@ -52,7 +53,7 @@ object Subprocess {
 
   def createLineProcess(args: String*)(implicit codec: Codec): Process[Task, Subprocess[String, String]] =
     createRawProcess(args: _*).map {
-      _.mapSources(_.pipe(lines)).contramapW(s => Bytes.unsafe(s.getBytes(codec.charSet)))
+      _.mapSources(_.pipe(linesOut)).mapSink(_.pipeIn(stringsIn))
     }
 
   private def mkRawSubprocess(p: SysProcess): Subprocess[Bytes, Bytes] =
@@ -90,22 +91,27 @@ object Subprocess {
     p.waitFor
   }
 
-  def lines(implicit codec: Codec): Process1[Bytes, String] = {
+  // These processes are independent of Subprocess:
+
+  def stringsIn(implicit codec: Codec): Process1[String, Bytes] =
+    id[String].map(s => Bytes.unsafe(s.getBytes(codec.charSet)))
+
+  def linesOut(implicit codec: Codec): Process1[Bytes, String] = {
     def isNewline(b: Byte): Boolean = {
       val c = b.toChar
       c == '\r' || c == '\n'
     }
 
     var carry: Option[String] = None
-    process1.id[Bytes].flatMap { bytes =>
-      val complete = bytes.lastOption.fold(true)(isNewline)
+    id[Bytes].flatMap { bytes =>
+      val isComplete = bytes.lastOption.fold(true)(isNewline)
       val lines = Source.fromBytes(bytes.toArray).getLines.toVector
 
       val head = carry mappend lines.headOption
       val tail = lines.drop(1)
 
       val (completeLines, nextCarry) =
-        if (complete)
+        if (isComplete)
           (head.toVector ++ tail, None)
         else if (tail.nonEmpty)
           (head.toVector ++ tail.init, tail.lastOption)
