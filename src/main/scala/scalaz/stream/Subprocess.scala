@@ -94,8 +94,9 @@ object Subprocess {
   // These processes are independent of Subprocess:
 
   def stringsIn(implicit codec: Codec): Process1[String, Bytes] =
-    id[String].map(s => Bytes.unsafe(s.getBytes(codec.charSet)))
+    lift(s => Bytes.unsafe(s.getBytes(codec.charSet)))
 
+  // This is broken right now, see the linesIn-3 and linesIn-4 tests.
   def linesOut(implicit codec: Codec): Process1[Bytes, String] = {
     def isNewline(b: Byte): Boolean = {
       val c = b.toChar

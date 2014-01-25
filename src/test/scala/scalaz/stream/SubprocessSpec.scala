@@ -3,6 +3,8 @@ package scalaz.stream
 import org.scalacheck._
 import Prop._
 import scala.concurrent.duration._
+import Process._
+import Subprocess._
 
 object SubprocessSpec extends Properties("Subprocess") {
   def sleep = Process.sleep(1.millis)
@@ -69,5 +71,36 @@ object SubprocessSpec extends Properties("Subprocess") {
       quit.to(s.input).drain
     }
     p.runLog.run.toList == List("5", "8")
+  }
+
+  property("linesIn") = secure {
+    val bytes = Bytes.of("Hello\r\nWorld".getBytes)
+    val p = Process(bytes).toSource.pipe(linesOut)
+    p.runLog.run.toList == List("Hello", "World")
+  }
+
+  property("linesIn-2") = secure {
+    val b1 = Bytes.of("Hel".getBytes)
+    val b2 = Bytes.of("lo\r\nWorld".getBytes)
+
+    val p = Process(b1, b2).toSource.pipe(linesOut)
+    p.runLog.run.toList == List("Hello", "World")
+  }
+
+  property("linesIn-3") = secure {
+    val b1 = Bytes.of("Hel".getBytes)
+    val b2 = Bytes.of("lo\r".getBytes)
+    val b3 = Bytes.of("\nWorld".getBytes)
+
+    val p = Process(b1, b2, b3).toSource.pipe(linesOut)
+    p.runLog.run.toList == List("Hello", "World")
+  }
+
+  property("linesIn-4") = secure {
+    val b1 = Bytes.of(Array[Byte](-30))
+    val b2 = Bytes.of(Array[Byte](-126, -84))
+
+    val p = Process(b1, b2).toSource.pipe(linesOut)
+    p.runLog.run.toList == List(new String(Array[Byte](-30, -126, -84)))
   }
 }
