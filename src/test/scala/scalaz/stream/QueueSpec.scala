@@ -17,7 +17,9 @@ object QueueSpec extends Properties("queue") {
       }
       val t2 = q.dequeue.runLog
 
-      Nondeterminism[Task].both(t1, t2).run._2.toList == l
+      val r =  Nondeterminism[Task].both(t1, t2).run._2.toList
+
+      s"All items were collected, r: $r, l: $l " |: r == l
   }
 
 
@@ -65,7 +67,7 @@ object QueueSpec extends Properties("queue") {
 
       val (c2, c3) = Nondeterminism[Task].both(t1, t23).run._2
 
-      ((c2 ++ c3).toSet == l.toSet) :| "all items has been received"
+      ((c2 ++ c3).toSet == l.toSet) :| s"all items has been received, c2: $c2, c3: $c3, l: $l"
   }
 
 
