@@ -134,6 +134,13 @@ object ProcessSpec extends Properties("Process1") {
     }.map(_._1).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
 
+  property("window") = secure {
+    Process.range(0, 5).window(2).runLog.run.toList ==
+      List(Vector(0, 1), Vector(1, 2), Vector(2, 3), Vector(3, 4), Vector(4)) &&
+    Process.range(0, 5).window(3).runLog.run.toList ==
+      List(Vector(0, 1, 2), Vector(1, 2, 3), Vector(2, 3, 4), Vector(3, 4))
+  }
+
   import scalaz.concurrent.Task
 
   property("enqueue") = secure {
