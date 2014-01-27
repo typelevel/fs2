@@ -454,7 +454,7 @@ trait process1 {
         await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
       else
         emit(acc) fby go(acc.tail, 1)
-    go(Vector(), n)
+    if (n > 0) go(Vector(), n) else emit(Vector())
   }
 
   /** Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
