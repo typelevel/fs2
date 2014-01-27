@@ -41,6 +41,8 @@ trait process1 {
   /**
    * Groups inputs into chunks of size `n`. The last chunk may have size
    * less then `n`, depending on the number of elements in the input.
+   *
+   * @throws RuntimeException if `n` <= 0
    */
   def chunk[I](n: Int): Process1[I,Vector[I]] = {
     def go(m: Int, acc: Vector[I]): Process1[I,Vector[I]] =
@@ -447,14 +449,19 @@ trait process1 {
   val utf8Encode: Process1[String,Array[Byte]] =
     lift(_.getBytes(utf8Charset))
 
-  /** Outputs a sliding window of size `n` onto the input. */
+  /**
+   * Outputs a sliding window of size `n` onto the input.
+   *
+   * @throws RuntimeException if `n` <= 0
+   */
   def window[I](n: Int): Process1[I,Vector[I]] = {
     def go(acc: Vector[I], c: Int): Process1[I,Vector[I]] =
       if (c > 0)
         await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
       else
         emit(acc) fby go(acc.tail, 1)
-    if (n > 0) go(Vector(), n) else emit(Vector())
+    if (n <= 0) sys.error("window size must be > 0, was: " + n)
+    go(Vector(), n)
   }
 
   /** Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
