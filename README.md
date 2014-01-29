@@ -10,7 +10,7 @@ To get the latest version of the library, add the following to your SBT build:
 ``` scala
 resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
 
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.3"
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.3.1"
 ```
 
 The library only builds against Scala 2.10, not earlier versions.
