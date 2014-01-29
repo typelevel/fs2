@@ -81,4 +81,10 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     cleanedUp
   }
 
+  property("id preserves cause of failure") = secure {
+    import scalaz.\/.left
+    case object FailWhale extends RuntimeException
+    val p: Process[Task,Int] = Process.fail(FailWhale)
+    p.pipe(process1.id).attempt().runLog.run.head == left(FailWhale)
+  }
 }

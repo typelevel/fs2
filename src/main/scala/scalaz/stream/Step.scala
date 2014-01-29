@@ -13,8 +13,8 @@ case class Step[+F[_],+A](
   cleanup: Process[F,A]) {
   def headOption: Option[Seq[A]] = head.toOption
 
-  def fold[R](success: Seq[A] => R)(fallback: => R, error: => R): R =
-    head.fold(e => if (e == Process.End) fallback else error, success)
+  def fold[R](success: Seq[A] => R)(fallback: => R, error: Throwable => R): R =
+    head.fold(e => if (e == Process.End) fallback else error(e), success)
 
   def isHalted = tail.isHalt
   def isCleaned = isHalted && cleanup.isHalt
