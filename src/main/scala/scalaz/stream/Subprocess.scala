@@ -2,11 +2,9 @@ package scalaz.stream
 
 import java.io.{ InputStream, OutputStream }
 import java.lang.{ Process => SysProcess, ProcessBuilder }
-import scala.io.{ Codec, Source }
+import scala.io.Codec
 import scalaz.concurrent.Task
-import scalaz.std.option._
-import scalaz.std.string._
-import scalaz.syntax.semigroup._
+
 import Process._
 import process1._
 
@@ -53,7 +51,7 @@ object Subprocess {
 
   def createLineProcess(args: String*)(implicit codec: Codec): Process[Task, Subprocess[String, String]] =
     createRawProcess(args: _*).map {
-      _.mapSources(_.pipe(linesOut)).mapSink(_.pipeIn(stringsIn))
+      _.mapSources(_.pipe(linesIn)).mapSink(_.pipeIn(linesOut))
     }
 
   private def mkRawSubprocess(p: SysProcess): Subprocess[Bytes, Bytes] =
@@ -93,34 +91,29 @@ object Subprocess {
 
   // These processes are independent of Subprocess:
 
-  def stringsIn(implicit codec: Codec): Process1[String, Bytes] =
+  def linesOut(implicit codec: Codec): Process1[String, Bytes] =
+    lift((_: String) + "\n") |> encode
+
+  /** Convert `String` to `Bytes` using the implicitly supplied `Codec`. */
+  def encode(implicit codec: Codec): Process1[String, Bytes] =
     lift(s => Bytes.unsafe(s.getBytes(codec.charSet)))
 
-  // This is broken right now, see the linesIn-3 and linesIn-4 tests.
-  def linesOut(implicit codec: Codec): Process1[Bytes, String] = {
-    def isNewline(b: Byte): Boolean = {
-      val c = b.toChar
-      c == '\r' || c == '\n'
-    }
+  def linesIn(implicit codec: Codec): Process1[Bytes, String] = {
+    def linesOrRest: Process1[Bytes, Either[Bytes, Bytes]] =
+      id[Bytes].flatMap { bytes =>
+        val (line, lfAndRest) = bytes.span(_ != '\n'.toByte)
+        val rest = lfAndRest.drop(1)
 
-    var carry: Option[String] = None
-    id[Bytes].flatMap { bytes =>
-      val isComplete = bytes.lastOption.fold(true)(isNewline)
-      val lines = Source.fromBytes(bytes.toArray).getLines.toVector
-
-      val head = carry mappend lines.headOption
-      val tail = lines.drop(1)
-
-      val (completeLines, nextCarry) =
-        if (isComplete)
-          (head.toVector ++ tail, None)
-        else if (tail.nonEmpty)
-          (head.toVector ++ tail.init, tail.lastOption)
+        if (bytes.isEmpty)
+          emit(Left(bytes))
+        else if (lfAndRest.isEmpty)
+          emit(Right(line))
         else
-          (Vector.empty, head)
+          emit(Left(line)) fby (emit(rest) |> linesOrRest)
+      }
 
-      carry = nextCarry
-      emitSeq(completeLines)
-    }.onComplete(emitSeq(carry.toSeq))
+    linesOrRest.chunkBy2((a, _) => a.isRight).map {
+      _.foldLeft(Bytes.empty)(_ ++ _.merge).decode(codec.charSet)
+    }
   }
 }
