@@ -380,7 +380,7 @@ sealed abstract class Process[+F[_],+O] {
     case Await1(recv,fb,c) => this.step.flatMap { s =>
       s.fold { hd =>
         s.tail pipe (process1.feed(hd)(p2))
-      } (halt pipe fb, halt pipe c)
+      } (halt pipe fb, e => fail(e) pipe c)
     }
   }
 
@@ -407,12 +407,12 @@ sealed abstract class Process[+F[_],+O] {
       case AwaitL(recv,fb,c) => this.step.flatMap { s =>
         s.fold { hd =>
           s.tail.tee(p2)(scalaz.stream.tee.feedL(hd)(t))
-        } (halt.tee(p2)(fb), halt.tee(p2)(c))
+        } (halt.tee(p2)(fb), e => fail(e).tee(p2)(c))
       }
       case AwaitR(recv,fb,c) => p2.step.flatMap { s =>
         s.fold { hd =>
           this.tee(s.tail)(scalaz.stream.tee.feedR(hd)(t))
-        } (this.tee(halt)(fb), this.tee(halt)(c))
+        } (this.tee(halt)(fb), e => this.tee(fail(e))(c))
       }
     }
   }
