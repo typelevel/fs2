@@ -89,30 +89,44 @@ object Subprocess {
     p.waitFor
   }
 
-  // These processes are independent of Subprocess:
+  // These processes are independent of Subprocess and could be moved into process1:
 
-  def linesOut(implicit codec: Codec): Process1[String, Bytes] =
-    lift((_: String) + "\n") |> encode
-
-  /** Convert `String` to `Bytes` using the implicitly supplied `Codec`. */
+  /** Converts `String` to `Bytes` using the implicitly supplied `Codec`. */
   def encode(implicit codec: Codec): Process1[String, Bytes] =
     lift(s => Bytes.unsafe(s.getBytes(codec.charSet)))
 
+  /**
+   * Appends a linefeed to all input strings and converts them to `Bytes`
+   * using the implicitly supplied `Codec`.
+   */
+  def linesOut(implicit codec: Codec): Process1[String, Bytes] =
+    lift((_: String) + "\n") |> encode
+
+  /**
+   * Assembles the inputs to complete lines and converts them to `String`
+   * using the implicitly supplied `Codec`. This process takes care of
+   * lines that are spread over multiple inputs.
+   */
   def linesIn(implicit codec: Codec): Process1[Bytes, String] = {
-    def linesOrRest: Process1[Bytes, Either[Bytes, Bytes]] =
-      id[Bytes].flatMap { bytes =>
-        val (line, lfAndRest) = bytes.span(_ != '\n'.toByte)
-        val rest = lfAndRest.drop(1)
+    /**
+     * Splits the inputs into chunks separated by linefeeds. Chunks that end
+     * with a linefeed are emitted as `Left` and those that don't as `Right`.
+     */
+    def linesOrRest: Process1[Bytes, Either[Bytes, Bytes]] = {
+      def go(bytes: Bytes): Process1[Bytes, Either[Bytes, Bytes]] = {
+        val (line, rest) = bytes.span(_ != '\n'.toByte)
 
         if (bytes.isEmpty)
-          emit(Left(bytes))
-        else if (lfAndRest.isEmpty)
+          emit(Left(Bytes.empty))
+        else if (rest.isEmpty)
           emit(Right(line))
         else
-          emit(Left(line)) fby (emit(rest) |> linesOrRest)
+          emit(Left(line)) fby go(rest.drop(1))
       }
+      id[Bytes].flatMap(go)
+    }
 
-    linesOrRest.chunkBy2((a, _) => a.isRight).map {
+    linesOrRest.chunkBy2((fst, _) => fst.isRight).map {
       _.foldLeft(Bytes.empty)(_ ++ _.merge).decode(codec.charSet)
     }
   }

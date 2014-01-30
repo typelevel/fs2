@@ -103,4 +103,16 @@ object SubprocessSpec extends Properties("Subprocess") {
     val p = Process(b1, b2).pipe(linesIn).toSource
     p.runLog.run.toList == List("€")
   }
+
+  property("linesIn-5") = secure {
+    val bytes = Bytes.of("\n".getBytes)
+    val p = Process(bytes).pipe(linesIn).toSource
+    p.runLog.run.toList == List("", "")
+  }
+
+  property("linesIn-6") = secure {
+    val bytes = Bytes.of("Hello\n".getBytes)
+    val p = Process(bytes).pipe(linesIn).toSource
+    p.runLog.run.toList == List("Hello", "")
+  }
 }
