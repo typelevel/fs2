@@ -7,12 +7,12 @@ import Process._
 import Subprocess._
 
 object SubprocessSpec extends Properties("Subprocess") {
-  def sleep = Process.sleep(1.millis)
+  def sleep = Process.sleep(10.millis)
 
   property("read-only") = secure {
-    val p = Subprocess.createLineProcess("echo", "Hello World").flatMap {
+    val p = Subprocess.createX2("echo", "Hello World").flatMap {
       sleep ++
-      _.output
+      _.read
     }
     p.runLog.run.toList == List("Hello World", "")
   }

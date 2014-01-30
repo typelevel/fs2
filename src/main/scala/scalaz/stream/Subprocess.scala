@@ -7,6 +7,8 @@ import scalaz.concurrent.Task
 
 import Process._
 import process1._
+import scalaz.{\/-, -\/, \/}
+import scalaz.\/._
 
 /*
 TODO:
@@ -28,6 +30,9 @@ case class Subprocess[+R, -W](
   input: Sink[Task, W],
   output: Process[Task, R],
   error: Process[Task, R]) {
+
+  //def outputEx = Exchange(output, input)
+  //def errorEx = Exchange(error, input)
 
   def contramapW[W2](f: W2 => W): Subprocess[R, W2] =
     Subprocess(input.contramap(f), output, error)
@@ -56,11 +61,34 @@ object Subprocess {
 
   private def mkRawSubprocess(p: SysProcess): Subprocess[Bytes, Bytes] =
     Subprocess(
-      mkRawSink(p.getOutputStream),
-      mkRawSource(p.getInputStream),
-      mkRawSource(p.getErrorStream))
+      mkSink(p.getOutputStream),
+      mkSource(p.getInputStream),
+      mkSource(p.getErrorStream))
 
-  private def mkRawSink(os: OutputStream): Sink[Task, Bytes] =
+
+
+  def createX1(args: String*): Process[Task, SystemExchange[Bytes, Bytes]] =
+    io.resource(
+      Task.delay(new ProcessBuilder(args: _*).start))(
+      p => Task.delay(close(p)))(
+      p => Task.delay(mkSystemExchange(p))).once
+
+  def createX2(args: String*)(implicit codec: Codec): Process[Task, Exchange[String, String]] =
+    createX1(args: _*).map(_.pipeW(linesOut).mapO {
+        case -\/(a) => a
+        case \/-(a) => a
+    }).map(_.pipeO(linesIn))
+
+
+  type SystemExchange[R, W] = Exchange[R \/ R, W]
+
+  private def mkSystemExchange(p: SysProcess): SystemExchange[Bytes, Bytes] = {
+    Exchange(
+      mkMergedSources(p.getErrorStream, p.getInputStream),
+      mkSink(p.getOutputStream))
+  }
+
+  private def mkSink(os: OutputStream): Sink[Task, Bytes] =
     io.channel {
       (bytes: Bytes) => Task.delay {
         os.write(bytes.toArray)
@@ -68,7 +96,13 @@ object Subprocess {
       }
     }
 
-  private def mkRawSource(is: InputStream): Process[Task, Bytes] = {
+  private def mkMergedSources(err: InputStream, out: InputStream): Process[Task, Bytes \/ Bytes] = {
+    val errProc: Process[Task, Bytes \/ Bytes] = mkSource(err).map(left)
+    val outProc: Process[Task, Bytes \/ Bytes] = mkSource(out).map(right)
+    errProc.merge(outProc)
+  }
+
+  private def mkSource(is: InputStream): Process[Task, Bytes] = {
     val maxSize = 4096
     val buffer = Array.ofDim[Byte](maxSize)
 
