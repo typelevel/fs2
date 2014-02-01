@@ -42,13 +42,13 @@ trait process1 {
    * Groups inputs into chunks of size `n`. The last chunk may have size
    * less then `n`, depending on the number of elements in the input.
    *
-   * @throws RuntimeException if `n` <= 0
+   * @throws IllegalArgumentException if `n` <= 0
    */
   def chunk[I](n: Int): Process1[I,Vector[I]] = {
+    require(n > 0, "chunk size must be > 0, was: " + n)
     def go(m: Int, acc: Vector[I]): Process1[I,Vector[I]] =
       if (m <= 0) emit(acc) ++ go(n, Vector())
       else await1[I].flatMap(i => go(m-1, acc :+ i)).orElse(emit(acc))
-    if (n <= 0) sys.error("chunk size must be > 0, was: " + n)
     go(n, Vector())
   }
 
@@ -452,15 +452,15 @@ trait process1 {
   /**
    * Outputs a sliding window of size `n` onto the input.
    *
-   * @throws RuntimeException if `n` <= 0
+   * @throws IllegalArgumentException if `n` <= 0
    */
   def window[I](n: Int): Process1[I,Vector[I]] = {
+    require(n > 0, "window size must be > 0, was: " + n)
     def go(acc: Vector[I], c: Int): Process1[I,Vector[I]] =
       if (c > 0)
         await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
       else
         emit(acc) fby go(acc.tail, 1)
-    if (n <= 0) sys.error("window size must be > 0, was: " + n)
     go(Vector(), n)
   }
 

@@ -1057,14 +1057,17 @@ object Process {
    *
    * Note: The last emitted range may be truncated at `stopExclusive`. For
    * instance, `ranges(0,5,4)` results in `(0,4), (4,5)`.
+   *
+   * @throws IllegalArgumentException if `size` <= 0
    */
-  def ranges(start: Int, stopExclusive: Int, size: Int): Process[Task, (Int, Int)] =
-    if (size <= 0) sys.error("size must be > 0, was: " + size)
-    else unfold(start)(lower =>
+  def ranges(start: Int, stopExclusive: Int, size: Int): Process[Task, (Int, Int)] = {
+    require(size > 0, "size must be > 0, was: " + size)
+    unfold(start)(lower =>
       if (lower < stopExclusive)
         Some((lower -> ((lower+size) min stopExclusive), lower+size))
       else
         None)
+  }
 
   /**
    * A supply of `Long` values, starting with `initial`.
