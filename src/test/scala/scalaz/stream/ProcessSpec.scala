@@ -120,12 +120,30 @@ object ProcessSpec extends Properties("Process1") {
     })
   }
 
+  property("awaitOption") = secure {
+    Process().pipe(awaitOption).toList == List(None) &&
+    Process(1, 2).pipe(awaitOption).toList == List(Some(1))
+  }
+
+  property("chunk") = secure {
+    Process(0, 1, 2, 3, 4).chunk(2).toList == List(Vector(0, 1), Vector(2, 3), Vector(4))
+  }
+
+  property("chunkBy") = secure {
+    emitSeq("foo bar baz").chunkBy(_ != ' ').toList.map(_.mkString) ==
+      List("foo ", "bar ", "baz")
+  }
+
   property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
   }
 
   property("iterate") = secure {
     Process.iterate(0)(_ + 1).take(100).runLog.run.toList == List.iterate(0, 100)(_ + 1)
+  }
+
+  property("terminated") = secure {
+    Process(1, 2, 3).terminated.toList == List(Some(1), Some(2), Some(3), None)
   }
 
   property("unfold") = secure {
