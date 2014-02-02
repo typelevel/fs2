@@ -7,6 +7,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.IndexedSeq
 import scala.collection.{mutable, IndexedSeqOptimized}
 import scala.reflect.ClassTag
+import scalaz.Monoid
 
 /**
  * Simple `immutability` wrapper to allow easy and effective working with Array[Byte]
@@ -393,7 +394,7 @@ object BytesN {
 
 
 
-object Bytes {
+object Bytes extends BytesInstances {
 
   val empty: Bytes = Bytes1(Array.emptyByteArray, 0, 0)
 
@@ -454,6 +455,11 @@ object Bytes {
     val sz = if (size == Int.MaxValue) a.size else size
     Bytes1(a, pos, sz)
   }
+}
 
-  //todo: place instances here
+sealed abstract class BytesInstances {
+  implicit val bytesInstance = new Monoid[Bytes] {
+    def append(f1: Bytes, f2: => Bytes) = f1 ++ f2
+    def zero = Bytes.empty
+  }
 }

@@ -3,6 +3,7 @@ package scalaz.stream
 import org.scalacheck.Prop._
 import org.scalacheck.{Gen, Arbitrary, Properties}
 import scalaz._
+import scalaz.scalacheck.ScalazProperties._
 import scalaz.syntax.equal._
 import scalaz.syntax.show._
 import scalaz.std.list._
@@ -71,6 +72,9 @@ object BytesSpec extends Properties("Bytes") {
     }
   }
 
+  implicit val arbitraryBytes: Arbitrary[Bytes] = Arbitrary {
+    Gen.oneOf(arbitraryBytes1.arbitrary, arbitraryBytesN.arbitrary)
+  }
 
   def fullstack[A](f: => A): A = try f catch {case t: Throwable => t.printStackTrace(); throw t }
 
@@ -213,5 +217,5 @@ object BytesSpec extends Properties("Bytes") {
       b.toArray.toList === baa.toList
   }
 
-
+  property("monoid-laws") = monoid.laws[Bytes]
 }

@@ -42,13 +42,13 @@ trait process1 {
    * Groups inputs into chunks of size `n`. The last chunk may have size
    * less then `n`, depending on the number of elements in the input.
    *
-   * @throws RuntimeException if `n` <= 0
+   * @throws IllegalArgumentException if `n` <= 0
    */
   def chunk[I](n: Int): Process1[I,Vector[I]] = {
+    require(n > 0, "chunk size must be > 0, was: " + n)
     def go(m: Int, acc: Vector[I]): Process1[I,Vector[I]] =
       if (m <= 0) emit(acc) ++ go(n, Vector())
       else await1[I].flatMap(i => go(m-1, acc :+ i)).orElse(emit(acc))
-    if (n <= 0) sys.error("chunk size must be > 0, was: " + n)
     go(n, Vector())
   }
 
@@ -59,6 +59,9 @@ trait process1 {
   /**
    * Like `chunk`, but emits a chunk whenever the predicate switches from
    * true to false.
+   * {{{
+   * Process(1,2,-1,3,4).chunkBy(_ > 0).toList == List(Vector(1, 2, -1), Vector(3, 4))
+   * }}}
    */
   def chunkBy[I](f: I => Boolean): Process1[I,Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I,Vector[I]] =
@@ -165,14 +168,15 @@ trait process1 {
 
   /**
    * `Process1` form of `List.fold`.
-   *  Folds the elements of this Process using the specified associative binary operator.
+   * Folds the elements of this Process using the specified associative binary operator.
    *
-   *  Unlike List.fold the order is always from the `left` side, i.e. it will always
-   *  honor order of `A`.
+   * Unlike List.fold the order is always from the `left` side, i.e. it will always
+   * honor order of `A`.
    *
-   *  If Process of `A` is empty, it will just emit `z` and terminate
-   *
-   *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)`
+   * If Process of `A` is empty, it will just emit `z` and terminate
+   * {{{
+   * Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)
+   * }}}
    */
   def fold[A,B](z: B)(f: (B,A) => B): Process1[A,B] =
     scan(z)(f).last
@@ -180,12 +184,12 @@ trait process1 {
   /**
    * `Process1` form of `List.reduce`.
    *
-   *  Reduces the elements of this Process using the specified associative binary operator.
-   *
-   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(10)`
-   *  `Process(1) |> reduce(_ + _) == Process(1)`
-   *  `Process() |> reduce(_ + _) == Process()`
-   *
+   * Reduces the elements of this Process using the specified associative binary operator.
+   * {{{
+   * Process(1,2,3,4) |> reduce(_ + _) == Process(10)
+   * Process(1) |> reduce(_ + _) == Process(1)
+   * Process() |> reduce(_ + _) == Process()
+   * }}}
    */
   def fold1[A](f: (A,A) => A): Process1[A,A] =
     reduce(f)
@@ -228,7 +232,9 @@ trait process1 {
 
   /**
    * Add `separator` between elements of the input. For example,
-   * `Process(1,2,3,4) |> intersperse(0) == Process(1,0,2,0,3,0,4)`.
+   * {{{
+   * Process(1,2,3,4) |> intersperse(0) == Process(1,0,2,0,3,0,4)
+   * }}}
    */
   def intersperse[A](separator: A): Process1[A,A] =
     await1[A].flatMap(head => emit(head) ++ id[A].flatMap(a => Process(separator, a)))
@@ -298,14 +304,14 @@ trait process1 {
   /**
    * `Process1` form of `List.reduce`.
    *
-   *  Reduces the elements of this Process using the specified associative binary operator.
+   * Reduces the elements of this Process using the specified associative binary operator.
+   * {{{
+   * Process(1,2,3,4) |> reduce(_ + _) == Process(10)
+   * Process(1) |> reduce(_ + _) == Process(1)
+   * Process() |> reduce(_ + _) == Process()
+   * }}}
    *
-   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(10)`
-   *  `Process(1) |> reduce(_ + _) == Process(1)`
-   *  `Process() |> reduce(_ + _) == Process()`
-   *
-   *  Unlike `List.reduce` will not fail when Process is empty.
-   *
+   * Unlike `List.reduce` will not fail when Process is empty.
    */
   def reduce[A](f: (A,A) => A): Process1[A,A] =
     scan1(f).last
@@ -357,11 +363,11 @@ trait process1 {
 
   /**
    * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
-   *
-   *  `Process(1,2,3,4) |> scan1(_ + _) == Process(1,3,6,10)`
-   *  `Process(1) |> scan1(_ + _) == Process(1)`
-   *  `Process() |> scan1(_ + _) == Process()`
-   *
+   * {{{
+   * Process(1,2,3,4) |> scan1(_ + _) == Process(1,3,6,10)
+   * Process(1) |> scan1(_ + _) == Process(1)
+   * Process() |> scan1(_ + _) == Process()
+   * }}}
    */
   def scan1[A](f: (A,A) => A): Process1[A,A] = {
     def go(a: A): Process1[A,A] = emit(a) fby await1[A].flatMap(a2 => go(f(a,a2)))
@@ -452,15 +458,15 @@ trait process1 {
   /**
    * Outputs a sliding window of size `n` onto the input.
    *
-   * @throws RuntimeException if `n` <= 0
+   * @throws IllegalArgumentException if `n` <= 0
    */
   def window[I](n: Int): Process1[I,Vector[I]] = {
+    require(n > 0, "window size must be > 0, was: " + n)
     def go(acc: Vector[I], c: Int): Process1[I,Vector[I]] =
       if (c > 0)
         await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
       else
         emit(acc) fby go(acc.tail, 1)
-    if (n <= 0) sys.error("window size must be > 0, was: " + n)
     go(Vector(), n)
   }
 
