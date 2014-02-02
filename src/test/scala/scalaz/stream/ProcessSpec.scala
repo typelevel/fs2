@@ -2,6 +2,7 @@ package scalaz.stream
 
 import scalaz._
 import scalaz.syntax.equal._
+import scalaz.syntax.foldable._
 import scalaz.std.anyVal._
 import scalaz.std.list._
 import scalaz.std.list.listSyntax._
@@ -92,6 +93,9 @@ object ProcessSpec extends Properties("Process1") {
     ("scan1" |: {
        p.toList.scan(0)(_ + _).tail ===
        p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
+    }) &&
+    ("splitWith" |: {
+      p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
