@@ -9,9 +9,11 @@ import scalaz.syntax.show._
 import scalaz.std.list._
 import scalaz.std.string._
 import scalaz.std.anyVal._
+import java.nio.charset.Charset
 
 
 object BytesSpec extends Properties("Bytes") {
+
 
   val listEq = scalaz.std.list
 
@@ -33,11 +35,11 @@ object BytesSpec extends Properties("Bytes") {
     override def shows(f: Array[Byte]): String = f.toList.toString()
   }
 
-  implicit val showBytes1: Show[Bytes1] = new Show[Bytes1] {
+  private implicit val showBytes1: Show[Bytes1] = new Show[Bytes1] {
     override def shows(f: Bytes1): String = s"Bytes1: pos=${f.pos }, sz=${f.length }, src:${f.src.show }"
   }
 
-  implicit val showBytesN: Show[BytesN] = new Show[BytesN] {
+  private implicit val showBytesN: Show[BytesN] = new Show[BytesN] {
     override def shows(f: BytesN): String = f.seg.map(_.shows).mkString("\nBytesN: (", ";\n         ", ")")
   }
 
@@ -48,7 +50,7 @@ object BytesSpec extends Properties("Bytes") {
     }
   }
 
-  def genBytes1(min: Int, max: Int) =
+  private def genBytes1(min: Int, max: Int) =
     for {
       n <- Gen.choose(min, max)
       b <- Gen.containerOfN[Array, Byte](n, Arbitrary.arbitrary[Byte])
@@ -59,11 +61,11 @@ object BytesSpec extends Properties("Bytes") {
     }
 
 
-  implicit val arbitraryBytes1: Arbitrary[Bytes1] = Arbitrary {
+  private implicit val arbitraryBytes1: Arbitrary[Bytes1] = Arbitrary {
     Gen.sized { s => genBytes1(0, s) }
   }
 
-  implicit val arbitraryBytesN: Arbitrary[BytesN] = Arbitrary {
+  private implicit val arbitraryBytesN: Arbitrary[BytesN] = Arbitrary {
     Gen.sized { s =>
       for {
         chunks <- Gen.choose(1, s)
@@ -180,15 +182,11 @@ object BytesSpec extends Properties("Bytes") {
   }
 
   property("decode-bytes1") = forAll { b: Bytes1 =>
-    new String(b.toArray) == b.decode()
+    new String(b.toArray, Charset.forName("UTF-8")) == b.decode(Charset.forName("UTF-8"))
   }
 
   property("decode-bytesN") = forAll { b: BytesN =>
-    new String(b.toArray) == b.decode()
-  }
-
-  property("decode-bytes1") = forAll { b: Bytes1 =>
-    new String(b.toArray) == b.decode()
+    new String(b.toArray, Charset.forName("UTF-8")) == b.decode(Charset.forName("UTF-8"))
   }
 
   property("asBuffer-bytes1") = forAll { b: Bytes1 =>
