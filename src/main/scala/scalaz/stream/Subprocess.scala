@@ -4,6 +4,8 @@ import java.io.{ InputStream, OutputStream }
 import java.lang.{ Process => SysProcess, ProcessBuilder }
 import scala.io.Codec
 import scalaz.concurrent.Task
+import scalaz.std.vector._
+import scalaz.syntax.foldable._
 
 import Process._
 import process1._
@@ -161,7 +163,7 @@ object Subprocess {
     }
 
     linesOrRest.chunkBy2((fst, _) => fst.isRight).map {
-      _.foldLeft(Bytes.empty)(_ ++ _.merge).decode(codec.charSet)
+      _.foldMap(_.merge).decode(codec.charSet)
     }
   }
 }
