@@ -92,7 +92,7 @@ final class BytesBuilder extends mutable.Builder[Byte, Bytes] {
 
 
 /** Bytes instance with only one segment **/
-private final case class Bytes1 private[stream](
+final case class Bytes1 private[stream](
   private[stream] val src: Array[Byte]
   , private[stream] val pos: Int
   , val length: Int
@@ -198,13 +198,13 @@ private final case class Bytes1 private[stream](
     s"Bytes1: pos=$pos, length=$length, src: ${src.take(10 min length).mkString("(",",",if(length > 10) "..." else ")" )}"
 }
 
-private object Bytes1 {
+object Bytes1 {
 
   //todo: place instances here
 }
 
 /** Bytes instance with N segments **/
-private final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1]) extends Bytes {
+final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1]) extends Bytes {
 
   def append(that: Bytes): Bytes =
     if (that.isEmpty) this
@@ -379,7 +379,7 @@ private final case class BytesN private[stream](private[stream] val seg: Vector[
   override def foreach[@specialized U](f: (Byte) => U): Unit = seg.foreach(_.foreach(f))
 }
 
-private object BytesN {
+object BytesN {
 
   //todo: place instances here
 
