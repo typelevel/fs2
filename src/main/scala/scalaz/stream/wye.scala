@@ -130,8 +130,10 @@ trait wye {
   }
 
   /**
-   * Nondeterminstic interleave of both inputs. Emits values whenever either
+   * Non-deterministic interleave of both inputs. Emits values whenever either
    * of the inputs is available.
+   *
+   * Will terminate once both sides terminate.
    */
   def merge[I]: Wye[I,I,I] = {
     def go: Wye[I,I,I] =
@@ -139,10 +141,43 @@ trait wye {
         case ReceiveL(i) => emit(i) fby go
         case ReceiveR(i) => emit(i) fby go
         case other => go
-      }
-    )
+      })
     go
   }
+
+  /**
+   * Like `merge`, but terminates whenever one side terminate.
+   */
+  def mergeHaltBoth[I]: Wye[I,I,I] = {
+    def go: Wye[I,I,I] =
+      receiveBoth[I,I,I]({
+        case ReceiveL(i) => emit(i) fby go
+        case ReceiveR(i) => emit(i) fby go
+        case HaltOne(rsn) => Halt(rsn)
+      })
+    go
+  }
+
+  /**
+   * Like `merge`, but terminates whenever left side terminates.
+   * use `flip` to reverse this for the right side
+   */
+  def mergeHaltL[I]: Wye[I,I,I] = {
+    def go: Wye[I,I,I] =
+      receiveBoth[I,I,I]({
+        case ReceiveL(i) => emit(i) fby go
+        case ReceiveR(i) => emit(i) fby go
+        case HaltL(rsn) => Halt(rsn)
+        case HaltR(_) => go
+      })
+    go
+  }
+
+  /**
+   * Like `merge`, but terminates whenever right side terminates
+   */
+  def mergeHaltR[I]: Wye[I,I,I] =
+    wye.flip(mergeHaltL)
 
   /**
    * A `Wye` which blocks on the right side when either a) the age of the oldest unanswered

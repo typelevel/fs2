@@ -26,7 +26,7 @@ object NioServer {
     val srv =
       nio.server(address).map {
         _.flatMap {
-          ex => ex.readThrough(w).runReceive
+          ex => ex.readThrough(w).run()
         }
       }
 
