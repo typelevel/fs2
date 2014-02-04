@@ -3,9 +3,8 @@ package scalaz.stream
 import java.io.{ InputStream, OutputStream }
 import java.lang.{ Process => SysProcess, ProcessBuilder }
 import scala.io.Codec
+import scalaz.Monoid
 import scalaz.concurrent.Task
-import scalaz.std.vector._
-import scalaz.syntax.foldable._
 
 import Process._
 import process1._
@@ -144,26 +143,30 @@ object Subprocess {
    * lines that are spread over multiple inputs.
    */
   def linesIn(implicit codec: Codec): Process1[Bytes, String] = {
-    /**
-     * Splits the inputs into chunks separated by linefeeds. Chunks that end
-     * with a linefeed are emitted as `Left` and those that don't as `Right`.
-     */
-    def linesOrRest: Process1[Bytes, Either[Bytes, Bytes]] = {
-      def go(bytes: Bytes): Process1[Bytes, Either[Bytes, Bytes]] = {
-        val (line, rest) = bytes.span(_ != '\n'.toByte)
-
-        if (bytes.isEmpty)
-          emit(Left(Bytes.empty))
-        else if (rest.isEmpty)
-          emit(Right(line))
-        else
-          emit(Left(line)) fby go(rest.drop(1))
-      }
-      id[Bytes].flatMap(go)
+    def splitLines(bytes: Bytes): Vector[Bytes] = {
+      def go(bytes: Bytes, acc: Vector[Bytes]): Vector[Bytes] =
+        bytes.span(_ != '\n'.toByte) match {
+          case (line, Bytes.empty) => acc :+ line
+          case (line, rest)        => go(rest.drop(1), acc :+ line)
+        }
+      go(bytes, Vector())
     }
-
-    linesOrRest.chunkBy2((fst, _) => fst.isRight).map {
-      _.foldMap(_.merge).decode(codec.charSet)
-    }
+    repartition(splitLines).map(_.decode(codec.charSet))
   }
+
+  def repartition[I](p: I => Vector[I])(implicit M: Monoid[I]): Process1[I,I] = {
+    def go(carry: I): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val parts = p(M.append(carry, i))
+        parts.size match {
+          case 0 => go(M.zero)
+          case 1 => go(parts.head)
+          case _ => emitSeq(parts.init) fby go(parts.last)
+        }
+      } orElse emit(carry)
+    go(M.zero)
+  }
+
+
+
 }

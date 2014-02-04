@@ -93,6 +93,7 @@ object SubprocessSpec extends Properties("Subprocess") {
     val b3 = Bytes.of("\nWorld\n".getBytes)
 
     val p = Process(b1, b2, b3).pipe(linesIn).toSource
+    println(p.runLog.run.toList)
     p.runLog.run.toList == List("Hello", "World", "")
   }
 
