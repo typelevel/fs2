@@ -701,7 +701,7 @@ sealed abstract class Process[+F[_],+O] {
   def last: Process[F,O] = this |> process1.last
 
   /** Alias for `this |> process1.repartition(p)` */
-  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit M: Monoid[O2]): Process[F,O2] =
+  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
     this |> process1.repartition(p)
 
   /** Connect this `Process` to `process1.scan(b)(f)`. */
