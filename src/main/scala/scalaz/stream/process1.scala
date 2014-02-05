@@ -334,6 +334,30 @@ trait process1 {
   def reduceMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
     id[A].map(f).reduceMonoid(M)
 
+  /**
+   * Repartitions the input with the function `p`. On each step `p` is applied
+   * to the input and all elements but the last of the resulting sequence
+   * are emitted. The last element is then appended to the next input using the
+   * Semigroup `I`. For example,
+   * {{{
+   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq) ==
+   *   Process("Hello", "World")
+   * }}}
+   */
+  def repartition[I](p: I => IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
+    def go(carry: Option[I]): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val next = carry.fold(i)(c => I.append(c, i))
+        val parts = p(next)
+        parts.size match {
+          case 0 => go(None)
+          case 1 => go(Some(parts.head))
+          case _ => emitSeq(parts.init) fby go(Some(parts.last))
+        }
+      } orElse emitSeq(carry.toList)
+    go(None)
+  }
+
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
     await1[Throwable \/ A].flatMap {
