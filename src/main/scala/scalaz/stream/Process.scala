@@ -700,6 +700,10 @@ sealed abstract class Process[+F[_],+O] {
   /** Skips all elements emitted by this `Process` except the last. */
   def last: Process[F,O] = this |> process1.last
 
+  /** Alias for `this |> process1.repartition(p)` */
+  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.repartition(p)
+
   /** Connect this `Process` to `process1.scan(b)(f)`. */
   def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
     this |> process1.scan(b)(f)
