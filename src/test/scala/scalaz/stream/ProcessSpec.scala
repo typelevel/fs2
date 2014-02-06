@@ -142,6 +142,17 @@ object ProcessSpec extends Properties("Process1") {
     Process.iterate(0)(_ + 1).take(100).runLog.run.toList == List.iterate(0, 100)(_ + 1)
   }
 
+  property("repartition") = secure {
+    Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ").toIndexedSeq).toList ==
+      List("Lorem", "ipsum", "dolor", "sit", "amet") &&
+    Process("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ==
+      List("he", "ll", "o ", "Wo", "rl", "d") &&
+    Process(1, 2, 3, 4, 5).repartition(i => Vector(i, i)).toList ==
+      List(1, 3, 6, 10, 15, 15) &&
+    (Process(): Process[Nothing, String]).repartition(_ => Vector()).toList == List() &&
+    Process("hello").repartition(_ => Vector()).toList == List()
+  }
+
   property("terminated") = secure {
     Process(1, 2, 3).terminated.toList == List(Some(1), Some(2), Some(3), None)
   }
