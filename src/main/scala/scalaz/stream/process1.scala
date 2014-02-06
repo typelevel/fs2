@@ -337,7 +337,7 @@ trait process1 {
   /**
    * Repartitions the input with the function `p`. On each step `p` is applied
    * to the input and all elements but the last of the resulting sequence
-   * are emitted. The last element is then appended to the next input using the
+   * are emitted. The last element is then prepended to the next input using the
    * Semigroup `I`. For example,
    * {{{
    * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq) ==
