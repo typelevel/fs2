@@ -433,13 +433,6 @@ trait process1 {
     go(Vector())
   }
 
-  /** Remove any `None` inputs. */
-  def stripNone[A]: Process1[Option[A],A] =
-    await1[Option[A]].flatMap {
-      case None => stripNone
-      case Some(a) => emit(a) ++ stripNone
-    }
-
   /**
    * Break the input into chunks where the input is equal to the given delimiter.
    * The delimiter does not appear in the output. Two adjacent delimiters in the
@@ -447,6 +440,31 @@ trait process1 {
    */
   def splitOn[I:Equal](i: I): Process1[I, Vector[I]] =
     split(_ === i)
+
+  /**
+   * Breaks the input into chunks that alternatively satisfy and don't satisfy
+   * the predicate `f`.
+   * {{{
+   * Process(1,2,-3,-4,5,6).splitWith(_ < 0).toList ==
+   *   List(Vector(1,2), Vector(-3,-4), Vector(5,6))
+   * }}}
+   */
+  def splitWith[I](f: I => Boolean): Process1[I,Vector[I]] = {
+    def go(acc: Vector[I], last: Boolean): Process1[I,Vector[I]] =
+      await1[I].flatMap { i =>
+        val cur = f(i)
+        if (cur == last) go(acc :+ i, cur)
+        else emit(acc) fby go(Vector(i), cur)
+      } orElse emit(acc)
+    await1[I].flatMap(i => go(Vector(i), f(i)))
+  }
+
+  /** Remove any `None` inputs. */
+  def stripNone[A]: Process1[Option[A],A] =
+    await1[Option[A]].flatMap {
+      case None => stripNone
+      case Some(a) => emit(a) ++ stripNone
+    }
 
   /**
    * Emit a running sum of the values seen so far. The first value emitted will be the

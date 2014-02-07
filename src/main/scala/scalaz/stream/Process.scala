@@ -610,6 +610,10 @@ sealed abstract class Process[+F[_],+O] {
   def splitOn[P >: O](p: P)(implicit P: Equal[P]): Process[F,Vector[P]] =
     this |> process1.splitOn(p)
 
+  /** Alias for `this |> process1.splitWith(f)` */
+  def splitWith(f: O => Boolean): Process[F,Vector[O]] =
+    this |> process1.splitWith(f)
+
   /** Alias for `this |> process1.chunkAll`. */
   def chunkAll: Process[F,Vector[O]] =
     this |> process1.chunkAll
@@ -620,19 +624,19 @@ sealed abstract class Process[+F[_],+O] {
 
   /** Ignores the first `n` elements output from this `Process`. */
   def drop(n: Int): Process[F,O] =
-    this |> processes.drop[O](n)
+    this |> process1.drop[O](n)
 
   /** Ignores elements from the output of this `Process` until `f` tests false. */
   def dropWhile(f: O => Boolean): Process[F,O] =
-    this |> processes.dropWhile(f)
+    this |> process1.dropWhile(f)
 
   /** Skips any output elements not matching the predicate. */
   def filter(f: O => Boolean): Process[F,O] =
-    this |> processes.filter(f)
+    this |> process1.filter(f)
 
   /** Alias for `this |> process1.find(f)` */
   def find(f: O => Boolean): Process[F,O] =
-    this |> processes.find(f)
+    this |> process1.find(f)
 
   /** Alias for `this |> process1.exists(f)` */
   def exists(f: O => Boolean): Process[F, Boolean] =
