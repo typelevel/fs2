@@ -9,9 +9,11 @@ import scalaz.syntax.show._
 import scalaz.std.list._
 import scalaz.std.string._
 import scalaz.std.anyVal._
+import java.nio.charset.Charset
 
 
 object BytesSpec extends Properties("Bytes") {
+
 
   val listEq = scalaz.std.list
 
@@ -180,15 +182,11 @@ object BytesSpec extends Properties("Bytes") {
   }
 
   property("decode-bytes1") = forAll { b: Bytes1 =>
-    new String(b.toArray) == b.decode()
+    new String(b.toArray, Charset.forName("UTF-8")) == b.decode(Charset.forName("UTF-8"))
   }
 
   property("decode-bytesN") = forAll { b: BytesN =>
-    new String(b.toArray) == b.decode()
-  }
-
-  property("decode-bytes1") = forAll { b: Bytes1 =>
-    new String(b.toArray) == b.decode()
+    new String(b.toArray, Charset.forName("UTF-8")) == b.decode(Charset.forName("UTF-8"))
   }
 
   property("asBuffer-bytes1") = forAll { b: Bytes1 =>
