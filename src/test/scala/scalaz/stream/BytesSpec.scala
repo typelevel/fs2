@@ -215,5 +215,13 @@ object BytesSpec extends Properties("Bytes") {
       b.toArray.toList === baa.toList
   }
 
+  property("bytes-splitAt-zero-length-segment") = {
+    val split: (BytesN, BytesN) = (Bytes.of("0".getBytes) ++ Bytes.of("0".getBytes)).splitAt(1)._2.splitAt(0).asInstanceOf[(BytesN, BytesN)]
+    val expected = (BytesN(Vector[Bytes1]()), BytesN(Vector[Bytes1](Bytes1("0".getBytes, 0 ,1))))
+    split._1.toArray === expected._1.toArray &&
+      split._2.toArray === expected._2.toArray
+
+ }
+
   property("monoid-laws") = monoid.laws[Bytes]
 }
