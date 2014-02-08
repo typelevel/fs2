@@ -493,6 +493,38 @@ trait process1 {
 
   private val utf8Charset = Charset.forName("UTF-8")
 
+  /** Converts UTF-8 encoded `Bytes` into `String`. */
+  val utf8Decode: Process1[Bytes,String] = {
+    def byteSeqLength(b: Byte): Int = {
+      if      ((b >> 7) ==  0) 0 // ASCII byte
+      else if ((b >> 5) == -2) 1 // leading byte of a 1 byte seq
+      else if ((b >> 4) == -2) 2 // leading byte of a 2 byte seq
+      else if ((b >> 3) == -2) 3 // leading byte of a 3 byte seq
+      else -1                    // continuation byte or garbage
+    }
+
+    def splitAtLastIncompleteChar(buggyBytes: Bytes): Vector[Bytes] = {
+      val bytes = buggyBytes.compact // workaround for #96
+
+      val lastThree = bytes.reverseIterator.take(3)
+      val revSplitIndex = lastThree.map(byteSeqLength).zipWithIndex.find {
+        case (len, _) => len >= 0
+      } map {
+        case (len, index) => if (len == index) 0 else index + 1
+      } getOrElse(0)
+      val splitIndex = bytes.length - revSplitIndex
+
+      if (splitIndex == 0 || revSplitIndex == 0)
+        Vector(bytes)
+      else {
+        val (complete, rest) = bytes.splitAt(splitIndex)
+        Vector(complete, rest)
+      }
+    }
+
+    repartition(splitAtLastIncompleteChar).map(_.decode(utf8Charset))
+  }
+
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
   val utf8Encode: Process1[String,Array[Byte]] =
     lift(_.getBytes(utf8Charset))

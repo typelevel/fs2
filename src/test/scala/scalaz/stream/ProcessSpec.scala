@@ -167,6 +167,19 @@ object ProcessSpec extends Properties("Process1") {
     }.map(_._1).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
 
+  property("utf8Decode") = forAll { (s: String) =>
+    ("n-byte seq" |: {
+      val n = Gen.choose(1,11).sample.getOrElse(1)
+      val bytes = Bytes.of(s.getBytes("UTF-8")).grouped(n).toSeq
+      emitSeq(bytes).pipe(utf8Decode).toList.mkString === s
+    }) &&
+    ("1-byte seq" |: {
+      val bytes = Bytes.of(s.getBytes("UTF-8")).grouped(1).toSeq
+      val list = emitSeq(bytes).pipe(utf8Decode).toList
+      list.forall(_.length <= 2) && list.mkString === s
+    })
+  }
+
   property("window") = secure {
     def window(n: Int) = Process.range(0, 5).window(n).runLog.run.toList
     window(1) == List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
