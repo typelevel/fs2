@@ -186,7 +186,9 @@ object ProcessSpec extends Properties("Process1") {
     def checkOneChar(a: Array[Int]) = {
       val b = a.map(_.toByte)
       val s = new String(b, "UTF-8")
-      emitSeq(Bytes.of(b).grouped(1).toSeq).pipe(utf8Decode).toList == List(s)
+      (1 to 4).forall { n =>
+        emitSeq(Bytes.of(b).grouped(n).toSeq).pipe(utf8Decode).toList == List(s)
+      }
     }
 
     checkOneChar(Array(0x24)) &&
