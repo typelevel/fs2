@@ -168,16 +168,31 @@ object ProcessSpec extends Properties("Process1") {
   }
 
   property("utf8Decode") = forAll { (s: String) =>
+    def utf8Bytes(s: String) = Bytes.of(s.getBytes("UTF-8"))
+
     ("n-byte seq" |: {
       val n = Gen.choose(1,11).sample.getOrElse(1)
-      val bytes = Bytes.of(s.getBytes("UTF-8")).grouped(n).toSeq
+      val bytes = utf8Bytes(s).grouped(n).toSeq
       emitSeq(bytes).pipe(utf8Decode).toList.mkString === s
     }) &&
     ("1-byte seq" |: {
-      val bytes = Bytes.of(s.getBytes("UTF-8")).grouped(1).toSeq
+      val bytes = utf8Bytes(s).grouped(1).toSeq
       val list = emitSeq(bytes).pipe(utf8Decode).toList
       list.forall(_.length <= 2) && list.mkString === s
     })
+  }
+
+  property("utf8Decode.single chars") = secure {
+    def checkOneChar(a: Array[Int]) = {
+      val b = a.map(_.toByte)
+      val s = new String(b, "UTF-8")
+      emitSeq(Bytes.of(b).grouped(1).toSeq).pipe(utf8Decode).toList == List(s)
+    }
+
+    checkOneChar(Array(0x24)) &&
+    checkOneChar(Array(0xC2, 0xA2)) &&
+    checkOneChar(Array(0xE2, 0x82, 0xAC)) &&
+    checkOneChar(Array(0xF0, 0xA4, 0xAD, 0xA2))
   }
 
   property("window") = secure {
