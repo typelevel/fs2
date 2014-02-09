@@ -342,14 +342,13 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
     @tailrec
     def go(at: Int, acc: Vector[Bytes1], rem: Vector[Bytes1]): Bytes = {
       rem.headOption match {
-        case Some(b1) if at + b1.size < from  => go(at+b1.size,Vector(),rem.tail)
+        case Some(b1) if at + b1.size <= from  => go(at+b1.size,Vector(),rem.tail)
         case Some(b1) =>
           val start = (from - at) max 0
           val end = (until - at ) min b1.size
           if (end <= 0) BytesN(acc)
           else go(at + b1.size, acc :+ b1.slice(start,end).asInstanceOf[Bytes1], rem.tail)
         case None if acc.isEmpty => Bytes.empty
-        case None if acc.size == 1 => acc.head
         case None => BytesN(acc)
       }
     }
