@@ -503,9 +503,7 @@ trait process1 {
       else -1                    // continuation byte or garbage
     }
 
-    def splitAtLastIncompleteChar(buggyBytes: Bytes): Vector[Bytes] = {
-      val bytes = buggyBytes.compact // workaround for #96
-
+    def splitAtLastIncompleteChar(bytes: Bytes): Vector[Bytes] = {
       val lastThree = bytes.reverseIterator.take(3)
       val revSplitIndex = lastThree.map(contBytesCount).zipWithIndex.find {
         case (len, _) => len >= 0
