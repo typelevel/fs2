@@ -43,3 +43,5 @@ OsgiKeys.importPackage := Seq(
   """scalaz.*;version="$<range;[===,=+);$<@>>"""",
   "*"
 )
+
+ScctPlugin.instrumentSettings
