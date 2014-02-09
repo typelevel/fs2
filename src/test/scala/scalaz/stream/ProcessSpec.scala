@@ -201,6 +201,11 @@ object ProcessSpec extends Properties("Process1") {
     checkOneChar(Array(0xF0, 0xA4, 0xAD, 0xA2))
   }
 
+  property("utf8Decode.preserve input chunks, if complete") =
+    forAll(Gen.containerOf[List,String](Gen.alphaStr)) { list =>
+      emitSeq(list).map(s => Bytes.of(s.getBytes)).pipe(utf8Decode).toList === list
+    }
+
   property("window") = secure {
     def window(n: Int) = Process.range(0, 5).window(n).runLog.run.toList
     window(1) == List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
