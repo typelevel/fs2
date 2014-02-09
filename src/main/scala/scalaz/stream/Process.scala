@@ -736,6 +736,10 @@ sealed abstract class Process[+F[_],+O] {
   def scan1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.scan1Map(f)(M)
 
+  /** Alias for `this |> process1.skipLast`. */
+  def skipLast: Process[F,O] =
+    this |> process1.skipLast
+
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] =
     this |> processes.take[O](n)

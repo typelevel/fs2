@@ -97,6 +97,9 @@ object ProcessSpec extends Properties("Process1") {
     ("splitWith" |: {
       p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
     }) &&
+    ("skipLast" |: {
+      p.skipLast.toList === p.toList.dropRight(1)
+    }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
       p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
@@ -191,7 +194,7 @@ object ProcessSpec extends Properties("Process1") {
       val b = a.map(_.toByte)
       val s = new String(b, "UTF-8")
       (1 to 4).forall { n =>
-        emitSeq(Bytes.of(b).grouped(n).toSeq).pipe(utf8Decode).toList == List(s)
+        emitSeq(Bytes.of(b).grouped(n).toSeq).pipe(utf8Decode).toList === List(s)
       }
     }
 
