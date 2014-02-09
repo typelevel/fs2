@@ -179,6 +179,10 @@ object ProcessSpec extends Properties("Process1") {
       val bytes = utf8Bytes(s).grouped(1).toSeq
       val list = emitSeq(bytes).pipe(utf8Decode).toList
       list.forall(_.length <= 2) && list.mkString === s
+    }) &&
+    ("inverse of utf8Encode" |: {
+      Process(s).pipe(utf8Encode).map(a => Bytes.of(a)).pipe(utf8Decode).toList ===
+        List(s)
     })
   }
 
