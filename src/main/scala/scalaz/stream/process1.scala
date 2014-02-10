@@ -423,6 +423,7 @@ trait process1 {
   def skipLast[I]: Process1[I,I] =
     skipLastIf(_ => true)
 
+  /** Emits all elemens of the input but skips the last if the predicate is true. */
   def skipLastIf[I](p: I => Boolean): Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
       awaitOption[I].flatMap {

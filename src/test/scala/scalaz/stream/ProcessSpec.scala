@@ -100,6 +100,12 @@ object ProcessSpec extends Properties("Process1") {
     ("skipLast" |: {
       p.skipLast.toList === p.toList.dropRight(1)
     }) &&
+    ("skipLastIf" |: {
+      val pred = (_: Int) % 2 == 0
+      val pl = p.toList
+      val n = if (pl.lastOption.map(pred).getOrElse(false)) 1 else 0
+      p.skipLastIf(pred).toList === pl.dropRight(n)
+    }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
       p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
