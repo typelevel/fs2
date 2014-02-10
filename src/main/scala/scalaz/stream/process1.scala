@@ -12,6 +12,7 @@ import scalaz.stream.processes._
 import scalaz.stream.Process.Emit
 import scala.Some
 import scalaz.stream.Process.Halt
+import scalaz.stream.ReceiveY.{HaltL, HaltR, ReceiveR, ReceiveL}
 
 trait process1 {
 
@@ -40,12 +41,14 @@ trait process1 {
   /**
    * Groups inputs into chunks of size `n`. The last chunk may have size
    * less then `n`, depending on the number of elements in the input.
+   *
+   * @throws IllegalArgumentException if `n` <= 0
    */
   def chunk[I](n: Int): Process1[I,Vector[I]] = {
+    require(n > 0, "chunk size must be > 0, was: " + n)
     def go(m: Int, acc: Vector[I]): Process1[I,Vector[I]] =
       if (m <= 0) emit(acc) ++ go(n, Vector())
       else await1[I].flatMap(i => go(m-1, acc :+ i)).orElse(emit(acc))
-    if (n <= 0) sys.error("chunk size must be > 0, was: " + n)
     go(n, Vector())
   }
 
@@ -56,6 +59,9 @@ trait process1 {
   /**
    * Like `chunk`, but emits a chunk whenever the predicate switches from
    * true to false.
+   * {{{
+   * Process(1,2,-1,3,4).chunkBy(_ > 0).toList == List(Vector(1, 2, -1), Vector(3, 4))
+   * }}}
    */
   def chunkBy[I](f: I => Boolean): Process1[I,Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I,Vector[I]] =
@@ -162,14 +168,15 @@ trait process1 {
 
   /**
    * `Process1` form of `List.fold`.
-   *  Folds the elements of this Process using the specified associative binary operator.
+   * Folds the elements of this Process using the specified associative binary operator.
    *
-   *  Unlike List.fold the order is always from the `left` side, i.e. it will always
-   *  honor order of `A`.
+   * Unlike List.fold the order is always from the `left` side, i.e. it will always
+   * honor order of `A`.
    *
-   *  If Process of `A` is empty, it will just emit `z` and terminate
-   *
-   *  `Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)`
+   * If Process of `A` is empty, it will just emit `z` and terminate
+   * {{{
+   * Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)
+   * }}}
    */
   def fold[A,B](z: B)(f: (B,A) => B): Process1[A,B] =
     scan(z)(f).last
@@ -177,12 +184,12 @@ trait process1 {
   /**
    * `Process1` form of `List.reduce`.
    *
-   *  Reduces the elements of this Process using the specified associative binary operator.
-   *
-   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(10)`
-   *  `Process(1) |> reduce(_ + _) == Process(1)`
-   *  `Process() |> reduce(_ + _) == Process()`
-   *
+   * Reduces the elements of this Process using the specified associative binary operator.
+   * {{{
+   * Process(1,2,3,4) |> reduce(_ + _) == Process(10)
+   * Process(1) |> reduce(_ + _) == Process(1)
+   * Process() |> reduce(_ + _) == Process()
+   * }}}
    */
   def fold1[A](f: (A,A) => A): Process1[A,A] =
     reduce(f)
@@ -225,7 +232,9 @@ trait process1 {
 
   /**
    * Add `separator` between elements of the input. For example,
-   * `Process(1,2,3,4) |> intersperse(0) == Process(1,0,2,0,3,0,4)`.
+   * {{{
+   * Process(1,2,3,4) |> intersperse(0) == Process(1,0,2,0,3,0,4)
+   * }}}
    */
   def intersperse[A](separator: A): Process1[A,A] =
     await1[A].flatMap(head => emit(head) ++ id[A].flatMap(a => Process(separator, a)))
@@ -295,14 +304,14 @@ trait process1 {
   /**
    * `Process1` form of `List.reduce`.
    *
-   *  Reduces the elements of this Process using the specified associative binary operator.
+   * Reduces the elements of this Process using the specified associative binary operator.
+   * {{{
+   * Process(1,2,3,4) |> reduce(_ + _) == Process(10)
+   * Process(1) |> reduce(_ + _) == Process(1)
+   * Process() |> reduce(_ + _) == Process()
+   * }}}
    *
-   *  `Process(1,2,3,4) |> reduce(_ + _) == Process(10)`
-   *  `Process(1) |> reduce(_ + _) == Process(1)`
-   *  `Process() |> reduce(_ + _) == Process()`
-   *
-   *  Unlike `List.reduce` will not fail when Process is empty.
-   *
+   * Unlike `List.reduce` will not fail when Process is empty.
    */
   def reduce[A](f: (A,A) => A): Process1[A,A] =
     scan1(f).last
@@ -324,6 +333,30 @@ trait process1 {
    */
   def reduceMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
     id[A].map(f).reduceMonoid(M)
+
+  /**
+   * Repartitions the input with the function `p`. On each step `p` is applied
+   * to the input and all elements but the last of the resulting sequence
+   * are emitted. The last element is then prepended to the next input using the
+   * Semigroup `I`. For example,
+   * {{{
+   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq) ==
+   *   Process("Hello", "World")
+   * }}}
+   */
+  def repartition[I](p: I => IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
+    def go(carry: Option[I]): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val next = carry.fold(i)(c => I.append(c, i))
+        val parts = p(next)
+        parts.size match {
+          case 0 => go(None)
+          case 1 => go(Some(parts.head))
+          case _ => emitSeq(parts.init) fby go(Some(parts.last))
+        }
+      } orElse emitSeq(carry.toList)
+    go(None)
+  }
 
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
@@ -354,11 +387,11 @@ trait process1 {
 
   /**
    * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
-   *
-   *  `Process(1,2,3,4) |> scan1(_ + _) == Process(1,3,6,10)`
-   *  `Process(1) |> scan1(_ + _) == Process(1)`
-   *  `Process() |> scan1(_ + _) == Process()`
-   *
+   * {{{
+   * Process(1,2,3,4) |> scan1(_ + _) == Process(1,3,6,10)
+   * Process(1) |> scan1(_ + _) == Process(1)
+   * Process() |> scan1(_ + _) == Process()
+   * }}}
    */
   def scan1[A](f: (A,A) => A): Process1[A,A] = {
     def go(a: A): Process1[A,A] = emit(a) fby await1[A].flatMap(a2 => go(f(a,a2)))
@@ -400,13 +433,6 @@ trait process1 {
     go(Vector())
   }
 
-  /** Remove any `None` inputs. */
-  def stripNone[A]: Process1[Option[A],A] =
-    await1[Option[A]].flatMap {
-      case None => stripNone
-      case Some(a) => emit(a) ++ stripNone
-    }
-
   /**
    * Break the input into chunks where the input is equal to the given delimiter.
    * The delimiter does not appear in the output. Two adjacent delimiters in the
@@ -414,6 +440,31 @@ trait process1 {
    */
   def splitOn[I:Equal](i: I): Process1[I, Vector[I]] =
     split(_ === i)
+
+  /**
+   * Breaks the input into chunks that alternatively satisfy and don't satisfy
+   * the predicate `f`.
+   * {{{
+   * Process(1,2,-3,-4,5,6).splitWith(_ < 0).toList ==
+   *   List(Vector(1,2), Vector(-3,-4), Vector(5,6))
+   * }}}
+   */
+  def splitWith[I](f: I => Boolean): Process1[I,Vector[I]] = {
+    def go(acc: Vector[I], last: Boolean): Process1[I,Vector[I]] =
+      await1[I].flatMap { i =>
+        val cur = f(i)
+        if (cur == last) go(acc :+ i, cur)
+        else emit(acc) fby go(Vector(i), cur)
+      } orElse emit(acc)
+    await1[I].flatMap(i => go(Vector(i), f(i)))
+  }
+
+  /** Remove any `None` inputs. */
+  def stripNone[A]: Process1[Option[A],A] =
+    await1[Option[A]].flatMap {
+      case None => stripNone
+      case Some(a) => emit(a) ++ stripNone
+    }
 
   /**
    * Emit a running sum of the values seen so far. The first value emitted will be the
@@ -446,14 +497,34 @@ trait process1 {
   val utf8Encode: Process1[String,Array[Byte]] =
     lift(_.getBytes(utf8Charset))
 
-  /** Outputs a sliding window of size `n` onto the input. */
+  /**
+   * Outputs a sliding window of size `n` onto the input.
+   *
+   * @throws IllegalArgumentException if `n` <= 0
+   */
   def window[I](n: Int): Process1[I,Vector[I]] = {
+    require(n > 0, "window size must be > 0, was: " + n)
     def go(acc: Vector[I], c: Int): Process1[I,Vector[I]] =
       if (c > 0)
         await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
       else
         emit(acc) fby go(acc.tail, 1)
     go(Vector(), n)
+  }
+
+  /** Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
+   * Use `wye.flip` to convert it to right side **/
+  def liftY[I,O](p:Process1[I,O]) : Wye[I,Nothing,O] = {
+    def go(cur:Process1[I,O]) : Wye[I,Nothing,O] = {
+      awaitL[I].flatMap { i =>
+         cur.feed1(i).unemit match {
+           case (out,Halt(rsn)) => emitSeq(out) fby Halt(rsn)
+           case (out,next) => emitSeq(out) fby go(next)
+         }
+
+      }
+    }
+    go(p)
   }
 
 }

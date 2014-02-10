@@ -2,13 +2,14 @@ package scalaz.stream
 
 import scalaz._
 import scalaz.syntax.equal._
+import scalaz.syntax.foldable._
 import scalaz.std.anyVal._
 import scalaz.std.list._
 import scalaz.std.list.listSyntax._
 import scalaz.std.string._
 
 import org.scalacheck._
-import Prop._
+import Prop.{extendedAny => _, _}
 import Arbitrary.arbitrary
 import scalaz.concurrent.Strategy
 import scala.concurrent
@@ -93,6 +94,9 @@ object ProcessSpec extends Properties("Process1") {
        p.toList.scan(0)(_ + _).tail ===
        p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
     }) &&
+    ("splitWith" |: {
+      p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
+    }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
       p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
@@ -120,6 +124,20 @@ object ProcessSpec extends Properties("Process1") {
     })
   }
 
+  property("awaitOption") = secure {
+    Process().pipe(awaitOption).toList == List(None) &&
+    Process(1, 2).pipe(awaitOption).toList == List(Some(1))
+  }
+
+  property("chunk") = secure {
+    Process(0, 1, 2, 3, 4).chunk(2).toList == List(Vector(0, 1), Vector(2, 3), Vector(4))
+  }
+
+  property("chunkBy") = secure {
+    emitSeq("foo bar baz").chunkBy(_ != ' ').toList.map(_.mkString) ==
+      List("foo ", "bar ", "baz")
+  }
+
   property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
   }
@@ -128,10 +146,32 @@ object ProcessSpec extends Properties("Process1") {
     Process.iterate(0)(_ + 1).take(100).runLog.run.toList == List.iterate(0, 100)(_ + 1)
   }
 
+  property("repartition") = secure {
+    Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ").toIndexedSeq).toList ==
+      List("Lorem", "ipsum", "dolor", "sit", "amet") &&
+    Process("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ==
+      List("he", "ll", "o ", "Wo", "rl", "d") &&
+    Process(1, 2, 3, 4, 5).repartition(i => Vector(i, i)).toList ==
+      List(1, 3, 6, 10, 15, 15) &&
+    (Process(): Process[Nothing, String]).repartition(_ => Vector()).toList == List() &&
+    Process("hello").repartition(_ => Vector()).toList == List()
+  }
+
+  property("terminated") = secure {
+    Process(1, 2, 3).terminated.toList == List(Some(1), Some(2), Some(3), None)
+  }
+
   property("unfold") = secure {
     Process.unfold((0, 1)) {
       case (f1, f2) => if (f1 <= 13) Some((f1, f2), (f2, f1 + f2)) else None
     }.map(_._1).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
+  }
+
+  property("window") = secure {
+    def window(n: Int) = Process.range(0, 5).window(n).runLog.run.toList
+    window(1) == List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
+    window(2) == List(Vector(0, 1), Vector(1, 2), Vector(2, 3), Vector(3, 4), Vector(4)) &&
+    window(3) == List(Vector(0, 1, 2), Vector(1, 2, 3), Vector(2, 3, 4), Vector(3, 4))
   }
 
   import scalaz.concurrent.Task
@@ -335,6 +375,8 @@ object ProcessSpec extends Properties("Process1") {
   }
    import scala.concurrent.duration._
   val smallDelay = Gen.choose(10, 300) map {_.millis}
+
+
   property("every") =
     forAll(smallDelay) { delay: Duration =>
       type BD = (Boolean, Duration)
@@ -361,6 +403,18 @@ object ProcessSpec extends Properties("Process1") {
       head._1 :| "every always emits true first" &&
       tail.filter   (_._1).map(_._2).forall { _ >= delay } :| "true means the delay has passed" &&
       tail.filterNot(_._1).map(_._2).forall { _ <= delay } :| "false means the delay has not passed"
+  }
+
+  property("pipeIn") = secure {
+    val q = async.boundedQueue[String]()
+
+    val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
+
+    (Process.range(0,10) to sink).run.run
+    val res = q.dequeue.take(10).runLog.run.toList
+    q.close.run
+
+    res === (0 until 10).map(_.toString).toList
   }
 
   property("runStep") = secure {

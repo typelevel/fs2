@@ -15,6 +15,13 @@ import ReceiveY.{ReceiveL,ReceiveR}
 
 import java.util.concurrent._
 import scala.annotation.tailrec
+import scalaz.stream.async.immutable.Signal
+import scalaz.stream.async.mutable
+import scalaz.stream._
+import scalaz.stream.ReceiveY.ReceiveL
+import scalaz.\/-
+import scalaz.-\/
+import scalaz.stream.ReceiveY.ReceiveR
 
 /**
  * A `Process[F,O]` represents a stream of `O` values which can interleave
@@ -373,7 +380,7 @@ sealed abstract class Process[+F[_],+O] {
     case Await1(recv,fb,c) => this.step.flatMap { s =>
       s.fold { hd =>
         s.tail pipe (process1.feed(hd)(p2))
-      } (halt pipe fb, halt pipe c)
+      } (halt pipe fb, e => fail(e) pipe c)
     }
   }
 
@@ -400,12 +407,12 @@ sealed abstract class Process[+F[_],+O] {
       case AwaitL(recv,fb,c) => this.step.flatMap { s =>
         s.fold { hd =>
           s.tail.tee(p2)(scalaz.stream.tee.feedL(hd)(t))
-        } (halt.tee(p2)(fb), halt.tee(p2)(c))
+        } (halt.tee(p2)(fb), e => fail(e).tee(p2)(c))
       }
       case AwaitR(recv,fb,c) => p2.step.flatMap { s =>
         s.fold { hd =>
           this.tee(s.tail)(scalaz.stream.tee.feedR(hd)(t))
-        } (this.tee(halt)(fb), this.tee(halt)(c))
+        } (this.tee(halt)(fb), e => this.tee(fail(e))(c))
       }
     }
   }
@@ -563,125 +570,177 @@ sealed abstract class Process[+F[_],+O] {
     go(this, halt)
   }
 
-  /** Alias for `this |> process1.buffer(n)`. */
+  /** Alias for `this |> [[process1.buffer]](n)`. */
   def buffer(n: Int): Process[F,O] =
     this |> process1.buffer(n)
 
-  /** Alias for `this |> process1.bufferBy(f)`. */
-  def bufferBy(f: O => Boolean): Process[F,O] =
-    this |> process1.bufferBy(f)
-
-  /** Alias for `this |> process1.bufferAll`. */
+  /** Alias for `this |> [[process1.bufferAll]]`. */
   def bufferAll: Process[F,O] =
     this |> process1.bufferAll
 
-  /** Alias for `this |> process1.chunk(n)`. */
+  /** Alias for `this |> [[process1.bufferBy]](f)`. */
+  def bufferBy(f: O => Boolean): Process[F,O] =
+    this |> process1.bufferBy(f)
+
+  /** Alias for `this |> [[process1.chunk]](n)`. */
   def chunk(n: Int): Process[F,Vector[O]] =
     this |> process1.chunk(n)
 
-  /** Alias for `this |> process1.chunkBy(f)`. */
-  def chunkBy(f: O => Boolean): Process[F,Vector[O]] =
-    this |> process1.chunkBy(f)
-
-  /** Alias for `this |> process1.chunkBy2(f)`. */
-  def chunkBy2(f: (O, O) => Boolean): Process[F,Vector[O]] =
-    this |> process1.chunkBy2(f)
-
-  /** Alias for `this |> process1.collect(pf)`. */
-  def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
-    this |> process1.collect(pf)
-
-  /** Alias for `this |> process1.collectFirst(pf)`. */
-  def collectFirst[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
-    this |> process1.collectFirst(pf)
-
-  /** Alias for `this |> process1.split(f)` */
-  def split(f: O => Boolean): Process[F,Vector[O]] =
-    this |> process1.split(f)
-
-  /** Alias for `this |> process1.splitOn(f)` */
-  def splitOn[P >: O](p: P)(implicit P: Equal[P]): Process[F,Vector[P]] =
-    this |> process1.splitOn(p)
-
-  /** Alias for `this |> process1.chunkAll`. */
+  /** Alias for `this |> [[process1.chunkAll]]`. */
   def chunkAll: Process[F,Vector[O]] =
     this |> process1.chunkAll
 
-  /** Alias for `this |> process1.window(n)` */
-  def window(n: Int): Process[F, Vector[O]] =
-    this |> process1.window(n)
+  /** Alias for `this |> [[process1.chunkBy]](f)`. */
+  def chunkBy(f: O => Boolean): Process[F,Vector[O]] =
+    this |> process1.chunkBy(f)
 
-  /** Ignores the first `n` elements output from this `Process`. */
+  /** Alias for `this |> [[process1.chunkBy2]](f)`. */
+  def chunkBy2(f: (O, O) => Boolean): Process[F,Vector[O]] =
+    this |> process1.chunkBy2(f)
+
+  /** Alias for `this |> [[process1.collect]](pf)`. */
+  def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
+    this |> process1.collect(pf)
+
+  /** Alias for `this |> [[process1.collectFirst]](pf)`. */
+  def collectFirst[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
+    this |> process1.collectFirst(pf)
+
+  /** Alias for `this |> [[process1.drop]](n)`. */
   def drop(n: Int): Process[F,O] =
-    this |> processes.drop[O](n)
+    this |> process1.drop[O](n)
 
-  /** Ignores elements from the output of this `Process` until `f` tests false. */
+  /** Alias for `this |> [[process1.dropWhile]](f)`. */
   def dropWhile(f: O => Boolean): Process[F,O] =
-    this |> processes.dropWhile(f)
+    this |> process1.dropWhile(f)
 
-  /** Skips any output elements not matching the predicate. */
-  def filter(f: O => Boolean): Process[F,O] =
-    this |> processes.filter(f)
-
-  /** Alias for `this |> process1.find(f)` */
-  def find(f: O => Boolean): Process[F,O] =
-    this |> processes.find(f)
-
-  /** Alias for `this |> process1.exists(f)` */
-  def exists(f: O => Boolean): Process[F, Boolean] =
+  /** Alias for `this |> [[process1.exists]](f)` */
+  def exists(f: O => Boolean): Process[F,Boolean] =
     this |> process1.exists(f)
 
-  /** Alias for `this |> process1.forall(f)` */
-  def forall(f: O => Boolean): Process[F, Boolean] =
+  /** Alias for `this |> [[process1.filter]](f)`. */
+  def filter(f: O => Boolean): Process[F,O] =
+    this |> process1.filter(f)
+
+  /** Alias for `this |> [[process1.find]](f)` */
+  def find(f: O => Boolean): Process[F,O] =
+    this |> process1.find(f)
+
+  /** Alias for `this |> [[process1.forall]](f)` */
+  def forall(f: O => Boolean): Process[F,Boolean] =
     this |> process1.forall(f)
 
-  /** Connect this `Process` to `process1.fold(b)(f)`. */
+  /** Alias for `this |> [[process1.fold]](b)(f)`. */
   def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold(b)(f)
 
-  /** Alias for `this |> process1.foldMonoid(M)` */
-  def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
-    this |> process1.foldMonoid(M)
-
-  /** Alias for `this |> process1.foldMap(f)(M)`. */
+  /** Alias for `this |> [[process1.foldMap]](f)(M)`. */
   def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.foldMap(f)(M)
 
-  /** Connect this `Process` to `process1.fold1(f)`. */
-  def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
-    this |> process1.fold1(f)
+  /** Alias for `this |> [[process1.foldMonoid]](M)` */
+  def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.foldMonoid(M)
 
-  /** Alias for `this |> process1.fold1Monoid(M)` */
-  def fold1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
-    this |> process1.fold1Monoid(M)
-
-  /** Alias for `this |> process1.fold1Semigroup(M)`. */
+  /** Alias for `this |> [[process1.foldSemigroup]](M)`. */
   def foldSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
     this |> process1.foldSemigroup(M)
 
-  /** Alias for `this |> process1.fold1Map(f)(M)`. */
+  /** Alias for `this |> [[process1.fold1]](f)`. */
+  def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.fold1(f)
+
+  /** Alias for `this |> [[process1.fold1Map]](f)(M)`. */
   def fold1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.fold1Map(f)(M)
 
-  /** Alias for `this |> process1.reduce(f)`. */
+  /** Alias for `this |> [[process1.fold1Monoid]](M)` */
+  def fold1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.fold1Monoid(M)
+
+  /** Alias for `this |> [[process1.intersperse]](sep)`. */
+  def intersperse[O2>:O](sep: O2): Process[F,O2] =
+    this |> process1.intersperse(sep)
+
+  /** Alias for `this |> [[process1.last]]`. */
+  def last: Process[F,O] =
+    this |> process1.last
+
+  /** Alias for `this |> [[process1.reduce]](f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.reduce(f)
 
-  /** Alias for `this |> process1.reduceMonoid(M)`. */
-  def reduceMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
-    this |> process1.reduceMonoid(M)
-
-  /** Alias for `this |> process1.reduceSemigroup(M)`. */
-  def reduceSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
-    this |> process1.reduceSemigroup(M)
-
-  /** Alias for `this |> process1.reduceMap(f)(M)`. */
+  /** Alias for `this |> [[process1.reduceMap]](f)(M)`. */
   def reduceMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.reduceMap(f)(M)
 
-  /** Insert `sep` between elements emitted by this `Process`. */
-  def intersperse[O2>:O](sep: O2): Process[F,O2] =
-    this |> process1.intersperse(sep)
+  /** Alias for `this |> [[process1.reduceMonoid]](M)`. */
+  def reduceMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.reduceMonoid(M)
+
+  /** Alias for `this |> [[process1.reduceSemigroup]](M)`. */
+  def reduceSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.reduceSemigroup(M)
+
+  /** Alias for `this |> [[process1.repartition]](p)(S)` */
+  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
+    this |> process1.repartition(p)(S)
+
+  /** Alias for `this |> [[process1.scan]](b)(f)`. */
+  def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
+    this |> process1.scan(b)(f)
+
+  /** Alias for `this |> [[process1.scanMap]](f)(M)`. */
+  def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.scanMap(f)(M)
+
+  /** Alias for `this |> [[process1.scanMonoid]](M)`. */
+  def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.scanMonoid(M)
+
+  /** Alias for `this |> [[process1.scanSemigroup]](M)`. */
+  def scanSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.scanSemigroup(M)
+
+  /** Alias for `this |> [[process1.scan1]](f)`. */
+  def scan1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.scan1(f)
+
+  /** Alias for `this |> [[process1.scan1Map]](f)(M)`. */
+  def scan1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.scan1Map(f)(M)
+
+  /** Alias for `this |> [[process1.scan1Monoid]](M)`. */
+  def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.scan1Monoid(M)
+
+  /** Alias for `this |> [[process1.split]](f)` */
+  def split(f: O => Boolean): Process[F,Vector[O]] =
+    this |> process1.split(f)
+
+  /** Alias for `this |> [[process1.splitOn]](p)` */
+  def splitOn[P >: O](p: P)(implicit P: Equal[P]): Process[F,Vector[P]] =
+    this |> process1.splitOn(p)
+
+  /** Alias for `this |> [[process1.splitWith]](f)` */
+  def splitWith(f: O => Boolean): Process[F,Vector[O]] =
+    this |> process1.splitWith(f)
+
+  /** Alias for `this |> [[process1.take]](n)`. */
+  def take(n: Int): Process[F,O] =
+    this |> process1.take[O](n)
+
+  /** Alias for `this |> [[process1.takeWhile]](f)`. */
+  def takeWhile(f: O => Boolean): Process[F,O] =
+    this |> process1.takeWhile(f)
+
+  /** Alias for `this |> [[process1.terminated]]`. */
+  def terminated: Process[F,Option[O]] =
+    this |> process1.terminated
+
+  /** Alias for `this |> [[process1.window]](n)`. */
+  def window(n: Int): Process[F,Vector[O]] =
+    this |> process1.window(n)
 
   /** Alternate emitting elements from `this` and `p2`, starting with `this`. */
   def interleave[F2[x]>:F[x],O2>:O](p2: Process[F2,O2]): Process[F2,O2] =
@@ -689,49 +748,6 @@ sealed abstract class Process[+F[_],+O] {
 
   /** Halts this `Process` after emitting 1 element. */
   def once: Process[F,O] = take(1)
-
-  /** Skips all elements emitted by this `Process` except the last. */
-  def last: Process[F,O] = this |> process1.last
-
-  /** Connect this `Process` to `process1.scan(b)(f)`. */
-  def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
-    this |> process1.scan(b)(f)
-
-  /** Connect this `Process` to `process1.scanMonoid(M)`. */
-  def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
-    this |> process1.scanMonoid(M)
-
-  /** Alias for `this |> process1.scanMap(f)(M)`. */
-  def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
-    this |> process1.scanMap(f)(M)
-
-  /** Connect this `Process` to `process1.scan1(f)`. */
-  def scan1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
-    this |> process1.scan1(f)
-
-  /** Connect this `Process` to `process1.scan1Monoid(M)`. */
-  def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
-    this |> process1.scan1Monoid(M)
-
-  /** Connect this `Process` to `process1.scan1Semigroup(M)`. */
-  def scanSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
-    this |> process1.scanSemigroup(M)
-
-  /** Alias for `this |> process1.scan1Map(f)(M)`. */
-  def scan1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
-    this |> process1.scan1Map(f)(M)
-
-  /** Halts this `Process` after emitting `n` elements. */
-  def take(n: Int): Process[F,O] =
-    this |> processes.take[O](n)
-
-  /** Halts this `Process` as soon as the predicate tests false. */
-  def takeWhile(f: O => Boolean): Process[F,O] =
-    this |> processes.takeWhile(f)
-
-  /** Wraps all outputs in `Some`, then outputs a single `None` before halting. */
-  def terminated: Process[F,Option[O]] =
-    this |> processes.terminated
 
   /** Call `tee` with the `zipWith` `Tee[O,O2,O3]` defined in `tee.scala`. */
   def zipWith[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(f: (O,O2) => O3): Process[F2,O3] =
@@ -819,6 +835,9 @@ object Process {
 
   /** A `Process1` that writes values of type `W`. */
   type Process1W[+W,-I,+O] = Process1[I,W \/ O]
+
+  /** Alias for Process1W **/
+  type Writer1[+W,-I,+O] = Process1W[W,I,O]
 
   /** A `Tee` that writes values of type `W`. */
   type TeeW[+W,-I,-I2,+O] = Tee[I,I2,W \/ O]
@@ -934,10 +953,11 @@ object Process {
    * produces the current state, and an effectful function to set the
    * state that will be produced next step.
    */
-  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = suspend {
-    val v = async.localRef[S]
-    v.set(s0)
-    v.signal.continuous.take(1).map(s => (s, (s: S) => Task.delay(v.set(s)))).repeat
+  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = {
+    await(Task.delay(async.signal[S]))(
+      sig => eval_(sig.set(s0)) fby
+        (sig.discrete.take(1) zip emit(sig.set _)).repeat
+    )
   }
 
   /**
@@ -1007,33 +1027,27 @@ object Process {
    */
   def awakeEvery(d: Duration)(
       implicit pool: ExecutorService = Strategy.DefaultExecutorService,
-               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task, Duration] = suspend {
-    val (q, p) = async.queue[Boolean](Strategy.Executor(pool))
-    val latest = async.ref[Duration](Strategy.Sequential)
-    val t0 = Duration(System.nanoTime, NANOSECONDS)
-    val metronome = _scheduler.scheduleAtFixedRate(
-       new Runnable { def run = {
-         val d = Duration(System.nanoTime, NANOSECONDS) - t0
-         latest.set(d)
-         if (q.size == 0)
-           q.enqueue(true) // only produce one event at a time
-       }},
-       d.toNanos,
-       d.toNanos,
-       NANOSECONDS
-    )
-    repeatEval {
-      Task.async[Duration] { cb =>
-        q.dequeue { r =>
-          r.fold(
-            e => pool.submit(new Callable[Unit] { def call = cb(left(e)) }),
-            _ => latest.get {
-              d => pool.submit(new Callable[Unit] { def call = cb(d) })
-            }
-          )
-        }
-      }
-    } onComplete { suspend { metronome.cancel(false); halt } }
+               schedulerPool: ScheduledExecutorService = _scheduler): Process[Task, Duration] =  {
+
+    def metronomeAndSignal:(()=>Unit,mutable.Signal[Duration]) = {
+      val signal = async.signal[Duration](Strategy.Sequential)
+      val t0 = Duration(System.nanoTime, NANOSECONDS)
+
+      val metronome = _scheduler.scheduleAtFixedRate(
+        new Runnable { def run = {
+          val d = Duration(System.nanoTime, NANOSECONDS) - t0
+          signal.set(d).run
+        }},
+        d.toNanos,
+        d.toNanos,
+        NANOSECONDS
+      )
+      (()=>metronome.cancel(false), signal)
+    }
+
+    await(Task.delay(metronomeAndSignal))({
+      case (cm, signal) =>  signal.discrete onComplete eval_(signal.close.map(_=>cm()))
+    })
   }
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
@@ -1052,14 +1066,17 @@ object Process {
    *
    * Note: The last emitted range may be truncated at `stopExclusive`. For
    * instance, `ranges(0,5,4)` results in `(0,4), (4,5)`.
+   *
+   * @throws IllegalArgumentException if `size` <= 0
    */
-  def ranges(start: Int, stopExclusive: Int, size: Int): Process[Task, (Int, Int)] =
-    if (size <= 0) sys.error("size must be > 0, was: " + size)
-    else unfold(start)(lower =>
+  def ranges(start: Int, stopExclusive: Int, size: Int): Process[Task, (Int, Int)] = {
+    require(size > 0, "size must be > 0, was: " + size)
+    unfold(start)(lower =>
       if (lower < stopExclusive)
         Some((lower -> ((lower+size) min stopExclusive), lower+size))
       else
         None)
+  }
 
   /**
    * A supply of `Long` values, starting with `initial`.
@@ -1097,14 +1114,9 @@ object Process {
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.
    */
-  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] = {
-    suspend {
-      val v = async.signal[A](S)
-      val t = toTask(p).map(a => v.value.set(a))
-      val setvar = eval(t).flatMap(_ => v.continuous.once)
-      v.continuous.merge(setvar)
-    }
-  }
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] =
+    async.toSignal(p).continuous
+
 
   /** Emit a single value, then `Halt`. */
   def emit[O](head: O): Process[Nothing,O] =
@@ -1446,19 +1458,19 @@ object Process {
       WyeActor.wyeActor[O,O2,O3](self,p2)(y)(S)
 
     /** Nondeterministic version of `zipWith`. */
-    def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3): Process[Task,O3] =
+    def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3)(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O3] =
       self.wye(p2)(scalaz.stream.wye.yipWith(f))
 
     /** Nondeterministic version of `zip`. */
-    def yip[O2](p2: Process[Task,O2]): Process[Task,(O,O2)] =
+    def yip[O2](p2: Process[Task,O2])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,(O,O2)] =
       self.wye(p2)(scalaz.stream.wye.yip)
 
     /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
-    def merge[O2>:O](p2: Process[Task,O2]): Process[Task,O2] =
+    def merge[O2>:O](p2: Process[Task,O2])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O2] =
       self.wye(p2)(scalaz.stream.wye.merge)
 
     /** Nondeterministic interleave of both streams. Emits values whenever either is defined. */
-    def either[O2>:O,O3](p2: Process[Task,O3]): Process[Task,O2 \/ O3] =
+    def either[O2>:O,O3](p2: Process[Task,O3])(implicit S:Strategy = Strategy.DefaultStrategy): Process[Task,O2 \/ O3] =
       self.wye(p2)(scalaz.stream.wye.either)
 
     /**
@@ -1700,6 +1712,26 @@ object Process {
       }
       catch { case e: Throwable => src.killBy(e) }
     }
+  }
+
+
+  /** Syntax for Sink, that is specialized for Task */
+  implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
+    /** converts sink to channel, that will perform the side effect and echo its input **/
+    def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
+
+    /** converts channel to channel that first pipes received `I0` to supplied p1 **/
+    def pipeIn[I0](p1:Process1[I0,I]):Sink[Task,I0] = {
+      constant {
+        @volatile var cur: Process1[I0, I] = p1 //safe here hence at no moment 2 threads may access this at same time
+        (i0:I0) => {
+          val (piped, next) = cur.feed1(i0).unemit
+          cur = next
+          (emitSeq(piped).toSource to self).run
+        }
+      }
+    }
+
   }
 
   /**

@@ -100,6 +100,21 @@ trait wye {
   }
 
   /**
+   * Continuous wye, that first reads from Left to get `A`,
+   * Then when `A` is not available it reads from R echoing any `A` that was received from Left
+   * Will halt once the
+   */
+  def echoLeft[A]: Wye[A, Any, A] = {
+    def go(a: A): Wye[A, Any, A] =
+      receiveBoth({
+        case ReceiveL(l)  => emit(l) fby go(l)
+        case ReceiveR(_)  => emit(a) fby go(a)
+        case HaltOne(rsn) => Halt(rsn)
+      })
+    awaitL[A].flatMap(s => emit(s) fby go(s))
+  }
+
+  /**
    * Let through the right branch as long as the left branch is `false`,
    * listening asynchronously for the left branch to become `true`.
    * This halts as soon as the right branch halts.
