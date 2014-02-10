@@ -740,6 +740,10 @@ sealed abstract class Process[+F[_],+O] {
   def skipLast: Process[F,O] =
     this |> process1.skipLast
 
+  /** Alias for `this |> process1.skipLastIf(p)`. */
+  def skipLastIf(p: O => Boolean): Process[F,O] =
+    this |> process1.skipLastIf(p)
+
   /** Halts this `Process` after emitting `n` elements. */
   def take(n: Int): Process[F,O] =
     this |> processes.take[O](n)

@@ -209,6 +209,11 @@ object ProcessSpec extends Properties("Process1") {
       emitSeq(list).map(s => Bytes.of(s.getBytes)).pipe(utf8Decode).toList === list
     }
 
+  property("utf8Decode.do not throw away incomplete bytes at the end") = {
+    val bytes = Bytes.of(Array(0xF0, 0xA4, 0xAD).map(_.toByte))
+    Process(bytes).pipe(utf8Decode).toList === List(bytes.decode())
+  }
+
   property("window") = secure {
     def window(n: Int) = Process.range(0, 5).window(n).runLog.run.toList
     window(1) == List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&

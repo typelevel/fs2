@@ -420,10 +420,13 @@ trait process1 {
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => halt)
 
   /** Emits all but the last element of the input. */
-  def skipLast[I]: Process1[I,I] = {
+  def skipLast[I]: Process1[I,I] =
+    skipLastIf(_ => true)
+
+  def skipLastIf[I](p: I => Boolean): Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
       awaitOption[I].flatMap {
-        case None => halt
+        case None => if (p(prev)) halt else emit(prev)
         case Some(prev2) => emit(prev) fby go(prev2)
       }
     await1[I].flatMap(go)
@@ -530,7 +533,9 @@ trait process1 {
       }
     }
 
-    repartition(splitAtLastIncompleteChar).map(_.decode(utf8Charset)).skipLast
+    repartition(splitAtLastIncompleteChar)
+      .map(_.decode(utf8Charset))
+      .skipLastIf(_.isEmpty)
   }
 
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
