@@ -43,6 +43,9 @@ object CreatingStreams extends Properties("creating-streams") {
     /* A stream which emits `0, 1, 2 ... 99`. */
     val zeroTo100: Process[Task,Int] = Process.range(0,100) 
 
+    /* Build a stream from an arbitrary sequence */
+    val letters = Process[Task, String] = Process.emitAll(Seq("a", "b", "c")).toSource
+
     /*
     Using `Process.eval`, we can promote any `F[A]` to 
     a `Process[F,A]`. Here, we promote the synchronous task
