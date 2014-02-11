@@ -610,6 +610,14 @@ sealed abstract class Process[+F[_],+O] {
   def drop(n: Int): Process[F,O] =
     this |> process1.drop[O](n)
 
+  /** Alias for `this |> [[process1.dropLast]]`. */
+  def dropLast: Process[F,O] =
+    this |> process1.dropLast
+
+  /** Alias for `this |> [[process1.dropLastIf]](p)`. */
+  def dropLastIf(p: O => Boolean): Process[F,O] =
+    this |> process1.dropLastIf(p)
+
   /** Alias for `this |> [[process1.dropWhile]](f)`. */
   def dropWhile(f: O => Boolean): Process[F,O] =
     this |> process1.dropWhile(f)
