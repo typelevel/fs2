@@ -69,6 +69,16 @@ object ProcessSpec extends Properties("Process1") {
     ("drop" |: {
       (p.toList.drop(n) === p.drop(n).toList)
     }) &&
+    ("dropLast" |: {
+      p.dropLast.toList === p.toList.dropRight(1)
+    }) &&
+    ("dropLastIf" |: {
+      val pred = (_: Int) % 2 == 0
+      val pl = p.toList
+      val n = if (pl.lastOption.map(pred).getOrElse(false)) 1 else 0
+      p.dropLastIf(pred).toList === pl.dropRight(n) &&
+      p.dropLastIf(_ => false).toList === p.toList
+    }) &&
     ("dropWhile" |: {
       (p.toList.dropWhile(g) === p.dropWhile(g).toList)
     }) &&
@@ -96,16 +106,6 @@ object ProcessSpec extends Properties("Process1") {
     }) &&
     ("splitWith" |: {
       p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
-    }) &&
-    ("skipLast" |: {
-      p.skipLast.toList === p.toList.dropRight(1)
-    }) &&
-    ("skipLastIf" |: {
-      val pred = (_: Int) % 2 == 0
-      val pl = p.toList
-      val n = if (pl.lastOption.map(pred).getOrElse(false)) 1 else 0
-      p.skipLastIf(pred).toList === pl.dropRight(n) &&
-      p.skipLastIf(_ => false).toList === p.toList
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===

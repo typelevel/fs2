@@ -110,6 +110,20 @@ trait process1 {
     if (n <= 0) id[I]
     else skip fby drop(n-1)
 
+  /** Emits all but the last element of the input. */
+  def dropLast[I]: Process1[I,I] =
+    dropLastIf(_ => true)
+
+  /** Emits all elemens of the input but skips the last if the predicate is true. */
+  def dropLastIf[I](p: I => Boolean): Process1[I,I] = {
+    def go(prev: I): Process1[I,I] =
+      awaitOption[I].flatMap {
+        case None => if (p(prev)) halt else emit(prev)
+        case Some(curr) => emit(prev) fby go(curr)
+      }
+    await1[I].flatMap(go)
+  }
+
   /**
    * Skips elements of the input while the predicate is true,
    * then passes through the remaining inputs.
@@ -418,20 +432,6 @@ trait process1 {
 
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => halt)
-
-  /** Emits all but the last element of the input. */
-  def skipLast[I]: Process1[I,I] =
-    skipLastIf(_ => true)
-
-  /** Emits all elemens of the input but skips the last if the predicate is true. */
-  def skipLastIf[I](p: I => Boolean): Process1[I,I] = {
-    def go(prev: I): Process1[I,I] =
-      awaitOption[I].flatMap {
-        case None => if (p(prev)) halt else emit(prev)
-        case Some(curr) => emit(prev) fby go(curr)
-      }
-    await1[I].flatMap(go)
-  }
 
   /**
    * Break the input into chunks where the delimiter matches the predicate.
