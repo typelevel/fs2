@@ -238,11 +238,8 @@ trait process1 {
   def id[I]: Process1[I,I] =
     await1[I].repeat
 
-  /**
-   * Emit the given values, then echo the rest of the input.
-   */
-  def init[I](head: I*): Process1[I,I] =
-    emitSeq(head) ++ id
+  @deprecated("init has been renamed to shiftRight. It will be removed in the next release", "0.4")
+  def init[I](head: I*): Process1[I,I] = shiftRight(head: _*)
 
   /**
    * Add `separator` between elements of the input. For example,
@@ -429,6 +426,12 @@ trait process1 {
    */
   def scan1Map[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
     id[A].map(f).scan1Monoid(M)
+
+  /**
+   * Emit the given values, then echo the rest of the input.
+   */
+  def shiftRight[I](head: I*): Process1[I,I] =
+    emitSeq(head) ++ id
 
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => halt)

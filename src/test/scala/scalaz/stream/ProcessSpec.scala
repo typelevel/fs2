@@ -104,6 +104,9 @@ object ProcessSpec extends Properties("Process1") {
        p.toList.scan(0)(_ + _).tail ===
        p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
     }) &&
+    ("shiftRight" |: {
+      p.pipe(shiftRight(1, 2)).toList === List(1, 2) ++ p.toList
+    }) &&
     ("splitWith" |: {
       p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
     }) &&
