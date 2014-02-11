@@ -714,6 +714,14 @@ sealed abstract class Process[+F[_],+O] {
   def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.scan1Monoid(M)
 
+  /** Alias for `this |> [[process1.skipLast]]`. */
+  def skipLast: Process[F,O] =
+    this |> process1.skipLast
+
+  /** Alias for `this |> [[process1.skipLastIf]](p)`. */
+  def skipLastIf(p: O => Boolean): Process[F,O] =
+    this |> process1.skipLastIf(p)
+
   /** Alias for `this |> [[process1.split]](f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.split(f)
