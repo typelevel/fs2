@@ -436,20 +436,6 @@ trait process1 {
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any,Nothing] = await1[Any].flatMap(_ => halt)
 
-  /** Emits all but the last element of the input. */
-  def skipLast[I]: Process1[I,I] =
-    skipLastIf(_ => true)
-
-  /** Emits all elemens of the input but skips the last if the predicate is true. */
-  def skipLastIf[I](p: I => Boolean): Process1[I,I] = {
-    def go(prev: I): Process1[I,I] =
-      awaitOption[I].flatMap {
-        case None => if (p(prev)) halt else emit(prev)
-        case Some(prev2) => emit(prev) fby go(prev2)
-      }
-    await1[I].flatMap(go)
-  }
-
   /**
    * Break the input into chunks where the delimiter matches the predicate.
    * The delimiter does not appear in the output. Two adjacent delimiters in the
@@ -553,7 +539,7 @@ trait process1 {
 
     repartition(splitAtLastIncompleteChar)
       .map(_.decode(utf8Charset))
-      .skipLastIf(_.isEmpty)
+      .dropLastIf(_.isEmpty)
   }
 
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
