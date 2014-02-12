@@ -2,7 +2,7 @@ organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
-version := "SNAPSHOT"
+version := "snapshot-0.4"
 
 scalaVersion := "2.10.2"
 
@@ -43,3 +43,5 @@ OsgiKeys.importPackage := Seq(
   """scalaz.*;version="$<range;[===,=+);$<@>>"""",
   "*"
 )
+
+ScctPlugin.instrumentSettings
