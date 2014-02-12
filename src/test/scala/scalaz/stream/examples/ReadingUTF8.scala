@@ -44,11 +44,9 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
     val array = Array.ofDim[Char](bufferSize)
     def readChars(a: Array[Char]) = bufferedReader.read(a, 0, bufferSize)
 
-    var l = 0
     var sum: Long = 0
     var count = readChars(array)
     while (count >= 0) {
-      l += 1
       val s = new String(array, 0, count)
       sum += s.map(_.toLong).sum
       count = readChars(array)
@@ -62,7 +60,7 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
   }
 
   property("benchmark") = secure {
-    benchmark("scalaz", 10, scalazIo.run)
-    benchmark("Java", 10, javaIo)
+    benchmark("scalaz", 15, scalazIo.run)
+    benchmark("Java", 15, javaIo)
   }
 }

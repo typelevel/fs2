@@ -539,7 +539,7 @@ trait process1 {
 
     repartition(splitAtLastIncompleteChar)
       .map(_.decode(utf8Charset))
-      .dropLastIf(_.isEmpty)
+      //.dropLastIf(_.isEmpty)
   }
 
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
