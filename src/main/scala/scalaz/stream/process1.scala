@@ -117,9 +117,10 @@ trait process1 {
   /** Emits all elemens of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
-      awaitOption[I].flatMap {
-        case None => if (p(prev)) halt else emit(prev)
-        case Some(curr) => emit(prev) fby go(curr)
+      await1[I].flatMap {
+        curr => emit(prev) fby go(curr)
+      } orElse {
+        if (p(prev)) halt else emit(prev)
       }
     await1[I].flatMap(go)
   }
@@ -253,10 +254,7 @@ trait process1 {
   /** Skip all but the last element of the input. */
   def last[I]: Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
-      awaitOption[I].flatMap {
-        case None => emitView(prev)
-        case Some(prev2) => go(prev2)
-      }
+      await1[I].flatMap(go).orElse(emit(prev))
     await1[I].flatMap(go)
   }
 
