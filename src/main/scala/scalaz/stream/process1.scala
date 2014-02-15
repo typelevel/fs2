@@ -117,10 +117,16 @@ trait process1 {
   /** Emits all elemens of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
+      await1[I].flatMap { curr =>
+        emit(prev) fby go(curr)
+      } orElse (if (p(prev)) halt else emit(prev))
+    await1[I].flatMap(go)
+/*
+    def go(prev: I): Process1[I,I] =
       awaitOption[I].flatMap {
         case None => if (p(prev)) halt else emit(prev)
         case Some(curr) => emit(prev) fby go(curr)
-      }
+      }*/
     await1[I].flatMap(go)
   }
 
@@ -250,13 +256,21 @@ trait process1 {
   def intersperse[A](separator: A): Process1[A,A] =
     await1[A].flatMap(head => emit(head) ++ id[A].flatMap(a => Process(separator, a)))
 
-  /** Skip all but the last element of the input. */
   def last[I]: Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
-      awaitOption[I].flatMap {
-        case None => emitView(prev)
-        case Some(prev2) => go(prev2)
-      }
+            awaitOption[I].flatMap {
+                case None => emitView(prev)
+                case Some(prev2) => go(prev2)
+              }
+
+    await1[I].flatMap(go)
+  }
+
+
+  /** Skip all but the last element of the input. */
+  def last2[I]: Process1[I,I] = {
+    def go(prev: I): Process1[I,I] =
+      await1[I].flatMap(go).orElse(emit(prev))
     await1[I].flatMap(go)
   }
 
@@ -364,6 +378,38 @@ trait process1 {
           case 0 => go(None)
           case 1 => go(Some(parts.head))
           case _ => emitSeq(parts.init) fby go(Some(parts.last))
+        }
+      } orElse emitSeq(carry.toList)
+    go(None)
+  }
+
+  def repartition2[I](p: I => IndexedSeq[I])(implicit I: Monoid[I]): Process1[I,I] = {
+    def go(carry: I): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val next = I.append(carry, i)
+        val parts = p(next)
+        parts.size match {
+          case 0 => go(I.zero)
+          case 1 => go(parts.head)
+          case _ =>
+            if (parts.last != I.zero) emitSeq(parts.init) fby go(parts.last)
+            else emitSeq(parts.init) fby go(I.zero)
+        }
+      } orElse emit(carry)
+    go(I.zero)
+  }
+
+  def repartition3[I](p: I => IndexedSeq[I])(implicit I: Monoid[I]): Process1[I,I] = {
+    def go(carry: Option[I]): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val next = carry.fold(i)(c => I.append(c, i))
+        val parts = p(next)
+        parts.size match {
+          case 0 => go(None)
+          case 1 => go(Some(parts.head))
+          case _ => 
+            if (parts.last != I.zero) emitSeq(parts.init) fby go(Some(parts.last))
+            else emitSeq(parts.init) fby go(None)
         }
       } orElse emitSeq(carry.toList)
     go(None)
@@ -512,7 +558,11 @@ trait process1 {
 
   /** Converts UTF-8 encoded `Bytes` into `String`. */
   val utf8Decode: Process1[Bytes,String] = {
-    def contBytesCount(b: Byte): Int = {
+    /**
+     * Returns the number of continuation bytes if `b` is an ASCII byte or a
+     * leading byte of a multi-byte sequence, and -1 otherwise.
+     */
+    def continuationBytes(b: Byte): Int = {
       if      ((b >> 7) ==  0) 0 // ASCII byte
       else if ((b >> 5) == -2) 1 // leading byte of a 2 byte seq
       else if ((b >> 4) == -2) 2 // leading byte of a 3 byte seq
@@ -520,19 +570,26 @@ trait process1 {
       else -1                    // continuation byte or garbage
     }
 
-    def splitAtLastIncompleteChar(bytes: Bytes): Vector[Bytes] = {
-      val lastThree = bytes.reverseIterator.take(3)
-      val revSplitIndex = lastThree.map(contBytesCount).zipWithIndex.find {
-        case (len, _) => len >= 0
+    /**
+     * Returns the length of an incomplete multi-byte sequence at the end of
+     * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
+     * 0 is returned.
+     */
+    def lastIncompleteBytes(bs: Bytes): Int = {
+      val lastThree = bs.reverseIterator.take(3)
+      lastThree.map(continuationBytes).zipWithIndex.find {
+        case (c, _) => c >= 0
       } map {
-        case (len, index) => if (len == index) 0 else index + 1
+        case (c, i) => if (c == i) 0 else i + 1
       } getOrElse(0)
-      val splitIndex = bytes.length - revSplitIndex
+    }
 
-      if (splitIndex == 0 && bytes.nonEmpty)
-        Vector(bytes)
+    def splitAtLastIncompleteChar(bs: Bytes): Vector[Bytes] = {
+      val splitIndex = bs.length - lastIncompleteBytes(bs)
+      if (splitIndex == 0 && bs.nonEmpty)
+        Vector(bs)
       else {
-        val (complete, rest) = bytes.splitAt(splitIndex)
+        val (complete, rest) = bs.splitAt(splitIndex)
         Vector(complete, rest)
       }
     }
