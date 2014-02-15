@@ -180,50 +180,6 @@ object ProcessSpec extends Properties("Process1") {
     }.map(_._1).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
 
-  property("utf8Decode") = forAll { (s: String) =>
-    def utf8Bytes(s: String) = Bytes.of(s.getBytes("UTF-8"))
-
-    ("n-byte seq" |: {
-      val n = Gen.choose(1,11).sample.getOrElse(1)
-      val bytes = utf8Bytes(s).grouped(n).toSeq
-      emitSeq(bytes).pipe(utf8Decode).toList.mkString === s
-    }) &&
-    ("1-byte seq" |: {
-      val bytes = utf8Bytes(s).grouped(1).toSeq
-      val list = emitSeq(bytes).pipe(utf8Decode).toList
-      list.forall(_.length <= 2) && list.mkString === s
-    }) &&
-    ("inverse of utf8Encode" |: {
-      Process(s).pipe(utf8Encode).map(a => Bytes.of(a)).pipe(utf8Decode).toList ===
-        List(s)
-    })
-  }
-
-  property("utf8Decode.single chars") = secure {
-    def checkOneChar(a: Array[Int]) = {
-      val b = a.map(_.toByte)
-      val s = new String(b, "UTF-8")
-      (1 to 4).forall { n =>
-        emitSeq(Bytes.of(b).grouped(n).toSeq).pipe(utf8Decode).toList === List(s)
-      }
-    }
-
-    checkOneChar(Array(0x24)) &&
-    checkOneChar(Array(0xC2, 0xA2)) &&
-    checkOneChar(Array(0xE2, 0x82, 0xAC)) &&
-    checkOneChar(Array(0xF0, 0xA4, 0xAD, 0xA2))
-  }
-
-  property("utf8Decode.preserve input chunks, if complete") =
-    forAll(Gen.containerOf[List,String](Gen.alphaStr)) { list =>
-      emitSeq(list).map(s => Bytes.of(s.getBytes)).pipe(utf8Decode).toList === list
-    }
-
-  property("utf8Decode.do not throw away incomplete bytes at the end") = {
-    val bytes = Bytes.of(Array(0xF0, 0xA4, 0xAD).map(_.toByte))
-    Process(bytes).pipe(utf8Decode).toList === List(bytes.decode())
-  }
-
   property("window") = secure {
     def window(n: Int) = Process.range(0, 5).window(n).runLog.run.toList
     window(1) == List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
