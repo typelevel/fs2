@@ -3,8 +3,8 @@ package scalaz.stream
 import java.io._
 import org.scalacheck._
 import Prop._
-import process1._
 import scalaz.concurrent.Task
+import process1._
 
 object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
 
@@ -18,7 +18,7 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
   def benchmark[A](descr: String, n: Int, a: => A) = {
     (0 to n).foreach { _ =>
       val (result, millis) = time(a)
-      println(s"$descr:\t$millis\t$result")
+      println(f"$descr%13s:$millis%12.3f\t$result")
     }
     true
   }
@@ -60,7 +60,7 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
   }
 
   property("benchmark") = secure {
-    benchmark("scalaz", 15, scalazIo.run)
-    benchmark("Java", 15, javaIo)
+    benchmark("java.io", 10, javaIo)
+    benchmark("scalaz-stream", 10, scalazIo.run)
   }
 }

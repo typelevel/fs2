@@ -117,16 +117,10 @@ trait process1 {
   /** Emits all elemens of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
-      await1[I].flatMap { curr =>
-        emit(prev) fby go(curr)
-      } orElse (if (p(prev)) halt else emit(prev))
-    await1[I].flatMap(go)
-/*
-    def go(prev: I): Process1[I,I] =
       awaitOption[I].flatMap {
         case None => if (p(prev)) halt else emit(prev)
         case Some(curr) => emit(prev) fby go(curr)
-      }*/
+      }
     await1[I].flatMap(go)
   }
 
@@ -256,21 +250,13 @@ trait process1 {
   def intersperse[A](separator: A): Process1[A,A] =
     await1[A].flatMap(head => emit(head) ++ id[A].flatMap(a => Process(separator, a)))
 
+  /** Skip all but the last element of the input. */
   def last[I]: Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
-            awaitOption[I].flatMap {
-                case None => emitView(prev)
-                case Some(prev2) => go(prev2)
-              }
-
-    await1[I].flatMap(go)
-  }
-
-
-  /** Skip all but the last element of the input. */
-  def last2[I]: Process1[I,I] = {
-    def go(prev: I): Process1[I,I] =
-      await1[I].flatMap(go).orElse(emit(prev))
+      awaitOption[I].flatMap {
+        case None => emitView(prev)
+        case Some(prev2) => go(prev2)
+      }
     await1[I].flatMap(go)
   }
 
@@ -383,33 +369,14 @@ trait process1 {
     go(None)
   }
 
-  def repartition2[I](p: I => IndexedSeq[I])(implicit I: Monoid[I]): Process1[I,I] = {
-    def go(carry: I): Process1[I,I] =
-      await1[I].flatMap { i =>
-        val next = I.append(carry, i)
-        val parts = p(next)
-        parts.size match {
-          case 0 => go(I.zero)
-          case 1 => go(parts.head)
-          case _ =>
-            if (parts.last != I.zero) emitSeq(parts.init) fby go(parts.last)
-            else emitSeq(parts.init) fby go(I.zero)
-        }
-      } orElse emit(carry)
-    go(I.zero)
-  }
-
-  def repartition3[I](p: I => IndexedSeq[I])(implicit I: Monoid[I]): Process1[I,I] = {
+  def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
       await1[I].flatMap { i =>
         val next = carry.fold(i)(c => I.append(c, i))
-        val parts = p(next)
-        parts.size match {
-          case 0 => go(None)
-          case 1 => go(Some(parts.head))
-          case _ => 
-            if (parts.last != I.zero) emitSeq(parts.init) fby go(Some(parts.last))
-            else emitSeq(parts.init) fby go(None)
+        val (fst, snd) = p(next)
+        fst match {
+          case Some(head) => emit(head) fby go(snd)
+          case None => go(snd)
         }
       } orElse emitSeq(carry.toList)
     go(None)
@@ -584,19 +551,20 @@ trait process1 {
       } getOrElse(0)
     }
 
-    def splitAtLastIncompleteChar(bs: Bytes): Vector[Bytes] = {
+    def splitAtLastIncompleteChar(bs: Bytes): (Option[Bytes], Option[Bytes]) = {
       val splitIndex = bs.length - lastIncompleteBytes(bs)
-      if (splitIndex == 0 && bs.nonEmpty)
-        Vector(bs)
+
+      if (bs.isEmpty || splitIndex == bs.length)
+        (Some(bs), None)
+      else if (splitIndex == 0)
+        (None, Some(bs))
       else {
         val (complete, rest) = bs.splitAt(splitIndex)
-        Vector(complete, rest)
+        (Some(complete), Some(rest))
       }
     }
 
-    repartition(splitAtLastIncompleteChar)
-      .map(_.decode(utf8Charset))
-      .dropLastIf(_.isEmpty)
+    repartition2(splitAtLastIncompleteChar).map(_.decode(utf8Charset))
   }
 
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
