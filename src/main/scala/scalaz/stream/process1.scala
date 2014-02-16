@@ -336,10 +336,11 @@ trait process1 {
     reduce(M.append(_,_))
 
   /**
-   * Like `reduce` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
+   * Like `reduce` only uses `f` to map `A` to `B` and uses Semigroup `M` for
+   * associative operation.
    */
-  def reduceMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
-    id[A].map(f).reduceMonoid(M)
+  def reduceMap[A,B](f: A => B)(implicit M: Semigroup[B]): Process1[A,B] =
+    id[A].map(f).reduceSemigroup(M)
 
   /**
    * Repartitions the input with the function `p`. On each step `p` is applied
@@ -414,10 +415,11 @@ trait process1 {
     scan1(M.append(_,_))
 
   /**
-   * Like `scan1` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
+   * Like `scan1` only uses `f` to map `A` to `B` and uses Semigroup `M` for
+   * associative operation.
    */
-  def scan1Map[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
-    id[A].map(f).scan1Monoid(M)
+  def scan1Map[A,B](f:A => B)(implicit M: Semigroup[B]): Process1[A,B] =
+    id[A].map(f).scanSemigroup(M)
 
   /**
    * Emit the given values, then echo the rest of the input.

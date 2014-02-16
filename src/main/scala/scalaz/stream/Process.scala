@@ -680,7 +680,7 @@ sealed abstract class Process[+F[_],+O] {
     this |> process1.reduce(f)
 
   /** Alias for `this |> [[process1.reduceMap]](f)(M)`. */
-  def reduceMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+  def reduceMap[M](f: O => M)(implicit M: Semigroup[M]): Process[F,M] =
     this |> process1.reduceMap(f)(M)
 
   /** Alias for `this |> [[process1.reduceMonoid]](M)`. */
@@ -716,7 +716,7 @@ sealed abstract class Process[+F[_],+O] {
     this |> process1.scan1(f)
 
   /** Alias for `this |> [[process1.scan1Map]](f)(M)`. */
-  def scan1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+  def scan1Map[M](f: O => M)(implicit M: Semigroup[M]): Process[F,M] =
     this |> process1.scan1Map(f)(M)
 
   /** Alias for `this |> [[process1.scan1Monoid]](M)`. */
