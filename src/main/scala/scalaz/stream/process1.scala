@@ -369,6 +369,9 @@ trait process1 {
     go(None)
   }
 
+  /**
+   *
+   */
   def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
       await1[I].flatMap { i =>

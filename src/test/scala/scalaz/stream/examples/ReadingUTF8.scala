@@ -18,7 +18,7 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
   def benchmark[A](descr: String, n: Int, a: => A) = {
     (0 to n).foreach { _ =>
       val (result, millis) = time(a)
-      println(f"$descr%13s:$millis%12.3f\t$result")
+      println(f"$descr%15s:$millis%12.3f\t$result")
     }
     true
   }
@@ -32,6 +32,14 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
       .through(io.fileChunkR(testFile, bufferSize))
       .map(a => Bytes.unsafe(a))
       .pipe(utf8Decode)
+      .map(_.map(_.toLong).sum)
+      .reduce(_ + _)
+      .runLast
+
+  val scalazIoNoUtf8: Task[Option[Long]] =
+    Process.constant(bufferSize)
+      .through(io.fileChunkR(testFile, bufferSize))
+      .map(a => Bytes.unsafe(a))
       .map(_.map(_.toLong).sum)
       .reduce(_ + _)
       .runLast
@@ -61,6 +69,7 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
 
   property("benchmark") = secure {
     benchmark("java.io", 10, javaIo)
-    benchmark("scalaz-stream", 10, scalazIo.run)
+    benchmark("w/o  utf8Decode", 10, scalazIoNoUtf8.run)
+    benchmark("with utf8Decode", 10, scalazIo.run)
   }
 }
