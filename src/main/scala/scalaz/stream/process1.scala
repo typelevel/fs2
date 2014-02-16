@@ -209,17 +209,17 @@ trait process1 {
     reduce(f)
 
   /**
-   * Like `fold1` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   * Like `fold1` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
    */
   def fold1Map[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
     reduceMap(f)(M)
 
-  /** alias for `reduceMonoid` */
-  def fold1Monoid[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduce(M.append(_,_))
+  /** Like `fold1` but uses Monoid `M` for associative operation. */
+  def fold1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    reduceSemigroup(M)
 
   /**
-   * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
    */
   def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
    id[A].map(f).foldMonoid(M)
@@ -230,9 +230,9 @@ trait process1 {
   def foldMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
     fold(M.zero)(M.append(_,_))
 
-  /** alias for `reduceSemigroup` */
+  /** Alias for `reduceSemigroup`. */
   def foldSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduce(M.append(_,_))
+    reduceSemigroup(M)
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
   def id[I]: Process1[I,I] =
@@ -327,23 +327,20 @@ trait process1 {
   def reduce[A](f: (A,A) => A): Process1[A,A] =
     scan1(f).last
 
-  /**
-   * Like `reduce` but uses Monoid for reduce operation
-   */
-  def reduceMonoid[A](implicit M: Semigroup[A]): Process1[A,A] =
-    reduce(M.append(_,_))
+  /** Like `reduce` but uses Monoid `M` for associative operation. */
+  def reduceMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    reduceSemigroup(M)
 
-  /**
-   * Like `reduce` but uses Semigroup associative operation
-   */
+  /** Like `reduce` but uses Semigroup `M` for associative operation. */
   def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
     reduce(M.append(_,_))
 
   /**
-   * Like `reduce` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   * Like `reduce` only uses `f` to map `A` to `B` and uses Semigroup `M` for
+   * associative operation.
    */
-  def reduceMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
-    id[A].map(f).reduceMonoid(M)
+  def reduceMap[A,B](f: A => B)(implicit M: Semigroup[B]): Process1[A,B] =
+    id[A].map(f).reduceSemigroup(M)
 
   /**
    * Repartitions the input with the function `p`. On each step `p` is applied
@@ -391,7 +388,7 @@ trait process1 {
     scan(M.zero)(M.append(_,_))
 
   /**
-   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
    */
   def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
     id[A].map(f).scanMonoid(M)
@@ -409,23 +406,20 @@ trait process1 {
     await1[A].flatMap(go)
   }
 
-  /**
-   * Like `scan1` but uses Monoid for associative operation
-   */
+  /** Like `scan1` but uses Monoid `M` for associative operation. */
   def scan1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
-    scan1(M.append(_,_))
+    scanSemigroup(M)
 
-  /**
-   * Like `scan1` but uses Semigroup for associative operation
-   */
+  /** Like `scan1` but uses Semigroup `M` for associative operation. */
   def scanSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
     scan1(M.append(_,_))
 
   /**
-   * Like `scan1` only uses `f` to map `A` to `B` and uses Monoid `M` or associative operation
+   * Like `scan1` only uses `f` to map `A` to `B` and uses Semigroup `M` for
+   * associative operation.
    */
-  def scan1Map[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
-    id[A].map(f).scan1Monoid(M)
+  def scan1Map[A,B](f:A => B)(implicit M: Semigroup[B]): Process1[A,B] =
+    id[A].map(f).scanSemigroup(M)
 
   /**
    * Emit the given values, then echo the rest of the input.
