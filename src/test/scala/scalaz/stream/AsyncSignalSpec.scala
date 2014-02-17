@@ -56,8 +56,8 @@ object AsyncSignalSpec extends Properties("async.signal") {
             n(last) match {
               case (descr, action) =>
                 action.attemptRun match {
-                  case \/-(maybeOk) => (signal.get.attemptRun, acc :+(descr, maybeOk))
-                  case -\/(failed) => (-\/(failed), acc :+(descr, false))
+                  case \/-(maybeOk) => (signal.get.attemptRun, acc :+((descr, maybeOk)))
+                  case -\/(failed) => (-\/(failed), acc :+((descr, false)))
                 }
             }
 
@@ -66,9 +66,9 @@ object AsyncSignalSpec extends Properties("async.signal") {
             n(0) match {
               case (descr, action) =>
                 action.attemptRun match {
-                  case \/-(unexpected) => (-\/(lastErr), acc :+(descr + " got " + unexpected, true))
-                  case -\/(failure) if failure == lastErr || failure == End => (-\/(lastErr), acc :+(descr, true))
-                  case -\/(unexpectedFailure) => (-\/(unexpectedFailure), acc :+(descr, false))
+                  case \/-(unexpected) => (-\/(lastErr), acc :+((descr + " got " + unexpected, true)))
+                  case -\/(failure) if failure == lastErr || failure == End => (-\/(lastErr), acc :+((descr, true)))
+                  case -\/(unexpectedFailure) => (-\/(unexpectedFailure), acc :+((descr, false)))
                 }
 
 
@@ -95,7 +95,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
           import Signal._
           (i % 3).abs match {
             case 0 => Set[(String, Int)]((s"$idx. Set", i))
-            case 1 => CompareAndSet[(String, Int)](_ => Some(s"$idx. CompareAndSet", i))
+            case 1 => CompareAndSet[(String, Int)](_ => Some((s"$idx. CompareAndSet", i)))
             case 2 => CompareAndSet[(String, Int)](_ => None)
 
           }
@@ -107,7 +107,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
 
 
       val feeder =
-        Process.eval(Task.now(Signal.Set[(String, Int)]("START", 0))) ++
+        Process.eval(Task.now(Signal.Set[(String, Int)](("START", 0)))) ++
           Process.emitAll(messages).evalMap(e => Task.fork { Thread.sleep(1); Task.now(e) })
 
 
