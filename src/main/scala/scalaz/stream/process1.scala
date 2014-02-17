@@ -365,17 +365,18 @@ trait process1 {
   }
 
   /**
-   *
+   * Repartitions the input with the function `p`. On each step `p` is applied
+   * to the input and the first element of the resulting tuple is emitted if it
+   * is `Some(x)`. The second element is then prepended to the next input using
+   * the Semigroup `I`. In comparison to `repartition` this allows to emit
+   * single inputs without prepending them to the next input.
    */
   def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
       await1[I].flatMap { i =>
         val next = carry.fold(i)(c => I.append(c, i))
         val (fst, snd) = p(next)
-        fst match {
-          case Some(head) => emit(head) fby go(snd)
-          case None => go(snd)
-        }
+        fst.fold(go(snd))(head => emit(head) fby go(snd))
       } orElse emitSeq(carry.toList)
     go(None)
   }
