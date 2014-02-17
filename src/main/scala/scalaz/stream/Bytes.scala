@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.IndexedSeq
 import scala.collection.{mutable, IndexedSeqOptimized}
 import scala.reflect.ClassTag
-import scalaz.Monoid
+import scalaz.{IsEmpty, Monoid}
 
 /**
  * Simple `immutability` wrapper to allow easy and effective working with Array[Byte]
@@ -450,7 +450,11 @@ object Bytes extends BytesInstances {
 }
 
 sealed abstract class BytesInstances {
-  implicit val bytesInstance = new Monoid[Bytes] {
+  implicit val bytesInstance = new IsEmpty[({ type λ[α] = Bytes })#λ] with Monoid[Bytes] {
+    type BA[α] = Bytes
+    def empty[A] = Bytes.empty
+    def plus[A](f1: BA[A], f2: => BA[A]) = f1 ++ f2
+    def isEmpty[A](b: BA[A]) = b.isEmpty
     def append(f1: Bytes, f2: => Bytes) = f1 ++ f2
     def zero = Bytes.empty
   }
