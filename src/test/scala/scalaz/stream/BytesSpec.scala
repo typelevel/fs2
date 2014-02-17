@@ -223,5 +223,7 @@ object BytesSpec extends Properties("Bytes") {
 
  }
 
+  type BA[α] = Bytes
+  property("isEmpty-laws") = isEmpty.laws[BA]
   property("monoid-laws") = monoid.laws[Bytes]
 }
