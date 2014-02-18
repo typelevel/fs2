@@ -170,6 +170,16 @@ object ProcessSpec extends Properties("Process1") {
     Process("hello").repartition(_ => Vector()).toList == List()
   }
 
+  property("repartition2") = secure {
+    Process("he", "ll", "o").repartition2(s => (Some(s), None)).toList ===
+      List("he", "ll", "o") &&
+    Process("he", "ll", "o").repartition2(s => (None, Some(s))).toList ===
+      List("hello") &&
+    Process("he", "ll", "o").repartition2 {
+      s => (Some(s.take(1)), Some(s.drop(1)))
+    }.toList === List("h", "e", "l", "lo")
+  }
+
   property("terminated") = secure {
     Process(1, 2, 3).terminated.toList == List(Some(1), Some(2), Some(3), None)
   }
