@@ -88,6 +88,9 @@ object ProcessSpec extends Properties("Process1") {
     ("forall" |: {
       (List(p.toList.forall(g)) === p.forall(g).toList)
     }) &&
+    ("lastOr" |: {
+      p.pipe(lastOr(42)).toList === p.toList.lastOption.orElse(Some(42)).toList
+    }) &&
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
     }) &&
@@ -168,6 +171,10 @@ object ProcessSpec extends Properties("Process1") {
       List(1, 3, 6, 10, 15, 15) &&
     (Process(): Process[Nothing, String]).repartition(_ => Vector()).toList == List() &&
     Process("hello").repartition(_ => Vector()).toList == List()
+  }
+
+  property("stripNone") = secure {
+    Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
   }
 
   property("terminated") = secure {
