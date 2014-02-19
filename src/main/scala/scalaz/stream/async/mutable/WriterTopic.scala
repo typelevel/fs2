@@ -13,6 +13,23 @@ import scalaz.stream.Process._
 trait WriterTopic[W, I, O] {
 
   /**
+   * Consumes the supplied source in this topic.
+   * Please note that, supplied process is run immediately once the resulting Task is run.
+   * Consumption will stop when this topic is terminate.
+   * @param p
+   * @return
+   */
+  def consumeOne(p: Process[Task,I]) : Task[Unit]
+
+  /**
+   * Sink that when supplied with stream of processes will consume these process to this topic.
+   * Supplied processes are run non-deterministically and in parallel and will terminate when this topic terminates
+   * whenever
+   * @return
+   */
+  def consume:Sink[Task,Process[Task,I]]
+
+  /**
    * Gets publisher to this writer topic. There may be multiple publishers to this writer topic.
    */
   def publish: Sink[Task, I]

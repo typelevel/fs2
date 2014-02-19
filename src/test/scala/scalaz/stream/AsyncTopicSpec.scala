@@ -8,6 +8,21 @@ import scalaz.concurrent.Task
 import scalaz.stream.Process._
 import scalaz.{\/-, \/, -\/}
 
+
+//unfortunatelly this has to be separate. If we have it on AsyncTopicSpec, some tests will deadlock
+object WriterHelper {
+  def w: Writer1[Long, String, Int] = {
+    def go(acc: Long): Writer1[Long, String, Int] = {
+      receive1[String, Long \/ Int] {
+        s =>
+          val t: Long = s.size.toLong + acc
+          emit(-\/(t)) fby emit(\/-(s.size)) fby go(t)
+      }
+    }
+    go(0)
+  }
+}
+
 object AsyncTopicSpec extends Properties("topic") {
 
   case object TestedEx extends Throwable {
@@ -112,22 +127,12 @@ object AsyncTopicSpec extends Properties("topic") {
       }
   }
 
-  def w: Writer1[Long, String, Int] = {
-    def go(acc: Long): Writer1[Long, String, Int] = {
-      receive1[String, Long \/ Int] {
-        s =>
-          val t: Long = s.size.toLong + acc
-          emit(-\/(t)) fby emit(\/-(s.size)) fby go(t)
-      }
-    }
-    go(0)
-  }
 
   property("writer.state") = forAll {
     l: List[String] =>
       (l.nonEmpty) ==> {
 
-        val topic = async.writerTopic(emit(-\/(0L)) fby w)
+        val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)
 
         val published = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
         topic.subscribe.runLog.runAsync(published.put)
@@ -162,7 +167,7 @@ object AsyncTopicSpec extends Properties("topic") {
   property("writer.state.startWith.up") = forAll {
     l: List[String] =>
       (l.nonEmpty) ==> {
-        val topic = async.writerTopic(emit(-\/(0L)) fby w)
+        val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)
         ((Process(l: _*).toSource to topic.publish)).run.run
 
         val subscriber = topic.subscribe.take(1).runLog.run
@@ -172,11 +177,20 @@ object AsyncTopicSpec extends Properties("topic") {
   }
 
   property("writer.state.startWith.down") = secure {
-    val topic = async.writerTopic(emit(-\/(0L)) fby w)
+    val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)
     val subscriber = topic.subscribe.take(1).runLog.run
     topic.close.run
     subscriber == List(-\/(0))
 
+  }
+
+  property("writer.state.consume") = secure {
+    val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)
+    val result = new SyncVar[Throwable \/ IndexedSeq[Long\/Int]]
+    topic.subscribe.runLog.runAsync(result.put)
+    Task.fork(topic.consumeOne(Process("one","two","three").toSource onComplete eval_(topic.close))).runAsync(_=>())
+    result.get(3000).flatMap(_.toOption).toSeq.flatten ==
+      Vector(-\/(0L), -\/(3L), \/-(3), -\/(6L), \/-(3), -\/(11L), \/-(5))
   }
 
 
