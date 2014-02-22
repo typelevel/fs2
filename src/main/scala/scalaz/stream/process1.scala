@@ -264,7 +264,7 @@ trait process1 {
    * If the input is empty, `i` is emitted.
    */
   def lastOr[I](i: => I): Process1[I,I] =
-    last |> await1[I].orElse(emit(i))
+    await1[I].flatMap(i2 => lastOr(i2)).orElse(emit(i))
 
   /** Transform the input using the given function, `f`. */
   def lift[I,O](f: I => O): Process1[I,O] =
