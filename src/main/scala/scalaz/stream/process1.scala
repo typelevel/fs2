@@ -346,11 +346,11 @@ trait process1 {
    * are emitted. The last element is then prepended to the next input using the
    * Semigroup `I`. For example,
    * {{{
-   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq) ==
+   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ")) ==
    *   Process("Hello", "World")
    * }}}
    */
-  def repartition[I](p: I => IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
+  def repartition[I](p: I => collection.IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
       await1[I].flatMap { i =>
         val next = carry.fold(i)(c => I.append(c, i))

@@ -160,7 +160,7 @@ object ProcessSpec extends Properties("Process1") {
   }
 
   property("repartition") = secure {
-    Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ").toIndexedSeq).toList ==
+    Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ")).toList ==
       List("Lorem", "ipsum", "dolor", "sit", "amet") &&
     Process("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ==
       List("he", "ll", "o ", "Wo", "rl", "d") &&
