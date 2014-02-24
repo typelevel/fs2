@@ -526,11 +526,11 @@ trait process1 {
      * leading byte of a multi-byte sequence, and -1 otherwise.
      */
     def continuationBytes(b: Byte): Int = {
-      if      ((b >> 7) ==  0) 0 // ASCII byte
-      else if ((b >> 5) == -2) 1 // leading byte of a 2 byte seq
-      else if ((b >> 4) == -2) 2 // leading byte of a 3 byte seq
-      else if ((b >> 3) == -2) 3 // leading byte of a 4 byte seq
-      else -1                    // continuation byte or garbage
+      if      ((b & 0x80) == 0x00) 0 // ASCII byte
+      else if ((b & 0xE0) == 0xC0) 1 // leading byte of a 2 byte seq
+      else if ((b & 0xF0) == 0xE0) 2 // leading byte of a 3 byte seq
+      else if ((b & 0xF8) == 0xF0) 3 // leading byte of a 4 byte seq
+      else -1                        // continuation byte or garbage
     }
 
     /**
