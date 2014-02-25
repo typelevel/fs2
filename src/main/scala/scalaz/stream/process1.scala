@@ -3,7 +3,7 @@ package scalaz.stream
 import collection.immutable.Vector
 import java.nio.charset.Charset
 
-import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal}
+import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal, Order}
 import scalaz.\/._
 import scalaz.syntax.equal._
 
@@ -292,6 +292,30 @@ trait process1 {
    */
   def liftR[A,B,C](p: Process1[B,C]): Process1[A \/ B, A \/ C] =
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
+
+  /** Emits the greatest element of the input. */
+  def maximum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce(A.max)
+
+  /** Emits the element `a` of the input which yields the greatest value of `f(a)`. */
+  def maximumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce(Order.orderBy(f).max)
+
+  /** Emits the greatest value of `f(a)` for each element `a` of the input. */
+  def maximumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> maximum
+
+  /** Emits the smallest element of the input. */
+  def minimum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce(A.min)
+
+  /** Emits the element `a` of the input which yields the smallest value of `f(a)`. */
+  def minimumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce(Order.orderBy(f).min)
+
+  /** Emits the smallest value of `f(a)` for each element `a` of the input. */
+  def minimumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> minimum
 
   /**
    * Split the input and send to either `chan1` or `chan2`, halting when
