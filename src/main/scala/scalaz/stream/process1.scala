@@ -295,11 +295,11 @@ trait process1 {
 
   /** Emits the greatest element of the input. */
   def maximum[A](implicit A: Order[A]): Process1[A,A] =
-    reduce(A.max)
+    reduce((x, y) => if (A.greaterThan(x, y)) x else y)
 
   /** Emits the element `a` of the input which yields the greatest value of `f(a)`. */
   def maximumBy[A,B: Order](f: A => B): Process1[A,A] =
-    reduce(Order.orderBy(f).max)
+    reduce((x, y) => if (Order.orderBy(f).greaterThan(x, y)) x else y)
 
   /** Emits the greatest value of `f(a)` for each element `a` of the input. */
   def maximumOf[A,B: Order](f: A => B): Process1[A,B] =
@@ -307,11 +307,11 @@ trait process1 {
 
   /** Emits the smallest element of the input. */
   def minimum[A](implicit A: Order[A]): Process1[A,A] =
-    reduce(A.min)
+    reduce((x, y) => if (A.lessThan(x, y)) x else y)
 
   /** Emits the element `a` of the input which yields the smallest value of `f(a)`. */
   def minimumBy[A,B: Order](f: A => B): Process1[A,A] =
-    reduce(Order.orderBy(f).min)
+    reduce((x, y) => if (Order.orderBy(f).lessThan(x, y)) x else y)
 
   /** Emits the smallest value of `f(a)` for each element `a` of the input. */
   def minimumOf[A,B: Order](f: A => B): Process1[A,B] =
