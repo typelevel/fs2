@@ -7,7 +7,7 @@ import scala.concurrent.duration._
 import scalaz.{Catchable,Functor,Monad,Cobind,MonadPlus,Monoid,Nondeterminism,Semigroup}
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
-import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
+import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal,Order,==>>}
 import scalaz.std.stream._
 import scalaz.syntax.foldable._
 import \/._
@@ -746,6 +746,14 @@ sealed abstract class Process[+F[_],+O] {
   /** Alias for `this |> [[process1.terminated]]`. */
   def terminated: Process[F,Option[O]] =
     this |> process1.terminated
+
+  /** Alias for `this |> [[process1.unique]]`. */
+  def unique[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =
+    this |> process1.unique(O2)
+
+  /** Alias for `this |> [[process1.uniqueBy]](f)`. */
+  def uniqueBy[B: Order](f: O => B): Process[F,O] =
+    this |> process1.uniqueBy(f)
 
   /** Alias for `this |> [[process1.window]](n)`. */
   def window(n: Int): Process[F,Vector[O]] =

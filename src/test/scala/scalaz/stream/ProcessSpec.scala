@@ -117,6 +117,13 @@ object ProcessSpec extends Properties("Process1") {
       p.toList.sum[Int] ===
       p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
     }) &&
+    ("unique" |: {
+      p.unique.toList.sorted === p.toList.toSet.toList.sorted
+    }) &&
+    ("uniqueBy" |: {
+      p2.uniqueBy(_.length).map(_.length).toList.sorted ===
+        p2.map(_.length).toList.toSet.toList.sorted
+    }) &&
     ("intersperse" |: {
       p.intersperse(0).toList == p.toList.intersperse(0)
     }) &&
