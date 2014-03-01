@@ -7,7 +7,7 @@ import scala.concurrent.duration._
 import scalaz.{Catchable,Functor,Monad,Cobind,MonadPlus,Monoid,Nondeterminism,Semigroup}
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
-import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal,Order,==>>}
+import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal,Order}
 import scalaz.std.stream._
 import scalaz.syntax.foldable._
 import \/._
