@@ -4,12 +4,13 @@ import scalaz.stream.actor.{WyeActor, message, actors}
 import scala.collection.immutable.{IndexedSeq,SortedMap,Queue,Vector}
 import scala.concurrent.duration._
 
-import scalaz.{Catchable,Functor,Monad,Cobind,MonadPlus,Monoid,Nondeterminism,Semigroup}
+import scalaz.{Catchable,Functor,Monad,Cobind,MonadPlus,Monoid,Nondeterminism,Semigroup, Applicative}
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
 import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
 import scalaz.std.stream._
 import scalaz.syntax.foldable._
+import scalaz.syntax.applicative._
 import \/._
 import ReceiveY.{ReceiveL,ReceiveR}
 
@@ -698,6 +699,23 @@ sealed abstract class Process[+F[_],+O] {
   /** Alias for `this |> [[process1.scan]](b)(f)`. */
   def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
     this |> process1.scan(b)(f)
+
+  /** Like scan, but the function used for scanning can be effectful. */
+  def scanF[F2[x]>:F[x],B](fb: F2[B])(f: (B,O) => F2[B])(implicit app: Applicative[F2]): Process[F2,B] = this match {
+    case Emit(oseq,rest) => Await[F2,B,B](
+      fb,
+      (b:B) =>
+      if (oseq.isEmpty) {
+        rest.scanF[F2,B](b.point[F2])(f)
+      } else {
+        Emit(Seq(b),
+          Await[F2,B,B](f(b,oseq.head), (bnext:B) => emitSeq(oseq.tail, rest).scanF[F2,B](bnext.point[F2])(f) )
+        )
+      }
+    )
+    case Await(req, recv, fallback2,cleanup2) => Await(req, recv andThen( _.scanF(fb)(f) ), fallback2.scanF(fb)(f), cleanup2.scanF(fb)(f))
+    case h@Halt(e) => h
+  }
 
   /** Alias for `this |> [[process1.scanMap]](f)(M)`. */
   def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
