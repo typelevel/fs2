@@ -2,6 +2,7 @@ package scalaz.stream
 
 import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,File,FileOutputStream,InputStream,OutputStream}
 
+import scala.io.Codec
 import scalaz.concurrent.Task
 import Process._
 
@@ -96,8 +97,8 @@ trait io {
    * the `resource` combinator to ensure the file is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(filename: String): Process[Task,String] =
-    resource(Task.delay(scala.io.Source.fromFile(filename)))(
+  def linesR(filename: String)(implicit codec: Codec): Process[Task,String] =
+    resource(Task.delay(scala.io.Source.fromFile(filename)(codec)))(
              src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
       Task.delay { if (lines.hasNext) lines.next else throw End }
@@ -108,8 +109,8 @@ trait io {
    * using the `resource` combinator to ensure the `InputStream` is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(in: InputStream): Process[Task,String] =
-    resource(Task.delay(scala.io.Source.fromInputStream(in)))(
+  def linesR(in: InputStream)(implicit codec: Codec): Process[Task,String] =
+    resource(Task.delay(scala.io.Source.fromInputStream(in)(codec)))(
              src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
       Task.delay { if (lines.hasNext) lines.next else throw End }
