@@ -39,15 +39,8 @@ object Util {
    * Helper to wrap evaluation of `p` that may cause side-effects by throwing exception.
    */
   private[stream2] def Try[F[_], A](p: => Process[F, A]): Process[F, A] =
-    TryOr(p,Process.fail)
-
-  /**
-   * Helper to wrap evaluation of `p` that may cause side-effects
-   * and in that case run the supplied function to generate next process
-   */
-  private[stream2] def TryOr[F[_], A](p: => Process[F, A], fb: Throwable => Process[F,A]): Process[F, A] =
     try p
-    catch {case e: Throwable => Try(fb(e))}
+    catch {case e: Throwable => Process.fail(e)}
 
  /** helper for turning on/off debug **/
   def debug(s: => String) = {

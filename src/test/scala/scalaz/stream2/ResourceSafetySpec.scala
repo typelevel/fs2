@@ -54,7 +54,9 @@ object ResourceSafetySpec extends Properties("resource-safety") {
       case ((label,proc,exp,cup),idx) =>
 //        println(">>>>>"+proc.run.attemptRun)
 //        println("~~~~~"+thrown)
-        label |: (proc.run.attemptRun == -\/(exp) && thrown(idx) == cup)
+        val r = proc.run.attemptRun
+        val thrwn = if (thrown.size < idx) None else Some(thrown(idx))
+        s"$label r: $r t: $thrwn" |: ( r == -\/(exp) && thrown(idx) == cup)
     }
 
     result.reduce(_ && _)

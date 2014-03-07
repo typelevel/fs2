@@ -147,7 +147,7 @@ trait process1 {
           case Halt(rsn)                          => go(in, out, Try(stack.head(rsn).run), stack.tail)
           case Emit(os)                           => go(in, out fast_++ os, Try(stack.head(End).run), stack.tail)
           case Append(p, n)                       => go(in, out, p, n fast_++ stack)
-          case AwaitP1(rcv, fb)                   => go(in.tail, out, TryOr(rcv(in.head), fb), stack)
+          case AwaitP1(rcv)                       => go(in.tail, out, Try(rcv(in.head)), stack)
         }
       } else emitAll(out) ++ cur
     }
