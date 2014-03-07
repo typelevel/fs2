@@ -19,10 +19,10 @@ sealed trait Process[+F[_], +O] {
   final def flatMap[F2[x] >: F[x], O2](f: O => Process[F2, O2]): Process[F2, O2] = {
     debug(s"FM this:$this")
     this match {
-      case h@Halt(_)       => h
-      case Emit(h, t)      => t.foldLeft(Try(f(h)))((p, n) => p append Try(f(n)))
-      case aw@Await(_, _)  => aw.extend(_ flatMap f)
-      case ap@Append(p, n) => ap.extend(_ flatMap f)
+      case Halt(_) | Emit(Seq()) => this.asInstanceOf[Process[F2,O2]]
+      case Emit(os)                => os.tail.foldLeft(Try(f(os.head)))((p, n) => p append Try(f(n)))
+      case aw@Await(_, _)          => aw.extend(_ flatMap f)
+      case ap@Append(p, n)         => ap.extend(_ flatMap f)
     }
 
   }
@@ -65,7 +65,7 @@ sealed trait Process[+F[_], +O] {
   final def drain: Process[F, Nothing] = {
     this match {
       case h@Halt(_)       => h
-      case Emit(_, _)      => halt
+      case Emit(_)         => halt
       case aw@Await(_, _)  => aw.extend(_.drain)
       case ap@Append(p, n) => ap.extend(_.drain)
     }
@@ -106,7 +106,7 @@ sealed trait Process[+F[_], +O] {
   final def runFoldMap[F2[x] >: F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2, O], acc: B, stack: Vector[Throwable => Trampoline[Process[F2, O]]], cause: Throwable): F2[B] = {
       cur match {
-        case `halt` =>
+        case `halt` | Emit(Seq()) =>
           if (stack.isEmpty) cause match {
             case End => F.point(acc)
             case rsn => C.fail(rsn)
@@ -118,8 +118,8 @@ sealed trait Process[+F[_], +O] {
           if (stack.isEmpty) C.fail(cause0)
           else go(Try(stack.head(cause0).run), acc, stack.tail, cause0)
 
-        case Emit(h, t) =>
-          def r = t.foldLeft(B.append(acc, f(h)))((b, o) => B.append(b, f(o)))
+        case Emit(os) =>
+          def r = os.foldLeft(acc)((b, o) => B.append(b, f(o)))
           if (stack.isEmpty) F.point(r)
           else go(Try(stack.head(cause).run), r, stack.tail, cause)
 
@@ -203,7 +203,7 @@ object Process {
 
   /**
    * The `Emit` constructor instructs the driver to emit
-   * the given head and sequence of values to the output
+   * the given sequence of values to the output
    * and then halt execution with supplied reason.
    *
    * Instead calling this constructor directly, please use one
@@ -212,7 +212,7 @@ object Process {
    * Process.emit
    * Process.emitAll
    */
-  case class Emit[+O](head: O, tail: Seq[O]) extends DoneOrAwait[Nothing, O]
+  case class Emit[+O](seq: Seq[O]) extends DoneOrAwait[Nothing, O]
 
   /**
    * The `Await` constructor instructs the driver to evaluate
@@ -281,18 +281,18 @@ object Process {
   def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(rsn)
 
   /** constructor to emit single `O` **/
-  def emit[O](o: O): Process[Nothing, O] = Emit(o, Nil)
+  def emit[O](o: O): Process[Nothing, O] = Emit(Vector(o))
 
   /** constructor to emit sequence of `O` **/
   def emitAll[O](os: Seq[O]): Process[Nothing, O] = os match {
     case Seq() => halt
-    case _     => Emit(os.head, os.tail)
+    case _ => Emit(os)
   }
 
   /** constructor to emit sequence of `O` having `tail` as next state **/
   @deprecated("Use please emitAll(h) ++ tail instead", "0.5.0")
   def emitSeq[F[_], O](h: Seq[O], t: Process[F, O] = halt): Process[F, O] = t match {
-    case `halt` => emitAll(h)
+    case `halt` | Emit(Seq()) => emitAll(h)
     case _      => emitAll(h) ++ t
   }
 
@@ -419,10 +419,10 @@ object Process {
       def go(cur: Process0[O], acc: Vector[O], stack: Vector[Throwable => Trampoline[Process0[O]]]): IndexedSeq[O] = {
         //debug(s"P0 cur: $cur, acc: $acc, stack: ${stack.size}")
         cur match {
-          case Emit(h, t)   =>
-            val os = acc fast_++ (h +: t.toIndexedSeq)
-            if (stack.isEmpty) os
-            else go(Try(stack.head(End).run), os, stack.tail)
+          case Emit(os) =>
+            val osacc = acc fast_++ os
+            if (stack.isEmpty) osacc
+            else go(Try(stack.head(End).run), osacc, stack.tail)
           case Append(p, t) =>
             //    debug(s"P0 APPEND p:$p, t:${t.size}, s:${stack.size}")
             go(p, acc, t fast_++ stack)
