@@ -2,9 +2,9 @@ package scalaz.stream2
 
 
 import scala.Ordering
-import scala.Some
 import scala.annotation.tailrec
 import scala.collection.SortedMap
+import scalaz.\/._
 import scalaz._
 import scalaz.concurrent.Task
 
@@ -32,12 +32,47 @@ sealed trait Process[+F[_], +O] {
     flatMap { o => emit(f(o)) }
 
 
+  final def pipe[O2](p2: Process1[O, O2]): Process[F, O2] = {
+
+    //    def go(
+    //      cur: Process[F, O]
+    //      , cur1: Process1[O, O2]
+    //      , stack: Vector[Throwable => Trampoline[Process[F, O]]]
+    //      , stack1: Vector[Throwable => Trampoline[Process1[O, O2]]]): Process[F, O2] = {
+    //
+    //      cur1 match {
+    //        case hlt@Halt(rsn) if stack1.isEmpty =>
+    //          if (stack.isEmpty) hlt
+    //          else go(Try(stack.head(rsn).run), cur1, stack.tail, stack1)
+    //        case Halt(rsn)                       => go(cur, Try(stack1.head(rsn).run), stack, stack1.tail)
+    //        case emit@Emit(_)                 => emit onComplete go(cur, halt, stack, stack1)
+    //        case Append(p, n)                    => go(cur, p, stack, n fast_++ stack1)
+    //        case aw@AwaitP1(rcv1, fb1)            =>
+    //          this match {
+    //            case hlt@Halt(rsn) if stack.isEmpty => go(hlt, Try(fb1(rsn)), stack, stack1)
+    //            case hlt@Halt(rsn)                  => go(Try(stack.head(rsn).run), cur1, stack.tail, stack1)
+    //            case Emit(t)                     => go(emitAll(t), Try(rcv1(h)), stack, stack1)
+    //            case aw@Await(_, _)                 => aw.extend(go(_, cur1, stack, stack1))
+    //            case ap@Append(p, n)                => go(p, cur1, n fast_++ stack, stack1)
+    //          }
+    //      }
+    //
+    //    }
+    //
+    //    go(this, p2, Vector(), Vector())
+    ???
+  }
+
+  final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
+
+
   ////////////////////////////////////////////////////////////////////////////////////////
   // Alphabetical order from now on
   ////////////////////////////////////////////////////////////////////////////////////////
 
   /**
    * If this process halts without an error, attaches `p2` as the next step.
+   * Also this won't attach `p2` whenever process was `Killed` by downstream
    */
   final def append[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = {
     onHalt {
@@ -49,15 +84,24 @@ sealed trait Process[+F[_], +O] {
   /** alias for `append` **/
   final def ++[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
 
+  /**
+   * Run this `Process`, then, if it self-terminates, run `p2`.
+   * This differs from `append` in that `p2` is not consulted if this
+   * `Process` terminates due to the input being exhausted.
+   * That is if the Await terminated with an End exception, `p2` is not appended.
+   */
+  final def fby[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = ???
 
   /**
    * Add `e` as a cause when this `Process` halts.
-   * This is a noop and returns immediately if `e` is `Process.End`.
+   * This is a no-op  if `e` is `Process.End`.
    */
   final def causedBy[F2[x] >: F[x], O2 >: O](e: Throwable): Process[F2, O2] = {
     onHalt {
-      case End => fail(e)
-      case rsn => fail(CausedBy(rsn, e))
+      case rsn => e match {
+        case End => fail(rsn)
+        case _   => fail(CausedBy(rsn, e))
+      }
     }
   }
 
@@ -70,6 +114,30 @@ sealed trait Process[+F[_], +O] {
       case ap@Append(p, n) => ap.extend(_.drain)
     }
   }
+
+
+  //  /** Causes _all_ subsequent awaits to  to fail with the `End` exception. */
+  //  final def disconnect: Process[F, O] = disconnect0(End)
+  //
+  //  /**
+  //   * Causes _all_ subsequent awaits to  to fail with the `Kill` exception.
+  //   * Awaits are supposed to run cleanup code on receiving `End` or `Kill` exception
+  //   */
+  //  final def hardDisconnect: Process[F, O] = disconnect0(Kill)
+  //
+  //  /** Causes _all_ subsequent awaits to  to fail with the `rsn` exception. */
+  //  final def disconnect0(rsn:Throwable): Process[F, O] = {
+  //    this match {
+  //      case h@Halt(_)       => h
+  //      case Await(_, rcv)   => suspend(Try(rcv(left(rsn)).run).disconnect(rsn))
+  //      case ap@Append(p, n) => ap.extend(_.disconnect(rsn))
+  //      case Emit(h)         => this
+  //    }
+  //  }
+
+  //
+  //  /** Send the `End` signal to the next `Await`, then ignore all outputs. */
+  //  final def kill: Process[F, Nothing] = this.disconnect.drain
 
   /**
    * Run `p2` after this `Process` completes normally, or in the event of an error.
@@ -92,6 +160,36 @@ sealed trait Process[+F[_], +O] {
       case Append(p, n)   => Append(p, n :+ next)
       case DoneOrAwait(p) => Append(p, Vector(next))
     }
+  }
+
+  /**
+   * Append process specified in `fallback` argument in case the _next_ Await throws an End,
+   * and appned process specified in `cleanup` argument in case _next_ Await throws any other exception
+   */
+  final def orElse[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], cleanup: => Process[F2, O2] = halt): Process[F2, O2] =
+    onHalt { case End => fallback; case _ => cleanup }
+
+
+  /**
+   * Run this process until it halts, then run it again and again, as
+   * long as no errors occur.
+   */
+  final def repeat[F2[x] >: F[x], O2 >: O]: Process[F2, O2] = {
+    //    this onHalt {
+    //      case End => this.repeat
+    //      case rsn => halt
+    //    }
+    //
+    //    def go(cur: Process[F,O]): Process[F,O] = cur match {
+    //      case h@Halt(e) => e match {
+    //        case End => go(this)
+    //        case _ => h
+    //      }
+    //      case Await(req,recv,fb,c) => Await(req, recv andThen go, fb, c)
+    //      case Emit(h, t) => emitSeq(h, go(t))
+    //    }
+    //    go(this)
+    ???
   }
 
   ///////////////////////////////////////////
@@ -162,6 +260,193 @@ sealed trait Process[+F[_], +O] {
   final def run[F2[x] >: F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] =
     F.void(drain.runLog(F, C))
 
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Process1 syntax helpers.
+  /////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  /** Alias for `this |> [[process1.buffer]](n)`. */
+  def buffer(n: Int): Process[F, O] =
+    this |> process1.buffer(n)
+
+  /** Alias for `this |> [[process1.bufferAll]]`. */
+  def bufferAll: Process[F, O] =
+    this |> process1.bufferAll
+
+  /** Alias for `this |> [[process1.bufferBy]](f)`. */
+  def bufferBy(f: O => Boolean): Process[F, O] =
+    this |> process1.bufferBy(f)
+
+  /** Alias for `this |> [[process1.chunk]](n)`. */
+  def chunk(n: Int): Process[F, Vector[O]] =
+    this |> process1.chunk(n)
+
+  /** Alias for `this |> [[process1.chunkAll]]`. */
+  def chunkAll: Process[F, Vector[O]] =
+    this |> process1.chunkAll
+
+  /** Alias for `this |> [[process1.chunkBy]](f)`. */
+  def chunkBy(f: O => Boolean): Process[F, Vector[O]] =
+    this |> process1.chunkBy(f)
+
+  /** Alias for `this |> [[process1.chunkBy2]](f)`. */
+  def chunkBy2(f: (O, O) => Boolean): Process[F, Vector[O]] =
+    this |> process1.chunkBy2(f)
+
+  /** Alias for `this |> [[process1.collect]](pf)`. */
+  def collect[O2](pf: PartialFunction[O, O2]): Process[F, O2] =
+    this |> process1.collect(pf)
+
+  /** Alias for `this |> [[process1.collectFirst]](pf)`. */
+  def collectFirst[O2](pf: PartialFunction[O, O2]): Process[F, O2] =
+    this |> process1.collectFirst(pf)
+
+  /** Alias for `this |> [[process1.drop]](n)`. */
+  def drop(n: Int): Process[F, O] =
+    this |> process1.drop[O](n)
+
+  /** Alias for `this |> [[process1.dropLast]]`. */
+  def dropLast: Process[F, O] =
+    this |> process1.dropLast
+
+  /** Alias for `this |> [[process1.dropLastIf]](p)`. */
+  def dropLastIf(p: O => Boolean): Process[F, O] =
+    this |> process1.dropLastIf(p)
+
+  /** Alias for `this |> [[process1.dropWhile]](f)`. */
+  def dropWhile(f: O => Boolean): Process[F, O] =
+    this |> process1.dropWhile(f)
+
+  /** Alias for `this |> [[process1.exists]](f)` */
+  def exists(f: O => Boolean): Process[F, Boolean] =
+    this |> process1.exists(f)
+
+  /** Alias for `this |> [[process1.filter]](f)`. */
+  def filter(f: O => Boolean): Process[F, O] =
+    this |> process1.filter(f)
+
+  /** Alias for `this |> [[process1.find]](f)` */
+  def find(f: O => Boolean): Process[F, O] =
+    this |> process1.find(f)
+
+  /** Alias for `this |> [[process1.forall]](f)` */
+  def forall(f: O => Boolean): Process[F, Boolean] =
+    this |> process1.forall(f)
+
+  /** Alias for `this |> [[process1.fold]](b)(f)`. */
+  def fold[O2 >: O](b: O2)(f: (O2, O2) => O2): Process[F, O2] =
+    this |> process1.fold(b)(f)
+
+  /** Alias for `this |> [[process1.foldMap]](f)(M)`. */
+  def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F, M] =
+    this |> process1.foldMap(f)(M)
+
+  /** Alias for `this |> [[process1.foldMonoid]](M)` */
+  def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F, O2] =
+    this |> process1.foldMonoid(M)
+
+  /** Alias for `this |> [[process1.foldSemigroup]](M)`. */
+  def foldSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F, O2] =
+    this |> process1.foldSemigroup(M)
+
+  /** Alias for `this |> [[process1.fold1]](f)`. */
+  def fold1[O2 >: O](f: (O2, O2) => O2): Process[F, O2] =
+    this |> process1.fold1(f)
+
+  /** Alias for `this |> [[process1.fold1Map]](f)(M)`. */
+  def fold1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F, M] =
+    this |> process1.fold1Map(f)(M)
+
+  /** Alias for `this |> [[process1.fold1Monoid]](M)` */
+  def fold1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F, O2] =
+    this |> process1.fold1Monoid(M)
+
+  /** Alias for `this |> [[process1.intersperse]](sep)`. */
+  def intersperse[O2 >: O](sep: O2): Process[F, O2] =
+    this |> process1.intersperse(sep)
+
+  /** Alias for `this |> [[process1.last]]`. */
+  def last: Process[F, O] =
+    this |> process1.last
+
+  /** Alias for `this |> [[process1.reduce]](f)`. */
+  def reduce[O2 >: O](f: (O2, O2) => O2): Process[F, O2] =
+    this |> process1.reduce(f)
+
+  /** Alias for `this |> [[process1.reduceMap]](f)(M)`. */
+  def reduceMap[M](f: O => M)(implicit M: Semigroup[M]): Process[F, M] =
+    this |> process1.reduceMap(f)(M)
+
+  /** Alias for `this |> [[process1.reduceMonoid]](M)`. */
+  def reduceMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F, O2] =
+    this |> process1.reduceMonoid(M)
+
+  /** Alias for `this |> [[process1.reduceSemigroup]](M)`. */
+  def reduceSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F, O2] =
+    this |> process1.reduceSemigroup(M)
+
+  /** Alias for `this |> [[process1.repartition]](p)(S)` */
+  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F, O2] =
+    this |> process1.repartition(p)(S)
+
+  /** Alias for `this |> [[process1.scan]](b)(f)`. */
+  def scan[B](b: B)(f: (B, O) => B): Process[F, B] =
+    this |> process1.scan(b)(f)
+
+  /** Alias for `this |> [[process1.scanMap]](f)(M)`. */
+  def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F, M] =
+    this |> process1.scanMap(f)(M)
+
+  /** Alias for `this |> [[process1.scanMonoid]](M)`. */
+  def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F, O2] =
+    this |> process1.scanMonoid(M)
+
+  /** Alias for `this |> [[process1.scanSemigroup]](M)`. */
+  def scanSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F, O2] =
+    this |> process1.scanSemigroup(M)
+
+  /** Alias for `this |> [[process1.scan1]](f)`. */
+  def scan1[O2 >: O](f: (O2, O2) => O2): Process[F, O2] =
+    this |> process1.scan1(f)
+
+  /** Alias for `this |> [[process1.scan1Map]](f)(M)`. */
+  def scan1Map[M](f: O => M)(implicit M: Semigroup[M]): Process[F, M] =
+    this |> process1.scan1Map(f)(M)
+
+  /** Alias for `this |> [[process1.scan1Monoid]](M)`. */
+  def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F, O2] =
+    this |> process1.scan1Monoid(M)
+
+  /** Alias for `this |> [[process1.split]](f)` */
+  def split(f: O => Boolean): Process[F, Vector[O]] =
+    this |> process1.split(f)
+
+  /** Alias for `this |> [[process1.splitOn]](p)` */
+  def splitOn[P >: O](p: P)(implicit P: Equal[P]): Process[F, Vector[P]] =
+    this |> process1.splitOn(p)
+
+  /** Alias for `this |> [[process1.splitWith]](f)` */
+  def splitWith(f: O => Boolean): Process[F, Vector[O]] =
+    this |> process1.splitWith(f)
+
+  /** Alias for `this |> [[process1.take]](n)`. */
+  def take(n: Int): Process[F, O] =
+    this |> process1.take[O](n)
+
+  /** Alias for `this |> [[process1.takeWhile]](f)`. */
+  def takeWhile(f: O => Boolean): Process[F, O] =
+    this |> process1.takeWhile(f)
+
+  /** Alias for `this |> [[process1.terminated]]`. */
+  def terminated: Process[F, Option[O]] =
+    this |> process1.terminated
+
+  /** Alias for `this |> [[process1.window]](n)`. */
+  def window(n: Int): Process[F, Vector[O]] =
+    this |> process1.window(n)
+
+  /** Halts this `Process` after emitting 1 element. */
+  def once: Process[F, O] = take(1)
 
 }
 
@@ -252,6 +537,7 @@ object Process {
     , tail: Vector[Throwable => Trampoline[Process[F, O]]]
     ) extends Process[F, O] {
 
+
     /**
      * Helper to modify the head and appended processes
      */
@@ -276,6 +562,10 @@ object Process {
 
   /** alias for emitAll **/
   def apply[O](o: O*): Process[Nothing, O] = emitAll(o)
+
+  /** hepler to construct await for Process1 **/
+  def await1[I]: Process1[I, I] =
+    await(Get[I])(emit)
 
   /** Indicates termination with supplied reason **/
   def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(rsn)
@@ -316,7 +606,35 @@ object Process {
     ))
   }
 
-  //(r: Throwable \/ A) => Trampoline.delay(rcv(r))
+  ///////////////////////////////////////////////////////////////////////////////////////
+  //
+  // DECONSTRUCTORS, Matchers
+  //
+  //////////////////////////////////////////////////////////////////////////////////////
+
+  object Await1 {
+
+    @deprecated("use rather AwaitP1 deconstruct", "0.5.0")
+    def unapply[I, O](self: Process1[I, O]):
+    Option[(I => Process1[I, O], Process1[I, O], Process1[I, O])] = self match {
+      case Await(_, rcv) => Some(
+        ((i: I) => Try(rcv(right(i)).run)
+          , suspend(Try(rcv(left(End)).run))
+          , suspend(Try(rcv(left(Kill)).run)))
+      )
+      case _             => None
+    }
+
+  }
+
+  object AwaitP1 {
+    /** deconstruct for `Await` directive of `Process1` **/
+    def unapply[I, O](self: Process1[I, O]): Option[(I => Process1[I, O], Throwable => Process1[I, O])] = self match {
+      case Await(_, rcv) => Some(((i: I) => Try(rcv(right(i)).run), (t: Throwable) => Try(rcv(left(t)).run)))
+      case _             => None
+    }
+  }
+
 
   ///////////////////////////////////////////////////////////////////////////////////////
   //
@@ -351,6 +669,15 @@ object Process {
    * exception results in control switching to process, that is appended
    */
   case object End extends Exception {
+    override def fillInStackTrace = this
+  }
+
+  /**
+   * Special exception indicating downstream termination.
+   * An `Await` should respond to a `Kill` by performing
+   * necessary cleanup actions, then halting with `End`
+   */
+  case object Kill extends Exception {
     override def fillInStackTrace = this
   }
 
@@ -402,6 +729,16 @@ object Process {
       def fold[R](l: => R, r: => R, both: => R): R = both
     }
   }
+
+
+  private val Left_  = Env[Any, Any]().Left
+  private val Right_ = Env[Any, Any]().Right
+  private val Both_  = Env[Any, Any]().Both
+
+  def Get[I]: Env[I, Any]#Is[I] = Left_
+  def L[I]: Env[I, Any]#Is[I] = Left_
+  def R[I2]: Env[Any, I2]#T[I2] = Right_
+  def Both[I, I2]: Env[I, I2]#Y[ReceiveY[I, I2]] = Both_
 
 
   //////////////////////////////////////////////////////////////////////////////////////
