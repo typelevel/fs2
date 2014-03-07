@@ -13,7 +13,8 @@ scalacOptions ++= Seq(
   "-language:existentials",
   "-language:postfixOps",
   "-Xfatal-warnings",
-  "-Yno-adapted-args"
+  "-Yno-adapted-args",
+  "-deprecation"
 )
 
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
