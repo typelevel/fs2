@@ -55,7 +55,7 @@ trait io {
     Process.constant(f)
 
   /**
-   * Create a `Channel[Task,Int,Bytes]` from an `InputStream` by
+   * Creates a `Channel[Task,Int,Array[Byte]]` from an `InputStream` by
    * repeatedly requesting the given number of bytes. The last chunk
    * may be less than the requested size.
    *
@@ -72,18 +72,18 @@ trait io {
     })
 
   /**
-   * Create a `Sink` from an `OutputStream`, which will be closed
+   * Creates a `Sink` from an `OutputStream`, which will be closed
    * when this `Process` is halted.
    */
-  def chunkW(os: => OutputStream): Process[Task, Array[Byte] => Task[Unit]] =
+  def chunkW(os: => OutputStream): Sink[Task, Array[Byte]] =
     resource(Task.delay(os))(os => Task.delay(os.close))(
       os => Task.now((bytes: Array[Byte]) => Task.delay(os.write(bytes))))
 
-  /** Create a `Sink` from a file name and optional buffer size in bytes. */
-  def fileChunkW(f: String, bufferSize: Int = 4096): Process[Task, Array[Byte] => Task[Unit]] =
+  /** Creates a `Sink` from a file name and optional buffer size in bytes. */
+  def fileChunkW(f: String, bufferSize: Int = 4096): Sink[Task, Array[Byte]] =
     chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
 
-  /** Create a `Source` from a file name and optional buffer size in bytes. */
+  /** Creates a `Channel` from a file name and optional buffer size in bytes. */
   def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task, Int, Array[Byte]] =
     chunkR(new BufferedInputStream(new FileInputStream(f), bufferSize))
 
