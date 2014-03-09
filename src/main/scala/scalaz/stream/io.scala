@@ -157,7 +157,7 @@ trait io {
     channel((s: String) => Task.delay { println(s) })
 
   /**
-   * Create a `Channel[Task,Array[Byte],Array[Bytes]]` from an `InputStream` by
+   * Creates a `Channel[Task,Array[Byte],Array[Byte]]` from an `InputStream` by
    * repeatedly filling the input buffer. The last chunk may be less
    * than the requested size.
    *
