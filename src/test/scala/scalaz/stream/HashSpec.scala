@@ -12,7 +12,7 @@ object HashSpec extends Properties("hash") {
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
 
   def checkDigest(h: Process1[Bytes,Bytes], algo: String, str: String): Boolean = {
-    val n = math.max(str.length / 4, 1)
+    val n = Gen.choose(1, str.length).sample.getOrElse(1)
     val p =
       if (str.isEmpty) emit(Bytes.unsafe(str.getBytes))
       else emitSeq(Bytes.unsafe(str.getBytes).grouped(n).toSeq)
@@ -21,8 +21,8 @@ object HashSpec extends Properties("hash") {
   }
 
   property("all") = forAll { (s: String) =>
-    ("md2" |: checkDigest(md2, "MD2", s)) &&
-    ("md5" |: checkDigest(md5, "MD5", s)) &&
+    ("md2"    |: checkDigest(md2,    "MD2",     s)) &&
+    ("md5"    |: checkDigest(md5,    "MD5",     s)) &&
     ("sha1"   |: checkDigest(sha1,   "SHA-1",   s)) &&
     ("sha256" |: checkDigest(sha256, "SHA-256", s)) &&
     ("sha384" |: checkDigest(sha384, "SHA-384", s)) &&
