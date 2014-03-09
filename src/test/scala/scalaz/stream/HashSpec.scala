@@ -30,6 +30,10 @@ object HashSpec extends Properties("hash") {
   }
 
   property("empty input") = secure {
-    emitSeq(Seq.empty[Bytes]).pipe(sha1).toList == List()
+    emitSeq(Seq.empty[Bytes]).pipe(md2).toList == List()
+  }
+
+  property("zero or one output") = forAll { (ls: List[String]) =>
+    emitSeq(ls.map(s => Bytes.unsafe(s.getBytes))).pipe(md2).toList.length <= 1
   }
 }
