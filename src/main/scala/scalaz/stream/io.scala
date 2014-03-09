@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,File,FileOutputStream,InputStream,OutputStream}
+import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,FileOutputStream,InputStream,OutputStream}
 
 import scalaz.concurrent.Task
 import Process._
