@@ -13,6 +13,7 @@ import scalaz.stream.Process.Emit
 import scala.Some
 import scalaz.stream.Process.Halt
 import scalaz.stream.ReceiveY.{HaltL, HaltR, ReceiveR, ReceiveL}
+import scodec.bits.ByteVector
 
 trait process1 {
 
@@ -503,8 +504,8 @@ trait process1 {
   private val utf8Charset = Charset.forName("UTF-8")
 
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
-  val utf8Encode: Process1[String,Array[Byte]] =
-    lift(_.getBytes(utf8Charset))
+  val utf8Encode: Process1[String,ByteVector] =
+    lift(s => ByteVector.view(s.getBytes(utf8Charset)))
 
   /**
    * Outputs a sliding window of size `n` onto the input.

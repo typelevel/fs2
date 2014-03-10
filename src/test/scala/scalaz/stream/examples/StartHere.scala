@@ -25,6 +25,7 @@ object StartHere extends Properties("examples.StartHere") {
         .map(line => fahrenheitToCelsius(line.toDouble).toString)
         .intersperse("\n")
         .pipe(process1.utf8Encode)
+        .map(_.toArray)
         .to(io.fileChunkW("testdata/celsius.txt"))
         .run
 
@@ -96,7 +97,7 @@ object StartHere extends Properties("examples.StartHere") {
 
     */
 
-    val encoder: Process1[String, Array[Byte]] = process1.utf8Encode
+    val encoder: Process1[String, Array[Byte]] = process1.utf8Encode.map(_.toArray)
 
     val chunks: Process[Task, Array[Byte]] = 
       withNewlines.pipe(encoder)
