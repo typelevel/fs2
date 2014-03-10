@@ -3,6 +3,7 @@ package scalaz.stream
 import org.scalacheck._
 import Prop._
 import scalaz.concurrent.Task
+import scodec.bits.ByteVector
 
 object StartHere extends Properties("examples.StartHere") {
   
@@ -25,7 +26,6 @@ object StartHere extends Properties("examples.StartHere") {
         .map(line => fahrenheitToCelsius(line.toDouble).toString)
         .intersperse("\n")
         .pipe(process1.utf8Encode)
-        .map(_.toArray)
         .to(io.fileChunkW("testdata/celsius.txt"))
         .run
 
@@ -97,12 +97,12 @@ object StartHere extends Properties("examples.StartHere") {
 
     */
 
-    val encoder: Process1[String, Array[Byte]] = process1.utf8Encode.map(_.toArray)
+    val encoder: Process1[String, ByteVector] = process1.utf8Encode
 
-    val chunks: Process[Task, Array[Byte]] = 
+    val chunks: Process[Task, ByteVector] =
       withNewlines.pipe(encoder)
 
-    val chunks2: Process[Task, Array[Byte]] = // alternate 'spelling' of `pipe`
+    val chunks2: Process[Task, ByteVector] = // alternate 'spelling' of `pipe`
       withNewlines |> encoder
     
     /*
@@ -115,10 +115,10 @@ object StartHere extends Properties("examples.StartHere") {
 
     */
 
-    val sink: Process[Task, Array[Byte] => Task[Unit]] =
+    val sink: Process[Task, ByteVector => Task[Unit]] =
       io.fileChunkW("testdata/celsius.txt")
     
-    val sink2: Sink[Task, Array[Byte]] = sink // `Sink` is a type alias for the above
+    val sink2: Sink[Task, ByteVector] = sink // `Sink` is a type alias for the above
 
     /*
     

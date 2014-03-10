@@ -3,6 +3,7 @@ package scalaz.stream
 import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,File,FileOutputStream,InputStream,OutputStream}
 
 import scalaz.concurrent.Task
+import scodec.bits.ByteVector
 import Process._
 
 /**
@@ -75,12 +76,12 @@ trait io {
    * Create a `Sink` from an `OutputStream`, which will be closed
    * when this `Process` is halted.
    */
-  def chunkW(os: => OutputStream): Process[Task, Array[Byte] => Task[Unit]] =
+  def chunkW(os: => OutputStream): Sink[Task,ByteVector] =
     resource(Task.delay(os))(os => Task.delay(os.close))(
-      os => Task.now((bytes: Array[Byte]) => Task.delay(os.write(bytes))))
+      os => Task.now((bytes: ByteVector) => Task.delay(os.write(bytes.toArray))))
 
   /** Create a `Sink` from a file name and optional buffer size in bytes. */
-  def fileChunkW(f: String, bufferSize: Int = 4096): Process[Task, Array[Byte] => Task[Unit]] =
+  def fileChunkW(f: String, bufferSize: Int = 4096): Sink[Task,ByteVector] =
     chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
 
   /** Create a `Source` from a file name and optional buffer size in bytes. */
