@@ -3,6 +3,7 @@ package scalaz.stream
 import java.security.MessageDigest
 
 import Process._
+import process1._
 
 trait hash {
   /** Computes the MD2 hash of the input elements. */
@@ -29,7 +30,7 @@ trait hash {
         bytes.asByteBuffers.foreach(digest.update)
         go(digest) orElse emitLazy(Bytes.unsafe(digest.digest()))
       }
-    emitLazy(MessageDigest.getInstance(algorithm)).flatMap(go)
+    suspend1(go(MessageDigest.getInstance(algorithm)))
   }
 }
 

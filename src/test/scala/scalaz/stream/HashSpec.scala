@@ -38,10 +38,10 @@ object HashSpec extends Properties("hash") {
   }
 
   property("thread-safety") = secure {
-    val proc = range(1,10)
+    val proc = range(1,100)
       .map(i => Bytes.of(i.toString.getBytes))
       .pipe(sha512).map(_.decode())
-    val vec = Vector.fill(10)(proc).par
+    val vec = Vector.fill(100)(proc).par
     val res = proc.runLast.run
 
     vec.map(_.runLast.run).forall(_ == res)
