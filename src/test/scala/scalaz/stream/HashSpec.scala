@@ -30,10 +30,20 @@ object HashSpec extends Properties("hash") {
   }
 
   property("empty input") = secure {
-    emitSeq(Seq.empty[Bytes]).pipe(md2).toList == List()
+    Process[Bytes]().pipe(md2).toList == List()
   }
 
   property("zero or one output") = forAll { (ls: List[String]) =>
     emitSeq(ls.map(s => Bytes.unsafe(s.getBytes))).pipe(md2).toList.length <= 1
+  }
+
+  property("thread-safety") = secure {
+    val proc = range(1,10)
+      .map(i => Bytes.of(i.toString.getBytes))
+      .pipe(sha512).map(_.decode())
+    val vec = Vector.fill(10)(proc).par
+    val res = proc.runLast.run
+
+    vec.map(_.runLast.run).forall(_ == res)
   }
 }
