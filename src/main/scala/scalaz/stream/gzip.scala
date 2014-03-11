@@ -7,10 +7,11 @@ import scalaz.syntax.monad._
 import scalaz.stream.processes._
 import java.util.zip.{Inflater, Deflater}
 import scala.annotation.tailrec
+import scodec.bits.ByteVector
 
 trait gzip {
 
-  def gunzip(bufferSize: Int = 1024 * 32): Channel[Task, Array[Byte], Array[Byte]] = {
+  def gunzip(bufferSize: Int = 1024 * 32): Channel[Task, ByteVector, ByteVector] = {
     def skipUntil[F[_], A](f: Process[F, A])(p: A => Boolean): Process[F, Int] = for {
       y <- f
       a <- if (p(y)) emit(1) else skipUntil(f)(p)
@@ -39,16 +40,16 @@ trait gzip {
     } yield 10 + extra + name + comment + crc
 
     def skipHeader(skipper: Process1[Byte, Int],
-                   c: Channel[Task, Array[Byte], Array[Byte]]): Channel[Task, Array[Byte], Array[Byte]] =
+                   c: Channel[Task, ByteVector, ByteVector]): Channel[Task, ByteVector, ByteVector] =
       c match {
         case Emit(Seq(), t) => t
         case Emit(h, t) =>
-          Emit(((bs: Array[Byte]) => {
-            val fed = feed(bs)(skipper)
+          Emit(((bs: ByteVector) => {
+            val fed = feed(bs.toSeq)(skipper)
             fed match {
               case Emit(ns, _) =>
                 h.head(bs.drop(ns.sum))
-              case Await(_, _, _, _) => Task.now(Array[Byte]())
+              case Await(_, _, _, _) => Task.now(ByteVector.empty)
               case Halt(e) => h.head(bs)
             }
           }) +: h.tail, skipHeader(skipper, t))
@@ -68,21 +69,21 @@ trait gzip {
    *
    * @param bufferSize buffer to use when flushing data out of Deflater. Defaults to 32k
    */
-  def deflate(bufferSize: Int = 1024 * 32): Channel[Task, Option[Array[Byte]], Array[Byte]] = {
+  def deflate(bufferSize: Int = 1024 * 32): Channel[Task, Option[ByteVector], ByteVector] = {
 
     lazy val emptyArray = Array[Byte]() // ok to share this, since it cannot be modified
 
     @tailrec
-    def collectFromDeflater(deflater: Deflater, sofar: Array[Byte]): Array[Byte] = {
+    def collectFromDeflater(deflater: Deflater, sofar: Array[Byte]): ByteVector = {
       val buff = new Array[Byte](bufferSize)
 
       deflater.deflate(buff) match {
-        case deflated if deflated < bufferSize => sofar ++ buff.take(deflated)
+        case deflated if deflated < bufferSize => ByteVector.view(sofar ++ buff.take(deflated))
         case _ => collectFromDeflater(deflater, sofar ++ buff)
       }
     }
 
-    bufferedChannel[Deflater, Array[Byte], Array[Byte]](Task.delay { new Deflater }) {
+    bufferedChannel[Deflater, ByteVector, ByteVector](Task.delay { new Deflater }) {
       deflater => Task.delay {
         deflater.finish()
         collectFromDeflater(deflater, emptyArray)
@@ -90,9 +91,9 @@ trait gzip {
     } (deflater => Task.delay(deflater.end())) {
       deflater => Task.now {
         in => Task.delay {
-          deflater.setInput(in, 0, in.length)
+          deflater.setInput(in.toArray, 0, in.length)
           if (deflater.needsInput())
-            emptyArray
+            ByteVector.empty
           else
             collectFromDeflater(deflater, emptyArray)
         }
@@ -107,7 +108,7 @@ trait gzip {
    * @param bufferSize buffer to use when flushing data out of Inflater. Defaults to 32k
    * @return
    */
-  def inflate(bufferSize: Int = 1024 * 32, gzip: Boolean = false): Channel[Task, Array[Byte], Array[Byte]] = {
+  def inflate(bufferSize: Int = 1024 * 32, gzip: Boolean = false): Channel[Task, ByteVector, ByteVector] = {
 
     resource(Task.delay(new Inflater(gzip)))(i => Task.delay(i.end())) {
       inflater => {
@@ -124,11 +125,11 @@ trait gzip {
           in => Task.delay {
             if (inflater.finished) throw End
             else {
-              inflater.setInput(in, 0, in.length)
+              inflater.setInput(in.toArray, 0, in.length)
               if (inflater.needsInput())
-                Array[Byte]()
+                ByteVector.empty
               else
-                collectFromInflater(Array[Byte]())
+                ByteVector.view(collectFromInflater(Array.emptyByteArray))
             }
           }
         }
