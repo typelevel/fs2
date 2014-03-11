@@ -388,6 +388,23 @@ trait process1 {
     go(None)
   }
 
+  /**
+   * Repartitions the input with the function `p`. On each step `p` is applied
+   * to the input and the first element of the resulting tuple is emitted if it
+   * is `Some(x)`. The second element is then prepended to the next input using
+   * the Semigroup `I`. In comparison to `repartition` this allows to emit
+   * single inputs without prepending them to the next input.
+   */
+  def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
+    def go(carry: Option[I]): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val next = carry.fold(i)(c => I.append(c, i))
+        val (fst, snd) = p(next)
+        fst.fold(go(snd))(head => emit(head) fby go(snd))
+      } orElse emitSeq(carry.toList)
+    go(None)
+  }
+
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
     await1[Throwable \/ A].flatMap {
@@ -525,6 +542,50 @@ trait process1 {
     lift[A,Option[A]](Some(_)) ++ emit(None)
 
   private val utf8Charset = Charset.forName("UTF-8")
+
+  /** Converts UTF-8 encoded `Bytes` into `String`. */
+  val utf8Decode: Process1[Bytes,String] = {
+    /**
+     * Returns the number of continuation bytes if `b` is an ASCII byte or a
+     * leading byte of a multi-byte sequence, and -1 otherwise.
+     */
+    def continuationBytes(b: Byte): Int = {
+      if      ((b & 0x80) == 0x00) 0 // ASCII byte
+      else if ((b & 0xE0) == 0xC0) 1 // leading byte of a 2 byte seq
+      else if ((b & 0xF0) == 0xE0) 2 // leading byte of a 3 byte seq
+      else if ((b & 0xF8) == 0xF0) 3 // leading byte of a 4 byte seq
+      else -1                        // continuation byte or garbage
+    }
+
+    /**
+     * Returns the length of an incomplete multi-byte sequence at the end of
+     * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
+     * 0 is returned.
+     */
+    def lastIncompleteBytes(bs: Bytes): Int = {
+      val lastThree = bs.reverseIterator.take(3)
+      lastThree.map(continuationBytes).zipWithIndex.find {
+        case (c, _) => c >= 0
+      } map {
+        case (c, i) => if (c == i) 0 else i + 1
+      } getOrElse(0)
+    }
+
+    def splitAtLastIncompleteChar(bs: Bytes): (Option[Bytes], Option[Bytes]) = {
+      val splitIndex = bs.length - lastIncompleteBytes(bs)
+
+      if (bs.isEmpty || splitIndex == bs.length)
+        (Some(bs), None)
+      else if (splitIndex == 0)
+        (None, Some(bs))
+      else {
+        val (complete, rest) = bs.splitAt(splitIndex)
+        (Some(complete), Some(rest))
+      }
+    }
+
+    repartition2(splitAtLastIncompleteChar).map(_.decode(utf8Charset))
+  }
 
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
   val utf8Encode: Process1[String,Array[Byte]] =
