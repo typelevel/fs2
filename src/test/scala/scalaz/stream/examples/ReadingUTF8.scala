@@ -30,7 +30,6 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
   val scalazIo: Task[Option[Long]] =
     Process.constant(bufferSize)
       .through(io.fileChunkR(testFile, bufferSize))
-      .map(a => Bytes.unsafe(a.toArray))
       .pipe(utf8Decode)
       .map(_.map(_.toLong).sum)
       .reduce(_ + _)
@@ -39,8 +38,7 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
   val scalazIoNoUtf8: Task[Option[Long]] =
     Process.constant(bufferSize)
       .through(io.fileChunkR(testFile, bufferSize))
-      .map(a => Bytes.unsafe(a.toArray))
-      .map(_.map(_.toLong).sum)
+      .map(_.toIterable.map(_.toLong).sum)
       .reduce(_ + _)
       .runLast
 

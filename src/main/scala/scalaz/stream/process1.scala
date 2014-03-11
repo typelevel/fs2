@@ -553,7 +553,7 @@ trait process1 {
   private val utf8Charset = Charset.forName("UTF-8")
 
   /** Converts UTF-8 encoded `Bytes` into `String`. */
-  val utf8Decode: Process1[Bytes,String] = {
+  val utf8Decode: Process1[ByteVector,String] = {
     /**
      * Returns the number of continuation bytes if `b` is an ASCII byte or a
      * leading byte of a multi-byte sequence, and -1 otherwise.
@@ -571,8 +571,8 @@ trait process1 {
      * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
      * 0 is returned.
      */
-    def lastIncompleteBytes(bs: Bytes): Int = {
-      val lastThree = bs.reverseIterator.take(3)
+    def lastIncompleteBytes(bs: ByteVector): Int = {
+      val lastThree = bs.takeRight(3).reverse.toIterable
       lastThree.map(continuationBytes).zipWithIndex.find {
         case (c, _) => c >= 0
       } map {
@@ -580,7 +580,7 @@ trait process1 {
       } getOrElse(0)
     }
 
-    def splitAtLastIncompleteChar(bs: Bytes): (Option[Bytes], Option[Bytes]) = {
+    def splitAtLastIncompleteChar(bs: ByteVector): (Option[ByteVector], Option[ByteVector]) = {
       val splitIndex = bs.length - lastIncompleteBytes(bs)
 
       if (bs.isEmpty || splitIndex == bs.length)
@@ -593,7 +593,8 @@ trait process1 {
       }
     }
 
-    repartition2(splitAtLastIncompleteChar).map(_.decode(utf8Charset))
+    repartition2(splitAtLastIncompleteChar)
+      .map(bs => new String(bs.toArray, utf8Charset))
   }
 
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
