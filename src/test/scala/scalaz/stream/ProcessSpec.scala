@@ -91,6 +91,28 @@ object ProcessSpec extends Properties("Process1") {
     ("lastOr" |: {
       p.pipe(lastOr(42)).toList === p.toList.lastOption.orElse(Some(42)).toList
     }) &&
+    ("maximum" |: {
+      p.maximum.toList === p.toList.maximum.toList
+    }) &&
+    ("maximumBy" |: {
+      // enable when switching to scalaz 7.1
+      //p2.maximumBy(_.length).toList === p2.toList.maximumBy(_.length).toList
+      true
+    }) &&
+    ("maximumOf" |: {
+      p2.maximumOf(_.length).toList === p2.toList.map(_.length).maximum.toList
+    }) &&
+    ("minimum" |: {
+      p.minimum.toList === p.toList.minimum.toList
+    }) &&
+    ("minimumBy" |: {
+      // enable when switching to scalaz 7.1
+      //p2.minimumBy(_.length).toList === p2.toList.minimumBy(_.length).toList
+      true
+    }) &&
+    ("minimumOf" |: {
+      p2.minimumOf(_.length).toList === p2.toList.map(_.length).minimum.toList
+    }) &&
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
     }) &&
