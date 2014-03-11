@@ -3,6 +3,7 @@ package scalaz.stream
 import java.security.MessageDigest
 import org.scalacheck._
 import Prop._
+import scodec.bits.ByteVector
 
 import Process._
 import hash._
@@ -11,11 +12,11 @@ object HashSpec extends Properties("hash") {
   def digest(algo: String, str: String): List[Byte] =
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
 
-  def checkDigest(h: Process1[Bytes,Bytes], algo: String, str: String): Boolean = {
+  def checkDigest(h: Process1[ByteVector,ByteVector], algo: String, str: String): Boolean = {
     val n = Gen.choose(1, str.length).sample.getOrElse(1)
     val p =
-      if (str.isEmpty) emit(Bytes.unsafe(str.getBytes))
-      else emitSeq(Bytes.unsafe(str.getBytes).grouped(n).toSeq)
+      if (str.isEmpty) emit(ByteVector.view(str.getBytes))
+      else emitSeq(ByteVector.view(str.getBytes).grouped(n).toSeq)
 
     p.pipe(h).map(_.toArray.toList).toList == List(digest(algo, str))
   }
@@ -30,17 +31,17 @@ object HashSpec extends Properties("hash") {
   }
 
   property("empty input") = secure {
-    Process[Bytes]().pipe(md2).toList == List()
+    Process[ByteVector]().pipe(md2).toList == List()
   }
 
   property("zero or one output") = forAll { (ls: List[String]) =>
-    emitSeq(ls.map(s => Bytes.unsafe(s.getBytes))).pipe(md2).toList.length <= 1
+    emitSeq(ls.map(s => ByteVector.view(s.getBytes))).pipe(md2).toList.length <= 1
   }
 
   property("thread-safety") = secure {
     val proc = range(1,100)
-      .map(i => Bytes.of(i.toString.getBytes))
-      .pipe(sha512).map(_.decode())
+      .map(i => ByteVector.view(i.toString.getBytes))
+      .pipe(sha512).map(_.toSeq)
     val vec = Vector.fill(100)(proc).par
     val res = proc.runLast.run
 
