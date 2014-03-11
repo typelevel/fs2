@@ -1,9 +1,9 @@
 package scalaz.stream
 
-import java.util.concurrent.atomic.AtomicReference
+import Process._
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scalaz.\/
 import scalaz.concurrent._
-import scalaz.stream.Process.End
 import scalaz.stream.actor.actors
 import scalaz.stream.actor.message
 import scalaz.stream.async.mutable.Signal.Msg
@@ -144,16 +144,25 @@ package object async {
    * For more info see `WriterTopic`.
    */
   def writerTopic[W,I,O](w:Writer1[W,I,O])(implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[W,I,O] ={
-    val junction = Junction(JunctionStrategies.liftWriter1(w), Process.halt)(S)
+    val q = boundedQueue[Process[Task,I]]()
+    val junction = Junction(JunctionStrategies.liftWriter1(w), q.dequeue)(S)
     new WriterTopic[W,I,O] {
+      def consumeOne(p:  Process[Task, I]): Task[Unit] = q.enqueueOne(p)
+      def consume: Process.Sink[Task, Process[Task, I]] = q.enqueue
       def publish: Process.Sink[Task, I] = junction.upstreamSink
       def subscribe: Process.Writer[Task, W, O] = junction.downstreamBoth
       def subscribeO: Process[Task, O] = junction.downstreamO
       def subscribeW: Process[Task, W] = junction.downstreamW
-      def signal: immutable.Signal[W] = toSignal(subscribeW)
+      def signal: immutable.Signal[W] =   toSignal(subscribeW)(S)
       def publishOne(i: I): Task[Unit] = junction.receiveOne(i)
-      def fail(err: Throwable): Task[Unit] = junction.downstreamClose(err)
+      def fail(err: Throwable): Task[Unit] =
+        for {
+         _ <- junction.downstreamClose(err)
+         _ <- q.fail(err)
+        } yield ()
     }
   }
+
+
 }
 

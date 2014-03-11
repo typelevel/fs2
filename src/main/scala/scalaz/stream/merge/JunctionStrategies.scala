@@ -85,9 +85,12 @@ protected[stream] object JunctionStrategies {
    * Additionally all `W` downstreams will see last `W` emitted from Writer1. If there is no `W` yet
    * emitted by Writer1 downstreams on `W` side will wait until one will be available.
    *
+   * This strategy can be used also to feed sources from upstreams whenever at least one
+   * downstream is started
+   *
    * Note this strategy terminates when Writer1 terminates or when downstream is closed.
    *
-   * @return
+   *@return
    */
   def liftWriter1[W, I, O](w: Writer1[W, I, O]):  JunctionStrategy[W, I, O] = {
     def go(cur: Writer1[W, I, O], last: Option[W]):  JunctionStrategy[W, I, O] = {
@@ -123,7 +126,7 @@ protected[stream] object JunctionStrategies {
       }
     }
 
-    go(w, None)
+    emit(OpenNext) fby go(w, None)
   }
 
 

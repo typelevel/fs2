@@ -88,6 +88,31 @@ object ProcessSpec extends Properties("Process1") {
     ("forall" |: {
       (List(p.toList.forall(g)) === p.forall(g).toList)
     }) &&
+    ("lastOr" |: {
+      p.pipe(lastOr(42)).toList === p.toList.lastOption.orElse(Some(42)).toList
+    }) &&
+    ("maximum" |: {
+      p.maximum.toList === p.toList.maximum.toList
+    }) &&
+    ("maximumBy" |: {
+      // enable when switching to scalaz 7.1
+      //p2.maximumBy(_.length).toList === p2.toList.maximumBy(_.length).toList
+      true
+    }) &&
+    ("maximumOf" |: {
+      p2.maximumOf(_.length).toList === p2.toList.map(_.length).maximum.toList
+    }) &&
+    ("minimum" |: {
+      p.minimum.toList === p.toList.minimum.toList
+    }) &&
+    ("minimumBy" |: {
+      // enable when switching to scalaz 7.1
+      //p2.minimumBy(_.length).toList === p2.toList.minimumBy(_.length).toList
+      true
+    }) &&
+    ("minimumOf" |: {
+      p2.minimumOf(_.length).toList === p2.toList.map(_.length).minimum.toList
+    }) &&
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
     }) &&
@@ -160,13 +185,13 @@ object ProcessSpec extends Properties("Process1") {
   }
 
   property("repartition") = secure {
-    Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ").toIndexedSeq).toList ==
+    Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ")).toList ==
       List("Lorem", "ipsum", "dolor", "sit", "amet") &&
     Process("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ==
       List("he", "ll", "o ", "Wo", "rl", "d") &&
     Process(1, 2, 3, 4, 5).repartition(i => Vector(i, i)).toList ==
       List(1, 3, 6, 10, 15, 15) &&
-    (Process(): Process[Nothing, String]).repartition(_ => Vector()).toList == List() &&
+    Process[String]().repartition(_ => Vector()).toList == List() &&
     Process("hello").repartition(_ => Vector()).toList == List()
   }
 
@@ -178,6 +203,10 @@ object ProcessSpec extends Properties("Process1") {
     Process("he", "ll", "o").repartition2 {
       s => (Some(s.take(1)), Some(s.drop(1)))
     }.toList === List("h", "e", "l", "lo")
+  }
+
+  property("stripNone") = secure {
+    Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
   }
 
   property("terminated") = secure {

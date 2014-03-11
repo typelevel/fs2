@@ -3,7 +3,7 @@ package scalaz.stream
 import collection.immutable.Vector
 import java.nio.charset.Charset
 
-import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal}
+import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal, Order}
 import scalaz.\/._
 import scalaz.syntax.equal._
 
@@ -264,7 +264,7 @@ trait process1 {
    * If the input is empty, `i` is emitted.
    */
   def lastOr[I](i: => I): Process1[I,I] =
-    last |> await1[I].orElse(emit(i))
+    await1[I].flatMap(i2 => lastOr(i2)).orElse(emit(i))
 
   /** Transform the input using the given function, `f`. */
   def lift[I,O](f: I => O): Process1[I,O] =
@@ -292,6 +292,30 @@ trait process1 {
    */
   def liftR[A,B,C](p: Process1[B,C]): Process1[A \/ B, A \/ C] =
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
+
+  /** Emits the greatest element of the input. */
+  def maximum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce((x, y) => if (A.greaterThan(x, y)) x else y)
+
+  /** Emits the element `a` of the input which yields the greatest value of `f(a)`. */
+  def maximumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce((x, y) => if (Order.orderBy(f).greaterThan(x, y)) x else y)
+
+  /** Emits the greatest value of `f(a)` for each element `a` of the input. */
+  def maximumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> maximum
+
+  /** Emits the smallest element of the input. */
+  def minimum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce((x, y) => if (A.lessThan(x, y)) x else y)
+
+  /** Emits the element `a` of the input which yields the smallest value of `f(a)`. */
+  def minimumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce((x, y) => if (Order.orderBy(f).lessThan(x, y)) x else y)
+
+  /** Emits the smallest value of `f(a)` for each element `a` of the input. */
+  def minimumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> minimum
 
   /**
    * Split the input and send to either `chan1` or `chan2`, halting when
@@ -346,11 +370,11 @@ trait process1 {
    * are emitted. The last element is then prepended to the next input using the
    * Semigroup `I`. For example,
    * {{{
-   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq) ==
+   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ")) ==
    *   Process("Hello", "World")
    * }}}
    */
-  def repartition[I](p: I => IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
+  def repartition[I](p: I => collection.IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
       await1[I].flatMap { i =>
         val next = carry.fold(i)(c => I.append(c, i))
