@@ -5,7 +5,7 @@ import java.security.MessageDigest
 import Process._
 import process1._
 
-trait hash {
+object hash {
   /** Computes the MD2 hash of the input elements. */
   val md2: Process1[Bytes,Bytes] = messageDigest("MD2")
 
@@ -33,5 +33,3 @@ trait hash {
     suspend1(go(MessageDigest.getInstance(algorithm)))
   }
 }
-
-object hash extends hash
