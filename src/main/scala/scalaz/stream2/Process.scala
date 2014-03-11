@@ -171,7 +171,7 @@ sealed trait Process[+F[_], +O] {
     val next = (t: Throwable) => Trampoline.delay(Try(f(t)))
     this match {
       case Append(p, n)   => Append(p, n :+ next)
-      case DoneOrAwait(p) => Append(p, Vector(next))
+      case Step(p) => Append(p, Vector(next))
     }
   }
 
@@ -474,13 +474,13 @@ object Process {
 
 
   /**
-   * Tags a state of process, that is either done or Await, but is not Append
+   * Tags a state of process that has no appended tail, tha means can be Halt, Emit or Await
    */
-  sealed trait DoneOrAwait[+F[_], +O] extends Process[F, O]
+  sealed trait Step[+F[_], +O] extends Process[F, O]
 
-  object DoneOrAwait {
+  object Step {
 
-    def unapply[F[_], O](p: Process[F, O]): Option[DoneOrAwait[F, O]] = p match {
+    def unapply[F[_], O](p: Process[F, O]): Option[Step[F, O]] = p match {
       case emit: Emit[O@unchecked]                => Some(emit)
       case halt: Halt                             => Some(halt)
       case aw: Await[F@unchecked, _, O@unchecked] => Some(aw)
@@ -498,7 +498,7 @@ object Process {
    * `Process.halt` (for normal termination) or
    * `Process.fail(err)` (for termination with an error).
    */
-  case class Halt(rsn: Throwable) extends DoneOrAwait[Nothing, Nothing]
+  case class Halt(rsn: Throwable) extends Step[Nothing, Nothing]
 
   /**
    * The `Emit` constructor instructs the driver to emit
@@ -511,7 +511,7 @@ object Process {
    * Process.emit
    * Process.emitAll
    */
-  case class Emit[+O](seq: Seq[O]) extends DoneOrAwait[Nothing, O]
+  case class Emit[+O](seq: Seq[O]) extends Step[Nothing, O]
 
   /**
    * The `Await` constructor instructs the driver to evaluate
@@ -529,7 +529,7 @@ object Process {
   case class Await[+F[_], A, +O](
     req: F[A]
     , rcv: A => Trampoline[Process[F, O]]
-    ) extends DoneOrAwait[F, O] {
+    ) extends Step[F, O] {
     /**
      * Helper to modify the result of `rcv` parameter of await stack-safely on trampoline.
      */
@@ -547,7 +547,7 @@ object Process {
    * Process.append
    */
   case class Append[+F[_], +O](
-    head: DoneOrAwait[F, O]
+    head: Step[F, O]
     , tail: Vector[Throwable => Trampoline[Process[F, O]]]
     ) extends Process[F, O] {
 
@@ -558,7 +558,7 @@ object Process {
     def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Process[F2, O2] = {
       val et = tail.map(n => (t: Throwable) => Trampoline.suspend(n(t)).map(f))
       Try(f(head)) match {
-        case DoneOrAwait(p)                         =>
+        case Step(p)                         =>
           Append(p, et)
         case ap: Append[F2@unchecked, O2@unchecked] =>
           Append[F2, O2](ap.head, ap.tail fast_++ et)
