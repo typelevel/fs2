@@ -716,7 +716,7 @@ sealed abstract class Process[+F[_],+O] {
     this |> process1.reduceSemigroup(M)
 
   /** Alias for `this |> [[process1.repartition]](p)(S)` */
-  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
+  def repartition[O2 >: O](p: O2 => collection.IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
     this |> process1.repartition(p)(S)
 
   /** Alias for `this |> [[process1.scan]](b)(f)`. */
