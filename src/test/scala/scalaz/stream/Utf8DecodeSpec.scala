@@ -45,7 +45,7 @@ object Utf8DecodeSpec extends Properties("process1.utf8Decode") {
   }
 
   property("utf8Encode |> utf8Decode = id") = forAll { (s: String) =>
-    emit(s).pipe(utf8Encode).map(a => Bytes.of(a)).pipe(utf8Decode).toList === List(s)
+    emit(s).pipe(utf8Encode).map(a => Bytes.of(a.toArray)).pipe(utf8Decode).toList === List(s)
   }
 
   property("1 byte sequences") = forAll { (s: String) =>
