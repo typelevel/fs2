@@ -524,6 +524,14 @@ trait process1 {
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
     reduce(N.plus)
 
+  /**
+   * Produce the given `Process1` non-strictly. This function is useful
+   * if a `Process1` has to allocate any local mutable state for each use, and
+   * doesn't want to share this state.
+   */
+  def suspend1[A,B](p: => Process1[A,B]): Process1[A,B] =
+    await1[A].flatMap(a => feed1(a)(p))
+
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I,I] =
     if (n <= 0) halt
