@@ -16,13 +16,14 @@ import scalaz.stream.ReceiveY.HaltL
 import scalaz.stream.ReceiveY.HaltR
 import scalaz.stream.ReceiveY.ReceiveL
 import scalaz.stream.ReceiveY.ReceiveR
+import scodec.bits.ByteVector
 
 
 object NioServer {
 
 
 
-  def apply(address: InetSocketAddress, w: Writer1[Bytes, Bytes, Bytes]): Process[Task, Bytes] = {
+  def apply(address: InetSocketAddress, w: Writer1[ByteVector, ByteVector, ByteVector]): Process[Task, ByteVector] = {
     val srv =
       nio.server(address).map {
         _.flatMap {
@@ -33,9 +34,9 @@ object NioServer {
     merge.mergeN(srv)
   }
 
-  def echo(address: InetSocketAddress): Process[Task, Bytes] = {
-    def echoAll: Writer1[Bytes, Bytes, Bytes] = {
-      receive1[Bytes, Bytes \/ Bytes]({
+  def echo(address: InetSocketAddress): Process[Task, ByteVector] = {
+    def echoAll: Writer1[ByteVector, ByteVector, ByteVector] = {
+      receive1[ByteVector, ByteVector \/ ByteVector]({
         i => emitSeq(Seq(\/-(i), -\/(i))) fby echoAll
       })
     }
@@ -44,10 +45,10 @@ object NioServer {
 
   }
 
-  def limit(address: InetSocketAddress, size:Int) :  Process[Task, Bytes] = {
+  def limit(address: InetSocketAddress, size:Int) :  Process[Task, ByteVector] = {
 
-    def remaining(sz:Int): Writer1[Bytes, Bytes, Bytes] = {
-      receive1[Bytes, Bytes \/ Bytes]({
+    def remaining(sz:Int): Writer1[ByteVector, ByteVector, ByteVector] = {
+      receive1[ByteVector, ByteVector \/ ByteVector]({
         i => 
           val toEcho = i.take(sz)
           if (sz - toEcho.size <= 0) emitSeq(Seq(\/-(toEcho), -\/(toEcho))) fby halt
@@ -65,10 +66,10 @@ object NioClient {
 
 
 
-  def echo(address: InetSocketAddress, data: Bytes): Process[Task, Bytes] = {
+  def echo(address: InetSocketAddress, data: ByteVector): Process[Task, ByteVector] = {
 
-    def echoSent: WyeW[Bytes, Bytes, Bytes, Bytes] = {
-      def go(collected: Int): WyeW[Bytes, Bytes, Bytes, Bytes] = {
+    def echoSent: WyeW[ByteVector, ByteVector, ByteVector, ByteVector] = {
+      def go(collected: Int): WyeW[ByteVector, ByteVector, ByteVector, ByteVector] = {
         receiveBoth {
           case ReceiveL(rcvd) =>
             emitO(rcvd) fby
@@ -124,7 +125,7 @@ object NioSpec extends Properties("nio") {
     Thread.sleep(300)
 
     val clientGot =
-      NioClient.echo(local, Bytes.of(array1)).runLog.timed(3000).run.map(_.toSeq).flatten
+      NioClient.echo(local, ByteVector(array1)).runLog.timed(3000).run.map(_.toSeq).flatten
     stop.set(true).run
 
     (serverGot.get(5000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
@@ -150,7 +151,7 @@ object NioSpec extends Properties("nio") {
       Thread.sleep(300)
 
       val clientGot =
-        NioClient.echo(local, Bytes.of(array1)).runLog.run.map(_.toSeq).flatten
+        NioClient.echo(local, ByteVector(array1)).runLog.run.map(_.toSeq).flatten
       stop.set(true).run
 
       (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
@@ -191,7 +192,7 @@ object NioSpec extends Properties("nio") {
 
     Thread.sleep(300)
 
-    val client = NioClient.echo(local, Bytes.of(array1)).attempt().flatMap {
+    val client = NioClient.echo(local, ByteVector(array1)).attempt().flatMap {
       case \/-(v) => emit(v)
       case -\/(err) => halt
     }
