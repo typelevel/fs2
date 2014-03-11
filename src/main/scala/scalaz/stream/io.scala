@@ -56,7 +56,7 @@ trait io {
     Process.constant(f)
 
   /**
-   * Create a `Channel[Task,Int,Bytes]` from an `InputStream` by
+   * Create a `Channel[Task,Int,ByteVector]` from an `InputStream` by
    * repeatedly requesting the given number of bytes. The last chunk
    * may be less than the requested size.
    *
@@ -66,10 +66,10 @@ trait io {
    * This implementation closes the `InputStream` when finished
    * or in the event of an error.
    */
-  def chunkR(is: => InputStream): Channel[Task, Int, Array[Byte]] =
+  def chunkR(is: => InputStream): Channel[Task,Int,ByteVector] =
     unsafeChunkR(is).map(f => (n: Int) => {
       val buf = new Array[Byte](n)
-      f(buf)
+      f(buf).map(ByteVector.view)
     })
 
   /**
@@ -85,7 +85,7 @@ trait io {
     chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
 
   /** Create a `Source` from a file name and optional buffer size in bytes. */
-  def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task, Int, Array[Byte]] =
+  def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task,Int,ByteVector] =
     chunkR(new BufferedInputStream(new FileInputStream(f), bufferSize))
 
   /** A `Sink` which, as a side effect, adds elements to the given `Buffer`. */
