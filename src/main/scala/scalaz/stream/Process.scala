@@ -7,7 +7,7 @@ import scala.concurrent.duration._
 import scalaz.{Catchable,Functor,Monad,Cobind,MonadPlus,Monoid,Nondeterminism,Semigroup}
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
-import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
+import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal,Order}
 import scalaz.std.stream._
 import scalaz.syntax.foldable._
 import \/._
@@ -675,6 +675,30 @@ sealed abstract class Process[+F[_],+O] {
   def last: Process[F,O] =
     this |> process1.last
 
+  /** Alias for `this |> [[process1.maximum]]`. */
+  def maximum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =
+    this |> process1.maximum(O2)
+
+  /** Alias for `this |> [[process1.maximumBy]](f)`. */
+  def maximumBy[B: Order](f: O => B): Process[F,O] =
+    this |> process1.maximumBy(f)
+
+  /** Alias for `this |> [[process1.maximumOf]](f)`. */
+  def maximumOf[B: Order](f: O => B): Process[F,B] =
+    this |> process1.maximumOf(f)
+
+  /** Alias for `this |> [[process1.minimum]]`. */
+  def minimum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =
+    this |> process1.minimum(O2)
+
+  /** Alias for `this |> [[process1.minimumBy]](f)`. */
+  def minimumBy[B: Order](f: O => B): Process[F,O] =
+    this |> process1.minimumBy(f)
+
+  /** Alias for `this |> [[process1.minimumOf]](f)`. */
+  def minimumOf[B: Order](f: O => B): Process[F,B] =
+    this |> process1.minimumOf(f)
+
   /** Alias for `this |> [[process1.reduce]](f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.reduce(f)
@@ -692,8 +716,12 @@ sealed abstract class Process[+F[_],+O] {
     this |> process1.reduceSemigroup(M)
 
   /** Alias for `this |> [[process1.repartition]](p)(S)` */
-  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
+  def repartition[O2 >: O](p: O2 => collection.IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
     this |> process1.repartition(p)(S)
+
+  /** Alias for `this |> [[process1.repartition2]](p)(S)` */
+  def repartition2[O2 >: O](p: O2 => (Option[O2], Option[O2]))(implicit S: Semigroup[O2]): Process[F,O2] =
+    this |> process1.repartition2(p)(S)
 
   /** Alias for `this |> [[process1.scan]](b)(f)`. */
   def scan[B](b: B)(f: (B,O) => B): Process[F,B] =

@@ -3,7 +3,7 @@ package scalaz.stream
 import collection.immutable.Vector
 import java.nio.charset.Charset
 
-import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal}
+import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal, Order}
 import scalaz.\/._
 import scalaz.syntax.equal._
 
@@ -293,6 +293,30 @@ trait process1 {
   def liftR[A,B,C](p: Process1[B,C]): Process1[A \/ B, A \/ C] =
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
 
+  /** Emits the greatest element of the input. */
+  def maximum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce((x, y) => if (A.greaterThan(x, y)) x else y)
+
+  /** Emits the element `a` of the input which yields the greatest value of `f(a)`. */
+  def maximumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce((x, y) => if (Order.orderBy(f).greaterThan(x, y)) x else y)
+
+  /** Emits the greatest value of `f(a)` for each element `a` of the input. */
+  def maximumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> maximum
+
+  /** Emits the smallest element of the input. */
+  def minimum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce((x, y) => if (A.lessThan(x, y)) x else y)
+
+  /** Emits the element `a` of the input which yields the smallest value of `f(a)`. */
+  def minimumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce((x, y) => if (Order.orderBy(f).lessThan(x, y)) x else y)
+
+  /** Emits the smallest value of `f(a)` for each element `a` of the input. */
+  def minimumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> minimum
+
   /**
    * Split the input and send to either `chan1` or `chan2`, halting when
    * either branch halts.
@@ -346,11 +370,11 @@ trait process1 {
    * are emitted. The last element is then prepended to the next input using the
    * Semigroup `I`. For example,
    * {{{
-   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq) ==
+   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ")) ==
    *   Process("Hello", "World")
    * }}}
    */
-  def repartition[I](p: I => IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
+  def repartition[I](p: I => collection.IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
       await1[I].flatMap { i =>
         val next = carry.fold(i)(c => I.append(c, i))
@@ -360,6 +384,23 @@ trait process1 {
           case 1 => go(Some(parts.head))
           case _ => emitSeq(parts.init) fby go(Some(parts.last))
         }
+      } orElse emitSeq(carry.toList)
+    go(None)
+  }
+
+  /**
+   * Repartitions the input with the function `p`. On each step `p` is applied
+   * to the input and the first element of the resulting tuple is emitted if it
+   * is `Some(x)`. The second element is then prepended to the next input using
+   * the Semigroup `I`. In comparison to `repartition` this allows to emit
+   * single inputs without prepending them to the next input.
+   */
+  def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
+    def go(carry: Option[I]): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val next = carry.fold(i)(c => I.append(c, i))
+        val (fst, snd) = p(next)
+        fst.fold(go(snd))(head => emit(head) fby go(snd))
       } orElse emitSeq(carry.toList)
     go(None)
   }
@@ -483,6 +524,14 @@ trait process1 {
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
     reduce(N.plus)
 
+  /**
+   * Produce the given `Process1` non-strictly. This function is useful
+   * if a `Process1` has to allocate any local mutable state for each use, and
+   * doesn't want to share this state.
+   */
+  def suspend1[A,B](p: => Process1[A,B]): Process1[A,B] =
+    await1[A].flatMap(a => feed1(a)(p))
+
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I,I] =
     if (n <= 0) halt
@@ -501,6 +550,50 @@ trait process1 {
     lift[A,Option[A]](Some(_)) ++ emit(None)
 
   private val utf8Charset = Charset.forName("UTF-8")
+
+  /** Converts UTF-8 encoded `Bytes` into `String`. */
+  val utf8Decode: Process1[Bytes,String] = {
+    /**
+     * Returns the number of continuation bytes if `b` is an ASCII byte or a
+     * leading byte of a multi-byte sequence, and -1 otherwise.
+     */
+    def continuationBytes(b: Byte): Int = {
+      if      ((b & 0x80) == 0x00) 0 // ASCII byte
+      else if ((b & 0xE0) == 0xC0) 1 // leading byte of a 2 byte seq
+      else if ((b & 0xF0) == 0xE0) 2 // leading byte of a 3 byte seq
+      else if ((b & 0xF8) == 0xF0) 3 // leading byte of a 4 byte seq
+      else -1                        // continuation byte or garbage
+    }
+
+    /**
+     * Returns the length of an incomplete multi-byte sequence at the end of
+     * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
+     * 0 is returned.
+     */
+    def lastIncompleteBytes(bs: Bytes): Int = {
+      val lastThree = bs.reverseIterator.take(3)
+      lastThree.map(continuationBytes).zipWithIndex.find {
+        case (c, _) => c >= 0
+      } map {
+        case (c, i) => if (c == i) 0 else i + 1
+      } getOrElse(0)
+    }
+
+    def splitAtLastIncompleteChar(bs: Bytes): (Option[Bytes], Option[Bytes]) = {
+      val splitIndex = bs.length - lastIncompleteBytes(bs)
+
+      if (bs.isEmpty || splitIndex == bs.length)
+        (Some(bs), None)
+      else if (splitIndex == 0)
+        (None, Some(bs))
+      else {
+        val (complete, rest) = bs.splitAt(splitIndex)
+        (Some(complete), Some(rest))
+      }
+    }
+
+    repartition2(splitAtLastIncompleteChar).map(_.decode(utf8Charset))
+  }
 
   /** Convert `String` inputs to UTF-8 encoded byte arrays. */
   val utf8Encode: Process1[String,Array[Byte]] =
