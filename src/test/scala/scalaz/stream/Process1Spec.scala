@@ -1,18 +1,23 @@
 package scalaz.stream
 
-import org.scalacheck._
-import org.scalacheck.Prop._
 import scalaz.Monoid
+import scalaz.Equal
 import scalaz.std.anyVal._
 import scalaz.std.list._
 import scalaz.std.list.listSyntax._
+import scalaz.std.option._
 import scalaz.std.vector._
+import scalaz.std.tuple._
 import scalaz.std.string._
 import scalaz.syntax.equal._
 import scalaz.syntax.foldable._
 
 import Process._
 import process1._
+import scala.concurrent.duration._
+
+import org.scalacheck._
+import org.scalacheck.Prop._
 
 import TestInstances._
 
@@ -103,21 +108,21 @@ object Process1Spec extends Properties("process1") {
     }) &&
     ("scan" |: {
       li.scan(0)(_ - _) ===
-      pi.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
+      pi.toSource.scan(0)(_ - _).runLog.timed(3 seconds).run.toList
     }) &&
     ("scan1" |: {
       li.scan(0)(_ + _).tail ===
-      pi.toSource.scan1(_ + _).runLog.timed(3000).run.toList
+      pi.toSource.scan1(_ + _).runLog.timed(3 seconds).run.toList
     }) &&
     ("shiftRight" |: {
       pi.shiftRight(1, 2).toList === List(1, 2) ++ li
     }) &&
     ("splitWith" |: {
-      pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
+      pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n).map(_.toList)
     }) &&
     ("sum" |: {
       pi.toList.sum[Int] ===
-      pi.toSource.pipe(process1.sum).runLast.timed(3000).run.get
+      pi.toSource.pipe(process1.sum).runLast.timed(3 seconds).run.get
     }) &&
     ("prefixSums" |: {
       pi.toList.scan(0)(_ + _) ===
@@ -130,7 +135,7 @@ object Process1Spec extends Properties("process1") {
       pi.takeWhile(g).toList === li.takeWhile(g)
     }) &&
     ("zipWithIndex" |: {
-      ps.zipWithIndex.toList === ls.zipWithIndex
+      ps.zipWithIndex.toList === ls.zipWithIndex.toList
     }) &&
     ("zipWithIndex[Double]" |: {
       ps.zipWithIndex[Double].toList === ls.zipWithIndex.map { case (s, i) => (s, i.toDouble) }
