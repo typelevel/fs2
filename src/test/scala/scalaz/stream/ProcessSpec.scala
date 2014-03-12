@@ -9,12 +9,15 @@ import scalaz.std.list.listSyntax._
 import scalaz.std.string._
 
 import org.scalacheck._
-import Prop.{extendedAny => _, _}
+import Prop._
 import Arbitrary.arbitrary
 import scalaz.concurrent.Strategy
 import scala.concurrent
+import scala.concurrent.duration._
 import scalaz.\/-
 import scalaz.\/._
+import scalaz.std.list._
+import scalaz.std.tuple._
 
 object ProcessSpec extends Properties("Process1") {
 
@@ -118,26 +121,26 @@ object ProcessSpec extends Properties("Process1") {
     }) &&
     ("yip" |: {
       val l = p.toList.zip(p2.toList)
-      val r = p.toSource.yip(p2.toSource).runLog.timed(3000).run.toList
+      val r = p.toSource.yip(p2.toSource).runLog.timed(3 seconds).run.toList
       (l === r)
     }) &&
     ("scan" |: {
       p.toList.scan(0)(_ - _) ===
-      p.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
+      p.toSource.scan(0)(_ - _).runLog.timed(3 seconds).run.toList
     }) &&
     ("scan1" |: {
        p.toList.scan(0)(_ + _).tail ===
-       p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
+       p.toSource.scan1(_ + _).runLog.timed(3 seconds).run.toList
     }) &&
     ("shiftRight" |: {
       p.pipe(shiftRight(1, 2)).toList === List(1, 2) ++ p.toList
     }) &&
     ("splitWith" |: {
-      p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
+      (p.splitWith(_ < n).toList).map(_.toList) === (p.toList.splitWith(_ < n).map(_.toList))
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
-      p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
+      p.toSource.pipe(process1.sum).runLastOr(0).timed(3 seconds).run
     }) &&
     ("intersperse" |: {
       p.intersperse(0).toList == p.toList.intersperse(0)
@@ -176,7 +179,7 @@ object ProcessSpec extends Properties("Process1") {
       List("foo ", "bar ", "baz")
   }
 
-  property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
+  property("fill") = forAll(Gen.zip(Gen.choose(0,30), Gen.choose(0,50))) {
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
   }
 
@@ -247,10 +250,10 @@ object ProcessSpec extends Properties("Process1") {
     val inf = Process.constant(0)
     val one = eval(Task.now(1))
     val empty = Process[Int]()
-    inf.wye(empty)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
-    empty.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
-    inf.wye(one)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
-    one.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(())
+    inf.wye(empty)(whileBoth).run.timed(800 milli).attempt.run == \/-(()) &&
+    empty.wye(inf)(whileBoth).run.timed(800 milli).attempt.run == \/-(()) &&
+    inf.wye(one)(whileBoth).run.timed(800 milli).attempt.run == \/-(()) &&
+    one.wye(inf)(whileBoth).run.timed(800 milli).attempt.run == \/-(())
   }
 
   property("wye runs cleanup for both sides") = secure {
@@ -310,7 +313,7 @@ object ProcessSpec extends Properties("Process1") {
     val sleepsR = Process.awakeEvery(100 milliseconds).take(30)
     val sleeps = sleepsL merge sleepsR
     val p = sleeps.toTask
-    val tasks = List.fill(10)(p.timed(500).attemptRun)
+    val tasks = List.fill(10)(p.timed(500 milli).attemptRun)
     tasks.forall(_.isRight)
   }
 
@@ -318,7 +321,7 @@ object ProcessSpec extends Properties("Process1") {
     import scala.concurrent.duration._
     val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
              Process.awakeEvery(100 milliseconds).take(100)
-           }.run.timed(15000).run
+           }.run.timed(15 seconds).run
     true
   }
 
