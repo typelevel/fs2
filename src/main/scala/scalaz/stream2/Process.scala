@@ -33,50 +33,88 @@ sealed trait Process[+F[_], +O] {
     flatMap { o => emit(f(o)) }
 
   /**
-   * Feed the output of this `Process` as input of `p2`. The implementation
+   * Feed the output of this `Process` as input of `p1`. The implementation
    * will fuse the two processes, so this process will only generate
-   * values as they are demanded by `p2`. If `p2` signals termination, `this`
+   * values as they are demanded by `p1`. If `p1` signals termination, `this`
    * is killed with same reason giving it an opportunity to cleanup.
    */
-  final def pipe[O2](p2: Process1[O, O2]): Process[F, O2] = {
-    def go(cur: Process[F, O]
-      , cur1: Process1[O, O2]
-      , stack: Vector[Throwable => Trampoline[Process[F, O]]]
-      , stack1: Vector[Throwable => Trampoline[Process1[O, O2]]]): Process[F, O2] = {
-      cur1 match {
-        case hlt@Halt(rsn)
-          if stack1.isEmpty => stack.headOption match {
-          case Some(head) => go(Try(head(rsn).run), cur1, stack.tail, stack1)
-          case None => hlt
-        }
-        case Halt(rsn)                       => go(cur, Try(stack1.head(rsn).run), stack, stack1.tail)
-        case emit@Emit(_) =>  emit onHalt { rsn => go(cur, Halt(rsn), stack, stack1) }
-        case Append(p, n) => go(cur, p, stack, n fast_++ stack1)
-        case aw@AwaitP1(rcv1) =>
-          cur match {
-            case hlt@Halt(rsn)
-              if stack.isEmpty   => stack1.headOption match {
-              case Some(head1) => go(hlt, Try(head1(rsn).run), stack, stack1.tail)
-              case None     => hlt
-            }
-            case Halt(rsn)       => go(Try(stack.head(rsn).run), cur1, stack.tail, stack1)
-            case Emit(Seq())     => go(halt, cur1, stack, stack1.tail)
-            case Emit(os)        => go(Emit(os.tail), Try(rcv1(os.head)), stack, stack1)
-            case aw@Await(_, _)  => aw.extend(go(_, cur1, stack, stack1))
-            case ap@Append(p, n) => go(p, cur1, n fast_++ stack, stack1)
-          }
+  final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = {
+    p1 step match {
+      case (awt1@AwaitP1(rcv1), t1) => this.step match {
+        case (awt@Await(req, rcv), t) => awt.extend(_.pipe(p1))
+        case (emt@Emit(so), t)        => this.pipe(process1.feed(so)(p1))
+        case (hlt@Halt(rsn), _)       => ??? //this.pipe(t1.killBy(rsn)) as we now that tail is always halt in this case
 
       }
-
+      case (emt1@Emit(so2), t1)     => Emit(so2) ++ this.pipe(t1)
+      case (hlt1@Halt(rsn), _)     => ??? //this.killBy(rsn).pipe(p1) as we know tail is always halt in this case
     }
 
 
-    go(this, p2, Vector(), Vector())
+
+
+    //    def go(cur: Process[F, O]
+    //      , cur1: Process1[O, O2]
+    //      , stack: Vector[Throwable => Trampoline[Process[F, O]]]
+    //      , stack1: Vector[Throwable => Trampoline[Process1[O, O2]]]): Process[F, O2] = {
+    //      cur1 match {
+    //        case hlt@Halt(rsn)
+    //          if stack1.isEmpty => stack.headOption match {
+    //          case Some(head) => go(Try(head(rsn).run), cur1, stack.tail, stack1)
+    //          case None => hlt
+    //        }
+    //        case Halt(rsn)                       => go(cur, Try(stack1.head(rsn).run), stack, stack1.tail)
+    //        case emit@Emit(_) =>  emit onHalt { rsn => go(cur, Halt(rsn), stack, stack1) }
+    //        case Append(p, n) => go(cur, p, stack, n fast_++ stack1)
+    //        case aw@AwaitP1(rcv1) =>
+    //          cur match {
+    //            case hlt@Halt(rsn)
+    //              if stack.isEmpty   => stack1.headOption match {
+    //              case Some(head1) => go(hlt, Try(head1(rsn).run), stack, stack1.tail)
+    //              case None     => hlt
+    //            }
+    //            case Halt(rsn)       => go(Try(stack.head(rsn).run), cur1, stack.tail, stack1)
+    //            case Emit(Seq())     => go(halt, cur1, stack, stack1.tail)
+    //            case Emit(os)        => go(Emit(os.tail), Try(rcv1(os.head)), stack, stack1)
+    //            case aw@Await(_, _)  => aw.extend(go(_, cur1, stack, stack1))
+    //            case ap@Append(p, n) => go(p, cur1, n fast_++ stack, stack1)
+    //          }
+    //
+    //      }
+    //
+    //    }
+    //
+    //
+    //    go(this, p2, Vector(), Vector())
 
   }
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
+
+
+  /**
+   * Evaluate this process and produce tuple of `Step` and continuations
+   * that shall be run after the Step.
+   *
+   * Note this evaluation is not resource safe, and user must assure resource safety
+   */
+  final def step: (Step[F, O], Process[F, O]) = {
+    @tailrec
+    def go(cur: Process[F, O], stack: Vector[Throwable => Trampoline[Process[F, O]]])
+    : (Step[F, O], Process[F, O]) = cur match {
+      case Append(p, n)        => go(p, n fast_++ stack)
+      case s:Step[F@unchecked,O@unchecked] =>
+        if (stack.isEmpty) (s,halt)
+        else s match {
+          case  hlt@Halt(rsn) => go(Try(stack.head(rsn).run), stack.tail)
+          case emt@Emit(_) => (emt, Append(halt, stack))
+          case awt@Await(_, _) => (awt.extend(_ ++ Append(halt, stack)), Append(halt, stack))
+        }
+    }
+
+    go(this, Vector())
+  }
 
 
   ////////////////////////////////////////////////////////////////////////////////////////
@@ -533,7 +571,7 @@ object Process {
     /**
      * Helper to modify the result of `rcv` parameter of await stack-safely on trampoline.
      */
-    def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Process[F2, O2] =
+    def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Await[F2, A, O2] =
       Await[F2, A, O2](req, r => Trampoline.suspend(rcv(r)).map(f))
   }
 
