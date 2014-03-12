@@ -62,8 +62,8 @@ trait gzip {
   }
 
   /**
-   * Channel that deflates (compresses) its input `Array[Byte]`, using
-   * a `java.util.zip.Deflater`. May emit empty arrays if the compressor
+   * Channel that deflates (compresses) its input `ByteVector`, using
+   * a `java.util.zip.Deflater`. May emit empty `ByteVector`s if the compressor
    * is waiting for more data to produce a chunk. The returned `Channel`
    * flushes any buffered compressed data when it encounters a `None`.
    *
@@ -103,9 +103,9 @@ trait gzip {
 
   /**
    * Channel that inflates (decompresses) the input bytes. May emit empty
-   * `Array[Byte]` if decompressor is not ready to produce data. Last emit will always
+   * `ByteVector` if decompressor is not ready to produce data. Last emit will always
    * contain all data inflated.
-   * @param bufferSize buffer to use when flushing data out of Inflater. Defaults to 32k
+   * @param bufferSize buffer size to use when flushing data out of Inflater. Defaults to 32k
    * @return
    */
   def inflate(bufferSize: Int = 1024 * 32, gzip: Boolean = false): Channel[Task, ByteVector, ByteVector] = {
