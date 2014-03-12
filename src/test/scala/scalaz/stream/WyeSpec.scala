@@ -19,25 +19,25 @@ object WyeSpec extends Properties("wye") {
   implicit val S = Strategy.DefaultStrategy
 
   property("either.terminate-on-both") = secure {
-    val e = (Process.range(0, 20) either Process.range(0, 20)).runLog.timed(1000).run
+    val e = (Process.range(0, 20) either Process.range(0, 20)).runLog.timed(1 seconds).run
     (e.collect { case -\/(v) => v } == (0 until 20).toSeq) :| "Left side is merged ok" &&
       (e.collect { case \/-(v) => v } == (0 until 20).toSeq) :| "Right side is merged ok"
   }
 
   property("either.terminate-on-out-terminating") = secure {
-    val e = (Process.range(0, 20) either Process.range(0, 20)).take(10).runLog.timed(1000).run
+    val e = (Process.range(0, 20) either Process.range(0, 20)).take(10).runLog.timed(1 seconds).run
     e.size == 10
   }
 
   property("either.continue-when-left-done") = secure {
-    val e = (Process.range(0, 20) either (awakeEvery(25 millis).take(20))).runLog.timed(5000).run
+    val e = (Process.range(0, 20) either (awakeEvery(25 millis).take(20))).runLog.timed(5 seconds).run
     (e.size == 40) :| "Both sides were emitted" &&
       (e.zipWithIndex.filter(_._1.isLeft).lastOption.exists(_._2 < 35)) :| "Left side terminated earlier" &&
       (e.zipWithIndex.filter(_._1.isRight).lastOption.exists(_._2 == 39)) :| "Right side was last"
   }
 
   property("either.continue-when-right-done") = secure {
-    val e = ((awakeEvery(25 millis).take(20)) either Process.range(0, 20)).runLog.timed(5000).run
+    val e = ((awakeEvery(25 millis).take(20)) either Process.range(0, 20)).runLog.timed(5 seconds).run
     (e.size == 40) :| "Both sides were emitted" &&
       (e.zipWithIndex.filter(_._1.isRight).lastOption.exists(_._2 < 35)) :| "Right side terminated earlier" &&
       (e.zipWithIndex.filter(_._1.isLeft).lastOption.exists(_._2 == 39)) :| "Left side was last"
@@ -47,7 +47,7 @@ object WyeSpec extends Properties("wye") {
     val e = (
       ((Process.range(0, 2) ++ eval(Task.fail(new Ex))) attempt (_ => Process.range(100, 102))) either
         Process.range(10, 20)
-      ).runLog.timed(3000).run
+      ).runLog.timed(3 seconds).run
     (e.collect { case -\/(\/-(v)) => v } == (0 until 2)) :| "Left side got collected before failure" &&
       (e.collect { case \/-(v) => v } == (10 until 20)) :| "Right side got collected after failure" &&
       (e.collect { case -\/(-\/(v)) => v } == (100 until 102)) :| "Left side cleanup was called"
@@ -57,20 +57,20 @@ object WyeSpec extends Properties("wye") {
   property("either.cleanup-on-right") = secure {
     val e = (Process.range(10, 20) either
       ((Process.range(0, 2) ++ eval(Task.fail(new Ex))) attempt (_ => Process.range(100, 102)))
-      ).runLog.timed(3000).run
+      ).runLog.timed(3 seconds).run
     (e.collect { case \/-(\/-(v)) => v } == (0 until 2)) :| "Right side got collected before failure" &&
       (e.collect { case -\/(v) => v } == (10 until 20)) :| "Left side got collected after failure" &&
       (e.collect { case \/-(-\/(v)) => v } == (100 until 102)) :| "Right side cleanup was called"
   }
 
   property("either.fallback-on-left") = secure {
-    val e = ((Process.range(0, 2) ++ Process.range(100, 102)) either (Process.range(10, 12))).runLog.timed(1000).run
+    val e = ((Process.range(0, 2) ++ Process.range(100, 102)) either (Process.range(10, 12))).runLog.timed(1 seconds).run
     (e.collect { case -\/(v) => v } == (0 until 2) ++ (100 until 102)) :| "Left side collected with fallback" &&
       (e.collect { case \/-(v) => v } == (10 until 12)) :| "Right side collected"
   }
 
   property("either.fallback-on-right") = secure {
-    val e = ((Process.range(10, 12)) either (Process.range(0, 2) ++ Process.range(100, 102))).runLog.timed(1000).run
+    val e = ((Process.range(10, 12)) either (Process.range(0, 2) ++ Process.range(100, 102))).runLog.timed(1 seconds).run
     (e.collect { case \/-(v) => v } == (0 until 2) ++ (100 until 102)) :| "Right side collected with fallback" &&
       (e.collect { case -\/(v) => v } == (10 until 12)) :| "Left side collected"
   }
@@ -84,7 +84,7 @@ object WyeSpec extends Properties("wye") {
     val l = Process.awakeEvery(10 millis) onComplete   (eval(Task.fork(Task.delay{ Thread.sleep(500);syncL.put(100)})).drain)
     val r = Process.awakeEvery(10 millis) onComplete  (eval(Task.fork(Task.delay{ Thread.sleep(600);syncR.put(200)})).drain)
 
-    val e = ((l either r).take(10) onComplete (eval(Task.delay(syncO.put(1000))).drain)).runLog.timed(3000).run
+    val e = ((l either r).take(10) onComplete (eval(Task.delay(syncO.put(1000))).drain)).runLog.timed(3 seconds).run
 
     (e.size == 10) :| "10 first was taken" &&
       (syncO.get(3000) == Some(1000)) :| "Out side was cleaned" &&
@@ -109,7 +109,7 @@ object WyeSpec extends Properties("wye") {
           }
       }.fold(0)(_ max _)
 
-    m.runLog.timed(180000).run.map(_ < 100) == Seq(true)
+    m.runLog.timed(180 seconds).run.map(_ < 100) == Seq(true)
 
   }
 
@@ -136,7 +136,7 @@ object WyeSpec extends Properties("wye") {
           }
       }.fold(0)(_ max _)
 
-    m.runLog.timed(300000).run.map(_ < 100) == Seq(true)
+    m.runLog.timed(300 seconds).run.map(_ < 100) == Seq(true)
 
   }
 
@@ -148,7 +148,7 @@ object WyeSpec extends Properties("wye") {
     val(q2,s2) = async.queue[Int]
 
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    (s1 merge s2).take(4).runLog.timed(3000).runAsync(sync.put)
+    (s1 merge s2).take(4).runLog.timed(3 seconds).runAsync(sync.put)
 
     (Process.range(1,10) to q1.toSink()).run.runAsync(_=>())
 
@@ -177,7 +177,7 @@ object WyeSpec extends Properties("wye") {
     ))).drain
 
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    ((s1 onComplete clean(1)) merge (s2 onComplete clean(2))).take(2).runLog.timed(3000).runAsync(sync.put)
+    ((s1 onComplete clean(1)) merge (s2 onComplete clean(2))).take(2).runLog.timed(3 seconds).runAsync(sync.put)
 
     ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
     (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected" &&
@@ -201,7 +201,7 @@ object WyeSpec extends Properties("wye") {
 
 
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    ((s1 onComplete s2) merge s3).take(2).runLog.timed(3000).runAsync(sync.put)
+    ((s1 onComplete s2) merge s3).take(2).runLog.timed(3 seconds).runAsync(sync.put)
 
     ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
     (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected"

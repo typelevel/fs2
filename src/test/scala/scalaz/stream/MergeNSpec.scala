@@ -24,7 +24,7 @@ object MergeNSpec extends Properties("mergeN") {
         }).toSource
 
       val result =
-        merge.mergeN(ps).runLog.timed(3000).run
+        merge.mergeN(ps).runLog.timed(3 seconds).run
 
       (result.sorted.toList == l.sorted.toList) :| "All elements were collected"
 
@@ -46,7 +46,7 @@ object MergeNSpec extends Properties("mergeN") {
     // and therefore we won`t terminate downstream to early.
      merge.mergeN(ps).scan(Set[Int]())({
        case (sum, next) => sum + next
-     }).takeWhile(_.size < 10).runLog.timed(3000).run
+     }).takeWhile(_.size < 10).runLog.timed(3 seconds).run
 
     (cleanups.get == 10) :| s"Cleanups were called on upstreams: ${cleanups.get}" &&
       (srcCleanup.get == 99) :| "Cleanup on source was called"
@@ -66,7 +66,7 @@ object MergeNSpec extends Properties("mergeN") {
         eval_(Task.delay(srcCleanup.set(99)))
 
 
-    merge.mergeN(ps).takeWhile(_ < 9).runLog.timed(3000).run
+    merge.mergeN(ps).takeWhile(_ < 9).runLog.timed(3 seconds).run
 
     (cleanups.get == 10) :| s"Cleanups were called on upstreams: ${cleanups.get}" &&
       (srcCleanup.get == 99) :| "Cleanup on source was called"
@@ -82,7 +82,7 @@ object MergeNSpec extends Properties("mergeN") {
             Process.range(0,eachSize)
           }).toSource
 
-    val result = merge.mergeN(ps).fold(0)(_ + _).runLast.timed(120000).run
+    val result = merge.mergeN(ps).fold(0)(_ + _).runLast.timed(120 seconds).run
 
     (result == Some(49500000)) :| "All items were emitted"
   }
@@ -115,7 +115,7 @@ object MergeNSpec extends Properties("mergeN") {
     val running = new SyncVar[Throwable \/ IndexedSeq[Int]]
     Task.fork(sizeSig.discrete.runLog).runAsync(running.put)
 
-    merge.mergeN(25)(ps).run.timed(10000).run
+    merge.mergeN(25)(ps).run.timed(10 seconds).run
     sizeSig.close.run
 
     "mergeN and signal finished" |: running.get(3000).isDefined &&

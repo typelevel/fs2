@@ -3,6 +3,7 @@ package scalaz.stream
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
 import scala.concurrent.SyncVar
+import scala.concurrent.duration._
 import scalaz.concurrent.Task
 import scalaz.{Nondeterminism, \/-, \/}
 
@@ -93,7 +94,7 @@ object QueueSpec extends Properties("queue") {
     t2.runAsync(dequeued.put)
 
     //start pushing ++ stop, and that should make t2 to stop too
-    t1.timed(3000).run
+    t1.timed(3 seconds).run
 
     //try publish, shall be empty, terminated
     val publishClosed = q.enqueueOne(1).attemptRun
