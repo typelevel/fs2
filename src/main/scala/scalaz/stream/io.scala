@@ -2,6 +2,7 @@ package scalaz.stream
 
 import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,FileOutputStream,InputStream,OutputStream}
 
+import scala.io.{Codec, Source}
 import scalaz.concurrent.Task
 import Process._
 
@@ -92,25 +93,28 @@ trait io {
     channel((a: A) => Task.delay { buf += a })
 
   /**
-   * Create a `Process[Task,String]` from the lines of a file, using
+   * Creates a `Process[Task,String]` from the lines of a file, using
    * the `resource` combinator to ensure the file is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(filename: String): Process[Task,String] =
-    resource(Task.delay(scala.io.Source.fromFile(filename)))(
-             src => Task.delay(src.close)) { src =>
-      lazy val lines = src.getLines // A stateful iterator
-      Task.delay { if (lines.hasNext) lines.next else throw End }
-    }
+  def linesR(filename: String)(implicit codec: Codec): Process[Task,String] =
+    linesR(Source.fromFile(filename)(codec))
 
   /**
-   * Create a `Process[Task,String]` from the lines of the `InputStream`,
+   * Creates a `Process[Task,String]` from the lines of the `InputStream`,
    * using the `resource` combinator to ensure the `InputStream` is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(in: InputStream): Process[Task,String] =
-    resource(Task.delay(scala.io.Source.fromInputStream(in)))(
-             src => Task.delay(src.close)) { src =>
+  def linesR(in: InputStream)(implicit codec: Codec): Process[Task,String] =
+    linesR(Source.fromInputStream(in)(codec))
+
+  /**
+   * Creates a `Process[Task,String]` from the lines of the `Source`,
+   * using the `resource` combinator to ensure the `Source` is closed
+   * when processing the stream of lines is finished.
+   */
+  def linesR(src: Source): Process[Task,String] =
+    resource(Task.delay(src))(src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
       Task.delay { if (lines.hasNext) lines.next else throw End }
     }
