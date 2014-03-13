@@ -41,16 +41,28 @@ sealed trait Process[+F[_], +O] {
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = {
     p1 step match {
       case (awt1@AwaitP1(rcv1), t1) => this.step match {
-        case (awt@Await(req, rcv), t) => awt.extend(_.pipe(p1))
-        case (emt@Emit(so), t)        => this.pipe(process1.feed(so)(p1))
-        case (hlt@Halt(rsn), _)       => ??? //this.pipe(t1.killBy(rsn)) as we now that tail is always halt in this case
+        case (awt@Await(req, rcv), _) => awt.extend(_.pipe(p1))
+        case (emt@Emit(so), t)        =>
+          val ppp = process1.feed(so)(p1)
+          println("###$$$$" + ppp)
+          t.pipe(ppp)
+        case (hlt@Halt(rsn), _)       =>
+          debug(s"THIS HALT: this: $this, t1: $t1")
+          if (t1.isHalt) hlt
+          else this.pipe(t1.killBy(rsn))
+
 
       }
-      case (emt1@Emit(so2), t1)     => Emit(so2) ++ this.pipe(t1)
-      case (hlt1@Halt(rsn), _)     => ??? //this.killBy(rsn).pipe(p1) as we know tail is always halt in this case
+      case (emt1@Emit(so2), t1)     =>
+        println("####>>>" + so2)
+        Emit(so2) ++ this.pipe(t1)
+      case (hlt1@Halt(rsn), _)     =>
+        debug(s"P1 HALT: this: $this, t1: $p1")
+        if (this.isHalt) hlt1
+        else this.killBy(rsn).pipe(p1)
+
+
     }
-
-
 
 
     //    def go(cur: Process[F, O]
@@ -166,6 +178,46 @@ sealed trait Process[+F[_], +O] {
     }
   }
 
+  /**
+   * Returns true, if this process is halted
+   */
+  final def isHalt : Boolean = this match {
+    case Halt(_) => true
+    case _ => false
+  }
+
+  /**
+   * Causes this process to be terminated, giving chance for any cleanup actions to be run
+   */
+  final def kill: Process[F,Nothing] =killBy(Kill)
+
+  /**
+   * Causes this process to be terminated, giving chance for any cleanup actions to be run
+   * @param rsn Reason for termination
+   *
+   */
+  final def killBy(rsn: Throwable): Process[F, Nothing] = {
+    val rsn0 = rsn match {
+      case End => Kill
+      case _ => rsn
+    }
+    debug(s"KILLBY rsn:$rsn, rsn0:$rsn0 this:$this ")
+    this.step match {
+      case (Halt(_),_) => Halt(rsn)
+      case (Emit(_),t) => suspend(t.killBy(rsn0))
+      case (aw@Await(_,_),_) => aw.extend(_.killBy(rsn))
+    }
+
+//    this match {
+//      case Emit(_)         => fail(rsn0)
+//      case hlt@Halt(_)     => hlt
+//      case Await(req, rcv) => fail(rsn0)
+//      case Append(_, n)    => n.headOption match {
+//        case Some(h) => (Try(h(rsn0).run) ++ Append(halt, n.tail)).drain
+//        case None    => fail(rsn0)
+//      }
+//    }
+  }
 
   //  /** Causes _all_ subsequent awaits to  to fail with the `End` exception. */
   //  final def disconnect: Process[F, O] = disconnect0(End)
@@ -225,7 +277,17 @@ sealed trait Process[+F[_], +O] {
    * Run this process until it halts, then run it again and again, as
    * long as no errors occur.
    */
-  final def repeat[F2[x] >: F[x], O2 >: O]: Process[F2, O2] = {
+  final def repeat: Process[F, O] = {
+    debug(s"REPEAT $this ")
+    this.onHalt {
+      case End =>
+        debug("REP THIS END")
+        this.repeat
+      case rsn =>
+        debug("REP TERM " + rsn)
+        Halt(rsn)
+    }
+
     //    this onHalt {
     //      case End => this.repeat
     //      case rsn => halt
@@ -240,8 +302,29 @@ sealed trait Process[+F[_], +O] {
     //      case Emit(h, t) => emitSeq(h, go(t))
     //    }
     //    go(this)
-    ???
+
   }
+
+  /**
+   * Removes all emitted elements from the front of this `Process`.
+   * The second argument returned by this method is guaranteed to be
+   * an `Await`, `Halt` or an `Append`-- if there are multiple `Emit'`s at the
+   * front of this process, the sequences are concatenated together.
+   *
+   * If this `Process` does not begin with an `Emit`, returns the empty
+   * sequence along with `this`.
+   */
+  final def unemit:(Seq[O],Process[F,O]) = {
+    @tailrec
+    def go(cur:Process[F,O],acc:Vector[O]) : (Seq[O],Process[F,O]) = {
+      cur.step match {
+        case (Emit(os),t) => go(t,acc fast_++ os)
+        case _ => (acc,cur)
+      }
+    }
+    go(this,Vector())
+  }
+
 
   ///////////////////////////////////////////
   // runXXX
@@ -676,7 +759,7 @@ object Process {
   object AwaitP1 {
     /** deconstruct for `Await` directive of `Process1` **/
     def unapply[I, O](self: Process1[I, O]): Option[I => Process1[I, O]] = self match {
-      case Await(_, rcv) => Some((i: I) => Try(rcv(right(i)).run))
+      case Await(_, rcv) => Some((i: I) => Try(rcv(i).run))
       case _             => None
     }
   }
@@ -824,7 +907,30 @@ object Process {
     def toSortedMap[K, V](implicit isKV: O <:< (K, V), ord: Ordering[K]): SortedMap[K, V] =
       SortedMap(toIndexedSeq.asInstanceOf[Seq[(K, V)]]: _*)
     def toStream: Stream[O] = toIndexedSeq.toStream
-    def toSource: Process[Task, O] = ??? // emitSeq(toIndexedSeq.map(o => Task.delay(o))).eval
+    def toSource: Process[Task, O] =    emitAll(toIndexedSeq.map(o => Task.delay(o))).eval
+  }
+
+  /**
+   * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
+   */
+  implicit class EvalProcess[F[_],O](self: Process[F,F[O]]) {
+
+    /**
+     * Evaluate the stream of `F` actions produced by this `Process`.
+     * This sequences `F` actions strictly--the first `F` action will
+     * be evaluated before work begins on producing the next `F`
+     * action. To allow for concurrent evaluation, use `sequence`
+     * or `gather`.
+     */
+    def eval: Process[F,O] = {
+      self.step match {
+        case (Emit(fos),t) => fos.foldLeft(halt:Process[F,O])((p,n) => p ++ Process.eval(n) ) ++ t.eval
+        case (aw@Await(_,_),_) => aw.extend(_.eval)
+        case (hlt@Halt(_),_) => hlt
+      }
+
+    }
+
   }
 
 
