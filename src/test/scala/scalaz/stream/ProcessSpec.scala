@@ -1,8 +1,9 @@
 package scalaz.stream
 
-import scalaz._
+import scalaz.{WriterT => MWriterT, Writer => MWriter, _}
 import scalaz.syntax.equal._
 import scalaz.syntax.foldable._
+import scalaz.syntax.applicative._
 import scalaz.std.anyVal._
 import scalaz.std.list._
 import scalaz.std.list.listSyntax._
@@ -511,6 +512,24 @@ object ProcessSpec extends Properties("Process1") {
     go(p1,0) == s.sum
   }
 
+  type LongWriter[X] = MWriter[List[Long],X]
+  implicit val LongWriterCatchable = new Catchable[LongWriter] {
+    def attempt[A](f: LongWriter[A]) = f.map(a => \/-(a))
+    def fail[A](err: Throwable) = ???
+  }
 
+  property("scanF works for simple Emit") = secure {
+    val process = Process.emitSeq(1 to 100).scanF[LongWriter,Long](0L)( (s, l) => MWriterT.tell[List[Long]](List(l.toLong)).map(_ => (s+l).toLong))
+    val (log, sum): (List[Long], Option[Long]) = process.runLast.run
+    (log == (1 to 100).map(_.toLong)) && (sum == Some(100*99/2))
+  }
+
+  property("scanF works for Await") = secure {
+    val max = 100
+    val input = Process.Emit[LongWriter,Long]( (1 to 50).map(_.toLong), Await( None.point[LongWriter], (_:Any) => Process.emitSeq((51 to 100).map(_.toLong)) ) )
+    val process = input.scanF[LongWriter,Long](0L)( (s, l) => MWriterT.tell[List[Long]](List(l.toLong)).map(_ => (s+l).toLong))
+    val (log, sum): (List[Long], Option[Long]) = process.runLast.run
+    (log == (1 to 100).map(_.toLong)) && (sum == Some(100*99/2))
+  }
 
 }

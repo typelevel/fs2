@@ -727,6 +727,19 @@ sealed abstract class Process[+F[_],+O] {
   def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
     this |> process1.scan(b)(f)
 
+  /** Like scan, but the function used for scanning can be effectful. */
+  def scanF[F2[x]>:F[x],B](b: B)(f: (B,O) => F2[B]): Process[F2,B] = this match {
+    case Emit(oseq,rest) => if (oseq.isEmpty) {
+        rest.scanF[F2,B](b)(f)
+      } else {
+        Emit(Seq(b),
+          Await[F2,B,B](f(b,oseq.head), (bnext:B) => emitSeq(oseq.tail, rest).scanF[F2,B](bnext)(f) )
+        )
+      }
+    case Await(req, recv, fallback2,cleanup2) => Await(req, recv andThen( _.scanF[F2,B](b)(f) ), fallback2.scanF[F2,B](b)(f), cleanup2.scanF[F2,B](b)(f))
+    case h@Halt(e) => h
+  }
+
   /** Alias for `this |> [[process1.scanMap]](f)(M)`. */
   def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.scanMap(f)(M)
