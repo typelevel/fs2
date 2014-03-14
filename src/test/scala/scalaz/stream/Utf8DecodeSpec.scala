@@ -5,15 +5,17 @@ import Prop._
 import scalaz.std.list._
 import scalaz.std.string._
 import scalaz.syntax.equal._
+import scodec.bits.ByteVector
 
 import Process._
 import process1._
 
 object Utf8DecodeSpec extends Properties("process1.utf8Decode") {
 
-  def utf8Bytes(a: Array[Int]): Bytes = Bytes.of(a.map(_.toByte))
-  def utf8Bytes(c: Char): Bytes = utf8Bytes(c.toString)
-  def utf8Bytes(s: String): Bytes = Bytes.of(s.getBytes("UTF-8"))
+  def utf8Bytes(a: Array[Int]): ByteVector = ByteVector(a.map(_.toByte))
+  def utf8Bytes(c: Char): ByteVector = utf8Bytes(c.toString)
+  def utf8Bytes(s: String): ByteVector = ByteVector(s.getBytes("UTF-8"))
+  def utf8String(bs: ByteVector): String = new String(bs.toArray, "UTF-8")
 
   def checkChar(c: Char): Boolean = (1 to 6).forall { n =>
     emitSeq(utf8Bytes(c).grouped(n).toSeq).pipe(utf8Decode).toList === List(c.toString)
@@ -21,12 +23,12 @@ object Utf8DecodeSpec extends Properties("process1.utf8Decode") {
 
   def checkBytes(is: Int*): Boolean = (1 to 6).forall { n =>
     val bytes = utf8Bytes(is.toArray)
-    emitSeq(bytes.grouped(n).toSeq).pipe(utf8Decode).toList === List(bytes.decode())
+    emitSeq(bytes.grouped(n).toSeq).pipe(utf8Decode).toList === List(utf8String(bytes))
   }
 
   def checkBytes2(is: Int*): Boolean = {
     val bytes = utf8Bytes(is.toArray)
-    emit(bytes).pipe(utf8Decode).toList.mkString === bytes.decode()
+    emit(bytes).pipe(utf8Decode).toList.mkString === utf8String(bytes)
   }
 
   property("all chars") = forAll { (c: Char) => checkChar(c) }
@@ -45,7 +47,7 @@ object Utf8DecodeSpec extends Properties("process1.utf8Decode") {
   }
 
   property("utf8Encode |> utf8Decode = id") = forAll { (s: String) =>
-    emit(s).pipe(utf8Encode).map(a => Bytes.of(a)).pipe(utf8Decode).toList === List(s)
+    emit(s).pipe(utf8Encode).pipe(utf8Decode).toList === List(s)
   }
 
   property("1 byte sequences") = forAll { (s: String) =>

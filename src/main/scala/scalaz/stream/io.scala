@@ -4,6 +4,7 @@ import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,FileOut
 
 import scala.io.{Codec, Source}
 import scalaz.concurrent.Task
+import scodec.bits.ByteVector
 import Process._
 
 /**
@@ -56,7 +57,7 @@ trait io {
     Process.constant(f)
 
   /**
-   * Creates a `Channel[Task,Int,Array[Byte]]` from an `InputStream` by
+   * Creates a `Channel[Task,Int,ByteVector]` from an `InputStream` by
    * repeatedly requesting the given number of bytes. The last chunk
    * may be less than the requested size.
    *
@@ -66,26 +67,26 @@ trait io {
    * This implementation closes the `InputStream` when finished
    * or in the event of an error.
    */
-  def chunkR(is: => InputStream): Channel[Task, Int, Array[Byte]] =
+  def chunkR(is: => InputStream): Channel[Task,Int,ByteVector] =
     unsafeChunkR(is).map(f => (n: Int) => {
       val buf = new Array[Byte](n)
-      f(buf)
+      f(buf).map(ByteVector.view)
     })
 
   /**
    * Creates a `Sink` from an `OutputStream`, which will be closed
    * when this `Process` is halted.
    */
-  def chunkW(os: => OutputStream): Sink[Task, Array[Byte]] =
+  def chunkW(os: => OutputStream): Sink[Task,ByteVector] =
     resource(Task.delay(os))(os => Task.delay(os.close))(
-      os => Task.now((bytes: Array[Byte]) => Task.delay(os.write(bytes))))
+      os => Task.now((bytes: ByteVector) => Task.delay(os.write(bytes.toArray))))
 
   /** Creates a `Sink` from a file name and optional buffer size in bytes. */
-  def fileChunkW(f: String, bufferSize: Int = 4096): Sink[Task, Array[Byte]] =
+  def fileChunkW(f: String, bufferSize: Int = 4096): Sink[Task,ByteVector] =
     chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
 
   /** Creates a `Channel` from a file name and optional buffer size in bytes. */
-  def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task, Int, Array[Byte]] =
+  def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task,Int,ByteVector] =
     chunkR(new BufferedInputStream(new FileInputStream(f), bufferSize))
 
   /** A `Sink` which, as a side effect, adds elements to the given `Buffer`. */

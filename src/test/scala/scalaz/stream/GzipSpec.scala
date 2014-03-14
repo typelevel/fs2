@@ -5,6 +5,7 @@ import org.scalacheck.Prop._
 import scalaz.concurrent.Task
 import scala.util.Random
 import scalaz.stream.io._
+import scodec.bits.ByteVector
 
 /**
  *
@@ -22,7 +23,7 @@ object GzipSpec extends Properties("io.gzip") {
     val contentChunk = Array.ofDim[Byte](1024)
     Random.nextBytes(contentChunk)
 
-    val allContent = for {_ <- 1 to 1024} yield (contentChunk)
+    val allContent = for {_ <- 1 to 1024} yield ByteVector(contentChunk)
     
     val source =
       Process(allContent:_*).map(v => Task(v)).eval
