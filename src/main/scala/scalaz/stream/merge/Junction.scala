@@ -771,7 +771,7 @@ trait Junction[+W, -I, +O] {
   /**
    * Creates task, that when evaluated will make Junction to receive Seq of `I`.
    * This will complete _after_ Junction confirms that more `I` are needed
-   * by JunctionStrategy emitting [[scalaz.stream.actor.MergeStrategy.More]].
+   * by JunctionStrategy emitting [[scalaz.stream.merge.Junction.More]].
    *
    * Please note this creates upstream reference that has no notion of
    * being `open` or `done` like with references from upstream source.
