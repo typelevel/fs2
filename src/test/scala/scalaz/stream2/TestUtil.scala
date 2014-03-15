@@ -12,7 +12,7 @@ private[stream2] object TestUtil {
     val start = System.currentTimeMillis()
     val result = a
     val stop = System.currentTimeMillis()
-    // println(s"$l took ${(stop - start) / 1000.0 } seconds")
+     println(s"$l took ${(stop - start) / 1000.0 } seconds")
     ((stop - start).millis, result)
   }
 
