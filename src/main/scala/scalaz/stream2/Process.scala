@@ -45,12 +45,12 @@ sealed trait Process[+F[_], +O] {
         case Cont(Emit(os),next) =>
           if (os.isEmpty) next(End) pipe p1
           else next(End) pipe process1.feed(os)(p1)
-        case Done(rsn) => suspend(this pipe p1.killBy(Kill(rsn)))
+        case Done(rsn) => this pipe p1.killBy(Kill(rsn))
       }
       case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(next1(End))
       case Done(rsn1) => this match {
         case Halt(rsn) => Halt(CausedBy(rsn1,rsn))
-        case _ => suspend(this.killBy(Kill(rsn1)) pipe p1)
+        case _ => this.killBy(Kill(rsn1)) pipe p1
       }
     }
 
@@ -72,21 +72,20 @@ sealed trait Process[+F[_], +O] {
     @tailrec
     def go(cur: Process[F, O], stack: Vector[Throwable => Trampoline[Process[F, O]]]): Step[F, O] = {
       debug(s"STEP $cur, stack: ${stack.size}")
-      cur match {
-        case Append(Halt(rsn), Seq()) => Done(rsn)
-        case Append(Halt(rsn), n)     => go(Try(n.head(rsn).run), n.tail fast_++ stack)
-        case Append(AwaitOrEmit(p), Seq())         => Cont(p, rsn => Halt(rsn))
-        case Append(AwaitOrEmit(p), n)             => Cont(p, rsn => Append(Halt(rsn), n))
-        case emt@Emit(_)              => Cont(emt, rsn => Append(Halt(rsn), stack))
-        case awt@Await(_, _)          => Cont(awt, rsn => Append(Halt(rsn), stack))
-        case Halt(rsn) =>
-
-          if (stack.isEmpty) Done(rsn)
-          else {
-            println(s"###### ${stack.head(rsn).run}")
-            go(Try(stack.head(rsn).run),stack.tail)
-          }
-
+      if (stack.isEmpty) {
+        cur match {
+          case Halt(rsn)      => Done(rsn)
+          case Append(p, n)   => go(p, n)
+          case AwaitOrEmit(p) => Cont(p, rsn => Halt(rsn))
+        }
+      } else {
+        cur match {
+          case Halt(rsn)      =>
+            println(s"################# rsn: $rsn next: ${Try(stack.head(rsn).run).causedBy(rsn)}")
+            go(Try(stack.head(rsn).run).causedBy(rsn), stack.tail)
+          case Append(p, n)   => go(p, n fast_++ stack)
+          case AwaitOrEmit(p) => Cont(p, rsn => Append(Halt(rsn), stack))
+        }
       }
     }
 
@@ -790,13 +789,14 @@ object Process {
    * Execution of the Process
    */
   class CausedBy(e: Throwable, cause: Throwable) extends Exception(cause) {
-    override def toString = s"$e\n\ncaused by:\n\n$cause"
+    override def toString = s"$e caused by: $cause"
   }
 
   object CausedBy {
     def apply(e: Throwable, cause: Throwable): Throwable =
-      cause match {
+      e match {
         case End => e
+        case `cause` => e
         case _   => new CausedBy(e, cause)
       }
   }
@@ -929,10 +929,10 @@ object Process {
    * resource we want to ensure is accessed in a single-threaded way.
    */
   def suspend[F[_], O](p: => Process[F, O]): Process[F, O] =
-    halt onHalt {
-      case End => p
-      case rsn => p causedBy rsn
-    }
+    Append(halt,Vector({
+      case End => Trampoline.delay(p)
+      case rsn => Trampoline.delay(p causedBy rsn)
+    }))
 
 
 }
