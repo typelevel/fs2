@@ -12,11 +12,11 @@ object ExperimentSpec extends Properties("Experiments") {
 
   property("here") = secure {
 
-    val pl = List(1, -2147483648, 56468494)
+    val pl = List(1)
 
 
     val pl2 = 0 until 10000
-  val p = Process(pl2:_*)
+  val p = Process(pl:_*)
 
 //    val f = (x: Int) => List.range(1, x.min(100))
 //

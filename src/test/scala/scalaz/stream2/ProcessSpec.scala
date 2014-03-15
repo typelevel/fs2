@@ -40,41 +40,41 @@ object ProcessSpec extends Properties("Process") {
     Arbitrary(Arbitrary.arbitrary[List[A]].map(a => Process(a: _*)))
 
 
-//  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
-//    val f = (x: Int) => List.range(1, x.min(100))
-//    val g = (x: Int) => x % 7 == 0
-//    val pf: PartialFunction[Int, Int] = {case x: Int if x % 2 == 0 => x }
+  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
+    val f = (x: Int) => List.range(1, x.min(100))
+    val g = (x: Int) => x % 7 == 0
+    val pf: PartialFunction[Int, Int] = {case x: Int if x % 2 == 0 => x }
+
+    val sm = Monoid[String]
 //
-//    val sm = Monoid[String]
-////
-////  println("##########"*10 + p)
-////  println("P1 " + p.toList.flatMap(f).size)
-////  println("P2 " + p.flatMap(f andThen Process.emitAll).toList.size )
-//
-//  try {
-//    val examples = Seq(
-//      //  "map" |:  (p.toList.map(_ + 1) === p.map(_ + 1).toList)
-//      //   "map-pipe" |: (p.map(_ + 1) === p.pipe(lift(_ + 1)))
-//     //   , "flatMap" |:   (p.toList.flatMap(f) === p.flatMap(f andThen Process.emitAll).toList)
-//    )
-//
-//    //examples.reduce(_ && _)
-//    false
-//  } catch {
-//    case t : Throwable => t.printStackTrace(); throw t
-//  }
-//
-//
-//
-//  }
+//  println("##########"*10 + p)
+//  println("P1 " + p.toList.flatMap(f).size)
+//  println("P2 " + p.flatMap(f andThen Process.emitAll).toList.size )
+
+  try {
+    val examples = Seq(
+      //  "map" |:  (p.toList.map(_ + 1) === p.map(_ + 1).toList)
+       "map-pipe" |: (p.map(_ + 1) === p.pipe(lift(_ + 1)))
+     //   , "flatMap" |:   (p.toList.flatMap(f) === p.flatMap(f andThen Process.emitAll).toList)
+    )
+
+    //examples.reduce(_ && _)
+    false
+  } catch {
+    case t : Throwable => t.printStackTrace(); throw t
+  }
 
 
-  property("kill") = secure {
-
-    ("repeated-emit" |: emit(1).toSource.repeat.kill.runLog.run == List()) //&&
-      //("repeated-emit" |: emit(1).toSource.killBy(boom).runLog.run == List())
 
   }
+
+
+//  property("kill") = secure {
+//
+//    ("repeated-emit" |: emit(1).toSource.repeat.kill.runLog.run == List()) //&&
+//      //("repeated-emit" |: emit(1).toSource.killBy(boom).runLog.run == List())
+//
+//  }
 
 
 }

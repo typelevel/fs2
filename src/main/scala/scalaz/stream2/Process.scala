@@ -38,65 +38,21 @@ sealed trait Process[+F[_], +O] {
    * is killed with same reason giving it an opportunity to cleanup.
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = {
-//    p1 step match {
-//      case (awt1@AwaitP1(rcv1), t1) => this.step match {
-//        case (awt@Await(req, rcv), _) => awt.extend(_.pipe(p1))
-//        case (emt@Emit(so), t)        =>
-//          val ppp = process1.feed(so)(p1)
-//          println("###$$$$" + ppp)
-//          t.pipe(ppp)
-//        case (hlt@Halt(rsn), _)       =>
-//          debug(s"THIS HALT: this: $this, t1: $t1")
-//          if (t1.isHalt) hlt
-//          else this.pipe(t1.killBy(rsn))
-//
-//
-//      }
-//      case (emt1@Emit(so2), t1)     =>
-//        println("####>>>" + so2)
-//        Emit(so2) ++ this.pipe(t1)
-//      case (hlt1@Halt(rsn), _)     =>
-//        debug(s"P1 HALT: this: $this, t1: $p1")
-//        if (this.isHalt) hlt1
-//        else this.killBy(rsn).pipe(p1)
-//
-//
-//    }
-???
-
-    //    def go(cur: Process[F, O]
-    //      , cur1: Process1[O, O2]
-    //      , stack: Vector[Throwable => Trampoline[Process[F, O]]]
-    //      , stack1: Vector[Throwable => Trampoline[Process1[O, O2]]]): Process[F, O2] = {
-    //      cur1 match {
-    //        case hlt@Halt(rsn)
-    //          if stack1.isEmpty => stack.headOption match {
-    //          case Some(head) => go(Try(head(rsn).run), cur1, stack.tail, stack1)
-    //          case None => hlt
-    //        }
-    //        case Halt(rsn)                       => go(cur, Try(stack1.head(rsn).run), stack, stack1.tail)
-    //        case emit@Emit(_) =>  emit onHalt { rsn => go(cur, Halt(rsn), stack, stack1) }
-    //        case Append(p, n) => go(cur, p, stack, n fast_++ stack1)
-    //        case aw@AwaitP1(rcv1) =>
-    //          cur match {
-    //            case hlt@Halt(rsn)
-    //              if stack.isEmpty   => stack1.headOption match {
-    //              case Some(head1) => go(hlt, Try(head1(rsn).run), stack, stack1.tail)
-    //              case None     => hlt
-    //            }
-    //            case Halt(rsn)       => go(Try(stack.head(rsn).run), cur1, stack.tail, stack1)
-    //            case Emit(Seq())     => go(halt, cur1, stack, stack1.tail)
-    //            case Emit(os)        => go(Emit(os.tail), Try(rcv1(os.head)), stack, stack1)
-    //            case aw@Await(_, _)  => aw.extend(go(_, cur1, stack, stack1))
-    //            case ap@Append(p, n) => go(p, cur1, n fast_++ stack, stack1)
-    //          }
-    //
-    //      }
-    //
-    //    }
-    //
-    //
-    //    go(this, p2, Vector(), Vector())
+    debug(s"PIPE p1: $p1, p1.step: ${p1.step} this: $this this.step: ${this.step}")
+    p1.step match {
+      case Cont(AwaitP1(rcv1),next1) => this.step match {
+        case Cont(awt@Await(_,_),next) => (awt onHalt next) pipe p1
+        case Cont(Emit(os),next) =>
+          if (os.isEmpty) next(End) pipe p1
+          else next(End) pipe process1.feed(os)(p1)
+        case Done(rsn) => suspend(this pipe p1.killBy(Kill(rsn)))
+      }
+      case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(next1(End))
+      case Done(rsn1) => this match {
+        case Halt(rsn) => Halt(CausedBy(rsn1,rsn))
+        case _ => suspend(this.killBy(Kill(rsn1)) pipe p1)
+      }
+    }
 
   }
 
@@ -115,6 +71,7 @@ sealed trait Process[+F[_], +O] {
   final def step: Step[F, O] = {
     @tailrec
     def go(cur: Process[F, O], stack: Vector[Throwable => Trampoline[Process[F, O]]]): Step[F, O] = {
+      debug(s"STEP $cur, stack: ${stack.size}")
       cur match {
         case Append(Halt(rsn), Seq()) => Done(rsn)
         case Append(Halt(rsn), n)     => go(Try(n.head(rsn).run), n.tail fast_++ stack)
@@ -123,8 +80,12 @@ sealed trait Process[+F[_], +O] {
         case emt@Emit(_)              => Cont(emt, rsn => Append(Halt(rsn), stack))
         case awt@Await(_, _)          => Cont(awt, rsn => Append(Halt(rsn), stack))
         case Halt(rsn) =>
+
           if (stack.isEmpty) Done(rsn)
-          else go(Try(stack.head(rsn).run),stack.tail)
+          else {
+            println(s"###### ${stack.head(rsn).run}")
+            go(Try(stack.head(rsn).run),stack.tail)
+          }
 
       }
     }
@@ -163,14 +124,12 @@ sealed trait Process[+F[_], +O] {
 
   /**
    * Add `e` as a cause when this `Process` halts.
-   * This is a no-op  if `e` is `Process.End` or `Process.Kill`
+   * This is a no-op  if `e` is `Process.End`
    */
   final def causedBy[F2[x] >: F[x], O2 >: O](e: Throwable): Process[F2, O2] = {
-    onHalt {
-      case rsn => e match {
-        case End => fail(rsn)
-        case _   => fail(CausedBy(rsn, e))
-      }
+    e match {
+      case End => this
+      case _ => onHalt(rsn => fail(CausedBy(rsn,e)))
     }
   }
 
@@ -205,7 +164,9 @@ sealed trait Process[+F[_], +O] {
     debug(s"KILLBY rsn:$rsn, this:$this, step: ${this.step } ")
     this.step match {
       case Cont(Emit(_),n) => n(rsn).drain
-      case Cont(Await(_,_),n) => n(rsn).drain
+      case Cont(Await(_,_),n) =>
+        println(">>>>>>>" +  n(rsn))
+        n(rsn).drain
       case Done(End) => Halt(rsn)
       case Done(rsn0) => Halt(CausedBy(rsn0,rsn))
     }
@@ -817,6 +778,10 @@ object Process {
    * necessary cleanup actions, then halting with `End`
    */
   case object Kill extends Exception {
+    def apply(rsn:Throwable):Throwable = rsn match {
+      case End => Kill
+      case _ => rsn
+    }
     override def fillInStackTrace = this
   }
 
