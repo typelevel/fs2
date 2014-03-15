@@ -136,23 +136,17 @@ trait process1 {
   /** Feed a sequence of inputs to a `Process1`. */
   def feed[I, O](i: Seq[I])(p: Process1[I, O]): Process1[I, O] = {
     @tailrec
-    def go(in: Seq[I], out: Vector[O]
-      , cur: Process1[I, O]
-      , stack: Vector[Throwable => Trampoline[Process1[I, O]]]
-      ): Process1[I, O] = {
-
+    def go(in: Seq[I], out: Vector[O] , cur: Process1[I, O]  ): Process1[I, O] = {
       if (in.nonEmpty) {
-        cur match {
-          case Halt(_) | Emit(_) if stack.isEmpty => emitAll(out) ++ cur
-          case Halt(rsn)                          => go(in, out, Try(stack.head(rsn).run), stack.tail)
-          case Emit(os)                           => go(in, out fast_++ os, Try(stack.head(End).run), stack.tail)
-          case Append(p, n)                       => go(in, out, p, n fast_++ stack)
-          case AwaitP1(rcv)                       => go(in.tail, out, Try(rcv(in.head)), stack)
+        cur.step match {
+          case Cont(Emit(os), next) =>  go(in, out fast_++ os, next(End))
+          case Cont(AwaitP1(rcv), next) => go(in.tail,out,rcv(in.head) onHalt next)
+          case Done(rsn) => emitAll(out)
         }
       } else emitAll(out) ++ cur
     }
 
-    go(i, Vector(), p, Vector())
+    go(i, Vector(), p)
   }
 
 
