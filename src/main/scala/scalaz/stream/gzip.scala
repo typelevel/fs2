@@ -1,13 +1,12 @@
 package scalaz.stream
 
-import scalaz._
-import scalaz.stream.Process._
-import scalaz.concurrent.Task
-import scalaz.syntax.monad._
-import scalaz.stream.processes._
 import java.util.zip.{Inflater, Deflater}
 import scala.annotation.tailrec
+import scalaz.concurrent.Task
 import scodec.bits.ByteVector
+
+import Process._
+import process1._
 
 trait gzip {
 
@@ -83,7 +82,7 @@ trait gzip {
       }
     }
 
-    bufferedChannel[Deflater, ByteVector, ByteVector](Task.delay { new Deflater }) {
+    io.bufferedChannel[Deflater, ByteVector, ByteVector](Task.delay { new Deflater }) {
       deflater => Task.delay {
         deflater.finish()
         collectFromDeflater(deflater, emptyArray)
@@ -110,7 +109,7 @@ trait gzip {
    */
   def inflate(bufferSize: Int = 1024 * 32, gzip: Boolean = false): Channel[Task, ByteVector, ByteVector] = {
 
-    resource(Task.delay(new Inflater(gzip)))(i => Task.delay(i.end())) {
+    io.resource(Task.delay(new Inflater(gzip)))(i => Task.delay(i.end())) {
       inflater => {
         @tailrec
         def collectFromInflater(sofar: Array[Byte]): Array[Byte] = {
@@ -134,6 +133,62 @@ trait gzip {
           }
         }
       }
+    }
+  }
+}
+
+object gzip {
+  def deflate(level: Int = Deflater.DEFAULT_COMPRESSION,
+              nowrap: Boolean = false,
+              bufferSize: Int = 1024 * 32): Process1[ByteVector,ByteVector] = {
+    @tailrec
+    def collect(deflater: Deflater,
+                buf: Array[Byte],
+                flush: Int,
+                acc: Vector[ByteVector] = Vector.empty): Vector[ByteVector] =
+      deflater.deflate(buf, 0, buf.length, flush) match {
+        case 0 => acc
+        case n => collect(deflater, buf, flush, acc :+ ByteVector(buf.take(n)))
+      }
+
+    def go(deflater: Deflater, buf: Array[Byte]): Process1[ByteVector,ByteVector] =
+      await1[ByteVector].flatMap { bytes =>
+        deflater.setInput(bytes.toArray)
+        val chunks = collect(deflater, buf, Deflater.NO_FLUSH)
+        emitSeq(chunks) fby go(deflater, buf) orElse {
+          emitSeqLazy(collect(deflater, buf, Deflater.FULL_FLUSH))
+        }
+      }
+
+    suspend1 {
+      val deflater = new Deflater(level, nowrap)
+      val buf = Array.ofDim[Byte](bufferSize)
+      go(deflater, buf)
+    }
+  }
+
+  def inflate(nowrap: Boolean = false,
+              bufferSize: Int = 1024 * 32): Process1[ByteVector,ByteVector] = {
+    @tailrec
+    def collect(inflater: Inflater,
+                buf: Array[Byte],
+                acc: Vector[ByteVector]): Vector[ByteVector] =
+      inflater.inflate(buf) match {
+        case 0 => acc
+        case n => collect(inflater, buf, acc :+ ByteVector(buf.take(n)))
+      }
+
+    def go(inflater: Inflater, buf: Array[Byte]): Process1[ByteVector,ByteVector] =
+      await1[ByteVector].flatMap { bytes =>
+        inflater.setInput(bytes.toArray)
+        val chunks = collect(inflater, buf, Vector.empty)
+        emitSeq(chunks) fby go(inflater, buf)
+      }
+
+    suspend1 {
+      val inflater = new Inflater(nowrap)
+      val buf = Array.ofDim[Byte](bufferSize)
+      go(inflater, buf)
     }
   }
 }

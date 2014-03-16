@@ -1,37 +1,33 @@
 package scalaz.stream
 
-import org.scalacheck.Properties
-import org.scalacheck.Prop._
-import scalaz.concurrent.Task
-import scala.util.Random
-import scalaz.stream.io._
+import org.scalacheck._
+import Prop._
 import scodec.bits.ByteVector
 
-/**
- *
- * User: pach
- * Date: 7/4/13
- * Time: 4:31 AM
- * (c) 2011-2013 Spinoco Czech Republic, a.s.
- */
-object GzipSpec extends Properties("io.gzip") {
+import Process._
+import gzip._
 
-  import Process._
+object GzipSpec extends Properties("gzip") {
+  def foldBytes(bytes: List[ByteVector]): ByteVector =
+    bytes.fold(ByteVector.empty)(_ ++ _)
 
-  property("deflateAndInflate") = secure {
+  property("deflate and inflate") = forAll { (ls: List[String]) =>
+    val input = ls.map(s => ByteVector.view(s.getBytes))
+    val deflated = emitSeq(input).pipe(deflate()).toList
+    val inflated = emitSeq(deflated).pipe(inflate()).toList
 
-    val contentChunk = Array.ofDim[Byte](1024)
-    Random.nextBytes(contentChunk)
-
-    val allContent = for {_ <- 1 to 1024} yield ByteVector(contentChunk)
-    
-    val source =
-      Process(allContent:_*).map(v => Task(v)).eval
-
-    val deflateInflate =
-      source throughOption io.deflate() through io.inflate()
-    
-    deflateInflate.runLog.run.map(_.toArray).reduce(_ ++ _).toSeq == allContent.reduce(_ ++ _).toSeq
+    foldBytes(input) == foldBytes(inflated)
   }
 
+  property("deflate |> inflate ~= id") = forAll { (ls: List[String]) =>
+    val input = ls.map(s => ByteVector.view(s.getBytes))
+    val inflated = emitSeq(input).pipe(deflate()).pipe(inflate()).toList
+
+    foldBytes(input) == foldBytes(inflated)
+  }
+
+  property("empty input") = secure {
+    Process[ByteVector]().pipe(deflate()).toList == List() &&
+    Process[ByteVector]().pipe(inflate()).toList == List()
+  }
 }
