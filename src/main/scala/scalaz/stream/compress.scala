@@ -63,7 +63,21 @@ trait gzip {
 */
 
 object compress {
-  def gzip: Process1[ByteVector,ByteVector] = id
+  def gzip: Process1[ByteVector,ByteVector] = {
+    // http://www.gzip.org/zlib/rfc-gzip.html
+    val header = ByteVector(
+      0x1f, // ID1
+      0x8b, // ID2
+      0x08, // CM
+      0x00, // FLG
+      0x00, 0x00, 0x00, 0x00, // MTIME
+      0x02, // XFL
+      0xff  // OS
+    )
+    await1[ByteVector].flatMap { bytes =>
+      emit(header) fby feed1(bytes)(deflate(level = 9, nowrap = true))
+    }
+  }
 
   def gunzip: Process1[ByteVector,ByteVector] = id
 

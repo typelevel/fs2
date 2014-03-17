@@ -14,17 +14,32 @@ object CompressSpec extends Properties("compress") {
   def foldBytes(bytes: List[ByteVector]): ByteVector =
     bytes.fold(ByteVector.empty)(_ ++ _)
 
-  property("gzip and gunzip") = secure {
-    // $ echo -n Hello | gzip -f | xxd -l 16
-    // 0000000: 1f8b 0800 e22d 2753 0003 f348 cdc9 c907  .....-'S...H....
+  val hello = getBytes("Hello")
+  val helloGz =
+    ByteVector.fromValidHex("1f8b 0800 0000 0000 02ff f248 cdc9 c907 0000 00ff ff")
 
-    val hello = getBytes("Hello")
-    val helloGz = ByteVector.fromValidHex("1f8b 0800 e22d 2753 0003 f348 cdc9 c907")
+  property("gzip.empty input") = secure {
+    Process[ByteVector]().pipe(gzip).toList == List()
+  }
 
-    emit(hello).pipe(gzip).toList == List(helloGz) &&
-    emit(helloGz).pipe(gunzip).toList == List(hello)
+  property("gunzip.empty input") = secure {
+    Process[ByteVector]().pipe(gunzip).toList == List()
+  }
 
-    true
+  property("gzip.static input") = secure {
+    foldBytes(emit(hello).pipe(gzip).toList) == helloGz
+  }
+
+  property("gunzip.static input") = secure {
+    foldBytes(emit(helloGz).pipe(gunzip).toList) == hello
+  }
+
+  property("deflate.empty input") = secure {
+    Process[ByteVector]().pipe(deflate()).toList == List()
+  }
+
+  property("inflate.empty input") = secure {
+    Process[ByteVector]().pipe(inflate()).toList == List()
   }
 
   property("deflate and inflate") = forAll { (ls: List[String]) =>
@@ -40,11 +55,6 @@ object CompressSpec extends Properties("compress") {
     val inflated = emitSeq(input).pipe(deflate()).pipe(inflate()).toList
 
     foldBytes(input) == foldBytes(inflated)
-  }
-
-  property("empty input") = secure {
-    Process[ByteVector]().pipe(deflate()).toList == List() &&
-    Process[ByteVector]().pipe(inflate()).toList == List()
   }
 
   property("single byte inputs") = forAll { (s: String) =>
