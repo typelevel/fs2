@@ -5,9 +5,9 @@ import Prop._
 import scodec.bits.ByteVector
 
 import Process._
-import gzip._
+import compress._
 
-object GzipSpec extends Properties("gzip") {
+object CompressSpec extends Properties("compress") {
   def foldBytes(bytes: List[ByteVector]): ByteVector =
     bytes.fold(ByteVector.empty)(_ ++ _)
 

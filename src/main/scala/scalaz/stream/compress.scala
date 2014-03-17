@@ -1,13 +1,13 @@
 package scalaz.stream
 
-import java.util.zip.{Inflater, Deflater}
+import java.util.zip.{Deflater, Inflater}
 import scala.annotation.tailrec
-import scalaz.concurrent.Task
 import scodec.bits.ByteVector
 
 import Process._
 import process1._
 
+/*
 trait gzip {
 
   def gunzip(bufferSize: Int = 1024 * 32): Channel[Task, ByteVector, ByteVector] = {
@@ -136,8 +136,9 @@ trait gzip {
     }
   }
 }
+*/
 
-object gzip {
+object compress {
   def deflate(level: Int = Deflater.DEFAULT_COMPRESSION,
               nowrap: Boolean = false,
               bufferSize: Int = 1024 * 32): Process1[ByteVector,ByteVector] = {
@@ -148,7 +149,7 @@ object gzip {
                 acc: Vector[ByteVector] = Vector.empty): Vector[ByteVector] =
       deflater.deflate(buf, 0, buf.length, flush) match {
         case 0 => acc
-        case n => collect(deflater, buf, flush, acc :+ ByteVector(buf.take(n)))
+        case n => collect(deflater, buf, flush, acc :+ ByteVector.view(buf.take(n)))
       }
 
     def go(deflater: Deflater, buf: Array[Byte]): Process1[ByteVector,ByteVector] =
@@ -175,7 +176,7 @@ object gzip {
                 acc: Vector[ByteVector]): Vector[ByteVector] =
       inflater.inflate(buf) match {
         case 0 => acc
-        case n => collect(inflater, buf, acc :+ ByteVector(buf.take(n)))
+        case n => collect(inflater, buf, acc :+ ByteVector.view(buf.take(n)))
       }
 
     def go(inflater: Inflater, buf: Array[Byte]): Process1[ByteVector,ByteVector] =
