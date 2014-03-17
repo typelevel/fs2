@@ -59,11 +59,14 @@ trait gzip {
 
     skipHeader(readHeader, inflate(bufferSize, true))
   }
-
 }
 */
 
 object compress {
+  def gzip: Process1[ByteVector,ByteVector] = id
+
+  def gunzip: Process1[ByteVector,ByteVector] = id
+
   /**
    * Returns a `Process1` that deflates (compresses) its input elements using
    * a `java.util.zip.Deflater` with the parameters `level` and `nowrap`.
