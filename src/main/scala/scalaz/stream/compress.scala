@@ -60,85 +60,18 @@ trait gzip {
     skipHeader(readHeader, inflate(bufferSize, true))
   }
 
-  /**
-   * Channel that deflates (compresses) its input `ByteVector`, using
-   * a `java.util.zip.Deflater`. May emit empty `ByteVector`s if the compressor
-   * is waiting for more data to produce a chunk. The returned `Channel`
-   * flushes any buffered compressed data when it encounters a `None`.
-   *
-   * @param bufferSize buffer to use when flushing data out of Deflater. Defaults to 32k
-   */
-  def deflate(bufferSize: Int = 1024 * 32): Channel[Task, Option[ByteVector], ByteVector] = {
-
-    lazy val emptyArray = Array[Byte]() // ok to share this, since it cannot be modified
-
-    @tailrec
-    def collectFromDeflater(deflater: Deflater, sofar: Array[Byte]): ByteVector = {
-      val buff = new Array[Byte](bufferSize)
-
-      deflater.deflate(buff) match {
-        case deflated if deflated < bufferSize => ByteVector.view(sofar ++ buff.take(deflated))
-        case _ => collectFromDeflater(deflater, sofar ++ buff)
-      }
-    }
-
-    io.bufferedChannel[Deflater, ByteVector, ByteVector](Task.delay { new Deflater }) {
-      deflater => Task.delay {
-        deflater.finish()
-        collectFromDeflater(deflater, emptyArray)
-      }
-    } (deflater => Task.delay(deflater.end())) {
-      deflater => Task.now {
-        in => Task.delay {
-          deflater.setInput(in.toArray, 0, in.length)
-          if (deflater.needsInput())
-            ByteVector.empty
-          else
-            collectFromDeflater(deflater, emptyArray)
-        }
-      }
-    }
-  }
-
-  /**
-   * Channel that inflates (decompresses) the input bytes. May emit empty
-   * `ByteVector` if decompressor is not ready to produce data. Last emit will always
-   * contain all data inflated.
-   * @param bufferSize buffer size to use when flushing data out of Inflater. Defaults to 32k
-   * @return
-   */
-  def inflate(bufferSize: Int = 1024 * 32, gzip: Boolean = false): Channel[Task, ByteVector, ByteVector] = {
-
-    io.resource(Task.delay(new Inflater(gzip)))(i => Task.delay(i.end())) {
-      inflater => {
-        @tailrec
-        def collectFromInflater(sofar: Array[Byte]): Array[Byte] = {
-          val buff = new Array[Byte](bufferSize)
-          inflater.inflate(buff) match {
-            case inflated if inflated < bufferSize => sofar ++ buff.take(inflated)
-            case _ => collectFromInflater(sofar ++ buff)
-          }
-        }
-
-        Task.now {
-          in => Task.delay {
-            if (inflater.finished) throw End
-            else {
-              inflater.setInput(in.toArray, 0, in.length)
-              if (inflater.needsInput())
-                ByteVector.empty
-              else
-                ByteVector.view(collectFromInflater(Array.emptyByteArray))
-            }
-          }
-        }
-      }
-    }
-  }
 }
 */
 
 object compress {
+  /**
+   * Returns a `Process1` that deflates (compresses) its input elements using
+   * a `java.util.zip.Deflater` with the parameters `level` and `nowrap`.
+   * @param level the compression level (0-9)
+   * @param nowrap if true then use GZIP compatible compression
+   * @param bufferSize size of the internal buffer that is used by the
+   *                   compressor. Default size is 32 KB.
+   */
   def deflate(level: Int = Deflater.DEFAULT_COMPRESSION,
               nowrap: Boolean = false,
               bufferSize: Int = 1024 * 32): Process1[ByteVector,ByteVector] = {
@@ -168,6 +101,13 @@ object compress {
     }
   }
 
+  /**
+   * Returns a `Process1` that inflates (decompresses) its input elements using
+   * a `java.util.zip.Inflater` with the parameter `nowrap`.
+   * @param nowrap if true then support GZIP compatible compression
+   * @param bufferSize size of the internal buffer that is used by the
+   *                   decompressor. Default size is 32 KB.
+   */
   def inflate(nowrap: Boolean = false,
               bufferSize: Int = 1024 * 32): Process1[ByteVector,ByteVector] = {
     @tailrec
