@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicReference
 import scala._
 import scala.annotation.tailrec
 import scalaz._
-import scalaz.concurrent.{Strategy, Actor, Task}
+import scalaz.concurrent.{Future, Strategy, Actor, Task}
 import scalaz.stream.Process._
 import scalaz.stream.Step
 import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
@@ -16,7 +16,62 @@ object WyeActor {
   val Interrupted = new InterruptedException {
     override def fillInStackTrace(): Throwable = this
   }
-  
+
+
+  def runUntilStepDone[O](p: Process[Task, O])(cb: Step[Task, O] => Unit)(implicit S: Strategy): () => Unit = {
+
+    val completed: AtomicBoolean = new AtomicBoolean(false)
+
+    var cleanup: Process[Task, O] = halt
+    var a: Actor[Option[Process[Task, O]]] = null
+
+    def handleResult[A](
+      rcv: A => Process[Task, O]
+      , fb: Process[Task, O] = halt
+      , cln: Process[Task, O] = halt
+      )(r: Throwable \/ A): Unit =
+      r match {
+        case \/-(r0)  => a ! Some(rcv(r0))
+        case -\/(End) => a ! Some(fb)
+        case -\/(e)   => a ! Some(cln)
+      }
+
+    a = new Actor[Option[Process[Task, O]]]({
+      case Some(p) if !completed.get => p match {
+        case Emit(h, t) =>
+          completed.set(true)
+          cb(Step(\/-(h), t, cleanup))
+
+        case Halt(e) =>
+          completed.set(true)
+          cb(Step(-\/(e), halt, halt))
+
+        case Await(req, rcv, fb, cln) =>
+          cleanup = cln
+          val handler = handleResult(rcv, fb, cln) _
+          req.get.step match {
+            case Future.Now(r) => handler(r)
+            case get           => Task(get).runAsyncInterruptibly(handler, completed)
+          }
+
+      }
+
+      case None if !completed.get =>
+        //interrupt running process, run clenup that con`t be interrupted
+        completed.set(true)
+        cleanup.run.runAsync {
+          case \/-(_) => cb(Step(-\/(Interrupted), halt, halt))
+          case -\/(e) => cb(Step(-\/(CausedBy(e, Interrupted)), halt, halt))
+        }
+
+      case completed => ()
+    })(S)
+
+    a ! Some(p)
+    () => {a ! None }
+  }
+
+
   /**
    * Evaluates one step of the process `p` and calls the callback `cb` with the evaluated step `s`.
    * Returns a function for interrupting the evaluation.
@@ -210,7 +265,7 @@ object WyeActor {
     }
 
     private def runStep(p: Process[Task,A], actor: Actor[Msg]): Unit = {
-      val interrupt = runStepAsyncInterruptibly[A](p)(step => actor ! StepCompleted(this, step))
+      val interrupt = runUntilStepDone[A](p)(step => actor ! StepCompleted(this, step))
       state = Running(interrupt)
     }
   }
