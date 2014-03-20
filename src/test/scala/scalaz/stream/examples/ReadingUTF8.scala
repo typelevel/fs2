@@ -4,7 +4,7 @@ import java.io._
 import org.scalacheck._
 import Prop._
 import scalaz.concurrent.Task
-import process1._
+import text._
 
 object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
 
