@@ -32,32 +32,7 @@ package object async {
    * All views into the returned signal are backed by the same underlying
    * asynchronous `Ref`.
    */
-  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = {
-    val junction = Junction(JunctionStrategies.signal[A], Process.halt)(S)
-    new mutable.Signal[A] {
-      def changed: Process[Task, Boolean] = discrete.map(_ => true) merge Process.constant(false)
-      def discrete: Process[Task, A] = junction.downstreamW
-      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
-      def changes: Process[Task, Unit] = discrete.map(_ => ())
-      def sink: Process.Sink[Task, Msg[A]] = junction.upstreamSink
-      def get: Task[A] = discrete.take(1).runLast.flatMap {
-        case Some(a) => Task.now(a)
-        case None    => Task.fail(End)
-      }
-      def getAndSet(a: A): Task[Option[A]] = {
-        val refa = new AtomicReference[Option[A]](None)
-        val fa =  (oa: Option[A]) => {refa.set(oa); Some(a) }
-        junction.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
-      }
-      def set(a: A): Task[Unit] = junction.receiveOne(Signal.Set(a))
-      def compareAndSet(f: (Option[A]) => Option[A]): Task[Option[A]] = {
-        val refa = new AtomicReference[Option[A]](None)
-        val fa = (oa: Option[A]) => {val set = f(oa); refa.set(set orElse oa); set }
-        junction.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
-      }
-      def fail(error: Throwable): Task[Unit] = junction.downstreamClose(error)
-    }
-  }
+  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = Signal(halt)
 
 
   /** 
@@ -73,17 +48,13 @@ package object async {
     queue[A](Strategy.Sequential)
 
   /**
-   * Converts discrete process to signal.
-   * @param source
-   * @tparam A
+   * Converts discrete process to signal. Note that, resulting signal must be manually closed, in case the
+   * source process would terminate. However if the source terminate with failure, the signal is terminated with that
+   * failure
+   * @param source discrete process publishing values to this signal
    */
-  def toSignal[A](source: Process[Task, A])(implicit S: Strategy = Strategy.DefaultStrategy): immutable.Signal[A] =
-    new immutable.Signal[A] {
-      def changes: Process[Task, Unit] = discrete.map(_ => ())
-      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
-      def discrete: Process[Task, A] = source
-      def changed: Process[Task, Boolean] = (discrete.map(_ => true) merge Process.constant(false))
-   }
+  def toSignal[A](source: Process[Task, A])(implicit S: Strategy = Strategy.DefaultStrategy): mutable.Signal[A] =
+     Signal(Process(source.map(Signal.Set(_))))
 
 
   /**
