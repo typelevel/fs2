@@ -45,7 +45,8 @@ sealed trait Process[+F[_], +O] {
         case Cont(Emit(os),next) =>
           if (os.isEmpty) next(End) pipe p1
           else next(End) pipe process1.feed(os)(p1)
-        case Done(rsn) => this pipe p1.killBy(Kill(rsn))
+        case Done(rsn) =>
+          this pipe next1(Kill(rsn))
       }
       case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(next1(End))
       case Done(rsn1) => this match {

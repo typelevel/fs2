@@ -26,7 +26,12 @@ object ExperimentSpec extends Properties("Experiments") {
 //    println("P1 " + p.toList.flatMap(f).size)
 //    println("P2 " + p.flatMap(f andThen Process.emitAll).toList.size )
 
-    "map-pipe" |: (p.map(_ + 1).toList == p.pipe(lift(_ + 1)).toList)
+   // "map-pipe" |: (p.map(_ + 1).toList == p.pipe(lift(_ + 1)).toList)
+
+
+    p.pipe(lift(_ + 1)).toList
+
+    false
 
   }
 
