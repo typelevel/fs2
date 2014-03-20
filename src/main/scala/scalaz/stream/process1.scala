@@ -422,16 +422,17 @@ trait process1 {
     emit(z) fby await1[A].flatMap (a => scan(f(z,a))(f))
 
   /**
+   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
+   */
+  def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    lift(f).scanMonoid(M)
+
+  /**
    * Like `scan` but uses Monoid for associative operation
    */
   def scanMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
     scan(M.zero)(M.append(_,_))
 
-  /**
-   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
-   */
-  def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
-    lift(f).scanMonoid(M)
 
   /**
    * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
@@ -446,6 +447,13 @@ trait process1 {
     await1[A].flatMap(go)
   }
 
+  /**
+   * Like `scan1` only uses `f` to map `A` to `B` and uses Semigroup `M` for
+   * associative operation.
+   */
+  def scan1Map[A,B](f:A => B)(implicit M: Semigroup[B]): Process1[A,B] =
+    lift(f).scan1Semigroup(M)
+
   /** Like `scan1` but uses Monoid `M` for associative operation. */
   def scan1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
     scan1Semigroup(M)
@@ -453,13 +461,6 @@ trait process1 {
   /** Like `scan1` but uses Semigroup `M` for associative operation. */
   def scan1Semigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
     scan1(M.append(_,_))
-
-  /**
-   * Like `scan1` only uses `f` to map `A` to `B` and uses Semigroup `M` for
-   * associative operation.
-   */
-  def scan1Map[A,B](f:A => B)(implicit M: Semigroup[B]): Process1[A,B] =
-    lift(f).scan1Semigroup(M)
 
   /**
    * Emit the given values, then echo the rest of the input.
