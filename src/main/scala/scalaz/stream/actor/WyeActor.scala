@@ -25,17 +25,6 @@ object WyeActor {
     var cleanup: Process[Task, O] = halt
     var a: Actor[Option[Process[Task, O]]] = null
 
-    def handleResult[A](
-      rcv: A => Process[Task, O]
-      , fb: Process[Task, O] = halt
-      , cln: Process[Task, O] = halt
-      )(r: Throwable \/ A): Unit =
-      r match {
-        case \/-(r0)  => a ! Some(rcv(r0))
-        case -\/(End) => a ! Some(fb)
-        case -\/(e)   => a ! Some(cln)
-      }
-
     a = new Actor[Option[Process[Task, O]]]({
       case Some(p) if !completed.get => p match {
         case Emit(h, t) =>
@@ -48,11 +37,11 @@ object WyeActor {
 
         case Await(req, rcv, fb, cln) =>
           cleanup = cln
-          val handler = handleResult(rcv, fb, cln) _
-          req.get.step match {
-            case Future.Now(r) => handler(r)
-            case get           => Task(get).runAsyncInterruptibly(handler, completed)
-          }
+          req.runAsyncInterruptibly({
+            case \/-(r0)  => a ! Some(rcv(r0))
+            case -\/(End) => a ! Some(fb)
+            case -\/(e)   => a ! Some(cln)
+          },completed)
 
       }
 
