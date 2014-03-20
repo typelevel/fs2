@@ -735,10 +735,6 @@ sealed abstract class Process[+F[_],+O] {
   def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.scanMonoid(M)
 
-  /** Alias for `this |> [[process1.scanSemigroup]](M)`. */
-  def scanSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
-    this |> process1.scanSemigroup(M)
-
   /** Alias for `this |> [[process1.scan1]](f)`. */
   def scan1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.scan1(f)
@@ -750,6 +746,10 @@ sealed abstract class Process[+F[_],+O] {
   /** Alias for `this |> [[process1.scan1Monoid]](M)`. */
   def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.scan1Monoid(M)
+
+  /** Alias for `this |> [[process1.scan1Semigroup]](M)`. */
+  def scan1Semigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.scan1Semigroup(M)
 
   /** Alias for `this |> [[process1.split]](f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
