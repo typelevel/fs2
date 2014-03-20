@@ -143,7 +143,7 @@ object AsyncTopicSpec extends Properties("topic") {
         val signalContinuous = new SyncVar[Throwable \/ IndexedSeq[Long]]
         topic.signal.continuous.runLog.runAsync(signalContinuous.put)
 
-        Thread.sleep(50) //all has to have chance to register
+        Thread.sleep(100) //all has to have chance to register
 
         ((Process(l: _*).toSource to topic.publish) onComplete (eval_(topic.close))).run.run
 
