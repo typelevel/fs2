@@ -114,7 +114,7 @@ protected[stream] object JunctionStrategies {
         case Receive(jx, is, ref)    =>
           process1.feed(is)(cur).unemit match {
             case (swo, hlt@Halt(rsn)) =>
-              jx.more(ref) fby jx.broadcastAllBoth(swo) fby hlt
+              jx.close(ref,rsn) fby jx.broadcastAllBoth(swo) fby hlt
             case (swo, next)          =>
               jx.more(ref) fby jx.broadcastAllBoth(swo) fby go(next, lastW(swo) orElse last)
           }
@@ -197,10 +197,10 @@ protected[stream] object JunctionStrategies {
         receive1[Signal.Msg[A], A \/ Nothing] {
           case Signal.Set(a)                                               => emit(left(a)) fby go(Some(a))
           case Signal.CompareAndSet(f: (Option[A] => Option[A])@unchecked) => f(oa) match {
-            case Some(a) => emit(left(a)) fby go(Some(a))
-            case None    => go(oa)
-          }
-          case Signal.Fail(rsn)                                            => Halt(rsn)
+              case Some(a) => emit(left(a)) fby go(Some(a))
+              case None    => go(oa)
+            }
+          case Signal.Fail(rsn)                                            =>  Halt(rsn)
         }
       }
       go(None)
