@@ -15,11 +15,11 @@ object CompressSpec extends Properties("compress") {
     bytes.fold(ByteVector.empty)(_ ++ _)
 
   property("deflate.empty input") = secure {
-    Process[ByteVector]().pipe(deflate()).toList == List()
+    Process[ByteVector]().pipe(deflate()).toList.isEmpty
   }
 
   property("inflate.empty input") = secure {
-    Process[ByteVector]().pipe(inflate()).toList == List()
+    Process[ByteVector]().pipe(inflate()).toList.isEmpty
   }
 
   property("deflate |> inflate ~= id") = forAll { (ls: List[String]) =>
