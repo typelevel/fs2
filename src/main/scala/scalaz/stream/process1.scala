@@ -198,6 +198,18 @@ trait process1 {
     scan(z)(f).last
 
   /**
+   * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
+   */
+  def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
+   lift(f).foldMonoid(M)
+
+  /**
+   * Like `fold` but uses Monoid for folding operation
+   */
+  def foldMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    fold(M.zero)(M.append(_,_))
+
+  /**
    * `Process1` form of `List.reduce`.
    *
    * Reduces the elements of this Process using the specified associative binary operator.
@@ -220,20 +232,8 @@ trait process1 {
   def fold1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
     reduceSemigroup(M)
 
-  /**
-   * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
-   */
-  def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
-   lift(f).foldMonoid(M)
-
-  /**
-   * Like `fold` but uses Monoid for folding operation
-   */
-  def foldMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
-    fold(M.zero)(M.append(_,_))
-
   /** Alias for `reduceSemigroup`. */
-  def foldSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+  def fold1Semigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
     reduceSemigroup(M)
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
@@ -350,6 +350,13 @@ trait process1 {
   def reduce[A](f: (A,A) => A): Process1[A,A] =
     scan1(f).last
 
+  /**
+   * Like `reduce` only uses `f` to map `A` to `B` and uses Semigroup `M` for
+   * associative operation.
+   */
+  def reduceMap[A,B](f: A => B)(implicit M: Semigroup[B]): Process1[A,B] =
+    lift(f).reduceSemigroup(M)
+
   /** Like `reduce` but uses Monoid `M` for associative operation. */
   def reduceMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
     reduceSemigroup(M)
@@ -357,13 +364,6 @@ trait process1 {
   /** Like `reduce` but uses Semigroup `M` for associative operation. */
   def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
     reduce(M.append(_,_))
-
-  /**
-   * Like `reduce` only uses `f` to map `A` to `B` and uses Semigroup `M` for
-   * associative operation.
-   */
-  def reduceMap[A,B](f: A => B)(implicit M: Semigroup[B]): Process1[A,B] =
-    lift(f).reduceSemigroup(M)
 
   /**
    * Repartitions the input with the function `p`. On each step `p` is applied

@@ -651,10 +651,6 @@ sealed abstract class Process[+F[_],+O] {
   def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.foldMonoid(M)
 
-  /** Alias for `this |> [[process1.foldSemigroup]](M)`. */
-  def foldSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
-    this |> process1.foldSemigroup(M)
-
   /** Alias for `this |> [[process1.fold1]](f)`. */
   def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold1(f)
@@ -666,6 +662,10 @@ sealed abstract class Process[+F[_],+O] {
   /** Alias for `this |> [[process1.fold1Monoid]](M)` */
   def fold1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.fold1Monoid(M)
+
+  /** Alias for `this |> [[process1.fold1Semigroup]](M)`. */
+  def fold1Semigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.fold1Semigroup(M)
 
   /** Alias for `this |> [[process1.intersperse]](sep)`. */
   def intersperse[O2>:O](sep: O2): Process[F,O2] =
