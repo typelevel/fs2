@@ -9,6 +9,7 @@ import scalaz.stream.actor.message
 import scalaz.stream.async.mutable.Signal.Msg
 import scalaz.stream.async.mutable.{WriterTopic, BoundedQueue}
 import scalaz.stream.merge.{JunctionStrategies, Junction}
+import scalaz.stream.async.immutable
 
 package object async {
 
@@ -56,6 +57,24 @@ package object async {
   def toSignal[A](source: Process[Task, A])(implicit S: Strategy = Strategy.DefaultStrategy): mutable.Signal[A] =
      Signal(Process(source.map(Signal.Set(_))))
 
+  /**
+   * A signal constructor from discrete stream, that is backed by some sort of stateful primitive
+   * like an Topic, another Signal or queue.
+   *
+   * If supplied process is normal process, it will, produce a signal that eventually may
+   * be de-sync between changes, continuous, discrete or changed variants
+   *
+   * @param source
+   * @tparam A
+   * @return
+   */
+  private[stream] def stateSignal[A](source: Process[Task, A])(implicit S:Strategy = Strategy.DefaultStrategy) : immutable.Signal[A] =
+    new immutable.Signal[A] {
+      def changes: Process[Task, Unit] = discrete.map(_ => ())
+      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
+      def discrete: Process[Task, A] = source
+      def changed: Process[Task, Boolean] = (discrete.map(_ => true) merge Process.constant(false))
+    }
 
   /**
    * Creates bounded queue that is bound by supplied max size bound.
@@ -67,7 +86,7 @@ package object async {
     new BoundedQueue[A] {
       def enqueueOne(a: A): Task[Unit] = junction.receiveOne(a)
       def dequeue: Process[Task, A] = junction.downstreamO
-      def size: immutable.Signal[Int] = toSignal(junction.downstreamW)
+      def size: immutable.Signal[Int] = stateSignal(junction.downstreamW)
       def enqueueAll(xa: Seq[A]): Task[Unit] = junction.receiveAll(xa)
       def enqueue: Process.Sink[Task, A] = junction.upstreamSink
       def fail(rsn: Throwable): Task[Unit] = junction.downstreamClose(rsn)
@@ -124,7 +143,7 @@ package object async {
       def subscribe: Process.Writer[Task, W, O] = junction.downstreamBoth
       def subscribeO: Process[Task, O] = junction.downstreamO
       def subscribeW: Process[Task, W] = junction.downstreamW
-      def signal: immutable.Signal[W] =   toSignal(subscribeW)(S)
+      def signal: immutable.Signal[W] =  stateSignal(subscribeW)(S)
       def publishOne(i: I): Task[Unit] = junction.receiveOne(i)
       def fail(err: Throwable): Task[Unit] =
         for {
