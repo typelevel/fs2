@@ -22,6 +22,7 @@ import scalaz.stream.ReceiveY.ReceiveL
 import scalaz.\/-
 import scalaz.-\/
 import scalaz.stream.ReceiveY.ReceiveR
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A `Process[F,O]` represents a stream of `O` values which can interleave
@@ -1851,6 +1852,22 @@ object Process {
    */
   def suspend[A](p: => Process[Task, A]): Process[Task, A] =
     await(Task.now {})(_ => p)
+
+  /**
+   * Produces a process from `p` that is guaranteed to be run only once
+   * That means, if this process has been already run, it will instead of
+   * running itself just halt.
+   * @param p
+   * @tparam A
+   * @return
+   */
+  def idempotent[A](p:Process[Task,A]):Process[Task,A] = {
+    val started = new AtomicBoolean(false)
+    eval(Task.delay(started.compareAndSet(false,true))).flatMap {
+      case true => p
+      case false => halt
+    }
+  }
 
   /**
    * Feed the output of `f` back in as its input. Note that deadlock
