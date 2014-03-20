@@ -11,7 +11,7 @@ import scalaz.stream.async.mutable.Queue
 import scalaz.stream.ReceiveY.{HaltOne, ReceiveR, ReceiveL}
 
 
-object WyeSpec extends Properties("wye") {
+object WyeSpec extends Properties("wye")  {
 
   class Ex extends java.lang.Exception {
     override def fillInStackTrace(): Throwable = this
@@ -211,26 +211,12 @@ object WyeSpec extends Properties("wye") {
   //tests that wye correctly terminates drained process
   property("merge-drain-halt") = secure {
 
-    /**
-     * Like `merge`, but terminates whenever one side terminate.
-     */
-    def mergeHaltBoth[I]: Wye[I,I,I] = {
-      def go: Wye[I,I,I] =
-        receiveBoth[I,I,I]({
-          case ReceiveL(i) => emit(i) fby go
-          case ReceiveR(i) => emit(i) fby go
-          case HaltOne(rsn) => Halt(rsn)
-        })
-      go
-    }
+    val effect:Process[Task,Int] = Process.constant(()).drain
 
-    val effect = Process.constant(()).drain
-    val p = Process(1,2)
+    val pm1 = effect.wye(Process(1000,2000).toSource)(wye.merge).take(2)
+    val pm2 = Process(3000,4000).toSource.wye(effect)(wye.merge).take(2)
 
-    ((effect.wye(p)(mergeHaltBoth)).take(2) ++
-      (p.wye(effect)(mergeHaltBoth)).take(2))
-    .runLog.timed(3000).run.size == 4
-
+    (pm1 ++ pm2).runLog.timed(3000).run.size == 4
   }
 
 }
