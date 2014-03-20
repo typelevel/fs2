@@ -207,4 +207,16 @@ object WyeSpec extends Properties("wye") {
     (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected"
   }
 
+  //tests that wye correctly terminates drained process
+  property("merge-drain-halt") = secure {
+
+    val effect = Process.constant(()).drain
+    val p = Process(1,2)
+
+    ((effect merge p).take(2) ++
+      (p merge effect).take(2))
+    .runLog.timed(3000).run.size == 4
+
+  }
+
 }
