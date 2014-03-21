@@ -19,10 +19,31 @@ object WyeActor {
 
   /**
    * Execute one step of the process `p` and after it's done call `cb` with the result.
+   *
+   * This driver of process runs the process with following semantics:
+   *
+   *   - if the evaluation of next step of process results in `Halt` then the callback is called indicating
+   *     that process evaluation is done passing the reason contained in Halt
+   *   - if the evaluation of next step of process results in `Emit` then the callback is called passing
+   *     the emitted elements and next step to be called. Also the `cleanup` of the last `Await` evaluated is
+   *     passed to give a chance user of this driver to cleanup any resources, should the process terminate after
+   *     emit.
+   *   - if the evaluation of next step of process results in `Await`, next step is evaluated, until `Halt` or `Emit`
+   *     is encountered.
+   *
+   *  Note that at any time evaluation may be interrupted by invoking resulting function of this driver.
+   *  If the evaluation is interrupted then immediately, cleanup from last await is executed. If, at
+   *  time of interruption process was evaluating an `Await` request, then, after that request is completed
+   *  the evaluation will continue with process returned by the await that will switch to cleanup phase with
+   *  `Interrupted` as an exception.
+   *
+   *  Note that, when invoking the `cleanup` in case of `interrupt` then, there is chance that cleanup code will be
+   *  called twice. If that is not desired, wrap the code in `Process.idempotent` combinator.
+   *
+   *
    * @param cb Called with computed step.
    *           If the execution of the step was terminated then the head of the step contains exception `Interrupted`.
-   * @return Function which terminates execution of the step if it is still in progress.
-   *         Executes cleanup but doesn't interrupt currently running task (it's result will be ignored).
+   * @return   Function which terminates execution of the step if it is still in progress.
    */
   def runUntilStepDone[O](p: Process[Task, O])(cb: Step[Task, O] => Unit)(implicit S: Strategy): () => Unit = {
 
@@ -52,12 +73,15 @@ object WyeActor {
             case -\/(End) => a ! Some(fb)
             case -\/(e)   => a ! Some(cln.causedBy(e))
           })
-
       }
+
+      //result from the last `Await` after process was interrupted
+      //this is run _after_ callback of this driver is completed.
+      case Some(p) => p.killBy(Interrupted).run.runAsync(_ => ())
+
 
       // Terminate process: Run cleanup but don't interrupt currently running task.
       case None if !completed =>
-
         completed = true
         cleanup.run.runAsync {
           case \/-(_) => cb(Step(-\/(Interrupted), Halt(Interrupted), halt))
