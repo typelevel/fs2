@@ -1184,6 +1184,10 @@ object Process {
     Emit[Nothing,O](List(()).view.map(_ => hd), halt)
   }
 
+  def emitSeqLazy[O](seq: => Seq[O]): Process[Nothing,O] = {
+    lazy val lazySeq = seq
+    Emit[Nothing,O](List(()).view.flatMap(_ => lazySeq), halt)
+  }
 
   implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] =
   new MonadPlus[({type f[x] = Process[F,x]})#f] {
