@@ -22,6 +22,7 @@ import scalaz.stream.ReceiveY.ReceiveL
 import scalaz.\/-
 import scalaz.-\/
 import scalaz.stream.ReceiveY.ReceiveR
+import scalaz.stream.wye.AwaitL
 
 /**
  * A `Process[F,O]` represents a stream of `O` values which can interleave
@@ -1675,6 +1676,9 @@ object Process {
 
     private[stream] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] =
       self.attachR(process1.lift(f))
+
+
+
   }
 
   implicit class ChannelSyntax[F[_],I,O](self: Channel[F,I,O]) {
