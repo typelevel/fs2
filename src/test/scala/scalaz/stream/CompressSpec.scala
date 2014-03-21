@@ -65,7 +65,10 @@ object CompressSpec extends Properties("compress") {
     compressed.length < uncompressed.length
   }
 
-  property("inflate.bad input") = secure {
-    emit(getBytes("Hello")).pipe(inflate()).toList.isEmpty
+  property("inflate.uncompressed input") = secure {
+    emit(getBytes("Hello")).pipe(inflate()) match {
+      case Halt(ex: java.util.zip.DataFormatException) => true
+      case _ => false
+    }
   }
 }
