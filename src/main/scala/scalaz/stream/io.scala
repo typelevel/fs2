@@ -1,8 +1,10 @@
 package scalaz.stream
 
-import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,File,FileOutputStream,InputStream,OutputStream}
+import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,FileOutputStream,InputStream,OutputStream}
 
+import scala.io.{Codec, Source}
 import scalaz.concurrent.Task
+import scodec.bits.ByteVector
 import Process._
 
 /**
@@ -55,7 +57,7 @@ trait io {
     Process.constant(f)
 
   /**
-   * Create a `Channel[Task,Int,Bytes]` from an `InputStream` by
+   * Creates a `Channel[Task,Int,ByteVector]` from an `InputStream` by
    * repeatedly requesting the given number of bytes. The last chunk
    * may be less than the requested size.
    *
@@ -65,26 +67,26 @@ trait io {
    * This implementation closes the `InputStream` when finished
    * or in the event of an error.
    */
-  def chunkR(is: => InputStream): Channel[Task, Int, Array[Byte]] =
+  def chunkR(is: => InputStream): Channel[Task,Int,ByteVector] =
     unsafeChunkR(is).map(f => (n: Int) => {
       val buf = new Array[Byte](n)
-      f(buf)
+      f(buf).map(ByteVector.view)
     })
 
   /**
-   * Create a `Sink` from an `OutputStream`, which will be closed
+   * Creates a `Sink` from an `OutputStream`, which will be closed
    * when this `Process` is halted.
    */
-  def chunkW(os: => OutputStream): Process[Task, Array[Byte] => Task[Unit]] =
+  def chunkW(os: => OutputStream): Sink[Task,ByteVector] =
     resource(Task.delay(os))(os => Task.delay(os.close))(
-      os => Task.now((bytes: Array[Byte]) => Task.delay(os.write(bytes))))
+      os => Task.now((bytes: ByteVector) => Task.delay(os.write(bytes.toArray))))
 
-  /** Create a `Sink` from a file name and optional buffer size in bytes. */
-  def fileChunkW(f: String, bufferSize: Int = 4096): Process[Task, Array[Byte] => Task[Unit]] =
+  /** Creates a `Sink` from a file name and optional buffer size in bytes. */
+  def fileChunkW(f: String, bufferSize: Int = 4096): Sink[Task,ByteVector] =
     chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
 
-  /** Create a `Source` from a file name and optional buffer size in bytes. */
-  def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task, Int, Array[Byte]] =
+  /** Creates a `Channel` from a file name and optional buffer size in bytes. */
+  def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task,Int,ByteVector] =
     chunkR(new BufferedInputStream(new FileInputStream(f), bufferSize))
 
   /** A `Sink` which, as a side effect, adds elements to the given `Buffer`. */
@@ -92,25 +94,28 @@ trait io {
     channel((a: A) => Task.delay { buf += a })
 
   /**
-   * Create a `Process[Task,String]` from the lines of a file, using
+   * Creates a `Process[Task,String]` from the lines of a file, using
    * the `resource` combinator to ensure the file is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(filename: String): Process[Task,String] =
-    resource(Task.delay(scala.io.Source.fromFile(filename)))(
-             src => Task.delay(src.close)) { src =>
-      lazy val lines = src.getLines // A stateful iterator
-      Task.delay { if (lines.hasNext) lines.next else throw End }
-    }
+  def linesR(filename: String)(implicit codec: Codec): Process[Task,String] =
+    linesR(Source.fromFile(filename)(codec))
 
   /**
-   * Create a `Process[Task,String]` from the lines of the `InputStream`,
+   * Creates a `Process[Task,String]` from the lines of the `InputStream`,
    * using the `resource` combinator to ensure the `InputStream` is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(in: InputStream): Process[Task,String] =
-    resource(Task.delay(scala.io.Source.fromInputStream(in)))(
-             src => Task.delay(src.close)) { src =>
+  def linesR(in: InputStream)(implicit codec: Codec): Process[Task,String] =
+    linesR(Source.fromInputStream(in)(codec))
+
+  /**
+   * Creates a `Process[Task,String]` from the lines of the `Source`,
+   * using the `resource` combinator to ensure the `Source` is closed
+   * when processing the stream of lines is finished.
+   */
+  def linesR(src: Source): Process[Task,String] =
+    resource(Task.delay(src))(src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
       Task.delay { if (lines.hasNext) lines.next else throw End }
     }
@@ -157,7 +162,7 @@ trait io {
     channel((s: String) => Task.delay { println(s) })
 
   /**
-   * Create a `Channel[Task,Array[Byte],Array[Bytes]]` from an `InputStream` by
+   * Creates a `Channel[Task,Array[Byte],Array[Byte]]` from an `InputStream` by
    * repeatedly filling the input buffer. The last chunk may be less
    * than the requested size.
    *
@@ -183,4 +188,4 @@ trait io {
   }
 }
 
-object io extends io with gzip
+object io extends io
