@@ -2,7 +2,7 @@ package scalaz.stream
 
 import collection.immutable.Vector
 
-import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal, Order}
+import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal, Order, ==>>}
 import scalaz.\/._
 import scalaz.syntax.equal._
 
@@ -547,6 +547,25 @@ trait process1 {
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A,Option[A]] =
     lift[A,Option[A]](Some(_)) ++ emit(None)
+
+  /**
+   * Removes duplicate elements from the input. Only the first occurrence of each
+   * element is emitted.
+   */
+  def unique[A: Order]: Process1[A,A] =
+    uniqueBy(identity)
+
+  /** Like unique but transforms elements with `f` before checking for uniqueness. */
+  def uniqueBy[A,B: Order](f: A => B): Process1[A,A] = {
+    // TODO: Replace ==>> with ISet as soon as it is available.
+    def go(seen: B ==>> Unit): Process1[A,A] =
+      await1[A].flatMap { a =>
+        val b = f(a)
+        if (seen.member(b)) go(seen)
+        else emit(a) fby go(seen.insert(b, ()))
+      }
+    go(==>>.empty)
+  }
 
   /**
    * Outputs a sliding window of size `n` onto the input.
