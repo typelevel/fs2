@@ -178,7 +178,8 @@ object WyeSpec extends Properties("wye")  {
     ))).drain
 
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    ((s1 onComplete clean(1)) merge (s2 onComplete clean(2))).take(2).runLog.timed(3000).runAsync(sync.put)
+    val p = ((s1 onComplete clean(1)) merge (s2 onComplete clean(2))).take(2)
+    p.runLog.timed(3000).runAsync(sync.put)
 
     ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
     (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected" &&
@@ -194,15 +195,18 @@ object WyeSpec extends Properties("wye")  {
   property("merge.queue.left-cleanup-by-right-cleanup") = secure {
     val(q1,s1) = async.queue[Int]
     val(q2,s2) = async.queue[Int]
-    def close[A]( q:Queue[A]) =  (suspend(eval(Task.delay{  q.close}))).drain
+    def close[A]( q:Queue[A]) =  eval_(Task.delay{ q.close })
 
     q1.enqueue(1)
+
+    Thread.sleep(50)
 
     val s3 = Process(2).toSource onComplete(close(q2))
 
 
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    ((s1 onComplete s2) merge s3).take(2).runLog.timed(3000).runAsync(sync.put)
+    val p = ((s1 onComplete s2) merge s3).take(2)
+    p.runLog.timed(3000).runAsync(sync.put)
 
     ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
     (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected"

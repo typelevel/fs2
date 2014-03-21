@@ -17,43 +17,56 @@ object WyeActor {
     override def fillInStackTrace(): Throwable = this
   }
 
-
+  /**
+   * Execute one step of the process `p` and after it's done call `cb` with the result.
+   * @param cb Called with computed step.
+   *           If the execution of the step was terminated then the head of the step contains exception `Interrupted`.
+   * @return Function which terminates execution of the step if it is still in progress.
+   *         Executes cleanup but doesn't interrupt currently running task (it's result will be ignored).
+   */
   def runUntilStepDone[O](p: Process[Task, O])(cb: Step[Task, O] => Unit)(implicit S: Strategy): () => Unit = {
 
-    val completed: AtomicBoolean = new AtomicBoolean(false)
+    // True when execution of the step was completed or terminated and actor should ignore all subsequent messages.
+    var completed = false
 
+    // Cleanup from the last await whose `req` has been started.
     var cleanup: Process[Task, O] = halt
     var a: Actor[Option[Process[Task, O]]] = null
 
     a = new Actor[Option[Process[Task, O]]]({
-      case Some(p) if !completed.get => p match {
+
+      // Execute one step of the process `p`.
+      case Some(p) if !completed => p match {
         case Emit(h, t) =>
-          completed.set(true)
+          completed = true
           cb(Step(\/-(h), t, cleanup))
 
-        case Halt(e) =>
-          completed.set(true)
-          cb(Step(-\/(e), halt, halt))
+        case h@Halt(e) =>
+          completed = true
+          cb(Step(-\/(e), h, halt))
 
         case Await(req, rcv, fb, cln) =>
           cleanup = cln
-          req.runAsyncInterruptibly({
+          req.runAsync({
             case \/-(r0)  => a ! Some(rcv(r0))
             case -\/(End) => a ! Some(fb)
-            case -\/(e)   => a ! Some(cln)
-          },completed)
+            case -\/(e)   => a ! Some(cln.causedBy(e))
+          })
 
       }
 
-      case None if !completed.get =>
-        //interrupt running process, run clenup that con`t be interrupted
-        completed.set(true)
+      // Terminate process: Run cleanup but don't interrupt currently running task.
+      case None if !completed =>
+
+        completed = true
         cleanup.run.runAsync {
-          case \/-(_) => cb(Step(-\/(Interrupted), halt, halt))
-          case -\/(e) => cb(Step(-\/(CausedBy(e, Interrupted)), halt, halt))
+          case \/-(_) => cb(Step(-\/(Interrupted), Halt(Interrupted), halt))
+          case -\/(e) =>
+            val rsn = CausedBy(e, Interrupted)
+            cb(Step(-\/(rsn), Halt(rsn), halt))
         }
 
-      case completed => ()
+      case _ => ()
     })(S)
 
     a ! Some(p)
