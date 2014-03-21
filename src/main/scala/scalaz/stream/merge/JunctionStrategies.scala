@@ -96,7 +96,7 @@ protected[stream] object JunctionStrategies {
     def go(cur: Writer1[W, I, O], last: Option[W]):  JunctionStrategy[W, I, O] = {
       def lastW(swo:Seq[W\/O]) : Option[W] =  swo.collect({ case -\/(w) => w }).lastOption
       junction[W, I, O] {
-        case Open(jx, ref: UpRef)    => jx.more(ref) fby go(cur, last)
+        case Open(jx, ref: UpRef)    => emit(OpenNext) fby jx.more(ref) fby go(cur, last)
         case Open(jx, ref: DownRefW) => last match {
           case Some(w0) => jx.writeW(w0, ref) fby go(cur, last)
           case None => cur.unemit match {

@@ -119,8 +119,8 @@ package object async {
    * processes that can be used to publish and subscribe asynchronously. 
    * Please see `Topic` for more info.
    */
-  def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
-     val junction = Junction(JunctionStrategies.publishSubscribe[A], Process.halt)(S)
+  def topic[A](source:Process[Task,A] = halt)(implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
+     val junction = Junction(JunctionStrategies.publishSubscribe[A], Process(source))(S)
      new Topic[A] {
        def publish: Process.Sink[Task, A] = junction.upstreamSink
        def subscribe: Process[Task, A] = junction.downstreamO
@@ -132,10 +132,12 @@ package object async {
   /**
    * Returns Writer topic, that can create publisher(sink) of `I` and subscriber with signal of `W` values.
    * For more info see `WriterTopic`.
+   * Note that when `source` ends, the topic does not terminate
    */
-  def writerTopic[W,I,O](w:Writer1[W,I,O])(implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[W,I,O] ={
+  def writerTopic[W,I,O](w:Writer1[W,I,O])(source:Process[Task,I] = halt)
+    (implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[W,I,O] ={
     val q = boundedQueue[Process[Task,I]]()
-    val junction = Junction(JunctionStrategies.liftWriter1(w), q.dequeue)(S)
+    val junction = Junction(JunctionStrategies.liftWriter1(w), emit(source) ++ q.dequeue)(S)
     new WriterTopic[W,I,O] {
       def consumeOne(p:  Process[Task, I]): Task[Unit] = q.enqueueOne(p)
       def consume: Process.Sink[Task, Process[Task, I]] = q.enqueue
