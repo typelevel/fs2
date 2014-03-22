@@ -52,4 +52,23 @@ object CompressSpec extends Properties("compress") {
 
     foldBytes(input) == foldBytes(inflated)
   }
+
+  property("deflate.compresses input") = secure {
+    val uncompressed = getBytes(
+      """"
+        |"A type system is a tractable syntactic method for proving the absence
+        |of certain program behaviors by classifying phrases according to the
+        |kinds of values they compute."
+        |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
+    val compressed = foldBytes(emit(uncompressed).pipe(deflate(9)).toList)
+
+    compressed.length < uncompressed.length
+  }
+
+  property("inflate.uncompressed input") = secure {
+    emit(getBytes("Hello")).pipe(inflate()) match {
+      case Halt(ex: java.util.zip.DataFormatException) => true
+      case _ => false
+    }
+  }
 }
