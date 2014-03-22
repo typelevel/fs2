@@ -59,7 +59,7 @@ object MergeNSpec extends Properties("mergeN") {
     val srcCleanup = new AtomicInteger(0)
 
     def oneUp(index:Int) = (emit(index).toSource ++ Process.awakeEvery(10 seconds).map(_=>index)) onComplete
-      affine(eval(Task.fork(Task.delay{Thread.sleep(100); cleanups.incrementAndGet()})))
+      affine(eval(Task.fork(Task.delay{val i = cleanups.incrementAndGet();Thread.sleep(100);i})))
 
     val ps =
       (emitSeq(for (i <- 0 until 10) yield oneUp(i)).toSource ++ Process.awakeEvery(10 seconds).drain) onComplete
