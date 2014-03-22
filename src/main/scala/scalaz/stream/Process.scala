@@ -1877,7 +1877,7 @@ object Process {
    * @tparam A
    * @return
    */
-  def idempotent[A](p:Process[Task,A]):Process[Task,A] = {
+  def affine[A](p:Process[Task,A]):Process[Task,A] = {
     val started = new AtomicBoolean(false)
     eval(Task.delay(started.compareAndSet(false,true))).flatMap {
       case true => p

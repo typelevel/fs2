@@ -512,9 +512,9 @@ object ProcessSpec extends Properties("Process1") {
   }
 
 
-  property("idempotent") = secure {
+  property("affine") = secure {
     var cnt = 0
-    (idempotent(eval_(Task.delay{ cnt = cnt + 1})) fby
+    (affine(eval_(Task.delay{ cnt = cnt + 1})) fby
       eval(Task.delay(cnt))).repeat.take(100)
     .run.run
     cnt == 1

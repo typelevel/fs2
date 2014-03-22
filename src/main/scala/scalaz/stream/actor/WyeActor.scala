@@ -41,7 +41,7 @@ object WyeActor {
    *  `Interrupted` as an exception.
    *
    *  Note that, when invoking the `cleanup` in case of `interrupt` then, there is chance that cleanup code will be
-   *  called twice. If that is not desired, wrap the code in `Process.idempotent` combinator.
+   *  called twice. If that is not desired, wrap the code in `Process.affine` combinator.
    *
    *
    * @param cb Called with computed step.
