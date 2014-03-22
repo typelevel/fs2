@@ -1,9 +1,8 @@
 package scalaz.stream
 
 import collection.immutable.Vector
-import java.nio.charset.Charset
 
-import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal}
+import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal, Order}
 import scalaz.\/._
 import scalaz.syntax.equal._
 
@@ -264,7 +263,7 @@ trait process1 {
    * If the input is empty, `i` is emitted.
    */
   def lastOr[I](i: => I): Process1[I,I] =
-    last |> await1[I].orElse(emit(i))
+    await1[I].flatMap(i2 => lastOr(i2)).orElse(emit(i))
 
   /** Transform the input using the given function, `f`. */
   def lift[I,O](f: I => O): Process1[I,O] =
@@ -292,6 +291,30 @@ trait process1 {
    */
   def liftR[A,B,C](p: Process1[B,C]): Process1[A \/ B, A \/ C] =
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
+
+  /** Emits the greatest element of the input. */
+  def maximum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce((x, y) => if (A.greaterThan(x, y)) x else y)
+
+  /** Emits the element `a` of the input which yields the greatest value of `f(a)`. */
+  def maximumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce((x, y) => if (Order.orderBy(f).greaterThan(x, y)) x else y)
+
+  /** Emits the greatest value of `f(a)` for each element `a` of the input. */
+  def maximumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> maximum
+
+  /** Emits the smallest element of the input. */
+  def minimum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce((x, y) => if (A.lessThan(x, y)) x else y)
+
+  /** Emits the element `a` of the input which yields the smallest value of `f(a)`. */
+  def minimumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce((x, y) => if (Order.orderBy(f).lessThan(x, y)) x else y)
+
+  /** Emits the smallest value of `f(a)` for each element `a` of the input. */
+  def minimumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> minimum
 
   /**
    * Split the input and send to either `chan1` or `chan2`, halting when
@@ -346,11 +369,11 @@ trait process1 {
    * are emitted. The last element is then prepended to the next input using the
    * Semigroup `I`. For example,
    * {{{
-   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq) ==
+   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ")) ==
    *   Process("Hello", "World")
    * }}}
    */
-  def repartition[I](p: I => IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
+  def repartition[I](p: I => collection.IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
       await1[I].flatMap { i =>
         val next = carry.fold(i)(c => I.append(c, i))
@@ -360,6 +383,23 @@ trait process1 {
           case 1 => go(Some(parts.head))
           case _ => emitSeq(parts.init) fby go(Some(parts.last))
         }
+      } orElse emitSeq(carry.toList)
+    go(None)
+  }
+
+  /**
+   * Repartitions the input with the function `p`. On each step `p` is applied
+   * to the input and the first element of the resulting tuple is emitted if it
+   * is `Some(x)`. The second element is then prepended to the next input using
+   * the Semigroup `I`. In comparison to `repartition` this allows to emit
+   * single inputs without prepending them to the next input.
+   */
+  def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
+    def go(carry: Option[I]): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val next = carry.fold(i)(c => I.append(c, i))
+        val (fst, snd) = p(next)
+        fst.fold(go(snd))(head => emit(head) fby go(snd))
       } orElse emitSeq(carry.toList)
     go(None)
   }
@@ -483,6 +523,14 @@ trait process1 {
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
     reduce(N.plus)
 
+  /**
+   * Produce the given `Process1` non-strictly. This function is useful
+   * if a `Process1` has to allocate any local mutable state for each use, and
+   * doesn't want to share this state.
+   */
+  def suspend1[A,B](p: => Process1[A,B]): Process1[A,B] =
+    await1[A].flatMap(a => feed1(a)(p))
+
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I,I] =
     if (n <= 0) halt
@@ -499,12 +547,6 @@ trait process1 {
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A,Option[A]] =
     lift[A,Option[A]](Some(_)) ++ emit(None)
-
-  private val utf8Charset = Charset.forName("UTF-8")
-
-  /** Convert `String` inputs to UTF-8 encoded byte arrays. */
-  val utf8Encode: Process1[String,Array[Byte]] =
-    lift(_.getBytes(utf8Charset))
 
   /**
    * Outputs a sliding window of size `n` onto the input.
@@ -540,7 +582,7 @@ trait process1 {
 
 object process1 extends process1
 
-trait process1Aliases[+F[_],+O] {
+trait Process1Ops[+F[_],+O] {
   self: Process[F,O] =>
 
   /** Alias for `this |> [[process1.buffer]](n)`. */

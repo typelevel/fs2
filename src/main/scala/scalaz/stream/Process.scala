@@ -7,7 +7,7 @@ import scala.concurrent.duration._
 import scalaz.{Catchable,Functor,Monad,Cobind,MonadPlus,Monoid,Nondeterminism,Semigroup}
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
-import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal}
+import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal,Order}
 import scalaz.std.stream._
 import scalaz.syntax.foldable._
 import \/._
@@ -33,7 +33,7 @@ import scalaz.stream.ReceiveY.ReceiveR
  * to evaluate some `F[A]` and resume processing once the result is available.
  * See the constructor definitions in the `Process` companion object.
  */
-sealed abstract class Process[+F[_],+O] extends process1Aliases[F,O] {
+sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
 
   import Process._
 
@@ -963,6 +963,10 @@ object Process {
     Emit[Nothing,O](List(()).view.map(_ => hd), halt)
   }
 
+  def emitSeqLazy[O](seq: => Seq[O]): Process[Nothing,O] = {
+    lazy val lazySeq = seq
+    Emit[Nothing,O](List(()).view.flatMap(_ => lazySeq), halt)
+  }
 
   implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] =
   new MonadPlus[({type f[x] = Process[F,x]})#f] {
