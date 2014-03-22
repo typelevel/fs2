@@ -575,9 +575,6 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
   def interleave[F2[x]>:F[x],O2>:O](p2: Process[F2,O2]): Process[F2,O2] =
     this.tee(p2)(scalaz.stream.tee.interleave)
 
-  /** Halts this `Process` after emitting 1 element. */
-  def once: Process[F,O] = take(1)
-
   /** Call `tee` with the `zipWith` `Tee[O,O2,O3]` defined in `tee.scala`. */
   def zipWith[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(f: (O,O2) => O3): Process[F2,O3] =
     this.tee(p2)(scalaz.stream.tee.zipWith(f))

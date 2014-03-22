@@ -95,7 +95,7 @@ trait process1 {
    * the partial function is defined.
    */
   def collectFirst[I,I2](pf: PartialFunction[I,I2]): Process1[I,I2] =
-    collect(pf).take(1)
+    collect(pf).once
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I,I] =
@@ -329,6 +329,10 @@ trait process1 {
    */
   def multiplex[I,I2,O](chan1: Process1[I,O], chan2: Process1[I2,O]): Process1[I \/ I2, O] =
     (liftL(chan1) pipe liftR(chan2)).map(_.fold(identity, identity))
+
+  /** Emits one element and then halts. */
+  def once[I]: Process1[I,I] =
+    take(1)
 
   /**
    * Record evaluation of `p`, emitting the current state along with the ouput of each step.
@@ -711,6 +715,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.minimumOf]](f)`. */
   def minimumOf[B: Order](f: O => B): Process[F,B] =
     this |> process1.minimumOf(f)
+
+  /** Alias for `this |> [[process1.once]]`. */
+  def once: Process[F,O] =
+    this |> process1.once
 
   /** Alias for `this |> [[process1.reduce]](f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
