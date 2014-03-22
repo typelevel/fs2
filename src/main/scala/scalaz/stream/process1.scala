@@ -1,17 +1,10 @@
 package scalaz.stream
 
-import collection.immutable.Vector
-
 import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal, Order}
 import scalaz.\/._
 import scalaz.syntax.equal._
 
 import Process._
-import scalaz.stream.processes._
-import scalaz.stream.Process.Emit
-import scala.Some
-import scalaz.stream.Process.Halt
-import scalaz.stream.ReceiveY.{HaltL, HaltR, ReceiveR, ReceiveL}
 
 trait process1 {
 
@@ -26,16 +19,16 @@ trait process1 {
   def buffer[I](n: Int): Process1[I,I] =
     chunk[I](n).flatMap(emitAll)
 
+  /** Behaves like the identity process, but batches all output into a single `Emit`. */
+  def bufferAll[I]: Process1[I,I] =
+    chunkAll[I].flatMap(emitAll)
+
   /**
    * Behaves like the identity process, but requests elements from its
    * input in blocks that end whenever the predicate switches from true to false.
    */
   def bufferBy[I](f: I => Boolean): Process1[I,I] =
     chunkBy(f).flatMap(emitAll)
-
-  /** Behaves like the identity process, but batches all output into a single `Emit`. */
-  def bufferAll[I]: Process1[I,I] =
-    chunkAll[I].flatMap(emitAll)
 
   /**
    * Groups inputs into chunks of size `n`. The last chunk may have size
@@ -131,6 +124,13 @@ trait process1 {
   def dropWhile[I](f: I => Boolean): Process1[I,I] =
     await1[I] flatMap (i => if (f(i)) dropWhile(f) else emit(i) fby id)
 
+  /**
+   * Halts with `true` as soon as a matching element is received.
+   * Emits a single `false` if no input matches the predicate.
+   */
+  def exists[I](f: I => Boolean): Process1[I,Boolean] =
+    forall[I](! f(_)).map(! _)
+
   /** Feed a single input to a `Process1`. */
   def feed1[I,O](i: I)(p: Process1[I,O]): Process1[I,O] =
     feed(Seq(i))(p)
@@ -165,13 +165,6 @@ trait process1 {
    */
   def find[I](f: I => Boolean): Process1[I,I] =
     await1[I] flatMap (i => if(f(i)) emit(i) else find(f))
-
-  /**
-    * Halts with `true` as soon as a matching element is received.
-    * Emits a single `false` if no input matches the predicate.
-    */
-  def exists[I](f: I => Boolean): Process1[I,Boolean] =
-    forall[I](! f(_)).map(! _)
 
   /**
    * Emits a single `true` value if all input matches the predicate.
@@ -291,6 +284,20 @@ trait process1 {
    */
   def liftR[A,B,C](p: Process1[B,C]): Process1[A \/ B, A \/ C] =
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
+
+  /** Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
+    * Use `wye.flip` to convert it to right side **/
+  def liftY[I,O](p:Process1[I,O]) : Wye[I,Nothing,O] = {
+    def go(cur:Process1[I,O]) : Wye[I,Nothing,O] = {
+      awaitL[I].flatMap { i =>
+        cur.feed1(i).unemit match {
+          case (out,Halt(rsn)) => emitSeq(out) fby Halt(rsn)
+          case (out,next) => emitSeq(out) fby go(next)
+        }
+      }
+    }
+    go(p)
+  }
 
   /** Emits the greatest element of the input. */
   def maximum[A](implicit A: Order[A]): Process1[A,A] =
@@ -562,28 +569,16 @@ trait process1 {
         emit(acc) fby go(acc.tail, 1)
     go(Vector(), n)
   }
-
-  /** Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
-   * Use `wye.flip` to convert it to right side **/
-  def liftY[I,O](p:Process1[I,O]) : Wye[I,Nothing,O] = {
-    def go(cur:Process1[I,O]) : Wye[I,Nothing,O] = {
-      awaitL[I].flatMap { i =>
-         cur.feed1(i).unemit match {
-           case (out,Halt(rsn)) => emitSeq(out) fby Halt(rsn)
-           case (out,next) => emitSeq(out) fby go(next)
-         }
-
-      }
-    }
-    go(p)
-  }
-
 }
 
 object process1 extends process1
 
-trait Process1Ops[+F[_],+O] {
+private[stream] trait Process1Ops[+F[_],+O] {
   self: Process[F,O] =>
+
+  /** Alias for `this |> [[process1.awaitOption]]`. */
+  def awaitOption: Process[F,Option[O]] =
+    this |> process1.awaitOption
 
   /** Alias for `this |> [[process1.buffer]](n)`. */
   def buffer(n: Int): Process[F,O] =
@@ -623,7 +618,7 @@ trait Process1Ops[+F[_],+O] {
 
   /** Alias for `this |> [[process1.drop]](n)`. */
   def drop(n: Int): Process[F,O] =
-    this |> process1.drop[O](n)
+    this |> process1.drop(n)
 
   /** Alias for `this |> [[process1.dropLast]]`. */
   def dropLast: Process[F,O] =
@@ -689,6 +684,34 @@ trait Process1Ops[+F[_],+O] {
   def last: Process[F,O] =
     this |> process1.last
 
+  /** Alias for `this |> [[process1.last]]`. */
+  def lastOr[O2 >: O](o: => O2): Process[F,O2] =
+    this |> process1.lastOr(o)
+
+  /** Alias for `this |> [[process1.maximum]]`. */
+  def maximum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =
+    this |> process1.maximum(O2)
+
+  /** Alias for `this |> [[process1.maximumBy]](f)`. */
+  def maximumBy[B: Order](f: O => B): Process[F,O] =
+    this |> process1.maximumBy(f)
+
+  /** Alias for `this |> [[process1.maximumOf]](f)`. */
+  def maximumOf[B: Order](f: O => B): Process[F,B] =
+    this |> process1.maximumOf(f)
+
+  /** Alias for `this |> [[process1.minimum]]`. */
+  def minimum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =
+    this |> process1.minimum(O2)
+
+  /** Alias for `this |> [[process1.minimumBy]](f)`. */
+  def minimumBy[B: Order](f: O => B): Process[F,O] =
+    this |> process1.minimumBy(f)
+
+  /** Alias for `this |> [[process1.minimumOf]](f)`. */
+  def minimumOf[B: Order](f: O => B): Process[F,B] =
+    this |> process1.minimumOf(f)
+
   /** Alias for `this |> [[process1.reduce]](f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.reduce(f)
@@ -706,8 +729,12 @@ trait Process1Ops[+F[_],+O] {
     this |> process1.reduceSemigroup(M)
 
   /** Alias for `this |> [[process1.repartition]](p)(S)` */
-  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
+  def repartition[O2 >: O](p: O2 => collection.IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
     this |> process1.repartition(p)(S)
+
+  /** Alias for `this |> [[process1.repartition2]](p)(S)` */
+  def repartition2[O2 >: O](p: O2 => (Option[O2], Option[O2]))(implicit S: Semigroup[O2]): Process[F,O2] =
+    this |> process1.repartition2(p)(S)
 
   /** Alias for `this |> [[process1.scan]](b)(f)`. */
   def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
@@ -737,6 +764,10 @@ trait Process1Ops[+F[_],+O] {
   def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.scan1Monoid(M)
 
+  /** Alias for `this |> [[process1.shiftRight]](head)` */
+  def shiftRight[O2 >: O](head: O2*): Process[F,O2] =
+    this |> process1.shiftRight(head: _*)
+
   /** Alias for `this |> [[process1.split]](f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.split(f)
@@ -749,9 +780,17 @@ trait Process1Ops[+F[_],+O] {
   def splitWith(f: O => Boolean): Process[F,Vector[O]] =
     this |> process1.splitWith(f)
 
+  /** Alias for `this |> [[process1.sum]]` */
+  def sum[O2 >: O](implicit N: Numeric[O2]): Process[F,O2] =
+    this |> process1.sum(N)
+
   /** Alias for `this |> [[process1.take]](n)`. */
   def take(n: Int): Process[F,O] =
-    this |> process1.take[O](n)
+    this |> process1.take(n)
+
+  /** Alias for `this |> [[process1.takeThrough]](f)`. */
+  def takeThrough(f: O => Boolean): Process[F,O] =
+    this |> process1.takeThrough(f)
 
   /** Alias for `this |> [[process1.takeWhile]](f)`. */
   def takeWhile(f: O => Boolean): Process[F,O] =
