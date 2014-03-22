@@ -4,10 +4,10 @@ import scalaz.stream.actor.{WyeActor, message, actors}
 import scala.collection.immutable.{IndexedSeq,SortedMap,Queue,Vector}
 import scala.concurrent.duration._
 
-import scalaz.{Catchable,Functor,Monad,Cobind,MonadPlus,Monoid,Nondeterminism,Semigroup}
+import scalaz.{Catchable,Functor,Monad,MonadPlus,Monoid,Nondeterminism}
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.Leibniz.===
-import scalaz.{\/,-\/,\/-,~>,Leibniz,Equal,Order}
+import scalaz.{\/,-\/,\/-,~>,Leibniz}
 import scalaz.std.stream._
 import scalaz.syntax.foldable._
 import \/._
