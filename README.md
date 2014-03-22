@@ -28,7 +28,7 @@ val converter: Task[Unit] =
      filter(s => !s.trim.isEmpty && !s.startsWith("//")).
      map(line => fahrenheitToCelsius(line.toDouble).toString).
      intersperse("\n").
-     pipe(process1.utf8Encode).
+     pipe(text.utf8Encode).
      to(io.fileChunkW("testdata/celsius.txt")).
      run
 

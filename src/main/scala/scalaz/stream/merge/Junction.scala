@@ -260,7 +260,7 @@ protected[stream] object Junction {
 
       def close[B](actor: Actor[M], rsn: Throwable)(implicit S: Strategy): Unit = state match {
         case UpSourceReady(t, c) =>
-          S(WyeActor.runStepAsyncInterruptibly[I](c.causedBy(rsn)) {
+          S(WyeActor.runAsyncInterruptibly[I](c.causedBy(rsn)) {
             _ => actor ! UpStreamDone(self, rsn)
           })
           state = UpSourceDone(rsn)
@@ -276,7 +276,7 @@ protected[stream] object Junction {
       def next[B](actor: Actor[M])(implicit S: Strategy): Unit = {
         state match {
           case UpSourceReady(t, c) =>
-            state = UpSourceRunning[I](WyeActor.runStepAsyncInterruptibly(t) {
+            state = UpSourceRunning[I](WyeActor.runAsyncInterruptibly(t) {
               step =>
                 step match {
                   case Step(\/-(si), t, c)  => actor ! UpStreamEmit(self, si, t, c)
@@ -443,13 +443,13 @@ protected[stream] object Junction {
 
     // runs next source step
     def nextSource(p: Process[Task, Process[Task, I]], actor: Actor[M]) : Unit =
-      sourceState = Some(UpSourceRunning(WyeActor.runStepAsyncInterruptibly(p) { s => actor ! SourceStep(s) }))
+      sourceState = Some(UpSourceRunning(WyeActor.runAsyncInterruptibly(p) { s => actor ! SourceStep(s) }))
 
 
     //cleans next source step
     def cleanSource(rsn: Throwable, c: Process[Task, Process[Task, I]], a: Actor[M]): Unit = {
       sourceState = Some(UpSourceRunning(() => ())) //set to noop so clean won`t get interrupted
-      WyeActor.runStepAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) }
+      WyeActor.runAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) }
     }
 
 

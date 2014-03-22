@@ -188,4 +188,4 @@ trait io {
   }
 }
 
-object io extends io with gzip
+object io extends io
