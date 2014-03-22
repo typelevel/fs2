@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicReference
 import scala._
 import scala.annotation.tailrec
 import scalaz._
-import scalaz.concurrent.{Strategy, Actor, Task}
+import scalaz.concurrent.{Future, Strategy, Actor, Task}
 import scalaz.stream.Process._
 import scalaz.stream.Step
 import scalaz.stream.wye.{AwaitBoth, AwaitR, AwaitL}
@@ -16,108 +16,91 @@ object WyeActor {
   val Interrupted = new InterruptedException {
     override def fillInStackTrace(): Throwable = this
   }
-  
+
   /**
-   * Evaluates one step of the process `p` and calls the callback `cb` with the evaluated step `s`.
-   * Returns a function for interrupting the evaluation.
+   * Execute one step of the process `p` and after it's done call `cb` with the result.
    *
-   * `s.tail` is `Halt` if the process `p` halted (by itself or by interruption).
-   * In such case `p` was also cleaned and `s.cleanup` is `Halt` too.
+   * This driver of process runs the process with following semantics:
    *
-   * Otherwise `s.cleanup` contains the cleanup from the last evaluated `Await`.
+   *   - if the evaluation of next step of process results in `Halt` then the callback is called indicating
+   *     that process evaluation is done passing the reason contained in Halt
+   *   - if the evaluation of next step of process results in `Emit` then the callback is called passing
+   *     the emitted elements and next step to be called. Also the `cleanup` of the last `Await` evaluated is
+   *     passed to give a chance user of this driver to cleanup any resources, should the process terminate after
+   *     emit.
+   *   - if the evaluation of next step of process results in `Await`, next step is evaluated, until `Halt` or `Emit`
+   *     is encountered.
+   *
+   *  Evaluation of the process is forked to different thread by utilizing the supplied `S` strategy.
+   *  This is motivated to assure stack safety during evaluation and interruption.
+   *
+   *  Note that at any time evaluation may be interrupted by invoking resulting function of this driver.
+   *  If the evaluation is interrupted then immediately, cleanup from last await is executed. If, at
+   *  time of interruption process was evaluating an `Await` request, then, after that request is completed
+   *  the evaluation will continue with process returned by the await that will switch to cleanup phase with
+   *  `Interrupted` as an exception.
+   *
+   *  Note that, when invoking the `cleanup` in case of `interrupt` then, there is chance that cleanup code will be
+   *  called twice. If that is not desired, wrap the code in `Process.affine` combinator.
    *
    *
-   *
-   * RESOURCE CLEANUP AFTER INTERRUPTION
-   *
-   * When interrupted, this function runs cleanup from the last evaluated `Await` to free resources.
-   * So if you are allocating resources with
-   *
-   *   await(alloc)(r => use(r).onComplete(freeP(r)), halt, halt)
-   *
-   * then you risk a leakage. Since when interrupt happens in `allocate` after allocation
-   * then `recv` is not called and `halt` is used for cleanup. The correct way of allocation is
-   *
-   *   def allocAndUse(r: Res) = await(alloc(r))(_ => use, halt, halt).onComplete(freeP(r))
-   *
-   *   await(getHandleToUnallocatedResource)(r => allocAndUse(r), halt, halt)
-   *
-   * where
-   *
-   *   def freeP(r: Res) = await(free(r))(_ => halt, halt, await(free(r))(_ => halt, halt, halt))
-   *
-   * and `free` is idempotent. `freeP` must take into account situation when `free(r)` in the outer
-   * `await` is interrupted before the resource is freed. `free` must be idempotent since when
-   * `free(r)` in outer `await` is interrupted after freeing the resource it will be called again.
-   *
+   * @param cb Called with computed step.
+   *           If the execution of the step was terminated then the head of the step contains exception `Interrupted`.
+   * @return   Function which terminates execution of the step if it is still in progress.
    */
-  final def runStepAsyncInterruptibly[O](p: Process[Task,O])(cb: Step[Task,O] => Unit): () => Unit = {
-   
+  def runAsyncInterruptibly[O](p: Process[Task, O])(cb: Step[Task, O] => Unit)(implicit S: Strategy): () => Unit = {
 
-    trait RunningTask {
-      def interrupt: Unit
-    }
-    case class RunningTaskImpl[A](val complete: Throwable \/ A => Unit) extends RunningTask {
-      def interrupt: Unit = complete(-\/(Interrupted))
-    }
+    // True when execution of the step was completed or terminated and actor should ignore all subsequent messages.
+    var completed = false
 
-    val interrupted = new AtomicBoolean(false)
-    val runningTask = new AtomicReference[Option[RunningTask]](None)
+    // Cleanup from the last await whose `req` has been started.
+    var cleanup: Process[Task, O] = halt
+    var a: Actor[Option[Process[Task, O]]] = null
 
-    def interrupt() = {
-      interrupted.set(true)
-      runningTask.getAndSet(None).foreach(_.interrupt)
-    }
+    a = new Actor[Option[Process[Task, O]]]({
 
-    def clean(step: Step[Task,O]) = step match {
-      case Step(head, h@Halt(_), c) if !c.isHalt => c.run.map(_ => Step(head, h, halt))
-      case _ => Task.now(step)
-    }
-
-    def go(cur: Process[Task,O], cleanup: Process[Task,O]): Task[Step[Task,O]] = {
-      def onAwait[A](req: Task[A], recv: A => Process[Task,O], fb: Process[Task,O], c: Process[Task,O]): Task[Step[Task,O]] = {
-        // We must ensure that the callback `cb` is called exactly once.
-        //
-        // There are currently two cases who calls the callback:
-        // - Interruptible task successfully completes and calls the callback itself.
-        // - Interruptible task is interrupted and it doesn't call the callback - we must call it.
-        //
-        // After https://github.com/scalaz/scalaz/issues/599 is resolved
-        // interruptible task will always call the callback itself.
-        Task.async[A] { (cb: Throwable \/ A => Unit) =>
-          val running = RunningTaskImpl(cb)
-          runningTask.set(Some(running))
-          if (interrupted.get) interrupt()
-          else req.runAsyncInterruptibly(r => runningTask.getAndSet(None).foreach(_ => running.complete(r)), interrupted)
-        }.attempt.flatMap[Step[Task,O]] {
-          case -\/(End) => go(fb,c)
-          case -\/(e) => Task.now(Step(-\/(e), Halt(e), c))
-          case \/-(a) =>
-            try go(recv(a), c)
-            catch { case e: Throwable => Task.now(Step(-\/(e), Halt(e), c)) }
-        }
-      }
-
-      cur match {
-        case _ if interrupted.get => Task.now(Step(-\/(Interrupted), Halt(Interrupted), cleanup))
-        // Don't run cleanup from the last `Await` when process halts normally.
-        case h@Halt(e) => Task.now(Step(-\/(e), h, halt))
+      // Execute one step of the process `p`.
+      case Some(p) if !completed => p match {
         case Emit(h, t) =>
-          val (nh,nt) = t.unemit
-          val hh = h ++ nh
-          if (hh.isEmpty) go(nt, cleanup)
-          else Task.now(Step(\/-(hh), nt, cleanup))
-        case Await(req, recv, fb, c) => onAwait(req, recv, fb, c)
+          completed = true
+          cb(Step(\/-(h), t, cleanup))
+
+        case h@Halt(e) =>
+          completed = true
+          cb(Step(-\/(e), h, halt))
+
+        case Await(req, rcv, fb, cln) =>
+          cleanup = cln
+          req.runAsync({
+            case \/-(r0)  => a ! Some(rcv(r0))
+            case -\/(End) => a ! Some(fb)
+            case -\/(e)   => a ! Some(cln.causedBy(e))
+          })
       }
-    }
 
-    go(p, halt).flatMap(clean).runAsync {
-      case \/-(step) => cb(step)
-      case -\/(_) => () // Impossible - step is always computed.
-    }
+      //result from the last `Await` after process was interrupted
+      //this is run _after_ callback of this driver is completed.
+      case Some(p) => p.killBy(Interrupted).run.runAsync(_ => ())
 
-    interrupt
+
+      // Terminate process: Run cleanup but don't interrupt currently running task.
+      case None if !completed =>
+        completed = true
+        cleanup.run.runAsync {
+          case \/-(_) => cb(Step(-\/(Interrupted), Halt(Interrupted), halt))
+          case -\/(e) =>
+            val rsn = CausedBy(e, Interrupted)
+            cb(Step(-\/(rsn), Halt(rsn), halt))
+        }
+
+      case _ => ()
+    })(S)
+
+    a ! Some(p)
+    () => { a ! None }
   }
+
+ 
 
   trait WyeSide[A, L, R, O] {
     /** returns next wye after processing the result of the step **/
@@ -210,7 +193,7 @@ object WyeActor {
     }
 
     private def runStep(p: Process[Task,A], actor: Actor[Msg]): Unit = {
-      val interrupt = runStepAsyncInterruptibly[A](p)(step => actor ! StepCompleted(this, step))
+      val interrupt = runAsyncInterruptibly[A](p)(step => actor ! StepCompleted(this, step))
       state = Running(interrupt)
     }
   }
