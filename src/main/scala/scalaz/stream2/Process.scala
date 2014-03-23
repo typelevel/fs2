@@ -45,7 +45,13 @@ sealed trait Process[+F[_], +O] {
         case Cont(Emit(os),next) =>
           if (os.isEmpty) next(End) pipe p1
           else next(End) pipe process1.feed(os)(p1)
-        case Done(rsn) => this pipe p1.killBy(Kill(rsn))
+        case Done(rsn) =>
+          halt.pipe(next1(Kill)) onHalt {
+            case Kill => halt
+            case e: Throwable => fail(CausedBy(e,rsn))
+          }
+          // Old code, caused infinite loop
+          // case Done(rsn) => this pipe p1.killBy(Kill(rsn))
       }
       case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(next1(End))
       case Done(rsn1) => this match {
@@ -285,7 +291,7 @@ sealed trait Process[+F[_], +O] {
       cur.step match {
         case Cont(Emit(os),n) => go(n(End),acc fast_++ os)
         case Cont(awt,next) => (acc,awt onHalt next)
-        case Done(rsn) => (acc,Halt(rsn)) 
+        case Done(rsn) => (acc,Halt(rsn))
       }
     }
     go(this, Vector())
@@ -795,7 +801,7 @@ object Process {
   object CausedBy {
     def apply(e: Throwable, cause: Throwable): Throwable =
       e match {
-        case End => e
+        case End => cause
         case `cause` => e
         case _   => new CausedBy(e, cause)
       }
