@@ -88,7 +88,13 @@ trait process1 {
    *
    */
   def collect[I,I2](pf: PartialFunction[I,I2]): Process1[I,I2] =
-    id[I].flatMap(pf andThen(emit) orElse { case _ => halt })
+    await1[I].flatMap {
+      pf.andThen {
+        i => emit(i) fby collect(pf)
+      } orElse {
+        case _ => collect(pf)
+      }
+    }
 
   /**
    * Like `collect`, but emits only the first element of this process on which
