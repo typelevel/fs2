@@ -16,6 +16,11 @@ scalacOptions ++= Seq(
   "-Yno-adapted-args"
 )
 
+scalacOptions in (Compile, doc) ++= Seq(
+  "-doc-source-url", scmInfo.value.get.browseUrl + "/tree/master€{FILE_PATH}.scala",
+  "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath
+)
+
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
@@ -31,6 +36,9 @@ seq(bintraySettings:_*)
 publishMavenStyle := true
 
 licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
+
+scmInfo := Some(ScmInfo(url("https://github.com/scalaz/scalaz-stream"),
+  "git@github.com:scalaz/scalaz-stream.git"))
 
 bintray.Keys.packageLabels in bintray.Keys.bintray :=
   Seq("stream processing", "functional I/O", "iteratees", "functional programming", "scala")
