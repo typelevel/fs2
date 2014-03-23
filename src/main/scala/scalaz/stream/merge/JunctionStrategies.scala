@@ -85,15 +85,18 @@ protected[stream] object JunctionStrategies {
    * Additionally all `W` downstreams will see last `W` emitted from Writer1. If there is no `W` yet
    * emitted by Writer1 downstreams on `W` side will wait until one will be available.
    *
+   * This strategy can be used also to feed sources from upstreams whenever at least one
+   * downstream is started
+   *
    * Note this strategy terminates when Writer1 terminates or when downstream is closed.
    *
-   * @return
+   *@return
    */
   def liftWriter1[W, I, O](w: Writer1[W, I, O]):  JunctionStrategy[W, I, O] = {
     def go(cur: Writer1[W, I, O], last: Option[W]):  JunctionStrategy[W, I, O] = {
       def lastW(swo:Seq[W\/O]) : Option[W] =  swo.collect({ case -\/(w) => w }).lastOption
       junction[W, I, O] {
-        case Open(jx, ref: UpRef)    => jx.more(ref) fby go(cur, last)
+        case Open(jx, ref: UpRef)    => emit(OpenNext) fby jx.more(ref) fby go(cur, last)
         case Open(jx, ref: DownRefW) => last match {
           case Some(w0) => jx.writeW(w0, ref) fby go(cur, last)
           case None => cur.unemit match {
@@ -111,7 +114,7 @@ protected[stream] object JunctionStrategies {
         case Receive(jx, is, ref)    =>
           process1.feed(is)(cur).unemit match {
             case (swo, hlt@Halt(rsn)) =>
-              jx.more(ref) fby jx.broadcastAllBoth(swo) fby hlt
+              jx.close(ref,rsn) fby jx.broadcastAllBoth(swo) fby hlt
             case (swo, next)          =>
               jx.more(ref) fby jx.broadcastAllBoth(swo) fby go(next, lastW(swo) orElse last)
           }
@@ -123,12 +126,12 @@ protected[stream] object JunctionStrategies {
       }
     }
 
-    go(w, None)
+    emit(OpenNext) fby go(w, None)
   }
 
 
   /**
-   * MergeN strategy for mergeN combinator. Please see [[scalaz.stream.merge.mergeN]] for more details.
+   * MergeN strategy for mergeN combinator. Please see [[scalaz.stream.merge]] for more details.
    */
   def mergeN[A](max:Int):JunctionStrategy[Nothing,A,A] = {
 
@@ -194,10 +197,10 @@ protected[stream] object JunctionStrategies {
         receive1[Signal.Msg[A], A \/ Nothing] {
           case Signal.Set(a)                                               => emit(left(a)) fby go(Some(a))
           case Signal.CompareAndSet(f: (Option[A] => Option[A])@unchecked) => f(oa) match {
-            case Some(a) => emit(left(a)) fby go(Some(a))
-            case None    => go(oa)
-          }
-          case Signal.Fail(rsn)                                            => Halt(rsn)
+              case Some(a) => emit(left(a)) fby go(Some(a))
+              case None    => go(oa)
+            }
+          case Signal.Fail(rsn)                                            =>  Halt(rsn)
         }
       }
       go(None)

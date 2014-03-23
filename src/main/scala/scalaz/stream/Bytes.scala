@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable.IndexedSeq
 import scala.collection.{mutable, IndexedSeqOptimized}
 import scala.reflect.ClassTag
-import scalaz.Monoid
+import scalaz.{IsEmpty, Monoid}
 
 /**
  * Simple `immutability` wrapper to allow easy and effective working with Array[Byte]
@@ -115,7 +115,6 @@ final case class Bytes1 private[stream](
 
   def compacted: Boolean = pos == 0 && src.length == length
 
-
   def decode(chs: Charset): String =
     if (compacted) new String(src, chs)
     else new String(toArray, chs)
@@ -187,10 +186,11 @@ final case class Bytes1 private[stream](
     a
   }
   override def copyToArray[B >: Byte](xs: Array[B], start: Int, len: Int): Unit = {
-    val l1 = len min length
-    val l2 = if (xs.length - start < l1) xs.length - start max 0 else l1
-    Array.copy(repr, pos, xs, start, l2)
+    val l1 = math.min(len, length)
+    val l2 = if (xs.length - start < l1) math.max(xs.length - start, 0) else l1
+    if (l2 > 0) Array.copy(src, pos, xs, start, l2)
   }
+
   override def foreach[@specialized U](f: (Byte) => U): Unit =
     for (i <- pos until pos + length) {f(src(i)) }
 
@@ -218,15 +218,14 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
   def toArray: Array[Byte] = toArray[Byte]
 
   /** shrinks internally segmented source to form single source of Array[Byte] **/
-  def compact: Bytes =
-    Bytes1(seg.map(_.toArray).flatten.toArray, 0, length)
+  def compact: Bytes = Bytes1(toArray, 0, length)
 
 
   /** returns true, if internal representation is in single Array[Byte] **/
   def compacted: Boolean = false
 
 
-  def decode(chs: Charset): String = compact.decode(chs)
+  def decode(chs: Charset): String = new String(toArray, chs)
 
 
   def asByteBuffer: ByteBuffer = compact.asByteBuffer
@@ -235,23 +234,25 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
 
   lazy val length: Int = {
     if (seg.size == 0) 0
-    else seg.map(_.length).reduce(_ + _)
+    else seg.foldLeft(0)(_ + _.length)
   }
 
 
   def apply(idx: Int): Byte = {
+
+    val it = seg.iterator
     @tailrec
-    def go(at: Int, rem: Vector[Bytes1]): Byte = {
-      rem.headOption match {
-        case Some(one) =>
-          val cur = idx - at
-          if (cur >= one.length) go(at + one.length, rem.tail)
-          else one(cur)
-        case None      => throw new IndexOutOfBoundsException(s"Bytes has size of $length, but got idx of $idx")
+    def go(at: Int): Byte = {
+      if (it.hasNext) {
+        val one = it.next()
+        val cur = idx - at
+        if (cur >= one.length) go(at + one.length)
+        else one(cur)
       }
+      else throw new IndexOutOfBoundsException(s"Bytes has size of $length, but got idx of $idx")
     }
 
-    go(0, seg)
+    go(0)
   }
 
 
@@ -309,22 +310,23 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
 
 
   override def lastIndexWhere(p: (Byte) => Boolean, end: Int): Int = {
+
+    val it = seg.reverseIterator
+
     @tailrec
-    def go(at:Int, rem:Vector[Bytes1]):Int = {
-
-      rem.lastOption match {
-        case Some(b1) if (at - b1.size > end)  =>
-          go(at - b1.size , rem.init)
-        case Some(b1) =>
-            val end1 = (b1.size - 1) min (b1.size - (at - end) - 1)
-            val idx = b1.lastIndexWhere(p, end1)
-            if (idx < 0) go(at - b1.size, rem.init)
-            else (at - b1.size + idx) + 1
-
-        case None => -1
-      }
+    def go(at:Int):Int = {
+      if (it.hasNext) {
+        val b1 = it.next
+        if (at - b1.size > end) go(at - b1.size)
+        else {
+          val end1 = (b1.size - 1) min (b1.size - (at - end) - 1)
+          val idx = b1.lastIndexWhere(p, end1)
+          if (idx < 0) go(at - b1.size)
+          else (at - b1.size + idx) + 1
+        }
+      } else -1
     }
-    go(length-1, seg)
+    go(length-1)
 
   }
   override def lastIndexWhere(p: (Byte) => Boolean): Int = lastIndexWhere(p, length-1)
@@ -340,14 +342,13 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
     @tailrec
     def go(at: Int, acc: Vector[Bytes1], rem: Vector[Bytes1]): Bytes = {
       rem.headOption match {
-        case Some(b1) if at + b1.size < from  => go(at+b1.size,Vector(),rem.tail)
+        case Some(b1) if at + b1.size <= from  => go(at+b1.size,Vector(),rem.tail)
         case Some(b1) =>
           val start = (from - at) max 0
           val end = (until - at ) min b1.size
           if (end <= 0) BytesN(acc)
           else go(at + b1.size, acc :+ b1.slice(start,end).asInstanceOf[Bytes1], rem.tail)
         case None if acc.isEmpty => Bytes.empty
-        case None if acc.size == 1 => acc.head
         case None => BytesN(acc)
       }
     }
@@ -356,34 +357,25 @@ final case class BytesN private[stream](private[stream] val seg: Vector[Bytes1])
     go(0, Vector(), seg)
   }
 
-  override def toArray[B >: Byte](implicit arg0: ClassTag[B]): Array[B] = compact.toArray[B]
+  override def toArray[B >: Byte](implicit arg0: ClassTag[B]): Array[B] = {
+    val ca = Array.ofDim[B](length)
+    copyToArray(ca)
+    ca
+  }
+
   override def copyToArray[B >: Byte](xs: Array[B], start: Int, len: Int): Unit = {
+    val it = seg.iterator
     @tailrec
-    def go(at: Int, rem: Vector[Bytes1]): Unit = {
-      rem.headOption match {
-        case Some(b1) =>
-          b1.copyToArray(xs, at + start, len - at)
-          if (at + b1.length < len) go(at + b1.length, rem.tail)
-          else ()
+    def go(at: Int): Unit = if (at < len && it.hasNext) {
+      val b1 = it.next
+      b1.copyToArray(xs, start + at, len - at)
+      go(at + b1.length)
+    }
 
-        case None => //no-op
-      }
-    }
-    go(start, seg)
-  }
-  override def foreach[@specialized U](f: (Byte) => U): Unit = {
-    @tailrec
-    def go(rem: Vector[Bytes1]): Unit = {
-      rem.headOption match {
-        case Some(b1) =>
-          b1.foreach(f)
-          go(rem.tail)
-        case None     => ()
-      }
-    }
-    go(seg)
+    go(0)
   }
 
+  override def foreach[@specialized U](f: (Byte) => U): Unit = seg.foreach(_.foreach(f))
 }
 
 object BytesN {
@@ -458,7 +450,11 @@ object Bytes extends BytesInstances {
 }
 
 sealed abstract class BytesInstances {
-  implicit val bytesInstance = new Monoid[Bytes] {
+  implicit val bytesInstance = new IsEmpty[({ type λ[α] = Bytes })#λ] with Monoid[Bytes] {
+    type BA[α] = Bytes
+    def empty[A] = Bytes.empty
+    def plus[A](f1: BA[A], f2: => BA[A]) = f1 ++ f2
+    def isEmpty[A](b: BA[A]) = b.isEmpty
     def append(f1: Bytes, f2: => Bytes) = f1 ++ f2
     def zero = Bytes.empty
   }

@@ -2,24 +2,27 @@ organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
-version := "SNAPSHOT"
+version := "snapshot-0.4"
 
-scalaVersion := "2.10.2"
+scalaVersion := "2.10.3"
 
 scalacOptions ++= Seq(
   "-feature",
   "-language:implicitConversions",
   "-language:higherKinds",
   "-language:existentials",
-  "-language:postfixOps"
+  "-language:postfixOps",
+  "-Xfatal-warnings",
+  "-Yno-adapted-args"
 )
 
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.5",
-  "org.scalaz" %% "scalaz-concurrent" % "7.0.5",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.5" % "test",
+  "org.scalaz" %% "scalaz-core" % "7.0.6",
+  "org.scalaz" %% "scalaz-concurrent" % "7.0.6",
+  "org.typelevel" %% "scodec-bits" % "1.0.0-RC2",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.6" % "test",
   "org.scalacheck" %% "scalacheck" % "1.10.1" % "test"
 )
 
@@ -43,3 +46,5 @@ OsgiKeys.importPackage := Seq(
   """scalaz.*;version="$<range;[===,=+);$<@>>"""",
   "*"
 )
+
+ScctPlugin.instrumentSettings

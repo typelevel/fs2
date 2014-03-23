@@ -1,5 +1,7 @@
 package scalaz
 
+import scodec.bits.ByteVector
+
 package object stream {
 
   type Process0[+O] = Process.Process0[O]
@@ -14,4 +16,7 @@ package object stream {
   type Writer1[+W,-I,+O] = Process.Process1W[W,I,O]
   type TeeW[+W,-I,-I2,+O] = Process.TeeW[W,I,I2,O]
   type WyeW[+W,-I,-I2,+O] = Process.WyeW[W,I,I2,O]
+
+  implicit val byteVectorSemigroupInstance: Semigroup[ByteVector] =
+    Semigroup.instance(_ ++ _)
 }

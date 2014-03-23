@@ -9,9 +9,11 @@ import scalaz.syntax.show._
 import scalaz.std.list._
 import scalaz.std.string._
 import scalaz.std.anyVal._
+import java.nio.charset.Charset
 
 
 object BytesSpec extends Properties("Bytes") {
+
 
   val listEq = scalaz.std.list
 
@@ -180,15 +182,11 @@ object BytesSpec extends Properties("Bytes") {
   }
 
   property("decode-bytes1") = forAll { b: Bytes1 =>
-    new String(b.toArray) == b.decode()
+    new String(b.toArray, Charset.forName("UTF-8")) == b.decode(Charset.forName("UTF-8"))
   }
 
   property("decode-bytesN") = forAll { b: BytesN =>
-    new String(b.toArray) == b.decode()
-  }
-
-  property("decode-bytes1") = forAll { b: Bytes1 =>
-    new String(b.toArray) == b.decode()
+    new String(b.toArray, Charset.forName("UTF-8")) == b.decode(Charset.forName("UTF-8"))
   }
 
   property("asBuffer-bytes1") = forAll { b: Bytes1 =>
@@ -217,5 +215,15 @@ object BytesSpec extends Properties("Bytes") {
       b.toArray.toList === baa.toList
   }
 
+  property("bytes-splitAt-zero-length-segment") = {
+    val split: (BytesN, BytesN) = (Bytes.of("0".getBytes) ++ Bytes.of("0".getBytes)).splitAt(1)._2.splitAt(0).asInstanceOf[(BytesN, BytesN)]
+    val expected = (BytesN(Vector[Bytes1]()), BytesN(Vector[Bytes1](Bytes1("0".getBytes, 0 ,1))))
+    split._1.toArray === expected._1.toArray &&
+      split._2.toArray === expected._2.toArray
+
+ }
+
+  type BA[α] = Bytes
+  property("isEmpty-laws") = isEmpty.laws[BA]
   property("monoid-laws") = monoid.laws[Bytes]
 }

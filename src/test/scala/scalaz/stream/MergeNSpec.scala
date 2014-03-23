@@ -59,11 +59,11 @@ object MergeNSpec extends Properties("mergeN") {
     val srcCleanup = new AtomicInteger(0)
 
     def oneUp(index:Int) = (emit(index).toSource ++ Process.awakeEvery(10 seconds).map(_=>index)) onComplete
-      eval(Task.fork(Task.delay{Thread.sleep(100); cleanups.incrementAndGet()}))
+      affine(eval(Task.fork(Task.delay{val i = cleanups.incrementAndGet();Thread.sleep(100);i})))
 
     val ps =
       (emitSeq(for (i <- 0 until 10) yield oneUp(i)).toSource ++ Process.awakeEvery(10 seconds).drain) onComplete
-        eval_(Task.delay(srcCleanup.set(99)))
+        affine(eval_(Task.delay(srcCleanup.set(99))))
 
 
     merge.mergeN(ps).takeWhile(_ < 9).runLog.timed(3000).run
@@ -120,6 +120,18 @@ object MergeNSpec extends Properties("mergeN") {
 
     "mergeN and signal finished" |: running.get(3000).isDefined &&
       ("max 25 were run in parallel" |: running.get.toList.flatten.filter(_ > 25).isEmpty)
+
+  }
+
+
+  //tests that mergeN correctly terminates with drained process
+  property("drain-halt") = secure {
+
+    val effect = Process.constant(()).drain
+    val p = Process(1,2)
+
+    merge.mergeN(Process(effect,p)).take(2)
+    .runLog.timed(3000).run.size == 2
 
   }
 

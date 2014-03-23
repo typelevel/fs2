@@ -11,6 +11,7 @@ import org.scalacheck._
 import Prop._
 
 import scalaz.concurrent.Task
+import java.util.concurrent.LinkedBlockingDeque
 
 object ResourceSafetySpec extends Properties("resource-safety") {
 
@@ -32,19 +33,19 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     val cleanup = Process.eval { Task.delay { ok += 1 } }.drain
     val src = Process.range(0,10)
     val procs = List(
-      src.map(i => if (i == 3) die else i).onComplete(cleanup),
-      src.filter(i => if (i == 3) throw End else true).onComplete(cleanup),
-      src.pipe(process1.lift((i: Int) => if (i == 3) die else true)).onComplete(cleanup),
-      src.flatMap(i => if (i == 3) die else emit(i)).onComplete(cleanup),
-      src.onComplete(cleanup).flatMap(i => if (i == 3) die else emit(i)),
-      src.onComplete(cleanup).flatMap(i => if (i == 3) throw End else emit(i)),
-      emit(1) onComplete cleanup onComplete die,
-      (emit(2) append die) onComplete cleanup,
-      (src ++ die) onComplete cleanup,
-      src.onComplete(cleanup) onComplete die,
-      src.fby(die) onComplete cleanup,
-      src.orElse(die) onComplete cleanup,
-      (src append die).orElse(halt,die) onComplete cleanup
+      src.map(i => if (i == 3) die else i).onComplete(cleanup)
+      , src.filter(i => if (i == 3) throw End else true).onComplete(cleanup)
+      , src.pipe(process1.lift((i: Int) => if (i == 3) die else true)).onComplete(cleanup)
+      , src.flatMap(i => if (i == 3) die else emit(i)).onComplete(cleanup)
+      , src.onComplete(cleanup).flatMap(i => if (i == 3) die else emit(i))
+      , src.onComplete(cleanup).flatMap(i => if (i == 3) throw End else emit(i))
+      , emit(1) onComplete cleanup onComplete die
+      , (emit(2) append die) onComplete cleanup
+      , (src ++ die) onComplete cleanup
+      , src.onComplete(cleanup) onComplete die
+      , src.fby(die) onComplete cleanup
+      , src.orElse(die) onComplete cleanup
+      , (src append die).orElse(halt,die) onComplete cleanup
     )
     procs.foreach { p =>
       try p.run.run
@@ -87,4 +88,28 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     val p: Process[Task,Int] = Process.fail(FailWhale)
     p.pipe(process1.id).attempt().runLog.run.head == left(FailWhale)
   }
+
+  property("nested.flatMap") = secure {
+    import Process._
+    import collection.JavaConverters._
+
+    val cups = new LinkedBlockingDeque[String]()
+    def cleanup(m: String) = eval_(Task.delay(cups.offer(m)))
+    val p1 = eval(Task.delay(1)) onComplete cleanup("1")
+    val p2 = eval(Task.delay("A")) onComplete cleanup("A")
+
+    val p =
+      for {
+        i <- p1
+        s <- p2
+        r <- eval(Task.delay(die)) onComplete cleanup("inner")
+      } yield (s + i)
+
+    (p onComplete cleanup("outer")).attempt().runLog.run
+
+    val cbks = cups.iterator().asScala.toSeq
+
+    cbks == Seq("inner", "A", "1", "outer")
+  }
+
 }

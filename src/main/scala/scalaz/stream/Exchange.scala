@@ -24,7 +24,7 @@ import scalaz.stream.wye.Request
  * Exchange allows combining this pattern with Processes and
  * allows to use different combinators to specify the Exchange behaviour.
  *
- * Exchange is currently specialized to [[scalaz.concurrent.Task]]
+ * Exchange is currently specialized to `scalaz.concurrent.Task`
  *
  * @param read Process reading values from remote system
  * @param write Process writing values to remote system
