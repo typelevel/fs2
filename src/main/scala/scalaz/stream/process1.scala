@@ -540,10 +540,7 @@ object process1 {
 
   /** Remove any `None` inputs. */
   def stripNone[A]: Process1[Option[A], A] =
-    await1[Option[A]].flatMap {
-      case None    => stripNone
-      case Some(a) => emit(a) fby stripNone
-    }
+    collect { case Some(a) => a }
 
   /**
    * Emit a running sum of the values seen so far. The first value emitted will be the
