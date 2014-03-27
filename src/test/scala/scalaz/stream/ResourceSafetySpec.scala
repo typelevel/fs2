@@ -82,6 +82,38 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     cleanedUp
   }
 
+  property("io.resource - two pipes") = secure {
+    var cleanedUp = false
+    val a = io.resource(Task.now(()))(_ => Task.delay(cleanedUp = true))(_ => Task.delay(cleanedUp = false))
+    val res = a.once.once.runLog.run
+    (res.size == 1) :| "nonempty result" &&
+    cleanedUp :| "resources released"
+  }
+
+  property("io.resource - left side of tee then pipe") = secure {
+    var cleanedUp = false
+    val a = (io.resource(Task.now(()))(_ => Task.delay(cleanedUp = true))(_ => Task.delay(cleanedUp = false))).zip(Process.emit(1))
+    val res = a.once.runLog.run
+    (res.size == 1) :| "nonempty result" &&
+    cleanedUp :| "resources released"
+  }
+
+  property("io.resource - right side of tee then pipe") = secure {
+    var cleanedUp = false
+    val a = Process.emit(1).zip(io.resource(Task.now(()))(_ => Task.delay(cleanedUp = true))(_ => Task.delay(cleanedUp = false)))
+    val res = a.once.runLog.run
+    (res.size == 1) :| "nonempty result" &&
+    cleanedUp :| "resources released"
+  }
+
+  property("onComplete with pipe") = secure {
+    var called = false
+    val a = Process.emit(1) onComplete Process.eval_(Task.delay(called = true))
+    val res = a.once.runLog.run
+    (res.size == 1) :| "nonempty result" &&
+    called :| "onComplete called"
+  }
+
   property("id preserves cause of failure") = secure {
     import scalaz.\/.left
     case object FailWhale extends RuntimeException
