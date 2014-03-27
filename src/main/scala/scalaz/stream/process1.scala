@@ -195,6 +195,18 @@ trait process1 {
     scan(z)(f).last
 
   /**
+   * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
+   */
+  def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
+   lift(f).foldMonoid(M)
+
+  /**
+   * Like `fold` but uses Monoid for folding operation
+   */
+  def foldMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    fold(M.zero)(M.append(_,_))
+
+  /**
    * `Process1` form of `List.reduce`.
    *
    * Reduces the elements of this Process using the specified associative binary operator.
@@ -217,20 +229,8 @@ trait process1 {
   def fold1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
     reduceSemigroup(M)
 
-  /**
-   * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
-   */
-  def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
-   id[A].map(f).foldMonoid(M)
-
-  /**
-   * Like `fold` but uses Monoid for folding operation
-   */
-  def foldMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
-    fold(M.zero)(M.append(_,_))
-
   /** Alias for `reduceSemigroup`. */
-  def foldSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+  def fold1Semigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
     reduceSemigroup(M)
 
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
@@ -365,6 +365,13 @@ trait process1 {
   def reduce[A](f: (A,A) => A): Process1[A,A] =
     scan1(f).last
 
+  /**
+   * Like `reduce` only uses `f` to map `A` to `B` and uses Semigroup `M` for
+   * associative operation.
+   */
+  def reduceMap[A,B](f: A => B)(implicit M: Semigroup[B]): Process1[A,B] =
+    lift(f).reduceSemigroup(M)
+
   /** Like `reduce` but uses Monoid `M` for associative operation. */
   def reduceMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
     reduceSemigroup(M)
@@ -372,13 +379,6 @@ trait process1 {
   /** Like `reduce` but uses Semigroup `M` for associative operation. */
   def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
     reduce(M.append(_,_))
-
-  /**
-   * Like `reduce` only uses `f` to map `A` to `B` and uses Semigroup `M` for
-   * associative operation.
-   */
-  def reduceMap[A,B](f: A => B)(implicit M: Semigroup[B]): Process1[A,B] =
-    id[A].map(f).reduceSemigroup(M)
 
   /**
    * Repartitions the input with the function `p`. On each step `p` is applied
@@ -437,16 +437,17 @@ trait process1 {
     emit(z) fby await1[A].flatMap (a => scan(f(z,a))(f))
 
   /**
+   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
+   */
+  def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
+    lift(f).scanMonoid(M)
+
+  /**
    * Like `scan` but uses Monoid for associative operation
    */
   def scanMonoid[A](implicit M: Monoid[A]): Process1[A,A] =
     scan(M.zero)(M.append(_,_))
 
-  /**
-   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
-   */
-  def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
-    id[A].map(f).scanMonoid(M)
 
   /**
    * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
@@ -461,20 +462,20 @@ trait process1 {
     await1[A].flatMap(go)
   }
 
-  /** Like `scan1` but uses Monoid `M` for associative operation. */
-  def scan1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
-    scanSemigroup(M)
-
-  /** Like `scan1` but uses Semigroup `M` for associative operation. */
-  def scanSemigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
-    scan1(M.append(_,_))
-
   /**
    * Like `scan1` only uses `f` to map `A` to `B` and uses Semigroup `M` for
    * associative operation.
    */
   def scan1Map[A,B](f:A => B)(implicit M: Semigroup[B]): Process1[A,B] =
-    id[A].map(f).scanSemigroup(M)
+    lift(f).scan1Semigroup(M)
+
+  /** Like `scan1` but uses Monoid `M` for associative operation. */
+  def scan1Monoid[A](implicit M: Monoid[A]): Process1[A,A] =
+    scan1Semigroup(M)
+
+  /** Like `scan1` but uses Semigroup `M` for associative operation. */
+  def scan1Semigroup[A](implicit M: Semigroup[A]): Process1[A,A] =
+    scan1(M.append(_,_))
 
   /**
    * Emit the given values, then echo the rest of the input.
@@ -667,10 +668,6 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.foldMonoid(M)
 
-  /** Alias for `this |> [[process1.foldSemigroup]](M)`. */
-  def foldSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
-    this |> process1.foldSemigroup(M)
-
   /** Alias for `this |> [[process1.fold1]](f)`. */
   def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.fold1(f)
@@ -682,6 +679,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.fold1Monoid]](M)` */
   def fold1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.fold1Monoid(M)
+
+  /** Alias for `this |> [[process1.foldSemigroup]](M)`. */
+  def fold1Semigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.fold1Semigroup(M)
 
   /** Alias for `this |> [[process1.intersperse]](sep)`. */
   def intersperse[O2>:O](sep: O2): Process[F,O2] =
@@ -759,10 +760,6 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.scanMonoid(M)
 
-  /** Alias for `this |> [[process1.scanSemigroup]](M)`. */
-  def scanSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
-    this |> process1.scanSemigroup(M)
-
   /** Alias for `this |> [[process1.scan1]](f)`. */
   def scan1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.scan1(f)
@@ -774,6 +771,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.scan1Monoid]](M)`. */
   def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
     this |> process1.scan1Monoid(M)
+
+  /** Alias for `this |> [[process1.scanSemigroup]](M)`. */
+  def scan1Semigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.scan1Semigroup(M)
 
   /** Alias for `this |> [[process1.shiftRight]](head)` */
   def shiftRight[O2 >: O](head: O2*): Process[F,O2] =
