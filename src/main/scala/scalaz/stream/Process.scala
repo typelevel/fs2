@@ -137,9 +137,6 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
     }
   }
 
-  /** operator alias for `fby` */
-  final def |||[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = fby(p2)
-
   /**
    * Removes all emitted elements from the front of this `Process`.
    * The second argument returned by this method is guaranteed to be
