@@ -10,6 +10,8 @@ import scalaz.stream.ReceiveY.HaltL
 import scalaz.stream.ReceiveY.HaltR
 import scalaz.stream.ReceiveY.ReceiveL
 import scalaz.stream.ReceiveY.ReceiveR
+import scalaz.stream.{wye => _wye}
+import scalaz.stream.wye.Request
 
 /**
  * Exchange represents interconnection between two systems.
@@ -73,27 +75,24 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
 
 
   /**
-   * Runs  supplied Process of `W` values by sending them to remote system.
+   * Runs supplied Process of `W` values by sending them to remote system.
    * Any replies from remote system are received as `I` values of the resulting process.
    *
-   * Please note this will terminate _after_ `read` side terminates
+   * Please note this will terminate by default after Left side (receive) terminates.
+   * If you want to terminate after Right side (W) terminates, supply terminateOn with `Request.R` or `Request.Both` to
+   * terminate on Right or Any side respectively
+   *
    * @param p
    * @return
    */
-  def run(p:Process[Task,W]):Process[Task,I] =
-    (self.read merge (p to self.write).drain)
-
-  /**
-   * Runs this exchange in receive-only mode.
-   *
-   * Please note this will terminate _after_ `read` side terminates
-   *
-   * Use when you want to sent to other party `W` only as result of receiving `I`. It is useful with
-   * other combinator such as `wye`, `readThrough` where they will produce a `W` as a result of receiving a `I`.
-   *
-   * @return
-   */
-  def runReceive : Process[Task,I] = run(halt)
+  def run(p:Process[Task,W] = halt, terminateOn:Request = Request.L):Process[Task,I] = {
+    val y = terminateOn match {
+      case Request.L => _wye.mergeHaltL[I]
+      case Request.R => _wye.mergeHaltR[I]
+      case Request.Both => _wye.mergeHaltBoth[I]
+    }
+    self.read.wye((p to self.write).drain)(y)
+  }
 
 
   /**
