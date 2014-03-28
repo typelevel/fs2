@@ -137,7 +137,11 @@ object ProcessSpec extends Properties("Process1") {
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
-      p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
+      p.toSource.pipe(process1.sum).runLast.timed(3000).run.get
+    }) &&
+    ("prefixSums" |: {
+      p.toList.scan(0)(_ + _) ===
+      p.toSource.pipe(process1.prefixSums).runLog.run.toList
     }) &&
     ("intersperse" |: {
       p.intersperse(0).toList == p.toList.intersperse(0)

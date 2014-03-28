@@ -341,6 +341,13 @@ trait process1 {
     take(1)
 
   /**
+   * Emits the sums of prefixes (running totals) of the input elements.
+   * The first value emitted will always be zero.
+   */
+  def prefixSums[N](implicit N: Numeric[N]): Process1[N,N] =
+    scan(N.zero)(N.plus)
+
+  /**
    * Record evaluation of `p`, emitting the current state along with the ouput of each step.
    */
   def record[I,O](p: Process1[I,O]): Process1[I,(Seq[O], Process1[I,O])] = p match {
@@ -529,9 +536,9 @@ trait process1 {
   def stripNone[A]: Process1[Option[A],A] =
     collect { case Some(a) => a }
 
-  /** Emits the sum of all input elements. */
+  /** Emits the sum of all input elements or zero if the input is empty. */
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
-    reduce(N.plus)
+    fold(N.zero)(N.plus)
 
   /**
    * Produce the given `Process1` non-strictly. This function is useful
@@ -718,6 +725,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.once]]`. */
   def once: Process[F,O] =
     this |> process1.once
+
+  /** Alias for `this |> [[process1.prefixSums]]` */
+  def prefixSums[O2 >: O](implicit N: Numeric[O2]): Process[F,O2] =
+    this |> process1.prefixSums(N)
 
   /** Alias for `this |> [[process1.reduce]](f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
