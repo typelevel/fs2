@@ -2,7 +2,6 @@ package scalaz.stream
 
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Arbitrary.arbitrary
-import scalaz.concurrent.Task
 import scalaz.Equal
 import scodec.bits.ByteVector
 
@@ -27,7 +26,4 @@ object TestInstances {
 
   implicit def equalProcess0[A: Equal]: Equal[Process0[A]] =
     Equal.equal(_.toList == _.toList)
-
-  implicit def equalProcessTask[A: Equal]: Equal[Process[Task,A]] =
-    Equal.equal(_.runLog.run.toList == _.runLog.run.toList)
 }
