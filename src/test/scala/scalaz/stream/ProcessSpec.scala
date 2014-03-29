@@ -10,11 +10,12 @@ import scalaz.std.string._
 
 import org.scalacheck._
 import Prop.{extendedAny => _, _}
-import Arbitrary.arbitrary
 import scalaz.concurrent.Strategy
 import scala.concurrent
 import scalaz.\/-
 import scalaz.\/._
+
+import TestInstances._
 
 object ProcessSpec extends Properties("Process1") {
 
@@ -31,14 +32,6 @@ object ProcessSpec extends Properties("Process1") {
     def asTee[I,O](p1: Process1[I,O]): Tee[I,Any,O] = p1
     def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t
   }
-
-
-  implicit def EqualProcess[A:Equal]: Equal[Process0[A]] = new Equal[Process0[A]] {
-    def equal(a: Process0[A], b: Process0[A]): Boolean =
-      a.toList == b.toList
-  }
-  implicit def ArbProcess0[A:Arbitrary]: Arbitrary[Process0[A]] =
-    Arbitrary(Arbitrary.arbitrary[List[A]].map(a => Process(a: _*)))
 
   property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
     val f = (x: Int) => List.range(1, x.min(100))
@@ -386,9 +379,6 @@ object ProcessSpec extends Properties("Process1") {
     val reasonableError = 200 * 1000000 // 200 millis
     (firstValueDiscrepancy.toNanos < reasonableError) :| "duration is near zero at first access"
   }
-
-  implicit def arbVec[A:Arbitrary]: Arbitrary[IndexedSeq[A]] =
-    Arbitrary(Gen.listOf(arbitrary[A]).map(_.toIndexedSeq))
 
   property("zipAll") = forAll((l: IndexedSeq[Int], l2: IndexedSeq[Int]) => {
     val a = Process.range(0,l.length).map(l(_))
