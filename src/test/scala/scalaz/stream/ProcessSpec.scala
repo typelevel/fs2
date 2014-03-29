@@ -29,7 +29,7 @@ object ProcessSpec extends Properties("Process") {
     def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t
   }
 
-  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
+  property("basic") = forAll { (p: Process0[Int], p2: Process0[String]) =>
     val f = (x: Int) => List.range(1, x.min(100))
 
     ("map" |: {

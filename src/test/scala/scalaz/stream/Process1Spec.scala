@@ -17,109 +17,110 @@ import process1._
 import TestInstances._
 
 object Process1Spec extends Properties("process1") {
-  property("all") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
+  property("all") = forAll { (pi: Process0[Int], ps: Process0[String], n: Int) =>
+    val li = pi.toList
+    val ls = ps.toList
+
     val g = (x: Int) => x % 7 === 0
     val pf : PartialFunction[Int,Int] = { case x : Int if x % 2 === 0 => x}
-
     val sm = Monoid[String]
 
     ("collect" |: {
-      p.collect(pf).toList === p.toList.collect(pf)
+      pi.collect(pf).toList === li.collect(pf)
     }) &&
     ("collectFirst" |: {
-      p.collectFirst(pf).toList === p.toList.collectFirst(pf).toList
+      pi.collectFirst(pf).toList === li.collectFirst(pf).toList
     }) &&
     ("drop" |: {
-      p.toList.drop(n) === p.drop(n).toList
+      pi.drop(n).toList === li.drop(n)
     }) &&
     ("dropLast" |: {
-      p.dropLast.toList === p.toList.dropRight(1)
+      pi.dropLast.toList === li.dropRight(1)
     }) &&
     ("dropLastIf" |: {
       val pred = (_: Int) % 2 === 0
-      val pl = p.toList
-      val n = if (pl.lastOption.map(pred).getOrElse(false)) 1 else 0
-      p.dropLastIf(pred).toList === pl.dropRight(n) &&
-      p.dropLastIf(_ => false).toList === p.toList
+      val n = if (li.lastOption.map(pred).getOrElse(false)) 1 else 0
+      pi.dropLastIf(pred).toList === li.dropRight(n) &&
+      pi.dropLastIf(_ => false).toList === li
     }) &&
     ("dropWhile" |: {
-      p.toList.dropWhile(g) === p.dropWhile(g).toList
+      pi.dropWhile(g).toList === li.dropWhile(g)
     }) &&
     ("exists" |: {
-      List(p.toList.exists(g)) === p.exists(g).toList
+      pi.exists(g).toList === List(li.exists(g))
     }) &&
     ("find" |: {
-      p.find(_ % 2 === 0).toList === p.toList.find(_ % 2 === 0).toList
+      pi.find(_ % 2 === 0).toList === li.find(_ % 2 === 0).toList
     }) &&
     ("filter" |: {
-      p.toList.filter(g) === p.filter(g).toList
+      pi.filter(g).toList === li.filter(g)
     }) &&
     ("fold" |: {
-      p.fold(0)(_ + _).toList === List(p.toList.fold(0)(_ + _))
+      pi.fold(0)(_ + _).toList === List(li.fold(0)(_ + _))
     }) &&
     ("foldMap" |: {
-      p.foldMap(_.toString).toList.lastOption.toList === List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
+      pi.foldMap(_.toString).toList.lastOption.toList === List(li.map(_.toString).fold(sm.zero)(sm.append(_,_)))
     }) &&
     ("forall" |: {
-      List(p.toList.forall(g)) === p.forall(g).toList
+      pi.forall(g).toList === List(li.forall(g))
     }) &&
     ("id" |: {
-      ((p |> id) === p) &&  ((id |> p) === p)
+      ((pi |> id) === pi) && ((id |> pi) === pi)
     }) &&
     ("intersperse" |: {
-      p.intersperse(0).toList === p.toList.intersperse(0)
+      pi.intersperse(0).toList === li.intersperse(0)
     }) &&
     ("lastOr" |: {
-      p.lastOr(42).toList === p.toList.lastOption.orElse(Some(42)).toList
+      pi.lastOr(42).toList === li.lastOption.orElse(Some(42)).toList
     }) &&
     ("maximum" |: {
-      p.maximum.toList === p.toList.maximum.toList
+      pi.maximum.toList === li.maximum.toList
     }) &&
     ("maximumBy" |: {
       // enable when switching to scalaz 7.1
-      //p2.maximumBy(_.length).toList === p2.toList.maximumBy(_.length).toList
+      //ps.maximumBy(_.length).toList === ls.maximumBy(_.length).toList
       true
     }) &&
     ("maximumOf" |: {
-      p2.maximumOf(_.length).toList === p2.toList.map(_.length).maximum.toList
+      ps.maximumOf(_.length).toList === ls.map(_.length).maximum.toList
     }) &&
     ("minimum" |: {
-      p.minimum.toList === p.toList.minimum.toList
+      pi.minimum.toList === li.minimum.toList
     }) &&
     ("minimumBy" |: {
       // enable when switching to scalaz 7.1
-      //p2.minimumBy(_.length).toList === p2.toList.minimumBy(_.length).toList
+      //ps.minimumBy(_.length).toList === ls.minimumBy(_.length).toList
       true
     }) &&
     ("minimumOf" |: {
-      p2.minimumOf(_.length).toList === p2.toList.map(_.length).minimum.toList
+      ps.minimumOf(_.length).toList === ls.map(_.length).minimum.toList
     }) &&
     ("reduce" |: {
-      p.reduce(_ + _).toList === (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List())
+      pi.reduce(_ + _).toList === (if (li.nonEmpty) List(li.reduce(_ + _)) else List())
     }) &&
     ("scan" |: {
-      p.toList.scan(0)(_ - _) ===
-      p.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
+      li.scan(0)(_ - _) ===
+      pi.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
     }) &&
     ("scan1" |: {
-       p.toList.scan(0)(_ + _).tail ===
-       p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
+       li.scan(0)(_ + _).tail ===
+       pi.toSource.scan1(_ + _).runLog.timed(3000).run.toList
     }) &&
     ("shiftRight" |: {
-      p.shiftRight(1, 2).toList === List(1, 2) ++ p.toList
+      pi.shiftRight(1, 2).toList === List(1, 2) ++ li
     }) &&
     ("splitWith" |: {
-      p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
+      pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
     }) &&
     ("sum" |: {
-      p.toList.sum[Int] ===
-      p.toSource.sum.runLastOr(0).timed(3000).run
+      li.sum ===
+      pi.toSource.sum.runLastOr(0).timed(3000).run
     }) &&
     ("take" |: {
-      p.toList.take(n) === p.take(n).toList
+      pi.take(n).toList === li.take(n)
     }) &&
     ("takeWhile" |: {
-      p.toList.takeWhile(g) === p.takeWhile(g).toList
+      pi.takeWhile(g).toList === li.takeWhile(g)
     })
   }
 
