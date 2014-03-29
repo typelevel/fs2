@@ -25,6 +25,9 @@ object Process1Spec extends Properties("process1") {
     val pf : PartialFunction[Int,Int] = { case x : Int if x % 2 === 0 => x}
     val sm = Monoid[String]
 
+    ("buffer" |: {
+      pi.buffer(4).toList === li
+    }) &&
     ("collect" |: {
       pi.collect(pf).toList === li.collect(pf)
     }) &&
@@ -71,7 +74,7 @@ object Process1Spec extends Properties("process1") {
       pi.intersperse(0).toList === li.intersperse(0)
     }) &&
     ("lastOr" |: {
-      pi.lastOr(42).toList === li.lastOption.orElse(Some(42)).toList
+      pi.lastOr(42).toList.head === li.lastOption.getOrElse(42)
     }) &&
     ("maximum" |: {
       pi.maximum.toList === li.maximum.toList
@@ -103,8 +106,8 @@ object Process1Spec extends Properties("process1") {
       pi.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
     }) &&
     ("scan1" |: {
-       li.scan(0)(_ + _).tail ===
-       pi.toSource.scan1(_ + _).runLog.timed(3000).run.toList
+      li.scan(0)(_ + _).tail ===
+      pi.toSource.scan1(_ + _).runLog.timed(3000).run.toList
     }) &&
     ("shiftRight" |: {
       pi.shiftRight(1, 2).toList === List(1, 2) ++ li
@@ -113,8 +116,7 @@ object Process1Spec extends Properties("process1") {
       pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
     }) &&
     ("sum" |: {
-      li.sum ===
-      pi.toSource.sum.runLastOr(0).timed(3000).run
+      pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
     }) &&
     ("take" |: {
       pi.take(n).toList === li.take(n)
@@ -146,7 +148,7 @@ object Process1Spec extends Properties("process1") {
 
   property("last") = secure {
     var i = 0
-    Process.range(0,10).last.map(_ => i += 1).runLog.run
+    Process.range(0, 10).last.map(_ => i += 1).runLog.run
     i === 1
   }
 
@@ -169,6 +171,12 @@ object Process1Spec extends Properties("process1") {
     Process("he", "ll", "o").repartition2 {
       s => (Some(s.take(1)), Some(s.drop(1)))
     }.toList === List("h", "e", "l", "lo")
+  }
+
+  property("splitOn") = secure {
+    Process(0, 1, 2, 3, 4).splitOn(2).toList === List(Vector(0, 1), Vector(3, 4)) &&
+    Process(2, 0, 1, 2).splitOn(2).toList === List(Vector(), Vector(0, 1), Vector()) &&
+    Process(2, 2).splitOn(2).toList === List(Vector(), Vector(), Vector())
   }
 
   property("stripNone") = secure {
