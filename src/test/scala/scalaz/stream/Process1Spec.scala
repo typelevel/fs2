@@ -26,16 +26,16 @@ object Process1Spec extends Properties("process1") {
       ((p |> id) === p) &&  ((id |> p) === p)
     }) &&
     ("filter" |: {
-      (p.toList.filter(g) === p.filter(g).toList)
+      p.toList.filter(g) === p.filter(g).toList
     }) &&
     ("take" |: {
-      (p.toList.take(n) === p.take(n).toList)
+      p.toList.take(n) === p.take(n).toList
     }) &&
     ("takeWhile" |: {
-      (p.toList.takeWhile(g) === p.takeWhile(g).toList)
+      p.toList.takeWhile(g) === p.takeWhile(g).toList
     }) &&
     ("drop" |: {
-      (p.toList.drop(n) === p.drop(n).toList)
+      p.toList.drop(n) === p.drop(n).toList
     }) &&
     ("dropLast" |: {
       p.dropLast.toList === p.toList.dropRight(1)
@@ -48,16 +48,34 @@ object Process1Spec extends Properties("process1") {
       p.dropLastIf(_ => false).toList === p.toList
     }) &&
     ("dropWhile" |: {
-      (p.toList.dropWhile(g) === p.dropWhile(g).toList)
+      p.toList.dropWhile(g) === p.dropWhile(g).toList
     }) &&
     ("exists" |: {
-      (List(p.toList.exists(g)) === p.exists(g).toList)
+      List(p.toList.exists(g)) === p.exists(g).toList
     }) &&
     ("forall" |: {
-      (List(p.toList.forall(g)) === p.forall(g).toList)
+      List(p.toList.forall(g)) === p.forall(g).toList
     }) &&
     ("lastOr" |: {
-      p.pipe(lastOr(42)).toList === p.toList.lastOption.orElse(Some(42)).toList
+      p.lastOr(42).toList === p.toList.lastOption.orElse(Some(42)).toList
+    }) &&
+    ("collect" |: {
+      p.collect(pf).toList == p.toList.collect(pf)
+    }) &&
+    ("collectFirst" |: {
+      p.collectFirst(pf).toList == p.toList.collectFirst(pf).toList
+    }) &&
+    ("find" |: {
+      p.find(_ % 2 == 0).toList == p.toList.find(_ % 2 == 0).toList
+    }) &&
+    ("fold" |: {
+      p.fold(0)(_ + _).toList == List(p.toList.fold(0)(_ + _))
+    }) &&
+    ("foldMap" |: {
+      p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
+    }) &&
+    ("intersperse" |: {
+      p.intersperse(0).toList == p.toList.intersperse(0)
     }) &&
     ("maximum" |: {
       p.maximum.toList === p.toList.maximum.toList
@@ -81,6 +99,9 @@ object Process1Spec extends Properties("process1") {
     ("minimumOf" |: {
       p2.minimumOf(_.length).toList === p2.toList.map(_.length).minimum.toList
     }) &&
+    ("reduce" |: {
+      p.reduce(_ + _).toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List())
+    }) &&
     ("scan" |: {
       p.toList.scan(0)(_ - _) ===
       p.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
@@ -90,41 +111,20 @@ object Process1Spec extends Properties("process1") {
        p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
     }) &&
     ("shiftRight" |: {
-      p.pipe(shiftRight(1, 2)).toList === List(1, 2) ++ p.toList
+      p.shiftRight(1, 2).toList === List(1, 2) ++ p.toList
     }) &&
     ("splitWith" |: {
       p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
     }) &&
     ("sum" |: {
       p.toList.sum[Int] ===
-      p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
-    }) &&
-    ("intersperse" |: {
-      p.intersperse(0).toList == p.toList.intersperse(0)
-    }) &&
-    ("collect" |: {
-      p.collect(pf).toList == p.toList.collect(pf)
-    }) &&
-    ("collectFirst" |: {
-      p.collectFirst(pf).toList == p.toList.collectFirst(pf).toList
-    }) &&
-    ("fold" |: {
-      p.fold(0)(_ + _).toList == List(p.toList.fold(0)(_ + _))
-    }) &&
-    ("foldMap" |: {
-      p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
-    }) &&
-    ("reduce" |: {
-      (p.reduce(_ + _).toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))
-    }) &&
-    ("find" |: {
-       (p.find(_ % 2 == 0).toList == p.toList.find(_ % 2 == 0).toList)
+      p.toSource.sum.runLastOr(0).timed(3000).run
     })
   }
 
   property("awaitOption") = secure {
-    Process().pipe(awaitOption).toList == List(None) &&
-    Process(1, 2).pipe(awaitOption).toList == List(Some(1))
+    Process().awaitOption.toList == List(None) &&
+    Process(1, 2).awaitOption.toList == List(Some(1))
   }
 
   property("chunk") = secure {
@@ -134,6 +134,18 @@ object Process1Spec extends Properties("process1") {
   property("chunkBy") = secure {
     emitSeq("foo bar baz").chunkBy(_ != ' ').toList.map(_.mkString) ==
       List("foo ", "bar ", "baz")
+  }
+
+  property("chunkBy2") = secure {
+    val s = Process(3, 5, 4, 3, 1, 2, 6)
+    s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
+    s.chunkBy2(_ > _).toList == List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
+  }
+
+  property("last") = secure {
+    var i = 0
+    Process.range(0,10).last.map(_ => i += 1).runLog.run
+    i == 1
   }
 
   property("repartition") = secure {
@@ -170,17 +182,5 @@ object Process1Spec extends Properties("process1") {
     window(1) == List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
     window(2) == List(Vector(0, 1), Vector(1, 2), Vector(2, 3), Vector(3, 4), Vector(4)) &&
     window(3) == List(Vector(0, 1, 2), Vector(1, 2, 3), Vector(2, 3, 4), Vector(3, 4))
-  }
-
-  property("last") = secure {
-    var i = 0
-    Process.range(0,10).last.map(_ => i += 1).runLog.run
-    i == 1
-  }
-
-  property("chunkBy2") = secure {
-    val s = Process(3, 5, 4, 3, 1, 2, 6)
-    s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
-    s.chunkBy2(_ > _).toList == List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
   }
 }
