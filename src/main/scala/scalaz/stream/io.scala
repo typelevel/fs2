@@ -182,6 +182,7 @@ trait io {
       Task.now { (buf: Array[Byte]) => Task.delay {
         val m = src.read(buf)
         if (m == -1) throw End
+        else if (m == buf.size) buf
         else buf.take(m)
       }}
     }
