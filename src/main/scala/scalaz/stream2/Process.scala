@@ -155,7 +155,8 @@ sealed trait Process[+F[_], +O] {
    * in the output process.
    *
    * A disconnected process will terminate either with `End` or an error,
-   * never a `Kill` unless it has already halted with `Kill`.
+   * never a `Kill` (exception: if it internally halts with `Kill` without
+   * external signaling).
    */
   final def disconnect: Process[Nothing,O] = this.suspendStep flatMap {
     case Cont(e@Emit(_),n) => e onHalt { rsn => Try(n(Kill(rsn)).disconnect).swallowKill }
