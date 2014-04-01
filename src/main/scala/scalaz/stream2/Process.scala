@@ -38,19 +38,25 @@ sealed trait Process[+F[_], +O] {
    * is killed with same reason giving it an opportunity to cleanup.
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = {
-    debug(s"PIPE p1: $p1, p1.step: ${p1.step} this: $this this.step: ${this.step}")
-    p1.step match {
-      case Cont(AwaitP1(rcv1),next1) => this.step match {
+    val p1s = p1.step
+    val ts = this.step
+    debug(s"PIPE p1: $p1, p1.step: ${p1s} this: $this this.step: ${ts}")
+    p1s match {
+      case Cont(AwaitP1(rcv1),next1) => ts match {
         case Cont(awt@Await(_,_),next) => (awt onHalt next) pipe p1
         case Cont(Emit(os),next) =>
-          if (os.isEmpty) next(End) pipe p1
-          else next(End) pipe process1.feed(os)(p1)
+          if (os.isEmpty) Try(next(End)) pipe p1
+          else Try(next(End)) pipe process1.feed(os)(p1)
         case Done(rsn) =>
-          this pipe next1(Kill(rsn))
+          val n1 = p1.killBy(Kill(rsn))
+          this pipe n1
       }
-      case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(next1(End))
+      case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(Try(next1(End)))
       case Done(rsn1) => this match {
-        case Halt(rsn) => Halt(CausedBy(rsn1,rsn))
+        case hlt@Halt(rsn) =>
+          if (rsn1 == End || rsn1 == Kill) hlt
+          else if(rsn == End || rsn == Kill) fail(rsn1)
+          else Halt(CausedBy(rsn,rsn1))
         case _ => this.killBy(Kill(rsn1)) pipe p1
       }
     }
@@ -81,9 +87,12 @@ sealed trait Process[+F[_], +O] {
         }
       } else {
         cur match {
+          case Halt(End) =>
+            go(Try(stack.head(End).run), stack.tail)
           case Halt(rsn)      =>
-            println(s"################# rsn: $rsn next: ${Try(stack.head(rsn).run).causedBy(rsn)}")
-            go(Try(stack.head(rsn).run).causedBy(rsn), stack.tail)
+            val np = Try(stack.head(rsn).run)
+            println(s"################# rsn: $rsn next: ${np}")
+            go(np, stack.tail)
           case Append(p, n)   => go(p, n fast_++ stack)
           case AwaitOrEmit(p) => Cont(p, rsn => Append(Halt(rsn), stack))
         }
@@ -107,7 +116,7 @@ sealed trait Process[+F[_], +O] {
   final def append[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = {
     onHalt {
       case End => p2
-      case rsn => halt
+      case rsn => fail(rsn)
     }
   }
 
@@ -135,10 +144,11 @@ sealed trait Process[+F[_], +O] {
 
   /** Ignore all outputs of this `Process`. */
   final def drain: Process[F, Nothing] = {
-    this.step match {
+    val ts = this.step
+    ts match {
       case Cont(Emit(_),n) => n(End).drain
       case Cont(awt@Await(_,_), next) => awt.extend(_.drain).onHalt(rsn=>next(rsn).drain)
-      case Done(rsn) => Halt(rsn)
+      case Done(rsn) => fail(rsn)
     }
   }
 
@@ -161,12 +171,14 @@ sealed trait Process[+F[_], +O] {
    *
    */
   final def killBy(rsn: Throwable): Process[F, Nothing] = {
-    debug(s"KILLBY rsn:$rsn, this:$this, step: ${this.step } ")
-    this.step match {
-      case Cont(Emit(_),n) => n(rsn).drain
+    val ts = this.step
+    debug(s"KILLBY rsn:$rsn, this:$this, step: ${ts } ")
+    ts match {
+      case Cont(Emit(_),n) => Try(n(rsn)).drain
       case Cont(Await(_,_),n) =>
-        println(">>>>>>>" +  n(rsn))
-        n(rsn).drain
+        val np = Try(n(rsn))
+        println((">>>>>>>", np, np.drain) )
+        Try(np).drain
       case Done(End) => Halt(rsn)
       case Done(rsn0) => Halt(CausedBy(rsn0,rsn))
     }
@@ -215,7 +227,10 @@ sealed trait Process[+F[_], +O] {
    *
    */
   final def onComplete[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] =
-    onHalt { rsn => Try(p2).causedBy(rsn) }
+    onHalt {
+      case End => Try(p2)
+      case rsn =>  Try(p2).causedBy(rsn)
+    }
 
   /**
    * When the process terminates either due to `End` or `Throwable`
@@ -234,7 +249,10 @@ sealed trait Process[+F[_], +O] {
    * and appned process specified in `cleanup` argument in case _next_ Await throws any other exception
    */
   final def orElse[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], cleanup: => Process[F2, O2] = halt): Process[F2, O2] =
-    onHalt { case End => fallback; case _ => cleanup }
+    onHalt {
+      case End => Try(fallback)
+      case rsn => Try(cleanup).causedBy(rsn)
+    }
 
 
   /**
@@ -286,7 +304,7 @@ sealed trait Process[+F[_], +O] {
       cur.step match {
         case Cont(Emit(os),n) => go(n(End),acc fast_++ os)
         case Cont(awt,next) => (acc,awt onHalt next)
-        case Done(rsn) => (acc,Halt(rsn)) 
+        case Done(rsn) => (acc,Halt(rsn))
       }
     }
     go(this, Vector())
@@ -701,7 +719,7 @@ object Process {
     ): Process[F, O] = {
     Await[F, A, O](req, a => Trampoline.delay(rcv(a))) onHalt {
       case End => fallback
-      case _   => cleanup
+      case rsn   => cleanup.causedBy(rsn)
     }
 
   }
@@ -796,7 +814,7 @@ object Process {
   object CausedBy {
     def apply(e: Throwable, cause: Throwable): Throwable =
       e match {
-        case End => e
+        case End => cause
         case `cause` => e
         case _   => new CausedBy(e, cause)
       }
@@ -929,11 +947,14 @@ object Process {
    * producing the process involves allocation of some mutable
    * resource we want to ensure is accessed in a single-threaded way.
    */
-  def suspend[F[_], O](p: => Process[F, O]): Process[F, O] =
+  def suspend[F[_], O](p: => Process[F, O]): Process[F, O] = {
+    println("SUSPEND")
     Append(halt,Vector({
       case End => Trampoline.delay(p)
       case rsn => Trampoline.delay(p causedBy rsn)
     }))
+  }
+
 
 
 }
