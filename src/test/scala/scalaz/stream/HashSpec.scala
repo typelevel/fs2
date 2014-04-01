@@ -2,11 +2,13 @@ package scalaz.stream
 
 import java.security.MessageDigest
 import org.scalacheck._
-import Prop._
+import org.scalacheck.Prop._
 import scodec.bits.ByteVector
 
 import Process._
 import hash._
+
+import TestInstances._
 
 object HashSpec extends Properties("hash") {
   def digest(algo: String, str: String): List[Byte] =
@@ -31,11 +33,11 @@ object HashSpec extends Properties("hash") {
   }
 
   property("empty input") = secure {
-    Process[ByteVector]().pipe(md2).toList == List()
+    Process[ByteVector]().pipe(md2).toList.isEmpty
   }
 
-  property("zero or one output") = forAll { (ls: List[String]) =>
-    emitSeq(ls.map(s => ByteVector.view(s.getBytes))).pipe(md2).toList.length <= 1
+  property("zero or one output") = forAll { (lb: List[ByteVector]) =>
+    emitSeq(lb).pipe(md2).toList.length <= 1
   }
 
   property("thread-safety") = secure {
