@@ -37,34 +37,21 @@ sealed trait Process[+F[_], +O] {
    * values as they are demanded by `p1`. If `p1` signals termination, `this`
    * is killed with same reason giving it an opportunity to cleanup.
    */
-  final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = {
-    val p1s = p1.step
-    val ts = this.step
-    debug(s"PIPE p1: $p1, p1.step: ${p1s} this: $this this.step: ${ts}")
-    p1s match {
-      case Cont(AwaitP1(rcv1),next1) => ts match {
-        case Cont(awt@Await(_,_),next) => (awt onHalt next) pipe p1
-        case Cont(Emit(os),next) =>
-          if (os.isEmpty) Try(next(End)) pipe p1
-          else Try(next(End)) pipe process1.feed(os)(p1)
-        case Done(rsn) =>
-          val n1 = p1.killBy(Kill(rsn))
-          this pipe n1
-      }
-      case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(Try(next1(End)))
-      case Done(rsn1) => this match {
-        case hlt@Halt(rsn) =>
-          if (rsn1 == End || rsn1 == Kill) hlt
-          else if(rsn == End || rsn == Kill) fail(rsn1)
-          else Halt(CausedBy(rsn,rsn1))
-        case _ => this.killBy(Kill(rsn1)) pipe p1
-      }
+  final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = p1.suspendStep flatMap {
+    case p1s@Cont(AwaitP1(rcv1),next1) => this.step match {
+      case Cont(awt@Await(_,_),next) => (awt onHalt next) pipe p1
+      case Cont(Emit(os),next) => Try(next(End)) pipe process1.feed(os)(p1)
+      case Done(rsn) => fail(rsn) onComplete p1s.toProcess.disconnect
     }
-
+    case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(Try(next1(End)))
+    case Done(rsn1) => this.kill.swallowKill onComplete fail(rsn1)
   }
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
+
+  final def suspendStep: Process[Nothing,Step[F,O]] =
+    suspend { emit(step) }
 
     /**
      * Evaluate this process and produce next `Step` of this process.
@@ -161,14 +148,36 @@ sealed trait Process[+F[_], +O] {
   }
 
   /**
+   * Used when a transducer is terminated by awaiting on a branch that
+   * is in the halted state. Such a process is given the opportunity
+   * to emit any final values before halting with `End`. The implementation
+   * issues `Kill` to any future `onHalt`, then swallows these `Kill` causes
+   * in the output process.
+   *
+   * A disconnected process will terminate either with `End` or an error,
+   * never a `Kill` (exception: if it internally halts with `Kill` without
+   * external signaling).
+   */
+  final def disconnect: Process[Nothing,O] = this.suspendStep flatMap {
+    case Cont(e@Emit(_),n) => e onHalt { rsn => Try(n(Kill(rsn)).disconnect).swallowKill }
+    case Cont(Await(_,_),n) => Try(n(Kill).disconnect).swallowKill
+    case Done(rsn) => Halt(rsn)
+  }
+
+  /** Replaces `Halt(Kill)` with `Halt(End)`. */
+  def swallowKill: Process[F,O] = this.onHalt {
+    case Kill => halt
+    case e: Throwable => fail(e)
+  }
+
+  /**
    * Causes this process to be terminated, giving chance for any cleanup actions to be run
    */
-  final def kill: Process[F,Nothing] =killBy(Kill)
+  final def kill: Process[F,Nothing] = killBy(Kill)
 
   /**
    * Causes this process to be terminated, giving chance for any cleanup actions to be run
    * @param rsn Reason for termination
-   *
    */
   final def killBy(rsn: Throwable): Process[F, Nothing] = {
     val ts = this.step
@@ -182,17 +191,6 @@ sealed trait Process[+F[_], +O] {
       case Done(End) => Halt(rsn)
       case Done(rsn0) => Halt(CausedBy(rsn0,rsn))
     }
-
-
-//    this match {
-//      case Emit(_)         => fail(rsn0)
-//      case hlt@Halt(_)     => hlt
-//      case Await(req, rcv) => fail(rsn0)
-//      case Append(_, n)    => n.headOption match {
-//        case Some(h) => (Try(h(rsn0).run) ++ Append(halt, n.tail)).drain
-//        case None    => fail(rsn0)
-//      }
-//    }
   }
 
   //  /** Causes _all_ subsequent awaits to  to fail with the `End` exception. */
@@ -669,7 +667,12 @@ object Process {
 
   }
 
-  sealed trait Step[+F[_], +O]
+  sealed trait Step[+F[_], +O] {
+    def toProcess: Process[F,O] = this match {
+      case Done(rsn) => fail(rsn)
+      case Cont(hd, tl) => hd onHalt tl
+    }
+  }
 
   case class Done(rsn: Throwable) extends Step[Nothing, Nothing] {
     def asHalt : Halt = Halt(rsn)
