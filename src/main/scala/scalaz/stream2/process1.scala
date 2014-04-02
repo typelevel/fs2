@@ -5,7 +5,7 @@ import java.nio.charset.Charset
 import scala.annotation.tailrec
 import scalaz.syntax.equal._
 import scalaz.\/._
-import scalaz._ 
+import scalaz._
 import scalaz.\/-
 import scalaz.-\/
 
