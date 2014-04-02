@@ -4,8 +4,10 @@ import collection.immutable.Vector
 import java.nio.charset.Charset
 import scala.annotation.tailrec
 import scalaz.syntax.equal._
-import scalaz.{\/, -\/, \/-, Monoid, Semigroup, Equal}
 import scalaz.\/._
+import scalaz._ 
+import scalaz.\/-
+import scalaz.-\/
 
 
 trait process1 {
@@ -286,6 +288,30 @@ trait process1 {
   def liftR[A, B, C](p: Process1[B, C]): Process1[A \/ B, A \/ C] =
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
 
+  /** Emits the greatest element of the input. */
+  def maximum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce((x, y) => if (A.greaterThan(x, y)) x else y)
+
+  /** Emits the element `a` of the input which yields the greatest value of `f(a)`. */
+  def maximumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce((x, y) => if (Order.orderBy(f).greaterThan(x, y)) x else y)
+
+  /** Emits the greatest value of `f(a)` for each element `a` of the input. */
+  def maximumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> maximum
+
+  /** Emits the smallest element of the input. */
+  def minimum[A](implicit A: Order[A]): Process1[A,A] =
+    reduce((x, y) => if (A.lessThan(x, y)) x else y)
+
+  /** Emits the element `a` of the input which yields the smallest value of `f(a)`. */
+  def minimumBy[A,B: Order](f: A => B): Process1[A,A] =
+    reduce((x, y) => if (Order.orderBy(f).lessThan(x, y)) x else y)
+
+  /** Emits the smallest value of `f(a)` for each element `a` of the input. */
+  def minimumOf[A,B: Order](f: A => B): Process1[A,B] =
+    lift(f) |> minimum
+
   /**
    * Split the input and send to either `chan1` or `chan2`, halting when
    * either branch halts.
@@ -358,6 +384,23 @@ trait process1 {
           case 1 => go(Some(parts.head))
           case _ => emitAll(parts.init) fby go(Some(parts.last))
         }
+      } orElse emitAll(carry.toList)
+    go(None)
+  }
+
+  /**
+   * Repartitions the input with the function `p`. On each step `p` is applied
+   * to the input and the first element of the resulting tuple is emitted if it
+   * is `Some(x)`. The second element is then prepended to the next input using
+   * the Semigroup `I`. In comparison to `repartition` this allows to emit
+   * single inputs without prepending them to the next input.
+   */
+  def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
+    def go(carry: Option[I]): Process1[I,I] =
+      await1[I].flatMap { i =>
+        val next = carry.fold(i)(c => I.append(c, i))
+        val (fst, snd) = p(next)
+        fst.fold(go(snd))(head => emit(head) fby go(snd))
       } orElse emitAll(carry.toList)
     go(None)
   }
@@ -523,3 +566,241 @@ trait process1 {
 }
 
 object process1 extends process1
+
+
+
+private[stream2] trait Process1Ops[+F[_],+O] {
+  self: Process[F,O] =>
+
+  /** Alias for `this |> [[process1.awaitOption]]`. */
+  def awaitOption: Process[F,Option[O]] =
+    this |> process1.awaitOption
+
+  /** Alias for `this |> [[process1.buffer]](n)`. */
+  def buffer(n: Int): Process[F,O] =
+    this |> process1.buffer(n)
+
+  /** Alias for `this |> [[process1.bufferAll]]`. */
+  def bufferAll: Process[F,O] =
+    this |> process1.bufferAll
+
+  /** Alias for `this |> [[process1.bufferBy]](f)`. */
+  def bufferBy(f: O => Boolean): Process[F,O] =
+    this |> process1.bufferBy(f)
+
+  /** Alias for `this |> [[process1.chunk]](n)`. */
+  def chunk(n: Int): Process[F,Vector[O]] =
+    this |> process1.chunk(n)
+
+  /** Alias for `this |> [[process1.chunkAll]]`. */
+  def chunkAll: Process[F,Vector[O]] =
+    this |> process1.chunkAll
+
+  /** Alias for `this |> [[process1.chunkBy]](f)`. */
+  def chunkBy(f: O => Boolean): Process[F,Vector[O]] =
+    this |> process1.chunkBy(f)
+
+  /** Alias for `this |> [[process1.chunkBy2]](f)`. */
+  def chunkBy2(f: (O, O) => Boolean): Process[F,Vector[O]] =
+    this |> process1.chunkBy2(f)
+
+  /** Alias for `this |> [[process1.collect]](pf)`. */
+  def collect[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
+    this |> process1.collect(pf)
+
+  /** Alias for `this |> [[process1.collectFirst]](pf)`. */
+  def collectFirst[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
+    this |> process1.collectFirst(pf)
+
+  /** Alias for `this |> [[process1.drop]](n)`. */
+  def drop(n: Int): Process[F,O] =
+    this |> process1.drop(n)
+
+  /** Alias for `this |> [[process1.dropLast]]`. */
+  def dropLast: Process[F,O] =
+    this |> process1.dropLast
+
+  /** Alias for `this |> [[process1.dropLastIf]](p)`. */
+  def dropLastIf(p: O => Boolean): Process[F,O] =
+    this |> process1.dropLastIf(p)
+
+  /** Alias for `this |> [[process1.dropWhile]](f)`. */
+  def dropWhile(f: O => Boolean): Process[F,O] =
+    this |> process1.dropWhile(f)
+
+  /** Alias for `this |> [[process1.exists]](f)` */
+  def exists(f: O => Boolean): Process[F,Boolean] =
+    this |> process1.exists(f)
+
+  /** Alias for `this |> [[process1.filter]](f)`. */
+  def filter(f: O => Boolean): Process[F,O] =
+    this |> process1.filter(f)
+
+  /** Alias for `this |> [[process1.find]](f)` */
+  def find(f: O => Boolean): Process[F,O] =
+    this |> process1.find(f)
+
+  /** Alias for `this |> [[process1.forall]](f)` */
+  def forall(f: O => Boolean): Process[F,Boolean] =
+    this |> process1.forall(f)
+
+  /** Alias for `this |> [[process1.fold]](b)(f)`. */
+  def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.fold(b)(f)
+
+  /** Alias for `this |> [[process1.foldMap]](f)(M)`. */
+  def foldMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.foldMap(f)(M)
+
+  /** Alias for `this |> [[process1.foldMonoid]](M)` */
+  def foldMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.foldMonoid(M)
+
+  /** Alias for `this |> [[process1.foldSemigroup]](M)`. */
+  def foldSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.foldSemigroup(M)
+
+  /** Alias for `this |> [[process1.fold1]](f)`. */
+  def fold1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.fold1(f)
+
+  /** Alias for `this |> [[process1.fold1Map]](f)(M)`. */
+  def fold1Map[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.fold1Map(f)(M)
+
+  /** Alias for `this |> [[process1.fold1Monoid]](M)` */
+  def fold1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.fold1Monoid(M)
+
+  /** Alias for `this |> [[process1.intersperse]](sep)`. */
+  def intersperse[O2>:O](sep: O2): Process[F,O2] =
+    this |> process1.intersperse(sep)
+
+  /** Alias for `this |> [[process1.last]]`. */
+  def last: Process[F,O] =
+    this |> process1.last
+
+  /** Alias for `this |> [[process1.last]]`. */
+  def lastOr[O2 >: O](o: => O2): Process[F,O2] =
+    this |> process1.lastOr(o)
+
+  /** Alias for `this |> [[process1.maximum]]`. */
+  def maximum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =
+    this |> process1.maximum(O2)
+
+  /** Alias for `this |> [[process1.maximumBy]](f)`. */
+  def maximumBy[B: Order](f: O => B): Process[F,O] =
+    this |> process1.maximumBy(f)
+
+  /** Alias for `this |> [[process1.maximumOf]](f)`. */
+  def maximumOf[B: Order](f: O => B): Process[F,B] =
+    this |> process1.maximumOf(f)
+
+  /** Alias for `this |> [[process1.minimum]]`. */
+  def minimum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =
+    this |> process1.minimum(O2)
+
+  /** Alias for `this |> [[process1.minimumBy]](f)`. */
+  def minimumBy[B: Order](f: O => B): Process[F,O] =
+    this |> process1.minimumBy(f)
+
+  /** Alias for `this |> [[process1.minimumOf]](f)`. */
+  def minimumOf[B: Order](f: O => B): Process[F,B] =
+    this |> process1.minimumOf(f)
+
+  /** Alias for `this |> [[process1.once]]`. */
+  def once: Process[F,O] =
+    this |> process1.take(1)
+
+  /** Alias for `this |> [[process1.reduce]](f)`. */
+  def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.reduce(f)
+
+  /** Alias for `this |> [[process1.reduceMap]](f)(M)`. */
+  def reduceMap[M](f: O => M)(implicit M: Semigroup[M]): Process[F,M] =
+    this |> process1.reduceMap(f)(M)
+
+  /** Alias for `this |> [[process1.reduceMonoid]](M)`. */
+  def reduceMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.reduceMonoid(M)
+
+  /** Alias for `this |> [[process1.reduceSemigroup]](M)`. */
+  def reduceSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.reduceSemigroup(M)
+
+  /** Alias for `this |> [[process1.repartition]](p)(S)` */
+  def repartition[O2 >: O](p: O2 => collection.IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
+    this |> process1.repartition(p)(S)
+
+  /** Alias for `this |> [[process1.repartition2]](p)(S)` */
+  def repartition2[O2 >: O](p: O2 => (Option[O2], Option[O2]))(implicit S: Semigroup[O2]): Process[F,O2] =
+    this |> process1.repartition2(p)(S)
+
+  /** Alias for `this |> [[process1.scan]](b)(f)`. */
+  def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
+    this |> process1.scan(b)(f)
+
+  /** Alias for `this |> [[process1.scanMap]](f)(M)`. */
+  def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
+    this |> process1.scanMap(f)(M)
+
+  /** Alias for `this |> [[process1.scanMonoid]](M)`. */
+  def scanMonoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.scanMonoid(M)
+
+  /** Alias for `this |> [[process1.scanSemigroup]](M)`. */
+  def scanSemigroup[O2 >: O](implicit M: Semigroup[O2]): Process[F,O2] =
+    this |> process1.scanSemigroup(M)
+
+  /** Alias for `this |> [[process1.scan1]](f)`. */
+  def scan1[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
+    this |> process1.scan1(f)
+
+  /** Alias for `this |> [[process1.scan1Map]](f)(M)`. */
+  def scan1Map[M](f: O => M)(implicit M: Semigroup[M]): Process[F,M] =
+    this |> process1.scan1Map(f)(M)
+
+  /** Alias for `this |> [[process1.scan1Monoid]](M)`. */
+  def scan1Monoid[O2 >: O](implicit M: Monoid[O2]): Process[F,O2] =
+    this |> process1.scan1Monoid(M)
+
+  /** Alias for `this |> [[process1.shiftRight]](head)` */
+  def shiftRight[O2 >: O](head: O2*): Process[F,O2] =
+    this |> process1.shiftRight(head: _*)
+
+  /** Alias for `this |> [[process1.split]](f)` */
+  def split(f: O => Boolean): Process[F,Vector[O]] =
+    this |> process1.split(f)
+
+  /** Alias for `this |> [[process1.splitOn]](p)` */
+  def splitOn[P >: O](p: P)(implicit P: Equal[P]): Process[F,Vector[P]] =
+    this |> process1.splitOn(p)
+
+  /** Alias for `this |> [[process1.splitWith]](f)` */
+  def splitWith(f: O => Boolean): Process[F,Vector[O]] =
+    this |> process1.splitWith(f)
+
+  /** Alias for `this |> [[process1.sum]]` */
+  def sum[O2 >: O](implicit N: Numeric[O2]): Process[F,O2] =
+    this |> process1.sum(N)
+
+  /** Alias for `this |> [[process1.take]](n)`. */
+  def take(n: Int): Process[F,O] =
+    this |> process1.take(n)
+
+  /** Alias for `this |> [[process1.takeThrough]](f)`. */
+  def takeThrough(f: O => Boolean): Process[F,O] =
+    this |> process1.takeThrough(f)
+
+  /** Alias for `this |> [[process1.takeWhile]](f)`. */
+  def takeWhile(f: O => Boolean): Process[F,O] =
+    this |> process1.takeWhile(f)
+
+  /** Alias for `this |> [[process1.terminated]]`. */
+  def terminated: Process[F,Option[O]] =
+    this |> process1.terminated
+
+  /** Alias for `this |> [[process1.window]](n)`. */
+  def window(n: Int): Process[F,Vector[O]] =
+    this |> process1.window(n)
+}

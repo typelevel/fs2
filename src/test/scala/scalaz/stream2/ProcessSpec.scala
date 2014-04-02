@@ -12,9 +12,10 @@ import scalaz.std.string._
 import org.scalacheck.{Arbitrary, Properties}
 import scalaz.concurrent.Strategy
 import Util._
-import scalaz.stream2.process1._
+import process1._
 import scalaz.stream2.Process.Kill
 import Process._
+import TestInstances._
 
 object ProcessSpec extends Properties("Process") {
 
@@ -32,12 +33,6 @@ object ProcessSpec extends Properties("Process") {
   //  }
 
 
-  implicit def EqualProcess[A: Equal]: Equal[Process0[A]] = new Equal[Process0[A]] {
-    def equal(a: Process0[A], b: Process0[A]): Boolean =
-      a.toList === b.toList
-  }
-  implicit def ArbProcess0[A: Arbitrary]: Arbitrary[Process0[A]] =
-    Arbitrary(Arbitrary.arbitrary[List[A]].map(a => Process(a: _*)))
 
 
   property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
@@ -47,19 +42,18 @@ object ProcessSpec extends Properties("Process") {
 
     val sm = Monoid[String]
 //
-//  println("##########"*10 + p)
-//  println("P1 " + p.toList.flatMap(f).size)
-//  println("P2 " + p.flatMap(f andThen Process.emitAll).toList.size )
-
+//   println("##########"*10 + p)
+//   println("P1 " + p.toList.map(_ + 1) )
+//  println("P2 " +  p.pipe(lift(_ + 1)).toList )
+//    println("====" +  (p.toList.map(_ + 1) === p.pipe(lift(_ + 1)).toList) )
   try {
     val examples = Seq(
-      //  "map" |:  (p.toList.map(_ + 1) === p.map(_ + 1).toList)
-       "map-pipe" |: (p.map(_ + 1) === p.pipe(lift(_ + 1)))
-     //   , "flatMap" |:   (p.toList.flatMap(f) === p.flatMap(f andThen Process.emitAll).toList)
+        "map" |:  (p.toList.map(_ + 1) === p.map(_ + 1).toList)
+       , "map-pipe" |: (p.toList.map(_ + 1) === p.pipe(lift(_ + 1)).toList)
+       , "flatMap" |:   (p.toList.flatMap(f) === p.flatMap(f andThen Process.emitAll).toList)
     )
 
-    //examples.reduce(_ && _)
-    false
+    examples.reduce(_ && _)
   } catch {
     case t : Throwable => t.printStackTrace(); throw t
   }
