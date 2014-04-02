@@ -44,14 +44,13 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
       case Done(rsn) => fail(rsn) onComplete p1s.toProcess.disconnect
     }
     case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(Try(next1(End)))
-    case Done(rsn1) => this.kill.swallowKill onComplete fail(rsn1)
+    case Done(rsn1) => this.killBy(Kill(rsn1)).swallowKill onComplete fail(rsn1)
   }
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
 
-  final def suspendStep: Process[Nothing,Step[F,O]] =
-    suspend { emit(step) }
+
 
     /**
      * Evaluate this process and produce next `Step` of this process.
@@ -86,6 +85,12 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
 
   }
 
+  /**
+   * Like `step` just suspended in Process for stack-safety and lazy evaluation.
+   * @return
+   */
+  final def suspendStep: Process[Nothing,Step[F,O]] =
+    suspend { emit(step) }
 
 
   ////////////////////////////////////////////////////////////////////////////////////////

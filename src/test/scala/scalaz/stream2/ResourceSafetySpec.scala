@@ -32,14 +32,18 @@ object ResourceSafetySpec extends Properties("resource-safety") {
   property("pure code") = secure {
     import Process._
     var thrown = List[Throwable]()
-    def cleanup(t:Throwable) = eval { Task.delay { thrown = thrown :+ t } }.drain.causedBy(t)
+    def cleanup(t:Throwable) =   { thrown = thrown :+ t ; fail(t) }
     val src = Process.range(0,10)
     val procs = List(
-     ("flatMap-Emit",emit(1).flatMap(_ => die).onHalt(cleanup), bwah, bwah)
-     ,("flatMap-Append",(emit(1) ++ emit(2)).flatMap(_ => die) onHalt(cleanup), bwah, bwah)
-     , ("flatMap-Append-lzy" , (emit(1) ++ emit(2)).flatMap({ case 1 => emit(1) ; case 2 => die }) onHalt(cleanup), bwah,bwah)
-     , ("map-lzy", src.map(i => if (i == 3) die else i).onHalt(cleanup), bwah, bwah)
-     , ("append-lzy", (src ++ die) onHalt cleanup, bwah, bwah)
+     ("flatMap-Emit",emit(1).flatMap(_ => die).onHalt(cleanup), bwah, List(bwah))
+     ,("flatMap-Append",(emit(1) ++ emit(2)).flatMap(_ => die) onHalt(cleanup), bwah, List(bwah))
+     , ("flatMap-Append-lzy" , (emit(1) ++ emit(2)).flatMap({ case 1 => emit(1) ; case 2 => die }) onHalt(cleanup), bwah,List(bwah))
+     , ("map-lzy", src.map(i => if (i == 3) die else i).onHalt(cleanup), bwah, List(bwah))
+     , ("append-lzy", (src ++ die) onHalt cleanup, bwah, List(bwah))
+     , ("pipe-term-p1", src.pipe(fail(bwah)) onHalt cleanup, bwah, List(bwah))
+     , ("pipe-term-src", fail(bwah).pipe(process1.id) onHalt cleanup, bwah, List(bwah))
+     , ("pipe-cln-src", (src onHalt cleanup).pipe(fail(bwah)) onHalt cleanup , bwah, List(bwah,bwah))
+     , ("pipe-cln-p1", src.pipe(fail(bwah) onHalt cleanup) onHalt cleanup , bwah, List(bwah,bwah))
 //      , src.filter(i => if (i == 3) throw End else true).onComplete(cleanup)
 //      , src.pipe(process1.lift((i: Int) => if (i == 3) die else true)).onComplete(cleanup)
 //      , src.flatMap(i => if (i == 3) die else emit(i)).onComplete(cleanup)
@@ -59,8 +63,9 @@ object ResourceSafetySpec extends Properties("resource-safety") {
 //        println(">>>>>"+proc.run.attemptRun)
 //        println("~~~~~"+thrown)
         val r = proc.run.attemptRun
-        val thrwn = if (thrown.size < idx) None else Some(thrown(idx))
-        s"$label r: $r t: $thrwn" |: ( r == -\/(exp) && thrown(idx) == cup)
+        val thrwn = thrown
+        thrown = Nil
+        s"$label r: $r t: $thrwn" |: ( r == -\/(exp) && thrwn == cup)
     }
 
     result.reduce(_ && _)
