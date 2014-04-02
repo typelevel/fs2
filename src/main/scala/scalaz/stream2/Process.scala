@@ -474,16 +474,27 @@ object Process {
   }
 
   sealed trait Step[+F[_], +O] {
+    /**
+     * Helper to convert `Step` to appended process again.
+     */
     def toProcess: Process[F,O] = this match {
       case Done(rsn) => fail(rsn)
       case Cont(hd, tl) => hd onHalt tl
     }
   }
 
+  /**
+   * A `Step` that indtcates that process has terminated.
+   * @param rsn
+   */
   case class Done(rsn: Throwable) extends Step[Nothing, Nothing] {
     def asHalt : Halt = Halt(rsn)
   }
 
+  /**
+   * A `Step` that indicates there is Await or Emit at head, and some next step of `Process`
+   * that will be eventually produced when the head will get evaluated.  
+   */
   case class Cont[+F[_], +O](h: AwaitOrEmit[F, O], next: Throwable => Process[F, O]) extends Step[F, O]
 
 
@@ -520,18 +531,14 @@ object Process {
   }
 
 
-  /** stack-safe constructor for await allowing to pass `req` as request and function to produce next state **/
-  def await[F[_], A, O](req: F[A])(
-    rcv: A => Process[F, O]
-    , fallback: => Process[F, O] = halt
-    , cleanup: => Process[F, O] = halt
-    ): Process[F, O] = {
-    Await[F, A, O](req, a => Trampoline.delay(rcv(a))) onHalt {
-      case End => fallback
-      case rsn   => cleanup.causedBy(rsn)
-    }
+  /**
+   * stack-safe constructor for Await
+   * allowing to pass `req` as request
+   * and function to produce next state
+   */
+  def await[F[_], A, O](req: F[A])(rcv: A => Process[F, O]): Process[F, O] =
+    Await[F, A, O](req, a => Trampoline.delay(rcv(a)))
 
-  }
 
   ///////////////////////////////////////////////////////////////////////////////////////
   //
