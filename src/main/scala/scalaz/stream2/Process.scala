@@ -17,7 +17,7 @@ sealed trait Process[+F[_], +O] {
    * sequence these processes using `append`.
    */
   final def flatMap[F2[x] >: F[x], O2](f: O => Process[F2, O2]): Process[F2, O2] = {
-    debug(s"FM this:$this")
+   // debug(s"FM this:$this")
     this match {
       case Halt(_) | Emit(Seq()) => this.asInstanceOf[Process[F2,O2]]
       case Emit(os)                => os.tail.foldLeft(Try(f(os.head)))((p, n) => p append Try(f(n)))
@@ -65,7 +65,7 @@ sealed trait Process[+F[_], +O] {
   final def step: Step[F, O] = {
     @tailrec
     def go(cur: Process[F, O], stack: Vector[Throwable => Trampoline[Process[F, O]]]): Step[F, O] = {
-      debug(s"STEP $cur, stack: ${stack.size}")
+    //  debug(s"STEP $cur, stack: ${stack.size}")
       if (stack.isEmpty) {
         cur match {
           case Halt(rsn)      => Done(rsn)
@@ -74,12 +74,8 @@ sealed trait Process[+F[_], +O] {
         }
       } else {
         cur match {
-          case Halt(End) =>
-            go(Try(stack.head(End).run), stack.tail)
-          case Halt(rsn)      =>
-            val np = Try(stack.head(rsn).run)
-            println(s"################# rsn: $rsn next: ${np}")
-            go(np, stack.tail)
+          case Halt(End) =>  go(Try(stack.head(End).run), stack.tail)
+          case Halt(rsn)      =>  go(Try(stack.head(rsn).run), stack.tail)
           case Append(p, n)   => go(p, n fast_++ stack)
           case AwaitOrEmit(p) => Cont(p, rsn => Append(Halt(rsn), stack))
         }
@@ -181,13 +177,10 @@ sealed trait Process[+F[_], +O] {
    */
   final def killBy(rsn: Throwable): Process[F, Nothing] = {
     val ts = this.step
-    debug(s"KILLBY rsn:$rsn, this:$this, step: ${ts } ")
+    //debug(s"KILLBY rsn:$rsn, this:$this, step: ${ts } ")
     ts match {
       case Cont(Emit(_),n) => Try(n(rsn)).drain
-      case Cont(Await(_,_),n) =>
-        val np = Try(n(rsn))
-        println((">>>>>>>", np, np.drain) )
-        Try(np).drain
+      case Cont(Await(_,_),n) => Try(Try(n(rsn))).drain
       case Done(End) => Halt(rsn)
       case Done(rsn0) => Halt(CausedBy(rsn0,rsn))
     }
@@ -258,14 +251,10 @@ sealed trait Process[+F[_], +O] {
    * long as no errors occur.
    */
   final def repeat: Process[F, O] = {
-    debug(s"REPEAT $this ")
+   // debug(s"REPEAT $this ")
     this.onHalt {
-      case End =>
-        debug("REP THIS END")
-        this.repeat
-      case rsn =>
-        debug("REP TERM " + rsn)
-        fail(rsn)
+      case End =>  this.repeat
+      case rsn =>  fail(rsn)
     }
 
     //    this onHalt {
@@ -326,11 +315,10 @@ sealed trait Process[+F[_], +O] {
             go(next(End).asInstanceOf[Process[F2, O]], nacc)
           }
         case Cont(awt:Await[F2,Any,O]@unchecked,next:(Throwable => Process[F2,O])@unchecked) =>
-          F.bind(C.attempt(awt.req)) {
-
-            case \/-(r)   => go(Try(awt.rcv(r).run) onHalt next, acc)
-            case -\/(rsn) => go(Try(next(rsn)), acc)
-          }
+          F.bind(C.attempt(awt.req)) { _.fold(
+            rsn => go(Try(next(rsn)), acc)
+            , r => go(Try(awt.rcv(r).run) onHalt next, acc)
+          )}
         case Done(End) => F.point(acc)
         case Done(Kill) => F.point(acc)
         case Done(err) => C.fail(err)
@@ -951,7 +939,7 @@ object Process {
    * resource we want to ensure is accessed in a single-threaded way.
    */
   def suspend[F[_], O](p: => Process[F, O]): Process[F, O] = {
-    println("SUSPEND")
+   // println("SUSPEND")
     Append(halt,Vector({
       case End => Trampoline.delay(p)
       case rsn => Trampoline.delay(p causedBy rsn)
