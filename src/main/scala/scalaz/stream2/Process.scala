@@ -112,12 +112,9 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
   final def ++[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
 
   /**
-   * Run this `Process`, then, if it self-terminates, run `p2`.
-   * This differs from `append` in that `p2` is not consulted if this
-   * `Process` terminates due to the input being exhausted.
-   * That is if the Await terminated with an End exception, `p2` is not appended.
+   * alias for `append`
    */
-  final def fby[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = ???
+  final def fby[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
 
   /**
    * Add `e` as a cause when this `Process` halts.
@@ -493,7 +490,7 @@ object Process {
 
   /**
    * A `Step` that indicates there is Await or Emit at head, and some next step of `Process`
-   * that will be eventually produced when the head will get evaluated.  
+   * that will be eventually produced when the head will get evaluated.
    */
   case class Cont[+F[_], +O](h: AwaitOrEmit[F, O], next: Throwable => Process[F, O]) extends Step[F, O]
 
