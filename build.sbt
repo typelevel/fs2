@@ -4,7 +4,7 @@ name := "scalaz-stream"
 
 version := "snapshot-0.4"
 
-scalaVersion := "2.10.2"
+scalaVersion := "2.10.3"
 
 scalacOptions ++= Seq(
   "-feature",
@@ -17,12 +17,18 @@ scalacOptions ++= Seq(
   "-deprecation"
 )
 
+scalacOptions in (Compile, doc) ++= Seq(
+  "-doc-source-url", scmInfo.value.get.browseUrl + "/tree/master€{FILE_PATH}.scala",
+  "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath
+)
+
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.5",
-  "org.scalaz" %% "scalaz-concurrent" % "7.0.5",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.5" % "test",
+  "org.scalaz" %% "scalaz-core" % "7.0.6",
+  "org.scalaz" %% "scalaz-concurrent" % "7.0.6",
+  "org.typelevel" %% "scodec-bits" % "1.0.0",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.6" % "test",
   "org.scalacheck" %% "scalacheck" % "1.10.1" % "test"
 )
 
@@ -31,6 +37,9 @@ seq(bintraySettings:_*)
 publishMavenStyle := true
 
 licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
+
+scmInfo := Some(ScmInfo(url("https://github.com/scalaz/scalaz-stream"),
+  "git@github.com:scalaz/scalaz-stream.git"))
 
 bintray.Keys.packageLabels in bintray.Keys.bintray :=
   Seq("stream processing", "functional I/O", "iteratees", "functional programming", "scala")

@@ -9,6 +9,7 @@ import scalaz.stream.actor.message
 import scalaz.stream.async.mutable.Signal.Msg
 import scalaz.stream.async.mutable.{WriterTopic, BoundedQueue}
 import scalaz.stream.merge.{JunctionStrategies, Junction}
+import scalaz.stream.async.immutable
 
 package object async {
 
@@ -32,32 +33,7 @@ package object async {
    * All views into the returned signal are backed by the same underlying
    * asynchronous `Ref`.
    */
-  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = {
-    val junction = Junction(JunctionStrategies.signal[A], Process.halt)(S)
-    new mutable.Signal[A] {
-      def changed: Process[Task, Boolean] = discrete.map(_ => true) merge Process.constant(false)
-      def discrete: Process[Task, A] = junction.downstreamW
-      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
-      def changes: Process[Task, Unit] = discrete.map(_ => ())
-      def sink: Process.Sink[Task, Msg[A]] = junction.upstreamSink
-      def get: Task[A] = discrete.take(1).runLast.flatMap {
-        case Some(a) => Task.now(a)
-        case None    => Task.fail(End)
-      }
-      def getAndSet(a: A): Task[Option[A]] = {
-        val refa = new AtomicReference[Option[A]](None)
-        val fa =  (oa: Option[A]) => {refa.set(oa); Some(a) }
-        junction.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
-      }
-      def set(a: A): Task[Unit] = junction.receiveOne(Signal.Set(a))
-      def compareAndSet(f: (Option[A]) => Option[A]): Task[Option[A]] = {
-        val refa = new AtomicReference[Option[A]](None)
-        val fa = (oa: Option[A]) => {val set = f(oa); refa.set(set orElse oa); set }
-        junction.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
-      }
-      def fail(error: Throwable): Task[Unit] = junction.downstreamClose(error)
-    }
-  }
+  def signal[A](implicit S: Strategy = Strategy.DefaultStrategy): Signal[A] = Signal(halt)
 
 
   /** 
@@ -73,18 +49,32 @@ package object async {
     queue[A](Strategy.Sequential)
 
   /**
-   * Converts discrete process to signal.
+   * Converts discrete process to signal. Note that, resulting signal must be manually closed, in case the
+   * source process would terminate. However if the source terminate with failure, the signal is terminated with that
+   * failure
+   * @param source discrete process publishing values to this signal
+   */
+  def toSignal[A](source: Process[Task, A])(implicit S: Strategy = Strategy.DefaultStrategy): mutable.Signal[A] =
+     Signal(Process(source.map(Signal.Set(_))))
+
+  /**
+   * A signal constructor from discrete stream, that is backed by some sort of stateful primitive
+   * like an Topic, another Signal or queue.
+   *
+   * If supplied process is normal process, it will, produce a signal that eventually may
+   * be de-sync between changes, continuous, discrete or changed variants
+   *
    * @param source
    * @tparam A
+   * @return
    */
-  def toSignal[A](source: Process[Task, A])(implicit S: Strategy = Strategy.DefaultStrategy): immutable.Signal[A] =
+  private[stream] def stateSignal[A](source: Process[Task, A])(implicit S:Strategy = Strategy.DefaultStrategy) : immutable.Signal[A] =
     new immutable.Signal[A] {
       def changes: Process[Task, Unit] = discrete.map(_ => ())
       def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
       def discrete: Process[Task, A] = source
       def changed: Process[Task, Boolean] = (discrete.map(_ => true) merge Process.constant(false))
-   }
-
+    }
 
   /**
    * Creates bounded queue that is bound by supplied max size bound.
@@ -96,7 +86,7 @@ package object async {
     new BoundedQueue[A] {
       def enqueueOne(a: A): Task[Unit] = junction.receiveOne(a)
       def dequeue: Process[Task, A] = junction.downstreamO
-      def size: immutable.Signal[Int] = toSignal(junction.downstreamW)
+      def size: immutable.Signal[Int] = stateSignal(junction.downstreamW)
       def enqueueAll(xa: Seq[A]): Task[Unit] = junction.receiveAll(xa)
       def enqueue: Process.Sink[Task, A] = junction.upstreamSink
       def fail(rsn: Throwable): Task[Unit] = junction.downstreamClose(rsn)
@@ -129,8 +119,8 @@ package object async {
    * processes that can be used to publish and subscribe asynchronously. 
    * Please see `Topic` for more info.
    */
-  def topic[A](implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
-     val junction = Junction(JunctionStrategies.publishSubscribe[A], Process.halt)(S)
+  def topic[A](source:Process[Task,A] = halt)(implicit S: Strategy = Strategy.DefaultStrategy): Topic[A] = {
+     val junction = Junction(JunctionStrategies.publishSubscribe[A], Process(source))(S)
      new Topic[A] {
        def publish: Process.Sink[Task, A] = junction.upstreamSink
        def subscribe: Process[Task, A] = junction.downstreamO
@@ -142,10 +132,12 @@ package object async {
   /**
    * Returns Writer topic, that can create publisher(sink) of `I` and subscriber with signal of `W` values.
    * For more info see `WriterTopic`.
+   * Note that when `source` ends, the topic does not terminate
    */
-  def writerTopic[W,I,O](w:Writer1[W,I,O])(implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[W,I,O] ={
+  def writerTopic[W,I,O](w:Writer1[W,I,O])(source:Process[Task,I] = halt)
+    (implicit S: Strategy = Strategy.DefaultStrategy): WriterTopic[W,I,O] ={
     val q = boundedQueue[Process[Task,I]]()
-    val junction = Junction(JunctionStrategies.liftWriter1(w), q.dequeue)(S)
+    val junction = Junction(JunctionStrategies.liftWriter1(w), emit(source) ++ q.dequeue)(S)
     new WriterTopic[W,I,O] {
       def consumeOne(p:  Process[Task, I]): Task[Unit] = q.enqueueOne(p)
       def consume: Process.Sink[Task, Process[Task, I]] = q.enqueue
@@ -153,7 +145,7 @@ package object async {
       def subscribe: Process.Writer[Task, W, O] = junction.downstreamBoth
       def subscribeO: Process[Task, O] = junction.downstreamO
       def subscribeW: Process[Task, W] = junction.downstreamW
-      def signal: immutable.Signal[W] =   toSignal(subscribeW)(S)
+      def signal: immutable.Signal[W] =  stateSignal(subscribeW)(S)
       def publishOne(i: I): Task[Unit] = junction.receiveOne(i)
       def fail(err: Throwable): Task[Unit] =
         for {

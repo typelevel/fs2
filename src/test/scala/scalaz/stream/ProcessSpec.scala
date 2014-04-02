@@ -2,21 +2,18 @@ package scalaz.stream
 
 import scalaz._
 import scalaz.syntax.equal._
-import scalaz.syntax.foldable._
 import scalaz.std.anyVal._
 import scalaz.std.list._
-import scalaz.std.list.listSyntax._
-import scalaz.std.string._
 
 import org.scalacheck._
 import Prop.{extendedAny => _, _}
-import Arbitrary.arbitrary
 import scalaz.concurrent.Strategy
 import scala.concurrent
-import scalaz.\/-
 import scalaz.\/._
 
-object ProcessSpec extends Properties("Process1") {
+import TestInstances._
+
+object ProcessSpec extends Properties("Process") {
 
   import Process._
   import process1._
@@ -32,64 +29,15 @@ object ProcessSpec extends Properties("Process1") {
     def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t
   }
 
-
-  implicit def EqualProcess[A:Equal]: Equal[Process0[A]] = new Equal[Process0[A]] {
-    def equal(a: Process0[A], b: Process0[A]): Boolean =
-      a.toList == b.toList
-  }
-  implicit def ArbProcess0[A:Arbitrary]: Arbitrary[Process0[A]] =
-    Arbitrary(Arbitrary.arbitrary[List[A]].map(a => Process(a: _*)))
-
-  property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
+  property("basic") = forAll { (p: Process0[Int], p2: Process0[String]) =>
     val f = (x: Int) => List.range(1, x.min(100))
-    val g = (x: Int) => x % 7 == 0
-    val pf : PartialFunction[Int,Int] = { case x : Int if x % 2 == 0 => x}
 
-    val sm = Monoid[String]
-
-    ("id" |: {
-      ((p |> id) === p) &&  ((id |> p) === p)
-    }) &&
     ("map" |: {
       (p.toList.map(_ + 1) === p.map(_ + 1).toList) &&
       (p.map(_ + 1) === p.pipe(lift(_ + 1)))
     }) &&
     ("flatMap" |: {
       (p.toList.flatMap(f) === p.flatMap(f andThen Process.emitAll).toList)
-    }) &&
-    ("filter" |: {
-      (p.toList.filter(g) === p.filter(g).toList)
-    }) &&
-    ("take" |: {
-      (p.toList.take(n) === p.take(n).toList)
-    }) &&
-    ("takeWhile" |: {
-      (p.toList.takeWhile(g) === p.takeWhile(g).toList)
-    }) &&
-    ("drop" |: {
-      (p.toList.drop(n) === p.drop(n).toList)
-    }) &&
-    ("dropLast" |: {
-      p.dropLast.toList === p.toList.dropRight(1)
-    }) &&
-    ("dropLastIf" |: {
-      val pred = (_: Int) % 2 == 0
-      val pl = p.toList
-      val n = if (pl.lastOption.map(pred).getOrElse(false)) 1 else 0
-      p.dropLastIf(pred).toList === pl.dropRight(n) &&
-      p.dropLastIf(_ => false).toList === p.toList
-    }) &&
-    ("dropWhile" |: {
-      (p.toList.dropWhile(g) === p.dropWhile(g).toList)
-    }) &&
-    ("exists" |: {
-      (List(p.toList.exists(g)) === p.exists(g).toList)
-    }) &&
-    ("forall" |: {
-      (List(p.toList.forall(g)) === p.forall(g).toList)
-    }) &&
-    ("lastOr" |: {
-      p.pipe(lastOr(42)).toList === p.toList.lastOption.orElse(Some(42)).toList
     }) &&
     ("zip" |: {
       (p.toList.zip(p2.toList) === p.zip(p2).toList)
@@ -98,60 +46,7 @@ object ProcessSpec extends Properties("Process1") {
       val l = p.toList.zip(p2.toList)
       val r = p.toSource.yip(p2.toSource).runLog.timed(3000).run.toList
       (l === r)
-    }) &&
-    ("scan" |: {
-      p.toList.scan(0)(_ - _) ===
-      p.toSource.scan(0)(_ - _).runLog.timed(3000).run.toList
-    }) &&
-    ("scan1" |: {
-       p.toList.scan(0)(_ + _).tail ===
-       p.toSource.scan1(_ + _).runLog.timed(3000).run.toList
-    }) &&
-    ("shiftRight" |: {
-      p.pipe(shiftRight(1, 2)).toList === List(1, 2) ++ p.toList
-    }) &&
-    ("splitWith" |: {
-      p.splitWith(_ < n).toList.map(_.toList) === p.toList.splitWith(_ < n)
-    }) &&
-    ("sum" |: {
-      p.toList.sum[Int] ===
-      p.toSource.pipe(process1.sum).runLastOr(0).timed(3000).run
-    }) &&
-    ("intersperse" |: {
-      p.intersperse(0).toList == p.toList.intersperse(0)
-    }) &&
-    ("collect" |: {
-      p.collect(pf).toList == p.toList.collect(pf)
-    }) &&
-    ("collectFirst" |: {
-      p.collectFirst(pf).toList == p.toList.collectFirst(pf).toList
-    }) &&
-    ("fold" |: {
-      p.fold(0)(_ + _).toList == List(p.toList.fold(0)(_ + _))
-    }) &&
-    ("foldMap" |: {
-      p.foldMap(_.toString).toList.lastOption.toList == List(p.toList.map(_.toString).fold(sm.zero)(sm.append(_,_)))
-    }) &&
-    ("reduce" |: {
-      (p.reduce(_ + _).toList == (if (p.toList.nonEmpty) List(p.toList.reduce(_ + _)) else List()))
-    }) &&
-    ("find" |: {
-       (p.find(_ % 2 == 0).toList == p.toList.find(_ % 2 == 0).toList)
     })
-  }
-
-  property("awaitOption") = secure {
-    Process().pipe(awaitOption).toList == List(None) &&
-    Process(1, 2).pipe(awaitOption).toList == List(Some(1))
-  }
-
-  property("chunk") = secure {
-    Process(0, 1, 2, 3, 4).chunk(2).toList == List(Vector(0, 1), Vector(2, 3), Vector(4))
-  }
-
-  property("chunkBy") = secure {
-    emitSeq("foo bar baz").chunkBy(_ != ' ').toList.map(_.mkString) ==
-      List("foo ", "bar ", "baz")
   }
 
   property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
@@ -162,36 +57,10 @@ object ProcessSpec extends Properties("Process1") {
     Process.iterate(0)(_ + 1).take(100).runLog.run.toList == List.iterate(0, 100)(_ + 1)
   }
 
-  property("repartition") = secure {
-    Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ").toIndexedSeq).toList ==
-      List("Lorem", "ipsum", "dolor", "sit", "amet") &&
-    Process("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ==
-      List("he", "ll", "o ", "Wo", "rl", "d") &&
-    Process(1, 2, 3, 4, 5).repartition(i => Vector(i, i)).toList ==
-      List(1, 3, 6, 10, 15, 15) &&
-    (Process(): Process[Nothing, String]).repartition(_ => Vector()).toList == List() &&
-    Process("hello").repartition(_ => Vector()).toList == List()
-  }
-
-  property("stripNone") = secure {
-    Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
-  }
-
-  property("terminated") = secure {
-    Process(1, 2, 3).terminated.toList == List(Some(1), Some(2), Some(3), None)
-  }
-
   property("unfold") = secure {
     Process.unfold((0, 1)) {
       case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
     }.map(_._1).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
-  }
-
-  property("window") = secure {
-    def window(n: Int) = Process.range(0, 5).window(n).runLog.run.toList
-    window(1) == List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
-    window(2) == List(Vector(0, 1), Vector(1, 2), Vector(2, 3), Vector(3, 4), Vector(4)) &&
-    window(3) == List(Vector(0, 1, 2), Vector(1, 2, 3), Vector(2, 3, 4), Vector(3, 4))
   }
 
   import scalaz.concurrent.Task
@@ -326,12 +195,6 @@ object ProcessSpec extends Properties("Process1") {
     s.wye(s)(w).runLog.run.map(_.fold(identity, identity)).toList == List(1,1)
   }
 
-  property("last") = secure {
-    var i = 0
-    Process.range(0,10).last.map(_ => i += 1).runLog.run
-    i =? 1
-  }
-
   property("state") = secure {
     val s = Process.state((0, 1))
     val fib = Process(0, 1) ++ s.flatMap { case (get, set) =>
@@ -343,20 +206,11 @@ object ProcessSpec extends Properties("Process1") {
     l === List(0, 1, 1, 2, 3, 5, 8, 13, 21, 34)
   }
 
-  property("chunkBy2") = secure {
-    val s = Process(3, 5, 4, 3, 1, 2, 6)
-    s.chunkBy2(_ < _).toList == List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
-    s.chunkBy2(_ > _).toList == List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
-  }
-
   property("duration") =  {
     val firstValueDiscrepancy = duration.take(1).runLast.run.get
     val reasonableError = 200 * 1000000 // 200 millis
     (firstValueDiscrepancy.toNanos < reasonableError) :| "duration is near zero at first access"
   }
-
-  implicit def arbVec[A:Arbitrary]: Arbitrary[IndexedSeq[A]] =
-    Arbitrary(Gen.listOf(arbitrary[A]).map(_.toIndexedSeq))
 
   property("zipAll") = forAll((l: IndexedSeq[Int], l2: IndexedSeq[Int]) => {
     val a = Process.range(0,l.length).map(l(_))
@@ -480,5 +334,12 @@ object ProcessSpec extends Properties("Process1") {
   }
 
 
+  property("affine") = secure {
+    var cnt = 0
+    (affine(eval_(Task.delay{ cnt = cnt + 1})) fby
+      eval(Task.delay(cnt))).repeat.take(100)
+    .run.run
+    cnt == 1
+  }
 
 }

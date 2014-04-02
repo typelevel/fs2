@@ -8,9 +8,10 @@ import scalaz._
 import scalaz.concurrent.{Strategy, Task}
 import org.scalacheck.Prop._
 import scalaz.stream.async.mutable.Queue
+import scalaz.stream.ReceiveY.{HaltOne, ReceiveR, ReceiveL}
 
 
-object WyeSpec extends Properties("wye") {
+object WyeSpec extends Properties("wye")  {
 
   class Ex extends java.lang.Exception {
     override def fillInStackTrace(): Throwable = this
@@ -177,7 +178,8 @@ object WyeSpec extends Properties("wye") {
     ))).drain
 
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    ((s1 onComplete clean(1)) merge (s2 onComplete clean(2))).take(2).runLog.timed(3000).runAsync(sync.put)
+    val p = ((s1 onComplete clean(1)) merge (s2 onComplete clean(2))).take(2)
+    p.runLog.timed(3000).runAsync(sync.put)
 
     ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
     (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected" &&
@@ -193,18 +195,32 @@ object WyeSpec extends Properties("wye") {
   property("merge.queue.left-cleanup-by-right-cleanup") = secure {
     val(q1,s1) = async.queue[Int]
     val(q2,s2) = async.queue[Int]
-    def close[A]( q:Queue[A]) =  (suspend(eval(Task.delay{  q.close}))).drain
+    def close[A]( q:Queue[A]) =  eval_(Task.delay{ q.close })
 
     q1.enqueue(1)
+
+    Thread.sleep(50)
 
     val s3 = Process(2).toSource onComplete(close(q2))
 
 
     val sync = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    ((s1 onComplete s2) merge s3).take(2).runLog.timed(3000).runAsync(sync.put)
+    val p = ((s1 onComplete s2) merge s3).take(2)
+    p.runLog.timed(3000).runAsync(sync.put)
 
     ((sync.get(3000).isEmpty == false) :| "Process terminated") &&
     (sync.get.fold(_=>Nil,s=>s.sorted) == Vector(1,2)) :| "Values were collected"
+  }
+
+  //tests that wye correctly terminates drained process
+  property("merge-drain-halt") = secure {
+
+    val effect:Process[Task,Int] = Process.constant(()).drain
+
+    val pm1 = effect.wye(Process(1000,2000).toSource)(wye.merge).take(2)
+    val pm2 = Process(3000,4000).toSource.wye(effect)(wye.merge).take(2)
+
+    (pm1 ++ pm2).runLog.timed(3000).run.size == 4
   }
 
 }

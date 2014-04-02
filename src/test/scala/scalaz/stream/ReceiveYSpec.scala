@@ -3,16 +3,11 @@ package scalaz.stream
 import scalaz.scalacheck.ScalazProperties.monad
 import scalaz.Apply
 import scalaz.std.anyVal._
-import org.scalacheck.{Arbitrary, Gen, Properties}
-import Arbitrary.arbitrary
+import org.scalacheck.Properties
 import ReceiveY._
 
-object ReceiveYSpec extends Properties("These") {
-  implicit def theseArb[A: Arbitrary, B: Arbitrary]: Arbitrary[ReceiveY[A, B]] =
-    Arbitrary(Gen.oneOf(
-      arbitrary[A].map(ReceiveL(_)),
-      arbitrary[B].map(ReceiveR(_))
-    ))
+import TestInstances._
 
+object ReceiveYSpec extends Properties("These") {
   property("monad laws") = monad.laws[({type f[y] = ReceiveY[Int, y]})#f]
 }

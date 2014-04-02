@@ -10,6 +10,7 @@ import scalaz.-\/
 import scalaz.\/-
 import scalaz.concurrent.Task
 import scalaz.stream.Process._
+import scodec.bits.ByteVector
 
 
 package object nio {
@@ -28,7 +29,7 @@ package object nio {
     , reuseAddress: Boolean = true
     , rcvBufferSize: Int = 256 * 1024
     )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
-  : Process[Task, Process[Task, Exchange[Bytes, Bytes]]] = {
+  : Process[Task, Process[Task, Exchange[ByteVector, ByteVector]]] = {
 
     def setup(ch: AsynchronousServerSocketChannel): AsynchronousServerSocketChannel = {
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
@@ -71,7 +72,7 @@ package object nio {
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
     )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
-  : Process[Task, Exchange[Bytes, Bytes]] = {
+  : Process[Task, Exchange[ByteVector, ByteVector]] = {
 
     def setup(ch: AsynchronousSocketChannel): AsynchronousSocketChannel = {
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
@@ -118,7 +119,7 @@ package object nio {
   }
 
 
-  private def nioExchange(ch: AsynchronousSocketChannel, readBufferSize: Int = 0): Exchange[Bytes, Bytes] = {
+  private def nioExchange(ch: AsynchronousSocketChannel, readBufferSize: Int = 0): Exchange[ByteVector, ByteVector] = {
 
     lazy val bufSz : Int =
       if (readBufferSize <= 0) ch.getOption[java.lang.Integer](StandardSocketOptions.SO_RCVBUF)
@@ -127,13 +128,13 @@ package object nio {
     lazy val a = Array.ofDim[Byte](bufSz)
     lazy val buff = ByteBuffer.wrap(a)
 
-    def readOne: Task[Bytes] = {
+    def readOne: Task[ByteVector] = {
       Task.async { cb =>
         buff.clear()
         ch.read(buff, null, new CompletionHandler[Integer, Void] {
           def completed(result: Integer, attachment: Void): Unit = {
             buff.flip()
-            val bs = Bytes.of(buff)
+            val bs = ByteVector(buff)
             if (result < 0) cb(-\/(End))
             else cb(\/-(bs))
           }
@@ -143,9 +144,9 @@ package object nio {
       }
     }
 
-    def writeOne(a: Bytes): Task[Unit] = {
+    def writeOne(a: ByteVector): Task[Unit] = {
       Task.async[Int] { cb =>
-        ch.write(a.asByteBuffer, null, new CompletionHandler[Integer, Void] {
+        ch.write(a.toByteBuffer, null, new CompletionHandler[Integer, Void] {
           def completed(result: Integer, attachment: Void): Unit = cb(\/-(result))
           def failed(exc: Throwable, attachment: Void): Unit = cb(-\/(exc))
         })
@@ -156,8 +157,8 @@ package object nio {
     }
 
 
-    def read: Process[Task, Bytes] = Process.repeatEval(readOne)
-    def write: Sink[Task, Bytes] = Process.constant((a: Bytes) => writeOne(a))
+    def read: Process[Task, ByteVector] = Process.repeatEval(readOne)
+    def write: Sink[Task, ByteVector] = Process.constant((a: ByteVector) => writeOne(a))
 
     Exchange(read, write)
   }
