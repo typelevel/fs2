@@ -241,11 +241,32 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
    * Append process specified in `fallback` argument in case the _next_ Await throws an End,
    * and appned process specified in `cleanup` argument in case _next_ Await throws any other exception
    */
-  final def orElse[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], cleanup: => Process[F2, O2] = halt): Process[F2, O2] =
-    onHalt {
-      case End => Try(fallback)
-      case rsn => Try(cleanup).causedBy(rsn)
-    }
+  final def orElse[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], cleanup: => Process[F2, O2] = halt): Process[F2, O2] = {
+    lazy val fb = fallback;  lazy val cln = cleanup
+     this.step match {
+        case Cont(emt@Emit(os),n) =>
+          println("####"-> os)
+          this
+        case Cont(awt,next) =>
+          awt onHalt {
+            case End  =>
+              println("ORELSE End"-> fb)
+              next(End)
+            case   Kill =>
+              println("ORELSE Kill"-> fb)
+              fb ++ next(Kill)
+            case rsn =>
+              println(("ORELSE CLN" , rsn,cln))
+              cln ++ next(rsn)
+          }
+
+        case dn@Done(rsn) => dn.asHalt
+      }
+  }
+//    onHalt {
+//      case End => Try(fallback)
+//      case rsn => Try(cleanup).causedBy(rsn)
+//    }
 
 
   /**
