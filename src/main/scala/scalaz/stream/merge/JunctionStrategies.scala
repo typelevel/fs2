@@ -189,7 +189,7 @@ protected[stream] object JunctionStrategies {
   object writers {
 
     /** writer that only echoes `A` on `O` side **/
-    def echoO[A]: Writer1[Nothing, A, A] = process1.id[A].map(right)
+    def echoO[A]: Writer1[Nothing, A, A] = process1.lift(right)
 
     /** Writer1 that interprets the Signal messages to provide discrete source of `A` **/
     def signal[A]: Writer1[A, Signal.Msg[A], Nothing] = {
