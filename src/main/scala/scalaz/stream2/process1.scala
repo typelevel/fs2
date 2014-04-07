@@ -546,7 +546,7 @@ trait process1 {
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A, Option[A]] =
-    lift[A, Option[A]](Some(_)) ++ emit(None)
+    lift[A, Option[A]](Some(_)) onKill emit(None)
 
   private val utf8Charset = Charset.forName("UTF-8")
 

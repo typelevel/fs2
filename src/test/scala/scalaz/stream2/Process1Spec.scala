@@ -48,9 +48,15 @@ object Process1Spec extends Properties("Process1") {
 
     try {
       val examples = Seq(
-        s"feed: $li, ${process1.feed(li)(id[Int]).unemit._1.toList }" |: (li === process1.feed(li)(id[Int]).unemit._1.toList)
-        , "feed-emit-first" |: ((List(1, 2, 3) ++ li) === process1.feed(li)(emitAll(List(1, 2, 3)) ++ id[Int]).unemit._1.toList)
+        "awaitOption" |: (Process().awaitOption.toList == List(None) && Process(1, 2).awaitOption.toList == List(Some(1)))
         , s"buffer: $li ${pi.buffer(4).toList}" |: pi.buffer(4).toList === li
+        , "chunk" |: Process(0, 1, 2, 3, 4).chunk(2).toList === List(Vector(0, 1), Vector(2, 3), Vector(4))
+        , "chunkBy" |: emitAll("foo bar baz").chunkBy(_ != ' ').toList.map(_.mkString) ===  List("foo ", "bar ", "baz")
+        , "chunkBy2" |: {
+          val s = Process(3, 5, 4, 3, 1, 2, 6)
+          (s.chunkBy2(_ < _).toList === List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
+            s.chunkBy2(_ > _).toList === List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6)))
+        }
         , "collect" |: pi.collect(pf).toList === li.collect(pf)
         , "collectFirst" |: pi.collectFirst(pf).toList === li.collectFirst(pf).toList
         , "drop" |: pi.drop(n).toList === li.drop(n)
@@ -63,6 +69,8 @@ object Process1Spec extends Properties("Process1") {
         }
         , "dropWhile" |: pi.dropWhile(g).toList === li.dropWhile(g)
         , "exists" |: pi.exists(g).toList === List(li.exists(g))
+        , s"feed: $li, ${process1.feed(li)(id[Int]).unemit._1.toList }" |: (li === process1.feed(li)(id[Int]).unemit._1.toList)
+        , "feed-emit-first" |: ((List(1, 2, 3) ++ li) === process1.feed(li)(emitAll(List(1, 2, 3)) ++ id[Int]).unemit._1.toList)
         , "find" |: pi.find(_ % 2 === 0).toList === li.find(_ % 2 === 0).toList
         , "filter" |: pi.filter(g).toList === li.filter(g)
         , "fold" |: pi.fold(0)(_ + _).toList === List(li.fold(0)(_ + _))
@@ -70,6 +78,7 @@ object Process1Spec extends Properties("Process1") {
         , "forall" |: pi.forall(g).toList === List(li.forall(g))
         , "id" |: ((pi |> id) === pi) && ((id |> pi) === pi)
         , "intersperse" |: pi.intersperse(0).toList === li.intersperse(0)
+        , "last" |:  Process(0, 10).last.toList === List(10)
         , "lastOr" |: pi.lastOr(42).toList.head === li.lastOption.getOrElse(42)
         , "maximum" |: pi.maximum.toList === li.maximum.toList
         , "maximumBy" |: {
@@ -96,19 +105,51 @@ object Process1Spec extends Properties("Process1") {
         }
         , "shiftRight" |: pi.shiftRight(1, 2).toList === List(1, 2) ++ li
         , "splitWith" |: pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
+        , "stripNone" |: Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
         , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
         , "take" |: pi.take(n).toList === li.take(n)
         , "takeWhile" |: pi.takeWhile(g).toList === li.takeWhile(g)
+        , "terminated" |: Process(1, 2, 3).terminated.toList === List(Some(1), Some(2), Some(3), None)
       )
 
       examples.reduce(_ && _)
     } catch {
       case t : Throwable => t.printStackTrace(); throw t
     }
-
-
-
   }
 
+  property("repartition") = secure {
+    Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ")).toList ==
+      List("Lorem", "ipsum", "dolor", "sit", "amet") &&
+      Process("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ==
+        List("he", "ll", "o ", "Wo", "rl", "d") &&
+      Process(1, 2, 3, 4, 5).repartition(i => Vector(i, i)).toList ==
+        List(1, 3, 6, 10, 15, 15) &&
+      Process[String]().repartition(_ => Vector()).toList.isEmpty &&
+      Process("hello").repartition(_ => Vector()).toList.isEmpty
+  }
+
+  property("repartition2") = secure {
+    Process("he", "ll", "o").repartition2(s => (Some(s), None)).toList ===
+      List("he", "ll", "o") &&
+      Process("he", "ll", "o").repartition2(s => (None, Some(s))).toList ===
+        List("hello") &&
+      Process("he", "ll", "o").repartition2 {
+        s => (Some(s.take(1)), Some(s.drop(1)))
+      }.toList === List("h", "e", "l", "lo")
+  }
+
+  property("splitOn") = secure {
+    Process(0, 1, 2, 3, 4).splitOn(2).toList === List(Vector(0, 1), Vector(3, 4)) &&
+      Process(2, 0, 1, 2).splitOn(2).toList === List(Vector(), Vector(0, 1), Vector()) &&
+      Process(2, 2).splitOn(2).toList === List(Vector(), Vector(), Vector())
+  }
+
+  property("window") = secure {
+    def window(n: Int) = Process.range(0, 5).window(n).runLog.run.toList
+    window(1) === List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
+      window(2) === List(Vector(0, 1), Vector(1, 2), Vector(2, 3), Vector(3, 4), Vector(4)) &&
+      window(3) === List(Vector(0, 1, 2), Vector(1, 2, 3), Vector(2, 3, 4), Vector(3, 4))
+  }
 
 }
