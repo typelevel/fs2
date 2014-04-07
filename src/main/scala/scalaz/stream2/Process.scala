@@ -249,7 +249,9 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
   }
 
 
-
+  /**
+   * Atached supplied process only if process has been terminated with `Kill` signal.
+   */
   final def onKill[F2[x] >: F[x], O2 >: O](p: => Process[F2, O2]): Process[F2, O2] = {
     onHalt {
       case End => halt
@@ -258,73 +260,6 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
     }
   }
 
-  /**
-   * Append process specified in `fallback` argument in case the _next_ Await throws an End,
-   * and appned process specified in `cleanup` argument in case _next_ Await throws any other exception
-   */
-  final def orElse2[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], cleanup: => Process[F2, O2] = halt): Process[F2, O2] = {
-    lazy val fb = fallback;  lazy val cln = cleanup
-     this.step match {
-        case Cont(emt@Emit(os),n) =>
-          println("####"-> os)
-          this
-        case Cont(awt,next) =>
-          awt onHalt {
-            case End  =>
-              println("ORELSE End"-> fb)
-              next(End)
-            case   Kill =>
-              println("ORELSE Kill"-> fb)
-              fb ++ next(Kill)
-            case rsn =>
-              println(("ORELSE CLN" , rsn,cln))
-              cln ++ next(rsn)
-          }
-
-        case dn@Done(rsn) => dn.asHalt
-      }
-  }
-
-  final def orElse3[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2]): Process[F2, O2] = {
-    this.suspendStep flatMap {
-      case Cont(emt@Emit(os),n) => this
-      case Cont(awt,next) =>
-        awt onHalt {
-          case End  =>
-            println("END")
-            fallback ++ next(End)
-          case Kill =>
-            println(("KILL", fallback, next(Kill), this))
-            fallback.causedBy(Kill).swallowKill ++ next(Kill)
-          case rsn => next(rsn)
-        }
-      case dn@Done(rsn) => dn.asHalt
-    }
-  }
-
-
-  final def orElse[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], recover : Throwable => Process[F2,O2] = (_:Throwable) => halt): Process[F2, O2] = {
-//    this.suspendStep.flatMap {
-//      case s@Cont(emt@Emit(_),next) =>
-//        println(("EMIT", emt, next))
-//        Append(emt,Vector(rsn => Trampoline.delay(next(rsn) orElse(fallback,recover))))
-//      case Cont(awt@Await(_,_),next) =>
-//        awt.extend { p => println(("P", p.unemit)); p onHalt {
-//          case End =>
-//            println("END")
-//            Try(next(End))
-//          case Kill =>
-//            println(("KILL", fallback.unemit))
-//            fallback onHalt next
-//          case rsn =>
-//            println("RSN" + rsn)
-//            Try(recover(rsn)) onHalt next
-//        }}
-//      case dn@Done(rsn) => dn.asHalt
-//
-//    }
-    ???
-  }
 
 
 
@@ -410,11 +345,11 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
 
   /** Run this `Process` solely for its final emitted value, if one exists. */
   final def runLast[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[Option[O2]] =
-    ??? // F.map(this.last.runLog[F2,O2])(_.lastOption)
+    F.map(this.last.runLog[F2,O2])(_.lastOption)
 
   /** Run this `Process` solely for its final emitted value, if one exists, using `o2` otherwise. */
   final def runLastOr[F2[x] >: F[x], O2 >: O](o2: => O2)(implicit F: Monad[F2], C: Catchable[F2]): F2[O2] =
-    ??? //  F.map(this.last.runLog[F2,O2])(_.lastOption.getOrElse(o2))
+    F.map(this.last.runLog[F2,O2])(_.lastOption.getOrElse(o2))
 
   /** Run this `Process`, purely for its effects. */
   final def run[F2[x] >: F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] =
@@ -570,7 +505,7 @@ object Process {
   /** alias for emitAll **/
   def apply[O](o: O*): Process[Nothing, O] = emitAll(o)
 
-  /** hepler to construct await for Process1 **/
+  /** helper to construct await for Process1 **/
   def await1[I]: Process1[I, I] =
     await(Get[I])(emit)
 
@@ -618,6 +553,12 @@ object Process {
       }
       , i => rcv(i)
     )))
+
+  /**
+   * Curried syntax alias for receive1
+   */
+  def receive1Or[I,O](fb: => Process1[I,O])(rcv: I => Process1[I,O]): Process1[I,O] =
+    receive1[I,O](rcv,fb)
 
 
   ///////////////////////////////////////////////////////////////////////////////////////

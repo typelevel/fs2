@@ -25,8 +25,7 @@ object Util {
 
       @tailrec
       def prepend(acc:Vector[B], rem:Seq[B]) : Vector[B] = {
-      //  debug(s"PREP: self: ${self.size} other: ${other.size}")
-        if (rem.nonEmpty) prepend(rem.head +: acc, rem.tail)
+        if (rem.nonEmpty) prepend(rem.last +: acc, rem.init)
         else acc
       }
 

@@ -20,7 +20,7 @@ trait process1 {
 
   /** Await a single value, returning `None` if the input has been exhausted. */
   def awaitOption[I]: Process1[I, Option[I]] =
-    await1[I].map(Some(_)).orElse(emit(None))
+    receive1Or[I, Option[I]](emit(None))(i=>emit(Some(i)))
 
   /** Behaves like the identity process, but requests `n` elements at a time from its input. */
   def buffer[I](n: Int): Process1[I, I] =
@@ -43,41 +43,17 @@ trait process1 {
    *
    * @throws IllegalArgumentException if `n` <= 0
    */
-  def chunk0[I](n: Int): Process1[I, Vector[I]] = {
-    require(n > 0, "chunk size must be > 0, was: " + n)
-    def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] =
-      if (m <= 0) emit(acc) ++ go(n, Vector())
-      else await1[I].flatMap(i => go(m - 1, acc :+ i)).orElse(emit(acc))
-    go(n, Vector())
-  }
-
   def chunk[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "chunk size must be > 0, was: " + n)
     def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] = {
       if (m <= 0) emit(acc)
-      else receive1(
-        i => go(m - 1, acc :+ i)
-        , if (acc.nonEmpty) emit(acc) else halt
-      )
+      else receive1Or[I, Vector[I]](if (acc.nonEmpty) emit(acc) else halt) { i =>
+        go(m - 1, acc :+ i)
+      }
     }
-
     go(n,Vector()) ++ chunk(n)
   }
 
-//  def chunk[I](n:Int):Process1[I,Vector[I]] = {
-//    require(n > 0, "chunk size must be > 0, was: " + n)
-//    def go(m: Int, acc: Vector[I], cleaned:AtomicBoolean): Process1[I, Vector[I]] = {
-//      await1[I].flatMap { i =>
-//        if (m <= 0) emit(acc :+ i)
-//        else go(m-1, acc :+ i, cleaned) onKill {
-//          if (cleaned.get) fail(Kill)
-//          else { cleaned.set(true); emit(acc :+ i)}
-//        }
-//      }
-//    }
-//
-//    go(n,Vector(),new AtomicBoolean(false)) ++ chunk(n)
-//  }
 
   /** Collects up all output of this `Process1` into a single `Emit`. */
   def chunkAll[I]: Process1[I, Vector[I]] =
@@ -92,12 +68,12 @@ trait process1 {
    */
   def chunkBy[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I, Vector[I]] =
-      await1[I].flatMap { i =>
+      receive1Or[I,Vector[I]](emit(acc)) { i =>
         val chunk = acc :+ i
         val cur = f(i)
         if (!cur && last) emit(chunk) fby go(Vector(), false)
         else go(chunk, cur)
-      } orElse (emit(acc))
+      }
     go(Vector(), false)
   }
 
@@ -106,10 +82,10 @@ trait process1 {
    */
   def chunkBy2[I](f: (I, I) => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I], last: I): Process1[I, Vector[I]] =
-      await1[I].flatMap { i =>
+      receive1Or[I,Vector[I]](emit(acc)) { i =>
         if (f(last, i)) go(acc :+ i, i)
         else emit(acc) fby go(Vector(i), i)
-      } orElse emit(acc)
+      }
     await1[I].flatMap(i => go(Vector(i), i))
   }
 
@@ -144,9 +120,8 @@ trait process1 {
   /** Emits all elemens of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I, I] = {
     def go(prev: I): Process1[I, I] =
-      receive1(
-        i => emit(prev) fby go(i)
-        , if (p(prev)) halt else emit(prev)
+      receive1Or[I,I](if (p(prev)) halt else emit(prev))( i =>
+        emit(prev) fby go(i)
       )
     await1[I].flatMap(go)
   }
@@ -202,9 +177,8 @@ trait process1 {
    * Halts with `false` as soon as a non-matching element is received.
    */
   def forall[I](f: I => Boolean): Process1[I, Boolean] =
-    receive1(
-      i => if (f(i)) forall(f) else emit(false)
-      , emit(true)
+    receive1Or[I,Boolean](emit(true))( i =>
+      if (f(i)) forall(f) else emit(false)
     )
 
   /**
@@ -289,7 +263,7 @@ trait process1 {
    * If the input is empty, `i` is emitted.
    */
   def lastOr[I](li: => I): Process1[I, I] =
-    receive1(i => lastOr(i), emit(li))
+    receive1Or[I,I](emit(li))(i => lastOr(i) )
 
   /** Transform the input using the given function, `f`. */
   def lift[I, O](f: I => O): Process1[I, O] =
@@ -405,7 +379,7 @@ trait process1 {
    */
   def repartition[I](p: I => IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I, I] = {
     def go(carry: Option[I]): Process1[I, I] =
-      await1[I].flatMap { i =>
+      receive1Or[I,I](emitAll(carry.toList)) { i =>
         val next = carry.fold(i)(c => I.append(c, i))
         val parts = p(next)
         parts.size match {
@@ -413,7 +387,7 @@ trait process1 {
           case 1 => go(Some(parts.head))
           case _ => emitAll(parts.init) fby go(Some(parts.last))
         }
-      } orElse emitAll(carry.toList)
+      }
     go(None)
   }
 
@@ -426,11 +400,11 @@ trait process1 {
    */
   def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
-      await1[I].flatMap { i =>
+      receive1Or[I,I]( emitAll(carry.toList)) { i =>
         val next = carry.fold(i)(c => I.append(c, i))
         val (fst, snd) = p(next)
         fst.fold(go(snd))(head => emit(head) fby go(snd))
-      } orElse emitAll(carry.toList)
+      }
     go(None)
   }
 
@@ -505,10 +479,11 @@ trait process1 {
    */
   def split[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I]): Process1[I, Vector[I]] =
-      await1[I].flatMap { i =>
+      receive1Or[I, Vector[I]](emit(acc)) { i =>
         if (f(i)) emit(acc) fby go(Vector())
         else go(acc :+ i)
-      } orElse (emit(acc))
+      }
+
     go(Vector())
   }
 
@@ -537,7 +512,7 @@ trait process1 {
          else emit(acc) fby go(Vector(i), cur)
        }
        , emit(acc)
-      ) 
+      )
     await1[I].flatMap(i => go(Vector(i), f(i)))
   }
 
@@ -587,10 +562,8 @@ trait process1 {
   def window[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "window size must be > 0, was: " + n)
     def go(acc: Vector[I], c: Int): Process1[I, Vector[I]] =
-      if (c > 0)
-        await1[I].flatMap { i => go(acc :+ i, c - 1) } orElse emit(acc)
-      else
-        emit(acc) fby go(acc.tail, 1)
+      if (c > 0) receive1Or[I,Vector[I]](emit(acc)) { i => go(acc :+ i, c - 1) }
+      else  emit(acc) fby go(acc.tail, 1)
     go(Vector(), n)
   }
 

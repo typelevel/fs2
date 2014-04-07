@@ -94,9 +94,9 @@ object Process1Spec extends Properties("Process1") {
           li.scan(0)(_ + _).tail ===
             pi.toSource.scan1(_ + _).runLog.timed(3000).run.toList
         }
-//        , "shiftRight" |: pi.shiftRight(1, 2).toList === List(1, 2) ++ li
+        , "shiftRight" |: pi.shiftRight(1, 2).toList === List(1, 2) ++ li
         , "splitWith" |: pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
-//        , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
+        , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
         , "take" |: pi.take(n).toList === li.take(n)
         , "takeWhile" |: pi.takeWhile(g).toList === li.takeWhile(g)
       )
