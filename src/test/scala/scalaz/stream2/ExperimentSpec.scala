@@ -18,6 +18,8 @@ object ExperimentSpec extends Properties("Experiments") {
     //val pl2 = 0 until 10000
      val p = Process(pl:_*)
 
+    val pf : PartialFunction[Int,Int] = { case x : Int if x % 2 == 1 => x}
+
 //    val f = (x: Int) => List.range(1, x.min(100))
 //
 //   val p = Emit(-1,List(-1, -338840612, -404450079, 2147483647, -1971109425, 0, 1, -2001298503, -2147483648, 1))
@@ -28,12 +30,24 @@ object ExperimentSpec extends Properties("Experiments") {
 
    // "map-pipe" |: (p.map(_ + 1).toList == p.pipe(lift(_ + 1)).toList)
 
+    val pi = Process((0 until 3).toSeq:_*)
+    val li = pi.toList
 
- println(p.pipe(lift(_ + 1)).toList)
+//    val pp1 = process1.id[Int] |> process1.id[Int]
+//    println(pp1)
+//   println("@##########################"*10)
+//
+//    val fed =  process1.feed(Seq(99))(pp1)
+//     println(("@@@@", fed, fed.unemit._1))
 
-   // println((Halt(Kill) onComplete Halt(Kill)).step)
 
-    false
+
+ println(s"################### buffer: $li ${pi.pipe(process1.chunk(4)).toList}")
+
+//   TestUtil.time( pi.pipe(process1.id).toList == li)
+//     TestUtil.time( pi.pipe(process1.buffer(4)).toList == li)
+ // pi.pipe(process1.buffer(4)).toList == li
+false
 
   }
 

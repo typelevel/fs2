@@ -6,6 +6,7 @@ import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scalaz._
 import scalaz.concurrent.Task
+import java.util.concurrent.atomic.AtomicInteger
 
 sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
 
@@ -37,18 +38,22 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
    * values as they are demanded by `p1`. If `p1` signals termination, `this`
    * is killed with same reason giving it an opportunity to cleanup.
    */
-  final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = p1.suspendStep flatMap {
-    case p1s@Cont(AwaitP1(rcv1),next1) => this.step match {
-      case Cont(awt@Await(_,_),next) => (awt onHalt next) pipe p1
-      case Cont(Emit(os),next) => Try(next(End)) pipe process1.feed(os)(p1)
-      case Done(rsn) => fail(rsn) onComplete p1s.toProcess.disconnect
+  final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = p1.suspendStep flatMap {s =>
+   // println((s"PIPE p1:$p1 p1step: $s, this: $this, thisStep: ${this.step}"))
+    s match {
+       case p1s@Cont(AwaitP1(rcv1), next1) => this.step match {
+        case Cont(awt@Await(_, _), next) => awt.extend(p => (p onHalt next) pipe p1)
+        case Cont(Emit(os), next)        => Try(next(End)) pipe process1.feed(os)(p1)
+        case Done(rsn)                   => fail(rsn) onComplete p1s.toProcess.disconnect
+      }
+      case Cont(Emit(os), next1)          => Emit(os) ++ this.pipe(Try(next1(End)))
+      case Done(rsn1)                     => this.killBy(Kill(rsn1)).swallowKill onComplete fail(rsn1)
     }
-    case Cont(Emit(os),next1) => Emit(os) ++ this.pipe(Try(next1(End)))
-    case Done(rsn1) => this.killBy(Kill(rsn1)).swallowKill onComplete fail(rsn1)
   }
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
+
 
 
 
@@ -64,7 +69,7 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
   final def step: Step[F, O] = {
     @tailrec
     def go(cur: Process[F, O], stack: Vector[Throwable => Trampoline[Process[F, O]]]): Step[F, O] = {
-    //  debug(s"STEP $cur, stack: ${stack.size}")
+    // debug(s"STEP $idx: $cur, stack: ${stack.size}")
       if (stack.isEmpty) {
         cur match {
           case Halt(rsn)      => Done(rsn)
@@ -237,11 +242,21 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
     }
   }
 
+
+
+  final def onKill[F2[x] >: F[x], O2 >: O](p: => Process[F2, O2]): Process[F2, O2] = {
+    onHalt {
+      case End => halt
+      case Kill => p
+      case rsn => fail(rsn)
+    }
+  }
+
   /**
    * Append process specified in `fallback` argument in case the _next_ Await throws an End,
    * and appned process specified in `cleanup` argument in case _next_ Await throws any other exception
    */
-  final def orElse[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], cleanup: => Process[F2, O2] = halt): Process[F2, O2] = {
+  final def orElse2[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], cleanup: => Process[F2, O2] = halt): Process[F2, O2] = {
     lazy val fb = fallback;  lazy val cln = cleanup
      this.step match {
         case Cont(emt@Emit(os),n) =>
@@ -263,6 +278,46 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
         case dn@Done(rsn) => dn.asHalt
       }
   }
+
+  final def orElse3[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2]): Process[F2, O2] = {
+    this.suspendStep flatMap {
+      case Cont(emt@Emit(os),n) => this
+      case Cont(awt,next) =>
+        awt onHalt {
+          case End  =>
+            println("END")
+            fallback ++ next(End)
+          case Kill =>
+            println(("KILL", fallback, next(Kill), this))
+            fallback.causedBy(Kill).swallowKill ++ next(Kill)
+          case rsn => next(rsn)
+        }
+      case dn@Done(rsn) => dn.asHalt
+    }
+  }
+
+
+  final def orElse[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], recover : Throwable => Process[F2,O2] = (_:Throwable) => halt): Process[F2, O2] = {
+    this.suspendStep.flatMap {
+      case Cont(emt@Emit(_),next) => Append(emt,Vector(rsn => Trampoline.delay(next(rsn) orElse(fallback,recover))))
+      case Cont(awt@Await(_,_),next) =>
+        awt.extend { p => println(("P", p.unemit)); p onHalt {
+          case End =>
+            println("END")
+            Try(next(End))
+          case Kill =>
+            println(("KILL", fallback.unemit))
+            fallback ++ Try(next(Kill))
+          case rsn =>
+            println("RSN" + rsn)
+            Try(recover(rsn)) ++ next(rsn)
+        }}
+      case dn@Done(rsn) => dn.asHalt
+
+    }
+  }
+
+
 //    onHalt {
 //      case End => Try(fallback)
 //      case rsn => Try(cleanup).causedBy(rsn)
@@ -274,7 +329,7 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
    * long as no errors occur.
    */
   final def repeat: Process[F, O] = {
-   // debug(s"REPEAT $this ")
+ //  debug(s"REPEAT $this ")
     this.onHalt {
       case End =>  this.repeat
       case rsn =>  fail(rsn)
@@ -634,6 +689,11 @@ object Process {
       case End => Kill
       case _ => rsn
     }
+    override def fillInStackTrace = this
+  }
+
+  /** A special variant of `Kill` used in Process1 to signal termination of Process1 **/
+  case object Kill1 extends Exception {
     override def fillInStackTrace = this
   }
 

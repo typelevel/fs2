@@ -51,8 +51,8 @@ object Process1Spec extends Properties("Process1") {
         s"feed: $li, ${process1.feed(li)(id[Int]).unemit._1.toList }" |: (li === process1.feed(li)(id[Int]).unemit._1.toList)
         , "feed-emit-first" |: ((List(1, 2, 3) ++ li) === process1.feed(li)(emitAll(List(1, 2, 3)) ++ id[Int]).unemit._1.toList)
         , s"buffer: $li ${pi.buffer(4).toList}" |: pi.buffer(4).toList === li
-//        , "collect" |: pi.collect(pf).toList === li.collect(pf)
-//        , "collectFirst" |: pi.collectFirst(pf).toList === li.collectFirst(pf).toList
+        , "collect" |: pi.collect(pf).toList === li.collect(pf)
+        , "collectFirst" |: pi.collectFirst(pf).toList === li.collectFirst(pf).toList
 //        , "drop" |: pi.drop(n).toList === li.drop(n)
 //        , "dropLast" |: pi.dropLast.toList === li.dropRight(1)
 //        , "dropLastIf" |: {

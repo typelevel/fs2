@@ -8,6 +8,7 @@ import scalaz.\/._
 import scalaz._
 import scalaz.\/-
 import scalaz.-\/
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 trait process1 {
@@ -43,13 +44,43 @@ trait process1 {
    *
    * @throws IllegalArgumentException if `n` <= 0
    */
-  def chunk[I](n: Int): Process1[I, Vector[I]] = {
+  def chunk0[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "chunk size must be > 0, was: " + n)
     def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] =
       if (m <= 0) emit(acc) ++ go(n, Vector())
       else await1[I].flatMap(i => go(m - 1, acc :+ i)).orElse(emit(acc))
     go(n, Vector())
   }
+
+  def chunk[I](n: Int): Process1[I, Vector[I]] = {
+    require(n > 0, "chunk size must be > 0, was: " + n)
+    def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] = {
+     if (m < 0) emit(acc)
+     else await1[I].flatMap { i =>
+       val next = acc :+ i
+       println(("GOT", i, next))
+
+       go(m - 1, next)
+     } orElse emit(acc)
+    }
+
+    go(n,Vector()) ++ chunk(n)
+  }
+
+//  def chunk[I](n:Int):Process1[I,Vector[I]] = {
+//    require(n > 0, "chunk size must be > 0, was: " + n)
+//    def go(m: Int, acc: Vector[I], cleaned:AtomicBoolean): Process1[I, Vector[I]] = {
+//      await1[I].flatMap { i =>
+//        if (m <= 0) emit(acc :+ i)
+//        else go(m-1, acc :+ i, cleaned) onKill {
+//          if (cleaned.get) fail(Kill)
+//          else { cleaned.set(true); emit(acc :+ i)}
+//        }
+//      }
+//    }
+//
+//    go(n,Vector(),new AtomicBoolean(false)) ++ chunk(n)
+//  }
 
   /** Collects up all output of this `Process1` into a single `Emit`. */
   def chunkAll[I]: Process1[I, Vector[I]] =
@@ -143,7 +174,7 @@ trait process1 {
         cur.step match {
           case Cont(Emit(os), next) =>  go(in, out fast_++ os, next(End))
           case Cont(AwaitP1(rcv), next) => go(in.tail,out,rcv(in.head) onHalt next)
-          case Done(rsn) => emitAll(out)
+          case Done(rsn) => emitAll(out).causedBy(rsn)
         }
       } else emitAll(out) ++ cur
     }

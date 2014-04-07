@@ -1,6 +1,7 @@
 package scalaz.stream2
 
 import scala.annotation.tailrec
+import java.util.concurrent.atomic.AtomicInteger
 
 
 /**
@@ -44,7 +45,9 @@ object Util {
 
  /** helper for turning on/off debug **/
   def debug(s: => String) = {
-    println(s)
-  }
+   println(s)
+ }
+
+  val refCount = new AtomicInteger(0)
 
 }
