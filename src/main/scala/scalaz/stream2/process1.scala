@@ -3,12 +3,11 @@ package scalaz.stream2
 import collection.immutable.Vector
 import java.nio.charset.Charset
 import scala.annotation.tailrec
-import scalaz.syntax.equal._
+import scalaz.-\/
+import scalaz.\/-
 import scalaz.\/._
 import scalaz._
-import scalaz.\/-
-import scalaz.-\/
-import java.util.concurrent.atomic.AtomicBoolean
+import scalaz.syntax.equal._
 
 
 trait process1 {
@@ -55,13 +54,11 @@ trait process1 {
   def chunk[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "chunk size must be > 0, was: " + n)
     def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] = {
-     if (m < 0) emit(acc)
-     else await1[I].flatMap { i =>
-       val next = acc :+ i
-       println(("GOT", i, next))
-
-       go(m - 1, next)
-     } orElse emit(acc)
+      if (m <= 0) emit(acc)
+      else receive1(
+        i => go(m - 1, acc :+ i)
+        , if (acc.nonEmpty) emit(acc) else halt
+      )
     }
 
     go(n,Vector()) ++ chunk(n)
@@ -147,11 +144,10 @@ trait process1 {
   /** Emits all elemens of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I, I] = {
     def go(prev: I): Process1[I, I] =
-      await1[I].flatMap {
-        curr => emit(prev) fby go(curr)
-      } orElse {
-        if (p(prev)) halt else emit(prev)
-      }
+      receive1(
+        i => emit(prev) fby go(i)
+        , if (p(prev)) halt else emit(prev)
+      )
     await1[I].flatMap(go)
   }
 
@@ -206,7 +202,10 @@ trait process1 {
    * Halts with `false` as soon as a non-matching element is received.
    */
   def forall[I](f: I => Boolean): Process1[I, Boolean] =
-    await1[I].flatMap(i => if (f(i)) forall(f) else emit(false)) orElse (emit(true))
+    receive1(
+      i => if (f(i)) forall(f) else emit(false)
+      , emit(true)
+    )
 
   /**
    * `Process1` form of `List.fold`.
@@ -280,8 +279,7 @@ trait process1 {
 
   /** Skip all but the last element of the input. */
   def last[I]: Process1[I, I] = {
-    def go(prev: I): Process1[I, I] =
-      await1[I].flatMap(go).orElse(emit(prev))
+    def go(prev: I): Process1[I, I] = receive1(go,emit(prev))
     await1[I].flatMap(go)
   }
 
@@ -290,8 +288,8 @@ trait process1 {
    * This `Process` will always emit exactly one value;
    * If the input is empty, `i` is emitted.
    */
-  def lastOr[I](i: => I): Process1[I, I] =
-    await1[I].flatMap(i2 => lastOr(i2)).orElse(emit(i))
+  def lastOr[I](li: => I): Process1[I, I] =
+    receive1(i => lastOr(i), emit(li))
 
   /** Transform the input using the given function, `f`. */
   def lift[I, O](f: I => O): Process1[I, O] =
@@ -532,11 +530,14 @@ trait process1 {
    */
   def splitWith[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I, Vector[I]] =
-      await1[I].flatMap { i =>
-        val cur = f(i)
-        if (cur == last) go(acc :+ i, cur)
-        else emit(acc) fby go(Vector(i), cur)
-      } orElse emit(acc)
+      receive1(
+       i => {
+         val cur = f(i)
+         if (cur == last) go(acc :+ i, cur)
+         else emit(acc) fby go(Vector(i), cur)
+       }
+       , emit(acc)
+      ) 
     await1[I].flatMap(i => go(Vector(i), f(i)))
   }
 

@@ -4,9 +4,10 @@ package scalaz.stream2
 import scala.Ordering
 import scala.annotation.tailrec
 import scala.collection.SortedMap
-import scalaz._
+import scalaz.\/._
 import scalaz.concurrent.Task
 import java.util.concurrent.atomic.AtomicInteger
+import scalaz.{\/, Catchable, Monoid, Monad}
 
 sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
 
@@ -162,8 +163,13 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
    * external signaling).
    */
   final def disconnect: Process[Nothing,O] = this.suspendStep flatMap {
-    case Cont(e@Emit(_),n) => e onHalt { rsn => Try(n(Kill(rsn)).disconnect).swallowKill }
-    case Cont(Await(_,_),n) => Try(n(Kill).disconnect).swallowKill
+    case Cont(e@Emit(_),n) =>
+      e onHalt { rsn => Try(n(Kill(rsn)).disconnect).swallowKill }
+    case Cont(Await(_,rcv),n) =>
+      (Try(rcv(left(Kill)).run).disconnect onHalt {
+        case End | Kill => Try(n(Kill).disconnect)
+        case rsn => Try(n(rsn).disconnect)
+      }).swallowKill
     case Done(rsn) => Halt(rsn)
   }
 
@@ -298,30 +304,29 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
 
 
   final def orElse[F2[x] >: F[x], O2 >: O](fallback: => Process[F2, O2], recover : Throwable => Process[F2,O2] = (_:Throwable) => halt): Process[F2, O2] = {
-    this.suspendStep.flatMap {
-      case Cont(emt@Emit(_),next) => Append(emt,Vector(rsn => Trampoline.delay(next(rsn) orElse(fallback,recover))))
-      case Cont(awt@Await(_,_),next) =>
-        awt.extend { p => println(("P", p.unemit)); p onHalt {
-          case End =>
-            println("END")
-            Try(next(End))
-          case Kill =>
-            println(("KILL", fallback.unemit))
-            fallback ++ Try(next(Kill))
-          case rsn =>
-            println("RSN" + rsn)
-            Try(recover(rsn)) ++ next(rsn)
-        }}
-      case dn@Done(rsn) => dn.asHalt
-
-    }
+//    this.suspendStep.flatMap {
+//      case s@Cont(emt@Emit(_),next) =>
+//        println(("EMIT", emt, next))
+//        Append(emt,Vector(rsn => Trampoline.delay(next(rsn) orElse(fallback,recover))))
+//      case Cont(awt@Await(_,_),next) =>
+//        awt.extend { p => println(("P", p.unemit)); p onHalt {
+//          case End =>
+//            println("END")
+//            Try(next(End))
+//          case Kill =>
+//            println(("KILL", fallback.unemit))
+//            fallback onHalt next
+//          case rsn =>
+//            println("RSN" + rsn)
+//            Try(recover(rsn)) onHalt next
+//        }}
+//      case dn@Done(rsn) => dn.asHalt
+//
+//    }
+    ???
   }
 
 
-//    onHalt {
-//      case End => Try(fallback)
-//      case rsn => Try(cleanup).causedBy(rsn)
-//    }
 
 
   /**
@@ -334,22 +339,6 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
       case End =>  this.repeat
       case rsn =>  fail(rsn)
     }
-
-    //    this onHalt {
-    //      case End => this.repeat
-    //      case rsn => halt
-    //    }
-    //
-    //    def go(cur: Process[F,O]): Process[F,O] = cur match {
-    //      case h@Halt(e) => e match {
-    //        case End => go(this)
-    //        case _ => h
-    //      }
-    //      case Await(req,recv,fb,c) => Await(req, recv andThen go, fb, c)
-    //      case Emit(h, t) => emitSeq(h, go(t))
-    //    }
-    //    go(this)
-
   }
 
   /**
@@ -394,8 +383,8 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
           }
         case Cont(awt:Await[F2,Any,O]@unchecked,next:(Throwable => Process[F2,O])@unchecked) =>
           F.bind(C.attempt(awt.req)) { _.fold(
-            rsn => go(Try(next(rsn)), acc)
-            , r => go(Try(awt.rcv(r).run) onHalt next, acc)
+            rsn => go(Try(awt.rcv(left(rsn)).run), acc)
+            , r => go(Try(awt.rcv(right(r)).run) onHalt next, acc)
           )}
         case Done(End) => F.point(acc)
         case Done(Kill) => F.point(acc)
@@ -494,11 +483,12 @@ object Process {
 
   /**
    * The `Await` constructor instructs the driver to evaluate
-   * `req`. If it returns successfully, `recv` is called
+   * `req`. If it returns successfully, `recv` is called with result on right side
    * to transition to the next state.
    * In case the req terminates with either a failure (`Throwable`) or
    * an `End` indicating normal termination, these are passed to rcv on the left side,
    * to produce next state.
+   *
    *
    * Instead of this constructor directly, please use:
    *
@@ -507,7 +497,7 @@ object Process {
    */
   case class Await[+F[_], A, +O](
     req: F[A]
-    , rcv: A => Trampoline[Process[F, O]]
+    , rcv: Throwable \/ A => Trampoline[Process[F, O]]
     ) extends AwaitOrEmit[F, O] {
     /**
      * Helper to modify the result of `rcv` parameter of await stack-safely on trampoline.
@@ -610,7 +600,24 @@ object Process {
    * and function to produce next state
    */
   def await[F[_], A, O](req: F[A])(rcv: A => Process[F, O]): Process[F, O] =
-    Await[F, A, O](req, a => Trampoline.delay(rcv(a)))
+    Await[F, A, O](req, r => Trampoline.delay(r.fold(fail,rcv)))
+
+
+  /**
+   * awaits receive of `I` in process1, and attaches fallback in case await evaluation
+   * terminated with `End` indicated source being exhausted or `Kill` indicating process was
+   * forcefully terminated.
+   *
+   * If you don't need to handle the `fallback` case, use `await1.flatMap` instead
+   */
+  def receive1[I,O](rcv: I => Process1[I,O], fallback: => Process1[I,O] = halt): Process1[I,O] =
+    Await(Get[I], (r : Throwable \/ I) => Trampoline.delay(r.fold(
+      err => err match {
+        case End | Kill => fallback
+        case rsn => fail(rsn)
+      }
+      , i => rcv(i)
+    )))
 
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -637,7 +644,7 @@ object Process {
   object AwaitP1 {
     /** deconstruct for `Await` directive of `Process1` **/
     def unapply[I, O](self: Process1[I, O]): Option[I => Process1[I, O]] = self match {
-      case Await(_, rcv) => Some((i: I) => Try(rcv(i).run))
+      case Await(_, rcv) => Some((i: I) => Try(rcv(right(i)).run))
       case _             => None
     }
   }
