@@ -9,7 +9,9 @@ import scalaz.concurrent.Task
 import java.util.concurrent.atomic.AtomicInteger
 import scalaz.{\/, Catchable, Monoid, Monad}
 
-sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
+sealed trait Process[+F[_], +O]
+  extends Process1Ops[F,O]
+          with TeeOps[F,O] {
 
   import Process._
   import Util._
@@ -97,6 +99,45 @@ sealed trait Process[+F[_], +O] extends Process1Ops[F,O] {
    */
   final def suspendStep: Process[Nothing,Step[F,O]] =
     suspend { emit(step) }
+
+
+  /**
+   * Use a `Tee` to interleave or combine the outputs of `this` and
+   * `p2`. This can be used for zipping, interleaving, and so forth.
+   * Nothing requires that the `Tee` read elements from each
+   * `Process` in lockstep. It could read fifty elements from one
+   * side, then two elements from the other, then combine or
+   * interleave these values in some way, etc.
+   *
+   * If at any point the `Tee` awaits on a side that has halted,
+   * we gracefully kill off the other side by sending the `Kill`, then halt.
+   *
+   * If at any point tee terminates, both processes are terminated (Left side first)
+   * with reason that caused `tee` to terminate.
+   */
+  final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
+    import scalaz.stream.tee.{AwaitL,AwaitR}
+    t.suspendStep match {
+      case x => ???
+
+    }
+
+
+//    t match {
+//      case h@Halt(_) => this.kill onComplete p2.kill onComplete h
+//      case Emit(h, t2) => Emit(h, this.tee(p2)(t2))
+//      case AwaitL(recv,fb,c) => this.step.flatMap { s =>
+//        s.fold { hd =>
+//          s.tail.tee(p2)(scalaz.stream.tee.feedL(hd)(t))
+//        } (halt.tee(p2)(fb), e => fail(e).tee(p2)(c))
+//      }
+//      case AwaitR(recv,fb,c) => p2.step.flatMap { s =>
+//        s.fold { hd =>
+//          this.tee(s.tail)(scalaz.stream.tee.feedR(hd)(t))
+//        } (this.tee(halt)(fb), e => this.tee(fail(e))(c))
+//      }
+//    }
+  }
 
 
   ////////////////////////////////////////////////////////////////////////////////////////
@@ -505,9 +546,46 @@ object Process {
   /** alias for emitAll **/
   def apply[O](o: O*): Process[Nothing, O] = emitAll(o)
 
+  /**
+   * stack-safe constructor for Await
+   * allowing to pass `req` as request
+   * and function to produce next state
+   *
+   *
+   */
+  def await[F[_], A, O](req: F[A])(rcv: A => Process[F, O]): Process[F, O] =
+    Await[F, A, O](req, r => Trampoline.delay(r.fold(fail,rcv)))
+
+  /**
+   * Constructs an await, that allows to specify processes that will be run when
+   * request wil either terminate with `End` or `Kill` (fallback) or with error (onError).
+   *
+   * if you don't need to specify `fallback` or `onError` use `await`
+   */
+  def awaitOr[F[_],A,O](req:F[A])(
+    fb: => Process[F,O]
+    , onError: Throwable => Process[F,O] = t => fail(t)
+    )(rcv: A => Process[F, O]): Process[F, O] = {
+    Await(req,(r:Throwable \/ A) => Trampoline.delay(r.fold(
+      err => err match {
+        case End | Kill =>   fb
+        case rsn => onError(rsn)
+      }
+      , a => rcv(a)
+    )))
+  }
+
   /** helper to construct await for Process1 **/
   def await1[I]: Process1[I, I] =
     await(Get[I])(emit)
+
+  /** helper construct for await on Left side. can be used in `Tee` and `Wye` **/
+  def awaitL[I]: Tee[I,Any,I] =
+    await(L[I])(emit)
+
+  /** helper construct for await on Right side. can be used in `Tee` and `Wye` **/
+  def awaitR[I2]: Tee[Any,I2,I2] =
+    await(R[I2])(emit)
 
   /** Indicates termination with supplied reason **/
   def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(rsn)
@@ -529,13 +607,6 @@ object Process {
   }
 
 
-  /**
-   * stack-safe constructor for Await
-   * allowing to pass `req` as request
-   * and function to produce next state
-   */
-  def await[F[_], A, O](req: F[A])(rcv: A => Process[F, O]): Process[F, O] =
-    Await[F, A, O](req, r => Trampoline.delay(r.fold(fail,rcv)))
 
 
   /**
@@ -546,19 +617,46 @@ object Process {
    * If you don't need to handle the `fallback` case, use `await1.flatMap` instead
    */
   def receive1[I,O](rcv: I => Process1[I,O], fallback: => Process1[I,O] = halt): Process1[I,O] =
-    Await(Get[I], (r : Throwable \/ I) => Trampoline.delay(r.fold(
-      err => err match {
-        case End | Kill => fallback
-        case rsn => fail(rsn)
-      }
-      , i => rcv(i)
-    )))
+    awaitOr(Get[I])(fallback)(rcv)
 
   /**
    * Curried syntax alias for receive1
    */
   def receive1Or[I,O](fb: => Process1[I,O])(rcv: I => Process1[I,O]): Process1[I,O] =
     receive1[I,O](rcv,fb)
+
+
+  /**
+   * Awaits to receive input from Left side,
+   * than if that request terminates with `End` or is killed by `Kill`
+   * runs the supplied fallback. Otherwise `rcv` is run to produce next state.
+   *
+   * If  you don't need `fallback` use rather `awaitL.flatMap` instead
+   */
+  def receiveL[I,I2,O]( rcv: I => Tee[I,I2,O] , fallback: => Tee[I,I2,O] = halt
+    ): Tee[I,I2,O] =
+    awaitOr[Env[I,I2]#T,I,O](L)(fallback)(rcv)
+
+  /**
+   * Awaits to receive input from Right side,
+   * than if that request terminates with `End` or is killed by `Kill`
+   * runs the supplied fallback. Otherwise `rcv` is run to produce next state.
+   *
+   * If  you don't need `fallback` use rather `awaitR.flatMap` instead
+   */
+  def receiveR[I,I2,O](  rcv: I2 => Tee[I,I2,O] , fallback: Tee[I,I2,O] = halt
+    ): Tee[I,I2,O] =
+    awaitOr[Env[I,I2]#T,I2,O](R)(fallback)(rcv)
+
+  /** syntax sugar for receiveL **/
+  def receiveLOr[I,I2,O](fallback: Tee[I,I2,O])(
+    rcvL: I => Tee[I,I2,O]): Tee[I,I2,O] =
+    receiveL(rcvL, fallback)
+
+  /** syntax sugar for receiveR **/
+  def receiveROr[I,I2,O](fallback: Tee[I,I2,O])(
+    rcvR: I2 => Tee[I,I2,O]): Tee[I,I2,O] =
+    receiveR(rcvR, fallback)
 
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -783,6 +881,8 @@ object Process {
   def eval_[F[_], O](t: F[O]): Process[F, Nothing] =
     await(t)(_ => halt)
 
+  /** Prefix syntax for `p.repeat`. */
+  def repeat[F[_],O](p: Process[F,O]): Process[F,O] = p.repeat
 
   /**
    * Produce `p` lazily, guarded by a single `Append`. Useful if
