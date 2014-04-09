@@ -38,15 +38,13 @@ object TeeSpec extends Properties("Tee") {
     val sm = Monoid[String]
 
 
-    println("##########"*10 )
-    println("li" + li)
-    println("ls" + ls)
-    println("P1 " + li.toList.zip(ls.toList))
-    println("P2 " + pi.zip(ps).toList )
+//    println("##########"*10 )
+//    println("li" + li)
+//    println("ls" + ls)
+//    println("P1 " + li.toList.zip(ls.toList))
+//    println("P2 " + pi.zip(ps).toList )
 
     try {
-
-
 
       val examples = Seq(
         s"zip: $li | $ls " |: li.toList.zip(ls.toList) === pi.zip(ps).toList

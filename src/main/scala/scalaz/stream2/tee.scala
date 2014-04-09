@@ -63,15 +63,16 @@ object tee  {
   def feedL[I,I2,O](i: Seq[I])(p: Tee[I,I2,O]): Tee[I,I2,O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
+    //  println(s"feedL GO: $in | $out | $cur")
       cur.step match {
         case Cont(Emit(os),next) => go(in,out :+ os, Try(next(End)))
         case Cont(awt@AwaitR(rcv), next) =>
           (emitAll(out.flatten) ++
-            await(R[I2]: Env[I,I2]#T[I2])(rcv andThen(feedL[I,I2,O](in)))
+            await(R[I2]: Env[I,I2]#T[I2])(i2 => feedL[I,I2,O](in)(Try(rcv(i2)) onHalt next))
             ) onHalt next
         case Cont(awt@AwaitL(rcv), next) =>
           if (in.nonEmpty) go(in.tail,out,Try(rcv(in.head)) onHalt next )
-          else emitAll(out).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
+          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
         case Done(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
     }
@@ -105,14 +106,15 @@ object tee  {
   def feedR[I,I2,O](i: Seq[I2])(p: Tee[I,I2,O]): Tee[I,I2,O] = {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
+     // println(s"feedR GO: $in | $out | $cur")
       cur.step match {
         case Cont(Emit(os),next) => go(in,out :+ os, Try(next(End)))
         case Cont(awt@AwaitR(rcv), next) =>
           if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt next )
-          else emitAll(out).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
+          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
         case Cont(awt@AwaitL(rcv), next) =>
           (emitAll(out.flatten) ++
-            await(L[I]: Env[I,I2]#T[I])(rcv andThen(feedR[I,I2,O](in)))
+            await(L[I]: Env[I,I2]#T[I])(i => feedR[I,I2,O](in)(Try(rcv(i)) onHalt next))
             ) onHalt next
         case Done(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
