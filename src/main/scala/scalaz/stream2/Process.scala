@@ -116,9 +116,25 @@ sealed trait Process[+F[_], +O]
    * with reason that caused `tee` to terminate.
    */
   final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
-    import scalaz.stream.tee.{AwaitL,AwaitR}
-    t.suspendStep match {
-      case x => ???
+    import scalaz.stream2.tee.{AwaitL,AwaitR,feedL,feedR}
+    t.suspendStep flatMap {
+      case ts@Cont(AwaitL(rcvT),nextT) => this.step match {
+        case Cont(awt@Await(rq,rcv), next) => awt.extend { p => (p onHalt next).tee(p2)(t) }
+        case Cont(Emit(os), next) => Try(next(End)).tee(p2)(feedL[O,O2,O3](os)(t))
+        case d@Done(rsn) => d.asHalt.tee(p2)(ts.toProcess.disconnect)
+      }
+      case ts@Cont(AwaitR(rcvT),nextT) => p2.step match {
+        case Cont(awt:Await[F2,Any,O2]@unchecked, next:(Throwable => Process[F2,O2])@unchecked) =>
+          awt.extend { p => this.tee(p onHalt next)(t) }
+        case Cont(Emit(o2s:Seq[O2]@unchecked), next:(Throwable => Process[F2,O2])@unchecked) =>
+          this.tee(Try(next(End)))(feedR[O,O2,O3](o2s)(t))
+        case d@Done(rsn) => this.tee(d.asHalt)(ts.toProcess.disconnect)
+      }
+      case Cont(emt@Emit(o3s), next) => emt ++ this.tee(p2)(Try(next(End)))
+      case Done(rsn) =>
+        this.killBy(Kill(rsn)).swallowKill onComplete
+          p2.killBy(Kill(rsn)).swallowKill onComplete
+          fail(rsn)
 
     }
 
