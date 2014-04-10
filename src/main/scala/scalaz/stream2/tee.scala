@@ -54,8 +54,23 @@ object tee  {
     f: (I,I2) => O): Tee[I,I2,O] = {
     val fbR: Tee[I,I2,O] = passR[I2] map (f(padI, _    ))
     val fbL: Tee[I,I2,O] = passL[I]  map (f(_   , padI2))
-    receiveLOr(fbR)(i =>
-      receiveROr(tee.feed1L(i)(fbL))(i2 => emit(f(i,i2)))) repeat
+
+    def fbR2 : Tee[I,I2,O] = receiveR{ i2 => emit(f(padI,i2)) ++ fbR2 }
+    def fbL2 : Tee[I,I2,O] = receiveL{ i => emit(f(i,padI2)) ++ fbL2 }
+
+    def go :  Tee[I,I2,O] = {
+      receiveLOr[I, I2, O](fbR2) { i =>
+        receiveROr[I, I2, O](fbL2) { i2 =>
+          println((">>>", i,i2))
+          emit(f(i, i2)) ++ go
+        }
+
+      }
+    }
+
+    go
+//    receiveLOr(fbR)(i =>
+//      receiveROr(tee.feed1L(i)(fbL))(i2 => emit(f(i,i2)))) repeat
   }
 
 
@@ -67,9 +82,11 @@ object tee  {
       cur.step match {
         case Cont(Emit(os),next) => go(in,out :+ os, Try(next(End)))
         case Cont(awt@AwaitR(rcv), next) =>
-          (emitAll(out.flatten) ++
-            await(R[I2]: Env[I,I2]#T[I2])(i2 => feedL[I,I2,O](in)(Try(rcv(i2)) onHalt next))
-            ) onHalt next
+          emitAll(out.flatten) ++
+            (awaitOr(R[I2]: Env[I,I2]#T[I2])
+             (rsn => feedL(in)(next(rsn)))
+             (i2 => feedL[I,I2,O](in)(Try(rcv(i2)) onHalt next)))
+
         case Cont(awt@AwaitL(rcv), next) =>
           if (in.nonEmpty) go(in.tail,out,Try(rcv(in.head)) onHalt next )
           else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
@@ -79,26 +96,6 @@ object tee  {
 
     go(i, Vector(), p)
 
-
-//    @annotation.tailrec
-//    def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] =
-//      if (in.nonEmpty) cur match {
-//        case h@Halt(_) => emitSeq(out.flatten, h)
-//        case Emit(h, t) => go(in, out :+ h, t)
-//        case AwaitL(recv, fb, c) =>
-//          val next =
-//            try recv(in.head)
-//            catch {
-//              case End => fb
-//              case e: Throwable => Halt(e)
-//            }
-//          go(in.tail, out, next)
-//        case AwaitR(recv, fb, c) =>
-//          emitSeq(out.flatten,
-//            await(R[I2]: Env[I,I2]#T[I2])(recv andThen (feedL(in)), feedL(in)(fb), feedL(in)(c)))
-//      }
-//      else emitSeq(out.flatten, cur)
-//    go(i, Vector(), p)
 
   }
 
@@ -113,34 +110,17 @@ object tee  {
           if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt next )
           else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
         case Cont(awt@AwaitL(rcv), next) =>
-          (emitAll(out.flatten) ++
-            await(L[I]: Env[I,I2]#T[I])(i => feedR[I,I2,O](in)(Try(rcv(i)) onHalt next))
-            ) onHalt next
+          emitAll(out.flatten) ++
+            (awaitOr(L[I]: Env[I,I2]#T[I])
+             (rsn => feedR(in)(next(rsn)))
+             (i => feedR[I,I2,O](in)(Try(rcv(i)) onHalt next)))
+
         case Done(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
     }
 
     go(i, Vector(), p)
 
-//    @annotation.tailrec
-//    def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] =
-//      if (in.nonEmpty) cur match {
-//        case h@Halt(_) => emitSeq(out.flatten, h)
-//        case Emit(h, t) => go(in, out :+ h, t)
-//        case AwaitR(recv, fb, c) =>
-//          val next =
-//            try recv(in.head)
-//            catch {
-//              case End => fb
-//              case e: Throwable => Halt(e)
-//            }
-//          go(in.tail, out, next)
-//        case AwaitL(recv, fb, c) =>
-//          emitSeq(out.flatten,
-//            await(L[I]: Env[I,I2]#T[I])(recv andThen (feedR(in)), feedR(in)(fb), feedR(in)(c)))
-//      }
-//      else emitSeq(out.flatten, cur)
-//    go(i, Vector(), p)
 
   }
 
@@ -151,6 +131,41 @@ object tee  {
   /** Feed one input to the right branch of this `Tee`. */
   def feed1R[I,I2,O](i2: I2)(t: Tee[I,I2,O]): Tee[I,I2,O] = feedR(Vector(i2))(t)
    // wye.feed1R(i2)(t).asInstanceOf[Tee[I,I2,O]]
+
+
+  /**
+   * Signals, that _left_ side of tee terminated with supplied reason
+   * That causes all succeeding `AwaitL` to terminate with supplied
+   * reason
+   */
+  def haltL[I,I2,O](tee:Tee[I,I2,O], rsn:Throwable) : Tee[I,I2,O] ={
+    tee.suspendStep.flatMap  {
+      case Cont(emt@Emit(os),next) => emt ++ haltL(Try(next(End)),rsn)
+      case Cont(AwaitL(rcv), next) => haltL(Try(next(rsn)),rsn)
+      case Cont(AwaitR(rcv), next) =>
+        await(R[I2]: Env[I,I2]#T[I2])(i2 => haltL(Try(rcv(i2)),rsn))
+        .onHalt(rsn0 => haltL(Try(next(rsn0)),rsn))
+      case dn@Done(rsn) => dn.asHalt
+    }
+  }
+
+
+  /**
+   * Signals, that _right_ side of tee terminated with supplied reason
+   * That causes all succeeding `AwaitR` to terminate with supplied
+   * reason
+   */
+  def haltR[I,I2,O](tee:Tee[I,I2,O], rsn:Throwable) : Tee[I,I2,O] ={
+    tee.suspendStep.flatMap  {
+      case Cont(emt@Emit(os),next) => emt ++ haltR(Try(next(End)),rsn)
+      case Cont(AwaitR(rcv), next) => haltR(Try(next(rsn)),rsn)
+      case Cont(AwaitL(rcv), next) =>
+        await(L[I]: Env[I,I2]#T[I])(i => haltR(Try(rcv(i)),rsn))
+        .onHalt(rsn0 => haltR(Try(next(rsn0)),rsn))
+      case dn@Done(rsn) => dn.asHalt
+    }
+  }
+
 
 
   //////////////////////////////////////////////////////////////////////
