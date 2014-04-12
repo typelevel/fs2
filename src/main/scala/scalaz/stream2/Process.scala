@@ -331,6 +331,19 @@ sealed trait Process[+F[_], +O]
     }
   }
 
+  /** Translate the request type from `F` to `G`, using the given polymorphic function. */
+  def translate[G[_]](f: F ~> G): Process[G,O] =
+    this.suspendStep.flatMap {
+      case Cont(Emit(os),next) => emitAll(os) ++ (Try(next(End)) translate f)
+      case Cont(Await(req,rcv), next) =>
+        Await[G,Any,O](f(req), r => {
+          Trampoline.suspend(rcv(r)).map(_ translate f)
+        }) onHalt { rsn => Try(next(rsn)) translate f }
+      case dn@Done(rsn) => dn.asHalt
+    }
+
+
+
   /**
    * Removes all emitted elements from the front of this `Process`.
    * The second argument returned by this method is guaranteed to be
