@@ -118,43 +118,27 @@ sealed trait Process[+F[_], +O]
   final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
     import scalaz.stream2.tee.{AwaitL,AwaitR,feedL,feedR, haltR, haltL}
     t.suspendStep flatMap {
-      case ts@Cont(AwaitL(rcvT),nextT) => this.step match {
+      case ts@Cont(AwaitL(_),_) => this.step match {
         case Cont(awt@Await(rq,rcv), next) => awt.extend { p => (p onHalt next).tee(p2)(t) }
         case Cont(Emit(os), next) => Try(next(End)).tee(p2)(feedL[O,O2,O3](os)(t))
-        case d@Done(rsn) => d.asHalt.tee(p2)(haltR(ts.toProcess,rsn))
+        case d@Done(rsn) => d.asHalt.tee(p2)(haltL(ts.toProcess,Kill(rsn)))
       }
-      case ts@Cont(AwaitR(rcvT),nextT) => p2.step match {
+      case ts@Cont(AwaitR(_),_) => p2.step match {
         case Cont(awt:Await[F2,Any,O2]@unchecked, next:(Throwable => Process[F2,O2])@unchecked) =>
           awt.extend { p => this.tee(p onHalt next)(t) }
         case Cont(Emit(o2s:Seq[O2]@unchecked), next:(Throwable => Process[F2,O2])@unchecked) =>
           this.tee(Try(next(End)))(feedR[O,O2,O3](o2s)(t))
         case d@Done(rsn) =>
-          println(("AWAITR DONE",rsn, ts.toProcess.step, ts.toProcess.disconnect.step))
-          this.tee(d.asHalt)(haltR(ts.toProcess,rsn))
+          this.tee(d.asHalt)(haltR(t,Kill(rsn)))
       }
       case Cont(emt@Emit(o3s), next) => emt ++ this.tee(p2)(Try(next(End)))
       case Done(rsn) =>
         this.killBy(Kill(rsn)).swallowKill onComplete
           p2.killBy(Kill(rsn)).swallowKill onComplete
-          fail(rsn)
+          fail(rsn).swallowKill
 
     }
 
-
-//    t match {
-//      case h@Halt(_) => this.kill onComplete p2.kill onComplete h
-//      case Emit(h, t2) => Emit(h, this.tee(p2)(t2))
-//      case AwaitL(recv,fb,c) => this.step.flatMap { s =>
-//        s.fold { hd =>
-//          s.tail.tee(p2)(scalaz.stream.tee.feedL(hd)(t))
-//        } (halt.tee(p2)(fb), e => fail(e).tee(p2)(c))
-//      }
-//      case AwaitR(recv,fb,c) => p2.step.flatMap { s =>
-//        s.fold { hd =>
-//          this.tee(s.tail)(scalaz.stream.tee.feedR(hd)(t))
-//        } (this.tee(halt)(fb), e => this.tee(fail(e))(c))
-//      }
-//    }
   }
 
 
@@ -332,10 +316,6 @@ sealed trait Process[+F[_], +O]
       case rsn => fail(rsn)
     }
   }
-
-
-
-
 
 
 

@@ -4,6 +4,7 @@ import Process._
 import scalaz.stream2.Util._
 import scalaz.\/._
 import scala.annotation.tailrec
+import scalaz.\/
 
 
 object tee  {
@@ -52,25 +53,17 @@ object tee  {
   /** A version of `zipWith` that pads the shorter stream with values. */
   def zipWithAll[I,I2,O](padI: I, padI2: I2)(
     f: (I,I2) => O): Tee[I,I2,O] = {
-    val fbR: Tee[I,I2,O] = passR[I2] map (f(padI, _    ))
-    val fbL: Tee[I,I2,O] = passL[I]  map (f(_   , padI2))
-
-    def fbR2 : Tee[I,I2,O] = receiveR{ i2 => emit(f(padI,i2)) ++ fbR2 }
-    def fbL2 : Tee[I,I2,O] = receiveL{ i => emit(f(i,padI2)) ++ fbL2 }
+    def fbR : Tee[I,I2,O] = receiveR{ i2 => emit(f(padI,i2)) ++ fbR }
+    def fbL : Tee[I,I2,O] = receiveL{ i => emit(f(i,padI2)) ++ fbL }
 
     def go :  Tee[I,I2,O] = {
-      receiveLOr[I, I2, O](fbR2) { i =>
-        receiveROr[I, I2, O](fbL2) { i2 =>
-          println((">>>", i,i2))
+      receiveLOr[I, I2, O](fbR) { i =>
+        receiveROr[I, I2, O](emit(f(i,padI2)) ++ fbL) { i2 =>
           emit(f(i, i2)) ++ go
         }
-
       }
     }
-
     go
-//    receiveLOr(fbR)(i =>
-//      receiveROr(tee.feed1L(i)(fbL))(i2 => emit(f(i,i2)))) repeat
   }
 
 
@@ -78,18 +71,20 @@ object tee  {
   def feedL[I,I2,O](i: Seq[I])(p: Tee[I,I2,O]): Tee[I,I2,O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
-    //  println(s"feedL GO: $in | $out | $cur")
       cur.step match {
-        case Cont(Emit(os),next) => go(in,out :+ os, Try(next(End)))
-        case Cont(awt@AwaitR(rcv), next) =>
+        case Cont(Emit(os),next) =>
+          go(in,out :+ os, Try(next(End)))
+
+        case Cont(awt@AwaitR.receive(rcv), next) =>
           emitAll(out.flatten) ++
             (awaitOr(R[I2]: Env[I,I2]#T[I2])
-             (rsn => feedL(in)(next(rsn)))
-             (i2 => feedL[I,I2,O](in)(Try(rcv(i2)) onHalt next)))
+             (rsn => feedL(in)(rcv(left(rsn)) onHalt next))
+             (i2 => feedL[I,I2,O](in)(Try(rcv(right(i2))) onHalt next)))
 
         case Cont(awt@AwaitL(rcv), next) =>
           if (in.nonEmpty) go(in.tail,out,Try(rcv(in.head)) onHalt next )
           else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
+
         case Done(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
     }
@@ -103,17 +98,19 @@ object tee  {
   def feedR[I,I2,O](i: Seq[I2])(p: Tee[I,I2,O]): Tee[I,I2,O] = {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
-     // println(s"feedR GO: $in | $out | $cur")
       cur.step match {
-        case Cont(Emit(os),next) => go(in,out :+ os, Try(next(End)))
+        case Cont(Emit(os),next) =>
+          go(in,out :+ os, Try(next(End)))
+
         case Cont(awt@AwaitR(rcv), next) =>
           if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt next )
           else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
-        case Cont(awt@AwaitL(rcv), next) =>
+
+        case Cont(awt@AwaitL.receive(rcv), next) =>
           emitAll(out.flatten) ++
             (awaitOr(L[I]: Env[I,I2]#T[I])
-             (rsn => feedR(in)(next(rsn)))
-             (i => feedR[I,I2,O](in)(Try(rcv(i)) onHalt next)))
+             (rsn => feedR(in)(rcv(left(rsn)) onHalt next))
+             (i => feedR[I,I2,O](in)(Try(rcv(right(i))) onHalt next)))
 
         case Done(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
@@ -125,12 +122,12 @@ object tee  {
   }
 
   /** Feed one input to the left branch of this `Tee`. */
-  def feed1L[I,I2,O](i: I)(t: Tee[I,I2,O]): Tee[I,I2,O] = feedL(Vector(i))(t)
-   // wye.feed1L(i)(t).asInstanceOf[Tee[I,I2,O]]
+  def feed1L[I,I2,O](i: I)(t: Tee[I,I2,O]): Tee[I,I2,O] =
+    feedL(Vector(i))(t)
 
   /** Feed one input to the right branch of this `Tee`. */
-  def feed1R[I,I2,O](i2: I2)(t: Tee[I,I2,O]): Tee[I,I2,O] = feedR(Vector(i2))(t)
-   // wye.feed1R(i2)(t).asInstanceOf[Tee[I,I2,O]]
+  def feed1R[I,I2,O](i2: I2)(t: Tee[I,I2,O]): Tee[I,I2,O] =
+    feedR(Vector(i2))(t)
 
 
   /**
@@ -140,11 +137,16 @@ object tee  {
    */
   def haltL[I,I2,O](tee:Tee[I,I2,O], rsn:Throwable) : Tee[I,I2,O] ={
     tee.suspendStep.flatMap  {
-      case Cont(emt@Emit(os),next) => emt ++ haltL(Try(next(End)),rsn)
-      case Cont(AwaitL(rcv), next) => haltL(Try(next(rsn)),rsn)
+      case Cont(emt@Emit(os),next) =>
+        emt ++ haltL(Try(next(End)),rsn)
+
+      case Cont(AwaitL.receive(rcv), next) =>
+        haltL(Try(rcv(left(rsn))) onHalt next,rsn)
+
       case Cont(AwaitR(rcv), next) =>
         await(R[I2]: Env[I,I2]#T[I2])(i2 => haltL(Try(rcv(i2)),rsn))
         .onHalt(rsn0 => haltL(Try(next(rsn0)),rsn))
+
       case dn@Done(rsn) => dn.asHalt
     }
   }
@@ -158,10 +160,14 @@ object tee  {
   def haltR[I,I2,O](tee:Tee[I,I2,O], rsn:Throwable) : Tee[I,I2,O] ={
     tee.suspendStep.flatMap  {
       case Cont(emt@Emit(os),next) => emt ++ haltR(Try(next(End)),rsn)
-      case Cont(AwaitR(rcv), next) => haltR(Try(next(rsn)),rsn)
+
+      case Cont(AwaitR.receive(rcv), next) =>
+        haltR(Try(rcv(left(rsn))) onHalt next,rsn)
+
       case Cont(AwaitL(rcv), next) =>
         await(L[I]: Env[I,I2]#T[I])(i => haltR(Try(rcv(i)),rsn))
         .onHalt(rsn0 => haltR(Try(next(rsn0)),rsn))
+
       case dn@Done(rsn) => dn.asHalt
     }
   }
@@ -178,6 +184,14 @@ object tee  {
       case Await(req,rcv) if req.tag == 0 =>  Some( (i : I) => Try(rcv(right(i)).run) )    // Some(rcv.asInstanceOf[I => Tee[I,I2,O]])
       case _ => None
     }
+    /** Like `AwaitL` de-constructor, but instead extracts `rcv` with possibility to pass reason for termination **/
+    object receive {
+      def unapply[I,I2,O](self: Tee[I,I2,O]):
+      Option[(Throwable \/ I => Tee[I,I2,O])] = self match {
+        case Await(req,rcv) if req.tag == 0 =>  Some( (r : Throwable \/ I) => Try(rcv(r).run) )    // Some(rcv.asInstanceOf[I => Tee[I,I2,O]])
+        case _ => None
+      }
+    }
   }
 
   object AwaitR {
@@ -185,6 +199,15 @@ object tee  {
     Option[(I2 => Tee[I,I2,O])] = self match {
       case Await(req,rcv) if req.tag == 1 =>  Some( (i2 : I2) => Try(rcv(right(i2)).run) )    //Some((recv.asInstanceOf[I2 => Tee[I,I2,O]], fb, c))
       case _ => None
+    }
+
+    /** Like `AwaitR` de-constructor, but instead extracts `rcv` with possibility to pass reason for termination **/
+    object receive {
+      def unapply[I,I2,O](self: Tee[I,I2,O]):
+      Option[(Throwable \/ I2=> Tee[I,I2,O])] = self match {
+        case Await(req,rcv) if req.tag == 1 =>  Some( (r: Throwable \/ I2) => Try(rcv(r).run) )    //Some((recv.asInstanceOf[I2 => Tee[I,I2,O]], fb, c))
+        case _ => None
+      }
     }
   }
 }

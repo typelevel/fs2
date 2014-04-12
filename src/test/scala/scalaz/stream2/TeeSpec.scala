@@ -55,10 +55,10 @@ object TeeSpec extends Properties("Tee") {
     try {
 
       val examples = Seq(
-        s"zip: $li | $ls " |: li.toList.zip(ls.toList) === pi.zip(ps).toList
-        , "zipAll " |: {
+       s"zip: $li | $ls " |: li.toList.zip(ls.toList) === pi.zip(ps).toList
+       , "zipAll " |: {
           val a = Process.range(0,li.length).map(li(_))
-          val b = Process.range(0,n)
+          val b = Process.range(0,math.abs(n % 100))
           val r = a.tee(b)(tee.zipAll(-1, 1)).runLog.run.toList
           (r === li.zipAll(b.runLog.run.toList, -1, 1).toList)
         }
