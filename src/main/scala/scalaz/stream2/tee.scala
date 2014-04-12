@@ -75,7 +75,7 @@ object tee  {
         case Cont(Emit(os),next) =>
           go(in,out :+ os, Try(next(End)))
 
-        case Cont(awt@AwaitR.receive(rcv), next) =>
+        case Cont(AwaitR.receive(rcv), next) =>
           emitAll(out.flatten) ++
             (awaitOr(R[I2]: Env[I,I2]#T[I2])
              (rsn => feedL(in)(rcv(left(rsn)) onHalt next))
@@ -106,7 +106,7 @@ object tee  {
           if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt next )
           else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
 
-        case Cont(awt@AwaitL.receive(rcv), next) =>
+        case Cont(AwaitL.receive(rcv), next) =>
           emitAll(out.flatten) ++
             (awaitOr(L[I]: Env[I,I2]#T[I])
              (rsn => feedR(in)(rcv(left(rsn)) onHalt next))
@@ -177,6 +177,9 @@ object tee  {
   //////////////////////////////////////////////////////////////////////
   // De-constructors
   //////////////////////////////////////////////////////////////////////
+  type TeeAwaitL[I,I2,O] = Await[Env[I,I2]#T,Env[I,Any]#Is[I],O]
+  type TeeAwaitR[I,I2,O] = Await[Env[I,I2]#T,Env[Any,I2]#T[I2],O]
+
 
   object AwaitL {
     def unapply[I,I2,O](self: Tee[I,I2,O]):
@@ -190,6 +193,13 @@ object tee  {
       Option[(Throwable \/ I => Tee[I,I2,O])] = self match {
         case Await(req,rcv) if req.tag == 0 =>  Some( (r : Throwable \/ I) => Try(rcv(r).run) )    // Some(rcv.asInstanceOf[I => Tee[I,I2,O]])
         case _ => None
+      }
+    }
+    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side **/
+    object is {
+      def unapply[I,I2,O](self: TeeAwaitL[I,I2,O]):Boolean = self match {
+        case Await(req,rcv) if req.tag == 0 => true
+        case _ => false
       }
     }
   }
@@ -207,6 +217,14 @@ object tee  {
       Option[(Throwable \/ I2=> Tee[I,I2,O])] = self match {
         case Await(req,rcv) if req.tag == 1 =>  Some( (r: Throwable \/ I2) => Try(rcv(r).run) )    //Some((recv.asInstanceOf[I2 => Tee[I,I2,O]], fb, c))
         case _ => None
+      }
+    }
+
+    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on left side **/
+    object is {
+      def unapply[I,I2,O](self: TeeAwaitR[I,I2,O]):Boolean = self match {
+        case Await(req,rcv) if req.tag == 1 => true
+        case _ => false
       }
     }
   }

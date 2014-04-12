@@ -5,13 +5,14 @@ import scala.Ordering
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scalaz.\/._
-import scalaz.concurrent.Task
+import scalaz.concurrent.{Strategy, Task}
 import java.util.concurrent.atomic.AtomicInteger
-import scalaz.{\/, Catchable, Monoid, Monad}
+import scalaz.{\/, Catchable, Monoid, Monad, ~>}
 
 sealed trait Process[+F[_], +O]
   extends Process1Ops[F,O]
-          with TeeOps[F,O] {
+          with TeeOps[F,O]
+          with WyeOps[F,O] {
 
   import Process._
   import Util._
@@ -602,11 +603,15 @@ object Process {
   def await1[I]: Process1[I, I] =
     await(Get[I])(emit)
 
-  /** helper construct for await on Left side. can be used in `Tee` and `Wye` **/
+  /** heleper to construct for await on Both sides. Can be used in `Wye`**/
+  def awaitBoth[I,I2]: Wye[I,I2,ReceiveY[I,I2]] =
+    await(Both[I,I2])(emit)
+
+  /** helper construct for await on Left side. Can be used in `Tee` and `Wye` **/
   def awaitL[I]: Tee[I,Any,I] =
     await(L[I])(emit)
 
-  /** helper construct for await on Right side. can be used in `Tee` and `Wye` **/
+  /** helper construct for await on Right side. Can be used in `Tee` and `Wye` **/
   def awaitR[I2]: Tee[Any,I2,I2] =
     await(R[I2])(emit)
 
@@ -637,7 +642,7 @@ object Process {
    * terminated with `End` indicated source being exhausted or `Kill` indicating process was
    * forcefully terminated.
    *
-   * If you don't need to handle the `fallback` case, use `await1.flatMap` instead
+   * If you don't need to handle the `fallback` case, use `await1.flatMap`
    */
   def receive1[I,O](rcv: I => Process1[I,O], fallback: => Process1[I,O] = halt): Process1[I,O] =
     awaitOr(Get[I])({
@@ -651,16 +656,27 @@ object Process {
   def receive1Or[I,O](fb: => Process1[I,O])(rcv: I => Process1[I,O]): Process1[I,O] =
     receive1[I,O](rcv,fb)
 
+  /**
+   * Awaits to receive input from Both sides,
+   * than if that request terminates with `End` or is killed by `Kill`
+   * runs the supplied fallback. Otherwise `rcv` is run to produce next state.
+   *
+   * If you don't need `fallback` use rather `awaitBoth.flatMap`
+   */
+  def receiveBoth[I,I2,O](rcv: ReceiveY[I,I2] => Wye[I,I2,O], fallback: => Wye[I,I2,O] = halt): Wye[I,I2,O] =
+    awaitOr[Env[I,I2]#Y,ReceiveY[I,I2],O](Both)({
+      case End | Kill => fallback
+      case rsn => fail(rsn)
+    })(rcv)
 
   /**
    * Awaits to receive input from Left side,
    * than if that request terminates with `End` or is killed by `Kill`
    * runs the supplied fallback. Otherwise `rcv` is run to produce next state.
    *
-   * If  you don't need `fallback` use rather `awaitL.flatMap` instead
+   * If  you don't need `fallback` use rather `awaitL.flatMap`
    */
-  def receiveL[I,I2,O]( rcv: I => Tee[I,I2,O] , fallback: => Tee[I,I2,O] = halt
-    ): Tee[I,I2,O] =
+  def receiveL[I,I2,O](rcv: I => Tee[I,I2,O], fallback: => Tee[I,I2,O] = halt): Tee[I,I2,O] =
     awaitOr[Env[I,I2]#T,I,O](L)({
       case End | Kill => fallback
       case rsn => fail(rsn)
@@ -671,7 +687,7 @@ object Process {
    * than if that request terminates with `End` or is killed by `Kill`
    * runs the supplied fallback. Otherwise `rcv` is run to produce next state.
    *
-   * If  you don't need `fallback` use rather `awaitR.flatMap` instead
+   * If  you don't need `fallback` use rather `awaitR.flatMap`
    */
   def receiveR[I,I2,O](rcv: I2 => Tee[I,I2,O], fallback: => Tee[I,I2,O] = halt
     ): Tee[I,I2,O] =
@@ -680,14 +696,16 @@ object Process {
       case rsn => fail(rsn)
     })(rcv)
 
+  /** syntax sugar for receiveBoth  **/
+  def receiveBothOr[I,I2,O](fallback: => Wye[I,I2,O])(rcv: ReceiveY[I,I2] => Wye[I,I2,O]):Wye[I,I2,O] =
+    receiveBoth(rcv, fallback)
+
   /** syntax sugar for receiveL **/
-  def receiveLOr[I,I2,O](fallback: => Tee[I,I2,O])(
-    rcvL: I => Tee[I,I2,O]): Tee[I,I2,O] =
+  def receiveLOr[I,I2,O](fallback: => Tee[I,I2,O])(rcvL: I => Tee[I,I2,O]): Tee[I,I2,O] =
     receiveL(rcvL, fallback)
 
   /** syntax sugar for receiveR **/
-  def receiveROr[I,I2,O](fallback: => Tee[I,I2,O])(
-    rcvR: I2 => Tee[I,I2,O]): Tee[I,I2,O] =
+  def receiveROr[I,I2,O](fallback: => Tee[I,I2,O])(rcvR: I2 => Tee[I,I2,O]): Tee[I,I2,O] =
     receiveR(rcvR, fallback)
 
 
@@ -717,6 +735,24 @@ object Process {
     def unapply[I, O](self: Process1[I, O]): Option[I => Process1[I, O]] = self match {
       case Await(_, rcv) => Some((i: I) => Try(rcv(right(i)).run))
       case _             => None
+    }
+
+    /** Like `AwaitP1.unapply` only allows for extracting the fallback case as well **/
+    object withFb {
+      def unapply[I,I2,O](self: Process1[I,O]):
+      Option[(Throwable \/ I => Process1[I,O])] = self match {
+        case Await(_,rcv) => Some((r : Throwable \/ I) => Try(rcv(r).run))
+        case _ => None
+      }
+    }
+
+    /** Like `AwaitP1.unapply` only allows for extracting the fallback case as well on Trampoline **/
+    object withFbT {
+      def unapply[I,I2,O](self: Process1[I,O]):
+      Option[(Throwable \/ I => Trampoline[Process1[I,O]])] = self match {
+        case Await(_,rcv) => Some(rcv)
+        case _ => None
+      }
     }
   }
 
