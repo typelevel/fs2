@@ -116,7 +116,12 @@ object Process1Spec extends Properties("process1") {
       pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
     }) &&
     ("sum" |: {
-      pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
+      pi.toList.sum[Int] ===
+      pi.toSource.pipe(process1.sum).runLast.timed(3000).run.get
+    }) &&
+    ("prefixSums" |: {
+      pi.toList.scan(0)(_ + _) ===
+      pi.toSource.pipe(process1.prefixSums).runLog.run.toList
     }) &&
     ("take" |: {
       pi.take(n).toList === li.take(n)
