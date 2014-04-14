@@ -128,6 +128,12 @@ object Process1Spec extends Properties("process1") {
     }) &&
     ("takeWhile" |: {
       pi.takeWhile(g).toList === li.takeWhile(g)
+    }) &&
+    ("zipWithIndex" |: {
+      ps.zipWithIndex.toList === ls.zipWithIndex
+    }) &&
+    ("zipWithIndex[Double]" |: {
+      ps.zipWithIndex[Double].toList === ls.zipWithIndex.map { case (s, i) => (s, i.toDouble) }
     })
   }
 
