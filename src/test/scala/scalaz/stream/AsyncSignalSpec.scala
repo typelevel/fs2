@@ -9,10 +9,9 @@ import java.lang.Exception
 import scalaz.syntax.monad._
 import scala.concurrent.SyncVar
 import scalaz.stream.async.mutable.Signal
-import scalaz.stream.Process.End
+import scalaz.stream.Process.{End, eval, eval_}
 
 
- 
 object AsyncSignalSpec extends Properties("async.signal") {
 
   case object TestedEx extends Exception("expected in test") {
@@ -162,4 +161,19 @@ object AsyncSignalSpec extends Properties("async.signal") {
       (sync2.get.toOption.get == None +: feed)          :| "second process get all values signalled"
   }
 
+  property("continuous") = secure {
+    def wait(ms: Int) = Task.delay(Thread.sleep(ms))
+    val sig = async.signal[Int]
+    val sink = sig.sink.contramap((x: Int) => Signal.Set(x))
+
+    // Set signal.
+    val in = Process(1) fby eval_(wait(300)) fby Process(2, 3, 4)
+    in.to(sink).run.runAsync(_ => ())
+
+    val p = Process(()) fby eval(wait(600)) fby eval(wait(300))
+
+    val expOut = List(1, 4, 4)
+    val out = p.zip(sig.continuous).map(_._2).runLog.run.toList
+    (out == expOut) :| s"continuous returns newest values - unexpected $out"
+  }
 }

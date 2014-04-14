@@ -110,7 +110,7 @@ object Signal {
     new mutable.Signal[A] {
       def changed: Process[Task, Boolean] = discrete.map(_ => true) merge Process.constant(false)
       def discrete: Process[Task, A] = junction.downstreamW
-      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
+      def continuous: Process[Task, A] = repeatEval(get)
       def changes: Process[Task, Unit] = discrete.map(_ => ())
       def sink: Process.Sink[Task, Msg[A]] = junction.upstreamSink
       def get: Task[A] = discrete.take(1).runLast.flatMap {
