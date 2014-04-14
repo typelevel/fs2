@@ -93,8 +93,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * Note that `p2` is appended to the `fallback` argument of any `Await`
    * produced by this `Process`. If this is not desired, use `fby`.
    */
-  final def append[F2[x]>:F[x], O2>:O](p: => Process[F2,O2]): Process[F2,O2] = {
-    lazy val p2 = p
+  final def append[F2[x]>:F[x], O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = {
     this match {
       case h@Halt(e) => e match {
         case End =>
@@ -121,8 +120,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * we do not modify the `fallback` arguments to any `Await` produced
    * by this `Process`.
    */
-  final def fby[F2[x]>:F[x],O2>:O](p: => Process[F2,O2]): Process[F2,O2] = {
-    lazy val p2 = p
+  final def fby[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = {
     this match {
       case h@Halt(e) => e match {
         case End =>
@@ -239,7 +237,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * Append to the `fallback` and `cleanup` arguments of the _next_ `Await`.
    */
   final def orElse[F2[x]>:F[x],O2>:O](fallback0: => Process[F2,O2], cleanup0: => Process[F2,O2] = halt): Process[F2,O2] = {
-    lazy val fallback: Process[F2,O2] = try {
+    def fallback: Process[F2,O2] = try {
       fallback0 match {
         case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
         case _ => fallback0
@@ -248,7 +246,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
       case e: Throwable => Halt(e)
     }
 
-    lazy val cleanup: Process[F2,O2] = try {
+    def cleanup: Process[F2,O2] = try {
       cleanup0 match {
         case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
         case _ => cleanup0
@@ -269,8 +267,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
   /**
    * Run `p2` after this `Process` if this `Process` completes with an an error.
    */
-  final def onFailure[F2[x]>:F[x],O2>:O](p: => Process[F2,O2]): Process[F2,O2] = {
-    lazy val p2 = p
+  final def onFailure[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = {
     this match {
       case Await(req,recv,fb,c) => Await(req, recv andThen (_.onFailure(p2)), fb, c onComplete p2)
       case Emit(h, t) => Emit(h, t.onFailure(p2))
@@ -288,8 +285,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * This behaves almost identically to `append`, except that `p1 append p2` will
    * not run `p2` if `p1` halts with an error.
    */
-  final def onComplete[F2[x]>:F[x],O2>:O](p: => Process[F2,O2]): Process[F2,O2] = {
-    lazy val p2 = p
+  final def onComplete[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = {
     this match {
       case Await(req,recv,fb,c) => Await(req, recv andThen (_.onComplete(p2)), fb.onComplete(p2), c.onComplete(p2))
       case Emit(h, t) => Emit(h, t.onComplete(p2))
