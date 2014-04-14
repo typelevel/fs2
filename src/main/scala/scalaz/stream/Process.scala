@@ -673,7 +673,7 @@ object Process {
   /** A `Process1` that writes values of type `W`. */
   type Process1W[+W,-I,+O] = Process1[I,W \/ O]
 
-  /** Alias for Process1W **/
+  /** Alias for Process1W. */
   type Writer1[+W,-I,+O] = Process1W[W,I,O]
 
   /** A `Tee` that writes values of type `W`. */
