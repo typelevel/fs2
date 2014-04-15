@@ -511,7 +511,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
     def go(cur: Process[F2,O], acc: B): F2[B] =
       cur match {
         case Emit(h,t) =>
-          go(t.asInstanceOf[Process[F2,O]], h.asInstanceOf[Seq[O]].foldLeft(acc)((x, y) => B.append(x, f(y))))
+          go(t.asInstanceOf[Process[F2,O]], B.append(acc, appendAll(h.asInstanceOf[Seq[O]].map(f)(collection.breakOut))))
         case Halt(e) => e match {
           case End => F.point(acc)
           case _ => C.fail(e)
@@ -1695,6 +1695,24 @@ object Process {
 
   private[stream] def rethrow[F[_],A](f: F[Throwable \/ A])(implicit F: Nondeterminism[F], E: Catchable[F]): F[A] =
     F.bind(f)(_.fold(E.fail, F.pure(_)))
+
+  private def appendAll[A](xs0: List[A])(implicit A: Monoid[A]): A = {
+    @tailrec
+    def shrink(xs: List[A], ys: List[A]): List[A] = xs match {
+      case x0 :: x1 :: rest => shrink(rest, A.append(x0, x1) :: ys)
+      case x0 :: Nil => shrink(Nil, x0 :: ys)
+      case Nil => ys.reverse
+    }
+
+    @tailrec
+    def loop(xs: List[A]): A = xs match {
+      case Nil => Monoid[A].zero
+      case x :: Nil => x
+      case _ => loop(shrink(xs, Nil))
+    }
+
+    loop(xs0)
+  }
 
   // boilerplate to enable monadic infix syntax without explicit imports
 
