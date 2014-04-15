@@ -954,6 +954,20 @@ object Process {
       if(b) halt else transpose(as.map(_.drop(1))))
 
   /**
+   * Produce a stream of all the permutations of the given stream.
+   */
+  def permutations[A](p: Process[Task, A]): Process[Task, Process[Task, A]] = {
+    val xs = iterate(0)(_ + 1) zip p
+    for {
+      b <- eval(isEmpty(xs))
+      r <- if (b) emit(xs) else for {
+        x <- xs
+        ps <- permutations(xs.delete { case (i, v) => i == x._1 })
+      } yield emit(x) ++ ps
+    } yield r.map(_._2)
+  }
+
+  /**
    * Normalize a process such that if it awaits input multiple times without emitting,
    * merge those awaits into a single step.
    */
