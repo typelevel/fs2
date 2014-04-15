@@ -669,7 +669,7 @@ object Process {
   /** A `Process1` that writes values of type `W`. */
   type Process1W[+W,-I,+O] = Process1[I,W \/ O]
 
-  /** Alias for Process1W **/
+  /** Alias for Process1W. */
   type Writer1[+W,-I,+O] = Process1W[W,I,O]
 
   /** A `Tee` that writes values of type `W`. */
@@ -804,8 +804,9 @@ object Process {
   }
 
   /**
-   * A continuous stream which is true after `d, 2d, 3d...` elapsed duration.
-   * If you'd like a discrete stream that will actually block until `d` has elapsed,
+   * A '''continuous''' stream which is true after `d, 2d, 3d...` elapsed duration,
+   * and false otherwise.
+   * If you'd like a '''discrete''' stream that will actually block until `d` has elapsed,
    * use `awakeEvery` instead.
    */
   def every(d: Duration): Process[Task, Boolean] = {
@@ -850,13 +851,14 @@ object Process {
     awaken.dropWhile(!_).once.flatMap(b => if (b) p else halt)
 
   /**
-   * A discrete tasks which emits elapsed durations at the given
+   * A '''discrete''' task which emits elapsed durations at the given
    * regular duration. For example: `awakeEvery(5 seconds)` will
    * return (approximately) `5s, 10s, 20s`, and will lie dormant
    * between emitted values. By default, this uses a shared
    * `ScheduledExecutorService` for the timed events, and runs the
    * actual callbacks on `pool`, which avoids blocking a useful
-   * thread simply to interpret the delays between events.
+   * thread simply to interpret the delays between events. If
+   * you need a '''continous''' stream use `every` instead.
    */
   def awakeEvery(d: Duration)(
       implicit pool: ExecutorService = Strategy.DefaultExecutorService,
