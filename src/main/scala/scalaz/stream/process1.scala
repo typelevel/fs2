@@ -672,6 +672,9 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def filter(f: O => Boolean): Process[F,O] =
     this |> process1.filter(f)
 
+  def delete(f: O => Boolean): Process[F,O] =
+    this |> process1.delete(f)
+
   /** Alias for `this |> [[process1.find]](f)` */
   def find(f: O => Boolean): Process[F,O] =
     this |> process1.find(f)
