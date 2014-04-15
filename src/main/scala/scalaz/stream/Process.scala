@@ -623,6 +623,10 @@ sealed abstract class Process[+F[_],+O] {
   def filter(f: O => Boolean): Process[F,O] =
     this |> processes.filter(f)
 
+  /** Skips the first element that matches the predicate */
+  def delete(f: O => Boolean): Process[F,O] =
+    this |> processes.delete(f)
+
   /** Alias for `this |> process1.find(f)` */
   def find(f: O => Boolean): Process[F,O] =
     this |> processes.find(f)
@@ -1100,6 +1104,20 @@ object Process {
   def transpose[F[_]:Monad, A](as: Process[F, Process[F, A]]): Process[F, Process[F, A]] =
     emit(as.flatMap(_.take(1))) ++ eval(isEmpty(as.flatMap(_.drop(1)))).flatMap(b =>
       if(b) halt else transpose(as.map(_.drop(1))))
+
+  /**
+   * Produce a stream of all the permutations of the given stream.
+   */
+  def permutations[A](p: Process[Task, A]): Process[Task, Process[Task, A]] = {
+    val xs = iterate(0)(_ + 1) zip p
+    for {
+      b <- eval(isEmpty(xs))
+      r <- if (b) emit(xs) else for {
+        x <- xs
+        ps <- permutations(xs.delete { case (i, v) => i == x._1 })
+      } yield emit(x) ++ ps
+    } yield r.map(_._2)
+  }
 
   /**
    * Normalize a process such that if it awaits input multiple times without emitting,
