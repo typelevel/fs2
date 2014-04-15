@@ -1094,6 +1094,37 @@ object Process {
   }
 
   /**
+   * Transpose a process of processes to emit all their first elements, then all their second
+   * elements, and so on.
+   */
+  def transpose[F[_]:Monad, A](as: Process[F, Process[F, A]]): Process[F, Process[F, A]] =
+    emit(as.flatMap(_.take(1))) ++ eval(isEmpty(as.flatMap(_.drop(1)))).flatMap(b =>
+      if(b) halt else transpose(as.map(_.drop(1))))
+
+  /**
+   * Normalize a process such that if it awaits input multiple times without emitting,
+   * merge those awaits into a single step.
+   */
+  def joinAwaits[F[_], O](p: Process[F, O])(implicit F: Functor[F]): Process[F, O] = p match {
+    case Await(req, recv, fb, c) =>
+      Await(F.map(req.asInstanceOf[F[Any]])(
+                  x => joinAwaits(recv(x).asInstanceOf[Process[F,O]])),
+            (x: Process[F, O]) => x, fb.asInstanceOf[Process[F, O]], c.asInstanceOf[Process[F, O]])
+    case Emit(e, k) => Emit(e.asInstanceOf[Seq[O]], joinAwaits(k.asInstanceOf[Process[F, O]]))
+    case x => x
+  }
+
+  /**
+   * Returns true if the given process never emits.
+   */
+  def isEmpty[F[_], O](p: Process[F, O])(implicit F: Monad[F]): F[Boolean] = joinAwaits(p) match {
+    case Halt(e) => F.point(true)
+    case Await(t, k, _, _) =>
+      F.bind(t.asInstanceOf[F[Any]])((a:Any) => isEmpty(k(a).asInstanceOf[Process[F,O]]))
+    case Emit(_, _) => F.point(false)
+  }
+
+  /**
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.
    */
