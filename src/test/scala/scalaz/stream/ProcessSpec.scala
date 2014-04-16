@@ -291,6 +291,23 @@ object ProcessSpec extends Properties("Process") {
     res === (0 until 10).map(_.toString).toList
   }
 
+  // Single instance of original sink is used for all elements.
+  property("pipeIn uses original sink once") = secure {
+    // Sink starts by wiping `written`.
+    var written = List[Int]()
+    def acquire: Task[Unit] = Task.delay { written = Nil }
+    def release(res: Unit): Task[Unit] = Task.now(())
+    def step(res: Unit): Task[Int => Task[Unit]] = Task.now((i: Int) => Task.delay { written = written :+ i  })
+    val sink = io.resource[Unit, Int => Task[Unit]](acquire)(release)(step)
+
+    val source = Process(1, 2, 3).toSource
+
+    val transformer: Process1[Int, Int] = processes.lift(i => i + 1)
+    source.to(sink.pipeIn(transformer)).run.run
+
+    written == List(2, 3, 4)
+  }
+
   property("runStep") = secure {
     def go(p:Process[Task,Int], acc:Seq[Throwable \/ Int]) : Throwable \/ Seq[Throwable \/ Int] = {
       p.runStep.run match {
