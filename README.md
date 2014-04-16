@@ -10,10 +10,10 @@ To get the latest version of the library, add the following to your SBT build:
 ``` scala
 resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
 
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.3.1"
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.4"
 ```
 
-The library only builds against Scala 2.10, not earlier versions.
+The library only builds against Scala 2.10.x, not earlier versions.
 
 ### About the library ###
 
@@ -55,6 +55,7 @@ For questions about the library, use the [scalaz mailing list](https://groups.go
 
 If you have a project you'd like to include in this list, send a message to the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) and we'll add a link to it here.
 
+* [http4s](http://www.http4s.org): Minimal, idiomatic Scala interface for HTTP services using scalaz-stream
 * [scalaz-stream-mongodb](https://github.com/Spinoco/scalaz-stream-mongodb): Bindings to [MongoDB](http://www.mongodb.org/) that use scalaz-stream
 
 ### Related projects ###

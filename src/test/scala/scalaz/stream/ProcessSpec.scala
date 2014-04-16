@@ -1,15 +1,20 @@
 package scalaz.stream
 
 import scalaz._
-import scalaz.syntax.equal._
+import scalaz.\/._
+import scalaz.concurrent.Strategy
 import scalaz.std.anyVal._
 import scalaz.std.list._
+import scalaz.std.option._
+import scalaz.std.string._
+import scalaz.std.tuple._
+import scalaz.syntax.equal._
 
 import org.scalacheck._
-import Prop.{extendedAny => _, _}
-import scalaz.concurrent.Strategy
+import Prop._
+import Arbitrary.arbitrary
 import scala.concurrent
-import scalaz.\/._
+import scala.concurrent.duration._
 
 import TestInstances._
 
@@ -44,12 +49,12 @@ object ProcessSpec extends Properties("Process") {
     }) &&
     ("yip" |: {
       val l = p.toList.zip(p2.toList)
-      val r = p.toSource.yip(p2.toSource).runLog.timed(3000).run.toList
+      val r = p.toSource.yip(p2.toSource).runLog.timed(3 seconds).run.toList
       (l === r)
     })
   }
 
-  property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
+  property("fill") = forAll(Gen.zip(Gen.choose(0,30), Gen.choose(0,50))) {
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
   }
 
@@ -84,10 +89,10 @@ object ProcessSpec extends Properties("Process") {
     val inf = Process.constant(0)
     val one = eval(Task.now(1))
     val empty = Process[Int]()
-    inf.wye(empty)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
-    empty.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
-    inf.wye(one)(whileBoth).run.timed(800).attempt.run == \/-(()) &&
-    one.wye(inf)(whileBoth).run.timed(800).attempt.run == \/-(())
+    inf.wye(empty)(whileBoth).run.timed(800 milli).attempt.run == \/-(()) &&
+    empty.wye(inf)(whileBoth).run.timed(800 milli).attempt.run == \/-(()) &&
+    inf.wye(one)(whileBoth).run.timed(800 milli).attempt.run == \/-(()) &&
+    one.wye(inf)(whileBoth).run.timed(800 milli).attempt.run == \/-(())
   }
 
   property("wye runs cleanup for both sides") = secure {
@@ -147,7 +152,7 @@ object ProcessSpec extends Properties("Process") {
     val sleepsR = Process.awakeEvery(100 milliseconds).take(30)
     val sleeps = sleepsL merge sleepsR
     val p = sleeps.toTask
-    val tasks = List.fill(10)(p.timed(500).attemptRun)
+    val tasks = List.fill(10)(p.timed(500 milli).attemptRun)
     tasks.forall(_.isRight)
   }
 
@@ -155,7 +160,7 @@ object ProcessSpec extends Properties("Process") {
     import scala.concurrent.duration._
     val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
              Process.awakeEvery(100 milliseconds).take(100)
-           }.run.timed(15000).run
+           }.run.timed(15 seconds).run
     true
   }
 

@@ -4,8 +4,8 @@ import Process._
 import java.net.InetSocketAddress
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
-import scala.Some
 import scala.concurrent.SyncVar
+import scala.concurrent.duration._
 import scala.util.Random
 import scalaz.-\/
 import scalaz.\/
@@ -125,7 +125,7 @@ object NioSpec extends Properties("nio") {
     Thread.sleep(300)
 
     val clientGot =
-      NioClient.echo(local, ByteVector(array1)).runLog.timed(3000).run.map(_.toSeq).flatten
+      NioClient.echo(local, ByteVector(array1)).runLog.timed(3 seconds).run.map(_.toSeq).flatten
     stop.set(true).run
 
     (serverGot.get(5000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
