@@ -6,6 +6,8 @@ version := "snapshot-0.4"
 
 scalaVersion := "2.10.4"
 
+crossScalaVersions := Seq("2.10.4", "2.11.0")
+
 scalacOptions ++= Seq(
   "-feature",
   "-language:implicitConversions",
@@ -54,5 +56,3 @@ OsgiKeys.importPackage := Seq(
   """scalaz.*;version="$<range;[===,=+);$<@>>"""",
   "*"
 )
-
-ScctPlugin.instrumentSettings
