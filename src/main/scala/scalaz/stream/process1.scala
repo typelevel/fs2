@@ -78,6 +78,9 @@ trait process1 {
     await1[I].flatMap(i => go(Vector(i), i))
   }
 
+  /** Ungroups chunked input. */
+  def unchunk[I]: Process1[Seq[I], I] = id[Seq[I]].flatMap(emitAll)
+
   /**
    * Like `collect` on scala collection.
    * Builds a new process by applying a partial function
