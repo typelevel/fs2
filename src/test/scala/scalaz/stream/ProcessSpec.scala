@@ -6,7 +6,7 @@ import scalaz.std.anyVal._
 import scalaz.std.list._
 
 import org.scalacheck._
-import Prop.{extendedAny => _, _}
+import Prop._
 import scalaz.concurrent.Strategy
 import scala.concurrent
 import scalaz.\/._
@@ -49,7 +49,7 @@ object ProcessSpec extends Properties("Process") {
     })
   }
 
-  property("fill") = forAll(Gen.choose(0,30).map2(Gen.choose(0,50))((_,_))) {
+  property("fill") = forAll(Gen.choose(0,30) flatMap (i => Gen.choose(0,50) map ((i,_)))) {
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
   }
 

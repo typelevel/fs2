@@ -237,20 +237,16 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * Append to the `fallback` and `cleanup` arguments of the _next_ `Await`.
    */
   final def orElse[F2[x]>:F[x],O2>:O](fallback0: => Process[F2,O2], cleanup0: => Process[F2,O2] = halt): Process[F2,O2] = {
-    def fallback: Process[F2,O2] = try {
-      fallback0 match {
-        case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
-        case _ => fallback0
-      }
+    def fallback = try {
+      fallback0.asEmit.map { case (h,t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]]) }
+                      .getOrElse { fallback0 }
     } catch {
       case e: Throwable => Halt(e)
     }
 
-    def cleanup: Process[F2,O2] = try {
-      cleanup0 match {
-        case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
-        case _ => cleanup0
-      }
+    def cleanup = try {
+      cleanup0.asEmit.map { case (h,t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]]) }
+                     .getOrElse { cleanup0 }
     } catch {
       case e: Throwable => Halt(e)
     }
@@ -339,6 +335,11 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
       case Await(req,recv,fb,c) => Some((req,recv,fb,c))
       case _ => None
     }
+
+  private[stream] def asEmit: Option[(Seq[O], Process[F,O])] = this match {
+    case Emit(h, t) => Some(h -> t)
+    case _ => None
+  }
 
   /**
    * Ignores output of this `Process`. A drained `Process` will never `Emit`.
@@ -510,13 +511,13 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
   final def runFoldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2,O], acc: B): F2[B] =
       cur match {
-        case Emit(h,t) =>
-          go(t.asInstanceOf[Process[F2,O]], h.asInstanceOf[Seq[O]].foldLeft(acc)((x, y) => B.append(x, f(y))))
         case Halt(e) => e match {
           case End => F.point(acc)
           case _ => C.fail(e)
         }
-        case Await(req,recv,fb,c) =>
+        case awaitoremit => awaitoremit.asEmit.map { case (h,t) =>
+          go(t.asInstanceOf[Process[F2,O]], h.foldLeft(acc)((x, y) => B.append(x, f(y))))
+        } orElse { awaitoremit.asAwait.map { case (req,recv,fb,c) =>
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              _.fold(
                { case End => go(fb.asInstanceOf[Process[F2,O]], acc)
@@ -525,6 +526,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
                o => go(recv.asInstanceOf[AnyRef => Process[F2,O]](o), acc)
              )
            }
+        }} getOrElse { sys.error("unpossible") }
       }
     go(this, B.zero)
   }
@@ -729,10 +731,9 @@ object Process {
       head: Seq[O],
       tail: Process[F,O] = halt): Process[F,O] =
     if (head.isEmpty) tail
-    else tail match {
-      case Emit(h2,t) => Emit(head ++ h2.asInstanceOf[Seq[O]], t.asInstanceOf[Process[F,O]])
-      case _ => Emit(head, tail)
-    }
+    else tail.asEmit.map { ht =>
+      Emit[F,O](head ++ ht._1, ht._2)
+    } getOrElse { Emit(head, tail) }
 
   def await[F[_],A,O](req: F[A])(
       recv: A => Process[F,O] = (a: A) => halt,
