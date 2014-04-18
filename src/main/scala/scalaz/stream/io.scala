@@ -145,7 +145,7 @@ trait io {
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task.delay { Option(scala.io.StdIn.readLine()).getOrElse(throw End) })
+    Process.repeatEval(Task.delay { Option(Console.readLine()).getOrElse(throw End) })
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
