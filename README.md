@@ -55,6 +55,8 @@ There are examples (with commentary) in the test directory [`scalaz.stream.examp
 
 For questions about the library, use the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) or the [scalaz-stream tag on StackOverflow](http://stackoverflow.com/questions/tagged/scalaz-stream).
 
+The API documentation of the latest release is available on [docs.typelevel.org](http://docs.typelevel.org/api/scalaz-stream/stable/latest/doc/).
+
 ### Projects using scalaz-stream ###
 
 If you have a project you'd like to include in this list, send a message to the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) and we'll add a link to it here.
