@@ -13,6 +13,7 @@ import scalaz.syntax.equal._
 import org.scalacheck._
 import Prop._
 import Arbitrary.arbitrary
+import scalaz.concurrent.Strategy
 import scala.concurrent
 import scala.concurrent.duration._
 
@@ -54,7 +55,7 @@ object ProcessSpec extends Properties("Process") {
     })
   }
 
-  property("fill") = forAll(Gen.zip(Gen.choose(0,30), Gen.choose(0,50))) {
+  property("fill") = forAll(Gen.choose(0,30) flatMap (i => Gen.choose(0,50) map ((i,_)))) {
     case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
   }
 
