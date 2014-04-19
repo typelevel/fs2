@@ -16,12 +16,14 @@ import process1._
 import scalaz.stream2.Process.Kill
 import Process._
 import TestInstances._
+import scala.concurrent.duration._
 
 object ProcessSpec extends Properties("Process") {
 
   val boom = new java.lang.Exception("reactive...boom!")
 
   implicit val S = Strategy.DefaultStrategy
+  implicit val scheduler = scalaz.stream2.DefaultScheduler
 
   // Subtyping of various Process types:
   // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])
@@ -60,6 +62,10 @@ object ProcessSpec extends Properties("Process") {
 
 
 
+  }
+
+  property("awakeEvery") = secure {
+    Process.awakeEvery(100 millis).map(_.toMillis/100).take(5).runLog.run == Vector(1,2,3,4,5)
   }
 
 

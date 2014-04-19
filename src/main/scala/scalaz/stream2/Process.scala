@@ -7,6 +7,8 @@ import scala.collection.SortedMap
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.{\/, Catchable, Monoid, Monad, ~>}
+import scala.concurrent.duration._
+import java.util.concurrent.{TimeUnit, ScheduledExecutorService, ExecutorService}
 
 sealed trait Process[+F[_], +O]
   extends Process1Ops[F,O]
@@ -773,6 +775,38 @@ object Process {
   // CONSUTRUCTORS -> Helpers
   //
   //////////////////////////////////////////////////////////////////////////////////////
+
+  /**
+   * Discrete process, that ever `d` emits elapsed duration
+   * since being run for the firs time.
+   *
+   * For example: `awakeEvery(5 seconds)` will
+   * return (approximately) `5s, 10s, 20s`, and will lie dormant
+   * between emitted values.
+   *
+   * By default, this uses a shared
+   * `ScheduledExecutorService` for the timed events, and runs the
+   * actual callbacks with `S` Strategy, to allow for the process to decide whether
+   * result shall be run on different thread pool, or with `Strategy.Sequential` on the
+   * same thread pool of the scheduler.
+   *
+   * @param d           Duration between emits of the resulting process
+   * @param S           Strategy to run the process
+   * @param scheduler   Scheduler used to schedule tasks
+   */
+  def awakeEvery(d:FiniteDuration)
+    (implicit S: Strategy, scheduler: ScheduledExecutorService):Process[Task,FiniteDuration] = {
+
+    def schedule(start:FiniteDuration):Task[FiniteDuration] = Task.async { cb =>
+      scheduler.schedule(new Runnable{
+        override def run(): Unit = S(cb(right(start + d)))
+      }, d.toNanos, TimeUnit.NANOSECONDS)
+    }
+    def go(start:FiniteDuration):Process[Task,FiniteDuration] =
+      await(schedule(start))(d => emit(d) ++ go(d))
+
+    go(0 millis)
+  }
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
   def emitRange(start: Int, stopExclusive: Int): Process[Nothing,Int] =
