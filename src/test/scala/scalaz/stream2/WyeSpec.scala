@@ -142,4 +142,61 @@ object WyeSpec extends  Properties("Wye"){
   }
 
 
+  // checks we are safe on thread stack even after emitting million values
+  // non-deterministically from both sides
+  property("merge.million") = secure {
+    val count = 1000000
+    val m =
+      (Process.range(0,count ) merge Process.range(0, count)).flatMap {
+        (v: Int) =>
+          if (v % 1000 == 0) {
+            val e = new java.lang.Exception
+            emit(e.getStackTrace.length)
+          } else {
+            halt
+          }
+      }.fold(0)(_ max _)
+
+    m.runLog.timed(180000).run.map(_ < 100) == Seq(true)
+
+  }
+
+  // checks we are able to handle reasonable number of deeply nested wye`s .
+  property("merge.deep-nested") = secure {
+    val count = 20
+    val deep = 100
+
+    def src(of: Int) = Process.range(0, count).map((_, of))
+
+    val merged =
+      (1 until deep).foldLeft(src(0))({
+        case (p, x) => p merge src(x)
+      })
+
+    val m =
+      merged.flatMap {
+        case (v, of) =>
+          if (v % 10 == 0) {
+            val e = new java.lang.Exception
+            emit(e.getStackTrace.length)
+          } else {
+            halt
+          }
+      }.fold(0)(_ max _)
+
+    m.runLog.timed(300000).run.map(_ < 100) == Seq(true)
+
+  }
+
+  //tests that wye correctly terminates drained process
+  property("merge-drain-halt") = secure {
+
+    val effect:Process[Task,Int] = Process.constant(()).drain
+
+    val pm1 = effect.wye(Process(1000,2000).toSource)(wye.merge).take(2)
+    val pm2 = Process(3000,4000).toSource.wye(effect)(wye.merge).take(2)
+
+    (pm1 ++ pm2).runLog.timed(3000).run.size == 4
+  }
+
 }
