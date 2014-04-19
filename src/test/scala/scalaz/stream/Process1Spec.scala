@@ -15,6 +15,7 @@ import Process._
 import process1._
 
 import TestInstances._
+import scalaz.concurrent.Task
 
 object Process1Spec extends Properties("process1") {
   property("all") = forAll { (pi: Process0[Int], ps: Process0[String], n: Int) =>
@@ -159,6 +160,15 @@ object Process1Spec extends Properties("process1") {
 
   property("unchunk") = forAll { pi: Process0[List[Int]] =>
     pi.pipe(unchunk).toList == pi.toList.flatten
+  }
+
+  property("evalChunks") = secure {
+    val trues = for { i <- 1 until 50
+                      j <- 1 until i + 1 }
+      yield  { Process.range(0, i).chunk(j).map(Task(_)).eval.runLog.run.length ==
+               Process.range(0, i).chunk(j)                  .runLog.run.length }
+
+    trues.reduce(_ && _) == true
   }
 
   property("last") = secure {
