@@ -224,7 +224,7 @@ object wye {
     awaitBoth[I,I2].flatMap {
       case ReceiveL(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)) ++ yipWith(f))
       case ReceiveR(i2) => awaitL[I].flatMap(i => emit(f(i,i2)) ++ yipWith(f))
-      case _ => halt
+      case HaltOne(rsn) => fail(rsn)
     }
 
   /**
