@@ -167,6 +167,16 @@ sealed trait Process[+F[_], +O]
   final def fby[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
 
   /**
+   * Catch exceptions produced by this `Process`, not including normal termination (`End` + `Kill`)
+   * and uses `f` to decide whether to resume a second process.
+   */
+  final def attempt[F2[x]>:F[x],O2](
+    f: Throwable => Process[F2,O2] = (t:Throwable) => emit(t)
+    ): Process[F2, O2 \/ O] = {
+    this.map(right) onFailure ( f andThen (p => p.map(left) ))
+  }
+
+  /**
    * Add `e` as a cause when this `Process` halts.
    * This is a no-op  if `e` is `Process.End`
    */
@@ -383,11 +393,11 @@ sealed trait Process[+F[_], +O]
       cur.step match {
         case Cont(Emit(os),next) =>
           F.bind(F.point(os.foldLeft(acc)((b, o) => B.append(b, f(o))))) { nacc =>
-            go(next(End).asInstanceOf[Process[F2, O]], nacc)
+            go(Try(next(End).asInstanceOf[Process[F2, O]]), nacc)
           }
         case Cont(awt:Await[F2,Any,O]@unchecked,next:(Throwable => Process[F2,O])@unchecked) =>
           F.bind(C.attempt(awt.req)) { _.fold(
-            rsn => go(Try(awt.rcv(left(rsn)).run), acc)
+            rsn => go(Try(awt.rcv(left(rsn)).run) onHalt { rsn0 => debug(s" Inner halted $rsn , $rsn0") ; Try(next(rsn))}  , acc)
             , r => go(Try(awt.rcv(right(r)).run) onHalt next, acc)
           )}
         case Done(End) => F.point(acc)

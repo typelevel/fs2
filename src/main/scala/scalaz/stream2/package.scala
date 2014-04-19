@@ -1,5 +1,6 @@
 package scalaz
 
+import java.util.concurrent.{ThreadFactory, Executors}
 
 
 /**
@@ -67,6 +68,22 @@ package object stream2 {
   /** A `Tee` that writes values of type `W`. */
   type WyeW[+W,-I,-I2,+O] = Wye[I,I2,W \/ O]
 
+
+  /**
+   * Scheduler used for timing processes.
+   * This thread pool shall not be used
+   * for general purpose Process or Task execution
+   */
+  val DefaultScheduler = {
+    Executors.newScheduledThreadPool(Runtime.getRuntime.availableProcessors() max 4, new ThreadFactory {
+      def newThread(r: Runnable) = {
+        val t = Executors.defaultThreadFactory.newThread(r)
+        t.setDaemon(true)
+        t.setName("streams-default-scheduler")
+        t
+      }
+    })
+  }
 
 
 }

@@ -879,7 +879,7 @@ object wye {
       @tailrec
       def tryCompleteOut(cb: (Throwable \/ Seq[O]) => Unit, y: Wye[L, R, O]): Wye[L, R, O] = {
         val ys = y.step
-        debug(s"tryComplete ys: $ys, y: $y, L:$left, R:$right")
+        debug(s"tryComplete ys: $ys, y: $y, L:$left, R:$right, out:$out")
         ys match {
           case Cont(Emit(Seq()), next)    => tryCompleteOut(cb, Try(next(End)))
           case Cont(Emit(os), next)       => completeOut(cb, \/-(os)); Try(next(End))
@@ -891,9 +891,12 @@ object wye {
             case _                             => runR; runL; y
           }
           case d@Done(rsn)                =>
+
             terminateL(rsn)
             terminateR(rsn)
-            if (left.isDone && right.isDone) completeOut(cb, -\/(rsn))
+            debug(s"YY DONE   $rsn  L:$left R:$right")
+            if (left.isDone && right.isDone) completeOut(cb, -\/(Kill(rsn)))
+
             d.asHalt
         }
       }
@@ -951,8 +954,9 @@ object wye {
         }
       })(S)
 
-      repeatEval(Task.async[Seq[O]](cb => a ! Get(cb))).flatMap(emitAll) onHalt
-        (rsn => eval_(Task.async[Unit](cb => a ! Terminate(rsn, cb))).causedBy(rsn))
+      (repeatEval(Task.async[Seq[O]](cb => a ! Get(cb))).flatMap(emitAll)) onHalt { rsn =>
+        eval_(Task.async[Unit](cb => a ! Terminate(rsn, cb))).causedBy(rsn).swallowKill
+      }
 
     }
 
