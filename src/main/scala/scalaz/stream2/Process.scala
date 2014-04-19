@@ -5,14 +5,12 @@ import scala.Ordering
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scalaz.\/._
-import scalaz.concurrent.{Strategy, Task}
-import java.util.concurrent.atomic.AtomicInteger
+import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.{\/, Catchable, Monoid, Monad, ~>}
 
 sealed trait Process[+F[_], +O]
   extends Process1Ops[F,O]
-          with TeeOps[F,O]
-          with WyeOps[F,O] {
+          with TeeOps[F,O] {
 
   import Process._
   import Util._
@@ -170,7 +168,7 @@ sealed trait Process[+F[_], +O]
    * Add `e` as a cause when this `Process` halts.
    * This is a no-op  if `e` is `Process.End`
    */
-  final def causedBy[F2[x] >: F[x], O2 >: O](e: Throwable): Process[F2, O2] = {
+  final def causedBy(e: Throwable): Process[F, O] = {
     e match {
       case End => this
       case _ => onHalt(rsn => fail(CausedBy(rsn,e)))
@@ -615,9 +613,6 @@ object Process {
   def awaitR[I2]: Tee[Any,I2,I2] =
     await(R[I2])(emit)
 
-  /** Indicates termination with supplied reason **/
-  def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(rsn)
-
   /** constructor to emit single `O` **/
   def emit[O](o: O): Process[Nothing, O] = Emit(Vector(o))
 
@@ -634,7 +629,23 @@ object Process {
     case _      => emitAll(h) ++ t
   }
 
+  /** Indicates termination with supplied reason **/
+  def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(rsn)
 
+
+  /**
+   * The infinite `Process`, always emits `a`.
+   * If for performance reasons is good to emit `a` in chunks,
+   * specifiy size of chunk by `chunkSize` parameter
+   */
+  def constant[A](a: A, chunkSize: Int = 1): Process[Task,A] = {
+    lazy val go: Process[Task,A] =
+      if (chunkSize.max(1) == 1)
+        await(Task.now(a))(emit) ++ go
+      else
+        await(Task.now(a))(r=>emitAll(List.fill(chunkSize)(r))) ++ go
+    go
+  }
 
 
   /**
@@ -879,6 +890,31 @@ object Process {
   /////////////////////////////////////////////////////////////////////////////////////
 
   /**
+   * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
+   */
+  implicit class EvalProcess[F[_], O](self: Process[F, F[O]]) {
+
+    /**
+     * Evaluate the stream of `F` actions produced by this `Process`.
+     * This sequences `F` actions strictly--the first `F` action will
+     * be evaluated before work begins on producing the next `F`
+     * action. To allow for concurrent evaluation, use `sequence`
+     * or `gather`.
+     */
+    def eval: Process[F, O] = {
+      self.step match {
+        case Cont(Emit(fos), next)       =>
+          fos.foldLeft(halt: Process[F, O])((p, n) => p ++ Process.eval(n)) ++ next(End).eval
+        case Cont(awt@Await(_, _), next) =>
+          awt.extend(_.eval) onHalt (rsn => next(rsn).eval)
+        case Done(rsn)                   => Halt(rsn)
+      }
+    }
+
+  }
+
+
+  /**
    * This class provides infix syntax specific to `Process0`.
    */
   implicit class Process0Syntax[O](self: Process0[O]) {
@@ -904,26 +940,121 @@ object Process {
   }
 
   /**
-   * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
+   * Syntax for processes that have its effects wrapped in Task
+   * @param self
+   * @tparam O
    */
-  implicit class EvalProcess[F[_],O](self: Process[F,F[O]]) {
+  implicit class SourceSyntax[O](val self: Process[Task, O]) extends WyeOps[O] {
 
     /**
-     * Evaluate the stream of `F` actions produced by this `Process`.
-     * This sequences `F` actions strictly--the first `F` action will
-     * be evaluated before work begins on producing the next `F`
-     * action. To allow for concurrent evaluation, use `sequence`
-     * or `gather`.
+     * Asynchronous execution of this Process. Note that this method is not resource safe unless
+     * callback is called with _left_ side completed. In that case it is guaranteed that all cleanups
+     * has been successfully completed.
+     * User of this method is responsible for any cleanup actions to be performed by running the
+     * next Process obtained on right side of callback.
+     *
+     * This method returns a function, that when applied, causes the running computation to be interrupted.
+     * That is useful of process contains any asynchronous code, that may be left with incomplete callbacks.
+     * If the evaluation of the process is interrupted, then the interruption is only active if the callback
+     * was not completed before, otherwise interruption is no-op.
+     *
+     * There is chance, that cleanup code of intermediate `Await` will get called twice on interrupt, but
+     * always at least once. User code shall therefore wrap resource cleanup in safe pattern like
+     * {{{ if (res.isOpen) res.close }}}.
+     *
+     * Note that if some resources are open asynchronously, the cleanup of these resources may be run
+     * asynchronously as well, essentially AFTER callback was called on different thread.
+     *
+     *
+     * @param cb  result of the asynchronous evaluation of the process. Note that, the callback is never called
+     *            on the right side, if the sequence is empty.
+     * @param S  Strategy to use when evaluating the process. Note that `Strategy.Sequential` may cause SOE.
+     * @return   Function to interrupt the evalation
      */
-    def eval: Process[F,O] = {
-      self.step match {
-        case Cont(Emit(fos), next) =>
-          fos.foldLeft(halt:Process[F,O])((p,n) => p ++ Process.eval(n) ) ++ next(End).eval
-        case Cont(awt@Await(_,_), next) =>
-          awt.extend(_.eval) onHalt(rsn=>next(rsn).eval)
-        case Done(rsn) => Halt(rsn)
+    protected[stream2] final def runAsync(
+      cb: Throwable \/ (Seq[O], Throwable => Process[Task, O]) => Unit
+      )(implicit S: Strategy): (Throwable) => Unit = {
+
+      sealed trait M
+      case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], next: Throwable => Process[Task, O]) extends M
+      case class Interrupt(rsn: Throwable) extends M
+
+      //forward referenced actor here
+      var a: Actor[M] = null
+
+      // Set when the executin has been terminated with reason for termination
+      var completed: Option[Throwable] = None
+
+      // contains reference that eventually builds
+      // a cleanup when the last await was interrupted
+      // this is consulted only, if await was interrupted
+      // volatile marked because of the first usage outside of actor
+      @volatile var cleanup: (Throwable => Process[Task, O]) = fail _
+
+      // runs single step of process.
+      // completes with callback if process is `Emit` or `Halt`.
+      // or asynchronously executes the Await and send result to actor `a`
+      // It returns on left side reason with which this process terminated,
+      // or on right side the cleanup code to be run when interrupted.
+      @tailrec
+      def runStep(p: Process[Task, O]): Throwable \/ (Throwable => Process[Task, O]) = {
+        val step = p.step
+        step match {
+          case Cont(Emit(Seq()), next)         => runStep(Try(next(End)))
+          case Cont(Emit(h), next)             => cb(right((h, next))); left(End)
+          case Cont(awt@Await(req, rcv), next) =>
+            req.runAsync(r => a ! AwaitDone(r, awt, next))
+            right((t: Throwable) => Try(rcv(left(t)).run) onHalt next)
+          case Done(rsn)                       => cb(left(rsn)); left(rsn)
+        }
       }
+
+
+      a = new Actor[M]({
+        case AwaitDone(r, awt, next) if completed.isEmpty =>
+          debug(s"AwaitDone : r:$r, awt:$awt, next: $next")
+          runStep(Try(awt.rcv(r).run) onHalt next).fold(
+            rsn => completed = Some(rsn)
+            , cln => cleanup = cln
+          )
+
+        // on interrupt we just run any cleanup code we have memo-ed
+        // from last `Await`
+        case Interrupt(rsn) if completed.isEmpty =>
+          completed = Some(rsn)
+          cleanup(Kill(rsn)).run.runAsync(_.fold(
+            rsn0 => cb(left(CausedBy(rsn0, rsn)))
+            , _ => cb(left(rsn))
+          ))
+
+        // this indicates last await was interrupted.
+        // In case the request was successful and only then
+        // we have to get next state of the process and assure
+        // any cleanup will be run.
+        // note this won't consult any cleanup contained
+        // in `next` or `rcv` on left side
+        // as this was already run on `Interrupt`
+        case AwaitDone(r, awt, _) =>
+          r.foreach { a =>
+            Try(awt.rcv(right(a)).run)
+            .killBy(Kill(completed.get))
+            .run.runAsync(_ => ())
+          }
+
+        // Interrupt after we have been completed this is no-op
+        case Interrupt(_) => ()
+
+      })(S)
+
+      runStep(self).fold(
+        rsn => (t: Throwable) => ()
+        , cln => {
+          cleanup = cln
+          (t: Throwable) => a ! Interrupt(t)
+        }
+      )
     }
+
 
   }
 
@@ -939,18 +1070,26 @@ object Process {
    * `Process` emits a single value. To evaluate repeatedly, use
    * `repeateEval(t)` or equivalently `eval(t).repeat`.
    */
-  def eval[F[_], O](t: F[O]): Process[F, O] =
-    await(t)(emit)
+  def eval[F[_], O](f: F[O]): Process[F, O] =
+    await(f)(emit)
 
   /**
    * Evaluate an arbitrary effect once, purely for its effects,
    * ignoring its return value. This `Process` emits no values.
    */
-  def eval_[F[_], O](t: F[O]): Process[F, Nothing] =
-    await(t)(_ => halt)
+  def eval_[F[_], O](f: F[O]): Process[F, Nothing] =
+    await(f)(_ => halt)
 
   /** Prefix syntax for `p.repeat`. */
   def repeat[F[_],O](p: Process[F,O]): Process[F,O] = p.repeat
+
+  /**
+   * Evaluate an arbitrary effect in a `Process`. The resulting `Process` will emit values
+   * until evaluation of `t` signals termination with `End` or an error occurs.
+   */
+  def repeatEval[F[_], O](f: F[O]): Process[F, O] =
+    eval(f) ++ repeatEval(f)
+
 
   /**
    * Produce `p` lazily, guarded by a single `Append`. Useful if

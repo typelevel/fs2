@@ -10,7 +10,7 @@ import scalaz.std.list.listSyntax._
 import scalaz.std.string._
 
 import org.scalacheck.{Arbitrary, Properties}
-import scalaz.concurrent.Strategy
+import scalaz.concurrent.{Task, Strategy}
 import Util._
 import process1._
 import scalaz.stream2.Process.Kill

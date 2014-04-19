@@ -1,14 +1,14 @@
 package scalaz.stream2
 
 
-import scalaz.stream2.Process._
-import scalaz.stream2.Util._
-import scalaz.\/
-import scalaz.\/._
-import scalaz.stream2.ReceiveY._
-import scala.concurrent.duration.Duration
 import scala.annotation.tailrec
-import scalaz.concurrent.{Strategy, Task}
+import scala.concurrent.duration.Duration
+import scalaz.\/._
+import scalaz.concurrent.{Actor, Strategy, Task}
+import scalaz.stream2.Process._
+import scalaz.stream2.ReceiveY._
+import scalaz.stream2.Util._
+import scalaz.{-\/, \/-, \/}
 
 
 object wye {
@@ -74,8 +74,7 @@ object wye {
     dynamic(f, f).flatMap {
       case ReceiveL(i) => emit(i)
       case ReceiveR(i) => emit(i)
-      case HaltR(_) => halt
-      case HaltL(_) => halt
+      case HaltOne(rsn) => fail(rsn)
     }
 
   /**
@@ -87,7 +86,8 @@ object wye {
       receiveBoth[I,I2,I \/ I2]({
         case ReceiveL(i) => emit(left(i)) fby go
         case ReceiveR(i) => emit(right(i)) fby go
-        case other =>  go
+        case HaltL(rsn) =>  awaitR[I2].map(right).repeat.causedBy(rsn)
+        case HaltR(rsn) =>  awaitL[I].map(left).repeat.causedBy(rsn)
       })
     go
   }
@@ -95,14 +95,14 @@ object wye {
   /**
    * Continuous wye, that first reads from Left to get `A`,
    * Then when `A` is not available it reads from R echoing any `A` that was received from Left
-   * Will halt once the
+   * Will halt once any of the sides halt
    */
   def echoLeft[A]: Wye[A, Any, A] = {
     def go(a: A): Wye[A, Any, A] =
       receiveBoth({
         case ReceiveL(l)  => emit(l) fby go(l)
         case ReceiveR(_)  => emit(a) fby go(a)
-        case HaltOne(rsn) => Halt(rsn)
+        case HaltOne(rsn) => fail(rsn)
       })
     awaitL[A].flatMap(s => emit(s) fby go(s))
   }
@@ -110,15 +110,16 @@ object wye {
   /**
    * Let through the right branch as long as the left branch is `false`,
    * listening asynchronously for the left branch to become `true`.
-   * This halts as soon as the right branch halts.
+   * This halts as soon as the right or left branch halts.
    */
   def interrupt[I]: Wye[Boolean, I, I] = {
-    def go[I]: Wye[Boolean, I, I] = awaitBoth[Boolean,I].flatMap {
-      case ReceiveR(None) => halt
-      case ReceiveR(i) => emit(i) ++ go
-      case ReceiveL(kill) => if (kill) halt else go
-      case HaltOne(e) => Halt(e)
-    }
+    def go[I]: Wye[Boolean, I, I] =
+      awaitBoth[Boolean, I].flatMap {
+        case ReceiveR(None) => halt
+        case ReceiveR(i)    => emit(i) ++ go
+        case ReceiveL(kill) => if (kill) halt else go
+        case HaltOne(e)     => fail(e)
+      }
     go
   }
 
@@ -134,7 +135,8 @@ object wye {
       receiveBoth[I,I,I]({
         case ReceiveL(i) => emit(i) fby go
         case ReceiveR(i) => emit(i) fby go
-        case other => go
+        case HaltL(rsn) => awaitR.repeat.causedBy(rsn)
+        case HaltR(rsn) => awaitL.repeat.causedBy(rsn)
       })
     go
   }
@@ -162,7 +164,7 @@ object wye {
         case ReceiveL(i) => emit(i) fby go
         case ReceiveR(i) => emit(i) fby go
         case HaltL(rsn) => Halt(rsn)
-        case HaltR(_) => go
+        case HaltR(rsn) => awaitL.repeat.causedBy(rsn)
       })
     go
   }
@@ -266,7 +268,7 @@ object wye {
               rcv1(r).map(p=>attachL(p onHalt next1)(y))
             })
 
-        case d@Done(rsn) => attachL(d.asHalt)(haltL(rsn)(y))
+        case d@Done(rsn) => attachL(d.asHalt)(killL(rsn)(y))
       }
 
       case Cont(AwaitR.withFbT(rcv),next) =>
@@ -286,11 +288,11 @@ object wye {
                case ReceiveL(i0) => rcv1(right(i0)).map(p => attachL(p onHalt next1)(y))
                case ReceiveR(i2) => Trampoline.done(attachL(p1)(feed1R(i2)(y)))
                case HaltL(rsn) => rcv1(left(rsn)).map(p=> attachL(p onHalt next1)(y))
-               case HaltR(rsn) => Trampoline.done(attachL(p1)(haltR(rsn)(y)))
+               case HaltR(rsn) => Trampoline.done(attachL(p1)(killR(rsn)(y)))
              }
            )))
 
-        case d@Done(rsn) => attachL(d.asHalt)(haltL(rsn)(y))
+        case d@Done(rsn) => attachL(d.asHalt)(killL(rsn)(y))
       }
 
       case d@Done(rsn) => d.asHalt
@@ -349,8 +351,8 @@ object wye {
     r match {
       case ReceiveL(i) => feed1L(i)(w)
       case ReceiveR(i2) => feed1R(i2)(w)
-      case HaltL(e) => haltL(e)(w)
-      case HaltR(e) => haltR(e)(w)
+      case HaltL(e) => killL(e)(w)
+      case HaltR(e) => killR(e)(w)
     }
 
   /** Feed a single value to the left branch of a `Wye`. */
@@ -524,32 +526,40 @@ object wye {
 //  }
 
 
-  /** Signal to wye that left side has terminated **/
-  def haltL[I,I2,O](rsn:Throwable)(y:Wye[I,I2,O]):Wye[I,I2,O] =
-    y.step match {
-      case Cont(emt@Emit(os), next) =>
-        emt ++ haltL(rsn)(Try(next(End)))
+  /**
+   * Signals to wye, that Left side terminated.
+   */
+  def killL[I, I2, O](rsn0: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
+    def go(rsn: Throwable, y: Wye[I, I2, O]): Wye[I, I2, O] = {
+      val ys = y.step
+      debug(s"KillL $ys")
+      ys match {
+        case Cont(emt@Emit(os), next) =>
+          emt ++ go(rsn, Try(next(End)))
 
-      case Cont(AwaitL.withFb(rcv), next) =>
-        haltL(rsn)(Try(rcv(left(rsn))))
-        .onHalt (r => haltL(rsn)(Try(next(r))))
+        case Cont(AwaitL.withFb(rcv), next) =>
+          suspend(go(rsn, Try(rcv(left(rsn))))
+                  .onHalt(r => go(rsn, Try(next(r)))))
 
-      case Cont(awt@AwaitR.is(), next) =>
-        awt.extend(haltL(rsn)(_))
-        .onHalt (r => haltL(rsn)(Try(next(r))))
+        case Cont(awt@AwaitR.is(), next) =>
+          awt.extend(go(rsn, _))
+          .onHalt(r => go(rsn, Try(next(r))))
 
-      case Cont(AwaitBoth(rcv), next) =>
-        haltL(rsn)(Try(rcv(ReceiveY.HaltL(rsn))))
-        .onHalt (r => haltL(rsn)(Try(next(r))))
+        case Cont(AwaitBoth(rcv), next) =>
+          suspend(go(rsn, Try(rcv(ReceiveY.HaltL(rsn))))
+                  .onHalt(r => go(rsn, Try(next(r)))))
 
-      case d@Done(rsn) => d.asHalt
+        case d@Done(rsn) => d.asHalt
+      }
     }
 
+    go(Kill(rsn0), y0)
+  }
 
 
-//  {
-//    p match {
-//      case h@Halt(_) => h
+  //  {
+  //    p match {
+  //      case h@Halt(_) => h
 //      case Emit(h, t) =>
 //        val (nh,nt) = t.unemit
 //        Emit(h ++ nh, haltL(e)(nt))
@@ -563,30 +573,38 @@ object wye {
 //        }
 //    }
 //  }
-  def haltR[I,I2,O](rsn:Throwable)(y:Wye[I,I2,O]):Wye[I,I2,O] = {
-    y.step match {
-      case Cont(emt@Emit(os), next) =>
-        emt ++ haltR(rsn)(Try(next(End)))
+  /**
+   * Signals to wye, that Right side terminated.
+   */
+  def killR[I, I2, O](rsn0: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
+    def go(rsn: Throwable, y: Wye[I, I2, O]): Wye[I, I2, O] = {
+      val ys = y.step
+      debug(s"KillR $ys")
+      ys match {
+        case Cont(emt@Emit(os), next) =>
+          emt ++ go(rsn, Try(next(End)))
 
-      case Cont(AwaitR.withFb(rcv), next) =>
-        haltR(rsn)(Try(rcv(left(rsn))))
-        .onHalt (r => haltR(rsn)(Try(next(r))))
+        case Cont(AwaitR.withFb(rcv), next) =>
+          suspend(go(rsn, Try(rcv(left(rsn))))
+                  .onHalt(r => go(rsn, Try(next(r)))))
 
-      case Cont(awt@AwaitL.is(), next) =>
-        awt.extend(haltR(rsn)(_))
-        .onHalt (r => haltR(rsn)(Try(next(r))))
+        case Cont(awt@AwaitL.is(), next) =>
+          awt.extend(go(rsn, _))
+          .onHalt(r => go(rsn, Try(next(r))))
 
-      case Cont(AwaitBoth(rcv), next) =>
-        haltR(rsn)(Try(rcv(ReceiveY.HaltR(rsn))))
-        .onHalt (r => haltR(rsn)(Try(next(r))))
+        case Cont(AwaitBoth(rcv), next) =>
+          suspend(go(rsn, Try(rcv(ReceiveY.HaltR(rsn))))
+                  .onHalt(r => go(rsn, Try(next(r)))))
 
-      case d@Done(rsn) => d.asHalt
+        case d@Done(rsn) => d.asHalt
+      }
     }
-}
+    go(Kill(rsn0), y0)
+  }
 
 
-//{
-//    p match {
+  //{
+  //    p match {
 //      case h@Halt(_) => h
 //      case Emit(h, t) =>
 //        val (nh,nt) = t.unemit
@@ -730,11 +748,220 @@ object wye {
 
   }
 
+  //////////////////////////////////////////////////////////////////
+  // Implementation
+  //////////////////////////////////////////////////////////////////
+
+  /**
+   * Implementation of wye.
+   *
+   * @param pl left process
+   * @param pr right process
+   * @param y0  wye to control queueing and merging
+   * @param S  strategy, preferably executor service
+   * @tparam L Type of left process element
+   * @tparam R Type of right process elements
+   * @tparam O Output type of resulting process
+   * @return Process with merged elements.
+   */
+  def apply[L, R, O](pl: Process[Task, L], pr: Process[Task, R])(y0: Wye[L, R, O])(implicit S: Strategy): Process[Task, O] =
+    suspend {
+
+      sealed trait M
+      case class ReadyL(h: Seq[L], next: Throwable => Process[Task, L]) extends M
+      case class ReadyR(h: Seq[R], next: Throwable => Process[Task, R]) extends M
+      case class DoneL(rsn: Throwable) extends M
+      case class DoneR(rsn: Throwable) extends M
+      case class Get(cb: (Throwable \/ Seq[O]) => Unit) extends M
+      case class Terminate(cause: Throwable, cb: (Throwable \/ Unit) => Unit) extends M
+
+
+      sealed trait SideState[A] {
+        def isDone: Boolean = this match {
+          case SideDone(_) => true
+          case _           => false
+        }
+      }
+      case class SideReady[A](cont: Throwable => Process[Task, A]) extends SideState[A]
+      case class SideRunning[A](interrupt: (Throwable) => Unit) extends SideState[A]
+      case class SideDone[A](cause: Throwable) extends SideState[A]
+
+
+      //current state of the wye
+      var yy: Wye[L, R, O] = y0
+
+      //cb to be completed for `out` side
+      var out: Option[(Throwable \/ Seq[O]) => Unit] = None
+
+      //forward referenced actor
+      var a: Actor[M] = null
+
+      //Bias for reading from either left or right.
+      var leftBias: Boolean = true
+
+      // states of both sides
+      var left: SideState[L] = SideReady(_ => pl)
+      var right: SideState[R] = SideReady(_ => pr)
+
+
+      // completes a callback fro downstream
+      def completeOut(cb: (Throwable \/ Seq[O]) => Unit, r: Throwable \/ Seq[O]): Unit = {
+        out = None
+        S(cb(r))
+      }
+
+
+      // runs the left side, if left side is ready to be run or no-op
+      // updates state of left side as well
+      def runL: Unit = {
+        left match {
+          case SideReady(next) =>
+            left = SideRunning(
+              Try(next(End)).runAsync(_.fold(
+              rsn => a ! DoneL(rsn)
+              , { case (ls, n) => a ! ReadyL(ls, n) }
+              ))
+            )
+
+          case _ => ()
+        }
+
+      }
+
+      // right version of `runL`
+      def runR: Unit = {
+        right match {
+          case SideReady(next) =>
+            right = SideRunning(
+              Try(next(End)).runAsync(_.fold(
+              rsn => a ! DoneR(rsn)
+              , { case (rs, next) => a ! ReadyR(rs, next) }
+              ))
+            )
+
+          case _ => ()
+        }
+      }
+
+      // terminates or interrupts the Left side
+      def terminateL(rsn: Throwable): Unit = {
+        left match {
+          case SideReady(next)        =>
+            left = SideRunning(_ => ()) //no-op as cleanup can`t be interrupted
+            Try(next(End)).killBy(Kill(rsn)).runAsync(_.fold(
+              rsn => a ! DoneL(rsn)
+              , _ => a ! DoneL(new Exception("Invalid state after kill"))
+            ))
+          case SideRunning(interrupt) => interrupt(rsn)
+          case _                      => ()
+        }
+      }
+
+      // right version of `terminateL`
+      def terminateR(rsn: Throwable): Unit = {
+        right match {
+          case SideReady(next)        =>
+            right = SideRunning(_ => ()) //no-op as cleanup can`t be interrupted
+            Try(next(End)).killBy(Kill(rsn)).runAsync(_.fold(
+              rsn => a ! DoneR(rsn)
+              , _ => a ! DoneR(new Exception("Invalid state after kill"))
+            ))
+          case SideRunning(interrupt) => interrupt(rsn)
+          case _                      => ()
+        }
+      }
+
+      /**
+       * Tries to complete callback.
+       * This does all side-effects based on the state of wye passed in
+       *
+       */
+      @tailrec
+      def tryCompleteOut(cb: (Throwable \/ Seq[O]) => Unit, y: Wye[L, R, O]): Wye[L, R, O] = {
+        val ys = y.step
+        debug(s"tryComplete ys: $ys, y: $y, L:$left, R:$right")
+        ys match {
+          case Cont(Emit(Seq()), next)    => tryCompleteOut(cb, Try(next(End)))
+          case Cont(Emit(os), next)       => completeOut(cb, \/-(os)); Try(next(End))
+          case Cont(AwaitL.is(), _)       => runL; y
+          case Cont(AwaitR.is(), next)    => runR; y
+          case Cont(AwaitBoth.is(), next) => left match {
+            case SideDone(rsn) if right.isDone => tryCompleteOut(cb, y.killBy(Kill(rsn)))
+            case _ if leftBias                 => runL; runR; y
+            case _                             => runR; runL; y
+          }
+          case d@Done(rsn)                =>
+            terminateL(rsn)
+            terminateR(rsn)
+            if (left.isDone && right.isDone) completeOut(cb, -\/(rsn))
+            d.asHalt
+        }
+      }
+
+      // When downstream is registered tries to complete callback
+      // otherwise just updates `yy`
+      def complete(y: Wye[L, R, O]): Unit = {
+        yy = out match {
+          case Some(cb) => tryCompleteOut(cb, y)
+          case None     => y
+        }
+      }
+
+
+      a = Actor.actor[M]({
+        case ReadyL(ls, next) => complete {
+          debug(s"ReadyL $ls $next")
+          leftBias = false
+          left = SideReady(next)
+          wye.feedL[L, R, O](ls)(yy)
+        }
+
+        case ReadyR(rs, next) => complete {
+          debug(s"ReadyR $rs $next")
+          leftBias = true
+          right = SideReady(next)
+          wye.feedR[L, R, O](rs)(yy)
+        }
+
+        case DoneL(rsn) => complete {
+          debug(s"DoneL $rsn")
+          leftBias = false
+          left = SideDone(rsn)
+          wye.killL(rsn)(yy)
+        }
+
+        case DoneR(rsn) => complete {
+          debug(s"DoneR $rsn")
+          leftBias = true
+          right = SideDone(rsn)
+          wye.killR(rsn)(yy)
+        }
+
+        case Get(cb) => complete {
+          debug("Get")
+          out = Some(cb)
+          yy
+        }
+
+        case Terminate(rsn, cb) => complete {
+          debug("Terminate")
+          val cbOut = cb compose ((_: Throwable \/ Seq[O]) => \/-(()))
+          out = Some(cbOut)
+          yy.killBy(Kill(rsn))
+        }
+      })(S)
+
+      repeatEval(Task.async[Seq[O]](cb => a ! Get(cb))).flatMap(emitAll) onHalt
+        (rsn => eval_(Task.async[Unit](cb => a ! Terminate(rsn, cb))).causedBy(rsn))
+
+    }
+
+
 }
 
 
-private[stream2] trait WyeOps[+F[_],+O] {
-  self: Process[F,O] =>
+protected[stream2] trait WyeOps[+O] {
+  val self: Process[Task, O]
 
   /**
    * Like `tee`, but we allow the `Wye` to read non-deterministically
@@ -753,15 +980,11 @@ private[stream2] trait WyeOps[+F[_],+O] {
    * policies do not belong here, but should be built into the `Wye`
    * and/or its inputs.
    *
-   * The strategy passed in must allow `fresh` stack on every processing of the
-   * element from each side. If startegy would be sequential, wye is subject of SOE.
-   *
-   * Prefferably use one of the `Strategys.Executor(es)` based strategies
+   * The strategy passed in must be stack-safe, otherwise this implementation
+   * will throw SOE. Preferably use one of the `Strategys.Executor(es)` based strategies
    */
-  final def wye[O2,O3](p2: Process[Task,O2])(y: Wye[O,O2,O3])(implicit S: Strategy): Process[Task,O3] = {
-    ???
-  }
-  //WyeActor.wyeActor[O,O2,O3](self,p2)(y)(S)
+  final def wye[O2, O3](p2: Process[Task, O2])(y: Wye[O, O2, O3])(implicit S: Strategy): Process[Task, O3] =
+    scalaz.stream2.wye[O, O2, O3](self, p2)(y)(S)
 
   /** Non-deterministic version of `zipWith`. Note this terminates whenever one of streams terminate */
   def yipWith[O2,O3](p2: Process[Task,O2])(f: (O,O2) => O3)(implicit S:Strategy): Process[Task,O3] =
