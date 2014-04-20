@@ -508,7 +508,15 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * which we can catch exceptions. This function is not tail recursive and
    * relies on the `Monad[F]` to ensure stack safety.
    */
-  final def runFoldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
+  final def runFoldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] =
+    runFoldLeft[F2, B](B.zero)((acc, o) => B.append(acc, f(o)))
+
+  /**
+   * Collect the outputs of this `Process[F,O]` using an accumulator for `B`, given a `Monad[F]` in
+   * which we can catch exceptions. This function is not tail recursive and
+   * relies on the `Monad[F]` to ensure stack safety.
+   */
+  final def runFoldLeft[F2[x]>:F[x], B](zero: B)(append: (B, O) => B)(implicit F: Monad[F2], C: Catchable[F2]): F2[B] = {
     def go(cur: Process[F2,O], acc: B): F2[B] =
       cur match {
         case Halt(e) => e match {
@@ -516,7 +524,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
           case _ => C.fail(e)
         }
         case awaitoremit => awaitoremit.asEmit.map { case (h,t) =>
-          go(t.asInstanceOf[Process[F2,O]], h.foldLeft(acc)((x, y) => B.append(x, f(y))))
+          go(t.asInstanceOf[Process[F2,O]], h.foldLeft(acc)(append))
         } orElse { awaitoremit.asAwait.map { case (req,recv,fb,c) =>
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              _.fold(
@@ -528,7 +536,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
            }
         }} getOrElse { sys.error("unpossible") }
       }
-    go(this, B.zero)
+    go(this, zero)
   }
 
   /** Run this `Process` solely for its final emitted value, if one exists. */
