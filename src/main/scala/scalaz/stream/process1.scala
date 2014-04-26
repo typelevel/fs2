@@ -6,7 +6,7 @@ import scalaz.syntax.equal._
 
 import Process._
 
-trait process1 {
+object process1 {
 
   // nb: methods are in alphabetical order, there are going to be so many that
   // any other order will just going get confusing
@@ -595,8 +595,6 @@ trait process1 {
     go(z)
   }
 }
-
-object process1 extends process1
 
 private[stream] trait Process1Ops[+F[_],+O] {
   self: Process[F,O] =>

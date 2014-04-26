@@ -67,9 +67,9 @@ object ResourceSafetySpec extends Properties("resource-safety") {
   property("handle") = secure {
     case object Err extends RuntimeException
     val tasks = Process(Task(1), Task(2), Task(throw Err), Task(3))
-    (try { tasks.eval.pipe(processes.sum).runLog.run; false }
+    (try { tasks.eval.pipe(process1.sum).runLog.run; false }
      catch { case Err => true }) &&
-    (tasks.eval.pipe(processes.sum).
+    (tasks.eval.pipe(process1.sum).
       handle { case e: Throwable => Process.emit(-6) }.
       runLog.run.last == -6)
   }

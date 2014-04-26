@@ -1,7 +1,7 @@
 package scalaz.stream
 
 import Process._
-import processes._
+import process1._
 import scalaz.\/._
 import scalaz._
 import scalaz.concurrent.{Strategy, Task}
