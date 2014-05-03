@@ -804,8 +804,10 @@ object Process {
    * @param S           Strategy to run the process
    * @param scheduler   Scheduler used to schedule tasks
    */
-  def awakeEvery(d:FiniteDuration)
-    (implicit S: Strategy, scheduler: ScheduledExecutorService):Process[Task,FiniteDuration] = {
+  def awakeEvery(d:FiniteDuration)(
+    implicit S: Strategy
+      , scheduler: ScheduledExecutorService
+    ):Process[Task,FiniteDuration] = {
 
     def schedule(start:FiniteDuration):Task[FiniteDuration] = Task.async { cb =>
       scheduler.schedule(new Runnable{
@@ -825,6 +827,19 @@ object Process {
   /** Lazily produce the range `[start, stopExclusive)`. */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process[Task, Int] =
     unfold(start)(i => if (i < stopExclusive) Some((i,i+by)) else None)
+
+  /**
+   * A single-element `Process` that waits for the duration `d`
+   * before emitting its value. This uses a shared
+   * `ScheduledThreadPoolExecutor` to signal duration and
+   * avoid blocking on thread. After the signal,
+   * the execution continues with `S` strategy
+   */
+  def sleep(d: FiniteDuration)(
+    implicit S: Strategy
+    , schedulerPool: ScheduledExecutorService
+    ): Process[Task,Nothing] =
+    awakeEvery(d).once.drain
 
 
   /** Produce a (potentially infinite) source from an unfold. */
