@@ -236,7 +236,7 @@ protected[stream2] object Junction {
     class UpstreamAsyncRef(val cb: Throwable \/ Unit => Unit) extends UpRefInstance {
       def next[B](actor: Actor[M])(implicit S: Strategy): Unit = S(cb(ok))
       def close[B](actor: Actor[M], rsn: Throwable)(implicit S: Strategy): Unit = rsn match {
-        case End => S(cb(ok))
+        case End | Kill => S(cb(ok))
         case _ => S(cb(left(rsn)))
       }
     }
