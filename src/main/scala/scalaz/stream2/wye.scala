@@ -532,7 +532,7 @@ object wye {
   def killL[I, I2, O](rsn0: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
     def go(rsn: Throwable, y: Wye[I, I2, O]): Wye[I, I2, O] = {
       val ys = y.step
-      debug(s"KillL $ys")
+      //debug(s"KillL $ys")
       ys match {
         case Cont(emt@Emit(os), next) =>
           emt ++ go(rsn, Try(next(End)))
@@ -579,7 +579,7 @@ object wye {
   def killR[I, I2, O](rsn0: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
     def go(rsn: Throwable, y: Wye[I, I2, O]): Wye[I, I2, O] = {
       val ys = y.step
-      debug(s"KillR $ys")
+      //debug(s"KillR $ys")
       ys match {
         case Cont(emt@Emit(os), next) =>
           emt ++ go(rsn, Try(next(End)))
@@ -879,7 +879,7 @@ object wye {
       @tailrec
       def tryCompleteOut(cb: (Throwable \/ Seq[O]) => Unit, y: Wye[L, R, O]): Wye[L, R, O] = {
         val ys = y.step
-        debug(s"tryComplete ys: $ys, y: $y, L:$left, R:$right, out:$out")
+        //debug(s"tryComplete ys: $ys, y: $y, L:$left, R:$right, out:$out")
         ys match {
           case Cont(Emit(Seq()), next)    => tryCompleteOut(cb, Try(next(End)))
           case Cont(Emit(os), next)       => completeOut(cb, \/-(os)); Try(next(End))
@@ -894,7 +894,7 @@ object wye {
 
             terminateL(rsn)
             terminateR(rsn)
-            debug(s"YY DONE   $rsn  L:$left R:$right")
+            //debug(s"YY DONE   $rsn  L:$left R:$right")
             if (left.isDone && right.isDone) completeOut(cb, -\/(Kill(rsn)))
 
             d.asHalt
@@ -913,41 +913,41 @@ object wye {
 
       a = Actor.actor[M]({
         case ReadyL(ls, next) => complete {
-          debug(s"ReadyL $ls $next")
+          //debug(s"ReadyL $ls $next")
           leftBias = false
           left = SideReady(next)
           wye.feedL[L, R, O](ls)(yy)
         }
 
         case ReadyR(rs, next) => complete {
-          debug(s"ReadyR $rs $next")
+         // debug(s"ReadyR $rs $next")
           leftBias = true
           right = SideReady(next)
           wye.feedR[L, R, O](rs)(yy)
         }
 
         case DoneL(rsn) => complete {
-          debug(s"DoneL $rsn")
+         // debug(s"DoneL $rsn")
           leftBias = false
           left = SideDone(rsn)
           wye.killL(rsn)(yy)
         }
 
         case DoneR(rsn) => complete {
-          debug(s"DoneR $rsn")
+        //  debug(s"DoneR $rsn")
           leftBias = true
           right = SideDone(rsn)
           wye.killR(rsn)(yy)
         }
 
         case Get(cb) => complete {
-          debug("Get")
+       //   debug("Get")
           out = Some(cb)
           yy
         }
 
         case Terminate(rsn, cb) => complete {
-          debug("Terminate")
+        //  debug("Terminate")
           val cbOut = cb compose ((_: Throwable \/ Seq[O]) => \/-(()))
           out = Some(cbOut)
           yy.killBy(Kill(rsn))

@@ -397,7 +397,7 @@ sealed trait Process[+F[_], +O]
           }
         case Cont(awt:Await[F2,Any,O]@unchecked,next:(Throwable => Process[F2,O])@unchecked) =>
           F.bind(C.attempt(awt.req)) { _.fold(
-            rsn => go(Try(awt.rcv(left(rsn)).run) onHalt { rsn0 => debug(s" Inner halted $rsn , $rsn0") ; Try(next(rsn))}  , acc)
+            rsn => go(Try(awt.rcv(left(rsn)).run) onHalt next , acc)
             , r => go(Try(awt.rcv(right(r)).run) onHalt next, acc)
           )}
         case Done(End) => F.point(acc)
@@ -933,6 +933,34 @@ object Process {
   //
   /////////////////////////////////////////////////////////////////////////////////////
 
+
+  implicit class ProcessSyntax[F[_],O](val self:Process[F,O]) extends AnyVal {
+    /** Feed this `Process` through the given effectful `Channel`. */
+    def through[F2[x]>:F[x],O2](f: Channel[F2,O,O2]): Process[F2,O2] =
+      self.zipWith(f)((o,f) => f(o)).eval
+
+    /**
+     * Feed this `Process` through the given effectful `Channel`, signaling
+     * termination to `f` via `None`. Useful to allow `f` to flush any
+     * buffered values to the output when it detects termination, see
+     * [[scalaz.stream.io.bufferedChannel]] combinator.
+     */
+    def throughOption[F2[x]>:F[x],O2](f: Channel[F2,Option[O],O2]): Process[F2,O2] =
+      self.terminated.through(f)
+
+    /** Attaches `Sink` to this  `Process`  */
+    def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] =
+      through(f)
+
+    /** Attach a `Sink` to the output of this `Process` but echo the original. */
+    def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
+      self.zipWith(f)((o,f) => (o,f(o))).flatMap { case (orig,action) => emit(action).eval.drain ++ emit(orig) }
+
+
+
+  }
+
+
   /**
    * Provides infix syntax for `eval: Process[F,F[O]] => Process[F,O]`
    */
@@ -1056,7 +1084,6 @@ object Process {
 
       a = new Actor[M]({
         case AwaitDone(r, awt, next) if completed.isEmpty =>
-          debug(s"AwaitDone : r:$r, awt:$awt, next: $next")
           runStep(Try(awt.rcv(r).run) onHalt next).fold(
             rsn => completed = Some(rsn)
             , cln => cleanup = cln
