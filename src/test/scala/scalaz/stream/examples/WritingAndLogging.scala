@@ -1,8 +1,7 @@
 package scalaz.stream
+package examples
 
 import scalaz.concurrent.Task
-import scalaz.\/
-import scalaz.\/._
 
 import org.scalacheck._
 import Prop._
