@@ -85,7 +85,6 @@ sealed trait Process[+F[_], +O]
         }
       } else {
         cur match {
-          case Halt(End) =>  go(Try(stack.head(End).run), stack.tail)
           case Halt(rsn)      =>  go(Try(stack.head(rsn).run), stack.tail)
           case Append(p, n)   => go(p, n fast_++ stack)
           case AwaitOrEmit(p) => Cont(p, rsn => Append(Halt(rsn), stack))
@@ -294,7 +293,6 @@ sealed trait Process[+F[_], +O]
    */
   final def onComplete[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] =
     onHalt {
-      case End => Try(p2)
       case rsn =>  Try(p2).causedBy(rsn)
     }
 
