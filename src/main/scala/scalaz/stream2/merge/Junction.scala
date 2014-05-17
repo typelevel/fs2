@@ -55,7 +55,7 @@ protected[stream2] object Junction {
   case class Open[W, I, O](jx: JX[W, I, O], ref: JunctionRef) extends JunctionSignal[W, I, O]
   /** downstream or upstream is done with given reason. **/
   case class Done[W, I, O](jx: JX[W, I, O], ref: JunctionRef, rsn: Throwable) extends JunctionSignal[W, I, O]
-  /** source of upstream is done with given reason **/
+  /** source of upstream processes is done with given reason **/
   case class DoneUp[W, I, O](jx: JX[W, I, O], rsn: Throwable) extends JunctionSignal[W, I, O]
   /** downstream has been forcefully closed with given reason **/
   case class DoneDown[W, I, O](jx: JX[W, I, O], rsn: Throwable) extends JunctionSignal[W, I, O]
@@ -596,7 +596,7 @@ protected[stream2] object Junction {
             case SourceStep(result) =>
               result.fold({ rsn =>
                 sourceState = Some(UpSourceDone(rsn))
-                jx = jx.copy(doneDown = Some(rsn))
+                jx = jx.copy(doneUp = Some(rsn))
                 process(DoneUp(jx, rsn))
               }
               , { case (ups, next) =>

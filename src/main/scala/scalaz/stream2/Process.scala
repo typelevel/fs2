@@ -397,7 +397,7 @@ sealed trait Process[+F[_], +O]
           }
         case Cont(awt:Await[F2,Any,O]@unchecked,next:(Throwable => Process[F2,O])@unchecked) =>
           F.bind(C.attempt(awt.req)) { _.fold(
-            rsn => go(Try(awt.rcv(left(rsn)).run) onHalt next , acc)
+            rsn => go(Try(awt.rcv(left(rsn)).run).causedBy(rsn) onHalt next , acc)
             , r => go(Try(awt.rcv(right(r)).run) onHalt next, acc)
           )}
         case Done(End) => F.point(acc)

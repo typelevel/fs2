@@ -167,7 +167,7 @@ protected[stream2] object JunctionStrategies {
           if (jx.up.nonEmpty || q.nonEmpty) go(q,Some(rsn))
           else Halt(rsn)
 
-        case Junction.Done(jx,_:UpRef,End) => closedUp match {
+        case Junction.Done(jx,ref:UpRef,End | Kill) => closedUp match {
           case Some(rsn) if jx.up.isEmpty && q.isEmpty => Halt(rsn)
           case _ => openNextIfNeeded(jx.up.size) fby go(q,closedUp)
         }

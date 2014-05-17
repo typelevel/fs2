@@ -15,7 +15,8 @@ import Process._
 import process1._
 
 import TestInstances._
-import scalaz.concurrent.Strategy
+import scalaz.concurrent.{Task, Strategy}
+import scala.concurrent.SyncVar
 
 
 object Process1Spec extends Properties("Process1") {
@@ -150,6 +151,15 @@ object Process1Spec extends Properties("Process1") {
     window(1) === List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
       window(2) === List(Vector(0, 1), Vector(1, 2), Vector(2, 3), Vector(3, 4), Vector(4)) &&
       window(3) === List(Vector(0, 1, 2), Vector(1, 2, 3), Vector(2, 3, 4), Vector(3, 4))
+  }
+
+  property("inner-cleanup") = secure {
+    val p = Process.range(0,20)
+    val sync = new SyncVar[Int]()
+    ((p onComplete eval_(Task.delay(sync.put(99))))
+    .take(10).take(4).onComplete(emit(4)).runLog.run == Vector(0,1,2,3,4)) &&
+      ("Inner Process cleanup was called" |: sync.get(1000) == Some(99))
+
   }
 
 }
