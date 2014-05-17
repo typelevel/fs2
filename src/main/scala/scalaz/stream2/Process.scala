@@ -6,7 +6,7 @@ import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.{\/, Catchable, Monoid, Monad, ~>}
+import scalaz.{\/, -\/, Catchable, Monoid, Monad, ~>}
 import scala.concurrent.duration._
 import java.util.concurrent.{TimeUnit, ScheduledExecutorService, ExecutorService}
 
@@ -50,7 +50,10 @@ sealed trait Process[+F[_], +O]
         case Cont(Emit(os), next)        => Try(next(End)) pipe process1.feed(os)(p1)
         case Done(rsn)                   => fail(rsn) onComplete p1s.toProcess.disconnect
       }
-      case Cont(Emit(os), next1)          => Emit(os) ++ this.pipe(Try(next1(End)))
+      case Cont(Emit(os), next1)          =>
+        Emit(os) onHalt {
+          case rsn => this.pipe(Try(next1(rsn)))
+        }
       case Done(rsn1)                     => this.killBy(Kill(rsn1)).swallowKill onComplete fail(rsn1)
     }
   }
@@ -82,7 +85,6 @@ sealed trait Process[+F[_], +O]
         }
       } else {
         cur match {
-          case Halt(End) =>  go(Try(stack.head(End).run), stack.tail)
           case Halt(rsn)      =>  go(Try(stack.head(rsn).run), stack.tail)
           case Append(p, n)   => go(p, n fast_++ stack)
           case AwaitOrEmit(p) => Cont(p, rsn => Append(Halt(rsn), stack))
@@ -247,7 +249,12 @@ sealed trait Process[+F[_], +O]
     //debug(s"KILLBY rsn:$rsn, this:$this, step: ${ts } ")
     ts match {
       case Cont(Emit(_),n) => Try(n(rsn)).drain
-      case Cont(Await(_,_),n) => Try(Try(n(rsn))).drain
+      case Cont(Await(_,rcv),n) =>
+        Append(
+          Halt(rsn),
+          Vector(
+            (x: Throwable) => Trampoline.suspend(rcv(-\/(x))),
+            (x: Throwable) => Trampoline.delay(n(x)))).drain
       case Done(End) => Halt(rsn)
       case Done(rsn0) => Halt(CausedBy(rsn0,rsn))
     }
@@ -286,7 +293,6 @@ sealed trait Process[+F[_], +O]
    */
   final def onComplete[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] =
     onHalt {
-      case End => Try(p2)
       case rsn =>  Try(p2).causedBy(rsn)
     }
 
