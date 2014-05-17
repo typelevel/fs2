@@ -6,7 +6,7 @@ import scalaz.\/._
 import scalaz.stream2.Process._
 import scalaz.stream2.async.mutable.Signal
 import scalaz.stream2.merge.Junction._
-import scalaz.stream2.{Writer1, process1}
+import scalaz.stream2.{Util, Writer1, process1}
 import scalaz.{\/, -\/}
 
 protected[stream2] object JunctionStrategies {
@@ -175,6 +175,7 @@ protected[stream2] object JunctionStrategies {
         case Junction.Done(jx,_:UpRef,rsn) => Halt(rsn)
 
         case Junction.Done(jx,_:DownRefO, rsn) =>
+          //Util.debug(s"RECEIVED DONE $rsn: rsn, js: $jx, willTerm: ${jx.downO.isEmpty}")
           if (jx.downO.isEmpty) Halt(rsn)
           else go(q,closedUp)
 

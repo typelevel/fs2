@@ -85,7 +85,7 @@ sealed trait Process[+F[_], +O]
         }
       } else {
         cur match {
-          case Halt(rsn)      =>  go(Try(stack.head(rsn).run), stack.tail)
+          case Halt(rsn)      => go(Try(stack.head(rsn).run), stack.tail)
           case Append(p, n)   => go(p, n fast_++ stack)
           case AwaitOrEmit(p) => Cont(p, rsn => Append(Halt(rsn), stack))
         }
@@ -192,6 +192,7 @@ sealed trait Process[+F[_], +O]
   /** Ignore all outputs of this `Process`. */
   final def drain: Process[F, Nothing] = {
     val ts = this.step
+    debug(s"DRAIN this: $this, ts: $ts")
     ts match {
       case Cont(Emit(_),n) => n(End).drain
       case Cont(awt@Await(_,_), next) => awt.extend(_.drain).onHalt(rsn=>next(rsn).drain)
@@ -396,6 +397,7 @@ sealed trait Process[+F[_], +O]
    */
   final def runFoldMap[F2[x] >: F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2, O], acc: B): F2[B] = {
+      debug(s"RFM cur: $cur, acc: $acc")
       cur.step match {
         case Cont(Emit(os),next) =>
           F.bind(F.point(os.foldLeft(acc)((b, o) => B.append(b, f(o))))) { nacc =>
@@ -1180,7 +1182,12 @@ object Process {
    * until evaluation of `t` signals termination with `End` or an error occurs.
    */
   def repeatEval[F[_], O](f: F[O]): Process[F, O] =
-    eval(f) ++ repeatEval(f)
+    eval(f) onHalt {
+      rsn =>
+      debug("REPEAT EVAL NEXT, " + rsn)
+      if (rsn == End) repeatEval(f) else (Halt(rsn))
+      //repeatEval(f)
+    }
 
 
   /**

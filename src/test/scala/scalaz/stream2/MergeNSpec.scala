@@ -39,7 +39,7 @@ object MergeNSpec extends Properties("mergeN") {
 
     val ps =
       emitAll(for (i <- 0 until 10) yield {
-        (Process.constant(i+100) onComplete eval(Task.fork(Task.delay{Thread.sleep(100); cleanups.incrementAndGet()})))
+        (Process.constant(i+100) onComplete eval(Task.delay{Thread.sleep(100); cleanups.incrementAndGet()}))
       }).toSource onComplete eval_(Task.delay(srcCleanup.set(99)))
 
 
@@ -59,12 +59,14 @@ object MergeNSpec extends Properties("mergeN") {
   property("source-cleanup-async-down-done") = secure {
     val cleanups = new AtomicInteger(0)
     val srcCleanup = new AtomicInteger(0)
+    //this below is due the non-thread-safety of scala object, we must memoize this here
+    val delayEach10 =  Process.awakeEvery(10 seconds)
 
-    def oneUp(index:Int) = (emit(index).toSource ++ Process.awakeEvery(10 seconds).map(_=>index)) onComplete
-      eval(Task.fork(Task.delay{val i = cleanups.incrementAndGet();Thread.sleep(100);i}))
+    def oneUp(index:Int) = (emit(index).toSource ++ delayEach10.map(_=>index)) onComplete
+      eval(Task.delay{val i = cleanups.incrementAndGet();Thread.sleep(100);i})
 
     val ps =
-      (emitAll(for (i <- 0 until 10) yield oneUp(i)).toSource ++ Process.awakeEvery(10 seconds).drain) onComplete
+      (emitAll(for (i <- 0 until 10) yield oneUp(i)).toSource ++ delayEach10.drain) onComplete
         eval_(Task.delay(srcCleanup.set(99)))
 
 
@@ -107,10 +109,12 @@ object MergeNSpec extends Properties("mergeN") {
         case None => Some(0)
       })
 
+    val sleep5 = sleep(5 millis)
+
     val ps =
       emitAll(for (i <- 0 until count) yield {
         eval_(incrementOpen) fby
-          Process.range(0,eachSize).flatMap(i=> emit(i) fby sleep(5 millis)) onComplete
+          Process.range(0,eachSize).flatMap(i=> emit(i) fby sleep5) onComplete
           eval_(decrementDone)
       }).toSource
 

@@ -260,13 +260,16 @@ protected[stream2] object Junction {
 
       def close[B](actor: Actor[M], rsn: Throwable)(implicit S: Strategy): Unit = state match {
         case UpSourceReady(next) =>
+          debug("UPSTREAM DONE, CLOSE, " + next(Kill(rsn)))
           Try(next(Kill(rsn))).run.runAsync { r =>
-            val rsn0 =  r.fold(_rsn=>CausedBy(_rsn,rsn),_=>rsn)
+            debug("UPSTREAM FINISHED: " + r)
+            val rsn0 =  r.fold(_rsn=> CausedBy(_rsn,rsn),_=>rsn)
             state = UpSourceDone(rsn0)
             actor ! UpStreamDone(self,rsn0)
           }
 
         case UpSourceRunning(interrupt) =>
+          debug("UPSTREAM RUNNING, CLOSE")
           S(interrupt(rsn))
           state = UpSourceDone(rsn)
 
@@ -510,6 +513,7 @@ protected[stream2] object Junction {
     def unemitAndRun(xsp: JunctionStrategy[W,I,O]): Unit = {
       xsp.unemit match {
         case (acts, hlt@Halt(rsn)) =>
+          debug(s"UER HALT: acts: $acts, hlt: $hlt, xsp: $xsp")
           runAction(acts)
           jx.up.foreach { case ref: UpRefInstance => ref.close(actor, Kill(rsn)) }
           jx.downO.foreach { case ref: DownRefOInstance => ref.close(Kill(rsn)) }
@@ -539,7 +543,7 @@ protected[stream2] object Junction {
     actor = Actor[M] {
       msg =>
 
-       // debug(s"JACT msg: $msg, jx: $jx, xstate: $xstate")
+       debug(s"JACT msg: $msg, jx: $jx, xstate: $xstate")
         xstate match {
           case Halt(rsn) =>
             msg match {
@@ -704,6 +708,7 @@ protected[stream2] object Junction {
               process(Done(jx, ref.oi, rsn))
 
             case DownDone(rsn, cb) =>
+              //debug(s"DOWN_DONE: signals: $downDoneSignals")
               if (downDoneSignals.isEmpty) {
                 jx = jx.copy(doneDown = Some(rsn))
                 downDoneSignals = Vector(cb)
