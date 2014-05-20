@@ -168,6 +168,13 @@ trait process1 {
   def filter[I](f: I => Boolean): Process1[I,I] =
     await1[I] flatMap (i => if (f(i)) emit(i) else halt) repeat
 
+  /** Skips the first element that matches the predicate. */
+  def delete[I](f: I => Boolean): Process1[I,I] = {
+    def go(s: Boolean): Process1[I,I] =
+      await1[I] flatMap (i => if (s && f(i)) go(false) else emit(i) ++ go(s))
+    go(true)
+  }
+
   /**
    * Skips any elements not satisfying predicate and when found, will emit that
    * element and terminate
@@ -664,6 +671,9 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.filter]](f)`. */
   def filter(f: O => Boolean): Process[F,O] =
     this |> process1.filter(f)
+
+  def delete(f: O => Boolean): Process[F,O] =
+    this |> process1.delete(f)
 
   /** Alias for `this |> [[process1.find]](f)` */
   def find(f: O => Boolean): Process[F,O] =
