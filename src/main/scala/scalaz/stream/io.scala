@@ -10,7 +10,7 @@ import Process._
 /**
  * Module of `Process` functions and combinators for file and network I/O.
  */
-trait io {
+object io {
 
   // NB: methods are in alphabetical order
 
@@ -187,5 +187,3 @@ trait io {
       }}
     }
 }
-
-object io extends io

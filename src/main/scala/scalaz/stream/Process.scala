@@ -618,7 +618,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
     condition.tee(this)(scalaz.stream.tee.until)
 }
 
-object processes extends process1 with tee with wye with io
+object processes extends tee with wye
 
 object Process {
 
