@@ -342,4 +342,11 @@ object ProcessSpec extends Properties("Process") {
     cnt == 1
   }
 
+  property("runFoldLeft") = secure {
+    Process.iterate(1)(_ + 1).take(10).runFoldLeft(0L)(_ + _).run == 55L
+  }
+
+  property("runFoldMap") = secure {
+    Process.iterate(1)(_ + 1).take(10).runFoldMap(_.toLong).run == 55L
+  }
 }
