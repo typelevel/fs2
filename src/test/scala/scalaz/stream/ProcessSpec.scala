@@ -66,9 +66,9 @@ object ProcessSpec extends Properties("Process") {
   import scalaz.concurrent.Task
 
   property("enqueue") = secure {
-    val tasks = Process.range(0,1000).map(i => Task { Thread.sleep(1); 1 })
-    tasks.sequence(50).pipe(processes.sum[Int].last).runLog.run.head == 1000 &&
-    tasks.gather(50).pipe(processes.sum[Int].last).runLog.run.head == 1000
+    val tasks = Process.range(0,1001).map(i => Task { Thread.sleep(1); 1 })
+    tasks.sequence(50).pipe(processes.sum[Int].last).runLog.run.head == 1001 &&
+    tasks.gather(50).pipe(processes.sum[Int].last).runLog.run.head == 1001
   }
 
   // ensure that wye terminates
