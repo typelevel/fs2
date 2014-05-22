@@ -115,7 +115,7 @@ trait process1 {
   def dropLast[I]: Process1[I,I] =
     dropLastIf(_ => true)
 
-  /** Emits all elemens of the input but skips the last if the predicate is true. */
+  /** Emits all elements of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I,I] = {
     def go(prev: I): Process1[I,I] =
       await1[I].flatMap {
@@ -348,7 +348,7 @@ trait process1 {
     scan(N.zero)(N.plus)
 
   /**
-   * Record evaluation of `p`, emitting the current state along with the ouput of each step.
+   * Record evaluation of `p`, emitting the current state along with the output of each step.
    */
   def record[I,O](p: Process1[I,O]): Process1[I,(Seq[O], Process1[I,O])] = p match {
     case h@Halt(_) => h
