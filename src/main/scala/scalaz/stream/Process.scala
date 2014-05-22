@@ -41,7 +41,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
 
   /** Transforms the output values of this `Process` using `f`. */
   final def map[O2](f: O => O2): Process[F,O2] = {
-    // a bit of trickness here - in the event that `f` itself throws an
+    // a bit of trickiness here - in the event that `f` itself throws an
     // exception, we use the most recent fallback/cleanup from the prior `Await`
     def go(cur: Process[F,O], fallback: Process[F,O], cleanup: Process[F,O]): Process[F,O2] =
       cur match {
@@ -63,7 +63,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * sequence these processes using `append`.
    */
   final def flatMap[F2[x]>:F[x], O2](f: O => Process[F2,O2]): Process[F2,O2] = {
-    // a bit of trickness here - in the event that `f` itself throws an
+    // a bit of trickiness here - in the event that `f` itself throws an
     // exception, we use the most recent fallback/cleanup from the prior `Await`
     def go(cur: Process[F,O], fallback: Process[F,O], cleanup: Process[F,O]): Process[F2,O2] =
       cur match {
@@ -547,12 +547,12 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * Runs the next step of process. This is guaranteed to always produce `next` step of process and will never fail.
    * In case the process is halted, will just return Halt(e)
    *
-   * Simillar in sense to `run`, except it will return the next step of process immediatelly with values emitted.
+   * Similar in sense to `run`, except it will return the next step of process immediately with values emitted.
    *
    * When abnormal failure occurs, the evaluation ends, and next step is guaranteed to contain in `cleanup` any cleanup
    * that needs to be run. It is responsibility of consumer to run the cleanup process in such case
    *
-   * Consumer of this function is required to run this repeatedly unless tail of Step is in Halt(e)`
+   * Consumer of this function is required to run this repeatedly unless tail of Step is in `Halt(e)`
    *
    * Step is guaranteed to contain in cleanup argument any code
    * that needs to be run in case the tail evaluates to Halt.
@@ -859,7 +859,7 @@ object Process {
    * `ScheduledExecutorService` for the timed events, and runs the
    * actual callbacks on `pool`, which avoids blocking a useful
    * thread simply to interpret the delays between events. If
-   * you need a '''continous''' stream use `every` instead.
+   * you need a '''continuous''' stream use `every` instead.
    */
   def awakeEvery(d: Duration)(
       implicit pool: ExecutorService = Strategy.DefaultExecutorService,
@@ -916,7 +916,7 @@ object Process {
 
   /**
    * A supply of `Long` values, starting with `initial`.
-   * Each read is guaranteed to retun a value which is unique
+   * Each read is guaranteed to return a value which is unique
    * across all threads reading from this `supply`.
    */
   def supply(initial: Long): Process[Task, Long] = {
@@ -1292,7 +1292,7 @@ object Process {
      * and/or its inputs.
      *
      * The strategy passed in must allow `fresh` stack on every processing of the
-     * element from each side. Preferrably use Executor-Based strategy
+     * element from each side. Preferably use Executor-Based strategy
      */
     final def wye[O2,O3](p2: Process[Task,O2])(y: Wye[O,O2,O3])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,O3] =
       WyeActor.wyeActor[O,O2,O3](self,p2)(y)(S)
