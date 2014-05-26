@@ -18,6 +18,7 @@ import Process._
 import process1._
 
 import TestInstances._
+import scala.concurrent.SyncVar
 
 /**
  * Created by pach on 09/04/14.
@@ -70,6 +71,23 @@ object TeeSpec extends Properties("Tee") {
     }
   }
 
+  property("cleanup called - both sides finite") = secure {
+    val leftCleanup = new SyncVar[Int]
+    val rightCleanup = new SyncVar[Int]
+    val l = Process(1) onComplete(eval_(Task.delay { leftCleanup.put(1) }))
+    val r = Process(2, 3, 4) onComplete(eval_( Task.delay { rightCleanup.put(1) }))
+    l.zip(r).run.run
+    leftCleanup.get(500).get == rightCleanup.get(500).get
+  }
+
+  property("cleanup called after exception different from Kill") = secure {
+    val leftCleanup = new SyncVar[Int]
+    val rightCleanup = new SyncVar[Int]
+    val l = Process(1, 2, 3) onComplete(eval_(Task.delay { leftCleanup.put(1) }))
+    val r = fail(new java.lang.Exception()) onComplete(eval_( Task.delay { rightCleanup.put(1) }))
+    l.zip(r).run.attemptRun
+    leftCleanup.get(500).get == rightCleanup.get(500).get
+  }
 
   // ensure that zipping terminates when the smaller stream runs out on left side
   property("zip left/right side infinite") = secure {
@@ -91,5 +109,4 @@ object TeeSpec extends Properties("Tee") {
     a.tee(b)(tee.passL[Int]).runLog.run == List.range(0,10) &&
       b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
   }
-
 }

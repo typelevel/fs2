@@ -17,6 +17,7 @@ import scalaz.stream2.Process.Kill
 import Process._
 import TestInstances._
 import scala.concurrent.duration._
+import scala.concurrent.SyncVar
 
 object ProcessSpec extends Properties("Process") {
 
@@ -68,6 +69,12 @@ object ProcessSpec extends Properties("Process") {
     Process.awakeEvery(100 millis).map(_.toMillis/100).take(5).runLog.run == Vector(1,2,3,4,5)
   }
 
+  property("kill executes cleanup") = secure {
+    val cleanup = new SyncVar[Int]
+    val p: Process[Task, Int] = halt onComplete(eval_(Task.delay { cleanup.put(1) }))
+    p.kill.run.run
+    cleanup.get(500).get == 1
+  }
 
 //  property("kill") = secure {
 //
