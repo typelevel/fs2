@@ -920,6 +920,7 @@ object Process {
       e match {
         case End => cause
         case `cause` => e
+        case _ if cause == Kill => e
         case _   => new CausedBy(e, cause)
       }
   }
