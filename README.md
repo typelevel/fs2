@@ -9,11 +9,17 @@ To get the latest version of the library, add the following to your SBT build:
 
 ``` scala
 resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
-
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.3.1"
 ```
 
-The library only builds against Scala 2.10, not earlier versions.
+And use one of the following library dependencies:
+
+```
+// Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.0
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.4.1"
+
+// Against Scalaz 7.1.0-M6, available for Scala 2.10.4 and (coming soon) 2.11.0
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.4.1a"
+```
 
 ### About the library ###
 
@@ -51,11 +57,17 @@ There are examples (with commentary) in the test directory [`scalaz.stream.examp
 
 For questions about the library, use the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) or the [scalaz-stream tag on StackOverflow](http://stackoverflow.com/questions/tagged/scalaz-stream).
 
+The API documentation of the latest release is available on [docs.typelevel.org](http://docs.typelevel.org/api/scalaz-stream/stable/latest/doc/).
+
+Blog posts and other external resources are listed on the [Additional Resources](https://github.com/scalaz/scalaz-stream/wiki/Additional-Resources)  page.
+
 ### Projects using scalaz-stream ###
 
 If you have a project you'd like to include in this list, send a message to the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) and we'll add a link to it here.
 
+* [http4s](http://www.http4s.org): Minimal, idiomatic Scala interface for HTTP services using scalaz-stream
 * [scalaz-stream-mongodb](https://github.com/Spinoco/scalaz-stream-mongodb): Bindings to [MongoDB](http://www.mongodb.org/) that use scalaz-stream
+* [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using scalaz-stream and [scodec](https://github.com/scodec/scodec)
 
 ### Related projects ###
 

@@ -78,6 +78,9 @@ trait process1 {
     await1[I].flatMap(i => go(Vector(i), i))
   }
 
+  /** Ungroups chunked input. */
+  def unchunk[I]: Process1[Seq[I], I] = id[Seq[I]].flatMap(emitAll)
+
   /**
    * Like `collect` on scala collection.
    * Builds a new process by applying a partial function
@@ -221,7 +224,7 @@ trait process1 {
    * Like `fold` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
    */
   def foldMap[A,B](f: A => B)(implicit M: Monoid[B]): Process1[A,B] =
-   id[A].map(f).foldMonoid(M)
+   lift(f).foldMonoid(M)
 
   /**
    * Like `fold` but uses Monoid for folding operation
@@ -236,9 +239,6 @@ trait process1 {
   /** Repeatedly echo the input; satisfies `x |> id == x` and `id |> x == x`. */
   def id[I]: Process1[I,I] =
     await1[I].repeat
-
-  @deprecated("init has been renamed to shiftRight. It will be removed in the next release", "0.4")
-  def init[I](head: I*): Process1[I,I] = shiftRight(head: _*)
 
   /**
    * Add `separator` between elements of the input. For example,
@@ -341,6 +341,13 @@ trait process1 {
     take(1)
 
   /**
+   * Emits the sums of prefixes (running totals) of the input elements.
+   * The first value emitted will always be zero.
+   */
+  def prefixSums[N](implicit N: Numeric[N]): Process1[N,N] =
+    scan(N.zero)(N.plus)
+
+  /**
    * Record evaluation of `p`, emitting the current state along with the ouput of each step.
    */
   def record[I,O](p: Process1[I,O]): Process1[I,(Seq[O], Process1[I,O])] = p match {
@@ -378,7 +385,7 @@ trait process1 {
    * associative operation.
    */
   def reduceMap[A,B](f: A => B)(implicit M: Semigroup[B]): Process1[A,B] =
-    id[A].map(f).reduceSemigroup(M)
+    lift(f).reduceSemigroup(M)
 
   /**
    * Repartitions the input with the function `p`. On each step `p` is applied
@@ -446,7 +453,7 @@ trait process1 {
    * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
    */
   def scanMap[A,B](f:A => B)(implicit M: Monoid[B]): Process1[A,B] =
-    id[A].map(f).scanMonoid(M)
+    lift(f).scanMonoid(M)
 
   /**
    * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
@@ -474,7 +481,7 @@ trait process1 {
    * associative operation.
    */
   def scan1Map[A,B](f:A => B)(implicit M: Semigroup[B]): Process1[A,B] =
-    id[A].map(f).scanSemigroup(M)
+    lift(f).scanSemigroup(M)
 
   /**
    * Emit the given values, then echo the rest of the input.
@@ -529,13 +536,9 @@ trait process1 {
   def stripNone[A]: Process1[Option[A],A] =
     collect { case Some(a) => a }
 
-  /**
-   * Emit a running sum of the values seen so far. The first value emitted will be the
-   * first number seen (not `0`). The length of the output `Process` always matches the
-   * length of the input `Process`.
-   */
+  /** Emits the sum of all input elements or zero if the input is empty. */
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
-    reduce(N.plus)
+    fold(N.zero)(N.plus)
 
   /**
    * Produce the given `Process1` non-strictly. This function is useful
@@ -575,6 +578,21 @@ trait process1 {
       else
         emit(acc) fby go(acc.tail, 1)
     go(Vector(), n)
+  }
+
+  /** Zips the input with an index of type `Int`. */
+  def zipWithIndex[A]: Process1[A,(A,Int)] =
+    zipWithIndex[A,Int]
+
+  /** Zips the input with an index of type `N`. */
+  def zipWithIndex[A,N](implicit N: Numeric[N]): Process1[A,(A,N)] =
+    zipWithState(N.zero)((_, n) => N.plus(n, N.one))
+
+  /** Zips the input with state that begins with `z` and is updated by `next`. */
+  def zipWithState[A,B](z: B)(next: (A, B) => B): Process1[A,(A,B)] = {
+    def go(b: B): Process1[A,(A,B)] =
+      await1[A].flatMap(a => emit((a, b)) fby go(next(a, b)))
+    go(z)
   }
 }
 
@@ -723,6 +741,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def once: Process[F,O] =
     this |> process1.once
 
+  /** Alias for `this |> [[process1.prefixSums]]` */
+  def prefixSums[O2 >: O](implicit N: Numeric[O2]): Process[F,O2] =
+    this |> process1.prefixSums(N)
+
   /** Alias for `this |> [[process1.reduce]](f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.reduce(f)
@@ -814,4 +836,16 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.window]](n)`. */
   def window(n: Int): Process[F,Vector[O]] =
     this |> process1.window(n)
+
+  /** Alias for `this |> [[process1.zipWithIndex[A]*]]. */
+  def zipWithIndex: Process[F,(O,Int)] =
+    this |> process1.zipWithIndex
+
+  /** Alias for `this |> [[process1.zipWithIndex[A,N]*]]`. */
+  def zipWithIndex[N: Numeric]: Process[F,(O,N)] =
+    this |> process1.zipWithIndex[O,N]
+
+  /** Alias for `this |> [[process1.zipWithState]](z)(next)`. */
+  def zipWithState[B](z: B)(next: (O, B) => B): Process[F,(O,B)] =
+    this |> process1.zipWithState(z)(next)
 }

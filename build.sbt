@@ -2,19 +2,22 @@ organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
-version := "snapshot-0.4"
+version := "snapshot-0.5"
 
-scalaVersion := "2.10.3"
+scalaVersion := "2.10.4"
+
+crossScalaVersions := Seq("2.10.4", "2.11.0")
 
 scalacOptions ++= Seq(
   "-feature",
+  "-deprecation",
   "-language:implicitConversions",
   "-language:higherKinds",
   "-language:existentials",
   "-language:postfixOps",
-  "-Xfatal-warnings",
+  // "-Xfatal-warnings", // this makes cross compilation impossible from a single source
   "-Yno-adapted-args",
-  "-deprecation"
+  "-Yno-adapted-args"
 )
 
 scalacOptions in (Compile, doc) ++= Seq(
@@ -55,5 +58,3 @@ OsgiKeys.importPackage := Seq(
   """scalaz.*;version="$<range;[===,=+);$<@>>"""",
   "*"
 )
-
-ScctPlugin.instrumentSettings

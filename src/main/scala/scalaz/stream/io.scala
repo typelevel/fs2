@@ -145,7 +145,7 @@ trait io {
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task.delay { Option(readLine()).getOrElse(throw End) })
+    Process.repeatEval(Task.delay { Option(Console.readLine()).getOrElse(throw End) })
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
@@ -176,16 +176,16 @@ trait io {
    * This implementation closes the `InputStream` when finished
    * or in the event of an error.
    */
-  def unsafeChunkR(is: => InputStream): Channel[Task,Array[Byte],Array[Byte]] = {
+  def unsafeChunkR(is: => InputStream): Channel[Task,Array[Byte],Array[Byte]] =
     resource(Task.delay(is))(
              src => Task.delay(src.close)) { src =>
       Task.now { (buf: Array[Byte]) => Task.delay {
         val m = src.read(buf)
-        if (m == -1) throw End
+        if (m == buf.length) buf
+        else if (m == -1) throw End
         else buf.take(m)
       }}
     }
-  }
 }
 
 object io extends io
