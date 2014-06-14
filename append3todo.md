@@ -49,16 +49,17 @@ Please remove from the list once done....
 - [ ] improve // check toIndexedSeq
 
 ### Process1Syntax
-- [ ] *  
+- [X] *  
 
 ### TeeSyntax
-- [ ] *
+- [X] *
 
 ### WyeSyntax
-- [ ] *
+- [ ] detachL -> detach1L
+- [ ] detachR -> detach1R
 
 ### ChannelSyntax
-- [ ] *
+- [X] *
 
 ### SinkTaskSyntax
 - [X] *
