@@ -98,7 +98,7 @@ Please remove from the list once done....
 - [ ] record
 - [ ] prefixSums
 - [ ] suspend1 - not sure if fits in new repre.
-- [ ] zipWith*
+- [x] zipWith*
 
 ## text.scala
 - [ ] *
@@ -132,7 +132,7 @@ Please remove from the list once done....
 - [ ] record
 - [ ] prefixSums
 - [ ] suspend1 - not sure if fits in new repre.
-- [ ] zipWith* 
+- [x] zipWith* 
  
 ## UnsafeChunkRSpec
 - [ ] *
