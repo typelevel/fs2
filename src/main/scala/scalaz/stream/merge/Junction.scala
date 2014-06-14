@@ -1,5 +1,6 @@
 package scalaz.stream.merge
 
+import java.util.concurrent.atomic.AtomicReference
 import scala._
 import scala.collection.immutable.Queue
 import scalaz.-\/
@@ -203,7 +204,7 @@ protected[stream] object Junction {
     case class UpStreamDone(ref: ProcessRef, rsn: Throwable) extends M
     //upstream source process is ready to Emit
     case class UpStreamEmit(ref: ProcessRef, si: Seq[I], t:Process[Task,I],c:Process[Task,I]) extends M
-    
+
     //upstream process has seq of `I` to emit. Tail and cleanup is passed to build the current state
     case class UpEmit(ref: UpRefInstance, si: Seq[I]) extends M
 
@@ -286,7 +287,7 @@ protected[stream] object Junction {
           case _                   => //no-op
         }
       }
-      
+
       def ready(t:Process[Task,I],c:Process[Task,I]) : Unit = {
         state = UpSourceReady(t,c)
       }
@@ -299,9 +300,12 @@ protected[stream] object Junction {
 
 
     // Reference for downstream. Internal mutable vars are protected and set only by Junction actor
-    trait DownRefInstanceImpl[A] extends DownRefInstance[A] {
+    abstract class DownRefInstanceImpl[A] extends DownRefInstance[A] {
       // State of reference, may be queueing (left) or waiting to be completed (right)
-      @volatile var state: Vector[A] \/ ((Throwable \/ Seq[A]) => Unit)
+      val stateref = new AtomicReference[Vector[A] \/ ((Throwable \/ Seq[A]) => Unit)]
+      def state = stateref.get
+      def state_=(v: Vector[A] \/ ((Throwable \/ Seq[A]) => Unit)): Unit = stateref.set(v)
+
       // When set, indicates reference is terminated and shall not receive more `B`
       // except these in queue already.
       @volatile var done: Option[Throwable] = None
@@ -376,20 +380,23 @@ protected[stream] object Junction {
     trait DownRefWInstance extends DownRefInstance[W] with DownRefW
 
     class DownRefOInstanceImpl(
-      @volatile var state: \/[Vector[O], (\/[Throwable, Seq[O]]) => Unit] = left(Vector())
-      ) extends DownRefInstanceImpl[O] with DownRefOInstance
-    
-  
+      initialstate: \/[Vector[O], (\/[Throwable, Seq[O]]) => Unit] = left(Vector())
+      ) extends DownRefInstanceImpl[O] with DownRefOInstance {
+      state = initialstate
+    }
+
+
 
     class DownRefWInstanceImpl(
-      @volatile var state: \/[Vector[W], (\/[Throwable, Seq[W]]) => Unit] = left(Vector())
-      ) extends DownRefInstanceImpl[W] with DownRefWInstance
-
+      initialstate: \/[Vector[W], (\/[Throwable, Seq[W]]) => Unit] = left(Vector())
+      ) extends DownRefInstanceImpl[W] with DownRefWInstance {
+      state = initialstate
+    }
 
     class DownRefBothInstance(
-      @volatile var state: \/[Vector[W \/ O], (\/[Throwable, Seq[W \/ O]]) => Unit] = left(Vector())
+      initialstate: \/[Vector[W \/ O], (\/[Throwable, Seq[W \/ O]]) => Unit] = left(Vector())
       ) extends DownRefInstanceImpl[W \/ O] {
-
+      state = initialstate
       val self = this
 
       @volatile var doneO: Option[Throwable] = None
@@ -493,6 +500,7 @@ protected[stream] object Junction {
           )
           ref.close(rsn)
         case OpenNext => runSource
+        case a => sys.error("don't know what to do with: " + a)
       }
     }
 
@@ -518,13 +526,13 @@ protected[stream] object Junction {
           runAction(acts)
           xstate = nx
       }
-    } 
+    }
 
 
 
     /** processes signal and eventually runs the JunctionAction **/
-    def process(signal:  JunctionSignal[W,I,O]): Unit = 
-      if (!xstate.isHalt) unemitAndRun(xstate.feed1(signal))      
+    def process(signal:  JunctionSignal[W,I,O]): Unit =
+      if (!xstate.isHalt) unemitAndRun(xstate.feed1(signal))
 
 
     actor = Actor[M] {

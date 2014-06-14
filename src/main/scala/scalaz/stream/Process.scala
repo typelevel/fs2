@@ -93,8 +93,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * Note that `p2` is appended to the `fallback` argument of any `Await`
    * produced by this `Process`. If this is not desired, use `fby`.
    */
-  final def append[F2[x]>:F[x], O2>:O](p: => Process[F2,O2]): Process[F2,O2] = {
-    lazy val p2 = p
+  final def append[F2[x]>:F[x], O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = {
     this match {
       case h@Halt(e) => e match {
         case End =>
@@ -121,8 +120,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * we do not modify the `fallback` arguments to any `Await` produced
    * by this `Process`.
    */
-  final def fby[F2[x]>:F[x],O2>:O](p: => Process[F2,O2]): Process[F2,O2] = {
-    lazy val p2 = p
+  final def fby[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = {
     this match {
       case h@Halt(e) => e match {
         case End =>
@@ -239,20 +237,16 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * Append to the `fallback` and `cleanup` arguments of the _next_ `Await`.
    */
   final def orElse[F2[x]>:F[x],O2>:O](fallback0: => Process[F2,O2], cleanup0: => Process[F2,O2] = halt): Process[F2,O2] = {
-    lazy val fallback: Process[F2,O2] = try {
-      fallback0 match {
-        case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
-        case _ => fallback0
-      }
+    def fallback = try {
+      fallback0.asEmit.map { case (h,t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]]) }
+                      .getOrElse { fallback0 }
     } catch {
       case e: Throwable => Halt(e)
     }
 
-    lazy val cleanup: Process[F2,O2] = try {
-      cleanup0 match {
-        case Emit(h, t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]])
-        case _ => cleanup0
-      }
+    def cleanup = try {
+      cleanup0.asEmit.map { case (h,t) => Emit(h.view.asInstanceOf[Seq[O2]], t.asInstanceOf[Process[F2,O2]]) }
+                     .getOrElse { cleanup0 }
     } catch {
       case e: Throwable => Halt(e)
     }
@@ -269,8 +263,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
   /**
    * Run `p2` after this `Process` if this `Process` completes with an an error.
    */
-  final def onFailure[F2[x]>:F[x],O2>:O](p: => Process[F2,O2]): Process[F2,O2] = {
-    lazy val p2 = p
+  final def onFailure[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = {
     this match {
       case Await(req,recv,fb,c) => Await(req, recv andThen (_.onFailure(p2)), fb, c onComplete p2)
       case Emit(h, t) => Emit(h, t.onFailure(p2))
@@ -288,8 +281,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
    * This behaves almost identically to `append`, except that `p1 append p2` will
    * not run `p2` if `p1` halts with an error.
    */
-  final def onComplete[F2[x]>:F[x],O2>:O](p: => Process[F2,O2]): Process[F2,O2] = {
-    lazy val p2 = p
+  final def onComplete[F2[x]>:F[x],O2>:O](p2: => Process[F2,O2]): Process[F2,O2] = {
     this match {
       case Await(req,recv,fb,c) => Await(req, recv andThen (_.onComplete(p2)), fb.onComplete(p2), c.onComplete(p2))
       case Emit(h, t) => Emit(h, t.onComplete(p2))
@@ -343,6 +335,11 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
       case Await(req,recv,fb,c) => Some((req,recv,fb,c))
       case _ => None
     }
+
+  private[stream] def asEmit: Option[(Seq[O], Process[F,O])] = this match {
+    case Emit(h, t) => Some(h -> t)
+    case _ => None
+  }
 
   /**
    * Ignores output of this `Process`. A drained `Process` will never `Emit`.
@@ -514,13 +511,13 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
   final def runFoldMap[F2[x]>:F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2,O], acc: B): F2[B] =
       cur match {
-        case Emit(h,t) =>
-          go(t.asInstanceOf[Process[F2,O]], h.asInstanceOf[Seq[O]].foldLeft(acc)((x, y) => B.append(x, f(y))))
         case Halt(e) => e match {
           case End => F.point(acc)
           case _ => C.fail(e)
         }
-        case Await(req,recv,fb,c) =>
+        case awaitoremit => awaitoremit.asEmit.map { case (h,t) =>
+          go(t.asInstanceOf[Process[F2,O]], h.foldLeft(acc)((x, y) => B.append(x, f(y))))
+        } orElse { awaitoremit.asAwait.map { case (req,recv,fb,c) =>
            F.bind (C.attempt(req.asInstanceOf[F2[AnyRef]])) {
              _.fold(
                { case End => go(fb.asInstanceOf[Process[F2,O]], acc)
@@ -529,6 +526,7 @@ sealed abstract class Process[+F[_],+O] extends Process1Ops[F,O] {
                o => go(recv.asInstanceOf[AnyRef => Process[F2,O]](o), acc)
              )
            }
+        }} getOrElse { sys.error("unpossible") }
       }
     go(this, B.zero)
   }
@@ -673,7 +671,7 @@ object Process {
   /** A `Process1` that writes values of type `W`. */
   type Process1W[+W,-I,+O] = Process1[I,W \/ O]
 
-  /** Alias for Process1W **/
+  /** Alias for Process1W. */
   type Writer1[+W,-I,+O] = Process1W[W,I,O]
 
   /** A `Tee` that writes values of type `W`. */
@@ -733,10 +731,9 @@ object Process {
       head: Seq[O],
       tail: Process[F,O] = halt): Process[F,O] =
     if (head.isEmpty) tail
-    else tail match {
-      case Emit(h2,t) => Emit(head ++ h2.asInstanceOf[Seq[O]], t.asInstanceOf[Process[F,O]])
-      case _ => Emit(head, tail)
-    }
+    else tail.asEmit.map { ht =>
+      Emit[F,O](head ++ ht._1, ht._2)
+    } getOrElse { Emit(head, tail) }
 
   def await[F[_],A,O](req: F[A])(
       recv: A => Process[F,O] = (a: A) => halt,
@@ -808,8 +805,9 @@ object Process {
   }
 
   /**
-   * A continuous stream which is true after `d, 2d, 3d...` elapsed duration.
-   * If you'd like a discrete stream that will actually block until `d` has elapsed,
+   * A '''continuous''' stream which is true after `d, 2d, 3d...` elapsed duration,
+   * and false otherwise.
+   * If you'd like a '''discrete''' stream that will actually block until `d` has elapsed,
    * use `awakeEvery` instead.
    */
   def every(d: Duration): Process[Task, Boolean] = {
@@ -854,13 +852,14 @@ object Process {
     awaken.dropWhile(!_).once.flatMap(b => if (b) p else halt)
 
   /**
-   * A discrete tasks which emits elapsed durations at the given
+   * A '''discrete''' task which emits elapsed durations at the given
    * regular duration. For example: `awakeEvery(5 seconds)` will
    * return (approximately) `5s, 10s, 20s`, and will lie dormant
    * between emitted values. By default, this uses a shared
    * `ScheduledExecutorService` for the timed events, and runs the
    * actual callbacks on `pool`, which avoids blocking a useful
-   * thread simply to interpret the delays between events.
+   * thread simply to interpret the delays between events. If
+   * you need a '''continous''' stream use `every` instead.
    */
   def awakeEvery(d: Duration)(
       implicit pool: ExecutorService = Strategy.DefaultExecutorService,
