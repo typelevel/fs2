@@ -9,7 +9,7 @@ Please remove from the list once done....
 
 ### Process object 
  
-- [x] Process.fill
+- [ ] Process.fill
 - [x] Process.iterate
 - [x] Process.state
 - [x] Process.duration
@@ -20,7 +20,7 @@ Please remove from the list once done....
 - [x] Process.ranges
 - [x] Process.supply
 - [x] Process.toTask
-- [x] Process.forwardFill
+- [ ] Process.forwardFill
 
 
 ### instances
@@ -124,6 +124,14 @@ Please remove from the list once done....
 
 ## NioSpec.scala
 - [ ] *
+ 
+## ProcessSpec.scala
+- [ ] fill
+- [ ] forwardFill
+- [ ] enqueue
+- [ ] state  - fix
+- [ ] pipeIn
+ 
  
 ## Process1Spec.scala
 - [ ] unchunk 
