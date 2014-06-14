@@ -25,7 +25,7 @@ Please remove from the list once done....
 
 ### instances
 
-- [ ] MonadPlus[Process]
+- [x] MonadPlus[Process]
 
 
 ### ProcessSyntax: 

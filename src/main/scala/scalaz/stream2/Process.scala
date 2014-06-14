@@ -6,7 +6,7 @@ import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.{\/, -\/, \/-, Catchable, Monoid, Monad, ~>}
+import scalaz.{\/, -\/, \/-, Catchable, Monoid, Monad, MonadPlus, ~>}
 import scala.concurrent.duration._
 import java.util.concurrent.{TimeUnit, ScheduledExecutorService, ExecutorService}
 
@@ -1191,6 +1191,16 @@ object Process {
   /** indicates normal termination **/
   val halt = Halt(End)
 
+
+  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] =
+    new MonadPlus[({type f[x] = Process[F,x]})#f] {
+      def empty[A] = halt
+      def plus[A](a: Process[F,A], b: => Process[F,A]): Process[F,A] =
+        a ++ b
+      def point[A](a: => A): Process[F,A] = emit(a)
+      def bind[A,B](a: Process[F,A])(f: A => Process[F,B]): Process[F,B] =
+        a flatMap f
+    }
 
 
   //////////////////////////////////////////////////////////////////////////////////////
