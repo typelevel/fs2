@@ -942,6 +942,16 @@ object Process {
     go
   }
 
+  /**
+   * A continuous stream of the elapsed time, computed using `System.nanoTime`.
+   * Note that the actual granularity of these elapsed times depends on the OS, for instance
+   * the OS may only update the current time every ten milliseconds or so.
+   */
+  def duration: Process[Task, Duration] = suspend {
+    val t0 = System.nanoTime
+    repeatEval { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
+  }
+
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process[Nothing, Nothing \/ O] =
     liftW(Process.emit(o))
@@ -954,6 +964,52 @@ object Process {
   /** A `Writer` which writes the given value. */
   def emitW[W](s: W): Process[Nothing, W \/ Nothing] =
     Process.emit(left(s))
+
+
+  /**
+   * A 'continuous' stream which is true after `d, 2d, 3d...` elapsed duration,
+   * and false otherwise.
+   * If you'd like a 'discrete' stream that will actually block until `d` has elapsed,
+   * use `awakeEvery` instead.
+   */
+  def every(d: Duration): Process[Task, Boolean] = {
+    def go(lastSpikeNanos: Long): Process[Task, Boolean] =
+      suspend {
+        val now = System.nanoTime
+        if ((now - lastSpikeNanos) > d.toNanos) emit(true) ++ go(now)
+        else emit(false) ++ go(lastSpikeNanos)
+      }
+    go(0)
+  }
+
+  /** A `Process` which emits `n` repetitions of `a`. */
+  def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process[Task,A] = {
+    val chunkN = chunkSize max 1
+    val chunkTask = Task.now(List.fill(chunkN)(a)) // we can reuse this for each step
+    def go(m: Int): Process[Task,A] =
+      if (m >= chunkN) await(chunkTask)(as => emitAll(as)) ++ go(m - chunkN)
+      else if (m <= 0) halt
+      else await(Task.now(List.fill(m)(a)))(emitAll)
+    go(n max 0)
+  }
+
+  /**
+   * Produce a continuous stream from a discrete stream by using the
+   * most recent value.
+   */
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] =
+    async.toSignal(p).continuous
+
+
+  /**
+   * An infinite `Process` that repeatedly applies a given function
+   * to a start value.
+   */
+  def iterate[A](start: A)(f: A => A): Process[Task,A] = {
+    def go(a: A): Process[Task,A] =
+      await(Task.now(a))(emit) ++ go(f(a))
+    go(start)
+  }
 
   /** Promote a `Process` to a `Writer` that writes nothing. */
   def liftW[F[_],A](p: Process[F,A]): Writer[F,Nothing,A] =
@@ -971,6 +1027,26 @@ object Process {
     unfold(start)(i => if (i < stopExclusive) Some((i,i+by)) else None)
 
   /**
+   * Lazily produce a sequence of nonoverlapping ranges, where each range
+   * contains `size` integers, assuming the upper bound is exclusive.
+   * Example: `ranges(0, 1000, 10)` results in the pairs
+   * `(0, 10), (10, 20), (20, 30) ... (990, 1000)`
+   *
+   * Note: The last emitted range may be truncated at `stopExclusive`. For
+   * instance, `ranges(0,5,4)` results in `(0,4), (4,5)`.
+   *
+   * @throws IllegalArgumentException if `size` <= 0
+   */
+  def ranges(start: Int, stopExclusive: Int, size: Int): Process[Task, (Int, Int)] = {
+    require(size > 0, "size must be > 0, was: " + size)
+    unfold(start)(lower =>
+      if (lower < stopExclusive)
+        Some((lower -> ((lower+size) min stopExclusive), lower+size))
+      else
+        None)
+  }
+
+  /**
    * A single-element `Process` that waits for the duration `d`
    * before emitting its value. This uses a shared
    * `ScheduledThreadPoolExecutor` to signal duration and
@@ -983,10 +1059,75 @@ object Process {
     ): Process[Task,Nothing] =
     awakeEvery(d).once.drain
 
+  /**
+   * Delay running `p` until `awaken` becomes true for the first time.
+   * The `awaken` process may be discrete.
+   */
+  def sleepUntil[F[_],A](awaken: Process[F,Boolean])(p: Process[F,A]): Process[F,A] =
+    awaken.dropWhile(!_).once.flatMap(b => if (b) p else halt)
+
+  /**
+   * Produce a stream encapsulating some state, `S`. At each step,
+   * produces the current state, and an effectful function to set the
+   * state that will be produced next step.
+   */
+  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = {
+    await(Task.delay(async.signal[S]))(
+      sig => eval_(sig.set(s0)) fby
+        (sig.discrete.take(1) zip emit(sig.set _)).repeat
+    )
+  }
+
+  /**
+   * A supply of `Long` values, starting with `initial`.
+   * Each read is guaranteed to retun a value which is unique
+   * across all threads reading from this `supply`.
+   */
+  def supply(initial: Long): Process[Task, Long] = {
+    import java.util.concurrent.atomic.AtomicLong
+    val l = new AtomicLong(initial)
+    repeatEval { Task.delay { l.getAndIncrement }}
+  }
 
   /** A `Writer` which writes the given value; alias for `emitW`. */
   def tell[S](s: S): Process[Nothing, S \/ Nothing] =
     emitW(s)
+
+  /**
+   * Convert a `Process` to a `Task` which can be run repeatedly to generate
+   * the elements of the `Process`.
+   */
+  def toTask[A](p: Process[Task,A]): Task[A] = {
+    var cur = p
+    def go: Task[A] =
+      cur.step match {
+        case Cont(Emit(os),next) =>
+          val nextp =  Try(next(End))
+          if (os.isEmpty) {
+            cur = nextp
+            go
+          } else {
+            cur = emitAll(os.tail) ++ nextp
+            Task.now(os.head)
+          }
+        case Cont(Await(rq,rcv), next) =>
+          rq.attempt.flatMap {
+            case -\/(End) =>
+              cur = Try(rcv(left(End)).run) onHalt next
+              go
+
+            case -\/(rsn: Throwable) =>
+              cur = Try(rcv(left(rsn)).run) onHalt next
+              go.flatMap(_ => Task.fail(rsn))
+
+            case \/-(resp) =>
+              cur = Try(rcv(right(resp)).run) onHalt next
+              go
+          }
+        case dn@Done(rsn) => Task.fail(rsn)
+    }
+    Task.delay(go).flatMap(a => a)
+  }
 
 
   /** Produce a (potentially infinite) source from an unfold. */
