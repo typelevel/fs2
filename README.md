@@ -89,7 +89,11 @@ feed
  - *
 
 ## Exchange.scala
- - *
+ - mapW
+ - pipeW
+ - wye
+ - readThrough
+ - Exchange.loopBack
 
  
 ## hash.scala
