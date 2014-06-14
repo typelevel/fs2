@@ -6,10 +6,12 @@ import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.{\/, -\/, \/-, Catchable, Monoid, Monad, ~>}
+import scalaz._
 import scala.concurrent.duration._
 import java.util.concurrent.{TimeUnit, ScheduledExecutorService, ExecutorService}
-
+import scalaz.stream2.ReceiveY.{ReceiveR, ReceiveL}
+import scalaz.\/-
+import scalaz.-\/
 
 
 sealed trait Process[+F[_], +O]
@@ -1192,6 +1194,16 @@ object Process {
   val halt = Halt(End)
 
 
+  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F,x]})#f] =
+    new MonadPlus[({type f[x] = Process[F,x]})#f] {
+      def empty[A] = halt
+      def plus[A](a: Process[F,A], b: => Process[F,A]): Process[F,A] =
+        a ++ b
+      def point[A](a: => A): Process[F,A] = emit(a)
+      def bind[A,B](a: Process[F,A])(f: A => Process[F,B]): Process[F,B] =
+        a flatMap f
+    }
+
 
   //////////////////////////////////////////////////////////////////////////////////////
   //
@@ -1237,6 +1249,19 @@ object Process {
   // SYNTAX
   //
   /////////////////////////////////////////////////////////////////////////////////////
+
+  /**
+   * Adds syntax for Channel
+   */
+  implicit class ChannelSyntax[F[_],I,O](self: Channel[F,I,O]) {
+    /** Transform the input of this `Channel`. */
+    def contramap[I0](f: I0 => I): Channel[F,I0,O] =
+      self.map(f andThen _)
+
+    /** Transform the output of this `Channel` */
+    def mapOut[O2](f: O => O2)(implicit F: Functor[F]): Channel[F,I,O2] =
+      self.map(_ andThen F.lift(f))
+  }
 
 
   implicit class ProcessSyntax[F[_],O](val self:Process[F,O]) extends AnyVal {
@@ -1315,6 +1340,62 @@ object Process {
     def toStream: Stream[O] = toIndexedSeq.toStream
     def toSource: Process[Task, O] =    emitAll(toIndexedSeq.map(o => Task.delay(o))).eval
   }
+
+  /** Syntax for Sink, that is specialized for Task */
+  implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
+    /** converts sink to channel, that will perform the side effect and echo its input **/
+    def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
+
+
+
+    /** converts sint to sink that first pipes received `I0` to supplied p1 **/
+    def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = {
+      import scalaz.Scalaz._
+      // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
+      @volatile var cur: Process1[I0, I] = p1
+      self.map { (f: I => Task[Unit]) =>
+        (i0: I0) =>
+          val (piped, next) = process1.feed1(i0)(cur).unemit
+          cur = next
+          piped.toList.traverse_(f)
+      }
+    }
+
+  }
+
+
+  /**
+   * This class provides infix syntax specific to `Process1`.
+   */
+  implicit class Process1Syntax[I,O](self: Process1[I,O]) {
+
+    /** Apply this `Process` to an `Iterable`. */
+    def apply(input: Iterable[I]): IndexedSeq[O] =
+      Process(input.toSeq: _*).pipe(self.bufferAll).disconnect.unemit._1.toIndexedSeq
+
+    /**
+     * Transform `self` to operate on the left hand side of an `\/`, passing
+     * through any values it receives on the right. Note that this halts
+     * whenever `self` halts.
+     */
+    def liftL[I2]: Process1[I \/ I2, O \/ I2] =
+      process1.liftL(self)
+
+    /**
+     * Transform `self` to operate on the right hand side of an `\/`, passing
+     * through any values it receives on the left. Note that this halts
+     * whenever `self` halts.
+     */
+    def liftR[I0]: Process1[I0 \/ I, I0 \/ O] =
+      process1.liftR(self)
+
+    /**
+     * Feed a single input to this `Process1`.
+     */
+    def feed1(i: I): Process1[I,O] =
+      process1.feed1(i)(self)
+  }
+
 
   /**
    * Syntax for processes that have its effects wrapped in Task
@@ -1431,6 +1512,23 @@ object Process {
       )
     }
 
+    /**
+     * This class provides infix syntax specific to `Tee`. We put these here
+     * rather than trying to cram them into `Process` itself using implicit
+     * equality witnesses. This doesn't work out so well due to variance
+     * issues.
+     */
+    implicit class TeeSyntax[I,I2,O](self: Tee[I,I2,O]) {
+
+      /** Transform the left input to a `Tee`. */
+      def contramapL[I0](f: I0 => I): Tee[I,I2,O] =
+        self.contramapL_(f).asInstanceOf[Tee[I,I2,O]]
+
+      /** Transform the right input to a `Tee`. */
+      def contramapR[I3](f: I3 => I2): Tee[I,I3,O] =
+        self.contramapR_(f).asInstanceOf[Tee[I,I3,O]]
+    }
+
 
     /**
      * Infix syntax for working with `Writer[F,W,O]`. We call
@@ -1525,6 +1623,58 @@ object Process {
 //      def drainO[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,O])(implicit F2: Nondeterminism[F2]): Process[F2,W] =
 //        self.connectO(s)(scalaz.stream2.wye.boundedQueue(maxUnacknowledged)).stripO
     }
+
+
+    /**
+     * This class provides infix syntax specific to `Wye`. We put these here
+     * rather than trying to cram them into `Process` itself using implicit
+     * equality witnesses. This doesn't work out so well due to variance
+     * issues.
+     */
+    implicit class WyeSyntax[I,I2,O](self: Wye[I,I2,O]) {
+
+      /**
+       * Apply a `Wye` to two `Iterable` inputs.
+       */
+      def apply(input: Iterable[I], input2: Iterable[I2]): IndexedSeq[O] = {
+        // this is probably rather slow
+        val src1 = Process.emitAll(input.toSeq).toSource
+        val src2 = Process.emitAll(input2.toSeq).toSource
+        src1.wye(src2)(self).runLog.run
+      }
+
+
+
+      /**
+       * Transform the left input of the given `Wye` using a `Process1`.
+       */
+      def attachL[I0](f: Process1[I0,I]): Wye[I0, I2, O] =
+        scalaz.stream2.wye.attachL(f)(self)
+
+      /**
+       * Transform the right input of the given `Wye` using a `Process1`.
+       */
+      def attachR[I1](f: Process1[I1,I2]): Wye[I, I1, O] =
+        scalaz.stream2.wye.attachR(f)(self)
+
+      /** Transform the left input to a `Wye`. */
+      def contramapL[I0](f: I0 => I): Wye[I0, I2, O] =
+        contramapL_(f)
+
+      /** Transform the right input to a `Wye`. */
+      def contramapR[I3](f: I3 => I2): Wye[I, I3, O] =
+        contramapR_(f)
+
+      private[stream2] def contramapL_[I0](f: I0 => I): Wye[I0, I2, O] =
+        self.attachL(process1.lift(f))
+
+      private[stream2] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] =
+        self.attachR(process1.lift(f))
+
+
+
+    }
+
 
 
   }

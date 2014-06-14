@@ -9,7 +9,7 @@ Please remove from the list once done....
 
 ### Process object 
  
-- [x] Process.fill
+- [ ] Process.fill
 - [x] Process.iterate
 - [x] Process.state
 - [x] Process.duration
@@ -20,12 +20,12 @@ Please remove from the list once done....
 - [x] Process.ranges
 - [x] Process.supply
 - [x] Process.toTask
-- [x] Process.forwardFill
+- [ ] Process.forwardFill
 
 
 ### instances
 
-- [ ] MonadPlus[Process]
+- [x] MonadPlus[Process]
 
 
 ### ProcessSyntax: 
@@ -49,19 +49,20 @@ Please remove from the list once done....
 - [ ] improve // check toIndexedSeq
 
 ### Process1Syntax
-- [ ] *  
+- [X] *  
 
 ### TeeSyntax
-- [ ] *
+- [X] *
 
 ### WyeSyntax
-- [ ] *
+- [ ] detachL -> detach1L
+- [ ] detachR -> detach1R
 
 ### ChannelSyntax
-- [ ] *
+- [X] *
 
 ### SinkTaskSyntax
-- [ ] *
+- [X] *
 
 ### EvalProcess
 - [ ] *
@@ -75,11 +76,11 @@ Please remove from the list once done....
 - [ ] *
 
 ## Exchange.scala
-- [ ] mapW
-- [ ] pipeW
-- [ ] wye
-- [ ] readThrough
-- [ ] Exchange.loopBack
+- [X] mapW
+- [X] pipeW
+- [X] wye
+- [X] readThrough
+- [X] Exchange.loopBack
 
  
 ## hash.scala
@@ -114,7 +115,7 @@ Please remove from the list once done....
 - [ ] *
 
 ## ExchangeSpec.scala
-- [ ] *
+- [X] *
 
 ## HashSpec.scala
 - [ ] *
@@ -124,6 +125,15 @@ Please remove from the list once done....
 
 ## NioSpec.scala
 - [ ] *
+ 
+## ProcessSpec.scala
+- [ ] fill
+- [ ] forwardFill
+- [ ] enqueue
+- [ ] state  - fix
+- [ ] pipeIn
+- [ ] pipeIn reuse 
+ 
  
 ## Process1Spec.scala
 - [ ] unchunk 
