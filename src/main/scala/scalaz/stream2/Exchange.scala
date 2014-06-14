@@ -5,6 +5,8 @@ import scalaz.stream2.wye.Request
 import scalaz.{-\/, \/, \/-}
 import scalaz.stream2.ReceiveY.{HaltR, HaltL, ReceiveR, ReceiveL}
 import scalaz.stream2.Process._
+import scalaz._
+import scalaz.\/._
 
 
 /**
@@ -41,8 +43,8 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
   /**
    * applies provided function to any `W2` that has to be written to provide an `W`
    */
-  def mapW[W2](f: W2 => W): Exchange[I, W2] = ???
-   // Exchange(self.read, self.write contramap f)
+  def mapW[W2](f: W2 => W): Exchange[I, W2] =
+    Exchange(self.read, self.write contramap f)
 
 
   /**
@@ -56,8 +58,8 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
   /**
    * Creates new exchange, that pipes all values to be sent through supplied `p1`
    */
-  def pipeW[W2](p1: Process1[W2, W]): Exchange[I, W2] = ???
-  //  Exchange(self.read, self.write.pipeIn(p1))
+  def pipeW[W2](p1: Process1[W2, W]): Exchange[I, W2] =
+    Exchange(self.read, self.write.pipeIn(p1))
 
   /**
    * Creates new exchange, that will pipe read values through supplied `r` and write values through `w`
@@ -106,8 +108,8 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * @param y WyeW to control queueing and transformation
    *
    */
-  def wye[I2,W2](y: WyeW[W, I, W2, I2])(implicit S: Strategy): Exchange[I2, W2] = ???
-  //  flow(y.attachL(collect { case \/-(i) => i }))
+  def wye[I2,W2](y: WyeW[W, I, W2, I2])(implicit S: Strategy): Exchange[I2, W2] =
+   flow(scalaz.stream2.wye.attachL(process1.collect[Int \/ I,I] { case \/-(i) => i })(y))
 
   /**
    * Transform this Exchange to another Exchange where queueing, flow control and transformation of this `I` and `W`
@@ -151,25 +153,24 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    *
    */
   def readThrough[I2](w: Writer1[W, I, I2])(implicit S: Strategy = Strategy.DefaultStrategy) : Exchange[I2,W]  = {
-//    def liftWriter : WyeW[W, Int \/ I, W, I2] = {
-//      def go(cur:Writer1[W, I, I2]):WyeW[W, Int \/ I, W, I2] = {
-//        awaitBoth[Int\/I,W].flatMap{
-//          case ReceiveL(-\/(_)) => go(cur)
-//          case ReceiveL(\/-(i)) =>
-//            cur.feed1(i).unemit match {
-//              case (out,hlt@Halt(rsn)) => emitSeq(out, hlt)
-//              case (out,next) => emitSeq(out) fby go(next)
-//            }
-//          case ReceiveR(w) => tell(w) fby go(cur)
-//          case HaltL(rsn) => Halt(rsn)
-//          case HaltR(rsn) => go(cur)
-//        }
-//      }
-//      go(w)
-//    }
-//
-//    self.flow[I2,W](liftWriter)(S)
-    ???
+    def liftWriter : WyeW[W, Int \/ I, W, I2] = {
+      def go(cur:Writer1[W, I, I2]):WyeW[W, Int \/ I, W, I2] = {
+        awaitBoth[Int\/I,W].flatMap{
+          case ReceiveL(-\/(_)) => go(cur)
+          case ReceiveL(\/-(i)) =>
+            cur.feed1(i).unemit match {
+              case (out,hlt@Halt(rsn)) => emitAll(out) fby hlt
+              case (out,next) => emitAll(out) fby go(next)
+            }
+          case ReceiveR(w) => tell(w) fby go(cur)
+          case HaltL(rsn) => Halt(rsn)
+          case HaltR(rsn) => go(cur)
+        }
+      }
+      go(w)
+    }
+
+    self.flow[I2,W](liftWriter)(S)
   }
 
 }
@@ -193,24 +194,22 @@ object Exchange {
   def loopBack[I, W](p: Process1[W, I])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, Exchange[I, W]] = {
 
     def loop(cur: Process1[W, I]): WyeW[Nothing, Nothing, W, I] = {
-//      awaitR[W] flatMap {
-//        case w => cur.feed1(w).unemit match {
-//          case (o, hlt@Halt(rsn)) => emitSeq(o.map(right)) fby hlt
-//          case (o, np)            => emitSeq(o.map(right)) fby loop(np)
-//        }
-//      }
-      ???
+      awaitR[W] flatMap {
+        case w => cur.feed1(w).unemit match {
+          case (o, hlt@Halt(rsn)) => emitAll(o.map(right)) fby hlt
+          case (o, np)            => emitAll(o.map(right)) fby loop(np)
+        }
+      }
     }
 
-//    await(Task.delay {
-//      async.boundedQueue[W]()
-//    })({ q =>
-//      val (out, np) = p.unemit
-//      val ex = Exchange[Nothing, W](halt, q.enqueue)
-//      emit(ex.wye(emitSeq(out).map(right) fby loop(np))) onComplete eval_(Task.delay(q.close.run))
-//    })
+    await(Task.delay {
+      async.boundedQueue[W]()
+    })({ q =>
+      val (out, np) = p.unemit
+      val ex = Exchange[Nothing, W](halt, q.enqueue)
+      emit(ex.wye(emitAll(out).map(right) fby loop(np))) onComplete eval_(Task.delay(q.close.run))
+    })
 
-    ???
   }
 
 

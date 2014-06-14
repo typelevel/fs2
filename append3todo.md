@@ -76,11 +76,11 @@ Please remove from the list once done....
 - [ ] *
 
 ## Exchange.scala
-- [ ] mapW
-- [ ] pipeW
-- [ ] wye
-- [ ] readThrough
-- [ ] Exchange.loopBack
+- [X] mapW
+- [X] pipeW
+- [X] wye
+- [X] readThrough
+- [X] Exchange.loopBack
 
  
 ## hash.scala
@@ -115,7 +115,7 @@ Please remove from the list once done....
 - [ ] *
 
 ## ExchangeSpec.scala
-- [ ] *
+- [X] *
 
 ## HashSpec.scala
 - [ ] *
