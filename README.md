@@ -118,8 +118,6 @@ feed
  - *
  
 ## wye.scala 
- - correct wye behaviour to not require switch to awaitL once terminated on right side
- - implement detachL/R
  - current implementation of detachL/R => detach1L/1R
 
 -----

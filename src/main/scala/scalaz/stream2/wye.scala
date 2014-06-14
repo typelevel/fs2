@@ -307,6 +307,39 @@ object wye {
     flip(attachL(p)(flip(w)))
 
 
+  /**
+   * Transforms the wye so it will stop to listen on left side.
+   * Instead all requests on the left side are converted to normal termination,
+   * and will terminate once the right side will terminate.
+   * Transforms `AwaitBoth` to `AwaitR`
+   * Transforms `AwaitL` to normal termination
+   */
+  def detachL[I,I2,O](y:Wye[I,I2,O]):Wye[I,I2,O] = {
+    y.step match {
+      case Cont(emt@Emit(os),next) =>
+        emt onHalt ( rsn => detachL(next(rsn)))
+
+      case Cont(AwaitL.withFb(rcv), next) =>
+        suspend(detachL(Try(rcv(left(End))) onHalt next))
+
+      case Cont(AwaitR.withFbT(rcv), next) =>
+        Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
+          rcv(r).map(p=>detachL(p onHalt next))
+        })
+      case Cont(AwaitBoth.withFbT(rcv), next) =>
+        Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
+          rcv(r.map(ReceiveR.apply)).map(p=>detachL(p onHalt next))
+        })
+
+      case dn@Done(rsn) => dn.asHalt
+    }
+  }
+
+  /** right alternative of detachL **/
+  def detachR[I,I2,O](y:Wye[I,I2,O]):Wye[I,I2,O] =
+    flip(detachL(flip(y)))
+
+
 //    w match {
 //    case h@Halt(_) => h
 //    case Emit(h,t) => Emit(h, attachL(p)(t))
@@ -491,7 +524,7 @@ object wye {
   def flip[I,I2,O](w: Wye[I,I2,O]): Wye[I2,I,O] =
      w.step match {
        case Cont(Emit(os),next) =>
-         emitAll(os) ++ flip(Try(next(End)))
+         emitAll(os) onHalt (rsn => flip(Try(next(rsn))))
 
        case Cont(AwaitL.withFb(rcv),next) =>
          Await(R[I]: Env[I2,I]#Y[I], (r : Throwable \/ I) =>
@@ -546,8 +579,8 @@ object wye {
           .onHalt(r => go(rsn, Try(next(r))))
 
         case Cont(AwaitBoth(rcv), next) =>
-          suspend(go(rsn, Try(rcv(ReceiveY.HaltL(rsn))))
-                  .onHalt(r => go(rsn, Try(next(r)))))
+          suspend(go(rsn, detachL(Try(rcv(ReceiveY.HaltL(rsn)))) )
+                  .onHalt(r => go(rsn, detachL(Try(next(r))))))
 
         case d@Done(rsn) => d.asHalt
       }
@@ -593,8 +626,8 @@ object wye {
           .onHalt(r => go(rsn, Try(next(r))))
 
         case Cont(AwaitBoth(rcv), next) =>
-          suspend(go(rsn, Try(rcv(ReceiveY.HaltR(rsn))))
-                  .onHalt(r => go(rsn, Try(next(r)))))
+          suspend(go(rsn, detachR(Try(rcv(ReceiveY.HaltR(rsn)))))
+                  .onHalt(r => go(rsn, detachR(Try(next(r))))))
 
         case d@Done(rsn) => d.asHalt
       }

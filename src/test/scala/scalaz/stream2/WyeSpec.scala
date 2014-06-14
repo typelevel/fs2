@@ -28,6 +28,19 @@ object WyeSpec extends  Properties("Wye"){
     x.toList == (List.fill(10)(1) ++ List.range(0,100))
   }
 
+  property("detachL") = secure {
+    val w = wye.detachL(wye.merge[Int])
+    val x = Process.constant(1).wye(Process.range(10,20))(w).runLog.run
+    x == List.range(10,20)
+  }
+
+  property("detachR") = secure {
+    val w = wye.detachR(wye.merge[Int])
+    val x = Process.range(0,10).wye(Process.constant(1))(w).runLog.run
+    x == List.range(0,10)
+  }
+
+
   // ensure that wye terminates when once side of it is infinite
   // and other side of wye is either empty, or one.
   property("infinite.one.side") = secure {
