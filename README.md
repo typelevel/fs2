@@ -1,6 +1,166 @@
 scalaz-stream
 =============
 
+
+----
+
+# APPEND3 BRANCH
+
+Following needs to be done before we can merge this new representation into master. 
+Please remove from the list once done....
+
+## Process.scala
+
+### Process trait
+
+- Process.flush
+- Process.cleanup
+- Process.trim
+- Process.handle
+- Process.partialAttempt
+- Process.evalMap
+- Process.gatherMap
+
+### Process object 
+
+- Process.fill
+- Process.iterate
+- Process.state
+- Process.duration
+- Process.every
+
+- Process.sleepUntil
+- Process.awakeEvery - fix
+- Process.ranges
+- Process.supply
+- Process.toTask
+- Process.forwardFill
+
+
+### instances
+
+MonadPlus[Process]
+
+### Process constructors
+
+receive1, L, R, LOr, ROr, Both
+emitO, emitW, tell, liftW
+logged, await1W, awaitLW, awaitRW, awaitBothW
+
+
+### ProcessSyntax: 
+
+through_y
+connect
+feed
+
+### WriterSyntax 
+ - *
+
+### SourceSyntax
+ - connectTimed
+ - forwardFill
+ - toTask
+
+### Process0Syntax
+ - improve // check toIndexedSeq
+
+### Process1Syntax
+ - *  
+
+### TeeSyntax
+ - *
+
+### WyeSyntax
+ - *
+
+### ChannelSyntax
+ - *
+
+### SinkTaskSyntax
+ - *
+
+### EvalProcess
+ - *
+
+
+
+## nio/*.scala
+ - * 
+
+## compress.scala
+ - *
+
+## Exchange.scala
+ - *
+
+ 
+## hash.scala
+ - *
+
+## io.scala
+ - *
+
+## package.scala - Semigroup instance
+ - *
+  
+## process1.scala 
+ - unchunk 
+ - init
+ - liftY
+ - record
+ - prefixSums
+ - suspend1 - not sure if fits in new repre.
+ - zipWith*
+
+## text.scala
+ - *
+ 
+## wye.scala 
+ - correct wye behaviour to not require switch to awaitL once terminated on right side
+ - implement detachL/R
+ - current implementation of detachL/R => detach1L/1R
+
+-----
+
+# Specifications
+
+## CompressSpec.scala
+ - *
+
+## ExchangeSpec.scala
+ - *
+
+## HashSpec.scala
+ - *
+
+## MergeNSpec.scala
+ - fix mergeN drain
+
+## NioSpec.scala
+ - *
+ 
+## Process1Spec.scala
+ - unchunk 
+ - init
+ - liftY
+ - record
+ - prefixSums
+ - suspend1 - not sure if fits in new repre.
+ - zipWith* 
+ 
+## UnsafeChunkRSpec
+ - *
+ 
+## Utf8DecodeSpec 
+ - *
+ 
+----------
+
+
+
+
+
 [![Build Status](https://travis-ci.org/scalaz/scalaz-stream.png?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
 
 ### Where to get it ###
