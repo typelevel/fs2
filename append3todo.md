@@ -9,18 +9,18 @@ Please remove from the list once done....
 
 ### Process object 
  
-- [ ] Process.fill
-- [ ] Process.iterate
-- [ ] Process.state
-- [ ] Process.duration
-- [ ] Process.every
+- [x] Process.fill
+- [x] Process.iterate
+- [x] Process.state
+- [x] Process.duration
+- [x] Process.every
 
-- [ ] Process.sleepUntil
+- [x] Process.sleepUntil
 - [ ] Process.awakeEvery - fix
-- [ ] Process.ranges
-- [ ] Process.supply
-- [ ] Process.toTask
-- [ ] Process.forwardFill
+- [x] Process.ranges
+- [x] Process.supply
+- [x] Process.toTask
+- [x] Process.forwardFill
 
 
 ### instances
