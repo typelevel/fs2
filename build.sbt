@@ -16,7 +16,7 @@ scalacOptions ++= Seq(
   "-language:existentials",
   "-language:postfixOps",
   // "-Xfatal-warnings", // this makes cross compilation impossible from a single source
-  "-Yno-adapted-args"
+  "-Yno-adapted-args",
   "-deprecation"
 )
 
