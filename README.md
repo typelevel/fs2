@@ -12,13 +12,7 @@ Please remove from the list once done....
 ## Process.scala
 
 ### Process trait
-
-- Process.flush
-- Process.cleanup
-- Process.trim
-- Process.handle
-- Process.partialAttempt
-- Process.evalMap
+    
 - Process.gatherMap
 
 ### Process object 
