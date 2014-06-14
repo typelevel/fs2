@@ -6,9 +6,10 @@ import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.{\/, -\/, Catchable, Monoid, Monad, ~>}
+import scalaz.{\/, -\/, \/-, Catchable, Monoid, Monad, ~>}
 import scala.concurrent.duration._
 import java.util.concurrent.{TimeUnit, ScheduledExecutorService, ExecutorService}
+
 
 
 sealed trait Process[+F[_], +O]
