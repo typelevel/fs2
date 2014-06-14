@@ -70,7 +70,7 @@ Please remove from the list once done....
 
 
 ## nio/*.scala
-- [ ] * 
+- [X] * 
 
 ## compress.scala
 - [ ] *
@@ -124,7 +124,7 @@ Please remove from the list once done....
 - [ ] fix mergeN drain
 
 ## NioSpec.scala
-- [ ] *
+- [ ] connect-server-terminates
  
 ## ProcessSpec.scala
 - [ ] fill
