@@ -9,6 +9,7 @@ import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.{\/, -\/, Catchable, Monoid, Monad, ~>}
 import scala.concurrent.duration._
 import java.util.concurrent.{TimeUnit, ScheduledExecutorService, ExecutorService}
+import scalaz.-\/
 
 sealed trait Process[+F[_], +O]
   extends Process1Ops[F,O]
@@ -651,6 +652,8 @@ object Process {
   def awaitR[I2]: Tee[Any,I2,I2] =
     await(R[I2])(emit)
 
+
+
   /** constructor to emit single `O` **/
   def emit[O](o: O): Process[Nothing, O] = Emit(Vector(o))
 
@@ -659,6 +662,7 @@ object Process {
     case Seq() => halt
     case _ => Emit(os)
   }
+
 
   /** constructor to emit sequence of `O` having `tail` as next state **/
   @deprecated("Use please emitAll(h) ++ tail instead", "0.5.0")
@@ -671,19 +675,6 @@ object Process {
   def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(rsn)
 
 
-  /**
-   * The infinite `Process`, always emits `a`.
-   * If for performance reasons is good to emit `a` in chunks,
-   * specifiy size of chunk by `chunkSize` parameter
-   */
-  def constant[A](a: A, chunkSize: Int = 1): Process[Task,A] = {
-    lazy val go: Process[Task,A] =
-      if (chunkSize.max(1) == 1)
-        await(Task.now(a))(emit) ++ go
-      else
-        await(Task.now(a))(r=>emitAll(List.fill(chunkSize)(r))) ++ go
-    go
-  }
 
 
   /**
@@ -812,6 +803,22 @@ object Process {
   //
   //////////////////////////////////////////////////////////////////////////////////////
 
+  /** `Writer` based version of `await1`. */
+  def await1W[A]: Writer1[Nothing,A,A] =
+    liftW(Process.await1[A])
+
+  /** `Writer` based version of `awaitL`. */
+  def awaitLW[I]: TeeW[Nothing,I,Any,I] =
+    liftW(Process.awaitL[I])
+
+  /** `Writer` based version of `awaitR`. */
+  def awaitRW[I2]: TeeW[Nothing,Any,I2,I2] =
+    liftW(Process.awaitR[I2])
+
+  /** `Writer` based version of `awaitBoth`. */
+  def awaitBothW[I,I2]: WyeW[Nothing,I,I2,ReceiveY[I,I2]] =
+    liftW(Process.awaitBoth[I,I2])
+
   /**
    * Discrete process, that ever `d` emits elapsed duration
    * since being run for the firs time.
@@ -846,9 +853,43 @@ object Process {
     go(0 millis)
   }
 
+  /**
+   * The infinite `Process`, always emits `a`.
+   * If for performance reasons is good to emit `a` in chunks,
+   * specifiy size of chunk by `chunkSize` parameter
+   */
+  def constant[A](a: A, chunkSize: Int = 1): Process[Task,A] = {
+    lazy val go: Process[Task,A] =
+      if (chunkSize.max(1) == 1)
+        await(Task.now(a))(emit) ++ go
+      else
+        await(Task.now(a))(r=>emitAll(List.fill(chunkSize)(r))) ++ go
+    go
+  }
+
+  /** A `Writer` which emits one value to the output. */
+  def emitO[O](o: O): Process[Nothing, Nothing \/ O] =
+    liftW(Process.emit(o))
+
+
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
   def emitRange(start: Int, stopExclusive: Int): Process[Nothing,Int] =
     emitAll(start until stopExclusive)
+
+  /** A `Writer` which writes the given value. */
+  def emitW[W](s: W): Process[Nothing, W \/ Nothing] =
+    Process.emit(left(s))
+
+  /** Promote a `Process` to a `Writer` that writes nothing. */
+  def liftW[F[_],A](p: Process[F,A]): Writer[F,Nothing,A] =
+    p.map(right)
+
+  /**
+   * Promote a `Process` to a `Writer` that writes and outputs
+   * all values of `p`.
+   */
+  def logged[F[_],A](p: Process[F,A]): Writer[F,A,A] =
+    p.flatMap(a => emitAll(Vector(left(a), right(a))))
 
   /** Lazily produce the range `[start, stopExclusive)`. */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process[Task, Int] =
@@ -866,6 +907,11 @@ object Process {
     , schedulerPool: ScheduledExecutorService
     ): Process[Task,Nothing] =
     awakeEvery(d).once.drain
+
+
+  /** A `Writer` which writes the given value; alias for `emitW`. */
+  def tell[S](s: S): Process[Nothing, S \/ Nothing] =
+    emitW(s)
 
 
   /** Produce a (potentially infinite) source from an unfold. */
@@ -1166,6 +1212,101 @@ object Process {
           (t: Throwable) => a ! Interrupt(t)
         }
       )
+    }
+
+
+    /**
+     * Infix syntax for working with `Writer[F,W,O]`. We call
+     * the `W` parameter the 'write' side of the `Writer` and
+     * `O` the 'output' side. Many method in this class end
+     * with either `W` or `O`, depending on what side they
+     * operate on.
+     */
+    implicit class WriterSyntax[F[_],W,O](self: Writer[F,W,O]) {
+
+      /** Transform the write side of this `Writer`. */
+      def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] =
+        self.flatMap(_.fold(f, a => emit(right(a))))
+
+      /** Remove the write side of this `Writer`. */
+      def stripW: Process[F,O] =
+        self.flatMap(_.fold(_ => halt, emit))
+
+      /** Map over the write side of this `Writer`. */
+      def mapW[W2](f: W => W2): Writer[F,W2,O] =
+        self.map(_.leftMap(f))
+
+      /**
+       * Observe the write side of this `Writer` using the
+       * given `Sink`, keeping it available for subsequent
+       * processing. Also see `drainW`.
+       */
+      def observeW(snk: Sink[F,W]): Writer[F,W,O] =
+        self.zipWith(snk)((a,f) =>
+          a.fold(
+            (s: W) => eval_ { f(s) } ++ Process.emit(left(s)),
+            (a: O) => Process.emit(right(a))
+          )
+        ).flatMap(identity)
+
+      /**
+       * Observe the write side of this `Writer` using the
+       * given `Sink`, then discard it. Also see `observeW`.
+       */
+      def drainW(snk: Sink[F,W]): Process[F,O] =
+        observeW(snk).stripW
+
+//      /**
+//       * Observe the write side of this `Writer` nondeterministically
+//       * using the given `Sink`, allowing up to `maxUnacknowledged`
+//       * elements to enqueue at the `Sink` without a response.
+//       */
+//      def drainW[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,W])(implicit F2: Nondeterminism[F2]): Process[F2,O] =
+//        self.connectW(s)(scalaz.stream2.wye.boundedQueue(maxUnacknowledged)).stripW
+
+//      /**
+//       * Feed the write side of this `Process` through the given `Channel`,
+//       * using `q` to control the queueing strategy.
+//       */
+//      def connectW[F2[x]>:F[x],W2,W3](
+//        chan: Channel[F2,W,W2])(
+//        q: Wye[W,W2,W3])(
+//        implicit F2: Nondeterminism[F2]): Writer[F2, W3, O] = {
+//        val chan2: Channel[F2,W \/ O, W2 \/ O] =
+//          chan.map(f =>
+//            (e: W \/ O) => e.fold(
+//              w => F2.map(f(w))(left),
+//              o => F2.pure(right(o))))
+//        self.connect(chan2)(wye.liftL(q))
+//      }
+
+      /** Map over the output side of this `Writer`. */
+      def mapO[B](f: O => B): Writer[F,W,B] =
+        self.map(_.map(f))
+
+      def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] =
+        self.flatMap(_.fold(s => emit(left(s)), f))
+
+      def stripO: Process[F,W] =
+        self.flatMap(_.fold(emit, _ => halt))
+
+      def pipeO[B](f: Process1[O,B]): Writer[F,W,B] =
+        self.pipe(process1.liftR(f))
+
+//      /**
+//       * Feed the right side of this `Process` through the given
+//       * `Channel`, using `q` to control the queueing strategy.
+//       */
+//      def connectO[F2[x]>:F[x],O2,O3](chan: Channel[F2,O,O2])(q: Wye[O,O2,O3])(implicit F2: Nondeterminism[F2]): Writer[F2,W,O3] =
+//        self.map(_.swap).connectW(chan)(q).map(_.swap)
+
+//      /**
+//       * Feed the right side of this `Process` to a `Sink`, allowing up
+//       * to `maxUnacknowledged` elements to enqueue at the `Sink` before
+//       * blocking on the `Sink`.
+//       */
+//      def drainO[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,O])(implicit F2: Nondeterminism[F2]): Process[F2,W] =
+//        self.connectO(s)(scalaz.stream2.wye.boundedQueue(maxUnacknowledged)).stripO
     }
 
 

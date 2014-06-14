@@ -41,12 +41,6 @@ Please remove from the list once done....
 
 MonadPlus[Process]
 
-### Process constructors
-
-receive1, L, R, LOr, ROr, Both
-emitO, emitW, tell, liftW
-logged, await1W, awaitLW, awaitRW, awaitBothW
-
 
 ### ProcessSyntax: 
 
@@ -55,7 +49,10 @@ connect
 feed
 
 ### WriterSyntax 
- - *
+ - connectW
+ - drainW
+ - connectO
+ - drainO
 
 ### SourceSyntax
  - connectTimed
