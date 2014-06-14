@@ -61,7 +61,7 @@ Please remove from the list once done....
 - [ ] *
 
 ### SinkTaskSyntax
-- [ ] *
+- [X] *
 
 ### EvalProcess
 - [ ] *
@@ -131,6 +131,7 @@ Please remove from the list once done....
 - [ ] enqueue
 - [ ] state  - fix
 - [ ] pipeIn
+- [ ] pipeIn reuse 
  
  
 ## Process1Spec.scala

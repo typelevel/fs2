@@ -18,6 +18,7 @@ import Process._
 import TestInstances._
 import scala.concurrent.duration._
 import scala.concurrent.SyncVar
+import scalaz.stream.processes
 
 object ProcessSpec extends Properties("Process") {
 
@@ -150,17 +151,35 @@ object ProcessSpec extends Properties("Process") {
 //
 //  }
 
-//  property("pipeIn") = secure {
-//    val q = async.boundedQueue[String]()
+  property("pipeIn") = secure {
+    val q = async.boundedQueue[String]()
+
+    val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
+
+    (Process.range(0,10) to sink).run.run
+    val res = q.dequeue.take(10).runLog.run.toList
+    q.close.run
+
+    res === (0 until 10).map(_.toString).toList
+  }
+
+//  // Single instance of original sink is used for all elements.
+//  property("pipeIn uses original sink once") = secure {
+//    // Sink starts by wiping `written`.
+//    var written = List[Int]()
+//    def acquire: Task[Unit] = Task.delay { written = Nil }
+//    def release(res: Unit): Task[Unit] = Task.now(())
+//    def step(res: Unit): Task[Int => Task[Unit]] = Task.now((i: Int) => Task.delay { written = written :+ i  })
+//    val sink = io.resource[Unit, Int => Task[Unit]](acquire)(release)(step)
 //
-//    val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
+//    val source = Process(1, 2, 3).toSource
 //
-//    (Process.range(0,10) to sink).run.run
-//    val res = q.dequeue.take(10).runLog.run.toList
-//    q.close.run
+//    val transformer: Process1[Int, Int] = processes.lift(i => i + 1)
+//    source.to(sink.pipeIn(transformer)).run.run
 //
-//    res === (0 until 10).map(_.toString).toList
+//    written == List(2, 3, 4)
 //  }
+
 
   property("range") = secure {
     Process.range(0, 100).runLog.run == IndexedSeq.range(0, 100) &&

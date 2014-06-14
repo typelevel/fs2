@@ -1326,6 +1326,28 @@ object Process {
     def toSource: Process[Task, O] =    emitAll(toIndexedSeq.map(o => Task.delay(o))).eval
   }
 
+  /** Syntax for Sink, that is specialized for Task */
+  implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
+    /** converts sink to channel, that will perform the side effect and echo its input **/
+    def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
+
+
+
+    /** converts sint to sink that first pipes received `I0` to supplied p1 **/
+    def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = {
+      import scalaz.Scalaz._
+      // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
+      @volatile var cur: Process1[I0, I] = p1
+      self.map { (f: I => Task[Unit]) =>
+        (i0: I0) =>
+          val (piped, next) = process1.feed1(i0)(cur).unemit
+          cur = next
+          piped.toList.traverse_(f)
+      }
+    }
+
+  }
+
   /**
    * Syntax for processes that have its effects wrapped in Task
    * @param self
