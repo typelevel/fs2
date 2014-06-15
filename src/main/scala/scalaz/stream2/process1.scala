@@ -567,7 +567,20 @@ trait process1 {
     go(Vector(), n)
   }
 
+  /** Zips the input with an index of type `Int`. */
+  def zipWithIndex[A]: Process1[A,(A,Int)] =
+    zipWithIndex[A,Int]
 
+  /** Zips the input with an index of type `N`. */
+  def zipWithIndex[A,N](implicit N: Numeric[N]): Process1[A,(A,N)] =
+    zipWithState(N.zero)((_, n) => N.plus(n, N.one))
+
+  /** Zips the input with state that begins with `z` and is updated by `next`. */
+  def zipWithState[A,B](z: B)(next: (A, B) => B): Process1[A,(A,B)] = {
+    def go(b: B): Process1[A,(A,B)] =
+      await1[A].flatMap(a => emit((a, b)) fby go(next(a, b)))
+    go(z)
+  }
 }
 
 object process1 extends process1
@@ -808,4 +821,16 @@ private[stream2] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.window]](n)`. */
   def window(n: Int): Process[F,Vector[O]] =
     this |> process1.window(n)
+
+  /** Alias for `this |> [[process1.zipWithIndex[A]*]]. */
+  def zipWithIndex: Process[F,(O,Int)] =
+    this |> process1.zipWithIndex
+
+  /** Alias for `this |> [[process1.zipWithIndex[A,N]*]]`. */
+  def zipWithIndex[N: Numeric]: Process[F,(O,N)] =
+    this |> process1.zipWithIndex[O,N]
+
+  /** Alias for `this |> [[process1.zipWithState]](z)(next)`. */
+  def zipWithState[B](z: B)(next: (O, B) => B): Process[F,(O,B)] =
+    this |> process1.zipWithState(z)(next)
 }
