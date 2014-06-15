@@ -93,7 +93,7 @@ Please remove from the list once done....
 - [ ] *
   
 ## process1.scala 
-- [ ] unchunk 
+- [x] unchunk 
 - [ ] init
 - [ ] liftY
 - [ ] record
@@ -136,7 +136,7 @@ Please remove from the list once done....
  
  
 ## Process1Spec.scala
-- [ ] unchunk 
+- [x] unchunk 
 - [ ] init
 - [ ] liftY
 - [ ] record

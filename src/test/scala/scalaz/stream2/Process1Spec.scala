@@ -148,6 +148,10 @@ object Process1Spec extends Properties("Process1") {
       Process(2, 2).splitOn(2).toList === List(Vector(), Vector(), Vector())
   }
 
+  property("unchunk") = forAll { pi: Process0[List[Int]] =>
+    pi.pipe(unchunk).toList === pi.toList.flatten
+  }
+
   property("window") = secure {
     def window(n: Int) = Process.range(0, 5).window(n).runLog.run.toList
     window(1) === List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
