@@ -1,6 +1,7 @@
 package scalaz
 
 import java.util.concurrent.{ThreadFactory, Executors}
+import scodec.bits.ByteVector
 
 
 /**
@@ -85,5 +86,6 @@ package object stream2 {
     })
   }
 
-
+  implicit val byteVectorSemigroupInstance: Semigroup[ByteVector] =
+    Semigroup.instance(_ ++ _)
 }

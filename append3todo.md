@@ -90,7 +90,7 @@ Please remove from the list once done....
 - [ ] *
 
 ## package.scala - Semigroup instance
-- [ ] *
+- [x] *
   
 ## process1.scala 
 - [x] unchunk 
