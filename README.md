@@ -1,6 +1,13 @@
 scalaz-stream
 =============
 
+
+----
+
+Please see here what still needs to be done before we can release append3 and merge with master [todo](append3todo.md)
+
+
+
 [![Build Status](https://travis-ci.org/scalaz/scalaz-stream.png?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
 
 ### Where to get it ###
