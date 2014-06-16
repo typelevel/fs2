@@ -111,6 +111,8 @@ object Process1Spec extends Properties("Process1") {
         , "take" |: pi.take(n).toList === li.take(n)
         , "takeWhile" |: pi.takeWhile(g).toList === li.takeWhile(g)
         , "terminated" |: Process(1, 2, 3).terminated.toList === List(Some(1), Some(2), Some(3), None)
+        , "zipWithIndex" |: ps.zipWithIndex.toList === ls.zipWithIndex
+        , "zipWithIndex[Double]" |: ps.zipWithIndex[Double].toList === ls.zipWithIndex.map { case (s, i) => (s, i.toDouble) }
       )
 
       examples.reduce(_ && _)
