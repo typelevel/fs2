@@ -90,14 +90,14 @@ Please remove from the list once done....
 - [ ] *
 
 ## package.scala - Semigroup instance
-- [ ] *
+- [x] *
   
 ## process1.scala 
-- [ ] unchunk 
+- [x] unchunk 
 - [ ] init
 - [ ] liftY
 - [ ] record
-- [ ] prefixSums
+- [x] prefixSums
 - [ ] suspend1 - not sure if fits in new repre.
 - [x] zipWith*
 
@@ -136,11 +136,11 @@ Please remove from the list once done....
  
  
 ## Process1Spec.scala
-- [ ] unchunk 
+- [x] unchunk 
 - [ ] init
 - [ ] liftY
 - [ ] record
-- [ ] prefixSums
+- [x] prefixSums
 - [ ] suspend1 - not sure if fits in new repre.
 - [x] zipWith* 
  

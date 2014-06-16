@@ -95,6 +95,7 @@ object Process1Spec extends Properties("Process1") {
           true
         }
         , "minimumOf" |: ps.minimumOf(_.length).toList === ls.map(_.length).minimum.toList
+        , "prefixSums" |: pi.toList.scan(0)(_ + _) === pi.prefixSums.toList
         , "reduce" |: pi.reduce(_ + _).toList === (if (li.nonEmpty) List(li.reduce(_ + _)) else List())
         , "scan" |: {
           li.scan(0)(_ - _) ===
@@ -146,6 +147,10 @@ object Process1Spec extends Properties("Process1") {
     Process(0, 1, 2, 3, 4).splitOn(2).toList === List(Vector(0, 1), Vector(3, 4)) &&
       Process(2, 0, 1, 2).splitOn(2).toList === List(Vector(), Vector(0, 1), Vector()) &&
       Process(2, 2).splitOn(2).toList === List(Vector(), Vector(), Vector())
+  }
+
+  property("unchunk") = forAll { pi: Process0[List[Int]] =>
+    pi.pipe(unchunk).toList === pi.toList.flatten
   }
 
   property("window") = secure {
