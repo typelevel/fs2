@@ -95,6 +95,7 @@ object Process1Spec extends Properties("Process1") {
           true
         }
         , "minimumOf" |: ps.minimumOf(_.length).toList === ls.map(_.length).minimum.toList
+        , "prefixSums" |: pi.toList.scan(0)(_ + _) === pi.prefixSums.toList
         , "reduce" |: pi.reduce(_ + _).toList === (if (li.nonEmpty) List(li.reduce(_ + _)) else List())
         , "scan" |: {
           li.scan(0)(_ - _) ===

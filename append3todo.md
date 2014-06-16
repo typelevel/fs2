@@ -97,7 +97,7 @@ Please remove from the list once done....
 - [ ] init
 - [ ] liftY
 - [ ] record
-- [ ] prefixSums
+- [x] prefixSums
 - [ ] suspend1 - not sure if fits in new repre.
 - [x] zipWith*
 
@@ -140,7 +140,7 @@ Please remove from the list once done....
 - [ ] init
 - [ ] liftY
 - [ ] record
-- [ ] prefixSums
+- [x] prefixSums
 - [ ] suspend1 - not sure if fits in new repre.
 - [x] zipWith* 
  

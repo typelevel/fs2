@@ -326,6 +326,13 @@ trait process1 {
     (liftL(chan1) pipe liftR(chan2)).map(_.fold(identity, identity))
 
   /**
+   * Emits the sums of prefixes (running totals) of the input elements.
+   * The first value emitted will always be zero.
+   */
+  def prefixSums[N](implicit N: Numeric[N]): Process1[N,N] =
+    scan(N.zero)(N.plus)
+
+  /**
    * Record evaluation of `p`, emitting the current state along with the ouput of each step.
    */
   def record[I, O](p: Process1[I, O]): Process1[I, (Seq[O], Process1[I, O])] = {
@@ -526,13 +533,9 @@ trait process1 {
       case Some(a) => emit(a) ++ stripNone
     }
 
-  /**
-   * Emit a running sum of the values seen so far. The first value emitted will be the
-   * first number seen (not `0`). The length of the output `Process` always matches the
-   * length of the input `Process`.
-   */
-  def sum[N](implicit N: Numeric[N]): Process1[N, N] =
-    reduce(N.plus)
+  /** Emits the sum of all input elements or zero if the input is empty. */
+  def sum[N](implicit N: Numeric[N]): Process1[N,N] =
+    fold(N.zero)(N.plus)
 
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I, I] =
@@ -732,6 +735,10 @@ private[stream2] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.once]]`. */
   def once: Process[F,O] =
     this |> process1.take(1)
+
+  /** Alias for `this |> [[process1.prefixSums]]` */
+  def prefixSums[O2 >: O](implicit N: Numeric[O2]): Process[F,O2] =
+    this |> process1.prefixSums(N)
 
   /** Alias for `this |> [[process1.reduce]](f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
