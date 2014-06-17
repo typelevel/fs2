@@ -1,26 +1,25 @@
-Following needs to be done before we can merge this new representation into master. 
+Following needs to be done before we can merge this new representation into master.
 Please remove from the list once done....
 
 ## Process.scala
 
 ### Process trait
-    
-- [ ] Process.gatherMap
 
-### Process object 
- 
-- [ ] Process.fill
+- [x] Process.gatherMap
+
+### Process object
+
+- [x] Process.fill
 - [x] Process.iterate
 - [x] Process.state
 - [x] Process.duration
 - [x] Process.every
-
 - [x] Process.sleepUntil
-- [ ] Process.awakeEvery - fix
+- [x] Process.awakeEvery - fix
 - [x] Process.ranges
 - [x] Process.supply
 - [x] Process.toTask
-- [ ] Process.forwardFill
+- [x] Process.forwardFill
 
 
 ### instances
@@ -28,31 +27,31 @@ Please remove from the list once done....
 - [x] MonadPlus[Process]
 
 
-### ProcessSyntax: 
+### ProcessSyntax:
 
-- [ ] through_y
-- [ ] connect
-- [ ] feed
+- [x] through_y - being removed for now, as it depends on enqueue / connect
+- [x] connect - being removed for now
+- [x] feed - no longer necessary, as Process is trampolined, this method was
 
-### WriterSyntax 
-- [ ] connectW
-- [ ] drainW
-- [ ] connectO
-- [ ] drainO
+### WriterSyntax
+- [x] connectW - being removed for now
+- [x] drainW - being removed for now
+- [x] connectO - being removed for now
+- [x] drainO - being removed for now
 
 ### SourceSyntax
-- [ ] connectTimed
-- [ ] forwardFill
-- [ ] toTask
+- [x] connectTimed
+- [x] forwardFill
+- [x] toTask
 
 ### Process0Syntax
-- [ ] improve // check toIndexedSeq
+- [x] improve // check toIndexedSeq PC: yep, is using `fast_++`
 
 ### Process1Syntax
-- [X] *  
+- [X] Done
 
 ### TeeSyntax
-- [X] *
+- [X] Done
 
 ### WyeSyntax
 - [ ] detachL -> detach1L
@@ -65,15 +64,14 @@ Please remove from the list once done....
 - [X] *
 
 ### EvalProcess
-- [ ] *
-
-
+- [x] `eval`
+- [x] `gather`
 
 ## nio/*.scala
-- [X] * 
+- [X] *
 
 ## compress.scala
-- [ ] *
+- [x] *
 
 ## Exchange.scala
 - [X] mapW
@@ -82,18 +80,17 @@ Please remove from the list once done....
 - [X] readThrough
 - [X] Exchange.loopBack
 
- 
 ## hash.scala
-- [ ] *
+- [x] *
 
 ## io.scala
-- [ ] *
+- [x] *
 
 ## package.scala - Semigroup instance
-- [ ] *
-  
-## process1.scala 
-- [ ] unchunk 
+- [x] *
+
+## process1.scala
+- [ ] unchunk
 - [ ] init
 - [ ] liftY
 - [ ] record
@@ -102,10 +99,10 @@ Please remove from the list once done....
 - [x] zipWith*
 
 ## text.scala
-- [ ] *
- 
-## wye.scala 
-- [ ] current implementation of detachL/R => detach1L/1R
+- [x] *
+
+## wye.scala
+- [x] current implementation of detachL/R => detach1L/1R
 
 -----
 
@@ -125,28 +122,28 @@ Please remove from the list once done....
 
 ## NioSpec.scala
 - [ ] connect-server-terminates
- 
+
 ## ProcessSpec.scala
 - [ ] fill
 - [ ] forwardFill
 - [ ] enqueue
 - [ ] state  - fix
 - [ ] pipeIn
-- [ ] pipeIn reuse 
- 
- 
+- [ ] pipeIn reuse
+
+
 ## Process1Spec.scala
-- [ ] unchunk 
+- [ ] unchunk
 - [ ] init
 - [ ] liftY
 - [ ] record
 - [ ] prefixSums
 - [ ] suspend1 - not sure if fits in new repre.
-- [x] zipWith* 
- 
+- [x] zipWith*
+
 ## UnsafeChunkRSpec
 - [ ] *
- 
-## Utf8DecodeSpec 
+
+## Utf8DecodeSpec
 - [ ] *
-    
+

@@ -314,68 +314,30 @@ object wye {
    * Transforms `AwaitBoth` to `AwaitR`
    * Transforms `AwaitL` to normal termination
    */
-  def detachL[I,I2,O](y:Wye[I,I2,O]):Wye[I,I2,O] = {
+  def detach1L[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] = {
     y.step match {
       case Cont(emt@Emit(os),next) =>
-        emt onHalt ( rsn => detachL(next(rsn)))
+        emt onHalt ( rsn => detach1L(next(rsn)))
 
       case Cont(AwaitL.withFb(rcv), next) =>
-        suspend(detachL(Try(rcv(left(End))) onHalt next))
+        suspend(detach1L(Try(rcv(left(End))) onHalt next))
 
       case Cont(AwaitR.withFbT(rcv), next) =>
         Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
-          rcv(r).map(p=>detachL(p onHalt next))
+          rcv(r).map(p=>detach1L(p onHalt next))
         })
       case Cont(AwaitBoth.withFbT(rcv), next) =>
         Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
-          rcv(r.map(ReceiveR.apply)).map(p=>detachL(p onHalt next))
+          rcv(r.map(ReceiveR.apply)).map(p=>detach1L(p onHalt next))
         })
 
       case dn@Done(rsn) => dn.asHalt
     }
   }
 
-  /** right alternative of detachL **/
-  def detachR[I,I2,O](y:Wye[I,I2,O]):Wye[I,I2,O] =
-    flip(detachL(flip(y)))
-
-
-//    w match {
-//    case h@Halt(_) => h
-//    case Emit(h,t) => Emit(h, attachL(p)(t))
-//    case AwaitL(recv, fb, c) =>
-//      p match {
-//        case Emit(h, t) => attachL(t)(wye.feedL(h)(w))
-//        case Await1(recvp, fbp, cp) =>
-//          await(L[I0]: Env[I0,I2]#Y[I0])(
-//            recvp andThen (attachL(_)(w)),
-//            attachL(fbp)(w),
-//            attachL(cp)(w))
-//        case h@Halt(_) => attachL(h)(fb)
-//      }
-//
-//    case AwaitR(recv, fb, c) =>
-//      awaitR[I2].flatMap(recv andThen (attachL(p)(_))).
-//      orElse(attachL(p)(fb), attachL(p)(c))
-//    case AwaitBoth(recv, fb, c) =>
-//      p match {
-//        case Emit(h, t) => attachL(t)(scalaz.stream.wye.feedL(h)(w))
-//        case Await1(recvp, fbp, cp) =>
-//          await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]])(
-//          { case ReceiveL(i0) => attachL(p.feed1(i0))(w)
-//          case ReceiveR(i2) => attachL(p)(feed1R(i2)(w))
-//          case HaltL(End) => attachL(p.fallback)(w)
-//          case HaltL(e) => attachL(p.causedBy(e))(haltL(e)(w))
-//          case HaltR(e) => attachL(p)(haltR(e)(w))
-//          },
-//          attachL(fbp)(w),
-//          attachL(cp)(w))
-//        case h@Halt(End) => attachL(h)(fb)
-//        case h@Halt(e) => attachL(h)(c.causedBy(e))
-//      }
-//  }
-
-
+  /** right alternative of detach1L **/
+  def detach1R[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
+    flip(detach1L(flip(y)))
 
   /**
    * Feed a single `ReceiveY` value to a `Wye`.
@@ -426,38 +388,6 @@ object wye {
     go(i, Vector(), y)
   }
 
-
-
-//  {
-//    @annotation.tailrec
-//    def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] =
-//      if (in.nonEmpty) cur match {
-//        case h@Halt(_) => emitSeq(out.flatten, h)
-//        case Emit(h, t) => go(in, out :+ h, t)
-//        case AwaitL(recv, fb, c) =>
-//          val next =
-//            try recv(in.head)
-//            catch {
-//              case End => fb
-//              case e: Throwable => c.causedBy(e)
-//            }
-//          go(in.tail, out, next)
-//        case AwaitBoth(recv, fb, c) =>
-//          val next =
-//            try recv(ReceiveY.ReceiveL(in.head))
-//            catch {
-//              case End => fb
-//              case e: Throwable => c.causedBy(e)
-//            }
-//          go(in.tail, out, next)
-//        case AwaitR(recv, fb, c) =>
-//          emitSeq(out.flatten,
-//            await(R[I2]: Env[I,I2]#Y[I2])(recv andThen (feedL(in)), feedL(in)(fb), feedL(in)(c)))
-//      }
-//      else emitSeq(out.flatten, cur)
-//    go(i, Vector(), p)
-//  }
-
   /** Feed a sequence of inputs to the right side of a `Tee`. */
   def feedR[I,I2,O](i2: Seq[I2])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
@@ -487,37 +417,6 @@ object wye {
     go(i2, Vector(), y)
   }
 
-//  {
-//
-//    @annotation.tailrec
-//    def go(in: Seq[I2], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] =
-//      if (in.nonEmpty) cur match {
-//        case h@Halt(_) => emitSeq(out.flatten, h)
-//        case Emit(h, t) => go(in, out :+ h, t)
-//        case AwaitR(recv, fb, c) =>
-//          val next =
-//            try recv(in.head)
-//            catch {
-//              case End => fb
-//              case e: Throwable => c.causedBy(e)
-//            }
-//          go(in.tail, out, next)
-//        case AwaitBoth(recv, fb, c) =>
-//          val next =
-//            try recv(ReceiveY.ReceiveR(in.head))
-//            catch {
-//              case End => fb
-//              case e: Throwable => c.causedBy(e)
-//            }
-//          go(in.tail, out, next)
-//        case AwaitL(recv, fb, c) =>
-//          emitSeq(out.flatten,
-//            await(L[I]: Env[I,I2]#Y[I])(recv andThen (feedR(in)), feedR(in)(fb), feedR(in)(c)))
-//      }
-//      else emitSeq(out.flatten, cur)
-//    go(i, Vector(), p)
-//  }
-
   /**
    * Convert right requests to left requests and vice versa.
    */
@@ -544,21 +443,6 @@ object wye {
        case d@Done(rsn) => d.asHalt
      }
 
-
-
-
-//    w match {
-//    case h@Halt(_) => h
-//    case Emit(h, t) => Emit(h, flip(t))
-//    case AwaitL(recv, fb, c) =>
-//      await(R[I]: Env[I2,I]#Y[I])(recv andThen (flip), flip(fb), flip(c))
-//    case AwaitR(recv, fb, c) =>
-//      await(L[I2]: Env[I2,I]#Y[I2])(recv andThen (flip), flip(fb), flip(c))
-//    case AwaitBoth(recv, fb, c) =>
-//      await(Both[I2,I])((t: ReceiveY[I2,I]) => flip(recv(t.flip)), flip(fb), flip(c))
-//  }
-
-
   /**
    * Signals to wye, that Left side terminated.
    */
@@ -579,8 +463,8 @@ object wye {
           .onHalt(r => go(rsn, Try(next(r))))
 
         case Cont(AwaitBoth(rcv), next) =>
-          suspend(go(rsn, detachL(Try(rcv(ReceiveY.HaltL(rsn)))) )
-                  .onHalt(r => go(rsn, detachL(Try(next(r))))))
+          suspend(go(rsn, detach1L(Try(rcv(ReceiveY.HaltL(rsn)))) )
+                  .onHalt(r => go(rsn, detach1L(Try(next(r))))))
 
         case d@Done(rsn) => d.asHalt
       }
@@ -589,23 +473,6 @@ object wye {
     go(Kill(rsn0), y0)
   }
 
-
-  //  {
-  //    p match {
-  //      case h@Halt(_) => h
-//      case Emit(h, t) =>
-//        val (nh,nt) = t.unemit
-//        Emit(h ++ nh, haltL(e)(nt))
-//      case AwaitL(rcv,fb,c) => p.killBy(e)
-//      case AwaitR(rcv,fb,c) => await(R[I2]: Env[I,I2]#Y[I2])(rcv, haltL(e)(fb), haltL(e)(c))
-//      case AwaitBoth(rcv,fb,c) =>
-//        try rcv(ReceiveY.HaltL(e))
-//        catch {
-//          case End => fb
-//          case e: Throwable =>  c.causedBy(e)
-//        }
-//    }
-//  }
   /**
    * Signals to wye, that Right side terminated.
    */
@@ -626,34 +493,14 @@ object wye {
           .onHalt(r => go(rsn, Try(next(r))))
 
         case Cont(AwaitBoth(rcv), next) =>
-          suspend(go(rsn, detachR(Try(rcv(ReceiveY.HaltR(rsn)))))
-                  .onHalt(r => go(rsn, detachR(Try(next(r))))))
+          suspend(go(rsn, detach1R(Try(rcv(ReceiveY.HaltR(rsn)))))
+                  .onHalt(r => go(rsn, detach1R(Try(next(r))))))
 
         case d@Done(rsn) => d.asHalt
       }
     }
     go(Kill(rsn0), y0)
   }
-
-
-  //{
-  //    p match {
-//      case h@Halt(_) => h
-//      case Emit(h, t) =>
-//        val (nh,nt) = t.unemit
-//        Emit(h ++ nh, haltR(e)(nt))
-//      case AwaitR(rcv,fb,c) => p.killBy(e)
-//      case AwaitL(rcv,fb,c) => await(L[I]: Env[I,I2]#Y[I])(rcv, haltR(e)(fb), haltR(e)(c))
-//      case AwaitBoth(rcv,fb,c) =>
-//        try rcv(ReceiveY.HaltR(e))
-//        catch {
-//          case End => fb
-//          case e: Throwable =>  c.causedBy(e)
-//        }
-//    }
-//  }
-
-
 
   ////////////////////////////////////////////////////////////////////////
   // Request Algebra
@@ -992,8 +839,6 @@ object wye {
       }
 
     }
-
-
 }
 
 
@@ -1040,5 +885,4 @@ protected[stream2] trait WyeOps[+O] {
     * Note this terminates after BOTH sides terminate  */
   def either[O2>:O,O3](p2: Process[Task,O3])(implicit S:Strategy): Process[Task,O2 \/ O3] =
     self.wye(p2)(scalaz.stream2.wye.either)
-
 }

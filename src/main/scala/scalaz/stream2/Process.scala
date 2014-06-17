@@ -268,7 +268,15 @@ sealed trait Process[+F[_], +O]
   def evalMap[F2[x]>:F[x],O2](f: O => F2[O2]): Process[F2,O2] =
     map(f).eval
 
-
+  /**
+   * Map over this `Process` to produce a stream of `F`-actions,
+   * then evaluate these actions in batches of `bufSize`, allowing
+   * for nondeterminism in the evaluation order of each action in the
+   * batch.
+   */
+  def gatherMap[F2[x]>:F[x],O2](bufSize: Int)(f: O => F2[O2])(
+                                implicit F: Nondeterminism[F2]): Process[F2,O2] =
+    map(f).gather(bufSize)
 
   /**
    * Switch to the `fallback` case of the _next_ `Await` issued by this `Process`.
@@ -898,50 +906,57 @@ object Process {
     liftW(Process.awaitBoth[I,I2])
 
   /**
-   * Discrete process, that ever `d` emits elapsed duration
-   * since being run for the firs time.
+   * Discrete process that every `d` emits elapsed duration
+   * since the start time of stream consumption.
    *
    * For example: `awakeEvery(5 seconds)` will
    * return (approximately) `5s, 10s, 20s`, and will lie dormant
    * between emitted values.
    *
-   * By default, this uses a shared
-   * `ScheduledExecutorService` for the timed events, and runs the
-   * actual callbacks with `S` Strategy, to allow for the process to decide whether
-   * result shall be run on different thread pool, or with `Strategy.Sequential` on the
-   * same thread pool of the scheduler.
+   * By default, this uses a shared `ScheduledExecutorService`
+   * for the timed events, and runs the consumer using the `pool` `Strategy`,
+   * to allow for the process to decide whether result shall be run on
+   * different thread pool, or with `Strategy.Sequential` on the
+   * same thread pool as the scheduler.
    *
    * @param d           Duration between emits of the resulting process
    * @param S           Strategy to run the process
    * @param scheduler   Scheduler used to schedule tasks
    */
-  def awakeEvery(d:FiniteDuration)(
-    implicit S: Strategy
-      , scheduler: ScheduledExecutorService
-    ):Process[Task,FiniteDuration] = {
+  def awakeEvery(d: Duration)(
+      implicit pool: Strategy = Strategy.DefaultStrategy,
+               schedulerPool: ScheduledExecutorService = DefaultScheduler): Process[Task, Duration] =  {
 
-    def schedule(start:FiniteDuration):Task[FiniteDuration] = Task.async { cb =>
-      scheduler.schedule(new Runnable{
-        override def run(): Unit = S(cb(right(start + d)))
-      }, d.toNanos, TimeUnit.NANOSECONDS)
+    def metronomeAndSignal:(()=>Unit,async.mutable.Signal[Duration]) = {
+      val signal = async.signal[Duration](pool)
+      val t0 = Duration(System.nanoTime, NANOSECONDS)
+
+      val metronome = schedulerPool.scheduleAtFixedRate(
+        new Runnable { def run = {
+          val d = Duration(System.nanoTime, NANOSECONDS) - t0
+          signal.set(d).run
+        }},
+        d.toNanos,
+        d.toNanos,
+        NANOSECONDS
+      )
+      (()=>metronome.cancel(false), signal)
     }
-    def go(start:FiniteDuration):Process[Task,FiniteDuration] =
-      await(schedule(start))(d => emit(d) ++ go(d))
 
-    go(0 millis)
+    await(Task.delay(metronomeAndSignal))({
+      case (cm, signal) =>  signal.discrete onComplete eval_(signal.close.map(_=>cm()))
+    })
   }
 
   /**
    * The infinite `Process`, always emits `a`.
-   * If for performance reasons is good to emit `a` in chunks,
+   * If for performance reasons it is good to emit `a` in chunks,
    * specifiy size of chunk by `chunkSize` parameter
    */
-  def constant[A](a: A, chunkSize: Int = 1): Process[Task,A] = {
-    lazy val go: Process[Task,A] =
-      if (chunkSize.max(1) == 1)
-        await(Task.now(a))(emit) ++ go
-      else
-        await(Task.now(a))(r=>emitAll(List.fill(chunkSize)(r))) ++ go
+  def constant[A](a: A, chunkSize: Int = 1): Process[Nothing,A] = {
+    lazy val go: Process[Nothing,A] =
+      if (chunkSize.max(1) == 1) emit(a) ++ go
+      else emitAll(List.fill(chunkSize)(a)) ++ go
     go
   }
 
@@ -986,13 +1001,13 @@ object Process {
   }
 
   /** A `Process` which emits `n` repetitions of `a`. */
-  def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process[Task,A] = {
+  def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process[Nothing,A] = {
     val chunkN = chunkSize max 1
-    val chunkTask = Task.now(List.fill(chunkN)(a)) // we can reuse this for each step
-    def go(m: Int): Process[Task,A] =
-      if (m >= chunkN) await(chunkTask)(as => emitAll(as)) ++ go(m - chunkN)
+    val chunk = emitAll(List.fill(chunkN)(a)) // we can reuse this for each step
+    def go(m: Int): Process[Nothing,A] =
+      if (m >= chunkN) chunk ++ go(m - chunkN)
       else if (m <= 0) halt
-      else await(Task.now(List.fill(m)(a)))(emitAll)
+      else emitAll(List.fill(m)(a))
     go(n max 0)
   }
 
@@ -1002,7 +1017,6 @@ object Process {
    */
   def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] =
     async.toSignal(p).continuous
-
 
   /**
    * An infinite `Process` that repeatedly applies a given function
@@ -1313,6 +1327,12 @@ object Process {
       }
     }
 
+    /**
+     * Read chunks of `bufSize` from input, then use `Nondeterminism.gatherUnordered`
+     * to run all these actions to completion.
+     */
+    def gather(bufSize: Int)(implicit F: Nondeterminism[F]): Process[F,O] =
+      self.pipe(process1.chunk(bufSize)).map(F.gatherUnordered).eval.flatMap(emitAll)
   }
 
 
@@ -1324,7 +1344,7 @@ object Process {
       @tailrec
       def go(cur: Process0[O], acc:Vector[O]) : IndexedSeq[O] = {
         cur.step match {
-          case Cont(Emit(os),next) => go(next(End),acc fast_++ os)
+          case Cont(Emit(os),next) => go(next(End), acc fast_++ os)
           case Cont(_,next) => go(next(End),acc)
           case Done(End) => acc
           case Done(rsn) => throw rsn
@@ -1403,6 +1423,16 @@ object Process {
    * @tparam O
    */
   implicit class SourceSyntax[O](val self: Process[Task, O]) extends WyeOps[O] {
+
+    /**
+     * Produce a continuous stream from a discrete stream by using the
+     * most recent value.
+     */
+    def forwardFill(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,O] =
+      async.toSignal(self).continuous
+
+    /** Infix syntax for `Process.toTask`. */
+    def toTask: Task[O] = Process.toTask(self)
 
     /**
      * Asynchronous execution of this Process. Note that this method is not resource safe unless
@@ -1571,30 +1601,6 @@ object Process {
       def drainW(snk: Sink[F,W]): Process[F,O] =
         observeW(snk).stripW
 
-//      /**
-//       * Observe the write side of this `Writer` nondeterministically
-//       * using the given `Sink`, allowing up to `maxUnacknowledged`
-//       * elements to enqueue at the `Sink` without a response.
-//       */
-//      def drainW[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,W])(implicit F2: Nondeterminism[F2]): Process[F2,O] =
-//        self.connectW(s)(scalaz.stream2.wye.boundedQueue(maxUnacknowledged)).stripW
-
-//      /**
-//       * Feed the write side of this `Process` through the given `Channel`,
-//       * using `q` to control the queueing strategy.
-//       */
-//      def connectW[F2[x]>:F[x],W2,W3](
-//        chan: Channel[F2,W,W2])(
-//        q: Wye[W,W2,W3])(
-//        implicit F2: Nondeterminism[F2]): Writer[F2, W3, O] = {
-//        val chan2: Channel[F2,W \/ O, W2 \/ O] =
-//          chan.map(f =>
-//            (e: W \/ O) => e.fold(
-//              w => F2.map(f(w))(left),
-//              o => F2.pure(right(o))))
-//        self.connect(chan2)(wye.liftL(q))
-//      }
-
       /** Map over the output side of this `Writer`. */
       def mapO[B](f: O => B): Writer[F,W,B] =
         self.map(_.map(f))
@@ -1607,21 +1613,6 @@ object Process {
 
       def pipeO[B](f: Process1[O,B]): Writer[F,W,B] =
         self.pipe(process1.liftR(f))
-
-//      /**
-//       * Feed the right side of this `Process` through the given
-//       * `Channel`, using `q` to control the queueing strategy.
-//       */
-//      def connectO[F2[x]>:F[x],O2,O3](chan: Channel[F2,O,O2])(q: Wye[O,O2,O3])(implicit F2: Nondeterminism[F2]): Writer[F2,W,O3] =
-//        self.map(_.swap).connectW(chan)(q).map(_.swap)
-
-//      /**
-//       * Feed the right side of this `Process` to a `Sink`, allowing up
-//       * to `maxUnacknowledged` elements to enqueue at the `Sink` before
-//       * blocking on the `Sink`.
-//       */
-//      def drainO[F2[x]>:F[x]](maxUnacknowledged: Int)(s: Sink[F2,O])(implicit F2: Nondeterminism[F2]): Process[F2,W] =
-//        self.connectO(s)(scalaz.stream2.wye.boundedQueue(maxUnacknowledged)).stripO
     }
 
 
@@ -1642,8 +1633,6 @@ object Process {
         val src2 = Process.emitAll(input2.toSeq).toSource
         src1.wye(src2)(self).runLog.run
       }
-
-
 
       /**
        * Transform the left input of the given `Wye` using a `Process1`.
@@ -1671,12 +1660,18 @@ object Process {
       private[stream2] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] =
         self.attachR(process1.lift(f))
 
+      /**
+       * Converting requests for the left input into normal termination.
+       * Note that `Both` requests are rewritten to fetch from the only input.
+       */
+      def detach1L: Wye[I,I2,O] = scalaz.stream2.wye.detach1L(self)
 
-
+      /**
+       * Converting requests for the left input into normal termination.
+       * Note that `Both` requests are rewritten to fetch from the only input.
+       */
+      def detach1R: Wye[I,I2,O] = scalaz.stream2.wye.detach1R(self)
     }
-
-
-
   }
 
 
@@ -1716,20 +1711,14 @@ object Process {
       //repeatEval(f)
     }
 
-
   /**
    * Produce `p` lazily, guarded by a single `Append`. Useful if
    * producing the process involves allocation of some mutable
    * resource we want to ensure is accessed in a single-threaded way.
    */
-  def suspend[F[_], O](p: => Process[F, O]): Process[F, O] = {
-   // println("SUSPEND")
-    Append(halt,Vector({
+  def suspend[F[_], O](p: => Process[F, O]): Process[F, O] =
+    Append(halt, Vector({
       case End => Trampoline.delay(p)
       case rsn => Trampoline.delay(p causedBy rsn)
     }))
-  }
-
-
-
 }
