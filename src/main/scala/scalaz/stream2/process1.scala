@@ -10,7 +10,7 @@ import scalaz._
 import scalaz.syntax.equal._
 
 
-trait process1 {
+object process1 {
 
   import Process._
   import Util._
@@ -323,19 +323,11 @@ trait process1 {
     (liftL(chan1) pipe liftR(chan2)).map(_.fold(identity, identity))
 
   /**
-   * Record evaluation of `p`, emitting the current state along with the ouput of each step.
+   * Emits the sums of prefixes (running totals) of the input elements.
+   * The first value emitted will always be zero.
    */
-  def record[I, O](p: Process1[I, O]): Process1[I, (Seq[O], Process1[I, O])] = {
-
-
-    ???
-  }
-  //    p match {
-  //    case h@Halt(_) => h
-  //    case Emit(h, t) => Emit(Seq((h, p)), record(t))
-  //    case Await1(recv, fb, c) =>
-  //      Emit(Seq((List(), p)), await1[I].flatMap(recv andThen (record[I,O])).orElse(record(fb),record(c)))
-  //  }
+  def prefixSums[N](implicit N: Numeric[N]): Process1[N,N] =
+    scan(N.zero)(N.plus)
 
   /**
    * `Process1` form of `List.reduce`.
@@ -567,6 +559,10 @@ trait process1 {
     go(Vector(), n)
   }
 
+  /** Ungroups chunked input. */
+  def unchunk[I]: Process1[Seq[I], I] =
+    id[Seq[I]].flatMap(emitAll)
+
   /** Zips the input with an index of type `Int`. */
   def zipWithIndex[A]: Process1[A,(A,Int)] =
     zipWithIndex[A,Int]
@@ -582,10 +578,6 @@ trait process1 {
     go(z)
   }
 }
-
-object process1 extends process1
-
-
 
 private[stream2] trait Process1Ops[+F[_],+O] {
   self: Process[F,O] =>
@@ -701,6 +693,22 @@ private[stream2] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.last]]`. */
   def lastOr[O2 >: O](o: => O2): Process[F,O2] =
     this |> process1.lastOr(o)
+
+  /**
+   * Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
+   * Use `wye.flip` to convert it to right side
+   */
+  def liftY[I,O](p: Process1[I,O]) : Wye[I,Nothing,O] = {
+    def go(cur:Process1[I,O]) : Wye[I,Nothing,O] = {
+      Process.awaitL[I].flatMap { i =>
+        cur.feed1(i).unemit match {
+          case (out, Process.Halt(rsn)) => Process.emitAll(out) fby Process.Halt(rsn)
+          case (out, next)              => Process.emitAll(out) fby go(next)
+        }
+      }
+    }
+    go(p)
+  }
 
   /** Alias for `this |> [[process1.maximum]]`. */
   def maximum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =

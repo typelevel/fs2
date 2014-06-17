@@ -738,8 +738,6 @@ object Process {
   def awaitR[I2]: Tee[Any,I2,I2] =
     await(R[I2])(emit)
 
-
-
   /** constructor to emit single `O` **/
   def emit[O](o: O): Process[Nothing, O] = Emit(Vector(o))
 

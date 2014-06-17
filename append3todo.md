@@ -54,8 +54,8 @@ Please remove from the list once done....
 - [X] Done
 
 ### WyeSyntax
-- [ ] detachL -> detach1L
-- [ ] detachR -> detach1R
+- [x] detachL -> detach1L
+- [x] detachR -> detach1R
 
 ### ChannelSyntax
 - [X] *
@@ -90,12 +90,12 @@ Please remove from the list once done....
 - [x] *
 
 ## process1.scala
-- [ ] unchunk
-- [ ] init
-- [ ] liftY
-- [ ] record
-- [ ] prefixSums
-- [ ] suspend1 - not sure if fits in new repre.
+- [x] unchunk
+- [x] init - this has been removed, renamed shiftRight
+- [x] liftY
+- [x] record - removing this for now, not really idiomatic or safe
+- [x] prefixSums
+- [x] suspend1 - not sure if fits in new repre. PC: not needed, just use Process.suspend instead
 - [x] zipWith*
 
 ## text.scala
