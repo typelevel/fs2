@@ -118,7 +118,7 @@ Please remove from the list once done....
 - [x] *
 
 ## MergeNSpec.scala
-- [ ] fix mergeN drain
+- [x] fix mergeN drain
 
 ## NioSpec.scala
 - [ ] connect-server-terminates

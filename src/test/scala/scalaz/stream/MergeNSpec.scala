@@ -133,7 +133,7 @@ object MergeNSpec extends Properties("mergeN") {
   //tests that mergeN correctly terminates with drained process
   property("drain-halt") = secure {
 
-    val effect = Process.constant(()).drain
+    val effect = Process.repeatEval(Task.delay(())).drain
     val p = Process(1,2)
 
     merge.mergeN(Process(effect,p)).take(2)

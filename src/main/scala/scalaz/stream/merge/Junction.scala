@@ -280,10 +280,11 @@ protected[stream] object Junction {
       def next[B](actor: Actor[M])(implicit S: Strategy): Unit = {
         state match {
           case UpSourceReady(next) =>
+            state = UpSourceRunning(
             Try(next(End)).runAsync(_.fold(
               rsn => actor ! UpStreamDone(self, rsn)
               , { case (is,next0) => actor ! UpStreamEmit(self, is, next0)  }
-            ))
+            )))
           case _ => //no-op
         }
       }
