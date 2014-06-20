@@ -10,7 +10,7 @@ package object stream2 {
 
   import Process._
 
-  type Process0[+O] = Process[Env[Any,Any]#Is,O]
+  type Process0[+O] = Process[Nothing,O]
 
   /**
    * A single input stream transducer. Accepts input of type `I`,

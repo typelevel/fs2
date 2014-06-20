@@ -291,6 +291,22 @@ object process1 {
   def liftR[A, B, C](p: Process1[B, C]): Process1[A \/ B, A \/ C] =
     lift((e: A \/ B) => e.swap) |> liftL(p).map(_.swap)
 
+  /**
+   * Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
+   * Use `wye.flip` to convert it to right side
+   */
+  def liftY[I,O](p: Process1[I,O]) : Wye[I,Any,O] = {
+    def go(cur: Process1[I,O]) : Wye[I,Any,O] = {
+      Process.awaitL[I].flatMap { i =>
+        cur.feed1(i).unemit match {
+          case (out, Process.Halt(rsn)) => Process.emitAll(out) fby Process.Halt(rsn)
+          case (out, next)              => Process.emitAll(out) fby go(next)
+        }
+      }
+    }
+    go(p)
+  }
+
   /** Emits the greatest element of the input. */
   def maximum[A](implicit A: Order[A]): Process1[A,A] =
     reduce((x, y) => if (A.greaterThan(x, y)) x else y)
@@ -563,6 +579,10 @@ object process1 {
   def unchunk[I]: Process1[Seq[I], I] =
     id[Seq[I]].flatMap(emitAll)
 
+  /** A process which emits `(prev,cur)` pairs. */
+  def zipPrevious[I](prev: I): Process1[I,(I,I)] =
+    await1[I].flatMap(a => emit(prev -> a) fby zipPrevious(a))
+
   /** Zips the input with an index of type `Int`. */
   def zipWithIndex[A]: Process1[A,(A,Int)] =
     zipWithIndex[A,Int]
@@ -693,22 +713,6 @@ private[stream2] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.last]]`. */
   def lastOr[O2 >: O](o: => O2): Process[F,O2] =
     this |> process1.lastOr(o)
-
-  /**
-   * Lifts Process1 to operate on Left side of `wye`, ignoring any right input.
-   * Use `wye.flip` to convert it to right side
-   */
-  def liftY[I,O](p: Process1[I,O]) : Wye[I,Nothing,O] = {
-    def go(cur:Process1[I,O]) : Wye[I,Nothing,O] = {
-      Process.awaitL[I].flatMap { i =>
-        cur.feed1(i).unemit match {
-          case (out, Process.Halt(rsn)) => Process.emitAll(out) fby Process.Halt(rsn)
-          case (out, next)              => Process.emitAll(out) fby go(next)
-        }
-      }
-    }
-    go(p)
-  }
 
   /** Alias for `this |> [[process1.maximum]]`. */
   def maximum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =

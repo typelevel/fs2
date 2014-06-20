@@ -109,13 +109,13 @@ Please remove from the list once done....
 # Specifications
 
 ## CompressSpec.scala
-- [ ] *
+- [x] *
 
 ## ExchangeSpec.scala
 - [X] *
 
 ## HashSpec.scala
-- [ ] *
+- [x] *
 
 ## MergeNSpec.scala
 - [ ] fix mergeN drain
@@ -124,26 +124,26 @@ Please remove from the list once done....
 - [ ] connect-server-terminates
 
 ## ProcessSpec.scala
-- [ ] fill
-- [ ] forwardFill
-- [ ] enqueue
-- [ ] state  - fix
-- [ ] pipeIn
-- [ ] pipeIn reuse
+- [x] fill
+- [x] forwardFill
+- [x] enqueue - being removed
+- [ ] state  - fix PC - not sure what this is about?
+- [x] pipeIn
+- [x] pipeIn reuse
 
 
 ## Process1Spec.scala
-- [ ] unchunk
-- [ ] init
-- [ ] liftY
-- [ ] record
-- [ ] prefixSums
-- [ ] suspend1 - not sure if fits in new repre.
+- [x] unchunk
+- [x] init - replaced by shiftRight
+- [x] liftY
+- [x] record - has been removed
+- [x] prefixSums
+- [x] suspend1 - not sure if fits in new repre. (replaced by suspend)
 - [x] zipWith*
 
 ## UnsafeChunkRSpec
-- [ ] *
+- [x] *
 
 ## Utf8DecodeSpec
-- [ ] *
+- [x] *
 

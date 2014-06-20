@@ -24,17 +24,6 @@ object Process1Spec extends Properties("Process1") {
 
   implicit val S = Strategy.DefaultStrategy
 
-  // Subtyping of various Process types:
-  // * Process1 is a Tee that only read from the left (Process1[I,O] <: Tee[I,Any,O])
-  // * Tee is a Wye that never requests Both (Tee[I,I2,O] <: Wye[I,I2,O])
-  // This 'test' is just ensuring that this typechecks
-  //  object Subtyping {
-  //    def asTee[I,O](p1: Process1[I,O]): Tee[I,Any,O] = p1
-  //    def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t
-  //  }
-
-
-
   property("basic") = forAll { (pi: Process0[Int], ps: Process0[String], n: Int) =>
     val li = pi.toList
     val ls = ps.toList
@@ -77,11 +66,11 @@ object Process1Spec extends Properties("Process1") {
         , "fold" |: pi.fold(0)(_ + _).toList === List(li.fold(0)(_ + _))
         , "foldMap" |: pi.foldMap(_.toString).toList.lastOption.toList === List(li.map(_.toString).fold(sm.zero)(sm.append(_, _)))
         , "forall" |: pi.forall(g).toList === List(li.forall(g))
-        , "id" |: ((pi |> id) === pi) && ((id |> pi) === pi)
+        , "id" |: ((pi |> id).toList === pi.toList) && ((id |> pi).toList === pi.toList)
         , "intersperse" |: pi.intersperse(0).toList === li.intersperse(0)
         , "last" |:  Process(0, 10).last.toList === List(10)
         , "lastOr" |: pi.lastOr(42).toList.head === li.lastOption.getOrElse(42)
-        , "maximum" |: pi.maximum.toList === li.maximum.toList
+        , "maximum" |: pi.maximum.toList === li.headOption.map(_ => List(li.max)).getOrElse(Nil)
         , "maximumBy" |: {
           // enable when switching to scalaz 7.1
           //ps.maximumBy(_.length).toList === ls.maximumBy(_.length).toList
@@ -108,6 +97,7 @@ object Process1Spec extends Properties("Process1") {
         , "splitWith" |: pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
         , "stripNone" |: Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
         , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
+        , "prefixSums" |: pi.toList.scan(0)(_ + _) === pi.pipe(process1.prefixSums).toList
         , "take" |: pi.take(n).toList === li.take(n)
         , "takeWhile" |: pi.takeWhile(g).toList === li.takeWhile(g)
         , "terminated" |: Process(1, 2, 3).terminated.toList === List(Some(1), Some(2), Some(3), None)
@@ -119,6 +109,14 @@ object Process1Spec extends Properties("Process1") {
     } catch {
       case t : Throwable => t.printStackTrace(); throw t
     }
+  }
+
+  property("unchunk") = forAll { pi: Process0[List[Int]] =>
+    pi.pipe(unchunk).toList == pi.toList.flatten
+  }
+
+  property("liftY") = forAll { (pi: Process0[Int], ignore: Process0[String]) =>
+    pi.pipe(sum).toList == (pi: Process[Task,Int]).wye(ignore)(process1.liftY(sum)).runLog.run.toList
   }
 
   property("repartition") = secure {
@@ -161,7 +159,5 @@ object Process1Spec extends Properties("Process1") {
     ((p onComplete eval_(Task.delay(sync.put(99))))
     .take(10).take(4).onComplete(emit(4)).runLog.run == Vector(0,1,2,3,4)) &&
       ("Inner Process cleanup was called" |: sync.get(1000) == Some(99))
-
   }
-
 }

@@ -18,11 +18,10 @@ import Process._
 import TestInstances._
 import scala.concurrent.duration._
 import scala.concurrent.SyncVar
-import scalaz.stream.processes
 
 object ProcessSpec extends Properties("Process") {
 
-  val boom = new java.lang.Exception("reactive...boom!")
+  case object FailWhale extends RuntimeException("the system... is down")
 
   implicit val S = Strategy.DefaultStrategy
   implicit val scheduler = scalaz.stream2.DefaultScheduler
@@ -35,9 +34,6 @@ object ProcessSpec extends Properties("Process") {
       def asTee[I,O](p1: Process1[I,O]): Tee[I,Any,O] = p1
       def asWye[I,I2,O](t: Tee[I,I2,O]): Wye[I,I2,O] = t
     }
-
-
-
 
   property("basic") = forAll { (p: Process0[Int], p2: Process0[String], n: Int) =>
     val f = (x: Int) => List.range(1, x.min(100))
@@ -120,21 +116,21 @@ object ProcessSpec extends Properties("Process") {
         tail.filterNot(_._1).map(_._2).forall { _ <= delay } :| "false means the delay has not passed"
     }
 
-//  property("fill") = forAll(Gen.choose(0,30) flatMap (i => Gen.choose(0,50) map ((i,_)))) {
-//    case (n,chunkSize) => Process.fill(n)(42, chunkSize).runLog.run.toList == List.fill(n)(42)
-//  }
+  property("fill") = forAll(Gen.choose(0,30) flatMap (i => Gen.choose(0,50) map ((i,_)))) {
+    case (n,chunkSize) =>
+      Process.fill(n)(42, chunkSize).toList == List.fill(n)(42)
+  }
 
-  //
-  //  property("forwardFill") = secure {
-  //    import scala.concurrent.duration._
-  //    val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
-  //      Process.awakeEvery(100 milliseconds).take(100)
-  //    }.run.timed(15000).run
-  //    true
-  //  }
+  property("forwardFill") = secure {
+    import scala.concurrent.duration._
+    val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
+      Process.awakeEvery(100 milliseconds).take(100)
+    }.run.timed(15000).run
+    true
+  }
 
   property("iterate") = secure {
-    Process.iterate(0)(_ + 1).take(100).runLog.run.toList == List.iterate(0, 100)(_ + 1)
+    Process.iterate(0)(_ + 1).take(100).toList == List.iterate(0, 100)(_ + 1)
   }
 
   property("kill executes cleanup") = secure {
@@ -144,16 +140,16 @@ object ProcessSpec extends Properties("Process") {
     cleanup.get(500).get == 1
   }
 
-//  property("kill") = secure {
-//
-//    ("repeated-emit" |: emit(1).toSource.repeat.kill.runLog.run == List()) //&&
-//      //("repeated-emit" |: emit(1).toSource.killBy(boom).runLog.run == List())
-//
-//  }
+  property("kill") = secure {
+    ("repeated-emit" |: emit(1).repeat.kill.toList == List()) &&
+    ("repeated-emit-exception" |: {
+      try { emit(1).repeat.killBy(FailWhale).toList; false }
+      catch { case FailWhale => true }
+    })
+  }
 
   property("pipeIn") = secure {
     val q = async.boundedQueue[String]()
-
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
 
     (Process.range(0,10) to sink).run.run
@@ -163,22 +159,22 @@ object ProcessSpec extends Properties("Process") {
     res === (0 until 10).map(_.toString).toList
   }
 
-//  // Single instance of original sink is used for all elements.
-//  property("pipeIn uses original sink once") = secure {
-//    // Sink starts by wiping `written`.
-//    var written = List[Int]()
-//    def acquire: Task[Unit] = Task.delay { written = Nil }
-//    def release(res: Unit): Task[Unit] = Task.now(())
-//    def step(res: Unit): Task[Int => Task[Unit]] = Task.now((i: Int) => Task.delay { written = written :+ i  })
-//    val sink = io.resource[Unit, Int => Task[Unit]](acquire)(release)(step)
-//
-//    val source = Process(1, 2, 3).toSource
-//
-//    val transformer: Process1[Int, Int] = processes.lift(i => i + 1)
-//    source.to(sink.pipeIn(transformer)).run.run
-//
-//    written == List(2, 3, 4)
-//  }
+  // Single instance of original sink is used for all elements.
+  property("pipeIn uses original sink once") = secure {
+    // Sink starts by wiping `written`.
+    var written = List[Int]()
+    def acquire: Task[Unit] = Task.delay { written = Nil }
+    def release(res: Unit): Task[Unit] = Task.now(())
+    def step(res: Unit): Task[Int => Task[Unit]] = Task.now((i: Int) => Task.delay { written = written :+ i  })
+    val sink = io.resource[Unit, Int => Task[Unit]](acquire)(release)(step)
+
+    val source = Process(1, 2, 3).toSource
+
+    val transformer = process1.lift((i: Int) => i + 1)
+    source.to(sink.pipeIn(transformer)).run.run
+
+    written == List(2, 3, 4)
+  }
 
 
   property("range") = secure {
@@ -208,6 +204,4 @@ object ProcessSpec extends Properties("Process") {
       case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
     }.map(_._1).runLog.run.toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
-
-
 }
