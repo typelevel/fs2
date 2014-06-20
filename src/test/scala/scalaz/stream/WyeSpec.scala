@@ -157,7 +157,7 @@ object WyeSpec extends  Properties("Wye"){
   // checks we are safe on thread stack even after emitting million values
   // non-deterministically from both sides
   property("merge.million") = secure {
-    val count = 1000000
+    val count = 100000
     val m =
       (Process.range(0,count ) merge Process.range(0, count)).flatMap {
         (v: Int) =>
@@ -203,7 +203,7 @@ object WyeSpec extends  Properties("Wye"){
   //tests that wye correctly terminates drained process
   property("merge-drain-halt") = secure {
 
-    val effect:Process[Task,Int] = Process.constant(()).drain
+    val effect:Process[Task,Int] = Process.repeatEval(Task.delay(())).drain
 
     val pm1 = effect.wye(Process(1000,2000).toSource)(wye.merge).take(2)
     val pm2 = Process(3000,4000).toSource.wye(effect)(wye.merge).take(2)

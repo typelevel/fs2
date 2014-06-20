@@ -77,12 +77,6 @@ object ProcessSpec extends Properties("Process") {
     (firstValueDiscrepancy.toNanos < reasonableError) :| "duration is near zero at first access"
   }
 
-//  property("enqueue") = secure {
-//    val tasks = Process.range(0,1000).map(i => Task { Thread.sleep(1); 1 })
-//    tasks.sequence(50).pipe(processes.sum[Int].last).runLog.run.head == 1000 &&
-//      tasks.gather(50).pipe(processes.sum[Int].last).runLog.run.head == 1000
-//  }
-
 
   import scala.concurrent.duration._
   val smallDelay = Gen.choose(10, 300) map {_.millis}
