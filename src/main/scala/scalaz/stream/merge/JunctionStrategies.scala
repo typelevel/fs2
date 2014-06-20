@@ -5,7 +5,7 @@ import scalaz.\/._
 import scalaz.stream.Process._
 import scalaz.stream.async.mutable.Signal
 import scalaz.stream.merge.Junction._
-import scalaz.stream.process1
+import scalaz.stream.{Util, Writer1, process1}
 import scalaz.{\/, -\/}
 
 protected[stream] object JunctionStrategies {
@@ -64,11 +64,11 @@ protected[stream] object JunctionStrategies {
           }
 
         case DoneDown(jx, rsn)        =>
-            if (q.nonEmpty && jx.downO.nonEmpty) jx.closeAllUp(rsn) fby drain(q, rsn)
-            else Halt(rsn)
+          if (q.nonEmpty && jx.downO.nonEmpty) jx.closeAllUp(rsn) fby drain(q, rsn)
+          else Halt(rsn)
 
         case o =>
-        go(q)
+          go(q)
       }
 
     go(Queue())
@@ -149,7 +149,7 @@ protected[stream] object JunctionStrategies {
           else jx.close(ref,new Exception("Only one downstream allowed for mergeN"))
 
         case Receive(jx, as, ref) =>
-        if (jx.downReadyO.nonEmpty) {
+          if (jx.downReadyO.nonEmpty) {
             jx.writeAllO(as,jx.downO.head) fby jx.more(ref) fby go(q,closedUp)
           } else {
             val nq = q.enqueue(scala.collection.immutable.Iterable.concat(as))
@@ -166,14 +166,15 @@ protected[stream] object JunctionStrategies {
           if (jx.up.nonEmpty || q.nonEmpty) go(q,Some(rsn))
           else Halt(rsn)
 
-        case Done(jx,_:UpRef,End) => closedUp match {
+        case Junction.Done(jx,ref:UpRef,End | Kill) => closedUp match {
           case Some(rsn) if jx.up.isEmpty && q.isEmpty => Halt(rsn)
           case _ => openNextIfNeeded(jx.up.size) fby go(q,closedUp)
         }
 
-        case Done(jx,_:UpRef,rsn) => Halt(rsn)
+        case Junction.Done(jx,_:UpRef,rsn) => Halt(rsn)
 
-        case Done(jx,_:DownRefO, rsn) =>
+        case Junction.Done(jx,_:DownRefO, rsn) =>
+          //Util.debug(s"RECEIVED DONE $rsn: rsn, js: $jx, willTerm: ${jx.downO.isEmpty}")
           if (jx.downO.isEmpty) Halt(rsn)
           else go(q,closedUp)
 
@@ -189,7 +190,7 @@ protected[stream] object JunctionStrategies {
   object writers {
 
     /** writer that only echoes `A` on `O` side **/
-    def echoO[A]: Writer1[Nothing, A, A] = process1.lift(right)
+    def echoO[A]: Writer1[Nothing, A, A] = process1.id[A].map(right)
 
     /** Writer1 that interprets the Signal messages to provide discrete source of `A` **/
     def signal[A]: Writer1[A, Signal.Msg[A], Nothing] = {
@@ -197,9 +198,9 @@ protected[stream] object JunctionStrategies {
         receive1[Signal.Msg[A], A \/ Nothing] {
           case Signal.Set(a)                                               => emit(left(a)) fby go(Some(a))
           case Signal.CompareAndSet(f: (Option[A] => Option[A])@unchecked) => f(oa) match {
-              case Some(a) => emit(left(a)) fby go(Some(a))
-              case None    => go(oa)
-            }
+            case Some(a) => emit(left(a)) fby go(Some(a))
+            case None    => go(oa)
+          }
           case Signal.Fail(rsn)                                            =>  Halt(rsn)
         }
       }

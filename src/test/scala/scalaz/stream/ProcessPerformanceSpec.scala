@@ -1,4 +1,4 @@
-package scalaz.stream2
+package scalaz.stream
 
 
 import concurrent.duration._

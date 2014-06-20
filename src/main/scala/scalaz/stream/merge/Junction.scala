@@ -1,7 +1,6 @@
 package scalaz.stream.merge
 
-import java.util.concurrent.atomic.AtomicReference
-import scala._
+
 import scala.collection.immutable.Queue
 import scalaz.-\/
 import scalaz.\/
@@ -9,8 +8,8 @@ import scalaz.\/-
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process._
-import scalaz.stream.actor.WyeActor
-import scalaz.stream.{process1, Step, Process}
+import scalaz.stream._
+import Util._
 
 
 protected[stream] object Junction {
@@ -36,8 +35,8 @@ protected[stream] object Junction {
   /** Close the up/down stream **/
   case class Close[W, O](rsn: Throwable, ref: JunctionRef) extends JunctionAction[W, O]
   /**
-    * Requests next stream to be open from source. When this is emitted,
-    * Junction starts to run `source`, if source is not halted or not running already **/
+   * Requests next stream to be open from source. When this is emitted,
+   * Junction starts to run `source`, if source is not halted or not running already **/
   case object OpenNext extends JunctionAction[Nothing,Nothing]
 
 
@@ -56,7 +55,7 @@ protected[stream] object Junction {
   case class Open[W, I, O](jx: JX[W, I, O], ref: JunctionRef) extends JunctionSignal[W, I, O]
   /** downstream or upstream is done with given reason. **/
   case class Done[W, I, O](jx: JX[W, I, O], ref: JunctionRef, rsn: Throwable) extends JunctionSignal[W, I, O]
-  /** source of upstream is done with given reason **/
+  /** source of upstream processes is done with given reason **/
   case class DoneUp[W, I, O](jx: JX[W, I, O], rsn: Throwable) extends JunctionSignal[W, I, O]
   /** downstream has been forcefully closed with given reason **/
   case class DoneDown[W, I, O](jx: JX[W, I, O], rsn: Throwable) extends JunctionSignal[W, I, O]
@@ -88,14 +87,14 @@ protected[stream] object Junction {
       * Returns tuple of remaining items that were not distributed and strategy with actions
       * **/
     def distributeO(so: Queue[O], ref: Seq[DownRefO]): (Queue[O], JunctionStrategy[W, I, O]) = {
-      (so.drop(ref.size), emitSeq(so.zip(ref).map { case (o, r) => WriteO[W, O](List(o), r) }))
+      (so.drop(ref.size), emitAll(so.zip(ref).map { case (o, r) => WriteO[W, O](List(o), r) }))
     }
 
     /** Distributes seq of `W` to supplied references.
       * Returns tuple of remaining items that were not distributed and strategy with actions
       * **/
     def distributeW(sw: Queue[W], ref: Seq[DownRefW]): (Queue[W], JunctionStrategy[W, I, O]) = {
-      (sw.drop(ref.size), emitSeq(sw.zip(ref).map { case (w, r) => WriteW[W, O](List(w), r) }))
+      (sw.drop(ref.size), emitAll(sw.zip(ref).map { case (w, r) => WriteW[W, O](List(w), r) }))
     }
 
     /** Broadcasts `W` value to all `W` downstream **/
@@ -104,7 +103,7 @@ protected[stream] object Junction {
 
     /** Broadcasts sequence of `W` values to all `W` downstream **/
     def broadcastAllW(sw: Seq[W]): JunctionStrategy[W, I, O] =
-      emitSeq(downW.map(WriteW[W, O](sw, _)))
+      emitAll(downW.map(WriteW[W, O](sw, _)))
 
     /** Broadcasts `O` value to all `O` downstream **/
     def broadcastO(o: O): JunctionStrategy[W, I, O] =
@@ -112,7 +111,7 @@ protected[stream] object Junction {
 
     /** Broadcasts sequence of `O` values to all `O` downstream **/
     def broadcastAllO(so: Seq[O]): JunctionStrategy[W, I, O] =
-      emitSeq(downO.map(WriteO[W, O](so, _)))
+      emitAll(downO.map(WriteO[W, O](so, _)))
 
     /** Broadcasts sequence of either `W` or `O` values to either down-streams on `W` or `O` side respectively **/
     def broadcastAllBoth(swo: Seq[W \/ O]): JunctionStrategy[W, I, O] =
@@ -143,7 +142,7 @@ protected[stream] object Junction {
 
     /** Like `more` accepting more refs **/
     def moreSeq(ref: Seq[UpRef]): JunctionStrategy[W, I, O] =
-      emitSeq(ref.map(More[W,O](_)))
+      emitAll(ref.map(More[W,O](_)))
 
     /** Signals more for upstream that is waiting for longest time, if any **/
     def moreFirst: JunctionStrategy[W, I, O] =
@@ -155,7 +154,7 @@ protected[stream] object Junction {
 
     /** Signals more to all upstream references that are ready **/
     def moreAll: JunctionStrategy[W, I, O] =
-      emitSeq(upReady.map(More[W, O](_)))
+      emitAll(upReady.map(More[W, O](_)))
 
     /** Closes supplied reference with given reason **/
     def close(ref: JunctionRef, rsn: Throwable): JunctionStrategy[W, I, O] =
@@ -171,7 +170,7 @@ protected[stream] object Junction {
 
     /** Closes all supplied references **/
     def closeAll(refs: Seq[JunctionRef], rsn: Throwable): JunctionStrategy[W, I, O] =
-      emitSeq(refs.map(Close[W, O](rsn, _)))
+      emitAll(refs.map(Close[W, O](rsn, _)))
 
     /** Signals that next source may be openeed **/
     def openNext: JunctionStrategy[W, I, O] =
@@ -193,17 +192,17 @@ protected[stream] object Junction {
 
 
   def apply[W, I, O](strategy: JunctionStrategy[W, I, O], source: Process[Task, Process[Task, I]])
-    (S: Strategy = Strategy.DefaultStrategy): Junction[W, I, O] = {
+    (implicit S: Strategy): Junction[W, I, O] = {
 
 
     trait M
     //next step of source
-    case class SourceStep(s: Step[Task, Process[Task, I]]) extends M
+    case class SourceStep(result: Throwable \/ (Seq[Process[Task,I]], Throwable => Process[Task,Process[Task,I]])) extends M
 
     //upstream source process is done
     case class UpStreamDone(ref: ProcessRef, rsn: Throwable) extends M
     //upstream source process is ready to Emit
-    case class UpStreamEmit(ref: ProcessRef, si: Seq[I], t:Process[Task,I],c:Process[Task,I]) extends M
+    case class UpStreamEmit(ref: ProcessRef, si: Seq[I], next: Throwable => Process[Task,I]) extends M
 
     //upstream process has seq of `I` to emit. Tail and cleanup is passed to build the current state
     case class UpEmit(ref: UpRefInstance, si: Seq[I]) extends M
@@ -237,7 +236,7 @@ protected[stream] object Junction {
     class UpstreamAsyncRef(val cb: Throwable \/ Unit => Unit) extends UpRefInstance {
       def next[B](actor: Actor[M])(implicit S: Strategy): Unit = S(cb(ok))
       def close[B](actor: Actor[M], rsn: Throwable)(implicit S: Strategy): Unit = rsn match {
-        case End => S(cb(ok))
+        case End | Kill => S(cb(ok))
         case _ => S(cb(left(rsn)))
       }
     }
@@ -246,9 +245,9 @@ protected[stream] object Junction {
     // Keeps state of upstream source
     sealed trait UpSourceState[A]
     // signals upstream source is ready to be run or cleaned
-    case class UpSourceReady[A](cont: Process[Task, A], cleanup: Process[Task, A]) extends UpSourceState[A]
+    case class UpSourceReady[A](next: Throwable => Process[Task, A]) extends UpSourceState[A]
     // signals upstream source is running, and may be interrupted
-    case class UpSourceRunning[A](interrupt: () => Unit) extends UpSourceState[A]
+    case class UpSourceRunning[A](interrupt: (Throwable) => Unit) extends UpSourceState[A]
     // signals upstream source is done
     case class UpSourceDone[A](rsn: Throwable) extends UpSourceState[A]
 
@@ -260,14 +259,18 @@ protected[stream] object Junction {
       private val self = this
 
       def close[B](actor: Actor[M], rsn: Throwable)(implicit S: Strategy): Unit = state match {
-        case UpSourceReady(t, c) =>
-          S(WyeActor.runAsyncInterruptibly[I](c.causedBy(rsn)) {
-            _ => actor ! UpStreamDone(self, rsn)
-          })
-          state = UpSourceDone(rsn)
+        case UpSourceReady(next) =>
+          debug("UPSTREAM DONE, CLOSE, " + next(Kill(rsn)))
+          Try(next(Kill(rsn))).run.runAsync { r =>
+            debug("UPSTREAM FINISHED: " + r)
+            val rsn0 =  r.fold(_rsn=> CausedBy(_rsn,rsn),_=>rsn)
+            state = UpSourceDone(rsn0)
+            actor ! UpStreamDone(self,rsn0)
+          }
 
         case UpSourceRunning(interrupt) =>
-          S(interrupt())
+          debug("UPSTREAM RUNNING, CLOSE")
+          S(interrupt(rsn))
           state = UpSourceDone(rsn)
 
 
@@ -276,21 +279,18 @@ protected[stream] object Junction {
 
       def next[B](actor: Actor[M])(implicit S: Strategy): Unit = {
         state match {
-          case UpSourceReady(t, c) =>
-            state = UpSourceRunning[I](WyeActor.runAsyncInterruptibly(t) {
-              step =>
-                step match {
-                  case Step(\/-(si), t, c)  => actor ! UpStreamEmit(self, si, t, c)
-                  case Step(-\/(rsn), _, _) => actor ! UpStreamDone(self, rsn)
-                }
-            })
-          case _                   => //no-op
+          case UpSourceReady(next) =>
+            Try(next(End)).runAsync(_.fold(
+              rsn => actor ! UpStreamDone(self, rsn)
+              , { case (is,next0) => actor ! UpStreamEmit(self, is, next0)  }
+            ))
+          case _ => //no-op
         }
       }
 
-      def ready(t:Process[Task,I],c:Process[Task,I]) : Unit = {
-        state = UpSourceReady(t,c)
-      }
+      def ready(next: Throwable => Process[Task,I]) : Unit =
+        state = UpSourceReady(next)
+
     }
 
     trait DownRefInstance[A] extends DownRef {
@@ -300,12 +300,9 @@ protected[stream] object Junction {
 
 
     // Reference for downstream. Internal mutable vars are protected and set only by Junction actor
-    abstract class DownRefInstanceImpl[A] extends DownRefInstance[A] {
+    trait DownRefInstanceImpl[A] extends DownRefInstance[A] {
       // State of reference, may be queueing (left) or waiting to be completed (right)
-      val stateref = new AtomicReference[Vector[A] \/ ((Throwable \/ Seq[A]) => Unit)]
-      def state = stateref.get
-      def state_=(v: Vector[A] \/ ((Throwable \/ Seq[A]) => Unit)): Unit = stateref.set(v)
-
+      @volatile var state: Vector[A] \/ ((Throwable \/ Seq[A]) => Unit)
       // When set, indicates reference is terminated and shall not receive more `B`
       // except these in queue already.
       @volatile var done: Option[Throwable] = None
@@ -380,23 +377,20 @@ protected[stream] object Junction {
     trait DownRefWInstance extends DownRefInstance[W] with DownRefW
 
     class DownRefOInstanceImpl(
-      initialstate: \/[Vector[O], (\/[Throwable, Seq[O]]) => Unit] = left(Vector())
-      ) extends DownRefInstanceImpl[O] with DownRefOInstance {
-      state = initialstate
-    }
+      @volatile var state: \/[Vector[O], (\/[Throwable, Seq[O]]) => Unit] = left(Vector())
+      ) extends DownRefInstanceImpl[O] with DownRefOInstance
 
 
 
     class DownRefWInstanceImpl(
-      initialstate: \/[Vector[W], (\/[Throwable, Seq[W]]) => Unit] = left(Vector())
-      ) extends DownRefInstanceImpl[W] with DownRefWInstance {
-      state = initialstate
-    }
+      @volatile var state: \/[Vector[W], (\/[Throwable, Seq[W]]) => Unit] = left(Vector())
+      ) extends DownRefInstanceImpl[W] with DownRefWInstance
+
 
     class DownRefBothInstance(
-      initialstate: \/[Vector[W \/ O], (\/[Throwable, Seq[W \/ O]]) => Unit] = left(Vector())
+      @volatile var state: \/[Vector[W \/ O], (\/[Throwable, Seq[W \/ O]]) => Unit] = left(Vector())
       ) extends DownRefInstanceImpl[W \/ O] {
-      state = initialstate
+
       val self = this
 
       @volatile var doneO: Option[Throwable] = None
@@ -443,20 +437,31 @@ protected[stream] object Junction {
     //starts source if not yet started
     def runSource : Unit =
       sourceState match {
-        case None => nextSource(source,actor)
-        case Some(UpSourceReady(t,c)) => nextSource(t,actor)
+        case None => nextSource((t:Throwable) => source,actor)
+        case Some(UpSourceReady(next)) => nextSource(next,actor)
         case _ => //no-op, already running or done
       }
 
     // runs next source step
-    def nextSource(p: Process[Task, Process[Task, I]], actor: Actor[M]) : Unit =
-      sourceState = Some(UpSourceRunning(WyeActor.runAsyncInterruptibly(p) { s => actor ! SourceStep(s) }))
+    def nextSource(next: Throwable => Process[Task, Process[Task, I]], actor: Actor[M]) : Unit =
+      sourceState = Some(UpSourceRunning(Try(next(End)).runAsync( r => actor ! SourceStep(r))))
+     // sourceState = Some(UpSourceRunning(WyeActor.runAsyncInterruptibly(p) { s => actor ! SourceStep(s) }))
 
 
     //cleans next source step
-    def cleanSource(rsn: Throwable, c: Process[Task, Process[Task, I]], a: Actor[M]): Unit = {
-      sourceState = Some(UpSourceRunning(() => ())) //set to noop so clean won`t get interrupted
-      WyeActor.runAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) }
+    //this is run when strategy terminated and next step is received
+    def cleanSource(rsn: Throwable, next: Throwable => Process[Task, Process[Task, I]], a: Actor[M]): Unit = {
+      sourceState = Some(UpSourceRunning((t:Throwable) => ()))
+      Try(next(rsn)).run.runAsync { r =>
+        val rsn0 = r.fold(rsn_ => CausedBy(rsn_ ,rsn), _ => rsn)
+        sourceState = Some(UpSourceDone(rsn0))
+        actor ! SourceStep(left(rsn0))
+      }
+
+      //old below
+//      sourceState = Some(UpSourceRunning(() => ())) //set to noop so clean won`t get interrupted
+//      WyeActor.runAsyncInterruptibly(c.drain) { s => actor ! SourceStep(s) }
+
     }
 
 
@@ -500,7 +505,6 @@ protected[stream] object Junction {
           )
           ref.close(rsn)
         case OpenNext => runSource
-        case a => sys.error("don't know what to do with: " + a)
       }
     }
 
@@ -509,14 +513,15 @@ protected[stream] object Junction {
     def unemitAndRun(xsp: JunctionStrategy[W,I,O]): Unit = {
       xsp.unemit match {
         case (acts, hlt@Halt(rsn)) =>
+          debug(s"UER HALT: acts: $acts, hlt: $hlt, xsp: $xsp")
           runAction(acts)
-          jx.up.foreach { case ref: UpRefInstance => ref.close(actor, rsn) }
-          jx.downO.foreach { case ref: DownRefOInstance => ref.close(rsn) }
-          jx.downW.foreach { case ref: DownRefWInstance => ref.close(rsn) }
+          jx.up.foreach { case ref: UpRefInstance => ref.close(actor, Kill(rsn)) }
+          jx.downO.foreach { case ref: DownRefOInstance => ref.close(Kill(rsn)) }
+          jx.downW.foreach { case ref: DownRefWInstance => ref.close(Kill(rsn)) }
           jx = jx.copy(upReady = Nil, downReadyO = Nil, downReadyW = Nil) //we keep the references except `ready` to callback on eventual downstreamClose signal once all are done.
           sourceState match {
-            case Some(UpSourceReady(t, c))        => cleanSource(rsn,c, actor)
-            case Some(UpSourceRunning(interrupt)) => S(interrupt())
+            case Some(UpSourceReady(next))        => cleanSource(rsn, next, actor)
+            case Some(UpSourceRunning(interrupt)) => S(interrupt(rsn))
             case None => sourceState = Some(UpSourceDone(End))
             case _ => //no-op
           }
@@ -532,35 +537,47 @@ protected[stream] object Junction {
 
     /** processes signal and eventually runs the JunctionAction **/
     def process(signal:  JunctionSignal[W,I,O]): Unit =
-      if (!xstate.isHalt) unemitAndRun(xstate.feed1(signal))
+      if (!xstate.isHalt) unemitAndRun(process1.feed1(signal)(xstate))
 
 
     actor = Actor[M] {
       msg =>
+
+       debug(s"JACT msg: $msg, jx: $jx, xstate: $xstate")
         xstate match {
           case Halt(rsn) =>
             msg match {
-              case SourceStep(step) => step match {
-                case Step(\/-(ups), t, c)        =>
-                  jx = jx.copy(doneUp = Some(rsn))
-                  cleanSource(rsn, c, actor)
-                case Step(-\/(rsn0), _, Halt(_)) =>
+              case SourceStep(result) =>
+                result.fold({ rsn0 =>
                   sourceState = Some(UpSourceDone(rsn))
                   jx = jx.copy(doneUp = Some(rsn0))
-                case Step(-\/(_), _, c)          =>
+                }
+                ,{ case (ups, next) =>
                   jx = jx.copy(doneUp = Some(rsn))
-                  cleanSource(rsn, c, actor)
-              }
+                  cleanSource(Kill(rsn), next, actor)
+                })
+// old below
+//                step match {
+//                case Step(\/-(ups), t, c)        =>
+//                  jx = jx.copy(doneUp = Some(rsn))
+//                  cleanSource(rsn, c, actor)
+//                case Step(-\/(rsn0), _, Halt(_)) =>
+//                  sourceState = Some(UpSourceDone(rsn))
+//                  jx = jx.copy(doneUp = Some(rsn0))
+//                case Step(-\/(_), _, c)          =>
+//                  jx = jx.copy(doneUp = Some(rsn))
+//                  cleanSource(rsn, c, actor)
+//              }
 
-              case UpEmit(ref, _)   => ref.close(actor, rsn)
-              case UpStreamEmit(ref,_,t,c) => ref.ready(t,c); ref.close(actor,rsn)
+              case UpEmit(ref, _)   => ref.close(actor, Kill(rsn))
+              case UpStreamEmit(ref,_,next) => ref.ready(next); ref.close(actor,Kill(rsn))
               case UpStreamDone(ref, rsn) => jx = jx.copy(up = jx.up.filterNot(_ == ref))
-              case DownOpenO(ref, cb)     => S(cb(left(rsn)))
-              case DownOpenW(ref, cb)     => S(cb(left(rsn)))
-              case DownOpenBoth(ref, cb)  => S(cb(left(rsn)))
-              case DownReadyO(ref, cb)    => ref.close(rsn); ref.ready(cb)
-              case DownReadyW(ref, cb)    => ref.close(rsn); ref.ready(cb)
-              case DownReadyBoth(ref, cb) => ref.close(rsn); ref.ready(cb)
+              case DownOpenO(ref, cb)     => S(cb(left(Kill(rsn))))
+              case DownOpenW(ref, cb)     => S(cb(left(Kill(rsn))))
+              case DownOpenBoth(ref, cb)  => S(cb(left(Kill(rsn))))
+              case DownReadyO(ref, cb)    => ref.close(Kill(rsn)); ref.ready(cb)
+              case DownReadyW(ref, cb)    => ref.close(Kill(rsn)); ref.ready(cb)
+              case DownReadyBoth(ref, cb) => ref.close(Kill(rsn)); ref.ready(cb)
               case DownDoneO(ref, rsn)    => jx = jx.copy(downO = jx.downO.filterNot(_ == ref))
               case DownDoneW(ref, rsn)    => jx = jx.copy(downW = jx.downW.filterNot(_ == ref))
               case DownDoneBoth(ref, rsn) =>
@@ -580,26 +597,39 @@ protected[stream] object Junction {
 
           case _ => msg match {
 
-            case SourceStep(step) => step match {
-              case Step(\/-(ups), t, c) =>
-                sourceState = Some(UpSourceReady(t,c))
-                val newUps = ups.map(t => new ProcessRef(UpSourceReady(t, halt)))
+            case SourceStep(result) =>
+              result.fold({ rsn =>
+                sourceState = Some(UpSourceDone(rsn))
+                jx = jx.copy(doneUp = Some(rsn))
+                process(DoneUp(jx, rsn))
+              }
+              , { case (ups, next) =>
+                sourceState = Some(UpSourceReady(next))
+                val newUps = ups.map(up => new ProcessRef(UpSourceReady((t:Throwable) => up)))
                 jx = jx.copy(up = jx.up ++ newUps, upReady = jx.upReady ++ newUps)
                 newUps.foreach(ref => process(Open(jx, ref)))
+              })
+// old below
+//              step match {
+//              case Step(\/-(ups), t, c) =>
+//                sourceState = Some(UpSourceReady(t,c))
+//                val newUps = ups.map(t => new ProcessRef(UpSourceReady(t, halt)))
+//                jx = jx.copy(up = jx.up ++ newUps, upReady = jx.upReady ++ newUps)
+//                newUps.foreach(ref => process(Open(jx, ref)))
+//
+//              case Step(-\/(rsn), _, Halt(_)) =>
+//                sourceState = Some(UpSourceDone(rsn))
+//                jx = jx.copy(doneDown = Some(rsn))
+//                process(DoneUp(jx, rsn))
+//
+//              case Step(-\/(rsn), _, c) =>
+//                cleanSource(rsn, c, actor)
+//                jx = jx.copy(doneDown = Some(rsn))
+//                process(DoneUp(jx, rsn))
+//            }
 
-              case Step(-\/(rsn), _, Halt(_)) =>
-                sourceState = Some(UpSourceDone(rsn))
-                jx = jx.copy(doneDown = Some(rsn))
-                process(DoneUp(jx, rsn))
-
-              case Step(-\/(rsn), _, c) =>
-                cleanSource(rsn, c, actor)
-                jx = jx.copy(doneDown = Some(rsn))
-                process(DoneUp(jx, rsn))
-            }
-
-            case UpStreamEmit(ref,is,t,c) =>
-              ref.ready(t,c)
+            case UpStreamEmit(ref,is,next) =>
+              ref.ready(next)
               jx = jx.copy(upReady = jx.upReady :+ ref)
               process(Receive(jx, is, ref))
 
@@ -612,8 +642,8 @@ protected[stream] object Junction {
               process(Done(jx, ref, rsn))
 
             case DownOpenO(ref, cb) =>
-              xstate match {
-                case Emit(_,_) => unemitAndRun(xstate) //try to unemit any head actions. i.e. OpenNext
+              xstate.step match {
+                case Cont(Emit(_),_) => unemitAndRun(xstate) //try to unemit any head actions. i.e. OpenNext
                 case _ => //no op, waiting for signal
               }
               jx = jx.copy(downO = jx.downO :+ ref)
@@ -678,6 +708,7 @@ protected[stream] object Junction {
               process(Done(jx, ref.oi, rsn))
 
             case DownDone(rsn, cb) =>
+              //debug(s"DOWN_DONE: signals: $downDoneSignals")
               if (downDoneSignals.isEmpty) {
                 jx = jx.copy(doneDown = Some(rsn))
                 downDoneSignals = Vector(cb)
@@ -695,7 +726,8 @@ protected[stream] object Junction {
     new Junction[W, I, O] {
       def receiveAll(si: Seq[I]): Task[Unit] =
         Task.async { cb => actor ! UpEmit(new UpstreamAsyncRef(cb), si) }
-      def upstreamSink: Process.Sink[Task, I] =
+
+      def upstreamSink: Sink[Task, I] =
         Process.constant(receiveOne _)
 
       //todo: revisit this once cleanup will get reason passed
@@ -708,17 +740,28 @@ protected[stream] object Junction {
         def done(ref: R, rsn: Throwable) =
           eval_(Task.delay(actor ! close(ref, rsn)))
 
-        await(Task.delay(getRef))(
-          ref => {
-            await(Task.async[Unit](cb => actor ! open(ref, cb)))(
-              _ => repeatEval(Task.async[Seq[A]](cb => actor ! ready(ref, cb))).flatMap(emitAll) onComplete done(ref, End)
-              , done(ref, End)
-              , done(ref, End)
-            )
-          }
-          , halt
-          , halt
-        )
+
+         await(Task.delay(getRef)){ ref =>
+           await(Task.async[Unit](cb => actor ! open(ref, cb))) { _ =>
+             repeatEval(Task.async[Seq[A]](cb => actor ! ready(ref, cb)))
+             .flatMap(emitAll)
+             .onHalt { rsn => done(ref,rsn) ++ fail(rsn) }
+           }
+
+         }
+
+        //old below
+//        await(Task.delay(getRef))(
+//          ref => {
+//            await(Task.async[Unit](cb => actor ! open(ref, cb)))(
+//              _ => repeatEval(Task.async[Seq[A]](cb => actor ! ready(ref, cb))).flatMap(emitAll) onComplete done(ref, End)
+//              , done(ref, End)
+//              , done(ref, End)
+//            )
+//          }
+//          , halt
+//          , halt
+//        )
       }
 
       def downstreamO: Process[Task, O] =
@@ -727,7 +770,7 @@ protected[stream] object Junction {
       def downstreamW: Process[Task, W] =
         downstream_[DownRefWInstanceImpl, W](new DownRefWInstanceImpl(), DownOpenW, DownReadyW, DownDoneW)
 
-      def downstreamBoth: Process.Writer[Task, W, O] =
+      def downstreamBoth: Writer[Task, W, O] =
         downstream_[DownRefBothInstance, W \/ O](new DownRefBothInstance(), DownOpenBoth, DownReadyBoth, DownDoneBoth)
 
       def downstreamClose(e: Throwable): Task[Unit] =

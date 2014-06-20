@@ -4,9 +4,12 @@ import collection.mutable
 import org.scalacheck.Prop._
 import org.scalacheck.{Prop, Properties}
 import scala.concurrent.SyncVar
+import scalaz.-\/
+import scalaz.\/
+import scalaz.\/-
 import scalaz.concurrent.Task
 import scalaz.stream.Process._
-import scalaz.{\/-, \/, -\/}
+import scalaz.stream._
 
 
 //unfortunatelly this has to be separate. If we have it on AsyncTopicSpec, some tests will deadlock
@@ -25,10 +28,6 @@ object WriterHelper {
 
 object AsyncTopicSpec extends Properties("topic") {
 
-  case object TestedEx extends Throwable {
-    override def fillInStackTrace = this
-  }
-
 
   //tests basic publisher and subscriber functionality
   //have two publishers and four subscribers.
@@ -46,23 +45,11 @@ object AsyncTopicSpec extends Properties("topic") {
       val topic = async.topic[Int]()
       val subscribers = List.fill(4)(SubscriberData())
 
-      def sink[A](f: A => Unit): Process.Sink[Task, A] = {
-        io.resource[Unit, A => Task[Unit]](Task.now(()))(_ => Task.now(()))(
-          _ =>
-            Task.now {
-              (i: A) =>
-                Task.now {
-                  f(i)
-                }
-            }
-        )
-      }
+      def sink[A](f: A => Unit): Sink[Task, A] = constant { a: A => Task.delay(f(a)) }
+
 
       def collectToBuffer(buffer: mutable.Buffer[Int]): Sink[Task, Int] = {
-        sink {
-          (i: Int) =>
-            buffer += i
-        }
+        sink {  (i: Int) => buffer += i }
       }
 
       subscribers.foreach {
@@ -71,10 +58,11 @@ object AsyncTopicSpec extends Properties("topic") {
       }
 
       val pubOdd = new SyncVar[Throwable \/ Unit]
-      Task((Process.emitAll(odd).evalMap(Task.now(_)) to topic.publish).run.runAsync(pubOdd.put)).run
+
+      Task((Process.emitAll(odd).toSource to topic.publish).run.runAsync(pubOdd.put)).run
 
       val pubEven = new SyncVar[Throwable \/ Unit]
-      Task((Process.emitAll(even).evalMap(Task.now(_)) to topic.publish).run.runAsync(pubEven.put)).run
+      Task((Process.emitAll(even).toSource to topic.publish).run.runAsync(pubEven.put)).run
 
       val oddResult = pubOdd.get(3000)
       val evenResult = pubEven.get(3000)
@@ -107,11 +95,11 @@ object AsyncTopicSpec extends Properties("topic") {
     l: List[Int] =>
       (l.size > 0 && l.size < 10000) ==> {
         val topic = async.topic[Int]()
-        topic.fail(TestedEx).run
+        topic.fail(Bwahahaa).run
 
 
         val emitted = new SyncVar[Throwable \/ Unit]
-        Task((Process.emitAll(l).evalMap(Task.now(_)) to topic.publish).run.runAsync(emitted.put)).run
+        Task((Process.emitAll(l).toSource to topic.publish).run.runAsync(emitted.put)).run
 
         val sub1 = new SyncVar[Throwable \/ Seq[Int]]
 
@@ -122,8 +110,8 @@ object AsyncTopicSpec extends Properties("topic") {
         sub1.get(3000)
 
 
-        (emitted.get(0).nonEmpty && emitted.get == -\/(TestedEx)) :| "publisher fails" &&
-          (sub1.get(0).nonEmpty && sub1.get == -\/(TestedEx)) :| "subscriber fails"
+        (emitted.get(0).nonEmpty && emitted.get == -\/(Bwahahaa)) :| "publisher fails" &&
+          (sub1.get(0).nonEmpty && sub1.get == -\/(Bwahahaa)) :| "subscriber fails"
       }
   }
 
@@ -186,9 +174,9 @@ object AsyncTopicSpec extends Properties("topic") {
 
   property("writer.state.consume") = secure {
     val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)()
-    val result = new SyncVar[Throwable \/ IndexedSeq[Long\/Int]]
+    val result = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
     topic.subscribe.runLog.runAsync(result.put)
-    Task.fork(topic.consumeOne(Process("one","two","three").toSource onComplete eval_(topic.close))).runAsync(_=>())
+    Task.fork(topic.consumeOne(Process("one", "two", "three").toSource onComplete eval_(topic.close))).runAsync(_ => ())
     result.get(3000).flatMap(_.toOption).toSeq.flatten ==
       Vector(-\/(0L), -\/(3L), \/-(3), -\/(6L), \/-(3), -\/(11L), \/-(5))
   }

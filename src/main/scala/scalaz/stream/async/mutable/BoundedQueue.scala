@@ -1,9 +1,9 @@
-package scalaz.stream2.async.mutable
+package scalaz.stream.async.mutable
 
 import scalaz.concurrent.Task
-import scalaz.stream2.Sink
-import scalaz.stream2.Process
-import scalaz.stream2.Process.End
+import scalaz.stream.Sink
+import scalaz.stream.Process
+import scalaz.stream.Process.End
 
 
 /**
@@ -62,7 +62,7 @@ trait BoundedQueue[A] {
    * because size of the queue did not change.
    *
    */
-  def size: scalaz.stream2.async.immutable.Signal[Int]
+  def size: scalaz.stream.async.immutable.Signal[Int]
 
   /**
    * Closes this queue. This has effect of enqueue Sink to be stopped

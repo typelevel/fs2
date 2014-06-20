@@ -1,4 +1,4 @@
-package scalaz.stream2
+package scalaz.stream
 
 import scala.annotation.tailrec
 import java.util.concurrent.atomic.AtomicInteger
@@ -38,7 +38,7 @@ object Util {
   /**
    * Helper to wrap evaluation of `p` that may cause side-effects by throwing exception.
    */
-  private[stream2] def Try[F[_], A](p: => Process[F, A]): Process[F, A] =
+  private[stream] def Try[F[_], A](p: => Process[F, A]): Process[F, A] =
     try p
     catch {case e: Throwable => Process.fail(e)}
 

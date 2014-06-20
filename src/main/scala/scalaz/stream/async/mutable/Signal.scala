@@ -1,16 +1,17 @@
 package scalaz.stream.async.mutable
 
+
 import scalaz.concurrent._
 import scalaz.stream.Process._
-import scalaz.stream.merge.{JunctionStrategies, Junction}
-import scalaz.stream.{wye, Process}
+import scalaz.stream.{Sink, wye, Process}
 import scalaz.stream.async.mutable
 import java.util.concurrent.atomic.AtomicReference
+import scalaz.stream.merge.{Junction, JunctionStrategies}
 
 
 /**
- * A signal whose value may be set asynchronously. Provides continuous 
- * and discrete streams for responding to changes to this value. 
+ * A signal whose value may be set asynchronously. Provides continuous
+ * and discrete streams for responding to changes to this value.
  */
 trait Signal[A] extends scalaz.stream.async.immutable.Signal[A] {
 
@@ -22,8 +23,8 @@ trait Signal[A] extends scalaz.stream.async.immutable.Signal[A] {
   def sink: Sink[Task, Signal.Msg[A]]
 
 
-  /** 
-   * Asynchronously refreshes the value of the signal, 
+  /**
+   * Asynchronously refreshes the value of the signal,
    * keep the value of this `Signal` the same, but notify any listeners.
    * If the `Signal` is not yet set, this is no-op
    */
@@ -36,7 +37,7 @@ trait Signal[A] extends scalaz.stream.async.immutable.Signal[A] {
 
 
   /**
-   * Sets the value of this `Signal`. 
+   * Sets the value of this `Signal`.
    */
   def set(a: A): Task[Unit]
 
@@ -52,7 +53,7 @@ trait Signal[A] extends scalaz.stream.async.immutable.Signal[A] {
   /**
    * Asynchronously sets the current value of this `Signal` and returns new value os this `Signal`.
    * If this `Signal` has not been set yet, the Task will return None and value is set. If this `Signal`
-   * is `finished` Task will fail with `End` exception. If this `Signal` is `failed` Task will fail 
+   * is `finished` Task will fail with `End` exception. If this `Signal` is `failed` Task will fail
    * with `Signal` failure exception.
    *
    * Furthermore if `f` results in evaluating to None, this Task is no-op and will return current value of the
@@ -72,11 +73,11 @@ trait Signal[A] extends scalaz.stream.async.immutable.Signal[A] {
   def close : Task[Unit] = fail(End)
 
   /**
-   * Raise an asynchronous error for readers of this `Signal`. Any attempts to 
-   * `set` or `get` this `Ref` after the `fail` will result in task failing with `error`. 
-   * This `Signal` is `failed` from now on. 
-   * 
-   * Running this task once the `Signal` is `failed` or `finished` is no-op and this task will not fail. 
+   * Raise an asynchronous error for readers of this `Signal`. Any attempts to
+   * `set` or `get` this `Ref` after the `fail` will result in task failing with `error`.
+   * This `Signal` is `failed` from now on.
+   *
+   * Running this task once the `Signal` is `failed` or `finished` is no-op and this task will not fail.
    */
   def fail(error: Throwable): Task[Unit]
 
@@ -89,7 +90,7 @@ object Signal {
   sealed trait Msg[+A]
 
   /**
-   * Sets the signal to given value 
+   * Sets the signal to given value
    */
   case class Set[A](a:A) extends Msg[A]
 
@@ -110,9 +111,9 @@ object Signal {
     new mutable.Signal[A] {
       def changed: Process[Task, Boolean] = discrete.map(_ => true) merge Process.constant(false)
       def discrete: Process[Task, A] = junction.downstreamW
-      def continuous: Process[Task, A] = repeatEval(get)
+      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
       def changes: Process[Task, Unit] = discrete.map(_ => ())
-      def sink: Process.Sink[Task, Msg[A]] = junction.upstreamSink
+      def sink: Sink[Task, Msg[A]] = junction.upstreamSink
       def get: Task[A] = discrete.take(1).runLast.flatMap {
         case Some(a) => Task.now(a)
         case None    => Task.fail(End)

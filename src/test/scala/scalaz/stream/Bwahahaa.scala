@@ -1,4 +1,4 @@
-package scalaz.stream2
+package scalaz.stream
 
 /**
  * Unfortunately this can't reside on object with spec due to

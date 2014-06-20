@@ -1,7 +1,9 @@
 package scalaz.stream
 
+
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process._
+import scalaz.stream.Process.End
 
 
 package object merge {

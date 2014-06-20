@@ -20,7 +20,7 @@ object QueueSpec extends Properties("queue") {
 
       q.dequeue.runLog.runAsync(collected.put)
       t1.runAsync(_=>())
- 
+
       "Items were collected" |:  collected.get(3000).nonEmpty &&
         (s"All values were collected, all: ${collected.get(0)}, l: $l " |: collected.get.getOrElse(Nil) == l)
 
@@ -101,7 +101,7 @@ object QueueSpec extends Properties("queue") {
     val subscribeClosed = t3.attemptRun
 
     (dequeued.get(3000) == Some(\/-(Vector(1,2,3)))) :| "Queue was terminated" &&
-      (publishClosed == \/-(())) :| "Publisher is closed before elements are drained" &&
+      (publishClosed == \/-(())) :| s"Publisher is closed before elements are drained " &&
       ((subscribeClosed == \/-(Vector()))) :| "Subscriber is closed after elements are drained"
 
 

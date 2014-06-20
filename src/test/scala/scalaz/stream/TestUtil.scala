@@ -1,4 +1,4 @@
-package scalaz.stream2
+package scalaz.stream
 
 import scala.concurrent.duration._
 import java.util.concurrent.{ThreadFactory, Executors, ExecutorService}
@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Various testing helpers
  */
-private[stream2] object TestUtil {
+private[stream] object TestUtil {
 
   /** simple timing test, returns the duration and result **/
   def time[A](a: => A, l: String = ""): (FiniteDuration, A) = {
@@ -29,7 +29,7 @@ private[stream2] object TestUtil {
 
     Executors.newFixedThreadPool(Runtime.getRuntime.availableProcessors max 32, new ThreadFactory {
       def newThread(r: Runnable) = {
-        val t = new Thread(r,s"stream2-spec-${threadIndex.incrementAndGet()}")
+        val t = new Thread(r,s"stream-spec-${threadIndex.incrementAndGet()}")
         t.setDaemon(true)
         t
       }

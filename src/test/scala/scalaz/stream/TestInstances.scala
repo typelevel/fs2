@@ -16,7 +16,7 @@ object TestInstances {
     Arbitrary(arbitrary[List[A]].map(_.toIndexedSeq))
 
   implicit def arbitraryProcess0[A: Arbitrary]: Arbitrary[Process0[A]] =
-    Arbitrary(arbitrary[List[A]].map(list => emitSeq(list)))
+    Arbitrary(arbitrary[List[A]].map(list => emitAll(list)))
 
   implicit def arbitraryReceiveY[A: Arbitrary,B: Arbitrary]: Arbitrary[ReceiveY[A,B]] =
     Arbitrary(Gen.oneOf(

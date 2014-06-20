@@ -1,5 +1,6 @@
 package scalaz.stream
 
+
 import Process._
 import java.net.InetSocketAddress
 import org.scalacheck.Prop._
@@ -12,10 +13,7 @@ import scalaz.\/
 import scalaz.\/-
 import scalaz.concurrent.Task
 import scalaz.stream.Process.Halt
-import scalaz.stream.ReceiveY.HaltL
-import scalaz.stream.ReceiveY.HaltR
-import scalaz.stream.ReceiveY.ReceiveL
-import scalaz.stream.ReceiveY.ReceiveR
+import scalaz.stream.ReceiveY._
 import scodec.bits.ByteVector
 
 
@@ -37,7 +35,7 @@ object NioServer {
   def echo(address: InetSocketAddress): Process[Task, ByteVector] = {
     def echoAll: Writer1[ByteVector, ByteVector, ByteVector] = {
       receive1[ByteVector, ByteVector \/ ByteVector]({
-        i => emitSeq(Seq(\/-(i), -\/(i))) fby echoAll
+        i => emitAll(Seq(\/-(i), -\/(i))) fby echoAll
       })
     }
 
@@ -49,13 +47,13 @@ object NioServer {
 
     def remaining(sz:Int): Writer1[ByteVector, ByteVector, ByteVector] = {
       receive1[ByteVector, ByteVector \/ ByteVector]({
-        i => 
+        i =>
           val toEcho = i.take(sz)
-          if (sz - toEcho.size <= 0) emitSeq(Seq(\/-(toEcho), -\/(toEcho))) fby halt
-          else  emitSeq(Seq(\/-(toEcho), -\/(toEcho))) fby remaining(sz -toEcho.size)
+          if (sz - toEcho.size <= 0) emitAll(Seq(\/-(toEcho), -\/(toEcho))) fby halt
+          else  emitAll(Seq(\/-(toEcho), -\/(toEcho))) fby remaining(sz -toEcho.size)
       })
     }
-    
+
     apply(address,remaining(size))
 
   }
@@ -133,33 +131,33 @@ object NioSpec extends Properties("nio") {
 
   }
 
-
-    property("connect-server-terminates") = secure {
-      val local = localAddress(11101)
-      val max: Int = 50
-      val size: Int = 5000
-      val array1 = Array.fill[Byte](size)(1)
-      Random.nextBytes(array1)
-
-      val stop = async.signal[Boolean]
-      stop.set(false).run
-
-      val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
-      stop.discrete.wye(NioServer.limit(local,max))(wye.interrupt)
-      .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
-
-      Thread.sleep(300)
-
-      val clientGot =
-        NioClient.echo(local, ByteVector(array1)).runLog.run.map(_.toSeq).flatten
-      stop.set(true).run
-
-      (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
-        (clientGot == array1.toSeq.take(max)) :| "client got bytes before server closed connection"
-
-    }
-
-
+//
+//  property("connect-server-terminates") = secure {
+//    val local = localAddress(11101)
+//    val max: Int = 50
+//    val size: Int = 5000
+//    val array1 = Array.fill[Byte](size)(1)
+//    Random.nextBytes(array1)
+//
+//    val stop = async.signal[Boolean]
+//    stop.set(false).run
+//
+//    val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
+//    stop.discrete.wye(NioServer.limit(local,max))(wye.interrupt)
+//    .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
+//
+//    Thread.sleep(300)
+//
+//    val clientGot =
+//      NioClient.echo(local, ByteVector(array1)).runLog.run.map(_.toSeq).flatten
+//    stop.set(true).run
+//
+//    (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
+//      (clientGot == array1.toSeq.take(max)) :| "client got bytes before server closed connection"
+//
+//  }
+//
+//
   // connects large number of client to server, each sending up to `size` data and server replying them back
   // at the end server shall have callected all data from all clients and all clients shall get echoed back
   // what they have sent to server
@@ -177,11 +175,11 @@ object NioSpec extends Properties("nio") {
     val serverGot = new SyncVar[Throwable \/ Seq[Seq[Byte]]]
 
     val server =
-    stop.discrete
-    .wye(
-        NioServer.echo(local)
-      )(wye.interrupt)
-    .bufferAll
+      stop.discrete
+      .wye(
+          NioServer.echo(local)
+        )(wye.interrupt)
+      .bufferAll
 
 
     Task(
@@ -215,9 +213,10 @@ object NioSpec extends Properties("nio") {
 
     (serverGot.isSet && clientGot.isSet) :| "Server and client terminated" &&
       (serverGot.get.isRight && clientGot.get.isRight) :| s"Server and client terminate w/o failure: s=${serverGot.get(0)}, c=${clientGot.get(0)}" &&
-    (serverGot.get(0) == clientGot.get(0)) :| s"Server and client got same data"
+      (serverGot.get(0) == clientGot.get(0)) :| s"Server and client got same data"
 
   }
 
 
 }
+

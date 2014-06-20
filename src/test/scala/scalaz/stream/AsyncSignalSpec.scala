@@ -1,22 +1,18 @@
 package scalaz.stream
 
-import org.scalacheck.Properties
 import org.scalacheck.Prop._
 import scalaz.concurrent.Task
-import scalaz.{Nondeterminism, -\/, \/-, \/}
-import java.lang.Exception
-
+import scalaz.{-\/, \/-, \/, Nondeterminism}
+import org.scalacheck.Properties
 import scalaz.syntax.monad._
+import scalaz.stream.Process.End
 import scala.concurrent.SyncVar
 import scalaz.stream.async.mutable.Signal
-import scalaz.stream.Process.{End, eval, eval_}
 
-
+/**
+ * Created by pach on 03/05/14.
+ */
 object AsyncSignalSpec extends Properties("async.signal") {
-
-  case object TestedEx extends Exception("expected in test") {
-    override def fillInStackTrace = this
-  }
 
   property("basic") = forAll { l: List[Int] =>
     val v = async.signal[Int]
@@ -29,6 +25,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
 
     Nondeterminism[Task].both(t1, t2).run._2.toList.forall(_ % 23 != 0)
   }
+
 
   // tests all the operations on the signal (get,set,fail)
   property("signal-ops") = forAll {
@@ -87,7 +84,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
     l: List[Int] =>
       val signal = async.signal[(String, Int)]
 
-      val last = if (l.size % 2 == 0) Signal.Fail(End) else Signal.Fail(TestedEx)
+      val last = if (l.size % 2 == 0) Signal.Fail(End) else Signal.Fail(Bwahahaa)
 
       val messages = l.zipWithIndex.map {
         case (i, idx) =>
@@ -107,7 +104,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
 
       val feeder =
         Process.eval(Task.now(Signal.Set[(String, Int)](("START", 0)))) ++
-          Process.emitAll(messages).evalMap(e => Task.fork { Thread.sleep(1); Task.now(e) })
+          Process.emitAll(messages).map(e => Task.fork { Thread.sleep(1); Task.now(e) }).eval
 
 
       (feeder to signal.sink).attempt().run.attemptRun
@@ -120,8 +117,8 @@ object AsyncSignalSpec extends Properties("async.signal") {
             (result.get.toOption.get.size >= messages.size)    :| "items was emitted" &&
             (signal.get.attemptRun == -\/(End))                :| "Signal is terminated"
         } else {
-          (result.get == -\/(TestedEx))                        :| "Exception was raised correctly" &&
-            (signal.get.attemptRun == -\/(TestedEx))           :| "Signal is failed"
+          (result.get == -\/(Bwahahaa))                        :| s"Exception was raised correctly : $result, last $last" &&
+            (signal.get.attemptRun == -\/(Bwahahaa))           :| "Signal is failed"
         })
 
 
@@ -155,25 +152,12 @@ object AsyncSignalSpec extends Properties("async.signal") {
 
 
       sync1.get(3000).nonEmpty                          :| "First process finished in time" &&
-      sync2.get(3000).nonEmpty                          :| "Second process finished in time" &&
-      (sync1.get.isRight && sync2.get.isRight)          :| "both processes finished ok" &&
-      (sync1.get.toOption.get == None +: feed)          :| "first process get all values signalled" &&
-      (sync2.get.toOption.get == None +: feed)          :| "second process get all values signalled"
+        sync2.get(3000).nonEmpty                          :| "Second process finished in time" &&
+        (sync1.get.isRight && sync2.get.isRight)          :| "both processes finished ok" &&
+        (sync1.get.toOption.get == None +: feed)          :| "first process get all values signalled" &&
+        (sync2.get.toOption.get == None +: feed)          :| "second process get all values signalled"
   }
 
-  property("continuous") = secure {
-    def wait(ms: Int) = Task.delay(Thread.sleep(ms))
-    val sig = async.signal[Int]
-    val sink = sig.sink.contramap((x: Int) => Signal.Set(x))
 
-    // Set signal.
-    val in = Process(1) fby eval_(wait(300)) fby Process(2, 3, 4)
-    in.to(sink).run.runAsync(_ => ())
 
-    val p = Process(()) fby eval(wait(600)) fby eval(wait(300))
-
-    val expOut = List(1, 4, 4)
-    val out = p.zip(sig.continuous).map(_._2).runLog.run.toList
-    (out == expOut) :| s"continuous returns newest values - unexpected $out"
-  }
 }
