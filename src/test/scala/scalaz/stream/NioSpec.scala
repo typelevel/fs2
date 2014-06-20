@@ -131,33 +131,33 @@ object NioSpec extends Properties("nio") {
 
   }
 
-//
-//  property("connect-server-terminates") = secure {
-//    val local = localAddress(11101)
-//    val max: Int = 50
-//    val size: Int = 5000
-//    val array1 = Array.fill[Byte](size)(1)
-//    Random.nextBytes(array1)
-//
-//    val stop = async.signal[Boolean]
-//    stop.set(false).run
-//
-//    val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
-//    stop.discrete.wye(NioServer.limit(local,max))(wye.interrupt)
-//    .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
-//
-//    Thread.sleep(300)
-//
-//    val clientGot =
-//      NioClient.echo(local, ByteVector(array1)).runLog.run.map(_.toSeq).flatten
-//    stop.set(true).run
-//
-//    (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
-//      (clientGot == array1.toSeq.take(max)) :| "client got bytes before server closed connection"
-//
-//  }
-//
-//
+
+  property("connect-server-terminates") = secure {
+    val local = localAddress(11101)
+    val max: Int = 50
+    val size: Int = 5000
+    val array1 = Array.fill[Byte](size)(1)
+    Random.nextBytes(array1)
+
+    val stop = async.signal[Boolean]
+    stop.set(false).run
+
+    val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
+    stop.discrete.wye(NioServer.limit(local,max))(wye.interrupt)
+    .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
+
+    Thread.sleep(300)
+
+    val clientGot =
+      NioClient.echo(local, ByteVector(array1)).runLog.run.map(_.toSeq).flatten
+    stop.set(true).run
+
+    (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
+      (clientGot == array1.toSeq.take(max)) :| "client got bytes before server closed connection"
+
+  }
+
+
   // connects large number of client to server, each sending up to `size` data and server replying them back
   // at the end server shall have callected all data from all clients and all clients shall get echoed back
   // what they have sent to server

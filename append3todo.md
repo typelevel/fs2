@@ -121,7 +121,7 @@ Please remove from the list once done....
 - [x] fix mergeN drain
 
 ## NioSpec.scala
-- [ ] connect-server-terminates
+- [x] connect-server-terminates
 
 ## ProcessSpec.scala
 - [x] fill
