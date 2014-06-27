@@ -2,6 +2,7 @@ package scalaz.stream
 
 import org.scalacheck._
 import org.scalacheck.Prop._
+import scalaz.-\/
 import scodec.bits.ByteVector
 
 import Process._
@@ -65,8 +66,8 @@ object CompressSpec extends Properties("compress") {
   }
 
   property("inflate.uncompressed input") = secure {
-    emit(getBytes("Hello")).pipe(inflate()) match {
-      case Halt(ex: java.util.zip.DataFormatException) => true
+    emit(getBytes("Hello")).pipe(inflate()).attempt().toList match {
+      case List(-\/(ex: java.util.zip.DataFormatException)) => true
       case _ => false
     }
   }
