@@ -84,6 +84,7 @@ object Process1Spec extends Properties("Process1") {
           true
         }
         , "minimumOf" |: ps.minimumOf(_.length).toList === ls.map(_.length).minimum.toList
+        , "onComplete" |: Process(1,2,3).pipe(process1.id[Int] onComplete emit(4)).toList == List(1,2,3,4)
         , "reduce" |: pi.reduce(_ + _).toList === (if (li.nonEmpty) List(li.reduce(_ + _)) else List())
         , "scan" |: {
           li.scan(0)(_ - _) ===
@@ -160,4 +161,5 @@ object Process1Spec extends Properties("Process1") {
     .take(10).take(4).onComplete(emit(4)).runLog.run == Vector(0,1,2,3,4)) &&
       ("Inner Process cleanup was called" |: sync.get(1000) == Some(99))
   }
+
 }

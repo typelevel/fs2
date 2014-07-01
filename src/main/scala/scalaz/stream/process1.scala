@@ -296,15 +296,15 @@ object process1 {
    * Use `wye.flip` to convert it to right side
    */
   def liftY[I,O](p: Process1[I,O]) : Wye[I,Any,O] = {
-    def go(cur: Process1[I,O]) : Wye[I,Any,O] = {
-      Process.awaitL[I].flatMap { i =>
-        cur.feed1(i).unemit match {
-          case (out, Process.Halt(rsn)) => Process.emitAll(out) fby Process.Halt(rsn)
-          case (out, next)              => Process.emitAll(out) fby go(next)
-        }
-      }
-    }
-    go(p)
+    p.suspendStep.flatMap { s => s match {
+      case Cont(Await(_,rcv), next) =>
+        Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=>liftY(next(rsn)))
+
+      case Cont(emt@Emit(os), next) =>
+        emt onHalt(rsn=>liftY(next(rsn)))
+
+      case dn@Done(rsn) => dn.asHalt
+    }}
   }
 
   /** Emits the greatest element of the input. */
