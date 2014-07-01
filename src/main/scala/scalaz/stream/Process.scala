@@ -1265,7 +1265,12 @@ object Process {
     def toSortedMap[K, V](implicit isKV: O <:< (K, V), ord: Ordering[K]): SortedMap[K, V] =
       SortedMap(toIndexedSeq.asInstanceOf[Seq[(K, V)]]: _*)
     def toStream: Stream[O] = toIndexedSeq.toStream
-    def toSource: Process[Task, O] = emitAll(toIndexedSeq.map(o => Task.delay(o))).eval
+    def toSource: Process[Task, O] = self.suspendStep.flatMap ({
+      case Cont(emt@Emit(os), next) => emt onHalt (rsn => next(rsn).toSource)
+      case Cont(_, next)            => next(End).toSource
+      case dn@Done(rsn)             => dn.asHalt
+    })
+
   }
 
   implicit class LiftIOSyntax[O](p: Process[Nothing,O]) {
