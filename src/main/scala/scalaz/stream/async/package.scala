@@ -1,9 +1,10 @@
 package scalaz.stream
 
+import scalaz.\/
 import scalaz.concurrent.{Task, Strategy}
 import scalaz.stream.Process.emit
 import scalaz.stream.Process.halt
-import scalaz.stream.async.mutable.{BoundedQueue, WriterTopic, Topic, Signal}
+import scalaz.stream.async.mutable._
 import scalaz.stream.merge.{JunctionStrategies, Junction}
 
 /**
@@ -13,12 +14,12 @@ package object async {
 
   /**
    * Creates bounded queue that is bound by supplied max size bound.
-   * Please see [[scalaz.stream.async.mutable.BoundedQueue]] for more details.
+   * Please see [[scalaz.stream.async.mutable.Queue]] for more details.
    * @param max maximum size of queue. When <= 0 (default) queue is unbounded
    */
-  def boundedQueue[A](max: Int = 0)(implicit S: Strategy): BoundedQueue[A] = {
+  def boundedQueue[A](max: Int = 0)(implicit S: Strategy): Queue[A] = {
     val junction = Junction(JunctionStrategies.boundedQ[A](max), Process.halt)(S)
-    new BoundedQueue[A] {
+    new Queue[A] {
       def enqueueOne(a: A): Task[Unit] = junction.receiveOne(a)
       def dequeue: Process[Task, A] = junction.downstreamO
       def size: immutable.Signal[Int] = stateSignal(junction.downstreamW)
@@ -28,6 +29,23 @@ package object async {
     }
   }
 
+  /**
+   * Creates unbounded queue. see [[scalaz.stream.async.mutable.Queue]] for more
+   */
+  def unboundedQueue[A](implicit S: Strategy): Queue[A] =  boundedQueue(0)
+
+  /**
+   * Create a source that may be added to or halted asynchronously
+   * using the returned `Queue`. See `async.Queue`. As long as the
+   * `Strategy` is not `Strategy.Sequential`, enqueueing is
+   * guaranteed to take constant time, and consumers will be run on
+   * a separate logical thread. 
+   */
+  @deprecated("Use async.unboundedQueue instead", "0.5.0")
+  def queue[A](implicit S: Strategy) : (Queue[A], Process[Task, A]) = {
+   val q = unboundedQueue[A]
+    (q,q.dequeue)
+  }
 
   /**
    * Create a new continuous signal which may be controlled asynchronously.

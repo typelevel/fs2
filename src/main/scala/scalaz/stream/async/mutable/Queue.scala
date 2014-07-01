@@ -20,7 +20,7 @@ import scalaz.stream.Process.End
  * Please see [[scalaz.stream.merge.JunctionStrategies.boundedQ]] for more details.
  *
  */
-trait BoundedQueue[A] {
+trait Queue[A] {
 
   /**
    * Provides a Sink, that allows to enqueue `A` in this queue
