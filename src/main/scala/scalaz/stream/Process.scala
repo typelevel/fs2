@@ -1015,18 +1015,6 @@ object Process {
     awaken.dropWhile(!_).once.flatMap(b => if (b) p else halt)
 
   /**
-   * Produce a stream encapsulating some state, `S`. At each step,
-   * produces the current state, and an effectful function to set the
-   * state that will be produced next step.
-   */
-  def state[S](s0: S): Process[Task, (S, S => Task[Unit])] = {
-    await(Task.delay(async.signal[S]))(
-      sig => eval_(sig.set(s0)) fby
-        (sig.discrete.take(1) zip emit(sig.set _)).repeat
-    )
-  }
-
-  /**
    * A supply of `Long` values, starting with `initial`.
    * Each read is guaranteed to retun a value which is unique
    * across all threads reading from this `supply`.

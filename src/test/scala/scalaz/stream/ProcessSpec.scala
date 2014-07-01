@@ -182,17 +182,6 @@ object ProcessSpec extends Properties("Process") {
       IndexedSeq.range(0, 100)
   }
 
-  property("state") = secure {
-    val s = Process.state((0, 1))
-    val fib = Process(0, 1) ++ s.flatMap { case (get, set) =>
-      val (prev0, prev1) = get
-      val next = prev0 + prev1
-      eval(set((prev1, next))).drain ++ emit(next)
-    }
-    val l = fib.take(10).runLog.timed(3000).run.toList
-    l === List(0, 1, 1, 2, 3, 5, 8, 13, 21, 34)
-  }
-
   property("unfold") = secure {
     Process.unfold((0, 1)) {
       case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
