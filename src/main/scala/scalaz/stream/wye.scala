@@ -114,7 +114,6 @@ object wye {
   def interrupt[I]: Wye[Boolean, I, I] = {
     def go[I]: Wye[Boolean, I, I] =
       awaitBoth[Boolean, I].flatMap {
-        case ReceiveR(None) => halt
         case ReceiveR(i)    => emit(i) ++ go
         case ReceiveL(kill) => if (kill) halt else go
         case HaltOne(e)     => fail(e)
