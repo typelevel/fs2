@@ -1264,7 +1264,7 @@ object Process {
         cur.step match {
           case Cont(Emit(os),next) => go(next(End), acc fast_++ os)
           case Cont(_,next) => go(next(End),acc)
-          case Done(End) => acc
+          case Done(End) | Done(Kill) => acc
           case Done(rsn) => throw rsn
         }
       }
