@@ -125,7 +125,7 @@ object MergeNSpec extends Properties("mergeN") {
     sizeSig.close.run
 
     "mergeN and signal finished" |: running.get(3000).isDefined &&
-      ("max 25 were run in parallel" |: running.get.toList.flatten.filter(_ > 25).isEmpty)
+      (s"max 25 were run in parallel ${running.get.toList.flatten}" |: running.get.toList.flatten.filter(_ > 25).isEmpty)
 
   }
 
