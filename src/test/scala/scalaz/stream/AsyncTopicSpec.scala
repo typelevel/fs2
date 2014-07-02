@@ -172,14 +172,14 @@ object AsyncTopicSpec extends Properties("topic") {
 
   }
 
-  property("writer.state.consume") = secure {
-    val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)()
-    val result = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
-    topic.subscribe.runLog.runAsync(result.put)
-    Task.fork(topic.consumeOne(Process("one", "two", "three").toSource onComplete eval_(topic.close))).runAsync(_ => ())
-    result.get(3000).flatMap(_.toOption).toSeq.flatten ==
-      Vector(-\/(0L), -\/(3L), \/-(3), -\/(6L), \/-(3), -\/(11L), \/-(5))
-  }
+//  property("writer.state.consume") = secure {
+//    val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)()
+//    val result = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
+//    topic.subscribe.runLog.runAsync(result.put)
+//    Task.fork(topic.consumeOne(Process("one", "two", "three").toSource onComplete eval_(topic.close))).runAsync(_ => ())
+//    result.get(3000).flatMap(_.toOption).toSeq.flatten ==
+//      Vector(-\/(0L), -\/(3L), \/-(3), -\/(6L), \/-(3), -\/(11L), \/-(5))
+//  }
 
 
 }
