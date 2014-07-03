@@ -4,7 +4,8 @@ import org.scalacheck.Prop._
 import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
-import scalaz.{Nondeterminism, \/-, \/}
+import scalaz.stream.Process.End
+import scalaz.{-\/, \/-, \/}
 
 object QueueSpec extends Properties("queue") {
 
@@ -42,6 +43,8 @@ object QueueSpec extends Properties("queue") {
       val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
       t2.runAsync(values.put)
 
+      Thread.sleep(50) // delay to give chance for the `size` signal to register
+
       q.close.run
 
       val expectedSizes =
@@ -52,8 +55,8 @@ object QueueSpec extends Properties("queue") {
           up ++ up.reverse.drop(1)
         }
 
-      (values.get(3000) == Some(\/-(l.toVector))) :| "all values collected" &&
-        (sizes.get(3000) == Some(\/-(expectedSizes.toVector))) :| "all sizes collected"
+      (values.get(3000) == Some(\/-(l.toVector))) :| s"all values collected ${values.get(0)}" &&
+        (sizes.get(3000) == Some(\/-(expectedSizes.toVector))) :| s"all sizes collected ${sizes.get(0)} expected ${expectedSizes}"
   }
 
 
@@ -95,14 +98,14 @@ object QueueSpec extends Properties("queue") {
     //start pushing ++ stop, and that should make t2 to stop too
     t1.timed(3000).run
 
-    //try publish, shall be empty, terminated
+    //try publish, shall be empty, terminated, return End
     val publishClosed = q.enqueueOne(1).attemptRun
     //subscribe, shall be terminated
     val subscribeClosed = t3.attemptRun
 
-    (dequeued.get(3000) == Some(\/-(Vector(1,2,3)))) :| "Queue was terminated" &&
-      (publishClosed == \/-(())) :| s"Publisher is closed before elements are drained " &&
-      ((subscribeClosed == \/-(Vector()))) :| "Subscriber is closed after elements are drained"
+    (dequeued.get(3000) == Some(\/-(Vector(1,2,3)))) :| s"Queue was terminated ${dequeued.get(0)}" &&
+      (publishClosed == -\/(End)) :| s"Publisher is closed before elements are drained $publishClosed" &&
+      ((subscribeClosed == \/-(Vector()))) :| s"Subscriber is closed after elements are drained $subscribeClosed"
 
 
   }

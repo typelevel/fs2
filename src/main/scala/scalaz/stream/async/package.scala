@@ -15,17 +15,9 @@ package object async {
    * Please see [[scalaz.stream.async.mutable.Queue]] for more details.
    * @param max maximum size of queue. When <= 0 (default) queue is unbounded
    */
-  def boundedQueue[A](max: Int = 0)(implicit S: Strategy): Queue[A] = {
-    val junction = Junction(JunctionStrategies.boundedQ[A](max), Process.halt)(S)
-    new Queue[A] {
-      def enqueueOne(a: A): Task[Unit] = junction.receiveOne(a)
-      def dequeue: Process[Task, A] = junction.downstreamO
-      def size: immutable.Signal[Int] = stateSignal(junction.downstreamW)
-      def enqueueAll(xa: Seq[A]): Task[Unit] = junction.receiveAll(xa)
-      def enqueue: Sink[Task, A] = junction.upstreamSink
-      def fail(rsn: Throwable): Task[Unit] = junction.downstreamClose(rsn)
-    }
-  }
+  def boundedQueue[A](max: Int = 0)(implicit S: Strategy): Queue[A] =
+    Queue[A](max)
+
 
   /**
    * Creates unbounded queue. see [[scalaz.stream.async.mutable.Queue]] for more

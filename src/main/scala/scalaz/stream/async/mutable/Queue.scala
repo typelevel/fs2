@@ -3,7 +3,7 @@ package scalaz.stream.async.mutable
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process.End
 import scalaz.stream.async.immutable
-import scalaz.stream.{Process, Sink}
+import scalaz.stream.{Util, Process, Sink}
 import scalaz.{-\/, \/, \/-}
 
 
@@ -129,80 +129,96 @@ private[stream] object Queue {
     var unAcked: Vector[Throwable \/ Unit => Unit] = Vector.empty
 
     // if at least one GetSize was received will start to accumulate sizes change.
-    var sizes: Option[Vector[Int] \/ ((Throwable \/ Seq[Int]) => Unit)] = None
+    var sizes:  Vector[Int] \/ ((Throwable \/ Seq[Int]) => Unit) = -\/(Vector(0))
 
     // signals to any callback that this queue is closed with reason
     def signalClosed[B](cb: Throwable \/ B => Unit) = closed.foreach(rsn => S(cb(-\/(rsn))))
 
     // signals that size has been changed.
-    def signalSize(sz: Int): Unit = sizes.foreach { curr =>
-      val next = curr.fold(v => v :+ sz, cb => {cb(\/-(Seq(sz))); Vector.empty[Int] })
-      sizes = Some(-\/(next))
+    def signalSize(sz: Int): Unit = sizes.fold(
+      szs => {  sizes = -\/(szs :+ sz) }
+      , cb => { S(cb(\/-(Seq(sz)))) ; sizes = -\/(Vector.empty[Int]) }
+    )
+
+    // publishes single size change
+    def publishSize(cb: (Throwable \/ Seq[Int]) => Unit): Unit = {
+      sizes match {
+        case -\/(v) if v.nonEmpty => S(cb(\/-(v))); sizes = -\/(Vector.empty[Int])
+        case _                    => sizes = \/-(cb)
+      }
     }
 
+    //dequeue one element from the queue
+    def dequeueOne(cb: (Throwable \/ A => Unit)): Unit = {
+      queued.headOption match {
+        case Some(a) =>
+          S(cb(\/-(a)))
+          queued = queued.tail
+          signalSize(queued.size)
+          if (unAcked.size > 0 && bound > 0 && queued.size < bound) {
+            val ackCount = bound - queued.size min unAcked.size
+            unAcked.take(ackCount).foreach(cb => S(cb(\/-(()))))
+            unAcked = unAcked.drop(ackCount)
+          }
+
+        case None =>
+          consumers = consumers :+ cb
+      }
+    }
+
+    def enqueueOne(as: Seq[A], cb: Throwable \/ Unit => Unit) = {
+      import scalaz.stream.Util._
+      queued = queued fast_++ as
+
+      if (consumers.size > 0 && queued.size > 0) {
+        val deqCount = consumers.size min queued.size
+
+        consumers.take(deqCount).zip(queued.take(deqCount))
+        .foreach { case (cb, a) => S(cb(\/-(a))) }
+
+        consumers = consumers.drop(deqCount)
+        queued = queued.drop(deqCount)
+      }
+
+      if (bound > 0 && queued.size >= bound) unAcked = unAcked :+ cb
+      else S(cb(\/-(())))
+
+      signalSize(queued.size)
+    }
+
+    def stop(rsn: Throwable, cb: Throwable \/ Unit => Unit): Unit = {
+      closed = Some(rsn)
+      if (queued.nonEmpty) {
+        unAcked.foreach(cb => S(cb(-\/(rsn))))
+      } else {
+        (consumers ++ unAcked).foreach(cb => S(cb(-\/(rsn))))
+        consumers = Vector.empty
+        sizes.foreach(cb => S(cb(-\/(rsn))))
+        sizes = -\/(Vector.empty)
+      }
+      unAcked = Vector.empty
+      S(cb(\/-(())))
+    }
+
+
     val actor: Actor[M[A]] = Actor({ (m: M[A]) =>
+      Util.debug(s"### QUE m: $m | cls: $closed | sizes $sizes")
       if (closed.isEmpty) m match {
 
-        case Dequeue(cb: (Throwable \/ A => Unit)@unchecked) =>
-          queued.lastOption match {
-            case Some(a) =>
-              S(cb(\/-(a)))
-              queued = queued.tail
-              signalSize(queued.size)
-              if (unAcked.size > 0 && bound > 0 && queued.size < bound) {
-                val ackCount = bound - queued.size min unAcked.size
-                unAcked.take(ackCount).foreach(cb => S(cb(\/-(()))))
-                unAcked = unAcked.drop(ackCount)
-              }
-
-            case None =>
-              consumers = consumers :+ cb
-          }
-
-        case Enqueue(as, cb) =>
-          queued = queued ++ as
-
-          if (consumers.size > 0 && queued.size > 0) {
-            val deqCount = consumers.size min queued.size
-
-            consumers.take(deqCount).zip(queued.take(deqCount))
-            .foreach { case (cb, a) => S(cb(\/-(a))) }
-
-            consumers = consumers.drop(deqCount)
-            queued = queued.drop(deqCount)
-          }
-
-          if (bound > 0 && queued.size >= bound) unAcked = unAcked :+ cb
-          else S(cb(\/-(())))
-
-          signalSize(queued.size)
-
-
-        case Fail(rsn, cb) =>
-          closed = Some(rsn)
-          (consumers ++ unAcked).foreach(cb => S(cb(-\/(rsn))))
-          consumers = Vector.empty
-          unAcked = Vector.empty
-          queued = Vector.empty
-
-          sizes.collect({ case \/-(cb) => cb }).foreach(cb => S(cb(-\/(rsn))))
-          sizes = None
-
-          S(cb(\/-(())))
-
-        case GetSize(cb) => sizes match {
-          case Some(\/-(_))     => //impossible
-          case Some(-\/(sizes)) => cb(\/-(sizes))
-          case None             => sizes = Some(\/-(cb))
-        }
+        case Dequeue(cb)     => dequeueOne(cb.asInstanceOf[Throwable \/ A => Unit])
+        case Enqueue(as, cb) => enqueueOne(as, cb)
+        case Fail(rsn, cb)   => stop(rsn, cb)
+        case GetSize(cb)     => publishSize(cb)
 
 
       } else m match {
 
-        case Dequeue(cb)     => signalClosed(cb)
-        case Enqueue(as, cb) => signalClosed(cb)
-        case GetSize(cb)     => signalClosed(cb)
-        case Fail(_, cb)   => S(cb(\/-(())))
+        case Dequeue(cb) if queued.nonEmpty => dequeueOne(cb.asInstanceOf[Throwable \/ A => Unit])
+        case Dequeue(cb)                    => signalClosed(cb)
+        case Enqueue(as, cb)                => signalClosed(cb)
+        case GetSize(cb) if queued.nonEmpty => publishSize(cb)
+        case GetSize(cb)                    => signalClosed(cb)
+        case Fail(_, cb)                    => S(cb(\/-(())))
 
       }
 
@@ -215,7 +231,13 @@ private[stream] object Queue {
       def enqueue: Sink[Task, A] = Process.constant(enqueueOne _)
       def enqueueOne(a: A): Task[Unit] = enqueueAll(Seq(a))
       def dequeue: Process[Task, A] = Process.repeatEval(Task.async[A](cb => actor ! Dequeue(cb)))
-      def size: immutable.Signal[Int] = ??? // todo -> hook to signal 
+      val size: immutable.Signal[Int] = {
+        val sizeSource =
+          Process.repeatEval(Task.async[Seq[Int]](cb => actor ! GetSize(cb)))
+          .flatMap(Process.emitAll)
+        Signal(sizeSource.map(Signal.Set.apply), haltOnSource =  true)(S)
+      }
+
       def enqueueAll(xa: Seq[A]): Task[Unit] = Task.async(cb => actor ! Enqueue(xa,cb))
       def fail(rsn: Throwable): Task[Unit] = Task.async(cb => actor ! Fail(rsn,cb))
     }
