@@ -1,11 +1,9 @@
 package scalaz.stream
 
-import scalaz.\/
-import scalaz.concurrent.{Task, Strategy}
-import scalaz.stream.Process.emit
-import scalaz.stream.Process.halt
+import scalaz.concurrent.{Strategy, Task}
+import scalaz.stream.Process.{emit, halt}
 import scalaz.stream.async.mutable._
-import scalaz.stream.merge.{JunctionStrategies, Junction}
+import scalaz.stream.merge.{Junction, JunctionStrategies}
 
 /**
  * Created by pach on 03/05/14.
@@ -52,16 +50,19 @@ package object async {
    * All views into the returned signal are backed by the same underlying
    * asynchronous `Ref`.
    */
-  def signal[A](implicit S: Strategy): Signal[A] = Signal(halt)
+  def signal[A](implicit S: Strategy): Signal[A] =
+    Signal(halt, haltOnSource = false)
 
   /**
    * Converts discrete process to signal. Note that, resulting signal must be manually closed, in case the
-   * source process would terminate. However if the source terminate with failure, the signal is terminated with that
+   * source process would terminate (see `haltOnSource`).
+   * However if the source terminate with failure, the signal is terminated with that
    * failure
-   * @param source discrete process publishing values to this signal
+   * @param source          discrete process publishing values to this signal
+   * @param haltOnSource    closes the given signal when the `source` terminates
    */
-  def toSignal[A](source: Process[Task, A])(implicit S: Strategy): mutable.Signal[A] =
-    Signal(Process(source.map(Signal.Set(_))))
+  def toSignal[A](source: Process[Task, A], haltOnSource: Boolean = false)(implicit S: Strategy): mutable.Signal[A] =
+    Signal(source.map(Signal.Set(_)), haltOnSource)
 
   /**
    * A signal constructor from discrete stream, that is backed by some sort of stateful primitive

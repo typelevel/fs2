@@ -75,7 +75,7 @@ private[stream] object WriterTopic {
 
 
   def apply[W, I, O](writer: Writer1[W, I, O])(source: Process[Task, I], haltOnSource: Boolean = false)(implicit S: Strategy): WriterTopic[W, I, O] = {
-    import Util._
+    import scalaz.stream.Util._
     sealed trait M
 
     case class Subscribe(sub: Subscription, cb: (Throwable \/ Unit) => Unit) extends M
@@ -88,15 +88,20 @@ private[stream] object WriterTopic {
     class Subscription(var state: (Vector[W \/ O]) \/ ((Throwable \/ Seq[W \/ O]) => Unit)) {
 
       def getOrAwait(cb: ((Throwable \/ Seq[W \/ O]) => Unit)): Unit = state match {
+        case -\/(v) if v.isEmpty => state = \/-(cb)
         case -\/(v) => state = -\/(Vector.empty); S(cb(\/-(v)))
         case \/-(_) => state = \/-(cb) //impossible
       }
 
 
-      def publish(wo: Seq[W \/ O]): Unit = state match {
-        case -\/(v) => state = -\/(v fast_++ wo)
-        case \/-(cb) => state = -\/(Vector.empty); S(cb(\/-(wo)))
+      def publish(wo: Seq[W \/ O]): Unit = {
+        val ns = state
+        state match {
+          case -\/(v)  => state = -\/(v fast_++ wo)
+          case \/-(cb) => state = -\/(Vector.empty); S(cb(\/-(wo)))
+        }
       }
+
       def close(rsn: Throwable): Unit = state match {
         case \/-(cb) =>
           state = -\/(Vector.empty)
@@ -104,6 +109,13 @@ private[stream] object WriterTopic {
 
         case _ => // no-op
       }
+
+      def flushOrClose(rsn: Throwable, cb: (Throwable \/ Seq[W \/ O]) => Unit): Unit = state match {
+        case -\/(v) if v.isEmpty => state = \/-(cb); close(rsn)
+        case -\/(v)              => getOrAwait(cb)
+        case \/-(cb)             => //impossible
+      }
+
     }
 
     ///////////////////////
@@ -132,13 +144,14 @@ private[stream] object WriterTopic {
             case _ => subscriptions.foreach(_.close(rsn))
           }
       }
+      subscriptions = Vector.empty
     }
 
     def publish(is: Seq[I]) = {
       process1.feed(is)(w).unemit match {
         case (wos, next) =>
           w = next
-          lastW = wos.collect({ case -\/(w) => w }).lastOption
+          lastW = wos.collect({ case -\/(w) => w }).lastOption orElse lastW
           if (wos.nonEmpty) subscriptions.foreach(_.publish(wos))
           next match {
             case hlt@Halt(rsn) =>  fail(rsn)
@@ -151,44 +164,55 @@ private[stream] object WriterTopic {
 
     def getNext(p: Process[Task, I]) = {
       upState= Some(\/-(
-        p.runAsync { actor ! Upstream(_) }
+        p.runAsync({ actor ! Upstream(_) })(S)
       ))
     }
 
-    actor = Actor[M]({
+    actor = Actor[M](m => {
+      debug(s">>> IN:  m: $m  | sub: $subscriptions | lw: $lastW | clsd: $closed | upState: $upState | wrtr: $writer")
+      closed.fold(m match {
+        case Subscribe(sub, cb) =>
+          subscriptions = subscriptions :+ sub
+          lastW.foreach(w => sub.publish(Seq(-\/(w))))
+          S(cb(\/-(())))
+          if (upState.isEmpty) getNext(source)
 
-      case Subscribe(sub, cb) =>
-        subscriptions = subscriptions :+ sub
-        lastW.foreach(w => sub.publish(Seq(-\/(w))))
-        S(cb(\/-(())))
-        if (upState.isEmpty) getNext(source)
-
-      case UnSubscribe(sub, cb) =>
-        subscriptions = subscriptions.filterNot(_ == sub)
-        S(cb(\/-(())))
+        case UnSubscribe(sub, cb) =>
+          subscriptions = subscriptions.filterNot(_ == sub)
+          S(cb(\/-(())))
 
 
-      case Ready(sub,cb) =>
-        sub.getOrAwait(cb)
+        case Ready(sub, cb) =>
+          debug(s"||| RDY $sub | ${sub.state }")
+          sub.getOrAwait(cb)
 
-      case Upstream(-\/(rsn)) =>
-        if (haltOnSource) fail(rsn)
-        upState = Some(-\/(rsn))
+        case Upstream(-\/(rsn)) =>
+          if (haltOnSource || rsn != End) fail(rsn)
+          upState = Some(-\/(rsn))
 
-      case Upstream(\/-((is, next))) =>
-        publish(is)
-        getNext(Util.Try(next(End)))
+        case Upstream(\/-((is, next))) =>
+          publish(is)
+          getNext(Util.Try(next(End)))
 
-      case Publish(is, cb) =>
-        publish(is)
-        S(cb(\/-(())))
+        case Publish(is, cb) =>
+          publish(is)
+          S(cb(\/-(())))
 
-      case Fail(rsn, cb) =>
-        fail(rsn)
-        upState.collect { case \/-(interrupt) => interrupt(Kill) }
-        S(cb(\/-(())))
+        case Fail(rsn, cb) =>
+          fail(rsn)
+          upState.collect { case \/-(interrupt) => interrupt(Kill) }
+          S(cb(\/-(())))
 
-    })
+      })(rsn => m match {
+        case Subscribe(_, cb)         => S(cb(-\/(rsn)))
+        case UnSubscribe(_, cb)       => S(cb(\/-(())))
+        case Ready(sub, cb)           => sub.flushOrClose(rsn,cb)
+        case Publish(_, cb)           => S(cb(-\/(rsn)))
+        case Fail(_, cb)              => S(cb(\/-(())))
+        case Upstream(-\/(_))         => //no-op
+        case Upstream(\/-((_, next))) => S(Try(next(Kill)).runAsync(_ => ()))
+      })
+    })(S)
 
 
     new WriterTopic[W, I, O] {
@@ -197,11 +221,11 @@ private[stream] object WriterTopic {
       def fail(err: Throwable): Task[Unit] = Task.async { cb => actor ! Fail(err, cb) }
 
       def subscribe: Writer[Task, W, O] = Process.suspend {
-        val subscription = new Subscription(-\/(Vector.empty[W \/ O]))
-        val register = Task.async[Unit] { cb => Subscribe(subscription, cb) }
-        val unRegister = Task.async[Unit] { cb => UnSubscribe(subscription, cb) }
-        val oneChunk = Task.async[Seq[W \/ O]] { cb => Ready(subscription, cb) }
 
+        val subscription = new Subscription(-\/(Vector.empty[W \/ O]))
+        val register = Task.async[Unit] { cb => actor ! Subscribe(subscription, cb) }
+        val unRegister = Task.async[Unit] { cb => actor ! UnSubscribe(subscription, cb) }
+        val oneChunk = Task.async[Seq[W \/ O]] { cb => actor ! Ready(subscription, cb) }
         (Process.eval_(register) ++ Process.repeatEval(oneChunk).flatMap(Process.emitAll))
         .onComplete(Process.eval_(unRegister))
       }
