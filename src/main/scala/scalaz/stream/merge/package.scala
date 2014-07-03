@@ -84,7 +84,7 @@ package object merge {
 
       //evaluates next step of the source
       def nextStep(from: Process[Task, Process[Task, A]]) =
-        Either3.middle3(
+        Either3.middle3({
           from.runAsync({
             case -\/(rsn) =>
               actor ! FinishedSource(rsn)
@@ -95,7 +95,7 @@ package object merge {
                 case _   => next(rsn)
               })
           })
-        )
+        })
 
       // fails the signal and queue with given reason
       def fail(rsn: Throwable): Unit = {
@@ -112,18 +112,21 @@ package object merge {
         done.set(false).map { _ => state = nextStep(source) }
 
 
-      actor = Actor[M]({
+      actor = Actor[M]({m =>
+        Util.debug(s"~~~ NJN m: $m | open: $opened | state: $state")
+        m match {
         // next merged process is available
         // run it with chance to interrupt
         // and give chance to start next process if not bounded
         case Offer(p, next) =>
           opened = opened + 1
-          if (opened < maxOpen) state = nextStep(Util.Try(next(End)))
+          if (maxOpen <= 0 || opened < maxOpen) state = nextStep(Util.Try(next(End)))
           else state = Either3.right3(next)
 
           //runs the process with a chance to interrupt it using signal `done`
           //interrupt is done via setting the done to `true`
           done.discrete.wye(p)(wye.interrupt)
+          .to(q.enqueue)
           .run.runAsync { res =>
             actor ! Finished(res)
           }
@@ -167,8 +170,9 @@ package object merge {
             case Middle3(interrupt) => interrupt(Kill); rsn
             case Right3(next)       => rsn
           })
+          S(cb(\/-(())))
 
-      })
+      }})
 
 
       (eval_(start) fby q.dequeue)
