@@ -74,7 +74,7 @@ trait WriterTopic[W, I, O] {
 private[stream] object WriterTopic {
 
 
-  def apply[W, I, O](writer: Writer1[W, I, O])(source: Process[Task, I], haltOnSource: Boolean = false)(implicit S: Strategy): WriterTopic[W, I, O] = {
+  def apply[W, I, O](writer: Writer1[W, I, O])(source: Process[Task, I], haltOnSource: Boolean)(implicit S: Strategy): WriterTopic[W, I, O] = {
     import scalaz.stream.Util._
     sealed trait M
 
@@ -148,6 +148,7 @@ private[stream] object WriterTopic {
     }
 
     def publish(is: Seq[I]) = {
+      debug(s"@@@ PUB IS: $is W: $w ")
       process1.feed(is)(w).unemit match {
         case (wos, next) =>
           w = next
@@ -175,7 +176,10 @@ private[stream] object WriterTopic {
           subscriptions = subscriptions :+ sub
           lastW.foreach(w => sub.publish(Seq(-\/(w))))
           S(cb(\/-(())))
-          if (upState.isEmpty) getNext(source)
+          if (upState.isEmpty) {
+            publish(Nil) // causes un-emit of `w`
+            getNext(source)
+          }
 
         case UnSubscribe(sub, cb) =>
           subscriptions = subscriptions.filterNot(_ == sub)

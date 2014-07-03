@@ -172,14 +172,19 @@ object AsyncTopicSpec extends Properties("topic") {
 
   }
 
-//  property("writer.state.consume") = secure {
-//    val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)()
-//    val result = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
-//    topic.subscribe.runLog.runAsync(result.put)
-//    Task.fork(topic.consumeOne(Process("one", "two", "three").toSource onComplete eval_(topic.close))).runAsync(_ => ())
-//    result.get(3000).flatMap(_.toOption).toSeq.flatten ==
-//      Vector(-\/(0L), -\/(3L), \/-(3), -\/(6L), \/-(3), -\/(11L), \/-(5))
-//  }
+  //tests a topic from discrete process
+  property("from.discrete") = secure {
+    val topic = async.writerTopic[Long,String,Int](WriterHelper.w)(Process(1,2,3,4).map(i=>"*"*i).toSource)
+    val r = topic.subscribe.take(8).runLog.run
+    r == Vector(-\/(1),\/-(1) ,-\/(3) ,\/-(2)  ,-\/(6) ,\/-(3)  ,-\/(10) ,\/-(4))
+  }
+
+  //tests a topic from discrete process
+  property("from.discrete") = secure {
+    val topic = async.writerTopic[Long,String,Int](WriterHelper.w onComplete (tell(0L) ++ emitO(0)))(Process(1,2,3,4).map(i=>"*"*i), haltOnSource = true)
+    val r = topic.subscribe.take(10).runLog.run
+    r == Vector(-\/(1),\/-(1) ,-\/(3) ,\/-(2)  ,-\/(6) ,\/-(3)  ,-\/(10) ,\/-(4), -\/(0), \/-(0))
+  }
 
 
 }
