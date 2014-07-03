@@ -108,6 +108,14 @@ object process1 {
   def collectFirst[I, I2](pf: PartialFunction[I, I2]): Process1[I, I2] =
     collect(pf).take(1)
 
+  /**
+   * Remove any leading emitted values that occur before the first successful
+   * `Await`. That means that the returned `Process1` will produce output only
+   * if it has consumed at least one input element.
+   */
+  def drainLeading[A, B](p: Process1[A, B]): Process1[A, B] =
+    await1[A].flatMap(a => feed1(a)(p))
+
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I, I] =
     if (n <= 0) id[I]
@@ -538,10 +546,6 @@ object process1 {
    */
   def sum[N](implicit N: Numeric[N]): Process1[N, N] =
     reduce(N.plus)
-
-  /** Produce the given `Process1` non-strictly. */
-  def suspend1[A,B](p: => Process1[A,B]): Process1[A,B] =
-    await1[A].flatMap(a => feed1(a)(p))
 
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I, I] =

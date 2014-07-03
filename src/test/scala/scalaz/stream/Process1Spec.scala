@@ -116,6 +116,13 @@ object Process1Spec extends Properties("Process1") {
     pi.pipe(unchunk).toList == pi.toList.flatten
   }
 
+  property("drainLeading") = secure {
+    val p = emit(1) ++ await1[Int]
+    Process().pipe(p).toList === List(1) &&
+      Process().pipe(drainLeading(p)).toList === List() &&
+      Process(2).pipe(drainLeading(p)).toList === List(1, 2)
+  }
+
   property("liftY") = forAll { (pi: Process0[Int], ignore: Process0[String]) =>
     pi.pipe(sum).toList == (pi: Process[Task,Int]).wye(ignore)(process1.liftY(sum)).runLog.run.toList
   }
