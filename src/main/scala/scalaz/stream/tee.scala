@@ -129,46 +129,44 @@ object tee  {
   def feed1R[I,I2,O](i2: I2)(t: Tee[I,I2,O]): Tee[I,I2,O] =
     feedR(Vector(i2))(t)
 
-
   /**
-   * Signals, that _left_ side of tee terminated with supplied reason
-   * That causes all succeeding `AwaitL` to terminate with supplied
-   * reason
+   * Signals, that _left_ side of tee terminated.
+   * That causes all succeeding `AwaitL` to terminate with Kill.
    */
-  def haltL[I,I2,O](tee:Tee[I,I2,O], rsn:Throwable) : Tee[I,I2,O] ={
+  def disconnectL[I,I2,O](tee:Tee[I,I2,O]) : Tee[Nothing,I2,O] ={
     tee.suspendStep.flatMap  {
-      case Cont(emt@Emit(os),next) =>
-        emt ++ haltL(Try(next(End)),rsn)
+      case Cont(e@Emit(_),n) =>
+        e onHalt { rsn => disconnectL(Try(n(rsn))) }
 
-      case Cont(AwaitL.receive(rcv), next) =>
-        haltL(Try(rcv(left(rsn))) onHalt next,rsn)
+      case Cont(AwaitL.receive(rcv), n) =>
+        disconnectL(Try(rcv(left(Kill))) onHalt n).swallowKill
 
-      case Cont(AwaitR(rcv), next) =>
-        await(R[I2]: Env[I,I2]#T[I2])(i2 => haltL(Try(rcv(i2)),rsn))
-        .onHalt(rsn0 => haltL(Try(next(rsn0)),rsn))
+      case Cont(AwaitR(rcv), n) =>
+        await(R[I2]: Env[Nothing,I2]#T[I2])(i2 => disconnectL(Try(rcv(i2))))
+        .onHalt(rsn0 => disconnectL(Try(n(rsn0))))
 
-      case dn@Done(rsn) => dn.asHalt
+      case dn@Done(_) => dn.asHalt
     }
   }
 
 
   /**
-   * Signals, that _right_ side of tee terminated with supplied reason
-   * That causes all succeeding `AwaitR` to terminate with supplied
-   * reason
+   * Signals, that _right_ side of tee terminated.
+   * That causes all succeeding `AwaitR` to terminate with Kill.
    */
-  def haltR[I,I2,O](tee:Tee[I,I2,O], rsn:Throwable) : Tee[I,I2,O] ={
+  def disconnectR[I,I2,O](tee:Tee[I,I2,O]) : Tee[I,Nothing,O] ={
     tee.suspendStep.flatMap  {
-      case Cont(emt@Emit(os),next) => emt ++ haltR(Try(next(End)),rsn)
+      case Cont(e@Emit(os),n) =>
+        e onHalt { rsn => disconnectR(Try(n(rsn))) }
 
-      case Cont(AwaitR.receive(rcv), next) =>
-        haltR(Try(rcv(left(rsn))) onHalt next,rsn)
+      case Cont(AwaitR.receive(rcv), n) =>
+        disconnectR(Try(rcv(left(Kill))) onHalt n).swallowKill
 
-      case Cont(AwaitL(rcv), next) =>
-        await(L[I]: Env[I,I2]#T[I])(i => haltR(Try(rcv(i)),rsn))
-        .onHalt(rsn0 => haltR(Try(next(rsn0)),rsn))
+      case Cont(AwaitL(rcv), n) =>
+        await(L[I]: Env[I,Nothing]#T[I])(i => disconnectR(Try(rcv(i))))
+        .onHalt(rsn0 => disconnectR(Try(n(rsn0))))
 
-      case dn@Done(rsn) => dn.asHalt
+      case dn@Done(_) => dn.asHalt
     }
   }
 
