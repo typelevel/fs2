@@ -1,9 +1,11 @@
 package scalaz.stream.async.mutable
 
 
+import scalaz.\/
+import scalaz.\/._
 import scalaz.concurrent._
 import scalaz.stream.Process._
-import scalaz.stream.{Sink, wye, Process}
+import scalaz.stream._
 import scalaz.stream.async.mutable
 import java.util.concurrent.atomic.AtomicReference
 import scalaz.stream.merge.{Junction, JunctionStrategies}
@@ -100,36 +102,52 @@ object Signal {
   case class CompareAndSet[A](f:Option[A] => Option[A]) extends Msg[A]
 
 
-  /**
-   * Fails the current signal with supplied exception. Acts similarly as `Signal.fail`
-   */
-  case class Fail(err:Throwable) extends Msg[Nothing]
+
+  protected[async] def signalWriter[A]: Writer1[A,Msg[A],Nothing] = {
+    def go(oa:Option[A]) : Writer1[A,Msg[A],Nothing] =
+    receive1[Msg[A], A \/ Nothing] {
+      case Set(a) => tell(a) fby go(Some(a))
+      case CompareAndSet(f:(Option[A] => Option[A])@unchecked) =>
+        val next = f(oa)
+        next match {
+          case Some(a) => tell(a) fby go(Some(a))
+          case None => go(oa)
+        }
+    }
+    go(None)
+  }
 
 
-  protected[async] def apply[A](source:Process[Task,Process[Task,Msg[A]]])(implicit S: Strategy) : Signal[A] = {
-    val junction = Junction(JunctionStrategies.signal[A], source)(S)
+  protected[async] def apply[A](source:Process[Task,Msg[A]], haltOnSource : Boolean)(implicit S: Strategy) : Signal[A] = {
+    val topic = WriterTopic.apply[A,Msg[A],Nothing](signalWriter)(source, haltOnSource)
     new mutable.Signal[A] {
-      def changed: Process[Task, Boolean] = discrete.map(_ => true) merge Process.constant(false)
-      def discrete: Process[Task, A] = junction.downstreamW
-      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
-      def changes: Process[Task, Unit] = discrete.map(_ => ())
-      def sink: Sink[Task, Msg[A]] = junction.upstreamSink
+      def changed: Process[Task, Boolean] = topic.signal.changed
+      def discrete: Process[Task, A] = topic.signal.discrete
+      def continuous: Process[Task, A] = topic.signal.continuous
+      def changes: Process[Task, Unit] = topic.signal.changes
+      def sink: Sink[Task, Msg[A]] = topic.publish
       def get: Task[A] = discrete.take(1).runLast.flatMap {
         case Some(a) => Task.now(a)
         case None    => Task.fail(End)
       }
       def getAndSet(a: A): Task[Option[A]] = {
-        val refa = new AtomicReference[Option[A]](None)
-        val fa =  (oa: Option[A]) => {refa.set(oa); Some(a) }
-        junction.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
+        for {
+          ref <- Task.delay(new AtomicReference[Option[A]](None))
+          _ <- topic.publishOne(CompareAndSet[A](curr => curr.map{ca => ref.set(Some(ca)); a}))
+        } yield ref.get()
       }
-      def set(a: A): Task[Unit] = junction.receiveOne(Signal.Set(a))
+      def set(a: A): Task[Unit] = topic.publishOne(Set(a))
       def compareAndSet(f: (Option[A]) => Option[A]): Task[Option[A]] = {
-        val refa = new AtomicReference[Option[A]](None)
-        val fa = (oa: Option[A]) => {val set = f(oa); refa.set(set orElse oa); set }
-        junction.receiveOne(Signal.CompareAndSet(fa)).flatMap(_ => Task.now(refa.get()))
+        for {
+          ref <- Task.delay(new AtomicReference[Option[A]](None))
+          _ <- topic.publishOne(CompareAndSet[A]({ curr =>
+            val r = f(curr)
+            ref.set(r orElse curr)
+            r
+          }))
+        } yield ref.get()
       }
-      def fail(error: Throwable): Task[Unit] = junction.downstreamClose(error)
+      def fail(error: Throwable): Task[Unit] = topic.fail(error)
     }
 
 

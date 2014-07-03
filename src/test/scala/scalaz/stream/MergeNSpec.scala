@@ -33,52 +33,65 @@ object MergeNSpec extends Properties("mergeN") {
   }
 
 
+  // tests that when downstream terminates,
+  // all cleanup code is called on upstreams
   property("source-cleanup-down-done") = secure {
-    val cleanups = new AtomicInteger(0)
-    val srcCleanup = new AtomicInteger(0)
+
+    val cleanupQ = async.boundedQueue[Int]()
+    val cleanups = new SyncVar[Throwable \/ IndexedSeq[Int]]
 
     val ps =
       emitAll(for (i <- 0 until 10) yield {
-        (Process.constant(i+100) onComplete eval(Task.delay{Thread.sleep(100); cleanups.incrementAndGet()}))
-      }).toSource onComplete eval_(Task.delay(srcCleanup.set(99)))
+        Process.constant(i+100)  onComplete eval_(cleanupQ.enqueueOne(i))
+      }).toSource onComplete eval_(cleanupQ.enqueueOne(99))
 
+    cleanupQ.dequeue.take(11).runLog.runAsync(cleanups.put)
 
-
-    //this makes sure we see at least one value from sources
+    // this makes sure we see at least one value from sources
     // and therefore we won`t terminate downstream to early.
     merge.mergeN(ps).scan(Set[Int]())({
       case (sum, next) => sum + next
     }).takeWhile(_.size < 10).runLog.timed(3000).run
 
-    (cleanups.get == 10) :| s"Cleanups were called on upstreams: ${cleanups.get}" &&
-      (srcCleanup.get == 99) :| "Cleanup on source was called"
+
+
+    (cleanups.get(3000).isDefined &&
+      cleanups.get(0).get.isRight &&
+      cleanups.get(0).get.toList.flatten.size == 11) :| s"Cleanups were called on upstreams: ${cleanups.get(0)}"
   }
+
 
   // unlike source-cleanup-down-done it focuses on situations where upstreams are in async state,
   // and thus will block until interrupted.
   property("source-cleanup-async-down-done") = secure {
-    val cleanups = new AtomicInteger(0)
-    val srcCleanup = new AtomicInteger(0)
+    val cleanupQ = async.boundedQueue[Int]()
+    val cleanups = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    cleanupQ.dequeue.take(11).runLog.runAsync(cleanups.put)
+
+
     //this below is due the non-thread-safety of scala object, we must memoize this here
     val delayEach10 =  Process.awakeEvery(10 seconds)
 
-    def oneUp(index:Int) = (emit(index).toSource ++ delayEach10.map(_=>index)) onComplete
-      eval(Task.delay{val i = cleanups.incrementAndGet();Thread.sleep(100);i})
+    def oneUp(index:Int) =
+      (emit(index).toSource ++ delayEach10.map(_=>index))
+      .onComplete(eval_(cleanupQ.enqueueOne(index)))
 
     val ps =
       (emitAll(for (i <- 0 until 10) yield oneUp(i)).toSource ++ delayEach10.drain) onComplete
-        eval_(Task.delay(srcCleanup.set(99)))
+        eval_(cleanupQ.enqueueOne(99))
 
 
     merge.mergeN(ps).takeWhile(_ < 9).runLog.timed(3000).run
 
-    (cleanups.get == 10) :| s"Cleanups were called on upstreams: ${cleanups.get}" &&
-      (srcCleanup.get == 99) :| "Cleanup on source was called"
+    (cleanups.get(3000).isDefined &&
+      cleanups.get(0).get.isRight &&
+      cleanups.get(0).get.toList.flatten.size == 11) :| s"Cleanups were called on upstreams: ${cleanups.get(0)}"
   }
+
 
   //merges 10k of streams, each with 100 of elements
   property("merge-million") = secure {
-    val count = 10000
+    val count = 2000
     val eachSize = 100
 
     val ps =
@@ -88,7 +101,7 @@ object MergeNSpec extends Properties("mergeN") {
 
     val result = merge.mergeN(ps).fold(0)(_ + _).runLast.timed(120000).run
 
-    (result == Some(49500000)) :| "All items were emitted"
+    (result == Some(9900000)) :| s"All items were emitted: $result"
   }
 
   property("merge-maxOpen") = secure {
@@ -125,7 +138,7 @@ object MergeNSpec extends Properties("mergeN") {
     sizeSig.close.run
 
     "mergeN and signal finished" |: running.get(3000).isDefined &&
-      ("max 25 were run in parallel" |: running.get.toList.flatten.filter(_ > 25).isEmpty)
+      (s"max 25 were run in parallel ${running.get.toList.flatten}" |: running.get.toList.flatten.filter(_ > 25).isEmpty)
 
   }
 

@@ -1,11 +1,9 @@
 package scalaz.stream
 
-import scalaz.\/
-import scalaz.concurrent.{Task, Strategy}
-import scalaz.stream.Process.emit
+import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process.halt
 import scalaz.stream.async.mutable._
-import scalaz.stream.merge.{JunctionStrategies, Junction}
+import scalaz.stream.merge.{Junction, JunctionStrategies}
 
 /**
  * Created by pach on 03/05/14.
@@ -17,17 +15,9 @@ package object async {
    * Please see [[scalaz.stream.async.mutable.Queue]] for more details.
    * @param max maximum size of queue. When <= 0 (default) queue is unbounded
    */
-  def boundedQueue[A](max: Int = 0)(implicit S: Strategy): Queue[A] = {
-    val junction = Junction(JunctionStrategies.boundedQ[A](max), Process.halt)(S)
-    new Queue[A] {
-      def enqueueOne(a: A): Task[Unit] = junction.receiveOne(a)
-      def dequeue: Process[Task, A] = junction.downstreamO
-      def size: immutable.Signal[Int] = stateSignal(junction.downstreamW)
-      def enqueueAll(xa: Seq[A]): Task[Unit] = junction.receiveAll(xa)
-      def enqueue: Sink[Task, A] = junction.upstreamSink
-      def fail(rsn: Throwable): Task[Unit] = junction.downstreamClose(rsn)
-    }
-  }
+  def boundedQueue[A](max: Int = 0)(implicit S: Strategy): Queue[A] =
+    Queue[A](max)
+
 
   /**
    * Creates unbounded queue. see [[scalaz.stream.async.mutable.Queue]] for more
@@ -52,16 +42,19 @@ package object async {
    * All views into the returned signal are backed by the same underlying
    * asynchronous `Ref`.
    */
-  def signal[A](implicit S: Strategy): Signal[A] = Signal(halt)
+  def signal[A](implicit S: Strategy): Signal[A] =
+    Signal(halt, haltOnSource = false)
 
   /**
    * Converts discrete process to signal. Note that, resulting signal must be manually closed, in case the
-   * source process would terminate. However if the source terminate with failure, the signal is terminated with that
+   * source process would terminate (see `haltOnSource`).
+   * However if the source terminate with failure, the signal is terminated with that
    * failure
-   * @param source discrete process publishing values to this signal
+   * @param source          discrete process publishing values to this signal
+   * @param haltOnSource    closes the given signal when the `source` terminates
    */
-  def toSignal[A](source: Process[Task, A])(implicit S: Strategy): mutable.Signal[A] =
-    Signal(Process(source.map(Signal.Set(_))))
+  def toSignal[A](source: Process[Task, A], haltOnSource: Boolean = false)(implicit S: Strategy): mutable.Signal[A] =
+    Signal(source.map(Signal.Set(_)), haltOnSource)
 
   /**
    * A signal constructor from discrete stream, that is backed by some sort of stateful primitive
@@ -87,13 +80,13 @@ package object async {
    * processes that can be used to publish and subscribe asynchronously.
    * Please see `Topic` for more info.
    */
-  def topic[A](source: Process[Task, A] = halt)(implicit S: Strategy): Topic[A] = {
-    val junction = Junction(JunctionStrategies.publishSubscribe[A], Process(source))(S)
+  def topic[A](source: Process[Task, A] = halt, haltOnSource: Boolean = false)(implicit S: Strategy): Topic[A] = {
+    val wt = WriterTopic[Nothing, A, A](Process.liftW(process1.id))(source, haltOnSource = haltOnSource)(S)
     new Topic[A] {
-      def publish: Sink[Task, A] = junction.upstreamSink
-      def subscribe: Process[Task, A] = junction.downstreamO
-      def publishOne(a: A): Task[Unit] = junction.receiveOne(a)
-      def fail(err: Throwable): Task[Unit] = junction.downstreamClose(err)
+      def publish: Sink[Task, A] = wt.publish
+      def subscribe: Process[Task, A] = wt.subscribeO
+      def publishOne(a: A): Task[Unit] = wt.publishOne(a)
+      def fail(err: Throwable): Task[Unit] = wt.fail(err)
     }
   }
 
@@ -102,26 +95,9 @@ package object async {
    * For more info see `WriterTopic`.
    * Note that when `source` ends, the topic does not terminate
    */
-  def writerTopic[W, I, O](w: Writer1[W, I, O])(source: Process[Task, I] = halt)
-    (implicit S: Strategy): WriterTopic[W, I, O] = {
-    val q = boundedQueue[Process[Task, I]]()
-    val junction = Junction(JunctionStrategies.liftWriter1(w), emit(source) ++ q.dequeue)(S)
-    new WriterTopic[W, I, O] {
-      def consumeOne(p: Process[Task, I]): Task[Unit] = q.enqueueOne(p)
-      def consume: Sink[Task, Process[Task, I]] = q.enqueue
-      def publish: Sink[Task, I] = junction.upstreamSink
-      def subscribe: Writer[Task, W, O] = junction.downstreamBoth
-      def subscribeO: Process[Task, O] = junction.downstreamO
-      def subscribeW: Process[Task, W] = junction.downstreamW
-      def signal: immutable.Signal[W] = stateSignal(subscribeW)(S)
-      def publishOne(i: I): Task[Unit] = junction.receiveOne(i)
-      def fail(err: Throwable): Task[Unit] =
-        for {
-          _ <- junction.downstreamClose(err)
-          _ <- q.fail(err)
-        } yield ()
-    }
-  }
+  def writerTopic[W, I, O](w: Writer1[W, I, O])(source: Process[Task, I] = halt, haltOnSource: Boolean = false)
+    (implicit S: Strategy): WriterTopic[W, I, O] =
+    WriterTopic[W, I, O](w)(source, haltOnSource = haltOnSource)(S)
 
 
 }
