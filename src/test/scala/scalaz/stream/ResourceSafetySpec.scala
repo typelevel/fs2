@@ -27,6 +27,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
 
 
   val bwah = new java.lang.Exception("bwahahahahaa!")
+  val boom = new java.lang.Exception("boom!")
 
   def die = throw bwah
 
@@ -46,6 +47,8 @@ object ResourceSafetySpec extends Properties("resource-safety") {
      , ("pipe-term-src", fail(bwah).pipe(process1.id) onHalt cleanup,  left(bwah), List(bwah))
      , ("pipe-cln-src", (src onHalt cleanup).pipe(fail(bwah)) onHalt cleanup ,  left(bwah), List(Kill,bwah))
      , ("pipe-cln-p1", src.pipe(fail(bwah) onHalt cleanup) onHalt cleanup ,  left(bwah), List(bwah,bwah))
+     , ("pipe-fail-src-then-p1", (src ++ fail(bwah)).pipe(process1.id[Int] onComplete fail(boom) onHalt cleanup), left(bwah), List(boom))
+     , ("pipe-fail-p1-then-src", (src onComplete fail(bwah) onHalt cleanup).pipe(fail(boom)), left(boom), List(bwah))
 //      , src.filter(i => if (i == 3) throw End else true).onComplete(cleanup)
 //      , src.pipe(process1.lift((i: Int) => if (i == 3) die else true)).onComplete(cleanup)
 //      , src.flatMap(i => if (i == 3) die else emit(i)).onComplete(cleanup)
@@ -81,4 +84,9 @@ object ResourceSafetySpec extends Properties("resource-safety") {
     result.reduce(_ && _)
   }
 
+  property("repeated kill") = secure {
+    var cleaned = false
+    (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.run.run
+    cleaned
+  }
 }

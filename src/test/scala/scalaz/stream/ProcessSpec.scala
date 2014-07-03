@@ -149,6 +149,34 @@ object ProcessSpec extends Properties("Process") {
     })
   }
 
+  property("kill ++") = secure {
+    var afterEmit = false
+    var afterHalt = false
+    var afterAwait = false
+    def rightSide(a: => Unit): Process[Task, Int] = Process.awaitOr(Task.delay(a))(_ => rightSide(a))(_ => halt)
+    (emit(1) ++ rightSide(afterEmit = true)).kill.run.run
+    (halt ++ rightSide(afterHalt = true)).kill.run.run
+    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.run.run
+    ("after emit" |: !afterEmit) &&
+      ("after halt" |: !afterHalt) &&
+      ("after await" |: !afterAwait)
+  }
+
+  property("pipe can emit when predecessor stops") = secure {
+    val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
+    ("normal termination" |: (emit(1) |> p1).toList == List(1, 2, 3)) &&
+      ("kill" |: ((emit(1) ++ fail(Kill)) |> p1).toList == List(1, 2, 3)) &&
+      ("failure" |: ((emit(1) ++ fail(FailWhale)) |> p1).onHalt {
+        case FailWhale => halt
+        case _ => fail(FailWhale)
+      }.toList == List(1, 2, 3))
+  }
+
+  property("feed1, disconnect") = secure {
+    val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
+    p1.feed1(5).feed1(4).disconnect.unemit._1 == Seq(5, 4, 2, 3)
+  }
+
   property("pipeIn") = secure {
     val q = async.boundedQueue[String]()
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
