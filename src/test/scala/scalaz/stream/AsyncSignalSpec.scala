@@ -218,6 +218,6 @@ object AsyncSignalSpec extends Properties("async.signal") {
       // res(2) was read at 1500 ms so it must contain value 12 which was published at 1200 ms.
       (res(2) == 12) :| s"res(2) == ${res(2)}" &&
       // res(5) was read at 3000 ms and so it must still contain value 12.
-      (res(5) == 12) :| s"res(5) == ${res(2)}"
+      (res(5) == 12) :| s"res(5) == ${res(5)}"
   }
 }
