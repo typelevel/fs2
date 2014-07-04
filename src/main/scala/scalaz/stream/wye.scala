@@ -726,8 +726,10 @@ object wye {
         left match {
           case SideReady(next)        =>
             left = SideRunning(_ => ()) //no-op as cleanup can`t be interrupted
-            Try(next(Kill)).drain
-            .run.runAsync(rslt=> a ! DoneL(rslt.fold(identity,_ => End)))
+            Try(next(End)).killBy(Kill).runAsync(_.fold(
+              rsn => a ! DoneL(rsn)
+              , _ => a ! DoneL(new Exception("Invalid state after kill"))
+            ))
           case SideRunning(interrupt) => interrupt(rsn)
           case _                      => ()
         }
@@ -738,8 +740,10 @@ object wye {
         right match {
           case SideReady(next)        =>
             right = SideRunning(_ => ()) //no-op as cleanup can`t be interrupted
-            Try(next(Kill)).drain
-            .run.runAsync(rslt=> a ! DoneR(rslt.fold(identity,_ => End)))
+            Try(next(End)).killBy(Kill).runAsync(_.fold(
+              rsn => a ! DoneR(rsn)
+              , _ => a ! DoneR(new Exception("Invalid state after kill"))
+            ))
           case SideRunning(interrupt) => interrupt(rsn)
           case _                      => ()
         }
