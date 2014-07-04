@@ -944,6 +944,7 @@ object Process {
 
   /**
    * Produce a continuous stream from a discrete stream by using the
+   * Produce a continuous stream from a discrete stream by using the
    * most recent value.
    */
   def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] =
@@ -1616,19 +1617,13 @@ object Process {
   /** Prefix syntax for `p.repeat`. */
   def repeat[F[_],O](p: Process[F,O]): Process[F,O] = p.repeat
 
-  /** Repeat `p` as long as it emits at least one value before halting. */
-  def repeatNonempty[F[_],O](p: Process[F,O]): Process[F,O] =
-    p.terminated.repeat.pipe(process1.zipPrevious(None)).takeWhile {
-      case (None,None) => false
-      case _ => true
-    }.flatMap { case (prev,cur) => emitAll(cur.toList) }
 
   /**
    * Evaluate an arbitrary effect in a `Process`. The resulting `Process` will emit values
-   * until evaluation of `t` signals termination with `End` or an error occurs.
+   * until evaluation of `f` signals termination with `End` or an error occurs.
    */
   def repeatEval[F[_],O](f: F[O]): Process[F,O] =
-    repeatNonempty(eval(f))
+    await(f)(o=> emit(o) fby repeatEval(f))
 
   /**
    * Produce `p` lazily, guarded by a single `Append`. Useful if
