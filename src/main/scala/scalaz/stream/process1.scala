@@ -746,7 +746,7 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def minimumOf[B: Order](f: O => B): Process[F,B] =
     this |> process1.minimumOf(f)
 
-  /** Alias for `this |> [[process1.once]]`. */
+  /** Alias for `this |> [[process1.take]]` as take(1). */
   def once: Process[F,O] =
     this |> process1.take(1)
 

@@ -18,7 +18,6 @@ import scalaz.{-\/, \/, \/-}
  * Queue also has signal that signals size of queue whenever that changes.
  * This may be used for example as additional flow control signalling outside this queue.
  *
- * Please see [[scalaz.stream.merge.JunctionStrategies.boundedQ]] for more details.
  *
  */
 trait Queue[A] {
