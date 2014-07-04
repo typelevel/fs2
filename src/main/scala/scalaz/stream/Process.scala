@@ -300,20 +300,22 @@ sealed trait Process[+F[_], +O]
    * @param rsn Reason for termination
    */
   final def killBy(rsn: Throwable): Process[F, Nothing] = {
-    val ts = this.step
-    //debug(s"KILLBY rsn:$rsn, this:$this, step: ${ts } ")
-    ts match {
-      case Cont(Emit(_),n) => Try(n(rsn)).drain
-      case Cont(Await(_,rcv),n) =>
+    (this match {
+      case Halt(rsn0) => Halt(CausedBy(rsn0, rsn))
+      case Emit(_) => Halt(rsn)
+      case Await(_, rcv) =>
+        Append(Halt(rsn), Vector((x: Throwable) => Trampoline.suspend(rcv(-\/(x)))))
+      case Append(Halt(rsn0), n) =>
+        Append(Halt(CausedBy(rsn0, rsn)), n)
+      case Append(Emit(_), n) =>
+        Append(Halt(rsn), n)
+      case Append(Await(_, rcv), n) =>
         Append(
           Halt(rsn),
-          Vector(
-            (x: Throwable) => Trampoline.suspend(rcv(-\/(x))),
-            (x: Throwable) => Trampoline.delay(n(x)))).drain
-      case Done(End) => Halt(rsn)
-      case Done(rsn0) => Halt(CausedBy(rsn0,rsn))
-    }
+          ((x: Throwable) => Trampoline.suspend(rcv(-\/(x)))) +: n)
+    }).drain
   }
+
 
   /**
    * Run `p2` after this `Process` completes normally, or in the event of an error.
@@ -704,7 +706,7 @@ object Process {
    */
   def receive1[I,O](rcv: I => Process1[I,O], fallback: => Process1[I,O] = halt): Process1[I,O] =
     awaitOr(Get[I])({
-      case End | Kill => fallback
+      case e@(End | Kill) => fallback.causedBy(e)
       case rsn => fail(rsn)
     })(rcv)
 
