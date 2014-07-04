@@ -195,14 +195,15 @@ protected[stream] object JunctionStrategies {
     /** Writer1 that interprets the Signal messages to provide discrete source of `A` **/
     def signal[A]: Writer1[A, Signal.Msg[A], Nothing] = {
       def go(oa: Option[A]): Writer1[A, Signal.Msg[A], Nothing] = {
-        receive1[Signal.Msg[A], A \/ Nothing] {
-          case Signal.Set(a)                                               => emit(left(a)) fby go(Some(a))
-          case Signal.CompareAndSet(f: (Option[A] => Option[A])@unchecked) => f(oa) match {
-            case Some(a) => emit(left(a)) fby go(Some(a))
-            case None    => go(oa)
-          }
-          case Signal.Fail(rsn)                                            =>  Halt(rsn)
-        }
+//        receive1[Signal.Msg[A], A \/ Nothing] {
+//          case Signal.Set(a)                                               => emit(left(a)) fby go(Some(a))
+//          case Signal.CompareAndSet(f: (Option[A] => Option[A])@unchecked) => f(oa) match {
+//            case Some(a) => emit(left(a)) fby go(Some(a))
+//            case None    => go(oa)
+//          }
+//          case Signal.Fail(rsn)                                            =>  Halt(rsn)
+//        }
+        ???
       }
       go(None)
     }

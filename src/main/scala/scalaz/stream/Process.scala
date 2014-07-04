@@ -48,13 +48,13 @@ sealed trait Process[+F[_], +O]
        case p1s@Cont(AwaitP1(rcv1), next1) => this.step match {
         case Cont(awt@Await(_, _), next) => awt.extend(p => (p onHalt next) pipe p1)
         case Cont(Emit(os), next)        => Try(next(End)) pipe process1.feed(os)(p1)
-        case Done(rsn)                   => fail(rsn) onComplete p1s.toProcess.disconnect
+        case Done(rsn)                   => p1s.toProcess.disconnect onHalt { rsn2 => fail(rsn or rsn2) }
       }
-      case Cont(Emit(os), next1)          =>
+      case Cont(Emit(os), next1)           =>
         Emit(os) onHalt {
           case rsn => this.pipe(Try(next1(rsn)))
         }
-      case Done(rsn1)                     => this.killBy(Kill(rsn1)).swallowKill onComplete fail(rsn1)
+      case Done(rsn1)                      => this.kill onHalt { _ => fail(rsn1) }
     }
   }
 
@@ -112,12 +112,13 @@ sealed trait Process[+F[_], +O]
    * with reason that caused `tee` to terminate.
    */
   final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
-    import scalaz.stream.tee.{AwaitL,AwaitR,feedL,feedR, haltR, haltL}
+    import scalaz.stream.tee.{AwaitL,AwaitR,feedL,feedR, disconnectR, disconnectL}
     t.suspendStep flatMap {
       case ts@Cont(AwaitL(_),_) => this.step match {
         case Cont(awt@Await(rq,rcv), next) => awt.extend { p => (p onHalt next).tee(p2)(t) }
         case Cont(Emit(os), next) => Try(next(End)).tee(p2)(feedL[O,O2,O3](os)(t))
-        case d@Done(rsn) => d.asHalt.tee(p2)(haltL(ts.toProcess,Kill(rsn)))
+        case d@Done(rsn) =>
+          d.asHalt.tee(p2)(disconnectL(ts.toProcess)) onHalt { rsn2 => fail(rsn or rsn2) }
       }
       case ts@Cont(AwaitR(_),_) => p2.step match {
         case Cont(awt:Await[F2,Any,O2]@unchecked, next:(Throwable => Process[F2,O2])@unchecked) =>
@@ -125,13 +126,11 @@ sealed trait Process[+F[_], +O]
         case Cont(Emit(o2s:Seq[O2]@unchecked), next:(Throwable => Process[F2,O2])@unchecked) =>
           this.tee(Try(next(End)))(feedR[O,O2,O3](o2s)(t))
         case d@Done(rsn) =>
-          this.tee(d.asHalt)(haltR(t,Kill(rsn)))
+          this.tee(d.asHalt)(disconnectR(ts.toProcess)) onHalt { rsn2 => fail(rsn or rsn2) }
       }
-      case Cont(emt@Emit(o3s), next) => emt ++ this.tee(p2)(Try(next(End)))
+      case Cont(emt@Emit(o3s), next) => emt onHalt { rsn => this.tee(p2)(Try(next(rsn))) }
       case Done(rsn) =>
-        this.kill.swallowKill onComplete
-          p2.kill.swallowKill onComplete
-          fail(rsn).swallowKill
+        this.kill onHalt { _ => p2.kill onHalt { _ => fail(rsn) } }
     }
   }
 
@@ -224,15 +223,13 @@ sealed trait Process[+F[_], +O]
    */
   final def disconnect: Process[Nothing,O] = this.suspendStep flatMap {
     case Cont(e@Emit(_),n) =>
-      e onHalt { rsn => Try(n(Kill(rsn)).disconnect).swallowKill }
+      e onHalt { rsn => Try(n(rsn).disconnect) }
     case Cont(Await(_,rcv),n) =>
       (Try(rcv(left(Kill)).run).disconnect onHalt {
-        case End | Kill => Try(n(Kill).disconnect)
-        case rsn => Try(n(rsn).disconnect)
+        rsn => Try(n(rsn).disconnect)
       }).swallowKill
     case Done(rsn) => Halt(rsn)
   }
-
 
   /** Ignore all outputs of this `Process`. */
   final def drain: Process[F, Nothing] = {
@@ -303,20 +300,22 @@ sealed trait Process[+F[_], +O]
    * @param rsn Reason for termination
    */
   final def killBy(rsn: Throwable): Process[F, Nothing] = {
-    val ts = this.step
-    //debug(s"KILLBY rsn:$rsn, this:$this, step: ${ts } ")
-    ts match {
-      case Cont(Emit(_),n) => Try(n(rsn)).drain
-      case Cont(Await(_,rcv),n) =>
+    (this match {
+      case Halt(rsn0) => Halt(CausedBy(rsn0, rsn))
+      case Emit(_) => Halt(rsn)
+      case Await(_, rcv) =>
+        Append(Halt(rsn), Vector((x: Throwable) => Trampoline.suspend(rcv(-\/(x)))))
+      case Append(Halt(rsn0), n) =>
+        Append(Halt(CausedBy(rsn0, rsn)), n)
+      case Append(Emit(_), n) =>
+        Append(Halt(rsn), n)
+      case Append(Await(_, rcv), n) =>
         Append(
           Halt(rsn),
-          Vector(
-            (x: Throwable) => Trampoline.suspend(rcv(-\/(x))),
-            (x: Throwable) => Trampoline.delay(n(x)))).drain
-      case Done(End) => Halt(rsn)
-      case Done(rsn0) => Halt(CausedBy(rsn0,rsn))
-    }
+          ((x: Throwable) => Trampoline.suspend(rcv(-\/(x)))) +: n)
+    }).drain
   }
+
 
   /**
    * Run `p2` after this `Process` completes normally, or in the event of an error.
@@ -707,7 +706,7 @@ object Process {
    */
   def receive1[I,O](rcv: I => Process1[I,O], fallback: => Process1[I,O] = halt): Process1[I,O] =
     awaitOr(Get[I])({
-      case End | Kill => fallback
+      case e@(End | Kill) => fallback.causedBy(e)
       case rsn => fail(rsn)
     })(rcv)
 
@@ -1086,6 +1085,13 @@ object Process {
   }
 
   /**
+   * Throwable is monoid with End as unit.
+   */
+  implicit class CombineExns(val t: Throwable) extends AnyVal{
+    def or(t2: Throwable) = if (t != End) t else t2
+  }
+
+  /**
    * Special exception indicating downstream termination.
    * An `Await` should respond to a `Kill` by performing
    * necessary cleanup actions, then halting with `End`
@@ -1265,11 +1271,11 @@ object Process {
     def toSortedMap[K, V](implicit isKV: O <:< (K, V), ord: Ordering[K]): SortedMap[K, V] =
       SortedMap(toIndexedSeq.asInstanceOf[Seq[(K, V)]]: _*)
     def toStream: Stream[O] = toIndexedSeq.toStream
-    def toSource: Process[Task, O] = self.suspendStep.flatMap ({
-      case Cont(emt@Emit(os), next) => emt onHalt (rsn => next(rsn).toSource)
+    def toSource: Process[Task, O] = self.step match {
+      case Cont(emt@Emit(os), next) => emt onHalt(rsn => next(rsn).toSource)
       case Cont(_, next)            => next(End).toSource
       case dn@Done(rsn)             => dn.asHalt
-    })
+    }
 
   }
 
