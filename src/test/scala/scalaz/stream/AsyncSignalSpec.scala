@@ -197,4 +197,27 @@ object AsyncSignalSpec extends Properties("async.signal") {
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 
+  property("continuous") = secure {
+    val sig = async.signal[Int]
+    Process.awakeEvery(100.millis)
+      .zip(Process.range(1, 13))
+      .map(x => Signal.Set(x._2))
+      .to(sig.sink)
+      .run
+      .runAsync(_ => ())
+    val res = Process.awakeEvery(500.millis)
+      .zip(sig.continuous)
+      .map(_._2)
+      .take(6)
+      .runLog.run.toList
+    sig.close.run
+    // res(0) was read at 500 ms so it must contain value 4 or 5 which were published at 400 ms or 500 ms.
+    (res(0) >= 4 && res(0) <= 5) :| s"res(0) == ${res(0)}" &&
+      // res(1) was read at 1000 ms so it must contain value 9 or 10 which were published at 900 ms or 1000 ms.
+      (res(1) >= 9 && res(1) <= 10) :| s"res(1) == ${res(1)}" &&
+      // res(2) was read at 1500 ms so it must contain value 12 which was published at 1200 ms.
+      (res(2) == 12) :| s"res(2) == ${res(2)}" &&
+      // res(5) was read at 3000 ms and so it must still contain value 12.
+      (res(5) == 12) :| s"res(5) == ${res(2)}"
+  }
 }
