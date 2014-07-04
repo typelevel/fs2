@@ -43,7 +43,7 @@ object QueueSpec extends Properties("queue") {
       val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
       t2.runAsync(values.put)
 
-      Thread.sleep(50) // delay to give chance for the `size` signal to register
+      Thread.sleep(100) // delay to give chance for the `size` signal to register
 
       q.close.run
 
