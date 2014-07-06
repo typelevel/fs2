@@ -294,7 +294,7 @@ object process1 {
           }
         case \/-(c) => emitO(c) fby go(curr)
       }
-    } 
+    }
     go(p)
   }
 

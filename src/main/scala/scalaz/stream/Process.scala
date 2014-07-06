@@ -662,6 +662,11 @@ object Process {
   def await1[I]: Process1[I, I] =
     await(Get[I])(emit)
 
+  /** like await1, but allows to define fallback in case the process terminated with exception **/
+  def await1Or[I](fb: => Process1[I,I]): Process1[I,I] =
+    awaitOr(Get[I])((_ : Throwable) => fb)(emit)
+
+
   /** heleper to construct for await on Both sides. Can be used in `Wye`**/
   def awaitBoth[I,I2]: Wye[I,I2,ReceiveY[I,I2]] =
     await(Both[I,I2])(emit)
