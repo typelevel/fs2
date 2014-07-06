@@ -862,8 +862,8 @@ object Process {
    * @param scheduler   Scheduler used to schedule tasks
    */
   def awakeEvery(d: Duration)(
-      implicit pool: Strategy = Strategy.DefaultStrategy,
-               schedulerPool: ScheduledExecutorService = DefaultScheduler): Process[Task, Duration] =  {
+      implicit pool: Strategy,
+               schedulerPool: ScheduledExecutorService): Process[Task, Duration] =  {
 
     def metronomeAndSignal:(()=>Unit,async.mutable.Signal[Duration]) = {
       val signal = async.signal[Duration](pool)
