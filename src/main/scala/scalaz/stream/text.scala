@@ -1,6 +1,9 @@
 package scalaz.stream
 
+import scalaz.std.string._
+
 import java.nio.charset.Charset
+import java.util.regex.Pattern
 import scodec.bits.ByteVector
 
 import process1._
@@ -59,4 +62,11 @@ object text {
   /** Converts `String` inputs to UTF-8 encoded `ByteVector`. */
   val utf8Encode: Process1[String,ByteVector] =
     lift(s => ByteVector.view(s.getBytes(utf8Charset)))
+
+  /** Repartition `String` input by line endings. */
+  val lines: Process1[String, String] = {
+    val pattern = Pattern.compile("\r\n|\n")
+    repartition((s: String) => pattern.split(s, -1)).dropLastIf(_.isEmpty)
+  }
+
 }
