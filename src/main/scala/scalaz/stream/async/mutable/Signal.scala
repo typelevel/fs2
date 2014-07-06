@@ -8,7 +8,6 @@ import scalaz.stream.Process._
 import scalaz.stream._
 import scalaz.stream.async.mutable
 import java.util.concurrent.atomic.AtomicReference
-import scalaz.stream.merge.{Junction, JunctionStrategies}
 
 
 /**
