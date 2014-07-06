@@ -283,12 +283,19 @@ object process1 {
    * whenever `p` halts.
    */
   def liftL[A, B, C](p: Process1[A, B]): Process1[A \/ C, B \/ C] = {
-    p match {
-      case hlt@Halt(_) => hlt
-      case Emit(os) => emitAll(os map left)
-      case ap@Append(_,_) => ap.extend(liftL).asInstanceOf[Process1[A \/ C, B \/ C]]
-      case aw@Await(_,_) => aw.extend(liftL).asInstanceOf[Process1[A \/ C, B \/ C]]
-    }
+    def go(curr: Process1[A,B]): Process1[A \/ C, B \/ C] = {
+      receive1Or[A \/ C, B \/ C](curr.disconnect.map(-\/(_))) {
+        case -\/(a) =>
+          val (bs, next) = p.feed1(a).unemit
+          val out =  emitAll(bs).map(-\/(_))
+          next match {
+            case Halt(rsn) => out fby fail(rsn)
+            case other => out fby go(other)
+          }
+        case \/-(c) => emitO(c) fby go(curr)
+      }
+    } 
+    go(p)
   }
 
   /**
