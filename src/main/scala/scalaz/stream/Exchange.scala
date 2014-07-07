@@ -152,7 +152,7 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * @param w  Writer that processes received `I` and either echoes `I2` or writes `W` to external system
    *
    */
-  def readThrough[I2](w: Writer1[W, I, I2])(implicit S: Strategy = Strategy.DefaultStrategy) : Exchange[I2,W]  = {
+  def readThrough[I2](w: Writer1[W, I, I2])(implicit S: Strategy) : Exchange[I2,W]  = {
     def liftWriter : WyeW[W, Int \/ I, W, I2] = {
       def go(cur:Writer1[W, I, I2]):WyeW[W, Int \/ I, W, I2] = {
         awaitBoth[Int\/I,W].flatMap{
@@ -191,7 +191,7 @@ object Exchange {
    *
    * @param p   Process to consult when looping data through
    */
-  def loopBack[I, W](p: Process1[W, I])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, Exchange[I, W]] = {
+  def loopBack[I, W](p: Process1[W, I])(implicit S: Strategy): Process[Task, Exchange[I, W]] = {
 
     def loop(cur: Process1[W, I]): WyeW[Nothing, Nothing, W, I] = {
       awaitR[W] flatMap {

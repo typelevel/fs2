@@ -952,7 +952,7 @@ object Process {
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.
    */
-  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] =
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy): Process[Task,A] =
     async.toSignal(p).continuous
 
   /**
@@ -1354,7 +1354,7 @@ object Process {
      * Produce a continuous stream from a discrete stream by using the
      * most recent value.
      */
-    def forwardFill(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,O] =
+    def forwardFill(implicit S: Strategy): Process[Task,O] =
       async.toSignal(self).continuous
 
     /** Infix syntax for `Process.toTask`. */
