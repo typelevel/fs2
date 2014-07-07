@@ -19,7 +19,7 @@ import scodec.bits.ByteVector
 
 object NioServer {
 
-
+  implicit val AG = nio.DefaultAsynchronousChannelGroup
 
   def apply(address: InetSocketAddress, w: Writer1[ByteVector, ByteVector, ByteVector]): Process[Task, ByteVector] = {
     val srv =
@@ -62,7 +62,7 @@ object NioServer {
 
 object NioClient {
 
-
+  implicit val AG = nio.DefaultAsynchronousChannelGroup
 
   def echo(address: InetSocketAddress, data: ByteVector): Process[Task, ByteVector] = {
 
