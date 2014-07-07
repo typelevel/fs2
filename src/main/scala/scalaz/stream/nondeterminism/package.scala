@@ -9,6 +9,11 @@ import scalaz.stream.Process._
  */
 package object nondeterminism {
 
+  /** signal to propagate killed process through merge and terminate merge **/
+  private object Killed extends Exception {
+    override def fillInStackTrace = this
+  }
+
   /**
    * Non-deterministic join of streams. Streams are joined non deterministically.
    * Whenever one of the streams terminates with other exception than `End`
@@ -91,8 +96,13 @@ package object nondeterminism {
             //interrupt is done via setting the done to `true`
             done.discrete.wye(p)(wye.interrupt)
             .to(q.enqueue)
-            .run.runAsync { res =>
-              actor ! Finished(res)
+            .onHalt({
+              case Kill => Process.fail(Killed)
+              case other => Process.fail(other)
+            })
+            .run.runAsync {
+              case -\/(Killed) => actor ! Finished(-\/(Kill))
+              case res => actor ! Finished(res)
             }
 
           //finished the `upstream` but still have some open processes to merging
