@@ -27,6 +27,9 @@ object TeeSpec extends Properties("Tee") {
 
   import TestInstances._
 
+  case object Err extends RuntimeException("Error")
+  case object Err2 extends RuntimeException("Error 2")
+
   implicit val S = Strategy.DefaultStrategy
 
   property("basic") = forAll { (pi: Process0[Int], ps: Process0[String], n: Int) =>
@@ -108,5 +111,39 @@ object TeeSpec extends Properties("Tee") {
     val b: Process[Task,Int] = halt
     a.tee(b)(tee.passL[Int]).runLog.run == List.range(0,10) &&
       b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
+  }
+
+  property("tee can await right side and emit when left side stops") = secure {
+    import TestUtil._
+    val t: Tee[Int, String, Any] = tee.passL[Int] onComplete emit(2) onComplete tee.passR[String] onComplete emit(true)
+    val r = emit("a") ++ emit("b")
+    val res = List(1, 2, "a", "b", true)
+    ("normal termination" |: emit(1).tee(r)(t).toList == res) &&
+      ("kill" |: (emit(1) ++ fail(Kill)).tee(r)(t).expectExn(_ == Kill).toList == res) &&
+      ("failure" |: (emit(1) ++ fail(Err)).tee(r)(t).expectExn(_ == Err).toList == res)
+  }
+
+  property("tee can await left side and emit when right side stops") = secure {
+    import TestUtil._
+    val t: Tee[String, Int, Any] = tee.passR[Int] onComplete emit(2) onComplete tee.passL[String] onComplete emit(true)
+    val l = emit("a") ++ emit("b")
+    val res = List(1, 2, "a", "b", true)
+    ("normal termination" |: l.tee(emit(1))(t).toList == res) &&
+      ("kill" |: l.tee(emit(1) ++ fail(Kill))(t).expectExn(_ == Kill).toList == res) &&
+      ("failure" |: l.tee(emit(1) ++ fail(Err))(t).expectExn(_ == Err).toList == res)
+  }
+
+  property("tee exceptions") = secure {
+    import TestUtil._
+    val leftFirst: Tee[Int, Int, Any] = tee.passL[Int] onComplete tee.passR[Int] onComplete emit(3)
+    val rightFirst: Tee[Int, Int, Any] = tee.passR[Int] onComplete tee.passL[Int] onComplete emit(3)
+    val l = emit(1) ++ fail(Err)
+    val r = emit(2) ++ fail(Err2)
+    ("both fail - left first" |: l.tee(r)(leftFirst).expectExn(_ == Err).toList == List(1, 2, 3)) &&
+      ("both fail - right first" |: l.tee(r)(rightFirst).expectExn(_ == Err2).toList == List(2, 1, 3)) &&
+      ("left fails - left first" |: l.tee(emit(2))(leftFirst).expectExn(_ == Err).toList == List(1, 2, 3)) &&
+      ("right fails - right first" |: emit(1).tee(r)(rightFirst).expectExn(_ == Err2).toList == List(2, 1, 3))
+      ("right fails - left first" |: emit(1).tee(r)(leftFirst).expectExn(_ == Err2).toList == List(1, 2, 3)) &&
+      ("left fails - right first" |: l.tee(emit(2))(rightFirst).expectExn(_ == Err).toList == List(2, 1, 3))
   }
 }
