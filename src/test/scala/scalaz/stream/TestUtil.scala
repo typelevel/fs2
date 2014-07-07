@@ -36,5 +36,13 @@ private[stream] object TestUtil {
     })
   }
 
+  case class UnexpectedException(e: Throwable) extends RuntimeException
 
+  implicit class ExpectExn[O](val p: Process[Nothing, O]) extends AnyVal {
+    def expectExn(pred: Throwable => Boolean): Process[Nothing, O] = p.onHalt {
+      rsn =>
+        if (pred(rsn)) Process.halt
+        else Process.Halt(UnexpectedException(rsn))
+    }
+  }
 }
