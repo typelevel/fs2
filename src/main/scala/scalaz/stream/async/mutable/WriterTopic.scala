@@ -241,7 +241,9 @@ private[stream] object WriterTopic {
         def changes: Process[Task, Unit] = discrete.map(_=>())
 
         def continuous: Process[Task, W] =
-          discrete.wye(Process.repeatEval(Task.now(())))(wye.echoLeft)
+          discrete.once.flatMap {
+            Process.emit(_) ++ continuous
+          }
 
         def discrete: Process[Task, W] = subscribeW
 

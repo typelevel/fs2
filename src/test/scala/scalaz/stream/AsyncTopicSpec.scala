@@ -133,7 +133,7 @@ object AsyncTopicSpec extends Properties("topic") {
 
         Thread.sleep(100) //all has to have chance to register
 
-        ((Process(l: _*).toSource to topic.publish) onComplete (eval_(topic.close))).run.run
+        ((Process(l: _*).toSource to topic.publish) onComplete eval_(topic.close)).run.run
 
         val expectPublish = l.foldLeft[(Long, Seq[Long \/ Int])]((0L, Nil))({
           case ((sum, acc), s) =>
@@ -145,7 +145,7 @@ object AsyncTopicSpec extends Properties("topic") {
 
         ((published.get(3000).map(_.map(_.toList)) == Some(\/-(-\/(0L) +: expectPublish._2))) :| "All items were published") &&
           ((signalDiscrete.get(3000) == Some(\/-(signals))) :| "Discrete signal published correct writes") &&
-          ((signalContinuous.get(3000).map(_.map(signals diff _)) == Some(\/-(List()))) :| "Continuous signal published correct writes")
+          ((signalContinuous.get(3000).map(_.map(_.toSet -- signals)) == Some(\/-(Set()))) :| "Continuous signal published correct writes")
 
       }
   }
