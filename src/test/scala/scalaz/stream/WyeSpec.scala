@@ -34,7 +34,7 @@ object WyeSpec extends  Properties("Wye"){
     x == List.range(10,20)
   }
 
-  property("detachR") = secure {
+  property("detach1R") = secure {
     val w = wye.detach1R(wye.merge[Int])
     val x = Process.range(0,10).wye(Process.constant(1))(w).runLog.run
     x == List.range(0,10)
@@ -119,7 +119,6 @@ object WyeSpec extends  Properties("Wye"){
        .attempt().runLog.timed(3000).run
 
     (e.collect { case \/-(-\/(v)) => v } == (0 until 2)) :| "Left side got collected" &&
-      (e.collect { case \/-(\/-(v)) => v } == (10 until 20)) :| "Right side got collected" &&
       (e.collect { case -\/(rsn) => rsn }.nonEmpty) :| "exception was propagated"
 
   }
@@ -209,6 +208,27 @@ object WyeSpec extends  Properties("Wye"){
     val pm2 = Process(3000,4000).toSource.wye(effect)(wye.merge).take(2)
 
     (pm1 ++ pm2).runLog.timed(3000).run.size == 4
+  }
+
+  //tests specific case of termination with nested wyes and interrupt
+  property("nested-interrupt") = secure {
+    val sync = new SyncVar[Throwable \/ IndexedSeq[Unit]]
+    val term1 = async.signal[Boolean]
+    term1.set(false).run
+
+    val p1: Process[Task,Unit] = (Process.sleep(10.hours) fby emit(true)).wye(Process.sleep(10 hours))(wye.interrupt)
+    val p2:Process[Task,Unit] = repeatEval(Task.now(true)).flatMap(_ => p1)
+    val toRun =  term1.discrete.wye(p2)(wye.interrupt)
+
+    toRun.runLog.runAsync {  sync.put   }
+
+    Task {
+      Thread.sleep(1000)
+      term1.set(true).run
+    }.runAsync(_ => ())
+
+
+    sync.get(3000).nonEmpty
   }
 
 }
