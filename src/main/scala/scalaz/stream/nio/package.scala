@@ -28,7 +28,7 @@ package object nio {
   def server(bind: InetSocketAddress
     , reuseAddress: Boolean = true
     , rcvBufferSize: Int = 256 * 1024
-    )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
+    )(implicit AG: AsynchronousChannelGroup)
   : Process[Task, Process[Task, Exchange[ByteVector, ByteVector]]] = {
 
     def setup: Task[AsynchronousServerSocketChannel] =
@@ -75,7 +75,7 @@ package object nio {
     , rcvBufferSize: Int = 256 * 1024
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
-    )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
+    )(implicit AG: AsynchronousChannelGroup)
   : Process[Task, Exchange[ByteVector, ByteVector]] = {
 
     def setup: Task[AsynchronousSocketChannel] = Task.delay {

@@ -2,7 +2,7 @@ package scalaz.stream
 
 import org.scalacheck._
 import org.scalacheck.Prop._
-import scalaz.{Equal, Monoid}
+import scalaz.{\/-, -\/, Equal, Monoid}
 import scalaz.std.anyVal._
 import scalaz.std.list._
 import scalaz.std.list.listSyntax._
@@ -70,6 +70,15 @@ object Process1Spec extends Properties("Process1") {
         , "intersperse" |: pi.intersperse(0).toList === li.intersperse(0)
         , "last" |:  Process(0, 10).last.toList === List(10)
         , "lastOr" |: pi.lastOr(42).toList.head === li.lastOption.getOrElse(42)
+        , "liftL"  |:  {
+            val lifted = process1.liftL[Int,Int,Nothing](process1.id[Int].map( i=> i + 1) onComplete emit(Int.MinValue))
+            pi.map(-\/(_)).pipe(lifted).toList == li.map(i => -\/(i + 1)) :+ -\/(Int.MinValue)
+        }
+        , "liftR"  |:  {
+          val lifted = process1.liftR[Nothing,Int,Int](process1.id[Int].map( i=> i + 1) onComplete emit(Int.MinValue))
+          pi.map(\/-(_)).pipe(lifted).toList == li.map(i => \/-(i + 1)) :+ \/-(Int.MinValue)
+        }
+        , "liftY" |:  pi.pipe(sum).toList == (pi: Process[Task,Int]).wye(ps)(process1.liftY(sum)).runLog.run.toList
         , "maximum" |: pi.maximum.toList === li.headOption.map(_ => List(li.max)).getOrElse(Nil)
         , "maximumBy" |: {
           // enable when switching to scalaz 7.1
@@ -123,9 +132,6 @@ object Process1Spec extends Properties("Process1") {
       Process(2).pipe(drainLeading(p)).toList === List(1, 2)
   }
 
-  property("liftY") = forAll { (pi: Process0[Int], ignore: Process0[String]) =>
-    pi.pipe(sum).toList == (pi: Process[Task,Int]).wye(ignore)(process1.liftY(sum)).runLog.run.toList
-  }
 
   property("repartition") = secure {
     Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ")).toList ==

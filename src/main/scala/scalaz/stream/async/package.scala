@@ -2,8 +2,7 @@ package scalaz.stream
 
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process.halt
-import scalaz.stream.async.mutable._
-import scalaz.stream.merge.{Junction, JunctionStrategies}
+import scalaz.stream.async.mutable._ 
 
 /**
  * Created by pach on 03/05/14.
@@ -56,24 +55,6 @@ package object async {
   def toSignal[A](source: Process[Task, A], haltOnSource: Boolean = false)(implicit S: Strategy): mutable.Signal[A] =
     Signal(source.map(Signal.Set(_)), haltOnSource)
 
-  /**
-   * A signal constructor from discrete stream, that is backed by some sort of stateful primitive
-   * like an Topic, another Signal or queue.
-   *
-   * If supplied process is normal process, it will, produce a signal that eventually may
-   * be de-sync between changes, continuous, discrete or changed variants
-   *
-   * @param source
-   * @tparam A
-   * @return
-   */
-  private[stream] def stateSignal[A](source: Process[Task, A])(implicit S:Strategy) : immutable.Signal[A] =
-    new immutable.Signal[A] {
-      def changes: Process[Task, Unit] = discrete.map(_ => ())
-      def continuous: Process[Task, A] = discrete.wye(Process.constant(()))(wye.echoLeft)(S)
-      def discrete: Process[Task, A] = source
-      def changed: Process[Task, Boolean] = (discrete.map(_ => true) merge Process.constant(false))
-    }
 
   /**
    * Returns a topic, that can create publisher (sink) and subscriber (source)

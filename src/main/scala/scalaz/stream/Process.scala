@@ -662,6 +662,11 @@ object Process {
   def await1[I]: Process1[I, I] =
     await(Get[I])(emit)
 
+  /** like await1, but allows to define fallback in case the process terminated with exception **/
+  def await1Or[I](fb: => Process1[I,I]): Process1[I,I] =
+    awaitOr(Get[I])((_ : Throwable) => fb)(emit)
+
+
   /** heleper to construct for await on Both sides. Can be used in `Wye`**/
   def awaitBoth[I,I2]: Wye[I,I2,ReceiveY[I,I2]] =
     await(Both[I,I2])(emit)
@@ -857,8 +862,8 @@ object Process {
    * @param scheduler   Scheduler used to schedule tasks
    */
   def awakeEvery(d: Duration)(
-      implicit pool: Strategy = Strategy.DefaultStrategy,
-               schedulerPool: ScheduledExecutorService = DefaultScheduler): Process[Task, Duration] =  {
+      implicit pool: Strategy,
+               schedulerPool: ScheduledExecutorService): Process[Task, Duration] =  {
 
     def metronomeAndSignal:(()=>Unit,async.mutable.Signal[Duration]) = {
       val signal = async.signal[Duration](pool)
@@ -947,7 +952,7 @@ object Process {
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.
    */
-  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,A] =
+  def forwardFill[A](p: Process[Task,A])(implicit S: Strategy): Process[Task,A] =
     async.toSignal(p).continuous
 
   /**
@@ -1349,7 +1354,7 @@ object Process {
      * Produce a continuous stream from a discrete stream by using the
      * most recent value.
      */
-    def forwardFill(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task,O] =
+    def forwardFill(implicit S: Strategy): Process[Task,O] =
       async.toSignal(self).continuous
 
     /** Infix syntax for `Process.toTask`. */
