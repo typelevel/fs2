@@ -181,14 +181,16 @@ sealed trait Process[+F[_], +O]
   }
 
   /**
-   * Catch exceptions produced by this `Process`, not including normal termination (`End` + `Kill`)
+   * Catch exceptions produced by this `Process`, not including termination by `Continue`, `End`, `Kill`
    * and uses `f` to decide whether to resume a second process.
    */
   final def attempt[F2[x]>:F[x],O2](
     f: Throwable => Process[F2,O2] = (t:Throwable) => emit(t)
-    ): Process[F2, O2 \/ O] = {
-    this.map(right) onFailure ( f andThen (p => p.map(left) ))
-  }
+    ): Process[F2, O2 \/ O] =
+    map(right) onHalt {
+      case rsn@(Continue | End | Kill) => Halt(rsn)
+      case rsn => Try(f(rsn)).map(left)
+    }
 
 
   //todo: review usages and make sure semantics are corrrect for all of them

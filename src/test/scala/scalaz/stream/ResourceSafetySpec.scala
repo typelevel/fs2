@@ -67,7 +67,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
       , ("tee-cln-tee", (src onHalt cleanup).tee(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Kill, Kill, bwah))
       , ("wye-cln-left", (src onHalt cleanup).wye(fail(bwah))(wye.yip) onHalt cleanup, left(bwah), List(Kill, bwah))
       , ("wye-cln-right", fail(bwah).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, left(bwah), List(Kill, bwah))
-      , ("wye-cln-down", (src onHalt cleanup).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, right(()), List(End, End, End))
+      , ("wye-cln-down", (src onHalt cleanup).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, right(()), List(Continue, Continue, Continue))
       , ("wye-cln-wye", (src onHalt cleanup).wye(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Kill, Kill, bwah))
     )
 
@@ -85,8 +85,9 @@ object ResourceSafetySpec extends Properties("resource-safety") {
   }
 
   property("repeated kill") = secure {
+    import TestUtil._
     var cleaned = false
-    (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.run.run
+    (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.expectExn(_ == Kill).run.run
     cleaned
   }
 }

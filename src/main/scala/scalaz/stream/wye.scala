@@ -674,8 +674,14 @@ object wye {
       var leftBias: Boolean = true
 
       // states of both sides
-      var left: SideState[L] = Either3.right3(_ => pl)
-      var right: SideState[R] = Either3.right3(_ => pr)
+      var left: SideState[L] = Either3.right3 {
+        case Kill => pl.kill
+        case _ => pl
+      }
+      var right: SideState[R] = Either3.right3 {
+        case Kill => pr.kill
+        case _ => pr
+      }
 
       // runs evaluation of next Seq[A] from either L/R
       // this signals to actor the next step of either left or right side
