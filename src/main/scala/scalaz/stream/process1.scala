@@ -51,7 +51,7 @@ object process1 {
         go(m - 1, acc :+ i)
       }
     }
-    go(n,Vector()) ++ chunk(n)
+    go(n,Vector()) fby chunk(n)
   }
 
 
@@ -490,7 +490,7 @@ object process1 {
    * Emit the given values, then echo the rest of the input.
    */
   def shiftRight[I](head: I*): Process1[I, I] =
-    emitAll(head) ++ id
+    emitAll(head) fby id
 
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any, Nothing] = await1[Any].flatMap(_ => halt)
@@ -543,7 +543,7 @@ object process1 {
   def stripNone[A]: Process1[Option[A], A] =
     await1[Option[A]].flatMap {
       case None    => stripNone
-      case Some(a) => emit(a) ++ stripNone
+      case Some(a) => emit(a) fby stripNone
     }
 
   /**

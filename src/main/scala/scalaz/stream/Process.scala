@@ -42,13 +42,16 @@ sealed trait Process[+F[_], +O]
    * will fuse the two processes, so this process will only generate
    * values as they are demanded by `p1`. If `p1` signals termination, `this`
    * is killed with same reason giving it an opportunity to cleanup.
+   * is killed with same reason giving it an opportu nity to cleanup.
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = p1.suspendStep flatMap { s =>
+    Util.debug(s"PIPE p1: $p1 | ps: $s | this: $this")
     s match {
        case p1s@Cont(AwaitP1(rcv1), next1) => this.step match {
         case Cont(awt@Await(_, _), next) => awt.extend(p => (p onHalt next) pipe p1)
         case Cont(Emit(os), next)        => Try(next(Continue)) pipe process1.feed(os)(p1)
-        case dn@Done(rsn)                   => p1s.toProcess.disconnect.causedBy(rsn)
+        case dn@Done(rsn)                   =>  p1.disconnect.causedBy(rsn)
+
       }
       case Cont(Emit(os), next1)           => Emit(os) onHalt { rsn => this.pipe(Try(next1(rsn)))}
       case Done(rsn1)                      => this.kill onHalt { _ => fail(rsn1) }
@@ -70,6 +73,7 @@ sealed trait Process[+F[_], +O]
   final def step: Step[F, O] = {
     @tailrec
     def go(cur: Process[F, O], stack: Vector[Throwable => Trampoline[Process[F, O]]]): Step[F, O] = {
+      Util.debug(s"STEP  CUR: $cur, | stack: $stack")
       if (stack.isEmpty) {
         cur match {
           case Halt(rsn)      => Done(rsn)
@@ -219,9 +223,7 @@ sealed trait Process[+F[_], +O]
     case Cont(e@Emit(_),next) =>
       e onHalt { rsn => Try(next(rsn).disconnect) }
     case Cont(Await(_,rcv),next) =>
-      (Try(rcv(left(End)).run).disconnect onHalt {
-        rsn => Try(next(rsn).disconnect)
-      })
+      (Try(rcv(left(End)).run) onHalt next).disconnect
     case Done(rsn) => Halt(rsn)
   }
 
@@ -677,74 +679,92 @@ object Process {
 
   /**
    * awaits receive of `I` in process1, and attaches fallback in case await evaluation
-   * terminated with `End` indicated source being exhausted or `Kill` indicating process was
-   * forcefully terminated.
+   * terminated with `End` indicated source being exhausted (`fallback`)
+   * or arbitrary exception indicating process was terminated abnormally (`cleanup`)
    *
-   * If you don't need to handle the `fallback` case, use `await1.flatMap`
+   * If you don't need to handle the `fallback` or `cleanup` case, use `await1.flatMap`
    */
-  def receive1[I,O](rcv: I => Process1[I,O], fallback: => Process1[I,O] = halt): Process1[I,O] =
+  def receive1[I,O](
+    rcv: I => Process1[I,O]
+    , fallback: => Process1[I,O] = halt
+    , cleanup: => Process1[I,O] = halt
+    ): Process1[I,O] =
     awaitOr(Get[I])({
-      case End => fallback //exception of upstream handled by `Process.pipe`
-      case _ => halt
+      case End => fallback.causedBy(End)
+      case rsn => cleanup.causedBy(rsn)
     })(rcv)
 
   /**
    * Curried syntax alias for receive1
    */
   def receive1Or[I,O](fb: => Process1[I,O])(rcv: I => Process1[I,O]): Process1[I,O] =
-    receive1[I,O](rcv,fb)
+    receive1[I,O](rcv,fb,fb)
 
   /**
    * Awaits to receive input from Both sides,
-   * than if that request terminates with `End` or is killed by `Kill`
-   * runs the supplied fallback. Otherwise `rcv` is run to produce next state.
+   * than if that request terminates with `End` or is terminated abonromally
+   * runs the supplied fallback or cleanup.
+   * Otherwise `rcv` is run to produce next state.
    *
    * If you don't need `fallback` use rather `awaitBoth.flatMap`
    */
-  def receiveBoth[I,I2,O](rcv: ReceiveY[I,I2] => Wye[I,I2,O], fallback: => Wye[I,I2,O] = halt): Wye[I,I2,O] =
+  def receiveBoth[I,I2,O](
+    rcv: ReceiveY[I,I2] => Wye[I,I2,O]
+    , fallback: => Wye[I,I2,O] = halt
+    , cleanup: => Wye[I,I2,O] = halt
+    ): Wye[I,I2,O] =
     awaitOr[Env[I,I2]#Y,ReceiveY[I,I2],O](Both)({
-      case End => fallback  // exception propragation handled by `wye`
-      case rsn => halt
+      case End => fallback.causedBy(End)
+      case rsn => cleanup.causedBy(rsn)
     })(rcv)
 
   /**
    * Awaits to receive input from Left side,
-   * than if that request terminates with `End` or is killed by `Kill`
-   * runs the supplied fallback. Otherwise `rcv` is run to produce next state.
+   * than if that request terminates with `End` or is terminated abnormally
+   * runs the supplied `fallback` or `cleanup`.
+   * Otherwise `rcv` is run to produce next state.
    *
-   * If  you don't need `fallback` use rather `awaitL.flatMap`
+   * If  you don't need `fallback` or `cleanup` use rather `awaitL.flatMap`
    */
-  def receiveL[I,I2,O](rcv: I => Tee[I,I2,O], fallback: => Tee[I,I2,O] = halt): Tee[I,I2,O] =
+  def receiveL[I,I2,O](
+    rcv: I => Tee[I,I2,O]
+    , fallback: => Tee[I,I2,O] = halt
+    , cleanup: => Tee[I,I2,O] = halt
+    ): Tee[I,I2,O] =
     awaitOr[Env[I,I2]#T,I,O](L)({
-      case End => fallback  // exception propragation handled by `wye`
-      case rsn => halt
+      case End => fallback.causedBy(End)
+      case rsn => cleanup.causedBy(rsn)
     })(rcv)
 
   /**
    * Awaits to receive input from Right side,
-   * than if that request terminates with `End` or is killed by `Kill`
-   * runs the supplied fallback. Otherwise `rcv` is run to produce next state.
+   * than if that request terminates with `End` or is terminated abnormally
+   * runs the supplied fallback.
+   * Otherwise `rcv` is run to produce next state.
    *
-   * If  you don't need `fallback` use rather `awaitR.flatMap`
+   * If  you don't need `fallback` or `cleanup` use rather `awaitR.flatMap`
    */
-  def receiveR[I,I2,O](rcv: I2 => Tee[I,I2,O], fallback: => Tee[I,I2,O] = halt
+  def receiveR[I,I2,O](
+    rcv: I2 => Tee[I,I2,O]
+    , fallback: => Tee[I,I2,O] = halt
+    , cleanup: => Tee[I,I2,O] = halt
     ): Tee[I,I2,O] =
     awaitOr[Env[I,I2]#T,I2,O](R)({
-      case End => fallback  // exception propragation handled by `wye`
-      case rsn => halt
+      case End => fallback.causedBy(End)
+      case rsn => cleanup.causedBy(End)
     })(rcv)
 
   /** syntax sugar for receiveBoth  **/
-  def receiveBothOr[I,I2,O](fallback: => Wye[I,I2,O])(rcv: ReceiveY[I,I2] => Wye[I,I2,O]):Wye[I,I2,O] =
-    receiveBoth(rcv, fallback)
+  def receiveBothOr[I,I2,O](fb: => Wye[I,I2,O])(rcv: ReceiveY[I,I2] => Wye[I,I2,O]):Wye[I,I2,O] =
+    receiveBoth(rcv, fb,fb)
 
   /** syntax sugar for receiveL **/
-  def receiveLOr[I,I2,O](fallback: => Tee[I,I2,O])(rcvL: I => Tee[I,I2,O]): Tee[I,I2,O] =
-    receiveL(rcvL, fallback)
+  def receiveLOr[I,I2,O](fb: => Tee[I,I2,O])(rcvL: I => Tee[I,I2,O]): Tee[I,I2,O] =
+    receiveL(rcvL, fb,fb)
 
   /** syntax sugar for receiveR **/
-  def receiveROr[I,I2,O](fallback: => Tee[I,I2,O])(rcvR: I2 => Tee[I,I2,O]): Tee[I,I2,O] =
-    receiveR(rcvR, fallback)
+  def receiveROr[I,I2,O](fb: => Tee[I,I2,O])(rcvR: I2 => Tee[I,I2,O]): Tee[I,I2,O] =
+    receiveR(rcvR, fb,fb)
 
 
   ///////////////////////////////////////////////////////////////////////////////////////
