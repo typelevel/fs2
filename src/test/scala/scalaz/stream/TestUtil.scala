@@ -37,7 +37,12 @@ private[stream] object TestUtil {
     })
   }
 
-  case class UnexpectedException(e: Throwable) extends RuntimeException
+  case class UnexpectedException( e: Throwable) extends RuntimeException {
+    override def getMessage: String = s"UnexpectedException: ${e.getClass.getName} : ${e.getMessage} "
+    override def toString: String = getMessage
+  }
+
+
 
   implicit class ExpectExn[O](val p: Process[Nothing, O]) extends AnyVal {
     def expectExn(pred: Throwable => Boolean): Process[Nothing, O] = p.onHalt {

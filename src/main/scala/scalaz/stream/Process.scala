@@ -122,6 +122,7 @@ sealed trait Process[+F[_], +O]
           awt.extend { p => this.tee(p onHalt next)(t) }
         case Cont(Emit(o2s:Seq[O2]@unchecked), next:(Throwable => Process[F2,O2])@unchecked) =>
           this.tee(Try(next(Continue)))(feedR[O,O2,O3](o2s)(ts.toProcess))
+
         case d@Done(rsn) =>
           this.tee(d.asHalt)(disconnectR(ts.toProcess)).causedBy(rsn)
       }
@@ -1075,6 +1076,7 @@ object Process {
    */
   case class CausedBy(e: Throwable, cause: Throwable) extends Exception(cause) {
     override def toString = s"$e caused by: $cause"
+    override def getMessage: String = toString
   }
 
 
