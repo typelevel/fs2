@@ -1,7 +1,7 @@
 package scalaz.stream.async.mutable
 
 import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.stream.Process.{End, Halt, Kill}
+import scalaz.stream.Process.{Continue, End, Halt, Kill}
 import scalaz.stream._
 import scalaz.stream.async.immutable
 import scalaz.{-\/, \/, \/-}
@@ -140,7 +140,7 @@ private[stream] object WriterTopic {
           w = next
           if (wos.nonEmpty) subscriptions.foreach(_.publish(wos))
           next match {
-            case Halt(rsnW1) if rsn == End => subscriptions.foreach(_.close(rsnW1))
+            case Halt(rsnW1) if rsn == End || rsn == Continue => subscriptions.foreach(_.close(rsnW1))
             case _ => subscriptions.foreach(_.close(rsn))
           }
       }
@@ -191,12 +191,12 @@ private[stream] object WriterTopic {
           sub.getOrAwait(cb)
 
         case Upstream(-\/(rsn)) =>
-          if (haltOnSource || rsn != End) fail(rsn)
+          if (haltOnSource || rsn != End || rsn != Continue) fail(rsn)
           upState = Some(-\/(rsn))
 
         case Upstream(\/-((is, next))) =>
           publish(is)
-          getNext(Util.Try(next(End)))
+          getNext(Util.Try(next(Continue)))
 
         case Publish(is, cb) =>
           publish(is)

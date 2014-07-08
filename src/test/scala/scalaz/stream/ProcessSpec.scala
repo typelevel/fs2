@@ -135,41 +135,38 @@ object ProcessSpec extends Properties("Process") {
   }
 
   property("kill executes cleanup") = secure {
+    import TestUtil._
     val cleanup = new SyncVar[Int]
     val p: Process[Task, Int] = halt onComplete(eval_(Task.delay { cleanup.put(1) }))
-    p.kill.run.run
+    p.kill.expectExn(_ == Kill).run.run
     cleanup.get(500).get == 1
   }
 
   property("kill") = secure {
-    ("repeated-emit" |: emit(1).repeat.kill.toList == List()) &&
-    ("repeated-emit-exception" |: {
-      try { emit(1).repeat.killBy(FailWhale).toList; false }
-      catch { case FailWhale => true }
-    })
+    import TestUtil._
+    ("repeated-emit" |: emit(1).repeat.kill.expectExn(_ == Kill).toList == List())
   }
 
   property("kill ++") = secure {
+    import TestUtil._
     var afterEmit = false
     var afterHalt = false
     var afterAwait = false
     def rightSide(a: => Unit): Process[Task, Int] = Process.awaitOr(Task.delay(a))(_ => rightSide(a))(_ => halt)
-    (emit(1) ++ rightSide(afterEmit = true)).kill.run.run
-    (halt ++ rightSide(afterHalt = true)).kill.run.run
-    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.run.run
+    (emit(1) ++ rightSide(afterEmit = true)).kill.expectExn(_ == Kill).run.run
+    (halt ++ rightSide(afterHalt = true)).kill.expectExn(_ == Kill).run.run
+    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.expectExn(_ == Kill).run.run
     ("after emit" |: !afterEmit) &&
       ("after halt" |: !afterHalt) &&
       ("after await" |: !afterAwait)
   }
 
   property("pipe can emit when predecessor stops") = secure {
+    import TestUtil._
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
     ("normal termination" |: (emit(1) |> p1).toList == List(1, 2, 3)) &&
-      ("kill" |: ((emit(1) ++ fail(Kill)) |> p1).toList == List(1, 2, 3)) &&
-      ("failure" |: ((emit(1) ++ fail(FailWhale)) |> p1).onHalt {
-        case FailWhale => halt
-        case _ => fail(FailWhale)
-      }.toList == List(1, 2, 3))
+      ("kill" |: ((emit(1) ++ fail(Kill)) |> p1).expectExn(_ == Kill).toList == List(1, 2, 3)) &&
+      ("failure" |: ((emit(1) ++ fail(FailWhale)) |> p1).expectExn(_ == FailWhale).toList == List(1, 2, 3))
   }
 
   property("feed1, disconnect") = secure {

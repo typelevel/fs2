@@ -3,6 +3,7 @@ package scalaz.stream
 import scala.concurrent.duration._
 import java.util.concurrent.{ThreadFactory, Executors, ExecutorService}
 import java.util.concurrent.atomic.AtomicInteger
+import scalaz.concurrent.Task
 
 /**
  * Various testing helpers
@@ -40,6 +41,14 @@ private[stream] object TestUtil {
 
   implicit class ExpectExn[O](val p: Process[Nothing, O]) extends AnyVal {
     def expectExn(pred: Throwable => Boolean): Process[Nothing, O] = p.onHalt {
+      rsn =>
+        if (pred(rsn)) Process.halt
+        else Process.Halt(UnexpectedException(rsn))
+    }
+  }
+
+  implicit class ExpectExnTask[O](val p: Process[Task, O]) extends AnyVal {
+    def expectExn(pred: Throwable => Boolean): Process[Task, O] = p.onHalt {
       rsn =>
         if (pred(rsn)) Process.halt
         else Process.Halt(UnexpectedException(rsn))

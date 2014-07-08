@@ -85,8 +85,8 @@ object wye {
       receiveBoth[I,I2,I \/ I2]({
         case ReceiveL(i) => emit(left(i)) fby go
         case ReceiveR(i) => emit(right(i)) fby go
-        case HaltL(End)     => awaitR[I2].map(right).repeat
-        case HaltR(End)     => awaitL[I].map(left).repeat
+        case HaltL(End | Continue)     => awaitR[I2].map(right).repeat
+        case HaltR(End | Continue)     => awaitL[I].map(left).repeat
         case h@HaltOne(rsn) => fail(rsn)
       })
     go
@@ -134,8 +134,8 @@ object wye {
       receiveBoth[I,I,I]({
         case ReceiveL(i) => emit(i) fby go
         case ReceiveR(i) => emit(i) fby go
-        case HaltL(End)   => awaitR.repeat
-        case HaltR(End)   => awaitL.repeat
+        case HaltL(End | Continue)   => awaitR.repeat
+        case HaltR(End | Continue)   => awaitL.repeat
         case HaltOne(rsn) => fail(rsn)
       })
     go
@@ -163,7 +163,7 @@ object wye {
       receiveBoth[I,I,I]({
         case ReceiveL(i) => emit(i) fby go
         case ReceiveR(i) => emit(i) fby go
-        case HaltR(End)   => awaitL.repeat
+        case HaltR(End | Continue)   => awaitL.repeat
         case HaltOne(rsn) => fail(rsn)
       })
     go
@@ -256,7 +256,7 @@ object wye {
   def attachL[I0,I,I2,O](p1: Process1[I0,I])(y: Wye[I,I2,O]): Wye[I0,I2,O] =  {
     y.step match {
       case Cont(emt@Emit(os),next) =>
-        emt ++ attachL(p1)(Try(next(End)))
+        emt ++ attachL(p1)(Try(next(Continue)))
 
       case Cont(AwaitL(rcv),next) => p1.step match {
         case Cont(Emit(is),next1) =>
@@ -278,7 +278,7 @@ object wye {
 
       case Cont(AwaitBoth(rcv),next) => p1.step match {
         case Cont(Emit(is),next1) =>
-          attachL(Try(next1(End)))(feedL(is)(y))
+          attachL(Try(next1(Continue)))(feedL(is)(y))
 
         case Cont(AwaitP1.withFbT(rcv1), next1) =>
           Await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]], (r: Throwable \/ ReceiveY[I0,I2]) =>
@@ -309,30 +309,30 @@ object wye {
 
   /**
    * Transforms the wye so it will stop to listen on left side.
-   * Instead all requests on the left side are converted to normal termination,
+   * Instead all requests on the left side are converted to  termination with `End`,
    * and will terminate once the right side will terminate.
    * Transforms `AwaitBoth` to `AwaitR`
-   * Transforms `AwaitL` to normal termination
+   * Transforms `AwaitL` to termination with `End`
    */
-  def detach1L[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] = {
-    y.step match {
-      case Cont(emt@Emit(os),next) =>
-        emt onHalt ( rsn => detach1L(next(rsn)))
+  def detach1L[I,I2,O](y0: Wye[I,I2,O]): Wye[I,I2,O] = {
+      y0.step match {
+        case Cont(emt@Emit(os),next) =>
+          emt onHalt (rsn2 => detach1L(next(rsn2)))
 
-      case Cont(AwaitL.withFb(rcv), next) =>
-        suspend(detach1L(Try(rcv(left(End))) onHalt next))
+        case Cont(AwaitL.withFb(rcv), next) =>
+          suspend(detach1L(Try(rcv(left(End))) onHalt next))
 
-      case Cont(AwaitR.withFbT(rcv), next) =>
-        Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
-          rcv(r).map(p=>detach1L(p onHalt next))
-        })
-      case Cont(AwaitBoth.withFbT(rcv), next) =>
-        Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
-          rcv(r.map(ReceiveR.apply)).map(p=>detach1L(p onHalt next))
-        })
+        case Cont(AwaitR.withFbT(rcv), next) =>
+          Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
+            rcv(r).map(p=>detach1L(p onHalt next))
+          })
+        case Cont(AwaitBoth.withFbT(rcv), next) =>
+          Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
+            rcv(r.map(ReceiveR.apply)).map(p=>detach1L(p onHalt next))
+          })
 
-      case dn@Done(rsn) => dn.asHalt
-    }
+        case dn@Done(rsn) => dn.asHalt
+      }
   }
 
   /** right alternative of detach1L **/
@@ -364,7 +364,7 @@ object wye {
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
       cur.step match {
         case Cont(Emit(os), next) =>
-          go(in, out :+ os, Try(next(End)))
+          go(in, out :+ os, Try(next(Continue)))
 
         case Cont(AwaitL(rcv), next) =>
           if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt next)
@@ -394,7 +394,7 @@ object wye {
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
       cur.step match {
         case Cont(Emit(os), next) =>
-          go(in, out :+ os, Try(next(End)))
+          go(in, out :+ os, Try(next(Continue)))
 
         case Cont(AwaitR(rcv), next) =>
           if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt next)
@@ -452,19 +452,21 @@ object wye {
       debug(s"KillL $ys | rsn $rsn")
       ys match {
         case Cont(emt@Emit(os), next) =>
-          emt ++ go(Try(next(End)))
+          emt ++ go(Try(next(Continue)))
 
         case Cont(AwaitL.withFb(rcv), next) =>
-          suspend(go(Try(rcv(left(Kill(rsn)))))
-                  .onHalt(r => go(Try(next(r)))))
+          suspend(go(
+            Try(rcv(left(End))) onHalt next
+          )).causedBy(rsn)
 
         case Cont(awt@AwaitR.is(), next) =>
           awt.extend(go)
           .onHalt(r => go(Try(next(r))))
 
         case Cont(AwaitBoth(rcv), next) =>
-          suspend(go(detach1L(Try(rcv(ReceiveY.HaltL(rsn)))))
-                  .onHalt(r => go(detach1L(Try(next(r))))))
+          suspend(go(detach1L(
+            Try(rcv(ReceiveY.HaltL(rsn))) onHalt next
+          ))).causedBy(rsn)
 
         case d@Done(rsn) => d.asHalt
       }
@@ -482,19 +484,21 @@ object wye {
       debug(s"KillR $ys | rsn $rsn")
       ys match {
         case Cont(emt@Emit(os), next) =>
-          emt ++ go(Try(next(End)))
+          emt ++ go(Try(next(Continue)))
 
         case Cont(AwaitR.withFb(rcv), next) =>
-          suspend(go(Try(rcv(left(Kill(rsn)))))
-                  .onHalt(r => go(Try(next(r)))))
+          suspend(go(
+            Try(rcv(left(End))) onHalt next
+          )).causedBy(rsn)
 
         case Cont(awt@AwaitL.is(), next) =>
           awt.extend(go)
           .onHalt(r => go(Try(next(r))))
 
         case Cont(AwaitBoth(rcv), next) =>
-          suspend(go(detach1R(Try(rcv(ReceiveY.HaltR(rsn)))))
-                  .onHalt(r => go(detach1R(Try(next(r))))))
+          suspend(go(detach1R(
+            Try(rcv(ReceiveY.HaltR(rsn))) onHalt next
+          ))).causedBy(rsn)
 
         case d@Done(rsn) => d.asHalt
       }
@@ -653,7 +657,7 @@ object wye {
       sealed trait M
       case class Ready[A](side: Env[L, R]#Y[A], result: Throwable \/ (Seq[A], Throwable => Process[Task, A])) extends M
       case class Get(cb: (Throwable \/ Seq[O]) => Unit) extends M
-      case class DownDone(cause: Throwable, cb: (Throwable \/ Unit) => Unit) extends M
+      case class DownDone(cb: (Throwable \/ Unit) => Unit) extends M
 
       type SideState[A] = Either3[Throwable, Throwable => Unit, Throwable => Process[Task, A]]
 
@@ -678,8 +682,8 @@ object wye {
       // whenever that side is ready (emited Seq[O] or is done.
       def runSide[A](side: Env[L, R]#Y[A])(state: SideState[A]): SideState[A] = state match {
         case Left3(rsn)         => a ! Ready[A](side, -\/(rsn)); state //just safety callback
-        case Middle3(interrupt) => state //no-op already awaiting the result
-        case Right3(next)       => Either3.middle3(Try(next(End)).runAsync { res => a ! Ready[A](side, res) })
+        case Middle3(interrupt) => state //no-op already awaiting the result  //todo: don't wee nedd a calback there as well.
+        case Right3(next)       => Either3.middle3(Try(next(Continue)).runAsync { res => a ! Ready[A](side, res) })
       }
 
       val runSideLeft = runSide(Left) _
@@ -688,7 +692,7 @@ object wye {
 
       // kills the given side either interrupts the execution
       // or creates next step for the process and then runs killed step.
-      // not this function apart from returning the next state perform the side effects
+      // note that this function apart from returning the next state perform the side effects
       def kill[A](side: Env[L, R]#Y[A])(state: SideState[A]): SideState[A] = {
         state match {
           case Middle3(interrupt) =>
@@ -696,7 +700,7 @@ object wye {
             Middle3((t: Throwable) => ()) //rest the interrupt so it won't get interrupted again
 
           case Right3(next) =>
-            Try(next(End)).kill.run.runAsync(_ => a ! Ready[A](side, -\/(Kill)))
+            Try(next(Kill)).run.runAsync(_ => a ! Ready[A](side, -\/(Kill)))
             Either3.middle3((_: Throwable) => ()) // no-op cleanup can't be interrupted
 
           case left@Left3(_) =>
@@ -731,6 +735,7 @@ object wye {
             if (isDone(l) && isDone(r)) {
               y.unemit._2 match {
                 case Halt(rsn) =>
+                  yy = Halt(rsn)
                   S(cb0(-\/(rsn))); None
                 case other     => cb
               }
@@ -771,7 +776,7 @@ object wye {
       }
 
       // interprets a single step of wye.
-      // if wye is at emit, it tries to complete cb, if cb is defined
+      // if wye is at emit, it tries to complete cb, if cb is nonEmpty
       // if wye is at await runs either side
       // if wye is halt kills either side
       // returns next state of wye and callback
@@ -781,11 +786,11 @@ object wye {
         def go(cur: Wye[L, R, O]): (Wye[L, R, O], Option[(Throwable \/ Seq[O]) => Unit]) = {
           y.step match {
             case Cont(Emit(Seq()), next) =>
-              go(Try(next(End)))
+              go(Try(next(Continue)))
 
             case Cont(Emit(os), next) =>
               cb match {
-                case Some(cb0) => S(cb0(\/-(os))); (Try(next(End)), None)
+                case Some(cb0) => S(cb0(\/-(os))); (Try(next(Continue)), None)
                 case None      => (y, None)
               }
 
@@ -839,17 +844,17 @@ object wye {
             yy = y
             out = haltIfDone(y, left, right, cb)
 
-          case DownDone(rsn, cb) =>
-            yy = fail(rsn)
+          case DownDone( cb) =>
+            if (!yy.isHalt) yy = halt
             left = killLeft(left)
             right = killRight(right)
-            if (wyeDone(yy, left, right).isDefined) S(cb(\/-(())))
+            if (isDone(left) && isDone(right)) S(cb(\/-(())))
             else out = Some((r: Throwable \/ Seq[O]) => cb(r.map(_ => ())))
         }
       })(S)
 
       repeatEval(Task.async[Seq[O]] { cb => a ! Get(cb) }).flatMap(emitAll)
-      .onHalt(rsn => eval_(Task.async[Unit](cb => a ! DownDone(rsn, cb))).causedBy(rsn))
+      .onComplete(eval_(Task.async[Unit](cb => a ! DownDone(cb))))
     }
 
 }

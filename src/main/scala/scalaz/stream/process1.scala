@@ -125,7 +125,7 @@ object process1 {
   def dropLast[I]: Process1[I, I] =
     dropLastIf(_ => true)
 
-  /** Emits all elemens of the input but skips the last if the predicate is true. */
+  /** Emits all elements of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I, I] = {
     def go(prev: I): Process1[I, I] =
       receive1Or[I,I](if (p(prev)) halt else emit(prev))( i =>
@@ -151,7 +151,7 @@ object process1 {
     def go(in: Seq[I], out: Vector[O] , cur: Process1[I, O]  ): Process1[I, O] = {
       if (in.nonEmpty) {
         cur.step match {
-          case Cont(Emit(os), next) =>  go(in, out fast_++ os, next(End))
+          case Cont(Emit(os), next) =>  go(in, out fast_++ os, next(Continue))
           case Cont(AwaitP1(rcv), next) => go(in.tail,out,rcv(in.head) onHalt next)
           case Done(rsn) => emitAll(out).causedBy(rsn)
         }
@@ -569,7 +569,7 @@ object process1 {
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A, Option[A]] =
-    lift[A, Option[A]](Some(_)) onHalt { rsn => emit(None).causedBy(rsn) }
+    lift[A, Option[A]](Some(_)) onComplete emit(None)
 
   private val utf8Charset = Charset.forName("UTF-8")
 

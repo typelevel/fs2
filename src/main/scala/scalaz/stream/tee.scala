@@ -73,7 +73,7 @@ object tee  {
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
       cur.step match {
         case Cont(Emit(os),next) =>
-          go(in,out :+ os, Try(next(End)))
+          go(in,out :+ os, Try(next(Continue)))
 
         case Cont(AwaitR.receive(rcv), next) =>
           emitAll(out.flatten) ++
@@ -100,7 +100,7 @@ object tee  {
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
       cur.step match {
         case Cont(Emit(os),next) =>
-          go(in,out :+ os, Try(next(End)))
+          go(in,out :+ os, Try(next(Continue)))
 
         case Cont(awt@AwaitR(rcv), next) =>
           if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt next )
@@ -139,7 +139,7 @@ object tee  {
         e onHalt { rsn => disconnectL(Try(n(rsn))) }
 
       case Cont(AwaitL.receive(rcv), n) =>
-        disconnectL(Try(rcv(left(Kill))) onHalt n).swallowKill
+        disconnectL(Try(rcv(left(End))) onHalt n)
 
       case Cont(AwaitR(rcv), n) =>
         await(R[I2]: Env[Nothing,I2]#T[I2])(i2 => disconnectL(Try(rcv(i2))))
@@ -160,7 +160,7 @@ object tee  {
         e onHalt { rsn => disconnectR(Try(n(rsn))) }
 
       case Cont(AwaitR.receive(rcv), n) =>
-        disconnectR(Try(rcv(left(Kill))) onHalt n).swallowKill
+        disconnectR(Try(rcv(left(End))) onHalt n)
 
       case Cont(AwaitL(rcv), n) =>
         await(L[I]: Env[I,Nothing]#T[I])(i => disconnectR(Try(rcv(i))))
