@@ -7,3 +7,8 @@ package scalaz.stream
 object Bwahahaa extends java.lang.Exception("you are Any => Unit Reactive!")  {
   override def fillInStackTrace(): Throwable = this
 }
+
+object Bwahahaa2 extends java.lang.Exception("you are A => Unit Reactive!")  {
+  override def fillInStackTrace(): Throwable = this
+}
+

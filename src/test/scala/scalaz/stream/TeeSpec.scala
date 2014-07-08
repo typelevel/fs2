@@ -137,13 +137,13 @@ object TeeSpec extends Properties("Tee") {
     import TestUtil._
     val leftFirst: Tee[Int, Int, Any] = tee.passL[Int] onComplete tee.passR[Int] onComplete emit(3)
     val rightFirst: Tee[Int, Int, Any] = tee.passR[Int] onComplete tee.passL[Int] onComplete emit(3)
-    val l = emit(1) ++ fail(Err)
-    val r = emit(2) ++ fail(Err2)
-    ("both fail - left first" |: l.tee(r)(leftFirst).expectExn(_ == Err).toList == List(1, 2, 3)) &&
-      ("both fail - right first" |: l.tee(r)(rightFirst).expectExn(_ == Err2).toList == List(2, 1, 3)) &&
-      ("left fails - left first" |: l.tee(emit(2))(leftFirst).expectExn(_ == Err).toList == List(1, 2, 3)) &&
-      ("right fails - right first" |: emit(1).tee(r)(rightFirst).expectExn(_ == Err2).toList == List(2, 1, 3))
-      ("right fails - left first" |: emit(1).tee(r)(leftFirst).expectExn(_ == Err2).toList == List(1, 2, 3)) &&
-      ("left fails - right first" |: l.tee(emit(2))(rightFirst).expectExn(_ == Err).toList == List(2, 1, 3))
+    val l = emit(1) ++ fail(Bwahahaa)
+    val r = emit(2) ++ fail(Bwahahaa2)
+    ("both fail - left first" |: l.tee(r)(leftFirst).expectExn(_ == CausedBy(Bwahahaa2, Bwahahaa)).toList == List(1, 2, 3)) &&
+      ("both fail - right first" |: l.tee(r)(rightFirst).expectExn(_ == CausedBy(Bwahahaa, Bwahahaa2)).toList == List(2, 1, 3)) &&
+      ("left fails - left first" |: l.tee(emit(2))(leftFirst).expectExn(_ == Bwahahaa).toList == List(1, 2, 3)) &&
+      ("right fails - right first" |: emit(1).tee(r)(rightFirst).expectExn(_ == Bwahahaa2).toList == List(2, 1, 3))   &&
+      ("right fails - left first" |: emit(1).tee(r)(leftFirst).expectExn(_ == Bwahahaa2).toList == List(1, 2, 3)) &&
+      ("left fails - right first" |: l.tee(emit(2))(rightFirst).expectExn(_ == Bwahahaa).toList == List(2, 1, 3))
   }
 }
