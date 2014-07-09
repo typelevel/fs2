@@ -40,6 +40,14 @@ object HashSpec extends Properties("hash") {
     emitAll(lb).pipe(md2).toList.length <= 1
   }
 
+  property("runLog equals runLast") = forAll { (lb: List[ByteVector]) =>
+    lb.nonEmpty ==> {
+      val x = emitAll(lb).toSource.pipe(md5).runLast.run
+      val y = emitAll(lb).toSource.pipe(md5).runLog.run
+      x == y.headOption
+    }
+  }
+
   property("thread-safety") = secure {
     val proc = range(1,100).liftIO
       .map(i => ByteVector.view(i.toString.getBytes))
