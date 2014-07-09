@@ -155,7 +155,7 @@ object process1 {
           case Cont(AwaitP1(rcv), next) => go(in.tail,out,rcv(in.head) onHalt next)
           case Done(rsn) => emitAll(out).causedBy(rsn)
         }
-      } else emitAll(out) ++ cur
+      } else emitAll(out) fby cur
     }
 
     go(i, Vector(), p)

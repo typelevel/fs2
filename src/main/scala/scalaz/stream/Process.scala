@@ -28,7 +28,7 @@ sealed trait Process[+F[_], +O]
   final def flatMap[F2[x] >: F[x], O2](f: O => Process[F2, O2]): Process[F2, O2] =
     this match {
       case Halt(_) | Emit(Seq()) => this.asInstanceOf[Process[F2,O2]]
-      case Emit(os)                => os.tail.foldLeft(Try(f(os.head)))((p, n) => p append Try(f(n)))
+      case Emit(os)                => os.tail.foldLeft(Try(f(os.head)))((p, n) => p fby Try(f(n)))
       case aw@Await(_, _)          => aw.extend(_ flatMap f)
       case ap@Append(p, n)         => ap.extend(_ flatMap f)
     }
@@ -874,8 +874,8 @@ object Process {
    */
   def constant[A](a: A, chunkSize: Int = 1): Process[Nothing,A] = {
     lazy val go: Process[Nothing,A] =
-      if (chunkSize.max(1) == 1) emit(a) ++ go
-      else emitAll(List.fill(chunkSize)(a)) ++ go
+      if (chunkSize.max(1) == 1) emit(a) fby go
+      else emitAll(List.fill(chunkSize)(a)) fby go
     go
   }
 
