@@ -167,7 +167,7 @@ object io {
       Task.now { (buf: Array[Byte]) => Task.delay {
         val m = src.read(buf)
         if (m == buf.length) buf
-        else if (m == -1) throw Kill
+        else if (m == -1) throw End
         else buf.take(m)
       }}
     }
