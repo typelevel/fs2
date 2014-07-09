@@ -156,11 +156,13 @@ object MergeNSpec extends Properties("mergeN") {
 
   // tests that if one of the processes to mergeN is killed the mergeN is killed as well.
   property("drain-kill-one") = secure {
+    import TestUtil._
     val effect = Process.repeatEval(Task.delay(())).drain
     val p = Process(1,2) onComplete fail(Kill)
 
     val r=
       merge.mergeN(Process(effect,p))
+      .expectExn(_ == Kill)
       .runLog.timed(3000).run
 
     r.size == 2
