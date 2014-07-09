@@ -42,9 +42,8 @@ object HashSpec extends Properties("hash") {
 
   property("runLog equals runLast") = forAll { (lb: List[ByteVector]) =>
     lb.nonEmpty ==> {
-      val x = emitAll(lb).toSource.pipe(md5).runLast.run
-      val y = emitAll(lb).toSource.pipe(md5).runLog.run
-      x == y.headOption
+      val p = emitAll(lb).toSource.pipe(md5)
+      p.runLog.run.headOption == p.runLast.run
     }
   }
 
