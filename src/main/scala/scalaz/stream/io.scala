@@ -109,7 +109,7 @@ object io {
   def linesR(src: Source): Process[Task,String] =
     resource(Task.delay(src))(src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
-      Task.delay { if (lines.hasNext) lines.next else throw Kill }
+      Task.delay { if (lines.hasNext) lines.next else throw End }
     }
 
   /**
@@ -130,7 +130,7 @@ object io {
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task.delay { Option(Console.readLine()).getOrElse(throw Kill) })
+    Process.repeatEval(Task.delay { Option(Console.readLine()).getOrElse(throw End) })
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
