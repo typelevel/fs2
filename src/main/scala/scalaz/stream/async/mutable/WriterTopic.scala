@@ -132,7 +132,11 @@ private[stream] object WriterTopic {
 
     var w: Writer1[W, I, O] = writer
 
-    def fail(rsn: Throwable) = {
+    def fail(rsn0: Throwable): Unit = {
+      val rsn = rsn0 match {
+        case Continue => End //convert continue to End Of Input
+        case _ => rsn0
+      }
       closed = Some(rsn)
       upState.collect { case \/-(interrupt) => interrupt(Kill)}
       w.disconnect.unemit match {
@@ -170,7 +174,7 @@ private[stream] object WriterTopic {
     }
 
     actor = Actor[M](m => {
-      debug(s">>> IN:  m: $m  | sub: $subscriptions | lw: $lastW | clsd: $closed | upState: $upState | wrtr: $writer")
+      debug(s">>> IN:  m: $m  | sub: $subscriptions | lw: $lastW | clsd: $closed | upState: $upState | wrtr: $writer | hOs: $haltOnSource")
       closed.fold(m match {
         case Subscribe(sub, cb) =>
           subscriptions = subscriptions :+ sub
@@ -191,7 +195,7 @@ private[stream] object WriterTopic {
           sub.getOrAwait(cb)
 
         case Upstream(-\/(rsn)) =>
-          if (haltOnSource || rsn != End || rsn != Continue) fail(rsn)
+          if (haltOnSource || (rsn != End && rsn != Continue)) fail(rsn)
           upState = Some(-\/(rsn))
 
         case Upstream(\/-((is, next))) =>

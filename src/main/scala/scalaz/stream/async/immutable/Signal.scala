@@ -28,7 +28,8 @@ trait Signal[A] {
 
   /**
    * Returns the continuous version of this signal, always equal to the
-   * current `A` inside `value`.
+   * current `A` inside `value`. Note that this may not see all changes of `A` as it
+   * gets always current fresh `A` at every request.
    */
   def continuous: Process[Task, A]
 
