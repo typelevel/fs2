@@ -76,14 +76,14 @@ object tee  {
           go(in,out :+ os, Try(next(Continue)))
 
         case Cont(AwaitR.receive(rcv), next) =>
-          emitAll(out.flatten) ++
+          emitAll(out.flatten) fby
             (awaitOr(R[I2]: Env[I,I2]#T[I2])
              (rsn => feedL(in)(rcv(left(rsn)) onHalt next))
              (i2 => feedL[I,I2,O](in)(Try(rcv(right(i2))) onHalt next)))
 
         case Cont(awt@AwaitL(rcv), next) =>
           if (in.nonEmpty) go(in.tail,out,Try(rcv(in.head)) onHalt next )
-          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
+          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] fby (awt onHalt next)
 
         case Done(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
@@ -104,10 +104,10 @@ object tee  {
 
         case Cont(awt@AwaitR(rcv), next) =>
           if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt next )
-          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] ++ (awt onHalt next)
+          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] fby (awt onHalt next)
 
         case Cont(AwaitL.receive(rcv), next) =>
-          emitAll(out.flatten) ++
+          emitAll(out.flatten) fby
             (awaitOr(L[I]: Env[I,I2]#T[I])
              (rsn => feedR(in)(rcv(left(rsn)) onHalt next))
              (i => feedR[I,I2,O](in)(Try(rcv(right(i))) onHalt next)))
