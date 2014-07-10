@@ -46,7 +46,8 @@ sealed trait Process[+F[_], +O]
       case Step(AwaitP1(rcv1)) => this.step match {
         case s@Step(awt@Await(_, _)) => awt.extend(p => (p onHalt s.next) pipe p1)
         case s@Step(Emit(os))    => s.continue pipe process1.feed(os)(p1)
-        case Halt(rsn)               => p1.disconnect.causedBy(rsn)
+        case Halt(End)           => p1.disconnect.swallowKill
+        case Halt(rsn)           => p1.disconnect.causedBy(rsn)
 
       }
       case Step(Emit(os))      => Emit(os) onHalt { rsn => this.pipe(s1.next(rsn)) }
@@ -168,14 +169,13 @@ sealed trait Process[+F[_], +O]
   /**
    * Used when a transducer is terminated by awaiting on a branch that
    * is in the halted state. Such a process is given the opportunity
-   * to emit any final values. All Awaits are converted to terminate with `End`
+   * to emit any final values. All Awaits are converted to terminate with `Kill`
    *
    */
-  final def disconnect: Process[Nothing, O] = this.suspendStep.flatMap {
-    case s@Step(emt@Emit(_)) =>
-      emt onHalt { rsn => s.next(rsn).disconnect }
+  final def disconnect: Process[Nothing, O] = this.step match {
+    case s@Step(emt@Emit(_)) =>  emt onHalt { rsn => s.next(rsn).disconnect }
     case s@Step(awt@Await(_,rcv)) =>
-      (Try(rcv(left(End)).run) onHalt s.next).disconnect
+      (Try(rcv(left(Kill)).run) onHalt s.next).disconnect
     case hlt@Halt(rsn) => hlt
   }
 
@@ -274,7 +274,9 @@ sealed trait Process[+F[_], +O]
     val next = (t: Option[Throwable]) => Trampoline.delay(Try(f(t)))
     this match {
       case Append(p, n)   => Append(p, n :+ next)
-      case other => Step(other, Vector(next))
+      case awt@Await(_,_) => Append(awt, Vector(next))
+      case emt@Emit(_) => Append(emt, Vector(next))
+      case Halt(rsn) =>  Try(f(Some(rsn)))
     }
   }
 
@@ -303,6 +305,15 @@ sealed trait Process[+F[_], +O]
    */
   final def repeat: Process[F, O] = onHalt(_.fold(this.repeat)(fail))
 
+
+  /**
+   * For anly process terminating with kill, this swallows the `Kill` and replaces it with normal termination
+   * @return
+   */
+  final def swallowKill: Process[F,O] = onHalt(_.fold(empty:Process[F,O])({
+    case Kill => halt
+    case other => fail(other)
+  }))
 
   /** Translate the request type from `F` to `G`, using the given polymorphic function. */
   def translate[G[_]](f: F ~> G): Process[G,O] =
@@ -547,9 +558,12 @@ object Process {
      */
     def next(r: Option[Throwable]): Process[F, O] = {
       this match {
-        case Append(_, tail) => Step(empty,tail)
+        case Append(_, stack) =>
+          stack.headOption.fold(Halt(r.getOrElse(End)):Process[F,O])({ f =>
+            Step(Try(f(r).run), stack.tail)
+          })
         case hlt@Halt(rsn0) =>
-          r.fold(hlt: Process[F, O])(rsn => Halt(rsn0).causedBy(rsn)) //todo: not sure on that
+          r.fold(hlt: Process[F, O])(rsn => Halt(rsn)) //todo: not sure on that
 
       }
 
@@ -621,7 +635,9 @@ object Process {
     fb: Throwable => Process[F, O]
     )(rcv: A => Process[F, O]): Process[F, O] = {
     Await(req, (r: Throwable \/ A) => Trampoline.delay(r.fold(
-      rsn => Try(fb(rsn))
+      rsn => {val that = Try(fb(rsn))
+      that
+      }
       , a => rcv(a)
     )))
   }
@@ -686,7 +702,8 @@ object Process {
     ): Process1[I, O] =
     awaitOr(Get[I])({
       case End => fallback.causedBy(End)
-      case rsn => cleanup.causedBy(rsn)
+      case rsn =>  var cln = cleanup.causedBy(rsn)
+        cln
     })(rcv)
 
   /**
