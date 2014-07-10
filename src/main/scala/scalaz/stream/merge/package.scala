@@ -1,6 +1,5 @@
 package scalaz.stream
 
-
 import scalaz.concurrent.{Strategy, Task}
 
 

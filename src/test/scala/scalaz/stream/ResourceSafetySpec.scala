@@ -35,7 +35,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
   property("cleanups") = secure {
     import Process._
     var thrown = List[Throwable]()
-    def cleanup(t:Throwable) =   { thrown = thrown :+ t ; fail(t) }
+    def cleanup(t:Option[Throwable]) =   { thrown = thrown ++ t.toSeq ; t.fold(empty:Process[Nothing,Nothing])(fail) }
     val src = Process.range(0,10)
     val procs = List(
      ("flatMap-Emit",emit(1).flatMap(_ => die).onHalt(cleanup), left(bwah), List(bwah))

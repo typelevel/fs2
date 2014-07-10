@@ -72,25 +72,24 @@ object tee  {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
       cur.step match {
-        case Cont(Emit(os),next) =>
-          go(in,out :+ os, Try(next(Continue)))
+        case s@Step(Emit(os)) =>
+          go(in,out :+ os, s.continue)
 
-        case Cont(AwaitR.receive(rcv), next) =>
+        case s@Step(AwaitR.receive(rcv)) =>
           emitAll(out.flatten) fby
             (awaitOr(R[I2]: Env[I,I2]#T[I2])
-             (rsn => feedL(in)(rcv(left(rsn)) onHalt next))
-             (i2 => feedL[I,I2,O](in)(Try(rcv(right(i2))) onHalt next)))
+             (rsn => feedL(in)(rcv(left(rsn)) onHalt s.next))
+             (i2 => feedL[I,I2,O](in)(Try(rcv(right(i2))) onHalt s.next)))
 
-        case Cont(awt@AwaitL(rcv), next) =>
-          if (in.nonEmpty) go(in.tail,out,Try(rcv(in.head)) onHalt next )
-          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] fby (awt onHalt next)
+        case s@Step(awt@AwaitL(rcv)) =>
+          if (in.nonEmpty) go(in.tail,out,Try(rcv(in.head)) onHalt s.next )
+          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] fby (awt onHalt s.next)
 
-        case Done(rsn) => emitAll(out.flatten).causedBy(rsn)
+        case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
     }
 
     go(i, Vector(), p)
-
 
   }
 
@@ -99,25 +98,24 @@ object tee  {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
       cur.step match {
-        case Cont(Emit(os),next) =>
-          go(in,out :+ os, Try(next(Continue)))
+        case s@Step(Emit(os)) =>
+          go(in,out :+ os, s.continue)
 
-        case Cont(awt@AwaitR(rcv), next) =>
-          if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt next )
-          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] fby (awt onHalt next)
+        case s@Step(awt@AwaitR(rcv)) =>
+          if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt s.next )
+          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] fby (awt onHalt s.next)
 
-        case Cont(AwaitL.receive(rcv), next) =>
+        case s@Step(AwaitL.receive(rcv)) =>
           emitAll(out.flatten) fby
             (awaitOr(L[I]: Env[I,I2]#T[I])
-             (rsn => feedR(in)(rcv(left(rsn)) onHalt next))
-             (i => feedR[I,I2,O](in)(Try(rcv(right(i))) onHalt next)))
+             (rsn => feedR(in)(rcv(left(rsn)) onHalt s.next))
+             (i => feedR[I,I2,O](in)(Try(rcv(right(i))) onHalt s.next)))
 
-        case Done(rsn) => emitAll(out.flatten).causedBy(rsn)
+        case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
     }
 
     go(i, Vector(), p)
-
 
   }
 
@@ -135,17 +133,17 @@ object tee  {
    */
   def disconnectL[I,I2,O](tee:Tee[I,I2,O]) : Tee[Nothing,I2,O] ={
     tee.suspendStep.flatMap  {
-      case Cont(e@Emit(_),n) =>
-        e onHalt { rsn => disconnectL(Try(n(rsn))) }
+      case s@Step(emt@Emit(_)) =>
+        emt onHalt { rsn => disconnectL(s.next(rsn)) }
 
-      case Cont(AwaitL.receive(rcv), n) =>
-        disconnectL(Try(rcv(left(End))) onHalt n)
+      case s@Step(AwaitL.receive(rcv)) =>
+        disconnectL(Try(rcv(left(End))) onHalt s.next)
 
-      case Cont(AwaitR(rcv), n) =>
+      case s@Step(AwaitR(rcv)) =>
         await(R[I2]: Env[Nothing,I2]#T[I2])(i2 => disconnectL(Try(rcv(i2))))
-        .onHalt(rsn0 => disconnectL(Try(n(rsn0))))
+        .onHalt(rsn0 => disconnectL(s.next(rsn0)))
 
-      case dn@Done(_) => dn.asHalt
+      case hlt@Halt(_) => hlt
     }
   }
 
@@ -156,17 +154,17 @@ object tee  {
    */
   def disconnectR[I,I2,O](tee:Tee[I,I2,O]) : Tee[I,Nothing,O] ={
     tee.suspendStep.flatMap  {
-      case Cont(e@Emit(os),n) =>
-        e onHalt { rsn => disconnectR(Try(n(rsn))) }
+      case s@Step(emt@Emit(os)) =>
+        emt onHalt { rsn => disconnectR(s.next(rsn)) }
 
-      case Cont(AwaitR.receive(rcv), n) =>
-        disconnectR(Try(rcv(left(End))) onHalt n)
+      case s@Step(AwaitR.receive(rcv)) =>
+        disconnectR(Try(rcv(left(End))) onHalt s.next)
 
-      case Cont(AwaitL(rcv), n) =>
+      case s@Step(AwaitL(rcv)) =>
         await(L[I]: Env[I,Nothing]#T[I])(i => disconnectR(Try(rcv(i))))
-        .onHalt(rsn0 => disconnectR(Try(n(rsn0))))
+        .onHalt(rsn0 => disconnectR(s.next(rsn0)))
 
-      case dn@Done(_) => dn.asHalt
+      case hlt@Halt(_) => hlt
     }
   }
 

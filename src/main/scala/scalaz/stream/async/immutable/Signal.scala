@@ -1,6 +1,5 @@
 package scalaz.stream.async.immutable
 
-
 import scalaz.concurrent._
 import scalaz.stream.Process
 

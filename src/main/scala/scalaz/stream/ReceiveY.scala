@@ -1,8 +1,6 @@
 package scalaz.stream
 
-
 import scalaz.{Monoid, Applicative, Equal, Monad}
-
 
 
 sealed trait ReceiveY[+A,+B] {

@@ -81,7 +81,7 @@ private[stream] object WriterTopic {
     case class Subscribe(sub: Subscription, cb: (Throwable \/ Unit) => Unit) extends M
     case class Ready(sub: Subscription, cb: (Throwable \/ Seq[W \/ O]) => Unit) extends M
     case class UnSubscribe(sub: Subscription, cb: (Throwable \/ Unit) => Unit) extends M
-    case class Upstream(result: Throwable \/ (Seq[I], Throwable => Process[Task, I])) extends M
+    case class Upstream(result: Throwable \/ (Seq[I], Option[Throwable] => Process[Task, I])) extends M
     case class Publish(is: Seq[I], cb: Throwable \/ Unit => Unit) extends M
     case class Fail(rsn: Throwable, cb: Throwable \/ Unit => Unit) extends M
 
@@ -200,7 +200,7 @@ private[stream] object WriterTopic {
 
         case Upstream(\/-((is, next))) =>
           publish(is)
-          getNext(Util.Try(next(Continue)))
+          getNext(Util.Try(next(None)))
 
         case Publish(is, cb) =>
           publish(is)
@@ -218,7 +218,7 @@ private[stream] object WriterTopic {
         case Publish(_, cb)           => S(cb(-\/(rsn)))
         case Fail(_, cb)              => S(cb(\/-(())))
         case Upstream(-\/(_))         => //no-op
-        case Upstream(\/-((_, next))) => S(Try(next(Kill)).runAsync(_ => ()))
+        case Upstream(\/-((_, next))) => S(Util.Try(next(Some(Kill))).runAsync(_ => ()))
       })
     })(S)
 

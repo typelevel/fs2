@@ -1,12 +1,11 @@
 package scalaz.stream
 
-import scalaz.concurrent.{Strategy, Task}
-import scalaz.stream.wye.Request
-import scalaz.{-\/, \/, \/-}
-import scalaz.stream.ReceiveY.{HaltR, HaltL, ReceiveR, ReceiveL}
-import scalaz.stream.Process._
-import scalaz._
 import scalaz.\/._
+import scalaz._
+import scalaz.concurrent.{Strategy, Task}
+import scalaz.stream.Process._
+import scalaz.stream.ReceiveY.{HaltL, HaltR, ReceiveL, ReceiveR}
+import scalaz.stream.wye.Request
 
 
 /**

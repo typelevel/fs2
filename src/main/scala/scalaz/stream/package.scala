@@ -1,13 +1,17 @@
 package scalaz
 
+import java.lang.Process
 import java.util.concurrent.{ThreadFactory, Executors}
+
 import scodec.bits.ByteVector
 
+import scalaz.stream.Process.Env
+
+
 /**
- * Created by pach on 06/03/14.
+ * Created by pach on 10/07/14.
  */
 package object stream {
-
   import Process._
 
   type Process0[+O] = Process[Nothing,O]

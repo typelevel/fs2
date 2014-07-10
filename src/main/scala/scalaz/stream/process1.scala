@@ -151,14 +151,15 @@ object process1 {
     def go(in: Seq[I], out: Vector[O] , cur: Process1[I, O]  ): Process1[I, O] = {
       if (in.nonEmpty) {
         cur.step match {
-          case Cont(Emit(os), next) =>  go(in, out fast_++ os, next(Continue))
-          case Cont(AwaitP1(rcv), next) => go(in.tail,out,rcv(in.head) onHalt next)
-          case Done(rsn) => emitAll(out).causedBy(rsn)
+          case s@Step(Emit(os)) =>  go(in, out fast_++ os, s.continue)
+          case s@Step(AwaitP1(rcv)) => go(in.tail,out,rcv(in.head) onHalt s.next)
+          case Halt(rsn) => emitAll(out).causedBy(rsn)
         }
       } else emitAll(out) fby cur
     }
 
     go(i, Vector(), p)
+
   }
 
 
@@ -312,13 +313,13 @@ object process1 {
    */
   def liftY[I,O](p: Process1[I,O]) : Wye[I,Any,O] = {
     p.suspendStep.flatMap { s => s match {
-      case Cont(Await(_,rcv), next) =>
-        Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=>liftY(next(rsn)))
+      case s@Step(Await(_,rcv)) =>
+        Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=>liftY(s.next(rsn)))
 
-      case Cont(emt@Emit(os), next) =>
-        emt onHalt(rsn=>liftY(next(rsn)))
+      case s@Step(emt@Emit(os)) =>
+        emt onHalt(rsn=>liftY(s.next(rsn)))
 
-      case dn@Done(rsn) => dn.asHalt
+      case hlt@Halt(rsn) => hlt
     }}
   }
 

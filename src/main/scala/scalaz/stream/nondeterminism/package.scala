@@ -29,7 +29,7 @@ package object nondeterminism {
    */
   def njoin[A](maxOpen: Int, maxQueued: Int)(source: Process[Task, Process[Task, A]])(implicit S: Strategy): Process[Task, A] = {
     sealed trait M
-    case class Offer(p: Process[Task, A], next: Throwable => Process[Task, Process[Task, A]]) extends M
+    case class Offer(p: Process[Task, A], next: Option[Throwable] => Process[Task, Process[Task, A]]) extends M
     case class FinishedSource(rsn: Throwable) extends M
     case class Finished(result: Throwable \/ Unit) extends M
     case class FinishedDown(cb: (Throwable \/ Unit) => Unit) extends M
@@ -40,7 +40,7 @@ package object nondeterminism {
       val done = async.signal[Boolean](S)
 
       //keep state of master source
-      var state: Either3[Throwable, Throwable => Unit, Throwable => Process[Task, Process[Task, A]]] =
+      var state: Either3[Throwable, Throwable => Unit, Option[Throwable] => Process[Task, Process[Task, A]]] =
         Either3.middle3((_: Throwable) => ())
 
       //keep no of open processes
@@ -56,10 +56,11 @@ package object nondeterminism {
               actor ! FinishedSource(rsn)
 
             case \/-((processes, next)) =>
-              actor ! Offer(processes.head, (rsn: Throwable) => rsn match {
-                case Continue => emitAll(processes.tail) onHalt next
-                case _   => Util.Try(next(rsn))
-              })
+              actor ! Offer(processes.head, (r: Option[Throwable]) =>
+                r.fold(emitAll(processes.tail) onHalt next)({
+                  rsn => Util.Try(next(Some(rsn)))
+                })
+              )
           })
         })
 
@@ -90,7 +91,7 @@ package object nondeterminism {
           // and give chance to start next process if not bounded
           case Offer(p, next) =>
             opened = opened + 1
-            if (maxOpen <= 0 || opened < maxOpen) state = nextStep(Util.Try(next(Continue)))
+            if (maxOpen <= 0 || opened < maxOpen) state = nextStep(Util.Try(next(None)))
             else state = Either3.right3(next)
 
             //runs the process with a chance to interrupt it using signal `done`
@@ -101,9 +102,9 @@ package object nondeterminism {
               actor ! Finished(res)
             }
 
-          //finished the `upstream` but still have some open processes to merging
-          case FinishedSource(rsn@(End | Continue)) if opened > 0 =>
-            state = Either3.left3(rsn)
+          //finished the `upstream` normally but still have some open processes to merging
+          case FinishedSource(End) if opened > 0 =>
+            state = Either3.left3(End)
 
           // finished upstream and no processes are running, terminate downstream
           case FinishedSource(rsn) =>
@@ -114,10 +115,9 @@ package object nondeterminism {
           case Finished(-\/(rsn)) =>
             opened = opened - 1
             fail(state match {
-              case Left3(End | Continue) => rsn
               case Left3(rsn0) => rsn0
               case Middle3(interrupt) => interrupt(Kill); rsn
-              case Right3(next) => Util.Try(next(Kill)).run.runAsync(_ => ()); rsn
+              case Right3(next) => Util.Try(next(Some(Kill))).run.runAsync(_ => ()); rsn
             })
 
           // One of the processes terminated w/o failure
@@ -127,10 +127,10 @@ package object nondeterminism {
             opened = opened - 1
             state = state match {
               case Right3(next)
-                if maxOpen <= 0 || opened < maxOpen => nextStep(Util.Try(next(Continue)))
-              case Left3(End | Continue) if opened == 0 => fail(End) ; state
-              case Left3(rsn) if opened == 0        => state
-              case other                            => other
+                if maxOpen <= 0 || opened < maxOpen => nextStep(Util.Try(next(None)))
+              case Left3(End) if opened == 0 => fail(End) ; state
+              case Left3(rsn) if opened == 0 => state
+              case other                     => other
             }
 
           // `Downstream` of the merge terminated
