@@ -370,7 +370,7 @@ object wye {
           else emitAll(out.flatten) fby cur
 
         case s@Step(AwaitR.withFb(rcv)) =>
-          emitAll(out.flatten) ++
+          emitAll(out.flatten) fby
             (awaitOr(R[I2]: Env[I,I2]#Y[I2])
              (rsn => feedL(in)(rcv(left(rsn)) onHalt s.next))
              (i2 => feedL[I,I2,O](in)(Try(rcv(right(i2))) onHalt s.next)))
@@ -378,7 +378,7 @@ object wye {
 
         case s@Step(AwaitBoth(rcv)) =>
           if (in.nonEmpty) go(in.tail, out, Try(rcv(ReceiveY.ReceiveL(in.head))) onHalt s.next)
-          else emitAll(out.flatten) ++ cur
+          else emitAll(out.flatten) fby cur
 
         case Halt(rsn)                  => emitAll(out.flatten).causedBy(rsn)
 
@@ -397,17 +397,17 @@ object wye {
 
         case s@Step(AwaitR(rcv)) =>
           if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt s.next)
-          else emitAll(out.flatten) ++ cur
+          else emitAll(out.flatten) fby cur
 
         case s@Step(AwaitL.withFb(rcv)) =>
-          emitAll(out.flatten) ++
+          emitAll(out.flatten) fby
             (awaitOr(L[I]: Env[I,I2]#Y[I])
              (rsn => feedR(in)(rcv(left(rsn)) onHalt s.next))
              (i => feedR[I,I2,O](in)(Try(rcv(right(i))) onHalt s.next)))
 
         case s@Step(AwaitBoth(rcv)) =>
           if (in.nonEmpty) go(in.tail, out, Try(rcv(ReceiveY.ReceiveR(in.head))) onHalt s.next)
-          else emitAll(out.flatten) ++ cur
+          else emitAll(out.flatten) fby cur
 
         case Halt(rsn)                  => emitAll(out.flatten).causedBy(rsn)
 
@@ -455,7 +455,7 @@ object wye {
           emt onHalt(rsn => go(s.next(rsn)))
 
         case s@Step(AwaitL.withFb(rcv)) =>
-          suspend(go(
+          (go(
             Try(rcv(left(End))) onHalt s.next
           )).causedBy(rsn)
 
@@ -464,7 +464,7 @@ object wye {
           .onHalt(r => go(s.next(r)))
 
         case s@Step(AwaitBoth(rcv)) =>
-          suspend(go(detach1L(
+          (go(detach1L(
             Try(rcv(ReceiveY.HaltL(rsn))) onHalt s.next
           ))).causedBy(rsn)
 
@@ -487,7 +487,7 @@ object wye {
             emt onHalt (rsn=>go(s.next(rsn)))
 
           case s@Step(AwaitR.withFb(rcv)) =>
-            suspend(go(
+            (go(
               Try(rcv(left(End))) onHalt s.next
             )).causedBy(rsn)
 
@@ -496,7 +496,7 @@ object wye {
             .onHalt(r => go(s.next(r)))
 
           case s@Step(AwaitBoth(rcv)) =>
-            suspend(go(detach1R(
+            (go(detach1R(
               Try(rcv(ReceiveY.HaltR(rsn))) onHalt s.next
             ))).causedBy(rsn)
 
