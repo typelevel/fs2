@@ -273,8 +273,8 @@ sealed trait Process[+F[_], +O]
   final def onHalt[F2[x] >: F[x], O2 >: O](f: Option[Throwable] => Process[F2, O2]): Process[F2, O2] = {
     val next = (t: Option[Throwable]) => Trampoline.delay(Try(f(t)))
     this match {
-      case HaltEmitOrAwait(p) => Append(p, Vector(next))
       case Append(p, n)   => Append(p, n :+ next)
+      case other => Step(other, Vector(next))
     }
   }
 
@@ -431,6 +431,8 @@ object Process {
 
   }
 
+  sealed trait EmitOrAwait[+F[_],+O] extends Process[F,O]
+
 
   /**
    * The `Halt` constructor instructs the driver to stop
@@ -453,7 +455,7 @@ object Process {
    * Process.emit
    * Process.emitAll
    */
-  case class Emit[+O](seq: Seq[O]) extends HaltEmitOrAwait[Nothing, O]
+  case class Emit[+O](seq: Seq[O]) extends HaltEmitOrAwait[Nothing, O] with EmitOrAwait[Nothing,O]
 
   /**
    * The `Await` constructor instructs the driver to evaluate
@@ -472,7 +474,7 @@ object Process {
   case class Await[+F[_], A, +O](
     req: F[A]
     , rcv: Throwable \/ A => Trampoline[Process[F, O]]
-    ) extends HaltEmitOrAwait[F, O] {
+    ) extends HaltEmitOrAwait[F, O] with EmitOrAwait[F,O] {
     /**
      * Helper to modify the result of `rcv` parameter of await stack-safely on trampoline.
      */
@@ -490,7 +492,7 @@ object Process {
    * Process.append
    */
   case class Append[+F[_], +O](
-    head: HaltEmitOrAwait[F, O]
+    head: EmitOrAwait[F, O]
     , tail: Vector[Option[Throwable] => Trampoline[Process[F, O]]]
     ) extends Process[F, O] with Step[F, O] {
 
@@ -499,10 +501,7 @@ object Process {
      */
     def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Process[F2, O2] = {
       val et = tail.map(n => (t: Option[Throwable]) => Trampoline.suspend(n(t)).map(f))
-      Try(f(head)) match {
-        case HaltEmitOrAwait(p)                     => Append(p, et)
-        case ap: Append[F2@unchecked, O2@unchecked] => Append(ap.head, ap.tail fast_++ et)
-      }
+      Step(Try(f(head)), et)
     }
 
   }
@@ -559,9 +558,9 @@ object Process {
   }
 
   object Step {
-    def unapply[F[_], O](s: Step[F, O]): Option[HaltEmitOrAwait[F, O]] = s match {
-      case Append(h: HaltEmitOrAwait[F@unchecked, O@unchecked], t) => Some(h)
-      case hlt@Halt(_)                                             => Some(hlt)
+    def unapply[F[_], O](s: Step[F, O]): Option[EmitOrAwait[F, O]] = s match {
+      case Append(h: EmitOrAwait[F@unchecked, O@unchecked], t) => Some(h)
+      case hlt@Halt(_)                                         => None
     }
 
     @tailrec
@@ -570,8 +569,9 @@ object Process {
       , stack: Vector[Option[Throwable] => Trampoline[Process[F, O]]]
       ): Step[F, O] = {
       Util.debug(s"STEP  CUR: $p, | stack: $stack")
+
       p match {
-        case `empty`          =>
+        case Emit(os) if os.isEmpty   =>
           stack.headOption match {
             case Some(f) => apply(Try(f(None).run.asInstanceOf[Process[F,O]]), stack.tail)
             case None => halt
@@ -579,7 +579,11 @@ object Process {
         case emt: Emit[O@unchecked]                              => Append(emt, stack)
         case app: Append[F@unchecked, O@unchecked]               => Append(app.head, app.tail fast_++ stack)
         case awt: Await[F@unchecked, Any@unchecked, O@unchecked] => Append(awt, stack)
-        case hlt@Halt(rsn)                                       => hlt
+        case hlt@Halt(rsn)                                       =>
+          stack.headOption match {
+            case Some(f) => apply(Try(f(Some(rsn)).run.asInstanceOf[Process[F,O]]), stack.tail)
+            case None => Halt(rsn)
+          }
 
 
       }
@@ -1226,6 +1230,7 @@ object Process {
     def toIndexedSeq: IndexedSeq[O] = {
       @tailrec
       def go(cur: Process[Any,O], acc: Vector[O]): IndexedSeq[O] = {
+        Util.debug(s"ISQ $cur | acc: $acc")
         cur.step match {
           case s@Step(Emit(os)) => go(s.continue, acc fast_++ os)
           case s@Step(awt) => go(s.continue,acc)
