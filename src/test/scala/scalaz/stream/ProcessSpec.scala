@@ -257,4 +257,9 @@ object ProcessSpec extends Properties("Process") {
       case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
     }.map(_._1).toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
+
+  property("pipeO stripW ~= stripW pipe") = secure {
+    val p = logged(range(1, 11).toSource)
+    p.pipeO(sum).stripW.runLog.run == p.stripW.pipe(sum).runLog.run
+  }
 }
