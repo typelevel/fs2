@@ -668,7 +668,7 @@ object Process {
 
   /** constructor to emit sequence of `O` **/
   def emitAll[O](os: Seq[O]): Process[Nothing, O] = os match {
-    case Seq() => halt
+    case Seq() => empty
     case _     => Emit(os)
   }
 
@@ -708,6 +708,7 @@ object Process {
 
   /**
    * Curried syntax alias for receive1
+   * Note that `fb` is attached to both, fallback and cleanup
    */
   def receive1Or[I, O](fb: => Process1[I, O])(rcv: I => Process1[I, O]): Process1[I, O] =
     receive1[I, O](rcv, fb, fb)

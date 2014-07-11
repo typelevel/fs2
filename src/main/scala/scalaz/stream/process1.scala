@@ -1,5 +1,6 @@
 package scalaz.stream
 
+
 import collection.immutable.Vector
 import java.nio.charset.Charset
 import scala.annotation.tailrec
@@ -99,7 +100,7 @@ object process1 {
    *
    */
   def collect[I, I2](pf: PartialFunction[I, I2]): Process1[I, I2] =
-    id[I].flatMap(pf andThen (emit) orElse { case _ => halt })
+    id[I].flatMap(pf andThen (emit) orElse { case _ => empty })
 
   /**
    * Like `collect`, but emits only the first element of this process on which
@@ -149,6 +150,7 @@ object process1 {
   def feed[I, O](i: Seq[I])(p: Process1[I, O]): Process1[I, O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[O] , cur: Process1[I, O]  ): Process1[I, O] = {
+      Util.debug(s"FEED1 start: $i | in: $in | out : $out | cur $cur")
       if (in.nonEmpty) {
         cur.step match {
           case s@Step(Emit(os)) =>  go(in, out fast_++ os, s.continue)
@@ -165,7 +167,7 @@ object process1 {
 
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I, I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) else halt) repeat
+    await1[I] flatMap (i => if (f(i)) emit(i) else empty) repeat
 
   /**
    * Skips any elements not satisfying predicate and when found, will emit that
@@ -262,7 +264,7 @@ object process1 {
 
   /** Skip all but the last element of the input. */
   def last[I]: Process1[I, I] = {
-    def go(prev: I): Process1[I, I] = receive1(go,emit(prev))
+    def go(prev: I): Process1[I, I] = receive1Or(emit(prev):Process1[I,I])(go)
     await1[I].flatMap(go)
   }
 
@@ -287,7 +289,7 @@ object process1 {
     def go(curr: Process1[A,B]): Process1[A \/ C, B \/ C] = {
       receive1Or[A \/ C, B \/ C](curr.disconnect.map(-\/(_))) {
         case -\/(a) =>
-          val (bs, next) = p.feed1(a).unemit
+          val (bs, next) = curr.feed1(a).unemit
           val out =  emitAll(bs).map(-\/(_))
           next match {
             case Halt(rsn) => out fby fail(rsn)
@@ -312,7 +314,7 @@ object process1 {
    * Use `wye.flip` to convert it to right side
    */
   def liftY[I,O](p: Process1[I,O]) : Wye[I,Any,O] = {
-    p.suspendStep.flatMap { s => s match {
+    p.step match {
       case s@Step(Await(_,rcv)) =>
         Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=>liftY(s.next(rsn)))
 
@@ -320,7 +322,7 @@ object process1 {
         emt onHalt(rsn=>liftY(s.next(rsn)))
 
       case hlt@Halt(rsn) => hlt
-    }}
+    }
   }
 
   /** Emits the greatest element of the input. */
@@ -494,7 +496,7 @@ object process1 {
     emitAll(head) fby id
 
   /** Reads a single element of the input, emits nothing, then halts. */
-  def skip: Process1[Any, Nothing] = await1[Any].flatMap(_ => halt)
+  def skip: Process1[Any, Nothing] = await1[Any].flatMap(_ => empty)
 
   /**
    * Break the input into chunks where the delimiter matches the predicate.
@@ -529,14 +531,11 @@ object process1 {
    */
   def splitWith[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I, Vector[I]] =
-      receive1(
-       i => {
+      receive1Or(emit(acc):Process1[I,Vector[I]])(i => {
          val cur = f(i)
          if (cur == last) go(acc :+ i, cur)
          else emit(acc) fby go(Vector(i), cur)
-       }
-       , emit(acc)
-      )
+      })
     await1[I].flatMap(i => go(Vector(i), f(i)))
   }
 
@@ -557,12 +556,13 @@ object process1 {
 
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I, I] =
-    if (n <= 0) halt
+    if (n < 0) fail(new IllegalArgumentException(s"n must be > 0 is $n"))
+    else if (n == 0) halt
     else await1[I] fby take(n - 1)
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
   def takeWhile[I](f: I => Boolean): Process1[I, I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) fby takeWhile(f) else halt)
+    await1[I] flatMap (i => if (f(i)) emit(i) fby takeWhile(f) else empty)
 
   /** Like `takeWhile`, but emits the first value which tests false. */
   def takeThrough[I](f: I => Boolean): Process1[I, I] =

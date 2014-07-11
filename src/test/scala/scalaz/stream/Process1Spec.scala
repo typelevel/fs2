@@ -78,7 +78,6 @@ object Process1Spec extends Properties("Process1") {
           val lifted = process1.liftR[Nothing,Int,Int](process1.id[Int].map( i=> i + 1) onComplete emit(Int.MinValue))
           pi.map(\/-(_)).pipe(lifted).toList == li.map(i => \/-(i + 1)) :+ \/-(Int.MinValue)
         }
-        , "liftY" |:  pi.pipe(sum).toList == (pi: Process[Task,Int]).wye(ps)(process1.liftY(sum)).runLog.run.toList
         , "maximum" |: pi.maximum.toList === li.headOption.map(_ => List(li.max)).getOrElse(Nil)
         , "maximumBy" |: {
           // enable when switching to scalaz 7.1
@@ -108,7 +107,7 @@ object Process1Spec extends Properties("Process1") {
         , "stripNone" |: Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
         , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
         , "prefixSums" |: pi.toList.scan(0)(_ + _) === pi.pipe(process1.prefixSums).toList
-        , "take" |: pi.take(n).toList === li.take(n)
+        , "take" |: pi.take((n/10).abs).toList === li.take((n/10).abs)
         , "takeWhile" |: pi.takeWhile(g).toList === li.takeWhile(g)
         , "terminated" |: Process(1, 2, 3).terminated.toList === List(Some(1), Some(2), Some(3), None)
         , "zipWithIndex" |: ps.zipWithIndex.toList === ls.zipWithIndex

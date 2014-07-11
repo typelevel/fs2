@@ -231,4 +231,11 @@ object WyeSpec extends  Properties("Wye"){
     sync.get(3000).nonEmpty
   }
 
+  property("liftY") = secure {
+    import TestInstances._
+    forAll { (pi: Process0[Int], ps: Process0[String]) =>
+      "liftY" |:  pi.pipe(process1.sum).toList == (pi: Process[Task,Int]).wye(ps)(process1.liftY(process1.sum)).runLog.run.toList
+    }
+  }
+
 }
