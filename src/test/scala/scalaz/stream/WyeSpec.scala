@@ -40,13 +40,37 @@ object WyeSpec extends  Properties("Wye"){
     x == List.range(0,10)
   }
 
+  property("disconnectL/R") = secure {
+    val killL = wye.disconnectL(End)(wye.merge[Int])
+    val fed = wye.feedR(Seq(0,1,2,3))(killL)
+    val killed = wye.disconnectR(End)(fed)
+
+    ("awaits on right after left disconnected" |: wye.AwaitR.unapply(killL).isDefined) &&
+      ("all values are unemited" |: (fed.unemit._1 == Seq(0,1,2,3))) &&
+      (s"wye contains emitted values after right disconnect " |: (killed.unemit._1 ==  Seq(0,1,2,3)))
+    (s"wye is killed after disconnected from right: $killed" |: (killed.unemit._2 == Halt(End)))
+
+  }
+
+  property("disconnectR/L") = secure {
+    val killR = wye.disconnectR(End)(wye.merge[Int])
+    val fed = wye.feedL(Seq(0,1,2,3))(killR)
+    val killed = wye.disconnectL(End)(fed)
+
+    ("awaits on left after right disconnected" |: wye.AwaitL.unapply(killR).isDefined) &&
+      ("all values are unEmitted" |: (fed.unemit._1 == Seq(0,1,2,3))) &&
+      (s"wye contains emitted values after left disconnect " |: (killed.unemit._1 ==  Seq(0,1,2,3)))
+    (s"wye is killed after disconnected from left: $killed" |: (killed.unemit._2 == Halt(End)))
+
+  }
+
   // ensure that wye terminates when once side of it is infinite
   // and other side of wye is either empty, or one.
   property("infinite.one.side") = secure {
     import ReceiveY._
     def whileBoth[A,B]: Wye[A,B,Nothing] = {
       def go: Wye[A,B,Nothing] = receiveBoth[A,B,Nothing] {
-        case HaltL(_) | HaltR(_) => halt
+        case HaltOne(rsn) => fail(rsn)
         case _ => go
       }
       go
@@ -161,14 +185,16 @@ object WyeSpec extends  Properties("Wye"){
       (Process.range(0,count ) merge Process.range(0, count)).flatMap {
         (v: Int) =>
           if (v % 1000 == 0) {
-            val e = new java.lang.Exception
+            val e = new java.lang.Exception 
             emit(e.getStackTrace.length)
           } else {
             halt
           }
       }.fold(0)(_ max _)
 
-    m.runLog.timed(180000).run.map(_ < 100) == Seq(true)
+    val result = m.runLog.timed(180000).run
+    (result.exists(_ > 100) == false) &&
+      (result.size >= count / 1000)
 
   }
 
@@ -195,7 +221,10 @@ object WyeSpec extends  Properties("Wye"){
           }
       }.fold(0)(_ max _)
 
-    m.runLog.timed(300000).run.map(_ < 100) == Seq(true)
+    val result = m.runLog.timed(300000).run
+
+    (result.exists(_ > 100) == false) &&
+      (result.size >= count*deep/10)
 
   }
 

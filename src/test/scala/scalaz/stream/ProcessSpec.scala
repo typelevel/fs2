@@ -179,7 +179,7 @@ object ProcessSpec extends Properties("Process") {
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
 
     (Process.range(0,10).liftIO to sink).run.run
-    val res = q.dequeue.take(10).runLog.run.toList
+    val res = q.dequeue.take(10).runLog.timed(3000).run.toList
     q.close.run
 
     res === (0 until 10).map(_.toString).toList

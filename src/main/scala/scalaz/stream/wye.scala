@@ -268,7 +268,7 @@ object wye {
               rcv1(r).map(p=> attachL(p onHalt s1.next)(y))
             })
 
-        case hlt@Halt(rsn) => attachL(hlt)(killL(rsn)(y))
+        case hlt@Halt(rsn) => attachL(hlt)(disconnectL(rsn)(y))
       }
 
       case s@Step(AwaitR.withFbT(rcv)) =>
@@ -288,11 +288,11 @@ object wye {
                case ReceiveL(i0) => rcv1(right(i0)).map(p => attachL(p onHalt s1.next)(y))
                case ReceiveR(i2) => Trampoline.done(attachL(p1)(feed1R(i2)(y)))
                case HaltL(rsn) => rcv1(left(rsn)).map(p=> attachL(p onHalt s1.next)(y))
-               case HaltR(rsn) => Trampoline.done(attachL(p1)(killR(rsn)(y)))
+               case HaltR(rsn) => Trampoline.done(attachL(p1)(disconnectR(rsn)(y)))
              }
            )))
 
-        case hlt@Halt(rsn) => attachL(hlt)(killL(rsn)(y))
+        case hlt@Halt(rsn) => attachL(hlt)(disconnectL(rsn)(y))
       }
 
       case hlt@Halt(_) => hlt
@@ -314,12 +314,13 @@ object wye {
    * Transforms `AwaitL` to termination with `End`
    */
   def detach1L[I,I2,O](y0: Wye[I,I2,O]): Wye[I,I2,O] = {
+    Util.debug(s"DET1L y : $y0")
       y0.step match {
         case s@Step(emt@Emit(os)) =>
           emt onHalt (rsn2 => detach1L(s.next(rsn2)))
 
         case s@Step(AwaitL.withFb(rcv)) =>
-          suspend(detach1L(Try(rcv(left(End))) onHalt s.next))
+          detach1L(Try(rcv(left(End))) onHalt s.next)
 
         case s@Step(AwaitR.withFbT(rcv)) =>
           Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
@@ -335,8 +336,28 @@ object wye {
   }
 
   /** right alternative of detach1L **/
-  def detach1R[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
-    flip(detach1L(flip(y)))
+  def detach1R[I,I2,O](y0: Wye[I,I2,O]): Wye[I,I2,O] = {
+    Util.debug(s"DET1R y : $y0")
+    y0.step match {
+      case s@Step(emt@Emit(os)) =>
+        emt onHalt (rsn2 => detach1R(s.next(rsn2)))
+
+      case s@Step(AwaitR.withFb(rcv)) =>
+        detach1R(Try(rcv(left(End))) onHalt s.next)
+
+      case s@Step(AwaitL.withFbT(rcv)) =>
+        Await(L[I],(r: Throwable \/ I ) => Trampoline.suspend {
+          rcv(r).map(p=>detach1R(p onHalt s.next))
+        })
+      case s@Step(AwaitBoth.withFbT(rcv)) =>
+        Await(L[I],(r: Throwable \/ I ) => Trampoline.suspend {
+          rcv(r.map(ReceiveL.apply)).map(p=>detach1R(p onHalt s.next))
+        })
+
+      case hlt@Halt(rsn) => hlt
+    }
+  }
+    //flip(detach1L(flip(y)))
 
   /**
    * Feed a single `ReceiveY` value to a `Wye`.
@@ -345,8 +366,8 @@ object wye {
     r match {
       case ReceiveL(i) => feed1L(i)(w)
       case ReceiveR(i2) => feed1R(i2)(w)
-      case HaltL(e) => killL(e)(w)
-      case HaltR(e) => killR(e)(w)
+      case HaltL(e) => disconnectL(e)(w)
+      case HaltR(e) => disconnectR(e)(w)
     }
 
   /** Feed a single value to the left branch of a `Wye`. */
@@ -358,9 +379,10 @@ object wye {
     feedR(Vector(i2))(w)
 
   /** Feed a sequence of inputs to the left side of a `Tee`. */
-  def feedL[I,I2,O](i: Seq[I])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
+  def feedL[I,I2,O](is: Seq[I])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
+      Util.debug(s"FEEDL src: $is | in: $in | out: $out | cur: $cur ")
       cur.step match {
         case s@Step(Emit(os)) =>
           go(in, out :+ os, s.continue)
@@ -384,13 +406,14 @@ object wye {
 
       }
     }
-    go(i, Vector(), y)
+    go(is, Vector(), y)
   }
 
   /** Feed a sequence of inputs to the right side of a `Tee`. */
-  def feedR[I,I2,O](i2: Seq[I2])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
+  def feedR[I,I2,O](i2s: Seq[I2])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
+      Util.debug(s"FEEDR src: $i2s | in: $in | out: $out | cur: $cur ")
       cur.step match {
         case s@Step(Emit(os)) =>
           go(in, out :+ os, s.continue)
@@ -413,12 +436,13 @@ object wye {
 
       }
     }
-    go(i2, Vector(), y)
+    go(i2s, Vector(), y)
 
   }
 
   /**
    * Convert right requests to left requests and vice versa.
+   * //todo: flip seems to not work very well with detachL/R?
    */
   def flip[I,I2,O](y: Wye[I,I2,O]): Wye[I2,I,O] =
      y.step match {
@@ -445,8 +469,10 @@ object wye {
 
   /**
    * Signals to wye, that Left side terminated.
+   * Reason for termination is `End` in case the Left side input exhausted
+   * and `Kill` in case Right side or downstream terminated for whatever reason
    */
-  def killL[I, I2, O](rsn: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
+  def disconnectL[I, I2, O](rsn: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
     def go(y: Wye[I, I2, O]): Wye[I, I2, O] = {
       val ys = y.step
       debug(s"KillL $ys | rsn $rsn")
@@ -455,18 +481,14 @@ object wye {
           emt onHalt(rsn => go(s.next(rsn)))
 
         case s@Step(AwaitL.withFb(rcv)) =>
-          (go(
-            Try(rcv(left(End))) onHalt s.next
-          )).causedBy(rsn)
+          go(Try(rcv(left(rsn))) onHalt s.next)
 
         case s@Step(awt@AwaitR.is()) =>
-          awt.extend(go)
-          .onHalt(r => go(s.next(r)))
+          awt.extend(disconnectL(rsn)).asInstanceOf[Wye[I,I2,O]]
+          .onHalt(r => disconnectL(rsn)(s.next(r)))
 
         case s@Step(AwaitBoth(rcv)) =>
-          (go(detach1L(
-            Try(rcv(ReceiveY.HaltL(rsn))) onHalt s.next
-          ))).causedBy(rsn)
+          detach1L(Try(rcv(ReceiveY.HaltL(rsn))) onHalt s.next)
 
         case hlt@Halt(_) => hlt
       }
@@ -476,9 +498,9 @@ object wye {
   }
 
   /**
-   * Signals to wye, that Right side terminated.
+   * Right side alternative for `disconnectL`
    */
-  def killR[I, I2, O](rsn: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
+  def disconnectR[I, I2, O](rsn: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
     def go(y: Wye[I, I2, O]): Wye[I, I2, O] = {
         val ys = y.step
         debug(s"KillR $ys | rsn $rsn")
@@ -487,18 +509,14 @@ object wye {
             emt onHalt (rsn=>go(s.next(rsn)))
 
           case s@Step(AwaitR.withFb(rcv)) =>
-            (go(
-              Try(rcv(left(End))) onHalt s.next
-            )).causedBy(rsn)
+            go(Try(rcv(left(rsn))) onHalt s.next)
 
           case s@Step(awt@AwaitL.is()) =>
-            awt.extend(go)
-            .onHalt(r => go(s.next(r)))
+            awt.extend(disconnectR(rsn)).asInstanceOf[Wye[I,I2,O]]
+            .onHalt(r => disconnectR(rsn)(s.next(r)))
 
           case s@Step(AwaitBoth(rcv)) =>
-            (go(detach1R(
-              Try(rcv(ReceiveY.HaltR(rsn))) onHalt s.next
-            ))).causedBy(rsn)
+            detach1R( Try(rcv(ReceiveY.HaltR(rsn))) onHalt s.next)
 
           case hlt@Halt(rsn) => hlt
         }
@@ -720,13 +738,6 @@ object wye {
       //checks if given state is done
       def isDone[A](state: SideState[A]) = state.leftOr(false)(_ => true)
 
-      // checks if wye and left and right side are terminated and done.
-      // Returns reason for wye termination
-      def wyeDone(y: Wye[L, R, O], l: SideState[L], r: SideState[R]): Option[Throwable] =
-        y match {
-          case Halt(rsn) if isDone(l) && isDone(r) => Some(rsn)
-          case _                                   => None
-        }
 
       // halts the open request if wye and L/R are done, and returns None
       // otherwise returns cb
@@ -770,7 +781,7 @@ object wye {
         , y: Wye[L, R, O]): Wye[L, R, O] = {
         val (state, input) = sideReady(Left)(result)
         left = state
-        input.fold(rsn => wye.killL(rsn)(y), ls => wye.feedL(ls)(y))
+        input.fold(rsn => wye.disconnectL(rsn)(y), ls => wye.feedL(ls)(y))
       }
 
       def sideReadyRight(
@@ -778,7 +789,7 @@ object wye {
         , y: Wye[L, R, O]): Wye[L, R, O] = {
         val (state, input) = sideReady(Right)(result)
         right = state
-        input.fold(rsn => wye.killR(rsn)(y), rs => wye.feedR(rs)(y))
+        input.fold(rsn => wye.disconnectR(rsn)(y), rs => wye.feedR(rs)(y))
       }
 
       // interprets a single step of wye.
@@ -790,36 +801,37 @@ object wye {
       : (Wye[L, R, O], Option[(Throwable \/ Seq[O]) => Unit]) = {
         @tailrec
         def go(cur: Wye[L, R, O]): (Wye[L, R, O], Option[(Throwable \/ Seq[O]) => Unit]) = {
-          y.step match {
+          Util.debug(s"YY cur $cur | cb: $cb | L: $left | R: $right")
+          cur.step match {
             case s@Step(Emit(Seq())) =>
               go(s.continue)
 
             case s@Step(Emit(os)) =>
               cb match {
                 case Some(cb0) => S(cb0(\/-(os))); (s.continue, None)
-                case None      => (y, None)
+                case None      => (cur, None)
               }
 
             case Step(AwaitL.is()) =>
               left = runSideLeft(left)
               leftBias = false
-              (y, cb)
+              (cur, cb)
 
             case Step(AwaitR.is()) =>
               right = runSideRight(right)
               leftBias = true
-              (y, cb)
+              (cur, cb)
 
             case Step(AwaitBoth.is()) =>
               if (leftBias) {left = runSideLeft(left); right = runSideRight(right) }
               else {right = runSideRight(right); left = runSideLeft(left) }
               leftBias = !leftBias
-              (y, cb)
+              (cur, cb)
 
             case Halt(_) =>
               if (!isDone(left)) left = killLeft(left)
               if (!isDone(right)) right = killRight(right)
-              (y, cb)
+              (cur, cb)
 
           }
         }

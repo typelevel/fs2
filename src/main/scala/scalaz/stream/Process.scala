@@ -667,10 +667,7 @@ object Process {
   def emit[O](o: O): Process[Nothing, O] = Emit(Vector(o))
 
   /** constructor to emit sequence of `O` **/
-  def emitAll[O](os: Seq[O]): Process[Nothing, O] = os match {
-    case Seq() => empty
-    case _     => Emit(os)
-  }
+  def emitAll[O](os: Seq[O]): Process[Nothing, O] = Emit(os)
 
 
   /** constructor to emit sequence of `O` having `tail` as next state **/
