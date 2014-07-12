@@ -1,5 +1,7 @@
 package scalaz.stream
 
+import scalaz.\/
+
 
 /**
  * Defines termination cause for the process.
@@ -35,6 +37,18 @@ sealed trait Cause {
 }
 
 /**
+ * A marker that is indicating Cause was terminating the stream EarlyCause,
+ * either due to error, or being killed
+ */
+sealed trait EarlyCause extends Cause
+
+object EarlyCause {
+  def apply[A](r:Throwable\/A):EarlyCause\/A =
+    r.bimap(Error.apply,identity)
+}
+
+
+/**
  * Process terminated normally due to End of input.
  * That means items from Emit ha been exhausted.
  */
@@ -48,7 +62,7 @@ case object End extends Cause
  * resulting downstream requested termination of process.
  * This shall cause process to run all cleanup actions and then terminate normally
  */
-case object Kill extends Cause
+case object Kill extends EarlyCause
 
 /**
  * Signals, that evaluation of last await resulted in error.
@@ -58,7 +72,7 @@ case object Kill extends Cause
  * @param rsn Error thrown by last await.
  *
  */
-case class Error(rsn: Throwable) extends Cause
+case class Error(rsn: Throwable) extends EarlyCause
 
 
 /**

@@ -155,7 +155,7 @@ object process1 {
       if (in.nonEmpty) {
         cur.step match {
           case s@Step(Emit(os)) =>  go(in, out fast_++ os, s.continue)
-          case s@Step(AwaitP1(rcv)) => go(in.tail,out,rcv(in.head) onHalt s.next)
+          case s@Step(Await1(rcv)) => go(in.tail,out,rcv(right(in.head)) onHalt s.next)
           case Halt(rsn) => emitAll(out).causedBy(rsn)
         }
       } else emitAll(out) fby cur
@@ -616,10 +616,10 @@ object process1 {
   }
 
 
-  object AwaitP1 {
+  object Await1 {
     /** deconstruct for `Await` directive of `Process1` **/
-    def unapply[I, O](self: Process1[I, O]): Option[I => Process1[I, O]] = self match {
-      case Await(_, rcv) => Some((i: I) => Try(rcv(right(i)).run))
+    def unapply[I, O](self: Process1[I, O]): Option[EarlyCause \/ I => Process1[I, O]] = self match {
+      case Await(_, rcv) => Some((r:EarlyCause\/ I) => Try(rcv(r).run))
       case _             => None
     }
 

@@ -1,6 +1,7 @@
 package scalaz.stream
 
 import scala.annotation.tailrec
+import scalaz.{\/-, \/}
 import scalaz.\/._
 import scalaz.stream.Process._
 import scalaz.stream.Util._
@@ -80,13 +81,13 @@ object tee {
         case s@Step(AwaitR(rcv)) =>
           emitAll(out.flatten) fby
             Await(R[I2]: Env[I, I2]#T[I2]
-              , (i2: I2) => Trampoline.delay(
-                feedL[I, I2, O](in)(Try(rcv(i2)) onHalt s.next)
+              , (r: EarlyCause \/ I2) => Trampoline.delay(
+                feedL[I, I2, O](in)(Try(rcv(r)) onHalt s.next)
               ))
 
 
         case s@Step(awt@AwaitL(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt s.next)
+          if (in.nonEmpty) go(in.tail, out, Try(rcv(right(in.head))) onHalt s.next)
           else emitAll(out.flatten).asInstanceOf[Tee[I, I2, O]] fby (awt onHalt s.next)
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
@@ -106,14 +107,14 @@ object tee {
           go(in, out :+ os, s.continue)
 
         case s@Step(awt@AwaitR(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt s.next)
+          if (in.nonEmpty) go(in.tail, out, Try(rcv(right(in.head))) onHalt s.next)
           else emitAll(out.flatten).asInstanceOf[Tee[I, I2, O]] fby (awt onHalt s.next)
 
         case s@Step(AwaitL(rcv)) =>
           emitAll(out.flatten) fby
             Await(L[I]: Env[I, I2]#T[I]
-              , (i: I) => Trampoline.delay(
-                feedR[I, I2, O](in)(Try(rcv(i)) onHalt s.next)
+              , (r: EarlyCause \/ I) => Trampoline.delay(
+                feedR[I, I2, O](in)(Try(rcv(r)) onHalt s.next)
               ))
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
@@ -146,7 +147,7 @@ object tee {
       case s@Step(AwaitL(_)) => disconnectL(cause)(s.next(cause.kill))
 
       case s@Step(AwaitR(rcv)) =>
-        receiveR[Nothing, I2, O](i2 => disconnectL(cause)(Try(rcv(i2))))
+        receiveR[Nothing, I2, O](i2 => disconnectL(cause)(Try(rcv(right(i2))))) //todo: Earlycause
         .onHalt (rsn0 => disconnectL(cause)(s.next(rsn0)))
 
       case hlt@Halt(_) => hlt
@@ -167,7 +168,7 @@ object tee {
       case s@Step(AwaitR(_)) => disconnectR(cause)(s.next(cause.kill))
 
       case s@Step(AwaitL(rcv)) =>
-        receiveL[I,Nothing,O](i=> disconnectR(cause)(Try(rcv(i))))
+        receiveL[I,Nothing,O](i=> disconnectR(cause)(Try(rcv(right(i))))) //todo: earlycause
         .onHalt(rsn0 => disconnectR(cause)(s.next(rsn0)))
 
       case hlt@Halt(_) => hlt
@@ -184,8 +185,9 @@ object tee {
 
   object AwaitL {
     def unapply[I, I2, O](self: Tee[I, I2, O]):
-    Option[(I => Tee[I, I2, O])] = self match {
-      case Await(req, rcv) if req.tag == 0 => Some((i: I) => Try(rcv(right(i)).run)) // Some(rcv.asInstanceOf[I => Tee[I,I2,O]])
+    Option[(EarlyCause \/ I => Tee[I, I2, O])] = self match {
+      case Await(req, rcv)
+        if req.tag == 0 => Some((i: EarlyCause \/ I) => Try(rcv(right(i)).run))
       case _                               => None
     }
 
@@ -200,8 +202,9 @@ object tee {
 
   object AwaitR {
     def unapply[I, I2, O](self: Tee[I, I2, O]):
-    Option[(I2 => Tee[I, I2, O])] = self match {
-      case Await(req, rcv) if req.tag == 1 => Some((i2: I2) => Try(rcv(right(i2)).run)) //Some((recv.asInstanceOf[I2 => Tee[I,I2,O]], fb, c))
+    Option[(EarlyCause \/ I2 => Tee[I, I2, O])] = self match {
+      case Await(req, rcv)
+        if req.tag == 1 => Some((i2: EarlyCause \/ I2) => Try(rcv(right(i2)).run))
       case _                               => None
     }
 

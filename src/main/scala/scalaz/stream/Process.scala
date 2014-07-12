@@ -7,7 +7,7 @@ import scala.collection.SortedMap
 import scala.concurrent.duration._
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Task, Strategy}
-import scalaz.stream.process1.AwaitP1
+import scalaz.stream.process1.Await1
 import scalaz.{Functor, MonadPlus, \/-, -\/, Catchable, Monad, Monoid, Nondeterminism, \/, ~>}
 
 
@@ -102,11 +102,15 @@ sealed trait Process[+F[_], +O]
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = p1.suspendStep.flatMap({ s1 =>
     Util.debug(s"PIPE p1: $p1 | s1: $s1 | this: $this")
     s1 match {
-      case Step(AwaitP1(rcv1)) => this.step match {
+      case Step(Await1(rcv1)) => this.step match {
         case s@Step(awt@Await(_, _)) => awt.extend(p => (p onHalt s.next) pipe p1)
         case s@Step(Emit(os))        => s.continue pipe process1.feed(os)(p1)
-        case Halt(End)               => p1.disconnect(Kill).swallowKill
-        case Halt(rsn)               => p1.disconnect(rsn)
+        case Halt(End)               =>
+          println(">>>>>>> UPSTREAM DONE")
+          p1.disconnect(Kill).swallowKill
+        case Halt(rsn)               =>
+          println(">>>>>>> UPSTRAM KILLED " + rsn)
+          p1.disconnect(rsn)
       }
       case Step(Emit(os))      => Emit(os) onHalt { cse => this.pipe(s1.next(cse)) }
       case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
@@ -376,10 +380,9 @@ sealed trait Process[+F[_], +O]
             go(s.continue, nacc)
           }
         case s@Step(awt:Await[F2,Any,O]@unchecked) =>
-          F.bind(C.attempt(awt.req)) { _.fold(
-            rsn => go(s.next(Error(rsn)) , acc)
-            , r => go(Try(awt.rcv(r).run) onHalt s.next, acc)
-          )}
+          F.bind(C.attempt(awt.req)) { r =>
+            go(Try(awt.rcv(EarlyCause(r)).run) onHalt s.next, acc)
+          }
         case Halt(End) => F.point(acc)
         case Halt(Kill) => F.point(acc)
         case Halt(Error(rsn)) => C.fail(rsn)
@@ -479,10 +482,14 @@ object Process {
    * The `Await` constructor instructs the driver to evaluate
    * `req`. If it returns successfully, `recv` is called with result on right side
    * to transition to the next state.
-   * In case the req terminates with either a failure (`Throwable`) or
-   * an `End` indicating normal termination, these are passed to rcv on the left side,
-   * to produce next state.
    *
+   * In case the req terminates with failure the `Error(falure)` is passed on left side
+   * giving chance for any fallback action.
+   *
+   * In case the process was killed before the request is evaluated `Kill` is passed on left side.
+   * `Kill` is passed on left side as well as when the request is already in progress, but process was killed.
+   *
+   * Note that
    *
    * Instead of this constructor directly, please use:
    *
@@ -491,7 +498,7 @@ object Process {
    */
   case class Await[+F[_], A, +O](
     req: F[A]
-    , rcv: A => Trampoline[Process[F, O]]
+    , rcv: (EarlyCause \/ A) => Trampoline[Process[F, O]]
     ) extends HaltEmitOrAwait[F, O] with EmitOrAwait[F, O] {
     /**
      * Helper to modify the result of `rcv` parameter of await stack-safely on trampoline.
@@ -608,30 +615,31 @@ object Process {
    * allowing to pass `req` as request
    * and function to produce next state
    *
+   * If you need to specify fallback, use `awaitOr`
    *
    */
   def await[F[_], A, O](req: F[A])(rcv: A => Process[F, O]): Process[F, O] =
-    Await(req, (a: A) => Trampoline.delay(Try(rcv(a))))
+    awaitOr(req)(Halt.apply)(rcv)
 
   /**
    * Constructs an await, that allows to specify processes that will be run when
-   * request wil either terminate with `End` or `Kill` (continue) or with error (onError).
+   * request will be either interrupted with `Kill` or with an `Error`
    *
-   * if you don't need to specify `continue` or `onError` use `await`
+   * if you don't need to specify `fb` use `await`
    */
   def awaitOr[F[_], A, O](req: F[A])(
-    fb: Cause => Process[F, O]
+    fb: EarlyCause => Process[F, O]
     )(rcv: A => Process[F, O]): Process[F, O] = {
-    Await(req, (a: A) => Trampoline.delay(Try(rcv(a)))) onHalt fb
+    Await(req, (r: EarlyCause \/ A) => Trampoline.delay(Try(r.fold(ec=>fb(ec),a=>rcv(a)))))
   }
 
   /** helper to construct await for Process1 **/
   def await1[I]: Process1[I, I] =
     await(Get[I])(emit)
 
-  /** like await1, but allows to define continue in case the process terminated with exception **/
+  /** like await1, but allows to define `fb` when await was not receiving `I` **/
   def await1Or[I](fb: => Process1[I, I]): Process1[I, I] =
-    awaitOr(Get[I])((_: Cause) => fb)(emit)
+    awaitOr(Get[I])((_: EarlyCause) => fb)(emit)
 
 
   /** heleper to construct for await on Both sides. Can be used in `Wye` **/
@@ -686,7 +694,7 @@ object Process {
    * Note that `fb` is attached to both, fallback and cleanup
    */
   def receive1Or[I, O](fb: => Process1[I, O])(rcv: I => Process1[I, O]): Process1[I, O] =
-    awaitOr(Get[I])((rsn: Cause) => fb.causedBy(rsn))(rcv)
+    awaitOr(Get[I])((rsn: EarlyCause) => fb.causedBy(rsn))(rcv)
 
   /**
    * Awaits to receive input from Both sides,
@@ -973,9 +981,8 @@ object Process {
             Task.now(os.head)
           }
         case s@Step(Await(rq,rcv)) =>
-          rq.attempt.flatMap {
-            case -\/(t) => cur = s.next(Error(t)); go
-            case \/-(r) => cur = Try(rcv(r).run) onHalt s.next; go
+          rq.attempt.flatMap { r =>
+              Try(rcv(EarlyCause(r)).run) onHalt s.next ; go
           }
         case Halt(End) => Task.fail(new Exception("Process terminated normally"))
         case Halt(Kill) => Task.fail(new Exception("Process was killed"))
@@ -1304,11 +1311,8 @@ object Process {
 
       a = new Actor[M]({
         case AwaitDone(r, awt, next) if completed.isEmpty =>
-          val step =
-          r.fold(
-           rsn => Try(next(Error(rsn)))
-          , r => Try(awt.rcv(r).run) onHalt next
-          )
+          val step =  Try(awt.rcv(EarlyCause(r)).run) onHalt next
+
 
           runStep(step).fold(
             rsn => completed = Some(rsn)
@@ -1332,12 +1336,10 @@ object Process {
         // in `next` or `rcv` on left side
         // as this was already run on `Interrupt`
         case AwaitDone(r, awt, _) =>
-          r.foreach {
-            a =>
-              Try(awt.rcv(a).run)
-              .kill
-              .run.runAsync(_ => ())
-          }
+          Try(awt.rcv(EarlyCause(r)).run)
+          .kill
+          .run.runAsync(_ => ())
+
 
         // Interrupt after we have been completed this is no-op
         case Interrupt(_) => ()
