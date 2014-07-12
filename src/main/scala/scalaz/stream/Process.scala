@@ -6,15 +6,17 @@ import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
 import scalaz.\/._
-import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, ~>}
+import scalaz.concurrent.{Actor, Task, Strategy}
+import scalaz.stream.process1.AwaitP1
+import scalaz.{Functor, MonadPlus, \/-, -\/, Catchable, Monad, Monoid, Nondeterminism, \/, ~>}
+
 
 sealed trait Process[+F[_], +O]
   extends Process1Ops[F, O]
-          with TeeOps[F,O] {
+          with TeeOps[F, O] {
 
- import scalaz.stream.Process._
- import scalaz.stream.Util._
+  import scalaz.stream.Process._
+  import scalaz.stream.Util._
 
   /**
    * Generate a `Process` dynamically for each output of this `Process`, and
@@ -34,6 +36,63 @@ sealed trait Process[+F[_], +O]
 
 
   /**
+   * If this process halts without an error, attaches `p2` as the next step.
+   * Also this won't attach `p2` whenever process was `Killed` by downstream
+   */
+  final def append[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = {
+    onHalt {
+      case End   => p2
+      case cause => Halt(cause)
+    }
+  }
+
+  /** alias for `append` **/
+  final def ++[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
+
+  /** alias for `append` **/
+  final def fby[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
+
+  /**
+   * Evaluate this process and produce next `Step` of this process.
+   *
+   * Result may be in state of `Append` that indicates there are other process steps to be evaluated
+   * or in `Halt` that indicates process has finished and there is no more evaluation to be processed
+   *
+   * Note this evaluation is not resource safe, that means user must assure the evaluation whatever
+   * is produced as next step.
+   */
+  final def step: Step[F, O] = Step.fromProcess(this)
+
+
+  final def suspendStep: Process[Nothing, Step[F, O]] =
+    suspend { emit(step) }
+
+  /**
+   * When the process terminates either due to `End` or `Kill` or an `Error`
+   * `f` is evaluated to produce next state.
+   *
+   * Note that `f` is responsible to eventually propagate reason for termination.
+   */
+  final def onHalt[F2[x] >: F[x], O2 >: O](f: Cause => Process[F2, O2]): Process[F2, O2] = {
+    val next = (t: Cause) => Trampoline.delay(Try(f(t)))
+    this match {
+      case Append(h, stack) => Append(h, stack :+ next)
+      case emt@Emit(_)      => Append(emt, Vector(next))
+      case awt@Await(_, _)  => Append(awt, Vector(next))
+      case hlt@Halt(rsn)    => Append(empty, Vector((cause0: Cause) => Trampoline.delay(Try(f(cause0.causedBy(rsn))))))
+    }
+
+  }
+
+
+  //////////////////////////////////////////////////////////////////////////////////////
+  //
+  // Pipe and Tee
+  //
+  /////////////////////////////////////////////////////////////////////////////////////
+
+
+  /**
    * Feed the output of this `Process` as input of `p1`. The implementation
    * will fuse the two processes, so this process will only generate
    * values as they are demanded by `p1`. If `p1` signals termination, `this`
@@ -45,35 +104,17 @@ sealed trait Process[+F[_], +O]
     s1 match {
       case Step(AwaitP1(rcv1)) => this.step match {
         case s@Step(awt@Await(_, _)) => awt.extend(p => (p onHalt s.next) pipe p1)
-        case s@Step(Emit(os))    => s.continue pipe process1.feed(os)(p1)
-        case Halt(End)           => p1.disconnect.swallowKill
-        case Halt(rsn)           => p1.disconnect.causedBy(rsn)
-
+        case s@Step(Emit(os))        => s.continue pipe process1.feed(os)(p1)
+        case Halt(End)               => p1.disconnect(Kill).swallowKill
+        case Halt(rsn)               => p1.disconnect(rsn)
       }
-      case Step(Emit(os))      => Emit(os) onHalt { rsn => this.pipe(s1.next(rsn)) }
-      case Halt(rsn1)          => this.kill onHalt { _ => fail(rsn1) }
+      case Step(Emit(os))      => Emit(os) onHalt { cse => this.pipe(s1.next(cse)) }
+      case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
     }
   })
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
-
-
-  /**
-   * Evaluate this process and produce next `Step` of this process.
-   *
-   * Result may be in state of `Append` that indicates there are other process steps to be evaluated
-   * or in `Halt` that indicates process has finished and there is no more evaluation to be processed
-   *
-   * Note this evaluation is not resource safe, that means user must assure the evaluation whatever
-   * is produced as next step.
-   */
-  final def step: Step[F, O] = Step(this, Vector.empty)
-
-
-  final def suspendStep: Process[Nothing, Step[F, O]] =
-    suspend { emit(step) }
-
 
   /**
    * Use a `Tee` to interleave or combine the outputs of `this` and
@@ -89,102 +130,70 @@ sealed trait Process[+F[_], +O]
    * If at any point tee terminates, both processes are terminated (Left side first)
    * with `Kill`, and resulting process terminates with reason that caused `tee` to terminate.
    */
-  final def tee[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(t: Tee[O,O2,O3]): Process[F2,O3] = {
+  final def tee[F2[x] >: F[x], O2, O3](p2: Process[F2, O2])(t: Tee[O, O2, O3]): Process[F2, O3] = {
     import scalaz.stream.tee.{AwaitL, AwaitR, disconnectL, disconnectR, feedL, feedR}
     t.suspendStep flatMap {
       case Step(AwaitL(_)) => this.step match {
-        case s@Step(awt@Await(rq,rcv)) => awt.extend { p => (p onHalt s.next).tee(p2)(t) }
-        case s@Step(Emit(os)) => s.continue.tee(p2)(feedL[O,O2,O3](os)(t))
-        case hlt@Halt(rsn) => hlt.tee(p2)(disconnectL(t)).causedBy(rsn)
+        case s@Step(awt@Await(rq, rcv)) => awt.extend { p => (p onHalt s.next).tee(p2)(t) }
+        case s@Step(Emit(os))           => s.continue.tee(p2)(feedL[O, O2, O3](os)(t))
+        case hlt@Halt(End)              => hlt.tee(p2)(disconnectL(Kill)(t)).swallowKill
+        case hlt@Halt(rsn)              => hlt.tee(p2)(disconnectL(rsn)(t))
       }
 
       case Step(AwaitR(_)) => p2.step match {
-        case s@Step(awt:Await[F2,Any,O2]@unchecked) =>  awt.extend { p => this.tee(p onHalt s.next)(t) }
-        case s@Step(Emit(o2s:Seq[O2]@unchecked)) => this.tee(s.continue)(feedR[O,O2,O3](o2s)(t))
-        case hlt@Halt(rsn) => this.tee(hlt)(disconnectR(t)).causedBy(rsn)
+        case s@Step(awt: Await[F2, Any, O2]@unchecked) => awt.extend { p => this.tee(p onHalt s.next)(t) }
+        case s@Step(Emit(o2s: Seq[O2]@unchecked))      => this.tee(s.continue)(feedR[O, O2, O3](o2s)(t))
+        case hlt@Halt(End)                             => this.tee(hlt)(disconnectR(Kill)(t)).swallowKill
+        case hlt@Halt(rsn)                             => this.tee(hlt)(disconnectR(rsn)(t))
       }
 
       case s@Step(emt@Emit(o3s)) => emt onHalt { rsn => this.tee(p2)(s.next(rsn)) }
-      case Halt(rsn) => this.kill onHalt { _ => p2.kill onHalt { _ => fail(rsn) } }
+      case Halt(rsn)             => this.kill onHalt { _ => p2.kill onHalt { _ => Halt(rsn) } }
     }
   }
 
-
-  /**
-   * If this process halts without an error, attaches `p2` as the next step.
-   * Also this won't attach `p2` whenever process was `Killed` by downstream
-   */
-  final def append[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = {
-    onHalt(_.fold(p2)({
-      case End => p2
-      case rsn => fail(rsn)
-    }))
-  }
-
-  /** alias for `append` **/
-  final def ++[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
-
-  /**
-   * Run this `Process`, then, if it self-terminates, run `p2`.
-   * This differs from `append` in that `p2` is not consulted if this
-   * `Process` terminates due to the last  Await
-   * resulting in `End` signalling source being exhausted.
-   */
-  final def fby[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = {
-    onHalt(_.fold(p2)(fail))
-  }
-
-  final def asFinalizer: Process[F, O] = this
+  //////////////////////////////////////////////////////////////////////////////////////
+  //
+  // Alphabetically, Other combinators
+  //
+  /////////////////////////////////////////////////////////////////////////////////////
 
   /**
    * Catch exceptions produced by this `Process`, not including termination by `Continue`, `End`, `Kill`
    * and uses `f` to decide whether to resume a second process.
    */
-  final def attempt[F2[x]>:F[x],O2](
-    f: Throwable => Process[F2,O2] = (t:Throwable) => emit(t)
+  final def attempt[F2[x] >: F[x], O2](
+    f: Throwable => Process[F2, O2] = (t: Throwable) => emit(t)
     ): Process[F2, O2 \/ O] =
-    map(right) onHalt ( _.fold(emitAll(Seq.empty[O2\/O]):Process[F2,O2\/O])({
-      case End => halt
-      case rsn => Try(f(rsn)).map(left)
-    })
-  )
+    this.map(right) onHalt {
+      case Error(t) => Try(f(t)).map(left)
+      case rsn      => Halt(rsn)
+    }
 
   /**
-   * Attached `cause` when this Process terminates normally (either by `Continue` or `End`)
-   * If this process terminates abnormally, attaches cause via `CausedBy` to this process.
+   * Attached `cause` when this Process terminates.  See `Cause.causedBy` for semantics.
    */
-  final def causedBy(cause: Throwable): Process[F, O] = {
-    onHalt {
-      _.fold(fail(cause))({
-        case End     => fail(cause)
-        case `cause` => fail(cause)
-        case rsn     => cause match {
-          case End => fail(rsn)
-          case _   => fail(CausedBy(rsn, cause))
-        }
-      })
-    }
+  final def causedBy(cause: Cause): Process[F, O] = {
+    this onHalt { original => Halt(original.causedBy(cause)) }
   }
 
   /**
-   * Used when a transducer is terminated by awaiting on a branch that
-   * is in the halted state. Such a process is given the opportunity
-   * to emit any final values. All Awaits are converted to terminate with `Kill`
+   * Used when a transducer (Process1) is terminated by awaiting on a branch that
+   * is in the halted state or was killed. Such a process is given the opportunity
+   * to emit any final values. All Awaits are converted to terminate with `cause`
    *
    */
-  final def disconnect: Process[Nothing, O] = this.step match {
-    case s@Step(emt@Emit(_)) =>  emt onHalt { rsn => s.next(rsn).disconnect }
-    case s@Step(awt@Await(_,rcv)) =>
-      (Try(rcv(left(Kill)).run) onHalt s.next).disconnect
-    case hlt@Halt(rsn) => hlt
+  final def disconnect(cause: Cause): Process[Nothing, O] = this.step match {
+    case s@Step(emt@Emit(_))     => emt onHalt { rsn => s.next(rsn).disconnect(cause) }
+    case s@Step(awt@Await(_, _)) => s.next(cause.kill).disconnect(cause)
+    case hlt@Halt(rsn)           => Halt(rsn.causedBy(cause))
   }
-
 
   /** Ignore all outputs of this `Process`. */
   final def drain: Process[F, Nothing] = {
-     this.suspendStep.flatMap {
+    this.suspendStep.flatMap {
       case s@Step(Emit(_)) => s.continue.drain
-      case s@Step(awt@Await(_,_)) => awt.extend(_.drain).onHalt(s.next(_).drain)
+      case s@Step(awt@Await(_,_)) => awt.onHalt(s.next).drain
       case hlt@Halt(rsn) => hlt
     }
   }
@@ -205,7 +214,6 @@ sealed trait Process[+F[_], +O]
   def gatherMap[F2[x]>:F[x],O2](bufSize: Int)(f: O => F2[O2])(
     implicit F: Nondeterminism[F2]): Process[F2,O2] =
     map(f).gather(bufSize)
-
 
   /**
    * Catch some of the exceptions generated by this `Process`, rethrowing any
@@ -229,28 +237,27 @@ sealed trait Process[+F[_], +O]
    * Causes this process to be terminated, giving chance for any cleanup actions to be run
    */
   final def kill: Process[F, Nothing] = { //todo: revisit with new `Step` implementeation
-    (this.step match {
-      case s@Step(Emit(os)) => s.cleanup(Kill)
-      case s@Step(Await(req,rcv)) => Try(rcv(left(Kill)).run) onHalt(s.next)
-      case hlt@Halt(rsn) => hlt.causedBy(Kill)
-    }).drain
+   this.suspendStep flatMap {
+     case s@Step(Emit(os))        => s.next(Kill).drain
+     case s@Step(Await(req, rcv)) => s.next(Kill).drain
+     case hlt@Halt(rsn)           => hlt.causedBy(Kill)
+   }
   }
-
-
 
   /**
    * Run `p2` after this `Process` completes normally, or in the event of an error.
    * This behaves almost identically to `append`, except that `p1 append p2` will
-   * not run `p2` if `p1` halts with an error.
+   * not run `p2` if `p1` halts with an `Error` or will be `Killed`.
    *
-   * If you want to attach code that depends on reason of termination, use `onHalt`
+   * If you want to attach code that depends on reason of termination, use `onFailure`, `onKill` or `onHalt`
    *
    * Note that, the reason is attached to resulting process after evaluating an `f`
    *
-   * Note as well, that `p2` won't get killed if process is killed in merging combinator (pipe, tee, wye...).
+   * Note as well, that if `p2` shall not be killed if merged via pipe, wye, tee or njoin use p2.asFinalizer.
+   *
    */
   final def onComplete[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] =
-    onHalt (_.fold(p2.asFinalizer)(rsn => p2.asFinalizer.causedBy(rsn)))
+    this.onHalt {cause => p2.causedBy(cause) }
 
 
   /**
@@ -258,36 +265,27 @@ sealed trait Process[+F[_], +O]
    * Note this is run only when process was terminated with failure that means any reason different
    * from `End`.
    *
-   * This gives chance for recovering from any unexpected failure of the process.
+   * This gives chance for cleanup code of the process based on Exception type.
+   *
+   * Note that, the reason (`Error(rsn:Throwable)`) is attached to resulting process after evaluating an `f`
+   *
    */
   final def onFailure[F2[x] >: F[x], O2 >: O](f: Throwable => Process[F2, O2]): Process[F2, O2] =
-    onHalt (_.fold(empty:Process[F2,O2])(rsn=>Try(f(rsn))))
-
-
-  /**
-   * When the process terminates either due to `End` or `Throwable`
-   * `f` is evaluated to produce next state.
-   *
-   * Note that `f` is responsible to eventually propagate reason for termination.
-   */
-  final def onHalt[F2[x] >: F[x], O2 >: O](f: Option[Throwable] => Process[F2, O2]): Process[F2, O2] = {
-    val next = (t: Option[Throwable]) => Trampoline.delay(Try(f(t)))
-    this match {
-      case Append(p, n)   => Append(p, n :+ next)
-      case awt@Await(_,_) => Append(awt, Vector(next))
-      case emt@Emit(_) => Append(emt, Vector(next))
-      case Halt(rsn) =>  Try(f(Some(rsn)))
+    this.onHalt {
+      case err@Error(rsn) => f(rsn).causedBy(err)
+      case other => Halt(other)
     }
-  }
 
   /**
    * Attach supplied process only if process has been terminated with `Kill` signal.
+   *
+   * Note that, the reason (`Kill`) is attached to resulting process after evaluating an `p`
    */
   final def onKill[F2[x] >: F[x], O2 >: O](p: => Process[F2, O2]): Process[F2, O2] = {
-    onHalt(_.fold(emitAll(Seq.empty[O2]):Process[F2,O2])({
-      case Kill => Try(p)
-      case rsn => fail(rsn)
-    }))
+    this.onHalt {
+      case Kill => p.causedBy(Kill)
+      case other => Halt(other)
+    }
   }
 
   /**
@@ -298,22 +296,21 @@ sealed trait Process[+F[_], +O]
     attempt(err => f.lift(err).getOrElse(fail(err)))
 
 
-
   /**
    * Run this process until it halts, then run it again and again, as
-   * long as no errors or `End` or `Kill` occur.
+   * long as no errors or `Kill` occur.
    */
-  final def repeat: Process[F, O] = onHalt(_.fold(this.repeat)(fail))
-
+  final def repeat: Process[F, O] = this.append(this)
 
   /**
-   * For anly process terminating with kill, this swallows the `Kill` and replaces it with normal termination
+   * For anly process terminating with `Kill`, this swallows the `Kill` and replaces it with `End` termination
    * @return
    */
-  final def swallowKill: Process[F,O] = onHalt(_.fold(empty:Process[F,O])({
-    case Kill => halt
-    case other => fail(other)
-  }))
+  final def swallowKill: Process[F,O] =
+   this.onHalt {
+     case Kill | End => halt
+     case cause => Halt(cause)
+   }
 
   /** Translate the request type from `F` to `G`, using the given polymorphic function. */
   def translate[G[_]](f: F ~> G): Process[G,O] =
@@ -326,7 +323,6 @@ sealed trait Process[+F[_], +O]
       case hlt@Halt(rsn) => hlt
     }
 
-
   /**
    * Remove any leading emitted values from this `Process`.
    */
@@ -336,6 +332,7 @@ sealed trait Process[+F[_], +O]
       case s@Step(Emit(_)) => s.continue.trim
       case _ => this
     }
+
 
   /**
    * Removes all emitted elements from the front of this `Process`.
@@ -351,7 +348,7 @@ sealed trait Process[+F[_], +O]
     def go(cur: Process[F, O], acc: Vector[O]): (Seq[O], Process[F, O]) = {
       cur.step match {
         case s@Step(Emit(os)) => go(s.continue, acc fast_++ os)
-        case s@Step(awt) => (acc,awt onHalt s.next)
+        case s@Step(awt) => (acc,cur)
         case Halt(rsn) => (acc,Halt(rsn))
       }
     }
@@ -360,7 +357,9 @@ sealed trait Process[+F[_], +O]
 
 
   ///////////////////////////////////////////
-  // runXXX
+  //
+  // Interpreters, runXXX
+  //
   ///////////////////////////////////////////
 
   /**
@@ -378,11 +377,12 @@ sealed trait Process[+F[_], +O]
           }
         case s@Step(awt:Await[F2,Any,O]@unchecked) =>
           F.bind(C.attempt(awt.req)) { _.fold(
-            rsn => go(Try(awt.rcv(left(rsn)).run) onHalt s.next , acc)
-            , r => go(Try(awt.rcv(right(r)).run) onHalt s.next, acc)
+            rsn => go(s.next(Error(rsn)) , acc)
+            , r => go(Try(awt.rcv(r).run) onHalt s.next, acc)
           )}
         case Halt(End) => F.point(acc)
-        case Halt(rsn) => C.fail(rsn)
+        case Halt(Kill) => F.point(acc)
+        case Halt(Error(rsn)) => C.fail(rsn)
       }
     }
 
@@ -418,10 +418,15 @@ sealed trait Process[+F[_], +O]
 
 }
 
-
 object Process {
 
- import scalaz.stream.Util._
+  import scalaz.stream.Util._
+
+  //////////////////////////////////////////////////////////////////////////////////////
+  //
+  // Algebra
+  //
+  /////////////////////////////////////////////////////////////////////////////////////
 
   type Trampoline[+A] = scalaz.Free.Trampoline[A]
   val Trampoline = scalaz.Trampoline
@@ -442,18 +447,20 @@ object Process {
 
   }
 
-  sealed trait EmitOrAwait[+F[_],+O] extends Process[F,O]
+  /**
+   * Marker trait representing process in Emit or Await state.
+   * Is useful for more type safety.
+   */
+  sealed trait EmitOrAwait[+F[_], +O] extends Process[F, O]
 
 
   /**
-   * The `Halt` constructor instructs the driver to stop
-   * due to the given reason as `Throwable`.
-   * The special `Throwable` instance `Process.End`
-   * indicates normal termination. It's more typical to construct a `Halt` via
-   * `Process.halt` (for normal termination) or
-   * `Process.fail(err)` (for termination with an error).
+   * The `Halt` constructor instructs the driver
+   * that the last evaluation of Process completed with
+   * supplied cause.
    */
-  case class Halt(rsn: Throwable) extends HaltEmitOrAwait[Nothing, Nothing] with Step[Nothing, Nothing]
+  case class Halt(cause: Cause) extends HaltEmitOrAwait[Nothing, Nothing] with Step[Nothing, Nothing]
+
 
   /**
    * The `Emit` constructor instructs the driver to emit
@@ -466,7 +473,7 @@ object Process {
    * Process.emit
    * Process.emitAll
    */
-  case class Emit[+O](seq: Seq[O]) extends HaltEmitOrAwait[Nothing, O] with EmitOrAwait[Nothing,O]
+  case class Emit[+O](seq: Seq[O]) extends HaltEmitOrAwait[Nothing, O] with EmitOrAwait[Nothing, O]
 
   /**
    * The `Await` constructor instructs the driver to evaluate
@@ -484,8 +491,8 @@ object Process {
    */
   case class Await[+F[_], A, +O](
     req: F[A]
-    , rcv: Throwable \/ A => Trampoline[Process[F, O]]
-    ) extends HaltEmitOrAwait[F, O] with EmitOrAwait[F,O] {
+    , rcv: A => Trampoline[Process[F, O]]
+    ) extends HaltEmitOrAwait[F, O] with EmitOrAwait[F, O] {
     /**
      * Helper to modify the result of `rcv` parameter of await stack-safely on trampoline.
      */
@@ -504,18 +511,19 @@ object Process {
    */
   case class Append[+F[_], +O](
     head: EmitOrAwait[F, O]
-    , tail: Vector[Option[Throwable] => Trampoline[Process[F, O]]]
+    , stack: Vector[Cause => Trampoline[Process[F, O]]]
     ) extends Process[F, O] with Step[F, O] {
 
     /**
      * Helper to modify the head and appended processes
      */
     def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Process[F2, O2] = {
-      val et = tail.map(n => (t: Option[Throwable]) => Trampoline.suspend(n(t)).map(f))
-      Step(Try(f(head)), et)
+      val ms = stack.map(n => (cause: Cause) => Trampoline.suspend(n(cause)).map(f))
+      Step.fromProcess(Try(f(head)), ms)
     }
 
   }
+
 
   /**
    * Represents intermediate step of process.
@@ -525,86 +533,66 @@ object Process {
   sealed trait Step[+F[_], +O] extends Process[F, O] {
 
     /**
-     * Produces the next process state
+     * Produces the next process state.
+     * That is as if current state of the process evaluated in Halt(End).
      * @return
      */
-    def continue: Process[F, O] = next(None)
+    def continue: Process[F, O] = next(End)
+
 
     /**
-     * Switches process to fallback phase given the reason specified.
-     * Note that:
-     * {{{
-     *   this.fallback === this.cleanup(End)
-     * }}}
-     * @return
-     */
-    def fallback: Process[F,O] = next(Some(End))
-
-    /**
-     * Switches process to cleanup phase given the reson specified.
+     * Switches to next state of this process, with the specified cause
      *
-     * @param rsn
-     * @return
-     */
-    def cleanup(rsn: Throwable): Process[F, O] = next(Some(rsn))
-
-    /**
-     * Switches to next state of this process, ignoring the `head` of this Step.
-     *
-     * @param r Indicates reason passed for next step. None indicates normal continuation and eventual request for next `O`
-     *          whereas Some(rsn) indicates that process shall terminate due to input Exhausted (rsn == `End`) or
-     *          being killed (`Kill`) or due to unexpected failure (`rsn`)
      * @return  next process state.
      */
-    def next(r: Option[Throwable]): Process[F, O] = {
+    def next(cause: Cause): Step[F, O] = {
       this match {
-        case Append(_, stack) =>
-          stack.headOption.fold(Halt(r.getOrElse(End)):Process[F,O])({ f =>
-            Step(Try(f(r).run), stack.tail)
-          })
-        case hlt@Halt(rsn0) =>
-          r.fold(hlt: Process[F, O])(rsn => Halt(rsn)) //todo: not sure on that
-
+        case Append(_, stack) => Step.fromProcess[F, O](Halt(cause), stack)
+        case Halt(cause0)     => Halt(cause.causedBy(cause0))
       }
-
     }
-
   }
 
+
   object Step {
+
     def unapply[F[_], O](s: Step[F, O]): Option[EmitOrAwait[F, O]] = s match {
       case Append(h: EmitOrAwait[F@unchecked, O@unchecked], t) => Some(h)
       case hlt@Halt(_)                                         => None
     }
 
+
+    /**
+     * Build a `Step` from process and eventually other `continuations` passed
+     */
     @tailrec
-    private[stream] def apply[F[_], O](
-      p: Process[F, O]
-      , stack: Vector[Option[Throwable] => Trampoline[Process[F, O]]]
+    def fromProcess[F[_], O](
+      cur: Process[F, O]
+      , stack: Vector[Cause => Trampoline[Process[F, O]]] = Vector.empty
       ): Step[F, O] = {
-      Util.debug(s"STEP  CUR: $p, | stack: $stack")
+      cur match {
+        case hlt@Halt(cause) => stack.headOption match {
+          case Some(f) =>
+            val next = Try(f(cause).asInstanceOf[Trampoline[Process[F, O]]].run)
+            fromProcess(next, stack.tail)
+          case None    => hlt
+        }
 
-      p match {
-        case Emit(os) if os.isEmpty   =>
-          stack.headOption match {
-            case Some(f) => apply(Try(f(None).run.asInstanceOf[Process[F,O]]), stack.tail)
-            case None => halt
-          }
-        case emt: Emit[O@unchecked]                              => Append(emt, stack)
-        case app: Append[F@unchecked, O@unchecked]               => Append(app.head, app.tail fast_++ stack)
-        case awt: Await[F@unchecked, Any@unchecked, O@unchecked] => Append(awt, stack)
-        case hlt@Halt(rsn)                                       =>
-          stack.headOption match {
-            case Some(f) => apply(Try(f(Some(rsn)).run.asInstanceOf[Process[F,O]]), stack.tail)
-            case None => Halt(rsn)
-          }
+        case emt: Emit[O@unchecked]
+          if emt.seq.isEmpty => stack.headOption match {
+          case Some(f) =>
+            val next = Try(f(End).asInstanceOf[Trampoline[Process[F, O]]].run)
+            fromProcess(next, stack.tail)
+          case None    => halt
+        }
 
-
+        case emt: Emit[O@unchecked]                  => Append(emt, stack)
+        case awt: Await[F@unchecked, _, O@unchecked] => Append(awt, stack)
+        case app: Append[F@unchecked, O@unchecked]   => Append(app.head, app.stack fast_++ stack)
       }
     }
 
   }
-
 
   ///////////////////////////////////////////////////////////////////////////////////////
   //
@@ -623,7 +611,7 @@ object Process {
    *
    */
   def await[F[_], A, O](req: F[A])(rcv: A => Process[F, O]): Process[F, O] =
-    awaitOr[F, A, O](req)(fail)(rcv)
+    Await(req, (a: A) => Trampoline.delay(Try(rcv(a))))
 
   /**
    * Constructs an await, that allows to specify processes that will be run when
@@ -632,14 +620,9 @@ object Process {
    * if you don't need to specify `continue` or `onError` use `await`
    */
   def awaitOr[F[_], A, O](req: F[A])(
-    fb: Throwable => Process[F, O]
+    fb: Cause => Process[F, O]
     )(rcv: A => Process[F, O]): Process[F, O] = {
-    Await(req, (r: Throwable \/ A) => Trampoline.delay(r.fold(
-      rsn => {val that = Try(fb(rsn))
-      that
-      }
-      , a => rcv(a)
-    )))
+    Await(req, (a: A) => Trampoline.delay(Try(rcv(a)))) onHalt fb
   }
 
   /** helper to construct await for Process1 **/
@@ -648,7 +631,7 @@ object Process {
 
   /** like await1, but allows to define continue in case the process terminated with exception **/
   def await1Or[I](fb: => Process1[I, I]): Process1[I, I] =
-    awaitOr(Get[I])((_: Throwable) => fb)(emit)
+    awaitOr(Get[I])((_: Cause) => fb)(emit)
 
 
   /** heleper to construct for await on Both sides. Can be used in `Wye` **/
@@ -678,11 +661,12 @@ object Process {
   }
 
   /** The `Process` which emits no values and halts immediately with the given exception. **/
-  def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(rsn)
+  def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(Error(rsn))
 
   /** The `Process` which emits no values and signals normal continuation **/
   val halt: Step[Nothing, Nothing] = Halt(End)
 
+  /** The `Process` that emits Nothing **/
   val empty: Emit[Nothing] = Emit(Nil)
 
   /**
@@ -694,21 +678,15 @@ object Process {
    */
   def receive1[I, O](
     rcv: I => Process1[I, O]
-    , fallback: => Process1[I, O] = halt
-    , cleanup: => Process1[I, O] = halt
     ): Process1[I, O] =
-    awaitOr(Get[I])({
-      case End => fallback.causedBy(End)
-      case rsn =>  var cln = cleanup.causedBy(rsn)
-        cln
-    })(rcv)
+    await(Get[I])(rcv)
 
   /**
    * Curried syntax alias for receive1
    * Note that `fb` is attached to both, fallback and cleanup
    */
   def receive1Or[I, O](fb: => Process1[I, O])(rcv: I => Process1[I, O]): Process1[I, O] =
-    receive1[I, O](rcv, fb, fb)
+    awaitOr(Get[I])((rsn: Cause) => fb.causedBy(rsn))(rcv)
 
   /**
    * Awaits to receive input from Both sides,
@@ -720,13 +698,8 @@ object Process {
    */
   def receiveBoth[I, I2, O](
     rcv: ReceiveY[I, I2] => Wye[I, I2, O]
-    , fallback: => Wye[I, I2, O] = halt
-    , cleanup: => Wye[I, I2, O] = halt
     ): Wye[I, I2, O] =
-    awaitOr[Env[I, I2]#Y, ReceiveY[I, I2], O](Both)({
-      case End => fallback.causedBy(End)
-      case rsn => cleanup.causedBy(rsn)
-    })(rcv)
+    await[Env[I, I2]#Y, ReceiveY[I, I2], O](Both)(rcv)
 
   /**
    * Awaits to receive input from Left side,
@@ -738,13 +711,8 @@ object Process {
    */
   def receiveL[I, I2, O](
     rcv: I => Tee[I, I2, O]
-    , fallback: => Tee[I, I2, O] = halt
-    , cleanup: => Tee[I, I2, O] = halt
     ): Tee[I, I2, O] =
-    awaitOr[Env[I, I2]#T, I, O](L)({
-      case End => fallback.causedBy(End)
-      case rsn => cleanup.causedBy(rsn)
-    })(rcv)
+    await[Env[I, I2]#T, I, O](L)(rcv)
 
   /**
    * Awaits to receive input from Right side,
@@ -756,58 +724,20 @@ object Process {
    */
   def receiveR[I, I2, O](
     rcv: I2 => Tee[I, I2, O]
-    , fallback: => Tee[I, I2, O] = halt
-    , cleanup: => Tee[I, I2, O] = halt
     ): Tee[I, I2, O] =
-    awaitOr[Env[I, I2]#T, I2, O](R)({
-      case End => fallback.causedBy(End)
-      case rsn => cleanup.causedBy(End)
-    })(rcv)
+    await[Env[I, I2]#T, I2, O](R)(rcv)
 
   /** syntax sugar for receiveBoth  **/
   def receiveBothOr[I, I2, O](fb: => Wye[I, I2, O])(rcv: ReceiveY[I, I2] => Wye[I, I2, O]): Wye[I, I2, O] =
-    receiveBoth(rcv, fb, fb)
+    receiveBoth(rcv) onHalt (rsn => fb.causedBy(rsn))
 
   /** syntax sugar for receiveL **/
   def receiveLOr[I, I2, O](fb: => Tee[I, I2, O])(rcvL: I => Tee[I, I2, O]): Tee[I, I2, O] =
-    receiveL(rcvL, fb, fb)
+    receiveL(rcvL) onHalt (rsn => fb.causedBy(rsn))
 
   /** syntax sugar for receiveR **/
   def receiveROr[I, I2, O](fb: => Tee[I, I2, O])(rcvR: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
-    receiveR(rcvR, fb, fb)
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //
-  // DECONSTRUCTORS
-  //
-  //////////////////////////////////////////////////////////////////////////////////////
-
-
-  object AwaitP1 {
-    /** deconstruct for `Await` directive of `Process1` **/
-    def unapply[I, O](self: Process1[I, O]): Option[I => Process1[I, O]] = self match {
-      case Await(_, rcv) => Some((i: I) => Try(rcv(right(i)).run))
-      case _             => None
-    }
-
-    /** Like `AwaitP1.unapply` only allows for extracting the continue case as well **/
-    object withFb {
-      def unapply[I, I2, O](self: Process1[I, O]):
-      Option[(Throwable \/ I => Process1[I, O])] = self match {
-        case Await(_, rcv) => Some((r: Throwable \/ I) => Try(rcv(r).run))
-        case _             => None
-      }
-    }
-
-    /** Like `AwaitP1.unapply` only allows for extracting the continue case as well on Trampoline **/
-    object withFbT {
-      def unapply[I, I2, O](self: Process1[I, O]):
-      Option[(Throwable \/ I => Trampoline[Process1[I, O]])] = self match {
-        case Await(_, rcv) => Some(rcv)
-        case _             => None
-      }
-    }
-  }
+    receiveR(rcvR) onHalt (rsn => fb.causedBy(rsn))
 
   ///////////////////////////////////////////////////////////////////////////////////////
   //
@@ -852,25 +782,25 @@ object Process {
   def awakeEvery(d: Duration)(
     implicit S: Strategy,
     scheduler: ScheduledExecutorService): Process[Task, Duration] = {
-      def metronomeAndSignal:(()=>Unit,async.mutable.Signal[Duration]) = {
-        val signal = async.signal[Duration](S)
-        val t0 = Duration(System.nanoTime, NANOSECONDS)
+    def metronomeAndSignal:(()=>Unit,async.mutable.Signal[Duration]) = {
+      val signal = async.signal[Duration](S)
+      val t0 = Duration(System.nanoTime, NANOSECONDS)
 
-        val metronome = scheduler.scheduleAtFixedRate(
-          new Runnable { def run = {
-            val d = Duration(System.nanoTime, NANOSECONDS) - t0
-            signal.set(d).run
-          }},
-          d.toNanos,
-          d.toNanos,
-          NANOSECONDS
-        )
-        (()=>metronome.cancel(false), signal)
-      }
+      val metronome = scheduler.scheduleAtFixedRate(
+        new Runnable { def run = {
+          val d = Duration(System.nanoTime, NANOSECONDS) - t0
+          signal.set(d).run
+        }},
+        d.toNanos,
+        d.toNanos,
+        NANOSECONDS
+      )
+      (()=>metronome.cancel(false), signal)
+    }
 
-      await(Task.delay(metronomeAndSignal))({
-        case (cm, signal) =>  signal.discrete onComplete eval_(signal.close.map(_=>cm()))
-      })
+    await(Task.delay(metronomeAndSignal))({
+      case (cm, signal) =>  signal.discrete onComplete eval_(signal.close.map(_=>cm()))
+    })
   }
 
 
@@ -893,7 +823,7 @@ object Process {
    */
   def duration: Process[Task, Duration] = suspend {
     val t0 = System.nanoTime
-    repeatEval { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
+     repeatEval { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
   }
 
   /** A `Writer` which emits one value to the output. */
@@ -1016,7 +946,7 @@ object Process {
   def supply(initial: Long): Process[Task, Long] = {
     import java.util.concurrent.atomic.AtomicLong
     val l = new AtomicLong(initial)
-    repeatEval { Task.delay { l.getAndIncrement }}
+     repeatEval { Task.delay { l.getAndIncrement }}
   }
 
   /** A `Writer` which writes the given value; alias for `emitW`. */
@@ -1043,11 +973,13 @@ object Process {
             Task.now(os.head)
           }
         case s@Step(Await(rq,rcv)) =>
-          rq.attempt.flatMap { r =>
-              cur = Try(rcv(r).run) onHalt s.next
-              go
+          rq.attempt.flatMap {
+            case -\/(t) => cur = s.next(Error(t)); go
+            case \/-(r) => cur = Try(rcv(r).run) onHalt s.next; go
           }
-        case Halt(rsn) => Task.fail(rsn)
+        case Halt(End) => Task.fail(new Exception("Process terminated normally"))
+        case Halt(Kill) => Task.fail(new Exception("Process was killed"))
+        case Halt(Error(rsn)) => Task.fail(rsn)
       }
     Task.delay(go).flatMap(a => a)
   }
@@ -1066,42 +998,6 @@ object Process {
   //
   /////////////////////////////////////////////////////////////////////////////////////
 
-  /**
-   * Special exception that indicating normal termination.
-   * Note that this will never appear on left side of Await's receive
-   */
-  object Continue extends Exception {
-    override def fillInStackTrace = this
-  }
-
-  /**
-   * Special exception indicating End of Input. Throwing this
-   * exception results in control switching to process, that is appended via ++, or cleanup
-   */
-  object End extends Exception {
-    override def fillInStackTrace = this
-  }
-
-  /**
-   * Special exception indicating downstream termination.
-   * An `Await` should respond to a `Kill` by performing
-   * necessary cleanup actions, then halting with `End`
-   */
-  object Kill extends Exception {
-    override def fillInStackTrace = this
-  }
-
-
-  /**
-   * Wrapper for Exception that was caused by other Exception during the
-   * Execution of the Process
-   */
-  case class CausedBy(e: Throwable, cause: Throwable) extends Exception(cause) {
-    override def toString = s"$e caused by: $cause"
-    override def getMessage: String = toString
-  }
-
-
   implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F, x]})#f] =
     new MonadPlus[({type f[x] = Process[F, x]})#f] {
       def empty[A] = halt
@@ -1111,7 +1007,6 @@ object Process {
       def bind[A, B](a: Process[F, A])(f: A => Process[F, B]): Process[F, B] =
         a flatMap f
     }
-
 
 
 
@@ -1176,7 +1071,7 @@ object Process {
   implicit class ProcessSyntax[F[_],O](val self:Process[F,O]) extends AnyVal {
     /** Feed this `Process` through the given effectful `Channel`. */
     def through[F2[x]>:F[x],O2](f: Channel[F2,O,O2]): Process[F2,O2] =
-     self.zipWith(f)((o,f) => f(o)).eval
+      self.zipWith(f)((o,f) => f(o)).eval
 
     /**
      * Feed this `Process` through the given effectful `Channel`, signaling
@@ -1193,12 +1088,11 @@ object Process {
 
     /** Attach a `Sink` to the output of this `Process` but echo the original. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
-      self.zipWith(f)((o,f) => (o,f(o))).flatMap { case (orig,action) => emit(action).eval.drain ++ emit(orig) }
+     self.zipWith(f)((o,f) => (o,f(o))).flatMap { case (orig,action) => emit(action).eval.drain ++ emit(orig) }
 
 
 
   }
-
 
 
   /**
@@ -1227,6 +1121,7 @@ object Process {
 
         case hlt@Halt(rsn)                   => hlt
       }
+
     }
 
     /**
@@ -1236,7 +1131,6 @@ object Process {
     def gather(bufSize: Int)(implicit F: Nondeterminism[F]): Process[F,O] =
       self.pipe(process1.chunk(bufSize)).map(F.gatherUnordered).eval.flatMap(emitAll)
   }
-
 
   /**
    * This class provides infix syntax specific to `Process0`.
@@ -1250,7 +1144,8 @@ object Process {
           case s@Step(Emit(os)) => go(s.continue, acc fast_++ os)
           case s@Step(awt) => go(s.continue,acc)
           case Halt(End) => acc
-          case Halt(rsn) => throw rsn
+          case Halt(Kill) => acc
+          case Halt(Error(rsn)) => throw rsn
         }
       }
       go(self, Vector())
@@ -1268,7 +1163,6 @@ object Process {
     }
 
   }
-
 
   implicit class LiftIOSyntax[O](p: Process[Nothing,O]) {
     def liftIO: Process[Task,O] = p
@@ -1302,7 +1196,7 @@ object Process {
 
     /** Apply this `Process` to an `Iterable`. */
     def apply(input: Iterable[I]): IndexedSeq[O] =
-      Process(input.toSeq: _*).pipe(self.bufferAll).disconnect.unemit._1.toIndexedSeq
+      Process(input.toSeq: _*).pipe(self.bufferAll).disconnect(Kill).unemit._1.toIndexedSeq
 
     /**
      * Transform `self` to operate on the left hand side of an `\/`, passing
@@ -1340,7 +1234,7 @@ object Process {
      * most recent value.
      */
     def forwardFill(implicit S: Strategy): Process[Task,O] =
-      async.toSignal(self).continuous
+     async.toSignal(self).continuous
 
     /** Infix syntax for `Process.toTask`. */
     def toTask: Task[O] = Process.toTask(self)
@@ -1358,11 +1252,10 @@ object Process {
      * was not completed before, otherwise interruption is no-op.
      *
      * There is chance, that cleanup code of intermediate `Await` will get called twice on interrupt, but
-     * always at least once. User code shall therefore wrap resource cleanup in safe pattern like
-     * {{{ if (res.isOpen) res.close }}}.
+     * always at least once.
      *
      * Note that if some resources are open asynchronously, the cleanup of these resources may be run
-     * asynchronously as well, essentially AFTER callback was called on different thread.
+     * asynchronously as well, essentially AFTER callback was completed on different thread.
      *
      *
      * @param cb  result of the asynchronous evaluation of the process. Note that, the callback is never called
@@ -1371,24 +1264,24 @@ object Process {
      * @return   Function to interrupt the evalation
      */
     protected[stream] final def runAsync(
-      cb: Throwable \/ (Seq[O], Option[Throwable] => Process[Task, O]) => Unit
-      )(implicit S: Strategy): (Throwable) => Unit = {
+      cb: Cause \/ (Seq[O], Cause => Process[Task, O]) => Unit
+      )(implicit S: Strategy): (Cause) => Unit = {
 
       sealed trait M
-      case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], next: Option[Throwable] => Process[Task, O]) extends M
-      case class Interrupt(rsn: Throwable) extends M
+      case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], next: Cause => Process[Task, O]) extends M
+      case class Interrupt(cause: Cause) extends M
 
       //forward referenced actor here
       var a: Actor[M] = null
 
       // Set when the executin has been terminated with reason for termination
-      var completed: Option[Throwable] = None
+      var completed: Option[Cause] = None
 
       // contains reference that eventually builds
       // a cleanup when the last await was interrupted
       // this is consulted only, if await was interrupted
       // volatile marked because of the first usage outside of actor
-      @volatile var cleanup: (Throwable => Process[Task, O]) = fail _
+      @volatile var cleanup: (Cause => Process[Task, O]) = Halt.apply
 
       // runs single step of process.
       // completes with callback if process is `Emit` or `Halt`.
@@ -1396,33 +1289,39 @@ object Process {
       // It returns on left side reason with which this process terminated,
       // or on right side the cleanup code to be run when interrupted.
       @tailrec
-      def runStep(p: Process[Task, O]): Option[Throwable] \/ ( Throwable => Process[Task, O]) = {
+      def runStep(p: Process[Task, O]): Cause \/ ( Cause => Process[Task, O]) = {
         val step = p.step
         step match {
           case s@Step(Emit(Seq()))         => runStep(s.continue)
-          case s@Step(Emit(h))             => S(cb(right((h, s.next)))); left(None)
+          case s@Step(Emit(h))             => S(cb(right((h, s.next)))); left(End)
           case s@Step(awt@Await(req, rcv)) =>
             req.runAsync(r => a ! AwaitDone(r, awt, s.next))
-            right((t:  Throwable) =>    Try(rcv(left(t)).run) onHalt s.next)
-          case Halt(rsn)                 => S(cb(left(rsn))); left(Some(rsn))
+            right(s.next)
+          case Halt(cause)                 => S(cb(left(cause))); left(cause)
         }
       }
 
 
       a = new Actor[M]({
         case AwaitDone(r, awt, next) if completed.isEmpty =>
-          runStep(Try(awt.rcv(r).run) onHalt next).fold(
-            rsn => completed = rsn
+          val step =
+          r.fold(
+           rsn => Try(next(Error(rsn)))
+          , r => Try(awt.rcv(r).run) onHalt next
+          )
+
+          runStep(step).fold(
+            rsn => completed = Some(rsn)
             , cln => cleanup = cln
           )
 
         // on interrupt we just run any cleanup code we have memo-ed
         // from last `Await`
-        case Interrupt(rsn) if completed.isEmpty =>
-          completed = Some(rsn)
-          cleanup(Kill).run.runAsync(_.fold(
-            rsn0 => cb(left(CausedBy(rsn0,Kill)))
-            , _ => cb(left(rsn))
+        case Interrupt(cause) if completed.isEmpty =>
+          completed = Some(cause)
+          cleanup(cause.kill).run.runAsync(_.fold(
+            rsn0 => cb(left(Error(rsn0).causedBy(cause)))
+            , _ => cb(left(cause))
           ))
 
         // this indicates last await was interrupted.
@@ -1433,10 +1332,11 @@ object Process {
         // in `next` or `rcv` on left side
         // as this was already run on `Interrupt`
         case AwaitDone(r, awt, _) =>
-          r.foreach { a =>
-            Try(awt.rcv(right(a)).run)
-            .kill
-            .run.runAsync(_ => ())
+          r.foreach {
+            a =>
+              Try(awt.rcv(a).run)
+              .kill
+              .run.runAsync(_ => ())
           }
 
         // Interrupt after we have been completed this is no-op
@@ -1445,10 +1345,10 @@ object Process {
       })(S)
 
       runStep(self).fold(
-        rsn => (t: Throwable) => ()
+        rsn => (_: Cause) => ()
         , cln => {
           cleanup = cln
-          (t: Throwable) => a ! Interrupt(t)
+          (cause: Cause) => a ! Interrupt(cause)
         }
       )
     }
@@ -1471,6 +1371,7 @@ object Process {
     def contramapR[I3](f: I3 => I2): Tee[I,I3,O] =
       self.contramapR_(f).asInstanceOf[Tee[I,I3,O]]
   }
+
 
   /**
    * Infix syntax for working with `Writer[F,W,O]`. We call
@@ -1527,6 +1428,7 @@ object Process {
       self.pipe(process1.liftR(f))
   }
 
+
   /**
    * This class provides infix syntax specific to `Wye`. We put these here
    * rather than trying to cram them into `Process` itself using implicit
@@ -1542,31 +1444,31 @@ object Process {
       // this is probably rather slow
       val src1 = Process.emitAll(input.toSeq).toSource
       val src2 = Process.emitAll(input2.toSeq).toSource
-      src1.wye(src2)(self).runLog.run
+     src1.wye(src2)(self).runLog.run
     }
 
     /**
      * Transform the left input of the given `Wye` using a `Process1`.
      */
     def attachL[I0](f: Process1[I0,I]): Wye[I0, I2, O] =
-      scalaz.stream.wye.attachL(f)(self)
+     scalaz.stream.wye.attachL(f)(self)
 
     /**
      * Transform the right input of the given `Wye` using a `Process1`.
      */
     def attachR[I1](f: Process1[I1,I2]): Wye[I, I1, O] =
-      scalaz.stream.wye.attachR(f)(self)
+    scalaz.stream.wye.attachR(f)(self)
 
     /** Transform the left input to a `Wye`. */
     def contramapL[I0](f: I0 => I): Wye[I0, I2, O] =
-      contramapL_(f)
+     contramapL_(f)
 
     /** Transform the right input to a `Wye`. */
     def contramapR[I3](f: I3 => I2): Wye[I, I3, O] =
-      contramapR_(f)
+   contramapR_(f)
 
     private[stream] def contramapL_[I0](f: I0 => I): Wye[I0, I2, O] =
-      self.attachL(process1.lift(f))
+    self.attachL(process1.lift(f))
 
     private[stream] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] =
       self.attachR(process1.lift(f))
@@ -1575,15 +1477,14 @@ object Process {
      * Converting requests for the left input into normal termination.
      * Note that `Both` requests are rewritten to fetch from the only input.
      */
-    def detach1L: Wye[I,I2,O] = scalaz.stream.wye.detach1L(self)
+    def detach1L: Wye[I,I2,O] =   scalaz.stream.wye.detach1L(self)
 
     /**
      * Converting requests for the left input into normal termination.
      * Note that `Both` requests are rewritten to fetch from the only input.
      */
-    def detach1R: Wye[I,I2,O] = scalaz.stream.wye.detach1R(self)
+    def detach1R: Wye[I,I2,O] =  scalaz.stream.wye.detach1R(self)
   }
-
 
   //////////////////////////////////////////////////////////////////////////////////////
   //
@@ -1594,10 +1495,14 @@ object Process {
   /**
    * Evaluate an arbitrary effect in a `Process`. The resulting
    * `Process` emits a single value. To evaluate repeatedly, use
-   * `repeateEval(t)` or equivalently `eval(t).repeat`.
+   * `repeateEval(t)`.
+   * Do not use `eval.repeat` or  `repeat(eval)` as that may cause infinite loop in certain situations.
    */
   def eval[F[_], O](f: F[O]): Process[F, O] =
-    await(f)(emit)
+    await(f)(emit) onHalt {
+      case Error(Terminated(cause)) => Halt(cause)
+      case cause => Halt(cause)
+    }
 
   /**
    * Evaluate an arbitrary effect once, purely for its effects,
@@ -1613,9 +1518,18 @@ object Process {
   /**
    * Evaluate an arbitrary effect in a `Process`. The resulting `Process` will emit values
    * until evaluation of `f` signals termination with `End` or an error occurs.
+   *
+   * Note that if `f` results to failure of type `Terminated` the reeatEval will convert cause
+   * to respective process cause termination, and will halt with that cause.
+   *
    */
   def repeatEval[F[_], O](f: F[O]): Process[F, O] =
-    await(f)(o => emit(o) fby repeatEval(f))
+    await(f)(emit) onHalt {
+      case End => repeatEval(f)
+      case Error(Terminated(cause)) => Halt(cause)
+      case cause => Halt(cause)
+    }
+
 
   /**
    * Produce `p` lazily, guarded by a single `Append`. Useful if
@@ -1633,18 +1547,11 @@ object Process {
    *    suspend(p).eval === suspend(p.eval)
    *    suspend(p).eval === p.eval
    *
-   *    terminate ++ suspend(p) === halt ++ suspend(p)
-   *    halt ++ suspend(p) === halt ++ p
-   *    terminate ++ suspend(p) === terminate ++ p
+   *    Halt(cause) ++ suspend(p) === Halt(cause) ++ p
    * }}}
    *
    */
   def suspend[F[_], O](p: => Process[F, O]): Process[F, O] =
-    Append(empty,Vector((r:Option[Throwable]) =>
-      r.fold(Trampoline.done(p))({
-        case Kill => Trampoline.done(p.kill) // to make sure suspend(p).kill == suspend(p.kill), only lazily
-        case rsn => Trampoline.done(p) // End or any other reason can't get there, only None or Some(Kill) when process is killed
-      })
-    ))
+    Append(empty,Vector((c:Cause) => { Trampoline.done(p) }))
 
 }

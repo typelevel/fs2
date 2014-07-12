@@ -7,6 +7,7 @@ import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process._
 import scalaz.stream.ReceiveY._
 import scalaz.stream.Util._
+import scalaz.stream.process1.AwaitP1
 import scalaz.{-\/, Either3, Left3, Middle3, Right3, \/, \/-}
 
 
@@ -34,7 +35,7 @@ object wye {
       case Both => awaitBoth[I,I2].flatMap {
         case t@ReceiveL(i) => emit(t) fby go(f(i))
         case t@ReceiveR(i2) => emit(t) fby go(g(i2))
-        case HaltOne(rsn) => fail(rsn)
+        case HaltOne(rsn) => Halt(rsn)
       }
     }
     go(L)
@@ -73,7 +74,7 @@ object wye {
     dynamic(f, f).flatMap {
       case ReceiveL(i) => emit(i)
       case ReceiveR(i) => emit(i)
-      case HaltOne(rsn) => fail(rsn)
+      case HaltOne(rsn) => Halt(rsn)
     }
 
   /**
@@ -85,9 +86,9 @@ object wye {
       receiveBoth[I,I2,I \/ I2]({
         case ReceiveL(i) => emit(left(i)) fby go
         case ReceiveR(i) => emit(right(i)) fby go
-        case HaltL(End | Continue)     => awaitR[I2].map(right).repeat
-        case HaltR(End | Continue)     => awaitL[I].map(left).repeat
-        case h@HaltOne(rsn) => fail(rsn)
+        case HaltL(End)     => awaitR[I2].map(right).repeat
+        case HaltR(End)     => awaitL[I].map(left).repeat
+        case h@HaltOne(rsn) => Halt(rsn)
       })
     go
   }
@@ -102,7 +103,7 @@ object wye {
       receiveBoth({
         case ReceiveL(l)  => emit(l) fby go(l)
         case ReceiveR(_)  => emit(a) fby go(a)
-        case HaltOne(rsn) => fail(rsn)
+        case HaltOne(rsn) => Halt(rsn)
       })
     awaitL[A].flatMap(s => emit(s) fby go(s))
   }
@@ -117,7 +118,7 @@ object wye {
       awaitBoth[Boolean, I].flatMap {
         case ReceiveR(i)    => emit(i) ++ go
         case ReceiveL(kill) => if (kill) halt else go
-        case HaltOne(e)     => fail(e)
+        case HaltOne(e)     => Halt(e)
       }
     go
   }
@@ -136,7 +137,7 @@ object wye {
         case ReceiveR(i) => emit(i) fby go
         case HaltL(End)   => awaitR.repeat
         case HaltR(End)   => awaitL.repeat
-        case HaltOne(rsn) => fail(rsn)
+        case HaltOne(rsn) => Halt(rsn)
       })
     go
   }
@@ -149,7 +150,7 @@ object wye {
       receiveBoth[I,I,I]({
         case ReceiveL(i) => emit(i) fby go
         case ReceiveR(i) => emit(i) fby go
-        case HaltOne(rsn) => fail(rsn)
+        case HaltOne(rsn) => Halt(rsn)
       })
     go
   }
@@ -164,7 +165,7 @@ object wye {
         case ReceiveL(i) => emit(i) fby go
         case ReceiveR(i) => emit(i) fby go
         case HaltR(End)   => awaitL.repeat
-        case HaltOne(rsn) => fail(rsn)
+        case HaltOne(rsn) => Halt(rsn)
       })
     go
   }
@@ -189,7 +190,7 @@ object wye {
           else
             go(q :+ d2)
         case ReceiveR(i) => emit(i) fby (go(q.drop(1)))
-        case HaltOne(rsn) => fail(rsn)
+        case HaltOne(rsn) => Halt(rsn)
       }
     go(Vector())
   }
@@ -204,7 +205,7 @@ object wye {
     awaitBoth[Any,I].flatMap {
       case ReceiveL(_) => halt
       case ReceiveR(i) => emit(i) fby unboundedQueue
-      case HaltOne(rsn) => fail(rsn)
+      case HaltOne(rsn) => Halt(rsn)
     }
 
 
@@ -224,7 +225,7 @@ object wye {
     awaitBoth[I,I2].flatMap {
       case ReceiveL(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)) ++ yipWith(f))
       case ReceiveR(i2) => awaitL[I].flatMap(i => emit(f(i,i2)) ++ yipWith(f))
-      case HaltOne(rsn) => fail(rsn)
+      case HaltOne(rsn) => Halt(rsn)
     }
 
   /**
@@ -241,7 +242,7 @@ object wye {
       else awaitBoth[I,O].flatMap {
         case ReceiveL(i) => go(buf :+ i)
         case ReceiveR(o) => emit(f(buf.head,o)) ++ go(buf.tail)
-        case HaltOne(rsn) => fail(rsn)
+        case HaltOne(rsn) => Halt(rsn)
       }
     go(Vector())
   }
@@ -255,43 +256,26 @@ object wye {
    */
   def attachL[I0,I,I2,O](p1: Process1[I0,I])(y: Wye[I,I2,O]): Wye[I0,I2,O] =  {
     y.step match {
-      case s@Step(emt@Emit(os)) =>
-        emt onHalt (rsn => attachL(p1)(s.next(rsn)))
+      case ys@Step(emt@Emit(os)) =>
+        emt onHalt (rsn => attachL(p1)(ys.next(rsn)))
 
       case Step(AwaitL(rcv)) => p1.step match {
-        case s1@Step(Emit(is)) =>
-          attachL(Try(s1.continue))(feedL(is)(y))
-
-        case s1@Step(AwaitP1.withFbT(rcv1)) =>
-          Await(L[I0]: Env[I0,I2]#Y[I0],(r : Throwable \/ I0) =>
-            Trampoline.suspend {
-              rcv1(r).map(p=> attachL(p onHalt s1.next)(y))
-            })
-
+        case s1@Step(Emit(is)) => attachL(Try(s1.continue))(feedL(is)(y))
+        case s1@Step(AwaitP1(rcv1)) =>  wye.receiveL(i0 => attachL(p1.feed1(i0))(y))
         case hlt@Halt(rsn) => attachL(hlt)(disconnectL(rsn)(y))
       }
 
-      case s@Step(AwaitR.withFbT(rcv)) =>
-        Await(R[I2]: Env[I0,I2]#Y[I2],(r : Throwable \/ I2) =>
-          Trampoline.suspend(rcv(r)).map(yy=> attachL(p1)(yy onHalt s.next))
-        )
+      case ys@Step(AwaitR(rcv)) => wye.receiveR(i2=> attachL(p1)(feed1R(i2)(y)))
 
-      case s@Step(AwaitBoth(rcv)) => p1.step match {
-        case s1@Step(Emit(is)) =>
-          attachL(s1.continue)(feedL(is)(y))
-
-        case s1@Step(AwaitP1.withFbT(rcv1)) =>
-          Await(Both[I0,I2]: Env[I0,I2]#Y[ReceiveY[I0,I2]], (r: Throwable \/ ReceiveY[I0,I2]) =>
-           Trampoline.suspend (r.fold(
-             rsn => rcv1(left(rsn)).map(p=> attachL(p onHalt s1.next)(y))
-             , _ match {
-               case ReceiveL(i0) => rcv1(right(i0)).map(p => attachL(p onHalt s1.next)(y))
-               case ReceiveR(i2) => Trampoline.done(attachL(p1)(feed1R(i2)(y)))
-               case HaltL(rsn) => rcv1(left(rsn)).map(p=> attachL(p onHalt s1.next)(y))
-               case HaltR(rsn) => Trampoline.done(attachL(p1)(disconnectR(rsn)(y)))
-             }
-           )))
-
+      case ys@Step(AwaitBoth(rcv)) => p1.step match {
+        case s1@Step(Emit(is)) => attachL(s1.continue)(feedL(is)(y))
+        case s1@Step(AwaitP1(rcv1)) =>
+            receiveBoth {
+              case ReceiveL(i0) => attachL(p1.feed1(i0))(y)
+              case ReceiveR(i2) => attachL(p1)(feed1R(i2)(y))
+              case HaltL(rsn) =>  attachL(p1)(disconnectL(rsn)(y))
+              case HaltR(rsn) =>  attachL(p1)(disconnectR(rsn)(y))
+            }
         case hlt@Halt(rsn) => attachL(hlt)(disconnectL(rsn)(y))
       }
 
@@ -308,56 +292,18 @@ object wye {
 
   /**
    * Transforms the wye so it will stop to listen on left side.
-   * Instead all requests on the left side are converted to  termination with `End`,
-   * and will terminate once the right side will terminate.
+   * Instead all requests on the left side are converted to termination with `End`,
+   * and will terminate once the right side will terminate as well.
    * Transforms `AwaitBoth` to `AwaitR`
    * Transforms `AwaitL` to termination with `End`
    */
-  def detach1L[I,I2,O](y0: Wye[I,I2,O]): Wye[I,I2,O] = {
-    Util.debug(s"DET1L y : $y0")
-      y0.step match {
-        case s@Step(emt@Emit(os)) =>
-          emt onHalt (rsn2 => detach1L(s.next(rsn2)))
+  def detach1L[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
+    disconnectL(End)(y)
 
-        case s@Step(AwaitL.withFb(rcv)) =>
-          detach1L(Try(rcv(left(End))) onHalt s.next)
-
-        case s@Step(AwaitR.withFbT(rcv)) =>
-          Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
-            rcv(r).map(p=>detach1L(p onHalt s.next))
-          })
-        case s@Step(AwaitBoth.withFbT(rcv)) =>
-          Await(R[I2],(r: Throwable \/ I2 ) => Trampoline.suspend {
-            rcv(r.map(ReceiveR.apply)).map(p=>detach1L(p onHalt s.next))
-          })
-
-        case hlt@Halt(rsn) => hlt
-      }
-  }
 
   /** right alternative of detach1L **/
-  def detach1R[I,I2,O](y0: Wye[I,I2,O]): Wye[I,I2,O] = {
-    Util.debug(s"DET1R y : $y0")
-    y0.step match {
-      case s@Step(emt@Emit(os)) =>
-        emt onHalt (rsn2 => detach1R(s.next(rsn2)))
-
-      case s@Step(AwaitR.withFb(rcv)) =>
-        detach1R(Try(rcv(left(End))) onHalt s.next)
-
-      case s@Step(AwaitL.withFbT(rcv)) =>
-        Await(L[I],(r: Throwable \/ I ) => Trampoline.suspend {
-          rcv(r).map(p=>detach1R(p onHalt s.next))
-        })
-      case s@Step(AwaitBoth.withFbT(rcv)) =>
-        Await(L[I],(r: Throwable \/ I ) => Trampoline.suspend {
-          rcv(r.map(ReceiveL.apply)).map(p=>detach1R(p onHalt s.next))
-        })
-
-      case hlt@Halt(rsn) => hlt
-    }
-  }
-    //flip(detach1L(flip(y)))
+  def detach1R[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
+    disconnectR(End)(y)
 
   /**
    * Feed a single `ReceiveY` value to a `Wye`.
@@ -384,19 +330,16 @@ object wye {
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
       Util.debug(s"FEEDL src: $is | in: $in | out: $out | cur: $cur ")
       cur.step match {
-        case s@Step(Emit(os)) =>
-          go(in, out :+ os, s.continue)
+        case ys@Step(Emit(os)) =>
+          go(in, out :+ os, ys.continue)
 
-        case s@Step(AwaitL(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt s.next)
+        case ys@Step(AwaitL(rcv)) =>
+          if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt ys.next)
           else emitAll(out.flatten) fby cur
 
-        case s@Step(AwaitR.withFb(rcv)) =>
+        case ys@Step(AwaitR(rcv)) =>
           emitAll(out.flatten) fby
-            (awaitOr(R[I2]: Env[I,I2]#Y[I2])
-             (rsn => feedL(in)(rcv(left(rsn)) onHalt s.next))
-             (i2 => feedL[I,I2,O](in)(Try(rcv(right(i2))) onHalt s.next)))
-
+            wye.receiveR(i2 => feedL(in)(rcv(i2) onHalt ys.next ))
 
         case s@Step(AwaitBoth(rcv)) =>
           if (in.nonEmpty) go(in.tail, out, Try(rcv(ReceiveY.ReceiveL(in.head))) onHalt s.next)
@@ -409,27 +352,26 @@ object wye {
     go(is, Vector(), y)
   }
 
-  /** Feed a sequence of inputs to the right side of a `Tee`. */
+  /** Feed a sequence of inputs to the right side of a `Wye`. */
   def feedR[I,I2,O](i2s: Seq[I2])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
+
       Util.debug(s"FEEDR src: $i2s | in: $in | out: $out | cur: $cur ")
       cur.step match {
-        case s@Step(Emit(os)) =>
-          go(in, out :+ os, s.continue)
+        case ys@Step(Emit(os)) =>
+          go(in, out :+ os, ys.continue)
 
-        case s@Step(AwaitR(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt s.next)
+        case ys@Step(AwaitR(rcv)) =>
+          if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt ys.next)
           else emitAll(out.flatten) fby cur
 
-        case s@Step(AwaitL.withFb(rcv)) =>
+        case ys@Step(AwaitL(rcv)) => //todo in case the receiveL is Killed or Error we won't feed the onhalt. is this really what we want?
           emitAll(out.flatten) fby
-            (awaitOr(L[I]: Env[I,I2]#Y[I])
-             (rsn => feedR(in)(rcv(left(rsn)) onHalt s.next))
-             (i => feedR[I,I2,O](in)(Try(rcv(right(i))) onHalt s.next)))
+             wye.receiveL(i => feedR(in)(rcv(i) onHalt ys.next ))
 
-        case s@Step(AwaitBoth(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(ReceiveY.ReceiveR(in.head))) onHalt s.next)
+        case ys@Step(AwaitBoth(rcv)) =>
+          if (in.nonEmpty) go(in.tail, out, Try(rcv(ReceiveY.ReceiveR(in.head))) onHalt ys.next)
           else emitAll(out.flatten) fby cur
 
         case Halt(rsn)                  => emitAll(out.flatten).causedBy(rsn)
@@ -437,91 +379,55 @@ object wye {
       }
     }
     go(i2s, Vector(), y)
-
   }
 
   /**
    * Convert right requests to left requests and vice versa.
-   * //todo: flip seems to not work very well with detachL/R?
    */
-  def flip[I,I2,O](y: Wye[I,I2,O]): Wye[I2,I,O] =
-     y.step match {
-       case s@Step(Emit(os)) =>
-         emitAll(os) onHalt (rsn => flip(s.next(rsn)))
-
-       case s@Step(AwaitL.withFb(rcv)) =>
-         Await(R[I]: Env[I2,I]#Y[I], (r : Throwable \/ I) =>
-           Trampoline.delay(flip(Try(rcv(r))))
-         ) onHalt (r => flip(s.next(r)))
-
-       case s@Step(AwaitR.withFb(rcv)) =>
-         Await(L[I2]: Env[I2,I]#Y[I2], (r : Throwable \/ I2) =>
-           Trampoline.delay(flip(Try(rcv(r))))
-         ) onHalt (r => flip(s.next(r)))
-
-       case s@Step(AwaitBoth.withFb(rcv)) =>
-         Await(Both[I2,I], (r : Throwable \/ ReceiveY[I2,I]) =>
-           Trampoline.delay(flip(Try(rcv(r.map(_.flip)))))
-         ) onHalt (r => flip(s.next(r)))
-
-       case hlt@Halt(rsn) => hlt
-     }
+  def flip[I,I2,O](y: Wye[I,I2,O]): Wye[I2,I,O] = {
+    val ys = y.step
+    def next(rsn: Cause) = flip(ys.next(rsn))
+    ys match {
+      case Step(Emit(os))       => emitAll(os) onHalt next
+      case Step(AwaitL(rcv))    => wye.receiveR[I2, I, O](i => flip(rcv(i))) onHalt next
+      case Step(AwaitR(rcv))    => wye.receiveL[I2, I, O](i2 => flip(rcv(i2))) onHalt next
+      case Step(AwaitBoth(rcv)) => wye.receiveBoth[I2, I, O](ry => flip(rcv(ry.flip))) onHalt next
+      case hlt@Halt(rsn)           => hlt
+    }
+  }
 
   /**
    * Signals to wye, that Left side terminated.
-   * Reason for termination is `End` in case the Left side input exhausted
-   * and `Kill` in case Right side or downstream terminated for whatever reason
+   * Reason for termination is `rsn`. Any `Left` requests will be terminated with `rsn`
+   * any wye will be switched to listen only on Right side.
    */
-  def disconnectL[I, I2, O](rsn: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
-    def go(y: Wye[I, I2, O]): Wye[I, I2, O] = {
-      val ys = y.step
-      debug(s"KillL $ys | rsn $rsn")
-      ys match {
-        case s@Step(emt@Emit(os)) =>
-          emt onHalt(rsn => go(s.next(rsn)))
-
-        case s@Step(AwaitL.withFb(rcv)) =>
-          go(Try(rcv(left(rsn))) onHalt s.next)
-
-        case s@Step(awt@AwaitR.is()) =>
-          awt.extend(disconnectL(rsn)).asInstanceOf[Wye[I,I2,O]]
-          .onHalt(r => disconnectL(rsn)(s.next(r)))
-
-        case s@Step(AwaitBoth(rcv)) =>
-          detach1L(Try(rcv(ReceiveY.HaltL(rsn))) onHalt s.next)
-
-        case hlt@Halt(_) => hlt
-      }
+  def disconnectL[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
+    val ys = y.step
+    def next(rsn:Cause) = disconnectL(cause)(ys.next(rsn))
+    debug(s"DISR $ys | rsn $cause")
+    ys match {
+      case Step(emt@Emit(os)) => emt onHalt next
+      case Step(AwaitL(rcv)) => suspend(next(cause))
+      case Step(AwaitR(rcv)) => wye.receiveR[I,I2,O](i => disconnectL(cause)(rcv(i))) onHalt next
+      case Step(AwaitBoth(rcv)) => wye.receiveBoth[I,I2,O]( yr => disconnectL(cause)(rcv(yr))) onHalt next
+      case hlt@Halt(_) => hlt
     }
-
-    go(y0)
   }
 
   /**
    * Right side alternative for `disconnectL`
    */
-  def disconnectR[I, I2, O](rsn: Throwable)(y0: Wye[I, I2, O]): Wye[I, I2, O] = {
-    def go(y: Wye[I, I2, O]): Wye[I, I2, O] = {
-        val ys = y.step
-        debug(s"KillR $ys | rsn $rsn")
-        ys match {
-          case s@Step(emt@Emit(os)) =>
-            emt onHalt (rsn=>go(s.next(rsn)))
-
-          case s@Step(AwaitR.withFb(rcv)) =>
-            go(Try(rcv(left(rsn))) onHalt s.next)
-
-          case s@Step(awt@AwaitL.is()) =>
-            awt.extend(disconnectR(rsn)).asInstanceOf[Wye[I,I2,O]]
-            .onHalt(r => disconnectR(rsn)(s.next(r)))
-
-          case s@Step(AwaitBoth(rcv)) =>
-            detach1R( Try(rcv(ReceiveY.HaltR(rsn))) onHalt s.next)
-
-          case hlt@Halt(rsn) => hlt
-        }
+  def disconnectR[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
+      val ys = y.step
+      def next(rsn:Cause) = disconnectR(cause)(ys.next(rsn))
+      debug(s"DISR $ys | rsn $cause")
+      ys match {
+        case Step(emt@Emit(os)) => emt onHalt next
+        case Step(AwaitR(rcv)) => suspend(next(cause))
+        case Step(AwaitL(rcv)) => wye.receiveL[I,I2,O](i => disconnectR(cause)(rcv(i))) onHalt next
+        case Step(AwaitBoth(rcv)) => wye.receiveBoth[I,I2,O]( yr => disconnectR(cause)(rcv(yr))) onHalt next
+        case hlt@Halt(_) => hlt
       }
-      go(y0)
   }
 
   ////////////////////////////////////////////////////////////////////////
@@ -549,28 +455,22 @@ object wye {
   type WyeAwaitR[I,I2,O] = Await[Env[I,I2]#Y,Env[Any,I2]#T[I2],O]
   type WyeAwaitBoth[I,I2,O] = Await[Env[I,I2]#Y,Env[I,I2]#Y[ReceiveY[I,I2]],O]
 
+  def receiveL[I,I2,O](rcv:I => Wye[I,I2,O]) : Wye[I,I2,O] =
+    await(L[I]: Env[I,I2]#Y[I])(rcv)
+
+  def receiveR[I,I2,O](rcv:I2 => Wye[I,I2,O]) : Wye[I,I2,O] =
+    await(R[I2]: Env[I,I2]#Y[I2])(rcv)
+
+  def receiveBoth[I,I2,O](rcv:ReceiveY[I,I2] => Wye[I,I2,O]): Wye[I,I2,O] =
+    await(Both[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]])(rcv)
+
+
   object AwaitL {
+
     def unapply[I,I2,O](self: Wye[I,I2,O]):
     Option[(I => Wye[I,I2,O])] = self match {
       case Await(req,rcv) if req.tag == 0 => Some((i : I) => Try(rcv(right(i)).run))
       case _ => None
-    }
-    /** Like `AwaitL.unapply` only allows for extracting the continue case as well **/
-    object withFb {
-      def unapply[I,I2,O](self: Wye[I,I2,O]):
-      Option[(Throwable \/ I => Wye[I,I2,O])] = self match {
-        case Await(req,rcv) if req.tag == 0 => Some((r : Throwable \/ I) => Try(rcv(r).run))
-        case _ => None
-      }
-    }
-
-    /** Like `AwaitL.unapply` only allows for extracting the continue case as well on Trampoline **/
-    object withFbT {
-      def unapply[I,I2,O](self: Wye[I,I2,O]):
-      Option[(Throwable \/ I => Trampoline[Wye[I,I2,O]])] = self match {
-        case Await(req,rcv) if req.tag == 0 => Some(rcv)
-        case _ => None
-      }
     }
 
     /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side **/
@@ -589,23 +489,6 @@ object wye {
       case Await(req,rcv) if req.tag == 1 => Some((i2 : I2) => Try(rcv(right(i2)).run))
       case _ => None
     }
-    /** Like `AwaitR.unapply` only allows for extracting the continue case as well **/
-    object withFb {
-      def unapply[I,I2,O](self: Wye[I,I2,O]):
-      Option[(Throwable \/ I2 => Wye[I,I2,O])] = self match {
-        case Await(req,rcv) if req.tag == 1 => Some((r : Throwable \/ I2) => Try(rcv(r).run))
-        case _ => None
-      }
-    }
-
-    /** Like `AwaitR.unapply` only allows for extracting the continue case as well on Trampoline **/
-    object withFbT {
-      def unapply[I,I2,O](self: Wye[I,I2,O]):
-      Option[(Throwable \/ I2 => Trampoline[Wye[I,I2,O]])] = self match {
-        case Await(req,rcv) if req.tag == 1 => Some(rcv)
-        case _ => None
-      }
-    }
 
     /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side **/
     object is {
@@ -622,23 +505,6 @@ object wye {
       case _ => None
     }
 
-    /** Like `AwaitBoth.unapply` only allows for extracting the continue case as well **/
-    object withFb {
-      def unapply[I,I2,O](self: Wye[I,I2,O]):
-      Option[(Throwable \/ ReceiveY[I,I2] => Wye[I,I2,O])] = self match {
-        case Await(req,rcv) if req.tag == 2 => Some((r : Throwable \/ ReceiveY[I,I2]) => Try(rcv(r).run))
-        case _ => None
-      }
-    }
-
-    /** Like `AwaitBoth.unapply` only allows for extracting the continue case as well on Trampoline **/
-    object withFbT {
-      def unapply[I,I2,O](self: Wye[I,I2,O]):
-      Option[(Throwable \/ ReceiveY[I,I2] => Trampoline[Wye[I,I2,O]])] = self match {
-        case Await(req,rcv) if req.tag == 2 => Some(rcv)
-        case _ => None
-      }
-    }
 
     /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides **/
     object is {
@@ -673,17 +539,17 @@ object wye {
       val Right = new Env[L, R].Right
 
       sealed trait M
-      case class Ready[A](side: Env[L, R]#Y[A], result: Throwable \/ (Seq[A], Option[Throwable] => Process[Task, A])) extends M
-      case class Get(cb: (Throwable \/ Seq[O]) => Unit) extends M
+      case class Ready[A](side: Env[L, R]#Y[A], result: Cause \/ (Seq[A], Cause => Process[Task, A])) extends M
+      case class Get(cb: (Throwable \/ (Cause \/ Seq[O])) => Unit) extends M
       case class DownDone(cb: (Throwable \/ Unit) => Unit) extends M
 
-      type SideState[A] = Either3[Throwable, Throwable => Unit, Option[Throwable] => Process[Task, A]]
+      type SideState[A] = Either3[Cause, Cause => Unit, Cause => Process[Task, A]]
 
       //current state of the wye
       var yy: Wye[L, R, O] = y0
 
       //cb to be completed for `out` side
-      var out: Option[(Throwable \/ Seq[O]) => Unit] = None
+      var out: Option[(Cause \/ Seq[O])  => Unit] = None
 
       //forward referenced actor
       var a: Actor[M] = null
@@ -692,14 +558,8 @@ object wye {
       var leftBias: Boolean = true
 
       // states of both sides
-      var left: SideState[L] = Either3.right3 {
-        case Some(Kill) => pl.kill
-        case _ => pl
-      }
-      var right: SideState[R] = Either3.right3 {
-        case Some(Kill) => pr.kill
-        case _ => pr
-      }
+      var left: SideState[L] = Either3.right3( _ => pl  )
+      var right: SideState[R] = Either3.right3( _ => pr )
 
       // runs evaluation of next Seq[A] from either L/R
       // this signals to actor the next step of either left or right side
@@ -707,7 +567,7 @@ object wye {
       def runSide[A](side: Env[L, R]#Y[A])(state: SideState[A]): SideState[A] = state match {
         case Left3(rsn)         => a ! Ready[A](side, -\/(rsn)); state //just safety callback
         case Middle3(interrupt) => state //no-op already awaiting the result  //todo: don't wee nedd a calback there as well.
-        case Right3(next)       => Either3.middle3(Try(next(None)).runAsync { res => a ! Ready[A](side, res) })
+        case Right3(next)       => Either3.middle3(Try(next(End)).runAsync { res => a ! Ready[A](side, res) })
       }
 
       val runSideLeft = runSide(Left) _
@@ -721,11 +581,11 @@ object wye {
         state match {
           case Middle3(interrupt) =>
             interrupt(Kill)
-            Middle3((t: Throwable) => ()) //rest the interrupt so it won't get interrupted again
+            Either3.middle3((_: Cause) => ()) //rest the interrupt so it won't get interrupted again
 
           case Right3(next) =>
-            Try(next(Some(Kill))).run.runAsync(_ => a ! Ready[A](side, -\/(Kill)))
-            Either3.middle3((_: Throwable) => ()) // no-op cleanup can't be interrupted
+            Try(next(Kill)).run.runAsync(_ => a ! Ready[A](side, -\/(Kill)))
+            Either3.middle3((_: Cause) => ()) // no-op cleanup can't be interrupted
 
           case left@Left3(_) =>
             left
@@ -745,8 +605,8 @@ object wye {
         y: Wye[L, R, O]
         , l: SideState[L]
         , r: SideState[R]
-        , cb: Option[(Throwable \/ Seq[O]) => Unit]
-        ): Option[(Throwable \/ Seq[O]) => Unit] = {
+        , cb: Option[(Cause \/ Seq[O]) => Unit]
+        ): Option[(Cause \/ Seq[O]) => Unit] = {
         cb match {
           case Some(cb0) =>
             if (isDone(l) && isDone(r)) {
@@ -768,8 +628,8 @@ object wye {
       // note it signals if the other side has to be killed
       def sideReady[A](
         side: Env[L, R]#Y[A])(
-        result: Throwable \/ (Seq[A], Option[Throwable] => Process[Task, A])
-        ): (SideState[A], (Throwable \/ Seq[A])) = {
+        result: Cause \/ (Seq[A], Cause => Process[Task, A])
+        ): (SideState[A], (Cause \/ Seq[A])) = {
         result match {
           case -\/(rsn)        => (Either3.left3(rsn), -\/(rsn))
           case \/-((as, next)) => (Either3.right3(next), \/-(as))
@@ -777,7 +637,7 @@ object wye {
       }
 
       def sideReadyLeft(
-        result: Throwable \/ (Seq[L], Option[Throwable] => Process[Task, L])
+        result: Cause \/ (Seq[L], Cause => Process[Task, L])
         , y: Wye[L, R, O]): Wye[L, R, O] = {
         val (state, input) = sideReady(Left)(result)
         left = state
@@ -785,7 +645,7 @@ object wye {
       }
 
       def sideReadyRight(
-        result: Throwable \/ (Seq[R], Option[Throwable] => Process[Task, R])
+        result: Cause \/ (Seq[R], Cause => Process[Task, R])
         , y: Wye[L, R, O]): Wye[L, R, O] = {
         val (state, input) = sideReady(Right)(result)
         right = state
@@ -797,10 +657,10 @@ object wye {
       // if wye is at await runs either side
       // if wye is halt kills either side
       // returns next state of wye and callback
-      def runY(y: Wye[L, R, O], cb: Option[(Throwable \/ Seq[O]) => Unit])
-      : (Wye[L, R, O], Option[(Throwable \/ Seq[O]) => Unit]) = {
+      def runY(y: Wye[L, R, O], cb: Option[(Cause \/ Seq[O]) => Unit])
+      : (Wye[L, R, O], Option[(Cause \/ Seq[O]) => Unit]) = {
         @tailrec
-        def go(cur: Wye[L, R, O]): (Wye[L, R, O], Option[(Throwable \/ Seq[O]) => Unit]) = {
+        def go(cur: Wye[L, R, O]): (Wye[L, R, O], Option[(Cause \/ Seq[O]) => Unit]) = {
           Util.debug(s"YY cur $cur | cb: $cb | L: $left | R: $right")
           cur.step match {
             case s@Step(Emit(Seq())) =>
@@ -847,10 +707,10 @@ object wye {
           case Ready(side, result) =>
             val (y, cb) =
               if (side == Left) {
-                val resultL = result.asInstanceOf[(Throwable \/ (Seq[L], Option[Throwable] => Process[Task, L]))]
+                val resultL = result.asInstanceOf[(Cause \/ (Seq[L], Cause => Process[Task, L]))]
                 runY(sideReadyLeft(resultL, yy), out)
               } else {
-                val resultR = result.asInstanceOf[(Throwable \/ (Seq[R], Option[Throwable] => Process[Task, R]))]
+                val resultR = result.asInstanceOf[(Cause \/ (Seq[R], Cause => Process[Task, R]))]
                 runY(sideReadyRight(resultR, yy), out)
               }
             yy = y
@@ -858,23 +718,23 @@ object wye {
 
 
           case Get(cb0) =>
-            val (y, cb) = runY(yy, Some(cb0))
+            val (y, cb) = runY(yy, Some((r:Cause \/ Seq[O]) => cb0(\/-(r))))
             yy = y
             out = haltIfDone(y, left, right, cb)
 
-          case DownDone( cb) =>
+          case DownDone(cb) =>
             if (!yy.isHalt) yy = halt
             left = killLeft(left)
             right = killRight(right)
             if (isDone(left) && isDone(right)) S(cb(\/-(())))
-            else out = Some((r: Throwable \/ Seq[O]) => cb(r.map(_ => ())))
+            else out = Some((r: Cause \/ Seq[O]) => cb(\/-(())))
         }
       })(S)
 
-      repeatEval(Task.async[Seq[O]] { cb => a ! Get(cb) }).flatMap(emitAll)
+      repeatEval(Task.async[Cause \/ Seq[O]] { cb => a ! Get(cb) })
+      .flatMap(_.fold[Process[Task,O]](Halt.apply,emitAll))
       .onComplete(eval_(Task.async[Unit](cb => a ! DownDone(cb))))
     }
-
 }
 
 

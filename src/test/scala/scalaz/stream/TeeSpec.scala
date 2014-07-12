@@ -119,8 +119,8 @@ object TeeSpec extends Properties("Tee") {
     val r = emit("a") ++ emit("b")
     val res = List(1, 2, "a", "b", true)
     ("normal termination" |: emit(1).tee(r)(t).toList == res) &&
-      ("kill" |: (emit(1) ++ fail(Kill)).tee(r)(t).expectExn(_ == Kill).toList == res) &&
-      ("failure" |: (emit(1) ++ fail(Err)).tee(r)(t).expectExn(_ == Err).toList == res)
+      ("kill" |: (emit(1) ++ Halt(Kill)).tee(r)(t).expectedCause(_ == Kill).toList == res) &&
+      ("failure" |: (emit(1) ++ fail(Err)).tee(r)(t).expectedCause(_ == Error(Err)).toList == res)
   }
 
   property("tee can await left side and emit when right side stops") = secure {
@@ -129,8 +129,8 @@ object TeeSpec extends Properties("Tee") {
     val l = emit("a") ++ emit("b")
     val res = List(1, 2, "a", "b", true)
     ("normal termination" |: l.tee(emit(1))(t).toList == res) &&
-      ("kill" |: l.tee(emit(1) ++ fail(Kill))(t).expectExn(_ == Kill).toList == res) &&
-      ("failure" |: l.tee(emit(1) ++ fail(Err))(t).expectExn(_ == Err).toList == res)
+      ("kill" |: l.tee(emit(1) ++ Halt(Kill))(t).expectedCause(_ == Kill).toList == res) &&
+      ("failure" |: l.tee(emit(1) ++ fail(Err))(t).expectedCause(_ == Error(Err)).toList == res)
   }
 
   property("tee exceptions") = secure {
@@ -139,11 +139,11 @@ object TeeSpec extends Properties("Tee") {
     val rightFirst: Tee[Int, Int, Any] = tee.passR[Int] onComplete tee.passL[Int] onComplete emit(3)
     val l = emit(1) ++ fail(Bwahahaa)
     val r = emit(2) ++ fail(Bwahahaa2)
-    ("both fail - left first" |: l.tee(r)(leftFirst).expectExn(_ == CausedBy(Bwahahaa2, Bwahahaa)).toList == List(1, 2, 3)) &&
-      ("both fail - right first" |: l.tee(r)(rightFirst).expectExn(_ == CausedBy(Bwahahaa, Bwahahaa2)).toList == List(2, 1, 3)) &&
-      ("left fails - left first" |: l.tee(emit(2))(leftFirst).expectExn(_ == Bwahahaa).toList == List(1, 2, 3)) &&
-      ("right fails - right first" |: emit(1).tee(r)(rightFirst).expectExn(_ == Bwahahaa2).toList == List(2, 1, 3))   &&
-      ("right fails - left first" |: emit(1).tee(r)(leftFirst).expectExn(_ == Bwahahaa2).toList == List(1, 2, 3)) &&
-      ("left fails - right first" |: l.tee(emit(2))(rightFirst).expectExn(_ == Bwahahaa).toList == List(2, 1, 3))
+    ("both fail - left first" |: l.tee(r)(leftFirst).expectedCause(_ == Error(CausedBy(Bwahahaa2, Bwahahaa))).toList == List(1, 2, 3)) &&
+      ("both fail - right first" |: l.tee(r)(rightFirst).expectedCause(_ == Error(CausedBy(Bwahahaa, Bwahahaa2))).toList == List(2, 1, 3)) &&
+      ("left fails - left first" |: l.tee(emit(2))(leftFirst).expectedCause(_ == Error(Bwahahaa)).toList == List(1, 2, 3)) &&
+      ("right fails - right first" |: emit(1).tee(r)(rightFirst).expectedCause(_ == Error(Bwahahaa2)).toList == List(2, 1, 3))   &&
+      ("right fails - left first" |: emit(1).tee(r)(leftFirst).expectedCause(_ == Error(Bwahahaa2)).toList == List(1, 2, 3)) &&
+      ("left fails - right first" |: l.tee(emit(2))(rightFirst).expectedCause(_ == Error(Bwahahaa)).toList == List(2, 1, 3))
   }
 }

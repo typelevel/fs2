@@ -1,6 +1,5 @@
 package scalaz.stream
 
-
 import collection.immutable.Vector
 import java.nio.charset.Charset
 import scala.annotation.tailrec
@@ -8,6 +7,8 @@ import scalaz.-\/
 import scalaz.\/-
 import scalaz.\/._
 import scalaz._
+import scalaz.stream.Util._
+import scalaz.stream._
 import scalaz.syntax.equal._
 
 
@@ -100,7 +101,7 @@ object process1 {
    *
    */
   def collect[I, I2](pf: PartialFunction[I, I2]): Process1[I, I2] =
-    id[I].flatMap(pf andThen (emit) orElse { case _ => empty })
+    id[I].flatMap(pf andThen (emit) orElse { case _ => halt })
 
   /**
    * Like `collect`, but emits only the first element of this process on which
@@ -167,7 +168,7 @@ object process1 {
 
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I, I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) else empty) repeat
+    await1[I] flatMap (i => if (f(i)) emit(i) else halt) repeat
 
   /**
    * Skips any elements not satisfying predicate and when found, will emit that
@@ -287,12 +288,12 @@ object process1 {
    */
   def liftL[A, B, C](p: Process1[A, B]): Process1[A \/ C, B \/ C] = {
     def go(curr: Process1[A,B]): Process1[A \/ C, B \/ C] = {
-      receive1Or[A \/ C, B \/ C](curr.disconnect.map(-\/(_))) {
+      receive1Or[A \/ C, B \/ C](curr.disconnect(Kill).map(-\/(_))) { //todo proper exception passing here !
         case -\/(a) =>
           val (bs, next) = curr.feed1(a).unemit
           val out =  emitAll(bs).map(-\/(_))
           next match {
-            case Halt(rsn) => out fby fail(rsn)
+            case Halt(rsn) => out fby Halt(rsn)
             case other => out fby go(other)
           }
         case \/-(c) => emitO(c) fby go(curr)
@@ -496,7 +497,7 @@ object process1 {
     emitAll(head) fby id
 
   /** Reads a single element of the input, emits nothing, then halts. */
-  def skip: Process1[Any, Nothing] = await1[Any].flatMap(_ => empty)
+  def skip: Process1[Any, Nothing] = await1[Any].flatMap(_ => halt)
 
   /**
    * Break the input into chunks where the delimiter matches the predicate.
@@ -562,7 +563,7 @@ object process1 {
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
   def takeWhile[I](f: I => Boolean): Process1[I, I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) fby takeWhile(f) else empty)
+    await1[I] flatMap (i => if (f(i)) emit(i) fby takeWhile(f) else halt)
 
   /** Like `takeWhile`, but emits the first value which tests false. */
   def takeThrough[I](f: I => Boolean): Process1[I, I] =
@@ -570,7 +571,7 @@ object process1 {
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A, Option[A]] =
-    lift[A, Option[A]](Some(_)) onComplete emit(None)
+     lift[A, Option[A]](Some(_)) onComplete emit(None)
 
   private val utf8Charset = Charset.forName("UTF-8")
 
@@ -613,6 +614,17 @@ object process1 {
       await1[A].flatMap(a => emit((a, b)) fby go(next(a, b)))
     go(z)
   }
+
+
+  object AwaitP1 {
+    /** deconstruct for `Await` directive of `Process1` **/
+    def unapply[I, O](self: Process1[I, O]): Option[I => Process1[I, O]] = self match {
+      case Await(_, rcv) => Some((i: I) => Try(rcv(right(i)).run))
+      case _             => None
+    }
+
+  }
+
 }
 
 private[stream] trait Process1Ops[+F[_],+O] {

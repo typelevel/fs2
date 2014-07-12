@@ -4,7 +4,6 @@ import org.scalacheck.Prop._
 import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
-import scalaz.stream.Process.End
 import scalaz.{-\/, \/-, \/}
 
 object QueueSpec extends Properties("queue") {

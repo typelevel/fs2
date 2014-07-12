@@ -13,7 +13,6 @@ import org.scalacheck.{Gen, Arbitrary, Properties}
 import scalaz.concurrent.{Task, Strategy}
 import Util._
 import process1._
-import scalaz.stream.Process.Kill
 import Process._
 import TestInstances._
 import scala.concurrent.duration._
@@ -138,13 +137,13 @@ object ProcessSpec extends Properties("Process") {
     import TestUtil._
     val cleanup = new SyncVar[Int]
     val p: Process[Task, Int] = halt onComplete(eval_(Task.delay { cleanup.put(1) }))
-    p.kill.expectExn(_ == Kill).run.run
+    p.kill.expectedCause(_ == Kill).run.run
     cleanup.get(500).get == 1
   }
 
   property("kill") = secure {
     import TestUtil._
-    ("repeated-emit" |: emit(1).repeat.kill.expectExn(_ == Kill).toList == List())
+    ("repeated-emit" |: emit(1).repeat.kill.expectedCause(_ == Kill).toList == List())
   }
 
   property("kill ++") = secure {
@@ -153,9 +152,9 @@ object ProcessSpec extends Properties("Process") {
     var afterHalt = false
     var afterAwait = false
     def rightSide(a: => Unit): Process[Task, Int] = Process.awaitOr(Task.delay(a))(_ => rightSide(a))(_ => halt)
-    (emit(1) ++ rightSide(afterEmit = true)).kill.expectExn(_ == Kill).run.run
-    (halt ++ rightSide(afterHalt = true)).kill.expectExn(_ == Kill).run.run
-    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.expectExn(_ == Kill).run.run
+    (emit(1) ++ rightSide(afterEmit = true)).kill.expectedCause(_ == Kill).run.run
+    (halt ++ rightSide(afterHalt = true)).kill.expectedCause(_ == Kill).run.run
+    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.expectedCause(_ == Kill).run.run
     ("after emit" |: !afterEmit) &&
       ("after halt" |: !afterHalt) &&
       ("after await" |: !afterAwait)
@@ -165,13 +164,13 @@ object ProcessSpec extends Properties("Process") {
     import TestUtil._
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
     ("normal termination" |: (emit(1) |> p1).toList == List(1, 2, 3)) &&
-      ("kill" |: ((emit(1) ++ fail(Kill)) |> p1).expectExn(_ == Kill).toList == List(1, 2, 3)) &&
-      ("failure" |: ((emit(1) ++ fail(FailWhale)) |> p1).expectExn(_ == FailWhale).toList == List(1, 2, 3))
+      ("kill" |: ((emit(1) ++ Halt(Kill)) |> p1).expectedCause(_ == Kill).toList == List(1, 2, 3)) &&
+      ("failure" |: ((emit(1) ++ fail(FailWhale)) |> p1).expectedCause(_ == Error(FailWhale)).toList == List(1, 2, 3))
   }
 
   property("feed1, disconnect") = secure {
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
-    p1.feed1(5).feed1(4).disconnect.unemit._1 == Seq(5, 4, 2, 3)
+    p1.feed1(5).feed1(4).disconnect(End).unemit._1 == Seq(5, 4, 2, 3)
   }
 
   property("pipeIn") = secure {

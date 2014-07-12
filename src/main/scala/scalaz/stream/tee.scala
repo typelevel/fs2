@@ -1,41 +1,41 @@
 package scalaz.stream
 
-import Process._
-import scalaz.stream.Util._
-import scalaz.\/._
 import scala.annotation.tailrec
-import scalaz.\/
+import scalaz.\/._
+import scalaz.stream.Process._
+import scalaz.stream.Util._
 
 
-object tee  {
+object tee {
 
   /** A `Tee` which alternates between emitting values from the left input and the right input. */
-  def interleave[I]: Tee[I,I,I] = repeat { for {
-    i1 <- awaitL[I]
-    i2 <- awaitR[I]
-    r <- emit(i1) ++ emit(i2)
-  } yield r }
+  def interleave[I]: Tee[I, I, I] =
+  repeat { for {
+      i1 <- awaitL[I]
+      i2 <- awaitR[I]
+      r <- emit(i1) ++ emit(i2)
+    } yield r }
 
   /** A `Tee` which ignores all input from left. */
-  def passR[I2]: Tee[Any,I2,I2] = awaitR[I2].repeat
+  def passR[I2]: Tee[Any, I2, I2] = awaitR[I2].repeat
 
   /** A `Tee` which ignores all input from the right. */
-  def passL[I]: Tee[I,Any,I] = awaitL[I].repeat
+  def passL[I]: Tee[I, Any, I] = awaitL[I].repeat
 
   /** Echoes the right branch until the left branch becomes `true`, then halts. */
-  def until[I]: Tee[Boolean,I,I] =
+  def until[I]: Tee[Boolean, I, I] =
     awaitL[Boolean].flatMap(kill => if (kill) halt else awaitR[I] fby until)
 
   /** Echoes the right branch when the left branch is `true`. */
-  def when[I]: Tee[Boolean,I,I] =
+  def when[I]: Tee[Boolean, I, I] =
     awaitL[Boolean].flatMap(ok => if (ok) awaitR[I] fby when else when)
 
   /** Defined as `zipWith((_,_))` */
-  def zip[I,I2]: Tee[I,I2,(I,I2)] = zipWith((_,_))
+  def zip[I, I2]: Tee[I, I2, (I, I2)] = zipWith((_, _))
 
   /** A version of `zip` that pads the shorter stream with values. */
-  def zipAll[I,I2](padI: I, padI2: I2): Tee[I,I2,(I,I2)] =
-    zipWithAll(padI, padI2)((_,_))
+  def zipAll[I, I2](padI: I, padI2: I2): Tee[I, I2, (I, I2)] =
+    zipWithAll(padI, padI2)((_, _))
 
 
   /**
@@ -43,22 +43,24 @@ object tee  {
    * halting as soon as either input is exhausted.
    * This implementation reads from the left, then the right.
    */
-  def zipWith[I,I2,O](f: (I,I2) => O): Tee[I,I2,O] = { for {
-    i <- awaitL[I]
-    i2 <- awaitR[I2]
-    r <- emit(f(i,i2))
-  } yield r } repeat
+  def zipWith[I, I2, O](f: (I, I2) => O): Tee[I, I2, O] = {
+    for {
+      i <- awaitL[I]
+      i2 <- awaitR[I2]
+      r <- emit(f(i, i2))
+    } yield r
+  } repeat
 
 
   /** A version of `zipWith` that pads the shorter stream with values. */
-  def zipWithAll[I,I2,O](padI: I, padI2: I2)(
-    f: (I,I2) => O): Tee[I,I2,O] = {
-    def fbR : Tee[I,I2,O] = receiveR{ i2 => emit(f(padI,i2)) ++ fbR }
-    def fbL : Tee[I,I2,O] = receiveL{ i => emit(f(i,padI2)) ++ fbL }
+  def zipWithAll[I, I2, O](padI: I, padI2: I2)(
+    f: (I, I2) => O): Tee[I, I2, O] = {
+    def fbR: Tee[I, I2, O] = receiveR { i2 => emit(f(padI, i2)) ++ fbR }
+    def fbL: Tee[I, I2, O] = receiveL { i => emit(f(i, padI2)) ++ fbL }
 
-    def go :  Tee[I,I2,O] = {
+    def go: Tee[I, I2, O] = {
       receiveLOr[I, I2, O](fbR) { i =>
-        receiveROr[I, I2, O](emit(f(i,padI2)) ++ fbL) { i2 =>
+        receiveROr[I, I2, O](emit(f(i, padI2)) ++ fbL) { i2 =>
           emit(f(i, i2)) ++ go
         }
       }
@@ -68,22 +70,24 @@ object tee  {
 
 
   /** Feed a sequence of inputs to the left side of a `Tee`. */
-  def feedL[I,I2,O](i: Seq[I])(p: Tee[I,I2,O]): Tee[I,I2,O] = {
+  def feedL[I, I2, O](i: Seq[I])(p: Tee[I, I2, O]): Tee[I, I2, O] = {
     @tailrec
-    def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
+    def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I, I2, O]): Tee[I, I2, O] = {
       cur.step match {
         case s@Step(Emit(os)) =>
-          go(in,out :+ os, s.continue)
+          go(in, out :+ os, s.continue)
 
-        case s@Step(AwaitR.receive(rcv)) =>
+        case s@Step(AwaitR(rcv)) =>
           emitAll(out.flatten) fby
-            (awaitOr(R[I2]: Env[I,I2]#T[I2])
-             (rsn => feedL(in)(rcv(left(rsn)) onHalt s.next))
-             (i2 => feedL[I,I2,O](in)(Try(rcv(right(i2))) onHalt s.next)))
+            Await(R[I2]: Env[I, I2]#T[I2]
+              , (i2: I2) => Trampoline.delay(
+                feedL[I, I2, O](in)(Try(rcv(i2)) onHalt s.next)
+              ))
+
 
         case s@Step(awt@AwaitL(rcv)) =>
-          if (in.nonEmpty) go(in.tail,out,Try(rcv(in.head)) onHalt s.next )
-          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] fby (awt onHalt s.next)
+          if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt s.next)
+          else emitAll(out.flatten).asInstanceOf[Tee[I, I2, O]] fby (awt onHalt s.next)
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
@@ -94,22 +98,23 @@ object tee  {
   }
 
   /** Feed a sequence of inputs to the right side of a `Tee`. */
-  def feedR[I,I2,O](i: Seq[I2])(p: Tee[I,I2,O]): Tee[I,I2,O] = {
+  def feedR[I, I2, O](i: Seq[I2])(p: Tee[I, I2, O]): Tee[I, I2, O] = {
     @tailrec
-    def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I,I2,O]): Tee[I,I2,O] = {
+    def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I, I2, O]): Tee[I, I2, O] = {
       cur.step match {
         case s@Step(Emit(os)) =>
-          go(in,out :+ os, s.continue)
+          go(in, out :+ os, s.continue)
 
         case s@Step(awt@AwaitR(rcv)) =>
-          if (in.nonEmpty)   go(in.tail,out,Try(rcv(in.head)) onHalt s.next )
-          else emitAll(out.flatten).asInstanceOf[Tee[I,I2,O]] fby (awt onHalt s.next)
+          if (in.nonEmpty) go(in.tail, out, Try(rcv(in.head)) onHalt s.next)
+          else emitAll(out.flatten).asInstanceOf[Tee[I, I2, O]] fby (awt onHalt s.next)
 
-        case s@Step(AwaitL.receive(rcv)) =>
+        case s@Step(AwaitL(rcv)) =>
           emitAll(out.flatten) fby
-            (awaitOr(L[I]: Env[I,I2]#T[I])
-             (rsn => feedR(in)(rcv(left(rsn)) onHalt s.next))
-             (i => feedR[I,I2,O](in)(Try(rcv(right(i))) onHalt s.next)))
+            Await(L[I]: Env[I, I2]#T[I]
+              , (i: I) => Trampoline.delay(
+                feedR[I, I2, O](in)(Try(rcv(i)) onHalt s.next)
+              ))
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
       }
@@ -120,28 +125,29 @@ object tee  {
   }
 
   /** Feed one input to the left branch of this `Tee`. */
-  def feed1L[I,I2,O](i: I)(t: Tee[I,I2,O]): Tee[I,I2,O] =
+  def feed1L[I, I2, O](i: I)(t: Tee[I, I2, O]): Tee[I, I2, O] =
     feedL(Vector(i))(t)
 
   /** Feed one input to the right branch of this `Tee`. */
-  def feed1R[I,I2,O](i2: I2)(t: Tee[I,I2,O]): Tee[I,I2,O] =
+  def feed1R[I, I2, O](i2: I2)(t: Tee[I, I2, O]): Tee[I, I2, O] =
     feedR(Vector(i2))(t)
+
 
   /**
    * Signals, that _left_ side of tee terminated.
-   * That causes all succeeding `AwaitL` to terminate with Kill.
+   * That causes all succeeding AwaitL to terminate with `cause` giving chance
+   * to emit any values or read on right.
    */
-  def disconnectL[I,I2,O](tee:Tee[I,I2,O]) : Tee[Nothing,I2,O] ={
-    tee.suspendStep.flatMap  {
+  def disconnectL[I, I2, O](cause: Cause)(tee: Tee[I, I2, O]): Tee[Nothing, I2, O] = {
+    tee.suspendStep.flatMap {
       case s@Step(emt@Emit(_)) =>
-        emt onHalt { rsn => disconnectL(s.next(rsn)) }
+        emt onHalt { rsn => disconnectL(cause)(s.next(rsn)) }
 
-      case s@Step(AwaitL.receive(rcv)) =>
-        disconnectL(Try(rcv(left(End))) onHalt s.next)
+      case s@Step(AwaitL(_)) => disconnectL(cause)(s.next(cause.kill))
 
       case s@Step(AwaitR(rcv)) =>
-        await(R[I2]: Env[Nothing,I2]#T[I2])(i2 => disconnectL(Try(rcv(i2))))
-        .onHalt(rsn0 => disconnectL(s.next(rsn0)))
+        receiveR[Nothing, I2, O](i2 => disconnectL(cause)(Try(rcv(i2))))
+        .onHalt (rsn0 => disconnectL(cause)(s.next(rsn0)))
 
       case hlt@Halt(_) => hlt
     }
@@ -150,77 +156,61 @@ object tee  {
 
   /**
    * Signals, that _right_ side of tee terminated.
-   * That causes all succeeding `AwaitR` to terminate with Kill.
+   * That causes all succeeding AwaitR to terminate with `cause` giving chance
+   * to emit any values or read on left.
    */
-  def disconnectR[I,I2,O](tee:Tee[I,I2,O]) : Tee[I,Nothing,O] ={
-    tee.suspendStep.flatMap  {
+  def disconnectR[I, I2, O](cause: Cause)(tee: Tee[I, I2, O]): Tee[I, Nothing, O] = {
+    tee.suspendStep.flatMap {
       case s@Step(emt@Emit(os)) =>
-        emt onHalt { rsn => disconnectR(s.next(rsn)) }
+        emt onHalt { rsn => disconnectR(cause)(s.next(rsn)) }
 
-      case s@Step(AwaitR.receive(rcv)) =>
-        disconnectR(Try(rcv(left(End))) onHalt s.next)
+      case s@Step(AwaitR(_)) => disconnectR(cause)(s.next(cause.kill))
 
       case s@Step(AwaitL(rcv)) =>
-        await(L[I]: Env[I,Nothing]#T[I])(i => disconnectR(Try(rcv(i))))
-        .onHalt(rsn0 => disconnectR(s.next(rsn0)))
+        receiveL[I,Nothing,O](i=> disconnectR(cause)(Try(rcv(i))))
+        .onHalt(rsn0 => disconnectR(cause)(s.next(rsn0)))
 
       case hlt@Halt(_) => hlt
     }
   }
 
 
-
   //////////////////////////////////////////////////////////////////////
   // De-constructors
   //////////////////////////////////////////////////////////////////////
-  type TeeAwaitL[I,I2,O] = Await[Env[I,I2]#T,Env[I,Any]#Is[I],O]
-  type TeeAwaitR[I,I2,O] = Await[Env[I,I2]#T,Env[Any,I2]#T[I2],O]
+  type TeeAwaitL[I, I2, O] = Await[Env[I, I2]#T, Env[I, Any]#Is[I], O]
+  type TeeAwaitR[I, I2, O] = Await[Env[I, I2]#T, Env[Any, I2]#T[I2], O]
 
 
   object AwaitL {
-    def unapply[I,I2,O](self: Tee[I,I2,O]):
-    Option[(I => Tee[I,I2,O])] = self match {
-      case Await(req,rcv) if req.tag == 0 =>  Some( (i : I) => Try(rcv(right(i)).run) )    // Some(rcv.asInstanceOf[I => Tee[I,I2,O]])
-      case _ => None
+    def unapply[I, I2, O](self: Tee[I, I2, O]):
+    Option[(I => Tee[I, I2, O])] = self match {
+      case Await(req, rcv) if req.tag == 0 => Some((i: I) => Try(rcv(right(i)).run)) // Some(rcv.asInstanceOf[I => Tee[I,I2,O]])
+      case _                               => None
     }
-    /** Like `AwaitL` de-constructor, but instead extracts `rcv` with possibility to pass reason for termination **/
-    object receive {
-      def unapply[I,I2,O](self: Tee[I,I2,O]):
-      Option[(Throwable \/ I => Tee[I,I2,O])] = self match {
-        case Await(req,rcv) if req.tag == 0 =>  Some( (r : Throwable \/ I) => Try(rcv(r).run) )    // Some(rcv.asInstanceOf[I => Tee[I,I2,O]])
-        case _ => None
-      }
-    }
+
     /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side **/
     object is {
-      def unapply[I,I2,O](self: TeeAwaitL[I,I2,O]):Boolean = self match {
-        case Await(req,rcv) if req.tag == 0 => true
-        case _ => false
+      def unapply[I, I2, O](self: TeeAwaitL[I, I2, O]): Boolean = self match {
+        case Await(req, rcv) if req.tag == 0 => true
+        case _                               => false
       }
     }
   }
 
   object AwaitR {
-    def unapply[I,I2,O](self: Tee[I,I2,O]):
-    Option[(I2 => Tee[I,I2,O])] = self match {
-      case Await(req,rcv) if req.tag == 1 =>  Some( (i2 : I2) => Try(rcv(right(i2)).run) )    //Some((recv.asInstanceOf[I2 => Tee[I,I2,O]], fb, c))
-      case _ => None
+    def unapply[I, I2, O](self: Tee[I, I2, O]):
+    Option[(I2 => Tee[I, I2, O])] = self match {
+      case Await(req, rcv) if req.tag == 1 => Some((i2: I2) => Try(rcv(right(i2)).run)) //Some((recv.asInstanceOf[I2 => Tee[I,I2,O]], fb, c))
+      case _                               => None
     }
 
-    /** Like `AwaitR` de-constructor, but instead extracts `rcv` with possibility to pass reason for termination **/
-    object receive {
-      def unapply[I,I2,O](self: Tee[I,I2,O]):
-      Option[(Throwable \/ I2=> Tee[I,I2,O])] = self match {
-        case Await(req,rcv) if req.tag == 1 =>  Some( (r: Throwable \/ I2) => Try(rcv(r).run) )    //Some((recv.asInstanceOf[I2 => Tee[I,I2,O]], fb, c))
-        case _ => None
-      }
-    }
 
     /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on left side **/
     object is {
-      def unapply[I,I2,O](self: TeeAwaitR[I,I2,O]):Boolean = self match {
-        case Await(req,rcv) if req.tag == 1 => true
-        case _ => false
+      def unapply[I, I2, O](self: TeeAwaitR[I, I2, O]): Boolean = self match {
+        case Await(req, rcv) if req.tag == 1 => true
+        case _                               => false
       }
     }
   }
@@ -229,20 +219,20 @@ object tee  {
 /**
  * Operations on process that uses `tee`
  */
-private[stream] trait TeeOps[+F[_],+O] {
+private[stream] trait TeeOps[+F[_], +O] {
 
-  self: Process[F,O] =>
+  self: Process[F, O] =>
 
   /** Alternate emitting elements from `this` and `p2`, starting with `this`. */
-  def interleave[F2[x]>:F[x],O2>:O](p2: Process[F2,O2]): Process[F2,O2] =
+  def interleave[F2[x] >: F[x], O2 >: O](p2: Process[F2, O2]): Process[F2, O2] =
     this.tee(p2)(scalaz.stream.tee.interleave[O2])
 
   /** Call `tee` with the `zipWith` `Tee[O,O2,O3]` defined in `tee.scala`. */
-  def zipWith[F2[x]>:F[x],O2,O3](p2: Process[F2,O2])(f: (O,O2) => O3): Process[F2,O3] =
+  def zipWith[F2[x] >: F[x], O2, O3](p2: Process[F2, O2])(f: (O, O2) => O3): Process[F2, O3] =
     this.tee(p2)(scalaz.stream.tee.zipWith(f))
 
   /** Call `tee` with the `zip` `Tee[O,O2,O3]` defined in `tee.scala`. */
-  def zip[F2[x]>:F[x],O2](p2: Process[F2,O2]): Process[F2,(O,O2)] =
+  def zip[F2[x] >: F[x], O2](p2: Process[F2, O2]): Process[F2, (O, O2)] =
     this.tee(p2)(scalaz.stream.tee.zip)
 
   /**
@@ -253,12 +243,12 @@ private[stream] trait TeeOps[+F[_],+O] {
    * convert an infrequent discrete `Process` to a continuous one for use with this
    * function.
    */
-  def when[F2[x]>:F[x],O2>:O](condition: Process[F2,Boolean]): Process[F2,O2] =
+  def when[F2[x] >: F[x], O2 >: O](condition: Process[F2, Boolean]): Process[F2, O2] =
     condition.tee(this)(scalaz.stream.tee.when)
 
 
   /** Delay running this `Process` until `awaken` becomes true for the first time. */
-  def sleepUntil[F2[x]>:F[x],O2>:O](awaken: Process[F2,Boolean]): Process[F2,O2] =
+  def sleepUntil[F2[x] >: F[x], O2 >: O](awaken: Process[F2, Boolean]): Process[F2, O2] =
     awaken.dropWhile(!_).once.flatMap(b => if (b) this else halt)
 
   /**
@@ -268,7 +258,7 @@ private[stream] trait TeeOps[+F[_],+O] {
    * `condition.forwardFill` to convert an infrequent discrete `Process` to a
    * continuous one for use with this function.
    */
-  def until[F2[x]>:F[x],O2>:O](condition: Process[F2,Boolean]): Process[F2,O2] =
+  def until[F2[x] >: F[x], O2 >: O](condition: Process[F2, Boolean]): Process[F2, O2] =
     condition.tee(this)(scalaz.stream.tee.until)
 
 }

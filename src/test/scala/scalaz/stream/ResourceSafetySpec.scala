@@ -34,21 +34,21 @@ object ResourceSafetySpec extends Properties("resource-safety") {
 
   property("cleanups") = secure {
     import Process._
-    var thrown = List[Throwable]()
-    def cleanup(t:Option[Throwable]) =   { thrown = thrown ++ t.toSeq ; t.fold(empty:Process[Nothing,Nothing])(fail) }
+    var thrown = List[Cause]()
+    def cleanup(cause:Cause) =   { thrown = thrown :+ cause ; Halt(cause) }
     val src = Process.range(0,10)
     val procs = List(
-     ("flatMap-Emit",emit(1).flatMap(_ => die).onHalt(cleanup), left(bwah), List(bwah))
-     ,("flatMap-Append",(emit(1) ++ emit(2)).flatMap(_ => die) onHalt(cleanup), left(bwah), List(bwah))
-     , ("flatMap-Append-lzy" , (emit(1) ++ emit(2)).flatMap({ case 1 => emit(1) ; case 2 => die }) onHalt(cleanup),  left(bwah),List(bwah))
-     , ("map-lzy", src.map(i => if (i == 3) die else i).onHalt(cleanup),  left(bwah), List(bwah))
-     , ("append-lzy", (src ++ die) onHalt cleanup,  left(bwah), List(bwah))
-     , ("pipe-term-p1", src.pipe(fail(bwah)) onHalt cleanup,  left(bwah), List(bwah))
-     , ("pipe-term-src", fail(bwah).pipe(process1.id) onHalt cleanup,  left(bwah), List(bwah))
-     , ("pipe-cln-src", (src onHalt cleanup).pipe(fail(bwah)) onHalt cleanup ,  left(bwah), List(Kill,bwah))
-     , ("pipe-cln-p1", src.pipe(fail(bwah) onHalt cleanup) onHalt cleanup ,  left(bwah), List(bwah,bwah))
-     , ("pipe-fail-src-then-p1", (src ++ fail(bwah)).pipe(process1.id[Int] onComplete fail(boom) onHalt cleanup), left(CausedBy(boom, bwah)), List(boom))
-     , ("pipe-fail-p1-then-src", (src onComplete fail(bwah) onHalt cleanup).pipe(fail(boom)), left(boom), List(CausedBy(bwah, Kill)))
+     ("flatMap-Emit",emit(1).flatMap(_ => die).onHalt(cleanup), left(bwah), List(Error(bwah)))
+     ,("flatMap-Append",(emit(1) ++ emit(2)).flatMap(_ => die) onHalt(cleanup), left(bwah), List(Error(bwah)))
+     , ("flatMap-Append-lzy" , (emit(1) ++ emit(2)).flatMap({ case 1 => emit(1) ; case 2 => die }) onHalt(cleanup),  left(bwah),List(Error(bwah)))
+     , ("map-lzy", src.map(i => if (i == 3) die else i).onHalt(cleanup),  left(bwah), List(Error(bwah)))
+     , ("append-lzy", (src ++ die) onHalt cleanup,  left(bwah), List(Error(bwah)))
+     , ("pipe-term-p1", src.pipe(fail(bwah)) onHalt cleanup,  left(bwah), List(Error(bwah)))
+     , ("pipe-term-src", fail(bwah).pipe(process1.id) onHalt cleanup,  left(bwah), List(Error(bwah)))
+     , ("pipe-cln-src", (src onHalt cleanup).pipe(fail(bwah)) onHalt cleanup ,  left(bwah), List(Error(bwah)))
+     , ("pipe-cln-p1", src.pipe(fail(bwah) onHalt cleanup) onHalt cleanup ,  left(bwah), List(Error(bwah),Error(bwah)))
+     , ("pipe-fail-src-then-p1", (src ++ fail(bwah)).pipe(process1.id[Int] onComplete fail(boom) onHalt cleanup), left(CausedBy(boom, bwah)), List(Error(boom)))
+     , ("pipe-fail-p1-then-src", (src onComplete fail(bwah) onHalt cleanup).pipe(fail(boom)), left(boom), List())
 //      , src.filter(i => if (i == 3) throw End else true).onComplete(cleanup)
 //      , src.pipe(process1.lift((i: Int) => if (i == 3) die else true)).onComplete(cleanup)
 //      , src.flatMap(i => if (i == 3) die else emit(i)).onComplete(cleanup)
@@ -61,14 +61,14 @@ object ResourceSafetySpec extends Properties("resource-safety") {
 //      , src.fby(die) onComplete cleanup
 //      , src.orElse(die) onComplete cleanup
 //      , (src append die).orElse(halt,die) onComplete cleanup
-      , ("tee-cln-left", (src onHalt cleanup).zip(fail(bwah)) onHalt cleanup, left(bwah), List(Kill, bwah))
-      , ("tee-cln-right", fail(bwah).zip(src onHalt cleanup) onHalt cleanup, left(bwah), List(Kill, bwah))
-      , ("tee-cln-down", (src onHalt cleanup).zip(src onHalt cleanup) onHalt cleanup, right(()), List(Continue, Kill, Continue))
-      , ("tee-cln-tee", (src onHalt cleanup).tee(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Kill, Kill, bwah))
-      , ("wye-cln-left", (src onHalt cleanup).wye(fail(bwah))(wye.yip) onHalt cleanup, left(bwah), List(Kill, bwah))
-      , ("wye-cln-right", fail(bwah).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, left(bwah), List(Kill, bwah))
-      , ("wye-cln-down", (src onHalt cleanup).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, right(()), List(End, End, End))
-      , ("wye-cln-wye", (src onHalt cleanup).wye(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Kill, Kill, bwah))
+      , ("tee-cln-left", (src onHalt cleanup).zip(fail(bwah)) onHalt cleanup, left(bwah), List(Error(bwah)))
+      , ("tee-cln-right", fail(bwah).zip(src onHalt cleanup) onHalt cleanup, left(bwah), List(Error(bwah)))
+      , ("tee-cln-down", (src onHalt cleanup).zip(src onHalt cleanup) onHalt cleanup, right(()), List())
+      , ("tee-cln-tee", (src onHalt cleanup).tee(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Error(bwah)))
+      , ("wye-cln-left", (src onHalt cleanup).wye(fail(bwah))(wye.yip) onHalt cleanup, left(bwah), List(Error(bwah)))
+      , ("wye-cln-right", fail(bwah).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, left(bwah), List(Error(bwah)))
+      , ("wye-cln-down", (src onHalt cleanup).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, right(()), List())
+      , ("wye-cln-wye", (src onHalt cleanup).wye(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Error(bwah)))
     )
 
     val result = procs.zipWithIndex.map {
@@ -87,7 +87,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
   property("repeated kill") = secure {
     import TestUtil._
     var cleaned = false
-    (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.expectExn(_ == Kill).run.run
+    (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.expectedCause(_ == Kill).run.run
     cleaned
   }
 }

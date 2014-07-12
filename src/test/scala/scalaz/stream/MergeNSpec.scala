@@ -158,11 +158,11 @@ object MergeNSpec extends Properties("mergeN") {
   property("drain-kill-one") = secure {
     import TestUtil._
     val effect = Process.repeatEval(Task.delay(())).drain
-    val p = Process(1,2) onComplete fail(Kill)
+    val p = Process(1,2) onComplete Halt(Kill)
 
     val r=
       merge.mergeN(Process(effect,p))
-      .expectExn(_ == Kill)
+      .expectedCause(_ == Kill)
       .runLog.timed(3000).run
 
     r.size == 2

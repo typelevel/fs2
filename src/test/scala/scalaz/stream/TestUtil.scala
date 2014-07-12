@@ -3,8 +3,7 @@ package scalaz.stream
 import scala.concurrent.duration._
 import java.util.concurrent.{ThreadFactory, Executors, ExecutorService}
 import java.util.concurrent.atomic.AtomicInteger
-import scalaz.concurrent.Task
-import scalaz.stream.Process.End
+import scalaz.concurrent.Task 
 
 /**
  * Various testing helpers
@@ -38,26 +37,26 @@ private[stream] object TestUtil {
     })
   }
 
-  case class UnexpectedException( e: Throwable) extends RuntimeException {
-    override def getMessage: String = s"UnexpectedException: ${e.getClass.getName} : ${e.getMessage} "
+  case class UnexpectedCause( c:Cause) extends RuntimeException {
+    override def getMessage: String = s"UnexpectedCause: $c "
     override def toString: String = getMessage
   }
 
 
 
   implicit class ExpectExn[O](val p: Process[Nothing, O]) extends AnyVal {
-    def expectExn(pred: Option[Throwable] => Boolean): Process[Nothing, O] = p.onHalt {
-      rsn =>
-        if (pred(rsn)) Process.halt
-        else Process.Halt(UnexpectedException(rsn.getOrElse(End)))
+    def expectedCause(pred: Cause => Boolean): Process[Nothing, O] = p.onHalt {
+      cause =>
+        if (pred(cause)) Process.halt
+        else Process.fail(UnexpectedCause(cause))
     }
   }
 
   implicit class ExpectExnTask[O](val p: Process[Task, O]) extends AnyVal {
-    def expectExn(pred: Option[Throwable] => Boolean): Process[Task, O] = p.onHalt {
-      rsn =>
-        if (pred(rsn)) Process.halt
-        else Process.Halt(UnexpectedException(rsn.getOrElse(End)))
+    def expectedCause(pred: Cause => Boolean): Process[Task, O] = p.onHalt {
+      cause =>
+        if (pred(cause)) Process.halt
+        else Process.fail(UnexpectedCause(cause))
     }
   }
 }

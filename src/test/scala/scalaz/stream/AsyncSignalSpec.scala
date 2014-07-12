@@ -6,7 +6,6 @@ import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
 import scalaz.concurrent.Task
-import scalaz.stream.Process.End
 import scalaz.stream.async.mutable.Signal
 import scalaz.syntax.monad._
 import scalaz.{-\/, Nondeterminism, \/, \/-}

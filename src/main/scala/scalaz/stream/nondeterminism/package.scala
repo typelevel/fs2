@@ -13,12 +13,12 @@ package object nondeterminism {
 
   /**
    * Non-deterministic join of streams. Streams are joined non deterministically.
-   * Whenever one of the streams terminates with other exception than `End`
+   * Whenever one of the streams terminates with other reason than `End` or `Kill`
    * the whole join terminates with that reason and all
-   * remaining input processes are terminated with that cause as well.
+   * remaining input processes are terminated with `Kill` cause as well.
    *
-   * If the resulting process terminates, all the merged processes terminates with supplied reason,
-   * in case downstream terminates with `End` the upstream processes are terminated as well.
+   * If the resulting process is killed or fails, all the merged processes terminates with `Kill` cause,
+   * in case downstream terminates normally the upstream processes are terminated with `Kill` cause as well.
    *
    * @param maxOpen     maximum simultaneous processes that concurrently merge. If eq 0 no limit.
    * @param maxQueued   maximum number of queued `A` before merged processes will back-off. If eq 0 no limit.
@@ -29,8 +29,8 @@ package object nondeterminism {
    */
   def njoin[A](maxOpen: Int, maxQueued: Int)(source: Process[Task, Process[Task, A]])(implicit S: Strategy): Process[Task, A] = {
     sealed trait M
-    case class Offer(p: Process[Task, A], next: Option[Throwable] => Process[Task, Process[Task, A]]) extends M
-    case class FinishedSource(rsn: Throwable) extends M
+    case class Offer(p: Process[Task, A], next: Cause => Process[Task, Process[Task, A]]) extends M
+    case class FinishedSource(rsn: Cause) extends M
     case class Finished(result: Throwable \/ Unit) extends M
     case class FinishedDown(cb: (Throwable \/ Unit) => Unit) extends M
 
@@ -40,8 +40,8 @@ package object nondeterminism {
       val done = async.signal[Boolean](S)
 
       //keep state of master source
-      var state: Either3[Throwable, Throwable => Unit, Option[Throwable] => Process[Task, Process[Task, A]]] =
-        Either3.middle3((_: Throwable) => ())
+      var state: Either3[Cause, Cause => Unit, Cause => Process[Task, Process[Task, A]]] =
+        Either3.middle3((_: Cause) => ())
 
       //keep no of open processes
       var opened: Int = 0
@@ -56,25 +56,19 @@ package object nondeterminism {
               actor ! FinishedSource(rsn)
 
             case \/-((processes, next)) =>
-              actor ! Offer(processes.head, (r: Option[Throwable]) =>
-                r.fold(emitAll(processes.tail) onHalt next)({
-                  rsn => Util.Try(next(Some(rsn)))
-                })
-              )
+              actor ! Offer(processes.head, (c: Cause) => c match {
+                case End => emitAll(processes.tail) onHalt next
+                case cause => Util.Try(next(cause))
+              } )
           })
         })
 
       // fails the signal and queue with given reason
-      def fail(rsn: Throwable): Unit = {
-        val reason =
-        rsn match {
-          case Continue => End
-          case other => other
-        }
-        state = Either3.left3(reason)
+      def fail(cause: Cause): Unit = {
+        state = Either3.left3(cause)
         (for {
-          _ <- q.fail(reason)
-          _ <- done.fail(reason)
+          _ <- q.failWithCause(cause)
+          _ <- done.failWithCause(cause)
         } yield ()).runAsync(_ => ())
       }
 
@@ -91,7 +85,7 @@ package object nondeterminism {
           // and give chance to start next process if not bounded
           case Offer(p, next) =>
             opened = opened + 1
-            if (maxOpen <= 0 || opened < maxOpen) state = nextStep(Util.Try(next(None)))
+            if (maxOpen <= 0 || opened < maxOpen) state = nextStep(Util.Try(next(End)))
             else state = Either3.right3(next)
 
             //runs the process with a chance to interrupt it using signal `done`
@@ -116,8 +110,8 @@ package object nondeterminism {
             opened = opened - 1
             fail(state match {
               case Left3(rsn0) => rsn0
-              case Middle3(interrupt) => interrupt(Kill); rsn
-              case Right3(next) => Util.Try(next(Some(Kill))).run.runAsync(_ => ()); rsn
+              case Middle3(interrupt) => interrupt(Kill); Error(rsn)
+              case Right3(next) => Util.Try(next(Kill)).run.runAsync(_ => ()); Error(rsn)
             })
 
           // One of the processes terminated w/o failure
@@ -127,7 +121,7 @@ package object nondeterminism {
             opened = opened - 1
             state = state match {
               case Right3(next)
-                if maxOpen <= 0 || opened < maxOpen => nextStep(Util.Try(next(None)))
+                if maxOpen <= 0 || opened < maxOpen => nextStep(Util.Try(next(End)))
               case Left3(End) if opened == 0 => fail(End) ; state
               case Left3(rsn) if opened == 0 => state
               case other                     => other
@@ -149,6 +143,7 @@ package object nondeterminism {
       (eval_(start) fby q.dequeue)
       .onComplete(eval_(Task.async[Unit] { cb => actor ! FinishedDown(cb) }))
     }
+
   }
 
 }

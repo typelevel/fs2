@@ -70,7 +70,7 @@ object WyeSpec extends  Properties("Wye"){
     import ReceiveY._
     def whileBoth[A,B]: Wye[A,B,Nothing] = {
       def go: Wye[A,B,Nothing] = receiveBoth[A,B,Nothing] {
-        case HaltOne(rsn) => fail(rsn)
+        case HaltOne(rsn) => Halt(rsn)
         case _ => go
       }
       go
