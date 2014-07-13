@@ -6,9 +6,9 @@ import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
 import scalaz.\/._
-import scalaz.concurrent.{Actor, Task, Strategy}
+import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
-import scalaz.{Functor, MonadPlus, \/-, -\/, Catchable, Monad, Monoid, Nondeterminism, \/, ~>}
+import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, ~>}
 
 
 sealed trait Process[+F[_], +O]
@@ -22,14 +22,15 @@ sealed trait Process[+F[_], +O]
    * Generate a `Process` dynamically for each output of this `Process`, and
    * sequence these processes using `append`.
    */
-  final def flatMap[F2[x] >: F[x], O2](f: O => Process[F2, O2]): Process[F2, O2] =
+  final def flatMap[F2[x] >: F[x], O2](f: O => Process[F2, O2]): Process[F2, O2] = {
+    // Util.debug(s"FMAP $this")
     this match {
       case Halt(_) | Emit(Seq()) => this.asInstanceOf[Process[F2, O2]]
       case Emit(os)              => os.tail.foldLeft(Try(f(os.head)))((p, n) => p ++ Try(f(n)))
       case aw@Await(_, _)        => aw.extend(_ flatMap f)
       case ap@Append(p, n)       => ap.extend(_ flatMap f)
     }
-
+  }
   /** Transforms the output values of this `Process` using `f`. */
   final def map[O2](f: O => O2): Process[F, O2] =
     flatMap { o => emit(f(o)) }
@@ -105,12 +106,8 @@ sealed trait Process[+F[_], +O]
       case Step(Await1(rcv1)) => this.step match {
         case s@Step(awt@Await(_, _)) => awt.extend(p => (p onHalt s.next) pipe p1)
         case s@Step(Emit(os))        => s.continue pipe process1.feed(os)(p1)
-        case Halt(End)               =>
-          println(">>>>>>> UPSTREAM DONE")
-          p1.disconnect(Kill).swallowKill
-        case Halt(rsn)               =>
-          println(">>>>>>> UPSTRAM KILLED " + rsn)
-          p1.disconnect(rsn)
+        case Halt(End)             => p1.disconnect(Kill).swallowKill
+        case Halt(rsn: EarlyCause) => p1.disconnect(rsn)
       }
       case Step(Emit(os))      => Emit(os) onHalt { cse => this.pipe(s1.next(cse)) }
       case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
@@ -187,9 +184,9 @@ sealed trait Process[+F[_], +O]
    * to emit any final values. All Awaits are converted to terminate with `cause`
    *
    */
-  final def disconnect(cause: Cause): Process[Nothing, O] = this.step match {
+  final def disconnect(cause: EarlyCause): Process[Nothing, O] = this.step match {
     case s@Step(emt@Emit(_))     => emt onHalt { rsn => s.next(rsn).disconnect(cause) }
-    case s@Step(awt@Await(_, _)) => s.next(cause.kill).disconnect(cause)
+    case s@Step(awt@Await(_, rcv)) => suspend((Try(rcv(left(cause)).run) onHalt s.next).disconnect(cause))
     case hlt@Halt(rsn)           => Halt(rsn.causedBy(cause))
   }
 
@@ -238,12 +235,14 @@ sealed trait Process[+F[_], +O]
   }
 
   /**
-   * Causes this process to be terminated, giving chance for any cleanup actions to be run
+   * Causes this process to be terminated immediatelly with `Kill` cause,
+   * giving chance for any cleanup actions to be run
    */
-  final def kill: Process[F, Nothing] = { //todo: revisit with new `Step` implementeation
-   this.suspendStep flatMap {
+  final def kill: Process[F, Nothing] = {
+    //todo: revisit with new `Step` implementation
+    this.suspendStep flatMap {
      case s@Step(Emit(os))        => s.next(Kill).drain
-     case s@Step(Await(req, rcv)) => s.next(Kill).drain
+     case s@Step(Await(req, rcv)) => (Try(rcv(left(Kill)).run) onHalt s.next).drain
      case hlt@Halt(rsn)           => hlt.causedBy(Kill)
    }
   }
@@ -304,7 +303,7 @@ sealed trait Process[+F[_], +O]
    * Run this process until it halts, then run it again and again, as
    * long as no errors or `Kill` occur.
    */
-  final def repeat: Process[F, O] = this.append(this)
+  final def repeat: Process[F, O] = this.append(this.repeat)
 
   /**
    * For anly process terminating with `Kill`, this swallows the `Kill` and replaces it with `End` termination
@@ -1203,7 +1202,7 @@ object Process {
 
     /** Apply this `Process` to an `Iterable`. */
     def apply(input: Iterable[I]): IndexedSeq[O] =
-      Process(input.toSeq: _*).pipe(self.bufferAll).disconnect(Kill).unemit._1.toIndexedSeq
+      Process(input.toSeq: _*).pipe(self.bufferAll).unemit._1.toIndexedSeq
 
     /**
      * Transform `self` to operate on the left hand side of an `\/`, passing
@@ -1501,17 +1500,17 @@ object Process {
    * Do not use `eval.repeat` or  `repeat(eval)` as that may cause infinite loop in certain situations.
    */
   def eval[F[_], O](f: F[O]): Process[F, O] =
-    await(f)(emit) onHalt {
+    awaitOr(f)({
       case Error(Terminated(cause)) => Halt(cause)
       case cause => Halt(cause)
-    }
+    })(emit)
 
   /**
    * Evaluate an arbitrary effect once, purely for its effects,
    * ignoring its return value. This `Process` emits no values.
    */
   def eval_[F[_], O](f: F[O]): Process[F, Nothing] =
-    await(f)(_ => halt)
+    eval(f).drain
 
   /** Prefix syntax for `p.repeat`. */
   def repeat[F[_], O](p: Process[F, O]): Process[F, O] = p.repeat
@@ -1526,11 +1525,7 @@ object Process {
    *
    */
   def repeatEval[F[_], O](f: F[O]): Process[F, O] =
-    await(f)(emit) onHalt {
-      case End => repeatEval(f)
-      case Error(Terminated(cause)) => Halt(cause)
-      case cause => Halt(cause)
-    }
+    await(f)(o => emit(o) ++ repeatEval(f))
 
 
   /**

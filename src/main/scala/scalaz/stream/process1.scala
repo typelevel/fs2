@@ -1,21 +1,18 @@
 package scalaz.stream
 
-import collection.immutable.Vector
 import java.nio.charset.Charset
+
 import scala.annotation.tailrec
-import scalaz.-\/
-import scalaz.\/-
+import scala.collection.immutable.Vector
 import scalaz.\/._
 import scalaz._
-import scalaz.stream.Util._
-import scalaz.stream._
 import scalaz.syntax.equal._
 
 
 object process1 {
 
-  import Process._
-  import Util._
+  import scalaz.stream.Process._
+  import scalaz.stream.Util._
 
   // nb: methods are in alphabetical order, there are going to be so many that
   // any other order will just going get confusing
@@ -151,12 +148,12 @@ object process1 {
   def feed[I, O](i: Seq[I])(p: Process1[I, O]): Process1[I, O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[O] , cur: Process1[I, O]  ): Process1[I, O] = {
-      Util.debug(s"FEED1 start: $i | in: $in | out : $out | cur $cur")
+      //Util.debug(s"FEED1 start: in: $in | out : $out | cur $cur")
       if (in.nonEmpty) {
         cur.step match {
-          case s@Step(Emit(os)) =>  go(in, out fast_++ os, s.continue)
+          case s@Step(Emit(os)) => go(in, out fast_++ os, s.continue)
           case s@Step(Await1(rcv)) => go(in.tail,out,rcv(right(in.head)) onHalt s.next)
-          case Halt(rsn) => emitAll(out).causedBy(rsn)
+          case Halt(rsn) =>  emitAll(out).causedBy(rsn)
         }
       } else emitAll(out) fby cur
     }

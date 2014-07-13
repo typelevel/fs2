@@ -170,7 +170,7 @@ object ProcessSpec extends Properties("Process") {
 
   property("feed1, disconnect") = secure {
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
-    p1.feed1(5).feed1(4).disconnect(End).unemit._1 == Seq(5, 4, 2, 3)
+    p1.feed1(5).feed1(4).disconnect(Kill).unemit._1 == Seq(5, 4, 2, 3)
   }
 
   property("pipeIn") = secure {

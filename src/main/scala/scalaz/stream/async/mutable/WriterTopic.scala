@@ -139,7 +139,7 @@ private[stream] object WriterTopic {
     def fail(cause: Cause): Unit = {
       closed = Some(cause)
       upState.collect { case \/-(interrupt) => interrupt(Kill)}
-      val (wos,next) = w.disconnect(cause).unemit
+      val (wos,next) = w.disconnect(cause.kill).unemit
       w = next
       if (wos.nonEmpty) subscriptions.foreach(_.publish(wos))
       subscriptions.foreach(_.close(cause))

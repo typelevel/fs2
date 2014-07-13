@@ -28,10 +28,10 @@ sealed trait Cause {
    * Converts cause to `Kill` or on `Error`
    * @return
    */
-  def kill: Cause = {
+  def kill: EarlyCause = {
     this match {
-      case End => Kill
-      case other => other
+      case End | Kill => Kill
+      case err@Error(_) => err
     }
   }
 }

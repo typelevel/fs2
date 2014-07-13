@@ -44,7 +44,7 @@ object Util {
 
  /** helper for turning on/off debug **/
   def debug(s: => String) = {
-   println(s)
+   //println(s)
  }
 
   val refCount = new AtomicInteger(0)

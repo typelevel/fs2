@@ -168,10 +168,10 @@ object Process1Spec extends Properties("Process1") {
 
   property("inner-cleanup") = secure {
     val p = Process.range(0,20).liftIO
-    val sync = new SyncVar[Int]()
-    ((p onComplete eval_(Task.delay(sync.put(99))))
-    .take(10).take(4).onComplete(emit(4)).runLog.run == Vector(0,1,2,3,4)) &&
-      ("Inner Process cleanup was called" |: sync.get(1000) == Some(99))
+    var called  = false
+    ((p onComplete suspend{ called = true ; halt})
+     .take(10).take(4).onComplete(emit(4)).runLog.run == Vector(0,1,2,3,4))
+    .&&("cleanup was called" |: called)
   }
 
 }
