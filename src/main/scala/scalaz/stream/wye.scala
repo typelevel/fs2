@@ -431,8 +431,8 @@ object wye {
 
   /**
    * Signals to wye, that Left side terminated.
-   * Reason for termination is `cause`. Any `Left` requests will be terminated with `rsn`
-   * Wye will be switched to listen only on Right side.
+   * Reason for termination is `cause`. Any `Left` requests will be terminated with `cause`
+   * Wye will be switched to listen only on Right side, that means Await(Both) is converted to Await(R)
    */
   def disconnectL[I, I2, O](cause: EarlyCause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
     val ys = y.step
@@ -451,7 +451,9 @@ object wye {
         ) onHalt nextDisconnect
 
       case Step(AwaitBoth(rcv)) =>
-        wye.receiveBoth[I,I2,O]( yr => disconnectL(cause)(rcv(yr))) onHalt nextDisconnect
+        wye.receiveROr(e => disconnectL(cause)(rcv(HaltR(e)) onHalt nextDisconnect))(
+         i2 => disconnectL(cause)(rcv(ReceiveR(i2)) onHalt nextDisconnect)
+        )
 
       case hlt@Halt(_) => hlt
     }
@@ -477,7 +479,9 @@ object wye {
           ) onHalt nextDisconnect
 
         case Step(AwaitBoth(rcv)) =>
-          wye.receiveBoth[I,I2,O]( yr => disconnectR(cause)(rcv(yr))) onHalt nextDisconnect
+          wye.receiveLOr(e => disconnectR(cause)(rcv(HaltL(e)) onHalt nextDisconnect))(
+           i => disconnectR(cause)(rcv(ReceiveL(i)) onHalt nextDisconnect)
+          )
 
         case hlt@Halt(_) => hlt
       }

@@ -41,26 +41,25 @@ object WyeSpec extends  Properties("Wye"){
   }
 
   property("disconnectL/R") = secure {
-    val killL = wye.disconnectL(???)(wye.merge[Int])
+    val killL = wye.disconnectL(Kill)(wye.merge[Int])
     val fed = wye.feedR(Seq(0,1,2,3))(killL)
-    val killed = wye.disconnectR(???)(fed)
+    val killed = wye.disconnectR(Kill)(fed)
 
-   // ("awaits on right after left disconnected" |: wye.AwaitR.unapply(killL).isDefined) &&
-      ("all values are unemited" |: (fed.unemit._1 == Seq(0,1,2,3))) &&
-      (s"wye contains emitted values after right disconnect " |: (killed.unemit._1 ==  Seq(0,1,2,3)))
-    (s"wye is killed after disconnected from right: $killed" |: (killed.unemit._2 == Halt(End)))
+    ("all values are unemited" |: (fed.unemit._1 == Seq(0,1,2,3))) &&
+      (s"wye contains emitted values after right disconnect " |: (killed.unemit._1 ==  Seq(0,1,2,3))) &&
+      (s"wye is killed after disconnected from right: $killed" |: (killed.unemit._2 == Halt(Kill)))
 
   }
 
-  property("disconnectR/L") = secure {
-    val killR = wye.disconnectR(???)(wye.merge[Int])
-    val fed = wye.feedL(Seq(0,1,2,3))(killR)
-    val killed = wye.disconnectL(???)(fed)
 
-   // ("awaits on left after right disconnected" |: wye.AwaitL.unapply(killR).isDefined) &&
-      ("all values are unEmitted" |: (fed.unemit._1 == Seq(0,1,2,3))) &&
-      (s"wye contains emitted values after left disconnect " |: (killed.unemit._1 ==  Seq(0,1,2,3)))
-    (s"wye is killed after disconnected from left: $killed" |: (killed.unemit._2 == Halt(End)))
+  property("disconnectR/L") = secure {
+    val killR = wye.disconnectR(Kill)(wye.merge[Int])
+    val fed = wye.feedL(Seq(0,1,2,3))(killR)
+    val killed = wye.disconnectL(Kill)(fed)
+
+    ("all values are unEmitted" |: (fed.unemit._1 == Seq(0,1,2,3))) &&
+      (s"wye contains emitted values after left disconnect " |: (killed.unemit._1 ==  Seq(0,1,2,3))) &&
+      (s"wye is killed after disconnected from left: $killed" |: (killed.unemit._2 == Halt(Kill)))
 
   }
 
@@ -87,27 +86,27 @@ object WyeSpec extends  Properties("Wye"){
   property("either") = secure {
     val w = wye.either[Int,Int]
     val s = Process.constant(1).take(1)
-    s.wye(s)(w).runLog.run.map(_.fold(identity, identity)).toList == List(1,1)
+    s.wye(s)(w).runLog.timed(3000).run.map(_.fold(identity, identity)).toList == List(1,1)
   }
 
   property("interrupt.source.halt") = secure {
     val p1 = Process(1,2,3,4,6).toSource
     val i1 = repeatEval(Task.now(false))
-    val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
     v == List(1,2,3,4,6)
   }
 
   property("interrupt.signal.halt") = secure {
     val p1 = Process.range(1,1000)
     val i1 = Process(1,2,3,4).map(_=>false).toSource
-    val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
     v.size < 1000
   }
 
   property("interrupt.signal.true") = secure {
     val p1 = Process.range(1,1000)
     val i1 = Process(1,2,3,4).map(_=>false).toSource ++ emit(true) ++ repeatEval(Task.now(false))
-    val v = i1.wye(p1)(wye.interrupt).runLog.run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
     v.size < 1000
   }
 
@@ -263,7 +262,7 @@ object WyeSpec extends  Properties("Wye"){
   property("liftY") = secure {
     import TestInstances._
     forAll { (pi: Process0[Int], ps: Process0[String]) =>
-      "liftY" |:  pi.pipe(process1.sum).toList == (pi: Process[Task,Int]).wye(ps)(process1.liftY(process1.sum)).runLog.run.toList
+      "liftY" |:  pi.pipe(process1.sum).toList == (pi: Process[Task,Int]).wye(ps)(process1.liftY(process1.sum)).runLog.timed(3000).run.toList
     }
   }
 
