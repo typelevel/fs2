@@ -34,6 +34,11 @@ sealed trait Cause {
       case err@Error(_) => err
     }
   }
+
+  def fold[A](onEnd: => A)(f:(EarlyCause => A)) = this match {
+    case End => onEnd
+    case early:EarlyCause => f(early)
+  }
 }
 
 /**
