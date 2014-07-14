@@ -571,12 +571,6 @@ object process1 {
   def terminated[A]: Process1[A, Option[A]] =
     lift[A, Option[A]](Some(_)) onHalt { rsn => emit(None).causedBy(rsn) }
 
-  private val utf8Charset = Charset.forName("UTF-8")
-
-  /** Convert `String` inputs to UTF-8 encoded byte arrays. */
-  val utf8Encode: Process1[String, Array[Byte]] =
-    lift(_.getBytes(utf8Charset))
-
   /**
    * Outputs a sliding window of size `n` onto the input.
    *
