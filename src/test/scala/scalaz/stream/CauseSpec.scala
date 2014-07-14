@@ -32,7 +32,7 @@ object CauseSpec extends Properties("cause") {
     .&& ("take(1)" |: suspend(source.take(1)) === source.take(1))
     .&& ("repeat.take(10)" |: suspend(source.repeat.take(10)) === source.repeat.take(10))
     .&& ("eval" |: suspend(eval(Task.now(1))) === eval(Task.delay(1)))
-
+    .&& ("kill" |: suspend(source).kill.onHalt({ case Kill => emit(99); case other => emit(0)}) === emit(99).toSource)
   }
 
 
@@ -102,6 +102,265 @@ object CauseSpec extends Properties("cause") {
     (result == Vector(1))
     .&&(id1Reason == Some(Kill))
     .&&(downReason == Some(Kill))
+  }
+
+
+  property("tee.terminated.tee") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)(halt)
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+    (process == Vector())
+    .&& (leftReason == Some(Kill))
+    .&& (rightReason == Some(Kill))
+    .&& (processReason == Some(End))
+  }
+
+
+  property("tee.terminated.tee.onLeft") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)(awaitL.repeat)
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+    (process == Vector(0,1,2))
+    .&& (leftReason == Some(End))
+    .&& (rightReason == Some(Kill))
+    .&& (processReason == Some(End))
+  }
+
+
+  property("tee.terminated.tee.onRight") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)(awaitR.repeat)
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+
+    (process == Vector(0,1,2))
+    .&& (leftReason == Some(Kill))
+    .&& (rightReason == Some(End))
+    .&& (processReason == Some(End))
+  }
+
+  property("tee.terminated.left.onLeft") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var teeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = halt onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)(awaitL.repeat onHalt{ c => teeReason = Some(c); Halt(c)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+
+    (process == Vector())
+    .&& (leftReason == Some(End))
+    .&& (rightReason == Some(Kill))
+    .&& (processReason == Some(End))
+    .&& (teeReason == Some(Kill))
+  }
+
+
+  property("tee.terminated.right.onRight") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var teeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = halt onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)(awaitR.repeat onHalt{ c => teeReason = Some(c); Halt(c)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+
+    (process == Vector())
+    .&& (leftReason == Some(Kill))
+    .&& (rightReason == Some(End))
+    .&& (processReason == Some(End))
+    .&& (teeReason == Some(Kill))
+  }
+
+  property("tee.terminated.leftAndRight.onLeftAndRight") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var teeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src.map(_ + 10) onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)((awaitL[Int] ++ awaitR[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+
+    (process == Vector(0,10,1,11,2,12))
+    .&& (leftReason == Some(End))
+    .&& (rightReason == Some(End))
+    .&& (processReason == Some(End))
+    .&& (teeReason == Some(Kill)) //killed due left input exhausted awaiting left branch
+  }
+
+  property("tee.terminated.leftAndRight.onRightAndLeft") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var teeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src.map(_ + 10) onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)((awaitR[Int] ++ awaitL[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+
+    (process == Vector(10,0,11,1,12,2))
+    .&& (leftReason == Some(Kill)) //was killed due tee awaited right and that was `End`.
+    .&& (rightReason == Some(End))
+    .&& (processReason == Some(End))
+    .&& (teeReason == Some(Kill)) //killed due right input exhausted awaiting right branch
+  }
+
+  property("tee.terminated.downstream") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var teeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src.map(_ + 10) onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)((awaitL[Int] ++ awaitR[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
+      .take(2)
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+
+    (process == Vector(0,10))
+    .&& (leftReason == Some(Kill))
+    .&& (rightReason == Some(Kill))
+    .&& (processReason == Some(End))
+    .&& (teeReason == Some(Kill)) //Tee is killed because downstream terminated
+  }
+
+  property("tee.kill.left") = secure {
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var teeReason: Option[Cause] = None
+    var beforePipeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src.take(1) ++ Halt(Kill)
+    val right = src.map(_ + 10) onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.tee(right)((awaitL[Int] ++ awaitR[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
+      .onHalt{ c => beforePipeReason = Some(c); Halt(c)}
+      .take(2)
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+    (process == Vector(0,10))
+    .&& (rightReason == Some(Kill))
+    .&& (processReason == Some(End))
+    .&& (teeReason == Some(Kill))
+    .&& (beforePipeReason == Some(Kill))
+  }
+
+  property("tee.kill.right") = secure {
+    var leftReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var teeReason: Option[Cause] = None
+    var beforePipeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src.map(_ + 10).take(1) ++ Halt(Kill)
+
+
+    val process =
+      left.tee(right)((awaitL[Int] ++ awaitR[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
+      .onHalt{ c => beforePipeReason = Some(c); Halt(c)}
+      .take(2)
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+
+    (process == Vector(0,10))
+    .&& (leftReason == Some(Kill))
+    .&& (processReason == Some(End))
+    .&& (teeReason == Some(Kill))
+    .&& (beforePipeReason == Some(Kill))
+  }
+
+
+  property("tee.pipe.kill") = secure {
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var teeReason: Option[Cause] = None
+    var pipeReason: Option[Cause] = None
+    var beforePipeReason : Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src.take(1) ++ Halt(Kill)
+    val right = src.map(_ + 10) onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    //note last onHalt before and after pipe
+    val process =
+      left.tee(right)((awaitL[Int] ++ awaitR[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
+      .onHalt{ c => beforePipeReason = Some(c); Halt(c)}
+      .pipe(process1.id[Int] onHalt {c => pipeReason = Some(c); Halt(c)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+
+    (process == Vector(0,10))
+    .&& (rightReason == Some(Kill))
+    .&& (processReason == Some(Kill))
+    .&& (teeReason == Some(Kill))
+    .&& (beforePipeReason == Some(Kill))
+    .&& (pipeReason == Some(Kill))
   }
 
 

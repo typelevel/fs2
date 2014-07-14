@@ -74,24 +74,22 @@ object tee {
   def feedL[I, I2, O](i: Seq[I])(p: Tee[I, I2, O]): Tee[I, I2, O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I, I2, O]): Tee[I, I2, O] = {
-      cur.step match {
+      if (in.nonEmpty)  cur.step match {
         case s@Step(Emit(os)) =>
           go(in, out :+ os, s.continue)
 
-        case s@Step(AwaitR(rcv)) =>
-          emitAll(out.flatten) fby
-            Await(R[I2]: Env[I, I2]#T[I2]
-              , (r: EarlyCause \/ I2) => Trampoline.delay(
-                feedL[I, I2, O](in)(Try(rcv(r)) onHalt s.next)
-              ))
-
-
         case s@Step(awt@AwaitL(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(right(in.head))) onHalt s.next)
-          else emitAll(out.flatten).asInstanceOf[Tee[I, I2, O]] fby (awt onHalt s.next)
+          go(in.tail, out, Try(rcv(right(in.head))) onHalt s.next)
+
+        case s@Step(awt@AwaitR(rcv)) =>
+          emitAll(out.flatten) onHalt {
+            case End =>   awt.extend(p => feedL(in)(p onHalt s.next))
+            case early : EarlyCause => feedL(in)(rcv(left(early)) onHalt s.next)
+          }
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
-      }
+
+      } else cur.feed(out.flatten)
     }
 
     go(i, Vector(), p)
@@ -102,23 +100,22 @@ object tee {
   def feedR[I, I2, O](i: Seq[I2])(p: Tee[I, I2, O]): Tee[I, I2, O] = {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I, I2, O]): Tee[I, I2, O] = {
-      cur.step match {
+      if (in.nonEmpty) cur.step match {
         case s@Step(Emit(os)) =>
           go(in, out :+ os, s.continue)
 
-        case s@Step(awt@AwaitR(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(right(in.head))) onHalt s.next)
-          else emitAll(out.flatten).asInstanceOf[Tee[I, I2, O]] fby (awt onHalt s.next)
+        case s@Step(awt@AwaitL(rcv)) =>
+          emitAll(out.flatten) onHalt {
+            case End =>  awt.extend(p => feedR(in)(p onHalt s.next))
+            case early : EarlyCause => feedR(in)(rcv(left(early)) onHalt s.next)
+          }
 
-        case s@Step(AwaitL(rcv)) =>
-          emitAll(out.flatten) fby
-            Await(L[I]: Env[I, I2]#T[I]
-              , (r: EarlyCause \/ I) => Trampoline.delay(
-                feedR[I, I2, O](in)(Try(rcv(r)) onHalt s.next)
-              ))
+        case s@Step(awt@AwaitR(rcv)) =>
+          go(in.tail, out, Try(rcv(right(in.head))) onHalt s.next)
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
-      }
+
+      } else cur.feed(out.flatten)
     }
 
     go(i, Vector(), p)
@@ -139,18 +136,12 @@ object tee {
    * That causes all succeeding AwaitL to terminate with `cause` giving chance
    * to emit any values or read on right.
    */
-  def disconnectL[I, I2, O](cause: Cause)(tee: Tee[I, I2, O]): Tee[Nothing, I2, O] = {
-    tee.suspendStep.flatMap {
-      case s@Step(emt@Emit(_)) =>
-        emt onHalt { rsn => disconnectL(cause)(s.next(rsn)) }
-
-      case s@Step(AwaitL(_)) => disconnectL(cause)(s.next(cause.kill))
-
-      case s@Step(AwaitR(rcv)) =>
-        receiveR[Nothing, I2, O](i2 => disconnectL(cause)(Try(rcv(right(i2))))) //todo: Earlycause
-        .onHalt (rsn0 => disconnectL(cause)(s.next(rsn0)))
-
-      case hlt@Halt(_) => hlt
+  def disconnectL[I, I2, O](cause: EarlyCause)(tee: Tee[I, I2, O]): Tee[Nothing, I2, O] = {
+    tee.step match {
+      case s@Step(emt@Emit(_)) => emt onHalt { rsn => disconnectL(cause)(s.next(rsn)) }
+      case s@Step(AwaitL(rcv)) => suspend(disconnectL(cause)(Try(rcv(left(cause))) onHalt s.next))
+      case s@Step(awt@AwaitR(rcv)) => awt.extend(p => disconnectL[I,I2,O](cause)(p onHalt s.next))
+      case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
     }
   }
 
@@ -160,18 +151,12 @@ object tee {
    * That causes all succeeding AwaitR to terminate with `cause` giving chance
    * to emit any values or read on left.
    */
-  def disconnectR[I, I2, O](cause: Cause)(tee: Tee[I, I2, O]): Tee[I, Nothing, O] = {
-    tee.suspendStep.flatMap {
-      case s@Step(emt@Emit(os)) =>
-        emt onHalt { rsn => disconnectR(cause)(s.next(rsn)) }
-
-      case s@Step(AwaitR(_)) => disconnectR(cause)(s.next(cause.kill))
-
-      case s@Step(AwaitL(rcv)) =>
-        receiveL[I,Nothing,O](i=> disconnectR(cause)(Try(rcv(right(i))))) //todo: earlycause
-        .onHalt(rsn0 => disconnectR(cause)(s.next(rsn0)))
-
-      case hlt@Halt(_) => hlt
+  def disconnectR[I, I2, O](cause: EarlyCause)(tee: Tee[I, I2, O]): Tee[I, Nothing, O] = {
+    tee.step match {
+      case s@Step(emt@Emit(os)) =>  emt onHalt { rsn => disconnectR(cause)(s.next(rsn)) }
+      case s@Step(AwaitR(rcv)) => suspend(disconnectR(cause)(Try(rcv(left(cause))) onHalt s.next))
+      case s@Step(awt@AwaitL(rcv)) => awt.extend(p => disconnectR[I,I2,O](cause)(p onHalt s.next))
+      case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
     }
   }
 
@@ -184,10 +169,11 @@ object tee {
 
 
   object AwaitL {
-    def unapply[I, I2, O](self: Tee[I, I2, O]):
+    def unapply[I, I2, O](self: TeeAwaitL[I, I2, O]):
     Option[(EarlyCause \/ I => Tee[I, I2, O])] = self match {
       case Await(req, rcv)
-        if req.tag == 0 => Some((i: EarlyCause \/ I) => Try(rcv(right(i)).run))
+        if req.tag == 0 => Some((r: EarlyCause \/ I) =>
+        Try(rcv.asInstanceOf[(EarlyCause \/ I) => Trampoline[Tee[I,I2,O]]](r).run))
       case _                               => None
     }
 
@@ -201,10 +187,11 @@ object tee {
   }
 
   object AwaitR {
-    def unapply[I, I2, O](self: Tee[I, I2, O]):
+    def unapply[I, I2, O](self: TeeAwaitR[I, I2, O]):
     Option[(EarlyCause \/ I2 => Tee[I, I2, O])] = self match {
       case Await(req, rcv)
-        if req.tag == 1 => Some((i2: EarlyCause \/ I2) => Try(rcv(right(i2)).run))
+        if req.tag == 1 => Some((r: EarlyCause \/ I2) =>
+        Try(rcv.asInstanceOf[(EarlyCause \/ I2) => Trampoline[Tee[I,I2,O]]](r).run))
       case _                               => None
     }
 

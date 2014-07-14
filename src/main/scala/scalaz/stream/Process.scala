@@ -106,10 +106,10 @@ sealed trait Process[+F[_], +O]
       case Step(Await1(rcv1)) => this.step match {
         case s@Step(awt@Await(_, _)) => awt.extend(p => (p onHalt s.next) pipe p1)
         case s@Step(Emit(os))        => s.continue pipe process1.feed(os)(p1)
-        case Halt(End)             => p1.disconnect(Kill).swallowKill
-        case Halt(rsn: EarlyCause) => p1.disconnect(rsn)
+        case hlt@Halt(End)             => (hlt pipe p1.disconnect(Kill)).swallowKill
+        case hlt@Halt(rsn: EarlyCause) => hlt pipe p1.disconnect(rsn)
       }
-      case Step(Emit(os))      => Emit(os) onHalt { cse => this.pipe(s1.next(cse)) }
+      case Step(Emit(os))      => Emit(os) onHalt { cse => println(">>:::>>> " + cse); this.pipe(s1.next(cse)) }
       case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
     }
   })
@@ -133,23 +133,26 @@ sealed trait Process[+F[_], +O]
    */
   final def tee[F2[x] >: F[x], O2, O3](p2: Process[F2, O2])(t: Tee[O, O2, O3]): Process[F2, O3] = {
     import scalaz.stream.tee.{AwaitL, AwaitR, disconnectL, disconnectR, feedL, feedR}
-    t.suspendStep flatMap {
-      case Step(AwaitL(_)) => this.step match {
-        case s@Step(awt@Await(rq, rcv)) => awt.extend { p => (p onHalt s.next).tee(p2)(t) }
-        case s@Step(Emit(os))           => s.continue.tee(p2)(feedL[O, O2, O3](os)(t))
-        case hlt@Halt(End)              => hlt.tee(p2)(disconnectL(Kill)(t)).swallowKill
-        case hlt@Halt(rsn)              => hlt.tee(p2)(disconnectL(rsn)(t))
-      }
+    t.suspendStep flatMap { ts =>
+      Util.debug(s"TEE t: $t | ts: $ts | left: $this | right: $p2 ")
+      ts match {
+        case Step(AwaitL(_)) => this.step match {
+          case s@Step(awt@Await(rq, rcv)) => awt.extend { p => (p onHalt s.next).tee(p2)(t) }
+          case s@Step(Emit(os))           => s.continue.tee(p2)(feedL[O, O2, O3](os)(t))
+          case hlt@Halt(End)              => hlt.tee(p2)(disconnectL(Kill)(t)).swallowKill
+          case hlt@Halt(rsn: EarlyCause)  => hlt.tee(p2)(disconnectL(rsn)(t))
+        }
 
-      case Step(AwaitR(_)) => p2.step match {
-        case s@Step(awt: Await[F2, Any, O2]@unchecked) => awt.extend { p => this.tee(p onHalt s.next)(t) }
-        case s@Step(Emit(o2s: Seq[O2]@unchecked))      => this.tee(s.continue)(feedR[O, O2, O3](o2s)(t))
-        case hlt@Halt(End)                             => this.tee(hlt)(disconnectR(Kill)(t)).swallowKill
-        case hlt@Halt(rsn)                             => this.tee(hlt)(disconnectR(rsn)(t))
-      }
+        case Step(AwaitR(_)) => p2.step match {
+          case s@Step(awt: Await[F2, Any, O2]@unchecked) => awt.extend { p => this.tee(p onHalt s.next)(t) }
+          case s@Step(Emit(o2s: Seq[O2]@unchecked))      => this.tee(s.continue)(feedR[O, O2, O3](o2s)(t))
+          case hlt@Halt(End)                             => this.tee(hlt)(disconnectR(Kill)(t)).swallowKill
+          case hlt@Halt(rsn : EarlyCause)                => this.tee(hlt)(disconnectR(rsn)(t))
+        }
 
-      case s@Step(emt@Emit(o3s)) => emt onHalt { rsn => this.tee(p2)(s.next(rsn)) }
-      case Halt(rsn)             => this.kill onHalt { _ => p2.kill onHalt { _ => Halt(rsn) } }
+        case s@Step(emt@Emit(o3s)) => emt onHalt { rsn => this.tee(p2)(s.next(rsn)) }
+        case Halt(rsn)             => this.kill onHalt { _ => p2.kill onHalt { _ => Halt(rsn) } }
+      }
     }
   }
 
@@ -205,6 +208,29 @@ sealed trait Process[+F[_], +O]
    */
   def evalMap[F2[x]>:F[x],O2](f: O => F2[O2]): Process[F2,O2] =
     map(f).eval
+
+
+  /**
+   * Feeds os in head of this process and continues with this process.
+   * Note that this is used to allow correct cleanup execution when
+   * process get interrupted after emitting values with Kill or Error,
+   * where normal ++ composition will skip cleanups
+   * Used in `process1.feed`, `tee.feedL/R`, `wye.feedL/R`
+   * @param os
+   * @return
+   */
+  def feed[O2>:O](os:Seq[O2]) : Process[F,O2] = {
+    if (os.nonEmpty) {
+      emitAll(os) onHalt {
+        case End               => this
+        case cause: EarlyCause => this.step match {
+          case s@Step(Await(_, rcv)) => Try(rcv(left(cause)).run) onHalt s.next
+          case s@Step(Emit(_))       => suspend(s.next(cause))
+          case Halt(rsn)             => Halt(rsn.causedBy(cause))
+        }
+      }
+    } else this
+  }
 
   /**
    * Map over this `Process` to produce a stream of `F`-actions,
@@ -1549,6 +1575,6 @@ object Process {
    *
    */
   def suspend[F[_], O](p: => Process[F, O]): Process[F, O] =
-    Append(empty,Vector((c:Cause) => { Trampoline.done(p) }))
+    Append(empty,Vector((c:Cause) => { Trampoline.done(p.causedBy(c)) }))
 
 }

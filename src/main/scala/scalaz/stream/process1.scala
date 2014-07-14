@@ -155,7 +155,8 @@ object process1 {
           case s@Step(Await1(rcv)) => go(in.tail,out,rcv(right(in.head)) onHalt s.next)
           case Halt(rsn) =>  emitAll(out).causedBy(rsn)
         }
-      } else emitAll(out) fby cur
+      } else cur.feed(out)
+
     }
 
     go(i, Vector(), p)

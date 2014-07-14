@@ -3,7 +3,8 @@ package scalaz.stream
 import scala.concurrent.duration._
 import java.util.concurrent.{ThreadFactory, Executors, ExecutorService}
 import java.util.concurrent.atomic.AtomicInteger
-import scalaz.concurrent.Task 
+import scalaz.concurrent.Task
+import scalaz.stream.Process.Halt
 
 /**
  * Various testing helpers
@@ -37,8 +38,8 @@ private[stream] object TestUtil {
     })
   }
 
-  case class UnexpectedCause( c:Cause) extends RuntimeException {
-    override def getMessage: String = s"UnexpectedCause: $c "
+  case class UnexpectedCause( c:Cause, tag:String = "check") extends RuntimeException {
+    override def getMessage: String = s"UnexpectedCause: $c at : $tag"
     override def toString: String = getMessage
   }
 
