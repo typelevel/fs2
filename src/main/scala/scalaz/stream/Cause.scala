@@ -1,6 +1,7 @@
 package scalaz.stream
 
 import scalaz.\/
+import scalaz.stream.Process.Halt
 
 
 /**
@@ -38,6 +39,15 @@ sealed trait Cause {
   def fold[A](onEnd: => A)(f:(EarlyCause => A)) = this match {
     case End => onEnd
     case early:EarlyCause => f(early)
+  }
+
+  /**
+   * Converts this termination cause to `Process.Halt`
+   */
+  def asHalt: Halt = this match {
+    case End => Halt(End)
+    case Error(Terminated(cause)) => Halt(cause)
+    case cause => Halt(cause)
   }
 }
 
