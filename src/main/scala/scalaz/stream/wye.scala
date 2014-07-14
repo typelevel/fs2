@@ -260,23 +260,43 @@ object wye {
         emt onHalt (rsn => attachL(p1)(ys.next(rsn)))
 
       case Step(AwaitL(rcv)) => p1.step match {
-        case s1@Step(Emit(is)) => attachL(Try(s1.continue))(feedL(is)(y))
-        case s1@Step(Await1(rcv1)) =>  wye.receiveL(i0 => attachL(p1.feed1(i0))(y))
-        case hlt@Halt(rsn) => attachL(hlt)(disconnectL(rsn)(y))
+        case s1@Step(Emit(is)) => suspend(attachL(Try(s1.continue))(feedL(is)(y)))
+        case s1@Step(Await1(rcv1)) =>
+          wye.receiveLOr(cause => attachL(rcv1(left(cause)) onHalt s1.next)(y))(
+           i0 => attachL(p1.feed1(i0))(y)
+          )
+        case hlt@Halt(cause) =>
+          suspend(cause.fold(attachL(hlt)(disconnectL(Kill)(y).swallowKill))(
+            early => attachL(hlt)(disconnectL(early)(y))
+          ))
+
       }
 
-      case ys@Step(AwaitR(rcv)) => wye.receiveR(i2=> attachL(p1)(feed1R(i2)(y)))
+      case ys@Step(AwaitR(rcv)) =>
+        wye.receiveROr(early => attachL(p1)(rcv(left(early)) onHalt ys.next))(
+          i2 => attachL(p1)(feed1R(i2)(y))
+        )
 
       case ys@Step(AwaitBoth(rcv)) => p1.step match {
-        case s1@Step(Emit(is)) => attachL(s1.continue)(feedL(is)(y))
+        case s1@Step(Emit(is)) => suspend(attachL(s1.continue)(feedL(is)(y)))
         case s1@Step(Await1(rcv1)) =>
-            receiveBoth {
+            wye.receiveBoth {
               case ReceiveL(i0) => attachL(p1.feed1(i0))(y)
               case ReceiveR(i2) => attachL(p1)(feed1R(i2)(y))
-              case HaltL(rsn) =>  attachL(p1)(disconnectL(rsn)(y))
-              case HaltR(rsn) =>  attachL(p1)(disconnectR(rsn)(y))
+              case HaltL(cause) =>
+                cause.fold(attachL(p1)(disconnectL(Kill)(y).swallowKill))(
+                 early => attachL(p1)(disconnectL(early)(y))
+                )
+              case HaltR(cause) =>
+                cause.fold( attachL(p1)(disconnectR(Kill)(y).swallowKill))(
+                 early => attachL(p1)(disconnectR(early)(y))
+                )
             }
-        case hlt@Halt(rsn) => attachL(hlt)(disconnectL(rsn)(y))
+        case hlt@Halt(cause) =>
+          suspend(cause.fold(attachL(hlt)(disconnectL(Kill)(y).swallowKill))(
+           early => attachL(hlt)(disconnectL(early)(y))
+          ))
+
       }
 
       case hlt@Halt(_) => hlt
@@ -292,18 +312,18 @@ object wye {
 
   /**
    * Transforms the wye so it will stop to listen on left side.
-   * Instead all requests on the left side are converted to termination with `End`,
+   * Instead all requests on the left side are converted to termination with `Kill`,
    * and will terminate once the right side will terminate as well.
    * Transforms `AwaitBoth` to `AwaitR`
    * Transforms `AwaitL` to termination with `End`
    */
   def detach1L[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
-    disconnectL(End)(y)
+    disconnectL(Kill)(y).swallowKill
 
 
   /** right alternative of detach1L **/
   def detach1R[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
-    disconnectR(End)(y)
+    disconnectR(Kill)(y).swallowKill
 
   /**
    * Feed a single `ReceiveY` value to a `Wye`.
@@ -312,8 +332,8 @@ object wye {
     r match {
       case ReceiveL(i) => feed1L(i)(w)
       case ReceiveR(i2) => feed1R(i2)(w)
-      case HaltL(e) => disconnectL(e)(w)
-      case HaltR(e) => disconnectR(e)(w)
+      case HaltL(cause) => cause.fold(detach1L(w))(e => disconnectL(e)(w))
+      case HaltR(cause) => cause.fold(detach1R(w))(e => disconnectR(e)(w))
     }
 
   /** Feed a single value to the left branch of a `Wye`. */
@@ -329,25 +349,27 @@ object wye {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
       Util.debug(s"FEEDL src: $is | in: $in | out: $out | cur: $cur ")
-      cur.step match {
+      if (in.nonEmpty) cur.step match {
         case ys@Step(Emit(os)) =>
           go(in, out :+ os, ys.continue)
 
         case ys@Step(AwaitL(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(right(in.head))) onHalt ys.next)
-          else emitAll(out.flatten) fby cur
+          go(in.tail, out, Try(rcv(right(in.head))) onHalt ys.next)
 
-        case ys@Step(AwaitR(rcv)) =>
-          emitAll(out.flatten) fby
-            wye.receiveR(i2 => feedL(in)(rcv(right(i2)) onHalt ys.next ))
+        case ys@Step(awt@AwaitR(rcv)) =>
+          emitAll(out.flatten) onHalt {
+            case End               => awt.extend(p => feedL(in)(p onHalt ys.next))
+            case early: EarlyCause => feedL(in)(rcv(left(early)) onHalt ys.next)
+          }
 
-        case s@Step(AwaitBoth(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(ReceiveY.ReceiveL(in.head))) onHalt s.next)
-          else emitAll(out.flatten) fby cur
+        case ys@Step(AwaitBoth(rcv)) =>
+          go(in.tail, out, Try(rcv(ReceiveY.ReceiveL(in.head))) onHalt ys.next)
 
-        case Halt(rsn)                  => emitAll(out.flatten).causedBy(rsn)
+        case Halt(rsn)                  =>
+          emitAll(out.flatten).causedBy(rsn)
 
-      }
+      } else cur.feed(out.flatten)
+
     }
     go(is, Vector(), y)
   }
@@ -356,27 +378,27 @@ object wye {
   def feedR[I,I2,O](i2s: Seq[I2])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
-
       Util.debug(s"FEEDR src: $i2s | in: $in | out: $out | cur: $cur ")
-      cur.step match {
+      if (in.nonEmpty) cur.step match {
         case ys@Step(Emit(os)) =>
           go(in, out :+ os, ys.continue)
 
-        case ys@Step(AwaitR(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(right(in.head))) onHalt ys.next)
-          else emitAll(out.flatten) fby cur
+        case ys@Step(awt@AwaitL(rcv)) =>
+          emitAll(out.flatten) onHalt {
+            case End               => awt.extend(p => feedR(in)(p onHalt ys.next))
+            case early: EarlyCause => feedR(in)(rcv(left(early)) onHalt ys.next)
+          }
 
-        case ys@Step(AwaitL(rcv)) => //todo in case the receiveL is Killed or Error we won't feed the onhalt. is this really what we want?
-          emitAll(out.flatten) fby
-             wye.receiveL(i => feedR(in)(rcv(right(i)) onHalt ys.next ))
+        case ys@Step(AwaitR(rcv)) =>
+          go(in.tail, out, Try(rcv(right(in.head))) onHalt ys.next)
 
         case ys@Step(AwaitBoth(rcv)) =>
-          if (in.nonEmpty) go(in.tail, out, Try(rcv(ReceiveY.ReceiveR(in.head))) onHalt ys.next)
-          else emitAll(out.flatten) fby cur
+          go(in.tail, out, Try(rcv(ReceiveY.ReceiveR(in.head))) onHalt ys.next)
 
-        case Halt(rsn)                  => emitAll(out.flatten).causedBy(rsn)
+        case Halt(rsn)                  =>
+          emitAll(out.flatten).causedBy(rsn)
 
-      }
+      } else cur.feed(out.flatten)
     }
     go(i2s, Vector(), y)
   }
@@ -386,30 +408,51 @@ object wye {
    */
   def flip[I,I2,O](y: Wye[I,I2,O]): Wye[I2,I,O] = {
     val ys = y.step
-    def next(rsn: Cause) = flip(ys.next(rsn))
+    def flipNext(rsn: Cause) = flip(ys.next(rsn))
     ys match {
-      case Step(Emit(os))       => emitAll(os) onHalt next
-      case Step(AwaitL(rcv))    => wye.receiveR[I2, I, O](i => flip(rcv(right(i)))) onHalt next
-      case Step(AwaitR(rcv))    => wye.receiveL[I2, I, O](i2 => flip(rcv(right(i2)))) onHalt next
-      case Step(AwaitBoth(rcv)) => wye.receiveBoth[I2, I, O](ry => flip(rcv(ry.flip))) onHalt next
+      case Step(Emit(os))       => emitAll(os) onHalt flipNext
+
+      case Step(awt@AwaitL(rcv))    =>
+        wye.receiveROr[I2, I, O](e=>flip(rcv(left(e))))(
+          i => flip(rcv(right(i)))
+        ) onHalt flipNext
+
+      case Step(AwaitR(rcv))    =>
+        wye.receiveLOr[I2, I, O](e =>flip(rcv(left(e))))(
+          i2 => flip(rcv(right(i2)))
+        ) onHalt flipNext
+
+      case Step(AwaitBoth(rcv)) =>
+        wye.receiveBoth[I2, I, O](ry => flip(rcv(ry.flip))) onHalt flipNext
+
       case hlt@Halt(rsn)           => hlt
     }
   }
 
   /**
    * Signals to wye, that Left side terminated.
-   * Reason for termination is `rsn`. Any `Left` requests will be terminated with `rsn`
-   * any wye will be switched to listen only on Right side.
+   * Reason for termination is `cause`. Any `Left` requests will be terminated with `rsn`
+   * Wye will be switched to listen only on Right side.
    */
-  def disconnectL[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
+  def disconnectL[I, I2, O](cause: EarlyCause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
     val ys = y.step
-    def next(rsn:Cause) = disconnectL(cause)(ys.next(rsn))
+    def nextDisconnect(rsn:Cause) = disconnectL(cause)(ys.next(rsn))
     debug(s"DISR $ys | rsn $cause")
     ys match {
-      case Step(emt@Emit(os)) => emt onHalt next
-      case Step(AwaitL(rcv)) => suspend(next(cause))
-      case Step(AwaitR(rcv)) => wye.receiveR[I,I2,O](i => disconnectL(cause)(rcv(right(i)))) onHalt next
-      case Step(AwaitBoth(rcv)) => wye.receiveBoth[I,I2,O]( yr => disconnectL(cause)(rcv(yr))) onHalt next
+      case Step(emt@Emit(os)) =>
+        emt onHalt nextDisconnect
+
+      case Step(AwaitL(rcv)) =>
+        rcv(left(cause)) onHalt nextDisconnect
+
+      case Step(AwaitR(rcv)) =>
+        wye.receiveROr[I,I2,O](e => disconnectL(cause)(rcv(left(e))))(
+          i => disconnectL(cause)(rcv(right(i)))
+        ) onHalt nextDisconnect
+
+      case Step(AwaitBoth(rcv)) =>
+        wye.receiveBoth[I,I2,O]( yr => disconnectL(cause)(rcv(yr))) onHalt nextDisconnect
+
       case hlt@Halt(_) => hlt
     }
   }
@@ -417,15 +460,25 @@ object wye {
   /**
    * Right side alternative for `disconnectL`
    */
-  def disconnectR[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
+  def disconnectR[I, I2, O](cause: EarlyCause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
       val ys = y.step
-      def next(rsn:Cause) = disconnectR(cause)(ys.next(rsn))
+      def nextDisconnect(rsn:Cause) = disconnectR(cause)(ys.next(rsn))
       debug(s"DISR $ys | rsn $cause")
       ys match {
-        case Step(emt@Emit(os)) => emt onHalt next
-        case Step(AwaitR(rcv)) => suspend(next(cause))
-        case Step(AwaitL(rcv)) => wye.receiveL[I,I2,O](i => disconnectR(cause)(rcv(right(i)))) onHalt next
-        case Step(AwaitBoth(rcv)) => wye.receiveBoth[I,I2,O]( yr => disconnectR(cause)(rcv(yr))) onHalt next
+        case Step(emt@Emit(os)) =>
+          emt onHalt nextDisconnect
+
+        case Step(AwaitR(rcv)) =>
+          rcv(left(cause)) onHalt nextDisconnect
+
+        case Step(AwaitL(rcv)) =>
+          wye.receiveLOr[I,I2,O](e => disconnectR(cause)(rcv(left(e))))(
+            i => disconnectR(cause)(rcv(right(i)))
+          ) onHalt nextDisconnect
+
+        case Step(AwaitBoth(rcv)) =>
+          wye.receiveBoth[I,I2,O]( yr => disconnectR(cause)(rcv(yr))) onHalt nextDisconnect
+
         case hlt@Halt(_) => hlt
       }
   }
@@ -455,22 +508,35 @@ object wye {
   type WyeAwaitR[I,I2,O] = Await[Env[I,I2]#Y,Env[Any,I2]#T[I2],O]
   type WyeAwaitBoth[I,I2,O] = Await[Env[I,I2]#Y,Env[I,I2]#Y[ReceiveY[I,I2]],O]
 
+  //correctly typed wye constructors
   def receiveL[I,I2,O](rcv:I => Wye[I,I2,O]) : Wye[I,I2,O] =
     await(L[I]: Env[I,I2]#Y[I])(rcv)
+
+  def receiveLOr[I,I2,O](fb: EarlyCause => Wye[I,I2,O])(rcv:I => Wye[I,I2,O]) : Wye[I,I2,O] =
+    awaitOr(L[I]: Env[I,I2]#Y[I])(fb)(rcv)
 
   def receiveR[I,I2,O](rcv:I2 => Wye[I,I2,O]) : Wye[I,I2,O] =
     await(R[I2]: Env[I,I2]#Y[I2])(rcv)
 
+  def receiveROr[I,I2,O](fb: EarlyCause => Wye[I,I2,O])(rcv:I2 => Wye[I,I2,O]) : Wye[I,I2,O] =
+    awaitOr(R[I2]: Env[I,I2]#Y[I2])(fb)(rcv)
+
   def receiveBoth[I,I2,O](rcv:ReceiveY[I,I2] => Wye[I,I2,O]): Wye[I,I2,O] =
     await(Both[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]])(rcv)
+
+  def receiveBothOr[I,I2,O](fb:EarlyCause => Wye[I,I2,O] )(rcv:ReceiveY[I,I2] => Wye[I,I2,O]): Wye[I,I2,O] =
+    awaitOr(Both[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]])(fb)(rcv)
 
 
   object AwaitL {
 
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
+    def unapply[I,I2,O](self: WyeAwaitL[I,I2,O]):
     Option[(EarlyCause \/ I => Wye[I,I2,O])] = self match {
       case Await(req,rcv)
-        if req.tag == 0 => Some((r : EarlyCause \/ I) => Try(rcv(r).run))
+        if req.tag == 0 =>
+        Some((r : EarlyCause \/ I) =>
+          Try(rcv.asInstanceOf[(EarlyCause \/ I) => Trampoline[Wye[I,I2,O]]](r).run)
+        )
       case _ => None
     }
 
@@ -485,10 +551,12 @@ object wye {
 
 
   object AwaitR {
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
+    def unapply[I,I2,O](self: WyeAwaitR[I,I2,O]):
     Option[(EarlyCause \/ I2 => Wye[I,I2,O])] = self match {
       case Await(req,rcv)
-        if req.tag == 1 => Some((r : EarlyCause \/ I2) => Try(rcv(r).run))
+        if req.tag == 1 => Some((r : EarlyCause \/ I2) =>
+        Try(rcv.asInstanceOf[(EarlyCause \/ I2) => Trampoline[Wye[I,I2,O]]](r).run)
+      )
       case _ => None
     }
 
@@ -501,10 +569,12 @@ object wye {
     }
   }
   object AwaitBoth {
-    def unapply[I,I2,O](self: Wye[I,I2,O]):
+    def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):
     Option[(ReceiveY[I,I2] => Wye[I,I2,O])] = self match {
       case Await(req,rcv)
-        if req.tag == 2 => Some((r : ReceiveY[I,I2]) => Try(rcv(right(r)).run))
+        if req.tag == 2 => Some((r : ReceiveY[I,I2]) =>
+        Try(rcv.asInstanceOf[(EarlyCause \/ ReceiveY[I,I2]) => Trampoline[Wye[I,I2,O]]](right(r)).run)
+      )
       case _ => None
     }
 
@@ -543,7 +613,7 @@ object wye {
 
       sealed trait M
       case class Ready[A](side: Env[L, R]#Y[A], result: Cause \/ (Seq[A], Cause => Process[Task, A])) extends M
-      case class Get(cb: (Throwable \/ (Cause \/ Seq[O])) => Unit) extends M
+      case class Get(cb: (Terminated \/ Seq[O]) => Unit) extends M
       case class DownDone(cb: (Throwable \/ Unit) => Unit) extends M
 
       type SideState[A] = Either3[Cause, Cause => Unit, Cause => Process[Task, A]]
@@ -644,7 +714,10 @@ object wye {
         , y: Wye[L, R, O]): Wye[L, R, O] = {
         val (state, input) = sideReady(Left)(result)
         left = state
-        input.fold(rsn => wye.disconnectL(rsn)(y), ls => wye.feedL(ls)(y))
+        input.fold(
+          rsn => rsn.fold(wye.detach1L(y))(e => wye.disconnectL(e)(y))
+          , ls => wye.feedL(ls)(y)
+        )
       }
 
       def sideReadyRight(
@@ -652,7 +725,10 @@ object wye {
         , y: Wye[L, R, O]): Wye[L, R, O] = {
         val (state, input) = sideReady(Right)(result)
         right = state
-        input.fold(rsn => wye.disconnectR(rsn)(y), rs => wye.feedR(rs)(y))
+        input.fold(
+          rsn => rsn.fold(wye.detach1R(y))(e => wye.disconnectR(e)(y))
+          , rs => wye.feedR(rs)(y)
+        )
       }
 
       // interprets a single step of wye.
@@ -721,7 +797,7 @@ object wye {
 
 
           case Get(cb0) =>
-            val (y, cb) = runY(yy, Some((r:Cause \/ Seq[O]) => cb0(\/-(r))))
+            val (y, cb) = runY(yy, Some((r:Cause \/ Seq[O]) => cb0(r.bimap(c=>Terminated(c),identity))))
             yy = y
             out = haltIfDone(y, left, right, cb)
 
@@ -734,8 +810,8 @@ object wye {
         }
       })(S)
 
-      repeatEval(Task.async[Cause \/ Seq[O]] { cb => a ! Get(cb) })
-      .flatMap(_.fold[Process[Task,O]](Halt.apply,emitAll))
+      repeatEval(Task.async[Seq[O]] { cb => a ! Get(cb) })
+      .flatMap(emitAll)
       .onComplete(eval_(Task.async[Unit](cb => a ! DownDone(cb))))
     }
 }

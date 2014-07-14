@@ -41,11 +41,11 @@ object WyeSpec extends  Properties("Wye"){
   }
 
   property("disconnectL/R") = secure {
-    val killL = wye.disconnectL(End)(wye.merge[Int])
+    val killL = wye.disconnectL(???)(wye.merge[Int])
     val fed = wye.feedR(Seq(0,1,2,3))(killL)
-    val killed = wye.disconnectR(End)(fed)
+    val killed = wye.disconnectR(???)(fed)
 
-    ("awaits on right after left disconnected" |: wye.AwaitR.unapply(killL).isDefined) &&
+   // ("awaits on right after left disconnected" |: wye.AwaitR.unapply(killL).isDefined) &&
       ("all values are unemited" |: (fed.unemit._1 == Seq(0,1,2,3))) &&
       (s"wye contains emitted values after right disconnect " |: (killed.unemit._1 ==  Seq(0,1,2,3)))
     (s"wye is killed after disconnected from right: $killed" |: (killed.unemit._2 == Halt(End)))
@@ -53,11 +53,11 @@ object WyeSpec extends  Properties("Wye"){
   }
 
   property("disconnectR/L") = secure {
-    val killR = wye.disconnectR(End)(wye.merge[Int])
+    val killR = wye.disconnectR(???)(wye.merge[Int])
     val fed = wye.feedL(Seq(0,1,2,3))(killR)
-    val killed = wye.disconnectL(End)(fed)
+    val killed = wye.disconnectL(???)(fed)
 
-    ("awaits on left after right disconnected" |: wye.AwaitL.unapply(killR).isDefined) &&
+   // ("awaits on left after right disconnected" |: wye.AwaitL.unapply(killR).isDefined) &&
       ("all values are unEmitted" |: (fed.unemit._1 == Seq(0,1,2,3))) &&
       (s"wye contains emitted values after left disconnect " |: (killed.unemit._1 ==  Seq(0,1,2,3)))
     (s"wye is killed after disconnected from left: $killed" |: (killed.unemit._2 == Halt(End)))
