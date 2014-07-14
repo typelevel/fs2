@@ -556,7 +556,14 @@ object Process {
      */
     def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Process[F2, O2] = {
       val ms = stack.map(n => (cause: Cause) => Trampoline.suspend(n(cause)).map(f))
-      Step.fromProcess(Try(f(head)), ms)
+
+        f(head) match {
+          case Halt(rsn) => Append[F2,O2](empty, ((c:Cause) => Trampoline.done(Halt(rsn.causedBy(c)))) +: ms)
+          case emt:Emit[O2@unchecked] => Append[F2,O2](emt, ms)
+          case awt:Await[F2@unchecked,_, O2@unchecked] => Append[F2,O2](awt,ms)
+          case ap:Append[F2@unchecked,O2@unchecked] => Append[F2,O2](ap.head, ap.stack fast_++ ms)
+        }
+
     }
 
   }
@@ -584,7 +591,7 @@ object Process {
      */
     def next(cause: Cause): Step[F, O] = {
       this match {
-        case Append(_, stack) => Append(Halt(cause), stack)
+        case Append(_, stack) => Append(empty, ((c:Cause) => Trampoline.done(Halt(c.causedBy(cause)))) +: stack)
         case Halt(cause0)     => Halt(cause.causedBy(cause0))
       }
     }
