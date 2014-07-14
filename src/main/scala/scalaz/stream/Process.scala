@@ -1526,10 +1526,7 @@ object Process {
    * Do not use `eval.repeat` or  `repeat(eval)` as that may cause infinite loop in certain situations.
    */
   def eval[F[_], O](f: F[O]): Process[F, O] =
-    awaitOr(f)({
-      case Error(Terminated(cause)) => Halt(cause)
-      case cause => Halt(cause)
-    })(emit)
+    awaitOr(f)(_.asHalt)(emit)
 
   /**
    * Evaluate an arbitrary effect once, purely for its effects,
@@ -1551,7 +1548,7 @@ object Process {
    *
    */
   def repeatEval[F[_], O](f: F[O]): Process[F, O] =
-    await(f)(o => emit(o) ++ repeatEval(f))
+    awaitOr(f)(_.asHalt)(o => emit(o) ++ repeatEval(f))
 
 
   /**
