@@ -69,7 +69,7 @@ object WyeSpec extends  Properties("Wye"){
   property("infinite.one.side") = secure {
     import ReceiveY._
     def whileBoth[A,B]: Wye[A,B,Nothing] = {
-      def go: Wye[A,B,Nothing] = receiveBoth[A,B,Nothing] {
+      def go: Wye[A,B,Nothing] = wye.receiveBoth[A,B,Nothing] {
         case HaltOne(rsn) => Halt(rsn)
         case _ => go
       }
