@@ -197,7 +197,7 @@ sealed trait Process[+F[_], +O]
   final def drain: Process[F, Nothing] = {
     this.suspendStep.flatMap {
       case s@Step(Emit(_)) => s.continue.drain
-      case s@Step(awt@Await(_,_)) => awt.onHalt(s.next).drain
+      case s@Step(awt@Await(_,_)) => awt.extend(_.drain) onHalt(rsn => s.next(rsn).drain)
       case hlt@Halt(rsn) => hlt
     }
   }
