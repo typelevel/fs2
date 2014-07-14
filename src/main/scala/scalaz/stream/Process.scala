@@ -591,9 +591,19 @@ object Process {
      */
     def next(cause: Cause): Step[F, O] = {
       this match {
-        case Append(_, stack) => Append(empty, ((c:Cause) => Trampoline.done(Halt(c.causedBy(cause)))) +: stack)
+        case Append(_, stack) => Append(Halt(cause), stack)
         case Halt(cause0)     => Halt(cause.causedBy(cause0))
       }
+//      this match {
+//        case Append(_, stack) if stack.isEmpty => Halt(cause)
+//        case Append(_, stack) => stack.head(cause).run match {
+//          case Halt(rsn) => Append[F,O](empty, ((c:Cause) => Trampoline.done(Halt(rsn.causedBy(c)))) +: stack.tail)
+//          case emt:Emit[O@unchecked] => Append[F,O](emt, stack.tail)
+//          case awt:Await[F@unchecked,_, O@unchecked] => Append[F,O](awt,stack.tail)
+//          case ap:Append[F@unchecked,O@unchecked] => Append[F,O](ap.head, ap.stack fast_++ stack.tail)
+//        }
+//        case Halt(cause0)     => Halt(cause.causedBy(cause0))
+//      }
     }
   }
 
@@ -616,6 +626,7 @@ val counter = new AtomicLong(0)
       ): Step[F, O] = {
       @tailrec
       def go(cur:Process[F,O], stack: Vector[(Cause) => Trampoline[Process[F,O]]]) : Step[F,O] = {
+        println(s" STEP $cur | stack $stack | stack ${stack.size}")
         if (counter.incrementAndGet() % 10 == 0) println("S:" + Thread.currentThread().getStackTrace.size)
         if (stack.nonEmpty) cur match {
           case Halt(cause) => go(Try(stack.head(cause).run), stack.tail)
