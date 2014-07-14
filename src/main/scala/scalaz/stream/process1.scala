@@ -286,7 +286,7 @@ object process1 {
     def go(curr: Process1[A,B]): Process1[A \/ C, B \/ C] = {
       receive1Or[A \/ C, B \/ C](curr.disconnect.map(-\/(_))) {
         case -\/(a) =>
-          val (bs, next) = p.feed1(a).unemit
+          val (bs, next) = curr.feed1(a).unemit
           val out =  emitAll(bs).map(-\/(_))
           next match {
             case Halt(rsn) => out fby fail(rsn)
