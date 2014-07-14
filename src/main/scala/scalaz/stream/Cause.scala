@@ -26,15 +26,10 @@ sealed trait Cause {
   }
 
   /**
-   * Converts cause to `Kill` or on `Error`
+   * Converts cause to `Kill` or an `Error`
    * @return
    */
-  def kill: EarlyCause = {
-    this match {
-      case End | Kill => Kill
-      case err@Error(_) => err
-    }
-  }
+  def kill: EarlyCause = fold[EarlyCause](Kill)(identity)
 
   def fold[A](onEnd: => A)(f:(EarlyCause => A)) = this match {
     case End => onEnd

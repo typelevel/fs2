@@ -487,6 +487,35 @@ object wye {
       }
   }
 
+
+  /**
+   * Signals to wye that left side halted with `cause`. Wye will be fed with `HaltL(cause)`
+   * and will disconnect from Left side.
+   */
+  def haltL[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
+    val ys = y.step
+    val ny = ys match {
+      case Step(AwaitBoth(rcv)) =>
+        rcv(HaltL(cause)) onHalt ys.next
+      case _ => y
+    }
+    cause.fold(disconnectL(Kill)(ny).swallowKill)(e => disconnectL(e)(ny))
+  }
+
+
+  /**
+   * Right alternative for `haltL`
+   */
+  def haltR[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
+    val ys = y.step
+    val ny = ys match {
+      case Step(AwaitBoth(rcv)) =>
+        rcv(HaltR(cause)) onHalt ys.next
+      case _ => y
+    }
+    cause.fold(disconnectR(Kill)(ny).swallowKill)(e => disconnectR(e)(ny))
+  }
+
   ////////////////////////////////////////////////////////////////////////
   // Request Algebra
   ////////////////////////////////////////////////////////////////////////
@@ -719,7 +748,7 @@ object wye {
         val (state, input) = sideReady(Left)(result)
         left = state
         input.fold(
-          rsn => rsn.fold(wye.detach1L(y))(e => wye.disconnectL(e)(y))
+          rsn => wye.haltL(rsn)(y)
           , ls => wye.feedL(ls)(y)
         )
       }
@@ -730,7 +759,7 @@ object wye {
         val (state, input) = sideReady(Right)(result)
         right = state
         input.fold(
-          rsn => rsn.fold(wye.detach1R(y))(e => wye.disconnectR(e)(y))
+          rsn => wye.haltR(rsn)(y)
           , rs => wye.feedR(rs)(y)
         )
       }

@@ -251,7 +251,6 @@ private[stream] object WriterTopic {
           .wye(Process.repeatEval(Task.now(false)))(wye.mergeHaltL)
       }
     }
-???
   }
 
 }
