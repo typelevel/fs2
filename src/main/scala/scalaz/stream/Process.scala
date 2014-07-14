@@ -1,6 +1,7 @@
 package scalaz.stream
 
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.atomic.AtomicLong
 
 import scala.annotation.tailrec
 import scala.collection.SortedMap
@@ -80,7 +81,7 @@ sealed trait Process[+F[_], +O]
       case Append(h, stack) => Append(h, stack :+ next)
       case emt@Emit(_)      => Append(emt, Vector(next))
       case awt@Await(_, _)  => Append(awt, Vector(next))
-      case hlt@Halt(rsn)    => Append(empty, Vector((cause0: Cause) => Trampoline.delay(Try(f(cause0.causedBy(rsn))))))
+      case hlt@Halt(rsn)    => Append(hlt, Vector(next))
     }
 
   }
@@ -103,7 +104,7 @@ sealed trait Process[+F[_], +O]
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] = p1.suspendStep.flatMap({ s1 =>
     Util.debug(s"PIPE p1: $p1 | s1: $s1 | this: $this")
     s1 match {
-      case Step(Await1(rcv1)) => this.step match {
+      case Step(Await1(rcv1)) => this.suspendStep flatMap {
         case s@Step(awt@Await(_, _)) => awt.extend(p => (p onHalt s.next) pipe p1)
         case s@Step(Emit(os))        => s.continue pipe process1.feed(os)(p1)
         case hlt@Halt(End)             => (hlt pipe p1.disconnect(Kill)).swallowKill
@@ -399,6 +400,8 @@ sealed trait Process[+F[_], +O]
   final def runFoldMap[F2[x] >: F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2, O], acc: B): F2[B] = {
       debug(s"RFM cur: $cur, acc: $acc")
+      if (refCount.incrementAndGet() % 1000 == 0) println("@"+refCount.get())
+
       cur.step match {
         case s@Step(Emit(os)) =>
           F.bind(F.point(os.foldLeft(acc)((b, o) => B.append(b, f(o))))) { nacc =>
@@ -406,7 +409,9 @@ sealed trait Process[+F[_], +O]
           }
         case s@Step(awt:Await[F2,Any,O]@unchecked) =>
           F.bind(C.attempt(awt.req)) { r =>
-            go(Try(awt.rcv(EarlyCause(r)).run) onHalt s.next, acc)
+            go(Try(awt.rcv(EarlyCause(r)).run)
+              .onHalt(s.next)
+            , acc)
           }
         case Halt(End) => F.point(acc)
         case Halt(Kill) => F.point(acc)
@@ -542,7 +547,7 @@ object Process {
    * Process.append
    */
   case class Append[+F[_], +O](
-    head: EmitOrAwait[F, O]
+    head: HaltEmitOrAwait[F, O]
     , stack: Vector[Cause => Trampoline[Process[F, O]]]
     ) extends Process[F, O] with Step[F, O] {
 
@@ -579,7 +584,7 @@ object Process {
      */
     def next(cause: Cause): Step[F, O] = {
       this match {
-        case Append(_, stack) => Step.fromProcess[F, O](Halt(cause), stack)
+        case Append(_, stack) => Append(Halt(cause), stack)
         case Halt(cause0)     => Halt(cause.causedBy(cause0))
       }
     }
@@ -593,35 +598,39 @@ object Process {
       case hlt@Halt(_)                                         => None
     }
 
+val counter = new AtomicLong(0)
 
     /**
      * Build a `Step` from process and eventually other `continuations` passed
      */
-    @tailrec
     def fromProcess[F[_], O](
-      cur: Process[F, O]
+      p: Process[F, O]
       , stack: Vector[Cause => Trampoline[Process[F, O]]] = Vector.empty
       ): Step[F, O] = {
-      cur match {
-        case hlt@Halt(cause) => stack.headOption match {
-          case Some(f) =>
-            val next = Try(f(cause).asInstanceOf[Trampoline[Process[F, O]]].run)
-            fromProcess(next, stack.tail)
-          case None    => hlt
+      @tailrec
+      def go(cur:Process[F,O], stack: Vector[(Cause) => Trampoline[Process[F,O]]]) : Step[F,O] = {
+        if (counter.incrementAndGet() % 10 == 0) println("S:" + Thread.currentThread().getStackTrace.size)
+        if (stack.nonEmpty) cur match {
+          case Halt(cause) => go(Try(stack.head(cause).run), stack.tail)
+          case app:Append[F@unchecked,O@unchecked] => app.head match {
+            case Emit(os) if os.isEmpty => go(Try(stack.head(End).run), app.stack fast_++ stack)
+            case hlt@Halt(rsn)  => go(hlt, app.stack fast_++ stack)
+            case _ => Append(app.head, app.stack fast_++ stack)
+          }
+          case emt:Emit[O@unchecked] => Append[F,O](emt,stack)
+          case awt:Await[F@unchecked,_,O@unchecked] => Append[F,O](awt,stack)
+        } else cur match {
+          case app:Append[F@unchecked,O@unchecked] => app.head match {
+            case Emit(os) if os.isEmpty => go(app.head, app.stack)
+            case hlt@Halt(rsn)  =>   go(hlt, app.stack)
+            case _ => app
+          }
+          case emt:Emit[O@unchecked] => Append[F,O](emt,Vector.empty)
+          case awt:Await[F@unchecked,_,O@unchecked] => Append[F,O](awt,Vector.empty)
+          case hlt@Halt(_) => hlt
         }
-
-        case emt: Emit[O@unchecked]
-          if emt.seq.isEmpty => stack.headOption match {
-          case Some(f) =>
-            val next = Try(f(End).asInstanceOf[Trampoline[Process[F, O]]].run)
-            fromProcess(next, stack.tail)
-          case None    => halt
-        }
-
-        case emt: Emit[O@unchecked]                  => Append(emt, stack)
-        case awt: Await[F@unchecked, _, O@unchecked] => Append(awt, stack)
-        case app: Append[F@unchecked, O@unchecked]   => Append(app.head, app.stack fast_++ stack)
       }
+      go(p,stack)
     }
 
   }
