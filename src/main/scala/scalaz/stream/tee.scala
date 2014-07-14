@@ -9,6 +9,38 @@ import scalaz.stream.Util._
 
 object tee {
 
+
+
+  /**
+   * Awaits to receive input from Left side,
+   * than if that request terminates with `End` or is terminated abnormally
+   * runs the supplied `continue` or `cleanup`.
+   * Otherwise `rcv` is run to produce next state.
+   *
+   * If  you don't need `continue` or `cleanup` use rather `awaitL.flatMap`
+   */
+  def receiveL[I, I2, O](rcv: I => Tee[I, I2, O]): Tee[I, I2, O] =
+    await[Env[I, I2]#T, I, O](L)(rcv)
+
+  /**
+   * Awaits to receive input from Right side,
+   * than if that request terminates with `End` or is terminated abnormally
+   * runs the supplied continue.
+   * Otherwise `rcv` is run to produce next state.
+   *
+   * If  you don't need `continue` or `cleanup` use rather `awaitR.flatMap`
+   */
+  def receiveR[I, I2, O](rcv: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
+    await[Env[I, I2]#T, I2, O](R)(rcv)
+
+  /** syntax sugar for receiveL **/
+  def receiveLOr[I, I2, O](fb: => Tee[I, I2, O])(rcvL: I => Tee[I, I2, O]): Tee[I, I2, O] =
+    awaitOr[Env[I, I2]#T, I, O](L)(rsn => fb.causedBy(rsn))(rcvL)
+
+  /** syntax sugar for receiveR **/
+  def receiveROr[I, I2, O](fb: => Tee[I, I2, O])(rcvR: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
+    awaitOr[Env[I, I2]#T, I2, O](R)(rsn => fb.causedBy(rsn))(rcvR)
+
   /** A `Tee` which alternates between emitting values from the left input and the right input. */
   def interleave[I]: Tee[I, I, I] =
   repeat { for {

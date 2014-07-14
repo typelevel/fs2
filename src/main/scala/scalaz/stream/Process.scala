@@ -721,57 +721,6 @@ object Process {
   def receive1Or[I, O](fb: => Process1[I, O])(rcv: I => Process1[I, O]): Process1[I, O] =
     awaitOr(Get[I])((rsn: EarlyCause) => fb.causedBy(rsn))(rcv)
 
-  /**
-   * Awaits to receive input from Both sides,
-   * than if that request terminates with `End` or is terminated abonromally
-   * runs the supplied continue or cleanup.
-   * Otherwise `rcv` is run to produce next state.
-   *
-   * If you don't need `continue` use rather `awaitBoth.flatMap`
-   */
-  def receiveBoth[I, I2, O](
-    rcv: ReceiveY[I, I2] => Wye[I, I2, O]
-    ): Wye[I, I2, O] =
-    await[Env[I, I2]#Y, ReceiveY[I, I2], O](Both)(rcv)
-
-  /**
-   * Awaits to receive input from Left side,
-   * than if that request terminates with `End` or is terminated abnormally
-   * runs the supplied `continue` or `cleanup`.
-   * Otherwise `rcv` is run to produce next state.
-   *
-   * If  you don't need `continue` or `cleanup` use rather `awaitL.flatMap`
-   */
-  def receiveL[I, I2, O](
-    rcv: I => Tee[I, I2, O]
-    ): Tee[I, I2, O] =
-    await[Env[I, I2]#T, I, O](L)(rcv)
-
-  /**
-   * Awaits to receive input from Right side,
-   * than if that request terminates with `End` or is terminated abnormally
-   * runs the supplied continue.
-   * Otherwise `rcv` is run to produce next state.
-   *
-   * If  you don't need `continue` or `cleanup` use rather `awaitR.flatMap`
-   */
-  def receiveR[I, I2, O](
-    rcv: I2 => Tee[I, I2, O]
-    ): Tee[I, I2, O] =
-    await[Env[I, I2]#T, I2, O](R)(rcv)
-
-  /** syntax sugar for receiveBoth  **/
-  def receiveBothOr[I, I2, O](fb: => Wye[I, I2, O])(rcv: ReceiveY[I, I2] => Wye[I, I2, O]): Wye[I, I2, O] =
-    receiveBoth(rcv) onHalt (rsn => fb.causedBy(rsn))
-
-  /** syntax sugar for receiveL **/
-  def receiveLOr[I, I2, O](fb: => Tee[I, I2, O])(rcvL: I => Tee[I, I2, O]): Tee[I, I2, O] =
-    receiveL(rcvL) onHalt (rsn => fb.causedBy(rsn))
-
-  /** syntax sugar for receiveR **/
-  def receiveROr[I, I2, O](fb: => Tee[I, I2, O])(rcvR: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
-    receiveR(rcvR) onHalt (rsn => fb.causedBy(rsn))
-
   ///////////////////////////////////////////////////////////////////////////////////////
   //
   // CONSUTRUCTORS -> Helpers
