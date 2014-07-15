@@ -205,6 +205,13 @@ object ProcessSpec extends Properties("Process") {
     written == List(2, 3, 4)
   }
 
+  property("cleanup isn't interrupted in the middle") = secure {
+    var cleaned = false
+    val cleanup = eval(Task.now(1)) ++ eval_(Task.delay(cleaned = true))
+    val res = (emit(0) onComplete cleanup).take(2).runLog.run.toList
+    ("result" |: res == List(0, 1)) &&
+      ("cleaned" |: cleaned)
+  }
 
   property("range") = secure {
     Process.range(0, 100).toList == List.range(0, 100) &&
