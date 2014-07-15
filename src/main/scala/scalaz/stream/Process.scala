@@ -26,7 +26,8 @@ sealed trait Process[+F[_], +O]
   final def flatMap[F2[x] >: F[x], O2](f: O => Process[F2, O2]): Process[F2, O2] = {
     // Util.debug(s"FMAP $this")
     this match {
-      case Halt(_) | Emit(Seq()) => this.asInstanceOf[Process[F2, O2]]
+      case Halt(_)                => this.asInstanceOf[Process[F2, O2]]
+      case Emit(os) if os.isEmpty => this.asInstanceOf[Process[F2, O2]]
       case Emit(os)              => os.tail.foldLeft(Try(f(os.head)))((p, n) => p ++ Try(f(n)))
       case aw@Await(_, _)        => aw.extend(_ flatMap f)
       case ap@Append(p, n)       => ap.extend(_ flatMap f)
@@ -63,10 +64,29 @@ sealed trait Process[+F[_], +O]
    * Note this evaluation is not resource safe, that means user must assure the evaluation whatever
    * is produced as next step.
    */
-  final def step: Step[F, O] = Step.fromProcess(this)
+  final def step: HaltOrStep[F, O] = {
+    def go(cur: Process[F,O], stack: Vector[Cause => Trampoline[Process[F,O]]]) : HaltOrStep[F,O] = {
+      println(s"ST: ${stack.size} JS: ${Thread.currentThread().getStackTrace.size}" )
+      if (stack.nonEmpty) cur match {
+        case Halt(cause) => go(Try(stack.head(cause).run), stack.tail)
+        case Emit(os) if os.isEmpty => go(Try(stack.head(End).run), stack.tail)
+        case emt@(Emit(os)) => Cont(emt,(c:Cause) => Append(Halt(c),stack))
+        case awt@Await(_,_) => Cont(awt,(c:Cause) => Append(Halt(c),stack))
+        case Append(h,st) => go(h, st fast_++ stack)
+      } else cur match {
+        case hlt@Halt(cause) => hlt
+        case emt@Emit(os) if (os.isEmpty) => halt
+        case emt@Emit(os) => Cont(emt,(c:Cause) => Halt(c))
+        case awt@Await(_,_) => Cont(awt,(c:Cause) => Halt(c))
+        case Append(h,st) => go(h,st)
+
+      }
+    }
+    go(this,Vector.empty)
+  }
 
 
-  final def suspendStep: Process[Nothing, Step[F, O]] =
+  final def suspendStep: Process[Nothing, HaltOrStep[F, O]] =
     suspend { emit(step) }
 
   /**
@@ -178,9 +198,8 @@ sealed trait Process[+F[_], +O]
   /**
    * Attached `cause` when this Process terminates.  See `Cause.causedBy` for semantics.
    */
-  final def causedBy(cause: Cause): Process[F, O] = {
-    this onHalt { original => Halt(original.causedBy(cause)) }
-  }
+  final def causedBy(cause: Cause): Process[F, O] =
+    cause.fold(this)(ec => this.onHalt(c => Halt(c.causedBy(ec))))
 
   /**
    * Used when a transducer (Process1) is terminated by awaiting on a branch that
@@ -492,7 +511,10 @@ object Process {
    * that the last evaluation of Process completed with
    * supplied cause.
    */
-  case class Halt(cause: Cause) extends HaltEmitOrAwait[Nothing, Nothing] with Step[Nothing, Nothing]
+  case class Halt(cause: Cause) extends HaltEmitOrAwait[Nothing, Nothing] with HaltOrStep[Nothing, Nothing] {
+    def continue: Process[Nothing, Nothing] = this
+    def next(c: Cause): Process[Nothing, Nothing] = Halt(cause.causedBy(c))
+  }
 
 
   /**
@@ -549,7 +571,7 @@ object Process {
   case class Append[+F[_], +O](
     head: HaltEmitOrAwait[F, O]
     , stack: Vector[Cause => Trampoline[Process[F, O]]]
-    ) extends Process[F, O] with Step[F, O] {
+    ) extends Process[F, O] {
 
     /**
      * Helper to modify the head and appended processes
@@ -557,101 +579,33 @@ object Process {
     def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Process[F2, O2] = {
       val ms = stack.map(n => (cause: Cause) => Trampoline.suspend(n(cause)).map(f))
 
-        f(head) match {
-          case Halt(rsn) => Append[F2,O2](empty, ((c:Cause) => Trampoline.done(Halt(rsn.causedBy(c)))) +: ms)
-          case emt:Emit[O2@unchecked] => Append[F2,O2](emt, ms)
-          case awt:Await[F2@unchecked,_, O2@unchecked] => Append[F2,O2](awt,ms)
-          case ap:Append[F2@unchecked,O2@unchecked] => Append[F2,O2](ap.head, ap.stack fast_++ ms)
-        }
-
-    }
-
-  }
-
-
-  /**
-   * Represents intermediate step of process.
-   * @tparam F
-   * @tparam O
-   */
-  sealed trait Step[+F[_], +O] extends Process[F, O] {
-
-    /**
-     * Produces the next process state.
-     * That is as if current state of the process evaluated in Halt(End).
-     * @return
-     */
-    def continue: Process[F, O] = next(End)
-
-
-    /**
-     * Switches to next state of this process, with the specified cause
-     *
-     * @return  next process state.
-     */
-    def next(cause: Cause): Step[F, O] = {
-      this match {
-        case Append(_, stack) => Append(Halt(cause), stack)
-        case Halt(cause0)     => Halt(cause.causedBy(cause0))
+      f(head) match {
+        case HaltEmitOrAwait(p) => Append(p,ms)
+        case app:Append[F2@unchecked,O2@unchecked] => Append(app.head,app.stack fast_++ ms)
       }
-//      this match {
-//        case Append(_, stack) if stack.isEmpty => Halt(cause)
-//        case Append(_, stack) => stack.head(cause).run match {
-//          case Halt(rsn) => Append[F,O](empty, ((c:Cause) => Trampoline.done(Halt(rsn.causedBy(c)))) +: stack.tail)
-//          case emt:Emit[O@unchecked] => Append[F,O](emt, stack.tail)
-//          case awt:Await[F@unchecked,_, O@unchecked] => Append[F,O](awt,stack.tail)
-//          case ap:Append[F@unchecked,O@unchecked] => Append[F,O](ap.head, ap.stack fast_++ stack.tail)
-//        }
-//        case Halt(cause0)     => Halt(cause.causedBy(cause0))
-//      }
+
     }
+
   }
 
+  sealed trait HaltOrStep[+F[_], +O] {
+    def continue: Process[F,O]
+    def next(c:Cause):Process[F,O]
+  }
+
+  case class Cont[+F[_], +O] (head:EmitOrAwait[F,O], n:Cause => Process[F,O]) extends HaltOrStep[F,O] {
+    def continue: Process[F, O] = n(End)
+    def next(c: Cause): Process[F, O] = n(c)
+  }
 
   object Step {
-
-    def unapply[F[_], O](s: Step[F, O]): Option[EmitOrAwait[F, O]] = s match {
-      case Append(h: EmitOrAwait[F@unchecked, O@unchecked], t) => Some(h)
-      case hlt@Halt(_)                                         => None
+    def unapply[F[_],O](hs:HaltOrStep[F,O]):Option[EmitOrAwait[F,O]] = hs match {
+      case c:Cont[F@unchecked,O@unchecked] => Some(c.head)
+      case Halt(_) => None
     }
-
-val counter = new AtomicLong(0)
-
-    /**
-     * Build a `Step` from process and eventually other `continuations` passed
-     */
-    def fromProcess[F[_], O](
-      p: Process[F, O]
-      , stack: Vector[Cause => Trampoline[Process[F, O]]] = Vector.empty
-      ): Step[F, O] = {
-      @tailrec
-      def go(cur:Process[F,O], stack: Vector[(Cause) => Trampoline[Process[F,O]]]) : Step[F,O] = {
-        println(s" STEP $cur | stack $stack | stack ${stack.size}")
-        if (counter.incrementAndGet() % 10 == 0) println("S:" + Thread.currentThread().getStackTrace.size)
-        if (stack.nonEmpty) cur match {
-          case Halt(cause) => go(Try(stack.head(cause).run), stack.tail)
-          case app:Append[F@unchecked,O@unchecked] => app.head match {
-            case Emit(os) if os.isEmpty => go(Try(stack.head(End).run), app.stack fast_++ stack)
-            case hlt@Halt(rsn)  => go(hlt, app.stack fast_++ stack)
-            case _ => Append(app.head, app.stack fast_++ stack)
-          }
-          case emt:Emit[O@unchecked] => Append[F,O](emt,stack)
-          case awt:Await[F@unchecked,_,O@unchecked] => Append[F,O](awt,stack)
-        } else cur match {
-          case app:Append[F@unchecked,O@unchecked] => app.head match {
-            case Emit(os) if os.isEmpty => go(app.head, app.stack)
-            case hlt@Halt(rsn)  =>   go(hlt, app.stack)
-            case _ => app
-          }
-          case emt:Emit[O@unchecked] => Append[F,O](emt,Vector.empty)
-          case awt:Await[F@unchecked,_,O@unchecked] => Append[F,O](awt,Vector.empty)
-          case hlt@Halt(_) => hlt
-        }
-      }
-      go(p,stack)
-    }
-
   }
+
+
 
   ///////////////////////////////////////////////////////////////////////////////////////
   //
@@ -724,7 +678,7 @@ val counter = new AtomicLong(0)
   def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(Error(rsn))
 
   /** The `Process` which emits no values and signals normal continuation **/
-  val halt: Step[Nothing, Nothing] = Halt(End)
+  val halt: Halt = Halt(End)
 
   /** The `Process` that emits Nothing **/
   val empty: Emit[Nothing] = Emit(Nil)
@@ -1548,6 +1502,9 @@ val counter = new AtomicLong(0)
    *
    */
   def suspend[F[_], O](p: => Process[F, O]): Process[F, O] =
-    Append(empty,Vector((c:Cause) => { Trampoline.done(p.causedBy(c)) }))
+    Append(empty,Vector({
+      case End => Trampoline.done(p)
+      case early: EarlyCause =>  Trampoline.done(p.causedBy(early))
+    }))
 
 }
