@@ -84,7 +84,11 @@ case object Kill extends EarlyCause
  * @param rsn Error thrown by last await.
  *
  */
-case class Error(rsn: Throwable) extends EarlyCause
+case class Error(rsn: Throwable) extends EarlyCause {
+  override def toString: String = {
+    s"Error(${rsn.getClass.getName}: ${rsn.getMessage}})"
+  }
+}
 
 
 /**
@@ -94,10 +98,18 @@ case class Error(rsn: Throwable) extends EarlyCause
 case class CausedBy(e: Throwable, cause: Throwable) extends Exception(cause) {
   override def toString = s"$e caused by: $cause"
   override def getMessage: String = toString
+  override def fillInStackTrace(): Throwable = this
 }
 
 /**
  * wrapper to signal cause for termination.
  * This is usefull when cause needs to be propagated out of process domain (i.e. Task)
  */
-case class Terminated(cause:Cause) extends Exception
+case class Terminated(cause:Cause) extends Exception {
+  override def fillInStackTrace(): Throwable = cause match {
+    case End | Kill => this
+    case Error(rsn) => rsn.fillInStackTrace()
+  }
+  override def toString: String = s"Terminated($cause)"
+  override def getMessage: String = cause.toString
+}
