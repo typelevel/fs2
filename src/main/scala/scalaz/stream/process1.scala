@@ -151,8 +151,8 @@ object process1 {
       //Util.debug(s"FEED1 start: in: $in | out : $out | cur $cur")
       if (in.nonEmpty) {
         cur.step match {
-          case s@Step(Emit(os)) => go(in, out fast_++ os, s.continue)
-          case s@Step(Await1(rcv)) => go(in.tail,out,rcv(right(in.head)) onHalt s.next)
+          case Step(Emit(os),cont) => go(in, out fast_++ os, cont.continue)
+          case Step(Await1(rcv), cont) => go(in.tail,out,rcv(right(in.head)) +: cont)
           case Halt(rsn) =>  emitAll(out).causedBy(rsn)
         }
       } else cur.feed(out)
@@ -160,7 +160,6 @@ object process1 {
     }
 
     go(i, Vector(), p)
-
   }
 
 
@@ -286,7 +285,7 @@ object process1 {
    */
   def liftL[A, B, C](p: Process1[A, B]): Process1[A \/ C, B \/ C] = {
     def go(curr: Process1[A,B]): Process1[A \/ C, B \/ C] = {
-      receive1Or[A \/ C, B \/ C](curr.disconnect(Kill).map(-\/(_))) { //todo proper exception passing here !
+      receive1Or[A \/ C, B \/ C](curr.disconnect(Kill).map(-\/(_))) {
         case -\/(a) =>
           val (bs, next) = curr.feed1(a).unemit
           val out =  emitAll(bs).map(-\/(_))
@@ -298,6 +297,7 @@ object process1 {
       }
     }
     go(p)
+
   }
 
   /**
@@ -314,11 +314,11 @@ object process1 {
    */
   def liftY[I,O](p: Process1[I,O]) : Wye[I,Any,O] = {
     p.step match {
-      case s@Step(Await(_,rcv)) =>
-        Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=>liftY(s.next(rsn)))
+      case Step(Await(_,rcv), cont) =>
+        Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=> liftY(Halt(rsn) +: cont))
 
-      case s@Step(emt@Emit(os)) =>
-        emt onHalt(rsn=>liftY(s.next(rsn)))
+      case Step(emt@Emit(os), cont) =>
+        emt onHalt(rsn=> liftY(Halt(rsn) +: cont))
 
       case hlt@Halt(rsn) => hlt
     }
@@ -622,6 +622,8 @@ object process1 {
     }
 
   }
+
+
 
 }
 

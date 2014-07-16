@@ -11,35 +11,7 @@ object tee {
 
 
 
-  /**
-   * Awaits to receive input from Left side,
-   * than if that request terminates with `End` or is terminated abnormally
-   * runs the supplied `continue` or `cleanup`.
-   * Otherwise `rcv` is run to produce next state.
-   *
-   * If  you don't need `continue` or `cleanup` use rather `awaitL.flatMap`
-   */
-  def receiveL[I, I2, O](rcv: I => Tee[I, I2, O]): Tee[I, I2, O] =
-    await[Env[I, I2]#T, I, O](L)(rcv)
 
-  /**
-   * Awaits to receive input from Right side,
-   * than if that request terminates with `End` or is terminated abnormally
-   * runs the supplied continue.
-   * Otherwise `rcv` is run to produce next state.
-   *
-   * If  you don't need `continue` or `cleanup` use rather `awaitR.flatMap`
-   */
-  def receiveR[I, I2, O](rcv: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
-    await[Env[I, I2]#T, I2, O](R)(rcv)
-
-  /** syntax sugar for receiveL **/
-  def receiveLOr[I, I2, O](fb: => Tee[I, I2, O])(rcvL: I => Tee[I, I2, O]): Tee[I, I2, O] =
-    awaitOr[Env[I, I2]#T, I, O](L)(rsn => fb.causedBy(rsn))(rcvL)
-
-  /** syntax sugar for receiveR **/
-  def receiveROr[I, I2, O](fb: => Tee[I, I2, O])(rcvR: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
-    awaitOr[Env[I, I2]#T, I2, O](R)(rsn => fb.causedBy(rsn))(rcvR)
 
   /** A `Tee` which alternates between emitting values from the left input and the right input. */
   def interleave[I]: Tee[I, I, I] =
@@ -107,16 +79,16 @@ object tee {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Tee[I, I2, O]): Tee[I, I2, O] = {
       if (in.nonEmpty)  cur.step match {
-        case s@Step(Emit(os)) =>
-          go(in, out :+ os, s.continue)
+        case Step(Emit(os), cont) =>
+          go(in, out :+ os, cont.continue)
 
-        case s@Step(awt@AwaitL(rcv)) =>
-          go(in.tail, out, Try(rcv(right(in.head))) onHalt s.next)
+        case Step(awt@AwaitL(rcv), cont) =>
+          go(in.tail, out, rcv(right(in.head)) +: cont)
 
-        case s@Step(awt@AwaitR(rcv)) =>
+        case Step(awt@AwaitR(rcv), cont) =>
           emitAll(out.flatten) onHalt {
-            case End =>   awt.extend(p => feedL(in)(p onHalt s.next))
-            case early : EarlyCause => feedL(in)(rcv(left(early)) onHalt s.next)
+            case End =>   awt.extend(p => feedL(in)(p +: cont))
+            case early : EarlyCause => feedL(in)(rcv(left(early)) +: cont)
           }
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
@@ -125,7 +97,6 @@ object tee {
     }
 
     go(i, Vector(), p)
-
   }
 
   /** Feed a sequence of inputs to the right side of a `Tee`. */
@@ -133,17 +104,17 @@ object tee {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Tee[I, I2, O]): Tee[I, I2, O] = {
       if (in.nonEmpty) cur.step match {
-        case s@Step(Emit(os)) =>
-          go(in, out :+ os, s.continue)
+        case Step(Emit(os),cont) =>
+          go(in, out :+ os, cont.continue)
 
-        case s@Step(awt@AwaitL(rcv)) =>
+        case Step(awt@AwaitL(rcv), cont) =>
           emitAll(out.flatten) onHalt {
-            case End =>  awt.extend(p => feedR(in)(p onHalt s.next))
-            case early : EarlyCause => feedR(in)(rcv(left(early)) onHalt s.next)
+            case End =>  awt.extend(p => feedR(in)(p +: cont))
+            case early : EarlyCause => feedR(in)(rcv(left(early)) +: cont)
           }
 
-        case s@Step(awt@AwaitR(rcv)) =>
-          go(in.tail, out, Try(rcv(right(in.head))) onHalt s.next)
+        case Step(awt@AwaitR(rcv), cont) =>
+          go(in.tail, out, rcv(right(in.head)) +: cont)
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
 
@@ -151,7 +122,6 @@ object tee {
     }
 
     go(i, Vector(), p)
-
   }
 
   /** Feed one input to the left branch of this `Tee`. */
@@ -170,9 +140,9 @@ object tee {
    */
   def disconnectL[I, I2, O](cause: EarlyCause)(tee: Tee[I, I2, O]): Tee[Nothing, I2, O] = {
     tee.step match {
-      case s@Step(emt@Emit(_)) => emt onHalt { rsn => disconnectL(cause)(s.next(rsn)) }
-      case s@Step(AwaitL(rcv)) => suspend(disconnectL(cause)(Try(rcv(left(cause))) onHalt s.next))
-      case s@Step(awt@AwaitR(rcv)) => awt.extend(p => disconnectL[I,I2,O](cause)(p onHalt s.next))
+      case Step(emt@Emit(_), cont) => emt onHalt { rsn => disconnectL(cause)(Halt(rsn) +: cont) }
+      case Step(AwaitL(rcv), cont) => suspend(disconnectL(cause)(rcv(left(cause)) +: cont))
+      case Step(awt@AwaitR(rcv), cont) => awt.extend(p => disconnectL[I,I2,O](cause)(p +: cont))
       case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
     }
   }
@@ -185,12 +155,43 @@ object tee {
    */
   def disconnectR[I, I2, O](cause: EarlyCause)(tee: Tee[I, I2, O]): Tee[I, Nothing, O] = {
     tee.step match {
-      case s@Step(emt@Emit(os)) =>  emt onHalt { rsn => disconnectR(cause)(s.next(rsn)) }
-      case s@Step(AwaitR(rcv)) => suspend(disconnectR(cause)(Try(rcv(left(cause))) onHalt s.next))
-      case s@Step(awt@AwaitL(rcv)) => awt.extend(p => disconnectR[I,I2,O](cause)(p onHalt s.next))
-      case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
+      case Step(emt@Emit(os), cont) =>  emt onHalt { rsn => disconnectR(cause)(Halt(rsn) +: cont) }
+      case Step(AwaitR(rcv), cont) => suspend(disconnectR(cause)(rcv(left(cause)) +: cont))
+      case Step(awt@AwaitL(rcv), cont) => awt.extend(p => disconnectR[I,I2,O](cause)(p +: cont))
+      case Halt(rsn) => Halt(rsn.causedBy(cause))
     }
   }
+
+
+  /**
+   * Awaits to receive input from Left side,
+   * than if that request terminates with `End` or is terminated abnormally
+   * runs the supplied `continue` or `cleanup`.
+   * Otherwise `rcv` is run to produce next state.
+   *
+   * If  you don't need `continue` or `cleanup` use rather `awaitL.flatMap`
+   */
+  def receiveL[I, I2, O](rcv: I => Tee[I, I2, O]): Tee[I, I2, O] =
+    await[Env[I, I2]#T, I, O](L)(rcv)
+
+  /**
+   * Awaits to receive input from Right side,
+   * than if that request terminates with `End` or is terminated abnormally
+   * runs the supplied continue.
+   * Otherwise `rcv` is run to produce next state.
+   *
+   * If  you don't need `continue` or `cleanup` use rather `awaitR.flatMap`
+   */
+  def receiveR[I, I2, O](rcv: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
+    await[Env[I, I2]#T, I2, O](R)(rcv)
+
+  /** syntax sugar for receiveL **/
+  def receiveLOr[I, I2, O](fb: => Tee[I, I2, O])(rcvL: I => Tee[I, I2, O]): Tee[I, I2, O] =
+    awaitOr[Env[I, I2]#T, I, O](L)(rsn => fb.causedBy(rsn))(rcvL)
+
+  /** syntax sugar for receiveR **/
+  def receiveROr[I, I2, O](fb: => Tee[I, I2, O])(rcvR: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
+    awaitOr[Env[I, I2]#T, I2, O](R)(rsn => fb.causedBy(rsn))(rcvR)
 
 
   //////////////////////////////////////////////////////////////////////

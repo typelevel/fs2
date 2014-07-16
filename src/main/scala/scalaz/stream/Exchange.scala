@@ -81,10 +81,11 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * @return
    */
   def run(p:Process[Task,W] = halt, terminateOn:Request = Request.L):Process[Task,I] = {
+    import scalaz.stream.wye. {mergeHaltL, mergeHaltR, mergeHaltBoth}
     val y = terminateOn match {
-      case Request.L => scalaz.stream.wye.mergeHaltL[I]
-      case Request.R => scalaz.stream.wye.mergeHaltR[I]
-      case Request.Both => scalaz.stream.wye.mergeHaltBoth[I]
+      case Request.L => mergeHaltL[I]
+      case Request.R => mergeHaltR[I]
+      case Request.Both => mergeHaltBoth[I]
     }
     self.read.wye((p to self.write).drain)(y)
   }

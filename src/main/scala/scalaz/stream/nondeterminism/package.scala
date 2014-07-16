@@ -1,7 +1,7 @@
 package scalaz.stream
 
-import scala.util.Try
-import scalaz._
+
+import scalaz.{Right3, Middle3, Left3, \/-, -\/, Either3, \/}
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process._
 
@@ -29,7 +29,7 @@ package object nondeterminism {
    */
   def njoin[A](maxOpen: Int, maxQueued: Int)(source: Process[Task, Process[Task, A]])(implicit S: Strategy): Process[Task, A] = {
     sealed trait M
-    case class Offer(p: Process[Task, A], next: Cause => Process[Task, Process[Task, A]]) extends M
+    case class Offer(p: Process[Task, A], cont: Cont[Task,Process[Task,A]]) extends M
     case class FinishedSource(rsn: Cause) extends M
     case class Finished(result: Throwable \/ Unit) extends M
     case class FinishedDown(cb: (Throwable \/ Unit) => Unit) extends M
@@ -40,7 +40,7 @@ package object nondeterminism {
       val done = async.signal[Boolean](S)
 
       //keep state of master source
-      var state: Either3[Cause, Cause => Unit, Cause => Process[Task, Process[Task, A]]] =
+      var state: Either3[Cause, Cause => Unit,  Cont[Task,Process[Task,A]]] =
         Either3.middle3((_: Cause) => ())
 
       //keep no of open processes
@@ -55,11 +55,14 @@ package object nondeterminism {
             case -\/(rsn) =>
               actor ! FinishedSource(rsn)
 
-            case \/-((processes, next)) =>
-              actor ! Offer(processes.head, (c: Cause) => c match {
-                case End => emitAll(processes.tail) onHalt next
-                case cause => Util.Try(next(cause))
-              } )
+            case \/-((processes, cont)) =>
+              val next = (c:Cause) => Trampoline.done(
+                c.fold(emitAll(processes.tail) +: cont)(
+                  early => Halt(early) +: cont
+                )
+              )
+              //runAsync guarantees nonEmpty processes
+              actor ! Offer(processes.head, Cont(Vector(next)))
           })
         })
 
@@ -83,11 +86,12 @@ package object nondeterminism {
           // next merged process is available
           // run it with chance to interrupt
           // and give chance to start next process if not bounded
-          case Offer(p, next) =>
+          case Offer(p, cont) =>
             opened = opened + 1
-            if (maxOpen <= 0 || opened < maxOpen) state = nextStep(Util.Try(next(End)))
-            else state = Either3.right3(next)
+            if (maxOpen <= 0 || opened < maxOpen) state = nextStep(cont.continue)
+            else state = Either3.right3(cont)
 
+            //todo: kill behaviour -> propagate kill
             //runs the process with a chance to interrupt it using signal `done`
             //interrupt is done via setting the done to `true`
             done.discrete.wye(p)(wye.interrupt)
@@ -111,7 +115,7 @@ package object nondeterminism {
             fail(state match {
               case Left3(rsn0) => rsn0
               case Middle3(interrupt) => interrupt(Kill); Error(rsn)
-              case Right3(next) => Util.Try(next(Kill)).run.runAsync(_ => ()); Error(rsn)
+              case Right3(cont) => S((Halt(Kill) +: cont).run.runAsync(_ => ())); Error(rsn)
             })
 
           // One of the processes terminated w/o failure
@@ -120,8 +124,8 @@ package object nondeterminism {
           case Finished(\/-(_)) =>
             opened = opened - 1
             state = state match {
-              case Right3(next)
-                if maxOpen <= 0 || opened < maxOpen => nextStep(Util.Try(next(End)))
+              case Right3(cont)
+                if maxOpen <= 0 || opened < maxOpen => nextStep(cont.continue)
               case Left3(End) if opened == 0 => fail(End) ; state
               case Left3(rsn) if opened == 0 => state
               case other                     => other

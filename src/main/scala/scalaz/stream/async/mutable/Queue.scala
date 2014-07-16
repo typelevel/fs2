@@ -1,7 +1,6 @@
 package scalaz.stream.async.mutable
 
 import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.stream.Process.Halt
 import scalaz.stream.async.immutable
 import scalaz.stream.{Terminated, Kill, Error, End, Cause, Util, Process, Sink}
 import scalaz.{-\/, \/, \/-}
@@ -247,6 +246,7 @@ private[stream] object Queue {
 
       private[stream] def failWithCause(c: Cause): Task[Unit] = Task.async[Unit](cb => actor ! Fail(c,cb))
     }
+
   }
 
 

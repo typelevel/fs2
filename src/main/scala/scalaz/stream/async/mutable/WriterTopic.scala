@@ -1,7 +1,7 @@
 package scalaz.stream.async.mutable
 
 import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.stream.Process.Halt
+import scalaz.stream.Process.{Cont, Halt}
 import scalaz.stream._
 import scalaz.stream.async.immutable
 import scalaz.{-\/, \/, \/-}
@@ -85,7 +85,7 @@ private[stream] object WriterTopic {
     case class Subscribe(sub: Subscription, cb: (Throwable \/ Unit) => Unit) extends M
     case class Ready(sub: Subscription, cb: (Throwable \/ Seq[W \/ O]) => Unit) extends M
     case class UnSubscribe(sub: Subscription, cb: (Throwable \/ Unit) => Unit) extends M
-    case class Upstream(result: Cause \/ (Seq[I], Cause => Process[Task, I])) extends M
+    case class Upstream(result: Cause \/ (Seq[I], Cont[Task,I])) extends M
     case class Publish(is: Seq[I], cb: Throwable \/ Unit => Unit) extends M
     case class Fail(cause: Cause, cb: Throwable \/ Unit => Unit) extends M
 
@@ -132,6 +132,7 @@ private[stream] object WriterTopic {
     //contains an reason of termination
     var closed: Option[Cause] = None
 
+    // state of upstream. Upstream is running and left is interrupt, or upstream is stopped.
     var upState: Option[Cause \/ (Cause => Unit)] = None
 
     var w: Writer1[W, I, O] = writer
@@ -193,9 +194,9 @@ private[stream] object WriterTopic {
           if (haltOnSource || rsn != End) fail(rsn)
           upState = Some(-\/(rsn))
 
-        case Upstream(\/-((is, next))) =>
+        case Upstream(\/-((is, cont))) =>
           publish(is)
-          getNext(Util.Try(next(End)))
+          getNext(Util.Try(cont.continue))
 
         case Publish(is, cb) =>
           publish(is)
@@ -213,7 +214,7 @@ private[stream] object WriterTopic {
         case Publish(_, cb)           => S(cb(-\/(Terminated(rsn))))
         case Fail(_, cb)              => S(cb(\/-(())))
         case Upstream(-\/(_))         => //no-op
-        case Upstream(\/-((_, next))) => S(Util.Try(next(Kill)).runAsync(_ => ()))
+        case Upstream(\/-((_, cont))) => S((Halt(Kill) +: cont).runAsync(_ => ()))
       })
     })(S)
 
