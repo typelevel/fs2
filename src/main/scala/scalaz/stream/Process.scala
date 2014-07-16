@@ -289,14 +289,15 @@ sealed trait Process[+F[_], +O]
    * Causes this process to be terminated immediatelly with `Kill` cause,
    * giving chance for any cleanup actions to be run
    */
-  final def kill: Process[F, Nothing] = {
-    //todo: revisit with new `Step` implementation
-    this.suspendStep flatMap {
-      case Step(Emit(os),cont)          => (Halt(Kill) +: cont).drain
-      case Step(Await(req, rcv), cont)  => Try(rcv(left(Kill)).run +: cont).drain
-      case hlt@Halt(rsn)                => hlt.causedBy(Kill)
-    }
-  }
+  final def kill: Process[F, Nothing] = (this match {
+    // Note: We cannot use `step` since (halt ++ p).kill != p.kill.
+    case Halt(rsn) => Halt(rsn.causedBy(Kill))
+    case Emit(_) => Halt(Kill)
+    case Await(_, rcv) => Try(rcv(left(Kill)).run)
+    case Append(Halt(rsn), stack) => Append(Halt(rsn.causedBy(Kill)), stack)
+    case Append(Emit(_), stack) => Append(Halt(Kill), stack)
+    case Append(Await(_, rcv), stack) => Try(rcv(left(Kill)).run) +: Cont(stack)
+  }).drain
 
   /**
    * Run `p2` after this `Process` completes normally, or in the event of an error.
