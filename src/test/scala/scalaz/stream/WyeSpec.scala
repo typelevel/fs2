@@ -179,17 +179,17 @@ object WyeSpec extends  Properties("Wye"){
   // checks we are safe on thread stack even after emitting million values
   // non-deterministically from both sides
   property("merge.million") = secure {
-    val count = 100000
+    val count = 1000000
     val m =
       (Process.range(0,count ) merge Process.range(0, count)).flatMap {
         (v: Int) =>
           if (v % 1000 == 0) {
-            val e = new java.lang.Exception 
-            emit(e.getStackTrace.length)
+            val e = new java.lang.Exception
+            emit(Thread.currentThread().getStackTrace.size)
           } else {
             halt
           }
-      }.fold(0)(_ max _)
+      }
 
     val result = m.runLog.timed(180000).run
     (result.exists(_ > 100) == false) &&
@@ -218,7 +218,7 @@ object WyeSpec extends  Properties("Wye"){
           } else {
             halt
           }
-      }.fold(0)(_ max _)
+      }
 
     val result = m.runLog.timed(300000).run
 
