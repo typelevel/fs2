@@ -160,6 +160,45 @@ object ProcessSpec extends Properties("Process") {
       ("after await" |: !afterAwait)
   }
 
+  property("cleanup isn't interrupted in the middle") = secure {
+    // Process p is killed in the middle of `cleanup` and we expect:
+    // - cleanup is not interrupted
+    var cleaned = false
+    val cleanup = eval(Task.delay{ 1 }) ++ eval_(Task.delay(cleaned = true))
+    val p = (halt onComplete cleanup)
+    val res = p.take(1).runLog.run.toList
+    ("result" |: res == List(1)) &&
+      ("cleaned" |: cleaned)
+  }
+
+  property("cleanup propagates Kill") = secure {
+    // Process p is killed in the middle of `cleanup` and we expect:
+    // - cleanup is not interrupted
+    // - Kill is propagated to `++`
+    var cleaned = false
+    var called = false
+    val cleanup = emit(1) ++ eval_(Task.delay(cleaned = true))
+    val p = (emit(0) onComplete cleanup) ++ eval_(Task.delay(called = true))
+    val res = p.take(2).runLog.run.toList
+    ("res" |: res == List(0, 1)) &&
+      ("cleaned" |: cleaned) &&
+      ("called" |: !called)
+  }
+
+  property("asFinalizer") = secure {
+    import TestUtil._
+    var called = false
+    (emit(1) ++ eval_(Task.delay{ called = true })).asFinalizer.kill.expectedCause(_ == Kill).run.run
+    called
+  }
+
+  property("asFinalizer, pipe") = secure {
+    var cleaned = false
+    val cleanup = emit(1) ++ eval_(Task.delay(cleaned = true))
+    cleanup.asFinalizer.take(1).run.run
+    cleaned
+  }
+
   property("pipe can emit when predecessor stops") = secure {
     import TestUtil._
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
