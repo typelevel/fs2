@@ -132,7 +132,6 @@ object tee {
   def feed1R[I, I2, O](i2: I2)(t: Tee[I, I2, O]): Tee[I, I2, O] =
     feedR(Vector(i2))(t)
 
-
   /**
    * Signals, that _left_ side of tee terminated.
    * That causes all succeeding AwaitL to terminate with `cause` giving chance
@@ -140,10 +139,10 @@ object tee {
    */
   def disconnectL[I, I2, O](cause: EarlyCause)(tee: Tee[I, I2, O]): Tee[Nothing, I2, O] = {
     tee.step match {
-      case Step(emt@Emit(_), cont) => emt onHalt { rsn => disconnectL(cause)(Halt(rsn) +: cont) }
+      case Step(emt@Emit(_), cont) => emt +: cont.extend(disconnectL(cause)(_))
       case Step(AwaitL(rcv), cont) => suspend(disconnectL(cause)(rcv(left(cause)) +: cont))
       case Step(awt@AwaitR(rcv), cont) => awt.extend(p => disconnectL[I,I2,O](cause)(p +: cont))
-      case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
+      case hlt@Halt(rsn) => Halt(rsn)
     }
   }
 
@@ -155,10 +154,10 @@ object tee {
    */
   def disconnectR[I, I2, O](cause: EarlyCause)(tee: Tee[I, I2, O]): Tee[I, Nothing, O] = {
     tee.step match {
-      case Step(emt@Emit(os), cont) =>  emt onHalt { rsn => disconnectR(cause)(Halt(rsn) +: cont) }
+      case Step(emt@Emit(os), cont) =>  emt +: cont.extend(disconnectR(cause)(_))
       case Step(AwaitR(rcv), cont) => suspend(disconnectR(cause)(rcv(left(cause)) +: cont))
       case Step(awt@AwaitL(rcv), cont) => awt.extend(p => disconnectR[I,I2,O](cause)(p +: cont))
-      case Halt(rsn) => Halt(rsn.causedBy(cause))
+      case Halt(rsn) => Halt(rsn)
     }
   }
 
