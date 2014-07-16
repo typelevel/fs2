@@ -841,12 +841,13 @@ object wye {
             yy = y
             out = haltIfDone(y, left, right, cb)
 
-          case DownDone(cb) =>
-            if (!yy.isHalt) yy = halt
-            left = killLeft(left)
-            right = killRight(right)
-            if (isDone(left) && isDone(right)) S(cb(\/-(())))
-            else out = Some((r: Cause \/ Seq[O]) => cb(\/-(())))
+          case DownDone(cb0) =>
+            if (!yy.isHalt) {
+              val cb1 = Some((r: Cause \/ Seq[O]) => cb0(\/-(())))
+              val (y,cb) = runY(disconnectL(Kill)(disconnectR(Kill)(yy)), cb1)
+              yy = y
+              out = haltIfDone(yy, left, right, cb)
+            }
         }
       })(S)
 

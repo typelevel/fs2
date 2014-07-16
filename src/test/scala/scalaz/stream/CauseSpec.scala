@@ -361,4 +361,139 @@ object CauseSpec extends Properties("cause") {
   }
 
 
+  property("wye.terminated.wye") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.wye(right)(halt)
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+    (process == Vector())
+    .&& (leftReason == Some(Kill))
+    .&& (rightReason == Some(Kill))
+    .&& (processReason == Some(End))
+  }
+
+
+  property("wye.terminated.wye.onLeft") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var wyeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src.map(_ + 10).repeat onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.wye(right)(awaitL.repeat.asInstanceOf[Wye[Int,Int,Int]].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+    (process == Vector(0,1,2))
+    .&& (leftReason == Some(End))
+    .&& (rightReason == Some(Kill))
+    .&& (wyeReason == Some(Kill))
+    .&& (processReason == Some(End))
+  }
+
+  property("wye.terminated.wye.onRight") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var wyeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src.repeat onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src.map(_ + 10) onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.wye(right)(awaitR.repeat.asInstanceOf[Wye[Int,Int,Int]].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+    println(wyeReason)
+    (process == Vector(10,11,12))
+    .&& (leftReason == Some(Kill))
+    .&& (rightReason == Some(End))
+    .&& (wyeReason == Some(Kill))
+    .&& (processReason == Some(End))
+  }
+
+
+  property("wye.kill.merge.onLeft") = secure {
+    var rightReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var wyeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src ++ Halt(Kill)
+    val right = src.map(_ + 10).repeat onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.wye(right)(wye.merge[Int].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+    (process.filter(_ < 10) == Vector(0,1,2))
+    .&& (rightReason == Some(Kill))
+    .&& (wyeReason == Some(Kill))
+    .&& (processReason == Some(Kill))
+  }
+
+
+  property("wye.kill.merge.onRight") = secure {
+    var leftReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var wyeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src.repeat onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src.map(_ + 10) ++ Halt(Kill)
+
+
+    val process =
+      left.wye(right)(wye.merge[Int].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+
+    (process.filter(_ >= 10) == Vector(10,11,12))
+    .&& (leftReason == Some(Kill))
+    .&& (wyeReason == Some(Kill))
+    .&& (processReason == Some(Kill))
+  }
+
+  property("wye.terminated.wye.onRight") = secure {
+    var leftReason: Option[Cause] = None
+    var rightReason: Option[Cause] = None
+    var pipeReason: Option[Cause] = None
+    var processReason: Option[Cause] = None
+    var wyeReason: Option[Cause] = None
+    val src = Process.range(0,3).toSource
+    val left = src.repeat onHalt{ c => leftReason = Some(c); Halt(c)}
+    val right = src.repeat onHalt{ c => rightReason = Some(c); Halt(c)}
+
+
+    val process =
+      left.wye(right)(wye.merge[Int].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
+      .onHalt{ c => pipeReason = Some(c); Halt(c)}
+      .pipe(take(10))
+      .onHalt{ c => processReason = Some(c); Halt(c)}
+      .runLog.run
+ 
+    (process.size == 10)
+    .&& (leftReason == Some(Kill))
+    .&& (rightReason == Some(Kill))
+    .&& (wyeReason == Some(Kill))
+    .&& (pipeReason == Some(Kill))
+    .&& (processReason == Some(End))
+  }
+
+
 }
