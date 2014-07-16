@@ -21,8 +21,7 @@ sealed trait Cause {
       case (Kill, End | Kill)         => Kill
       case (End | Kill, err@Error(_)) => err
       case (err@Error(_), End | Kill) => err
-      case (Error(rsn1), Error(rsn2))
-        if rsn1 == rsn2                => Error(rsn1)
+      case (Error(rsn1), Error(rsn2)) if rsn1 == rsn2 => this
       case (Error(rsn1), Error(rsn2)) => Error(CausedBy(rsn1, rsn2))
     }
   }

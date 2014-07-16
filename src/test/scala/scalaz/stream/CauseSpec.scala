@@ -53,9 +53,6 @@ object CauseSpec extends Properties("cause") {
   }
 
   property("pipe.terminated.p1.with.upstream") = secure {
-    //source is one chunk that means it terminate at same
-    //time as the pipe transducer.
-    //as such the reason for termination of upstream is End
     val source = emitAll(Seq(1,2,3)).toSource
     var upReason: Option[Cause] = None
     var downReason: Option[Cause] = None
@@ -68,7 +65,7 @@ object CauseSpec extends Properties("cause") {
 
 
     (result == Vector(1,2))
-    .&&(upReason == Some(End))
+    .&&(upReason == Some(Kill)) //onHalt which remains in the pipe's source gets Kill
     .&&(downReason == Some(End))
   }
 
@@ -233,7 +230,7 @@ object CauseSpec extends Properties("cause") {
 
     (process == Vector(0,10,1,11,2,12))
     .&& (leftReason == Some(End))
-    .&& (rightReason == Some(End))
+    .&& (rightReason == Some(Kill)) //onHalt which remains on the right side gets Kill
     .&& (processReason == Some(End))
     .&& (teeReason == Some(Kill)) //killed due left input exhausted awaiting left branch
   }
