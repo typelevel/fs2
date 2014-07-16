@@ -113,30 +113,34 @@ object TeeSpec extends Properties("Tee") {
       b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
   }
 
+  implicit class Next[F[_],O](val p: Process[F,O]) extends AnyVal {
+    def next[F2[x] >: F[x],O2 >: O](p2: Process[F2,O2]): Process[F2,O2] = p.onHalt {cause => p2.causedBy(cause) }
+  }
+
   property("tee can await right side and emit when left side stops") = secure {
     import TestUtil._
-    val t: Tee[Int, String, Any] = tee.passL[Int] onComplete emit(2) onComplete tee.passR[String] onComplete emit(true)
+    val t: Tee[Int, String, Any] = tee.passL[Int] next emit(2) next tee.passR[String] next emit(true)
     val r = emit("a") ++ emit("b")
     val res = List(1, 2, "a", "b", true)
     ("normal termination" |: emit(1).tee(r)(t).toList == res) &&
-      ("kill" |: (emit(1) ++ Halt(Kill)).tee(r)(t).expectedCause(_ == Kill).toList == res) &&
+      ("kill" |: (emit(1) ++ Halt(Kill)).tee(r)(t).toList == res) &&
       ("failure" |: (emit(1) ++ fail(Err)).tee(r)(t).expectedCause(_ == Error(Err)).toList == res)
   }
 
   property("tee can await left side and emit when right side stops") = secure {
     import TestUtil._
-    val t: Tee[String, Int, Any] = tee.passR[Int] onComplete emit(2) onComplete tee.passL[String] onComplete emit(true)
+    val t: Tee[String, Int, Any] = tee.passR[Int] next emit(2) next tee.passL[String] next emit(true)
     val l = emit("a") ++ emit("b")
     val res = List(1, 2, "a", "b", true)
     ("normal termination" |: l.tee(emit(1))(t).toList == res) &&
-      ("kill" |: l.tee(emit(1) ++ Halt(Kill))(t).expectedCause(_ == Kill).toList == res) &&
+      ("kill" |: l.tee(emit(1) ++ Halt(Kill))(t).toList == res) &&
       ("failure" |: l.tee(emit(1) ++ fail(Err))(t).expectedCause(_ == Error(Err)).toList == res)
   }
 
   property("tee exceptions") = secure {
     import TestUtil._
-    val leftFirst: Tee[Int, Int, Any] = tee.passL[Int] onComplete tee.passR[Int] onComplete emit(3)
-    val rightFirst: Tee[Int, Int, Any] = tee.passR[Int] onComplete tee.passL[Int] onComplete emit(3)
+    val leftFirst: Tee[Int, Int, Any] = tee.passL[Int] next tee.passR[Int] next emit(3)
+    val rightFirst: Tee[Int, Int, Any] = tee.passR[Int] next tee.passL[Int] next emit(3)
     val l = emit(1) ++ fail(Bwahahaa)
     val r = emit(2) ++ fail(Bwahahaa2)
     ("both fail - left first" |: l.tee(r)(leftFirst).expectedCause(_ == Error(CausedBy(Bwahahaa2, Bwahahaa))).toList == List(1, 2, 3)) &&
