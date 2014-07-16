@@ -328,7 +328,7 @@ protected[stream] object Junction {
 
       // reference is ready to get more `B`
       // this either supplies given callback or registers
-      // callback to be calles on `push` or `done`
+      // callback to be called on `push` or `done`
       def ready(cb: (Throwable \/ Seq[A]) => Unit)(implicit S: Strategy) = {
         state = state.fold(
           q =>
@@ -346,7 +346,7 @@ protected[stream] object Junction {
 
           , _ => {
             // this is invalid state cannot have more than one callback
-            // new callback is failed immediatelly
+            // new callback is failed immediately
             S(cb(left(new Exception("Only one callback allowed"))))
             state
           }
@@ -474,7 +474,7 @@ protected[stream] object Junction {
         case More(ref: UpRefInstance)          =>
           jx = jx.copy(upReady = jx.upReady.filterNot(_ == ref))
           ref.next(actor)
-        case More(_) => //bacuse of pattern match warning
+        case More(_) => //because of pattern match warning
         case WriteO(so, ref: DownRefOInstance) =>
           jx = jx.copy(downReadyO = jx.downReadyO.filterNot(_ == ref))
           ref.push(so)
@@ -753,7 +753,7 @@ protected[stream] object Junction {
  * Please see [[scalaz.stream.merge.JunctionStrategies]] for more details.
  *
  * Processes that push to Junction are called `upstream` processes and processes
- * that take from the the merge are called `downstream` processes.
+ * that take from the merge are called `downstream` processes.
  *
  * The Junction starts when at least one `downstream` Process is run, and will
  * stop once `JunctionStrategy` stops.
@@ -789,7 +789,7 @@ trait Junction[+W, -I, +O] {
    */
   def receiveAll(si: Seq[I]): Task[Unit]
 
-  /** Helper for receiveing only one `I`. See `receiveAll` **/
+  /** Helper for receiving only one `I`. See `receiveAll` **/
   def receiveOne(i: I): Task[Unit] = receiveAll(List(i))
 
   /**

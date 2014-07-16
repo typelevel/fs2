@@ -34,7 +34,7 @@ object JournaledStreams extends Properties("journaled-streams") {
 
   case class Journal[F[_],S,I](
     commit: Sink[F,S],
-    commited: Process[F,S],
+    committed: Process[F,S],
     reset: Sink[F,Unit],
     recover: Sink[F,Unit],
     log: Sink[F,I],
@@ -45,7 +45,7 @@ object JournaledStreams extends Properties("journaled-streams") {
 
   def transaction[F[_],S,I,O](
     j: Transaction[S,I,O])(input: Process[F,I])(l: Journal[F,S,I]): Process[F,O] =
-    (l.logged ++ input.observe(l.log)).tee(l.commited)(j).flatMap {
+    (l.logged ++ input.observe(l.log)).tee(l.committed)(j).flatMap {
       case \/-(o) => Process.emit(o)
       case -\/(e) => e match {
         case Recover => (Process.emitSeq[F,Unit](List(())) to l.recover).drain
@@ -80,7 +80,7 @@ object JournaledStreams extends Properties("journaled-streams") {
   def commit[S](s: S): Process[Nothing,Entry[S] \/ Nothing] = 
     tell(Commit(s)) 
 
-  /** Tell the driver to reset back to the last commited state. */
+  /** Tell the driver to reset back to the last committed state. */
   val reset: Process[Nothing,Entry[Nothing] \/ Nothing] = 
     tell(Reset)
 

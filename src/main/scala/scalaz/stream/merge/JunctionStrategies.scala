@@ -79,7 +79,7 @@ protected[stream] object JunctionStrategies {
    * Converts Writer1 to JunctionStrategy.
    *
    * Like publish-subscribe merging strategy backed by supplied Writer1.
-   * Any `I` received from upstream will be published to _all_ downstreams on `O` side if emmited by
+   * Any `I` received from upstream will be published to _all_ downstreams on `O` side if emitted by
    * Writer1 as `O` or, to downstreams on `W` side if emitted by Writer1 as `W`.
    *
    * Additionally all `W` downstreams will see last `W` emitted from Writer1. If there is no `W` yet

@@ -52,7 +52,7 @@ trait wye {
    * A `Wye` which echoes the right branch while draining the left,
    * taking care to make sure that the left branch is never more
    * than `maxUnacknowledged` behind the right. For example:
-   * `src.connect(snk)(observe(10))` will output the the same thing
+   * `src.connect(snk)(observe(10))` will output the same thing
    * as `src`, but will as a side effect direct output to `snk`,
    * blocking on `snk` if more than 10 elements have enqueued
    * without a response.
@@ -64,7 +64,7 @@ trait wye {
    * A `Wye` which echoes the left branch while draining the right,
    * taking care to make sure that the right branch is never more
    * than `maxUnacknowledged` behind the left. For example:
-   * `src.connect(snk)(observe(10))` will output the the same thing
+   * `src.connect(snk)(observe(10))` will output the same thing
    * as `src`, but will as a side effect direct output to `snk`,
    * blocking on `snk` if more than 10 elements have enqueued
    * without a response.

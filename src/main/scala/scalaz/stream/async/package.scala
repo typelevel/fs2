@@ -100,7 +100,7 @@ package object async {
    * `Strategy` is not `Strategy.Sequential`, enqueueing is 
    * guaranteed to take constant time, and consumers will be run on
    * a separate logical thread. Current implementation is based on 
-   * `actor.queue`.
+   * `actors.queue`.
    */
   def queue[A](implicit S: Strategy = Strategy.DefaultStrategy): (Queue[A], Process[Task, A]) =
     actors.queue[A] match { case (snk, p) => (actorQueue(snk), p) }
