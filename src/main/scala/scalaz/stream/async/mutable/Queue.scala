@@ -3,7 +3,8 @@ package scalaz.stream.async.mutable
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.async.immutable
 import scalaz.stream.{Terminated, Kill, Error, End, Cause, Util, Process, Sink}
-import scalaz.{-\/, \/, \/-}
+import scalaz.{Either3, -\/, \/, \/-}
+import scalaz.\/._
 
 
 /**
@@ -135,24 +136,40 @@ private[stream] object Queue {
     var unAcked: Vector[Throwable \/ Unit => Unit] = Vector.empty
 
     // if at least one GetSize was received will start to accumulate sizes change.
-    var sizes:  Vector[Int] \/ ((Throwable \/ Seq[Int]) => Unit) = -\/(Vector(0))
+    // when defined on left, contains sizes that has to be published to sizes topic
+    // when defined on right, awaiting next change in queue to signal size change
+    // when undefined, signals no subscriber for sizes yet.
+    var sizes:  Option[Vector[Int] \/ ((Throwable \/ Seq[Int]) => Unit)] = None
 
     // signals to any callback that this queue is closed with reason
     def signalClosed[B](cb: Throwable \/ B => Unit) =
       closed.foreach(rsn => S(cb(-\/(Terminated(rsn)))))
 
     // signals that size has been changed.
-    def signalSize(sz: Int): Unit = sizes.fold(
-      szs => {  sizes = -\/(szs :+ sz) }
-      , cb => { S(cb(\/-(Seq(sz)))) ; sizes = -\/(Vector.empty[Int]) }
-    )
+    // either keep the last size or fill the callback
+    // only updates if sizes != None
+    def signalSize(sz: Int): Unit = {
+      sizes = sizes.map( cur =>
+        left(cur.fold (
+            szs => { szs :+ sz }
+            , cb => { S(cb(\/-(Seq(sz)))) ; Vector.empty[Int] }
+          ))
+      )
+    }
+
+
+
 
     // publishes single size change
     def publishSize(cb: (Throwable \/ Seq[Int]) => Unit): Unit = {
-      sizes match {
-        case -\/(v) if v.nonEmpty => S(cb(\/-(v))); sizes = -\/(Vector.empty[Int])
-        case _                    => sizes = \/-(cb)
-      }
+      sizes =
+        sizes match {
+          case Some(sz) => sz match {
+            case -\/(v) if v.nonEmpty => S(cb(\/-(v))); Some(-\/(Vector.empty[Int]))
+            case _                    => Some(\/-(cb))
+          }
+          case None => S(cb(\/-(Seq(queued.size)))); Some(-\/(Vector.empty[Int]))
+        }
     }
 
     //dequeue one element from the queue
@@ -197,12 +214,12 @@ private[stream] object Queue {
       closed = Some(cause)
       if (queued.nonEmpty && cause == End) {
         unAcked.foreach(cb => S(cb(-\/(Terminated(cause)))))
-        queued = Vector.empty
       } else {
         (consumers ++ unAcked).foreach(cb => S(cb(-\/(Terminated(cause)))))
         consumers = Vector.empty
-        sizes.foreach(cb => S(cb(-\/(Terminated(cause)))))
-        sizes = -\/(Vector.empty)
+        sizes.flatMap(_.toOption).foreach(cb => S(cb(-\/(Terminated(cause)))))
+        sizes = None
+        queued = Vector.empty
       }
       unAcked = Vector.empty
       S(cb(\/-(())))
@@ -210,7 +227,7 @@ private[stream] object Queue {
 
 
     val actor: Actor[M] = Actor({ (m: M) =>
-      Util.debug(s"### QUE m: $m | cls: $closed | sizes $sizes")
+      Util.debug(s"### QUE m: $m | cls: $closed | sizes $sizes, | queued $queued")
       if (closed.isEmpty) m match {
         case Dequeue(cb)     => dequeueOne(cb)
         case Enqueue(as, cb) => enqueueOne(as, cb)

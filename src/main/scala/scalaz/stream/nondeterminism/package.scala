@@ -67,7 +67,11 @@ package object nondeterminism {
         })
 
       // fails the signal and queue with given reason
-      def fail(cause: Cause): Unit = {
+      def fail(cause0: Cause): Unit = {
+        val cause = cause0 match {
+          case Error(Terminated(Kill)) => Kill
+          case _ => cause0
+        }
         state = Either3.left3(cause)
         (for {
           _ <- q.failWithCause(cause)
@@ -94,8 +98,14 @@ package object nondeterminism {
             //todo: kill behaviour -> propagate kill
             //runs the process with a chance to interrupt it using signal `done`
             //interrupt is done via setting the done to `true`
+            //note that here we convert `Kill` to exception to distinguish form normal and
+            //killed behaviour of upstream termination
             done.discrete.wye(p)(wye.interrupt)
             .to(q.enqueue)
+            .onHalt{
+              case Kill => Halt(Error(Terminated(Kill)))
+              case cause => Halt(cause)
+            }
             .run.runAsync { res =>
               actor ! Finished(res)
             }
@@ -113,6 +123,7 @@ package object nondeterminism {
           case Finished(-\/(rsn)) =>
             opened = opened - 1
             fail(state match {
+              case Left3(End) => Error(rsn)
               case Left3(rsn0) => rsn0
               case Middle3(interrupt) => interrupt(Kill); Error(rsn)
               case Right3(cont) => S((Halt(Kill) +: cont).run.runAsync(_ => ())); Error(rsn)

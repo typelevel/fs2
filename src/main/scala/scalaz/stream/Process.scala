@@ -1139,21 +1139,14 @@ object Process {
      * action. To allow for concurrent evaluation, use `sequence`
      * or `gather`.
      *
-     * If evaluation of `F` results to `End` the evaluation continues by next `F`.
+     * If evaluation of `F` results to `Terminated(cause)`
+     * the evaluation of the stream is terminated with `cause`
      */
     def eval: Process[F, O] = {
-      self.step match {
-        case Step(Emit(fos),cont)       =>
-          fos.foldLeft(emitAll(Seq.empty[O]): Process[F, O])(
-            (p, n) => p fby Process.eval(n)
-          ) +: cont.extend(_.eval)
-
-        case Step(awt@Await(_, _), cont) =>
-          awt.extend(_.eval)  +: cont.extend(_.eval)
-
-        case hlt@Halt(rsn)                   => hlt
+      self.flatMap(f=> await(f)(emit)).onHalt {
+        case Error(Terminated(cause)) => Halt(cause)
+        case cause => Halt(cause)
       }
-
     }
 
     /**
