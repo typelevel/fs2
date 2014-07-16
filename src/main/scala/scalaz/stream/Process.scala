@@ -290,14 +290,17 @@ sealed trait Process[+F[_], +O]
    * giving chance for any cleanup actions to be run
    */
   final def kill: Process[F, Nothing] = (this match {
-    // Note: We cannot use `step` since (halt ++ p).kill != p.kill.
+    // Note: We cannot use `step` in the implementation since we want to inject `Kill` exception as soon as possible.
+    // Eg. Let `q` be `halt ++ halt ++ ... ++ p`. `step` reduces `q` to `p` so if `kill` was implemented by `step` then
+    // `q.kill` would be same as `p.kill`. But in our current implementation `q.kill` behaves as
+    // `Halt(Kill) ++ halt ++ ... ++ p` which behaves as `Halt(Kill)` (by the definition of `++`).
     case Halt(rsn) => Halt(rsn.causedBy(Kill))
     case Emit(_) => Halt(Kill)
     case Await(_, rcv) => Try(rcv(left(Kill)).run)
     case Append(Halt(rsn), stack) => Append(Halt(rsn.causedBy(Kill)), stack)
     case Append(Emit(_), stack) => Append(Halt(Kill), stack)
     case Append(Await(_, rcv), stack) => Try(rcv(left(Kill)).run) +: Cont(stack)
-  }).drain
+  }).drain.causedBy(Kill)
 
   /**
    * Run `p2` after this `Process` completes normally, or in the event of an error.
