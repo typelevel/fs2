@@ -844,10 +844,11 @@ object wye {
           case DownDone(cb0) =>
             if (!yy.isHalt) {
               val cb1 = Some((r: Cause \/ Seq[O]) => cb0(\/-(())))
-              val (y,cb) = runY(disconnectL(Kill)(disconnectR(Kill)(yy)), cb1)
+              val (y,cb) = runY(disconnectL(Kill)(disconnectR(Kill)(yy)).kill, cb1)
               yy = y
               out = haltIfDone(yy, left, right, cb)
             }
+            else S(cb0(\/-(())))
         }
       })(S)
 

@@ -483,10 +483,10 @@ object CauseSpec extends Properties("cause") {
     val process =
       left.wye(right)(wye.merge[Int].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
       .onHalt{ c => pipeReason = Some(c); Halt(c)}
-      .pipe(take(10))
+      .pipe(process1.take(10))
       .onHalt{ c => processReason = Some(c); Halt(c)}
       .runLog.run
- 
+
     (process.size == 10)
     .&& (leftReason == Some(Kill))
     .&& (rightReason == Some(Kill))
