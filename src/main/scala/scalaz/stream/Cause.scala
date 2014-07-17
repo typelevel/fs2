@@ -45,6 +45,15 @@ sealed trait Cause {
     case Error(Terminated(cause)) => Halt(cause)
     case cause => Halt(cause)
   }
+
+  /**
+   * Converts this cause to `java.lang.Throwable`
+   */
+  def asThrowable: Throwable = this match {
+    case End => Terminated(End)
+    case Kill => Terminated(Kill)
+    case Error(rsn) => rsn
+  }
 }
 
 /**

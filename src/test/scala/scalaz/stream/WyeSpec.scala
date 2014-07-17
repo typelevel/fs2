@@ -5,6 +5,7 @@ import org.scalacheck.Prop._
 
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process._
+import scalaz.stream.ReceiveY.{HaltR, HaltL, ReceiveR, ReceiveL}
 import scalaz.{\/, -\/, \/-}
 import scala.concurrent.duration._
 import scala.concurrent.SyncVar
@@ -265,5 +266,77 @@ object WyeSpec extends  Properties("Wye"){
       "liftY" |:  pi.pipe(process1.sum).toList == (pi: Process[Task,Int]).wye(ps)(process1.liftY(process1.sum)).runLog.timed(3000).run.toList
     }
   }
+
+  property("attachL/R") = secure {
+    val p = wye.feedR(100 until 110)(
+      wye.feedL(0 until 10)(
+        wye.attachL(process1.id[Int])(
+          wye.attachR(process1.id[Int])(
+            wye.merge
+          )
+        )
+      )
+    )
+    val(out, next) = p.unemit
+    out.toList == ((0 until 10) ++ (100 until 110)).toList
+  }
+
+  property("attachL/R terminate") = secure {
+    var doneL : Option[Cause] = None
+    var doneR : Option[Cause] = None
+
+    val merger = wye.receiveBoth[Int,Int,Int]({
+      case ReceiveL(i) => emit(i)
+      case ReceiveR(i) => emit(i)
+      case HaltL(cause) => doneL = Some(cause); Halt(cause)
+      case HaltR(cause) => doneR = Some(cause); Halt(cause)
+    }).repeat
+
+    val left = wye.feedL(0 until 10)(wye.attachL(process1.take[Int](2))(merger))
+    val right = wye.feedR(100 until 110)(wye.attachR(process1.take[Int](2))(merger))
+
+    val(outL, nextL) = left.unemit
+    val(outR, nextR) = right.unemit
+
+    (doneL == Some(End))
+    .&& (outL == Vector(0,1))
+    .&& (wye.AwaitR.is.unapply(nextL.asInstanceOf[wye.WyeAwaitR[Int,Int,Int]]))
+    .&& (doneR == Some(End))
+    .&& (outR == Vector(100,101))
+    .&& (wye.AwaitL.is.unapply(nextR.asInstanceOf[wye.WyeAwaitL[Int,Int,Int]]))
+
+  }
+
+  property("attachL/R terminate R kill L") = secure {
+    var doneL : Option[Cause] = None
+    var doneR : Option[Cause] = None
+
+    val merger = wye.receiveBoth[Int,Int,Int]({
+      case ReceiveL(i) => emit(i)
+      case ReceiveR(i) => emit(i)
+      case HaltL(cause) => doneL = Some(cause); Halt(cause)
+      case HaltR(cause) => doneR = Some(cause); Halt(cause)
+    }).repeat
+
+    val p =
+      wye.feedL(0 until 10)(
+        wye.attachL(process1.take[Int](2) ++ Halt(Kill))(
+          wye.feedR(100 until 110)(
+            wye.attachR(process1.take[Int](2))(
+              merger
+            )
+          )
+        )
+      )
+
+    val(out, next) = p.unemit
+
+    (doneL == Some(Kill))
+    .&& (doneR == Some(End))
+    .&& (out == Vector(100,101,0,1))
+    .&& (next == Halt(Kill))
+
+  }
+
 
 }
