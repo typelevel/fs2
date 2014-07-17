@@ -266,4 +266,20 @@ object WyeSpec extends  Properties("Wye"){
     }
   }
 
+  property("attachL/R") = secure {
+
+    val p = wye.feedR(100 until 110)(
+      wye.feedL(0 until 10)(
+        wye.attachL(process1.id[Int])(
+          wye.attachR(process1.id[Int])(
+            wye.merge
+          )
+        )
+      )
+    )
+    val(out, next) = p.unemit
+    out.toList == ((0 until 10) ++ (100 until 110)).toList
+  }
+
+
 }
