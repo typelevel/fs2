@@ -168,4 +168,8 @@ object MergeNSpec extends Properties("mergeN") {
     r.size == 2
   }
 
+  property("kill mergeN") = secure {
+    merge.mergeN(Process(Process.repeatEval(Task.now(1)))).kill.run.timed(3000).run
+    true // Test terminates.
+  }
 }
