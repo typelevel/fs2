@@ -1007,10 +1007,10 @@ object Process {
             }
           case Step(Await(rq,rcv), cont) =>
             rq.attempt.flatMap { r =>
-              Try(rcv(EarlyCause(r)).run) +: cont ; go
+              cur = Try(rcv(EarlyCause(r)).run) +: cont ; go
             }
-          case Halt(End) => Task.fail(new Exception("Process terminated normally"))
-          case Halt(Kill) => Task.fail(new Exception("Process was killed"))
+          case Halt(End) => Task.fail(Terminated(End))
+          case Halt(Kill) => Task.fail(Terminated(Kill))
           case Halt(Error(rsn)) => Task.fail(rsn)
         }
       Task.delay(go).flatMap(a => a)
