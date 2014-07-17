@@ -277,4 +277,9 @@ object ProcessSpec extends Properties("Process") {
     }.injectCause(Kill).runLog.run // `injectCause(Kill)` is like `kill` but without `drain`.
     fallbackCausedBy == Some(Kill) && received.isEmpty
   }
+
+ property("pipeO stripW ~= stripW pipe") = secure {
+    val p = logged(range(1, 11).toSource)
+    p.pipeO(sum).stripW.runLog.run == p.stripW.pipe(sum).runLog.run
+  }
 }
