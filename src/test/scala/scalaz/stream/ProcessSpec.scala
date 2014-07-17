@@ -257,4 +257,24 @@ object ProcessSpec extends Properties("Process") {
       case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
     }.map(_._1).toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
+
+  property("kill of drained process terminates") = secure {
+    val effect: Process[Task,Unit] = Process.repeatEval(Task.delay(())).drain
+    effect.kill.runLog.timed(1000).run.isEmpty
+  }
+
+  // `p.suspendStep` propagates `Kill` to `p`
+  property("suspendStep propagates Kill") = secure {
+    var fallbackCausedBy: Option[EarlyCause] = None
+    var received: Option[Int] = None
+    val p = awaitOr(Task.delay(1))({early => fallbackCausedBy = Some(early); halt })({a => received = Some(a); halt })
+    p.suspendStep.flatMap {
+      case Step(p, cont) => (p +: cont).suspendStep.flatMap {
+        case Step(p, cont) => p +: cont
+        case hlt@Halt(_) => hlt
+      }
+      case hlt@Halt(_) => hlt
+    }.injectCause(Kill).runLog.run // `injectCause(Kill)` is like `kill` but without `drain`.
+    fallbackCausedBy == Some(Kill) && received.isEmpty
+  }
 }
