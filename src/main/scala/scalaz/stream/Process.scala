@@ -224,13 +224,7 @@ sealed trait Process[+F[_], +O]
     }
 
   /** Ignore all outputs of this `Process`. */
-  final def drain: Process[F, Nothing] = {
-    this.suspendStep.flatMap {
-      case Step(Emit(_), cont) => cont.continue.drain
-      case Step(awt@Await(_,_), cont) => awt.extend(p => (p +: cont).drain)
-      case hlt@Halt(rsn) => hlt
-    }
-  }
+  final def drain: Process[F, Nothing] = flatMap(_ => halt)
 
   /**
    * Map over this `Process` to produce a stream of `F`-actions,
@@ -1558,7 +1552,6 @@ object Process {
    */
   def repeatEval[F[_], O](f: F[O]): Process[F, O] =
     awaitOr(f)(_.asHalt)(o => emit(o) ++ repeatEval(f))
-
 
   /**
    * Produce `p` lazily, guarded by a single `Append`. Useful if
