@@ -419,7 +419,6 @@ object CauseSpec extends Properties("cause") {
       .onHalt{ c => processReason = Some(c); Halt(c)}
       .runLog.run
 
-    println(wyeReason)
     (process == Vector(10,11,12))
     .&& (leftReason == Some(Kill))
     .&& (rightReason == Some(End))
