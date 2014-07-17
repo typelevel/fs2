@@ -293,8 +293,9 @@ object wye {
                 )
             }
         case hlt@Halt(cause) =>
-          suspend(cause.fold(attachL(hlt)(disconnectL(Kill)(y).swallowKill))(
-           early => attachL(hlt)(disconnectL(early)(y))
+          val ny = rcv(HaltL(cause)) +: cont
+          suspend(cause.fold(attachL(hlt)(disconnectL(Kill)(ny).swallowKill))(
+           early => attachL(hlt)(disconnectL(early)(ny))
           ))
 
       }
@@ -454,7 +455,7 @@ object wye {
          i2 => disconnectL(cause)(rcv(ReceiveR(i2)) +: cont)
         )
 
-      case hlt@Halt(_) => hlt
+      case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
     }
 
   }
@@ -483,7 +484,7 @@ object wye {
            i => disconnectR(cause)(rcv(ReceiveL(i)) +: cont)
           )
 
-        case hlt@Halt(_) => hlt
+        case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
       }
   }
 
