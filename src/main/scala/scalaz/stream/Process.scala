@@ -427,7 +427,7 @@ sealed trait Process[+F[_], +O]
     def go(cur: Process[F, O], acc: Vector[O]): (Seq[O], Process[F, O]) = {
       cur.step match {
         case Step(Emit(os),cont) => go(cont.continue, acc fast_++ os)
-        case Step(awt, _) => (acc,cur)
+        case Step(awt, cont) => (acc,awt +: cont)
         case Halt(rsn) => (acc,Halt(rsn))
       }
     }
