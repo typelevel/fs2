@@ -455,7 +455,7 @@ object wye {
          i2 => disconnectL(cause)(rcv(ReceiveR(i2)) +: cont)
         )
 
-      case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
+      case hlt@Halt(rsn) => Halt(rsn)
     }
 
   }
@@ -484,7 +484,7 @@ object wye {
            i => disconnectR(cause)(rcv(ReceiveL(i)) +: cont)
           )
 
-        case hlt@Halt(rsn) => Halt(rsn.causedBy(cause))
+        case hlt@Halt(rsn) => Halt(rsn)
       }
   }
 

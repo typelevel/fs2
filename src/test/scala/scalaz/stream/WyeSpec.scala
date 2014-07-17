@@ -307,7 +307,7 @@ object WyeSpec extends  Properties("Wye"){
 
   }
 
-  property("attachL/R terminate R kill L") = secure {
+  property("attachL/R terminate R fail L") = secure {
     var doneL : Option[Cause] = None
     var doneR : Option[Cause] = None
 
@@ -320,7 +320,7 @@ object WyeSpec extends  Properties("Wye"){
 
     val p =
       wye.feedL(0 until 10)(
-        wye.attachL(process1.take[Int](2) ++ Halt(Kill))(
+        wye.attachL(process1.take[Int](2) ++ Halt(Error(Bwahahaa)))(
           wye.feedR(100 until 110)(
             wye.attachR(process1.take[Int](2))(
               merger
@@ -331,10 +331,10 @@ object WyeSpec extends  Properties("Wye"){
 
     val(out, next) = p.unemit
 
-    (doneL == Some(Kill))
+    (doneL == Some(Error(Bwahahaa)))
     .&& (doneR == Some(End))
     .&& (out == Vector(100,101,0,1))
-    .&& (next == Halt(Kill))
+    .&& (next == Halt(Error(Bwahahaa)))
 
   }
 
