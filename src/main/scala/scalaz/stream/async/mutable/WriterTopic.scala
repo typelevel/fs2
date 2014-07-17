@@ -1,7 +1,7 @@
 package scalaz.stream.async.mutable
 
 import scalaz.concurrent.{Actor, Strategy, Task}
-import scalaz.stream.Process.{End, Halt, Kill}
+import scalaz.stream.Process.{Cont, Halt}
 import scalaz.stream._
 import scalaz.stream.async.immutable
 import scalaz.{-\/, \/, \/-}
@@ -49,24 +49,28 @@ trait WriterTopic[W, I, O] {
   def publishOne(i: I): Task[Unit]
 
   /**
-   * Will `close` this writer topic. Once `closed` all publishers and subscribers are halted via `Kill`.
-   * When this writer topic is `closed` or `failed` this is no-op
-   *
-   * The resulting task is completed _after_ all publishers and subscribers finished
+   * Will `close` this writer topic. Once `closed` all publishers and subscribers are halted via `End`.
    *
    * @return
    */
-  def close: Task[Unit] = fail(End)
+  def close: Task[Unit] = failWithCause(End)
 
   /**
-   * Will `fail` this writer topic. Once `failed` all publishers and subscribers will terminate with cause `err`.
-   * When this writer topic is `finished` or `failed` this is no-op
+   * Kills the writer topic. All subscribers and publishers are immediately terminated with `Kill` cause.
+   * @return
+   */
+  def kill: Task[Unit] = failWithCause(Kill)
+
+  /**
+   * Will `fail` this writer topic. All subscribers and publishers are immediately terminated with `Error` cause.
    *
    * The resulting task is completed _after_ all publishers and subscribers finished
    *
    */
-  def fail(err: Throwable): Task[Unit]
+  def fail(err: Throwable): Task[Unit] = failWithCause(Error(err))
 
+
+  private[stream] def failWithCause(c:Cause): Task[Unit]
 
 }
 
@@ -81,9 +85,9 @@ private[stream] object WriterTopic {
     case class Subscribe(sub: Subscription, cb: (Throwable \/ Unit) => Unit) extends M
     case class Ready(sub: Subscription, cb: (Throwable \/ Seq[W \/ O]) => Unit) extends M
     case class UnSubscribe(sub: Subscription, cb: (Throwable \/ Unit) => Unit) extends M
-    case class Upstream(result: Throwable \/ (Seq[I], Throwable => Process[Task, I])) extends M
+    case class Upstream(result: Cause \/ (Seq[I], Cont[Task,I])) extends M
     case class Publish(is: Seq[I], cb: Throwable \/ Unit => Unit) extends M
-    case class Fail(rsn: Throwable, cb: Throwable \/ Unit => Unit) extends M
+    case class Fail(cause: Cause, cb: Throwable \/ Unit => Unit) extends M
 
     class Subscription(var state: (Vector[W \/ O]) \/ ((Throwable \/ Seq[W \/ O]) => Unit)) {
 
@@ -102,16 +106,16 @@ private[stream] object WriterTopic {
         }
       }
 
-      def close(rsn: Throwable): Unit = state match {
+      def close(cause: Cause): Unit = state match {
         case \/-(cb) =>
           state = -\/(Vector.empty)
-          S(cb(-\/(rsn)))
+          S(cb(-\/(Terminated(cause))))
 
         case _ => // no-op
       }
 
-      def flushOrClose(rsn: Throwable, cb: (Throwable \/ Seq[W \/ O]) => Unit): Unit = state match {
-        case -\/(v) if v.isEmpty => state = \/-(cb); close(rsn)
+      def flushOrClose(cause: Cause, cb: (Throwable \/ Seq[W \/ O]) => Unit): Unit = state match {
+        case -\/(v) if v.isEmpty => state = \/-(cb); close(cause)
         case -\/(v)              => getOrAwait(cb)
         case \/-(cb)             => //impossible
       }
@@ -126,24 +130,20 @@ private[stream] object WriterTopic {
     var lastW: Option[W] = None
 
     //contains an reason of termination
-    var closed: Option[Throwable] = None
+    var closed: Option[Cause] = None
 
-    var upState: Option[Throwable \/ (Throwable => Unit)] = None
+    // state of upstream. Upstream is running and left is interrupt, or upstream is stopped.
+    var upState: Option[Cause \/ (Cause => Unit)] = None
 
     var w: Writer1[W, I, O] = writer
 
-    def fail(rsn: Throwable) = {
-      closed = Some(rsn)
+    def fail(cause: Cause): Unit = {
+      closed = Some(cause)
       upState.collect { case \/-(interrupt) => interrupt(Kill)}
-      w.disconnect.unemit match {
-        case (wos,next) =>
-          w = next
-          if (wos.nonEmpty) subscriptions.foreach(_.publish(wos))
-          next match {
-            case Halt(rsnW1) if rsn == End => subscriptions.foreach(_.close(rsnW1))
-            case _ => subscriptions.foreach(_.close(rsn))
-          }
-      }
+      val (wos,next) = w.disconnect(cause.kill).unemit
+      w = next
+      if (wos.nonEmpty) subscriptions.foreach(_.publish(wos))
+      subscriptions.foreach(_.close(cause))
       subscriptions = Vector.empty
     }
 
@@ -170,7 +170,7 @@ private[stream] object WriterTopic {
     }
 
     actor = Actor[M](m => {
-      debug(s">>> IN:  m: $m  | sub: $subscriptions | lw: $lastW | clsd: $closed | upState: $upState | wrtr: $writer")
+      debug(s">>> IN:  m: $m  | sub: $subscriptions | lw: $lastW | clsd: $closed | upState: $upState | wrtr: $writer | hOs: $haltOnSource")
       closed.fold(m match {
         case Subscribe(sub, cb) =>
           subscriptions = subscriptions :+ sub
@@ -194,9 +194,9 @@ private[stream] object WriterTopic {
           if (haltOnSource || rsn != End) fail(rsn)
           upState = Some(-\/(rsn))
 
-        case Upstream(\/-((is, next))) =>
+        case Upstream(\/-((is, cont))) =>
           publish(is)
-          getNext(Util.Try(next(End)))
+          getNext(Util.Try(cont.continue))
 
         case Publish(is, cb) =>
           publish(is)
@@ -208,13 +208,13 @@ private[stream] object WriterTopic {
           S(cb(\/-(())))
 
       })(rsn => m match {
-        case Subscribe(_, cb)         => S(cb(-\/(rsn)))
+        case Subscribe(_, cb)         => S(cb(-\/(Terminated(rsn))))
         case UnSubscribe(_, cb)       => S(cb(\/-(())))
         case Ready(sub, cb)           => sub.flushOrClose(rsn,cb)
-        case Publish(_, cb)           => S(cb(-\/(rsn)))
+        case Publish(_, cb)           => S(cb(-\/(Terminated(rsn))))
         case Fail(_, cb)              => S(cb(\/-(())))
         case Upstream(-\/(_))         => //no-op
-        case Upstream(\/-((_, next))) => S(Try(next(Kill)).runAsync(_ => ()))
+        case Upstream(\/-((_, cont))) => S((Halt(Kill) +: cont).runAsync(_ => ()))
       })
     })(S)
 
@@ -222,7 +222,7 @@ private[stream] object WriterTopic {
     new WriterTopic[W, I, O] {
       def publish: Sink[Task, I] = Process.constant(publishOne _)
       def publishOne(i: I): Task[Unit] = Task.async { cb => actor ! Publish(Seq(i), cb) }
-      def fail(err: Throwable): Task[Unit] = Task.async { cb => actor ! Fail(err, cb) }
+      def failWithCause(cause: Cause): Task[Unit] = Task.async { cb => actor ! Fail(cause, cb) }
 
       def subscribe: Writer[Task, W, O] = Process.suspend {
 
@@ -252,7 +252,6 @@ private[stream] object WriterTopic {
           .wye(Process.repeatEval(Task.now(false)))(wye.mergeHaltL)
       }
     }
-
   }
 
 }

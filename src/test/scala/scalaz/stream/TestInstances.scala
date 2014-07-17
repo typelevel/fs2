@@ -7,6 +7,7 @@ import scodec.bits.ByteVector
 
 import Process._
 import ReceiveY._
+import scalaz.concurrent.Task
 
 object TestInstances {
   implicit val arbitraryByteVector: Arbitrary[ByteVector] =
@@ -26,4 +27,7 @@ object TestInstances {
 
   implicit def equalProcess0[A: Equal]: Equal[Process0[A]] =
     Equal.equal(_.toList == _.toList)
+
+  implicit def equalProcessTask[A:Equal]: Equal[Process[Task,A]] =
+    Equal.equal(_.runLog.attemptRun == _.runLog.attemptRun)
 }

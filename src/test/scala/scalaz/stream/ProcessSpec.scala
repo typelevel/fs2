@@ -13,7 +13,6 @@ import org.scalacheck.{Gen, Arbitrary, Properties}
 import scalaz.concurrent.{Task, Strategy}
 import Util._
 import process1._
-import scalaz.stream.Process.Kill
 import Process._
 import TestInstances._
 import scala.concurrent.duration._
@@ -135,46 +134,82 @@ object ProcessSpec extends Properties("Process") {
   }
 
   property("kill executes cleanup") = secure {
+    import TestUtil._
     val cleanup = new SyncVar[Int]
     val p: Process[Task, Int] = halt onComplete(eval_(Task.delay { cleanup.put(1) }))
-    p.kill.run.run
+    p.kill.expectedCause(_ == Kill).run.run
     cleanup.get(500).get == 1
   }
 
   property("kill") = secure {
-    ("repeated-emit" |: emit(1).repeat.kill.toList == List()) &&
-    ("repeated-emit-exception" |: {
-      try { emit(1).repeat.killBy(FailWhale).toList; false }
-      catch { case FailWhale => true }
-    })
+    import TestUtil._
+    ("repeated-emit" |: emit(1).repeat.kill.expectedCause(_ == Kill).toList == List())
   }
 
   property("kill ++") = secure {
+    import TestUtil._
     var afterEmit = false
     var afterHalt = false
     var afterAwait = false
     def rightSide(a: => Unit): Process[Task, Int] = Process.awaitOr(Task.delay(a))(_ => rightSide(a))(_ => halt)
-    (emit(1) ++ rightSide(afterEmit = true)).kill.run.run
-    (halt ++ rightSide(afterHalt = true)).kill.run.run
-    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.run.run
+    (emit(1) ++ rightSide(afterEmit = true)).kill.expectedCause(_ == Kill).run.run
+    (halt ++ rightSide(afterHalt = true)).kill.expectedCause(_ == Kill).run.run
+    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.expectedCause(_ == Kill).run.run
     ("after emit" |: !afterEmit) &&
       ("after halt" |: !afterHalt) &&
       ("after await" |: !afterAwait)
   }
 
+  property("cleanup isn't interrupted in the middle") = secure {
+    // Process p is killed in the middle of `cleanup` and we expect:
+    // - cleanup is not interrupted
+    var cleaned = false
+    val cleanup = eval(Task.delay{ 1 }) ++ eval_(Task.delay(cleaned = true))
+    val p = (halt onComplete cleanup)
+    val res = p.take(1).runLog.run.toList
+    ("result" |: res == List(1)) &&
+      ("cleaned" |: cleaned)
+  }
+
+  property("cleanup propagates Kill") = secure {
+    // Process p is killed in the middle of `cleanup` and we expect:
+    // - cleanup is not interrupted
+    // - Kill is propagated to `++`
+    var cleaned = false
+    var called = false
+    val cleanup = emit(1) ++ eval_(Task.delay(cleaned = true))
+    val p = (emit(0) onComplete cleanup) ++ eval_(Task.delay(called = true))
+    val res = p.take(2).runLog.run.toList
+    ("res" |: res == List(0, 1)) &&
+      ("cleaned" |: cleaned) &&
+      ("called" |: !called)
+  }
+
+  property("asFinalizer") = secure {
+    import TestUtil._
+    var called = false
+    (emit(1) ++ eval_(Task.delay{ called = true })).asFinalizer.kill.expectedCause(_ == Kill).run.run
+    called
+  }
+
+  property("asFinalizer, pipe") = secure {
+    var cleaned = false
+    val cleanup = emit(1) ++ eval_(Task.delay(cleaned = true))
+    cleanup.asFinalizer.take(1).run.run
+    cleaned
+  }
+
   property("pipe can emit when predecessor stops") = secure {
+    import TestUtil._
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
     ("normal termination" |: (emit(1) |> p1).toList == List(1, 2, 3)) &&
-      ("kill" |: ((emit(1) ++ fail(Kill)) |> p1).toList == List(1, 2, 3)) &&
-      ("failure" |: ((emit(1) ++ fail(FailWhale)) |> p1).onHalt {
-        case FailWhale => halt
-        case _ => fail(FailWhale)
-      }.toList == List(1, 2, 3))
+      ("kill" |: ((emit(1) ++ Halt(Kill)) |> p1).expectedCause(_ == Kill).toList == List(1, 2, 3)) &&
+      ("failure" |: ((emit(1) ++ fail(FailWhale)) |> p1).expectedCause(_ == Error(FailWhale)).toList == List(1, 2, 3))
   }
 
   property("feed1, disconnect") = secure {
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
-    p1.feed1(5).feed1(4).disconnect.unemit._1 == Seq(5, 4, 2, 3)
+    p1.feed1(5).feed1(4).disconnect(Kill).unemit._1 == Seq(5, 4, 2, 3)
   }
 
   property("pipeIn") = secure {
@@ -182,7 +217,7 @@ object ProcessSpec extends Properties("Process") {
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
 
     (Process.range(0,10).liftIO to sink).run.run
-    val res = q.dequeue.take(10).runLog.run.toList
+    val res = q.dequeue.take(10).runLog.timed(3000).run.toList
     q.close.run
 
     res === (0 until 10).map(_.toString).toList

@@ -6,7 +6,6 @@ import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
 import scalaz.concurrent.Task
-import scalaz.stream.Process.End
 import scalaz.stream.async.mutable.Signal
 import scalaz.syntax.monad._
 import scalaz.{-\/, Nondeterminism, \/, \/-}
@@ -124,7 +123,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
         (if (l.size % 2 == 0) {
           (result.get.isRight == true) :| "result did not fail" &&
             (result.get.toOption.get.size >= messages.size) :| "items was emitted" &&
-            (signal.get.attemptRun == -\/(End)) :| "Signal is terminated"
+            (signal.get.attemptRun == -\/(Terminated(End))) :| "Signal is terminated"
         } else {
           (result.get == -\/(Bwahahaa)) :| s"Exception was raised correctly : $result, term ${l.size % 2 == 0 }" &&
             (signal.get.attemptRun == -\/(Bwahahaa)) :| "Signal is failed"

@@ -4,7 +4,6 @@ import org.scalacheck.Prop._
 import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
-import scalaz.stream.Process.End
 import scalaz.{-\/, \/-, \/}
 
 object QueueSpec extends Properties("queue") {
@@ -38,12 +37,14 @@ object QueueSpec extends Properties("queue") {
       val sizes = new SyncVar[Throwable \/ IndexedSeq[Int]]
       t3.runAsync(sizes.put)
 
+      Thread.sleep(100) // delay to give chance for the `size` signal to register
+
       t1.run
 
       val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
       t2.runAsync(values.put)
 
-      Thread.sleep(100) // delay to give chance for the `size` signal to register
+      Thread.sleep(100) // delay to give chance for the `size` signal to collect all values
 
       q.close.run
 
@@ -104,7 +105,7 @@ object QueueSpec extends Properties("queue") {
     val subscribeClosed = t3.attemptRun
 
     (dequeued.get(3000) == Some(\/-(Vector(1,2,3)))) :| s"Queue was terminated ${dequeued.get(0)}" &&
-      (publishClosed == -\/(End)) :| s"Publisher is closed before elements are drained $publishClosed" &&
+      (publishClosed == -\/(Terminated(End))) :| s"Publisher is closed before elements are drained $publishClosed" &&
       ((subscribeClosed == \/-(Vector()))) :| s"Subscriber is closed after elements are drained $subscribeClosed"
 
 

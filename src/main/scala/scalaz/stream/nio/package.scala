@@ -136,7 +136,7 @@ package object nio {
           def completed(result: Integer, attachment: Void): Unit = {
             buff.flip()
             val bs = ByteVector(buff)
-            if (result < 0) cb(-\/(End))
+            if (result < 0) cb(-\/(Terminated(End)))
             else cb(\/-(bs))
           }
 

@@ -91,8 +91,8 @@ object MergeNSpec extends Properties("mergeN") {
 
   //merges 10k of streams, each with 100 of elements
   property("merge-million") = secure {
-    val count = 2000
-    val eachSize = 100
+    val count = 1000
+    val eachSize = 1000
 
     val ps =
       emitAll(for (i <- 0 until count) yield {
@@ -101,7 +101,7 @@ object MergeNSpec extends Properties("mergeN") {
 
     val result = merge.mergeN(ps).fold(0)(_ + _).runLast.timed(120000).run
 
-    (result == Some(9900000)) :| s"All items were emitted: $result"
+    (result == Some(499500000)) :| s"All items were emitted: $result"
   }
 
   property("merge-maxOpen") = secure {
@@ -156,11 +156,13 @@ object MergeNSpec extends Properties("mergeN") {
 
   // tests that if one of the processes to mergeN is killed the mergeN is killed as well.
   property("drain-kill-one") = secure {
+    import TestUtil._
     val effect = Process.repeatEval(Task.delay(())).drain
-    val p = Process(1,2) onComplete fail(Kill)
+    val p = Process(1,2) onComplete Halt(Kill)
 
-    val r=
+    val r =
       merge.mergeN(Process(effect,p))
+      .expectedCause(_ == Kill)
       .runLog.timed(3000).run
 
     r.size == 2

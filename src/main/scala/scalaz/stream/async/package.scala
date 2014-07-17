@@ -2,7 +2,7 @@ package scalaz.stream
 
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process.halt
-import scalaz.stream.async.mutable._ 
+import scalaz.stream.async.mutable._
 
 /**
  * Created by pach on 03/05/14.
@@ -67,7 +67,7 @@ package object async {
       def publish: Sink[Task, A] = wt.publish
       def subscribe: Process[Task, A] = wt.subscribeO
       def publishOne(a: A): Task[Unit] = wt.publishOne(a)
-      def fail(err: Throwable): Task[Unit] = wt.fail(err)
+      private[stream] def failWithCause(c: Cause): Task[Unit] = wt.failWithCause(c)
     }
   }
 

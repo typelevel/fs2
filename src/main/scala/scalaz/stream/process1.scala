@@ -1,10 +1,9 @@
 package scalaz.stream
 
-import collection.immutable.Vector
 import java.nio.charset.Charset
+
 import scala.annotation.tailrec
-import scalaz.-\/
-import scalaz.\/-
+import scala.collection.immutable.Vector
 import scalaz.\/._
 import scalaz._
 import scalaz.syntax.equal._
@@ -12,8 +11,8 @@ import scalaz.syntax.equal._
 
 object process1 {
 
-  import Process._
-  import Util._
+  import scalaz.stream.Process._
+  import scalaz.stream.Util._
 
   // nb: methods are in alphabetical order, there are going to be so many that
   // any other order will just going get confusing
@@ -51,7 +50,7 @@ object process1 {
         go(m - 1, acc :+ i)
       }
     }
-    go(n,Vector()) ++ chunk(n)
+    go(n,Vector()) fby chunk(n)
   }
 
 
@@ -125,7 +124,7 @@ object process1 {
   def dropLast[I]: Process1[I, I] =
     dropLastIf(_ => true)
 
-  /** Emits all elemens of the input but skips the last if the predicate is true. */
+  /** Emits all elements of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I, I] = {
     def go(prev: I): Process1[I, I] =
       receive1Or[I,I](if (p(prev)) halt else emit(prev))( i =>
@@ -149,13 +148,15 @@ object process1 {
   def feed[I, O](i: Seq[I])(p: Process1[I, O]): Process1[I, O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[O] , cur: Process1[I, O]  ): Process1[I, O] = {
+      //Util.debug(s"FEED1 start: in: $in | out : $out | cur $cur")
       if (in.nonEmpty) {
         cur.step match {
-          case Cont(Emit(os), next) =>  go(in, out fast_++ os, next(End))
-          case Cont(AwaitP1(rcv), next) => go(in.tail,out,rcv(in.head) onHalt next)
-          case Done(rsn) => emitAll(out).causedBy(rsn)
+          case Step(Emit(os),cont) => go(in, out fast_++ os, cont.continue)
+          case Step(Await1(rcv), cont) => go(in.tail,out,rcv(right(in.head)) +: cont)
+          case Halt(rsn) =>  emitAll(out).causedBy(rsn)
         }
-      } else emitAll(out) ++ cur
+      } else cur.feed(out)
+
     }
 
     go(i, Vector(), p)
@@ -261,7 +262,7 @@ object process1 {
 
   /** Skip all but the last element of the input. */
   def last[I]: Process1[I, I] = {
-    def go(prev: I): Process1[I, I] = receive1(go,emit(prev))
+    def go(prev: I): Process1[I, I] = receive1Or(emit(prev):Process1[I,I])(go)
     await1[I].flatMap(go)
   }
 
@@ -284,18 +285,19 @@ object process1 {
    */
   def liftL[A, B, C](p: Process1[A, B]): Process1[A \/ C, B \/ C] = {
     def go(curr: Process1[A,B]): Process1[A \/ C, B \/ C] = {
-      receive1Or[A \/ C, B \/ C](curr.disconnect.map(-\/(_))) {
+      receive1Or[A \/ C, B \/ C](curr.disconnect(Kill).map(-\/(_))) {
         case -\/(a) =>
-          val (bs, next) = p.feed1(a).unemit
+          val (bs, next) = curr.feed1(a).unemit
           val out =  emitAll(bs).map(-\/(_))
           next match {
-            case Halt(rsn) => out fby fail(rsn)
+            case Halt(rsn) => out fby Halt(rsn)
             case other => out fby go(other)
           }
         case \/-(c) => emitO(c) fby go(curr)
       }
     }
     go(p)
+
   }
 
   /**
@@ -311,15 +313,15 @@ object process1 {
    * Use `wye.flip` to convert it to right side
    */
   def liftY[I,O](p: Process1[I,O]) : Wye[I,Any,O] = {
-    p.suspendStep.flatMap { s => s match {
-      case Cont(Await(_,rcv), next) =>
-        Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=>liftY(next(rsn)))
+    p.step match {
+      case Step(Await(_,rcv), cont) =>
+        Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=> liftY(Halt(rsn) +: cont))
 
-      case Cont(emt@Emit(os), next) =>
-        emt onHalt(rsn=>liftY(next(rsn)))
+      case Step(emt@Emit(os), cont) =>
+        emt onHalt(rsn=> liftY(Halt(rsn) +: cont))
 
-      case dn@Done(rsn) => dn.asHalt
-    }}
+      case hlt@Halt(rsn) => hlt
+    }
   }
 
   /** Emits the greatest element of the input. */
@@ -490,7 +492,7 @@ object process1 {
    * Emit the given values, then echo the rest of the input.
    */
   def shiftRight[I](head: I*): Process1[I, I] =
-    emitAll(head) ++ id
+    emitAll(head) fby id
 
   /** Reads a single element of the input, emits nothing, then halts. */
   def skip: Process1[Any, Nothing] = await1[Any].flatMap(_ => halt)
@@ -528,14 +530,11 @@ object process1 {
    */
   def splitWith[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I, Vector[I]] =
-      receive1(
-       i => {
+      receive1Or(emit(acc):Process1[I,Vector[I]])(i => {
          val cur = f(i)
          if (cur == last) go(acc :+ i, cur)
          else emit(acc) fby go(Vector(i), cur)
-       }
-       , emit(acc)
-      )
+      })
     await1[I].flatMap(i => go(Vector(i), f(i)))
   }
 
@@ -543,7 +542,7 @@ object process1 {
   def stripNone[A]: Process1[Option[A], A] =
     await1[Option[A]].flatMap {
       case None    => stripNone
-      case Some(a) => emit(a) ++ stripNone
+      case Some(a) => emit(a) fby stripNone
     }
 
   /**
@@ -556,7 +555,8 @@ object process1 {
 
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I, I] =
-    if (n <= 0) halt
+    if (n < 0) fail(new IllegalArgumentException(s"n must be > 0 is $n"))
+    else if (n == 0) halt
     else await1[I] fby take(n - 1)
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
@@ -569,7 +569,7 @@ object process1 {
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A, Option[A]] =
-    lift[A, Option[A]](Some(_)) onHalt { rsn => emit(None).causedBy(rsn) }
+     lift[A, Option[A]](Some(_)) onComplete emit(None)
 
   private val utf8Charset = Charset.forName("UTF-8")
 
@@ -612,6 +612,19 @@ object process1 {
       await1[A].flatMap(a => emit((a, b)) fby go(next(a, b)))
     go(z)
   }
+
+
+  object Await1 {
+    /** deconstruct for `Await` directive of `Process1` **/
+    def unapply[I, O](self: Process1[I, O]): Option[EarlyCause \/ I => Process1[I, O]] = self match {
+      case Await(_, rcv) => Some((r:EarlyCause\/ I) => Try(rcv(r).run))
+      case _             => None
+    }
+
+  }
+
+
+
 }
 
 private[stream] trait Process1Ops[+F[_],+O] {

@@ -1,6 +1,5 @@
 package scalaz.stream.async.mutable
 
-
 import scalaz.\/
 import scalaz.\/._
 import scalaz.concurrent._
@@ -15,7 +14,6 @@ import java.util.concurrent.atomic.AtomicReference
  * and discrete streams for responding to changes to this value.
  */
 trait Signal[A] extends scalaz.stream.async.immutable.Signal[A] {
-
 
 
   /**
@@ -65,22 +63,34 @@ trait Signal[A] extends scalaz.stream.async.immutable.Signal[A] {
 
   /**
    * Indicate that the value is no longer valid. Any attempts to `set` or `get` this
-   * `Signal` after a `close` will fail with `End` exception. This `Signal` is `finished` from now on.
+   * `Signal` after a `close` will fail with `Terminated(End)` exception. This `Signal` is `finished` from now on.
    *
    * Running this task once the `Signal` is `failed` or `finished` is no-op and this task will not fail.
    *
-   * Please note this task will get completed _after_ all open gets and sets on the signal will get completed
    */
-  def close : Task[Unit] = fail(End)
+  def close : Task[Unit] = failWithCause(End)
+
+  /**
+   * Indicate that the value is no longer valid. Any attempts to `set` or `get` this
+   * `Signal` after a `close` will fail with `Terminated(Kill)` exception. This `Signal` is `finished` from now on.
+   *
+   * Running this task once the `Signal` is `failed` or `finished` is no-op and this task will not fail.
+   *
+   */
+  def kill: Task[Unit] = failWithCause(Kill)
 
   /**
    * Raise an asynchronous error for readers of this `Signal`. Any attempts to
-   * `set` or `get` this `Ref` after the `fail` will result in task failing with `error`.
+   * `set` or `get` this `Ref` after the `fail` will result in task failing with `Terminated(Error(errr))`.
    * This `Signal` is `failed` from now on.
    *
    * Running this task once the `Signal` is `failed` or `finished` is no-op and this task will not fail.
    */
-  def fail(error: Throwable): Task[Unit]
+  def fail(error: Throwable): Task[Unit] = failWithCause(Error(error))
+
+
+
+  private[stream] def failWithCause(c:Cause):Task[Unit]
 
 
 }
@@ -127,7 +137,7 @@ object Signal {
       def sink: Sink[Task, Msg[A]] = topic.publish
       def get: Task[A] = discrete.take(1).runLast.flatMap {
         case Some(a) => Task.now(a)
-        case None    => Task.fail(End)
+        case None    => Task.fail(Terminated(End))
       }
       def getAndSet(a: A): Task[Option[A]] = {
         for {
@@ -146,9 +156,8 @@ object Signal {
           }))
         } yield ref.get()
       }
-      def fail(error: Throwable): Task[Unit] = topic.fail(error)
+      private[stream] def failWithCause(c: Cause): Task[Unit] = topic.failWithCause(c)
     }
-
 
   }
 

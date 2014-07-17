@@ -68,7 +68,7 @@ object NioClient {
 
     def echoSent: WyeW[ByteVector, ByteVector, ByteVector, ByteVector] = {
       def go(collected: Int): WyeW[ByteVector, ByteVector, ByteVector, ByteVector] = {
-        receiveBoth {
+        wye.receiveBoth {
           case ReceiveL(rcvd) =>
             emitO(rcvd) fby
               (if (collected + rcvd.size >= data.size) halt

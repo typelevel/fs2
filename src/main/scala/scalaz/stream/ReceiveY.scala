@@ -1,8 +1,6 @@
 package scalaz.stream
 
-
 import scalaz.{Monoid, Applicative, Equal, Monad}
-
 
 
 sealed trait ReceiveY[+A,+B] {
@@ -39,7 +37,7 @@ sealed trait ReceiveY[+A,+B] {
 
   def isHalted = haltedBy.isDefined
 
-  def haltedBy: Option[Throwable] = this match {
+  def haltedBy: Option[Cause] = this match {
     case h:HaltOne => Some(h.cause)
     case _ => None
   }
@@ -51,12 +49,12 @@ object ReceiveY {
   case class ReceiveL[+A](get: A) extends ReceiveY[A, Nothing]
   case class ReceiveR[+B](get: B) extends ReceiveY[Nothing, B]
   sealed trait HaltOne extends ReceiveY[Nothing, Nothing] {
-    val cause: Throwable
+    val cause: Cause
   }
-  case class HaltL(cause:Throwable) extends HaltOne
-  case class HaltR(cause:Throwable) extends HaltOne
+  case class HaltL(cause:Cause) extends HaltOne
+  case class HaltR(cause:Cause) extends HaltOne
   object HaltOne {
-    def unapply(ry:ReceiveY[Any,Any]) : Option[Throwable] = {
+    def unapply(ry:ReceiveY[Any,Any]) : Option[Cause] = {
       ry match {
         case h:HaltOne => Some(h.cause)
         case _ => None

@@ -1,8 +1,7 @@
 package scalaz.stream.async.mutable
 
 import scalaz.concurrent.Task
-import scalaz.stream.{Sink, Process}
-import scalaz.stream.Process.End
+import scalaz.stream.{Kill, End, Error, Cause, Sink, Process}
 
 
 /**
@@ -44,23 +43,35 @@ trait Topic[A] {
   def publishOne(a:A) : Task[Unit]
 
   /**
-   * Will `close` this topic. Once `closed` all publishers and subscribers are halted via `Kill`.
+   * Will `close` this topic. Once `closed` all publishers and subscribers are halted via `End`.
    * When this topic is `closed` or `failed` this is no-op
    *
-   * The resulting task is completed _after_ all publishers and subscribers finished
+   * The resulting task is completed _after_ all publishers and subscribers are signalled with `End`
    *
    * @return
    */
-  def close: Task[Unit] = fail(End)
+  def close: Task[Unit] = failWithCause(End)
+
+  /**
+   * Causes this topic to be closed and all subscribers to this topic to be killed immediately.
+   *
+   * he resulting task is completed _after_ all publishers and subscribers are signalled with `Kill`
+   *
+   * @return
+   */
+  def kill: Task[Unit] = failWithCause(Kill)
 
   /**
    * Will `fail` this topic. Once `failed` all publishers and subscribers will terminate with cause `err`.
    * When this topic is `finished` or `failed` this is no-op
    *
-   * The resulting task is completed _after_ all publishers and subscribers finished
+   * The resulting task is completed _after_ all publishers and subscribers are signalled with `err`
    *
    */
-  def fail(err: Throwable): Task[Unit]
+  def fail(rsn: Throwable): Task[Unit] = failWithCause(Error(rsn))
+
+
+  private[stream] def failWithCause(c:Cause): Task[Unit]
 
 
 }
