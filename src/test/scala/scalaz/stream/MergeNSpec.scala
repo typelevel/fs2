@@ -160,7 +160,7 @@ object MergeNSpec extends Properties("mergeN") {
     val effect = Process.repeatEval(Task.delay(())).drain
     val p = Process(1,2) onComplete Halt(Kill)
 
-    val r=
+    val r =
       merge.mergeN(Process(effect,p))
       .expectedCause(_ == Kill)
       .runLog.timed(3000).run

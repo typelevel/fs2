@@ -46,6 +46,13 @@ package object nondeterminism {
       //keep no of open processes
       var opened: Int = 0
 
+      //if this mergeN is closed this is set to reason that caused mergeN to close
+      var closed: Option[Cause] = None
+
+      //keeps track of finalized streams and will issue callback
+      //when all streams have finished.
+      var completer: Option[(Throwable \/ Unit) => Unit] = None
+
       var actor: Actor[M] = null
 
       //evaluates next step of the source of processes
@@ -66,27 +73,37 @@ package object nondeterminism {
           })
         })
 
-      // fails the signal and queue with given reason
-      def fail(cause0: Cause): Unit = {
-        val cause = cause0 match {
-          case Error(Terminated(Kill)) => Kill
-          case _ => cause0
+      // fails the signal should cause all streams to terminate
+
+      def fail(cause: Cause): Unit = {
+        closed = Some(cause)
+        S(done.kill.runAsync(_=>()))
+        state = state match {
+          case Middle3(interrupt) => S(interrupt(Kill)) ; Either3.middle3((_:Cause) => ())
+          case Right3(cont) => nextStep(Halt(Kill) +: cont);  Either3.middle3((_:Cause) => ())
+          case Left3(_) => state
         }
-        state = Either3.left3(cause)
-        (for {
-          _ <- q.failWithCause(cause)
-          _ <- done.failWithCause(cause)
-        } yield ()).runAsync(_ => ())
       }
 
       // initially sets signal and starts the source evaluation
       def start: Task[Unit] =
         done.set(false).map { _ => state = nextStep(source) }
 
+      def sourceDone = state.leftOr(false)(_=>true)
+
+      def allDone : Boolean = opened <= 0 && sourceDone
+
+      def completeIfDone: Unit = {
+        if (allDone) {
+          S(q.failWithCause(closed.getOrElse(End)).runAsync(_=>{}))
+          completer.foreach { cb =>  S(cb(\/-(()))) }
+          completer = None
+        }
+      }
 
       actor = Actor[M]({m =>
-        Util.debug(s"~~~ NJN m: $m | open: $opened | state: $state")
-        m match {
+        Util.debug(s"~~~ NJN m: $m | open: $opened | state: $state | closed: $closed | completer: $completer")
+        closed.fold(m match {
           // next merged process is available
           // run it with chance to interrupt
           // and give chance to start next process if not bounded
@@ -95,9 +112,8 @@ package object nondeterminism {
             if (maxOpen <= 0 || opened < maxOpen) state = nextStep(cont.continue)
             else state = Either3.right3(cont)
 
-            //todo: kill behaviour -> propagate kill
             //runs the process with a chance to interrupt it using signal `done`
-            //interrupt is done via setting the done to `true`
+            //interrupt is done via killing the done signal.
             //note that here we convert `Kill` to exception to distinguish form normal and
             //killed behaviour of upstream termination
             done.discrete.wye(p)(wye.interrupt)
@@ -107,27 +123,31 @@ package object nondeterminism {
               case cause => Halt(cause)
             }
             .run.runAsync { res =>
-              actor ! Finished(res)
+              S(actor ! Finished(res))
             }
 
-          //finished the `upstream` normally but still have some open processes to merging
+          //finished the `upstream` normally but still have some open processes to merge
+          //update state and wait for processes to merge
           case FinishedSource(End) if opened > 0 =>
             state = Either3.left3(End)
 
           // finished upstream and no processes are running, terminate downstream
+          // or the cause is early cause and shall kill all the remaining processes
           case FinishedSource(rsn) =>
+            state = Either3.left3(rsn)
             fail(rsn)
+            completeIfDone
 
-          //merged process terminated. This always != End, Continue due to `Process.runFoldMap`
-          //as such terminate the join with given exception
+          // merged process terminated with failure
+          // kill all the open processes including the `source`
           case Finished(-\/(rsn)) =>
+            val cause = rsn match {
+              case Terminated(Kill) => Kill
+              case _ => Error(rsn)
+            }
             opened = opened - 1
-            fail(state match {
-              case Left3(End) => Error(rsn)
-              case Left3(rsn0) => rsn0
-              case Middle3(interrupt) => interrupt(Kill); Error(rsn)
-              case Right3(cont) => S((Halt(Kill) +: cont).run.runAsync(_ => ())); Error(rsn)
-            })
+            fail(cause)
+            completeIfDone
 
           // One of the processes terminated w/o failure
           // Finish merge if the opened == 0 and upstream terminated
@@ -138,21 +158,28 @@ package object nondeterminism {
               case Right3(cont)
                 if maxOpen <= 0 || opened < maxOpen => nextStep(cont.continue)
               case Left3(End) if opened == 0 => fail(End) ; state
-              case Left3(rsn) if opened == 0 => state
-              case other                     => other
+              case _                     => state
             }
+            completeIfDone
 
           // `Downstream` of the merge terminated
           // Kill all upstream processes and eventually the source.
           case FinishedDown(cb) =>
-            fail(state match {
-              case Left3(_)           => Kill
-              case Middle3(interrupt) => interrupt(Kill); Kill
-              case Right3(next)       => Kill
-            })
-            S(cb(\/-(())))
+            fail(Kill)
+            if (allDone) S(cb(\/-(())))
+            else completer = Some(cb)
 
-        }})
+        })(rsn => m match {
+          //join is closed, next p is ignored and source is killed
+          case Offer(_, cont) =>  nextStep(Halt(Kill) +: cont)
+          case FinishedSource(cause) => state = Either3.left3(cause) ; completeIfDone
+          case Finished(_) => opened = opened - 1; completeIfDone
+          case FinishedDown(cb) =>
+            if (allDone) S(cb(\/-(())))
+            else completer = Some(cb)
+        }) 
+
+      })
 
 
       (eval_(start) fby q.dequeue)

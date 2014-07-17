@@ -469,7 +469,7 @@ object CauseSpec extends Properties("cause") {
     .&& (processReason == Some(Kill))
   }
 
-  property("wye.terminated.wye.onRight") = secure {
+  property("wye.kill.downstream") = secure {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var pipeReason: Option[Cause] = None
