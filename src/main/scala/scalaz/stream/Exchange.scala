@@ -125,7 +125,7 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
     val wq = async.boundedQueue[W](0)
     val w2q = async.boundedQueue[W2](0)
 
-    def cleanup: Process[Task, Nothing] = eval_(wq.close) fby eval_(Task.delay(w2q.close.runAsync(_ => ())))
+    def cleanup: Process[Task, Nothing] = eval_(wq.close) fby eval_(w2q.close)
     def receive: Process[Task, I] = self.read onComplete cleanup
     def send: Process[Task, Unit] = wq.dequeue to self.write
 
@@ -207,7 +207,7 @@ object Exchange {
     })({ q =>
       val (out, np) = p.unemit
       val ex = Exchange[Nothing, W](halt, q.enqueue)
-      emit(ex.wye(emitAll(out).map(right) fby loop(np))) onComplete eval_(Task.delay(q.close.run))
+      emit(ex.wye(emitAll(out).map(right) fby loop(np))) onComplete eval_(q.close)
     })
 
   }
