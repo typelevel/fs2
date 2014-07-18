@@ -41,7 +41,7 @@ package object nondeterminism {
 
       //keep state of master source
       var state: Either3[Cause, Cause => Unit,  Cont[Task,Process[Task,A]]] =
-        Either3.middle3((_: Cause) => ())
+        Either3.left3(End)
 
       //keep no of open processes
       var opened: Int = 0
