@@ -1,6 +1,9 @@
 package scalaz.stream.async.mutable
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import scalaz.concurrent.{Actor, Strategy, Task}
+import scalaz.stream.Process.Halt
 import scalaz.stream.async.immutable
 import scalaz.stream.{Terminated, Kill, Error, End, Cause, Util, Process, Sink}
 import scalaz.{Either3, -\/, \/, \/-}
@@ -117,10 +120,13 @@ private[stream] object Queue {
 
     sealed trait M
     case class Enqueue (a: Seq[A], cb: Throwable \/ Unit => Unit) extends M
-    case class Dequeue (cb: Throwable \/ A => Unit) extends M
+    case class Dequeue (ref:ConsumerRef, cb: Throwable \/ A => Unit) extends M
     case class Fail(cause: Cause, cb: Throwable \/ Unit => Unit) extends M
     case class GetSize(cb: (Throwable \/ Seq[Int]) => Unit) extends M
+    case class ConsumerDone(ref:ConsumerRef) extends M
 
+    // reference to identify differed subscribers
+    class ConsumerRef
 
 
     //actually queued `A` are stored here
@@ -130,7 +136,7 @@ private[stream] object Queue {
     var closed: Option[Cause] = None
 
     // consumers waiting for `A`
-    var consumers: Vector[Throwable \/ A => Unit] = Vector.empty
+    var consumers: Vector[(ConsumerRef, Throwable \/ A => Unit)] = Vector.empty
 
     // publishers waiting to be acked to produce next `A`
     var unAcked: Vector[Throwable \/ Unit => Unit] = Vector.empty
@@ -173,7 +179,7 @@ private[stream] object Queue {
     }
 
     //dequeue one element from the queue
-    def dequeueOne(cb: (Throwable \/ A => Unit)): Unit = {
+    def dequeueOne(ref: ConsumerRef, cb: (Throwable \/ A => Unit)): Unit = {
       queued.headOption match {
         case Some(a) =>
           S(cb(\/-(a)))
@@ -186,7 +192,8 @@ private[stream] object Queue {
           }
 
         case None =>
-          consumers = consumers :+ cb
+          val entry : (ConsumerRef, Throwable \/ A => Unit)  = (ref -> cb)
+          consumers = consumers :+ entry
       }
     }
 
@@ -198,7 +205,7 @@ private[stream] object Queue {
         val deqCount = consumers.size min queued.size
 
         consumers.take(deqCount).zip(queued.take(deqCount))
-        .foreach { case (cb, a) => S(cb(\/-(a))) }
+        .foreach { case ((_,cb), a) => S(cb(\/-(a))) }
 
         consumers = consumers.drop(deqCount)
         queued = queued.drop(deqCount)
@@ -215,7 +222,7 @@ private[stream] object Queue {
       if (queued.nonEmpty && cause == End) {
         unAcked.foreach(cb => S(cb(-\/(Terminated(cause)))))
       } else {
-        (consumers ++ unAcked).foreach(cb => S(cb(-\/(Terminated(cause)))))
+        (consumers.map(_._2) ++ unAcked).foreach(cb => S(cb(-\/(Terminated(cause)))))
         consumers = Vector.empty
         sizes.flatMap(_.toOption).foreach(cb => S(cb(-\/(Terminated(cause)))))
         sizes = None
@@ -227,31 +234,35 @@ private[stream] object Queue {
 
 
     val actor: Actor[M] = Actor({ (m: M) =>
-      Util.debug(s"### QUE m: $m | cls: $closed | sizes $sizes, | queued $queued")
+     Util.debug(s"### QUE  m: $m | cls: $closed | sizes $sizes, | queued $queued | consumers: $consumers")
       if (closed.isEmpty) m match {
-        case Dequeue(cb)     => dequeueOne(cb)
+        case Dequeue(ref, cb)     => dequeueOne(ref, cb)
         case Enqueue(as, cb) => enqueueOne(as, cb)
         case Fail(cause, cb)   => stop(cause, cb)
         case GetSize(cb)     => publishSize(cb)
+        case ConsumerDone(ref) =>  consumers = consumers.filterNot(_._1 == ref)
 
       } else m match {
-        case Dequeue(cb) if queued.nonEmpty => dequeueOne(cb)
-        case Dequeue(cb)                    => signalClosed(cb)
-        case Enqueue(as, cb)                => signalClosed(cb)
-        case GetSize(cb) if queued.nonEmpty => publishSize(cb)
-        case GetSize(cb)                    => signalClosed(cb)
-        case Fail(_, cb)                    => S(cb(\/-(())))
+        case Dequeue(ref, cb) if queued.nonEmpty => dequeueOne(ref, cb)
+        case Dequeue(ref, cb)                    => signalClosed(cb)
+        case Enqueue(as, cb)                     => signalClosed(cb)
+        case GetSize(cb) if queued.nonEmpty      => publishSize(cb)
+        case GetSize(cb)                         => signalClosed(cb)
+        case Fail(_, cb)                         => S(cb(\/-(())))
+        case ConsumerDone(ref)                   =>  consumers = consumers.filterNot(_._1 == ref)
       }
-
-
     })(S)
-
-
 
     new Queue[A] {
       def enqueue: Sink[Task, A] = Process.constant(enqueueOne _)
       def enqueueOne(a: A): Task[Unit] = enqueueAll(Seq(a))
-      def dequeue: Process[Task, A] = Process.repeatEval(Task.async[A](cb => actor ! Dequeue(cb)))
+      def dequeue: Process[Task, A] = {
+        Process.await(Task.delay(new ConsumerRef))({ ref =>
+          Process.repeatEval(Task.async[A](cb => actor ! Dequeue(ref, cb)))
+          .onComplete(Process.eval_(Task.delay(actor ! ConsumerDone(ref))))
+        })
+      }
+
       val size: immutable.Signal[Int] = {
         val sizeSource : Process[Task,Int] =
           Process.repeatEval(Task.async[Seq[Int]](cb => actor ! GetSize(cb)))

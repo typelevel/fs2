@@ -5,8 +5,10 @@ import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
 import scalaz.{-\/, \/-, \/}
+import scala.concurrent.duration._
 
 object QueueSpec extends Properties("queue") {
+  implicit val scheduler = scalaz.stream.DefaultScheduler
 
   property("basic") = forAll {
     l: List[Int] =>
@@ -109,6 +111,21 @@ object QueueSpec extends Properties("queue") {
       ((subscribeClosed == \/-(Vector()))) :| s"Subscriber is closed after elements are drained $subscribeClosed"
 
 
+  }
+
+
+  // tests situation where killed process may `swallow` item in queue
+  // from the process that is running
+  property("queue-swallow-killed") = secure {
+    val q = async.boundedQueue[Int]()
+    val sleeper = Process.sleep(1 second)
+    val signalKill = Process(false).liftIO ++ sleeper ++ Process(true)
+
+    signalKill.wye(q.dequeue)(wye.interrupt).runLog.run
+    q.enqueueOne(1).run
+    val r = q.dequeue.take(1).runLog.run
+
+    r == Vector(1)
   }
 
 
