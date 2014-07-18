@@ -85,9 +85,14 @@ sealed trait Process[+F[_], +O]
 
   }
 
-
+  /**
+   * `p.suspendStep` propagates exceptions to `p`.
+   */
   final def suspendStep: Process[Nothing, HaltOrStep[F, O]] =
-    suspend {emit(step)}
+    empty onHalt {
+      case End => emit(step)
+      case early: EarlyCause => emit(injectCause(early).step)
+    }
 
   /**
    * When the process terminates either due to `End` or `Kill` or an `Error`
@@ -219,13 +224,7 @@ sealed trait Process[+F[_], +O]
     }
 
   /** Ignore all outputs of this `Process`. */
-  final def drain: Process[F, Nothing] = {
-    this.suspendStep.flatMap {
-      case Step(Emit(_), cont) => cont.continue.drain
-      case Step(awt@Await(_,_), cont) => awt.extend(p => (p +: cont).drain)
-      case hlt@Halt(rsn) => hlt
-    }
-  }
+  final def drain: Process[F, Nothing] = flatMap(_ => halt)
 
   /**
    * Map over this `Process` to produce a stream of `F`-actions,
@@ -286,21 +285,28 @@ sealed trait Process[+F[_], +O]
   }
 
   /**
+   * Skip the first part of the process and pretend that it ended with `early`.
+   * The first part is the first `Halt` or the first `Emit` or request from the first `Await`.
+   */
+  private[stream] final def injectCause(early: EarlyCause): Process[F, O] = (this match {
+    // Note: We cannot use `step` in the implementation since we want to inject `early` as soon as possible.
+    // Eg. Let `q` be `halt ++ halt ++ ... ++ p`. `step` reduces `q` to `p` so if `injectCause` was implemented
+    // by `step` then `q.injectCause` would be same as `p.injectCause`. But in our current implementation
+    // `q.injectCause` behaves as `Halt(early) ++ halt ++ ... ++ p` which behaves as `Halt(early)`
+    // (by the definition of `++` and the fact `early != End`).
+    case Halt(rsn) => Halt(rsn.causedBy(early))
+    case Emit(_) => Halt(early)
+    case Await(_, rcv) => Try(rcv(left(early)).run)
+    case Append(Halt(rsn), stack) => Append(Halt(rsn.causedBy(early)), stack)
+    case Append(Emit(_), stack) => Append(Halt(early), stack)
+    case Append(Await(_, rcv), stack) => Try(rcv(left(early)).run) +: Cont(stack)
+  })
+
+  /**
    * Causes this process to be terminated immediatelly with `Kill` cause,
    * giving chance for any cleanup actions to be run
    */
-  final def kill: Process[F, Nothing] = (this match {
-    // Note: We cannot use `step` in the implementation since we want to inject `Kill` exception as soon as possible.
-    // Eg. Let `q` be `halt ++ halt ++ ... ++ p`. `step` reduces `q` to `p` so if `kill` was implemented by `step` then
-    // `q.kill` would be same as `p.kill`. But in our current implementation `q.kill` behaves as
-    // `Halt(Kill) ++ halt ++ ... ++ p` which behaves as `Halt(Kill)` (by the definition of `++`).
-    case Halt(rsn) => Halt(rsn.causedBy(Kill))
-    case Emit(_) => Halt(Kill)
-    case Await(_, rcv) => Try(rcv(left(Kill)).run)
-    case Append(Halt(rsn), stack) => Append(Halt(rsn.causedBy(Kill)), stack)
-    case Append(Emit(_), stack) => Append(Halt(Kill), stack)
-    case Append(Await(_, rcv), stack) => Try(rcv(left(Kill)).run) +: Cont(stack)
-  }).drain.causedBy(Kill)
+  final def kill: Process[F, Nothing] = injectCause(Kill).drain.causedBy(Kill)
 
   /**
    * Run `p2` after this `Process` completes normally, or in the event of an error.
@@ -427,7 +433,7 @@ sealed trait Process[+F[_], +O]
     def go(cur: Process[F, O], acc: Vector[O]): (Seq[O], Process[F, O]) = {
       cur.step match {
         case Step(Emit(os),cont) => go(cont.continue, acc fast_++ os)
-        case Step(awt, _) => (acc,cur)
+        case Step(awt, cont) => (acc,awt +: cont)
         case Halt(rsn) => (acc,Halt(rsn))
       }
     }
@@ -1007,10 +1013,10 @@ object Process {
             }
           case Step(Await(rq,rcv), cont) =>
             rq.attempt.flatMap { r =>
-              Try(rcv(EarlyCause(r)).run) +: cont ; go
+              cur = Try(rcv(EarlyCause(r)).run) +: cont ; go
             }
-          case Halt(End) => Task.fail(new Exception("Process terminated normally"))
-          case Halt(Kill) => Task.fail(new Exception("Process was killed"))
+          case Halt(End) => Task.fail(Terminated(End))
+          case Halt(Kill) => Task.fail(Terminated(Kill))
           case Halt(Error(rsn)) => Task.fail(rsn)
         }
       Task.delay(go).flatMap(a => a)
@@ -1547,7 +1553,6 @@ object Process {
   def repeatEval[F[_], O](f: F[O]): Process[F, O] =
     awaitOr(f)(_.asHalt)(o => emit(o) ++ repeatEval(f))
 
-
   /**
    * Produce `p` lazily, guarded by a single `Append`. Useful if
    * producing the process involves allocation of some mutable
@@ -1571,7 +1576,6 @@ object Process {
   def suspend[F[_], O](p: => Process[F, O]): Process[F, O] =
     Append(empty,Vector({
       case End => Trampoline.done(p)
-      case early: EarlyCause =>  Trampoline.done(p.causedBy(early))
+      case early: EarlyCause => Trampoline.done(p.injectCause(early))
     }))
-
 }

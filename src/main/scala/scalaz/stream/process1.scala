@@ -540,10 +540,7 @@ object process1 {
 
   /** Remove any `None` inputs. */
   def stripNone[A]: Process1[Option[A], A] =
-    await1[Option[A]].flatMap {
-      case None    => stripNone
-      case Some(a) => emit(a) fby stripNone
-    }
+    collect { case Some(a) => a }
 
   /**
    * Emit a running sum of the values seen so far. The first value emitted will be the
@@ -570,12 +567,6 @@ object process1 {
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A, Option[A]] =
      lift[A, Option[A]](Some(_)) onComplete emit(None)
-
-  private val utf8Charset = Charset.forName("UTF-8")
-
-  /** Convert `String` inputs to UTF-8 encoded byte arrays. */
-  val utf8Encode: Process1[String, Array[Byte]] =
-    lift(_.getBytes(utf8Charset))
 
   /**
    * Outputs a sliding window of size `n` onto the input.

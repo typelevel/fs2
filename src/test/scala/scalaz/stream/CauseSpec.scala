@@ -32,7 +32,7 @@ object CauseSpec extends Properties("cause") {
     .&& ("take(1)" |: suspend(source.take(1)) === source.take(1))
     .&& ("repeat.take(10)" |: suspend(source.repeat.take(10)) === source.repeat.take(10))
     .&& ("eval" |: suspend(eval(Task.now(1))) === eval(Task.delay(1)))
-    .&& ("kill" |: suspend(source).kill.onHalt({ case Kill => emit(99); case other => emit(0)}) === emit(99).toSource)
+    .&& ("kill" |: { var cause: Cause = End; suspend(source.onHalt { c => cause = c; halt }).kill.run.run; cause == Kill })
   }
 
 
@@ -419,7 +419,6 @@ object CauseSpec extends Properties("cause") {
       .onHalt{ c => processReason = Some(c); Halt(c)}
       .runLog.run
 
-    println(wyeReason)
     (process == Vector(10,11,12))
     .&& (leftReason == Some(Kill))
     .&& (rightReason == Some(End))

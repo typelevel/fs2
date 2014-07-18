@@ -5,7 +5,6 @@ import Process._
 import java.net.InetSocketAddress
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
-import scala.Some
 import scala.concurrent.SyncVar
 import scala.util.Random
 import scalaz.-\/
@@ -75,7 +74,8 @@ object NioClient {
               else go(collected + rcvd.size))
           case ReceiveR(data) => tell(data) fby go(collected)
           case HaltL(rsn)     => Halt(rsn)
-          case HaltR(_)       => go(collected)
+          case HaltR(End)       => go(collected)
+          case HaltR(rsn)  => Halt(rsn)
         }
       }
 
@@ -188,7 +188,7 @@ object NioSpec extends Properties("nio") {
       .runAsync(serverGot.put)
     ).run
 
-    Thread.sleep(300)
+    Thread.sleep(1000)
 
     val client = NioClient.echo(local, ByteVector(array1)).attempt().flatMap {
       case \/-(v) => emit(v)
@@ -201,18 +201,18 @@ object NioSpec extends Properties("nio") {
     val clientGot = new SyncVar[Throwable \/ Seq[Seq[Byte]]]
 
     Task(
-      (clients onComplete eval_(Task.delay(stop.set(true).run)))
+      (clients onComplete eval_(stop.set(true)))
       .runLast.map(v=>v.map(_.toSeq).toSeq)
       .runAsync(clientGot.put)
     ).run
 
-    serverGot.get(3000)
-    clientGot.get(3000)
+    clientGot.get(6000)
+    serverGot.get(6000)
 
     stop.set(true).run
 
     (serverGot.isSet && clientGot.isSet) :| "Server and client terminated" &&
-      (serverGot.get.isRight && clientGot.get.isRight) :| s"Server and client terminate w/o failure: s=${serverGot.get(0)}, c=${clientGot.get(0)}" &&
+      (serverGot.get(0).exists(_.isRight) && clientGot.get(0).exists(_.isRight)) :| s"Server and client terminate w/o failure: s=${serverGot.get(0)}, c=${clientGot.get(0)}" &&
       (serverGot.get(0) == clientGot.get(0)) :| s"Server and client got same data"
 
   }
