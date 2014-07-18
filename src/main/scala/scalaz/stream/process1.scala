@@ -248,9 +248,6 @@ object process1 {
   def id[I]: Process1[I, I] =
     await1[I].repeat
 
-  @deprecated("init has been renamed to shiftRight. It will be removed in the next release", "0.4")
-  def init[I](head: I*): Process1[I, I] = shiftRight(head: _*)
-
   /**
    * Add `separator` between elements of the input. For example,
    * {{{
