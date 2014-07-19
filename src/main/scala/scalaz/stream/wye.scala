@@ -649,7 +649,7 @@ object wye {
       case class Get(cb: (Terminated \/ Seq[O]) => Unit) extends M
       case class DownDone(cb: (Throwable \/ Unit) => Unit) extends M
 
-      type SideState[A] = Either3[Cause, Cause => Unit, Cont[Task,A]]
+      type SideState[A] = Either3[Cause, EarlyCause => Unit, Cont[Task,A]]
 
       //current state of the wye
       var yy: Wye[L, R, O] = y0

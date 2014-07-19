@@ -1287,10 +1287,7 @@ object Process {
      * was not completed before, otherwise interruption is no-op.
      *
      * There is chance, that cleanup code of intermediate `Await` will get called twice on interrupt, but
-     * always at least once.
-     *
-     * Note that if some resources are open asynchronously, the cleanup of these resources may be run
-     * asynchronously as well, essentially AFTER callback was completed on different thread.
+     * always at least once. The second cleanup invocation in that case may run on different thread, asynchronously.
      *
      *
      * @param cb  result of the asynchronous evaluation of the process. Note that, the callback is never called
@@ -1300,11 +1297,11 @@ object Process {
      */
     protected[stream] final def runAsync(
       cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit
-      )(implicit S: Strategy): (Cause) => Unit = {
+      )(implicit S: Strategy): (EarlyCause) => Unit = {
 
           sealed trait M
           case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], cont: Cont[Task,O]) extends M
-          case class Interrupt(cause: Cause) extends M
+          case class Interrupt(cause: EarlyCause) extends M
 
           //forward referenced actor here
           var a: Actor[M] = null
@@ -1316,7 +1313,7 @@ object Process {
           // a cleanup when the last await was interrupted
           // this is consulted only, if await was interrupted
           // volatile marked because of the first usage outside of actor
-          @volatile var cleanup: Cont[Task,O] = Cont(Vector.empty)
+          @volatile var cleanup: (EarlyCause => Process[Task,O]) = (c:EarlyCause) => Halt(c)
 
           // runs single step of process.
           // completes with callback if process is `Emit` or `Halt`.
@@ -1324,61 +1321,64 @@ object Process {
           // It returns on left side reason with which this process terminated,
           // or on right side the cleanup code to be run when interrupted.
           @tailrec
-          def runStep(p: Process[Task, O]): Cause \/ Cont[Task,O] = {
+          def runStep(p: Process[Task, O]): Cause \/ (EarlyCause => Process[Task,O]) = {
             val step = p.step
             step match {
               case Step(Emit(Seq()), cont)         => runStep(cont.continue)
               case Step(Emit(h), cont)             => S(cb(right((h, cont)))); left(End)
               case Step(awt@Await(req, rcv), cont) =>
                 req.runAsync(r => a ! AwaitDone(r, awt, cont))
-                right(cont)
+                right((c:EarlyCause) => rcv(left(c)).run +: cont)
               case Halt(cause)                 => S(cb(left(cause))); left(cause)
             }
           }
 
 
-          a = new Actor[M]({
-            case AwaitDone(r, awt, cont) if completed.isEmpty =>
-              val step =  Try(awt.rcv(EarlyCause(r)).run) +: cont
+          a = new Actor[M]({ m =>
+            Util.debug(s"+++ ASY m: $m | cleanup: $cleanup | completed: $completed ")
+            m match {
+              case AwaitDone(r, awt, cont) if completed.isEmpty =>
+                val step = Try(awt.rcv(EarlyCause(r)).run) +: cont
 
 
-              runStep(step).fold(
-                rsn => completed = Some(rsn)
-                , cln => cleanup = cln
-              )
+                runStep(step).fold(
+                  rsn => completed = Some(rsn)
+                  , cln => cleanup = cln
+                )
 
-            // on interrupt we just run any cleanup code we have memo-ed
-            // from last `Await`
-            case Interrupt(cause) if completed.isEmpty =>
-              completed = Some(cause)
-              (cause.kill.asHalt +: cleanup).run.runAsync(_.fold(
-                rsn0 => cb(left(Error(rsn0).causedBy(cause)))
-                , _ => cb(left(cause))
-              ))
+              // on interrupt we just run any cleanup code we have memo-ed
+              // from last `Await`
+              case Interrupt(cause) if completed.isEmpty =>
+                completed = Some(cause)
+                Try(cleanup(cause)).run.runAsync(_.fold(
+                  rsn0 =>  cb(left(Error(rsn0).causedBy(cause)))
+                  , _ => cb(left(cause))
+                ))
 
-            // this indicates last await was interrupted.
-            // In case the request was successful and only then
-            // we have to get next state of the process and assure
-            // any cleanup will be run.
-            // note this won't consult any cleanup contained
-            // in `next` or `rcv` on left side
-            // as this was already run on `Interrupt`
-            case AwaitDone(r, awt, _) =>
-              Try(awt.rcv(EarlyCause(r)).run)
-              .kill
-              .run.runAsync(_ => ())
+              // this indicates last await was interrupted.
+              // In case the request was successful and only then
+              // we have to get next state of the process and assure
+              // any cleanup will be run.
+              // note this won't consult any cleanup contained
+              // in `next` or `rcv` on left side
+              // as this was already run on `Interrupt`
+              case AwaitDone(r, awt, _) =>
+                Try(awt.rcv(EarlyCause(r)).run)
+                .kill
+                .run.runAsync(_ => ())
 
 
-            // Interrupt after we have been completed this is no-op
-            case Interrupt(_) => ()
+              // Interrupt after we have been completed this is no-op
+              case Interrupt(_) => ()
 
+            }
           })(S)
 
           runStep(self).fold(
             rsn => (_: Cause) => ()
             , cln => {
               cleanup = cln
-              (cause: Cause) => a ! Interrupt(cause)
+              (cause: EarlyCause) => a ! Interrupt(cause)
             }
           )
         }

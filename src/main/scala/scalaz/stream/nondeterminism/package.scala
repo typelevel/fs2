@@ -40,7 +40,7 @@ package object nondeterminism {
       val done = async.signal[Boolean](S)
 
       //keep state of master source
-      var state: Either3[Cause, Cause => Unit,  Cont[Task,Process[Task,A]]] =
+      var state: Either3[Cause, EarlyCause => Unit,  Cont[Task,Process[Task,A]]] =
         Either3.left3(End)
 
       //keep no of open processes

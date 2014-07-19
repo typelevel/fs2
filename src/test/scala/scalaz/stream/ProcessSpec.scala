@@ -278,8 +278,27 @@ object ProcessSpec extends Properties("Process") {
     fallbackCausedBy == Some(Kill) && received.isEmpty
   }
 
- property("pipeO stripW ~= stripW pipe") = forAll { (p1: Process1[Int,Int]) =>
+  property("pipeO stripW ~= stripW pipe") = forAll { (p1: Process1[Int,Int]) =>
     val p = logged(range(1, 11).toSource)
     p.pipeO(p1).stripW.runLog.run == p.stripW.pipe(p1).runLog.run
   }
+
+  property("runAsync cleanup") = secure {
+
+    val q = async.boundedQueue[Int]()
+    val q2 = async.boundedQueue[Int]()
+
+    @volatile var cleanupCalled = false
+    val sync = new SyncVar[Cause \/ (Seq[Int], Process.Cont[Task,Int])]
+    val deque = q.dequeue.onComplete(eval_(Task.delay{cleanupCalled = true}))
+    val interrupt =
+      (deque observe q2.enqueue).runAsync(sync.put)
+
+    Thread.sleep(100)
+    interrupt(Kill)
+
+    sync.get(3000).isDefined && cleanupCalled
+
+  }
+
 }

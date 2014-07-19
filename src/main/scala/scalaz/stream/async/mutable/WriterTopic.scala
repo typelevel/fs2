@@ -133,7 +133,7 @@ private[stream] object WriterTopic {
     var closed: Option[Cause] = None
 
     // state of upstream. Upstream is running and left is interrupt, or upstream is stopped.
-    var upState: Option[Cause \/ (Cause => Unit)] = None
+    var upState: Option[Cause \/ (EarlyCause => Unit)] = None
 
     var w: Writer1[W, I, O] = writer
 
