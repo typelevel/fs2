@@ -42,11 +42,6 @@ object Util {
     try p
     catch {case e: Throwable => Process.fail(e)}
 
- /** helper for turning on/off debug **/
-  def debug(s: => String) = {
-   //println(s)
- }
 
-  val refCount = new AtomicInteger(0)
 
 }

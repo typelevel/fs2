@@ -102,7 +102,6 @@ package object nondeterminism {
       }
 
       actor = Actor[M]({m =>
-        Util.debug(s"~~~ NJN m: $m | open: $opened | state: $state | closed: $closed | completer: $completer")
         closed.fold(m match {
           // next merged process is available
           // run it with chance to interrupt

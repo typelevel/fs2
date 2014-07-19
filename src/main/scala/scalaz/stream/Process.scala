@@ -127,7 +127,6 @@ sealed trait Process[+F[_], +O]
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] =
       p1.suspendStep.flatMap({ s1 =>
-      Util.debug(s"PIPE p1: $p1 | s1: $s1 | this: $this")
       s1 match {
         case Step(Await1(rcv1), cont1) => this.step match {
           case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe p1)
@@ -163,7 +162,6 @@ sealed trait Process[+F[_], +O]
   final def tee[F2[x] >: F[x], O2, O3](p2: Process[F2, O2])(t: Tee[O, O2, O3]): Process[F2, O3] = {
     import scalaz.stream.tee.{AwaitL, AwaitR, disconnectL, disconnectR, feedL, feedR}
     t.suspendStep flatMap { ts =>
-      Util.debug(s"TEE t: $t | ts: $ts | left: $this | right: $p2 ")
       ts match {
         case Step(AwaitL(_), contT) => this.step match {
           case Step(awt@Await(rq, rcv), contL) => awt.extend { p => (p  +: contL).tee(p2)(t) }
@@ -457,9 +455,6 @@ sealed trait Process[+F[_], +O]
    */
   final def runFoldMap[F2[x] >: F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2, O], acc: B): F2[B] = {
-      debug(s"RFM cur: $cur, acc: $acc")
-      //if (refCount.incrementAndGet() % 1000 == 0) println("@"+refCount.get())
-
       cur.step match {
         case Step(Emit(os), cont) =>
           F.bind(F.point(os.foldLeft(acc)((b, o) => B.append(b, f(o))))) { nacc =>
@@ -1173,7 +1168,6 @@ object Process {
     def toIndexedSeq: IndexedSeq[O] = {
       @tailrec
       def go(cur: Process[Any,O], acc: Vector[O]): IndexedSeq[O] = {
-        Util.debug(s"ISQ $cur | acc: $acc")
         cur.step match {
           case Step(Emit(os),cont) => go(cont.continue, acc fast_++ os)
           case Step(awt,cont) => go(cont.continue,acc)
@@ -1335,7 +1329,6 @@ object Process {
 
 
           a = new Actor[M]({ m =>
-            Util.debug(s"+++ ASY m: $m | cleanup: $cleanup | completed: $completed ")
             m match {
               case AwaitDone(r, awt, cont) if completed.isEmpty =>
                 val step = Try(awt.rcv(EarlyCause(r)).run) +: cont

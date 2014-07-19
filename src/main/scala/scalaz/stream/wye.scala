@@ -349,7 +349,6 @@ object wye {
   def feedL[I,I2,O](is: Seq[I])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
-      Util.debug(s"FEEDL src: $is | in: $in | out: $out | cur: $cur ")
       if (in.nonEmpty) cur.step match {
         case Step(Emit(os), cont) =>
           go(in, out :+ os, cont.continue)
@@ -380,7 +379,6 @@ object wye {
   def feedR[I,I2,O](i2s: Seq[I2])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
     def go(in: Seq[I2], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
-      Util.debug(s"FEEDR src: $i2s | in: $in | out: $out | cur: $cur ")
       if (in.nonEmpty) cur.step match {
         case  Step(Emit(os), cont) =>
           go(in, out :+ os, cont.continue)
@@ -437,7 +435,6 @@ object wye {
    */
   def disconnectL[I, I2, O](cause: EarlyCause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
     val ys = y.step
-    debug(s"DISR $ys | rsn $cause")
     ys match {
       case Step(emt@Emit(os), cont) =>
         emt onHalt (rsn => disconnectL(cause)(Halt(rsn) +: cont))
@@ -465,8 +462,6 @@ object wye {
    */
   def disconnectR[I, I2, O](cause: EarlyCause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
       val ys = y.step
-     // def nextDisconnect(rsn:Cause) = disconnectR(cause)(ys.next(rsn))
-      debug(s"DISR $ys | rsn $cause")
       ys match {
         case Step(emt@Emit(os), cont) =>
           emt onHalt (rsn => disconnectR(cause)(Halt(rsn) +: cont))
@@ -781,7 +776,6 @@ object wye {
       : (Wye[L, R, O], Option[(Cause \/ Seq[O]) => Unit]) = {
         @tailrec
         def go(cur: Wye[L, R, O]): (Wye[L, R, O], Option[(Cause \/ Seq[O]) => Unit]) = {
-          Util.debug(s"YY cur $cur | cb: $cb | L: $left | R: $right")
           cur.step match {
             case Step(Emit(Seq()),cont) =>
               go(cont.continue)
@@ -820,9 +814,7 @@ object wye {
 
 
 
-      a = Actor[M]({ m =>
-        Util.debug(s"+++ WYE m: $m | yy: $yy | out: $out | l: $left | r: $right")
-
+      a = Actor[M]({ m =>  
         m match {
           case Ready(side, result) =>
             val (y, cb) =

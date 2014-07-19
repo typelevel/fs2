@@ -148,7 +148,6 @@ private[stream] object WriterTopic {
     }
 
     def publish(is: Seq[I]) = {
-      debug(s"@@@ PUB IS: $is W: $w ")
       process1.feed(is)(w).unemit match {
         case (wos, next) =>
           w = next
@@ -170,7 +169,6 @@ private[stream] object WriterTopic {
     }
 
     actor = Actor[M](m => {
-      debug(s">>> IN:  m: $m  | sub: $subscriptions | lw: $lastW | clsd: $closed | upState: $upState | wrtr: $writer | hOs: $haltOnSource")
       closed.fold(m match {
         case Subscribe(sub, cb) =>
           subscriptions = subscriptions :+ sub
@@ -187,7 +185,6 @@ private[stream] object WriterTopic {
 
 
         case Ready(sub, cb) =>
-          debug(s"||| RDY $sub | ${sub.state }")
           sub.getOrAwait(cb)
 
         case Upstream(-\/(rsn)) =>

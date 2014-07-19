@@ -234,7 +234,6 @@ private[stream] object Queue {
 
 
     val actor: Actor[M] = Actor({ (m: M) =>
-     Util.debug(s"### QUE    m: $m | cls: $closed | sizes $sizes, | queued $queued | consumers: $consumers")
       if (closed.isEmpty) m match {
         case Dequeue(ref, cb)     => dequeueOne(ref, cb)
         case Enqueue(as, cb) => enqueueOne(as, cb)
