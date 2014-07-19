@@ -278,8 +278,8 @@ object ProcessSpec extends Properties("Process") {
     fallbackCausedBy == Some(Kill) && received.isEmpty
   }
 
- property("pipeO stripW ~= stripW pipe") = secure {
+ property("pipeO stripW ~= stripW pipe") = forAll { (p1: Process1[Int,Int]) =>
     val p = logged(range(1, 11).toSource)
-    p.pipeO(sum).stripW.runLog.run == p.stripW.pipe(sum).runLog.run
+    p.pipeO(p1).stripW.runLog.run == p.stripW.pipe(p1).runLog.run
   }
 }
