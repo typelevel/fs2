@@ -1,11 +1,6 @@
 scalaz-stream
 =============
 
-
-----
-
-
-
 [![Build Status](https://travis-ci.org/scalaz/scalaz-stream.png?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
 
 ### Where to get it ###
