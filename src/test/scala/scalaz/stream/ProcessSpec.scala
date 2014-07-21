@@ -283,6 +283,14 @@ object ProcessSpec extends Properties("Process") {
     p.pipeO(p1).stripW.runLog.run == p.stripW.pipe(p1).runLog.run
   }
 
+  property("process.sequence returns elements in order") = secure { 
+    val random = util.Random
+    val p = Process.range(1, 10).map(i => Task.delay { Thread.sleep(random.nextInt(100)); i })
+
+    p.sequence(4).runLog.run == p.flatMap(eval).runLog.run
+  }
+
+
   property("runAsync cleanup") = secure {
 
     val q = async.boundedQueue[Int]()
