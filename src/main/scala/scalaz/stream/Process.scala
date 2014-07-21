@@ -124,27 +124,26 @@ sealed trait Process[+F[_], +O]
    * is killed with same reason giving it an opportu nity to cleanup.
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] =
-    p1.suspendStep.flatMap({ s1 =>
-      s1 match {
-        case s@Step(awt1@Await1(rcv1), cont1) =>
-          val nextP1 = s.toProcess
-          this.step match {
-            case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe nextP1)
-            case Step(Emit(os), cont)        => cont.continue pipe process1.feed(os)(nextP1)
-            case hlt@Halt(End)               => hlt pipe nextP1.disconnect(Kill).swallowKill
-            case hlt@Halt(rsn: EarlyCause)   => hlt pipe nextP1.disconnect(rsn)
-          }
-
-        case Step(emt@Emit(os), cont)      =>
-          if (cont.isEmpty) emt
-          else emt onHalt {
-            case End => this.pipe(cont.continue)
-            case early => this.pipe((Halt(early) +: cont).causedBy(early))
-          }
-
-        case Halt(rsn)           =>  this.kill onHalt { _ => Halt(rsn) }
+  p1.suspendStep.flatMap({ s1 =>
+    s1 match {
+      case s@Step(Await1(rcv1), cont1) =>
+        val nextP1 = s.toProcess
+        this.step match {
+          case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe nextP1)
+          case Step(Emit(os), cont)        => cont.continue pipe process1.feed(os)(nextP1)
+          case hlt@Halt(End)               => hlt pipe nextP1.disconnect(Kill).swallowKill
+          case hlt@Halt(rsn: EarlyCause)   => hlt pipe nextP1.disconnect(rsn)
+        }
+      case Step(Emit(os), cont)      => Emit(os) onHalt {
+        case End => this.pipe(cont.continue)
+        case early => this.pipe((Halt(early) +: cont).causedBy(early))
       }
-    })
+      case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
+    }
+  })
+
+
+
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
@@ -184,8 +183,7 @@ sealed trait Process[+F[_], +O]
         }
 
         case Step(emt@Emit(o3s), contT) =>
-          if (contT.isEmpty) emt
-          else emt onHalt {
+          emt onHalt {
             case End => this.tee(p2)(contT.continue)
             case early => this.tee(p2)((Halt(early) +: contT).causedBy(early))
           }
@@ -641,7 +639,7 @@ object Process {
    * Used to step within the process to define complex combinators.
    */
   case class Step[+F[_], +O](head: EmitOrAwait[F, O], next: Cont[F, O]) extends HaltOrStep[F, O] {
-    def toProcess : Process[F,O] = Append(head,next.stack)
+    def toProcess : Process[F,O] = Append(head.asInstanceOf[HaltEmitOrAwait[F,O]],next.stack)
   }
 
   /**
