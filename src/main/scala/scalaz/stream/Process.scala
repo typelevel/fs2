@@ -136,9 +136,11 @@ sealed trait Process[+F[_], +O]
           }
 
         case Step(emt@Emit(os), cont)      =>
+          // When the pipe is killed from the outside it is killed at the beginning or after emit.
+          // This ensures that Kill from the outside is not swallowed.
           emt onHalt {
             case End => this.pipe(cont.continue)
-            case early => this.pipe((Halt(early) +: cont).causedBy(early))
+            case early => this.pipe(Halt(early) +: cont).causedBy(early)
           }
 
         case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
@@ -183,7 +185,7 @@ sealed trait Process[+F[_], +O]
         }
 
         case Step(emt@Emit(o3s), contT) =>
-          // When the process is killed from the outside it is killed after emit.
+          // When the process is killed from the outside it is killed at the beginning or after emit.
           // This ensures that Kill from the outside isn't swallowed.
           emt onHalt {
             case End => this.tee(p2)(contT.continue)
