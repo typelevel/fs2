@@ -52,6 +52,23 @@ object CauseSpec extends Properties("cause") {
     .&&(downReason == Some(End))
   }
 
+  property("pipe.terminated.p1.flatMap.repeatEval") = secure {
+    val source = repeatEval(Task.now(1))
+    var upReason: Option[Cause] = None
+    var downReason: Option[Cause] = None
+
+    val result =
+      source.onHalt{cause => upReason = Some(cause); Halt(cause)}
+      .flatMap{ i => Process.range(0,i).bufferAll}
+      .pipe(process1.take(2))
+      .onHalt { cause => downReason = Some(cause) ; Halt(cause) }
+      .runLog.run
+
+    (result == Vector(0,0))
+    .&&(upReason == Some(Kill))
+    .&&(downReason == Some(End))
+  }
+
   property("pipe.terminated.p1.with.upstream") = secure {
     val source = emitAll(Seq(1,2,3)).toSource
     var upReason: Option[Cause] = None

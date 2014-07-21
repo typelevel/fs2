@@ -148,7 +148,6 @@ object process1 {
   def feed[I, O](i: Seq[I])(p: Process1[I, O]): Process1[I, O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[O] , cur: Process1[I, O]  ): Process1[I, O] = {
-      //Util.debug(s"FEED1 start: in: $in | out : $out | cur $cur")
       if (in.nonEmpty) {
         cur.step match {
           case Step(Emit(os),cont) => go(in, out fast_++ os, cont.continue)

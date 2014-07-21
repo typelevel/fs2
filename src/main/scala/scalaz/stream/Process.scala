@@ -64,24 +64,22 @@ sealed trait Process[+F[_], +O]
    * is produced as next step.
    */
   final def step: HaltOrStep[F, O] = {
-        def go(cur: Process[F,O], stack: Vector[Cause => Trampoline[Process[F,O]]]) : HaltOrStep[F,O] = {
-         // println(s"ST: ${stack.size} JS: ${Thread.currentThread().getStackTrace.size}" )
-          if (stack.nonEmpty) cur match {
-            case Halt(cause) => go(Try(stack.head(cause).run), stack.tail)
-            case Emit(os) if os.isEmpty => go(Try(stack.head(End).run), stack.tail)
-            case emt@(Emit(os)) => Step(emt,Cont(stack))
-            case awt@Await(_,_) => Step(awt,Cont(stack))
-            case Append(h,st) => go(h, st fast_++ stack)
-          } else cur match {
-            case hlt@Halt(cause) => hlt
-            case emt@Emit(os) if (os.isEmpty) => halt
-            case emt@Emit(os) => Step(emt,Cont(Vector.empty))
-            case awt@Await(_,_) => Step(awt,Cont(Vector.empty))
-            case Append(h,st) => go(h,st)
-
-          }
-        }
-        go(this,Vector.empty)
+    def go(cur: Process[F,O], stack: Vector[Cause => Trampoline[Process[F,O]]]) : HaltOrStep[F,O] = {
+      if (stack.nonEmpty) cur match {
+        case Halt(cause) => go(Try(stack.head(cause).run), stack.tail)
+        case Emit(os) if os.isEmpty => go(Try(stack.head(End).run), stack.tail)
+        case emt@(Emit(os)) => Step(emt,Cont(stack))
+        case awt@Await(_,_) => Step(awt,Cont(stack))
+        case Append(h,st) => go(h, st fast_++ stack)
+      } else cur match {
+        case hlt@Halt(cause) => hlt
+        case emt@Emit(os) if (os.isEmpty) => halt
+        case emt@Emit(os) => Step(emt,Cont(Vector.empty))
+        case awt@Await(_,_) => Step(awt,Cont(Vector.empty))
+        case Append(h,st) => go(h,st)
+      }
+    }
+    go(this,Vector.empty)
 
   }
 
@@ -126,19 +124,27 @@ sealed trait Process[+F[_], +O]
    * is killed with same reason giving it an opportu nity to cleanup.
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] =
-      p1.suspendStep.flatMap({ s1 =>
+    p1.suspendStep.flatMap({ s1 =>
       s1 match {
-        case Step(Await1(rcv1), cont1) => this.step match {
-          case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe p1)
-          case Step(Emit(os), cont)        => cont.continue pipe process1.feed(os)(p1)
-          case hlt@Halt(End)               => hlt pipe p1.disconnect(Kill).swallowKill
-          case hlt@Halt(rsn: EarlyCause)   => hlt pipe p1.disconnect(rsn)
-        }
-        case Step(Emit(os), cont)      => Emit(os) onHalt { cse => this.pipe(Halt(cse) +: cont) }
-        case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
+        case s@Step(awt1@Await1(rcv1), cont1) =>
+          val nextP1 = s.toProcess
+          this.step match {
+            case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe nextP1)
+            case Step(Emit(os), cont)        => cont.continue pipe process1.feed(os)(nextP1)
+            case hlt@Halt(End)               => hlt pipe nextP1.disconnect(Kill).swallowKill
+            case hlt@Halt(rsn: EarlyCause)   => hlt pipe nextP1.disconnect(rsn)
+          }
+
+        case Step(emt@Emit(os), cont)      =>
+          if (cont.isEmpty) emt
+          else emt onHalt {
+            case End => this.pipe(cont.continue)
+            case early => this.pipe((Halt(early) +: cont).causedBy(early))
+          }
+
+        case Halt(rsn)           =>  this.kill onHalt { _ => Halt(rsn) }
       }
     })
-
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
@@ -177,7 +183,13 @@ sealed trait Process[+F[_], +O]
           case hlt@Halt(rsn : EarlyCause)                                 => this.tee(hlt)(disconnectR(rsn)(t))
         }
 
-        case Step(emt@Emit(o3s), contT) => emt onHalt { rsn => this.tee(p2)(Halt(rsn) +: contT) }
+        case Step(emt@Emit(o3s), contT) =>
+          if (contT.isEmpty) emt
+          else emt onHalt {
+            case End => this.tee(p2)(contT.continue)
+            case early => this.tee(p2)((Halt(early) +: contT).causedBy(early))
+          }
+
         case Halt(rsn)             => this.kill onHalt { _ => p2.kill onHalt { _ => Halt(rsn) } }
       }
     }
@@ -628,7 +640,9 @@ object Process {
    * Intermediate step of process.
    * Used to step within the process to define complex combinators.
    */
-  case class Step[+F[_], +O](head: EmitOrAwait[F, O], next: Cont[F, O]) extends HaltOrStep[F, O]
+  case class Step[+F[_], +O](head: EmitOrAwait[F, O], next: Cont[F, O]) extends HaltOrStep[F, O] {
+    def toProcess : Process[F,O] = Append(head,next.stack)
+  }
 
   /**
    * Continuation of the process. Represents process _stack_. Used in conjuction with `Step`.
@@ -670,6 +684,11 @@ object Process {
       Cont(stack.map(tf => (cause: Cause) => Trampoline.suspend(tf(cause).map(f))))
 
 
+    /**
+     * Returns true, when this continuation is empty, i.e. no more appends to process
+     * @return
+     */
+    def isEmpty : Boolean = stack.isEmpty
 
   }
 
