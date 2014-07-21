@@ -124,26 +124,28 @@ sealed trait Process[+F[_], +O]
    * is killed with same reason giving it an opportu nity to cleanup.
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] =
-  p1.suspendStep.flatMap({ s1 =>
-    s1 match {
-      case s@Step(Await1(rcv1), cont1) =>
-        val nextP1 = s.toProcess
-        this.step match {
-          case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe nextP1)
-          case Step(Emit(os), cont)        => cont.continue pipe process1.feed(os)(nextP1)
-          case hlt@Halt(End)               => hlt pipe nextP1.disconnect(Kill).swallowKill
-          case hlt@Halt(rsn: EarlyCause)   => hlt pipe nextP1.disconnect(rsn)
-        }
-      case Step(Emit(os), cont)      => Emit(os) onHalt {
-        case End => this.pipe(cont.continue)
-        case early => this.pipe((Halt(early) +: cont).causedBy(early))
+    p1.suspendStep.flatMap({ s1 =>
+      s1 match {
+        case s@Step(awt1@Await1(rcv1), cont1) =>
+          val nextP1 = s.toProcess
+          this.step match {
+            case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe nextP1)
+            case Step(Emit(os), cont)        => cont.continue pipe process1.feed(os)(nextP1)
+            case hlt@Halt(End)               => hlt pipe nextP1.disconnect(Kill).swallowKill
+            case hlt@Halt(rsn: EarlyCause)   => hlt pipe nextP1.disconnect(rsn)
+          }
+
+        case Step(emt@Emit(os), cont)      =>
+          // When the pipe is killed from the outside it is killed at the beginning or after emit.
+          // This ensures that Kill from the outside is not swallowed.
+          emt onHalt {
+            case End => this.pipe(cont.continue)
+            case early => this.pipe(Halt(early) +: cont).causedBy(early)
+          }
+
+        case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
       }
-      case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
-    }
-  })
-
-
-
+    })
 
   /** Operator alias for `pipe`. */
   final def |>[O2](p2: Process1[O, O2]): Process[F, O2] = pipe(p2)
@@ -168,24 +170,26 @@ sealed trait Process[+F[_], +O]
     import scalaz.stream.tee.{AwaitL, AwaitR, disconnectL, disconnectR, feedL, feedR}
     t.suspendStep flatMap { ts =>
       ts match {
-        case Step(AwaitL(_), contT) => this.step match {
-          case Step(awt@Await(rq, rcv), contL) => awt.extend { p => (p  +: contL).tee(p2)(t) }
-          case Step(Emit(os), contL)           => contL.continue.tee(p2)(feedL[O, O2, O3](os)(t))
-          case hlt@Halt(End)              => hlt.tee(p2)(disconnectL(Kill)(t)).swallowKill
-          case hlt@Halt(rsn: EarlyCause)  => hlt.tee(p2)(disconnectL(rsn)(t))
+        case s@Step(AwaitL(_), contT) => this.step match {
+          case Step(awt@Await(rq, rcv), contL) => awt.extend { p => (p  +: contL).tee(p2)(s.toProcess) }
+          case Step(Emit(os), contL)           => contL.continue.tee(p2)(feedL[O, O2, O3](os)(s.toProcess))
+          case hlt@Halt(End)              => hlt.tee(p2)(disconnectL(Kill)(s.toProcess).swallowKill)
+          case hlt@Halt(rsn: EarlyCause)  => hlt.tee(p2)(disconnectL(rsn)(s.toProcess))
         }
 
-        case Step(AwaitR(_), contT) => p2.step match {
-          case Step(awt: Await[F2, Any, O2]@unchecked, contR:Cont[F2,O2]) => awt.extend { p => this.tee(p +: contR)(t) }
-          case Step(Emit(o2s: Seq[O2]@unchecked), contR:Cont[F2,O2])      => this.tee(contR.continue)(feedR[O, O2, O3](o2s)(t))
-          case hlt@Halt(End)                                              => this.tee(hlt)(disconnectR(Kill)(t)).swallowKill
-          case hlt@Halt(rsn : EarlyCause)                                 => this.tee(hlt)(disconnectR(rsn)(t))
+        case s@Step(AwaitR(_), contT) => p2.step match {
+          case Step(awt: Await[F2, Any, O2]@unchecked, contR:Cont[F2,O2]) => awt.extend { p => this.tee(p +: contR)(s.toProcess) }
+          case Step(Emit(o2s: Seq[O2]@unchecked), contR:Cont[F2,O2])      => this.tee(contR.continue)(feedR[O, O2, O3](o2s)(s.toProcess))
+          case hlt@Halt(End)                                              => this.tee(hlt)(disconnectR(Kill)(s.toProcess).swallowKill)
+          case hlt@Halt(rsn : EarlyCause)                                 => this.tee(hlt)(disconnectR(rsn)(s.toProcess))
         }
 
         case Step(emt@Emit(o3s), contT) =>
+          // When the process is killed from the outside it is killed at the beginning or after emit.
+          // This ensures that Kill from the outside isn't swallowed.
           emt onHalt {
             case End => this.tee(p2)(contT.continue)
-            case early => this.tee(p2)((Halt(early) +: contT).causedBy(early))
+            case early => this.tee(p2)(Halt(early) +: contT).causedBy(early)
           }
 
         case Halt(rsn)             => this.kill onHalt { _ => p2.kill onHalt { _ => Halt(rsn) } }
