@@ -86,6 +86,7 @@ object CauseSpec extends Properties("cause") {
     .&&(downReason == Some(End))
   }
 
+
   property("pipe.terminated.upstream") = secure {
     val source = emitAll(Seq(1,2,3)).toSource
     var id1Reason: Option[Cause] = None
@@ -512,4 +513,38 @@ object CauseSpec extends Properties("cause") {
   }
 
 
+  property("pipe, tee, wye does not swallow Kill from outside") = secure {
+    val p1 = await1 onHalt { x => Process(1, 2).causedBy(x) }
+
+    // Read from the left then from the right.
+    val t: Tee[Int, Int, Int] =
+      tee.passL.asInstanceOf[Tee[Int, Int, Int]]
+        .onHalt { x => tee.passR.causedBy(x) }
+
+    val inf = repeatEval(Task.delay(()))
+
+    var fromPipe: Option[Cause] = None
+    var fromTee: Option[Cause] = None
+    var fromWye: Option[Cause] = None
+
+    // pipe
+    inf
+      .flatMap { _ => (halt |> p1).onHalt { x => fromPipe = Some(x); Halt(x) } }
+      .take(4).run.timed(3000).run
+    inf
+      .flatMap { _ => Process(0, 2, 4).chunkAll /* Pipe is in chunkAll. */ }
+      .take(4).run.timed(3000).run
+
+    // tee
+    inf
+      .flatMap { _ => emit(1).tee(emit(2))(t).onHalt { x => fromTee = Some(x); Halt(x) } }
+      .take(3).run.timed(3000).run
+
+    // wye (same test as tee)
+    inf
+      .flatMap { _ => emit(1).wye(emit(2))(t).onHalt { x => fromWye = Some(x); Halt(x) } }
+      .take(3).run.timed(3000).run
+
+    (fromPipe.get == Kill) && (fromTee.get == Kill) && (fromWye.get == Kill)
+  }
 }
