@@ -98,6 +98,7 @@ package object nondeterminism {
           S(q.failWithCause(closed.getOrElse(End)).runAsync(_=>{}))
           completer.foreach { cb =>  S(cb(\/-(()))) }
           completer = None
+          closed = closed orElse Some(End)
         }
       }
 

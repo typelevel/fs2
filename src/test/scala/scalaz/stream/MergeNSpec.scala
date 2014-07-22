@@ -26,9 +26,9 @@ object MergeNSpec extends Properties("mergeN") {
         }).toSource
 
       val result =
-        merge.mergeN(ps).runLog.timed(3000).run
+        merge.mergeN(ps).runLog.timed(3000).run.toSet
 
-      (result.sorted.toList == l.sorted.toList) :| "All elements were collected"
+      (result.toList.sorted == l.toSet.toList.sorted) :| "All elements were collected"
 
   }
 
