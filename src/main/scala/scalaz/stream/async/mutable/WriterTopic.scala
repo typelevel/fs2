@@ -88,6 +88,7 @@ private[stream] object WriterTopic {
     case class Upstream(result: Cause \/ (Seq[I], Cont[Task,I])) extends M
     case class Publish(is: Seq[I], cb: Throwable \/ Unit => Unit) extends M
     case class Fail(cause: Cause, cb: Throwable \/ Unit => Unit) extends M
+    case class Get(cb:(Throwable \/ Seq[W]) => Unit) extends M
 
     class Subscription(var state: (Vector[W \/ O]) \/ ((Throwable \/ Seq[W \/ O]) => Unit)) {
 
@@ -124,7 +125,11 @@ private[stream] object WriterTopic {
 
     ///////////////////////
 
+    // subscriptions to W \/ O
     var subscriptions: Vector[Subscription] = Vector.empty
+
+    // call backs on single W that can't be completed as there is no `W` yet
+    var awaitingW: Vector[(Throwable \/ Seq[W]) => Unit] = Vector.empty
 
     //last memorized `W`
     var lastW: Option[W] = None
@@ -145,6 +150,8 @@ private[stream] object WriterTopic {
       if (wos.nonEmpty) subscriptions.foreach(_.publish(wos))
       subscriptions.foreach(_.close(cause))
       subscriptions = Vector.empty
+      awaitingW.foreach(cb=>S(cb(-\/(cause.asThrowable))))
+      awaitingW = Vector.empty
     }
 
     def publish(is: Seq[I]) = {
@@ -152,6 +159,10 @@ private[stream] object WriterTopic {
         case (wos, next) =>
           w = next
           lastW = wos.collect({ case -\/(w) => w }).lastOption orElse lastW
+          if (awaitingW.nonEmpty  )  lastW.foreach { w =>
+            awaitingW.foreach(cb => S(cb(\/-(Seq(w)))))
+            awaitingW = Vector.empty
+          }
           if (wos.nonEmpty) subscriptions.foreach(_.publish(wos))
           next match {
             case hlt@Halt(rsn) =>  fail(rsn)
@@ -168,16 +179,19 @@ private[stream] object WriterTopic {
       ))
     }
 
+    def startIfNotYet =
+      if (upState.isEmpty) {
+        publish(Nil) // causes un-emit of first `w`
+        getNext(source)
+      }
+
     actor = Actor[M](m => {
       closed.fold(m match {
         case Subscribe(sub, cb) =>
           subscriptions = subscriptions :+ sub
           lastW.foreach(w => sub.publish(Seq(-\/(w))))
           S(cb(\/-(())))
-          if (upState.isEmpty) {
-            publish(Nil) // causes un-emit of `w`
-            getNext(source)
-          }
+          startIfNotYet
 
         case UnSubscribe(sub, cb) =>
           subscriptions = subscriptions.filterNot(_ == sub)
@@ -186,6 +200,13 @@ private[stream] object WriterTopic {
 
         case Ready(sub, cb) =>
           sub.getOrAwait(cb)
+
+        case Get(cb) =>
+          startIfNotYet
+          lastW match {
+            case Some(w) => S(cb(\/-(Seq(w))))
+            case None => awaitingW = awaitingW :+ cb
+          }
 
         case Upstream(-\/(rsn)) =>
           if (haltOnSource || rsn != End) fail(rsn)
@@ -205,10 +226,11 @@ private[stream] object WriterTopic {
           S(cb(\/-(())))
 
       })(rsn => m match {
-        case Subscribe(_, cb)         => S(cb(-\/(Terminated(rsn))))
+        case Subscribe(_, cb)         => S(cb(-\/(rsn.asThrowable)))
         case UnSubscribe(_, cb)       => S(cb(\/-(())))
         case Ready(sub, cb)           => sub.flushOrClose(rsn,cb)
-        case Publish(_, cb)           => S(cb(-\/(Terminated(rsn))))
+        case Get(cb)                  => S(cb(-\/(rsn.asThrowable)))
+        case Publish(_, cb)           => S(cb(-\/(rsn.asThrowable)))
         case Fail(_, cb)              => S(cb(\/-(())))
         case Upstream(-\/(_))         => //no-op
         case Upstream(\/-((_, cont))) => S((Halt(Kill) +: cont).runAsync(_ => ()))
@@ -238,9 +260,8 @@ private[stream] object WriterTopic {
         def changes: Process[Task, Unit] = discrete.map(_=>())
 
         def continuous: Process[Task, W] =
-          discrete.once.flatMap {
-            Process.emit(_) ++ continuous
-          }
+         Process.repeatEval(Task.async[Seq[W]](cb => actor ! Get(cb)))
+         .flatMap(Process.emitAll)
 
         def discrete: Process[Task, W] = subscribeW
 
