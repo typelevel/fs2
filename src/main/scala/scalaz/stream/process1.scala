@@ -548,8 +548,7 @@ object process1 {
 
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I, I] =
-    if (n < 0) fail(new IllegalArgumentException(s"n must be > 0 is $n"))
-    else if (n == 0) halt
+    if (n <= 0) halt
     else await1[I] fby take(n - 1)
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
