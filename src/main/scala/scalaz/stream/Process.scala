@@ -1438,6 +1438,10 @@ object Process {
     def mapW[W2](f: W => W2): Writer[F,W2,O] =
       self.map(_.leftMap(f))
 
+    /** pipe Write side of this `Writer`  **/
+    def pipeW[B](f: Process1[W,B]): Writer[F,B,O] =
+      self.pipe(process1.liftL(f))
+
     /**
      * Observe the write side of this `Writer` using the
      * given `Sink`, keeping it available for subsequent
@@ -1457,6 +1461,22 @@ object Process {
      */
     def drainW(snk: Sink[F,W]): Process[F,O] =
       observeW(snk).stripW
+
+
+    /**
+     * Observe the output side of this `Writer` using the
+     * given `Sink`, keeping it available for subsequent
+     * processing. Also see `drainO`.
+     */
+    def observeO(snk: Sink[F,O]): Writer[F,W,O] =
+      self.map(_.swap).observeW(snk).map(_.swap) 
+
+    /**
+     * Observe the output side of this Writer` using the
+     * given `Sink`, then discard it. Also see `observeW`.
+     */
+    def drainO(snk: Sink[F,O]): Process[F,W] =
+      observeO(snk).stripO
 
     /** Map over the output side of this `Writer`. */
     def mapO[B](f: O => B): Writer[F,W,B] =
