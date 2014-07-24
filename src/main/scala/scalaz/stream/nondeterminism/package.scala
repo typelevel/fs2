@@ -29,6 +29,7 @@ package object nondeterminism {
    */
   def njoin[A](maxOpen: Int, maxQueued: Int)(source: Process[Task, Process[Task, A]])(implicit S: Strategy): Process[Task, A] = {
     sealed trait M
+    case object Start extends M
     case class Offer(p: Process[Task, A], cont: Cont[Task,Process[Task,A]]) extends M
     case class FinishedSource(rsn: Cause) extends M
     case class Finished(result: Throwable \/ Unit) extends M
@@ -87,7 +88,7 @@ package object nondeterminism {
 
       // initially sets signal and starts the source evaluation
       def start: Task[Unit] =
-        done.set(false).map { _ => state = nextStep(source) }
+        done.set(false).map { _ => actor ! Start }
 
       def sourceDone = state.leftOr(false)(_=>true)
 
@@ -169,6 +170,11 @@ package object nondeterminism {
             if (allDone) S(cb(\/-(())))
             else completer = Some(cb)
 
+          // Start evaluation of the source.
+          case Start =>
+            // Assignment to `state` must be performed inside this actor to prevent races.
+            state = nextStep(source)
+
         })(rsn => m match {
           //join is closed, next p is ignored and source is killed
           case Offer(_, cont) =>  nextStep(Halt(Kill) +: cont)
@@ -177,6 +183,7 @@ package object nondeterminism {
           case FinishedDown(cb) =>
             if (allDone) S(cb(\/-(())))
             else completer = Some(cb)
+          case Start => ()
         }) 
 
       })
