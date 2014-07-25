@@ -756,6 +756,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def once: Process[F,O] =
     this |> process1.take(1)
 
+  /** Alias for `this |> [[process1.prefixSums]]` */
+  def prefixSums[O2 >: O](implicit N: Numeric[O2]): Process[F,O2] =
+    this |> process1.prefixSums(N)
+
   /** Alias for `this |> [[process1.reduce]](f)`. */
   def reduce[O2 >: O](f: (O2,O2) => O2): Process[F,O2] =
     this |> process1.reduce(f)
