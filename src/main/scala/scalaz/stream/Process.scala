@@ -419,7 +419,6 @@ sealed trait Process[+F[_], +O]
       case hlt@Halt(rsn) => hlt
     }
 
-
   /**
    * Remove any leading emitted values from this `Process`.
    */
@@ -1180,6 +1179,13 @@ object Process {
      */
     def gather(bufSize: Int)(implicit F: Nondeterminism[F]): Process[F,O] =
       self.pipe(process1.chunk(bufSize)).map(F.gatherUnordered).eval.flatMap(emitAll)
+
+    /**
+     * Read chunks of `bufSize` from input, then use `Nondeterminism.gather`
+     * to run all these actions to completion and return elements in order.
+     */
+    def sequence(bufSize: Int)(implicit F: Nondeterminism[F]): Process[F,O] =
+      self.pipe(process1.chunk(bufSize)).map(F.gather).eval.flatMap(emitAll)
   }
 
   /**
