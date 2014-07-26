@@ -394,7 +394,7 @@ object process1 {
    * are emitted. The last element is then prepended to the next input using the
    * Semigroup `I`. For example,
    * {{{
-   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq) ==
+   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ")) ==
    *   Process("Hello", "World")
    * }}}
    */
@@ -777,7 +777,7 @@ private[stream] trait Process1Ops[+F[_],+O] {
     this |> process1.reduceSemigroup(M)
 
   /** Alias for `this |> [[process1.repartition]](p)(S)` */
-  def repartition[O2 >: O](p: O2 => collection.IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
+  def repartition[O2 >: O](p: O2 => IndexedSeq[O2])(implicit S: Semigroup[O2]): Process[F,O2] =
     this |> process1.repartition(p)(S)
 
   /** Alias for `this |> [[process1.repartition2]](p)(S)` */
