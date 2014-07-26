@@ -582,8 +582,8 @@ object process1 {
     id[Seq[I]].flatMap(emitAll)
 
   /** A process which emits `(prev,cur)` pairs. */
-  def zipPrevious[I](prev: I): Process1[I,(I,I)] =
-    await1[I].flatMap(a => emit(prev -> a) fby zipPrevious(a))
+  def zipWithPrevious[I](prev: I): Process1[I,(I,I)] =
+    await1[I].flatMap(a => emit(prev -> a) fby zipWithPrevious(a))
 
   /** Zips the input with an index of type `Int`. */
   def zipWithIndex[A]: Process1[A,(A,Int)] =
