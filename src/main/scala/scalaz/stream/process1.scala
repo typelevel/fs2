@@ -587,7 +587,10 @@ object process1 {
   def zipWithIndex[A,N](implicit N: Numeric[N]): Process1[A,(A,N)] =
     zipWithState(N.zero)((_, n) => N.plus(n, N.one))
 
-  /** A process which emits `(prev,cur)` pairs. */
+  /**
+   * Zips every element with its previous element wrapped into `Some`.
+   * The first element is zipped with `None`.
+   */
   def zipWithPrevious[I]: Process1[I,(Option[I],I)] =
     zipWithState[I,Option[I]](None)((cur, _) => Some(cur)).map(_.swap)
 
