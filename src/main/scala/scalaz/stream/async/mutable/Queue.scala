@@ -12,83 +12,65 @@ import scalaz.\/._
 
 
 /**
- * Queue that allows asynchronously create process or dump result of processes to
- * create eventually new processes that drain from this queue.
- *
- * Queue may have bound on its size, and that causes queue to control publishing processes
- * to stop publish when the queue reaches the size bound.
- * Bound (max size) is specified when queue is created, and may not be altered after.
- *
- * Queue also has signal that signals size of queue whenever that changes.
- * This may be used for example as additional flow control signalling outside this queue.
- *
- *
+ * Asynchronous queue interface. Operations are all nonblocking in their
+ * implementations, but may be 'semantically' blocking. For instance,
+ * a queue may have a bound on its size, in which case enqueuing may
+ * block until there is an offsetting dequeue.
  */
 trait Queue[A] {
 
   /**
-   * Provides a Sink, that allows to enqueue `A` in this queue
+   * A `Sink` for enqueueing values to this `Queue`.
    */
   def enqueue: Sink[Task, A]
 
   /**
-   * Enqueue one element in this Queue. Resulting task will terminate
-   * with failure if queue is closed or failed.
+   * Enqueue one element in this `Queue`. Resulting task will
+   * terminate with failure if queue is closed or failed.
    * Please note this will get completed _after_ `a` has been successfully enqueued.
    * @param a `A` to enqueue
-   * @return
    */
   def enqueueOne(a: A): Task[Unit]
 
   /**
-   * Enqueue sequence of `A` in this queue. It has same semantics as `enqueueOne`
-   * @param xa sequence of `A`
-   * @return
+   * Enqueue multiple `A` values in this queue. This has same semantics as sequencing
+   * repeated calls to `enqueueOne`.
    */
   def enqueueAll(xa: Seq[A]): Task[Unit]
 
   /**
    * Provides a process that dequeue from this queue.
    * When multiple consumers dequeue from this queue,
-   * Then they dequeue from this queue in first-come, first-server order.
+   * they dequeue in first-come, first-serve order.
    *
-   * Please use `Topic` instead of `Queue` when you have multiple subscribers that
-   * want to see each `A` value enqueued.
-   *
+   * Please use `Topic` instead of `Queue` when all subscribers
+   * need to see each value enqueued.
    */
   def dequeue: Process[Task, A]
 
   /**
-   * Provides signal, that contains size of this queue.
-   * Please note the discrete source from this signal only signal actual changes of state, not the
-   * values being enqueued or dequeued.
-   * That means elements can get enqueued and dequeued, but signal of size may not update,
-   * because size of the queue did not change.
-   *
+   * The time-varying size of this `Queue`. This signal refreshes
+   * only when size changes. Offsetting enqueues and dequeues may
+   * not result in refreshes.
    */
   def size: scalaz.stream.async.immutable.Signal[Int]
 
   /**
-   * Closes this queue. This has effect of enqueue Sink to be stopped
-   * and dequeue process to be stopped immediately after last `A` being drained from queue.
+   * Closes this queue. This halts the `enqueue` `Sink` and
+   * `dequeue` `Process` after any already-queued elements are
+   * drained.
    *
-   * After this any enqueue to this topic will fail with `Terminated(End)`, and enqueue `sink` will terminate with `End` cause.
-   *
-   * If, there are any `A` in queue while the queue is being closed, any new subscriber will receive that `A`
-   * unless the queue is fully drained.
-   *
+   * After this any enqueue will fail with `Terminated(End)`,
+   * and the enqueue `Sink` will terminate with `End`.
    */
   def close: Task[Unit] = failWithCause(End)
 
 
   /**
-   * Kills the queue. That causes all dequeuers from this queue immediately to stop with `Kill` cause.
-   * any `A` in the queue at time of executing this task is lost.
-   *
-   * Any attempt to enqueue in this queue will result in failure with Terminated(Kill) exception.
-   *
-   * Task will be completed once all dequeuers and enqueuers are signalled.
-   *
+   * Kills the queue. Unlike `close`, this kills all dequeuers immediately.
+   * Any subsequent enqueues will fail with `Terminated(Kill)`.
+   * The returned `Task` will completed once all dequeuers and enqueuers
+   * have been signalled.
    */
   def kill: Task[Unit] = failWithCause(Kill)
 
@@ -98,15 +80,11 @@ trait Queue[A] {
    */
   def fail(rsn: Throwable): Task[Unit] = failWithCause(Error(rsn))
 
-
-
   private[stream] def failWithCause(c:Cause): Task[Unit]
-
 }
 
 
 private[stream] object Queue {
-
 
   /**
    * Builds a queue, potentially with `source` producing the streams that
