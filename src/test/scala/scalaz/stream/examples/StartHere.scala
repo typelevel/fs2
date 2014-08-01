@@ -1,4 +1,5 @@
 package scalaz.stream
+package examples
 
 import org.scalacheck._
 import Prop._

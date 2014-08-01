@@ -1,4 +1,5 @@
 package scalaz.stream
+package examples
 
 import java.io._
 import org.scalacheck._

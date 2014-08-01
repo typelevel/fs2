@@ -1,4 +1,5 @@
 package scalaz.stream
+package examples
 
 import scalaz.concurrent.Task
 import scalaz._
