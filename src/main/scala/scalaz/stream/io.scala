@@ -98,7 +98,7 @@ object io {
    * using the `resource` combinator to ensure the `InputStream` is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(in: InputStream)(implicit codec: Codec): Process[Task,String] =
+  def linesR(in: => InputStream)(implicit codec: Codec): Process[Task,String] =
     linesR(Source.fromInputStream(in)(codec))
 
   /**
@@ -106,7 +106,7 @@ object io {
    * using the `resource` combinator to ensure the `Source` is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(src: Source): Process[Task,String] =
+  def linesR(src: => Source): Process[Task,String] =
     resource(Task.delay(src))(src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
       Task.delay { if (lines.hasNext) lines.next else throw Cause.Terminated(Cause.End) }
