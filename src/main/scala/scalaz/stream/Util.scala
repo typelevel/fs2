@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Created by pach on 06/03/14.
  */
-object Util {
+private[stream] object Util {
 
   implicit class AppendSyntax[A](val self: Vector[A]) extends AnyVal {
 
