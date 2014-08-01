@@ -537,13 +537,9 @@ object process1 {
   def stripNone[A]: Process1[Option[A], A] =
     collect { case Some(a) => a }
 
-  /**
-   * Emit a running sum of the values seen so far. The first value emitted will be the
-   * first number seen (not `0`). The length of the output `Process` always matches the
-   * length of the input `Process`.
-   */
-  def sum[N](implicit N: Numeric[N]): Process1[N, N] =
-    reduce(N.plus)
+  /** Emits the sum of all input elements or zero if the input is empty. */
+  def sum[N](implicit N: Numeric[N]): Process1[N,N] =
+    fold(N.zero)(N.plus)
 
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I, I] =
