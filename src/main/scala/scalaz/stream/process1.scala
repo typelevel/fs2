@@ -579,10 +579,6 @@ object process1 {
   def unchunk[I]: Process1[Seq[I], I] =
     id[Seq[I]].flatMap(emitAll)
 
-  /** A process which emits `(prev,cur)` pairs. */
-  def zipWithPrevious[I](prev: I): Process1[I,(I,I)] =
-    await1[I].flatMap(a => emit(prev -> a) fby zipWithPrevious(a))
-
   /** Zips the input with an index of type `Int`. */
   def zipWithIndex[A]: Process1[A,(A,Int)] =
     zipWithIndex[A,Int]
@@ -590,6 +586,10 @@ object process1 {
   /** Zips the input with an index of type `N`. */
   def zipWithIndex[A,N](implicit N: Numeric[N]): Process1[A,(A,N)] =
     zipWithState(N.zero)((_, n) => N.plus(n, N.one))
+
+  /** A process which emits `(prev,cur)` pairs. */
+  def zipWithPrevious[I]: Process1[I,(Option[I],I)] =
+    zipWithState[I,Option[I]](None)((cur, _) => Some(cur)).map(_.swap)
 
   /** Zips the input with state that begins with `z` and is updated by `next`. */
   def zipWithState[A,B](z: B)(next: (A, B) => B): Process1[A,(A,B)] = {
@@ -858,6 +858,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.zipWithIndex[A,N]*]]`. */
   def zipWithIndex[N: Numeric]: Process[F,(O,N)] =
     this |> process1.zipWithIndex[O,N]
+
+  /** Alias for `this |> [[process1.zipWithPrevious]]`. */
+  def zipWithPrevious: Process[F,(Option[O],O)] =
+    this |> process1.zipWithPrevious
 
   /** Alias for `this |> [[process1.zipWithState]](z)(next)`. */
   def zipWithState[B](z: B)(next: (O, B) => B): Process[F,(O,B)] =

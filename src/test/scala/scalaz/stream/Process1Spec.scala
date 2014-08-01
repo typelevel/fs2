@@ -174,4 +174,7 @@ object Process1Spec extends Properties("Process1") {
     .&&("cleanup was called" |: called)
   }
 
+  property("zipWithPrevious") = secure {
+    range(0, 3).zipWithPrevious.toList === List((None, 0), (Some(0), 1), (Some(1), 2))
+  }
 }
