@@ -247,7 +247,7 @@ sealed trait Process[+F[_], +O]
     map(f).eval
 
   /** Prepend a sequence of elements to the output of this `Process`. */
-  def feed[O2>:O](os:Seq[O2]) : Process[F,O2] = {
+  def prepend[O2>:O](os:Seq[O2]) : Process[F,O2] = {
     if (os.nonEmpty) {
       emitAll(os) onHalt {
         case End               => this

@@ -153,7 +153,7 @@ object process1 {
           case Step(Await1(rcv), cont) => go(in.tail,out,rcv(right(in.head)) +: cont)
           case Halt(rsn) =>  emitAll(out).causedBy(rsn)
         }
-      } else cur.feed(out)
+      } else cur.prepend(out)
 
     }
 

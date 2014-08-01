@@ -89,7 +89,7 @@ object tee {
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
 
-      } else cur.feed(out.flatten)
+      } else cur.prepend(out.flatten)
     }
 
     go(i, Vector(), p)
@@ -114,7 +114,7 @@ object tee {
 
         case Halt(rsn) => emitAll(out.flatten).causedBy(rsn)
 
-      } else cur.feed(out.flatten)
+      } else cur.prepend(out.flatten)
     }
 
     go(i, Vector(), p)

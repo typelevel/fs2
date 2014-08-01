@@ -369,7 +369,7 @@ object wye {
         case Halt(rsn)                  =>
           emitAll(out.flatten).causedBy(rsn)
 
-      } else cur.feed(out.flatten)
+      } else cur.prepend(out.flatten)
 
     }
     go(is, Vector(), y)
@@ -399,7 +399,7 @@ object wye {
         case Halt(rsn)                  =>
           emitAll(out.flatten).causedBy(rsn)
 
-      } else cur.feed(out.flatten)
+      } else cur.prepend(out.flatten)
     }
     go(i2s, Vector(), y)
 
