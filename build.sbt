@@ -59,3 +59,7 @@ OsgiKeys.importPackage := Seq(
 )
 
 parallelExecution in Test := false
+
+autoAPIMappings := true
+
+apiURL := Some(url(s"http://docs.typelevel.org/api/scalaz-stream/stable/${version.value}/doc/"))
