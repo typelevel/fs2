@@ -2,6 +2,7 @@ package scalaz.stream
 
 import org.scalacheck.Prop._
 
+import Cause._
 import scalaz._
 import scalaz.syntax.equal._
 import scalaz.std.anyVal._
@@ -288,7 +289,7 @@ object ProcessSpec extends Properties("Process") {
     p.pipeW(p1).stripO.runLog.run == p.stripO.pipe(p1).runLog.run
   }
 
-  property("process.sequence returns elements in order") = secure { 
+  property("process.sequence returns elements in order") = secure {
     val random = util.Random
     val p = Process.range(1, 10).map(i => Task.delay { Thread.sleep(random.nextInt(100)); i })
 

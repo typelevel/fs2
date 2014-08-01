@@ -1,5 +1,6 @@
 package scalaz.stream
 
+import Cause._
 import scala.annotation.tailrec
 import scala.concurrent.duration.Duration
 import scalaz.\/._
@@ -814,7 +815,7 @@ object wye {
 
 
 
-      a = Actor[M]({ m =>  
+      a = Actor[M]({ m =>
         m match {
           case Ready(side, result) =>
             val (y, cb) =

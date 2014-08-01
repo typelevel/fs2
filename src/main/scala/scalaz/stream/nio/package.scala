@@ -1,5 +1,6 @@
 package scalaz.stream
 
+import Cause._
 import java.net.{StandardSocketOptions, InetSocketAddress}
 import java.nio.ByteBuffer
 import java.nio.channels._
@@ -11,7 +12,6 @@ import scalaz.\/-
 import scalaz.concurrent.Task
 import scalaz.stream.Process._
 import scodec.bits.ByteVector
-
 
 package object nio {
 

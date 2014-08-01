@@ -1,5 +1,6 @@
 package scalaz.stream.async.mutable
 
+import scalaz.stream.Cause._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process.{Cont, Halt}
 import scalaz.stream._

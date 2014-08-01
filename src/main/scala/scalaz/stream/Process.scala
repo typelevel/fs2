@@ -1,7 +1,7 @@
 package scalaz.stream
 
+import Cause._
 import java.util.concurrent.ScheduledExecutorService
-
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
@@ -11,6 +11,15 @@ import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
 
 
+/**
+ * An effectful stream of `O` values. In between emitting values
+ * a `Process` may request evaluation of `F` effects.
+ * A `Process[Nothing,A]` is a pure `Process` with no effects.
+ * A `Process[Task,A]` may have `Task` effects. A `Process`
+ * halts due to some `Cause`, generally `End` (indicating normal
+ * termination) or `Error(t)` for some `t: Throwable` indicating
+ * abnormal termination due to some uncaught error.
+ */
 sealed trait Process[+F[_], +O]
   extends Process1Ops[F,O]
           with TeeOps[F,O] {
@@ -1475,7 +1484,7 @@ object Process {
      * processing. Also see `drainO`.
      */
     def observeO(snk: Sink[F,O]): Writer[F,W,O] =
-      self.map(_.swap).observeW(snk).map(_.swap) 
+      self.map(_.swap).observeW(snk).map(_.swap)
 
     /**
      * Observe the output side of this Writer` using the

@@ -1,5 +1,6 @@
 package scalaz.stream
 
+import Cause._
 import scala.annotation.tailrec
 import scala.collection.immutable.Vector
 import scalaz.\/._

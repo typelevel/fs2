@@ -1,6 +1,7 @@
 package scalaz.stream
 
 
+import Cause._
 import scalaz.{Right3, Middle3, Left3, \/-, -\/, Either3, \/}
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process._
@@ -184,7 +185,7 @@ package object nondeterminism {
             if (allDone) S(cb(\/-(())))
             else completer = Some(cb)
           case Start => ()
-        }) 
+        })
 
       })
 

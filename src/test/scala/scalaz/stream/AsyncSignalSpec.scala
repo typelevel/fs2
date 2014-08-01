@@ -1,5 +1,6 @@
 package scalaz.stream
 
+import Cause._
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
 

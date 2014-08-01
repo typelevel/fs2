@@ -1,5 +1,6 @@
 package scalaz.stream
 
+import Cause._
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
 import scalaz.concurrent.{Strategy, Task}
@@ -8,7 +9,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration._
 import scala.concurrent.SyncVar
 import scalaz.\/
-
 
 object MergeNSpec extends Properties("mergeN") {
 

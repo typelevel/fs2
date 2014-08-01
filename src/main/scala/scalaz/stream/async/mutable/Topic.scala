@@ -1,7 +1,8 @@
 package scalaz.stream.async.mutable
 
+import scalaz.stream.Cause._
+import scalaz.stream.{Sink,Process,Cause}
 import scalaz.concurrent.Task
-import scalaz.stream.{Kill, End, Error, Cause, Sink, Process}
 
 
 /**

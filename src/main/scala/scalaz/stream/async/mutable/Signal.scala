@@ -1,5 +1,6 @@
 package scalaz.stream.async.mutable
 
+import scalaz.stream.Cause._
 import scalaz.\/
 import scalaz.\/._
 import scalaz.concurrent._

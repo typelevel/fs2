@@ -1,17 +1,13 @@
 package scalaz.stream
 
+import Cause._
 import scala.annotation.tailrec
 import scalaz.{\/-, \/}
 import scalaz.\/._
 import scalaz.stream.Process._
 import scalaz.stream.Util._
 
-
 object tee {
-
-
-
-
 
   /** A `Tee` which alternates between emitting values from the left input and the right input. */
   def interleave[I]: Tee[I, I, I] =

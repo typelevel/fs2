@@ -2,10 +2,11 @@ package scalaz.stream.async.mutable
 
 import java.util.concurrent.atomic.AtomicInteger
 
+import scalaz.stream.Cause._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process.Halt
 import scalaz.stream.async.immutable
-import scalaz.stream.{Terminated, Kill, Error, End, Cause, Util, Process, Sink}
+import scalaz.stream.{Cause, Util, Process, Sink}
 import scalaz.{Either3, -\/, \/, \/-}
 import scalaz.\/._
 

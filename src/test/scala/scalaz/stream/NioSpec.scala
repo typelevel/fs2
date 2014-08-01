@@ -1,6 +1,7 @@
 package scalaz.stream
 
 
+import Cause._
 import Process._
 import java.net.InetSocketAddress
 import org.scalacheck.Prop._
