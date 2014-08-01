@@ -18,7 +18,7 @@ object HashSpec extends Properties("hash") {
     val n = Gen.choose(1, str.length).sample.getOrElse(1)
     val p =
       if (str.isEmpty) emit(ByteVector.view(str.getBytes))
-      else emitSeq(ByteVector.view(str.getBytes).grouped(n).toSeq)
+      else emitAll(ByteVector.view(str.getBytes).grouped(n).toSeq)
 
     p.pipe(h).map(_.toArray.toList).toList == List(digest(algo, str))
   }
@@ -37,11 +37,18 @@ object HashSpec extends Properties("hash") {
   }
 
   property("zero or one output") = forAll { (lb: List[ByteVector]) =>
-    emitSeq(lb).pipe(md2).toList.length <= 1
+    emitAll(lb).pipe(md2).toList.length <= 1
+  }
+
+  property("runLog equals runLast") = forAll { (lb: List[ByteVector]) =>
+    lb.nonEmpty ==> {
+      val p = emitAll(lb).toSource.pipe(md5)
+      p.runLog.run.headOption == p.runLast.run
+    }
   }
 
   property("thread-safety") = secure {
-    val proc = range(1,100)
+    val proc = range(1,100).liftIO
       .map(i => ByteVector.view(i.toString.getBytes))
       .pipe(sha512).map(_.toSeq)
     val vec = Vector.fill(100)(proc).par

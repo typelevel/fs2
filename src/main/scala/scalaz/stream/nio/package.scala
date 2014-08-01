@@ -28,30 +28,34 @@ package object nio {
   def server(bind: InetSocketAddress
     , reuseAddress: Boolean = true
     , rcvBufferSize: Int = 256 * 1024
-    )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
+    )(implicit AG: AsynchronousChannelGroup)
   : Process[Task, Process[Task, Exchange[ByteVector, ByteVector]]] = {
 
-    def setup(ch: AsynchronousServerSocketChannel): AsynchronousServerSocketChannel = {
-      ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
-      ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, rcvBufferSize)
-      ch.bind(bind)
-      ch
-    }
+    def setup: Task[AsynchronousServerSocketChannel] =
+      Task.delay {
+        val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
+        ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
+        ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, rcvBufferSize)
+        ch.bind(bind)
+        ch
+      }
+
+    def awaitClientConnection(sch: AsynchronousServerSocketChannel): Task[AsynchronousSocketChannel] =
+      Task.async[AsynchronousSocketChannel] { cb =>
+        sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+          def completed(result: AsynchronousSocketChannel, attachment: Void): Unit = cb(\/-(result))
+          def failed(rsn: Throwable, attachment: Void): Unit = cb(-\/(rsn))
+        })
+      }
 
     def release(ch: AsynchronousChannel): Process[Task, Nothing] =
       eval_(Task.delay(ch.close()))
 
-    await(
-      Task.delay(setup(AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)))
-    )(sch =>
-      repeatEval(Task.async[AsynchronousSocketChannel] {
-        cb => sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-          def completed(result: AsynchronousSocketChannel, attachment: Void): Unit = cb(\/-(result))
-          def failed(exc: Throwable, attachment: Void): Unit = cb(-\/(exc))
-        })
-      }).map {
-        ch1 => eval(Task.now(nioExchange(ch1))) onComplete release(ch1)
-      } onComplete release(sch))
+    await(setup)(sch =>
+      repeatEval(awaitClientConnection(sch))
+      .map(cchn => eval(Task.now(nioExchange(cchn))) onComplete release(cchn))
+      .onComplete(release(sch))
+    )
   }
 
 
@@ -71,10 +75,11 @@ package object nio {
     , rcvBufferSize: Int = 256 * 1024
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
-    )(implicit AG: AsynchronousChannelGroup = DefaultAsynchronousChannelGroup)
+    )(implicit AG: AsynchronousChannelGroup)
   : Process[Task, Exchange[ByteVector, ByteVector]] = {
 
-    def setup(ch: AsynchronousSocketChannel): AsynchronousSocketChannel = {
+    def setup: Task[AsynchronousSocketChannel] = Task.delay {
+      val ch = AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       ch.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sndBufferSize)
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, rcvBufferSize)
@@ -83,23 +88,19 @@ package object nio {
       ch
     }
 
+    def connect(ch: AsynchronousSocketChannel): Task[AsynchronousSocketChannel] =
+      Task.async[AsynchronousSocketChannel] { cb =>
+        ch.connect(to, null, new CompletionHandler[Void, Void] {
+          def completed(result: Void, attachment: Void): Unit = cb(\/-(ch))
+          def failed(rsn: Throwable, attachment: Void): Unit = cb(-\/(rsn))
+        })
+      }
+
     def release(ch: AsynchronousSocketChannel): Process[Task, Nothing] = {
       eval_(Task.delay(ch.close()))
     }
 
-    await(
-      Task.delay(setup(AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)))
-    )({ ch1 =>
-      await(Task.async[AsynchronousSocketChannel] {
-        cb => ch1.connect(to, null, new CompletionHandler[Void, Void] {
-          def completed(result: Void, attachment: Void): Unit = cb(\/-(ch1))
-          def failed(exc: Throwable, attachment: Void): Unit = cb(-\/(exc))
-        })
-      })(_ => eval(Task.now(nioExchange(ch1))) onComplete release(ch1)
-          , release(ch1)
-          , release(ch1)
-        )
-    })
+    await(setup flatMap connect)(ch => eval(Task.now(nioExchange(ch))) onComplete release(ch))
 
   }
 
@@ -121,7 +122,7 @@ package object nio {
 
   private def nioExchange(ch: AsynchronousSocketChannel, readBufferSize: Int = 0): Exchange[ByteVector, ByteVector] = {
 
-    lazy val bufSz : Int =
+    lazy val bufSz: Int =
       if (readBufferSize <= 0) ch.getOption[java.lang.Integer](StandardSocketOptions.SO_RCVBUF)
       else readBufferSize
 
@@ -135,7 +136,7 @@ package object nio {
           def completed(result: Integer, attachment: Void): Unit = {
             buff.flip()
             val bs = ByteVector(buff)
-            if (result < 0) cb(-\/(End))
+            if (result < 0) cb(-\/(Terminated(End)))
             else cb(\/-(bs))
           }
 

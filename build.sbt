@@ -57,3 +57,5 @@ OsgiKeys.importPackage := Seq(
   """scalaz.*;version="$<range;[===,=+);$<@>>"""",
   "*"
 )
+
+parallelExecution in Test := false

@@ -10,7 +10,7 @@ import Process._
 /**
  * Module of `Process` functions and combinators for file and network I/O.
  */
-trait io {
+object io {
 
   // NB: methods are in alphabetical order
 
@@ -21,18 +21,10 @@ trait io {
    */
   def bufferedResource[R,O](acquire: Task[R])(
                             flushAndRelease: R => Task[O])(
-                            step: R => Task[O]): Process[Task,O] = {
-    def go(step: Task[O], onExit: Process[Task,O], onFailure: Process[Task,O]): Process[Task,O] =
-      await[Task,O,O](step) (
-        o => emit(o) ++ go(step, onExit, onFailure) // Emit the value and repeat
-      , onExit                                      // Release resource when exhausted
-      , onExit)                                     // or in event of error
-    await(acquire)(r => {
-      val onExit = suspend(eval(flushAndRelease(r)))
-      val onFailure = onExit.drain
-      go(step(r), onExit, onFailure)
-    }, halt, halt)
-  }
+                            step: R => Task[O]): Process[Task,O] =
+    eval(acquire).flatMap { r =>
+      repeatEval(step(r)).onComplete(eval(flushAndRelease(r)))
+    }
 
   /**
    * Implementation of resource for channels where resource needs to be
@@ -117,7 +109,7 @@ trait io {
   def linesR(src: Source): Process[Task,String] =
     resource(Task.delay(src))(src => Task.delay(src.close)) { src =>
       lazy val lines = src.getLines // A stateful iterator
-      Task.delay { if (lines.hasNext) lines.next else throw End }
+      Task.delay { if (lines.hasNext) lines.next else throw Terminated(End) }
     }
 
   /**
@@ -128,24 +120,17 @@ trait io {
    */
   def resource[R,O](acquire: Task[R])(
                     release: R => Task[Unit])(
-                    step: R => Task[O]): Process[Task,O] = {
-    def go(step: Task[O], onExit: Process[Task,O]): Process[Task,O] =
-      await[Task,O,O](step) (
-        o => emit(o) ++ go(step, onExit) // Emit the value and repeat
-      , onExit                           // Release resource when exhausted
-      , onExit)                          // or in event of error
-    await(acquire)(r => {
-      val onExit = Process.suspend(eval(release(r)).drain)
-      go(step(r), onExit)
-    }, halt, halt)
-  }
+                    step: R => Task[O]): Process[Task,O] =
+    eval(acquire).flatMap { r =>
+      repeatEval(step(r)).onComplete(eval_(release(r)))
+    }
 
   /**
    * The standard input stream, as `Process`. This `Process` repeatedly awaits
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task.delay { Option(Console.readLine()).getOrElse(throw End) })
+    Process.repeatEval(Task.delay { Option(Console.readLine()).getOrElse(throw Terminated(End)) })
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
@@ -182,10 +167,8 @@ trait io {
       Task.now { (buf: Array[Byte]) => Task.delay {
         val m = src.read(buf)
         if (m == buf.length) buf
-        else if (m == -1) throw End
+        else if (m == -1) throw Terminated(End)
         else buf.take(m)
       }}
     }
 }
-
-object io extends io

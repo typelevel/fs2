@@ -1,22 +1,21 @@
 package scalaz.stream
 
-import org.scalacheck.Properties
 import org.scalacheck.Prop._
-import scalaz.concurrent.Task
-import scalaz.{Nondeterminism, -\/, \/-, \/}
-import java.lang.Exception
+import org.scalacheck.Properties
 
-import scalaz.syntax.monad._
 import scala.concurrent.SyncVar
+import scala.concurrent.duration._
+import scalaz.concurrent.Task
 import scalaz.stream.async.mutable.Signal
-import scalaz.stream.Process.{End, eval, eval_}
+import scalaz.syntax.monad._
+import scalaz.{-\/, Nondeterminism, \/, \/-}
 
-
+/**
+ * Created by pach on 03/05/14.
+ */
 object AsyncSignalSpec extends Properties("async.signal") {
 
-  case object TestedEx extends Exception("expected in test") {
-    override def fillInStackTrace = this
-  }
+  implicit val scheduler = DefaultScheduler
 
   property("basic") = forAll { l: List[Int] =>
     val v = async.signal[Int]
@@ -29,6 +28,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
 
     Nondeterminism[Task].both(t1, t2).run._2.toList.forall(_ % 23 != 0)
   }
+
 
   // tests all the operations on the signal (get,set,fail)
   property("signal-ops") = forAll {
@@ -87,43 +87,47 @@ object AsyncSignalSpec extends Properties("async.signal") {
     l: List[Int] =>
       val signal = async.signal[(String, Int)]
 
-      val last = if (l.size % 2 == 0) Signal.Fail(End) else Signal.Fail(TestedEx)
+      val closeSignal =
+        Process.sleep(100 millis) fby
+          (if (l.size % 2 == 0) Process.eval_(signal.close)
+          else Process.eval_(signal.fail(Bwahahaa)))
 
       val messages = l.zipWithIndex.map {
         case (i, idx) =>
-          import Signal._
+          import scalaz.stream.async.mutable.Signal._
           (i % 3).abs match {
             case 0 => Set[(String, Int)]((s"$idx. Set", i))
             case 1 => CompareAndSet[(String, Int)](_ => Some((s"$idx. CompareAndSet", i)))
             case 2 => CompareAndSet[(String, Int)](_ => None)
 
           }
-      } :+ last
+      }
 
       val feeded = new SyncVar[Throwable \/ Seq[(String, Int)]]
 
-      Task { signal.continuous.runLog.runAsync(feeded.put)  }.run
+      Task { signal.continuous.runLog.runAsync(feeded.put) }.run
 
 
       val feeder =
         Process.eval(Task.now(Signal.Set[(String, Int)](("START", 0)))) ++
-          Process.emitAll(messages).evalMap(e => Task.fork { Thread.sleep(1); Task.now(e) })
+          Process.emitAll(messages).map(e => Task.fork { Thread.sleep(1); Task.now(e) }).eval
 
 
-      (feeder to signal.sink).attempt().run.attemptRun
+
+      (feeder to signal.sink).attempt().onComplete(closeSignal).run.attemptRun
 
       val result = feeded.get(3000)
 
-      (result.isDefined == true)                               :| "got result in time" &&
-        (if (last == Signal.Fail(End)) {
-          (result.get.isRight == true)                         :| "result did not fail" &&
-            (result.get.toOption.get.size >= messages.size)    :| "items was emitted" &&
-            (signal.get.attemptRun == -\/(End))                :| "Signal is terminated"
-        } else {
-          (result.get == -\/(TestedEx))                        :| "Exception was raised correctly" &&
-            (signal.get.attemptRun == -\/(TestedEx))           :| "Signal is failed"
-        })
 
+      (result.isDefined == true) :| "got result in time" &&
+        (if (l.size % 2 == 0) {
+          (result.get.isRight == true) :| "result did not fail" &&
+            (result.get.toOption.get.size >= messages.size) :| "items was emitted" &&
+            (signal.get.attemptRun == -\/(Terminated(End))) :| "Signal is terminated"
+        } else {
+          (result.get == -\/(Bwahahaa)) :| s"Exception was raised correctly : $result, term ${l.size % 2 == 0 }" &&
+            (signal.get.attemptRun == -\/(Bwahahaa)) :| "Signal is failed"
+        })
 
   }
 
@@ -155,25 +159,64 @@ object AsyncSignalSpec extends Properties("async.signal") {
 
 
       sync1.get(3000).nonEmpty                          :| "First process finished in time" &&
-      sync2.get(3000).nonEmpty                          :| "Second process finished in time" &&
-      (sync1.get.isRight && sync2.get.isRight)          :| "both processes finished ok" &&
-      (sync1.get.toOption.get == None +: feed)          :| "first process get all values signalled" &&
-      (sync2.get.toOption.get == None +: feed)          :| "second process get all values signalled"
+        sync2.get(3000).nonEmpty                          :| "Second process finished in time" &&
+        (sync1.get.isRight && sync2.get.isRight)          :| "both processes finished ok" &&
+        (sync1.get.toOption.get == None +: feed)          :| "first process get all values signalled" &&
+        (sync2.get.toOption.get == None +: feed)          :| "second process get all values signalled"
+  }
+
+
+  //tests a signal from discrete process
+  property("from.discrete") = secure {
+    val sig = async.toSignal[Int](Process(1,2,3,4).toSource)
+    sig.discrete.take(4).runLog.run == Vector(1,2,3,4)
+  }
+
+  //tests that signal terminates when discrete process terminates
+  property("from.discrete.terminates") = secure {
+    val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
+    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource,haltOnSource = true)
+    val initial = sig.discrete.runLog.run
+    val afterClosed = sig.discrete.runLog.run
+    (initial == Vector(1,2,3,4)) && (afterClosed== Vector())
+  }
+
+  //tests that signal terminates with failure when discrete process terminates with failure
+  property("from.discrete.fail") = secure {
+    val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
+    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource fby Process.fail(Bwahahaa),haltOnSource = true)
+    sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
+  }
+
+  // tests that signal terminates with failure when discrete
+  // process terminates with failure even when haltOnSource is set to false
+  property("from.discrete.fail.always") = secure {
+    val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
+    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource fby Process.fail(Bwahahaa))
+    sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 
   property("continuous") = secure {
-    def wait(ms: Int) = Task.delay(Thread.sleep(ms))
     val sig = async.signal[Int]
-    val sink = sig.sink.contramap((x: Int) => Signal.Set(x))
-
-    // Set signal.
-    val in = Process(1) fby eval_(wait(300)) fby Process(2, 3, 4)
-    in.to(sink).run.runAsync(_ => ())
-
-    val p = Process(()) fby eval(wait(600)) fby eval(wait(300))
-
-    val expOut = List(1, 4, 4)
-    val out = p.zip(sig.continuous).map(_._2).runLog.run.toList
-    (out == expOut) :| s"continuous returns newest values - unexpected $out"
+    Process.awakeEvery(100.millis)
+      .zip(Process.range(1, 13))
+      .map(x => Signal.Set(x._2))
+      .to(sig.sink)
+      .run
+      .runAsync(_ => ())
+    val res = Process.awakeEvery(500.millis)
+      .zip(sig.continuous)
+      .map(_._2)
+      .take(6)
+      .runLog.run.toList
+    sig.close.run
+    // res(0) was read at 500 ms so it must contain value 4 or 5 which were published at 400 ms or 500 ms.
+    (res(0) >= 4 && res(0) <= 5) :| s"res(0) == ${res(0)}" &&
+      // res(1) was read at 1000 ms so it must contain value 9 or 10 which were published at 900 ms or 1000 ms.
+      (res(1) >= 9 && res(1) <= 10) :| s"res(1) == ${res(1)}" &&
+      // res(2) was read at 1500 ms so it must contain value 12 which was published at 1200 ms.
+      (res(2) == 12) :| s"res(2) == ${res(2)}" &&
+      // res(5) was read at 3000 ms and so it must still contain value 12.
+      (res(5) == 12) :| s"res(5) == ${res(5)}"
   }
 }

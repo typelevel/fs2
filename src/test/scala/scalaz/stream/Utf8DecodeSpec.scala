@@ -18,12 +18,12 @@ object Utf8DecodeSpec extends Properties("text.utf8Decode") {
   def utf8String(bs: ByteVector): String = new String(bs.toArray, "UTF-8")
 
   def checkChar(c: Char): Boolean = (1 to 6).forall { n =>
-    emitSeq(utf8Bytes(c).grouped(n).toSeq).pipe(utf8Decode).toList === List(c.toString)
+    emitAll(utf8Bytes(c).grouped(n).toSeq).pipe(utf8Decode).toList === List(c.toString)
   }
 
   def checkBytes(is: Int*): Boolean = (1 to 6).forall { n =>
     val bytes = utf8Bytes(is.toArray)
-    emitSeq(bytes.grouped(n).toSeq).pipe(utf8Decode).toList === List(utf8String(bytes))
+    emitAll(bytes.grouped(n).toSeq).pipe(utf8Decode).toList === List(utf8String(bytes))
   }
 
   def checkBytes2(is: Int*): Boolean = {
@@ -43,7 +43,7 @@ object Utf8DecodeSpec extends Properties("text.utf8Decode") {
   property("incomplete 4 byte char") = checkBytes(0xF0, 0xA4, 0xAD)
 
   property("preserve complete inputs") = forAll { (l: List[String]) =>
-    emitSeq(l).map(utf8Bytes).pipe(utf8Decode).toList === l
+    emitAll(l).map(utf8Bytes).pipe(utf8Decode).toList === l
   }
 
   property("utf8Encode |> utf8Decode = id") = forAll { (s: String) =>
@@ -51,12 +51,12 @@ object Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   property("1 byte sequences") = forAll { (s: String) =>
-    emitSeq(utf8Bytes(s).grouped(1).toSeq).pipe(utf8Decode).toList === s.grouped(1).toList
+    emitAll(utf8Bytes(s).grouped(1).toSeq).pipe(utf8Decode).toList === s.grouped(1).toList
   }
 
   property("n byte sequences") = forAll { (s: String) =>
     val n = Gen.choose(1,9).sample.getOrElse(1)
-    emitSeq(utf8Bytes(s).grouped(n).toSeq).pipe(utf8Decode).toList.mkString === s
+    emitAll(utf8Bytes(s).grouped(n).toSeq).pipe(utf8Decode).toList.mkString === s
   }
 
   // The next tests were taken from:
@@ -160,3 +160,4 @@ object Utf8DecodeSpec extends Properties("text.utf8Decode") {
     ("5.3.2" |: checkBytes(0xef, 0xbf, 0xbf))
   }
 }
+

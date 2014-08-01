@@ -1,17 +1,12 @@
 package scalaz.stream
 
-import Process._
-import processes._
 import scalaz.\/._
 import scalaz._
 import scalaz.concurrent.{Strategy, Task}
-import scalaz.stream.Process.Halt
-import scalaz.stream.ReceiveY.HaltL
-import scalaz.stream.ReceiveY.HaltR
-import scalaz.stream.ReceiveY.ReceiveL
-import scalaz.stream.ReceiveY.ReceiveR
-import scalaz.stream.{wye => _wye}
+import scalaz.stream.Process._
+import scalaz.stream.ReceiveY.{HaltL, HaltR, ReceiveL, ReceiveR}
 import scalaz.stream.wye.Request
+
 
 /**
  * Exchange represents interconnection between two systems.
@@ -86,10 +81,11 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * @return
    */
   def run(p:Process[Task,W] = halt, terminateOn:Request = Request.L):Process[Task,I] = {
+    import scalaz.stream.wye. {mergeHaltL, mergeHaltR, mergeHaltBoth}
     val y = terminateOn match {
-      case Request.L => _wye.mergeHaltL[I]
-      case Request.R => _wye.mergeHaltR[I]
-      case Request.Both => _wye.mergeHaltBoth[I]
+      case Request.L => mergeHaltL[I]
+      case Request.R => mergeHaltR[I]
+      case Request.Both => mergeHaltBoth[I]
     }
     self.read.wye((p to self.write).drain)(y)
   }
@@ -112,8 +108,8 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * @param y WyeW to control queueing and transformation
    *
    */
-  def wye[I2,W2](y: WyeW[W, I, W2, I2])(implicit S: Strategy = Strategy.DefaultStrategy): Exchange[I2, W2] =
-    flow(y.attachL(collect { case \/-(i) => i }))
+  def wye[I2,W2](y: WyeW[W, I, W2, I2])(implicit S: Strategy): Exchange[I2, W2] =
+   flow(scalaz.stream.wye.attachL(process1.collect[Int \/ I,I] { case \/-(i) => i })(y))
 
   /**
    * Transform this Exchange to another Exchange where queueing, flow control and transformation of this `I` and `W`
@@ -125,17 +121,17 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    *
    * @param y WyeW to control queueing, flow control and transformation
    */
-  def flow[I2,W2](y: WyeW[W, Int \/ I, W2, I2])(implicit S: Strategy = Strategy.DefaultStrategy): Exchange[I2, W2] = {
+  def flow[I2,W2](y: WyeW[W, Int \/ I, W2, I2])(implicit S: Strategy): Exchange[I2, W2] = {
     val wq = async.boundedQueue[W](0)
     val w2q = async.boundedQueue[W2](0)
 
-    def cleanup: Process[Task, Nothing] = eval_(wq.close) fby eval_(Task.delay(w2q.close.runAsync(_ => ())))
+    def cleanup: Process[Task, Nothing] = eval_(wq.close) fby eval_(w2q.close)
     def receive: Process[Task, I] = self.read onComplete cleanup
     def send: Process[Task, Unit] = wq.dequeue to self.write
 
     def sendAndReceive = {
       val (o, ny) = y.unemit
-      (emitSeq(o) fby ((wq.size.discrete either receive).wye(w2q.dequeue)(ny)(S) onComplete cleanup) either send).flatMap {
+      (emitAll(o) fby ((wq.size.discrete either receive).wye(w2q.dequeue)(ny)(S) onComplete cleanup) either send).flatMap {
         case \/-(o) => halt
         case -\/(-\/(o)) => eval_(wq.enqueueOne(o))
         case -\/(\/-(b)) => emit(b)
@@ -156,15 +152,15 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * @param w  Writer that processes received `I` and either echoes `I2` or writes `W` to external system
    *
    */
-  def readThrough[I2](w: Writer1[W, I, I2])(implicit S: Strategy = Strategy.DefaultStrategy) : Exchange[I2,W]  = {
+  def readThrough[I2](w: Writer1[W, I, I2])(implicit S: Strategy) : Exchange[I2,W]  = {
     def liftWriter : WyeW[W, Int \/ I, W, I2] = {
       def go(cur:Writer1[W, I, I2]):WyeW[W, Int \/ I, W, I2] = {
         awaitBoth[Int\/I,W].flatMap{
           case ReceiveL(-\/(_)) => go(cur)
           case ReceiveL(\/-(i)) =>
             cur.feed1(i).unemit match {
-              case (out,hlt@Halt(rsn)) => emitSeq(out, hlt)
-              case (out,next) => emitSeq(out) fby go(next)
+              case (out,hlt@Halt(rsn)) => emitAll(out) fby hlt
+              case (out,next) => emitAll(out) fby go(next)
             }
           case ReceiveR(w) => tell(w) fby go(cur)
           case HaltL(rsn) => Halt(rsn)
@@ -195,13 +191,13 @@ object Exchange {
    *
    * @param p   Process to consult when looping data through
    */
-  def loopBack[I, W](p: Process1[W, I])(implicit S: Strategy = Strategy.DefaultStrategy): Process[Task, Exchange[I, W]] = {
+  def loopBack[I, W](p: Process1[W, I])(implicit S: Strategy): Process[Task, Exchange[I, W]] = {
 
     def loop(cur: Process1[W, I]): WyeW[Nothing, Nothing, W, I] = {
       awaitR[W] flatMap {
         case w => cur.feed1(w).unemit match {
-          case (o, hlt@Halt(rsn)) => emitSeq(o.map(right)) fby hlt
-          case (o, np)            => emitSeq(o.map(right)) fby loop(np)
+          case (o, hlt@Halt(rsn)) => emitAll(o.map(right)) fby hlt
+          case (o, np)            => emitAll(o.map(right)) fby loop(np)
         }
       }
     }
@@ -211,7 +207,7 @@ object Exchange {
     })({ q =>
       val (out, np) = p.unemit
       val ex = Exchange[Nothing, W](halt, q.enqueue)
-      emit(ex.wye(emitSeq(out).map(right) fby loop(np))) onComplete eval_(Task.delay(q.close.run))
+      emit(ex.wye(emitAll(out).map(right) fby loop(np))) onComplete eval_(q.close)
     })
 
   }
@@ -223,3 +219,4 @@ object Exchange {
   def halted[I,W]: Exchange[I,W] = Exchange(halt,halt)
 
 }
+
