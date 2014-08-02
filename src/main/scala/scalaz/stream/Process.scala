@@ -1558,7 +1558,7 @@ object Process {
    * Evaluate an arbitrary effect in a `Process`. The resulting `Process` will emit values
    * until evaluation of `f` signals termination with `End` or an error occurs.
    *
-   * Note that if `f` results to failure of type `Terminated` the reeatEval will convert cause
+   * Note that if `f` results to failure of type `Terminated` the repeatEval will convert cause
    * to respective process cause termination, and will halt with that cause.
    *
    */
