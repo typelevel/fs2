@@ -27,10 +27,10 @@ scalacOptions in (Compile, doc) ++= Seq(
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.6",
-  "org.scalaz" %% "scalaz-concurrent" % "7.0.6",
+  "org.scalaz" %% "scalaz-core" % "7.1.0",
+  "org.scalaz" %% "scalaz-concurrent" % "7.1.0",
   "org.typelevel" %% "scodec-bits" % "1.0.2",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.6" % "test",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.0" % "test",
   "org.scalacheck" %% "scalacheck" % "1.11.5" % "test"
 )
 
