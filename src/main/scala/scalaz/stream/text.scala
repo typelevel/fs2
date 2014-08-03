@@ -1,6 +1,7 @@
 package scalaz.stream
 
 import java.nio.charset.Charset
+import java.util.regex.Pattern
 import scodec.bits.ByteVector
 
 import process1._
@@ -59,4 +60,23 @@ object text {
   /** Converts `String` inputs to UTF-8 encoded `ByteVector`. */
   val utf8Encode: Process1[String,ByteVector] =
     lift(s => ByteVector.view(s.getBytes(utf8Charset)))
+
+  /**
+   * Repartition `String` input by line endings. If `maxLineLength` is greater
+   * than zero and a line exceeding `maxLineLength` is found, the `Process`
+   * fails with an `Exception`. The default `maxLineLength` is 1 MB for
+   * `Charset`s with an average char size of 1 byte such as UTF-8.
+   */
+  def lines(maxLineLength: Int = 1024*1024): Process1[String, String] = {
+    import scalaz.std.string._
+
+    val pattern = Pattern.compile("\r\n|\n")
+    repartition[String]{ s =>
+      val chunks = pattern.split(s, -1)
+      if (maxLineLength > 0) chunks.find(_.length > maxLineLength) match  {
+        case Some(_) => throw new Exception(s"Input exceeded maximum line length: $maxLineLength")
+        case None    => chunks
+      } else chunks
+    }.dropLastIf(_.isEmpty)
+  }
 }
