@@ -590,6 +590,24 @@ object process1 {
   def zipWithPrevious[I]: Process1[I,(Option[I],I)] =
     zipWithState[I,Option[I]](None)((cur, _) => Some(cur)).map(_.swap)
 
+  /**
+   * Zips every element with its next element wrapped into `Some`.
+   * The last element is zipped with `None`.
+   */
+  def zipWithNext[I]: Process1[I,(I,Option[I])] =
+    drainLeading(window(2).map(w => (w(0), w.lift(1))))
+
+  /**
+   * Zips every element with its previous and next elements wrapped into `Some`.
+   * The first element is zipped with `None` as the previous element,
+   * the last element is zipped with `None` as the next element.
+   */
+  def zipWithPreviousAndNext[I]: Process1[I,(Option[I],I,Option[I])] =
+    zipWithPrevious.pipe(zipWithNext[(Option[I],I)]).map {
+      case ((previous, current), None)            =>  (previous, current, None)
+      case ((previous, current), Some((_, next))) =>  (previous, current, Some(next))
+    }
+
   /** Zips the input with state that begins with `z` and is updated by `next`. */
   def zipWithState[A,B](z: B)(next: (A, B) => B): Process1[A,(A,B)] = {
     def go(b: B): Process1[A,(A,B)] =
@@ -861,6 +879,14 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.zipWithPrevious]]`. */
   def zipWithPrevious: Process[F,(Option[O],O)] =
     this |> process1.zipWithPrevious
+
+  /** Alias for `this |> [[process1.zipWithNext]]`. */
+  def zipWithNext: Process[F,(O,Option[O])] =
+    this |> process1.zipWithNext
+
+  /** Alias for `this |> [[process1.zipWithPreviousAndNext]]`. */
+  def zipWithPreviousAndNext: Process[F,(Option[O],O,Option[O])] =
+    this |> process1.zipWithPreviousAndNext
 
   /** Alias for `this |> [[process1.zipWithState]](z)(next)`. */
   def zipWithState[B](z: B)(next: (O, B) => B): Process[F,(O,B)] =
