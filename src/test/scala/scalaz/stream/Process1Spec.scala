@@ -176,6 +176,20 @@ object Process1Spec extends Properties("Process1") {
   }
 
   property("zipWithPrevious") = secure {
+    range(0, 1).drop(1).zipWithPrevious.toList === List() &&
+    range(0, 1).zipWithPrevious.toList === List((None, 0)) &&
     range(0, 3).zipWithPrevious.toList === List((None, 0), (Some(0), 1), (Some(1), 2))
+  }
+
+  property("zipWithNext") = secure {
+    range(0, 1).drop(1).zipWithNext.toList === List()
+    range(0, 1).zipWithNext.toList === List((0, None)) &&
+    range(0, 3).zipWithNext.toList === List((0, Some(1)), (1, Some(2)), (2, None))
+  }
+
+  property("zipWithPreviousAndNext") = secure {
+    range(0, 1).drop(1).zipWithPreviousAndNext.toList === List() &&
+    range(0, 1).zipWithPreviousAndNext.toList === List((None, 0, None)) &&
+    range(0, 3).zipWithPreviousAndNext.toList === List((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))
   }
 }
