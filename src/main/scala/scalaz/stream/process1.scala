@@ -114,6 +114,24 @@ object process1 {
   def drainLeading[A, B](p: Process1[A, B]): Process1[A, B] =
     receive1(a => feed1(a)(p))
 
+  /** Emits only elements that are distinct from their immediate predecessors. */
+  def distinctConsecutive[A: Equal]: Process1[A, A] =
+    distinctConsecutiveBy(identity)
+
+  /**
+   * Emits only elements that are distinct from their immediate predecessors
+   * according to `f`.
+   */
+  def distinctConsecutiveBy[A, B: Equal](f: A => B): Process1[A, A] = {
+    def go(prev: B): Process1[A, A] =
+      receive1 { a =>
+        val b = f(a)
+        if (b === prev) go(prev)
+        else emit(a) fby go(b)
+      }
+    receive1(a => emit(a) fby go(f(a)))
+  }
+
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I, I] =
     if (n <= 0) id[I]
@@ -680,6 +698,14 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.collectFirst]](pf)`. */
   def collectFirst[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
     this |> process1.collectFirst(pf)
+
+  /** Alias for `this |> [[process1.distinctConsecutive]]`. */
+  def distinctConsecutive[O2 >: O](implicit O2: Equal[O2]): Process[F,O2] =
+    this |> process1.distinctConsecutive(O2)
+
+  /** Alias for `this |> [[process1.distinctConsecutiveBy]](f)`. */
+  def distinctConsecutiveBy[B: Equal](f: O => B): Process[F,O] =
+    this |> process1.distinctConsecutiveBy(f)
 
   /** Alias for `this |> [[process1.drop]](n)`. */
   def drop(n: Int): Process[F,O] =
