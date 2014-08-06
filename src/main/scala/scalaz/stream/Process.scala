@@ -78,7 +78,7 @@ sealed trait Process[+F[_], +O]
         case Append(h,st) => go(h, st fast_++ stack)
       } else cur match {
         case hlt@Halt(cause) => hlt
-        case emt@Emit(os) if (os.isEmpty) => halt
+        case emt@Emit(os) if (os.isEmpty) => halt0
         case emt@Emit(os) => Step(emt,Cont(Vector.empty))
         case awt@Await(_,_) => Step(awt,Cont(Vector.empty))
         case Append(h,st) => go(h,st)
@@ -92,7 +92,7 @@ sealed trait Process[+F[_], +O]
    * `p.suspendStep` propagates exceptions to `p`.
    */
   final def suspendStep: Process[Nothing, HaltOrStep[F, O]] =
-    empty onHalt {
+    halt onHalt {
       case End => emit(step)
       case early: EarlyCause => emit(injectCause(early).step)
     }
@@ -743,11 +743,14 @@ object Process {
   /** The `Process` which emits no values and halts immediately with the given exception. **/
   def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(Error(rsn))
 
+  /** `halt` but with precise type. **/
+  private[stream] val halt0: Halt = Halt(End)
+
   /** The `Process` which emits no values and signals normal termination. **/
-  val halt: Halt = Halt(End)
+  val halt: Process[Nothing, Nothing] = halt0
 
   /** The `Process` that emits Nothing **/
-  val empty: Emit[Nothing] = Emit(Nil)
+  val empty: Process[Nothing, Nothing] = halt
 
   /**
    * awaits receive of `I` in process1, and attaches continue in case await evaluation
@@ -1586,7 +1589,7 @@ object Process {
    *
    */
   def suspend[F[_], O](p: => Process[F, O]): Process[F, O] =
-    Append(empty,Vector({
+    Append(halt0,Vector({
       case End => Trampoline.done(p)
       case early: EarlyCause => Trampoline.done(p.injectCause(early))
     }))
