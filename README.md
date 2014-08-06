@@ -35,8 +35,7 @@ val converter: Task[Unit] =
      map(line => fahrenheitToCelsius(line.toDouble).toString).
      intersperse("\n").
      pipe(text.utf8Encode).
-     to(io.fileChunkW("testdata/celsius.txt")).
-     run
+     to(io.fileChunkW("testdata/celsius.txt"))
 
 // at the end of the universe...
 val u: Unit = converter.run
