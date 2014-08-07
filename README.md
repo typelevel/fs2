@@ -23,7 +23,7 @@ libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.4.1a"
 
 ### About the library ###
 
-`scalaz-stream` is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. The design is meant to supercede or replace older iteratee or iteratee-style libraries. Here's a simple example of its use:
+`scalaz-stream` is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. The design is meant to supersede or replace older iteratee or iteratee-style libraries. Here's a simple example of its use:
 
 ``` scala
 import scalaz.stream._
