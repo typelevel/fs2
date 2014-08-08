@@ -757,7 +757,7 @@ object Process {
   /** The `Process` which emits no values and signals normal termination. **/
   val halt: Process[Nothing, Nothing] = halt0
 
-  /** The `Process` that emits Nothing **/
+  /** Alias for `halt`. */
   val empty: Process[Nothing, Nothing] = halt
 
   /**
