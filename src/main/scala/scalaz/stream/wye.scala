@@ -662,7 +662,7 @@ object wye {
       // states of both sides
       // todo: resolve when we will get initially "kill"
       def initial[A](p:Process[Task,A]) : Cont[Task,A] = {
-        val next = (c:Cause) => c match {
+        val next: Cause => Trampoline[Process[Task, A]] = (c:Cause) => c match {
           case End => Trampoline.done(p)
           case e: EarlyCause => Trampoline.done(p.kill)
         }

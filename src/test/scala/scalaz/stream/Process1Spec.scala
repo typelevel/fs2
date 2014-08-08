@@ -8,6 +8,8 @@ import scalaz.std.list._
 import scalaz.std.list.listSyntax._
 import scalaz.std.vector._
 import scalaz.std.string._
+import scalaz.std.option._
+import scalaz.std.tuple._
 import scalaz.syntax.equal._
 import scalaz.syntax.foldable._
 
@@ -22,7 +24,7 @@ import scala.concurrent.SyncVar
 object Process1Spec extends Properties("Process1") {
   import TestInstances._
 
-  implicit val S = Strategy.DefaultStrategy
+  implicit val ES = Strategy.DefaultTimeoutScheduler
 
   property("basic") = forAll { (pi: Process0[Int], ps: Process0[String], n: Int) =>
     val li = pi.toList
@@ -103,7 +105,7 @@ object Process1Spec extends Properties("Process1") {
             pi.toSource.scan1(_ + _).runLog.timed(3000).run.toList
         }
         , "shiftRight" |: pi.shiftRight(1, 2).toList === List(1, 2) ++ li
-        , "splitWith" |: pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
+        , "splitWith" |: pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n).map(_.toList)
         , "stripNone" |: Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
         , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
         , "prefixSums" |: pi.toList.scan(0)(_ + _) === pi.pipe(process1.prefixSums).toList

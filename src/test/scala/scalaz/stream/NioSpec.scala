@@ -11,7 +11,7 @@ import scala.util.Random
 import scalaz.-\/
 import scalaz.\/
 import scalaz.\/-
-import scalaz.concurrent.Task
+import scalaz.concurrent.{Task, Strategy}
 import scalaz.stream.Process.Halt
 import scalaz.stream.ReceiveY._
 import scodec.bits.ByteVector
@@ -100,6 +100,7 @@ object NioSpec extends Properties("nio") {
   def localAddress(port:Int) = new InetSocketAddress("127.0.0.1", port)
 
   implicit val AG = nio.DefaultAsynchronousChannelGroup
+  implicit val ES = Strategy.DefaultTimeoutScheduler
 
   //  property("loop-server") = secure {
   //    NioServer.limit(local,3).run.run
