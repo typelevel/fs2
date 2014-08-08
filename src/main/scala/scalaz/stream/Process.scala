@@ -179,10 +179,15 @@ sealed trait Process[+F[_], +O]
         }
 
         case s@Step(AwaitR(_), contT) => p2.step match {
-          case Step(awt: Await[F2, Any, O2]@unchecked, contR:Cont[F2,O2]) => awt.extend { p => this.tee(p +: contR)(s.toProcess) }
-          case Step(Emit(o2s: Seq[O2]@unchecked), contR:Cont[F2,O2])      => this.tee(contR.continue)(feedR[O, O2, O3](o2s)(s.toProcess))
-          case hlt@Halt(End)                                              => this.tee(hlt)(disconnectR(Kill)(s.toProcess).swallowKill)
-          case hlt@Halt(rsn : EarlyCause)                                 => this.tee(hlt)(disconnectR(rsn)(s.toProcess))
+          case s2: Step[F2, O2]@unchecked =>
+            (s2.head, s2.next) match {
+              case (awt: Await[F2, Any, O2]@unchecked, contR) =>
+                awt.extend { (p: Process[F2, O2]) => this.tee(p +: contR)(s.toProcess) }
+              case (Emit(o2s), contR) =>
+                this.tee(contR.continue.asInstanceOf[Process[F2,O2]])(feedR[O, O2, O3](o2s)(s.toProcess))
+            }
+          case hlt@Halt(End)              => this.tee(hlt)(disconnectR(Kill)(s.toProcess).swallowKill)
+          case hlt@Halt(rsn : EarlyCause) => this.tee(hlt)(disconnectR(rsn)(s.toProcess))
         }
 
         case Step(emt@Emit(o3s), contT) =>
@@ -457,14 +462,17 @@ sealed trait Process[+F[_], +O]
   final def runFoldMap[F2[x] >: F[x], B](f: O => B)(implicit F: Monad[F2], C: Catchable[F2], B: Monoid[B]): F2[B] = {
     def go(cur: Process[F2, O], acc: B): F2[B] = {
       cur.step match {
-        case Step(Emit(os), cont) =>
-          F.bind(F.point(os.foldLeft(acc)((b, o) => B.append(b, f(o))))) { nacc =>
-            go(cont.continue.asInstanceOf[Process[F2,O]], nacc)
-          }
-        case Step(awt:Await[F2,Any,O]@unchecked, cont) =>
-          F.bind(C.attempt(awt.req)) { r =>
-            go((Try(awt.rcv(EarlyCause(r)).run) +: cont).asInstanceOf[Process[F2,O]]
-              , acc)
+        case s: Step[F2,O]@unchecked =>
+          (s.head, s.next) match {
+            case (Emit(os), cont) =>
+              F.bind(F.point(os.foldLeft(acc)((b, o) => B.append(b, f(o))))) { nacc =>
+                go(cont.continue.asInstanceOf[Process[F2,O]], nacc)
+              }
+            case (awt:Await[F2,Any,O]@unchecked, cont) =>
+              F.bind(C.attempt(awt.req)) { r =>
+                go((Try(awt.rcv(EarlyCause(r)).run) +: cont).asInstanceOf[Process[F2,O]]
+                  , acc)
+              }
           }
         case Halt(End) => F.point(acc)
         case Halt(Kill) => F.point(acc)
