@@ -758,7 +758,7 @@ object Process {
   val halt: Process[Nothing, Nothing] = halt0
 
   /** Alias for `halt`. */
-  val empty: Process[Nothing, Nothing] = halt
+  def empty[F[_],O]: Process[F, O] = halt
 
   /**
    * awaits receive of `I` in process1, and attaches continue in case await evaluation
