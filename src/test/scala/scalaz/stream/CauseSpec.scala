@@ -4,7 +4,7 @@ import Cause._
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
 
-import scalaz.concurrent.Task
+import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process._
 import scalaz.syntax.equal._
 import scalaz.std.anyVal._
@@ -20,6 +20,8 @@ import TestInstances.equalProcessTask
  * from merging combinator (pipe, tee, wye, njoin) at various scenarios
  */
 object CauseSpec extends Properties("cause") {
+
+  implicit val ES = Strategy.DefaultTimeoutScheduler
 
   property("suspend") = secure {
     val source = Process(1, 2, 3).toSource
