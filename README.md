@@ -14,11 +14,11 @@ resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
 And use one of the following library dependencies:
 
 ```
-// Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.0
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.4.1"
+// Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.2
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.5"
 
-// Against Scalaz 7.1.0-M6, available for Scala 2.10.4 and (coming soon) 2.11.0
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.4.1a"
+// Against Scalaz 7.1, available for Scala 2.10.4 and 2.11.2
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.5a"
 ```
 
 ### About the library ###
@@ -30,13 +30,13 @@ import scalaz.stream._
 import scalaz.concurrent.Task
 
 val converter: Task[Unit] =
-  io.linesR("testdata/fahrenheit.txt").
-     filter(s => !s.trim.isEmpty && !s.startsWith("//")).
-     map(line => fahrenheitToCelsius(line.toDouble).toString).
-     intersperse("\n").
-     pipe(text.utf8Encode).
-     to(io.fileChunkW("testdata/celsius.txt")).
-     run
+  io.linesR("testdata/fahrenheit.txt")
+    .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
+    .map(line => fahrenheitToCelsius(line.toDouble).toString)
+    .intersperse("\n")
+    .pipe(text.utf8Encode)
+    .to(io.fileChunkW("testdata/celsius.txt"))
+    .run
 
 // at the end of the universe...
 val u: Unit = converter.run
