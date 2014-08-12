@@ -463,10 +463,8 @@ object process1 {
    * Process() |> scan1(_ + _) == Process()
    * }}}
    */
-  def scan1[A](f: (A, A) => A): Process1[A, A] = {
-    def go(a: A): Process1[A, A] = emit(a) fby await1[A].flatMap(a2 => go(f(a, a2)))
-    await1[A].flatMap(go)
-  }
+  def scan1[A](f: (A, A) => A): Process1[A, A] =
+    await1[A].flatMap(a => scan(a)(f))
 
   /** Like `scan1` but uses Monoid `M` for associative operation. */
   def scan1Monoid[A](implicit M: Monoid[A]): Process1[A, A] =
