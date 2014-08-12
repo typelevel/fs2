@@ -124,7 +124,6 @@ sealed trait Process[+F[_], +O]
    * will fuse the two processes, so this process will only generate
    * values as they are demanded by `p1`. If `p1` signals termination, `this`
    * is killed with same reason giving it an opportunity to cleanup.
-   * is killed with same reason giving it an opportunity to cleanup.
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] =
     p1.suspendStep.flatMap({ s1 =>
@@ -642,7 +641,7 @@ object Process {
   }
 
   /**
-   * Continuation of the process. Represents process _stack_. Used in conjuction with `Step`.
+   * Continuation of the process. Represents process _stack_. Used in conjunction with `Step`.
    */
   case class Cont[+F[_], +O](stack: Vector[Cause => Trampoline[Process[F, O]]]) {
 
@@ -781,7 +780,7 @@ object Process {
 
   ///////////////////////////////////////////////////////////////////////////////////////
   //
-  // CONSUTRUCTORS -> Helpers
+  // CONSTRUCTORS -> Helpers
   //
   //////////////////////////////////////////////////////////////////////////////////////
 
@@ -847,7 +846,7 @@ object Process {
   /**
    * The infinite `Process`, always emits `a`.
    * If for performance reasons it is good to emit `a` in chunks,
-   * specifiy size of chunk by `chunkSize` parameter
+   * specify size of chunk by `chunkSize` parameter
    */
   def constant[A](a: A, chunkSize: Int = 1): Process[Nothing, A] = {
     lazy val go: Process[Nothing,A] =
@@ -906,7 +905,6 @@ object Process {
   }
 
   /**
-   * Produce a continuous stream from a discrete stream by using the
    * Produce a continuous stream from a discrete stream by using the
    * most recent value.
    */
@@ -981,7 +979,7 @@ object Process {
 
   /**
    * A supply of `Long` values, starting with `initial`.
-   * Each read is guaranteed to retun a value which is unique
+   * Each read is guaranteed to return a value which is unique
    * across all threads reading from this `supply`.
    */
   def supply(initial: Long): Process[Task, Long] = {
@@ -998,8 +996,8 @@ object Process {
    * Convert a `Process` to a `Task` which can be run repeatedly to generate
    * the elements of the `Process`.
    *
-   * Note that evaluation of this task will end with Exception `End` or `Continute`
-   * even when the evaluation of the process was succesfull.
+   * Note that evaluation of this task will end with Exception `End` or `Continue`
+   * even when the evaluation of the process was successful.
    */
   def toTask[A](p: Process[Task, A]): Task[A] = {
       var cur = p
@@ -1297,7 +1295,7 @@ object Process {
      * @param cb  result of the asynchronous evaluation of the process. Note that, the callback is never called
      *            on the right side, if the sequence is empty.
      * @param S  Strategy to use when evaluating the process. Note that `Strategy.Sequential` may cause SOE.
-     * @return   Function to interrupt the evalation
+     * @return   Function to interrupt the evaluation
      */
     protected[stream] final def runAsync(
       cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit
