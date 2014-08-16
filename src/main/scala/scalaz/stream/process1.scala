@@ -253,7 +253,7 @@ object process1 {
    * }}}
    */
   def intersperse[A](separator: A): Process1[A, A] =
-    await1[A].flatMap(head => emit(head) ++ id[A].flatMap(a => Process(separator, a)))
+    await1[A] fby id[A].flatMap(a => Process(separator, a))
 
   /** Skip all but the last element of the input. */
   def last[I]: Process1[I, I] = {
