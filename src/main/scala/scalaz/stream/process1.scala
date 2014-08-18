@@ -163,7 +163,7 @@ object process1 {
 
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I, I] =
-    await1[I] flatMap (i => if (f(i)) emit(i) else halt) repeat
+    id[I].flatMap(i => if (f(i)) emit(i) else halt)
 
   /**
    * Skips any elements not satisfying predicate and when found, will emit that
@@ -430,10 +430,10 @@ object process1 {
 
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
-    await1[Throwable \/ A].flatMap {
+    id[Throwable \/ A].flatMap {
       case -\/(err) => throw err
       case \/-(a)   => emit(a)
-    } repeat
+    }
 
   /**
    * Similar to List.scan.
