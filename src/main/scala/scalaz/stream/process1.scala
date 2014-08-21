@@ -37,7 +37,7 @@ object process1 {
 
   /**
    * Groups inputs into chunks of size `n`. The last chunk may have size
-   * less then `n`, depending on the number of elements in the input.
+   * less than `n`, depending on the number of elements in the input.
    *
    * @throws IllegalArgumentException if `n` <= 0
    */
