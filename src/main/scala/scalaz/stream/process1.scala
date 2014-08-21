@@ -489,6 +489,23 @@ object process1 {
     await1[Any].flatMap(_ => halt)
 
   /**
+   * Groups inputs in fixed size chunks by passing a "sliding window"
+   * of size `n` over them. If the input contains less than or equal to
+   * `n` elements, only one chunk of this size will be emitted.
+   *
+   * @throws IllegalArgumentException if `n` <= 0
+   */
+  def sliding[I](n: Int): Process1[I, Vector[I]] = {
+    require(n > 0, "window size must be > 0, was: " + n)
+    def go(acc: Vector[I]): Process1[I, Vector[I]] =
+      receive1 { i =>
+        val window = acc :+ i
+        emit(window) fby go(window.tail)
+      }
+    chunk[I](n).once.flatMap(first => emit(first) fby go(first.tail))
+  }
+
+  /**
    * Break the input into chunks where the delimiter matches the predicate.
    * The delimiter does not appear in the output. Two adjacent delimiters in the
    * input result in an empty chunk in the output.
@@ -823,6 +840,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.shiftRight]](head)` */
   def shiftRight[O2 >: O](head: O2*): Process[F,O2] =
     this |> process1.shiftRight(head: _*)
+
+  /** Alias for `this |> [[process1.sliding]](n)`. */
+  def sliding(n: Int): Process[F,Vector[O]] =
+    this |> process1.sliding(n)
 
   /** Alias for `this |> [[process1.split]](f)` */
   def split(f: O => Boolean): Process[F,Vector[O]] =
