@@ -18,7 +18,7 @@ object process1 {
 
   /** Await a single value, returning `None` if the input has been exhausted. */
   def awaitOption[I]: Process1[I, Option[I]] =
-    receive1Or[I, Option[I]](emit(None))(i=>emit(Some(i)))
+    receive1Or[I, Option[I]](emit(None))(i => emit(Some(i)))
 
   /** Behaves like the identity process, but requests `n` elements at a time from its input. */
   def buffer[I](n: Int): Process1[I, I] =
@@ -104,7 +104,7 @@ object process1 {
    * the partial function is defined.
    */
   def collectFirst[I, I2](pf: PartialFunction[I, I2]): Process1[I, I2] =
-    collect(pf).take(1)
+    collect(pf).once
 
   /**
    * Remove any leading emitted values that occur before the first successful
@@ -126,9 +126,9 @@ object process1 {
   /** Emits all elements of the input but skips the last if the predicate is true. */
   def dropLastIf[I](p: I => Boolean): Process1[I, I] = {
     def go(prev: I): Process1[I, I] =
-      receive1Or[I,I](if (p(prev)) halt else emit(prev))( i =>
+      receive1Or[I,I](if (p(prev)) halt else emit(prev)) { i =>
         emit(prev) fby go(i)
-      )
+      }
     await1[I].flatMap(go)
   }
 
@@ -154,9 +154,7 @@ object process1 {
           case Halt(rsn) =>  emitAll(out).causedBy(rsn)
         }
       } else cur.prepend(out)
-
     }
-
     go(i, Vector(), p)
   }
 
@@ -184,9 +182,9 @@ object process1 {
    * Halts with `false` as soon as a non-matching element is received.
    */
   def forall[I](f: I => Boolean): Process1[I, Boolean] =
-    receive1Or[I,Boolean](emit(true))( i =>
+    receive1Or[I,Boolean](emit(true)) { i =>
       if (f(i)) forall(f) else emit(false)
-    )
+    }
 
   /**
    * `Process1` form of `List.fold`.
@@ -257,17 +255,17 @@ object process1 {
 
   /** Skip all but the last element of the input. */
   def last[I]: Process1[I, I] = {
-    def go(prev: I): Process1[I, I] = receive1Or(emit(prev):Process1[I,I])(go)
+    def go(prev: I): Process1[I, I] = receive1Or[I,I](emit(prev))(go)
     await1[I].flatMap(go)
   }
 
   /**
    * Skip all but the last element of the input.
    * This `Process` will always emit exactly one value;
-   * If the input is empty, `i` is emitted.
+   * If the input is empty, `li` is emitted.
    */
   def lastOr[I](li: => I): Process1[I, I] =
-    receive1Or[I,I](emit(li))(i => lastOr(i) )
+    receive1Or[I,I](emit(li))(i => lastOr(i))
 
   /** Transform the input using the given function, `f`. */
   def lift[I, O](f: I => O): Process1[I, O] =
@@ -292,7 +290,6 @@ object process1 {
       }
     }
     go(p)
-
   }
 
   /**
@@ -329,7 +326,7 @@ object process1 {
 
   /** Emits the greatest value of `f(a)` for each element `a` of the input. */
   def maximumOf[A,B: Order](f: A => B): Process1[A,B] =
-    lift(f) |> maximum
+    lift(f).maximum
 
   /** Emits the smallest element of the input. */
   def minimum[A](implicit A: Order[A]): Process1[A,A] =
@@ -341,7 +338,7 @@ object process1 {
 
   /** Emits the smallest value of `f(a)` for each element `a` of the input. */
   def minimumOf[A,B: Order](f: A => B): Process1[A,B] =
-    lift(f) |> minimum
+    lift(f).minimum
 
   /**
    * Split the input and send to either `chan1` or `chan2`, halting when
@@ -420,7 +417,7 @@ object process1 {
    */
   def repartition2[I](p: I => (Option[I], Option[I]))(implicit I: Semigroup[I]): Process1[I,I] = {
     def go(carry: Option[I]): Process1[I,I] =
-      receive1Or[I,I]( emitAll(carry.toList)) { i =>
+      receive1Or[I,I](emitAll(carry.toList)) { i =>
         val next = carry.fold(i)(c => I.append(c, i))
         val (fst, snd) = p(next)
         fst.fold(go(snd))(head => emit(head) fby go(snd))
@@ -488,7 +485,8 @@ object process1 {
     emitAll(head) fby id
 
   /** Reads a single element of the input, emits nothing, then halts. */
-  def skip: Process1[Any, Nothing] = await1[Any].flatMap(_ => halt)
+  def skip: Process1[Any, Nothing] =
+    await1[Any].flatMap(_ => halt)
 
   /**
    * Break the input into chunks where the delimiter matches the predicate.
@@ -501,7 +499,6 @@ object process1 {
         if (f(i)) emit(acc) fby go(Vector())
         else go(acc :+ i)
       }
-
     go(Vector())
   }
 
@@ -523,11 +520,11 @@ object process1 {
    */
   def splitWith[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I, Vector[I]] =
-      receive1Or(emit(acc):Process1[I,Vector[I]])(i => {
+      receive1Or[I, Vector[I]](emit(acc)) { i =>
          val cur = f(i)
          if (cur == last) go(acc :+ i, cur)
          else emit(acc) fby go(Vector(i), cur)
-      })
+      }
     await1[I].flatMap(i => go(Vector(i), f(i)))
   }
 
@@ -607,11 +604,8 @@ object process1 {
     }
 
   /** Zips the input with state that begins with `z` and is updated by `next`. */
-  def zipWithState[A,B](z: B)(next: (A, B) => B): Process1[A,(A,B)] = {
-    def go(b: B): Process1[A,(A,B)] =
-      await1[A].flatMap(a => emit((a, b)) fby go(next(a, b)))
-    go(z)
-  }
+  def zipWithState[A,B](z: B)(next: (A, B) => B): Process1[A,(A,B)] =
+    await1[A].flatMap(a => emit((a, z)) fby zipWithState(next(a, z))(next))
 
 
   object Await1 {
@@ -766,7 +760,7 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def minimumOf[B: Order](f: O => B): Process[F,B] =
     this |> process1.minimumOf(f)
 
-  /** Alias for `this |> [[process1.take]]` as take(1). */
+  /** Alias for `this |> [[process1.take]](1)`. */
   def once: Process[F,O] =
     this |> process1.take(1)
 
@@ -866,7 +860,7 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def window(n: Int): Process[F,Vector[O]] =
     this |> process1.window(n)
 
-  /** Alias for `this |> [[process1.zipWithIndex[A]*]]. */
+  /** Alias for `this |> [[process1.zipWithIndex[A]*]]`. */
   def zipWithIndex: Process[F,(O,Int)] =
     this |> process1.zipWithIndex
 
