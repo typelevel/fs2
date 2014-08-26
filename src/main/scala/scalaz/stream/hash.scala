@@ -27,7 +27,7 @@ object hash {
 
   private def messageDigest(algorithm: String): Process1[ByteVector,ByteVector] = {
     def go(digest: MessageDigest): Process1[ByteVector,ByteVector] =
-      await1[ByteVector].flatMap { bytes =>
+      receive1 { bytes =>
         digest.update(bytes.toArray)
         go(digest)
       }

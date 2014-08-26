@@ -30,7 +30,7 @@ object compress {
       }
 
     def go(deflater: Deflater, buf: Array[Byte]): Process1[ByteVector,ByteVector] =
-      await1[ByteVector].flatMap { bytes =>
+      receive1 { bytes =>
         deflater.setInput(bytes.toArray)
         val chunks = collect(deflater, buf, Deflater.NO_FLUSH)
         emitAll(chunks) fby go(deflater, buf)
@@ -65,7 +65,7 @@ object compress {
       }
 
     def go(inflater: Inflater, buf: Array[Byte]): Process1[ByteVector,ByteVector] =
-      await1[ByteVector].flatMap { bytes =>
+      receive1 { bytes =>
         inflater.setInput(bytes.toArray)
         val chunks = collect(inflater, buf, Vector.empty)
         emitAll(chunks) fby go(inflater, buf)
