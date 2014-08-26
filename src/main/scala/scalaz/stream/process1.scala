@@ -497,12 +497,9 @@ object process1 {
    */
   def sliding[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "window size must be > 0, was: " + n)
-    def go(acc: Vector[I]): Process1[I, Vector[I]] =
-      receive1 { i =>
-        val window = acc.tail :+ i
-        emit(window) fby go(window)
-      }
-    chunk[I](n).once.flatMap(first => emit(first) fby go(first))
+    def go(window: Vector[I]): Process1[I, Vector[I]] =
+      emit(window) fby receive1(i => go(window.tail :+ i))
+    chunk[I](n).once.flatMap(go)
   }
 
   /**
