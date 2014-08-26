@@ -499,10 +499,10 @@ object process1 {
     require(n > 0, "window size must be > 0, was: " + n)
     def go(acc: Vector[I]): Process1[I, Vector[I]] =
       receive1 { i =>
-        val window = acc :+ i
-        emit(window) fby go(window.tail)
+        val window = acc.tail :+ i
+        emit(window) fby go(window)
       }
-    chunk[I](n).once.flatMap(first => emit(first) fby go(first.tail))
+    chunk[I](n).once.flatMap(first => emit(first) fby go(first))
   }
 
   /**
