@@ -153,6 +153,11 @@ object Process1Spec extends Properties("Process1") {
       }.toList === List("h", "e", "l", "lo")
   }
 
+  property("sliding") = forAll { p: Process0[Int] =>
+    val n = Gen.choose(1, 10).sample.get
+    p.sliding(n).toList.map(_.toList) === p.toList.sliding(n).toList
+  }
+
   property("splitOn") = secure {
     Process(0, 1, 2, 3, 4).splitOn(2).toList === List(Vector(0, 1), Vector(3, 4)) &&
       Process(2, 0, 1, 2).splitOn(2).toList === List(Vector(), Vector(0, 1), Vector()) &&
