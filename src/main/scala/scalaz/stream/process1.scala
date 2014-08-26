@@ -132,6 +132,14 @@ object process1 {
     receive1(go)
   }
 
+  /** Emits all but the last `n` elements of the input. */
+  def dropRight[I](n: Int): Process1[I, I] = {
+    def go(acc: Vector[I]): Process1[I, I] =
+      receive1(i => emit(acc.head) fby go(acc.tail :+ i))
+    if (n <= 0) id
+    else chunk(n).once.flatMap(go)
+  }
+
   /**
    * Skips elements of the input while the predicate is true,
    * then passes through the remaining inputs.
@@ -689,6 +697,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.dropLastIf]](p)`. */
   def dropLastIf(p: O => Boolean): Process[F,O] =
     this |> process1.dropLastIf(p)
+
+  /** Alias for `this |> [[process1.dropRight]](n)`. */
+  def dropRight(n: Int): Process[F,O] =
+    this |> process1.dropRight(n)
 
   /** Alias for `this |> [[process1.dropWhile]](f)`. */
   def dropWhile(f: O => Boolean): Process[F,O] =

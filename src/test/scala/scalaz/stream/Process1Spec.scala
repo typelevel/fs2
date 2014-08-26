@@ -57,6 +57,7 @@ object Process1Spec extends Properties("Process1") {
            pi.dropLastIf(pred).toList === li.dropRight(n) &&
            pi.dropLastIf(_ => false).toList === li
         }
+        , "dropRight" |: pi.dropRight(n).toList === li.dropRight(n)
         , "dropWhile" |: pi.dropWhile(g).toList === li.dropWhile(g)
         , "exists" |: pi.exists(g).toList === List(li.exists(g))
         , s"feed: $li, ${process1.feed(li)(id[Int]).unemit._1.toList }" |: (li === process1.feed(li)(id[Int]).unemit._1.toList)
