@@ -116,7 +116,7 @@ object process1 {
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I, I] =
-    if (n <= 0) id[I]
+    if (n <= 0) id
     else skip fby drop(n - 1)
 
   /** Emits all but the last element of the input. */
@@ -269,7 +269,7 @@ object process1 {
 
   /** Transform the input using the given function, `f`. */
   def lift[I, O](f: I => O): Process1[I, O] =
-    id[I] map f
+    id map f
 
   /**
    * Transform `p` to operate on the left hand side of an `\/`, passing
@@ -499,7 +499,7 @@ object process1 {
     require(n > 0, "window size must be > 0, was: " + n)
     def go(window: Vector[I]): Process1[I, Vector[I]] =
       emit(window) fby receive1(i => go(window.tail :+ i))
-    chunk[I](n).once.flatMap(go)
+    chunk(n).once.flatMap(go)
   }
 
   /**
