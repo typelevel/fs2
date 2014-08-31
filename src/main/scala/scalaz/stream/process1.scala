@@ -555,6 +555,14 @@ object process1 {
     if (n <= 0) halt
     else await1[I] fby take(n - 1)
 
+  /** Emits the last `n` elements of the input. */
+  def takeRight[I](n: Int): Process1[I, I] = {
+    def go(acc: Vector[I]): Process1[I, I] =
+      receive1Or[I, I](emitAll(acc))(i => go(acc.tail :+ i))
+    if (n <= 0) halt
+    else chunk(n).once.flatMap(go)
+  }
+
   /** Passes through elements of the input as long as the predicate is true, then halts. */
   def takeWhile[I](f: I => Boolean): Process1[I, I] =
     receive1 (i => if (f(i)) emit(i) fby takeWhile(f) else halt)
@@ -861,6 +869,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.take]](n)`. */
   def take(n: Int): Process[F,O] =
     this |> process1.take(n)
+
+  /** Alias for `this |> [[process1.takeRight]](n)`. */
+  def takeRight(n: Int): Process[F,O] =
+    this |> process1.takeRight(n)
 
   /** Alias for `this |> [[process1.takeThrough]](f)`. */
   def takeThrough(f: O => Boolean): Process[F,O] =

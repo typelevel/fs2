@@ -108,6 +108,7 @@ object Process1Spec extends Properties("Process1") {
         , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
         , "prefixSums" |: pi.toList.scan(0)(_ + _) === pi.pipe(process1.prefixSums).toList
         , "take" |: pi.take((n/10).abs).toList === li.take((n/10).abs)
+        , "takeRight" |: pi.takeRight((n/10).abs).toList === li.takeRight((n/10).abs)
         , "takeWhile" |: pi.takeWhile(g).toList === li.takeWhile(g)
         , "terminated" |: Process(1, 2, 3).terminated.toList === List(Some(1), Some(2), Some(3), None)
         , "zipWithIndex" |: ps.zipWithIndex.toList === ls.zipWithIndex
