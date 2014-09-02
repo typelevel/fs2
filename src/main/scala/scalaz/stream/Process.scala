@@ -915,10 +915,8 @@ object Process {
    * An infinite `Process` that repeatedly applies a given function
    * to a start value.
    */
-  def iterate[A](start: A)(f: A => A): Process[Nothing, A] = {
-    def go(a: A): Process[Nothing,A] = emit(a) ++ go(f(a))
-    go(start)
-  }
+  def iterate[A](start: A)(f: A => A): Process[Nothing, A] =
+    emit(start) ++ iterate(f(start))(f)
 
   /** Promote a `Process` to a `Writer` that writes nothing. */
   def liftW[F[_], A](p: Process[F, A]): Writer[F, Nothing, A] =
