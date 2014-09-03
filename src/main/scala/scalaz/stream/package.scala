@@ -67,7 +67,7 @@ package object stream {
   /** A `Tee` that writes values of type `W`. */
   type TeeW[+W,-I,-I2,+O] = Tee[I,I2,W \/ O]
 
-  /** A `Tee` that writes values of type `W`. */
+  /** A `Wye` that writes values of type `W`. */
   type WyeW[+W,-I,-I2,+O] = Wye[I,I2,W \/ O]
 
   /**
