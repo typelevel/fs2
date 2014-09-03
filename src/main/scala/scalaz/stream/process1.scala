@@ -201,26 +201,15 @@ object process1 {
   def fold[A, B](z: B)(f: (B, A) => B): Process1[A, B] =
     scan(z)(f).last
 
-  /**
-   * `Process1` form of `List.reduce`.
-   *
-   * Reduces the elements of this Process using the specified associative binary operator.
-   * {{{
-   * Process(1,2,3,4) |> reduce(_ + _) == Process(10)
-   * Process(1) |> reduce(_ + _) == Process(1)
-   * Process() |> reduce(_ + _) == Process()
-   * }}}
-   */
+  /** Alias for `[[reduce]](f)`. */
   def fold1[A](f: (A, A) => A): Process1[A, A] =
     reduce(f)
 
-  /**
-   * Like `fold1` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
-   */
+  /** Alias for `[[reduceMap]](f)(M)`. */
   def fold1Map[A, B](f: A => B)(implicit M: Monoid[B]): Process1[A, B] =
     reduceMap(f)(M)
 
-  /** Like `fold1` but uses Monoid `M` for associative operation. */
+  /** Alias for `[[reduceSemigroup]](M)`. */
   def fold1Monoid[A](implicit M: Monoid[A]): Process1[A, A] =
     reduceSemigroup(M)
 
@@ -236,7 +225,7 @@ object process1 {
   def foldMonoid[A](implicit M: Monoid[A]): Process1[A, A] =
     fold(M.zero)(M.append(_, _))
 
-  /** Alias for `reduceSemigroup`. */
+  /** Alias for `[[reduceSemigroup]](M)`. */
   def foldSemigroup[A](implicit M: Semigroup[A]): Process1[A, A] =
     reduceSemigroup(M)
 
@@ -369,20 +358,20 @@ object process1 {
   def reduce[A](f: (A, A) => A): Process1[A, A] =
     scan1(f).last
 
-  /** Like `reduce` but uses Monoid `M` for associative operation. */
-  def reduceMonoid[A](implicit M: Monoid[A]): Process1[A, A] =
-    reduceSemigroup(M)
-
-  /** Like `reduce` but uses Semigroup `M` for associative operation. */
-  def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A, A] =
-    reduce(M.append(_, _))
-
   /**
    * Like `reduce` only uses `f` to map `A` to `B` and uses Semigroup `M` for
    * associative operation.
    */
   def reduceMap[A, B](f: A => B)(implicit M: Semigroup[B]): Process1[A, B] =
     lift(f).reduceSemigroup(M)
+
+  /** Alias for `[[reduceSemigroup]](M)`. */
+  def reduceMonoid[A](implicit M: Monoid[A]): Process1[A, A] =
+    reduceSemigroup(M)
+
+  /** Like `reduce` but uses Semigroup `M` for associative operation. */
+  def reduceSemigroup[A](implicit M: Semigroup[A]): Process1[A, A] =
+    reduce(M.append(_, _))
 
   /**
    * Repartitions the input with the function `p`. On each step `p` is applied
@@ -441,18 +430,6 @@ object process1 {
     emit(z) fby receive1(a => scan(f(z, a))(f))
 
   /**
-   * Like `scan` but uses Monoid for associative operation
-   */
-  def scanMonoid[A](implicit M: Monoid[A]): Process1[A, A] =
-    scan(M.zero)(M.append(_, _))
-
-  /**
-   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
-   */
-  def scanMap[A, B](f: A => B)(implicit M: Monoid[B]): Process1[A, B] =
-    lift(f).scanMonoid(M)
-
-  /**
    * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
    * {{{
    * Process(1,2,3,4) |> scan1(_ + _) == Process(1,3,6,10)
@@ -463,20 +440,32 @@ object process1 {
   def scan1[A](f: (A, A) => A): Process1[A, A] =
     receive1(a => scan(a)(f))
 
-  /** Like `scan1` but uses Monoid `M` for associative operation. */
-  def scan1Monoid[A](implicit M: Monoid[A]): Process1[A, A] =
-    scanSemigroup(M)
-
-  /** Like `scan1` but uses Semigroup `M` for associative operation. */
-  def scanSemigroup[A](implicit M: Semigroup[A]): Process1[A, A] =
-    scan1(M.append(_, _))
-
   /**
    * Like `scan1` only uses `f` to map `A` to `B` and uses Semigroup `M` for
    * associative operation.
    */
   def scan1Map[A, B](f: A => B)(implicit M: Semigroup[B]): Process1[A, B] =
     lift(f).scanSemigroup(M)
+
+  /** Alias for `[[scanSemigroup]](M)`. */
+  def scan1Monoid[A](implicit M: Monoid[A]): Process1[A, A] =
+    scanSemigroup(M)
+
+  /**
+   * Like `scan` only uses `f` to map `A` to `B` and uses Monoid `M` for associative operation
+   */
+  def scanMap[A, B](f: A => B)(implicit M: Monoid[B]): Process1[A, B] =
+    lift(f).scanMonoid(M)
+
+  /**
+   * Like `scan` but uses Monoid for associative operation
+   */
+  def scanMonoid[A](implicit M: Monoid[A]): Process1[A, A] =
+    scan(M.zero)(M.append(_, _))
+
+  /** Like `scan1` but uses Semigroup `M` for associative operation. */
+  def scanSemigroup[A](implicit M: Semigroup[A]): Process1[A, A] =
+    scan1(M.append(_, _))
 
   /**
    * Emit the given values, then echo the rest of the input.
