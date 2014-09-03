@@ -774,9 +774,9 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def minimumOf[B: Order](f: O => B): Process[F,B] =
     this |> process1.minimumOf(f)
 
-  /** Alias for `this |> [[process1.take]](1)`. */
+  /** Alias for `this |> [[Process.await1]]`. */
   def once: Process[F,O] =
-    this |> process1.take(1)
+    this |> Process.await1
 
   /** Alias for `this |> [[process1.prefixSums]]` */
   def prefixSums[O2 >: O](implicit N: Numeric[O2]): Process[F,O2] =
