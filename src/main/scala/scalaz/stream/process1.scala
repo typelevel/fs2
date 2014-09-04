@@ -587,6 +587,7 @@ object process1 {
    *
    * @throws IllegalArgumentException if `n` <= 0
    */
+  @deprecated("window is deprecated in favor of sliding. It will be removed in the next release.", "0.6")
   def window[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "window size must be > 0, was: " + n)
     def go(acc: Vector[I], c: Int): Process1[I, Vector[I]] =
@@ -618,8 +619,11 @@ object process1 {
    * Zips every element with its next element wrapped into `Some`.
    * The last element is zipped with `None`.
    */
-  def zipWithNext[I]: Process1[I,(I,Option[I])] =
-    drainLeading(window(2).map(w => (w(0), w.lift(1))))
+  def zipWithNext[I]: Process1[I,(I,Option[I])] = {
+    def go(prev: I): Process1[I,(I,Option[I])] =
+      receive1Or[I,(I,Option[I])](emit((prev, None)))(i => emit((prev, Some(i))) fby go(i))
+    receive1(go)
+  }
 
   /**
    * Zips every element with its previous and next elements wrapped into `Some`.
@@ -902,6 +906,7 @@ private[stream] trait Process1Ops[+F[_],+O] {
     this |> process1.terminated
 
   /** Alias for `this |> [[process1.window]](n)`. */
+  @deprecated("window is deprecated in favor of sliding. It will be removed in the next release.", "0.6")
   def window(n: Int): Process[F,Vector[O]] =
     this |> process1.window(n)
 
