@@ -330,7 +330,7 @@ object wye {
   def feed1R[I,I2,O](i2: I2)(w: Wye[I,I2,O]): Wye[I,I2,O] =
     feedR(Vector(i2))(w)
 
-  /** Feed a sequence of inputs to the left side of a `Tee`. */
+  /** Feed a sequence of inputs to the left side of a `Wye`. */
   def feedL[I,I2,O](is: Seq[I])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
