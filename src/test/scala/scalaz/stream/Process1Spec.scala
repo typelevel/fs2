@@ -125,6 +125,14 @@ object Process1Spec extends Properties("Process1") {
     pi.pipe(unchunk).toList == pi.toList.flatten
   }
 
+  property("distinctConsecutive") = secure {
+    Process[Int]().distinctConsecutive.toList === List.empty[Int] &&
+      Process(1, 2, 3, 4).distinctConsecutive.toList === List(1, 2, 3, 4) &&
+      Process(1, 1, 2, 2, 3, 3, 4, 3).distinctConsecutive.toList === List(1, 2, 3, 4, 3) &&
+      Process("1", "2", "33", "44", "5", "66")
+        .distinctConsecutiveBy(_.length).toList === List("1", "33", "5", "66")
+  }
+
   property("drainLeading") = secure {
     val p = emit(1) ++ await1[Int]
     Process().pipe(p).toList === List(1) &&
