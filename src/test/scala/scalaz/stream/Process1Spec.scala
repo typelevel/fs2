@@ -38,7 +38,7 @@ object Process1Spec extends Properties("Process1") {
 
     try {
       val examples = Seq(
-        "awaitOption" |: (Process().awaitOption.toList == List(None) && Process(1, 2).awaitOption.toList == List(Some(1)))
+        "awaitOption" |: pi.awaitOption.toList === List(li.headOption)
         , s"buffer: $li ${pi.buffer(4).toList}" |: pi.buffer(4).toList === li
         , "chunk" |: Process(0, 1, 2, 3, 4).chunk(2).toList === List(Vector(0, 1), Vector(2, 3), Vector(4))
         , "chunkBy" |: emitAll("foo bar baz").chunkBy(_ != ' ').toList.map(_.mkString) ===  List("foo ", "bar ", "baz")
@@ -93,6 +93,7 @@ object Process1Spec extends Properties("Process1") {
         }
         , "minimumOf" |: ps.minimumOf(_.length).toList === ls.map(_.length).minimum.toList
         , "onComplete" |: Process(1,2,3).pipe(process1.id[Int] onComplete emit(4)).toList == List(1,2,3,4)
+        , "once" |: pi.once.toList === li.headOption.toList
         , "reduce" |: pi.reduce(_ + _).toList === (if (li.nonEmpty) List(li.reduce(_ + _)) else List())
         , "scan" |: {
           li.scan(0)(_ - _) ===
@@ -181,19 +182,19 @@ object Process1Spec extends Properties("Process1") {
   }
 
   property("zipWithPrevious") = secure {
-    range(0, 1).drop(1).zipWithPrevious.toList === List() &&
+    range(0, 0).zipWithPrevious.toList === List() &&
     range(0, 1).zipWithPrevious.toList === List((None, 0)) &&
     range(0, 3).zipWithPrevious.toList === List((None, 0), (Some(0), 1), (Some(1), 2))
   }
 
   property("zipWithNext") = secure {
-    range(0, 1).drop(1).zipWithNext.toList === List()
+    range(0, 0).zipWithNext.toList === List()
     range(0, 1).zipWithNext.toList === List((0, None)) &&
     range(0, 3).zipWithNext.toList === List((0, Some(1)), (1, Some(2)), (2, None))
   }
 
   property("zipWithPreviousAndNext") = secure {
-    range(0, 1).drop(1).zipWithPreviousAndNext.toList === List() &&
+    range(0, 0).zipWithPreviousAndNext.toList === List() &&
     range(0, 1).zipWithPreviousAndNext.toList === List((None, 0, None)) &&
     range(0, 3).zipWithPreviousAndNext.toList === List((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))
   }
