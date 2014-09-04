@@ -91,7 +91,7 @@ sealed trait Process[+F[_], +O]
   /**
    * `p.suspendStep` propagates exceptions to `p`.
    */
-  final def suspendStep: Process[Nothing, HaltOrStep[F, O]] =
+  final def suspendStep: Process0[HaltOrStep[F, O]] =
     halt onHalt {
       case End => emit(step)
       case early: EarlyCause => emit(injectCause(early).step)
@@ -233,7 +233,7 @@ sealed trait Process[+F[_], +O]
    * is given the opportunity to emit any final values. All Awaits are
    * converted to terminate with `cause`
    */
-  final def disconnect(cause: EarlyCause): Process[Nothing, O] =
+  final def disconnect(cause: EarlyCause): Process0[O] =
     this.step match {
       case Step(emt@Emit(_), cont)     => emt +: cont.extend(_.disconnect(cause))
       case Step(awt@Await(_, rcv), cont) => suspend((Try(rcv(left(cause)).run) +: cont).disconnect(cause))
@@ -696,7 +696,7 @@ object Process {
   //////////////////////////////////////////////////////////////////////////////////////
 
   /** Alias for emitAll **/
-  def apply[O](o: O*): Process[Nothing, O] = emitAll(o)
+  def apply[O](o: O*): Process0[O] = emitAll(o)
 
   /**
    * Await the given `F` request and use its result.
@@ -736,10 +736,10 @@ object Process {
     await(R[I2])(emit)
 
   /** The `Process` which emits the single value given, then halts. **/
-  def emit[O](o: O): Process[Nothing, O] = Emit(Vector(o))
+  def emit[O](o: O): Process0[O] = Emit(Vector(o))
 
   /** The `Process` which emits the given sequence of values, then halts. */
-  def emitAll[O](os: Seq[O]): Process[Nothing, O] = Emit(os)
+  def emitAll[O](os: Seq[O]): Process0[O] = Emit(os)
 
   @deprecated("Use please emitAll(h) ++ tail instead", "0.5.0")
   def emitSeq[F[_], O](h: Seq[O], t: Process[F, O] = halt): Process[F, O] = t match {
@@ -748,13 +748,13 @@ object Process {
   }
 
   /** The `Process` which emits no values and halts immediately with the given exception. **/
-  def fail(rsn: Throwable): Process[Nothing, Nothing] = Halt(Error(rsn))
+  def fail(rsn: Throwable): Process0[Nothing] = Halt(Error(rsn))
 
   /** `halt` but with precise type. **/
   private[stream] val halt0: Halt = Halt(End)
 
   /** The `Process` which emits no values and signals normal termination. **/
-  val halt: Process[Nothing, Nothing] = halt0
+  val halt: Process0[Nothing] = halt0
 
   /** Alias for `halt`. */
   def empty[F[_],O]: Process[F, O] = halt
@@ -848,8 +848,8 @@ object Process {
    * If for performance reasons it is good to emit `a` in chunks,
    * specify size of chunk by `chunkSize` parameter
    */
-  def constant[A](a: A, chunkSize: Int = 1): Process[Nothing, A] = {
-    lazy val go: Process[Nothing,A] =
+  def constant[A](a: A, chunkSize: Int = 1): Process0[A] = {
+    lazy val go: Process0[A] =
       if (chunkSize.max(1) == 1) emit(a) fby go
       else emitAll(List.fill(chunkSize)(a)) fby go
     go
@@ -866,15 +866,15 @@ object Process {
   }
 
   /** A `Writer` which emits one value to the output. */
-  def emitO[O](o: O): Process[Nothing, Nothing \/ O] =
+  def emitO[O](o: O): Process0[Nothing \/ O] =
    liftW(Process.emit(o))
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
-  def emitRange(start: Int, stopExclusive: Int): Process[Nothing, Int] =
+  def emitRange(start: Int, stopExclusive: Int): Process0[Int] =
     emitAll(start until stopExclusive)
 
   /** A `Writer` which writes the given value. */
-  def emitW[W](s: W): Process[Nothing, W \/ Nothing] =
+  def emitW[W](s: W): Process0[W \/ Nothing] =
    Process.emit(left(s))
 
   /**
@@ -894,10 +894,10 @@ object Process {
   }
 
   /** A `Process` which emits `n` repetitions of `a`. */
-  def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process[Nothing, A] = {
+  def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process0[A] = {
         val chunkN = chunkSize max 1
         val chunk = emitAll(List.fill(chunkN)(a)) // we can reuse this for each step
-        def go(m: Int): Process[Nothing,A] =
+        def go(m: Int): Process0[A] =
           if (m >= chunkN) chunk ++ go(m - chunkN)
           else if (m <= 0) halt
           else emitAll(List.fill(m)(a))
@@ -915,7 +915,7 @@ object Process {
    * An infinite `Process` that repeatedly applies a given function
    * to a start value.
    */
-  def iterate[A](start: A)(f: A => A): Process[Nothing, A] =
+  def iterate[A](start: A)(f: A => A): Process0[A] =
     emit(start) ++ iterate(f(start))(f)
 
   /** Promote a `Process` to a `Writer` that writes nothing. */
@@ -930,7 +930,7 @@ object Process {
     p.flatMap(a => emitAll(Vector(left(a), right(a))))
 
   /** Lazily produce the range `[start, stopExclusive)`. */
-  def range(start: Int, stopExclusive: Int, by: Int = 1): Process[Nothing, Int] =
+  def range(start: Int, stopExclusive: Int, by: Int = 1): Process0[Int] =
     unfold(start)(i => if (i < stopExclusive) Some((i, i + by)) else None)
 
   /**
@@ -944,7 +944,7 @@ object Process {
    *
    * @throws IllegalArgumentException if `size` <= 0
    */
-  def ranges(start: Int, stopExclusive: Int, size: Int): Process[Nothing, (Int, Int)] = {
+  def ranges(start: Int, stopExclusive: Int, size: Int): Process0[(Int, Int)] = {
     require(size > 0, "size must be > 0, was: " + size)
     unfold(start){
       lower =>
@@ -987,7 +987,7 @@ object Process {
   }
 
   /** A `Writer` which writes the given value; alias for `emitW`. */
-  def tell[S](s: S): Process[Nothing, S \/ Nothing] =
+  def tell[S](s: S): Process0[S \/ Nothing] =
     emitW(s)
 
   /**
@@ -1021,8 +1021,8 @@ object Process {
   }
 
   /** Produce a (potentially infinite) source from an unfold. */
-  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process[Nothing, A] = suspend {
-    def go(s:S) : Process[Nothing, A] = {
+  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = suspend {
+    def go(s:S) : Process0[A] = {
       f(s) match {
         case Some(ht) => emit(ht._1) ++ go(ht._2)
         case None => halt
@@ -1200,7 +1200,7 @@ object Process {
 
   }
 
-  implicit class LiftIOSyntax[O](p: Process[Nothing,O]) {
+  implicit class LiftIOSyntax[O](p: Process0[O]) {
     def liftIO: Process[Task,O] = p
   }
 

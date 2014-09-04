@@ -45,8 +45,8 @@ private[stream] object TestUtil {
 
 
 
-  implicit class ExpectExn[O](val p: Process[Nothing, O]) extends AnyVal {
-    def expectedCause(pred: Cause => Boolean): Process[Nothing, O] = p.onHalt {
+  implicit class ExpectExn[O](val p: Process0[O]) extends AnyVal {
+    def expectedCause(pred: Cause => Boolean): Process0[O] = p.onHalt {
       cause =>
         if (pred(cause)) Process.halt
         else Process.fail(UnexpectedCause(cause))
