@@ -31,9 +31,9 @@ object wye {
   def dynamic[I,I2](f: I => wye.Request, g: I2 => wye.Request): Wye[I,I2,ReceiveY[I,I2]] = {
     import scalaz.stream.wye.Request._
     def go(signal: wye.Request): Wye[I,I2,ReceiveY[I,I2]] = signal match {
-      case L => awaitL[I].flatMap { i => emit(ReceiveL(i)) fby go(f(i)) }
-      case R => awaitR[I2].flatMap { i2 => emit(ReceiveR(i2)) fby go(g(i2)) }
-      case Both => awaitBoth[I,I2].flatMap {
+      case L => receiveL { i => emit(ReceiveL(i)) fby go(f(i)) }
+      case R => receiveR { i2 => emit(ReceiveR(i2)) fby go(g(i2)) }
+      case Both => receiveBoth {
         case t@ReceiveL(i) => emit(t) fby go(f(i))
         case t@ReceiveR(i2) => emit(t) fby go(g(i2))
         case HaltOne(rsn) => Halt(rsn)
@@ -82,17 +82,14 @@ object wye {
    * Nondeterminstic interleave of both inputs. Emits values whenever either
    * of the inputs is available.
    */
-  def either[I,I2]: Wye[I,I2,I \/ I2] = {
-    def go: Wye[I,I2,I \/ I2] =
-      receiveBoth[I,I2,I \/ I2]({
-        case ReceiveL(i) => emit(left(i)) fby go
-        case ReceiveR(i) => emit(right(i)) fby go
-        case HaltL(End)     => awaitR[I2].map(right).repeat
-        case HaltR(End)     => awaitL[I].map(left).repeat
-        case h@HaltOne(rsn) => Halt(rsn)
-      })
-    go
-  }
+  def either[I,I2]: Wye[I,I2,I \/ I2] =
+    receiveBoth {
+      case ReceiveL(i) => emit(left(i)) fby either
+      case ReceiveR(i) => emit(right(i)) fby either
+      case HaltL(End)     => awaitR[I2].map(right).repeat
+      case HaltR(End)     => awaitL[I].map(left).repeat
+      case h@HaltOne(rsn) => Halt(rsn)
+    }
 
   /**
    * Continuous wye, that first reads from Left to get `A`,
@@ -101,12 +98,12 @@ object wye {
    */
   def echoLeft[A]: Wye[A, Any, A] = {
     def go(a: A): Wye[A, Any, A] =
-      receiveBoth({
+      receiveBoth {
         case ReceiveL(l)  => emit(l) fby go(l)
         case ReceiveR(_)  => emit(a) fby go(a)
         case HaltOne(rsn) => Halt(rsn)
-      })
-    awaitL[A].flatMap(s => emit(s) fby go(s))
+      }
+    receiveL(s => emit(s) fby go(s))
   }
 
   /**
@@ -114,16 +111,12 @@ object wye {
    * listening asynchronously for the left branch to become `true`.
    * This halts as soon as the right or left branch halts.
    */
-  def interrupt[I]: Wye[Boolean, I, I] = {
-    def go[I]: Wye[Boolean, I, I] =
-      awaitBoth[Boolean, I].flatMap {
-        case ReceiveR(i)    => emit(i) ++ go
-        case ReceiveL(kill) => if (kill) halt else go
-        case HaltOne(e)     => Halt(e)
-      }
-    go
-  }
-
+  def interrupt[I]: Wye[Boolean, I, I] =
+    receiveBoth {
+      case ReceiveR(i)    => emit(i) ++ interrupt
+      case ReceiveL(kill) => if (kill) halt else interrupt
+      case HaltOne(e)     => Halt(e)
+    }
 
   /**
    * Non-deterministic interleave of both inputs. Emits values whenever either
@@ -131,45 +124,36 @@ object wye {
    *
    * Will terminate once both sides terminate.
    */
-  def merge[I]: Wye[I,I,I] = {
-    def go: Wye[I,I,I] =
-      receiveBoth[I,I,I]({
-        case ReceiveL(i) => emit(i) fby go
-        case ReceiveR(i) => emit(i) fby go
-        case HaltL(End)   => awaitR.repeat
-        case HaltR(End)   => awaitL.repeat
-        case HaltOne(rsn) => Halt(rsn)
-      })
-    go
-  }
+  def merge[I]: Wye[I,I,I] =
+    receiveBoth {
+      case ReceiveL(i) => emit(i) fby merge
+      case ReceiveR(i) => emit(i) fby merge
+      case HaltL(End)   => awaitR.repeat
+      case HaltR(End)   => awaitL.repeat
+      case HaltOne(rsn) => Halt(rsn)
+    }
 
   /**
    * Like `merge`, but terminates whenever one side terminate.
    */
-  def mergeHaltBoth[I]: Wye[I,I,I] = {
-    def go: Wye[I,I,I] =
-      receiveBoth[I,I,I]({
-        case ReceiveL(i) => emit(i) fby go
-        case ReceiveR(i) => emit(i) fby go
-        case HaltOne(rsn) => Halt(rsn)
-      })
-    go
-  }
+  def mergeHaltBoth[I]: Wye[I,I,I] =
+    receiveBoth {
+      case ReceiveL(i) => emit(i) fby mergeHaltBoth
+      case ReceiveR(i) => emit(i) fby mergeHaltBoth
+      case HaltOne(rsn) => Halt(rsn)
+    }
 
   /**
    * Like `merge`, but terminates whenever left side terminates.
    * use `flip` to reverse this for the right side
    */
-  def mergeHaltL[I]: Wye[I,I,I] = {
-    def go: Wye[I,I,I] =
-      receiveBoth[I,I,I]({
-        case ReceiveL(i) => emit(i) fby go
-        case ReceiveR(i) => emit(i) fby go
-        case HaltR(End)   => awaitL.repeat
-        case HaltOne(rsn) => Halt(rsn)
-      })
-    go
-  }
+  def mergeHaltL[I]: Wye[I,I,I] =
+    receiveBoth {
+      case ReceiveL(i) => emit(i) fby mergeHaltL
+      case ReceiveR(i) => emit(i) fby mergeHaltL
+      case HaltR(End)   => awaitL.repeat
+      case HaltOne(rsn) => Halt(rsn)
+    }
 
   /**
    * Like `merge`, but terminates whenever right side terminates
@@ -184,10 +168,10 @@ object wye {
    */
   def timedQueue[I](d: Duration, maxSize: Int = Int.MaxValue): Wye[Duration,I,I] = {
     def go(q: Vector[Duration]): Wye[Duration,I,I] =
-      awaitBoth[Duration,I].flatMap {
+      receiveBoth {
         case ReceiveL(d2) =>
           if (q.size >= maxSize || (d2 - q.headOption.getOrElse(d2) > d))
-            awaitR[I].flatMap(i => emit(i) fby go(q.drop(1)))
+            receiveR(i => emit(i) fby go(q.drop(1)))
           else
             go(q :+ d2)
         case ReceiveR(i) => emit(i) fby (go(q.drop(1)))
@@ -203,7 +187,7 @@ object wye {
    * for instance `src.connect(snk)(unboundedQueue)`
    */
   def unboundedQueue[I]: Wye[Any,I,I] =
-    awaitBoth[Any,I].flatMap {
+    receiveBoth {
       case ReceiveL(_) => halt
       case ReceiveR(i) => emit(i) fby unboundedQueue
       case HaltOne(rsn) => Halt(rsn)
@@ -223,9 +207,9 @@ object wye {
 
   /** Nondeterministic version of `zipWith` which requests both sides in parallel. */
   def yipWith[I,I2,O](f: (I,I2) => O): Wye[I,I2,O] =
-    awaitBoth[I,I2].flatMap {
-      case ReceiveL(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)) ++ yipWith(f))
-      case ReceiveR(i2) => awaitL[I].flatMap(i => emit(f(i,i2)) ++ yipWith(f))
+    receiveBoth {
+      case ReceiveL(i) => receiveR(i2 => emit(f(i,i2)) ++ yipWith(f))
+      case ReceiveR(i2) => receiveL(i => emit(f(i,i2)) ++ yipWith(f))
       case HaltOne(rsn) => Halt(rsn)
     }
 
@@ -236,11 +220,11 @@ object wye {
    */
   def yipWithL[I,O,O2](n: Int)(f: (I,O) => O2): Wye[I,O,O2] = {
     def go(buf: Vector[I]): Wye[I,O,O2] =
-      if (buf.size > n) awaitR[O].flatMap { o =>
+      if (buf.size > n) receiveR { o =>
         emit(f(buf.head,o)) ++ go(buf.tail)
       }
-      else if (buf.isEmpty) awaitL[I].flatMap { i => go(buf :+ i) }
-      else awaitBoth[I,O].flatMap {
+      else if (buf.isEmpty) receiveL { i => go(buf :+ i) }
+      else receiveBoth {
         case ReceiveL(i) => go(buf :+ i)
         case ReceiveR(o) => emit(f(buf.head,o)) ++ go(buf.tail)
         case HaltOne(rsn) => Halt(rsn)
