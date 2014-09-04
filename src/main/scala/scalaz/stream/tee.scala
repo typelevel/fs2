@@ -267,7 +267,7 @@ private[stream] trait TeeOps[+F[_], +O] {
 
   /** Delay running this `Process` until `awaken` becomes true for the first time. */
   def sleepUntil[F2[x] >: F[x], O2 >: O](awaken: Process[F2, Boolean]): Process[F2, O2] =
-    awaken.dropWhile(!_).once.flatMap(b => if (b) this else halt)
+    Process.sleepUntil(awaken)(this)
 
   /**
    * Halts this `Process` as soon as `condition` becomes `true`. Note that `condition`
