@@ -61,7 +61,8 @@ object process1 {
    * Like `chunk`, but emits a chunk whenever the predicate switches from
    * true to false.
    * {{{
-   * Process(1,2,-1,3,4).chunkBy(_ > 0).toList == List(Vector(1, 2, -1), Vector(3, 4))
+   * scala> Process(1, 2, -1, 3, 4).chunkBy(_ > 0).toList
+   * res0: List[Vector[Int]] = List(Vector(1, 2, -1), Vector(3, 4))
    * }}}
    */
   def chunkBy[I](f: I => Boolean): Process1[I, Vector[I]] = {
@@ -221,7 +222,8 @@ object process1 {
    *
    * If Process of `A` is empty, it will just emit `z` and terminate
    * {{{
-   * Process(1,2,3,4) |> fold(0)(_ + _) == Process(10)
+   * scala> Process(1, 2, 3, 4).fold(0)(_ + _).toList
+   * res0: List[Int] = List(10)
    * }}}
    */
   def fold[A, B](z: B)(f: (B, A) => B): Process1[A, B] =
@@ -260,9 +262,10 @@ object process1 {
     await1[I].repeat
 
   /**
-   * Add `separator` between elements of the input. For example,
+   * Adds `separator` between elements of the input. For example,
    * {{{
-   * Process(1,2,3,4) |> intersperse(0) == Process(1,0,2,0,3,0,4)
+   * scala> Process(1, 2, 3).intersperse(0).toList
+   * res0: List[Int] = List(1, 0, 2, 0, 3)
    * }}}
    */
   def intersperse[A](separator: A): Process1[A, A] =
@@ -374,9 +377,14 @@ object process1 {
    *
    * Reduces the elements of this Process using the specified associative binary operator.
    * {{{
-   * Process(1,2,3,4) |> reduce(_ + _) == Process(10)
-   * Process(1) |> reduce(_ + _) == Process(1)
-   * Process() |> reduce(_ + _) == Process()
+   * scala> Process(1, 2, 3, 4).reduce(_ + _).toList
+   * res0: List[Int] = List(10)
+   *
+   * scala> Process(1).reduce(_ + _).toList
+   * res1: List[Int] = List(1)
+   *
+   * scala> Process[Int]().reduce(_ + _).toList
+   * res2: List[Int] = List()
    * }}}
    *
    * Unlike `List.reduce` will not fail when Process is empty.
@@ -405,8 +413,9 @@ object process1 {
    * are emitted. The last element is then prepended to the next input using the
    * Semigroup `I`. For example,
    * {{{
-   * Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ")) ==
-   *   Process("Hello", "World")
+   * scala> import scalaz.std.string._
+   * scala> Process("Hel", "l", "o Wor", "ld").repartition(_.split(" ")).toList
+   * res0: List[String] = List(Hello, World)
    * }}}
    */
   def repartition[I](p: I => IndexedSeq[I])(implicit I: Semigroup[I]): Process1[I, I] = {
@@ -458,9 +467,14 @@ object process1 {
   /**
    * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
    * {{{
-   * Process(1,2,3,4) |> scan1(_ + _) == Process(1,3,6,10)
-   * Process(1) |> scan1(_ + _) == Process(1)
-   * Process() |> scan1(_ + _) == Process()
+   * scala> Process(1, 2, 3, 4).scan1(_ + _).toList
+   * res0: List[Int] = List(1, 3, 6, 10)
+   *
+   * scala> Process(1).scan1(_ + _).toList
+   * res1: List[Int] = List(1)
+   *
+   * scala> Process[Int]().scan1(_ + _).toList
+   * res2: List[Int] = List()
    * }}}
    */
   def scan1[A](f: (A, A) => A): Process1[A, A] =
@@ -508,6 +522,10 @@ object process1 {
    * of size `n` over them. If the input contains less than or equal to
    * `n` elements, only one chunk of this size will be emitted.
    *
+   * @example {{{
+   * scala> Process(1, 2, 3, 4).sliding(2).toList
+   * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(2, 3), Vector(3, 4))
+   * }}}
    * @throws IllegalArgumentException if `n` <= 0
    */
   def sliding[I](n: Int): Process1[I, Vector[I]] = {
@@ -543,8 +561,8 @@ object process1 {
    * Breaks the input into chunks that alternatively satisfy and don't satisfy
    * the predicate `f`.
    * {{{
-   * Process(1,2,-3,-4,5,6).splitWith(_ < 0).toList ==
-   *   List(Vector(1,2), Vector(-3,-4), Vector(5,6))
+   * scala> Process(1, 2, -3, -4, 5, 6).splitWith(_ < 0).toList
+   * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(-3, -4), Vector(5, 6))
    * }}}
    */
   def splitWith[I](f: I => Boolean): Process1[I, Vector[I]] = {
