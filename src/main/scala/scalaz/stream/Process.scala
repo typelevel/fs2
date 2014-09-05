@@ -311,7 +311,7 @@ sealed trait Process[+F[_], +O]
   })
 
   /**
-   * Causes this process to be terminated immediatelly with `Kill` cause,
+   * Causes this process to be terminated immediately with `Kill` cause,
    * giving chance for any cleanup actions to be run
    */
   final def kill: Process[F, Nothing] = injectCause(Kill).drain.causedBy(Kill)
@@ -574,7 +574,7 @@ object Process {
    * `req`. If it returns successfully, `recv` is called with result on right side
    * to transition to the next state.
    *
-   * In case the req terminates with failure the `Error(falure)` is passed on left side
+   * In case the req terminates with failure the `Error(failure)` is passed on left side
    * giving chance for any fallback action.
    *
    * In case the process was killed before the request is evaluated `Kill` is passed on left side.
@@ -1209,7 +1209,7 @@ object Process {
     /** converts sink to channel, that will perform the side effect and echo its input **/
     def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
 
-    /** converts sint to sink that first pipes received `I0` to supplied p1 **/
+    /** converts sink to sink that first pipes received `I0` to supplied p1 **/
     def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = {
       import scalaz.Scalaz._
       // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
@@ -1544,7 +1544,7 @@ object Process {
   /**
    * Evaluate an arbitrary effect in a `Process`. The resulting
    * `Process` emits a single value. To evaluate repeatedly, use
-   * `repeateEval(t)`.
+   * `repeatEval(t)`.
    * Do not use `eval.repeat` or  `repeat(eval)` as that may cause infinite loop in certain situations.
    */
   def eval[F[_], O](f: F[O]): Process[F, O] =
@@ -1565,7 +1565,7 @@ object Process {
    * Evaluate an arbitrary effect in a `Process`. The resulting `Process` will emit values
    * until evaluation of `f` signals termination with `End` or an error occurs.
    *
-   * Note that if `f` results to failure of type `Terminated` the reeatEval will convert cause
+   * Note that if `f` results to failure of type `Terminated` the repeatEval will convert cause
    * to respective process cause termination, and will halt with that cause.
    *
    */
