@@ -47,7 +47,6 @@ sealed trait Process[+F[_], +O]
       case Halt(_) => this.asInstanceOf[Process[F, O2]]
       case Emit(os) if os.isEmpty => this.asInstanceOf[Process[F, O2]]
       case Emit(os) => {
-        var rest = os
         var err: Option[Exception] = None
         val result = new scala.collection.mutable.ListBuffer[O2]()
         try {
