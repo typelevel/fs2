@@ -71,7 +71,13 @@ object Process1Spec extends Properties("Process1") {
         , "intersperse" |: pi.intersperse(0).toList === li.intersperse(0)
         , "last" |:  Process(0, 10).last.toList === List(10)
         , "lastOr" |: pi.lastOr(42).toList.head === li.lastOption.getOrElse(42)
-        , "liftL"  |:  {
+        , "liftFirst"  |:  {
+            val lifted = process1.liftFirst[Int,Int,Int](b => Some(b))(process1.id[Int].map(i => i + 1) onComplete emit(Int.MinValue))
+            pi.map(i => (i, i + 1)).pipe(lifted).toList == li.map(i => (i + 1, i + 1)) :+ ((Int.MinValue, Int.MinValue))
+        }, "liftSecond"  |:  {
+            val lifted = process1.liftSecond[Int,Int,Int](b => Some(b))(process1.id[Int].map(i => i + 1) onComplete emit(Int.MinValue))
+            pi.map(i => (i + 1, i)).pipe(lifted).toList == li.map(i => (i + 1, i + 1)) :+ ((Int.MinValue, Int.MinValue))
+        }, "liftL"  |:  {
             val lifted = process1.liftL[Int,Int,Nothing](process1.id[Int].map( i=> i + 1) onComplete emit(Int.MinValue))
             pi.map(-\/(_)).pipe(lifted).toList == li.map(i => -\/(i + 1)) :+ -\/(Int.MinValue)
         }

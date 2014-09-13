@@ -287,6 +287,41 @@ object process1 {
     id map f
 
   /**
+   * Transform `p` to operate on the first element of a pair, passing
+   * through the right value with no modifications. Note that this halts
+   * whenever `p` halts.
+   *
+   * @param f function used to convert `B`s generated during cleanup of `p` to pairs
+   */
+  def liftFirst[A, B, C](f: B => Option[C])(p: Process1[A, B]): Process1[(A, C), (B, C)] = {
+    def go(curr: Process1[A, B]): Process1[(A, C), (B, C)] = {
+      val cleanup: Process1[(A, C), (B, C)] = curr.disconnect(Kill).flatMap(b => f(b) match {
+        case Some(c) => emit((b, c))
+        case None => halt
+      })
+      receive1Or[(A, C), (B, C)](cleanup) { case (a, c) =>
+        val (emitted, next) = curr.feed1(a).unemit
+        val out = emitAll(emitted).map((_, c))
+        next match {
+          case h @ Halt(_) => out fby h
+          case other => out fby go(other)
+        }
+      }
+    }
+    go(p)
+  }
+
+  /**
+   * Transform `p` to operate on the second element of a pair, passing
+   * through the left value with no modifications. Note that this halts
+   * whenever `p` halts.
+   *
+   * @param f function used to convert `B`s generated during cleanup of `p` to pairs
+   */
+  def liftSecond[A, B, C](f: B => Option[C])(p: Process1[A, B]): Process1[(C, A), (C, B)] =
+    lift[(C, A), (A, C)](_.swap) |> liftFirst(f)(p).map(_.swap)
+
+  /**
    * Transform `p` to operate on the left hand side of an `\/`, passing
    * through any values it receives on the right. Note that this halts
    * whenever `p` halts.
