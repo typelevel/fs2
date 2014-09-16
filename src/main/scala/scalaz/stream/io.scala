@@ -171,4 +171,37 @@ object io {
         else buf.take(m)
       }}
     }
+
+  /**
+    * Listens on a UDP socket. Each packet is one element in the stream.
+    */
+  sealed trait UDPMessage
+  case object SocketClosed extends UDPMessage
+  case class UDPPacket(data: Array[Byte], ip: java.net.InetAddress, port: Int) extends UDPMessage {
+    def getString(encoding: String = "UTF-8"): String = new String(data, encoding)
+  }
+  case class UDPError(exception: java.io.IOException) extends UDPMessage
+
+  def listenUDP(port: Int, bufferSize: Int = 1024*4): Process[Task, UDPMessage] = {
+    val acquire = Task {
+      val socket = new java.net.DatagramSocket(port)
+      val datagram = new java.net.DatagramPacket(new Array[Byte](bufferSize), bufferSize)
+      (socket, datagram)
+    }
+    def flushAndRelease(u: (java.net.DatagramSocket, java.net.DatagramPacket)): Task[UDPMessage] = Task {
+      u._1.close
+      SocketClosed
+    }
+    def step(r: (java.net.DatagramSocket, java.net.DatagramPacket)): Task[UDPMessage] = Task {
+      try {
+        r._1.receive(r._2)
+        UDPPacket(java.util.Arrays.copyOf(r._2.getData(), r._2.getLength() ), r._2.getAddress, r._2.getPort)
+      } catch {
+        case (e:java.io.IOException) => UDPError(e)
+      }
+    }
+    io.bufferedResource(acquire)(flushAndRelease _)(step _)
+  }
+
+
 }
