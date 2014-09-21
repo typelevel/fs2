@@ -160,7 +160,7 @@ object NioSpec extends Properties("nio") {
 
 
   // connects large number of client to server, each sending up to `size` data and server replying them back
-  // at the end server shall have callected all data from all clients and all clients shall get echoed back
+  // at the end server shall have collected all data from all clients and all clients shall get echoed back
   // what they have sent to server
   property("connect-server-many") = secure {
     val local = localAddress(11102)
