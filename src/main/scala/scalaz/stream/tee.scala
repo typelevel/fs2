@@ -249,6 +249,9 @@ private[stream] trait TeeOps[+F[_], +O] {
   def zipWith[F2[x] >: F[x], O2, O3](p2: Process[F2, O2])(f: (O, O2) => O3): Process[F2, O3] =
     this.tee(p2)(scalaz.stream.tee.zipWith(f))
 
+  def zipWith[O2, O3](p2: Process.ConstantProcess[O2])(f: (O, O2) => O3): Process[F, O3] =
+    this.map( x => f(x, p2.const))
+
   /** Call `tee` with the `zip` `Tee[O,O2,O3]` defined in `tee.scala`. */
   def zip[F2[x] >: F[x], O2](p2: Process[F2, O2]): Process[F2, (O, O2)] =
     this.tee(p2)(scalaz.stream.tee.zip)

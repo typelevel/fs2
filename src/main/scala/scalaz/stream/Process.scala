@@ -5,7 +5,7 @@ import java.util.concurrent.ScheduledExecutorService
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
-import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, ~>}
+import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, \/-, ~>, @@, Tag}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
@@ -513,7 +513,6 @@ sealed trait Process[+F[_], +O]
 
 object Process {
 
-
   import scalaz.stream.Util._
 
   //////////////////////////////////////////////////////////////////////////////////////
@@ -842,18 +841,20 @@ object Process {
     })
   }
 
+  case class ConstantProcess[A](const: A, chunkSize: Int)
+  implicit def constantProcessToProcess[A](c: ConstantProcess[A]): Process0[A] = {
+    lazy val go: Process0[A] =
+      if (c.chunkSize.max(1) == 1) emit(c.const) fby go
+      else emitAll(List.fill(c.chunkSize)(c.const)) fby go
+    go
+  }
 
   /**
    * The infinite `Process`, always emits `a`.
    * If for performance reasons it is good to emit `a` in chunks,
    * specify size of chunk by `chunkSize` parameter
    */
-  def constant[A](a: A, chunkSize: Int = 1): Process0[A] = {
-    lazy val go: Process0[A] =
-      if (chunkSize.max(1) == 1) emit(a) fby go
-      else emitAll(List.fill(chunkSize)(a)) fby go
-    go
-  }
+  def constant[A](a: A, chunkSize: Int = 1): ConstantProcess[A] = ConstantProcess(a, chunkSize)
 
   /**
    * A continuous stream of the elapsed time, computed using `System.nanoTime`.
@@ -1125,6 +1126,10 @@ object Process {
     def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] =
       through(f)
 
+    def to[F2[x]>:F[x]](f: ConstantProcess[O => F2[Unit]])(implicit m: Monad[F2], c: Catchable[F2]) =
+      self.map(x => f.const(x)).eval
+
+    /** A common use of Sink is simply proc.to( Process.constant(o => ...stuff...). This is simply a lot fater. */
     def toSimple[F2[x]>:F[x]](f: O => F2[Unit]): Process[F2,Unit] = self.map(o => f(o)).eval
 
     /** Attach a `Sink` to the output of this `Process` but echo the original. */
