@@ -1130,7 +1130,7 @@ object Process {
       self.map(x => f.const(x)).eval
 
     /** A common use of Sink is simply proc.to( Process.constant(o => ...stuff...). This is simply a lot fater. */
-    def toSimple[F2[x]>:F[x]](f: O => F2[Unit]): Process[F2,Unit] = self.map(o => f(o)).eval
+    def to[F2[x]>:F[x]](f: O => F2[Unit]): Process[F2,Unit] = self.map(o => f(o)).eval
 
     /** Attach a `Sink` to the output of this `Process` but echo the original. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
