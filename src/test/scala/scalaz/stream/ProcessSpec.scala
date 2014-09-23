@@ -78,6 +78,13 @@ object ProcessSpec extends Properties("Process") {
     p1.to(pch).runLog.run.size == 3
   }
 
+  property("sinked with const") = secure {
+    val p1 = Process.constant(1).take(25).toSource
+    val pch: Process0[Int => Task[Unit]] @@ Process.ConstantProcess = Process.constant((i:Int) => Task.now(()))
+
+    p1.to(pch).runLog.run.size == 25
+  }
+
   property("duration") =  {
     val firstValueDiscrepancy = duration.take(1).runLast.run.get
     val reasonableError = 200 * 1000000 // 200 millis
