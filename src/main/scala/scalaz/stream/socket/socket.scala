@@ -27,16 +27,30 @@ object socket {
     new Socket[A] { def run(channel: AsynchronousSocketChannel) = t }
 
   /**
-   * Read up to `numBytes` from the peer. If `timeout` is provided
-   * and the operation does not complete in the specified duration,
-   * the returned `Process` fails with a [[java.nio.channels.InterruptedByTimeoutException]].
+   * Read exactly `numBytes` from the peer. If `timeout` is provided
+   * and no data arrives within the specified duration, the returned
+   * `Process` fails with a [[java.nio.channels.InterruptedByTimeoutException]].
    */
   def read(numBytes: Int,
            timeout: Option[Duration] = None,
            allowPeerClosed: Boolean = false): Process[Socket,ByteVector] =
+    available(numBytes, timeout, allowPeerClosed) flatMap { bs =>
+      if (bs.size == numBytes) Process.emit(bs)
+      else Process.emit(bs) ++ read(numBytes, timeout, allowPeerClosed)
+    }
+
+  /**
+   * Read up to `maxBytes` from the peer. If `timeout` is provided
+   * and the operation does not complete in the specified duration,
+   * the returned `Process` fails with a [[java.nio.channels.InterruptedByTimeoutException]].
+   */
+  def available(
+        maxBytes: Int,
+        timeout: Option[Duration] = None,
+        allowPeerClosed: Boolean = false): Process[Socket,ByteVector] =
     Process.eval { new Socket[ByteVector] {
       def run(channel: AsynchronousSocketChannel) = Task.async { cb =>
-        val arr = new Array[Byte](numBytes)
+        val arr = new Array[Byte](maxBytes)
         val buf = ByteBuffer.wrap(arr)
         val handler = new CompletionHandler[Integer, Void] {
           def completed(result: Integer, attachment: Void): Unit = {
@@ -101,7 +115,7 @@ object socket {
              keepAlive: Boolean = false,
              noDelay: Boolean = false)(
              implicit AG: AsynchronousChannelGroup):
-             Channel[Task, Process[Socket,ByteVector], Unit] = {
+             Process[Task, Process[Socket,ByteVector] => Process[Task,ByteVector]] = {
 
     def setup: Task[AsynchronousSocketChannel] = Task.delay {
       val ch = AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)
@@ -121,9 +135,11 @@ object socket {
         })
       }
 
-    Process.await(setup flatMap connect)(ch => Process.emit {
-      (output: Process[Socket,ByteVector]) => runSocket(ch)(output)
-    }).repeat
+    val runner = (output: Process[Socket,ByteVector]) =>
+      Process.await(setup flatMap connect)(ch =>
+        bindTo(ch)(output).onComplete(Process.eval_(Task.delay(ch.close))))
+
+    Process.emit(runner).repeat
   }
 
   /**
@@ -140,7 +156,7 @@ object socket {
              reuseAddress: Boolean = true,
              rcvBufferSize: Int = 256 * 1024)(
              implicit AG: AsynchronousChannelGroup):
-             Channel[Task, Process[Socket,ByteVector], Unit] = {
+             Sink[Task, Process[Socket,ByteVector]] = {
 
     def setup: Task[AsynchronousServerSocketChannel] =
       Task.delay {
@@ -160,15 +176,20 @@ object socket {
       }
 
     Process.eval(setup) flatMap { sch =>
-      Process.repeatEval(accept(sch))
-             .map { conn => output => runSocket(conn)(output) }
-             .onComplete (Process.eval_(Task.delay(sch.close)))
+      Process.constant { (output: Process[Socket,ByteVector]) =>
+        // note that server does even accept a connection until
+        // it has a handler for that connection!
+        accept(sch) flatMap { conn => runSocket(conn)(output) }
+      }.onComplete (Process.eval_(Task.delay(sch.close)))
     }
   }
 
+  private def bindTo[A](c: AsynchronousSocketChannel)(p: Process[Socket,A]): Process[Task,A] =
+    p.translate(new (Socket ~> Task) { def apply[A](s: Socket[A]) = s.run(c) })
+
   private def runSocket(c: AsynchronousSocketChannel)(
                         p: Process[Socket,ByteVector]): Task[Unit] =
-    p.translate(new (Socket ~> Task) { def apply[A](s: Socket[A]) = s.run(c) })
+    bindTo(c)(p)
      .evalMap(bytes => writeOne(c, bytes))
      .onComplete(Process.eval_(Task.delay(c.close)))
      .run
