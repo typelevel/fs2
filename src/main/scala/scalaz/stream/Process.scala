@@ -1125,6 +1125,10 @@ object Process {
     def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] =
       through(f)
 
+    /** A faster variation of the above, for the case of constant sinks */
+    def to[F2[x]>:F[x]](f: O => F2[Unit]): Process[F2,Unit] =
+      self.map(f).eval
+
     /** Attach a `Sink` to the output of this `Process` but echo the original. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
       self.zipWith(f)((o,f) => (o,f(o))).flatMap { case (orig,action) => emit(action).eval.drain ++ emit(orig) }
