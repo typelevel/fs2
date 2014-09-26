@@ -194,7 +194,7 @@ object process1 {
    * element and terminate
    */
   def find[I](f: I => Boolean): Process1[I, I] =
-    receive1(i => if (f(i)) emit(i) else find(f))
+    filter(f).once
 
   /**
    * Halts with `true` as soon as a matching element is received.
