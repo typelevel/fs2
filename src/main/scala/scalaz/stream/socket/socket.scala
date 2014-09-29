@@ -17,16 +17,16 @@ import scodec.bits.ByteVector
 object socket {
 
   trait Socket[+A] {
-    private[stream] def run(channel: AsynchronousSocketChannel): Task[A]
+    private[stream] def run(channel: AsynchronousSocketChannel, S: Strategy): Task[A]
   }
 
   private[stream] def ask: Process[Socket,AsynchronousSocketChannel] =
     Process.eval { new Socket[AsynchronousSocketChannel] {
-      def run(channel: AsynchronousSocketChannel) = Task.now(channel)
+      def run(channel: AsynchronousSocketChannel, S: Strategy) = Task.now(channel)
     }}
 
   def lift[A](t: Task[A]): Socket[A] =
-    new Socket[A] { def run(channel: AsynchronousSocketChannel) = t }
+    new Socket[A] { def run(channel: AsynchronousSocketChannel, S: Strategy) = t }
 
   def lift[A](p: Process[Task,A]): Process[Socket,A] =
     p.translate(new (Task ~> Socket) { def apply[x](t: Task[x]) = socket.lift(t) })
@@ -36,7 +36,7 @@ object socket {
   def eval_[A](t: Task[A]): Process[Socket,Nothing] = Process.eval_(lift(t))
 
   def wye[A,B,C](a: Process[Socket,A], b: Process[Socket,B])(y: Wye[A,B,C])(implicit S:Strategy): Process[Socket,C] =
-    ask flatMap { ch => lift { bindTo(ch)(a).wye(bindTo(ch)(b))(y)(S) } }
+    ask flatMap { ch => lift { bindTo(ch, S)(a).wye(bindTo(ch, S)(b))(y)(S) } }
 
   def merge[A](a: Process[Socket,A], a2: Process[Socket,A])(implicit S:Strategy): Process[Socket,A] =
     wye(a,a2)(scalaz.stream.wye.merge)
@@ -78,12 +78,12 @@ object socket {
         timeout: Option[Duration] = None,
         allowPeerClosed: Boolean = false): Process[Socket,Option[ByteVector]] =
     Process.eval { new Socket[Option[ByteVector]] {
-      def run(channel: AsynchronousSocketChannel) =
+      def run(channel: AsynchronousSocketChannel, S: Strategy) =
         handlePeerClosed[Option[ByteVector]](allowPeerClosed, None) { Task.async { cb =>
           val arr = new Array[Byte](maxBytes)
           val buf = ByteBuffer.wrap(arr)
           val handler = new CompletionHandler[Integer, Void] {
-            def completed(result: Integer, attachment: Void): Unit =
+            def completed(result: Integer, attachment: Void): Unit = S {
               try {
                 buf.flip()
                 val bs = ByteVector(buf)
@@ -91,7 +91,8 @@ object socket {
                 else cb(right(Some(bs.take(result.intValue))))
               }
               catch { case e: Throwable => cb(left(e)) }
-            def failed(exc: Throwable, attachment: Void): Unit = cb(left(exc))
+            }
+            def failed(exc: Throwable, attachment: Void): Unit = S { cb(left(exc)) }
           }
           timeout match {
             case None => channel.read(buf, null, handler)
@@ -120,8 +121,8 @@ object socket {
             timeout: Option[Duration] = None,
             allowPeerClosed: Boolean = false): Process[Socket,Unit] =
     Process.eval { new Socket[Unit] {
-      def run(channel: AsynchronousSocketChannel) =
-        writeOne(channel, bytes, timeout, allowPeerClosed)
+      def run(channel: AsynchronousSocketChannel, S: Strategy) =
+        writeOne(channel, bytes, timeout, allowPeerClosed, S)
     }}
 
   def write_(bytes: ByteVector,
@@ -151,11 +152,13 @@ object socket {
 
   private def writeOne(ch: AsynchronousSocketChannel, a: ByteVector,
                        timeout: Option[Duration],
-                       allowPeerClosed: Boolean): Task[Unit] =
-    handlePeerClosed(allowPeerClosed, ()) { Task.async[Int] { cb =>
+                       allowPeerClosed: Boolean,
+                       S: Strategy): Task[Unit] =
+    if (a.isEmpty) Task.now(())
+    else handlePeerClosed(allowPeerClosed, ()) { Task.async[Int] { cb =>
       val handler = new CompletionHandler[Integer, Void] {
-        def completed(result: Integer, attachment: Void): Unit = cb(right(result))
-        def failed(exc: Throwable, attachment: Void): Unit = cb(left(exc))
+        def completed(result: Integer, attachment: Void): Unit = S { cb(right(result)) }
+        def failed(exc: Throwable, attachment: Void): Unit = S { cb(left(exc)) }
       }
       timeout match {
         case None => ch.write(a.toByteBuffer, null, handler)
@@ -163,7 +166,7 @@ object socket {
       }
     }.flatMap { w =>
       if (w == a.length) Task.now(())
-      else writeOne(ch, a.drop(w), timeout, allowPeerClosed)
+      else writeOne(ch, a.drop(w), timeout, allowPeerClosed, S)
     }}
 
   /**
@@ -179,17 +182,17 @@ object socket {
    */
   def connect[A](to: InetSocketAddress,
                  reuseAddress: Boolean = true,
-                 sndBufferSize: Int = 256 * 1024,
-                 rcvBufferSize: Int = 256 * 1024,
+                 sendBufferSize: Int = 256 * 1024,
+                 receiveBufferSize: Int = 256 * 1024,
                  keepAlive: Boolean = false,
-                 noDelay: Boolean = false)(output: Process[Socket,A])(implicit AG: AsynchronousChannelGroup):
-              Process[Task,A] = {
+                 noDelay: Boolean = false)(output: Process[Socket,A])(
+                 implicit AG: AsynchronousChannelGroup, S: Strategy): Process[Task,A] = {
 
     def setup: Task[AsynchronousSocketChannel] = Task.delay {
       val ch = AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
-      ch.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sndBufferSize)
-      ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, rcvBufferSize)
+      ch.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sendBufferSize)
+      ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
       ch
@@ -204,7 +207,11 @@ object socket {
       }
 
     Process.await(setup flatMap connect) { ch =>
-      bindTo(ch)(output).onComplete(Process.eval_(Task.delay(ch.close)))
+      bindTo(ch, S)(output).onComplete(Process.eval_(Task.delay {
+        print("client closing... ")
+        try { ch.shutdownInput(); ch.shutdownOutput(); ch.close }
+        catch { case e: Throwable => println("client failed to close") }
+        println("client closed")}))
     }
   }
 
@@ -223,7 +230,7 @@ object socket {
                 reuseAddress: Boolean = true,
                 rcvBufferSize: Int = 256 * 1024)(handler: Process[Socket,A])(
                 implicit AG: AsynchronousChannelGroup,
-                         S: Strategy): Process[Task, Throwable \/ A] = {
+                         S: Strategy): Task[Process[Task, Throwable \/ A]] = {
 
     require(concurrentRequests > 0, "concurrent requests must be positive")
 
@@ -239,31 +246,41 @@ object socket {
     def accept(sch: AsynchronousServerSocketChannel): Task[AsynchronousSocketChannel] =
       Task.async[AsynchronousSocketChannel] { cb =>
         sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-          def completed(result: AsynchronousSocketChannel, attachment: Void): Unit = cb(right(result))
-          def failed(rsn: Throwable, attachment: Void): Unit = cb(left(rsn))
+          def completed(result: AsynchronousSocketChannel, attachment: Void): Unit =
+            S { cb(right(result)) }
+          def failed(rsn: Throwable, attachment: Void): Unit =
+            S { cb(left(rsn)) }
         })
       }
 
-    def processRequest(c: AsynchronousSocketChannel) =
-      bindTo(c)(handler).map(right).onHalt {
-        case Cause.Error(err) => Process.eval_(Task.delay(c.close)) onComplete Process.emit(left(err))
-        case _ => Process.eval_(Task.delay(c.close))
+    def cleanup(c: AsynchronousSocketChannel) =
+      Task.delay {
+        c.shutdownOutput()
+        c.shutdownInput()
+        c.close()
       }
 
-    if (concurrentRequests > 1)
-      nondeterminism.njoin(concurrentRequests, maxQueued) {
-        Process.eval(setup) flatMap { sch =>
-          Process.repeatEval(accept(sch)).map(processRequest).onComplete (Process.eval_(Task.delay { sch.close }))
-        }
+    def processRequest(c: AsynchronousSocketChannel) =
+      bindTo(c, S)(handler).map(right).onHalt {
+        case Cause.Error(err) => Process.eval_(cleanup(c)) onComplete Process.emit(left(err))
+        case _ => Process.eval_(cleanup(c))
       }
+
+    if (concurrentRequests > 1) setup map { sch =>
+      nondeterminism.njoin(concurrentRequests, maxQueued) {
+        Process.repeatEval(accept(sch)).map(processRequest)
+               .onComplete(Process.eval_(Task.delay { sch.close }))
+      }
+    }
     else
-      Process.eval(setup) flatMap { sch =>
-        Process.repeatEval(accept(sch)).flatMap(processRequest).onComplete (Process.eval_(Task.delay { sch.close }))
+      setup map { sch =>
+        Process.repeatEval(accept(sch)).flatMap(processRequest)
+               .onComplete (Process.eval_(Task.delay { sch.close }))
       }
   }
 
-  private def bindTo[A](c: AsynchronousSocketChannel)(p: Process[Socket,A]): Process[Task,A] =
-    p.translate(new (Socket ~> Task) { def apply[A](s: Socket[A]) = s.run(c) })
+  private def bindTo[A](c: AsynchronousSocketChannel, S: Strategy)(p: Process[Socket,A]): Process[Task,A] =
+    p.translate(new (Socket ~> Task) { def apply[A](s: Socket[A]) = s.run(c, S) })
 
   lazy val DefaultAsynchronousChannelGroup = {
     val idx = new AtomicInteger(0)

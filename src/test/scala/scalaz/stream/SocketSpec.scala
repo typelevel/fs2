@@ -3,6 +3,7 @@ package scalaz.stream
 import Cause._
 import Process._
 import java.net.InetSocketAddress
+import java.util.concurrent.CountDownLatch
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
 import scala.concurrent.SyncVar
@@ -21,7 +22,7 @@ object SocketSpec extends Properties("socket") {
   implicit val AG = socket.DefaultAsynchronousChannelGroup
   import socket.syntax._
 
-  val addr = local(11100)
+  val addr = local((math.random * 10000).toInt + 10000)
 
   def local(port: Int) =
     new InetSocketAddress("localhost", port)
@@ -30,28 +31,35 @@ object SocketSpec extends Properties("socket") {
 
   def echo =
     socket.writes_(socket.reads(1024, allowPeerClosed = true)) ++
-    socket.eof
+    socket.eof ++
     Process.emit(())
 
-  property("echo-server") = forAll { (msgs: List[String]) =>
-    val server = socket.server(addr, concurrentRequests = 1)(echo)
-    val link = async.signal[Boolean]; link.set(false).run
-
+  lazy val server = socket.server(addr, concurrentRequests = 1)(echo).run
+  lazy val link = async.signal[Boolean]; link.set(false).run
+  lazy val startServer =
     link.discrete.wye(server)(wye.interrupt)
         .run
         .runAsync { _.fold(e => throw e, identity) }
+  lazy val stopServer = link.set(true).run
 
-    Thread.sleep(50)
-
+  property("start-server") = forAll ((i: Int) => { startServer; true })
+  property("echo-server") = forAll { (msgs0: List[String]) =>
+    val msgs = msgs0.map(_ + "!") // ensure nonempty
     val client = {
       val out = Process(msgs: _*).pipe(text.utf8Encode)
-      socket.connect(addr) {
-        socket.lastWrites_(out).merge(socket.reads(1024)).pipe(text.utf8Decode)
+      socket.connect(addr, sendBufferSize = 1) {
+      //   socket.lastWrites_(out) ++
+      //   socket.reads(1024).pipe(text.utf8Decode)
+      //    socket.lastWrites(out).tee(socket.reads(1024))(tee.drainL)
+      //         .pipe(text.utf8Decode)
+        socket.lastWrites(out).wye(socket.reads(1024))(wye.boundedQueue(1024))
+              .pipe(text.utf8Decode)
       }
     }
-    try client.runLog.run.mkString ?= msgs.mkString
-    finally { println("."); link.set(true).run }
+    client.runLog.run.mkString ?= msgs.mkString
   }
+
+  property("stop-server") = forAll ((i: Int) => { stopServer; true })
 }
 
 object SocketExample extends App {
@@ -79,7 +87,7 @@ object SocketExample extends App {
   }
 
   val server: Process[Task, Throwable \/ Long] =
-    socket.server(addr, concurrentRequests = 2)(echo)
+    socket.server(addr, concurrentRequests = 2)(echo).run
 
   val greetings = Process("hi", "bye", "w00t!!!1!")
 
