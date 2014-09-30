@@ -52,7 +52,7 @@ object SocketSpec extends Properties("socket") {
       //   socket.reads(1024).pipe(text.utf8Decode)
       //    socket.lastWrites(out).tee(socket.reads(1024))(tee.drainL)
       //         .pipe(text.utf8Decode)
-        socket.lastWrites(out).wye(socket.reads(1024))(wye.boundedQueue(1024))
+        socket.lastWrites_(out).merge(socket.reads(1024))
               .pipe(text.utf8Decode)
       }
     }
