@@ -65,3 +65,5 @@ autoAPIMappings := true
 apiURL := Some(url(s"http://docs.typelevel.org/api/scalaz-stream/stable/${version.value}/doc/"))
 
 initialCommands := "import scalaz.stream._"
+
+DoctestPlugin.doctestSettings
