@@ -42,8 +42,34 @@ sealed trait Process[+F[_], +O]
     }
   }
   /** Transforms the output values of this `Process` using `f`. */
-  final def map[O2](f: O => O2): Process[F, O2] =
-    flatMap { o => emit(f(o))}
+  final def map[O2](f: O => O2): Process[F, O2] = {
+    this match {
+      case Halt(_) => this.asInstanceOf[Process[F, O2]]
+      case Emit(os) if os.isEmpty => this.asInstanceOf[Process[F, O2]]
+      case Emit(os) => {
+        var err: Option[Exception] = None
+        val result = new scala.collection.mutable.ListBuffer[O2]()
+        try {
+          os.foreach( x => { result += f(x) })
+        } catch {
+          case (e:Exception) => { err = Some(e) }
+        }
+        if (err.isEmpty) {
+          Process.emitAll(result.toSeq)
+        } else {
+          Process.emitAll(result.toSeq) ++ Process.fail(err.get)
+        }
+      }
+      case aw@Await(_, _) => aw.extend(_ flatMap (o => emit(f(o))) )
+      case ap@Append(p, n) => ap.extend(_ flatMap (o => emit(f(o))) )
+    }
+  }
+  /*
+   *  This complicated and imperative implementation is equivalent to (but faster than) this:
+   *   final def map[O2](f: O => O2): Process[F, O2] =
+   *     flatMap { o => emit(f(o))}
+   */
+
 
   /**
    * If this process halts due to `Cause.End`, runs `p2` after `this`.
