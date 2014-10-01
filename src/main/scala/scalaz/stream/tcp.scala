@@ -82,12 +82,7 @@ object tcp {
       Task.delay { channel.shutdownOutput() }
 
     def close: Task[Unit] =
-      Task.delay {
-        val id = (math.random * 1000).toInt
-        print(s"closing $id...")
-        channel.close()
-        println(s"...$id done")
-      }
+      Task.delay { channel.close() }
 
     def write(bytes: ByteVector,
               timeout: Option[Duration] = None,
