@@ -111,6 +111,13 @@ object TcpSpec extends Properties("tcp") {
 
     property("setup") = forAll ((i: Int) => { startServer; true })
     property("go") = forAll { (msgs: List[List[String]]) =>
+      val clients = msgs.map { msgs =>
+        tcp.connect(addr) {
+          tcp.writes_(Process.emitAll(msgs).pipe(text.utf8Encode)) ++
+          tcp.reads(1024).take(3).pipe(text.utf8Decode)
+        }
+      }
+      nondeterminism.njoin(10, 10)(Process.emitAll(clients)).run.run
       true
     }
     property("teardown") = forAll ((i: Int) => { stopServer; true })
