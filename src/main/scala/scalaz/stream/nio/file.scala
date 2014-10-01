@@ -16,7 +16,7 @@ import java.nio.file.{StandardOpenOption, Path, Paths}
 import java.net.URI
 
 
-object niofiles {
+object file {
 
   import io.resource
 

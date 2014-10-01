@@ -12,7 +12,7 @@ import java.io.FileInputStream
 
 object NioFilesSpec extends Properties("niofiles") {
 
-  import nio.niofiles._
+  import nio.file._
 
   val filename = "testdata/fahrenheit.txt"
 
