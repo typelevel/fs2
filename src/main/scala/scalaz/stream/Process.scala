@@ -5,7 +5,7 @@ import java.util.concurrent.ScheduledExecutorService
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
-import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, ~>}
+import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, ~>, @@, Tag}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
@@ -513,7 +513,6 @@ sealed trait Process[+F[_], +O]
 
 object Process {
 
-
   import scalaz.stream.Util._
 
   //////////////////////////////////////////////////////////////////////////////////////
@@ -842,17 +841,22 @@ object Process {
     })
   }
 
-
   /**
    * The infinite `Process`, always emits `a`.
    * If for performance reasons it is good to emit `a` in chunks,
    * specify size of chunk by `chunkSize` parameter
    */
-  def constant[A](a: A, chunkSize: Int = 1): Process0[A] = {
+  sealed trait ConstantProcess
+  def constant[A](a: A, chunkSize: Int = 1): Process0[A] @@ ConstantProcess = {
     lazy val go: Process0[A] =
       if (chunkSize.max(1) == 1) emit(a) fby go
       else emitAll(List.fill(chunkSize)(a)) fby go
-    go
+    Tag[Process0[A], ConstantProcess](go)
+  }
+
+  implicit class ConstantProcessOps[A](self: Process0[A] @@ ConstantProcess) {
+    def runConst[F2[_], F[_],B,C](f: (A, Process[F,B]) => Process[F2,C])(p: Process[F,B]): Process[F2,C] =
+      self.take(1).flatMap(a => f(a, p))
   }
 
   /**
@@ -1124,6 +1128,14 @@ object Process {
     /** Attaches `Sink` to this  `Process`  */
     def to[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,Unit] =
       through(f)
+
+    /** Attaches `Sink` to this  `Process`  */
+    def to[F2[x]>:F[x]](f: Process0[O => F2[Unit]] @@ ConstantProcess): Process[F2,Unit] =
+      f.runConst( (ff:O=>F2[Unit], s: Process[F,O]) => s.map(x => ff(x)).eval )(self)
+
+    /** A faster variation of the above, for the case of constant sinks */
+    def to[F2[x]>:F[x]](f: O => F2[Unit]): Process[F2,Unit] =
+      self.map(f).eval
 
     /** Attach a `Sink` to the output of this `Process` but echo the original. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
