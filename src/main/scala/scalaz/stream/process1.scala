@@ -122,15 +122,8 @@ object process1 {
    * Emits only elements that are distinct from their immediate predecessors
    * according to `f`.
    */
-  def distinctConsecutiveBy[A, B: Equal](f: A => B): Process1[A, A] = {
-    def go(prev: B): Process1[A, A] =
-      receive1 { a =>
-        val b = f(a)
-        if (b === prev) go(prev)
-        else emit(a) fby go(b)
-      }
-    receive1(a => emit(a) fby go(f(a)))
-  }
+  def distinctConsecutiveBy[A, B: Equal](f: A => B): Process1[A, A] =
+    filterBy2((a1, a2) => f(a1) =/= f(a2))
 
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I, I] =
@@ -188,6 +181,18 @@ object process1 {
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I, I] =
     id[I].flatMap(i => if (f(i)) emit(i) else halt)
+
+  /**
+   * Like `filter`, but the predicate `f` depends on the previously emitted and
+   * current elements.
+   */
+  def filterBy2[I](f: (I, I) => Boolean): Process1[I, I] = {
+    def pass(i: I): Process1[I, I] =
+      emit(i) fby go(f(i, _))
+    def go(g: I => Boolean): Process1[I, I] =
+      receive1(i => if (g(i)) pass(i) else go(g))
+    receive1(pass)
+  }
 
   /**
    * Skips any elements not satisfying predicate and when found, will emit that
@@ -740,6 +745,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.filter]](f)`. */
   def filter(f: O => Boolean): Process[F,O] =
     this |> process1.filter(f)
+
+  /** Alias for `this |> [[process1.filterBy2]](f)`. */
+  def filterBy2(f: (O, O) => Boolean): Process[F,O] =
+    this |> process1.filterBy2(f)
 
   /** Alias for `this |> [[process1.find]](f)` */
   def find(f: O => Boolean): Process[F,O] =

@@ -64,6 +64,7 @@ object Process1Spec extends Properties("Process1") {
         , "feed-emit-first" |: ((List(1, 2, 3) ++ li) === process1.feed(li)(emitAll(List(1, 2, 3)) ++ id[Int]).unemit._1.toList)
         , "find" |: pi.find(_ % 2 === 0).toList === li.find(_ % 2 === 0).toList
         , "filter" |: pi.filter(g).toList === li.filter(g)
+        , "filterBy2" |: pi.filterBy2(_ < _).toList.sliding(2).dropWhile(_.size < 2).forall(l => l(0) < l(1))
         , "fold" |: pi.fold(0)(_ + _).toList === List(li.fold(0)(_ + _))
         , "foldMap" |: pi.foldMap(_.toString).toList.lastOption.toList === List(li.map(_.toString).fold(sm.zero)(sm.append(_, _)))
         , "forall" |: pi.forall(g).toList === List(li.forall(g))
