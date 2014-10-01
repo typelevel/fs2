@@ -368,5 +368,10 @@ object tcp {
       def merge[A2>:A](p2: Process[Connection,A2])(implicit S:Strategy): Process[Connection,A2] =
         tcp.merge(self, p2)
     }
+    implicit class ChannelSyntax[A](self: Process[Connection,A]) {
+      def through[B](chan: Channel[Task,A,B]): Process[Connection,B] =
+        self zip (lift(chan)) evalMap { case (a,f) => lift(f(a)) }
+      def to(chan: Sink[Task,A]): Process[Connection,Unit] = through(chan)
+    }
   }
 }
