@@ -64,10 +64,11 @@ object Process1Spec extends Properties("Process1") {
         , "feed-emit-first" |: ((List(1, 2, 3) ++ li) === process1.feed(li)(emitAll(List(1, 2, 3)) ++ id[Int]).unemit._1.toList)
         , "find" |: pi.find(_ % 2 === 0).toList === li.find(_ % 2 === 0).toList
         , "filter" |: pi.filter(g).toList === li.filter(g)
+        , "filterBy2" |: pi.filterBy2(_ < _).toList.sliding(2).dropWhile(_.size < 2).forall(l => l(0) < l(1))
         , "fold" |: pi.fold(0)(_ + _).toList === List(li.fold(0)(_ + _))
         , "foldMap" |: pi.foldMap(_.toString).toList.lastOption.toList === List(li.map(_.toString).fold(sm.zero)(sm.append(_, _)))
         , "forall" |: pi.forall(g).toList === List(li.forall(g))
-        , "id" |: ((pi |> id).toList === pi.toList) && ((id |> pi).toList === pi.toList)
+        , "id" |: ((pi |> id).toList === li) && ((id |> pi).toList === li)
         , "intersperse" |: pi.intersperse(0).toList === li.intersperse(0)
         , "last" |:  Process(0, 10).last.toList === List(10)
         , "lastOr" |: pi.lastOr(42).toList.head === li.lastOption.getOrElse(42)
@@ -108,7 +109,7 @@ object Process1Spec extends Properties("Process1") {
         , "splitWith" |: pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n)
         , "stripNone" |: Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
         , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
-        , "prefixSums" |: pi.toList.scan(0)(_ + _) === pi.pipe(process1.prefixSums).toList
+        , "prefixSums" |: pi.prefixSums.toList === li.scan(0)(_ + _)
         , "take" |: pi.take((n/10).abs).toList === li.take((n/10).abs)
         , "takeRight" |: pi.takeRight((n/10).abs).toList === li.takeRight((n/10).abs)
         , "takeWhile" |: pi.takeWhile(g).toList === li.takeWhile(g)
