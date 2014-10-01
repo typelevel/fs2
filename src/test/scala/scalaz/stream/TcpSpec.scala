@@ -114,10 +114,11 @@ object TcpSpec extends Properties("tcp") {
       val clients = msgs.map { msgs =>
         tcp.connect(addr) {
           tcp.writes_(Process.emitAll(msgs).pipe(text.utf8Encode)) ++
-          tcp.reads(1024).take(3).pipe(text.utf8Decode)
+          tcp.reads(1024).take(1).pipe(text.utf8Decode)
         }
       }
       nondeterminism.njoin(10, 10)(Process.emitAll(clients)).run.run
+      println(math.random)
       true
     }
     property("teardown") = forAll ((i: Int) => { stopServer; true })
