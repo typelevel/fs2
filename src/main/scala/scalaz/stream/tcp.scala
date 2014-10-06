@@ -64,7 +64,7 @@ object tcp {
           def completed(result: Integer, attachment: Void): Unit = S {
             try {
               buf.flip()
-              val bs = ByteVector(buf)
+              val bs = ByteVector.view(buf) // no need to copy since `buf` is not reused
               if (result.intValue < 0) cb(right(None))
               else cb(right(Some(bs.take(result.intValue))))
             }
@@ -130,6 +130,8 @@ object tcp {
    * Read up to `numBytes` from the peer.
    * If `timeout` is provided and no data arrives within the specified duration, the returned
    * `Process` fails with a [[java.nio.channels.InterruptedByTimeoutException]].
+   * If `allowPeerClosed` is `true`, abrupt termination by the peer is converted to `None`
+   * rather than being raised as an exception.
    */
   def available(
         maxBytes: Int,

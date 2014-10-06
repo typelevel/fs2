@@ -31,12 +31,12 @@ object TcpSpec extends Properties("tcp") {
     val addr = local((math.random * 10000).toInt + 10000)
 
     def echo =
-      tcp.writes_(tcp.reads(1024, allowPeerClosed = true)) ++
+      tcp.writes_(tcp.reads(1024)) ++
       tcp.eof ++
       Process.emit(())
 
     val server = tcp.server(addr, concurrentRequests = 1)(echo).run
-    val link = async.signal[Boolean]; link.set(false).run
+    val link = async.signalOf(false)
     lazy val startServer =
       link.discrete.wye(server)(wye.interrupt)
           .run
@@ -74,17 +74,72 @@ object TcpSpec extends Properties("tcp") {
         // the AsynchronousSocketChannel.close operation hangs indefinitely,
         // even though all read/write operations have completed on the socket
         // This appears to be a JDK bug
-        forAll { (msgs0: List[String]) =>
-          val msgs = msgs0.map(_ + "!") // ensure nonempty
+        forAll { (msgs0: List[String]) => {
+          val msgs = ("woot" :: msgs0).map(_ + "!") // ensure nonempty
+          val client: Process[Task,String] = {
+            val out: Process[Task,ByteVector] = Process(msgs: _*).pipe(text.utf8Encode)
+            val numChars = msgs.view.map(_.length).sum
+            for {
+              exch <- nio.connect(addr)
+              s <- (out.to(exch.write).drain: Process[Task,String]).merge {
+                exch.read.pipe(text.utf8Decode)
+                    .zipWithScan1(0)(_.length + _)
+                    .takeThrough { case (s,n) => n < numChars }
+                    .map { p => p._1 : String }
+              }
+            } yield s
+          }
+          val r = client.runLog.run.mkString == msgs.mkString
+          println(math.random)
+          r
+        }}
+      }
+    }
+    property("echo4") = {
+      if (System.getProperty("os.name").contains("Mac")) true
+      else {
+        // NB: this version occasionally causes problems on mac
+        // the AsynchronousSocketChannel.close operation hangs indefinitely,
+        // even though all read/write operations have completed on the socket
+        // This appears to be a JDK bug
+        forAll { (msgs0: List[String]) => {
+          val msgs = ("woot" :: msgs0).map(_ + "!") // ensure nonempty
           val client = {
             val out = Process(msgs: _*).pipe(text.utf8Encode)
+            val numChars = msgs.view.map(_.length).sum
             tcp.connect(addr) {
-              tcp.lastWrites_(out).merge(tcp.reads(1024))
-                 .pipe(text.utf8Decode)
+              tcp.writes(out).tee {
+                tcp.reads(1024)
+                   .pipe(text.utf8Decode)
+                   .zipWithScan1(0)(_.length + _)
+                   .takeThrough { case (s,n) => n < numChars }
+                   .map { _._1 }
+              } (tee.drainL)
             }
           }
-          client.runLog.run.mkString ?= msgs.mkString
-        }
+          val r = client.runLog.run.mkString == msgs.mkString
+          r
+        }}
+      }
+    }
+    property("echo5") = {
+      if (System.getProperty("os.name").contains("Mac")) true
+      else {
+        // NB: this version occasionally causes problems on mac
+        // the AsynchronousSocketChannel.close operation hangs indefinitely,
+        // even though all read/write operations have completed on the socket
+        // This appears to be a JDK bug
+        forAll { (msgs0: List[String]) => {
+          val msgs = ("woot" :: msgs0).map(_ + "!") // ensure nonempty
+          val client: Process[Task,String] = {
+            val out = Process(msgs: _*).pipe(text.utf8Encode)
+            tcp.connect(addr) {
+              tcp.lastWrites_(out) merge (tcp.reads(1024).pipe(text.utf8Decode))
+            }
+          }
+          val r = client.runLog.run.mkString == msgs.mkString
+          r
+        }}
       }
     }
 
@@ -104,7 +159,7 @@ object TcpSpec extends Properties("tcp") {
         } (wye.mergeHaltBoth)
       tcp.server(addr, concurrentRequests = 50)(chat).run
     }
-    lazy val link = async.signal[Boolean]; link.set(false).run
+    lazy val link = async.signalOf(false)
     lazy val startServer =
       link.discrete.wye(server)(wye.interrupt)
           .run
@@ -123,10 +178,8 @@ object TcpSpec extends Properties("tcp") {
           }
         }
         nondeterminism.njoin(10, 10)(Process.emitAll(clients))(S2).run.run
-        println(math.random)
         true
       }
     property("teardown") = forAll ((i: Int) => { stopServer; true })
   }}
-
 }

@@ -667,10 +667,40 @@ object process1 {
       case ((previous, current), Some((_, next))) =>  (previous, current, Some(next))
     }
 
+  /**
+   * Zips the input with a running total according to `B`, up to but not including the
+   * current element. Thus the initial `z` value is the first emitted to the output:
+   *
+   * {{{
+   * scala> Process("uno", "dos", "tres", "cuatro").zipWithScan(0)(_.length + _).toList
+   * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
+   * }}}
+   *
+   * @see [[zipWithScan1]]
+   */
+  def zipWithScan[A,B](z: B)(f: (A,B) => B): Process1[A,(A,B)] =
+   zipWithState(z)(f)
+
+  /**
+   * Zips the input with a running total according to `B`, up to and including the
+   * current element. Thus the initial `z` value is not emitted to the output:
+   *
+   * {{{
+   * scala> Process("uno", "dos", "tres", "cuatro").zipWithScan1(0)(_.length + _).toList
+   * res0: List[(String,Int)] = List((uno,3), (dos,6), (tres,10), (cuatro,16))
+   * }}}
+   *
+   * @see [[zipWithScan]]
+   */
+  def zipWithScan1[A,B](z: B)(f: (A,B) => B): Process1[A,(A,B)] =
+    receive1 { a =>
+      val z2 = f(a,z)
+      emit((a,z2)) fby zipWithScan1(z2)(f)
+    }
+
   /** Zips the input with state that begins with `z` and is updated by `next`. */
   def zipWithState[A,B](z: B)(next: (A, B) => B): Process1[A,(A,B)] =
     receive1(a => emit((a, z)) fby zipWithState(next(a, z))(next))
-
 
   object Await1 {
     /** deconstruct for `Await` directive of `Process1` **/
@@ -968,6 +998,14 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.zipWithPreviousAndNext]]`. */
   def zipWithPreviousAndNext: Process[F,(Option[O],O,Option[O])] =
     this |> process1.zipWithPreviousAndNext
+
+  /** Alias for `this |> [[process1.zipWithScan]](z)(next)`. */
+  def zipWithScan[B](z: B)(next: (O, B) => B): Process[F,(O,B)] =
+    this |> process1.zipWithScan(z)(next)
+
+  /** Alias for `this |> [[process1.zipWithScan]](z)(next)`. */
+  def zipWithScan1[B](z: B)(next: (O, B) => B): Process[F,(O,B)] =
+    this |> process1.zipWithScan1(z)(next)
 
   /** Alias for `this |> [[process1.zipWithState]](z)(next)`. */
   def zipWithState[B](z: B)(next: (O, B) => B): Process[F,(O,B)] =
