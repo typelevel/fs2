@@ -36,10 +36,14 @@ object udp {
       Packet(new InetSocketAddress(p.getAddress, p.getPort), ByteVector(p.getData).take(p.getLength))
     }}}
 
+  /** Defined as `receive(maxPacketSize, timeout).repeat. */
+  def receives(maxPacketSize: Int, timeout: Option[Duration] = None): Process[Connection,Packet] =
+    receive(maxPacketSize, timeout).repeat
+
   /**
-   * Send a single UDP [[Packet]] to the given destination.
-   * number of bytes in the received. See `java.net.DatagramSocket#send`
-   * for information about what exceptions may be raised within the returned stream.
+   * Send a single UDP [[Packet]] to the given destination. Returns a single `Unit`.
+   * See `java.net.DatagramSocket#send` for information about what exceptions may
+   * be raised within the returned stream.
    */
   def send(to: InetSocketAddress, bytes: ByteVector): Process[Connection,Unit] =
     ask.flatMap { socket => eval { Task.delay {
@@ -50,6 +54,14 @@ object udp {
   /** Defined as `send(new InetSocketAddress(to, destinationPort), bytes)`. */
   def send(to: java.net.InetAddress, destinationPort: Int, bytes: ByteVector): Process[Connection,Unit] =
     send(new InetSocketAddress(to, destinationPort), bytes)
+
+  /** Defined as `chunks.flatMap { bytes => udp.send(to, bytes) }` */
+  def sends(to: InetSocketAddress, chunks: Process[Connection,ByteVector]): Process[Connection,Unit] =
+    chunks.flatMap { bytes => send(to, bytes) }
+
+  /** Defined as `sends(new InetSocketAddress(to, destinationPort), chunks)`. */
+  def sends(to: java.net.InetAddress, destinationPort: Int, chunks: Process[Connection,ByteVector]): Process[Connection,Unit] =
+    sends(new InetSocketAddress(to, destinationPort), chunks)
 
   /**
    * Open a UDP socket on the specified port and run the given process `p`.
@@ -63,11 +75,12 @@ object udp {
                 receiveBufferSize: Int = 1024 * 32,
                 sendBufferSize: Int = 1024 * 32,
                 reuseAddress: Boolean = true)(p: Process[Connection,A]): Process[Task,A] =
-    Process.eval(Task.delay { new DatagramSocket(port) }).flatMap { socket =>
+    Process.eval(Task.delay { new DatagramSocket(null) }).flatMap { socket =>
       Process.eval_ { Task.delay {
         socket.setReceiveBufferSize(receiveBufferSize)
         socket.setSendBufferSize(sendBufferSize)
         socket.setReuseAddress(reuseAddress)
+        socket.bind(new InetSocketAddress(port))
       }} append bindTo(socket)(p) onComplete (Process.eval_(Task.delay(socket.close)))
     }
 
