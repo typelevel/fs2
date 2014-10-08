@@ -26,8 +26,8 @@ object UdpSpec extends Properties("udp") {
       udp.receives(1024).take(msgs0.length - 4).map(_.bytes) // some packets in theory could be dropped
     }
 
-    // this is UDP, so no guarantees, but check to make sure we got at least
-    // half the messages sent by the client
+    // this is UDP, so no guarantees, but check to make sure we got most
+    // of the messages sent by the client
     val received: Set[ByteVector] = server.merge(client).runLog.run.toSet
     val result = (received intersect msgs).size >= msgs.size - 5
     if (msgs.size <= 4) classify(true, "empty")(result)
