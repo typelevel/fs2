@@ -29,7 +29,7 @@ object UdpSpec extends Properties("udp") {
     // this is UDP, so no guarantees, but check to make sure we got at least
     // half the messages sent by the client
     val received: Set[ByteVector] = server.merge(client).runLog.run.toSet
-    val result = (received intersect msgs).size >= (msgs.size - 4) / 2
+    val result = (received intersect msgs).size >= msgs.size - 5
     if (msgs.size <= 4) classify(true, "empty")(result)
     else if (msgs.size < 15) classify(true, "small")(result)
     else classify(true, "large")(result)
