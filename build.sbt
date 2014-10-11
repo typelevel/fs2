@@ -66,4 +66,6 @@ apiURL := Some(url(s"http://docs.typelevel.org/api/scalaz-stream/stable/${versio
 
 initialCommands := "import scalaz.stream._"
 
-DoctestPlugin.doctestSettings
+doctestWithDependencies := false
+
+doctestSettings
