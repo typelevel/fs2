@@ -56,10 +56,10 @@ sealed trait Process[+F[_], +O]
     }
   }
 
-  /** Alias for `append` **/
+  /** Alias for `append` */
   final def ++[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
 
-  /** Alias for `append` **/
+  /** Alias for `append` */
   final def fby[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
 
   /**
@@ -695,7 +695,7 @@ object Process {
   //
   //////////////////////////////////////////////////////////////////////////////////////
 
-  /** Alias for emitAll **/
+  /** Alias for emitAll */
   def apply[O](o: O*): Process0[O] = emitAll(o)
 
   /**
@@ -719,7 +719,7 @@ object Process {
   def await1[I]: Process1[I, I] =
     await(Get[I])(emit)
 
-  /** Like `await1`, but consults `fb` when await fails to receive an `I` **/
+  /** Like `await1`, but consults `fb` when await fails to receive an `I` */
   def await1Or[I](fb: => Process1[I, I]): Process1[I, I] =
     awaitOr(Get[I])((_: EarlyCause) => fb)(emit)
 
@@ -735,7 +735,7 @@ object Process {
   def awaitR[I2]: Tee[Any, I2, I2] =
     await(R[I2])(emit)
 
-  /** The `Process` which emits the single value given, then halts. **/
+  /** The `Process` which emits the single value given, then halts. */
   def emit[O](o: O): Process0[O] = Emit(Vector(o))
 
   /** The `Process` which emits the given sequence of values, then halts. */
@@ -747,13 +747,13 @@ object Process {
     case _ => emitAll(h) ++ t
   }
 
-  /** The `Process` which emits no values and halts immediately with the given exception. **/
+  /** The `Process` which emits no values and halts immediately with the given exception. */
   def fail(rsn: Throwable): Process0[Nothing] = Halt(Error(rsn))
 
-  /** `halt` but with precise type. **/
+  /** `halt` but with precise type. */
   private[stream] val halt0: Halt = Halt(End)
 
-  /** The `Process` which emits no values and signals normal termination. **/
+  /** The `Process` which emits no values and signals normal termination. */
   val halt: Process0[Nothing] = halt0
 
   /** Alias for `halt`. */
@@ -1206,10 +1206,10 @@ object Process {
 
   /** Syntax for Sink, that is specialized for Task */
   implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
-    /** converts sink to channel, that will perform the side effect and echo its input **/
+    /** converts sink to channel, that will perform the side effect and echo its input */
     def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
 
-    /** converts sink to sink that first pipes received `I0` to supplied p1 **/
+    /** converts sink to sink that first pipes received `I0` to supplied p1 */
     def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = {
       import scalaz.Scalaz._
       // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
@@ -1423,7 +1423,7 @@ object Process {
     def mapW[W2](f: W => W2): Writer[F,W2,O] =
       self.map(_.leftMap(f))
 
-    /** pipe Write side of this `Writer`  **/
+    /** pipe Write side of this `Writer`  */
     def pipeW[B](f: Process1[W,B]): Writer[F,B,O] =
       self.pipe(process1.liftL(f))
 

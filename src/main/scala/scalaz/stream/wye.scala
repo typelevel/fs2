@@ -307,7 +307,7 @@ object wye {
     disconnectL(Kill)(y).swallowKill
 
 
-  /** right alternative of detach1L **/
+  /** right alternative of detach1L */
   def detach1R[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
     disconnectR(Kill)(y).swallowKill
 
@@ -500,15 +500,15 @@ object wye {
   // Request Algebra
   ////////////////////////////////////////////////////////////////////////
 
-  /** Indicates required request side **/
+  /** Indicates required request side */
   trait Request
 
   object Request {
-    /** Left side **/
+    /** Left side */
     case object L extends Request
-    /** Right side **/
+    /** Right side */
     case object R extends Request
-    /** Both, or Any side **/
+    /** Both, or Any side */
     case object Both extends Request
   }
 
@@ -553,7 +553,7 @@ object wye {
       case _ => None
     }
 
-    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side **/
+    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitL[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 0 => true
@@ -573,7 +573,7 @@ object wye {
       case _ => None
     }
 
-    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side **/
+    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitR[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 1 => true
@@ -592,7 +592,7 @@ object wye {
     }
 
 
-    /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides **/
+    /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides */
     object is {
       def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 2 => true

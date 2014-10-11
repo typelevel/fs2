@@ -673,7 +673,7 @@ object process1 {
 
 
   object Await1 {
-    /** deconstruct for `Await` directive of `Process1` **/
+    /** deconstruct for `Await` directive of `Process1` */
     def unapply[I, O](self: Process1[I, O]): Option[EarlyCause \/ I => Process1[I, O]] = self match {
       case Await(_, rcv) => Some((r:EarlyCause\/ I) => Try(rcv(r).run))
       case _             => None

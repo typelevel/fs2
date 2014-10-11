@@ -180,11 +180,11 @@ object tee {
   def receiveR[I, I2, O](rcv: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
     await[Env[I, I2]#T, I2, O](R)(rcv)
 
-  /** syntax sugar for receiveL **/
+  /** syntax sugar for receiveL */
   def receiveLOr[I, I2, O](fb: => Tee[I, I2, O])(rcvL: I => Tee[I, I2, O]): Tee[I, I2, O] =
     awaitOr[Env[I, I2]#T, I, O](L)(rsn => fb.causedBy(rsn))(rcvL)
 
-  /** syntax sugar for receiveR **/
+  /** syntax sugar for receiveR */
   def receiveROr[I, I2, O](fb: => Tee[I, I2, O])(rcvR: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
     awaitOr[Env[I, I2]#T, I2, O](R)(rsn => fb.causedBy(rsn))(rcvR)
 
@@ -205,7 +205,7 @@ object tee {
       case _                               => None
     }
 
-    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side **/
+    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I, I2, O](self: TeeAwaitL[I, I2, O]): Boolean = self match {
         case Await(req, rcv) if req.tag == 0 => true
@@ -224,7 +224,7 @@ object tee {
     }
 
 
-    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on left side **/
+    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I, I2, O](self: TeeAwaitR[I, I2, O]): Boolean = self match {
         case Await(req, rcv) if req.tag == 1 => true
