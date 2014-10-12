@@ -1,17 +1,15 @@
 package scalaz.stream
 
-import Cause._
 import scala.annotation.tailrec
-import scala.collection.immutable.Vector
 import scalaz.\/._
 import scalaz._
 import scalaz.syntax.equal._
 
+import Cause._
+import Process._
+import Util._
 
 object process1 {
-
-  import scalaz.stream.Process._
-  import scalaz.stream.Util._
 
   // nb: methods are in alphabetical order, there are going to be so many that
   // any other order will just going get confusing
@@ -39,19 +37,21 @@ object process1 {
    * Groups inputs into chunks of size `n`. The last chunk may have size
    * less than `n`, depending on the number of elements in the input.
    *
+   * @example {{{
+   * scala> Process(1, 2, 3, 4, 5).chunk(2).toList
+   * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(3, 4), Vector(5))
+   * }}}
    * @throws IllegalArgumentException if `n` <= 0
    */
   def chunk[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "chunk size must be > 0, was: " + n)
-    def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] = {
-      if (m <= 0) emit(acc)
+    def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] =
+      if (m <= 0) emit(acc) fby go(n, Vector())
       else receive1Or[I, Vector[I]](if (acc.nonEmpty) emit(acc) else halt) { i =>
         go(m - 1, acc :+ i)
       }
-    }
-    go(n,Vector()) fby chunk(n)
+    go(n, Vector())
   }
-
 
   /** Collects up all output of this `Process1` into a single `Emit`. */
   def chunkAll[I]: Process1[I, Vector[I]] =
@@ -190,7 +190,6 @@ object process1 {
     }
     go(i, Vector(), p)
   }
-
 
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I, I] =
