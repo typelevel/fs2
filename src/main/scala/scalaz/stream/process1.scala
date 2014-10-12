@@ -95,7 +95,6 @@ object process1 {
    *
    * Elements, for which the partial function is not defined are
    * filtered out from new process
-   *
    */
   def collect[I, I2](pf: PartialFunction[I, I2]): Process1[I, I2] =
     id[I].flatMap(pf andThen (emit) orElse { case _ => halt })
@@ -115,13 +114,27 @@ object process1 {
   def drainLeading[A, B](p: Process1[A, B]): Process1[A, B] =
     receive1(a => feed1(a)(p))
 
-  /** Emits only elements that are distinct from their immediate predecessors. */
+  /**
+   * Emits only elements that are distinct from their immediate predecessors.
+   *
+   * @example {{{
+   * scala> import scalaz.std.anyVal._
+   * scala> Process(1, 2, 2, 1, 1, 3).distinctConsecutive.toList
+   * res0: List[Int] = List(1, 2, 1, 3)
+   * }}}
+   */
   def distinctConsecutive[A: Equal]: Process1[A, A] =
     distinctConsecutiveBy(identity)
 
   /**
    * Emits only elements that are distinct from their immediate predecessors
    * according to `f`.
+   *
+   * @example {{{
+   * scala> import scalaz.std.anyVal._
+   * scala> Process("a", "ab", "bc", "c", "d").distinctConsecutiveBy(_.length).toList
+   * res0: List[String] = List(a, ab, c)
+   * }}}
    */
   def distinctConsecutiveBy[A, B: Equal](f: A => B): Process1[A, A] =
     filterBy2((a1, a2) => f(a1) =/= f(a2))
@@ -186,6 +199,11 @@ object process1 {
   /**
    * Like `filter`, but the predicate `f` depends on the previously emitted and
    * current elements.
+   *
+   * @example {{{
+   * scala> Process(2, 4, 1, 5, 3).filterBy2(_ < _).toList
+   * res0: List[Int] = List(2, 4, 5)
+   * }}}
    */
   def filterBy2[I](f: (I, I) => Boolean): Process1[I, I] = {
     def pass(i: I): Process1[I, I] =
@@ -276,14 +294,14 @@ object process1 {
   def intersperse[A](separator: A): Process1[A, A] =
     await1[A] fby id[A].flatMap(a => Process(separator, a))
 
-  /** Skip all but the last element of the input. */
+  /** Skips all but the last element of the input. */
   def last[I]: Process1[I, I] = {
     def go(prev: I): Process1[I, I] = receive1Or[I,I](emit(prev))(go)
     receive1(go)
   }
 
   /**
-   * Skip all but the last element of the input.
+   * Skips all but the last element of the input.
    * This `Process` will always emit exactly one value;
    * If the input is empty, `li` is emitted.
    */
@@ -373,6 +391,14 @@ object process1 {
   /**
    * Emits the sums of prefixes (running totals) of the input elements.
    * The first value emitted will always be zero.
+   *
+   * @example {{{
+   * scala> Process(1, 2, 3).prefixSums.toList
+   * res0: List[Int] = List(0, 1, 3, 6)
+   *
+   * scala> Process[Int]().prefixSums.toList
+   * res1: List[Int] = List(0)
+   * }}}
    */
   def prefixSums[N](implicit N: Numeric[N]): Process1[N,N] =
     scan(N.zero)(N.plus)
@@ -514,11 +540,24 @@ object process1 {
 
   /**
    * Emit the given values, then echo the rest of the input.
+   *
+   * @example {{{
+   * scala> Process(3, 4).shiftRight(1, 2).toList
+   * res0: List[Int] = List(1, 2, 3, 4)
+   * }}}
    */
   def shiftRight[I](head: I*): Process1[I, I] =
     emitAll(head) fby id
 
-  /** Reads a single element of the input, emits nothing, then halts. */
+  /**
+   * Reads a single element of the input, emits nothing, then halts.
+   *
+   * @example {{{
+   * scala> import process1._
+   * scala> Process(1, 2, 3).pipe(skip ++ id).toList
+   * res0: List[Int] = List(2, 3)
+   * }}}
+   */
   def skip: Process1[Any, Nothing] =
     receive1(_ => halt)
 
@@ -565,7 +604,8 @@ object process1 {
   /**
    * Breaks the input into chunks that alternatively satisfy and don't satisfy
    * the predicate `f`.
-   * {{{
+   *
+   * @example {{{
    * scala> Process(1, 2, -3, -4, 5, 6).splitWith(_ < 0).toList
    * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(-3, -4), Vector(5, 6))
    * }}}
@@ -584,7 +624,17 @@ object process1 {
   def stripNone[A]: Process1[Option[A], A] =
     collect { case Some(a) => a }
 
-  /** Emits the sum of all input elements or zero if the input is empty. */
+  /**
+   * Emits the sum of all input elements or zero if the input is empty.
+   *
+   * @example {{{
+   * scala> Process(1, 2, 3).sum.toList
+   * res0: List[Int] = List(6)
+   *
+   * scala> Process[Int]().sum.toList
+   * res1: List[Int] = List(0)
+   * }}}
+   */
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
     fold(N.zero)(N.plus)
 
@@ -627,7 +677,14 @@ object process1 {
     go(Vector(), n)
   }
 
-  /** Ungroups chunked input. */
+  /**
+   * Ungroups chunked input.
+   *
+   * @example {{{
+   * scala> Process(Seq(1, 2), Seq(3)).pipe(process1.unchunk).toList
+   * res0: List[Int] = List(1, 2, 3)
+   * }}}
+   */
   def unchunk[I]: Process1[Seq[I], I] =
     id[Seq[I]].flatMap(emitAll)
 
