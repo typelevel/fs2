@@ -381,11 +381,19 @@ object process1 {
     lift(f).minimum
 
   /**
-   * Split the input and send to either `chan1` or `chan2`, halting when
+   * Split the input and send to either `chanL` or `chanR`, halting when
    * either branch halts.
+   *
+   * @example {{{
+   * scala> import scalaz.\/._
+   * scala> import process1._
+   * scala> Process(left(1), right('a'), left(2), right('b'))
+   *      |   .pipe(multiplex(lift(_ * -1), lift(_.toInt))).toList
+   * res0: List[Int] = List(-1, 97, -2, 98)
+   * }}}
    */
-  def multiplex[I, I2, O](chan1: Process1[I, O], chan2: Process1[I2, O]): Process1[I \/ I2, O] =
-    (liftL(chan1) pipe liftR(chan2)).map(_.fold(identity, identity))
+  def multiplex[I, I2, O](chanL: Process1[I, O], chanR: Process1[I2, O]): Process1[I \/ I2, O] =
+    (liftL(chanL) pipe liftR(chanR)).map(_.fold(identity, identity))
 
   /**
    * Emits the sums of prefixes (running totals) of the input elements.
