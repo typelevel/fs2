@@ -5,7 +5,7 @@ import java.util.concurrent.ScheduledExecutorService
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
-import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, ~>}
+import scalaz.{Catchable, Functor, Hoist, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
@@ -511,7 +511,7 @@ sealed trait Process[+F[_], +O]
 }
 
 
-object Process {
+object Process extends ProcessInstances {
 
 
   import scalaz.stream.Util._
@@ -1597,4 +1597,24 @@ object Process {
       case End => Trampoline.done(p)
       case early: EarlyCause => Trampoline.done(p.injectCause(early))
     }))
+}
+
+
+trait ProcessInstances {
+  implicit val ProcessHoist: Hoist[Process] = new ProcessHoist {}
+}
+
+trait ProcessHoist extends Hoist[Process] {
+
+  // the monad is actually unnecessary here except to match signatures
+  implicit def apply[G[_]: Monad]: Monad[({ type λ[α] = Process[G, α] })#λ] =
+    Process.processInstance
+
+  // still unnecessary!
+  def liftM[G[_]: Monad, A](a: G[A]): Process[G, A] = Process eval a
+
+  // and more unnecessary constraints...
+  def hoist[M[_]: Monad, N[_]](f: M ~> N): ({ type λ[α] = Process[M, α] })#λ ~> ({ type λ[α] = Process[N, α] })#λ = new (({ type λ[α] = Process[M, α] })#λ ~> ({ type λ[α] = Process[N, α] })#λ) {
+    def apply[A](p: Process[M, A]): Process[N, A] = p translate f
+  }
 }
