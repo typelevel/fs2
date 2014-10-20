@@ -288,8 +288,8 @@ object tcp {
   /**
    * Process that binds to supplied address and handles incoming TCP connections
    * using the specified handler. The stream of handler results is returned,
-   * along with any errors. When the returned process terminates, all open
-   * connections will terminate as well.
+   * along with any errors. The outer stream scopes the lifetime of the server socket.
+   * When the returned process terminates, all open connections will terminate as well.
    *
    * @param bind               address to which this process has to be bound
    * @param concurrentRequests the number of requests that may be processed simultaneously, must be positive
@@ -302,18 +302,18 @@ object tcp {
                 reuseAddress: Boolean = true,
                 receiveBufferSize: Int = 256 * 1024)(handler: Process[Connection,A])(
                 implicit AG: AsynchronousChannelGroup,
-                         S: Strategy): Task[Process[Task, Throwable \/ A]] = {
+                         S: Strategy): Process[Task, Process[Task, Throwable \/ A]] = {
 
     require(concurrentRequests > 0, "concurrent requests must be positive")
 
-    def setup: Task[AsynchronousServerSocketChannel] =
+    def setup: Process[Task, AsynchronousServerSocketChannel] = Process.eval {
       Task.delay {
         val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
         ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
         ch.bind(bind)
-        ch
       }
+    }
 
     def accept(sch: AsynchronousServerSocketChannel): Task[AsynchronousSocketChannel] =
       Task.async[AsynchronousSocketChannel] { cb =>
@@ -336,8 +336,7 @@ object tcp {
     if (concurrentRequests > 1) setup map { sch =>
       nondeterminism.njoin(concurrentRequests, maxQueued) {
         Process.repeatEval(accept(sch)).map(processRequest)
-               .onComplete(Process.eval_(Task.delay { sch.close }))
-      }
+      }.onComplete(Process.eval_(Task.delay { sch.close }))
     }
     else
       setup map { sch =>
