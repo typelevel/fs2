@@ -17,14 +17,14 @@ import scodec.bits.ByteVector
 object tcp {
 
   /**
-   * A `Task[A]` which has access to an `Exchange`, for reading/writing from
+   * A `Task[A]` which has access to an `Socket`, for reading/writing from
    * some network resource.
    */
   trait Connection[+A] {
-    private[stream] def run(channel: Exchange, S: Strategy): Task[A]
+    private[stream] def run(channel: Socket, S: Strategy): Task[A]
   }
 
-  trait Exchange {
+  trait Socket {
 
     /**
      * Read up to `maxBytes` from the peer. If `timeout` is provided
@@ -39,7 +39,7 @@ object tcp {
     /** Indicate to the peer that we are done writing. */
     def eof: Task[Unit]
 
-    /** Close the connection corresponding to this `Exchange`. */
+    /** Close the connection corresponding to this `Socket`. */
     def close: Task[Unit]
 
     /**
@@ -52,7 +52,7 @@ object tcp {
               allowPeerClosed: Boolean = false): Task[Unit]
   }
 
-  private def asynchronous(channel: AsynchronousSocketChannel)(implicit S: Strategy): Exchange = new Exchange {
+  private def asynchronous(channel: AsynchronousSocketChannel)(implicit S: Strategy): Socket = new Socket {
 
     def available(maxBytes: Int,
                   timeout: Option[Duration] = None,
@@ -90,20 +90,20 @@ object tcp {
       writeOne(channel, bytes, timeout, allowPeerClosed, S)
   }
 
-  private[stream] def ask: Process[Connection,Exchange] =
-    Process.eval { new Connection[Exchange] {
-      def run(channel: Exchange, S: Strategy) = Task.now(channel)
+  private[stream] def ask: Process[Connection,Socket] =
+    Process.eval { new Connection[Socket] {
+      def run(channel: Socket, S: Strategy) = Task.now(channel)
     }}
 
   private[stream] def strategy: Process[Connection,Strategy] =
     Process.eval { new Connection[Strategy] {
-      def run(channel: Exchange, S: Strategy) = Task.now(S)
+      def run(channel: Socket, S: Strategy) = Task.now(S)
     }}
 
   private def lift[A](t: Task[A]): Connection[A] =
-    new Connection[A] { def run(channel: Exchange, S: Strategy) = t }
+    new Connection[A] { def run(channel: Socket, S: Strategy) = t }
 
-  def local[A](f: Exchange => Exchange)(p: Process[Connection,A]): Process[Connection,A] =
+  def local[A](f: Socket => Socket)(p: Process[Connection,A]): Process[Connection,A] =
     for {
       e <- ask
       s <- strategy
@@ -345,7 +345,7 @@ object tcp {
       }
   }
 
-  private def bindTo[A](c: Exchange, S: Strategy)(p: Process[Connection,A]): Process[Task,A] =
+  private def bindTo[A](c: Socket, S: Strategy)(p: Process[Connection,A]): Process[Task,A] =
     p.translate(new (Connection ~> Task) { def apply[A](s: Connection[A]) = s.run(c, S) })
 
   lazy val DefaultAsynchronousChannelGroup = {
