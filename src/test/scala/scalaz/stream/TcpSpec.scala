@@ -24,6 +24,7 @@ object TcpSpec extends Properties("tcp") {
 
   def local(port: Int) =
     new InetSocketAddress("localhost", port)
+  val addr = local((math.random * 2000 + 8000).toInt)
 
   import scala.concurrent.duration._
 
@@ -36,25 +37,24 @@ object TcpSpec extends Properties("tcp") {
     tcp.eof ++
     Process.emit(())
 
-  def echoTest(msgs: List[String], concurrent: Boolean)(client: Process[tcp.Connection,String]) = {
-    val server = tcp.server(local(8090), concurrentRequests = if (concurrent) 10 else 1)(echo)
+  def echoTest(msgs: List[String])(client: Process[tcp.Connection,String]) = {
+    val server = tcp.server(addr, concurrentRequests = 1)(echo)
     val results: Process[Task,String] = server.flatMap { case responses =>
-      tcp.connect(local(8090))(client).wye {
+      tcp.connect(addr)(client).merge {
         responses.take(1).drain
-      } (wye.mergeHaltBoth)
+      }
     }
     results.runLog.run.mkString ?= msgs.mkString
   }
 
-  property("echo") = forAll { (msgs0: List[String], concurrent: Boolean) =>
+  property("echo") = forAll { (msgs0: List[String]) =>
     val msgs = ("woot" :: msgs0).map(_ + "!") // ensure nonempty
     val out = Process(msgs: _*).pipe(text.utf8Encode)
-    echoTest(msgs, concurrent) {
-      msg("client connected") ++
+    echoTest(msgs) {
       tcp.lastWrites_(out) ++
       tcp.reads(1024).pipe(text.utf8Decode)
     } &&
-    echoTest(msgs, concurrent) {
+    echoTest(msgs) {
       tcp.lastWrites(out).tee(tcp.reads(1024))(tee.drainL)
          .pipe(text.utf8Decode)
     } && {
@@ -63,10 +63,30 @@ object TcpSpec extends Properties("tcp") {
       // even though all read/write operations have completed on the socket
       // This appears to be a JDK bug
       if (System.getProperty("os.name").contains("Mac")) true
-      else echoTest(msgs, concurrent) {
+      else echoTest(msgs) {
         tcp.lastWrites_(out) merge tcp.reads(1024).pipe(text.utf8Decode)
       }
     }
+  }
+
+  property("pingpong") = forAll { (b: Byte) =>
+    // repeatedly send a singe Byte back and forth
+    val rd1 = tcp.read(1)
+    def pong =
+      rd1.repeat.take(100).takeWhile(_.isDefined).pipe(process1.stripNone).flatMap { tcp.write(_) }.drain ++
+      emit(())
+
+    val ping =
+      (tcp.write_(ByteVector(b)) ++ rd1.pipe(process1.stripNone)).repeat.take(100)
+
+    val server = tcp.server(addr, concurrentRequests = 1)(pong)
+    val results: Process[Task,ByteVector] = server.flatMap { case responses =>
+      tcp.connect(addr)(ping).merge {
+        responses.take(1).drain
+      }
+    }
+    val bytes: ByteVector = results.runLog.run.foldLeft(ByteVector.empty)(_ ++ _)
+    bytes ?= ByteVector.fill(100)(b)
   }
 
   include { new Properties("chat") {

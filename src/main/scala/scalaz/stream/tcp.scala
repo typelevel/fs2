@@ -329,7 +329,7 @@ object tcp {
       val chan = asynchronous(c)
       bindTo(chan, S)(handler).map(right).onHalt {
         case Cause.Error(err) => Process.eval_(chan.close) onComplete Process.emit(left(err))
-        case _ => Process.eval_(chan.close)
+        case cause => Process.eval_(chan.close).causedBy(cause)
       }
     }
 
