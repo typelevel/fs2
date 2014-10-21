@@ -17,14 +17,14 @@ import scodec.bits.ByteVector
 object tcp {
 
   /**
-   * A `Task[A]` which has access to an `Exchange`, for reading/writing from
+   * A `Task[A]` which has access to an `Socket`, for reading/writing from
    * some network resource.
    */
   trait Connection[+A] {
-    private[stream] def run(channel: Exchange, S: Strategy): Task[A]
+    private[stream] def run(channel: Socket, S: Strategy): Task[A]
   }
 
-  trait Exchange {
+  trait Socket {
 
     /**
      * Read up to `maxBytes` from the peer. If `timeout` is provided
@@ -39,7 +39,7 @@ object tcp {
     /** Indicate to the peer that we are done writing. */
     def eof: Task[Unit]
 
-    /** Close the connection corresponding to this `Exchange`. */
+    /** Close the connection corresponding to this `Socket`. */
     def close: Task[Unit]
 
     /**
@@ -52,7 +52,7 @@ object tcp {
               allowPeerClosed: Boolean = false): Task[Unit]
   }
 
-  private def asynchronous(channel: AsynchronousSocketChannel)(implicit S: Strategy): Exchange = new Exchange {
+  private def asynchronous(channel: AsynchronousSocketChannel)(implicit S: Strategy): Socket = new Socket {
 
     def available(maxBytes: Int,
                   timeout: Option[Duration] = None,
@@ -90,20 +90,20 @@ object tcp {
       writeOne(channel, bytes, timeout, allowPeerClosed, S)
   }
 
-  private[stream] def ask: Process[Connection,Exchange] =
-    Process.eval { new Connection[Exchange] {
-      def run(channel: Exchange, S: Strategy) = Task.now(channel)
+  private[stream] def ask: Process[Connection,Socket] =
+    Process.eval { new Connection[Socket] {
+      def run(channel: Socket, S: Strategy) = Task.now(channel)
     }}
 
   private[stream] def strategy: Process[Connection,Strategy] =
     Process.eval { new Connection[Strategy] {
-      def run(channel: Exchange, S: Strategy) = Task.now(S)
+      def run(channel: Socket, S: Strategy) = Task.now(S)
     }}
 
   private def lift[A](t: Task[A]): Connection[A] =
-    new Connection[A] { def run(channel: Exchange, S: Strategy) = t }
+    new Connection[A] { def run(channel: Socket, S: Strategy) = t }
 
-  def local[A](f: Exchange => Exchange)(p: Process[Connection,A]): Process[Connection,A] =
+  def local[A](f: Socket => Socket)(p: Process[Connection,A]): Process[Connection,A] =
     for {
       e <- ask
       s <- strategy
@@ -288,8 +288,8 @@ object tcp {
   /**
    * Process that binds to supplied address and handles incoming TCP connections
    * using the specified handler. The stream of handler results is returned,
-   * along with any errors. When the returned process terminates, all open
-   * connections will terminate as well.
+   * along with any errors. The outer stream scopes the lifetime of the server socket.
+   * When the returned process terminates, all open connections will terminate as well.
    *
    * @param bind               address to which this process has to be bound
    * @param concurrentRequests the number of requests that may be processed simultaneously, must be positive
@@ -302,18 +302,18 @@ object tcp {
                 reuseAddress: Boolean = true,
                 receiveBufferSize: Int = 256 * 1024)(handler: Process[Connection,A])(
                 implicit AG: AsynchronousChannelGroup,
-                         S: Strategy): Task[Process[Task, Throwable \/ A]] = {
+                         S: Strategy): Process[Task, Process[Task, Throwable \/ A]] = {
 
     require(concurrentRequests > 0, "concurrent requests must be positive")
 
-    def setup: Task[AsynchronousServerSocketChannel] =
+    def setup: Process[Task, AsynchronousServerSocketChannel] = Process.eval {
       Task.delay {
         val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
         ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
         ch.bind(bind)
-        ch
       }
+    }
 
     def accept(sch: AsynchronousServerSocketChannel): Task[AsynchronousSocketChannel] =
       Task.async[AsynchronousSocketChannel] { cb =>
@@ -329,15 +329,14 @@ object tcp {
       val chan = asynchronous(c)
       bindTo(chan, S)(handler).map(right).onHalt {
         case Cause.Error(err) => Process.eval_(chan.close) onComplete Process.emit(left(err))
-        case _ => Process.eval_(chan.close)
+        case cause => Process.eval_(chan.close).causedBy(cause)
       }
     }
 
     if (concurrentRequests > 1) setup map { sch =>
       nondeterminism.njoin(concurrentRequests, maxQueued) {
         Process.repeatEval(accept(sch)).map(processRequest)
-               .onComplete(Process.eval_(Task.delay { sch.close }))
-      }
+      }.onComplete(Process.eval_(Task.delay { sch.close }))
     }
     else
       setup map { sch =>
@@ -346,7 +345,7 @@ object tcp {
       }
   }
 
-  private def bindTo[A](c: Exchange, S: Strategy)(p: Process[Connection,A]): Process[Task,A] =
+  private def bindTo[A](c: Socket, S: Strategy)(p: Process[Connection,A]): Process[Task,A] =
     p.translate(new (Connection ~> Task) { def apply[A](s: Connection[A]) = s.run(c, S) })
 
   lazy val DefaultAsynchronousChannelGroup = {
