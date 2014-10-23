@@ -74,8 +74,8 @@ object io {
       os => Task.now((bytes: ByteVector) => Task.delay(os.write(bytes.toArray))))
 
   /** Creates a `Sink` from a file name and optional buffer size in bytes. */
-  def fileChunkW(f: String, bufferSize: Int = 4096): Sink[Task,ByteVector] =
-    chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
+  def fileChunkW(f: String, bufferSize: Int = 4096, append: Boolean = false): Sink[Task,ByteVector] =
+    chunkW(new BufferedOutputStream(new FileOutputStream(f, append), bufferSize))
 
   /** Creates a `Channel` from a file name and optional buffer size in bytes. */
   def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task,Int,ByteVector] =
