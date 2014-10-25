@@ -760,21 +760,13 @@ object Process {
   def empty[F[_],O]: Process[F, O] = halt
 
   /**
-   * awaits receive of `I` in process1, and attaches continue in case await evaluation
-   * terminated with `End` indicated source being exhausted (`continue`)
-   * or arbitrary exception indicating process was terminated abnormally (`cleanup`)
-   *
-   * If you don't need to handle the `continue` or `cleanup` case, use `await1.flatMap`
+   * The `Process1` which awaits a single input and passes it to `rcv` to
+   * determine the next state.
    */
-  def receive1[I, O](
-    rcv: I => Process1[I, O]
-    ): Process1[I, O] =
+  def receive1[I, O](rcv: I => Process1[I, O]): Process1[I, O] =
     await(Get[I])(rcv)
 
-  /**
-   * Curried syntax alias for receive1
-   * Note that `fb` is attached to both, fallback and cleanup
-   */
+  /** Like `receive1`, but consults `fb` when it fails to receive an input. */
   def receive1Or[I, O](fb: => Process1[I, O])(rcv: I => Process1[I, O]): Process1[I, O] =
     awaitOr(Get[I])((rsn: EarlyCause) => fb.causedBy(rsn))(rcv)
 
