@@ -45,7 +45,7 @@ object io {
   }
 
   /** Promote an effectful function to a `Channel`. */
-  def channel[A,B](f: A => Task[B]): Channel[Task, A, B] =
+  def channel[F[_],A,B](f: A => F[B]): Channel[F, A, B] =
     Process.constant(f)
 
   /**
