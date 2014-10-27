@@ -5,7 +5,7 @@ import java.util.concurrent.ScheduledExecutorService
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
-import scalaz.{Catchable, Functor, Hoist, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, ~>}
+import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
@@ -1031,22 +1031,6 @@ object Process extends ProcessInstances {
     go(s0)
   }
 
-  //////////////////////////////////////////////////////////////////////////////////////
-  //
-  // INSTANCES
-  //
-  /////////////////////////////////////////////////////////////////////////////////////
-
-  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F, x]})#f] =
-    new MonadPlus[({type f[x] = Process[F, x]})#f] {
-      def empty[A] = halt
-      def plus[A](a: Process[F, A], b: => Process[F, A]): Process[F, A] =
-        a ++ b
-      def point[A](a: => A): Process[F, A] = emit(a)
-      def bind[A, B](a: Process[F, A])(f: A => Process[F, B]): Process[F, B] =
-        a flatMap f
-    }
-
 
   //////////////////////////////////////////////////////////////////////////////////////
   //
@@ -1599,22 +1583,3 @@ object Process extends ProcessInstances {
     }))
 }
 
-
-trait ProcessInstances {
-  implicit val ProcessHoist: Hoist[Process] = new ProcessHoist {}
-}
-
-trait ProcessHoist extends Hoist[Process] {
-
-  // the monad is actually unnecessary here except to match signatures
-  implicit def apply[G[_]: Monad]: Monad[({ type λ[α] = Process[G, α] })#λ] =
-    Process.processInstance
-
-  // still unnecessary!
-  def liftM[G[_]: Monad, A](a: G[A]): Process[G, A] = Process eval a
-
-  // and more unnecessary constraints...
-  def hoist[M[_]: Monad, N[_]](f: M ~> N): ({ type λ[α] = Process[M, α] })#λ ~> ({ type λ[α] = Process[N, α] })#λ = new (({ type λ[α] = Process[M, α] })#λ ~> ({ type λ[α] = Process[N, α] })#λ) {
-    def apply[A](p: Process[M, A]): Process[N, A] = p translate f
-  }
-}
