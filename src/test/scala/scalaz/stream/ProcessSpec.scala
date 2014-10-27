@@ -134,6 +134,10 @@ object ProcessSpec extends Properties("Process") {
     Process.iterate(0)(_ + 1).take(100).toList == List.iterate(0, 100)(_ + 1)
   }
 
+  property("iterateEval") = secure {
+    Process.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.run == List.iterate(0, 100)(_ + 1)
+  }
+
   property("kill executes cleanup") = secure {
     import TestUtil._
     val cleanup = new SyncVar[Int]
