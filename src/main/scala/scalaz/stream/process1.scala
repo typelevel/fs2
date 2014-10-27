@@ -107,6 +107,17 @@ object process1 {
     collect(pf).once
 
   /**
+   * Skips the first element that matches the predicate.
+   *
+   * @example {{{
+   * scala> Process(3, 4, 5, 6).delete(_ % 2 == 0).toList
+   * res0: List[Int] = List(3, 5, 6)
+   * }}}
+   */
+  def delete[I](f: I => Boolean): Process1[I, I] =
+    receive1(i => if (f(i)) id else emit(i) fby delete(f))
+
+  /**
    * Remove any leading emitted values that occur before the first successful
    * `Await`. That means that the returned `Process1` will produce output only
    * if it has consumed at least one input element.
@@ -791,6 +802,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.collectFirst]](pf)`. */
   def collectFirst[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
     this |> process1.collectFirst(pf)
+
+  /** Alias for `this |> [[process1.delete]](f)`. */
+  def delete(f: O => Boolean): Process[F,O] =
+    this |> process1.delete(f)
 
   /** Alias for `this |> [[process1.distinctConsecutive]]`. */
   def distinctConsecutive[O2 >: O](implicit O2: Equal[O2]): Process[F,O2] =
