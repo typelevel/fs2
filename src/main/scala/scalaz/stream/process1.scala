@@ -1,17 +1,15 @@
 package scalaz.stream
 
-import Cause._
 import scala.annotation.tailrec
-import scala.collection.immutable.Vector
 import scalaz.\/._
 import scalaz._
 import scalaz.syntax.equal._
 
+import Cause._
+import Process._
+import Util._
 
 object process1 {
-
-  import scalaz.stream.Process._
-  import scalaz.stream.Util._
 
   // nb: methods are in alphabetical order, there are going to be so many that
   // any other order will just going get confusing
@@ -39,19 +37,21 @@ object process1 {
    * Groups inputs into chunks of size `n`. The last chunk may have size
    * less than `n`, depending on the number of elements in the input.
    *
+   * @example {{{
+   * scala> Process(1, 2, 3, 4, 5).chunk(2).toList
+   * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(3, 4), Vector(5))
+   * }}}
    * @throws IllegalArgumentException if `n` <= 0
    */
   def chunk[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "chunk size must be > 0, was: " + n)
-    def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] = {
-      if (m <= 0) emit(acc)
+    def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] =
+      if (m <= 0) emit(acc) fby go(n, Vector())
       else receive1Or[I, Vector[I]](if (acc.nonEmpty) emit(acc) else halt) { i =>
         go(m - 1, acc :+ i)
       }
-    }
-    go(n,Vector()) fby chunk(n)
+    go(n, Vector())
   }
-
 
   /** Collects up all output of this `Process1` into a single `Emit`. */
   def chunkAll[I]: Process1[I, Vector[I]] =
@@ -95,7 +95,6 @@ object process1 {
    *
    * Elements, for which the partial function is not defined are
    * filtered out from new process
-   *
    */
   def collect[I, I2](pf: PartialFunction[I, I2]): Process1[I, I2] =
     id[I].flatMap(pf andThen (emit) orElse { case _ => halt })
@@ -108,6 +107,17 @@ object process1 {
     collect(pf).once
 
   /**
+   * Skips the first element that matches the predicate.
+   *
+   * @example {{{
+   * scala> Process(3, 4, 5, 6).delete(_ % 2 == 0).toList
+   * res0: List[Int] = List(3, 5, 6)
+   * }}}
+   */
+  def delete[I](f: I => Boolean): Process1[I, I] =
+    receive1(i => if (f(i)) id else emit(i) fby delete(f))
+
+  /**
    * Remove any leading emitted values that occur before the first successful
    * `Await`. That means that the returned `Process1` will produce output only
    * if it has consumed at least one input element.
@@ -115,13 +125,27 @@ object process1 {
   def drainLeading[A, B](p: Process1[A, B]): Process1[A, B] =
     receive1(a => feed1(a)(p))
 
-  /** Emits only elements that are distinct from their immediate predecessors. */
+  /**
+   * Emits only elements that are distinct from their immediate predecessors.
+   *
+   * @example {{{
+   * scala> import scalaz.std.anyVal._
+   * scala> Process(1, 2, 2, 1, 1, 3).distinctConsecutive.toList
+   * res0: List[Int] = List(1, 2, 1, 3)
+   * }}}
+   */
   def distinctConsecutive[A: Equal]: Process1[A, A] =
     distinctConsecutiveBy(identity)
 
   /**
    * Emits only elements that are distinct from their immediate predecessors
    * according to `f`.
+   *
+   * @example {{{
+   * scala> import scalaz.std.anyVal._
+   * scala> Process("a", "ab", "bc", "c", "d").distinctConsecutiveBy(_.length).toList
+   * res0: List[String] = List(a, ab, c)
+   * }}}
    */
   def distinctConsecutiveBy[A, B: Equal](f: A => B): Process1[A, A] =
     filterBy2((a1, a2) => f(a1) =/= f(a2))
@@ -178,7 +202,6 @@ object process1 {
     go(i, Vector(), p)
   }
 
-
   /** Skips any elements of the input not matching the predicate. */
   def filter[I](f: I => Boolean): Process1[I, I] =
     id[I].flatMap(i => if (f(i)) emit(i) else halt)
@@ -186,6 +209,11 @@ object process1 {
   /**
    * Like `filter`, but the predicate `f` depends on the previously emitted and
    * current elements.
+   *
+   * @example {{{
+   * scala> Process(2, 4, 1, 5, 3).filterBy2(_ < _).toList
+   * res0: List[Int] = List(2, 4, 5)
+   * }}}
    */
   def filterBy2[I](f: (I, I) => Boolean): Process1[I, I] = {
     def pass(i: I): Process1[I, I] =
@@ -276,14 +304,14 @@ object process1 {
   def intersperse[A](separator: A): Process1[A, A] =
     await1[A] fby id[A].flatMap(a => Process(separator, a))
 
-  /** Skip all but the last element of the input. */
+  /** Skips all but the last element of the input. */
   def last[I]: Process1[I, I] = {
     def go(prev: I): Process1[I, I] = receive1Or[I,I](emit(prev))(go)
     receive1(go)
   }
 
   /**
-   * Skip all but the last element of the input.
+   * Skips all but the last element of the input.
    * This `Process` will always emit exactly one value;
    * If the input is empty, `li` is emitted.
    */
@@ -364,15 +392,31 @@ object process1 {
     lift(f).minimum
 
   /**
-   * Split the input and send to either `chan1` or `chan2`, halting when
+   * Split the input and send to either `chanL` or `chanR`, halting when
    * either branch halts.
+   *
+   * @example {{{
+   * scala> import scalaz.\/._
+   * scala> import process1._
+   * scala> Process(left(1), right('a'), left(2), right('b'))
+   *      |   .pipe(multiplex(lift(_ * -1), lift(_.toInt))).toList
+   * res0: List[Int] = List(-1, 97, -2, 98)
+   * }}}
    */
-  def multiplex[I, I2, O](chan1: Process1[I, O], chan2: Process1[I2, O]): Process1[I \/ I2, O] =
-    (liftL(chan1) pipe liftR(chan2)).map(_.fold(identity, identity))
+  def multiplex[I, I2, O](chanL: Process1[I, O], chanR: Process1[I2, O]): Process1[I \/ I2, O] =
+    (liftL(chanL) pipe liftR(chanR)).map(_.fold(identity, identity))
 
   /**
    * Emits the sums of prefixes (running totals) of the input elements.
    * The first value emitted will always be zero.
+   *
+   * @example {{{
+   * scala> Process(1, 2, 3).prefixSums.toList
+   * res0: List[Int] = List(0, 1, 3, 6)
+   *
+   * scala> Process[Int]().prefixSums.toList
+   * res1: List[Int] = List(0)
+   * }}}
    */
   def prefixSums[N](implicit N: Numeric[N]): Process1[N,N] =
     scan(N.zero)(N.plus)
@@ -514,11 +558,24 @@ object process1 {
 
   /**
    * Emit the given values, then echo the rest of the input.
+   *
+   * @example {{{
+   * scala> Process(3, 4).shiftRight(1, 2).toList
+   * res0: List[Int] = List(1, 2, 3, 4)
+   * }}}
    */
   def shiftRight[I](head: I*): Process1[I, I] =
     emitAll(head) fby id
 
-  /** Reads a single element of the input, emits nothing, then halts. */
+  /**
+   * Reads a single element of the input, emits nothing, then halts.
+   *
+   * @example {{{
+   * scala> import process1._
+   * scala> Process(1, 2, 3).pipe(skip ++ id).toList
+   * res0: List[Int] = List(2, 3)
+   * }}}
+   */
   def skip: Process1[Any, Nothing] =
     receive1(_ => halt)
 
@@ -565,7 +622,8 @@ object process1 {
   /**
    * Breaks the input into chunks that alternatively satisfy and don't satisfy
    * the predicate `f`.
-   * {{{
+   *
+   * @example {{{
    * scala> Process(1, 2, -3, -4, 5, 6).splitWith(_ < 0).toList
    * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(-3, -4), Vector(5, 6))
    * }}}
@@ -584,7 +642,17 @@ object process1 {
   def stripNone[A]: Process1[Option[A], A] =
     collect { case Some(a) => a }
 
-  /** Emits the sum of all input elements or zero if the input is empty. */
+  /**
+   * Emits the sum of all input elements or zero if the input is empty.
+   *
+   * @example {{{
+   * scala> Process(1, 2, 3).sum.toList
+   * res0: List[Int] = List(6)
+   *
+   * scala> Process[Int]().sum.toList
+   * res1: List[Int] = List(0)
+   * }}}
+   */
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
     fold(N.zero)(N.plus)
 
@@ -627,7 +695,14 @@ object process1 {
     go(Vector(), n)
   }
 
-  /** Ungroups chunked input. */
+  /**
+   * Ungroups chunked input.
+   *
+   * @example {{{
+   * scala> Process(Seq(1, 2), Seq(3)).pipe(process1.unchunk).toList
+   * res0: List[Int] = List(1, 2, 3)
+   * }}}
+   */
   def unchunk[I]: Process1[Seq[I], I] =
     id[Seq[I]].flatMap(emitAll)
 
@@ -703,7 +778,7 @@ object process1 {
     receive1(a => emit((a, z)) fby zipWithState(next(a, z))(next))
 
   object Await1 {
-    /** deconstruct for `Await` directive of `Process1` **/
+    /** deconstruct for `Await` directive of `Process1` */
     def unapply[I, O](self: Process1[I, O]): Option[EarlyCause \/ I => Process1[I, O]] = self match {
       case Await(_, rcv) => Some((r:EarlyCause\/ I) => Try(rcv(r).run))
       case _             => None
@@ -757,6 +832,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.collectFirst]](pf)`. */
   def collectFirst[O2](pf: PartialFunction[O,O2]): Process[F,O2] =
     this |> process1.collectFirst(pf)
+
+  /** Alias for `this |> [[process1.delete]](f)`. */
+  def delete(f: O => Boolean): Process[F,O] =
+    this |> process1.delete(f)
 
   /** Alias for `this |> [[process1.distinctConsecutive]]`. */
   def distinctConsecutive[O2 >: O](implicit O2: Equal[O2]): Process[F,O2] =

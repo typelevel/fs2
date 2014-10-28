@@ -49,6 +49,7 @@ object Process1Spec extends Properties("Process1") {
         }
         , "collect" |: pi.collect(pf).toList === li.collect(pf)
         , "collectFirst" |: pi.collectFirst(pf).toList === li.collectFirst(pf).toList
+        , "delete" |: pi.delete(_ == n).toList === li.diff(List(n))
         , "drop" |: pi.drop(n).toList === li.drop(n)
         , "dropLast" |: pi.dropLast.toList === li.dropRight(1)
         , "dropLastIf" |: {
@@ -121,6 +122,17 @@ object Process1Spec extends Properties("Process1") {
       examples.reduce(_ && _)
     } catch {
       case t : Throwable => t.printStackTrace(); throw t
+    }
+  }
+
+  property("apply-does-not-silently-fail") = forAll { xs: List[Int] =>
+    val err = 1 #:: ((throw new scala.Exception("FAIL")):Stream[Int])
+    try {
+      Process.emitAll(err)(xs)
+      false
+    } catch {
+      case e: scala.Exception => true
+      case _: Throwable => false
     }
   }
 
