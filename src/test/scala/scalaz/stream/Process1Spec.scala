@@ -125,6 +125,17 @@ object Process1Spec extends Properties("Process1") {
     }
   }
 
+  property("apply-does-not-silently-fail") = forAll { xs: List[Int] =>
+    val err = 1 #:: ((throw new scala.Exception("FAIL")):Stream[Int])
+    try {
+      Process.emitAll(err)(xs)
+      false
+    } catch {
+      case e: scala.Exception => true
+      case _: Throwable => false
+    }
+  }
+
   property("unchunk") = forAll { pi: Process0[List[Int]] =>
     pi.pipe(unchunk).toList == pi.toList.flatten
   }
