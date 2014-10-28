@@ -5,7 +5,7 @@ import scalaz.{~>, Hoist, Monad, MonadPlus}
 private[stream] trait ProcessInstances {
 
   // leaving the name for compatibility, but this really should be called something better
-  implicit def processInstance[F[_]]: MonadPlus[({ type λ[α] = Process[F, α] })#λ] =
+  implicit def ProcessMonadPlus[F[_]]: MonadPlus[({ type λ[α] = Process[F, α] })#λ] =
     new MonadPlus[({ type λ[α] = Process[F, α] })#λ] {
       def empty[A] = Process.halt
       def plus[A](a: Process[F, A], b: => Process[F, A]): Process[F, A] = a ++ b
@@ -20,7 +20,7 @@ private trait ProcessHoist extends Hoist[Process] {
 
   // the monad is actually unnecessary here except to match signatures
   implicit def apply[G[_]: Monad]: Monad[({ type λ[α] = Process[G, α] })#λ] =
-    Process.processInstance
+    Process.ProcessMonadPlus
 
   // still unnecessary!
   def liftM[G[_]: Monad, A](a: G[A]): Process[G, A] = Process eval a
