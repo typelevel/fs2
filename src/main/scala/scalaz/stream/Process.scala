@@ -1225,8 +1225,12 @@ object Process {
   implicit class Process1Syntax[I,O](self: Process1[I,O]) {
 
     /** Apply this `Process` to an `Iterable`. */
-    def apply(input: Iterable[I]): IndexedSeq[O] =
-      Process(input.toSeq: _*).pipe(self.bufferAll).unemit._1.toIndexedSeq
+    def apply(input: Iterable[I]): IndexedSeq[O] = {
+      Process(input.toSeq: _*).pipe(self.bufferAll).unemit match {
+        case (_, Halt(Error(e))) => throw e
+        case (v, _) => v.toIndexedSeq
+      }
+    }
 
     /**
      * Transform `self` to operate on the left hand side of an `\/`, passing
