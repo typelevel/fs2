@@ -5,7 +5,7 @@ import java.util.concurrent.ScheduledExecutorService
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
-import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, ~>}
+import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
@@ -511,7 +511,7 @@ sealed trait Process[+F[_], +O]
 }
 
 
-object Process {
+object Process extends ProcessInstances {
 
 
   import scalaz.stream.Util._
@@ -1025,22 +1025,6 @@ object Process {
     }
     go(s0)
   }
-
-  //////////////////////////////////////////////////////////////////////////////////////
-  //
-  // INSTANCES
-  //
-  /////////////////////////////////////////////////////////////////////////////////////
-
-  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F, x]})#f] =
-    new MonadPlus[({type f[x] = Process[F, x]})#f] {
-      def empty[A] = halt
-      def plus[A](a: Process[F, A], b: => Process[F, A]): Process[F, A] =
-        a ++ b
-      def point[A](a: => A): Process[F, A] = emit(a)
-      def bind[A, B](a: Process[F, A])(f: A => Process[F, B]): Process[F, B] =
-        a flatMap f
-    }
 
 
   //////////////////////////////////////////////////////////////////////////////////////
@@ -1597,3 +1581,4 @@ object Process {
       case early: EarlyCause => Trampoline.done(p.injectCause(early))
     }))
 }
+
