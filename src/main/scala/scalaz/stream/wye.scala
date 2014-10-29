@@ -20,7 +20,7 @@ object wye {
    * on the right branch.
    */
   def boundedQueue[I](n: Int): Wye[Any,I,I] =
-    yipWithL(n)((i,i2) => i2)
+    yipWithL[Any,I,I](n)((i,i2) => i2) ++ tee.passR
 
   /**
    * After each input, dynamically determine whether to read from the left, right, or both,
@@ -52,7 +52,7 @@ object wye {
    * without a response.
    */
   def drainL[I](maxUnacknowledged: Int): Wye[Any,I,I] =
-    wye.flip(drainR(maxUnacknowledged))
+    yipWithL[Any,I,I](maxUnacknowledged)((_,i) => i) ++ tee.passR
 
   /**
    * A `Wye` which echoes the left branch while draining the right,
@@ -64,7 +64,7 @@ object wye {
    * without a response.
    */
   def drainR[I](maxUnacknowledged: Int): Wye[I,Any,I] =
-    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i)
+    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i) ++ tee.passL
 
   /**
    * Invokes `dynamic` with `I == I2`, and produces a single `I` output. Output is
