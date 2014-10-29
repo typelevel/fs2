@@ -905,11 +905,16 @@ object Process extends ProcessInstances {
 
   /**
    * An infinite `Process` that repeatedly applies a given function
-   * to a start value.
+   * to a start value. `start` is the first value emitted, followed
+   * by `f(start)`, then `f(f(start))`, and so on.
    */
   def iterate[A](start: A)(f: A => A): Process0[A] =
     emit(start) ++ iterate(f(start))(f)
 
+  /**
+   * Like [[iterate]], but takes an effectful function for producing
+   * the next state. `start` is the first value emitted.
+   */
   def iterateEval[F[_], A](start: A)(f: A => F[A]): Process[F, A] =
     emit(start) ++ await(f(start))(iterateEval(_)(f))
 
