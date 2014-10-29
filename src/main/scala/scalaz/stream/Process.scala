@@ -717,11 +717,11 @@ object Process extends ProcessInstances {
 
   /** The `Process1` which awaits a single input, emits it, then halts normally. */
   def await1[I]: Process1[I, I] =
-    await(Get[I])(emit)
+    receive1(emit)
 
   /** Like `await1`, but consults `fb` when await fails to receive an `I` */
   def await1Or[I](fb: => Process1[I, I]): Process1[I, I] =
-    awaitOr(Get[I])((_: EarlyCause) => fb)(emit)
+    receive1Or(fb)(emit)
 
   /** The `Wye` which request from both branches concurrently. */
   def awaitBoth[I, I2]: Wye[I, I2, ReceiveY[I, I2]] =
