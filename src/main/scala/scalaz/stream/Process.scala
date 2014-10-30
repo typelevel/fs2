@@ -861,7 +861,7 @@ object Process extends ProcessInstances {
   def emitO[O](o: O): Process0[Nothing \/ O] =
    liftW(Process.emit(o))
 
-  /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
+  @deprecated("Use emitAll(start until stopExclusive) instead", "0.6.0")
   def emitRange(start: Int, stopExclusive: Int): Process0[Int] =
     emitAll(start until stopExclusive)
 
