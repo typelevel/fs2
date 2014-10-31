@@ -40,7 +40,7 @@ object Process1Spec extends Properties("Process1") {
 
     try {
       val examples = Seq(
-        "awaitOption" |: (Process().awaitOption.toList == List(None) && Process(1, 2).awaitOption.toList == List(Some(1)))
+        "awaitOption" |: pi.awaitOption.toList === List(li.headOption)
         , s"buffer: $li ${pi.buffer(4).toList}" |: pi.buffer(4).toList === li
         , "chunk" |: Process(0, 1, 2, 3, 4).chunk(2).toList === List(Vector(0, 1), Vector(2, 3), Vector(4))
         , "chunkBy" |: emitAll("foo bar baz").chunkBy(_ != ' ').toList.map(_.mkString) ===  List("foo ", "bar ", "baz")
@@ -51,6 +51,7 @@ object Process1Spec extends Properties("Process1") {
         }
         , "collect" |: pi.collect(pf).toList === li.collect(pf)
         , "collectFirst" |: pi.collectFirst(pf).toList === li.collectFirst(pf).toList
+        , "delete" |: pi.delete(_ == n).toList === li.diff(List(n))
         , "drop" |: pi.drop(n).toList === li.drop(n)
         , "dropLast" |: pi.dropLast.toList === li.dropRight(1)
         , "dropLastIf" |: {
@@ -59,16 +60,18 @@ object Process1Spec extends Properties("Process1") {
            pi.dropLastIf(pred).toList === li.dropRight(n) &&
            pi.dropLastIf(_ => false).toList === li
         }
+        , "dropRight" |: pi.dropRight(n).toList === li.dropRight(n)
         , "dropWhile" |: pi.dropWhile(g).toList === li.dropWhile(g)
         , "exists" |: pi.exists(g).toList === List(li.exists(g))
         , s"feed: $li, ${process1.feed(li)(id[Int]).unemit._1.toList }" |: (li === process1.feed(li)(id[Int]).unemit._1.toList)
         , "feed-emit-first" |: ((List(1, 2, 3) ++ li) === process1.feed(li)(emitAll(List(1, 2, 3)) ++ id[Int]).unemit._1.toList)
         , "find" |: pi.find(_ % 2 === 0).toList === li.find(_ % 2 === 0).toList
         , "filter" |: pi.filter(g).toList === li.filter(g)
+        , "filterBy2" |: pi.filterBy2(_ < _).toList.sliding(2).dropWhile(_.size < 2).forall(l => l(0) < l(1))
         , "fold" |: pi.fold(0)(_ + _).toList === List(li.fold(0)(_ + _))
         , "foldMap" |: pi.foldMap(_.toString).toList.lastOption.toList === List(li.map(_.toString).fold(sm.zero)(sm.append(_, _)))
         , "forall" |: pi.forall(g).toList === List(li.forall(g))
-        , "id" |: ((pi |> id).toList === pi.toList) && ((id |> pi).toList === pi.toList)
+        , "id" |: ((pi |> id).toList === li) && ((id |> pi).toList === li)
         , "intersperse" |: pi.intersperse(0).toList === li.intersperse(0)
         , "last" |:  Process(0, 10).last.toList === List(10)
         , "lastOr" |: pi.lastOr(42).toList.head === li.lastOption.getOrElse(42)
@@ -95,6 +98,7 @@ object Process1Spec extends Properties("Process1") {
         }
         , "minimumOf" |: ps.minimumOf(_.length).toList === ls.map(_.length).minimum.toList
         , "onComplete" |: Process(1,2,3).pipe(process1.id[Int] onComplete emit(4)).toList == List(1,2,3,4)
+        , "once" |: pi.once.toList === li.headOption.toList
         , "reduce" |: pi.reduce(_ + _).toList === (if (li.nonEmpty) List(li.reduce(_ + _)) else List())
         , "scan" |: {
           li.scan(0)(_ - _) ===
@@ -108,8 +112,9 @@ object Process1Spec extends Properties("Process1") {
         , "splitWith" |: pi.splitWith(_ < n).toList.map(_.toList) === li.splitWith(_ < n).map(_.toList)
         , "stripNone" |: Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
         , "sum" |: pi.toSource.sum.runLastOr(0).timed(3000).run === li.sum
-        , "prefixSums" |: pi.toList.scan(0)(_ + _) === pi.pipe(process1.prefixSums).toList
+        , "prefixSums" |: pi.prefixSums.toList === li.scan(0)(_ + _)
         , "take" |: pi.take((n/10).abs).toList === li.take((n/10).abs)
+        , "takeRight" |: pi.takeRight((n/10).abs).toList === li.takeRight((n/10).abs)
         , "takeWhile" |: pi.takeWhile(g).toList === li.takeWhile(g)
         , "terminated" |: Process(1, 2, 3).terminated.toList === List(Some(1), Some(2), Some(3), None)
         , "zipWithIndex" |: ps.zipWithIndex.toList === ls.zipWithIndex
@@ -122,8 +127,27 @@ object Process1Spec extends Properties("Process1") {
     }
   }
 
+  property("apply-does-not-silently-fail") = forAll { xs: List[Int] =>
+    val err = 1 #:: ((throw new scala.Exception("FAIL")):Stream[Int])
+    try {
+      Process.emitAll(err)(xs)
+      false
+    } catch {
+      case e: scala.Exception => true
+      case _: Throwable => false
+    }
+  }
+
   property("unchunk") = forAll { pi: Process0[List[Int]] =>
     pi.pipe(unchunk).toList == pi.toList.flatten
+  }
+
+  property("distinctConsecutive") = secure {
+    Process[Int]().distinctConsecutive.toList === List.empty[Int] &&
+      Process(1, 2, 3, 4).distinctConsecutive.toList === List(1, 2, 3, 4) &&
+      Process(1, 1, 2, 2, 3, 3, 4, 3).distinctConsecutive.toList === List(1, 2, 3, 4, 3) &&
+      Process("1", "2", "33", "44", "5", "66")
+        .distinctConsecutiveBy(_.length).toList === List("1", "33", "5", "66")
   }
 
   property("drainLeading") = secure {
@@ -155,6 +179,11 @@ object Process1Spec extends Properties("Process1") {
       }.toList === List("h", "e", "l", "lo")
   }
 
+  property("sliding") = forAll { p: Process0[Int] =>
+    val n = Gen.choose(1, 10).sample.get
+    p.sliding(n).toList.map(_.toList) === p.toList.sliding(n).toList
+  }
+
   property("splitOn") = secure {
     Process(0, 1, 2, 3, 4).splitOn(2).toList === List(Vector(0, 1), Vector(3, 4)) &&
       Process(2, 0, 1, 2).splitOn(2).toList === List(Vector(), Vector(0, 1), Vector()) &&
@@ -178,19 +207,19 @@ object Process1Spec extends Properties("Process1") {
   }
 
   property("zipWithPrevious") = secure {
-    range(0, 1).drop(1).zipWithPrevious.toList === List() &&
+    range(0, 0).zipWithPrevious.toList === List() &&
     range(0, 1).zipWithPrevious.toList === List((None, 0)) &&
     range(0, 3).zipWithPrevious.toList === List((None, 0), (Some(0), 1), (Some(1), 2))
   }
 
   property("zipWithNext") = secure {
-    range(0, 1).drop(1).zipWithNext.toList === List()
+    range(0, 0).zipWithNext.toList === List()
     range(0, 1).zipWithNext.toList === List((0, None)) &&
     range(0, 3).zipWithNext.toList === List((0, Some(1)), (1, Some(2)), (2, None))
   }
 
   property("zipWithPreviousAndNext") = secure {
-    range(0, 1).drop(1).zipWithPreviousAndNext.toList === List() &&
+    range(0, 0).zipWithPreviousAndNext.toList === List() &&
     range(0, 1).zipWithPreviousAndNext.toList === List((None, 0, None)) &&
     range(0, 3).zipWithPreviousAndNext.toList === List((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))
   }

@@ -12,7 +12,7 @@ import scalaz.stream.Process._
 import scalaz.stream._
 
 
-//unfortunatelly this has to be separate. If we have it on AsyncTopicSpec, some tests will deadlock
+//unfortunately this has to be separate. If we have it on AsyncTopicSpec, some tests will deadlock
 object WriterHelper {
   def w: Writer1[Long, String, Int] = {
     def go(acc: Long): Writer1[Long, String, Int] = {

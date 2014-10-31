@@ -14,11 +14,11 @@ resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
 And use one of the following library dependencies:
 
 ```
-// Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.0
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.4.1"
+// Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.2
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.5"
 
-// Against Scalaz 7.1.0-M6, available for Scala 2.10.4 and (coming soon) 2.11.0
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.4.1a"
+// Against Scalaz 7.1, available for Scala 2.10.4 and 2.11.2
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.5a"
 ```
 
 ### About the library ###
@@ -30,13 +30,13 @@ import scalaz.stream._
 import scalaz.concurrent.Task
 
 val converter: Task[Unit] =
-  io.linesR("testdata/fahrenheit.txt").
-     filter(s => !s.trim.isEmpty && !s.startsWith("//")).
-     map(line => fahrenheitToCelsius(line.toDouble).toString).
-     intersperse("\n").
-     pipe(text.utf8Encode).
-     to(io.fileChunkW("testdata/celsius.txt")).
-     run
+  io.linesR("testdata/fahrenheit.txt")
+    .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
+    .map(line => fahrenheitToCelsius(line.toDouble).toString)
+    .intersperse("\n")
+    .pipe(text.utf8Encode)
+    .to(io.fileChunkW("testdata/celsius.txt"))
+    .run
 
 // at the end of the universe...
 val u: Unit = converter.run
@@ -68,6 +68,7 @@ If you have a project you'd like to include in this list, send a message to the 
 * [http4s](http://www.http4s.org): Minimal, idiomatic Scala interface for HTTP services using scalaz-stream
 * [scalaz-stream-mongodb](https://github.com/Spinoco/scalaz-stream-mongodb): Bindings to [MongoDB](http://www.mongodb.org/) that use scalaz-stream
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using scalaz-stream and [scodec](https://github.com/scodec/scodec)
+* [streamz](https://github.com/krasserm/streamz): A library that allows a `Process` to consume from and produce to [Apache Camel](http://camel.apache.org/) endpoints, [Akka Persistence](http://doc.akka.io/docs/akka/2.3.5/scala/persistence.html) journals and snapshot stores and [Akka Stream](http://akka.io/docs/#akka-streams-and-http) flows (reactive streams) with full back-pressure support.
 
 ### Related projects ###
 

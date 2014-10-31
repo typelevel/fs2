@@ -20,7 +20,7 @@ object wye {
    * on the right branch.
    */
   def boundedQueue[I](n: Int): Wye[Any,I,I] =
-    yipWithL(n)((i,i2) => i2)
+    yipWithL[Any,I,I](n)((i,i2) => i2) ++ tee.passR
 
   /**
    * After each input, dynamically determine whether to read from the left, right, or both,
@@ -31,9 +31,9 @@ object wye {
   def dynamic[I,I2](f: I => wye.Request, g: I2 => wye.Request): Wye[I,I2,ReceiveY[I,I2]] = {
     import scalaz.stream.wye.Request._
     def go(signal: wye.Request): Wye[I,I2,ReceiveY[I,I2]] = signal match {
-      case L => awaitL[I].flatMap { i => emit(ReceiveL(i)) fby go(f(i)) }
-      case R => awaitR[I2].flatMap { i2 => emit(ReceiveR(i2)) fby go(g(i2)) }
-      case Both => awaitBoth[I,I2].flatMap {
+      case L => receiveL { i => emit(ReceiveL(i)) fby go(f(i)) }
+      case R => receiveR { i2 => emit(ReceiveR(i2)) fby go(g(i2)) }
+      case Both => receiveBoth {
         case t@ReceiveL(i) => emit(t) fby go(f(i))
         case t@ReceiveR(i2) => emit(t) fby go(g(i2))
         case HaltOne(rsn) => Halt(rsn)
@@ -46,25 +46,25 @@ object wye {
    * A `Wye` which echoes the right branch while draining the left,
    * taking care to make sure that the left branch is never more
    * than `maxUnacknowledged` behind the right. For example:
-   * `src.connect(snk)(observe(10))` will output the the same thing
+   * `src.connect(snk)(observe(10))` will output the same thing
    * as `src`, but will as a side effect direct output to `snk`,
    * blocking on `snk` if more than 10 elements have enqueued
    * without a response.
    */
   def drainL[I](maxUnacknowledged: Int): Wye[Any,I,I] =
-    wye.flip(drainR(maxUnacknowledged))
+    yipWithL[Any,I,I](maxUnacknowledged)((_,i) => i) ++ tee.passR
 
   /**
    * A `Wye` which echoes the left branch while draining the right,
    * taking care to make sure that the right branch is never more
    * than `maxUnacknowledged` behind the left. For example:
-   * `src.connect(snk)(observe(10))` will output the the same thing
+   * `src.connect(snk)(observe(10))` will output the same thing
    * as `src`, but will as a side effect direct output to `snk`,
    * blocking on `snk` if more than 10 elements have enqueued
    * without a response.
    */
   def drainR[I](maxUnacknowledged: Int): Wye[I,Any,I] =
-    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i)
+    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i) ++ tee.passL
 
   /**
    * Invokes `dynamic` with `I == I2`, and produces a single `I` output. Output is
@@ -82,17 +82,14 @@ object wye {
    * Nondeterminstic interleave of both inputs. Emits values whenever either
    * of the inputs is available.
    */
-  def either[I,I2]: Wye[I,I2,I \/ I2] = {
-    def go: Wye[I,I2,I \/ I2] =
-      receiveBoth[I,I2,I \/ I2]({
-        case ReceiveL(i) => emit(left(i)) fby go
-        case ReceiveR(i) => emit(right(i)) fby go
-        case HaltL(End)     => awaitR[I2].map(right).repeat
-        case HaltR(End)     => awaitL[I].map(left).repeat
-        case h@HaltOne(rsn) => Halt(rsn)
-      })
-    go
-  }
+  def either[I,I2]: Wye[I,I2,I \/ I2] =
+    receiveBoth {
+      case ReceiveL(i) => emit(left(i)) fby either
+      case ReceiveR(i) => emit(right(i)) fby either
+      case HaltL(End)     => awaitR[I2].map(right).repeat
+      case HaltR(End)     => awaitL[I].map(left).repeat
+      case h@HaltOne(rsn) => Halt(rsn)
+    }
 
   /**
    * Continuous wye, that first reads from Left to get `A`,
@@ -101,12 +98,12 @@ object wye {
    */
   def echoLeft[A]: Wye[A, Any, A] = {
     def go(a: A): Wye[A, Any, A] =
-      receiveBoth({
+      receiveBoth {
         case ReceiveL(l)  => emit(l) fby go(l)
         case ReceiveR(_)  => emit(a) fby go(a)
         case HaltOne(rsn) => Halt(rsn)
-      })
-    awaitL[A].flatMap(s => emit(s) fby go(s))
+      }
+    receiveL(s => emit(s) fby go(s))
   }
 
   /**
@@ -114,16 +111,12 @@ object wye {
    * listening asynchronously for the left branch to become `true`.
    * This halts as soon as the right or left branch halts.
    */
-  def interrupt[I]: Wye[Boolean, I, I] = {
-    def go[I]: Wye[Boolean, I, I] =
-      awaitBoth[Boolean, I].flatMap {
-        case ReceiveR(i)    => emit(i) ++ go
-        case ReceiveL(kill) => if (kill) halt else go
-        case HaltOne(e)     => Halt(e)
-      }
-    go
-  }
-
+  def interrupt[I]: Wye[Boolean, I, I] =
+    receiveBoth {
+      case ReceiveR(i)    => emit(i) ++ interrupt
+      case ReceiveL(kill) => if (kill) halt else interrupt
+      case HaltOne(e)     => Halt(e)
+    }
 
   /**
    * Non-deterministic interleave of both inputs. Emits values whenever either
@@ -131,45 +124,36 @@ object wye {
    *
    * Will terminate once both sides terminate.
    */
-  def merge[I]: Wye[I,I,I] = {
-    def go: Wye[I,I,I] =
-      receiveBoth[I,I,I]({
-        case ReceiveL(i) => emit(i) fby go
-        case ReceiveR(i) => emit(i) fby go
-        case HaltL(End)   => awaitR.repeat
-        case HaltR(End)   => awaitL.repeat
-        case HaltOne(rsn) => Halt(rsn)
-      })
-    go
-  }
+  def merge[I]: Wye[I,I,I] =
+    receiveBoth {
+      case ReceiveL(i) => emit(i) fby merge
+      case ReceiveR(i) => emit(i) fby merge
+      case HaltL(End)   => awaitR.repeat
+      case HaltR(End)   => awaitL.repeat
+      case HaltOne(rsn) => Halt(rsn)
+    }
 
   /**
    * Like `merge`, but terminates whenever one side terminate.
    */
-  def mergeHaltBoth[I]: Wye[I,I,I] = {
-    def go: Wye[I,I,I] =
-      receiveBoth[I,I,I]({
-        case ReceiveL(i) => emit(i) fby go
-        case ReceiveR(i) => emit(i) fby go
-        case HaltOne(rsn) => Halt(rsn)
-      })
-    go
-  }
+  def mergeHaltBoth[I]: Wye[I,I,I] =
+    receiveBoth {
+      case ReceiveL(i) => emit(i) fby mergeHaltBoth
+      case ReceiveR(i) => emit(i) fby mergeHaltBoth
+      case HaltOne(rsn) => Halt(rsn)
+    }
 
   /**
    * Like `merge`, but terminates whenever left side terminates.
    * use `flip` to reverse this for the right side
    */
-  def mergeHaltL[I]: Wye[I,I,I] = {
-    def go: Wye[I,I,I] =
-      receiveBoth[I,I,I]({
-        case ReceiveL(i) => emit(i) fby go
-        case ReceiveR(i) => emit(i) fby go
-        case HaltR(End)   => awaitL.repeat
-        case HaltOne(rsn) => Halt(rsn)
-      })
-    go
-  }
+  def mergeHaltL[I]: Wye[I,I,I] =
+    receiveBoth {
+      case ReceiveL(i) => emit(i) fby mergeHaltL
+      case ReceiveR(i) => emit(i) fby mergeHaltL
+      case HaltR(End)   => awaitL.repeat
+      case HaltOne(rsn) => Halt(rsn)
+    }
 
   /**
    * Like `merge`, but terminates whenever right side terminates
@@ -184,10 +168,10 @@ object wye {
    */
   def timedQueue[I](d: Duration, maxSize: Int = Int.MaxValue): Wye[Duration,I,I] = {
     def go(q: Vector[Duration]): Wye[Duration,I,I] =
-      awaitBoth[Duration,I].flatMap {
+      receiveBoth {
         case ReceiveL(d2) =>
           if (q.size >= maxSize || (d2 - q.headOption.getOrElse(d2) > d))
-            awaitR[I].flatMap(i => emit(i) fby go(q.drop(1)))
+            receiveR(i => emit(i) fby go(q.drop(1)))
           else
             go(q :+ d2)
         case ReceiveR(i) => emit(i) fby (go(q.drop(1)))
@@ -203,7 +187,7 @@ object wye {
    * for instance `src.connect(snk)(unboundedQueue)`
    */
   def unboundedQueue[I]: Wye[Any,I,I] =
-    awaitBoth[Any,I].flatMap {
+    receiveBoth {
       case ReceiveL(_) => halt
       case ReceiveR(i) => emit(i) fby unboundedQueue
       case HaltOne(rsn) => Halt(rsn)
@@ -223,9 +207,9 @@ object wye {
 
   /** Nondeterministic version of `zipWith` which requests both sides in parallel. */
   def yipWith[I,I2,O](f: (I,I2) => O): Wye[I,I2,O] =
-    awaitBoth[I,I2].flatMap {
-      case ReceiveL(i) => awaitR[I2].flatMap(i2 => emit(f(i,i2)) ++ yipWith(f))
-      case ReceiveR(i2) => awaitL[I].flatMap(i => emit(f(i,i2)) ++ yipWith(f))
+    receiveBoth {
+      case ReceiveL(i) => receiveR(i2 => emit(f(i,i2)) ++ yipWith(f))
+      case ReceiveR(i2) => receiveL(i => emit(f(i,i2)) ++ yipWith(f))
       case HaltOne(rsn) => Halt(rsn)
     }
 
@@ -236,11 +220,11 @@ object wye {
    */
   def yipWithL[I,O,O2](n: Int)(f: (I,O) => O2): Wye[I,O,O2] = {
     def go(buf: Vector[I]): Wye[I,O,O2] =
-      if (buf.size > n) awaitR[O].flatMap { o =>
+      if (buf.size > n) receiveR { o =>
         emit(f(buf.head,o)) ++ go(buf.tail)
       }
-      else if (buf.isEmpty) awaitL[I].flatMap { i => go(buf :+ i) }
-      else awaitBoth[I,O].flatMap {
+      else if (buf.isEmpty) receiveL { i => go(buf :+ i) }
+      else receiveBoth {
         case ReceiveL(i) => go(buf :+ i)
         case ReceiveR(o) => emit(f(buf.head,o)) ++ go(buf.tail)
         case HaltOne(rsn) => Halt(rsn)
@@ -323,7 +307,7 @@ object wye {
     disconnectL(Kill)(y).swallowKill
 
 
-  /** right alternative of detach1L **/
+  /** right alternative of detach1L */
   def detach1R[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
     disconnectR(Kill)(y).swallowKill
 
@@ -346,7 +330,7 @@ object wye {
   def feed1R[I,I2,O](i2: I2)(w: Wye[I,I2,O]): Wye[I,I2,O] =
     feedR(Vector(i2))(w)
 
-  /** Feed a sequence of inputs to the left side of a `Tee`. */
+  /** Feed a sequence of inputs to the left side of a `Wye`. */
   def feedL[I,I2,O](is: Seq[I])(y: Wye[I,I2,O]): Wye[I,I2,O] = {
     @tailrec
     def go(in: Seq[I], out: Vector[Seq[O]], cur: Wye[I,I2,O]): Wye[I,I2,O] = {
@@ -516,15 +500,15 @@ object wye {
   // Request Algebra
   ////////////////////////////////////////////////////////////////////////
 
-  /** Indicates required request side **/
+  /** Indicates required request side */
   trait Request
 
   object Request {
-    /** Left side **/
+    /** Left side */
     case object L extends Request
-    /** Right side **/
+    /** Right side */
     case object R extends Request
-    /** Both, or Any side **/
+    /** Both, or Any side */
     case object Both extends Request
   }
 
@@ -569,7 +553,7 @@ object wye {
       case _ => None
     }
 
-    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side **/
+    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitL[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 0 => true
@@ -589,7 +573,7 @@ object wye {
       case _ => None
     }
 
-    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side **/
+    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitR[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 1 => true
@@ -608,7 +592,7 @@ object wye {
     }
 
 
-    /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides **/
+    /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides */
     object is {
       def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 2 => true

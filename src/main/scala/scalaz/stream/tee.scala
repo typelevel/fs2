@@ -9,6 +9,28 @@ import scalaz.stream.Util._
 
 object tee {
 
+  /**
+   * Alternate pulling from the left, then right,
+   * repeatedly, starting on the left, and emitting only values
+   * from the right. When the left is exhausted, behaves like `passR`.
+   */
+  def drainL[I]: Tee[Any, I, I] =
+    awaitL[Any].awaitOption.flatMap {
+      case None => passR
+      case Some(_) => awaitR[I] ++ drainL
+    }
+
+  /**
+   * Alternate pulling from the left, then right,
+   * repeatedly, starting on the left, and emitting only values
+   * from the left. When the right is exhausted, behaves like `passL`.
+   */
+  def drainR[I]: Tee[I, Any, I] =
+    awaitL[I] ++ awaitR[Any].awaitOption.flatMap {
+      case None => passL
+      case Some(_) => drainR
+    }
+
   /** A `Tee` which alternates between emitting values from the left input and the right input. */
   def interleave[I]: Tee[I, I, I] =
   repeat { for {
@@ -34,10 +56,12 @@ object tee {
   /** Defined as `zipWith((_,_))` */
   def zip[I, I2]: Tee[I, I2, (I, I2)] = zipWith((_, _))
 
+  /** Defined as `zipWith((arg,f) => f(arg)` */
+  def zipApply[I,I2]: Tee[I, I => I2, I2] = zipWith((arg,f) => f(arg))
+
   /** A version of `zip` that pads the shorter stream with values. */
   def zipAll[I, I2](padI: I, padI2: I2): Tee[I, I2, (I, I2)] =
     zipWithAll(padI, padI2)((_, _))
-
 
   /**
    * Zip together two inputs, then apply the given function,
@@ -180,11 +204,11 @@ object tee {
   def receiveR[I, I2, O](rcv: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
     await[Env[I, I2]#T, I2, O](R)(rcv)
 
-  /** syntax sugar for receiveL **/
+  /** syntax sugar for receiveL */
   def receiveLOr[I, I2, O](fb: => Tee[I, I2, O])(rcvL: I => Tee[I, I2, O]): Tee[I, I2, O] =
     awaitOr[Env[I, I2]#T, I, O](L)(rsn => fb.causedBy(rsn))(rcvL)
 
-  /** syntax sugar for receiveR **/
+  /** syntax sugar for receiveR */
   def receiveROr[I, I2, O](fb: => Tee[I, I2, O])(rcvR: I2 => Tee[I, I2, O]): Tee[I, I2, O] =
     awaitOr[Env[I, I2]#T, I2, O](R)(rsn => fb.causedBy(rsn))(rcvR)
 
@@ -205,7 +229,7 @@ object tee {
       case _                               => None
     }
 
-    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side **/
+    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I, I2, O](self: TeeAwaitL[I, I2, O]): Boolean = self match {
         case Await(req, rcv) if req.tag == 0 => true
@@ -224,7 +248,7 @@ object tee {
     }
 
 
-    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on left side **/
+    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I, I2, O](self: TeeAwaitR[I, I2, O]): Boolean = self match {
         case Await(req, rcv) if req.tag == 1 => true
@@ -267,7 +291,7 @@ private[stream] trait TeeOps[+F[_], +O] {
 
   /** Delay running this `Process` until `awaken` becomes true for the first time. */
   def sleepUntil[F2[x] >: F[x], O2 >: O](awaken: Process[F2, Boolean]): Process[F2, O2] =
-    awaken.dropWhile(!_).once.flatMap(b => if (b) this else halt)
+    Process.sleepUntil(awaken)(this)
 
   /**
    * Halts this `Process` as soon as `condition` becomes `true`. Note that `condition`

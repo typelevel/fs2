@@ -113,7 +113,7 @@ object Cause {
 
   /**
    * wrapper to signal cause for termination.
-   * This is usefull when cause needs to be propagated out of process domain (i.e. Task)
+   * This is useful when cause needs to be propagated out of process domain (i.e. Task)
    */
   case class Terminated(cause:Cause) extends Exception {
     override def fillInStackTrace(): Throwable = cause match {
