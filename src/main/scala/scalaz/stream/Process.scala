@@ -859,7 +859,7 @@ object Process extends ProcessInstances {
 
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process0[Nothing \/ O] =
-   liftW(Process.emit(o))
+    Process.emit(right(o))
 
   /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
   def emitRange(start: Int, stopExclusive: Int): Process0[Int] =
@@ -867,7 +867,7 @@ object Process extends ProcessInstances {
 
   /** A `Writer` which writes the given value. */
   def emitW[W](s: W): Process0[W \/ Nothing] =
-   Process.emit(left(s))
+    Process.emit(left(s))
 
   /**
    * A 'continuous' stream which is true after `d, 2d, 3d...` elapsed duration,
@@ -1401,7 +1401,7 @@ object Process extends ProcessInstances {
 
     /** Transform the write side of this `Writer`. */
     def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] =
-      self.flatMap(_.fold(f, a => emit(right(a))))
+      self.flatMap(_.fold(f, a => emitO(a)))
 
     /** Remove the write side of this `Writer`. */
     def stripW: Process[F,O] =
@@ -1423,8 +1423,8 @@ object Process extends ProcessInstances {
     def observeW(snk: Sink[F,W]): Writer[F,W,O] =
       self.zipWith(snk)((a,f) =>
         a.fold(
-          (s: W) => eval_ { f(s) } ++ Process.emit(left(s)),
-          (a: O) => Process.emit(right(a))
+          (s: W) => eval_ { f(s) } ++ Process.emitW(s),
+          (a: O) => Process.emitO(a)
         )
       ).flatMap(identity)
 
@@ -1456,7 +1456,7 @@ object Process extends ProcessInstances {
       self.map(_.map(f))
 
     def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] =
-      self.flatMap(_.fold(s => emit(left(s)), f))
+      self.flatMap(_.fold(s => emitW(s), f))
 
     def stripO: Process[F,W] =
       self.flatMap(_.fold(emit, _ => halt))
