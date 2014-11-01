@@ -1401,7 +1401,7 @@ object Process extends ProcessInstances {
 
     /** Transform the write side of this `Writer`. */
     def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] =
-      self.flatMap(_.fold(f, a => emitO(a)))
+      self.flatMap(_.fold(f, emitO))
 
     /** Remove the write side of this `Writer`. */
     def stripW: Process[F,O] =
@@ -1456,7 +1456,7 @@ object Process extends ProcessInstances {
       self.map(_.map(f))
 
     def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] =
-      self.flatMap(_.fold(s => emitW(s), f))
+      self.flatMap(_.fold(emitW, f))
 
     def stripO: Process[F,W] =
       self.flatMap(_.fold(emit, _ => halt))
