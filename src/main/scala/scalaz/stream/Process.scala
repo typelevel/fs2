@@ -887,13 +887,13 @@ object Process extends ProcessInstances {
 
   /** A `Process` which emits `n` repetitions of `a`. */
   def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process0[A] = {
-        val chunkN = chunkSize max 1
-        val chunk = emitAll(List.fill(chunkN)(a)) // we can reuse this for each step
-        def go(m: Int): Process0[A] =
-          if (m >= chunkN) chunk ++ go(m - chunkN)
-          else if (m <= 0) halt
-          else emitAll(List.fill(m)(a))
-        go(n max 0)
+    val chunkN = chunkSize max 1
+    val chunk = emitAll(List.fill(chunkN)(a)) // we can reuse this for each step
+    def go(m: Int): Process0[A] =
+      if (m >= chunkN) chunk ++ go(m - chunkN)
+      else if (m <= 0) halt
+      else emitAll(List.fill(m)(a))
+    go(n max 0)
   }
 
   /**
@@ -920,7 +920,7 @@ object Process extends ProcessInstances {
 
   /** Promote a `Process` to a `Writer` that writes nothing. */
   def liftW[F[_], A](p: Process[F, A]): Writer[F, Nothing, A] =
-   p.map(right)
+    p.map(right)
 
   /**
    * Promote a `Process` to a `Writer` that writes and outputs
@@ -1021,15 +1021,15 @@ object Process extends ProcessInstances {
   }
 
   /** Produce a (potentially infinite) source from an unfold. */
-  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = suspend {
-    def go(s:S) : Process0[A] = {
-      f(s) match {
-        case Some(ht) => emit(ht._1) ++ go(ht._2)
-        case None => halt
-      }
+  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] =
+    suspend {
+      def go(s: S): Process0[A] =
+        f(s) match {
+          case Some((a, sn)) => emit(a) ++ go(sn)
+          case None => halt
+        }
+      go(s0)
     }
-    go(s0)
-  }
 
 
   //////////////////////////////////////////////////////////////////////////////////////
