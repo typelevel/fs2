@@ -263,6 +263,11 @@ object ProcessSpec extends Properties("Process") {
     }.map(_._1).toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
 
+  property("unfoldEval") = secure {
+    unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
+      .runLog.run.toList == List.range(10, 0, -1)
+  }
+
   property("kill of drained process terminates") = secure {
     val effect: Process[Task,Unit] = Process.repeatEval(Task.delay(())).drain
     effect.kill.runLog.timed(1000).run.isEmpty
