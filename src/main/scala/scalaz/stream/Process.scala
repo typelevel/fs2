@@ -861,7 +861,7 @@ object Process extends ProcessInstances {
   def emitO[O](o: O): Process0[Nothing \/ O] =
    liftW(Process.emit(o))
 
-  @deprecated("Use emitAll(start until stopExclusive) instead", "0.6.0")
+  @deprecated("Use emitAll(start until stopExclusive) instead. Produces the sequence in one chunk unlike `Process.range` which produces a lazy sequence.", "0.6.0")
   def emitRange(start: Int, stopExclusive: Int): Process0[Int] =
     emitAll(start until stopExclusive)
 
@@ -929,7 +929,7 @@ object Process extends ProcessInstances {
   def logged[F[_], A](p: Process[F, A]): Writer[F, A, A] =
     p.flatMap(a => emitAll(Vector(left(a), right(a))))
 
-  /** Lazily produce the range `[start, stopExclusive)`. */
+  /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process0[Int] =
     unfold(start)(i => if (i < stopExclusive) Some((i, i + by)) else None)
 
