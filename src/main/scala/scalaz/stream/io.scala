@@ -19,9 +19,9 @@ object io {
    * useful for flushing any internal buffers. NB: In the event of an
    * error, this final value is ignored.
    */
-  def bufferedResource[R,O](acquire: Task[R])(
-                            flushAndRelease: R => Task[O])(
-                            step: R => Task[O]): Process[Task,O] =
+  def bufferedResource[F[_],R,O](acquire: F[R])(
+                            flushAndRelease: R => F[O])(
+                            step: R => F[O]): Process[F,O] =
     eval(acquire).flatMap { r =>
       repeatEval(step(r)).onComplete(eval(flushAndRelease(r)))
     }
