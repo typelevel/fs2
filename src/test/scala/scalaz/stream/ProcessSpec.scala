@@ -235,7 +235,7 @@ object ProcessSpec extends Properties("Process") {
     def acquire: Task[Unit] = Task.delay { written = Nil }
     def release(res: Unit): Task[Unit] = Task.now(())
     def step(res: Unit): Task[Int => Task[Unit]] = Task.now((i: Int) => Task.delay { written = written :+ i  })
-    val sink = io.resource[Unit, Int => Task[Unit]](acquire)(release)(step)
+    val sink = io.resource(acquire)(release)(step)
 
     val source = Process(1, 2, 3).toSource
 
