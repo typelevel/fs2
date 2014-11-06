@@ -1021,16 +1021,24 @@ object Process extends ProcessInstances {
   }
 
   /** Produce a (potentially infinite) source from an unfold. */
-  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] =
-    suspend {
-      def go(s: S): Process0[A] =
-        f(s) match {
-          case Some((a, sn)) => emit(a) ++ go(sn)
-          case None => halt
-        }
-      go(s0)
-    }
+  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = {
+    def go(s: S): Process0[A] =
+      f(s) match {
+        case Some((a, sn)) => emit(a) ++ go(sn)
+        case None => halt
+      }
+    suspend(go(s0))
+  }
 
+  /** Like [[unfold]], but takes an effectful function. */
+  def unfoldEval[F[_], S, A](s0: S)(f: S => F[Option[(A, S)]]): Process[F, A] = {
+    def go(s: S): Process[F, A] =
+      await(f(s)) {
+        case Some((a, sn)) => emit(a) ++ go(sn)
+        case None => halt
+      }
+    suspend(go(s0))
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////
   //
