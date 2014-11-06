@@ -1389,8 +1389,8 @@ object Process extends ProcessInstances {
   implicit class TeeSyntax[I,I2,O](self: Tee[I,I2,O]) {
 
     /** Transform the left input to a `Tee`. */
-    def contramapL[I0](f: I0 => I): Tee[I,I2,O] =
-      self.contramapL_(f).asInstanceOf[Tee[I,I2,O]]
+    def contramapL[I0](f: I0 => I): Tee[I0,I2,O] =
+      self.contramapL_(f).asInstanceOf[Tee[I0,I2,O]]
 
     /** Transform the right input to a `Tee`. */
     def contramapR[I3](f: I3 => I2): Tee[I,I3,O] =
