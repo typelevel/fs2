@@ -860,15 +860,15 @@ object Process extends ProcessInstances {
 
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process0[Nothing \/ O] =
-   liftW(Process.emit(o))
+    Process.emit(right(o))
 
-  /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
+  @deprecated("Use emitAll(start until stopExclusive) instead. Produces the sequence in one chunk unlike `Process.range` which produces a lazy sequence.", "0.6.0")
   def emitRange(start: Int, stopExclusive: Int): Process0[Int] =
     emitAll(start until stopExclusive)
 
   /** A `Writer` which writes the given value. */
   def emitW[W](s: W): Process0[W \/ Nothing] =
-   Process.emit(left(s))
+    Process.emit(left(s))
 
   /**
    * A 'continuous' stream which is true after `d, 2d, 3d...` elapsed duration,
@@ -888,13 +888,13 @@ object Process extends ProcessInstances {
 
   /** A `Process` which emits `n` repetitions of `a`. */
   def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process0[A] = {
-        val chunkN = chunkSize max 1
-        val chunk = emitAll(List.fill(chunkN)(a)) // we can reuse this for each step
-        def go(m: Int): Process0[A] =
-          if (m >= chunkN) chunk ++ go(m - chunkN)
-          else if (m <= 0) halt
-          else emitAll(List.fill(m)(a))
-        go(n max 0)
+    val chunkN = chunkSize max 1
+    val chunk = emitAll(List.fill(chunkN)(a)) // we can reuse this for each step
+    def go(m: Int): Process0[A] =
+      if (m >= chunkN) chunk ++ go(m - chunkN)
+      else if (m <= 0) halt
+      else emitAll(List.fill(m)(a))
+    go(n max 0)
   }
 
   /**
@@ -921,7 +921,7 @@ object Process extends ProcessInstances {
 
   /** Promote a `Process` to a `Writer` that writes nothing. */
   def liftW[F[_], A](p: Process[F, A]): Writer[F, Nothing, A] =
-   p.map(right)
+    p.map(right)
 
   /**
    * Promote a `Process` to a `Writer` that writes and outputs
@@ -930,7 +930,7 @@ object Process extends ProcessInstances {
   def logged[F[_], A](p: Process[F, A]): Writer[F, A, A] =
     p.flatMap(a => emitAll(Vector(left(a), right(a))))
 
-  /** Lazily produce the range `[start, stopExclusive)`. */
+  /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process0[Int] =
     unfold(start)(i => if (i < stopExclusive) Some((i, i + by)) else None)
 
@@ -1022,16 +1022,24 @@ object Process extends ProcessInstances {
   }
 
   /** Produce a (potentially infinite) source from an unfold. */
-  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = suspend {
-    def go(s:S) : Process0[A] = {
+  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = {
+    def go(s: S): Process0[A] =
       f(s) match {
-        case Some(ht) => emit(ht._1) ++ go(ht._2)
+        case Some((a, sn)) => emit(a) ++ go(sn)
         case None => halt
       }
-    }
-    go(s0)
+    suspend(go(s0))
   }
 
+  /** Like [[unfold]], but takes an effectful function. */
+  def unfoldEval[F[_], S, A](s0: S)(f: S => F[Option[(A, S)]]): Process[F, A] = {
+    def go(s: S): Process[F, A] =
+      await(f(s)) {
+        case Some((a, sn)) => emit(a) ++ go(sn)
+        case None => halt
+      }
+    suspend(go(s0))
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////
   //
@@ -1382,8 +1390,8 @@ object Process extends ProcessInstances {
   implicit class TeeSyntax[I,I2,O](self: Tee[I,I2,O]) {
 
     /** Transform the left input to a `Tee`. */
-    def contramapL[I0](f: I0 => I): Tee[I,I2,O] =
-      self.contramapL_(f).asInstanceOf[Tee[I,I2,O]]
+    def contramapL[I0](f: I0 => I): Tee[I0,I2,O] =
+      self.contramapL_(f).asInstanceOf[Tee[I0,I2,O]]
 
     /** Transform the right input to a `Tee`. */
     def contramapR[I3](f: I3 => I2): Tee[I,I3,O] =
@@ -1402,7 +1410,7 @@ object Process extends ProcessInstances {
 
     /** Transform the write side of this `Writer`. */
     def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] =
-      self.flatMap(_.fold(f, a => emit(right(a))))
+      self.flatMap(_.fold(f, emitO))
 
     /** Remove the write side of this `Writer`. */
     def stripW: Process[F,O] =
@@ -1424,8 +1432,8 @@ object Process extends ProcessInstances {
     def observeW(snk: Sink[F,W]): Writer[F,W,O] =
       self.zipWith(snk)((a,f) =>
         a.fold(
-          (s: W) => eval_ { f(s) } ++ Process.emit(left(s)),
-          (a: O) => Process.emit(right(a))
+          (s: W) => eval_ { f(s) } ++ Process.emitW(s),
+          (a: O) => Process.emitO(a)
         )
       ).flatMap(identity)
 
@@ -1457,7 +1465,7 @@ object Process extends ProcessInstances {
       self.map(_.map(f))
 
     def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] =
-      self.flatMap(_.fold(s => emit(left(s)), f))
+      self.flatMap(_.fold(emitW, f))
 
     def stripO: Process[F,W] =
       self.flatMap(_.fold(emit, _ => halt))

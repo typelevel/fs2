@@ -42,6 +42,9 @@ object tcp {
     /** Close the connection corresponding to this `Socket`. */
     def close: Task[Unit]
 
+    /** Ask for the remote address of the peer. */
+    def remoteAddress: Task[InetSocketAddress]
+
     /**
      * Write `bytes` to the peer. If `timeout` is provided
      * and the operation does not complete in the specified duration,
@@ -84,10 +87,19 @@ object tcp {
     def close: Task[Unit] =
       Task.delay { channel.close() }
 
+    def remoteAddress: Task[InetSocketAddress] =
+      Task.delay {
+        // NB: This cast is safe because, from the javadoc:
+        // "Where the channel is bound and connected to an Internet Protocol socket
+        // address then the return value from this method is of type InetSocketAddress."
+        channel.getRemoteAddress().asInstanceOf[InetSocketAddress]
+      }
+
     def write(bytes: ByteVector,
               timeout: Option[Duration] = None,
               allowPeerClosed: Boolean = false): Task[Unit] =
       writeOne(channel, bytes, timeout, allowPeerClosed, S)
+
   }
 
   private[stream] def ask: Process[Connection,Socket] =
@@ -153,6 +165,9 @@ object tcp {
             } getOrElse (Process.emit(None))
     }
 
+  /** Returns a single-element stream containing the remote address of the peer. */
+  def remoteAddress: Process[Connection,InetSocketAddress] =
+    ask.flatMap { e => eval(e.remoteAddress) }
 
   /** Indicate to the peer that we are done writing. */
   def eof: Process[Connection,Nothing] =
