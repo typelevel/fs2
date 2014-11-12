@@ -65,6 +65,18 @@ object WyeSpec extends  Properties("Wye"){
 
   }
 
+  property("haltL") = secure {
+    val w = wye.haltL(Kill)(wye.feedR(Seq(0,1))(wye.merge[Int]))
+    val x = Process.emit(-1).wye(Process.range(2,5))(w).runLog.run
+    x.toList == List(0,1)
+  }
+
+  property("haltR") = secure {
+    val w = wye.haltR(Kill)(wye.feedL(Seq(0,1))(wye.merge[Int]))
+    val x = Process.range(2,5).wye(Process.emit(-1))(w).runLog.run
+    x.toList == List(0,1)
+  }
+
   // ensure that wye terminates when once side of it is infinite
   // and other side of wye is either empty, or one.
   property("infinite.one.side") = secure {

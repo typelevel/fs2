@@ -475,11 +475,20 @@ object wye {
    */
   def haltL[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
     val ys = y.step
-    val ny = ys match {
-      case Step(AwaitBoth(rcv), cont) => rcv(HaltL(cause)) +: cont
-      case _ => y
+    ys match {
+      case Step(emt@Emit(os), cont) =>
+        emt onHalt (rsn => haltL(cause)(Halt(rsn) +: cont))
+      case Step(AwaitR(rcv), cont) =>
+        wye.receiveROr[I,I2,O](e => haltL(cause)(rcv(left(e)) +: cont))(
+          i => haltL(cause)(rcv(right(i)) +: cont)
+        )
+      case Step(AwaitL(rcv), cont) =>
+        cause.fold(haltL(Kill)(y).swallowKill)(e => disconnectL(e)(rcv(left(e)) +: cont))
+      case Step(AwaitBoth(rcv), cont) =>
+        val ny = rcv(HaltL(cause)) +: cont
+        cause.fold(detach1L(ny))(e => disconnectL(e)(ny))
+      case Halt(rsn) => Halt(rsn)
     }
-    cause.fold(disconnectL(Kill)(ny).swallowKill)(e => disconnectL(e)(ny))
   }
 
 
@@ -488,11 +497,20 @@ object wye {
    */
   def haltR[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
     val ys = y.step
-    val ny = ys match {
-      case Step(AwaitBoth(rcv), cont) => rcv(HaltR(cause)) +: cont
-      case _ => y
+    ys match {
+      case Step(emt@Emit(os), cont) =>
+        emt onHalt (rsn => haltR(cause)(Halt(rsn) +: cont))
+      case Step(AwaitL(rcv), cont) =>
+        wye.receiveLOr[I,I2,O](e => haltR(cause)(rcv(left(e)) +: cont))(
+          i => haltR(cause)(rcv(right(i)) +: cont)
+        )
+      case Step(AwaitR(rcv), cont) =>
+        cause.fold(haltR(Kill)(y).swallowKill)(e => disconnectR(e)(rcv(left(e)) +: cont))
+      case Step(AwaitBoth(rcv), cont) =>
+        val ny = rcv(HaltR(cause)) +: cont
+        cause.fold(detach1R(ny))(e => disconnectR(e)(ny))
+      case Halt(rsn) => Halt(rsn)
     }
-    cause.fold(disconnectR(Kill)(ny).swallowKill)(e => disconnectR(e)(ny))
 
   }
 
