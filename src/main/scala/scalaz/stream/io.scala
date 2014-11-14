@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,FileOutputStream,InputStream,OutputStream}
+import java.io._
 
 import scala.io.{Codec, Source}
 import scalaz.concurrent.Task
@@ -19,9 +19,9 @@ object io {
    * useful for flushing any internal buffers. NB: In the event of an
    * error, this final value is ignored.
    */
-  def bufferedResource[R,O](acquire: Task[R])(
-                            flushAndRelease: R => Task[O])(
-                            step: R => Task[O]): Process[Task,O] =
+  def bufferedResource[F[_],R,O](acquire: F[R])(
+                            flushAndRelease: R => F[O])(
+                            step: R => F[O]): Process[F,O] =
     eval(acquire).flatMap { r =>
       repeatEval(step(r)).onComplete(eval(flushAndRelease(r)))
     }
@@ -34,7 +34,7 @@ object io {
                              flush: R => Task[O])(
                              release: R => Task[Unit])(
                              step: R => Task[I => Task[O]]): Channel[Task,Option[I],O] = {
-    resource[R,Option[I] => Task[O]](acquire)(release) {
+    resource(acquire)(release) {
       r =>
         val s = step(r)
         Task.now {
@@ -45,7 +45,7 @@ object io {
   }
 
   /** Promote an effectful function to a `Channel`. */
-  def channel[A,B](f: A => Task[B]): Channel[Task, A, B] =
+  def channel[F[_],A,B](f: A => F[B]): Channel[F, A, B] =
     Process.constant(f)
 
   /**
@@ -118,38 +118,74 @@ object io {
     }
 
   /**
+   * Creates `Sink` from an `PrintStream` using `f` to perform
+   * specific side effects on that `PrintStream`.
+   */
+  def printStreamSink[O](out: PrintStream)(f: (PrintStream, O) => Unit): Sink[Task, O] =
+    channel((o: O) => Task.delay {
+      f(out, o)
+      if (out.checkError)
+        throw Cause.Terminated(Cause.End)
+    })
+
+  /**
+   * Turn a `PrintStream` into a `Sink`. This `Sink` does not
+   * emit newlines after each element. For that, use `printLines`.
+   */
+  def print(out: PrintStream): Sink[Task,String] = printStreamSink(out)((ps, o) => ps.print(o))
+
+  /**
+   * Turn a `PrintStream` into a `Sink`. This `Sink` emits
+   * newlines after each element. If this is not desired, use `print`.
+   */
+  def printLines(out: PrintStream): Sink[Task,String] = printStreamSink(out)((ps, o) => ps.println(o))
+
+  /**
    * Generic combinator for producing a `Process[Task,O]` from some
    * effectful `O` source. The source is tied to some resource,
    * `R` (like a file handle) that we want to ensure is released.
    * See `linesR` for an example use.
    */
-  def resource[R,O](acquire: Task[R])(
-                    release: R => Task[Unit])(
-                    step: R => Task[O]): Process[Task,O] =
+  def resource[F[_],R,O](acquire: F[R])(
+                    release: R => F[Unit])(
+                    step: R => F[O]): Process[F,O] =
     eval(acquire).flatMap { r =>
       repeatEval(step(r)).onComplete(eval_(release(r)))
     }
 
   /**
    * The standard input stream, as `Process`. This `Process` repeatedly awaits
+   * and emits chunks of bytes  from standard input.
+   */
+  def stdInBytes: Channel[Task, Int, ByteVector] =
+    io.chunkR(System.in)
+
+  /**
+   * The standard input stream, as `Process`. This `Process` repeatedly awaits
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task.delay { Option(Console.readLine()).getOrElse(throw Cause.Terminated(Cause.End)) })
+    Process.repeatEval(Task.delay { Option(scala.Console.readLine()).getOrElse(throw Cause.Terminated(Cause.End)) })
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
    * emit newlines after each element. For that, use `stdOutLines`.
    */
   def stdOut: Sink[Task,String] =
-    channel((s: String) => Task.delay { print(s) })
+    print(System.out)
+
+  /**
+   * The standard output stream, as a `ByteVector` `Sink`.
+   */
+  def stdOutBytes: Sink[Task, ByteVector] =
+    chunkW(System.out)
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` emits
    * newlines after each element. If this is not desired, use `stdOut`.
    */
   def stdOutLines: Sink[Task,String] =
-    channel((s: String) => Task.delay { println(s) })
+    printLines(System.out)
 
   /**
    * Creates a `Channel[Task,Array[Byte],Array[Byte]]` from an `InputStream` by
