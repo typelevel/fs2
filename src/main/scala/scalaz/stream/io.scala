@@ -19,9 +19,9 @@ object io {
    * useful for flushing any internal buffers. NB: In the event of an
    * error, this final value is ignored.
    */
-  def bufferedResource[R,O](acquire: Task[R])(
-                            flushAndRelease: R => Task[O])(
-                            step: R => Task[O]): Process[Task,O] =
+  def bufferedResource[F[_],R,O](acquire: F[R])(
+                            flushAndRelease: R => F[O])(
+                            step: R => F[O]): Process[F,O] =
     eval(acquire).flatMap { r =>
       repeatEval(step(r)).onComplete(eval(flushAndRelease(r)))
     }
@@ -34,7 +34,7 @@ object io {
                              flush: R => Task[O])(
                              release: R => Task[Unit])(
                              step: R => Task[I => Task[O]]): Channel[Task,Option[I],O] = {
-    resource[R,Option[I] => Task[O]](acquire)(release) {
+    resource(acquire)(release) {
       r =>
         val s = step(r)
         Task.now {
@@ -45,7 +45,7 @@ object io {
   }
 
   /** Promote an effectful function to a `Channel`. */
-  def channel[A,B](f: A => Task[B]): Channel[Task, A, B] =
+  def channel[F[_],A,B](f: A => F[B]): Channel[F, A, B] =
     Process.constant(f)
 
   /**
@@ -123,9 +123,9 @@ object io {
    * `R` (like a file handle) that we want to ensure is released.
    * See `linesR` for an example use.
    */
-  def resource[R,O](acquire: Task[R])(
-                    release: R => Task[Unit])(
-                    step: R => Task[O]): Process[Task,O] =
+  def resource[F[_],R,O](acquire: F[R])(
+                    release: R => F[Unit])(
+                    step: R => F[O]): Process[F,O] =
     eval(acquire).flatMap { r =>
       repeatEval(step(r)).onComplete(eval_(release(r)))
     }
