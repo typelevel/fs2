@@ -125,14 +125,14 @@ object io {
     channel((o: O) => Task.delay {
       f(out, o)
       if (out.checkError)
-        throw Cause.Terminated(Cause.Kill)
+        throw Cause.Terminated(Cause.End)
     })
-  
+
   /**
    * Turn a `PrintStream` into a `Sink`. This `Sink` does not
    * emit newlines after each element. For that, use `printLines`.
    */
-  def print(out: PrintStream): Sink[Task,String] = printStreamSink(out)((ps, o) => ps.print(o))    
+  def print(out: PrintStream): Sink[Task,String] = printStreamSink(out)((ps, o) => ps.print(o))
 
   /**
    * Turn a `PrintStream` into a `Sink`. This `Sink` emits
