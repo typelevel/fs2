@@ -2,7 +2,7 @@ organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
-version := "snapshot-0.6a"
+version := "0.6a"
 
 scalaVersion := "2.10.4"
 
