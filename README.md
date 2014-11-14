@@ -15,10 +15,10 @@ And use one of the following library dependencies:
 
 ```
 // Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.5"
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.6"
 
 // Against Scalaz 7.1, available for Scala 2.10.4 and 2.11.2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.5a"
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.6a"
 ```
 
 ### About the library ###
@@ -59,7 +59,7 @@ For questions about the library, use the [scalaz mailing list](https://groups.go
 
 The API documentation of the latest release is available on [docs.typelevel.org](http://docs.typelevel.org/api/scalaz-stream/stable/latest/doc/).
 
-Blog posts and other external resources are listed on the [Additional Resources](https://github.com/scalaz/scalaz-stream/wiki/Additional-Resources)  page.
+Blog posts and other external resources are listed on the [Additional Resources](https://github.com/scalaz/scalaz-stream/wiki/Additional-Resources) page.
 
 ### Projects using scalaz-stream ###
 
