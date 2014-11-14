@@ -6,6 +6,7 @@ import org.scalacheck.Prop.secure
 import org.scalacheck.Properties
 
 import scalaz.concurrent.Task
+import scala.concurrent.duration._
 
 object PrintSpec extends Properties("io.print") {
   property("print terminates on process close") = secure {
@@ -41,7 +42,7 @@ object PrintSpec extends Properties("io.print") {
         }
       )
       .map(_.toString)
-      .to(io.print(out)).run.timed(5000).run
+      .to(io.print(out)).run.timed(5000 milliseconds).run
 
     baos.toString == List.range(from, mid).map(_.toString).foldLeft("")(_ + _)
   }
@@ -56,9 +57,9 @@ object PrintSpec extends Properties("io.print") {
       while (baos.toByteArray.length < 1000) Thread.sleep(50)
       baos.close
       out.close
-    })).timed(5000).runAsync(_ => ())
+    })).timed(5000 milliseconds).runAsync(_ => ())
 
-    Task.delay(run(out)).timed(5000).run
+    Task.delay(run(out)).timed(5000 milliseconds).run
     true
   }
 }
