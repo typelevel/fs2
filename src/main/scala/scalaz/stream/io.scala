@@ -141,14 +141,14 @@ object io {
   def printLines(out: PrintStream): Sink[Task,String] = printStreamSink(out)((ps, o) => ps.println(o))
 
   /**
-   * Generic combinator for producing a `Process[Task,O]` from some
+   * Generic combinator for producing a `Process[F,O]` from some
    * effectful `O` source. The source is tied to some resource,
    * `R` (like a file handle) that we want to ensure is released.
    * See `linesR` for an example use.
    */
   def resource[F[_],R,O](acquire: F[R])(
-                    release: R => F[Unit])(
-                    step: R => F[O]): Process[F,O] =
+                         release: R => F[Unit])(
+                         step: R => F[O]): Process[F,O] =
     eval(acquire).flatMap { r =>
       repeatEval(step(r)).onComplete(eval_(release(r)))
     }
