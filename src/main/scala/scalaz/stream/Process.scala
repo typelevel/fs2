@@ -861,10 +861,6 @@ object Process extends ProcessInstances {
   def emitO[O](o: O): Process0[Nothing \/ O] =
     Process.emit(right(o))
 
-  @deprecated("Use emitAll(start until stopExclusive) instead. Produces the sequence in one chunk unlike `Process.range` which produces a lazy sequence.", "0.6.0")
-  def emitRange(start: Int, stopExclusive: Int): Process0[Int] =
-    emitAll(start until stopExclusive)
-
   /** A `Writer` which writes the given value. */
   def emitW[W](s: W): Process0[W \/ Nothing] =
     Process.emit(left(s))
