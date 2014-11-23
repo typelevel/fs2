@@ -36,6 +36,7 @@ object Process1Spec extends Properties("Process1") {
         , s"buffer: $li ${pi.buffer(4).toList}" |: pi.buffer(4).toList === li
         , "collect" |: pi.collect(pf).toList === li.collect(pf)
         , "collectFirst" |: pi.collectFirst(pf).toList === li.collectFirst(pf).toList
+        , "contramap" |: ps.map(_.length).sum === ps.pipe(sum[Int].contramap(_.length))
         , "delete" |: pi.delete(_ === i).toList === li.diff(List(i))
         , "drop" |: pi.drop(i).toList === li.drop(i)
         , "dropLast" |: pi.dropLast.toList === li.dropRight(1)
