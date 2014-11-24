@@ -4,7 +4,6 @@ import scalaz.{~>, Hoist, Monad, MonadPlus}
 
 private[stream] trait ProcessInstances {
 
-  // leaving the name for compatibility, but this really should be called something better
   implicit def ProcessMonadPlus[F[_]]: MonadPlus[({ type λ[α] = Process[F, α] })#λ] =
     new MonadPlus[({ type λ[α] = Process[F, α] })#λ] {
       def empty[A] = Process.halt
