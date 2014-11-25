@@ -1207,10 +1207,18 @@ object Process extends ProcessInstances {
       // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
       @volatile var cur: Process1[I0, I] = p1
       self.map { (f: I => Task[Unit]) =>
-        (i0: I0) =>
-          val (piped, next) = process1.feed1(i0)(cur).unemit
-          cur = next
-          piped.toList.traverse_(f)
+        (i0: I0) => Task.suspend {
+          cur.step match {
+            case Halt(cause) => throw new Cause.Terminated(cause)
+            case Step(Emit(piped), cont) =>
+              cur = process1.feed1(i0) { cont.continue }
+              piped.toList.traverse_(f)
+            case Step(hd, cont) =>
+              val (piped,tl) = process1.feed1(i0)(hd +: cont).unemit
+              cur = tl
+              piped.toList.traverse_(f)
+          }
+        }
       }
     }
   }
