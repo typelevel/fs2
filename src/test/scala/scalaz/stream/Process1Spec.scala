@@ -188,14 +188,6 @@ object Process1Spec extends Properties("Process1") {
       Process(2, 2).splitOn(2).toList === List(Vector(), Vector(), Vector())
   }
 
-  property("window") = secure {
-    def window(n: Int) = range(0, 5).window(n).toList
-    Process[Int]().window(2).toList === List(Vector.empty[Int]) &&
-      window(1) === List(Vector(0), Vector(1), Vector(2), Vector(3), Vector(4), Vector()) &&
-      window(2) === List(Vector(0, 1), Vector(1, 2), Vector(2, 3), Vector(3, 4), Vector(4)) &&
-      window(3) === List(Vector(0, 1, 2), Vector(1, 2, 3), Vector(2, 3, 4), Vector(3, 4))
-  }
-
   property("inner-cleanup") = secure {
     val p = Process.range(0,20).liftIO
     var called  = false

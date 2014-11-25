@@ -682,20 +682,6 @@ object process1 {
      lift[A, Option[A]](Some(_)) onComplete emit(None)
 
   /**
-   * Outputs a sliding window of size `n` onto the input.
-   *
-   * @throws IllegalArgumentException if `n` <= 0
-   */
-  @deprecated("window is deprecated in favor of sliding. It will be removed in the next release.", "0.6")
-  def window[I](n: Int): Process1[I, Vector[I]] = {
-    require(n > 0, "window size must be > 0, was: " + n)
-    def go(acc: Vector[I], c: Int): Process1[I, Vector[I]] =
-      if (c > 0) receive1Or[I,Vector[I]](emit(acc)) { i => go(acc :+ i, c - 1) }
-      else  emit(acc) fby go(acc.tail, 1)
-    go(Vector(), n)
-  }
-
-  /**
    * Ungroups chunked input.
    *
    * @example {{{
@@ -1052,11 +1038,6 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.terminated]]`. */
   def terminated: Process[F,Option[O]] =
     this |> process1.terminated
-
-  /** Alias for `this |> [[process1.window]](n)`. */
-  @deprecated("window is deprecated in favor of sliding. It will be removed in the next release.", "0.6")
-  def window(n: Int): Process[F,Vector[O]] =
-    this |> process1.window(n)
 
   /** Alias for `this |> [[process1.zipWithIndex[A]*]]`. */
   def zipWithIndex: Process[F,(O,Int)] =
