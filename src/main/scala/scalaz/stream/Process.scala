@@ -1084,7 +1084,7 @@ object Process extends ProcessInstances {
   /**
    * Adds syntax for Channel
    */
-  implicit class ChannelSyntax[F[_],I,O](self: Channel[F,I,O]) {
+  implicit class ChannelSyntax[F[_],I,O](val self: Channel[F,I,O]) extends AnyVal {
     /** Transform the input of this `Channel`. */
     def contramap[I0](f: I0 => I): Channel[F,I0,O] =
       self.map(f andThen _)
@@ -1095,7 +1095,7 @@ object Process extends ProcessInstances {
   }
 
 
-  implicit class ProcessSyntax[F[_],O](val self:Process[F,O]) extends AnyVal {
+  implicit class ProcessSyntax[F[_],O](val self: Process[F,O]) extends AnyVal {
     /** Feed this `Process` through the given effectful `Channel`. */
     def through[F2[x]>:F[x],O2](f: Channel[F2,O,O2]): Process[F2,O2] =
         self.zipWith(f)((o,f) => f(o)).eval
@@ -1159,7 +1159,7 @@ object Process extends ProcessInstances {
   /**
    * This class provides infix syntax specific to `Process0`.
    */
-  implicit class Process0Syntax[O](self: Process[Env[Any,Any]#Is,O]) {
+  implicit class Process0Syntax[O](val self: Process[Env[Any,Any]#Is,O]) extends AnyVal {
     def toIndexedSeq: IndexedSeq[O] = {
       @tailrec
       def go(cur: Process[Any,O], acc: Vector[O]): IndexedSeq[O] = {
@@ -1188,7 +1188,7 @@ object Process extends ProcessInstances {
 
   }
 
-  implicit class LiftIOSyntax[O](p: Process0[O]) {
+  implicit class LiftIOSyntax[O](val p: Process0[O]) extends AnyVal {
     def liftIO: Process[Task,O] = p
   }
 
@@ -1215,7 +1215,7 @@ object Process extends ProcessInstances {
   /**
    * This class provides infix syntax specific to `Process1`.
    */
-  implicit class Process1Syntax[I,O](self: Process1[I,O]) {
+  implicit class Process1Syntax[I,O](val self: Process1[I,O]) extends AnyVal {
 
     /** Apply this `Process` to an `Iterable`. */
     def apply(input: Iterable[I]): IndexedSeq[O] = {
@@ -1382,7 +1382,7 @@ object Process extends ProcessInstances {
    * equality witnesses. This doesn't work out so well due to variance
    * issues.
    */
-  implicit class TeeSyntax[I,I2,O](self: Tee[I,I2,O]) {
+  implicit class TeeSyntax[I,I2,O](val self: Tee[I,I2,O]) extends AnyVal {
 
     /** Transform the left input to a `Tee`. */
     def contramapL[I0](f: I0 => I): Tee[I0,I2,O] =
@@ -1401,7 +1401,7 @@ object Process extends ProcessInstances {
    * with either `W` or `O`, depending on what side they
    * operate on.
    */
-  implicit class WriterSyntax[F[_],W,O](self: Writer[F,W,O]) {
+  implicit class WriterSyntax[F[_],W,O](val self: Writer[F,W,O]) extends AnyVal {
 
     /** Transform the write side of this `Writer`. */
     def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] =
@@ -1476,7 +1476,7 @@ object Process extends ProcessInstances {
    * equality witnesses. This doesn't work out so well due to variance
    * issues.
    */
-  implicit class WyeSyntax[I,I2,O](self: Wye[I,I2,O]) {
+  implicit class WyeSyntax[I,I2,O](val self: Wye[I,I2,O]) extends AnyVal {
 
     /**
      * Apply a `Wye` to two `Iterable` inputs.
