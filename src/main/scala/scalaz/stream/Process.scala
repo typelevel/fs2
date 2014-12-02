@@ -1081,9 +1081,7 @@ object Process extends ProcessInstances {
   //
   /////////////////////////////////////////////////////////////////////////////////////
 
-  /**
-   * Adds syntax for Channel
-   */
+  /** Adds syntax for `Channel`. */
   implicit class ChannelSyntax[F[_],I,O](val self: Channel[F,I,O]) extends AnyVal {
     /** Transform the input of this `Channel`. */
     def contramap[I0](f: I0 => I): Channel[F,I0,O] =
@@ -1094,6 +1092,12 @@ object Process extends ProcessInstances {
       self.map(_ andThen F.lift(f))
   }
 
+  /** Adds syntax for `Sink`. */
+  implicit class SinkSyntax[F[_],I](val self: Sink[F,I]) extends AnyVal {
+    /** Converts `Sink` to `Channel`, that will perform the side effect and echo its input. */
+    def toChannel(implicit F: Functor[F]): Channel[F,I,I] =
+      self.map(f => (i: I) => F.map(f(i))(_ => i))
+  }
 
   implicit class ProcessSyntax[F[_],O](val self: Process[F,O]) extends AnyVal {
     /** Feed this `Process` through the given effectful `Channel`. */
@@ -1194,9 +1198,6 @@ object Process extends ProcessInstances {
 
   /** Syntax for Sink, that is specialized for Task */
   implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
-    /** converts sink to channel, that will perform the side effect and echo its input */
-    def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
-
     /** converts sink to sink that first pipes received `I0` to supplied p1 */
     def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = Process.suspend {
       import scalaz.Scalaz._
