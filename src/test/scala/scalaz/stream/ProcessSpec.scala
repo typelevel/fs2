@@ -245,6 +245,16 @@ object ProcessSpec extends Properties("Process") {
     written == List(2, 3, 4)
   }
 
+  property("pipeIn propagates halt from process1") = secure {
+    val q = async.boundedQueue[Int]()
+    val sink = q.enqueue.pipeIn(process1.take[Int](5)) ++ q.enqueue.pipeIn(process1.take[Int](5))
+
+    (Process.range(0,10).liftIO to sink).run.run
+    val res = q.dequeue.take(10).runLog.timed(3000).run.toList
+    q.close.run
+
+    res === (0 until 10).toList
+  }
 
   property("range") = secure {
     Process.range(0, 100).toList == List.range(0, 100) &&
