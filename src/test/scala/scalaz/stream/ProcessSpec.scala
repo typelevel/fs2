@@ -245,6 +245,13 @@ object ProcessSpec extends Properties("Process") {
     written == List(2, 3, 4)
   }
 
+  property("pipeIn") = forAll { (p0: Process0[Int], p1: Process1[Int, Int]) =>
+    val buffer = new collection.mutable.ListBuffer[Int]
+    p0.liftIO.to(io.fillBuffer(buffer).pipeIn(p1)).run.run
+    val l = buffer.toList
+    val r = p0.pipe(p1).toList
+    s"expected: $r actual $l" |: { l === r }
+  }
 
   property("range") = secure {
     Process.range(0, 100).toList == List.range(0, 100) &&
