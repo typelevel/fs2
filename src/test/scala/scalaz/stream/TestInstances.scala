@@ -22,7 +22,7 @@ object TestInstances {
 
   implicit def arbitraryProcess1[A]: Arbitrary[Process1[A,A]] = {
     val ps0Gen: Gen[Process1[A,A]] =
-      Gen.oneOf(Seq(bufferAll, dropLast, id, last, skip))
+      Gen.oneOf(Seq(await1, bufferAll, dropLast, halt, id, last, skip))
 
     val ps1Int: Seq[Int => Process1[A,A]] =
       Seq(buffer, drop, take)
