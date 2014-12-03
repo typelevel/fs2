@@ -253,6 +253,20 @@ object ProcessSpec extends Properties("Process") {
     s"expected: $r actual $l" |: { l === r }
   }
 
+  property("pipeIn early termination") = forAll { (p0: Process0[Int]) =>
+    val buf1 = new collection.mutable.ListBuffer[Int]
+    val buf2 = new collection.mutable.ListBuffer[Int]
+    val buf3 = new collection.mutable.ListBuffer[Int]
+    val sink = io.fillBuffer(buf1).pipeIn(process1.take[Int](2)) ++
+               io.fillBuffer(buf2).pipeIn(process1.take[Int](2)) ++
+               io.fillBuffer(buf3).pipeIn(process1.last[Int])
+    p0.liftIO.to(sink).run.run
+    val in = p0.toList
+    ("buf1" |: { buf1.toList ?= in.take(2) }) &&
+    ("buf2" |: { buf2.toList ?= in.drop(2).take(2) }) &&
+    ("buf3" |: { buf3.toList ?= in.drop(4).lastOption.toList })
+  }
+
   property("range") = secure {
     Process.range(0, 100).toList == List.range(0, 100) &&
       Process.range(0, 1).toList == List.range(0, 1) &&
