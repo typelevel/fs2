@@ -1202,24 +1202,19 @@ object Process extends ProcessInstances {
     def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = Process.suspend {
       import scalaz.Scalaz._
       // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
-      @volatile var cur = p1.step
-      self.takeWhile { _ =>
-        cur match {
-          case Halt(Cause.End) => false
-          case Halt(cause) => throw new Cause.Terminated(cause)
-          case _ => true
+      @volatile var cur = p1
+      @volatile var lastF: Option[I => Task[Unit]] = None
+      self.map { (f: I => Task[Unit]) =>
+        lastF = f.some
+        (i0: I0) => Task.suspend {
+          val (piped, next) = process1.feed1(i0)(cur).unemit
+          cur = next
+          piped.toList.traverse_(f)
         }
-      } map { (f: I => Task[Unit]) =>
-        (i0: I0) => Task.suspend { cur match {
-          case Halt(_) => sys.error("unpossible")
-          case Step(Emit(piped), cont) =>
-            cur = process1.feed1(i0) { cont.continue }.step
-            piped.toList.traverse_(f)
-          case Step(hd, cont) =>
-            val (piped,tl) = process1.feed1(i0)(hd +: cont).unemit
-            cur = tl.step
-            piped.toList.traverse_(f)
-        }}
+      } onComplete {
+        lastF map (f =>
+          Process.eval_(cur.disconnect(Cause.Kill).unemit._1.toList.traverse_(f))
+          ) getOrElse Process.halt
       }
     }
   }
