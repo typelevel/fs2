@@ -331,7 +331,11 @@ object ProcessSpec extends Properties("Process") {
   }
 
   property("SinkSyntax.toChannel") = forAll { p0: Process0[Int] =>
-    val channel = io.channel((_: Int) => Task.now(())).toChannel
-    p0.liftIO.through(channel).runLog.run.toList == p0.toList
+    val buffer = new collection.mutable.ListBuffer[Int]
+    val channel = io.fillBuffer(buffer).toChannel
+
+    val expected = p0.toList
+    val actual = p0.liftIO.through(channel).runLog.run.toList
+    actual === expected && buffer.toList === expected
   }
 }
