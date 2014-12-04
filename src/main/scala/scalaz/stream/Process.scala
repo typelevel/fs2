@@ -1203,23 +1203,38 @@ object Process extends ProcessInstances {
       import scalaz.Scalaz._
       // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
       @volatile var cur = p1.step
+      @volatile var lastF: Option[I => Task[Unit]] = None
       self.takeWhile { _ =>
         cur match {
           case Halt(Cause.End) => false
-          case Halt(cause) => throw new Cause.Terminated(cause)
-          case _ => true
+          case Halt(cause)     => throw new Cause.Terminated(cause)
+          case _               => true
         }
       } map { (f: I => Task[Unit]) =>
-        (i0: I0) => Task.suspend { cur match {
-          case Halt(_) => sys.error("unpossible")
-          case Step(Emit(piped), cont) =>
-            cur = process1.feed1(i0) { cont.continue }.step
-            piped.toList.traverse_(f)
-          case Step(hd, cont) =>
-            val (piped,tl) = process1.feed1(i0)(hd +: cont).unemit
-            cur = tl.step
-            piped.toList.traverse_(f)
-        }}
+        lastF = f.some
+        (i0: I0) => Task.suspend {
+          cur match {
+            case Halt(_) => sys.error("Impossible")
+            case Step(Emit(piped), cont) =>
+              cur = process1.feed1(i0) { cont.continue }.step
+              piped.toList.traverse_(f)
+            case Step(hd, cont) =>
+              val (piped, tl) = process1.feed1(i0)(hd +: cont).unemit
+              cur = tl.step
+              piped.toList.traverse_(f)
+          }
+        }
+      } onHalt {
+        case Cause.Kill =>
+          lastF map { f =>
+            cur match {
+              case Halt(_) => sys.error("Impossible (2)")
+              case s@Step(_, _) =>
+                eval_(s.toProcess.disconnect(Cause.Kill).unemit._1.toList.traverse_(f))
+            }
+          } getOrElse halt
+        case Cause.End  => halt
+        case c@Cause.Error(_) => halt.causedBy(c)
       }
     }
   }
