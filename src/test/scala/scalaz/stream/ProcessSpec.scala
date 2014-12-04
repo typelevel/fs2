@@ -245,7 +245,8 @@ object ProcessSpec extends Properties("Process") {
     written == List(2, 3, 4)
   }
 
-  property("pipeIn") = forAll { (p0: Process0[Int], p1: Process1[Int, Int]) =>
+  property("pipeIn") = forAll { (p00: Process0[Int], i0: Int, p1: Process1[Int, Int]) =>
+    val p0 = emit(i0) ++ p00
     val buffer = new collection.mutable.ListBuffer[Int]
     p0.liftIO.to(io.fillBuffer(buffer).pipeIn(p1)).run.run
     val l = buffer.toList
