@@ -190,7 +190,7 @@ package object nondeterminism {
       })
 
 
-      (eval_(start) fby q.dequeue)
+      (eval_(start) ++ q.dequeue)
       .onComplete(eval_(Task.async[Unit] { cb => actor ! FinishedDown(cb) }))
     }
 

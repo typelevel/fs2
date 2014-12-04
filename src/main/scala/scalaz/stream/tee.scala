@@ -47,11 +47,11 @@ object tee {
 
   /** Echoes the right branch until the left branch becomes `true`, then halts. */
   def until[I]: Tee[Boolean, I, I] =
-    awaitL[Boolean].flatMap(kill => if (kill) halt else awaitR[I] fby until)
+    awaitL[Boolean].flatMap(kill => if (kill) halt else awaitR[I] ++ until)
 
   /** Echoes the right branch when the left branch is `true`. */
   def when[I]: Tee[Boolean, I, I] =
-    awaitL[Boolean].flatMap(ok => if (ok) awaitR[I] fby when else when)
+    awaitL[Boolean].flatMap(ok => if (ok) awaitR[I] ++ when else when)
 
   /** Defined as `zipWith((_,_))` */
   def zip[I, I2]: Tee[I, I2, (I, I2)] = zipWith((_, _))

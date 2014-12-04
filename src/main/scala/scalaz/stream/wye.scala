@@ -31,11 +31,11 @@ object wye {
   def dynamic[I,I2](f: I => wye.Request, g: I2 => wye.Request): Wye[I,I2,ReceiveY[I,I2]] = {
     import scalaz.stream.wye.Request._
     def go(signal: wye.Request): Wye[I,I2,ReceiveY[I,I2]] = signal match {
-      case L => receiveL { i => emit(ReceiveL(i)) fby go(f(i)) }
-      case R => receiveR { i2 => emit(ReceiveR(i2)) fby go(g(i2)) }
+      case L => receiveL { i => emit(ReceiveL(i)) ++ go(f(i)) }
+      case R => receiveR { i2 => emit(ReceiveR(i2)) ++ go(g(i2)) }
       case Both => receiveBoth {
-        case t@ReceiveL(i) => emit(t) fby go(f(i))
-        case t@ReceiveR(i2) => emit(t) fby go(g(i2))
+        case t@ReceiveL(i) => emit(t) ++ go(f(i))
+        case t@ReceiveR(i2) => emit(t) ++ go(g(i2))
         case HaltOne(rsn) => Halt(rsn)
       }
     }
@@ -84,8 +84,8 @@ object wye {
    */
   def either[I,I2]: Wye[I,I2,I \/ I2] =
     receiveBoth {
-      case ReceiveL(i) => emit(left(i)) fby either
-      case ReceiveR(i) => emit(right(i)) fby either
+      case ReceiveL(i) => emit(left(i)) ++ either
+      case ReceiveR(i) => emit(right(i)) ++ either
       case HaltL(End)     => awaitR[I2].map(right).repeat
       case HaltR(End)     => awaitL[I].map(left).repeat
       case h@HaltOne(rsn) => Halt(rsn)
@@ -99,11 +99,11 @@ object wye {
   def echoLeft[A]: Wye[A, Any, A] = {
     def go(a: A): Wye[A, Any, A] =
       receiveBoth {
-        case ReceiveL(l)  => emit(l) fby go(l)
-        case ReceiveR(_)  => emit(a) fby go(a)
+        case ReceiveL(l)  => emit(l) ++ go(l)
+        case ReceiveR(_)  => emit(a) ++ go(a)
         case HaltOne(rsn) => Halt(rsn)
       }
-    receiveL(s => emit(s) fby go(s))
+    receiveL(s => emit(s) ++ go(s))
   }
 
   /**
@@ -126,8 +126,8 @@ object wye {
    */
   def merge[I]: Wye[I,I,I] =
     receiveBoth {
-      case ReceiveL(i) => emit(i) fby merge
-      case ReceiveR(i) => emit(i) fby merge
+      case ReceiveL(i) => emit(i) ++ merge
+      case ReceiveR(i) => emit(i) ++ merge
       case HaltL(End)   => awaitR.repeat
       case HaltR(End)   => awaitL.repeat
       case HaltOne(rsn) => Halt(rsn)
@@ -138,8 +138,8 @@ object wye {
    */
   def mergeHaltBoth[I]: Wye[I,I,I] =
     receiveBoth {
-      case ReceiveL(i) => emit(i) fby mergeHaltBoth
-      case ReceiveR(i) => emit(i) fby mergeHaltBoth
+      case ReceiveL(i) => emit(i) ++ mergeHaltBoth
+      case ReceiveR(i) => emit(i) ++ mergeHaltBoth
       case HaltOne(rsn) => Halt(rsn)
     }
 
@@ -149,8 +149,8 @@ object wye {
    */
   def mergeHaltL[I]: Wye[I,I,I] =
     receiveBoth {
-      case ReceiveL(i) => emit(i) fby mergeHaltL
-      case ReceiveR(i) => emit(i) fby mergeHaltL
+      case ReceiveL(i) => emit(i) ++ mergeHaltL
+      case ReceiveR(i) => emit(i) ++ mergeHaltL
       case HaltR(End)   => awaitL.repeat
       case HaltOne(rsn) => Halt(rsn)
     }
@@ -171,10 +171,10 @@ object wye {
       receiveBoth {
         case ReceiveL(d2) =>
           if (q.size >= maxSize || (d2 - q.headOption.getOrElse(d2) > d))
-            receiveR(i => emit(i) fby go(q.drop(1)))
+            receiveR(i => emit(i) ++ go(q.drop(1)))
           else
             go(q :+ d2)
-        case ReceiveR(i) => emit(i) fby (go(q.drop(1)))
+        case ReceiveR(i) => emit(i) ++ (go(q.drop(1)))
         case HaltOne(rsn) => Halt(rsn)
       }
     go(Vector())
@@ -189,7 +189,7 @@ object wye {
   def unboundedQueue[I]: Wye[Any,I,I] =
     receiveBoth {
       case ReceiveL(_) => halt
-      case ReceiveR(i) => emit(i) fby unboundedQueue
+      case ReceiveR(i) => emit(i) ++ unboundedQueue
       case HaltOne(rsn) => Halt(rsn)
     }
 

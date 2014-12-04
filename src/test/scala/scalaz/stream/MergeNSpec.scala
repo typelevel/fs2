@@ -126,8 +126,8 @@ object MergeNSpec extends Properties("mergeN") {
 
     val ps =
       emitAll(for (i <- 0 until count) yield {
-        eval_(incrementOpen) fby
-          Process.range(0,eachSize).flatMap(i=> emit(i) fby sleep5) onComplete
+        eval_(incrementOpen) ++
+          Process.range(0,eachSize).flatMap(i=> emit(i) ++ sleep5) onComplete
           eval_(decrementDone)
       }).toSource
 

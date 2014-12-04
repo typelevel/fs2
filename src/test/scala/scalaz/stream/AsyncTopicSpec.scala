@@ -19,7 +19,7 @@ object WriterHelper {
       receive1[String, Long \/ Int] {
         s =>
           val t: Long = s.size.toLong + acc
-          emit(-\/(t)) fby emit(\/-(s.size)) fby go(t)
+          emit(-\/(t)) ++ emit(\/-(s.size)) ++ go(t)
       }
     }
     go(0)
@@ -120,7 +120,7 @@ object AsyncTopicSpec extends Properties("topic") {
     l: List[String] =>
       (l.nonEmpty) ==> {
 
-        val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)()
+        val topic = async.writerTopic(emit(-\/(0L)) ++ WriterHelper.w)()
 
         val published = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
         topic.subscribe.runLog.runAsync(published.put)
@@ -155,7 +155,7 @@ object AsyncTopicSpec extends Properties("topic") {
   property("writer.state.startWith.up") = forAll {
     l: List[String] =>
       (l.nonEmpty) ==> {
-        val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)()
+        val topic = async.writerTopic(emit(-\/(0L)) ++ WriterHelper.w)()
         ((Process(l: _*).toSource to topic.publish)).run.run
 
         val subscriber = topic.subscribe.take(1).runLog.run
@@ -165,7 +165,7 @@ object AsyncTopicSpec extends Properties("topic") {
   }
 
   property("writer.state.startWith.down") = secure {
-    val topic = async.writerTopic(emit(-\/(0L)) fby WriterHelper.w)()
+    val topic = async.writerTopic(emit(-\/(0L)) ++ WriterHelper.w)()
     val subscriber = topic.subscribe.take(1).runLog.run
     topic.close.run
     subscriber == List(-\/(0))

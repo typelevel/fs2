@@ -89,7 +89,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
       val signal = async.signal[(String, Int)]
 
       val closeSignal =
-        Process.sleep(100 millis) fby
+        Process.sleep(100 millis) ++
           (if (l.size % 2 == 0) Process.eval_(signal.close)
           else Process.eval_(signal.fail(Bwahahaa)))
 
@@ -176,7 +176,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   //tests that signal terminates when discrete process terminates
   property("from.discrete.terminates") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource,haltOnSource = true)
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource,haltOnSource = true)
     val initial = sig.discrete.runLog.run
     val afterClosed = sig.discrete.runLog.run
     (initial == Vector(1,2,3,4)) && (afterClosed== Vector())
@@ -185,7 +185,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   //tests that signal terminates with failure when discrete process terminates with failure
   property("from.discrete.fail") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource fby Process.fail(Bwahahaa),haltOnSource = true)
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa),haltOnSource = true)
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 
@@ -193,7 +193,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   // process terminates with failure even when haltOnSource is set to false
   property("from.discrete.fail.always") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource fby Process.fail(Bwahahaa))
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa))
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 

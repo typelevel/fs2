@@ -258,7 +258,7 @@ object WyeSpec extends  Properties("Wye"){
     val term1 = async.signal[Boolean]
     term1.set(false).run
 
-    val p1: Process[Task,Unit] = (Process.sleep(10.hours) fby emit(true)).wye(Process.sleep(10 hours))(wye.interrupt)
+    val p1: Process[Task,Unit] = (Process.sleep(10.hours) ++ emit(true)).wye(Process.sleep(10 hours))(wye.interrupt)
     val p2:Process[Task,Unit] = repeatEval(Task.now(true)).flatMap(_ => p1)
     val toRun =  term1.discrete.wye(p2)(wye.interrupt)
 

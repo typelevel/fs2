@@ -842,8 +842,8 @@ object Process extends ProcessInstances {
    */
   def constant[A](a: A, chunkSize: Int = 1): Process0[A] = {
     lazy val go: Process0[A] =
-      if (chunkSize.max(1) == 1) emit(a) fby go
-      else emitAll(List.fill(chunkSize)(a)) fby go
+      if (chunkSize.max(1) == 1) emit(a) ++ go
+      else emitAll(List.fill(chunkSize)(a)) ++ go
     go
   }
 
