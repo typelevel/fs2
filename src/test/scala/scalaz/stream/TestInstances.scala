@@ -20,31 +20,55 @@ object TestInstances {
   implicit def arbitraryProcess0[A: Arbitrary]: Arbitrary[Process0[A]] =
     Arbitrary(arbitrary[List[A]].map(list => emitAll(list)))
 
-  implicit def arbitraryProcess1[A]: Arbitrary[Process1[A,A]] = {
-    val ps0Gen: Gen[Process1[A,A]] =
-      Gen.oneOf(Seq(await1, bufferAll, dropLast, halt, id, last, skip))
+  implicit def arbitraryLabeledProcess1[A]: Arbitrary[(Process1[A,A], String)] = {
+    val ps0Gen: Gen[(Process1[A,A], String)] =
+      Gen.oneOf(Seq(
+        (await1, "await1"),
+        (bufferAll, "bufferAll"),
+        (dropLast, "dropLast"),
+        (halt, "halt"),
+        (id, "id"),
+        (last, "last"),
+        (skip, "skip")))
 
-    val ps1Int: Seq[Int => Process1[A,A]] =
-      Seq(buffer, drop, take)
+    val ps1Int: Seq[Int => (Process1[A,A], String)] =
+      Seq(
+        i => (buffer(i), s"buffer($i)"),
+        i => (drop(i), s"drop($i)"),
+        i => (take(i), s"take($i)"))
 
-    val ps1IntGen: Gen[Process1[A,A]] =
+    val ps1IntGen: Gen[(Process1[A,A], String)] =
       Gen.oneOf(ps1Int).flatMap(p => Gen.posNum[Int].map(i => p(i)))
 
     Arbitrary(Gen.oneOf(ps0Gen, ps1IntGen))
   }
 
-  implicit val arbitraryProcess1Int: Arbitrary[Process1[Int,Int]] = {
-    val ps0Gen: Gen[Process1[Int,Int]] =
-      Gen.oneOf(Seq(prefixSums, sum))
+  implicit def arbitraryProcess1[A]: Arbitrary[Process1[A, A]] =
+    Arbitrary(arbitraryLabeledProcess1.arbitrary.map(
+      (x: (Process1[A, A], String)) => x._1))
 
-    val ps1: Seq[Int => Process1[Int,Int]] =
-      Seq(intersperse, i => lastOr(i), i => shiftRight(i))
+  implicit val arbitraryLabeledProcess1IntInt: Arbitrary[(Process1[Int,Int], String)] = {
+    val ps0Gen: Gen[(Process1[Int,Int], String)] =
+      Gen.oneOf(Seq(
+        (prefixSums[Int], "prefixSums"),
+        (sum[Int], "sum")))
 
-    val ps1Gen: Gen[Process1[Int,Int]] =
+    val ps1: Seq[Int => (Process1[Int,Int], String)] =
+      Seq(
+        i => (intersperse(i), s"intersperse($i)"),
+        i => (lastOr(i), s"lastOr($i)"),
+        i => (lift((_: Int) * i), s"lift(_ * $i)"),
+        i => (shiftRight(i), s"shiftRight($i)"))
+
+    val ps1Gen: Gen[(Process1[Int,Int], String)] =
       Gen.oneOf(ps1).flatMap(p => arbitrary[Int].map(i => p(i)))
 
-    Arbitrary(Gen.oneOf(ps0Gen, arbitraryProcess1[Int].arbitrary))
+    Arbitrary(Gen.oneOf(ps0Gen, ps1Gen, arbitraryLabeledProcess1[Int].arbitrary))
   }
+
+  implicit val arbitraryProcess1IntInt: Arbitrary[Process1[Int,Int]] =
+    Arbitrary(arbitraryLabeledProcess1IntInt.arbitrary.map(
+      (x: (Process1[Int,Int], String)) => x._1))
 
   implicit def arbitraryReceiveY[A: Arbitrary,B: Arbitrary]: Arbitrary[ReceiveY[A,B]] =
     Arbitrary(Gen.oneOf(
