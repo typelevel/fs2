@@ -10,9 +10,8 @@ import scalaz.std.list._
 import scalaz.std.list.listSyntax._
 import scalaz.std.string._
 
-import org.scalacheck.{Gen, Arbitrary, Properties}
+import org.scalacheck.{Gen, Properties}
 import scalaz.concurrent.{Task, Strategy}
-import Util._
 import process1._
 import Process._
 import TestInstances._
