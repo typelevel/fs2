@@ -15,14 +15,19 @@ sealed trait Cause {
    * @return
    */
   def causedBy(cause: Cause): Cause = {
+    import scalaz.std.option._
+    import scalaz.syntax.applicative._
     (this, cause) match {
-      case (End, End)                 => End
-      case (End, Kill)                => Kill
-      case (Kill, End | Kill)         => Kill
-      case (End | Kill, err@Error(_)) => err
-      case (err@Error(_), End | Kill) => err
+      case (End, End)                    => End
+      case (End, k: Kill)                => k
+      case (k: Kill, End)                => k
+      // This is essentially saying, group the error causes of two kills together.
+      case (Kill(mbE1), Kill(mbE2))      => Kill(^(mbE1, mbE2)(_ causedBy _).collect { case e: Error => e } orElse mbE1 orElse mbE2)
+      // If there's a direct error involved, disregard the potential error in the kill.
+      case (End | Kill(_), err@Error(_)) => err
+      case (err@Error(_), End | Kill(_)) => err
       case (Error(rsn1), Error(rsn2)) if rsn1 == rsn2 => this
-      case (Error(rsn1), Error(rsn2)) => Error(CausedBy(rsn1, rsn2))
+      case (Error(rsn1), Error(rsn2))    => Error(CausedBy(rsn1, rsn2))
     }
   }
 
@@ -30,7 +35,9 @@ sealed trait Cause {
    * Converts cause to `Kill` or an `Error`
    * @return
    */
-  def kill: EarlyCause = fold[EarlyCause](Kill)(identity)
+  def kill: EarlyCause = kill(None)
+
+  def kill(maybeError: Option[Error]): EarlyCause = fold[EarlyCause](Kill(maybeError))(identity)
 
   def fold[A](onEnd: => A)(f:(EarlyCause => A)) = this match {
     case End => onEnd
@@ -50,8 +57,8 @@ sealed trait Cause {
    * Converts this cause to `java.lang.Throwable`
    */
   def asThrowable: Throwable = this match {
-    case End => Terminated(End)
-    case Kill => Terminated(Kill)
+    case End        => Terminated(End)
+    case k: Kill    => Terminated(k)
     case Error(rsn) => rsn
   }
 }
@@ -79,12 +86,24 @@ object Cause {
 
 
   /**
-   * Signals force-full process termination.
+   * Signals forceful process termination.
    * Process can be killed when merged (pipe,tee,wye,njoin) and other merging stream or
    * resulting downstream requested termination of process.
    * This shall cause process to run all cleanup actions and then terminate normally
    */
-  case object Kill extends EarlyCause
+  case class Kill(upstreamCause: Option[Error]) extends EarlyCause {
+    def this(c: Cause) = this {
+      c match {
+        // Remove indirection
+        case Kill(c2)   => c2
+        case e@Error(_) => Some(e)
+        case _          => None
+      }
+    }
+  }
+
+  /** This exists just so old client code (and some remaining library/test code) can still reference it */
+  object Kill extends Kill(None)
 
   /**
    * Signals, that evaluation of last await resulted in error.
@@ -117,8 +136,8 @@ object Cause {
    */
   case class Terminated(cause:Cause) extends Exception {
     override def fillInStackTrace(): Throwable = cause match {
-      case End | Kill => this
-      case Error(rsn) => rsn
+      case End | Kill(_) => this
+      case Error(rsn)    => rsn
     }
     override def toString: String = s"Terminated($cause)"
     override def getMessage: String = cause.toString

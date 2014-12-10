@@ -119,8 +119,8 @@ package object nondeterminism {
             //killed behaviour of upstream termination
             done.discrete.wye(p.flatMap(a => eval_(q.enqueueOne(a))))(wye.interrupt)
             .onHalt{
-              case Kill => Halt(Error(Terminated(Kill)))
-              case cause => Halt(cause)
+              case k: Kill => Halt(Error(Terminated(k)))
+              case cause   => Halt(cause)
             }
             .run.runAsync { res =>
               S(actor ! Finished(res))
@@ -142,7 +142,7 @@ package object nondeterminism {
           // kill all the open processes including the `source`
           case Finished(-\/(rsn)) =>
             val cause = rsn match {
-              case Terminated(Kill) => Kill
+              case Terminated(k: Kill) => k
               case _ => Error(rsn)
             }
             opened = opened - 1
