@@ -21,9 +21,6 @@ import process1._
 import TestInstances._
 import scala.concurrent.SyncVar
 
-/**
- * Created by pach on 09/04/14.
- */
 object TeeSpec extends Properties("Tee") {
 
   import TestInstances._

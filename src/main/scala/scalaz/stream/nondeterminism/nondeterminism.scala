@@ -6,9 +6,6 @@ import scalaz.{Right3, Middle3, Left3, \/-, -\/, Either3, \/}
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process._
 
-/**
- * Created by pach on 04/07/14.
- */
 package object nondeterminism {
 
 

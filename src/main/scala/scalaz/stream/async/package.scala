@@ -4,9 +4,6 @@ import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process.halt
 import scalaz.stream.async.mutable._
 
-/**
- * Created by pach on 03/05/14.
- */
 package object async {
 
   /**

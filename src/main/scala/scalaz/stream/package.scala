@@ -6,10 +6,6 @@ import scodec.bits.ByteVector
 
 import scalaz.stream.Process.Env
 
-
-/**
- * Created by pach on 11/07/14.
- */
 package object stream {
 
   type Process0[+O] = Process[Nothing,O]
