@@ -741,12 +741,6 @@ object Process extends ProcessInstances {
   /** The `Process` which emits the given sequence of values, then halts. */
   def emitAll[O](os: Seq[O]): Process0[O] = Emit(os)
 
-  @deprecated("Use please emitAll(h) ++ tail instead", "0.5.0")
-  def emitSeq[F[_], O](h: Seq[O], t: Process[F, O] = halt): Process[F, O] = t match {
-    case `halt` | Emit(Seq()) => emitAll(h)
-    case _ => emitAll(h) ++ t
-  }
-
   /** The `Process` which emits no values and halts immediately with the given exception. */
   def fail(rsn: Throwable): Process0[Nothing] = Halt(Error(rsn))
 
