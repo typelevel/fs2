@@ -1157,37 +1157,34 @@ object Process extends ProcessInstances {
   /**
    * This class provides infix syntax specific to `Process0`.
    */
-  implicit class Process0Syntax[O](val self: Process[Env[Any,Any]#Is,O]) extends AnyVal {
-    def toIndexedSeq: IndexedSeq[O] = {
+  implicit class Process0Syntax[O](val self: Process0[O]) extends AnyVal {
+    def toVector: Vector[O] = {
       @tailrec
-      def go(cur: Process[Any,O], acc: Vector[O]): IndexedSeq[O] = {
+      def go(cur: Process0[O], acc: Vector[O]): Vector[O] = {
         cur.step match {
-          case Step(Emit(os),cont) => go(cont.continue, acc fast_++ os)
-          case Step(awt,cont) => go(cont.continue,acc)
-          case Halt(End) => acc
-          case Halt(Kill) => acc
+          case s: Step[Nothing, O] =>
+            s.head match {
+              case Emit(seq) => go(s.next.continue, acc fast_++ seq)
+              case _ => go(s.next.continue, acc)
+            }
           case Halt(Error(rsn)) => throw rsn
+          case Halt(_) => acc
         }
       }
-      go(self, Vector())
+      go(self, Vector.empty)
     }
-    def toList: List[O] = toIndexedSeq.toList
-    def toSeq: Seq[O] = toIndexedSeq
-    def toMap[K, V](implicit isKV: O <:< (K, V)): Map[K, V] = toIndexedSeq.toMap(isKV)
+
+    def toIndexedSeq: IndexedSeq[O] = toVector
+    def toList: List[O] = toVector.toList
+    def toSeq: Seq[O] = toVector
+    def toStream: Stream[O] = toVector.toStream
+
+    def toMap[K, V](implicit isKV: O <:< (K, V)): Map[K, V] = toVector.toMap(isKV)
     def toSortedMap[K, V](implicit isKV: O <:< (K, V), ord: Ordering[K]): SortedMap[K, V] =
-      SortedMap(toIndexedSeq.asInstanceOf[Seq[(K, V)]]: _*)
-    def toStream: Stream[O] = toIndexedSeq.toStream
-    def toSource: Process[Task, O] =
-      self.step match {
-      case Step(emt@Emit(os),cont)    => emt +: cont.extend(_.toSource)
-      case Step(awt, cont)            => cont.continue.toSource
-      case hlt@Halt(rsn)              => hlt
-    }
+      SortedMap(toVector.asInstanceOf[Seq[(K, V)]]: _*)
 
-  }
-
-  implicit class LiftIOSyntax[O](val p: Process0[O]) extends AnyVal {
-    def liftIO: Process[Task,O] = p
+    def liftIO: Process[Task, O] = self
+    def toSource: Process[Task, O] = self
   }
 
   /** Syntax for Sink, that is specialized for Task */
