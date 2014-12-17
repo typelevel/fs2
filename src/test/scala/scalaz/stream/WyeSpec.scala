@@ -145,6 +145,21 @@ object WyeSpec extends  Properties("Wye"){
     v.size >= 0
   }
 
+  property("interrupt-constant.signal-halt.collect-one") = secure {
+    val p1 = Process(-12) ++ Process.constant(42).collect { case i if i < 0 => i }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-discrete.collect-one") = secure {
+    val p1 = Process(-12) ++ Process.constant(42).collect { case i if i < 0 => i }
+    val poison = async.signal[Boolean]
+    poison.set(true).run
+    val v = (poison.discrete).wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
   property("interrupt-constant.signal-halt.filter-none") = secure {
     val p1 = Process.constant(42).filter { _ < 0 }
     val i1 = Process(false)
