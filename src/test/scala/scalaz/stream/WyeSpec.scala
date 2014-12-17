@@ -124,6 +124,34 @@ object WyeSpec extends  Properties("Wye"){
     v.size < 1000
   }
 
+  property("interrupt.constant") = secure {
+    val p1 = Process.constant(42)
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt.constant.collect.all") = secure {
+    val p1 = Process.constant(42).collect { case i if i > 0 => i }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt.constant.collect.none") = secure {
+    val p1 = Process.constant(42).collect { case i if i < 0 => i }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt.constant.filter.none") = secure {
+    val p1 = Process.constant(42).filter { _ < 0 }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
   property("either.terminate-on-both") = secure {
     val e = (Process.range(0, 20) either Process.range(0, 20)).runLog.timed(1000).run
     (e.collect { case -\/(v) => v } == (0 until 20).toSeq) :| "Left side is merged ok" &&
