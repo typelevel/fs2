@@ -1158,28 +1158,32 @@ object Process extends ProcessInstances {
    * This class provides infix syntax specific to `Process0`.
    */
   implicit class Process0Syntax[O](val self: Process0[O]) extends AnyVal {
-    def toVector: Vector[O] = {
-      @tailrec
-      def go(cur: Process0[O], acc: Vector[O]): Vector[O] = {
-        cur.step match {
-          case s: Step[Nothing, O] =>
-            s.head match {
-              case Emit(seq) => go(s.next.continue, acc fast_++ seq)
-              case _ => go(s.next.continue, acc)
-            }
-          case Halt(Error(rsn)) => throw rsn
-          case Halt(_) => acc
-        }
+    /** Converts this `Process0` to a `Vector`. */
+    def toVector: Vector[O] =
+      self.unemit match {
+        case (_, Halt(Error(rsn))) => throw rsn
+        case (os, _) => os.toVector
       }
-      go(self, Vector.empty)
-    }
 
+    /** Converts this `Process0` to an `IndexedSeq`. */
     def toIndexedSeq: IndexedSeq[O] = toVector
+
+    /** Converts this `Process0` to a `List`. */
     def toList: List[O] = toVector.toList
+
+    /** Converts this `Process0` to a `Seq`. */
     def toSeq: Seq[O] = toVector
+
+    /**
+     * Converts this `Process0` to a `Stream`. Note that this fully evaluates
+     * the `Process0`.
+     */
     def toStream: Stream[O] = toVector.toStream
 
+    /** Converts this `Process0` to a `Map`. */
     def toMap[K, V](implicit isKV: O <:< (K, V)): Map[K, V] = toVector.toMap(isKV)
+
+    /** Converts this `Process0` to a `SortedMap`. */
     def toSortedMap[K, V](implicit isKV: O <:< (K, V), ord: Ordering[K]): SortedMap[K, V] =
       SortedMap(toVector.asInstanceOf[Seq[(K, V)]]: _*)
 
@@ -1237,12 +1241,8 @@ object Process extends ProcessInstances {
   implicit class Process1Syntax[I,O](val self: Process1[I,O]) extends AnyVal {
 
     /** Apply this `Process` to an `Iterable`. */
-    def apply(input: Iterable[I]): IndexedSeq[O] = {
-      Process(input.toSeq: _*).pipe(self.bufferAll).unemit match {
-        case (_, Halt(Error(e))) => throw e
-        case (v, _) => v.toIndexedSeq
-      }
-    }
+    def apply(input: Iterable[I]): IndexedSeq[O] =
+      Process(input.toSeq: _*).pipe(self.bufferAll).toIndexedSeq
 
     /**
      * Transform `self` to operate on the left hand side of an `\/`, passing
