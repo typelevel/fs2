@@ -120,7 +120,7 @@ object QueueSpec extends Properties("queue") {
   property("queue-swallow-killed") = secure {
     val q = async.boundedQueue[Int]()
     val sleeper = Process.sleep(1 second)
-    val signalKill = Process(false).liftIO ++ sleeper ++ Process(true)
+    val signalKill = Process(false).toSource ++ sleeper ++ Process(true)
 
     signalKill.wye(q.dequeue)(wye.interrupt).runLog.run
     q.enqueueOne(1).run

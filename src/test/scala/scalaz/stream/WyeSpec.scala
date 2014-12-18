@@ -216,7 +216,7 @@ object WyeSpec extends  Properties("Wye"){
     val count = 20
     val deep = 100
 
-    def src(of: Int) = Process.range(0, count).map((_, of)).liftIO
+    def src(of: Int) = Process.range(0, count).map((_, of)).toSource
 
     val merged =
       (1 until deep).foldLeft(src(0))({

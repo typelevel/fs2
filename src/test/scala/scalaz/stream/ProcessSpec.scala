@@ -220,7 +220,7 @@ object ProcessSpec extends Properties("Process") {
     val q = async.boundedQueue[String]()
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
 
-    (Process.range(0,10).liftIO to sink).run.run
+    (Process.range(0,10).toSource to sink).run.run
     val res = q.dequeue.take(10).runLog.timed(3000).run.toList
     q.close.run
 
@@ -247,7 +247,7 @@ object ProcessSpec extends Properties("Process") {
   property("pipeIn") = forAll { (p00: Process0[Int], i0: Int, p1: Process1[Int, Int]) =>
     val p0 = emit(i0) ++ p00
     val buffer = new collection.mutable.ListBuffer[Int]
-    p0.liftIO.to(io.fillBuffer(buffer).pipeIn(p1)).run.run
+    p0.toSource.to(io.fillBuffer(buffer).pipeIn(p1)).run.run
     val l = buffer.toList
     val r = p0.pipe(p1).toList
     s"expected: $r actual $l" |: { l === r }
@@ -260,7 +260,7 @@ object ProcessSpec extends Properties("Process") {
     val sink = io.fillBuffer(buf1).pipeIn(process1.take[Int](2)) ++
                io.fillBuffer(buf2).pipeIn(process1.take[Int](2)) ++
                io.fillBuffer(buf3).pipeIn(process1.last[Int])
-    p0.liftIO.to(sink).run.run
+    p0.toSource.to(sink).run.run
     val in = p0.toList
     ("buf1" |: { buf1.toList ?= in.take(2) }) &&
     ("buf2" |: { buf2.toList ?= in.drop(2).take(2) }) &&
@@ -274,7 +274,7 @@ object ProcessSpec extends Properties("Process") {
   }
 
   property("ranges") = forAll(Gen.choose(1, 101)) { size =>
-    Process.ranges(0, 100, size).liftIO.flatMap { case (i,j) => emitAll(i until j) }.runLog.run ==
+    Process.ranges(0, 100, size).toSource.flatMap { case (i,j) => emitAll(i until j) }.runLog.run ==
       IndexedSeq.range(0, 100)
   }
 
@@ -353,7 +353,7 @@ object ProcessSpec extends Properties("Process") {
     val channel = io.fillBuffer(buffer).toChannel
 
     val expected = p0.toList
-    val actual = p0.liftIO.through(channel).runLog.run.toList
+    val actual = p0.toSource.through(channel).runLog.run.toList
     actual === expected && buffer.toList === expected
   }
 }

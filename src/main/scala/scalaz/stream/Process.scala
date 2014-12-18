@@ -1197,8 +1197,10 @@ object Process extends ProcessInstances {
     def toSortedMap[K, V](implicit isKV: O <:< (K, V), ord: Ordering[K]): SortedMap[K, V] =
       SortedMap(toVector.asInstanceOf[Seq[(K, V)]]: _*)
 
-    def liftIO: Process[Task, O] = self
     def toSource: Process[Task, O] = self
+
+    @deprecated("liftIO is deprecated in favor of toSource. It will be removed in a future release.", "0.7")
+    def liftIO: Process[Task, O] = self
   }
 
   /** Syntax for Sink, that is specialized for Task */

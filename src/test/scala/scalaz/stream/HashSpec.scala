@@ -48,7 +48,7 @@ object HashSpec extends Properties("hash") {
   }
 
   property("thread-safety") = secure {
-    val proc = range(1,100).liftIO
+    val proc = range(1,100).toSource
       .map(i => ByteVector.view(i.toString.getBytes))
       .pipe(sha512).map(_.toSeq)
     val vec = Vector.fill(100)(proc).par
