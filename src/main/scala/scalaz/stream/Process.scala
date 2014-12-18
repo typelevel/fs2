@@ -1158,6 +1158,7 @@ object Process extends ProcessInstances {
    * This class provides infix syntax specific to `Process0`.
    */
   implicit class Process0Syntax[O](val self: Process0[O]) extends AnyVal {
+
     /** Converts this `Process0` to a `Vector`. */
     def toVector: Vector[O] =
       self.unemit match {
@@ -1174,11 +1175,20 @@ object Process extends ProcessInstances {
     /** Converts this `Process0` to a `Seq`. */
     def toSeq: Seq[O] = toVector
 
-    /**
-     * Converts this `Process0` to a `Stream`. Note that this fully evaluates
-     * the `Process0`.
-     */
-    def toStream: Stream[O] = toVector.toStream
+    /** Converts this `Process0` to a `Stream`. */
+    def toStream: Stream[O] = {
+      def go(p: Process0[O]): Stream[O] =
+        p.step match {
+          case s: Step[Nothing, O] =>
+            s.head match {
+              case Emit(os) => os.toStream #::: go(s.next.continue)
+              case _ => sys.error("impossible")
+            }
+          case Halt(Error(rsn)) => throw rsn
+          case Halt(_) => Stream.empty
+        }
+      go(self)
+    }
 
     /** Converts this `Process0` to a `Map`. */
     def toMap[K, V](implicit isKV: O <:< (K, V)): Map[K, V] = toVector.toMap(isKV)
