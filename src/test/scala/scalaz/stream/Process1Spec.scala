@@ -69,7 +69,7 @@ object Process1Spec extends Properties("Process1") {
         , "fold" |: pi.fold(0)(_ + _).toList === List(li.fold(0)(_ + _))
         , "foldMap" |: pi.foldMap(_.toString).toList.lastOption.toList === List(li.map(_.toString).fold(sm.zero)(sm.append(_, _)))
         , "forall" |: pi.forall(g).toList === List(li.forall(g))
-        , "id" |: ((pi |> id).toList === li) && ((id |> pi).toList === li)
+        , "id" |: ((pi |> id).toList === li) && ((id |> pi).disconnect(Cause.Kill).toList === li)
         , "intersperse" |: pi.intersperse(0).toList === li.intersperse(0)
         , "last" |:  Process(0, 10).last.toList === List(10)
         , "lastOr" |: pi.lastOr(42).toList.head === li.lastOption.getOrElse(42)

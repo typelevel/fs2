@@ -1157,37 +1157,48 @@ object Process extends ProcessInstances {
   /**
    * This class provides infix syntax specific to `Process0`.
    */
-  implicit class Process0Syntax[O](val self: Process[Env[Any,Any]#Is,O]) extends AnyVal {
-    def toIndexedSeq: IndexedSeq[O] = {
-      @tailrec
-      def go(cur: Process[Any,O], acc: Vector[O]): IndexedSeq[O] = {
-        cur.step match {
-          case Step(Emit(os),cont) => go(cont.continue, acc fast_++ os)
-          case Step(awt,cont) => go(cont.continue,acc)
-          case Halt(End) => acc
-          case Halt(Kill) => acc
-          case Halt(Error(rsn)) => throw rsn
-        }
+  implicit class Process0Syntax[O](val self: Process0[O]) extends AnyVal {
+
+    /** Converts this `Process0` to a `Vector`. */
+    def toVector: Vector[O] =
+      self.unemit match {
+        case (_, Halt(Error(rsn))) => throw rsn
+        case (os, _) => os.toVector
       }
-      go(self, Vector())
+
+    /** Converts this `Process0` to an `IndexedSeq`. */
+    def toIndexedSeq: IndexedSeq[O] = toVector
+
+    /** Converts this `Process0` to a `List`. */
+    def toList: List[O] = toVector.toList
+
+    /** Converts this `Process0` to a `Seq`. */
+    def toSeq: Seq[O] = toVector
+
+    /** Converts this `Process0` to a `Stream`. */
+    def toStream: Stream[O] = {
+      def go(p: Process0[O]): Stream[O] =
+        p.step match {
+          case s: Step[Nothing, O] =>
+            s.head match {
+              case Emit(os) => os.toStream #::: go(s.next.continue)
+              case _ => sys.error("impossible")
+            }
+          case Halt(Error(rsn)) => throw rsn
+          case Halt(_) => Stream.empty
+        }
+      go(self)
     }
-    def toList: List[O] = toIndexedSeq.toList
-    def toSeq: Seq[O] = toIndexedSeq
-    def toMap[K, V](implicit isKV: O <:< (K, V)): Map[K, V] = toIndexedSeq.toMap(isKV)
+
+    /** Converts this `Process0` to a `Map`. */
+    def toMap[K, V](implicit isKV: O <:< (K, V)): Map[K, V] = toVector.toMap(isKV)
+
+    /** Converts this `Process0` to a `SortedMap`. */
     def toSortedMap[K, V](implicit isKV: O <:< (K, V), ord: Ordering[K]): SortedMap[K, V] =
-      SortedMap(toIndexedSeq.asInstanceOf[Seq[(K, V)]]: _*)
-    def toStream: Stream[O] = toIndexedSeq.toStream
-    def toSource: Process[Task, O] =
-      self.step match {
-      case Step(emt@Emit(os),cont)    => emt +: cont.extend(_.toSource)
-      case Step(awt, cont)            => cont.continue.toSource
-      case hlt@Halt(rsn)              => hlt
-    }
+      SortedMap(toVector.asInstanceOf[Seq[(K, V)]]: _*)
 
-  }
-
-  implicit class LiftIOSyntax[O](val p: Process0[O]) extends AnyVal {
-    def liftIO: Process[Task,O] = p
+    def liftIO: Process[Task, O] = self
+    def toSource: Process[Task, O] = self
   }
 
   /** Syntax for Sink, that is specialized for Task */
@@ -1240,12 +1251,8 @@ object Process extends ProcessInstances {
   implicit class Process1Syntax[I,O](val self: Process1[I,O]) extends AnyVal {
 
     /** Apply this `Process` to an `Iterable`. */
-    def apply(input: Iterable[I]): IndexedSeq[O] = {
-      Process(input.toSeq: _*).pipe(self.bufferAll).unemit match {
-        case (_, Halt(Error(e))) => throw e
-        case (v, _) => v.toIndexedSeq
-      }
-    }
+    def apply(input: Iterable[I]): IndexedSeq[O] =
+      Process(input.toSeq: _*).pipe(self.bufferAll).toIndexedSeq
 
     /**
      * Transform `self` to operate on the left hand side of an `\/`, passing
