@@ -963,7 +963,7 @@ object Process extends ProcessInstances {
    * The `awaken` process may be discrete.
    */
   def sleepUntil[F[_], A](awaken: Process[F, Boolean])(p: Process[F, A]): Process[F, A] =
-    awaken.dropWhile(!_).once.flatMap(b => if (b) p else halt)
+    awaken.dropWhile(!_).once.flatMap(_ => p)
 
   /**
    * A supply of `Long` values, starting with `initial`.

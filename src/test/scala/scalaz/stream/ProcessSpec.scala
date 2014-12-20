@@ -356,4 +356,11 @@ object ProcessSpec extends Properties("Process") {
     val actual = p0.toSource.through(channel).runLog.run.toList
     actual === expected && buffer.toList === expected
   }
+
+  property("sleepUntil") = forAll { (p0: Process0[Int], p1: Process0[Boolean]) =>
+    val p2 = p1.take(5)
+    val expected = if (p2.exists(identity).toList.head) p0.toList else List.empty[Int]
+
+    p0.sleepUntil(p2).toList === expected
+  }
 }
