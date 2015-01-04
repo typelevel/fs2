@@ -284,9 +284,7 @@ sealed trait Process[+F[_], +O]
     .dropWhile(_.isRight)
     .map(_.fold(identity, _ => sys.error("unpossible")))
 
-  /**
-   * Returns true, if this process is halted
-   */
+  /** Returns true, if this process is halted */
   final def isHalt: Boolean = this match {
     case Halt(_) => true
     case _ => false
@@ -392,7 +390,6 @@ sealed trait Process[+F[_], +O]
 
   /**
    * For anly process terminating with `Kill`, this swallows the `Kill` and replaces it with `End` termination
-   * @return
    */
   final def swallowKill: Process[F,O] =
     this.onHalt {
@@ -650,13 +647,7 @@ object Process extends ProcessInstances {
      */
     def +:[F2[x] >: F[x], O2 >: O](p: Process[F2, O2]): Process[F2, O2] = prepend(p)
 
-    /**
-     * alias for +:
-     * @param p
-     * @tparam F2
-     * @tparam O2
-     * @return
-     */
+    /** alias for +: */
     def prepend[F2[x] >: F[x], O2 >: O](p: Process[F2, O2]): Process[F2, O2] = {
       if (stack.isEmpty) p
       else p match {
@@ -682,7 +673,6 @@ object Process extends ProcessInstances {
 
     /**
      * Returns true, when this continuation is empty, i.e. no more appends to process
-     * @return
      */
     def isEmpty : Boolean = stack.isEmpty
 
@@ -1282,8 +1272,6 @@ object Process extends ProcessInstances {
 
   /**
    * Syntax for processes that have its effects wrapped in Task
-   * @param self
-   * @tparam O
    */
   implicit class SourceSyntax[O](val self: Process[Task, O])   extends WyeOps[O] {
 
