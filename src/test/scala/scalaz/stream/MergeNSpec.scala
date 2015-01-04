@@ -168,6 +168,15 @@ object MergeNSpec extends Properties("mergeN") {
     r.size == 2
   }
 
+  // tests that mergeN does not deadlock when the producer is waiting for enqueue to complete
+  // this is really testing `njoin`
+  property("bounded-mergeN-halts-onFull") = secure {
+    merge.mergeN(1)(emit(constant(())))
+	.once
+	.run.timed(3000).run
+	true
+  }
+
   property("kill mergeN") = secure {
     merge.mergeN(Process(Process.repeatEval(Task.now(1)))).kill.run.timed(3000).run
     true // Test terminates.

@@ -113,10 +113,11 @@ package object nondeterminism {
 
             //runs the process with a chance to interrupt it using signal `done`
             //interrupt is done via killing the done signal.
+            //enqueue action needs to be interruptible, otherwise the process will never halt
+            //if the outer process is terminated while the queue is full and an enqueue is pending
             //note that here we convert `Kill` to exception to distinguish form normal and
             //killed behaviour of upstream termination
-            done.discrete.wye(p)(wye.interrupt)
-            .to(q.enqueue)
+            done.discrete.wye(p.to(q.enqueue))(wye.interrupt)
             .onHalt{
               case Kill => Halt(Error(Terminated(Kill)))
               case cause => Halt(cause)
