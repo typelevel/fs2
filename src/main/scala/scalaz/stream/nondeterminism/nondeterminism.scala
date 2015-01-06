@@ -117,7 +117,7 @@ package object nondeterminism {
             //if the outer process is terminated while the queue is full and an enqueue is pending
             //note that here we convert `Kill` to exception to distinguish form normal and
             //killed behaviour of upstream termination
-            done.discrete.wye(p.to(q.enqueue))(wye.interrupt)
+            done.discrete.wye(p.flatMap(a => eval_(q.enqueueOne(a))))(wye.interrupt)
             .onHalt{
               case Kill => Halt(Error(Terminated(Kill)))
               case cause => Halt(cause)
