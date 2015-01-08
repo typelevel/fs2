@@ -114,8 +114,7 @@ object NioSpec extends Properties("nio") {
     val array1 = Array.fill[Byte](size)(1)
     Random.nextBytes(array1)
 
-    val stop = async.signal[Boolean]
-    stop.set(false).run
+    val stop = async.signalOf(false)
 
     val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
     stop.discrete.wye(NioServer.echo(local))(wye.interrupt)
@@ -140,8 +139,7 @@ object NioSpec extends Properties("nio") {
     val array1 = Array.fill[Byte](size)(1)
     Random.nextBytes(array1)
 
-    val stop = async.signal[Boolean]
-    stop.set(false).run
+    val stop = async.signalOf(false)
 
     val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
     stop.discrete.wye(NioServer.limit(local,max))(wye.interrupt)
@@ -169,8 +167,7 @@ object NioSpec extends Properties("nio") {
     val array1 = Array.fill[Byte](size)(1)
     Random.nextBytes(array1)
 
-    val stop = async.signal[Boolean]
-    stop.set(false).run
+    val stop = async.signalOf(false)
 
 
     val serverGot = new SyncVar[Throwable \/ Seq[Seq[Byte]]]

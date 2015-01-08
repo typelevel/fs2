@@ -798,8 +798,8 @@ object Process extends ProcessInstances {
     implicit S: Strategy,
     scheduler: ScheduledExecutorService): Process[Task, Duration] = {
     def metronomeAndSignal:(()=>Unit,async.mutable.Signal[Duration]) = {
-      val signal = async.signal[Duration](S)
       val t0 = Duration(System.nanoTime, NANOSECONDS)
+      val signal = async.toSignal[Duration](Process.halt)(S)
 
       val metronome = scheduler.scheduleAtFixedRate(
         new Runnable { def run = {

@@ -255,8 +255,7 @@ object WyeSpec extends  Properties("Wye"){
   //tests specific case of termination with nested wyes and interrupt
   property("nested-interrupt") = secure {
     val sync = new SyncVar[Throwable \/ IndexedSeq[Unit]]
-    val term1 = async.signal[Boolean]
-    term1.set(false).run
+    val term1 = async.signalOf(false)
 
     val p1: Process[Task,Unit] = (Process.sleep(10.hours) ++ emit(true)).wye(Process.sleep(10 hours))(wye.interrupt)
     val p2:Process[Task,Unit] = repeatEval(Task.now(true)).flatMap(_ => p1)
