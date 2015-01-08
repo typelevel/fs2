@@ -77,12 +77,18 @@ object ProcessSpec extends Properties("Process") {
     p1.to(pch).runLog.run.size == 3
   }
 
-  property("duration") =  {
-    val firstValueDiscrepancy = duration.take(1).runLast.run.get
-    val reasonableError = 200 * 1000000 // 200 millis
-    (firstValueDiscrepancy.toNanos < reasonableError) :| "duration is near zero at first access"
-  }
+  property("duration") = secure {
+    val firstValueDiscrepancy = duration.once.runLast
+    val reasonableErrorInMillis = 200
+    val reasonableErrorInNanos = reasonableErrorInMillis * 1000000
+    def p = firstValueDiscrepancy.run.get.toNanos < reasonableErrorInNanos
 
+    val r1 = p :| "first duration is near zero on first run"
+    Thread.sleep(reasonableErrorInMillis)
+    val r2 = p :| "first duration is near zero on second run"
+
+    r1 && r2
+  }
 
   import scala.concurrent.duration._
   val smallDelay = Gen.choose(10, 300) map {_.millis}

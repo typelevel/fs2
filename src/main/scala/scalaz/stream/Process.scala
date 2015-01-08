@@ -836,10 +836,10 @@ object Process extends ProcessInstances {
    * Note that the actual granularity of these elapsed times depends on the OS, for instance
    * the OS may only update the current time every ten milliseconds or so.
    */
-  def duration: Process[Task, Duration] = suspend {
-    val t0 = System.nanoTime
-    repeatEval { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
-  }
+  def duration: Process[Task, Duration] =
+    eval(Task.delay(System.nanoTime)).flatMap { t0 =>
+      repeatEval(Task.delay(Duration(System.nanoTime - t0, NANOSECONDS)))
+    }
 
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process0[Nothing \/ O] =
