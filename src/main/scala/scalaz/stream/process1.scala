@@ -46,7 +46,7 @@ object process1 {
   def chunk[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "chunk size must be > 0, was: " + n)
     def go(m: Int, acc: Vector[I]): Process1[I, Vector[I]] =
-      if (m <= 0) emit(acc) fby go(n, Vector())
+      if (m <= 0) emit(acc) ++ go(n, Vector())
       else receive1Or[I, Vector[I]](if (acc.nonEmpty) emit(acc) else halt) { i =>
         go(m - 1, acc :+ i)
       }
@@ -70,7 +70,7 @@ object process1 {
       receive1Or[I,Vector[I]](emit(acc)) { i =>
         val chunk = acc :+ i
         val cur = f(i)
-        if (!cur && last) emit(chunk) fby go(Vector(), false)
+        if (!cur && last) emit(chunk) ++ go(Vector(), false)
         else go(chunk, cur)
       }
     go(Vector(), false)
@@ -83,7 +83,7 @@ object process1 {
     def go(acc: Vector[I], last: I): Process1[I, Vector[I]] =
       receive1Or[I,Vector[I]](emit(acc)) { i =>
         if (f(last, i)) go(acc :+ i, i)
-        else emit(acc) fby go(Vector(i), i)
+        else emit(acc) ++ go(Vector(i), i)
       }
     receive1(i => go(Vector(i), i))
   }
@@ -115,7 +115,7 @@ object process1 {
    * }}}
    */
   def delete[I](f: I => Boolean): Process1[I, I] =
-    receive1(i => if (f(i)) id else emit(i) fby delete(f))
+    receive1(i => if (f(i)) id else emit(i) ++ delete(f))
 
   /**
    * Remove any leading emitted values that occur before the first successful
@@ -153,7 +153,7 @@ object process1 {
   /** Skips the first `n` elements of the input, then passes through the rest. */
   def drop[I](n: Int): Process1[I, I] =
     if (n <= 0) id
-    else skip fby drop(n - 1)
+    else skip ++ drop(n - 1)
 
   /** Emits all but the last element of the input. */
   def dropLast[I]: Process1[I, I] =
@@ -163,7 +163,7 @@ object process1 {
   def dropLastIf[I](p: I => Boolean): Process1[I, I] = {
     def go(prev: I): Process1[I, I] =
       receive1Or[I,I](if (p(prev)) halt else emit(prev)) { i =>
-        emit(prev) fby go(i)
+        emit(prev) ++ go(i)
       }
     receive1(go)
   }
@@ -171,7 +171,7 @@ object process1 {
   /** Emits all but the last `n` elements of the input. */
   def dropRight[I](n: Int): Process1[I, I] = {
     def go(acc: Vector[I]): Process1[I, I] =
-      receive1(i => emit(acc.head) fby go(acc.tail :+ i))
+      receive1(i => emit(acc.head) ++ go(acc.tail :+ i))
     if (n <= 0) id
     else chunk(n).once.flatMap(go)
   }
@@ -181,7 +181,7 @@ object process1 {
    * then passes through the remaining inputs.
    */
   def dropWhile[I](f: I => Boolean): Process1[I, I] =
-    receive1(i => if (f(i)) dropWhile(f) else emit(i) fby id)
+    receive1(i => if (f(i)) dropWhile(f) else emit(i) ++ id)
 
   /** Feed a single input to a `Process1`. */
   def feed1[I, O](i: I)(p: Process1[I, O]): Process1[I, O] =
@@ -217,7 +217,7 @@ object process1 {
    */
   def filterBy2[I](f: (I, I) => Boolean): Process1[I, I] = {
     def pass(i: I): Process1[I, I] =
-      emit(i) fby go(f(i, _))
+      emit(i) ++ go(f(i, _))
     def go(g: I => Boolean): Process1[I, I] =
       receive1(i => if (g(i)) pass(i) else go(g))
     receive1(pass)
@@ -302,7 +302,7 @@ object process1 {
    * }}}
    */
   def intersperse[A](separator: A): Process1[A, A] =
-    await1[A] fby id[A].flatMap(a => Process(separator, a))
+    await1[A] ++ id[A].flatMap(a => Process(separator, a))
 
   /** Skips all but the last element of the input. */
   def last[I]: Process1[I, I] = {
@@ -334,10 +334,10 @@ object process1 {
           val (bs, next) = curr.feed1(a).unemit
           val out =  emitAll(bs).map(-\/(_))
           next match {
-            case Halt(rsn) => out fby Halt(rsn)
-            case other => out fby go(other)
+            case Halt(rsn) => out ++ Halt(rsn)
+            case other => out ++ go(other)
           }
-        case \/-(c) => emitO(c) fby go(curr)
+        case \/-(c) => emitO(c) ++ go(curr)
       }
     }
     go(p)
@@ -475,7 +475,7 @@ object process1 {
         parts.size match {
           case 0 => go(None)
           case 1 => go(Some(parts.head))
-          case _ => emitAll(parts.init) fby go(Some(parts.last))
+          case _ => emitAll(parts.init) ++ go(Some(parts.last))
         }
       }
     go(None)
@@ -493,7 +493,7 @@ object process1 {
       receive1Or[I,I](emitAll(carry.toList)) { i =>
         val next = carry.fold(i)(c => I.append(c, i))
         val (fst, snd) = p(next)
-        fst.fold(go(snd))(head => emit(head) fby go(snd))
+        fst.fold(go(snd))(head => emit(head) ++ go(snd))
       }
     go(None)
   }
@@ -511,7 +511,7 @@ object process1 {
    * It will always emit `z`, even when the Process of `A` is empty
    */
   def scan[A, B](z: B)(f: (B, A) => B): Process1[A, B] =
-    emit(z) fby receive1(a => scan(f(z, a))(f))
+    emit(z) ++ receive1(a => scan(f(z, a))(f))
 
   /**
    * Similar to `scan`, but unlike it it won't emit the `z` even when there is no input of `A`.
@@ -565,7 +565,7 @@ object process1 {
    * }}}
    */
   def shiftRight[I](head: I*): Process1[I, I] =
-    emitAll(head) fby id
+    emitAll(head) ++ id
 
   /**
    * Reads a single element of the input, emits nothing, then halts.
@@ -593,7 +593,7 @@ object process1 {
   def sliding[I](n: Int): Process1[I, Vector[I]] = {
     require(n > 0, "window size must be > 0, was: " + n)
     def go(window: Vector[I]): Process1[I, Vector[I]] =
-      emit(window) fby receive1(i => go(window.tail :+ i))
+      emit(window) ++ receive1(i => go(window.tail :+ i))
     chunk(n).once.flatMap(go)
   }
 
@@ -605,7 +605,7 @@ object process1 {
   def split[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I]): Process1[I, Vector[I]] =
       receive1Or[I, Vector[I]](emit(acc)) { i =>
-        if (f(i)) emit(acc) fby go(Vector())
+        if (f(i)) emit(acc) ++ go(Vector())
         else go(acc :+ i)
       }
     go(Vector())
@@ -633,7 +633,7 @@ object process1 {
       receive1Or[I, Vector[I]](emit(acc)) { i =>
          val cur = f(i)
          if (cur == last) go(acc :+ i, cur)
-         else emit(acc) fby go(Vector(i), cur)
+         else emit(acc) ++ go(Vector(i), cur)
       }
     receive1(i => go(Vector(i), f(i)))
   }
@@ -673,7 +673,7 @@ object process1 {
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I, I] =
     if (n <= 0) halt
-    else await1[I] fby take(n - 1)
+    else await1[I] ++ take(n - 1)
 
   /** Emits the last `n` elements of the input. */
   def takeRight[I](n: Int): Process1[I, I] = {
@@ -685,11 +685,11 @@ object process1 {
 
   /** Passes through elements of the input as long as the predicate is true, then halts. */
   def takeWhile[I](f: I => Boolean): Process1[I, I] =
-    receive1 (i => if (f(i)) emit(i) fby takeWhile(f) else halt)
+    receive1 (i => if (f(i)) emit(i) ++ takeWhile(f) else halt)
 
   /** Like `takeWhile`, but emits the first value which tests false. */
   def takeThrough[I](f: I => Boolean): Process1[I, I] =
-    receive1 (i => if (f(i)) emit(i) fby takeThrough(f) else emit(i))
+    receive1 (i => if (f(i)) emit(i) ++ takeThrough(f) else emit(i))
 
   /** Wraps all inputs in `Some`, then outputs a single `None` before halting. */
   def terminated[A]: Process1[A, Option[A]] =
@@ -727,7 +727,7 @@ object process1 {
    */
   def zipWithNext[I]: Process1[I,(I,Option[I])] = {
     def go(prev: I): Process1[I,(I,Option[I])] =
-      receive1Or[I,(I,Option[I])](emit((prev, None)))(i => emit((prev, Some(i))) fby go(i))
+      receive1Or[I,(I,Option[I])](emit((prev, None)))(i => emit((prev, Some(i))) ++ go(i))
     receive1(go)
   }
 
@@ -770,12 +770,12 @@ object process1 {
   def zipWithScan1[A,B](z: B)(f: (A,B) => B): Process1[A,(A,B)] =
     receive1 { a =>
       val z2 = f(a,z)
-      emit((a,z2)) fby zipWithScan1(z2)(f)
+      emit((a,z2)) ++ zipWithScan1(z2)(f)
     }
 
   /** Zips the input with state that begins with `z` and is updated by `next`. */
   def zipWithState[A,B](z: B)(next: (A, B) => B): Process1[A,(A,B)] =
-    receive1(a => emit((a, z)) fby zipWithState(next(a, z))(next))
+    receive1(a => emit((a, z)) ++ zipWithState(next(a, z))(next))
 
   object Await1 {
     /** deconstruct for `Await` directive of `Process1` */

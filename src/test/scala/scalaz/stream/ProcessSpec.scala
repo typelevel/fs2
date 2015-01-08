@@ -94,8 +94,8 @@ object ProcessSpec extends Properties("Process") {
       val durationSinceLastTrue: Process1[BD, BD] = {
         def go(lastTrue: Duration): Process1[BD,BD] = {
           await1 flatMap { pair:(Boolean, Duration) => pair match {
-            case (true , d) => emit((true , d - lastTrue)) fby go(d)
-            case (false, d) => emit((false, d - lastTrue)) fby go(lastTrue)
+            case (true , d) => emit((true , d - lastTrue)) ++ go(d)
+            case (false, d) => emit((false, d - lastTrue)) ++ go(lastTrue)
           } }
         }
         go(0.seconds)

@@ -20,7 +20,7 @@ object ExchangeSpec extends Properties("Exchange") {
 
   property("emitHead") = secure {
     val xs = 1 until 10
-    val l = Exchange.loopBack[Int, Int](emitAll(xs) fby process1.id)
+    val l = Exchange.loopBack[Int, Int](emitAll(xs) ++ process1.id)
     l.flatMap(_.run(emitAll(xs))).take(xs.size + xs.size / 2).runLog.run.toSeq == xs ++ xs.take(xs.size / 2)
   }
 
