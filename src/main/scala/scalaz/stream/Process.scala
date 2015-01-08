@@ -1244,7 +1244,7 @@ object Process extends ProcessInstances {
 
     /** Apply this `Process` to an `Iterable`. */
     def apply(input: Iterable[I]): IndexedSeq[O] =
-      Process(input.toSeq: _*).pipe(self.bufferAll).toIndexedSeq
+      Process(input.toSeq: _*).pipe(self).toIndexedSeq
 
     /**
      * Transform `self` to operate on the left hand side of an `\/`, passing
