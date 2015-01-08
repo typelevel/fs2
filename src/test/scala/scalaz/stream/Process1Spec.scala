@@ -91,6 +91,7 @@ object Process1Spec extends Properties("Process1") {
         , "splitWith" |: pi.splitWith(_ < i).toList.map(_.toList) === li.splitWith(_ < i)
         , "sum" |: pi.sum.toList.headOption.getOrElse(0) === li.sum
         , "prefixSums" |: pi.prefixSums.toList === li.scan(0)(_ + _)
+        , "tail" |: pi.tail.toList === li.drop(1)
         , "take" |: pi.take(i).toList === li.take(i)
         , "takeRight" |: pi.takeRight(i).toList === li.takeRight(i)
         , "takeWhile" |: pi.takeWhile(f).toList === li.takeWhile(f)

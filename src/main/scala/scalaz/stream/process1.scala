@@ -656,6 +656,20 @@ object process1 {
   def sum[N](implicit N: Numeric[N]): Process1[N,N] =
     fold(N.zero)(N.plus)
 
+  /**
+   * Emits all elements of the input except the first one.
+   *
+   * @example {{{
+   * scala> Process(1, 2, 3).tail.toList
+   * res0: List[Int] = List(2, 3)
+   *
+   * scala> Process[Int]().tail.toList
+   * res1: List[Int] = List()
+   * }}}
+   */
+  def tail[I]: Process1[I, I] =
+    receive1(_ => id)
+
   /** Passes through `n` elements of the input, then halts. */
   def take[I](n: Int): Process1[I, I] =
     if (n <= 0) halt
@@ -1018,6 +1032,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.sum]]` */
   def sum[O2 >: O](implicit N: Numeric[O2]): Process[F,O2] =
     this |> process1.sum(N)
+
+  /** Alias for `this |> [[process1.tail]]`. */
+  def tail: Process[F,O] =
+    this |> process1.tail
 
   /** Alias for `this |> [[process1.take]](n)`. */
   def take(n: Int): Process[F,O] =
