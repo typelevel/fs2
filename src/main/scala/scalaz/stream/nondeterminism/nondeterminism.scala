@@ -36,7 +36,7 @@ package object nondeterminism {
 
     suspend {
       val q = async.boundedQueue[A](maxQueued)(S)
-      val done = async.signal[Boolean](S)
+      val done = async.signalOf(false)(S)
 
       //keep state of master source
       var state: Either3[Cause, EarlyCause => Unit,  Cont[Task,Process[Task,A]]] =
@@ -84,9 +84,9 @@ package object nondeterminism {
         }
       }
 
-      // initially sets signal and starts the source evaluation
+      // starts the source evaluation
       def start: Task[Unit] =
-        done.set(false).map { _ => actor ! Start }
+        Task delay { actor ! Start }
 
       def sourceDone = state.leftOr(false)(_=>true)
 

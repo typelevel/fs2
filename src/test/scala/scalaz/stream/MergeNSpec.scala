@@ -108,6 +108,7 @@ object MergeNSpec extends Properties("mergeN") {
     val count = 100
     val eachSize = 10
 
+    // TODO replace with signalOf; what follows is immensely confusing and tricky...
     val sizeSig = async.signal[Int]
 
     def incrementOpen =

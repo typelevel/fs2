@@ -36,18 +36,16 @@ package object async {
   /**
    * Create a new continuous signal which may be controlled asynchronously.
    */
+  @deprecated("Use signalOf instead", "0.7.0")
   def signal[A](implicit S: Strategy): Signal[A] =
-    Signal(halt, haltOnSource = false)
+    toSignal(halt)
 
   /**
    * Creates a new continuous signalwhich may be controlled asynchronously,
    * and immediately sets the value to `initialValue`.
    */
-  def signalOf[A](initialValue: A)(implicit S: Strategy): Signal[A] = {
-    val s = signal[A]
-    s.set(initialValue).run
-    s
-  }
+  def signalOf[A](initialValue: A)(implicit S: Strategy): Signal[A] =
+    toSignal(Process(initialValue))
 
   /**
    * Converts discrete process to signal. Note that, resulting signal must be manually closed, in case the
