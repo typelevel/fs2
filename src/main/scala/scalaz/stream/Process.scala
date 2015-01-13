@@ -836,9 +836,9 @@ object Process extends ProcessInstances {
    * Note that the actual granularity of these elapsed times depends on the OS, for instance
    * the OS may only update the current time every ten milliseconds or so.
    */
-  def duration: Process[Task, Duration] =
+  def duration: Process[Task, FiniteDuration] =
     eval(Task.delay(System.nanoTime)).flatMap { t0 =>
-      repeatEval(Task.delay(Duration(System.nanoTime - t0, NANOSECONDS)))
+      repeatEval(Task.delay(FiniteDuration(System.nanoTime - t0, NANOSECONDS)))
     }
 
   /** A `Writer` which emits one value to the output. */
