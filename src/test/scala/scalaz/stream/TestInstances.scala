@@ -3,6 +3,8 @@ package scalaz.stream
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Arbitrary.arbitrary
 import scalaz.Equal
+import scalaz.std.anyVal._
+import scalaz.syntax.equal._
 import scalaz.concurrent.Task
 import scodec.bits.ByteVector
 
@@ -78,6 +80,16 @@ object TestInstances {
 
   implicit def equalProcess0[A: Equal]: Equal[Process0[A]] =
     Equal.equal(_.toList == _.toList)
+
+  implicit val equalProcess1IntInt: Equal[Process1[Int,Int]] =
+    Equal.equal { (a, b) =>
+      val p = range(-10, 10) ++
+        Process(Int.MaxValue - 1, Int.MaxValue) ++
+        Process(Int.MinValue + 1, Int.MinValue) ++
+        Process(Int.MinValue >> 1, Int.MaxValue >> 1)
+
+      p.pipe(a) === p.pipe(b)
+    }
 
   implicit def equalProcessTask[A:Equal]: Equal[Process[Task,A]] =
     Equal.equal(_.runLog.attemptRun == _.runLog.attemptRun)

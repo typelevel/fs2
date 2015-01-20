@@ -1267,6 +1267,10 @@ object Process extends ProcessInstances {
      */
     def feed1(i: I): Process1[I,O] =
       process1.feed1(i)(self)
+
+    /** Transform the input of this `Process1`. */
+    def contramap[I2](f: I2 => I): Process1[I2,O] =
+      process1.lift(f).pipe(self)
   }
 
 
