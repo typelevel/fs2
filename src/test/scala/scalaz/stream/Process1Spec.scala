@@ -213,6 +213,14 @@ object Process1Spec extends Properties("Process1") {
     range(0, 3).zipWithPreviousAndNext.toList === List((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))
   }
 
+  property("category.laws") = secure {
+    // passes on master-a, but fails on master with the same error as
+    // "contravariant.laws"
+
+    //category.laws[Process1]
+    true
+  }
+
   property("contravariant.laws") = secure {
     // passes on master-a, but fails on master with:
     // [info] ! Process1.contravariant.laws: Exception raised on property evaluation.

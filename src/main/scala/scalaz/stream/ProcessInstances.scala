@@ -14,6 +14,12 @@ private[stream] trait ProcessInstances {
 
   implicit val ProcessHoist: Hoist[Process] = new ProcessHoist {}
 
+  implicit val process1Category: Category[Process1] =
+    new Category[Process1] {
+      def id[A]: Process1[A, A] = process1.id
+      def compose[A, B, C](f: Process1[B, C], g: Process1[A, B]): Process1[A, C] = g |> f
+    }
+
   implicit def process1Contravariant[O]: Contravariant[({ type λ[α] = Process1[α, O] })#λ] =
     new Contravariant[({ type λ[α] = Process1[α, O] })#λ] {
       def contramap[A, B](p: Process1[A, O])(f: B => A): Process1[B, O] = p contramap f
