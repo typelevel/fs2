@@ -14,10 +14,19 @@ private[stream] trait ProcessInstances {
 
   implicit val ProcessHoist: Hoist[Process] = new ProcessHoist {}
 
-  implicit val process1Category: Category[Process1] =
-    new Category[Process1] {
+  implicit val process1Instances =
+    new Category[Process1] with Choice[Process1] with Profunctor[Process1] {
+      // Category
       def id[A]: Process1[A, A] = process1.id
       def compose[A, B, C](f: Process1[B, C], g: Process1[A, B]): Process1[A, C] = g |> f
+
+      // Choice
+      def choice[A, B, C](f: => Process1[A, C], g: => Process1[B, C]): Process1[A \/ B, C] =
+        process1.multiplex(f, g)
+
+      // Profunctor
+      def mapfst[A, B, C](fab: Process1[A, B])(f: C => A): Process1[C, B] = fab contramap f
+      def mapsnd[A, B, C](fab: Process1[A, B])(f: B => C): Process1[A, C] = fab map f
     }
 
   implicit def process1Contravariant[O]: Contravariant[({ type λ[α] = Process1[α, O] })#λ] =
