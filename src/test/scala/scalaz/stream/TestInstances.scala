@@ -22,6 +22,10 @@ object TestInstances {
   implicit def arbitraryProcess0[A: Arbitrary]: Arbitrary[Process0[A]] =
     Arbitrary(arbitrary[List[A]].map(list => emitAll(list)))
 
+  implicit def arbitraryProcessTask[A: Arbitrary]: Arbitrary[Process[Task, A]] =
+    Arbitrary(Gen.choose(0, 5).flatMap(n => Gen.listOfN(n, arbitrary[A]))
+      .map(list => emitAll(list).map(Task.now).eval))
+
   implicit def arbitraryLabeledProcess1[A]: Arbitrary[(Process1[A,A], String)] = {
     val ps0Gen: Gen[(Process1[A,A], String)] =
       Gen.oneOf(Seq(
@@ -81,15 +85,17 @@ object TestInstances {
   implicit def equalProcess0[A: Equal]: Equal[Process0[A]] =
     Equal.equal(_.toList == _.toList)
 
-  implicit val equalProcess1IntInt: Equal[Process1[Int,Int]] =
-    Equal.equal { (a, b) =>
-      val p = range(-10, 10) ++
-        Process(Int.MaxValue - 1, Int.MaxValue) ++
-        Process(Int.MinValue + 1, Int.MinValue) ++
-        Process(Int.MinValue >> 1, Int.MaxValue >> 1)
+  implicit val equalProcess1IntInt: Equal[Process1[Int, Int]] = {
+    val extrema =
+      for {
+        i <- List(Int.MaxValue, Int.MinValue)
+        f <- List[Int => Int](identity, _ - 1, _ + 1, _ >> 1)
+      } yield f(i)
 
-      p.pipe(a) === p.pipe(b)
-    }
+    val p = range(-10, 10) ++ emitAll(extrema)
+
+    Equal.equal((a, b) => p.pipe(a) === p.pipe(b))
+  }
 
   implicit def equalProcessTask[A:Equal]: Equal[Process[Task,A]] =
     Equal.equal(_.runLog.attemptRun == _.runLog.attemptRun)
