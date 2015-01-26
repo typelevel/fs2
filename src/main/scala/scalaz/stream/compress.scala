@@ -43,8 +43,12 @@ object compress {
         emitAll(chunks) ++ go(deflater, buf)
       }
 
-    def flush(deflater: Deflater, buf: Array[Byte]): Process0[ByteVector] =
-      emitAll(collect(deflater, buf, Deflater.FULL_FLUSH))
+    def flush(deflater: Deflater, buf: Array[Byte]): Process0[ByteVector] = {
+      val vecs = collect(deflater, buf, Deflater.FULL_FLUSH)
+      deflater.end()
+      emitAll(vecs)
+    }
+
 
     suspend {
       val deflater = new Deflater(level, nowrap)
@@ -82,7 +86,7 @@ object compress {
     suspend {
       val inflater = new Inflater(nowrap)
       val buf = Array.ofDim[Byte](bufferSize)
-      go(inflater, buf)
+      go(inflater, buf) onComplete { inflater.end(); halt }
     }
   }
 }
