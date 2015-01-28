@@ -77,10 +77,10 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * If you want to terminate after Right side (W) terminates, supply terminateOn with `Request.R` or `Request.Both` to
    * terminate on Right or Any side respectively
    *
-   * @param p
-   * @return
+   * @param p Process of `W` values to send
+   * @param terminateOn Terminate on Left side (receive), Right side (W) or Any side terminates
    */
-  def run(p:Process[Task,W] = halt, terminateOn:Request = Request.L):Process[Task,I] = {
+  def run(p: Process[Task, W] = halt, terminateOn: Request = Request.L)(implicit S: Strategy): Process[Task, I] = {
     import scalaz.stream.wye. {mergeHaltL, mergeHaltR, mergeHaltBoth}
     val y = terminateOn match {
       case Request.L => mergeHaltL[I]
