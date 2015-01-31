@@ -1,11 +1,13 @@
 package scalaz.stream
 
+import java.util.concurrent.atomic.AtomicReference
+
 import Cause._
 import java.util.concurrent.ScheduledExecutorService
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
-import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
+import scalaz.{\/-, Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
@@ -466,7 +468,7 @@ sealed trait Process[+F[_], +O]
               }
             case (awt:Await[F2,Any,O]@unchecked, cont) =>
               F.bind(C.attempt(awt.req)) { r =>
-                go((Try(awt.rcv(EarlyCause(r)).run) +: cont).asInstanceOf[Process[F2,O]]
+                go((Try(awt.rcv(EarlyCause.fromTaskResult(r)).run) +: cont).asInstanceOf[Process[F2,O]]
                   , acc)
               }
           }
@@ -676,6 +678,11 @@ object Process extends ProcessInstances {
      */
     def isEmpty : Boolean = stack.isEmpty
 
+  }
+
+  object Cont {
+    /** empty continuation, that means evaluation is at end **/
+    val empty:Cont[Nothing,Nothing] = Cont(Vector.empty)
   }
 
 
@@ -991,7 +998,7 @@ object Process extends ProcessInstances {
             }
           case Step(Await(rq,rcv), cont) =>
             rq.attempt.flatMap { r =>
-              cur = Try(rcv(EarlyCause(r)).run) +: cont ; go
+              cur = Try(rcv(EarlyCause.fromTaskResult(r)).run) +: cont ; go
             }
           case Halt(End) => Task.fail(Terminated(End))
           case Halt(Kill) => Task.fail(Terminated(Kill))
@@ -1315,86 +1322,97 @@ object Process extends ProcessInstances {
       )(implicit S: Strategy): (EarlyCause) => Unit = {
 
           sealed trait M
-          case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], cont: Cont[Task,O]) extends M
+          case class AsyncStep(cur: Process[Task,O], stack: Vector[Cause => Trampoline[Process[Task,O]]]) extends M
+          case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], stack: Vector[Cause => Trampoline[Process[Task,O]]]) extends M
           case class Interrupt(cause: EarlyCause) extends M
 
           //forward referenced actor here
           var a: Actor[M] = null
 
-          // Set when the executin has been terminated with reason for termination
+          // It hte execution has been interrupted this is set to EarlyCause (Kill)
+          // Otherwise this is set to reason of termination of the evaluation,
+          // That means End when execution terminated normally and `EarlyCause` in case of failure.
           var completed: Option[Cause] = None
 
-          // contains reference that eventually builds
-          // a cleanup when the last await was interrupted
-          // this is consulted only, if await was interrupted
-          // volatile marked because of the first usage outside of actor
-          @volatile var cleanup: (EarlyCause => Process[Task,O]) = (c:EarlyCause) => Halt(c)
+          // When there is open await this is set to cleanup that shall be run
+          // hence task may get interrupted, and may not complete before/after interruption
+          // we run the cleanup code here.
+          // Otherwise when evaluating AsyncStep, this is set to None.
+          var cleanup: Option[(EarlyCause => Process[Task,O])] = None
 
-          // runs single step of process.
-          // completes with callback if process is `Emit` or `Halt`.
-          // or asynchronously executes the Await and send result to actor `a`
-          // It returns on left side reason with which this process terminated,
-          // or on right side the cleanup code to be run when interrupted.
-          @tailrec
-          def runStep(p: Process[Task, O]): Cause \/ (EarlyCause => Process[Task,O]) = {
-            val step = p.step
-            step match {
-              case Step(Emit(Seq()), cont)         => runStep(cont.continue)
-              case Step(Emit(h), cont)             => S(cb(right((h, cont)))); left(End)
-              case Step(awt@Await(req, rcv), cont) =>
-                req.runAsync(r => a ! AwaitDone(r, awt, cont))
-                right((c:EarlyCause) => rcv(left(c)).run +: cont)
-              case Halt(cause)                 => S(cb(left(cause))); left(cause)
-            }
+          def active(m:M): Unit = m match {
+            case AsyncStep(cur,stack) if stack.nonEmpty =>
+              cur match {
+                case Halt(cause) => a ! AsyncStep(Try(stack.head(cause).run), stack.tail)
+                case Emit(os) if os.isEmpty => a ! AsyncStep(stack.head(End).run, stack.tail)
+                case emt@(Emit(os)) => completed = Some(End);  S(cb(right((os,Cont(stack)))))
+                case Append(h,st) => a ! AsyncStep(h,st fast_++ stack)
+                case awt@Await(req,rcv) =>
+                  cleanup = Some((c:EarlyCause) => Try(rcv(left(c)).run) +: Cont(stack))
+                  req.runAsync(r => a ! AwaitDone(r, awt, stack))
+              }
+
+            case AsyncStep(cur,stack) =>
+              cur match {
+                case Halt(cause) => completed = Some(cause);  S(cb(left(cause)))
+                case Emit(os) if os.isEmpty => completed = Some(End);  S(cb(left(End)))
+                case Emit(os) => completed = Some(End); S(cb(right((os,Cont.empty))))
+                case Append(h,st) => a ! AsyncStep(h,st)
+                case awt@Await(req,rcv) =>
+                  cleanup = Some((c:EarlyCause) => Try(rcv(left(c)).run))
+                  req.runAsync(r => a ! AwaitDone(r, awt, Vector.empty))
+              }
+
+            case AwaitDone(r, awt, stack) =>
+              cleanup = None //reset await state
+              a ! AsyncStep(Try(awt.rcv(EarlyCause.fromTaskResult(r)).run), stack)
+
+            case Interrupt(cause) =>
+              completed = Some(cause)
+              cleanup match {
+                case Some(cf) =>
+                  // `AsyncStep` is nto active, instead we await for Await result.
+                  // hence that may or may not be received, we run cleanup here and complete
+                  // AsyncStep will not get invoked any more because we switch to `interrupted` handler
+                  cleanup = None
+                  Try(cf(cause)).run.runAsync {
+                    case -\/(rsn) => S(cb(left(Error(rsn).causedBy(cause))))
+                    case \/-(_) =>  S(cb(left(cause)))
+                  }
+
+                case None =>
+                  // this indicates we have got in middle of evaluating `AsyncStep`.
+                  // this is no-op hence `AsyncStep` will evaluate in next cycle
+                  ()
+              }
           }
 
+          def interrupted(cause:Cause, m: M) : Unit = m match {
+            case AsyncStep(cur,stack) =>
+              // this indicates we have been interrupted during evaluation the
+              // AsyncStep. We have to clean process here
+              (cur +: Cont(stack)).kill
+              .run.runAsync { _ => S(cb(left(cause))) }
+
+            case AwaitDone(r, awt, cont) =>
+              // indicates we have been interrupted during evaluation of await, and that await has completed
+              // this assures, that we run any cleanups that may have been opened by last evaluation of `req`
+              cleanup = None
+              Try(awt.rcv(EarlyCause.fromTaskResult(r)).run)
+              .kill
+              .run.runAsync(_ => ())
+
+            case Interrupt(_) =>
+              //interrupted after we already completed, no-op
+              ()
+          }
 
           a = new Actor[M]({ m =>
-            m match {
-              case AwaitDone(r, awt, cont) if completed.isEmpty =>
-                val step = Try(awt.rcv(EarlyCause(r)).run) +: cont
-
-
-                runStep(step).fold(
-                  rsn => completed = Some(rsn)
-                  , cln => cleanup = cln
-                )
-
-              // on interrupt we just run any cleanup code we have memo-ed
-              // from last `Await`
-              case Interrupt(cause) if completed.isEmpty =>
-                completed = Some(cause)
-                Try(cleanup(cause)).run.runAsync(_.fold(
-                  rsn0 =>  cb(left(Error(rsn0).causedBy(cause)))
-                  , _ => cb(left(cause))
-                ))
-
-              // this indicates last await was interrupted.
-              // In case the request was successful and only then
-              // we have to get next state of the process and assure
-              // any cleanup will be run.
-              // note this won't consult any cleanup contained
-              // in `next` or `rcv` on left side
-              // as this was already run on `Interrupt`
-              case AwaitDone(r, awt, _) =>
-                Try(awt.rcv(EarlyCause(r)).run)
-                .kill
-                .run.runAsync(_ => ())
-
-
-              // Interrupt after we have been completed this is no-op
-              case Interrupt(_) => ()
-
-            }
+            completed.fold(active(m))(interrupted(_,m))
           })(S)
 
-          runStep(self).fold(
-            rsn => (_: Cause) => ()
-            , cln => {
-              cleanup = cln
-              (cause: EarlyCause) => a ! Interrupt(cause)
-            }
-          )
+          S(a ! AsyncStep(self, Vector.empty)) //fork to run the first evaluation so we won't block
+          (cause: EarlyCause) =>  {  a ! Interrupt(cause)}
         }
 
   }
