@@ -364,5 +364,47 @@ object WyeSpec extends  Properties("Wye"){
 
   }
 
+  property("interrupt-constant.signal-halt") = secure {
+    val p1 = Process.constant(42)
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-halt.collect-all") = secure {
+    val p1 = Process.constant(42).collect { case i if i > 0 => i }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-halt.collect-none") = secure {
+    val p1 = Process.constant(42).collect { case i if i < 0 => i }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-halt.filter-none") = secure {
+    val p1 = Process.constant(42).filter { _ < 0 }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-constant-true.collect-all") = secure {
+    val p1 = Process.constant(42).collect { case i if i > 0 => i }
+    val i1 = Process.constant(true)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-constant-true.collect-none") = secure {
+    val p1 = Process.constant(42).collect { case i if i < 0 => i }
+    val i1 = Process.constant(true)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
 
 }

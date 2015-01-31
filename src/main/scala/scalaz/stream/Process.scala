@@ -1,13 +1,15 @@
 package scalaz.stream
 
+import java.util.concurrent.atomic.AtomicReference
+
 import Cause._
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import scala.annotation.tailrec
 import scala.collection.SortedMap
-
-import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, \/-, ~>}
+import scala.concurrent.duration._
+import scalaz.{\/-, Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Future, Strategy, Task}
 import scalaz.stream.process1.Await1
@@ -468,7 +470,7 @@ sealed trait Process[+F[_], +O]
               }
             case (awt:Await[F2,Any,O]@unchecked, cont) =>
               F.bind(C.attempt(awt.req)) { r =>
-                go((Try(awt.rcv(EarlyCause(r)).run) +: cont).asInstanceOf[Process[F2,O]]
+                go((Try(awt.rcv(EarlyCause.fromTaskResult(r)).run) +: cont).asInstanceOf[Process[F2,O]]
                   , acc)
               }
           }
@@ -678,6 +680,11 @@ object Process extends ProcessInstances {
      */
     def isEmpty : Boolean = stack.isEmpty
 
+  }
+
+  object Cont {
+    /** empty continuation, that means evaluation is at end **/
+    val empty:Cont[Nothing,Nothing] = Cont(Vector.empty)
   }
 
 

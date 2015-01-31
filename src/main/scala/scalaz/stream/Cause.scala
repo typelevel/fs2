@@ -65,7 +65,7 @@ object Cause {
   sealed trait EarlyCause extends Cause
 
   object EarlyCause {
-    def apply[A](r:Throwable\/A):EarlyCause\/A =
+    def fromTaskResult[A](r:Throwable\/A):EarlyCause\/A =
       r.bimap(Error.apply,identity)
   }
 

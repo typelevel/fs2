@@ -5,7 +5,7 @@ import org.scalacheck._
 import Prop._
 
 import scalaz.concurrent.Task
-import java.util.concurrent.LinkedBlockingDeque
+import java.util.concurrent.{ConcurrentLinkedQueue, LinkedBlockingDeque}
 import Process._
 import scalaz.-\/
 import scalaz.\/._
@@ -35,8 +35,8 @@ object ResourceSafetySpec extends Properties("resource-safety") {
 
   property("cleanups") = secure {
     import Process._
-    var thrown = List[Cause]()
-    def cleanup(cause:Cause) =   { thrown = thrown :+ cause ; Halt(cause) }
+    val thrown = new ConcurrentLinkedQueue[Cause]() // non-det tests need thread-safety
+    def cleanup(cause:Cause) =  { thrown.add(cause) ; Halt(cause) }
     val src = Process.range(0,10)
     val procs = List(
      ("flatMap-Emit",emit(1).flatMap(_ => die).onHalt(cleanup), left(bwah), List(Error(bwah)))
@@ -76,11 +76,9 @@ object ResourceSafetySpec extends Properties("resource-safety") {
 
     val result = procs.zipWithIndex.map {
       case ((label,proc,exp,cup),idx) =>
-//        println(">>>>>"+proc.run.attemptRun)
-//        println("~~~~~"+thrown)
         val r = proc.run.attemptRun
-        val thrwn = thrown
-        thrown = Nil
+        val thrwn = thrown.toArray.toList
+        thrown.clear()
         s"$label r: $r t: $thrwn" |: ( r == exp && thrwn == cup)
     }
 
