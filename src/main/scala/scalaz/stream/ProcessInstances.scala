@@ -14,11 +14,6 @@ private[stream] trait ProcessInstances {
       def bind[A, B](a: Process[F, A])(f: A => Process[F, B]): Process[F, B] = a flatMap f
     }
 
-  implicit def processZip[F[_]]: Zip[({ type λ[α] = Process[F, α] })#λ] =
-    new Zip[({ type λ[α] = Process[F, α] })#λ] {
-      def zip[A, B](a: => Process[F, A], b: => Process[F, B]): Process[F, (A, B)] = a zip b
-    }
-
   implicit val process1Choice: Choice[Process1] =
     new Choice[Process1] {
       def id[A]: Process1[A, A] = process1.id

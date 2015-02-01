@@ -19,8 +19,6 @@ object ProcessInstancesSpec extends Properties("ProcessInstances") {
 
   //property("Process.monadPlus.laws") = monadPlus.laws[ProcessF[Task]#l]
 
-  //property("Process.zip.laws") = zip.laws[ProcessF[Task]#l]
-
   //property("Process1.category.laws") = category.laws[Process1]
 
   //property("Process1.contravariant.laws") = contravariant.laws[Process1O[Int]#l]
