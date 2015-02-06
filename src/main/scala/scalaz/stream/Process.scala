@@ -382,6 +382,19 @@ sealed trait Process[+F[_], +O]
       case other   => Halt(other)
     }
 
+  /** This function is used for building transactional processes, allowing us to commit the transaction
+    * only if the pipeline did not halt because of an error (whether it happened in this process or somewhere else).
+    *
+    * The result of `p` is made into a finalizer using `asFinalizer`, so we can be assured it is run even when
+    * this `Process` is being killed by a downstream consumer.
+    */
+  final def onSuccess[F2[x] >: F[x], O2 >: O](p: => Process[F2, O2]): Process[F2, O2] =
+    this.onHalt {
+      case End        => p.asFinalizer
+      case Kill(None) => p.asFinalizer
+      case other      => Halt(other)
+    }
+
   /**
    * Like `attempt`, but accepts a partial function. Unhandled errors are rethrown.
    */

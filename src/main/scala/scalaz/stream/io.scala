@@ -31,16 +31,11 @@ object io {
    * flushed at the end of processing.
    */
   def bufferedChannel[R,I,O](acquire: Task[R])(
-                             flush: R => Task[O])(
+                             flush: R => Task[Unit])(
                              release: R => Task[Unit])(
-                             step: R => Task[I => Task[O]]): Channel[Task,Option[I],O] = {
-    resource(acquire)(release) {
-      r =>
-        val s = step(r)
-        Task.now {
-          case Some(i) => s flatMap (f => f(i))
-          case None => flush(r)
-        }
+                             step: R => Task[I => Task[O]]): Channel[Task,I,O] = {
+    eval(acquire).flatMap { r =>
+      repeatEval(step(r)).onSuccess(eval_(flush(r))).onComplete(eval_(release(r)))
     }
   }
 
