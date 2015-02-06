@@ -2,7 +2,7 @@ scalaz-stream
 =============
 
 [![Build Status](https://travis-ci.org/scalaz/scalaz-stream.png?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
-[![Gitter Chat](https://badges.gitter.im/scalaz/scalaz-stream.png)](https://gitter.im/scalaz/scalaz-stream)
+[![Gitter Chat](https://badges.gitter.im/scalaz/scalaz-stream.svg)](https://gitter.im/scalaz/scalaz-stream)
 
 ### Where to get it ###
 
