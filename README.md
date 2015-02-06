@@ -1,6 +1,8 @@
 scalaz-stream
 =============
 
+[![Join the chat at https://gitter.im/scalaz/scalaz-stream](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/scalaz/scalaz-stream?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 [![Build Status](https://travis-ci.org/scalaz/scalaz-stream.png?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
 
 ### Where to get it ###
