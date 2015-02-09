@@ -47,7 +47,7 @@ object ResourceSafetySpec extends Properties("resource-safety") {
      , ("append-lzy", (src ++ die) onHalt cleanup,  left(bwah), List(Error(bwah)))
      , ("pipe-term-p1", src.pipe(fail(bwah)) onHalt cleanup,  left(bwah), List(Error(bwah)))
      , ("pipe-term-src", fail(bwah).pipe(process1.id) onHalt cleanup,  left(bwah), List(Error(bwah)))
-     , ("pipe-cln-src", (src onHalt cleanup).pipe(fail(bwah)) onHalt cleanup ,  left(bwah), List(Kill, Error(bwah)))
+     , ("pipe-cln-src", (src onHalt cleanup).pipe(fail(bwah)) onHalt cleanup ,  left(bwah), List(Kill(Error(bwah).some), Error(bwah)))
      , ("pipe-cln-p1", src.pipe(fail(bwah) onHalt cleanup) onHalt cleanup ,  left(bwah), List(Error(bwah),Error(bwah)))
      , ("pipe-fail-src-then-p1", (src ++ fail(bwah)).pipe(process1.id[Int] onComplete fail(boom) onHalt cleanup), left(CausedBy(boom, bwah)), List(Error(CausedBy(boom, bwah))))
      , ("pipe-fail-p1-then-src", ((src onComplete fail(bwah)) onHalt cleanup).pipe(fail(boom)), left(boom), List(Error(bwah)))

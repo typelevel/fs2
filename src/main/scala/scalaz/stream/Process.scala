@@ -144,7 +144,7 @@ sealed trait Process[+F[_], +O]
           case early => this.pipe(Halt(early) +: cont).causedBy(early)
         }
 
-      case Halt(rsn) => this.kill onHalt { _ => Halt(rsn)}
+      case Halt(rsn) => this.kill(rsn) onHalt { _ => Halt(rsn) }
     })
 
   /** Operator alias for `pipe`. */
@@ -290,7 +290,7 @@ sealed trait Process[+F[_], +O]
    * Skip the first part of the process and pretend that it ended with `early`.
    * The first part is the first `Halt` or the first `Emit` or request from the first `Await`.
    */
-  private[stream] final def injectCause(early: EarlyCause): Process[F, O] = (this match {
+  private[stream] final def injectCause(early: EarlyCause): Process[F, O] = this match {
     // Note: We cannot use `step` in the implementation since we want to inject `early` as soon as possible.
     // Eg. Let `q` be `halt ++ halt ++ ... ++ p`. `step` reduces `q` to `p` so if `injectCause` was implemented
     // by `step` then `q.injectCause` would be same as `p.injectCause`. But in our current implementation
@@ -302,7 +302,7 @@ sealed trait Process[+F[_], +O]
     case Append(Halt(rsn), stack) => Append(Halt(rsn.causedBy(early)), stack)
     case Append(Emit(_), stack) => Append(Halt(early), stack)
     case Append(Await(_, rcv), stack) => Try(rcv(left(early)).run) +: Cont(stack)
-  })
+  }
 
   /**
    * Causes this process to be terminated immediately with `Kill` cause,
