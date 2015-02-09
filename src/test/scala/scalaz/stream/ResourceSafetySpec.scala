@@ -68,11 +68,11 @@ object ResourceSafetySpec extends Properties("resource-safety") {
       // Left side terminates normally, right side terminates with kill.
       , ("tee-cln-down", (src onHalt cleanup).zip(src onHalt cleanup) onHalt cleanup, right(()), List(End, Kill, End))
       , ("tee-cln-tee", (src onHalt cleanup).tee(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Kill(Error(bwah).some), Kill(Error(bwah).some), Error(bwah)))
-      , ("wye-cln-left", (src onHalt cleanup).wye(fail(bwah))(wye.yip) onHalt cleanup, left(bwah), List(Kill, Error(bwah)))
-      , ("wye-cln-right", fail(bwah).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, left(bwah), List(Kill, Error(bwah)))
+      , ("wye-cln-left", (src onHalt cleanup).wye(fail(bwah))(wye.yip) onHalt cleanup, left(bwah), List(Kill(Error(bwah).some), Error(bwah)))
+      , ("wye-cln-right", fail(bwah).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, left(bwah), List(Kill(Error(bwah).some), Error(bwah)))
       // `cleanup` on both sides is called at the same moment.
       , ("wye-cln-down", (src onHalt cleanup).wye(src onHalt cleanup)(wye.yip) onHalt cleanup, right(()), List(End, End, End))
-      , ("wye-cln-wye", (src onHalt cleanup).wye(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Kill, Kill, Error(bwah)))
+      , ("wye-cln-wye", (src onHalt cleanup).wye(src onHalt cleanup)(fail(bwah)) onHalt cleanup, left(bwah), List(Kill(Error(bwah).some), Kill(Error(bwah).some), Error(bwah)))
     )
 
     val result = procs.zipWithIndex.map {
