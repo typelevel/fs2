@@ -86,7 +86,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
       val signal = async.signal[(String, Int)]
 
       val closeSignal =
-        Process.sleep(100 millis) ++
+        time.sleep(100 millis) ++
           (if (l.size % 2 == 0) Process.eval_(signal.close)
           else Process.eval_(signal.fail(Bwahahaa)))
 
@@ -196,13 +196,13 @@ object AsyncSignalSpec extends Properties("async.signal") {
 
   property("continuous") = secure {
     val sig = async.signal[Int]
-    Process.awakeEvery(100.millis)
+    time.awakeEvery(100.millis)
       .zip(Process.range(1, 13))
       .map(x => Signal.Set(x._2))
       .to(sig.sink)
       .run
       .runAsync(_ => ())
-    val res = Process.awakeEvery(500.millis)
+    val res = time.awakeEvery(500.millis)
       .zip(sig.continuous)
       .map(_._2)
       .take(6)

@@ -137,14 +137,14 @@ object WyeSpec extends  Properties("Wye"){
 
 
   property("either.continue-when-left-done") = secure {
-    val e = (Process.range(0, 20) either (awakeEvery(25 millis).take(20))).runLog.timed(5000).run
+    val e = (Process.range(0, 20) either (time.awakeEvery(25 millis).take(20))).runLog.timed(5000).run
     ("Both sides were emitted" |: (e.size == 40))  &&
       ("Left side terminated earlier" |: e.zipWithIndex.filter(_._1.isLeft).lastOption.exists(_._2 < 35))   &&
       ("Right side was last" |:  e.zipWithIndex.filter(_._1.isRight).lastOption.exists(_._2 == 39))
   }
 
   property("either.continue-when-right-done") = secure {
-    val e = ((awakeEvery(25 millis).take(20)) either Process.range(0, 20)).runLog.timed(5000).run
+    val e = ((time.awakeEvery(25 millis).take(20)) either Process.range(0, 20)).runLog.timed(5000).run
     ("Both sides were emitted" |: (e.size == 40)) &&
       ("Right side terminated earlier" |: e.zipWithIndex.filter(_._1.isRight).lastOption.exists(_._2 < 35))   &&
       ("Left side was last" |: e.zipWithIndex.filter(_._1.isLeft).lastOption.exists(_._2 == 39))
@@ -177,8 +177,8 @@ object WyeSpec extends  Properties("Wye"){
     val syncO = new SyncVar[Int]
 
     // Left process terminates earlier.
-    val l = Process.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(500);syncL.put(100)})
-    val r = Process.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(600);syncR.put(200)})
+    val l = time.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(500);syncL.put(100)})
+    val r = time.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(600);syncR.put(200)})
 
     val e = ((l either r).take(10) onComplete eval_(Task.delay(syncO.put(1000)))).runLog.timed(3000).run
 
@@ -257,7 +257,7 @@ object WyeSpec extends  Properties("Wye"){
     val sync = new SyncVar[Throwable \/ IndexedSeq[Unit]]
     val term1 = async.signalOf(false)
 
-    val p1: Process[Task,Unit] = (Process.sleep(10.hours) ++ emit(true)).wye(Process.sleep(10 hours))(wye.interrupt)
+    val p1: Process[Task,Unit] = (time.sleep(10.hours) ++ emit(true)).wye(time.sleep(10 hours))(wye.interrupt)
     val p2:Process[Task,Unit] = repeatEval(Task.now(true)).flatMap(_ => p1)
     val toRun =  term1.discrete.wye(p2)(wye.interrupt)
 
