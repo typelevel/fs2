@@ -413,4 +413,12 @@ object WyeSpec extends  Properties("Wye"){
     val v = i1.wye(p2)(wye.interrupt).runLog.timed(3000).run.toList
     v.size >= 0
   }
+
+  property("interrupt-pipe with wye.merge") = secure {
+    val p1 = Process.constant(42).collect { case i if i < 0 => i } merge Process.constant(12)
+    val p2 = p1 |> process1.id
+    val i1 = Process(false)
+    val v = i1.wye(p2)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
 }
