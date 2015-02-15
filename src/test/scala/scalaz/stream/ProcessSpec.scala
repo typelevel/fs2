@@ -15,7 +15,6 @@ import scalaz.concurrent.{Task, Strategy}
 import process1._
 import Process._
 import TestInstances._
-import scala.concurrent.duration._
 import scala.concurrent.SyncVar
 
 object ProcessSpec extends Properties("Process") {
@@ -61,66 +60,12 @@ object ProcessSpec extends Properties("Process") {
 
   }
 
-
-
-
-
-  property("awakeEvery") = secure {
-    Process.awakeEvery(100 millis).map(_.toMillis/100).take(5).runLog.run == Vector(1,2,3,4,5)
-  }
-
-
   property("sinked") = secure {
     val p1 = Process.constant(1).toSource
     val pch = Process.constant((i:Int) => Task.now(())).take(3)
 
     p1.to(pch).runLog.run.size == 3
   }
-
-  property("duration") = secure {
-    val firstValueDiscrepancy = duration.once.runLast
-    val reasonableErrorInMillis = 200
-    val reasonableErrorInNanos = reasonableErrorInMillis * 1000000
-    def p = firstValueDiscrepancy.run.get.toNanos < reasonableErrorInNanos
-
-    val r1 = p :| "first duration is near zero on first run"
-    Thread.sleep(reasonableErrorInMillis)
-    val r2 = p :| "first duration is near zero on second run"
-
-    r1 && r2
-  }
-
-  import scala.concurrent.duration._
-  val smallDelay = Gen.choose(10, 300) map {_.millis}
-
-
-  property("every") =
-    forAll(smallDelay) { delay: Duration =>
-      type BD = (Boolean, Duration)
-      val durationSinceLastTrue: Process1[BD, BD] = {
-        def go(lastTrue: Duration): Process1[BD,BD] = {
-          await1 flatMap { pair:(Boolean, Duration) => pair match {
-            case (true , d) => emit((true , d - lastTrue)) ++ go(d)
-            case (false, d) => emit((false, d - lastTrue)) ++ go(lastTrue)
-          } }
-        }
-        go(0.seconds)
-      }
-
-      val draws = (600.millis / delay) min 10 // don't take forever
-
-      val durationsSinceSpike = every(delay).
-                                tee(duration)(tee zipWith {(a,b) => (a,b)}).
-                                take(draws.toInt) |>
-        durationSinceLastTrue
-
-      val result = durationsSinceSpike.runLog.run.toList
-      val (head :: tail) = result
-
-      head._1 :| "every always emits true first" &&
-        tail.filter   (_._1).map(_._2).forall { _ >= delay } :| "true means the delay has passed" &&
-        tail.filterNot(_._1).map(_._2).forall { _ <= delay } :| "false means the delay has not passed"
-    }
 
   property("fill") = forAll(Gen.choose(0,30) flatMap (i => Gen.choose(0,50) map ((i,_)))) {
     case (n,chunkSize) =>
@@ -129,8 +74,8 @@ object ProcessSpec extends Properties("Process") {
 
   property("forwardFill") = secure {
     import scala.concurrent.duration._
-    val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
-      Process.awakeEvery(100 milliseconds).take(100)
+    val t2 = time.awakeEvery(2 seconds).forwardFill.zip {
+      time.awakeEvery(100 milliseconds).take(100)
     }.run.timed(15000).run
     true
   }
