@@ -2,9 +2,14 @@ package scalaz.stream
 
 import java.io._
 
-import scala.io.{Codec, Source}
+import scalaz.{-\/, \/-}
 import scalaz.concurrent.Task
+
 import scodec.bits.ByteVector
+
+import scala.annotation.tailrec
+import scala.io.{Codec, Source}
+
 import Process._
 
 /**
@@ -212,4 +217,134 @@ object io {
         else buf.take(m)
       }}
     }
+
+  /**
+   * Converts a source to a mutable `InputStream`.  The resulting input stream
+   * should be reasonably efficient and supports early termination (i.e. all
+   * finalizers associated with the input process will be run if the stream is
+   * closed).
+   */
+  def toInputStream[A](p: Process[Task, A])(chunk: A => Array[Byte]): InputStream = new InputStream {
+    import Cause.{End, Kill}
+
+    var cause: Cause = End
+    var stack: Vector[Cause => Trampoline[Process[Task, A]]] = Vector({ _ => Trampoline done p })
+
+    var index = 0
+    var chunks: Seq[Array[Byte]] = Nil    // we only consider the head to be valid at any point in time
+
+    var halted = false
+
+    def read(): Int = {
+      val buffer = new Array[Byte](1)
+      read(buffer)    // if we fail to read only one byte, we're in trouble and have already thrown an exception buffer(0).toInt
+    }
+
+    override def read(buffer: Array[Byte], offset: Int, length: Int): Int = {
+      if (halted) {
+        throw new IOException("process has already completed")
+      } else {
+        // when our index walks off the end of our last chunk, we need to Nil it out!
+        if (chunks.isEmpty) {
+          step()
+          read(buffer, offset, length)
+        } else {
+          @tailrec
+          def go(offset: Int, length: Int, read: Int): Int = {
+            if (chunks.isEmpty) {
+              // we already took care of the "halted at start" stillborn case, so we can safely just step
+              step()
+
+              if (halted)
+                read         // whoops! we walked off the end of the stream and we're done
+              else
+                go(offset, length, read)
+            } else {
+              val chunk = chunks.head
+              val remaining = chunk.length - index
+
+              if (length <= remaining) {
+                System.arraycopy(chunk, index, buffer, offset, length)
+
+                if (length == remaining) {
+                  index = 0
+                  chunks = chunks.tail
+                } else {
+                  index += length
+                }
+
+                length + read
+              } else {
+                System.arraycopy(chunk, index, buffer, offset, remaining)
+
+                chunks = chunks.tail
+                go(offset + remaining, length - remaining, read + remaining)
+              }
+            }
+          }
+
+          go(offset, length, 0)
+        }
+      }
+    }
+
+    override def close() {
+      if (stack.isEmpty) {
+        halted = true
+        chunks = null
+      } else {
+        val item = stack.head(Kill).run
+        stack = stack.tail
+
+        item.kill.step match {
+          case Halt(End | Kill) => close()    // keep chewing through the stack
+
+          // rethrow halting errors
+          case Halt(Cause.Error(e: Error)) => throw e
+          case Halt(Cause.Error(e: Exception)) => throw new IOException(e)
+
+          case Step(Emit(_), _) => assert(false)    // this is impossible, according to the types
+
+          case Step(Await(request, receive), Cont(contStack)) => {
+            val tramp = receive(-\/(Kill))
+
+            stack = { _: Cause => tramp } +: (contStack ++ stack)
+            close()
+          }
+        }
+      }
+    }
+
+    def step(): Unit = {
+      if (stack.isEmpty) {
+        halted = true
+      } else {
+        val item = stack.head(cause).run
+        stack = stack.tail
+
+        index = 0
+        item.step match {
+          case Halt(End | Kill) => step()
+
+          // rethrow halting errors
+          case Halt(Cause.Error(e: Error)) => throw e
+          case Halt(Cause.Error(e: Exception)) => throw new IOException(e)
+
+          case Step(Emit(as), Cont(contStack)) => {
+            chunks = as map chunk
+            stack = contStack ++ stack
+          }
+
+          case Step(Await(request, receive), Cont(contStack)) => {
+            // yay! run the Task
+            val tramp = receive(request.attempt.run leftMap Cause.Error)
+
+            stack = { _: Cause => tramp } +: (contStack ++ stack)
+
+            step()    // push things onto the stack and then step further (tail recursively)
+          }
+        }
+      }
+    }
+  }
 }
