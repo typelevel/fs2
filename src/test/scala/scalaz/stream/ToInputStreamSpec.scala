@@ -99,4 +99,28 @@ object ToInputStreamSpec extends Properties("toInputStream") {
 
     List(buffer: _*) == (bytes flatMap { _.flatten })
   }
+
+  property("invokes finalizers when terminated early") = secure {
+    import Process._
+
+    var flag = false
+    val setter = Task delay { flag = true }
+
+    val p = (emit(Array[Byte](42)) ++ emit(Array[Byte](24))) onComplete (Process eval_ setter)
+
+    val is = io.toInputStream(p)(identity)
+
+    val read = is.read()
+    is.close()
+
+    (flag == true) :| "finalizer flag" &&
+      (read == 42) :| "read value"
+  }
+
+  property("safely read byte 255 as an Int") = secure {
+    val p = Process emit Array[Byte](-1)
+    val is = io.toInputStream(p)(identity)
+
+    is.read() == 255
+  }
 }
