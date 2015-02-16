@@ -318,6 +318,7 @@ object io {
     def step(): Unit = {
       if (stack.isEmpty) {
         halted = true
+        chunks = null     // release things
       } else {
         val item = stack.head(cause).run
         stack = stack.tail
