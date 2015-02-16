@@ -225,24 +225,26 @@ object io {
    * closed).
    */
   def toInputStream[A](p: Process[Task, A])(chunk: A => Array[Byte]): InputStream = new InputStream {
-    import Cause.{End, Kill}
+    import Cause.{EarlyCause, End, Kill}
 
-    var cause: Cause = End
-    var stack: Vector[Cause => Trampoline[Process[Task, A]]] = Vector({ _ => Trampoline done p })
+    var cur = p
 
     var index = 0
     var chunks: Seq[Array[Byte]] = Nil    // we only consider the head to be valid at any point in time
 
-    var halted = false
-
     def read(): Int = {
-      val buffer = new Array[Byte](1)
-      read(buffer)    // if we fail to read only one byte, we're in trouble and have already thrown an exception buffer(0).toInt
+      if (cur.isHalt && chunks.isEmpty) {
+        -1
+      } else {
+        val buffer = new Array[Byte](1)
+        read(buffer)    // if we fail to read only one byte, we're in trouble and have already thrown an exception buffer(0).toInt
+        buffer(0) & 0xff
+      }
     }
 
     override def read(buffer: Array[Byte], offset: Int, length: Int): Int = {
-      if (halted) {
-        throw new IOException("process has already completed")
+      if (cur.isHalt && chunks.isEmpty) {
+        -1
       } else {
         // when our index walks off the end of our last chunk, we need to Nil it out!
         if (chunks.isEmpty) {
@@ -255,7 +257,7 @@ object io {
               // we already took care of the "halted at start" stillborn case, so we can safely just step
               step()
 
-              if (halted)
+              if (cur.isHalt && chunks.isEmpty)
                 read         // whoops! we walked off the end of the stream and we're done
               else
                 go(offset, length, read)
@@ -289,15 +291,11 @@ object io {
     }
 
     override def close() {
-      if (stack.isEmpty) {
-        halted = true
+      if (cur.isHalt && chunks.isEmpty) {
         chunks = null
       } else {
-        val item = stack.head(Kill).run
-        stack = stack.tail
-
-        item.kill.step match {
-          case Halt(End | Kill) => close()    // keep chewing through the stack
+        cur.kill.step match {
+          case Halt(End | Kill) => ()
 
           // rethrow halting errors
           case Halt(Cause.Error(e: Error)) => throw e
@@ -305,10 +303,9 @@ object io {
 
           case Step(Emit(_), _) => assert(false)    // this is impossible, according to the types
 
-          case Step(Await(request, receive), Cont(contStack)) => {
-            val tramp = receive(-\/(Kill))
-
-            stack = { _: Cause => tramp } +: (contStack ++ stack)
+          case Step(Await(request, receive), cont) => {
+            // yay! run the Task
+            cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
             close()
           }
         }
@@ -316,32 +313,33 @@ object io {
     }
 
     def step(): Unit = {
-      if (stack.isEmpty) {
-        halted = true
+      if (cur.isHalt && chunks.isEmpty) {
         chunks = null     // release things
       } else {
-        val item = stack.head(cause).run
-        stack = stack.tail
-
         index = 0
-        item.step match {
-          case Halt(End | Kill) => step()
+        cur.step match {
+          case h @ Halt(End | Kill) =>
+            cur = h
 
           // rethrow halting errors
-          case Halt(Cause.Error(e: Error)) => throw e
-          case Halt(Cause.Error(e: Exception)) => throw new IOException(e)
-
-          case Step(Emit(as), Cont(contStack)) => {
-            chunks = as map chunk
-            stack = contStack ++ stack
+          case h @ Halt(Cause.Error(e: Error)) => {
+            cur = h
+            throw e
           }
 
-          case Step(Await(request, receive), Cont(contStack)) => {
+          case h @ Halt(Cause.Error(e: Exception)) => {
+            cur = h
+            throw new IOException(e)
+          }
+
+          case Step(Emit(as), cont) => {
+            chunks = as map chunk
+            cur = cont.continue
+          }
+
+          case Step(Await(request, receive), cont) => {
             // yay! run the Task
-            val tramp = receive(request.attempt.run leftMap Cause.Error)
-
-            stack = { _: Cause => tramp } +: (contStack ++ stack)
-
+            cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
             step()    // push things onto the stack and then step further (tail recursively)
           }
         }
