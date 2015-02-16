@@ -9,11 +9,22 @@ import java.io.DataInputStream
 
 object ToInputStreamSpec extends Properties("toInputStream") {
 
+  def listLength(xs: List[Byte]): Int = xs.length
+
+  def listCopy(xs: List[Byte], off1: Int, buffer: Array[Byte], off2: Int, length: Int): Int = {
+    var i = off2
+    xs drop off1 take length foreach { b =>
+      buffer(i) = b
+      i += 1
+    }
+    length
+  }
+
   property("handles arbitrary emitAll") = forAll { bytes: List[List[Byte]] =>
     val length = bytes map { _.length } sum
     val p = Process emitAll bytes
 
-    val dis = new DataInputStream(io.toInputStream(p) { _.toArray })
+    val dis = new DataInputStream(io.toInputStream(p)(listLength, listCopy))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -25,7 +36,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
     val length = bytes map { _.length } sum
     val p = bytes map Process.emit reduceOption { _ ++ _ } getOrElse Process.empty
 
-    val dis = new DataInputStream(io.toInputStream(p) { _.toArray })
+    val dis = new DataInputStream(io.toInputStream(p)(listLength, listCopy))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -40,7 +51,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       Process emit chunk
     }
 
-    val dis = new DataInputStream(io.toInputStream(p) { _.toArray })
+    val dis = new DataInputStream(io.toInputStream(p)(listLength, listCopy))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -57,7 +68,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       }
     } reduceOption { _ ++ _ } getOrElse Process.empty
 
-    val dis = new DataInputStream(io.toInputStream(p) { _.toArray })
+    val dis = new DataInputStream(io.toInputStream(p)(listLength, listCopy))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -75,7 +86,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       }
     } reduceOption { _ ++ _ } getOrElse Process.empty
 
-    val dis = new DataInputStream(io.toInputStream(p) { _.toArray })
+    val dis = new DataInputStream(io.toInputStream(p)(listLength, listCopy))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -92,7 +103,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       }
     } reduceOption { _ ++ _ } getOrElse Process.empty
 
-    val dis = new DataInputStream(io.toInputStream(p) { _.toArray })
+    val dis = new DataInputStream(io.toInputStream(p)(listLength, listCopy))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -108,7 +119,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
 
     val p = (emit(Array[Byte](42)) ++ emit(Array[Byte](24))) onComplete (Process eval_ setter)
 
-    val is = io.toInputStream(p)(identity)
+    val is = io.toInputStreamFromBytes(p)
 
     val read = is.read()
     is.close()
@@ -119,7 +130,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
 
   property("safely read byte 255 as an Int") = secure {
     val p = Process emit Array[Byte](-1)
-    val is = io.toInputStream(p)(identity)
+    val is = io.toInputStreamFromBytes(p)
 
     is.read() == 255
   }

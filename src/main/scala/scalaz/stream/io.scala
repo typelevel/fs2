@@ -223,14 +223,37 @@ object io {
    * should be reasonably efficient and supports early termination (i.e. all
    * finalizers associated with the input process will be run if the stream is
    * closed).
+   *
+   * Takes a `copy` function which itself takes the following parameters in order:
+   *
+   * - `A` - the source chunk
+   * - `Int` - the logical offset into the source chunk
+   * - `Array[Byte]` - the target copy buffer
+   * - `Int` - the logical offset into the target buffer
+   * - `Int` - the length to copy
+   *
+   * The `copy` function returns the number of bytes copied, in total.  You should
+   * think of this function as a generic version of `System.arraycopy`, which is
+   * in fact the precise implementation you would use if `A = Array[Byte]`.  Note
+   * that `toInputStream` will never request a `copy` with a length value that
+   * exceeds the logical length of the source chunk as reported by the `logicalLength`
+   * function.  Additionally, `buffer` will always be *at least* `off2 + length` in
+   * size.  Thus, the `copy` function does not need to concern itself with bounds
+   * checking.
+   *
+   * The other function taken as a parameter is `logicalLength`, which simply returns
+   * the logical length of the source chunk in question.  Thus, if `A = Array[Byte]`,
+   * this function would simply be `{ _.length }`.
+   *
+   * @see #toInputStreamFromBytes
    */
-  def toInputStream[A](p: Process[Task, A])(chunk: A => Array[Byte]): InputStream = new InputStream {
+  def toInputStream[A](p: Process[Task, A])(logicalLength: A => Int, copy: (A, Int, Array[Byte], Int, Int) => Int): InputStream = new InputStream {
     import Cause.{EarlyCause, End, Kill}
 
     var cur = p
 
     var index = 0
-    var chunks: Seq[Array[Byte]] = Nil    // we only consider the head to be valid at any point in time
+    var chunks: Seq[A] = Nil    // we only consider the head to be valid at any point in time
 
     def read(): Int = {
       if (cur.isHalt && chunks.isEmpty) {
@@ -263,10 +286,10 @@ object io {
                 go(offset, length, read)
             } else {
               val chunk = chunks.head
-              val remaining = chunk.length - index
+              val remaining = logicalLength(chunk) - index
 
               if (length <= remaining) {
-                System.arraycopy(chunk, index, buffer, offset, length)
+                copyFully(chunk, index, buffer, offset, length)
 
                 if (length == remaining) {
                   index = 0
@@ -277,7 +300,7 @@ object io {
 
                 length + read
               } else {
-                System.arraycopy(chunk, index, buffer, offset, remaining)
+                copyFully(chunk, index, buffer, offset, remaining)
 
                 chunks = chunks.tail
                 go(offset + remaining, length - remaining, read + remaining)
@@ -333,7 +356,7 @@ object io {
           }
 
           case Step(Emit(as), cont) => {
-            chunks = as map chunk
+            chunks = as
             cur = cont.continue
           }
 
@@ -345,5 +368,22 @@ object io {
         }
       }
     }
+
+    @tailrec
+    def copyFully(a: A, off1: Int, buffer: Array[Byte], off2: Int, length: Int): Unit = {
+      if (length > 0) {
+        val copied = copy(a, off1, buffer, off2, length)
+
+        if (copied < length) {
+          copyFully(a, off1 + copied, buffer, off2 + copied, length - copied)
+        }
+      }
+    }
   }
+
+  /**
+   * Convenience version of `toInputStream`, specialized on `Array[Byte]`.
+   */
+  def toInputStreamFromBytes(p: Process[Task, Array[Byte]]): InputStream =
+    toInputStream(p)({ _.length }, { (bs, off1, buf, off2, len) => System.arraycopy(bs, off1, buf, off2, len); len })
 }
