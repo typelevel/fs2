@@ -224,31 +224,27 @@ package object io {
    * finalizers associated with the input process will be run if the stream is
    * closed).
    *
-   * Takes a `copy` function which itself takes the following parameters in order:
+   * Type `A` is constrained by the `Chunked` typeclass, which is to say that
+   * type `A` must represent some sort of binary data that efficiently maps
+   * onto a byte array.  `A = Array[Byte]` and `A = ByteBuffer` are obvious
+   * examples of this, but other possibilities exist.  Instances of `Chunked`
+   * are provided for the following types:
    *
-   * - `A` - the source chunk
-   * - `Int` - the logical offset into the source chunk
-   * - `Array[Byte]` - the target copy buffer
-   * - `Int` - the logical offset into the target buffer
-   * - `Int` - the length to copy
+   * - `Array[Byte]`
+   * - `ByteBuffer`
+   * - `ByteVector`
+   * - `Seq[Byte]`
    *
-   * The `copy` function returns the number of bytes copied, in total.  You should
-   * think of this function as a generic version of `System.arraycopy`, which is
-   * in fact the precise implementation you would use if `A = Array[Byte]`.  Note
-   * that `toInputStream` will never request a `copy` with a length value that
-   * exceeds the logical length of the source chunk as reported by the `logicalLength`
-   * function.  Additionally, `buffer` will always be *at least* `off2 + length` in
-   * size.  Thus, the `copy` function does not need to concern itself with bounds
-   * checking.
-   *
-   * The other function taken as a parameter is `logicalLength`, which simply returns
-   * the logical length of the source chunk in question.  Thus, if `A = Array[Byte]`,
-   * this function would simply be `{ _.length }`.
+   * The `Seq[Byte]` instance is provided for testing purposes only.  Efficiency
+   * is basically non-existent when you're working with the Scala collections
+   * library for byte-level operations!  Think of the children!
    *
    * @see #toInputStreamFromBytes
    */
-  def toInputStream[A](p: Process[Task, A])(logicalLength: A => Int, copy: (A, Int, Array[Byte], Int, Int) => Int): InputStream = new InputStream {
+  def toInputStream[A: Chunked](p: Process[Task, A]): InputStream = new InputStream {
     import Cause.{EarlyCause, End, Kill}
+
+    val A = Chunked[A]
 
     var cur = p
 
@@ -286,7 +282,7 @@ package object io {
                 go(offset, length, read)
             } else {
               val chunk = chunks.head
-              val remaining = logicalLength(chunk) - index
+              val remaining = A.length(chunk) - index
 
               if (length <= remaining) {
                 copyFully(chunk, index, buffer, offset, length)
@@ -372,7 +368,7 @@ package object io {
     @tailrec
     def copyFully(a: A, off1: Int, buffer: Array[Byte], off2: Int, length: Int): Unit = {
       if (length > 0) {
-        val copied = copy(a, off1, buffer, off2, length)
+        val copied = A.copy(a, off1, buffer, off2, length)
 
         if (copied < length) {
           copyFully(a, off1 + copied, buffer, off2 + copied, length - copied)
@@ -380,10 +376,4 @@ package object io {
       }
     }
   }
-
-  /**
-   * Convenience version of `toInputStream`, specialized on `Array[Byte]`.
-   */
-  def toInputStreamFromBytes(p: Process[Task, Array[Byte]]): InputStream =
-    toInputStream(p)({ _.length }, { (bs, off1, buf, off2, len) => System.arraycopy(bs, off1, buf, off2, len); len })
 }
