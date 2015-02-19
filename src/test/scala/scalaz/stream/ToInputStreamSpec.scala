@@ -3,6 +3,8 @@ package scalaz.stream
 import org.scalacheck._
 import Prop._
 
+import scodec.bits.ByteVector
+
 import scalaz.concurrent.Task
 
 import java.io.DataInputStream
@@ -13,7 +15,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
     val length = bytes map { _.length } sum
     val p = Process emitAll bytes
 
-    val dis = new DataInputStream(io.toInputStream(p))
+    val dis = new DataInputStream(io.toInputStream(p map { ByteVector(_) }))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -25,7 +27,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
     val length = bytes map { _.length } sum
     val p = bytes map Process.emit reduceOption { _ ++ _ } getOrElse Process.empty
 
-    val dis = new DataInputStream(io.toInputStream(p))
+    val dis = new DataInputStream(io.toInputStream(p map { ByteVector(_) }))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -40,7 +42,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       Process emit chunk
     }
 
-    val dis = new DataInputStream(io.toInputStream(p))
+    val dis = new DataInputStream(io.toInputStream(p map { ByteVector(_) }))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -57,7 +59,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       }
     } reduceOption { _ ++ _ } getOrElse Process.empty
 
-    val dis = new DataInputStream(io.toInputStream(p))
+    val dis = new DataInputStream(io.toInputStream(p map { ByteVector(_) }))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -75,7 +77,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       }
     } reduceOption { _ ++ _ } getOrElse Process.empty
 
-    val dis = new DataInputStream(io.toInputStream(p))
+    val dis = new DataInputStream(io.toInputStream(p map { ByteVector(_) }))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -92,7 +94,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       }
     } reduceOption { _ ++ _ } getOrElse Process.empty
 
-    val dis = new DataInputStream(io.toInputStream(p))
+    val dis = new DataInputStream(io.toInputStream(p map { ByteVector(_) }))
     val buffer = new Array[Byte](length)
     dis.readFully(buffer)
     dis.close()
@@ -108,7 +110,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
 
     val p = (emit(Array[Byte](42)) ++ emit(Array[Byte](24))) onComplete (Process eval_ setter)
 
-    val is = io.toInputStream(p)
+    val is = io.toInputStream(p map { ByteVector view _ })
 
     val read = is.read()
     is.close()
@@ -119,7 +121,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
 
   property("safely read byte 255 as an Int") = secure {
     val p = Process emit Array[Byte](-1)
-    val is = io.toInputStream(p)
+    val is = io.toInputStream(p map { ByteVector view _ })
 
     is.read() == 255
   }

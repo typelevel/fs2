@@ -15,7 +15,7 @@ import Process._
 /**
  * Module of `Process` functions and combinators for file and network I/O.
  */
-package object io {
+object io {
 
   // NB: methods are in alphabetical order
 
@@ -241,15 +241,13 @@ package object io {
    *
    * @see #toInputStreamFromBytes
    */
-  def toInputStream[A: Chunked](p: Process[Task, A]): InputStream = new InputStream {
+  def toInputStream(p: Process[Task, ByteVector]): InputStream = new InputStream {
     import Cause.{EarlyCause, End, Kill}
-
-    val A = Chunked[A]
 
     var cur = p
 
     var index = 0
-    var chunks: Seq[A] = Nil    // we only consider the head to be valid at any point in time
+    var chunks: Seq[ByteVector] = Nil    // we only consider the head to be valid at any point in time
 
     def read(): Int = {
       if (cur.isHalt && chunks.isEmpty) {
@@ -282,10 +280,10 @@ package object io {
                 go(offset, length, read)
             } else {
               val chunk = chunks.head
-              val remaining = A.length(chunk) - index
+              val remaining = chunk.length - index
 
               if (length <= remaining) {
-                copyFully(chunk, index, buffer, offset, length)
+                (chunk drop index take length).copyToArray(buffer, offset)      // TODO replace this with the 4-arg copyToArray once exposed
 
                 if (length == remaining) {
                   index = 0
@@ -296,7 +294,7 @@ package object io {
 
                 length + read
               } else {
-                copyFully(chunk, index, buffer, offset, remaining)
+                (chunk drop index take remaining).copyToArray(buffer, offset)      // TODO replace this with the 4-arg copyToArray once exposed
 
                 chunks = chunks.tail
                 go(offset + remaining, length - remaining, read + remaining)
@@ -361,17 +359,6 @@ package object io {
             cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
             step()    // push things onto the stack and then step further (tail recursively)
           }
-        }
-      }
-    }
-
-    @tailrec
-    def copyFully(a: A, off1: Int, buffer: Array[Byte], off2: Int, length: Int): Unit = {
-      if (length > 0) {
-        val copied = A.copy(a, off1, buffer, off2, length)
-
-        if (copied < length) {
-          copyFully(a, off1 + copied, buffer, off2 + copied, length - copied)
         }
       }
     }
