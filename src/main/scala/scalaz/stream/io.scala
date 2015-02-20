@@ -223,23 +223,6 @@ object io {
    * should be reasonably efficient and supports early termination (i.e. all
    * finalizers associated with the input process will be run if the stream is
    * closed).
-   *
-   * Type `A` is constrained by the `Chunked` typeclass, which is to say that
-   * type `A` must represent some sort of binary data that efficiently maps
-   * onto a byte array.  `A = Array[Byte]` and `A = ByteBuffer` are obvious
-   * examples of this, but other possibilities exist.  Instances of `Chunked`
-   * are provided for the following types:
-   *
-   * - `Array[Byte]`
-   * - `ByteBuffer`
-   * - `ByteVector`
-   * - `Seq[Byte]`
-   *
-   * The `Seq[Byte]` instance is provided for testing purposes only.  Efficiency
-   * is basically non-existent when you're working with the Scala collections
-   * library for byte-level operations!  Think of the children!
-   *
-   * @see #toInputStreamFromBytes
    */
   def toInputStream(p: Process[Task, ByteVector]): InputStream = new InputStream {
     import Cause.{EarlyCause, End, Kill}
