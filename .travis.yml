@@ -5,7 +5,7 @@ scala:
 jdk:
   - oraclejdk7
   - openjdk7
-sudo: false
+# sudo: false
 cache:
   directories:
     - $HOME/.ivy2
