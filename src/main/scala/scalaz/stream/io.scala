@@ -290,6 +290,7 @@ object io {
       }
     }
 
+    @tailrec
     override def close() {
       if (cur.isHalt && chunks.isEmpty) {
         chunks = null
@@ -312,6 +313,7 @@ object io {
       }
     }
 
+    @tailrec
     def step(): Unit = {
       if (cur.isHalt && chunks.isEmpty) {
         chunks = null     // release things
