@@ -886,70 +886,6 @@ object Process extends ProcessInstances {
   def tell[S](s: S): Process0[S \/ Nothing] =
     emitW(s)
 
-  /**
-   * Convert a `Process` to a `Task` which can be run repeatedly to generate
-   * the elements of the `Process`.  Please note that this is *only* appropriate
-   * for use-cases where you want to incrementally step through a *complete*
-   * process!  If you stop stepping before you receive the `Terminated` exception,
-   * any resources associated with the process will leak (i.e. finalizers will
-   * not be run).  There is no way to halt stepping *before* the end of the
-   * input process with this function.  If you want a step function which
-   * supports premature termination, see `step`.
-   *
-   * The nested structure of the `Task[Task[A]]` produced by this function can
-   * be viewed as two separate effects, nested within each other.  Re-running the
-   * outer `Task` will produce a fresh inner `Task` representing the start of the
-   * process.  Repeatedly running the inner `Task` steps through the execution of
-   * a single process without restarting.  Thus, if you want to run an input
-   * process from start to finish, you would encode something like the following
-   * (assuming you want to just `println` every element):
-   *
-   * <pre>
-   * p.stepTask flatMap { step: Task[A] =>
-   *   lazy val go: Task[A] = {
-   *     step.attempt flatMap {
-   *       case -\/(a) => (Task delay { println(a) }) >> go     // if this were not recursive, we would leak resources!
-   *       case \/-(Terminated(End | Kill)) => Task delay { println("reached the end") }
-   *       case \/-(t) => Task delay { println(s"caught exception: $s") }
-   *     }
-   *   }
-   *
-   *   go
-   * }
-   * </pre>
-   *
-   * As a sidebar, recall that `Task` is trampolined, so the above is stack safe.
-   */
-   def stepTask[A](p: Process[Task, A]): Task[Task[A]] = Task delay {
-    var cur = p
-
-    def go: Task[A] = cur.step match {
-      case Step(Emit(os), cont) => {
-        if (os.isEmpty) {
-          cur = cont.continue
-          go
-        } else {
-          cur = emitAll(os.tail) +: cont
-          Task.now(os.head)
-        }
-      }
-      case Step(Await(rq,rcv), cont) => {
-        rq.attempt.flatMap { r =>
-          cur = Try(rcv(EarlyCause(r)).run) +: cont ; go
-        }
-      }
-
-      case Halt(End) => Task.fail(Terminated(End))
-      case Halt(Kill) => Task.fail(Terminated(Kill))
-      case Halt(Error(rsn)) => Task.fail(rsn)
-    }
-
-    Task delay go join
-  }
-
-  @deprecated("Use stepTask instead", "0.7")
-  def toTask[A](p: Process[Task, A]): Task[A] = stepTask(p).join
-
   /** Produce a (potentially infinite) source from an unfold. */
   def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = {
     def go(s: S): Process0[A] =
@@ -1235,12 +1171,6 @@ object Process extends ProcessInstances {
      */
     def forwardFill(implicit S: Strategy): Process[Task, O] =
       async.toSignal(self).continuous
-
-    /** Infix syntax for `Process.toTask`. */
-    @deprecated("Use stepTask instead", "0.7")
-    def toTask: Task[O] = Process.toTask(self)
-
-    def stepTask: Task[Task[O]] = Process stepTask self
 
     /**
      * Asynchronous execution of this Process. Note that this method is not resource safe unless
