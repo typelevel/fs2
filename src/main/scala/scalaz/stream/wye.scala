@@ -666,7 +666,7 @@ object wye {
       def initial[A](p:Process[Task,A]) : Cont[Task,A] = {
         val next = (c:Cause) => c match {
           case End => Trampoline.done(p)
-          case e: EarlyCause => Trampoline.done(p.kill)
+          case e: EarlyCause => Trampoline.done(p.kill(e))
         }
         Cont(Vector(next))
       }
@@ -689,14 +689,15 @@ object wye {
       // kills the given side either interrupts the execution
       // or creates next step for the process and then runs killed step.
       // note that this function apart from returning the next state perform the side effects
-      def kill[A](side: Env[L, R]#Y[A])(state: SideState[A]): SideState[A] = {
+      def kill[A](side: Env[L, R]#Y[A])(triggeringCause: Cause)(state: SideState[A]): SideState[A] = {
+        val k = new Kill(triggeringCause)
         state match {
           case Middle3(interrupt) =>
-            interrupt(Kill)
+            interrupt(k)
             Either3.middle3((_: Cause) => ()) //rest the interrupt so it won't get interrupted again
 
           case Right3(cont) =>
-            (Halt(Kill) +: cont).runAsync(_ => a ! Ready[A](side, -\/(Kill)))
+            (Halt(k) +: cont).runAsync(_ => a ! Ready[A](side, -\/(k)))
             Either3.middle3((_: Cause) => ()) // no-op cleanup can't be interrupted
 
           case left@Left3(_) =>
@@ -805,9 +806,9 @@ object wye {
               leftBias = !leftBias
               (cur, cb)
 
-            case Halt(_) =>
-              if (!isDone(left)) left = killLeft(left)
-              if (!isDone(right)) right = killRight(right)
+            case Halt(rsn) =>
+              if (!isDone(left)) left = killLeft(rsn)(left)
+              if (!isDone(right)) right = killRight(rsn)(right)
               (cur, cb)
 
           }

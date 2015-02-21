@@ -124,27 +124,25 @@ sealed trait Process[+F[_], +O]
    * is killed with same reason giving it an opportunity to cleanup.
    */
   final def pipe[O2](p1: Process1[O, O2]): Process[F, O2] =
-    p1.suspendStep.flatMap({ s1 =>
-      s1 match {
-        case s@Step(awt1@Await1(rcv1), cont1) =>
-          val nextP1 = s.toProcess
-          this.step match {
-            case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe nextP1)
-            case Step(Emit(os), cont)        => cont.continue pipe process1.feed(os)(nextP1)
-            case hlt@Halt(End)               => hlt pipe nextP1.disconnect(Kill).swallowKill
-            case hlt@Halt(rsn: EarlyCause)   => hlt pipe nextP1.disconnect(rsn)
-          }
+    p1.suspendStep.flatMap({
+      case s@Step(awt1@Await1(rcv1), cont1) =>
+        val nextP1 = s.toProcess
+        this.step match {
+          case Step(awt@Await(_, _), cont) => awt.extend(p => (p +: cont) pipe nextP1)
+          case Step(Emit(os), cont)        => cont.continue pipe process1.feed(os)(nextP1)
+          case hlt@Halt(End)               => hlt pipe nextP1.disconnect(Kill).swallowKill
+          case hlt@Halt(rsn: EarlyCause)   => hlt pipe nextP1.disconnect(rsn)
+        }
 
-        case Step(emt@Emit(os), cont)      =>
-          // When the pipe is killed from the outside it is killed at the beginning or after emit.
-          // This ensures that Kill from the outside is not swallowed.
-          emt onHalt {
-            case End => this.pipe(cont.continue)
-            case early => this.pipe(Halt(early) +: cont).causedBy(early)
-          }
+      case Step(emt@Emit(os), cont) =>
+        // When the pipe is killed from the outside it is killed at the beginning or after emit.
+        // This ensures that Kill from the outside is not swallowed.
+        emt onHalt {
+          case End   => this.pipe(cont.continue)
+          case early => this.pipe(Halt(early) +: cont).causedBy(early)
+        }
 
-        case Halt(rsn)           => this.kill onHalt { _ => Halt(rsn) }
-      }
+      case Halt(rsn) => this.kill(rsn) onHalt { _ => Halt(rsn) }
     })
 
   /** Operator alias for `pipe`. */
@@ -166,37 +164,35 @@ sealed trait Process[+F[_], +O]
    */
   final def tee[F2[x] >: F[x], O2, O3](p2: Process[F2, O2])(t: Tee[O, O2, O3]): Process[F2, O3] = {
     import scalaz.stream.tee.{AwaitL, AwaitR, disconnectL, disconnectR, feedL, feedR}
-    t.suspendStep flatMap { ts =>
-      ts match {
-        case s@Step(AwaitL(_), contT) => this.step match {
-          case Step(awt@Await(rq, rcv), contL) => awt.extend { p => (p  +: contL).tee(p2)(s.toProcess) }
-          case Step(Emit(os), contL)           => contL.continue.tee(p2)(feedL[O, O2, O3](os)(s.toProcess))
-          case hlt@Halt(End)              => hlt.tee(p2)(disconnectL(Kill)(s.toProcess).swallowKill)
-          case hlt@Halt(rsn: EarlyCause)  => hlt.tee(p2)(disconnectL(rsn)(s.toProcess))
-        }
-
-        case s@Step(AwaitR(_), contT) => p2.step match {
-          case s2: Step[F2, O2]@unchecked =>
-            (s2.head, s2.next) match {
-              case (awt: Await[F2, Any, O2]@unchecked, contR) =>
-                awt.extend { (p: Process[F2, O2]) => this.tee(p +: contR)(s.toProcess) }
-              case (Emit(o2s), contR) =>
-                this.tee(contR.continue.asInstanceOf[Process[F2,O2]])(feedR[O, O2, O3](o2s)(s.toProcess))
-            }
-          case hlt@Halt(End)              => this.tee(hlt)(disconnectR(Kill)(s.toProcess).swallowKill)
-          case hlt@Halt(rsn : EarlyCause) => this.tee(hlt)(disconnectR(rsn)(s.toProcess))
-        }
-
-        case Step(emt@Emit(o3s), contT) =>
-          // When the process is killed from the outside it is killed at the beginning or after emit.
-          // This ensures that Kill from the outside isn't swallowed.
-          emt onHalt {
-            case End => this.tee(p2)(contT.continue)
-            case early => this.tee(p2)(Halt(early) +: contT).causedBy(early)
-          }
-
-        case Halt(rsn)             => this.kill onHalt { _ => p2.kill onHalt { _ => Halt(rsn) } }
+    t.suspendStep flatMap {
+      case s@Step(AwaitL(_), contT) => this.step match {
+        case Step(awt@Await(rq, rcv), contL) => awt.extend { p => (p +: contL).tee(p2)(s.toProcess)}
+        case Step(Emit(os), contL)           => contL.continue.tee(p2)(feedL[O, O2, O3](os)(s.toProcess))
+        case hlt@Halt(End)                   => hlt.tee(p2)(disconnectL(Kill)(s.toProcess).swallowKill)
+        case hlt@Halt(rsn: EarlyCause)       => hlt.tee(p2)(disconnectL(rsn)(s.toProcess))
       }
+
+      case s@Step(AwaitR(_), contT) => p2.step match {
+        case s2: Step[F2, O2]@unchecked =>
+          (s2.head, s2.next) match {
+            case (awt: Await[F2, Any, O2]@unchecked, contR) =>
+              awt.extend { (p: Process[F2, O2]) => this.tee(p +: contR)(s.toProcess)}
+            case (Emit(o2s), contR)                         =>
+              this.tee(contR.continue.asInstanceOf[Process[F2, O2]])(feedR[O, O2, O3](o2s)(s.toProcess))
+          }
+        case hlt@Halt(End)              => this.tee(hlt)(disconnectR(Kill)(s.toProcess).swallowKill)
+        case hlt@Halt(rsn: EarlyCause)  => this.tee(hlt)(disconnectR(rsn)(s.toProcess))
+      }
+
+      case Step(emt@Emit(o3s), contT) =>
+        // When the process is killed from the outside it is killed at the beginning or after emit.
+        // This ensures that Kill from the outside isn't swallowed.
+        emt onHalt {
+          case End   => this.tee(p2)(contT.continue)
+          case early => this.tee(p2)(Halt(early) +: contT).causedBy(early)
+        }
+
+      case Halt(rsn) => this.kill(rsn) onHalt { _ => p2.kill(rsn) onHalt { _ => Halt(rsn)}}
     }
   }
 
@@ -292,7 +288,7 @@ sealed trait Process[+F[_], +O]
    * Skip the first part of the process and pretend that it ended with `early`.
    * The first part is the first `Halt` or the first `Emit` or request from the first `Await`.
    */
-  private[stream] final def injectCause(early: EarlyCause): Process[F, O] = (this match {
+  private[stream] final def injectCause(early: EarlyCause): Process[F, O] = this match {
     // Note: We cannot use `step` in the implementation since we want to inject `early` as soon as possible.
     // Eg. Let `q` be `halt ++ halt ++ ... ++ p`. `step` reduces `q` to `p` so if `injectCause` was implemented
     // by `step` then `q.injectCause` would be same as `p.injectCause`. But in our current implementation
@@ -304,13 +300,25 @@ sealed trait Process[+F[_], +O]
     case Append(Halt(rsn), stack) => Append(Halt(rsn.causedBy(early)), stack)
     case Append(Emit(_), stack) => Append(Halt(early), stack)
     case Append(Await(_, rcv), stack) => Try(rcv(left(early)).run) +: Cont(stack)
-  })
+  }
 
   /**
    * Causes this process to be terminated immediately with `Kill` cause,
    * giving chance for any cleanup actions to be run
    */
   final def kill: Process[F, Nothing] = injectCause(Kill).drain.causedBy(Kill)
+
+  /**
+   * Causes this process to be terminated immediately with `Kill` cause,
+   * giving chance for any cleanup actions to be run.
+   * Use this when you want to pass the Cause that triggered the kill as well.
+   * Note: if the cause is not Error, this is the same as calling [[Process.kill]] with no arguments.
+   *
+   */
+  final def kill(cause: Cause): Process[F, Nothing] = {
+    val k = new Kill(cause)
+    injectCause(k).drain.causedBy(k)
+  }
 
   /**
    * Run `p2` after this `Process` completes normally, or in the event of an error.
@@ -334,11 +342,11 @@ sealed trait Process[+F[_], +O]
     def mkAwait[F[_], A, O](req: F[A])(rcv: EarlyCause \/ A => Trampoline[Process[F, O]]) = Await(req, rcv)
     step match {
       case Step(e@Emit(_), cont) => e onHalt {
-        case Kill => (halt +: cont).asFinalizer.causedBy(Kill)
-        case cause => (Halt(cause) +: cont).asFinalizer
+        case k: Kill => (halt +: cont).asFinalizer.causedBy(k)
+        case cause   => (Halt(cause) +: cont).asFinalizer
       }
       case Step(Await(req, rcv), cont) => mkAwait(req) {
-        case -\/(Kill) => Trampoline.delay(Await(req, rcv).asFinalizer.causedBy(Kill))
+        case -\/(k: Kill) => Trampoline.delay(Await(req, rcv).asFinalizer.causedBy(k))
         case x => rcv(x).map(p => (p +: cont).asFinalizer)
       }
       case hlt@Halt(_) => hlt
@@ -362,14 +370,27 @@ sealed trait Process[+F[_], +O]
   /**
    * Attach supplied process only if process has been killed.
    * Since this function is often used for attaching resource
-   * deallocation logic, the result of `f` is made into a finalizer
+   * deallocation logic, the result of `p` is made into a finalizer
    * using `asFinalizer`, so we can be assured it is run even when
    * this `Process` is being killed by a downstream consumer.
    */
   final def onKill[F2[x] >: F[x], O2 >: O](p: => Process[F2, O2]): Process[F2, O2] =
     this.onHalt {
-      case Kill => p.asFinalizer
-      case other => Halt(other)
+      case Kill(_) => p.asFinalizer
+      case other   => Halt(other)
+    }
+
+  /** This function is used for building transactional processes, allowing us to commit the transaction
+    * only if the pipeline did not halt because of an error (whether it happened in this process or somewhere else).
+    *
+    * The result of `p` is made into a finalizer using `asFinalizer`, so we can be assured it is run even when
+    * this `Process` is being killed by a downstream consumer.
+    */
+  final def onSuccess[F2[x] >: F[x], O2 >: O](p: => Process[F2, O2]): Process[F2, O2] =
+    this.onHalt {
+      case End        => p.asFinalizer
+      case Kill(None) => p.asFinalizer
+      case other      => Halt(other)
     }
 
   /**
@@ -391,7 +412,7 @@ sealed trait Process[+F[_], +O]
    */
   final def swallowKill: Process[F,O] =
     this.onHalt {
-      case Kill | End => halt
+      case Kill(_) | End => halt
       case cause => Halt(cause)
     }
 
@@ -469,7 +490,7 @@ sealed trait Process[+F[_], +O]
               }
           }
         case Halt(End) => F.point(acc)
-        case Halt(Kill) => F.point(acc)
+        case Halt(Kill(_)) => F.point(acc)
         case Halt(Error(rsn)) => C.fail(rsn)
       }
     }
@@ -910,7 +931,7 @@ object Process extends ProcessInstances {
               cur = Try(rcv(EarlyCause(r)).run) +: cont ; go
             }
           case Halt(End) => Task.fail(Terminated(End))
-          case Halt(Kill) => Task.fail(Terminated(Kill))
+          case Halt(k: Kill) => Task.fail(Terminated(k))
           case Halt(Error(rsn)) => Task.fail(rsn)
         }
       Task.delay(go).flatMap(a => a)
@@ -1138,14 +1159,14 @@ object Process extends ProcessInstances {
           }
         }
       } onHalt {
-        case Cause.Kill =>
+        case k: Cause.Kill =>
           lastF map { f =>
             cur match {
               case Halt(_) => sys.error("Impossible (2)")
               case s@Step(_, _) =>
-                s.toProcess.disconnect(Cause.Kill).evalMap(f).drain
+                s.toProcess.disconnect(k).evalMap(f).drain
             }
-          } getOrElse Halt(Cause.Kill)
+          } getOrElse Halt(k)
         case Cause.End  => halt
         case c@Cause.Error(_) => halt.causedBy(c)
       }
