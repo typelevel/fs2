@@ -7,7 +7,6 @@ import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
-import scalaz.syntax.monad._
 
 /**
  * An effectful stream of `O` values. In between emitting values
