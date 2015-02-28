@@ -147,48 +147,6 @@ package object scalaz extends ProcessInstances with ReceiveYInstances {
       self.map(f => (i: I) => F.map(f(i))(_ => i))
   }
 
-  /** Syntax for Sink, that is specialized for Task */
-  implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
-    /** converts sink to sink that first pipes received `I0` to supplied p1 */
-    def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = Process.suspend {
-      // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
-      @volatile var cur = p1.step
-      @volatile var lastF: Option[I => Task[Unit]] = None
-      self.takeWhile { _ =>
-        cur match {
-          case Halt(Cause.End) => false
-          case Halt(cause)     => throw new Cause.Terminated(cause)
-          case _               => true
-        }
-      } map { (f: I => Task[Unit]) =>
-        lastF = Some(f)
-        (i0: I0) => Task.suspend {
-          cur match {
-            case Halt(_) => sys.error("Impossible")
-            case Step(Emit(piped), cont) =>
-              cur = process1.feed1(i0) { cont.continue }.step
-              piped.toList.traverse_(f)
-            case Step(hd, cont) =>
-              val (piped, tl) = process1.feed1(i0)(hd +: cont).unemit
-              cur = tl.step
-              piped.toList.traverse_(f)
-          }
-        }
-      } onHalt {
-        case Cause.Kill =>
-          lastF map { f =>
-            cur match {
-              case Halt(_) => sys.error("Impossible (2)")
-              case s@Step(_, _) =>
-                s.toProcess.disconnect(Cause.Kill).evalMap(f).drain
-            }
-          } getOrElse Halt(Cause.Kill)
-        case Cause.End  => halt
-        case c@Cause.Error(_) => halt.causedBy(c)
-      }
-    }
-  }
-
   implicit def toMonadOps[X:Monoid,A](f: ReceiveY[X,A]): MonadOps[ReceiveT[X]#f,A] =
     receiveYInstance.monadSyntax.ToMonadOps(f)
   implicit def toApplicativeOps[X:Monoid,A](f: ReceiveY[X,A]): ApplicativeOps[ReceiveT[X]#f,A] =
