@@ -1124,7 +1124,7 @@ object Process {
               // from last `Await`
               case Interrupt(cause) if completed.isEmpty =>
                 completed = Some(cause)
-                Try(cleanup(cause)).runTask.runAsync(_.fold(
+                Try(cleanup(cause)).run.runAsync(_.fold(
                   rsn0 =>  cb(left(Error(rsn0).causedBy(cause)))
                   , _ => cb(left(cause))
                 ))

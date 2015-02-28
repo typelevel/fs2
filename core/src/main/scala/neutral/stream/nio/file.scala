@@ -14,6 +14,8 @@ import java.nio.{CharBuffer, ByteBuffer}
 import java.nio.file.{StandardOpenOption, Path, Paths}
 import java.net.URI
 
+import scalaz.concurrent.Task
+
 
 object file {
 
@@ -59,7 +61,7 @@ object file {
    * or in the event of an error.
    */
   def chunkR(src: => AsynchronousFileChannel): Channel[Task, Int, ByteVector] =
-    chunkReadBuffer(src).mapOut(ByteVector.view)
+    chunkReadBuffer(src).map(_ andThen { _.map(ByteVector.view) } )
 
   /**
    * Creates a `Sink[Task, ByteVector]` representation of an `AsynchronousFileChannel`,

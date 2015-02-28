@@ -1,8 +1,11 @@
 package neutral.stream
 
+import neutral.stream.ReceiveY.ReceiveT
 import scodec.bits.ByteVector
 
 import _root_.scalaz._
+import _root_.scalaz.concurrent.Task
+import _root_.scalaz.syntax.{FunctorOps, ApplyOps, ApplicativeOps, MonadOps}
 import _root_.scalaz.syntax.all._
 
 import neutral.stream.Cause._
