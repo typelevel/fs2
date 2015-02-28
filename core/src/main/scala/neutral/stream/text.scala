@@ -53,7 +53,7 @@ object text {
       }
     }
 
-    repartition2(splitAtLastIncompleteChar)
+    repartition2(splitAtLastIncompleteChar)(_ ++ _)
       .map(bs => new String(bs.toArray, utf8Charset))
   }
 
@@ -92,12 +92,12 @@ object text {
 
     val repartitionProcess =
       if (maxLineLength > 0)
-        repartition { (s: String) =>
+        repartition({ (s: String) =>
           val chunks = splitLines(s)
           if (chunks.forall(_.length <= maxLineLength)) chunks
           else throw LengthExceeded(maxLineLength, s)
-        }
-      else repartition(splitLines)
+        })(_ ++ _)
+      else repartition(splitLines)(_ ++ _)
     repartitionProcess.dropLastIf(_.isEmpty)
   }
 }

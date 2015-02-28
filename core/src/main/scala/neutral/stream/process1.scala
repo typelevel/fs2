@@ -365,6 +365,29 @@ object process1 {
   def reduce[A](f: (A, A) => A): Process1[A, A] =
     scan1(f).last
 
+  def repartition[I](p: I => IndexedSeq[I])(append: (I, I) => I): Process1[I, I] = {
+    def go(carry: Option[I]): Process1[I, I] =
+      receive1Or[I,I](emitAll(carry.toList)) { i =>
+        val next = carry.fold(i)(c => append(c, i))
+        val parts = p(next)
+        parts.size match {
+          case 0 => go(None)
+          case 1 => go(Some(parts.head))
+          case _ => emitAll(parts.init) ++ go(Some(parts.last))
+        }
+      }
+    go(None)
+  }
+
+  def repartition2[I](p: I => (Option[I], Option[I]))(append: (I, I) => I): Process1[I,I] = {
+    def go(carry: Option[I]): Process1[I,I] =
+      receive1Or[I,I](emitAll(carry.toList)) { i =>
+        val next = carry.fold(i)(c => append(c, i))
+        val (fst, snd) = p(next)
+        fst.fold(go(snd))(head => emit(head) ++ go(snd))
+      }
+    go(None)
+  }
 
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
