@@ -1,14 +1,20 @@
-organization := "org.scalaz.stream"
+// Temporary project to get this bootstrapped
+lazy val shims = project
 
-name := "scalaz-stream"
+lazy val core = project.dependsOn(shims)
 
-version := "snapshot-0.7"
+// This belongs in another repo long term.
+lazy val scalaz = project.dependsOn(core)
 
-scalaVersion := "2.10.4"
+organization in ThisBuild := "org.stream"
 
-crossScalaVersions := Seq("2.10.4", "2.11.4")
+version in ThisBuild := "snapshot-0.7"
 
-scalacOptions ++= Seq(
+scalaVersion in ThisBuild := "2.10.4"
+
+crossScalaVersions in ThisBuild := Seq("2.10.4", "2.11.4")
+
+scalacOptions in ThisBuild ++= Seq(
   "-feature",
   "-deprecation",
   "-language:implicitConversions",
@@ -19,53 +25,50 @@ scalacOptions ++= Seq(
   "-Yno-adapted-args"
 )
 
-scalacOptions in (Compile, doc) ++= Seq(
+scalacOptions in ThisBuild in (Compile, doc) ++= Seq(
   "-doc-source-url", scmInfo.value.get.browseUrl + "/tree/master€{FILE_PATH}.scala",
   "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath
 )
 
-resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
+resolvers in ThisBuild ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
-libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.6",
-  "org.scalaz" %% "scalaz-concurrent" % "7.0.6",
+libraryDependencies in ThisBuild ++= Seq(
   "org.scodec" %% "scodec-bits" % "1.0.5",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.6" % "test",
   "org.scalacheck" %% "scalacheck" % "1.12.1" % "test"
 )
 
 seq(bintraySettings:_*)
 
-publishMavenStyle := true
+publishMavenStyle in ThisBuild := true
 
-licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
+licenses in ThisBuild += ("MIT", url("http://opensource.org/licenses/MIT"))
 
-scmInfo := Some(ScmInfo(url("https://github.com/scalaz/scalaz-stream"),
+scmInfo in ThisBuild := Some(ScmInfo(url("https://github.com/scalaz/scalaz-stream"),
   "git@github.com:scalaz/scalaz-stream.git"))
 
-bintray.Keys.packageLabels in bintray.Keys.bintray :=
+bintray.Keys.packageLabels in bintray.Keys.bintray in ThisBuild :=
   Seq("stream processing", "functional I/O", "iteratees", "functional programming", "scala")
 
 osgiSettings
 
-OsgiKeys.bundleSymbolicName := "org.scalaz.stream"
+OsgiKeys.bundleSymbolicName in ThisBuild := "org.stream"
 
-OsgiKeys.exportPackage := Seq("scalaz.stream.*")
+OsgiKeys.exportPackage in ThisBuild := Seq("stream.*")
 
-OsgiKeys.importPackage := Seq(
+OsgiKeys.importPackage in ThisBuild := Seq(
   """scala.*;version="$<range;[===,=+);$<@>>"""",
   """scalaz.*;version="$<range;[===,=+);$<@>>"""",
   "*"
 )
 
-parallelExecution in Test := false
+parallelExecution in Test in ThisBuild := false
 
-autoAPIMappings := true
+autoAPIMappings in ThisBuild := true
 
-apiURL := Some(url(s"http://docs.typelevel.org/api/scalaz-stream/stable/${version.value}/doc/"))
+apiURL in ThisBuild := Some(url(s"http://docs.typelevel.org/api/scalaz-stream/stable/${version.value}/doc/"))
 
-initialCommands := "import scalaz.stream._"
+initialCommands in ThisBuild := "import stream._"
 
-doctestWithDependencies := false
+doctestWithDependencies in ThisBuild := false
 
 doctestSettings
