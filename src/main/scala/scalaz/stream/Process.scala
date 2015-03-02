@@ -1198,7 +1198,7 @@ object Process extends ProcessInstances {
      * @return   Function to interrupt the evaluation
      */
     protected[stream] final def runAsync(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit)(implicit S: Strategy): EarlyCause => Unit = {
-      lazy val asyncStep: Task[EarlyCause => Unit] = Task delay {
+      val asyncStep: Task[EarlyCause => Unit] = Task delay {
         self.step match {
           case Halt(cause) =>
             (Task delay cb(-\/(cause))) >> (Task now { _: EarlyCause => () })
