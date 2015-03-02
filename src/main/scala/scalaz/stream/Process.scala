@@ -1,12 +1,17 @@
 package scalaz.stream
 
 import Cause._
+
+import java.util.concurrent.atomic.AtomicReference
+
 import scala.annotation.tailrec
 import scala.collection.SortedMap
-import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
+
+import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, \/-, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
+import scalaz.syntax.monad._
 
 /**
  * An effectful stream of `O` values. In between emitting values
@@ -1192,93 +1197,68 @@ object Process extends ProcessInstances {
      * @param S  Strategy to use when evaluating the process. Note that `Strategy.Sequential` may cause SOE.
      * @return   Function to interrupt the evaluation
      */
-    protected[stream] final def runAsync(
-      cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit
-      )(implicit S: Strategy): (EarlyCause) => Unit = {
+    protected[stream] final def runAsync(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit)(implicit S: Strategy): EarlyCause => Unit = {
+      lazy val asyncStep: Task[EarlyCause => Unit] = Task delay {
+        self.step match {
+          case Halt(cause) =>
+            (Task delay cb(-\/(cause))) >> (Task now { _: EarlyCause => () })
 
-          sealed trait M
-          case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], cont: Cont[Task,O]) extends M
-          case class Interrupt(cause: EarlyCause) extends M
+          case Step(Emit(os), cont) =>
+            (Task delay { cb(\/-((os, cont))) }) >> (Task now { _: EarlyCause => () })
 
-          //forward referenced actor here
-          var a: Actor[M] = null
+          case Step(Await(req, rcv), cont) => {
+            val await: Task[Process[Task, O]] = req.attempt map { either =>
+              Try(rcv(EarlyCause(either)).run) +: cont
+            }
 
-          // Set when the executin has been terminated with reason for termination
-          var completed: Option[Cause] = None
+            Task delay {
+              val ref = new AtomicReference[EarlyCause => Unit]
 
-          // contains reference that eventually builds
-          // a cleanup when the last await was interrupted
-          // this is consulted only, if await was interrupted
-          // volatile marked because of the first usage outside of actor
-          @volatile var cleanup: (EarlyCause => Process[Task,O]) = (c:EarlyCause) => Halt(c)
+              @volatile
+              var orig: EarlyCause => Unit = null     // forward reference
 
-          // runs single step of process.
-          // completes with callback if process is `Emit` or `Halt`.
-          // or asynchronously executes the Await and send result to actor `a`
-          // It returns on left side reason with which this process terminated,
-          // or on right side the cleanup code to be run when interrupted.
-          @tailrec
-          def runStep(p: Process[Task, O]): Cause \/ (EarlyCause => Process[Task,O]) = {
-            val step = p.step
-            step match {
-              case Step(Emit(Seq()), cont)         => runStep(cont.continue)
-              case Step(Emit(h), cont)             => S(cb(right((h, cont)))); left(End)
-              case Step(awt@Await(req, rcv), cont) =>
-                req.runAsync(r => a ! AwaitDone(r, awt, cont))
-                right((c:EarlyCause) => rcv(left(c)).run +: cont)
-              case Halt(cause)                 => S(cb(left(cause))); left(cause)
+              val interrupt = await runAsyncInterruptibly {
+                case -\/(t) => {
+                  if (ref.compareAndSet(orig, null)) {
+                    cb(-\/(Error(t)))
+                  } else {
+                    ()      // we got an exception (possibly an interrupt); cause already propagated
+                  }
+                }
+
+                case \/-(p) => {
+                  // pointer equality test for convenience; not actually needed
+                  if (ref.compareAndSet(orig, null)) {      // can't swap in runAsync right await, because side effects!
+                    ref.set(p.runAsync(cb))      // we made it! swap out interrupt
+                  } else {
+                    ()      // interrupt happened after we completed but before we checked; no-op
+                  }
+                }
+              }
+
+              def liftedInterrupt(cause: EarlyCause): Unit = {
+                if (ref.compareAndSet(orig, null)) {
+                  interrupt()
+                  cb(-\/(cause))
+                } else {
+                  referencedInterrupt(cause)      // completed naturally just as we were interrupted; forward along
+                }
+              }
+
+              orig = liftedInterrupt _
+              ref.set(orig)
+
+              def referencedInterrupt(cause: EarlyCause): Unit =
+                ref.get()(cause)
+
+              referencedInterrupt _
             }
           }
-
-
-          a = new Actor[M]({ m =>
-            m match {
-              case AwaitDone(r, awt, cont) if completed.isEmpty =>
-                val step = Try(awt.rcv(EarlyCause(r)).run) +: cont
-
-
-                runStep(step).fold(
-                  rsn => completed = Some(rsn)
-                  , cln => cleanup = cln
-                )
-
-              // on interrupt we just run any cleanup code we have memo-ed
-              // from last `Await`
-              case Interrupt(cause) if completed.isEmpty =>
-                completed = Some(cause)
-                Try(cleanup(cause)).run.runAsync(_.fold(
-                  rsn0 =>  cb(left(Error(rsn0).causedBy(cause)))
-                  , _ => cb(left(cause))
-                ))
-
-              // this indicates last await was interrupted.
-              // In case the request was successful and only then
-              // we have to get next state of the process and assure
-              // any cleanup will be run.
-              // note this won't consult any cleanup contained
-              // in `next` or `rcv` on left side
-              // as this was already run on `Interrupt`
-              case AwaitDone(r, awt, _) =>
-                Try(awt.rcv(EarlyCause(r)).run)
-                .kill
-                .run.runAsync(_ => ())
-
-
-              // Interrupt after we have been completed this is no-op
-              case Interrupt(_) => ()
-
-            }
-          })(S)
-
-          runStep(self).fold(
-            rsn => (_: Cause) => ()
-            , cln => {
-              cleanup = cln
-              (cause: EarlyCause) => a ! Interrupt(cause)
-            }
-          )
         }
+      } join
 
+      asyncStep.run   // hey, we could totally return something sane here! what up?
+    }
   }
 
   /**
