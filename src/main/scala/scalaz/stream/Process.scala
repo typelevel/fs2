@@ -1214,12 +1214,23 @@ object Process extends ProcessInstances {
             Task delay {
               val ref = new AtomicReference[EarlyCause => Unit]
 
-              @volatile
-              var orig: EarlyCause => Unit = null     // forward reference
+              // forward reference
+              var interrupt: () => Unit = { () => () }
 
-              val interrupt = await runAsyncInterruptibly {
+              lazy val liftedInterrupt: EarlyCause => Unit = { cause =>
+                if (ref.compareAndSet(liftedInterrupt, null)) {
+                  interrupt()
+                  cb(-\/(cause))
+                } else {
+                  referencedInterrupt(cause)      // completed naturally just as we were interrupted; forward along
+                }
+              }
+
+              ref.set(liftedInterrupt)
+
+              interrupt = await runAsyncInterruptibly {
                 case -\/(t) => {
-                  if (ref.compareAndSet(orig, null)) {
+                  if (ref.compareAndSet(liftedInterrupt, null)) {
                     cb(-\/(Error(t)))
                   } else {
                     ()      // we got an exception (possibly an interrupt); cause already propagated
@@ -1228,25 +1239,13 @@ object Process extends ProcessInstances {
 
                 case \/-(p) => {
                   // pointer equality test for convenience; not actually needed
-                  if (ref.compareAndSet(orig, null)) {      // can't swap in runAsync right await, because side effects!
+                  if (ref.compareAndSet(liftedInterrupt, null)) {      // can't swap in runAsync right await, because side effects!
                     ref.set(p.runAsync(cb))      // we made it! swap out interrupt
                   } else {
                     ()      // interrupt happened after we completed but before we checked; no-op
                   }
                 }
               }
-
-              def liftedInterrupt(cause: EarlyCause): Unit = {
-                if (ref.compareAndSet(orig, null)) {
-                  interrupt()
-                  cb(-\/(cause))
-                } else {
-                  referencedInterrupt(cause)      // completed naturally just as we were interrupted; forward along
-                }
-              }
-
-              orig = liftedInterrupt _
-              ref.set(orig)
 
               def referencedInterrupt(cause: EarlyCause): Unit =
                 ref.get()(cause)
