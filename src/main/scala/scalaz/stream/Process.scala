@@ -1239,8 +1239,9 @@ object Process extends ProcessInstances {
 
                 case \/-(p) => {
                   // pointer equality test for convenience; not actually needed
-                  if (ref.compareAndSet(liftedInterrupt, null)) {      // can't swap in runAsync right await, because side effects!
-                    ref.set(p.runAsync(cb))      // we made it! swap out interrupt
+                  if (ref.compareAndSet(liftedInterrupt, null)) {
+                    // we need to fail-trampoline to avoid infinite recursion on drained processes
+                    cb(\/-((Nil, Cont(Vector({ _ => Trampoline done p })))))
                   } else {
                     ()      // interrupt happened after we completed but before we checked; no-op
                   }
