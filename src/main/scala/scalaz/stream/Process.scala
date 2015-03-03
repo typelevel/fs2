@@ -1198,8 +1198,8 @@ object Process extends ProcessInstances {
      * @return   Function to interrupt the evaluation
      */
     protected[stream] final def runAsync(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit)(implicit S: Strategy): EarlyCause => Unit = {
-      val asyncStep: Task[EarlyCause => Unit] = Task delay {
-        self.step match {
+      def go(p: Process[Task, O]): Task[EarlyCause => Unit] = Task delay {
+        p.step match {
           case Halt(cause) =>
             (Task delay cb(-\/(cause))) >> (Task now { _: EarlyCause => () })
 
@@ -1214,24 +1214,10 @@ object Process extends ProcessInstances {
             Task delay {
               val ref = new AtomicReference[EarlyCause => Unit]
 
-              // forward reference
-              var interrupt: () => Unit = { () => () }
-
-              lazy val liftedInterrupt: EarlyCause => Unit = { cause =>
-                if (ref.compareAndSet(liftedInterrupt, null)) {
-                  interrupt()
-                  cb(-\/(cause))
-                } else {
-                  referencedInterrupt(cause)      // completed naturally just as we were interrupted; forward along
-                }
-              }
-
-              ref.set(liftedInterrupt)
-
-              interrupt = await runAsyncInterruptibly {
+              lazy val interrupt: () => Unit = await runAsyncInterruptibly {
                 case -\/(t) => {
                   if (ref.compareAndSet(liftedInterrupt, null)) {
-                    cb(-\/(Error(t)))
+                    go(cont.continue.injectCause(Error(t)).drain.causedBy(Error(t)))
                   } else {
                     ()      // we got an exception (possibly an interrupt); cause already propagated
                   }
@@ -1248,6 +1234,19 @@ object Process extends ProcessInstances {
                 }
               }
 
+              lazy val liftedInterrupt: EarlyCause => Unit = { cause =>
+                if (ref.compareAndSet(liftedInterrupt, null)) {
+                  interrupt()
+
+                  go(cont.continue.injectCause(cause).drain.causedBy(cause))
+                } else {
+                  referencedInterrupt(cause)      // completed naturally just as we were interrupted; forward along
+                }
+              }
+
+              ref.set(liftedInterrupt)
+              interrupt        // force the lazy val
+
               def referencedInterrupt(cause: EarlyCause): Unit =
                 ref.get()(cause)
 
@@ -1257,7 +1256,7 @@ object Process extends ProcessInstances {
         }
       } join
 
-      asyncStep.run   // hey, we could totally return something sane here! what up?
+      go(self).run   // hey, we could totally return something sane here! what up?
     }
   }
 
