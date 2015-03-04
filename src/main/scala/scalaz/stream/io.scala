@@ -237,8 +237,12 @@ object io {
         -1
       } else {
         val buffer = new Array[Byte](1)
-        read(buffer)    // if we fail to read only one byte, we're in trouble and have already thrown an exception buffer(0).toInt
-        buffer(0) & 0xff
+        val bytesRead = read(buffer)
+        if (bytesRead == -1) {
+          -1
+        } else {
+          buffer(0) & 0xff
+        }
       }
     }
 
@@ -293,10 +297,12 @@ object io {
     @tailrec
     override def close() {
       if (cur.isHalt && chunks.isEmpty) {
-        chunks = null
+        chunks = Nil
       } else {
-        cur.kill.step match {
-          case Halt(End | Kill) => ()
+        cur = cur.kill
+        cur.step match {
+          case Halt(End | Kill) =>
+            chunks = Nil
 
           // rethrow halting errors
           case Halt(Cause.Error(e: Error)) => throw e
@@ -315,35 +321,31 @@ object io {
 
     @tailrec
     def step(): Unit = {
-      if (cur.isHalt && chunks.isEmpty) {
-        chunks = null     // release things
-      } else {
-        index = 0
-        cur.step match {
-          case h @ Halt(End | Kill) =>
-            cur = h
+      index = 0
+      cur.step match {
+        case h @ Halt(End | Kill) =>
+          cur = h
 
-          // rethrow halting errors
-          case h @ Halt(Cause.Error(e: Error)) => {
-            cur = h
-            throw e
-          }
+        // rethrow halting errors
+        case h @ Halt(Cause.Error(e: Error)) => {
+          cur = h
+          throw e
+        }
 
-          case h @ Halt(Cause.Error(e: Exception)) => {
-            cur = h
-            throw new IOException(e)
-          }
+        case h @ Halt(Cause.Error(e: Exception)) => {
+          cur = h
+          throw new IOException(e)
+        }
 
-          case Step(Emit(as), cont) => {
-            chunks = as
-            cur = cont.continue
-          }
+        case Step(Emit(as), cont) => {
+          chunks = as
+          cur = cont.continue
+        }
 
-          case Step(Await(request, receive), cont) => {
-            // yay! run the Task
-            cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
-            step()    // push things onto the stack and then step further (tail recursively)
-          }
+        case Step(Await(request, receive), cont) => {
+          // yay! run the Task
+          cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
+          step()    // push things onto the stack and then step further (tail recursively)
         }
       }
     }
