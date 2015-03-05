@@ -251,6 +251,20 @@ object WyeSpec extends  Properties("Wye"){
 
     (pm1 ++ pm2).runLog.timed(3000).run.size == 4
   }
+  
+  property("mergeHaltBoth.terminate-on-doubleHalt") = secure {
+    implicit val scheduler = DefaultScheduler
+
+    for (i <- 1 to 100) {
+      val q = async.unboundedQueue[Unit]
+      q.enqueueOne(()).run
+
+      val process = ((q.dequeue merge halt).once wye halt)(wye.mergeHaltBoth)
+      process.run.timed(3000).run
+    }
+
+    true
+  }
 
   //tests specific case of termination with nested wyes and interrupt
   property("nested-interrupt") = secure {

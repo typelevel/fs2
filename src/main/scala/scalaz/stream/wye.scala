@@ -655,6 +655,8 @@ object wye {
       //cb to be completed for `out` side
       var out: Option[(Cause \/ Seq[O])  => Unit] = None
 
+      var downDone= false
+
       //forward referenced actor
       var a: Actor[M] = null
 
@@ -732,9 +734,6 @@ object wye {
           case None      => None
         }
       }
-
-
-
 
       // Consumes any output form either side and updates wye with it.
       // note it signals if the other side has to be killed
@@ -816,7 +815,6 @@ object wye {
       }
 
 
-
       a = Actor[M]({ m =>
         m match {
           case Ready(side, result) =>
@@ -839,10 +837,24 @@ object wye {
 
           case DownDone(cb0) =>
             if (!yy.isHalt) {
-              val cb1 = Some((r: Cause \/ Seq[O]) => cb0(\/-(())))
-              val (y,cb) = runY(disconnectL(Kill)(disconnectR(Kill)(yy)).kill, cb1)
-              yy = y
-              out = haltIfDone(yy, left, right, cb)
+              val cb1 = (r: Cause \/ Seq[O]) => cb0(\/-(()))
+              if (!downDone) {
+                // complete old callback (from `Get` if defined)
+                out.foreach(cb => S(cb(-\/(Kill))))
+                val (y,cb) = runY(disconnectL(Kill)(disconnectR(Kill)(yy)).kill, Some(cb1))
+                yy = y
+                out = cb
+                downDone = true
+              }
+              else {
+                // important that existing callback is NOT erased. doing so can cause process to hang on terminate
+                // first terminate is on interrupt, second when an awaited task completes
+                out = out match {
+                  case Some(cb) => Some{(r: Cause \/ Seq[O]) => cb(r); cb0(\/-(()))}
+                  case None => Some(cb1) // should never happen - if no cb, yy will be halt
+                }
+              }
+              out = haltIfDone(yy, left, right, out)
             }
             else S(cb0(\/-(())))
         }
