@@ -1198,93 +1198,104 @@ object Process extends ProcessInstances {
      * @return   Function to interrupt the evaluation
      */
     protected[stream] final def runAsync(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit)(implicit S: Strategy): EarlyCause => Unit = {
-      def go(p: Process[Task, O])(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit): Task[EarlyCause => Unit] = Task delay {
-        p.step match {
-          case Halt(cause) =>
-            (Task delay { S { cb(-\/(cause)) } }) >> (Task now { _: EarlyCause => () })
+      val allSteps = Task delay {
+        /*
+         * This is to propagate out the *global* interrupt, across all recursive steps.  Necessary
+         * because our default interrupt mechanism only interrupts "mid-step", meaning that if our
+         * steps complete instantly, it is impossible for anyone outside the function to "win the race"
+         * and get the interrupt to take effect!  This reference is checked immediately prior to ever
+         * await task evaluation, which effectively gives us the ability to interrupt pre-step in
+         * addition to our mid-step interrupt.
+         */
+        val interrupted = new AtomicReference[Option[EarlyCause]](None)
 
-          case Step(Emit(os), cont) =>
-            (Task delay { S { cb(\/-((os, cont))) } }) >> (Task now { _: EarlyCause => () })
+        def go(p: Process[Task, O]): Task[EarlyCause => Unit] = Task delay {
+          p.step match {
+            case Halt(cause) =>
+              (Task delay { S { cb(-\/(cause)) } }) >> (Task now { _: EarlyCause => () })
 
-          case Step(Await(req, rcv), cont) => {
-            val await: Task[Process[Task, O]] = req.attempt map { either =>
-              Try(rcv(EarlyCause(either)).run) +: cont
-            }
+            case Step(Emit(os), cont) =>
+              (Task delay { S { cb(\/-((os, cont))) } }) >> (Task now { _: EarlyCause => () })
 
-            Task delay {
-              val interrupted = new AtomicReference[Option[EarlyCause]](None)      // this is necessary to catch interrupts that are late in halting very fast tasks
-              val ref = new AtomicReference[EarlyCause => Unit]
+            case Step(Await(req, rcv), cont) => {
+              // throws an exception if we're already interrupted
+              val checkInterrupt: Task[Unit] = Task delay {
+                interrupted.get() map { c => Task fail Terminated(c) } getOrElse (Task now (()))
+              } join
 
-              lazy val interrupt: () => Unit = await runAsyncInterruptibly {
-                // explicitly catch interrupts
-                case -\/(Task.TaskInterrupted) => ()      // we were interrupted; someone else will kill things off (this is part 1 of the double-cleanup case)
+              val await: Task[Process[Task, O]] = (checkInterrupt >> req) map { result =>
+                Try(rcv(\/-(result)).run) +: cont
+              }
 
-                case -\/(t) => {
-                  if (ref.compareAndSet(liftedInterrupt, null)) {
-                    ref.compareAndSet(null, go(Try(rcv(-\/(Error(t))).run) +: cont)(cb).run)      // analogous to the success case
-                  } else {
-                    ()      // we got an exception (apparently an interrupt?); cause already propagated
-                  }
-                }
+              Task delay {
+                val ref = new AtomicReference[EarlyCause => Unit]
 
-                case \/-(p) => {
-                  // pointer equality test for convenience; not actually needed
-                  if (ref.compareAndSet(liftedInterrupt, null)) {
-                    val recurse = go(p) {
-                      case -\/(cause) => cb(-\/(cause))
+                lazy val interrupt: () => Unit = Task fork await runAsyncInterruptibly {
+                  // explicitly catch interrupts
+                  case -\/(Task.TaskInterrupted) => ()      // we were interrupted; someone else will kill things off (this is part 1 of the double-cleanup case)
 
-                      // we completed the task, then got interrupted before we invoked the callback; discard results and drain!
-                      case \/-((_, cont)) if interrupted.get().isDefined => {
-                        val cause = interrupted.get().get
-
-                        cont.continue.injectCause(cause).drain.run runAsync {
-                          case -\/(t) => S { cb(-\/(Error(t) causedBy cause)) }
-                          case \/-(_) => S { cb(-\/(cause)) }
-                        }
-                      }
-
-                      case \/-(pair) => cb(\/-(pair))
+                  // signalling a process failure through task
+                  case -\/(Terminated(cause: EarlyCause)) => {
+                    if (ref.compareAndSet(liftedInterrupt, null)) {
+                      ref.set(go(Try(rcv(-\/(cause)).run) +: cont).run)      // analogous to the success case
+                    } else {
+                      ()      // we got an exception (apparently an interrupt?); cause already propagated
                     }
+                  }
 
-                    ref.compareAndSet(null, recurse.run)
+                  case -\/(t) => {
+                    if (ref.compareAndSet(liftedInterrupt, null)) {
+                      ref.set(go(Try(rcv(-\/(Error(t))).run) +: cont).run)      // analogous to the success case
+                    } else {
+                      ()      // we got an exception (apparently an interrupt?); cause already propagated
+                    }
+                  }
+
+                  case \/-(p) => {
+                    // pointer equality test for convenience; not actually needed
+                    if (ref.compareAndSet(liftedInterrupt, null)) {
+                      ref.set(go(p).run)
+                    } else {
+                      // TODO this is part 2 of the case where the double-cleanup happens in master
+
+                      ()      // interrupt happened after we completed but before we checked; no-op
+                    }
+                  }
+                }
+
+                lazy val liftedInterrupt: EarlyCause => Unit = { cause =>
+                  if (ref.compareAndSet(liftedInterrupt, null)) {
+                    interrupt()
+
+                    // successfully interrupted, now drain the rest of the process
+                    (Try(rcv(-\/(cause)).run) +: cont).run runAsync {
+                      case -\/(t) => S { cb(-\/(Error(t) causedBy cause)) }
+                      case \/-(_) => S { cb(-\/(cause)) }
+                    }
                   } else {
-                    // TODO this is part 2 of the case where the double-cleanup happens in master
-
-                    ()      // interrupt happened after we completed but before we checked; no-op
+                    referencedInterrupt(cause)      // completed naturally just as we were interrupted; forward along
                   }
                 }
-              }
 
-              lazy val liftedInterrupt: EarlyCause => Unit = { cause =>
-                if (ref.compareAndSet(liftedInterrupt, null)) {
-                  interrupt()
+                ref.set(liftedInterrupt)
+                interrupt        // start the task
 
-                  // successfully interrupted, now drain the rest of the process
-                  (Try(rcv(-\/(cause)).run) +: cont).run runAsync {
-                    case -\/(t) => S { cb(-\/(Error(t) causedBy cause)) }
-                    case \/-(_) => S { cb(-\/(cause)) }
-                  }
-                } else {
-                  referencedInterrupt(cause)      // completed naturally just as we were interrupted; forward along
+                def referencedInterrupt(cause: EarlyCause): Unit = {
+                  interrupted.compareAndSet(None, Some(cause))
+                  while (ref.get() == null) {}      // spin-wait; won't take very long
+                  ref.get()(cause)
                 }
+
+                referencedInterrupt _
               }
-
-              ref.set(liftedInterrupt)
-              interrupt        // force the lazy val
-
-              // note there is a real chance of a NPE coming out of here under interrupt contention, and I'm ok with that because the types are stupid!
-              def referencedInterrupt(cause: EarlyCause): Unit = {
-                interrupted.set(Some(cause))
-                ref.get()(cause)
-              }
-
-              referencedInterrupt _
             }
           }
-        }
-      } join
+        } join
 
-      go(self)(cb).run   // hey, we could totally return something sane here! what up?
+        go _
+      }
+
+      allSteps flatMap { _(self) } run   // hey, we could totally return something sane here! what up?
     }
   }
 

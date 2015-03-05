@@ -244,7 +244,7 @@ object WyeSpec extends  Properties("Wye"){
   //tests that wye correctly terminates drained process
   property("merge-drain-halt") = secure {
 
-    val effect:Process[Task,Int] = Process.repeatEval(Task.delay(())).drain
+    val effect:Process[Task,Int] = Process.repeatEval(Task delay { () }).drain
 
     val pm1 = effect.wye(Process(1000,2000).toSource)(wye.merge).take(2)
     val pm2 = Process(3000,4000).toSource.wye(effect)(wye.merge).take(2)
