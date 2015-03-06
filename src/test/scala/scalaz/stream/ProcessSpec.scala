@@ -17,6 +17,8 @@ import Process._
 import TestInstances._
 import scala.concurrent.SyncVar
 
+import java.util.concurrent.atomic.AtomicInteger
+
 object ProcessSpec extends Properties("Process") {
 
   case object FailWhale extends RuntimeException("the system... is down")
@@ -293,6 +295,23 @@ object ProcessSpec extends Properties("Process") {
 
     sync.get(3000).isDefined && cleanupCalled
 
+  }
+
+  property("runAsync cleanup redundancy") = secure {
+    val ref = new AtomicInteger(0)
+
+    val p = Process eval (Task delay { Thread.sleep(200); () }) onComplete (Process eval_ (Task delay { ref.incrementAndGet() }))
+
+    val interrupt = p runAsync { _ => () }
+    interrupt(Kill)     // kill right away, before task can complete
+
+    Thread.sleep(100)
+    val before = ref.get()
+    Thread.sleep(200)     // task has *definitely* completed now
+    val after = ref.get()
+
+    (before == 1) :| "before valuation" &&
+      (after == 1) :| "after valuation"
   }
 
   property("Process0Syntax.toStream terminates") = secure {
