@@ -314,6 +314,31 @@ object ProcessSpec extends Properties("Process") {
       (after == 1) :| "after valuation"
   }
 
+  property("runAsync cleanup resource after completed interrupt") = secure {
+    val inner = new AtomicInteger(0)
+    val outer = new AtomicInteger(0)
+
+    val signal = new SyncVar[Unit]
+    val result = new SyncVar[Cause \/ (Seq[Int], Process.Cont[Task, Int])]
+
+    val task = Task delay {
+      signal.put(())
+      Thread.sleep(100)
+    }
+
+    val p = await(task) { _ =>
+      emit(42) onComplete (Process eval_ (Task delay { inner.incrementAndGet() }))
+    } onComplete (Process eval_ (Task delay { outer.incrementAndGet() }))
+
+    val interrupt = p runAsync result.put
+    signal.get
+    interrupt(Kill)
+
+    (result.get == -\/(Kill)) :| "computation result" &&
+      (inner.get() == 1) :| "inner finalizer invocation count" /*&&
+      (outer.get() == 1) :| "outer finalizer invocation count"*/    // TODO should this be true?
+  }
+
   property("Process0Syntax.toStream terminates") = secure {
     Process.constant(0).toStream.take(10).toList === List.fill(10)(0)
   }
