@@ -1297,6 +1297,42 @@ object Process extends ProcessInstances {
 
       allSteps flatMap { _(self) } run   // hey, we could totally return something sane here! what up?
     }
+
+    /**
+     * Analogous to Future#listenInterruptibly, but guarantees listener notification provided that the
+     * body of any given computation step does not block indefinitely.  Furthermore, if the computation
+     * has already completed by the time the cancelation signal is set to `true`.
+     */
+    private def completeInterruptibly[A](f: Future[A], cancel: AtomicBoolean)(cb: Option[A] => Unit): Unit = {
+      import Future._
+
+      f match {
+        // pure cases
+        case Suspend(thunk) if !cancel.get() => completeInterruptibly(thunk(), cancel)(cb)
+        case BindSuspend(thunk, g) if !cancel.get() => completeInterruptibly(thunk() flatMap g, cancel)(cb)
+
+        case Now(a) => cb(Some(a))
+
+        case Async(onFinish) if !cancel.get() => {
+          onFinish { a =>
+            Trampoline delay { cb(Some(a)) }
+          }
+        }
+
+        case BindAsync(onFinish, g) if !cancel.get() => {
+          onFinish { a =>
+            if (!cancel.get()) {
+              Trampoline delay { g(a) } map { completeInterruptibly(_, cancel)(cb) }
+            } else {
+              Trampoline delay { cb(None) }
+            }
+          }
+        }
+
+        // fall-through case where cancel.get() is true
+        case _ => cb(None)
+      }
+    }
   }
 
   /**
