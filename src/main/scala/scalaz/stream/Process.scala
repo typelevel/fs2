@@ -1300,38 +1300,57 @@ object Process extends ProcessInstances {
 
     /**
      * Analogous to Future#listenInterruptibly, but guarantees listener notification provided that the
-     * body of any given computation step does not block indefinitely.  Furthermore, if the computation
-     * has already completed by the time the cancelation signal is set to `true`.
+     * body of any given computation step does not block indefinitely.  When the interrupt function is
+     * invoked, the callback will be immediately invoked, either with an available completion value or
+     * with None.  If the current step of the task ultimately completes with its *final* value (i.e.
+     * the final step of the task is an Async and it starts before the interrupt and completes *afterwards*),
+     * that value will be passed to the callback as a second return.  Thus, the callback will always be
+     * invoked at least once, and may be invoked twice.  If it is invoked twice, the first callback
+     * will always be None while the second will be Some.
      */
-    private def completeInterruptibly[A](f: Future[A], cancel: AtomicBoolean)(cb: Option[A] => Unit): Unit = {
+    private def completeInterruptibly[A](f: Future[A])(cb: Option[A] => Unit)(implicit S: Strategy): () => Unit = {
       import Future._
 
-      f match {
+      val cancel = new AtomicBoolean(false)
+
+      lazy val actor: Actor[Option[Future[A]]] = new Actor[Option[Future[A]]]({
         // pure cases
-        case Suspend(thunk) if !cancel.get() => completeInterruptibly(thunk(), cancel)(cb)
-        case BindSuspend(thunk, g) if !cancel.get() => completeInterruptibly(thunk() flatMap g, cancel)(cb)
+        case Some(Suspend(thunk)) if !cancel.get() =>
+          actor ! Some(thunk())
 
-        case Now(a) => cb(Some(a))
+        case Some(BindSuspend(thunk, g)) if !cancel.get() =>
+          actor ! Some(thunk() flatMap g)
 
-        case Async(onFinish) if !cancel.get() => {
+        case Some(Now(a)) => S { cb(Some(a)) }
+
+        case Some(Async(onFinish)) if !cancel.get() => {
           onFinish { a =>
-            Trampoline delay { cb(Some(a)) }
+            Trampoline delay { S { cb(Some(a)) } }
           }
         }
 
-        case BindAsync(onFinish, g) if !cancel.get() => {
+        case Some(BindAsync(onFinish, g)) if !cancel.get() => {
           onFinish { a =>
             if (!cancel.get()) {
-              Trampoline delay { g(a) } map { completeInterruptibly(_, cancel)(cb) }
+              Trampoline delay { g(a) } map { r => actor ! Some(r) }
             } else {
-              Trampoline delay { cb(None) }
+              Trampoline delay { S { cb(None) } }
             }
           }
         }
 
-        // fall-through case where cancel.get() is true
-        case _ => cb(None)
-      }
+        // fallthrough case where cancel.get() == true
+        case Some(_) => S { cb(None) }
+
+        case None => {
+          cancel.set(true)
+          S { cb(None) }
+        }
+      })
+
+      actor ! Some(f)
+
+      { () => actor ! None }
     }
   }
 
