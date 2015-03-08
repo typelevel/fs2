@@ -1230,7 +1230,7 @@ object Process extends ProcessInstances {
 
                 def unpack(msg: Option[_ \/ a]): Option[a] = msg flatMap { _.toOption }
 
-                def wrap(result: a): Process[Task, O] = Try(rcv(\/-(result)).run) +: cont
+                def wrap(result: a): Process[Task, O] = Try(rcv(\/-(result)).run)
 
                 // handler extractors
                 object Interrupted {
@@ -1276,7 +1276,7 @@ object Process extends ProcessInstances {
                 // completed the task, no interrupts, no exceptions, good to go!
                 object Completed {
                   def unapply(msg: Option[_ \/ a]): Option[Process[Task, O]] =
-                    unpack(msg) map wrap // filter { _ => !interrupted.get().isDefined }   (commented out to avoid race conditions)
+                    unpack(msg) map wrap map { _ +: cont } // filter { _ => !interrupted.get().isDefined }   (commented out to avoid race conditions)
                 }
 
                 val interrupt = completeInterruptibly((Task fork (checkInterrupt >> req)).get) {
@@ -1288,21 +1288,15 @@ object Process extends ProcessInstances {
                     }
                   }
 
-                  case Interrupted.PostStep(inner, cause) => {
-                    /*
-                     * TODO this is the case where we couldn't stop the resource from being grabbed; we should clean it up, but *onComplete has already run!*
-                     * so we would really like to clean up resources, but we can't because onComplete cannot be run more than once
-                     */
-
-                    ()
-                  }
+                  case Interrupted.PostStep(inner, cause) =>
+                    inner.kill.run runAsync { _ => () }
 
                   case Exceptional(t) =>
                     // we got an exception (not an interrupt!) and we need to drain everything
                     ref.set(go(Try(rcv(-\/(Error(t))).run) +: cont).run)
 
-                  case Completed(inner) =>
-                    ref.set(go(inner).run)      // we completed successfully; forward along the reference
+                  case Completed(continuation) =>
+                    ref.set(go(continuation).run)      // we completed successfully; forward along the reference
                 }
 
                 ref.set({ _ => interrupt() })
