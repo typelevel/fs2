@@ -124,6 +124,71 @@ object WyeSpec extends  Properties("Wye"){
     v.size < 1000
   }
 
+  property("interrupt-constant.signal-halt") = secure {
+    val p1 = Process.constant(42)
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-halt.collect-all") = secure {
+    val p1 = Process.constant(42).collect { case i if i > 0 => i }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-halt.collect-none") = secure {
+    val p1 = Process.constant(42).collect { case i if i < 0 => i }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-halt.collect-one") = secure {
+    val p1 = Process(-12) ++ Process.constant(42).collect { case i if i < 0 => i }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-discrete.collect-all") = secure {
+    val p1 = Process.constant(42).collect { case i if i > 0 => i }
+    val poison = async.signal[Boolean]
+    poison.set(true).run
+    val v = (poison.discrete).wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-discrete.collect-one") = secure {
+    val p1 = Process(-12) ++ Process.constant(42).collect { case i if i < 0 => i }
+    val poison = async.signal[Boolean]
+    poison.set(true).run
+    val v = (poison.discrete).wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-halt.filter-none") = secure {
+    val p1 = Process.constant(42).filter { _ < 0 }
+    val i1 = Process(false)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-constant-true.collect-all") = secure {
+    val p1 = Process.constant(42).collect { case i if i > 0 => i }
+    val i1 = Process.constant(true)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
+  property("interrupt-constant.signal-constant-true.collect-none") = secure {
+    val p1 = Process.constant(42).collect { case i if i < 0 => i }
+    val i1 = Process.constant(true)
+    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    v.size >= 0
+  }
+
   property("either.terminate-on-both") = secure {
     val e = (Process.range(0, 20) either Process.range(0, 20)).runLog.timed(1000).run
     (e.collect { case -\/(v) => v } == (0 until 20).toSeq) :| "Left side is merged ok" &&
