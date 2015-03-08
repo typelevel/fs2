@@ -2,14 +2,14 @@ package scalaz.stream
 
 import Cause._
 
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 
 import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, \/-, ~>}
 import scalaz.\/._
-import scalaz.concurrent.{Actor, Strategy, Task}
+import scalaz.concurrent.{Actor, Future, Strategy, Task}
 import scalaz.stream.process1.Await1
 import scalaz.syntax.monad._
 
@@ -1217,72 +1217,98 @@ object Process extends ProcessInstances {
             case Step(Emit(os), cont) =>
               (Task delay { S { cb(\/-((os, cont))) } }) >> (Task now { _: EarlyCause => () })
 
-            case Step(Await(req, rcv), cont) => {
+            case Step(awt: Await[Task, a, O], cont) => {
+              val Await(req, rcv) = awt
+
               // throws an exception if we're already interrupted
               val checkInterrupt: Task[Unit] = Task delay {
                 interrupted.get() map { c => Task fail Terminated(c) } getOrElse (Task now (()))
               } join
 
-              val await: Task[Process[Task, O]] = (checkInterrupt >> req) map { result =>
-                Try(rcv(\/-(result)).run) +: cont
-              }
-
               Task delay {
                 val ref = new AtomicReference[EarlyCause => Unit]
 
-                lazy val interrupt: () => Unit = Task fork await runAsyncInterruptibly {
-                  // explicitly catch interrupts
-                  case -\/(Task.TaskInterrupted) => ()      // we were interrupted; someone else will kill things off (this is part 1 of the double-cleanup case)
+                def unpack(msg: Option[_ \/ a]): Option[a] = msg flatMap { _.toOption }
 
-                  // signalling a process failure through task
-                  case -\/(Terminated(cause: EarlyCause)) => {
-                    if (ref.compareAndSet(liftedInterrupt, null)) {
-                      ref.set(go(Try(rcv(-\/(cause)).run) +: cont).run)      // analogous to the success case
-                    } else {
-                      ()      // we got an exception (apparently an interrupt?); cause already propagated
+                def wrap(result: a): Process[Task, O] = Try(rcv(\/-(result)).run) +: cont
+
+                // handler extractors
+                object Interrupted {
+
+                  object PreOrMidStep {
+                    def unapply(msg: Option[Throwable \/ _]): Option[EarlyCause] =
+                      (PreStep unapply msg) orElse (MidStep unapply msg)
+                  }
+
+                  // interrupted via the `Task.fail` defined in `checkInterrupt`
+                  object PreStep {
+                    def unapply(msg: Option[Throwable \/ _]): Option[EarlyCause] = msg match {
+                      case Some(-\/(Terminated(cause: EarlyCause))) => Some(cause)
+                      case _ => None
                     }
                   }
 
-                  case -\/(t) => {
-                    if (ref.compareAndSet(liftedInterrupt, null)) {
-                      ref.set(go(Try(rcv(-\/(Error(t))).run) +: cont).run)      // analogous to the success case
-                    } else {
-                      ()      // we got an exception (apparently an interrupt?); cause already propagated
-                    }
+                  // interrupted via the callback mechanism, checked in `completeInterruptibly`
+                  object MidStep {
+                    def unapply(msg: Option[_]): Option[EarlyCause] = interrupted.get() filter { _ => !msg.isDefined }
                   }
 
-                  case \/-(p) => {
-                    // pointer equality test for convenience; not actually needed
-                    if (ref.compareAndSet(liftedInterrupt, null)) {
-                      ref.set(go(p).run)
-                    } else {
-                      // TODO this is part 2 of the case where the double-cleanup happens in master
+                  // completed the task, `interrupted.get()` is defined, and so we were interrupted post-completion
+                  object PostStep {
+                    def unapply(msg: Option[_ \/ a]): Option[(Process[Task, O], EarlyCause)] = {
+                      val maybeCause = interrupted.get()
 
-                      ()      // interrupt happened after we completed but before we checked; no-op
+                      maybeCause flatMap { cause =>
+                        unpack(msg) map wrap map { (_, cause) }
+                      }
                     }
                   }
                 }
 
-                lazy val liftedInterrupt: EarlyCause => Unit = { cause =>
-                  if (ref.compareAndSet(liftedInterrupt, null)) {
-                    interrupt()
+                // nominally completed the task, but with an exception
+                object Exceptional {
+                  def unapply(msg: Option[Throwable \/ _]): Option[Throwable] = msg match {
+                    case Some(-\/(t)) => Some(t)
+                    case _ => None
+                  }
+                }
 
-                    // successfully interrupted, now drain the rest of the process
-                    (Try(rcv(-\/(cause)).run) +: cont).run runAsync {
+                // completed the task, no interrupts, no exceptions, good to go!
+                object Completed {
+                  def unapply(msg: Option[_ \/ a]): Option[Process[Task, O]] =
+                    unpack(msg) map wrap // filter { _ => !interrupted.get().isDefined }   (commented out to avoid race conditions)
+                }
+
+                val interrupt = completeInterruptibly((Task fork (checkInterrupt >> req)).get) {
+                  case Interrupted.PreOrMidStep(cause) => {
+                    // interrupted; now drain
+                    (Try(rcv(-\/(cause)).run) +: cont).drain.run runAsync {
                       case -\/(t) => S { cb(-\/(Error(t) causedBy cause)) }
                       case \/-(_) => S { cb(-\/(cause)) }
                     }
-                  } else {
-                    referencedInterrupt(cause)      // completed naturally just as we were interrupted; forward along
                   }
+
+                  case Interrupted.PostStep(inner, cause) => {
+                    /*
+                     * TODO this is the case where we couldn't stop the resource from being grabbed; we should clean it up, but *onComplete has already run!*
+                     * so we would really like to clean up resources, but we can't because onComplete cannot be run more than once
+                     */
+
+                    ()
+                  }
+
+                  case Exceptional(t) =>
+                    // we got an exception (not an interrupt!) and we need to drain everything
+                    ref.set(go(Try(rcv(-\/(Error(t))).run) +: cont).run)
+
+                  case Completed(inner) =>
+                    ref.set(go(inner).run)      // we completed successfully; forward along the reference
                 }
 
-                ref.set(liftedInterrupt)
-                interrupt        // start the task
+                ref.set({ _ => interrupt() })
 
                 def referencedInterrupt(cause: EarlyCause): Unit = {
                   interrupted.compareAndSet(None, Some(cause))
-                  while (ref.get() == null) {}      // spin-wait; won't take very long
                   ref.get()(cause)
                 }
 
