@@ -1,15 +1,12 @@
 package scalaz.stream
 
 import Cause._
-import java.util.concurrent.ScheduledExecutorService
 import scala.annotation.tailrec
 import scala.collection.SortedMap
-import scala.concurrent.duration._
 import scalaz.{\/-, Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
-
 
 /**
  * An effectful stream of `O` values. In between emitting values
@@ -791,49 +788,6 @@ object Process extends ProcessInstances {
     liftW(Process.awaitBoth[I, I2])
 
   /**
-   * Discrete process that every `d` emits elapsed duration
-   * since the start time of stream consumption.
-   *
-   * For example: `awakeEvery(5 seconds)` will
-   * return (approximately) `5s, 10s, 20s`, and will lie dormant
-   * between emitted values.
-   *
-   * By default, this uses a shared `ScheduledExecutorService`
-   * for the timed events, and runs the consumer using the `pool` `Strategy`,
-   * to allow for the process to decide whether result shall be run on
-   * different thread pool, or with `Strategy.Sequential` on the
-   * same thread pool as the scheduler.
-   *
-   * @param d           Duration between emits of the resulting process
-   * @param S           Strategy to run the process
-   * @param scheduler   Scheduler used to schedule tasks
-   */
-  def awakeEvery(d: Duration)(
-    implicit S: Strategy,
-    scheduler: ScheduledExecutorService): Process[Task, Duration] = {
-    def metronomeAndSignal:(()=>Unit,async.mutable.Signal[Duration]) = {
-      val t0 = Duration(System.nanoTime, NANOSECONDS)
-      val signal = async.toSignal[Duration](Process.halt)(S)
-
-      val metronome = scheduler.scheduleAtFixedRate(
-        new Runnable { def run = {
-          val d = Duration(System.nanoTime, NANOSECONDS) - t0
-          signal.set(d).run
-        }},
-        d.toNanos,
-        d.toNanos,
-        NANOSECONDS
-      )
-      (()=>metronome.cancel(false), signal)
-    }
-
-    await(Task.delay(metronomeAndSignal))({
-      case (cm, signal) =>  signal.discrete onComplete eval_(signal.close.map(_=>cm()))
-    })
-  }
-
-
-  /**
    * The infinite `Process`, always emits `a`.
    * If for performance reasons it is good to emit `a` in chunks,
    * specify size of chunk by `chunkSize` parameter
@@ -845,16 +799,6 @@ object Process extends ProcessInstances {
     go
   }
 
-  /**
-   * A continuous stream of the elapsed time, computed using `System.nanoTime`.
-   * Note that the actual granularity of these elapsed times depends on the OS, for instance
-   * the OS may only update the current time every ten milliseconds or so.
-   */
-  def duration: Process[Task, FiniteDuration] =
-    eval(Task.delay(System.nanoTime)).flatMap { t0 =>
-      repeatEval(Task.delay(FiniteDuration(System.nanoTime - t0, NANOSECONDS)))
-    }
-
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process0[Nothing \/ O] =
     Process.emit(right(o))
@@ -862,22 +806,6 @@ object Process extends ProcessInstances {
   /** A `Writer` which writes the given value. */
   def emitW[W](s: W): Process0[W \/ Nothing] =
     Process.emit(left(s))
-
-  /**
-   * A 'continuous' stream which is true after `d, 2d, 3d...` elapsed duration,
-   * and false otherwise.
-   * If you'd like a 'discrete' stream that will actually block until `d` has elapsed,
-   * use `awakeEvery` instead.
-   */
-  def every(d: Duration): Process[Task, Boolean] = {
-    def go(lastSpikeNanos: Long): Process[Task, Boolean] =
-      suspend {
-        val now = System.nanoTime
-        if ((now - lastSpikeNanos) > d.toNanos) emit(true) ++ go(now)
-        else emit(false) ++ go(lastSpikeNanos)
-      }
-    go(0)
-  }
 
   /** A `Process` which emits `n` repetitions of `a`. */
   def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process0[A] = {
@@ -950,19 +878,6 @@ object Process extends ProcessInstances {
   }
 
   /**
-   * A single-element `Process` that waits for the duration `d`
-   * before emitting its value. This uses a shared
-   * `ScheduledThreadPoolExecutor` to signal duration and
-   * avoid blocking on thread. After the signal,
-   * the execution continues with `S` strategy
-   */
-  def sleep(d: FiniteDuration)(
-    implicit S: Strategy
-    , schedulerPool: ScheduledExecutorService
-    ): Process[Task, Nothing] =
-    awakeEvery(d).once.drain
-
-  /**
    * Delay running `p` until `awaken` becomes true for the first time.
    * The `awaken` process may be discrete.
    */
@@ -983,36 +898,6 @@ object Process extends ProcessInstances {
   /** A `Writer` which writes the given value; alias for `emitW`. */
   def tell[S](s: S): Process0[S \/ Nothing] =
     emitW(s)
-
-  /**
-   * Convert a `Process` to a `Task` which can be run repeatedly to generate
-   * the elements of the `Process`.
-   *
-   * Note that evaluation of this task will end with Exception `End` or `Continue`
-   * even when the evaluation of the process was successful.
-   */
-  def toTask[A](p: Process[Task, A]): Task[A] = {
-      var cur = p
-      def go: Task[A] =
-        cur.step match {
-          case Step(Emit(os), cont) =>
-            if (os.isEmpty) {
-              cur = cont.continue
-              go
-            } else {
-              cur = emitAll(os.tail) +: cont
-              Task.now(os.head)
-            }
-          case Step(Await(rq,rcv), cont) =>
-            rq.attempt.flatMap { r =>
-              cur = Try(rcv(EarlyCause.fromTaskResult(r)).run) +: cont ; go
-            }
-          case Halt(End) => Task.fail(Terminated(End))
-          case Halt(Kill) => Task.fail(Terminated(Kill))
-          case Halt(Error(rsn)) => Task.fail(rsn)
-        }
-      Task.delay(go).flatMap(a => a)
-  }
 
   /** Produce a (potentially infinite) source from an unfold. */
   def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = {
@@ -1279,14 +1164,13 @@ object Process extends ProcessInstances {
     /**
      * Feed a single input to this `Process1`.
      */
-    def feed1(i: I): Process1[I,O] =
+    def feed1(i: I): Process1[I, O] =
       process1.feed1(i)(self)
 
     /** Transform the input of this `Process1`. */
-    def contramap[I2](f: I2 => I): Process1[I2,O] =
+    def contramap[I2](f: I2 => I): Process1[I2, O] =
       process1.lift(f).pipe(self)
   }
-
 
   /**
    * Syntax for processes that have its effects wrapped in Task
@@ -1299,9 +1183,6 @@ object Process extends ProcessInstances {
      */
     def forwardFill(implicit S: Strategy): Process[Task, O] =
       async.toSignal(self).continuous
-
-    /** Infix syntax for `Process.toTask`. */
-    def toTask: Task[O] = Process.toTask(self)
 
     /**
      * Asynchronous execution of this Process. Note that this method is not resource safe unless
@@ -1319,113 +1200,100 @@ object Process extends ProcessInstances {
      * always at least once. The second cleanup invocation in that case may run on different thread, asynchronously.
      *
      *
-     * @param cb  result of the asynchronous evaluation of the process.
-     *            Callback on right side will never be called if evaluation of the process resulted in `empty`
-     * @param S  Strategy to use when evaluating the process. Note that `Strategy.Sequential` will cause SOE.
+     * @param cb  result of the asynchronous evaluation of the process. Note that, the callback is never called
+     *            on the right side, if the sequence is empty.
+     * @param S  Strategy to use when evaluating the process. Note that `Strategy.Sequential` may cause SOE.
      * @return   Function to interrupt the evaluation
      */
     protected[stream] final def runAsync(
       cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit
       )(implicit S: Strategy): (EarlyCause) => Unit = {
 
-          sealed trait M
-          case class AsyncStep(cur: Process[Task,O]) extends M
-          case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], next:Cont[Task,O]) extends M
-          case class Interrupt(cause: EarlyCause) extends M
+      sealed trait M
+      case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], cont: Cont[Task,O]) extends M
+      case class Interrupt(cause: EarlyCause) extends M
 
-          // forward referenced actor
-          var a: Actor[M] = null
+      //forward referenced actor here
+      var a: Actor[M] = null
 
-          // If the execution has been interrupted this is set to EarlyCause (Kill)
-          // Otherwise this is set to reason of termination of the evaluation,
-          // That means End when execution terminated normally and `EarlyCause` in case of failure.
-          var completed: Option[Cause] = None
+      // Set when the executin has been terminated with reason for termination
+      var completed: Option[Cause] = None
 
-          // When there is open await this is set to cleanup that shall be run
-          // hence task may get interrupted, and may not complete before/after interruption
-          // we run the cleanup code here.
-          // Otherwise when evaluating AsyncStep, this is set to None.
-          var cleanup: Option[(EarlyCause => Process[Task,O])] = None
+      // contains reference that eventually builds
+      // a cleanup when the last await was interrupted
+      // this is consulted only, if await was interrupted
+      // volatile marked because of the first usage outside of actor
+      @volatile var cleanup: (EarlyCause => Process[Task,O]) = (c:EarlyCause) => Halt(c)
 
-          def active(m:M): Unit = m match {
-            case AsyncStep(cur) =>
-              cur.step match {
-                case Step(Emit(os),next) =>
-                  if (os.isEmpty) {
-                    // we are ok there to run indefinitely the evaluation of next value
-                    // hence the evaluation may be interrupted. That way we may never enter into infinite loop
-                    // as a side effect a process that will never emit (i.e. Process.drain) is guaranteed to
-                    // run without synchronizing on some other combinator (like wye, mergeN).
-                    a ! AsyncStep(next.continue)
-                  } else {
-                    completed = Some(End)
-                    S(cb(right((os,next))))
-                  }
-
-
-                case Step(awt@Await(req,rcv),next) =>
-                  cleanup = Some((c:EarlyCause) => Try(rcv(left(c)).run) +: next)
-                  req.runAsync(r => a ! AwaitDone(r, awt, next))
-
-                case Halt(cause) =>
-                  completed = Some(cause)
-                  S(cb(left(cause)))
-              }
-
-            case AwaitDone(r, awt, next) =>
-              cleanup = None //reset await state
-              a ! AsyncStep(Try(awt.rcv(EarlyCause.fromTaskResult(r)).run) +: next)
-
-            case Interrupt(cause) =>
-              completed = Some(cause)
-              cleanup match {
-                case Some(cf) =>
-                  // `AsyncStep` is not active, instead we await for Await result.
-                  // hence that may or may not be received, we run cleanup here and complete
-                  // AsyncStep will not get evaluated any more because we switch to `interrupted` handler
-                  // and in that interrupted handler only await will be evaluated
-                  cleanup = None
-                  Try(cf(cause)).run.runAsync {
-                    case -\/(rsn) => S(cb(left(Error(rsn).causedBy(cause))))
-                    case \/-(_) =>  S(cb(left(cause)))
-                  }
-
-                case None =>
-                  // this indicates we have got in middle of evaluating `AsyncStep`.
-                  // this is no-op hence `AsyncStep` will evaluate in next cycle
-                  ()
-              }
-          }
-
-          def interrupted(cause:Cause, m: M) : Unit = m match {
-            case AsyncStep(cur) =>
-              // this indicates we have been interrupted during evaluation of the AsyncStep.
-              // We have to clean process here and then continue with callback
-              cur.kill.run.runAsync { _ => S(cb(left(cause))) }
-
-            case AwaitDone(r, awt, _) =>
-              // indicates we have been interrupted during evaluation of await, and that await has completed
-              // at this point original process continues, but hence we may allocate resources in that await (req)
-              // we must run cleanup of the process here as well. Note that this may cause cleanups to be run twice
-              cleanup = None
-              Try(awt.rcv(EarlyCause.fromTaskResult(r)).run)
-              .kill
-              .run.runAsync(_ => ())
-
-            case Interrupt(_) =>
-              //interrupted after we already completed, no-op
-              ()
-          }
-
-          a = new Actor[M]({ m =>
-            completed.fold(active(m))(interrupted(_,m))
-          })(S)
-
-          S(a ! AsyncStep(self)) //fork to run the first evaluation so we won't block
-          (cause: EarlyCause) =>  {  a ! Interrupt(cause)}
+      // runs single step of process.
+      // completes with callback if process is `Emit` or `Halt`.
+      // or asynchronously executes the Await and send result to actor `a`
+      // It returns on left side reason with which this process terminated,
+      // or on right side the cleanup code to be run when interrupted.
+      @tailrec
+      def runStep(p: Process[Task, O]): Cause \/ (EarlyCause => Process[Task,O]) = {
+        val step = p.step
+        step match {
+          case Step(Emit(Seq()), cont)         => runStep(cont.continue)
+          case Step(Emit(h), cont)             => S(cb(right((h, cont)))); left(End)
+          case Step(awt@Await(req, rcv), cont) =>
+            req.runAsync(r => a ! AwaitDone(r, awt, cont))
+            right((c:EarlyCause) => rcv(left(c)).run +: cont)
+          case Halt(cause)                 => S(cb(left(cause))); left(cause)
         }
+      }
+
+
+      a = new Actor[M]({ m =>
+        m match {
+          case AwaitDone(r, awt, cont) if completed.isEmpty =>
+            val step = Try(awt.rcv(EarlyCause.fromTaskResult(r)).run) +: cont
+
+
+            runStep(step).fold(
+              rsn => completed = Some(rsn)
+              , cln => cleanup = cln
+            )
+
+          // on interrupt we just run any cleanup code we have memo-ed
+          // from last `Await`
+          case Interrupt(cause) if completed.isEmpty =>
+            completed = Some(cause)
+            Try(cleanup(cause)).run.runAsync(_.fold(
+              rsn0 =>  cb(left(Error(rsn0).causedBy(cause)))
+              , _ => cb(left(cause))
+            ))
+
+          // this indicates last await was interrupted.
+          // In case the request was successful and only then
+          // we have to get next state of the process and assure
+          // any cleanup will be run.
+          // note this won't consult any cleanup contained
+          // in `next` or `rcv` on left side
+          // as this was already run on `Interrupt`
+          case AwaitDone(r, awt, _) =>
+            Try(awt.rcv(EarlyCause.fromTaskResult(r)).run)
+            .kill
+            .run.runAsync(_ => ())
+
+
+          // Interrupt after we have been completed this is no-op
+          case Interrupt(_) => ()
+
+        }
+      })(S)
+
+      runStep(self).fold(
+        rsn => (_: Cause) => ()
+        , cln => {
+          cleanup = cln
+          (cause: EarlyCause) => a ! Interrupt(cause)
+        }
+      )
+    }
 
   }
+
 
   /**
    * This class provides infix syntax specific to `Tee`. We put these here

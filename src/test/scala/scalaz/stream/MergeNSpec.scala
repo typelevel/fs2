@@ -70,7 +70,7 @@ object MergeNSpec extends Properties("mergeN") {
 
 
     //this below is due the non-thread-safety of scala object, we must memoize this here
-    val delayEach10 =  Process.awakeEvery(10 seconds)
+    val delayEach10 = time.awakeEvery(10 seconds)
 
     def oneUp(index:Int) =
       (emit(index).toSource ++ delayEach10.map(_=>index))
@@ -123,7 +123,7 @@ object MergeNSpec extends Properties("mergeN") {
         case None => Some(0)
       })
 
-    val sleep5 = sleep(5 millis)
+    val sleep5 = time.sleep(5 millis)
 
     val ps =
       emitAll(for (i <- 0 until count) yield {
