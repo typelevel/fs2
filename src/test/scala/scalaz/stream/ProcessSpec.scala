@@ -279,42 +279,22 @@ object ProcessSpec extends Properties("Process") {
     p.sequence(4).runLog.run == p.flatMap(eval).runLog.run
   }
 
-  property("runAsync cleanup") = secure {
-
+  property("runAsync onComplete on task never completing") = secure {
     val q = async.boundedQueue[Int]()
-    val q2 = async.boundedQueue[Int]()
 
     @volatile var cleanupCalled = false
     val sync = new SyncVar[Cause \/ (Seq[Int], Process.Cont[Task,Int])]
-    val deque = q.dequeue.onComplete(eval_(Task.delay{cleanupCalled = true}))
-    val interrupt =
-      (deque observe q2.enqueue).runAsync(sync.put)
+    val p = q.dequeue onComplete eval_(Task delay { cleanupCalled = true })
+
+    val interrupt = p runAsync sync.put
 
     Thread.sleep(100)
     interrupt(Kill)
 
-    sync.get(3000).isDefined && cleanupCalled
-
+    sync.get(3000).isDefined :| "sync completion" && cleanupCalled :| "cleanup"
   }
 
-  property("runAsync cleanup redundancy") = secure {
-    val ref = new AtomicInteger(0)
-
-    val p = Process eval (Task delay { Thread.sleep(200); () }) onComplete (Process eval_ (Task delay { ref.incrementAndGet() }))
-
-    val interrupt = p runAsync { _ => () }
-    interrupt(Kill)     // kill right away, before task can complete
-
-    Thread.sleep(100)
-    val before = ref.get()
-    Thread.sleep(200)     // task has *definitely* completed now
-    val after = ref.get()
-
-    (before == 1) :| "before valuation" &&
-      (after == 1) :| "after valuation"
-  }
-
-  property("runAsync cleanup resource after completed interrupt") = secure {
+  property("runAsync independent onComplete exactly once on task eventually completing") = secure {
     val inner = new AtomicInteger(0)
     val outer = new AtomicInteger(0)
 
@@ -334,9 +314,11 @@ object ProcessSpec extends Properties("Process") {
     signal.get
     interrupt(Kill)
 
-    (result.get == -\/(Kill)) :| "computation result" &&
-      (inner.get() == 1) :| "inner finalizer invocation count" /*&&
-      (outer.get() == 1) :| "outer finalizer invocation count"*/    // TODO should this be true?
+    Thread.sleep(200)     // ensure the task actually completes
+
+    (result.get(3000).get == -\/(Kill)) :| "computation result" &&
+      (inner.get() == 0) :| "inner finalizer invocation count" &&
+      (outer.get() == 1) :| "outer finalizer invocation count"
   }
 
   property("Process0Syntax.toStream terminates") = secure {
