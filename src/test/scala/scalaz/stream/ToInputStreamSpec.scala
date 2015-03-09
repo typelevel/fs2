@@ -1,13 +1,13 @@
 package scalaz.stream
 
 import org.scalacheck._
-import Prop._
+import Prop.{ BooleanOperators, forAll, secure, throws }
 
 import scodec.bits.ByteVector
 
 import scalaz.concurrent.Task
 
-import java.io.DataInputStream
+import java.io.{IOException, DataInputStream}
 
 object ToInputStreamSpec extends Properties("toInputStream") {
 
@@ -124,5 +124,19 @@ object ToInputStreamSpec extends Properties("toInputStream") {
     val is = io.toInputStream(p map { ByteVector view _ })
 
     is.read() == 255
+  }
+
+  property("handles exceptions") = secure {
+    val p: Process[Task, ByteVector] = Process eval Task.fail(new Exception())
+    val is = io.toInputStream(p)
+    throws(classOf[IOException])(is.read())
+  }
+
+  property("after close read should return -1") = secure {
+    val p = Process emitAll Seq(Array[Byte](1, 2), Array[Byte](3, 4))
+    val is = io.toInputStream(p map { ByteVector view _ })
+    is.read()
+    is.close()
+    is.read() == -1
   }
 }
