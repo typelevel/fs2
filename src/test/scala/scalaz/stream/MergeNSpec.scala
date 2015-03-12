@@ -182,4 +182,17 @@ object MergeNSpec extends Properties("mergeN") {
     merge.mergeN(Process(Process.repeatEval(Task.now(1)))).kill.run.timed(3000).run
     true // Test terminates.
   }
+
+  property("complete all children before onComplete") = secure {
+    val count = new AtomicInteger(0)
+    val inc = Process eval (Task delay { count.incrementAndGet() })
+    val size = 10
+
+    val p = merge.mergeN(Process emitAll (0 until size map { _ => inc })).drain onComplete (Process eval (Task delay { count.get() }))
+
+    val result = p.runLog timed 3000 run
+
+    (result.length == 1) :| s"result.length == ${result.length}" &&
+      (result.head == size) :| s"result.head == ${result.head}"
+  }
 }
