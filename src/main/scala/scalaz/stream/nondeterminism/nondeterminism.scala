@@ -28,6 +28,7 @@ package object nondeterminism {
   def njoin[A](maxOpen: Int, maxQueued: Int)(source: Process[Task, Process[Task, A]])(implicit S: Strategy): Process[Task, A] = {
     sealed trait M
     case object Start extends M
+    case class Delay(cont: Cont[Task, Process[Task, A]]) extends M
     case class Offer(p: Process[Task, A], cont: Cont[Task,Process[Task,A]]) extends M
     case class FinishedSource(rsn: Cause) extends M
     case class Finished(result: Throwable \/ Unit) extends M
@@ -55,11 +56,15 @@ package object nondeterminism {
       var actor: Actor[M] = null
 
       //evaluates next step of the source of processes
-      def nextStep(from: Process[Task, Process[Task, A]]) =
+      def nextStep(from: Process[Task, Process[Task, A]]) = {
         Either3.middle3({
           from.runAsync({
             case -\/(rsn) =>
               actor ! FinishedSource(rsn)
+
+            // contrary to popular belief (well, basically just *here*), runAsync does not guarantee non-emptiness
+            case \/-((Seq(), cont)) =>
+              actor ! Delay(cont)
 
             case \/-((processes, cont)) =>
               val next = (c:Cause) => Trampoline.done(
@@ -67,10 +72,10 @@ package object nondeterminism {
                   early => Halt(early) +: cont
                 )
               )
-              //runAsync guarantees nonEmpty processes
               actor ! Offer(processes.head, Cont(Vector(next)))
           })
         })
+      }
 
       // fails the signal should cause all streams to terminate
 
@@ -103,6 +108,9 @@ package object nondeterminism {
 
       actor = Actor[M]({m =>
         closed.fold(m match {
+          case Delay(cont) =>
+            state = nextStep(cont.continue)
+
           // next merged process is available
           // run it with chance to interrupt
           // and give chance to start next process if not bounded
