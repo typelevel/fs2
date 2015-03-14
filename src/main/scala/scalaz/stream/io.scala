@@ -270,7 +270,7 @@ object io {
               val remaining = chunk.length - index
 
               if (length <= remaining) {
-                (chunk drop index take length).copyToArray(buffer, offset)      // TODO replace this with the 4-arg copyToArray once exposed
+                chunk.copyToArray(buffer, offset, index, length)
 
                 if (length == remaining) {
                   index = 0
@@ -281,7 +281,7 @@ object io {
 
                 length + read
               } else {
-                (chunk drop index take remaining).copyToArray(buffer, offset)      // TODO replace this with the 4-arg copyToArray once exposed
+                chunk.copyToArray(buffer, offset, index, remaining)
 
                 chunks = chunks.tail
                 go(offset + remaining, length - remaining, read + remaining)
