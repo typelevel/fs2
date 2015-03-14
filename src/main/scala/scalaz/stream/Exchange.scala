@@ -77,10 +77,10 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * If you want to terminate after Right side (W) terminates, supply terminateOn with `Request.R` or `Request.Both` to
    * terminate on Right or Any side respectively
    *
-   * @param p
-   * @return
+   * @param p Process of `W` values to send
+   * @param terminateOn Terminate on Left side (receive), Right side (W) or Any side terminates
    */
-  def run(p:Process[Task,W] = halt, terminateOn:Request = Request.L):Process[Task,I] = {
+  def run(p: Process[Task, W] = halt, terminateOn: Request = Request.L)(implicit S: Strategy): Process[Task, I] = {
     import scalaz.stream.wye. {mergeHaltL, mergeHaltR, mergeHaltBoth}
     val y = terminateOn match {
       case Request.L => mergeHaltL[I]
@@ -125,13 +125,13 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
     val wq = async.boundedQueue[W](0)
     val w2q = async.boundedQueue[W2](0)
 
-    def cleanup: Process[Task, Nothing] = eval_(wq.close) fby eval_(w2q.close)
+    def cleanup: Process[Task, Nothing] = eval_(wq.close) ++ eval_(w2q.close)
     def receive: Process[Task, I] = self.read onComplete cleanup
     def send: Process[Task, Unit] = wq.dequeue to self.write
 
     def sendAndReceive = {
       val (o, ny) = y.unemit
-      (emitAll(o) fby ((wq.size.discrete either receive).wye(w2q.dequeue)(ny)(S) onComplete cleanup) either send).flatMap {
+      (emitAll(o) ++ ((wq.size.discrete either receive).wye(w2q.dequeue)(ny)(S) onComplete cleanup) either send).flatMap {
         case \/-(o) => halt
         case -\/(-\/(o)) => eval_(wq.enqueueOne(o))
         case -\/(\/-(b)) => emit(b)
@@ -159,10 +159,10 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
           case ReceiveL(-\/(_)) => go(cur)
           case ReceiveL(\/-(i)) =>
             cur.feed1(i).unemit match {
-              case (out,hlt@Halt(rsn)) => emitAll(out) fby hlt
-              case (out,next) => emitAll(out) fby go(next)
+              case (out,hlt@Halt(rsn)) => emitAll(out) ++ hlt
+              case (out,next) => emitAll(out) ++ go(next)
             }
-          case ReceiveR(w) => tell(w) fby go(cur)
+          case ReceiveR(w) => tell(w) ++ go(cur)
           case HaltL(rsn) => Halt(rsn)
           case HaltR(rsn) => go(cur)
         }
@@ -196,8 +196,8 @@ object Exchange {
     def loop(cur: Process1[W, I]): WyeW[Nothing, Nothing, W, I] = {
       awaitR[W] flatMap {
         case w => cur.feed1(w).unemit match {
-          case (o, hlt@Halt(rsn)) => emitAll(o.map(right)) fby hlt
-          case (o, np)            => emitAll(o.map(right)) fby loop(np)
+          case (o, hlt@Halt(rsn)) => emitAll(o.map(right)) ++ hlt
+          case (o, np)            => emitAll(o.map(right)) ++ loop(np)
         }
       }
     }
@@ -207,7 +207,7 @@ object Exchange {
     })({ q =>
       val (out, np) = p.unemit
       val ex = Exchange[Nothing, W](halt, q.enqueue)
-      emit(ex.wye(emitAll(out).map(right) fby loop(np))) onComplete eval_(q.close)
+      emit(ex.wye(emitAll(out).map(right) ++ loop(np))) onComplete eval_(q.close)
     })
 
   }

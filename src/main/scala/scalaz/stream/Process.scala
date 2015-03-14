@@ -1,15 +1,12 @@
 package scalaz.stream
 
 import Cause._
-import java.util.concurrent.ScheduledExecutorService
 import scala.annotation.tailrec
 import scala.collection.SortedMap
-import scala.concurrent.duration._
-import scalaz.{Catchable, Functor, Monad, MonadPlus, Monoid, Nondeterminism, \/, -\/, ~>}
+import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.process1.Await1
-
 
 /**
  * An effectful stream of `O` values. In between emitting values
@@ -56,10 +53,10 @@ sealed trait Process[+F[_], +O]
     }
   }
 
-  /** Alias for `append` **/
+  /** Alias for `append` */
   final def ++[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
 
-  /** Alias for `append` **/
+  /** Alias for `append` */
   final def fby[F2[x] >: F[x], O2 >: O](p2: => Process[F2, O2]): Process[F2, O2] = append(p2)
 
   /**
@@ -284,9 +281,7 @@ sealed trait Process[+F[_], +O]
     .dropWhile(_.isRight)
     .map(_.fold(identity, _ => sys.error("unpossible")))
 
-  /**
-   * Returns true, if this process is halted
-   */
+  /** Returns true, if this process is halted */
   final def isHalt: Boolean = this match {
     case Halt(_) => true
     case _ => false
@@ -392,7 +387,6 @@ sealed trait Process[+F[_], +O]
 
   /**
    * For anly process terminating with `Kill`, this swallows the `Kill` and replaces it with `End` termination
-   * @return
    */
   final def swallowKill: Process[F,O] =
     this.onHalt {
@@ -511,7 +505,7 @@ sealed trait Process[+F[_], +O]
 }
 
 
-object Process {
+object Process extends ProcessInstances {
 
 
   import scalaz.stream.Util._
@@ -650,13 +644,7 @@ object Process {
      */
     def +:[F2[x] >: F[x], O2 >: O](p: Process[F2, O2]): Process[F2, O2] = prepend(p)
 
-    /**
-     * alias for +:
-     * @param p
-     * @tparam F2
-     * @tparam O2
-     * @return
-     */
+    /** alias for +: */
     def prepend[F2[x] >: F[x], O2 >: O](p: Process[F2, O2]): Process[F2, O2] = {
       if (stack.isEmpty) p
       else p match {
@@ -682,7 +670,6 @@ object Process {
 
     /**
      * Returns true, when this continuation is empty, i.e. no more appends to process
-     * @return
      */
     def isEmpty : Boolean = stack.isEmpty
 
@@ -695,7 +682,7 @@ object Process {
   //
   //////////////////////////////////////////////////////////////////////////////////////
 
-  /** Alias for emitAll **/
+  /** Alias for emitAll */
   def apply[O](o: O*): Process0[O] = emitAll(o)
 
   /**
@@ -717,11 +704,11 @@ object Process {
 
   /** The `Process1` which awaits a single input, emits it, then halts normally. */
   def await1[I]: Process1[I, I] =
-    await(Get[I])(emit)
+    receive1(emit)
 
-  /** Like `await1`, but consults `fb` when await fails to receive an `I` **/
+  /** Like `await1`, but consults `fb` when await fails to receive an `I` */
   def await1Or[I](fb: => Process1[I, I]): Process1[I, I] =
-    awaitOr(Get[I])((_: EarlyCause) => fb)(emit)
+    receive1Or(fb)(emit)
 
   /** The `Wye` which request from both branches concurrently. */
   def awaitBoth[I, I2]: Wye[I, I2, ReceiveY[I, I2]] =
@@ -735,46 +722,32 @@ object Process {
   def awaitR[I2]: Tee[Any, I2, I2] =
     await(R[I2])(emit)
 
-  /** The `Process` which emits the single value given, then halts. **/
+  /** The `Process` which emits the single value given, then halts. */
   def emit[O](o: O): Process0[O] = Emit(Vector(o))
 
   /** The `Process` which emits the given sequence of values, then halts. */
   def emitAll[O](os: Seq[O]): Process0[O] = Emit(os)
 
-  @deprecated("Use please emitAll(h) ++ tail instead", "0.5.0")
-  def emitSeq[F[_], O](h: Seq[O], t: Process[F, O] = halt): Process[F, O] = t match {
-    case `halt` | Emit(Seq()) => emitAll(h)
-    case _ => emitAll(h) ++ t
-  }
-
-  /** The `Process` which emits no values and halts immediately with the given exception. **/
+  /** The `Process` which emits no values and halts immediately with the given exception. */
   def fail(rsn: Throwable): Process0[Nothing] = Halt(Error(rsn))
 
-  /** `halt` but with precise type. **/
+  /** `halt` but with precise type. */
   private[stream] val halt0: Halt = Halt(End)
 
-  /** The `Process` which emits no values and signals normal termination. **/
+  /** The `Process` which emits no values and signals normal termination. */
   val halt: Process0[Nothing] = halt0
 
   /** Alias for `halt`. */
   def empty[F[_],O]: Process[F, O] = halt
 
   /**
-   * awaits receive of `I` in process1, and attaches continue in case await evaluation
-   * terminated with `End` indicated source being exhausted (`continue`)
-   * or arbitrary exception indicating process was terminated abnormally (`cleanup`)
-   *
-   * If you don't need to handle the `continue` or `cleanup` case, use `await1.flatMap`
+   * The `Process1` which awaits a single input and passes it to `rcv` to
+   * determine the next state.
    */
-  def receive1[I, O](
-    rcv: I => Process1[I, O]
-    ): Process1[I, O] =
+  def receive1[I, O](rcv: I => Process1[I, O]): Process1[I, O] =
     await(Get[I])(rcv)
 
-  /**
-   * Curried syntax alias for receive1
-   * Note that `fb` is attached to both, fallback and cleanup
-   */
+  /** Like `receive1`, but consults `fb` when it fails to receive an input. */
   def receive1Or[I, O](fb: => Process1[I, O])(rcv: I => Process1[I, O]): Process1[I, O] =
     awaitOr(Get[I])((rsn: EarlyCause) => fb.causedBy(rsn))(rcv)
 
@@ -801,107 +774,34 @@ object Process {
     liftW(Process.awaitBoth[I, I2])
 
   /**
-   * Discrete process that every `d` emits elapsed duration
-   * since the start time of stream consumption.
-   *
-   * For example: `awakeEvery(5 seconds)` will
-   * return (approximately) `5s, 10s, 20s`, and will lie dormant
-   * between emitted values.
-   *
-   * By default, this uses a shared `ScheduledExecutorService`
-   * for the timed events, and runs the consumer using the `pool` `Strategy`,
-   * to allow for the process to decide whether result shall be run on
-   * different thread pool, or with `Strategy.Sequential` on the
-   * same thread pool as the scheduler.
-   *
-   * @param d           Duration between emits of the resulting process
-   * @param S           Strategy to run the process
-   * @param scheduler   Scheduler used to schedule tasks
-   */
-  def awakeEvery(d: Duration)(
-    implicit S: Strategy,
-    scheduler: ScheduledExecutorService): Process[Task, Duration] = {
-    def metronomeAndSignal:(()=>Unit,async.mutable.Signal[Duration]) = {
-      val signal = async.signal[Duration](S)
-      val t0 = Duration(System.nanoTime, NANOSECONDS)
-
-      val metronome = scheduler.scheduleAtFixedRate(
-        new Runnable { def run = {
-          val d = Duration(System.nanoTime, NANOSECONDS) - t0
-          signal.set(d).run
-        }},
-        d.toNanos,
-        d.toNanos,
-        NANOSECONDS
-      )
-      (()=>metronome.cancel(false), signal)
-    }
-
-    await(Task.delay(metronomeAndSignal))({
-      case (cm, signal) =>  signal.discrete onComplete eval_(signal.close.map(_=>cm()))
-    })
-  }
-
-
-  /**
    * The infinite `Process`, always emits `a`.
    * If for performance reasons it is good to emit `a` in chunks,
    * specify size of chunk by `chunkSize` parameter
    */
   def constant[A](a: A, chunkSize: Int = 1): Process0[A] = {
     lazy val go: Process0[A] =
-      if (chunkSize.max(1) == 1) emit(a) fby go
-      else emitAll(List.fill(chunkSize)(a)) fby go
+      if (chunkSize.max(1) == 1) emit(a) ++ go
+      else emitAll(List.fill(chunkSize)(a)) ++ go
     go
-  }
-
-  /**
-   * A continuous stream of the elapsed time, computed using `System.nanoTime`.
-   * Note that the actual granularity of these elapsed times depends on the OS, for instance
-   * the OS may only update the current time every ten milliseconds or so.
-   */
-  def duration: Process[Task, Duration] = suspend {
-    val t0 = System.nanoTime
-    repeatEval { Task.delay { Duration(System.nanoTime - t0, NANOSECONDS) }}
   }
 
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process0[Nothing \/ O] =
-   liftW(Process.emit(o))
-
-  /** `Process.emitRange(0,5) == Process(0,1,2,3,4).` */
-  def emitRange(start: Int, stopExclusive: Int): Process0[Int] =
-    emitAll(start until stopExclusive)
+    Process.emit(right(o))
 
   /** A `Writer` which writes the given value. */
   def emitW[W](s: W): Process0[W \/ Nothing] =
-   Process.emit(left(s))
-
-  /**
-   * A 'continuous' stream which is true after `d, 2d, 3d...` elapsed duration,
-   * and false otherwise.
-   * If you'd like a 'discrete' stream that will actually block until `d` has elapsed,
-   * use `awakeEvery` instead.
-   */
-  def every(d: Duration): Process[Task, Boolean] = {
-    def go(lastSpikeNanos: Long): Process[Task, Boolean] =
-      suspend {
-        val now = System.nanoTime
-        if ((now - lastSpikeNanos) > d.toNanos) emit(true) ++ go(now)
-        else emit(false) ++ go(lastSpikeNanos)
-      }
-    go(0)
-  }
+    Process.emit(left(s))
 
   /** A `Process` which emits `n` repetitions of `a`. */
   def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process0[A] = {
-        val chunkN = chunkSize max 1
-        val chunk = emitAll(List.fill(chunkN)(a)) // we can reuse this for each step
-        def go(m: Int): Process0[A] =
-          if (m >= chunkN) chunk ++ go(m - chunkN)
-          else if (m <= 0) halt
-          else emitAll(List.fill(m)(a))
-        go(n max 0)
+    val chunkN = chunkSize max 1
+    val chunk = emitAll(List.fill(chunkN)(a)) // we can reuse this for each step
+    def go(m: Int): Process0[A] =
+      if (m >= chunkN) chunk ++ go(m - chunkN)
+      else if (m <= 0) halt
+      else emitAll(List.fill(m)(a))
+    go(n max 0)
   }
 
   /**
@@ -913,14 +813,22 @@ object Process {
 
   /**
    * An infinite `Process` that repeatedly applies a given function
-   * to a start value.
+   * to a start value. `start` is the first value emitted, followed
+   * by `f(start)`, then `f(f(start))`, and so on.
    */
   def iterate[A](start: A)(f: A => A): Process0[A] =
     emit(start) ++ iterate(f(start))(f)
 
+  /**
+   * Like [[iterate]], but takes an effectful function for producing
+   * the next state. `start` is the first value emitted.
+   */
+  def iterateEval[F[_], A](start: A)(f: A => F[A]): Process[F, A] =
+    emit(start) ++ await(f(start))(iterateEval(_)(f))
+
   /** Promote a `Process` to a `Writer` that writes nothing. */
   def liftW[F[_], A](p: Process[F, A]): Writer[F, Nothing, A] =
-   p.map(right)
+    p.map(right)
 
   /**
    * Promote a `Process` to a `Writer` that writes and outputs
@@ -929,7 +837,7 @@ object Process {
   def logged[F[_], A](p: Process[F, A]): Writer[F, A, A] =
     p.flatMap(a => emitAll(Vector(left(a), right(a))))
 
-  /** Lazily produce the range `[start, stopExclusive)`. */
+  /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process0[Int] =
     unfold(start)(i => if (i < stopExclusive) Some((i, i + by)) else None)
 
@@ -956,24 +864,11 @@ object Process {
   }
 
   /**
-   * A single-element `Process` that waits for the duration `d`
-   * before emitting its value. This uses a shared
-   * `ScheduledThreadPoolExecutor` to signal duration and
-   * avoid blocking on thread. After the signal,
-   * the execution continues with `S` strategy
-   */
-  def sleep(d: FiniteDuration)(
-    implicit S: Strategy
-    , schedulerPool: ScheduledExecutorService
-    ): Process[Task, Nothing] =
-    awakeEvery(d).once.drain
-
-  /**
    * Delay running `p` until `awaken` becomes true for the first time.
    * The `awaken` process may be discrete.
    */
   def sleepUntil[F[_], A](awaken: Process[F, Boolean])(p: Process[F, A]): Process[F, A] =
-    awaken.dropWhile(!_).once.flatMap(b => if (b) p else halt)
+    awaken.dropWhile(!_).once.flatMap(_ => p)
 
   /**
    * A supply of `Long` values, starting with `initial`.
@@ -990,63 +885,25 @@ object Process {
   def tell[S](s: S): Process0[S \/ Nothing] =
     emitW(s)
 
-  /**
-   * Convert a `Process` to a `Task` which can be run repeatedly to generate
-   * the elements of the `Process`.
-   *
-   * Note that evaluation of this task will end with Exception `End` or `Continue`
-   * even when the evaluation of the process was successful.
-   */
-  def toTask[A](p: Process[Task, A]): Task[A] = {
-      var cur = p
-      def go: Task[A] =
-        cur.step match {
-          case Step(Emit(os), cont) =>
-            if (os.isEmpty) {
-              cur = cont.continue
-              go
-            } else {
-              cur = emitAll(os.tail) +: cont
-              Task.now(os.head)
-            }
-          case Step(Await(rq,rcv), cont) =>
-            rq.attempt.flatMap { r =>
-              cur = Try(rcv(EarlyCause(r)).run) +: cont ; go
-            }
-          case Halt(End) => Task.fail(Terminated(End))
-          case Halt(Kill) => Task.fail(Terminated(Kill))
-          case Halt(Error(rsn)) => Task.fail(rsn)
-        }
-      Task.delay(go).flatMap(a => a)
-  }
-
   /** Produce a (potentially infinite) source from an unfold. */
-  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = suspend {
-    def go(s:S) : Process0[A] = {
+  def unfold[S, A](s0: S)(f: S => Option[(A, S)]): Process0[A] = {
+    def go(s: S): Process0[A] =
       f(s) match {
-        case Some(ht) => emit(ht._1) ++ go(ht._2)
+        case Some((a, sn)) => emit(a) ++ go(sn)
         case None => halt
       }
-    }
-    go(s0)
+    suspend(go(s0))
   }
 
-  //////////////////////////////////////////////////////////////////////////////////////
-  //
-  // INSTANCES
-  //
-  /////////////////////////////////////////////////////////////////////////////////////
-
-  implicit def processInstance[F[_]]: MonadPlus[({type f[x] = Process[F, x]})#f] =
-    new MonadPlus[({type f[x] = Process[F, x]})#f] {
-      def empty[A] = halt
-      def plus[A](a: Process[F, A], b: => Process[F, A]): Process[F, A] =
-        a ++ b
-      def point[A](a: => A): Process[F, A] = emit(a)
-      def bind[A, B](a: Process[F, A])(f: A => Process[F, B]): Process[F, B] =
-        a flatMap f
-    }
-
+  /** Like [[unfold]], but takes an effectful function. */
+  def unfoldEval[F[_], S, A](s0: S)(f: S => F[Option[(A, S)]]): Process[F, A] = {
+    def go(s: S): Process[F, A] =
+      await(f(s)) {
+        case Some((a, sn)) => emit(a) ++ go(sn)
+        case None => halt
+      }
+    suspend(go(s0))
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////
   //
@@ -1093,10 +950,8 @@ object Process {
   //
   /////////////////////////////////////////////////////////////////////////////////////
 
-  /**
-   * Adds syntax for Channel
-   */
-  implicit class ChannelSyntax[F[_],I,O](self: Channel[F,I,O]) {
+  /** Adds syntax for `Channel`. */
+  implicit class ChannelSyntax[F[_],I,O](val self: Channel[F,I,O]) extends AnyVal {
     /** Transform the input of this `Channel`. */
     def contramap[I0](f: I0 => I): Channel[F,I0,O] =
       self.map(f andThen _)
@@ -1106,8 +961,14 @@ object Process {
       self.map(_ andThen F.lift(f))
   }
 
+  /** Adds syntax for `Sink`. */
+  implicit class SinkSyntax[F[_],I](val self: Sink[F,I]) extends AnyVal {
+    /** Converts `Sink` to `Channel`, that will perform the side effect and echo its input. */
+    def toChannel(implicit F: Functor[F]): Channel[F,I,I] =
+      self.map(f => (i: I) => F.map(f(i))(_ => i))
+  }
 
-  implicit class ProcessSyntax[F[_],O](val self:Process[F,O]) extends AnyVal {
+  implicit class ProcessSyntax[F[_],O](val self: Process[F,O]) extends AnyVal {
     /** Feed this `Process` through the given effectful `Channel`. */
     def through[F2[x]>:F[x],O2](f: Channel[F2,O,O2]): Process[F2,O2] =
         self.zipWith(f)((o,f) => f(o)).eval
@@ -1171,54 +1032,91 @@ object Process {
   /**
    * This class provides infix syntax specific to `Process0`.
    */
-  implicit class Process0Syntax[O](self: Process[Env[Any,Any]#Is,O]) {
-    def toIndexedSeq: IndexedSeq[O] = {
-      @tailrec
-      def go(cur: Process[Any,O], acc: Vector[O]): IndexedSeq[O] = {
-        cur.step match {
-          case Step(Emit(os),cont) => go(cont.continue, acc fast_++ os)
-          case Step(awt,cont) => go(cont.continue,acc)
-          case Halt(End) => acc
-          case Halt(Kill) => acc
-          case Halt(Error(rsn)) => throw rsn
-        }
+  implicit class Process0Syntax[O](val self: Process0[O]) extends AnyVal {
+
+    /** Converts this `Process0` to a `Vector`. */
+    def toVector: Vector[O] =
+      self.unemit match {
+        case (_, Halt(Error(rsn))) => throw rsn
+        case (os, _) => os.toVector
       }
-      go(self, Vector())
+
+    /** Converts this `Process0` to an `IndexedSeq`. */
+    def toIndexedSeq: IndexedSeq[O] = toVector
+
+    /** Converts this `Process0` to a `List`. */
+    def toList: List[O] = toVector.toList
+
+    /** Converts this `Process0` to a `Seq`. */
+    def toSeq: Seq[O] = toVector
+
+    /** Converts this `Process0` to a `Stream`. */
+    def toStream: Stream[O] = {
+      def go(p: Process0[O]): Stream[O] =
+        p.step match {
+          case s: Step[Nothing, O] =>
+            s.head match {
+              case Emit(os) => os.toStream #::: go(s.next.continue)
+              case _ => sys.error("impossible")
+            }
+          case Halt(Error(rsn)) => throw rsn
+          case Halt(_) => Stream.empty
+        }
+      go(self)
     }
-    def toList: List[O] = toIndexedSeq.toList
-    def toSeq: Seq[O] = toIndexedSeq
-    def toMap[K, V](implicit isKV: O <:< (K, V)): Map[K, V] = toIndexedSeq.toMap(isKV)
+
+    /** Converts this `Process0` to a `Map`. */
+    def toMap[K, V](implicit isKV: O <:< (K, V)): Map[K, V] = toVector.toMap(isKV)
+
+    /** Converts this `Process0` to a `SortedMap`. */
     def toSortedMap[K, V](implicit isKV: O <:< (K, V), ord: Ordering[K]): SortedMap[K, V] =
-      SortedMap(toIndexedSeq.asInstanceOf[Seq[(K, V)]]: _*)
-    def toStream: Stream[O] = toIndexedSeq.toStream
-    def toSource: Process[Task, O] =
-      self.step match {
-      case Step(emt@Emit(os),cont)    => emt +: cont.extend(_.toSource)
-      case Step(awt, cont)            => cont.continue.toSource
-      case hlt@Halt(rsn)              => hlt
-    }
+      SortedMap(toVector.asInstanceOf[Seq[(K, V)]]: _*)
 
-  }
+    def toSource: Process[Task, O] = self
 
-  implicit class LiftIOSyntax[O](p: Process0[O]) {
-    def liftIO: Process[Task,O] = p
+    @deprecated("liftIO is deprecated in favor of toSource. It will be removed in a future release.", "0.7")
+    def liftIO: Process[Task, O] = self
   }
 
   /** Syntax for Sink, that is specialized for Task */
   implicit class SinkTaskSyntax[I](val self: Sink[Task,I]) extends AnyVal {
-    /** converts sink to channel, that will perform the side effect and echo its input **/
-    def toChannel:Channel[Task,I,I] = self.map(f => (i:I) => f(i).map(_ =>i))
-
-    /** converts sink to sink that first pipes received `I0` to supplied p1 **/
-    def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = {
+    /** converts sink to sink that first pipes received `I0` to supplied p1 */
+    def pipeIn[I0](p1: Process1[I0, I]): Sink[Task, I0] = Process.suspend {
       import scalaz.Scalaz._
       // Note: Function `f` from sink `self` may be used for more than 1 element emitted by `p1`.
-      @volatile var cur: Process1[I0, I] = p1
-      self.map { (f: I => Task[Unit]) =>
-        (i0: I0) =>
-          val (piped, next) = process1.feed1(i0)(cur).unemit
-          cur = next
-          piped.toList.traverse_(f)
+      @volatile var cur = p1.step
+      @volatile var lastF: Option[I => Task[Unit]] = None
+      self.takeWhile { _ =>
+        cur match {
+          case Halt(Cause.End) => false
+          case Halt(cause)     => throw new Cause.Terminated(cause)
+          case _               => true
+        }
+      } map { (f: I => Task[Unit]) =>
+        lastF = f.some
+        (i0: I0) => Task.suspend {
+          cur match {
+            case Halt(_) => sys.error("Impossible")
+            case Step(Emit(piped), cont) =>
+              cur = process1.feed1(i0) { cont.continue }.step
+              piped.toList.traverse_(f)
+            case Step(hd, cont) =>
+              val (piped, tl) = process1.feed1(i0)(hd +: cont).unemit
+              cur = tl.step
+              piped.toList.traverse_(f)
+          }
+        }
+      } onHalt {
+        case Cause.Kill =>
+          lastF map { f =>
+            cur match {
+              case Halt(_) => sys.error("Impossible (2)")
+              case s@Step(_, _) =>
+                s.toProcess.disconnect(Cause.Kill).evalMap(f).drain
+            }
+          } getOrElse Halt(Cause.Kill)
+        case Cause.End  => halt
+        case c@Cause.Error(_) => halt.causedBy(c)
       }
     }
   }
@@ -1227,11 +1125,11 @@ object Process {
   /**
    * This class provides infix syntax specific to `Process1`.
    */
-  implicit class Process1Syntax[I,O](self: Process1[I,O]) {
+  implicit class Process1Syntax[I,O](val self: Process1[I,O]) extends AnyVal {
 
     /** Apply this `Process` to an `Iterable`. */
     def apply(input: Iterable[I]): IndexedSeq[O] =
-      Process(input.toSeq: _*).pipe(self.bufferAll).unemit._1.toIndexedSeq
+      Process(input.toSeq: _*).pipe(self).toIndexedSeq
 
     /**
      * Transform `self` to operate on the left hand side of an `\/`, passing
@@ -1254,13 +1152,15 @@ object Process {
      */
     def feed1(i: I): Process1[I,O] =
       process1.feed1(i)(self)
+
+    /** Transform the input of this `Process1`. */
+    def contramap[I2](f: I2 => I): Process1[I2,O] =
+      process1.lift(f).pipe(self)
   }
 
 
   /**
    * Syntax for processes that have its effects wrapped in Task
-   * @param self
-   * @tparam O
    */
   implicit class SourceSyntax[O](val self: Process[Task, O])   extends WyeOps[O] {
 
@@ -1270,9 +1170,6 @@ object Process {
      */
     def forwardFill(implicit S: Strategy): Process[Task, O] =
       async.toSignal(self).continuous
-
-    /** Infix syntax for `Process.toTask`. */
-    def toTask: Task[O] = Process.toTask(self)
 
     /**
      * Asynchronous execution of this Process. Note that this method is not resource safe unless
@@ -1390,11 +1287,11 @@ object Process {
    * equality witnesses. This doesn't work out so well due to variance
    * issues.
    */
-  implicit class TeeSyntax[I,I2,O](self: Tee[I,I2,O]) {
+  implicit class TeeSyntax[I,I2,O](val self: Tee[I,I2,O]) extends AnyVal {
 
     /** Transform the left input to a `Tee`. */
-    def contramapL[I0](f: I0 => I): Tee[I,I2,O] =
-      self.contramapL_(f).asInstanceOf[Tee[I,I2,O]]
+    def contramapL[I0](f: I0 => I): Tee[I0,I2,O] =
+      self.contramapL_(f).asInstanceOf[Tee[I0,I2,O]]
 
     /** Transform the right input to a `Tee`. */
     def contramapR[I3](f: I3 => I2): Tee[I,I3,O] =
@@ -1409,11 +1306,11 @@ object Process {
    * with either `W` or `O`, depending on what side they
    * operate on.
    */
-  implicit class WriterSyntax[F[_],W,O](self: Writer[F,W,O]) {
+  implicit class WriterSyntax[F[_],W,O](val self: Writer[F,W,O]) extends AnyVal {
 
     /** Transform the write side of this `Writer`. */
     def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] =
-      self.flatMap(_.fold(f, a => emit(right(a))))
+      self.flatMap(_.fold(f, emitO))
 
     /** Remove the write side of this `Writer`. */
     def stripW: Process[F,O] =
@@ -1423,7 +1320,7 @@ object Process {
     def mapW[W2](f: W => W2): Writer[F,W2,O] =
       self.map(_.leftMap(f))
 
-    /** pipe Write side of this `Writer`  **/
+    /** pipe Write side of this `Writer`  */
     def pipeW[B](f: Process1[W,B]): Writer[F,B,O] =
       self.pipe(process1.liftL(f))
 
@@ -1435,8 +1332,8 @@ object Process {
     def observeW(snk: Sink[F,W]): Writer[F,W,O] =
       self.zipWith(snk)((a,f) =>
         a.fold(
-          (s: W) => eval_ { f(s) } ++ Process.emit(left(s)),
-          (a: O) => Process.emit(right(a))
+          (s: W) => eval_ { f(s) } ++ Process.emitW(s),
+          (a: O) => Process.emitO(a)
         )
       ).flatMap(identity)
 
@@ -1468,7 +1365,7 @@ object Process {
       self.map(_.map(f))
 
     def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] =
-      self.flatMap(_.fold(s => emit(left(s)), f))
+      self.flatMap(_.fold(emitW, f))
 
     def stripO: Process[F,W] =
       self.flatMap(_.fold(emit, _ => halt))
@@ -1484,7 +1381,7 @@ object Process {
    * equality witnesses. This doesn't work out so well due to variance
    * issues.
    */
-  implicit class WyeSyntax[I,I2,O](self: Wye[I,I2,O]) {
+  implicit class WyeSyntax[I,I2,O](val self: Wye[I,I2,O]) extends AnyVal {
 
     /**
      * Apply a `Wye` to two `Iterable` inputs.
@@ -1598,3 +1495,4 @@ object Process {
       case early: EarlyCause => Trampoline.done(p.injectCause(early))
     }))
 }
+

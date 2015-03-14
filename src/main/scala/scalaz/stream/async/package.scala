@@ -4,9 +4,6 @@ import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process.halt
 import scalaz.stream.async.mutable._
 
-/**
- * Created by pach on 03/05/14.
- */
 package object async {
 
   /**
@@ -28,7 +25,7 @@ package object async {
    * using the returned `Queue`. See `async.Queue`. As long as the
    * `Strategy` is not `Strategy.Sequential`, enqueueing is
    * guaranteed to take constant time, and consumers will be run on
-   * a separate logical thread. 
+   * a separate logical thread.
    */
   @deprecated("Use async.unboundedQueue instead", "0.5.0")
   def queue[A](implicit S: Strategy) : (Queue[A], Process[Task, A]) = {
@@ -38,11 +35,17 @@ package object async {
 
   /**
    * Create a new continuous signal which may be controlled asynchronously.
-   * All views into the returned signal are backed by the same underlying
-   * asynchronous `Ref`.
    */
+  @deprecated("Use signalOf instead", "0.7.0")
   def signal[A](implicit S: Strategy): Signal[A] =
-    Signal(halt, haltOnSource = false)
+    toSignal(halt)
+
+  /**
+   * Creates a new continuous signalwhich may be controlled asynchronously,
+   * and immediately sets the value to `initialValue`.
+   */
+  def signalOf[A](initialValue: A)(implicit S: Strategy): Signal[A] =
+    toSignal(Process(initialValue))
 
   /**
    * Converts discrete process to signal. Note that, resulting signal must be manually closed, in case the

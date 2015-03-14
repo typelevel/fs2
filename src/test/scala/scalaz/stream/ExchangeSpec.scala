@@ -20,7 +20,7 @@ object ExchangeSpec extends Properties("Exchange") {
 
   property("emitHead") = secure {
     val xs = 1 until 10
-    val l = Exchange.loopBack[Int, Int](emitAll(xs) fby process1.id)
+    val l = Exchange.loopBack[Int, Int](emitAll(xs) ++ process1.id)
     l.flatMap(_.run(emitAll(xs))).take(xs.size + xs.size / 2).runLog.run.toSeq == xs ++ xs.take(xs.size / 2)
   }
 
@@ -66,19 +66,19 @@ object ExchangeSpec extends Properties("Exchange") {
 
   property("run.terminate.on.read") = secure {
     val ex = Exchange[Int,Int](Process.range(1,10),Process.constant(i => Task.now(())))
-    ex.run(Process.sleep(1 minute)).runLog.timed(3000).run == (1 until 10).toVector
+    ex.run(time.sleep(1 minute)).runLog.timed(3000).run == (1 until 10).toVector
   }
 
 
   property("run.terminate.on.write") = secure {
-    val ex = Exchange[Int,Int](Process.sleep(1 minute),Process.constant(i => Task.now(())))
+    val ex = Exchange[Int,Int](time.sleep(1 minute),Process.constant(i => Task.now(())))
     ex.run(Process.range(1,10), Request.R).runLog.timed(3000).run == Vector()
   }
 
   property("run.terminate.on.read.or.write") = secure {
     val exL = Exchange[Int,Int](Process.range(1,10),Process.constant(i => Task.now(())))
-    val exR = Exchange[Int,Int](Process.sleep(1 minute),Process.constant(i => Task.now(())))
-    ("left side terminated" |: exL.run(Process.sleep(1 minute), Request.Both).runLog.timed(3000).run == (1 until 10).toVector) &&
+    val exR = Exchange[Int,Int](time.sleep(1 minute),Process.constant(i => Task.now(())))
+    ("left side terminated" |: exL.run(time.sleep(1 minute), Request.Both).runLog.timed(3000).run == (1 until 10).toVector) &&
       ("right side terminated" |: exR.run(Process.range(1,10), Request.Both).runLog.timed(3000).run == Vector())
   }
 

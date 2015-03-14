@@ -2,11 +2,11 @@ organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
-version := "snapshot-0.5"
+version := "snapshot-0.7"
 
 scalaVersion := "2.10.4"
 
-crossScalaVersions := Seq("2.10.4", "2.11.2")
+crossScalaVersions := Seq("2.10.4", "2.11.4")
 
 scalacOptions ++= Seq(
   "-feature",
@@ -29,9 +29,9 @@ resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snap
 libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-core" % "7.0.6",
   "org.scalaz" %% "scalaz-concurrent" % "7.0.6",
-  "org.typelevel" %% "scodec-bits" % "1.0.3",
+  "org.scodec" %% "scodec-bits" % "1.0.5",
   "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.6" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.11.5" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.12.1" % "test"
 )
 
 seq(bintraySettings:_*)
@@ -65,3 +65,7 @@ autoAPIMappings := true
 apiURL := Some(url(s"http://docs.typelevel.org/api/scalaz-stream/stable/${version.value}/doc/"))
 
 initialCommands := "import scalaz.stream._"
+
+doctestWithDependencies := false
+
+doctestSettings

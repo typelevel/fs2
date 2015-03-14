@@ -35,12 +35,12 @@ trait WriterTopic[W, I, O] {
    */
   def subscribeO: Process[Task, O]
 
-  /** Subscribes to `W` values only from this Writer topic **/
+  /** Subscribes to `W` values only from this Writer topic */
   def subscribeW: Process[Task, W]
 
   /**
    * Provides signal of `W` values as they were emitted by Writer1 of this Writer topic
-   **/
+   */
   def signal: scalaz.stream.async.immutable.Signal[W]
 
 

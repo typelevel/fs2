@@ -20,7 +20,7 @@ object wye {
    * on the right branch.
    */
   def boundedQueue[I](n: Int): Wye[Any,I,I] =
-    yipWithL(n)((i,i2) => i2)
+    yipWithL[Any,I,I](n)((i,i2) => i2) ++ tee.passR
 
   /**
    * After each input, dynamically determine whether to read from the left, right, or both,
@@ -31,11 +31,11 @@ object wye {
   def dynamic[I,I2](f: I => wye.Request, g: I2 => wye.Request): Wye[I,I2,ReceiveY[I,I2]] = {
     import scalaz.stream.wye.Request._
     def go(signal: wye.Request): Wye[I,I2,ReceiveY[I,I2]] = signal match {
-      case L => receiveL { i => emit(ReceiveL(i)) fby go(f(i)) }
-      case R => receiveR { i2 => emit(ReceiveR(i2)) fby go(g(i2)) }
+      case L => receiveL { i => emit(ReceiveL(i)) ++ go(f(i)) }
+      case R => receiveR { i2 => emit(ReceiveR(i2)) ++ go(g(i2)) }
       case Both => receiveBoth {
-        case t@ReceiveL(i) => emit(t) fby go(f(i))
-        case t@ReceiveR(i2) => emit(t) fby go(g(i2))
+        case t@ReceiveL(i) => emit(t) ++ go(f(i))
+        case t@ReceiveR(i2) => emit(t) ++ go(g(i2))
         case HaltOne(rsn) => Halt(rsn)
       }
     }
@@ -46,25 +46,25 @@ object wye {
    * A `Wye` which echoes the right branch while draining the left,
    * taking care to make sure that the left branch is never more
    * than `maxUnacknowledged` behind the right. For example:
-   * `src.connect(snk)(observe(10))` will output the the same thing
+   * `src.connect(snk)(observe(10))` will output the same thing
    * as `src`, but will as a side effect direct output to `snk`,
    * blocking on `snk` if more than 10 elements have enqueued
    * without a response.
    */
   def drainL[I](maxUnacknowledged: Int): Wye[Any,I,I] =
-    wye.flip(drainR(maxUnacknowledged))
+    yipWithL[Any,I,I](maxUnacknowledged)((_,i) => i) ++ tee.passR
 
   /**
    * A `Wye` which echoes the left branch while draining the right,
    * taking care to make sure that the right branch is never more
    * than `maxUnacknowledged` behind the left. For example:
-   * `src.connect(snk)(observe(10))` will output the the same thing
+   * `src.connect(snk)(observe(10))` will output the same thing
    * as `src`, but will as a side effect direct output to `snk`,
    * blocking on `snk` if more than 10 elements have enqueued
    * without a response.
    */
   def drainR[I](maxUnacknowledged: Int): Wye[I,Any,I] =
-    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i)
+    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i) ++ tee.passL
 
   /**
    * Invokes `dynamic` with `I == I2`, and produces a single `I` output. Output is
@@ -84,8 +84,8 @@ object wye {
    */
   def either[I,I2]: Wye[I,I2,I \/ I2] =
     receiveBoth {
-      case ReceiveL(i) => emit(left(i)) fby either
-      case ReceiveR(i) => emit(right(i)) fby either
+      case ReceiveL(i) => emit(left(i)) ++ either
+      case ReceiveR(i) => emit(right(i)) ++ either
       case HaltL(End)     => awaitR[I2].map(right).repeat
       case HaltR(End)     => awaitL[I].map(left).repeat
       case h@HaltOne(rsn) => Halt(rsn)
@@ -99,11 +99,11 @@ object wye {
   def echoLeft[A]: Wye[A, Any, A] = {
     def go(a: A): Wye[A, Any, A] =
       receiveBoth {
-        case ReceiveL(l)  => emit(l) fby go(l)
-        case ReceiveR(_)  => emit(a) fby go(a)
+        case ReceiveL(l)  => emit(l) ++ go(l)
+        case ReceiveR(_)  => emit(a) ++ go(a)
         case HaltOne(rsn) => Halt(rsn)
       }
-    receiveL(s => emit(s) fby go(s))
+    receiveL(s => emit(s) ++ go(s))
   }
 
   /**
@@ -126,8 +126,8 @@ object wye {
    */
   def merge[I]: Wye[I,I,I] =
     receiveBoth {
-      case ReceiveL(i) => emit(i) fby merge
-      case ReceiveR(i) => emit(i) fby merge
+      case ReceiveL(i) => emit(i) ++ merge
+      case ReceiveR(i) => emit(i) ++ merge
       case HaltL(End)   => awaitR.repeat
       case HaltR(End)   => awaitL.repeat
       case HaltOne(rsn) => Halt(rsn)
@@ -138,8 +138,8 @@ object wye {
    */
   def mergeHaltBoth[I]: Wye[I,I,I] =
     receiveBoth {
-      case ReceiveL(i) => emit(i) fby mergeHaltBoth
-      case ReceiveR(i) => emit(i) fby mergeHaltBoth
+      case ReceiveL(i) => emit(i) ++ mergeHaltBoth
+      case ReceiveR(i) => emit(i) ++ mergeHaltBoth
       case HaltOne(rsn) => Halt(rsn)
     }
 
@@ -149,8 +149,8 @@ object wye {
    */
   def mergeHaltL[I]: Wye[I,I,I] =
     receiveBoth {
-      case ReceiveL(i) => emit(i) fby mergeHaltL
-      case ReceiveR(i) => emit(i) fby mergeHaltL
+      case ReceiveL(i) => emit(i) ++ mergeHaltL
+      case ReceiveR(i) => emit(i) ++ mergeHaltL
       case HaltR(End)   => awaitL.repeat
       case HaltOne(rsn) => Halt(rsn)
     }
@@ -171,10 +171,10 @@ object wye {
       receiveBoth {
         case ReceiveL(d2) =>
           if (q.size >= maxSize || (d2 - q.headOption.getOrElse(d2) > d))
-            receiveR(i => emit(i) fby go(q.drop(1)))
+            receiveR(i => emit(i) ++ go(q.drop(1)))
           else
             go(q :+ d2)
-        case ReceiveR(i) => emit(i) fby (go(q.drop(1)))
+        case ReceiveR(i) => emit(i) ++ (go(q.drop(1)))
         case HaltOne(rsn) => Halt(rsn)
       }
     go(Vector())
@@ -189,7 +189,7 @@ object wye {
   def unboundedQueue[I]: Wye[Any,I,I] =
     receiveBoth {
       case ReceiveL(_) => halt
-      case ReceiveR(i) => emit(i) fby unboundedQueue
+      case ReceiveR(i) => emit(i) ++ unboundedQueue
       case HaltOne(rsn) => Halt(rsn)
     }
 
@@ -307,7 +307,7 @@ object wye {
     disconnectL(Kill)(y).swallowKill
 
 
-  /** right alternative of detach1L **/
+  /** right alternative of detach1L */
   def detach1R[I,I2,O](y: Wye[I,I2,O]): Wye[I,I2,O] =
     disconnectR(Kill)(y).swallowKill
 
@@ -475,11 +475,20 @@ object wye {
    */
   def haltL[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
     val ys = y.step
-    val ny = ys match {
-      case Step(AwaitBoth(rcv), cont) => rcv(HaltL(cause)) +: cont
-      case _ => y
+    ys match {
+      case Step(emt@Emit(os), cont) =>
+        emt onHalt (rsn => haltL(cause)(Halt(rsn) +: cont))
+      case Step(AwaitR(rcv), cont) =>
+        wye.receiveROr[I,I2,O](e => haltL(cause)(rcv(left(e)) +: cont))(
+          i => haltL(cause)(rcv(right(i)) +: cont)
+        )
+      case Step(AwaitL(rcv), cont) =>
+        cause.fold(haltL(Kill)(y).swallowKill)(e => disconnectL(e)(rcv(left(e)) +: cont))
+      case Step(AwaitBoth(rcv), cont) =>
+        val ny = rcv(HaltL(cause)) +: cont
+        cause.fold(detach1L(ny))(e => disconnectL(e)(ny))
+      case Halt(rsn) => Halt(rsn)
     }
-    cause.fold(disconnectL(Kill)(ny).swallowKill)(e => disconnectL(e)(ny))
   }
 
 
@@ -488,11 +497,20 @@ object wye {
    */
   def haltR[I, I2, O](cause: Cause)(y: Wye[I, I2, O]): Wye[I, I2, O] = {
     val ys = y.step
-    val ny = ys match {
-      case Step(AwaitBoth(rcv), cont) => rcv(HaltR(cause)) +: cont
-      case _ => y
+    ys match {
+      case Step(emt@Emit(os), cont) =>
+        emt onHalt (rsn => haltR(cause)(Halt(rsn) +: cont))
+      case Step(AwaitL(rcv), cont) =>
+        wye.receiveLOr[I,I2,O](e => haltR(cause)(rcv(left(e)) +: cont))(
+          i => haltR(cause)(rcv(right(i)) +: cont)
+        )
+      case Step(AwaitR(rcv), cont) =>
+        cause.fold(haltR(Kill)(y).swallowKill)(e => disconnectR(e)(rcv(left(e)) +: cont))
+      case Step(AwaitBoth(rcv), cont) =>
+        val ny = rcv(HaltR(cause)) +: cont
+        cause.fold(detach1R(ny))(e => disconnectR(e)(ny))
+      case Halt(rsn) => Halt(rsn)
     }
-    cause.fold(disconnectR(Kill)(ny).swallowKill)(e => disconnectR(e)(ny))
 
   }
 
@@ -500,15 +518,15 @@ object wye {
   // Request Algebra
   ////////////////////////////////////////////////////////////////////////
 
-  /** Indicates required request side **/
+  /** Indicates required request side */
   trait Request
 
   object Request {
-    /** Left side **/
+    /** Left side */
     case object L extends Request
-    /** Right side **/
+    /** Right side */
     case object R extends Request
-    /** Both, or Any side **/
+    /** Both, or Any side */
     case object Both extends Request
   }
 
@@ -553,7 +571,7 @@ object wye {
       case _ => None
     }
 
-    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side **/
+    /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitL[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 0 => true
@@ -573,7 +591,7 @@ object wye {
       case _ => None
     }
 
-    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side **/
+    /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitR[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 1 => true
@@ -592,7 +610,7 @@ object wye {
     }
 
 
-    /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides **/
+    /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides */
     object is {
       def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):Boolean = self match {
         case Await(req,rcv) if req.tag == 2 => true
@@ -636,6 +654,8 @@ object wye {
 
       //cb to be completed for `out` side
       var out: Option[(Cause \/ Seq[O])  => Unit] = None
+
+      var downDone= false
 
       //forward referenced actor
       var a: Actor[M] = null
@@ -714,9 +734,6 @@ object wye {
           case None      => None
         }
       }
-
-
-
 
       // Consumes any output form either side and updates wye with it.
       // note it signals if the other side has to be killed
@@ -798,7 +815,6 @@ object wye {
       }
 
 
-
       a = Actor[M]({ m =>
         m match {
           case Ready(side, result) =>
@@ -821,10 +837,24 @@ object wye {
 
           case DownDone(cb0) =>
             if (!yy.isHalt) {
-              val cb1 = Some((r: Cause \/ Seq[O]) => cb0(\/-(())))
-              val (y,cb) = runY(disconnectL(Kill)(disconnectR(Kill)(yy)).kill, cb1)
-              yy = y
-              out = haltIfDone(yy, left, right, cb)
+              val cb1 = (r: Cause \/ Seq[O]) => cb0(\/-(()))
+              if (!downDone) {
+                // complete old callback (from `Get` if defined)
+                out.foreach(cb => S(cb(-\/(Kill))))
+                val (y,cb) = runY(disconnectL(Kill)(disconnectR(Kill)(yy)).kill, Some(cb1))
+                yy = y
+                out = cb
+                downDone = true
+              }
+              else {
+                // important that existing callback is NOT erased. doing so can cause process to hang on terminate
+                // first terminate is on interrupt, second when an awaited task completes
+                out = out match {
+                  case Some(cb) => Some{(r: Cause \/ Seq[O]) => cb(r); cb0(\/-(()))}
+                  case None => Some(cb1) // should never happen - if no cb, yy will be halt
+                }
+              }
+              out = haltIfDone(yy, left, right, out)
             }
             else S(cb0(\/-(())))
         }

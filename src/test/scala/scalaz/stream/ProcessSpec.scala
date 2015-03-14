@@ -10,13 +10,11 @@ import scalaz.std.list._
 import scalaz.std.list.listSyntax._
 import scalaz.std.string._
 
-import org.scalacheck.{Gen, Arbitrary, Properties}
+import org.scalacheck.{Gen, Properties}
 import scalaz.concurrent.{Task, Strategy}
-import Util._
 import process1._
 import Process._
 import TestInstances._
-import scala.concurrent.duration._
 import scala.concurrent.SyncVar
 
 object ProcessSpec extends Properties("Process") {
@@ -62,60 +60,12 @@ object ProcessSpec extends Properties("Process") {
 
   }
 
-
-
-
-
-  property("awakeEvery") = secure {
-    Process.awakeEvery(100 millis).map(_.toMillis/100).take(5).runLog.run == Vector(1,2,3,4,5)
-  }
-
-
   property("sinked") = secure {
     val p1 = Process.constant(1).toSource
     val pch = Process.constant((i:Int) => Task.now(())).take(3)
 
     p1.to(pch).runLog.run.size == 3
   }
-
-  property("duration") =  {
-    val firstValueDiscrepancy = duration.take(1).runLast.run.get
-    val reasonableError = 200 * 1000000 // 200 millis
-    (firstValueDiscrepancy.toNanos < reasonableError) :| "duration is near zero at first access"
-  }
-
-
-  import scala.concurrent.duration._
-  val smallDelay = Gen.choose(10, 300) map {_.millis}
-
-
-  property("every") =
-    forAll(smallDelay) { delay: Duration =>
-      type BD = (Boolean, Duration)
-      val durationSinceLastTrue: Process1[BD, BD] = {
-        def go(lastTrue: Duration): Process1[BD,BD] = {
-          await1 flatMap { pair:(Boolean, Duration) => pair match {
-            case (true , d) => emit((true , d - lastTrue)) fby go(d)
-            case (false, d) => emit((false, d - lastTrue)) fby go(lastTrue)
-          } }
-        }
-        go(0.seconds)
-      }
-
-      val draws = (600.millis / delay) min 10 // don't take forever
-
-      val durationsSinceSpike = every(delay).
-                                tee(duration)(tee zipWith {(a,b) => (a,b)}).
-                                take(draws.toInt) |>
-        durationSinceLastTrue
-
-      val result = durationsSinceSpike.runLog.run.toList
-      val (head :: tail) = result
-
-      head._1 :| "every always emits true first" &&
-        tail.filter   (_._1).map(_._2).forall { _ >= delay } :| "true means the delay has passed" &&
-        tail.filterNot(_._1).map(_._2).forall { _ <= delay } :| "false means the delay has not passed"
-    }
 
   property("fill") = forAll(Gen.choose(0,30) flatMap (i => Gen.choose(0,50) map ((i,_)))) {
     case (n,chunkSize) =>
@@ -124,14 +74,18 @@ object ProcessSpec extends Properties("Process") {
 
   property("forwardFill") = secure {
     import scala.concurrent.duration._
-    val t2 = Process.awakeEvery(2 seconds).forwardFill.zip {
-      Process.awakeEvery(100 milliseconds).take(100)
+    val t2 = time.awakeEvery(2 seconds).forwardFill.zip {
+      time.awakeEvery(100 milliseconds).take(100)
     }.run.timed(15000).run
     true
   }
 
   property("iterate") = secure {
     Process.iterate(0)(_ + 1).take(100).toList == List.iterate(0, 100)(_ + 1)
+  }
+
+  property("iterateEval") = secure {
+    Process.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.run == List.iterate(0, 100)(_ + 1)
   }
 
   property("kill executes cleanup") = secure {
@@ -217,7 +171,7 @@ object ProcessSpec extends Properties("Process") {
     val q = async.boundedQueue[String]()
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
 
-    (Process.range(0,10).liftIO to sink).run.run
+    (Process.range(0,10).toSource to sink).run.run
     val res = q.dequeue.take(10).runLog.timed(3000).run.toList
     q.close.run
 
@@ -231,7 +185,7 @@ object ProcessSpec extends Properties("Process") {
     def acquire: Task[Unit] = Task.delay { written = Nil }
     def release(res: Unit): Task[Unit] = Task.now(())
     def step(res: Unit): Task[Int => Task[Unit]] = Task.now((i: Int) => Task.delay { written = written :+ i  })
-    val sink = io.resource[Unit, Int => Task[Unit]](acquire)(release)(step)
+    val sink = io.resource(acquire)(release)(step)
 
     val source = Process(1, 2, 3).toSource
 
@@ -241,6 +195,28 @@ object ProcessSpec extends Properties("Process") {
     written == List(2, 3, 4)
   }
 
+  property("pipeIn") = forAll { (p00: Process0[Int], i0: Int, p1: Process1[Int, Int]) =>
+    val p0 = emit(i0) ++ p00
+    val buffer = new collection.mutable.ListBuffer[Int]
+    p0.toSource.to(io.fillBuffer(buffer).pipeIn(p1)).run.run
+    val l = buffer.toList
+    val r = p0.pipe(p1).toList
+    s"expected: $r actual $l" |: { l === r }
+  }
+
+  property("pipeIn early termination") = forAll { (p0: Process0[Int]) =>
+    val buf1 = new collection.mutable.ListBuffer[Int]
+    val buf2 = new collection.mutable.ListBuffer[Int]
+    val buf3 = new collection.mutable.ListBuffer[Int]
+    val sink = io.fillBuffer(buf1).pipeIn(process1.take[Int](2)) ++
+               io.fillBuffer(buf2).pipeIn(process1.take[Int](2)) ++
+               io.fillBuffer(buf3).pipeIn(process1.last[Int])
+    p0.toSource.to(sink).run.run
+    val in = p0.toList
+    ("buf1" |: { buf1.toList ?= in.take(2) }) &&
+    ("buf2" |: { buf2.toList ?= in.drop(2).take(2) }) &&
+    ("buf3" |: { buf3.toList ?= in.drop(4).lastOption.toList })
+  }
 
   property("range") = secure {
     Process.range(0, 100).toList == List.range(0, 100) &&
@@ -249,7 +225,7 @@ object ProcessSpec extends Properties("Process") {
   }
 
   property("ranges") = forAll(Gen.choose(1, 101)) { size =>
-    Process.ranges(0, 100, size).liftIO.flatMap { case (i,j) => emitAll(i until j) }.runLog.run ==
+    Process.ranges(0, 100, size).toSource.flatMap { case (i,j) => emitAll(i until j) }.runLog.run ==
       IndexedSeq.range(0, 100)
   }
 
@@ -257,6 +233,11 @@ object ProcessSpec extends Properties("Process") {
     Process.unfold((0, 1)) {
       case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
     }.map(_._1).toList == List(0, 1, 1, 2, 3, 5, 8, 13)
+  }
+
+  property("unfoldEval") = secure {
+    unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
+      .runLog.run.toList == List.range(10, 0, -1)
   }
 
   property("kill of drained process terminates") = secure {
@@ -314,4 +295,23 @@ object ProcessSpec extends Properties("Process") {
 
   }
 
+  property("Process0Syntax.toStream terminates") = secure {
+    Process.constant(0).toStream.take(10).toList === List.fill(10)(0)
+  }
+
+  property("SinkSyntax.toChannel") = forAll { p0: Process0[Int] =>
+    val buffer = new collection.mutable.ListBuffer[Int]
+    val channel = io.fillBuffer(buffer).toChannel
+
+    val expected = p0.toList
+    val actual = p0.toSource.through(channel).runLog.run.toList
+    actual === expected && buffer.toList === expected
+  }
+
+  property("sleepUntil") = forAll { (p0: Process0[Int], p1: Process0[Boolean]) =>
+    val p2 = p1.take(5)
+    val expected = if (p2.exists(identity).toList.head) p0.toList else List.empty[Int]
+
+    p0.sleepUntil(p2).toList === expected
+  }
 }

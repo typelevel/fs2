@@ -8,10 +8,6 @@ import scalaz.Monoid
 import scalaz.concurrent.Task
 import Process._
 
-
-/**
- * Created by pach on 01/03/14.
- */
 object ProcessPerformanceSpec extends Properties("Process-performance") {
 
   import TestUtil._

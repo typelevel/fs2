@@ -1,10 +1,15 @@
 package scalaz.stream
 
-import java.io.{BufferedOutputStream,BufferedInputStream,FileInputStream,FileOutputStream,InputStream,OutputStream}
+import java.io._
 
-import scala.io.{Codec, Source}
+import scalaz.{-\/, \/-}
 import scalaz.concurrent.Task
+
 import scodec.bits.ByteVector
+
+import scala.annotation.tailrec
+import scala.io.{Codec, Source}
+
 import Process._
 
 /**
@@ -19,9 +24,9 @@ object io {
    * useful for flushing any internal buffers. NB: In the event of an
    * error, this final value is ignored.
    */
-  def bufferedResource[R,O](acquire: Task[R])(
-                            flushAndRelease: R => Task[O])(
-                            step: R => Task[O]): Process[Task,O] =
+  def bufferedResource[F[_],R,O](acquire: F[R])(
+                            flushAndRelease: R => F[O])(
+                            step: R => F[O]): Process[F,O] =
     eval(acquire).flatMap { r =>
       repeatEval(step(r)).onComplete(eval(flushAndRelease(r)))
     }
@@ -34,7 +39,7 @@ object io {
                              flush: R => Task[O])(
                              release: R => Task[Unit])(
                              step: R => Task[I => Task[O]]): Channel[Task,Option[I],O] = {
-    resource[R,Option[I] => Task[O]](acquire)(release) {
+    resource(acquire)(release) {
       r =>
         val s = step(r)
         Task.now {
@@ -45,7 +50,7 @@ object io {
   }
 
   /** Promote an effectful function to a `Channel`. */
-  def channel[A,B](f: A => Task[B]): Channel[Task, A, B] =
+  def channel[F[_],A,B](f: A => F[B]): Channel[F, A, B] =
     Process.constant(f)
 
   /**
@@ -73,9 +78,14 @@ object io {
     resource(Task.delay(os))(os => Task.delay(os.close))(
       os => Task.now((bytes: ByteVector) => Task.delay(os.write(bytes.toArray))))
 
-  /** Creates a `Sink` from a file name and optional buffer size in bytes. */
-  def fileChunkW(f: String, bufferSize: Int = 4096): Sink[Task,ByteVector] =
-    chunkW(new BufferedOutputStream(new FileOutputStream(f), bufferSize))
+  /**
+   * Creates a `Sink` from a file name and optional buffer size in bytes.
+   *
+   * @param append if true, then bytes will be written to the end of the file
+   *               rather than the beginning
+   */
+  def fileChunkW(f: String, bufferSize: Int = 4096, append: Boolean = false): Sink[Task,ByteVector] =
+    chunkW(new BufferedOutputStream(new FileOutputStream(f, append), bufferSize))
 
   /** Creates a `Channel` from a file name and optional buffer size in bytes. */
   def fileChunkR(f: String, bufferSize: Int = 4096): Channel[Task,Int,ByteVector] =
@@ -113,38 +123,74 @@ object io {
     }
 
   /**
-   * Generic combinator for producing a `Process[Task,O]` from some
+   * Creates `Sink` from an `PrintStream` using `f` to perform
+   * specific side effects on that `PrintStream`.
+   */
+  def printStreamSink[O](out: PrintStream)(f: (PrintStream, O) => Unit): Sink[Task, O] =
+    channel((o: O) => Task.delay {
+      f(out, o)
+      if (out.checkError)
+        throw Cause.Terminated(Cause.End)
+    })
+
+  /**
+   * Turn a `PrintStream` into a `Sink`. This `Sink` does not
+   * emit newlines after each element. For that, use `printLines`.
+   */
+  def print(out: PrintStream): Sink[Task,String] = printStreamSink(out)((ps, o) => ps.print(o))
+
+  /**
+   * Turn a `PrintStream` into a `Sink`. This `Sink` emits
+   * newlines after each element. If this is not desired, use `print`.
+   */
+  def printLines(out: PrintStream): Sink[Task,String] = printStreamSink(out)((ps, o) => ps.println(o))
+
+  /**
+   * Generic combinator for producing a `Process[F,O]` from some
    * effectful `O` source. The source is tied to some resource,
    * `R` (like a file handle) that we want to ensure is released.
    * See `linesR` for an example use.
    */
-  def resource[R,O](acquire: Task[R])(
-                    release: R => Task[Unit])(
-                    step: R => Task[O]): Process[Task,O] =
+  def resource[F[_],R,O](acquire: F[R])(
+                         release: R => F[Unit])(
+                         step: R => F[O]): Process[F,O] =
     eval(acquire).flatMap { r =>
       repeatEval(step(r)).onComplete(eval_(release(r)))
     }
 
   /**
    * The standard input stream, as `Process`. This `Process` repeatedly awaits
+   * and emits chunks of bytes  from standard input.
+   */
+  def stdInBytes: Channel[Task, Int, ByteVector] =
+    io.chunkR(System.in)
+
+  /**
+   * The standard input stream, as `Process`. This `Process` repeatedly awaits
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task.delay { Option(Console.readLine()).getOrElse(throw Cause.Terminated(Cause.End)) })
+    Process.repeatEval(Task.delay { Option(scala.Console.readLine()).getOrElse(throw Cause.Terminated(Cause.End)) })
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
    * emit newlines after each element. For that, use `stdOutLines`.
    */
   def stdOut: Sink[Task,String] =
-    channel((s: String) => Task.delay { print(s) })
+    print(System.out)
+
+  /**
+   * The standard output stream, as a `ByteVector` `Sink`.
+   */
+  def stdOutBytes: Sink[Task, ByteVector] =
+    chunkW(System.out)
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` emits
    * newlines after each element. If this is not desired, use `stdOut`.
    */
   def stdOutLines: Sink[Task,String] =
-    channel((s: String) => Task.delay { println(s) })
+    printLines(System.out)
 
   /**
    * Creates a `Channel[Task,Array[Byte],Array[Byte]]` from an `InputStream` by
@@ -171,4 +217,137 @@ object io {
         else buf.take(m)
       }}
     }
+
+  /**
+   * Converts a source to a mutable `InputStream`.  The resulting input stream
+   * should be reasonably efficient and supports early termination (i.e. all
+   * finalizers associated with the input process will be run if the stream is
+   * closed).
+   */
+  def toInputStream(p: Process[Task, ByteVector]): InputStream = new InputStream {
+    import Cause.{EarlyCause, End, Kill}
+
+    var cur = p
+
+    var index = 0
+    var chunks: Seq[ByteVector] = Nil    // we only consider the head to be valid at any point in time
+
+    def read(): Int = {
+      if (cur.isHalt && chunks.isEmpty) {
+        -1
+      } else {
+        val buffer = new Array[Byte](1)
+        val bytesRead = read(buffer)
+        if (bytesRead == -1) {
+          -1
+        } else {
+          buffer(0) & 0xff
+        }
+      }
+    }
+
+    override def read(buffer: Array[Byte], offset: Int, length: Int): Int = {
+      if (cur.isHalt && chunks.isEmpty) {
+        -1
+      } else {
+        // when our index walks off the end of our last chunk, we need to Nil it out!
+        if (chunks.isEmpty) {
+          step()
+          read(buffer, offset, length)
+        } else {
+          @tailrec
+          def go(offset: Int, length: Int, read: Int): Int = {
+            if (chunks.isEmpty) {
+              // we already took care of the "halted at start" stillborn case, so we can safely just step
+              step()
+
+              if (cur.isHalt && chunks.isEmpty)
+                read         // whoops! we walked off the end of the stream and we're done
+              else
+                go(offset, length, read)
+            } else {
+              val chunk = chunks.head
+              val remaining = chunk.length - index
+
+              if (length <= remaining) {
+                (chunk drop index take length).copyToArray(buffer, offset)      // TODO replace this with the 4-arg copyToArray once exposed
+
+                if (length == remaining) {
+                  index = 0
+                  chunks = chunks.tail
+                } else {
+                  index += length
+                }
+
+                length + read
+              } else {
+                (chunk drop index take remaining).copyToArray(buffer, offset)      // TODO replace this with the 4-arg copyToArray once exposed
+
+                chunks = chunks.tail
+                go(offset + remaining, length - remaining, read + remaining)
+              }
+            }
+          }
+
+          go(offset, length, 0)
+        }
+      }
+    }
+
+    @tailrec
+    override def close() {
+      if (cur.isHalt && chunks.isEmpty) {
+        chunks = Nil
+      } else {
+        cur = cur.kill
+        cur.step match {
+          case Halt(End | Kill) =>
+            chunks = Nil
+
+          // rethrow halting errors
+          case Halt(Cause.Error(e: Error)) => throw e
+          case Halt(Cause.Error(e: Exception)) => throw new IOException(e)
+
+          case Step(Emit(_), _) => assert(false)    // this is impossible, according to the types
+
+          case Step(Await(request, receive), cont) => {
+            // yay! run the Task
+            cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
+            close()
+          }
+        }
+      }
+    }
+
+    @tailrec
+    def step(): Unit = {
+      index = 0
+      cur.step match {
+        case h @ Halt(End | Kill) =>
+          cur = h
+
+        // rethrow halting errors
+        case h @ Halt(Cause.Error(e: Error)) => {
+          cur = h
+          throw e
+        }
+
+        case h @ Halt(Cause.Error(e: Exception)) => {
+          cur = h
+          throw new IOException(e)
+        }
+
+        case Step(Emit(as), cont) => {
+          chunks = as
+          cur = cont.continue
+        }
+
+        case Step(Await(request, receive), cont) => {
+          // yay! run the Task
+          cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
+          step()    // push things onto the stack and then step further (tail recursively)
+        }
+      }
+    }
+  }
 }

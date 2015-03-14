@@ -11,7 +11,7 @@ import scalaz.stream.Process.Halt
  */
 private[stream] object TestUtil {
 
-  /** simple timing test, returns the duration and result **/
+  /** simple timing test, returns the duration and result */
   def time[A](a: => A, l: String = ""): (FiniteDuration, A) = {
     val start = System.currentTimeMillis()
     val result = a
@@ -20,7 +20,7 @@ private[stream] object TestUtil {
     ((stop - start).millis, result)
   }
 
-  /** like `time` but will return time per item based on times supplied **/
+  /** like `time` but will return time per item based on times supplied */
   def timePer[A](items:Int)(a: => A, l: String = ""): (FiniteDuration, A) = {
     val (tm, ra) = time(a,l)
     (tm / items, ra)

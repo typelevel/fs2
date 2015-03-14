@@ -11,9 +11,6 @@ import scalaz.stream.async.mutable.Signal
 import scalaz.syntax.monad._
 import scalaz.{-\/, Nondeterminism, \/, \/-}
 
-/**
- * Created by pach on 03/05/14.
- */
 object AsyncSignalSpec extends Properties("async.signal") {
 
   implicit val scheduler = DefaultScheduler
@@ -89,7 +86,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
       val signal = async.signal[(String, Int)]
 
       val closeSignal =
-        Process.sleep(100 millis) fby
+        time.sleep(100 millis) ++
           (if (l.size % 2 == 0) Process.eval_(signal.close)
           else Process.eval_(signal.fail(Bwahahaa)))
 
@@ -176,7 +173,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   //tests that signal terminates when discrete process terminates
   property("from.discrete.terminates") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource,haltOnSource = true)
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource,haltOnSource = true)
     val initial = sig.discrete.runLog.run
     val afterClosed = sig.discrete.runLog.run
     (initial == Vector(1,2,3,4)) && (afterClosed== Vector())
@@ -185,7 +182,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   //tests that signal terminates with failure when discrete process terminates with failure
   property("from.discrete.fail") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource fby Process.fail(Bwahahaa),haltOnSource = true)
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa),haltOnSource = true)
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 
@@ -193,19 +190,19 @@ object AsyncSignalSpec extends Properties("async.signal") {
   // process terminates with failure even when haltOnSource is set to false
   property("from.discrete.fail.always") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper fby Process(1,2,3,4).toSource fby Process.fail(Bwahahaa))
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa))
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 
   property("continuous") = secure {
     val sig = async.signal[Int]
-    Process.awakeEvery(100.millis)
+    time.awakeEvery(100.millis)
       .zip(Process.range(1, 13))
       .map(x => Signal.Set(x._2))
       .to(sig.sink)
       .run
       .runAsync(_ => ())
-    val res = Process.awakeEvery(500.millis)
+    val res = time.awakeEvery(500.millis)
       .zip(sig.continuous)
       .map(_._2)
       .take(6)

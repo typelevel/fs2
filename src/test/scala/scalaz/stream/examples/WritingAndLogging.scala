@@ -45,7 +45,7 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     val ex: Process[Task,Int] =
       Process.range(0,10)
              .flatMap(i => P.tell("Got input: " + i) ++ P.emitO(i))
-             .liftIO
+             .toSource
              .drainW(io.fillBuffer(buf))
 
     /* This will have the side effect of filling `buf`. */

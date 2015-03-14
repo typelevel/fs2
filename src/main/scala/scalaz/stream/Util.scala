@@ -3,10 +3,6 @@ package scalaz.stream
 import scala.annotation.tailrec
 import java.util.concurrent.atomic.AtomicInteger
 
-
-/**
- * Created by pach on 06/03/14.
- */
 private[stream] object Util {
 
   implicit class AppendSyntax[A](val self: Vector[A]) extends AnyVal {

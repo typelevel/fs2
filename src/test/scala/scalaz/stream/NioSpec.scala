@@ -35,7 +35,7 @@ object NioServer {
   def echo(address: InetSocketAddress): Process[Task, ByteVector] = {
     def echoAll: Writer1[ByteVector, ByteVector, ByteVector] = {
       receive1[ByteVector, ByteVector \/ ByteVector]({
-        i => emitAll(Seq(\/-(i), -\/(i))) fby echoAll
+        i => emitAll(Seq(\/-(i), -\/(i))) ++ echoAll
       })
     }
 
@@ -49,8 +49,8 @@ object NioServer {
       receive1[ByteVector, ByteVector \/ ByteVector]({
         i =>
           val toEcho = i.take(sz)
-          if (sz - toEcho.size <= 0) emitAll(Seq(\/-(toEcho), -\/(toEcho))) fby halt
-          else  emitAll(Seq(\/-(toEcho), -\/(toEcho))) fby remaining(sz -toEcho.size)
+          if (sz - toEcho.size <= 0) emitAll(Seq(\/-(toEcho), -\/(toEcho))) ++ halt
+          else  emitAll(Seq(\/-(toEcho), -\/(toEcho))) ++ remaining(sz -toEcho.size)
       })
     }
 
@@ -70,10 +70,10 @@ object NioClient {
       def go(collected: Int): WyeW[ByteVector, ByteVector, ByteVector, ByteVector] = {
         wye.receiveBoth {
           case ReceiveL(rcvd) =>
-            emitO(rcvd) fby
+            emitO(rcvd) ++
               (if (collected + rcvd.size >= data.size) halt
               else go(collected + rcvd.size))
-          case ReceiveR(data) => tell(data) fby go(collected)
+          case ReceiveR(data) => tell(data) ++ go(collected)
           case HaltL(rsn)     => Halt(rsn)
           case HaltR(End)       => go(collected)
           case HaltR(rsn)  => Halt(rsn)
@@ -114,8 +114,7 @@ object NioSpec extends Properties("nio") {
     val array1 = Array.fill[Byte](size)(1)
     Random.nextBytes(array1)
 
-    val stop = async.signal[Boolean]
-    stop.set(false).run
+    val stop = async.signalOf(false)
 
     val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
     stop.discrete.wye(NioServer.echo(local))(wye.interrupt)
@@ -140,8 +139,7 @@ object NioSpec extends Properties("nio") {
     val array1 = Array.fill[Byte](size)(1)
     Random.nextBytes(array1)
 
-    val stop = async.signal[Boolean]
-    stop.set(false).run
+    val stop = async.signalOf(false)
 
     val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
     stop.discrete.wye(NioServer.limit(local,max))(wye.interrupt)
@@ -160,7 +158,7 @@ object NioSpec extends Properties("nio") {
 
 
   // connects large number of client to server, each sending up to `size` data and server replying them back
-  // at the end server shall have callected all data from all clients and all clients shall get echoed back
+  // at the end server shall have collected all data from all clients and all clients shall get echoed back
   // what they have sent to server
   property("connect-server-many") = secure {
     val local = localAddress(11102)
@@ -169,8 +167,7 @@ object NioSpec extends Properties("nio") {
     val array1 = Array.fill[Byte](size)(1)
     Random.nextBytes(array1)
 
-    val stop = async.signal[Boolean]
-    stop.set(false).run
+    val stop = async.signalOf(false)
 
 
     val serverGot = new SyncVar[Throwable \/ Seq[Seq[Byte]]]

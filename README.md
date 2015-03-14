@@ -1,7 +1,8 @@
 scalaz-stream
 =============
 
-[![Build Status](https://travis-ci.org/scalaz/scalaz-stream.png?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
+[![Build Status](https://travis-ci.org/scalaz/scalaz-stream.svg?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
+[![Gitter Chat](https://badges.gitter.im/scalaz/scalaz-stream.svg)](https://gitter.im/scalaz/scalaz-stream)
 
 ### Where to get it ###
 
@@ -14,11 +15,11 @@ resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
 And use one of the following library dependencies:
 
 ```
-// Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.5"
+// Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.4
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.6"
 
-// Against Scalaz 7.1, available for Scala 2.10.4 and 2.11.2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.5a"
+// Against Scalaz 7.1, available for Scala 2.10.4 and 2.11.4
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.6a"
 ```
 
 ### About the library ###
@@ -57,9 +58,7 @@ There are examples (with commentary) in the test directory [`scalaz.stream.examp
 
 For questions about the library, use the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) or the [scalaz-stream tag on StackOverflow](http://stackoverflow.com/questions/tagged/scalaz-stream).
 
-The API documentation of the latest release is available on [docs.typelevel.org](http://docs.typelevel.org/api/scalaz-stream/stable/latest/doc/).
-
-Blog posts and other external resources are listed on the [Additional Resources](https://github.com/scalaz/scalaz-stream/wiki/Additional-Resources)  page.
+Blog posts and other external resources are listed on the [Additional Resources](https://github.com/scalaz/scalaz-stream/wiki/Additional-Resources) page.
 
 ### Projects using scalaz-stream ###
 

@@ -65,6 +65,18 @@ object WyeSpec extends  Properties("Wye"){
 
   }
 
+  property("haltL") = secure {
+    val w = wye.haltL(Kill)(wye.feedR(Seq(0,1))(wye.merge[Int]))
+    val x = Process.emit(-1).wye(Process.range(2,5))(w).runLog.run
+    x.toList == List(0,1)
+  }
+
+  property("haltR") = secure {
+    val w = wye.haltR(Kill)(wye.feedL(Seq(0,1))(wye.merge[Int]))
+    val x = Process.range(2,5).wye(Process.emit(-1))(w).runLog.run
+    x.toList == List(0,1)
+  }
+
   // ensure that wye terminates when once side of it is infinite
   // and other side of wye is either empty, or one.
   property("infinite.one.side") = secure {
@@ -125,14 +137,14 @@ object WyeSpec extends  Properties("Wye"){
 
 
   property("either.continue-when-left-done") = secure {
-    val e = (Process.range(0, 20) either (awakeEvery(25 millis).take(20))).runLog.timed(5000).run
+    val e = (Process.range(0, 20) either (time.awakeEvery(25 millis).take(20))).runLog.timed(5000).run
     ("Both sides were emitted" |: (e.size == 40))  &&
       ("Left side terminated earlier" |: e.zipWithIndex.filter(_._1.isLeft).lastOption.exists(_._2 < 35))   &&
       ("Right side was last" |:  e.zipWithIndex.filter(_._1.isRight).lastOption.exists(_._2 == 39))
   }
 
   property("either.continue-when-right-done") = secure {
-    val e = ((awakeEvery(25 millis).take(20)) either Process.range(0, 20)).runLog.timed(5000).run
+    val e = ((time.awakeEvery(25 millis).take(20)) either Process.range(0, 20)).runLog.timed(5000).run
     ("Both sides were emitted" |: (e.size == 40)) &&
       ("Right side terminated earlier" |: e.zipWithIndex.filter(_._1.isRight).lastOption.exists(_._2 < 35))   &&
       ("Left side was last" |: e.zipWithIndex.filter(_._1.isLeft).lastOption.exists(_._2 == 39))
@@ -165,8 +177,8 @@ object WyeSpec extends  Properties("Wye"){
     val syncO = new SyncVar[Int]
 
     // Left process terminates earlier.
-    val l = Process.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(500);syncL.put(100)})
-    val r = Process.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(600);syncR.put(200)})
+    val l = time.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(500);syncL.put(100)})
+    val r = time.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(600);syncR.put(200)})
 
     val e = ((l either r).take(10) onComplete eval_(Task.delay(syncO.put(1000)))).runLog.timed(3000).run
 
@@ -204,7 +216,7 @@ object WyeSpec extends  Properties("Wye"){
     val count = 20
     val deep = 100
 
-    def src(of: Int) = Process.range(0, count).map((_, of)).liftIO
+    def src(of: Int) = Process.range(0, count).map((_, of)).toSource
 
     val merged =
       (1 until deep).foldLeft(src(0))({
@@ -239,14 +251,27 @@ object WyeSpec extends  Properties("Wye"){
 
     (pm1 ++ pm2).runLog.timed(3000).run.size == 4
   }
+  
+  property("mergeHaltBoth.terminate-on-doubleHalt") = secure {
+    implicit val scheduler = DefaultScheduler
+
+    for (i <- 1 to 100) {
+      val q = async.unboundedQueue[Unit]
+      q.enqueueOne(()).run
+
+      val process = ((q.dequeue merge halt).once wye halt)(wye.mergeHaltBoth)
+      process.run.timed(3000).run
+    }
+
+    true
+  }
 
   //tests specific case of termination with nested wyes and interrupt
   property("nested-interrupt") = secure {
     val sync = new SyncVar[Throwable \/ IndexedSeq[Unit]]
-    val term1 = async.signal[Boolean]
-    term1.set(false).run
+    val term1 = async.signalOf(false)
 
-    val p1: Process[Task,Unit] = (Process.sleep(10.hours) fby emit(true)).wye(Process.sleep(10 hours))(wye.interrupt)
+    val p1: Process[Task,Unit] = (time.sleep(10.hours) ++ emit(true)).wye(time.sleep(10 hours))(wye.interrupt)
     val p2:Process[Task,Unit] = repeatEval(Task.now(true)).flatMap(_ => p1)
     val toRun =  term1.discrete.wye(p2)(wye.interrupt)
 

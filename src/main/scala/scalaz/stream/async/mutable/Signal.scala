@@ -116,11 +116,11 @@ object Signal {
   protected[async] def signalWriter[A]: Writer1[A,Msg[A],Nothing] = {
     def go(oa:Option[A]) : Writer1[A,Msg[A],Nothing] =
     receive1[Msg[A], A \/ Nothing] {
-      case Set(a) => tell(a) fby go(Some(a))
+      case Set(a) => tell(a) ++ go(Some(a))
       case CompareAndSet(f:(Option[A] => Option[A])@unchecked) =>
         val next = f(oa)
         next match {
-          case Some(a) => tell(a) fby go(Some(a))
+          case Some(a) => tell(a) ++ go(Some(a))
           case None => go(oa)
         }
     }

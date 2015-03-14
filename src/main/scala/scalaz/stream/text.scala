@@ -2,6 +2,7 @@ package scalaz.stream
 
 import java.nio.charset.Charset
 import java.util.regex.Pattern
+import scalaz.std.string._
 import scodec.bits.ByteVector
 
 import process1._
@@ -62,21 +63,42 @@ object text {
     lift(s => ByteVector.view(s.getBytes(utf8Charset)))
 
   /**
-   * Repartition `String` input by line endings. If `maxLineLength` is greater
-   * than zero and a line exceeding `maxLineLength` is found, the `Process`
-   * fails with an `Exception`. The default `maxLineLength` is 1 MB for
-   * `Charset`s with an average char size of 1 byte such as UTF-8.
+   * Exception that is thrown by `[[lines]](maxLength)` if it encounters an
+   * input whose length exceeds `maxLength`. The `input` parameter is set to the
+   * input `String` that caused `lines` to fail.
    */
-  def lines(maxLineLength: Int = 1024*1024): Process1[String, String] = {
-    import scalaz.std.string._
+  case class LengthExceeded(maxLength: Int, input: String) extends Exception {
+    override def getMessage: String = {
+      val n = 10
+      val shortened = if (input.length <= n) input else input.take(n) + " ..."
 
+      s"Input '$shortened' exceeded maximum length: $maxLength"
+    }
+  }
+
+  /**
+   * Repartitions `String` inputs by line endings. If `maxLineLength` is
+   * greater than zero and a line exceeding `maxLineLength` is found, the
+   * `Process` fails with an `LengthExceeded` exception. The default
+   * `maxLineLength` is 1024<sup>2</sup>.
+   *
+   * @example {{{
+   * scala> Process("Hel", "lo\nWo", "rld!\n").pipe(text.lines()).toList
+   * res0: List[String] = List(Hello, World!)
+   * }}}
+   */
+  def lines(maxLineLength: Int = 1024 * 1024): Process1[String, String] = {
     val pattern = Pattern.compile("\r\n|\n")
-    repartition[String]{ s =>
-      val chunks = pattern.split(s, -1)
-      if (maxLineLength > 0) chunks.find(_.length > maxLineLength) match  {
-        case Some(_) => throw new Exception(s"Input exceeded maximum line length: $maxLineLength")
-        case None    => chunks
-      } else chunks
-    }.dropLastIf(_.isEmpty)
+    def splitLines(s: String): IndexedSeq[String] = pattern.split(s, -1)
+
+    val repartitionProcess =
+      if (maxLineLength > 0)
+        repartition { (s: String) =>
+          val chunks = splitLines(s)
+          if (chunks.forall(_.length <= maxLineLength)) chunks
+          else throw LengthExceeded(maxLineLength, s)
+        }
+      else repartition(splitLines)
+    repartitionProcess.dropLastIf(_.isEmpty)
   }
 }
