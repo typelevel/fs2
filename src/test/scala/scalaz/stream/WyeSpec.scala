@@ -7,6 +7,7 @@ import org.scalacheck.Prop._
 import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process._
 import scalaz.stream.ReceiveY.{HaltR, HaltL, ReceiveR, ReceiveL}
+import scalaz.syntax.monad._
 import scalaz.{\/, -\/, \/-}
 import scala.concurrent.duration._
 import scala.concurrent.SyncVar
@@ -422,7 +423,7 @@ object WyeSpec extends  Properties("Wye"){
     v.size >= 0
   }
 
-  property("outer cleanup through pipe gets called") = secure {
+  property("outer cleanup through pipe gets called with interrupted task") = secure {
     @volatile
     var complete = false
 
@@ -442,5 +443,27 @@ object WyeSpec extends  Properties("Wye"){
       )(wye.interrupt).run.run
 
     complete :| "task completed" && cleanup :| "inner cleanup invoked"
+  }
+
+  property("outer cleanup through pipe gets called with preempted task") = secure {
+    @volatile
+    var complete = false
+
+    @volatile
+    var cleanup = false
+
+    val flag = new SyncVar[Unit]
+
+    val awaitP = await((Task delay { flag.get }) >> (Task delay {
+        Thread.sleep(3000)
+        complete = true
+      }))(emit)
+
+    // interrupt awaitP before the second part of the task can even start running
+    eval(Task delay { flag.put(()); true }).wye(
+        awaitP pipe process1.id onComplete eval_(Task.delay { cleanup = true })
+      )(wye.interrupt).run.run
+
+    !complete :| "task interrupted" && cleanup :| "inner cleanup invoked"
   }
 }
