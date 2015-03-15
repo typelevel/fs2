@@ -251,7 +251,7 @@ object WyeSpec extends  Properties("Wye"){
 
     (pm1 ++ pm2).runLog.timed(3000).run.size == 4
   }
-  
+
   property("mergeHaltBoth.terminate-on-doubleHalt") = secure {
     implicit val scheduler = DefaultScheduler
 
@@ -420,5 +420,27 @@ object WyeSpec extends  Properties("Wye"){
     val i1 = Process(false)
     val v = i1.wye(p2)(wye.interrupt).runLog.timed(3000).run.toList
     v.size >= 0
+  }
+
+  property("outer cleanup through pipe gets called") = secure {
+    @volatile
+    var complete = false
+
+    @volatile
+    var cleanup = false
+
+    val flag = new SyncVar[Unit]
+
+    val awaitP = await(Task delay {
+      flag.put(())
+      Thread.sleep(3000)
+      complete = true
+    })(emit)
+
+    eval(Task delay { flag.get(500); true }).wye(
+        awaitP pipe process1.id onComplete eval_(Task.delay { cleanup = true })
+      )(wye.interrupt).run.run
+
+    complete :| "task completed" && cleanup :| "inner cleanup invoked"
   }
 }
