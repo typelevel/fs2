@@ -454,7 +454,7 @@ object WyeSpec extends  Properties("Wye"){
 
     val flag = new SyncVar[Unit]
 
-    val awaitP = await((Task delay { flag.get }) >> (Task delay {
+    val awaitP = await((Task delay { flag.get; Thread.sleep(500) }) >> (Task delay {
         Thread.sleep(3000)
         complete = true
       }))(emit)
