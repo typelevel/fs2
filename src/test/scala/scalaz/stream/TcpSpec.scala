@@ -108,7 +108,7 @@ object TcpSpec extends Properties("tcp") {
       link.discrete.wye(server)(wye.interrupt)
           .run
           .runAsync { _.fold(e => throw e, identity) }
-    lazy val stopServer = { println("shutting down"); E.shutdown(); link.set(true).run }
+    lazy val stopServer = { E.shutdown(); link.set(true).run }
 
     property("setup") = forAll ((i: Int) => { startServer; true })
     property("go") =
