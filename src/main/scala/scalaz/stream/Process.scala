@@ -1259,11 +1259,13 @@ object Process extends ProcessInstances {
                 }
 
                 // interrupted via the callback mechanism, checked in `completeInterruptibly`
+                // always matches to a `None` (we don't have a value yet)
                 object MidStep {
                   def unapply(msg: Option[_]): Option[EarlyCause] = interrupted.get() filter { _ => !msg.isDefined }
                 }
 
                 // completed the task, `interrupted.get()` is defined, and so we were interrupted post-completion
+                // always matches to a `Some` (we always have value)
                 object PostStep {
                   def unapply(msg: Option[_ \/ a]): Option[(Process[Task, O], EarlyCause)] = {
                     val maybeCause = interrupted.get()
@@ -1360,6 +1362,11 @@ object Process extends ProcessInstances {
 
       val cancel = new AtomicBoolean(false)
 
+      // `cb` is run exactly once or twice
+      // Case A) `cb` is run with `None` followed by `Some` if we were cancelled but still obtained a value.
+      // Case B) `cb` is run with just `Some` if it's never cancelled.
+      // Case C) `cb` is run with just `None` if it's cancelled before a value is even attempted.
+      // Case D) the same as case A, but in the opposite order, only in very rare cases
       lazy val actor: Actor[Option[Future[A]]] = new Actor[Option[Future[A]]]({
         // pure cases
         case Some(Suspend(thunk)) if !cancel.get() =>
@@ -1381,16 +1388,17 @@ object Process extends ProcessInstances {
             if (!cancel.get()) {
               Trampoline delay { g(a) } map { r => actor ! Some(r) }
             } else {
-              Trampoline delay { S { cb(None) } }
+              // here we drop `a` on the floor
+              Trampoline done { () }  // `cb` already run with `None`
             }
           }
         }
 
         // fallthrough case where cancel.get() == true
-        case Some(_) => S { cb(None) }
+        case Some(_) => ()  // `cb` already run with `None`
 
         case None => {
-          cancel.set(true)
+          cancel.set(true)  // the only place where `cancel` is set to `true`
           S { cb(None) }
         }
       })
