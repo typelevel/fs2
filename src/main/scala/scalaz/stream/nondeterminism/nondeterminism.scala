@@ -184,13 +184,14 @@ package object nondeterminism {
 
         })(rsn => m match {
           //join is closed, next p is ignored and source is killed
-          case Offer(_, cont) =>  nextStep(Halt(Kill) +: cont)
+          case Offer(_, cont) => nextStep(Halt(Kill) +: cont)
           case FinishedSource(cause) => state = Either3.left3(cause) ; completeIfDone
           case Finished(_) => opened = opened - 1; completeIfDone
           case FinishedDown(cb) =>
             if (allDone) S(cb(\/-(())))
             else completer = Some(cb)
           case Start => ()
+          case Delay(cont) => nextStep(cont.continue)
         })
 
       })
