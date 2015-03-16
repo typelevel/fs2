@@ -430,6 +430,9 @@ object WyeSpec extends  Properties("Wye"){
     @volatile
     var cleanup = false
 
+    @volatile
+    var flagReceived = false
+
     val flag = new SyncVar[Unit]
 
     val awaitP = await(Task delay {
@@ -438,11 +441,11 @@ object WyeSpec extends  Properties("Wye"){
       complete = true
     })(emit)
 
-    eval(Task delay { flag.get(500); true }).wye(
-        awaitP pipe process1.id onComplete eval_(Task.delay { cleanup = true })
+    eval(Task delay { flagReceived = flag.get(500).isDefined; true }).wye(
+        awaitP pipe process1.id onComplete eval_(Task delay { cleanup = true })
       )(wye.interrupt).run.run
 
-    complete :| "task completed" && cleanup :| "inner cleanup invoked"
+    complete :| "task completed" && cleanup :| "inner cleanup invoked" && flagReceived :| "received flag"
   }
 
   property("outer cleanup through pipe gets called with preempted task") = secure {
@@ -465,5 +468,42 @@ object WyeSpec extends  Properties("Wye"){
       )(wye.interrupt).run.run
 
     !complete :| "task interrupted" && cleanup :| "inner cleanup invoked"
+  }
+
+  property("outer cleanup through pipe gets called before interrupted inner") = secure {
+    import scala.collection.immutable.Queue
+    import process1.id
+
+    @volatile
+    var complete = false
+
+    @volatile
+    var innerCleanup = false
+
+    @volatile
+    var outerCleanup = false
+
+    @volatile
+    var deadlocked = false
+
+    val flag = new SyncVar[Unit]
+
+    val task1 = Task fork (Task delay { deadlocked = flag.get(2000).isEmpty; Thread.sleep(1000); complete = true })
+    // val task1 = Task { deadlocked = flag.get(2000).isEmpty; Thread.sleep(1000); complete = true }
+
+    val awaitP =  await(task1)(u =>Process.emit(u))
+
+
+    eval(Task delay { true })
+      .wye(
+          awaitP pipe process1.id onComplete eval_(Task delay { flag.put(()); innerCleanup = true })
+        )(wye.interrupt)
+      .onComplete(eval_(Task delay { outerCleanup = true }))
+      .run.run
+
+    complete :| "completion" &&
+      innerCleanup :| "innerCleanup" &&
+      outerCleanup :| "outerCleanup"
+      !deadlocked :| "avoided deadlock"
   }
 }

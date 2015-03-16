@@ -1307,7 +1307,7 @@ object Process extends ProcessInstances {
                  * extractor.  Under all other circumstances, including interrupts, exceptions and natural completion, the
                  * callback will be invoked exactly once.
                  */
-                val interrupt = completeInterruptibly((Task fork (checkInterrupt >> req)).get) {
+                val interrupt = completeInterruptibly((checkInterrupt >> req).get) {
                   case Interrupted.PreOrMidStep(cause) => {
                     // interrupted; now drain
                     (Try(rcv(-\/(cause)).run) +: cont).drain.run runAsync {
@@ -1356,6 +1356,8 @@ object Process extends ProcessInstances {
      * that value will be passed to the callback as a second return.  Thus, the callback will always be
      * invoked at least once, and may be invoked twice.  If it is invoked twice, the first callback
      * will always be None while the second will be Some.
+     *
+     *
      */
     private def completeInterruptibly[A](f: Future[A])(cb: Option[A] => Unit)(implicit S: Strategy): () => Unit = {
       import Future._
@@ -1403,7 +1405,7 @@ object Process extends ProcessInstances {
         }
       })
 
-      actor ! Some(f)
+      S { actor ! Some(f) }
 
       { () => actor ! None }
     }
