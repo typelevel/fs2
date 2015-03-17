@@ -6,7 +6,7 @@ version := "snapshot-0.7"
 
 scalaVersion := "2.10.4"
 
-crossScalaVersions := Seq("2.10.4", "2.11.4")
+crossScalaVersions := Seq("2.10.4", "2.11.6")
 
 scalacOptions ++= Seq(
   "-feature",
