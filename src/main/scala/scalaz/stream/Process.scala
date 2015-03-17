@@ -1362,11 +1362,11 @@ object Process extends ProcessInstances {
 
                   exceptional = { t =>
                     // we got an exception (not an interrupt!) and we need to drain everything
-                    go(Try(rcv(-\/(Error(t))).run) +: cont).run
+                    go(Try(rcv(-\/(Error(t))).run) +: cont) runAsync { _ => () }
                   },
 
                   completed = { continuation =>
-                    go(continuation).run      // we completed successfully; forward along the reference
+                    go(continuation) runAsync { _ => () }
                   }
                 ))
 
