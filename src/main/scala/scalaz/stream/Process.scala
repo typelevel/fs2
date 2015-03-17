@@ -1242,60 +1242,6 @@ object Process extends ProcessInstances {
               def unpack(msg: Option[_ \/ a]): Option[a] = msg flatMap { _.toOption }
               def wrap(result: a): Process[Task, O] = Try(rcv(\/-(result)).run)
 
-              // detects what completion/interrupt case we're in and factors out race conditions
-              def handle[A](
-                  // interrupted before the task started running; task never ran!
-                  preStep: EarlyCause => A,
-                  // interrupted *during* the task run; task is probably still running
-                  midStep: EarlyCause => A,
-                  // task finished running, but we were *previously* interrupted
-                  postStep: (Process[Task, O], EarlyCause) => A,
-                  // task finished with an error, but was not interrupted
-                  exceptional: Throwable => A,
-                  // task finished with a value, no errors, no interrupts
-                  completed: Process[Task, O] => A)(result: Option[Throwable \/ a]): A = result match {
-
-                // interrupted via the `Task.fail` defined in `checkInterrupt`
-                case Some(-\/(Terminated(cause: EarlyCause))) => preStep(cause)
-
-                case result => {
-                  val inter = interrupted.get()
-
-                  // interrupted via the callback mechanism, checked in `completeInterruptibly`
-                  // always matches to a `None` (we don't have a value yet)
-                  inter filter { _ => !result.isDefined } match {
-                    case Some(cause) => midStep(cause)
-
-                    case None => {
-                      // completed the task, `interrupted.get()` is defined, and so we were interrupted post-completion
-                      // always matches to a `Some` (we always have value)
-                      val pc = for {
-                        cause <- inter
-                        continuation <- unpack(result) map wrap
-                      } yield postStep(continuation, cause)
-
-                      pc match {
-                        case Some(back) => back
-
-                        case None => result match {
-                          // nominally completed the task, but with an exception
-                          case Some(-\/(t)) => exceptional(t)
-
-                          case result => {
-                            // completed the task, no interrupts, no exceptions, good to go!
-                            unpack(result) map wrap match {
-                              case Some(head) => completed(head +: cont)
-
-                              case None => ???      // didn't match any condition; fail!
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-
               // throws an exception if we're already interrupted (caught in preStep check)
               val checkInterrupt: Task[Unit] = Task delay {
                 interrupted.get() map { c => Task fail Terminated(c) } getOrElse (Task now (()))
@@ -1304,6 +1250,83 @@ object Process extends ProcessInstances {
               Task delay {
                 // points to either the current step interrupt, or the child's if we have completed and recursed
                 val ref = new AtomicReference[EarlyCause => Unit]
+
+                // will be true when we have "committed" to either a mid-step OR exceptional/completed
+                val barrier = new AtomicBoolean(false)
+
+                // detects what completion/interrupt case we're in and factors out race conditions
+                def handle(
+                    // interrupted before the task started running; task never ran!
+                    preStep: EarlyCause => Unit,
+                    // interrupted *during* the task run; task is probably still running
+                    midStep: EarlyCause => Unit,
+                    // task finished running, but we were *previously* interrupted
+                    postStep: (Process[Task, O], EarlyCause) => Unit,
+                    // task finished with an error, but was not interrupted
+                    exceptional: Throwable => Unit,
+                    // task finished with a value, no errors, no interrupts
+                    completed: Process[Task, O] => Unit)(result: Option[Throwable \/ a]): Unit = result match {
+
+                  // interrupted via the `Task.fail` defined in `checkInterrupt`
+                  case Some(-\/(Terminated(cause: EarlyCause))) => preStep(cause)
+
+                  case result => {
+                    val inter = interrupted.get()
+
+                    // interrupted via the callback mechanism, checked in `completeInterruptibly`
+                    // always matches to a `None` (we don't have a value yet)
+                    inter filter { _ => !result.isDefined } match {
+                      case Some(cause) => {
+                        if (barrier.compareAndSet(false, true)) {
+                          midStep(cause)
+                        } else {
+                          // task already completed *successfully*, pretend we weren't interrupted at all
+                          // our *next* step (which is already running) will get a pre-step interrupt
+                          ()
+                        }
+                      }
+
+                      case None => {
+                        // completed the task, `interrupted.get()` is defined, and so we were interrupted post-completion
+                        // always matches to a `Some` (we always have value)
+                        val pc = for {
+                          cause <- inter
+                          continuation <- unpack(result) map wrap
+                        } yield postStep(continuation, cause)
+
+                        pc match {
+                          case Some(back) => back
+
+                          case None => {
+                            if (barrier.compareAndSet(false, true)) {
+                              result match {
+                                // nominally completed the task, but with an exception
+                                case Some(-\/(t)) => exceptional(t)
+
+                                case result => {
+                                  // completed the task, no interrupts, no exceptions, good to go!
+                                  unpack(result) map wrap match {
+                                    case Some(head) => completed(head +: cont)
+
+                                    case None => ???      // didn't match any condition; fail! (probably a double-None bug in completeInterruptibly)
+                                  }
+                                }
+                              }
+                            } else {
+                              result match {
+                                case Some(_) =>
+                                  // we detected mid-step interrupt; this needs to transmute to post-step; loop back to the top!
+                                  handle(preStep = preStep, midStep = midStep, postStep = postStep, exceptional = exceptional, completed = completed)(result)
+
+                                case None => ???        // wtf?! (apparently we were called twice with None; bug in completeInterruptibly)
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
 
                 /*
                  * Start the task. per the `completeInterruptibly` invariants, the callback will be invoked exactly once
