@@ -1210,16 +1210,14 @@ object Process extends ProcessInstances {
     protected[stream] final def runAsync(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit)(implicit S: Strategy): EarlyCause => Unit = {
       val allSteps = Task delay {
         /*
-         * This is to propagate out the *global* interrupt, across all recursive steps.  Necessary
-         * because our default interrupt mechanism only interrupts "mid-step", meaning that if our
-         * steps complete instantly, it is impossible for anyone outside the function to "win the race"
-         * and get the interrupt to take effect!  This reference is checked immediately prior to ever
-         * await task evaluation, which effectively gives us the ability to interrupt pre-step in
-         * addition to our mid-step interrupt.
-         *
-         * Note that this reference will be set exactly once and never again.
+         * Represents the running state of the computation.  If we're running, then the interrupt
+         * function *for our current step* will be on the left.  If we have been interrupted, then
+         * the cause for that interrupt will be on the right.  These state transitions are made
+         * atomically, such that it is *impossible* for a task to be running, never interrupted and
+         * to have this value be a right.  If the value is a right, then either no task is running
+         * or the running task has received an interrupt.
          */
-        val interrupted = new AtomicReference[Option[EarlyCause]](None)
+        val interrupted = new AtomicReference[(() => Unit) \/ EarlyCause](-\/({ () => () }))
 
         /*
          * Produces the evaluation for a single step.  Generally, this function will be
@@ -1243,14 +1241,20 @@ object Process extends ProcessInstances {
               def wrap(result: a): Process[Task, O] = Try(rcv(\/-(result)).run)
 
               // throws an exception if we're already interrupted (caught in preStep check)
-              val checkInterrupt: Task[Unit] = Task delay {
-                interrupted.get() map { c => Task fail Terminated(c) } getOrElse (Task now (()))
+              def checkInterrupt(int: => (() => Unit)): Task[Unit] = Task delay {
+                interrupted.get() match {
+                  case ptr @ -\/(_) => {
+                    if (interrupted.compareAndSet(ptr, -\/(int)))
+                      Task now (())
+                    else
+                      checkInterrupt(int)
+                  }
+
+                  case \/-(c) => Task fail Terminated(c)
+                }
               } join
 
               Task delay {
-                // points to either the current step interrupt, or the child's if we have completed and recursed
-                val ref = new AtomicReference[EarlyCause => Unit]
-
                 // will be true when we have "committed" to either a mid-step OR exceptional/completed
                 val barrier = new AtomicBoolean(false)
 
@@ -1271,7 +1275,7 @@ object Process extends ProcessInstances {
                   case Some(-\/(Terminated(cause: EarlyCause))) => preStep(cause)
 
                   case result => {
-                    val inter = interrupted.get()
+                    val inter = interrupted.get().toOption
 
                     // interrupted via the callback mechanism, checked in `completeInterruptibly`
                     // always matches to a `None` (we don't have a value yet)
@@ -1335,7 +1339,7 @@ object Process extends ProcessInstances {
                  * extractor.  Under all other circumstances, including interrupts, exceptions and natural completion, the
                  * callback will be invoked exactly once.
                  */
-                val interrupt = completeInterruptibly((checkInterrupt >> req).get)(handle(
+                lazy val interrupt: () => Unit = completeInterruptibly((checkInterrupt(interrupt) >> req).get)(handle(
                   preStep = { cause =>
                     // interrupted; now drain
                     (Try(rcv(-\/(cause)).run) +: cont).drain.run runAsync {
@@ -1358,20 +1362,29 @@ object Process extends ProcessInstances {
 
                   exceptional = { t =>
                     // we got an exception (not an interrupt!) and we need to drain everything
-                    ref.set(go(Try(rcv(-\/(Error(t))).run) +: cont).run)
+                    go(Try(rcv(-\/(Error(t))).run) +: cont).run
                   },
 
                   completed = { continuation =>
-                    ref.set(go(continuation).run)      // we completed successfully; forward along the reference
+                    go(continuation).run      // we completed successfully; forward along the reference
                   }
                 ))
 
-                ref.set({ _ => interrupt() })
+                interrupt     // please don't delete this!  highly mutable code within
 
                 // interrupts the current step (may be a recursive child!) and sets `interrupted`
                 def referencedInterrupt(cause: EarlyCause): Unit = {
-                  interrupted.compareAndSet(None, Some(cause))
-                  ref.get()(cause)
+                  interrupted.get() match {
+                    case ptr @ -\/(int) => {
+                      if (interrupted.compareAndSet(ptr, \/-(cause))) {
+                        int()
+                      } else {
+                        referencedInterrupt(cause)
+                      }
+                    }
+
+                    case \/-(_) => ()    // ?????
+                  }
                 }
 
                 referencedInterrupt _
