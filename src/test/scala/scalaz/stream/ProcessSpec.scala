@@ -317,8 +317,8 @@ object ProcessSpec extends Properties("Process") {
     Thread.sleep(200)     // ensure the task actually completes
 
     (result.get(3000).get == -\/(Kill)) :| "computation result" &&
-      (inner.get() == 1) :| "inner finalizer invocation count" &&
-      (outer.get() == 1) :| "outer finalizer invocation count"
+      (inner.get() == 1) :| s"inner finalizer invocation count ${inner.get()}" &&
+      (outer.get() == 1) :| s"outer finalizer invocation count ${outer.get()}"
   }
 
   property("Process0Syntax.toStream terminates") = secure {
