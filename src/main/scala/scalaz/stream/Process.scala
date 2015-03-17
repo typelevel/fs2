@@ -77,21 +77,21 @@ sealed trait Process[+F[_], +O]
     @tailrec
     def go(cur: Process[F,O], stack: Vector[Cause => Trampoline[Process[F,O]]], cnt: Int) : HaltOrStep[F,O] = {
       if (stack.nonEmpty) cur match {
-        case Halt(End) if cnt <=0  => Step(empty,Cont(stack))
-        case Halt(cause) => go(Try(stack.head(cause).run), stack.tail, cnt -1)
+        case Halt(End) if cnt <= 0  => Step(empty,Cont(stack))
+        case Halt(cause) => go(Try(stack.head(cause).run), stack.tail, cnt - 1)
         case Emit(os) if os.isEmpty => Step(empty,Cont(stack))
         case emt@(Emit(os)) => Step(emt,Cont(stack))
         case awt@Await(_,_) => Step(awt,Cont(stack))
-        case Append(h,st) => go(h, st fast_++ stack, cnt -1)
+        case Append(h,st) => go(h, st fast_++ stack, cnt - 1)
       } else cur match {
         case hlt@Halt(cause) => hlt
-        case emt@Emit(os) if (os.isEmpty) => halt0
+        case emt@Emit(os) if os.isEmpty => halt0
         case emt@Emit(os) => Step(emt,Cont(Vector.empty))
         case awt@Await(_,_) => Step(awt,Cont(Vector.empty))
-        case Append(h,st) => go(h,st, cnt -1)
+        case Append(h,st) => go(h,st, cnt - 1)
       }
     }
-    go(this,Vector.empty, 10)
+    go(this,Vector.empty, 10)   // *any* value >= 1 works here. higher values improve throughput but reduce concurrency and fairness. 10 is a totally wild guess
 
   }
 
