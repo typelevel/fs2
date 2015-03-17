@@ -1242,56 +1242,61 @@ object Process extends ProcessInstances {
               def unpack(msg: Option[_ \/ a]): Option[a] = msg flatMap { _.toOption }
               def wrap(result: a): Process[Task, O] = Try(rcv(\/-(result)).run)
 
-              // handler extractors
-              object Interrupted {
-
-                object PreOrMidStep {
-                  def unapply(msg: Option[Throwable \/ _]): Option[EarlyCause] =
-                    (PreStep unapply msg) orElse (MidStep unapply msg)
-                }
+              // detects what completion/interrupt case we're in and factors out race conditions
+              def handle[A](
+                  // interrupted before the task started running; task never ran!
+                  preStep: EarlyCause => A,
+                  // interrupted *during* the task run; task is probably still running
+                  midStep: EarlyCause => A,
+                  // task finished running, but we were *previously* interrupted
+                  postStep: (Process[Task, O], EarlyCause) => A,
+                  // task finished with an error, but was not interrupted
+                  exceptional: Throwable => A,
+                  // task finished with a value, no errors, no interrupts
+                  completed: Process[Task, O] => A)(result: Option[Throwable \/ a]): A = result match {
 
                 // interrupted via the `Task.fail` defined in `checkInterrupt`
-                object PreStep {
-                  def unapply(msg: Option[Throwable \/ _]): Option[EarlyCause] = msg match {
-                    case Some(-\/(Terminated(cause: EarlyCause))) => Some(cause)
-                    case _ => None
-                  }
-                }
+                case Some(-\/(Terminated(cause: EarlyCause))) => preStep(cause)
 
-                // interrupted via the callback mechanism, checked in `completeInterruptibly`
-                // always matches to a `None` (we don't have a value yet)
-                object MidStep {
-                  def unapply(msg: Option[_]): Option[EarlyCause] = interrupted.get() filter { _ => !msg.isDefined }
-                }
+                case result => {
+                  val inter = interrupted.get()
 
-                // completed the task, `interrupted.get()` is defined, and so we were interrupted post-completion
-                // always matches to a `Some` (we always have value)
-                object PostStep {
-                  def unapply(msg: Option[_ \/ a]): Option[(Process[Task, O], EarlyCause)] = {
-                    val maybeCause = interrupted.get()
+                  // interrupted via the callback mechanism, checked in `completeInterruptibly`
+                  // always matches to a `None` (we don't have a value yet)
+                  inter filter { _ => !result.isDefined } match {
+                    case Some(cause) => midStep(cause)
 
-                    maybeCause flatMap { cause =>
-                      unpack(msg) map wrap map { (_, cause) }
+                    case None => {
+                      // completed the task, `interrupted.get()` is defined, and so we were interrupted post-completion
+                      // always matches to a `Some` (we always have value)
+                      val pc = for {
+                        cause <- inter
+                        continuation <- unpack(result) map wrap
+                      } yield postStep(continuation, cause)
+
+                      pc match {
+                        case Some(back) => back
+
+                        case None => result match {
+                          // nominally completed the task, but with an exception
+                          case Some(-\/(t)) => exceptional(t)
+
+                          case result => {
+                            // completed the task, no interrupts, no exceptions, good to go!
+                            unpack(result) map wrap match {
+                              case Some(head) => completed(head +: cont)
+
+                              case None => ???      // didn't match any condition; fail!
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 }
               }
 
-              // nominally completed the task, but with an exception
-              object Exceptional {
-                def unapply(msg: Option[Throwable \/ _]): Option[Throwable] = msg match {
-                  case Some(-\/(t)) => Some(t)
-                  case _ => None
-                }
-              }
-
-              // completed the task, no interrupts, no exceptions, good to go!
-              object Completed {
-                def unapply(msg: Option[_ \/ a]): Option[Process[Task, O]] =
-                  unpack(msg) map wrap map { _ +: cont } // filter { _ => !interrupted.get().isDefined }   (commented out to avoid race conditions)
-              }
-
-              // throws an exception if we're already interrupted
+              // throws an exception if we're already interrupted (caught in preStep check)
               val checkInterrupt: Task[Unit] = Task delay {
                 interrupted.get() map { c => Task fail Terminated(c) } getOrElse (Task now (()))
               } join
@@ -1307,25 +1312,36 @@ object Process extends ProcessInstances {
                  * extractor.  Under all other circumstances, including interrupts, exceptions and natural completion, the
                  * callback will be invoked exactly once.
                  */
-                val interrupt = completeInterruptibly((checkInterrupt >> req).get) {
-                  case Interrupted.PreOrMidStep(cause) => {
+                val interrupt = completeInterruptibly((checkInterrupt >> req).get)(handle(
+                  preStep = { cause =>
                     // interrupted; now drain
                     (Try(rcv(-\/(cause)).run) +: cont).drain.run runAsync {
                       case -\/(t) => S { cb(-\/(Error(t) causedBy cause)) }
                       case \/-(_) => S { cb(-\/(cause)) }
                     }
-                  }
+                  },
 
-                  case Interrupted.PostStep(inner, cause) =>
+                  midStep = { cause =>
+                    // interrupted; now drain
+                    (Try(rcv(-\/(cause)).run) +: cont).drain.run runAsync {
+                      case -\/(t) => S { cb(-\/(Error(t) causedBy cause)) }
+                      case \/-(_) => S { cb(-\/(cause)) }
+                    }
+                  },
+
+                  postStep = { (inner, cause) =>
                     inner.kill.run runAsync { _ => () }
+                  },
 
-                  case Exceptional(t) =>
+                  exceptional = { t =>
                     // we got an exception (not an interrupt!) and we need to drain everything
                     ref.set(go(Try(rcv(-\/(Error(t))).run) +: cont).run)
+                  },
 
-                  case Completed(continuation) =>
+                  completed = { continuation =>
                     ref.set(go(continuation).run)      // we completed successfully; forward along the reference
-                }
+                  }
+                ))
 
                 ref.set({ _ => interrupt() })
 
