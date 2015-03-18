@@ -1384,7 +1384,7 @@ object Process extends ProcessInstances {
                       }
                     }
 
-                    case \/-(_) => ()    // ?????
+                    case \/-(_) => ()    // interrupted a second (or more) time; discard later causes and keep the first one
                   }
                 }
 
