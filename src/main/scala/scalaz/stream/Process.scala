@@ -1237,13 +1237,12 @@ object Process extends ProcessInstances {
             case Step(awt: Await[Task, a, O], cont) => {
               val Await(req, rcv) = awt
 
-              def unpack(msg: Option[_ \/ a]): Option[a] = msg flatMap { _.toOption }
-              def wrap(result: a): Process[Task, O] = Try(rcv(\/-(result)).run)
+              def unpack(msg: Option[Throwable \/ a]): Option[Process[Task, O]] = msg map { r => Try(rcv(EarlyCause fromTaskResult r).run) }
 
               // throws an exception if we're already interrupted (caught in preStep check)
               def checkInterrupt(int: => (() => Unit)): Task[Unit] = Task delay {
                 interrupted.get() match {
-                  case ptr @ -\/(_) => {
+                  case ptr @ -\/(int2) => {
                     if (interrupted.compareAndSet(ptr, -\/(int)))
                       Task now (())
                     else
@@ -1277,6 +1276,8 @@ object Process extends ProcessInstances {
                   case result => {
                     val inter = interrupted.get().toOption
 
+                    assert(!inter.isEmpty || result.isDefined)
+
                     // interrupted via the callback mechanism, checked in `completeInterruptibly`
                     // always matches to a `None` (we don't have a value yet)
                     inter filter { _ => !result.isDefined } match {
@@ -1295,7 +1296,7 @@ object Process extends ProcessInstances {
                         // always matches to a `Some` (we always have value)
                         val pc = for {
                           cause <- inter
-                          continuation <- unpack(result) map wrap
+                          continuation <- unpack(result)
                         } yield postStep(continuation, cause)
 
                         pc match {
@@ -1309,7 +1310,7 @@ object Process extends ProcessInstances {
 
                                 case result => {
                                   // completed the task, no interrupts, no exceptions, good to go!
-                                  unpack(result) map wrap match {
+                                  unpack(result) match {
                                     case Some(head) => completed(head +: cont)
 
                                     case None => ???      // didn't match any condition; fail! (probably a double-None bug in completeInterruptibly)
