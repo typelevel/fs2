@@ -1187,7 +1187,7 @@ object Process extends ProcessInstances {
       async.toSignal(self).continuous
 
     /**
-     * Asynchronous execution of this Process. Note that this method is not resource safe unless
+     * Asynchronous stepping of this Process. Note that this method is not resource safe unless
      * callback is called with _left_ side completed. In that case it is guaranteed that all cleanups
      * has been successfully completed.
      * User of this method is responsible for any cleanup actions to be performed by running the
@@ -1201,13 +1201,15 @@ object Process extends ProcessInstances {
      * There is chance, that cleanup code of intermediate `Await` will get called twice on interrupt, but
      * always at least once. The second cleanup invocation in that case may run on different thread, asynchronously.
      *
+     * Please note that this method is *not* intended for external use!  It is the `Await` analogue of `step`, which
+     * is also an internal-use function.
      *
      * @param cb  result of the asynchronous evaluation of the process. Note that, the callback is never called
      *            on the right side, if the sequence is empty.
      * @param S  Strategy to use when evaluating the process. Note that `Strategy.Sequential` may cause SOE.
      * @return   Function to interrupt the evaluation
      */
-    protected[stream] final def runAsync(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit)(implicit S: Strategy): EarlyCause => Unit = {
+    protected[stream] final def stepAsync(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit)(implicit S: Strategy): EarlyCause => Unit = {
       val allSteps = Task delay {
         /*
          * Represents the running state of the computation.  If we're running, then the interrupt

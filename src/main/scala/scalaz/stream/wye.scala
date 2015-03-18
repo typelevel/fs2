@@ -681,7 +681,7 @@ object wye {
       def runSide[A](side: Env[L, R]#Y[A])(state: SideState[A]): SideState[A] = state match {
         case Left3(rsn)         => a ! Ready[A](side, -\/(rsn)); state //just safety callback
         case Middle3(interrupt) => state //no-op already awaiting the result  //todo: don't wee nedd a calback there as well.
-        case Right3(cont)       => Either3.middle3(cont.continue.runAsync { res => a ! Ready[A](side, res) })
+        case Right3(cont)       => Either3.middle3(cont.continue stepAsync { res => a ! Ready[A](side, res) })
       }
 
       val runSideLeft = runSide(Left) _
@@ -698,7 +698,7 @@ object wye {
             Either3.middle3((_: Cause) => ()) //rest the interrupt so it won't get interrupted again
 
           case Right3(cont) =>
-            (Halt(Kill) +: cont).runAsync(_ => a ! Ready[A](side, -\/(Kill)))
+            (Halt(Kill) +: cont) stepAsync { _ => a ! Ready[A](side, -\/(Kill)) }
             Either3.middle3((_: Cause) => ()) // no-op cleanup can't be interrupted
 
           case left@Left3(_) =>

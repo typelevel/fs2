@@ -279,14 +279,14 @@ object ProcessSpec extends Properties("Process") {
     p.sequence(4).runLog.run == p.flatMap(eval).runLog.run
   }
 
-  property("runAsync onComplete on task never completing") = secure {
+  property("stepAsync onComplete on task never completing") = secure {
     val q = async.boundedQueue[Int]()
 
     @volatile var cleanupCalled = false
     val sync = new SyncVar[Cause \/ (Seq[Int], Process.Cont[Task,Int])]
     val p = q.dequeue onComplete eval_(Task delay { cleanupCalled = true })
 
-    val interrupt = p runAsync sync.put
+    val interrupt = p stepAsync sync.put
 
     Thread.sleep(100)
     interrupt(Kill)
@@ -294,7 +294,7 @@ object ProcessSpec extends Properties("Process") {
     sync.get(3000).isDefined :| "sync completion" && cleanupCalled :| "cleanup"
   }
 
-  property("runAsync independent onComplete exactly once on task eventually completing") = secure {
+  property("stepAsync independent onComplete exactly once on task eventually completing") = secure {
     val inner = new AtomicInteger(0)
     val outer = new AtomicInteger(0)
 
@@ -310,7 +310,7 @@ object ProcessSpec extends Properties("Process") {
       emit(42) onComplete (Process eval_ (Task delay { inner.incrementAndGet() }))
     } onComplete (Process eval_ (Task delay { outer.incrementAndGet() }))
 
-    val interrupt = p runAsync result.put
+    val interrupt = p stepAsync result.put
     signal.get
     interrupt(Kill)
 

@@ -176,7 +176,7 @@ private[stream] object WriterTopic {
 
     def getNext(p: Process[Task, I]) = {
       upState= Some(\/-(
-        p.runAsync({ actor ! Upstream(_) })(S)
+        p.stepAsync({ actor ! Upstream(_) })(S)
       ))
     }
 
@@ -234,7 +234,7 @@ private[stream] object WriterTopic {
         case Publish(_, cb)           => S(cb(-\/(rsn.asThrowable)))
         case Fail(_, cb)              => S(cb(\/-(())))
         case Upstream(-\/(_))         => //no-op
-        case Upstream(\/-((_, cont))) => S((Halt(Kill) +: cont).runAsync(_ => ()))
+        case Upstream(\/-((_, cont))) => S((Halt(Kill) +: cont) stepAsync { _ => () })
       })
     })(S)
 

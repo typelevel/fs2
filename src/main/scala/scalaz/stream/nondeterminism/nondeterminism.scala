@@ -58,11 +58,11 @@ package object nondeterminism {
       //evaluates next step of the source of processes
       def nextStep(from: Process[Task, Process[Task, A]]) = {
         Either3.middle3({
-          from.runAsync({
+          from stepAsync {
             case -\/(rsn) =>
               actor ! FinishedSource(rsn)
 
-            // contrary to popular belief (well, basically just *here*), runAsync does not guarantee non-emptiness
+            // contrary to popular belief (well, basically just *here*), stepAsync does not guarantee non-emptiness
             case \/-((Seq(), cont)) =>
               actor ! Delay(cont)
 
@@ -73,7 +73,7 @@ package object nondeterminism {
                 )
               )
               actor ! Offer(processes.head, Cont(Vector(next)))
-          })
+          }
         })
       }
 
@@ -81,7 +81,7 @@ package object nondeterminism {
 
       def fail(cause: Cause): Unit = {
         closed = Some(cause)
-        S(done.kill.runAsync(_=>()))
+        S(done.kill runAsync { _=> () })
         state = state match {
           case Middle3(interrupt) => S(interrupt(Kill)) ; Either3.middle3((_:Cause) => ())
           case Right3(cont) => nextStep(Halt(Kill) +: cont);  Either3.middle3((_:Cause) => ())
@@ -99,7 +99,7 @@ package object nondeterminism {
 
       def completeIfDone: Unit = {
         if (allDone) {
-          S(q.failWithCause(closed.getOrElse(End)).runAsync(_=>{}))
+          S(q.failWithCause(closed.getOrElse(End)) runAsync { _ => {} })
           completer.foreach { cb =>  S(cb(\/-(()))) }
           completer = None
           closed = closed orElse Some(End)
