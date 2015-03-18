@@ -43,30 +43,6 @@ object wye {
   }
 
   /**
-   * A `Wye` which echoes the right branch while draining the left,
-   * taking care to make sure that the left branch is never more
-   * than `maxUnacknowledged` behind the right. For example:
-   * `src.connect(snk)(observe(10))` will output the same thing
-   * as `src`, but will as a side effect direct output to `snk`,
-   * blocking on `snk` if more than 10 elements have enqueued
-   * without a response.
-   */
-  def drainL[I](maxUnacknowledged: Int): Wye[Any,I,I] =
-    yipWithL[Any,I,I](maxUnacknowledged)((_,i) => i) ++ tee.passR
-
-  /**
-   * A `Wye` which echoes the left branch while draining the right,
-   * taking care to make sure that the right branch is never more
-   * than `maxUnacknowledged` behind the left. For example:
-   * `src.connect(snk)(observe(10))` will output the same thing
-   * as `src`, but will as a side effect direct output to `snk`,
-   * blocking on `snk` if more than 10 elements have enqueued
-   * without a response.
-   */
-  def drainR[I](maxUnacknowledged: Int): Wye[I,Any,I] =
-    yipWithL[I,Any,I](maxUnacknowledged)((i,i2) => i) ++ tee.passL
-
-  /**
    * Invokes `dynamic` with `I == I2`, and produces a single `I` output. Output is
    * left-biased: if a `These(i1,i2)` is emitted, this is translated to an
    * `emitSeq(List(i1,i2))`.
