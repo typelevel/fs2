@@ -488,7 +488,7 @@ object WyeSpec extends  Properties("Wye"){
 
     val flag = new SyncVar[Unit]
 
-    val task1 = Task fork (Task delay { deadlocked = flag.get(2000).isEmpty; Thread.sleep(1000); complete = true })
+    val task1 = Task fork (Task delay { deadlocked = flag.get(10000).isEmpty; Thread.sleep(1000); complete = true })
     // val task1 = Task { deadlocked = flag.get(2000).isEmpty; Thread.sleep(1000); complete = true }
 
     val awaitP =  await(task1)(u =>Process.emit(u))
