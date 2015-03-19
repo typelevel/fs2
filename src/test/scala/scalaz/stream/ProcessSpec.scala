@@ -17,6 +17,8 @@ import Process._
 import TestInstances._
 import scala.concurrent.SyncVar
 
+import java.util.concurrent.atomic.AtomicInteger
+
 object ProcessSpec extends Properties("Process") {
 
   case object FailWhale extends RuntimeException("the system... is down")
@@ -277,22 +279,46 @@ object ProcessSpec extends Properties("Process") {
     p.sequence(4).runLog.run == p.flatMap(eval).runLog.run
   }
 
-  property("runAsync cleanup") = secure {
-
+  property("stepAsync onComplete on task never completing") = secure {
     val q = async.boundedQueue[Int]()
-    val q2 = async.boundedQueue[Int]()
 
     @volatile var cleanupCalled = false
     val sync = new SyncVar[Cause \/ (Seq[Int], Process.Cont[Task,Int])]
-    val deque = q.dequeue.onComplete(eval_(Task.delay{cleanupCalled = true}))
-    val interrupt =
-      (deque observe q2.enqueue).runAsync(sync.put)
+    val p = q.dequeue onComplete eval_(Task delay { cleanupCalled = true })
+
+    val interrupt = p stepAsync sync.put
 
     Thread.sleep(100)
     interrupt(Kill)
 
-    sync.get(3000).isDefined && cleanupCalled
+    sync.get(3000).isDefined :| "sync completion" && cleanupCalled :| "cleanup"
+  }
 
+  property("stepAsync independent onComplete exactly once on task eventually completing") = secure {
+    val inner = new AtomicInteger(0)
+    val outer = new AtomicInteger(0)
+
+    val signal = new SyncVar[Unit]
+    val result = new SyncVar[Cause \/ (Seq[Int], Process.Cont[Task, Int])]
+
+    val task = Task delay {
+      signal.put(())
+      Thread.sleep(100)
+    }
+
+    val p = await(task) { _ =>
+      emit(42) onComplete (Process eval_ (Task delay { inner.incrementAndGet() }))
+    } onComplete (Process eval_ (Task delay { outer.incrementAndGet() }))
+
+    val interrupt = p stepAsync result.put
+    signal.get
+    interrupt(Kill)
+
+    Thread.sleep(200)     // ensure the task actually completes
+
+    (result.get(3000).get == -\/(Kill)) :| "computation result" &&
+      (inner.get() == 1) :| s"inner finalizer invocation count ${inner.get()}" &&
+      (outer.get() == 1) :| s"outer finalizer invocation count ${outer.get()}"
   }
 
   property("Process0Syntax.toStream terminates") = secure {

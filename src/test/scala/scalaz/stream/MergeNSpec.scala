@@ -32,11 +32,16 @@ object MergeNSpec extends Properties("mergeN") {
 
   }
 
+  property("complete-with-inner-finalizer") = secure {
+    merge.mergeN(emit(halt) onComplete eval_(Task now (()))).runLog timed 3000 run
+
+    true
+  }
+
 
   // tests that when downstream terminates,
   // all cleanup code is called on upstreams
   property("source-cleanup-down-done") = secure {
-
     val cleanupQ = async.boundedQueue[Int]()
     val cleanups = new SyncVar[Throwable \/ IndexedSeq[Int]]
 
@@ -49,6 +54,7 @@ object MergeNSpec extends Properties("mergeN") {
 
     // this makes sure we see at least one value from sources
     // and therefore we won`t terminate downstream to early.
+
     merge.mergeN(ps).scan(Set[Int]())({
       case (sum, next) => sum + next
     }).takeWhile(_.size < 10).runLog.timed(3000).run
@@ -181,5 +187,18 @@ object MergeNSpec extends Properties("mergeN") {
   property("kill mergeN") = secure {
     merge.mergeN(Process(Process.repeatEval(Task.now(1)))).kill.run.timed(3000).run
     true // Test terminates.
+  }
+
+  property("complete all children before onComplete") = secure {
+    val count = new AtomicInteger(0)
+    val inc = Process eval (Task delay { count.incrementAndGet() })
+    val size = 10
+
+    val p = merge.mergeN(Process emitAll (0 until size map { _ => inc })).drain onComplete (Process eval (Task delay { count.get() }))
+
+    val result = p.runLog timed 3000 run
+
+    (result.length == 1) :| s"result.length == ${result.length}" &&
+      (result.head == size) :| s"result.head == ${result.head}"
   }
 }

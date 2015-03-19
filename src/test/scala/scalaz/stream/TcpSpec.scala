@@ -14,6 +14,7 @@ import scalaz.\/-
 import scalaz.concurrent.{Strategy,Task}
 import scalaz.stream.Process.Halt
 import scalaz.stream.ReceiveY._
+import scalaz.syntax.monad._
 import scodec.bits.ByteVector
 
 object TcpSpec extends Properties("tcp") {
@@ -94,13 +95,13 @@ object TcpSpec extends Properties("tcp") {
     val E = java.util.concurrent.Executors.newCachedThreadPool
     val S2 = Strategy.Executor(E)
 
-    lazy val server = Process.suspend {
+    lazy val server = {
       val topic = async.topic[String]()
       val chat =
         tcp.reads(1024).pipe(text.utf8Decode).to(topic.publish).wye {
           tcp.writes(tcp.lift(topic.subscribe.pipe(text.utf8Encode)))
         } (wye.mergeHaltBoth)
-      tcp.server(addr, concurrentRequests = 50)(chat).runLog.run.head
+      tcp.server(addr, concurrentRequests = 1)(chat) join     // TODO this should eventually go back to "not 1". frankly, I don't know how this is working at all even now
     }
     lazy val link = async.signalOf(false)
     lazy val startServer =

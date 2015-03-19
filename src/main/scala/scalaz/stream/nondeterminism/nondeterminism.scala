@@ -28,6 +28,7 @@ package object nondeterminism {
   def njoin[A](maxOpen: Int, maxQueued: Int)(source: Process[Task, Process[Task, A]])(implicit S: Strategy): Process[Task, A] = {
     sealed trait M
     case object Start extends M
+    case class Delay(cont: Cont[Task, Process[Task, A]]) extends M
     case class Offer(p: Process[Task, A], cont: Cont[Task,Process[Task,A]]) extends M
     case class FinishedSource(rsn: Cause) extends M
     case class Finished(result: Throwable \/ Unit) extends M
@@ -55,11 +56,15 @@ package object nondeterminism {
       var actor: Actor[M] = null
 
       //evaluates next step of the source of processes
-      def nextStep(from: Process[Task, Process[Task, A]]) =
+      def nextStep(from: Process[Task, Process[Task, A]]) = {
         Either3.middle3({
-          from.runAsync({
+          from stepAsync {
             case -\/(rsn) =>
               actor ! FinishedSource(rsn)
+
+            // contrary to popular belief (well, basically just *here*), stepAsync does not guarantee non-emptiness
+            case \/-((Seq(), cont)) =>
+              actor ! Delay(cont)
 
             case \/-((processes, cont)) =>
               val next = (c:Cause) => Trampoline.done(
@@ -67,16 +72,16 @@ package object nondeterminism {
                   early => Halt(early) +: cont
                 )
               )
-              //runAsync guarantees nonEmpty processes
               actor ! Offer(processes.head, Cont(Vector(next)))
-          })
+          }
         })
+      }
 
       // fails the signal should cause all streams to terminate
 
       def fail(cause: Cause): Unit = {
         closed = Some(cause)
-        S(done.kill.runAsync(_=>()))
+        S(done.kill runAsync { _=> () })
         state = state match {
           case Middle3(interrupt) => S(interrupt(Kill)) ; Either3.middle3((_:Cause) => ())
           case Right3(cont) => nextStep(Halt(Kill) +: cont);  Either3.middle3((_:Cause) => ())
@@ -94,7 +99,7 @@ package object nondeterminism {
 
       def completeIfDone: Unit = {
         if (allDone) {
-          S(q.failWithCause(closed.getOrElse(End)).runAsync(_=>{}))
+          S(q.failWithCause(closed.getOrElse(End)) runAsync { _ => {} })
           completer.foreach { cb =>  S(cb(\/-(()))) }
           completer = None
           closed = closed orElse Some(End)
@@ -103,6 +108,9 @@ package object nondeterminism {
 
       actor = Actor[M]({m =>
         closed.fold(m match {
+          case Delay(cont) =>
+            state = nextStep(cont.continue)
+
           // next merged process is available
           // run it with chance to interrupt
           // and give chance to start next process if not bounded
@@ -176,13 +184,14 @@ package object nondeterminism {
 
         })(rsn => m match {
           //join is closed, next p is ignored and source is killed
-          case Offer(_, cont) =>  nextStep(Halt(Kill) +: cont)
+          case Offer(_, cont) => nextStep(Halt(Kill) +: cont)
           case FinishedSource(cause) => state = Either3.left3(cause) ; completeIfDone
           case Finished(_) => opened = opened - 1; completeIfDone
           case FinishedDown(cb) =>
             if (allDone) S(cb(\/-(())))
             else completer = Some(cb)
           case Start => ()
+          case Delay(cont) => nextStep(cont.continue)
         })
 
       })

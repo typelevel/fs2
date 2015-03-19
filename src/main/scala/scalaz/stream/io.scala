@@ -312,7 +312,7 @@ object io {
 
           case Step(Await(request, receive), cont) => {
             // yay! run the Task
-            cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
+            cur = Util.Try(receive(EarlyCause.fromTaskResult(request.attempt.run)).run) +: cont
             close()
           }
         }
@@ -344,7 +344,7 @@ object io {
 
         case Step(Await(request, receive), cont) => {
           // yay! run the Task
-          cur = Util.Try(receive(EarlyCause(request.attempt.run)).run) +: cont
+          cur = Util.Try(receive(EarlyCause.fromTaskResult(request.attempt.run)).run) +: cont
           step()    // push things onto the stack and then step further (tail recursively)
         }
       }

@@ -289,8 +289,11 @@ object tcp {
     def connect(ch: AsynchronousSocketChannel): Task[AsynchronousSocketChannel] =
       Task.async[AsynchronousSocketChannel] { cb =>
         ch.connect(to, null, new CompletionHandler[Void, Void] {
-          def completed(result: Void, attachment: Void): Unit = cb(right(ch))
-          def failed(rsn: Throwable, attachment: Void): Unit = cb(left(rsn))
+          def completed(result: Void, attachment: Void): Unit =
+            cb(right(ch))
+
+          def failed(rsn: Throwable, attachment: Void): Unit =
+            cb(left(rsn))
         })
       }
 
@@ -335,6 +338,7 @@ object tcp {
         sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
           def completed(result: AsynchronousSocketChannel, attachment: Void): Unit =
             S { cb(right(result)) }
+
           def failed(rsn: Throwable, attachment: Void): Unit =
             S { cb(left(rsn)) }
         })

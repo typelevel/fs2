@@ -1,12 +1,19 @@
 package scalaz.stream
 
+import java.util.concurrent.atomic.AtomicReference
+
 import Cause._
+
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
+
 import scala.annotation.tailrec
 import scala.collection.SortedMap
-import scalaz.{Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
+import scala.concurrent.duration._
+import scalaz.{\/-, Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
-import scalaz.concurrent.{Actor, Strategy, Task}
+import scalaz.concurrent.{Actor, Future, Strategy, Task}
 import scalaz.stream.process1.Await1
+import scalaz.syntax.monad._
 
 /**
  * An effectful stream of `O` values. In between emitting values
@@ -66,22 +73,25 @@ sealed trait Process[+F[_], +O]
    * users are responsible for ensuring resource safety.
    */
   final def step: HaltOrStep[F, O] = {
-    def go(cur: Process[F,O], stack: Vector[Cause => Trampoline[Process[F,O]]]) : HaltOrStep[F,O] = {
+    val empty: Emit[Nothing] = Emit(Nil)
+    @tailrec
+    def go(cur: Process[F,O], stack: Vector[Cause => Trampoline[Process[F,O]]], cnt: Int) : HaltOrStep[F,O] = {
       if (stack.nonEmpty) cur match {
-        case Halt(cause) => go(Try(stack.head(cause).run), stack.tail)
-        case Emit(os) if os.isEmpty => go(Try(stack.head(End).run), stack.tail)
+        case Halt(End) if cnt <= 0  => Step(empty,Cont(stack))
+        case Halt(cause) => go(Try(stack.head(cause).run), stack.tail, cnt - 1)
+        case Emit(os) if os.isEmpty => Step(empty,Cont(stack))
         case emt@(Emit(os)) => Step(emt,Cont(stack))
         case awt@Await(_,_) => Step(awt,Cont(stack))
-        case Append(h,st) => go(h, st fast_++ stack)
+        case Append(h,st) => go(h, st fast_++ stack, cnt - 1)
       } else cur match {
         case hlt@Halt(cause) => hlt
-        case emt@Emit(os) if (os.isEmpty) => halt0
+        case emt@Emit(os) if os.isEmpty => halt0
         case emt@Emit(os) => Step(emt,Cont(Vector.empty))
         case awt@Await(_,_) => Step(awt,Cont(Vector.empty))
-        case Append(h,st) => go(h,st)
+        case Append(h,st) => go(h,st, cnt - 1)
       }
     }
-    go(this,Vector.empty)
+    go(this,Vector.empty, 10)   // *any* value >= 1 works here. higher values improve throughput but reduce concurrency and fairness. 10 is a totally wild guess
 
   }
 
@@ -463,7 +473,7 @@ sealed trait Process[+F[_], +O]
               }
             case (awt:Await[F2,Any,O]@unchecked, cont) =>
               F.bind(C.attempt(awt.req)) { r =>
-                go((Try(awt.rcv(EarlyCause(r)).run) +: cont).asInstanceOf[Process[F2,O]]
+                go((Try(awt.rcv(EarlyCause.fromTaskResult(r)).run) +: cont).asInstanceOf[Process[F2,O]]
                   , acc)
               }
           }
@@ -673,6 +683,11 @@ object Process extends ProcessInstances {
      */
     def isEmpty : Boolean = stack.isEmpty
 
+  }
+
+  object Cont {
+    /** empty continuation, that means evaluation is at end **/
+    val empty:Cont[Nothing,Nothing] = Cont(Vector.empty)
   }
 
 
@@ -1172,7 +1187,7 @@ object Process extends ProcessInstances {
       async.toSignal(self).continuous
 
     /**
-     * Asynchronous execution of this Process. Note that this method is not resource safe unless
+     * Asynchronous stepping of this Process. Note that this method is not resource safe unless
      * callback is called with _left_ side completed. In that case it is guaranteed that all cleanups
      * has been successfully completed.
      * User of this method is responsible for any cleanup actions to be performed by running the
@@ -1186,99 +1201,269 @@ object Process extends ProcessInstances {
      * There is chance, that cleanup code of intermediate `Await` will get called twice on interrupt, but
      * always at least once. The second cleanup invocation in that case may run on different thread, asynchronously.
      *
+     * Please note that this method is *not* intended for external use!  It is the `Await` analogue of `step`, which
+     * is also an internal-use function.
      *
      * @param cb  result of the asynchronous evaluation of the process. Note that, the callback is never called
      *            on the right side, if the sequence is empty.
      * @param S  Strategy to use when evaluating the process. Note that `Strategy.Sequential` may cause SOE.
      * @return   Function to interrupt the evaluation
      */
-    protected[stream] final def runAsync(
-      cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit
-      )(implicit S: Strategy): (EarlyCause) => Unit = {
+    protected[stream] final def stepAsync(cb: Cause \/ (Seq[O], Cont[Task,O]) => Unit)(implicit S: Strategy): EarlyCause => Unit = {
+      val allSteps = Task delay {
+        /*
+         * Represents the running state of the computation.  If we're running, then the interrupt
+         * function *for our current step* will be on the left.  If we have been interrupted, then
+         * the cause for that interrupt will be on the right.  These state transitions are made
+         * atomically, such that it is *impossible* for a task to be running, never interrupted and
+         * to have this value be a right.  If the value is a right, then either no task is running
+         * or the running task has received an interrupt.
+         */
+        val interrupted = new AtomicReference[(() => Unit) \/ EarlyCause](-\/({ () => () }))
 
-          sealed trait M
-          case class AwaitDone(res: Throwable \/ Any, awt: Await[Task, Any, O], cont: Cont[Task,O]) extends M
-          case class Interrupt(cause: EarlyCause) extends M
+        /*
+         * Produces the evaluation for a single step.  Generally, this function will be
+         * invoked only once and return immediately.  In the case of an `Await`, we must
+         * descend recursively into the resultant child.  Generally speaking, the recursion
+         * should be extremely shallow, since it is uncommon to have a chain of nested
+         * awaits of any significant length (usually they are punctuated by an `Emit`).
+         */
+        def go(p: Process[Task, O]): Task[EarlyCause => Unit] = Task delay {
+          p.step match {
+            case Halt(cause) =>
+              (Task delay { S { cb(-\/(cause)) } }) >> (Task now { _: EarlyCause => () })
 
-          //forward referenced actor here
-          var a: Actor[M] = null
+            case Step(Emit(os), cont) =>
+              (Task delay { S { cb(\/-((os, cont))) } }) >> (Task now { _: EarlyCause => () })
 
-          // Set when the executin has been terminated with reason for termination
-          var completed: Option[Cause] = None
+            case Step(awt: Await[Task, a, O], cont) => {
+              val Await(req, rcv) = awt
 
-          // contains reference that eventually builds
-          // a cleanup when the last await was interrupted
-          // this is consulted only, if await was interrupted
-          // volatile marked because of the first usage outside of actor
-          @volatile var cleanup: (EarlyCause => Process[Task,O]) = (c:EarlyCause) => Halt(c)
+              def unpack(msg: Option[Throwable \/ a]): Option[Process[Task, O]] = msg map { r => Try(rcv(EarlyCause fromTaskResult r).run) }
 
-          // runs single step of process.
-          // completes with callback if process is `Emit` or `Halt`.
-          // or asynchronously executes the Await and send result to actor `a`
-          // It returns on left side reason with which this process terminated,
-          // or on right side the cleanup code to be run when interrupted.
-          @tailrec
-          def runStep(p: Process[Task, O]): Cause \/ (EarlyCause => Process[Task,O]) = {
-            val step = p.step
-            step match {
-              case Step(Emit(Seq()), cont)         => runStep(cont.continue)
-              case Step(Emit(h), cont)             => S(cb(right((h, cont)))); left(End)
-              case Step(awt@Await(req, rcv), cont) =>
-                req.runAsync(r => a ! AwaitDone(r, awt, cont))
-                right((c:EarlyCause) => rcv(left(c)).run +: cont)
-              case Halt(cause)                 => S(cb(left(cause))); left(cause)
-            }
-          }
+              // throws an exception if we're already interrupted (caught in preStep check)
+              def checkInterrupt(int: => (() => Unit)): Task[Unit] = Task delay {
+                interrupted.get() match {
+                  case ptr @ -\/(int2) => {
+                    if (interrupted.compareAndSet(ptr, -\/(int)))
+                      Task now (())
+                    else
+                      checkInterrupt(int)
+                  }
 
+                  case \/-(c) => Task fail Terminated(c)
+                }
+              } join
 
-          a = new Actor[M]({ m =>
-            m match {
-              case AwaitDone(r, awt, cont) if completed.isEmpty =>
-                val step = Try(awt.rcv(EarlyCause(r)).run) +: cont
+              Task delay {
+                // will be true when we have "committed" to either a mid-step OR exceptional/completed
+                val barrier = new AtomicBoolean(false)
 
+                // detects what completion/interrupt case we're in and factors out race conditions
+                def handle(
+                    // interrupted before the task started running; task never ran!
+                    preStep: EarlyCause => Unit,
+                    // interrupted *during* the task run; task is probably still running
+                    midStep: EarlyCause => Unit,
+                    // task finished running, but we were *previously* interrupted
+                    postStep: (Process[Task, O], EarlyCause) => Unit,
+                    // task finished with an error, but was not interrupted
+                    exceptional: Throwable => Unit,
+                    // task finished with a value, no errors, no interrupts
+                    completed: Process[Task, O] => Unit)(result: Option[Throwable \/ a]): Unit = result match {
 
-                runStep(step).fold(
-                  rsn => completed = Some(rsn)
-                  , cln => cleanup = cln
-                )
+                  // interrupted via the `Task.fail` defined in `checkInterrupt`
+                  case Some(-\/(Terminated(cause: EarlyCause))) => preStep(cause)
 
-              // on interrupt we just run any cleanup code we have memo-ed
-              // from last `Await`
-              case Interrupt(cause) if completed.isEmpty =>
-                completed = Some(cause)
-                Try(cleanup(cause)).run.runAsync(_.fold(
-                  rsn0 =>  cb(left(Error(rsn0).causedBy(cause)))
-                  , _ => cb(left(cause))
+                  case result => {
+                    val inter = interrupted.get().toOption
+
+                    assert(!inter.isEmpty || result.isDefined)
+
+                    // interrupted via the callback mechanism, checked in `completeInterruptibly`
+                    // always matches to a `None` (we don't have a value yet)
+                    inter filter { _ => !result.isDefined } match {
+                      case Some(cause) => {
+                        if (barrier.compareAndSet(false, true)) {
+                          midStep(cause)
+                        } else {
+                          // task already completed *successfully*, pretend we weren't interrupted at all
+                          // our *next* step (which is already running) will get a pre-step interrupt
+                          ()
+                        }
+                      }
+
+                      case None => {
+                        // completed the task, `interrupted.get()` is defined, and so we were interrupted post-completion
+                        // always matches to a `Some` (we always have value)
+                        val pc = for {
+                          cause <- inter
+                          continuation <- unpack(result)
+                        } yield postStep(continuation, cause)
+
+                        pc match {
+                          case Some(back) => back
+
+                          case None => {
+                            if (barrier.compareAndSet(false, true)) {
+                              result match {
+                                // nominally completed the task, but with an exception
+                                case Some(-\/(t)) => exceptional(t)
+
+                                case result => {
+                                  // completed the task, no interrupts, no exceptions, good to go!
+                                  unpack(result) match {
+                                    case Some(head) => completed(head +: cont)
+
+                                    case None => ???      // didn't match any condition; fail! (probably a double-None bug in completeInterruptibly)
+                                  }
+                                }
+                              }
+                            } else {
+                              result match {
+                                case Some(_) =>
+                                  // we detected mid-step interrupt; this needs to transmute to post-step; loop back to the top!
+                                  handle(preStep = preStep, midStep = midStep, postStep = postStep, exceptional = exceptional, completed = completed)(result)
+
+                                case None => ???        // wtf?! (apparently we were called twice with None; bug in completeInterruptibly)
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                /*
+                 * Start the task. per the `completeInterruptibly` invariants, the callback will be invoked exactly once
+                 * unless interrupted in the final computation step, in which case it will be invoked twice: once with
+                 * the interrupt signal and once with the final computed result (this case is detected by the `PostStep`)
+                 * extractor.  Under all other circumstances, including interrupts, exceptions and natural completion, the
+                 * callback will be invoked exactly once.
+                 */
+                lazy val interrupt: () => Unit = completeInterruptibly((checkInterrupt(interrupt) >> req).get)(handle(
+                  preStep = { cause =>
+                    // interrupted; now drain
+                    (Try(rcv(-\/(cause)).run) +: cont).drain.run runAsync {
+                      case -\/(t) => S { cb(-\/(Error(t) causedBy cause)) }
+                      case \/-(_) => S { cb(-\/(cause)) }
+                    }
+                  },
+
+                  midStep = { cause =>
+                    // interrupted; now drain
+                    (Try(rcv(-\/(cause)).run) +: cont).drain.run runAsync {
+                      case -\/(t) => S { cb(-\/(Error(t) causedBy cause)) }
+                      case \/-(_) => S { cb(-\/(cause)) }
+                    }
+                  },
+
+                  postStep = { (inner, cause) =>
+                    inner.kill.run runAsync { _ => () }
+                  },
+
+                  exceptional = { t =>
+                    // we got an exception (not an interrupt!) and we need to drain everything
+                    go(Try(rcv(-\/(Error(t))).run) +: cont) runAsync { _ => () }
+                  },
+
+                  completed = { continuation =>
+                    go(continuation) runAsync { _ => () }
+                  }
                 ))
 
-              // this indicates last await was interrupted.
-              // In case the request was successful and only then
-              // we have to get next state of the process and assure
-              // any cleanup will be run.
-              // note this won't consult any cleanup contained
-              // in `next` or `rcv` on left side
-              // as this was already run on `Interrupt`
-              case AwaitDone(r, awt, _) =>
-                Try(awt.rcv(EarlyCause(r)).run)
-                .kill
-                .run.runAsync(_ => ())
+                interrupt     // please don't delete this!  highly mutable code within
 
+                // interrupts the current step (may be a recursive child!) and sets `interrupted`
+                def referencedInterrupt(cause: EarlyCause): Unit = {
+                  interrupted.get() match {
+                    case ptr @ -\/(int) => {
+                      if (interrupted.compareAndSet(ptr, \/-(cause))) {
+                        int()
+                      } else {
+                        referencedInterrupt(cause)
+                      }
+                    }
 
-              // Interrupt after we have been completed this is no-op
-              case Interrupt(_) => ()
+                    case \/-(_) => ()    // interrupted a second (or more) time; discard later causes and keep the first one
+                  }
+                }
 
+                referencedInterrupt _
+              }
             }
-          })(S)
+          }
+        } join
 
-          runStep(self).fold(
-            rsn => (_: Cause) => ()
-            , cln => {
-              cleanup = cln
-              (cause: EarlyCause) => a ! Interrupt(cause)
-            }
-          )
+        go _
+      }
+
+      allSteps flatMap { _(self) } run   // hey, we could totally return something sane here! what up?
+    }
+
+    /**
+     * Analogous to Future#listenInterruptibly, but guarantees listener notification provided that the
+     * body of any given computation step does not block indefinitely.  When the interrupt function is
+     * invoked, the callback will be immediately invoked, either with an available completion value or
+     * with None.  If the current step of the task ultimately completes with its *final* value (i.e.
+     * the final step of the task is an Async and it starts before the interrupt and completes *afterwards*),
+     * that value will be passed to the callback as a second return.  Thus, the callback will always be
+     * invoked at least once, and may be invoked twice.  If it is invoked twice, the first callback
+     * will always be None while the second will be Some.
+     *
+     *
+     */
+    private def completeInterruptibly[A](f: Future[A])(cb: Option[A] => Unit)(implicit S: Strategy): () => Unit = {
+      import Future._
+
+      val cancel = new AtomicBoolean(false)
+
+      // `cb` is run exactly once or twice
+      // Case A) `cb` is run with `None` followed by `Some` if we were cancelled but still obtained a value.
+      // Case B) `cb` is run with just `Some` if it's never cancelled.
+      // Case C) `cb` is run with just `None` if it's cancelled before a value is even attempted.
+      // Case D) the same as case A, but in the opposite order, only in very rare cases
+      lazy val actor: Actor[Option[Future[A]]] = new Actor[Option[Future[A]]]({
+        // pure cases
+        case Some(Suspend(thunk)) if !cancel.get() =>
+          actor ! Some(thunk())
+
+        case Some(BindSuspend(thunk, g)) if !cancel.get() =>
+          actor ! Some(thunk() flatMap g)
+
+        case Some(Now(a)) => S { cb(Some(a)) }
+
+        case Some(Async(onFinish)) if !cancel.get() => {
+          onFinish { a =>
+            Trampoline delay { S { cb(Some(a)) } }
+          }
         }
 
+        case Some(BindAsync(onFinish, g)) if !cancel.get() => {
+          onFinish { a =>
+            if (!cancel.get()) {
+              Trampoline delay { g(a) } map { r => actor ! Some(r) }
+            } else {
+              // here we drop `a` on the floor
+              Trampoline done { () }  // `cb` already run with `None`
+            }
+          }
+        }
+
+        // fallthrough case where cancel.get() == true
+        case Some(_) => ()  // `cb` already run with `None`
+
+        case None => {
+          cancel.set(true)  // the only place where `cancel` is set to `true`
+          S { cb(None) }
+        }
+      })
+
+      S { actor ! Some(f) }
+
+      { () => actor ! None }
+    }
   }
 
   /**
