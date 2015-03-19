@@ -10,6 +10,8 @@ import scalaz.syntax.equal._
 import scalaz.std.anyVal._
 import TestInstances.equalProcessTask
 
+import java.util.concurrent.ScheduledExecutorService
+
 //import scalaz.syntax.equal._
 //import scalaz.std.anyVal._
 //import TestInstances.equalProcessTask
@@ -20,6 +22,7 @@ import TestInstances.equalProcessTask
  * from merging combinator (pipe, tee, wye, njoin) at various scenarios
  */
 object CauseSpec extends Properties("cause") {
+  implicit val S: ScheduledExecutorService = DefaultScheduler
 
   property("suspend") = secure {
     val source = Process(1, 2, 3).toSource
