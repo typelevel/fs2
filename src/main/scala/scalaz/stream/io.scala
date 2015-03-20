@@ -170,7 +170,7 @@ object io {
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task.delay { Option(scala.io.StdIn.readLine()).getOrElse(throw Cause.Terminated(Cause.End)) })
+    Process.repeatEval(Task.delay { Option(scala.Console.readLine()).getOrElse(throw Cause.Terminated(Cause.End)) })
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
