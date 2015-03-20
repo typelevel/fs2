@@ -7,4 +7,4 @@ Also see the [GitHub contributor stats](https://github.com/scalaz/scalaz-stream/
 Contributors
 ------------
 
-TODO
+Frank S. Thomas ([@fthomas](https://github.com/fthomas)): a lot of `Process1` functions, features, bug fixes, and maintainance
