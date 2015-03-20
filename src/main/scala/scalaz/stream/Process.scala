@@ -841,6 +841,10 @@ object Process extends ProcessInstances {
   def iterateEval[F[_], A](start: A)(f: A => F[A]): Process[F, A] =
     emit(start) ++ await(f(start))(iterateEval(_)(f))
 
+  /** Promote a function `f` to a `Sink` that always emits that function */
+  def liftSink[F[_], O](f: O => F[Unit]): Sink[F, O] =
+    constant(f)
+
   /** Promote a `Process` to a `Writer` that writes nothing. */
   def liftW[F[_], A](p: Process[F, A]): Writer[F, Nothing, A] =
     p.map(right)
