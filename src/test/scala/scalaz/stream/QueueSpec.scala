@@ -129,5 +129,59 @@ object QueueSpec extends Properties("queue") {
     r == Vector(1)
   }
 
+  property("dequeue-batch.basic") = forAll { l: List[Int] =>
+    val q = async.boundedQueue[Int]()
+    val t1 = Task {
+      l.foreach(i => q.enqueueOne(i).run)
+      q.close.run
+    }
 
+    val collected = new SyncVar[Throwable\/IndexedSeq[Seq[Int]]]
+
+    q.dequeueBatch().runLog.runAsync(collected.put)
+    t1.runAsync(_=>())
+
+    "Items were collected" |:  collected.get(3000).nonEmpty &&
+      (s"All values were collected, all: ${collected.get(0)}, l: $l " |: collected.get.getOrElse(Nil).flatten == l)
+  }
+
+  property("dequeue-batch.chunked") = secure {
+    import Function.const
+
+    val q = async.boundedQueue[Int]()
+
+    val pump = for {
+      chunk <- q.dequeueBatch()
+      _ <- Process eval (Process emitAll (0 until (chunk.length * 2) map const(chunk.length)) to q.enqueue).run     // do it in a sub-process to avoid emitting a lot of things
+    } yield chunk
+
+    val collected = new SyncVar[Throwable \/ IndexedSeq[Seq[Int]]]
+
+    (pump take 4 runLog) timed 3000 runAsync (collected.put)
+
+    q.enqueueOne(1) runAsync { _ => () }
+
+    collected.get(5000).nonEmpty :| "items were collected" &&
+      ((collected.get getOrElse Nil) == Seq(Seq(1), Seq(1, 1), Seq(2, 2, 2, 2), Seq(4, 4, 4, 4, 4, 4, 4, 4))) :| s"saw ${collected.get getOrElse Nil}"
+  }
+
+  property("dequeue-batch.chunked-limited") = secure {
+    import Function.const
+
+    val q = async.boundedQueue[Int]()
+
+    val pump = for {
+      chunk <- q.dequeueBatch(2)
+      _ <- Process eval (Process emitAll (0 until (chunk.length * 2) map const(chunk.length)) to q.enqueue).run     // do it in a sub-process to avoid emitting a lot of things
+    } yield chunk
+
+    val collected = new SyncVar[Throwable \/ IndexedSeq[Seq[Int]]]
+
+    (pump take 5 runLog) timed 3000 runAsync (collected.put)
+
+    q.enqueueOne(1) runAsync { _ => () }
+
+    collected.get(5000).nonEmpty :| "items were collected" &&
+      ((collected.get getOrElse Nil) == Seq(Seq(1), Seq(1, 1), Seq(2, 2), Seq(2, 2), Seq(2, 2))) :| s"saw ${collected.get getOrElse Nil}"
+  }
 }
