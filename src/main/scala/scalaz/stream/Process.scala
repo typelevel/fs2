@@ -721,6 +721,10 @@ object Process extends ProcessInstances {
   def await1[I]: Process1[I, I] =
     receive1(emit)
 
+  /** `Writer` based version of `await1`. */
+  def await1W[A]: Writer1[Nothing, A, A] =
+    writer.liftW(Process.await1[A])
+
   /** Like `await1`, but consults `fb` when await fails to receive an `I` */
   def await1Or[I](fb: => Process1[I, I]): Process1[I, I] =
     receive1Or(fb)(emit)
@@ -729,64 +733,25 @@ object Process extends ProcessInstances {
   def awaitBoth[I, I2]: Wye[I, I2, ReceiveY[I, I2]] =
     await(Both[I, I2])(emit)
 
+  /** `Writer` based version of `awaitBoth`. */
+  def awaitBothW[I, I2]: WyeW[Nothing, I, I2, ReceiveY[I, I2]] =
+    writer.liftW(Process.awaitBoth[I, I2])
+
   /** The `Tee` which requests from the left branch, emits this value, then halts. */
   def awaitL[I]: Tee[I, Any, I] =
     await(L[I])(emit)
-
-  /** The `Tee` which requests from the right branch, emits this value, then halts. */
-  def awaitR[I2]: Tee[Any, I2, I2] =
-    await(R[I2])(emit)
-
-  /** The `Process` which emits the single value given, then halts. */
-  def emit[O](o: O): Process0[O] = Emit(Vector(o))
-
-  /** The `Process` which emits the given sequence of values, then halts. */
-  def emitAll[O](os: Seq[O]): Process0[O] = Emit(os)
-
-  /** The `Process` which emits no values and halts immediately with the given exception. */
-  def fail(rsn: Throwable): Process0[Nothing] = Halt(Error(rsn))
-
-  /** `halt` but with precise type. */
-  private[stream] val halt0: Halt = Halt(End)
-
-  /** The `Process` which emits no values and signals normal termination. */
-  val halt: Process0[Nothing] = halt0
-
-  /** Alias for `halt`. */
-  def empty[F[_],O]: Process[F, O] = halt
-
-  /**
-   * The `Process1` which awaits a single input and passes it to `rcv` to
-   * determine the next state.
-   */
-  def receive1[I, O](rcv: I => Process1[I, O]): Process1[I, O] =
-    await(Get[I])(rcv)
-
-  /** Like `receive1`, but consults `fb` when it fails to receive an input. */
-  def receive1Or[I, O](fb: => Process1[I, O])(rcv: I => Process1[I, O]): Process1[I, O] =
-    awaitOr(Get[I])((rsn: EarlyCause) => fb.causedBy(rsn))(rcv)
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //
-  // CONSTRUCTORS -> Helpers
-  //
-  //////////////////////////////////////////////////////////////////////////////////////
-
-  /** `Writer` based version of `await1`. */
-  def await1W[A]: Writer1[Nothing, A, A] =
-    writer.liftW(Process.await1[A])
 
   /** `Writer` based version of `awaitL`. */
   def awaitLW[I]: TeeW[Nothing, I, Any, I] =
     writer.liftW(Process.awaitL[I])
 
+  /** The `Tee` which requests from the right branch, emits this value, then halts. */
+  def awaitR[I2]: Tee[Any, I2, I2] =
+    await(R[I2])(emit)
+
   /** `Writer` based version of `awaitR`. */
   def awaitRW[I2]: TeeW[Nothing, Any, I2, I2] =
     writer.liftW(Process.awaitR[I2])
-
-  /** `Writer` based version of `awaitBoth`. */
-  def awaitBothW[I, I2]: WyeW[Nothing, I, I2, ReceiveY[I, I2]] =
-    writer.liftW(Process.awaitBoth[I, I2])
 
   /**
    * The infinite `Process`, always emits `a`.
@@ -800,6 +765,12 @@ object Process extends ProcessInstances {
     go
   }
 
+  /** The `Process` which emits the single value given, then halts. */
+  def emit[O](o: O): Process0[O] = Emit(Vector(o))
+
+  /** The `Process` which emits the given sequence of values, then halts. */
+  def emitAll[O](os: Seq[O]): Process0[O] = Emit(os)
+
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process0[Nothing \/ O] =
     emit(right(o))
@@ -808,6 +779,8 @@ object Process extends ProcessInstances {
   def emitW[W](s: W): Process0[W \/ Nothing] =
     emit(left(s))
 
+  /** The `Process` which emits no values and halts immediately with the given exception. */
+  def fail(rsn: Throwable): Process0[Nothing] = Halt(Error(rsn))
 
   /** A `Process` which emits `n` repetitions of `a`. */
   def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process0[A] = {
@@ -826,6 +799,15 @@ object Process extends ProcessInstances {
    */
   def forwardFill[A](p: Process[Task, A])(implicit S: Strategy): Process[Task, A] =
     async.toSignal(p).continuous
+
+  /** `halt` but with precise type. */
+  private[stream] val halt0: Halt = Halt(End)
+
+  /** The `Process` which emits no values and signals normal termination. */
+  val halt: Process0[Nothing] = halt0
+
+  /** Alias for `halt`. */
+  def empty[F[_],O]: Process[F, O] = halt
 
   /**
    * An infinite `Process` that repeatedly applies a given function
@@ -867,6 +849,17 @@ object Process extends ProcessInstances {
           None
     }
   }
+
+  /**
+   * The `Process1` which awaits a single input and passes it to `rcv` to
+   * determine the next state.
+   */
+  def receive1[I, O](rcv: I => Process1[I, O]): Process1[I, O] =
+    await(Get[I])(rcv)
+
+  /** Like `receive1`, but consults `fb` when it fails to receive an input. */
+  def receive1Or[I, O](fb: => Process1[I, O])(rcv: I => Process1[I, O]): Process1[I, O] =
+    awaitOr(Get[I])((rsn: EarlyCause) => fb.causedBy(rsn))(rcv)
 
   /**
    * Delay running `p` until `awaken` becomes true for the first time.
