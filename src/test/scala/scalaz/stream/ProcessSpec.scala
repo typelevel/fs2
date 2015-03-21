@@ -263,12 +263,12 @@ object ProcessSpec extends Properties("Process") {
   }
 
   property("pipeO stripW ~= stripW pipe") = forAll { (p1: Process1[Int,Int]) =>
-    val p = logged(range(1, 11).toSource)
+    val p = writer.logged(range(1, 11).toSource)
     p.pipeO(p1).stripW.runLog.run == p.stripW.pipe(p1).runLog.run
   }
 
   property("pipeW stripO ~= stripO pipe") = forAll { (p1: Process1[Int,Int]) =>
-    val p = logged(range(1, 11).toSource)
+    val p = writer.logged(range(1, 11).toSource)
     p.pipeW(p1).stripO.runLog.run == p.stripO.pipe(p1).runLog.run
   }
 

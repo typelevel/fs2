@@ -774,19 +774,19 @@ object Process extends ProcessInstances {
 
   /** `Writer` based version of `await1`. */
   def await1W[A]: Writer1[Nothing, A, A] =
-    liftW(Process.await1[A])
+    writer.liftW(Process.await1[A])
 
   /** `Writer` based version of `awaitL`. */
   def awaitLW[I]: TeeW[Nothing, I, Any, I] =
-    liftW(Process.awaitL[I])
+    writer.liftW(Process.awaitL[I])
 
   /** `Writer` based version of `awaitR`. */
   def awaitRW[I2]: TeeW[Nothing, Any, I2, I2] =
-    liftW(Process.awaitR[I2])
+    writer.liftW(Process.awaitR[I2])
 
   /** `Writer` based version of `awaitBoth`. */
   def awaitBothW[I, I2]: WyeW[Nothing, I, I2, ReceiveY[I, I2]] =
-    liftW(Process.awaitBoth[I, I2])
+    writer.liftW(Process.awaitBoth[I, I2])
 
   /**
    * The infinite `Process`, always emits `a`.
@@ -802,11 +802,12 @@ object Process extends ProcessInstances {
 
   /** A `Writer` which emits one value to the output. */
   def emitO[O](o: O): Process0[Nothing \/ O] =
-    Process.emit(right(o))
+    emit(right(o))
 
   /** A `Writer` which writes the given value. */
   def emitW[W](s: W): Process0[W \/ Nothing] =
-    Process.emit(left(s))
+    emit(left(s))
+
 
   /** A `Process` which emits `n` repetitions of `a`. */
   def fill[A](n: Int)(a: A, chunkSize: Int = 1): Process0[A] = {
@@ -840,17 +841,6 @@ object Process extends ProcessInstances {
    */
   def iterateEval[F[_], A](start: A)(f: A => F[A]): Process[F, A] =
     emit(start) ++ await(f(start))(iterateEval(_)(f))
-
-  /** Promote a `Process` to a `Writer` that writes nothing. */
-  def liftW[F[_], A](p: Process[F, A]): Writer[F, Nothing, A] =
-    p.map(right)
-
-  /**
-   * Promote a `Process` to a `Writer` that writes and outputs
-   * all values of `p`.
-   */
-  def logged[F[_], A](p: Process[F, A]): Writer[F, A, A] =
-    p.flatMap(a => emitAll(Vector(left(a), right(a))))
 
   /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process0[Int] =
