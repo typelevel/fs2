@@ -6,7 +6,7 @@ import scalaz.\/._
 object writer {
 
   /** Promote a `Process` to a `Writer` that writes nothing. */
-  def liftW[F[_], A](p: Process[F, A]): Writer[F, Nothing, A] =
+  def lift[F[_], A](p: Process[F, A]): Writer[F, Nothing, A] =
     p.map(right)
 
   /**
