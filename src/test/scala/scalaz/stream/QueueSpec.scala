@@ -152,7 +152,7 @@ object QueueSpec extends Properties("queue") {
 
     val pump = for {
       chunk <- q.dequeueBatch()
-      _ <- Process eval (Process emitAll (0 until (chunk.length * 2) map const(chunk.length)) to q.enqueue).run     // do it in a sub-process to avoid emitting a lot of things
+      _ <- Process eval ((Process emitAll (0 until (chunk.length * 2) map const(chunk.length)) toSource) to q.enqueue).run     // do it in a sub-process to avoid emitting a lot of things
     } yield chunk
 
     val collected = new SyncVar[Throwable \/ IndexedSeq[Seq[Int]]]
@@ -172,7 +172,7 @@ object QueueSpec extends Properties("queue") {
 
     val pump = for {
       chunk <- q.dequeueBatch(2)
-      _ <- Process eval (Process emitAll (0 until (chunk.length * 2) map const(chunk.length)) to q.enqueue).run     // do it in a sub-process to avoid emitting a lot of things
+      _ <- Process eval ((Process emitAll (0 until (chunk.length * 2) map const(chunk.length)) toSource) to q.enqueue).run     // do it in a sub-process to avoid emitting a lot of things
     } yield chunk
 
     val collected = new SyncVar[Throwable \/ IndexedSeq[Seq[Int]]]
