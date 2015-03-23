@@ -1210,6 +1210,17 @@ object Process extends ProcessInstances {
       async.toSignal(self).continuous
 
     /**
+     * Returns result of channel evaluation tupled with
+     * original value passed to channel.
+     **/
+    def observeThrough[O2](ch: Channel[Task, O, O2]): Process[Task, (O, O2)] = {
+      val observerCh = ch map { f =>
+        o: O => f(o) map { o2 => o -> o2 }
+      }
+      self through observerCh
+    }
+
+    /**
      * Asynchronous stepping of this Process. Note that this method is not resource safe unless
      * callback is called with _left_ side completed. In that case it is guaranteed that all cleanups
      * has been successfully completed.
