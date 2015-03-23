@@ -138,7 +138,7 @@ object QueueSpec extends Properties("queue") {
 
     val collected = new SyncVar[Throwable\/IndexedSeq[Seq[Int]]]
 
-    q.dequeueBatch().runLog.runAsync(collected.put)
+    q.dequeueAvailable.runLog.runAsync(collected.put)
     t1.runAsync(_=>())
 
     "Items were collected" |:  collected.get(3000).nonEmpty &&
@@ -151,7 +151,7 @@ object QueueSpec extends Properties("queue") {
     val q = async.boundedQueue[Int]()
 
     val pump = for {
-      chunk <- q.dequeueBatch()
+      chunk <- q.dequeueAvailable
       _ <- Process eval ((Process emitAll (0 until (chunk.length * 2) map const(chunk.length)) toSource) to q.enqueue).run     // do it in a sub-process to avoid emitting a lot of things
     } yield chunk
 

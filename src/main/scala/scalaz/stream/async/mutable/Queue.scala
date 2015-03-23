@@ -60,7 +60,17 @@ trait Queue[A] {
    * to a rapidly filling queue in the case where some sort of batching logic
    * is applicable.
    */
-  def dequeueBatch(limit: Int = 0): Process[Task, Seq[A]]
+  def dequeueBatch(limit: Int): Process[Task, Seq[A]]
+
+  /**
+   * Equivalent to dequeueBatch with an infinite limit.  Only use this
+   * method if your underlying algebra (`A`) has some sort of constant
+   * time "natural batching"!  If processing a chunk of size n is linearly
+   * more expensive than processing a chunk of size 1, you should always
+   * use dequeueBatch with some small limit, otherwise you will disrupt
+   * fairness in the nondeterministic merge combinators.
+   */
+  def dequeueAvailable: Process[Task, Seq[A]]
 
   /**
    * The time-varying size of this `Queue`. This signal refreshes
@@ -261,7 +271,16 @@ private[stream] object Queue {
 
       def dequeue: Process[Task, A] = dequeueBatch(1) flatMap Process.emitAll
 
-      def dequeueBatch(limit: Int = 0): Process[Task, Seq[A]] = {
+      def dequeueBatch(limit: Int): Process[Task, Seq[A]] = {
+        if (limit <= 0)
+          throw new IllegalArgumentException(s"batch limit must be greater than zero (got $limit)")
+        else
+          innerDequeueBatch(limit)
+      }
+
+      def dequeueAvailable: Process[Task, Seq[A]] = innerDequeueBatch(0)
+
+      private def innerDequeueBatch(limit: Int): Process[Task, Seq[A]] = {
         Process.await(Task.delay(new ConsumerRef))({ ref =>
           val source = Process repeatEval Task.async[Seq[A]](cb => actor ! Dequeue(ref, limit, cb))
           source onComplete Process.eval_(Task.delay(actor ! ConsumerDone(ref)))
