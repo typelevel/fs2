@@ -199,15 +199,6 @@ private[stream] object Queue {
       }
     }
 
-    def dequeueOne(ref: ConsumerRef, cb: (Throwable \/ A => Unit)): Unit = {
-      dequeueBatch(ref, 1, {
-        case l @ -\/(_) => cb(l)
-        case \/-(Seq()) => dequeueOne(ref, cb)
-        case \/-(Seq(a)) => cb(\/-(a))
-        case \/-(_) => cb(-\/(new AssertionError("dequeueBatch exceeded limit")))
-      })
-    }
-
     def enqueueOne(as: Seq[A], cb: Throwable \/ Unit => Unit) = {
       import scalaz.stream.Util._
       queued = queued fast_++ as
