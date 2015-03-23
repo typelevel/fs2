@@ -8,3 +8,4 @@ Also see the [GitHub contributor stats](https://github.com/scalaz/scalaz-stream/
 
 - Daniel Spiewak ([@djspiewak](https://github.com/djspiewak)): concurrency plumbing, `wye`/`njoin` bug fixes, `io.toInputStream`, performance and correctness obsession
 - Frank S. Thomas ([@fthomas](https://github.com/fthomas)): a lot of `Process1` functions, features, bug fixes, and maintainance
+- Pavel Chlupáček ([@pchlupacek](https://github.com/pchlupacek)): concurrency, original implementation of `Append` algebra
