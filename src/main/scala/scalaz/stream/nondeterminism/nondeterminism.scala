@@ -36,7 +36,11 @@ package object nondeterminism {
 
 
     suspend {
-      val q = async.boundedQueue[A](maxQueued)(S)
+      val q = if (maxQueued > 0)
+        async.boundedQueue[A](maxQueued)(S)
+      else
+        async.unboundedQueue[A](S)
+
       val done = async.signalOf(false)(S)
 
       //keep state of master source

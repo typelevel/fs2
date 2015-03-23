@@ -170,7 +170,7 @@ object ProcessSpec extends Properties("Process") {
   }
 
   property("pipeIn") = secure {
-    val q = async.boundedQueue[String]()
+    val q = async.unboundedQueue[String]
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
 
     (Process.range(0,10).toSource to sink).run.run
@@ -280,7 +280,7 @@ object ProcessSpec extends Properties("Process") {
   }
 
   property("stepAsync onComplete on task never completing") = secure {
-    val q = async.boundedQueue[Int]()
+    val q = async.unboundedQueue[Int]
 
     @volatile var cleanupCalled = false
     val sync = new SyncVar[Cause \/ (Seq[Int], Process.Cont[Task,Int])]

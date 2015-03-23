@@ -13,7 +13,7 @@ object QueueSpec extends Properties("queue") {
 
   property("basic") = forAll {
     l: List[Int] =>
-      val q = async.boundedQueue[Int]()
+      val q = async.unboundedQueue[Int]
       val t1 = Task {
         l.foreach(i => q.enqueueOne(i).run)
         q.close.run
@@ -32,7 +32,7 @@ object QueueSpec extends Properties("queue") {
 
   property("size-signal") = forAll {
     l: List[Int] =>
-      val q = async.boundedQueue[Int]()
+      val q = async.unboundedQueue[Int]
       val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
       val t2 = q.dequeue.runLog
       val t3 = q.size.discrete.runLog
@@ -66,7 +66,7 @@ object QueueSpec extends Properties("queue") {
 
   property("enqueue-distribution") = forAll {
     l: List[Int] =>
-      val q = async.boundedQueue[Int]()
+      val q = async.unboundedQueue[Int]
       val t1 = Task {
         l.foreach(i => q.enqueueOne(i).run)
         q.close.run
@@ -87,7 +87,7 @@ object QueueSpec extends Properties("queue") {
 
   property("closes-pub-sub") = secure {
     val l: List[Int] = List(1, 2, 3)
-    val q = async.boundedQueue[Int]()
+    val q = async.unboundedQueue[Int]
     val t1 = Task {
       l.foreach(i => q.enqueueOne(i).run)
       q.close.run
@@ -118,7 +118,7 @@ object QueueSpec extends Properties("queue") {
   // tests situation where killed process may `swallow` item in queue
   // from the process that is running
   property("queue-swallow-killed") = secure {
-    val q = async.boundedQueue[Int]()
+    val q = async.unboundedQueue[Int]
     val sleeper = time.sleep(1 second)
     val signalKill = Process(false).toSource ++ sleeper ++ Process(true)
 
@@ -130,7 +130,7 @@ object QueueSpec extends Properties("queue") {
   }
 
   property("dequeue-batch.basic") = forAll { l: List[Int] =>
-    val q = async.boundedQueue[Int]()
+    val q = async.unboundedQueue[Int]
     val t1 = Task {
       l.foreach(i => q.enqueueOne(i).run)
       q.close.run
@@ -148,7 +148,7 @@ object QueueSpec extends Properties("queue") {
   property("dequeue-batch.chunked") = secure {
     import Function.const
 
-    val q = async.boundedQueue[Int]()
+    val q = async.unboundedQueue[Int]
 
     val pump = for {
       chunk <- q.dequeueAvailable
@@ -168,7 +168,7 @@ object QueueSpec extends Properties("queue") {
   property("dequeue-batch.chunked-limited") = secure {
     import Function.const
 
-    val q = async.boundedQueue[Int]()
+    val q = async.unboundedQueue[Int]
 
     val pump = for {
       chunk <- q.dequeueBatch(2)
