@@ -1476,21 +1476,42 @@ object Process extends ProcessInstances {
    */
   implicit class WriterSyntax[F[_],W,O](val self: Writer[F,W,O]) extends AnyVal {
 
+    /**
+     * Observe the output side of this Writer` using the
+     * given `Sink`, then discard it. Also see `observeW`.
+     */
+    def drainO(snk: Sink[F,O]): Process[F,W] =
+      observeO(snk).stripO
+
+    /**
+     * Observe the write side of this `Writer` using the
+     * given `Sink`, then discard it. Also see `observeW`.
+     */
+    def drainW(snk: Sink[F,W]): Process[F,O] =
+      observeW(snk).stripW
+
+    def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] =
+      self.flatMap(_.fold(emitW, f))
+
     /** Transform the write side of this `Writer`. */
     def flatMapW[F2[x]>:F[x],W2,O2>:O](f: W => Writer[F2,W2,O2]): Writer[F2,W2,O2] =
       self.flatMap(_.fold(f, emitO))
 
-    /** Remove the write side of this `Writer`. */
-    def stripW: Process[F,O] =
-      self.flatMap(_.fold(_ => halt, emit))
+    /** Map over the output side of this `Writer`. */
+    def mapO[B](f: O => B): Writer[F,W,B] =
+      self.map(_.map(f))
 
     /** Map over the write side of this `Writer`. */
     def mapW[W2](f: W => W2): Writer[F,W2,O] =
       self.map(_.leftMap(f))
 
-    /** pipe Write side of this `Writer`  */
-    def pipeW[B](f: Process1[W,B]): Writer[F,B,O] =
-      self.pipe(process1.liftL(f))
+    /**
+     * Observe the output side of this `Writer` using the
+     * given `Sink`, keeping it available for subsequent
+     * processing. Also see `drainO`.
+     */
+    def observeO(snk: Sink[F,O]): Writer[F,W,O] =
+      self.map(_.swap).observeW(snk).map(_.swap)
 
     /**
      * Observe the write side of this `Writer` using the
@@ -1505,41 +1526,21 @@ object Process extends ProcessInstances {
         )
       ).flatMap(identity)
 
-    /**
-     * Observe the write side of this `Writer` using the
-     * given `Sink`, then discard it. Also see `observeW`.
-     */
-    def drainW(snk: Sink[F,W]): Process[F,O] =
-      observeW(snk).stripW
+    /** Pipe output side of this `Writer`  */
+    def pipeO[B](f: Process1[O,B]): Writer[F,W,B] =
+      self.pipe(process1.liftR(f))
 
+    /** Pipe write side of this `Writer`  */
+    def pipeW[B](f: Process1[W,B]): Writer[F,B,O] =
+      self.pipe(process1.liftL(f))
 
-    /**
-     * Observe the output side of this `Writer` using the
-     * given `Sink`, keeping it available for subsequent
-     * processing. Also see `drainO`.
-     */
-    def observeO(snk: Sink[F,O]): Writer[F,W,O] =
-      self.map(_.swap).observeW(snk).map(_.swap)
-
-    /**
-     * Observe the output side of this Writer` using the
-     * given `Sink`, then discard it. Also see `observeW`.
-     */
-    def drainO(snk: Sink[F,O]): Process[F,W] =
-      observeO(snk).stripO
-
-    /** Map over the output side of this `Writer`. */
-    def mapO[B](f: O => B): Writer[F,W,B] =
-      self.map(_.map(f))
-
-    def flatMapO[F2[x]>:F[x],W2>:W,B](f: O => Writer[F2,W2,B]): Writer[F2,W2,B] =
-      self.flatMap(_.fold(emitW, f))
-
+    /** Remove the output side of this `Writer`. */
     def stripO: Process[F,W] =
       self.flatMap(_.fold(emit, _ => halt))
 
-    def pipeO[B](f: Process1[O,B]): Writer[F,W,B] =
-      self.pipe(process1.liftR(f))
+    /** Remove the write side of this `Writer`. */
+    def stripW: Process[F,O] =
+      self.flatMap(_.fold(_ => halt, emit))
   }
 
 
