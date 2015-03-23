@@ -723,7 +723,7 @@ object Process extends ProcessInstances {
 
   /** `Writer` based version of `await1`. */
   def await1W[A]: Writer1[Nothing, A, A] =
-    writer.lift(Process.await1[A])
+    writer.liftO(Process.await1[A])
 
   /** Like `await1`, but consults `fb` when await fails to receive an `I` */
   def await1Or[I](fb: => Process1[I, I]): Process1[I, I] =
@@ -735,7 +735,7 @@ object Process extends ProcessInstances {
 
   /** `Writer` based version of `awaitBoth`. */
   def awaitBothW[I, I2]: WyeW[Nothing, I, I2, ReceiveY[I, I2]] =
-    writer.lift(Process.awaitBoth[I, I2])
+    writer.liftO(Process.awaitBoth[I, I2])
 
   /** The `Tee` which requests from the left branch, emits this value, then halts. */
   def awaitL[I]: Tee[I, Any, I] =
@@ -743,7 +743,7 @@ object Process extends ProcessInstances {
 
   /** `Writer` based version of `awaitL`. */
   def awaitLW[I]: TeeW[Nothing, I, Any, I] =
-    writer.lift(Process.awaitL[I])
+    writer.liftO(Process.awaitL[I])
 
   /** The `Tee` which requests from the right branch, emits this value, then halts. */
   def awaitR[I2]: Tee[Any, I2, I2] =
@@ -751,7 +751,7 @@ object Process extends ProcessInstances {
 
   /** `Writer` based version of `awaitR`. */
   def awaitRW[I2]: TeeW[Nothing, Any, I2, I2] =
-    writer.lift(Process.awaitR[I2])
+    writer.liftO(Process.awaitR[I2])
 
   /**
    * The infinite `Process`, always emits `a`.
