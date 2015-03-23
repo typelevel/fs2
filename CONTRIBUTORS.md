@@ -6,7 +6,7 @@ Each individual maintains their own description, and if you don't see your name 
 
 Also see the [GitHub contributor stats](https://github.com/scalaz/scalaz-stream/graphs/contributors).
 
-- Paul Chiusano ([@pchlupacek](https://github.com/pchiusano)): project founder and maintainer
+- Paul Chiusano ([@pchiusano](https://github.com/pchiusano)): project founder and maintainer
 - Pavel Chlupáček ([@pchlupacek](https://github.com/pchlupacek)): concurrency, original implementation of `Append` algebra
 - Daniel Spiewak ([@djspiewak](https://github.com/djspiewak)): concurrency plumbing, `wye`/`njoin` bug fixes, `io.toInputStream`, performance and correctness obsession
 - Frank S. Thomas ([@fthomas](https://github.com/fthomas)): a lot of `Process1` functions, features, bug fixes, and maintainance
