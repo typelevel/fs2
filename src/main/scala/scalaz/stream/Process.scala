@@ -1119,6 +1119,46 @@ object Process extends ProcessInstances {
     }
   }
 
+  implicit class WriterTaskSyntax[W, O](val self: Writer[Task, W, O]) extends AnyVal {
+
+    /**
+     * Returns result of channel evaluation on `O` side tupled with
+     * original output value passed to channel.
+     */
+    def observeOThrough[O2](ch: Channel[Task, O, O2]): Writer[Task, W, (O, O2)] = {
+      val observerCh = ch map { f =>
+        in: (W \/ O) => in.fold(w => Task.now(-\/(w)), o => f(o).map(o2 => \/-(o -> o2)))
+      }
+      self through observerCh
+    }
+
+    /** Returns result of channel evaluation on `W` side tupled with
+     * original write value passed to channel.
+     */
+    def observeWThrough[W2](ch: Channel[Task, W, W2]): Writer[Task, (W, W2), O] = {
+      val observerCh = ch map { f =>
+        in: (W \/ O) => in.fold(w => f(w).map(w2 => -\/(w -> w2)), o => Task.now(\/-(o)))
+      }
+      self through observerCh
+    }
+
+    /** Feed this `Writer`'s output through the provided effectful `Channel`. */
+    def throughO[O2](ch: Channel[Task, O, O2]): Writer[Task, W, O2] = {
+      val ch2 = ch map { f =>
+        in: (W \/ O) => in.fold(w => Task.now(left(w)), o => f(o).map(right))
+      }
+      self through ch2
+    }
+
+    /** Feed this `Writer`'s writes through the provided effectful `Channel`. */
+    def throughW[W2](ch: Channel[Task, W, W2]): Writer[Task, W2, O] = {
+      val ch2 = ch map { f =>
+        in: (W \/ O) => in.fold(w => f(w).map(left), o => Task.now(right(o)))
+      }
+      self through ch2
+    }
+  }
+
 
   /**
    * This class provides infix syntax specific to `Process1`.
