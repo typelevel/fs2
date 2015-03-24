@@ -56,7 +56,7 @@ package object async {
    * Please see `Topic` for more info.
    */
   def topic[A](source: Process[Task, A] = halt, haltOnSource: Boolean = false)(implicit S: Strategy): Topic[A] = {
-    val wt = WriterTopic[Nothing, A, A](Process.liftW(process1.id))(source, haltOnSource = haltOnSource)(S)
+    val wt = WriterTopic[Nothing, A, A](writer.liftO(process1.id))(source, haltOnSource = haltOnSource)(S)
     new Topic[A] {
       def publish: Sink[Task, A] = wt.publish
       def subscribe: Process[Task, A] = wt.subscribeO
