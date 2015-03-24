@@ -1273,6 +1273,8 @@ object Process extends ProcessInstances {
             case Step(awt: Await[Task, a, O], cont) => {
               val Await(req, rcv) = awt
 
+              case class PreStepAbort(c: EarlyCause) extends RuntimeException
+
               def unpack(msg: Option[Throwable \/ a]): Option[Process[Task, O]] = msg map { r => Try(rcv(EarlyCause fromTaskResult r).run) }
 
               // throws an exception if we're already interrupted (caught in preStep check)
@@ -1285,7 +1287,7 @@ object Process extends ProcessInstances {
                       checkInterrupt(int)
                   }
 
-                  case \/-(c) => Task fail Terminated(c)
+                  case \/-(c) => Task fail PreStepAbort(c)
                 }
               } join
 
@@ -1307,7 +1309,7 @@ object Process extends ProcessInstances {
                     completed: Process[Task, O] => Unit)(result: Option[Throwable \/ a]): Unit = result match {
 
                   // interrupted via the `Task.fail` defined in `checkInterrupt`
-                  case Some(-\/(Terminated(cause: EarlyCause))) => preStep(cause)
+                  case Some(-\/(PreStepAbort(cause: EarlyCause))) => preStep(cause)
 
                   case result => {
                     val inter = interrupted.get().toOption
