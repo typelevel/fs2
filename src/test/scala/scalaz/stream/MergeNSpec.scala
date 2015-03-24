@@ -42,7 +42,7 @@ object MergeNSpec extends Properties("mergeN") {
   // tests that when downstream terminates,
   // all cleanup code is called on upstreams
   property("source-cleanup-down-done") = secure {
-    val cleanupQ = async.boundedQueue[Int]()
+    val cleanupQ = async.unboundedQueue[Int]
     val cleanups = new SyncVar[Throwable \/ IndexedSeq[Int]]
 
     val ps =
@@ -70,7 +70,7 @@ object MergeNSpec extends Properties("mergeN") {
   // unlike source-cleanup-down-done it focuses on situations where upstreams are in async state,
   // and thus will block until interrupted.
   property("source-cleanup-async-down-done") = secure {
-    val cleanupQ = async.boundedQueue[Int]()
+    val cleanupQ = async.unboundedQueue[Int]
     val cleanups = new SyncVar[Throwable \/ IndexedSeq[Int]]
     cleanupQ.dequeue.take(11).runLog.runAsync(cleanups.put)
 

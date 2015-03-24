@@ -9,29 +9,20 @@ package object async {
   /**
    * Creates bounded queue that is bound by supplied max size bound.
    * Please see [[scalaz.stream.async.mutable.Queue]] for more details.
-   * @param max maximum size of queue. When <= 0 (default) queue is unbounded
+   * @param max maximum size of queue (must be > 0)
    */
-  def boundedQueue[A](max: Int = 0)(implicit S: Strategy): Queue[A] =
-    Queue[A](max)
+  def boundedQueue[A](max: Int)(implicit S: Strategy): Queue[A] = {
+    if (max <= 0)
+      throw new IllegalArgumentException(s"queue bound must be greater than zero (got $max)")
+    else
+      Queue[A](max)
+  }
 
 
   /**
    * Creates unbounded queue. see [[scalaz.stream.async.mutable.Queue]] for more
    */
-  def unboundedQueue[A](implicit S: Strategy): Queue[A] =  boundedQueue(0)
-
-  /**
-   * Create a source that may be added to or halted asynchronously
-   * using the returned `Queue`. See `async.Queue`. As long as the
-   * `Strategy` is not `Strategy.Sequential`, enqueueing is
-   * guaranteed to take constant time, and consumers will be run on
-   * a separate logical thread.
-   */
-  @deprecated("Use async.unboundedQueue instead", "0.5.0")
-  def queue[A](implicit S: Strategy) : (Queue[A], Process[Task, A]) = {
-   val q = unboundedQueue[A]
-    (q,q.dequeue)
-  }
+  def unboundedQueue[A](implicit S: Strategy): Queue[A] = Queue[A](0)
 
   /**
    * Create a new continuous signal which may be controlled asynchronously.
@@ -65,7 +56,7 @@ package object async {
    * Please see `Topic` for more info.
    */
   def topic[A](source: Process[Task, A] = halt, haltOnSource: Boolean = false)(implicit S: Strategy): Topic[A] = {
-    val wt = WriterTopic[Nothing, A, A](Process.liftW(process1.id))(source, haltOnSource = haltOnSource)(S)
+    val wt = WriterTopic[Nothing, A, A](writer.liftO(process1.id))(source, haltOnSource = haltOnSource)(S)
     new Topic[A] {
       def publish: Sink[Task, A] = wt.publish
       def subscribe: Process[Task, A] = wt.subscribeO

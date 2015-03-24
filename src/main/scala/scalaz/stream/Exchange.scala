@@ -122,8 +122,8 @@ final case class Exchange[I, W](read: Process[Task, I], write: Sink[Task, W]) {
    * @param y WyeW to control queueing, flow control and transformation
    */
   def flow[I2,W2](y: WyeW[W, Int \/ I, W2, I2])(implicit S: Strategy): Exchange[I2, W2] = {
-    val wq = async.boundedQueue[W](0)
-    val w2q = async.boundedQueue[W2](0)
+    val wq = async.unboundedQueue[W]
+    val w2q = async.unboundedQueue[W2]
 
     def cleanup: Process[Task, Nothing] = eval_(wq.close) ++ eval_(w2q.close)
     def receive: Process[Task, I] = self.read onComplete cleanup
@@ -203,7 +203,7 @@ object Exchange {
     }
 
     await(Task.delay {
-      async.boundedQueue[W]()
+      async.unboundedQueue[W]
     })({ q =>
       val (out, np) = p.unemit
       val ex = Exchange[Nothing, W](halt, q.enqueue)

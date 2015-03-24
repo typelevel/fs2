@@ -12,7 +12,7 @@ object UnsafeChunkRSpec extends Properties("io.unsafeChunkR") {
   property("reuses buffer") = secure {
     forAll { str: String =>
       val sink: Sink[Task, Array[Byte] => Task[Array[Byte]]] =
-        io.channel { toTask =>
+        channel lift { toTask =>
           val buffer: Array[Byte] = new Array[Byte](8)
           toTask(buffer).map { b =>
             if (!buffer.eq(b) && b.size == buffer.size)
