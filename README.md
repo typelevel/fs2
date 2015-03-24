@@ -15,11 +15,11 @@ resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
 And use one of the following library dependencies:
 
 ```
-// Against Scalaz 7.0.6, available for Scala 2.10.4 and 2.11.4
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.6"
+// Against Scalaz 7.0.6, available for Scala 2.10.5 and 2.11.6
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.7"
 
-// Against Scalaz 7.1, available for Scala 2.10.4 and 2.11.4
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.6a"
+// Against Scalaz 7.1, available for Scala 2.10.5 and 2.11.6
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.7a"
 ```
 
 ### About the library ###
