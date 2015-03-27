@@ -7,7 +7,6 @@ import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
 import scalaz.concurrent.Task
-import scalaz.stream.LeakTest._
 import scalaz.stream.Process._
 import scalaz.stream.async.mutable.Signal
 import scalaz.syntax.monad._
