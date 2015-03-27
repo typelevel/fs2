@@ -26,17 +26,17 @@ package object async {
 
   /**
    * Create a new continuous signal which may be controlled asynchronously.
+   * Note that this would block any resulting signal processes until any signal value is set.
    */
-  @deprecated("Use signalOf instead", "0.7.0")
   def signal[A](implicit S: Strategy): Signal[A] =
-    toSignal(halt)
+    Signal(None,halt, haltOnSource = false)
 
   /**
-   * Creates a new continuous signalwhich may be controlled asynchronously,
+   * Creates a new continuous signal which may be controlled asynchronously,
    * and immediately sets the value to `initialValue`.
    */
   def signalOf[A](initialValue: A)(implicit S: Strategy): Signal[A] =
-    toSignal(Process(initialValue))
+    Signal(Some(initialValue),halt, haltOnSource = false)
 
   /**
    * Converts discrete process to signal. Note that, resulting signal must be manually closed, in case the
@@ -46,8 +46,8 @@ package object async {
    * @param source          discrete process publishing values to this signal
    * @param haltOnSource    closes the given signal when the `source` terminates
    */
-  def toSignal[A](source: Process[Task, A], haltOnSource: Boolean = false)(implicit S: Strategy): mutable.Signal[A] =
-    Signal(source.map(Signal.Set(_)), haltOnSource)
+  def toSignal[A](source: Process[Task, A], haltOnSource: Boolean = false)(implicit S: Strategy): immutable.Signal[A] =
+    Signal(None,source.map(Signal.Set(_)), haltOnSource)
 
 
   /**

@@ -291,7 +291,7 @@ private[stream] object Queue {
         val sizeSource : Process[Task,Int] =
           Process.repeatEval(Task.async[Seq[Int]](cb => actor ! GetSize(cb)))
           .flatMap(Process.emitAll)
-        Signal(sizeSource.map(Signal.Set.apply), haltOnSource =  true)(S)
+        Signal(None,sizeSource.map(Signal.Set.apply), haltOnSource =  true)(S)
       }
 
       def enqueueAll(xa: Seq[A]): Task[Unit] = Task.async(cb => actor ! Enqueue(xa,cb))

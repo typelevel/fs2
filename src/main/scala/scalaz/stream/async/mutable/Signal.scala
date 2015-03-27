@@ -128,8 +128,8 @@ object Signal {
   }
 
 
-  protected[async] def apply[A](source:Process[Task,Msg[A]], haltOnSource : Boolean)(implicit S: Strategy) : Signal[A] = {
-    val topic = WriterTopic.apply[A,Msg[A],Nothing](signalWriter)(source, haltOnSource)
+  protected[async] def apply[A](init:Option[A], source:Process[Task,Msg[A]], haltOnSource : Boolean)(implicit S: Strategy) : Signal[A] = {
+    val topic = WriterTopic.apply[A,Msg[A],Nothing](emitAll(init.toSeq).map(left) ++ signalWriter)(source, haltOnSource)
     new mutable.Signal[A] {
       def changed: Process[Task, Boolean] = topic.signal.changed
       def discrete: Process[Task, A] = topic.signal.discrete
