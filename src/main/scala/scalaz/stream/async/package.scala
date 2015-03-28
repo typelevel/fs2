@@ -4,6 +4,8 @@ import scalaz.concurrent.{Strategy, Task}
 import scalaz.stream.Process.halt
 import scalaz.stream.async.mutable._
 
+import scalaz.\/._
+
 package object async {
 
   /**
@@ -26,28 +28,35 @@ package object async {
 
   /**
    * Create a new continuous signal which may be controlled asynchronously.
-   * Note that this would block any resulting signal processes until any signal value is set.
+   * Note that this would block any resulting processes (discrete, continuous) until any signal value is set.
    */
-  def signal[A](implicit S: Strategy): Signal[A] =
-    Signal(None,halt, haltOnSource = false)
+  @deprecated("Use signalOf or signalUnset instead","0.7.0")
+  def signal[A](implicit S: Strategy): Signal[A] = signalUnset
+
+  /**
+   * Create a new continuous signal which may be controlled asynchronously.
+   * Note that this would block any resulting processes (discrete, continuous) until any signal value is set.
+   */
+  def signalUnset[A](implicit S: Strategy): Signal[A] =
+    Signal(left(None))
 
   /**
    * Creates a new continuous signal which may be controlled asynchronously,
    * and immediately sets the value to `initialValue`.
    */
   def signalOf[A](initialValue: A)(implicit S: Strategy): Signal[A] =
-    Signal(Some(initialValue),halt, haltOnSource = false)
+    Signal(left(Some(initialValue)))
+
 
   /**
-   * Converts discrete process to signal. Note that, resulting signal must be manually closed, in case the
-   * source process would terminate (see `haltOnSource`).
-   * However if the source terminate with failure, the signal is terminated with that
+   * Converts discrete process to signal.
+   * Note that resulting signal will terminate as soon as source terminates,
+   * propagating reason for the termination to all `downstream` processes
    * failure
    * @param source          discrete process publishing values to this signal
-   * @param haltOnSource    closes the given signal when the `source` terminates
    */
-  def toSignal[A](source: Process[Task, A], haltOnSource: Boolean = false)(implicit S: Strategy): immutable.Signal[A] =
-    Signal(None,source.map(Signal.Set(_)), haltOnSource)
+  def toSignal[A](source: Process[Task, A])(implicit S: Strategy): immutable.Signal[A] =
+    Signal(right(source.map(Signal.Set(_))))
 
 
   /**

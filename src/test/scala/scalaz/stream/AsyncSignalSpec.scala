@@ -174,7 +174,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   //tests that signal terminates when discrete process terminates
   property("from.discrete.terminates") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource,haltOnSource = true)
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource)
     val initial = sig.discrete.runLog.run
     val afterClosed = sig.discrete.runLog.run
     (initial == Vector(1,2,3,4)) && (afterClosed== Vector())
@@ -183,7 +183,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   //tests that signal terminates with failure when discrete process terminates with failure
   property("from.discrete.fail") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa),haltOnSource = true)
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa))
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 
@@ -196,7 +196,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   }
 
   property("continuous") = secure {
-    val sig = async.signal[Int]
+    val sig = async.signalUnset[Int]
     time.awakeEvery(100.millis)
       .zip(Process.range(1, 13))
       .map(x => Signal.Set(x._2))
