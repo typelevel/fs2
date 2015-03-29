@@ -825,6 +825,40 @@ object process1 {
 
 }
 
+final class Process1Syntax[I, O](val self: Process1[I, O]) extends AnyVal {
+
+  /** Apply this `Process` to an `Iterable`. */
+  def apply(input: Iterable[I]): IndexedSeq[O] =
+    Process(input.toSeq: _*).pipe(self).toIndexedSeq
+
+  /**
+   * Transform `self` to operate on the left hand side of an `\/`, passing
+   * through any values it receives on the right. Note that this halts
+   * whenever `self` halts.
+   */
+  def liftL[I2]: Process1[I \/ I2, O \/ I2] =
+    process1.liftL(self)
+
+  /**
+   * Transform `self` to operate on the right hand side of an `\/`, passing
+   * through any values it receives on the left. Note that this halts
+   * whenever `self` halts.
+   */
+  def liftR[I0]: Process1[I0 \/ I, I0 \/ O] =
+    process1.liftR(self)
+
+  /**
+   * Feed a single input to this `Process1`.
+   */
+  def feed1(i: I): Process1[I,O] =
+    process1.feed1(i)(self)
+
+  /** Transform the input of this `Process1`. */
+  def contramap[I0](f: I0 => I): Process1[I0, O] =
+    process1.lift(f).pipe(self)
+
+}
+
 private[stream] trait Process1Ops[+F[_],+O] {
   self: Process[F,O] =>
 

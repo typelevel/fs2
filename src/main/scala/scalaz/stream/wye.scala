@@ -887,3 +887,61 @@ protected[stream] trait WyeOps[+O] {
   def either[O2>:O,O3](p2: Process[Task,O3])(implicit S:Strategy): Process[Task,O2 \/ O3] =
     self.wye(p2)(scalaz.stream.wye.either)
 }
+
+/**
+ * This class provides infix syntax specific to `Wye`. We put these here
+ * rather than trying to cram them into `Process` itself using implicit
+ * equality witnesses. This doesn't work out so well due to variance
+ * issues.
+ */
+final class WyeSyntax[I, I2, O](val self: Wye[I, I2, O]) extends AnyVal {
+
+  /**
+   * Apply a `Wye` to two `Iterable` inputs.
+   */
+  def apply(input: Iterable[I], input2: Iterable[I2]): IndexedSeq[O] = {
+    // this is probably rather slow
+    val src1 = Process.emitAll(input.toSeq).toSource
+    val src2 = Process.emitAll(input2.toSeq).toSource
+    src1.wye(src2)(self).runLog.run
+  }
+
+  /**
+   * Transform the left input of the given `Wye` using a `Process1`.
+   */
+  def attachL[I0](f: Process1[I0, I]): Wye[I0, I2, O] =
+    scalaz.stream.wye.attachL(f)(self)
+
+  /**
+   * Transform the right input of the given `Wye` using a `Process1`.
+   */
+  def attachR[I1](f: Process1[I1, I2]): Wye[I, I1, O] =
+    scalaz.stream.wye.attachR(f)(self)
+
+  /** Transform the left input to a `Wye`. */
+  def contramapL[I0](f: I0 => I): Wye[I0, I2, O] =
+    contramapL_(f)
+
+  /** Transform the right input to a `Wye`. */
+  def contramapR[I3](f: I3 => I2): Wye[I, I3, O] =
+    contramapR_(f)
+
+  private[stream] def contramapL_[I0](f: I0 => I): Wye[I0, I2, O] =
+    self.attachL(process1.lift(f))
+
+  private[stream] def contramapR_[I3](f: I3 => I2): Wye[I, I3, O] =
+    self.attachR(process1.lift(f))
+
+  /**
+   * Converting requests for the left input into normal termination.
+   * Note that `Both` requests are rewritten to fetch from the only input.
+   */
+  def detach1L: Wye[I, I2, O] = scalaz.stream.wye.detach1L(self)
+
+  /**
+   * Converting requests for the right input into normal termination.
+   * Note that `Both` requests are rewritten to fetch from the only input.
+   */
+  def detach1R: Wye[I, I2, O] = scalaz.stream.wye.detach1R(self)
+
+}
