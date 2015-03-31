@@ -6,7 +6,9 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import scala.annotation.tailrec
 import scala.collection.SortedMap
-import scalaz.{\/-, Catchable, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
+import scala.concurrent.duration._
+import scalaz.stream.async.immutable.Signal
+import scalaz.{\/-, Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
 import scalaz.concurrent.{Actor, Future, Strategy, Task}
 import scalaz.stream.process1.Await1
@@ -1093,12 +1095,16 @@ object Process extends ProcessInstances {
    */
   implicit class SourceSyntax[O](val self: Process[Task, O])   extends WyeOps[O] {
 
+    /** converts process to signal **/
+    def toSignal(implicit S:Strategy):Signal[O] =
+      async.toSignal(self)
+
     /**
      * Produce a continuous stream from a discrete stream by using the
      * most recent value.
      */
     def forwardFill(implicit S: Strategy): Process[Task, O] =
-      async.toSignal(self).continuous
+      self.toSignal.continuous
 
     /**
      * Returns result of channel evaluation tupled with

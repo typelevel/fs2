@@ -27,7 +27,7 @@ object io {
   def bufferedResource[F[_],R,O](acquire: F[R])(
                             flushAndRelease: R => F[O])(
                             step: R => F[O]): Process[F,O] =
-    eval(acquire).flatMap { r =>
+    await(acquire) { r =>
       repeatEval(step(r)).onComplete(eval(flushAndRelease(r)))
     }
 
@@ -150,7 +150,7 @@ object io {
   def resource[F[_],R,O](acquire: F[R])(
                          release: R => F[Unit])(
                          step: R => F[O]): Process[F,O] =
-    eval(acquire).flatMap { r =>
+    await(acquire) { r =>
       repeatEval(step(r)).onComplete(eval_(release(r)))
     }
 
