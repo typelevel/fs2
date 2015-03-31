@@ -7,6 +7,7 @@ import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
 import scalaz.concurrent.Task
+import scalaz.stream.Process._
 import scalaz.stream.async.mutable.Signal
 import scalaz.syntax.monad._
 import scalaz.{-\/, Nondeterminism, \/, \/-}
@@ -173,7 +174,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   //tests that signal terminates when discrete process terminates
   property("from.discrete.terminates") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource,haltOnSource = true)
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource)
     val initial = sig.discrete.runLog.run
     val afterClosed = sig.discrete.runLog.run
     (initial == Vector(1,2,3,4)) && (afterClosed== Vector())
@@ -182,7 +183,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   //tests that signal terminates with failure when discrete process terminates with failure
   property("from.discrete.fail") = secure {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
-    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa),haltOnSource = true)
+    val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa))
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 
@@ -195,7 +196,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   }
 
   property("continuous") = secure {
-    val sig = async.signal[Int]
+    val sig = async.signalUnset[Int]
     time.awakeEvery(100.millis)
       .zip(Process.range(1, 13))
       .map(x => Signal.Set(x._2))
@@ -216,5 +217,13 @@ object AsyncSignalSpec extends Properties("async.signal") {
       (res(2) == 12) :| s"res(2) == ${res(2)}" &&
       // res(5) was read at 3000 ms and so it must still contain value 12.
       (res(5) == 12) :| s"res(5) == ${res(5)}"
+  }
+
+
+  property("signalOf.init.value") = secure {
+    val timer = time.sleep(1.second)
+    val signal = async.signalOf(0)
+
+    (eval_(signal.set(1)) ++ signal.discrete.once ++ timer ++ signal.discrete.once).runLog.run ?= Vector(1,1)
   }
 }
