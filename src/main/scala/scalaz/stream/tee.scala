@@ -304,3 +304,21 @@ private[stream] trait TeeOps[+F[_], +O] {
     condition.tee(this)(scalaz.stream.tee.until)
 
 }
+
+/**
+ * This class provides infix syntax specific to `Tee`. We put these here
+ * rather than trying to cram them into `Process` itself using implicit
+ * equality witnesses. This doesn't work out so well due to variance
+ * issues.
+ */
+final class TeeSyntax[I, I2, O](val self: Tee[I, I2, O]) extends AnyVal {
+
+  /** Transform the left input to a `Tee`. */
+  def contramapL[I0](f: I0 => I): Tee[I0, I2, O] =
+    self.contramapL_(f).asInstanceOf[Tee[I0, I2, O]]
+
+  /** Transform the right input to a `Tee`. */
+  def contramapR[I3](f: I3 => I2): Tee[I, I3, O] =
+    self.contramapR_(f).asInstanceOf[Tee[I, I3, O]]
+
+}
