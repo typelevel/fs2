@@ -108,9 +108,7 @@ object CreatingStreams extends Properties("creating-streams") {
     /*
 
     With any of these streams, we can apply transformations like
-    `map`, `filter`, `flatMap`, and so on. See
-    `TransformingStreams.scala` for more examples of the various
-    functions for transforming streams.
+    `map`, `filter`, `flatMap`, and so on.
 
     */
 
