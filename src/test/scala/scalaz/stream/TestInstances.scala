@@ -2,7 +2,7 @@ package scalaz.stream
 
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Arbitrary.arbitrary
-import scalaz.Equal
+import scalaz.{\/, Equal}
 import scalaz.std.anyVal._
 import scalaz.syntax.equal._
 import scalaz.concurrent.Task
@@ -80,6 +80,12 @@ object TestInstances {
     Arbitrary(Gen.oneOf(
       arbitrary[A].map(ReceiveL(_)),
       arbitrary[B].map(ReceiveR(_))
+    ))
+
+  implicit def arbitraryEither[A: Arbitrary, B: Arbitrary]: Arbitrary[A \/ B] =
+    Arbitrary(Gen.oneOf(
+      arbitrary[A].map(\/.left),
+      arbitrary[B].map(\/.right)
     ))
 
   implicit def equalProcess0[A: Equal]: Equal[Process0[A]] =
