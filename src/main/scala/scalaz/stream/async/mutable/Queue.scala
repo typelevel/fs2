@@ -108,6 +108,11 @@ trait Queue[A] {
 }
 
 private[stream] object CircularBuffer {
+  /**
+   * Builds a queue that functions as a circular buffer. Up to `bound` elements of
+   * type `A` will accumulate on the queue and then it will begin overwriting
+   * the oldest elements. Thus an enqueue process will never wait.
+   */
   def apply[A](bound: Int)(implicit S: Strategy): Queue[A] =
     Queue.mk(bound, (as, q) => if (as.size + q.size > bound) q.drop(as.size) else q)
 }
@@ -118,7 +123,7 @@ private[stream] object Queue {
 
   /**
    * Builds a queue, potentially with `source` producing the streams that
-   * will enqueue into queue. Up to `bound` size of `A` may enqueue into queue,
+   * will enqueue into queue. Up to `bound` number of `A` may enqueue into the queue,
    * and then all enqueue processes will wait until dequeue.
    *
    * @param bound   Size of the bound. When <= 0 the queue is `unbounded`.
@@ -227,7 +232,7 @@ private[stream] object Queue {
 
         queued = remainder
         signalSize(queued.size)
-        if (unAcked.size > 0 && bound > 0 && queued.size < bound) {
+        if (unAcked.size > 0 && bound > 0 && queued.size <= bound) {
           val ackCount = bound - queued.size min unAcked.size
           unAcked.take(ackCount).foreach(cb => S(cb(\/-(()))))
           unAcked = unAcked.drop(ackCount)
@@ -249,7 +254,7 @@ private[stream] object Queue {
         queued = queued.drop(deqCount)
       }
 
-      if (bound > 0 && queued.size >= bound) unAcked = unAcked :+ cb
+      if (bound > 0 && queued.size > bound) unAcked = unAcked :+ cb
       else S(cb(\/-(())))
 
       signalSize(queued.size)
