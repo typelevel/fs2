@@ -59,7 +59,7 @@ object StartHere extends Properties("examples.StartHere") {
     constructing or working with streams that talk to the outside world.
     `linesR` creates a stream of lines from a filename. It encapsulates
     the logic for opening and closing the file, so that users of this
-    stream do not need to remember to close the file when the are done
+    stream do not need to remember to close the file when they are done
     or in the event of exceptions during processing of the stream.
 
     */
