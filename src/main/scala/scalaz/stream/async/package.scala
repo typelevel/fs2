@@ -9,7 +9,7 @@ import scalaz.\/._
 package object async {
 
   /**
-   * Creates bounded queue that is bound by supplied max size bound.
+   * Creates a bounded queue that is bound by supplied max size bound.
    * Please see [[scalaz.stream.async.mutable.Queue]] for more details.
    * @param max The maximum size of the queue (must be > 0)
    * @param recover Flag controlling automatic dequeue error recovery semantics.  When
@@ -28,13 +28,18 @@ package object async {
     boundedQueue(max, false)(S)
 
   /**
-   * Creates unbounded queue. see [[scalaz.stream.async.mutable.Queue]] for more
+   * Creates an unbounded queue. see [[scalaz.stream.async.mutable.Queue]] for more
    */
   def unboundedQueue[A](implicit S: Strategy): Queue[A] = Queue[A](0)
 
   def unboundedQueue[A](recover: Boolean)(implicit S: Strategy): Queue[A] = Queue[A](0, recover)
 
-  def circularBuffer[A](bound: Int)(implicit S: Strategy): Queue[A] = CircularBuffer[A](bound)
+  /**
+   * Creates a bounded queue that functions as a circular buffer.
+   * See [[scalaz.stream.async.mutable.CircularBuffer]] for more details.
+   * @param size The size of the circular buffer (must be > 0)
+   */
+  def circularBuffer[A](size: Int)(implicit S: Strategy): Queue[A] = CircularBuffer[A](size)
 
   /**
    * Create a new continuous signal which may be controlled asynchronously.
