@@ -108,11 +108,6 @@ trait Queue[A] {
 }
 
 private[stream] object CircularBuffer {
-  /**
-   * Builds a queue that functions as a circular buffer. Up to `bound` elements of
-   * type `A` will accumulate on the queue and then it will begin overwriting
-   * the oldest elements. Thus an enqueue process will never wait.
-   */
   def apply[A](bound: Int)(implicit S: Strategy): Queue[A] =
     Queue.mk(bound, (as, q) => if (as.size + q.size > bound) q.drop(as.size) else q)
 }
