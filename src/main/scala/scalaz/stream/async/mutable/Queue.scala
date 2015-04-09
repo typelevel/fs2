@@ -107,9 +107,12 @@ trait Queue[A] {
   private[stream] def failWithCause(c:Cause): Task[Unit]
 }
 
+private[stream] object CircularBuffer {
+  def apply[A](bound: Int)(implicit S: Strategy): Queue[A] =
+    Queue.mk(bound, (as, q) => if (as.size + q.size > bound) q.drop(as.size) else q)
+}
 
 private[stream] object Queue {
-
   /**
    * Builds a queue, potentially with `source` producing the streams that
    * will enqueue into queue. Up to `bound` size of `A` may enqueue into queue,
@@ -119,8 +122,11 @@ private[stream] object Queue {
    * @tparam A
    * @return
    */
-  def apply[A](bound: Int = 0)(implicit S: Strategy): Queue[A] = {
+  def apply[A](bound: Int = 0)(implicit S: Strategy): Queue[A] =
+    mk(bound, (_, q) => q)
 
+  def mk[A](bound: Int,
+            beforeEnqueue: (Seq[A], Vector[A]) => Vector[A])(implicit S: Strategy): Queue[A] = {
     sealed trait M
     case class Enqueue(a: Seq[A], cb: Throwable \/ Unit => Unit) extends M
     case class Dequeue(ref: ConsumerRef, limit: Int, cb: Throwable \/ Seq[A] => Unit) extends M
@@ -210,6 +216,7 @@ private[stream] object Queue {
     }
 
     def enqueueOne(as: Seq[A], cb: Throwable \/ Unit => Unit) = {
+      queued = beforeEnqueue(as, queued)
       import scalaz.stream.Util._
       queued = queued fast_++ as
 
