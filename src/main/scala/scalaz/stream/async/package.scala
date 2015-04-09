@@ -27,13 +27,14 @@ package object async {
   def boundedQueue[A](max: Int)(implicit S: Strategy): Queue[A] =
     boundedQueue(max, false)(S)
 
-
   /**
    * Creates unbounded queue. see [[scalaz.stream.async.mutable.Queue]] for more
    */
   def unboundedQueue[A](implicit S: Strategy): Queue[A] = Queue[A](0)
 
   def unboundedQueue[A](recover: Boolean)(implicit S: Strategy): Queue[A] = Queue[A](0, recover)
+
+  def circularBuffer[A](bound: Int)(implicit S: Strategy): Queue[A] = CircularBuffer[A](bound)
 
   /**
    * Create a new continuous signal which may be controlled asynchronously.
