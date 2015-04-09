@@ -26,8 +26,9 @@ package object async {
   def unboundedQueue[A](implicit S: Strategy): Queue[A] = Queue[A](0)
 
   /**
-   * Creates a bounded queue that functions as a circular buffer.
-   * See [[scalaz.stream.async.mutable.CircularBuffer]] for more details.
+   * Builds a queue that functions as a circular buffer. Up to `bound` elements of
+   * type `A` will accumulate on the queue and then it will begin overwriting
+   * the oldest elements. Thus an enqueue process will never wait.
    * @param size The size of the circular buffer (must be > 0)
    */
   def circularBuffer[A](size: Int)(implicit S: Strategy): Queue[A] = CircularBuffer[A](size)
