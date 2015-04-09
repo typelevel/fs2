@@ -1,8 +1,8 @@
 package scalaz.stream
 
 import Cause._
+import org.scalacheck.{Gen, Properties, Arbitrary}
 import org.scalacheck.Prop._
-import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
 import scalaz.{-\/, \/-, \/}
@@ -10,6 +10,23 @@ import scala.concurrent.duration._
 
 object QueueSpec extends Properties("queue") {
   implicit val scheduler = scalaz.stream.DefaultScheduler
+
+  property("circular-buffer") = forAll(Gen.posNum[Int], implicitly[Arbitrary[List[Int]]].arbitrary) {
+    (bound: Int, xs: List[Int]) =>
+      val b = async.circularBuffer[Int](bound)
+      val collected = new SyncVar[Throwable\/IndexedSeq[Int]]
+      val p = ((Process.emitAll(xs):Process[Task,Int]) to b.enqueue).run.timed(3000).attempt.run
+      b.dequeue.runLog.runAsync(collected.put)
+      b.close.run
+      val ys = collected.get(3000).map(_.getOrElse(Nil)).getOrElse(Nil)
+      b.close.runAsync(_ => ())
+
+      ("Enqueue process is not blocked" |: p.isRight)
+      ("Dequeued a suffix of the input" |: (xs endsWith ys)) &&
+      ("No larger than the bound" |: (ys.length <= bound)) &&
+      (s"Exactly as large as the bound (got ${ys.length})" |:
+        (xs.length < bound && ys.length == xs.length || ys.length == bound))
+  }
 
   property("basic") = forAll {
     l: List[Int] =>
@@ -184,4 +201,5 @@ object QueueSpec extends Properties("queue") {
     collected.get(5000).nonEmpty :| "items were collected" &&
       ((collected.get getOrElse Nil) == Seq(Seq(1), Seq(1, 1), Seq(2, 2), Seq(2, 2), Seq(2, 2))) :| s"saw ${collected.get getOrElse Nil}"
   }
+
 }
