@@ -17,7 +17,7 @@ import scalaz.stream.ReceiveY._
 import scalaz.syntax.monad._
 import scodec.bits.ByteVector
 
-object TcpSpec extends Properties("tcp") {
+class TcpSpec extends Properties("tcp") {
 
   implicit val S = scalaz.concurrent.Strategy.DefaultStrategy
   implicit val AG = tcp.DefaultAsynchronousChannelGroup

@@ -10,7 +10,7 @@ import hash._
 
 import TestInstances._
 
-object HashSpec extends Properties("hash") {
+class HashSpec extends Properties("hash") {
   def digest(algo: String, str: String): List[Byte] =
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
 

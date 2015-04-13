@@ -12,7 +12,7 @@ import scalaz.stream.async.mutable.Signal
 import scalaz.syntax.monad._
 import scalaz.{-\/, Nondeterminism, \/, \/-}
 
-object AsyncSignalSpec extends Properties("async.signal") {
+class AsyncSignalSpec extends Properties("async.signal") {
 
   implicit val scheduler = DefaultScheduler
 

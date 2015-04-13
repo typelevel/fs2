@@ -18,7 +18,7 @@ import process1._
 
 import TestInstances._
 
-object Process1Spec extends Properties("Process1") {
+class Process1Spec extends Properties("Process1") {
 
   property("basic") = forAll { (pi: Process0[Int], ps: Process0[String]) =>
     val li = pi.toList

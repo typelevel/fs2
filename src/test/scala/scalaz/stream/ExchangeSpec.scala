@@ -8,7 +8,7 @@ import concurrent.duration._
 import scalaz.stream.wye.Request
 
 
-object ExchangeSpec extends Properties("Exchange") {
+class ExchangeSpec extends Properties("Exchange") {
 
   implicit val scheduler =  scalaz.stream.DefaultScheduler
 

@@ -8,7 +8,7 @@ import scalaz.concurrent.Task
 import scalaz.{-\/, \/-, \/}
 import scala.concurrent.duration._
 
-object QueueSpec extends Properties("queue") {
+class QueueSpec extends Properties("queue") {
   implicit val scheduler = scalaz.stream.DefaultScheduler
 
   property("circular-buffer") = forAll(Gen.posNum[Int], implicitly[Arbitrary[List[Int]]].arbitrary) {
