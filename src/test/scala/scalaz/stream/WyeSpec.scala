@@ -13,7 +13,7 @@ import scala.concurrent.duration._
 import scala.concurrent.SyncVar
 
 
-object WyeSpec extends  Properties("Wye"){
+class WyeSpec extends  Properties("Wye"){
 
   implicit val S = Strategy.DefaultStrategy
   implicit val scheduler = scalaz.stream.DefaultScheduler

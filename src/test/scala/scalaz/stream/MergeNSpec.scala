@@ -10,7 +10,7 @@ import scala.concurrent.duration._
 import scala.concurrent.SyncVar
 import scalaz.\/
 
-object MergeNSpec extends Properties("mergeN") {
+class MergeNSpec extends Properties("mergeN") {
 
   implicit val S = Strategy.DefaultStrategy
   implicit val scheduler = scalaz.stream.DefaultScheduler

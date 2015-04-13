@@ -10,7 +10,7 @@ import compress._
 
 import TestInstances._
 
-object CompressSpec extends Properties("compress") {
+class CompressSpec extends Properties("compress") {
   def getBytes(s: String): ByteVector =
     ByteVector.view(s.getBytes)
 

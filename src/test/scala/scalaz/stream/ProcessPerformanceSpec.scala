@@ -8,7 +8,7 @@ import scalaz.Monoid
 import scalaz.concurrent.Task
 import Process._
 
-object ProcessPerformanceSpec extends Properties("Process-performance") {
+class ProcessPerformanceSpec extends Properties("Process-performance") {
 
   import TestUtil._
 

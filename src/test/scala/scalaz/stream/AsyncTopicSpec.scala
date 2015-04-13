@@ -26,7 +26,7 @@ object WriterHelper {
   }
 }
 
-object AsyncTopicSpec extends Properties("topic") {
+class AsyncTopicSpec extends Properties("topic") {
 
 
   //tests basic publisher and subscriber functionality

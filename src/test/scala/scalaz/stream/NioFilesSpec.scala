@@ -10,7 +10,7 @@ import java.nio.file.{Paths, Files}
 import java.io.FileInputStream
 
 
-object NioFilesSpec extends Properties("niofiles") {
+class NioFilesSpec extends Properties("niofiles") {
 
   import nio.file._
 

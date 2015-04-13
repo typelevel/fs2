@@ -7,7 +7,7 @@ import org.scalacheck.Properties
 
 import scalaz.concurrent.Task
 
-object PrintSpec extends Properties("io.print") {
+class PrintSpec extends Properties("io.print") {
   property("print terminates on process close") = secure {
     terminates { out =>
       Process

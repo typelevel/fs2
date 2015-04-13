@@ -21,9 +21,10 @@ import process1._
 import TestInstances._
 import scala.concurrent.SyncVar
 
-object TeeSpec extends Properties("Tee") {
+class TeeSpec extends Properties("Tee") {
 
   import TestInstances._
+  import TeeSpecHelpers._
 
   case object Err extends RuntimeException("Error")
   case object Err2 extends RuntimeException("Error 2")
@@ -111,10 +112,6 @@ object TeeSpec extends Properties("Tee") {
       b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
   }
 
-  implicit class Next[F[_],O](val p: Process[F,O]) extends AnyVal {
-    def next[F2[x] >: F[x],O2 >: O](p2: Process[F2,O2]): Process[F2,O2] = p.onHalt {cause => p2.causedBy(cause) }
-  }
-
   property("tee can await right side and emit when left side stops") = secure {
     import TestUtil._
     val t: Tee[Int, String, Any] = tee.passL[Int] next emit(2) next tee.passR[String] next emit(true)
@@ -147,5 +144,11 @@ object TeeSpec extends Properties("Tee") {
       ("right fails - right first" |: emit(1).tee(r)(rightFirst).expectedCause(_ == Error(Bwahahaa2)).toList == List(2, 1, 3))   &&
       ("right fails - left first" |: emit(1).tee(r)(leftFirst).expectedCause(_ == Error(Bwahahaa2)).toList == List(1, 2, 3)) &&
       ("left fails - right first" |: l.tee(emit(2))(rightFirst).expectedCause(_ == Error(Bwahahaa)).toList == List(2, 1, 3))
+  }
+}
+
+object TeeSpecHelpers {
+  implicit class Next[F[_],O](val p: Process[F,O]) extends AnyVal {
+    def next[F2[x] >: F[x],O2 >: O](p2: Process[F2,O2]): Process[F2,O2] = p.onHalt {cause => p2.causedBy(cause) }
   }
 }

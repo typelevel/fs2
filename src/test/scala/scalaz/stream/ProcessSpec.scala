@@ -19,7 +19,7 @@ import scala.concurrent.SyncVar
 
 import java.util.concurrent.atomic.AtomicInteger
 
-object ProcessSpec extends Properties("Process") {
+class ProcessSpec extends Properties("Process") {
 
   case object FailWhale extends RuntimeException("the system... is down")
 

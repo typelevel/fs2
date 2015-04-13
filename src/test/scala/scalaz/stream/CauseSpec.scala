@@ -19,7 +19,7 @@ import TestInstances.equalProcessTask
  * including the correct propagation of causes
  * from merging combinator (pipe, tee, wye, njoin) at various scenarios
  */
-object CauseSpec extends Properties("cause") {
+class CauseSpec extends Properties("cause") {
 
   property("suspend") = secure {
     val source = Process(1, 2, 3).toSource
