@@ -1,8 +1,16 @@
+enablePlugins(GitVersioning)
+
 organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
-version := "snapshot-0.7"
+val ReleaseTag = """^release/([\d\.]+a?)$""".r
+git.gitTagToVersionNumber := {
+  case ReleaseTag(version) => Some(version)
+  case _ => None
+}
+
+git.formattedShaVersion := git.gitHeadCommit.value      // bintray really hates -SNAPSHOT versions, so we just use the hash
 
 scalaVersion := "2.11.6"
 
