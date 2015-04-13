@@ -223,7 +223,7 @@ object tee {
   object AwaitL {
     def unapply[I, I2, O](self: TeeAwaitL[I, I2, O]):
     Option[(EarlyCause \/ I => Tee[I, I2, O])] = self match {
-      case Await(req, rcv)
+      case Await(req, rcv,_)
         if req.tag == 0 => Some((r: EarlyCause \/ I) =>
         Try(rcv.asInstanceOf[(EarlyCause \/ I) => Trampoline[Tee[I,I2,O]]](r).run))
       case _                               => None
@@ -232,7 +232,7 @@ object tee {
     /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I, I2, O](self: TeeAwaitL[I, I2, O]): Boolean = self match {
-        case Await(req, rcv) if req.tag == 0 => true
+        case Await(req, rcv,_) if req.tag == 0 => true
         case _                               => false
       }
     }
@@ -241,7 +241,7 @@ object tee {
   object AwaitR {
     def unapply[I, I2, O](self: TeeAwaitR[I, I2, O]):
     Option[(EarlyCause \/ I2 => Tee[I, I2, O])] = self match {
-      case Await(req, rcv)
+      case Await(req, rcv,_)
         if req.tag == 1 => Some((r: EarlyCause \/ I2) =>
         Try(rcv.asInstanceOf[(EarlyCause \/ I2) => Trampoline[Tee[I,I2,O]]](r).run))
       case _                               => None
@@ -251,7 +251,7 @@ object tee {
     /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I, I2, O](self: TeeAwaitR[I, I2, O]): Boolean = self match {
-        case Await(req, rcv) if req.tag == 1 => true
+        case Await(req, rcv,_) if req.tag == 1 => true
         case _                               => false
       }
     }

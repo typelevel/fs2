@@ -392,8 +392,8 @@ object process1 {
    */
   def liftY[I,O](p: Process1[I,O]) : Wye[I,Any,O] = {
     p.step match {
-      case Step(Await(_,rcv), cont) =>
-        Await(L[I]: Env[I,Any]#Y[I],rcv) onHalt(rsn=> liftY(Halt(rsn) +: cont))
+      case Step(Await(_,rcv, cln), cont) =>
+        Await(L[I]: Env[I,Any]#Y[I],rcv, cln) onHalt(rsn=> liftY(Halt(rsn) +: cont))
 
       case Step(emt@Emit(os), cont) =>
         emt onHalt(rsn=> liftY(Halt(rsn) +: cont))
@@ -815,7 +815,7 @@ object process1 {
   object Await1 {
     /** deconstruct for `Await` directive of `Process1` */
     def unapply[I, O](self: Process1[I, O]): Option[EarlyCause \/ I => Process1[I, O]] = self match {
-      case Await(_, rcv) => Some((r:EarlyCause\/ I) => Try(rcv(r).run))
+      case Await(_, rcv,_) => Some((r:EarlyCause\/ I) => Try(rcv(r).run))
       case _             => None
     }
 
