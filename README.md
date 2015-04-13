@@ -9,7 +9,7 @@ scalaz-stream
 To get the latest version of the library, add the following to your SBT build:
 
 ``` scala
-resolvers += "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
+resolvers += "Scalaz Bintray Repo" at "https://dl.bintray.com/scalaz/releases"
 ```
 
 And use one of the following library dependencies:
