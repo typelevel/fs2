@@ -17,7 +17,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   implicit val scheduler = DefaultScheduler
 
   property("basic") = forAll { l: List[Int] =>
-    val v = async.signal[Int]
+    val v = async.signalUnset[Int]
     val s = v.continuous
     val t1 = Task {
       l.foreach { i => v.set(i).run; Thread.sleep(1) }
@@ -32,7 +32,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   // tests all the operations on the signal (get,set,fail)
   property("signal-ops") = forAll {
     l: List[Int] =>
-      val signal = async.signal[Int]
+      val signal = async.signalUnset[Int]
 
       val ops: List[Int => (String, Task[Boolean])] = l.map {
         v =>
@@ -84,7 +84,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
   // tests sink
   property("signal.sink") = forAll {
     l: List[Int] =>
-      val signal = async.signal[(String, Int)]
+      val signal = async.signalUnset[(String, Int)]
 
       val closeSignal =
         time.sleep(100 millis) ++
@@ -137,7 +137,7 @@ object AsyncSignalSpec extends Properties("async.signal") {
       val initial = None
       val feed = l.map(Some(_))
 
-      val ref = async.signal[Option[Int]]
+      val ref = async.signalUnset[Option[Int]]
       ref.set(initial).run
 
 
