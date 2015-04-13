@@ -201,4 +201,15 @@ object MergeNSpec extends Properties("mergeN") {
     (result.length == 1) :| s"result.length == ${result.length}" &&
       (result.head == size) :| s"result.head == ${result.head}"
   }
+
+  property("avoid hang in the presence of interrupts") = secure {
+    1 to 100 forall { _ =>
+      val q = async.unboundedQueue[Unit]
+      q.enqueueOne(()).run
+
+      val process = (merge.mergeN(0)(Process(q.dequeue, halt)).once wye halt)(wye.mergeHaltBoth)
+
+      process.run.timed(3000).attempt.run.isRight
+    }
+  }
 }
