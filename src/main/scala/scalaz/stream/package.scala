@@ -47,7 +47,7 @@ package object stream {
 
   /**
    * A `Writer[F,W,O]` is a `Process[F, W \/ O]`. See
-   * `Process.WriterSyntax` for convenience functions
+   * `WriterSyntax` for convenience functions
    * for working with either the written values (the `W`)
    * or the output values (the `O`).
    *
