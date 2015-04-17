@@ -10,8 +10,6 @@ git.gitTagToVersionNumber := {
   case _ => None
 }
 
-// git.formattedShaVersion := git.gitHeadCommit.value      // bintray really hates -SNAPSHOT versions, so we just use the hash
-
 scalaVersion := "2.11.6"
 
 crossScalaVersions := Seq("2.10.5", "2.11.6")
