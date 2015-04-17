@@ -10,7 +10,7 @@ git.gitTagToVersionNumber := {
   case _ => None
 }
 
-git.formattedShaVersion := git.gitHeadCommit.value      // bintray really hates -SNAPSHOT versions, so we just use the hash
+// git.formattedShaVersion := git.gitHeadCommit.value      // bintray really hates -SNAPSHOT versions, so we just use the hash
 
 scalaVersion := "2.11.6"
 
