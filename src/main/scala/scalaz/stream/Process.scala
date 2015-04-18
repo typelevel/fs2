@@ -1437,7 +1437,7 @@ object Process extends ProcessInstances {
    *
    */
   def repeatEval[F[_], O](f: F[O]): Process[F, O] =
-    awaitOr(f)(_.asHalt)(o => emit(o) ++ repeatEval(f))
+    awaitOr(f)(_.asHalt)(o => emit(o)) ++ repeatEval(f)
 
   /**
    * Produce `p` lazily. Useful if producing the process involves allocation of
