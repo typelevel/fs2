@@ -306,9 +306,9 @@ class ProcessSpec extends Properties("Process") {
       Thread.sleep(100)
     }
 
-    val p = await(task) { _ =>
-      emit(42) onComplete (Process eval_ (Task delay { inner.incrementAndGet() }))
-    } onComplete (Process eval_ (Task delay { outer.incrementAndGet() }))
+    val p = await(task, { _: Unit => eval_(Task delay { inner.incrementAndGet() }) }) { _ =>
+      emit(42)
+    } onComplete eval_(Task delay { outer.incrementAndGet() })
 
     val interrupt = p stepAsync result.put
     signal.get

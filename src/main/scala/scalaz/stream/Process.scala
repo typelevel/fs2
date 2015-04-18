@@ -1202,7 +1202,7 @@ object Process extends ProcessInstances {
                     // interrupted *during* the task run; task is probably still running
                     midStep: EarlyCause => Unit,
                     // task finished running, but we were *previously* interrupted
-                    postStep: (Process[Task, O], EarlyCause) => Unit,
+                    postStep: (Process[Task, Nothing], EarlyCause) => Unit,
                     // task finished with an error, but was not interrupted
                     exceptional: Throwable => Unit,
                     // task finished with a value, no errors, no interrupts
@@ -1234,8 +1234,8 @@ object Process extends ProcessInstances {
                         // always matches to a `Some` (we always have value)
                         val pc = for {
                           cause <- inter
-                          continuation <- unpack(result)
-                        } yield postStep(continuation, cause)
+                          \/-(r) <- result
+                        } yield postStep(Try(cln(r).run), cause)     // produce the preemption handler, given the resulting resource
 
                         pc match {
                           case Some(back) => back
@@ -1295,8 +1295,8 @@ object Process extends ProcessInstances {
                     }
                   },
 
-                  postStep = { (inner, cause) =>
-                    inner.kill.run runAsync { _ => () }
+                  postStep = { (inner, _) =>
+                    inner.run runAsync { _ => () }      // invoke the cleanup
                   },
 
                   exceptional = { t =>
