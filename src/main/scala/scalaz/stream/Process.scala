@@ -7,6 +7,8 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.annotation.tailrec
 import scala.collection.SortedMap
 import scala.concurrent.duration._
+import scala.Function.const
+
 import scalaz.stream.async.immutable.Signal
 import scalaz.{\/-, Catchable, Functor, Monad, Monoid, Nondeterminism, \/, -\/, ~>}
 import scalaz.\/._
@@ -27,8 +29,8 @@ sealed trait Process[+F[_], +O]
   extends Process1Ops[F,O]
           with TeeOps[F,O] {
 
- import scalaz.stream.Process._
- import scalaz.stream.Util._
+  import scalaz.stream.Process._
+  import scalaz.stream.Util._
 
   /**
    * Generate a `Process` dynamically for each output of this `Process`, and
@@ -704,18 +706,17 @@ object Process extends ProcessInstances {
    * Await the given `F` request and use its result.
    * If you need to specify fallback, use `awaitOr`
    */
-  def await[F[_], A, O](req: F[A])(rcv: A => Process[F, O]): Process[F, O] =
-    awaitOr(req)(Halt.apply)(rcv)
+  def await[F[_], A, O](req: F[A], cln: A => Process[F, Nothing] = const(halt) _)(rcv: A => Process[F, O]): Process[F, O] =
+    awaitOr(req)(Halt.apply, cln)(rcv)
 
   /**
    * Await a request, and if it fails, use `fb` to determine the next state.
    * Otherwise, use `rcv` to determine the next state.
    */
-  def awaitOr[F[_], A, O](req: F[A])(
-    fb: EarlyCause => Process[F, O]
-    , cln: A => Process[F,Nothing] = (a:A) => halt
-    )(rcv: A => Process[F, O]): Process[F, O] = {
-    Await(req, (r: EarlyCause \/ A) => Trampoline.delay(Try(r.fold(ec => fb(ec), a => rcv(a)))), (a:A) => Trampoline.delay(cln(a)))
+  def awaitOr[F[_], A, O](req: F[A])(fb: EarlyCause => Process[F, O], cln: A => Process[F, Nothing] = const(halt) _)(rcv: A => Process[F, O]): Process[F, O] = {
+    Await(req,
+      { (r: EarlyCause \/ A) => Trampoline.delay(Try(r.fold(ec => fb(ec), a => rcv(a) onComplete cln(a) ))) },
+      { a: A => Trampoline.delay(cln(a)) })
   }
 
   /** The `Process1` which awaits a single input, emits it, then halts normally. */
