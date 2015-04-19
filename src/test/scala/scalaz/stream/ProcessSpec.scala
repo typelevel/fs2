@@ -330,4 +330,12 @@ class ProcessSpec extends Properties("Process") {
 
     p0.sleepUntil(p2).toList === expected
   }
+
+  property("identity piping preserve eval termination semantics") = secure {
+    implicit val teq = Equal.equalA[Throwable]
+
+    val halt = eval(Task delay { throw Terminated(End) }).repeat ++ emit(())
+
+    ((halt pipe process1.id).runLog timed 3000 map { _.toList }).attempt.run === (halt.runLog timed 3000 map { _.toList }).attempt.run
+  }
 }
