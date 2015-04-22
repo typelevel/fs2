@@ -23,7 +23,7 @@ object hash {
   object Digestable {
     def apply[A: Digestable] = implicitly[Digestable[A]]
 
-    def named[A](algorithm: String): Digestable[A] =
+    private[hash] def named[A](algorithm: String): Digestable[A] =
       new Digestable[A] {
         def newDigester =
           MessageDigest.getInstance(algorithm)
@@ -84,7 +84,7 @@ object hash {
    */
   val sha512: Process1[ByteVector,ByteVector @@ SHA512] = messageDigest[SHA512]
 
-  private def messageDigest[A: Digestable]: Process1[ByteVector,ByteVector @@ A] = {
+  def messageDigest[A: Digestable]: Process1[ByteVector,ByteVector @@ A] = {
     def go(digest: MessageDigest): Process1[ByteVector,ByteVector @@ A] =
       receive1 { bytes =>
         digest.update(bytes.toByteBuffer)
