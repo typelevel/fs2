@@ -45,6 +45,10 @@ object udp {
   def merge[A](a: Process[Connection,A], a2: Process[Connection,A])(implicit S: Strategy): Process[Connection,A] =
     wye(a,a2)(scalaz.stream.wye.merge)
 
+  /** Returns a single-element stream containing the local address of the bound socket. */
+  def localAddress: Process[Connection,InetSocketAddress] =
+    ask.flatMap { d => eval(Task.delay(d.getLocalSocketAddress.asInstanceOf[InetSocketAddress])) }
+
   /**
    * Receive a single UDP [[Packet]]. `maxPacketSize` controls the maximum
    * number of bytes in the received. See `java.net.DatagramSocket#receive`
