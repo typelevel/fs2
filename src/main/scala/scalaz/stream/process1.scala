@@ -540,6 +540,13 @@ object process1 {
       case \/-(a)   => emit(a)
     }
 
+  def stateScan[S, A, B](init: S)(f: A => State[S, B]): Process1[A, B] = {
+    await1[A] flatMap { a =>
+      val (s, b) = f(a) run init
+      emit(b) ++ stateScan(s)(f)
+    }
+  }
+
   /**
    * Similar to List.scan.
    * Produces a process of `B` containing cumulative results of applying the operator to Process of `A`.
