@@ -202,4 +202,24 @@ class QueueSpec extends Properties("queue") {
       ((collected.get getOrElse Nil) == Seq(Seq(1), Seq(1, 1), Seq(2, 2), Seq(2, 2), Seq(2, 2))) :| s"saw ${collected.get getOrElse Nil}"
   }
 
+  property("dequeue.preserve-data-in-error-cases") = forAll { xs: List[Int] =>
+    val q = async.unboundedQueue[Int]
+
+    val setup = for {
+      _ <- (Process emitAll xs to q.enqueue run)
+      _ <- q.close
+    } yield ()
+
+    val driver = q.dequeue to (Process fail (new RuntimeException("whoops")))
+
+    val safeDriver = driver onHalt {
+      case Error(_) => Process.Halt(End)
+      case rsn => Process.Halt(rsn)
+    }
+
+    setup.run
+
+    val results = (safeDriver merge q.dequeue).runLog.run
+    (results == xs) :| s"got $results"
+  }
 }
