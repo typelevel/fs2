@@ -402,6 +402,22 @@ object process1 {
     }
   }
 
+  /**
+   * Maps a running total according to `S` and the input with the function `f`.
+   *
+   * @example {{{
+   * scala> Process("Hello", "World")
+   *      |   .mapAccumulate(0)((l, s) => (l + s.length, s.head)).toList
+   * res0: List[(Int, Char)] = List((5,H), (10,W))
+   * }}}
+   * @see [[zipWithScan1]]
+   */
+  def mapAccumulate[S, A, B](init: S)(f: (S, A) => (S, B)): Process1[A, (S, B)] =
+    receive1 { a =>
+      val sb = f(init, a)
+      emit(sb) ++ mapAccumulate(sb._1)(f)
+    }
+
   /** Emits the greatest element of the input. */
   def maximum[A](implicit A: Order[A]): Process1[A,A] =
     reduce((x, y) => if (A.greaterThan(x, y)) x else y)
@@ -993,6 +1009,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   /** Alias for `this |> [[process1.last]]`. */
   def lastOr[O2 >: O](o: => O2): Process[F,O2] =
     this |> process1.lastOr(o)
+
+  /** Alias for `this |> [[process1.mapAccumulate]](s)(f)`. */
+  def mapAccumulate[S, B](s: S)(f: (S, O) => (S, B)): Process[F, (S, B)] =
+    this |> process1.mapAccumulate(s)(f)
 
   /** Alias for `this |> [[process1.maximum]]`. */
   def maximum[O2 >: O](implicit O2: Order[O2]): Process[F,O2] =

@@ -74,6 +74,10 @@ class Process1Spec extends Properties("Process1") {
           val lifted = process1.liftR[Nothing,Int,Int](process1.id[Int].map( i=> i + 1) onComplete emit(Int.MinValue))
           pi.map(\/-(_)).pipe(lifted).toList == li.map(i => \/-(i + 1)) :+ \/-(Int.MinValue)
         }
+        , "mapAccumulate" |: {
+          val r = pi.mapAccumulate(0)((s, i) => (s + i, f(i))).toList
+          r.map(_._1) === li.scan(0)(_ + _).tail && r.map(_._2) === li.map(f)
+        }
         , "maximum" |: pi.maximum.toList === li.maximum.toList
         , "maximumBy" |: {
           // enable when switching to scalaz 7.1
