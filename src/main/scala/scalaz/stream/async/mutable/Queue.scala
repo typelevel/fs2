@@ -286,22 +286,7 @@ private[stream] object Queue {
         case GetSize(cb)                         => signalClosed(cb)
         case Fail(_, cb)                         => S(cb(\/-(())))
 
-        case ConsumerDone(ref)                   => {
-          consumers = consumers.filterNot(_._1 == ref)
-
-          if (ref.lastBatch.nonEmpty) {
-            if (queued.isEmpty) {
-              val batch = ref.lastBatch
-              ref.lastBatch = Vector.empty[A]
-
-              enqueueOne(batch, Function.const(()))     // we don't actually care about the callback; it'll happen eventually
-            } else {
-              queued = ref.lastBatch fast_++ queued
-              ref.lastBatch = Vector.empty[A]
-              signalSize(queued.size)
-            }
-          }
-        }
+        case ConsumerDone(ref)                   => consumers = consumers.filterNot(_._1 == ref)
       }
     })(S)
 
