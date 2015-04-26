@@ -1061,6 +1061,10 @@ private[stream] trait Process1Ops[+F[_],+O] {
   def scan[B](b: B)(f: (B,O) => B): Process[F,B] =
     this |> process1.scan(b)(f)
 
+  /** Alias for `this |> [[process1.stateScan]](init)(f)`. */
+  def stateScan[S, B](init: S)(f: O => State[S, B]): Process[F, B] =
+    this |> process1.stateScan(init)(f)
+
   /** Alias for `this |> [[process1.scanMap]](f)(M)`. */
   def scanMap[M](f: O => M)(implicit M: Monoid[M]): Process[F,M] =
     this |> process1.scanMap(f)(M)
