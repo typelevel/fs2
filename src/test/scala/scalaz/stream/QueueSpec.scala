@@ -190,7 +190,7 @@ object QueueSpec extends Properties("queue") {
       val q = async.unboundedQueue[Int]
       val hold = new SyncVar[Unit]
 
-      val setup = Process emitAll xs to q.enqueue run
+      val setup = (Process emitAll xs toSource) to q.enqueue run
 
       val driver = q.dequeue to (Process fail (new RuntimeException("whoops"))) onComplete (Process eval_ (Task delay { hold.put(()) }))
 
