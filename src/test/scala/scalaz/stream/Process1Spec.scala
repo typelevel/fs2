@@ -2,7 +2,7 @@ package scalaz.stream
 
 import org.scalacheck._
 import org.scalacheck.Prop._
-import scalaz.{\/-, -\/, Monoid}
+import scalaz.{\/-, -\/, Monoid, State}
 import scalaz.concurrent.Task
 import scalaz.std.anyVal._
 import scalaz.std.list._
@@ -73,6 +73,10 @@ class Process1Spec extends Properties("Process1") {
         , "liftR"  |:  {
           val lifted = process1.liftR[Nothing,Int,Int](process1.id[Int].map( i=> i + 1) onComplete emit(Int.MinValue))
           pi.map(\/-(_)).pipe(lifted).toList == li.map(i => \/-(i + 1)) :+ \/-(Int.MinValue)
+        }
+        , "mapAccumulate" |: {
+          val r = pi.mapAccumulate(0)((s, i) => (s + i, f(i))).toList
+          r.map(_._1) === li.scan(0)(_ + _).tail && r.map(_._2) === li.map(f)
         }
         , "maximum" |: pi.maximum.toList === li.maximum.toList
         , "maximumBy" |: {
@@ -158,6 +162,18 @@ class Process1Spec extends Properties("Process1") {
     Process().pipe(p).toList === List(1) &&
     Process().pipe(drainLeading(p)).toList.isEmpty &&
     Process(2).pipe(drainLeading(p)).toList === List(1, 2)
+  }
+
+  property("stateScan") = forAll { (xs: List[Int], init: Int, f: (Int, Int) => Int) =>
+    val results = emitAll(xs) pipe stateScan(init) { i =>
+      for {
+        accum <- State.get[Int]
+        total = f(accum, i)
+        _ <- State.put(total)
+      } yield total
+    }
+
+    results.toList === (xs.scan(init)(f) drop 1)
   }
 
   property("repartition") = secure {
