@@ -210,4 +210,17 @@ object QueueSpec extends Properties("queue") {
       (results == xs) :| s"got $results"
     }
   }
+
+  property("dequeue.take-1-repeatedly") = secure {
+    val q = async.unboundedQueue[Int]
+    q.enqueueAll(List(1, 2, 3)).run
+
+    val p = for {
+      i1 <- q.dequeue take 1
+      i2 <- q.dequeue take 1
+      i3 <- q.dequeue take 1
+    } yield List(i1, i2, i3)
+
+    p.runLast.run == Some(List(1, 2, 3))
+  }
 }
