@@ -109,7 +109,7 @@ trait Queue[A] {
 
 private[stream] object CircularBuffer {
   def apply[A](bound: Int)(implicit S: Strategy): Queue[A] =
-    Queue.mk(bound, (as, q) => if (as.size + q.size > bound) q.drop(as.size) else q)
+    Queue.mk(bound, false, (as, q) => if (as.size + q.size > bound) q.drop(as.size) else q)   // disable recovery for all circular buffers, for now
 }
 
 private[stream] object Queue {
@@ -122,13 +122,17 @@ private[stream] object Queue {
    * and then all enqueue processes will wait until dequeue.
    *
    * @param bound   Size of the bound. When <= 0 the queue is `unbounded`.
+   * @param recover Flag controlling automatic dequeue error recovery semantics.  When
+   * false (the default), data may be lost in the event of an error during dequeue.
+   * When true, data will never be lost on dequeue, but concurrent dequeue processes
+   * may see data out of order under certain error conditions.
    * @tparam A
    * @return
    */
-  def apply[A](bound: Int = 0)(implicit S: Strategy): Queue[A] =
-    mk(bound, (_, q) => q)
+  def apply[A](bound: Int = 0, recover: Boolean = false)(implicit S: Strategy): Queue[A] =
+    mk(bound, recover, (_, q) => q)
 
-  def mk[A](bound: Int,
+  def mk[A](bound: Int, recover: Boolean,
             beforeEnqueue: (Seq[A], Vector[A]) => Vector[A])(implicit S: Strategy): Queue[A] = {
     sealed trait M
     case class Enqueue(a: Seq[A], cb: Throwable \/ Unit => Unit) extends M
@@ -199,7 +203,10 @@ private[stream] object Queue {
           case l @ -\/(_) => cb(l)
 
           case \/-(a) => {
-            ref.lastBatch = Vector(a)
+            if (recover) {
+              ref.lastBatch = Vector(a)
+            }
+
             cb(\/-(a :: Nil))
           }
         }
@@ -212,7 +219,10 @@ private[stream] object Queue {
         else
           queued splitAt limit
 
-        ref.lastBatch = send
+        if (recover) {
+          ref.lastBatch = send
+        }
+
         S { cb(\/-(send)) }
 
         queued = remainder
@@ -271,19 +281,19 @@ private[stream] object Queue {
         case ConsumerDone(ref) => {
           consumers = consumers.filterNot(_._1 == ref)
 
-          val batch = ref.lastBatch
-          ref.lastBatch = Vector.empty[A]
+          if (recover) {
+            val batch = ref.lastBatch
+            ref.lastBatch = Vector.empty[A]
 
-          if (batch.nonEmpty) {
-            if (queued.isEmpty) {
-              enqueueOne(batch, Function.const(()))
-            } else {
-              queued = batch fast_++ queued     // put the lost data back into the queue, at the head
+            if (batch.nonEmpty) {
+              if (queued.isEmpty) {
+                enqueueOne(batch, Function.const(()))
+              } else {
+                queued = batch fast_++ queued     // put the lost data back into the queue, at the head
+                signalSize(queued.size)
+              }
             }
           }
-
-
-          signalSize(queued.size)
         }
 
       } else m match {

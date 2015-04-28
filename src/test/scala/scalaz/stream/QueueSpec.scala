@@ -204,7 +204,7 @@ class QueueSpec extends Properties("queue") {
 
   property("dequeue.preserve-data-in-error-cases") = forAll { xs: List[Int] =>
     xs.nonEmpty ==> {
-      val q = async.unboundedQueue[Int]
+      val q = async.unboundedQueue[Int](true)
       val hold = new SyncVar[Unit]
 
       val setup = (Process emitAll xs toSource) to q.enqueue run
