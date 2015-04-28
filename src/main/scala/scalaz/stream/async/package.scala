@@ -9,13 +9,17 @@ package object async {
   /**
    * Creates bounded queue that is bound by supplied max size bound.
    * Please see [[scalaz.stream.async.mutable.Queue]] for more details.
-   * @param max maximum size of queue (must be > 0)
+   * @param max The maximum size of the queue (must be > 0)
+   * @param recover Flag controlling automatic dequeue error recovery semantics.  When
+   * false (the default), data may be lost in the event of an error during dequeue.
+   * When true, data will never be lost on dequeue, but concurrent dequeue processes
+   * may see data out of order under certain error conditions.
    */
-  def boundedQueue[A](max: Int)(implicit S: Strategy): Queue[A] = {
+  def boundedQueue[A](max: Int, recover: Boolean = false)(implicit S: Strategy): Queue[A] = {
     if (max <= 0)
       throw new IllegalArgumentException(s"queue bound must be greater than zero (got $max)")
     else
-      Queue[A](max)
+      Queue[A](max, recover)
   }
 
 
@@ -23,6 +27,8 @@ package object async {
    * Creates unbounded queue. see [[scalaz.stream.async.mutable.Queue]] for more
    */
   def unboundedQueue[A](implicit S: Strategy): Queue[A] = Queue[A](0)
+
+  def unboundedQueue[A](recover: Boolean)(implicit S: Strategy): Queue[A] = Queue[A](0, recover)
 
   /**
    * Create a new continuous signal which may be controlled asynchronously.
