@@ -11,7 +11,7 @@ object WritingAndLogging extends Properties("writing-and-logging") {
   /*
 
   A `Writer[F,W,O]` is a `Process[F, W \/ O]`. See
-  `Process.WriterSyntax` for convenience functions
+  `WriterSyntax` for convenience functions
   for working with either the written values (the `W`)
   or the output values (the `O`).
 
@@ -46,7 +46,8 @@ object WritingAndLogging extends Properties("writing-and-logging") {
       Process.range(0,10)
              .flatMap(i => P.tell("Got input: " + i) ++ P.emitO(i))
              .toSource
-             .drainW(io.fillBuffer(buf))
+             .observeW(io.fillBuffer(buf))
+             .stripW
 
     /* This will have the side effect of filling `buf`. */
     ex.run.run
@@ -82,14 +83,14 @@ object WritingAndLogging extends Properties("writing-and-logging") {
     val snk2: Sink[Task,String] = io.stdOutLines
 
     /*
-    The `drainW` function observes the write values of
-    a `Writer` using some `Sink`, and then discards the
-    write side of the writer to get back an ordinary
-    `Process`. Notice the `Int` output is still available
-    for further transformation.
+    The `observeW` function observes the write values of
+    a `Writer` using some `Sink`, and then the `stripW`
+    function discards the write side of the writer to get
+    back an ordinary `Process`. Notice the `Int` output
+    is still available for further transformation.
     */
     val step2: Process[Task,Int] =
-      step1.drainW(snk)
+      step1.observeW(snk).stripW
 
     /* Make sure all values got written to the buffer. */
     buf.toList == List.range(0,10).map("Got input: " + _)

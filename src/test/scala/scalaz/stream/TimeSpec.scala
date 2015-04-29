@@ -8,7 +8,7 @@ import scalaz.concurrent.Strategy
 import Process._
 import time._
 
-object TimeSpec extends Properties("time") {
+class TimeSpec extends Properties("time") {
 
   implicit val S = Strategy.DefaultStrategy
   implicit val scheduler = scalaz.stream.DefaultScheduler

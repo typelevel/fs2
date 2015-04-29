@@ -10,7 +10,7 @@ import scala.concurrent.duration._
 import scala.concurrent.SyncVar
 import scalaz.\/
 
-object MergeNSpec extends Properties("mergeN") {
+class MergeNSpec extends Properties("mergeN") {
 
   implicit val S = Strategy.DefaultStrategy
   implicit val scheduler = scalaz.stream.DefaultScheduler
@@ -114,8 +114,7 @@ object MergeNSpec extends Properties("mergeN") {
     val count = 100
     val eachSize = 10
 
-    // TODO replace with signalOf; what follows is immensely confusing and tricky...
-    val sizeSig = async.signal[Int]
+    val sizeSig = async.signalUnset[Int]
 
     def incrementOpen =
       sizeSig.compareAndSet({
@@ -200,5 +199,16 @@ object MergeNSpec extends Properties("mergeN") {
 
     (result.length == 1) :| s"result.length == ${result.length}" &&
       (result.head == size) :| s"result.head == ${result.head}"
+  }
+
+  property("avoid hang in the presence of interrupts") = secure {
+    1 to 100 forall { _ =>
+      val q = async.unboundedQueue[Unit]
+      q.enqueueOne(()).run
+
+      val process = (merge.mergeN(0)(Process(q.dequeue, halt)).once wye halt)(wye.mergeHaltBoth)
+
+      process.run.timed(3000).attempt.run.isRight
+    }
   }
 }

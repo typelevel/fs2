@@ -7,7 +7,7 @@ import scalaz.std.anyVal._
 
 import TestInstances._
 
-object ProcessInstancesSpec extends Properties("ProcessInstances") {
+class ProcessInstancesSpec extends Properties("ProcessInstances") {
 
   type ProcessF[F[_]] = ({ type l[a] = Process[F, a] })
   type Process1O[O] = ({ type l[i] = Process1[i, O] })

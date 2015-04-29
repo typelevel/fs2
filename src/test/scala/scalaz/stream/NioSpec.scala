@@ -96,7 +96,7 @@ object NioClient {
 }
 
 
-object NioSpec extends Properties("nio") {
+class NioSpec extends Properties("nio") {
 
   def localAddress(port:Int) = new InetSocketAddress("127.0.0.1", port)
 

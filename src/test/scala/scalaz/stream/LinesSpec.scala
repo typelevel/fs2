@@ -9,7 +9,7 @@ import scalaz.concurrent.Task
 import scalaz.stream.Process._
 import scalaz.stream.text.{LengthExceeded, lines}
 
-object LinesSpec extends Properties("text") {
+class LinesSpec extends Properties("text") {
 
   val samples = 0 until 5 flatMap { i => List("\r\n", "\n").map { s =>
     "Hello&World.&Foo&Bar&".replace("&", s*i)

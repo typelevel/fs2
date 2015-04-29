@@ -8,7 +8,7 @@ import org.scalacheck.Properties
 import scalaz.concurrent.Task
 import scalaz.stream.Process.ProcessSyntax
 
-object UnsafeChunkRSpec extends Properties("io.unsafeChunkR") {
+class UnsafeChunkRSpec extends Properties("io.unsafeChunkR") {
   property("reuses buffer") = secure {
     forAll { str: String =>
       val sink: Sink[Task, Array[Byte] => Task[Array[Byte]]] =

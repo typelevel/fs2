@@ -7,7 +7,7 @@ import scodec.bits.ByteVector
 import java.util.concurrent.CountDownLatch
 import scalaz.concurrent.Task
 
-object UdpSpec extends Properties("udp") {
+class UdpSpec extends Properties("udp") {
 
   implicit val n = Arbitrary(Gen.choose(2000,10000))
 

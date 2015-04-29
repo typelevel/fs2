@@ -21,7 +21,7 @@ import java.util.concurrent.ScheduledExecutorService
  * including the correct propagation of causes
  * from merging combinator (pipe, tee, wye, njoin) at various scenarios
  */
-object CauseSpec extends Properties("cause") {
+class CauseSpec extends Properties("cause") {
   implicit val S: ScheduledExecutorService = DefaultScheduler
 
   property("suspend") = secure {

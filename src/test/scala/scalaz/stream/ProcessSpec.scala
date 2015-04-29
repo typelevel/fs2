@@ -19,7 +19,7 @@ import scala.concurrent.SyncVar
 
 import java.util.concurrent.atomic.AtomicInteger
 
-object ProcessSpec extends Properties("Process") {
+class ProcessSpec extends Properties("Process") {
 
   case object FailWhale extends RuntimeException("the system... is down")
 
@@ -260,16 +260,6 @@ object ProcessSpec extends Properties("Process") {
       case hlt@Halt(_) => hlt
     }.injectCause(Kill).runLog.run // `injectCause(Kill)` is like `kill` but without `drain`.
     fallbackCausedBy == Some(Kill) && received.isEmpty
-  }
-
-  property("pipeO stripW ~= stripW pipe") = forAll { (p1: Process1[Int,Int]) =>
-    val p = writer.logged(range(1, 11).toSource)
-    p.pipeO(p1).stripW.runLog.run == p.stripW.pipe(p1).runLog.run
-  }
-
-  property("pipeW stripO ~= stripO pipe") = forAll { (p1: Process1[Int,Int]) =>
-    val p = writer.logged(range(1, 11).toSource)
-    p.pipeW(p1).stripO.runLog.run == p.stripO.pipe(p1).runLog.run
   }
 
   property("process.sequence returns elements in order") = secure {

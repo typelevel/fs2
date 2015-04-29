@@ -9,7 +9,7 @@ import scalaz.concurrent.Task
 
 import java.io.{IOException, DataInputStream}
 
-object ToInputStreamSpec extends Properties("toInputStream") {
+class ToInputStreamSpec extends Properties("toInputStream") {
 
   property("handles arbitrary emitAll") = forAll { bytes: List[List[Byte]] =>
     val length = bytes map { _.length } sum

@@ -1,15 +1,32 @@
 package scalaz.stream
 
 import Cause._
+import org.scalacheck.{Gen, Properties, Arbitrary}
 import org.scalacheck.Prop._
-import org.scalacheck.Properties
 import scala.concurrent.SyncVar
 import scalaz.concurrent.Task
 import scalaz.{-\/, \/-, \/}
 import scala.concurrent.duration._
 
-object QueueSpec extends Properties("queue") {
+class QueueSpec extends Properties("queue") {
   implicit val scheduler = scalaz.stream.DefaultScheduler
+
+  property("circular-buffer") = forAll(Gen.posNum[Int], implicitly[Arbitrary[List[Int]]].arbitrary) {
+    (bound: Int, xs: List[Int]) =>
+      val b = async.circularBuffer[Int](bound)
+      val collected = new SyncVar[Throwable\/IndexedSeq[Int]]
+      val p = ((Process.emitAll(xs):Process[Task,Int]) to b.enqueue).run.timed(3000).attempt.run
+      b.dequeue.runLog.runAsync(collected.put)
+      b.close.run
+      val ys = collected.get(3000).map(_.getOrElse(Nil)).getOrElse(Nil)
+      b.close.runAsync(_ => ())
+
+      ("Enqueue process is not blocked" |: p.isRight)
+      ("Dequeued a suffix of the input" |: (xs endsWith ys)) &&
+      ("No larger than the bound" |: (ys.length <= bound)) &&
+      (s"Exactly as large as the bound (got ${ys.length})" |:
+        (xs.length < bound && ys.length == xs.length || ys.length == bound))
+  }
 
   property("basic") = forAll {
     l: List[Int] =>
@@ -183,5 +200,44 @@ object QueueSpec extends Properties("queue") {
 
     collected.get(5000).nonEmpty :| "items were collected" &&
       ((collected.get getOrElse Nil) == Seq(Seq(1), Seq(1, 1), Seq(2, 2), Seq(2, 2), Seq(2, 2))) :| s"saw ${collected.get getOrElse Nil}"
+  }
+
+  property("dequeue.preserve-data-in-error-cases") = forAll { xs: List[Int] =>
+    xs.nonEmpty ==> {
+      val q = async.unboundedQueue[Int](true)
+      val hold = new SyncVar[Unit]
+
+      val setup = (Process emitAll xs toSource) to q.enqueue run
+
+      val driver = q.dequeue to (Process fail (new RuntimeException("whoops"))) onComplete (Process eval_ (Task delay { hold.put(()) }))
+
+      val safeDriver = driver onHalt {
+        case Error(_) => Process.Halt(End)
+        case rsn => Process.Halt(rsn)
+      }
+
+      val recovery = for {
+        _ <- Process eval (Task delay { hold.get })
+        i <- q.dequeue take xs.length
+      } yield i
+
+      setup.run
+
+      val results = (safeDriver merge recovery).runLog.timed(3000).run
+      (results == xs) :| s"got $results"
+    }
+  }
+
+  property("dequeue.take-1-repeatedly") = secure {
+    val q = async.unboundedQueue[Int]
+    q.enqueueAll(List(1, 2, 3)).run
+
+    val p = for {
+      i1 <- q.dequeue take 1
+      i2 <- q.dequeue take 1
+      i3 <- q.dequeue take 1
+    } yield List(i1, i2, i3)
+
+    p.runLast.run == Some(List(1, 2, 3))
   }
 }

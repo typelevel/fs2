@@ -10,7 +10,7 @@ import scodec.bits.ByteVector
 import Process._
 import text._
 
-object Utf8DecodeSpec extends Properties("text.utf8Decode") {
+class Utf8DecodeSpec extends Properties("text.utf8Decode") {
 
   def utf8Bytes(a: Array[Int]): ByteVector = ByteVector(a.map(_.toByte))
   def utf8Bytes(c: Char): ByteVector = utf8Bytes(c.toString)

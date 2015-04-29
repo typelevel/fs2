@@ -107,20 +107,33 @@ trait Queue[A] {
   private[stream] def failWithCause(c:Cause): Task[Unit]
 }
 
+private[stream] object CircularBuffer {
+  def apply[A](bound: Int)(implicit S: Strategy): Queue[A] =
+    Queue.mk(bound, false, (as, q) => if (as.size + q.size > bound) q.drop(as.size) else q)   // disable recovery for all circular buffers, for now
+}
 
 private[stream] object Queue {
 
+  import scalaz.stream.Util._
+
   /**
    * Builds a queue, potentially with `source` producing the streams that
-   * will enqueue into queue. Up to `bound` size of `A` may enqueue into queue,
+   * will enqueue into queue. Up to `bound` number of `A` may enqueue into the queue,
    * and then all enqueue processes will wait until dequeue.
    *
    * @param bound   Size of the bound. When <= 0 the queue is `unbounded`.
+   * @param recover Flag controlling automatic dequeue error recovery semantics.  When
+   * false (the default), data may be lost in the event of an error during dequeue.
+   * When true, data will never be lost on dequeue, but concurrent dequeue processes
+   * may see data out of order under certain error conditions.
    * @tparam A
    * @return
    */
-  def apply[A](bound: Int = 0)(implicit S: Strategy): Queue[A] = {
+  def apply[A](bound: Int = 0, recover: Boolean = false)(implicit S: Strategy): Queue[A] =
+    mk(bound, recover, (_, q) => q)
 
+  def mk[A](bound: Int, recover: Boolean,
+            beforeEnqueue: (Seq[A], Vector[A]) => Vector[A])(implicit S: Strategy): Queue[A] = {
     sealed trait M
     case class Enqueue(a: Seq[A], cb: Throwable \/ Unit => Unit) extends M
     case class Dequeue(ref: ConsumerRef, limit: Int, cb: Throwable \/ Seq[A] => Unit) extends M
@@ -129,7 +142,9 @@ private[stream] object Queue {
     case class ConsumerDone(ref: ConsumerRef) extends M
 
     // reference to identify differed subscribers
-    class ConsumerRef
+    class ConsumerRef {
+      var lastBatch = Vector.empty[A]
+    }
 
 
     //actually queued `A` are stored here
@@ -186,7 +201,14 @@ private[stream] object Queue {
       if (queued.isEmpty) {
         val cb2: Throwable \/ A => Unit = {
           case l @ -\/(_) => cb(l)
-          case \/-(a) => cb(\/-(a :: Nil))
+
+          case \/-(a) => {
+            if (recover) {
+              ref.lastBatch = Vector(a)
+            }
+
+            cb(\/-(a :: Nil))
+          }
         }
 
         val entry: (ConsumerRef, Throwable \/ A => Unit)  = (ref -> cb2)
@@ -197,11 +219,15 @@ private[stream] object Queue {
         else
           queued splitAt limit
 
+        if (recover) {
+          ref.lastBatch = send
+        }
+
         S { cb(\/-(send)) }
 
         queued = remainder
         signalSize(queued.size)
-        if (unAcked.size > 0 && bound > 0 && queued.size < bound) {
+        if (unAcked.size > 0 && bound > 0 && queued.size <= bound) {
           val ackCount = bound - queued.size min unAcked.size
           unAcked.take(ackCount).foreach(cb => S(cb(\/-(()))))
           unAcked = unAcked.drop(ackCount)
@@ -210,7 +236,7 @@ private[stream] object Queue {
     }
 
     def enqueueOne(as: Seq[A], cb: Throwable \/ Unit => Unit) = {
-      import scalaz.stream.Util._
+      queued = beforeEnqueue(as, queued)
       queued = queued fast_++ as
 
       if (consumers.size > 0 && queued.size > 0) {
@@ -223,7 +249,7 @@ private[stream] object Queue {
         queued = queued.drop(deqCount)
       }
 
-      if (bound > 0 && queued.size >= bound) unAcked = unAcked :+ cb
+      if (bound > 0 && queued.size > bound) unAcked = unAcked :+ cb
       else S(cb(\/-(())))
 
       signalSize(queued.size)
@@ -251,7 +277,24 @@ private[stream] object Queue {
         case Enqueue(as, cb) => enqueueOne(as, cb)
         case Fail(cause, cb)   => stop(cause, cb)
         case GetSize(cb)     => publishSize(cb)
-        case ConsumerDone(ref) =>  consumers = consumers.filterNot(_._1 == ref)
+
+        case ConsumerDone(ref) => {
+          consumers = consumers.filterNot(_._1 == ref)
+
+          if (recover) {
+            val batch = ref.lastBatch
+            ref.lastBatch = Vector.empty[A]
+
+            if (batch.nonEmpty) {
+              if (queued.isEmpty) {
+                enqueueOne(batch, Function.const(()))
+              } else {
+                queued = batch fast_++ queued     // put the lost data back into the queue, at the head
+                signalSize(queued.size)
+              }
+            }
+          }
+        }
 
       } else m match {
         case Dequeue(ref, limit, cb) if queued.nonEmpty => dequeueBatch(ref, limit, cb)
@@ -260,7 +303,8 @@ private[stream] object Queue {
         case GetSize(cb) if queued.nonEmpty      => publishSize(cb)
         case GetSize(cb)                         => signalClosed(cb)
         case Fail(_, cb)                         => S(cb(\/-(())))
-        case ConsumerDone(ref)                   =>  consumers = consumers.filterNot(_._1 == ref)
+
+        case ConsumerDone(ref)                   => consumers = consumers.filterNot(_._1 == ref)
       }
     })(S)
 
@@ -283,7 +327,7 @@ private[stream] object Queue {
       private def innerDequeueBatch(limit: Int): Process[Task, Seq[A]] = {
         Process.await(Task.delay(new ConsumerRef))({ ref =>
           val source = Process repeatEval Task.async[Seq[A]](cb => actor ! Dequeue(ref, limit, cb))
-          source onComplete Process.eval_(Task.delay(actor ! ConsumerDone(ref)))
+          source onComplete Process.eval_(Task delay { actor ! ConsumerDone(ref) })
         })
       }
 
@@ -291,7 +335,8 @@ private[stream] object Queue {
         val sizeSource : Process[Task,Int] =
           Process.repeatEval(Task.async[Seq[Int]](cb => actor ! GetSize(cb)))
           .flatMap(Process.emitAll)
-        Signal(sizeSource.map(Signal.Set.apply), haltOnSource =  true)(S)
+
+        sizeSource.toSignal(S)
       }
 
       def enqueueAll(xa: Seq[A]): Task[Unit] = Task.async(cb => actor ! Enqueue(xa,cb))

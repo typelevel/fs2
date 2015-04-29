@@ -1,8 +1,14 @@
+enablePlugins(GitVersioning)
+
 organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
-version := "snapshot-0.7a"
+val ReleaseTag = """^release/([\d\.]+a?)$""".r
+git.gitTagToVersionNumber := {
+  case ReleaseTag(version) => Some(version)
+  case _ => None
+}
 
 scalaVersion := "2.11.6"
 
@@ -27,11 +33,11 @@ scalacOptions in (Compile, doc) ++= Seq(
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.1.0",
-  "org.scalaz" %% "scalaz-concurrent" % "7.1.0",
+  "org.scalaz" %% "scalaz-core" % "7.1.1",
+  "org.scalaz" %% "scalaz-concurrent" % "7.1.1",
   "org.scodec" %% "scodec-bits" % "1.0.6",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.0" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.12.1" % "test"
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.1" % "test",
+  "org.scalacheck" %% "scalacheck" % "1.12.2" % "test"
 )
 
 seq(bintraySettings:_*)

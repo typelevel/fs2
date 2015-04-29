@@ -11,7 +11,7 @@ import scalaz.-\/
 import scalaz.\/._
 
 
-object ResourceSafetySpec extends Properties("resource-safety") {
+class ResourceSafetySpec extends Properties("resource-safety") {
 
   // Tests to ensure resource safety in a variety of scenarios
   // We want to guarantee that `Process` cleanup actions get run

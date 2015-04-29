@@ -3,6 +3,7 @@ package scalaz.stream
 import java.security.MessageDigest
 import org.scalacheck._
 import org.scalacheck.Prop._
+import scalaz.{ Tag, @@ }
 import scodec.bits.ByteVector
 
 import Process._
@@ -10,17 +11,17 @@ import hash._
 
 import TestInstances._
 
-object HashSpec extends Properties("hash") {
+class HashSpec extends Properties("hash") {
   def digest(algo: String, str: String): List[Byte] =
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
 
-  def checkDigest(h: Process1[ByteVector,ByteVector], algo: String, str: String): Boolean = {
+  def checkDigest[A](h: Process1[ByteVector,ByteVector @@ A], algo: String, str: String): Boolean = {
     val n = Gen.choose(1, str.length).sample.getOrElse(1)
     val p =
       if (str.isEmpty) emit(ByteVector.view(str.getBytes))
       else emitAll(ByteVector.view(str.getBytes).grouped(n).toSeq)
 
-    p.pipe(h).map(_.toArray.toList).toList == List(digest(algo, str))
+    p.pipe(h.map(Tag.unwrap)).map(_.toArray.toList).toList == List(digest(algo, str))
   }
 
   property("all") = forAll { (s: String) =>
@@ -50,7 +51,7 @@ object HashSpec extends Properties("hash") {
   property("thread-safety") = secure {
     val proc = range(1,100).toSource
       .map(i => ByteVector.view(i.toString.getBytes))
-      .pipe(sha512).map(_.toSeq)
+      .pipe(sha512).map(Tag.unwrap(_).toSeq)
     val vec = Vector.fill(100)(proc).par
     val res = proc.runLast.run
 
