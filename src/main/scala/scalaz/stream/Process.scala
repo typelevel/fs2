@@ -1234,8 +1234,13 @@ object Process extends ProcessInstances {
                         // always matches to a `Some` (we always have value)
                         val pc = for {
                           cause <- inter
-                          \/-(r) <- result
-                        } yield postStep(Try(cln(r).run), cause)     // produce the preemption handler, given the resulting resource
+                          either <- result
+                        } yield {
+                          either match {
+                            case -\/(t) => ()       // I guess we just swallow the exception here? no idea what to do, since we don't have a handler for this case
+                            case \/-(r) => postStep(Try(cln(r).run), cause)     // produce the preemption handler, given the resulting resource
+                          }
+                        }
 
                         pc match {
                           case Some(back) => back
