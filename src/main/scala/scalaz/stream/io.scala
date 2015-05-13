@@ -152,7 +152,7 @@ object io {
                          step: R => F[O]): Process[F,O] =
     await(acquire) { r =>
       repeatEval(step(r)).onComplete(eval_(release(r)))
-    }
+    } onHalt { _.asHalt }
 
   /**
    * The standard input stream, as `Process`. This `Process` repeatedly awaits
@@ -166,7 +166,7 @@ object io {
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task.delay { Option(scala.Console.readLine()).getOrElse(throw Cause.Terminated(Cause.End)) })
+    Process.repeatEval(Task delay { Option(scala.Console.readLine()) }) pipe process1.stripNone
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not

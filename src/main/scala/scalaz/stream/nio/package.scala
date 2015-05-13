@@ -51,11 +51,11 @@ package object nio {
     def release(ch: AsynchronousChannel): Process[Task, Nothing] =
       eval_(Task.delay(ch.close()))
 
-    await(setup)(sch =>
-      repeatEval(awaitClientConnection(sch))
-      .map(cchn => eval(Task.now(nioExchange(cchn))) onComplete release(cchn))
-      .onComplete(release(sch))
-    )
+    await(setup) { sch =>
+      repeatEval(awaitClientConnection(sch)) onHalt { _.asHalt } map { cchn =>
+        Process(nioExchange(cchn)) onComplete release(cchn)
+      } onComplete release(sch)
+    }
   }
 
 
@@ -100,7 +100,9 @@ package object nio {
       eval_(Task.delay(ch.close()))
     }
 
-    await(setup flatMap connect)(ch => eval(Task.now(nioExchange(ch))) onComplete release(ch))
+    await(setup flatMap connect) { ch =>
+      Process(nioExchange(ch)) onComplete release(ch)
+    }
 
   }
 
@@ -158,7 +160,7 @@ package object nio {
     }
 
 
-    def read: Process[Task, ByteVector] = Process.repeatEval(readOne)
+    def read: Process[Task, ByteVector] = Process.repeatEval(readOne).onHalt(_.asHalt)
     def write: Sink[Task, ByteVector] = Process.constant((a: ByteVector) => writeOne(a))
 
     Exchange(read, write)

@@ -836,9 +836,7 @@ object wye {
         }
       })(S)
 
-      repeatEval(Task.async[Seq[O]] { cb => a ! Get(cb) })
-      .flatMap(emitAll)
-      .onComplete(eval_(Task.async[Unit](cb => a ! DownDone(cb))))
+      repeatEval(Task.async[Seq[O]] { cb => a ! Get(cb) }) onHalt { _.asHalt } flatMap emitAll onComplete eval_(Task.async[Unit](cb => a ! DownDone(cb)))
     }
 }
 
