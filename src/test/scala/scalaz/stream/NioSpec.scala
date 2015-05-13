@@ -151,7 +151,7 @@ class NioSpec extends Properties("nio") {
       NioClient.echo(local, ByteVector(array1)).runLog.run.map(_.toSeq).flatten
     stop.set(true).run
 
-    (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
+    (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data (serverGot = ${serverGot.get(100)}; clientGot = $clientGot)" &&
       (clientGot == array1.toSeq.take(max)) :| "client got bytes before server closed connection"
 
   }

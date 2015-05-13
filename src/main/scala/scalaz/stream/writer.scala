@@ -33,19 +33,13 @@ object writer {
  */
 final class WriterSyntax[F[_], W, O](val self: Writer[F, W, O]) extends AnyVal {
 
-  /**
-   * Observe the output side of this `Writer` using the
-   * given `Sink`, then discard it. Also see `observeW`.
-   */
-  def drainO(snk: Sink[F, O]): Process[F, W] =
-    observeO(snk).stripO
+  /** Ignore the output side of this `Writer`. */
+  def drainO: Writer[F, W, Nothing] =
+    flatMapO(_ => halt)
 
-  /**
-   * Observe the write side of this `Writer` using the
-   * given `Sink`, then discard it. Also see `observeW`.
-   */
-  def drainW(snk: Sink[F, W]): Process[F, O] =
-    observeW(snk).stripW
+  /** Ignore the write side of this `Writer`. */
+  def drainW: Writer[F, Nothing, O] =
+    flatMapW(_ => halt)
 
   def flatMapO[F2[x] >: F[x], W2 >: W, B](f: O => Writer[F2, W2, B]): Writer[F2, W2, B] =
     self.flatMap(_.fold(emitW, f))

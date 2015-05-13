@@ -262,16 +262,6 @@ class ProcessSpec extends Properties("Process") {
     fallbackCausedBy == Some(Kill) && received.isEmpty
   }
 
-  property("pipeO stripW ~= stripW pipe") = forAll { (p1: Process1[Int,Int]) =>
-    val p = writer.logged(range(1, 11).toSource)
-    p.pipeO(p1).stripW.runLog.run == p.stripW.pipe(p1).runLog.run
-  }
-
-  property("pipeW stripO ~= stripO pipe") = forAll { (p1: Process1[Int,Int]) =>
-    val p = writer.logged(range(1, 11).toSource)
-    p.pipeW(p1).stripO.runLog.run == p.stripO.pipe(p1).runLog.run
-  }
-
   property("process.sequence returns elements in order") = secure {
     val random = util.Random
     val p = Process.range(1, 10).map(i => Task.delay { Thread.sleep(random.nextInt(100)); i })
@@ -339,5 +329,13 @@ class ProcessSpec extends Properties("Process") {
     val expected = if (p2.exists(identity).toList.head) p0.toList else List.empty[Int]
 
     p0.sleepUntil(p2).toList === expected
+  }
+
+  property("identity piping preserve eval termination semantics") = secure {
+    implicit val teq = Equal.equalA[Throwable]
+
+    val halt = eval(Task delay { throw Terminated(End) }).repeat ++ emit(())
+
+    ((halt pipe process1.id).runLog timed 3000 map { _.toList }).attempt.run === (halt.runLog timed 3000 map { _.toList }).attempt.run
   }
 }

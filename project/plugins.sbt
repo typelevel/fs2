@@ -6,5 +6,6 @@ resolvers += Resolver.url(
 addSbtPlugin("me.lessis" % "bintray-sbt" % "0.2.1")
 
 addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.6.0")
+addSbtPlugin("com.typesafe.sbt" % "sbt-git" % "0.8.0")
 
 addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.3.3")

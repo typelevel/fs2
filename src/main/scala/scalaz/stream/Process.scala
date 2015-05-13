@@ -986,7 +986,7 @@ object Process extends ProcessInstances {
   implicit class ProcessSyntax[F[_],O](val self: Process[F,O]) extends AnyVal {
     /** Feed this `Process` through the given effectful `Channel`. */
     def through[F2[x]>:F[x],O2](f: Channel[F2,O,O2]): Process[F2,O2] =
-        self.zipWith(f)((o,f) => f(o)).eval
+        self.zipWith(f)((o,f) => f(o)).eval onHalt { _.asHalt }     // very gross; I don't like this, but not sure what to do
 
     /**
      * Feed this `Process` through the given effectful `Channel`, signaling
@@ -1018,16 +1018,8 @@ object Process extends ProcessInstances {
      * be evaluated before work begins on producing the next `F`
      * action. To allow for concurrent evaluation, use `sequence`
      * or `gather`.
-     *
-     * If evaluation of `F` results to `Terminated(cause)`
-     * the evaluation of the stream is terminated with `cause`
      */
-    def eval: Process[F, O] = {
-      self.flatMap(f=> await(f)(emit)).onHalt {
-        case Error(Terminated(cause)) => Halt(cause)
-        case cause => Halt(cause)
-      }
-    }
+    def eval: Process[F, O] = self flatMap { await(_)(emit) }
 
     /**
      * Read chunks of `bufSize` from input, then use `Nondeterminism.gatherUnordered`
@@ -1414,13 +1406,9 @@ object Process extends ProcessInstances {
   /////////////////////////////////////////////////////////////////////////////////////
 
   /**
-   * Evaluate an arbitrary effect in a `Process`. The resulting
-   * `Process` emits a single value. To evaluate repeatedly, use
-   * `repeatEval(t)`.
-   * Do not use `eval.repeat` or  `repeat(eval)` as that may cause infinite loop in certain situations.
+   * Alias for await(fo)(emit)
    */
-  def eval[F[_], O](f: F[O]): Process[F, O] =
-    awaitOr(f)(_.asHalt)(emit)
+  def eval[F[_], O](fo: F[O]): Process[F, O] = await(fo)(emit)
 
   /**
    * Evaluate an arbitrary effect once, purely for its effects,
@@ -1435,14 +1423,10 @@ object Process extends ProcessInstances {
 
   /**
    * Evaluate an arbitrary effect in a `Process`. The resulting `Process` will emit values
-   * until evaluation of `f` signals termination with `End` or an error occurs.
-   *
-   * Note that if `f` results to failure of type `Terminated` the repeatEval will convert cause
-   * to respective process cause termination, and will halt with that cause.
+   * until an error occurs.
    *
    */
-  def repeatEval[F[_], O](f: F[O]): Process[F, O] =
-    awaitOr(f)(_.asHalt)(o => emit(o)) ++ repeatEval(f)
+  def repeatEval[F[_], O](fo: F[O]): Process[F, O] = eval(fo).repeat
 
   /**
    * Produce `p` lazily. Useful if producing the process involves allocation of

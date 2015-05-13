@@ -45,6 +45,9 @@ object tcp {
     /** Ask for the remote address of the peer. */
     def remoteAddress: Task[InetSocketAddress]
 
+    /** Ask for the local address of the socket. */
+    def localAddress: Task[InetSocketAddress]
+
     /**
      * Write `bytes` to the peer. If `timeout` is provided
      * and the operation does not complete in the specified duration,
@@ -93,6 +96,14 @@ object tcp {
         // "Where the channel is bound and connected to an Internet Protocol socket
         // address then the return value from this method is of type InetSocketAddress."
         channel.getRemoteAddress().asInstanceOf[InetSocketAddress]
+      }
+
+    def localAddress: Task[InetSocketAddress] =
+      Task.delay {
+        // NB: This cast is safe because, from the javadoc:
+        // "Where the channel is bound and connected to an Internet Protocol socket
+        // address then the return value from this method is of type InetSocketAddress."
+        channel.getLocalAddress().asInstanceOf[InetSocketAddress]
       }
 
     def write(bytes: ByteVector,
@@ -168,6 +179,10 @@ object tcp {
   /** Returns a single-element stream containing the remote address of the peer. */
   def remoteAddress: Process[Connection,InetSocketAddress] =
     ask.flatMap { e => eval(e.remoteAddress) }
+
+  /** Returns a single-element stream containing the local address of the connection. */
+  def localAddress: Process[Connection,InetSocketAddress] =
+    ask.flatMap { e => eval(e.localAddress) }
 
   /** Indicate to the peer that we are done writing. */
   def eof: Process[Connection,Nothing] =
