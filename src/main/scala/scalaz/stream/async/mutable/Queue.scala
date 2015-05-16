@@ -326,15 +326,14 @@ private[stream] object Queue {
 
       private def innerDequeueBatch(limit: Int): Process[Task, Seq[A]] = {
         Process.await(Task.delay(new ConsumerRef))({ ref =>
-          val source = Process repeatEval Task.async[Seq[A]](cb => actor ! Dequeue(ref, limit, cb))
+          val source = Process repeatEval Task.async[Seq[A]](cb => actor ! Dequeue(ref, limit, cb)) onHalt { _.asHalt }
           source onComplete Process.eval_(Task delay { actor ! ConsumerDone(ref) })
         })
       }
 
       val size: immutable.Signal[Int] = {
         val sizeSource : Process[Task,Int] =
-          Process.repeatEval(Task.async[Seq[Int]](cb => actor ! GetSize(cb)))
-          .flatMap(Process.emitAll)
+          Process.repeatEval(Task.async[Seq[Int]](cb => actor ! GetSize(cb))).onHalt(_.asHalt).flatMap(Process.emitAll)
 
         sizeSource.toSignal(S)
       }

@@ -296,9 +296,9 @@ class ProcessSpec extends Properties("Process") {
       Thread.sleep(100)
     }
 
-    val p = await(task) { _ =>
-      emit(42) onComplete (Process eval_ (Task delay { inner.incrementAndGet() }))
-    } onComplete (Process eval_ (Task delay { outer.incrementAndGet() }))
+    val p = await(task, { _: Unit => eval_(Task delay { inner.incrementAndGet() }) }) { _ =>
+      emit(42)
+    } onComplete eval_(Task delay { outer.incrementAndGet() })
 
     val interrupt = p stepAsync result.put
     signal.get
@@ -329,5 +329,13 @@ class ProcessSpec extends Properties("Process") {
     val expected = if (p2.exists(identity).toList.head) p0.toList else List.empty[Int]
 
     p0.sleepUntil(p2).toList === expected
+  }
+
+  property("identity piping preserve eval termination semantics") = secure {
+    implicit val teq = Equal.equalA[Throwable]
+
+    val halt = eval(Task delay { throw Terminated(End) }).repeat ++ emit(())
+
+    ((halt pipe process1.id).runLog timed 3000 map { _.toList }).attempt.run === (halt.runLog timed 3000 map { _.toList }).attempt.run
   }
 }

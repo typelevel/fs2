@@ -539,7 +539,7 @@ object wye {
 
     def unapply[I,I2,O](self: WyeAwaitL[I,I2,O]):
     Option[(EarlyCause \/ I => Wye[I,I2,O])] = self match {
-      case Await(req,rcv)
+      case Await(req,rcv,_)
         if req.tag == 0 =>
         Some((r : EarlyCause \/ I) =>
           Try(rcv.asInstanceOf[(EarlyCause \/ I) => Trampoline[Wye[I,I2,O]]](r).run)
@@ -550,7 +550,7 @@ object wye {
     /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitL[I,I2,O]):Boolean = self match {
-        case Await(req,rcv) if req.tag == 0 => true
+        case Await(req,rcv,_) if req.tag == 0 => true
         case _ => false
       }
     }
@@ -560,7 +560,7 @@ object wye {
   object AwaitR {
     def unapply[I,I2,O](self: WyeAwaitR[I,I2,O]):
     Option[(EarlyCause \/ I2 => Wye[I,I2,O])] = self match {
-      case Await(req,rcv)
+      case Await(req,rcv,_)
         if req.tag == 1 => Some((r : EarlyCause \/ I2) =>
         Try(rcv.asInstanceOf[(EarlyCause \/ I2) => Trampoline[Wye[I,I2,O]]](r).run)
       )
@@ -570,7 +570,7 @@ object wye {
     /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitR[I,I2,O]):Boolean = self match {
-        case Await(req,rcv) if req.tag == 1 => true
+        case Await(req,rcv,_) if req.tag == 1 => true
         case _ => false
       }
     }
@@ -578,7 +578,7 @@ object wye {
   object AwaitBoth {
     def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):
     Option[(ReceiveY[I,I2] => Wye[I,I2,O])] = self match {
-      case Await(req,rcv)
+      case Await(req,rcv,_)
         if req.tag == 2 => Some((r : ReceiveY[I,I2]) =>
         Try(rcv.asInstanceOf[(EarlyCause \/ ReceiveY[I,I2]) => Trampoline[Wye[I,I2,O]]](right(r)).run)
       )
@@ -589,7 +589,7 @@ object wye {
     /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides */
     object is {
       def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):Boolean = self match {
-        case Await(req,rcv) if req.tag == 2 => true
+        case Await(req,rcv,_) if req.tag == 2 => true
         case _ => false
       }
     }
@@ -836,9 +836,7 @@ object wye {
         }
       })(S)
 
-      repeatEval(Task.async[Seq[O]] { cb => a ! Get(cb) })
-      .flatMap(emitAll)
-      .onComplete(eval_(Task.async[Unit](cb => a ! DownDone(cb))))
+      repeatEval(Task.async[Seq[O]] { cb => a ! Get(cb) }) onHalt { _.asHalt } flatMap emitAll onComplete eval_(Task.async[Unit](cb => a ! DownDone(cb)))
     }
 }
 

@@ -250,7 +250,7 @@ private[stream] object WriterTopic {
         val register = Task.async[Unit] { cb => actor ! Subscribe(subscription, cb) }
         val unRegister = Task.async[Unit] { cb => actor ! UnSubscribe(subscription, cb) }
         val oneChunk = Task.async[Seq[W \/ O]] { cb => actor ! Ready(subscription, cb) }
-        (Process.eval_(register) ++ Process.repeatEval(oneChunk).flatMap(Process.emitAll))
+        (Process.eval_(register) ++ Process.repeatEval(oneChunk).flatMap(Process.emitAll)).onHalt(_.asHalt)
         .onComplete(Process.eval_(unRegister))
       }
 
@@ -261,7 +261,7 @@ private[stream] object WriterTopic {
         def changes: Process[Task, Unit] = discrete.map(_=>())
 
         def continuous: Process[Task, W] =
-         Process.repeatEval(Task.async[Seq[W]](cb => actor ! Get(cb)))
+         Process.repeatEval(Task.async[Seq[W]](cb => actor ! Get(cb))).onHalt(_.asHalt)
          .flatMap(Process.emitAll)
 
         def discrete: Process[Task, W] = subscribeW
