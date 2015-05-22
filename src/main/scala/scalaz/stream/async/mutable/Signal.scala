@@ -129,10 +129,10 @@ object Signal {
 
 
   protected[async] def apply[A](from:Option[A] \/ Process[Task,Msg[A]])(implicit S: Strategy) : Signal[A] = {
-    val topic =
-      WriterTopic.apply[A,Msg[A],Nothing](
-        emitAll(from.swap.toOption.flatten.toSeq).map(left) ++ signalWriter
-      )(from.toOption.getOrElse(halt), from.isRight)
+    val writer: Writer1[A, Msg[A], Nothing] =
+      from.swap.toOption.flatten map { a => process1.feed1(Set(a): Msg[A])(signalWriter) } getOrElse signalWriter
+
+    val topic = WriterTopic.apply[A,Msg[A],Nothing](writer)(from.toOption getOrElse halt, from.isRight)
 
     new mutable.Signal[A] {
       def changed: Process[Task, Boolean] = topic.signal.changed

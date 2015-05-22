@@ -217,4 +217,29 @@ object AsyncSignalSpec extends Properties("async.signal") {
       // res(5) was read at 3000 ms and so it must still contain value 12.
       (res(5) == 12) :| s"res(5) == ${res(5)}"
   }
+
+
+  property("signalOf.init.value") = secure {
+    val timer = time.sleep(1.second)
+    val signal = async.signalOf(0)
+
+    (eval_(signal.set(1)) ++ signal.discrete.once ++ timer ++ signal.discrete.once).runLog.run ?= Vector(1,1)
+  }
+
+  property("signalOf.init.value.cas") = secure {
+    val s = async.signalOf("init")
+
+    val resultsM = for {
+      _ <- s compareAndSet {
+        case Some("init") => Some("success")
+        case _ => Some("failed")
+      }
+
+      v <- s.get
+    } yield v
+
+    val results = resultsM.run
+
+    results == "success"
+  }
 }
