@@ -226,4 +226,21 @@ class AsyncSignalSpec extends Properties("async.signal") {
 
     (eval_(signal.set(1)) ++ signal.discrete.once ++ timer ++ signal.discrete.once).runLog.run ?= Vector(1,1)
   }
+
+  property("signalOf.init.value.cas") = secure {
+    val s = async.signalOf("init")
+
+    val resultsM = for {
+      _ <- s compareAndSet {
+        case Some("init") => Some("success")
+        case _ => Some("failed")
+      }
+
+      v <- s.get
+    } yield v
+
+    val results = resultsM.run
+
+    results == "success"
+  }
 }
