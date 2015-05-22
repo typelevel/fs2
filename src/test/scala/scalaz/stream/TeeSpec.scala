@@ -11,6 +11,7 @@ import scalaz.std.anyVal._
 import scalaz.std.list._
 import scalaz.std.list.listSyntax._
 import scalaz.std.vector._
+import scalaz.std.tuple._
 import scalaz.std.string._
 import scalaz.syntax.equal._
 import scalaz.syntax.foldable._

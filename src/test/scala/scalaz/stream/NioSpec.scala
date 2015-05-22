@@ -4,6 +4,7 @@ package scalaz.stream
 import Cause._
 import Process._
 import java.net.InetSocketAddress
+import java.util.concurrent.ScheduledExecutorService
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
 import scala.concurrent.SyncVar
@@ -100,6 +101,7 @@ class NioSpec extends Properties("nio") {
   def localAddress(port:Int) = new InetSocketAddress("127.0.0.1", port)
 
   implicit val AG = nio.DefaultAsynchronousChannelGroup
+  implicit val S: ScheduledExecutorService = DefaultScheduler
 
   //  property("loop-server") = secure {
   //    NioServer.limit(local,3).run.run

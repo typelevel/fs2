@@ -16,6 +16,8 @@ import scalaz.concurrent.{Actor, Future, Strategy, Task}
 import scalaz.stream.process1.Await1
 import scalaz.syntax.monad._
 
+import scala.annotation.unchecked.uncheckedVariance
+
 /**
  * An effectful stream of `O` values. In between emitting values
  * a `Process` may request evaluation of `F` effects.
@@ -112,10 +114,10 @@ sealed trait Process[+F[_], +O]
   final def onHalt[F2[x] >: F[x], O2 >: O](f: Cause => Process[F2, O2]): Process[F2, O2] = {
      val next = (t: Cause) => Trampoline.delay(Try(f(t)))
      this match {
-       case Append(h, stack)    => Append(h, stack :+ next)
-       case emt@Emit(_)         => Append(emt, Vector(next))
-       case awt@Await(_, _, _)  => Append(awt, Vector(next))
-       case hlt@Halt(rsn)       => Append(hlt, Vector(next))
+       case (append: Append[F2, O2] @unchecked) => Append(append.head, append.stack :+ next)
+       case emt@Emit(_)        => Append(emt, Vector(next))
+       case awt@Await(_, _, _) => Append(awt, Vector(next))
+       case hlt@Halt(rsn)      => Append(hlt, Vector(next))
      }
   }
 
@@ -527,7 +529,7 @@ object Process extends ProcessInstances {
   //
   /////////////////////////////////////////////////////////////////////////////////////
 
-  type Trampoline[+A] = scalaz.Free.Trampoline[A]
+  type Trampoline[+A] = scalaz.Free.Trampoline[A] @uncheckedVariance
   val Trampoline = scalaz.Trampoline
 
   /**
@@ -594,8 +596,8 @@ object Process extends ProcessInstances {
    */
   case class Await[+F[_], A, +O](
     req: F[A]
-    , rcv: (EarlyCause \/ A) => Trampoline[Process[F, O]]
-    , cleanup : A => Trampoline[Process[F,Nothing]]
+    , rcv: (EarlyCause \/ A) => Trampoline[Process[F, O]] @uncheckedVariance
+    , cleanup : A => Trampoline[Process[F,Nothing]] @uncheckedVariance
     ) extends HaltEmitOrAwait[F, O] with EmitOrAwait[F, O] {
     /**
      * Helper to modify the result of `rcv` parameter of await stack-safely on trampoline.
@@ -615,7 +617,7 @@ object Process extends ProcessInstances {
    */
   case class Append[+F[_], +O](
     head: HaltEmitOrAwait[F, O]
-    , stack: Vector[Cause => Trampoline[Process[F, O]]]
+    , stack: Vector[Cause => Trampoline[Process[F, O]]] @uncheckedVariance
     ) extends Process[F, O] {
 
     /**
@@ -649,7 +651,7 @@ object Process extends ProcessInstances {
   /**
    * Continuation of the process. Represents process _stack_. Used in conjunction with `Step`.
    */
-  case class Cont[+F[_], +O](stack: Vector[Cause => Trampoline[Process[F, O]]]) {
+  case class Cont[+F[_], +O](stack: Vector[Cause => Trampoline[Process[F, O]]] @uncheckedVariance) {
 
     /**
      * Prepends supplied process to this stack
