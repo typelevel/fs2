@@ -300,9 +300,10 @@ object io {
           case Halt(End | Kill) =>
             chunks = Nil
 
-          // rethrow halting errors
-          case Halt(Cause.Error(e: Error)) => throw e
           case Halt(Cause.Error(e: Exception)) => throw new IOException(e)
+
+          // rethrow halting errors
+          case Halt(Cause.Error(e)) => throw e
 
           case Step(Emit(_), _) => assert(false)    // this is impossible, according to the types
 
@@ -322,15 +323,15 @@ object io {
         case h @ Halt(End | Kill) =>
           cur = h
 
-        // rethrow halting errors
-        case h @ Halt(Cause.Error(e: Error)) => {
-          cur = h
-          throw e
-        }
-
         case h @ Halt(Cause.Error(e: Exception)) => {
           cur = h
           throw new IOException(e)
+        }
+
+        // rethrow halting errors
+        case h @ Halt(Cause.Error(e)) => {
+          cur = h
+          throw e
         }
 
         case Step(Emit(as), cont) => {
