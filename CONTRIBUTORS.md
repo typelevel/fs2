@@ -12,3 +12,4 @@ Also see the [GitHub contributor stats](https://github.com/scalaz/scalaz-stream/
 - Daniel Spiewak ([@djspiewak](https://github.com/djspiewak)): concurrency plumbing, bug fixes, performance and correctness obsession
 - Frank S. Thomas ([@fthomas](https://github.com/fthomas)): a lot of `Process1` functions, features, bug fixes, and maintainance
 - Rúnar Ó. Bjarnason ([@runarorama](https://github.com/runarorama)): Various processes and combinators, circular buffers, compression. I'm an ideas man, Michael.
+- Jed Wesley-Smith ([@jedws](https://github.com/jedws)): really very minor tweaks, cleanups and pestering, hardly worth the mention
