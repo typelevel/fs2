@@ -495,12 +495,12 @@ sealed trait Process[+F[_], +O]
    * which we can catch exceptions. This function is not tail recursive and
    * relies on the `Monad[F]` to ensure stack safety.
    */
-  final def runLog[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[IndexedSeq[O2]] = {
-    F.map(runFoldMap[F2, Vector[O2]](Vector(_))(
+  final def runLog[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[Vector[O2]] = {
+    runFoldMap[F2, Vector[O2]](Vector(_))(
       F, C,
       // workaround for performance bug in Vector ++
       Monoid.instance[Vector[O2]]((a, b) => a fast_++ b, Vector())
-    ))(_.toIndexedSeq)
+    )
   }
 
   /** Run this `Process` solely for its final emitted value, if one exists. */

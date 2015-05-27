@@ -124,7 +124,7 @@ object CreatingStreams extends Properties("creating-streams") {
     as a `Task`. Nothing happens until we run this `Task`, and
     we can run this `Task` again to repeat the entire `Process`
     */
-    val r: Task[IndexedSeq[String]] = oddsGt10.runLog
+    val r: Task[Vector[String]] = oddsGt10.runLog
 
     /*
     At the end of the universe, we can `run` the `Task`
