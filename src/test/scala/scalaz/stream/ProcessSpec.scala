@@ -296,7 +296,7 @@ class ProcessSpec extends Properties("Process") {
       Thread.sleep(100)
     }
 
-    val p = await(task, { _: Unit => eval_(Task delay { inner.incrementAndGet() }) }) { _ =>
+    val p = bracket(task)( { _: Unit => eval_(Task delay { inner.incrementAndGet() }) }) { _ =>
       emit(42)
     } onComplete eval_(Task delay { outer.incrementAndGet() })
 

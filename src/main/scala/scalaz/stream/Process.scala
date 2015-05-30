@@ -587,23 +587,26 @@ object Process extends ProcessInstances {
    * In case the process was killed before the request is evaluated `Kill` is passed on left side.
    * `Kill` is passed on left side as well as when the request is already in progress, but process was killed.
    *
+   * The `preempt` parameter is used when constructing resource and preemption safe cleanups.
+   * See `Process.bracket` for more.
+   *
    * Note that
    *
    * Instead of this constructor directly, please use:
    *
-   * Process.await
+   * Process.await or Process.bracket
    *
    */
   case class Await[+F[_], A, +O](
     req: F[A]
     , rcv: (EarlyCause \/ A) => Trampoline[Process[F, O]] @uncheckedVariance
-    , cleanup : A => Trampoline[Process[F,Nothing]] @uncheckedVariance
+    , preempt : A => Trampoline[Process[F,Nothing]] @uncheckedVariance = (_:A) => Trampoline.delay(halt:Process[F,Nothing])
     ) extends HaltEmitOrAwait[F, O] with EmitOrAwait[F, O] {
     /**
      * Helper to modify the result of `rcv` parameter of await stack-safely on trampoline.
      */
     def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Await[F2, A, O2] =
-      Await[F2, A, O2](req, r => Trampoline.suspend(rcv(r)).map(f), cleanup)
+      Await[F2, A, O2](req, r => Trampoline.suspend(rcv(r)).map(f), preempt)
   }
 
 
@@ -708,18 +711,17 @@ object Process extends ProcessInstances {
    * Await the given `F` request and use its result.
    * If you need to specify fallback, use `awaitOr`
    */
-  def await[F[_], A, O](req: F[A], cln: A => Process[F, Nothing] = const(halt) _)(rcv: A => Process[F, O]): Process[F, O] =
-    awaitOr(req)(Halt.apply, cln)(rcv)
+  def await[F[_], A, O](req: F[A])(rcv: A => Process[F, O]): Process[F, O] =
+    awaitOr(req)(Halt.apply)(rcv)
+
 
   /**
    * Await a request, and if it fails, use `fb` to determine the next state.
    * Otherwise, use `rcv` to determine the next state.
    */
-  def awaitOr[F[_], A, O](req: F[A])(fb: EarlyCause => Process[F, O], cln: A => Process[F, Nothing] = const(halt) _)(rcv: A => Process[F, O]): Process[F, O] = {
-    Await(req,
-      { (r: EarlyCause \/ A) => Trampoline.delay(Try(r.fold(ec => fb(ec), a => rcv(a) onComplete cln(a) ))) },
-      { a: A => Trampoline.delay(cln(a)) })
-  }
+  def awaitOr[F[_], A, O](req: F[A])(fb: EarlyCause => Process[F, O])(rcv: A => Process[F, O]): Process[F, O] =
+    Await(req,(r: EarlyCause \/ A) => Trampoline.delay(Try(r.fold(fb,rcv))))
+
 
   /** The `Process1` which awaits a single input, emits it, then halts normally. */
   def await1[I]: Process1[I, I] =
@@ -756,6 +758,27 @@ object Process extends ProcessInstances {
   /** `Writer` based version of `awaitR`. */
   def awaitRW[I2]: TeeW[Nothing, Any, I2, I2] =
     writer.liftO(Process.awaitR[I2])
+
+
+  /**
+   * Resource and preemption safe `await` constructor.
+   * 
+   * Use this combinator, when acquiring resources. This build a process that when run
+   * evaluates `req`, and then runs `rcv`. Once `rcv` is completed, fails, or is interrupted, it will run `release`
+   * 
+   * When the acquisition (`req`) is interrupted, neither `release` or `rcv` is run, however when the req was interrupted after
+   * resource in `req` was acquired then, the `release` is run.
+   *
+   * If,the acquisition fails, use `bracket(req)(onPreempt)(rcv).onFailure(err => ???)` code to recover from the
+   * failure eventually.
+   * 
+   */
+  def bracket[F[_], A, O](req: F[A])(release: A => Process[F, Nothing])(rcv: A => Process[F, O]): Process[F, O] = {
+    Await(req,
+    { (r: EarlyCause \/ A) => Trampoline.delay(Try(r.fold(Halt.apply, a => rcv(a) onComplete release(a) ))) },
+    { a: A => Trampoline.delay(release(a)) })
+  }
+
 
   /**
    * The infinite `Process`, always emits `a`.
