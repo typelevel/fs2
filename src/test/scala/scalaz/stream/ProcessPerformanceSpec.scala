@@ -4,8 +4,9 @@ package scalaz.stream
 import concurrent.duration._
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
-import scalaz.Monoid
-import scalaz.concurrent.Task
+import scalaz.{\/, Monoid}
+import scalaz.\/._
+import scalaz.concurrent.{Strategy, Task}
 import Process._
 
 class ProcessPerformanceSpec extends Properties("Process-performance") {
@@ -98,4 +99,37 @@ class ProcessPerformanceSpec extends Properties("Process-performance") {
   property("flatMap-append") = secure { checkOne(flatMap.leftAppend, distribution = Seq(14, 15, 16, 17, 18, 19, 20, 21)) }
   property("flatMap-nested") = secure { checkOne(flatMap.rightNested) }
   property("worstCase") = secure { checkOne(worstCase.churned, distribution = (Seq(1,2,4,8,16,32,64,128,256,512,1024,2048))) }
+
+
+
+  property("Process.runLast.performance") = secure {
+    implicit val scheduler = scalaz.stream.DefaultScheduler
+    implicit val S = Strategy.DefaultStrategy
+    val interruptSignal = async.signalOf(false)
+
+    val t1:Task[Option[Int]\/Option[Long]] =
+      Process.constant(1)
+      .take(10000000)
+      .toSource
+      .onComplete(eval_(interruptSignal.set(true)))
+      .runLast
+      .map(left)
+
+    val r = Runtime.getRuntime
+    val used = r.totalMemory() - r.freeMemory()
+
+    val mt:Task[Option[Int]\/Option[Long]] =
+      interruptSignal.discrete.wye(scalaz.stream.time.awakeEvery(100.millis))(wye.interrupt)
+      .map { dur => dur -> (r.totalMemory() - r.freeMemory()) }
+      .scan((0l,0l)){ case ((sum,count),(_, memory)) => (sum + memory) -> (count + 1) }
+      .runLast
+      .map(_.map {case (total,count) => (total.toDouble/count).toLong})
+      .map(right)
+
+
+    val results = Task.gatherUnordered(Seq(Task.fork(t1),Task.fork(mt))).run
+
+    (results.size ?= 2) :| "Both tasks completed" &&
+      (results(1).toOption.flatten.map(_ - used).getOrElse(Long.MaxValue) < 250l *1024 *1024) :| "Max 250M of heap was used on average"
+  }
 }
