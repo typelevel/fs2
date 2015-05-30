@@ -504,12 +504,18 @@ sealed trait Process[+F[_], +O]
   }
 
   /** Run this `Process` solely for its final emitted value, if one exists. */
-  final def runLast[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[Option[O2]] =
-    F.map(this.last.runLog[F2,O2])(_.lastOption)
+  final def runLast[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[Option[O2]] = {
+    implicit val lastOpt = new Monoid[Option[O2]] {
+      def zero = None
+      def append(left: Option[O2], right: => Option[O2]) = right orElse left      // bias toward the end
+    }
+
+    this.last.runFoldMap[F2, Option[O2]]({ Some(_) })
+  }
 
   /** Run this `Process` solely for its final emitted value, if one exists, using `o2` otherwise. */
   final def runLastOr[F2[x] >: F[x], O2 >: O](o2: => O2)(implicit F: Monad[F2], C: Catchable[F2]): F2[O2] =
-    F.map(this.last.runLog[F2,O2])(_.lastOption.getOrElse(o2))
+    runLast[F2, O2] map { _ getOrElse o2 }
 
   /** Run this `Process`, purely for its effects. */
   final def run[F2[x] >: F[x]](implicit F: Monad[F2], C: Catchable[F2]): F2[Unit] =
