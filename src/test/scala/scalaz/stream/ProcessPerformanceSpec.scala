@@ -4,8 +4,9 @@ package scalaz.stream
 import concurrent.duration._
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
-import scalaz.Monoid
-import scalaz.concurrent.Task
+import scalaz.{\/, Monoid}
+import scalaz.\/._
+import scalaz.concurrent.{Strategy, Task}
 import Process._
 
 class ProcessPerformanceSpec extends Properties("Process-performance") {
@@ -98,4 +99,5 @@ class ProcessPerformanceSpec extends Properties("Process-performance") {
   property("flatMap-append") = secure { checkOne(flatMap.leftAppend, distribution = Seq(14, 15, 16, 17, 18, 19, 20, 21)) }
   property("flatMap-nested") = secure { checkOne(flatMap.rightNested) }
   property("worstCase") = secure { checkOne(worstCase.churned, distribution = (Seq(1,2,4,8,16,32,64,128,256,512,1024,2048))) }
+
 }

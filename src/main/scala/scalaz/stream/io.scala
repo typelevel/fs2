@@ -150,8 +150,8 @@ object io {
   def resource[F[_],R,O](acquire: F[R])(
                          release: R => F[Unit])(
                          step: R => F[O]): Process[F,O] =
-    await(acquire) { r =>
-      repeatEval(step(r)).onComplete(eval_(release(r)))
+    bracket(acquire)(r => eval_(release(r))){
+      r => repeatEval(step(r))
     } onHalt { _.asHalt }
 
   /**
