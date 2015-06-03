@@ -17,12 +17,15 @@ package object async {
    * When true, data will never be lost on dequeue, but concurrent dequeue processes
    * may see data out of order under certain error conditions.
    */
-  def boundedQueue[A](max: Int, recover: Boolean = false)(implicit S: Strategy): Queue[A] = {
+  def boundedQueue[A](max: Int, recover: Boolean)(implicit S: Strategy): Queue[A] = {
     if (max <= 0)
       throw new IllegalArgumentException(s"queue bound must be greater than zero (got $max)")
     else
       Queue[A](max, recover)
   }
+
+  def boundedQueue[A](max: Int)(implicit S: Strategy): Queue[A] =
+    boundedQueue(max, false)(S)
 
 
   /**
