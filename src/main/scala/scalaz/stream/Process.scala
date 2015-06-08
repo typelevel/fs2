@@ -451,8 +451,22 @@ sealed trait Process[+F[_], +O]
 
   }
 
-
-
+  final def uncons[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[(O2, Process[F2, O2])] = step match {
+    case Step(head, next) => head match {
+      case Emit(as) => as.headOption.map(x =>
+        F.point[(O2, Process[F2,O2])]((x, Process.emitAll[O2](as drop 1) +: next))) getOrElse
+        C.fail[(O2, Process[F2,O2])](new scala.NoSuchElementException)
+      case Await(req, k, preempt) => for {
+        e <- C.attempt(req)
+        as <- F.point(k(EarlyCause.fromTaskResult(e)).run)
+        u <- (as +: next).uncons(F, C)
+      } yield u
+    }
+    case Halt(cause) => cause match {
+      case End => C.fail(new scala.NoSuchElementException)
+      case _ : EarlyCause => C.fail(cause.asThrowable)
+    }
+  }
 
   ///////////////////////////////////////////
   //
