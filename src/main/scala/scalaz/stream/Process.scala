@@ -451,15 +451,16 @@ sealed trait Process[+F[_], +O]
 
   }
 
-  final def uncons[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[(O2, Process[F2, O2])] = step match {
+  final def uncons[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[(O2, Process[F2, O2])] =
+    unconsOption(F, C).map(_.getOrElse(throw new NoSuchElementException))
+
+  final def unconsOption[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[Option[(O2, Process[F2, O2])]] = step match {
     case Step(head, next) => head match {
-      case Emit(as) => as.headOption.map(x =>
-        F.point[(O2, Process[F2,O2])]((x, Process.emitAll[O2](as drop 1) +: next))) getOrElse
-        C.fail[(O2, Process[F2,O2])](new scala.NoSuchElementException)
-      case await: Await[F2, _, O2] => await.evaluate.flatMap(p => (p +: next).uncons(F,C))
+      case Emit(as) => F.point(as.headOption.map(x => ((x, Process.emitAll[O2](as drop 1) +: next))))
+      case await: Await[F2, _, O2] => await.evaluate.flatMap(p => (p +: next).unconsOption(F,C))
     }
     case Halt(cause) => cause match {
-      case End => C.fail(new scala.NoSuchElementException)
+      case End => F.point(None)
       case _ : EarlyCause => C.fail(cause.asThrowable)
     }
   }
