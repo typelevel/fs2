@@ -456,11 +456,7 @@ sealed trait Process[+F[_], +O]
       case Emit(as) => as.headOption.map(x =>
         F.point[(O2, Process[F2,O2])]((x, Process.emitAll[O2](as drop 1) +: next))) getOrElse
         C.fail[(O2, Process[F2,O2])](new scala.NoSuchElementException)
-      case Await(req, k, preempt) => for {
-        e <- C.attempt(req)
-        as <- F.point(k(EarlyCause.fromTaskResult(e)).run)
-        u <- (as +: next).uncons(F, C)
-      } yield u
+      case await: Await[F2, _, O2] => await.evaluate.flatMap(p => (p +: next).uncons(F,C))
     }
     case Halt(cause) => cause match {
       case End => C.fail(new scala.NoSuchElementException)
@@ -489,10 +485,7 @@ sealed trait Process[+F[_], +O]
                 go(cont.continue.asInstanceOf[Process[F2,O]], nacc)
               }
             case (awt:Await[F2,Any,O]@unchecked, cont) =>
-              F.bind(C.attempt(awt.req)) { r =>
-                go((Try(awt.rcv(EarlyCause.fromTaskResult(r)).run) +: cont).asInstanceOf[Process[F2,O]]
-                  , acc)
-              }
+              awt.evaluate.flatMap(p => go(p +: cont, acc))
           }
         case Halt(End) => F.point(acc)
         case Halt(Kill) => F.point(acc)
@@ -627,6 +620,11 @@ object Process extends ProcessInstances {
      */
     def extend[F2[x] >: F[x], O2](f: Process[F, O] => Process[F2, O2]): Await[F2, A, O2] =
       Await[F2, A, O2](req, r => Trampoline.suspend(rcv(r)).map(f), preempt)
+
+    def evaluate[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[Process[F2,O2]] =
+      C.attempt(req).map { e =>
+        rcv(EarlyCause.fromTaskResult(e)).run
+      }
   }
 
 
