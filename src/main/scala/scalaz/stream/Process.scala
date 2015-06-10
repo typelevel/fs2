@@ -457,7 +457,7 @@ sealed trait Process[+F[_], +O]
   final def unconsOption[F2[x] >: F[x], O2 >: O](implicit F: Monad[F2], C: Catchable[F2]): F2[Option[(O2, Process[F2, O2])]] = step match {
     case Step(head, next) => head match {
       case Emit(as) => as.headOption.map(x => F.point[Option[(O2, Process[F2, O2])]](Some((x, Process.emitAll[O2](as drop 1) +: next)))) getOrElse
-          (Process.empty +: next).unconsOption
+          next.continue.unconsOption
       case await: Await[F2, _, O2] => await.evaluate.flatMap(p => (p +: next).unconsOption(F,C))
     }
     case Halt(cause) => cause match {
