@@ -354,7 +354,7 @@ class ProcessSpec extends Properties("Process") {
     val (a, newProcess) = result.run
     a == 1 && newProcess.runLog.run == Seq(2,3)
   }
-  property("uncons (async stream v2") = secure {
+  property("uncons (async stream v2)") = secure {
     val task = Task.now(1)
     val process = Process.await(task)(a => Process(2,3).prepend(Seq(a)))
     val result = process.uncons
@@ -371,9 +371,17 @@ class ProcessSpec extends Properties("Process") {
     q.close.run
     val (a, newProcess) = result.timed(1.second).run
     val newProcessResult = newProcess.runLog.timed(1.second).run
-    println(a)
-    println(newProcessResult)
     a == 1 && newProcessResult == Seq(2,3)
+  }
+  property("uncons (mutable queue) v2") = secure {
+    import scalaz.stream.async
+    import scala.concurrent.duration._
+    val q = async.unboundedQueue[Int]
+    val process = q.dequeue
+    val result = process.uncons
+    q.enqueueOne(1).timed(1.second).run
+    val (a, newProcess) = result.timed(1.second).run
+    a == 1
   }
   property("uncons should throw a NoSuchElementException if Process is empty") = secure {
     val process = Process.empty[Task, Int]
