@@ -307,9 +307,9 @@ object io {
 
           case Step(Emit(_), _) => assert(false)    // this is impossible, according to the types
 
-          case Step(Await(request, receive, _), cont) => { // todo: ??? Cleanup
+          case Step(await: Await[Task,_,ByteVector], cont) => { // todo: ??? Cleanup
             // yay! run the Task
-            cur = Util.Try(receive(EarlyCause.fromTaskResult(request.attempt.run)).run) +: cont
+            cur = Util.Try(await.evaluate.run) +: cont
             close()
           }
         }
