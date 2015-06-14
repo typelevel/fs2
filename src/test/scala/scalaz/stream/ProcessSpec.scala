@@ -338,4 +338,30 @@ class ProcessSpec extends Properties("Process") {
 
     ((halt pipe process1.id).runLog timed 3000 map { _.toList }).attempt.run === (halt.runLog timed 3000 map { _.toList }).attempt.run
   }
+
+  property("to.halt") = secure {
+    var count = 0
+
+    val src = Process.range(0, 10) evalMap { i =>
+      Task delay {
+        count += 1
+        i
+      }
+    }
+
+    val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
+
+    val results = (src observe ch runLog).run
+
+    results.isEmpty :| s"expected empty; got $results" &&
+      (count === 1) :| s"count = $count"
+  }
+
+  property("observe.halt") = secure {
+    val src = Process.range(0, 10)
+    val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
+
+    val results = (src observe ch runLog).run
+    results.isEmpty :| s"expected empty; got $results"
+  }
 }
