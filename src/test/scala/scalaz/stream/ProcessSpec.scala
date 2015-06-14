@@ -351,10 +351,9 @@ class ProcessSpec extends Properties("Process") {
 
     val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
 
-    val results = (src observe ch runLog).run
+    (src to ch run).run
 
-    results.isEmpty :| s"expected empty; got $results" &&
-      (count === 1) :| s"count = $count"
+    (count === 1) :| s"count = $count"
   }
 
   property("observe.halt") = secure {
