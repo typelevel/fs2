@@ -768,16 +768,16 @@ object Process extends ProcessInstances {
 
   /**
    * Resource and preemption safe `await` constructor.
-   * 
+   *
    * Use this combinator, when acquiring resources. This build a process that when run
    * evaluates `req`, and then runs `rcv`. Once `rcv` is completed, fails, or is interrupted, it will run `release`
-   * 
+   *
    * When the acquisition (`req`) is interrupted, neither `release` or `rcv` is run, however when the req was interrupted after
    * resource in `req` was acquired then, the `release` is run.
    *
    * If,the acquisition fails, use `bracket(req)(onPreempt)(rcv).onFailure(err => ???)` code to recover from the
    * failure eventually.
-   * 
+   *
    */
   def bracket[F[_], A, O](req: F[A])(release: A => Process[F, Nothing])(rcv: A => Process[F, O]): Process[F, O] = {
     Await(req,
@@ -1017,7 +1017,7 @@ object Process extends ProcessInstances {
   implicit class ProcessSyntax[F[_],O](val self: Process[F,O]) extends AnyVal {
     /** Feed this `Process` through the given effectful `Channel`. */
     def through[F2[x]>:F[x],O2](f: Channel[F2,O,O2]): Process[F2,O2] =
-        self.zipWith(f)((o,f) => f(o)).eval onHalt { _.asHalt }     // very gross; I don't like this, but not sure what to do
+      self.zipWith(f)((o,f) => f(o)).eval onHalt { _.asHalt }     // very gross; I don't like this, but not sure what to do
 
     /**
      * Feed this `Process` through the given effectful `Channel`, signaling
@@ -1034,7 +1034,7 @@ object Process extends ProcessInstances {
 
     /** Attach a `Sink` to the output of this `Process` but echo the original. */
     def observe[F2[x]>:F[x]](f: Sink[F2,O]): Process[F2,O] =
-      self.zipWith(f)((o,f) => (o,f(o))).flatMap { case (orig,action) => emit(action).eval.drain ++ emit(orig) }
+      self.zipWith(f)((o,f) => (o,f(o))) flatMap { case (orig,action) => eval(action).drain ++ emit(orig) } onHalt { _.asHalt }
 
   }
 
