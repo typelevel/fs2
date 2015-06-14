@@ -1,5 +1,7 @@
 package scalaz.stream
 
+import java.util.NoSuchElementException
+
 import org.scalacheck.Prop._
 
 import Cause._
@@ -337,6 +339,60 @@ class ProcessSpec extends Properties("Process") {
     val halt = eval(Task delay { throw Terminated(End) }).repeat ++ emit(())
 
     ((halt pipe process1.id).runLog timed 3000 map { _.toList }).attempt.run === (halt.runLog timed 3000 map { _.toList }).attempt.run
+  }
+
+  property("uncons (constant stream)") = secure {
+    val process: Process[Task, Int] = Process(1,2,3)
+    val result = process.uncons
+    // Not sure why I need to use .equals() here instead of using ==
+    result.run.equals((1, Process(2,3)))
+  }
+  property("uncons (async stream v1)") = secure {
+    val task = Task.now(1)
+    val process = Process.await(task)(Process.emit(_) ++ Process(2,3))
+    val result = process.uncons
+    val (a, newProcess) = result.run
+    a == 1 && newProcess.runLog.run == Seq(2,3)
+  }
+  property("uncons (async stream v2)") = secure {
+    val task = Task.now(1)
+    val process = Process.await(task)(a => Process(2,3).prepend(Seq(a)))
+    val result = process.uncons
+    val (a, newProcess) = result.run
+    a == 1 && newProcess.runLog.run == Seq(2,3)
+  }
+  property("uncons (mutable queue)") = secure {
+    import scalaz.stream.async
+    import scala.concurrent.duration._
+    val q = async.unboundedQueue[Int]
+    val process = q.dequeue
+    val result = process.uncons
+    q.enqueueAll(List(1,2,3)).timed(1.second).run
+    q.close.run
+    val (a, newProcess) = result.timed(1.second).run
+    val newProcessResult = newProcess.runLog.timed(1.second).run
+    a == 1 && newProcessResult == Seq(2,3)
+  }
+  property("uncons (mutable queue) v2") = secure {
+    import scalaz.stream.async
+    import scala.concurrent.duration._
+    val q = async.unboundedQueue[Int]
+    val process = q.dequeue
+    val result = process.uncons
+    q.enqueueOne(1).timed(1.second).run
+    val (a, newProcess) = result.timed(1.second).run
+    a == 1
+  }
+  property("uncons should throw a NoSuchElementException if Process is empty") = secure {
+    val process = Process.empty[Task, Int]
+    val result = process.uncons
+    try {result.run; false} catch { case _: NoSuchElementException => true case _ : Throwable => false}
+  }
+  property("uncons should propogate failure if stream fails") = secure {
+    case object TestException extends java.lang.Exception
+    val process: Process[Task, Int] = Process.fail(TestException)
+    val result = process.uncons
+    try {result.run; false} catch { case TestException => true; case _ : Throwable => false}
   }
 
   property("to.halt") = secure {
