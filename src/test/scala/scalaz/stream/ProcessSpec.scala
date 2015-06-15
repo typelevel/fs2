@@ -394,4 +394,29 @@ class ProcessSpec extends Properties("Process") {
     val result = process.uncons
     try {result.run; false} catch { case TestException => true; case _ : Throwable => false}
   }
+
+  property("to.halt") = secure {
+    var count = 0
+
+    val src = Process.range(0, 10) evalMap { i =>
+      Task delay {
+        count += 1
+        i
+      }
+    }
+
+    val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
+
+    (src to ch run).run
+
+    (count === 1) :| s"count = $count"
+  }
+
+  property("observe.halt") = secure {
+    val src = Process.range(0, 10).toSource
+    val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
+
+    val results = (src observe ch).runLog[Task, Int].run
+    results.isEmpty :| s"expected empty; got $results"
+  }
 }
