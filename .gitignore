@@ -11,3 +11,4 @@ tags
 *#
 z_local.sbt
 .DS_Store
+tmp/
