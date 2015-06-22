@@ -300,12 +300,15 @@ object io {
           case Halt(End | Kill) =>
             chunks = Nil
 
+          case Halt(Cause.Error(e: IOException)) => throw e
           case Halt(Cause.Error(e: Exception)) => throw new IOException(e)
 
           // rethrow halting errors
           case Halt(Cause.Error(e)) => throw e
 
-          case Step(Emit(_), _) => assert(false)    // this is impossible, according to the types
+          case Step(Emit(_), cont) =>
+            cur = cont.continue
+            close()
 
           case Step(await: Await[Task,_,ByteVector], cont) => { // todo: ??? Cleanup
             // yay! run the Task
@@ -322,6 +325,11 @@ object io {
       cur.step match {
         case h @ Halt(End | Kill) =>
           cur = h
+
+        case h @ Halt(Cause.Error(e: IOException)) => {
+          cur = h
+          throw e
+        }
 
         case h @ Halt(Cause.Error(e: Exception)) => {
           cur = h
