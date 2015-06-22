@@ -119,6 +119,26 @@ class ToInputStreamSpec extends Properties("toInputStream") {
       (read == 42) :| "read value"
   }
 
+  property("invokes writer emitters when terminated early") = secure {
+    import Process._
+
+    var flag = false
+    val setter = Task delay { flag = true }
+
+    val p = emit(Array[Byte](42)) ++ emit(Array[Byte](24))
+    val snk: Sink[Task, Vector[Array[Byte]]] = sink.lift { _ => setter }
+
+    val pw = writer.logged(p).observeW(snk.pipeIn(process1.chunkAll)).stripW
+
+    val is = io.toInputStream(pw map { ByteVector view _ })
+
+    val read = is.read()
+    is.close()
+
+    (flag == true) :| "finalizer flag" &&
+      (read == 42) :| "read value"
+  }
+
   property("safely read byte 255 as an Int") = secure {
     val p = Process emit Array[Byte](-1)
     val is = io.toInputStream(p map { ByteVector view _ })
