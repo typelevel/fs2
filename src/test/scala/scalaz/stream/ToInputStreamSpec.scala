@@ -125,9 +125,8 @@ class ToInputStreamSpec extends Properties("toInputStream") {
     var flag = false
     val setter = Task delay { flag = true }
 
-    val p = emit(Array[Byte](42)) ++ emit(Array[Byte](24))
-    val snk: Sink[Task, Vector[Array[Byte]]] = sink.lift { _ => setter }
-
+    val p = emit(Array[Byte](42)) ++ emit(Array[Byte](24)).toSource
+    val snk = sink.lift { _: Any => setter }
     val pw = writer.logged(p).observeW(snk.pipeIn(process1.chunkAll)).stripW
 
     val is = io.toInputStream(pw map { ByteVector view _ })
