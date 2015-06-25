@@ -17,6 +17,10 @@ final class SinkSyntax[F[_], I](val self: Sink[F, I]) extends AnyVal {
   /** Converts `Sink` to `Channel`, that will perform the side effect and echo its input. */
   def toChannel(implicit F: Functor[F]): Channel[F, I, I] =
     self.map(f => (i: I) => f(i).as(i))
+
+  def adapt[B](f: B => I): Sink[F,B] = {
+    self.map(ff => ff.compose(f))
+  }
 }
 
 final class SinkTaskSyntax[I](val self: Sink[Task, I]) extends AnyVal {
