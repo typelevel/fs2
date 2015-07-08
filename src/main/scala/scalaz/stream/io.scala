@@ -8,7 +8,7 @@ import scalaz.concurrent.Task
 import scodec.bits.ByteVector
 
 import scala.annotation.tailrec
-import scala.io.{Codec, Source}
+import scala.io.{StdIn, Codec, Source}
 
 import Process._
 
@@ -166,7 +166,7 @@ object io {
    * and emits lines from standard input.
    */
   def stdInLines: Process[Task,String] =
-    Process.repeatEval(Task delay { Option(scala.Console.readLine()) }) pipe process1.stripNone
+    Process.repeatEval(Task delay { Option(StdIn.readLine()) }) pipe process1.stripNone
 
   /**
    * The standard output stream, as a `Sink`. This `Sink` does not
