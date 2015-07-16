@@ -27,7 +27,9 @@ scalacOptions ++= Seq(
 
 scalacOptions in (Compile, doc) ++= Seq(
   "-doc-source-url", scmInfo.value.get.browseUrl + "/tree/master€{FILE_PATH}.scala",
-  "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath
+  "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
+  "-implicits",
+  "-implicits-show-all"
 )
 
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
