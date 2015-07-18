@@ -871,6 +871,20 @@ object Process extends ProcessInstances {
   def iterateEval[F[_], A](start: A)(f: A => F[A]): Process[F, A] =
     emit(start) ++ await(f(start))(iterateEval(_)(f))
 
+  /**
+   * Lazily create an iterator to use as a source for a `Process`,
+   * which emits the values of the iterator, then halts.
+   */
+  def iterator[F[_], O](iteratorCreator: => F[Iterator[O]]): Process[F, O] = {
+    //This design was based on unfold.
+    def go(iterator: Iterator[O]): Process0[O] = {
+      if (iterator.hasNext) Process.emit(iterator.next()) ++ go(iterator)
+      else Process.halt
+    }
+
+    Process.await(iteratorCreator)(iterator => go(iterator))
+  }
+
   /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process0[Int] =
     unfold(start)(i => if (i < stopExclusive) Some((i, i + by)) else None)
