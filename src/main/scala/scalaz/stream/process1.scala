@@ -978,7 +978,7 @@ private[stream] trait Process1Ops[+F[_],+O] {
     this |> process1.forall(f)
 
   /** Alias for `this |> [[process1.fold]](b)(f)`. */
-  def fold[O2 >: O](b: O2)(f: (O2,O2) => O2): Process[F,O2] =
+  def fold[B](b: B)(f: (B, O) => B): Process[F, B] =
     this |> process1.fold(b)(f)
 
   /** Alias for `this |> [[process1.foldMap]](f)(M)`. */
