@@ -874,6 +874,10 @@ object Process extends ProcessInstances {
   /**
    * Create an iterator to use as a source for a `Process`,
    * which lazily emits the values of the iterator, then halts.
+   *
+   * Be sure that iteratorCreator creates any mutable or external
+   * resources that the iterator uses are created as part of the
+   * Task. Also, do not use Task.now to create the iterator.
    */
   def iterator[F[_], O](iteratorCreator: F[Iterator[O]]): Process[F, O] = {
     //This design was based on unfold.
