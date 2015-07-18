@@ -882,7 +882,7 @@ object Process extends ProcessInstances {
       else Process.halt
     }
 
-    Process.await(iteratorCreator)(iterator => go(iterator))
+    Process.await(iteratorCreator)(go)
   }
 
   /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
