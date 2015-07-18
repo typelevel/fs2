@@ -872,8 +872,8 @@ object Process extends ProcessInstances {
     emit(start) ++ await(f(start))(iterateEval(_)(f))
 
   /**
-   * Lazily create an iterator to use as a source for a `Process`,
-   * which emits the values of the iterator, then halts.
+   * Create an iterator to use as a source for a `Process`,
+   * which lazily emits the values of the iterator, then halts.
    */
   def iterator[F[_], O](iteratorCreator: => F[Iterator[O]]): Process[F, O] = {
     //This design was based on unfold.
