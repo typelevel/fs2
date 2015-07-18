@@ -101,6 +101,11 @@ class ProcessSpec extends Properties("Process") {
     Process.iterator[Task, Int](Task(Iterator.empty)).runLog.run.isEmpty
   }
 
+  property("iterator is re-usable") = secure {
+    val iterator = Task(Iterator.range(0, 100, 1))
+    Process.iterator(iterator).runLog.run == Process.iterator(iterator).runLog.run
+  }
+
   property("kill executes cleanup") = secure {
     import TestUtil._
     val cleanup = new SyncVar[Int]

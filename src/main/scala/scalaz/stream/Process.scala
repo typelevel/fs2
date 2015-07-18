@@ -875,7 +875,7 @@ object Process extends ProcessInstances {
    * Create an iterator to use as a source for a `Process`,
    * which lazily emits the values of the iterator, then halts.
    */
-  def iterator[F[_], O](iteratorCreator: => F[Iterator[O]]): Process[F, O] = {
+  def iterator[F[_], O](iteratorCreator: F[Iterator[O]]): Process[F, O] = {
     //This design was based on unfold.
     def go(iterator: Iterator[O]): Process0[O] = {
       if (iterator.hasNext) Process.emit(iterator.next()) ++ go(iterator)
