@@ -13,11 +13,11 @@ class TimeSpec extends Properties("time") {
   implicit val S = Strategy.DefaultStrategy
   implicit val scheduler = scalaz.stream.DefaultScheduler
 
-  property("awakeEvery") = secure {
+  property("awakeEvery") = protect {
     time.awakeEvery(100 millis).map(_.toMillis/100).take(5).runLog.run == Vector(1,2,3,4,5)
   }
 
-  property("duration") = secure {
+  property("duration") = protect {
     val firstValueDiscrepancy = time.duration.once.runLast
     val reasonableErrorInMillis = 200
     val reasonableErrorInNanos = reasonableErrorInMillis * 1000000

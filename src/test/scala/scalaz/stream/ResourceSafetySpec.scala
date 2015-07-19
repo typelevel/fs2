@@ -33,7 +33,7 @@ class ResourceSafetySpec extends Properties("resource-safety") {
   def die = throw bwah
 
 
-  property("cleanups") = secure {
+  property("cleanups") = protect {
     import Process._
     val thrown = new ConcurrentLinkedQueue[Cause]() // non-det tests need thread-safety
     def cleanup(cause:Cause) =  { thrown.add(cause) ; Halt(cause) }
@@ -85,7 +85,7 @@ class ResourceSafetySpec extends Properties("resource-safety") {
     result.reduce(_ && _)
   }
 
-  property("repeated kill") = secure {
+  property("repeated kill") = protect {
     import TestUtil._
     var cleaned = false
     (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.expectedCause(_ == Kill).run.run

@@ -3,7 +3,7 @@ package scalaz.stream
 import java.io.{ByteArrayOutputStream, PrintStream}
 import java.util.concurrent.ScheduledExecutorService
 
-import org.scalacheck.Prop.secure
+import org.scalacheck.Prop.protect
 import org.scalacheck.Properties
 
 import scalaz.concurrent.Task
@@ -11,7 +11,7 @@ import scalaz.concurrent.Task
 class PrintSpec extends Properties("io.print") {
   implicit val S: ScheduledExecutorService = DefaultScheduler
 
-  property("print terminates on process close") = secure {
+  property("print terminates on process close") = protect {
     terminates { out =>
       Process
         .constant("word").toSource.repeat
@@ -19,7 +19,7 @@ class PrintSpec extends Properties("io.print") {
     }
   }
 
-  property("printLines terminates on process close") = secure {
+  property("printLines terminates on process close") = protect {
     terminates { out =>
       Process
         .constant("word").toSource.repeat
@@ -27,7 +27,7 @@ class PrintSpec extends Properties("io.print") {
     }
   }
 
-  property("print outputs values and terminates") = secure {
+  property("print outputs values and terminates") = protect {
     val baos = new ByteArrayOutputStream
     val out = new PrintStream(baos)
 

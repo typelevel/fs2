@@ -39,7 +39,7 @@ libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-concurrent" % "7.1.2",
   "org.scodec" %% "scodec-bits" % "1.0.6",
   "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.2" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.12.2" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.12.4" % "test"
 )
 
 seq(bintraySettings:_*)

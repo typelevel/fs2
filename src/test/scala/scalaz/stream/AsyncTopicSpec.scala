@@ -164,7 +164,7 @@ class AsyncTopicSpec extends Properties("topic") {
       }
   }
 
-  property("writer.state.startWith.down") = secure {
+  property("writer.state.startWith.down") = protect {
     val topic = async.writerTopic(emit(-\/(0L)) ++ WriterHelper.w)()
     val subscriber = topic.subscribe.take(1).runLog.run
     topic.close.run
@@ -173,14 +173,14 @@ class AsyncTopicSpec extends Properties("topic") {
   }
 
   //tests a topic from discrete process
-  property("from.discrete") = secure {
+  property("from.discrete") = protect {
     val topic = async.writerTopic[Long,String,Int](WriterHelper.w)(Process(1,2,3,4).map(i=>"*"*i).toSource)
     val r = topic.subscribe.take(8).runLog.run
     r == Vector(-\/(1),\/-(1) ,-\/(3) ,\/-(2)  ,-\/(6) ,\/-(3)  ,-\/(10) ,\/-(4))
   }
 
   //tests a topic from discrete process
-  property("from.discrete") = secure {
+  property("from.discrete") = protect {
     val topic = async.writerTopic[Long,String,Int](WriterHelper.w onComplete (tell(0L) ++ emitO(0)))(Process(1,2,3,4).map(i=>"*"*i), haltOnSource = true)
     val r = topic.subscribe.take(10).runLog.run
     r == Vector(-\/(1),\/-(1) ,-\/(3) ,\/-(2)  ,-\/(6) ,\/-(3)  ,-\/(10) ,\/-(4), -\/(0), \/-(0))

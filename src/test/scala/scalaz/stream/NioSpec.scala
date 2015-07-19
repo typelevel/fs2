@@ -103,14 +103,14 @@ class NioSpec extends Properties("nio") {
   implicit val AG = nio.DefaultAsynchronousChannelGroup
   implicit val S: ScheduledExecutorService = DefaultScheduler
 
-  //  property("loop-server") = secure {
+  //  property("loop-server") = protect {
   //    NioServer.limit(local,3).run.run
   //    false
   //  }
 
 
   //simple connect to server send size of bytes and got back what was sent
-  property("connect-echo-done") = secure {
+  property("connect-echo-done") = protect {
     val local = localAddress(11100)
     val size: Int = 500000
     val array1 = Array.fill[Byte](size)(1)
@@ -134,7 +134,7 @@ class NioSpec extends Properties("nio") {
   }
 
 
-  property("connect-server-terminates") = secure {
+  property("connect-server-terminates") = protect {
     val local = localAddress(11101)
     val max: Int = 50
     val size: Int = 5000
@@ -162,7 +162,7 @@ class NioSpec extends Properties("nio") {
   // connects large number of client to server, each sending up to `size` data and server replying them back
   // at the end server shall have collected all data from all clients and all clients shall get echoed back
   // what they have sent to server
-  property("connect-server-many") = secure {
+  property("connect-server-many") = protect {
     val local = localAddress(11102)
     val count: Int = 100
     val size: Int = 10000

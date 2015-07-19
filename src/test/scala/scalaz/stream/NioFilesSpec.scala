@@ -27,21 +27,21 @@ class NioFilesSpec extends Properties("niofiles") {
     finally is.close()
   }
 
-  property("chunkR can read a file") = secure {
+  property("chunkR can read a file") = protect {
     val bytes = Process.constant(1024).toSource
       .through(chunkR(filename)).runLog.run.reduce(_ ++ _)
 
     bytes == ByteVector.view(getfile(filename))
   }
 
-  property("linesR can read a file") = secure {
+  property("linesR can read a file") = protect {
     val iostrs = io.linesR(filename)(Codec.UTF8).runLog.run.toList
     val niostrs = linesR(filename)(Codec.UTF8).runLog.run.toList
 
     iostrs == niostrs
   }
 
-  property("chunkW can write a file") = secure {
+  property("chunkW can write a file") = protect {
 
     val tmpname = "testdata/tempdata.tmp"
     Process.constant(1).toSource

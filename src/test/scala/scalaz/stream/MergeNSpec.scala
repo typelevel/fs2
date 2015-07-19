@@ -32,7 +32,7 @@ class MergeNSpec extends Properties("mergeN") {
 
   }
 
-  property("complete-with-inner-finalizer") = secure {
+  property("complete-with-inner-finalizer") = protect {
     merge.mergeN(emit(halt) onComplete eval_(Task now (()))).runLog timed 3000 run
 
     true
@@ -41,7 +41,7 @@ class MergeNSpec extends Properties("mergeN") {
 
   // tests that when downstream terminates,
   // all cleanup code is called on upstreams
-  property("source-cleanup-down-done") = secure {
+  property("source-cleanup-down-done") = protect {
     val cleanupQ = async.unboundedQueue[Int]
     val cleanups = new SyncVar[Throwable \/ IndexedSeq[Int]]
 
@@ -69,7 +69,7 @@ class MergeNSpec extends Properties("mergeN") {
 
   // unlike source-cleanup-down-done it focuses on situations where upstreams are in async state,
   // and thus will block until interrupted.
-  property("source-cleanup-async-down-done") = secure {
+  property("source-cleanup-async-down-done") = protect {
     val cleanupQ = async.unboundedQueue[Int]
     val cleanups = new SyncVar[Throwable \/ IndexedSeq[Int]]
     cleanupQ.dequeue.take(11).runLog.runAsync(cleanups.put)
@@ -96,7 +96,7 @@ class MergeNSpec extends Properties("mergeN") {
 
 
   //merges 10k of streams, each with 100 of elements
-  property("merge-million") = secure {
+  property("merge-million") = protect {
     val count = 1000
     val eachSize = 1000
 
@@ -110,7 +110,7 @@ class MergeNSpec extends Properties("mergeN") {
     (result == Some(499500000)) :| s"All items were emitted: $result"
   }
 
-  property("merge-maxOpen") = secure {
+  property("merge-maxOpen") = protect {
     val count = 100
     val eachSize = 10
 
@@ -150,7 +150,7 @@ class MergeNSpec extends Properties("mergeN") {
 
 
   //tests that mergeN correctly terminates with drained process
-  property("drain-halt") = secure {
+  property("drain-halt") = protect {
 
     val effect = Process.repeatEval(Task.delay(())).drain
     val p = Process(1,2)
@@ -161,7 +161,7 @@ class MergeNSpec extends Properties("mergeN") {
   }
 
   // tests that if one of the processes to mergeN is killed the mergeN is killed as well.
-  property("drain-kill-one") = secure {
+  property("drain-kill-one") = protect {
     import TestUtil._
     val effect = Process.repeatEval(Task.delay(())).drain
     val p = Process(1,2) onComplete Halt(Kill)
@@ -176,19 +176,19 @@ class MergeNSpec extends Properties("mergeN") {
 
   // tests that mergeN does not deadlock when the producer is waiting for enqueue to complete
   // this is really testing `njoin`
-  property("bounded-mergeN-halts-onFull") = secure {
+  property("bounded-mergeN-halts-onFull") = protect {
     merge.mergeN(1)(emit(constant(())))
 	.once
 	.run.timed(3000).run
 	true
   }
 
-  property("kill mergeN") = secure {
+  property("kill mergeN") = protect {
     merge.mergeN(Process(Process.repeatEval(Task.now(1)))).kill.run.timed(3000).run
     true // Test terminates.
   }
 
-  property("complete all children before onComplete") = secure {
+  property("complete all children before onComplete") = protect {
     val count = new AtomicInteger(0)
     val inc = Process eval (Task delay { count.incrementAndGet() })
     val size = 10
@@ -201,7 +201,7 @@ class MergeNSpec extends Properties("mergeN") {
       (result.head == size) :| s"result.head == ${result.head}"
   }
 
-  property("avoid hang in the presence of interrupts") = secure {
+  property("avoid hang in the presence of interrupts") = protect {
     1 to 100 forall { _ =>
       val q = async.unboundedQueue[Unit]
       q.enqueueOne(()).run
