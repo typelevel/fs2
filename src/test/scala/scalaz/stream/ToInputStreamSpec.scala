@@ -1,7 +1,7 @@
 package scalaz.stream
 
 import org.scalacheck._
-import Prop.{ BooleanOperators, forAll, secure, throws }
+import Prop.{ BooleanOperators, forAll, protect, throws }
 
 import scodec.bits.ByteVector
 
@@ -9,7 +9,7 @@ import scalaz.concurrent.Task
 
 import java.io.{IOException, DataInputStream}
 
-object ToInputStreamSpec extends Properties("toInputStream") {
+class ToInputStreamSpec extends Properties("toInputStream") {
 
   property("handles arbitrary emitAll") = forAll { bytes: List[List[Byte]] =>
     val length = bytes map { _.length } sum
@@ -67,7 +67,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
     List(buffer: _*) == bytes.flatten
   }
 
-  property("handles one append within an await") = secure {
+  property("handles one append within an await") = protect {
     val bytes: List[List[List[Byte]]] = List(List(), List(List(127)))
     val length = bytes map { _ map { _.length } sum } sum
 
@@ -102,7 +102,7 @@ object ToInputStreamSpec extends Properties("toInputStream") {
     List(buffer: _*) == (bytes flatMap { _.flatten })
   }
 
-  property("invokes finalizers when terminated early") = secure {
+  property("invokes finalizers when terminated early") = protect {
     import Process._
 
     var flag = false
@@ -119,20 +119,20 @@ object ToInputStreamSpec extends Properties("toInputStream") {
       (read == 42) :| "read value"
   }
 
-  property("safely read byte 255 as an Int") = secure {
+  property("safely read byte 255 as an Int") = protect {
     val p = Process emit Array[Byte](-1)
     val is = io.toInputStream(p map { ByteVector view _ })
 
     is.read() == 255
   }
 
-  property("handles exceptions") = secure {
+  property("handles exceptions") = protect {
     val p: Process[Task, ByteVector] = Process eval Task.fail(new Exception())
     val is = io.toInputStream(p)
     throws(classOf[IOException])(is.read())
   }
 
-  property("after close read should return -1") = secure {
+  property("after close read should return -1") = protect {
     val p = Process emitAll Seq(Array[Byte](1, 2), Array[Byte](3, 4))
     val is = io.toInputStream(p map { ByteVector view _ })
     is.read()

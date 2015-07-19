@@ -8,7 +8,7 @@ import scalaz.Monoid
 import scalaz.concurrent.Task
 import Process._
 
-object ProcessPerformanceSpec extends Properties("Process-performance") {
+class ProcessPerformanceSpec extends Properties("Process-performance") {
 
   import TestUtil._
 
@@ -93,9 +93,10 @@ object ProcessPerformanceSpec extends Properties("Process-performance") {
 
 
   // these properties won't complete, in case of quadratic complexity
-  property("append") = secure { associationCheck(append.left, append.right) }
-  property("flatMap") = secure { associationCheck(flatMap.left1, flatMap.right1) }
-  property("flatMap-append") = secure { checkOne(flatMap.leftAppend, distribution = Seq(14, 15, 16, 17, 18, 19, 20, 21)) }
-  property("flatMap-nested") = secure { checkOne(flatMap.rightNested) }
-  property("worstCase") = secure { checkOne(worstCase.churned, distribution = (Seq(1,2,4,8,16,32,64,128,256,512,1024,2048))) }
+  property("append") = protect { associationCheck(append.left, append.right) }
+  property("flatMap") = protect { associationCheck(flatMap.left1, flatMap.right1) }
+  property("flatMap-append") = protect { checkOne(flatMap.leftAppend, distribution = Seq(14, 15, 16, 17, 18, 19, 20, 21)) }
+  property("flatMap-nested") = protect { checkOne(flatMap.rightNested) }
+  property("worstCase") = protect { checkOne(worstCase.churned, distribution = (Seq(1,2,4,8,16,32,64,128,256,512,1024,2048))) }
+
 }

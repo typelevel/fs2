@@ -85,7 +85,7 @@ object QueueSpec extends Properties("queue") {
 
 
 
-  property("closes-pub-sub") = secure {
+  property("closes-pub-sub") = protect {
     val l: List[Int] = List(1, 2, 3)
     val q = async.unboundedQueue[Int]
     val t1 = Task {
@@ -117,7 +117,7 @@ object QueueSpec extends Properties("queue") {
 
   // tests situation where killed process may `swallow` item in queue
   // from the process that is running
-  property("queue-swallow-killed") = secure {
+  property("queue-swallow-killed") = protect {
     val q = async.unboundedQueue[Int]
     val sleeper = time.sleep(1 second)
     val signalKill = Process(false).toSource ++ sleeper ++ Process(true)
@@ -145,7 +145,7 @@ object QueueSpec extends Properties("queue") {
       (s"All values were collected, all: ${collected.get(0)}, l: $l " |: collected.get.getOrElse(Nil).flatten == l)
   }
 
-  property("dequeue-batch.chunked") = secure {
+  property("dequeue-batch.chunked") = protect {
     import Function.const
 
     val q = async.unboundedQueue[Int]
@@ -165,7 +165,7 @@ object QueueSpec extends Properties("queue") {
       ((collected.get getOrElse Nil) == Seq(Seq(1), Seq(1, 1), Seq(2, 2, 2, 2), Seq(4, 4, 4, 4, 4, 4, 4, 4))) :| s"saw ${collected.get getOrElse Nil}"
   }
 
-  property("dequeue-batch.chunked-limited") = secure {
+  property("dequeue-batch.chunked-limited") = protect {
     import Function.const
 
     val q = async.unboundedQueue[Int]
@@ -211,7 +211,7 @@ object QueueSpec extends Properties("queue") {
     }
   }
 
-  property("dequeue.take-1-repeatedly") = secure {
+  property("dequeue.take-1-repeatedly") = protect {
     val q = async.unboundedQueue[Int]
     q.enqueueAll(List(1, 2, 3)).run
 

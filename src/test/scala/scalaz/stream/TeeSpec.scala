@@ -21,9 +21,10 @@ import process1._
 import TestInstances._
 import scala.concurrent.SyncVar
 
-object TeeSpec extends Properties("Tee") {
+class TeeSpec extends Properties("Tee") {
 
   import TestInstances._
+  import TeeSpecHelpers._
 
   case object Err extends RuntimeException("Error")
   case object Err2 extends RuntimeException("Error 2")
@@ -72,7 +73,7 @@ object TeeSpec extends Properties("Tee") {
     }
   }
 
-  property("cleanup called - both sides finite") = secure {
+  property("cleanup called - both sides finite") = protect {
     val leftCleanup = new SyncVar[Int]
     val rightCleanup = new SyncVar[Int]
     val l = Process(1) onComplete(eval_(Task.delay { leftCleanup.put(1) }))
@@ -81,7 +82,7 @@ object TeeSpec extends Properties("Tee") {
     leftCleanup.get(500).get == rightCleanup.get(500).get
   }
 
-  property("cleanup called after exception different from Kill") = secure {
+  property("cleanup called after exception different from Kill") = protect {
     val leftCleanup = new SyncVar[Int]
     val rightCleanup = new SyncVar[Int]
     val l = Process(1, 2, 3) onComplete(eval_(Task.delay { leftCleanup.put(1) }))
@@ -91,7 +92,7 @@ object TeeSpec extends Properties("Tee") {
   }
 
   // ensure that zipping terminates when the smaller stream runs out on left side
-  property("zip left/right side infinite") = secure {
+  property("zip left/right side infinite") = protect {
     val ones = Process.eval(Task.now(1)).repeat
     val p = Process(1,2,3)
     ones.zip(p).runLog.run == IndexedSeq(1 -> 1, 1 -> 2, 1 -> 3) &&
@@ -99,23 +100,19 @@ object TeeSpec extends Properties("Tee") {
   }
 
   // ensure that zipping terminates when  killed from the downstream
-  property("zip both side infinite") = secure {
+  property("zip both side infinite") = protect {
     val ones = Process.eval(Task.now(1)).repeat
     ones.zip(ones).take(3).runLog.run == IndexedSeq(1 -> 1, 1 -> 1, 1 -> 1)
   }
 
-  property("passL/R") = secure {
+  property("passL/R") = protect {
     val a = Process.range(0,10)
     val b: Process[Task,Int] = halt
     a.tee(b)(tee.passL[Int]).runLog.run == List.range(0,10) &&
       b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
   }
 
-  implicit class Next[F[_],O](val p: Process[F,O]) extends AnyVal {
-    def next[F2[x] >: F[x],O2 >: O](p2: Process[F2,O2]): Process[F2,O2] = p.onHalt {cause => p2.causedBy(cause) }
-  }
-
-  property("tee can await right side and emit when left side stops") = secure {
+  property("tee can await right side and emit when left side stops") = protect {
     import TestUtil._
     val t: Tee[Int, String, Any] = tee.passL[Int] next emit(2) next tee.passR[String] next emit(true)
     val r = emit("a") ++ emit("b")
@@ -125,7 +122,7 @@ object TeeSpec extends Properties("Tee") {
       ("failure" |: (emit(1) ++ fail(Err)).tee(r)(t).expectedCause(_ == Error(Err)).toList == res)
   }
 
-  property("tee can await left side and emit when right side stops") = secure {
+  property("tee can await left side and emit when right side stops") = protect {
     import TestUtil._
     val t: Tee[String, Int, Any] = tee.passR[Int] next emit(2) next tee.passL[String] next emit(true)
     val l = emit("a") ++ emit("b")
@@ -135,7 +132,7 @@ object TeeSpec extends Properties("Tee") {
       ("failure" |: l.tee(emit(1) ++ fail(Err))(t).expectedCause(_ == Error(Err)).toList == res)
   }
 
-  property("tee exceptions") = secure {
+  property("tee exceptions") = protect {
     import TestUtil._
     val leftFirst: Tee[Int, Int, Any] = tee.passL[Int] next tee.passR[Int] next emit(3)
     val rightFirst: Tee[Int, Int, Any] = tee.passR[Int] next tee.passL[Int] next emit(3)
@@ -147,5 +144,11 @@ object TeeSpec extends Properties("Tee") {
       ("right fails - right first" |: emit(1).tee(r)(rightFirst).expectedCause(_ == Error(Bwahahaa2)).toList == List(2, 1, 3))   &&
       ("right fails - left first" |: emit(1).tee(r)(leftFirst).expectedCause(_ == Error(Bwahahaa2)).toList == List(1, 2, 3)) &&
       ("left fails - right first" |: l.tee(emit(2))(rightFirst).expectedCause(_ == Error(Bwahahaa)).toList == List(2, 1, 3))
+  }
+}
+
+object TeeSpecHelpers {
+  implicit class Next[F[_],O](val p: Process[F,O]) extends AnyVal {
+    def next[F2[x] >: F[x],O2 >: O](p2: Process[F2,O2]): Process[F2,O2] = p.onHalt {cause => p2.causedBy(cause) }
   }
 }

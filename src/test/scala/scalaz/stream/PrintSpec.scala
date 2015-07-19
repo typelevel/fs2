@@ -2,13 +2,13 @@ package scalaz.stream
 
 import java.io.{ByteArrayOutputStream, PrintStream}
 
-import org.scalacheck.Prop.secure
+import org.scalacheck.Prop.protect
 import org.scalacheck.Properties
 
 import scalaz.concurrent.Task
 
 object PrintSpec extends Properties("io.print") {
-  property("print terminates on process close") = secure {
+  property("print terminates on process close") = protect {
     terminates { out =>
       Process
         .constant("word").toSource.repeat
@@ -16,7 +16,7 @@ object PrintSpec extends Properties("io.print") {
     }
   }
 
-  property("printLines terminates on process close") = secure {
+  property("printLines terminates on process close") = protect {
     terminates { out =>
       Process
         .constant("word").toSource.repeat
@@ -24,7 +24,7 @@ object PrintSpec extends Properties("io.print") {
     }
   }
 
-  property("print outputs values and terminates") = secure {
+  property("print outputs values and terminates") = protect {
     val baos = new ByteArrayOutputStream
     val out = new PrintStream(baos)
 
