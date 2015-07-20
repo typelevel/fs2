@@ -92,20 +92,6 @@ class ProcessSpec extends Properties("Process") {
     Process.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.run == List.iterate(0, 100)(_ + 1)
   }
 
-  property("iterator uses all its values and completes") = secure {
-    def iterator = Task(Iterator.range(0, 100, 1))
-    Process.iterator[Task, Int](iterator).runLog.run == Vector.range(0, 100, 1)
-  }
-
-  property("iterator completes immediately from an empty iterator") = secure {
-    Process.iterator[Task, Int](Task(Iterator.empty)).runLog.run.isEmpty
-  }
-
-  property("iterator is re-usable") = secure {
-    val iterator = Task(Iterator.range(0, 100, 1))
-    Process.iterator(iterator).runLog.run == Process.iterator(iterator).runLog.run
-  }
-
   property("kill executes cleanup") = secure {
     import TestUtil._
     val cleanup = new SyncVar[Int]

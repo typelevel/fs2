@@ -155,6 +155,33 @@ object io {
     } onHalt { _.asHalt }
 
   /**
+   * Create a Process from an iterator that requires some external or
+   * other mutable resource, while ensuring that the resource is released.
+   *
+   * Use `iterators` if the resource is associated with multiple iterators.
+   */
+  def iterator[R, O](acquire: Task[(R, Iterator[O])])(
+                     release: R => Task[Unit]): Process[Task, O] = {
+    bracket(acquire)(r => eval_(release(r._1))){
+      r => iteratorGo(r._2)
+    } onHalt { _.asHalt }
+  }
+
+  /**
+   * Create a Process from an external resource associated with multiple
+   * iterators, while ensuring that the resource is released.
+   *
+   * Use `merge.mergeN` on the result to interleave the iterators, or
+   * .flatMap(identity) to emit them in order.
+   */
+  def iterators[R, O](acquire: Task[(R, Process[Task, Iterator[O]])])(
+                      release: R => Task[Unit]): Process[Task, Process[Task, O]] = {
+    bracket(acquire)(r => eval_(release(r._1))){
+      r => r._2.map(iteratorGo)
+    } onHalt { _.asHalt }
+  }
+
+  /**
    * The standard input stream, as `Process`. This `Process` repeatedly awaits
    * and emits chunks of bytes  from standard input.
    */
