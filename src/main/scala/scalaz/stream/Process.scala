@@ -876,10 +876,12 @@ object Process extends ProcessInstances {
    * because iterators are mutable.
    */
   private [stream] def iteratorGo[O](iterator: Iterator[O]): Process[Task, O] = {
-    val hasNext = Task delay { println("hasNext"); iterator.hasNext }
-    val next = Task delay { println("next"); iterator.next() }
+    val hasNext = Task delay { iterator.hasNext }
+    val next = Task delay { iterator.next() }
 
-    await(hasNext) { hn => if (hn) eval(next) else halt } repeat
+    def go: Process[Task, O] = await(hasNext) { hn => if (hn) eval(next) ++ go else halt }
+
+    go
   }
 
   /**

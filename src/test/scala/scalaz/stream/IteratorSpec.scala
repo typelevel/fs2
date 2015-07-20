@@ -4,7 +4,6 @@ import org.scalacheck._
 import Prop._
 
 import scalaz.concurrent.Task
-import scala.concurrent.duration._
 
 class IteratorSpec extends Properties("iterators") {
 
@@ -27,13 +26,13 @@ class IteratorSpec extends Properties("iterators") {
     Task(toRelease.clean())
   }
 
+  property("Process.iterator completes immediately from an empty iterator") = secure {
+    Process.iterator[Int](Task(Iterator.empty)).runLog.run.isEmpty
+  }
+
   property("Process.iterator uses all its values and completes") = forAll { (ints: Vector[Int]) =>
     val iterator = Task(ints.toIterator)
     Process.iterator[Int](iterator).runLog.run == ints
-  }
-
-  property("Process.iterator completes immediately from an empty iterator") = secure {
-    Process.iterator[Int](Task(Iterator.empty)).runLog.run.isEmpty
   }
 
   property("Process.iterator is re-usable") = forAll { (ints: List[Int]) =>
