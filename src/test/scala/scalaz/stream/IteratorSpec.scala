@@ -27,33 +27,33 @@ class IteratorSpec extends Properties("iterators") {
     Task(toRelease.clean())
   }
 
-//  property("Process.iterator uses all its values and completes") = forAll { (ints: Vector[Int]) =>
-//    val iterator = Task(ints.toIterator)
-//    Process.iterator[Int](iterator).runLog.runFor(2 seconds) == ints
-//  }
+  property("Process.iterator uses all its values and completes") = forAll { (ints: Vector[Int]) =>
+    val iterator = Task(ints.toIterator)
+    Process.iterator[Int](iterator).runLog.run == ints
+  }
 
   property("Process.iterator completes immediately from an empty iterator") = secure {
     Process.iterator[Int](Task(Iterator.empty)).runLog.run.isEmpty
   }
 
-//  property("Process.iterator is re-usable") = forAll { (ints: List[Int]) =>
-//    val iterator = Task(ints.toIterator)
-//    Process.iterator(iterator).runLog.run == Process.iterator(iterator).runLog.run
-//  }
-//
-//  property("io.iterator cleans its resource") = secure {
-//    val resource = IteratorResource()
-//
-//    io.iterator(acquire(resource))(release).run.run
-//
-//    resource.cleaned
-//  }
-//
-//  property("io.iterators emits all the values") = forAll { (ints: Seq[Seq[Int]]) =>
-//    val resource = IteratorResource()
-//
-//    io.iterators(acquires(resource, ints))(release).flatMap(identity).runLog.run == ints.flatten &&
-//    resource.cleaned
-//  }
+  property("Process.iterator is re-usable") = forAll { (ints: List[Int]) =>
+    val iterator = Task(ints.toIterator)
+    Process.iterator(iterator).runLog.run == Process.iterator(iterator).runLog.run
+  }
+
+  property("io.iterator cleans its resource") = secure {
+    val resource = IteratorResource()
+
+    io.iterator(acquire(resource))(release).run.run
+
+    resource.cleaned
+  }
+
+  property("io.iterators emits all the values") = forAll { (ints: Seq[Seq[Int]]) =>
+    val resource = IteratorResource()
+
+    io.iterators(acquires(resource, ints))(release).flatMap(identity).runLog.run == ints.flatten &&
+    resource.cleaned
+  }
 
 }
