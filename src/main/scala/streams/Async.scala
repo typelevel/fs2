@@ -16,23 +16,25 @@ trait Affine[F[_]] extends Monad[F] {
 }
 
 trait Async[F[_]] extends Monad[F] with Affine[F] {
-  type Pool[A]
+  type Ref[A]
 
-  /** Create a asynchronous, concurrent pool. */
-  def pool[A]: F[Pool[A]]
-
-  /**
-   * Add a task to a `Pool`. After the returned `F[Unit]` is bound, the
-   * task is running in the background. Multiple tasks may be added to a
-   * `Pool[A]`. Satisfies `put(pool)(t) flatMap { _ => take(pool) } == t`.
-   */
-  def put[A](q: Pool[A])(a: F[A]): F[Unit]
-  def putFree[A](q: Pool[A])(a: Free[F,A]): F[Unit]
+  /** Create a asynchronous, concurrent mutable reference. */
+  def ref[A]: F[Ref[A]]
 
   /**
-   * Obtain the first available result from the `Pool`.
+   * After the returned `F[Unit]` is bound, the task is
+   * running in the background. Multiple tasks may be added to a
+   * `Ref[A]`.
+   *
+   * Satisfies: `set(v)(t) flatMap { _ => get(v) } == t`.
    */
-  def take[A](q: Pool[A]): F[A]
+  def set[A](q: Ref[A])(a: F[A]): F[Unit]
+  def setFree[A](q: Ref[A])(a: Free[F,A]): F[Unit]
+
+  /**
+   * Obtain the value of the `Ref`, or wait until it has been `set`.
+   */
+  def get[A](q: Ref[A]): F[A]
 
   /**
    * Chooses nondeterministically between `a map (Left(_))` and
@@ -40,7 +42,18 @@ trait Async[F[_]] extends Monad[F] with Affine[F] {
    * these two expressions. */
   def race[A,B](a: F[A], a2: F[B]): F[Either[A,B]]
 
-  def affine[A](f: F[A]): F[F[A]] = bind(pool[A]) { pool =>
-    map(put(pool)(f)) { _ => take(pool) }
+  def affine[A](f: F[A]): F[F[A]] = bind(ref[A]) { ref =>
+    map(set(ref)(f)) { _ => get(ref) }
   }
+}
+
+object Async {
+
+  implicit class Syntax[F[_],A](a: F[A]) {
+    def race[B](b: F[B])(implicit F: Async[F]): F[Either[A,B]] = F.race(a,b)
+  }
+}
+
+object Affine {
+
 }

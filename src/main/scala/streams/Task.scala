@@ -245,9 +245,9 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
    nowhere.
    */
   def race[B](t: Task[B])(implicit S: Strategy): Task[Either[A,B]] = {
-    Task.pool[Either[A,B]].flatMap { pool =>
-      pool.putRace(this map (Left(_)), t map (Right(_)))
-          .flatMap { _ => pool.take }
+    Task.ref[Either[A,B]].flatMap { pool =>
+      pool.setRace(this map (Left(_)), t map (Right(_)))
+          .flatMap { _ => pool.get }
     }
   }
 }
@@ -318,7 +318,7 @@ object Task extends Instances {
    }}}
   */
   def start[A](t: Task[A])(implicit S: Strategy): Task[Task[A]] =
-    pool[A].flatMap { pool => pool.put(t) map (_ => pool.take) }
+    ref[A].flatMap { ref => ref.set(t) map (_ => ref.get) }
 
   /**
    Create a `Future` from an asynchronous computation, which takes the form
@@ -337,7 +337,7 @@ object Task extends Instances {
   def TryTask[A](a: => Task[A]): Task[A] =
     try a catch { case e: Throwable => fail(e) }
 
-  def pool[A](implicit S: Strategy): Task[Pool[A]] = Task.delay {
+  def ref[A](implicit S: Strategy): Task[Ref[A]] = Task.delay {
     type Get = Either[Throwable,A] => Unit
     var result: Either[Throwable,A] = null
     var waiting: List[Get] = List()
@@ -350,27 +350,27 @@ object Task extends Instances {
         waiting.reverse.foreach(cb => S { cb(r) })
         waiting = List()
     } (S)
-    new Pool(act)
+    new Ref(act)
   }
 
-  class Pool[A](actor: Actor[Either[Either[Throwable,A] => Unit, Either[Throwable,A]]]) {
+  class Ref[A](actor: Actor[Either[Either[Throwable,A] => Unit, Either[Throwable,A]]]) {
     /**
      * Return a `Task` that submits `t` to this pool for evaluation.
      * When it completes it overwrites any previously `put` value.
      */
-    def put(t: Task[A]): Task[Unit] = Task.delay { t.runAsync { r => actor ! Right(r) } }
-    def putFree(t: Free[Task,A]): Task[Unit] = put(t.run(UF1.id))
+    def set(t: Task[A]): Task[Unit] = Task.delay { t.runAsync { r => actor ! Right(r) } }
+    def setFree(t: Free[Task,A]): Task[Unit] = set(t.run(UF1.id))
 
-    /** Return the most recently completed `put`, or block until a `put` value is available. */
-    def take: Task[A] = Task.async { cb => actor ! Left(cb) }
+    /** Return the most recently completed `set`, or block until a `set` value is available. */
+    def get: Task[A] = Task.async { cb => actor ! Left(cb) }
 
     /**
      * Runs `t1` and `t2` simultaneously, but only the winner gets to
-     * `put` to this `Pool`. The loser continues running but its reference
+     * `set` to this `Pool`. The loser continues running but its reference
      * to this pool is severed, allowing this pool to be garbage collected
      * if it is no longer referenced by anyone other than the loser.
      */
-    def putRace(t1: Task[A], t2: Task[A]): Task[Unit] = Task.delay {
+    def setRace(t1: Task[A], t2: Task[A]): Task[Unit] = Task.delay {
       val ref = new AtomicReference(actor)
       val won = new AtomicBoolean(false)
       val win = (res: Either[Throwable,A]) => {
@@ -399,13 +399,13 @@ private[streams] trait Instances1 {
 
 private[streams] trait Instances extends Instances1 {
   implicit def AsyncInstance(implicit S: Strategy): Async[Task] = new Async[Task] {
-    type Pool[A] = Task.Pool[A]
+    type Ref[A] = Task.Ref[A]
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
-    def pool[A] = Task.pool[A](S)
-    def put[A](p: Pool[A])(t: Task[A]) = p.put(t)
-    def putFree[A](p: Pool[A])(t: Free[Task,A]) = p.putFree(t)
-    def take[A](p: Pool[A]): Task[A] = p.take
+    def ref[A] = Task.ref[A](S)
+    def set[A](p: Ref[A])(t: Task[A]) = p.set(t)
+    def setFree[A](p: Ref[A])(t: Free[Task,A]) = p.setFree(t)
+    def get[A](p: Ref[A]): Task[A] = p.get
     def race[A,B](t1: Task[A], t2: Task[B]): Task[Either[A,B]] = t1 race t2
   }
 }

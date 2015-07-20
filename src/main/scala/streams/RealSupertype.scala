@@ -32,4 +32,7 @@ object RealSupertype extends RealSupertypeFallback {
     new RealSupertype[A,AnyRef] {}
   implicit def `Serializable not a real supertype 2`[A] =
     new RealSupertype[A,AnyRef] {}
+
+  implicit def realSupertypeRefl[A]: RealSupertype[A,A] =
+    new RealSupertype[A,A] {}
 }

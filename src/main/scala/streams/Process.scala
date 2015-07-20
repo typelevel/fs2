@@ -73,8 +73,10 @@ trait Stream[P[+_[_],+_]] { self =>
 
   def await[F[_],A](p: P[F, A]): P[F, Step[Chunk[A], P[F,A]]]
 
-  def awaitAsync[F[_]:Async,A](p: P[F, A]): P[F, F[P[F, Step[Chunk[A], P[F,A]]]]]
+  def awaitAsync[F[_]:Async,A](p: P[F, A]): P[F, AsyncStep[F,A]]
 
+  type AsyncStep[F[_],A] = F[P[F, Step[Chunk[A], P[F,A]]]]
+  type AsyncStep1[F[_],A] = F[P[F, Step[A, P[F,A]]]]
 
   // resource acquisition
 
@@ -117,24 +119,20 @@ trait Stream[P[+_[_],+_]] { self =>
     flatMap(eval(fa)) { _ => empty }
 
   def terminated[F[_],A](p: P[F,A]): P[F,Option[A]] =
-    append(map(p)(Some(_)), emit(None))
+    p.map(Some(_)) ++ emit(None)
 
   def mergeHaltBoth[F[_],A](p: P[F,A], p2: P[F,A])(implicit F: Async[F]): P[F,A] = {
-    type Stepping = F[P[F, Step[Chunk[A], P[F,A]]]]
-    def go(f1: Stepping, f2: Stepping): P[F,A] = {
-      flatMap(eval(F.race(f1,f2))) {
-        case Left(p) => flatMap(p) { p => append(
-          emits(p.head),
-          flatMap(awaitAsync(p.tail))(go(_,f2)))
+    def go(f1: AsyncStep[F,A], f2: AsyncStep[F,A]): P[F,A] =
+      eval(F.race(f1,f2)) flatMap {
+        case Left(p) => p flatMap { p =>
+          emits(p.head) ++ awaitAsync(p.tail).flatMap(go(_,f2))
         }
-        case Right(p2) => flatMap(p2) { p2 => append(
-          emits(p2.head),
-          flatMap(awaitAsync(p2.tail))(go(f1,_)))
+        case Right(p2) => p2 flatMap { p2 =>
+          emits(p2.head) ++ awaitAsync(p2.tail).flatMap(go(f1,_))
         }
       }
-    }
-    flatMap(awaitAsync(p))  { f1 =>
-    flatMap(awaitAsync(p2)) { f2 => go(f1,f2) }}
+    awaitAsync(p)  flatMap  { f1 =>
+    awaitAsync(p2) flatMap  { f2 => go(f1,f2) }}
   }
 
   implicit class Syntax[+F[_],+A](p1: P[F,A]) {
@@ -144,10 +142,10 @@ trait Stream[P[+_[_],+_]] { self =>
     def flatMap[F2[x]>:F[x],B](f: A => P[F2,B]): P[F2,B] =
       self.flatMap(p1: P[F2,A])(f)
 
-    def ++[F2[x]>:F[x],B>:A](p2: P[F2,B])(r: RealSupertype[A,B]): P[F2,B] =
+    def ++[F2[x]>:F[x],B>:A](p2: P[F2,B])(implicit R: RealSupertype[A,B]): P[F2,B] =
       self.append(p1: P[F2,B], p2)
 
-    def append[F2[x]>:F[x],B>:A](p2: P[F2,B])(r: RealSupertype[A,B]): P[F2,B] =
+    def append[F2[x]>:F[x],B>:A](p2: P[F2,B])(implicit R: RealSupertype[A,B]): P[F2,B] =
       self.append(p1: P[F2,B], p2)
 
     def await1: P[F, Step[A, P[F,A]]] = self.await1(p1)
@@ -155,11 +153,11 @@ trait Stream[P[+_[_],+_]] { self =>
     def await: P[F, Step[Chunk[A], P[F,A]]] = self.await(p1)
 
     def awaitAsync[F2[x]>:F[x],B>:A](implicit F2: Async[F2], R: RealSupertype[A,B]):
-      P[F2, F2[P[F2, Step[Chunk[B], P[F2,B]]]]] =
+      P[F2, AsyncStep[F2,B]] =
       self.awaitAsync(p1: P[F2,B])
 
     def await1Async[F2[x]>:F[x],B>:A](implicit F2: Async[F2], R: RealSupertype[A,B]):
-      P[F2, F2[P[F2, Step[B, P[F2,B]]]]] =
+      P[F2, AsyncStep1[F2,B]] =
       self.await1Async(p1)
   }
 }
@@ -257,18 +255,18 @@ object NF extends Stream[NF] {
       case Emits(c) => Emits(Chunk.singleton(F.pure { emit(Step(c, emits(Chunk.empty))) }))
       case Cons(h, t) => Emits(Chunk.singleton(F.pure { emit(Step(h, t())) }))
       case Await(f) => Await { Free.Eval {
-        F.bind(F.pool[NF[F,A]]) { q =>
-          F.map(F.putFree(q)(f)) { _ =>
-            emit[F,F[NF[F,Step[Chunk[A], NF[F,A]]]]](F.pure(flatMap(eval(F.take(q)))(await))) }
+        F.bind(F.ref[NF[F,A]]) { q =>
+          F.map(F.setFree(q)(f)) { _ =>
+            emit[F,F[NF[F,Step[Chunk[A], NF[F,A]]]]](F.pure(flatMap(eval(F.get(q)))(await))) }
         }
       }}
       case Acquire(r) => Acquire { Free.Eval {
-        F.bind(F.pool[(F[Unit], NF[F,A])]) { q =>
-        F.map(F.putFree(q)(r)) { _ =>
-          val nf: F[NF[F,A]] = F.map(F.take(q)) { case (_,nf) => nf }
+        F.bind(F.ref[(F[Unit], NF[F,A])]) { q =>
+        F.map(F.setFree(q)(r)) { _ =>
+          val nf: F[NF[F,A]] = F.map(F.get(q)) { case (_,nf) => nf }
           // even though `r` has not completed, we can obtain a stable
           // reference to what the finalizer will be eventually
-          val f: F[Unit] = F.bind(F.take(q)) { case (f,_) => f }
+          val f: F[Unit] = F.bind(F.get(q)) { case (f,_) => f }
           (f, scope(Finalizers.single(f)) {
             emit[F,F[NF[F,Step[Chunk[A], NF[F,A]]]]](F.pure(flatMap(eval(nf))(await)))
           })
