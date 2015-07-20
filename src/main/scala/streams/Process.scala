@@ -1,57 +1,120 @@
 package streams
 
-trait Chunk[+A]
+import scodec.bits.ByteVector
+
+sealed trait Chunk[+A] {
+  def size: Int
+  def uncons: Option[(A, Chunk[A])] =
+    if (size == 0) None
+    else Some(apply(0) -> drop(1))
+  def apply(i: Int): A
+  def drop(n: Int): Chunk[A]
+  def foldLeft[B](z: B)(f: (B,A) => B): B
+}
+
 object Chunk {
-  def uncons[A](c: Chunk[A]): Option[(A, Chunk[A])] = ???
-  def empty[A]: Chunk[A] = ???
-  def singleton[A](a: A): Chunk[A] = ???
-  def append[A](a1: Chunk[A], a2: Chunk[A]): Chunk[A] = ???
-  def foldLeft[A,B](a: Chunk[A], z: B)(f: (B,A) => B): B = ???
+  val empty: Chunk[Nothing] = new Chunk[Nothing] {
+    def size = 0
+    def apply(i: Int) = throw new IllegalArgumentException(s"Chunk.empty($i)")
+    def drop(n: Int) = empty
+    def foldLeft[B](z: B)(f: (B,Nothing) => B): B = z
+  }
+  def singleton[A](a: A): Chunk[A] = new Chunk[A] {
+    def size = 1
+    def apply(i: Int) = if (i == 0) a else throw new IllegalArgumentException(s"Chunk.singleton($i)")
+    def drop(n: Int) = empty
+    def foldLeft[B](z: B)(f: (B,A) => B): B = f(z,a)
+  }
+  def array[A](a: Array[A], offset: Int = 0): Chunk[A] = new Chunk[A] {
+    def size = a.length - offset
+    def apply(i: Int) = a(offset + i)
+    def drop(n: Int) = if (n >= size) empty else array(a, offset + n)
+    def foldLeft[B](z: B)(f: (B,A) => B): B = {
+      var res = z
+      (offset until a.length).foreach { i => res = f(res, a(i)) }
+      res
+    }
+  }
+  def seq[A](a: Seq[A]): Chunk[A] = new Chunk[A] {
+    def size = a.size
+    def apply(i: Int) = a(i)
+    def drop(n: Int) = seq(a.drop(n))
+    def foldLeft[B](z: B)(f: (B,A) => B): B = a.foldLeft(z)(f)
+  }
 }
 case class Step[+A,+B](head: A, tail: B)
 
-trait Stream[P[+_[_],+_]] {
-  def emits[F[_],A](as: Chunk[A]): P[F,A]
+trait Stream[P[+_[_],+_]] { self =>
 
-  def emit[F[_],A](a: A): P[F,A] = emits(Chunk.singleton(a))
+  // list-like operations
 
   def empty[A]: P[Nothing,A] = emits(Chunk.empty)
+
+  def emits[F[_],A](as: Chunk[A]): P[F,A]
 
   def append[F[_],A](a: P[F,A], b: => P[F,A]): P[F,A]
 
   def flatMap[F[_],A,B](a: P[F,A])(f: A => P[F,B]): P[F,B]
 
-  def map[F[_],A,B](a: P[F,A])(f: A => B): P[F,B] =
-    flatMap(a)(f andThen (emit))
 
-  def available[F[_],A](p: P[F, A]): P[F, Step[Chunk[A], P[F,A]]]
+  // evaluating effects
 
-  def availableAsync[F[_]:Async,A](p: P[F, A]): P[F, F[P[F, Step[Chunk[A], P[F,A]]]]]
+  def free[F[_],A](fa: Free[F,P[F,A]]): P[F,A]
 
-  def force[F[_],A](f: F[P[F, A]]): P[F,A] =
-    flatMap(eval(f))(p => p)
 
-  def await[F[_],A](p: P[F,A]): P[F, Step[A, P[F,A]]] = flatMap(available(p)) { step =>
-    Chunk.uncons(step.head) match {
-      case None => empty
-      case Some((hd,tl)) => emit { Step(hd, append(emits(tl), step.tail)) }
-    }
-  }
+  // failure and error recovery
 
   def fail[F[_],A](e: Throwable): P[F,A]
 
   def onError[F[_],A](p: P[F,A])(handle: Throwable => P[F,A]): P[F,A]
 
+
+  // stepping a stream
+
+  def await[F[_],A](p: P[F, A]): P[F, Step[Chunk[A], P[F,A]]]
+
+  def awaitAsync[F[_]:Async,A](p: P[F, A]): P[F, F[P[F, Step[Chunk[A], P[F,A]]]]]
+
+
+  // resource acquisition
+
   def bracket[F[_]:Affine,R,A](acquire: F[R])(use: R => P[F,A], release: R => F[Unit]): P[F,A]
 
-  def free[F[_],A](fa: Free[F,P[F,A]]): P[F,A]
+
+  // evaluation
+
+  def runFold[F[_],A,B](p: P[F,A], z: B)(f: (B,A) => B): Free[F,Either[Throwable,B]]
+
+
+  // derived operations
+
+  def map[F[_],A,B](a: P[F,A])(f: A => B): P[F,B] =
+    flatMap(a)(f andThen (emit))
+
+  def emit[F[_],A](a: A): P[F,A] = emits(Chunk.singleton(a))
+
+  def force[F[_],A](f: F[P[F, A]]): P[F,A] =
+    flatMap(eval(f))(p => p)
+
+  def await1[F[_],A](p: P[F,A]): P[F, Step[A, P[F,A]]] = flatMap(await(p)) { step =>
+    step.head.uncons match {
+      case None => empty
+      case Some((hd,tl)) => emit { Step(hd, append(emits(tl), step.tail)) }
+    }
+  }
+
+  def await1Async[F[_],A](p: P[F, A])(implicit F: Async[F]): P[F, F[P[F, Step[A, P[F,A]]]]] =
+    map(awaitAsync(p)) { futureStep =>
+      F.map(futureStep) { steps => steps.flatMap { step => step.head.uncons match {
+        case None => empty
+        case Some((hd,tl)) => emit { Step(hd, append(emits(tl), step.tail)) }
+      }}}
+    }
 
   def eval[F[_],A](fa: F[A]): P[F,A] = free(Free.Eval(fa) flatMap (a => Free.Pure(emit(a))))
 
   def eval_[F[_],A](fa: F[A]): P[F,Nothing] =
     flatMap(eval(fa)) { _ => empty }
-
-  def runFold[F[_],A,B](p: P[F,A], z: B)(f: (B,A) => B): Free[F,Either[Throwable,B]]
 
   def terminated[F[_],A](p: P[F,A]): P[F,Option[A]] =
     append(map(p)(Some(_)), emit(None))
@@ -62,16 +125,42 @@ trait Stream[P[+_[_],+_]] {
       flatMap(eval(F.race(f1,f2))) {
         case Left(p) => flatMap(p) { p => append(
           emits(p.head),
-          flatMap(availableAsync(p.tail))(go(_,f2)))
+          flatMap(awaitAsync(p.tail))(go(_,f2)))
         }
         case Right(p2) => flatMap(p2) { p2 => append(
           emits(p2.head),
-          flatMap(availableAsync(p2.tail))(go(f1,_)))
+          flatMap(awaitAsync(p2.tail))(go(f1,_)))
         }
       }
     }
-    flatMap(availableAsync(p))  { f1 =>
-    flatMap(availableAsync(p2)) { f2 => go(f1,f2) }}
+    flatMap(awaitAsync(p))  { f1 =>
+    flatMap(awaitAsync(p2)) { f2 => go(f1,f2) }}
+  }
+
+  implicit class Syntax[+F[_],+A](p1: P[F,A]) {
+    def map[B](f: A => B): P[F,B] =
+      self.map(p1)(f)
+
+    def flatMap[F2[x]>:F[x],B](f: A => P[F2,B]): P[F2,B] =
+      self.flatMap(p1: P[F2,A])(f)
+
+    def ++[F2[x]>:F[x],B>:A](p2: P[F2,B])(r: RealSupertype[A,B]): P[F2,B] =
+      self.append(p1: P[F2,B], p2)
+
+    def append[F2[x]>:F[x],B>:A](p2: P[F2,B])(r: RealSupertype[A,B]): P[F2,B] =
+      self.append(p1: P[F2,B], p2)
+
+    def await1: P[F, Step[A, P[F,A]]] = self.await1(p1)
+
+    def await: P[F, Step[Chunk[A], P[F,A]]] = self.await(p1)
+
+    def awaitAsync[F2[x]>:F[x],B>:A](implicit F2: Async[F2], R: RealSupertype[A,B]):
+      P[F2, F2[P[F2, Step[Chunk[B], P[F2,B]]]]] =
+      self.awaitAsync(p1: P[F2,B])
+
+    def await1Async[F2[x]>:F[x],B>:A](implicit F2: Async[F2], R: RealSupertype[A,B]):
+      P[F2, F2[P[F2, Step[B, P[F2,B]]]]] =
+      self.await1Async(p1)
   }
 }
 
@@ -101,7 +190,7 @@ object NF extends Stream[NF] {
   def flatMap[F[_],A,B](a: NF[F,A])(f: A => NF[F,B]): NF[F,B] = {
     def go(a: NF[F,A])(f: A => NF[F,B]): NF[F,B] = a.frame match {
       case Fail(e) => fail(e)
-      case Emits(c) => Chunk.uncons(c) match {
+      case Emits(c) => c.uncons match {
         case None => emits(Chunk.empty)
         case Some((hd,tl)) => append(f(hd), go(emits(tl))(f))
       }
@@ -154,15 +243,15 @@ object NF extends Stream[NF] {
   def mask[F[_],A](a: NF[F,A]): NF[F,A] =
     onError(a)(e => emits(Chunk.empty))
 
-  def available[F[_],A](a: NF[F,A]): NF[F, Step[Chunk[A], NF[F,A]]] = NF(a.cleanup, a.frame match {
+  def await[F[_],A](a: NF[F,A]): NF[F, Step[Chunk[A], NF[F,A]]] = NF(a.cleanup, a.frame match {
     case Fail(e) => Fail(e)
     case Emits(c) => Emits(Chunk.singleton(Step(c, emits(Chunk.empty))))
-    case Await(f) => Await(f map available)
-    case Acquire(f) => Acquire(f map { case (r,a) => (r, available(a)) })
+    case Await(f) => Await(f map await)
+    case Acquire(f) => Acquire(f map { case (r,a) => (r, await(a)) })
     case Cons(h, t) => Emits(Chunk.singleton(Step(h, t())))
   })
 
-  def availableAsync[F[_],A](a: NF[F,A])(implicit F: Async[F]): NF[F, F[NF[F, Step[Chunk[A], NF[F,A]]]]] =
+  def awaitAsync[F[_],A](a: NF[F,A])(implicit F: Async[F]): NF[F, F[NF[F, Step[Chunk[A], NF[F,A]]]]] =
     NF(a.cleanup, a.frame match {
       case Fail(e) => Fail(e)
       case Emits(c) => Emits(Chunk.singleton(F.pure { emit(Step(c, emits(Chunk.empty))) }))
@@ -170,7 +259,7 @@ object NF extends Stream[NF] {
       case Await(f) => Await { Free.Eval {
         F.bind(F.pool[NF[F,A]]) { q =>
           F.map(F.putFree(q)(f)) { _ =>
-            emit[F,F[NF[F,Step[Chunk[A], NF[F,A]]]]](F.pure(flatMap(eval(F.take(q)))(available))) }
+            emit[F,F[NF[F,Step[Chunk[A], NF[F,A]]]]](F.pure(flatMap(eval(F.take(q)))(await))) }
         }
       }}
       case Acquire(r) => Acquire { Free.Eval {
@@ -181,7 +270,7 @@ object NF extends Stream[NF] {
           // reference to what the finalizer will be eventually
           val f: F[Unit] = F.bind(F.take(q)) { case (f,_) => f }
           (f, scope(Finalizers.single(f)) {
-            emit[F,F[NF[F,Step[Chunk[A], NF[F,A]]]]](F.pure(flatMap(eval(nf))(available)))
+            emit[F,F[NF[F,Step[Chunk[A], NF[F,A]]]]](F.pure(flatMap(eval(nf))(await)))
           })
         }
       }}}
@@ -196,8 +285,8 @@ object NF extends Stream[NF] {
           // NB: this is guaranteed not to overlap with `runDeactivated`, via definition of
           // `runDeactivated`, which won't include any finalizers in `p.cleanup`
           case Fail(e) => p.cleanup.run flatMap { _ => Free.Pure(Left(e)) }
-          case Emits(c) => p.cleanup.run flatMap { _ => Free.Pure(Right(Chunk.foldLeft(c,z)(f))) }
-          case Cons(h, t) => go(p.cleanup, t(), Chunk.foldLeft(h,z)(f))(f)
+          case Emits(c) => p.cleanup.run flatMap { _ => Free.Pure(Right(c.foldLeft(z)(f))) }
+          case Cons(h, t) => go(p.cleanup, t(), h.foldLeft(z)(f))(f)
           case Await(g) => g flatMap (p2 => go(p.cleanup, p2, z)(f))
           case Acquire(g) => g flatMap { case (_, p2) => go(p.cleanup, p2, z)(f) }
         }
