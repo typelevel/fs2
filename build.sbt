@@ -42,17 +42,50 @@ libraryDependencies ++= Seq(
   "org.scalacheck" %% "scalacheck" % "1.12.4" % "test"
 )
 
-seq(bintraySettings:_*)
-
 publishMavenStyle := true
+
+pomIncludeRepository := { _ => false }
+
+pomExtra :=
+  <developers>
+    <developer>
+      <id>pchiusano</id>
+      <name>Paul Chiusano</name>
+      <url>https://pchiusano.github.io</url>
+    </developer>
+    <developer>
+      <id>pchlupacek</id>
+      <name>Pavel Chlupáček</name>
+    </developer>
+    <developer>
+      <id>djspiewak</id>
+      <name>Daniel Spiewak</name>
+      <url>http://www.codecommit.com</url>
+    </developer>
+    <developer>
+      <id>alissapajer</id>
+      <name>Alissa Pajer</name>
+    </developer>
+    <developer>
+      <id>fthomas</id>
+      <name>Frank S. Thomas</name>
+    </developer>
+    <developer>
+      <id>runarorama</id>
+      <name>Rúnar Ó. Bjarnason</name>
+    </developer>
+    <developer>
+      <id>jedws</id>
+      <name>Jed Wesley-Smith</name>
+    </developer>
+  </developers>
+
+homepage := Some(url("https://github.com/scalaz/scalaz-stream"))
 
 licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
 
 scmInfo := Some(ScmInfo(url("https://github.com/scalaz/scalaz-stream"),
   "git@github.com:scalaz/scalaz-stream.git"))
-
-bintray.Keys.packageLabels in bintray.Keys.bintray :=
-  Seq("stream processing", "functional I/O", "iteratees", "functional programming", "scala")
 
 osgiSettings
 
