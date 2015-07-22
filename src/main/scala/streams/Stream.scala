@@ -6,7 +6,7 @@ trait Stream[S[+_[_],+_]] { self =>
 
   def empty[A]: S[Nothing,A] = emits(Chunk.empty)
 
-  def emits[F[_],A](as: Chunk[A]): S[F,A]
+  def emits[A](as: Chunk[A]): S[Nothing,A]
 
   def append[F[_],A](a: S[F,A], b: => S[F,A]): S[F,A]
 
@@ -20,7 +20,7 @@ trait Stream[S[+_[_],+_]] { self =>
 
   // failure and error recovery
 
-  def fail[F[_],A](e: Throwable): S[F,A]
+  def fail(e: Throwable): S[Nothing,Nothing]
 
   def onError[F[_],A](p: S[F,A])(handle: Throwable => S[F,A]): S[F,A]
 
@@ -87,8 +87,8 @@ trait Stream[S[+_[_],+_]] { self =>
           emits(p2.head) ++ awaitAsync(p2.tail).flatMap(go(f1,_))
         }
       }
-    awaitAsync(p)  flatMap  { f1 =>
-    awaitAsync(p2) flatMap  { f2 => go(f1,f2) }}
+    awaitAsync(p)  flatMap { f1 =>
+    awaitAsync(p2) flatMap { f2 => go(f1,f2) }}
   }
 
   implicit class Syntax[+F[_],+A](p1: S[F,A]) {
@@ -115,6 +115,9 @@ trait Stream[S[+_[_],+_]] { self =>
     def await1Async[F2[x]>:F[x],B>:A](implicit F2: Async[F2], R: RealSupertype[A,B]):
       S[F2, AsyncStep1[F2,B]] =
       self.await1Async(p1)
+
+    def onError[F2[x]>:F[x],B>:A](f: Throwable => S[F2,B])(implicit R: RealSupertype[A,B]): S[F2,B] =
+      self.onError(p1: S[F2,B])(f)
 
     def runFold[B](z: B)(f: (B,A) => B): Free[F,Either[Throwable,B]] =
       self.runFold(p1, z)(f)

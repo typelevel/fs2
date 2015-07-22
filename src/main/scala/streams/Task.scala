@@ -250,6 +250,10 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
           .flatMap { _ => pool.get }
     }
   }
+
+  /** Create a `Task` that will evaluate `a` after at least the given delay. */
+  def schedule(delay: Duration)(implicit pool: ScheduledExecutorService): Task[A] =
+    Task.schedule((), delay) flatMap { _ => this }
 }
 
 object Task extends Instances {
@@ -285,7 +289,7 @@ object Task extends Instances {
       case Right(f) => f
   }))
 
-  /** Create a `Future` that will evaluate `a` using the given `ExecutorService`. */
+  /** Create a `Future` that will evaluate `a` using the given `Strategy`. */
   def apply[A](a: => A)(implicit S: Strategy): Task[A] =
     new Task(Future(Try(a)))
 
@@ -330,6 +334,10 @@ object Task extends Instances {
   def async[A](register: (Either[Throwable,A] => Unit) => Unit): Task[A] =
     new Task(Future.async(register))
 
+  /** Create a `Task` that will evaluate `a` after at least the given delay. */
+  def schedule[A](a: => A, delay: Duration)(implicit pool: ScheduledExecutorService): Task[A] =
+    new Task(Future.schedule(Try(a), delay))
+
   /** Utility function - evaluate `a` and catch and return any exceptions. */
   def Try[A](a: => A): Either[Throwable,A] =
     try Right(a) catch { case e: Throwable => Left(e) }
@@ -359,7 +367,7 @@ object Task extends Instances {
      * When it completes it overwrites any previously `put` value.
      */
     def set(t: Task[A]): Task[Unit] = Task.delay { t.runAsync { r => actor ! Right(r) } }
-    def setFree(t: Free[Task,A]): Task[Unit] = set(t.run(UF1.id))
+    def setFree(t: Free[Task,A]): Task[Unit] = set(t.run)
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
     def get: Task[A] = Task.async { cb => actor ! Left(cb) }

@@ -11,9 +11,11 @@ object NF extends Stream[NF] {
   case class Await[F[_],A](f: Free[F,NF[F,A]]) extends Frame[F,A]
   case class Acquire[F[_],A](f: Free[F,(F[Unit], NF[F,A])]) extends Frame[F,A]
 
-  def emits[F[_],A](c: Chunk[A]): NF[F,A] = NF(Finalizers.empty, Emits(c))
-  def fail[F[_],A](e: Throwable): NF[F,A] = NF(Finalizers.empty, Fail(e))
-  def free[F[_],A](f: Free[F,NF[F,A]]): NF[F,A] = NF(Finalizers.empty, Await(f))
+  def emits[A](c: Chunk[A]): NF[Nothing,A] =
+    NF[Nothing,A](Finalizers.empty[Nothing], Emits[Nothing,A](c))
+  def fail(e: Throwable): NF[Nothing,Nothing] =
+    NF[Nothing,Nothing](Finalizers.empty[Nothing], Fail[Nothing,Nothing](e))
+  def free[F[_],A](f: Free[F,NF[F,A]]): NF[F,A] = NF[F,A](Finalizers.empty, Await(f))
 
   def append[F[_],A](a1: NF[F,A], a2: => NF[F,A]): NF[F,A] = NF(a1.cleanup, a1.frame match {
     case Emits(c) => Cons(c, () => a2)
@@ -22,6 +24,9 @@ object NF extends Stream[NF] {
     case Await(f) => Await(f map (a1 => append(a1, a2)))
     case Acquire(r) => Acquire(r map { case (release, a1) => (release, append(a1,a2)) })
   })
+
+  implicit def covary[F[_],A](nf: NF[Nothing,A]): NF[F,A] =
+    nf.asInstanceOf[NF[F,A]]
 
   def flatMap[F[_],A,B](a: NF[F,A])(f: A => NF[F,B]): NF[F,B] = {
     def go(a: NF[F,A])(f: A => NF[F,B]): NF[F,B] = a.frame match {
@@ -39,12 +44,13 @@ object NF extends Stream[NF] {
 
   def scope[F[_],A](finalizers: Finalizers[F])(a: NF[F,A]): NF[F,A] =
     if (finalizers.isEmpty) a
-    else NF(a.cleanup append finalizers, a.frame match {
+    else {
+      NF(a.cleanup append finalizers, a.frame match {
       case Cons(h, t) => Cons(h, () => scope(finalizers)(t()))
       case Await(g) => Await(g map (scope(finalizers)))
       case Acquire(g) => Acquire(g map { case (release, a) => (release, scope(finalizers)(a)) })
       case _ => a.frame
-    })
+    })}
 
   def bracket[F[_],R,A](acquire: F[R])(use: R => NF[F,A], release: R => F[Unit])(
     implicit F: Affine[F]): NF[F,A] =
@@ -81,7 +87,9 @@ object NF extends Stream[NF] {
 
   def await[F[_],A](a: NF[F,A]): NF[F, Step[Chunk[A], NF[F,A]]] = NF(a.cleanup, a.frame match {
     case Fail(e) => Fail(e)
-    case Emits(c) => Emits(Chunk.singleton(Step(c, emits(Chunk.empty))))
+    case Emits(c) =>
+      if (c.isEmpty) Emits(Chunk.empty)
+      else Emits(Chunk.singleton(Step(c, emits(Chunk.empty))))
     case Await(f) => Await(f map await)
     case Acquire(f) => Acquire(f map { case (r,a) => (r, await(a)) })
     case Cons(h, t) => Emits(Chunk.singleton(Step(h, t())))

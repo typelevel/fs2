@@ -20,6 +20,10 @@ class Finalizers[F[_]](private[Finalizers] val order: Vector[UUID],
 
   def run: Free[F,Unit] =
     order.foldRight(Free.Pure(()): Free[F,Unit])((f,acc) => Free.Eval(actions(f)) flatMap { _ => acc })
+
+  def size: Int = order.size
+
+  override def toString = order.mkString("\n")
 }
 
 object Finalizers {

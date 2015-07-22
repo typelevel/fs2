@@ -8,6 +8,7 @@ sealed trait Chunk[+A] {
   def apply(i: Int): A
   def drop(n: Int): Chunk[A]
   def foldLeft[B](z: B)(f: (B,A) => B): B
+  def isEmpty = size == 0
 }
 
 object Chunk {
