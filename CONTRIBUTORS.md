@@ -10,6 +10,7 @@ Also see the [GitHub contributor stats](https://github.com/scalaz/scalaz-stream/
 - Pavel Chlupáček ([@pchlupacek](https://github.com/pchlupacek)): concurrency, original implementation of `Append` algebra
 - Alissa Pajer ([@alissapajer](https://github.com/alissapajer)): concurrency bug hunting, features, maintainance
 - Daniel Spiewak ([@djspiewak](https://github.com/djspiewak)): concurrency plumbing, bug fixes, performance and correctness obsession
+  + Public key (for release signing): [3587 7FB3 2BAE 5960](https://keybase.io/djspiewak)
 - Frank S. Thomas ([@fthomas](https://github.com/fthomas)): a lot of `Process1` functions, features, bug fixes, and maintainance
 - Rúnar Ó. Bjarnason ([@runarorama](https://github.com/runarorama)): Various processes and combinators, circular buffers, compression. I'm an ideas man, Michael.
 - Jed Wesley-Smith ([@jedws](https://github.com/jedws)): really very minor tweaks, cleanups and pestering, hardly worth the mention
