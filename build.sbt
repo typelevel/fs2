@@ -34,6 +34,8 @@ libraryDependencies ++= Seq(
   "org.scalacheck" %% "scalacheck" % "1.12.4" % "test"
 )
 
+sonatypeProfileName := "org.scalaz"
+
 publishMavenStyle := true
 
 pomIncludeRepository := { _ => false }
