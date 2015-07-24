@@ -4,7 +4,7 @@ trait Stream[S[+_[_],+_]] { self =>
 
   // list-like operations
 
-  def empty[A]: S[Nothing,A] = emits(Chunk.empty)
+  def empty[A]: S[Nothing,A] = emits[A](Chunk.empty)
 
   def emits[A](as: Chunk[A]): S[Nothing,A]
 
@@ -25,19 +25,33 @@ trait Stream[S[+_[_],+_]] { self =>
   def onError[F[_],A](p: S[F,A])(handle: Throwable => S[F,A]): S[F,A]
 
 
-  // stepping a stream
-
-  def await[F[_],A](p: S[F, A]): S[F, Step[Chunk[A], S[F,A]]]
-
-  def awaitAsync[F[_]:Async,A](p: S[F, A]): S[F, AsyncStep[F,A]]
-
-  type AsyncStep[F[_],A] = F[S[F, Step[Chunk[A], S[F,A]]]]
-  type AsyncStep1[F[_],A] = F[S[F, Step[A, S[F,A]]]]
-
   // resource acquisition
 
-  def bracket[F[_]:Affine,R,A](acquire: F[R])(use: R => S[F,A], release: R => F[Unit]): S[F,A]
+  def bracket[F[_],R,A](acquire: F[R])(use: R => S[F,A], release: R => F[Unit]): S[F,A]
 
+  // stepping a stream
+
+  type Handle[+F[_],+_]
+  type Pull[+F[_],+R,+O]
+
+  def pullMonad[F[_],O]: Monad[({ type f[x] = Pull[F,x,O]})#f]
+
+  def emits[F[_],O](p: S[F,O]): Pull[F,Unit,O]
+
+  def runPull[F[_],R,O](p: Pull[F,R,O]): S[F,O]
+
+  type AsyncStep[F[_],A] = F[Pull[F, Step[Chunk[A], S[F,A]], Nothing]]
+  type AsyncStep1[F[_],A] = F[Pull[F, Step[A, S[F,A]], Nothing]]
+
+  def await[F[_],A](h: Handle[F,A]): Pull[F, Step[Chunk[A], Handle[F,A]], Nothing]
+
+  def await1[F[_],A](h: Handle[F,A]): Pull[F, Step[A, Handle[F,A]], Nothing]
+
+  def awaitAsync[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, AsyncStep[F,A], Nothing]
+
+  def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, AsyncStep1[F,A], Nothing]
+
+  def open[F[_],A](s: S[F,A]): Pull[F,Handle[F,A],Nothing]
 
   // evaluation
 
@@ -51,23 +65,11 @@ trait Stream[S[+_[_],+_]] { self =>
 
   def emit[F[_],A](a: A): S[F,A] = emits(Chunk.singleton(a))
 
+  def suspend[F[_],A](s: => S[F,A]): S[F,A] =
+    flatMap(emit(())) { _ => s }
+
   def force[F[_],A](f: F[S[F, A]]): S[F,A] =
     flatMap(eval(f))(p => p)
-
-  def await1[F[_],A](p: S[F,A]): S[F, Step[A, S[F,A]]] = flatMap(await(p)) { step =>
-    step.head.uncons match {
-      case None => empty
-      case Some((hd,tl)) => emit { Step(hd, append(emits(tl), step.tail)) }
-    }
-  }
-
-  def await1Async[F[_],A](p: S[F, A])(implicit F: Async[F]): S[F, AsyncStep1[F,A]] =
-    map(awaitAsync(p)) { futureStep =>
-      F.map(futureStep) { steps => steps.flatMap { step => step.head.uncons match {
-        case None => empty
-        case Some((hd,tl)) => emit { Step(hd, append(emits(tl), step.tail)) }
-      }}}
-    }
 
   def eval[F[_],A](fa: F[A]): S[F,A] = free(Free.Eval(fa) flatMap (a => Free.Pure(emit(a))))
 
@@ -77,21 +79,7 @@ trait Stream[S[+_[_],+_]] { self =>
   def terminated[F[_],A](p: S[F,A]): S[F,Option[A]] =
     p.map(Some(_)) ++ emit(None)
 
-  def mergeHaltBoth[F[_],A](p: S[F,A], p2: S[F,A])(implicit F: Async[F]): S[F,A] = {
-    def go(f1: AsyncStep[F,A], f2: AsyncStep[F,A]): S[F,A] =
-      eval(F.race(f1,f2)) flatMap {
-        case Left(p) => p flatMap { p =>
-          emits(p.head) ++ awaitAsync(p.tail).flatMap(go(_,f2))
-        }
-        case Right(p2) => p2 flatMap { p2 =>
-          emits(p2.head) ++ awaitAsync(p2.tail).flatMap(go(f1,_))
-        }
-      }
-    awaitAsync(p)  flatMap { f1 =>
-    awaitAsync(p2) flatMap { f2 => go(f1,f2) }}
-  }
-
-  implicit class Syntax[+F[_],+A](p1: S[F,A]) {
+  implicit class StreamSyntax[+F[_],+A](p1: S[F,A]) {
     def map[B](f: A => B): S[F,B] =
       self.map(p1)(f)
 
@@ -104,18 +92,6 @@ trait Stream[S[+_[_],+_]] { self =>
     def append[F2[x]>:F[x],B>:A](p2: S[F2,B])(implicit R: RealSupertype[A,B]): S[F2,B] =
       self.append(p1: S[F2,B], p2)
 
-    def await1: S[F, Step[A, S[F,A]]] = self.await1(p1)
-
-    def await: S[F, Step[Chunk[A], S[F,A]]] = self.await(p1)
-
-    def awaitAsync[F2[x]>:F[x],B>:A](implicit F2: Async[F2], R: RealSupertype[A,B]):
-      S[F2, AsyncStep[F2,B]] =
-      self.awaitAsync(p1: S[F2,B])
-
-    def await1Async[F2[x]>:F[x],B>:A](implicit F2: Async[F2], R: RealSupertype[A,B]):
-      S[F2, AsyncStep1[F2,B]] =
-      self.await1Async(p1)
-
     def onError[F2[x]>:F[x],B>:A](f: Throwable => S[F2,B])(implicit R: RealSupertype[A,B]): S[F2,B] =
       self.onError(p1: S[F2,B])(f)
 
@@ -124,6 +100,15 @@ trait Stream[S[+_[_],+_]] { self =>
 
     def runLog: Free[F,Either[Throwable,Vector[A]]] =
       self.runFold(p1, Vector.empty[A])(_ :+ _)
+  }
+
+  implicit class HandleSyntax[+F[_],+A](h: Handle[F,A]) {
+    def await: Pull[F, Step[Chunk[A], Handle[F,A]], Nothing] = self.await(h)
+    def await1: Pull[F, Step[A, Handle[F,A]], Nothing] = self.await1(h)
+    def awaitAsync[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
+      Pull[F2, AsyncStep[F2,A2], Nothing] = self.awaitAsync(h)
+    def await1Async[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
+      Pull[F2, AsyncStep1[F2,A2], Nothing] = self.await1Async(h)
   }
 }
 
