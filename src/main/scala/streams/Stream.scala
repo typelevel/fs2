@@ -116,5 +116,13 @@ trait Stream[S[+_[_],+_]] { self =>
     def await1Async[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
       Pull[F2, AsyncStep1[F2,A2], Nothing] = self.await1Async(h)
   }
+
+  implicit class PullSyntax[+F[_],+R,+O](p: Pull[F,R,O]) {
+    def map[R2](f: R => R2): Pull[F,R2,O] =
+      self.pullMonad.map(p)(f)
+
+    def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,R2,O2]): Pull[F2,R2,O2] =
+      self.pullMonad.bind(p: Pull[F2,R,O2])(f)
+  }
 }
 

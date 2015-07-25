@@ -24,7 +24,7 @@ object NF extends Stream[NF] {
 
   private case class Emits[A](c: Chunk[A]) extends NF[Nothing,A] {
     type F[x] = Nothing
-    private[NF] def nf[F2[x]>:F[x],A2>:A,A3,B](
+    def nf[F2[x]>:F[x],A2>:A,A3,B](
       cleanup: SortedMap[ID,F2[Unit]], fresh: ID,
       k: Chain[S[F2]#f,A2,A3],
       z: B)(f: (B, A3) => B): Free[F2,Either[Throwable,B]]
@@ -40,13 +40,20 @@ object NF extends Stream[NF] {
         }
         case _ => ??? // not possible
       }
+    def await = Pull.Pure(Step(c, new Handle(empty)))
   }
-  private case object Fresh extends NF[Nothing,ID]
-  private case class Append[F[_],A](s1: NF[F,A], s2: () => NF[F,A]) extends NF[F,A]
+  private case object Fresh extends NF[Nothing,ID] {
+    type F[x] = Nothing; type A = ID
+    def await = ???
+  }
+  private case class Append[F[_],A](s1: NF[F,A], s2: () => NF[F,A]) extends NF[F,A] {
+    def await =
+      s1.await.map { case Step(h,t) => Step(h, new Handle(t.stream ++ s2())) }
+  }
   private case class Bind[F[_],R,A](r: NF[F,R], f: R => NF[F,A]) extends NF[F,A]
   private case class Acquire[F[_],R](id: ID, f: Free[F, (R, F[Unit])]) extends NF[F,R]
   private[streams] case class Release(id: ID) extends NF[Nothing,Nothing]
-  private[streams] case class Fail(err: Throwable) extends NF[Nothing,Nothing]
+  private case class Fail(err: Throwable) extends NF[Nothing,Nothing]
   private case class Eval[F[_],A](f: F[A]) extends NF[F,A]
   private case class OnError[F[_],A](inner: NF[F,A], handle: Throwable => NF[F,A])
     extends NF[F,A]
@@ -75,15 +82,7 @@ object NF extends Stream[NF] {
          Chain.single[S[F]#f,A,Nothing](a => empty),
          z)(f)
 
-  //implicit def covary[F[_],A](nf: NF[Nothing,A]): NF[F,A] =
-  //  nf.asInstanceOf[NF[F,A]]
-  //implicit def covary2[F[_],F2[x]>:F[x],A](nf: NF[F,A]): NF[F2,A] =
-  //  nf.asInstanceOf[NF[F2,A]]
-
-  def pullMonad[F[_],O] = new Monad[({ type f[x] = Pull[F,x,O]})#f] {
-    def pure[R](r: R) = Pull.Pure(r)
-    def bind[R,R2](r: Pull[F,R,O])(f: R => Pull[F,R2,O]) = Pull.Bind(r, f)
-  }
+  def pullMonad[F[_],O] = Pull.monad[F,O]
 
   def open[F[_],A](s: NF[F,A]): Pull[F,Handle[F,A],Nothing] =
     Pull.Pure(new Handle(s))
@@ -93,8 +92,8 @@ object NF extends Stream[NF] {
   def runPull[F[_], R, O](p: Pull[F,R,O]): NF[F,O] =
     p.nf(SortedSet.empty, Chain.single[P[F,O]#f,R,Nothing](_ => Pull.done))
 
-  // need to move this to a function on NF!
-  def await[F[_],A](h: Handle[F,A]): Pull[F,Step[Chunk[A],Handle[F,A]],Nothing] = ???
+  def await[F[_],A](h: Handle[F,A]): Pull[F,Step[Chunk[A],Handle[F,A]],Nothing] =
+    h.stream.await
 
   //    case Fail(e) => Pull.Done(Some(e))
   //    case Emits(c) => Pull.Pure(Step(c, new Handle[F,A](empty[Nothing])))
@@ -190,5 +189,10 @@ object Pull {
       k: Chain[P[F2,O2]#f,R2,Nothing]): NF[F2,O2]
       =
       NF.suspend { p.nf(tracked, f +: k) }
+  }
+
+  def monad[F[_],O]: Monad[P[F,O]#f] = new Monad[P[F,O]#f] {
+    def pure[R](r: R) = Pure(r)
+    def bind[R,R2](r: Pull[F,R,O])(f: R => Pull[F,R2,O]) = Bind(r, f)
   }
 }
