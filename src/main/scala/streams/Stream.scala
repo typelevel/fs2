@@ -15,7 +15,7 @@ trait Stream[S[+_[_],+_]] { self =>
 
   // evaluating effects
 
-  def free[F[_],A](fa: Free[F,S[F,A]]): S[F,A]
+  def eval[F[_],A](fa: F[A]): S[F,A]
 
 
   // failure and error recovery
@@ -24,6 +24,11 @@ trait Stream[S[+_[_],+_]] { self =>
 
   def onError[F[_],A](p: S[F,A])(handle: Throwable => S[F,A]): S[F,A]
 
+  def onComplete[F[_],A](p: S[F,A], regardless: => S[F,A]): S[F,A] =
+    onError(append(p, mask(regardless))) { err => append(mask(regardless), fail(err)) }
+
+  def mask[F[_],A](a: S[F,A]): S[F,A] =
+    onError(a)(_ => empty[A])
 
   // resource acquisition
 
@@ -71,13 +76,14 @@ trait Stream[S[+_[_],+_]] { self =>
   def force[F[_],A](f: F[S[F, A]]): S[F,A] =
     flatMap(eval(f))(p => p)
 
-  def eval[F[_],A](fa: F[A]): S[F,A] = free(Free.Eval(fa) flatMap (a => Free.Pure(emit(a))))
-
   def eval_[F[_],A](fa: F[A]): S[F,Nothing] =
     flatMap(eval(fa)) { _ => empty }
 
   def terminated[F[_],A](p: S[F,A]): S[F,Option[A]] =
     p.map(Some(_)) ++ emit(None)
+
+  def drain[F[_],A](p: S[F,A]): S[F,Nothing] =
+    p flatMap { _ => empty }
 
   implicit class StreamSyntax[+F[_],+A](p1: S[F,A]) {
     def map[B](f: A => B): S[F,B] =
