@@ -6,7 +6,7 @@ version := "snapshot-0.7"
 
 scalaVersion := "2.11.7"
 
-crossScalaVersions := Seq("2.10.5", "2.11.7", "2.12.0-M1")
+crossScalaVersions := Seq("2.10.5", "2.11.7", "2.12.0-M1", "2.12.0-M2")
 
 scalacOptions ++= Seq(
   "-feature",
@@ -27,10 +27,10 @@ scalacOptions in (Compile, doc) ++= Seq(
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.7",
-  "org.scalaz" %% "scalaz-concurrent" % "7.0.7",
-  "org.scodec" %% "scodec-bits" % "1.0.7",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.7" % "test",
+  "org.scalaz" %% "scalaz-core" % "7.0.8",
+  "org.scalaz" %% "scalaz-concurrent" % "7.0.8",
+  "org.scodec" %% "scodec-bits" % "1.0.9",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.8" % "test",
   "org.scalacheck" %% "scalacheck" % "1.12.4" % "test"
 )
 
