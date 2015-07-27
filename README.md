@@ -9,10 +9,10 @@ scalaz-stream
 To get the latest version of the library, add *one* of the following to your SBT build:
 
 ```
-// Against Scalaz 7.0, available for Scala 2.10.5, 2.11.7 and 2.12.0-M1
+// Against Scalaz 7.0, available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
 libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.7.2"
 
-// Against Scalaz 7.1, available for Scala 2.10.5, 2.11.7 and 2.12.0-M1
+// Against Scalaz 7.1, available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
 libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.7.2a"
 ```
 
