@@ -15,7 +15,7 @@ object QueueSpec extends Properties("queue") {
     (bound: Int, xs: List[Int]) =>
       val b = async.circularBuffer[Int](bound)
       val collected = new SyncVar[Throwable\/IndexedSeq[Int]]
-      val p = (Process.emitAll(xs) to b.enqueue).run.timed(3000).attempt.run
+      val p = ((Process.emitAll(xs) : Process[Task, Int]) to b.enqueue).run.timed(3000).attempt.run
       b.dequeue.runLog.runAsync(collected.put)
       b.close.run
       val ys = collected.get(3000).map(_.getOrElse(Nil)).getOrElse(Nil)
