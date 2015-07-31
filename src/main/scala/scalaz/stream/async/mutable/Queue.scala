@@ -108,8 +108,8 @@ trait Queue[A] {
 }
 
 private[stream] object CircularBuffer {
-  def apply[A](bound: Int)(implicit S: Strategy): Queue[A] =
-    Queue.mk(bound, (as, q) => if (as.size + q.size > bound) q.drop(as.size) else q)
+  def apply[A](bound: Int, recover: Boolean = false)(implicit S: Strategy): Queue[A] =
+    Queue.mk(bound, (as, q) => if (as.size + q.size > bound) q.drop(as.size) else q, recover)
 }
 
 private[stream] object Queue {
@@ -130,10 +130,11 @@ private[stream] object Queue {
    * @return
    */
   def apply[A](bound: Int = 0, recover: Boolean = false)(implicit S: Strategy): Queue[A] =
-    mk(bound, (_, q) => q)
+    mk(bound, (_, q) => q, recover)
 
   def mk[A](bound: Int,
-            beforeEnqueue: (Seq[A], Vector[A]) => Vector[A])(implicit S: Strategy): Queue[A] = {
+            beforeEnqueue: (Seq[A], Vector[A]) => Vector[A],
+            recover: Boolean)(implicit S: Strategy): Queue[A] = {
     sealed trait M
     case class Enqueue(a: Seq[A], cb: Throwable \/ Unit => Unit) extends M
     case class Dequeue(ref: ConsumerRef, limit: Int, cb: Throwable \/ Seq[A] => Unit) extends M
