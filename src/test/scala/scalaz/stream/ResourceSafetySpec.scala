@@ -1,13 +1,14 @@
 package scalaz.stream
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import Cause._
 import org.scalacheck._
 import Prop._
 
 import scalaz.concurrent.Task
-import java.util.concurrent.{ConcurrentLinkedQueue, LinkedBlockingDeque}
+import java.util.concurrent.{CountDownLatch, TimeUnit, Semaphore, ConcurrentLinkedQueue}
 import Process._
-import scalaz.-\/
 import scalaz.\/._
 
 
@@ -31,7 +32,6 @@ class ResourceSafetySpec extends Properties("resource-safety") {
   val boom = new java.lang.Exception("boom!")
 
   def die = throw bwah
-
 
   property("cleanups") = protect {
     import Process._
@@ -90,5 +90,25 @@ class ResourceSafetySpec extends Properties("resource-safety") {
     var cleaned = false
     (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.expectedCause(_ == Kill).run.run
     cleaned
+  }
+
+  property("cleanups for combination of wye, tee and pipe") = forAll { xs: List[Boolean] =>
+    val semaphore = new Semaphore(1)
+
+    Process.emitAll(xs).wye(
+      for {
+        _ <- {
+          val acquire = Task delay { semaphore.acquire()  }
+          val release = Task delay { semaphore.release() }
+
+          io.resource(acquire)(x => release)(Task.now)
+        }
+        x <- emit(1).zip(emit(2).pipe(process1.id[Int]))
+      } yield x
+    )(wye.interrupt).run.run
+
+    val acquired = semaphore.tryAcquire(3, TimeUnit.SECONDS)
+
+    (acquired && semaphore.availablePermits() == 0) :| "acquired didn't imply released"
   }
 }
