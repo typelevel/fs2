@@ -8,6 +8,7 @@ sealed trait Chunk[+A] {
   def apply(i: Int): A
   def drop(n: Int): Chunk[A]
   def foldLeft[B](z: B)(f: (B,A) => B): B
+  def foldRight[B](z: B)(f: (A,B) => B): B
   def isEmpty = size == 0
 }
 
@@ -17,12 +18,15 @@ object Chunk {
     def apply(i: Int) = throw new IllegalArgumentException(s"Chunk.empty($i)")
     def drop(n: Int) = empty
     def foldLeft[B](z: B)(f: (B,Nothing) => B): B = z
+    def foldRight[B](z: B)(f: (Nothing,B) => B): B = z
   }
   def singleton[A](a: A): Chunk[A] = new Chunk[A] {
     def size = 1
     def apply(i: Int) = if (i == 0) a else throw new IllegalArgumentException(s"Chunk.singleton($i)")
     def drop(n: Int) = empty
     def foldLeft[B](z: B)(f: (B,A) => B): B = f(z,a)
+    def foldr[B](z: => B)(f: (A,=>B) => B): B = f(a,z)
+    def foldRight[B](z: B)(f: (A,B) => B): B = f(a,z)
   }
   def array[A](a: Array[A], offset: Int = 0): Chunk[A] = new Chunk[A] {
     def size = a.length - offset
@@ -33,11 +37,15 @@ object Chunk {
       (offset until a.length).foreach { i => res = f(res, a(i)) }
       res
     }
+    def foldRight[B](z: B)(f: (A,B) => B): B =
+      a.reverseIterator.foldLeft(z)((b,a) => f(a,b))
   }
   def seq[A](a: Seq[A]): Chunk[A] = new Chunk[A] {
     def size = a.size
     def apply(i: Int) = a(i)
     def drop(n: Int) = seq(a.drop(n))
     def foldLeft[B](z: B)(f: (B,A) => B): B = a.foldLeft(z)(f)
+    def foldRight[B](z: B)(f: (A,B) => B): B =
+      a.reverseIterator.foldLeft(z)((b,a) => f(a,b))
   }
 }

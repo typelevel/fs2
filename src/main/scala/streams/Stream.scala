@@ -1,128 +1,107 @@
 package streams
 
-trait Stream[S[+_[_],+_]] { self =>
+import collection.immutable.LongMap
+import Stream.SChain
 
-  // list-like operations
+/**
+ * A stream producing output of type `W`, which may evaluate `F`
+ * effects. If `F` is `Nothing`, the stream is pure.
+ */
+trait Stream[+F[_],+W] {
+  def runFold[O](g: (O,W) => O)(z: O): Free[F, Either[Throwable,O]] =
+    runFold0_(0, LongMap.empty, Stream.emptyChain[F,W])(g, z)
 
-  def empty[A]: S[Nothing,A] = emits[A](Chunk.empty)
+  def ++[F2[_],W2>:W](p: => Stream[F2,W2])(implicit S: Sub1[F,F2]): Stream[F2,W2] =
+    ???
 
-  def emits[A](as: Chunk[A]): S[Nothing,A]
+  protected final def runFold0_[F2[_],O,W2>:W,W3](
+    nextID: Long, tracked: LongMap[F2[Unit]], k: SChain[F2,W2,W3])(
+    g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]] =
+    Free.pure(()) flatMap { _ => // trampoline after every step
+      try runFold1_(nextID, tracked, k)(g, z)
+      catch { case t: Throwable => Stream.fail(t).runFold1_(nextID, tracked, k)(g,z) }
+    }
 
-  def append[F[_],A](a: S[F,A], b: => S[F,A]): S[F,A]
+  /**
+   * The implementation of `runFold`. Not public. Note on parameters:
+   *
+   *   - `nextID` is used to generate fresh IDs
+   *   - `tracked` is a map of the current in-scope finalizers,
+   *     guaranteed to be run at most once before this `Stream` terminates
+   *   - `k` is the stack of binds remaining. When empty, we obtain
+   *     proof that `W2 == W3`, and can fold `g` over any emits.
+   */
+  protected def runFold1_[F2[_],O,W2>:W,W3](
+    nextID: Long, tracked: LongMap[F2[Unit]], k: SChain[F2,W2,W3])(
+    g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]]
+}
 
-  def flatMap[F[_],A,B](a: S[F,A])(f: A => S[F,B]): S[F,B]
+object Stream {
 
+  def empty[A]: Stream[Nothing,A] = emits(Chunk.empty)
 
-  // evaluating effects
-
-  def eval[F[_],A](fa: F[A]): S[F,A]
-
-
-  // failure and error recovery
-
-  def fail(e: Throwable): S[Nothing,Nothing]
-
-  def onError[F[_],A](p: S[F,A])(handle: Throwable => S[F,A]): S[F,A]
-
-  def onComplete[F[_],A](p: S[F,A], regardless: => S[F,A]): S[F,A] =
-    onError(append(p, mask(regardless))) { err => append(mask(regardless), fail(err)) }
-
-  def mask[F[_],A](a: S[F,A]): S[F,A] =
-    onError(a)(_ => empty[A])
-
-  // resource acquisition
-
-  def bracket[F[_],R,A](acquire: F[R])(use: R => S[F,A], release: R => F[Unit]): S[F,A]
-
-  // stepping a stream
-
-  type Handle[+F[_],+_]
-  type Pull[+F[_],+R,+O]
-
-  def pullMonad[F[_],O]: Monad[({ type f[x] = Pull[F,x,O]})#f]
-
-  def emits[F[_],O](p: S[F,O]): Pull[F,Unit,O]
-
-  def runPull[F[_],R,O](p: Pull[F,R,O]): S[F,O]
-
-  type AsyncStep[F[_],A] = F[Pull[F, Step[Chunk[A], S[F,A]], Nothing]]
-  type AsyncStep1[F[_],A] = F[Pull[F, Step[A, S[F,A]], Nothing]]
-
-  def await[F[_],A](h: Handle[F,A]): Pull[F, Step[Chunk[A], Handle[F,A]], Nothing]
-
-  def await1[F[_],A](h: Handle[F,A]): Pull[F, Step[A, Handle[F,A]], Nothing]
-
-  def awaitAsync[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, AsyncStep[F,A], Nothing]
-
-  def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, AsyncStep1[F,A], Nothing]
-
-  def open[F[_],A](s: S[F,A]): Pull[F,Handle[F,A],Nothing]
-
-  // evaluation
-
-  def runFold[F[_],A,B](p: S[F,A], z: B)(f: (B,A) => B): Free[F,Either[Throwable,B]]
-
-
-  // derived operations
-
-  def map[F[_],A,B](a: S[F,A])(f: A => B): S[F,B] =
-    flatMap(a)(f andThen (emit))
-
-  def emit[F[_],A](a: A): S[F,A] = emits(Chunk.singleton(a))
-
-  def suspend[F[_],A](s: => S[F,A]): S[F,A] =
-    flatMap(emit(())) { _ => s }
-
-  def force[F[_],A](f: F[S[F, A]]): S[F,A] =
-    flatMap(eval(f))(p => p)
-
-  def eval_[F[_],A](fa: F[A]): S[F,Nothing] =
-    flatMap(eval(fa)) { _ => empty }
-
-  def terminated[F[_],A](p: S[F,A]): S[F,Option[A]] =
-    p.map(Some(_)) ++ emit(None)
-
-  def drain[F[_],A](p: S[F,A]): S[F,Nothing] =
-    p flatMap { _ => empty }
-
-  implicit class StreamSyntax[+F[_],+A](p1: S[F,A]) {
-    def map[B](f: A => B): S[F,B] =
-      self.map(p1)(f)
-
-    def flatMap[F2[x]>:F[x],B](f: A => S[F2,B]): S[F2,B] =
-      self.flatMap(p1: S[F2,A])(f)
-
-    def ++[F2[x]>:F[x],B>:A](p2: S[F2,B])(implicit R: RealSupertype[A,B]): S[F2,B] =
-      self.append(p1: S[F2,B], p2)
-
-    def append[F2[x]>:F[x],B>:A](p2: S[F2,B])(implicit R: RealSupertype[A,B]): S[F2,B] =
-      self.append(p1: S[F2,B], p2)
-
-    def onError[F2[x]>:F[x],B>:A](f: Throwable => S[F2,B])(implicit R: RealSupertype[A,B]): S[F2,B] =
-      self.onError(p1: S[F2,B])(f)
-
-    def runFold[B](z: B)(f: (B,A) => B): Free[F,Either[Throwable,B]] =
-      self.runFold(p1, z)(f)
-
-    def runLog: Free[F,Either[Throwable,Vector[A]]] =
-      self.runFold(p1, Vector.empty[A])(_ :+ _)
+  def emits[W](c: Chunk[W]): Stream[Nothing,W] = new Stream[Nothing,W] {
+    type F[x] = Nothing
+    def runFold1_[F2[_],O,W2>:W,W3](
+      nextID: Long, tracked: LongMap[F2[Unit]], k: SChain[F2,W2,W3])(
+      g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2, Either[Throwable,O]]
+      =
+      if (c.isEmpty) k (
+        (_,_) => runCleanup(tracked) map (_ => Right(z)),
+        new k.H[Free[F2,Either[Throwable,O]]] { def f[x] = (kh,k) =>
+          if (kh.appends.isEmpty) // NB: kh.appends match triggers scalac bug
+            empty.runFold0_(nextID, tracked, k)(g, z)
+          else {
+            val k2 = k.push[W2](kh.copy(appends = kh.appends.tail))
+            kh.appends.head.runFold0_(nextID, tracked, k2)(g,z)
+          }
+        }
+      )
+      else k (
+        (to,_) => empty.runFold0_(nextID, tracked, k)(g, c.foldLeft(z)((z,w) => g(z,to(w)))),
+        new k.H[Free[F2,Either[Throwable,O]]] { def f[x] = (kh,k) => {
+          // todo - just do a strict right fold here
+          val p = c.foldRight(empty[x]: Stream[F2,x])((w,px) => kh.bind(w) ++ px)
+          p.runFold0_(nextID, tracked, k)(g, z)
+        }}
+      )
   }
 
-  implicit class HandleSyntax[+F[_],+A](h: Handle[F,A]) {
-    def await: Pull[F, Step[Chunk[A], Handle[F,A]], Nothing] = self.await(h)
-    def await1: Pull[F, Step[A, Handle[F,A]], Nothing] = self.await1(h)
-    def awaitAsync[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
-      Pull[F2, AsyncStep[F2,A2], Nothing] = self.awaitAsync(h)
-    def await1Async[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
-      Pull[F2, AsyncStep1[F2,A2], Nothing] = self.await1Async(h)
+  def fail[W](err: Throwable): Stream[Nothing,W] = new Stream[Nothing,W] { self =>
+    def runFold1_[F2[_],O,W2>:W,W3](
+      nextID: Long, tracked: LongMap[F2[Unit]], k: SChain[F2,W2,W3])(
+      g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2, Either[Throwable,O]]
+      =
+      k (
+        (_,_) => runCleanup(tracked) map { _ => Left(err) },
+        new k.H[Free[F2,Either[Throwable,O]]] { def f[x] = (kh,k) => {
+          if (kh.handlers.isEmpty)
+            fail(err).runFold0_(nextID, tracked, k)(g, z)
+          else {
+            val kh2 = kh.copy(handlers = kh.handlers.tail)
+            kh.handlers.head(err).runFold0_(nextID, tracked, kh2 +: k)(g,z)
+          }
+        }}
+      )
   }
 
-  implicit class PullSyntax[+F[_],+R,+O](p: Pull[F,R,O]) {
-    def map[R2](f: R => R2): Pull[F,R2,O] =
-      self.pullMonad.map(p)(f)
+  def push[F[_],W,W2](c: SChain[F,W,W2], p: Stream[F,W]): SChain[F,W,W2] =
+    ???
+  def push[F[_],W,W2](c: SChain[F,W,W2], h: Throwable => Stream[F,W]): SChain[F,W,W2] =
+    ???
 
-    def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,R2,O2]): Pull[F2,R2,O2] =
-      self.pullMonad.bind(p: Pull[F2,R,O2])(f)
-  }
+  private def runCleanup[F[_]](l: LongMap[F[Unit]]): Free[F,Unit] =
+    l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
+      Free.eval(hd) flatMap { _ => tl } )
+
+  case class P[F[_],W1,W2](
+    bind: W1 => Stream[F,W2],
+    appends: List[Stream[F,W1]],
+    handlers: List[Throwable => Stream[F,W1]])
+
+  private trait T[F[_]] { type f[a,b] = P[F,a,b] }
+  type SChain[F[_],A,B] = streams.Chain[T[F]#f, A, B]
+
+  private def emptyChain[F[_],A]: SChain[F,A,A] = streams.Chain.empty[T[F]#f, A]
 }
 

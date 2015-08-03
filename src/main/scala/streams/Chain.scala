@@ -1,20 +1,22 @@
 package streams
 
-private[streams] sealed trait Chain[F[_],A,B] { self =>
-  def uncons: Either[(A => B, B => A), (A => F[x], Chain[F,x,B]) forSome { type x }]
-  def +:[A0](f: A0 => F[A]): Chain[F,A0,B] = new Chain[F,A0,B] {
-    def uncons = Right((f,self))
-  }
-  def step(a: A): Option[(F[x], Chain[F,x,B]) forSome { type x }] = uncons match {
-    case Left(_) => None
-    case Right((h,t)) => Some(h(a) -> t)
-    case _ => sys.error("Needed because of buggy Scala pattern coverage checker")
-  }
+private[streams] sealed trait Chain[F[_,_],A,B] { self =>
+  def apply[R](empty: (A => B, B => A) => R, cons: H[R]): R
+  trait H[+R] { def f[x]: (F[A,x], Chain[F,x,B]) => R }
+  def push[A0](f: F[A0,A]): Chain[F,A0,B] = f +: self
+  def +:[A0](f: F[A0,A]): Chain[F,A0,B] = Chain.Cons(f, self)
 }
-object Chain {
-  def empty[F[_],A]: Chain[F,A,A] = new Chain[F,A,A] {
-    def uncons = Left((identity, identity))
+
+private[streams] object Chain {
+  case class Empty[F[_,_],A]() extends Chain[F,A,A] {
+    def apply[R](empty: (A => A, A => A) => R, cons: H[R]): R =
+      empty(identity, identity)
   }
-  def single[F[_],A,B](f: A => F[B]): Chain[F,A,B] =
-    f +: empty
+  case class Cons[F[_,_],A,x,B](head: F[A,x], tail: Chain[F,x,B]) extends Chain[F,A,B] {
+    def apply[R](empty: (A => B, B => A) => R, cons: H[R]): R =
+      cons.f(head, tail)
+  }
+
+  def empty[F[_,_],A]: Chain[F,A,A] = Empty()
+  def single[F[_,_],A,B](f: F[A,B]): Chain[F,A,B] = Cons(f, empty)
 }

@@ -1,5 +1,6 @@
 package streams
 
+/*
 import collection.immutable.SortedMap
 import collection.immutable.SortedSet
 import NF.ID
@@ -94,24 +95,6 @@ object NF extends Stream[NF] {
 
   def await[F[_],A](h: Handle[F,A]): Pull[F,Step[Chunk[A],Handle[F,A]],Nothing] =
     h.stream.await
-
-  //    case Fail(e) => Pull.Done(Some(e))
-  //    case Emits(c) => Pull.Pure(Step(c, new Handle[F,A](empty[Nothing])))
-  //    case Cons(c, t) => Pull.Pure(Step(c, new Handle[F,A](t())))
-  //    case Release(rid, tl) => pullMonad.bind (
-  //      emits[F,Nothing](Release(rid, () => empty[Nothing]))) { _ =>
-  //        await(new Handle(tl()))
-  //      }
-  //    case Await(g) => Pull.Await[F,Step[Chunk[A],Handle[F,A]],Nothing] {
-  //      g map (s => await(new Handle(s)))
-  //    }
-  //    case Acquire(g) =>
-  //      Pull.Await[F,Step[Chunk[A],Handle[F,A]],Nothing] {
-  //        ???
-  //        // g map { case (f,a) => (f, (rid: ID) => ???) }
-  //      }
-  //  }
-
 }
 
 private trait P[F[_],O] { type f[r] = Pull[F,r,O] }
@@ -125,6 +108,37 @@ sealed trait Pull[+F[_],+R,+O] {
 class Handle[+F[_],+A](private[streams] val stream: NF[F,A])
 
 object Pull {
+  // idea: just combine NF and Pull into a single type
+  // avoid awkward conversion between the two
+  // class Process[+F[_],+A](pull: Pull[F,Nothing,A])
+  // class Handle[+F[_],+A](process: Process[F,A])
+  /*
+  data Pull f r o where
+    Pure : r -> Pull f r o
+    Eval : f r -> Pull f r o
+    Bind : Pull f r0 o -> (r -> Pull f r o) -> Pull f r o
+    Done : Maybe Err -> Pull f r o
+    Write : [o] -> Pull f () o
+    ConcatMap : Pull f r o -> (o -> Pull f r o) ->
+    Append : Pull f r o -> Pull f r o -> Pull f r o
+    Fresh : Pull f ID o
+    Acquire : ID -> f r -> (r -> f ()) -> Pull f r o
+    Release : ID -> Pull f () o
+
+  newtype Process f a = Process (Pull f Void a)
+  newtype Handle f a = Handle (Process f a)
+
+  awaitHandle (Handle (Process p)) = case p of
+
+  runFold : b -> (b -> a -> b) -> Process f a -> Free f (Either Err b)
+  runPull : Pull f r o -> Process f o
+  await : Process f a -> Pull f (Step [a] (Handle f a)) o
+
+  // try implementing runFold
+  // try implementing await
+  */
+
+
   val done = Done(None)
   case class Done(err: Option[Throwable]) extends Pull[Nothing,Nothing,Nothing] {
     type F[x] = Nothing; type O = Nothing; type R = Nothing
@@ -196,3 +210,4 @@ object Pull {
     def bind[R,R2](r: Pull[F,R,O])(f: R => Pull[F,R2,O]) = Bind(r, f)
   }
 }
+*/
