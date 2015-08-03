@@ -43,6 +43,13 @@ trait Pull[+F[_],+W,+R] {
     =
     Stream.suspend { run1_(tracked, k) }
 
+  /**
+   * The implementation of `run`. Not public. Note on parameters:
+   *
+   *   - `tracked` is a map of the current in-scope finalizers,
+   *     guaranteed to be run at most once before this `Pull` terminates
+   *   - `k` is the stack of work remaining.
+   */
   protected def run1_[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
     implicit S: Sub1[F,F2]): Stream[F2,W2]
 }
