@@ -113,10 +113,7 @@ object io {
    * when processing the stream of lines is finished.
    */
   def linesR(src: => Source): Process[Task,String] =
-    resource(Task.delay(src))(src => Task.delay(src.close)) { src =>
-      lazy val lines = src.getLines // A stateful iterator
-      Task.delay { if (lines.hasNext) lines.next else throw Cause.Terminated(Cause.End) }
-    }
+    iterator(Task.delay(src))(src => Task.delay(src.getLines()))(src => Task.delay(src.close()))
 
   /**
    * Creates `Sink` from an `PrintStream` using `f` to perform
@@ -160,11 +157,16 @@ object io {
    *
    * Use `iterators` if the resource is associated with multiple iterators.
    */
-  def iterator[R, O](acquire: Task[(R, Iterator[O])])(
+  def iterator[R, O](acquire: Task[R])(
+                     createIterator: R => Task[Iterator[O]])(
                      release: R => Task[Unit]): Process[Task, O] = {
-    bracket(acquire)(r => eval_(release(r._1))){
-      r => iteratorGo(r._2)
-    } onHalt { _.asHalt }
+    //We can't use resource(), because resource() uses repeatEval on its step argument.
+    val iterator =
+      bracket(acquire)(r => eval_(release(r))){
+        r => eval(createIterator(r))
+      } onHalt { _.asHalt }
+
+    iterator.flatMap(iteratorGo)
   }
 
   /**
@@ -174,10 +176,11 @@ object io {
    * Use `merge.mergeN` on the result to interleave the iterators, or
    * .flatMap(identity) to emit them in order.
    */
-  def iterators[R, O](acquire: Task[(R, Process[Task, Iterator[O]])])(
+  def iterators[R, O](acquire: Task[R])(
+                      createIterators: R => Process[Task, Iterator[O]])(
                       release: R => Task[Unit]): Process[Task, Process[Task, O]] = {
-    bracket(acquire)(r => eval_(release(r._1))){
-      r => r._2.map(iteratorGo)
+    bracket(acquire)(r => eval_(release(r))){
+      r => createIterators(r).map(iteratorGo)
     } onHalt { _.asHalt }
   }
 
