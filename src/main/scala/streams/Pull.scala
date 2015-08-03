@@ -3,9 +3,11 @@ package streams
 import collection.immutable.SortedSet
 
 trait Pull[+F[_],+W,+R] {
-  import Pull.{Frame, Stack}
+  import Pull.Stack
+
   def run: Stream[F,W] = run0_(SortedSet.empty, Pull.emptyStack[F,W,R])
 
+  private[streams]
   final def run0_[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
     implicit S: Sub1[F,F2]): Stream[F2,W2]
     =
