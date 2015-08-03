@@ -18,5 +18,8 @@ object Sub1 {
 
   def substFree[F[_],G[_],A](p: Free[F,A])(implicit S: Sub1[F,G]): Free[G,A] =
     subst[Free,F,G,A](p)
+
+  def substPull[F[_],G[_],W,R](p: Pull[F,W,R])(implicit S: Sub1[F,G]): Pull[G,W,R] =
+    subst[({ type f[g[_],x] = Pull[g,W,x] })#f,F,G,R](p)
 }
 

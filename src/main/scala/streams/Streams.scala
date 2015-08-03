@@ -33,11 +33,11 @@ trait Streams[S[+_[_],+_]] { self =>
   type Handle[+F[_],+_]
   type Pull[+F[_],+R,+O]
 
-  def pullMonad[F[_],O]: Monad[({ type f[x] = Pull[F,x,O]})#f]
+  def pullMonad[F[_],W]: Monad[({ type f[x] = Pull[F,W,x]})#f]
 
-  def emits[F[_],O](p: S[F,O]): Pull[F,Unit,O]
+  def write[F[_],W](p: S[F,W]): Pull[F,W,Unit]
 
-  def runPull[F[_],R,O](p: Pull[F,R,O]): S[F,O]
+  def runPull[F[_],W,R](p: Pull[F,W,R]): S[F,W]
 
   type AsyncStep[F[_],A] = F[Pull[F, Step[Chunk[A], S[F,A]], Nothing]]
   type AsyncStep1[F[_],A] = F[Pull[F, Step[A, S[F,A]], Nothing]]
@@ -50,7 +50,7 @@ trait Streams[S[+_[_],+_]] { self =>
 
   def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, AsyncStep1[F,A], Nothing]
 
-  def open[F[_],A](s: S[F,A]): Pull[F,Handle[F,A],Nothing]
+  def open[F[_],A](s: S[F,A]): Pull[F,Nothing,Handle[F,A]]
 
   // evaluation
 
@@ -65,7 +65,7 @@ trait Streams[S[+_[_],+_]] { self =>
   def emit[F[_],A](a: A): S[F,A] = emits(Chunk.singleton(a))
 
   def suspend[F[_],A](s: => S[F,A]): S[F,A] =
-    flatMap(emit(())) { _ => s }
+    flatMap(emit(())) { _ => try s catch { case t: Throwable => fail(t) } }
 
   def force[F[_],A](f: F[S[F, A]]): S[F,A] =
     flatMap(eval(f))(p => p)
@@ -117,12 +117,12 @@ trait Streams[S[+_[_],+_]] { self =>
       Pull[F2, AsyncStep1[F2,A2], Nothing] = self.await1Async(h)
   }
 
-  implicit class PullSyntax[+F[_],+R,+O](p: Pull[F,R,O]) {
-    def map[R2](f: R => R2): Pull[F,R2,O] =
+  implicit class PullSyntax[+F[_],+W,+R](p: Pull[F,W,R]) {
+    def map[R2](f: R => R2): Pull[F,W,R2] =
       self.pullMonad.map(p)(f)
 
-    def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,R2,O2]): Pull[F2,R2,O2] =
-      self.pullMonad.bind(p: Pull[F2,R,O2])(f)
+    def flatMap[F2[x]>:F[x],W2>:W,R2](f: R => Pull[F2,W2,R2]): Pull[F2,W2,R2] =
+      self.pullMonad.bind(p: Pull[F2,W2,R])(f)
   }
 }
 
