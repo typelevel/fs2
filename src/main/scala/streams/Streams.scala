@@ -39,16 +39,14 @@ trait Streams[S[+_[_],+_]] { self =>
 
   def runPull[F[_],W,R](p: Pull[F,W,R]): S[F,W]
 
-  type AsyncStep[F[_],A] = F[Pull[F, Step[Chunk[A], S[F,A]], Nothing]]
-  type AsyncStep1[F[_],A] = F[Pull[F, Step[A, S[F,A]], Nothing]]
+  type AsyncStep[F[_],A] = F[Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]]]
+  type AsyncStep1[F[_],A] = F[Pull[F, Nothing, Step[Option[A], Handle[F,A]]]]
 
-  def await[F[_],A](h: Handle[F,A]): Pull[F, Step[Chunk[A], Handle[F,A]], Nothing]
+  def push[F[_],A](h: Handle[F,A])(c: Chunk[A]): Handle[F,A]
 
-  def await1[F[_],A](h: Handle[F,A]): Pull[F, Step[A, Handle[F,A]], Nothing]
+  def await[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]]
 
-  def awaitAsync[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, AsyncStep[F,A], Nothing]
-
-  def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, AsyncStep1[F,A], Nothing]
+  def awaitAsync[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep[F,A]]
 
   def open[F[_],A](s: S[F,A]): Pull[F,Nothing,Handle[F,A]]
 
@@ -72,6 +70,23 @@ trait Streams[S[+_[_],+_]] { self =>
 
   def eval_[F[_],A](fa: F[A]): S[F,Nothing] =
     flatMap(eval(fa)) { _ => empty }
+
+  def push1[F[_],A](h: Handle[F,A])(a: A): Handle[F,A] =
+    push(h)(Chunk.singleton(a))
+
+  def await1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
+    h.await flatMap { case Step(hd, tl) => hd.uncons match {
+      case None => await1(tl)
+      case Some((h,hs)) => pullMonad.pure(Step(h, tl.push(hs)))
+    }}
+
+  def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep1[F,A]] =
+    h.awaitAsync map { f =>
+      F.map(f) { _.map { case Step(hd, tl) => hd.uncons match {
+        case None => Step(None, tl)
+        case Some((h,hs)) => Step(Some(h), tl.push(hs))
+      }}}
+    }
 
   def terminated[F[_],A](p: S[F,A]): S[F,Option[A]] =
     p.map(Some(_)) ++ emit(None)
@@ -109,12 +124,16 @@ trait Streams[S[+_[_],+_]] { self =>
   }
 
   implicit class HandleSyntax[+F[_],+A](h: Handle[F,A]) {
-    def await: Pull[F, Step[Chunk[A], Handle[F,A]], Nothing] = self.await(h)
-    def await1: Pull[F, Step[A, Handle[F,A]], Nothing] = self.await1(h)
+    def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
+      self.push(h: Handle[F,A2])(c)
+    def push1[A2>:A](a: A2)(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
+      self.push1(h: Handle[F,A2])(a)
+    def await: Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] = self.await(h)
+    def await1: Pull[F, Nothing, Step[A, Handle[F,A]]] = self.await1(h)
     def awaitAsync[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
-      Pull[F2, AsyncStep[F2,A2], Nothing] = self.awaitAsync(h)
+      Pull[F2, Nothing, AsyncStep[F2,A2]] = self.awaitAsync(h)
     def await1Async[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
-      Pull[F2, AsyncStep1[F2,A2], Nothing] = self.await1Async(h)
+      Pull[F2, Nothing, AsyncStep1[F2,A2]] = self.await1Async(h)
   }
 
   implicit class PullSyntax[+F[_],+W,+R](p: Pull[F,W,R]) {

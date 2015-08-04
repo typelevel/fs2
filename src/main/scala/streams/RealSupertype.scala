@@ -12,26 +12,22 @@ private[streams] trait RealSupertypeFallback {
 }
 
 object RealSupertype extends RealSupertypeFallback {
-  implicit def `Product not a real supertype`[A] =
-    new RealSupertype[A,Product] {}
-  implicit def `Product not a real supertype 2`[A] =
-    new RealSupertype[A,Product] {}
-  implicit def `Any not a real supertype`[A] =
-    new RealSupertype[A,Any] {}
-  implicit def `Any not a real supertype 2`[A] =
-    new RealSupertype[A,Any] {}
-  implicit def `AnyRef not a real supertype`[A] =
-    new RealSupertype[A,AnyRef] {}
-  implicit def `AnyRef not a real supertype 2`[A] =
-    new RealSupertype[A,AnyRef] {}
-  implicit def `AnyVal not a real supertype`[A] =
-    new RealSupertype[A,AnyRef] {}
-  implicit def `AnyVal not a real supertype 2`[A] =
-    new RealSupertype[A,AnyRef] {}
-  implicit def `Serializable not a real supertype`[A] =
-    new RealSupertype[A,AnyRef] {}
-  implicit def `Serializable not a real supertype 2`[A] =
-    new RealSupertype[A,AnyRef] {}
+  // idea for naming due to @mpilquist
+
+  implicit def `'Product not a real supertype'`[A] = new RealSupertype[A,Product] {}
+  implicit def `'Scala inferred Product, you have a type error'`[A] = new RealSupertype[A,Product] {}
+
+  implicit def `'Any not a real supertype'`[A] = new RealSupertype[A,Any] {}
+  implicit def `'Scala inferred Any, you have a type error'`[A] = new RealSupertype[A,Any] {}
+
+  implicit def `'AnyRef not a real supertype'`[A] = new RealSupertype[A,AnyRef] {}
+  implicit def `'Scala inferred AnyRef, you have a type error'`[A] = new RealSupertype[A,AnyRef] {}
+
+  implicit def `'AnyVal not a real supertype'`[A] = new RealSupertype[A,AnyVal] {}
+  implicit def `'Scala inferred AnyVal, you have a type error'`[A] = new RealSupertype[A,AnyVal] {}
+
+  implicit def `'Serializable not a real supertype'`[A] = new RealSupertype[A,AnyRef] {}
+  implicit def `'Scala inferred Serializable, you have a type error'`[A] = new RealSupertype[A,AnyRef] {}
 
   implicit def realSupertypeRefl[A]: RealSupertype[A,A] =
     new RealSupertype[A,A] {}
