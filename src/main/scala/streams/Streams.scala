@@ -1,5 +1,7 @@
 package streams
 
+import streams.util.UF1
+
 trait Streams[S[+_[_],+_]] { self =>
 
   // list-like operations
@@ -17,6 +19,9 @@ trait Streams[S[+_[_],+_]] { self =>
 
   def eval[F[_],A](fa: F[A]): S[F,A]
 
+  // translating effects
+
+  def translate[F[_],G[_],W](s: S[F,W])(u: UF1[F,G]): S[G,W]
 
   // failure and error recovery
 

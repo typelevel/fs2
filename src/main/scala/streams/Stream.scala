@@ -1,6 +1,7 @@
 package streams
 
 import collection.immutable.LongMap
+import streams.util.UF1._
 
 /**
  * A stream producing output of type `W`, which may evaluate `F`
@@ -37,17 +38,43 @@ trait Stream[+F[_],+W] {
   final def step: Pull[F,Nothing,Step[Chunk[W], Stream.Handle[F,W]]] =
     _step0(List())
 
-  private[streams] final def _step0[F2[_],W2>:W](rights: List[Stream[F2,W2]]):
-    Pull[F,Nothing,Step[Chunk[W], Stream.Handle[F,W]]]
-    = Pull.suspend { _step1(rights) }
+  private[streams]
+  final def _step0[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2]):
+    Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
+    = Pull.suspend { _step1(rights) } // trampoline and catch errors
 
-  protected def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]]):
-    Pull[F,Nothing,Step[Chunk[W], Stream.Handle[F,W]]] = ???
+  /**
+   * The implementation of `step`. Not public. `rights` is the stack of
+   * streams to the right of our current location. These will be appended
+   * to the returned `Handle`.
+   */
+  protected def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2]):
+    Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
+
+  private[streams]
+  final def stepAsync[F2[_],W2>:W](implicit S: Sub1[F,F2], F2: Async[F2]):
+    Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+    = _stepAsync0(List())
+
+  private[streams]
+  final def _stepAsync0[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2], F2: Async[F2]):
+    Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+    = Pull.suspend { _stepAsync1(rights) } // trampoline and catch errors
+
+  /**
+   * The implementation of `stepAsync`. Not public. `rights` is the stack of
+   * streams to the right of our current location. These will be appended
+   * to the returned `Handle`.
+   */
+  protected def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2], F2: Async[F2]):
+    Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+
+  def translate[G[_]](uf1: F ~> G): Stream[G,W]
 }
 
 object Stream extends Streams[Stream] {
 
-  def emits[W](c: Chunk[W]) = new Stream[Nothing,W] {
+  def emits[W](c: Chunk[W]) = new Stream[Nothing,W] { self =>
     type F[x] = Nothing
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
@@ -71,6 +98,18 @@ object Stream extends Streams[Stream] {
           p._runFold0(nextID, tracked, k)(g, z)
         }}
       )
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
+      : Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
+      = Pull.pure(Step(c, new Handle(
+          rights.reverse.foldLeft(empty: Stream[F2,W2])((tl,hd) => append(hd,tl)))))
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[Nothing,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      = _step1(rights).map(step => F2.pure(Pull.pure(step)))
+
+    def translate[G[_]](uf1: Nothing ~> G): Stream[G,W] = self
   }
 
   def fail(err: Throwable) = new Stream[Nothing,Nothing] { self =>
@@ -98,6 +137,9 @@ object Stream extends Streams[Stream] {
       =
       Free.eval(S(f)) flatMap { a => emit(a)._runFold0(nextID, tracked, k)(g, z) }
   }
+
+  def translate[F[_],G[_],W](s: Stream[F,W])(u: F ~> G) =
+    s.translate(u)
 
   def flatMap[F[_],W0,W](s: Stream[F,W0])(f: W0 => Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
@@ -162,6 +204,8 @@ object Stream extends Streams[Stream] {
 
   def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) = new Handle(emits(c) ++ h.stream)
   def open[F[_],W](s: Stream[F,W]) = Pull.pure(new Handle(s))
+  def await[F[_],W](h: Handle[F,W]) = h.stream.step
+  def awaitAsync[F[_]:Async,W](h: Handle[F,W]) = h.stream.stepAsync
 
   type Pull[+F[_],+W,+R] = streams.Pull[F,W,R]
 
