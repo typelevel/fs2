@@ -101,8 +101,7 @@ object Stream extends Streams[Stream] {
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
       : Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
-      = Pull.pure(Step(c, new Handle(
-          rights.reverse.foldLeft(empty: Stream[F2,W2])((tl,hd) => append(hd,tl)))))
+      = Pull.pure(Step(c, new Handle(concatRight(rights))))
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
       implicit S: Sub1[Nothing,F2], F2: Async[F2])
@@ -113,6 +112,7 @@ object Stream extends Streams[Stream] {
   }
 
   def fail(err: Throwable) = new Stream[Nothing,Nothing] { self =>
+    type W = Nothing
     def _runFold1[F2[_],O,W2>:Nothing,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2, Either[Throwable,O]]
@@ -128,14 +128,44 @@ object Stream extends Streams[Stream] {
           }
         }}
       )
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
+      : Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
+      = Pull.fail(err)
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[Nothing,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      = _step1(rights).map(step => F2.pure(Pull.fail(err)))
+
+    def translate[G[_]](uf1: Nothing ~> G): Stream[G,W] = self
   }
 
-  def eval[F[_],W](f: F[W]) = new Stream[F,W] {
+  def eval[F[_],W](f: F[W]): Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]]
       =
       Free.eval(S(f)) flatMap { a => emit(a)._runFold0(nextID, tracked, k)(g, z) }
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      = Pull.eval(S(f)) map { w => Step(Chunk.singleton(w), new Handle(concatRight(rights))) }
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[F,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      =
+      Pull.eval {
+        F2.bind(F2.ref[W]) { ref =>
+        F2.map(F2.set(ref)(S(f))) { _ =>
+        F2.map(F2.get(ref)) { w =>
+          Pull.pure(Step(Chunk.singleton(w: W2), new Handle(concatRight(rights))))
+          : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
+        }}}
+      }
+
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] = suspend { eval(uf1(f)) }
   }
 
   def translate[F[_],G[_],W](s: Stream[F,W])(u: F ~> G) =
@@ -231,6 +261,9 @@ object Stream extends Streams[Stream] {
   private def runCleanup[F[_]](l: LongMap[F[Unit]]): Free[F,Unit] =
     l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
       Free.eval(hd) flatMap { _ => tl } )
+
+  private def concatRight[F[_],W](s: List[Stream[F,W]]): Stream[F,W] =
+    s.reverse.foldLeft(empty: Stream[F,W])((tl,hd) => append(hd,tl))
 
   case class Frame[F[_],W1,W2](
     bind: W1 => Stream[F,W2],
