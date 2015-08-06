@@ -397,9 +397,26 @@ object Stream extends Streams[Stream] {
   class Handle[+F[_],+W](private[streams] val stream: Stream[F,W])
 
   def push[F[_],W,W2](c: Stack[F,W,W2], p: => Stream[F,W]): Stack[F,W,W2] =
-    ???
+    c (
+      (_,_) => c.push(Frame(emit(_), List(() => p))),
+      new c.H[Stack[F,W,W2]] { def f[x] = (frame,tl) =>
+        if (frame.handlers.isEmpty)
+          tl.push { frame.copy(appends = (() => p) :: frame.appends) }
+        else
+          c.push { Frame(emit(_), List(() => p)) }
+      }
+    )
+
   def push[F[_],W,W2](c: Stack[F,W,W2], h: Throwable => Stream[F,W]): Stack[F,W,W2] =
-    ???
+    c (
+      (_,_) => c.push(Frame(emit(_), List(), List(h))),
+      new c.H[Stack[F,W,W2]] { def f[x] = (frame,tl) =>
+        if (frame.appends.isEmpty)
+          tl.push { frame.copy(handlers = h :: frame.handlers) }
+        else
+          c.push { Frame(emit(_), List(), List(h)) }
+      }
+    )
 
   private def runCleanup[F[_]](l: LongMap[F[Unit]]): Free[F,Unit] =
     l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
