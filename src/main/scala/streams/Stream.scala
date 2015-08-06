@@ -204,15 +204,18 @@ object Stream extends Streams[Stream] {
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
       implicit S: Sub1[F,F2], F2: Async[F2])
       : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
-      = ???
-      //Pull.eval {
-      //  F2.bind(F2.ref[W]) { ref =>
-      //  F2.map(F2.set(ref)(S(f))) { _ =>
-      //  F2.map(F2.get(ref)) { w =>
-      //    Pull.pure(Step(Chunk.singleton(w: W2), new Handle(concatRight(rights))))
-      //    : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
-      //  }}}
-      //}
+      = {
+        val f2: W0 => Stream[F2,W] = Sub1.substStreamF(f)
+        Sub1.substStream(s).stepAsync map { future => F2.map(future) { pull =>
+          pull.flatMap { case Step(hd, tl) => hd.uncons match {
+            case None => (tl.stream flatMap f2)._step0(rights)
+            case Some((ch,ct)) =>
+              f2(ch)._step0(emits(ct).flatMap(f2) ::
+                            tl.stream.flatMap(f2) ::
+                            rights)
+          }}
+        }}
+      }
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] =
       suspend { s.translate(uf1) flatMap { w0 => f(w0).translate(uf1) } }
@@ -224,6 +227,27 @@ object Stream extends Streams[Stream] {
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]]
       =
       s._runFold0[F2,O,W2,W3](nextID, tracked, push(k, Sub1.substStream(s2)))(g,z)
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      =
+      Pull.or ( Sub1.substStream(s)._step0(Sub1.substStream(suspend(s2)) :: rights)
+              , Sub1.substStream(s2)._step0(rights))
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[F,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      =
+      Sub1.substStream(s)._stepAsync0(Sub1.substStream(suspend(s2)) :: rights) map { future =>
+        F2.map(future) { pull =>
+          Pull.or (pull,
+                   Sub1.substStream(s2)._stepAsync0(rights)
+                       .flatMap(Pull.eval).flatMap(identity))
+        }
+      }
+
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] =
+      suspend { s.translate(uf1) ++ s2.translate(uf1) }
   }
 
   private[streams] def scope[F[_],W](inner: Long => Stream[F,W]): Stream[F,W] = new Stream[F,W] {
@@ -232,17 +256,62 @@ object Stream extends Streams[Stream] {
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]]
       =
       inner(nextID)._runFold0(nextID+1, tracked, k)(g, z)
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      =
+      Pull.scope { id => Pull.suspend { inner(id)._step0(rights) } }
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[F,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      = Pull.scope { id => Pull.suspend { inner(id)._stepAsync0(rights) }}
+
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] =
+      scope { id => suspend { inner(id).translate(uf1) } }
   }
 
-  private[streams] def acquire[F[_],W](id: Long, r: Free[F, (W, F[Unit])]):
+  private[streams] def acquire[F[_],W](id: Long, r: F[W], cleanup: W => F[Unit]):
   Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]]
       =
-      Sub1.substFree(r) flatMap { case (r, cleanup) =>
-        emit(r)._runFold0[F2,O,W2,W3](nextID, tracked updated (id, S(cleanup)), k)(g,z)
+      Free.eval(S(r)) flatMap { r =>
+        try
+          emit(r)._runFold0[F2,O,W2,W3](nextID, tracked updated (id, S(cleanup(r))), k)(g,z)
+        catch { case t: Throwable =>
+          Free.pure(Left(
+            new RuntimeException("producing resource cleanup action failed", t)))
+        }
       }
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      =
+      Sub1.substPull(Pull.acquire(id, r, cleanup)) flatMap { r =>
+        Pull.track(id) map { _ =>
+          Step(Chunk.singleton(r), new Handle(concatRight(rights)))
+      }}
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[F,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      =
+      Pull.eval {
+        F2.bind(F2.ref[W]) { ref =>
+        F2.map(F2.set(ref)(S(r))) { _ =>
+          F2.pure { Stream.acquire[F2,W](
+            id,
+            F2.get(ref),
+            Sub1.substKleisli(cleanup))._step0(rights)
+            : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
+          }
+        }}
+      }
+
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] =
+      suspend { acquire(id, uf1(r), cleanup andThen (uf1(_))) }
   }
 
   private[streams] def release(id: Long): Stream[Nothing,Nothing] = new Stream[Nothing,Nothing] {
@@ -266,13 +335,14 @@ object Stream extends Streams[Stream] {
       }
   }
 
-  def bracket[F[_],R,W](r: F[R])(use: R => Stream[F,W], release: R => F[Unit]) =
-    scope { id => acquire(id, Free.eval(r) map (r => (r, release(r)))) flatMap use }
+  def bracket[F[_],R,W](r: F[R])(use: R => Stream[F,W], cleanup: R => F[Unit]) =
+    scope { id => onComplete(acquire(id, r, cleanup) flatMap use, release(id)) }
 
   def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) = new Handle(emits(c) ++ h.stream)
   def open[F[_],W](s: Stream[F,W]) = Pull.pure(new Handle(s))
   def await[F[_],W](h: Handle[F,W]) = h.stream.step
   def awaitAsync[F[_]:Async,W](h: Handle[F,W]) = h.stream.stepAsync
+  def or[F[_],W,R](p: Pull[F,W,R], p2: => Pull[F,W,R]): Pull[F,W,R] = Pull.or(p,p2)
 
   type Pull[+F[_],+W,+R] = streams.Pull[F,W,R]
 

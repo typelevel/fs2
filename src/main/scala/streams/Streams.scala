@@ -53,6 +53,12 @@ trait Streams[S[+_[_],+_]] { self =>
 
   def awaitAsync[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep[F,A]]
 
+  /**
+   * Consult `p2` if `p` fails due to an `await` on an exhausted `Handle`.
+   * If `p` fails due to an error, `p2` is not consulted.
+   */
+  def or[F[_],W,R](p: Pull[F, W, R], p2: => Pull[F,W,R]): Pull[F,W,R]
+
   def open[F[_],A](s: S[F,A]): Pull[F,Nothing,Handle[F,A]]
 
   // evaluation
@@ -142,6 +148,12 @@ trait Streams[S[+_[_],+_]] { self =>
   }
 
   implicit class PullSyntax[+F[_],+W,+R](p: Pull[F,W,R]) {
+
+    def or[F2[x]>:F[x],W2>:W,R2>:R](p2: => Pull[F2,W2,R2])(
+      implicit W2: RealType[W2], R2: RealType[R2])
+      : Pull[F2,W2,R2]
+      = self.or(p, p2)
+
     def map[R2](f: R => R2): Pull[F,W,R2] =
       self.pullMonad.map(p)(f)
 

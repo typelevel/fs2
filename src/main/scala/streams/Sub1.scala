@@ -19,6 +19,9 @@ object Sub1 {
   def substStreamF[F[_],G[_],A,B](g: A => Stream[F,B])(implicit S: Sub1[F,G]): A => Stream[G,B] =
     subst[({ type f[g[_],x] = A => Stream[g,x] })#f, F, G, B](g)
 
+  def substKleisli[F[_],G[_],A,B](g: A => F[B])(implicit S: Sub1[F,G]): A => G[B] =
+    subst[({ type f[g[_],x] = A => g[x] })#f, F, G, B](g)
+
   def substFree[F[_],G[_],A](p: Free[F,A])(implicit S: Sub1[F,G]): Free[G,A] =
     subst[Free,F,G,A](p)
 

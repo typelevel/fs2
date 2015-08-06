@@ -96,6 +96,14 @@ object Pull {
       Stream.eval(S(f)) flatMap { r => pure(r)._run0(tracked, k) }
   }
 
+  def acquire[F[_],R](id: Long, r: F[R], cleanup: R => F[Unit]) = new Pull[F,Nothing,R] {
+    type W = Nothing
+    def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
+      implicit S: Sub1[F,F2]): Stream[F2,W2]
+      =
+      Stream.acquire(id, r, cleanup) flatMap { r => pure(r)._run0(tracked, k) }
+  }
+
   def write[F[_],W](s: Stream[F,W]) = new Pull[F,W,Unit] {
     type R = Unit
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
