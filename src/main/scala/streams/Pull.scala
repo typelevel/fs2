@@ -163,8 +163,9 @@ object Pull {
 
   private[streams]
   def push[F[_],W,R1,R2](c: Stack[F,W,R1,R2], p: => Pull[F,W,R1]): Stack[F,W,R1,R2] =
-    ???
+    c.push { Frame(pure(_), List(() => p)) }
+
   private[streams]
   def push[F[_],W,R1,R2](c: Stack[F,W,R1,R2], h: Throwable => Pull[F,W,R1]): Stack[F,W,R1,R2] =
-    ???
+    c.push { Frame(pure(_), List(), List(h)) }
 }
