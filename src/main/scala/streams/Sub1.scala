@@ -16,6 +16,9 @@ object Sub1 {
   def substStream[F[_],G[_],A](p: Stream[F,A])(implicit S: Sub1[F,G]): Stream[G,A] =
     subst[Stream,F,G,A](p)
 
+  def substStreamF[F[_],G[_],A,B](g: A => Stream[F,B])(implicit S: Sub1[F,G]): A => Stream[G,B] =
+    subst[({ type f[g[_],x] = A => Stream[g,x] })#f, F, G, B](g)
+
   def substFree[F[_],G[_],A](p: Free[F,A])(implicit S: Sub1[F,G]): Free[G,A] =
     subst[Free,F,G,A](p)
 

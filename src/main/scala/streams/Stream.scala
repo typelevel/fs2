@@ -13,6 +13,9 @@ trait Stream[+F[_],+W] {
   def runFold[O](g: (O,W) => O)(z: O): Free[F, Either[Throwable,O]] =
     _runFold0(0, LongMap.empty, Stream.emptyStack[F,W])(g, z)
 
+  def flatMap[F2[_],W2](f: W => Stream[F2,W2])(implicit S: Sub1[F,F2]): Stream[F2,W2] =
+    Stream.flatMap(Sub1.substStream(this))(f)
+
   protected final def _runFold0[F2[_],O,W2>:W,W3](
     nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]] =
@@ -175,10 +178,44 @@ object Stream extends Streams[Stream] {
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]]
-      = {
-        val f2: W0 => Stream[F2,W] = f andThen (Sub1.substStream(_))
-        s._runFold0[F2,O,W0,W3](nextID, tracked, k.push(Frame(f2)))(g,z)
+      =
+      s._runFold0[F2,O,W0,W3](nextID, tracked, k.push(Frame(Sub1.substStreamF(f))))(g,z)
+
+    override def flatMap[F2[_],W2](g: W => Stream[F2,W2])(implicit S: Sub1[F,F2])
+      : Stream[F2,W2]
+      =
+      Stream.flatMap(Sub1.substStream(s)) { w0 =>
+        suspend { Sub1.substStreamF(f).apply(w0) flatMap g }
       }
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      = {
+        val f2: W0 => Stream[F2,W] = Sub1.substStreamF(f)
+        Sub1.substStream(s).step flatMap { case Step(hd, tl) => hd.uncons match {
+          case None => (tl.stream flatMap f2)._step0(rights)
+          case Some((ch,ct)) =>
+            f2(ch)._step0(emits(ct).flatMap(f2) ::
+                          tl.stream.flatMap(f2) ::
+                          rights)
+        }}
+      }
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[F,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      = ???
+      //Pull.eval {
+      //  F2.bind(F2.ref[W]) { ref =>
+      //  F2.map(F2.set(ref)(S(f))) { _ =>
+      //  F2.map(F2.get(ref)) { w =>
+      //    Pull.pure(Step(Chunk.singleton(w: W2), new Handle(concatRight(rights))))
+      //    : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
+      //  }}}
+      //}
+
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] =
+      suspend { s.translate(uf1) flatMap { w0 => f(w0).translate(uf1) } }
   }
 
   def append[F[_],W](s: Stream[F,W], s2: => Stream[F,W]) = new Stream[F,W] {
