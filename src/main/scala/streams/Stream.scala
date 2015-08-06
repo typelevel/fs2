@@ -43,7 +43,7 @@ trait Stream[+F[_],+W] {
 
   private[streams]
   final def _step0[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2]):
-    Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
+    Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
     = Pull.suspend { _step1(rights) } // trampoline and catch errors
 
   /**
@@ -52,7 +52,7 @@ trait Stream[+F[_],+W] {
    * to the returned `Handle`.
    */
   protected def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2]):
-    Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
+    Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
 
   private[streams]
   final def stepAsync[F2[_],W2>:W](implicit S: Sub1[F,F2], F2: Async[F2]):
@@ -103,7 +103,7 @@ object Stream extends Streams[Stream] {
       )
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
-      : Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
+      : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
       = Pull.pure(Step(c, new Handle(concatRight(rights))))
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
@@ -133,7 +133,7 @@ object Stream extends Streams[Stream] {
       )
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
-      : Pull[F2,Nothing,Step[Chunk[W], Stream.Handle[F2,W2]]]
+      : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
       = Pull.fail(err)
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
@@ -152,7 +152,7 @@ object Stream extends Streams[Stream] {
       Free.eval(S(f)) flatMap { a => emit(a)._runFold0(nextID, tracked, k)(g, z) }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
-      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
       = Pull.eval(S(f)) map { w => Step(Chunk.singleton(w), new Handle(concatRight(rights))) }
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
@@ -189,7 +189,7 @@ object Stream extends Streams[Stream] {
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
-      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
       = {
         val f2: W0 => Stream[F2,W] = Sub1.substStreamF(f)
         Sub1.substStream(s).step flatMap { case Step(hd, tl) => hd.uncons match {
@@ -229,7 +229,7 @@ object Stream extends Streams[Stream] {
       s._runFold0[F2,O,W2,W3](nextID, tracked, push(k, Sub1.substStream(s2)))(g,z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
-      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
       =
       Pull.or ( Sub1.substStream(s)._step0(Sub1.substStream(suspend(s2)) :: rights)
               , Sub1.substStream(s2)._step0(rights))
@@ -258,7 +258,7 @@ object Stream extends Streams[Stream] {
       inner(nextID)._runFold0(nextID+1, tracked, k)(g, z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
-      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
       =
       Pull.scope { id => Pull.suspend { inner(id)._step0(rights) } }
 
@@ -287,7 +287,7 @@ object Stream extends Streams[Stream] {
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
-      : Pull[F2,Nothing,Step[Chunk[W],Stream.Handle[F2,W2]]]
+      : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
       =
       Sub1.substPull(Pull.acquire(id, r, cleanup)) flatMap { r =>
         Pull.track(id) map { _ =>
@@ -323,6 +323,18 @@ object Stream extends Streams[Stream] {
       tracked.get(id).map(Free.eval).getOrElse(Free.pure(())) flatMap { _ =>
         empty._runFold0(nextID, tracked - id, k)(g, z)
       }
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
+      : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
+      =
+      Pull.release(id) flatMap { _ => concatRight(rights).step }
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[Nothing,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      = Pull.release(id) flatMap { _ => concatRight(rights).stepAsync }
+
+    def translate[G[_]](uf1: Nothing ~> G): Stream[G,Nothing] = this
   }
 
   def onError[F[_],W](s: Stream[F,W])(handle: Throwable => Stream[F,W]) = new Stream[F,W] {
@@ -333,6 +345,30 @@ object Stream extends Streams[Stream] {
         val handle2: Throwable => Stream[F2,W] = handle andThen (Sub1.substStream(_))
         s._runFold0(nextID, tracked, push(k, handle2))(g, z)
       }
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+      : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
+      =
+      Pull.onError(Sub1.substStream(s)._step0(rights).map {
+        // keep the error handler in scope as we traverse the stream `s`
+        case Step(hd,tl) =>
+             Step(hd, new Handle(onError(tl.stream)(Sub1.substStreamF(handle))))
+      }) { err =>
+        Pull.suspend { Sub1.substStreamF(handle).apply(err)._step0(rights) }
+      }
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[F,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      =
+      Pull.onError(Sub1.substStream(s)._stepAsync0(rights).map { future => F2.map(future) {
+        pull => pull.map { case Step(hd,tl) =>
+          Step(hd, new Handle(onError(tl.stream)(Sub1.substStreamF(handle))))
+        }
+      }}) { err => Pull.suspend { Sub1.substStreamF(handle).apply(err)._stepAsync0(rights) }}
+
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] =
+      onError(s.translate(uf1)) { err => suspend { handle(err).translate(uf1) }}
   }
 
   def bracket[F[_],R,W](r: F[R])(use: R => Stream[F,W], cleanup: R => F[Unit]) =

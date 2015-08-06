@@ -228,7 +228,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
             }
         }
       }
-      Task.async { help(delays, Stream()).runAsync }
+      Task.async { help(delays, collection.immutable.Stream()).runAsync }
     }
 
   /**
