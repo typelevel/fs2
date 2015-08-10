@@ -397,17 +397,21 @@ object Task extends Instances {
   }
 }
 
-/* Prefer an `Async`, but will settle for implicit `Monad`. */
+/* Prefer an `Async` and `Catchable`, but will settle for implicit `Monad`. */
 private[streams] trait Instances1 {
-  implicit def monad: Monad[Task] = new Monad[Task] {
+  implicit def monad: Monad[Task] with Catchable[Task] = new Monad[Task] with Catchable[Task] {
+    def fail[A](err: Throwable) = Task.fail(err)
+    def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
   }
 }
 
 private[streams] trait Instances extends Instances1 {
-  implicit def AsyncInstance(implicit S: Strategy): Async[Task] = new Async[Task] {
+  implicit def Instance(implicit S: Strategy): Async[Task] with Catchable[Task] = new Async[Task] with Catchable[Task] {
     type Ref[A] = Task.Ref[A]
+    def fail[A](err: Throwable) = Task.fail(err)
+    def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
     def ref[A] = Task.ref[A](S)

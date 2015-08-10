@@ -149,7 +149,10 @@ object Stream extends Streams[Stream] {
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, Either[Throwable,O]]
       =
-      Free.eval(S(f)) flatMap { a => emit(a)._runFold0(nextID, tracked, k)(g, z) }
+      Free.attemptEval(S(f)) flatMap {
+        case Left(e) => fail(e)._runFold0(nextID, tracked, k)(g, z)
+        case Right(a) => emit(a)._runFold0(nextID, tracked, k)(g, z)
+      }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
