@@ -63,7 +63,7 @@ trait Streams[S[+_[_],+_]] { self =>
 
   // evaluation
 
-  def runFold[F[_],A,B](p: S[F,A], z: B)(f: (B,A) => B): Free[F,Either[Throwable,B]]
+  def runFold[F[_],A,B](p: S[F,A], z: B)(f: (B,A) => B): Free[F,B]
 
 
   // derived operations
@@ -127,10 +127,10 @@ trait Streams[S[+_[_],+_]] { self =>
     def onError[F2[x]>:F[x],B>:A](f: Throwable => S[F2,B])(implicit R: RealSupertype[A,B]): S[F2,B] =
       self.onError(p1: S[F2,B])(f)
 
-    def runFold[B](z: B)(f: (B,A) => B): Free[F,Either[Throwable,B]] =
+    def runFold[B](z: B)(f: (B,A) => B): Free[F,B] =
       self.runFold(p1, z)(f)
 
-    def runLog: Free[F,Either[Throwable,Vector[A]]] =
+    def runLog: Free[F,Vector[A]] =
       self.runFold(p1, Vector.empty[A])(_ :+ _)
   }
 
