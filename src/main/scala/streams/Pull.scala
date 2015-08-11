@@ -24,7 +24,8 @@ trait Pull[+F[_],+W,+R] {
     implicit S: Sub1[F,F2]): Stream[F2,W2]
 }
 
-object Pull {
+object Pull extends Pulls[Pull] with PullDerived {
+  type Stream[+F[_],+W] = streams.Stream[F,W]
 
   val done: Pull[Nothing,Nothing,Nothing] = new Pull[Nothing,Nothing,Nothing] {
     type W = Nothing; type R = Nothing
@@ -67,6 +68,7 @@ object Pull {
       )
   }
 
+  /** Produce a `Pull` nonstrictly, catching exceptions. */
   def suspend[F[_],W,R](p: => Pull[F,W,R]): Pull[F,W,R] =
     flatMap (pure(())) { _ => try p catch { case t: Throwable => fail(t) } }
 
@@ -104,7 +106,7 @@ object Pull {
       Stream.acquire(id, r, cleanup) flatMap { r => pure(r)._run0(tracked, k) }
   }
 
-  def write[F[_],W](s: Stream[F,W]) = new Pull[F,W,Unit] {
+  def writes[F[_],W](s: Stream[F,W]) = new Pull[F,W,Unit] {
     type R = Unit
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
@@ -118,6 +120,8 @@ object Pull {
       =
       Sub1.substPull(p1)._run0(tracked, push(k, Sub1.substPull(p2)))
   }
+
+  def run[F[_],W,R](p: Pull[F,W,R]): Stream[F,W] = p.run
 
   private[streams]
   def scope[F[_],W,R](inner: Long => Pull[F,W,R]): Pull[F,W,R] = new Pull[F,W,R] {

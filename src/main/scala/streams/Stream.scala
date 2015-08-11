@@ -75,9 +75,9 @@ trait Stream[+F[_],+W] {
   def translate[G[_]](uf1: F ~> G): Stream[G,W]
 }
 
-object Stream extends Streams[Stream] {
+object Stream extends Streams[Stream] with StreamDerived {
 
-  def emits[W](c: Chunk[W]) = new Stream[Nothing,W] { self =>
+  def chunk[W](c: Chunk[W]) = new Stream[Nothing,W] { self =>
     type F[x] = Nothing
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
@@ -198,7 +198,7 @@ object Stream extends Streams[Stream] {
         Sub1.substStream(s).step flatMap { case Step(hd, tl) => hd.uncons match {
           case None => (tl.stream flatMap f2)._step0(rights)
           case Some((ch,ct)) =>
-            f2(ch)._step0(emits(ct).flatMap(f2) ::
+            f2(ch)._step0(chunk(ct).flatMap(f2) ::
                           tl.stream.flatMap(f2) ::
                           rights)
         }}
@@ -213,7 +213,7 @@ object Stream extends Streams[Stream] {
           pull.flatMap { case Step(hd, tl) => hd.uncons match {
             case None => (tl.stream flatMap f2)._step0(rights)
             case Some((ch,ct)) =>
-              f2(ch)._step0(emits(ct).flatMap(f2) ::
+              f2(ch)._step0(chunk(ct).flatMap(f2) ::
                             tl.stream.flatMap(f2) ::
                             rights)
           }}
@@ -377,25 +377,16 @@ object Stream extends Streams[Stream] {
   def bracket[F[_],R,W](r: F[R])(use: R => Stream[F,W], cleanup: R => F[Unit]) =
     scope { id => onComplete(acquire(id, r, cleanup) flatMap use, release(id)) }
 
-  def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) = new Handle(emits(c) ++ h.stream)
+  def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) = new Handle(chunk(c) ++ h.stream)
   def open[F[_],W](s: Stream[F,W]) = Pull.pure(new Handle(s))
   def await[F[_],W](h: Handle[F,W]) = h.stream.step
   def awaitAsync[F[_]:Async,W](h: Handle[F,W]) = h.stream.stepAsync
-  def or[F[_],W,R](p: Pull[F,W,R], p2: => Pull[F,W,R]): Pull[F,W,R] = Pull.or(p,p2)
 
   type Pull[+F[_],+W,+R] = streams.Pull[F,W,R]
-
-  def write[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.write(s)
-
-  def runPull[F[_],W,R](p: Pull[F,W,R]) = p.run
+  val Pull = streams.Pull
 
   def runFold[F[_],W,O](s: Stream[F,W], z: O)(g: (O,W) => O) =
     s.runFold(g)(z)
-
-  def pullMonad[F[_],W] = new Monad[({ type f[x] = Pull[F,W,x]})#f] {
-    def pure[R](r: R) = Pull.pure(r)
-    def bind[A,B](p: Pull[F,W,A])(f: A => Pull[F,W,B]) = Pull.flatMap(p)(f)
-  }
 
   class Handle[+F[_],+W](private[streams] val stream: Stream[F,W])
 
