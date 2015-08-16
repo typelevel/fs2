@@ -12,7 +12,8 @@ import scala.io.Codec
 
 import java.nio.channels.{CompletionHandler, AsynchronousFileChannel}
 import java.nio.{CharBuffer, ByteBuffer}
-import java.nio.file.{StandardOpenOption, Path, Paths}
+import java.nio.file.{StandardOpenOption, Path, Paths, Files, DirectoryStream}
+import java.nio.file.attribute.{BasicFileAttributes, FileTime}
 import java.net.URI
 
 
@@ -156,6 +157,46 @@ object file {
         emit(res)
       }
   }
+
+  case class FileType(isDirectory: Boolean, isRegularFile: Boolean, isSymbolicLink: Boolean, isOther: Boolean)
+
+  case class FileAttributes(path: Path, creationTime: FileTime, lastAccessTime: FileTime, lastModifiedTime: FileTime,
+                            fileType: FileType, size: Long, fileKey: Object)
+
+  def fileAttributes(path:Path): Task[FileAttributes] = Task.delay {
+    val attrs = Files.readAttributes(path, classOf[BasicFileAttributes])
+    FileAttributes(path, attrs.creationTime, attrs.lastAccessTime, attrs.lastModifiedTime,
+                   FileType(attrs.isDirectory, attrs.isRegularFile, attrs.isSymbolicLink, attrs.isOther), 
+                   attrs.size, attrs.fileKey)
+  }
+
+  /**
+   * Emits the contents of a directory recursively at the supplied root path. 
+   * To get full depth, supply Int.MaxValue  
+   */
+  def directoryRecurse(root:Path, followSymLinks:Boolean=false, maxDepth:Int=Int.MaxValue): Process[Task,Path] = {
+    val withAttributes = channel.lift(fileAttributes _)
+    if (maxDepth < 0) Process.empty 
+    else directory(root) through withAttributes flatMap { 
+      case FileAttributes(path, _, _, _, FileType(true, _, isSymbolicLink, _), _, _) if (!isSymbolicLink || followSymLinks) =>
+        Process.emit(path) ++ directoryRecurse(path, followSymLinks, maxDepth-1)
+      case FileAttributes(path, _, _, _, _, _, _) => Process.emit(path)
+    }
+  }
+
+  def directoryRecurse(root:String): Process[Task,Path] = 
+    directoryRecurse(Paths.get(root), false, Int.MaxValue)
+
+  /** 
+   * Emits the contents of a directory at the supplied root path
+   */
+  def directory(root:Path):Process[Task,Path] = 
+    resource(Task.delay(Files.newDirectoryStream(root)))(stream => Task.delay(stream.close)) { (stream: DirectoryStream[Path]) =>
+        val iter = stream.iterator
+        Task.delay(if (iter.hasNext) iter.next else throw Cause.Terminated(Cause.End))
+      }
+
+  def directory(root:String):Process[Task,Path] = directory(Paths.get(root))
 
   /**
    * Creates a `Channel[Task,Int,ByteBuffer]` from an `AsynchronousFileChannel`

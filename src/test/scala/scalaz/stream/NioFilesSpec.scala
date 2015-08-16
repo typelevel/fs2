@@ -52,4 +52,22 @@ class NioFilesSpec extends Properties("niofiles") {
     res
   }
 
+  property("directory emits directory contents") = protect {
+    val content = directory("testdata").map(_.getFileName.toString).runLog.run.toSet
+    val expected = Set("celsius.txt", "fahrenheit.txt", "utf8.txt", "subfolder")
+    content == expected
+  }
+
+  property("directoryRecurse emits recursive directory contents") = protect {
+    val content = directoryRecurse("testdata").map(_.getFileName.toString).runLog.run.toSet
+    val expected = Set("celsius.txt", "fahrenheit.txt", "utf8.txt", "subfolder", "a", "b")
+    content == expected
+  }
+
+  property("directoryRecurse terminates at the correct depth") = protect {
+    val content = directoryRecurse(Paths.get("testdata"), false, 0).map(_.getFileName.toString).runLog.run.toSet
+    val expected = directory("testdata").map(_.getFileName.toString).runLog.run.toSet
+    content == expected
+  }
+
 }
