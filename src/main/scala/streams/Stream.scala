@@ -455,9 +455,39 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   private def emptyStack[F[_],A]: Stack[F,A,A] = streams.Chain.empty[T[F]#f, A]
 
-  //def unsegment[F[_],W1,W2,R](s: Stack[F,W1,W2])(
-  //  empty: Eq[W1,W2] => R,
-  //  unbound: (Segment[F,W1], Eq[W1,W2]) => R,
-  //  bound: (Segment[F,W1], W1 => Stream[F,x], s: Stack[F,x,W2]) => R): R
+  trait Stack1[F[_],W1,W2] { self =>
+    def apply[R](
+      unbound: (List[Segment0[F,W1]], Eq[W1,W2]) => R,
+      bound: H[R]
+    ): R
+
+    def pushBind[W0](f: W0 => Stream[F,W1]): Stack1[F,W0,W2] = new Stack1[F,W0,W2] {
+      def apply[R](unbound: (List[Segment0[F,W0]], Eq[W0,W2]) => R, bound: H[R]): R
+      = bound.f(List(), f, self)
+    }
+
+    def push(s: Segment0[F,W1]): Stack1[F,W1,W2] = new Stack1[F,W1,W2] {
+      def apply[R](unbound: (List[Segment0[F,W1]], Eq[W1,W2]) => R, bound: H[R]): R
+      =
+      self (
+        (segments, eq) => unbound(s :: segments, eq),
+        new self.H[R] { def f[x] = (segments, bind, tl) =>
+          bound.f(s :: segments, bind, tl)
+        }
+      )
+    }
+
+    def pushHandler(f: Throwable => Stream[F,W1]) = push(Segment0.Handler(f))
+    def pushAppend(s: () => Stream[F,W1]) = push(Segment0.Append(s))
+
+    trait H[+R] { def f[x]: (List[Segment0[F,W1]], W1 => Stream[F,x], Stack1[F,x,W2]) => R }
+  }
+
+  object Stack1 {
+    def empty[F[_],W1]: Stack1[F,W1,W1] = new Stack1[F,W1,W1] {
+      def apply[R](unbound: (List[Segment0[F,W1]], Eq[W1,W1]) => R, bound: H[R]): R
+      = unbound(List(), Eq.refl)
+    }
+  }
 }
 

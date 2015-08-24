@@ -33,7 +33,7 @@ object Pull extends Pulls[Pull] with PullDerived {
       implicit S: Sub1[Nothing,F2]): Stream[F2,W2]
       =
       k (
-        (_,_) => runCleanup(tracked),
+        _ => runCleanup(tracked),
         new k.H[Stream[F2,W2]] { def f[x] = (kh,k) =>
           if (kh.ors.isEmpty) done._run0(tracked, k)
           else kh.ors.head()._run0(tracked, k push kh.copy(ors = kh.ors.tail))
@@ -47,7 +47,7 @@ object Pull extends Pulls[Pull] with PullDerived {
       implicit S: Sub1[Nothing,F2]): Stream[F2,W2]
       =
       k (
-        (_,_) => runCleanup(tracked) ++ Stream.fail(err),
+        _ => runCleanup(tracked) ++ Stream.fail(err),
         new k.H[Stream[F2,W2]] { def f[x] = (kh,k) =>
           if (kh.handlers.isEmpty) fail(err)._run0(tracked, k)
           else kh.handlers.head(err)._run0(tracked, k push kh.copy(handlers = kh.handlers.tail))
@@ -61,7 +61,7 @@ object Pull extends Pulls[Pull] with PullDerived {
       implicit S: Sub1[Nothing,F2]): Stream[F2,W2]
       =
       k (
-        (_,_) => runCleanup(tracked),
+        _ => runCleanup(tracked),
         new k.H[Stream[F2,W2]] { def f[x] = (kh,k) =>
           kh.bind(a)._run0(tracked, k)
         }
