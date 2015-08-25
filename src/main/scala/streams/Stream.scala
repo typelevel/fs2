@@ -11,7 +11,7 @@ trait Stream[+F[_],+W] {
   import Stream.Stack
 
   def runFold[O](g: (O,W) => O)(z: O): Free[F, O] =
-    _runFold0(0, LongMap.empty, Stream.emptyStack[F,W])(g, z)
+    _runFold0(0, LongMap.empty, Stream.Stack.empty[F,W])(g, z)
 
   def flatMap[F2[_],W2](f: W => Stream[F2,W2])(implicit S: Sub1[F,F2]): Stream[F2,W2] =
     Stream.flatMap(Sub1.substStream(this))(f)
@@ -86,33 +86,33 @@ object Stream extends Streams[Stream] with StreamDerived {
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
       =
-      // dip(cs, tl)
       // chunks(cs) ++ x => chunks(cs) ++ x()
       // chunks(cs) ++ chunks(cs2) => chunks(cs ++ cs)
       // chunks(cs).onError(h) => chunks(cs)
       // chunks(cs).flatMap(f) => ...
-      // need to think through the productivity of this
-      if (c.isEmpty) k (
-        _ => runCleanup(tracked) map (_ => z),
-        new k.H[Free[F2,O]] { def f[x] = (kh,k) =>
-          kh (
-            (segment, eq) => ???,
-            // since empty.flatMap(f) == empty
-            bindf => empty._runFold0(nextID, tracked, k)(g, z)
-          )
-        }
-      )
-      else k (
-        to => empty._runFold0(nextID, tracked, k)(g, c.foldLeft(z)((z,w) => g(z,to(w)))),
-        new k.H[Free[F2,O]] { def f[x] = (kh,k2) =>
-          kh (
-            (segment, eq) => ???,
-            bindf => { // distribute bindf over this chunk
-              val p = c.foldRight(empty[x]: Stream[F2,x])((w,px) => bindf(w) ++ px)
-              p._runFold0(nextID, tracked, k2)(g, z)
+      k (
+        (segments,eq) => segments match {
+          case List() => Free.pure { c.foldLeft(z)((z,w) => g(z,eq(w))) }
+          case _ =>
+            val z2 = c.foldLeft(z)((z,w) => g(z,eq(w)))
+            val (hd, tl) = Stack.succeed(segments)
+            val g2 = Eq.subst[({ type f[x] = (O,x) => O })#f, W3, W2](g)(eq.flip)
+            hd._runFold0(nextID, tracked, Stack.segments(tl))(g2, z2)
+        },
+        new k.H[Free[F2,O]] { def f[x] = (segments, bindf, tl) => {
+          if (c.isEmpty) { // empty.flatMap(f) == empty
+            if (segments.isEmpty) empty._runFold0(nextID, tracked, tl)(g,z)
+            else {
+              val (hd, tls) = Stack.succeed(segments)
+              hd._runFold0(nextID, tracked, tl.pushBind(bindf).pushSegments(tls))(g, z)
             }
-          )
-        }
+          }
+          else {
+            val c2 = c.foldRight(empty: Stream[F2,x])((w,acc) => append(bindf(w), acc))
+            val bsegments = Stack.bindSegments(segments)(bindf)
+            c2._runFold0(nextID, tracked, tl.pushSegments(bsegments))(g, z)
+          }
+        }}
       )
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
@@ -134,16 +134,22 @@ object Stream extends Streams[Stream] with StreamDerived {
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
       =
       k (
-        _ => runCleanup(tracked) flatMap { _ => Free.fail(err) },
-        new k.H[Free[F2,O]] { def f[x] = (kh,k) => {
-          ???
+        (segments,eq) => segments match {
+          case List() => runCleanup(tracked) flatMap { _ => Free.fail(err) }
+          case _ =>
+            val (hd, tl) = Stack.fail(segments)(err)
+            val g2 = Eq.subst[({ type f[x] = (O,x) => O })#f, W3, W2](g)(eq.flip)
+            hd._runFold0(nextID, tracked, Stack.segments(tl))(g2,z)
+        },
+        new k.H[Free[F2,O]] { def f[x] = ??? }
+        //  ???
           //if (kh.handlers.isEmpty)
           //  self._runFold0(nextID, tracked, k)(g, z)
           //else {
           //  val kh2 = kh.copy(handlers = kh.handlers.tail)
           //  kh.handlers.head(err)._runFold0(nextID, tracked, kh2 +: k)(g,z)
           //}
-        }}
+        // }}
       )
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
@@ -196,7 +202,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
-      s._runFold0[F2,O,W0,W3](nextID, tracked, k.push(Frame.bind(Sub1.substStreamF(f))))(g,z)
+      s._runFold0[F2,O,W0,W3](nextID, tracked, k.pushBind(Sub1.substStreamF(f)))(g,z)
 
     override def flatMap[F2[_],W2](g: W => Stream[F2,W2])(implicit S: Sub1[F,F2])
       : Stream[F2,W2]
@@ -243,7 +249,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
-      s._runFold0[F2,O,W2,W3](nextID, tracked, pushAppend(k, () => Sub1.substStream(s2)))(g,z)
+      s._runFold0[F2,O,W2,W3](nextID, tracked, k.pushAppend(() => Sub1.substStream(s2)))(g,z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
@@ -360,7 +366,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       = {
         val handle2: Throwable => Stream[F2,W] = handle andThen (Sub1.substStream(_))
-        s._runFold0(nextID, tracked, pushHandler(k, handle2))(g, z)
+        s._runFold0(nextID, tracked, k.pushHandler(handle2))(g, z)
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
@@ -404,16 +410,6 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   class Handle[+F[_],+W](private[streams] val stream: Stream[F,W])
 
-  private def pushAppend[F[_],W,W2](c: Stack[F,W,W2], p: () => Stream[F,W]): Stack[F,W,W2] =
-    pushSegment0(c, Segment0.Append(p))
-
-  private def pushHandler[F[_],W,W2](c: Stack[F,W,W2], h: Throwable => Stream[F,W]): Stack[F,W,W2] =
-    pushSegment0(c, Segment0.Handler(h))
-
-  private def pushSegment0[F[_],W,W2](c: Stack[F,W,W2], s: Segment0[F,W]): Stack[F,W,W2] =
-    /// todo - make sure result starts with a sub
-    ???
-
   private def runCleanup[F[_]](l: LongMap[F[Unit]]): Free[F,Unit] =
     l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
       Free.eval(hd) flatMap { _ => tl } )
@@ -421,52 +417,24 @@ object Stream extends Streams[Stream] with StreamDerived {
   private def concatRight[F[_],W](s: List[Stream[F,W]]): Stream[F,W] =
     s.reverse.foldLeft(empty: Stream[F,W])((tl,hd) => append(hd,tl))
 
-  trait Frame[F[_],W1,W2] {
-    def apply[R](segment: (Segment[F,W1], Eq[W1,W2]) => R,
-                 bind: (W1 => Stream[F,W2]) => R): R
-  }
-
-  object Frame {
-    def bind[F[_],W1,W2](f: W1 => Stream[F,W2]) = new Frame[F,W1,W2] {
-      def apply[R](segment: (Segment[F,W1], Eq[W1,W2]) => R,
-                   bind: (W1 => Stream[F,W2]) => R): R = bind(f)
-    }
-    def segment[F[_],W1](s: Segment[F,W1]) = new Frame[F,W1,W1] {
-      def apply[R](segment: (Segment[F,W1], Eq[W1,W1]) => R,
-                   bind: (W1 => Stream[F,W1]) => R): R = segment(s, Eq.refl)
-    }
-  }
-  type Segment[F[_],W1] = List[Segment0[F,W1]]
-  object Segment {
-    def single[F[_],W1](s: Segment0[F,W1]): Segment[F,W1] = List(s)
-    def push[F[_],W1](seg: Segment[F,W1], hd: Segment0[F,W1]): Segment[F,W1] = hd :: seg
-    def append[F[_],W1](s: Segment[F,W1], s2: Segment[F,W1]) = s ++ s2
-  }
-
-  trait Segment0[F[_],W1]
+  sealed trait Segment0[F[_],W1]
   object Segment0 {
-    case class Chunk0[F[_],W1](c: Chunk[W1]) extends Segment0[F,W1]
     case class Handler[F[_],W1](h: Throwable => Stream[F,W1]) extends Segment0[F,W1]
     case class Append[F[_],W1](s: () => Stream[F,W1]) extends Segment0[F,W1]
   }
 
-  private trait T[F[_]] { type f[a,b] = Frame[F,a,b] }
-  type Stack[F[_],A,B] = streams.Chain[T[F]#f, A, B]
-
-  private def emptyStack[F[_],A]: Stack[F,A,A] = streams.Chain.empty[T[F]#f, A]
-
-  trait Stack1[F[_],W1,W2] { self =>
+  trait Stack[F[_],W1,W2] { self =>
     def apply[R](
       unbound: (List[Segment0[F,W1]], Eq[W1,W2]) => R,
       bound: H[R]
     ): R
 
-    def pushBind[W0](f: W0 => Stream[F,W1]): Stack1[F,W0,W2] = new Stack1[F,W0,W2] {
+    def pushBind[W0](f: W0 => Stream[F,W1]): Stack[F,W0,W2] = new Stack[F,W0,W2] {
       def apply[R](unbound: (List[Segment0[F,W0]], Eq[W0,W2]) => R, bound: H[R]): R
       = bound.f(List(), f, self)
     }
 
-    def push(s: Segment0[F,W1]): Stack1[F,W1,W2] = new Stack1[F,W1,W2] {
+    def push(s: Segment0[F,W1]): Stack[F,W1,W2] = new Stack[F,W1,W2] {
       def apply[R](unbound: (List[Segment0[F,W1]], Eq[W1,W2]) => R, bound: H[R]): R
       =
       self (
@@ -480,13 +448,54 @@ object Stream extends Streams[Stream] with StreamDerived {
     def pushHandler(f: Throwable => Stream[F,W1]) = push(Segment0.Handler(f))
     def pushAppend(s: () => Stream[F,W1]) = push(Segment0.Append(s))
 
-    trait H[+R] { def f[x]: (List[Segment0[F,W1]], W1 => Stream[F,x], Stack1[F,x,W2]) => R }
+    def pushSegments(s: List[Segment0[F,W1]]): Stack[F,W1,W2] =
+      if (s.isEmpty) self
+      else new Stack[F,W1,W2] {
+        def apply[R](unbound: (List[Segment0[F,W1]], Eq[W1,W2]) => R, bound: H[R]): R
+        =
+        self (
+          (segments, eq) => if (segments.isEmpty) unbound(s, eq) // common case
+                            else unbound(s ++ segments, eq),
+          new self.H[R] { def f[x] = (segments, bind, tl) =>
+            bound.f(s ++ segments, bind, tl)
+          }
+        )
+      }
+
+    trait H[+R] { def f[x]: (List[Segment0[F,W1]], W1 => Stream[F,x], Stack[F,x,W2]) => R }
   }
 
-  object Stack1 {
-    def empty[F[_],W1]: Stack1[F,W1,W1] = new Stack1[F,W1,W1] {
+  object Stack {
+    def empty[F[_],W1]: Stack[F,W1,W1] = segments(List())
+
+    def segments[F[_],W1](s: List[Segment0[F,W1]]): Stack[F,W1,W1] = new Stack[F,W1,W1] {
       def apply[R](unbound: (List[Segment0[F,W1]], Eq[W1,W1]) => R, bound: H[R]): R
-      = unbound(List(), Eq.refl)
+      = unbound(s, Eq.refl)
+    }
+
+    @annotation.tailrec
+    def fail[F[_],W1](s: List[Segment0[F,W1]])(err: Throwable)
+    : (Stream[F,W1], List[Segment0[F,W1]])
+    = s match {
+      case List() => (Stream.fail(err), List())
+      case Segment0.Handler(f) :: tl => (f(err), tl)
+      case _ :: tl => fail(tl)(err)
+    }
+
+    @annotation.tailrec
+    def succeed[F[_],W1](s: List[Segment0[F,W1]])
+    : (Stream[F,W1], List[Segment0[F,W1]])
+    = s match {
+      case List() => (Stream.empty, List())
+      case Segment0.Append(s) :: tl => (s(), tl)
+      case _ :: tl => succeed(tl)
+    }
+
+    def bindSegments[F[_],W1,W2](s: List[Segment0[F,W1]])(f: W1 => Stream[F,W2])
+    : List[Segment0[F,W2]]
+    = s map {
+      case Segment0.Append(s) => Segment0.Append(() => flatMap(s())(f))
+      case Segment0.Handler(h) => Segment0.Handler(h andThen (s => flatMap(s)(f)))
     }
   }
 }
