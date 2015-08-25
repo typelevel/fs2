@@ -435,16 +435,13 @@ object Stream extends Streams[Stream] with StreamDerived {
       = bound.f(List(), f, self)
     }
 
-    def push(s: Segment0[F,W1]): Stack[F,W1,W2] = new Stack[F,W1,W2] {
-      def apply[R](unbound: (List[Segment0[F,W1]], Eq[W1,W2]) => R, bound: H[R]): R
-      =
-      self (
-        (segments, eq) => unbound(s :: segments, eq),
-        new self.H[R] { def f[x] = (segments, bind, tl) =>
-          bound.f(s :: segments, bind, tl)
-        }
-      )
-    }
+    def push(s: Segment0[F,W1]): Stack[F,W1,W2] = self (
+      (segments, eq) => Eq.subst[({type f[x] = Stack[F,W1,x] })#f, W1, W2](
+                        Stack.segments(s :: segments))(eq),
+      new self.H[Stack[F,W1,W2]] { def f[x] = (segments,bindf,tl) =>
+        tl.pushBind(bindf).pushSegments(s :: segments)
+      }
+    )
 
     def pushHandler(f: Throwable => Stream[F,W1]) = push(Segment0.Handler(f))
     def pushAppend(s: () => Stream[F,W1]) = push(Segment0.Append(s))
