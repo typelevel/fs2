@@ -14,8 +14,7 @@ class StreamsSpec extends Properties("Stream") {
   property("empty") = secure { empty === Vector() }
   property("emit(1)") = secure { emit(1) === Vector(1) }
   property("chunk(1,2)") = secure { chunk(Chunk.seq(Vector(1,2))) === Vector(1,2) }
-  // currently hangs
-  // property("++") = secure { emit(1) ++ emit(2) === Vector(1,2) }
+  property("++") = secure { emit(1) ++ emit(2) === Vector(1,2) }
 
   def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.run
 

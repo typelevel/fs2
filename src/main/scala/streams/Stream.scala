@@ -86,10 +86,6 @@ object Stream extends Streams[Stream] with StreamDerived {
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
       =
-      // chunks(cs) ++ x => chunks(cs) ++ x()
-      // chunks(cs) ++ chunks(cs2) => chunks(cs ++ cs)
-      // chunks(cs).onError(h) => chunks(cs)
-      // chunks(cs).flatMap(f) => ...
       k (
         (segments,eq) => segments match {
           case List() => Free.pure { c.foldLeft(z)((z,w) => g(z,eq(w))) }
@@ -141,15 +137,12 @@ object Stream extends Streams[Stream] with StreamDerived {
             val g2 = Eq.subst[({ type f[x] = (O,x) => O })#f, W3, W2](g)(eq.flip)
             hd._runFold0(nextID, tracked, Stack.segments(tl))(g2,z)
         },
-        new k.H[Free[F2,O]] { def f[x] = ??? }
-        //  ???
-          //if (kh.handlers.isEmpty)
-          //  self._runFold0(nextID, tracked, k)(g, z)
-          //else {
-          //  val kh2 = kh.copy(handlers = kh.handlers.tail)
-          //  kh.handlers.head(err)._runFold0(nextID, tracked, kh2 +: k)(g,z)
-          //}
-        // }}
+        new k.H[Free[F2,O]] { def f[x] = (segments, bindf, tl) => segments match {
+          case List() => fail(err)._runFold0(nextID, tracked, tl)(g, z)
+          case _ =>
+            val (hd, tls) = Stack.fail(segments)(err)
+            hd._runFold0(nextID, tracked, tl.pushBind(bindf).pushSegments(tls))(g, z)
+        }}
       )
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
@@ -423,11 +416,19 @@ object Stream extends Streams[Stream] with StreamDerived {
     case class Append[F[_],W1](s: () => Stream[F,W1]) extends Segment0[F,W1]
   }
 
+  /*
+  data Stack f w1 w2 where
+    Unbound :: [Segment0 f w1] -> Stack f w1 w1
+    Bound :: [Segment0 f w1] -> (w1 -> Stream f x) -> Stack f x w2 -> Stack f w1 w2
+  */
+
   trait Stack[F[_],W1,W2] { self =>
     def apply[R](
       unbound: (List[Segment0[F,W1]], Eq[W1,W2]) => R,
       bound: H[R]
     ): R
+
+    trait H[+R] { def f[x]: (List[Segment0[F,W1]], W1 => Stream[F,x], Stack[F,x,W2]) => R }
 
     def pushBind[W0](f: W0 => Stream[F,W1]): Stack[F,W0,W2] = new Stack[F,W0,W2] {
       def apply[R](unbound: (List[Segment0[F,W0]], Eq[W0,W2]) => R, bound: H[R]): R
@@ -462,7 +463,6 @@ object Stream extends Streams[Stream] with StreamDerived {
         )
       }
 
-    trait H[+R] { def f[x]: (List[Segment0[F,W1]], W1 => Stream[F,x], Stack[F,x,W2]) => R }
   }
 
   object Stack {
