@@ -24,6 +24,12 @@ class StreamsSpec extends Properties("Stream") {
     Chunk.seq((0 until N).map(emit)).foldRight(empty: Stream[Nothing,Int])(_ ++ _) ===
     Vector.range(0,N)
   }
+  property("left-associated flatMap") = secure {
+    val N = 10
+    // todo, this annotation shouldn't be needed
+    (1 until N).map(emit).foldLeft(emit(0))((acc,a) => acc flatMap[Nothing,Int] { _ => a }) ===
+    Vector(N-1)
+  }
 
   def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.run
 
