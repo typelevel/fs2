@@ -195,13 +195,8 @@ object Stream extends Streams[Stream] with StreamDerived {
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
-      s._runFold0[F2,O,W0,W3](nextID, tracked, k.pushBind(Sub1.substStreamF(f)))(g,z)
-
-    override def flatMap[F2[_],W2](g: W => Stream[F2,W2])(implicit S: Sub1[F,F2])
-      : Stream[F2,W2]
-      =
-      Stream.flatMap(Sub1.substStream(s)) { w0 =>
-        suspend { Sub1.substStreamF(f).apply(w0) flatMap g }
+      Free.suspend {
+        s._runFold1[F2,O,W0,W3](nextID, tracked, k.pushBind(Sub1.substStreamF(f)))(g,z)
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])

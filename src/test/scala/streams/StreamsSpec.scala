@@ -25,7 +25,7 @@ class StreamsSpec extends Properties("Stream") {
     Vector.range(0,N)
   }
   property("left-associated flatMap") = secure {
-    val N = 10
+    val N = 200
     // todo, this annotation shouldn't be needed
     (1 until N).map(emit).foldLeft(emit(0))((acc,a) => acc flatMap[Nothing,Int] { _ => a }) ===
     Vector(N-1)

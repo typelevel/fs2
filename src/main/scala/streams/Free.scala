@@ -31,6 +31,8 @@ object Free {
     case Left(e) => fail(e)
     case Right(a) => pure(a)
   }
+  def suspend[F[_],A](fa: => Free[F,A]): Free[F,A] =
+    pure(()) flatMap { _ => fa }
 
   private[streams] case class Fail(err: Throwable) extends Free[Nothing,Nothing] {
     def _runTranslate[G[_],A2>:Nothing](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
