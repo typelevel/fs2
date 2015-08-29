@@ -4,10 +4,21 @@ organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
+// this is equivalent to declaring compatibility checks
+git.baseVersion := "0.8"
+
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 git.gitTagToVersionNumber := {
   case ReleaseTag(version) => Some(version)
   case _ => None
+}
+
+git.formattedShaVersion := {
+  val suffix = git.makeUncommittedSignifierSuffix(git.gitUncommittedChanges.value, git.uncommittedSignifier.value)
+
+  git.gitHeadCommit.value map { _.substring(0, 7) } map { sha =>
+    git.baseVersion.value + "-" + sha + suffix
+  }
 }
 
 scalaVersion := "2.11.7"
