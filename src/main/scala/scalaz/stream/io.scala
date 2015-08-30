@@ -112,15 +112,13 @@ object io {
    * when processing the stream of lines is finished.
    */
   def linesR(src: => Source): Process[Task,String] = {
-    val req = Task.delay(src)
-
     def release(src: Source): Process[Task, Nothing] =
       Process.eval_(Task.delay(src.close()))
 
     def rcv(src: Source): Process[Task, String] =
-      iterator[String](Task.delay(src.getLines()))
+      iterator[String](src.getLines())
 
-    bracket[Task, Source, String](req)(release)(rcv)
+    bracket[Task, Source, String](Task.delay(src))(release)(rcv)
   }
 
   /**
@@ -162,8 +160,8 @@ object io {
   /**
    * Create a Process from an iterator.
    */
-  def iterator[O](createIterator: Task[Iterator[O]]): Process[Task, O] = {
-    await(createIterator) { iterator =>
+  def iterator[O](i: => Iterator[O]): Process[Task, O] = {
+    await(Task.delay(i)) { iterator =>
       val hasNext = Task delay { iterator.hasNext }
       val next = Task delay { iterator.next() }
 
@@ -172,7 +170,7 @@ object io {
       go
     }
   }
-
+  
   /**
    * The standard input stream, as `Process`. This `Process` repeatedly awaits
    * and emits chunks of bytes  from standard input.
