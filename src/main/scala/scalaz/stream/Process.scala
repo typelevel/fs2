@@ -871,31 +871,6 @@ object Process extends ProcessInstances {
   def iterateEval[F[_], A](start: A)(f: A => F[A]): Process[F, A] =
     emit(start) ++ await(f(start))(iterateEval(_)(f))
 
-  /**
-   * Create a Process from an iterator. This should not be used directly,
-   * because iterators are mutable.
-   */
-  private [stream] def iteratorGo[O](iterator: Iterator[O]): Process[Task, O] = {
-    val hasNext = Task delay { iterator.hasNext }
-    val next = Task delay { iterator.next() }
-
-    def go: Process[Task, O] = await(hasNext) { hn => if (hn) eval(next) ++ go else halt }
-
-    go
-  }
-
-  /**
-   * Use a task that creates an iterator as source for a `Process`,
-   * which lazily emits the values of the iterator, then halts.
-   *
-   * Be sure that iteratorCreator uses no external resources.
-   *
-   * If your iterator uses an external resource, use [[io.iterator]].
-   */
-  def iterator[O](iteratorCreator: Task[Iterator[O]]): Process[Task, O] = {
-    await(iteratorCreator)(iteratorGo)
-  }
-
   /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Process0[Int] =
     unfold(start)(i => if (i < stopExclusive) Some((i, i + by)) else None)

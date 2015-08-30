@@ -2,7 +2,6 @@ package scalaz.stream
 
 import java.io._
 
-import scalaz.{-\/, \/-}
 import scalaz.concurrent.Task
 
 import scodec.bits.ByteVector
@@ -109,11 +108,20 @@ object io {
 
   /**
    * Creates a `Process[Task,String]` from the lines of the `Source`,
-   * using the `resource` combinator to ensure the `Source` is closed
+   * using the `bracket` combinator to ensure the `Source` is closed
    * when processing the stream of lines is finished.
    */
-  def linesR(src: => Source): Process[Task,String] =
-    iterator(Task.delay(src))(src => Task.delay(src.getLines()))(src => Task.delay(src.close()))
+  def linesR(src: => Source): Process[Task,String] = {
+    val req = Task.delay(src)
+
+    def release(src: Source): Process[Task, Nothing] =
+      Process.eval_(Task.delay(src.close()))
+
+    def rcv(src: Source): Process[Task, String] =
+      iterator[String](Task.delay(src.getLines()))
+
+    bracket[Task, Source, String](req)(release)(rcv)
+  }
 
   /**
    * Creates `Sink` from an `PrintStream` using `f` to perform
@@ -142,7 +150,7 @@ object io {
    * Generic combinator for producing a `Process[F,O]` from some
    * effectful `O` source. The source is tied to some resource,
    * `R` (like a file handle) that we want to ensure is released.
-   * See `linesR` for an example use.
+   * See `chunkW` for an example use.
    */
   def resource[F[_],R,O](acquire: F[R])(
                          release: R => F[Unit])(
@@ -152,36 +160,17 @@ object io {
     } onHalt { _.asHalt }
 
   /**
-   * Create a Process from an iterator that requires some external or
-   * other mutable resource, while ensuring that the resource is released.
-   *
-   * Use `iterators` if the resource is associated with multiple iterators.
+   * Create a Process from an iterator.
    */
-  def iterator[R, O](acquire: Task[R])(
-                     createIterator: R => Task[Iterator[O]])(
-                     release: R => Task[Unit]): Process[Task, O] = {
-    //We can't use resource(), because resource() uses repeatEval on its step argument.
-    val iterator =
-      bracket(acquire)(r => eval_(release(r))){
-        r => eval(createIterator(r))
-      } onHalt { _.asHalt }
+  def iterator[O](createIterator: Task[Iterator[O]]): Process[Task, O] = {
+    await(createIterator) { iterator =>
+      val hasNext = Task delay { iterator.hasNext }
+      val next = Task delay { iterator.next() }
 
-    iterator.flatMap(iteratorGo)
-  }
+      def go: Process[Task, O] = await(hasNext) { hn => if (hn) eval(next) ++ go else halt }
 
-  /**
-   * Create a Process from an external resource associated with multiple
-   * iterators, while ensuring that the resource is released.
-   *
-   * Use `merge.mergeN` on the result to interleave the iterators, or
-   * .flatMap(identity) to emit them in order.
-   */
-  def iterators[R, O](acquire: Task[R])(
-                      createIterators: R => Process[Task, Iterator[O]])(
-                      release: R => Task[Unit]): Process[Task, Process[Task, O]] = {
-    bracket(acquire)(r => eval_(release(r))){
-      r => createIterators(r).map(iteratorGo)
-    } onHalt { _.asHalt }
+      go
+    }
   }
 
   /**
