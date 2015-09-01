@@ -77,9 +77,6 @@ trait Stream[+F[_],+W] {
 
 object Stream extends Streams[Stream] with StreamDerived {
 
-  // push onto the stack and recurse with empty
-  // in empty case, we look for `Sub s :: Empty` or `Sub s :: Bind f`
-  // may want to finger the substack, require a Frame, and a `Stack`
   def chunk[W](c: Chunk[W]) = new Stream[Nothing,W] { self =>
     type F[x] = Nothing
     def _runFold1[F2[_],O,W2>:W,W3](
@@ -104,7 +101,13 @@ object Stream extends Streams[Stream] with StreamDerived {
             }
           }
           else {
-            val c2 = c.foldRight(empty: Stream[F2,x])((w,acc) => append(bindf(w), acc))
+            val c2 = c.foldRight(None: Option[Stream[F2,x]])(
+              (w,acc) => acc match {
+                case None => Some(bindf(w))
+                case Some(acc) => Some(append(bindf(w), acc))
+              }
+            ).getOrElse(empty)
+            // println("segments length 1: " + segments.length)
             val bsegments = Stack.bindSegments(segments)(bindf)
             c2._runFold0(nextID, tracked, tl.pushSegments(bsegments))(g, z)
           }
@@ -410,12 +413,6 @@ object Stream extends Streams[Stream] with StreamDerived {
     case class Handler[F[_],W1](h: Throwable => Stream[F,W1]) extends Segment0[F,W1]
     case class Append[F[_],W1](s: () => Stream[F,W1]) extends Segment0[F,W1]
   }
-
-  /*
-  data Stack f w1 w2 where
-    Unbound :: [Segment0 f w1] -> Stack f w1 w1
-    Bound :: [Segment0 f w1] -> (w1 -> Stream f x) -> Stack f x w2 -> Stack f w1 w2
-  */
 
   trait Stack[F[_],W1,W2] { self =>
     def apply[R](
