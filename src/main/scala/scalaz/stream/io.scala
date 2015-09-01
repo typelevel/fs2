@@ -112,7 +112,7 @@ object io {
    * when processing the stream of lines is finished.
    */
   def linesR(src: => Source): Process[Task,String] = {
-    iterator(src)(_.close())(_.getLines())
+    iterateR(Task.delay(src))(src => Task.delay(src.close()))(_.getLines())
   }
 
   /**
@@ -154,7 +154,7 @@ object io {
   /**
    * Create a Process from an iterator. The value behind the iterator should be
    * immutable and not rely on an external resource. If that is not the case, use
-   * `io.iterator`.
+   * `io.iterateR'`.
    */
   def iterate[O](i: => Iterator[O]): Process[Task, O] = {
     await(Task.delay(i)) { iterator =>
@@ -173,25 +173,17 @@ object io {
    * See `linesR` for an example use.
    * @param req acquires the resource
    * @param release releases the resource
-   * @param rcv creates the iterator from the resource
+   * @param mkIterator creates the iterator from the resource
    * @tparam R is the type of the resource
    * @tparam O is the type of the values in the iterator
    * @return
    */
-  def iterator[R, O](req: => R)(
-                    release: R => Unit)(
-                    rcv: R => Iterator[O]): Process[Task, O] = {
-    val reqTask = Task.delay(req)
-
-    def releaseProcess(r: R): Process[Task, Nothing] =
-      Process.eval_(Task.delay(release(r)))
-
-    def rcvProcess(r: R): Process[Task, O] =
-      iterate(rcv(r))
-
-    bracket[Task, R, O](reqTask)(releaseProcess)(rcvProcess)
+  def iterateR[R, O](req: => Task[R])(
+                    release: R => Task[Unit])(
+                    mkIterator: R => Iterator[O]): Process[Task, O] = {
+    bracket[Task, R, O](req)(r => Process.eval_(release(r)))(r => iterate(mkIterator(r)) )
   }
-  
+
   /**
    * The standard input stream, as `Process`. This `Process` repeatedly awaits
    * and emits chunks of bytes  from standard input.

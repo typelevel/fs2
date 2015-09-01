@@ -3,20 +3,22 @@ package scalaz.stream
 import org.scalacheck._
 import Prop._
 
+import scalaz.concurrent.Task
+
 /**
  * io.iterator tests
  */
 class IteratorSpec extends Properties("iterators") {
 
-  property("io.iterator completes immediately from an empty iterator") = secure {
+  property("io.iterate completes immediately from an empty iterator") = secure {
     io.iterate[Int](Iterator.empty).runLog.run.isEmpty
   }
 
-  property("io.iterator uses all its values and completes") = forAll { (ints: Vector[Int]) =>
+  property("io.iterate uses all its values and completes") = forAll { (ints: Vector[Int]) =>
     io.iterate[Int](ints.toIterator).runLog.run == ints
   }
 
-  property("io.iterator is re-usable") = forAll { (ints: Vector[Int]) =>
+  property("io.iterate is re-usable") = forAll { (ints: Vector[Int]) =>
     io.iterate(ints.toIterator).runLog.run == io.iterate(ints.toIterator).runLog.run
   }
 
@@ -35,20 +37,18 @@ class IteratorSpec extends Properties("iterators") {
   property("io.iterator releases its resource") = forAll { (ints: Vector[Int]) =>
     var resource: Option[IteratorResource[Int]] = None
 
-    def acquire: IteratorResource[Int] = {
-      resource = Some(IteratorResource(ints: _*))
-      resource.get
-    }
+    def acquire: Task[IteratorResource[Int]] =
+      Task.delay{
+       resource = Some(IteratorResource(ints: _*))
+       resource.get
+     }
 
-    def release(resource: IteratorResource[_]): Unit = {
-      resource.release()
-    }
+    def release(resource: IteratorResource[_]): Task[Unit] =
+      Task.delay { resource.release() }
 
-    def rcv(resource: IteratorResource[Int]): Iterator[Int] = {
-      resource.iterator
-    }
 
-    io.iterator(acquire)(release)(rcv).run.run
+
+    io.iterateR(acquire)(release)(_.iterator).run.run
 
     resource.exists(_.isReleased)
   }
