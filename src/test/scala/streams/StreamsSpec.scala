@@ -11,7 +11,7 @@ class StreamsSpec extends Properties("Stream") {
 
   case object FailWhale extends RuntimeException("the system... is down")
 
-  val Ns = List(100,200,400,800,1600,3200,12800,25600,51200,102400)
+  val Ns = List(100,200,400,800,1600,3200,6400,12800,25600,51200,102400)
 
   property("empty") = secure { empty === Vector() }
 
