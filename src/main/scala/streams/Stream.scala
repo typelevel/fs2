@@ -116,7 +116,8 @@ object Stream extends Streams[Stream] with StreamDerived {
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
       : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
-      = Pull.pure(Step(c, new Handle(concatRight(rights))))
+      = if (rights.isEmpty && c.isEmpty) Pull.done
+        else Pull.pure(Step(c, new Handle(concatRight(rights))))
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
       implicit S: Sub1[Nothing,F2], F2: Async[F2])

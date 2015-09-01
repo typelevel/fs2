@@ -64,6 +64,10 @@ private[streams] trait StreamDerived { self: streams.Stream.type =>
     h.await1 flatMap { case hd #: tl => Pull.pure(hd #: tl.push1(hd)) }
 
   implicit class StreamSyntax[+F[_],+A](p1: Stream[F,A]) {
+
+    def pull[F2[x]>:F[x],A2>:A,B](using: Handle[F2,A2] => Pull[F2,B,Handle[F2,A2]]): Stream[F2,B] =
+      self.pull(p1: Stream[F2,A2])(using)
+
     def map[B](f: A => B): Stream[F,B] =
       self.map(p1)(f)
 
