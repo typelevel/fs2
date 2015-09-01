@@ -30,12 +30,22 @@ class StreamsSpec extends Properties("Stream") {
     Vector.range(0,N)
   }}
 
-  property("left-associated flatMap") = secure {
+  property("left-associated flatMap 1") = secure {
     Ns.forall { N =>
       logTime("left-associated flatMap 1 ("+N.toString+")") {
         (1 until N).map(emit).foldLeft(emit(0))(
           // todo, this annotation shouldn't be needed
           (acc,a) => acc flatMap[Nothing,Int] { _ => a }) === Vector(N-1)
+      }
+    }
+  }
+
+  property("right-associated flatMap 1") = secure {
+    Ns.forall { N =>
+      logTime("right-associated flatMap 1 ("+N.toString+")") {
+        (1 until N).map(emit).reverse.foldLeft(emit(0))(
+          // todo, this annotation shouldn't be needed
+          (acc,a) => a flatMap[Nothing,Int] { _ => acc }) === Vector(0)
       }
     }
   }
@@ -46,6 +56,16 @@ class StreamsSpec extends Properties("Stream") {
         (1 until N).map(emit).foldLeft(emit(0) ++ emit(1) ++ emit(2))(
           // todo, this annotation shouldn't be needed
           (acc,a) => acc flatMap[Nothing,Int] { _ => a }) === Vector(N-1, N-1, N-1)
+      }
+    }
+  }
+
+  property("right-associated flatMap 1") = secure {
+    Ns.forall { N =>
+      logTime("right-associated flatMap 1 ("+N.toString+")") {
+        (1 until N).map(emit).reverse.foldLeft(emit(0) ++ emit(1) ++ emit(2))(
+          // todo, this annotation shouldn't be needed
+          (acc,a) => a flatMap[Nothing,Int] { _ => acc }) === Vector(0,1,2)
       }
     }
   }

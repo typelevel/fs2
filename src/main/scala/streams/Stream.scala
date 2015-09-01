@@ -108,7 +108,6 @@ object Stream extends Streams[Stream] with StreamDerived {
                 case Some(acc) => Some(append(bindf(w), acc))
               }
             ).getOrElse(empty)
-            // println("segments length 1: " + segments.length)
             val bsegments = Stack.bindSegments(segments)(bindf)
             c2._runFold0(nextID, tracked, tl.pushSegments(bsegments))(g, z)
           }
