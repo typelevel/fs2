@@ -154,7 +154,7 @@ object io {
   /**
    * Create a Process from an iterator. The value behind the iterator should be
    * immutable and not rely on an external resource. If that is not the case, use
-   * `io.iterateR'`.
+   * `io.iterateR`.
    */
   def iterate[O](i: => Iterator[O]): Process[Task, O] = {
     await(Task.delay(i)) { iterator =>
@@ -174,13 +174,13 @@ object io {
    * @param req acquires the resource
    * @param release releases the resource
    * @param mkIterator creates the iterator from the resource
-   * @tparam R is the type of the resource
-   * @tparam O is the type of the values in the iterator
+   * @tparam R is the resource
+   * @tparam O is a value in the iterator
    * @return
    */
   def iterateR[R, O](req: => Task[R])(
-                    release: R => Task[Unit])(
-                    mkIterator: R => Iterator[O]): Process[Task, O] = {
+                     release: R => Task[Unit])(
+                     mkIterator: R => Iterator[O]): Process[Task, O] = {
     bracket[Task, R, O](req)(r => Process.eval_(release(r)))(r => iterate(mkIterator(r)) )
   }
 
