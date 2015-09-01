@@ -108,17 +108,11 @@ object io {
 
   /**
    * Creates a `Process[Task,String]` from the lines of the `Source`,
-   * using the `bracket` combinator to ensure the `Source` is closed
+   * using the `iterator` combinator to ensure the `Source` is closed
    * when processing the stream of lines is finished.
    */
   def linesR(src: => Source): Process[Task,String] = {
-    def release(src: Source): Process[Task, Nothing] =
-      Process.eval_(Task.delay(src.close()))
-
-    def rcv(src: Source): Process[Task, String] =
-      iterator[String](src.getLines())
-
-    bracket[Task, Source, String](Task.delay(src))(release)(rcv)
+    iterator(src)(_.close())(_.getLines())
   }
 
   /**
@@ -158,9 +152,11 @@ object io {
     } onHalt { _.asHalt }
 
   /**
-   * Create a Process from an iterator.
+   * Create a Process from an iterator. The value behind the iterator should be
+   * immutable and not rely on an external resource. If that is not the case, use
+   * `io.iterator`.
    */
-  def iterator[O](i: => Iterator[O]): Process[Task, O] = {
+  def iterate[O](i: => Iterator[O]): Process[Task, O] = {
     await(Task.delay(i)) { iterator =>
       val hasNext = Task delay { iterator.hasNext }
       val next = Task delay { iterator.next() }
@@ -169,6 +165,31 @@ object io {
 
       go
     }
+  }
+
+  /**
+   * Create a Process from an iterator that is tied to some resource,
+   * `R` (like a file handle) that we want to ensure is released.
+   * See `linesR` for an example use.
+   * @param req acquires the resource
+   * @param release releases the resource
+   * @param rcv creates the iterator from the resource
+   * @tparam R is the type of the resource
+   * @tparam O is the type of the values in the iterator
+   * @return
+   */
+  def iterator[R, O](req: => R)(
+                    release: R => Unit)(
+                    rcv: R => Iterator[O]): Process[Task, O] = {
+    val reqTask = Task.delay(req)
+
+    def releaseProcess(r: R): Process[Task, Nothing] =
+      Process.eval_(Task.delay(release(r)))
+
+    def rcvProcess(r: R): Process[Task, O] =
+      iterate(rcv(r))
+
+    bracket[Task, R, O](reqTask)(releaseProcess)(rcvProcess)
   }
   
   /**
