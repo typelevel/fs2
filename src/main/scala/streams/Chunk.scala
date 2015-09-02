@@ -10,6 +10,8 @@ sealed trait Chunk[+A] {
   def foldLeft[B](z: B)(f: (B,A) => B): B
   def foldRight[B](z: B)(f: (A,B) => B): B
   def isEmpty = size == 0
+  def toList = foldRight(Nil: List[A])(_ :: _)
+  override def toString = toList.mkString("Chunk(", ", ", ")")
 }
 
 object Chunk {
