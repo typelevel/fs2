@@ -23,7 +23,8 @@ class StreamsSpec extends Properties("Stream") {
 
   include (new Properties("O(1) and stack safety of `++` and `flatMap`") {
     property("left-associated ++") = secure { Ns.forall { N =>
-     (1 until N).map(emit).foldLeft(emit(0))(_ ++ _) === Vector.range(0,N)
+     (1 until N).map(emit).foldLeft(emit(0))(_ ++ _) ===
+     Vector.range(0,N)
     }}
 
     property("right-associated ++") = secure { Ns.forall { N =>
@@ -32,43 +33,35 @@ class StreamsSpec extends Properties("Stream") {
     }}
 
     property("left-associated flatMap 1") = secure {
-      Ns.forall { N =>
-        logTime("left-associated flatMap 1 ("+N.toString+")") {
-          (1 until N).map(emit).foldLeft(emit(0))(
-            // todo, this annotation shouldn't be needed
-            (acc,a) => acc flatMap[Nothing,Int] { _ => a }) === Vector(N-1)
-        }
-      }
+      Ns.forall { N => logTime("left-associated flatMap 1 ("+N.toString+")") {
+        (1 until N).map(emit).foldLeft(emit(0))(
+          // todo, this annotation shouldn't be needed
+          (acc,a) => acc flatMap[Nothing,Int] { _ => a }) ===
+        Vector(N-1)
+      }}
     }
 
     property("right-associated flatMap 1") = secure {
-      Ns.forall { N =>
-        logTime("right-associated flatMap 1 ("+N.toString+")") {
-          (1 until N).map(emit).reverse.foldLeft(emit(0))(
-            // todo, this annotation shouldn't be needed
-            (acc,a) => a flatMap[Nothing,Int] { _ => acc }) === Vector(0)
-        }
-      }
+      Ns.forall { N => logTime("right-associated flatMap 1 ("+N.toString+")") {
+        (1 until N).map(emit).reverse.foldLeft(emit(0))(
+          (acc,a) => a flatMap[Nothing,Int] { _ => acc }) ===
+        Vector(0)
+      }}
     }
 
     property("left-associated flatMap 2") = secure {
-      Ns.forall { N =>
-        logTime("left-associated flatMap 2 ("+N.toString+")") {
-          (1 until N).map(emit).foldLeft(emit(0) ++ emit(1) ++ emit(2))(
-            // todo, this annotation shouldn't be needed
-            (acc,a) => acc flatMap[Nothing,Int] { _ => a }) === Vector(N-1, N-1, N-1)
-        }
-      }
+      Ns.forall { N => logTime("left-associated flatMap 2 ("+N.toString+")") {
+        (1 until N).map(emit).foldLeft(emit(0) ++ emit(1) ++ emit(2))(
+          (acc,a) => acc flatMap[Nothing,Int] { _ => a }) ===
+        Vector(N-1, N-1, N-1)
+      }}
     }
 
     property("right-associated flatMap 1") = secure {
-      Ns.forall { N =>
-        logTime("right-associated flatMap 1 ("+N.toString+")") {
-          (1 until N).map(emit).reverse.foldLeft(emit(0) ++ emit(1) ++ emit(2))(
-            // todo, this annotation shouldn't be needed
-            (acc,a) => a flatMap[Nothing,Int] { _ => acc }) === Vector(0,1,2)
-        }
-      }
+      Ns.forall { N => logTime("right-associated flatMap 1 ("+N.toString+")") {
+        (1 until N).map(emit).reverse.foldLeft(emit(0) ++ emit(1) ++ emit(2))(
+          (acc,a) => a flatMap[Nothing,Int] { _ => acc }) === Vector(0,1,2)
+      }}
     }
   })
 
