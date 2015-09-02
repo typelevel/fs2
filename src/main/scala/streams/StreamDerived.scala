@@ -5,6 +5,8 @@ import Step.#:
 /** Various derived operations. */
 private[streams] trait StreamDerived { self: streams.Stream.type =>
 
+  def apply[W](a: W*): Stream[Nothing,W] = self.chunk(Chunk.seq(a))
+
   def writes[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.writes(s)
 
   def pull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Handle[F,A]])
