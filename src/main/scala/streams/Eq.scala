@@ -15,6 +15,9 @@ object Eq {
   def substStream[F[_],A,B](s: Stream[F,A])(implicit Eq: Eq[A,B]): Stream[F,B] =
     subst[({ type f[x] = Stream[F,x] })#f, A, B](s)
 
+  def substPull[F[_],W,A,B](p: Pull[F,W,A])(implicit Eq: Eq[A,B]): Pull[F,W,B] =
+    subst[({ type f[x] = Pull[F,W,x] })#f, A, B](p)
+
   def substHandler[F[_],A,B](h: Throwable => Stream[F,A])(implicit Eq: Eq[A,B]): Throwable => Stream[F,B] =
     subst[({ type f[x] = Throwable => Stream[F,x] })#f, A, B](h)
 }

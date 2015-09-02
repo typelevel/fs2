@@ -1,11 +1,12 @@
 package streams
 
 import collection.immutable.SortedSet
+import streams.util.Trampoline
 
 trait Pull[+F[_],+W,+R] {
   import Pull.Stack
 
-  def run: Stream[F,W] = _run0(SortedSet.empty, Pull.emptyStack[F,W,R])
+  def run: Stream[F,W] = _run0(SortedSet.empty, Pull.Stack.empty[F,W,R])
 
   private[streams]
   final def _run0[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
@@ -31,40 +32,55 @@ object Pull extends Pulls[Pull] with PullDerived {
     type W = Nothing; type R = Nothing
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[Nothing,F2]): Stream[F2,W2]
-      =
+      = {
       k (
         _ => runCleanup(tracked),
-        new k.H[Stream[F2,W2]] { def f[x] = (kh,k) =>
-          if (kh.ors.isEmpty) done._run0(tracked, k)
-          else kh.ors.head()._run0(tracked, k push kh.copy(ors = kh.ors.tail))
-        }
+        new k.H[Stream[F2,W2]] { def f[x] = (segment, k) => segment (
+          // done or p == p
+          (or, eq) => Eq.substPull(or.run)(eq)._run0(tracked, k),
+          // done onError h == done
+          (handler,eq) => done._run0(tracked, k),
+          // done flatMap f == done
+          bind = _ => done._run0(tracked, k)
+        )}
       )
+      }
   }
 
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] = new Pull[Nothing,Nothing,Nothing] {
+    self =>
     type W = Nothing; type R = Nothing
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[Nothing,F2]): Stream[F2,W2]
       =
       k (
         _ => runCleanup(tracked) ++ Stream.fail(err),
-        new k.H[Stream[F2,W2]] { def f[x] = (kh,k) =>
-          if (kh.handlers.isEmpty) fail(err)._run0(tracked, k)
-          else kh.handlers.head(err)._run0(tracked, k push kh.copy(handlers = kh.handlers.tail))
-        }
+        new k.H[Stream[F2,W2]] { def f[x] = (segment,k) => segment (
+          // fail(e) or p == fail(e)
+          (or, eq) => self._run0(tracked, k),
+          // fail(e) onError h == h(e)
+          (handler,eq) => Eq.substPull(handler(err))(eq)._run0(tracked, k),
+          // fail(e) flatMap f == fail(e)
+          bind = _ => self._run0(tracked, k)
+        )}
       )
   }
 
-  def pure[R](a: R): Pull[Nothing,Nothing,R] = new Pull[Nothing,Nothing,R] {
+  def pure[R](a: R): Pull[Nothing,Nothing,R] = new Pull[Nothing,Nothing,R] { self =>
     type W = Nothing
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[Nothing,F2]): Stream[F2,W2]
       =
       k (
         _ => runCleanup(tracked),
-        new k.H[Stream[F2,W2]] { def f[x] = (kh,k) =>
-          kh.bind(a)._run0(tracked, k)
-        }
+        new k.H[Stream[F2,W2]] { def f[x] = (segment,k) => segment (
+          // pure(x) or p == pure(x)
+          (or, eq) => Eq.substPull(self: Pull[Nothing,Nothing,R1])(eq)._run0(tracked, k),
+          // pure(x) onError f == pure(x)
+          (handler,eq) => Eq.substPull(self: Pull[Nothing,Nothing,R1])(eq)._run0(tracked, k),
+          // pure(x) flatMap f == f(x)
+          bindf => bindf(a)._run0(tracked, k)
+        )}
       )
   }
 
@@ -77,7 +93,7 @@ object Pull extends Pulls[Pull] with PullDerived {
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       = {
         val handle2: Throwable => Pull[F2,W,R] = handle andThen (Sub1.substPull(_))
-        p._run0(tracked, push(k, handle2))
+        p._run0(tracked, k.pushHandler(handle2))
       }
   }
 
@@ -86,7 +102,7 @@ object Pull extends Pulls[Pull] with PullDerived {
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       = {
         val f2: R0 => Pull[F2,W,R] = f andThen (Sub1.substPull(_))
-        p._run0[F2,W2,R0,R2](tracked, k.push(Frame(f2)))
+        p._run0[F2,W2,R0,R2](tracked, k.pushBind(f2))
       }
   }
 
@@ -118,7 +134,7 @@ object Pull extends Pulls[Pull] with PullDerived {
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       =
-      Sub1.substPull(p1)._run0(tracked, push(k, Sub1.substPull(p2)))
+      Sub1.substPull(p1)._run0(tracked, k.pushOr(() => Sub1.substPull(p2)))
   }
 
   def run[F[_],W,R](p: Pull[F,W,R]): Stream[F,W] = p.run
@@ -149,27 +165,50 @@ object Pull extends Pulls[Pull] with PullDerived {
       Stream.release(id) ++ pure(())._run0(tracked - id, k)
   }
 
+  sealed trait Segment[F[_],W,R1,R2] {
+    def apply[K](or: (Trampoline[Pull[F,W,R1]], Eq[R1,R2]) => K,
+                 handler: (Throwable => Pull[F,W,R1], Eq[R1,R2]) => K,
+                 bind: (R1 => Pull[F,W,R2]) => K): K
+  }
+  object Segment {
+    def Handler[F[_],W,R1](h: Throwable => Pull[F,W,R1]) = new Segment[F,W,R1,R1] {
+      def apply[K](or: (Trampoline[Pull[F,W,R1]], Eq[R1,R1]) => K,
+                   handler: (Throwable => Pull[F,W,R1], Eq[R1,R1]) => K,
+                   bind: (R1 => Pull[F,W,R1]) => K): K = handler(h, Eq.refl)
+    }
+    def Or[F[_],W,R1](s: Trampoline[Pull[F,W,R1]]) = new Segment[F,W,R1,R1] {
+      def apply[K](or: (Trampoline[Pull[F,W,R1]], Eq[R1,R1]) => K,
+                   handler: (Throwable => Pull[F,W,R1], Eq[R1,R1]) => K,
+                   bind: (R1 => Pull[F,W,R1]) => K): K = or(s, Eq.refl)
+    }
+    def Bind[F[_],W,R1,R2](f: R1 => Pull[F,W,R2]) = new Segment[F,W,R1,R2] {
+      def apply[K](or: (Trampoline[Pull[F,W,R1]], Eq[R1,R2]) => K,
+                   handler: (Throwable => Pull[F,W,R1], Eq[R1,R2]) => K,
+                   bind: (R1 => Pull[F,W,R2]) => K): K = bind(f)
+    }
+  }
+
+  private[streams] trait Stack[F[_],W,R1,R2] { self =>
+    def apply[K](empty: Eq[R1,R2] => K, segment: H[K]): K
+
+    trait H[+K] { def f[x]: (Segment[F,W,R1,x], Stack[F,W,x,R2]) => K }
+
+    def push[R0](s: Segment[F,W,R0,R1]): Stack[F,W,R0,R2] = new Stack[F,W,R0,R2] {
+      def apply[K](empty: Eq[R0,R2] => K, segment: H[K]): K = segment.f[R1](s, self)
+    }
+
+    def pushBind[R0](f: R0 => Pull[F,W,R1]) = push(Segment.Bind(f))
+    def pushHandler(f: Throwable => Pull[F,W,R1]) = push(Segment.Handler(f))
+    def pushOr(s: () => Pull[F,W,R1]) = push(Segment.Or(Trampoline.delay(s())))
+  }
+
+  private[streams] object Stack {
+    def empty[F[_],W,R1]: Stack[F,W,R1,R1] = new Stack[F,W,R1,R1] {
+      def apply[K](empty: Eq[R1,R1] => K, segment: H[K]): K = empty(Eq.refl)
+    }
+    def segment[F[_],W,R1,R2](s: Segment[F,W,R1,R2]): Stack[F,W,R1,R2] =
+      empty.push(s)
+  }
   private[streams] def runCleanup(s: SortedSet[Long]): Stream[Nothing,Nothing] =
     s.iterator.foldLeft(Stream.empty)((s,id) => Stream.append(Stream.release(id), s))
-
-  private[streams]
-  case class Frame[F[_],W,R1,R2](
-    bind: R1 => Pull[F,W,R2],
-    ors: List[() => Pull[F,W,R1]] = List(),
-    handlers: List[Throwable => Pull[F,W,R1]] = List())
-
-  private trait T[F[_],W] { type f[a,b] = Frame[F,W,a,b] }
-  private[streams]
-  type Stack[F[_],W,A,B] = streams.Chain[T[F,W]#f, A, B]
-
-  private[streams]
-  def emptyStack[F[_],W,R] = streams.Chain.empty[T[F,W]#f,R]
-
-  private[streams]
-  def push[F[_],W,R1,R2](c: Stack[F,W,R1,R2], p: => Pull[F,W,R1]): Stack[F,W,R1,R2] =
-    c.push { Frame(pure(_), List(() => p)) }
-
-  private[streams]
-  def push[F[_],W,R1,R2](c: Stack[F,W,R1,R2], h: Throwable => Pull[F,W,R1]): Stack[F,W,R1,R2] =
-    c.push { Frame(pure(_), List(), List(h)) }
 }
