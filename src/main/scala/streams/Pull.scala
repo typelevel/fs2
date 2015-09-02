@@ -12,9 +12,7 @@ trait Pull[+F[_],+W,+R] {
   final def _run0[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
     implicit S: Sub1[F,F2]): Stream[F2,W2]
     =
-    Stream.suspend {
-      println("stack size: " + k.length + " " + math.random)
-      _run1(tracked, k) }
+    Stream.suspend { _run1(tracked, k) }
 
   /**
    * The implementation of `run`. Not public. Note on parameters:
@@ -72,8 +70,7 @@ object Pull extends Pulls[Pull] with PullDerived {
     type W = Nothing
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[Nothing,F2]): Stream[F2,W2]
-      = {
-      println("running pure: " + a)
+      =
       k (
         _ => runCleanup(tracked),
         new k.H[Stream[F2,W2]] { def f[x] = (segment,k) => segment (
@@ -84,7 +81,7 @@ object Pull extends Pulls[Pull] with PullDerived {
           // pure(x) flatMap f == f(x)
           bindf => bindf(a)._run0(tracked, k)
         )}
-      )}
+      )
   }
 
   /** Produce a `Pull` nonstrictly, catching exceptions. */
@@ -198,19 +195,16 @@ object Pull extends Pulls[Pull] with PullDerived {
 
     def push[R0](s: Segment[F,W,R0,R1]): Stack[F,W,R0,R2] = new Stack[F,W,R0,R2] {
       def apply[K](empty: Eq[R0,R2] => K, segment: H[K]): K = segment.f[R1](s, self)
-      val length = self.length + 1
     }
 
     def pushBind[R0](f: R0 => Pull[F,W,R1]) = push(Segment.Bind(f))
     def pushHandler(f: Throwable => Pull[F,W,R1]) = push(Segment.Handler(f))
     def pushOr(s: () => Pull[F,W,R1]) = push(Segment.Or(Trampoline.delay(s())))
-    def length: Int
   }
 
   private[streams] object Stack {
     def empty[F[_],W,R1]: Stack[F,W,R1,R1] = new Stack[F,W,R1,R1] {
       def apply[K](empty: Eq[R1,R1] => K, segment: H[K]): K = empty(Eq.refl)
-      val length = 0
     }
     def segment[F[_],W,R1,R2](s: Segment[F,W,R1,R2]): Stack[F,W,R1,R2] =
       empty.push(s)

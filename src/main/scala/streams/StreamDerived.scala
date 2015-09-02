@@ -57,7 +57,7 @@ private[streams] trait StreamDerived { self: streams.Stream.type =>
   def await1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
     h.await flatMap { case Step(hd, tl) => hd.uncons match {
       case None => await1(tl)
-      case Some((h,hs)) => Pull.pure(Step(h, tl.push(hs)))
+      case Some((h,hs)) => Pull.pure(Step(h, tl push hs))
     }}
 
   def peek1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
