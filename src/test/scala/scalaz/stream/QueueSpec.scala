@@ -43,7 +43,6 @@ class QueueSpec extends Properties("queue") {
 
       "Items were collected" |:  collected.get(3000).nonEmpty &&
         (s"All values were collected, all: ${collected.get(0)}, l: $l " |: collected.get.getOrElse(Nil) == l)
-
   }
 
 
@@ -80,6 +79,15 @@ class QueueSpec extends Properties("queue") {
         (sizes.get(3000) == Some(\/-(expectedSizes.toVector))) :| s"all sizes collected ${sizes.get(0)} expected ${expectedSizes}"
   }
 
+  property("upper-bound-unbounded") = protect {
+    val q = async.unboundedQueue[Int]
+    q.upperBound == None
+  }
+
+  property("upper-bound-bounded") = protect {
+    val q = async.boundedQueue[Int](27)
+    q.upperBound == Some(27)
+  }
 
   property("enqueue-distribution") = forAll {
     l: List[Int] =>
@@ -99,8 +107,6 @@ class QueueSpec extends Properties("queue") {
         (s"all items has been received, c2: $c2, c3: $c3, l: $l" |:
           (c2.get.getOrElse(Nil) ++ c3.get.getOrElse(Nil)).sorted == l.sorted)
   }
-
-
 
   property("closes-pub-sub") = protect {
     val l: List[Int] = List(1, 2, 3)
@@ -130,7 +136,6 @@ class QueueSpec extends Properties("queue") {
 
 
   }
-
 
   // tests situation where killed process may `swallow` item in queue
   // from the process that is running

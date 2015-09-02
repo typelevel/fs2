@@ -80,6 +80,12 @@ trait Queue[A] {
   def size: scalaz.stream.async.immutable.Signal[Int]
 
   /**
+   * The size bound on the queue.
+   * Returns None if the queue is unbounded.
+   */
+  def upperBound: Option[Int]
+
+  /**
    * Closes this queue. This halts the `enqueue` `Sink` and
    * `dequeue` `Process` after any already-queued elements are
    * drained.
@@ -146,7 +152,6 @@ private[stream] object Queue {
       var lastBatch = Vector.empty[A]
     }
 
-
     //actually queued `A` are stored here
     var queued = Vector.empty[A]
 
@@ -180,9 +185,6 @@ private[stream] object Queue {
           ))
       )
     }
-
-
-
 
     // publishes single size change
     def publishSize(cb: (Throwable \/ Seq[Int]) => Unit): Unit = {
@@ -338,12 +340,16 @@ private[stream] object Queue {
         sizeSource.toSignal(S)
       }
 
+      val upperBound: Option[Int] = {
+        if (bound <= 0)
+          None
+        else
+          Some(bound)
+      }
+
       def enqueueAll(xa: Seq[A]): Task[Unit] = Task.async(cb => actor ! Enqueue(xa,cb))
 
       private[stream] def failWithCause(c: Cause): Task[Unit] = Task.async[Unit](cb => actor ! Fail(c,cb))
     }
-
   }
-
-
 }
