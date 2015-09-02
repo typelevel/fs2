@@ -108,11 +108,19 @@ class StreamsSpec extends Properties("Stream") {
       _ => emit(1) ++ fail(FailWhale),
       _ => Task.delay { ok.incrementAndGet; open.decrementAndGet; () }
     )
+    // right associative onError chains
+    throws (FailWhale) {
+      List.fill(N)(bracketed).foldLeft(fail(FailWhale): Stream[Task,Int]) {
+        (tl,hd) => tl onError { _ => hd }
+      }
+    } &&
+    ok.get == N && open.get == 0 && { ok.set(0); true } &&
+    // left-associative onError chains
     throws (FailWhale) {
       List.fill(N)(bracketed).foldLeft(fail(FailWhale): Stream[Task,Int]) {
         (tl,hd) => hd onError { _ => tl }
       }
-    } && ok.get == N
+    } && ok.get == N && open.get == 0
   }}
 
   def logTime[A](msg: String)(a: => A): A = {
