@@ -111,45 +111,6 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
     try get.run catch { case t: Throwable => Left(t) }
 
   /**
-   * Run this computation to obtain an `A`, so long as `cancel` remains false.
-   * Because of trampolining, we get frequent opportunities to cancel
-   * while stepping through the trampoline, this should provide a fairly
-   * robust means of cancellation.
-   */
-  def runAsyncInterruptibly(f: Either[Throwable,A] => Unit, cancel: AtomicBoolean): Unit =
-    get.runAsyncInterruptibly(f, cancel)
-
-  /**
-   * Similar to `runAsyncInterruptibly(f,cancel)` except instead of interrupting
-   * by setting cancel to true, it returns the function, that, when applied will
-   * interrupt the task.
-   *
-   * This allows "deterministic" completion of task computation even if it was
-   * interrupted. That means task will complete even when interrupted,
-   * but with `TaskInterrupted` exception.
-   *
-   * Note 1: When Interrupted, the `f` callback will run in thread that
-   *         called the `Interrupting` function `() => Unit`
-   * Note 2: If task has handler like attempt, it won't get consulted
-   *         for handling TaskInterrupted excpetion
-   */
-  def runAsyncInterruptibly(f: Either[Throwable,A] => Unit): () => Unit = {
-    val completed : AtomicBoolean = new AtomicBoolean(false)
-    val a = Actor[Option[Either[Throwable,A]]] ({
-      case Some(r) if ! completed.get =>
-        completed.set(true)
-        f(r)
-      case None if ! completed.get  =>
-        completed.set(true)
-        f(Left(Task.TaskInterrupted))
-      case _ => () //already completed
-    })(Strategy.sequential)
-
-    get.runAsyncInterruptibly(r => a ! Some(r), completed)
-    () => { a ! None }
-  }
-
-  /**
    * Run this computation to obtain either a result or an exception, then
    * invoke the given callback. Any pure, non-asynchronous computation at the
    * head of this `Future` will be forced in the calling thread. At the first
@@ -192,46 +153,6 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
     timed(timeout.toMillis)
 
   /**
-   * Retries this task if it fails, once for each element in `delays`,
-   * each retry delayed by the corresponding duration, accumulating
-   * errors into a list.
-   * A retriable failure is one for which the predicate `p` returns `true`.
-   */
-  def retryAccumulating(delays: Seq[Duration],
-                        p: (Throwable => Boolean) = _.isInstanceOf[Exception])(
-                        implicit S: ScheduledExecutorService): Task[(A, List[Throwable])] =
-    retryInternal(delays, p, true)
-
-  /**
-   * Retries this task if it fails, once for each element in `delays`,
-   * each retry delayed by the corresponding duration.
-   * A retryable failure is one for which the predicate `p` returns `true`.
-   */
-  def retry(delays: Seq[Duration], p: (Throwable => Boolean) = _.isInstanceOf[Exception])(
-       implicit S: ScheduledExecutorService): Task[A] =
-    retryInternal(delays, p, false).map(_._1)
-
-  private def retryInternal(delays: Seq[Duration],
-                            p: Throwable => Boolean,
-                            accumulateErrors: Boolean)
-                            (implicit S: ScheduledExecutorService):
-                            Task[(A, List[Throwable])] = {
-      def help(ds: Seq[Duration], es: => collection.immutable.Stream[Throwable]):
-      Future[Either[Throwable, (A, List[Throwable])]] = {
-        def acc = if (accumulateErrors) es.toList else Nil
-          ds match {
-            case Seq() => get map (_.right.map(_ -> acc))
-            case Seq(t, ts @_*) => get flatMap {
-              case Left(e) if p(e) =>
-                help(ts, e #:: es) after t
-              case x => Future.now(x.right.map(_ -> acc))
-            }
-        }
-      }
-      Task.async { help(delays, collection.immutable.Stream()).runAsync }
-    }
-
-  /**
    Ensures the result of this Task satisfies the given predicate,
    or fails with the given value.
    */
@@ -257,11 +178,6 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
 }
 
 object Task extends Instances {
-
-  /** Special exception signalling that the task was interrupted. **/
-  case object TaskInterrupted extends InterruptedException {
-    override def fillInStackTrace = this
-  }
 
   /** A `Task` which fails with the given `Throwable`. */
   def fail(e: Throwable): Task[Nothing] = new Task(Future.now(Left(e)))
@@ -313,9 +229,9 @@ object Task extends Instances {
        f <- Task.start { expensiveTask1 }
        // at this point, `expensive1` is evaluating in background
        g <- Task.start { expensiveTask2 }
-       // now both `expensive2` and `expensive1` are running
+       // now both `expensiveTask2` and `expensiveTask1` are running
        result1 <- f
-       // we have forced `f`, so now only `expensive2` may be running
+       // we have forced `f`, so now only `expensiveTask2` may be running
        result2 <- g
        // we have forced `g`, so now nothing is running and we have both results
      } yield (result1 + result2)
@@ -325,11 +241,10 @@ object Task extends Instances {
     ref[A].flatMap { ref => ref.set(t) map (_ => ref.get) }
 
   /**
-   Create a `Future` from an asynchronous computation, which takes the form
+   Create a `Task` from an asynchronous computation, which takes the form
    of a function with which we can register a callback. This can be used
    to translate from a callback-based API to a straightforward monadic
-   version. See `Task.async` for a version that allows for asynchronous
-   exceptions.
+   version.
    */
   def async[A](register: (Either[Throwable,A] => Unit) => Unit): Task[A] =
     new Task(Future.async(register))
