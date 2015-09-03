@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import scalaz.stream.Cause._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process.Halt
+import scalaz.stream.async
 import scalaz.stream.async.immutable
 import scalaz.stream.{Cause, Util, Process, Sink}
 import scalaz.{Either3, -\/, \/, \/-}
@@ -86,20 +87,20 @@ trait Queue[A] {
   def upperBound: Option[Int]
 
   /**
-   * Returns the available number of entries until the queue is full.
-   * Returns None if the queue is unbounded.
+   * Returns the available number of entries in the queue.
+   * Always returns `Int.MaxValue` when the queue is unbounded.
    */
-  def available: Option[immutable.Signal[Int]] = upperBound map { bound =>
+  def available: immutable.Signal[Int] = upperBound map { bound =>
     size.discrete map { bound - _ } toSignal
+  } getOrElse {
+    size.discrete map { _ => Int.MaxValue } toSignal
   }
 
   /**
-   * Returns a signal of true when the Queue has reached its upper size bound.
-   * Returns None if the Queue is unbounded.
+   * Returns `true` when the queue has reached its upper size bound.
+   * Always returns `false` when the queue is unbounded.
    */
-  def full: Option[immutable.Signal[Boolean]] = available map { signal =>
-    signal.discrete map { _ <= 0 } toSignal
-  }
+  def full: immutable.Signal[Boolean] = available.discrete map { _ <= 0 } toSignal
 
   /**
    * Closes this queue. This halts the `enqueue` `Sink` and
