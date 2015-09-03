@@ -2,7 +2,7 @@ package streams
 
 import Step.#:
 
-/** Various derived operations. */
+/** Various derived operations that are mixed into the `Stream` companion object. */
 private[streams] trait StreamDerived { self: streams.Stream.type =>
 
   def apply[W](a: W*): Stream[Nothing,W] = self.chunk(Chunk.seq(a))
@@ -65,35 +65,6 @@ private[streams] trait StreamDerived { self: streams.Stream.type =>
   def peek1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
     h.await1 flatMap { case hd #: tl => Pull.pure(hd #: tl.push1(hd)) }
 
-  implicit class StreamSyntax[+F[_],+A](p1: Stream[F,A]) {
-
-    def open: Pull[F, Nothing, Handle[F,A]] = self.open(p1)
-
-    def pull[F2[x]>:F[x],A2>:A,B](using: Handle[F2,A2] => Pull[F2,B,Handle[F2,A2]]): Stream[F2,B] =
-      self.pull(p1: Stream[F2,A2])(using)
-
-    def map[B](f: A => B): Stream[F,B] =
-      self.map(p1)(f)
-
-    def flatMap[F2[x]>:F[x],B](f: A => Stream[F2,B]): Stream[F2,B] =
-      self.flatMap(p1: Stream[F2,A])(f)
-
-    def ++[F2[x]>:F[x],B>:A](p2: Stream[F2,B])(implicit R: RealSupertype[A,B]): Stream[F2,B] =
-      self.append(p1: Stream[F2,B], p2)
-
-    def append[F2[x]>:F[x],B>:A](p2: Stream[F2,B])(implicit R: RealSupertype[A,B]): Stream[F2,B] =
-      self.append(p1: Stream[F2,B], p2)
-
-    def onError[F2[x]>:F[x],B>:A](f: Throwable => Stream[F2,B])(implicit R: RealSupertype[A,B]): Stream[F2,B] =
-      self.onError(p1: Stream[F2,B])(f)
-
-    def runFold[B](z: B)(f: (B,A) => B): Free[F,B] =
-      self.runFold(p1, z)(f)
-
-    def runLog: Free[F,Vector[A]] =
-      self.runFold(p1, Vector.empty[A])(_ :+ _)
-  }
-
   implicit class HandleSyntax[+F[_],+A](h: Handle[F,A]) {
     def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
       self.push(h: Handle[F,A2])(c)
@@ -109,5 +80,4 @@ private[streams] trait StreamDerived { self: streams.Stream.type =>
     def await1Async[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
       Pull[F2, Nothing, AsyncStep1[F2,A2]] = self.await1Async(h)
   }
-
 }

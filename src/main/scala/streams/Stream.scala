@@ -8,7 +8,7 @@ import streams.util.Trampoline
  * A stream producing output of type `W`, which may evaluate `F`
  * effects. If `F` is `Nothing`, the stream is pure.
  */
-trait Stream[+F[_],+W] {
+trait Stream[+F[_],+W] extends StreamOps[F,W] {
   import Stream.Stack
 
   def runFold[O](g: (O,W) => O)(z: O): Free[F, O] =
@@ -102,7 +102,7 @@ object Stream extends Streams[Stream] with StreamDerived {
             val c2 = c.foldRight(None: Option[Stream[F2,x]])(
               (w,acc) => acc match {
                 case None => Some(bindf(w))
-                case Some(acc) => Some(append(bindf(w), acc))
+                case Some(acc) => Some(Stream.append(bindf(w), acc))
               }
             ).getOrElse(empty)
             val bsegments = Stack.bindSegments(segments)(bindf)
@@ -364,7 +364,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       Pull.onError(Sub1.substStream(s)._step0(rights).map {
         // keep the error handler in scope as we traverse the stream `s`
         case Step(hd,tl) =>
-             Step(hd, new Handle(List(), onError(tl.stream)(Sub1.substStreamF(handle))))
+             Step(hd, new Handle(List(), Stream.onError(tl.stream)(Sub1.substStreamF(handle))))
       }) { err =>
         Pull.suspend { Sub1.substStreamF(handle).apply(err)._step0(rights) }
       }
@@ -375,12 +375,12 @@ object Stream extends Streams[Stream] with StreamDerived {
       =
       Pull.onError(Sub1.substStream(s)._stepAsync0(rights).map { future => F2.map(future) {
         pull => pull.map { case Step(hd,tl) =>
-          Step(hd, new Handle(List(), onError(tl.stream)(Sub1.substStreamF(handle))))
+          Step(hd, new Handle(List(), Stream.onError(tl.stream)(Sub1.substStreamF(handle))))
         }
       }}) { err => Pull.suspend { Sub1.substStreamF(handle).apply(err)._stepAsync0(rights) }}
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] =
-      onError(s.translate(uf1)) { err => suspend { handle(err).translate(uf1) }}
+      Stream.onError(s.translate(uf1)) { err => suspend { handle(err).translate(uf1) }}
   }
 
   def bracket[F[_],R,W](r: F[R])(use: R => Stream[F,W], cleanup: R => F[Unit]) =

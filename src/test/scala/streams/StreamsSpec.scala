@@ -35,8 +35,7 @@ class StreamsSpec extends Properties("Stream") {
     property("left-associated flatMap 1") = secure {
       Ns.forall { N => logTime("left-associated flatMap 1 ("+N.toString+")") {
         (1 until N).map(emit).foldLeft(emit(0))(
-          // todo, this annotation shouldn't be needed
-          (acc,a) => acc flatMap[Nothing,Int] { _ => a }) ===
+          (acc,a) => acc flatMap { _ => a }) ===
         Vector(N-1)
       }}
     }
@@ -44,7 +43,7 @@ class StreamsSpec extends Properties("Stream") {
     property("right-associated flatMap 1") = secure {
       Ns.forall { N => logTime("right-associated flatMap 1 ("+N.toString+")") {
         (1 until N).map(emit).reverse.foldLeft(emit(0))(
-          (acc,a) => a flatMap[Nothing,Int] { _ => acc }) ===
+          (acc,a) => a flatMap { _ => acc }) ===
         Vector(0)
       }}
     }
@@ -52,7 +51,7 @@ class StreamsSpec extends Properties("Stream") {
     property("left-associated flatMap 2") = secure {
       Ns.forall { N => logTime("left-associated flatMap 2 ("+N.toString+")") {
         (1 until N).map(emit).foldLeft(emit(0) ++ emit(1) ++ emit(2))(
-          (acc,a) => acc flatMap[Nothing,Int] { _ => a }) ===
+          (acc,a) => acc flatMap { _ => a }) ===
         Vector(N-1, N-1, N-1)
       }}
     }
@@ -60,7 +59,7 @@ class StreamsSpec extends Properties("Stream") {
     property("right-associated flatMap 1") = secure {
       Ns.forall { N => logTime("right-associated flatMap 1 ("+N.toString+")") {
         (1 until N).map(emit).reverse.foldLeft(emit(0) ++ emit(1) ++ emit(2))(
-          (acc,a) => a flatMap[Nothing,Int] { _ => acc }) === Vector(0,1,2)
+          (acc,a) => a flatMap { _ => acc }) === Vector(0,1,2)
       }}
     }
   })
