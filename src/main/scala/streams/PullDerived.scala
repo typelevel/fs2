@@ -15,7 +15,7 @@ trait PullDerived { self: streams.Pull.type =>
    * Repeatedly use the output of the `Pull` as input for the next step of the pull.
    * Halts when a step terminates with `Pull.done` or `Pull.fail`.
    */
-  def loop[F[_],W,R](using: R => Pull[F,W,R]): R => Pull[F,W,Unit] = {
+  def loop[F[_],W,R](using: R => Pull[F,W,R]): R => Pull[F,W,Nothing] = {
     lazy val tl = loop(using)
     r => using(r) flatMap tl
   }
