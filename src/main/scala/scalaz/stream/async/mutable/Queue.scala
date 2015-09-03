@@ -77,13 +77,29 @@ trait Queue[A] {
    * only when size changes. Offsetting enqueues and dequeues may
    * not result in refreshes.
    */
-  def size: scalaz.stream.async.immutable.Signal[Int]
+  def size: immutable.Signal[Int]
 
   /**
    * The size bound on the queue.
    * Returns None if the queue is unbounded.
    */
   def upperBound: Option[Int]
+
+  /**
+   * Returns the available number of entries until the queue is full.
+   * Returns None if the queue is unbounded.
+   */
+  def available: Option[immutable.Signal[Int]] = upperBound map { bound =>
+    size.discrete map { bound - _ } toSignal
+  }
+
+  /**
+   * Returns a signal of true when the Queue has reached its upper size bound.
+   * Returns None if the Queue is unbounded.
+   */
+  def full: Option[immutable.Signal[Boolean]] = available map { signal =>
+    signal.discrete map { _ <= 0 } toSignal
+  }
 
   /**
    * Closes this queue. This halts the `enqueue` `Sink` and

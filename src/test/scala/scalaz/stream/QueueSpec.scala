@@ -89,6 +89,107 @@ class QueueSpec extends Properties("queue") {
     q.upperBound == Some(27)
   }
 
+  property("available-unbounded") = protect {
+    val q = async.unboundedQueue[Int]
+    q.available == None
+  }
+
+  property("available-bounded") = forAll { l: List[Int] =>
+    val bound = 100
+    val q = async.boundedQueue[Int](bound)
+
+    val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+    val t2 = q.dequeue.runLog
+    val t3 = q.available.get.discrete.runLog
+
+    val available = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    t3.runAsync(available.put)
+
+    Thread.sleep(100) // delay to give chance for the signal to register
+
+    t1.run
+
+    val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    t2.runAsync(values.put)
+
+    Thread.sleep(100) // delay to give chance for the signal to collect all values
+
+    q.close.run
+
+    val expected =
+      if (l.isEmpty) Vector(bound)
+      else {
+        val down = ((bound - l.size) to bound).toSeq
+        down.reverse ++ down.drop(1)
+      }
+
+    (values.get(3000) == Some(\/-(l.toVector))) :| s"all values collected ${values.get(0)}" &&
+      (available.get(3000) == Some(\/-(expected.toVector))) :| s"all available collected ${available.get(0)} expected ${expected}"
+  }
+
+  property("available-bounded-to-zero") = protect {
+    val l = List(2,4,6,8)
+    val bound = 4
+    val q = async.boundedQueue[Int](bound)
+
+    val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+    val t2 = q.dequeue.runLog
+    val t3 = q.available.get.discrete.runLog
+
+    val available = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    t3.runAsync(available.put)
+
+    Thread.sleep(100) // delay to give chance for the signal to register
+
+    t1.run
+
+    val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    t2.runAsync(values.put)
+
+    Thread.sleep(100) // delay to give chance for the signal to collect all values
+
+    q.close.run
+
+    val expected = Vector(4,3,2,1,0,1,2,3,4)
+
+    (values.get(3000) == Some(\/-(l.toVector))) :| s"all values collected ${values.get(0)}" &&
+      (available.get(3000) == Some(\/-(expected.toVector))) :| s"all available collected ${available.get(0)} expected ${expected}"
+  }
+
+  property("full-unbounded") = protect {
+    val q = async.unboundedQueue[Int]
+    q.full == None
+  }
+
+  property("full-bounded") = protect {
+    val l = List(2,4,6,8)
+    val bound = 4
+    val q = async.boundedQueue[Int](bound)
+
+    val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+    val t2 = q.dequeue.runLog
+    val t3 = q.full.get.discrete.runLog
+
+    val full = new SyncVar[Throwable \/ IndexedSeq[Boolean]]
+    t3.runAsync(full.put)
+
+    Thread.sleep(100) // delay to give chance for the `size` signal to register
+
+    t1.run
+
+    val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
+    t2.runAsync(values.put)
+
+    Thread.sleep(100) // delay to give chance for the `size` signal to collect all values
+
+    q.close.run
+
+    val expected = Vector(false, false, false, false, true, false, false, false, false)
+
+    (values.get(3000) == Some(\/-(l.toVector))) :| s"all values collected ${values.get(0)}" &&
+      (full.get(3000) == Some(\/-(expected.toVector))) :| s"all full collected ${full.get(0)} expected ${expected}"
+  }
+
   property("enqueue-distribution") = forAll {
     l: List[Int] =>
       val q = async.unboundedQueue[Int]
