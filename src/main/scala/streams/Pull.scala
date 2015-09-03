@@ -119,7 +119,9 @@ object Pull extends Pulls[Pull] with PullDerived {
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       =
-      Stream.acquire(id, r, cleanup) flatMap { r => pure(r)._run0(tracked, k) }
+      Stream.flatMap (Sub1.substStream(Stream.acquire(id, r, cleanup))) {
+        r => pure(r)._run0(tracked, k)
+      }
   }
 
   def writes[F[_],W](s: Stream[F,W]) = new Pull[F,W,Unit] {

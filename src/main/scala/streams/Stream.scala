@@ -14,9 +14,6 @@ trait Stream[+F[_],+W] {
   def runFold[O](g: (O,W) => O)(z: O): Free[F, O] =
     _runFold0(0, LongMap.empty, Stream.Stack.empty[F,W])(g, z)
 
-  def flatMap[F2[_],W2](f: W => Stream[F2,W2])(implicit S: Sub1[F,F2]): Stream[F2,W2] =
-    Stream.flatMap(Sub1.substStream(this))(f)
-
   protected final def _runFold0[F2[_],O,W2>:W,W3](
     nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O] =

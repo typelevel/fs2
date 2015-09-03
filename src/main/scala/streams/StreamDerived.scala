@@ -67,6 +67,8 @@ private[streams] trait StreamDerived { self: streams.Stream.type =>
 
   implicit class StreamSyntax[+F[_],+A](p1: Stream[F,A]) {
 
+    def open: Pull[F, Nothing, Handle[F,A]] = self.open(p1)
+
     def pull[F2[x]>:F[x],A2>:A,B](using: Handle[F2,A2] => Pull[F2,B,Handle[F2,A2]]): Stream[F2,B] =
       self.pull(p1: Stream[F2,A2])(using)
 
