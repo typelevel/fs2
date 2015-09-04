@@ -1,8 +1,8 @@
-package streams
+package fs2
 
 import Step._
 
-private[streams] trait pull1 {
+private[fs2] trait pull1 {
   import Stream.Handle
 
   // nb: methods are in alphabetical order

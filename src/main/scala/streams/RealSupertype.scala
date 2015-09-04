@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 /**
  * A `RealSupertype[A,B]` is evidence that `A <: B`.
@@ -8,13 +8,13 @@ package streams
 @annotation.implicitNotFound("Dubious upper bound ${Super} inferred for ${Sub}; supply a `RealSupertype` instance here explicitly if this is not due to a type error")
 sealed trait RealSupertype[-Sub,Super]
 
-private[streams] trait NothingSubtypesOthers {
+private[fs2] trait NothingSubtypesOthers {
   private val _i00 = new RealSupertype[String,String] {}
   implicit def nothingSubtypesOthers[A](implicit A: RealType[A]): RealSupertype[Nothing,A] =
     _i00.asInstanceOf[RealSupertype[Nothing,A]]
 }
 
-private[streams] trait NothingSubtypesItself extends NothingSubtypesOthers {
+private[fs2] trait NothingSubtypesItself extends NothingSubtypesOthers {
   private val _i0 = new RealSupertype[String,String] {}
   implicit def nothingIsSubtypeOfItself: RealSupertype[Nothing,Nothing] =
     _i0.asInstanceOf[RealSupertype[Nothing,Nothing]]
@@ -26,7 +26,7 @@ object RealSupertype extends NothingSubtypesItself {
 }
 
 trait RealType[T]
-private[streams] trait RealTypeInstance {
+private[fs2] trait RealTypeInstance {
   private val _i0 = new RealType[Unit] {}
   implicit def instance[A]: RealType[A] = _i0.asInstanceOf[RealType[A]]
 }

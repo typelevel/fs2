@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 case class Step[+A,+B](head: A, tail: B)
 

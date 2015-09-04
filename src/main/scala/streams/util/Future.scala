@@ -1,15 +1,15 @@
-package streams
+package fs2
 
 import collection.JavaConversions._
 import java.util.concurrent.atomic.{AtomicInteger, AtomicBoolean, AtomicReference}
 import java.util.concurrent.{Callable, ConcurrentLinkedQueue, CountDownLatch, ExecutorService, TimeoutException, ScheduledExecutorService, TimeUnit, Executors}
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
-import streams.util.{Strategy,Trampoline}
+import fs2.util.{Strategy,Trampoline}
 
 // for internal use only!
 
-private[streams] sealed abstract class Future[+A] {
+private[fs2] sealed abstract class Future[+A] {
   import Future._
 
   def flatMap[B](f: A => Future[B]): Future[B] = this match {
@@ -129,7 +129,7 @@ private[streams] sealed abstract class Future[+A] {
     after(millis milliseconds)
 }
 
-private[streams] object Future {
+private[fs2] object Future {
   case class Now[+A](a: A) extends Future[A]
   case class Async[+A](onFinish: (A => Trampoline[Unit]) => Unit) extends Future[A]
   case class Suspend[+A](thunk: () => Future[A]) extends Future[A]

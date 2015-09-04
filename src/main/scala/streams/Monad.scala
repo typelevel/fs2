@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 trait Monad[F[_]] {
   def map[A,B](a: F[A])(f: A => B): F[B] = bind(a)(f andThen (pure))

@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 import org.scalacheck.Prop._
 import org.scalacheck._

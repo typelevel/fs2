@@ -1,14 +1,14 @@
-package streams
+package fs2
 
 import collection.immutable.SortedSet
-import streams.util.Trampoline
+import fs2.util.Trampoline
 
 trait Pull[+F[_],+W,+R] extends PullOps[F,W,R] {
   import Pull.Stack
 
   def run: Stream[F,W] = _run0(SortedSet.empty, Pull.Stack.empty[F,W,R])
 
-  private[streams]
+  private[fs2]
   final def _run0[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
     implicit S: Sub1[F,F2]): Stream[F2,W2]
     =
@@ -26,7 +26,7 @@ trait Pull[+F[_],+W,+R] extends PullOps[F,W,R] {
 }
 
 object Pull extends Pulls[Pull] with PullDerived with pull1 {
-  type Stream[+F[_],+W] = streams.Stream[F,W]
+  type Stream[+F[_],+W] = fs2.Stream[F,W]
 
   val done: Pull[Nothing,Nothing,Nothing] = new Pull[Nothing,Nothing,Nothing] {
     type W = Nothing; type R = Nothing
@@ -141,7 +141,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
 
   def run[F[_],W,R](p: Pull[F,W,R]): Stream[F,W] = p.run
 
-  private[streams]
+  private[fs2]
   def scope[F[_],W,R](inner: Long => Pull[F,W,R]): Pull[F,W,R] = new Pull[F,W,R] {
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
@@ -149,7 +149,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
       Stream.scope(id => Sub1.substPull(inner(id))._run0(tracked, k))
   }
 
-  private[streams]
+  private[fs2]
   def track(id: Long): Pull[Nothing,Nothing,Unit] = new Pull[Nothing,Nothing,Unit] {
     type W = Nothing; type R = Unit
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
@@ -158,7 +158,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
       pure(())._run0(tracked + id, k)
   }
 
-  private[streams]
+  private[fs2]
   def release(id: Long): Pull[Nothing,Nothing,Unit] = new Pull[Nothing,Nothing,Unit] {
     type W = Nothing; type R = Unit
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
@@ -190,7 +190,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
     }
   }
 
-  private[streams] trait Stack[F[_],W,R1,R2] { self =>
+  private[fs2] trait Stack[F[_],W,R1,R2] { self =>
     def apply[K](empty: Eq[R1,R2] => K, segment: H[K]): K
 
     trait H[+K] { def f[x]: (Segment[F,W,R1,x], Stack[F,W,x,R2]) => K }
@@ -204,15 +204,15 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
     def pushOr(s: () => Pull[F,W,R1]) = push(Segment.Or(Trampoline.delay(s())))
   }
 
-  private[streams] object Stack {
+  private[fs2] object Stack {
     def empty[F[_],W,R1]: Stack[F,W,R1,R1] = new Stack[F,W,R1,R1] {
       def apply[K](empty: Eq[R1,R1] => K, segment: H[K]): K = empty(Eq.refl)
     }
     def segment[F[_],W,R1,R2](s: Segment[F,W,R1,R2]): Stack[F,W,R1,R2] =
       empty.push(s)
   }
-  private[streams] def runCleanup(s: SortedSet[Long]): Stream[Nothing,Nothing] =
+  private[fs2] def runCleanup(s: SortedSet[Long]): Stream[Nothing,Nothing] =
     s.iterator.foldLeft(Stream.empty)((s,id) => Stream.append(Stream.release(id), s))
-  private[streams] def orRight[F[_],W,R](s: List[Pull[F,W,R]]): Pull[F,W,R] =
+  private[fs2] def orRight[F[_],W,R](s: List[Pull[F,W,R]]): Pull[F,W,R] =
     s.reverse.foldLeft(done: Pull[F,W,R])((tl,hd) => or(hd,tl))
 }

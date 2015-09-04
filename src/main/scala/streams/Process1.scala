@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 object process1 {
 

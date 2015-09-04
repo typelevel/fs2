@@ -1,10 +1,10 @@
-package streams
+package fs2
 
 import java.util.concurrent.{ScheduledExecutorService, ConcurrentLinkedQueue, ExecutorService, Executors}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import collection.JavaConversions._
 import scala.concurrent.duration._
-import streams.util.{Actor,Strategy,UF1}
+import fs2.util.{Actor,Strategy,UF1}
 
 /*
 `Task` is a trampolined computation producing an `A` that may
@@ -313,7 +313,7 @@ object Task extends Instances {
 }
 
 /* Prefer an `Async` and `Catchable`, but will settle for implicit `Monad`. */
-private[streams] trait Instances1 {
+private[fs2] trait Instances1 {
   implicit def monad: Monad[Task] with Catchable[Task] = new Monad[Task] with Catchable[Task] {
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt
@@ -322,7 +322,7 @@ private[streams] trait Instances1 {
   }
 }
 
-private[streams] trait Instances extends Instances1 {
+private[fs2] trait Instances extends Instances1 {
   implicit def Instance(implicit S: Strategy): Async[Task] with Catchable[Task] = new Async[Task] with Catchable[Task] {
     type Ref[A] = Task.Ref[A]
     def fail[A](err: Throwable) = Task.fail(err)

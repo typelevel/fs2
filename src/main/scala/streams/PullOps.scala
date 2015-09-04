@@ -1,6 +1,6 @@
-package streams
+package fs2
 
-private[streams]
+private[fs2]
 trait PullOps[+F[_],+W,+R] { self: Pull[F,W,R] =>
 
   def or[F2[x]>:F[x],W2>:W,R2>:R](p2: => Pull[F2,W2,R2])(

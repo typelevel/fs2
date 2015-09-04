@@ -1,9 +1,9 @@
-package streams
+package fs2
 
 import Step.#:
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
-private[streams] trait StreamDerived { self: streams.Stream.type =>
+private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
   def apply[W](a: W*): Stream[Nothing,W] = self.chunk(Chunk.seq(a))
 

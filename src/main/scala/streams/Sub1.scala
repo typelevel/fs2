@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 /** A `Sub[F,G]` is evidence that `forall x . F[x] <: G[x]` */
 sealed trait Sub1[-F[_],+G[_]] {
@@ -6,7 +6,7 @@ sealed trait Sub1[-F[_],+G[_]] {
     Sub1.subst[({ type ap[h[_],x] = h[x] })#ap, F, G, A](f)(this)
 }
 
-private[streams] trait Sub1Instances {
+private[fs2] trait Sub1Instances {
   implicit def sub1[F[_]]: Sub1[F,F] = new Sub1[F,F] {}
 }
 

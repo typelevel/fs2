@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 trait Affine[F[_]] extends Monad[F] {
   /**

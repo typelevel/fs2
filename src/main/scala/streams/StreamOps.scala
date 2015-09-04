@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 import process1.Process1
 
@@ -6,7 +6,7 @@ import process1.Process1
  * Mixin trait for various non-primitive operations exposed on `Stream`
  * for syntactic convenience.
  */
-private[streams]
+private[fs2]
 trait StreamOps[+F[_],+A]
   /* extends Process1Ops[F,A] with TeeOps[F,A] with WyeOps[F,A] */ {
   self: Stream[F,A] =>

@@ -1,4 +1,4 @@
-package streams.util
+package fs2.util
 
 /** A `forall a . f a -> g a`. */
 trait UF1[-F[_],+G[_]] { def apply[A](f: F[A]): G[A] }

@@ -1,6 +1,6 @@
-package streams
+package fs2
 
-private[streams] sealed trait Eq[A,B] {
+private[fs2] sealed trait Eq[A,B] {
   def flip: Eq[B,A] = this.asInstanceOf[Eq[B,A]]
   def apply(a: A): B = Eq.subst[({type f[x] = x})#f, A, B](a)(this)
 }

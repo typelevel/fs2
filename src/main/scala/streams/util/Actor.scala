@@ -1,4 +1,4 @@
-package streams.util
+package fs2.util
 
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.{Callable,ExecutorService}

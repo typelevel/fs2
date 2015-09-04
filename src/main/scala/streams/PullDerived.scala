@@ -1,6 +1,6 @@
-package streams
+package fs2
 
-trait PullDerived { self: streams.Pull.type =>
+trait PullDerived { self: fs2.Pull.type =>
 
   def map[F[_],W,R0,R](p: Pull[F,W,R0])(f: R0 => R): Pull[F,W,R] =
     flatMap(p)(f andThen pure)

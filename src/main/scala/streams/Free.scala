@@ -1,6 +1,6 @@
-package streams
+package fs2
 
-import streams.util.UF1._
+import fs2.util.UF1._
 
 sealed trait Free[+F[_],+A] {
   import Free._
@@ -16,7 +16,7 @@ sealed trait Free[+F[_],+A] {
     (this: Free[F2,A2]).runTranslate(id)
 
   @annotation.tailrec
-  private[streams] final def step: Free[F,A] = this match {
+  private[fs2] final def step: Free[F,A] = this match {
     case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g)).step
     case _ => this
   }
@@ -34,19 +34,19 @@ object Free {
   def suspend[F[_],A](fa: => Free[F,A]): Free[F,A] =
     pure(()) flatMap { _ => fa }
 
-  private[streams] case class Fail(err: Throwable) extends Free[Nothing,Nothing] {
+  private[fs2] case class Fail(err: Throwable) extends Free[Nothing,Nothing] {
     def _runTranslate[G[_],A2>:Nothing](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
       G.fail(err)
   }
-  private[streams] case class Pure[A](a: A) extends Free[Nothing,A] {
+  private[fs2] case class Pure[A](a: A) extends Free[Nothing,A] {
     def _runTranslate[G[_],A2>:A](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
       G.pure(a)
   }
-  private[streams] case class Eval[+F[_],A](fa: F[A]) extends Free[F,Either[Throwable,A]] {
+  private[fs2] case class Eval[+F[_],A](fa: F[A]) extends Free[F,Either[Throwable,A]] {
     def _runTranslate[G[_],A2>:Either[Throwable,A]](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
       G.attempt { g(fa) }.asInstanceOf[G[A2]]
   }
-  private[streams] case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
+  private[fs2] case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
     def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
       G.bind(r.runTranslate(g))(f andThen (_.runTranslate(g)))
   }

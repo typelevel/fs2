@@ -1,4 +1,4 @@
-package streams.util
+package fs2.util
 
 import java.util.concurrent.ExecutorService
 import scala.concurrent.ExecutionContext

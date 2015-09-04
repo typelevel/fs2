@@ -1,6 +1,6 @@
-package streams
+package fs2
 
-import streams.util.UF1
+import fs2.util.UF1
 import Step.{#:}
 
 trait Streams[Stream[+_[_],+_]] { self =>

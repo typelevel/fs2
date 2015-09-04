@@ -1,8 +1,8 @@
-package streams
+package fs2
 
 import collection.immutable.LongMap
-import streams.util.UF1._
-import streams.util.Trampoline
+import fs2.util.UF1._
+import fs2.util.Trampoline
 
 /**
  * A stream producing output of type `W`, which may evaluate `F`
@@ -35,11 +35,11 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
     nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O]
 
-  private[streams]
+  private[fs2]
   final def step: Pull[F,Nothing,Step[Chunk[W], Stream.Handle[F,W]]] =
     _step0(List())
 
-  private[streams]
+  private[fs2]
   final def _step0[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2]):
     Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
     = Pull.suspend { _step1(rights) } // trampoline and catch errors
@@ -52,12 +52,12 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
   protected def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2]):
     Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
 
-  private[streams]
+  private[fs2]
   final def stepAsync[F2[_],W2>:W](implicit S: Sub1[F,F2], F2: Async[F2]):
     Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
     = _stepAsync0(List())
 
-  private[streams]
+  private[fs2]
   final def _stepAsync0[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2], F2: Async[F2]):
     Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
     = Pull.suspend { _stepAsync1(rights) } // trampoline and catch errors
@@ -262,7 +262,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       suspend { s.translate(uf1) ++ s2.translate(uf1) }
   }
 
-  private[streams] def scope[F[_],W](inner: Long => Stream[F,W]): Stream[F,W] = new Stream[F,W] {
+  private[fs2] def scope[F[_],W](inner: Long => Stream[F,W]): Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
@@ -283,7 +283,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       scope { id => suspend { inner(id).translate(uf1) } }
   }
 
-  private[streams] def acquire[F[_],W](id: Long, r: F[W], cleanup: W => F[Unit]):
+  private[fs2] def acquire[F[_],W](id: Long, r: F[W], cleanup: W => F[Unit]):
   Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
@@ -326,7 +326,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       suspend { acquire(id, uf1(r), cleanup andThen (uf1(_))) }
   }
 
-  private[streams] def release(id: Long): Stream[Nothing,Nothing] = new Stream[Nothing,Nothing] {
+  private[fs2] def release(id: Long): Stream[Nothing,Nothing] = new Stream[Nothing,Nothing] {
     type W = Nothing
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
@@ -404,14 +404,14 @@ object Stream extends Streams[Stream] with StreamDerived {
       case hb :: tb => Pull.pure(F.pure(Pull.pure(Step(hb, new Handle(tb, h.stream)))))
     }
 
-  type Pull[+F[_],+W,+R] = streams.Pull[F,W,R]
-  val Pull = streams.Pull
+  type Pull[+F[_],+W,+R] = fs2.Pull[F,W,R]
+  val Pull = fs2.Pull
 
   def runFold[F[_],W,O](s: Stream[F,W], z: O)(g: (O,W) => O) =
     s.runFold(g)(z)
 
-  class Handle[+F[_],+W](private[streams] val buffer: List[Chunk[W]],
-                         private[streams] val stream: Stream[F,W])
+  class Handle[+F[_],+W](private[fs2] val buffer: List[Chunk[W]],
+                         private[fs2] val stream: Stream[F,W])
   object Handle {
     def empty[F[_],W]: Handle[F,W] = new Handle(List(), Stream.empty)
   }

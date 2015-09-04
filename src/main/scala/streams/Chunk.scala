@@ -1,4 +1,4 @@
-package streams
+package fs2
 
 import scodec.bits.ByteVector
 import scodec.bits.BitVector
