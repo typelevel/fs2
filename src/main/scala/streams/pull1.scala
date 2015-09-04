@@ -26,8 +26,10 @@ object pull1 {
 
   def take[F[_],I](n: Int): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     h => for {
-      hd #: h <- if (n <= 0) Pull.done else h.await1
-      _ <- Pull.write1(hd)
-      tl <- take(n-1)(h)
+      chunk #: h <- if (n <= 0) Pull.done else h.await
+      _ <- Pull.write(chunk take n)
+      // final chunk may give us > n elements; push these back
+      h2 = if (n < chunk.size) h push chunk.drop(n) else h
+      tl <- take(n - chunk.size)(h2)
     } yield tl
 }
