@@ -3,7 +3,7 @@ package streams
 import collection.immutable.SortedSet
 import streams.util.Trampoline
 
-trait Pull[+F[_],+W,+R] {
+trait Pull[+F[_],+W,+R] extends PullOps[F,W,R] {
   import Pull.Stack
 
   def run: Stream[F,W] = _run0(SortedSet.empty, Pull.Stack.empty[F,W,R])
@@ -129,7 +129,7 @@ object Pull extends Pulls[Pull] with PullDerived {
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       =
-      Sub1.substStream(s) ++ pure(())._run0(tracked, k)
+      Sub1.substStream(s).append(pure(())._run0(tracked, k))(RealSupertype[W,W2])
   }
 
   def or[F[_],W,R](p1: Pull[F,W,R], p2: => Pull[F,W,R]): Pull[F,W,R] = new Pull[F,W,R] {

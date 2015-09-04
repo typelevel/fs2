@@ -1,63 +1,38 @@
 package streams
 
 /**
- * An implicit `RealSupertype[Sub,Super]` exists only if `Super` is
- * not one of `Product`, `Any`, `AnyRef`, `AnyVal`, or `Serializable`.
- * If it is in this set, the user gets an ambiguous implicit error.
+ * A `RealSupertype[A,B]` is evidence that `A <: B`.
+ * This module provides implicit `RealSupertype[Sub,Super]` only if
+ * `Super` is not one of: `Any`, `AnyVal`, `AnyRef`, `Product`, or `Serializable`.
  */
-sealed trait RealSupertype[-Sub,+Super]
+@annotation.implicitNotFound("Dubious upper bound ${Super} inferred for ${Sub}; supply a `RealSupertype` instance here explicitly if this is not due to a type error")
+sealed trait RealSupertype[-Sub,Super]
 
-private[streams] trait RealSupertypeFallback {
-  implicit def realSupertype[A]: RealSupertype[A,A] =
-    new RealSupertype[A,A] {}
+private[streams] trait NothingSubtypesOthers {
+  private val _i00 = new RealSupertype[String,String] {}
+  implicit def nothingSubtypesOthers[A](implicit A: RealType[A]): RealSupertype[Nothing,A] =
+    _i00.asInstanceOf[RealSupertype[Nothing,A]]
 }
 
-/**
- * An implicit `RealType[A]` exists only if `A` is
- * not one of `Product`, `Any`, `AnyRef`, `AnyVal`, or `Serializable`.
- * If it is in this set, the user gets an ambiguous implicit error.
- * If you really want to use one of these types, supply the implicit
- * parameter explicitly.
- */
-trait RealType[A]
-
-private[streams] trait RealTypeFallback {
-  implicit def realType[A]: RealType[A] = new RealType[A] {}
+private[streams] trait NothingSubtypesItself extends NothingSubtypesOthers {
+  private val _i0 = new RealSupertype[String,String] {}
+  implicit def nothingIsSubtypeOfItself: RealSupertype[Nothing,Nothing] =
+    _i0.asInstanceOf[RealSupertype[Nothing,Nothing]]
+}
+object RealSupertype extends NothingSubtypesItself {
+  private val _i = new RealSupertype[String,String] {}
+  implicit def apply[A<:B,B](implicit B: RealType[B]): RealSupertype[A,B] =
+    _i.asInstanceOf[RealSupertype[A,B]]
 }
 
-object RealType extends RealTypeFallback {
-
-  implicit val `'Product not a real supertype'` = new RealType[Product] {}
-  implicit val `'Scala inferred Product, you have a type error'` = new RealType[Product] {}
-
-  implicit val `'Any not a real supertype'` = new RealType[Any] {}
-  implicit val `'Scala inferred Any, you have a type error'` = new RealType[Any] {}
-
-  implicit val `'AnyRef not a real supertype'` = new RealType[AnyRef] {}
-  implicit val `'Scala inferred AnyRef, you have a type error'` = new RealType[AnyRef] {}
-
-  implicit val `'AnyVal not a real supertype'` = new RealType[AnyVal] {}
-  implicit val `'Scala inferred AnyVal, you have a type error'` = new RealType[AnyVal] {}
-
-  implicit val `'Serializable not a real supertype'` = new RealType[AnyRef] {}
-  implicit val `'Scala inferred Serializable, you have a type error'` = new RealType[AnyRef] {}
+trait RealType[T]
+private[streams] trait RealTypeInstance {
+  private val _i0 = new RealType[Unit] {}
+  implicit def instance[A]: RealType[A] = _i0.asInstanceOf[RealType[A]]
 }
 
-object RealSupertype extends RealSupertypeFallback {
-  // idea for naming due to @mpilquist
-
-  implicit def `'Product not a real supertype'`[A] = new RealSupertype[A,Product] {}
-  implicit def `'Scala inferred Product, you have a type error'`[A] = new RealSupertype[A,Product] {}
-
-  implicit def `'Any not a real supertype'`[A] = new RealSupertype[A,Any] {}
-  implicit def `'Scala inferred Any, you have a type error'`[A] = new RealSupertype[A,Any] {}
-
-  implicit def `'AnyRef not a real supertype'`[A] = new RealSupertype[A,AnyRef] {}
-  implicit def `'Scala inferred AnyRef, you have a type error'`[A] = new RealSupertype[A,AnyRef] {}
-
-  implicit def `'AnyVal not a real supertype'`[A] = new RealSupertype[A,AnyVal] {}
-  implicit def `'Scala inferred AnyVal, you have a type error'`[A] = new RealSupertype[A,AnyVal] {}
-
-  implicit def `'Serializable not a real supertype'`[A] = new RealSupertype[A,AnyRef] {}
-  implicit def `'Scala inferred Serializable, you have a type error'`[A] = new RealSupertype[A,AnyRef] {}
+object RealType extends RealTypeInstance {
+  private val _i = new RealType[Unit] {}
+  implicit val any1 = _i.asInstanceOf[RealType[Any]]
+  implicit val any2 = _i.asInstanceOf[RealType[Any]]
 }
