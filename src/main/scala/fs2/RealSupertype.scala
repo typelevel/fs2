@@ -5,7 +5,7 @@ package fs2
  * This module provides implicit `RealSupertype[Sub,Super]` only if
  * `Super` is not one of: `Any`, `AnyVal`, `AnyRef`, `Product`, or `Serializable`.
  */
-@annotation.implicitNotFound("Dubious upper bound ${Super} inferred for ${Sub}; supply a `RealSupertype` instance here explicitly if this is not due to a type error")
+@annotation.implicitNotFound("Dubious upper bound ${Super} inferred for ${Sub}; supply `RealSupertype.allow[${Sub},${Super}]` here explicitly if this is not due to a type error")
 sealed trait RealSupertype[-Sub,Super]
 
 private[fs2] trait NothingSubtypesOthers {
@@ -22,6 +22,8 @@ private[fs2] trait NothingSubtypesItself extends NothingSubtypesOthers {
 object RealSupertype extends NothingSubtypesItself {
   private val _i = new RealSupertype[String,String] {}
   implicit def apply[A<:B,B](implicit B: RealType[B]): RealSupertype[A,B] =
+    _i.asInstanceOf[RealSupertype[A,B]]
+  def allow[A<:B,B]: RealSupertype[A,B] =
     _i.asInstanceOf[RealSupertype[A,B]]
 }
 
