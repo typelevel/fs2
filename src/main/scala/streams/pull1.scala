@@ -7,9 +7,11 @@ object pull1 {
 
   // nb: methods are in alphabetical order
 
+  /** Await the next available `Chunk` from the `Handle`. The `Chunk` may be empty. */
   def await[F[_],I]: Handle[F,I] => Pull[F,Nothing,Step[Chunk[I],Handle[F,I]]] =
     _.await
 
+  /** Await a single element from the `Handle`. */
   def await1[F[_],I]: Handle[F,I] => Pull[F,Nothing,Step[I,Handle[F,I]]] =
     _.await1
 
@@ -31,8 +33,13 @@ object pull1 {
           hd2 #: tl <- awaitN(n - hd.size)(tl)
         } yield (hd :: hd2) #: tl
 
+  /** Await the next available chunk from the input, or `None` if the input is exhausted. */
   def awaitOption[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[Step[Chunk[I],Handle[F,I]]]] =
     h => h.await.map(Some(_)) or Pull.pure(None)
+
+  /** Await the next available element from the input, or `None` if the input is exhausted. */
+  def await1Option[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[Step[I,Handle[F,I]]]] =
+    h => h.await1.map(Some(_)) or Pull.pure(None)
 
   /** Copy the next available chunk to the output. */
   def copy[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
@@ -46,24 +53,43 @@ object pull1 {
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
     h => awaitN(n)(h) map { case buf #: h => buf.reverse.foldLeft(h)(_ push _) }
 
-  // def prefetch[F[_]:Async,I](n: Int): Handle[F,I] => Pull[F,Nothing,Pull[F,Nothing,Handle[F,I]]]
-  // prefetched = h => for {
-  //   hd #: h <- h.await
-  //   p <- prefetch(10)(h)
-  //   h <- Pull.write(hd) >> p
-  //   next <- prefetched(h)
-  // } yield next
-
+  /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
     h => for {
       chunk #: h <- h.await
       tl <- Pull.write(chunk) >> id(h)
     } yield tl
 
+  /**
+   * Like `[[await]]`, but runs the `await` asynchronously. A `flatMap` into
+   * inner `Pull` logically blocks until this await completes.
+   */
+  def prefetch[F[_]:Async,I](h: Handle[F,I]): Pull[F,Nothing,Pull[F,Nothing,Handle[F,I]]] =
+    h.awaitAsync map { fut =>
+      Pull.eval(fut) flatMap { p =>
+        p map { case hd #: h => h push hd }
+      }
+    }
+
+  /**
+   * Like `[[prefetch]]`, but continue fetching asynchronously as long as the number of
+   * prefetched elements is less than `n`.
+   */
+  def prefetchN[F[_]:Async,I](n: Int)(h: Handle[F,I]): Pull[F,Nothing,Pull[F,Nothing,Handle[F,I]]] =
+    if (n <= 0) Pull.pure(Pull.pure(h))
+    else prefetch(h) map { p =>
+      for {
+        s <- p.flatMap(awaitLimit(n)).map(Some(_)) or Pull.pure(None)
+        tl <- s match {
+          case Some(hd #: h) => prefetchN(n - hd.size)(h) flatMap { tl => tl.map(_ push hd) }
+          case None => Pull.pure(Handle.empty)
+        }
+      } yield tl
+    }
+
   def take[F[_],I](n: Int): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     h => for {
       chunk #: h <- if (n <= 0) Pull.done else awaitLimit(n)(h)
-      _ <- Pull.write(chunk)
-      tl <- take(n - chunk.size)(h)
+      tl <- Pull.write(chunk) >> take(n - chunk.size)(h)
     } yield tl
 }

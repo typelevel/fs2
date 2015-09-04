@@ -412,6 +412,9 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   class Handle[+F[_],+W](private[streams] val buffer: List[Chunk[W]],
                          private[streams] val stream: Stream[F,W])
+  object Handle {
+    def empty[F[_],W]: Handle[F,W] = new Handle(List(), Stream.empty)
+  }
 
   private def runCleanup[F[_]](l: LongMap[F[Unit]]): Free[F,Unit] =
     l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
