@@ -1,6 +1,7 @@
 package streams
 
-private[streams] trait PullOps[+F[_],+W,+R] { self: Pull[F,W,R] =>
+private[streams]
+trait PullOps[+F[_],+W,+R] { self: Pull[F,W,R] =>
 
   def or[F2[x]>:F[x],W2>:W,R2>:R](p2: => Pull[F2,W2,R2])(
     implicit S1: RealSupertype[W,W2], R2: RealSupertype[R,R2])
@@ -17,4 +18,8 @@ private[streams] trait PullOps[+F[_],+W,+R] { self: Pull[F,W,R] =>
 
   def withFilter(f: R => Boolean): Pull[F,W,R] =
     self.flatMap(r => if (f(r)) Pull.pure(r) else Pull.done)
+
+  /** Defined as `p >> p2 == p flatMap { _ => p2 }`. */
+  def >>[F2[x]>:F[x],W2>:W,R2](p2: => Pull[F2,W2,R2])(implicit S: RealSupertype[W,W2])
+  : Pull[F2,W2,R2] = self flatMap { _ => p2 }
 }
