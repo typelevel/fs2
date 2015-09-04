@@ -3,34 +3,19 @@ package streams
 object process1 {
 
   trait Process1[-I,+O] {
-    def apply[F[_]]: Stream[F,I] => Stream[F,O]
+    def run[F[_]]: Stream[F,I] => Stream[F,O]
+    def apply[F[_]](s: Stream[F,I]): Stream[F,O] = run(s)
   }
 
-  object Process1 {
-    // implicit class Process1Ops[I,+O](p: )
-  }
+  // nb: methods are in alphabetical order
 
-  // nb: methods are in alphabetical order, there are going to be so many that
-  // any other order will just going get confusing
+  def id[I]: Process1[I,I] =
+    new Process1[I,I] { def run[F[_]] = _.open.flatMap(Pull.id).run }
 
-  /** Await a single value, returning `None` if the input has been exhausted. */
-  //def await1Option[I]: Process1[I, Option[I]] = new Mk[I, Option[I]] {
-  //  def run[F[_]] = h => for {
-  //    hd #: h <- h.await1 or
-  //    _ <- Pull.write1(hd)
-  //  } yield h
-  //}
+  def take[I](n: Int): Process1[I,I] =
+    new Process1[I,I] { def run[F[_]] = _.open.flatMap(Pull.take(n)).run }
 
-  /** Passes through `n` elements of the input, then halts. */
-  //def take[I](n: Int): Process1[I, I] = repeat { new Mk[I,I] { def run[F[_]] =
-  //  h => for {
-  //    hd #: h <- h.await1 // todo, preserve chunkiness
-  //    _ <- Pull.write1(hd)
-  //  } yield h
-  //}}
-
-  def id[A]: Process1[A,A] =
-    new Process1[A,A] { def apply[F[_]] = _.open.flatMap(pull1.id).run }
+  // TODO, conversion Process1[I,O] to Stepper[I,O]
 
   sealed trait Stepper[-A,+B] {
     import Stepper._

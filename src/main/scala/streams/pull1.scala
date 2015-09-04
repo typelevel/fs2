@@ -2,7 +2,7 @@ package streams
 
 import Step._
 
-object pull1 {
+private[streams] trait pull1 {
   import Stream.Handle
 
   // nb: methods are in alphabetical order

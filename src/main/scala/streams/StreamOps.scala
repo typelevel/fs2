@@ -1,5 +1,7 @@
 package streams
 
+import process1.Process1
+
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`
  * for syntactic convenience.
@@ -27,6 +29,8 @@ trait StreamOps[+F[_],+A]
     Stream.onError(self: Stream[F2,B])(f)
 
   def open: Pull[F, Nothing, Stream.Handle[F,A]] = Stream.open(self)
+
+  def pipe[B](f: Process1[A,B]): Stream[F,B] = f(self)
 
   def pull[F2[x]>:F[x],A2>:A,B](
     using: Stream.Handle[F2,A2] => Pull[F2,B,Stream.Handle[F2,A2]])
