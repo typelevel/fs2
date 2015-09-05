@@ -25,6 +25,9 @@ trait StreamOps[+F[_],+A]
   def map[B](f: A => B): Stream[F,B] =
     Stream.map(self)(f)
 
+  def mapChunked[B](f: A => B): Stream[F,B] =
+    Stream.mapChunked(self)(f)
+
   def onError[F2[x]>:F[x],B>:A](f: Throwable => Stream[F2,B])(implicit R: RealSupertype[A,B]): Stream[F2,B] =
     Stream.onError(self: Stream[F2,B])(f)
 

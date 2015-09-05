@@ -9,11 +9,14 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
-  def id[I]: Process1[I,I] =
-    new Process1[I,I] { def run[F[_]] = _.open.flatMap(Pull.id).run }
+  def id[W]: Process1[W,W] =
+    new Process1[W,W] { def run[F[_]] = _.open.flatMap(Pull.id).run }
 
-  def take[I](n: Int): Process1[I,I] =
-    new Process1[I,I] { def run[F[_]] = _.open.flatMap(Pull.take(n)).run }
+  def lift[W,W2](f: W => W2): Process1[W,W2] =
+    new Process1[W,W2] { def run[F[_]] = _.open.flatMap(Pull.lift(f)).run }
+
+  def take[W](n: Int): Process1[W,W] =
+    new Process1[W,W] { def run[F[_]] = _.open.flatMap(Pull.take(n)).run }
 
   // TODO, conversion Process1[I,O] to Stepper[I,O]
 

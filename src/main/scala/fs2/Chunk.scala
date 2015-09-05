@@ -19,6 +19,11 @@ trait Chunk[+A] {
   def isEmpty = size == 0
   def toList = foldRight(Nil: List[A])(_ :: _)
   def toVector = foldLeft(Vector.empty[A])(_ :+ _)
+  def iterator: Iterator[A] = new Iterator[A] {
+    var i = 0
+    def hasNext = i < size
+    def next = { val result = apply(i); i += 1; result }
+  }
   override def toString = toList.mkString("Chunk(", ", ", ")")
 }
 
@@ -52,6 +57,7 @@ object Chunk {
     def foldLeft[B](z: B)(f: (B,A) => B): B = a.foldLeft(z)(f)
     def foldRight[B](z: B)(f: (A,B) => B): B =
       a.reverseIterator.foldLeft(z)((b,a) => f(a,b))
+    override def iterator = a.iterator
   }
 
   def seq[A](a: Seq[A]): Chunk[A] = new Chunk[A] {
@@ -65,6 +71,7 @@ object Chunk {
     def foldLeft[B](z: B)(f: (B,A) => B): B = a.foldLeft(z)(f)
     def foldRight[B](z: B)(f: (A,B) => B): B =
       a.reverseIterator.foldLeft(z)((b,a) => f(a,b))
+    override def iterator = a.iterator
   }
 
   case class Bytes(bs: ByteVector) extends Chunk[Byte] {

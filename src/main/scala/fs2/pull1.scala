@@ -61,6 +61,16 @@ private[fs2] trait pull1 {
     } yield tl
 
   /**
+   * Write all inputs to the output of the returned `Pull`, transforming elements using `f`.
+   * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
+   */
+  def lift[F[_],W,W2](f: W => W2): Handle[F,W] => Pull[F,W2,Handle[F,W]] =
+    h => for {
+      chunk #: h <- h.await
+      tl <- Pull.write(Chunk.indexedSeq(chunk.iterator.map(f).toIndexedSeq)) >> lift(f)(h)
+    } yield tl
+
+  /**
    * Like `[[await]]`, but runs the `await` asynchronously. A `flatMap` into
    * inner `Pull` logically blocks until this await completes.
    */
