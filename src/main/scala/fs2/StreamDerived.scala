@@ -9,12 +9,13 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
   def writes[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.writes(s)
 
-  def pull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Handle[F,A]])
-  : Stream[F,B] = {
-    def loop(h: Handle[F,A]): Pull[F,B,Unit] =
-      using(h) flatMap (loop)
-    Pull.run { open(s) flatMap loop }
-  }
+  def pull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Any])
+  : Stream[F,B] =
+    Pull.run { open(s) flatMap using }
+
+  def repeatPull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Handle[F,A]])
+  : Stream[F,B] =
+    pull(s)(Pull.loop(using))
 
   def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep1[F,A]] =
     h.awaitAsync map { f =>

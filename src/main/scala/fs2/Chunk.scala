@@ -6,7 +6,7 @@ import scodec.bits.BitVector
 /**
  * Chunk represents a strict, in-memory sequence of `A` values.
  */
-trait Chunk[+A] {
+trait Chunk[+A] { self =>
   def size: Int
   def uncons: Option[(A, Chunk[A])] =
     if (size == 0) None
@@ -21,7 +21,7 @@ trait Chunk[+A] {
   def toVector = foldLeft(Vector.empty[A])(_ :+ _)
   def iterator: Iterator[A] = new Iterator[A] {
     var i = 0
-    def hasNext = i < size
+    def hasNext = i < self.size
     def next = { val result = apply(i); i += 1; result }
   }
   override def toString = toList.mkString("Chunk(", ", ", ")")
