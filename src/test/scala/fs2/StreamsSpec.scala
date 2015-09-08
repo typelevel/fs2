@@ -21,6 +21,19 @@ class StreamsSpec extends Properties("Stream") {
 
   property("++") = secure { emit(1) ++ emit(2) === Vector(1,2) }
 
+  def ranges(N: Int): List[Stream[Nothing,Int]] = List(
+    // left associated ++
+    (1 until N).map(emit).foldLeft(emit(0))(_ ++ _),
+    // right associated ++
+    Chunk.seq((0 until N) map emit).foldRight(empty: Stream[Nothing,Int])(_ ++ _)
+  )
+
+  property("map") = secure {
+    Ns.forall { N =>
+      ranges(N).forall(s => (s map (_ + 1)) === Vector.range(1, N+1))
+    }
+  }
+
   include (new Properties("O(1) and stack safety of `++` and `flatMap`") {
     property("left-associated ++") = secure { Ns.forall { N =>
      (1 until N).map(emit).foldLeft(emit(0))(_ ++ _) ===
@@ -66,12 +79,12 @@ class StreamsSpec extends Properties("Stream") {
 
   property("transduce (id)") = secure {
     Ns.forall { N => logTime("transduce (id) " + N) {
-      (chunk(Chunk.seq(0 until N)): Stream[Task,Int]).pull { (s: Handle[Task,Int]) =>
+      (chunk(Chunk.seq(0 until N)): Stream[Task,Int]).repeatPull { (s: Handle[Task,Int]) =>
         for {
           s2 <- s.await1
           _ <- Pull.write1(s2.head)
         } yield s2.tail
-      } === Vector.range(0,N) }
+      } ==? Vector.range(0,N) }
     }
   }
 
@@ -139,5 +152,10 @@ class StreamsSpec extends Properties("Stream") {
 
   implicit class EqualsOp[A](s: Stream[Task,A]) {
     def ===(v: Vector[A]) = run(s) == v
+    def ==?(v: Vector[A]) = {
+      val l = run(s)
+      val r = v
+      l == r || { println("left: " + l); println("right: " + r); false }
+    }
   }
 }

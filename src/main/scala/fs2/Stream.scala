@@ -99,13 +99,18 @@ object Stream extends Streams[Stream] with StreamDerived {
             }
           }
           else {
-            val c2 = c.foldRight(None: Option[Stream[F2,x]])(
-              (w,acc) => acc match {
-                case None => Some(bindf(w))
-                case Some(acc) => Some(Stream.append(bindf(w), acc))
-              }
-            ).getOrElse(empty)
-            val bsegments = Stack.bindSegments(segments)(bindf)
+            val c2 = bindf.fold(
+              mapf => chunk(c map mapf),
+              bindf => c.foldRight(None: Option[Stream[F2,x]])(
+                (w,acc) => acc match {
+                  case None => Some(bindf(w))
+                  case Some(acc) => Some(Stream.append(bindf(w), acc))
+                }
+              ).getOrElse(empty)
+            )
+            val bsegments = bindf.fold(
+              mapf => Stack.mapSegments(segments)(mapf),
+              bindf => Stack.bindSegments(segments)(bindf))
             c2._runFold0(nextID, tracked, tl.pushSegments(bsegments))(g, z)
           }
         }}
@@ -191,13 +196,39 @@ object Stream extends Streams[Stream] with StreamDerived {
   def translate[F[_],G[_],W](s: Stream[F,W])(u: F ~> G) =
     s.translate(u)
 
+  override def map[F[_],W0,W](s: Stream[F,W0])(f: W0 => W) = new Stream[F,W] {
+    def _runFold1[F2[_],O,W2>:W,W3](
+      nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
+      g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
+      =
+      Free.suspend {
+        s._runFold1[F2,O,W0,W3](nextID, tracked, k.pushBind(Left(f)))(g,z)
+      }
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+      : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
+      =
+      Sub1.substStream(s).step map { case Step(hd, tl) => Step(hd map f, tl map f) }
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[F,F2], F2: Async[F2])
+      : Pull[F2,Nothing,F2[Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      =
+      Sub1.substStream(s).stepAsync map { future => F2.map(future) { pull =>
+        pull.map { case Step(hd, tl) => Step(hd map f, tl map f) }
+      }}
+
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] =
+      suspend { s.translate(uf1) map f }
+  }
+
   def flatMap[F[_],W0,W](s: Stream[F,W0])(f: W0 => Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Free.suspend {
-        s._runFold1[F2,O,W0,W3](nextID, tracked, k.pushBind(Sub1.substStreamF(f)))(g,z)
+        s._runFold1[F2,O,W0,W3](nextID, tracked, k.pushBind(Right(Sub1.substStreamF(f))))(g,z)
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
@@ -411,7 +442,11 @@ object Stream extends Streams[Stream] with StreamDerived {
     s.runFold(g)(z)
 
   class Handle[+F[_],+W](private[fs2] val buffer: List[Chunk[W]],
-                         private[fs2] val stream: Stream[F,W])
+                         private[fs2] val stream: Stream[F,W]) {
+
+    def map[W2](f: W => W2) = new Handle(buffer.map(_ map f), stream map f)
+  }
+
   object Handle {
     def empty[F[_],W]: Handle[F,W] = new Handle(List(), Stream.empty)
   }
@@ -435,9 +470,9 @@ object Stream extends Streams[Stream] with StreamDerived {
       bound: H[R]
     ): R
 
-    trait H[+R] { def f[x]: (List[Segment[F,W1]], W1 => Stream[F,x], Stack[F,x,W2]) => R }
+    trait H[+R] { def f[x]: (List[Segment[F,W1]], Either[W1 => x, W1 => Stream[F,x]], Stack[F,x,W2]) => R }
 
-    def pushBind[W0](f: W0 => Stream[F,W1]): Stack[F,W0,W2] = new Stack[F,W0,W2] {
+    def pushBind[W0](f: Either[W0 => W1, W0 => Stream[F,W1]]): Stack[F,W0,W2] = new Stack[F,W0,W2] {
       def apply[R](unbound: (List[Segment[F,W0]], Eq[W0,W2]) => R, bound: H[R]): R
       = bound.f(List(), f, self)
     }
@@ -500,6 +535,12 @@ object Stream extends Streams[Stream] with StreamDerived {
     = s map {
       case Segment.Append(s) => Segment.Append(s map { s => flatMap(s)(f) })
       case Segment.Handler(h) => Segment.Handler(h andThen (s => flatMap(s)(f)))
+    }
+
+    def mapSegments[F[_],W1,W2](s: List[Segment[F,W1]])(f: W1 => W2): List[Segment[F,W2]]
+    = s map {
+      case Segment.Append(s) => Segment.Append(s map { s => map(s)(f) })
+      case Segment.Handler(h) => Segment.Handler(h andThen (s => map(s)(f)))
     }
   }
 }

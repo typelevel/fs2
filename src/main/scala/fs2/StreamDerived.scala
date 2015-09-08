@@ -40,13 +40,6 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def map[F[_],A,B](a: Stream[F,A])(f: A => B): Stream[F,B] =
     Stream.map(a)(f)
 
-  def mapChunked[F[_],A,B](a: Stream[F,A])(f: A => B): Stream[F,B] =
-    // NB: I don't think this can be the default. It has to traverse
-    // the whole stream `a` and thus isn't constant time,
-    // unlike the `flatMap`-based version which has special support
-    // in the interpreter.
-    process1.lift(f)(a)
-
   def emit[F[_],A](a: A): Stream[F,A] = chunk(Chunk.singleton(a))
 
   def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] =

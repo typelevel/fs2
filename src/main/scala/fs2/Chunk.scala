@@ -19,6 +19,8 @@ trait Chunk[+A] { self =>
   def isEmpty = size == 0
   def toList = foldRight(Nil: List[A])(_ :: _)
   def toVector = foldLeft(Vector.empty[A])(_ :+ _)
+  def map[B](f: A => B): Chunk[B] =
+    Chunk.indexedSeq(iterator.map(f).toIndexedSeq)
   def iterator: Iterator[A] = new Iterator[A] {
     var i = 0
     def hasNext = i < self.size

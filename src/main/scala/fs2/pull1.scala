@@ -67,7 +67,7 @@ private[fs2] trait pull1 {
   def lift[F[_],W,W2](f: W => W2): Handle[F,W] => Pull[F,W2,Handle[F,W]] =
     h => for {
       chunk #: h <- h.await
-      tl <- Pull.write(Chunk.indexedSeq(chunk.iterator.map(f).toIndexedSeq)) >> lift(f)(h)
+      tl <- Pull.write(chunk map f) >> lift(f)(h)
     } yield tl
 
   /**
