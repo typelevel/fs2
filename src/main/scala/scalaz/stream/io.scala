@@ -92,7 +92,7 @@ object io {
 
   /**
    * Creates a `Process[Task,String]` from the lines of a file, using
-   * the `resource` combinator to ensure the file is closed
+   * the `iteratorR` combinator to ensure the file is closed
    * when processing the stream of lines is finished.
    */
   def linesR(filename: String)(implicit codec: Codec): Process[Task,String] =
@@ -100,7 +100,7 @@ object io {
 
   /**
    * Creates a `Process[Task,String]` from the lines of the `InputStream`,
-   * using the `resource` combinator to ensure the `InputStream` is closed
+   * using the `iteratorR` combinator to ensure the `InputStream` is closed
    * when processing the stream of lines is finished.
    */
   def linesR(in: => InputStream)(implicit codec: Codec): Process[Task,String] =
@@ -108,11 +108,11 @@ object io {
 
   /**
    * Creates a `Process[Task,String]` from the lines of the `Source`,
-   * using the `iterator` combinator to ensure the `Source` is closed
+   * using the `iteratorR` combinator to ensure the `Source` is closed
    * when processing the stream of lines is finished.
    */
   def linesR(src: => Source): Process[Task,String] = {
-    iterateR(Task.delay(src))(src => Task.delay(src.close()))(_.getLines())
+    iteratorR(Task.delay(src))(src => Task.delay(src.close()))(r => Task.delay(r.getLines()))
   }
 
   /**
@@ -154,10 +154,10 @@ object io {
   /**
    * Create a Process from an iterator. The value behind the iterator should be
    * immutable and not rely on an external resource. If that is not the case, use
-   * `io.iterateR`.
+   * `io.iteratorR`.
    */
-  def iterate[O](i: => Iterator[O]): Process[Task, O] = {
-    await(Task.delay(i)) { iterator =>
+  def iterator[O](i: Task[Iterator[O]]): Process[Task, O] = {
+    await(i) { iterator =>
       val hasNext = Task delay { iterator.hasNext }
       val next = Task delay { iterator.next() }
 
@@ -178,10 +178,10 @@ object io {
    * @tparam O is a value in the iterator
    * @return
    */
-  def iterateR[R, O](req: => Task[R])(
+  def iteratorR[R, O](req: Task[R])(
                      release: R => Task[Unit])(
-                     mkIterator: R => Iterator[O]): Process[Task, O] = {
-    bracket[Task, R, O](req)(r => Process.eval_(release(r)))(r => iterate(mkIterator(r)) )
+                     mkIterator: R => Task[Iterator[O]]): Process[Task, O] = {
+    bracket[Task, R, O](req)(r => Process.eval_(release(r)))(r => iterator(mkIterator(r)) )
   }
 
   /**
