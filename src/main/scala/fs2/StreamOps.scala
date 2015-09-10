@@ -15,10 +15,10 @@ trait StreamOps[+F[_],+A]
 
   // NB: methods in alphabetical order
 
-  def ++[F2[x]>:F[x],B>:A](p2: Stream[F2,B])(implicit R: RealSupertype[A,B]): Stream[F2,B] =
+  def ++[F2[x]>:F[x],B>:A](p2: => Stream[F2,B])(implicit R: RealSupertype[A,B]): Stream[F2,B] =
     Stream.append(self: Stream[F2,B], p2)
 
-  def append[F2[x]>:F[x],B>:A](p2: Stream[F2,B])(implicit R: RealSupertype[A,B]): Stream[F2,B] =
+  def append[F2[x]>:F[x],B>:A](p2: => Stream[F2,B])(implicit R: RealSupertype[A,B]): Stream[F2,B] =
     Stream.append(self: Stream[F2,B], p2)
 
   def flatMap[F2[x]>:F[x],B](f: A => Stream[F2,B]): Stream[F2,B] =
