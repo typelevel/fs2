@@ -21,18 +21,25 @@ object process1 {
   def take[W](n: Int): Process1[W,W] =
     new Process1[W,W] { def run[F[_]] = _.pull(Pull.take(n)) }
 
-  // TODO, conversion Process1[I,O] to Stepper[I,O]
-
-  trait Read[I] { type f[r] = Option[Chunk[I]] => r }
+  private[fs2] trait Read[I] {
+    sealed trait f[r] { def apply(c: Option[Chunk[I]]): r }
+    case object Echo extends f[Option[Chunk[I]]] {
+      def apply(c: Option[Chunk[I]]) = c
+    }
+  }
+  private[fs2] object Read {
+    private val _obj = new Read[Any] {}
+    def apply[I]: Read[I] = _obj.asInstanceOf[Read[I]]
+  }
 
   private[fs2] def prompts[I]: Stream[Read[I]#f,I] =
-    Stream.eval[Read[I]#f,Option[Chunk[I]]](identity).flatMap {
+    Stream.eval(Read[I].Echo).flatMap {
       case None => Stream.empty
-      case Some(chunk) => Stream.chunk(chunk)
+      case Some(chunk) => Stream.chunk(chunk) ++ prompts
     }
 
   def stepper[I,O](p: Process1[I,O]): Stepper[I,O] = {
-    def outputs: Stream[Read[I]#f,O] = p[Read[I]#f](prompts[I])
+    def outputs: Stream[Read[I]#f,O] = p(prompts[I])
     def stepf(s: Handle[Read[I]#f,O]): Free[Read[I]#f, Option[Step[Chunk[O],Handle[Read[I]#f, O]]]]
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read[I]#f,O](tl, s.stream))))
@@ -42,11 +49,15 @@ object process1 {
       }
     def go(s: Free[Read[I]#f, Option[Step[Chunk[O],Handle[Read[I]#f, O]]]]): Stepper[I,O] =
       Stepper.Suspend { () =>
-        s match {
-          case Free.Pure(None) => Stepper.Done
-          case Free.Pure(Some(s)) => Stepper.Emits(s.head, go(stepf(s.tail)))
-          case Free.Fail(err) => Stepper.Fail(err)
-        }
+        s.step.inspect (
+          err => Stepper.Fail(err),
+          s => s match {
+            case None => Stepper.Done
+            case Some(s) => Stepper.Emits(s.head, go(stepf(s.tail)))
+          },
+          eff => Stepper.Await { o => ???  },
+          ???
+        )
       }
     go(stepf(new Handle[Read[I]#f,O](List(), outputs)))
   }
