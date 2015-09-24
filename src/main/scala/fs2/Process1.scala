@@ -8,6 +8,7 @@ object process1 {
   trait Process1[-I,+O] {
     def run[F[_]]: Stream[F,I] => Stream[F,O]
     def apply[F[_]](s: Stream[F,I]): Stream[F,O] = run(s)
+    def stepper: Stepper[I,O] = process1.stepper(this)
   }
 
   // nb: methods are in alphabetical order
