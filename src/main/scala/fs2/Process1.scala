@@ -22,39 +22,36 @@ object process1 {
   def take[W](n: Int): Process1[W,W] =
     new Process1[W,W] { def run[F[_]] = _.pull(Pull.take(n)) }
 
-  private[fs2] trait Read[I] {
-    type f[+R] = Option[Chunk[I]] => R
-  }
-  private[fs2] def readerFunctor[I] = new Functor[Read[I]#f] {
-    def map[A,B](fa: Option[Chunk[I]] => A)(g: A => B): Option[Chunk[I]] => B
-      = fa andThen g
-  }
-
-  private[fs2] def prompts[I]: Stream[Read[I]#f,I] =
-    Stream.eval[Read[I]#f, Option[Chunk[I]]](identity).flatMap[Read[I]#f,I] {
-      case None => Stream.empty
-      case Some(chunk) => Stream.chunk(chunk).append[Read[I]#f,I](prompts[I])
-    }
-
   def stepper[I,O](p: Process1[I,O]): Stepper[I,O] = {
-    def outputs: Stream[Read[I]#f,O] = p[Read[I]#f](prompts[I])
-    def stepf(s: Handle[Read[I]#f,O]): Free[Read[I]#f, Option[Step[Chunk[O],Handle[Read[I]#f, O]]]]
+    type Read[+R] = Option[Chunk[I]] => R
+    def readFunctor: Functor[Read] = new Functor[Read] {
+      def map[A,B](fa: Read[A])(g: A => B): Read[B]
+        = fa andThen g
+    }
+    def prompts: Stream[Read,I] =
+      Stream.eval[Read, Option[Chunk[I]]](identity).flatMap[Read,I] {
+        case None => Stream.empty
+        case Some(chunk) => Stream.chunk(chunk).append[Read,I](prompts)
+      }
+
+    def outputs: Stream[Read,O] = p[Read](prompts)
+    def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
     = s.buffer match {
-        case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read[I]#f,O](tl, s.stream))))
+        case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
         case List() => s.stream.step.flatMap { s => Pull.write1(s) }
-         .run.runFold(None: Option[Step[Chunk[O],Handle[Read[I]#f, O]]])(
+         .run.runFold(None: Option[Step[Chunk[O],Handle[Read, O]]])(
           (_,s) => Some(s))
       }
-    def go(s: Free[Read[I]#f, Option[Step[Chunk[O],Handle[Read[I]#f, O]]]]): Stepper[I,O] =
+    def go(s: Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]): Stepper[I,O] =
       Stepper.Suspend { () =>
-        s.unroll[Read[I]#f](readerFunctor[I], Sub1.sub1[Read[I]#f]) match {
+        s.unroll[Read](readFunctor, Sub1.sub1[Read]) match {
           case Free.Unroll.Fail(err) => Stepper.Fail(err)
           case Free.Unroll.Pure(None) => Stepper.Done
           case Free.Unroll.Pure(Some(s)) => Stepper.Emits(s.head, go(stepf(s.tail)))
           case Free.Unroll.Eval(recv) => Stepper.Await(chunk => go(recv(chunk)))
         }
       }
-    go(stepf(new Handle[Read[I]#f,O](List(), outputs)))
+    go(stepf(new Handle[Read,O](List(), outputs)))
   }
 
   sealed trait Stepper[-A,+B] {
