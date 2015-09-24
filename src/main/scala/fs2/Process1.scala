@@ -64,7 +64,7 @@ object process1 {
   }
 
   object Stepper {
-    case class Suspend[A,B](force: () => Stepper[A,B]) extends Stepper[A,B]
+    private[fs2] case class Suspend[A,B](force: () => Stepper[A,B]) extends Stepper[A,B]
 
     sealed trait Step[-A,+B] extends Stepper[A,B]
     case object Done extends Step[Any,Nothing]
