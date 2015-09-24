@@ -1,28 +1,7 @@
 package fs2
 
 import fs2.util.UF1._
-
-abstract class Coyo[+F[_],+A] { self =>
-  type R
-  def effect: F[R]
-  def post: Either[Throwable,R] => A
-  def map[B](g: A => B) = new Coyo[F,B] {
-    type R = self.R
-    def effect = self.effect
-    def post = self.post andThen g
-  }
-  def run[G[_],R](h: H[G,A,R])(implicit S: Sub1[F,G]) =
-    h.f(S(effect), post)
-  trait H[-F[_],-A,+R] { def f[x]: (F[x], Either[Throwable,x] => A) => R }
-}
-
-object Coyo {
-  def eval[F[_],A](f: F[A]): Coyo[F,Either[Throwable,A]] = new Coyo[F,Either[Throwable,A]] {
-    type R = A
-    def effect = f
-    def post = identity
-  }
-}
+import fs2.util.Trampoline
 
 sealed trait Free[+F[_],+A] {
   import Free._
@@ -34,13 +13,12 @@ sealed trait Free[+F[_],+A] {
 
   protected def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2]
 
-  private[fs2] def inspect[G[_],R](
-    fail: Throwable => R,
-    pure: A => R,
-    eval: Coyo[F,A] => R,
-    bind: H[G,A,R])(implicit S: Sub1[F,G]): R
+  def unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
+  : Unroll[A, G[Free[F,A]]]
+  = this.step._unroll.run
 
-  trait H[G[_],-A,+R] { def f[x]: (Free[G,x], x => Free[G,A]) => R }
+  protected def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
+  : Trampoline[Unroll[A, G[Free[F,A]]]]
 
   def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
     (this: Free[F2,A2]).runTranslate(id)
@@ -67,43 +45,51 @@ object Free {
   private[fs2] case class Fail(err: Throwable) extends Free[Nothing,Nothing] {
     def _runTranslate[G[_],A2>:Nothing](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
       G.fail(err)
-    def inspect[G[_],R](
-      fail: Throwable => R,
-      pure: Nothing => R,
-      eval: Coyo[Nothing,Nothing] => R,
-      bind: H[G,Nothing,R])(implicit S: Sub1[Nothing,G]): R
-      = fail(err)
+    def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
+    : Trampoline[Unroll[Nothing, G[Free[Nothing,Nothing]]]]
+    = Trampoline.done { Unroll.Fail(err) }
   }
   private[fs2] case class Pure[A](a: A) extends Free[Nothing,A] {
     def _runTranslate[G[_],A2>:A](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
       G.pure(a)
-    def inspect[G[_],R](
-      fail: Throwable => R,
-      pure: A => R,
-      eval: Coyo[Nothing,A] => R,
-      bind: H[G,A,R])(implicit S: Sub1[Nothing,G]): R
-      = pure(a)
+    def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
+    : Trampoline[Unroll[A, G[Free[Nothing,A]]]]
+    = Trampoline.done { Unroll.Pure(a) }
   }
-  private[fs2] case class Eval[+F[_],A](fa: F[A]) extends Free[F,Either[Throwable,A]] {
+  private[fs2] case class Eval[F[_],A](fa: F[A]) extends Free[F,Either[Throwable,A]] {
     def _runTranslate[G[_],A2>:Either[Throwable,A]](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
       G.attempt { g(fa) }.asInstanceOf[G[A2]]
 
-    def inspect[G[_],R](
-      fail: Throwable => R,
-      pure: Either[Throwable,A] => R,
-      eval: Coyo[F,Either[Throwable,A]] => R,
-      bind: H[G,Either[Throwable,A],R])(implicit S: Sub1[F,G]): R = eval(Coyo.eval(fa))
+    def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
+    : Trampoline[Unroll[Either[Throwable,A], G[Free[F,Either[Throwable,A]]]]]
+    = Trampoline.done { Unroll.Eval(G.map(S(fa))(a => Free.pure(Right(a)))) }
   }
   private[fs2] case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
     def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
       G.bind(r.runTranslate(g))(f andThen (_.runTranslate(g)))
+    def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
+    : Trampoline[Unroll[A, G[Free[F,A]]]]
+    = Sub1.substFree(r) match {
+      case Pure(r) =>
+        try Trampoline.suspend { f(r).step._unroll }
+        catch { case err: Throwable => Trampoline.done { Unroll.Fail(err) } }
+      case Fail(err) => Trampoline.done { Unroll.Fail(err) }
+      case eval =>
+        // NB: not bothering to convince Scala this is legit but since
+        // `.step` returns a right-associated bind, and `Eval[F,A]` has type
+        // Free[Either[Throwable,A]], this is safe
+        val ga: G[Any] = eval.asInstanceOf[Eval[G,Any]].fa
+        val fr: Either[Throwable,Any] => Free[F,A]
+           = f.asInstanceOf[Either[Throwable,Any] => Free[F,A]]
+        Trampoline.done { Unroll.Eval(G.map(ga) { any => fr(Right(any)) }) }
+    }
+  }
 
-    def inspect[G[_],R2](
-      fail: Throwable => R2,
-      pure: A => R2,
-      eval: Coyo[F,A] => R2,
-      bind: H[G,A,R2])(implicit S: Sub1[F,G]): R2
-      = bind.f[R](Sub1.substFree(r), (r: R) => Sub1.substFree(f(r)))
+  sealed trait Unroll[+A,+B]
+  object Unroll {
+    case class Fail(err: Throwable) extends Unroll[Nothing,Nothing]
+    case class Pure[A](a: A) extends Unroll[A,Nothing]
+    case class Eval[B](e: B) extends Unroll[Nothing,B]
   }
 
   implicit def monad[F[_]]: Monad[({ type f[x] = Free[F,x]})#f] =

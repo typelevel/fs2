@@ -1,6 +1,6 @@
 package fs2.util
 
-private[fs2] sealed trait Trampoline[A] {
+private[fs2] sealed trait Trampoline[+A] {
   import Trampoline._
 
   def flatMap[B](f: A => Trampoline[B]): Trampoline[B] =
