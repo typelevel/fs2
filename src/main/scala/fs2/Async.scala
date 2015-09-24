@@ -1,15 +1,6 @@
 package fs2
 
-trait Affine[F[_]] extends Monad[F] {
-  /**
-   * Satisfies `affine(f) flatMap { f => f flatMap { _ => f }} == f`.
-   * In other words, we only pay for the effect of `f` once, regardless
-   * of how many places we bind to it.
-   */
-  def affine[A](f: F[A]): F[F[A]]
-}
-
-trait Async[F[_]] extends Monad[F] with Affine[F] {
+trait Async[F[_]] extends Monad[F] {
   type Ref[A]
 
   /** Create a asynchronous, concurrent mutable reference. */
