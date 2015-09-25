@@ -23,11 +23,11 @@ class LinesSpec extends Properties("text") {
       emit(s).pipe(lines()).toList == source
   }
 
-  property("lines()") = secure {
+  property("lines()") = protect {
     samples.forall(checkLine)
   }
 
-  property("lines(n) should fail for lines with length greater than n") = secure {
+  property("lines(n) should fail for lines with length greater than n") = protect {
     val error = classOf[LengthExceeded]
 
     emit("foo\nbar").pipe(lines(3)).toList == List("foo", "bar")    &&   // OK input

@@ -64,7 +64,7 @@ class ProcessSpec extends Properties("Process") {
 
   }
 
-  property("sinked") = secure {
+  property("sinked") = protect {
     val p1 = Process.constant(1).toSource
     val pch = Process.constant((i:Int) => Task.now(())).take(3)
 
@@ -76,7 +76,7 @@ class ProcessSpec extends Properties("Process") {
       Process.fill(n)(42, chunkSize).toList == List.fill(n)(42)
   }
 
-  property("forwardFill") = secure {
+  property("forwardFill") = protect {
     import scala.concurrent.duration._
     val t2 = time.awakeEvery(2 seconds).forwardFill.zip {
       time.awakeEvery(100 milliseconds).take(100)
@@ -84,20 +84,20 @@ class ProcessSpec extends Properties("Process") {
     true
   }
 
-  property("iterate") = secure {
+  property("iterate") = protect {
     Process.iterate(0)(_ + 1).take(100).toList == List.iterate(0, 100)(_ + 1)
   }
 
-  property("iterateEval") = secure {
+  property("iterateEval") = protect {
     Process.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.run == List.iterate(0, 100)(_ + 1)
   }
 
-  property("iterator uses all its values and completes") = secure {
+  property("iterator uses all its values and completes") = protect {
     def iterator = Iterator.range(0, 100, 1)
     Process.iterator[Task, Int](iterator).runLog.run == iterator.toVector
   }
 
-  property("iterator completes immediately from an empty iterator") = secure {
+  property("iterator completes immediately from an empty iterator") = protect {
     Process.iterator[Task, Int](Iterator.empty).runLog.run.isEmpty
   }
 
@@ -109,12 +109,12 @@ class ProcessSpec extends Properties("Process") {
     cleanup.get(500).get == 1
   }
 
-  property("kill") = secure {
+  property("kill") = protect {
     import TestUtil._
     ("repeated-emit" |: emit(1).repeat.kill.expectedCause(_ == Kill).toList == List())
   }
 
-  property("kill ++") = secure {
+  property("kill ++") = protect {
     import TestUtil._
     var afterEmit = false
     var afterHalt = false
@@ -128,7 +128,7 @@ class ProcessSpec extends Properties("Process") {
       ("after await" |: !afterAwait)
   }
 
-  property("cleanup isn't interrupted in the middle") = secure {
+  property("cleanup isn't interrupted in the middle") = protect {
     // Process p is killed in the middle of `cleanup` and we expect:
     // - cleanup is not interrupted
     var cleaned = false
@@ -139,7 +139,7 @@ class ProcessSpec extends Properties("Process") {
       ("cleaned" |: cleaned)
   }
 
-  property("cleanup propagates Kill") = secure {
+  property("cleanup propagates Kill") = protect {
     // Process p is killed in the middle of `cleanup` and we expect:
     // - cleanup is not interrupted
     // - Kill is propagated to `++`
@@ -153,21 +153,21 @@ class ProcessSpec extends Properties("Process") {
       ("called" |: !called)
   }
 
-  property("asFinalizer") = secure {
+  property("asFinalizer") = protect {
     import TestUtil._
     var called = false
     (emit(1) ++ eval_(Task.delay{ called = true })).asFinalizer.kill.expectedCause(_ == Kill).run.run
     called
   }
 
-  property("asFinalizer, pipe") = secure {
+  property("asFinalizer, pipe") = protect {
     var cleaned = false
     val cleanup = emit(1) ++ eval_(Task.delay(cleaned = true))
     cleanup.asFinalizer.take(1).run.run
     cleaned
   }
 
-  property("pipe can emit when predecessor stops") = secure {
+  property("pipe can emit when predecessor stops") = protect {
     import TestUtil._
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
     ("normal termination" |: (emit(1) |> p1).toList == List(1, 2, 3)) &&
@@ -175,12 +175,12 @@ class ProcessSpec extends Properties("Process") {
       ("failure" |: ((emit(1) ++ fail(FailWhale)) |> p1).expectedCause(_ == Error(FailWhale)).toList == List(1, 2, 3))
   }
 
-  property("feed1, disconnect") = secure {
+  property("feed1, disconnect") = protect {
     val p1 = process1.id[Int].onComplete(emit(2) ++ emit(3))
     p1.feed1(5).feed1(4).disconnect(Kill).unemit._1 == Seq(5, 4, 2, 3)
   }
 
-  property("pipeIn") = secure {
+  property("pipeIn") = protect {
     val q = async.unboundedQueue[String]
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
 
@@ -192,7 +192,7 @@ class ProcessSpec extends Properties("Process") {
   }
 
   // Single instance of original sink is used for all elements.
-  property("pipeIn uses original sink once") = secure {
+  property("pipeIn uses original sink once") = protect {
     // Sink starts by wiping `written`.
     var written = List[Int]()
     def acquire: Task[Unit] = Task.delay { written = Nil }
@@ -231,7 +231,7 @@ class ProcessSpec extends Properties("Process") {
     ("buf3" |: { buf3.toList ?= in.drop(4).lastOption.toList })
   }
 
-  property("range") = secure {
+  property("range") = protect {
     Process.range(0, 100).toList == List.range(0, 100) &&
       Process.range(0, 1).toList == List.range(0, 1) &&
       Process.range(0, 0).toList == List.range(0, 0)
@@ -242,24 +242,24 @@ class ProcessSpec extends Properties("Process") {
       IndexedSeq.range(0, 100)
   }
 
-  property("unfold") = secure {
+  property("unfold") = protect {
     Process.unfold((0, 1)) {
       case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
     }.map(_._1).toList == List(0, 1, 1, 2, 3, 5, 8, 13)
   }
 
-  property("unfoldEval") = secure {
+  property("unfoldEval") = protect {
     unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
       .runLog.run.toList == List.range(10, 0, -1)
   }
 
-  property("kill of drained process terminates") = secure {
+  property("kill of drained process terminates") = protect {
     val effect: Process[Task,Unit] = Process.repeatEval(Task.delay(())).drain
     effect.kill.runLog.timed(1000).run.isEmpty
   }
 
   // `p.suspendStep` propagates `Kill` to `p`
-  property("suspendStep propagates Kill") = secure {
+  property("suspendStep propagates Kill") = protect {
     var fallbackCausedBy: Option[EarlyCause] = None
     var received: Option[Int] = None
     val p = awaitOr(Task.delay(1))({early => fallbackCausedBy = Some(early); halt })({a => received = Some(a); halt })
@@ -273,14 +273,14 @@ class ProcessSpec extends Properties("Process") {
     fallbackCausedBy == Some(Kill) && received.isEmpty
   }
 
-  property("process.sequence returns elements in order") = secure {
+  property("process.sequence returns elements in order") = protect {
     val random = util.Random
     val p = Process.range(1, 10).map(i => Task.delay { Thread.sleep(random.nextInt(100)); i })
 
     p.sequence(4).runLog.run == p.flatMap(eval).runLog.run
   }
 
-  property("stepAsync onComplete on task never completing") = secure {
+  property("stepAsync onComplete on task never completing") = protect {
     val q = async.unboundedQueue[Int]
 
     @volatile var cleanupCalled = false
@@ -295,7 +295,7 @@ class ProcessSpec extends Properties("Process") {
     sync.get(3000).isDefined :| "sync completion" && cleanupCalled :| "cleanup"
   }
 
-  property("stepAsync independent onComplete exactly once on task eventually completing") = secure {
+  property("stepAsync independent onComplete exactly once on task eventually completing") = protect {
     val inner = new AtomicInteger(0)
     val outer = new AtomicInteger(0)
 
@@ -322,7 +322,7 @@ class ProcessSpec extends Properties("Process") {
       (outer.get() == 1) :| s"outer finalizer invocation count ${outer.get()}"
   }
 
-  property("Process0Syntax.toStream terminates") = secure {
+  property("Process0Syntax.toStream terminates") = protect {
     Process.constant(0).toStream.take(10).toList === List.fill(10)(0)
   }
 
@@ -342,7 +342,7 @@ class ProcessSpec extends Properties("Process") {
     p0.sleepUntil(p2).toList === expected
   }
 
-  property("identity piping preserve eval termination semantics") = secure {
+  property("identity piping preserve eval termination semantics") = protect {
     implicit val teq = Equal.equalA[Throwable]
 
     val halt = eval(Task delay { throw Terminated(End) }).repeat ++ emit(())
@@ -350,27 +350,27 @@ class ProcessSpec extends Properties("Process") {
     ((halt pipe process1.id).runLog timed 3000 map { _.toList }).attempt.run === (halt.runLog timed 3000 map { _.toList }).attempt.run
   }
 
-  property("uncons (constant stream)") = secure {
+  property("uncons (constant stream)") = protect {
     val process: Process[Task, Int] = Process(1,2,3)
     val result = process.uncons
     // Not sure why I need to use .equals() here instead of using ==
     result.run.equals((1, Process(2,3)))
   }
-  property("uncons (async stream v1)") = secure {
+  property("uncons (async stream v1)") = protect {
     val task = Task.now(1)
     val process = Process.await(task)(Process.emit(_) ++ Process(2,3))
     val result = process.uncons
     val (a, newProcess) = result.run
     a == 1 && newProcess.runLog.run == Seq(2,3)
   }
-  property("uncons (async stream v2)") = secure {
+  property("uncons (async stream v2)") = protect {
     val task = Task.now(1)
     val process = Process.await(task)(a => Process(2,3).prepend(Seq(a)))
     val result = process.uncons
     val (a, newProcess) = result.run
     a == 1 && newProcess.runLog.run == Seq(2,3)
   }
-  property("uncons (mutable queue)") = secure {
+  property("uncons (mutable queue)") = protect {
     import scalaz.stream.async
     import scala.concurrent.duration._
     val q = async.unboundedQueue[Int]
@@ -382,7 +382,7 @@ class ProcessSpec extends Properties("Process") {
     val newProcessResult = newProcess.runLog.timed(1.second).run
     a == 1 && newProcessResult == Seq(2,3)
   }
-  property("uncons (mutable queue) v2") = secure {
+  property("uncons (mutable queue) v2") = protect {
     import scalaz.stream.async
     import scala.concurrent.duration._
     val q = async.unboundedQueue[Int]
@@ -392,19 +392,19 @@ class ProcessSpec extends Properties("Process") {
     val (a, newProcess) = result.timed(1.second).run
     a == 1
   }
-  property("uncons should throw a NoSuchElementException if Process is empty") = secure {
+  property("uncons should throw a NoSuchElementException if Process is empty") = protect {
     val process = Process.empty[Task, Int]
     val result = process.uncons
     try {result.run; false} catch { case _: NoSuchElementException => true case _ : Throwable => false}
   }
-  property("uncons should propogate failure if stream fails") = secure {
+  property("uncons should propogate failure if stream fails") = protect {
     case object TestException extends java.lang.Exception
     val process: Process[Task, Int] = Process.fail(TestException)
     val result = process.uncons
     try {result.run; false} catch { case TestException => true; case _ : Throwable => false}
   }
 
-  property("to.halt") = secure {
+  property("to.halt") = protect {
     var count = 0
 
     val src = Process.range(0, 10) evalMap { i =>
@@ -421,7 +421,7 @@ class ProcessSpec extends Properties("Process") {
     (count === 1) :| s"count = $count"
   }
 
-  property("observe.halt") = secure {
+  property("observe.halt") = protect {
     val src = Process.range(0, 10).toSource
     val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
 

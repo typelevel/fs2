@@ -2,14 +2,14 @@ package scalaz.stream
 
 import java.io.ByteArrayInputStream
 
-import org.scalacheck.Prop.{ forAll, propBoolean, secure }
+import org.scalacheck.Prop.{ forAll, propBoolean, protect }
 import org.scalacheck.Properties
 
 import scalaz.concurrent.Task
 import scalaz.stream.Process.ProcessSyntax
 
 class UnsafeChunkRSpec extends Properties("io.unsafeChunkR") {
-  property("reuses buffer") = secure {
+  property("reuses buffer") = protect {
     forAll { str: String =>
       val sink: Sink[Task, Array[Byte] => Task[Array[Byte]]] =
         channel lift { toTask =>
