@@ -166,9 +166,9 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
    nowhere.
    */
   def race[B](t: Task[B])(implicit S: Strategy): Task[Either[A,B]] = {
-    Task.ref[Either[A,B]].flatMap { pool =>
-      pool.setRace(this map (Left(_)), t map (Right(_)))
-          .flatMap { _ => pool.get }
+    Task.ref[Either[A,B]].flatMap { ref =>
+      ref.setRace(this map (Left(_)), t map (Right(_)))
+          .flatMap { _ => ref.get }
     }
   }
 
@@ -260,50 +260,65 @@ object Task extends Instances {
   def TryTask[A](a: => Task[A]): Task[A] =
     try a catch { case e: Throwable => fail(e) }
 
+  private trait Msg[A]
+  private object Msg {
+    case class Get[A](callback: Either[Throwable,A] => Unit, id: Long => Unit) extends Msg[A]
+    case class Nevermind[A](id: Long) extends Msg[A]
+    case class Set[A](result: Either[Throwable,A]) extends Msg[A]
+  }
+
   def ref[A](implicit S: Strategy): Task[Ref[A]] = Task.delay {
+    import collection.immutable.LongMap
     type Get = Either[Throwable,A] => Unit
     var result: Either[Throwable,A] = null
-    var waiting: List[Get] = List()
-    val act = Actor.actor[Either[Get, Either[Throwable,A]]] {
-      case Left(cb) =>
+    var nextId = 0L
+    var waiting: LongMap[Get] = LongMap.empty
+    val act = Actor.actor[Msg[A]] {
+      case Msg.Get(cb, id) =>
         if (!(result eq null)) S { cb(result) }
-        else waiting = cb :: waiting
-      case Right(r) =>
+        else { id(nextId); waiting = waiting + (nextId -> cb); nextId += 1 }
+      case Msg.Set(r) =>
         result = r
-        waiting.reverse.foreach(cb => S { cb(r) })
-        waiting = List()
+        waiting.values.foreach(cb => S { cb(r) })
+        waiting = LongMap.empty
+      case Msg.Nevermind(id) =>
+        waiting -= id
     } (S)
     new Ref(act)
   }
 
-  class Ref[A](actor: Actor[Either[Either[Throwable,A] => Unit, Either[Throwable,A]]]) {
+  // todo, just make this one of the constructors of `Task`, call it
+  // `Running`. Have a single backing actor, repeatedly call `get` and
+  // nevermind. Thus, repeated losers never pile up.
+  // want to be able to create a single
+  class Ref[A](actor: Actor[Msg[A]]) {
     /**
-     * Return a `Task` that submits `t` to this pool for evaluation.
+     * Return a `Task` that submits `t` to this ref for evaluation.
      * When it completes it overwrites any previously `put` value.
      */
-    def set(t: Task[A]): Task[Unit] = Task.delay { t.runAsync { r => actor ! Right(r) } }
+    def set(t: Task[A]): Task[Unit] = Task.delay { t.runAsync { r => actor ! Msg.Set(r) } }
     def setFree(t: Free[Task,A]): Task[Unit] = set(t.run)
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
-    def get: Task[A] = Task.async { cb => actor ! Left(cb) }
+    def get: Task[A] = Task.async { cb => actor ! Msg.Get(cb, _ => ()) }
 
     /**
      * Runs `t1` and `t2` simultaneously, but only the winner gets to
-     * `set` to this `Pool`. The loser continues running but its reference
-     * to this pool is severed, allowing this pool to be garbage collected
+     * `set` to this `ref`. The loser continues running but its reference
+     * to this ref is severed, allowing this ref to be garbage collected
      * if it is no longer referenced by anyone other than the loser.
      */
     def setRace(t1: Task[A], t2: Task[A]): Task[Unit] = Task.delay {
       val ref = new AtomicReference(actor)
       val won = new AtomicBoolean(false)
       val win = (res: Either[Throwable,A]) => {
-        // important for GC: we don't reference this pool
+        // important for GC: we don't reference this ref
         // or the actor directly, and the winner destroys any
         // references behind it!
         if (won.compareAndSet(false, true)) {
           val actor = ref.get
           ref.set(null)
-          actor ! Right(res)
+          actor ! Msg.Set(res)
         }
       }
       t1.runAsync(win)
@@ -333,6 +348,6 @@ private[fs2] trait Instances extends Instances1 {
     def set[A](p: Ref[A])(t: Task[A]) = p.set(t)
     def setFree[A](p: Ref[A])(t: Free[Task,A]) = p.setFree(t)
     def get[A](p: Ref[A]): Task[A] = p.get
-    def race[A,B](t1: Task[A], t2: Task[B]): Task[Either[A,B]] = t1 race t2
+    override def race[A,B](t1: Task[A], t2: Task[B]): Task[Either[A,B]] = t1 race t2
   }
 }

@@ -25,11 +25,12 @@ trait Async[F[_]] extends Monad[F] {
    * Chooses nondeterministically between `a map (Left(_))` and
    * `a2 map (Right(_))`. Result must be equivalent to one of
    * these two expressions. */
-  def race[A,B](a: F[A], a2: F[B]): F[Either[A,B]]
-
-  def affine[A](f: F[A]): F[F[A]] = bind(ref[A]) { ref =>
-    map(set(ref)(f)) { _ => get(ref) }
-  }
+  def race[A,B](a: F[A], a2: F[B]): F[Either[A,B]] =
+    bind(ref[Either[A,B]]) { ref =>
+    bind(set(ref)(map(a)(Left(_)))) { _ =>
+    bind(set(ref)(map(a2)(Right(_)))) { _ =>
+    get(ref)
+    }}}
 }
 
 object Async {
