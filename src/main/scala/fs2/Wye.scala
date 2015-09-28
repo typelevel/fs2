@@ -15,35 +15,45 @@ object wye {
   = {
     if (maxOpen <= 0) throw new IllegalArgumentException("maxOpen must be > 0, was: " + maxOpen)
     def go(s: Handle[F,Stream[F,O]],
+           onlyOpen: Boolean,
            open: Vector[F[Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]])
     : Pull[F,O,Unit] =
       if (open.isEmpty) for {
         sh #: s <- s.await1
         h <- sh.open
         step <- h.await // if nothing's open, we block to obtain an open stream
-        _ <- go(s, open :+ F.pure(Pull.pure(step): Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]]))
+        _ <- go(s, onlyOpen, open :+ F.pure(Pull.pure(step): Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]]))
       } yield ()
-      else if (open.size >= maxOpen) for {
+      else if (open.size >= maxOpen || onlyOpen) for {
         (p, i) <- Pull.eval(indexedRace(open))
         _ <- (for {
           out #: h <- p /* Can fail if winning step is a completed stream. */
           next <- h.awaitAsync
-          _ <- go(s, open.updated(i, next))
-        } yield ()) or go(s, open.patch(i, List(), 1)) /* Remote `i` from `open`. */
+          _ <- go(s, onlyOpen, open.updated(i, next))
+        } yield ()) or go(s, onlyOpen, open.patch(i, List(), 1)) /* Remote `i` from `open`. */
       } yield ()
       else for {
-        nextS <- s.awaitAsync
+        nextS <- s.await1Async
         piOrNewStream <- Pull.eval(F.race(indexedRace(open), nextS))
         _ <- piOrNewStream match {
           case Left((p, i)) => (for {
             out #: h <- p /* Can fail if winner is a completed stream. */
             next <- h.awaitAsync
-            _ <- go(s, open.updated(i, next))
-          } yield ()) or go(s, open.patch(i, List(), 1))
-          case Right(anotherOpen) => ???
+            _ <- go(s, onlyOpen, open.updated(i, next))
+          } yield ()) or go(s, onlyOpen, open.patch(i, List(), 1))
+          case Right(anotherOpen) =>
+            anotherOpen.map(Some(_)).or(Pull.pure(None)).flatMap {
+              case Some(s2) => s2 match {
+                case None #: s => go(s, true, open)
+                case Some(s2) #: s => s2.open.flatMap { h2 =>
+                  h2.awaitAsync.map(f => go(s, onlyOpen, open :+ f))
+                }
+              }
+              case None => go(s, true, open)
+            }
         }
       } yield ()
-    s.open.flatMap { h => go(h, Vector.empty) }.run
+    s.open.flatMap { h => go(h, false, Vector.empty) }.run
   }
 
   def indexedRace[F[_],A](fs: Vector[F[A]])(implicit F: Async[F]): F[(A,Int)] =
