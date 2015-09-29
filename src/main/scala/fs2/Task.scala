@@ -357,6 +357,5 @@ private[fs2] trait Instances extends Instances1 {
     def setFree[A](p: Ref[A])(t: Free[Task,A]) = p.setFree(t)
     def get[A](p: Ref[A]): Task[A] = p.get
     def cancellableGet[A](p: Ref[A]) = p.cancellableGet
-    override def race[A,B](t1: Task[A], t2: Task[B]): Task[Either[A,B]] = t1 race t2
   }
 }
