@@ -18,20 +18,23 @@ object wye {
            onlyOpen: Boolean, // `true` if `s` should be ignored
            open: Vector[F[Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]])
     : Pull[F,O,Unit] =
-      if (open.isEmpty) for {
-        sh #: s <- s.await1
-        h <- sh.open
-        step <- h.await // if nothing's open, we block to obtain an open stream
-        _ <- go(s, onlyOpen, open :+ F.pure(Pull.pure(step): Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]]))
-      } yield ()
-      else if (open.size >= maxOpen || onlyOpen) for {
-        (p, i) <- Pull.eval(indexedRace(open))
-        _ <- p.optional.flatMap {
-          case None => go(s, onlyOpen, open.patch(i, List(), 1)) // remove i from open
-          case Some(out #: h) =>
-            Pull.write(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, open.updated(i,next)) }
+      // A) Nothing's open; block to obtain a new open stream
+      if (open.isEmpty) s.await1.flatMap { case sh #: s =>
+        sh.open.flatMap(_.await).flatMap { step =>
+          go(s, onlyOpen, open :+ F.pure(Pull.pure(step): Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]]))
+      }}
+      // B) We have too many things open, or `s` is exhausted so we only consult `open`
+      // race to obtain a step from each of the currently open handles
+      else if (open.size >= maxOpen || onlyOpen)
+        Pull.eval(indexedRace(open)) flatMap { case (p,i) =>
+          p.optional.flatMap {
+            case None => go(s, onlyOpen, open.patch(i, List(), 1)) // remove i from open
+            case Some(out #: h) =>
+              Pull.write(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, open.updated(i,next)) }
+          }
         }
-      } yield ()
+      // C) Like B), but we are allowed to open more handles, so race opening a new handle
+      // with pulling from already open handles
       else for {
         nextS <- s.await1Async
         piOrNewStream <- Pull.eval(F.race(indexedRace(open), nextS))
