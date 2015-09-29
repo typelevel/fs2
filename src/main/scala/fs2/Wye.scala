@@ -15,7 +15,7 @@ object wye {
   = {
     if (maxOpen <= 0) throw new IllegalArgumentException("maxOpen must be > 0, was: " + maxOpen)
     def go(s: Handle[F,Stream[F,O]],
-           onlyOpen: Boolean,
+           onlyOpen: Boolean, // `true` if `s` should be ignored
            open: Vector[F[Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]])
     : Pull[F,O,Unit] =
       if (open.isEmpty) for {
