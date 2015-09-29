@@ -6,9 +6,7 @@ import Stream.Handle
 
 object concurrent {
 
-  def join[F[_],O](maxOpen: Int)(s: Stream[F,Stream[F,O]])(implicit F: Async[F])
-  : Stream[F,O]
-  = {
+  def join[F[_]:Async,O](maxOpen: Int)(s: Stream[F,Stream[F,O]]): Stream[F,O] = {
     if (maxOpen <= 0) throw new IllegalArgumentException("maxOpen must be > 0, was: " + maxOpen)
     def go(s: Handle[F,Stream[F,O]],
            onlyOpen: Boolean, // `true` if `s` should be ignored
