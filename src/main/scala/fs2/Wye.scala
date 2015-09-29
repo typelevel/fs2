@@ -26,23 +26,23 @@ object wye {
       } yield ()
       else if (open.size >= maxOpen || onlyOpen) for {
         (p, i) <- Pull.eval(indexedRace(open))
-        _ <- (for {
-          out #: h <- p /* Can fail if winning step is a completed stream. */
-          next <- h.awaitAsync
-          _ <- go(s, onlyOpen, open.updated(i, next))
-        } yield ()) or go(s, onlyOpen, open.patch(i, List(), 1)) /* Remote `i` from `open`. */
+        _ <- p.optional.flatMap {
+          case None => go(s, onlyOpen, open.patch(i, List(), 1)) // remove i from open
+          case Some(out #: h) =>
+            Pull.write(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, open.updated(i,next)) }
+        }
       } yield ()
       else for {
         nextS <- s.await1Async
         piOrNewStream <- Pull.eval(F.race(indexedRace(open), nextS))
         _ <- piOrNewStream match {
-          case Left((p, i)) => (for {
-            out #: h <- p /* Can fail if winner is a completed stream. */
-            next <- h.awaitAsync
-            _ <- go(s, onlyOpen, open.updated(i, next))
-          } yield ()) or go(s, onlyOpen, open.patch(i, List(), 1))
+          case Left((p, i)) => p.optional.flatMap {
+            case None => go(s, onlyOpen, open.patch(i, List(), 1)) // remove i from open
+            case Some(out #: h) =>
+              Pull.write(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, open.updated(i,next)) }
+          }
           case Right(anotherOpen) =>
-            anotherOpen.map(Some(_)).or(Pull.pure(None)).flatMap {
+            anotherOpen.optional.flatMap {
               case Some(s2) => s2 match {
                 case None #: s => go(s, true, open)
                 case Some(s2) #: s => s2.open.flatMap { h2 =>

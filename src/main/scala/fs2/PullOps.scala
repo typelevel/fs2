@@ -3,6 +3,9 @@ package fs2
 private[fs2]
 trait PullOps[+F[_],+W,+R] { self: Pull[F,W,R] =>
 
+  def optional: Pull[F,W,Option[R]] =
+    self.map(Some(_)).or(Pull.pure(None))
+
   def or[F2[x]>:F[x],W2>:W,R2>:R](p2: => Pull[F2,W2,R2])(
     implicit S1: RealSupertype[W,W2], R2: RealSupertype[R,R2])
     : Pull[F2,W2,R2]
