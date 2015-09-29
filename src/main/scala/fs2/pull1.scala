@@ -89,13 +89,22 @@ private[fs2] trait pull1 {
     if (n <= 0) Pull.pure(Pull.pure(h))
     else prefetch(h) map { p =>
       for {
-        s <- p.flatMap(awaitLimit(n)).map(Some(_)) or Pull.pure(None)
+        s <- p.flatMap(awaitLimit(n)).optional
         tl <- s match {
           case Some(hd #: h) => prefetchN(n - hd.size)(h) flatMap { tl => tl.map(_ push hd) }
           case None => Pull.pure(Handle.empty)
         }
       } yield tl
     }
+
+  def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
+    def go(prev: Option[I]): Handle[F,I] => Pull[F,Nothing,Option[I]] =
+      h => h.await.optional.flatMap {
+        case None => Pull.pure(prev)
+        case Some(c #: h) => go(c.foldLeft(prev)((_,i) => Some(i)))(h)
+      }
+    go(None)
+  }
 
   def take[F[_],I](n: Int): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     h => for {
