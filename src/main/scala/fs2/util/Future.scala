@@ -1,11 +1,11 @@
-package fs2
+package fs2.util
 
 import collection.JavaConversions._
 import java.util.concurrent.atomic.{AtomicInteger, AtomicBoolean, AtomicReference}
 import java.util.concurrent.{Callable, ConcurrentLinkedQueue, CountDownLatch, ExecutorService, TimeoutException, ScheduledExecutorService, TimeUnit, Executors}
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
-import fs2.util.{Strategy,Trampoline}
+import fs2.Strategy
 
 // for internal use only!
 

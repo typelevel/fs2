@@ -1,6 +1,5 @@
 package fs2
 
-import fs2.util.UF1
 import Step.{#:}
 
 trait Streams[Stream[+_[_],+_]] { self =>
@@ -41,6 +40,10 @@ trait Streams[Stream[+_[_],+_]] { self =>
   type Pull[+F[_],+R,+O]
 
   def Pull: Pulls[Pull]
+
+  // todo
+  // type AsyncStep[F[_],A] = Async.Future[F, Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]]]
+  // type AsyncStep1[F[_],A] = Async.Future[F, Pull[F, Nothing, Step[Option[A], Handle[F,A]]]]
 
   type AsyncStep[F[_],A] = F[Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]]]
   type AsyncStep1[F[_],A] = F[Pull[F, Nothing, Step[Option[A], Handle[F,A]]]]

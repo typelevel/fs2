@@ -1,7 +1,7 @@
 package fs2
 
 import collection.immutable.LongMap
-import fs2.util.UF1._
+import fs2.UF1._
 import fs2.util.Trampoline
 
 /**

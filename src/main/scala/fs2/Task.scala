@@ -4,7 +4,7 @@ import java.util.concurrent.{ScheduledExecutorService, ConcurrentLinkedQueue, Ex
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import collection.JavaConversions._
 import scala.concurrent.duration._
-import fs2.util.{Actor,Strategy,UF1}
+import fs2.util.{Actor,Future}
 
 /*
 `Task` is a trampolined computation producing an `A` that may

@@ -15,10 +15,10 @@ Laws:
 
 `Pull` forms a monad with `pure` and `flatMap`:
 
-  * pure >=> f == f
-  * f >=> pure == f
-  * (f >=> g) >=> h == f >=> (g >=> h)
-  where f >=> g is defined as `a => a flatMap f flatMap g`
+  * `pure >=> f == f`
+  * `f >=> pure == f`
+  * `(f >=> g) >=> h == f >=> (g >=> h)`
+  where `f >=> g` is defined as `a => a flatMap f flatMap g`
 
 */
 trait Pulls[Pull[+_[_],+_,+_]] {

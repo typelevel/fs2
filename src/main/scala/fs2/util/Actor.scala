@@ -1,5 +1,6 @@
 package fs2.util
 
+import fs2.Strategy
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.{Callable,ExecutorService}
 import scala.concurrent.ExecutionContext
