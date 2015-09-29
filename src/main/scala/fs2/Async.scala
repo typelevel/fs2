@@ -19,7 +19,12 @@ trait Async[F[_]] extends Monad[F] {
   /**
    * Obtain the value of the `Ref`, or wait until it has been `set`.
    */
-  def get[A](q: Ref[A]): F[A]
+  def get[A](r: Ref[A]): F[A]
+
+  /**
+   * Like `get`, but returns an `F[Unit]` that can be used cancel the subscription.
+   */
+  def cancellableGet[A](r: Ref[A]): F[(F[A], F[Unit])]
 
   /**
    * Chooses nondeterministically between `a map (Left(_))` and

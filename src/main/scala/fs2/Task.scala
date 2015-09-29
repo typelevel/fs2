@@ -263,7 +263,7 @@ object Task extends Instances {
   private trait Msg[A]
   private object Msg {
     case class Get[A](callback: Either[Throwable,A] => Unit, id: Long => Unit) extends Msg[A]
-    case class Nevermind[A](id: Long) extends Msg[A]
+    case class Nevermind[A](id: () => Long) extends Msg[A]
     case class Set[A](result: Either[Throwable,A]) extends Msg[A]
   }
 
@@ -282,7 +282,7 @@ object Task extends Instances {
         waiting.values.foreach(cb => S { cb(r) })
         waiting = LongMap.empty
       case Msg.Nevermind(id) =>
-        waiting -= id
+        waiting -= id()
     } (S)
     new Ref(act)
   }
@@ -301,6 +301,14 @@ object Task extends Instances {
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
     def get: Task[A] = Task.async { cb => actor ! Msg.Get(cb, _ => ()) }
+
+    /** Like `get`, but returns a `Task[Unit]` that can be used cancel the subscription. */
+    def cancellableGet: Task[(Task[A], Task[Unit])] = Task.delay {
+      val id = new java.util.concurrent.atomic.AtomicLong(-1)
+      val get = Task.async[A] { cb => actor ! Msg.Get(cb, i => id.set(i)) }
+      val cancel = Task.delay { actor ! Msg.Nevermind(() => id.get) }
+      (get, cancel)
+    }
 
     /**
      * Runs `t1` and `t2` simultaneously, but only the winner gets to
@@ -348,6 +356,7 @@ private[fs2] trait Instances extends Instances1 {
     def set[A](p: Ref[A])(t: Task[A]) = p.set(t)
     def setFree[A](p: Ref[A])(t: Free[Task,A]) = p.setFree(t)
     def get[A](p: Ref[A]): Task[A] = p.get
+    def cancellableGet[A](p: Ref[A]) = p.cancellableGet
     override def race[A,B](t1: Task[A], t2: Task[B]): Task[Either[A,B]] = t1 race t2
   }
 }
