@@ -18,8 +18,8 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
     pull(s)(Pull.loop(using))
 
   def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep1[F,A]] =
-    h.awaitAsync map { f =>
-      F.map(f) { _.map { case Step(hd, tl) => hd.uncons match {
+    h.awaitAsync map { _ map { _.map {
+      case Step(hd, tl) => hd.uncons match {
         case None => Step(None, tl)
         case Some((h,hs)) => Step(Some(h), tl.push(hs))
       }}}

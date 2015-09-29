@@ -76,7 +76,7 @@ private[fs2] trait pull1 {
    */
   def prefetch[F[_]:Async,I](h: Handle[F,I]): Pull[F,Nothing,Pull[F,Nothing,Handle[F,I]]] =
     h.awaitAsync map { fut =>
-      Pull.eval(fut) flatMap { p =>
+      fut.force flatMap { p =>
         p map { case hd #: h => h push hd }
       }
     }
