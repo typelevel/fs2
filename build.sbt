@@ -124,7 +124,7 @@ lazy val mimaSettings = {
   import com.typesafe.tools.mima.plugin.MimaPlugin.mimaDefaultSettings
 
   mimaDefaultSettings ++ Seq(
-    previousArtifact := MiMa.targetVersion(version.value).map(organization.value %% name.value % _),
+    previousArtifact := MiMa.targetVersion(git.baseVersion.value).map(organization.value %% name.value % _),
     binaryIssueFilters ++= ignoredABIProblems
   )
 }
