@@ -1,7 +1,7 @@
-package fs2
+package fs2.util
 
-import fs2.UF1._
-import fs2.util.Trampoline
+import fs2.util.UF1._
+import fs2.internal.Trampoline
 
 sealed trait Free[+F[_],+A] {
   import Free._

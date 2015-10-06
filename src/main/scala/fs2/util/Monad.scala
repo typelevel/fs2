@@ -1,4 +1,4 @@
-package fs2
+package fs2.util
 
 trait Monad[F[_]] extends Functor[F] {
   def map[A,B](a: F[A])(f: A => B): F[B] = bind(a)(f andThen (pure))

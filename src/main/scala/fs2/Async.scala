@@ -1,6 +1,7 @@
 package fs2
 
 import Async.Future
+import fs2.util.{Free,Monad}
 
 trait Async[F[_]] extends Monad[F] { self =>
   type Ref[A]
@@ -33,24 +34,9 @@ trait Async[F[_]] extends Monad[F] { self =>
    * Like `get`, but returns an `F[Unit]` that can be used cancel the subscription.
    */
   def cancellableGet[A](r: Ref[A]): F[(F[A], F[Unit])]
-
-  /**
-   * Chooses nondeterministically between `a map (Left(_))` and
-   * `a2 map (Right(_))`. Result must be equivalent to one of
-   * these two expressions. */
-  def race[A,B](a: F[A], a2: F[B]): F[Either[A,B]] =
-    bind(ref[Either[A,B]]) { ref =>
-    bind(set(ref)(map(a)(Left(_)))) { _ =>
-    bind(set(ref)(map(a2)(Right(_)))) { _ =>
-    get(ref)
-    }}}
 }
 
 object Async {
-
-  implicit class Syntax[F[_],A](a: F[A]) {
-    def race[B](b: F[B])(implicit F: Async[F]): F[Either[A,B]] = F.race(a,b)
-  }
 
   trait Future[F[_],A] { self =>
     def get: F[A]

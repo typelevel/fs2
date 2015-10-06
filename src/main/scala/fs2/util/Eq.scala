@@ -1,4 +1,5 @@
 package fs2
+package util
 
 private[fs2] sealed trait Eq[A,B] {
   def flip: Eq[B,A] = this.asInstanceOf[Eq[B,A]]

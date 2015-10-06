@@ -1,4 +1,4 @@
-package fs2
+package fs2.util
 
 /**
  * A `RealSupertype[A,B]` is evidence that `A <: B`.

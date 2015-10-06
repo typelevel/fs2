@@ -1,6 +1,8 @@
 package fs2
 
 import Step.{#:}
+import fs2.util.Free
+import fs2.util.UF1.{~>}
 
 trait Streams[Stream[+_[_],+_]] { self =>
 
@@ -22,7 +24,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   // translating effects
 
-  def translate[F[_],G[_],W](s: Stream[F,W])(u: UF1[F,G]): Stream[G,W]
+  def translate[F[_],G[_],W](s: Stream[F,W])(u: F ~> G): Stream[G,W]
 
   // failure and error recovery
 

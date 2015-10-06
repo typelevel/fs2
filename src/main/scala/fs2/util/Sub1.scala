@@ -1,4 +1,5 @@
 package fs2
+package util
 
 /** A `Sub[F,G]` is evidence that `forall x . F[x] <: G[x]` */
 sealed trait Sub1[-F[_],+G[_]] {

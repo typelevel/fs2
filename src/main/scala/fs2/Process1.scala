@@ -2,6 +2,7 @@ package fs2
 
 import Stream.Handle
 import Step._
+import fs2.util.{Free,Functor,Sub1}
 
 object process1 {
 

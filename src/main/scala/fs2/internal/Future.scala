@@ -1,4 +1,4 @@
-package fs2.util
+package fs2.internal
 
 import collection.JavaConversions._
 import java.util.concurrent.atomic.{AtomicInteger, AtomicBoolean, AtomicReference}

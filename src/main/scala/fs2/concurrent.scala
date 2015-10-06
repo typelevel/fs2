@@ -1,8 +1,8 @@
 package fs2
 
-import Async.Future
 import Step.{#:}
 import Stream.Handle
+import Async.Future
 
 object concurrent {
 

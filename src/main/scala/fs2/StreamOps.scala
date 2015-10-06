@@ -1,6 +1,7 @@
 package fs2
 
 import process1.Process1
+import fs2.util.{Free,RealSupertype}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`

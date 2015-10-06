@@ -1,7 +1,8 @@
 package fs2
 
 import collection.immutable.SortedSet
-import fs2.util.Trampoline
+import fs2.internal.Trampoline
+import fs2.util.{Eq,RealSupertype,Sub1}
 
 trait Pull[+F[_],+W,+R] extends PullOps[F,W,R] {
   import Pull.Stack

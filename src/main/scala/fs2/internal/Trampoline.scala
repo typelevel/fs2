@@ -1,4 +1,4 @@
-package fs2.util
+package fs2.internal
 
 private[fs2] sealed trait Trampoline[+A] {
   import Trampoline._
@@ -11,7 +11,7 @@ private[fs2] sealed trait Trampoline[+A] {
   def run: A = Trampoline.run(this)
 }
 
-object Trampoline {
+private[fs2] object Trampoline {
   private case class Return[A](a: A) extends Trampoline[A]
   private case class Suspend[A](resume: () => A) extends Trampoline[A]
   private case class FlatMap[A,B](sub: Trampoline[A], k: A => Trampoline[B]) extends Trampoline[B]

@@ -4,6 +4,7 @@ import org.scalacheck.Prop._
 import org.scalacheck._
 
 import java.util.concurrent.atomic.AtomicInteger
+import fs2.util._
 
 class StreamsSpec extends Properties("Stream") {
 

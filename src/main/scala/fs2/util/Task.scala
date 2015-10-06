@@ -1,10 +1,11 @@
 package fs2
+package util
 
 import java.util.concurrent.{ScheduledExecutorService, ConcurrentLinkedQueue, ExecutorService, Executors}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import collection.JavaConversions._
 import scala.concurrent.duration._
-import fs2.util.{Actor,Future}
+import fs2.internal.{Actor,Future}
 
 /*
 `Task` is a trampolined computation producing an `A` that may

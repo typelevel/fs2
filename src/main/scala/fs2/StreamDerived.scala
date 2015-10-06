@@ -1,6 +1,7 @@
 package fs2
 
 import Step.#:
+import fs2.util.RealSupertype
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2] trait StreamDerived { self: fs2.Stream.type =>

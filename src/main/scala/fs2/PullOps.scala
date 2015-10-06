@@ -1,5 +1,7 @@
 package fs2
 
+import fs2.util.RealSupertype
+
 private[fs2]
 trait PullOps[+F[_],+W,+R] { self: Pull[F,W,R] =>
 

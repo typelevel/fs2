@@ -1,4 +1,4 @@
-package fs2.util
+package fs2.internal
 
 import fs2.Strategy
 import java.util.concurrent.atomic.AtomicReference
@@ -35,7 +35,7 @@ import scala.concurrent.ExecutionContext
  * @param strategy Execution strategy, for example, a strategy that is backed by an `ExecutorService`
  * @tparam A       The type of messages accepted by this actor.
  */
-final case class Actor[A](handler: A => Unit, onError: Throwable => Unit = ActorUtils.rethrowError)
+private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable => Unit = ActorUtils.rethrowError)
                          (implicit val strategy: Strategy) {
   private val head = new AtomicReference[Node[A]]
 
@@ -83,7 +83,7 @@ private object ActorUtils {
   val rethrowError: Throwable => Unit = throw _
 }
 
-object Actor {
+private[fs2] object Actor {
 
   def actor[A](handler: A => Unit, onError: Throwable => Unit = ActorUtils.rethrowError)
               (implicit s: Strategy): Actor[A] = new Actor[A](handler, onError)(s)
