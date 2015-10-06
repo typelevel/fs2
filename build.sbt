@@ -101,6 +101,25 @@ OsgiKeys.importPackage := Seq(
   "*"
 )
 
+val ignoredABIProblems = {
+  import com.typesafe.tools.mima.core._
+  import com.typesafe.tools.mima.core.ProblemFilters._
+
+  Seq()
+}
+
+lazy val mimaSettings = {
+  import com.typesafe.tools.mima.plugin.MimaKeys.{binaryIssueFilters, previousArtifact}
+  import com.typesafe.tools.mima.plugin.MimaPlugin.mimaDefaultSettings
+
+  mimaDefaultSettings ++ Seq(
+    previousArtifact := MiMa.targetVersion(version.value).map(organization.value %% name.value % _),
+    binaryIssueFilters ++= ignoredABIProblems
+  )
+}
+
+mimaSettings
+
 parallelExecution in Test := false
 
 autoAPIMappings := true
