@@ -23,7 +23,7 @@ git.formattedShaVersion := {
 
 scalaVersion := "2.11.7"
 
-crossScalaVersions := Seq("2.10.5", "2.11.7", "2.12.0-M1", "2.12.0-M2")
+crossScalaVersions := Seq("2.10.5", "2.11.7", "2.12.0-M2")
 
 scalacOptions ++= Seq(
   "-feature",
