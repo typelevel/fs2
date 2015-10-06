@@ -24,7 +24,7 @@ import java.util.concurrent.ScheduledExecutorService
 class CauseSpec extends Properties("cause") {
   implicit val S: ScheduledExecutorService = DefaultScheduler
 
-  property("suspend") = secure {
+  property("suspend") = protect {
     val source = Process(1, 2, 3).toSource
     val halted: Process[Task, Int] = halt
     val failed: Process[Task, Int] = fail(Bwahahaa)
@@ -40,7 +40,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("pipe.terminated.p1") = secure {
+  property("pipe.terminated.p1") = protect {
     val source = Process(1) ++ Process(2) ++ Process(3).toSource
     var upReason: Option[Cause] = None
     var downReason: Option[Cause] = None
@@ -56,7 +56,7 @@ class CauseSpec extends Properties("cause") {
     .&&(downReason == Some(End))
   }
 
-  property("pipe.terminated.p1.flatMap.repeatEval") = secure {
+  property("pipe.terminated.p1.flatMap.repeatEval") = protect {
     val source = repeatEval(Task.now(1))
     var upReason: Option[Cause] = None
     var downReason: Option[Cause] = None
@@ -73,7 +73,7 @@ class CauseSpec extends Properties("cause") {
     .&&(downReason == Some(End))
   }
 
-  property("pipe.terminated.p1.with.upstream") = secure {
+  property("pipe.terminated.p1.with.upstream") = protect {
     val source = emitAll(Seq(1,2,3)).toSource
     var upReason: Option[Cause] = None
     var downReason: Option[Cause] = None
@@ -91,7 +91,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("pipe.terminated.upstream") = secure {
+  property("pipe.terminated.upstream") = protect {
     val source = emitAll(Seq(1,2,3)).toSource
     var id1Reason: Option[Cause] = None
     var downReason: Option[Cause] = None
@@ -107,7 +107,7 @@ class CauseSpec extends Properties("cause") {
     .&&(downReason == Some(End))
   }
 
-  property("pipe.killed.upstream") = secure {
+  property("pipe.killed.upstream") = protect {
     val source = (Process(1) ++ Process(2).kill).toSource
     var id1Reason: Option[Cause] = None
     var downReason: Option[Cause] = None
@@ -124,7 +124,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("tee.terminated.tee") = secure {
+  property("tee.terminated.tee") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -145,7 +145,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("tee.terminated.tee.onLeft") = secure {
+  property("tee.terminated.tee.onLeft") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -166,7 +166,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("tee.terminated.tee.onRight") = secure {
+  property("tee.terminated.tee.onRight") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -187,7 +187,7 @@ class CauseSpec extends Properties("cause") {
     .&& (processReason == Some(End))
   }
 
-  property("tee.terminated.left.onLeft") = secure {
+  property("tee.terminated.left.onLeft") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -211,7 +211,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("tee.terminated.right.onRight") = secure {
+  property("tee.terminated.right.onRight") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -234,7 +234,7 @@ class CauseSpec extends Properties("cause") {
     .&& (teeReason == Some(Kill))
   }
 
-  property("tee.terminated.leftAndRight.onLeftAndRight") = secure {
+  property("tee.terminated.leftAndRight.onLeftAndRight") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -257,7 +257,7 @@ class CauseSpec extends Properties("cause") {
     .&& (teeReason == Some(Kill)) //killed due left input exhausted awaiting left branch
   }
 
-  property("tee.terminated.leftAndRight.onRightAndLeft") = secure {
+  property("tee.terminated.leftAndRight.onRightAndLeft") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -280,7 +280,7 @@ class CauseSpec extends Properties("cause") {
     .&& (teeReason == Some(Kill)) //killed due right input exhausted awaiting right branch
   }
 
-  property("tee.terminated.downstream") = secure {
+  property("tee.terminated.downstream") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -304,7 +304,7 @@ class CauseSpec extends Properties("cause") {
     .&& (teeReason == Some(Kill)) //Tee is killed because downstream terminated
   }
 
-  property("tee.kill.left") = secure {
+  property("tee.kill.left") = protect {
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
     var teeReason: Option[Cause] = None
@@ -328,7 +328,7 @@ class CauseSpec extends Properties("cause") {
     .&& (beforePipeReason == Some(Kill))
   }
 
-  property("tee.kill.right") = secure {
+  property("tee.kill.right") = protect {
     var leftReason: Option[Cause] = None
     var processReason: Option[Cause] = None
     var teeReason: Option[Cause] = None
@@ -354,7 +354,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("tee.pipe.kill") = secure {
+  property("tee.pipe.kill") = protect {
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
     var teeReason: Option[Cause] = None
@@ -383,7 +383,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("wye.terminated.wye") = secure {
+  property("wye.terminated.wye") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -404,7 +404,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("wye.terminated.wye.onLeft") = secure {
+  property("wye.terminated.wye.onLeft") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -426,7 +426,7 @@ class CauseSpec extends Properties("cause") {
     .&& (processReason == Some(End))
   }
 
-  property("wye.terminated.wye.onRight") = secure {
+  property("wye.terminated.wye.onRight") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
@@ -449,7 +449,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("wye.kill.merge.onLeft") = secure {
+  property("wye.kill.merge.onLeft") = protect {
     var rightReason: Option[Cause] = None
     var processReason: Option[Cause] = None
     var wyeReason: Option[Cause] = None
@@ -470,7 +470,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("wye.kill.merge.onRight") = secure {
+  property("wye.kill.merge.onRight") = protect {
     var leftReason: Option[Cause] = None
     var processReason: Option[Cause] = None
     var wyeReason: Option[Cause] = None
@@ -490,7 +490,7 @@ class CauseSpec extends Properties("cause") {
     .&& (processReason == Some(Kill))
   }
 
-  property("wye.kill.downstream") = secure {
+  property("wye.kill.downstream") = protect {
     var leftReason: Option[Cause] = None
     var rightReason: Option[Cause] = None
     var pipeReason: Option[Cause] = None
@@ -517,7 +517,7 @@ class CauseSpec extends Properties("cause") {
   }
 
 
-  property("pipe, tee, wye does not swallow Kill from outside") = secure {
+  property("pipe, tee, wye does not swallow Kill from outside") = protect {
     val p1 = await1 onHalt { x => Process(1, 2).causedBy(x) }
 
     // Read from the left then from the right.

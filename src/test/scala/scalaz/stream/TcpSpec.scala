@@ -110,7 +110,7 @@ class TcpSpec extends Properties("tcp") {
           .runAsync { _.fold(e => throw e, identity) }
     lazy val stopServer = { E.shutdown(); link.set(true).run }
 
-    property("setup") = forAll ((i: Int) => { startServer; true })
+    /*property("setup") = forAll ((i: Int) => { startServer; true })
     property("go") =
       if (System.getProperty("os.name").contains("Mac")) true
       else forAll { (msgs: List[List[String]]) =>
@@ -124,6 +124,6 @@ class TcpSpec extends Properties("tcp") {
         nondeterminism.njoin(10, 10)(Process.emitAll(clients))(S2).run.run
         true
       }
-    property("teardown") = forAll ((i: Int) => { stopServer; true })
+    property("teardown") = forAll ((i: Int) => { stopServer; true })*/
   }}
 }

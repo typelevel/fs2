@@ -63,7 +63,7 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   // https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt
 
   // 2.1 First possible sequence of a certain length
-  property("2.1") = secure {
+  property("2.1") = protect {
     ("2.1.1" |: checkBytes(0x00)) &&
     ("2.1.2" |: checkBytes(0xc2, 0x80)) &&
     ("2.1.3" |: checkBytes(0xe0, 0xa0, 0x80)) &&
@@ -73,7 +73,7 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   // 2.2 Last possible sequence of a certain length
-  property("2.2") = secure {
+  property("2.2") = protect {
     ("2.2.1" |: checkBytes(0x7f)) &&
     ("2.2.2" |: checkBytes(0xdf, 0xbf)) &&
     ("2.2.3" |: checkBytes(0xef, 0xbf, 0xbf)) &&
@@ -83,7 +83,7 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   // 2.3 Other boundary conditions
-  property("2.3") = secure {
+  property("2.3") = protect {
     ("2.3.1" |: checkBytes(0xed, 0x9f, 0xbf)) &&
     ("2.3.2" |: checkBytes(0xee, 0x80, 0x80)) &&
     ("2.3.3" |: checkBytes(0xef, 0xbf, 0xbd)) &&
@@ -92,20 +92,20 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   // 3.1 Unexpected continuation bytes
-  property("3.1") = secure {
+  property("3.1") = protect {
     ("3.1.1" |: checkBytes(0x80)) &&
     ("3.1.2" |: checkBytes(0xbf))
   }
 
   // 3.5 Impossible bytes
-  property("3.5") = secure {
+  property("3.5") = protect {
     ("3.5.1" |: checkBytes(0xfe)) &&
     ("3.5.2" |: checkBytes(0xff)) &&
     ("3.5.3" |: checkBytes2(0xfe, 0xfe, 0xff, 0xff))
   }
 
   // 4.1 Examples of an overlong ASCII character
-  property("4.1") = secure {
+  property("4.1") = protect {
     ("4.1.1" |: checkBytes(0xc0, 0xaf)) &&
     ("4.1.2" |: checkBytes(0xe0, 0x80, 0xaf)) &&
     ("4.1.3" |: checkBytes(0xf0, 0x80, 0x80, 0xaf)) &&
@@ -114,7 +114,7 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   // 4.2 Maximum overlong sequences
-  property("4.2") = secure {
+  property("4.2") = protect {
     ("4.2.1" |: checkBytes(0xc1, 0xbf)) &&
     ("4.2.2" |: checkBytes(0xe0, 0x9f, 0xbf)) &&
     ("4.2.3" |: checkBytes(0xf0, 0x8f, 0xbf, 0xbf)) &&
@@ -123,7 +123,7 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   // 4.3 Overlong representation of the NUL character
-  property("4.3") = secure {
+  property("4.3") = protect {
     ("4.3.1" |: checkBytes(0xc0, 0x80)) &&
     ("4.3.2" |: checkBytes(0xe0, 0x80, 0x80)) &&
     ("4.3.3" |: checkBytes(0xf0, 0x80, 0x80, 0x80)) &&
@@ -132,7 +132,7 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   // 5.1 Single UTF-16 surrogates
-  property("5.1") = secure {
+  property("5.1") = protect {
     ("5.1.1" |: checkBytes(0xed, 0xa0, 0x80)) &&
     ("5.1.2" |: checkBytes(0xed, 0xad, 0xbf)) &&
     ("5.1.3" |: checkBytes(0xed, 0xae, 0x80)) &&
@@ -143,7 +143,7 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   // 5.2 Paired UTF-16 surrogates
-  property("5.2") = secure {
+  property("5.2") = protect {
     ("5.2.1" |: checkBytes2(0xed, 0xa0, 0x80, 0xed, 0xb0, 0x80)) &&
     ("5.2.2" |: checkBytes2(0xed, 0xa0, 0x80, 0xed, 0xbf, 0xbf)) &&
     ("5.2.3" |: checkBytes2(0xed, 0xad, 0xbf, 0xed, 0xb0, 0x80)) &&
@@ -155,7 +155,7 @@ class Utf8DecodeSpec extends Properties("text.utf8Decode") {
   }
 
   // 5.3 Other illegal code positions
-  property("5.3") = secure {
+  property("5.3") = protect {
     ("5.3.1" |: checkBytes(0xef, 0xbf, 0xbe)) &&
     ("5.3.2" |: checkBytes(0xef, 0xbf, 0xbf))
   }

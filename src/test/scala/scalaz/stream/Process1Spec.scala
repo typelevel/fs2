@@ -128,7 +128,7 @@ class Process1Spec extends Properties("Process1") {
     }
   }
 
-  property("inner-cleanup") = secure {
+  property("inner-cleanup") = protect {
     val p = Process.range(0,20).toSource
     var called  = false
     ((p onComplete suspend{ called = true ; halt})
@@ -136,21 +136,21 @@ class Process1Spec extends Properties("Process1") {
       .&&("cleanup was called" |: called)
   }
 
-  property("chunk") = secure {
+  property("chunk") = protect {
     Process(0, 1, 2, 3, 4).chunk(2).toList === List(Vector(0, 1), Vector(2, 3), Vector(4))
   }
 
-  property("chunkBy") = secure {
+  property("chunkBy") = protect {
     emitAll("foo bar baz").chunkBy(_ != ' ').toList.map(_.mkString) === List("foo ", "bar ", "baz")
   }
 
-  property("chunkBy2") = secure {
+  property("chunkBy2") = protect {
     val p = Process(3, 5, 4, 3, 1, 2, 6)
     p.chunkBy2(_ < _).toList === List(Vector(3, 5), Vector(4), Vector(3), Vector(1, 2, 6)) &&
     p.chunkBy2(_ > _).toList === List(Vector(3), Vector(5, 4, 3, 1), Vector(2), Vector(6))
   }
 
-  property("distinctConsecutive") = secure {
+  property("distinctConsecutive") = protect {
     Process[Int]().distinctConsecutive.toList.isEmpty &&
     Process(1, 2, 3, 4).distinctConsecutive.toList === List(1, 2, 3, 4) &&
     Process(1, 1, 2, 2, 3, 3, 4, 3).distinctConsecutive.toList === List(1, 2, 3, 4, 3) &&
@@ -158,7 +158,7 @@ class Process1Spec extends Properties("Process1") {
       List("1", "33", "5", "66")
   }
 
-  property("drainLeading") = secure {
+  property("drainLeading") = protect {
     val p = emit(1) ++ await1[Int]
     Process().pipe(p).toList === List(1) &&
     Process().pipe(drainLeading(p)).toList.isEmpty &&
@@ -177,7 +177,7 @@ class Process1Spec extends Properties("Process1") {
     results.toList === (xs.scan(init)(f) drop 1)
   }
 
-  property("repartition") = secure {
+  property("repartition") = protect {
     Process("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ")).toList ===
       List("Lorem", "ipsum", "dolor", "sit", "amet") &&
     Process("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ===
@@ -188,7 +188,7 @@ class Process1Spec extends Properties("Process1") {
     Process("hello").repartition(_ => Vector()).toList.isEmpty
   }
 
-  property("repartition2") = secure {
+  property("repartition2") = protect {
     Process("he", "ll", "o").repartition2(s => (Some(s), None)).toList ===
       List("he", "ll", "o") &&
     Process("he", "ll", "o").repartition2(s => (None, Some(s))).toList ===
@@ -198,17 +198,17 @@ class Process1Spec extends Properties("Process1") {
     Process("he", "ll", "o").repartition2(_ => (None, None)).toList.isEmpty
   }
 
-  property("splitOn") = secure {
+  property("splitOn") = protect {
     Process(0, 1, 2, 3, 4).splitOn(2).toList === List(Vector(0, 1), Vector(3, 4)) &&
     Process(2, 0, 1, 2).splitOn(2).toList === List(Vector(), Vector(0, 1), Vector()) &&
     Process(2, 2).splitOn(2).toList === List(Vector(), Vector(), Vector())
   }
 
-  property("stripNone") = secure {
+  property("stripNone") = protect {
     Process(None, Some(1), None, Some(2), None).pipe(stripNone).toList === List(1, 2)
   }
 
-  property("terminated") = secure {
+  property("terminated") = protect {
     Process[Int]().terminated.toList === List(None) &&
     Process(1, 2, 3).terminated.toList === List(Some(1), Some(2), Some(3), None)
   }
@@ -217,19 +217,19 @@ class Process1Spec extends Properties("Process1") {
     pi.pipe(unchunk).toList === pi.toList.flatten
   }
 
-  property("zipWithPrevious") = secure {
+  property("zipWithPrevious") = protect {
     range(0, 0).zipWithPrevious.toList.isEmpty &&
     range(0, 1).zipWithPrevious.toList === List((None, 0)) &&
     range(0, 3).zipWithPrevious.toList === List((None, 0), (Some(0), 1), (Some(1), 2))
   }
 
-  property("zipWithNext") = secure {
+  property("zipWithNext") = protect {
     range(0, 0).zipWithNext.toList.isEmpty &&
     range(0, 1).zipWithNext.toList === List((0, None)) &&
     range(0, 3).zipWithNext.toList === List((0, Some(1)), (1, Some(2)), (2, None))
   }
 
-  property("zipWithPreviousAndNext") = secure {
+  property("zipWithPreviousAndNext") = protect {
     range(0, 0).zipWithPreviousAndNext.toList.isEmpty &&
     range(0, 1).zipWithPreviousAndNext.toList === List((None, 0, None)) &&
     range(0, 3).zipWithPreviousAndNext.toList === List((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))

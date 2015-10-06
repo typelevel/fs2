@@ -674,7 +674,7 @@ object wye {
             Either3.middle3((_: Cause) => ()) //rest the interrupt so it won't get interrupted again
 
           case Right3(cont) =>
-            (Halt(Kill) +: cont) stepAsync { _ => a ! Ready[A](side, -\/(Kill)) }
+            (Halt(Kill) +: cont) stepAsync { res => a ! Ready[A](side, res) }
             Either3.middle3((_: Cause) => ()) // no-op cleanup can't be interrupted
 
           case left@Left3(_) =>

@@ -17,11 +17,11 @@ class CompressSpec extends Properties("compress") {
   def foldBytes(bytes: List[ByteVector]): ByteVector =
     bytes.fold(ByteVector.empty)(_ ++ _)
 
-  property("deflate.empty input") = secure {
+  property("deflate.empty input") = protect {
     Process[ByteVector]().pipe(deflate()).toList.isEmpty
   }
 
-  property("inflate.empty input") = secure {
+  property("inflate.empty input") = protect {
     Process[ByteVector]().pipe(inflate()).toList.isEmpty
   }
 
@@ -53,7 +53,7 @@ class CompressSpec extends Properties("compress") {
     foldBytes(input) == foldBytes(inflated)
   }
 
-  property("deflate.compresses input") = secure {
+  property("deflate.compresses input") = protect {
     val uncompressed = getBytes(
       """"
         |"A type system is a tractable syntactic method for proving the absence
@@ -65,7 +65,7 @@ class CompressSpec extends Properties("compress") {
     compressed.length < uncompressed.length
   }
 
-  property("inflate.uncompressed input") = secure {
+  property("inflate.uncompressed input") = protect {
     emit(getBytes("Hello")).pipe(inflate()).attempt().toList match {
       case List(-\/(ex: java.util.zip.DataFormatException)) => true
       case _ => false

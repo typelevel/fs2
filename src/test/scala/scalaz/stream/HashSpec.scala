@@ -33,7 +33,7 @@ class HashSpec extends Properties("hash") {
     ("sha512" |: checkDigest(sha512, "SHA-512", s))
   }
 
-  property("empty input") = secure {
+  property("empty input") = protect {
     Process[ByteVector]().pipe(md2).toList.isEmpty
   }
 
@@ -48,7 +48,7 @@ class HashSpec extends Properties("hash") {
     }
   }
 
-  property("thread-safety") = secure {
+  property("thread-safety") = protect {
     val proc = range(1,100).toSource
       .map(i => ByteVector.view(i.toString.getBytes))
       .pipe(sha512).map(Tag.unwrap(_).toSeq)

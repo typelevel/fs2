@@ -166,13 +166,13 @@ class AsyncSignalSpec extends Properties("async.signal") {
 
 
   //tests a signal from discrete process
-  property("from.discrete") = secure {
+  property("from.discrete") = protect {
     val sig = async.toSignal[Int](Process(1,2,3,4).toSource)
     sig.discrete.take(4).runLog.run == Vector(1,2,3,4)
   }
 
   //tests that signal terminates when discrete process terminates
-  property("from.discrete.terminates") = secure {
+  property("from.discrete.terminates") = protect {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
     val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource)
     val initial = sig.discrete.runLog.run
@@ -181,7 +181,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
   }
 
   //tests that signal terminates with failure when discrete process terminates with failure
-  property("from.discrete.fail") = secure {
+  property("from.discrete.fail") = protect {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
     val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa))
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
@@ -189,13 +189,13 @@ class AsyncSignalSpec extends Properties("async.signal") {
 
   // tests that signal terminates with failure when discrete
   // process terminates with failure even when haltOnSource is set to false
-  property("from.discrete.fail.always") = secure {
+  property("from.discrete.fail.always") = protect {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
     val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa))
     sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
   }
 
-  property("continuous") = secure {
+  property("continuous") = protect {
     val sig = async.signalUnset[Int]
     time.awakeEvery(100.millis)
       .zip(Process.range(1, 13))
@@ -220,14 +220,14 @@ class AsyncSignalSpec extends Properties("async.signal") {
   }
 
 
-  property("signalOf.init.value") = secure {
+  property("signalOf.init.value") = protect {
     val timer = time.sleep(1.second)
     val signal = async.signalOf(0)
 
     (eval_(signal.set(1)) ++ signal.discrete.once ++ timer ++ signal.discrete.once).runLog.run ?= Vector(1,1)
   }
 
-  property("signalOf.init.value.cas") = secure {
+  property("signalOf.init.value.cas") = protect {
     val s = async.signalOf("init")
 
     val resultsM = for {
