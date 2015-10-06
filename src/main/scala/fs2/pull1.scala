@@ -53,23 +53,6 @@ private[fs2] trait pull1 {
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
     h => awaitN(n)(h) map { case buf #: h => buf.reverse.foldLeft(h)(_ push _) }
 
-  /** Write all inputs to the output of the returned `Pull`. */
-  def id[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => for {
-      chunk #: h <- h.await
-      tl <- Pull.write(chunk) >> id(h)
-    } yield tl
-
-  /**
-   * Write all inputs to the output of the returned `Pull`, transforming elements using `f`.
-   * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
-   */
-  def lift[F[_],W,W2](f: W => W2): Handle[F,W] => Pull[F,W2,Handle[F,W]] =
-    h => for {
-      chunk #: h <- h.await
-      tl <- Pull.write(chunk map f) >> lift(f)(h)
-    } yield tl
-
   /**
    * Like `[[await]]`, but runs the `await` asynchronously. A `flatMap` into
    * inner `Pull` logically blocks until this await completes.
@@ -96,19 +79,4 @@ private[fs2] trait pull1 {
         }
       } yield tl
     }
-
-  def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
-    def go(prev: Option[I]): Handle[F,I] => Pull[F,Nothing,Option[I]] =
-      h => h.await.optional.flatMap {
-        case None => Pull.pure(prev)
-        case Some(c #: h) => go(c.foldLeft(prev)((_,i) => Some(i)))(h)
-      }
-    go(None)
-  }
-
-  def take[F[_],I](n: Int): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => for {
-      chunk #: h <- if (n <= 0) Pull.done else awaitLimit(n)(h)
-      tl <- Pull.write(chunk) >> take(n - chunk.size)(h)
-    } yield tl
 }

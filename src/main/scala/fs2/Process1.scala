@@ -14,14 +14,58 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
-  def id[W]: Process1[W,W] =
-    new Process1[W,W] { def run[F[_]] = _.pull[F,W](Pull.id) }
+  def id[I]: Process1[I,I] =
+    new Process1[I,I] { def run[F[_]] = _.pull[F,I](pull.id) }
 
-  def lift[W,W2](f: W => W2): Process1[W,W2] =
-    new Process1[W,W2] { def run[F[_]] = _.pull(Pull.lift(f)) }
+  def last[I]: Process1[I,Option[I]] =
+    new Process1[I,Option[I]] { def run[F[_]] =
+      _.pull[F,Option[I]](h => pull.last(h).flatMap(Pull.write1))
+    }
 
-  def take[W](n: Int): Process1[W,W] =
-    new Process1[W,W] { def run[F[_]] = _.pull(Pull.take(n)) }
+  def lift[I,O](f: I => O): Process1[I,O] =
+    new Process1[I,O] { def run[F[_]] = _.pull(pull.lift(f)) }
+
+  def take[I](n: Int): Process1[I,I] =
+    new Process1[I,I] { def run[F[_]] = _.pull(pull.take(n)) }
+
+  object pull {
+
+    /** Write all inputs to the output of the returned `Pull`. */
+    def id[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
+      h => for {
+        chunk #: h <- h.await
+        tl <- Pull.write(chunk) >> id(h)
+      } yield tl
+
+    /** Return the last element of the input `Handle`, if nonempty. */
+    def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
+      def go(prev: Option[I]): Handle[F,I] => Pull[F,Nothing,Option[I]] =
+        h => h.await.optional.flatMap {
+          case None => Pull.pure(prev)
+          case Some(c #: h) => go(c.foldLeft(prev)((_,i) => Some(i)))(h)
+        }
+      go(None)
+    }
+
+    /**
+     * Write all inputs to the output of the returned `Pull`, transforming elements using `f`.
+     * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
+     */
+    def lift[F[_],I,O](f: I => O): Handle[F,I] => Pull[F,O,Handle[F,I]] =
+      h => for {
+        chunk #: h <- h.await
+        tl <- Pull.write(chunk map f) >> lift(f)(h)
+      } yield tl
+
+    /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
+    def take[F[_],I](n: Int): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+      h => for {
+        chunk #: h <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
+        tl <- Pull.write(chunk) >> take(n - chunk.size)(h)
+      } yield tl
+  }
+
+  // stepping a process
 
   def stepper[I,O](p: Process1[I,O]): Stepper[I,O] = {
     type Read[+R] = Option[Chunk[I]] => R
