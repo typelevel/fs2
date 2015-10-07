@@ -67,7 +67,7 @@ object process1 {
    */
   def chunkBy[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I, Vector[I]] =
-      receive1Or[I,Vector[I]](emit(acc)) { i =>
+      receive1Or[I,Vector[I]](if (acc.nonEmpty) emit(acc) else halt) { i =>
         val chunk = acc :+ i
         val cur = f(i)
         if (!cur && last) emit(chunk) ++ go(Vector(), false)
@@ -552,7 +552,7 @@ object process1 {
   /** Throws any input exceptions and passes along successful results. */
   def rethrow[A]: Process1[Throwable \/ A, A] =
     id[Throwable \/ A].flatMap {
-      case -\/(err) => throw err
+      case -\/(err) => Process.fail(err)
       case \/-(a)   => emit(a)
     }
 

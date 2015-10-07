@@ -4,6 +4,7 @@ import Cause._
 import org.scalacheck.Prop._
 import org.scalacheck.Properties
 
+import scalaz.-\/
 import scalaz.concurrent.Task
 import scalaz.stream.Process._
 import scalaz.syntax.equal._
@@ -551,4 +552,12 @@ class CauseSpec extends Properties("cause") {
 
     (fromPipe.get == Kill) && (fromTee.get == Kill) && (fromWye.get == Kill)
   }
+
+
+  property("chunkall.once.propagate.exception.when.empty") = protect {
+    val source:Process[Task,Int] = fail(Bwahahaa)
+    source.chunkAll.once.attempt().runLog.run ?= Vector(-\/(Bwahahaa))
+  }
+
+
 }
