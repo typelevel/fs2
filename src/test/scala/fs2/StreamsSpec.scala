@@ -5,6 +5,7 @@ import org.scalacheck._
 
 import java.util.concurrent.atomic.AtomicInteger
 import fs2.util._
+import fs2.TestUtil._
 
 class StreamsSpec extends Properties("Stream") {
 
@@ -143,20 +144,10 @@ class StreamsSpec extends Properties("Stream") {
     println(msg + " took " + total + " milliseconds")
     result
   }
-  def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.run
 
   def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
     s.runLog.run.attemptRun match {
       case Left(e) if e == err => true
       case _ => false
     }
-
-  implicit class EqualsOp[A](s: Stream[Task,A]) {
-    def ===(v: Vector[A]) = run(s) == v
-    def ==?(v: Vector[A]) = {
-      val l = run(s)
-      val r = v
-      l == r || { println("left: " + l); println("right: " + r); false }
-    }
-  }
 }
