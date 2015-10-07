@@ -67,12 +67,15 @@ object process1 {
    */
   def chunkBy[I](f: I => Boolean): Process1[I, Vector[I]] = {
     def go(acc: Vector[I], last: Boolean): Process1[I, Vector[I]] =
-      receive1Or[I,Vector[I]](if (acc.nonEmpty) emit(acc) else halt) { i =>
+      awaitOr(Get[I])({
+        case Kill => emit(acc)
+        case error => Halt(error)
+      })({ i =>
         val chunk = acc :+ i
         val cur = f(i)
         if (!cur && last) emit(chunk) ++ go(Vector(), false)
         else go(chunk, cur)
-      }
+      })
     go(Vector(), false)
   }
 
