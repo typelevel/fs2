@@ -39,7 +39,7 @@ libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-concurrent" % "7.1.3",
   "org.scodec" %% "scodec-bits" % "1.0.9",
   "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.3" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.12.4" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
 )
 
 sonatypeProfileName := "org.scalaz"
@@ -105,9 +105,10 @@ parallelExecution in Test := false
 
 autoAPIMappings := true
 
-apiURL := Some(url(s"http://docs.typelevel.org/api/scalaz-stream/stable/${version.value}/doc/"))
-
-initialCommands := "import scalaz.stream._"
+initialCommands := s"""
+  import fs2._
+  import fs2.util._
+"""
 
 doctestWithDependencies := false
 
