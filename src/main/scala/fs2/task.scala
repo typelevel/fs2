@@ -21,17 +21,26 @@ object task {
   def async1[O](register: (Either[Throwable,O] => Unit) => Unit): Stream[Task,O] =
     Stream.eval(Task.async(register))
 
+  // todo: I have a feeling that strictly returning an `Ack` will not
+  // be possible, might need to do:
+  // def queue(register: (Input[O], Ack[O] => Unit) => Unit): Task[Stream[Task,O]]
+
   /**
    * Function for converting a multiple-use callback to a `Stream`.
-   * The `register` parameter will invoke the given callback multiple times
-   * with an `Input[O]`, which can be used to control termination of the
-   * output `Stream`.
    *
-   * The output `Stream` has queue-like semantics. If the returned `Stream` is
-   * reference in multiple locations, each chunk sent by the callback will be consumed
-   * by only one such location.
+   * The output `Stream` has queue-like semantics--chunks added to the queue
+   * accumulate until they are consumed in LIFO order, and in the event of
+   * multiple consumers, chunks will be delivered to at most one consumer.
    */
-  def asyncs[O](register: (Input[O] => Ack[O]) => Unit): Task[Stream[Task,O]] = ???
+  def queue[O](register: (Input[O] => Ack[O]) => Unit): Task[Stream[Task,O]] = ???
 
+  /**
+   * Function for converting a multiple-use callback to a `Stream`.
+   *
+   * The output `Stream` has signal-like semantics--chunks are retained only
+   * until the next produced chunk arrives, and may not be seen by any consumer
+   * depending on the consumer's rate of processing. In the event of multiple
+   * consumers, chunks will be delivered to potentially all consumers.
+   */
   def signal[O](w: O)(register: (Input[O] => Ack[O]) => Unit): Task[Stream[Task,O]] = ???
 }
