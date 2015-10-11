@@ -1,6 +1,7 @@
 package fs2
 
 import fs2.util.Task
+import org.scalacheck.{Arbitrary, Gen}
 
 object TestUtil {
 
@@ -14,4 +15,11 @@ object TestUtil {
       l == r || { println("left: " + l); println("right: " + r); false }
     }
   }
+
+  val nonEmptyNestedVectorGen = for {
+    sizeOuter <- Gen.choose(1, 10)
+    sizeInner <- Gen.choose(1, 10)
+    inner = Gen.listOfN(sizeInner, Arbitrary.arbInt.arbitrary).map(_.toVector)
+    outer <- Gen.listOfN(sizeOuter, inner).map(_.toVector)
+  } yield outer
 }

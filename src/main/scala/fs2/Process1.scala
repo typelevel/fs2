@@ -14,6 +14,9 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
+  def chunks[I]: Process1[I,Chunk[I]] =
+    new Process1[I,Chunk[I]] { def run[F[_]] = _.pull[F,Chunk[I]](pull.chunks) }
+
   def id[I]: Process1[I,I] =
     new Process1[I,I] { def run[F[_]] = _.pull[F,I](pull.id) }
 
@@ -29,6 +32,12 @@ object process1 {
     new Process1[I,I] { def run[F[_]] = _.pull(pull.take(n)) }
 
   object pull {
+
+    def chunks[F[_],I]: Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
+      h => for {
+        chunk #: h <- h.await
+        tl <- Pull.write1(chunk) >> chunks(h)
+      } yield tl
 
     /** Write all inputs to the output of the returned `Pull`. */
     def id[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
