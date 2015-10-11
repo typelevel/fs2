@@ -8,6 +8,11 @@ import org.scalacheck.{Gen, Properties}
 
 class Process1Spec extends Properties("process1") {
 
+  property("chunks") = forAll(nonEmptyNestedVectorGen) { (v: Vector[Vector[Int]]) =>
+    val s = v.map(emitAll).reduce(_ ++ _)
+    s.pipe(chunks).map(_.toVector) ==? v
+  }
+
   property("last") = forAll { (v: Vector[Int]) =>
     emitAll(v).pipe(last) ==? Vector(v.lastOption)
   }
@@ -21,5 +26,8 @@ class Process1Spec extends Properties("process1") {
     emitAll(v).pipe(take(n)) ==? v.take(n)
   }
 
-  // TODO: test chunkiness. How do we do this?
+  property("take.chunks") = secure {
+    val s = Stream(1, 2) ++ Stream(3, 4)
+    s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
+  }
 }
