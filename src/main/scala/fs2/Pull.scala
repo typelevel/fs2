@@ -125,7 +125,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       }
   }
 
-  def writes[F[_],W](s: Stream[F,W]) = new Pull[F,W,Unit] {
+  def outputs[F[_],W](s: Stream[F,W]) = new Pull[F,W,Unit] {
     type R = Unit
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]

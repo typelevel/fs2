@@ -24,13 +24,13 @@ Laws:
 trait Pulls[Pull[+_[_],+_,+_]] {
   type Stream[+F[_],+W]
 
-  /** The completed `Pull`. Reads and writes nothing. */
+  /** The completed `Pull`. Reads and outputs nothing. */
   def done: Pull[Nothing,Nothing,Nothing]
 
-  /** The `Pull` that reads and writes nothing, and fails with the given error. */
+  /** The `Pull` that reads and outputs nothing, and fails with the given error. */
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing]
 
-  /** The `Pull` that reads and writes nothing, and succeeds with the given value, `R`. */
+  /** The `Pull` that reads and outputs nothing, and succeeds with the given value, `R`. */
   def pure[R](a: R): Pull[Nothing,Nothing,R]
 
   /** If `p` terminates with `fail(e)`, invoke `handle(e)`. */
@@ -43,7 +43,7 @@ trait Pulls[Pull[+_[_],+_,+_]] {
   def eval[F[_],R](f: F[R]): Pull[F,Nothing,R]
 
   /** Write a stream to the output of this `Pull`. */
-  def writes[F[_],W](s: Stream[F,W]): Pull[F,W,Unit]
+  def outputs[F[_],W](s: Stream[F,W]): Pull[F,W,Unit]
 
   /**
    * Consult `p2` if `p` fails due to an `await` on an exhausted `Handle`.

@@ -8,7 +8,7 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
   def apply[W](a: W*): Stream[Nothing,W] = self.chunk(Chunk.seq(a))
 
-  def writes[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.writes(s)
+  def outputs[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.outputs(s)
 
   def pull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Any])
   : Stream[F,B] =
@@ -43,7 +43,10 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
   def emit[F[_],A](a: A): Stream[F,A] = chunk(Chunk.singleton(a))
 
+  @deprecated("use Stream.emits", "0.9")
   def emitAll[F[_],A](as: Seq[A]): Stream[F,A] = chunk(Chunk.seq(as))
+
+  def emits[F[_],W](a: Seq[W]): Stream[F,W] = self.chunk(Chunk.seq(a))
 
   def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] =
     flatMap(emit(())) { _ => try s catch { case t: Throwable => fail(t) } }
@@ -83,5 +86,10 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
       Pull[F2, Nothing, AsyncStep[F2,A2]] = self.awaitAsync(h)
     def await1Async[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
       Pull[F2, Nothing, AsyncStep1[F2,A2]] = self.await1Async(h)
+  }
+
+  implicit class PullSyntax[F[_],A](s: Stream[F,A]) {
+    def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
+      Stream.pull(s)(using)
   }
 }

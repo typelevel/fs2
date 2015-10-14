@@ -1,15 +1,14 @@
 package fs2
 
 import process1.Process1
-import fs2.util.{Free,RealSupertype}
+import fs2.util.{Free,RealSupertype,Sub1}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`
  * for syntactic convenience.
  */
 private[fs2]
-trait StreamOps[+F[_],+A]
-  /* extends Process1Ops[F,A] with TeeOps[F,A] with WyeOps[F,A] */ {
+trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeOps[F,A] */ {
   self: Stream[F,A] =>
 
   import Stream.Handle
@@ -35,7 +34,7 @@ trait StreamOps[+F[_],+A]
 
   def pipe[B](f: Process1[A,B]): Stream[F,B] = f(self)
 
-  def pull[F2[x]>:F[x],B](using: Handle[F2,A] => Pull[F2,B,Any]): Stream[F2,B] =
+  def pullv[F2[x]>:F[x],B](using: Handle[F2,A] => Pull[F2,B,Any]): Stream[F2,B] =
     Stream.pull(self: Stream[F2,A])(using)
 
   def repeatPull[F2[x]>:F[x],A2>:A,B](using: Handle[F2,A2] => Pull[F2,B,Handle[F2,A2]]): Stream[F2,B] =

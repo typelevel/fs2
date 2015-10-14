@@ -43,11 +43,11 @@ private[fs2] trait pull1 {
 
   /** Copy the next available chunk to the output. */
   def copy[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.write(chunk) >> Pull.pure(h) }
+    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }
 
   /** Copy the next available element to the output. */
   def copy1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await1 flatMap { case hd #: h => Pull.write1(hd) >> Pull.pure(h) }
+    h => h.await1 flatMap { case hd #: h => Pull.output1(hd) >> Pull.pure(h) }
 
   /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =

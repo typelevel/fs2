@@ -2,7 +2,7 @@ package fs2
 
 import Stream.Handle
 import Step._
-import fs2.util.{Free,Functor,Sub1}
+import fs2.util.{Free,Functor,NotNothing,Sub1}
 
 object process1 {
 
@@ -15,15 +15,13 @@ object process1 {
   // nb: methods are in alphabetical order
 
   def chunks[I]: Process1[I,Chunk[I]] =
-    new Process1[I,Chunk[I]] { def run[F[_]] = _.pull[F,Chunk[I]](pull.chunks) }
+    new Process1[I,Chunk[I]] { def run[F[_]] = _.pull(pull.chunks) }
 
   def id[I]: Process1[I,I] =
-    new Process1[I,I] { def run[F[_]] = _.pull[F,I](pull.id) }
+    new Process1[I,I] { def run[F[_]] = _.pull(pull.id) }
 
   def last[I]: Process1[I,Option[I]] =
-    new Process1[I,Option[I]] { def run[F[_]] =
-      _.pull[F,Option[I]](h => pull.last(h).flatMap(Pull.write1))
-    }
+    new Process1[I,Option[I]] { def run[F[_]] = _.pull(h => pull.last(h).flatMap(Pull.output1)) }
 
   def lift[I,O](f: I => O): Process1[I,O] =
     new Process1[I,O] { def run[F[_]] = _.pull(pull.lift(f)) }
@@ -34,16 +32,13 @@ object process1 {
   object pull {
 
     def chunks[F[_],I]: Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
-      h => for {
-        chunk #: h <- h.await
-        tl <- Pull.write1(chunk) >> chunks(h)
-      } yield tl
+      h => h.await flatMap { case chunk #: h => Pull.output1(chunk) >> chunks(h) }
 
     /** Write all inputs to the output of the returned `Pull`. */
     def id[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
       h => for {
         chunk #: h <- h.await
-        tl <- Pull.write(chunk) >> id(h)
+        tl <- Pull.output(chunk) >> id(h)
       } yield tl
 
     /** Return the last element of the input `Handle`, if nonempty. */
@@ -61,17 +56,13 @@ object process1 {
      * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
      */
     def lift[F[_],I,O](f: I => O): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-      h => for {
-        chunk #: h <- h.await
-        tl <- Pull.write(chunk map f) >> lift(f)(h)
-      } yield tl
+      h => h.await flatMap { case chunk #: h => Pull.output(chunk map f) >> lift(f)(h) }
 
     /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
-    def take[F[_],I](n: Int): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-      h => for {
-        chunk #: h <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
-        tl <- Pull.write(chunk) >> take(n - chunk.size)(h)
-      } yield tl
+    def take[F[_],I](n: Int)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+      h => (if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)) flatMap {
+        case chunk #: h => Pull.output(chunk) >> take(n - chunk.size).apply(h)
+      }
   }
 
   // stepping a process
@@ -92,7 +83,7 @@ object process1 {
     def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
-        case List() => s.stream.step.flatMap { s => Pull.write1(s) }
+        case List() => s.stream.step.flatMap { s => Pull.output1(s) }
          .run.runFold(None: Option[Step[Chunk[O],Handle[Read, O]]])(
           (_,s) => Some(s))
       }

@@ -84,7 +84,7 @@ class StreamsSpec extends Properties("Stream") {
       (chunk(Chunk.seq(0 until N)): Stream[Task,Int]).repeatPull { (s: Handle[Task,Int]) =>
         for {
           s2 <- s.await1
-          _ <- Pull.write1(s2.head)
+          _ <- Pull.output1(s2.head)
         } yield s2.tail
       } ==? Vector.range(0,N) }
     }

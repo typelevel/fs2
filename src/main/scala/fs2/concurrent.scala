@@ -26,7 +26,7 @@ object concurrent {
             case Some(out #: h) =>
               // winner has more values, write these to output
               // and update the handle for the winning position
-              Pull.write(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
+              Pull.output(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
           }
         }
       // C) Like B), but we are allowed to open more handles, so race opening a new handle
@@ -38,7 +38,7 @@ object concurrent {
           case Left(winner) => winner.get.optional.flatMap {
             case None => go(s, onlyOpen, winner.delete)
             case Some(out #: h) =>
-              Pull.write(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
+              Pull.output(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
           }
           case Right(anotherOpen) =>
             anotherOpen.optional.flatMap {

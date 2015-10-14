@@ -2,17 +2,24 @@ package fs2
 package util
 
 /** A `Sub[F,G]` is evidence that `forall x . F[x] <: G[x]` */
-sealed trait Sub1[-F[_],+G[_]] {
+sealed trait Sub1[-F[_],G[_]] {
   def apply[A](f: F[A]): G[A] =
     Sub1.subst[({ type ap[h[_],x] = h[x] })#ap, F, G, A](f)(this)
 }
 
-private[fs2] trait Sub1Instances {
-  implicit def sub1[F[_]]: Sub1[F,F] = new Sub1[F,F] {}
+private[fs2] trait Sub1Instances1 {
+  /** Okay to promote a `Pure` to any other `F`. */
+  implicit def pureIsSub1[F[_]]: Sub1[Pure,F] = new Sub1[Pure,F] {}
 }
 
-object Sub1 extends Sub1Instances {
-  implicit def nothingIsSub1: Sub1[Nothing,Nothing] = new Sub1[Nothing,Nothing] {}
+private[fs2] trait Sub1Instances0 extends Sub1Instances1 {
+  /** Prefer to stay `Pure`. */
+  implicit def pureIsSub1Refl: Sub1[Pure,Pure] = new Sub1[Pure,Pure] {}
+}
+
+object Sub1 extends Sub1Instances0 {
+
+  implicit def sub1[F[_]]: Sub1[F,F] = new Sub1[F,F] {}
 
   /** Safely coerce an `H[F,x]` to an `H[G,x]`. */
   def subst[H[_[_],_], F[_], G[_], x](hf: H[F,x])(implicit S: Sub1[F,G]): H[G,x] =

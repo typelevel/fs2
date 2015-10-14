@@ -6,10 +6,10 @@ trait PullDerived { self: fs2.Pull.type =>
     flatMap(p)(f andThen pure)
 
   /** Write a single `W` to the output of this `Pull`. */
-  def write1[F[_],W](w: W): Pull[F,W,Unit] = writes(Stream.emit(w))
+  def output1[F[_],W](w: W): Pull[F,W,Unit] = outputs(Stream.emit(w))
 
   /** Write a `Chunk[W]` to the output of this `Pull`. */
-  def write[F[_],W](w: Chunk[W]): Pull[F,W,Unit] = writes(Stream.chunk(w))
+  def output[F[_],W](w: Chunk[W]): Pull[F,W,Unit] = outputs(Stream.chunk(w))
 
   /**
    * Repeatedly use the output of the `Pull` as input for the next step of the pull.
