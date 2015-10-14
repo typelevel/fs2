@@ -1,16 +1,16 @@
 package fs2
 
 import Step.{#:}
-import fs2.util.Free
+import fs2.util.{Free,NotNothing}
 import fs2.util.UF1.{~>}
 
 trait Streams[Stream[+_[_],+_]] { self =>
 
   // list-like operations
 
-  def empty[A]: Stream[Nothing,A] = chunk[A](Chunk.empty)
+  def empty[F[_],A](implicit F: NotNothing[F]): Stream[F,A] = chunk(Chunk.empty: Chunk[A])
 
-  def chunk[A](as: Chunk[A]): Stream[Nothing,A]
+  def chunk[F[_],A](as: Chunk[A])(implicit F: NotNothing[F]): Stream[F,A]
 
   def append[F[_],A](a: Stream[F,A], b: => Stream[F,A]): Stream[F,A]
 
@@ -28,7 +28,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   // failure and error recovery
 
-  def fail(e: Throwable): Stream[Nothing,Nothing]
+  def fail(e: Throwable): Stream[Pure,Nothing]
 
   def onError[F[_],A](p: Stream[F,A])(handle: Throwable => Stream[F,A]): Stream[F,A]
 

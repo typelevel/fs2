@@ -36,7 +36,7 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
     onError(append(p, mask(regardless))) { err => append(mask(regardless), fail(err)) }
 
   def mask[F[_],A](a: Stream[F,A]): Stream[F,A] =
-    onError(a)(_ => empty[A])
+    onError(a)(_ => empty)
 
   def map[F[_],A,B](a: Stream[F,A])(f: A => B): Stream[F,B] =
     Stream.map(a)(f)
@@ -92,4 +92,6 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
     def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
       Stream.pull(s)(using)
   }
+
+  implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]
 }

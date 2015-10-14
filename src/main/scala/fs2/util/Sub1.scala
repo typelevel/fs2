@@ -13,12 +13,12 @@ private[fs2] trait Sub1Instances1 {
 }
 
 private[fs2] trait Sub1Instances0 extends Sub1Instances1 {
-  /** Prefer to stay `Pure`. */
+  /** Coax to `Pure` if `Nothing`. */
   implicit def pureIsSub1Refl: Sub1[Pure,Pure] = new Sub1[Pure,Pure] {}
 }
 
 object Sub1 extends Sub1Instances0 {
-
+  /** Prefer to match exactly. */
   implicit def sub1[F[_]]: Sub1[F,F] = new Sub1[F,F] {}
 
   /** Safely coerce an `H[F,x]` to an `H[G,x]`. */

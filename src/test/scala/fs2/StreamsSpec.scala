@@ -23,11 +23,11 @@ class StreamsSpec extends Properties("Stream") {
 
   property("++") = secure { emit(1) ++ emit(2) === Vector(1,2) }
 
-  def ranges(N: Int): List[Stream[Nothing,Int]] = List(
+  def ranges(N: Int): List[Stream[Pure,Int]] = List(
     // left associated ++
     (1 until N).map(emit).foldLeft(emit(0))(_ ++ _),
     // right associated ++
-    Chunk.seq((0 until N) map emit).foldRight(empty: Stream[Nothing,Int])(_ ++ _)
+    Chunk.seq((0 until N) map emit).foldRight(empty: Stream[Pure,Int])(_ ++ _)
   )
 
   property("map") = secure {
@@ -43,7 +43,7 @@ class StreamsSpec extends Properties("Stream") {
     }}
 
     property("right-associated ++") = secure { Ns.forall { N =>
-      Chunk.seq((0 until N).map(emit)).foldRight(empty: Stream[Nothing,Int])(_ ++ _) ===
+      Chunk.seq((0 until N).map(emit)).foldRight(empty: Stream[Pure,Int])(_ ++ _) ===
       Vector.range(0,N)
     }}
 

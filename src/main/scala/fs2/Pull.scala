@@ -130,7 +130,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       =
-      Sub1.substStream(s).append(pure(())._run0(tracked, k))(RealSupertype[W,W2])
+      Sub1.substStream(s).append(pure(())._run0(tracked, k))
   }
 
   def or[F[_],W,R](p1: Pull[F,W,R], p2: => Pull[F,W,R]): Pull[F,W,R] = new Pull[F,W,R] {

@@ -53,6 +53,16 @@ private[fs2] trait pull1 {
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
     h => awaitN(n)(h) map { case buf #: h => buf.reverse.foldLeft(h)(_ push _) }
 
+  /** Return the last element of the input `Handle`, if nonempty. */
+  def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
+    def go(prev: Option[I]): Handle[F,I] => Pull[F,Nothing,Option[I]] =
+      h => h.await.optional.flatMap {
+        case None => Pull.pure(prev)
+        case Some(c #: h) => go(c.foldLeft(prev)((_,i) => Some(i)))(h)
+      }
+    go(None)
+  }
+
   /**
    * Like `[[await]]`, but runs the `await` asynchronously. A `flatMap` into
    * inner `Pull` logically blocks until this await completes.

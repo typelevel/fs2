@@ -77,11 +77,10 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
 
 object Stream extends Streams[Stream] with StreamDerived {
 
-  def chunk[W](c: Chunk[W]) = new Stream[Nothing,W] { self =>
-    type F[x] = Nothing
+  def chunk[F[_],W](c: Chunk[W])(implicit F: NotNothing[F]) = new Stream[F,W] { self =>
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
-      g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
+      g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       k (
         (segments,eq) => segments match {
@@ -94,7 +93,7 @@ object Stream extends Streams[Stream] with StreamDerived {
         },
         new k.H[Free[F2,O]] { def f[x] = (segments, bindf, tl) => {
           if (c.isEmpty) { // empty.flatMap(f) == empty
-            if (segments.isEmpty) empty._runFold0(nextID, tracked, tl)(g,z)
+            if (segments.isEmpty) empty[F2,x]._runFold0(nextID, tracked, tl)(g,z)
             else {
               val (hd, tls) = Stack.succeed(segments)
               hd._runFold0(nextID, tracked, tl.pushBind(bindf).pushSegments(tls))(g, z)
@@ -102,13 +101,13 @@ object Stream extends Streams[Stream] with StreamDerived {
           }
           else {
             val c2 = bindf.fold(
-              mapf => chunk(c map mapf),
+              mapf => chunk(c map mapf)(Sub1.sub1[F2]),
               bindf => c.foldRight(None: Option[Stream[F2,x]])(
                 (w,acc) => acc match {
                   case None => Some(bindf(w))
                   case Some(acc) => Some(Stream.append(bindf(w), acc))
                 }
-              ).getOrElse(empty)
+              ).getOrElse(empty(F).covary[F2](S))
             )
             val bsegments = bindf.fold(
               mapf => Stack.mapSegments(segments)(mapf),
@@ -118,17 +117,17 @@ object Stream extends Streams[Stream] with StreamDerived {
         }}
       )
 
-    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
       = if (c.isEmpty) Pull.orRight(rights.map(_.step))
         else Pull.pure(Step(c, new Handle(List(), concatRight(rights))))
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
-      implicit S: Sub1[Nothing,F2], F2: Async[F2])
+      implicit S: Sub1[F,F2], F2: Async[F2])
       : Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
       = _step1(rights).map(step => Future.pure(Pull.pure(step)))
 
-    def translate[G[_]](uf1: Nothing ~> G): Stream[G,W] = self
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] = chunk[G,W](c)
   }
 
   def fail(err: Throwable) = new Stream[Nothing,Nothing] { self =>
@@ -240,7 +239,7 @@ object Stream extends Streams[Stream] with StreamDerived {
         Sub1.substStream(s).step flatMap { case Step(hd, tl) => hd.uncons match {
           case None => (tl.stream flatMap f2)._step0(rights)
           case Some((ch,ct)) =>
-            f2(ch)._step0(chunk(ct).flatMap(f2) ::
+            f2(ch)._step0(chunk(ct)(Sub1.sub1[F2]).flatMap(f2) ::
                           tl.stream.flatMap(f2) ::
                           rights)
         }}
@@ -255,7 +254,7 @@ object Stream extends Streams[Stream] with StreamDerived {
           pull.flatMap { case Step(hd, tl) => hd.uncons match {
             case None => (tl.stream flatMap f2)._step0(rights)
             case Some((ch,ct)) =>
-              f2(ch)._step0(chunk(ct).flatMap(f2) ::
+              f2(ch)._step0(chunk(ct)(Sub1.sub1[F2]).flatMap(f2) ::
                             tl.stream.flatMap(f2) ::
                             rights)
           }}
