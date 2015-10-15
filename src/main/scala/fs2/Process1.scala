@@ -39,6 +39,10 @@ object process1 {
       case chunk #: h => Pull.output(chunk) >> take(n - chunk.size).apply(h)
     }
 
+  /** Convert the input to a stream of solely 1-element chunks. */
+  def unchunk[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    h => h.await1 flatMap { case i #: h => Pull.output1(i) >> unchunk.apply(h) }
+
   // stepping a process
 
   def covary[F[_],I,O](p: Process1[I,O]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
