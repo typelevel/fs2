@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import fs2.util._
 import fs2.TestUtil._
 
-class StreamsSpec extends Properties("Stream") {
+object StreamsSpec extends Properties("Stream") {
 
   import Stream._
 

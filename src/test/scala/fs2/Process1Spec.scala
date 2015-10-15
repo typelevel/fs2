@@ -9,21 +9,27 @@ import org.scalacheck.{Gen, Properties}
 class Process1Spec extends Properties("process1") {
 
   property("chunks") = forAll(nonEmptyNestedVectorGen) { (v: Vector[Vector[Int]]) =>
-    val s = v.map(emitAll).reduce(_ ++ _)
+    val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
     s.pipe(chunks).map(_.toVector) ==? v
   }
 
+  // NB: this test currently fails
+  property("chunks (2)") = forAll(nestedVectorGen[Int](0,10,emptyChunks = true)) { (v: Vector[Vector[Int]]) =>
+    val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
+    s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
+  }
+
   property("last") = forAll { (v: Vector[Int]) =>
-    emitAll(v).pipe(last) ==? Vector(v.lastOption)
+    emits(v).pipe(last) ==? Vector(v.lastOption)
   }
 
   property("lift") = forAll { (v: Vector[Int]) =>
-    emitAll(v).pipe(lift(_.toString)) ==? v.map(_.toString)
+    emits(v).pipe(lift(_.toString)) ==? v.map(_.toString)
   }
 
   property("take") = forAll { (v: Vector[Int]) =>
     val n = Gen.choose(-1, 20).sample.get
-    emitAll(v).pipe(take(n)) ==? v.take(n)
+    emits(v).pipe(take(n)) ==? v.take(n)
   }
 
   property("take.chunks") = secure {
