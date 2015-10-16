@@ -48,9 +48,6 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
   def emits[F[_],W](a: Seq[W])(implicit F: NotNothing[F]): Stream[F,W] = chunk(Chunk.seq(a))
 
-  def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] =
-    emit(()) flatMap { _ => try s catch { case t: Throwable => fail(t) } }
-
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     flatMap(eval(f))(p => p)
 

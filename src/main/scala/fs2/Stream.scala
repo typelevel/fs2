@@ -285,10 +285,10 @@ object Stream extends Streams[Stream] with StreamDerived {
           pull.flatMap { case Step(hd, tl) => hd.uncons match {
             case None => (tl.stream flatMap f2)._step0(rights)
             case Some((ch,ct)) =>
-              // todo - as above
-              f2(ch)._step0(chunk(ct)(Sub1.sub1[F2]).flatMap(f2) ::
-                            tl.stream.flatMap(f2) ::
-                            rights)
+              val tls = tl.stream
+              val rights1 = if (tls.isEmpty) rights else tls.flatMap(f2) :: rights
+              val rights2 = if (ct.isEmpty) rights1 else chunk(ct)(util.notNothing[F2]).flatMap(f2) :: rights1
+              f2(ch)._step0(rights2)
           }}
         }}
         if (rights.nonEmpty) s2 or rights.head._stepAsync0(rights.tail)
@@ -447,6 +447,30 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def bracket[F[_],R,W](r: F[R])(use: R => Stream[F,W], cleanup: R => F[Unit]) =
     scope { id => onComplete(acquire(id, r, cleanup) flatMap use, release(id)) }
+
+  /**
+   * Produce a `Stream` nonstrictly, catching exceptions. `suspend { p }` behaves
+   * the same as `emit(()).flatMap { _ => p }`.
+   */
+  def suspend[F[_],W](self: => Stream[F,W]): Stream[F,W] = new Stream[F,W] {
+    def _runFold1[F2[_],O,W2>:W,W3](
+      nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
+      g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
+      = self._runFold0(nextID, tracked, k)(g, z)
+
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+      : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
+      = self._step0(rights)
+
+    def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
+      implicit S: Sub1[F,F2], F2: Async[F2])
+      : Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+      = self._stepAsync0(rights)
+
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] =
+      suspend { try self.translate(uf1) catch { case e: Throwable => fail(e) } }
+  }
+
 
   def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) =
     if (c.isEmpty) h

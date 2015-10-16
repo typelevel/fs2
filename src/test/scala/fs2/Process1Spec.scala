@@ -19,15 +19,18 @@ object Process1Spec extends Properties("process1") {
     s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
   }
 
-  // NB: this test fails
-  //property("performance of multi-stage pipeline") = secure {
-  //  println("checking performance of multistage pipeline... this should finish instantly")
-  //  val v = Vector.fill(1000)(Vector.empty[Int])
-  //  val s = (v.map(Stream.emits): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
-  //  s.pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id) ==? Vector()
-  //  println("done checking performance")
-  //  true
-  //}
+  property("performance of multi-stage pipeline") = secure {
+    println("checking performance of multistage pipeline... this should finish quickly")
+    val v = Vector.fill(1000)(Vector.empty[Int])
+    val v2 = Vector.fill(1000)(Vector(0))
+    val s = (v.map(Stream.emits): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
+    val s2 = (v2.map(Stream.emits(_)): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
+    val start = System.currentTimeMillis
+    s.pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id) ==? Vector()
+    s2.pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id) ==? Vector.fill(1000)(0)
+    println("done checking performance; took " + (System.currentTimeMillis - start) + " milliseconds")
+    true
+  }
 
   property("last") = forAll { (v: Vector[Int]) =>
     emits(v).pipe(last) ==? Vector(v.lastOption)
