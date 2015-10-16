@@ -1,7 +1,7 @@
 package fs2
 
 import Step.#:
-import fs2.util.RealSupertype
+import fs2.util.{NotNothing,RealSupertype}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2] trait StreamDerived { self: fs2.Stream.type =>
@@ -41,15 +41,15 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def map[F[_],A,B](a: Stream[F,A])(f: A => B): Stream[F,B] =
     Stream.map(a)(f)
 
-  def emit[F[_],A](a: A): Stream[F,A] = chunk(Chunk.singleton(a))
+  def emit[F[_],A](a: A)(implicit F: NotNothing[F]): Stream[F,A] = chunk(Chunk.singleton(a))
 
   @deprecated("use Stream.emits", "0.9")
-  def emitAll[F[_],A](as: Seq[A]): Stream[F,A] = chunk(Chunk.seq(as))
+  def emitAll[F[_],A](as: Seq[A])(implicit F: NotNothing[F]): Stream[F,A] = chunk(Chunk.seq(as))
 
-  def emits[F[_],W](a: Seq[W]): Stream[F,W] = self.chunk(Chunk.seq(a))
+  def emits[F[_],W](a: Seq[W])(implicit F: NotNothing[F]): Stream[F,W] = chunk(Chunk.seq(a))
 
   def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] =
-    flatMap(emit(())) { _ => try s catch { case t: Throwable => fail(t) } }
+    emit(()) flatMap { _ => try s catch { case t: Throwable => fail(t) } }
 
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     flatMap(eval(f))(p => p)

@@ -13,6 +13,8 @@ import fs2.Async.Future
 trait Stream[+F[_],+W] extends StreamOps[F,W] {
   import Stream.Stack
 
+  def isEmpty: Boolean = false
+
   def runFold[O](g: (O,W) => O)(z: O): Free[F, O] =
     _runFold0(0, LongMap.empty, Stream.Stack.empty[F,W])(g, z)
 
@@ -78,6 +80,8 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
 object Stream extends Streams[Stream] with StreamDerived {
 
   def chunk[F[_],W](c: Chunk[W])(implicit F: NotNothing[F]) = new Stream[F,W] { self =>
+    override def isEmpty = c.isEmpty
+
     def _runFold1[F2[_],O,W2>:W,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
@@ -100,14 +104,14 @@ object Stream extends Streams[Stream] with StreamDerived {
             }
           }
           else {
-            val c2 = bindf.fold(
-              mapf => chunk(c map mapf)(Sub1.sub1[F2]),
+            val c2: Stream[F2,x] = bindf.fold(
+              mapf => chunk[F2,x](c map mapf),
               bindf => c.foldRight(None: Option[Stream[F2,x]])(
                 (w,acc) => acc match {
                   case None => Some(bindf(w))
                   case Some(acc) => Some(Stream.append(bindf(w), acc))
                 }
-              ).getOrElse(empty(F).covary[F2](S))
+              ).getOrElse(empty[F2,x])
             )
             val bsegments = bindf.fold(
               mapf => Stack.mapSegments(segments)(mapf),
@@ -119,8 +123,12 @@ object Stream extends Streams[Stream] with StreamDerived {
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
-      = if (c.isEmpty) Pull.orRight(rights.map(_.step))
-        else Pull.pure(Step(c, new Handle(List(), concatRight(rights))))
+      = if (c.isEmpty) { // NB: for some reason, scala can't handle matching on `rights`
+          if (rights.nonEmpty) rights.head._step0(rights.tail)
+          else Pull.done
+        }
+        else
+          Pull.pure(Step(c, new Handle(List(), concatRight(rights))))
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
       implicit S: Sub1[F,F2], F2: Async[F2])
@@ -128,6 +136,8 @@ object Stream extends Streams[Stream] with StreamDerived {
       = _step1(rights).map(step => Future.pure(Pull.pure(step)))
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] = chunk[G,W](c)
+
+    override def toString = "Stream(" + c.iterator.mkString(", ") + ")"
   }
 
   def fail(err: Throwable) = new Stream[Nothing,Nothing] { self =>
@@ -171,7 +181,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       =
       Free.attemptEval(S(f)) flatMap {
         case Left(e) => fail(e)._runFold0(nextID, tracked, k)(g, z)
-        case Right(a) => emit(a)._runFold0(nextID, tracked, k)(g, z)
+        case Right(a) => emit(a)(util.notNothing[F2])._runFold0(nextID, tracked, k)(g, z)
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
@@ -208,16 +218,34 @@ object Stream extends Streams[Stream] with StreamDerived {
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
-      =
-      Sub1.substStream(s).step map { case Step(hd, tl) => Step(hd map f, tl map f) }
+      = {
+        val s2 = Sub1.substStream(s).step map { case Step(hd, tl) =>
+          Step(hd map f, {
+            val h = tl.map(f)
+            new Handle(h.buffer, if (rights.nonEmpty) h.underlying ++ concatRight(rights) else h.underlying)
+          })
+        }
+        if (rights.nonEmpty) s2 or rights.head._step0(rights.tail)
+        else s2
+      }
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
       implicit S: Sub1[F,F2], F2: Async[F2])
       : Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
-      =
-      Sub1.substStream(s).stepAsync map { _ map { pull =>
-        pull.map { case Step(hd, tl) => Step(hd map f, tl map f) }
-      }}
+      = {
+        val s2
+          : Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
+          = Sub1.substStream(s).stepAsync map { _ map { pull =>
+          pull.map { case Step(hd, tl) =>
+            Step(hd map f, {
+              val h = tl.map(f)
+              new Handle(h.buffer, if (rights.nonEmpty) h.underlying ++ concatRight(rights) else h.underlying)
+            })
+          }
+        }}
+        if (rights.nonEmpty) s2 or rights.head._stepAsync0(rights.tail)
+        else s2
+      }
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] =
       suspend { s.translate(uf1) map f }
@@ -236,13 +264,16 @@ object Stream extends Streams[Stream] with StreamDerived {
       : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
       = {
         val f2: W0 => Stream[F2,W] = Sub1.substStreamF(f)
-        Sub1.substStream(s).step flatMap { case Step(hd, tl) => hd.uncons match {
+        val s2 = Sub1.substStream(s).step flatMap { case Step(hd, tl) => hd.uncons match {
           case None => (tl.stream flatMap f2)._step0(rights)
-          case Some((ch,ct)) =>
-            f2(ch)._step0(chunk(ct)(Sub1.sub1[F2]).flatMap(f2) ::
-                          tl.stream.flatMap(f2) ::
-                          rights)
+          case Some((ch,ct)) => // important optimization - skip adding `empty.flatMap(f)` to the stack
+            val tls = tl.stream
+            val rights1 = if (tls.isEmpty) rights else tls.flatMap(f2) :: rights
+            val rights2 = if (ct.isEmpty) rights1 else chunk(ct)(util.notNothing[F2]).flatMap(f2) :: rights1
+            f2(ch)._step0(rights2)
         }}
+        if (rights.nonEmpty) s2 or rights.head._step0(rights.tail)
+        else s2
       }
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
@@ -250,15 +281,18 @@ object Stream extends Streams[Stream] with StreamDerived {
       : Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
       = {
         val f2: W0 => Stream[F2,W] = Sub1.substStreamF(f)
-        Sub1.substStream(s).stepAsync map { _ map { pull =>
+        val s2 = Sub1.substStream(s).stepAsync map { _ map { pull =>
           pull.flatMap { case Step(hd, tl) => hd.uncons match {
             case None => (tl.stream flatMap f2)._step0(rights)
             case Some((ch,ct)) =>
+              // todo - as above
               f2(ch)._step0(chunk(ct)(Sub1.sub1[F2]).flatMap(f2) ::
                             tl.stream.flatMap(f2) ::
                             rights)
           }}
         }}
+        if (rights.nonEmpty) s2 or rights.head._stepAsync0(rights.tail)
+        else s2
       }
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] =
@@ -275,18 +309,13 @@ object Stream extends Streams[Stream] with StreamDerived {
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
       =
-      Pull.or ( Sub1.substStream(s)._step0(Sub1.substStream(suspend(s2)) :: rights)
-              , Sub1.substStream(s2)._step0(rights))
+      Sub1.substStream(s)._step0(Sub1.substStream(suspend(s2)) :: rights)
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
       implicit S: Sub1[F,F2], F2: Async[F2])
       : Pull[F2,Nothing,Future[F2,Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
       =
-      Sub1.substStream(s)._stepAsync0(Sub1.substStream(suspend(s2)) :: rights) or {
-        // if we reach here, both `s` and `rights` are both empty, and their effects
-        // have been run; thus, only thing we have to do is examine `s2`
-        Sub1.substStream(s2).stepAsync
-      }
+      Sub1.substStream(s)._stepAsync0(Sub1.substStream(suspend(s2)) :: rights)
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] =
       suspend { s.translate(uf1) ++ s2.translate(uf1) }
@@ -321,7 +350,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       =
       Free.eval(S(r)) flatMap { r =>
         try
-          emit(r)._runFold0[F2,O,W2,W3](nextID, tracked updated (id, S(cleanup(r))), k)(g,z)
+          emit(r)(util.notNothing[F2])._runFold0[F2,O,W2,W3](nextID, tracked updated (id, S(cleanup(r))), k)(g,z)
         catch { case t: Throwable =>
           Free.fail(
             new RuntimeException("producing resource cleanup action failed", t))
@@ -421,20 +450,20 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) =
     if (c.isEmpty) h
-    else new Handle(c :: h.buffer, h.stream)
+    else new Handle(c :: h.buffer, h.underlying)
 
   def open[F[_],W](s: Stream[F,W]) = Pull.pure(new Handle(List(), s))
 
   def await[F[_],W](h: Handle[F,W]) =
     h.buffer match {
-      case List() => h.stream.step
-      case hb :: tb => Pull.pure(Step(hb, new Handle(tb, h.stream)))
+      case List() => h.underlying.step
+      case hb :: tb => Pull.pure(Step(hb, new Handle(tb, h.underlying)))
     }
 
   def awaitAsync[F[_],W](h: Handle[F,W])(implicit F: Async[F]) =
     h.buffer match {
-      case List() => h.stream.stepAsync
-      case hb :: tb => Pull.pure(Future.pure(Pull.pure(Step(hb, new Handle(tb, h.stream)))))
+      case List() => h.underlying.stepAsync
+      case hb :: tb => Pull.pure(Future.pure(Pull.pure(Step(hb, new Handle(tb, h.underlying)))))
     }
 
   type Pull[+F[_],+W,+R] = fs2.Pull[F,W,R]
@@ -444,9 +473,15 @@ object Stream extends Streams[Stream] with StreamDerived {
     s.runFold(g)(z)
 
   class Handle[+F[_],+W](private[fs2] val buffer: List[Chunk[W]],
-                         private[fs2] val stream: Stream[F,W]) {
-
-    def map[W2](f: W => W2) = new Handle(buffer.map(_ map f), stream map f)
+                         private[fs2] val underlying: Stream[F,W]) {
+    def stream: Stream[F,W] = {
+      def go(buffer: List[Chunk[W]]): Stream[F,W] = buffer match {
+        case List() => underlying
+        case c :: buffer => chunk(c) ++ go(buffer)
+      }
+      go(buffer)
+    }
+    def map[W2](f: W => W2) = new Handle(buffer.map(_ map f), underlying map f)
   }
 
   object Handle {
@@ -458,7 +493,8 @@ object Stream extends Streams[Stream] with StreamDerived {
       Free.eval(hd) flatMap { _ => tl } )
 
   private def concatRight[F[_],W](s: List[Stream[F,W]]): Stream[F,W] =
-    s.reverse.foldLeft(empty: Stream[F,W])((tl,hd) => append(hd,tl))
+    if (s.isEmpty) empty
+    else s.reverse.reduceLeft((tl,hd) => if (hd.isEmpty) tl else append(hd,tl))
 
   sealed trait Segment[F[_],W1]
   object Segment {
