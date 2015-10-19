@@ -21,6 +21,9 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def append[F2[_],B>:A](p2: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.append(Sub1.substStream(self), p2)
 
+  def covary[F2[_]](implicit S: Sub1[F,F2]): Stream[F2,A] =
+    Sub1.substStream(self)
+
   def flatMap[F2[_],B](f: A => Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.flatMap(Sub1.substStream(self))(f)
 
@@ -34,11 +37,8 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
 
   def pipe[B](f: Process1[_ >: A,B]): Stream[F,B] = self pull process1.covary(f)
 
-  def pullv[F2[_],B](using: Handle[F2,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2]): Stream[F2,B] =
-    Stream.pull(Sub1.substStream(self))(using)
-
-  def covary[F2[_]](implicit S: Sub1[F,F2]): Stream[F2,A] =
-    Sub1.substStream(self)
+  def pullv[F2[_],B](using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2]): Stream[F2,B] =
+    Stream.pull(self)(using)
 
   def repeatPull[F2[_],A2>:A,B](using: Handle[F2,A2] => Pull[F2,B,Handle[F2,A2]])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.repeatPull(Sub1.substStream(self): Stream[F2,A2])(using)

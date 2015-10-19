@@ -1,18 +1,18 @@
 package fs2
 
 import Step.#:
-import fs2.util.{NotNothing,RealSupertype}
+import fs2.util.{RealSupertype,Sub1}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
-  def apply[W](a: W*): Stream[Nothing,W] = self.chunk(Chunk.seq(a))
+  def apply[F[_],W](a: W*): Stream[F,W] = self.chunk(Chunk.seq(a))
 
   def outputs[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.outputs(s)
 
-  def pull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Any])
-  : Stream[F,B] =
-    Pull.run { open(s) flatMap using }
+  def pull[F[_],F2[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2])
+  : Stream[F2,B] =
+    Pull.run { Sub1.substPull(open(s)) flatMap (h => Sub1.substPull(using(h))) }
 
   def repeatPull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Handle[F,A]])
   : Stream[F,B] =
@@ -41,12 +41,12 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def map[F[_],A,B](a: Stream[F,A])(f: A => B): Stream[F,B] =
     Stream.map(a)(f)
 
-  def emit[F[_],A](a: A)(implicit F: NotNothing[F]): Stream[F,A] = chunk(Chunk.singleton(a))
+  def emit[F[_],A](a: A): Stream[F,A] = chunk(Chunk.singleton(a))
 
   @deprecated("use Stream.emits", "0.9")
-  def emitAll[F[_],A](as: Seq[A])(implicit F: NotNothing[F]): Stream[F,A] = chunk(Chunk.seq(as))
+  def emitAll[F[_],A](as: Seq[A]): Stream[F,A] = chunk(Chunk.seq(as))
 
-  def emits[F[_],W](a: Seq[W])(implicit F: NotNothing[F]): Stream[F,W] = chunk(Chunk.seq(a))
+  def emits[F[_],W](a: Seq[W]): Stream[F,W] = chunk(Chunk.seq(a))
 
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     flatMap(eval(f))(p => p)

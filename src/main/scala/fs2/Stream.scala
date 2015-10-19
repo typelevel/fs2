@@ -79,7 +79,7 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
 
 object Stream extends Streams[Stream] with StreamDerived {
 
-  def chunk[F[_],W](c: Chunk[W])(implicit F: NotNothing[F]) = new Stream[F,W] { self =>
+  def chunk[F[_],W](c: Chunk[W]) = new Stream[F,W] { self =>
     override def isEmpty = c.isEmpty
 
     def _runFold1[F2[_],O,W2>:W,W3](
@@ -140,11 +140,11 @@ object Stream extends Streams[Stream] with StreamDerived {
     override def toString = "Stream(" + c.iterator.mkString(", ") + ")"
   }
 
-  def fail(err: Throwable) = new Stream[Nothing,Nothing] { self =>
+  def fail[F[_]](err: Throwable) = new Stream[F,Nothing] { self =>
     type W = Nothing
     def _runFold1[F2[_],O,W2>:Nothing,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
-      g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
+      g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       k (
         (segments,eq) => segments match {
@@ -162,16 +162,16 @@ object Stream extends Streams[Stream] with StreamDerived {
         }}
       )
 
-    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
+    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
       = Pull.fail(err)
 
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
-      implicit S: Sub1[Nothing,F2], F2: Async[F2])
+      implicit S: Sub1[F,F2], F2: Async[F2])
       : Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
       = Pull.fail(err)
 
-    def translate[G[_]](uf1: Nothing ~> G): Stream[G,W] = self
+    def translate[G[_]](uf1: F ~> G): Stream[G,W] = self.asInstanceOf[Stream[G,W]]
   }
 
   def eval[F[_],W](f: F[W]): Stream[F,W] = new Stream[F,W] {
@@ -181,7 +181,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       =
       Free.attemptEval(S(f)) flatMap {
         case Left(e) => fail(e)._runFold0(nextID, tracked, k)(g, z)
-        case Right(a) => emit(a)(util.notNothing[F2])._runFold0(nextID, tracked, k)(g, z)
+        case Right(a) => emit(a)._runFold0(nextID, tracked, k)(g, z)
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
@@ -269,7 +269,7 @@ object Stream extends Streams[Stream] with StreamDerived {
           case Some((ch,ct)) => // important optimization - skip adding `empty.flatMap(f)` to the stack
             val tls = tl.stream
             val rights1 = if (tls.isEmpty) rights else tls.flatMap(f2) :: rights
-            val rights2 = if (ct.isEmpty) rights1 else chunk(ct)(util.notNothing[F2]).flatMap(f2) :: rights1
+            val rights2 = if (ct.isEmpty) rights1 else chunk(ct).flatMap(f2) :: rights1
             f2(ch)._step0(rights2)
         }}
         if (rights.nonEmpty) s2 or rights.head._step0(rights.tail)
@@ -287,7 +287,7 @@ object Stream extends Streams[Stream] with StreamDerived {
             case Some((ch,ct)) =>
               val tls = tl.stream
               val rights1 = if (tls.isEmpty) rights else tls.flatMap(f2) :: rights
-              val rights2 = if (ct.isEmpty) rights1 else chunk(ct)(util.notNothing[F2]).flatMap(f2) :: rights1
+              val rights2 = if (ct.isEmpty) rights1 else chunk(ct).flatMap(f2) :: rights1
               f2(ch)._step0(rights2)
           }}
         }}
@@ -350,7 +350,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       =
       Free.eval(S(r)) flatMap { r =>
         try
-          emit(r)(util.notNothing[F2])._runFold0[F2,O,W2,W3](nextID, tracked updated (id, S(cleanup(r))), k)(g,z)
+          emit(r)._runFold0[F2,O,W2,W3](nextID, tracked updated (id, S(cleanup(r))), k)(g,z)
         catch { case t: Throwable =>
           Free.fail(
             new RuntimeException("producing resource cleanup action failed", t))
