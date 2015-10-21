@@ -19,6 +19,11 @@ object Process1Spec extends Properties("process1") {
     s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
   }
 
+  property("filter") = forAll { (v: Vector[Int]) =>
+    val predicate = (i: Int) => i % 2 == 0
+    emits(v).filter(predicate) ==? v.filter(predicate)
+  }
+
   property("performance of multi-stage pipeline") = secure {
     println("checking performance of multistage pipeline... this should finish quickly")
     val v = Vector.fill(1000)(Vector.empty[Int])
