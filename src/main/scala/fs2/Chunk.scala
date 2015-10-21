@@ -92,7 +92,7 @@ object Chunk {
     override def uncons = if (bs.isEmpty) None else Some(bs.head -> Bytes(bs drop 1))
     def apply(i: Int) = bs(i)
     def drop(n: Int) = Bytes(bs.drop(n))
-    def filter(f: Byte => Boolean) = sys.error("filter on Bytes is nonsensical")
+    def filter(f: Byte => Boolean) = Bytes(ByteVector(bs.toIterable.filter(f)))
     def take(n: Int) = Bytes(bs.take(n))
     def foldLeft[B](z: B)(f: (B,Byte) => B): B = bs.foldLeft(z)(f)
     def foldRight[B](z: B)(f: (Byte,B) => B): B =
@@ -105,7 +105,8 @@ object Chunk {
     override def uncons = if (bs.isEmpty) None else Some(bs.head -> Bits(bs drop 1))
     def apply(i: Int) = bs(i)
     def drop(n: Int) = Bits(bs.drop(n))
-    def filter(f: Boolean => Boolean) = sys.error("filter on Bits is nonsensical")
+    def filter(f: Boolean => Boolean) =
+      Bits(foldLeft(BitVector.empty)((acc, b) => if (f(b)) acc :+ b else acc))
     def take(n: Int) = Bits(bs.take(n))
     def foldLeft[B](z: B)(f: (B,Boolean) => B): B =
       (0 until size).foldLeft(z)((z,i) => f(z, bs get i))
