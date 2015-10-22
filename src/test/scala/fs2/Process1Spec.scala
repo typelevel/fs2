@@ -1,10 +1,12 @@
 package fs2
 
+import fs2.Chunk.{Bits, Bytes}
 import fs2.Stream._
 import fs2.TestUtil._
 import fs2.process1._
 import org.scalacheck.Prop._
 import org.scalacheck.{Gen, Properties}
+import scodec.bits.{BitVector, ByteVector}
 
 object Process1Spec extends Properties("process1") {
 
@@ -17,6 +19,33 @@ object Process1Spec extends Properties("process1") {
   property("chunks (2)") = forAll(nestedVectorGen[Int](0,10, emptyChunks = true)) { (v: Vector[Vector[Int]]) =>
     val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
     s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
+  }
+
+  property("filter") = forAll { (i: Int) =>
+    val predicate = (i: Int) => i % 2 == 0
+    emit(i).filter(predicate) ==? Vector(i).filter(predicate)
+  }
+
+  property("filter (2)") = forAll { (v: Vector[Int]) =>
+    val predicate = (i: Int) => i % 2 == 0
+    emits(v).filter(predicate) ==? v.filter(predicate)
+  }
+
+  property("filter (3)") = forAll { (v: Array[Double]) =>
+    val predicate = (i: Double) => i - i.floor < 0.5
+    emits(v).filter(predicate) ==? v.toVector.filter(predicate)
+  }
+
+  property("filter (4)") = forAll { (v: Array[Byte]) =>
+    val bv = Bytes(ByteVector(v))
+    val predicate = (b: Byte) => b < 128
+    chunk(bv).filter(predicate) ==? v.toVector.filter(predicate)
+  }
+
+  property("filter (5)") = forAll { (v: Array[Boolean]) =>
+    val bv = Bits(BitVector.bits(v))
+    val predicate = (b: Boolean) => b == false
+    chunk(bv).filter(predicate) ==? v.toVector.filter(predicate)
   }
 
   property("performance of multi-stage pipeline") = secure {
