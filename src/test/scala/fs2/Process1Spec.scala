@@ -21,6 +21,11 @@ object Process1Spec extends Properties("process1") {
     s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
   }
 
+  property("delete") = forAll { (v: Vector[Int]) =>
+    val i = Gen.choose(-1, 10).sample.get
+    emits(v).delete(_ == i) ==? v.diff(Vector(i))
+  }
+
   property("filter") = forAll { (i: Int) =>
     val predicate = (i: Int) => i % 2 == 0
     emit(i).filter(predicate) ==? Vector(i).filter(predicate)

@@ -18,6 +18,9 @@ object process1 {
   def chunks[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
     h => h.await flatMap { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
 
+  def delete[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    _.await1 flatMap { case i #: h => if (f(i)) id.apply(h) else Pull.output1(i) >> delete(f).apply(h) }
+
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
   def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     h => h.await flatMap { case chunk #: h => Pull.output(chunk filter f) >> filter(f).apply(h) }
