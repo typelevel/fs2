@@ -52,9 +52,7 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
 
   property("1 million brackets in sequence") = secure {
     val c = new AtomicLong(0)
-    val b = Stream.bracket(Task.delay(c.incrementAndGet))(
-      _ => Stream.emit(1),
-      _ => Task.delay(c.decrementAndGet))
+    val b = bracket(c)(Stream.emit(1))
     val bs = List.fill(1000000)(b).foldLeft(Stream.empty: Stream[Task,Int])(_ ++ _)
     run { bs }
     c.get ?= 0
@@ -64,8 +62,8 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     val c = new AtomicLong(0)
     // construct a deeply nested bracket stream in which the innermost stream fails
     // and check that as we unwind the stack, all resources get released
-    val nested = Chunk.seq(s0).foldRight(f.get: Stream[Task,Int])((i,inner) =>
-      Stream.bracket(Task.delay(c.decrementAndGet))(_ => inner, _ => Task.delay(c.incrementAndGet))
+    val nested = Chunk.seq(s0).foldRight(f.get: Stream[Task,Int])(
+      (i,inner) => bracket(c)(Stream.emit(i) ++ inner)
     )
     try { run { nested }; throw Err } // this test should always fail, so the `run` should throw
     catch { case Err => () }
@@ -78,25 +76,35 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
   property("early termination of bracket") = forAll {
     (s: PureStream[Int], i: Small, j: Small, k: Small) =>
     val c = new AtomicLong(0)
-    val bracketed = Stream.bracket(Task.delay(c.decrementAndGet))(
-      _ => s.stream,
-      _ => Task.delay(c.incrementAndGet))
+    val bracketed = bracket(c)(s.stream)
     run { bracketed.take(i.get) } // early termination
     run { bracketed.take(i.get).take(j.get) } // 2 levels termination
     run { bracketed.take(i.get).take(i.get) } // 2 levels of early termination (2)
     run { bracketed.take(i.get).take(j.get).take(k.get) } // 3 levels of early termination
     // Let's just go crazy
     run { bracketed.take(i.get).take(j.get).take(i.get).take(k.get).take(j.get).take(i.get) }
-    c.get ?= 0
+    s.tag |: 0L =? c.get
   }
 
-/*
-asynchronous resource allocation
-fail merge bracket
-bracket merge fail
-concurrent.join
-using generated resources
+  /*
+  property("asynchronous resource allocation") = forAll {
+    (s1: PureStream[Int], s2: PureStream[Int], f1: Failure, f2: Failure) =>
+    val c = new AtomicLong(0)
+    val b1 = bracket(c)(s1.stream)
+    val b2 = bracket(c)(s1.stream)
+    run { concurrent.merge(spuriousFail(b1,f1), b2) }
+    run { concurrent.merge(b1, spuriousFail(b2,f2)) }
+    run { concurrent.merge(spuriousFail(b1,f1), spuriousFail(b2,f2)) }
+    c.get ?= 0L
+  }
+  */
 
-asynchronous resource
-*/
+  def bracket(c: AtomicLong)(s: Stream[Task,Int]): Stream[Task,Int] =
+    Stream.bracket(Task.delay(c.decrementAndGet))(_ => s, _ => Task.delay(c.incrementAndGet))
+
+  /*
+  concurrent.join
+  using generated resources
+  asynchronous resource
+  */
 }

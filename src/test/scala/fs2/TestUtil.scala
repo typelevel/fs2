@@ -48,7 +48,7 @@ object TestUtil {
         n <- Gen.choose(0, size)
         chunkSize <- Gen.choose(0, 10)
         chunks <- Gen.listOfN(n, Gen.listOfN(chunkSize, Arbitrary.arbitrary[A]))
-      } yield PureStream(s"uniformly-chunked (%n) (%chunkSize)",
+      } yield PureStream(s"uniformly-chunked ($n) ($chunkSize)",
                          Stream.emits(chunks).flatMap(Stream.emits))
     }
 
