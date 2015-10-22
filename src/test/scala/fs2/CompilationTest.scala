@@ -22,5 +22,9 @@ object ThisModuleShouldCompile {
   val f = (Stream(1,2,3).covary[Task]).pullv(h => h.await1 flatMap { case Step(hd,_) => Pull.output1(hd) })
   val g = Stream(1,2,3).pullv(h => h.await1 flatMap { case Step(hd,_) => Pull.output1(hd) })
   val h = Stream(1,2,3).pullv(h => h.await1 flatMap { case Step(hd,_) => Pull.eval(Task.now(1)) >> Pull.output1(hd) })
+
+  /* Check that `Async[Task]` can be found in companion object without imports. */
+  implicit val S = Strategy.sequential
+  val i = Stream.eval(Task.now(1)).pull { h => h.invAwaitAsync }
 }
 

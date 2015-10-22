@@ -140,7 +140,7 @@ object Stream extends Streams[Stream] with StreamDerived {
     override def toString = "Stream(" + c.iterator.mkString(", ") + ")"
   }
 
-  def fail[F[_]](err: Throwable) = new Stream[F,Nothing] { self =>
+  def fail[F[_]](err: Throwable): Stream[F,Nothing] = new Stream[F,Nothing] { self =>
     type W = Nothing
     def _runFold1[F2[_],O,W2>:Nothing,W3](
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
@@ -213,7 +213,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Free.suspend {
-        s._runFold1[F2,O,W0,W3](nextID, tracked, k.pushBind(Left(f)))(g,z)
+        s._runFold0[F2,O,W0,W3](nextID, tracked, k.pushBind(Left(f)))(g,z)
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
@@ -257,7 +257,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Free.suspend {
-        s._runFold1[F2,O,W0,W3](nextID, tracked, k.pushBind(Right(Sub1.substStreamF(f))))(g,z)
+        s._runFold0[F2,O,W0,W3](nextID, tracked, k.pushBind(Right(Sub1.substStreamF(f))))(g,z)
       }
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
