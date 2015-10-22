@@ -498,7 +498,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   class Handle[+F[_],+W](private[fs2] val buffer: List[Chunk[W]],
                          private[fs2] val underlying: Stream[F,W]) {
-    def stream: Stream[F,W] = {
+    private[fs2] def stream: Stream[F,W] = {
       def go(buffer: List[Chunk[W]]): Stream[F,W] = buffer match {
         case List() => underlying
         case c :: buffer => chunk(c) ++ go(buffer)

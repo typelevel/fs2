@@ -49,6 +49,10 @@ private[fs2] trait pull1 {
   def copy1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
     h => h.await1 flatMap { case hd #: h => Pull.output1(hd) >> Pull.pure(h) }
 
+  /** Write all inputs to the output of the returned `Pull`. */
+  def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
+    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> echo(h) }
+
   /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
     h => awaitN(n)(h) map { case buf #: h => buf.reverse.foldLeft(h)(_ push _) }

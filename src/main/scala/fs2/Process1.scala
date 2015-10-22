@@ -24,7 +24,7 @@ object process1 {
 
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> id.apply(h) }
+    Pull.echo[F,I]
 
   /** Return the last element of the input `Handle`, if nonempty. */
   def last[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Option[I],Handle[F,I]] =
