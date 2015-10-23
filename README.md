@@ -6,15 +6,14 @@ scalaz-stream
 
 ### Where to get it ###
 
-To get the latest version of the library, add *one* of the following to your SBT build:
+To get the latest version of the library, add the following to your SBT build:
 
 ```
-// Against Scalaz 7.0, available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.7.2"
-
-// Against Scalaz 7.1, available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.7.2a"
+// available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8"
 ```
+
+As of version 0.8, scalaz-stream is solely published against scalaz 7.1.x.  The most recent build for 7.0.x is scalaz-stream 0.7.3.
 
 If you were using a previous version of scalaz-stream, you may have a `resolvers` entry for the Scalaz Bintray repository.  This is no longer required, as scalaz-stream is now published to Maven Central.  It won't hurt you though.
 
