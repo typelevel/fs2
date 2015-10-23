@@ -5,6 +5,8 @@ import org.scalacheck.{Arbitrary, Gen}
 
 object TestUtil {
 
+  implicit val S = Strategy.fromExecutionContext(scala.concurrent.ExecutionContext.global)
+
   def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.run
 
   implicit class EqualsOp[F[_],A](s: Stream[F,A])(implicit S: Sub1[F,Task]) {
@@ -17,7 +19,14 @@ object TestUtil {
   }
 
   /** Newtype for generating test cases. */
-  case class PureStream[+A](tag: String, stream: Stream[Pure,A])
+  case class PureStream[+A](tag: String, get: Stream[Pure,A])
+  implicit def arbPureStream[A:Arbitrary] = Arbitrary(PureStream.gen[A])
+
+  case class SmallPositive(get: Int)
+  implicit def arbSmallPositive = Arbitrary(Gen.choose(1,20).map(SmallPositive(_)))
+
+  case class SmallNonnegative(get: Int)
+  implicit def arbSmallNonnegative = Arbitrary(Gen.choose(0,20).map(SmallNonnegative(_)))
 
   object PureStream {
     def singleChunk[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
@@ -39,7 +48,7 @@ object TestUtil {
       }
     }
     def randomlyChunked[A:Arbitrary]: Gen[PureStream[A]] = Gen.sized { size =>
-      nestedVectorGen(0, size, true).map { chunks =>
+      nestedVectorGen[A](0, size, true).map { chunks =>
         PureStream("randomly-chunked", Stream.emits(chunks).flatMap(Stream.emits))
       }
     }
@@ -53,8 +62,28 @@ object TestUtil {
     }
 
     def gen[A:Arbitrary]: Gen[PureStream[A]] =
-      Gen.oneOf(rightAssociated, leftAssociated, singleChunk, unchunked, randomlyChunked, uniformlyChunked)
+      Gen.oneOf(
+        rightAssociated[A], leftAssociated[A], singleChunk[A],
+        unchunked[A], randomlyChunked[A], uniformlyChunked[A])
   }
+
+  case object Err extends RuntimeException("oh noes!!")
+
+  /** Newtype for generating various failing streams. */
+  case class Failure(tag: String, get: Stream[Task,Int])
+
+  implicit def failingStreamArb: Arbitrary[Failure] = Arbitrary(
+    Gen.oneOf[Failure](
+      Failure("pure-failure", Stream.fail(Err)),
+      Failure("failure-inside-effect", Stream.eval(Task.delay(throw Err))),
+      Failure("failure-mid-effect", Stream.eval(Task.now(()).flatMap(_ => throw Err))),
+      Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
+      Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw Err)),
+      Failure("failure-in-pure-pull", Stream.emit[Task,Int](42).pull(h => throw Err)),
+      Failure("failure-in-async-code",
+        Stream.eval[Task,Int](Task.delay(throw Err)).pull(h => h.invAwaitAsync.flatMap(_.force)))
+    )
+  )
 
   def nestedVectorGen[A:Arbitrary](minSize: Int, maxSize: Int, emptyChunks: Boolean = false)
     : Gen[Vector[Vector[A]]]

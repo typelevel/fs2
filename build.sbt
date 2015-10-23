@@ -133,6 +133,10 @@ mimaSettings
 
 parallelExecution in Test := false
 
+logBuffered in Test := false
+
+testOptions in Test += Tests.Argument("-verbosity", "2")
+
 autoAPIMappings := true
 
 initialCommands := s"""
