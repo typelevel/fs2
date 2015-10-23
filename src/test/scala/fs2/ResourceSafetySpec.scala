@@ -36,14 +36,17 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     c.get ?= 0
   }
 
-  property("nested bracket") = forAll { (s0: List[Int], f: Failure) =>
+  property("nested bracket") = forAll { (s0: List[Int], f: Failure, finalizerFail: Boolean) =>
     val c = new AtomicLong(0)
-    // todo: have the finalizer fail also, make sure others still get run
     // construct a deeply nested bracket stream in which the innermost stream fails
     // and check that as we unwind the stack, all resources get released
-    val nested = Chunk.seq(s0).foldRight(f.get: Stream[Task,Int])(
-      (i,inner) => bracket(c)(Stream.emit(i) ++ inner)
-    )
+    // Also test for case where finalizer itself throws an error
+    val innermost =
+      if (!finalizerFail) f.get
+      else Stream.bracket(Task.delay(c.decrementAndGet))(
+             _ => f.get,
+             _ => Task.delay { c.incrementAndGet; throw Err })
+    val nested = Chunk.seq(s0).foldRight(innermost)((i,inner) => bracket(c)(Stream.emit(i) ++ inner))
     try { run { nested }; throw Err } // this test should always fail, so the `run` should throw
     catch { case Err => () }
     f.tag |: 0L =? c.get

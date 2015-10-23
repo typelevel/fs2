@@ -403,9 +403,9 @@ object Stream extends Streams[Stream] with StreamDerived {
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
       =
-      tracked.get(id).map(Free.eval).getOrElse(Free.pure(())) flatMap { _ =>
-        empty._runFold0(nextID, tracked - id, k)(g, z)
-      }
+      tracked.get(id).map(eval).getOrElse(Stream.emit(())).flatMap { (u: Unit) =>
+        empty[F2,W2]
+      }._runFold0(nextID, tracked - id, k)(g, z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
