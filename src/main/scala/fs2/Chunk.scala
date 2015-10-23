@@ -118,6 +118,9 @@ object Chunk {
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(bs get hd, tl))
   }
 
+  def doubles(values: Array[Double]): Chunk[Double] =
+    new Doubles(values, 0, values.length)
+
   class Doubles(values: Array[Double], offset: Int, sz: Int) extends Chunk[Double] {
   self =>
     val size = sz min (values.length - offset)

@@ -12,11 +12,18 @@ object process1 {
    * done reading.
    */
   type Process1[I,+O] = Handle[Pure,I] => Pull[Pure,O,Handle[Pure,I]]
+  // type Tee[I,I2,+O] = (Handle[Pure,I], Handle[Pure,I2]) => Pull[Pure,O,(Handle[Pure,I],Handle[Pure,I2])]
 
   // nb: methods are in alphabetical order
 
+  /** Output all chunks from the input `Handle`. */
   def chunks[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
     h => h.await flatMap { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
+
+  /** Output a transformed version of all chunks from the input `Handle`. */
+  def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O])(implicit F: NotNothing[F])
+  : Handle[F,I] => Pull[F,O,Handle[F,I]]
+  = h => h.await flatMap { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
 
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
   def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
