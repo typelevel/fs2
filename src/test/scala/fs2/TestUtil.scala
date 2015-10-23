@@ -9,6 +9,12 @@ object TestUtil {
 
   def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.run
 
+  def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
+    s.runLog.run.attemptRun match {
+      case Left(e) if e == err => true
+      case _ => false
+    }
+
   implicit class EqualsOp[F[_],A](s: Stream[F,A])(implicit S: Sub1[F,Task]) {
     def ===(v: Vector[A]) = run(s.covary) == v
     def ==?(v: Vector[A]) = {
@@ -18,7 +24,16 @@ object TestUtil {
     }
   }
 
-  /** Newtype for generating test cases. */
+  implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(
+    Gen.frequency(
+      10 -> Gen.listOf(A.arbitrary).map(as => Chunk.indexedSeq(as.toVector)),
+      10 -> Gen.listOf(A.arbitrary).map(Chunk.seq),
+      5 -> A.arbitrary.map(a => Chunk.singleton(a)),
+      1 -> Chunk.empty
+    )
+  )
+
+  /** Newtype for generating test cases. Use the `tag` for labeling properties. */
   case class PureStream[+A](tag: String, get: Stream[Pure,A])
   implicit def arbPureStream[A:Arbitrary] = Arbitrary(PureStream.gen[A])
 
