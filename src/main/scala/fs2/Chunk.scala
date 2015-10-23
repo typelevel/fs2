@@ -17,6 +17,10 @@ trait Chunk[+A] { self =>
   def filter(f: A => Boolean): Chunk[A]
   def foldLeft[B](z: B)(f: (B,A) => B): B
   def foldRight[B](z: B)(f: (A,B) => B): B
+  def indexWhere(p: A => Boolean): Option[Int] = {
+    val index = iterator.indexWhere(p)
+    if (index < 0) None else Some(index)
+  }
   def isEmpty = size == 0
   def toList = foldRight(Nil: List[A])(_ :: _)
   def toVector = foldLeft(Vector.empty[A])(_ :+ _)
