@@ -74,6 +74,21 @@ object Process1Spec extends Properties("process1") {
     emits(v).pipe(take(n)) ==? v.take(n)
   }
 
+  property("takeWhile") = forAll { (v: Vector[Int]) =>
+    val set = Gen.someOf(v).sample.map(_.toSet).getOrElse(Set.empty)
+    emits(v).pipe(takeWhile(set)) ==? v.takeWhile(set)
+  }
+  
+  property("drop") = forAll { (v: Vector[Int]) =>
+    val n = Gen.choose(-1, 20).sample.get
+    emits(v).pipe(drop(n)) ==? v.drop(n)
+  }
+  
+  property("dropWhile") = forAll { (v: Vector[Int]) =>
+    val set = Gen.someOf(v).sample.map(_.toSet).getOrElse(Set.empty)
+    emits(v).pipe(dropWhile(set)) ==?  v.dropWhile(set)
+  }
+  
   property("take.chunks") = secure {
     val s = Stream(1, 2) ++ Stream(3, 4)
     s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))

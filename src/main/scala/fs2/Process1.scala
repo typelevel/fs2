@@ -45,6 +45,29 @@ object process1 {
         case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong).apply(h)
       }
 
+  def takeWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
+    h => 
+      Pull.await1Option(h).flatMap { 
+        case Some(c #: h) if p(c) =>
+          Pull.output1(c) >> takeWhile(p).apply(h)
+        case _ => Pull.done
+      }
+      
+  def drop[F[_], I](n: Long)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
+    h =>
+      if (n <= 0) id.apply(h)
+      else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
+        case chunk #: h => drop(n - chunk.size).apply(h)
+      }
+      
+  def dropWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] =
+    h => 
+      Pull.await1Option(h).flatMap {
+        case Some(c #: h) if p(c) => dropWhile(p).apply(h)
+        case Some(c #: h) => Pull.output1(c) >> id.apply(h)
+        case _ => Pull.done
+      }
+      
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     h => h.await1 flatMap { case i #: h => Pull.output1(i) >> unchunk.apply(h) }
