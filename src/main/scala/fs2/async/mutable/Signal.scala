@@ -67,14 +67,28 @@ object Signal {
   val Terminated = new Throwable("Signal Halted")
 
   // None signals this Signal is terminated
-  private type State[F[_],A] = (Int,A,Queue[A => F[A]])
+  private type State[F[_],A] = (Int,A,Queue[((Int,A)) => F[Unit]])
 
   def apply[F[_],A](initA:A)(implicit F:AsyncExt[F], C: Catchable[F]): fs2.Stream[F,Signal[F,A]] = Stream.eval {
     F.bind(F.ref[State[F,A]]) { ref =>
     F.map(F.set(ref)(F.pure((0,initA,Queue.empty)))) { _ =>
-      def getChanged(stamp:Int):F[A] = {
-        ???
+      def getChanged(stamp:Int):F[(Int,A)] = {
+        F.bind(F.ref[(Int,A)]){ chref =>
+          val modify =
+            F.modify(ref){ case s@(a,current,q) =>
+              if (current != stamp) F.pure(s)
+              else F.pure((a,current,q :+ {(va:((Int,A))) => F.set(chref)(F.pure(va))}))
+            }
+
+          F.bind(modify){
+            case ((current,a,_),_) =>
+              if (current != stamp) F.pure((current,a))
+              else F.get(chref)
+          }
+        }
       }
+
+      def getStamped:F[(Int,A)] = F.map(F.get(ref)){case (v,a,_) => (v,a)}
 
       new Signal[F,A] {
         def refresh: F[Unit] = F.map(compareAndSet(a => Some(a)))(_ => ())
@@ -89,7 +103,7 @@ object Signal {
              if (oldVersion == newVersion) F.pure(None:Option[A])
              else {
                queued.foldLeft(F.pure(Option(newA))) {
-                 case (r,f) => F.bind(F.forkRun(f(newA)))(_ => r)
+                 case (r,f) =>  F.bind(f(newVersion -> newA))(_ => r)
                }
              }
           }
@@ -97,12 +111,30 @@ object Signal {
 
         def close: F[Unit] = F.set(ref)(C.fail(Terminated))
 
-        def changes: fs2.Stream[F, Boolean] = ???
-        def continuous: fs2.Stream[F, A] = ???
-        def discrete: fs2.Stream[F, A] = ???
-        def changed: fs2.Stream[F, Boolean] = ???
+        def changes: fs2.Stream[F, Unit] =
+          discrete.map(_ => ())
 
-        def closed: Stream[F, Boolean] = ???
+
+        def continuous: fs2.Stream[F, A] =
+          Stream.eval(get).append(continuous)
+
+        def discrete: fs2.Stream[F, A] = {
+          def go(stamp:Int):fs2.Stream[F, A] = {
+            Stream.eval(getChanged(stamp))
+            .flatMap { case (s,a) => Stream(a).append(go(s)) }
+          }
+          Stream.eval(getStamped).flatMap { case (s,a) => Stream(a).append(go(s))}
+        }
+
+        def changed: fs2.Stream[F, Boolean] = {
+          ???
+          // continues stamped stream piped through spiking true on change of stamp
+        }
+
+        def closed: Stream[F, Boolean] = {
+          ???
+          // recovered stream swallowing terminated in favor of true
+        }
       }
     }}
 

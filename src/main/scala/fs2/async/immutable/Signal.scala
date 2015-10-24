@@ -45,7 +45,7 @@ trait Signal[F[_],A]  {
    * Returns the discrete version of `changed`. Will emit `Unit`
    * when the `value` is changed.
    */
-  def changes: fs2.Stream[F, Boolean]
+  def changes: fs2.Stream[F, Unit]
 
   /**
    * Discrete signal yielding to `true` when this signal halts.
@@ -73,7 +73,7 @@ object Signal {
     def map[B](f: A => B):Signal[F,B] = new Signal[F,B] {
       def changed: fs2.Stream[F, Boolean] = self.changed
       def continuous: fs2.Stream[F, B] = self.continuous.map(f)
-      def changes: fs2.Stream[F, Boolean] = self.changes
+      def changes: fs2.Stream[F, Unit] = self.changes
       def discrete: fs2.Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
       def closed: Stream[F, Boolean] = self.closed

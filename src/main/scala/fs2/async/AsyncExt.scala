@@ -46,10 +46,6 @@ trait AsyncExt[F[_]] extends Async[F] {
   def cancellableModify[A](r:Ref[A])(f:A => F[A]):F[(F[(A,A)], F[Boolean])]
 
 
-  /**
-   * Produces a computation that when run will fork evaluation of `a` to another thread.
-   */
-  def forkRun[A](a:F[A]):F[Unit]
 
 
 }
@@ -206,7 +202,6 @@ object AsyncExt {
     def pure[A](a: A): Task[A] = Task.now(a)
     def modify[A](ref: Ref[A])(f: (A) => Task[A]): Task[(A, A)] = ref.modify(f)
     def cancellableModify[A](r: Ref[A])(f: (A) => Task[A]): Task[(Task[(A, A)], Task[Boolean])] = r.cancellableModify(f)
-    def forkRun[A](a: Task[A]): Task[Unit] = Task { a.run }
   }
 
 
