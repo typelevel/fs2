@@ -16,18 +16,24 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
+  def receive[F[_],I,O](f: Step[Chunk[I],Handle[F, I]] => Pull[F,O,Handle[F,I]]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
+    _.await.flatMap(f)
+
+  def receive1[F[_],I,O](f: Step[I,Handle[F, I]] => Pull[F,O,Handle[F,I]]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
+    _.await1.flatMap(f)
+
   /** Output all chunks from the input `Handle`. */
   def chunks[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
+    receive { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
 
   /** Output a transformed version of all chunks from the input `Handle`. */
   def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O])(implicit F: NotNothing[F])
   : Handle[F,I] => Pull[F,O,Handle[F,I]]
-  = h => h.await flatMap { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
+  = receive { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
 
   /** Skip the first element that matches the predicate. */
   def delete[F[_],I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    _.await flatMap { case chunk #: h =>
+    receive { case chunk #: h =>
       chunk.indexWhere(p) match {
         case Some(i) =>
           val (before, after) = (chunk.take(i), chunk.drop(i + 1))
@@ -38,7 +44,7 @@ object process1 {
 
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
   def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk filter f) >> filter(f).apply(h) }
+    receive { case chunk #: h => Pull.output(chunk filter f) >> filter(f).apply(h) }
 
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
@@ -53,7 +59,7 @@ object process1 {
    * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
    */
   def lift[F[_],I,O](f: I => O)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk map f) >> lift(f).apply(h) }
+    receive { case chunk #: h => Pull.output(chunk map f) >> lift(f).apply(h) }
 
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
@@ -65,7 +71,7 @@ object process1 {
 
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await1 flatMap { case i #: h => Pull.output1(i) >> unchunk.apply(h) }
+    receive1 { case i #: h => Pull.output1(i) >> unchunk.apply(h) }
 
   // stepping a process
 
