@@ -59,6 +59,11 @@ object Process1Spec extends Properties("process1") {
     s2.filter(predicate) ==? run(s2).filter(predicate)
   }
 
+  property("find") = forAll { (s: PureStream[Int], i: Int) =>
+    val predicate = (item: Int) => item < i
+    s.get.find(predicate) ==? run(s.get).find(predicate).toVector
+  }
+
   property("fold") = forAll { (s: PureStream[Int], n: Int) =>
     val f = (a: Int, b: Int) => a + b
     s.get.fold(n)(f) ==? Vector(run(s.get).foldLeft(n)(f))
