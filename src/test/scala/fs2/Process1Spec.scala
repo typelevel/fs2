@@ -21,9 +21,10 @@ object Process1Spec extends Properties("process1") {
     s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
   }
 
-  property("delete") = forAll { (v: Vector[Int]) =>
-    val i = Gen.choose(-1, 10).sample.get
-    emits(v).delete(_ == i) ==? v.diff(Vector(i))
+  property("delete") = forAll { (s: PureStream[Int]) =>
+    val v = run(s.get)
+    val i = Gen.oneOf(v).sample.getOrElse(0)
+    s.get.delete(_ == i) ==? v.diff(Vector(i))
   }
 
   property("mapChunked") = forAll { (s: PureStream[Int]) =>

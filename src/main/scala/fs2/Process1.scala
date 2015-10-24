@@ -20,13 +20,21 @@ object process1 {
   def chunks[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
     h => h.await flatMap { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
 
-  def delete[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    _.await1 flatMap { case i #: h => if (f(i)) id.apply(h) else Pull.output1(i) >> delete(f).apply(h) }
-
   /** Output a transformed version of all chunks from the input `Handle`. */
   def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O])(implicit F: NotNothing[F])
   : Handle[F,I] => Pull[F,O,Handle[F,I]]
   = h => h.await flatMap { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
+
+  /** Skip the first element that matches the predicate. */
+  def delete[F[_],I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    _.await flatMap { case chunk #: h =>
+      chunk.indexWhere(p) match {
+        case Some(i) =>
+          val (before, after) = (chunk.take(i), chunk.drop(i + 1))
+          Pull.output(before) >> Pull.output(after) >> id.apply(h)
+        case None => Pull.output(chunk) >> delete(p).apply(h)
+      }
+    }
 
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
   def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
