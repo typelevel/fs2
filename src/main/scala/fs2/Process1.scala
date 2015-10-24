@@ -25,6 +25,17 @@ object process1 {
   : Handle[F,I] => Pull[F,O,Handle[F,I]]
   = h => h.await flatMap { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
 
+  /** Skip the first element that matches the predicate. */
+  def delete[F[_],I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    _.await flatMap { case chunk #: h =>
+      chunk.indexWhere(p) match {
+        case Some(i) =>
+          val (before, after) = (chunk.take(i), chunk.drop(i + 1))
+          Pull.output(before) >> Pull.output(after) >> id.apply(h)
+        case None => Pull.output(chunk) >> delete(p).apply(h)
+      }
+    }
+
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
   def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     h => h.await flatMap { case chunk #: h => Pull.output(chunk filter f) >> filter(f).apply(h) }
