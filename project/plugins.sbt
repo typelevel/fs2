@@ -7,3 +7,5 @@ addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.3.3")
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "0.5.0")
 
 addSbtPlugin("com.jsuereth" % "sbt-pgp" % "1.0.0")
+
+addSbtPlugin("com.typesafe" % "sbt-mima-plugin" % "0.1.7")

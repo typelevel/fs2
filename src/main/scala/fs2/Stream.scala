@@ -369,17 +369,26 @@ object Stream extends Streams[Stream] with StreamDerived {
       implicit S: Sub1[F,F2], F2: Async[F2])
       : Pull[F2,Nothing,Future[F2,Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
       =
+      // Very subtle implementation!
+      // First, we allocate a `Ref` and kick off acquisition of the resource asynchronously
+      // and have it write the resource to the allocated `Ref`
       Pull.eval {
-        F2.bind(F2.ref[W]) { ref =>
+        F2.bind(F2.ref[W]) { (ref: F2.Ref[W]) =>
         F2.map(F2.set(ref)(S(r))) { _ =>
         ref
       }}} flatMap { ref =>
-        Pull.track(id) map { _ => // ensures the resource is tracked before returning
-          Future.pure { Stream.acquire[F2,W](
-            id,
-            F2.get(ref),
-            Sub1.substKleisli(cleanup))._step0(rights)
-            : Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]
+        // At this point, the resource is being acquired in the background, so we
+        // make sure the resource is tracked before returning. Our new resource is
+        // just a `F2.pure(())` (obviously nonblocking), and a cleanup
+        // function that reads from `ref` then invokes the original cleanup!
+        val p = Pull.track(id) >> Pull.acquire[F2,Unit](
+          id,
+          F2.pure(()),
+          (u: Unit) => F2.bind(F2.get(ref))(Sub1.substKleisli(cleanup)))
+        p map { _ =>
+          // our Future will block on the same `Ref`
+          F2.read(ref).map { (w: W) =>
+            Pull.pure(Chunk.singleton(w: W2) #: new Handle(List(), concatRight(rights)))
           }
         }
       }
@@ -394,9 +403,9 @@ object Stream extends Streams[Stream] with StreamDerived {
       nextID: Long, tracked: LongMap[F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
       =
-      tracked.get(id).map(Free.eval).getOrElse(Free.pure(())) flatMap { _ =>
-        empty._runFold0(nextID, tracked - id, k)(g, z)
-      }
+      tracked.get(id).map(eval).getOrElse(Stream.emit(())).flatMap { (u: Unit) =>
+        empty[F2,W2]
+      }._runFold0(nextID, tracked - id, k)(g, z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]

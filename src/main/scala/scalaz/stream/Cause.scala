@@ -72,7 +72,7 @@ object Cause {
 
   /**
    * Process terminated normally due to End of input.
-   * That means items from Emit ha been exhausted.
+   * That means items from Emit have been exhausted.
    */
   case object End extends Cause
 
