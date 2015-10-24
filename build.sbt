@@ -4,15 +4,26 @@ organization := "org.scalaz.stream"
 
 name := "scalaz-stream"
 
+// this is equivalent to declaring compatibility checks
+git.baseVersion := "0.8"
+
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 git.gitTagToVersionNumber := {
   case ReleaseTag(version) => Some(version)
   case _ => None
 }
 
+git.formattedShaVersion := {
+  val suffix = git.makeUncommittedSignifierSuffix(git.gitUncommittedChanges.value, git.uncommittedSignifier.value)
+
+  git.gitHeadCommit.value map { _.substring(0, 7) } map { sha =>
+    git.baseVersion.value + "-" + sha + suffix
+  }
+}
+
 scalaVersion := "2.11.7"
 
-crossScalaVersions := Seq("2.10.5", "2.11.7", "2.12.0-M1", "2.12.0-M2")
+crossScalaVersions := Seq("2.11.7", "2.12.0-M2")
 
 scalacOptions ++= Seq(
   "-feature",
@@ -35,10 +46,10 @@ scalacOptions in (Compile, doc) ++= Seq(
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.1.3",
-  "org.scalaz" %% "scalaz-concurrent" % "7.1.3",
+  "org.scalaz" %% "scalaz-core" % "7.1.4",
+  "org.scalaz" %% "scalaz-concurrent" % "7.1.4",
   "org.scodec" %% "scodec-bits" % "1.0.9",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.3" % "test",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.4" % "test",
   "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
 )
 
@@ -101,7 +112,30 @@ OsgiKeys.importPackage := Seq(
   "*"
 )
 
+val ignoredABIProblems = {
+  import com.typesafe.tools.mima.core._
+  import com.typesafe.tools.mima.core.ProblemFilters._
+
+  Seq()
+}
+
+lazy val mimaSettings = {
+  import com.typesafe.tools.mima.plugin.MimaKeys.{binaryIssueFilters, previousArtifact}
+  import com.typesafe.tools.mima.plugin.MimaPlugin.mimaDefaultSettings
+
+  mimaDefaultSettings ++ Seq(
+    previousArtifact := MiMa.targetVersion(git.baseVersion.value).map(organization.value %% name.value % _),
+    binaryIssueFilters ++= ignoredABIProblems
+  )
+}
+
+mimaSettings
+
 parallelExecution in Test := false
+
+logBuffered in Test := false
+
+testOptions in Test += Tests.Argument("-verbosity", "2")
 
 autoAPIMappings := true
 

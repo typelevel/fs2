@@ -3,8 +3,16 @@ package fs2
 import Step.{#:}
 import Stream.Handle
 import Async.Future
+import fs2.{Pull => P}
+
 
 object concurrent {
+
+  /**
+   * Calls `open` on the two streams, then invokes `[[wye.merge]]`.
+   */
+  def merge[F[_]:Async,O](s1: Stream[F,O], s2: Stream[F,O]): Stream[F,O] =
+    P.run { s1.open.flatMap(h1 => s2.open.flatMap(h2 => wye.merge(h1,h2))) }
 
   def join[F[_]:Async,O](maxOpen: Int)(s: Stream[F,Stream[F,O]]): Stream[F,O] = {
     if (maxOpen <= 0) throw new IllegalArgumentException("maxOpen must be > 0, was: " + maxOpen)
@@ -15,7 +23,7 @@ object concurrent {
       // A) Nothing's open; block to obtain a new open stream
       if (open.isEmpty) s.await1.flatMap { case sh #: s =>
         sh.open.flatMap(_.await).flatMap { step =>
-          go(s, onlyOpen, open :+ Future.pure(Pull.pure(step): Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]]))
+          go(s, onlyOpen, open :+ Future.pure(P.pure(step): Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]]))
       }}
       // B) We have too many things open, or `s` is exhausted so we only consult `open`
       // race to obtain a step from each of the currently open handles
@@ -26,7 +34,7 @@ object concurrent {
             case Some(out #: h) =>
               // winner has more values, write these to output
               // and update the handle for the winning position
-              Pull.write(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
+              P.output(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
           }
         }
       // C) Like B), but we are allowed to open more handles, so race opening a new handle
@@ -38,7 +46,7 @@ object concurrent {
           case Left(winner) => winner.get.optional.flatMap {
             case None => go(s, onlyOpen, winner.delete)
             case Some(out #: h) =>
-              Pull.write(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
+              P.output(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
           }
           case Right(anotherOpen) =>
             anotherOpen.optional.flatMap {

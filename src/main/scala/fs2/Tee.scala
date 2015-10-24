@@ -34,7 +34,7 @@ object tee {
     def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
-        case List() => s.stream.step.flatMap { s => Pull.write1(s) }
+        case List() => s.stream.step.flatMap { s => Pull.output1(s) }
          .run.runFold(None: Option[Step[Chunk[O],Handle[Read, O]]])(
           (_,s) => Some(s))
       }

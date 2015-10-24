@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import scalaz.stream.Cause._
 import scalaz.concurrent.{Actor, Strategy, Task}
 import scalaz.stream.Process.Halt
+import scalaz.stream.async
 import scalaz.stream.async.immutable
 import scalaz.stream.{Cause, Util, Process, Sink}
 import scalaz.{Either3, -\/, \/, \/-}
@@ -77,7 +78,29 @@ trait Queue[A] {
    * only when size changes. Offsetting enqueues and dequeues may
    * not result in refreshes.
    */
-  def size: scalaz.stream.async.immutable.Signal[Int]
+  def size: immutable.Signal[Int]
+
+  /**
+   * The size bound on the queue.
+   * Returns None if the queue is unbounded.
+   */
+  def upperBound: Option[Int]
+
+  /**
+   * Returns the available number of entries in the queue.
+   * Always returns `Int.MaxValue` when the queue is unbounded.
+   */
+  def available: immutable.Signal[Int] = upperBound map { bound =>
+    size.discrete map { bound - _ } toSignal
+  } getOrElse {
+    size.discrete map { _ => Int.MaxValue } toSignal
+  }
+
+  /**
+   * Returns `true` when the queue has reached its upper size bound.
+   * Always returns `false` when the queue is unbounded.
+   */
+  def full: immutable.Signal[Boolean] = available.discrete map { _ <= 0 } toSignal
 
   /**
    * Closes this queue. This halts the `enqueue` `Sink` and
@@ -146,7 +169,6 @@ private[stream] object Queue {
       var lastBatch = Vector.empty[A]
     }
 
-
     //actually queued `A` are stored here
     var queued = Vector.empty[A]
 
@@ -180,9 +202,6 @@ private[stream] object Queue {
           ))
       )
     }
-
-
-
 
     // publishes single size change
     def publishSize(cb: (Throwable \/ Seq[Int]) => Unit): Unit = {
@@ -338,12 +357,16 @@ private[stream] object Queue {
         sizeSource.toSignal(S)
       }
 
+      val upperBound: Option[Int] = {
+        if (bound <= 0)
+          None
+        else
+          Some(bound)
+      }
+
       def enqueueAll(xa: Seq[A]): Task[Unit] = Task.async(cb => actor ! Enqueue(xa,cb))
 
       private[stream] def failWithCause(c: Cause): Task[Unit] = Task.async[Unit](cb => actor ! Fail(c,cb))
     }
-
   }
-
-
 }

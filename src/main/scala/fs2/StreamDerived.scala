@@ -1,18 +1,18 @@
 package fs2
 
 import Step.#:
-import fs2.util.RealSupertype
+import fs2.util.{RealSupertype,Sub1}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
-  def apply[W](a: W*): Stream[Nothing,W] = self.chunk(Chunk.seq(a))
+  def apply[F[_],W](a: W*): Stream[F,W] = self.chunk(Chunk.seq(a))
 
-  def writes[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.writes(s)
+  def outputs[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.outputs(s)
 
-  def pull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Any])
-  : Stream[F,B] =
-    Pull.run { open(s) flatMap using }
+  def pull[F[_],F2[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2])
+  : Stream[F2,B] =
+    Pull.run { Sub1.substPull(open(s)) flatMap (h => Sub1.substPull(using(h))) }
 
   def repeatPull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Handle[F,A]])
   : Stream[F,B] =
@@ -36,17 +36,17 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
     onError(append(p, mask(regardless))) { err => append(mask(regardless), fail(err)) }
 
   def mask[F[_],A](a: Stream[F,A]): Stream[F,A] =
-    onError(a)(_ => empty[A])
+    onError(a)(_ => empty)
 
   def map[F[_],A,B](a: Stream[F,A])(f: A => B): Stream[F,B] =
     Stream.map(a)(f)
 
   def emit[F[_],A](a: A): Stream[F,A] = chunk(Chunk.singleton(a))
 
+  @deprecated("use Stream.emits", "0.9")
   def emitAll[F[_],A](as: Seq[A]): Stream[F,A] = chunk(Chunk.seq(as))
 
-  def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] =
-    flatMap(emit(())) { _ => try s catch { case t: Throwable => fail(t) } }
+  def emits[F[_],W](a: Seq[W]): Stream[F,W] = chunk(Chunk.seq(a))
 
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     flatMap(eval(f))(p => p)
@@ -79,9 +79,23 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
     def await1: Pull[F, Nothing, Step[A, Handle[F,A]]] = self.await1(h)
     def peek: Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] = self.peek(h)
     def peek1: Pull[F, Nothing, Step[A, Handle[F,A]]] = self.peek1(h)
-    def awaitAsync[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
-      Pull[F2, Nothing, AsyncStep[F2,A2]] = self.awaitAsync(h)
-    def await1Async[F2[x]>:F[x],A2>:A](implicit F2: Async[F2], A2: RealSupertype[A,A2]):
-      Pull[F2, Nothing, AsyncStep1[F2,A2]] = self.await1Async(h)
+    def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]):
+      Pull[F2, Nothing, AsyncStep[F2,A2]] = self.awaitAsync(Sub1.substHandle(h))
+    def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]):
+      Pull[F2, Nothing, AsyncStep1[F2,A2]] = self.await1Async(Sub1.substHandle(h))
   }
+
+  implicit class HandleSyntax2[F[_],+A](h: Handle[F,A]) {
+    def invAwait1Async[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
+      Pull[F, Nothing, AsyncStep1[F,A2]] = self.await1Async(h)
+    def invAwaitAsync[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
+      Pull[F, Nothing, AsyncStep[F,A2]] = self.awaitAsync(h)
+  }
+
+  implicit class PullSyntax[F[_],A](s: Stream[F,A]) {
+    def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
+      Stream.pull(s)(using)
+  }
+
+  implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]
 }

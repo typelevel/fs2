@@ -14,8 +14,13 @@ trait Chunk[+A] { self =>
   def apply(i: Int): A
   def drop(n: Int): Chunk[A]
   def take(n: Int): Chunk[A]
+  def filter(f: A => Boolean): Chunk[A]
   def foldLeft[B](z: B)(f: (B,A) => B): B
   def foldRight[B](z: B)(f: (A,B) => B): B
+  def indexWhere(p: A => Boolean): Option[Int] = {
+    val index = iterator.indexWhere(p)
+    if (index < 0) None else Some(index)
+  }
   def isEmpty = size == 0
   def toList = foldRight(Nil: List[A])(_ :: _)
   def toVector = foldLeft(Vector.empty[A])(_ :+ _)
@@ -30,6 +35,8 @@ trait Chunk[+A] { self =>
     def next = { val result = apply(i); i += 1; result }
   }
   override def toString = toList.mkString("Chunk(", ", ", ")")
+  override def equals(a: Any) = a.asInstanceOf[Chunk[A]].toList == toList
+  override def hashCode = iterator.toStream.hashCode
 }
 
 object Chunk {
@@ -37,6 +44,7 @@ object Chunk {
     def size = 0
     def apply(i: Int) = throw new IllegalArgumentException(s"Chunk.empty($i)")
     def drop(n: Int) = empty
+    def filter(f: Nothing => Boolean) = empty
     def take(n: Int) = empty
     def foldLeft[B](z: B)(f: (B,Nothing) => B): B = z
     def foldRight[B](z: B)(f: (Nothing,B) => B): B = z
@@ -46,6 +54,7 @@ object Chunk {
     def size = 1
     def apply(i: Int) = if (i == 0) a else throw new IllegalArgumentException(s"Chunk.singleton($i)")
     def drop(n: Int) = if (n > 0) empty else self
+    def filter(f: A => Boolean) = if (f(a)) self else empty
     def take(n: Int) = if (n > 0) self else empty
     def foldLeft[B](z: B)(f: (B,A) => B): B = f(z,a)
     def foldr[B](z: => B)(f: (A,=>B) => B): B = f(a,z)
@@ -58,6 +67,7 @@ object Chunk {
     override def uncons = if (a.isEmpty) None else Some(a.head -> seq(a drop 1))
     def apply(i: Int) = a(i)
     def drop(n: Int) = seq(a.drop(n))
+    def filter(f: A => Boolean) = seq(a.filter(f))
     def take(n: Int) = seq(a.take(n))
     def foldLeft[B](z: B)(f: (B,A) => B): B = a.foldLeft(z)(f)
     def foldRight[B](z: B)(f: (A,B) => B): B =
@@ -72,6 +82,7 @@ object Chunk {
     override def uncons = if (a.isEmpty) None else Some(a.head -> seq(a drop 1))
     def apply(i: Int) = vec(i)
     def drop(n: Int) = seq(a.drop(n))
+    def filter(f: A => Boolean) = seq(a.filter(f))
     def take(n: Int) = seq(a.take(n))
     def foldLeft[B](z: B)(f: (B,A) => B): B = a.foldLeft(z)(f)
     def foldRight[B](z: B)(f: (A,B) => B): B =
@@ -85,6 +96,7 @@ object Chunk {
     override def uncons = if (bs.isEmpty) None else Some(bs.head -> Bytes(bs drop 1))
     def apply(i: Int) = bs(i)
     def drop(n: Int) = Bytes(bs.drop(n))
+    def filter(f: Byte => Boolean) = Bytes(ByteVector(bs.toIterable.filter(f)))
     def take(n: Int) = Bytes(bs.take(n))
     def foldLeft[B](z: B)(f: (B,Byte) => B): B = bs.foldLeft(z)(f)
     def foldRight[B](z: B)(f: (Byte,B) => B): B =
@@ -97,12 +109,17 @@ object Chunk {
     override def uncons = if (bs.isEmpty) None else Some(bs.head -> Bits(bs drop 1))
     def apply(i: Int) = bs(i)
     def drop(n: Int) = Bits(bs.drop(n))
+    def filter(f: Boolean => Boolean) =
+      Bits(foldLeft(BitVector.empty)((acc, b) => if (f(b)) acc :+ b else acc))
     def take(n: Int) = Bits(bs.take(n))
     def foldLeft[B](z: B)(f: (B,Boolean) => B): B =
       (0 until size).foldLeft(z)((z,i) => f(z, bs get i))
     def foldRight[B](z: B)(f: (Boolean,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(bs get hd, tl))
   }
+
+  def doubles(values: Array[Double]): Chunk[Double] =
+    new Doubles(values, 0, values.length)
 
   class Doubles(values: Array[Double], offset: Int, sz: Int) extends Chunk[Double] {
   self =>
@@ -112,6 +129,10 @@ object Chunk {
     def drop(n: Int) =
       if (n >= size) empty
       else new Doubles(values, offset + n, size - n)
+    def filter(f: Double => Boolean) = {
+      val arr = values.iterator.slice(offset, offset + sz).filter(f).toArray
+      new Doubles(arr, 0, arr.length)
+    }
     def take(n: Int) =
       if (n >= size) self
       else new Doubles(values, offset, n)

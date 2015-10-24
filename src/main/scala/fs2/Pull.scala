@@ -55,7 +55,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       implicit S: Sub1[Nothing,F2]): Stream[F2,W2]
       =
       k (
-        _ => runCleanup(tracked) ++ Stream.fail(err),
+        _ => if (tracked.isEmpty) Stream.fail(err) else runCleanup(tracked) ++ Stream.fail(err),
         new k.H[Stream[F2,W2]] { def f[x] = (segment,k) => segment (
           // fail(e) or p == fail(e)
           (or, eq) => self._run0(tracked, k),
@@ -85,9 +85,16 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       )
   }
 
-  /** Produce a `Pull` nonstrictly, catching exceptions. */
-  def suspend[F[_],W,R](p: => Pull[F,W,R]): Pull[F,W,R] =
-    flatMap (pure(())) { _ => try p catch { case t: Throwable => fail(t) } }
+  /**
+   * Produce a `Pull` nonstrictly, catching exceptions. Behaves the same as
+   * `pure(()).flatMap { _ => p }`.
+   */
+  def suspend[F[_],W,R](p: => Pull[F,W,R]): Pull[F,W,R] = new Pull[F,W,R] {
+    def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
+      implicit S: Sub1[F,F2]): Stream[F2,W2]
+      =
+      try p._run0(tracked, k) catch { case t: Throwable => Stream.fail(t) }
+  }
 
   def onError[F[_],W,R](p: Pull[F,W,R])(handle: Throwable => Pull[F,W,R]) = new Pull[F,W,R] {
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
@@ -107,7 +114,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       }
   }
 
-  def eval[F[_],R](f: F[R]) = new Pull[F,Nothing,R] {
+  def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] = new Pull[F,Nothing,R] {
     type W = Nothing
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
@@ -115,7 +122,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       Stream.eval(S(f)) flatMap { r => pure(r)._run0(tracked, k) }
   }
 
-  def acquire[F[_],R](id: Long, r: F[R], cleanup: R => F[Unit]) = new Pull[F,Nothing,R] {
+  def acquire[F[_],R](id: Long, r: F[R], cleanup: R => F[Unit]): Pull[F,Nothing,R] = new Pull[F,Nothing,R] {
     type W = Nothing
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
@@ -125,12 +132,12 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       }
   }
 
-  def writes[F[_],W](s: Stream[F,W]) = new Pull[F,W,Unit] {
+  def outputs[F[_],W](s: Stream[F,W]) = new Pull[F,W,Unit] {
     type R = Unit
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       =
-      Sub1.substStream(s).append(pure(())._run0(tracked, k))(RealSupertype[W,W2])
+      Sub1.substStream(s).append(pure(())._run1(tracked, k))
   }
 
   def or[F[_],W,R](p1: Pull[F,W,R], p2: => Pull[F,W,R]): Pull[F,W,R] = new Pull[F,W,R] {

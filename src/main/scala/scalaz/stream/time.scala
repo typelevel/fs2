@@ -14,7 +14,7 @@ object time {
    * since the start time of stream consumption.
    *
    * For example: `awakeEvery(5 seconds)` will
-   * return (approximately) `5s, 10s, 20s`, and will lie dormant
+   * return (approximately) `5s, 10s, 15s, ...`, and will lie dormant
    * between emitted values.
    *
    * By default, this uses a shared `ScheduledExecutorService`

@@ -43,15 +43,29 @@ private[fs2] trait pull1 {
 
   /** Copy the next available chunk to the output. */
   def copy[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.write(chunk) >> Pull.pure(h) }
+    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }
 
   /** Copy the next available element to the output. */
   def copy1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await1 flatMap { case hd #: h => Pull.write1(hd) >> Pull.pure(h) }
+    h => h.await1 flatMap { case hd #: h => Pull.output1(hd) >> Pull.pure(h) }
+
+  /** Write all inputs to the output of the returned `Pull`. */
+  def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
+    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> echo(h) }
 
   /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
     h => awaitN(n)(h) map { case buf #: h => buf.reverse.foldLeft(h)(_ push _) }
+
+  /** Return the last element of the input `Handle`, if nonempty. */
+  def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
+    def go(prev: Option[I]): Handle[F,I] => Pull[F,Nothing,Option[I]] =
+      h => h.await.optional.flatMap {
+        case None => Pull.pure(prev)
+        case Some(c #: h) => go(c.foldLeft(prev)((_,i) => Some(i)))(h)
+      }
+    go(None)
+  }
 
   /**
    * Like `[[await]]`, but runs the `await` asynchronously. A `flatMap` into
