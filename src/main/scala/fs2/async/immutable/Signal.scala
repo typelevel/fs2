@@ -1,6 +1,6 @@
 package fs2.async.immutable
 
-import fs2.{Async, process1}
+import fs2.{Async, process1, Stream}
 import fs2.util.Functor
 
 import fs2.async.{immutable, mutable}
@@ -47,6 +47,13 @@ trait Signal[F[_],A]  {
    */
   def changes: fs2.Stream[F, Boolean]
 
+  /**
+   * Discrete signal yielding to `true` when this signal halts.
+   * Otherwise emits single `false` and awaits signal to be halted and then emits `true`.
+   * @return
+   */
+  def closed: fs2.Stream[F,Boolean]
+
 
   /**
    * Asynchronously get the current value of this `Signal`
@@ -69,6 +76,7 @@ object Signal {
       def changes: fs2.Stream[F, Boolean] = self.changes
       def discrete: fs2.Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
+      def closed: Stream[F, Boolean] = self.closed
     }
 
     /**
@@ -80,13 +88,13 @@ object Signal {
      *
      * Also note that before any value from `p1` is emitted, the resulting signal is set to None
      */
-    def pipe[B](p1: process1.Process1[A,B]):F[Signal[F,Option[B]]] =
+    def pipe[B](p1: process1.Process1[A,B]):fs2.Stream[F,Signal[F,Option[B]]] =
       fromStream(self.discrete.pipe(p1))
 
   }
 
 
-  def fromStream[F[_]:Async,A](stream:fs2.Stream[F,A]):F[immutable.Signal[F,Option[A]]] = {
+  def fromStream[F[_]:Async,A](stream:fs2.Stream[F,A]):fs2.Stream[F,immutable.Signal[F,Option[A]]] = {
     ???
   }
 

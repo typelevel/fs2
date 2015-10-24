@@ -1,15 +1,23 @@
 package fs2.async.mutable
 
-import fs2.{Strategy, Async}
 
-import fs2.async.immutable
+import fs2.Stream
+
+import fs2.async.{AsyncExt, immutable}
+import fs2.util.Catchable
+import fs2.util.Task.Callback
+
+import scala.collection.immutable.Queue
+import scala.util.{Success, Try}
 
 /**
  * Created by pach on 10/10/15.
  */
 /**
  * A signal whose value may be set asynchronously. Provides continuous
- * and discrete streams for responding to changes to this value.
+ * and discrete streams for responding to changes to it's value.
+ *
+ *
  */
 trait Signal[F[_],A] extends immutable.Signal[F,A] {
 
@@ -27,11 +35,6 @@ trait Signal[F[_],A] extends immutable.Signal[F,A] {
    */
   def set(a: A): F[Unit]
 
-  /**
-   * Asynchronously sets the current value of this `Signal` and returns previous value of the `Signal`.
-   *
-   */
-   def getAndSet(a:A) : F[A]
 
   /**
    * Asynchronously sets the current value of this `Signal` and returns new value of this `Signal`.
@@ -44,26 +47,62 @@ trait Signal[F[_],A] extends immutable.Signal[F,A] {
    */
    def compareAndSet(op: A => Option[A]) : F[Option[A]]
 
+  /**
+   * Halts this signal.
+   * Halting this signal causes any modification
+   * operations (Signal#set, Signal#getAndSet, Signal#compareAndSet) to complete
+   * with `Signal.Terminated` exception.
+   *
+   * Any Streams that reads from this signal will be halted once this signal is closed.
+   *
+   * @return
+   */
+   def close:F[Unit]
 
 }
 
 
 object Signal {
 
+  val Terminated = new Throwable("Signal Halted")
 
-  def apply[F[_],A](initial:A)(implicit F:Async[F]):F[Signal[F,A]] = {
-    F.bind(F.ref[A]) { ref =>
-    F.map(F.set(ref)(F.pure(initial))) { _ =>
+  // None signals this Signal is terminated
+  private type State[F[_],A] = (Int,A,Queue[A => F[A]])
+
+  def apply[F[_],A](initA:A)(implicit F:AsyncExt[F], C: Catchable[F]): fs2.Stream[F,Signal[F,A]] = Stream.eval {
+    F.bind(F.ref[State[F,A]]) { ref =>
+    F.map(F.set(ref)(F.pure((0,initA,Queue.empty)))) { _ =>
+      def getChanged(stamp:Int):F[A] = {
+        ???
+      }
+
       new Signal[F,A] {
-        override def refresh: F[Unit] = ???
-        override def set(a: A): F[Unit] = F.set(ref)(F.pure(a))
-        override def get: F[A] = F.get(ref)
-        override def compareAndSet(op: (A) => Option[A]): F[Option[A]] = ???
-        override def getAndSet(a: A): F[A] = ???
-        override def changes: fs2.Stream[F, Boolean] = ???
-        override def continuous: fs2.Stream[F, A] = fs2.Stream.eval(F.get(ref))
-        override def discrete: fs2.Stream[F, A] = ???
-        override def changed: fs2.Stream[F, Boolean] = ???
+        def refresh: F[Unit] = F.map(compareAndSet(a => Some(a)))(_ => ())
+        def set(a: A): F[Unit] = F.map(compareAndSet(_ => Some(a)))(_ => ())
+        def get: F[A] = F.map(F.get(ref))(_._2)
+        def compareAndSet(op: (A) => Option[A]): F[Option[A]] = {
+          val modify:F[(State[F,A],State[F,A])] =
+            F.modify(ref) { case (v,a,q) => F.pure(op(a).fold((v,a,q)){ na => (v+1,na,Queue.empty)}) }
+
+          F.bind(modify) {
+           case ((oldVersion,_,queued),(newVersion,newA,_)) =>
+             if (oldVersion == newVersion) F.pure(None:Option[A])
+             else {
+               queued.foldLeft(F.pure(Option(newA))) {
+                 case (r,f) => F.bind(F.forkRun(f(newA)))(_ => r)
+               }
+             }
+          }
+        }
+
+        def close: F[Unit] = F.set(ref)(C.fail(Terminated))
+
+        def changes: fs2.Stream[F, Boolean] = ???
+        def continuous: fs2.Stream[F, A] = ???
+        def discrete: fs2.Stream[F, A] = ???
+        def changed: fs2.Stream[F, Boolean] = ???
+
+        def closed: Stream[F, Boolean] = ???
       }
     }}
 

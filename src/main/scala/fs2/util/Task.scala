@@ -180,6 +180,9 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
 
 object Task extends Instances {
 
+  type Result[A] = Either[Throwable,A]
+  type Callback[A] = Result[A] => Unit
+
   /** A `Task` which fails with the given `Throwable`. */
   def fail(e: Throwable): Task[Nothing] = new Task(Future.now(Left(e)))
 
@@ -260,6 +263,7 @@ object Task extends Instances {
 
   def TryTask[A](a: => Task[A]): Task[A] =
     try a catch { case e: Throwable => fail(e) }
+
 
   private trait Msg[A]
   private object Msg {
