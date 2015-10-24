@@ -51,15 +51,30 @@ object process1 {
       else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
         case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong).apply(h)
       }
-
+    
+  /** Emit the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`. */      
   def takeWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
-    h => 
-      Pull.await1Option(h).flatMap { 
-        case Some(c #: h) if p(c) =>
-          Pull.output1(c) >> takeWhile(p).apply(h)
-        case _ => Pull.done
+    h => {
+      @scala.annotation.tailrec
+      def go(chunk: Chunk[I], i: Option[Int] = None): Option[Int] = {
+        if (chunk.isEmpty) i
+        else chunk.indexWhere(p) match {
+          case Some(0) => go(chunk.drop(1), (i orElse Some(0)).map(_ + 1))
+          case _ => i
+        }
       }
       
+      Pull.await(h) flatMap {
+        case chunk #: h =>
+          go(chunk) match {
+            case Some(i) if i == chunk.size => Pull.output(chunk) >> takeWhile(p).apply(h)
+            case Some(i) => Pull.output(chunk.take(i)) >> Pull.done
+            case _ => Pull.done
+          }
+      }
+    }
+     
+  /** Drop the first `n` elements of the input `Handle`, and return the new `Handle`. */    
   def drop[F[_], I](n: Long)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
     h =>
       if (n <= 0) id.apply(h)
@@ -67,13 +82,27 @@ object process1 {
         case chunk #: h => drop(n - chunk.size).apply(h)
       }
       
+  /** Drop the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`. */            
   def dropWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] =
-    h => 
-      Pull.await1Option(h).flatMap {
-        case Some(c #: h) if p(c) => dropWhile(p).apply(h)
-        case Some(c #: h) => Pull.output1(c) >> id.apply(h)
-        case _ => Pull.done
+    h => {
+      @scala.annotation.tailrec
+      def go(chunk: Chunk[I], i: Option[Int] = None): Option[Int] = {
+        if (chunk.isEmpty) i
+        else chunk.indexWhere(p) match {
+          case Some(0) => go(chunk.drop(1), (i orElse Some(0)).map(_ + 1))
+          case _ => i
+        }
       }
+      
+      Pull.await(h) flatMap {
+        case chunk #: h =>
+          go(chunk) match {
+            case Some(i) if i == chunk.size => dropWhile(p).apply(h)
+            case Some(i) => Pull.output(chunk.drop(i)) >> id.apply(h)
+            case _ => Pull.output(chunk) >> id.apply(h)
+          }
+      }
+    } 
       
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =

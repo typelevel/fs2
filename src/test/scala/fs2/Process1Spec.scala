@@ -75,19 +75,19 @@ object Process1Spec extends Properties("process1") {
     s.get.take(n) ==? run(s.get).take(n)
   }
 
-  property("takeWhile") = forAll { (v: Vector[Int]) =>
-    val set = Gen.someOf(v).sample.map(_.toSet).getOrElse(Set.empty)
-    emits(v).pipe(takeWhile(set)) ==? v.takeWhile(set)
+  property("takeWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
+    val set = run(s.get).take(n.get).toSet    
+    s.get.pipe(takeWhile(set)) ==? run(s.get).takeWhile(set)
   }
   
-  property("drop") = forAll { (v: Vector[Int]) =>
-    val n = Gen.choose(-1, 20).sample.get
-    emits(v).pipe(drop(n)) ==? v.drop(n)
+  property("drop") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+    val n = if (negate) -n0.get else n0.get
+    s.get.pipe(drop(n)) ==? run(s.get).drop(n)    
   }
   
-  property("dropWhile") = forAll { (v: Vector[Int]) =>
-    val set = Gen.someOf(v).sample.map(_.toSet).getOrElse(Set.empty)
-    emits(v).pipe(dropWhile(set)) ==?  v.dropWhile(set)
+  property("dropWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
+    val set = run(s.get).take(n.get).toSet    
+    s.get.pipe(dropWhile(set)) ==? run(s.get).dropWhile(set)
   }
   
   property("take.chunks") = secure {
