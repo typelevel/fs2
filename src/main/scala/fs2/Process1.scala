@@ -12,14 +12,21 @@ object process1 {
    * done reading.
    */
   type Process1[I,+O] = Handle[Pure,I] => Pull[Pure,O,Handle[Pure,I]]
+  // type Tee[I,I2,+O] = (Handle[Pure,I], Handle[Pure,I2]) => Pull[Pure,O,(Handle[Pure,I],Handle[Pure,I2])]
 
   // nb: methods are in alphabetical order
 
+  /** Output all chunks from the input `Handle`. */
   def chunks[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
     h => h.await flatMap { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
 
   def delete[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     _.await1 flatMap { case i #: h => if (f(i)) id.apply(h) else Pull.output1(i) >> delete(f).apply(h) }
+
+  /** Output a transformed version of all chunks from the input `Handle`. */
+  def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O])(implicit F: NotNothing[F])
+  : Handle[F,I] => Pull[F,O,Handle[F,I]]
+  = h => h.await flatMap { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
 
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
   def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
@@ -27,7 +34,7 @@ object process1 {
 
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> id.apply(h) }
+    Pull.echo[F,I]
 
   /** Return the last element of the input `Handle`, if nonempty. */
   def last[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Option[I],Handle[F,I]] =
@@ -41,10 +48,12 @@ object process1 {
     h => h.await flatMap { case chunk #: h => Pull.output(chunk map f) >> lift(f).apply(h) }
 
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
-  def take[F[_],I](n: Int)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => (if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)) flatMap {
-      case chunk #: h => Pull.output(chunk) >> take(n - chunk.size).apply(h)
-    }
+  def take[F[_],I](n: Long)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    h =>
+      if (n <= 0) Pull.done
+      else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
+        case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong).apply(h)
+      }
 
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =

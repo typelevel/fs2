@@ -28,6 +28,10 @@ object Sub1 extends Sub1Instances0 {
   def substStream[F[_],G[_],A](p: Stream[F,A])(implicit S: Sub1[F,G]): Stream[G,A] =
     subst[Stream,F,G,A](p)
 
+  import Stream.Handle
+  def substHandle[F[_],G[_],A](p: Handle[F,A])(implicit S: Sub1[F,G]): Handle[G,A] =
+    subst[Handle,F,G,A](p)
+
   def substStreamF[F[_],G[_],A,B](g: A => Stream[F,B])(implicit S: Sub1[F,G]): A => Stream[G,B] =
     subst[({ type f[g[_],x] = A => Stream[g,x] })#f, F, G, B](g)
 

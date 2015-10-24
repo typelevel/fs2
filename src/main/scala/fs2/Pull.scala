@@ -114,7 +114,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       }
   }
 
-  def eval[F[_],R](f: F[R]) = new Pull[F,Nothing,R] {
+  def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] = new Pull[F,Nothing,R] {
     type W = Nothing
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
@@ -122,7 +122,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       Stream.eval(S(f)) flatMap { r => pure(r)._run0(tracked, k) }
   }
 
-  def acquire[F[_],R](id: Long, r: F[R], cleanup: R => F[Unit]) = new Pull[F,Nothing,R] {
+  def acquire[F[_],R](id: Long, r: F[R], cleanup: R => F[Unit]): Pull[F,Nothing,R] = new Pull[F,Nothing,R] {
     type W = Nothing
     def _run1[F2[_],W2>:W,R1>:R,R2](tracked: SortedSet[Long], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
