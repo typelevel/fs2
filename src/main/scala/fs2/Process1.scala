@@ -53,7 +53,7 @@ object process1 {
    * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
    */
   def lift[F[_],I,O](f: I => O)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-    Pull.receive { case chunk #: h => Pull.output(chunk map f) >> lift(f).apply(h) }
+    mapChunks(_.map(f))
 
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
