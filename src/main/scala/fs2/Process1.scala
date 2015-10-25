@@ -43,8 +43,8 @@ object process1 {
     }
 
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
-  def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    receive { case chunk #: h => Pull.output(chunk filter f) >> filter(f).apply(h) }
+  def filter[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    mapChunks(_ filter f)
 
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
@@ -68,7 +68,38 @@ object process1 {
       else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
         case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong).apply(h)
       }
-
+    
+  /** Emit the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`. */      
+  def takeWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
+    h => 
+      Pull.await(h) flatMap {
+        case chunk #: h =>
+          chunk.indexWhere(!p(_)) match {
+            case Some(0) => Pull.done
+            case Some(i) => Pull.output(chunk.take(i)) >> Pull.done
+            case None    => Pull.output(chunk) >> takeWhile(p).apply(h)
+          }
+      }
+     
+  /** Drop the first `n` elements of the input `Handle`, and return the new `Handle`. */    
+  def drop[F[_], I](n: Long)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
+    h =>
+      if (n <= 0) id.apply(h)
+      else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
+        case chunk #: h => drop(n - chunk.size).apply(h)
+      }
+      
+  /** Drop the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`. */            
+  def dropWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] =
+    h => 
+      Pull.await(h) flatMap {
+        case chunk #: h =>
+          chunk.indexWhere(!p(_)) match {     
+            case Some(i) => Pull.output(chunk.drop(i)) >> id.apply(h)            
+            case None    => dropWhile(p).apply(h)
+          }
+      }
+      
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     receive1 { case i #: h => Pull.output1(i) >> unchunk.apply(h) }
