@@ -29,6 +29,11 @@ trait Chunk[+A] { self =>
     iterator.map(f).copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
+  def zipWithIndex: Chunk[(A, Int)] = {
+    val buf = new collection.mutable.ArrayBuffer[(A, Int)](size)
+    iterator.zipWithIndex.copyToBuffer(buf)
+    Chunk.indexedSeq(buf)
+  }
   def iterator: Iterator[A] = new Iterator[A] {
     var i = 0
     def hasNext = i < self.size

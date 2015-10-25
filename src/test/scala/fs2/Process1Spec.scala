@@ -100,4 +100,8 @@ object Process1Spec extends Properties("process1") {
     val s = Stream(1, 2) ++ Stream(3, 4)
     s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
   }
+  
+  property("zipWithIndex") = forAll { (s: PureStream[Int]) =>
+    s.get.pipe(zipWithIndex) ==? run(s.get).zipWithIndex
+  }
 }
