@@ -65,15 +65,14 @@ object process1 {
     
   /** Emit the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`. */      
   def takeWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
-    h => 
-      Pull.await(h) flatMap {
-        case chunk #: h =>
-          chunk.indexWhere(!p(_)) match {
-            case Some(0) => Pull.done
-            case Some(i) => Pull.output(chunk.take(i)) >> Pull.done
-            case None    => Pull.output(chunk) >> takeWhile(p).apply(h)
-          }
-      }
+    Pull.receive {
+      case chunk #: h =>
+        chunk.indexWhere(!p(_)) match {
+          case Some(0) => Pull.done
+          case Some(i) => Pull.output(chunk.take(i)) >> Pull.done
+          case None    => Pull.output(chunk) >> takeWhile(p).apply(h)
+        }
+    }
      
   /** Drop the first `n` elements of the input `Handle`, and return the new `Handle`. */    
   def drop[F[_], I](n: Long)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
@@ -85,14 +84,13 @@ object process1 {
       
   /** Drop the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`. */            
   def dropWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] =
-    h => 
-      Pull.await(h) flatMap {
-        case chunk #: h =>
-          chunk.indexWhere(!p(_)) match {     
-            case Some(i) => Pull.output(chunk.drop(i)) >> id.apply(h)            
-            case None    => dropWhile(p).apply(h)
-          }
-      }
+    Pull.receive {
+      case chunk #: h =>
+        chunk.indexWhere(!p(_)) match {     
+          case Some(i) => Pull.output(chunk.drop(i)) >> id.apply(h)            
+          case None    => dropWhile(p).apply(h)
+        }
+    }
       
   /** Zip the elements of the input `Handle `with its indices, and return the new `Handle` */    
   def zipWithIndex[F[_], I](implicit F: NotNothing[F]): Handle[F, I] => Pull[F, (I, Int), Handle[F, I]] = {
