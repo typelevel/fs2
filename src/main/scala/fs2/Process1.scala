@@ -97,10 +97,10 @@ object process1 {
   /** Zip the elements of the input `Handle `with its indices, and return the new `Handle` */    
   def zipWithIndex[F[_], I](implicit F: NotNothing[F]): Handle[F, I] => Pull[F, (I, Int), Handle[F, I]] = {
     def go(n: Int): Handle[F, I] => Pull[F, (I, Int), Handle[F, I]] = {
-      Pull.receive({ 
+      Pull.receive { 
         case chunk #: h => 
           Pull.output(chunk.zipWithIndex.map({ case (c, i) => (c, i + n) })) >> go(n + chunk.size)(h)
-      })
+      }
     }    
     go(0)
   }    
