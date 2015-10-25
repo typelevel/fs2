@@ -43,15 +43,15 @@ private[fs2] trait pull1 {
 
   /** Copy the next available chunk to the output. */
   def copy[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }
+    receive { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }
 
   /** Copy the next available element to the output. */
   def copy1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await1 flatMap { case hd #: h => Pull.output1(hd) >> Pull.pure(h) }
+    receive1 { case hd #: h => Pull.output1(hd) >> Pull.pure(h) }
 
   /** Write all inputs to the output of the returned `Pull`. */
   def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> echo(h) }
+    receive { case chunk #: h => Pull.output(chunk) >> echo(h) }
 
   /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
@@ -93,4 +93,12 @@ private[fs2] trait pull1 {
         }
       } yield tl
     }
+
+  /** Apply `f` to the next available `Chunk`. */
+  def receive[F[_],I,O,R](f: Step[Chunk[I],Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
+    _.await.flatMap(f)
+
+  /** Apply `f` to the next available element. */
+  def receive1[F[_],I,O,R](f: Step[I,Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
+    _.await1.flatMap(f)
 }
