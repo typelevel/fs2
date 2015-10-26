@@ -19,11 +19,26 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = self pipe process1.filter(f)
 
+  /** Alias for `self pipe [[process1.fold]](z)(f)`. */
+  def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = self pipe process1.fold(z)(f)
+
+  /** Alias for `self pipe [[process1.fold1]](f)`. */
+  def fold1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self pipe process1.fold1(f)
+
   /** Alias for `self pipe [[process1.last]]`. */
   def last: Stream[F,Option[O]] = self pipe process1.last
 
   /** Alias for `self pipe [[process1.mapChunks]](f)`. */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F,O2] = self pipe process1.mapChunks(f)
+
+  /** Alias for `self pipe [[process1.reduce]](z)(f)`. */
+  def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self pipe process1.reduce(f)
+
+  /** Alias for `self pipe [[process1.scan]](z)(f)`. */
+  def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = self pipe process1.scan(z)(f)
+
+  /** Alias for `self pipe [[process1.scan1]](f)`. */
+  def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self pipe process1.scan1(f)
 
   /** Alias for `self pipe [[process1.take]](n)`. */
   def take(n: Long): Stream[F,O] = self pipe process1.take(n)
