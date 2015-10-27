@@ -54,6 +54,22 @@ object Process1Spec extends Properties("process1") {
     s2.filter(predicate) ==? run(s2).filter(predicate)
   }
 
+  property("fold") = forAll { (s: PureStream[Int], n: Int) =>
+    val f = (a: Int, b: Int) => a + b
+    s.get.fold(n)(f) ==? Vector(run(s.get).foldLeft(n)(f))
+  }
+
+  property("fold (2)") = forAll { (s: PureStream[Int], n: String) =>
+    val f = (a: String, b: Int) => a + b
+    s.get.fold(n)(f) ==? Vector(run(s.get).foldLeft(n)(f))
+  }
+
+  property("fold1") = forAll { (s: PureStream[Int]) =>
+    val v = run(s.get)
+    val f = (a: Int, b: Int) => a + b
+    s.get.fold1(f) ==? v.headOption.fold(Vector.empty[Int])(h => Vector(v.drop(1).foldLeft(h)(f)))
+  }
+
   property("performance of multi-stage pipeline") = secure {
     println("checking performance of multistage pipeline... this should finish quickly")
     val v = Vector.fill(1000)(Vector.empty[Int])
@@ -95,7 +111,23 @@ object Process1Spec extends Properties("process1") {
     val set = run(s.get).take(n.get).toSet    
     s.get.pipe(dropWhile(set)) ==? run(s.get).dropWhile(set)
   }
-  
+
+  property("scan") = forAll { (s: PureStream[Int], n: Int) =>
+    val f = (a: Int, b: Int) => a + b
+    s.get.scan(n)(f) ==? run(s.get).scanLeft(n)(f)
+  }
+
+  property("scan (2)") = forAll { (s: PureStream[Int], n: String) =>
+    val f = (a: String, b: Int) => a + b
+    s.get.scan(n)(f) ==? run(s.get).scanLeft(n)(f)
+  }
+
+  property("scan1") = forAll { (s: PureStream[Int]) =>
+    val v = run(s.get)
+    val f = (a: Int, b: Int) => a + b
+    s.get.scan1(f) ==? v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
+  }
+
   property("take.chunks") = secure {
     val s = Stream(1, 2) ++ Stream(3, 4)
     s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
