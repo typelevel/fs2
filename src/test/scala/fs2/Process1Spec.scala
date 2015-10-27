@@ -21,6 +21,11 @@ object Process1Spec extends Properties("process1") {
     s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
   }
 
+  property("collectFirst") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val pf: PartialFunction[Int, String] = ({ case i: Int if i % n.get == 0 => i.toString() })
+    s.get.pipe(collectFirst(pf)) ==? Vector(run(s.get).collectFirst(pf))
+  }
+  
   property("delete") = forAll { (s: PureStream[Int]) =>
     val v = run(s.get)
     val i = Gen.oneOf(v).sample.getOrElse(0)

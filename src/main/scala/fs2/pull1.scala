@@ -41,6 +41,17 @@ private[fs2] trait pull1 {
   def await1Option[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[Step[I,Handle[F,I]]]] =
     h => h.await1.map(Some(_)) or Pull.pure(None)
 
+  /** Finds the first element from the input for which the given partial 
+   function `pf` is defined, and applies the partial function to it. */
+  def collectFirst[F[_],I,O](pf: PartialFunction[I,O]): Handle[F,I] => Pull[F,Nothing,Option[O]] =
+    _.await.optional flatMap {
+      case Some(chunk #: h) => chunk.indexWhere(pf.isDefinedAt) match {
+        case Some(i) => Pull.pure(Some(pf(chunk(i))))
+        case None    => collectFirst(pf)(h)
+      }
+      case None             => Pull.pure(None)
+    }
+    
   /** Copy the next available chunk to the output. */
   def copy[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
     receive { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }
