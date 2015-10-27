@@ -83,7 +83,7 @@ object process1 {
   def scan[F[_],I,O](z: O)(f: (O, I) => O)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,O,Handle[F,I]] = {
     def go(z: O): Handle[F,I] => Pull[F,O,Handle[F,I]] =
       Pull.receive { case chunk #: h =>
-        val s = chunk.scanLeft(z)(f)
+        val s = chunk.scanLeft(z)(f).drop(1)
         Pull.output(s) >> go(s(s.size - 1)).apply(h)
       }
     h => Pull.output1(z) >> go(z).apply(h)

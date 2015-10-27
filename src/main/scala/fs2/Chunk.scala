@@ -29,14 +29,9 @@ trait Chunk[+A] { self =>
     iterator.map(f).copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
-  /**
-   * `[[scanLeft]]` is a helper for process1.scan; it differs
-   * from standard collection behavior by not including
-   * the initial value in the output.
-   */
   def scanLeft[B](z: B)(f: (B, A) => B): Chunk[B] = {
-    val buf = new collection.mutable.ArrayBuffer[B](size)
-    iterator.scanLeft(z)(f).drop(1).copyToBuffer(buf)
+    val buf = new collection.mutable.ArrayBuffer[B](size + 1)
+    iterator.scanLeft(z)(f).copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
   def zipWithIndex: Chunk[(A, Int)] = {
