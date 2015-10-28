@@ -7,6 +7,9 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.chunks]]`. */
   def chunks: Stream[F,Chunk[O]] = self pipe process1.chunks
 
+  /** Alias for `self pipe [[process1.collect]]`. */
+  def collect[O2](pf: PartialFunction[O, O2]) = self pipe process1.collect(pf)
+
   /** Alias for `self pipe [[process1.delete]]`. */
   def delete(f: O => Boolean): Stream[F,O] = self pipe process1.delete(f)
 
