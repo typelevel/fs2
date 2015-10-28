@@ -16,6 +16,10 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
+  /** Outputs the first value received from the input, or None if no value is provided. */
+  def await1Option[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Option[I],Nothing] =
+    h => Pull.await1Option.apply(h).flatMap(h => Pull.output1(h.map(_.head)) >> Pull.done)
+
   /** Output all chunks from the input `Handle`. */
   def chunks[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
     Pull.receive { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }

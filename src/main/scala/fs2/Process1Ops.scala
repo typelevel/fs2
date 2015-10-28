@@ -4,6 +4,9 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order
 
+  /** Alias for `self pipe [[process1.await1Option]]`. */
+  def await1Option: Stream[F,Option[O]] = self pipe process1.await1Option
+
   /** Alias for `self pipe [[process1.chunks]]`. */
   def chunks: Stream[F,Chunk[O]] = self pipe process1.chunks
 

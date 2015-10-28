@@ -10,6 +10,10 @@ import scodec.bits.{BitVector, ByteVector}
 
 object Process1Spec extends Properties("process1") {
 
+  property("await1Option") = forAll { (s: PureStream[Int]) =>
+    s.get.await1Option ==? Vector(run(s.get).headOption)
+  }
+
   property("chunks") = forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
     val v = Vector(Vector(11,2,2,2), Vector(2,2,3), Vector(2,3,4), Vector(1,2,2,2,2,2,3,3))
     val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
