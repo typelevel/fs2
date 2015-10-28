@@ -24,6 +24,11 @@ trait Chunk[+A] { self =>
   def isEmpty = size == 0
   def toList = foldRight(Nil: List[A])(_ :: _)
   def toVector = foldLeft(Vector.empty[A])(_ :+ _)
+  def collect[B](pf: PartialFunction[A,B]): Chunk[B] = {
+    val buf = new collection.mutable.ArrayBuffer[B](size)
+    iterator.collect(pf).copyToBuffer(buf)
+    Chunk.indexedSeq(buf)
+  }
   def map[B](f: A => B): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size)
     iterator.map(f).copyToBuffer(buf)

@@ -36,6 +36,10 @@ object process1 {
       }
     }
 
+    /** Elements, for which the partial function is not defined are filtered out from the returned `Pull` */
+  def collect[F[_],I, I2](pf: PartialFunction[I, I2])(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I2,Handle[F,I]] =
+    mapChunks(_.collect(pf))
+
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
   def filter[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     mapChunks(_ filter f)
