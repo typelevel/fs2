@@ -30,6 +30,11 @@ object Process1Spec extends Properties("process1") {
   property("mapChunked") = forAll { (s: PureStream[Int]) =>
     s.get.mapChunks(identity).chunks ==? run(s.get.chunks)
   }
+  
+  property("collect") = forAll { (s: PureStream[Int]) =>
+    val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+    s.get.pipe(fs2.process1.collect(pf)) ==? run(s.get).collect(pf)
+  }
 
   property("filter") = forAll { (s: PureStream[Int], n: SmallPositive) =>
     val predicate = (i: Int) => i % n.get == 0
