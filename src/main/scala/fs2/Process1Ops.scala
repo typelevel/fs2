@@ -39,6 +39,10 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.mapChunks]](f)`. */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F,O2] = self pipe process1.mapChunks(f)
 
+  /** Alias for `self pipe [[process1.mapAccumulate]]` */
+  def mapAccumulate[S,O2](init: S)(f: (S, O) => (S, O2)): Stream[F, (S, O2)] =
+    self pipe process1.mapAccumulate(init)(f)
+
   /** Alias for `self pipe [[process1.reduce]](z)(f)`. */
   def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self pipe process1.reduce(f)
 

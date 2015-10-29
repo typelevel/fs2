@@ -34,6 +34,16 @@ trait Chunk[+A] { self =>
     iterator.map(f).copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
+  def mapAccumulate[S,B](s0: S)(f: (S,A) => (S,B)): (S,Chunk[(S,B)]) = {
+    val buf = new collection.mutable.ArrayBuffer[(S,B)](size)
+    var s = s0
+    for { c <- iterator } {
+      val r = f(s, c)
+      buf += r
+      s = r._1
+    }
+    (s, Chunk.indexedSeq(buf))
+  }
   def scanLeft[B](z: B)(f: (B, A) => B): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size + 1)
     iterator.scanLeft(z)(f).copyToBuffer(buf)
