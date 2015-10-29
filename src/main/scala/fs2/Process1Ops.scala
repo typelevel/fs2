@@ -22,6 +22,9 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = self pipe process1.filter(f)
 
+  /** Alias for `self pipe [[process1.find]]`. */
+  def find(f: O => Boolean): Stream[F,O] = self pipe process1.find(f)
+
   /** Alias for `self pipe [[process1.fold]](z)(f)`. */
   def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = self pipe process1.fold(z)(f)
 

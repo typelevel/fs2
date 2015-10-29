@@ -44,6 +44,10 @@ object process1 {
   def filter[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     mapChunks(_ filter f)
 
+  /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
+  def find[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    h => Pull.find(f).apply(h).flatMap { case o #: h => Pull.output1(o) >> Pull.done }
+
   /**
    * Folds all inputs using an initial value `z` and supplied binary operator, and writes the final
    * result to the output of the supplied `Pull` when the stream has no more values.

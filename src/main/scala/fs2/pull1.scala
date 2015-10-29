@@ -57,6 +57,16 @@ private[fs2] trait pull1 {
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
     h => awaitN(n)(h) map { case buf #: h => buf.reverse.foldLeft(h)(_ push _) }
 
+  /** Await the next available element where the predicate returns true */
+  def find[F[_],I](f: I => Boolean): Handle[F,I] => Pull[F,Nothing,Step[I,Handle[F,I]]] =
+    receive { case chunk #: h =>
+      chunk.indexWhere(f) match {
+        case None => find(f).apply(h)
+        case Some(i) if i + 1 < chunk.size => Pull.pure(chunk(i) #: h.push(chunk.drop(i + 1)))
+        case Some(i) => Pull.pure(chunk(i) #: h)
+      }
+    }
+
   /** Return the last element of the input `Handle`, if nonempty. */
   def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
     def go(prev: Option[I]): Handle[F,I] => Pull[F,Nothing,Option[I]] =
