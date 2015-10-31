@@ -2,6 +2,7 @@ package fs2.async.mutable
 
 
 import fs2.Stream
+import fs2.async.AsyncExt.Change
 
 import fs2.async.{AsyncExt, immutable}
 import fs2.util.Catchable
@@ -16,7 +17,6 @@ import scala.util.{Success, Try}
 /**
  * A signal whose value may be set asynchronously. Provides continuous
  * and discrete streams for responding to changes to it's value.
- *
  *
  */
 trait Signal[F[_],A] extends immutable.Signal[F,A] {
@@ -47,29 +47,15 @@ trait Signal[F[_],A] extends immutable.Signal[F,A] {
    */
    def compareAndSet(op: A => Option[A]) : F[Option[A]]
 
-  /**
-   * Halts this signal.
-   * Halting this signal causes any modification
-   * operations (Signal#set, Signal#getAndSet, Signal#compareAndSet) to complete
-   * with `Signal.Terminated` exception.
-   *
-   * Any Streams that reads from this signal will be halted once this signal is closed.
-   *
-   * @return
-   */
-   def close:F[Unit]
-
 }
 
 
 object Signal {
 
-  val Terminated = new Throwable("Signal Halted")
 
-  // None signals this Signal is terminated
   private type State[F[_],A] = (Int,A,Queue[((Int,A)) => F[Unit]])
 
-  def apply[F[_],A](initA:A)(implicit F:AsyncExt[F], C: Catchable[F]): fs2.Stream[F,Signal[F,A]] = Stream.eval {
+  def apply[F[_],A](initA:A)(implicit F:AsyncExt[F]): fs2.Stream[F,Signal[F,A]] = Stream.eval {
     F.bind(F.ref[State[F,A]]) { ref =>
     F.map(F.set(ref)(F.pure((0,initA,Queue.empty)))) { _ =>
       def getChanged(stamp:Int):F[(Int,A)] = {
@@ -81,7 +67,7 @@ object Signal {
             }
 
           F.bind(modify){
-            case ((current,a,_),_) =>
+            case Change((current,a,_), _) =>
               if (current != stamp) F.pure((current,a))
               else F.get(chref)
           }
@@ -95,11 +81,11 @@ object Signal {
         def set(a: A): F[Unit] = F.map(compareAndSet(_ => Some(a)))(_ => ())
         def get: F[A] = F.map(F.get(ref))(_._2)
         def compareAndSet(op: (A) => Option[A]): F[Option[A]] = {
-          val modify:F[(State[F,A],State[F,A])] =
+          val modify:F[Change[State[F,A]]] =
             F.modify(ref) { case (v,a,q) => F.pure(op(a).fold((v,a,q)){ na => (v+1,na,Queue.empty)}) }
 
           F.bind(modify) {
-           case ((oldVersion,_,queued),(newVersion,newA,_)) =>
+           case Change((oldVersion,_,queued),(newVersion,newA,_)) =>
              if (oldVersion == newVersion) F.pure(None:Option[A])
              else {
                queued.foldLeft(F.pure(Option(newA))) {
@@ -109,11 +95,8 @@ object Signal {
           }
         }
 
-        def close: F[Unit] = F.set(ref)(C.fail(Terminated))
-
         def changes: fs2.Stream[F, Unit] =
           discrete.map(_ => ())
-
 
         def continuous: fs2.Stream[F, A] =
           Stream.eval(get).append(continuous)
@@ -126,15 +109,6 @@ object Signal {
           Stream.eval(getStamped).flatMap { case (s,a) => Stream(a).append(go(s))}
         }
 
-        def changed: fs2.Stream[F, Boolean] = {
-          ???
-          // continues stamped stream piped through spiking true on change of stamp
-        }
-
-        def closed: Stream[F, Boolean] = {
-          ???
-          // recovered stream swallowing terminated in favor of true
-        }
       }
     }}
 

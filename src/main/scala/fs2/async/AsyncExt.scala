@@ -2,13 +2,13 @@ package fs2.async
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
+import fs2.async.AsyncExt.Change
 import fs2.internal.Actor
 import fs2.util.Task.{Result, Callback}
 import fs2.{Strategy, Async}
 import fs2.util.{Task, Free}
 
 import scala.collection.immutable.Queue
-import scala.util.control.NonFatal
 
 
 /**
@@ -31,7 +31,7 @@ trait AsyncExt[F[_]] extends Async[F] {
    * but it is guaranteed that it will be applied before any other modify/set on the `ref`.
    *
    */
-  def modify[A](ref:Ref[A])(f: A => F[A]):F[(A,A)]
+  def modify[A](ref:Ref[A])(f: A => F[A]):F[Change[A]]
 
   /**
    * Like `modify` but allows to interrupt the modify task (Interruptee)
@@ -43,15 +43,22 @@ trait AsyncExt[F[_]] extends Async[F] {
    *
    * Note that Interruptor won't be able to interrupt computation after `f` was evaluated and produced computation.
    */
-  def cancellableModify[A](r:Ref[A])(f:A => F[A]):F[(F[(A,A)], F[Boolean])]
-
-
+  def cancellableModify[A](r:Ref[A])(f:A => F[A]):F[(F[Change[A]], F[Boolean])]
 
 
 }
 
 
 object AsyncExt {
+
+  /**
+   * Result of Ref modification. When the Ref Was modified succesfully,
+   * `previous` contains value before modification took place and
+   * `next` contains value _after_ modification was applied.
+   */
+  case class Change[+A](previous:A, now:A)
+
+
 
   private trait MsgId
   private trait Msg[A]
@@ -62,6 +69,7 @@ object AsyncExt {
     case class Modify[A](cb:Callback[A], id: () => MsgId) extends Msg[A]
     case class ModifySet[A](r:Result[A]) extends Msg[A]
   }
+
 
   private type RefState[A] = Either[Queue[(MsgId,A => Task[A])],A]
 
@@ -168,16 +176,16 @@ object AsyncExt {
       t2.runAsync(win)
     }
 
-    def modify(f:A => Task[A]):Task[(A,A)] = {
+    def modify(f:A => Task[A]):Task[Change[A]] = {
       for {
         a <- Task.async[A] { cb => actor ! Msg.Modify(cb,() => new MsgId {})}
         r <- f(a).attempt
         _ <- Task.delay { actor ! Msg.ModifySet(r) }
-        aa <- r.fold(Task.fail,na => Task.now(a -> na))
+        aa <- r.fold(Task.fail,na => Task.now(Change(a,na)))
       } yield aa
     }
 
-    def cancellableModify(f:A => Task[A]):Task[(Task[(A, A)], Task[Boolean])]  = Task.delay {
+    def cancellableModify(f:A => Task[A]):Task[(Task[Change[A]], Task[Boolean])]  = Task.delay {
       lazy val id = new MsgId {}
       val mod = modify(f)
       val cancel = Task.async[Boolean] { cb => actor ! Msg.Nevermind(id, cb) }
@@ -200,8 +208,8 @@ object AsyncExt {
     def setFree[A](q: Ref[A])(a: Free[Task, A]): Task[Unit] = q.setFree(a)
     def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
     def pure[A](a: A): Task[A] = Task.now(a)
-    def modify[A](ref: Ref[A])(f: (A) => Task[A]): Task[(A, A)] = ref.modify(f)
-    def cancellableModify[A](r: Ref[A])(f: (A) => Task[A]): Task[(Task[(A, A)], Task[Boolean])] = r.cancellableModify(f)
+    def modify[A](ref: Ref[A])(f: (A) => Task[A]): Task[Change[A]] = ref.modify(f)
+    def cancellableModify[A](r: Ref[A])(f: (A) => Task[A]): Task[(Task[Change[A]], Task[Boolean])] = r.cancellableModify(f)
   }
 
 

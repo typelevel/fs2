@@ -1,22 +1,15 @@
 package fs2.async.immutable
 
-import fs2.{Async, process1, Stream}
+import fs2.{Async, Stream}
 import fs2.util.Functor
 
-import fs2.async.{immutable, mutable}
+import fs2.async.{AsyncExt, immutable, mutable}
 
 
 /**
  * Created by pach on 10/10/15.
  */
 trait Signal[F[_],A]  {
-  /**
-   * Returns a continuous stream, indicating whether the value has changed.
-   * This will spike `true` once for each time the value of `Signal` was changed.
-   * It will always start with `true` when the process is run or when the `Signal` is
-   * set for the first time.
-   */
-  def changed: fs2.Stream[F, Boolean]
 
   /**
    * Returns the discrete version stream of this signal, updated only when `value`
@@ -30,7 +23,7 @@ trait Signal[F[_],A]  {
    * It will emit the current value of the Signal after being run or when the signal
    * is set for the first time
    */
-  def discrete: fs2.Stream[F, A]
+  def discrete: Stream[F, A]
 
   /**
    * Returns the continuous version of this signal, always equal to the
@@ -39,20 +32,13 @@ trait Signal[F[_],A]  {
    * Note that this may not see all changes of `A` as it
    * gets always current fresh `A` at every request.
    */
-  def continuous: fs2.Stream[F, A]
+  def continuous: Stream[F, A]
 
   /**
    * Returns the discrete version of `changed`. Will emit `Unit`
    * when the `value` is changed.
    */
-  def changes: fs2.Stream[F, Unit]
-
-  /**
-   * Discrete signal yielding to `true` when this signal halts.
-   * Otherwise emits single `false` and awaits signal to be halted and then emits `true`.
-   * @return
-   */
-  def closed: fs2.Stream[F,Boolean]
+  def changes: Stream[F, Unit]
 
 
   /**
@@ -71,32 +57,24 @@ object Signal {
      * Converts this signal to signal of `B` by applying `f`
      */
     def map[B](f: A => B):Signal[F,B] = new Signal[F,B] {
-      def changed: fs2.Stream[F, Boolean] = self.changed
-      def continuous: fs2.Stream[F, B] = self.continuous.map(f)
-      def changes: fs2.Stream[F, Unit] = self.changes
-      def discrete: fs2.Stream[F, B] = self.discrete.map(f)
+      def continuous: Stream[F, B] = self.continuous.map(f)
+      def changes: Stream[F, Unit] = self.changes
+      def discrete: Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
-      def closed: Stream[F, Boolean] = self.closed
     }
 
-    /**
-     * Converts this signal to signal of `B` by applying transducer `process1`
-     * to any new value of signal of `A`
-     *
-     * Note that, if the transducer filters any `A` received to not producing any `B`
-     * then resulting signal won't update any `changed` or `changes` streams.
-     *
-     * Also note that before any value from `p1` is emitted, the resulting signal is set to None
-     */
-    def pipe[B](p1: process1.Process1[A,B]):fs2.Stream[F,Signal[F,Option[B]]] =
-      fromStream(self.discrete.pipe(p1))
-
   }
 
 
-  def fromStream[F[_]:Async,A](stream:fs2.Stream[F,A]):fs2.Stream[F,immutable.Signal[F,Option[A]]] = {
-    ???
-  }
+  /**
+   * Constructs Stream from the input stream `source`. If `source` terminates
+   * then resulting stream terminates as well.
+   */
+  def fromStream[F[_]:AsyncExt,A](source:Stream[F,A]):Stream[F,immutable.Signal[F,Option[A]]] =
+    fs2.async.signalOf[F,Option[A]](None).flatMap { sig =>
+      fs2.concurrent.merge(Stream(sig),source.flatMap(a => Stream.eval_(sig.set(Some(a)))))
+    }
+
 
 
 }
