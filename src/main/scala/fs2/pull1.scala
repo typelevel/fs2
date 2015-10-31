@@ -43,19 +43,29 @@ private[fs2] trait pull1 {
 
   /** Copy the next available chunk to the output. */
   def copy[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }
+    receive { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }
 
   /** Copy the next available element to the output. */
   def copy1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await1 flatMap { case hd #: h => Pull.output1(hd) >> Pull.pure(h) }
+    receive1 { case hd #: h => Pull.output1(hd) >> Pull.pure(h) }
 
   /** Write all inputs to the output of the returned `Pull`. */
   def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk) >> echo(h) }
+    receive { case chunk #: h => Pull.output(chunk) >> echo(h) }
 
   /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
     h => awaitN(n)(h) map { case buf #: h => buf.reverse.foldLeft(h)(_ push _) }
+
+  /** Await the next available element where the predicate returns true */
+  def find[F[_],I](f: I => Boolean): Handle[F,I] => Pull[F,Nothing,Step[I,Handle[F,I]]] =
+    receive { case chunk #: h =>
+      chunk.indexWhere(f) match {
+        case None => find(f).apply(h)
+        case Some(i) if i + 1 < chunk.size => Pull.pure(chunk(i) #: h.push(chunk.drop(i + 1)))
+        case Some(i) => Pull.pure(chunk(i) #: h)
+      }
+    }
 
   /** Return the last element of the input `Handle`, if nonempty. */
   def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
@@ -93,4 +103,12 @@ private[fs2] trait pull1 {
         }
       } yield tl
     }
+
+  /** Apply `f` to the next available `Chunk`. */
+  def receive[F[_],I,O,R](f: Step[Chunk[I],Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
+    _.await.flatMap(f)
+
+  /** Apply `f` to the next available element. */
+  def receive1[F[_],I,O,R](f: Step[I,Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
+    _.await1.flatMap(f)
 }
