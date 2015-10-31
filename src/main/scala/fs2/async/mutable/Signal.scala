@@ -8,7 +8,7 @@ import fs2.async.{AsyncExt, immutable}
 import fs2.util.Catchable
 import fs2.util.Task.Callback
 
-import scala.collection.immutable.Queue
+import scala.collection.immutable.{Queue => SQueue}
 import scala.util.{Success, Try}
 
 /**
@@ -53,11 +53,11 @@ trait Signal[F[_],A] extends immutable.Signal[F,A] {
 object Signal {
 
 
-  private type State[F[_],A] = (Int,A,Queue[((Int,A)) => F[Unit]])
+  private type State[F[_],A] = (Int,A,SQueue[((Int,A)) => F[Unit]])
 
   def apply[F[_],A](initA:A)(implicit F:AsyncExt[F]): fs2.Stream[F,Signal[F,A]] = Stream.eval {
     F.bind(F.ref[State[F,A]]) { ref =>
-    F.map(F.set(ref)(F.pure((0,initA,Queue.empty)))) { _ =>
+    F.map(F.set(ref)(F.pure((0,initA,SQueue.empty)))) { _ =>
       def getChanged(stamp:Int):F[(Int,A)] = {
         F.bind(F.ref[(Int,A)]){ chref =>
           val modify =
@@ -82,7 +82,7 @@ object Signal {
         def get: F[A] = F.map(F.get(ref))(_._2)
         def compareAndSet(op: (A) => Option[A]): F[Option[A]] = {
           val modify:F[Change[State[F,A]]] =
-            F.modify(ref) { case (v,a,q) => F.pure(op(a).fold((v,a,q)){ na => (v+1,na,Queue.empty)}) }
+            F.modify(ref) { case (v,a,q) => F.pure(op(a).fold((v,a,q)){ na => (v+1,na,SQueue.empty)}) }
 
           F.bind(modify) {
            case Change((oldVersion,_,queued),(newVersion,newA,_)) =>
