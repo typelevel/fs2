@@ -63,6 +63,7 @@ If you have a project you'd like to include in this list, send a message to the 
 * [http4s](http://www.http4s.org): Minimal, idiomatic Scala interface for HTTP services using scalaz-stream
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using scalaz-stream and [scodec](https://github.com/scodec/scodec)
 * [streamz](https://github.com/krasserm/streamz): A library that allows a `Process` to consume from and produce to [Apache Camel](http://camel.apache.org/) endpoints, [Akka Persistence](http://doc.akka.io/docs/akka/2.3.5/scala/persistence.html) journals and snapshot stores and [Akka Stream](http://akka.io/docs/#akka-streams-and-http) flows (reactive streams) with full back-pressure support.
+* [SDBC](https://github.com/rocketfuel/sdbc): A database API that provides streams to and from various JDBC sources and Apache Cassandra.
 
 ### Related projects ###
 
