@@ -117,6 +117,14 @@ object Process1Spec extends Properties("process1") {
     s.get.covary[Task].through(prefetch) ==? run(s.get)
   }
 
+  property("sum") = forAll { (s: PureStream[Int]) =>
+    s.get.sum ==? Vector(run(s.get).sum)
+  }
+
+  property("sum (2)") = forAll { (s: PureStream[Double]) =>
+    s.get.sum ==? Vector(run(s.get).sum)
+  }
+
   property("take") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
     val n = if (negate) -n0.get else n0.get
     s.get.take(n) ==? run(s.get).take(n)
