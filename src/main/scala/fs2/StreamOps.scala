@@ -48,4 +48,13 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
 
   def runLog: Free[F,Vector[A]] =
     Stream.runFold(self, Vector.empty[A])(_ :+ _)
+
+  def tee[F2[_],B,C](s2: Stream[F2,B])(f: (Handle[F2,A], Handle[F2,B]) => Pull[F2,C,Any])(implicit S: Sub1[F,F2]): Stream[F2,C] =
+    (Sub1.substStream(self)).open.flatMap {
+      h1 => s2.open.flatMap { h2 => f(h1,h2) }
+    }.run
+
+  @deprecated("use `tee`, which now subsumes the functionality of `wye`", "0.9")
+  def wye[F2[_],B,C](s2: Stream[F2,B])(f: (Handle[F2,A], Handle[F2,B]) => Pull[F2,C,Any])(implicit S: Sub1[F,F2]): Stream[F2,C] =
+    tee(s2)(f)
 }

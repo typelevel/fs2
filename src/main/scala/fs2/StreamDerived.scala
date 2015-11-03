@@ -83,6 +83,16 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
       Pull[F2, Nothing, AsyncStep[F2,A2]] = self.awaitAsync(Sub1.substHandle(h))
     def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]):
       Pull[F2, Nothing, AsyncStep1[F2,A2]] = self.await1Async(Sub1.substHandle(h))
+    def ensureAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]):
+      Pull[F2, Nothing, AsyncStep[F2,A2]] = Pull.or(
+        self.awaitAsync(Sub1.substHandle(h)),
+        Pull.pure[AsyncStep[F2,A2]](Async.Future.pure(Pull.done))
+      )
+    def ensure1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]):
+      Pull[F2, Nothing, AsyncStep1[F2,A2]] = Pull.or(
+        self.await1Async(Sub1.substHandle(h)),
+        Pull.pure[AsyncStep1[F2,A2]](Async.Future.pure(Pull.done))
+      )
   }
 
   implicit class HandleSyntax2[F[_],+A](h: Handle[F,A]) {
@@ -90,11 +100,17 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
       Pull[F, Nothing, AsyncStep1[F,A2]] = self.await1Async(h)
     def invAwaitAsync[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
       Pull[F, Nothing, AsyncStep[F,A2]] = self.awaitAsync(h)
+    def invEnsureAsync[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
+      Pull[F, Nothing, AsyncStep[F,A2]] = h.ensureAsync
+    def invEnsure1Async[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
+      Pull[F, Nothing, AsyncStep1[F,A2]] = h.ensure1Async
   }
 
   implicit class PullSyntax[F[_],A](s: Stream[F,A]) {
     def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
       Stream.pull(s)(using)
+    def pull2[B,C](s2: Stream[F,B])(using: (Handle[F,A], Handle[F,B]) => Pull[F,C,Any]): Stream[F,C] =
+      s.open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.run
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]
