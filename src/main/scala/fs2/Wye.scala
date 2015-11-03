@@ -35,15 +35,13 @@ object wye {
       (l race r).force flatMap {
         case Left(l) => l.optional flatMap {
           case None => r.force.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
-          case Some(hd #: l) => P.output(hd) >> l.ensureAsync.flatMap(go(_, r))
+          case Some(hd #: l) => P.output(hd) >> l.awaitAsync.flatMap(go(_, r))
         }
         case Right(r) => r.optional flatMap {
           case None => l.force.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
-          case Some(hd #: r) => P.output(hd) >> r.ensureAsync.flatMap(go(l, _))
+          case Some(hd #: r) => P.output(hd) >> r.awaitAsync.flatMap(go(l, _))
         }
       }
-    // todo: awaitAsync can fail immediately, either change that or account for it here
-    // introduce another function on handle - demandAsync defined as awaitAsync.or(...)
-    s1.ensureAsync.flatMap { l => s2.ensureAsync.flatMap { r => go(l,r) }}
+    s1.awaitAsync.flatMap { l => s2.awaitAsync.flatMap { r => go(l,r) }}
   }
 }

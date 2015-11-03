@@ -24,11 +24,19 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def covary[F2[_]](implicit S: Sub1[F,F2]): Stream[F2,A] =
     Sub1.substStream(self)
 
+  /** Alias for `[[concurrent.either]](self, s2)`. */
+  def either[F2[_]:Async,B](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,Either[A,B]] =
+    concurrent.either(Sub1.substStream(self), s2)
+
   def flatMap[F2[_],B](f: A => Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.flatMap(Sub1.substStream(self))(f)
 
   def map[B](f: A => B): Stream[F,B] =
     Stream.map(self)(f)
+
+  /** Alias for `[[concurrent.merge]](self, s2)`. */
+  def merge[F2[_]:Async,B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
+    concurrent.merge(Sub1.substStream(self), s2)
 
   def onError[F2[_],B>:A](f: Throwable => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.onError(Sub1.substStream(self): Stream[F2,B])(f)
