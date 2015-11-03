@@ -12,13 +12,13 @@ object concurrent {
    * Calls `open` on the two streams, then invokes `[[wye.either]]`.
    */
   def either[F[_]:Async,O,O2](s1: Stream[F,O], s2: Stream[F,O2]): Stream[F,Either[O,O2]] =
-    P.run { s1.open.flatMap(h1 => s2.open.flatMap(h2 => wye.either(h1,h2))) }
+    P.run { s1.open.flatMap(h1 => s2.open.flatMap(h2 => wye.either.apply(h1,h2))) }
 
   /**
    * Calls `open` on the two streams, then invokes `[[wye.merge]]`.
    */
   def merge[F[_]:Async,O](s1: Stream[F,O], s2: Stream[F,O]): Stream[F,O] =
-    P.run { s1.open.flatMap(h1 => s2.open.flatMap(h2 => wye.merge(h1,h2))) }
+    P.run { s1.open.flatMap(h1 => s2.open.flatMap(h2 => wye.merge.apply(h1,h2))) }
 
   def join[F[_],O](maxOpen: Int)(s: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
     if (maxOpen <= 0) throw new IllegalArgumentException("maxOpen must be > 0, was: " + maxOpen)
