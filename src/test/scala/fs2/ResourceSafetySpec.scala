@@ -80,8 +80,8 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     val c = new AtomicLong(0)
     val b1 = bracket(c)(s1.get)
     val b2 = f1.get
-    swallow { run { concurrent.merge(b1, b2) }}
-    swallow { run { concurrent.merge(b2, b1) }}
+    swallow { run { b1.merge(b2) }}
+    swallow { run { b2.merge(b1) }}
     c.get ?= 0L
   }
 
@@ -90,9 +90,9 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     val c = new AtomicLong(0)
     val b1 = bracket(c)(s1.get)
     val b2 = bracket(c)(s1.get)
-    swallow { run { concurrent.merge(spuriousFail(b1,f1), b2) }}
-    swallow { run { concurrent.merge(b1, spuriousFail(b2,f2)) }}
-    swallow { run { concurrent.merge(spuriousFail(b1,f1), spuriousFail(b2,f2)) } }
+    swallow { run { spuriousFail(b1,f1) merge b2 }}
+    swallow { run { b1 merge spuriousFail(b2,f2) }}
+    swallow { run { spuriousFail(b1,f1) merge spuriousFail(b2,f2) }}
     c.get ?= 0L
   }
 
@@ -105,6 +105,19 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
       else bracket(c)(s.get)
     })
     swallow { run { concurrent.join(n.get)(s2) }}
+    c.get ?= 0L
+  }
+
+  property("asynchronous resource allocation (4)") = forAll {
+    (s: PureStream[Int], f: Option[Failure]) =>
+    val c = new AtomicLong(0)
+    val s2 = bracket(c)(f match {
+      case None => s.get
+      case Some(f) => spuriousFail(s.get, f)
+    })
+    swallow { run { s2 through process1.prefetch }}
+    swallow { run { s2 through process1.prefetch through process1.prefetch }}
+    swallow { run { s2 through process1.prefetch through process1.prefetch through process1.prefetch }}
     c.get ?= 0L
   }
 
