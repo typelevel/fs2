@@ -1,6 +1,7 @@
 package fs2
 
 import Step._
+import fs2.util.NotNothing
 
 private[fs2] trait pull1 {
   import Stream.Handle
@@ -92,5 +93,12 @@ private[fs2] trait pull1 {
           case None => Pull.pure(Handle.empty)
         }
       } yield tl
+    }
+
+  /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
+  def take[F[_]:NotNothing,I](n: Long)(h: Handle[F,I]): Pull[F,I,Handle[F,I]] =
+    if (n <= 0) Pull.pure(h)
+    else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
+      case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong)(h)
     }
 }

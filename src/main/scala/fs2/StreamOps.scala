@@ -43,16 +43,13 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
 
   def open: Pull[F, Nothing, Handle[F,A]] = Stream.open(self)
 
-  def pipe[B](f: Process1[_ >: A,B]): Stream[F,B] = self pull process1.covary(f)
+  def pipe[B](f: Process1[A,B]): Stream[F,B] = process1.covary(f)(self)
 
   def pipe2[F2[_],B,C](s2: Stream[F2,B])(f: (Stream[F2,A], Stream[F2,B]) => Stream[F2,C])(implicit S: Sub1[F,F2]): Stream[F2,C] =
     f(Sub1.substStream(self), s2)
 
   def pullv[F2[_],B](using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.pull(self)(using)
-
-  def repeatPull[F2[_],A2>:A,B](using: Handle[F2,A2] => Pull[F2,B,Handle[F2,A2]])(implicit S: Sub1[F,F2]): Stream[F2,B] =
-    Stream.repeatPull(Sub1.substStream(self): Stream[F2,A2])(using)
 
   def runFold[B](z: B)(f: (B,A) => B): Free[F,B] =
     Stream.runFold(self, z)(f)

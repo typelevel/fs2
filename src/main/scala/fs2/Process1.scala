@@ -2,7 +2,7 @@ package fs2
 
 import Stream.Handle
 import Step._
-import fs2.util.{Free,Functor,NotNothing,Sub1}
+import fs2.util.{Free,Functor,Sub1}
 
 object process1 {
 
@@ -11,55 +11,49 @@ object process1 {
    * as input, outputs `O` values, and returns a new `Handle` when it is
    * done reading.
    */
-  type Process1[I,+O] = Handle[Pure,I] => Pull[Pure,O,Handle[Pure,I]]
-  // type Tee[I,I2,+O] = (Handle[Pure,I], Handle[Pure,I2]) => Pull[Pure,O,(Handle[Pure,I],Handle[Pure,I2])]
+  type Process1[-I,+O] = Stream[Pure,I] => Stream[Pure,O]
 
   // nb: methods are in alphabetical order
 
   /** Output all chunks from the input `Handle`. */
-  def chunks[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
+  def chunks[F[_],I]: Stream[F,I] => Stream[F,Chunk[I]] =
+    _ repeatPull { _.await.flatMap { case chunk #: h => Pull.output1(chunk) as h }}
 
   /** Output a transformed version of all chunks from the input `Handle`. */
-  def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O])(implicit F: NotNothing[F])
-  : Handle[F,I] => Pull[F,O,Handle[F,I]]
-  = h => h.await flatMap { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
+  def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O]): Stream[F,I] => Stream[F,O] =
+    _ repeatPull { _.await.flatMap { case chunk #: h => Pull.output(f(chunk)) as h }}
 
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
-  def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk filter f) >> filter(f).apply(h) }
+  def filter[F[_], I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
+    mapChunks(_ filter f)
 
   /** Write all inputs to the output of the returned `Pull`. */
-  def id[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    Pull.echo[F,I]
+  def id[F[_],I]: Stream[F,I] => Stream[F,I] =
+    s => s
 
   /** Return the last element of the input `Handle`, if nonempty. */
-  def last[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Option[I],Handle[F,I]] =
-    h => Pull.last.apply(h).flatMap { o => Pull.output1(o) >> Pull.done }
+  def last[F[_],I]: Stream[F,I] => Stream[F,Option[I]] =
+    _ pull { h => Pull.last(h).flatMap { o => Pull.output1(o) }}
 
   /**
    * Write all inputs to the output of the returned `Pull`, transforming elements using `f`.
    * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
    */
-  def lift[F[_],I,O](f: I => O)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk map f) >> lift(f).apply(h) }
+  def lift[F[_],I,O](f: I => O): Stream[F,I] => Stream[F,O] =
+    _ map f
 
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
-  def take[F[_],I](n: Long)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h =>
-      if (n <= 0) Pull.done
-      else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
-        case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong).apply(h)
-      }
+  def take[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
+    _ pull Pull.take(n)
 
   /** Convert the input to a stream of solely 1-element chunks. */
-  def unchunk[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await1 flatMap { case i #: h => Pull.output1(i) >> unchunk.apply(h) }
+  def unchunk[F[_],I]: Stream[F,I] => Stream[F,I] =
+    _ repeatPull { h => h.await1 flatMap { case i #: h => Pull.output1(i) as h }}
 
   // stepping a process
 
-  def covary[F[_],I,O](p: Process1[I,O]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-    p.asInstanceOf[Handle[F,I] => Pull[F,O,Handle[F,I]]]
+  def covary[F[_],I,O](p: Process1[I,O]): Stream[F,I] => Stream[F,O] =
+    p.asInstanceOf[Stream[F,I] => Stream[F,O]]
 
   def stepper[I,O](p: Process1[I,O]): Stepper[I,O] = {
     type Read[+R] = Option[Chunk[I]] => R
@@ -73,7 +67,7 @@ object process1 {
         case Some(chunk) => Stream.chunk(chunk).append[Read,I](prompts)
       }
 
-    def outputs: Stream[Read,O] = prompts pull covary[Read,I,O](p)
+    def outputs: Stream[Read,O] = covary[Read,I,O](p)(prompts)
     def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
