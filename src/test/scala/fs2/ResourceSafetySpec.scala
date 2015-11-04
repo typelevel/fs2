@@ -118,9 +118,4 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     Stream.bracket(Task.delay { c.decrementAndGet; println("decrement " + c.get) })(
       _ => s,
       _ => Task.delay { c.incrementAndGet; println("increment " + c.get) })
-
-  /*
-  concurrent.join
-  using generated resources
-  */
 }
