@@ -95,6 +95,8 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   implicit class PullSyntax[F[_],A](s: Stream[F,A]) {
     def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
       Stream.pull(s)(using)
+    def pull2[B,C](s2: Stream[F,B])(using: (Handle[F,A], Handle[F,B]) => Pull[F,C,Any]): Stream[F,C] =
+      s.open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.run
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]

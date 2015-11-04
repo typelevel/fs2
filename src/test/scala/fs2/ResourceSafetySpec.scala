@@ -28,6 +28,13 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     f.tag |: 0L =? c.get
   }
 
+  property("bracket ++ throw Err") = forAll { (s: PureStream[Int]) =>
+    val c = new AtomicLong(0)
+    val b = bracket(c)(s.get ++ ((throw Err): Stream[Pure,Int]))
+    swallow { b }
+    c.get ?= 0
+  }
+
   property("1 million brackets in sequence") = secure {
     val c = new AtomicLong(0)
     val b = bracket(c)(Stream.emit(1))
@@ -89,19 +96,26 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     c.get ?= 0L
   }
 
+  property("asynchronous resource allocation (3)") = forAll {
+    (s: PureStream[(PureStream[Int], Option[Failure])]
+    , allowFailure: Boolean, f: Failure, n: SmallPositive) =>
+    val c = new AtomicLong(0)
+    val s2 = bracket(c)(s.get.map { case (s, f) =>
+      if (allowFailure) f.map(f => spuriousFail(bracket(c)(s.get), f)).getOrElse(bracket(c)(s.get))
+      else bracket(c)(s.get)
+    })
+    swallow { run { concurrent.join(n.get)(s2) }}
+    c.get ?= 0L
+  }
+
   def swallow(a: => Any): Unit =
     try { a; () }
     catch { case e: Throwable => () }
 
-  def bracket(c: AtomicLong)(s: Stream[Task,Int]): Stream[Task,Int] =
+  def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] =
     Stream.bracket(Task.delay(c.decrementAndGet))(_ => s, _ => Task.delay(c.incrementAndGet))
   def lbracket(c: AtomicLong)(s: Stream[Task,Int]): Stream[Task,Int] =
     Stream.bracket(Task.delay { c.decrementAndGet; println("decrement " + c.get) })(
       _ => s,
       _ => Task.delay { c.incrementAndGet; println("increment " + c.get) })
-
-  /*
-  concurrent.join
-  using generated resources
-  */
 }
