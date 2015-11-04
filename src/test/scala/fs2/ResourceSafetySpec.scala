@@ -28,6 +28,13 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     f.tag |: 0L =? c.get
   }
 
+  property("bracket ++ throw Err") = forAll { (s: PureStream[Int]) =>
+    val c = new AtomicLong(0)
+    val b = bracket(c)(s.get ++ ((throw Err): Stream[Pure,Int]))
+    swallow { b }
+    c.get ?= 0
+  }
+
   property("1 million brackets in sequence") = secure {
     val c = new AtomicLong(0)
     val b = bracket(c)(Stream.emit(1))
@@ -111,9 +118,4 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     Stream.bracket(Task.delay { c.decrementAndGet; println("decrement " + c.get) })(
       _ => s,
       _ => Task.delay { c.incrementAndGet; println("increment " + c.get) })
-
-  /*
-  concurrent.join
-  using generated resources
-  */
 }
