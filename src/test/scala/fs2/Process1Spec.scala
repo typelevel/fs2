@@ -21,8 +21,19 @@ object Process1Spec extends Properties("process1") {
     s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
   }
 
+  property("delete") = forAll { (s: PureStream[Int]) =>
+    val v = run(s.get)
+    val i = Gen.oneOf(v).sample.getOrElse(0)
+    s.get.delete(_ == i) ==? v.diff(Vector(i))
+  }
+
   property("mapChunked") = forAll { (s: PureStream[Int]) =>
     s.get.mapChunks(identity).chunks ==? run(s.get.chunks)
+  }
+  
+  property("collect") = forAll { (s: PureStream[Int]) =>
+    val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+    s.get.pipe(fs2.process1.collect(pf)) ==? run(s.get).collect(pf)
   }
 
   property("filter") = forAll { (s: PureStream[Int], n: SmallPositive) =>
@@ -46,6 +57,27 @@ object Process1Spec extends Properties("process1") {
     val predicate = (b: Boolean) => !b
     val s2 = s.get.mapChunks(c => Bits(BitVector.bits(c.iterator.toArray[Boolean])))
     s2.filter(predicate) ==? run(s2).filter(predicate)
+  }
+
+  property("find") = forAll { (s: PureStream[Int], i: Int) =>
+    val predicate = (item: Int) => item < i
+    s.get.find(predicate) ==? run(s.get).find(predicate).toVector
+  }
+
+  property("fold") = forAll { (s: PureStream[Int], n: Int) =>
+    val f = (a: Int, b: Int) => a + b
+    s.get.fold(n)(f) ==? Vector(run(s.get).foldLeft(n)(f))
+  }
+
+  property("fold (2)") = forAll { (s: PureStream[Int], n: String) =>
+    val f = (a: String, b: Int) => a + b
+    s.get.fold(n)(f) ==? Vector(run(s.get).foldLeft(n)(f))
+  }
+
+  property("fold1") = forAll { (s: PureStream[Int]) =>
+    val v = run(s.get)
+    val f = (a: Int, b: Int) => a + b
+    s.get.fold1(f) ==? v.headOption.fold(Vector.empty[Int])(h => Vector(v.drop(1).foldLeft(h)(f)))
   }
 
   property("performance of multi-stage pipeline") = secure {
@@ -75,8 +107,43 @@ object Process1Spec extends Properties("process1") {
     s.get.take(n) ==? run(s.get).take(n)
   }
 
+  property("takeWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
+    val set = run(s.get).take(n.get).toSet    
+    s.get.pipe(takeWhile(set)) ==? run(s.get).takeWhile(set)
+  }
+  
+  property("drop") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+    val n = if (negate) -n0.get else n0.get
+    s.get.pipe(drop(n)) ==? run(s.get).drop(n)    
+  }
+  
+  property("dropWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
+    val set = run(s.get).take(n.get).toSet    
+    s.get.pipe(dropWhile(set)) ==? run(s.get).dropWhile(set)
+  }
+
+  property("scan") = forAll { (s: PureStream[Int], n: Int) =>
+    val f = (a: Int, b: Int) => a + b
+    s.get.scan(n)(f) ==? run(s.get).scanLeft(n)(f)
+  }
+
+  property("scan (2)") = forAll { (s: PureStream[Int], n: String) =>
+    val f = (a: String, b: Int) => a + b
+    s.get.scan(n)(f) ==? run(s.get).scanLeft(n)(f)
+  }
+
+  property("scan1") = forAll { (s: PureStream[Int]) =>
+    val v = run(s.get)
+    val f = (a: Int, b: Int) => a + b
+    s.get.scan1(f) ==? v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
+  }
+
   property("take.chunks") = secure {
     val s = Stream(1, 2) ++ Stream(3, 4)
     s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
+  }
+  
+  property("zipWithIndex") = forAll { (s: PureStream[Int]) =>
+    s.get.pipe(zipWithIndex) ==? run(s.get).zipWithIndex
   }
 }

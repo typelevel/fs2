@@ -18,16 +18,52 @@ object process1 {
 
   /** Output all chunks from the input `Handle`. */
   def chunks[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Chunk[I],Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
+    Pull.receive { case chunk #: h => Pull.output1(chunk) >> chunks.apply(h) }
 
   /** Output a transformed version of all chunks from the input `Handle`. */
   def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O])(implicit F: NotNothing[F])
   : Handle[F,I] => Pull[F,O,Handle[F,I]]
-  = h => h.await flatMap { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
+  = Pull.receive { case chunk #: h => Pull.output(f(chunk)) >> mapChunks(f).apply(h) }
+
+  /** Skip the first element that matches the predicate. */
+  def delete[F[_],I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    Pull.receive { case chunk #: h =>
+      chunk.indexWhere(p) match {
+        case Some(i) =>
+          val (before, after) = (chunk.take(i), chunk.drop(i + 1))
+          Pull.output(before) >> Pull.output(after) >> id.apply(h)
+        case None => Pull.output(chunk) >> delete(p).apply(h)
+      }
+    }
+
+    /** Elements, for which the partial function is not defined are filtered out from the returned `Pull` */
+  def collect[F[_],I, I2](pf: PartialFunction[I, I2])(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I2,Handle[F,I]] =
+    mapChunks(_.collect(pf))
 
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
-  def filter[F[_], I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk filter f) >> filter(f).apply(h) }
+  def filter[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    mapChunks(_ filter f)
+
+  /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
+  def find[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    h => Pull.find(f).apply(h).flatMap { case o #: h => Pull.output1(o) >> Pull.done }
+
+  /**
+   * Folds all inputs using an initial value `z` and supplied binary operator, and writes the final
+   * result to the output of the supplied `Pull` when the stream has no more values.
+   */
+  def fold[F[_],I,O](z: O)(f: (O, I) => O)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
+   h => h.await.optional flatMap {
+     case Some(c #: h) => fold(c.foldLeft(z)(f))(f).apply(h)
+     case None => Pull.output1(z) >> Pull.done
+   }
+
+  /**
+   * Folds all inputs using the supplied binary operator, and writes the final result to the output of
+   * the supplied `Pull` when the stream has no more values.
+   */
+  def fold1[F[_],I](f: (I, I) => I)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    Pull.receive1 { case o #: h => fold(o)(f).apply(h) }
 
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
@@ -42,7 +78,31 @@ object process1 {
    * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
    */
   def lift[F[_],I,O](f: I => O)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-    h => h.await flatMap { case chunk #: h => Pull.output(chunk map f) >> lift(f).apply(h) }
+    mapChunks(_.map(f))
+
+  /** Alias for `[[process1.fold1]]` */
+  def reduce[F[_],I](f: (I, I) => I)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    fold1(f)
+
+  /**
+   * Writes `z` to the output, followed by the result of repeated applications of `f` to each input in turn.
+   * Works in a chunky fashion, and creates a `Chunk.indexedSeq` for each converted chunk.
+   */
+  def scan[F[_],I,O](z: O)(f: (O, I) => O)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,O,Handle[F,I]] = {
+    def go(z: O): Handle[F,I] => Pull[F,O,Handle[F,I]] =
+      Pull.receive { case chunk #: h =>
+        val s = chunk.scanLeft(z)(f).drop(1)
+        Pull.output(s) >> go(s(s.size - 1)).apply(h)
+      }
+    h => Pull.output1(z) >> go(z).apply(h)
+  }
+
+  /**
+   * Writes the result of repeated applications of `f` to each input in turn.
+   * Works in a chunky fashion, and creates a `Chunk.indexedSeq` for each converted chunk.
+   */
+  def scan1[F[_],I](f: (I, I) => I)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    Pull.receive1 { case o #: h => scan(o)(f).apply(h) }
 
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
@@ -51,10 +111,47 @@ object process1 {
       else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
         case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong).apply(h)
       }
-
+    
+  /** Emit the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`. */      
+  def takeWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
+    Pull.receive { case chunk #: h =>
+      chunk.indexWhere(!p(_)) match {
+        case Some(0) => Pull.done
+        case Some(i) => Pull.output(chunk.take(i)) >> Pull.done
+        case None    => Pull.output(chunk) >> takeWhile(p).apply(h)
+      }
+    }
+     
+  /** Drop the first `n` elements of the input `Handle`, and return the new `Handle`. */    
+  def drop[F[_], I](n: Long)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] = 
+    h =>
+      if (n <= 0) id.apply(h)
+      else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
+        case chunk #: h => drop(n - chunk.size).apply(h)
+      }
+      
+  /** Drop the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`. */            
+  def dropWhile[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F, I] => Pull[F, I, Handle[F, I]] =
+    Pull.receive { case chunk #: h =>
+      chunk.indexWhere(!p(_)) match {     
+        case Some(i) => Pull.output(chunk.drop(i)) >> id.apply(h)            
+        case None    => dropWhile(p).apply(h)
+      }
+    }
+      
+  /** Zip the elements of the input `Handle `with its indices, and return the new `Handle` */    
+  def zipWithIndex[F[_], I](implicit F: NotNothing[F]): Handle[F, I] => Pull[F, (I, Int), Handle[F, I]] = {
+    def go(n: Int): Handle[F, I] => Pull[F, (I, Int), Handle[F, I]] = {
+      Pull.receive { case chunk #: h => 
+        Pull.output(chunk.zipWithIndex.map({ case (c, i) => (c, i + n) })) >> go(n + chunk.size)(h)
+      }
+    }    
+    go(0)
+  }    
+      
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I](implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
-    h => h.await1 flatMap { case i #: h => Pull.output1(i) >> unchunk.apply(h) }
+    Pull.receive1 { case i #: h => Pull.output1(i) >> unchunk.apply(h) }
 
   // stepping a process
 

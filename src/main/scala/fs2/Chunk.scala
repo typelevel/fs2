@@ -17,12 +17,31 @@ trait Chunk[+A] { self =>
   def filter(f: A => Boolean): Chunk[A]
   def foldLeft[B](z: B)(f: (B,A) => B): B
   def foldRight[B](z: B)(f: (A,B) => B): B
+  def indexWhere(p: A => Boolean): Option[Int] = {
+    val index = iterator.indexWhere(p)
+    if (index < 0) None else Some(index)
+  }
   def isEmpty = size == 0
   def toList = foldRight(Nil: List[A])(_ :: _)
   def toVector = foldLeft(Vector.empty[A])(_ :+ _)
+  def collect[B](pf: PartialFunction[A,B]): Chunk[B] = {
+    val buf = new collection.mutable.ArrayBuffer[B](size)
+    iterator.collect(pf).copyToBuffer(buf)
+    Chunk.indexedSeq(buf)
+  }
   def map[B](f: A => B): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size)
     iterator.map(f).copyToBuffer(buf)
+    Chunk.indexedSeq(buf)
+  }
+  def scanLeft[B](z: B)(f: (B, A) => B): Chunk[B] = {
+    val buf = new collection.mutable.ArrayBuffer[B](size + 1)
+    iterator.scanLeft(z)(f).copyToBuffer(buf)
+    Chunk.indexedSeq(buf)
+  }
+  def zipWithIndex: Chunk[(A, Int)] = {
+    val buf = new collection.mutable.ArrayBuffer[(A, Int)](size)
+    iterator.zipWithIndex.copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
   def iterator: Iterator[A] = new Iterator[A] {
@@ -60,11 +79,11 @@ object Chunk {
   def indexedSeq[A](a: collection.IndexedSeq[A]): Chunk[A] = new Chunk[A] {
     def size = a.size
     override def isEmpty = a.isEmpty
-    override def uncons = if (a.isEmpty) None else Some(a.head -> seq(a drop 1))
+    override def uncons = if (a.isEmpty) None else Some(a.head -> indexedSeq(a drop 1))
     def apply(i: Int) = a(i)
-    def drop(n: Int) = seq(a.drop(n))
-    def filter(f: A => Boolean) = seq(a.filter(f))
-    def take(n: Int) = seq(a.take(n))
+    def drop(n: Int) = indexedSeq(a.drop(n))
+    def filter(f: A => Boolean) = indexedSeq(a.filter(f))
+    def take(n: Int) = indexedSeq(a.take(n))
     def foldLeft[B](z: B)(f: (B,A) => B): B = a.foldLeft(z)(f)
     def foldRight[B](z: B)(f: (A,B) => B): B =
       a.reverseIterator.foldLeft(z)((b,a) => f(a,b))

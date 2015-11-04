@@ -12,3 +12,5 @@ cache:
   directories:
     - $HOME/.ivy2
     - $HOME/.sbt
+script:
+  - sbt ++$TRAVIS_SCALA_VERSION "testOnly fs2.*"
