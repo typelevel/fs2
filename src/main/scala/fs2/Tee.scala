@@ -5,11 +5,10 @@ import fs2.util.{Free,Functor,Sub1}
 
 object tee {
 
-  trait Tee[-I,-I2,+O] {
-    def run[F[_]]: (Stream[F,I], Stream[F,I2]) => Stream[F,O]
-    def apply[F[_]](s: Stream[F,I], s2: Stream[F,I2]): Stream[F,O] = run(s, s2)
-    def stepper: Stepper[I,I2,O] = tee.stepper(this)
-  }
+  type Tee[-I,-I2,+O] = (Stream[Pure,I], Stream[Pure,I2]) => Stream[Pure,O]
+
+  def covary[F[_],I,I2,O](p: Tee[I,I2,O]): (Stream[F,I], Stream[F,I2]) => Stream[F,O] =
+    p.asInstanceOf[(Stream[F,I],Stream[F,I2]) => Stream[F,O]]
 
   def stepper[I,I2,O](p: Tee[I,I2,O]): Stepper[I,I2,O] = {
     type Read[+R] = Either[Option[Chunk[I]] => R, Option[Chunk[I2]] => R]
@@ -30,7 +29,7 @@ object tee {
         case Some(chunk) => Stream.chunk(chunk).append[Read,I2](promptsR)
       }
 
-    def outputs: Stream[Read,O] = p[Read](promptsL, promptsR)
+    def outputs: Stream[Read,O] = covary[Read,I,I2,O](p)(promptsL, promptsR)
     def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
