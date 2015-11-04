@@ -108,6 +108,19 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     c.get ?= 0L
   }
 
+  property("asynchronous resource allocation (4)") = forAll {
+    (s: PureStream[Int], f: Option[Failure]) =>
+    val c = new AtomicLong(0)
+    val s2 = bracket(c)(f match {
+      case None => s.get
+      case Some(f) => spuriousFail(s.get, f)
+    })
+    swallow { run { s2 through process1.prefetch }}
+    swallow { run { s2 through process1.prefetch through process1.prefetch }}
+    swallow { run { s2 through process1.prefetch through process1.prefetch through process1.prefetch }}
+    c.get ?= 0L
+  }
+
   def swallow(a: => Any): Unit =
     try { a; () }
     catch { case e: Throwable => () }

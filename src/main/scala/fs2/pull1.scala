@@ -127,22 +127,6 @@ private[fs2] trait pull1 {
       }
     }
 
-  /**
-   * Like `[[prefetch]]`, but continue fetching asynchronously as long as the number of
-   * prefetched elements is less than `n`.
-   */
-  def prefetchN[F[_]:Async,I](n: Int)(h: Handle[F,I]): Pull[F,Nothing,Pull[F,Nothing,Handle[F,I]]] =
-    if (n <= 0) Pull.pure(Pull.pure(h))
-    else prefetch(h) map { p =>
-      for {
-        s <- p.flatMap(awaitLimit(n)).optional
-        tl <- s match {
-          case Some(hd #: h) => prefetchN(n - hd.size)(h) flatMap { tl => tl.map(_ push hd) }
-          case None => Pull.pure(Handle.empty)
-        }
-      } yield tl
-    }
-
   /** Apply `f` to the next available `Chunk`. */
   def receive[F[_],I,O,R](f: Step[Chunk[I],Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
     _.await.flatMap(f)

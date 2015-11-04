@@ -4,6 +4,7 @@ import fs2.Chunk.{Bits, Bytes, Doubles}
 import fs2.Stream._
 import fs2.TestUtil._
 import fs2.process1._
+import fs2.util.Task
 import org.scalacheck.Prop._
 import org.scalacheck.{Gen, Properties}
 import scodec.bits.{BitVector, ByteVector}
@@ -110,6 +111,10 @@ object Process1Spec extends Properties("process1") {
 
   property("lift") = forAll { (s: PureStream[Double]) =>
     s.get.pipe(lift(_.toString)) ==? run(s.get).map(_.toString)
+  }
+
+  property("prefetch") = forAll { (s: PureStream[Int]) =>
+    s.get.covary[Task].through(prefetch) ==? run(s.get)
   }
 
   property("take") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>

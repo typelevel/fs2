@@ -1,6 +1,6 @@
 package fs2
 
-import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executor
 import scala.concurrent.ExecutionContext
 
 /** Provides a function for evaluating thunks, possibly asynchronously. */
@@ -17,7 +17,7 @@ object Strategy {
   }
 
   /** Create a `Strategy` from an `ExecutionContext`. */
-  def fromExecutionContext(es: ExecutorService): Strategy = new Strategy {
+  def fromExecutor(es: Executor): Strategy = new Strategy {
     def apply(thunk: => Unit): Unit =
       es.execute { new Runnable { def run = thunk } }
   }

@@ -76,6 +76,14 @@ object process1 {
   def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O]): Stream[F,I] => Stream[F,O] =
     _ repeatPull { _.await.flatMap { case chunk #: h => Pull.output(f(chunk)) as h }}
 
+  /**
+   * Behaves like `id`, but starts fetching the next chunk before emitting the current,
+   * enabling processing on either side of the `prefetch` to run in parallel.
+   */
+  def prefetch[F[_]:Async,I]: Stream[F,I] => Stream[F,I] =
+    _ repeatPull { Pull.receive { case hd #: tl =>
+        Pull.prefetch(tl) flatMap { p => Pull.output(hd) >> p }}}
+
   /** Alias for `[[process1.fold1]]` */
   def reduce[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] = fold1(f)
 
