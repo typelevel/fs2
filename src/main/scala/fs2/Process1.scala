@@ -122,6 +122,10 @@ object process1 {
   def scan1[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] =
     _ pull { Pull.receive1 { case o #: h => _scan0(o)(f)(h) }}
 
+  /** Writes the sum of all input elements, or zero if the input is empty. */
+  def sum[F[_],I](implicit ev: Numeric[I]): Stream[F,I] => Stream[F,I] =
+    fold(ev.zero)(ev.plus)
+
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull Pull.take(n)
