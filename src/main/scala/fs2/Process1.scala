@@ -77,6 +77,30 @@ object process1 {
     _ repeatPull { _.await.flatMap { case chunk #: h => Pull.output(f(chunk)) as h }}
 
   /**
+    * Maps a running total according to `S` and the input with the function `f`.
+    *
+    * @example {{{
+    * scala> Stream("Hello", "World")
+    *      |   .mapAccumulate(0)((l, s) => (l + s.length, s.head)).toVector
+    * res0: Vector[(Int, Char)] = Vector((5,H), (10,W))
+    * }}}
+    */
+  def mapAccumulate[F[_],S,I,O](init: S)(f: (S,I) => (S,O)): Stream[F,I] => Stream[F,(S,O)] =
+    _ pull { _.await.flatMap { case chunk #: h =>
+      val f2 = (s: S, i: I) => {
+        val (newS, newO) = f(s, i)
+        (newS, (newS, newO))
+      }
+      val (s, o) = chunk.mapAccumulate(init)(f2)
+      Pull.output(o) >> _mapAccumulate0(s)(f2)(h)
+    }}
+  private def _mapAccumulate0[F[_],S,I,O](init: S)(f: (S,I) => (S,(S,O))): Handle[F,I] => Pull[F,(S,O),Handle[F,I]] =
+    Pull.receive { case chunk #: h =>
+      val (s, o) = chunk.mapAccumulate(init)(f)
+      Pull.output(o) >> _mapAccumulate0(s)(f)(h)
+    }
+
+  /**
    * Behaves like `id`, but starts fetching the next chunk before emitting the current,
    * enabling processing on either side of the `prefetch` to run in parallel.
    */

@@ -113,6 +113,14 @@ object Process1Spec extends Properties("process1") {
     s.get.pipe(lift(_.toString)) ==? run(s.get).map(_.toString)
   }
 
+  property("mapAccumulate") = forAll { (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
+    val f = (_: Int) % n1.get == 0
+    val r = s.get.mapAccumulate(n0)((s, i) => (s + i, f(i)))
+
+    r.map(_._1) ==? run(s.get).scan(n0)(_ + _).tail
+    r.map(_._2) ==? run(s.get).map(f)
+  }
+
   property("prefetch") = forAll { (s: PureStream[Int]) =>
     s.get.covary[Task].through(prefetch) ==? run(s.get)
   }
