@@ -133,7 +133,7 @@ object Stream extends Streams[Stream] with StreamDerived {
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
       implicit S: Sub1[F,F2], F2: Async[F2])
       : Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
-      = _step1(rights).map(step => Future.pure(Pull.pure(step)))
+      = Pull.pure(Future.pure(_step1(rights)))
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] = chunk[G,W](c)
 
@@ -169,7 +169,7 @@ object Stream extends Streams[Stream] with StreamDerived {
     def _stepAsync1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(
       implicit S: Sub1[F,F2], F2: Async[F2])
       : Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Stream.Handle[F2,W2]]]]]
-      = Pull.fail(err)
+      = Pull.pure(Future.pure(Pull.fail(err)))
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] = self.asInstanceOf[Stream[G,W]]
   }

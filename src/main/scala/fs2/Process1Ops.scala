@@ -1,5 +1,7 @@
 package fs2
 
+import fs2.util.Sub1
+
 trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order
@@ -15,10 +17,10 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self pipe [[process1.drop]]`. */
   def drop(n: Int): Stream[F,O] = self pipe process1.drop(n)
-  
+
   /** Alias for `self pipe [[process1.dropWhile]]` */
   def dropWhile(p: O => Boolean): Stream[F,O] = self pipe process1.dropWhile(p)
-  
+
   /** Alias for `self pipe [[process1.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = self pipe process1.filter(f)
 
@@ -46,15 +48,18 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.scan1]](f)`. */
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self pipe process1.scan1(f)
 
+  /** Alias for `self pipe [[process1.sum]](f)`. */
+  def sum[O2 >: O : Numeric]: Stream[F,O2] = self pipe process1.sum
+
   /** Alias for `self pipe [[process1.take]](n)`. */
   def take(n: Long): Stream[F,O] = self pipe process1.take(n)
-  
+
   /** Alias for `self pipe [[process1.takeWhile]]`. */
   def takeWhile(p: O => Boolean): Stream[F,O] = self pipe process1.takeWhile(p)
- 
+
   /** Alias for `self pipe [[process1.unchunk]]`. */
   def unchunk: Stream[F,O] = self pipe process1.unchunk
-  
+
   /** Alias for `self pipe [[process1.zipWithIndex]]` .*/
   def zipWithIndex: Stream[F, (O, Int)] = self pipe process1.zipWithIndex
 }
