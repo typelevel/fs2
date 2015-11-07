@@ -1,7 +1,7 @@
 package fs2
 
 import Step.#:
-import fs2.util.{RealSupertype,Sub1}
+import fs2.util.{RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2] trait StreamDerived { self: fs2.Stream.type =>
@@ -103,6 +103,12 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
       f(s,s2)
     def repeatPull[B](using: Handle[F,A] => Pull[F,B,Handle[F,A]]): Stream[F,B] =
       Stream.repeatPull(s)(using)
+  }
+
+  implicit class PureStreamSyntax[+A](s: Stream[Pure,A]) {
+    def toList: List[A] =
+      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).run.run.reverse
+    def toVector: Vector[A] = s.covary[Task].runLog.run.run
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]
