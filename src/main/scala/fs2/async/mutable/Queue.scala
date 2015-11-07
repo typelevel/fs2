@@ -13,11 +13,6 @@ import fs2.async.immutable
  */
 trait Queue[F[_],A] {
 
-  /**
-   * A `Sink` for enqueueing values to this `Queue`.
-   */
-  //todo: how about sinks?
-  //def enqueue: Sink[Task, A]
 
   /**
    * Enqueue one element in this `Queue`. Resulting task will
@@ -46,30 +41,6 @@ trait Queue[F[_],A] {
   def dequeue: Stream[F, A]
 
   /**
-   * Provides a process that dequeues in chunks.  Whenever *n* elements
-   * are available in the queue, `min(n, limit)` elements will be dequeud
-   * and produced as a single `Seq`.  Note that this naturally does not
-   * *guarantee* that `limit` items are returned in every chunk.  If only
-   * one element is available, that one element will be returned in its own
-   * sequence.  This method basically just allows a consumer to "catch up"
-   * to a rapidly filling queue in the case where some sort of batching logic
-   * is applicable.
-   */
-  // todo: likely we don't need it as we have Chunks now?
-  def dequeueBatch(limit: Int): Stream[F, Seq[A]]
-
-  /**
-   * Equivalent to dequeueBatch with an infinite limit.  Only use this
-   * method if your underlying algebra (`A`) has some sort of constant
-   * time "natural batching"!  If processing a chunk of size n is linearly
-   * more expensive than processing a chunk of size 1, you should always
-   * use dequeueBatch with some small limit, otherwise you will disrupt
-   * fairness in the nondeterministic merge combinators.
-   */
-  // todo: likely we don't need it as we have Chunks now?
-  def dequeueAvailable: Stream[F, Seq[A]]
-
-  /**
    * The time-varying size of this `Queue`. This signal refreshes
    * only when size changes. Offsetting enqueues and dequeues may
    * not result in refreshes.
@@ -94,16 +65,8 @@ trait Queue[F[_],A] {
    */
   def full: immutable.Signal[F,Boolean]
 
-  /**
-   * Closes this queue. This halts the `enqueue` `Sink` and
-   * `dequeue` `Process` after any already-queued elements are
-   * drained.
-   *
-   * After this any enqueue will fail with `Terminated(End)`,
-   * and the enqueue `Sink` will terminate with `End`.
-   */
-  // todo: Not sure on this. Should we get close off the Queue like signal? And leave it to external interruption?
-  def close: F[Unit]
+
 
 
 }
+
