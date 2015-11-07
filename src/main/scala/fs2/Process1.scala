@@ -87,10 +87,14 @@ object process1 {
     */
   def mapAccumulate[F[_],S,I,O](init: S)(f: (S,I) => (S,O)): Stream[F,I] => Stream[F,(S,O)] =
     _ pull { _.await.flatMap { case chunk #: h =>
-      val (s, o) = chunk.mapAccumulate(init)(f)
-      Pull.output(o) >> _mapAccumulate0(s)(f)(h)
+      val f2 = (s: S, i: I) => {
+        val (newS, newO) = f(s, i)
+        (newS, (newS, newO))
+      }
+      val (s, o) = chunk.mapAccumulate(init)(f2)
+      Pull.output(o) >> _mapAccumulate0(s)(f2)(h)
     }}
-  private def _mapAccumulate0[F[_],S,I,O](init: S)(f: (S,I) => (S,O)): Handle[F,I] => Pull[F,(S,O),Handle[F,I]] =
+  private def _mapAccumulate0[F[_],S,I,O](init: S)(f: (S,I) => (S,(S,O))): Handle[F,I] => Pull[F,(S,O),Handle[F,I]] =
     Pull.receive { case chunk #: h =>
       val (s, o) = chunk.mapAccumulate(init)(f)
       Pull.output(o) >> _mapAccumulate0(s)(f)(h)
