@@ -72,7 +72,7 @@ object Signal {
    */
   def fromStream[F[_]:AsyncExt,A](source:Stream[F,A]):Stream[F,immutable.Signal[F,Option[A]]] =
     fs2.async.signalOf[F,Option[A]](None).flatMap { sig =>
-      fs2.concurrent.merge(Stream(sig),source.flatMap(a => Stream.eval_(sig.set(Some(a)))))
+      Stream(sig).merge(source.flatMap(a => Stream.eval_(sig.set(Some(a))))) 
     }
 
 
