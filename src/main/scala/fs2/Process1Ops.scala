@@ -19,6 +19,9 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.dropWhile]]` */
   def dropWhile(p: O => Boolean): Stream[F,O] = self pipe process1.dropWhile(p)
   
+  /** Alias for `self pipe [[process1.forall]]`. */
+  def forall(f: O => Boolean): Stream[F, Boolean] = self pipe process1.forall(f)
+
   /** Alias for `self pipe [[process1.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = self pipe process1.filter(f)
 

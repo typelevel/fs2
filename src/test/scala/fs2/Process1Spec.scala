@@ -36,6 +36,11 @@ object Process1Spec extends Properties("process1") {
     s.get.pipe(fs2.process1.collect(pf)) ==? run(s.get).collect(pf)
   }
 
+  property("forall") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val f = (i: Int) => { i % n.get == 0 }
+    s.get.forall(f) ==? Vector(run(s.get).forall(f))
+  }
+  
   property("filter") = forAll { (s: PureStream[Int], n: SmallPositive) =>
     val predicate = (i: Int) => i % n.get == 0
     s.get.filter(predicate) ==? run(s.get).filter(predicate)

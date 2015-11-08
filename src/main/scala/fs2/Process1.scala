@@ -40,6 +40,18 @@ object process1 {
   def collect[F[_],I, I2](pf: PartialFunction[I, I2])(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I2,Handle[F,I]] =
     mapChunks(_.collect(pf))
 
+  /**
+   * Emits a single `true` value if all input matches the predicate.
+   * Halts with `false` as soon as a non-matching element is received.
+   */
+  def forall[F[_], I](p: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,Boolean,Handle[F,I]] =
+    h => h.await1.optional flatMap {
+      case Some(i #: h) => 
+        if (!p(i)) Pull.output1(false) >> Pull.done
+        else forall(p).apply(h)
+      case None => Pull.output1(true) >> Pull.done
+    }
+
   /** Emit inputs which match the supplied predicate to the output of the returned `Pull` */
   def filter[F[_],I](f: I => Boolean)(implicit F: NotNothing[F]): Handle[F,I] => Pull[F,I,Handle[F,I]] =
     mapChunks(_ filter f)
