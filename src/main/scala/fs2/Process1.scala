@@ -36,12 +36,7 @@ object process1 {
    * Halts with `false` as soon as a non-matching element is received.
    */
   def forall[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,Boolean] =
-    h => h.await1.optional flatMap {
-      case Some(i #: h) => 
-        if (!p(i)) Pull.output1(false) >> Pull.done
-        else forall(p).apply(h)
-      case None => Pull.output1(true) >> Pull.done
-    }
+    _ pull (h => Pull.forall(p)(h) flatMap Pull.output1)
 
   /** Drop the elements of the input until the predicate `p` fails, then echo the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,I] =

@@ -75,6 +75,16 @@ private[fs2] trait pull1 {
   def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
     receive { case chunk #: h => Pull.output(chunk) >> echo(h) }
 
+  /** Write a single `true` value if all input matches the predicate, false otherwise*/
+  def forall[F[_],I](p: I => Boolean): Handle[F,I] => Pull[F,Nothing,Boolean] = {
+    h => h.await1.optional flatMap {
+      case Some(i #: h) =>
+        if (!p(i)) Pull.pure(false)
+        else forall(p).apply(h)
+      case None => Pull.pure(true)
+    }
+  }
+
   /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
     h => awaitN(n)(h) map { case buf #: h => buf.reverse.foldLeft(h)(_ push _) }
