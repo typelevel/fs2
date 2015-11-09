@@ -31,13 +31,6 @@ object process1 {
   def drop[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.drop(n)(h) flatMap Pull.echo)
 
-  /**
-   * Emits a single `true` value if all input matches the predicate.
-   * Halts with `false` as soon as a non-matching element is received.
-   */
-  def forall[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,Boolean] =
-    _ pull (h => Pull.forall(p)(h) flatMap Pull.output1)
-
   /** Drop the elements of the input until the predicate `p` fails, then echo the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.dropWhile(p)(h) flatMap Pull.echo)
@@ -63,6 +56,13 @@ object process1 {
    */
   def fold1[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.fold1(f)(h).flatMap(Pull.output1) }
+
+  /**
+   * Emits a single `true` value if all input matches the predicate.
+   * Halts with `false` as soon as a non-matching element is received.
+   */
+  def forall[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,Boolean] =
+    _ pull (h => Pull.forall(p)(h) flatMap Pull.output1)
 
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I]: Stream[F,I] => Stream[F,I] =
