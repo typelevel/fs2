@@ -189,6 +189,16 @@ object process1 {
     _ pull Pull.receive1 { case head #: h => go(head)(h) }
   }
 
+  /**
+    * Zip the elements of the input `Handle` with its previous element wrapped into `Some`, and return the new `Handle`.
+    * The first element is zipped with `None`.
+    */
+  def zipWithPrevious[F[_], I]: Stream[F, I] => Stream[F, (Option[I], I)] = {
+    mapAccumulate[F, Option[I], I, (Option[I], I)](None) {
+      case (prev, next) => (Some(next), (prev, next))
+    } andThen(_.map { case (_, prevNext) => prevNext })
+  }
+
   // stepping a process
 
   def covary[F[_],I,O](p: Process1[I,O]): Stream[F,I] => Stream[F,O] =

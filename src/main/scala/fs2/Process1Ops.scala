@@ -69,4 +69,7 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self pipe [[process1.zipWithNext]]`. */
   def zipWithNext: Stream[F, (O, Option[O])] = self pipe process1.zipWithNext
+
+  /** Alias for `self pipe [[process1.zipWithPrevious]]`. */
+  def zipWithPrevious: Stream[F, (Option[O], O)] = self pipe process1.zipWithPrevious
 }
