@@ -164,12 +164,9 @@ object process1 {
 
   /** Zip the elements of the input `Handle `with its indices, and return the new `Handle` */
   def zipWithIndex[F[_],I]: Stream[F,I] => Stream[F,(I,Int)] = {
-    def go(n: Int): Handle[F, I] => Pull[F, (I, Int), Handle[F, I]] = {
-      Pull.receive { case chunk #: h =>
-        Pull.output(chunk.zipWithIndex.map({ case (c, i) => (c, i + n) })) >> go(n + chunk.size)(h)
-      }
-    }
-    _ pull (go(0))
+    mapAccumulate[F, Int, I, I](-1) {
+      case (i, x) => (i + 1, x)
+    } andThen(_.map(_.swap))
   }
 
   // stepping a process
