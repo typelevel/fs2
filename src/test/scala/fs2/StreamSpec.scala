@@ -75,4 +75,12 @@ object StreamSpec extends Properties("Stream") {
   property("translate (2)") = forAll { (s: PureStream[Int]) =>
     s.get.translate(UF1.id[Pure]) ==? run(s.get)
   }
+
+  property("toList") = forAll { (s: PureStream[Int]) =>
+    s.get.toList == run(s.get).toList
+  }
+
+  property("toVector") = forAll { (s: PureStream[Int]) =>
+    s.get.toVector == run(s.get)
+  }
 }

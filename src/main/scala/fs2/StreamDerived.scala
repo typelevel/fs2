@@ -1,7 +1,7 @@
 package fs2
 
 import Step.#:
-import fs2.util.{RealSupertype,Sub1}
+import fs2.util.{RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2] trait StreamDerived { self: fs2.Stream.type =>
@@ -92,9 +92,23 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
       Pull[F, Nothing, AsyncStep[F,A2]] = self.awaitAsync(h)
   }
 
-  implicit class PullSyntax[F[_],A](s: Stream[F,A]) {
+  implicit class InvariantSyntax[F[_],A](s: Stream[F,A]) {
+    def through[B](f: Stream[F,A] => Stream[F,B]): Stream[F,B] = f(s)
+    def to[B](f: Stream[F,A] => Stream[F,Unit]): Stream[F,Unit] = f(s)
     def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
       Stream.pull(s)(using)
+    def pull2[B,C](s2: Stream[F,B])(using: (Handle[F,A], Handle[F,B]) => Pull[F,C,Any]): Stream[F,C] =
+      s.open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.run
+    def pipe2[B,C](s2: Stream[F,B])(f: (Stream[F,A], Stream[F,B]) => Stream[F,C]): Stream[F,C] =
+      f(s,s2)
+    def repeatPull[B](using: Handle[F,A] => Pull[F,B,Handle[F,A]]): Stream[F,B] =
+      Stream.repeatPull(s)(using)
+  }
+
+  implicit class PureStreamSyntax[+A](s: Stream[Pure,A]) {
+    def toList: List[A] =
+      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).run.run.reverse
+    def toVector: Vector[A] = s.covary[Task].runLog.run.run
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]

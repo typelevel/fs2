@@ -52,6 +52,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   def awaitAsync[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep[F,A]]
 
+  /** Open a `Stream` for transformation. Guaranteed to return a non-`done` `Pull`. */
   def open[F[_],A](s: Stream[F,A]): Pull[F,Nothing,Handle[F,A]]
 
   // evaluation

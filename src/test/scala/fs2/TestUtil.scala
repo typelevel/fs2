@@ -15,6 +15,15 @@ object TestUtil {
       case _ => false
     }
 
+  def logTiming[A](msg: String)(a: => A): A = {
+    import scala.concurrent.duration._
+    val start = System.currentTimeMillis
+    val result = a
+    val stop = System.currentTimeMillis
+    println(msg + " took " + (stop-start).milliseconds)
+    result
+  }
+
   implicit class EqualsOp[F[_],A](s: Stream[F,A])(implicit S: Sub1[F,Task]) {
     def ===(v: Vector[A]) = run(s.covary) == v
     def ==?(v: Vector[A]) = {

@@ -1,6 +1,7 @@
 package fs2
 
 import Step._
+import fs2.util.NotNothing
 
 private[fs2] trait pull1 {
   import Stream.Handle
@@ -49,6 +50,27 @@ private[fs2] trait pull1 {
   def copy1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
     receive1 { case hd #: h => Pull.output1(hd) >> Pull.pure(h) }
 
+  /** Drop the first `n` elements of the input `Handle`, and return the new `Handle`. */
+  def drop[F[_], I](n: Long): Handle[F, I] => Pull[F, Nothing, Handle[F, I]] =
+    h =>
+      if (n <= 0) Pull.pure(h)
+      else awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
+        case chunk #: h => drop(n - chunk.size)(h)
+      }
+
+  /**
+   * Drop the elements of the input `Handle` until the predicate `p` fails, and return the new `Handle`.
+   * If nonempty, the first element of the returned `Handle` will fail `p`.
+   */
+  def dropWhile[F[_], I](p: I => Boolean): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
+    receive { case chunk #: h =>
+      chunk.indexWhere(!p(_)) match {
+        case Some(0) => Pull.pure(h push chunk)
+        case Some(i) => Pull.pure(h push chunk.drop(i))
+        case None    => dropWhile(p)(h)
+      }
+    }
+
   /** Write all inputs to the output of the returned `Pull`. */
   def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
     receive { case chunk #: h => Pull.output(chunk) >> echo(h) }
@@ -66,6 +88,23 @@ private[fs2] trait pull1 {
         case Some(i) => Pull.pure(chunk(i) #: h)
       }
     }
+
+  /**
+   * Folds all inputs using an initial value `z` and supplied binary operator, and writes the final
+   * result to the output of the supplied `Pull` when the stream has no more values.
+   */
+  def fold[F[_],I,O](z: O)(f: (O, I) => O): Handle[F,I] => Pull[F,Nothing,O] =
+    h => h.await.optional flatMap {
+      case Some(c #: h) => fold(c.foldLeft(z)(f))(f)(h)
+      case None => Pull.pure(z)
+    }
+
+  /**
+   * Folds all inputs using the supplied binary operator, and writes the final result to the output of
+   * the supplied `Pull` when the stream has no more values.
+   */
+  def fold1[F[_],I](f: (I, I) => I): Handle[F,I] => Pull[F,Nothing,I] =
+    receive1 { case o #: h => fold(o)(f)(h) }
 
   /** Return the last element of the input `Handle`, if nonempty. */
   def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
@@ -88,22 +127,6 @@ private[fs2] trait pull1 {
       }
     }
 
-  /**
-   * Like `[[prefetch]]`, but continue fetching asynchronously as long as the number of
-   * prefetched elements is less than `n`.
-   */
-  def prefetchN[F[_]:Async,I](n: Int)(h: Handle[F,I]): Pull[F,Nothing,Pull[F,Nothing,Handle[F,I]]] =
-    if (n <= 0) Pull.pure(Pull.pure(h))
-    else prefetch(h) map { p =>
-      for {
-        s <- p.flatMap(awaitLimit(n)).optional
-        tl <- s match {
-          case Some(hd #: h) => prefetchN(n - hd.size)(h) flatMap { tl => tl.map(_ push hd) }
-          case None => Pull.pure(Handle.empty)
-        }
-      } yield tl
-    }
-
   /** Apply `f` to the next available `Chunk`. */
   def receive[F[_],I,O,R](f: Step[Chunk[I],Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
     _.await.flatMap(f)
@@ -111,4 +134,24 @@ private[fs2] trait pull1 {
   /** Apply `f` to the next available element. */
   def receive1[F[_],I,O,R](f: Step[I,Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
     _.await1.flatMap(f)
+
+  /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
+  def take[F[_],I](n: Long)(h: Handle[F,I]): Pull[F,I,Handle[F,I]] =
+    if (n <= 0) Pull.pure(h)
+    else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
+      case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong)(h)
+    }
+
+  /**
+   * Emit the elements of the input `Handle` until the predicate `p` fails,
+   * and return the new `Handle`. If nonempty, the returned `Handle` will have
+   * a first element `i` for which `p(i)` is `false`. */
+  def takeWhile[F[_],I](p: I => Boolean): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    receive { case chunk #: h =>
+      chunk.indexWhere(!p(_)) match {
+        case Some(0) => Pull.pure(h.push(chunk))
+        case Some(i) => Pull.output(chunk.take(i)) >> Pull.pure(h.push(chunk.drop(i)))
+        case None    => Pull.output(chunk) >> takeWhile(p)(h)
+      }
+    }
 }
