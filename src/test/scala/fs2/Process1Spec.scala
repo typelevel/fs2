@@ -167,4 +167,17 @@ object Process1Spec extends Properties("process1") {
   property("zipWithIndex") = forAll { (s: PureStream[Int]) =>
     s.get.pipe(zipWithIndex) ==? run(s.get).zipWithIndex
   }
+
+  property("zipWithNext") = forAll { (s: PureStream[Int]) =>
+    s.get.pipe(zipWithNext) ==? {
+      val xs = run(s.get)
+      xs.zipAll(xs.map(Some(_)).drop(1), -1, None)
+    }
+  }
+
+  property("zipWithNext (2)") = protect {
+    Stream().zipWithNext === Vector() &&
+    Stream(0).zipWithNext === Vector((0, None)) &&
+    Stream(0, 1, 2).zipWithNext === Vector((0, Some(1)), (1, Some(2)), (2, None))
+  }
 }
