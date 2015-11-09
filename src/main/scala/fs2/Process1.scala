@@ -199,6 +199,20 @@ object process1 {
     } andThen(_.map { case (_, prevNext) => prevNext })
   }
 
+  /**
+    * Zip the elements of the input `Handle` with its previous and next elements wrapped into `Some`, and return the new `Handle`.
+    * The first element is zipped with `None` as the previous element,
+    * the last element is zipped with `None` as the next element.
+    */
+  def zipWithPreviousAndNext[F[_], I]: Stream[F, I] => Stream[F, (Option[I], I, Option[I])] = {
+    (zipWithPrevious[F, I] andThen zipWithNext[F, (Option[I], I)]) andThen {
+      _.map {
+        case ((prev, that), None) => (prev, that, None)
+        case ((prev, that), Some((_, next))) => (prev, that, Some(next))
+      }
+    }
+  }
+
   // stepping a process
 
   def covary[F[_],I,O](p: Process1[I,O]): Stream[F,I] => Stream[F,O] =
