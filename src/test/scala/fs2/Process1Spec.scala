@@ -42,10 +42,10 @@ object Process1Spec extends Properties("process1") {
     val set = run(s.get).take(n.get).toSet
     s.get.pipe(dropWhile(set)) ==? run(s.get).dropWhile(set)
   }
-
-  property("forall") = forAll { (s: PureStream[Int], n: SmallPositive) =>
-    val f = (i: Int) => { i % n.get == 0 }
-    s.get.forall(f) ==? Vector(run(s.get).forall(f))
+  
+  property("exists") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val f = (i: Int) => i % n.get == 0
+    s.get.exists(f) ==? Vector(run(s.get).exists(f))
   }
   
   property("filter") = forAll { (s: PureStream[Int], n: SmallPositive) =>
@@ -90,6 +90,11 @@ object Process1Spec extends Properties("process1") {
     val v = run(s.get)
     val f = (a: Int, b: Int) => a + b
     s.get.fold1(f) ==? v.headOption.fold(Vector.empty[Int])(h => Vector(v.drop(1).foldLeft(h)(f)))
+  }
+
+  property("forall") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val f = (i: Int) => i % n.get == 0
+    s.get.forall(f) ==? Vector(run(s.get).forall(f))
   }
 
   property("mapChunked") = forAll { (s: PureStream[Int]) =>

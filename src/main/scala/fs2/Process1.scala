@@ -34,6 +34,10 @@ object process1 {
   /** Drop the elements of the input until the predicate `p` fails, then echo the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.dropWhile(p)(h) flatMap Pull.echo)
+  
+  /** Emits `true` as soon as a matching element is received, else `false if no input matches */
+  def exists[F[_], I](p: I => Boolean): Stream[F, I] => Stream[F, Boolean] =
+    _ pull { h => Pull.forall[F,I](!p(_))(h) flatMap { i => Pull.output1(!i) }}
 
   /** Emit only inputs which match the supplied predicate. */
   def filter[F[_], I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
