@@ -42,7 +42,12 @@ object Process1Spec extends Properties("process1") {
     val set = run(s.get).take(n.get).toSet
     s.get.pipe(dropWhile(set)) ==? run(s.get).dropWhile(set)
   }
-
+  
+  property("exists") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val f = (i: Int) => i % n.get == 0
+    s.get.exists(f) ==? Vector(run(s.get).exists(f))
+  }
+  
   property("filter") = forAll { (s: PureStream[Int], n: SmallPositive) =>
     val predicate = (i: Int) => i % n.get == 0
     s.get.filter(predicate) ==? run(s.get).filter(predicate)
@@ -87,6 +92,11 @@ object Process1Spec extends Properties("process1") {
     s.get.fold1(f) ==? v.headOption.fold(Vector.empty[Int])(h => Vector(v.drop(1).foldLeft(h)(f)))
   }
 
+  property("forall") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val f = (i: Int) => i % n.get == 0
+    s.get.forall(f) ==? Vector(run(s.get).forall(f))
+  }
+
   property("mapChunked") = forAll { (s: PureStream[Int]) =>
     s.get.mapChunks(identity).chunks ==? run(s.get.chunks)
   }
@@ -107,6 +117,11 @@ object Process1Spec extends Properties("process1") {
   property("last") = forAll { (s: PureStream[Int]) =>
     val shouldCompile = s.get.last
     s.get.pipe(last) ==? Vector(run(s.get).lastOption)
+  }
+  
+  property("lastOr") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val default = n.get
+    s.get.lastOr(default) ==? Vector(run(s.get).lastOption.getOrElse(default))
   }
 
   property("lift") = forAll { (s: PureStream[Double]) =>

@@ -34,6 +34,10 @@ object process1 {
   /** Drop the elements of the input until the predicate `p` fails, then echo the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.dropWhile(p)(h) flatMap Pull.echo)
+  
+  /** Emits `true` as soon as a matching element is received, else `false if no input matches */
+  def exists[F[_], I](p: I => Boolean): Stream[F, I] => Stream[F, Boolean] =
+    _ pull { h => Pull.forall[F,I](!p(_))(h) flatMap { i => Pull.output1(!i) }}
 
   /** Emit only inputs which match the supplied predicate. */
   def filter[F[_], I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
@@ -42,6 +46,7 @@ object process1 {
   /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
   def find[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.find(f)(h).flatMap { case o #: h => Pull.output1(o) }}
+  
 
   /**
    * Folds all inputs using an initial value `z` and supplied binary operator,
@@ -57,6 +62,13 @@ object process1 {
   def fold1[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.fold1(f)(h).flatMap(Pull.output1) }
 
+  /**
+   * Emits a single `true` value if all input matches the predicate.
+   * Halts with `false` as soon as a non-matching element is received.
+   */
+  def forall[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,Boolean] =
+    _ pull (h => Pull.forall(p)(h) flatMap Pull.output1)
+
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I]: Stream[F,I] => Stream[F,I] =
     s => s
@@ -64,6 +76,13 @@ object process1 {
   /** Return the last element of the input `Handle`, if nonempty. */
   def last[F[_],I]: Stream[F,I] => Stream[F,Option[I]] =
     _ pull { h => Pull.last(h).flatMap { o => Pull.output1(o) }}
+
+  /** Return the last element of the input `Handle` if nonempty, otherwise li. */
+  def lastOr[F[_],I](li: => I): Stream[F,I] => Stream[F,I] =
+    _ pull { h => Pull.last(h).flatMap {
+      case Some(o) => Pull.output1(o)
+      case None => Pull.output1(li)
+    }}
 
   /**
    * Write all inputs to the output of the returned `Pull`, transforming elements using `f`.

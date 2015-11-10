@@ -21,6 +21,9 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.dropWhile]]` */
   def dropWhile(p: O => Boolean): Stream[F,O] = self pipe process1.dropWhile(p)
 
+  /** Alias for `self pipe [[process1.exists]]`. */
+  def exists(f: O => Boolean): Stream[F, Boolean] = self pipe process1.exists(f)
+
   /** Alias for `self pipe [[process1.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = self pipe process1.filter(f)
 
@@ -33,8 +36,14 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.fold1]](f)`. */
   def fold1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self pipe process1.fold1(f)
 
+  /** Alias for `self pipe [[process1.forall]]`. */
+  def forall(f: O => Boolean): Stream[F, Boolean] = self pipe process1.forall(f)
+
   /** Alias for `self pipe [[process1.last]]`. */
   def last: Stream[F,Option[O]] = self pipe process1.last
+
+  /** Alias for `self pipe [[process1.lastOr]]`. */
+  def lastOr[O2 >: O](li: => O2): Stream[F,O2] = self pipe process1.lastOr(li)
 
   /** Alias for `self pipe [[process1.mapChunks]](f)`. */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F,O2] = self pipe process1.mapChunks(f)
