@@ -46,6 +46,7 @@ object process1 {
   /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
   def find[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.find(f)(h).flatMap { case o #: h => Pull.output1(o) }}
+  
 
   /**
    * Folds all inputs using an initial value `z` and supplied binary operator,
@@ -75,6 +76,13 @@ object process1 {
   /** Return the last element of the input `Handle`, if nonempty. */
   def last[F[_],I]: Stream[F,I] => Stream[F,Option[I]] =
     _ pull { h => Pull.last(h).flatMap { o => Pull.output1(o) }}
+
+  /** Return the last element of the input `Handle` if nonempty, otherwise li. */
+  def lastOr[F[_],I](li: => I): Stream[F,I] => Stream[F,I] =
+    _ pull { h => Pull.last(h).flatMap {
+      case Some(o) => Pull.output1(o)
+      case None => Pull.output1(li)
+    }}
 
   /**
    * Write all inputs to the output of the returned `Pull`, transforming elements using `f`.

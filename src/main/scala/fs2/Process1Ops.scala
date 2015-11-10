@@ -42,6 +42,9 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.last]]`. */
   def last: Stream[F,Option[O]] = self pipe process1.last
 
+  /** Alias for `self pipe [[process1.lastOr]]`. */
+  def lastOr[O2 >: O](li: => O2): Stream[F,O2] = self pipe process1.lastOr(li)
+
   /** Alias for `self pipe [[process1.mapChunks]](f)`. */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F,O2] = self pipe process1.mapChunks(f)
 

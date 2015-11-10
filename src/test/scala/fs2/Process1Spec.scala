@@ -118,6 +118,11 @@ object Process1Spec extends Properties("process1") {
     val shouldCompile = s.get.last
     s.get.pipe(last) ==? Vector(run(s.get).lastOption)
   }
+  
+  property("lastOr") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val default = n.get
+    s.get.lastOr(default) ==? Vector(run(s.get).lastOption.getOrElse(default))
+  }
 
   property("lift") = forAll { (s: PureStream[Double]) =>
     s.get.pipe(lift(_.toString)) ==? run(s.get).map(_.toString)
