@@ -145,6 +145,10 @@ private[fs2] trait pull1 {
   def receive1[F[_],I,O,R](f: Step[I,Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
     _.await1.flatMap(f)
 
+  /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+  def receiveOption[F[_],I,O,R](f: Option[Step[Chunk[I],Handle[F,I]]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
+    awaitOption(_).flatMap(f)
+
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long)(h: Handle[F,I]): Pull[F,I,Handle[F,I]] =
     if (n <= 0) Pull.pure(h)

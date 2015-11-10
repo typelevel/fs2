@@ -105,14 +105,14 @@ object process1 {
     * }}}
     */
   def mapAccumulate[F[_],S,I,O](init: S)(f: (S,I) => (S,O)): Stream[F,I] => Stream[F,(S,O)] =
-    _ pull { _.await.flatMap { case chunk #: h =>
+    _ pull Pull.receive { case chunk #: h =>
       val f2 = (s: S, i: I) => {
         val (newS, newO) = f(s, i)
         (newS, (newS, newO))
       }
       val (s, o) = chunk.mapAccumulate(init)(f2)
       Pull.output(o) >> _mapAccumulate0(s)(f2)(h)
-    }}
+    }
   private def _mapAccumulate0[F[_],S,I,O](init: S)(f: (S,I) => (S,(S,O))): Handle[F,I] => Pull[F,(S,O),Handle[F,I]] =
     Pull.receive { case chunk #: h =>
       val (s, o) = chunk.mapAccumulate(init)(f)
@@ -181,11 +181,52 @@ object process1 {
   def unchunk[F[_],I]: Stream[F,I] => Stream[F,I] =
     _ repeatPull { Pull.receive1 { case i #: h => Pull.output1(i) as h }}
 
-  /** Zip the elements of the input `Handle `with its indices, and return the new `Handle` */
+  /** Zip the elements of the input `Handle` with its indices, and return the new `Handle` */
   def zipWithIndex[F[_],I]: Stream[F,I] => Stream[F,(I,Int)] = {
     mapAccumulate[F, Int, I, I](-1) {
       case (i, x) => (i + 1, x)
     } andThen(_.map(_.swap))
+  }
+
+  /**
+    * Zip the elements of the input `Handle` with its next element wrapped into `Some`, and return the new `Handle`.
+    * The last element is zipped with `None`.
+    */
+  def zipWithNext[F[_], I]: Stream[F, I] => Stream[F, (I, Option[I])] = {
+    def go(last: I): Handle[F, I] => Pull[F, (I, Option[I]), Handle[F, I]] =
+      Pull.receiveOption {
+        case None => Pull.output1((last, None)) as Handle.empty
+        case Some(chunk #: h) =>
+          val (newLast, zipped) = chunk.mapAccumulate(last) {
+            case (prev, next) => (next, (prev, Some(next)))
+          }
+          Pull.output(zipped) >> go(newLast)(h)
+      }
+    _ pull Pull.receive1 { case head #: h => go(head)(h) }
+  }
+
+  /**
+    * Zip the elements of the input `Handle` with its previous element wrapped into `Some`, and return the new `Handle`.
+    * The first element is zipped with `None`.
+    */
+  def zipWithPrevious[F[_], I]: Stream[F, I] => Stream[F, (Option[I], I)] = {
+    mapAccumulate[F, Option[I], I, (Option[I], I)](None) {
+      case (prev, next) => (Some(next), (prev, next))
+    } andThen(_.map { case (_, prevNext) => prevNext })
+  }
+
+  /**
+    * Zip the elements of the input `Handle` with its previous and next elements wrapped into `Some`, and return the new `Handle`.
+    * The first element is zipped with `None` as the previous element,
+    * the last element is zipped with `None` as the next element.
+    */
+  def zipWithPreviousAndNext[F[_], I]: Stream[F, I] => Stream[F, (Option[I], I, Option[I])] = {
+    (zipWithPrevious[F, I] andThen zipWithNext[F, (Option[I], I)]) andThen {
+      _.map {
+        case ((prev, that), None) => (prev, that, None)
+        case ((prev, that), Some((_, next))) => (prev, that, Some(next))
+      }
+    }
   }
 
   // stepping a process
