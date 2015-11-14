@@ -1,6 +1,5 @@
 package fs2.util
 
-import fs2.util.UF1._
 import fs2.internal.Trampoline
 
 sealed trait Free[+F[_],+A] {
@@ -21,7 +20,7 @@ sealed trait Free[+F[_],+A] {
   : Trampoline[Unroll[A, G[Free[F,A]]]]
 
   def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
-    (this: Free[F2,A2]).runTranslate(id)
+    (this: Free[F2,A2]).runTranslate(UF1.id)
 
   @annotation.tailrec
   private[fs2] final def step: Free[F,A] = this match {

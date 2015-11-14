@@ -3,7 +3,6 @@ package fs2
 import collection.immutable.LongMap
 import fs2.internal.Trampoline
 import fs2.util._
-import fs2.util.UF1.{~>}
 import fs2.Async.Future
 
 /**
