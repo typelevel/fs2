@@ -6,6 +6,13 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order
 
+  /** Alias for `self pipe [[process1.chunkLimit]]`. */
+  def chunkLimit(n: Int): Stream[F,Chunk[O]] = self pipe process1.chunkLimit(n)
+
+  /** Alias for `self pipe [[process1.chunkN]]`. */
+  def chunkN(n: Int, allowFewer: Boolean = true): Stream[F,List[Chunk[O]]] =
+    self pipe process1.chunkN(n, allowFewer)
+
   /** Alias for `self pipe [[process1.chunks]]`. */
   def chunks: Stream[F,Chunk[O]] = self pipe process1.chunks
 
@@ -72,6 +79,10 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self pipe [[process1.unchunk]]`. */
   def unchunk: Stream[F,O] = self pipe process1.unchunk
+
+  /** Alias for `self pipe [[process1.vectorChunkN]]`. */
+  def vectorChunkN(n: Int, allowFewer: Boolean = true): Stream[F,Vector[O]] =
+    self pipe process1.vectorChunkN(n, allowFewer)
 
   /** Alias for `self pipe [[process1.zipWithIndex]]`. */
   def zipWithIndex: Stream[F, (O, Int)] = self pipe process1.zipWithIndex

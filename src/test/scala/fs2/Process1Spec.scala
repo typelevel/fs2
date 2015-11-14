@@ -11,6 +11,18 @@ import scodec.bits.{BitVector, ByteVector}
 
 object Process1Spec extends Properties("process1") {
 
+  property("chunkLimit") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
+    val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
+    sizeV.forall(_ <= n0.get) && sizeV.sum == s.get.toVector.size
+  }
+
+  property("chunkN") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
+    val sizeV = s.get.chunkN(n0.get, true).toVector
+    sizeV.forall(_.size <= n0.get) &&
+      sizeV.map(_.map(_.size).sum).sum == s.get.toVector.size &&
+      sizeV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == s.get.toVector
+  }
+
   property("chunks") = forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
     val v = Vector(Vector(11,2,2,2), Vector(2,2,3), Vector(2,3,4), Vector(1,2,2,2,2,2,3,3))
     val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
@@ -177,6 +189,10 @@ object Process1Spec extends Properties("process1") {
   property("take.chunks") = secure {
     val s = Stream(1, 2) ++ Stream(3, 4)
     s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
+  }
+
+  property("vectorChunkN") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    s.get.vectorChunkN(n.get) ==? run(s.get).grouped(n.get).toVector
   }
 
   property("zipWithIndex") = forAll { (s: PureStream[Int]) =>
