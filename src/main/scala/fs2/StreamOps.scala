@@ -23,6 +23,9 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def covary[F2[_]](implicit S: Sub1[F,F2]): Stream[F2,A] =
     Sub1.substStream(self)
 
+  def drain: Stream[F, Nothing] =
+    Stream.drain(self)
+
   /** Alias for `[[concurrent.either]](self, s2)`. */
   def either[F2[_]:Async,B](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,Either[A,B]] =
     fs2.wye.either.apply(Sub1.substStream(self), s2)
@@ -33,6 +36,9 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def flatMap[F2[_],B](f: A => Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.flatMap(Sub1.substStream(self))(f)
 
+  def mask: Stream[F,A] =
+    Stream.mask(self)
+
   def map[B](f: A => B): Stream[F,B] =
     Stream.map(self)(f)
 
@@ -40,10 +46,15 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def merge[F2[_]:Async,B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     fs2.wye.merge.apply(Sub1.substStream(self), s2)
 
+  def onComplete[F2[_],B>:A](regardless: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
+    Stream.onComplete(Sub1.substStream(self): Stream[F2,B], regardless)
+
   def onError[F2[_],B>:A](f: Throwable => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.onError(Sub1.substStream(self): Stream[F2,B])(f)
 
   def open: Pull[F, Nothing, Handle[F,A]] = Stream.open(self)
+
+  def output: Pull[F,A,Unit] = Pull.outputs(self)
 
   /** Transform this stream using the given `Process1`. */
   def pipe[B](f: Process1[A,B]): Stream[F,B] = process1.covary(f)(self)
@@ -66,8 +77,11 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def runLog: Free[F,Vector[A]] =
     Stream.runFold(self, Vector.empty[A])(_ :+ _)
 
-  def tee[F2[_],B,C](s2: Stream[F2,B])(f: Tee[A,B,C])(implicit S: Sub1[F,F2]): Stream[F2,C]
-    = pipe2v(s2)(fs2.tee.covary(f))
+  def tee[F2[_],B,C](s2: Stream[F2,B])(f: Tee[A,B,C])(implicit S: Sub1[F,F2]): Stream[F2,C] =
+    pipe2v(s2)(fs2.tee.covary(f))
+
+  def terminated: Stream[F,Option[A]] =
+    Stream.terminated(self)
 
   @deprecated("use `pipe2` or `pipe2v`, which now subsumes the functionality of `wye`", "0.9")
   def wye[F2[_],B,C](s2: Stream[F2,B])(f: (Stream[F2,A], Stream[F2,B]) => Stream[F2,C])(implicit S: Sub1[F,F2])

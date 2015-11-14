@@ -8,8 +8,6 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
   def apply[F[_],W](a: W*): Stream[F,W] = self.chunk(Chunk.seq(a))
 
-  def outputs[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.outputs(s)
-
   def pull[F[_],F2[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2])
   : Stream[F2,B] =
     Pull.run { Sub1.substPull(open(s)) flatMap (h => Sub1.substPull(using(h))) }
