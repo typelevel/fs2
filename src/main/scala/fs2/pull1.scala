@@ -127,6 +127,21 @@ private[fs2] trait pull1 {
   }
 
   /**
+   * Calls `chunk.mapAccumulate` across chunks in the `Pull`, forwarding the state. Optionally, outputs a
+   * single output `O` based on the final state, when the `Pull` terminates.
+   */
+  def mapAccumulate[F[_],S,I,O](s0: S)(f: (S,I) => (S,O))(last: S => Option[O]): Handle[F,I] => Pull[F,O,(S,Handle[F,I])] =
+    receiveOption {
+      case Some(chunk #: h) =>
+        val (s, o) = chunk.mapAccumulate(s0)(f)
+        Pull.output(o) >> mapAccumulate(s)(f)(last)(h)
+      case None => last(s0) match {
+        case Some(l) => Pull.output1(l) >> Pull.done
+        case None => Pull.done
+      }
+    }
+
+  /**
    * Like `[[await]]`, but runs the `await` asynchronously. A `flatMap` into
    * inner `Pull` logically blocks until this await completes.
    */

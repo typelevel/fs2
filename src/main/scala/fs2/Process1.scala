@@ -105,19 +105,10 @@ object process1 {
     * }}}
     */
   def mapAccumulate[F[_],S,I,O](init: S)(f: (S,I) => (S,O)): Stream[F,I] => Stream[F,(S,O)] =
-    _ pull Pull.receive { case chunk #: h =>
-      val f2 = (s: S, i: I) => {
-        val (newS, newO) = f(s, i)
-        (newS, (newS, newO))
-      }
-      val (s, o) = chunk.mapAccumulate(init)(f2)
-      Pull.output(o) >> _mapAccumulate0(s)(f2)(h)
-    }
-  private def _mapAccumulate0[F[_],S,I,O](init: S)(f: (S,I) => (S,(S,O))): Handle[F,I] => Pull[F,(S,O),Handle[F,I]] =
-    Pull.receive { case chunk #: h =>
-      val (s, o) = chunk.mapAccumulate(init)(f)
-      Pull.output(o) >> _mapAccumulate0(s)(f)(h)
-    }
+    _ pull Pull.mapAccumulate(init) { (s: S, i: I) =>
+      val (newS, newO) = f(s, i)
+      (newS, (newS, newO))
+    } { _ => None }
 
   /**
    * Behaves like `id`, but starts fetching the next chunk before emitting the current,
@@ -192,18 +183,10 @@ object process1 {
     * Zip the elements of the input `Handle` with its next element wrapped into `Some`, and return the new `Handle`.
     * The last element is zipped with `None`.
     */
-  def zipWithNext[F[_], I]: Stream[F, I] => Stream[F, (I, Option[I])] = {
-    def go(last: I): Handle[F, I] => Pull[F, (I, Option[I]), Handle[F, I]] =
-      Pull.receiveOption {
-        case None => Pull.output1((last, None)) as Handle.empty
-        case Some(chunk #: h) =>
-          val (newLast, zipped) = chunk.mapAccumulate(last) {
-            case (prev, next) => (next, (prev, Some(next)))
-          }
-          Pull.output(zipped) >> go(newLast)(h)
-      }
-    _ pull Pull.receive1 { case head #: h => go(head)(h) }
-  }
+  def zipWithNext[F[_], I]: Stream[F, I] => Stream[F, (I, Option[I])] =
+    _ pull Pull.receive1 { case head #: h =>
+      Pull.mapAccumulate(head)((s: I, i: I) => (i, (s, Option(i))))(last => Some((last, None)))(h)
+    }
 
   /**
     * Zip the elements of the input `Handle` with its previous element wrapped into `Some`, and return the new `Handle`.
