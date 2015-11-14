@@ -54,7 +54,7 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
 
   def open: Pull[F, Nothing, Handle[F,A]] = Stream.open(self)
 
-  def outputs: Pull[F,A,Unit] = Stream.outputs(self)
+  def output: Pull[F,A,Unit] = Pull.outputs(self)
 
   /** Transform this stream using the given `Process1`. */
   def pipe[B](f: Process1[A,B]): Stream[F,B] = process1.covary(f)(self)
