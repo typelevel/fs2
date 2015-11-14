@@ -24,15 +24,25 @@ private[fs2] trait pull1 {
         else s.head.take(maxChunkSize) #: s.tail.push(s.head.drop(maxChunkSize))
       }
 
-  /** Return a `List[Chunk[I]]` from the input whose combined size is exactly `n`. */
-  def awaitN[F[_],I](n: Int)
+  /** Return a `List[Chunk[I]]` from the input whose combined size has a maximum value `n`. */
+  def awaitN[F[_],I](n: Int, allowFewer: Boolean = false)
     : Handle[F,I] => Pull[F,Nothing,Step[List[Chunk[I]],Handle[F,I]]]
     = h =>
         if (n <= 0) Pull.pure(List() #: h)
         else for {
           hd #: tl <- awaitLimit(n)(h)
-          hd2 #: tl <- awaitN(n - hd.size)(tl)
+          hd2 #: tl <- _awaitN0(n, allowFewer)(hd #: tl)
         } yield (hd :: hd2) #: tl
+  private def _awaitN0[F[_],I](n: Int, allowFewer: Boolean)
+  : Step[Chunk[I],Handle[F,I]] => Pull[F, Nothing, Step[List[Chunk[I]], Handle[F,I]]] = { case (hd #: tl) =>
+      val next = awaitN(n - hd.size, allowFewer)(tl)
+      if (allowFewer)
+        next.optional flatMap {
+          case Some(n) => Pull.pure(n)
+          case None => Pull.pure(List() #: Handle.empty)
+        }
+      else next
+  }
 
   /** Await the next available chunk from the input, or `None` if the input is exhausted. */
   def awaitOption[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[Step[Chunk[I],Handle[F,I]]]] =

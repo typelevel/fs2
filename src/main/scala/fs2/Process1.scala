@@ -15,6 +15,14 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
+  /** Outputs chunks with a limited maximum size, splitting as necessary. */
+  def chunkLimit[F[_],I](n: Int): Stream[F,I] => Stream[F,Chunk[I]] =
+    _ repeatPull { h => Pull.awaitLimit(n)(h) flatMap { case chunk #: h => Pull.output1(chunk) as h } }
+
+  /** Outputs a list of chunks, the total size of all chunks is limited and split as necessary. */
+  def chunkN[F[_],I](n: Int, allowFewer: Boolean = true): Stream[F,I] => Stream[F,List[Chunk[I]]] =
+    _ repeatPull { h => Pull.awaitN(n, allowFewer)(h) flatMap { case chunks #: h => Pull.output1(chunks) as h }}
+
   /** Output all chunks from the input `Handle`. */
   def chunks[F[_],I]: Stream[F,I] => Stream[F,Chunk[I]] =
     _ repeatPull { _.await.flatMap { case chunk #: h => Pull.output1(chunk) as h }}
@@ -180,6 +188,17 @@ object process1 {
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I]: Stream[F,I] => Stream[F,I] =
     _ repeatPull { Pull.receive1 { case i #: h => Pull.output1(i) as h }}
+
+  /**
+   * Groups inputs into separate `Vector` objects of size `n`.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4, 5).vectorChunkN(2).toVector
+   * res0: Vector[Vector[Int]] = Vector(Vector(1, 2), Vector(3, 4), Vector(5))
+   * }}}
+   */
+  def vectorChunkN[F[_],I](n: Int, allowFewer: Boolean = true): Stream[F,I] => Stream[F,Vector[I]] =
+    chunkN(n, allowFewer) andThen (_.map(i => i.foldLeft(Vector.empty[I])((v, c) => v ++ c.iterator)))
 
   /** Zip the elements of the input `Handle` with its indices, and return the new `Handle` */
   def zipWithIndex[F[_],I]: Stream[F,I] => Stream[F,(I,Int)] = {
