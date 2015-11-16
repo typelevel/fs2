@@ -39,6 +39,11 @@ object Process1Spec extends Properties("process1") {
     s.get.pipe(fs2.process1.collect(pf)) ==? run(s.get).collect(pf)
   }
 
+  property("collectFirst") = forAll { (s: PureStream[Int]) =>
+    val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+    s.get.collectFirst(pf) ==? run(s.get).collectFirst(pf).toVector
+  }
+
   property("delete") = forAll { (s: PureStream[Int]) =>
     val v = run(s.get)
     val i = Gen.oneOf(v).sample.getOrElse(0)

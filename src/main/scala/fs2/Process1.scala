@@ -31,6 +31,10 @@ object process1 {
   def collect[F[_],I,I2](pf: PartialFunction[I, I2]): Stream[F,I] => Stream[F,I2] =
     mapChunks(_.collect(pf))
 
+  /** Emits the first element of the Stream for which the partial function is defined. */
+  def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Stream[F,I] => Stream[F,I2] =
+    _ pull { h => Pull.find(pf.isDefinedAt)(h) flatMap { case i #: h => Pull.output1(pf(i)) }}
+
   /** Skip the first element that matches the predicate. */
   def delete[F[_],I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.takeWhile((i:I) => !p(i))(h).flatMap(Pull.drop(1)).flatMap(Pull.echo) }
