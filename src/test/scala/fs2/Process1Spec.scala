@@ -16,11 +16,25 @@ object Process1Spec extends Properties("process1") {
     sizeV.forall(_ <= n0.get) && sizeV.sum == s.get.toVector.size
   }
 
-  property("chunkN") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
-    val sizeV = s.get.chunkN(n0.get, true).toVector
-    sizeV.forall(_.size <= n0.get) &&
-      sizeV.map(_.map(_.size).sum).sum == s.get.toVector.size &&
-      sizeV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == s.get.toVector
+  property("chunkN.fewer") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
+    val chunkedV = s.get.chunkN(n0.get, true).toVector
+    val unchunkedV = s.get.toVector
+    // All but last list have n0 values
+    chunkedV.dropRight(1).forall(_.map(_.size).sum == n0.get) &&
+      // Last list has at most n0 values
+      chunkedV.lastOption.fold(true)(_.map(_.size).sum <= n0.get) &&
+      // Flattened sequence is equal to vector without chunking
+      chunkedV.foldLeft(Vector.empty[Int])((v, l) =>v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == unchunkedV
+  }
+
+  property("chunkN.no-fewer") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
+    val chunkedV = s.get.chunkN(n0.get, false).toVector
+    val unchunkedV = s.get.toVector
+    val expectedSize = unchunkedV.size - (unchunkedV.size % n0.get)
+    // All lists have n0 values
+    chunkedV.forall(_.map(_.size).sum == n0.get) &&
+      // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
+      chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == unchunkedV.take(expectedSize)
   }
 
   property("chunks") = forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>

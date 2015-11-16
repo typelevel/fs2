@@ -36,12 +36,7 @@ private[fs2] trait pull1 {
   private def _awaitN0[F[_],I](n: Int, allowFewer: Boolean)
   : Step[Chunk[I],Handle[F,I]] => Pull[F, Nothing, Step[List[Chunk[I]], Handle[F,I]]] = { case (hd #: tl) =>
       val next = awaitN(n - hd.size, allowFewer)(tl)
-      if (allowFewer)
-        next.optional flatMap {
-          case Some(n) => Pull.pure(n)
-          case None => Pull.pure(List() #: Handle.empty)
-        }
-      else next
+      if (allowFewer) next.optional.map(_.getOrElse(List() #: Handle.empty)) else next
   }
 
   /** Await the next available chunk from the input, or `None` if the input is exhausted. */
