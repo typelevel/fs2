@@ -1,6 +1,6 @@
 package scalaz.stream
 
-import java.net.{DatagramPacket,DatagramSocket,InetSocketAddress}
+import java.net.{MulticastSocket, InetAddress, DatagramPacket,DatagramSocket,InetSocketAddress}
 import scala.concurrent.duration.Duration
 import scalaz.concurrent.{Task,Strategy}
 import scalaz.~>
@@ -29,18 +29,46 @@ object udp {
    * @param timeout optional timeout for each receive operation. A `java.net.SocketTimeoutException`
    *                is raised in the stream if any receive take more than this amount of time
    */
-  def listen[A](port: Int,
+  def listen[A](
+                port: Int,
+                receiveBufferSize: Int = 1024 * 32,
+                sendBufferSize: Int = 1024 * 32,
+                reuseAddress: Boolean = true
+                )(p: Process[Connection,A]): Process[Task,A] =
+              listenUdp(new DatagramSocket(null), port, receiveBufferSize, sendBufferSize, reuseAddress)(_ => ())(_ => ())(p)
+
+  def listenMulticast[A](
+                multicastGroup: InetAddress, 
+                port: Int,
                 receiveBufferSize: Int = 1024 * 32,
                 sendBufferSize: Int = 1024 * 32,
                 reuseAddress: Boolean = true)(p: Process[Connection,A]): Process[Task,A] =
-    Process.eval(Task.delay { new DatagramSocket(null) }).flatMap { socket =>
+              listenUdp(new MulticastSocket(null), port, receiveBufferSize, sendBufferSize, reuseAddress)(_.joinGroup(multicastGroup))(_.leaveGroup(multicastGroup))(p)
+
+  private def listenUdp[A, B <: DatagramSocket](
+                socket: => B,
+                port: Int,
+                receiveBufferSize: Int = 1024 * 32,
+                sendBufferSize: Int = 1024 * 32,
+                reuseAddress: Boolean = true)
+              (prepareSocket: B => Unit)(releaseSocket: B => Unit)(p: Process[Connection,A]): Process[Task,A] = {
+    Process.eval(Task.delay { socket }).flatMap { socket =>
       Process.eval_ { Task.delay {
         socket.setReceiveBufferSize(receiveBufferSize)
         socket.setSendBufferSize(sendBufferSize)
         socket.setReuseAddress(reuseAddress)
+        prepareSocket(socket)
         socket.bind(new InetSocketAddress(port))
-      }} append bindTo(socket)(p) onComplete (Process.eval_(Task.delay(socket.close)))
+      }} append bindTo(socket)(p) onComplete {
+        Process.eval_{
+          Task.delay{
+            releaseSocket(socket)
+            socket.close
+          }
+        }
+      }
     }
+  }
 
   def merge[A](a: Process[Connection,A], a2: Process[Connection,A])(implicit S: Strategy): Process[Connection,A] =
     wye(a,a2)(scalaz.stream.wye.merge)
