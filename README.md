@@ -1,12 +1,26 @@
-scalaz-stream
+FS2: Functional Streams for Scala (previously 'Scalaz-Stream')
 =============
 
-[![Build Status](https://travis-ci.org/scalaz/scalaz-stream.svg?branch=master)](http://travis-ci.org/scalaz/scalaz-stream)
-[![Gitter Chat](https://badges.gitter.im/scalaz/scalaz-stream.svg)](https://gitter.im/scalaz/scalaz-stream)
+[![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=topic/redesign)](http://travis-ci.org/functional-streams-for-scala/fs2)
+[![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/scalaz/scalaz-stream)
 
-### Where to get it ###
+We are currently in the process of completing a major reworking of this library. The new version, likely 0.9, should hopefully see a release in the next few months, and along with this release we are renaming the project to _FS2: Functional Streams for Scala_, or just FS2 for short (official pronunciation 'FS two'). The name is being changed as the new version will not depend on [scalaz](https://github.com/scalaz/scalaz) and will have a core with _zero dependencies_. Versions prior to 0.9 are still called scalaz-stream.
 
-To get the latest version of the library, add the following to your SBT build:
+The 0.9 release will include major new capabilities:
+
+* A new `Pull` datatype for building arbitrary transformations of any number of streams.
+* Much richer support for concurrency and parallelism. Operations that previously needed special library support can now be defined with regular 'userland' FS2 code, using the existing primitive operations.
+* The ability to read whole chunks on each step when transforming streams. This enables much higher performance. Existing transforms like `take`, `takeWhile`, etc are all being rewritten to take full advantage of this capability.
+* Pushback and peeking of streams, useful for streaming parsing tasks.
+* A simpler core, consisting of 22 primitive operations, from which all functionality in the library is derived.
+
+There's [an incomplete and slightly out of date guide for the new design](https://github.com/functional-streams-for-scala/fs2/blob/topic/redesign/docs/guide.markdown) if you'd like to get a feel for what the new version will be like.
+
+The rest of these docs pertain to the 0.8 scalaz-stream release. If you'd like to follow FS2 development, see [the 0.9 milestone](https://github.com/functional-streams-for-scala/fs2/milestones/0.9.0).
+
+### Where to get the latest stable version ###
+
+The latest stable release is 0.8 ([source](https://github.com/functional-streams-for-scala/fs2/tree/release/0.8)). To get it, add the following to your SBT build:
 
 ```
 // available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
