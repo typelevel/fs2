@@ -82,7 +82,7 @@ private[fs2] trait pull1 {
 
   /** Write all inputs to the output of the returned `Pull`. */
   def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
-    h => echo1(h) flatMap (echo)
+    h => echoChunk(h) flatMap (echo)
 
   /** Read a single element from the input and emit it to the output. Returns the new `Handle`. */
   def echo1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
