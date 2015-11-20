@@ -1,7 +1,7 @@
 package fs2
 
 import collection.immutable.LongMap
-import fs2.internal.{LinkedMap,Trampoline}
+import fs2.internal.{ConcurrentLinkedMap,Trampoline}
 import fs2.util._
 import fs2.util.UF1.{~>}
 import fs2.Async.Future
@@ -16,10 +16,10 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
   def isEmpty: Boolean = false
 
   def runFold[O](g: (O,W) => O)(z: O): Free[F, O] =
-    _runFold0(LinkedMap.empty, Stream.Stack.empty[F,W])(g, z)
+    _runFold0(ConcurrentLinkedMap.empty[Token,F[Unit]], Stream.Stack.empty[F,W])(g, z)
 
   protected final def _runFold0[F2[_],O,W2>:W,W3](
-    tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+    tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O] =
     Free.pure(()) flatMap { _ => // trampoline after every step, catch exceptions
       try _runFold1(tracked, k)(g, z)
@@ -35,7 +35,7 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
    *     proof that `W2 == W3`, and can fold `g` over any emits.
    */
   protected def _runFold1[F2[_],O,W2>:W,W3](
-    tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+    tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O]
 
   private[fs2]
@@ -85,12 +85,14 @@ object Stream extends Streams[Stream] with StreamDerived {
     override def isEmpty = c.isEmpty
 
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       k (
         (segments,eq) => segments match {
-          case List() => Free.pure { c.foldLeft(z)((z,w) => g(z,eq(w))) }
+          case List() =>
+            val r = Free.attemptPure { c.foldLeft(z)((z,w) => g(z,eq(w))) }
+            runCleanup(tracked) flatMap { _ => r }
           case _ =>
             val z2 = c.foldLeft(z)((z,w) => g(z,eq(w)))
             val (hd, tl) = Stack.succeed(segments)
@@ -145,12 +147,12 @@ object Stream extends Streams[Stream] with StreamDerived {
   def fail[F[_]](err: Throwable): Stream[F,Nothing] = new Stream[F,Nothing] { self =>
     type W = Nothing
     def _runFold1[F2[_],O,W2>:Nothing,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       k (
         (segments,eq) => segments match {
-          case List() => runCleanup(tracked) flatMap { _ => Free.fail(err) }
+          case List() => empty[F2,W2]._runFold1(tracked, k)(g,z) flatMap { _ => Free.fail(err) }
           case _ =>
             val (hd, tl) = Stack.fail(segments)(err)
             val g2 = Eq.subst[({ type f[x] = (O,x) => O })#f, W3, W2](g)(eq.flip)
@@ -178,7 +180,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def eval[F[_],W](f: F[W]): Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O]
       =
       Free.attemptEval(S(f)) flatMap {
@@ -211,7 +213,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   override def map[F[_],W0,W](s: Stream[F,W0])(f: W0 => W) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Free.suspend {
@@ -255,7 +257,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def flatMap[F[_],W0,W](s: Stream[F,W0])(f: W0 => Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Free.suspend {
@@ -303,7 +305,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def append[F[_],W](s: Stream[F,W], s2: => Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       s._runFold0[F2,O,W2,W3](tracked, k.pushAppend(() => Sub1.substStream(s2)))(g,z)
@@ -326,15 +328,15 @@ object Stream extends Streams[Stream] with StreamDerived {
   private[fs2] def acquire[F[_],W](id: Token, r: F[W], cleanup: W => F[Unit]):
   Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Free.eval(S(r)) flatMap { r =>
         try
           emit(r)._runFold0[F2,O,W2,W3](tracked updated (id, S(cleanup(r))), k)(g,z)
         catch { case t: Throwable =>
-          Free.fail(
-            new RuntimeException("producing resource cleanup action failed", t))
+          fail(new RuntimeException("producing resource cleanup action failed", t))
+          ._runFold0[F2,O,W2,W3](tracked, k)(g,z)
         }
       }
 
@@ -381,12 +383,12 @@ object Stream extends Streams[Stream] with StreamDerived {
   private[fs2] def release(id: Token): Stream[Nothing,Nothing] = new Stream[Nothing,Nothing] {
     type W = Nothing
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
       =
       tracked.get(id).map(eval).getOrElse(Stream.emit(())).flatMap { (u: Unit) =>
         empty[F2,W2]
-      }._runFold0(tracked - id, k)(g, z)
+      }._runFold0(tracked.removed(id), k)(g, z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Stream.Handle[F2,W2]]]
@@ -403,7 +405,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def onError[F[_],W](s: Stream[F,W])(handle: Throwable => Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       = {
         val handle2: Throwable => Stream[F2,W] = handle andThen (Sub1.substStream(_))
@@ -446,7 +448,7 @@ object Stream extends Streams[Stream] with StreamDerived {
    */
   def suspend[F[_],W](self: => Stream[F,W]): Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      tracked: LinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       = self._runFold0(tracked, k)(g, z)
 
@@ -504,7 +506,7 @@ object Stream extends Streams[Stream] with StreamDerived {
     def empty[F[_],W]: Handle[F,W] = new Handle(List(), Stream.empty)
   }
 
-  private def runCleanup[F[_]](l: LinkedMap[Token,F[Unit]]): Free[F,Unit] =
+  private def runCleanup[F[_]](l: ConcurrentLinkedMap[Token,F[Unit]]): Free[F,Unit] =
     l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
       Free.eval(hd) flatMap { _ => tl } )
 

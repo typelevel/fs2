@@ -150,32 +150,6 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
 
   def run[F[_],W,R](p: Pull[F,W,R]): Stream[F,W] = p.run
 
-  trait AsyncStep[F[_],R] {
-    import AsyncStep._
-    def map[R2](f: R => R2): AsyncStep[F,R2] = this match {
-      case Unwrapped(u) => Unwrapped(u map f)
-      case Wrapped(w) => Wrapped(w map (_ map f))
-    }
-    def flatMap[R2](f: R => Free[F,R2]): AsyncStep[F,R2] = this match {
-      case Unwrapped(u) => Unwrapped(u flatMap f)
-      case Wrapped(w) => Wrapped(w map (_ flatMap f))
-    }
-    def wrap(implicit F: util.Catchable[F]): AsyncStep[F,R] = this match {
-      case Unwrapped(u) => Wrapped(Pull.eval(u.run) map (Free.pure))
-      case _ => this
-    }
-    def run(implicit F: util.Catchable[F]): Pull[F,Nothing,F[R]] = this match {
-      case Unwrapped(u) => Pull.pure(u.run)
-      case Wrapped(w) => w flatMap (f => Pull.pure(f.run))
-    }
-  }
-  object AsyncStep {
-    def eval[F[_],R](f: F[R]): AsyncStep[F,R] = Unwrapped(Free.eval(f))
-    def pure[F[_],R](r: R): AsyncStep[F,R] = Unwrapped(Free.pure(r))
-    case class Unwrapped[F[_],R](f: Free[F,R]) extends AsyncStep[F,R]
-    case class Wrapped[F[_],R](p: Pull[F,Nothing,Free[F,R]]) extends AsyncStep[F,R]
-  }
-
   private[fs2]
   def track(id: Token): Pull[Nothing,Nothing,Unit] = new Pull[Nothing,Nothing,Unit] {
     type W = Nothing; type R = Unit
