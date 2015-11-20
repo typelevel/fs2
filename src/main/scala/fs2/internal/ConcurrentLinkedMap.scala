@@ -3,11 +3,15 @@ package fs2.internal
 import scala.collection.concurrent.TrieMap
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * Mutable, concurrent map that maintains insertion order of entries.
+ */
 private[fs2] class ConcurrentLinkedMap[K,V](
     entries: TrieMap[K,(V,Long)],
     insertionOrder: TrieMap[Long,K],
     ids: AtomicLong)
 {
+  def isEmpty = entries.isEmpty
   def get(k: K): Option[V] = entries.get(k).map(_._1)
   def update(k: K, v: V): Unit = {
     val id = ids.getAndIncrement

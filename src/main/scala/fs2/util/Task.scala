@@ -338,7 +338,7 @@ object Task extends Instances {
 
 /* Prefer an `Async` and `Catchable`, but will settle for implicit `Monad`. */
 private[fs2] trait Instances1 {
-  implicit def monad: Monad[Task] with Catchable[Task] = new Monad[Task] with Catchable[Task] {
+  implicit def monad: Catchable[Task] = new Catchable[Task] {
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
@@ -347,7 +347,7 @@ private[fs2] trait Instances1 {
 }
 
 private[fs2] trait Instances extends Instances1 {
-  implicit def Instance(implicit S: Strategy): Async[Task] with Catchable[Task] = new Async[Task] with Catchable[Task] {
+  implicit def Instance(implicit S: Strategy): Async[Task] = new Async[Task] {
     type Ref[A] = Task.Ref[A]
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt
