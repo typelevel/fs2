@@ -2,7 +2,7 @@ FS2: Functional Streams for Scala (previously 'Scalaz-Stream')
 =============
 
 [![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=topic/redesign)](http://travis-ci.org/functional-streams-for-scala/fs2)
-[![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/scalaz/scalaz-stream)
+[![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
 
 We are currently in the process of completing a major reworking of this library. The new version, likely 0.9, should hopefully see a release in the next few months, and along with this release we are renaming the project to _FS2: Functional Streams for Scala_, or just FS2 for short (official pronunciation 'FS two'). The name is being changed as the new version will not depend on [scalaz](https://github.com/scalaz/scalaz) and will have a core with _zero dependencies_. Versions prior to 0.9 are still called scalaz-stream.
 
@@ -59,7 +59,7 @@ The library supports a number of other interesting use cases:
 * _Zipping and merging of streams:_ A streaming computations may read from multiple sources in a streaming fashion, zipping or merging their elements using a arbitrary `Tee`. In general, clients have a great deal of flexibility in what sort of topologies they can define--source, sinks, and effectful channels are all first-class concepts in the library.
 * _Dynamic resource allocation:_ A streaming computation may allocate resources dynamically (for instance, reading a list of files to process from a stream built off a network socket), and the library will ensure these resources get released in the event of normal termination or when errors occur.
 * _Nondeterministic and concurrent processing:_ A computation may read from multiple input streams simultaneously, using whichever result comes back first, and a pipeline of transformation can allow for nondeterminism and queueing at each stage.
-* _Streaming parsing (UPCOMING):_ A separate layer handles constructing streaming parsers, for instance, for streaming JSON, XML, or binary parsing. See [the roadmap](https://github.com/scalaz/scalaz-stream/wiki/Roadmap) for more information on this and other upcoming work.
+* _Streaming parsing (UPCOMING):_ A separate layer handles constructing streaming parsers, for instance, for streaming JSON, XML, or binary parsing. See [the roadmap](https://github.com/functional-streams-for-scala/fs2/wiki/Roadmap) for more information on this and other upcoming work.
 
 ### Documentation and getting help ###
 
@@ -67,13 +67,13 @@ There are examples (with commentary) in the test directory [`scalaz.stream.examp
 
 For questions about the library, use the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) or the [scalaz-stream tag on StackOverflow](http://stackoverflow.com/questions/tagged/scalaz-stream).
 
-Blog posts and other external resources are listed on the [Additional Resources](https://github.com/scalaz/scalaz-stream/wiki/Additional-Resources) page.
+Blog posts and other external resources are listed on the [Additional Resources](https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources) page.
 
 ### Projects using scalaz-stream ###
 
 If you have a project you'd like to include in this list, send a message to the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) and we'll add a link to it here.
 
-* [http4s](http://www.http4s.org): Minimal, idiomatic Scala interface for HTTP services using scalaz-stream
+* [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using scalaz-stream
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using scalaz-stream and [scodec](https://github.com/scodec/scodec)
 * [streamz](https://github.com/krasserm/streamz): A library that allows a `Process` to consume from and produce to [Apache Camel](http://camel.apache.org/) endpoints, [Akka Persistence](http://doc.akka.io/docs/akka/2.3.5/scala/persistence.html) journals and snapshot stores and [Akka Stream](http://akka.io/docs/#akka-streams-and-http) flows (reactive streams) with full back-pressure support.
 
@@ -81,4 +81,4 @@ If you have a project you'd like to include in this list, send a message to the 
 
 [Machines](https://github.com/ekmett/machines/) is a Haskell library with the same basic design as `scalaz-stream`, though some of the particulars differ. There is also [`scala-machines`](https://github.com/runarorama/scala-machines), which is an older, deprecated version of the basic design of `scalaz-stream`.
 
-There are various other iteratee-style libraries for doing compositional, streaming I/O in Scala, notably the [`scalaz/iteratee`](https://github.com/scalaz/scalaz/tree/scalaz-seven/iteratee) package and [iteratees in Play](http://www.playframework.com/documentation/2.0/Iteratees).
+There are various other iteratee-style libraries for doing compositional, streaming I/O in Scala, notably the [`scalaz/iteratee`](https://github.com/scalaz/scalaz/tree/scalaz-seven/iteratee) package and [iteratees in Play](https://www.playframework.com/documentation/2.0/Iteratees).
