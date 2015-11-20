@@ -34,6 +34,9 @@ object Free {
   def attemptEval[F[_],A](a: F[A]): Free[F,Either[Throwable,A]] = Eval(a)
   def fail(err: Throwable): Free[Nothing,Nothing] = Fail(err)
   def pure[A](a: A): Free[Nothing,A] = Pure(a)
+  def attemptPure[A](a: => A): Free[Nothing,A] =
+    try pure(a)
+    catch { case e: Throwable => Fail(e) }
   def eval[F[_],A](a: F[A]): Free[F,A] = Eval(a) flatMap {
     case Left(e) => fail(e)
     case Right(a) => pure(a)
