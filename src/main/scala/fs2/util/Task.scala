@@ -288,17 +288,13 @@ object Task extends Instances {
     new Ref(act)
   }
 
-  // todo, just make this one of the constructors of `Task`, call it
-  // `Running`. Have a single backing actor, repeatedly call `get` and
-  // nevermind. Thus, repeated losers never pile up.
-  // want to be able to create a single
   class Ref[A](actor: Actor[Msg[A]]) {
     /**
      * Return a `Task` that submits `t` to this ref for evaluation.
      * When it completes it overwrites any previously `put` value.
      */
-    def set(t: Task[A]): Task[Unit] = Task.delay { t.runAsync { r => actor ! Msg.Set(r) } }
-    def setFree(t: Free[Task,A]): Task[Unit] = set(t.run)
+    def set(t: Task[A])(implicit S: Strategy): Task[Unit] = Task.delay { S { t.runAsync { r => actor ! Msg.Set(r) } }}
+    def setFree(t: Free[Task,A])(implicit S: Strategy): Task[Unit] = set(t.run)
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
     def get: Task[A] = Task.async { cb => actor ! Msg.Get(cb, _ => ()) }
