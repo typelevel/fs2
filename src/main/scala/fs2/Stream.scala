@@ -61,13 +61,13 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
       type Out = Step[Chunk[W2],Handle[F2,W2]]
       type OutE = Either[Throwable,Out]
       val s: Stream[F2,Out] =
-        _step1[F2,W2](List()).
-        _run0(doCleanup = false, LinkedSet.empty, Pull.Stack.empty[F2,Nothing,Out])
+        _step1[F2,W2](List()).flatMap { step => Pull.output1(step) }.
+        _run0(doCleanup = false, LinkedSet.empty, Pull.Stack.empty[F2,Out,Unit])
       val s2: Stream[F2,Either[Throwable,Out]] =
         Stream.onComplete(s, Stream.eval_(F2.set(gate)(F2.pure(())))).map(Right(_))
-         .onError(err => Stream.emit(Left(err)))
+              .onError(err => Stream.emit(Left(err)))
       val resources = ConcurrentLinkedMap.empty[Token,F2[Unit]]
-      val f = (o: Option[OutE], o2: OutE) => Some(o.getOrElse(o2))
+      val f = (o: Option[OutE], o2: OutE) => Some(o2)
       val free: Free[F2,Option[OutE]] = s2._runFold0(doCleanup = false, resources, Stack.empty[F2,OutE])(f, None)
       val runStep: F2[Option[OutE]] = free.run
       val rootToken = new Token()
@@ -410,7 +410,7 @@ object Stream extends Streams[Stream] with StreamDerived {
   }
 
   private def runCleanup[F[_]](l: ConcurrentLinkedMap[Token,F[Unit]]): Free[F,Unit] =
-    l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
+    l.takeValues.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
       Free.eval(hd) flatMap { _ => tl } )
 
   private def concatRight[F[_],W](s: List[Stream[F,W]]): Stream[F,W] =

@@ -46,7 +46,7 @@ object process1 {
   /** Drop the elements of the input until the predicate `p` fails, then echo the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.dropWhile(p)(h) flatMap Pull.echo)
-  
+
   /** Emits `true` as soon as a matching element is received, else `false if no input matches */
   def exists[F[_], I](p: I => Boolean): Stream[F, I] => Stream[F, Boolean] =
     _ pull { h => Pull.forall[F,I](!p(_))(h) flatMap { i => Pull.output1(!i) }}
@@ -58,7 +58,7 @@ object process1 {
   /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
   def find[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.find(f)(h).flatMap { case o #: h => Pull.output1(o) }}
-  
+
 
   /**
    * Folds all inputs using an initial value `z` and supplied binary operator,
@@ -136,8 +136,8 @@ object process1 {
    * enabling processing on either side of the `prefetch` to run in parallel.
    */
   def prefetch[F[_]:Async,I]: Stream[F,I] => Stream[F,I] =
-    _ repeatPull { Pull.receive { case hd #: tl =>
-        Pull.prefetch(tl) flatMap { p => Pull.output(hd) >> p }}}
+    _ repeatPull { _.receive {
+      case hd #: tl => Pull.prefetch(tl) flatMap { p => Pull.output(hd) >> p }}}
 
   /** Alias for `[[process1.fold1]]` */
   def reduce[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] = fold1(f)
