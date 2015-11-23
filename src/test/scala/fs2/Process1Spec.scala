@@ -180,7 +180,7 @@ object Process1Spec extends Properties("process1") {
     val start = System.currentTimeMillis
     run(s)
     val stop = System.currentTimeMillis
-    println("prefetch (timing) took " + (stop-start) + " milliseconds")
+    println("prefetch (timing) took " + (stop-start) + " milliseconds, should be under 6000 milliseconds")
     (stop-start) < 6000
   }
 
