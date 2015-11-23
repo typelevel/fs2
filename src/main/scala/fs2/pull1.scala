@@ -12,6 +12,10 @@ private[fs2] trait pull1 {
   def await[F[_],I]: Handle[F,I] => Pull[F,Nothing,Step[Chunk[I],Handle[F,I]]] =
     _.await
 
+  /** Await the next available nonempty `Chunk`. */
+  def awaitNonempty[F[_],I]: Handle[F,I] => Pull[F,Nothing,Step[Chunk[I],Handle[F,I]]] =
+    receive { case s@(hd #: tl) => if (hd.isEmpty) awaitNonempty(tl) else Pull.pure(s) }
+
   /** Await a single element from the `Handle`. */
   def await1[F[_],I]: Handle[F,I] => Pull[F,Nothing,Step[I,Handle[F,I]]] =
     _.await1
@@ -78,7 +82,15 @@ private[fs2] trait pull1 {
 
   /** Write all inputs to the output of the returned `Pull`. */
   def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
-    receive { case chunk #: h => Pull.output(chunk) >> echo(h) }
+    h => echoChunk(h) flatMap (echo)
+
+  /** Read a single element from the input and emit it to the output. Returns the new `Handle`. */
+  def echo1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    receive1 { case i #: h => Pull.output1(i) >> Pull.pure(h) }
+
+  /** Read the next available chunk from the input and emit it to the output. Returns the new `Handle`. */
+  def echoChunk[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    receive { case c #: h => Pull.output(c) >> Pull.pure(h) }
 
   /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
