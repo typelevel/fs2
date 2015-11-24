@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.RealSupertype
+import fs2.util.{RealSupertype,Sub1}
 
 private[fs2]
 trait PullOps[+F[_],+W,+R] { self: Pull[F,W,R] =>
@@ -30,4 +30,6 @@ trait PullOps[+F[_],+W,+R] { self: Pull[F,W,R] =>
 
   /** Definition: `p as r == p map (_ => r)`. */
   def as[R2](r: R2): Pull[F,W,R2] = self map (_ => r)
+
+  def covary[F2[_]](implicit S: Sub1[F,F2]): Pull[F2,W,R] = Sub1.substPull(self)
 }
