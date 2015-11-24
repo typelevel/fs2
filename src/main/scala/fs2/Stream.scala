@@ -58,30 +58,48 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
   final def stepAsync[F2[_],W2>:W](implicit S: Sub1[F,F2], F2: Async[F2]):
     Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Handle[F2,W2]]]]]
     = Pull.eval(F2.ref[Unit]).flatMap { gate =>
+      // We use `gate` to determine when the asynchronous step has completed
+      // Finalizers are not run until the step (running in the background) completes
       type Out = Step[Chunk[W2],Handle[F2,W2]]
       type OutE = Either[Throwable,Out]
+      // A singleton stream which emits just a single step
       val s: Stream[F2,Out] =
         _step1[F2,W2](List()).flatMap { step => Pull.output1(step) }.
+        // The `doCleanup = false` disables the default `Pull.run` behavior of
+        // releasing any resources it acquires when reaching the end of the `Pull`
         _run0(doCleanup = false, LinkedSet.empty, Pull.Stack.empty[F2,Out,Unit])
+      // A singleton stream which catches all errors and sets `gate` when it completes
       val s2: Stream[F2,Either[Throwable,Out]] =
         Stream.onComplete(s, Stream.eval_(F2.set(gate)(F2.pure(())))).map(Right(_))
               .onError(err => Stream.emit(Left(err)))
+      // We run `s2`, recording all resources it allocates to the mutable `resources` map
+      // Note that we record _only_ the newly allocated resources for _this step_
       val resources = ConcurrentLinkedMap.empty[Token,F2[Unit]]
       val f = (o: Option[OutE], o2: OutE) => Some(o2)
+      // The `doCleanup = false` disables the default behavior of `runFold`, which is
+      // to run any finalizers not yet run when reaching end of stream
       val free: Free[F2,Option[OutE]] = s2._runFold0(doCleanup = false, resources, Stack.empty[F2,OutE])(f, None)
       val runStep: F2[Option[OutE]] = free.run
+      // We create a single `Token` that will covers any resources allocated by `runStep`
       val rootToken = new Token()
+      // The cleanup action waits until `gate` is set above, then runs finalizers in `resources`
       val rootCleanup: F2[Unit] = F2.bind(F2.get(gate)) { _ => Stream.runCleanup(resources).run }
+      // Track the root token with `rootCleanup` as associated cleanup action
       Pull.track(rootToken) >>
       Pull.acquire(rootToken, F2.pure(()), (u:Unit) => rootCleanup) >>
       Pull.eval(F2.ref[Option[OutE]]).flatMap { out =>
+        // Now kick off asynchronous evaluation of `runStep`
         Pull.eval(F2.set(out)(runStep)).map { _ =>
+          // Convert the output of the `Future` to a `Pull`
           F2.read(out).map {
             case None => Pull.done: Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
             case Some(Left(err)) => Pull.fail(err)
             case Some(Right(a)) => Pull.pure(a)
           }.appendOnForce { Pull.suspend {
-            // if resources is empty here, rootToken doesn't track anything, free it
+            // Important - if `resources.isEmpty`, we allocated a `rootToken`, but it turned
+            // out that our step didn't acquire new resources. This is quite common.
+            // Releasing the token is therefore a noop, but is important for memory usage as
+            // it prevents noop finalizers from accumulating in the `runFold` interpreter state.
             if (resources.isEmpty) Pull.release(rootToken)
             else Pull.pure(())
           }}
@@ -410,7 +428,7 @@ object Stream extends Streams[Stream] with StreamDerived {
   }
 
   private def runCleanup[F[_]](l: ConcurrentLinkedMap[Token,F[Unit]]): Free[F,Unit] =
-    l.takeValues.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
+    l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
       Free.eval(hd) flatMap { _ => tl } )
 
   private def concatRight[F[_],W](s: List[Stream[F,W]]): Stream[F,W] =

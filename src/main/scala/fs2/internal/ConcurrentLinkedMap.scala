@@ -9,8 +9,7 @@ import java.util.concurrent.atomic.{AtomicLong,AtomicBoolean}
 private[fs2] class ConcurrentLinkedMap[K,V](
     entries: TrieMap[K,(V,Long)],
     insertionOrder: TrieMap[Long,K],
-    ids: AtomicLong,
-    gate: AtomicBoolean)
+    ids: AtomicLong)
 {
   def isEmpty = entries.isEmpty
   def get(k: K): Option[V] = entries.get(k).map(_._1)
@@ -20,17 +19,6 @@ private[fs2] class ConcurrentLinkedMap[K,V](
     insertionOrder.update(id, k)
   }
   def updated(k: K, v: V): ConcurrentLinkedMap[K,V] = { update(k,v); this }
-
-  def take(k: K): Option[V] = {
-    try {
-      val v = get(k)
-      v flatMap { v =>
-        if (gate.compareAndSet(false,true)) { remove(k); Some(v) }
-        else None
-      }
-    }
-    finally gate.set(false)
-  }
 
   def remove(k: K): Unit = entries.get(k) match {
     case None => ()
@@ -42,10 +30,10 @@ private[fs2] class ConcurrentLinkedMap[K,V](
   def keys: Iterable[K] = insertionOrder.toList.sortBy(_._1).map(_._2)
 
   /** The values in this map, in the order they were added. */
-  def takeValues: Iterable[V] = keys.flatMap { k => take(k).toList }
+  def values: Iterable[V] = keys.flatMap { k => get(k).toList }
 }
 
 private[fs2] object ConcurrentLinkedMap {
   def empty[K,V]: ConcurrentLinkedMap[K,V] =
-    new ConcurrentLinkedMap[K,V](TrieMap.empty, TrieMap.empty, new AtomicLong(0L), new AtomicBoolean(false))
+    new ConcurrentLinkedMap[K,V](TrieMap.empty, TrieMap.empty, new AtomicLong(0L))
 }
