@@ -1,10 +1,10 @@
 package fs2
 
 import Async.Future
-import fs2.util.{Free,Monad}
+import fs2.util.{Free,Monad,Catchable}
 
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.util.Task]` requires an implicit `fs2.util.Strategy` in scope.")
-trait Async[F[_]] extends Monad[F] { self =>
+trait Async[F[_]] extends Catchable[F] { self =>
   type Ref[A]
 
   /** Create a asynchronous, concurrent mutable reference. */
@@ -14,6 +14,8 @@ trait Async[F[_]] extends Monad[F] { self =>
   def read[A](r: Ref[A]): Future[F,A] = new Future[F,A] {
     def get = self.get(r)
     def cancellableGet = self.cancellableGet(r)
+    def onForce = Pull.pure(())
+    def force = Pull.eval(get) flatMap { a => onForce as a }
   }
 
   /**
@@ -40,15 +42,24 @@ trait Async[F[_]] extends Monad[F] { self =>
 object Async {
 
   trait Future[F[_],A] { self =>
-    def get: F[A]
-    def cancellableGet: F[(F[A], F[Unit])]
-    def force: Pull[F,Nothing,A] = Pull.eval(get)
+    private[fs2] def get: F[A]
+    private[fs2] def cancellableGet: F[(F[A], F[Unit])]
+    private[fs2] def onForce: Pull[F,Nothing,Unit]
+    private[fs2] def appendOnForce(p: Pull[F,Nothing,Unit]): Future[F,A] = new Future[F,A] {
+      def get = self.get
+      def cancellableGet = self.cancellableGet
+      def onForce = self.onForce >> p
+      def force = self.force flatMap { a => p as a }
+    }
+    def force: Pull[F,Nothing,A]
     def map[B](f: A => B)(implicit F: Async[F]): Future[F,B] = new Future[F,B] {
       def get = F.map(self.get)(f)
       def cancellableGet = F.map(self.cancellableGet) { case (a,cancelA) => (F.map(a)(f), cancelA) }
+      def force = Pull.eval(get) flatMap { r => onForce as r }
+      def onForce = self.onForce
     }
 
-    def race[B](b: Future[F,B])(implicit F: Async[F]) = new Future[F, Either[A,B]] {
+    def race[B](b: Future[F,B])(implicit F: Async[F]): Future[F,Either[A,B]] = new Future[F, Either[A,B]] {
       def get = F.bind(cancellableGet)(_._1)
       def cancellableGet =
         F.bind(F.ref[Either[A,B]]) { ref =>
@@ -62,6 +73,11 @@ object Async {
            case Right(b) => F.map(cancelA)(_ => Right(b)) },
           F.bind(cancelA)(_ => cancelB))
         }}}}}}
+      def force = Pull.eval(get) flatMap {
+        case Left(ar) => self.onForce as (Left(ar))
+        case Right(br) => b.onForce as (Right(br))
+      }
+      def onForce = force map (_ => ())
     }
 
     def raceSame(b: Future[F,A])(implicit F: Async[F]): Future[F, RaceResult[A,Future[F,A]]] =
@@ -87,6 +103,8 @@ object Async {
     def pure[F[_],A](a: A)(implicit F: Async[F]): Future[F,A] = new Future[F,A] {
       def get = F.pure(a)
       def cancellableGet = F.pure((get, F.pure(())))
+      def onForce = Pull.pure(())
+      def force = Pull.pure(a)
     }
 
     def race[F[_]:Async,A](es: Vector[Future[F,A]])
@@ -114,6 +132,10 @@ object Async {
             (get, cancel)
           }}}
         def get = F.bind(cancellableGet)(_._1)
+        def force = Pull.eval(get) flatMap { case (a,i) =>
+          es(i).onForce >> Pull.pure(a -> i)
+        }
+        def onForce = force map (_ => ())
       }
   }
 }

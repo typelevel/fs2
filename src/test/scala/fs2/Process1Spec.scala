@@ -73,12 +73,12 @@ object Process1Spec extends Properties("process1") {
     val set = run(s.get).take(n.get).toSet
     s.get.pipe(dropWhile(set)) ==? run(s.get).dropWhile(set)
   }
-  
+
   property("exists") = forAll { (s: PureStream[Int], n: SmallPositive) =>
     val f = (i: Int) => i % n.get == 0
     s.get.exists(f) ==? Vector(run(s.get).exists(f))
   }
-  
+
   property("filter") = forAll { (s: PureStream[Int], n: SmallPositive) =>
     val predicate = (i: Int) => i % n.get == 0
     s.get.filter(predicate) ==? run(s.get).filter(predicate)
@@ -149,7 +149,7 @@ object Process1Spec extends Properties("process1") {
     val shouldCompile = s.get.last
     s.get.pipe(last) ==? Vector(run(s.get).lastOption)
   }
-  
+
   property("lastOr") = forAll { (s: PureStream[Int], n: SmallPositive) =>
     val default = n.get
     s.get.lastOr(default) ==? Vector(run(s.get).lastOption.getOrElse(default))
@@ -169,6 +169,19 @@ object Process1Spec extends Properties("process1") {
 
   property("prefetch") = forAll { (s: PureStream[Int]) =>
     s.get.covary[Task].through(prefetch) ==? run(s.get)
+  }
+
+  property("prefetch (timing)") = secure {
+    // should finish in about 3-4 seconds
+    val s = Stream(1,2,3)
+          . evalMap(i => Task.delay { Thread.sleep(1000); i })
+          . through(prefetch)
+          . flatMap { i => Stream.eval(Task.delay { Thread.sleep(1000); i}) }
+    val start = System.currentTimeMillis
+    run(s)
+    val stop = System.currentTimeMillis
+    println("prefetch (timing) took " + (stop-start) + " milliseconds, should be under 6000 milliseconds")
+    (stop-start) < 6000
   }
 
   property("sum") = forAll { (s: PureStream[Int]) =>

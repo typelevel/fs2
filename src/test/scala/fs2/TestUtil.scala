@@ -105,7 +105,8 @@ object TestUtil {
       Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw Err)),
       Failure("failure-in-pure-pull", Stream.emit[Task,Int](42).pull(h => throw Err)),
       Failure("failure-in-async-code",
-        Stream.eval[Task,Int](Task.delay(throw Err)).pull(h => h.invAwaitAsync.flatMap(_.force)))
+        Stream.eval[Task,Int](Task.delay(throw Err)).pull { h =>
+          h.invAwaitAsync.flatMap(_.force).flatMap(identity) })
     )
   )
 
