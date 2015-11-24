@@ -102,13 +102,12 @@ scmInfo := Some(ScmInfo(url("https://github.com/scalaz/scalaz-stream"),
 
 osgiSettings
 
-OsgiKeys.bundleSymbolicName := "org.scalaz.stream"
+OsgiKeys.bundleSymbolicName := "fs2"
 
-OsgiKeys.exportPackage := Seq("scalaz.stream.*")
+OsgiKeys.exportPackage := Seq("fs2.*")
 
 OsgiKeys.importPackage := Seq(
   """scala.*;version="$<range;[===,=+);$<@>>"""",
-  """scalaz.*;version="$<range;[===,=+);$<@>>"""",
   "*"
 )
 
