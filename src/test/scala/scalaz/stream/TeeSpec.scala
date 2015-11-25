@@ -106,6 +106,43 @@ class TeeSpec extends Properties("Tee") {
     ones.zip(ones).take(3).runLog.run == IndexedSeq(1 -> 1, 1 -> 1, 1 -> 1)
   }
 
+  property("interleave left/right side infinite") = protect {
+    val ones = Process.eval(Task.now("1")).repeat
+    val p = Process("A","B","C")
+    ones.interleave(p).runLog.run == IndexedSeq("1", "A", "1", "B", "1", "C") &&
+      p.interleave(ones).runLog.run == IndexedSeq("A", "1", "B", "1", "C", "1")
+  }
+
+  property("interleave both side infinite") = protect {
+    val ones = Process.eval(Task.now("1")).repeat
+    val as = Process.eval(Task.now("A")).repeat
+    ones.interleave(as).take(3).runLog.run == IndexedSeq("1", "A", "1")
+    as.interleave(ones).take(3).runLog.run == IndexedSeq("A", "1", "A")
+  }
+
+  property("interleaveAll left/right side infinite") = protect {
+    val ones = Process.eval(Task.now("1")).repeat
+    val p = Process("A","B","C")
+    ones.interleaveAll(p).take(9).runLog.run == IndexedSeq("1", "A", "1", "B", "1", "C", "1", "1", "1") &&
+      p.interleaveAll(ones).take(9).runLog.run == IndexedSeq("A", "1", "B", "1", "C", "1", "1", "1", "1")
+  }
+
+  property("interleaveAll both side infinite") = protect {
+    val ones = Process.eval(Task.now("1")).repeat
+    val as = Process.eval(Task.now("A")).repeat
+    ones.interleaveAll(as).take(3).runLog.run == IndexedSeq("1", "A", "1")
+    as.interleaveAll(ones).take(3).runLog.run == IndexedSeq("A", "1", "A")
+  }
+
+  // Uses a small scope to avoid using time to generate too large streams and not finishing
+  property("interleave is equal to interleaveAll on infinite streams (by step-indexing)") = protect {
+    forAll(Gen.choose(0,100)) { (n : Int) =>
+      val ones = Process.eval(Task.now("1")).repeat
+      val as = Process.eval(Task.now("A")).repeat
+      ones.interleaveAll(as).take(n).runLog.run == ones.interleave(as).take(n).runLog.run
+    }
+  }
+
   property("passL/R") = protect {
     val a = Process.range(0,10)
     val b: Process[Task,Int] = halt

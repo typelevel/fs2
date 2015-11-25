@@ -39,6 +39,16 @@ object tee {
       r <- emit(i1) ++ emit(i2)
     } yield r }
 
+  /** A `Tee` which alternates between emitting values from the left input and the right input until one of
+   * the streams is empty, where then it will the keep emitting values from the other stream . */
+  def interleaveAll[I]: Tee[I, I, I] = {
+    receiveLOr[I, I, I](passR[I]){ i =>
+      receiveROr[I, I, I](emit(i) ++ passL[I]) { i2 =>
+        emit(i) ++ emit(i2) ++ interleaveAll
+      }
+    }
+  }
+
   /** A `Tee` which ignores all input from left. */
   def passR[I2]: Tee[Any, I2, I2] = awaitR[I2].repeat
 
@@ -268,6 +278,12 @@ private[stream] trait TeeOps[+F[_], +O] {
   /** Alternate emitting elements from `this` and `p2`, starting with `this`. */
   def interleave[F2[x] >: F[x], O2 >: O](p2: Process[F2, O2]): Process[F2, O2] =
     this.tee(p2)(scalaz.stream.tee.interleave[O2])
+
+  /** Alternate emitting elements from `this` and `p2`, starting with `this`.
+   * If any of the streams is exhausted, it will keep emitting values from the other stream.
+   * */
+  def interleaveAll[F2[x] >: F[x], O2 >: O](p2: Process[F2, O2]): Process[F2, O2] =
+    this.tee(p2)(scalaz.stream.tee.interleaveAll[O2])
 
   /** Call `tee` with the `zipWith` `Tee[O,O2,O3]` defined in `tee.scala`. */
   def zipWith[F2[x] >: F[x], O2, O3](p2: Process[F2, O2])(f: (O, O2) => O3): Process[F2, O3] =
