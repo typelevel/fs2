@@ -1,6 +1,8 @@
 package fs2
 
 import Stream.Handle
+import Step.{#:}
+import fs2.{Pull => P, Chunk => C}
 import fs2.util.{Free,Functor,Sub1}
 
 object tee {
@@ -9,6 +11,27 @@ object tee {
 
   def covary[F[_],I,I2,O](p: Tee[I,I2,O]): (Stream[F,I], Stream[F,I2]) => Stream[F,O] =
     p.asInstanceOf[(Stream[F,I],Stream[F,I2]) => Stream[F,O]]
+
+  def interleave[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] = {
+    _.repeatPull2(_)((h1, h2) => h1 receive1 {
+        case o1 #: h1 => h2 receive1 {
+          case o2 #: h2 => P.output1(o1) >> P.output1(o2) >> P.pure((h1, h2))
+        }
+      })
+  }
+
+  def interleaveAll[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] = {
+    def go(h1 : Handle[F, O], h2: Handle[F, O]): Pull[F, O, Nothing] = {
+      P.receive1Option((h1Opt: Option[Step[O, Handle[F, O]]]) => h1Opt match {
+        case Some(o1 #: h1) => P.receive1Option((h2Opt: Option[Step[O, Handle[F, O]]]) => h2Opt match {
+          case Some(o2 #: h2) => P.output1(o1) >> P.output1(o2) >> go(h1, h2)
+          case None => P.output1(o1) >> P.echo(h1)
+        })(h2)
+        case None => P.echo(h2)
+      })(h1)
+    }
+    _.pull2(_)(go)
+  }
 
   def stepper[I,I2,O](p: Tee[I,I2,O]): Stepper[I,I2,O] = {
     type Read[+R] = Either[Option[Chunk[I]] => R, Option[Chunk[I2]] => R]
