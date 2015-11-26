@@ -12,26 +12,52 @@ object tee {
   def covary[F[_],I,I2,O](p: Tee[I,I2,O]): (Stream[F,I], Stream[F,I2]) => Stream[F,O] =
     p.asInstanceOf[(Stream[F,I],Stream[F,I2]) => Stream[F,O]]
 
-  def interleave[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] = {
-    _.repeatPull2(_)((h1, h2) => h1 receive1 {
-        case o1 #: h1 => h2 receive1 {
-          case o2 #: h2 => P.output1(o1) >> P.output1(o2) >> P.pure((h1, h2))
+  def zipWith[F[_],I,I2,O](f: (I, I2) => O) : (Stream[F, I], Stream[F, I2]) => Stream[F, O] = {
+     _.repeatPull2(_)((h1, h2) => h1 receive1 {
+        case i1 #: h1 => h2 receive1 {
+          case i2 #: h2 => P.output1(f(i1, i2)) >> P.pure((h1, h2))
         }
       })
   }
 
-  def interleaveAll[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] = {
-    def go(h1 : Handle[F, O], h2: Handle[F, O]): Pull[F, O, Nothing] = {
-      P.receive1Option((h1Opt: Option[Step[O, Handle[F, O]]]) => h1Opt match {
-        case Some(o1 #: h1) => P.receive1Option((h2Opt: Option[Step[O, Handle[F, O]]]) => h2Opt match {
-          case Some(o2 #: h2) => P.output1(o1) >> P.output1(o2) >> go(h1, h2)
-          case None => P.output1(o1) >> P.echo(h1)
+  def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): (Stream[F, I], Stream[F, I2]) => Stream[F, O] = {
+    def goL(h: Handle[F,I]): Pull[F, O, Nothing] =
+      P.receive1((h: Step[I, Handle[F, I]]) => h match {
+        case i #: h => P.output1(f(i, pad2)) >> goL(h)
+      })(h)
+
+    def goR(h: Handle[F, I2]): Pull[F, O, Nothing] =
+      P.receive1((h: Step[I2, Handle[F, I2]]) => h match {
+        case i #: h => P.output1(f(pad1, i)) >> goR(h)
+      })(h)
+
+    def go(h1 : Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
+      P.receive1Option((h1Opt: Option[Step[I, Handle[F, I]]]) => h1Opt match {
+        case Some(i1 #: h1) => P.receive1Option((h2Opt: Option[Step[I2, Handle[F, I2]]]) => h2Opt match {
+          case Some(i2 #: h2) => P.output1(f(i1,i2)) >> go(h1, h2)
+          case None => P.output1(f(i1, pad2)) >> goL(h1)
         })(h2)
-        case None => P.echo(h2)
+        case None => goR(h2)
       })(h1)
     }
     _.pull2(_)(go)
   }
+
+  def zip[F[_],I,I2]: (Stream[F, I], Stream[F, I2]) => Stream[F, (I, I2)] =
+    zipWith(Tuple2.apply)
+
+  def zipAll[F[_],I,I2](pad1: I, pad2: I2): (Stream[F, I], Stream[F, I2]) => Stream[F, (I, I2)] =
+    zipAllWith(pad1,pad2)(Tuple2.apply)
+
+  def interleave[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] =
+    zip(_,_) flatMap { case (i1,i2) => Stream(i1,i2) }
+
+  def interleaveAll[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] = { (s1, s2) =>
+    (zipAll(None: Option[O], None: Option[O])
+          (s1.map(Some.apply),s2.map(Some.apply))) flatMap { case (i1Opt,i2Opt) =>
+            Stream(i1Opt.toSeq :_*) ++ Stream(i2Opt.toSeq :_*)
+          }
+        }
 
   def stepper[I,I2,O](p: Tee[I,I2,O]): Stepper[I,I2,O] = {
     type Read[+R] = Either[Option[Chunk[I]] => R, Option[Chunk[I2]] => R]

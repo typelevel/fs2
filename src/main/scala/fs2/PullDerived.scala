@@ -2,9 +2,6 @@ package fs2
 
 trait PullDerived { self: fs2.Pull.type =>
 
-  def infinite[F[_],W](w: W): Pull[F,W,Nothing] =
-    loop[F,W,Unit] { (_ : Unit) => output1(w) >> pure(()) } (())
-
   def map[F[_],W,R0,R](p: Pull[F,W,R0])(f: R0 => R): Pull[F,W,R] =
     flatMap(p)(f andThen pure)
 

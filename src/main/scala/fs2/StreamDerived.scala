@@ -57,6 +57,9 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] =
     flatMap(eval(fa)) { _ => empty }
 
+  def infinite[F[_],W](ws: W*): Stream[F, W] =
+    emits(ws) ++ infinite(ws :_*)
+
   def push1[F[_],A](h: Handle[F,A])(a: A): Handle[F,A] =
     push(h)(Chunk.singleton(a))
 
