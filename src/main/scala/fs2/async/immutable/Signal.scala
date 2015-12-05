@@ -1,6 +1,6 @@
 package fs2.async.immutable
 
-import fs2.{Async, Stream}
+import fs2.{process1, Async, Stream}
 import fs2.util.Functor
 
 import fs2.async.{AsyncExt, immutable, mutable}
@@ -58,7 +58,7 @@ object Signal {
      */
     def map[B](f: A => B):Signal[F,B] = new Signal[F,B] {
       def continuous: Stream[F, B] = self.continuous.map(f)
-      def changes: Stream[F, Unit] = self.changes
+      def changes: Stream[F, Unit] = self.discrete.pipe(process1.changes(_ == _)).map(_ => ())
       def discrete: Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
     }

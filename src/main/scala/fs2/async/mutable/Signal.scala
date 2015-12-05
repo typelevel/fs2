@@ -55,7 +55,7 @@ object Signal {
 
   private type State[F[_],A] = (Int,A,SQueue[((Int,A)) => F[Unit]])
 
-  def apply[F[_],A](initA:A)(implicit F:AsyncExt[F]): fs2.Stream[F,Signal[F,A]] = Stream.eval {
+  def apply[F[_],A](initA:A)(implicit F:AsyncExt[F]): Stream[F,Signal[F,A]] = Stream.eval {
     F.bind(F.ref[State[F,A]]) { ref =>
     F.map(F.set(ref)(F.pure((0,initA,SQueue.empty)))) { _ =>
       def getChanged(stamp:Int):F[(Int,A)] = {

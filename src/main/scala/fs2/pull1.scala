@@ -51,6 +51,17 @@ private[fs2] trait pull1 {
   def await1Option[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[Step[I,Handle[F,I]]]] =
     h => h.await1.map(Some(_)) or Pull.pure(None)
 
+  def changing[F[_],I](eqf:(I,I) => Boolean):Handle[F,I] => Pull[F,I,I] = {
+    // todo: define in terms of `scan` once scan will be implemented
+    def go(last:I):Handle[F,I] => Pull[F,I,I] =
+      receive1 { case next #: h =>
+        if (eqf(last,next)) go(last)(h)
+        else Pull.output1(next) >> go(next)(h)
+      }
+
+    receive1 { case i #: h => Pull.output1(i) >> go(i)(h)  }
+  }
+
   /** Copy the next available chunk to the output. */
   def copy[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
     receive { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }

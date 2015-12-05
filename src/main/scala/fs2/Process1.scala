@@ -15,6 +15,10 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
+  /** outputs first value, and then any changed value from the last value. `eqf` is used for equality **/
+  def changes[F[_],I](eqf:(I,I) => Boolean):Stream[F,I] => Stream[F,I] =
+    _ pull( h => Pull.changing(eqf)(h) )
+
   /** Outputs chunks with a limited maximum size, splitting as necessary. */
   def chunkLimit[F[_],I](n: Int): Stream[F,I] => Stream[F,Chunk[I]] =
     _ repeatPull { h => Pull.awaitLimit(n)(h) flatMap { case chunk #: h => Pull.output1(chunk) as h } }
