@@ -20,4 +20,5 @@ trait PullDerived { self: fs2.Pull.type =>
     r => using(r) flatMap tl
   }
 
+  implicit def covaryPure[F[_],W,R](p: Pull[Pure,W,R]): Pull[F,W,R] = p.covary[F]
 }

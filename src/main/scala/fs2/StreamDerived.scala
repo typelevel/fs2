@@ -1,14 +1,12 @@
 package fs2
 
 import Step.#:
-import fs2.util.{RealSupertype,Sub1}
+import fs2.util.{RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
   def apply[F[_],W](a: W*): Stream[F,W] = self.chunk(Chunk.seq(a))
-
-  def outputs[F[_],W](s: Stream[F,W]): Pull[F,W,Unit] = Pull.outputs(s)
 
   def pull[F[_],F2[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2])
   : Stream[F2,B] =
@@ -17,6 +15,11 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def repeatPull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Handle[F,A]])
   : Stream[F,B] =
     pull(s)(Pull.loop(using))
+
+  def repeatPull2[F[_],A,B,C](s: Stream[F,A], s2: Stream[F,B])(
+    using: (Handle[F,A], Handle[F,B]) => Pull[F,C,(Handle[F,A],Handle[F,B])])
+  : Stream[F,C] =
+    s.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.run
 
   def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep1[F,A]] =
     h.awaitAsync map { _ map { _.map {
@@ -69,7 +72,7 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def peek1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
     h.await1 flatMap { case hd #: tl => Pull.pure(hd #: tl.push1(hd)) }
 
-  implicit class HandleSyntax[+F[_],+A](h: Handle[F,A]) {
+  implicit class HandleOps[+F[_],+A](h: Handle[F,A]) {
     def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
       self.push(h: Handle[F,A2])(c)
     def push1[A2>:A](a: A2)(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
@@ -77,22 +80,28 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
     def #:[H](hd: H): Step[H, Handle[F,A]] = Step(hd, h)
     def await: Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] = self.await(h)
     def await1: Pull[F, Nothing, Step[A, Handle[F,A]]] = self.await1(h)
+    def awaitNonempty: Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] = Pull.awaitNonempty(h)
+    def echo1: Pull[F,A,Handle[F,A]] = Pull.echo1(h)
+    def echoChunk: Pull[F,A,Handle[F,A]] = Pull.echoChunk(h)
     def peek: Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] = self.peek(h)
     def peek1: Pull[F, Nothing, Step[A, Handle[F,A]]] = self.peek1(h)
     def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]):
       Pull[F2, Nothing, AsyncStep[F2,A2]] = self.awaitAsync(Sub1.substHandle(h))
     def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]):
       Pull[F2, Nothing, AsyncStep1[F2,A2]] = self.await1Async(Sub1.substHandle(h))
+    def covary[F2[_]](implicit S: Sub1[F,F2]): Handle[F2,A] = Sub1.substHandle(h)
   }
 
-  implicit class HandleSyntax2[F[_],+A](h: Handle[F,A]) {
+  implicit class HandleInvariantEffectOps[F[_],+A](h: Handle[F,A]) {
     def invAwait1Async[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
       Pull[F, Nothing, AsyncStep1[F,A2]] = self.await1Async(h)
     def invAwaitAsync[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
       Pull[F, Nothing, AsyncStep[F,A2]] = self.awaitAsync(h)
+    def receive1[O,B](f: Step[A,Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = h.await1.flatMap(f)
+    def receive[O,B](f: Step[Chunk[A],Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = h.await.flatMap(f)
   }
 
-  implicit class InvariantSyntax[F[_],A](s: Stream[F,A]) {
+  implicit class StreamInvariantOps[F[_],A](s: Stream[F,A]) {
     def through[B](f: Stream[F,A] => Stream[F,B]): Stream[F,B] = f(s)
     def to[B](f: Stream[F,A] => Stream[F,Unit]): Stream[F,Unit] = f(s)
     def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
@@ -103,6 +112,14 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
       f(s,s2)
     def repeatPull[B](using: Handle[F,A] => Pull[F,B,Handle[F,A]]): Stream[F,B] =
       Stream.repeatPull(s)(using)
+    def repeatPull2[B,C](s2: Stream[F,B])(using: (Handle[F,A],Handle[F,B]) => Pull[F,C,(Handle[F,A],Handle[F,B])]): Stream[F,C] =
+      Stream.repeatPull2(s,s2)(using)
+  }
+
+  implicit class StreamPureOps[+A](s: Stream[Pure,A]) {
+    def toList: List[A] =
+      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).run.run.reverse
+    def toVector: Vector[A] = s.covary[Task].runLog.run.run
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]

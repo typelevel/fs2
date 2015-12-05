@@ -34,14 +34,19 @@ trait Chunk[+A] { self =>
     iterator.map(f).copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
+  def mapAccumulate[S,B](s0: S)(f: (S,A) => (S,B)): (S,Chunk[B]) = {
+    val buf = new collection.mutable.ArrayBuffer[B](size)
+    var s = s0
+    for { c <- iterator } {
+      val (newS, newC) = f(s, c)
+      buf += newC
+      s = newS
+    }
+    (s, Chunk.indexedSeq(buf))
+  }
   def scanLeft[B](z: B)(f: (B, A) => B): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size + 1)
     iterator.scanLeft(z)(f).copyToBuffer(buf)
-    Chunk.indexedSeq(buf)
-  }
-  def zipWithIndex: Chunk[(A, Int)] = {
-    val buf = new collection.mutable.ArrayBuffer[(A, Int)](size)
-    iterator.zipWithIndex.copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
   def iterator: Iterator[A] = new Iterator[A] {

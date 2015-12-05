@@ -292,17 +292,13 @@ object Task extends Instances {
     new Ref(act)
   }
 
-  // todo, just make this one of the constructors of `Task`, call it
-  // `Running`. Have a single backing actor, repeatedly call `get` and
-  // nevermind. Thus, repeated losers never pile up.
-  // want to be able to create a single
   class Ref[A](actor: Actor[Msg[A]]) {
     /**
      * Return a `Task` that submits `t` to this ref for evaluation.
      * When it completes it overwrites any previously `put` value.
      */
-    def set(t: Task[A]): Task[Unit] = Task.delay { t.runAsync { r => actor ! Msg.Set(r) } }
-    def setFree(t: Free[Task,A]): Task[Unit] = set(t.run)
+    def set(t: Task[A])(implicit S: Strategy): Task[Unit] = Task.delay { S { t.runAsync { r => actor ! Msg.Set(r) } }}
+    def setFree(t: Free[Task,A])(implicit S: Strategy): Task[Unit] = set(t.run)
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
     def get: Task[A] = Task.async { cb => actor ! Msg.Get(cb, _ => ()) }
@@ -342,7 +338,7 @@ object Task extends Instances {
 
 /* Prefer an `Async` and `Catchable`, but will settle for implicit `Monad`. */
 private[fs2] trait Instances1 {
-  implicit def monad: Monad[Task] with Catchable[Task] = new Monad[Task] with Catchable[Task] {
+  implicit def monad: Catchable[Task] = new Catchable[Task] {
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
@@ -351,7 +347,7 @@ private[fs2] trait Instances1 {
 }
 
 private[fs2] trait Instances extends Instances1 {
-  implicit def Instance(implicit S: Strategy): Async[Task] with Catchable[Task] = new Async[Task] with Catchable[Task] {
+  implicit def Instance(implicit S: Strategy): Async[Task] = new Async[Task] {
     type Ref[A] = Task.Ref[A]
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt

@@ -12,6 +12,10 @@ private[fs2] trait pull1 {
   def await[F[_],I]: Handle[F,I] => Pull[F,Nothing,Step[Chunk[I],Handle[F,I]]] =
     _.await
 
+  /** Await the next available nonempty `Chunk`. */
+  def awaitNonempty[F[_],I]: Handle[F,I] => Pull[F,Nothing,Step[Chunk[I],Handle[F,I]]] =
+    receive { case s@(hd #: tl) => if (hd.isEmpty) awaitNonempty(tl) else Pull.pure(s) }
+
   /** Await a single element from the `Handle`. */
   def await1[F[_],I]: Handle[F,I] => Pull[F,Nothing,Step[I,Handle[F,I]]] =
     _.await1
@@ -24,15 +28,20 @@ private[fs2] trait pull1 {
         else s.head.take(maxChunkSize) #: s.tail.push(s.head.drop(maxChunkSize))
       }
 
-  /** Return a `List[Chunk[I]]` from the input whose combined size is exactly `n`. */
-  def awaitN[F[_],I](n: Int)
+  /** Return a `List[Chunk[I]]` from the input whose combined size has a maximum value `n`. */
+  def awaitN[F[_],I](n: Int, allowFewer: Boolean = false)
     : Handle[F,I] => Pull[F,Nothing,Step[List[Chunk[I]],Handle[F,I]]]
     = h =>
         if (n <= 0) Pull.pure(List() #: h)
         else for {
           hd #: tl <- awaitLimit(n)(h)
-          hd2 #: tl <- awaitN(n - hd.size)(tl)
+          hd2 #: tl <- _awaitN0(n, allowFewer)(hd #: tl)
         } yield (hd :: hd2) #: tl
+  private def _awaitN0[F[_],I](n: Int, allowFewer: Boolean)
+  : Step[Chunk[I],Handle[F,I]] => Pull[F, Nothing, Step[List[Chunk[I]], Handle[F,I]]] = { case (hd #: tl) =>
+      val next = awaitN(n - hd.size, allowFewer)(tl)
+      if (allowFewer) next.optional.map(_.getOrElse(List() #: Handle.empty)) else next
+  }
 
   /** Await the next available chunk from the input, or `None` if the input is exhausted. */
   def awaitOption[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[Step[Chunk[I],Handle[F,I]]]] =
@@ -73,7 +82,15 @@ private[fs2] trait pull1 {
 
   /** Write all inputs to the output of the returned `Pull`. */
   def echo[F[_],I]: Handle[F,I] => Pull[F,I,Nothing] =
-    receive { case chunk #: h => Pull.output(chunk) >> echo(h) }
+    h => echoChunk(h) flatMap (echo)
+
+  /** Read a single element from the input and emit it to the output. Returns the new `Handle`. */
+  def echo1[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    receive1 { case i #: h => Pull.output1(i) >> Pull.pure(h) }
+
+  /** Read the next available chunk from the input and emit it to the output. Returns the new `Handle`. */
+  def echoChunk[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    receive { case c #: h => Pull.output(c) >> Pull.pure(h) }
 
   /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   def fetchN[F[_],I](n: Int): Handle[F,I] => Pull[F,Nothing,Handle[F,I]] =
@@ -106,6 +123,16 @@ private[fs2] trait pull1 {
   def fold1[F[_],I](f: (I, I) => I): Handle[F,I] => Pull[F,Nothing,I] =
     receive1 { case o #: h => fold(o)(f)(h) }
 
+  /** Write a single `true` value if all input matches the predicate, false otherwise */
+  def forall[F[_],I](p: I => Boolean): Handle[F,I] => Pull[F,Nothing,Boolean] = {
+    h => h.await1.optional flatMap {
+      case Some(i #: h) =>
+        if (!p(i)) Pull.pure(false)
+        else forall(p).apply(h)
+      case None => Pull.pure(true)
+    }
+  }
+
   /** Return the last element of the input `Handle`, if nonempty. */
   def last[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[I]] = {
     def go(prev: Option[I]): Handle[F,I] => Pull[F,Nothing,Option[I]] =
@@ -134,6 +161,10 @@ private[fs2] trait pull1 {
   /** Apply `f` to the next available element. */
   def receive1[F[_],I,O,R](f: Step[I,Handle[F,I]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
     _.await1.flatMap(f)
+
+  /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+  def receiveOption[F[_],I,O,R](f: Option[Step[Chunk[I],Handle[F,I]]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
+    awaitOption(_).flatMap(f)
 
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long)(h: Handle[F,I]): Pull[F,I,Handle[F,I]] =
