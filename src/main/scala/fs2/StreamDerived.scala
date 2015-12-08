@@ -57,6 +57,14 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] =
     flatMap(eval(fa)) { _ => empty }
 
+  /**
+    * The infinite `Process`, always emits `a`.
+    * If for performance reasons it is good to emit `a` in chunks,
+    * specify size of chunk by `chunkSize` parameter
+    */
+  def constant[F[_],W](w: W, chunkSize: Int = 1): Stream[F, W] =
+    emits(List.fill(chunkSize)(w)) ++ constant(w, chunkSize)
+
   def push1[F[_],A](h: Handle[F,A])(a: A): Handle[F,A] =
     push(h)(Chunk.singleton(a))
 

@@ -51,6 +51,10 @@ private[fs2] trait pull1 {
   def await1Option[F[_],I]: Handle[F,I] => Pull[F,Nothing,Option[Step[I,Handle[F,I]]]] =
     h => h.await1.map(Some(_)) or Pull.pure(None)
 
+  /** Await the next available non-empty chunk from the input, or `None` if the input is exhausted. */
+  def awaitNonemptyOption[F[_],I]: Handle[F, I] => Pull[F, Nothing, Option[Step[Chunk[I], Handle[F,I]]]] =
+    h => awaitNonempty(h).map(Some(_)) or Pull.pure(None)
+
   /** Copy the next available chunk to the output. */
   def copy[F[_],I]: Handle[F,I] => Pull[F,I,Handle[F,I]] =
     receive { case chunk #: h => Pull.output(chunk) >> Pull.pure(h) }
@@ -165,6 +169,13 @@ private[fs2] trait pull1 {
   /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
   def receiveOption[F[_],I,O,R](f: Option[Step[Chunk[I],Handle[F,I]]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
     awaitOption(_).flatMap(f)
+
+  /** Apply `f` to the next available element, or `None` if the input is exhausted. */
+  def receive1Option[F[_],I,O,R](f: Option[Step[I,Handle[F,I]]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
+    await1Option(_).flatMap(f)
+
+  def receiveNonemptyOption[F[_],I,O,R](f: Option[Step[Chunk[I], Handle[F,I]]] => Pull[F,O,R]): Handle[F,I] => Pull[F,O,R] =
+    awaitNonemptyOption(_).flatMap(f)
 
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long)(h: Handle[F,I]): Pull[F,I,Handle[F,I]] =

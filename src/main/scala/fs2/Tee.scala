@@ -1,6 +1,8 @@
 package fs2
 
 import Stream.Handle
+import Step.{#:}
+import fs2.{Pull => P, Chunk => C}
 import fs2.util.{Free,Functor,Sub1}
 
 object tee {
@@ -9,6 +11,110 @@ object tee {
 
   def covary[F[_],I,I2,O](p: Tee[I,I2,O]): (Stream[F,I], Stream[F,I2]) => Stream[F,O] =
     p.asInstanceOf[(Stream[F,I],Stream[F,I2]) => Stream[F,O]]
+
+
+  private def zipChunksWith[I,I2,O](f: (I, I2) => O)(c1: Chunk[I], c2: Chunk[I2]): Step[Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]] = {
+      def go(v1: Vector[I], v2: Vector[I2], acc: Vector[O]): Step[Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]] = (v1, v2) match {
+        case (Seq(),Seq())        => Step(Chunk.seq(acc.reverse), None)
+        case (v1,   Seq())        => Step(Chunk.seq(acc.reverse), Some(Left(Chunk.seq(v1))))
+        case (Seq(),   v2)        => Step(Chunk.seq(acc.reverse), Some(Right(Chunk.seq(v2))))
+        case (i1 +: v1, i2 +: v2) => go(v1, v2, f(i1, i2) +: acc)
+      }
+      go(c1.toVector, c2.toVector, Vector.empty[O])
+  }
+
+  private type ZipWithCont[F[_],I,O,R] = Either[Step[Chunk[I], Handle[F, I]],
+                                         Handle[F, I]] => Pull[F,O,R]
+
+  private def zipWithHelper[F[_],I,I2,O]
+                      (k1: ZipWithCont[F,I,O,Nothing],
+                       k2: ZipWithCont[F,I2,O,Nothing])
+                      (f: (I, I2) => O):
+                          (Stream[F, I], Stream[F, I2]) => Stream[F, O] = {
+      def zipChunksGo(s1 : Step[Chunk[I], Handle[F, I]],
+                      s2 : Step[Chunk[I2], Handle[F, I2]]): Pull[F, O, Nothing] = (s1, s2) match {
+                            case (c1 #: h1, c2 #: h2) => zipChunksWith(f)(c1, c2) match {
+                              case (co #: r) => Pull.output(co) >> (r match {
+                                case None => goB(h1, h2)
+                                case Some(Left(c1rest)) => go1(c1rest, h1, h2)
+                                case Some(Right(c2rest)) => go2(c2rest, h1, h2)
+                              })
+                            }
+                       }
+      def go1(c1r: Chunk[I], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
+        P.receiveNonemptyOption[F,I2,O,Nothing]{
+          case Some(s2) => zipChunksGo(c1r #: h1, s2)
+          case None => k1(Left(c1r #: h1))
+        }(h2)
+      }
+      def go2(c2r: Chunk[I2], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
+        P.receiveNonemptyOption[F,I,O,Nothing]{
+          case Some(s1) => zipChunksGo(s1, c2r #: h2)
+          case None => k2(Left(c2r #: h2))
+        }(h1)
+      }
+      def goB(h1 : Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
+        P.receiveNonemptyOption[F,I,O,Nothing]{
+          case Some(s1) => P.receiveNonemptyOption[F,I2,O,Nothing] {
+            case Some(s2) => zipChunksGo(s1, s2)
+            case None => k1(Left(s1))
+          }(h2)
+          case None => k2(Right(h2))
+        }(h1)
+      }
+      _.pull2(_)(goB)
+  }
+
+  def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): (Stream[F, I], Stream[F, I2]) => Stream[F, O] = {
+      def cont1(z: Either[Step[Chunk[I], Handle[F, I]], Handle[F, I]]): Pull[F, O, Nothing] = {
+        def putLeft(c: Chunk[I]) = {
+          val co = Chunk.seq(c.toVector.zip( Vector.fill(c.size)(pad2)))
+                        .map(f.tupled)
+          P.output(co)
+        }
+        def contLeft(h: Handle[F,I]): Pull[F,O,Nothing] = h.receive {
+            case c #: h => putLeft(c) >> contLeft(h)
+        }
+        z match {
+          case Left(c #: h) => putLeft(c) >> contLeft(h)
+          case Right(h)     => contLeft(h)
+        }
+      }
+      def cont2(z: Either[Step[Chunk[I2], Handle[F, I2]], Handle[F, I2]]): Pull[F, O, Nothing] = {
+        def putRight(c: Chunk[I2]) = {
+          val co = Chunk.seq(Vector.fill(c.size)(pad1).zip(c.toVector))
+                        .map(f.tupled)
+          P.output(co)
+        }
+        def contRight(h: Handle[F,I2]): Pull[F,O,Nothing] = h.receive {
+            case c #: h => putRight(c) >> contRight(h)
+        }
+        z match {
+          case Left(c #: h) => putRight(c) >> contRight(h)
+          case Right(h)     => contRight(h)
+        }
+      }
+      zipWithHelper[F,I,I2,O](cont1, cont2)(f)
+  }
+
+
+  def zipWith[F[_],I,I2,O](f: (I, I2) => O) : (Stream[F, I], Stream[F, I2]) => Stream[F, O] =
+    zipWithHelper[F,I,I2,O](sh => Pull.done, h => Pull.done)(f)
+
+  def zipAll[F[_],I,I2](pad1: I, pad2: I2): (Stream[F, I], Stream[F, I2]) => Stream[F, (I, I2)] =
+    zipAllWith(pad1,pad2)(Tuple2.apply)
+
+  def zip[F[_],I,I2]: (Stream[F, I], Stream[F, I2]) => Stream[F, (I, I2)] =
+    zipWith(Tuple2.apply)
+
+  def interleaveAll[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] = { (s1, s2) =>
+    (zipAll(None: Option[O], None: Option[O])(s1.map(Some.apply),s2.map(Some.apply))) flatMap {
+      case (i1Opt,i2Opt) => Stream(i1Opt.toSeq :_*) ++ Stream(i2Opt.toSeq :_*)
+    }
+  }
+
+  def interleave[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] =
+    zip(_,_) flatMap { case (i1,i2) => Stream(i1,i2) }
 
   def stepper[I,I2,O](p: Tee[I,I2,O]): Stepper[I,I2,O] = {
     type Read[+R] = Either[Option[Chunk[I]] => R, Option[Chunk[I2]] => R]
