@@ -101,6 +101,6 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
     fs2.tee.zip.apply(Sub1.substStream(self), s2)
 
   /** Alias for `[[tee.zipWith]](f)(self, s2)`. */
-  def zipWith[F2[_], B, C](f: (A, B) => C, s2: Stream[F2,B])(implicit S:Sub1[F,F2]): Stream[F2, C] =
+  def zipWith[F2[_], B, C](s2: Stream[F2,B])(f: (A, B) => C)(implicit S:Sub1[F,F2]): Stream[F2, C] =
     fs2.tee.zipWith(f).apply(Sub1.substStream(self), s2)
 }
