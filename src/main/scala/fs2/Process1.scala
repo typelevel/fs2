@@ -17,7 +17,11 @@ object process1 {
 
   /** outputs first value, and then any changed value from the last value. `eqf` is used for equality **/
   def changes[F[_],I](eqf:(I,I) => Boolean):Stream[F,I] => Stream[F,I] =
-    _ pull( h => Pull.changing(eqf)(h) )
+    zipWithPrevious andThen collect {
+      case (None,next) => next
+      case (Some(last), next) if !eqf(last,next) => next
+    }
+
 
   /** Outputs chunks with a limited maximum size, splitting as necessary. */
   def chunkLimit[F[_],I](n: Int): Stream[F,I] => Stream[F,Chunk[I]] =
