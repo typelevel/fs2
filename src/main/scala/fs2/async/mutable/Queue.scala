@@ -15,16 +15,26 @@ import fs2.async.{immutable, AsyncExt}
  */
 trait Queue[F[_],A] {
 
+  /**
+    * Enqueues one element in this `Queue`.
+    *
+    * If the queue is `full` this waits, until queue is empty.
+    *
+    * This completes after `a`  has been successfully enqueued to this `Queue`
+    * @param a
+    * @return
+    */
+  def enqueue1(a:A): F[Unit]
 
   /**
-   * Enqueue one element in this `Queue`.
+   * Offers one element in this `Queue`.
    *
    * Evaluates to `false` if the queue is full, indicating the `a` was not queued up.
    * Evaluates to `true` if the `a` was queued up successfully.
    *
    * @param a `A` to enqueue
    */
-  def enqueueOne(a: A): F[Boolean]
+  def offer1(a: A): F[Boolean]
 
   /**
    * Provides a process that dequeue from this queue.
@@ -39,7 +49,12 @@ trait Queue[F[_],A] {
   def dequeue: Stream[F, A]
 
   /**
-   * The time-varying size of this `Queue`. This signal refreshes
+    * Dequeue one `A` from this queue. Completes once one is ready.
+    */
+  def dequeue1: F[A]
+
+  /**
+   * The time-varying size of this Queue`. This signal refreshes
    * only when size changes. Offsetting enqueues and de-queues may
    * not result in refreshes.
    */
@@ -98,10 +113,10 @@ object Queue {
                 else F.pure(())
               }
 
-              // enqueueAll implementation
-              // tries to satisfy or waiting dequeuers on this enqueue and/or attaches the remainder to the queue
-              // also updates size of the queue.
-              def _enqueueOne(a: A): F[Boolean] = {
+              // Offers one element to queue
+              // if queue is full completes immediately with false
+              // if the queue is empty, and some deq are waiting, fills the head of deq.
+              def _offer1(a: A): F[Boolean] = {
                 F.bind(F.ref[Boolean]) { enqRef =>
                   F.bind(F.modify(qref){ s =>
                     if (bound >= 0 && s.queue.size -1 >= bound) F.map(F.setPure(enqRef)(false)){ _ => s}
@@ -121,30 +136,38 @@ object Queue {
                 }
               }
 
-              // implementation of dequeueBatch
-              // repeatedly dequeue from the queue, while completing any waiting enqueue on bounded queue
-              // and taking the chunks up to `limit` that are available in queue
-              def _dequeue: Stream[F, A] = {
-                val dequeF:F[A] = {
-                  F.bind(F.ref[A]) { deqRef =>
-                    F.bind(F.modify(qref) { s =>
-                      s.queue.headOption match {
-                        case Some(a) => F.map(F.setPure(deqRef)(a)){ _ => s.copy(queue = s.queue.tail)}
-                        case None => F.pure(s.copy(deq = s.deq :+ (F.setPure(deqRef)(_))))
-                      }
-                    }) { case Change(s,ns) =>
-                      F.bind(signalSize(s,ns)) { _ => F.get(deqRef)}
+              def _enqueue1(a:A): F[Unit] = {
+                F.bind(_offer1(a)) {
+                  case true => F.pure(())
+                  case false =>
+                    // this implies bound is configured so we just listen for queue
+                    // to signal if some space is available
+                    F.bind(szSignal.discrete.takeWhile(_ >= bound).run.run) { _ =>
+                      _enqueue1(a)
                     }
+                }
+              }
+
+              def _dequeue1:F[A] = {
+                F.bind(F.ref[A]) { deqRef =>
+                  F.bind(F.modify(qref) { s =>
+                    s.queue.headOption match {
+                      case Some(a) => F.map(F.setPure(deqRef)(a)){ _ => s.copy(queue = s.queue.tail)}
+                      case None => F.pure(s.copy(deq = s.deq :+ (F.setPure(deqRef)(_))))
+                    }
+                  }) { case Change(s,ns) =>
+                    F.bind(signalSize(s,ns)) { _ => F.get(deqRef)}
                   }
                 }
-                Stream.eval(dequeF) ++ _dequeue
               }
 
               new Queue[F,A] {
                 lazy val upperBound: Option[Int] = if (bound <= 0) None else Some(bound)
 
-                def enqueueOne(a: A): F[Boolean] = _enqueueOne(a)
-                def dequeue: Stream[F, A] = _dequeue
+                def enqueue1(a:A): F[Unit] = _enqueue1(a)
+                def offer1(a: A): F[Boolean] = _offer1(a)
+                def dequeue: Stream[F, A] = Stream.eval(_dequeue1) ++ dequeue
+                def dequeue1:F[A] = _dequeue1
                 def size: Stream[F,immutable.Signal[F, Int]] = Stream(szSignal)
                 def full: Stream[F,immutable.Signal[F, Boolean]] =
                   upperBound match {
