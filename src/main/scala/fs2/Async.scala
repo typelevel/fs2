@@ -27,6 +27,7 @@ trait Async[F[_]] extends Catchable[F] { self =>
    */
   def set[A](q: Ref[A])(a: F[A]): F[Unit]
   def setFree[A](q: Ref[A])(a: Free[F,A]): F[Unit]
+  def setPure[A](q:Ref[A])(a:A):F[Unit] = set(q)(pure(a))
 
   /**
    * Obtain the value of the `Ref`, or wait until it has been `set`.
