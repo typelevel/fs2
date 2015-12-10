@@ -12,5 +12,11 @@ cache:
   directories:
     - $HOME/.ivy2
     - $HOME/.sbt
+env:
+  matrix:
+    - SCALAZ_VERSION="7.1.4"
+    - SCALAZ_VERSION="7.2.0"
+before_script:
+  - sed -i -e "s/scalazVersion = \".*\"/scalazVersion = \"${SCALAZ_VERSION}\"/" build.sbt
 script:
   - sbt ++$TRAVIS_SCALA_VERSION "testOnly fs2.*"
