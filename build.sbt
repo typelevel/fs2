@@ -50,10 +50,16 @@ resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snap
 libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-core" % scalazVersion,
   "org.scalaz" %% "scalaz-concurrent" % scalazVersion,
-  "org.scodec" %% "scodec-bits" % "1.0.9",
   "org.scalaz" %% "scalaz-scalacheck-binding" % scalazVersion % Test,
   "org.scalacheck" %% "scalacheck" % "1.12.5" % Test
 )
+libraryDependencies <+= scalaVersion { sv =>
+  if (sv.startsWith("2.11")) {
+    "org.scodec" %% "scodec-bits" % "1.0.11"
+  } else {
+    "org.scodec" %% "scodec-bits" % "1.0.12"
+  }
+}
 
 sonatypeProfileName := "org.scalaz"
 
