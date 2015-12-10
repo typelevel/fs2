@@ -7,8 +7,11 @@ import fs2.util.{Free,Monad,Catchable}
 trait Async[F[_]] extends Catchable[F] { self =>
   type Ref[A]
 
-  /** Create a asynchronous, concurrent mutable reference. */
+  /** Create an asynchronous, concurrent mutable reference. */
   def ref[A]: F[Ref[A]]
+
+  /** Create an asynchronous, concurrent mutable reference, initialized to `a`. */
+  def refOf[A](a: A): F[Ref[A]] = bind(ref[A])(r => map(setPure(r)(a))(_ => r))
 
   /** The read-only portion of a `Ref`. */
   def read[A](r: Ref[A]): Future[F,A] = new Future[F,A] {

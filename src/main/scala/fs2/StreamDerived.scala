@@ -16,6 +16,8 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   : Stream[F,B] =
     pull(s)(Pull.loop(using))
 
+  def repeatEval[F[_],A](a: F[A]): Stream[F,A] = Stream.eval(a).repeat
+
   def repeatPull2[F[_],A,B,C](s: Stream[F,A], s2: Stream[F,B])(
     using: (Handle[F,A], Handle[F,B]) => Pull[F,C,(Handle[F,A],Handle[F,B])])
   : Stream[F,C] =

@@ -79,6 +79,12 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def pullv[F2[_],B](using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.pull(self)(using)
 
+  /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
+  def repeat: Stream[F,A] = {
+    lazy val tail: Stream[F,A] = self.repeat
+    self ++ tail
+  }
+
   def run:Free[F,Unit] =
     Stream.runFold(self,())((_,_) => ())
 
