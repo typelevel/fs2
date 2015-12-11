@@ -1,8 +1,5 @@
 package fs2
 
-import scodec.bits.ByteVector
-import scodec.bits.BitVector
-
 /**
  * Chunk represents a strict, in-memory sequence of `A` values.
  */
@@ -110,38 +107,84 @@ object Chunk {
     override def iterator = a.iterator
   }
 
-  case class Bytes(bs: ByteVector) extends Chunk[Byte] {
-    def size = bs.size
-    override def isEmpty = bs.isEmpty
-    override def uncons = if (bs.isEmpty) None else Some(bs.head -> Bytes(bs drop 1))
-    def apply(i: Int) = bs(i)
-    def drop(n: Int) = Bytes(bs.drop(n))
-    def filter(f: Byte => Boolean) = Bytes(ByteVector(bs.toIterable.filter(f)))
-    def take(n: Int) = Bytes(bs.take(n))
-    def foldLeft[B](z: B)(f: (B,Byte) => B): B = bs.foldLeft(z)(f)
-    def foldRight[B](z: B)(f: (Byte,B) => B): B =
-      bs.foldRight(z)(f)
-  }
+  def booleans(values: Array[Boolean]): Chunk[Boolean] =
+    new Booleans(values, 0, values.length)
 
-  case class Bits(bs: BitVector) extends Chunk[Boolean] {
-    val size = bs.intSize.getOrElse(sys.error("size too big for Int: " + bs.size))
-    override def isEmpty = bs.isEmpty
-    override def uncons = if (bs.isEmpty) None else Some(bs.head -> Bits(bs drop 1))
-    def apply(i: Int) = bs(i)
-    def drop(n: Int) = Bits(bs.drop(n))
-    def filter(f: Boolean => Boolean) =
-      Bits(foldLeft(BitVector.empty)((acc, b) => if (f(b)) acc :+ b else acc))
-    def take(n: Int) = Bits(bs.take(n))
-    def foldLeft[B](z: B)(f: (B,Boolean) => B): B =
-      (0 until size).foldLeft(z)((z,i) => f(z, bs get i))
-    def foldRight[B](z: B)(f: (Boolean,B) => B): B =
-      ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(bs get hd, tl))
-  }
+  def bytes(values: Array[Byte]): Chunk[Byte] =
+    new Bytes(values, 0, values.length)
+
+  def longs(values: Array[Long]): Chunk[Long] =
+    new Longs(values, 0, values.length)
 
   def doubles(values: Array[Double]): Chunk[Double] =
     new Doubles(values, 0, values.length)
 
-  class Doubles(values: Array[Double], offset: Int, sz: Int) extends Chunk[Double] {
+  // copy-pasted code below for each primitive
+  // sadly, @specialized does not work here since the generated class names are
+  // not human readable and we want to be able to use these type names in pattern
+  // matching, e.g. `h.receive { case (bits: Booleans) #: h => /* do stuff unboxed */ } `
+
+  class Booleans(val values: Array[Boolean], val offset: Int, sz: Int) extends Chunk[Boolean] {
+  self =>
+    val size = sz min (values.length - offset)
+    def at(i: Int): Boolean = values(offset + i)
+    def apply(i: Int) = values(offset + i)
+    def drop(n: Int) =
+      if (n >= size) empty
+      else new Booleans(values, offset + n, size - n)
+    def filter(f: Boolean => Boolean) = {
+      val arr = values.iterator.slice(offset, offset + sz).filter(f).toArray
+      new Booleans(arr, 0, arr.length)
+    }
+    def take(n: Int) =
+      if (n >= size) self
+      else new Booleans(values, offset, n)
+    def foldLeft[B](z: B)(f: (B,Boolean) => B): B =
+      (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
+    def foldRight[B](z: B)(f: (Boolean,B) => B): B =
+      ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+  }
+  class Bytes(val values: Array[Byte], val offset: Int, sz: Int) extends Chunk[Byte] {
+  self =>
+    val size = sz min (values.length - offset)
+    def at(i: Int): Byte = values(offset + i)
+    def apply(i: Int) = values(offset + i)
+    def drop(n: Int) =
+      if (n >= size) empty
+      else new Bytes(values, offset + n, size - n)
+    def filter(f: Byte => Boolean) = {
+      val arr = values.iterator.slice(offset, offset + sz).filter(f).toArray
+      new Bytes(arr, 0, arr.length)
+    }
+    def take(n: Int) =
+      if (n >= size) self
+      else new Bytes(values, offset, n)
+    def foldLeft[B](z: B)(f: (B,Byte) => B): B =
+      (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
+    def foldRight[B](z: B)(f: (Byte,B) => B): B =
+      ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+  }
+  class Longs(val values: Array[Long], val offset: Int, sz: Int) extends Chunk[Long] {
+  self =>
+    val size = sz min (values.length - offset)
+    def at(i: Int): Long = values(offset + i)
+    def apply(i: Int) = values(offset + i)
+    def drop(n: Int) =
+      if (n >= size) empty
+      else new Longs(values, offset + n, size - n)
+    def filter(f: Long => Boolean) = {
+      val arr = values.iterator.slice(offset, offset + sz).filter(f).toArray
+      new Longs(arr, 0, arr.length)
+    }
+    def take(n: Int) =
+      if (n >= size) self
+      else new Longs(values, offset, n)
+    def foldLeft[B](z: B)(f: (B,Long) => B): B =
+      (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
+    def foldRight[B](z: B)(f: (Long,B) => B): B =
+      ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+  }
+  class Doubles(val values: Array[Double], val offset: Int, sz: Int) extends Chunk[Double] {
   self =>
     val size = sz min (values.length - offset)
     def at(i: Int): Double = values(offset + i)

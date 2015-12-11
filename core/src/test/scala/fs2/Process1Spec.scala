@@ -1,13 +1,12 @@
 package fs2
 
-import fs2.Chunk.{Bits, Bytes, Doubles}
+import fs2.Chunk.{Booleans, Bytes, Doubles}
 import fs2.Stream._
 import fs2.TestUtil._
 import fs2.process1._
 import fs2.util.Task
 import org.scalacheck.Prop._
 import org.scalacheck.{Gen, Properties}
-import scodec.bits.{BitVector, ByteVector}
 
 object Process1Spec extends Properties("process1") {
 
@@ -92,13 +91,13 @@ object Process1Spec extends Properties("process1") {
 
   property("filter (3)") = forAll { (s: PureStream[Byte]) =>
     val predicate = (b: Byte) => b < 0
-    val s2 = s.get.mapChunks(c => Bytes(ByteVector(c.iterator.toArray[Byte])))
+    val s2 = s.get.mapChunks(c => Chunk.bytes(c.iterator.toArray[Byte]))
     s2.filter(predicate) ==? run(s2).filter(predicate)
   }
 
   property("filter (4)") = forAll { (s: PureStream[Boolean]) =>
     val predicate = (b: Boolean) => !b
-    val s2 = s.get.mapChunks(c => Bits(BitVector.bits(c.iterator.toArray[Boolean])))
+    val s2 = s.get.mapChunks(c => Chunk.booleans(c.iterator.toArray[Boolean]))
     s2.filter(predicate) ==? run(s2).filter(predicate)
   }
 
