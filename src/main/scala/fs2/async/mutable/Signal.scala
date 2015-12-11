@@ -5,7 +5,7 @@ import fs2.Stream
 import fs2.async.AsyncExt.Change
 
 import fs2.async.{AsyncExt, immutable}
-import fs2.util.Catchable
+import fs2.util.{Catchable,Monad}
 import fs2.util.Task.Callback
 
 import scala.collection.immutable.{Queue => SQueue}
@@ -55,7 +55,14 @@ object Signal {
 
   private type State[F[_],A] = (Int,A,SQueue[((Int,A)) => F[Unit]])
 
-  def apply[F[_],A](initA:A)(implicit F:AsyncExt[F]): Stream[F,Signal[F,A]] = Stream.eval {
+  def constant[F[_],A](a: A)(implicit F: Monad[F]): immutable.Signal[F,A] = new immutable.Signal[F,A] {
+    def get = F.pure(a)
+    def continuous = Stream.constant(a)
+    def discrete = Stream.empty // never changes, so never any updates
+    def changes = Stream.empty
+  }
+
+  def apply[F[_],A](initA:A)(implicit F:AsyncExt[F]): F[Signal[F,A]] =
     F.bind(F.ref[State[F,A]]) { ref =>
     F.map(F.set(ref)(F.pure((0,initA,SQueue.empty)))) { _ =>
       def getChanged(stamp:Int):F[(Int,A)] = {
@@ -111,13 +118,4 @@ object Signal {
 
       }
     }}
-
-
-
-
-
-  }
-
-
-
 }

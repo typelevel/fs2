@@ -40,13 +40,10 @@ trait Signal[F[_],A]  {
    */
   def changes: Stream[F, Unit]
 
-
   /**
    * Asynchronously get the current value of this `Signal`
    */
   def get: F[A]
-
-
 }
 
 
@@ -62,19 +59,17 @@ object Signal {
       def discrete: Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
     }
-
   }
-
 
   /**
    * Constructs Stream from the input stream `source`. If `source` terminates
    * then resulting stream terminates as well.
    */
-  def fromStream[F[_]:AsyncExt,A](source:Stream[F,A]):Stream[F,immutable.Signal[F,Option[A]]] =
-    fs2.async.signalOf[F,Option[A]](None).flatMap { sig =>
-      Stream(sig).merge(source.flatMap(a => Stream.eval_(sig.set(Some(a)))))
+  def holdOption[F[_],A](source:Stream[F,A])(implicit F: AsyncExt[F]): Stream[F,immutable.Signal[F,Option[A]]] =
+    hold(None, source.map(Some(_)))
+
+  def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: AsyncExt[F]): Stream[F,immutable.Signal[F,A]] =
+    Stream.eval(fs2.async.signalOf[F,A](initial)) flatMap { sig =>
+      Stream(sig).merge(source.flatMap(a => Stream.eval_(sig.set(a))))
     }
-
-
-
 }
