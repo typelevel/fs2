@@ -7,29 +7,34 @@ import fs2.async.AsyncExt
  */
 trait Semaphore[F[_]] {
 
-  /** Returns the number of permits currently available for acquisition. Always nonnegative. */
+  /** Returns the number of permits currently available. Always nonnegative. */
   def available: F[Long]
 
   /**
    * Decrement the number of available permits by `n`, blocking until `n`
    * are available. Error if `n < 0`. The blocking is semantic; we do not
    * literally block a thread waiting for permits to become available.
+   * Note that decrements are satisfied in strict FIFO order, so given
+   * `s: Semaphore[F]` with 2 permits available, a `decrementBy(3)` will
+   * always be satisfied before a later call to `decrementBy(1)`.
    */
-  def acquire(n: Long): F[Unit]
+  def decrementBy(n: Long): F[Unit]
 
   /** Acquire `n` permits now and return `true`, or return `false` immediately. Error if `n < 0`. */
-  def tryAcquire(n: Long): F[Boolean]
+  def tryDecrementBy(n: Long): F[Boolean]
+  /** Just calls `[[tryDecrementBy]](1)`. */
+  def tryDecrement: F[Boolean] = tryDecrementBy(1)
 
   /**
    * Increment the number of available permits by `n`. Error if `n < 0`.
    * This will have the effect of unblocking `n` acquisitions.
    */
-  def release(n: Long): F[Unit]
+  def incrementBy(n: Long): F[Unit]
 
-  /** Acquire a single permit. Just calls `[[acquire]](1)`. */
-  final def acquire1: F[Unit] = acquire(1)
-  /** Release a single permit. Just calls `[[release]](1)`. */
-  final def release1: F[Unit] = release(1)
+  /** Decrement the number of permits by 1. Just calls `[[decrementBy]](1)`. */
+  final def decrement: F[Unit] = decrementBy(1)
+  /** Increment the number of permits by 1. Just calls `[[incrementBy]](1)`. */
+  final def increment: F[Unit] = incrementBy(1)
 }
 
 object Semaphore {
@@ -44,7 +49,7 @@ object Semaphore {
     F.map(F.refOf[S](Right(n))) { ref => new Semaphore[F] {
       private def open(gate: F.Ref[Unit]) = F.setPure(gate)(())
 
-      def acquire(n: Long) = { ensureNonneg(n)
+      def decrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
         else F.bind(F.modify(ref) {
           case Left(waiting) => F.map(F.ref[Unit]) { gate => Left(waiting :+ (n -> open(gate))) }
@@ -57,22 +62,33 @@ object Semaphore {
         }}
       }
 
-      def release(n: Long) = { ensureNonneg(n)
+      def incrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
         else F.map(F.modify(ref) {
           case Left(waiting) =>
-            def go(waiting: Vector[(Long,F[Unit])], n: Long): F[S] = waiting match {
-              case Vector() => F.pure(Right(n))
-              case v if v.head._1 <= n => F.bind(v.head._2) { _ => go(v.tail, n-v.head._1) }
-              case v => if (n <= 0) F.pure(Left(waiting))
-                        else F.pure(Left((v.head._1 - n -> v.head._2) +: v.tail))
+            // just figure out how many to strip from waiting queue,
+            // but don't run anything here inside the modify
+            var m = n
+            var waiting2 = waiting
+            while (waiting2.nonEmpty && m >= waiting2.head._1) {
+              m -= waiting2.head._1
+              waiting2 = waiting2.tail
             }
-            go(waiting, n)
+            if (waiting2.nonEmpty) F.pure(Left(waiting2))
+            else F.pure(Right(m))
           case Right(m) => F.pure(Right(m+n))
-        }) { change => () }
+        }) { change => change.previous match {
+          case Left(waiting) =>
+            // now compare old and new sizes to figure out which actions to run
+            val newSize = change.now.fold(_.size, _ => 0)
+            // just using Chunk for its stack-safe foldRight
+            fs2.Chunk.indexedSeq(waiting.take(waiting.size - newSize))
+                     .foldRight(F.pure(()))((hd,tl) => F.bind(hd._2)(_ => tl))
+          case Right(_) => F.pure(())
+        }}
       }
 
-      def tryAcquire(n: Long) = { ensureNonneg(n)
+      def tryDecrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(true)
         else F.map(F.modify(ref) {
           case Right(m) if m >= n => F.pure(Right(m-n))

@@ -114,11 +114,11 @@ object Queue {
       new Queue[F,A] {
         def upperBound: Option[Int] = Some(maxSize)
         def enqueue1(a:A): F[Unit] =
-          F.bind(permits.acquire1) { _ => q.enqueue1(a) }
+          F.bind(permits.decrement) { _ => q.enqueue1(a) }
         def offer1(a: A): F[Boolean] =
-          F.bind(permits.tryAcquire(1)) { b => if (b) q.offer1(a) else F.pure(false) }
+          F.bind(permits.tryDecrement) { b => if (b) q.offer1(a) else F.pure(false) }
         def dequeue1: F[A] =
-          F.bind(q.dequeue1) { a => F.map(permits.release1)(_ => a) }
+          F.bind(q.dequeue1) { a => F.map(permits.increment)(_ => a) }
         def size = q.size
         def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
         def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
