@@ -26,7 +26,7 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def drain: Stream[F, Nothing] =
     Stream.drain(self)
 
-  /** Alias for `[[concurrent.either]](self, s2)`. */
+  /** Alias for `[[wye.either]](self, s2)`. */
   def either[F2[_]:Async,B](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,Either[A,B]] =
     fs2.wye.either.apply(Sub1.substStream(self), s2)
 
@@ -50,7 +50,7 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def map[B](f: A => B): Stream[F,B] =
     Stream.map(self)(f)
 
-  /** Alias for `[[concurrent.merge]](self, s2)`. */
+  /** Alias for `[[wye.merge]](self, s2)`. */
   def merge[F2[_]:Async,B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     fs2.wye.merge.apply(Sub1.substStream(self), s2)
 
