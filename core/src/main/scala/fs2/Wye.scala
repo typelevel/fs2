@@ -11,8 +11,8 @@ object wye {
   type Wye[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
   /** Like `[[merge]]`, but tags each output with the branch it came from. */
-  def either[F[_]:Async,I,I2]: Wye[F,I,I2,Either[I,I2]] =
-    (s1, s2) => merge.apply(s1.map(Left(_)), s2.map(Right(_)))
+  def either[F[_]:Async,I,I2](s1: Stream[F,I], s2: Stream[F,I2]): Stream[F,Either[I,I2]] =
+    merge(s1.map(Left(_)), s2.map(Right(_)))
 
   /**
    * Let through the right branch as long as the left branch is `false`,
@@ -37,7 +37,7 @@ object wye {
    * eventually terminate with `fail(e)`, possibly after emitting some
    * elements of `s` first.
    */
-  def merge[F[_]:Async,O]: Wye[F,O,O,O] = {
+  def merge[F[_]:Async,O](s1: Stream[F,O], s2: Stream[F,O]): Stream[F,O] = {
     def go(l: Future[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]],
            r: Future[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]): Pull[F,O,Nothing] =
       (l race r).force flatMap {
@@ -50,7 +50,7 @@ object wye {
           case Some(hd #: r) => P.output(hd) >> r.awaitAsync.flatMap(go(l, _))
         }
       }
-    _.pull2(_) {
+    s1.pull2(s2) {
       (s1,s2) => s1.awaitAsync.flatMap { l => s2.awaitAsync.flatMap { r => go(l,r) }}
     }
   }
