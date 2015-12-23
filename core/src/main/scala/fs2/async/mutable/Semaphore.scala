@@ -45,19 +45,19 @@ object Semaphore {
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is nonempty, and there are n permits available (Right)
-    type S = Either[Vector[(Long,F[Unit])], Long]
+    type S = Either[Vector[(Long,F.Ref[Unit])], Long]
     F.map(F.refOf[S](Right(n))) { ref => new Semaphore[F] {
       private def open(gate: F.Ref[Unit]) = F.setPure(gate)(())
 
       def decrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
         else F.bind(F.modify(ref) {
-          case Left(waiting) => F.map(F.ref[Unit]) { gate => Left(waiting :+ (n -> open(gate))) }
+          case Left(waiting) => F.map(F.ref[Unit]) { gate => Left(waiting :+ (n -> gate)) }
           case Right(m) =>
             if (n <= m) F.pure(Right(m-n))
-            else F.map(F.ref[Unit]) { gate => Left(Vector((n-m) -> open(gate))) }
+            else F.map(F.ref[Unit]) { gate => Left(Vector((n-m) -> gate)) }
         }) { change => change.now match {
-          case Left(waiting) => waiting.lastOption.map(_._2).getOrElse(F.pure(()))
+          case Left(waiting) => waiting.lastOption.map(p => F.get(p._2)).getOrElse(F.pure(()))
           case Right(_) => F.pure(())
         }}
       }
@@ -83,7 +83,7 @@ object Semaphore {
             val newSize = change.now.fold(_.size, _ => 0)
             // just using Chunk for its stack-safe foldRight
             fs2.Chunk.indexedSeq(waiting.take(waiting.size - newSize))
-                     .foldRight(F.pure(()))((hd,tl) => F.bind(hd._2)(_ => tl))
+                     .foldRight(F.pure(()))((hd,tl) => F.bind(open(hd._2))(_ => tl))
           case Right(_) => F.pure(())
         }}
       }
