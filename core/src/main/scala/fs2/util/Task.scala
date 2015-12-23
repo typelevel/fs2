@@ -304,8 +304,9 @@ object Task extends Instances {
         else { val r = result; S { cb(r) } }
 
       case Msg.Set(r) =>
-        if (modified) waitingModify + (new MsgId{} -> delayedSet(r) _)
-        else {
+        if (modified) {
+          waitingModify = waitingModify + (new MsgId{} -> delayedSet(r) _)
+        } else {
           if (result eq null) {
             waiting.values.foreach(cb => S { cb(r) })
             waiting = Map.empty
@@ -315,8 +316,9 @@ object Task extends Instances {
         }
 
       case mod@Msg.Modify(cb,idf) =>
-        if (modified || (result eq null)) waitingModify + (idf() -> cb)
-        else {
+        if (modified || (result eq null)) {
+          waitingModify = waitingModify + (idf() -> cb)
+        } else {
          modified = true
          val r = result
          S { cb(r) }
