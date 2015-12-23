@@ -68,7 +68,7 @@ trait Queue[F[_],A] {
 object Queue {
 
   def unbounded[F[_],A](implicit F: AsyncExt[F]): F[Queue[F,A]] = {
-    /**
+    /*
       * Internal state of the queue
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
       * @param deq      A list of waiting dequeuers, added to when queue is empty
