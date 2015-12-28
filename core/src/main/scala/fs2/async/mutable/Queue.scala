@@ -43,7 +43,7 @@ trait Queue[F[_],A] {
   def dequeue1: F[A]
 
   /**
-   * The time-varying size of this Queue`. This signal refreshes
+   * The time-varying size of this `Queue`. This signal refreshes
    * only when size changes. Offsetting enqueues and de-queues may
    * not result in refreshes.
    */

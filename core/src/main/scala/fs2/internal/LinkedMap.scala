@@ -4,7 +4,7 @@ import scala.collection.immutable.LongMap
 
 /**
  * A Map which tracks the insertion order of entries, so that entries may be
- * traversed in the order they were inserted.`
+ * traversed in the order they were inserted.
  */
 
 import scala.collection.immutable.LongMap
