@@ -50,7 +50,7 @@ object WritingAndLogging extends Properties("writing-and-logging") {
              .stripW
 
     /* This will have the side effect of filling `buf`. */
-    ex.run.run
+    ex.run.unsafePerformSync
 
     /* Let's break this down. */
 

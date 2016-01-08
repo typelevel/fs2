@@ -901,7 +901,7 @@ final class WyeSyntax[I, I2, O](val self: Wye[I, I2, O]) extends AnyVal {
     // this is probably rather slow
     val src1 = Process.emitAll(input.toSeq).toSource
     val src2 = Process.emitAll(input2.toSeq).toSource
-    src1.wye(src2)(self).runLog.run
+    src1.wye(src2)(self).runLog.unsafePerformSync
   }
 
   /**

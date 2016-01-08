@@ -54,20 +54,20 @@ class AsyncTopicSpec extends Properties("topic") {
 
       subscribers.foreach {
         subs =>
-          Task(topic.subscribe.to(collectToBuffer(subs.data)).run.runAsync(subs.endSyncVar.put)).run
+          Task(topic.subscribe.to(collectToBuffer(subs.data)).run.unsafePerformAsync(subs.endSyncVar.put)).unsafePerformSync
       }
 
       val pubOdd = new SyncVar[Throwable \/ Unit]
 
-      Task((Process.emitAll(odd).toSource to topic.publish).run.runAsync(pubOdd.put)).run
+      Task((Process.emitAll(odd).toSource to topic.publish).run.unsafePerformAsync(pubOdd.put)).unsafePerformSync
 
       val pubEven = new SyncVar[Throwable \/ Unit]
-      Task((Process.emitAll(even).toSource to topic.publish).run.runAsync(pubEven.put)).run
+      Task((Process.emitAll(even).toSource to topic.publish).run.unsafePerformAsync(pubEven.put)).unsafePerformSync
 
       val oddResult = pubOdd.get(3000)
       val evenResult = pubEven.get(3000)
 
-      topic.close.run
+      topic.close.unsafePerformSync
 
       def verifySubscribers(result1: SubscriberData, subId: String) = {
         val result = result1.endSyncVar.get(3000)
@@ -95,15 +95,15 @@ class AsyncTopicSpec extends Properties("topic") {
     l: List[Int] =>
       (l.size > 0 && l.size < 10000) ==> {
         val topic = async.topic[Int]()
-        topic.fail(Bwahahaa).run
+        topic.fail(Bwahahaa)unsafePerformSync
 
 
         val emitted = new SyncVar[Throwable \/ Unit]
-        Task((Process.emitAll(l).toSource to topic.publish).run.runAsync(emitted.put)).run
+        Task((Process.emitAll(l).toSource to topic.publish).run.unsafePerformAsync(emitted.put))unsafePerformSync
 
         val sub1 = new SyncVar[Throwable \/ Seq[Int]]
 
-        Task(topic.subscribe.runLog.runAsync(sub1.put)).run
+        Task(topic.subscribe.runLog.unsafePerformAsync(sub1.put))unsafePerformSync
 
 
         emitted.get(3000)
@@ -123,17 +123,17 @@ class AsyncTopicSpec extends Properties("topic") {
         val topic = async.writerTopic(emit(-\/(0L)) ++ WriterHelper.w)()
 
         val published = new SyncVar[Throwable \/ IndexedSeq[Long \/ Int]]
-        topic.subscribe.runLog.runAsync(published.put)
+        topic.subscribe.runLog.unsafePerformAsync(published.put)
 
         val signalDiscrete = new SyncVar[Throwable \/ IndexedSeq[Long]]
-        topic.signal.discrete.runLog.runAsync(signalDiscrete.put)
+        topic.signal.discrete.runLog.unsafePerformAsync(signalDiscrete.put)
 
         val signalContinuous = new SyncVar[Throwable \/ IndexedSeq[Long]]
-        topic.signal.continuous.runLog.runAsync(signalContinuous.put)
+        topic.signal.continuous.runLog.unsafePerformAsync(signalContinuous.put)
 
         Thread.sleep(100) //all has to have chance to register
 
-        ((Process(l: _*).toSource to topic.publish) onComplete eval_(topic.close)).run.run
+        ((Process(l: _*).toSource to topic.publish) onComplete eval_(topic.close)).run.unsafePerformSync
 
         val expectPublish = l.foldLeft[(Long, Seq[Long \/ Int])]((0L, Nil))({
           case ((sum, acc), s) =>
@@ -156,18 +156,18 @@ class AsyncTopicSpec extends Properties("topic") {
     l: List[String] =>
       (l.nonEmpty) ==> {
         val topic = async.writerTopic(emit(-\/(0L)) ++ WriterHelper.w)()
-        ((Process(l: _*).toSource to topic.publish)).run.run
+        ((Process(l: _*).toSource to topic.publish)).run.unsafePerformSync
 
-        val subscriber = topic.subscribe.take(1).runLog.run
-        topic.close.run
+        val subscriber = topic.subscribe.take(1).runLog.unsafePerformSync
+        topic.close.unsafePerformSync
         subscriber == List(-\/(l.map(_.size).sum))
       }
   }
 
   property("writer.state.startWith.down") = protect {
     val topic = async.writerTopic(emit(-\/(0L)) ++ WriterHelper.w)()
-    val subscriber = topic.subscribe.take(1).runLog.run
-    topic.close.run
+    val subscriber = topic.subscribe.take(1).runLog.unsafePerformSync
+    topic.close.unsafePerformSync
     subscriber == List(-\/(0))
 
   }
@@ -175,14 +175,14 @@ class AsyncTopicSpec extends Properties("topic") {
   //tests a topic from discrete process
   property("from.discrete") = protect {
     val topic = async.writerTopic[Long,String,Int](WriterHelper.w)(Process(1,2,3,4).map(i=>"*"*i).toSource)
-    val r = topic.subscribe.take(8).runLog.run
+    val r = topic.subscribe.take(8).runLog.unsafePerformSync
     r == Vector(-\/(1),\/-(1) ,-\/(3) ,\/-(2)  ,-\/(6) ,\/-(3)  ,-\/(10) ,\/-(4))
   }
 
   //tests a topic from discrete process
   property("from.discrete") = protect {
     val topic = async.writerTopic[Long,String,Int](WriterHelper.w onComplete (tell(0L) ++ emitO(0)))(Process(1,2,3,4).map(i=>"*"*i), haltOnSource = true)
-    val r = topic.subscribe.take(10).runLog.run
+    val r = topic.subscribe.take(10).runLog.unsafePerformSync
     r == Vector(-\/(1),\/-(1) ,-\/(3) ,\/-(2)  ,-\/(6) ,\/-(3)  ,-\/(10) ,\/-(4), -\/(0), \/-(0))
   }
 

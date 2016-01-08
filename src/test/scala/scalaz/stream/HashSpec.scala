@@ -44,7 +44,7 @@ class HashSpec extends Properties("hash") {
   property("runLog equals runLast") = forAll { (lb: List[ByteVector]) =>
     lb.nonEmpty ==> {
       val p = emitAll(lb).toSource.pipe(md5)
-      p.runLog.run.headOption == p.runLast.run
+      p.runLog.unsafePerformSync.headOption == p.runLast.unsafePerformSync
     }
   }
 
@@ -53,8 +53,8 @@ class HashSpec extends Properties("hash") {
       .map(i => ByteVector.view(i.toString.getBytes))
       .pipe(sha512).map(Tag.unwrap(_).toSeq)
     val vec = Vector.fill(100)(proc).par
-    val res = proc.runLast.run
+    val res = proc.runLast.unsafePerformSync
 
-    vec.map(_.runLast.run).forall(_ == res)
+    vec.map(_.runLast.unsafePerformSync).forall(_ == res)
   }
 }

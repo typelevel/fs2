@@ -11,16 +11,16 @@ import scalaz.concurrent.Task
 class IteratorSpec extends Properties("iterators") {
 
   property("io.iterate completes immediately from an empty iterator") = secure {
-    io.iterator[Int](Task.now(Iterator.empty)).runLog.run.isEmpty
+    io.iterator[Int](Task.now(Iterator.empty)).runLog.unsafePerformSync.isEmpty
   }
 
   property("io.iterate uses all its values and completes") = forAll { (ints: Vector[Int]) =>
-    io.iterator[Int](Task(ints.toIterator)).runLog.run == ints
+    io.iterator[Int](Task(ints.toIterator)).runLog.unsafePerformSync == ints
   }
 
   property("io.iterate is re-usable") = forAll { (ints: Vector[Int]) =>
     val intsIterator = Task(ints.toIterator)
-    io.iterator(intsIterator).runLog.run == io.iterator(intsIterator).runLog.run
+    io.iterator(intsIterator).runLog.unsafePerformSync == io.iterator(intsIterator).runLog.unsafePerformSync
   }
 
   case class IteratorResource[T](items: T*) {
@@ -49,7 +49,7 @@ class IteratorSpec extends Properties("iterators") {
 
 
 
-    io.iteratorR(acquire)(release)(r => Task(r.iterator)).run.run
+    io.iteratorR(acquire)(release)(r => Task(r.iterator)).run.unsafePerformSync
 
     resource.exists(_.isReleased)
   }

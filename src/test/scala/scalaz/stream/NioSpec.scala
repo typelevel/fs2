@@ -104,7 +104,7 @@ class NioSpec extends Properties("nio") {
   implicit val S: ScheduledExecutorService = DefaultScheduler
 
   //  property("loop-server") = protect {
-  //    NioServer.limit(local,3).run.run
+  //    NioServer.limit(local,3).run.unsafePerformSync
   //    false
   //  }
 
@@ -120,13 +120,13 @@ class NioSpec extends Properties("nio") {
 
     val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
     stop.discrete.wye(NioServer.echo(local))(wye.interrupt)
-    .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
+    .runLog.map(_.map(_.toSeq).flatten).unsafePerformAsync(serverGot.put)
 
     Thread.sleep(300)
 
     val clientGot =
-      NioClient.echo(local, ByteVector(array1)).runLog.timed(3000).run.map(_.toSeq).flatten
-    stop.set(true).run
+      NioClient.echo(local, ByteVector(array1)).runLog.unsafePerformTimed(3000).unsafePerformSync.map(_.toSeq).flatten
+    stop.set(true).unsafePerformSync
 
     (serverGot.get(5000) == Some(\/-(clientGot))) :| s"Server and client got same data" &&
       (clientGot == array1.toSeq) :| "client got what it sent"
@@ -145,13 +145,13 @@ class NioSpec extends Properties("nio") {
 
     val serverGot = new SyncVar[Throwable \/ IndexedSeq[Byte]]
     stop.discrete.wye(NioServer.limit(local,max))(wye.interrupt)
-    .runLog.map(_.map(_.toSeq).flatten).runAsync(serverGot.put)
+    .runLog.map(_.map(_.toSeq).flatten).unsafePerformAsync(serverGot.put)
 
     Thread.sleep(300)
 
     val clientGot =
-      NioClient.echo(local, ByteVector(array1)).runLog.run.map(_.toSeq).flatten
-    stop.set(true).run
+      NioClient.echo(local, ByteVector(array1)).runLog.unsafePerformSync.map(_.toSeq).flatten
+    stop.set(true)unsafePerformSync
 
     (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data (serverGot = ${serverGot.get(100)}; clientGot = $clientGot)" &&
       (clientGot == array1.toSeq.take(max)) :| "client got bytes before server closed connection"
@@ -185,8 +185,8 @@ class NioSpec extends Properties("nio") {
     Task(
       server
       .runLast.map{_.map(_.toSeq).toSeq}
-      .runAsync(serverGot.put)
-    ).run
+      .unsafePerformAsync(serverGot.put)
+    )unsafePerformSync
 
     Thread.sleep(1000)
 
@@ -203,13 +203,13 @@ class NioSpec extends Properties("nio") {
     Task(
       (clients onComplete eval_(stop.set(true)))
       .runLast.map(v=>v.map(_.toSeq).toSeq)
-      .runAsync(clientGot.put)
-    ).run
+      .unsafePerformAsync(clientGot.put)
+    )unsafePerformSync
 
     clientGot.get(6000)
     serverGot.get(6000)
 
-    stop.set(true).run
+    stop.set(true)unsafePerformSync
 
     (serverGot.isSet && clientGot.isSet) :| "Server and client terminated" &&
       (serverGot.get(0).exists(_.isRight) && clientGot.get(0).exists(_.isRight)) :| s"Server and client terminate w/o failure: s=${serverGot.get(0)}, c=${clientGot.get(0)}" &&

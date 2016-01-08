@@ -11,12 +11,12 @@ import scalaz.syntax.equal._
 object WriterSpec extends Properties("Writer") {
   property("drainO ~= liftW . stripO") = forAll { w0: Writer[Nothing, Char, Int] =>
     val w = w0.toSource
-    w.drainO.runLog.run == writer.liftW(w.stripO).runLog.run
+    w.drainO.runLog.unsafePerformSync == writer.liftW(w.stripO).runLog.unsafePerformSync
   }
 
   property("drainW ~= liftO . stripW") = forAll { w0: Writer[Nothing, Char, Int] =>
     val w = w0.toSource
-    w.drainW.runLog.run == writer.liftO(w.stripW).runLog.run
+    w.drainW.runLog.unsafePerformSync == writer.liftO(w.stripW).runLog.unsafePerformSync
   }
 
   property("pipeO stripW ~= stripW pipe") = forAll { (p1: Process1[Int,Int]) =>

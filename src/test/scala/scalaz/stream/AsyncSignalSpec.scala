@@ -20,12 +20,12 @@ class AsyncSignalSpec extends Properties("async.signal") {
     val v = async.signalUnset[Int]
     val s = v.continuous
     val t1 = Task {
-      l.foreach { i => v.set(i).run; Thread.sleep(1) }
-      v.close.run
+      l.foreach { i => v.set(i).unsafePerformSync; Thread.sleep(1) }
+      v.close.unsafePerformSync
     }
     val t2 = s.takeWhile(_ % 23 != 0).runLog
 
-    Nondeterminism[Task].both(t1, t2).run._2.toList.forall(_ % 23 != 0)
+    Nondeterminism[Task].both(t1, t2).unsafePerformSync._2.toList.forall(_ % 23 != 0)
   }
 
 
@@ -46,15 +46,15 @@ class AsyncSignalSpec extends Properties("async.signal") {
       }
 
       //initial set
-      signal.set(0).run
+      signal.set(0).unsafePerformSync
 
       val (_, runned) =
-        ops.foldLeft[(Throwable \/ Int, Seq[(String, Boolean)])]((\/-(signal.get.run), Seq(("START", true)))) {
+        ops.foldLeft[(Throwable \/ Int, Seq[(String, Boolean)])]((\/-(signal.get.unsafePerformSync), Seq(("START", true)))) {
           case ((\/-(last), acc), n) =>
             n(last) match {
               case (descr, action) =>
-                action.attemptRun match {
-                  case \/-(maybeOk) => (signal.get.attemptRun, acc :+((descr, maybeOk)))
+                action.unsafePerformSyncAttempt match {
+                  case \/-(maybeOk) => (signal.get.unsafePerformSyncAttempt, acc :+((descr, maybeOk)))
                   case -\/(failed) => (-\/(failed), acc :+((descr, false)))
                 }
             }
@@ -63,7 +63,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
             //just execute item all with 0, and record the exception
             n(0) match {
               case (descr, action) =>
-                action.attemptRun match {
+                action.unsafePerformSyncAttempt match {
                   case \/-(unexpected) => (-\/(lastErr), acc :+((descr + " got " + unexpected, true)))
                   case -\/(failure) if failure == lastErr || failure == End => (-\/(lastErr), acc :+((descr, true)))
                   case -\/(unexpectedFailure) => (-\/(unexpectedFailure), acc :+((descr, false)))
@@ -73,7 +73,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
             }
         }
 
-      signal.close.run
+      signal.close.unsafePerformSync
 
       (runned.filterNot(_._2).size == 0)               :| "no ref action failed" &&
         (runned.size == l.size + 1)                    :| "all actions were run"
@@ -104,7 +104,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
 
       val feeded = new SyncVar[Throwable \/ Seq[(String, Int)]]
 
-      Task { signal.continuous.runLog.runAsync(feeded.put) }.run
+      Task { signal.continuous.runLog.unsafePerformAsync(feeded.put) }unsafePerformSync
 
 
       val feeder =
@@ -113,7 +113,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
 
 
 
-      (feeder to signal.sink).attempt().onComplete(closeSignal).run.attemptRun
+      (feeder to signal.sink).attempt().onComplete(closeSignal).run.unsafePerformSyncAttempt
 
       val result = feeded.get(3000)
 
@@ -122,10 +122,10 @@ class AsyncSignalSpec extends Properties("async.signal") {
         (if (l.size % 2 == 0) {
           (result.get.isRight == true) :| "result did not fail" &&
             (result.get.toOption.get.size >= messages.size) :| "items was emitted" &&
-            (signal.get.attemptRun == -\/(Terminated(End))) :| "Signal is terminated"
+            (signal.get.unsafePerformSyncAttempt == -\/(Terminated(End))) :| "Signal is terminated"
         } else {
           (result.get == -\/(Bwahahaa)) :| s"Exception was raised correctly : $result, term ${l.size % 2 == 0 }" &&
-            (signal.get.attemptRun == -\/(Bwahahaa)) :| "Signal is failed"
+            (signal.get.unsafePerformSyncAttempt == -\/(Bwahahaa)) :| "Signal is failed"
         })
 
   }
@@ -138,7 +138,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
       val feed = l.map(Some(_))
 
       val ref = async.signalUnset[Option[Int]]
-      ref.set(initial).run
+      ref.set(initial)unsafePerformSync
 
 
       val d1 = ref.discrete.take(l.size+1)
@@ -146,15 +146,15 @@ class AsyncSignalSpec extends Properties("async.signal") {
       val d2 = ref.discrete.take(l.size+1)
 
       val sync1 = new SyncVar[Throwable \/ Seq[Option[Int]]]
-      d1.runLog.runAsync(sync1.put)
+      d1.runLog.unsafePerformAsync(sync1.put)
 
       val sync2 = new SyncVar[Throwable \/ Seq[Option[Int]]]
-      d2.runLog.runAsync(sync2.put)
+      d2.runLog.unsafePerformAsync(sync2.put)
 
 
       Task {
-        feed.foreach { v =>  ref.set(v).run }
-      }.run
+        feed.foreach { v =>  ref.set(v).unsafePerformSync }
+      }.unsafePerformSync
 
 
       sync1.get(3000).nonEmpty                          :| "First process finished in time" &&
@@ -168,15 +168,15 @@ class AsyncSignalSpec extends Properties("async.signal") {
   //tests a signal from discrete process
   property("from.discrete") = protect {
     val sig = async.toSignal[Int](Process(1,2,3,4).toSource)
-    sig.discrete.take(4).runLog.run == Vector(1,2,3,4)
+    sig.discrete.take(4).runLog.unsafePerformSync == Vector(1,2,3,4)
   }
 
   //tests that signal terminates when discrete process terminates
   property("from.discrete.terminates") = protect {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
     val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource)
-    val initial = sig.discrete.runLog.run
-    val afterClosed = sig.discrete.runLog.run
+    val initial = sig.discrete.runLog.unsafePerformSync
+    val afterClosed = sig.discrete.runLog.unsafePerformSync
     (initial == Vector(1,2,3,4)) && (afterClosed== Vector())
   }
 
@@ -184,7 +184,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
   property("from.discrete.fail") = protect {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
     val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa))
-    sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
+    sig.discrete.runLog.unsafePerformSyncAttempt == -\/(Bwahahaa)
   }
 
   // tests that signal terminates with failure when discrete
@@ -192,7 +192,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
   property("from.discrete.fail.always") = protect {
     val sleeper = Process.eval_{Task.delay(Thread.sleep(1000))}
     val sig = async.toSignal[Int](sleeper ++ Process(1,2,3,4).toSource ++ Process.fail(Bwahahaa))
-    sig.discrete.runLog.attemptRun == -\/(Bwahahaa)
+    sig.discrete.runLog.unsafePerformSyncAttempt == -\/(Bwahahaa)
   }
 
   property("continuous") = protect {
@@ -202,13 +202,13 @@ class AsyncSignalSpec extends Properties("async.signal") {
       .map(x => Signal.Set(x._2))
       .to(sig.sink)
       .run
-      .runAsync(_ => ())
+      .unsafePerformAsync(_ => ())
     val res = time.awakeEvery(500.millis)
       .zip(sig.continuous)
       .map(_._2)
       .take(6)
-      .runLog.run.toList
-    sig.close.run
+      .runLog.unsafePerformSync.toList
+    sig.close.unsafePerformSync
     // res(0) was read at 500 ms so it must contain value 4 or 5 which were published at 400 ms or 500 ms.
     (res(0) >= 4 && res(0) <= 5) :| s"res(0) == ${res(0)}" &&
       // res(1) was read at 1000 ms so it must contain value 9 or 10 which were published at 900 ms or 1000 ms.
@@ -224,7 +224,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
     val timer = time.sleep(1.second)
     val signal = async.signalOf(0)
 
-    (eval_(signal.set(1)) ++ signal.discrete.once ++ timer ++ signal.discrete.once).runLog.run ?= Vector(1,1)
+    (eval_(signal.set(1)) ++ signal.discrete.once ++ timer ++ signal.discrete.once).runLog.unsafePerformSync ?= Vector(1,1)
   }
 
   property("signalOf.init.value.cas") = protect {
@@ -239,7 +239,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
       v <- s.get
     } yield v
 
-    val results = resultsM.run
+    val results = resultsM.unsafePerformSync
 
     results == "success"
   }

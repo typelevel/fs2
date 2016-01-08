@@ -132,7 +132,7 @@ class Process1Spec extends Properties("Process1") {
     val p = Process.range(0,20).toSource
     var called  = false
     ((p onComplete suspend{ called = true ; halt})
-      .take(10).take(4).onComplete(emit(4)).runLog.run == Vector(0,1,2,3,4))
+      .take(10).take(4).onComplete(emit(4)).runLog.unsafePerformSync == Vector(0,1,2,3,4))
       .&&("cleanup was called" |: called)
   }
 

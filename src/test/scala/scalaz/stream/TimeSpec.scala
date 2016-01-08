@@ -14,14 +14,14 @@ class TimeSpec extends Properties("time") {
   implicit val scheduler = scalaz.stream.DefaultScheduler
 
   property("awakeEvery") = protect {
-    time.awakeEvery(100 millis).map(_.toMillis/100).take(5).runLog.run == Vector(1,2,3,4,5)
+    time.awakeEvery(100 millis).map(_.toMillis/100).take(5).runLog.unsafePerformSync == Vector(1,2,3,4,5)
   }
 
   property("duration") = protect {
     val firstValueDiscrepancy = time.duration.once.runLast
     val reasonableErrorInMillis = 200
     val reasonableErrorInNanos = reasonableErrorInMillis * 1000000
-    def p = firstValueDiscrepancy.run.get.toNanos < reasonableErrorInNanos
+    def p = firstValueDiscrepancy.unsafePerformSync.get.toNanos < reasonableErrorInNanos
 
     val r1 = p :| "first duration is near zero on first run"
     Thread.sleep(reasonableErrorInMillis)
@@ -52,7 +52,7 @@ class TimeSpec extends Properties("time") {
         take(draws.toInt) |>
         durationSinceLastTrue
 
-      val result = durationsSinceSpike.runLog.run.toList
+      val result = durationsSinceSpike.runLog.unsafePerformSync.toList
       val (head :: tail) = result
 
       head._1 :| "every always emits true first" &&

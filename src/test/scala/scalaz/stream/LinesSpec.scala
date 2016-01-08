@@ -33,9 +33,9 @@ class LinesSpec extends Properties("text") {
     emit("foo\nbar").pipe(lines(3)).toList == List("foo", "bar")    &&   // OK input
     Process("foo\n", "bar").pipe(lines(3)).toList == List("foo", "bar") &&   // OK input
     Process("foo", "\nbar").pipe(lines(3)).toList == List("foo", "bar") &&   // OK input
-    throws(error){ emit("foo").pipe(lines(2)).run[Task].run }       &&
-    throws(error){ emit("foo\nbarr").pipe(lines(3)).run[Task].run } &&
-    throws(error){ emit("fooo\nbar").pipe(lines(3)).run[Task].run }
+    throws(error){ emit("foo").pipe(lines(2)).run[Task].unsafePerformSync }       &&
+    throws(error){ emit("foo\nbarr").pipe(lines(3)).run[Task].unsafePerformSync } &&
+    throws(error){ emit("fooo\nbar").pipe(lines(3)).run[Task].unsafePerformSync }
   }
 
   property("lines(n) can recover from lines longer than n") = {

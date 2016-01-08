@@ -37,7 +37,7 @@ object time {
       val metronome = scheduler.scheduleAtFixedRate(
         new Runnable { def run = {
           val d = Duration(System.nanoTime, NANOSECONDS) - t0
-          signal.set(d).run
+          signal.set(d).unsafePerformSync
         }},
         d.toNanos,
         d.toNanos,

@@ -26,14 +26,14 @@ class MergeNSpec extends Properties("mergeN") {
         }).toSource
 
       val result =
-        merge.mergeN(ps).runLog.timed(3000).run.toSet
+        merge.mergeN(ps).runLog.unsafePerformTimed(3000).unsafePerformSync.toSet
 
       (result.toList.sorted == l.toSet.toList.sorted) :| "All elements were collected"
 
   }
 
   property("complete-with-inner-finalizer") = protect {
-    merge.mergeN(emit(halt) onComplete eval_(Task now (()))).runLog timed 3000 run
+    merge.mergeN(emit(halt) onComplete eval_(Task now (()))).runLog unsafePerformTimed 3000 unsafePerformSync
 
     true
   }
@@ -50,14 +50,14 @@ class MergeNSpec extends Properties("mergeN") {
         Process.constant(i+100)  onComplete eval_(cleanupQ.enqueueOne(i))
       }).toSource onComplete eval_(cleanupQ.enqueueOne(99))
 
-    cleanupQ.dequeue.take(11).runLog.runAsync(cleanups.put)
+    cleanupQ.dequeue.take(11).runLog.unsafePerformAsync(cleanups.put)
 
     // this makes sure we see at least one value from sources
     // and therefore we won`t terminate downstream to early.
 
     merge.mergeN(ps).scan(Set[Int]())({
       case (sum, next) => sum + next
-    }).takeWhile(_.size < 10).runLog.timed(3000).run
+    }).takeWhile(_.size < 10).runLog.unsafePerformTimed(3000).unsafePerformSync
 
 
 
@@ -72,7 +72,7 @@ class MergeNSpec extends Properties("mergeN") {
   property("source-cleanup-async-down-done") = protect {
     val cleanupQ = async.unboundedQueue[Int]
     val cleanups = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    cleanupQ.dequeue.take(11).runLog.runAsync(cleanups.put)
+    cleanupQ.dequeue.take(11).runLog.unsafePerformAsync(cleanups.put)
 
 
     //this below is due the non-thread-safety of scala object, we must memoize this here
@@ -87,7 +87,7 @@ class MergeNSpec extends Properties("mergeN") {
         eval_(cleanupQ.enqueueOne(99))
 
 
-    merge.mergeN(ps).takeWhile(_ < 9).runLog.timed(3000).run
+    merge.mergeN(ps).takeWhile(_ < 9).runLog.unsafePerformTimed(3000).unsafePerformSync
 
     (cleanups.get(3000).isDefined &&
       cleanups.get(0).get.isRight &&
@@ -105,7 +105,7 @@ class MergeNSpec extends Properties("mergeN") {
         Process.range(0,eachSize)
       }).toSource
 
-    val result = merge.mergeN(ps).fold(0)(_ + _).runLast.timed(120000).run
+    val result = merge.mergeN(ps).fold(0)(_ + _).runLast.unsafePerformTimed(120000)unsafePerformSync
 
     (result == Some(499500000)) :| s"All items were emitted: $result"
   }
@@ -138,10 +138,10 @@ class MergeNSpec extends Properties("mergeN") {
       }).toSource
 
     val running = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    Task.fork(sizeSig.discrete.runLog).runAsync(running.put)
+    Task.fork(sizeSig.discrete.runLog).unsafePerformAsync(running.put)
 
-    merge.mergeN(25)(ps).run.timed(10000).run
-    sizeSig.close.run
+    merge.mergeN(25)(ps).run.unsafePerformTimed(10000).unsafePerformSync
+    sizeSig.close.unsafePerformSync
 
     "mergeN and signal finished" |: running.get(3000).isDefined &&
       (s"max 25 were run in parallel ${running.get.toList.flatten}" |: running.get.toList.flatten.filter(_ > 25).isEmpty)
@@ -156,7 +156,7 @@ class MergeNSpec extends Properties("mergeN") {
     val p = Process(1,2)
 
     merge.mergeN(Process(effect,p)).take(2)
-    .runLog.timed(3000).run.size == 2
+    .runLog.unsafePerformTimed(3000).unsafePerformSync.size == 2
 
   }
 
@@ -169,7 +169,7 @@ class MergeNSpec extends Properties("mergeN") {
     val r =
       merge.mergeN(Process(effect,p))
       .expectedCause(_ == Kill)
-      .runLog.timed(3000).run
+      .runLog.unsafePerformTimed(3000).unsafePerformSync
 
     r.size == 2
   }
@@ -179,12 +179,12 @@ class MergeNSpec extends Properties("mergeN") {
   property("bounded-mergeN-halts-onFull") = protect {
     merge.mergeN(1)(emit(constant(())))
 	.once
-	.run.timed(3000).run
+	.run.unsafePerformTimed(3000).unsafePerformSync
 	true
   }
 
   property("kill mergeN") = protect {
-    merge.mergeN(Process(Process.repeatEval(Task.now(1)))).kill.run.timed(3000).run
+    merge.mergeN(Process(Process.repeatEval(Task.now(1)))).kill.run.unsafePerformTimed(3000).unsafePerformSync
     true // Test terminates.
   }
 
@@ -195,7 +195,7 @@ class MergeNSpec extends Properties("mergeN") {
 
     val p = merge.mergeN(Process emitAll (0 until size map { _ => inc })).drain onComplete (Process eval (Task delay { count.get() }))
 
-    val result = p.runLog timed 3000 run
+    val result = p.runLog unsafePerformTimed 3000 unsafePerformSync
 
     (result.length == 1) :| s"result.length == ${result.length}" &&
       (result.head == size) :| s"result.head == ${result.head}"
@@ -204,11 +204,11 @@ class MergeNSpec extends Properties("mergeN") {
   property("avoid hang in the presence of interrupts") = protect {
     1 to 100 forall { _ =>
       val q = async.unboundedQueue[Unit]
-      q.enqueueOne(()).run
+      q.enqueueOne(())unsafePerformSync
 
       val process = (merge.mergeN(0)(Process(q.dequeue, halt)).once wye halt)(wye.mergeHaltBoth)
 
-      process.run.timed(3000).attempt.run.isRight
+      process.run.unsafePerformTimed(3000).unsafePerformSyncAttempt.isRight
     }
   }
 }

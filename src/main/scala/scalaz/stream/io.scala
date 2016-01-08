@@ -342,7 +342,7 @@ object io {
 
           case Step(await: Await[Task,_,ByteVector], cont) => { // todo: ??? Cleanup
             // yay! run the Task
-            cur = Util.Try(await.evaluate.run) +: cont
+            cur = Util.Try(await.evaluate.unsafePerformSync) +: cont
             close()
           }
         }
@@ -379,7 +379,7 @@ object io {
 
         case Step(Await(request, receive,_), cont) => { // todo: ??? Cleanup
           // yay! run the Task
-          cur = Util.Try(receive(EarlyCause.fromTaskResult(request.attempt.run)).run) +: cont
+          cur = Util.Try(receive(EarlyCause.fromTaskResult(request.attempt.unsafePerformSync)).run) +: cont
           step()    // push things onto the stack and then step further (tail recursively)
         }
       }

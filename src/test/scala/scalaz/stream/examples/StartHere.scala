@@ -30,7 +30,7 @@ object StartHere extends Properties("examples.StartHere") {
         .to(io.fileChunkW("testdata/celsius.txt"))
         .run
 
-    converter.run
+    converter.unsafePerformSync
     true
   }
 
@@ -146,7 +146,7 @@ object StartHere extends Properties("examples.StartHere") {
       pipeline.run
     
     /* This is the only place we actually have a side effect */
-    val result: Unit = task.run
+    val result: Unit = task.unsafePerformSync
 
     true
   }
