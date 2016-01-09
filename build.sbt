@@ -23,7 +23,7 @@ git.formattedShaVersion := {
 
 scalaVersion := "2.11.7"
 
-crossScalaVersions := Seq("2.10.5", "2.11.7", "2.12.0-M2")
+crossScalaVersions := Seq("2.10.5", "2.11.7", "2.12.0-M3")
 
 scalacOptions ++= Seq(
   "-feature",
@@ -48,7 +48,7 @@ resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snap
 libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-core" % "7.2.0",
   "org.scalaz" %% "scalaz-concurrent" % "7.2.0",
-  "org.scodec" %% "scodec-bits" % "1.0.9",
+  "org.scodec" %% "scodec-bits" % "1.0.12",
   "org.scalaz" %% "scalaz-scalacheck-binding" % "7.2.0" % "test",
   "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
 )
