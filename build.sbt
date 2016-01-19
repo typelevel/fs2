@@ -29,7 +29,8 @@ lazy val commonSettings = Seq(
 lazy val testSettings = Seq(
   parallelExecution in Test := false,
   logBuffered in Test := false,
-  testOptions in Test += Tests.Argument("-verbosity", "2")
+  testOptions in Test += Tests.Argument("-verbosity", "2"),
+  publishArtifact in Test := true
 )
 
 lazy val scaladocSettings = Seq(
