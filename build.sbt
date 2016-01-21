@@ -70,7 +70,7 @@ lazy val publishingSettings = Seq(
       <connection>scm:git:git@github.com:functional-streams-for-scala/fs2.git</connection>
     </scm>
     <developers>
-      {for ((name, username) <- contributors) yield
+      {for ((username, name) <- contributors) yield
       <developer>
         <id>{username}</id>
         <name>{name}</name>
