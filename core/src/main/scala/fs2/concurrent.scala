@@ -1,6 +1,5 @@
 package fs2
 
-import Step.{#:}
 import Stream.Handle
 import Async.Future
 import fs2.{Pull => P}
