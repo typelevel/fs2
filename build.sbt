@@ -1,7 +1,18 @@
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
+lazy val contributors = Seq(
+  "pchiusano" -> "Paul Chiusano",
+  "pchlupacek" -> "Pavel Chlupáček",
+  "alissapajer" -> "Alissa Pajer",
+  "djspiewak" -> "Daniel Spiewak",
+  "fthomas" -> "Frank Thomas",
+  "runarorama" -> "Rúnar Ó. Bjarnason",
+  "jedws" -> "Jed Wesley-Smith",
+  "mpilquist" -> "Michael Pilquist"
+)
+
 lazy val commonSettings = Seq(
-  organization := "fs2",
+  organization := "co.fs2",
   scalaVersion := "2.11.7",
   scalacOptions ++= Seq(
     "-feature",
@@ -24,7 +35,7 @@ lazy val commonSettings = Seq(
     import fs2.util._
   """,
   doctestWithDependencies := false
-) ++ testSettings ++ scaladocSettings ++ gitSettings
+) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
 lazy val testSettings = Seq(
   parallelExecution in Test := false,
@@ -43,23 +54,50 @@ lazy val scaladocSettings = Seq(
   autoAPIMappings := true
 )
 
-lazy val gitSettings = Seq(
-  git.baseVersion := "0.9",
-  git.gitTagToVersionNumber := {
-    case ReleaseTag(version) => Some(version)
-    case _ => None
+lazy val publishingSettings = Seq(
+  publishTo := {
+    val nexus = "https://oss.sonatype.org/"
+    if (version.value.trim.endsWith("SNAPSHOT"))
+      Some("snapshots" at nexus + "content/repositories/snapshots")
+    else
+      Some("releases" at nexus + "service/local/staging/deploy/maven2")
   },
-  git.formattedShaVersion := {
-    val suffix = git.makeUncommittedSignifierSuffix(git.gitUncommittedChanges.value, git.uncommittedSignifier.value)
-
-    git.gitHeadCommit.value map { _.substring(0, 7) } map { sha =>
-      git.baseVersion.value + "-" + sha + suffix
+  publishMavenStyle := true,
+  pomIncludeRepository := { _ => false },
+  pomExtra := {
+    <url>https://github.com/functional-streams-for-scala/fs2</url>
+    <scm>
+      <url>git@github.com:functional-streams-for-scala/fs2.git</url>
+      <connection>scm:git:git@github.com:functional-streams-for-scala/fs2.git</connection>
+    </scm>
+    <developers>
+      {for ((username, name) <- contributors) yield
+      <developer>
+        <id>{username}</id>
+        <name>{name}</name>
+        <url>http://github.com/{username}</url>
+      </developer>
+      }
+    </developers>
+  },
+  pomPostProcess := { node =>
+    import scala.xml._
+    import scala.xml.transform._
+    def stripIf(f: Node => Boolean) = new RewriteRule {
+      override def transform(n: Node) =
+        if (f(n)) NodeSeq.Empty else n
     }
+    val stripTestScope = stripIf { n => n.label == "dependency" && (n \ "scope").text == "test" }
+    new RuleTransformer(stripTestScope).transform(node)(0)
   }
 )
 
+lazy val releaseSettings = Seq(
+  releaseCrossBuild := true,
+  releasePublishArtifactsAction := PgpKeys.publishSigned.value
+)
+
 lazy val root = project.in(file(".")).
-  enablePlugins(GitVersioning).
   settings(commonSettings).
   settings(
     publish := (),
@@ -69,22 +107,22 @@ lazy val root = project.in(file(".")).
   aggregate(core, io, benchmark)
 
 lazy val core = project.in(file("core")).
-  enablePlugins(GitVersioning).
   settings(commonSettings).
   settings(
-   name := "fs2-core"
+    name := "fs2-core"
   )
 
 lazy val io = project.in(file("io")).
-  enablePlugins(GitVersioning).
   settings(commonSettings).
   settings(
-   name := "fs2-io"
+    name := "fs2-io"
   ).dependsOn(core % "compile->compile;test->test")
 
 lazy val benchmark = project.in(file("benchmark")).
-  enablePlugins(GitVersioning).
   settings(commonSettings).
   settings(
-   name := "fs2-benchmark"
+    name := "fs2-benchmark",
+    publish := (),
+    publishLocal := (),
+    publishArtifact := false
   ).dependsOn(io)
