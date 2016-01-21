@@ -12,7 +12,7 @@ lazy val contributors = Seq(
 )
 
 lazy val commonSettings = Seq(
-  organization := "fs2",
+  organization := "co.fs2",
   scalaVersion := "2.11.7",
   scalacOptions ++= Seq(
     "-feature",
