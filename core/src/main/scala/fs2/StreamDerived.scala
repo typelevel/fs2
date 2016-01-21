@@ -1,6 +1,5 @@
 package fs2
 
-import Step.#:
 import fs2.util.{RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
