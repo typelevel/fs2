@@ -125,6 +125,17 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
     get.runAsync(f)
 
   /**
+   * Run this computation and return the result as a standard library `Future`.
+   * Like `runAsync` but returns a standard library `Future` instead of requiring
+   * a callback.
+   */
+  def runAsyncFuture: scala.concurrent.Future[A] = {
+    val promise = scala.concurrent.Promise[A]
+    runAsync(_.fold(promise.failure, promise.success))
+    promise.future
+  }
+
+  /**
    * Run this `Task` and block until its result is available, or until
    * `timeoutInMillis` milliseconds have elapsed, at which point a `TimeoutException`
    * will be thrown and the `Future` will attempt to be canceled.
