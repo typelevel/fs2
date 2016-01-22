@@ -1,14 +1,19 @@
 package fs2.internal
 
+/**
+ * Some implementation notes:
+ *
+ * `Some(r)` in the `LinkedMap` represents an acquired resource;
+ * `None` represents a resource in the process of being acquired
+ * The `Boolean` indicates whether this resource is 'open' or not.
+ * Once closed, all `startAcquire` calls will return `false`.
+ * Once closed, there is no way to reopen a `Resources`.
+ */
 private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])]) {
-
-  // implementation notes - `Some(r)` in the `LinkedMap`
-  // represents an acquired resource, and `None` represents
-  // a resource in the process of being acquired
-  // The `Boolean` indicates whether this resources is open
 
   def isOpen: Boolean = tokens.get._1
   def isClosed: Boolean = !isOpen
+  def isEmpty: Boolean = tokens.get._2.isEmpty
 
   /**
    * Close this `Resources` and return all acquired resources.
@@ -63,13 +68,18 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
       }
   }
 
+  /**
+   * Associate `r` with the given `t`.
+   * Returns `open` status of this `Resources` as of the update.
+   */
   @annotation.tailrec
-  final def finishAcquire(t: T, r: R): Unit = tokens.access match {
+  final def finishAcquire(t: T, r: R): Boolean = tokens.access match {
     case ((open,m), update) =>
       m.get(t) match {
         case Some(None) =>
           if (!update(open -> m.edit(t, _ => Some(Some(r)))))
             finishAcquire(t,r) // retry on contention
+          else open
         case r => sys.error("expected acquiring status, got: " + r)
       }
   }
