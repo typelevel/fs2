@@ -38,6 +38,8 @@ private[fs2] class LinkedMap[K,+V](
     entries.get(k).map { case (_,id) => insertionOrder - id }.getOrElse(insertionOrder),
     nextID)
 
+  def unorderedEntries: Iterable[(K,V)] = entries.mapValues(_._1)
+
   /** The keys of this map, in the order they were added. */
   def keys: Iterable[K] = insertionOrder.values
 
