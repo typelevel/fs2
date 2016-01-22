@@ -22,7 +22,7 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O] =
     Free.pure(()) flatMap { _ => // trampoline after every step, catch exceptions
       try _runFold1(doCleanup, tracked, k)(g, z)
-      catch { case t: Throwable => Stream.fail(t)._runFold1(doCleanup, tracked, k)(g,z) }
+      catch { case t: Throwable => Stream.fail(t)._runFold0(doCleanup, tracked, k)(g,z) }
     }
 
   /**
@@ -190,7 +190,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       =
       k (
         (segments,eq) => segments match {
-          case List() => empty[F2,W2]._runFold1(doCleanup, tracked, k)(g,z) flatMap { _ => Free.fail(err) }
+          case List() => empty[F2,W2]._runFold0(doCleanup, tracked, k)(g,z) flatMap { _ => Free.fail(err) }
           case _ =>
             val (hd, tl) = Stack.fail(segments)(err)
             val g2 = Eq.subst[({ type f[x] = (O,x) => O })#f, W3, W2](g)(eq.flip)

@@ -56,53 +56,26 @@ object ConcurrentSpec extends Properties("concurrent") {
   //  run { concurrent.join(n.get)(s.get) }
   //}
 
-  // todo: make combinations of below with bracket to verify resource safety
-  property("merge.async.right.block") = protect {
-    runFor() {
-      (Stream.constant[Task,Int](42) merge Stream.repeatEval(Task.async[Unit] { cb  => () }))
-      .take(1)
-    } ?= Vector(42)
-  }
+  include { new Properties("hanging awaits") {
+    val full = Stream.constant[Task,Int](42)
+    val hang = Stream.repeatEval(Task.async[Unit] { cb => () }) // never call `cb`!
+    val hang2: Stream[Task,Nothing] = full.drain
+    val hang3: Stream[Task,Nothing] =
+      Stream.repeatEval[Task,Unit](Task.async { cb => cb(Right(())) }).drain
 
-  property("merge.async.left.block") = protect {
-    runFor() {
-      (Stream.repeatEval(Task.async[Unit] { cb  => () }) merge Stream.constant[Task,Int](42) )
-      .take(1)
-    } ?= Vector(42)
-  }
-
-  property("merge.async.left.block.drain") = protect {
-    runFor() {
-      (Stream.repeatEval(Task.async[Unit] { cb  => cb(Right(())) }).drain merge Stream.constant[Task,Int](42) )
-      .take(1)
-    } ?= Vector(42)
-  }
-
-  property("merge.async.right.block.drain") = protect {
-    runFor() {
-      (Stream.constant[Task,Int](42) merge Stream.repeatEval(Task.async[Unit] { cb  => cb(Right(())) }).drain)
-      .take(1)
-    } ?= Vector(42)
-  }
-
-  property("merge.async.join.block") = protect {
-    runFor() {
-      concurrent.join(10)(Stream(
-        Stream.constant[Task,Int](42)
-        , Stream.repeatEval(Task.async[Unit] { cb  => cb(Right(())) }).drain
-      ))
-      .take(1)
-    } ?= Vector(42)
-  }
-
-  property("merge.async.join.block.drain") = protect {
-    runFor() {
-      concurrent.join(10)(Stream(
-        Stream.constant[Task,Int](42)
-        , Stream.repeatEval(Task.async[Unit] { cb  => cb(Right(())) }).drain
-      ))
-      .take(1)
-    } ?= Vector(42)
-  }
-
+    property("merge") = protect {
+      { (full merge hang).take(1) === Vector(42) } &&
+      { (full merge hang2).take(1) === Vector(42) } &&
+      { (full merge hang3).take(1) === Vector(42) } &&
+      { (hang merge full).take(1) === Vector(42) } &&
+      { (hang2 merge full).take(1) === Vector(42) } &&
+      { (hang3 merge full).take(1) === Vector(42) }
+    }
+    property("join") = protect {
+      { concurrent.join(10)(Stream(full, hang)).take(1) === Vector(42) } &&
+      { concurrent.join(10)(Stream(full, hang2)).take(1) === Vector(42) } &&
+      { concurrent.join(10)(Stream(full, hang3)).take(1) === Vector(42) } &&
+      { concurrent.join(10)(Stream(hang3,hang2,full)).take(1) === Vector(42) }
+    }
+  }}
 }
