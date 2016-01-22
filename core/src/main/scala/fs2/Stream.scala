@@ -308,20 +308,20 @@ object Stream extends Streams[Stream] with StreamDerived {
       doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
-      if (tracked.startAcquire(id)) Free.eval(S(r)) flatMap { r =>
-        try {
-          val c = S(cleanup(r))
-          if (tracked.finishAcquire(id, c))
-            emit(r)._runFold0[F2,O,W2,W3](doCleanup, tracked, k)(g,z)
-          else
-            fail(Interrupted)._runFold0[F2,O,W2,W3](doCleanup, tracked, k)(g,z)
+      Stream.suspend {
+        if (tracked.startAcquire(id)) Stream.eval(S(r)) flatMap { r =>
+          try {
+            val c = S(cleanup(r))
+            if (tracked.finishAcquire(id,c)) emit(r)
+            else fail(Interrupted)
+          }
+          catch { case err: Throwable =>
+            tracked.cancelAcquire(id)
+            fail(err)
+          }
         }
-        catch { case t: Throwable =>
-          fail(new RuntimeException("producing resource cleanup action failed", t))
-          ._runFold0[F2,O,W2,W3](doCleanup, tracked, k)(g,z)
-        }
-      }
-      else fail(Interrupted)._runFold0[F2,O,W2,W3](doCleanup, tracked, k)(g,z)
+        else fail(Interrupted)
+      }._runFold0[F2,O,W2,W3](doCleanup, tracked, k)(g,z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
@@ -444,7 +444,7 @@ object Stream extends Streams[Stream] with StreamDerived {
   private def runCleanup[F[_]](l: Resources[Token,F[Unit]]): Free[F,Unit] =
     l.closeAll match {
       case (l, moreRunning) if !moreRunning => runCleanup(l)
-      case _ => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired")
+      case _ => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
     }
 
   private def runCleanup[F[_]](cleanups: Iterable[F[Unit]]): Free[F,Unit] =

@@ -25,7 +25,7 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
   final def closeAll: (List[R], Boolean) = tokens.access match {
     case ((open,m),update) =>
       val rs = m.values.collect { case Some(r) => r }.toList
-      val anyAcquiring = m.values.exists(_ == None)
+      val totallyDone = m.values.forall(_ != None)
       val m2 = m.unorderedEntries.foldLeft(m) { (m,kv) =>
         kv._2 match {
           case None => m
@@ -33,7 +33,7 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
         }
       }
       if (!update((false, m2))) closeAll
-      else (rs, !anyAcquiring)
+      else (rs, !totallyDone)
   }
 
   /**
@@ -69,6 +69,18 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
   }
 
   /**
+   * Cancel acquisition of `t`.
+   */
+  @annotation.tailrec
+  final def cancelAcquire(t: T): Unit = tokens.access match {
+    case ((open,m), update) =>
+      m.get(t) match {
+        case Some(Some(r)) => sys.error("token already acquired: "+ (t -> r))
+        case _ => if (!update(open -> (m-t))) cancelAcquire(t)
+      }
+  }
+
+  /**
    * Associate `r` with the given `t`.
    * Returns `open` status of this `Resources` as of the update.
    */
@@ -83,6 +95,8 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
         case r => sys.error("expected acquiring status, got: " + r)
       }
   }
+
+  override def toString = tokens.toString
 }
 
 private[fs2] object Resources {

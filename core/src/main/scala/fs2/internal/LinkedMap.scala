@@ -47,6 +47,8 @@ private[fs2] class LinkedMap[K,+V](
   def values: Iterable[V] = keys.flatMap(k => entries.get(k).toList.map(_._1))
 
   def isEmpty = entries.isEmpty
+
+  override def toString = "{ " + (keys zip values).mkString("  ") +" }"
 }
 
 private[fs2] object LinkedMap {

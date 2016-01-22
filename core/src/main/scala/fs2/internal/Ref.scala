@@ -50,6 +50,8 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A]) {
     if (id.compareAndSet(expected, expected+1)) { ref.set(a); true }
     else false
   }
+
+  override def toString = "Ref { "+ref.get.toString+" }"
 }
 
 object Ref {
