@@ -14,6 +14,7 @@ lazy val contributors = Seq(
 lazy val commonSettings = Seq(
   organization := "co.fs2",
   scalaVersion := "2.11.7",
+  crossScalaVersions := Seq("2.11.7", "2.12.0-M3"),
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
