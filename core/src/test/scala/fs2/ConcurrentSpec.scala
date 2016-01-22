@@ -1,6 +1,7 @@
 package fs2
 
 import TestUtil._
+import fs2.PlayGroundSpec._
 import fs2.util.Task
 import fs2.Stream.Handle
 import java.util.concurrent.atomic.AtomicLong
@@ -55,4 +56,54 @@ object ConcurrentSpec extends Properties("concurrent") {
   //property("join (failure 1)") = forAll { (s: PureStream[Failure], n: SmallPositive, f: Failure) =>
   //  run { concurrent.join(n.get)(s.get) }
   //}
+
+  // todo: make combinations of below with bracket to verify resource safety
+  property("merge.async.right.block") = protect {
+    runFor() {
+      (Stream.constant[Task,Int](42) merge Stream.repeatEval(Task.async[Unit] { cb  => () }))
+      .take(1)
+    } ?= Vector(42)
+  }
+
+  property("merge.async.left.block") = protect {
+    runFor() {
+      (Stream.repeatEval(Task.async[Unit] { cb  => () }) merge Stream.constant[Task,Int](42) )
+      .take(1)
+    } ?= Vector(42)
+  }
+
+  property("merge.async.left.block.drain") = protect {
+    runFor() {
+      (Stream.repeatEval(Task.async[Unit] { cb  => cb(Right(())) }).drain merge Stream.constant[Task,Int](42) )
+      .take(1)
+    } ?= Vector(42)
+  }
+
+  property("merge.async.right.block.drain") = protect {
+    runFor() {
+      (Stream.constant[Task,Int](42) merge Stream.repeatEval(Task.async[Unit] { cb  => cb(Right(())) }).drain)
+      .take(1)
+    } ?= Vector(42)
+  }
+
+  property("merge.async.join.block") = protect {
+    runFor() {
+      concurrent.join(10)(Stream(
+        Stream.constant[Task,Int](42)
+        , Stream.repeatEval(Task.async[Unit] { cb  => cb(Right(())) }).drain
+      ))
+      .take(1)
+    } ?= Vector(42)
+  }
+
+  property("merge.async.join.block.drain") = protect {
+    runFor() {
+      concurrent.join(10)(Stream(
+        Stream.constant[Task,Int](42)
+        , Stream.repeatEval(Task.async[Unit] { cb  => cb(Right(())) }).drain
+      ))
+      .take(1)
+    } ?= Vector(42)
+  }
+
 }
