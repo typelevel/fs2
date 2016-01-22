@@ -1,7 +1,6 @@
 package fs2
 
 import TestUtil._
-import fs2.PlayGroundSpec._
 import fs2.util.Task
 import fs2.Stream.Handle
 import java.util.concurrent.atomic.AtomicLong
