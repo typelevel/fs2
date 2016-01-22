@@ -21,8 +21,16 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
     doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O] =
     Free.pure(()) flatMap { _ => // trampoline after every step, catch exceptions
-      try _runFold1(doCleanup, tracked, k)(g, z)
-      catch { case t: Throwable => Stream.fail(t)._runFold0(doCleanup, tracked, k)(g,z) }
+      if (tracked.isClosed) {
+        // note: critical that we call _runFold1 here, not _runFold0!
+        // calling _runFold0 would be an infinite loop!
+        Stream.fail(Stream.Interrupted)._runFold1(doCleanup, tracked, Stack.empty[F2,W3])(g,z)
+      }
+      else {
+        try _runFold1(doCleanup, tracked, k)(g, z)
+        catch { case t: Throwable =>
+          Stream.fail(t)._runFold0(doCleanup, tracked, k)(g,z) }
+      }
     }
 
   /**
@@ -69,17 +77,16 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
         // releasing any resources it acquires when reaching the end of the `Pull`
         _run0(doCleanup = false, LinkedSet.empty, Pull.Stack.empty[F2,Out,Unit])
       // A singleton stream which catches all errors and sets `gate` when it completes
-      val s2: Stream[F2,Either[Throwable,Out]] =
-        Stream.onComplete(s, Stream.eval_(F2.set(gate)(F2.pure(())))).map(Right(_))
-              .onError(err => Stream.emit(Left(err)))
-      // We run `s2`, recording all resources it allocates to the mutable `resources` map
+      // We run `s`, recording all resources it allocates to the mutable `resources` map
       // Note that we record _only_ the newly allocated resources for _this step_
       val resources = Resources.empty[Token,F2[Unit]]
-      val f = (o: Option[OutE], o2: OutE) => Some(o2)
+      val f = (o: Option[Out], o2: Out) => Some(o2)
       // The `doCleanup = false` disables the default behavior of `runFold`, which is
       // to run any finalizers not yet run when reaching end of stream
-      val free: Free[F2,Option[OutE]] = s2._runFold0(doCleanup = false, resources, Stack.empty[F2,OutE])(f, None)
-      val runStep: F2[Option[OutE]] = free.run
+      val free: Free[F2,Option[Out]] = s._runFold0(doCleanup = false, resources, Stack.empty[F2,Out])(f, None)
+      // catch any errors and set `gate` regardless
+      val runStep: F2[Either[Throwable,Option[Out]]] =
+        F2.bind(F2.attempt(free.run)) { e => F2.map(F2.setPure(gate)(()))(_ => e) }
       // We create a single `Token` that will covers any resources allocated by `runStep`
       val rootToken = new Token()
       // The cleanup action runs immediately if no resources are now being
@@ -94,14 +101,14 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
       // Track the root token with `rootCleanup` as associated cleanup action
       Pull.track(rootToken) >>
       Pull.acquire(rootToken, F2.pure(()), (u:Unit) => rootCleanup) >>
-      Pull.eval(F2.ref[Option[OutE]]).flatMap { out =>
+      Pull.eval(F2.ref[Either[Throwable,Option[Out]]]).flatMap { out =>
         // Now kick off asynchronous evaluation of `runStep`
         Pull.eval(F2.set(out)(runStep)).map { _ =>
           // Convert the output of the `Future` to a `Pull`
           F2.read(out).map {
-            case None => Pull.done: Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
-            case Some(Left(err)) => Pull.fail(err)
-            case Some(Right(a)) => Pull.pure(a)
+            case Right(None) => Pull.done: Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
+            case Right(Some(a)) => Pull.pure(a)
+            case Left(err) => Pull.fail(err)
           }.appendOnForce { Pull.suspend {
             // Important - if `resources.isEmpty`, we allocated a `rootToken`, but it turned
             // out that our step didn't acquire new resources. This is quite common.
@@ -190,7 +197,10 @@ object Stream extends Streams[Stream] with StreamDerived {
       =
       k (
         (segments,eq) => segments match {
-          case List() => empty[F2,W2]._runFold0(doCleanup, tracked, k)(g,z) flatMap { _ => Free.fail(err) }
+          case List() =>
+            // note: importat that we use _runFold1 here; we don't
+            // want to check interrupts again
+            empty[F2,W2]._runFold1(doCleanup, tracked, k)(g,z) flatMap { _ => Free.fail(err) }
           case _ =>
             val (hd, tl) = Stack.fail(segments)(err)
             val g2 = Eq.subst[({ type f[x] = (O,x) => O })#f, W3, W2](g)(eq.flip)

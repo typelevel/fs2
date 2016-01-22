@@ -259,13 +259,20 @@ object Task extends Instances {
     ref[A].flatMap { ref => ref.set(t) map (_ => ref.get) }
 
   /**
+   Like [[async]], but run the callback in the same thread in the same
+   thread, rather than evaluating the callback using a `Strategy`.
+   */
+  def unforkedAsync[A](register: (Either[Throwable,A] => Unit) => Unit): Task[A] =
+    async(register)(Strategy.sequential)
+
+  /**
    Create a `Task` from an asynchronous computation, which takes the form
    of a function with which we can register a callback. This can be used
    to translate from a callback-based API to a straightforward monadic
-   version.
+   version. The callback is run using the strategy `S`.
    */
-  def async[A](register: (Either[Throwable,A] => Unit) => Unit): Task[A] =
-    new Task(Future.async(register))
+  def async[A](register: (Either[Throwable,A] => Unit) => Unit)(implicit S: Strategy): Task[A] =
+    new Task(Future.async(register)(S))
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
   def schedule[A](a: => A, delay: Duration)(implicit pool: ScheduledExecutorService): Task[A] =
@@ -359,13 +366,14 @@ object Task extends Instances {
     def setFree(t: Free[Task,A])(implicit S: Strategy): Task[Unit] = set(t.run)
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
-    def get: Task[A] = Task.async { cb => actor ! Msg.Get(cb, () => new MsgId {} ) }
+    def get: Task[A] =
+      Task.unforkedAsync[A] { cb => actor ! Msg.Get(cb, () => new MsgId {} ) }
 
     /** Like `get`, but returns a `Task[Unit]` that can be used cancel the subscription. */
     def cancellableGet: Task[(Task[A], Task[Unit])] = Task.delay {
       lazy val id = new MsgId {}
-      val get = Task.async[A] { cb => actor ! Msg.Get(cb, () => id ) }
-      val cancel = Task.async[Unit] { cb => actor ! Msg.Nevermind(id, r => cb(r.right.map(_ => ()))) }
+      val get = Task.unforkedAsync[A] { cb => actor ! Msg.Get(cb, () => id ) }
+      val cancel = Task.unforkedAsync[Unit] { cb => actor ! Msg.Nevermind(id, r => cb(r.right.map(_ => ()))) }
       (get, cancel)
     }
 
@@ -394,7 +402,7 @@ object Task extends Instances {
 
     def modify(f: A => Task[A]): Task[Change[A]] = {
       for {
-        a <- Task.async[A] { cb => actor ! Msg.Modify(cb,() => new MsgId {})}
+        a <- Task.unforkedAsync[A] { cb => actor ! Msg.Modify(cb,() => new MsgId {})}
         r <- f(a).attempt
         _ <- Task.delay { actor ! Msg.ModifySet(r) }
         aa <- r.fold(Task.fail,na => Task.now(Change(a,na)))
@@ -404,7 +412,7 @@ object Task extends Instances {
     def cancellableModify(f: A => Task[A]): Task[(Task[Change[A]], Task[Boolean])] = Task.delay {
       lazy val id = new MsgId {}
       val mod = modify(f)
-      val cancel = Task.async[Boolean] { cb => actor ! Msg.Nevermind(id, cb) }
+      val cancel = Task.unforkedAsync[Boolean] { cb => actor ! Msg.Nevermind(id, cb) }
       (mod,cancel)
     }
   }
