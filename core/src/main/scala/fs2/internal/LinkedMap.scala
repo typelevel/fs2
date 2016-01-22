@@ -20,6 +20,18 @@ private[fs2] class LinkedMap[K,+V](
   def updated[V2>:V](k: K, v: V2): LinkedMap[K,V2] =
     new LinkedMap(entries.updated(k, (v,nextID)), insertionOrder.updated(nextID, k), nextID+1)
 
+  def edit[V2>:V](k: K, f: Option[V2] => Option[V2]): LinkedMap[K,V2] =
+    entries.get(k) match {
+      case None => f(None) match {
+        case None => this - k
+        case Some(v) => updated(k, v)
+      }
+      case Some((v,id)) => f(Some(v)) match {
+        case None => this - k
+        case Some(v) => new LinkedMap(entries.updated(k, (v,id)), insertionOrder, nextID)
+      }
+    }
+
   /** Remove this key from this map. */
   def -(k: K) = new LinkedMap(
     entries - k,
