@@ -1,7 +1,6 @@
 package fs2
 
 import Stream.Handle
-import Step._
 import fs2.util.{Free,Functor,Sub1}
 
 object process1 {
@@ -55,7 +54,7 @@ object process1 {
   def dropWhile[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.dropWhile(p)(h) flatMap Pull.echo)
 
-  /** Emits `true` as soon as a matching element is received, else `false if no input matches */
+  /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
   def exists[F[_], I](p: I => Boolean): Stream[F, I] => Stream[F, Boolean] =
     _ pull { h => Pull.forall[F,I](!p(_))(h) flatMap { i => Pull.output1(!i) }}
 
@@ -157,7 +156,7 @@ object process1 {
    * More generally:
    *   `Stream().scan(z)(f) == Stream(z)`
    *   `Stream(x1).scan(z)(f) == Stream(z, f(z,x1))`
-   *   `Stream(x1,x2).scan(z)(f) == Stream(z, f(z,x1), f(f(z,x1),x2))
+   *   `Stream(x1,x2).scan(z)(f) == Stream(z, f(z,x1), f(f(z,x1),x2))`
    *   etc
    *
    * Works in a chunky fashion, and creates a `Chunk.indexedSeq` for each converted chunk.

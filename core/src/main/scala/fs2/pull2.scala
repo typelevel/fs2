@@ -1,7 +1,5 @@
 package fs2
 
-import Step._
-
 private[fs2] trait pull2 {
   import Stream.Handle
 
