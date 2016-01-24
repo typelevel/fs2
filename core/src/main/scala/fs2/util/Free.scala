@@ -98,5 +98,6 @@ object Free {
   new Monad[({ type f[x] = Free[F,x]})#f] {
     def pure[A](a: A) = Pure(a)
     def bind[A,B](a: Free[F,A])(f: A => Free[F,B]) = a flatMap f
+    def suspend[A](a: => A): Free[F, A] = Free.suspend(Free.pure(a))
   }
 }

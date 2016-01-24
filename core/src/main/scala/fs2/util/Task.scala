@@ -434,6 +434,7 @@ private[fs2] trait Instances1 {
     def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
+    def suspend[A](a: => A): Task[A] = Task.delay(a)
   }
 }
 
@@ -448,6 +449,7 @@ private[fs2] trait Instances extends Instances1 {
     def setFree[A](q: Ref[A])(a: Free[Task, A]): Task[Unit] = q.setFree(a)
     def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
     def pure[A](a: A): Task[A] = Task.now(a)
+    def suspend[A](a: => A): Task[A] = Task.delay(a)
     def modify[A](ref: Ref[A])(f: (A) => Task[A]): Task[Change[A]] = ref.modify(f)
     def cancellableModify[A](r: Ref[A])(f: (A) => Task[A]): Task[(Task[Change[A]], Task[Boolean])] = r.cancellableModify(f)
     def fail[A](err: Throwable): Task[A] = Task.fail(err)
