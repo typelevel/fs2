@@ -116,7 +116,10 @@ lazy val core = project.in(file("core")).
 lazy val io = project.in(file("io")).
   settings(commonSettings).
   settings(
-    name := "fs2-io"
+    name := "fs2-io",
+    libraryDependencies ++= Seq(
+      "org.scodec" %% "scodec-bits" % "1.0.12"
+    )
   ).dependsOn(core % "compile->compile;test->test")
 
 lazy val benchmark = project.in(file("benchmark")).
