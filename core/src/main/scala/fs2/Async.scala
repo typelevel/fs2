@@ -41,6 +41,18 @@ trait Async[F[_]] extends Catchable[F] { self =>
    * Like `get`, but returns an `F[Unit]` that can be used cancel the subscription.
    */
   def cancellableGet[A](r: Ref[A]): F[(F[A], F[Unit])]
+
+  /**
+   Create an `F[A]` from an asynchronous computation, which takes the form
+   of a function with which we can register a callback. This can be used
+   to translate from a callback-based API to a straightforward monadic
+   version.
+   */
+  def async[A](register: (Either[Throwable,A] => F[Unit]) => F[Unit]): F[A] =
+    bind(ref[Either[Throwable,A]]) { ref =>
+    bind(register { e => setPure(ref)(e) }) { _ =>
+    bind(get(ref)) { _.fold(fail, pure) }
+    }}
 }
 
 object Async {
