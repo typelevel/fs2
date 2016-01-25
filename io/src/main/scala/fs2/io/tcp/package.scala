@@ -29,8 +29,8 @@ package object tcp {
     , receiveBufferSize: Int = 256 * 1024
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
-  )( implicit AG: AsynchronousChannelGroup): Pull[F, Nothing, TCPSocket[F]] =
-    TCPSocket.client(to,reuseAddress,sendBufferSize,receiveBufferSize,keepAlive,noDelay)
+  )( implicit AG: AsynchronousChannelGroup): Pull[F, Nothing, Socket[F]] =
+    Socket.client(to, reuseAddress, sendBufferSize, receiveBufferSize, keepAlive, noDelay)
 
 
 
@@ -56,7 +56,7 @@ package object tcp {
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
     implicit AG: AsynchronousChannelGroup
-  ): Stream[F, Pull[F, Nothing, TCPSocket[F]]] =
-    TCPSocket.server(bind,maxQueued,reuseAddress,receiveBufferSize)
+  ): Stream[F, Pull[F, Nothing, Socket[F]]] =
+    Socket.server(bind, maxQueued, reuseAddress, receiveBufferSize)
 
 }

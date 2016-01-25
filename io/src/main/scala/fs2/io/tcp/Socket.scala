@@ -14,7 +14,7 @@ import scala.concurrent.duration._
 /**
   * Created by pach on 24/01/16.
   */
-trait TCPSocket[F[_]] {
+trait Socket[F[_]] {
 
   /**
     * Read up to `maxBytes` from the peer.
@@ -79,7 +79,7 @@ trait TCPSocket[F[_]] {
 }
 
 
-object TCPSocket {
+object Socket {
 
   def client[F[_]](
     to: InetSocketAddress
@@ -89,7 +89,7 @@ object TCPSocket {
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
   )(implicit AG: AsynchronousChannelGroup, F: Async[F])
-  : Pull[F, Nothing, TCPSocket[F]] = Pull suspend {
+  : Pull[F, Nothing, Socket[F]] = Pull suspend {
 
     def setup: F[AsynchronousSocketChannel] = F.suspend {
       val ch = AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)
@@ -124,7 +124,7 @@ object TCPSocket {
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
     implicit AG: AsynchronousChannelGroup, F: Async[F]
-  ): Stream[F, Pull[F, Nothing, TCPSocket[F]]] = {
+  ): Stream[F, Pull[F, Nothing, Socket[F]]] = {
 
     def setup: F[AsynchronousServerSocketChannel] = F.suspend {
       val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
@@ -137,7 +137,7 @@ object TCPSocket {
       F.suspend { sch.close() }
 
 
-    def acceptIncoming(sch: AsynchronousServerSocketChannel): Pull[F, Nothing, TCPSocket[F]] = Pull.suspend {
+    def acceptIncoming(sch: AsynchronousServerSocketChannel): Pull[F, Nothing, Socket[F]] = Pull.suspend {
       def accept: F[AsynchronousSocketChannel] =
         F.async { cb => F.suspend {
           sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
@@ -151,15 +151,15 @@ object TCPSocket {
       Pull.acquire(Stream.token,accept,close) map buildSocket(F)
     }
 
-    def handleIncoming(sch: AsynchronousServerSocketChannel):Stream[F,Pull[F, Nothing, TCPSocket[F]]] =
+    def handleIncoming(sch: AsynchronousServerSocketChannel):Stream[F,Pull[F, Nothing, Socket[F]]] =
       Stream.constant(sch) map acceptIncoming
 
     Stream.bracket(setup)(handleIncoming, cleanup)
   }
 
 
-  private def buildSocket[F[_]](F: Async[F])(ch:AsynchronousSocketChannel):TCPSocket[F] = {
-    new TCPSocket[F] {
+  private def buildSocket[F[_]](F: Async[F])(ch:AsynchronousSocketChannel):Socket[F] = {
+    new Socket[F] {
       def remoteAddress: F[SocketAddress] = F.suspend(ch.getRemoteAddress)
       def localAddress: F[SocketAddress] = F.suspend(ch.getLocalAddress)
       def close: F[Unit] = F.suspend(ch.close())
