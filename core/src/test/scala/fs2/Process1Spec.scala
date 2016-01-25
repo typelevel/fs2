@@ -217,6 +217,10 @@ object Process1Spec extends Properties("process1") {
     s.get.scan1(f) ==? v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
   }
 
+  property("tail") = forAll { (s: PureStream[Int]) =>
+    s.get.tail ==? run(s.get).drop(1)
+  }
+
   property("take.chunks") = secure {
     val s = Stream(1, 2) ++ Stream(3, 4)
     s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
