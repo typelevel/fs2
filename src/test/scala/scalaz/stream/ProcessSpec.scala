@@ -68,7 +68,7 @@ class ProcessSpec extends Properties("Process") {
     val p1 = Process.constant(1).toSource
     val pch = Process.constant((i:Int) => Task.now(())).take(3)
 
-    p1.to(pch).runLog.run.size == 3
+    p1.to(pch).runLog.unsafePerformSync.size == 3
   }
 
   property("fill") = forAll(Gen.choose(0,30) flatMap (i => Gen.choose(0,50) map ((i,_)))) {
@@ -80,7 +80,7 @@ class ProcessSpec extends Properties("Process") {
     import scala.concurrent.duration._
     val t2 = time.awakeEvery(2 seconds).forwardFill.zip {
       time.awakeEvery(100 milliseconds).take(100)
-    }.run.timed(15000).run
+    }.run.unsafePerformTimed(15000).unsafePerformSync
     true
   }
 
@@ -89,14 +89,14 @@ class ProcessSpec extends Properties("Process") {
   }
 
   property("iterateEval") = protect {
-    Process.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.run == List.iterate(0, 100)(_ + 1)
+    Process.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.unsafePerformSync == List.iterate(0, 100)(_ + 1)
   }
 
   property("kill executes cleanup") = protect {
     import TestUtil._
     val cleanup = new SyncVar[Int]
     val p: Process[Task, Int] = halt onComplete(eval_(Task.delay { cleanup.put(1) }))
-    p.kill.expectedCause(_ == Kill).run.run
+    p.kill.expectedCause(_ == Kill).run.unsafePerformSync
     cleanup.get(500).get == 1
   }
 
@@ -111,9 +111,9 @@ class ProcessSpec extends Properties("Process") {
     var afterHalt = false
     var afterAwait = false
     def rightSide(a: => Unit): Process[Task, Int] = Process.awaitOr(Task.delay(a))(_ => rightSide(a))(_ => halt)
-    (emit(1) ++ rightSide(afterEmit = true)).kill.expectedCause(_ == Kill).run.run
-    (halt ++ rightSide(afterHalt = true)).kill.expectedCause(_ == Kill).run.run
-    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.expectedCause(_ == Kill).run.run
+    (emit(1) ++ rightSide(afterEmit = true)).kill.expectedCause(_ == Kill).run.unsafePerformSync
+    (halt ++ rightSide(afterHalt = true)).kill.expectedCause(_ == Kill).run.unsafePerformSync
+    (eval_(Task.now(1)) ++ rightSide(afterAwait = true)).kill.expectedCause(_ == Kill).run.unsafePerformSync
     ("after emit" |: !afterEmit) &&
       ("after halt" |: !afterHalt) &&
       ("after await" |: !afterAwait)
@@ -125,7 +125,7 @@ class ProcessSpec extends Properties("Process") {
     var cleaned = false
     val cleanup = eval(Task.delay{ 1 }) ++ eval_(Task.delay(cleaned = true))
     val p = (halt onComplete cleanup)
-    val res = p.take(1).runLog.run.toList
+    val res = p.take(1).runLog.unsafePerformSync.toList
     ("result" |: res == List(1)) &&
       ("cleaned" |: cleaned)
   }
@@ -138,7 +138,7 @@ class ProcessSpec extends Properties("Process") {
     var called = false
     val cleanup = emit(1) ++ eval_(Task.delay(cleaned = true))
     val p = (emit(0) onComplete cleanup) ++ eval_(Task.delay(called = true))
-    val res = p.take(2).runLog.run.toList
+    val res = p.take(2).runLog.unsafePerformSync.toList
     ("res" |: res == List(0, 1)) &&
       ("cleaned" |: cleaned) &&
       ("called" |: !called)
@@ -147,14 +147,14 @@ class ProcessSpec extends Properties("Process") {
   property("asFinalizer") = protect {
     import TestUtil._
     var called = false
-    (emit(1) ++ eval_(Task.delay{ called = true })).asFinalizer.kill.expectedCause(_ == Kill).run.run
+    (emit(1) ++ eval_(Task.delay{ called = true })).asFinalizer.kill.expectedCause(_ == Kill).run.unsafePerformSync
     called
   }
 
   property("asFinalizer, pipe") = protect {
     var cleaned = false
     val cleanup = emit(1) ++ eval_(Task.delay(cleaned = true))
-    cleanup.asFinalizer.take(1).run.run
+    cleanup.asFinalizer.take(1).run.unsafePerformSync
     cleaned
   }
 
@@ -175,9 +175,9 @@ class ProcessSpec extends Properties("Process") {
     val q = async.unboundedQueue[String]
     val sink = q.enqueue.pipeIn(process1.lift[Int,String](_.toString))
 
-    (Process.range(0,10).toSource to sink).run.run
-    val res = q.dequeue.take(10).runLog.timed(3000).run.toList
-    q.close.run
+    (Process.range(0,10).toSource to sink).run.unsafePerformSync
+    val res = q.dequeue.take(10).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
+    q.close.unsafePerformSync
 
     res === (0 until 10).map(_.toString).toList
   }
@@ -194,7 +194,7 @@ class ProcessSpec extends Properties("Process") {
     val source = Process(1, 2, 3).toSource
 
     val transformer = process1.lift((i: Int) => i + 1)
-    source.to(sink.pipeIn(transformer)).run.run
+    source.to(sink.pipeIn(transformer)).run.unsafePerformSync
 
     written == List(2, 3, 4)
   }
@@ -202,7 +202,7 @@ class ProcessSpec extends Properties("Process") {
   property("pipeIn") = forAll { (p00: Process0[Int], i0: Int, p1: Process1[Int, Int]) =>
     val p0 = emit(i0) ++ p00
     val buffer = new collection.mutable.ListBuffer[Int]
-    p0.toSource.to(io.fillBuffer(buffer).pipeIn(p1)).run.run
+    p0.toSource.to(io.fillBuffer(buffer).pipeIn(p1)).run.unsafePerformSync
     val l = buffer.toList
     val r = p0.pipe(p1).toList
     s"expected: $r actual $l" |: { l === r }
@@ -215,7 +215,7 @@ class ProcessSpec extends Properties("Process") {
     val sink = io.fillBuffer(buf1).pipeIn(process1.take[Int](2)) ++
                io.fillBuffer(buf2).pipeIn(process1.take[Int](2)) ++
                io.fillBuffer(buf3).pipeIn(process1.last[Int])
-    p0.toSource.to(sink).run.run
+    p0.toSource.to(sink).run.unsafePerformSync
     val in = p0.toList
     ("buf1" |: { buf1.toList ?= in.take(2) }) &&
     ("buf2" |: { buf2.toList ?= in.drop(2).take(2) }) &&
@@ -229,7 +229,7 @@ class ProcessSpec extends Properties("Process") {
   }
 
   property("ranges") = forAll(Gen.choose(1, 101)) { size =>
-    Process.ranges(0, 100, size).toSource.flatMap { case (i,j) => emitAll(i until j) }.runLog.run ==
+    Process.ranges(0, 100, size).toSource.flatMap { case (i,j) => emitAll(i until j) }.runLog.unsafePerformSync ==
       IndexedSeq.range(0, 100)
   }
 
@@ -241,12 +241,12 @@ class ProcessSpec extends Properties("Process") {
 
   property("unfoldEval") = protect {
     unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
-      .runLog.run.toList == List.range(10, 0, -1)
+      .runLog.unsafePerformSync.toList == List.range(10, 0, -1)
   }
 
   property("kill of drained process terminates") = protect {
     val effect: Process[Task,Unit] = Process.repeatEval(Task.delay(())).drain
-    effect.kill.runLog.timed(1000).run.isEmpty
+    effect.kill.runLog.unsafePerformTimed(1000).unsafePerformSync.isEmpty
   }
 
   // `p.suspendStep` propagates `Kill` to `p`
@@ -260,7 +260,7 @@ class ProcessSpec extends Properties("Process") {
         case hlt@Halt(_) => hlt
       }
       case hlt@Halt(_) => hlt
-    }.injectCause(Kill).runLog.run // `injectCause(Kill)` is like `kill` but without `drain`.
+    }.injectCause(Kill).runLog.unsafePerformSync // `injectCause(Kill)` is like `kill` but without `drain`.
     fallbackCausedBy == Some(Kill) && received.isEmpty
   }
 
@@ -268,7 +268,7 @@ class ProcessSpec extends Properties("Process") {
     val random = util.Random
     val p = Process.range(1, 10).map(i => Task.delay { Thread.sleep(random.nextInt(100)); i })
 
-    p.sequence(4).runLog.run == p.flatMap(eval).runLog.run
+    p.sequence(4).runLog.unsafePerformSync == p.flatMap(eval).runLog.unsafePerformSync
   }
 
   property("stepAsync onComplete on task never completing") = protect {
@@ -322,7 +322,7 @@ class ProcessSpec extends Properties("Process") {
     val channel = io.fillBuffer(buffer).toChannel
 
     val expected = p0.toList
-    val actual = p0.toSource.through(channel).runLog.run.toList
+    val actual = p0.toSource.through(channel).runLog.unsafePerformSync.toList
     actual === expected && buffer.toList === expected
   }
 
@@ -338,28 +338,28 @@ class ProcessSpec extends Properties("Process") {
 
     val halt = eval(Task delay { throw Terminated(End) }).repeat ++ emit(())
 
-    ((halt pipe process1.id).runLog timed 3000 map { _.toList }).attempt.run === (halt.runLog timed 3000 map { _.toList }).attempt.run
+    ((halt pipe process1.id).runLog unsafePerformTimed 3000 map { _.toList }).unsafePerformSyncAttempt === (halt.runLog unsafePerformTimed 3000 map { _.toList }).unsafePerformSyncAttempt
   }
 
   property("uncons (constant stream)") = protect {
     val process: Process[Task, Int] = Process(1,2,3)
     val result = process.uncons
     // Not sure why I need to use .equals() here instead of using ==
-    result.run.equals((1, Process(2,3)))
+    result.unsafePerformSync.equals((1, Process(2,3)))
   }
   property("uncons (async stream v1)") = protect {
     val task = Task.now(1)
     val process = Process.await(task)(Process.emit(_) ++ Process(2,3))
     val result = process.uncons
-    val (a, newProcess) = result.run
-    a == 1 && newProcess.runLog.run == Seq(2,3)
+    val (a, newProcess) = result.unsafePerformSync
+    a == 1 && newProcess.runLog.unsafePerformSync == Seq(2,3)
   }
   property("uncons (async stream v2)") = protect {
     val task = Task.now(1)
     val process = Process.await(task)(a => Process(2,3).prepend(Seq(a)))
     val result = process.uncons
-    val (a, newProcess) = result.run
-    a == 1 && newProcess.runLog.run == Seq(2,3)
+    val (a, newProcess) = result.unsafePerformSync
+    a == 1 && newProcess.runLog.unsafePerformSync == Seq(2,3)
   }
   property("uncons (mutable queue)") = protect {
     import scalaz.stream.async
@@ -367,10 +367,10 @@ class ProcessSpec extends Properties("Process") {
     val q = async.unboundedQueue[Int]
     val process = q.dequeue
     val result = process.uncons
-    q.enqueueAll(List(1,2,3)).timed(1.second).run
-    q.close.run
-    val (a, newProcess) = result.timed(1.second).run
-    val newProcessResult = newProcess.runLog.timed(1.second).run
+    q.enqueueAll(List(1,2,3)).unsafePerformTimed(1.second).unsafePerformSync
+    q.close.unsafePerformSync
+    val (a, newProcess) = result.unsafePerformTimed(1.second).unsafePerformSync
+    val newProcessResult = newProcess.runLog.unsafePerformTimed(1.second).unsafePerformSync
     a == 1 && newProcessResult == Seq(2,3)
   }
   property("uncons (mutable queue) v2") = protect {
@@ -379,20 +379,20 @@ class ProcessSpec extends Properties("Process") {
     val q = async.unboundedQueue[Int]
     val process = q.dequeue
     val result = process.uncons
-    q.enqueueOne(1).timed(1.second).run
-    val (a, newProcess) = result.timed(1.second).run
+    q.enqueueOne(1).unsafePerformTimed(1.second).unsafePerformSync
+    val (a, newProcess) = result.unsafePerformTimed(1.second).unsafePerformSync
     a == 1
   }
   property("uncons should throw a NoSuchElementException if Process is empty") = protect {
     val process = Process.empty[Task, Int]
     val result = process.uncons
-    try {result.run; false} catch { case _: NoSuchElementException => true case _ : Throwable => false}
+    try {result.unsafePerformSync; false} catch { case _: NoSuchElementException => true case _ : Throwable => false}
   }
   property("uncons should propogate failure if stream fails") = protect {
     case object TestException extends java.lang.Exception
     val process: Process[Task, Int] = Process.fail(TestException)
     val result = process.uncons
-    try {result.run; false} catch { case TestException => true; case _ : Throwable => false}
+    try {result.unsafePerformSync; false} catch { case TestException => true; case _ : Throwable => false}
   }
 
   property("to.halt") = protect {
@@ -407,7 +407,7 @@ class ProcessSpec extends Properties("Process") {
 
     val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
 
-    (src to ch run).run
+    (src to ch run).unsafePerformSync
 
     (count === 1) :| s"count = $count"
   }
@@ -416,7 +416,7 @@ class ProcessSpec extends Properties("Process") {
     val src = Process.range(0, 10).toSource
     val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
 
-    val results = (src observe ch).runLog[Task, Int].run
+    val results = (src observe ch).runLog[Task, Int].unsafePerformSync
     results.isEmpty :| s"expected empty; got $results"
   }
 }

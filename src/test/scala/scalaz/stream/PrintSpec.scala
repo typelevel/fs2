@@ -15,7 +15,7 @@ class PrintSpec extends Properties("io.print") {
     terminates { out =>
       Process
         .constant("word").toSource.repeat
-        .to(io.print(out)).run.run
+        .to(io.print(out)).run.unsafePerformSync
     }
   }
 
@@ -23,7 +23,7 @@ class PrintSpec extends Properties("io.print") {
     terminates { out =>
       Process
         .constant("word").toSource.repeat
-        .to(io.printLines(out)).run.run
+        .to(io.printLines(out)).run.unsafePerformSync
     }
   }
 
@@ -44,7 +44,7 @@ class PrintSpec extends Properties("io.print") {
         }
       )
       .map(_.toString)
-      .to(io.print(out)).run.timed(5000).run
+      .to(io.print(out)).run.unsafePerformTimed(5000).unsafePerformSync
 
     baos.toString == List.range(from, mid).map(_.toString).foldLeft("")(_ + _)
   }
@@ -59,9 +59,9 @@ class PrintSpec extends Properties("io.print") {
       while (baos.toByteArray.length < 1000) Thread.sleep(50)
       baos.close
       out.close
-    })).timed(5000).runAsync(_ => ())
+    })).unsafePerformTimed(5000).unsafePerformAsync(_ => ())
 
-    Task.delay(run(out)).timed(5000).run
+    Task.delay(run(out)).unsafePerformTimed(5000).unsafePerformSync
     true
   }
 }

@@ -29,14 +29,14 @@ class NioFilesSpec extends Properties("niofiles") {
 
   property("chunkR can read a file") = protect {
     val bytes = Process.constant(1024).toSource
-      .through(chunkR(filename)).runLog.run.reduce(_ ++ _)
+      .through(chunkR(filename)).runLog.unsafePerformSync.reduce(_ ++ _)
 
     bytes == ByteVector.view(getfile(filename))
   }
 
   property("linesR can read a file") = protect {
-    val iostrs = io.linesR(filename)(Codec.UTF8).runLog.run.toList
-    val niostrs = linesR(filename)(Codec.UTF8).runLog.run.toList
+    val iostrs = io.linesR(filename)(Codec.UTF8).runLog.unsafePerformSync.toList
+    val niostrs = linesR(filename)(Codec.UTF8).runLog.unsafePerformSync.toList
 
     iostrs == niostrs
   }
@@ -45,7 +45,7 @@ class NioFilesSpec extends Properties("niofiles") {
 
     val tmpname = "testdata/tempdata.tmp"
     Process.constant(1).toSource
-      .through(chunkR(filename)).to(chunkW(tmpname)).run.run
+      .through(chunkR(filename)).to(chunkW(tmpname)).run.unsafePerformSync
 
     val res = ByteVector.view(getfile(tmpname)) == ByteVector.view(getfile(filename))
     Files.delete(Paths.get(tmpname))

@@ -15,11 +15,11 @@ class QueueSpec extends Properties("queue") {
     (bound: Int, xs: List[Int]) =>
       val b = async.circularBuffer[Int](bound)
       val collected = new SyncVar[Throwable\/IndexedSeq[Int]]
-      val p = ((Process.emitAll(xs):Process[Task,Int]) to b.enqueue).run.timed(3000).attempt.run
-      b.dequeue.runLog.runAsync(collected.put)
-      b.close.run
+      val p = ((Process.emitAll(xs):Process[Task,Int]) to b.enqueue).run.unsafePerformTimed(3000).unsafePerformSyncAttempt
+      b.dequeue.runLog.unsafePerformAsync(collected.put)
+      b.close.unsafePerformSync
       val ys = collected.get(3000).map(_.getOrElse(Nil)).getOrElse(Nil)
-      b.close.runAsync(_ => ())
+      b.close.unsafePerformAsync(_ => ())
 
       ("Enqueue process is not blocked" |: p.isRight)
       ("Dequeued a suffix of the input" |: (xs endsWith ys)) &&
@@ -32,14 +32,14 @@ class QueueSpec extends Properties("queue") {
     l: List[Int] =>
       val q = async.unboundedQueue[Int]
       val t1 = Task {
-        l.foreach(i => q.enqueueOne(i).run)
-        q.close.run
+        l.foreach(i => q.enqueueOne(i).unsafePerformSync)
+        q.close.unsafePerformSync
       }
 
       val collected = new SyncVar[Throwable\/IndexedSeq[Int]]
 
-      q.dequeue.runLog.runAsync(collected.put)
-      t1.runAsync(_=>())
+      q.dequeue.runLog.unsafePerformAsync(collected.put)
+      t1.unsafePerformAsync(_=>())
 
       "Items were collected" |:  collected.get(3000).nonEmpty &&
         (s"All values were collected, all: ${collected.get(0)}, l: $l " |: collected.get.getOrElse(Nil) == l)
@@ -49,23 +49,23 @@ class QueueSpec extends Properties("queue") {
   property("size-signal") = forAll {
     l: List[Int] =>
       val q = async.unboundedQueue[Int]
-      val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+      val t1 = Task { l.foreach(i => q.enqueueOne(i).unsafePerformSync) }
       val t2 = q.dequeue.runLog
       val t3 = q.size.discrete.runLog
 
       val sizes = new SyncVar[Throwable \/ IndexedSeq[Int]]
-      t3.runAsync(sizes.put)
+      t3.unsafePerformAsync(sizes.put)
 
       Thread.sleep(100) // delay to give chance for the `size` signal to register
 
-      t1.run
+      t1.unsafePerformSync
 
       val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
-      t2.runAsync(values.put)
+      t2.unsafePerformAsync(values.put)
 
       Thread.sleep(100) // delay to give chance for the `size` signal to collect all values
 
-      q.close.run
+      q.close.unsafePerformSync
 
       val expectedSizes =
         if (l.isEmpty) Vector(0)
@@ -92,23 +92,23 @@ class QueueSpec extends Properties("queue") {
   property("available-unbounded") = forAll { l: List[Int] =>
     val q = async.unboundedQueue[Int]
 
-    val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+    val t1 = Task { l.foreach(i => q.enqueueOne(i).unsafePerformSync) }
     val t2 = q.dequeue.runLog
     val t3 = q.available.discrete.runLog
 
     val available = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t3.runAsync(available.put)
+    t3.unsafePerformAsync(available.put)
 
     Thread.sleep(100) // delay to give chance for the signal to register
 
-    t1.run
+    t1.unsafePerformSync
 
     val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t2.runAsync(values.put)
+    t2.unsafePerformAsync(values.put)
 
     Thread.sleep(100) // delay to give chance for the signal to collect all values
 
-    q.close.run
+    q.close.unsafePerformSync
 
     val expected = Stream.continually(Int.MaxValue).take(l.length * 2 + 1).toSeq
 
@@ -120,23 +120,23 @@ class QueueSpec extends Properties("queue") {
     val bound = 100
     val q = async.boundedQueue[Int](bound)
 
-    val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+    val t1 = Task { l.foreach(i => q.enqueueOne(i).unsafePerformSync) }
     val t2 = q.dequeue.runLog
     val t3 = q.available.discrete.runLog
 
     val available = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t3.runAsync(available.put)
+    t3.unsafePerformAsync(available.put)
 
     Thread.sleep(100) // delay to give chance for the signal to register
 
-    t1.run
+    t1.unsafePerformSync
 
     val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t2.runAsync(values.put)
+    t2.unsafePerformAsync(values.put)
 
     Thread.sleep(100) // delay to give chance for the signal to collect all values
 
-    q.close.run
+    q.close.unsafePerformSync
 
     val expected =
       if (l.isEmpty) Vector(bound)
@@ -154,23 +154,23 @@ class QueueSpec extends Properties("queue") {
     val bound = 4
     val q = async.boundedQueue[Int](bound)
 
-    val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+    val t1 = Task { l.foreach(i => q.enqueueOne(i).unsafePerformSync) }
     val t2 = q.dequeue.runLog
     val t3 = q.available.discrete.runLog
 
     val available = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t3.runAsync(available.put)
+    t3.unsafePerformAsync(available.put)
 
     Thread.sleep(100) // delay to give chance for the signal to register
 
-    t1.run
+    t1.unsafePerformSync
 
     val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t2.runAsync(values.put)
+    t2.unsafePerformAsync(values.put)
 
     Thread.sleep(100) // delay to give chance for the signal to collect all values
 
-    q.close.run
+    q.close.unsafePerformSync
 
     val expected = Vector(4,3,2,1,0,1,2,3,4)
 
@@ -181,23 +181,23 @@ class QueueSpec extends Properties("queue") {
   property("full-unbounded") = forAll { l: List[Int] =>
     val q = async.unboundedQueue[Int]
 
-    val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+    val t1 = Task { l.foreach(i => q.enqueueOne(i).unsafePerformSync) }
     val t2 = q.dequeue.runLog
     val t3 = q.full.discrete.runLog
 
     val full = new SyncVar[Throwable \/ IndexedSeq[Boolean]]
-    t3.runAsync(full.put)
+    t3.unsafePerformAsync(full.put)
 
     Thread.sleep(100) // delay to give chance for the `size` signal to register
 
-    t1.run
+    t1.unsafePerformSync
 
     val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t2.runAsync(values.put)
+    t2.unsafePerformAsync(values.put)
 
     Thread.sleep(100) // delay to give chance for the `size` signal to collect all values
 
-    q.close.run
+    q.close.unsafePerformSync
 
     val expected = Stream.continually(false).take(l.length * 2 + 1).toSeq
 
@@ -210,23 +210,23 @@ class QueueSpec extends Properties("queue") {
     val bound = 4
     val q = async.boundedQueue[Int](bound)
 
-    val t1 = Task { l.foreach(i => q.enqueueOne(i).run) }
+    val t1 = Task { l.foreach(i => q.enqueueOne(i).unsafePerformSync) }
     val t2 = q.dequeue.runLog
     val t3 = q.full.discrete.runLog
 
     val full = new SyncVar[Throwable \/ IndexedSeq[Boolean]]
-    t3.runAsync(full.put)
+    t3.unsafePerformAsync(full.put)
 
     Thread.sleep(100) // delay to give chance for the `size` signal to register
 
-    t1.run
+    t1.unsafePerformSync
 
     val values = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t2.runAsync(values.put)
+    t2.unsafePerformAsync(values.put)
 
     Thread.sleep(100) // delay to give chance for the `size` signal to collect all values
 
-    q.close.run
+    q.close.unsafePerformSync
 
     val expected = Vector(false, false, false, false, true, false, false, false, false)
 
@@ -238,15 +238,15 @@ class QueueSpec extends Properties("queue") {
     l: List[Int] =>
       val q = async.unboundedQueue[Int]
       val t1 = Task {
-        l.foreach(i => q.enqueueOne(i).run)
-        q.close.run
+        l.foreach(i => q.enqueueOne(i).unsafePerformSync)
+        q.close.unsafePerformSync
       }
 
       val c2 = new SyncVar[Throwable\/IndexedSeq[Int]]
       val c3 = new SyncVar[Throwable\/IndexedSeq[Int]]
-      q.dequeue.runLog.runAsync(c2.put)
-      q.dequeue.runLog.runAsync(c3.put)
-      t1.runAsync(_=>())
+      q.dequeue.runLog.unsafePerformAsync(c2.put)
+      q.dequeue.runLog.unsafePerformAsync(c3.put)
+      t1.unsafePerformAsync(_=>())
 
       "Both partial collections were collected" |: (c2.get(3000).nonEmpty && c3.get(3000).nonEmpty) &&
         (s"all items has been received, c2: $c2, c3: $c3, l: $l" |:
@@ -257,23 +257,23 @@ class QueueSpec extends Properties("queue") {
     val l: List[Int] = List(1, 2, 3)
     val q = async.unboundedQueue[Int]
     val t1 = Task {
-      l.foreach(i => q.enqueueOne(i).run)
-      q.close.run
+      l.foreach(i => q.enqueueOne(i).unsafePerformSync)
+      q.close.unsafePerformSync
     }
     val t2 = q.dequeue.runLog
     val t3 = q.dequeue.runLog
 
     //t2 dequeues and must have all l in it
     val dequeued = new SyncVar[Throwable \/ IndexedSeq[Int]]
-    t2.runAsync(dequeued.put)
+    t2.unsafePerformAsync(dequeued.put)
 
     //start pushing ++ stop, and that should make t2 to stop too
-    t1.timed(3000).run
+    t1.unsafePerformTimed(3000).unsafePerformSync
 
     //try publish, shall be empty, terminated, return End
-    val publishClosed = q.enqueueOne(1).attemptRun
+    val publishClosed = q.enqueueOne(1).unsafePerformSyncAttempt
     //subscribe, shall be terminated
-    val subscribeClosed = t3.attemptRun
+    val subscribeClosed = t3.unsafePerformSyncAttempt
 
     (dequeued.get(3000) == Some(\/-(Vector(1,2,3)))) :| s"Queue was terminated ${dequeued.get(0)}" &&
       (publishClosed == -\/(Terminated(End))) :| s"Publisher is closed before elements are drained $publishClosed" &&
@@ -289,9 +289,9 @@ class QueueSpec extends Properties("queue") {
     val sleeper = time.sleep(1 second)
     val signalKill = Process(false).toSource ++ sleeper ++ Process(true)
 
-    signalKill.wye(q.dequeue)(wye.interrupt).runLog.run
-    q.enqueueOne(1).run
-    val r = q.dequeue.take(1).runLog.run
+    signalKill.wye(q.dequeue)(wye.interrupt).runLog.unsafePerformSync
+    q.enqueueOne(1).unsafePerformSync
+    val r = q.dequeue.take(1).runLog.unsafePerformSync
 
     r == Vector(1)
   }
@@ -299,14 +299,14 @@ class QueueSpec extends Properties("queue") {
   property("dequeue-batch.basic") = forAll { l: List[Int] =>
     val q = async.unboundedQueue[Int]
     val t1 = Task {
-      l.foreach(i => q.enqueueOne(i).run)
-      q.close.run
+      l.foreach(i => q.enqueueOne(i).unsafePerformSync)
+      q.close.unsafePerformSync
     }
 
     val collected = new SyncVar[Throwable\/IndexedSeq[Seq[Int]]]
 
-    q.dequeueAvailable.runLog.runAsync(collected.put)
-    t1.runAsync(_=>())
+    q.dequeueAvailable.runLog.unsafePerformAsync(collected.put)
+    t1.unsafePerformAsync(_=>())
 
     "Items were collected" |:  collected.get(3000).nonEmpty &&
       (s"All values were collected, all: ${collected.get(0)}, l: $l " |: collected.get.getOrElse(Nil).flatten == l)
@@ -324,9 +324,9 @@ class QueueSpec extends Properties("queue") {
 
     val collected = new SyncVar[Throwable \/ IndexedSeq[Seq[Int]]]
 
-    (pump take 4 runLog) timed 3000 runAsync (collected.put)
+    (pump take 4 runLog) unsafePerformTimed 3000 unsafePerformAsync (collected.put)
 
-    q.enqueueOne(1) runAsync { _ => () }
+    q.enqueueOne(1) unsafePerformAsync { _ => () }
 
     collected.get(5000).nonEmpty :| "items were collected" &&
       ((collected.get getOrElse Nil) == Seq(Seq(1), Seq(1, 1), Seq(2, 2, 2, 2), Seq(4, 4, 4, 4, 4, 4, 4, 4))) :| s"saw ${collected.get getOrElse Nil}"
@@ -344,9 +344,9 @@ class QueueSpec extends Properties("queue") {
 
     val collected = new SyncVar[Throwable \/ IndexedSeq[Seq[Int]]]
 
-    (pump take 5 runLog) timed 3000 runAsync (collected.put)
+    (pump take 5 runLog) unsafePerformTimed 3000 unsafePerformAsync (collected.put)
 
-    q.enqueueOne(1) runAsync { _ => () }
+    q.enqueueOne(1) unsafePerformAsync { _ => () }
 
     collected.get(5000).nonEmpty :| "items were collected" &&
       ((collected.get getOrElse Nil) == Seq(Seq(1), Seq(1, 1), Seq(2, 2), Seq(2, 2), Seq(2, 2))) :| s"saw ${collected.get getOrElse Nil}"
@@ -371,16 +371,16 @@ class QueueSpec extends Properties("queue") {
         i <- q.dequeue take xs.length
       } yield i
 
-      setup.run
+      setup.unsafePerformSync
 
-      val results = (safeDriver merge recovery).runLog.timed(3000).run
+      val results = (safeDriver merge recovery).runLog.unsafePerformTimed(3000).unsafePerformSync
       (results == xs) :| s"got $results"
     }
   }
 
   property("dequeue.take-1-repeatedly") = protect {
     val q = async.unboundedQueue[Int]
-    q.enqueueAll(List(1, 2, 3)).run
+    q.enqueueAll(List(1, 2, 3)).unsafePerformSync
 
     val p = for {
       i1 <- q.dequeue take 1
@@ -388,6 +388,6 @@ class QueueSpec extends Properties("queue") {
       i3 <- q.dequeue take 1
     } yield List(i1, i2, i3)
 
-    p.runLast.run == Some(List(1, 2, 3))
+    p.runLast.unsafePerformSync == Some(List(1, 2, 3))
   }
 }

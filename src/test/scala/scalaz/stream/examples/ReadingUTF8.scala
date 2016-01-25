@@ -68,7 +68,7 @@ object ReadingUTF8 extends Properties("examples.ReadingUTF8") {
 
   property("benchmark") = secure {
     benchmark("java.io", 10, javaIo)
-    benchmark("w/o  utf8Decode", 10, scalazIoNoUtf8.run)
-    benchmark("with utf8Decode", 10, scalazIo.run)
+    benchmark("w/o  utf8Decode", 10, scalazIoNoUtf8.unsafePerformSync)
+    benchmark("with utf8Decode", 10, scalazIo.unsafePerformSync)
   }
 }

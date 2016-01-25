@@ -29,14 +29,14 @@ class CauseSpec extends Properties("cause") {
     val halted: Process[Task, Int] = halt
     val failed: Process[Task, Int] = fail(Bwahahaa)
 
-    ("result" |: source.runLog.run == Vector(1,2,3))
+    ("result" |: source.runLog.unsafePerformSync == Vector(1,2,3))
     .&& ("source" |: suspend(source) === source)
     .&& ("halt" |: suspend(halted) === halted)
     .&& ("failed" |: suspend(failed) === failed)
     .&& ("take(1)" |: suspend(source.take(1)) === source.take(1))
     .&& ("repeat.take(10)" |: suspend(source.repeat.take(10)) === source.repeat.take(10))
     .&& ("eval" |: suspend(eval(Task.now(1))) === eval(Task.delay(1)))
-    .&& ("kill" |: { var cause: Cause = End; suspend(source.onHalt { c => cause = c; halt }).kill.run.run; cause == Kill })
+    .&& ("kill" |: { var cause: Cause = End; suspend(source.onHalt { c => cause = c; halt }).kill.run.unsafePerformSync; cause == Kill })
   }
 
 
@@ -49,7 +49,7 @@ class CauseSpec extends Properties("cause") {
     source.onHalt{cause => upReason = Some(cause); Halt(cause)}
     .pipe(process1.take(2))
     .onHalt { cause => downReason = Some(cause) ; Halt(cause) }
-    .runLog.run
+    .runLog.unsafePerformSync
 
     (result == Vector(1,2))
     .&&(upReason == Some(Kill))
@@ -66,7 +66,7 @@ class CauseSpec extends Properties("cause") {
       .flatMap{ i => Process.range(0,i).bufferAll}
       .pipe(process1.take(2))
       .onHalt { cause => downReason = Some(cause) ; Halt(cause) }
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (result == Vector(0,0))
     .&&(upReason == Some(Kill))
@@ -82,7 +82,7 @@ class CauseSpec extends Properties("cause") {
       source.onHalt{cause => upReason = Some(cause); Halt(cause)}
       .pipe(process1.take(2))
       .onHalt { cause => downReason = Some(cause) ; Halt(cause) }
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (result == Vector(1,2))
@@ -100,7 +100,7 @@ class CauseSpec extends Properties("cause") {
       source
       .pipe(process1.id[Int].onHalt{cause => id1Reason = Some(cause) ; Halt(cause)})
       .onHalt { cause => downReason = Some(cause) ; Halt(cause) }
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (result == Vector(1,2,3))
     .&&(id1Reason == Some(Kill))
@@ -116,7 +116,7 @@ class CauseSpec extends Properties("cause") {
       source
       .pipe(process1.id[Int].onHalt{cause => id1Reason = Some(cause) ; Halt(cause)})
       .onHalt { cause => downReason = Some(cause) ; Halt(cause) }
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (result == Vector(1))
     .&&(id1Reason == Some(Kill))
@@ -136,7 +136,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.tee(right)(halt)
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process == Vector())
     .&& (leftReason == Some(Kill))
@@ -157,7 +157,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.tee(right)(awaitL.repeat)
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process == Vector(0,1,2))
     .&& (leftReason == Some(End))
@@ -178,7 +178,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.tee(right)(awaitR.repeat)
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (process == Vector(0,1,2))
@@ -200,7 +200,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.tee(right)(awaitL.repeat onHalt{ c => teeReason = Some(c); Halt(c)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (process == Vector())
@@ -224,7 +224,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.tee(right)(awaitR.repeat onHalt{ c => teeReason = Some(c); Halt(c)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (process == Vector())
@@ -247,7 +247,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.tee(right)((awaitL[Int] ++ awaitR[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (process == Vector(0,10,1,11,2,12))
@@ -270,7 +270,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.tee(right)((awaitR[Int] ++ awaitL[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (process == Vector(10,0,11,1,12,2))
@@ -294,7 +294,7 @@ class CauseSpec extends Properties("cause") {
       left.tee(right)((awaitL[Int] ++ awaitR[Int]).repeat onHalt{ c => teeReason = Some(c); Halt(c)})
       .take(2)
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (process == Vector(0,10))
@@ -319,7 +319,7 @@ class CauseSpec extends Properties("cause") {
       .onHalt{ c => beforePipeReason = Some(c); Halt(c)}
       .take(2)
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process == Vector(0,10))
     .&& (rightReason == Some(Kill))
@@ -343,7 +343,7 @@ class CauseSpec extends Properties("cause") {
       .onHalt{ c => beforePipeReason = Some(c); Halt(c)}
       .take(2)
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (process == Vector(0,10))
@@ -371,7 +371,7 @@ class CauseSpec extends Properties("cause") {
       .onHalt{ c => beforePipeReason = Some(c); Halt(c)}
       .pipe(process1.id[Int] onHalt {c => pipeReason = Some(c); Halt(c)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
 
     (process == Vector(0,10))
@@ -395,7 +395,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.wye(right)(halt)
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process == Vector())
     .&& (leftReason == Some(Kill))
@@ -417,7 +417,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.wye(right)(awaitL.repeat.asInstanceOf[Wye[Int,Int,Int]].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process == Vector(0,1,2))
     .&& (leftReason == Some(End))
@@ -439,7 +439,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.wye(right)(awaitR.repeat.asInstanceOf[Wye[Int,Int,Int]].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process == Vector(10,11,12))
     .&& (leftReason == Some(Kill))
@@ -461,7 +461,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.wye(right)(wye.merge[Int].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process.filter(_ < 10) == Vector(0,1,2))
     .&& (rightReason == Some(Kill))
@@ -482,7 +482,7 @@ class CauseSpec extends Properties("cause") {
     val process =
       left.wye(right)(wye.merge[Int].onHalt{rsn => wyeReason=Some(rsn); Halt(rsn)})
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process.filter(_ >= 10) == Vector(10,11,12))
     .&& (leftReason == Some(Kill))
@@ -506,7 +506,7 @@ class CauseSpec extends Properties("cause") {
       .onHalt{ c => pipeReason = Some(c); Halt(c)}
       .pipe(process1.take(10))
       .onHalt{ c => processReason = Some(c); Halt(c)}
-      .runLog.run
+      .runLog.unsafePerformSync
 
     (process.size == 10)
     .&& (leftReason == Some(Kill))
@@ -534,20 +534,20 @@ class CauseSpec extends Properties("cause") {
     // pipe
     inf
       .flatMap { _ => (halt |> p1).onHalt { x => fromPipe = Some(x); Halt(x) } }
-      .take(4).run.timed(3000).run
+      .take(4).run.unsafePerformTimed(3000).unsafePerformSync
     inf
       .flatMap { _ => Process(0, 2, 4).chunkAll /* Pipe is in chunkAll. */ }
-      .take(4).run.timed(3000).run
+      .take(4).run.unsafePerformTimed(3000).unsafePerformSync
 
     // tee
     inf
       .flatMap { _ => emit(1).tee(emit(2))(t).onHalt { x => fromTee = Some(x); Halt(x) } }
-      .take(3).run.timed(3000).run
+      .take(3).run.unsafePerformTimed(3000).unsafePerformSync
 
     // wye (same test as tee)
     inf
       .flatMap { _ => emit(1).wye(emit(2))(t).onHalt { x => fromWye = Some(x); Halt(x) } }
-      .take(3).run.timed(3000).run
+      .take(3).run.unsafePerformTimed(3000).unsafePerformSync
 
     (fromPipe.get == Kill) && (fromTee.get == Kill) && (fromWye.get == Kill)
   }

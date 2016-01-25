@@ -21,25 +21,25 @@ class WyeSpec extends  Properties("Wye"){
 
   property("feedL") = protect {
     val w = wye.feedL(List.fill(10)(1))(process1.id)
-    val x = Process.range(0,100).wye(halt)(w).runLog.run
+    val x = Process.range(0,100).wye(halt)(w).runLog.unsafePerformSync
     x.toList == (List.fill(10)(1) ++ List.range(0,100))
   }
 
   property("feedR") = protect {
     val w = wye.feedR(List.fill(10)(1))(wye.merge[Int])
-    val x = Process.range(0,100).wye(halt)(w).runLog.run
+    val x = Process.range(0,100).wye(halt)(w).runLog.unsafePerformSync
     x.toList == (List.fill(10)(1) ++ List.range(0,100))
   }
 
   property("detach1L") = protect {
     val w = wye.detach1L(wye.merge[Int])
-    val x = Process.constant(1).wye(Process.range(10,20))(w).runLog.run
+    val x = Process.constant(1).wye(Process.range(10,20))(w).runLog.unsafePerformSync
     x == List.range(10,20)
   }
 
   property("detach1R") = protect {
     val w = wye.detach1R(wye.merge[Int])
-    val x = Process.range(0,10).wye(Process.constant(1))(w).runLog.run
+    val x = Process.range(0,10).wye(Process.constant(1))(w).runLog.unsafePerformSync
     x == List.range(0,10)
   }
 
@@ -68,13 +68,13 @@ class WyeSpec extends  Properties("Wye"){
 
   property("haltL") = protect {
     val w = wye.haltL(Kill)(wye.feedR(Seq(0,1))(wye.merge[Int]))
-    val x = Process.emit(-1).wye(Process.range(2,5))(w).runLog.run
+    val x = Process.emit(-1).wye(Process.range(2,5))(w).runLog.unsafePerformSync
     x.toList == List(0,1)
   }
 
   property("haltR") = protect {
     val w = wye.haltR(Kill)(wye.feedL(Seq(0,1))(wye.merge[Int]))
-    val x = Process.range(2,5).wye(Process.emit(-1))(w).runLog.run
+    val x = Process.range(2,5).wye(Process.emit(-1))(w).runLog.unsafePerformSync
     x.toList == List(0,1)
   }
 
@@ -92,60 +92,60 @@ class WyeSpec extends  Properties("Wye"){
     val inf = Process.constant(0)
     val one = eval(Task.now(1))
     val empty = Process[Int]()
-    inf.wye(empty)(whileBoth).run.timed(3000).attempt.run == \/-(()) &&
-      empty.wye(inf)(whileBoth).run.timed(3000).attempt.run == \/-(()) &&
-      inf.wye(one)(whileBoth).run.timed(3000).attempt.run == \/-(()) &&
-      one.wye(inf)(whileBoth).run.timed(3000).attempt.run == \/-(())
+    inf.wye(empty)(whileBoth).run.unsafePerformTimed(3000).unsafePerformSyncAttempt == \/-(()) &&
+      empty.wye(inf)(whileBoth).run.unsafePerformTimed(3000).unsafePerformSyncAttempt == \/-(()) &&
+      inf.wye(one)(whileBoth).run.unsafePerformTimed(3000).unsafePerformSyncAttempt == \/-(()) &&
+      one.wye(inf)(whileBoth).run.unsafePerformTimed(3000).unsafePerformSyncAttempt == \/-(())
   }
 
   property("either") = protect {
     val w = wye.either[Int,Int]
     val s = Process.constant(1).take(1)
-    s.wye(s)(w).runLog.timed(3000).run.map(_.fold(identity, identity)).toList == List(1,1)
+    s.wye(s)(w).runLog.unsafePerformTimed(3000).unsafePerformSync.map(_.fold(identity, identity)).toList == List(1,1)
   }
 
   property("interrupt.source.halt") = protect {
     val p1 = Process(1,2,3,4,6).toSource
     val i1 = repeatEval(Task.now(false))
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v == List(1,2,3,4,6)
   }
 
   property("interrupt.signal.halt") = protect {
     val p1 = Process.range(1,1000)
     val i1 = Process(1,2,3,4).map(_=>false).toSource
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size < 1000
   }
 
   property("interrupt.signal.true") = protect {
     val p1 = Process.range(1,1000)
     val i1 = Process(1,2,3,4).map(_=>false).toSource ++ emit(true) ++ repeatEval(Task.now(false))
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size < 1000
   }
 
   property("either.terminate-on-both") = protect {
-    val e = (Process.range(0, 20) either Process.range(0, 20)).runLog.timed(1000).run
+    val e = (Process.range(0, 20) either Process.range(0, 20)).runLog.unsafePerformTimed(1000).unsafePerformSync
     (e.collect { case -\/(v) => v } == (0 until 20).toSeq) :| "Left side is merged ok" &&
       (e.collect { case \/-(v) => v } == (0 until 20).toSeq) :| "Right side is merged ok"
   }
 
   property("either.terminate-on-downstream") = protect {
-    val e = (Process.range(0, 20) either Process.range(0, 20)).take(10).runLog.timed(1000).run
+    val e = (Process.range(0, 20) either Process.range(0, 20)).take(10).runLog.unsafePerformTimed(1000).unsafePerformSync
     e.size == 10
   }
 
 
   property("either.continue-when-left-done") = protect {
-    val e = (Process.range(0, 20) either (time.awakeEvery(25 millis).take(20))).runLog.timed(5000).run
+    val e = (Process.range(0, 20) either (time.awakeEvery(25 millis).take(20))).runLog.unsafePerformTimed(5000).unsafePerformSync
     ("Both sides were emitted" |: (e.size == 40))  &&
       ("Left side terminated earlier" |: e.zipWithIndex.filter(_._1.isLeft).lastOption.exists(_._2 < 35))   &&
       ("Right side was last" |:  e.zipWithIndex.filter(_._1.isRight).lastOption.exists(_._2 == 39))
   }
 
   property("either.continue-when-right-done") = protect {
-    val e = ((time.awakeEvery(25 millis).take(20)) either Process.range(0, 20)).runLog.timed(5000).run
+    val e = ((time.awakeEvery(25 millis).take(20)) either Process.range(0, 20)).runLog.unsafePerformTimed(5000).unsafePerformSync
     ("Both sides were emitted" |: (e.size == 40)) &&
       ("Right side terminated earlier" |: e.zipWithIndex.filter(_._1.isRight).lastOption.exists(_._2 < 35))   &&
       ("Left side was last" |: e.zipWithIndex.filter(_._1.isLeft).lastOption.exists(_._2 == 39))
@@ -154,7 +154,7 @@ class WyeSpec extends  Properties("Wye"){
   property("either.left.failed") = protect {
     val e =
       ((Process.range(0, 2) ++ eval(Task.fail(Bwahahaa))) either Process.range(10, 20))
-       .attempt().runLog.timed(3000).run
+       .attempt().runLog.unsafePerformTimed(3000).unsafePerformSync
 
     (e.collect { case \/-(-\/(v)) => v } == (0 until 2)) :| "Left side got collected" &&
       (e.collect { case -\/(rsn) => rsn }.nonEmpty) :| "exception was propagated"
@@ -164,7 +164,7 @@ class WyeSpec extends  Properties("Wye"){
   property("either.right.failed") = protect {
     val e =
       (Process.range(0, 2) either (Process.range(10, 20) ++ eval(Task.fail(Bwahahaa))))
-      .attempt().runLog.timed(3000).run
+      .attempt().runLog.unsafePerformTimed(3000).unsafePerformSync
 
     (e.collect { case \/-(-\/(v)) => v } == (0 until 2)) :| "Left side got collected" &&
       (e.collect { case \/-(\/-(v)) => v } == (10 until 20)) :| "Right side got collected" &&
@@ -181,7 +181,7 @@ class WyeSpec extends  Properties("Wye"){
     val l = time.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(500);syncL.put(100)})
     val r = time.awakeEvery(10 millis) onComplete eval_(Task.delay{ Thread.sleep(600);syncR.put(200)})
 
-    val e = ((l either r).take(10) onComplete eval_(Task.delay(syncO.put(1000)))).runLog.timed(3000).run
+    val e = ((l either r).take(10) onComplete eval_(Task.delay(syncO.put(1000)))).runLog.unsafePerformTimed(3000).unsafePerformSync
 
     (e.size == 10) :| "10 first was taken" &&
       (syncO.get(3000) == Some(1000)) :| "Out side was cleaned" &&
@@ -206,7 +206,7 @@ class WyeSpec extends  Properties("Wye"){
           }
       }
 
-    val result = m.runLog.timed(180000).run
+    val result = m.runLog.unsafePerformTimed(180000).unsafePerformSync
     (result.exists(_ > 100) == false) &&
       (result.size >= count / 1000)
 
@@ -235,7 +235,7 @@ class WyeSpec extends  Properties("Wye"){
           }
       }
 
-    val result = m.runLog.timed(300000).run
+    val result = m.runLog.unsafePerformTimed(300000).unsafePerformSync
 
     (result.exists(_ > 100) == false) &&
       (result.size >= count*deep/10)
@@ -250,7 +250,7 @@ class WyeSpec extends  Properties("Wye"){
     val pm1 = effect.wye(Process(1000,2000).toSource)(wye.merge).take(2)
     val pm2 = Process(3000,4000).toSource.wye(effect)(wye.merge).take(2)
 
-    (pm1 ++ pm2).runLog.timed(3000).run.size == 4
+    (pm1 ++ pm2).runLog.unsafePerformTimed(3000).unsafePerformSync.size == 4
   }
 
   property("mergeHaltBoth.terminate-on-doubleHalt") = protect {
@@ -258,10 +258,10 @@ class WyeSpec extends  Properties("Wye"){
 
     for (i <- 1 to 100) {
       val q = async.unboundedQueue[Unit]
-      q.enqueueOne(()).run
+      q.enqueueOne(()).unsafePerformSync
 
       val process = ((q.dequeue merge halt).once wye halt)(wye.mergeHaltBoth)
-      process.run.timed(3000).run
+      process.run.unsafePerformTimed(3000).unsafePerformSync
     }
 
     true
@@ -276,12 +276,12 @@ class WyeSpec extends  Properties("Wye"){
     val p2:Process[Task,Unit] = repeatEval(Task.now(true)).flatMap(_ => p1)
     val toRun =  term1.discrete.wye(p2)(wye.interrupt)
 
-    toRun.runLog.runAsync {  sync.put   }
+    toRun.runLog.unsafePerformAsync {  sync.put   }
 
     Task {
       Thread.sleep(1000)
-      term1.set(true).run
-    }.runAsync(_ => ())
+      term1.set(true).unsafePerformSync
+    }.unsafePerformAsync(_ => ())
 
 
     sync.get(3000).nonEmpty
@@ -290,7 +290,7 @@ class WyeSpec extends  Properties("Wye"){
   property("liftY") = protect {
     import TestInstances._
     forAll { (pi: Process0[Int], ps: Process0[String]) =>
-      "liftY" |:  pi.pipe(process1.sum).toList == (pi: Process[Task,Int]).wye(ps)(process1.liftY(process1.sum)).runLog.timed(3000).run.toList
+      "liftY" |:  pi.pipe(process1.sum).toList == (pi: Process[Task,Int]).wye(ps)(process1.liftY(process1.sum)).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     }
   }
 
@@ -368,42 +368,42 @@ class WyeSpec extends  Properties("Wye"){
   property("interrupt-constant.signal-halt") = protect {
     val p1 = Process.constant(42)
     val i1 = Process(false)
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size >= 0
   }
 
   property("interrupt-constant.signal-halt.collect-all") = protect {
     val p1 = Process.constant(42).collect { case i if i > 0 => i }
     val i1 = Process(false)
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size >= 0
   }
 
   property("interrupt-constant.signal-halt.collect-none") = protect {
     val p1 = Process.constant(42).collect { case i if i < 0 => i }
     val i1 = Process(false)
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size >= 0
   }
 
   property("interrupt-constant.signal-halt.filter-none") = protect {
     val p1 = Process.constant(42).filter { _ < 0 }
     val i1 = Process(false)
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size >= 0
   }
 
   property("interrupt-constant.signal-constant-true.collect-all") = protect {
     val p1 = Process.constant(42).collect { case i if i > 0 => i }
     val i1 = Process.constant(true)
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size >= 0
   }
 
   property("interrupt-constant.signal-constant-true.collect-none") = protect {
     val p1 = Process.constant(42).collect { case i if i < 0 => i }
     val i1 = Process.constant(true)
-    val v = i1.wye(p1)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p1)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size >= 0
   }
 
@@ -411,7 +411,7 @@ class WyeSpec extends  Properties("Wye"){
     val p1 = Process.constant(42).collect { case i if i < 0 => i }
     val p2 = p1 |> process1.id
     val i1 = Process(false)
-    val v = i1.wye(p2)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p2)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size >= 0
   }
 
@@ -419,7 +419,7 @@ class WyeSpec extends  Properties("Wye"){
     val p1 = Process.constant(42).collect { case i if i < 0 => i } merge Process.constant(12)
     val p2 = p1 |> process1.id
     val i1 = Process(false)
-    val v = i1.wye(p2)(wye.interrupt).runLog.timed(3000).run.toList
+    val v = i1.wye(p2)(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync.toList
     v.size >= 0
   }
 
@@ -443,7 +443,7 @@ class WyeSpec extends  Properties("Wye"){
 
     eval(Task delay { flagReceived = flag.get(500).isDefined; true }).wye(
         awaitP pipe process1.id onComplete eval_(Task delay { cleanup = true })
-      )(wye.interrupt).run.run
+      )(wye.interrupt).run.unsafePerformSync
 
     complete :| "task completed" && cleanup :| "inner cleanup invoked" && flagReceived :| "received flag"
   }
@@ -465,7 +465,7 @@ class WyeSpec extends  Properties("Wye"){
     // interrupt awaitP before the second part of the task can even start running
     eval(Task delay { flag.put(()); true }).wye(
         awaitP pipe process1.id onComplete eval_(Task.delay { cleanup = true })
-      )(wye.interrupt).run.run
+      )(wye.interrupt).run.unsafePerformSync
 
     !complete :| "task interrupted" && cleanup :| "inner cleanup invoked"
   }
@@ -499,7 +499,7 @@ class WyeSpec extends  Properties("Wye"){
           awaitP pipe process1.id onComplete eval_(Task delay { flag.put(()); innerCleanup = true })
         )(wye.interrupt)
       .onComplete(eval_(Task delay { outerCleanup = true }))
-      .run.run
+      .run.unsafePerformSync
 
     complete :| "completion" &&
       innerCleanup :| "innerCleanup" &&
@@ -512,7 +512,7 @@ class WyeSpec extends  Properties("Wye"){
       val q = async.unboundedQueue[Int]
       val data = emitAll(List(1, 2, 3))
 
-      val results = (emit(true) wye (q.dequeue observe q.enqueue append data))(wye.interrupt).runLog.timed(3000).run
+      val results = (emit(true) wye (q.dequeue observe q.enqueue append data))(wye.interrupt).runLog.unsafePerformTimed(3000).unsafePerformSync
 
       results == Seq()
     }

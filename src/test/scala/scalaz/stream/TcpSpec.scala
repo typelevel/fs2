@@ -45,7 +45,7 @@ class TcpSpec extends Properties("tcp") {
         responses.take(1).drain
       }
     }
-    results.runLog.run.mkString ?= msgs.mkString
+    results.runLog.unsafePerformSync.mkString ?= msgs.mkString
   }
 
   property("echo") = forAll { (msgs0: List[String]) =>
@@ -86,7 +86,7 @@ class TcpSpec extends Properties("tcp") {
         responses.take(1).drain
       }
     }
-    val bytes: ByteVector = results.runLog.run.foldLeft(ByteVector.empty)(_ ++ _)
+    val bytes: ByteVector = results.runLog.unsafePerformSync.foldLeft(ByteVector.empty)(_ ++ _)
     bytes ?= ByteVector.fill(100)(b)
   }
 
@@ -107,8 +107,8 @@ class TcpSpec extends Properties("tcp") {
     lazy val startServer =
       link.discrete.wye(server)(wye.interrupt)
           .run
-          .runAsync { _.fold(e => throw e, identity) }
-    lazy val stopServer = { E.shutdown(); link.set(true).run }
+          .unsafePerformAsync { _.fold(e => throw e, identity) }
+    lazy val stopServer = { E.shutdown(); link.set(true).unsafePerformSync }
 
     /*property("setup") = forAll ((i: Int) => { startServer; true })
     property("go") =
@@ -121,7 +121,7 @@ class TcpSpec extends Properties("tcp") {
             }
           }
         }
-        nondeterminism.njoin(10, 10)(Process.emitAll(clients))(S2).run.run
+        nondeterminism.njoin(10, 10)(Process.emitAll(clients))(S2).run.unsafePerformSync
         true
       }
     property("teardown") = forAll ((i: Int) => { stopServer; true })*/

@@ -51,7 +51,7 @@ class TeeSpec extends Properties("Tee") {
   /*
    val a = Process.range(0,l.length).map(l(_))
     val b = Process.range(0,l2.length).map(l2(_))
-    val r = a.tee(b)(tee.zipAll(-1, 1)).runLog.run.toList
+    val r = a.tee(b)(tee.zipAll(-1, 1)).runLog.unsafePerformSync.toList
     r.toString |: (r == l.zipAll(l2, -1, 1).toList)
 
    */
@@ -63,8 +63,8 @@ class TeeSpec extends Properties("Tee") {
        , "zipAll " |: {
           val a = Process.range(0,li.length).map(li(_)).toSource
           val b = Process.range(0,math.abs(n % 100)).toSource
-          val r = a.tee(b)(tee.zipAll(-1, 1)).runLog.run.toList
-          (r === li.zipAll(b.runLog.run.toList, -1, 1).toList)
+          val r = a.tee(b)(tee.zipAll(-1, 1)).runLog.unsafePerformSync.toList
+          (r === li.zipAll(b.runLog.unsafePerformSync.toList, -1, 1).toList)
         }
       )
 
@@ -79,7 +79,7 @@ class TeeSpec extends Properties("Tee") {
     val rightCleanup = new SyncVar[Int]
     val l = Process(1) onComplete(eval_(Task.delay { leftCleanup.put(1) }))
     val r = Process(2, 3, 4) onComplete(eval_( Task.delay { rightCleanup.put(1) }))
-    l.zip(r).run.run
+    l.zip(r).run.unsafePerformSync
     leftCleanup.get(500).get == rightCleanup.get(500).get
   }
 
@@ -88,7 +88,7 @@ class TeeSpec extends Properties("Tee") {
     val rightCleanup = new SyncVar[Int]
     val l = Process(1, 2, 3) onComplete(eval_(Task.delay { leftCleanup.put(1) }))
     val r = fail(new java.lang.Exception()) onComplete(eval_( Task.delay { rightCleanup.put(1) }))
-    l.zip(r).run.attemptRun
+    l.zip(r).run.unsafePerformSyncAttempt
     leftCleanup.get(500).get == rightCleanup.get(500).get
   }
 
@@ -96,21 +96,21 @@ class TeeSpec extends Properties("Tee") {
   property("zip left/right side infinite") = protect {
     val ones = Process.eval(Task.now(1)).repeat
     val p = Process(1,2,3)
-    ones.zip(p).runLog.run == IndexedSeq(1 -> 1, 1 -> 2, 1 -> 3) &&
-      p.zip(ones).runLog.run == IndexedSeq(1 -> 1, 2 -> 1, 3 -> 1)
+    ones.zip(p).runLog.unsafePerformSync == IndexedSeq(1 -> 1, 1 -> 2, 1 -> 3) &&
+      p.zip(ones).runLog.unsafePerformSync == IndexedSeq(1 -> 1, 2 -> 1, 3 -> 1)
   }
 
   // ensure that zipping terminates when  killed from the downstream
   property("zip both side infinite") = protect {
     val ones = Process.eval(Task.now(1)).repeat
-    ones.zip(ones).take(3).runLog.run == IndexedSeq(1 -> 1, 1 -> 1, 1 -> 1)
+    ones.zip(ones).take(3).runLog.unsafePerformSync == IndexedSeq(1 -> 1, 1 -> 1, 1 -> 1)
   }
 
   property("passL/R") = protect {
     val a = Process.range(0,10)
     val b: Process[Task,Int] = halt
-    a.tee(b)(tee.passL[Int]).runLog.run == List.range(0,10) &&
-      b.tee(a)(tee.passR[Int]).runLog.run == List.range(0,10)
+    a.tee(b)(tee.passL[Int]).runLog.unsafePerformSync == List.range(0,10) &&
+      b.tee(a)(tee.passR[Int]).runLog.unsafePerformSync == List.range(0,10)
   }
 
   property("tee can await right side and emit when left side stops") = protect {

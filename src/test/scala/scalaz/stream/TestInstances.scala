@@ -104,5 +104,5 @@ object TestInstances {
   }
 
   implicit def equalProcessTask[A:Equal]: Equal[Process[Task,A]] =
-    Equal.equal(_.runLog.attemptRun == _.runLog.attemptRun)
+    Equal.equal(_.runLog.unsafePerformSyncAttempt == _.runLog.unsafePerformSyncAttempt)
 }

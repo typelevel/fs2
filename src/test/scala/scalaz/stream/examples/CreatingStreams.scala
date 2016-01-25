@@ -131,7 +131,7 @@ object CreatingStreams extends Properties("creating-streams") {
     Since we've filtered to allow only values greater than 10, we
     check that all values emitted satisfy this predicate.
     */
-    val ok1: Boolean = r.run.forall(i => i.toInt > 10)
+    val ok1: Boolean = r.unsafePerformSync.forall(i => i.toInt > 10)
 
     /*
     Recall we can use `run` if we want to evaluate a stream just
@@ -144,6 +144,6 @@ object CreatingStreams extends Properties("creating-streams") {
       oddsGt10.pipe(process1.forall(i => i.toInt > 10)) // transform the stream using `forall`
               .runLastOr(true) // obtain the last value emitted, or `true` if stream is empty
 
-    ok1 && ok2.run
+    ok1 && ok2.unsafePerformSync
   }
 }

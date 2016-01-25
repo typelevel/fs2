@@ -69,10 +69,10 @@ class ProcessPerformanceSpec extends Properties("Process-performance") {
     , maxTime: FiniteDuration = 10 seconds
     , distribution: Seq[Int] = defaultDistribution) = {
     val leftTimed =
-      distribution.map(cnt => time { left(cnt).runFoldMap(identity).run })
+      distribution.map(cnt => time { left(cnt).runFoldMap(identity).unsafePerformSync})
 
     val rightTimed =
-      distribution.map(cnt => time { right(cnt).runFoldMap(identity).run })
+      distribution.map(cnt => time { right(cnt).runFoldMap(identity).unsafePerformSync })
 
    // Timing is left out for now, as we need to adapt for slow test systems
    // ("Left associated is < 1s per run" |: leftTimed.filter(_._1 > maxTime).isEmpty) &&
@@ -85,7 +85,7 @@ class ProcessPerformanceSpec extends Properties("Process-performance") {
     , maxTime: FiniteDuration = 10 seconds
     , distribution: Seq[Int] = defaultDistribution
     ) = {
-    val timed = distribution.map(cnt => time(f(cnt).runFoldMap(identity).run))
+    val timed = distribution.map(cnt => time(f(cnt).runFoldMap(identity).unsafePerformSync))
 
     // Timing out for now
     // "Ops take < 1s per run" |: timed.filter(_._1 > maxTime).isEmpty

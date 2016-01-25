@@ -15,7 +15,7 @@ import scalaz.\/._
 class ResourceSafetySpec extends Properties("resource-safety") {
 
   // Tests to ensure resource safety in a variety of scenarios
-  // We want to guarantee that `Process` cleanup actions get run
+  // We want to guarantee that `Process` cleanup actions getunsafePerformSync
   // even if exceptions occur:
   //   * In pure code, `src.map(_ => sys.error("bwahahaha!!!")`
   //   * In deterministic effectful code, i.e. `src.through(chan)`, where
@@ -76,7 +76,7 @@ class ResourceSafetySpec extends Properties("resource-safety") {
 
     val result = procs.zipWithIndex.map {
       case ((label,proc,exp,cup),idx) =>
-        val r = proc.run.attemptRun
+        val r = proc.run.unsafePerformSyncAttempt
         val thrwn = thrown.toArray.toList
         thrown.clear()
         s"$label r: $r t: $thrwn" |: ( r == exp && thrwn == cup)
@@ -88,7 +88,7 @@ class ResourceSafetySpec extends Properties("resource-safety") {
   property("repeated kill") = protect {
     import TestUtil._
     var cleaned = false
-    (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.expectedCause(_ == Kill).run.run
+    (emit(1) onComplete eval_(Task.delay(cleaned = true))).kill.kill.kill.expectedCause(_ == Kill).run.unsafePerformSync
     cleaned
   }
 
@@ -105,7 +105,7 @@ class ResourceSafetySpec extends Properties("resource-safety") {
         }
         x <- emit(1).zip(emit(2).pipe(process1.id[Int]))
       } yield x
-    )(wye.interrupt).run.run
+    )(wye.interrupt).run.unsafePerformSync
 
     val acquired = semaphore.tryAcquire(3, TimeUnit.SECONDS)
 

@@ -85,7 +85,7 @@ package object nondeterminism {
 
       def fail(cause: Cause): Unit = {
         closed = Some(cause)
-        S(done.kill runAsync { _=> () })
+        S(done.kill unsafePerformAsync { _=> () })
         state = state match {
           case Middle3(interrupt) => S(interrupt(Kill)) ; Either3.middle3((_:Cause) => ())
           case Right3(cont) => nextStep(Halt(Kill) +: cont);  Either3.middle3((_:Cause) => ())
@@ -103,7 +103,7 @@ package object nondeterminism {
 
       def completeIfDone: Unit = {
         if (allDone) {
-          S(q.failWithCause(closed.getOrElse(End)) runAsync { _ => {} })
+          S(q.failWithCause(closed.getOrElse(End)) unsafePerformAsync { _ => {} })
           completer.foreach { cb =>  S(cb(\/-(()))) }
           completer = None
           closed = closed orElse Some(End)
@@ -134,7 +134,7 @@ package object nondeterminism {
               case Kill => Halt(Error(Terminated(Kill)))
               case cause => Halt(cause)
             }
-            .run.runAsync { res =>
+            .run.unsafePerformAsync { res =>
               S(actor ! Finished(res))
             }
 

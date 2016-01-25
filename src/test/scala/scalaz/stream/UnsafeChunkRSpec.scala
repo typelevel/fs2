@@ -22,7 +22,7 @@ class UnsafeChunkRSpec extends Properties("io.unsafeChunkR") {
       io.unsafeChunkR(new ByteArrayInputStream(str.getBytes))
         .to(sink)
         .run
-        .attemptRun
+        .unsafePerformSyncAttempt
         .leftMap(t => throw t)
         .isRight
     }
