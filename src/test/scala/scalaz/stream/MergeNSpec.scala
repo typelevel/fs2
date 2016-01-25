@@ -105,7 +105,7 @@ class MergeNSpec extends Properties("mergeN") {
         Process.range(0,eachSize)
       }).toSource
 
-    val result = merge.mergeN(ps).fold(0)(_ + _).runLast.unsafePerformTimed(120000)unsafePerformSync
+    val result = merge.mergeN(ps).fold(0)(_ + _).runLast.unsafePerformTimed(120000).unsafePerformSync
 
     (result == Some(499500000)) :| s"All items were emitted: $result"
   }
@@ -204,7 +204,7 @@ class MergeNSpec extends Properties("mergeN") {
   property("avoid hang in the presence of interrupts") = protect {
     1 to 100 forall { _ =>
       val q = async.unboundedQueue[Unit]
-      q.enqueueOne(())unsafePerformSync
+      q.enqueueOne(()).unsafePerformSync
 
       val process = (merge.mergeN(0)(Process(q.dequeue, halt)).once wye halt)(wye.mergeHaltBoth)
 

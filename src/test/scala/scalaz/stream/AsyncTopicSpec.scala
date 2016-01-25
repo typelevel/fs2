@@ -95,15 +95,15 @@ class AsyncTopicSpec extends Properties("topic") {
     l: List[Int] =>
       (l.size > 0 && l.size < 10000) ==> {
         val topic = async.topic[Int]()
-        topic.fail(Bwahahaa)unsafePerformSync
+        topic.fail(Bwahahaa).unsafePerformSync
 
 
         val emitted = new SyncVar[Throwable \/ Unit]
-        Task((Process.emitAll(l).toSource to topic.publish).run.unsafePerformAsync(emitted.put))unsafePerformSync
+        Task((Process.emitAll(l).toSource to topic.publish).run.unsafePerformAsync(emitted.put)).unsafePerformSync
 
         val sub1 = new SyncVar[Throwable \/ Seq[Int]]
 
-        Task(topic.subscribe.runLog.unsafePerformAsync(sub1.put))unsafePerformSync
+        Task(topic.subscribe.runLog.unsafePerformAsync(sub1.put)).unsafePerformSync
 
 
         emitted.get(3000)

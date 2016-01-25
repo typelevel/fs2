@@ -290,7 +290,7 @@ class QueueSpec extends Properties("queue") {
     val signalKill = Process(false).toSource ++ sleeper ++ Process(true)
 
     signalKill.wye(q.dequeue)(wye.interrupt).runLog.unsafePerformSync
-    q.enqueueOne(1)unsafePerformSync
+    q.enqueueOne(1).unsafePerformSync
     val r = q.dequeue.take(1).runLog.unsafePerformSync
 
     r == Vector(1)
@@ -380,7 +380,7 @@ class QueueSpec extends Properties("queue") {
 
   property("dequeue.take-1-repeatedly") = protect {
     val q = async.unboundedQueue[Int]
-    q.enqueueAll(List(1, 2, 3))unsafePerformSync
+    q.enqueueAll(List(1, 2, 3)).unsafePerformSync
 
     val p = for {
       i1 <- q.dequeue take 1

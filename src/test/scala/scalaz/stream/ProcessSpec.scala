@@ -407,7 +407,7 @@ class ProcessSpec extends Properties("Process") {
 
     val ch = sink lift { _: Int => (Task delay { throw Terminated(End); () }) }
 
-    (src to ch run)unsafePerformSync
+    (src to ch run).unsafePerformSync
 
     (count === 1) :| s"count = $count"
   }

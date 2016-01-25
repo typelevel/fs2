@@ -138,7 +138,7 @@ class AsyncSignalSpec extends Properties("async.signal") {
       val feed = l.map(Some(_))
 
       val ref = async.signalUnset[Option[Int]]
-      ref.set(initial)unsafePerformSync
+      ref.set(initial).unsafePerformSync
 
 
       val d1 = ref.discrete.take(l.size+1)

@@ -258,7 +258,7 @@ class WyeSpec extends  Properties("Wye"){
 
     for (i <- 1 to 100) {
       val q = async.unboundedQueue[Unit]
-      q.enqueueOne(())unsafePerformSync
+      q.enqueueOne(()).unsafePerformSync
 
       val process = ((q.dequeue merge halt).once wye halt)(wye.mergeHaltBoth)
       process.run.unsafePerformTimed(3000).unsafePerformSync
@@ -280,7 +280,7 @@ class WyeSpec extends  Properties("Wye"){
 
     Task {
       Thread.sleep(1000)
-      term1.set(true)unsafePerformSync
+      term1.set(true).unsafePerformSync
     }.unsafePerformAsync(_ => ())
 
 

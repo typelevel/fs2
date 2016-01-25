@@ -151,7 +151,7 @@ class NioSpec extends Properties("nio") {
 
     val clientGot =
       NioClient.echo(local, ByteVector(array1)).runLog.unsafePerformSync.map(_.toSeq).flatten
-    stop.set(true)unsafePerformSync
+    stop.set(true).unsafePerformSync
 
     (serverGot.get(30000) == Some(\/-(clientGot))) :| s"Server and client got same data (serverGot = ${serverGot.get(100)}; clientGot = $clientGot)" &&
       (clientGot == array1.toSeq.take(max)) :| "client got bytes before server closed connection"
@@ -186,7 +186,7 @@ class NioSpec extends Properties("nio") {
       server
       .runLast.map{_.map(_.toSeq).toSeq}
       .unsafePerformAsync(serverGot.put)
-    )unsafePerformSync
+    ).unsafePerformSync
 
     Thread.sleep(1000)
 
@@ -204,12 +204,12 @@ class NioSpec extends Properties("nio") {
       (clients onComplete eval_(stop.set(true)))
       .runLast.map(v=>v.map(_.toSeq).toSeq)
       .unsafePerformAsync(clientGot.put)
-    )unsafePerformSync
+    ).unsafePerformSync
 
     clientGot.get(6000)
     serverGot.get(6000)
 
-    stop.set(true)unsafePerformSync
+    stop.set(true).unsafePerformSync
 
     (serverGot.isSet && clientGot.isSet) :| "Server and client terminated" &&
       (serverGot.get(0).exists(_.isRight) && clientGot.get(0).exists(_.isRight)) :| s"Server and client terminate w/o failure: s=${serverGot.get(0)}, c=${clientGot.get(0)}" &&
