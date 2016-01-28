@@ -1,12 +1,9 @@
 language: scala
-sbt_args: -J-Dproject.version=travis-SNAPSHOT
 scala:
   - 2.11.7
-  - 2.12.0-M2
+  - 2.12.0-M3
 jdk:
-  # - oraclejdk7
   - oraclejdk8
-  # - openjdk7
 sudo: false
 cache:
   directories:

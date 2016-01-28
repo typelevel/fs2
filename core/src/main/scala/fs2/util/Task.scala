@@ -118,8 +118,8 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
    * Run this computation to obtain either a result or an exception, then
    * invoke the given callback. Any pure, non-asynchronous computation at the
    * head of this `Future` will be forced in the calling thread. At the first
-   * `Async` encountered, control to whatever thread backs the `Async` and
-   * this function returns immediately.
+   * `Async` encountered, control is transferred to whatever thread backs the
+   * `Async` and this function returns immediately.
    */
   def runAsync(f: Either[Throwable,A] => Unit): Unit =
     get.runAsync(f)
@@ -134,6 +134,23 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
     runAsync(_.fold(promise.failure, promise.success))
     promise.future
   }
+
+  /**
+   * Run this computation fully asynchronously to obtain either a result
+   * or an exception, then invoke the given callback. Unlike `runAsync`,
+   * all computations are executed asynchronously, whereas `runAsync` runs
+   * computations on callers thread until it encounters an `Async`.
+   */
+  def runFullyAsync(f: Either[Throwable,A] => Unit)(implicit S: Strategy): Unit =
+    Task.start(this).flatMap(identity).runAsync(f)
+
+  /**
+   * Run this computation fully asynchronously and return the result as a
+   * standard library `Future`. Like `runFullyAsync` but returns a
+   * standard library `Future` instead of requiring a callback.
+   */
+  def runFullyAsyncFuture(implicit S: Strategy): scala.concurrent.Future[A] =
+    Task.start(this).flatMap(identity).runAsyncFuture
 
   /**
    * Run this `Task` and block until its result is available, or until
