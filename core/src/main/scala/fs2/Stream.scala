@@ -91,11 +91,15 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
       val rootToken = new Token()
       // The cleanup action runs immediately if no resources are now being
       // acquired, otherwise it waits until the step is done
-      val rootCleanup: F2[Unit] = F2.bind(F2.pure(())) { _ =>
+      lazy val rootCleanup: F2[Unit] = F2.bind(F2.pure(())) { _ =>
         resources.closeAll match {
           case (cleanups, moreRunning) =>
-            if (!moreRunning) Stream.runCleanup(cleanups).run
-            else F2.bind(F2.get(gate)) { _ => Stream.runCleanup(resources).run }
+            if (!moreRunning) {
+              Stream.runCleanup(cleanups).run
+            }
+            else
+              F2.bind(F2.get(gate)) { _ =>
+              F2.bind(Stream.runCleanup(cleanups).run) { _ => rootCleanup }}
         }
       }
       // Track the root token with `rootCleanup` as associated cleanup action
@@ -319,11 +323,14 @@ object Stream extends Streams[Stream] with StreamDerived {
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Stream.suspend {
+        // todo: aha! this is a bug, we startAcquire, but then get interrupted
+        // via the Stream.eval before the acquisition can complete
+        // need to interrupt only if resources is fully closed, not if it is Closing
         if (tracked.startAcquire(id)) Stream.eval(S(r)) flatMap { r =>
           try {
             val c = S(cleanup(r))
-            if (tracked.finishAcquire(id,c)) emit(r)
-            else fail(Interrupted)
+            if (tracked.finishAcquire(id,c) == Resources.Closed) fail(Interrupted)
+            else emit(r)
           }
           catch { case err: Throwable =>
             tracked.cancelAcquire(id)

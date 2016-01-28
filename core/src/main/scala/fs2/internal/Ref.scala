@@ -13,7 +13,7 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A]) {
    * for updating the value. The setter may noop (in which case `false`
    * is returned) if another concurrent call to `access` uses its
    * setter first. Once it has noop'd or been used once, a setter
-   * never succeed again.
+   * never succeeds again.
    */
   def access: (A, A => Boolean) = {
     val s = set(id.get)

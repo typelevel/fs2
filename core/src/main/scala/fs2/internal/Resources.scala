@@ -1,18 +1,23 @@
 package fs2.internal
 
+import Resources._
+
 /**
  * Some implementation notes:
  *
  * `Some(r)` in the `LinkedMap` represents an acquired resource;
  * `None` represents a resource in the process of being acquired
- * The `Boolean` indicates whether this resource is 'open' or not.
- * Once closed, all `startAcquire` calls will return `false`.
- * Once closed, there is no way to reopen a `Resources`.
+ * The `Status` indicates whether this resource is 'open' or not.
+ * Once `Closed` or `Closing`, all `startAcquire` calls will return `false`.
+ * When `Closing`, all calls to `finishAcquire` or `cancelAcquire` will
+ * transition to `Closed` if there are no more outstanding acquisitions.
+ *
+ * Once `Closed` or `Closing`, there is no way to reopen a `Resources`.
  */
-private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])]) {
+private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]) {
 
-  def isOpen: Boolean = tokens.get._1
-  def isClosed: Boolean = !isOpen
+  def isOpen: Boolean = tokens.get._1 == Open
+  def isClosed: Boolean = tokens.get._1 == Closed
   def isEmpty: Boolean = tokens.get._2.isEmpty
 
   /**
@@ -29,10 +34,10 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
       val m2 = m.unorderedEntries.foldLeft(m) { (m,kv) =>
         kv._2 match {
           case None => m
-          case Some(_) => m - kv._1
+          case Some(_) => m - (kv._1: T)
         }
       }
-      if (!update((false, m2))) closeAll
+      if (!update((if (totallyDone) Closed else Closing, m2))) closeAll
       else (rs, !totallyDone)
   }
 
@@ -62,7 +67,7 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
     case ((open,m), update) =>
       m.get(t) match {
         case Some(r) => sys.error("startAcquire on already used token: "+(t -> r))
-        case None => open && {
+        case None => open == Open && {
           update(open -> m.edit(t, _ => Some(None))) || startAcquire(t)
         }
       }
@@ -76,7 +81,12 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
     case ((open,m), update) =>
       m.get(t) match {
         case Some(Some(r)) => sys.error("token already acquired: "+ (t -> r))
-        case _ => if (!update(open -> (m-t))) cancelAcquire(t)
+        case None => ()
+        case Some(None) =>
+          val m2 = m - t
+          val totallyDone = m2.values.forall(_ != None)
+          val status = if (totallyDone && open == Closing) Closed else open
+          if (!update(status -> m2)) cancelAcquire(t)
       }
   }
 
@@ -85,13 +95,15 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
    * Returns `open` status of this `Resources` as of the update.
    */
   @annotation.tailrec
-  final def finishAcquire(t: T, r: R): Boolean = tokens.access match {
+  final def finishAcquire(t: T, r: R): Status = tokens.access match {
     case ((open,m), update) =>
       m.get(t) match {
         case Some(None) =>
-          if (!update(open -> m.edit(t, _ => Some(Some(r)))))
-            finishAcquire(t,r) // retry on contention
-          else open
+          val m2 = m.edit(t, _ => Some(Some(r)))
+          val totallyDone = m2.values.forall(_ != None)
+          val status = if (totallyDone && open == Closing) Closed else open
+          if (!update(status -> m2)) finishAcquire(t,r) // retry on contention
+          else status
         case r => sys.error("expected acquiring status, got: " + r)
       }
   }
@@ -102,5 +114,10 @@ private[fs2] class Resources[T,R](tokens: Ref[(Boolean, LinkedMap[T, Option[R]])
 private[fs2] object Resources {
 
   def empty[T,R]: Resources[T,R] =
-    new Resources[T,R](Ref(true -> LinkedMap.empty))
+    new Resources[T,R](Ref(Open -> LinkedMap.empty))
+
+  trait Status
+  case object Closed extends Status
+  case object Closing extends Status
+  case object Open extends Status
 }
