@@ -93,13 +93,11 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
       // acquired, otherwise it waits until the step is done
       lazy val rootCleanup: F2[Unit] = F2.bind(F2.pure(())) { _ =>
         resources.closeAll match {
-          case (cleanups, moreRunning) =>
-            if (!moreRunning) {
-              Stream.runCleanup(cleanups).run
-            }
-            else
-              F2.bind(F2.get(gate)) { _ =>
-              F2.bind(Stream.runCleanup(cleanups).run) { _ => rootCleanup }}
+          case None => F2.bind(F2.get(gate)) { _ =>
+            println("waiting for acquisitions to complete... "+math.random)
+            rootCleanup
+          }
+          case Some(resources) => Stream.runCleanup(resources).run
         }
       }
       // Track the root token with `rootCleanup` as associated cleanup action
@@ -323,20 +321,20 @@ object Stream extends Streams[Stream] with StreamDerived {
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Stream.suspend {
-        // todo: aha! this is a bug, we startAcquire, but then get interrupted
-        // via the Stream.eval before the acquisition can complete
-        // need to interrupt only if resources is fully closed, not if it is Closing
-        if (tracked.startAcquire(id)) Stream.eval(S(r)) flatMap { r =>
-          try {
-            val c = S(cleanup(r))
-            if (tracked.finishAcquire(id,c) == Resources.Closed) fail(Interrupted)
-            else emit(r)
-          }
-          catch { case err: Throwable =>
-            tracked.cancelAcquire(id)
-            fail(err)
-          }
-        }
+        if (tracked.startAcquire(id))
+          Stream.eval(S(r))
+            .onError { err => tracked.cancelAcquire(id); fail(err) }
+            .flatMap { r =>
+              try {
+                val c = S(cleanup(r))
+                tracked.finishAcquire(id,c)
+                emit(r)
+              }
+              catch { case err: Throwable =>
+                tracked.cancelAcquire(id)
+                fail(err)
+              }
+            }
         else fail(Interrupted)
       }._runFold0[F2,O,W2,W3](doCleanup, tracked, k)(g,z)
 
@@ -460,8 +458,8 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   private def runCleanup[F[_]](l: Resources[Token,F[Unit]]): Free[F,Unit] =
     l.closeAll match {
-      case (l, moreRunning) if !moreRunning => runCleanup(l)
-      case _ => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
+      case Some(l) => runCleanup(l)
+      case None => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
     }
 
   private def runCleanup[F[_]](cleanups: Iterable[F[Unit]]): Free[F,Unit] =

@@ -27,18 +27,19 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
    * no calls to `startAcquire` will succeed.
    */
   @annotation.tailrec
-  final def closeAll: (List[R], Boolean) = tokens.access match {
+  final def closeAll: Option[List[R]] = tokens.access match {
     case ((open,m),update) =>
-      val rs = m.values.collect { case Some(r) => r }.toList
       val totallyDone = m.values.forall(_ != None)
-      val m2 = m.unorderedEntries.foldLeft(m) { (m,kv) =>
+      def rs = m.values.collect { case Some(r) => r }.toList
+      def m2 = if (!totallyDone) m else m.unorderedEntries.foldLeft(m) { (m,kv) =>
         kv._2 match {
           case None => m
           case Some(_) => m - (kv._1: T)
         }
       }
       if (!update((if (totallyDone) Closed else Closing, m2))) closeAll
-      else (rs, !totallyDone)
+      else if (totallyDone) Some(rs)
+      else None
   }
 
   /**
@@ -80,7 +81,7 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
   final def cancelAcquire(t: T): Unit = tokens.access match {
     case ((open,m), update) =>
       m.get(t) match {
-        case Some(Some(r)) => sys.error("token already acquired: "+ (t -> r))
+        case Some(Some(r)) => () // sys.error("token already acquired: "+ (t -> r))
         case None => ()
         case Some(None) =>
           val m2 = m - t
@@ -95,15 +96,12 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
    * Returns `open` status of this `Resources` as of the update.
    */
   @annotation.tailrec
-  final def finishAcquire(t: T, r: R): Status = tokens.access match {
+  final def finishAcquire(t: T, r: R): Unit = tokens.access match {
     case ((open,m), update) =>
       m.get(t) match {
         case Some(None) =>
           val m2 = m.edit(t, _ => Some(Some(r)))
-          val totallyDone = m2.values.forall(_ != None)
-          val status = if (totallyDone && open == Closing) Closed else open
-          if (!update(status -> m2)) finishAcquire(t,r) // retry on contention
-          else status
+          if (!update(open -> m2)) finishAcquire(t,r) // retry on contention
         case r => sys.error("expected acquiring status, got: " + r)
       }
   }
