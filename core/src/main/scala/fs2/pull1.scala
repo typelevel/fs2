@@ -181,16 +181,16 @@ private[fs2] trait pull1 {
     if (n <= 0) Pull.pure(h)
     else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
       case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong)(h)
-    }
+    } 
 
   /** Emits the last `n` elements of the input. */
   def takeRight[F[_],I](n: Long): Handle[F,I] => Pull[F,I,Handle[F,I]]  = {
-    val i = if (n <= Int.MaxValue) n.toInt else Int.MaxValue
     def go(acc: Vector[I]): Handle[F,I] => Pull[F,I,Handle[F,I]] = {
-      h => Pull.awaitN(i, true)(h).optional.flatMap {
-        case None => acc.headOption.map { hd =>
-          acc.tail.foldLeft(Pull.output1(hd))(_ >> Pull.output1(_)) as Handle.empty
-        } getOrElse Pull.pure(h)
+      h => Pull.awaitN(if (n <= Int.MaxValue) n.toInt else Int.MaxValue, true)(h).optional.flatMap {
+        case None => acc match {
+          case hd +: tl => tl.foldLeft(Pull.output1(hd))(_ >> Pull.output1(_)) as Handle.empty
+          case _ => Pull.pure(h)
+        }
         case Some(cs #: h) =>
           val vector = cs.toVector.flatMap(_.toVector)
           go(acc.drop(vector.length) ++ vector)(h)
@@ -198,7 +198,7 @@ private[fs2] trait pull1 {
     }
 
     if (n <= 0) h => Pull.pure(h)
-    else h => Pull.awaitN(i, true)(h).flatMap { case cs #: h => go(cs.toVector.flatMap(_.toVector))(h) }
+    else go(Vector())
   }
 
   /**
