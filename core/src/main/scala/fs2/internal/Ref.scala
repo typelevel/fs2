@@ -16,10 +16,17 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A]) {
    * never succeeds again.
    */
   def access: (A, A => Boolean) = {
-    val s = set(id.get)
+    val i = id.get
+    val s = set(i)
     // from this point forward, only one thread may write `ref`
     (ref.get, s)
   }
+
+  private def set(expected: Long): A => Boolean = a => {
+    if (id.compareAndSet(expected, expected+1)) { ref.set(a); true }
+    else false
+  }
+
   def get: A = ref.get
 
   /**
@@ -44,11 +51,6 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A]) {
    */
   def possiblyModify1(f: A => Option[A]): Boolean = access match {
     case (a, set) => f(a).map(set).getOrElse(false)
-  }
-
-  private def set(expected: Long): A => Boolean = a => {
-    if (id.compareAndSet(expected, expected+1)) { ref.set(a); true }
-    else false
   }
 
   override def toString = "Ref { "+ref.get.toString+" }"
