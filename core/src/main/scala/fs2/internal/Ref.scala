@@ -1,12 +1,13 @@
 package fs2.internal
 
 import java.util.concurrent.atomic._
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * A reference which may be updated transactionally, without
  * use of `==` on `A`.
  */
-private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A]) {
+private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A], lock: ReentrantLock) {
 
   /**
    * Obtain a snapshot of the current value, and a setter
@@ -16,15 +17,22 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A]) {
    * never succeeds again.
    */
   def access: (A, A => Boolean) = {
-    val i = id.get
-    val s = set(i)
-    // from this point forward, only one thread may write `ref`
-    (ref.get, s)
+    try {
+      lock.lock
+      val i = id.get
+      val s = set(i)
+      // from this point forward, only one thread may write `ref`
+      (ref.get, s)
+    } finally { lock.unlock }
   }
 
   private def set(expected: Long): A => Boolean = a => {
-    if (id.compareAndSet(expected, expected+1)) { ref.set(a); true }
-    else false
+    try {
+      lock.lock
+      if (id.compareAndSet(expected, expected+1)) { ref.set(a); true }
+      else false
+    }
+    finally { lock.unlock }
   }
 
   def get: A = ref.get
@@ -58,5 +66,5 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A]) {
 
 object Ref {
   def apply[A](a: A): Ref[A] =
-    new Ref(new AtomicLong(0), new AtomicReference(a))
+    new Ref(new AtomicLong(0), new AtomicReference(a), new ReentrantLock())
 }
