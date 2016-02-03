@@ -17,8 +17,8 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A], lock: Reentra
    * never succeeds again.
    */
   def access: (A, A => Boolean) = {
+    lock.lock
     try {
-      lock.lock
       val i = id.get
       val s = set(i)
       // from this point forward, only one thread may write `ref`
@@ -27,8 +27,8 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A], lock: Reentra
   }
 
   private def set(expected: Long): A => Boolean = a => {
+    lock.lock
     try {
-      lock.lock
       if (id.compareAndSet(expected, expected+1)) { ref.set(a); true }
       else false
     }
