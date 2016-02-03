@@ -48,6 +48,8 @@ private[fs2] class LinkedMap[K,+V](
 
   def isEmpty = entries.isEmpty
 
+  def size = entries.size
+
   override def toString = "{ " + (keys zip values).mkString("  ") +" }"
 }
 

@@ -21,16 +21,16 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
     doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O] =
     Free.pure(()) flatMap { _ => // trampoline after every step, catch exceptions
-      if (tracked.isClosed) {
-        // note: critical that we call _runFold1 here, not _runFold0!
-        // calling _runFold0 would be an infinite loop!
-        Stream.fail(Stream.Interrupted)._runFold1(doCleanup, tracked, Stack.empty[F2,W3])(g,z)
-      }
-      else {
+      def normal =
         try _runFold1(doCleanup, tracked, k)(g, z)
         catch { case t: Throwable =>
           Stream.fail(t)._runFold0(doCleanup, tracked, k)(g,z) }
+      if (tracked.isClosing) tracked.closeAll match {
+        case None => normal
+        case Some(cleanup) =>
+          Stream.runCleanup(cleanup) flatMap { _ => Free.fail(Stream.Interrupted) }
       }
+      else normal
     }
 
   /**
@@ -66,8 +66,6 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
   final def stepAsync[F2[_],W2>:W](implicit S: Sub1[F,F2], F2: Async[F2]):
     Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Handle[F2,W2]]]]]
     = Pull.eval(F2.ref[Unit]).flatMap { gate =>
-      // We use `gate` to determine when the asynchronous step has completed
-      // Finalizers are not run until the step (running in the background) completes
       type Out = Step[Chunk[W2],Handle[F2,W2]]
       type OutE = Either[Throwable,Out]
       // A singleton stream which emits just a single step
@@ -76,7 +74,6 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
         // The `doCleanup = false` disables the default `Pull.run` behavior of
         // releasing any resources it acquires when reaching the end of the `Pull`
         _run0(doCleanup = false, LinkedSet.empty, Pull.Stack.empty[F2,Out,Unit])
-      // A singleton stream which catches all errors and sets `gate` when it completes
       // We run `s`, recording all resources it allocates to the mutable `resources` map
       // Note that we record _only_ the newly allocated resources for _this step_
       val resources = Resources.empty[Token,F2[Unit]]
@@ -84,20 +81,25 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
       // The `doCleanup = false` disables the default behavior of `runFold`, which is
       // to run any finalizers not yet run when reaching end of stream
       val free: Free[F2,Option[Out]] = s._runFold0(doCleanup = false, resources, Stack.empty[F2,Out])(f, None)
-      // catch any errors and set `gate` regardless
       val runStep: F2[Either[Throwable,Option[Out]]] =
-        F2.bind(F2.attempt(free.run)) { e => F2.map(F2.setPure(gate)(()))(_ => e) }
-      // We create a single `Token` that will covers any resources allocated by `runStep`
+        F2.bind(F2.attempt(free.run)) { e =>
+          F2.map(F2.setPure(gate)(()))(_ => e)
+        }
+      // We create a single `Token` that will cover any resources allocated by `runStep`
       val rootToken = new Token()
       // The cleanup action runs immediately if no resources are now being
       // acquired, otherwise it waits until the step is done
       lazy val rootCleanup: F2[Unit] = F2.bind(F2.pure(())) { _ =>
         resources.closeAll match {
-          case None => F2.bind(F2.get(gate)) { _ =>
-            println("waiting for acquisitions to complete... "+math.random)
-            rootCleanup
-          }
-          case Some(resources) => Stream.runCleanup(resources).run
+          case None =>
+            F2.bind(F2.get(gate)) { _ =>
+              resources.closeAll match {
+                case None => F2.pure(())
+                case Some(resources) => Stream.runCleanup(resources).run
+              }
+            }
+          case Some(resources) =>
+            Stream.runCleanup(resources).run
         }
       }
       // Track the root token with `rootCleanup` as associated cleanup action
@@ -321,6 +323,8 @@ object Stream extends Streams[Stream] with StreamDerived {
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Stream.suspend {
+        // might want to consider bundling finalizer with the effect, thus
+        // as soon as effect completes, have the finalizer
         if (tracked.startAcquire(id))
           Stream.eval(S(r))
             .onError { err => tracked.cancelAcquire(id); fail(err) }
@@ -356,9 +360,11 @@ object Stream extends Streams[Stream] with StreamDerived {
       doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
       =
-      tracked.close(id).map(eval).getOrElse(Stream.emit(())).flatMap { (u: Unit) =>
-        empty[F2,W2]
-      }._runFold0(doCleanup, tracked, k)(g, z)
+      tracked.startClose(id).map(f => eval(f).map(_ => tracked.finishClose(id)))
+             .getOrElse(emit(()))
+             .onError { e => tracked.finishClose(id); fail(e) }
+             .flatMap { _ => empty[F2,W2] }
+             ._runFold1(doCleanup, tracked, k)(g, z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]

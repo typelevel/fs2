@@ -18,6 +18,7 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
 
   def isOpen: Boolean = tokens.get._1 == Open
   def isClosed: Boolean = tokens.get._1 == Closed
+  def isClosing: Boolean = { val t = tokens.get._1; t == Closing || t == Closed }
   def isEmpty: Boolean = tokens.get._2.isEmpty
 
   /**
@@ -31,12 +32,7 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
     case ((open,m),update) =>
       val totallyDone = m.values.forall(_ != None)
       def rs = m.values.collect { case Some(r) => r }.toList
-      def m2 = if (!totallyDone) m else m.unorderedEntries.foldLeft(m) { (m,kv) =>
-        kv._2 match {
-          case None => m
-          case Some(_) => m - (kv._1: T)
-        }
-      }
+      def m2 = if (!totallyDone) m else LinkedMap.empty[T,Option[R]]
       if (!update((if (totallyDone) Closed else Closing, m2))) closeAll
       else if (totallyDone) Some(rs)
       else None
@@ -48,13 +44,21 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
    * not present in this `Resources`.
    */
   @annotation.tailrec
-  final def close(t: T): Option[R] = tokens.access match {
-    case ((open,m),update) => m.get(t) match {
+  final def startClose(t: T): Option[R] = tokens.access match {
+    case ((Open,m),update) => m.get(t) match {
       case None => None // note: not flatMap so can be tailrec
       case Some(Some(r)) => // close of an acquired resource
-        if (update((open, m-t))) Some(r)
-        else close(t)
+        if (update((Open, m.updated(t, None)))) Some(r)
+        else startClose(t)
       case Some(None) => None // close of any acquiring resource fails
+    }
+    case _ => None // if already closed or closing
+  }
+
+  final def finishClose(t: T): Unit = tokens.modify {
+    case (open,m) => m.get(t) match {
+      case Some(None) => (open, m-t)
+      case _ => sys.error("close of unknown resource: "+t)
     }
   }
 
