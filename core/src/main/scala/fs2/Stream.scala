@@ -81,9 +81,10 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
       // The `doCleanup = false` disables the default behavior of `runFold`, which is
       // to run any finalizers not yet run when reaching end of stream
       val free: Free[F2,Option[Out]] = s._runFold0(doCleanup = false, resources, Stack.empty[F2,Out])(f, None)
-      val checkInterrupt = () =>
-        if (resources.isClosed) Some(Stream.Interrupted)
-        else None
+      val checkInterrupt = () => None
+        // if (resources.isClosed) Some(Stream.Interrupted)
+        // else None
+      // this is not quite right, might interrupt when about to run a finalizer
       val runStep: F2[Either[Throwable,Option[Out]]] =
         F2.bind(F2.attempt(free.runInterruptible(checkInterrupt))) { e =>
           F2.map(F2.setPure(gate)(()))(_ => e)
