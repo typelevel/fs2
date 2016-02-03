@@ -7,10 +7,10 @@ sealed trait Free[+F[_],+A] {
   def flatMap[F2[x]>:F[x],B](f: A => Free[F2,B]): Free[F2,B] = Bind(this, f)
   def map[B](f: A => B): Free[F,B] = Bind(this, f andThen (Free.Pure(_)))
 
-  def runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
-    step._runTranslate(g)
+  def runTranslateInterruptible[G[_],A2>:A](interrupt: () => Option[Throwable], g: F ~> G)(implicit G: Catchable[G]): G[A2] =
+    step._runTranslateInterruptible(interrupt, g)
 
-  protected def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2]
+  protected def _runTranslateInterruptible[G[_],A2>:A](interrupt: () => Option[Throwable], g: F ~> G)(implicit G: Catchable[G]): G[A2]
 
   def unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
   : Unroll[A, G[Free[F,A]]]
@@ -19,8 +19,14 @@ sealed trait Free[+F[_],+A] {
   protected def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
   : Trampoline[Unroll[A, G[Free[F,A]]]]
 
+  def runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
+    runTranslateInterruptible(() => None, g)
+
   def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
     (this: Free[F2,A2]).runTranslate(UF1.id)
+
+  def runInterruptible[F2[x]>:F[x], A2>:A](interrupt: () => Option[Throwable])(implicit F2: Catchable[F2]): F2[A2] =
+    (this: Free[F2,A2]).runTranslateInterruptible(interrupt, UF1.id)
 
   @annotation.tailrec
   private[fs2] final def step: Free[F,A] = this match {
@@ -45,30 +51,36 @@ object Free {
     pure(()) flatMap { _ => fa }
 
   private[fs2] case class Fail(err: Throwable) extends Free[Nothing,Nothing] {
-    def _runTranslate[G[_],A2>:Nothing](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
+    def _runTranslateInterruptible[G[_],A2>:Nothing](interrupt: () => Option[Throwable], g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
       G.fail(err)
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
     : Trampoline[Unroll[Nothing, G[Free[Nothing,Nothing]]]]
     = Trampoline.done { Unroll.Fail(err) }
   }
   private[fs2] case class Pure[A](a: A) extends Free[Nothing,A] {
-    def _runTranslate[G[_],A2>:A](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
+    def _runTranslateInterruptible[G[_],A2>:A](interrupt: () => Option[Throwable], g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
       G.pure(a)
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
     : Trampoline[Unroll[A, G[Free[Nothing,A]]]]
     = Trampoline.done { Unroll.Pure(a) }
   }
   private[fs2] case class Eval[F[_],A](fa: F[A]) extends Free[F,Either[Throwable,A]] {
-    def _runTranslate[G[_],A2>:Either[Throwable,A]](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
-      G.attempt { g(fa) }.asInstanceOf[G[A2]]
+    def _runTranslateInterruptible[G[_],A2>:Either[Throwable,A]](interrupt: () => Option[Throwable], g: F ~> G)(implicit G: Catchable[G]): G[A2] =
+      interrupt() match {
+        case None => G.attempt { g(fa) }.asInstanceOf[G[A2]]
+        case Some(err) => G.fail(err)
+      }
 
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
     : Trampoline[Unroll[Either[Throwable,A], G[Free[F,Either[Throwable,A]]]]]
     = Trampoline.done { Unroll.Eval(G.map(S(fa))(a => Free.pure(Right(a)))) }
   }
   private[fs2] case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
-    def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
-      G.bind(r.runTranslate(g))(f andThen (_.runTranslate(g)))
+    def _runTranslateInterruptible[G[_],A2>:A](interrupt: () => Option[Throwable], g: F ~> G)(implicit G: Catchable[G]): G[A2] =
+      interrupt() match {
+        case Some(err) => G.fail(err)
+        case None => G.bind(r._runTranslateInterruptible(interrupt, g))(f andThen (_.runTranslateInterruptible(interrupt,g)))
+      }
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
     : Trampoline[Unroll[A, G[Free[F,A]]]]
     = Sub1.substFree(r) match {

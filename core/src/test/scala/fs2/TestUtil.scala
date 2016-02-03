@@ -7,7 +7,8 @@ import scala.concurrent.duration._
 
 object TestUtil {
 
-  implicit val S = Strategy.fromExecutionContext(scala.concurrent.ExecutionContext.global)
+  implicit val S = Strategy.fromFixedDaemonPool(8)
+  // implicit val S = Strategy.fromCachedDaemonPool("test-thread-worker")
 
   def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.run
   def runFor[A](timeout:FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.runFor(timeout)

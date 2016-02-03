@@ -73,9 +73,10 @@ object ConcurrentSpec extends Properties("concurrent") {
       (concurrent.join(10)(Stream(full, hang)).take(1) === Vector(42)) &&
       (concurrent.join(10)(Stream(full, hang2)).take(1) === Vector(42)) &&
       (concurrent.join(10)(Stream(full, hang3)).take(1) === Vector(42)) &&
-      true
-      // todo: why does this hang?
-      // (concurrent.join(10)(Stream(hang3,hang2,full)).take(1) === Vector(42))
+      (concurrent.join(10)(Stream(hang3,hang2,full)).take(1) === Vector(42))
     }
+
+    def observe[A](msg: String, s: Stream[Task,A]) =
+      s.map { a => println(msg + ": " + a); a }
   }}
 }
