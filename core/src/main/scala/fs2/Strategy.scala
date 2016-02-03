@@ -1,6 +1,6 @@
 package fs2
 
-import java.util.concurrent.Executor
+import java.util.concurrent.{Executor, Executors, ThreadFactory}
 import scala.concurrent.ExecutionContext
 
 /** Provides a function for evaluating thunks, possibly asynchronously. */
@@ -9,6 +9,25 @@ trait Strategy {
 }
 
 object Strategy {
+
+  /** A `ThreadFactory` which creates daemon threads, using the given name. */
+  def daemonThreadFactory(threadName: String): ThreadFactory = new ThreadFactory {
+    val defaultThreadFactory = Executors.defaultThreadFactory()
+    def newThread(r: Runnable) = {
+      val t = defaultThreadFactory.newThread(r)
+      t.setDaemon(true)
+      t.setName(threadName)
+      t
+    }
+  }
+
+  /** Create a `Strategy` from a fixed-size pool of daemon threads. */
+  def fromFixedDaemonPool(maxThreads: Int, threadName: String = "Strategy.fromFixedDaemonPool"): Strategy =
+    fromExecutor(Executors.newFixedThreadPool(maxThreads, daemonThreadFactory(threadName)))
+
+  /** Create a `Strategy` from a growable pool of daemon threads. */
+  def fromCachedDaemonPool(threadName: String = "Strategy.fromCachedDaemonPool"): Strategy =
+    fromExecutor(Executors.newCachedThreadPool(daemonThreadFactory(threadName)))
 
   /** Create a `Strategy` from an `ExecutionContext`. */
   def fromExecutionContext(es: ExecutionContext): Strategy = new Strategy {
