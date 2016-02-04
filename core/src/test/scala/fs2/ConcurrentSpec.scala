@@ -9,8 +9,6 @@ import org.scalacheck._
 
 object ConcurrentSpec extends Properties("concurrent") {
 
-  val x = implicitly[Strategy]
-
   property("either") = forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
     val shouldCompile = s1.get.either(s2.get.covary[Task])
     val es = run { s1.get.covary[Task].pipe2(s2.get)(wye.either) }
