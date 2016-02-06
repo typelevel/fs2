@@ -18,7 +18,7 @@ object task {
   }
 
   /** Convert a single use callback-y API to a single-element stream. */
-  def async1[O](register: (Either[Throwable,O] => Unit) => Unit): Stream[Task,O] =
+  def async1[O](register: (Either[Throwable,O] => Unit) => Unit)(implicit S: Strategy): Stream[Task,O] =
     Stream.eval(Task.async(register))
 
   // todo: I have a feeling that strictly returning an `Ack` will not

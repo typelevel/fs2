@@ -9,8 +9,6 @@ import org.scalacheck._
 
 object ConcurrentSpec extends Properties("concurrent") {
 
-  val x = implicitly[Strategy]
-
   property("either") = forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
     val shouldCompile = s1.get.either(s2.get.covary[Task])
     val es = run { s1.get.covary[Task].pipe2(s2.get)(wye.either) }
@@ -52,7 +50,31 @@ object ConcurrentSpec extends Properties("concurrent") {
     catch { case Err => true }
   }
 
-  //property("join (failure 1)") = forAll { (s: PureStream[Failure], n: SmallPositive, f: Failure) =>
-  //  run { concurrent.join(n.get)(s.get) }
-  //}
+  include { new Properties("hanging awaits") {
+    val full = Stream.constant[Task,Int](42)
+    val hang = Stream.repeatEval(Task.unforkedAsync[Unit] { cb => () }) // never call `cb`!
+    val hang2: Stream[Task,Nothing] = full.drain
+    val hang3: Stream[Task,Nothing] =
+      Stream.repeatEval[Task,Unit](Task.async { cb => cb(Right(())) }).drain
+
+    property("merge") = protect {
+      println("starting hanging await.merge...")
+      ( (full merge hang).take(1) === Vector(42) ) &&
+      ( (full merge hang2).take(1) === Vector(42) ) &&
+      ( (full merge hang3).take(1) === Vector(42) ) &&
+      ( (hang merge full).take(1) === Vector(42) ) &&
+      ( (hang2 merge full).take(1) === Vector(42) ) &&
+      ( (hang3 merge full).take(1) === Vector(42) )
+    }
+    property("join") = protect {
+      println("starting hanging await.join...")
+      (concurrent.join(10)(Stream(full, hang)).take(1) === Vector(42)) &&
+      (concurrent.join(10)(Stream(full, hang2)).take(1) === Vector(42)) &&
+      (concurrent.join(10)(Stream(full, hang3)).take(1) === Vector(42)) &&
+      (concurrent.join(10)(Stream(hang3,hang2,full)).take(1) === Vector(42))
+    }
+
+    def observe[A](msg: String, s: Stream[Task,A]) =
+      s.map { a => println(msg + ": " + a); a }
+  }}
 }

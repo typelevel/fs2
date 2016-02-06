@@ -1,7 +1,7 @@
 package fs2
 
 import collection.immutable.LongMap
-import fs2.internal.{ConcurrentLinkedMap,LinkedSet,Trampoline}
+import fs2.internal.{Resources,LinkedSet,Trampoline}
 import fs2.util._
 import fs2.Async.Future
 
@@ -15,14 +15,22 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
   def isEmpty: Boolean = false
 
   def runFold[O](g: (O,W) => O)(z: O): Free[F, O] =
-    _runFold0(true, ConcurrentLinkedMap.empty[Token,F[Unit]], Stream.Stack.empty[F,W])(g, z)
+    _runFold0(true, Resources.empty[Token,F[Unit]], Stream.Stack.empty[F,W])(g, z)
 
   protected final def _runFold0[F2[_],O,W2>:W,W3](
-    doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+    doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O] =
     Free.pure(()) flatMap { _ => // trampoline after every step, catch exceptions
-      try _runFold1(doCleanup, tracked, k)(g, z)
-      catch { case t: Throwable => Stream.fail(t)._runFold1(doCleanup, tracked, k)(g,z) }
+      def normal =
+        try _runFold1(doCleanup, tracked, k)(g, z)
+        catch { case t: Throwable =>
+          Stream.fail(t)._runFold0(doCleanup, tracked, k)(g,z) }
+      if (tracked.isClosing) tracked.closeAll match {
+        case None => normal
+        case Some(cleanup) =>
+          Stream.runCleanup(cleanup) flatMap { _ => Free.fail(Stream.Interrupted) }
+      }
+      else normal
     }
 
   /**
@@ -34,7 +42,7 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
    *     proof that `W2 == W3`, and can fold `g` over any emits.
    */
   protected def _runFold1[F2[_],O,W2>:W,W3](
-    doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+    doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O]
 
   private[fs2]
@@ -58,8 +66,6 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
   final def stepAsync[F2[_],W2>:W](implicit S: Sub1[F,F2], F2: Async[F2]):
     Pull[F2,Nothing,Future[F2, Pull[F2,Nothing,Step[Chunk[W2], Handle[F2,W2]]]]]
     = Pull.eval(F2.ref[Unit]).flatMap { gate =>
-      // We use `gate` to determine when the asynchronous step has completed
-      // Finalizers are not run until the step (running in the background) completes
       type Out = Step[Chunk[W2],Handle[F2,W2]]
       type OutE = Either[Throwable,Out]
       // A singleton stream which emits just a single step
@@ -68,33 +74,45 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
         // The `doCleanup = false` disables the default `Pull.run` behavior of
         // releasing any resources it acquires when reaching the end of the `Pull`
         _run0(doCleanup = false, LinkedSet.empty, Pull.Stack.empty[F2,Out,Unit])
-      // A singleton stream which catches all errors and sets `gate` when it completes
-      val s2: Stream[F2,Either[Throwable,Out]] =
-        Stream.onComplete(s, Stream.eval_(F2.set(gate)(F2.pure(())))).map(Right(_))
-              .onError(err => Stream.emit(Left(err)))
-      // We run `s2`, recording all resources it allocates to the mutable `resources` map
+      // We run `s`, recording all resources it allocates to the mutable `resources` map
       // Note that we record _only_ the newly allocated resources for _this step_
-      val resources = ConcurrentLinkedMap.empty[Token,F2[Unit]]
-      val f = (o: Option[OutE], o2: OutE) => Some(o2)
+      val resources = Resources.empty[Token,F2[Unit]]
+      val f = (o: Option[Out], o2: Out) => Some(o2)
       // The `doCleanup = false` disables the default behavior of `runFold`, which is
       // to run any finalizers not yet run when reaching end of stream
-      val free: Free[F2,Option[OutE]] = s2._runFold0(doCleanup = false, resources, Stack.empty[F2,OutE])(f, None)
-      val runStep: F2[Option[OutE]] = free.run
-      // We create a single `Token` that will covers any resources allocated by `runStep`
+      val free: Free[F2,Option[Out]] = s._runFold0(doCleanup = false, resources, Stack.empty[F2,Out])(f, None)
+      val runStep: F2[Either[Throwable,Option[Out]]] =
+        F2.bind(F2.attempt(free.run)) { e =>
+          F2.map(F2.setPure(gate)(()))(_ => e)
+        }
+      // We create a single `Token` that will cover any resources allocated by `runStep`
       val rootToken = new Token()
-      // The cleanup action waits until `gate` is set above, then runs finalizers in `resources`
-      val rootCleanup: F2[Unit] = F2.bind(F2.get(gate)) { _ => Stream.runCleanup(resources).run }
+      // The cleanup action runs immediately if no resources are now being
+      // acquired, otherwise it waits until the step is done
+      lazy val rootCleanup: F2[Unit] = F2.bind(F2.pure(())) { _ =>
+        resources.closeAll match {
+          case None =>
+            F2.bind(F2.get(gate)) { _ =>
+              resources.closeAll match {
+                case None => F2.pure(())
+                case Some(resources) => Stream.runCleanup(resources).run
+              }
+            }
+          case Some(resources) =>
+            Stream.runCleanup(resources).run
+        }
+      }
       // Track the root token with `rootCleanup` as associated cleanup action
       Pull.track(rootToken) >>
       Pull.acquire(rootToken, F2.pure(()), (u:Unit) => rootCleanup) >>
-      Pull.eval(F2.ref[Option[OutE]]).flatMap { out =>
+      Pull.eval(F2.ref[Either[Throwable,Option[Out]]]).flatMap { out =>
         // Now kick off asynchronous evaluation of `runStep`
         Pull.eval(F2.set(out)(runStep)).map { _ =>
           // Convert the output of the `Future` to a `Pull`
           F2.read(out).map {
-            case None => Pull.done: Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
-            case Some(Left(err)) => Pull.fail(err)
-            case Some(Right(a)) => Pull.pure(a)
+            case Right(None) => Pull.done: Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
+            case Right(Some(a)) => Pull.pure(a)
+            case Left(err) => Pull.fail(err)
           }.appendOnForce { Pull.suspend {
             // Important - if `resources.isEmpty`, we allocated a `rootToken`, but it turned
             // out that our step didn't acquire new resources. This is quite common.
@@ -114,12 +132,13 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   private[fs2] class Token()
   private[fs2] def token: Token = new Token()
+  case object Interrupted extends Throwable
 
   def chunk[F[_],W](c: Chunk[W]) = new Stream[F,W] { self =>
     override def isEmpty = c.isEmpty
 
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       k (
@@ -177,12 +196,15 @@ object Stream extends Streams[Stream] with StreamDerived {
   def fail[F[_]](err: Throwable): Stream[F,Nothing] = new Stream[F,Nothing] { self =>
     type W = Nothing
     def _runFold1[F2[_],O,W2>:Nothing,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       k (
         (segments,eq) => segments match {
-          case List() => empty[F2,W2]._runFold1(doCleanup, tracked, k)(g,z) flatMap { _ => Free.fail(err) }
+          case List() =>
+            // note: importat that we use _runFold1 here; we don't
+            // want to check interrupts again
+            empty[F2,W2]._runFold1(doCleanup, tracked, k)(g,z) flatMap { _ => Free.fail(err) }
           case _ =>
             val (hd, tl) = Stack.fail(segments)(err)
             val g2 = Eq.subst[({ type f[x] = (O,x) => O })#f, W3, W2](g)(eq.flip)
@@ -205,7 +227,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def eval[F[_],W](f: F[W]): Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O]
       =
       Free.attemptEval(S(f)) flatMap {
@@ -225,7 +247,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   override def map[F[_],W0,W](s: Stream[F,W0])(f: W0 => W) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Free.suspend {
@@ -251,7 +273,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def flatMap[F[_],W0,W](s: Stream[F,W0])(f: W0 => Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       Free.suspend {
@@ -280,7 +302,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def append[F[_],W](s: Stream[F,W], s2: => Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
       s._runFold0[F2,O,W2,W3](doCleanup, tracked, k.pushAppend(() => Sub1.substStream(s2)))(g,z)
@@ -297,17 +319,28 @@ object Stream extends Streams[Stream] with StreamDerived {
   private[fs2] def acquire[F[_],W](id: Token, r: F[W], cleanup: W => F[Unit]):
   Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
-      Free.eval(S(r)) flatMap { r =>
-        try
-          emit(r)._runFold0[F2,O,W2,W3](doCleanup, tracked updated (id, S(cleanup(r))), k)(g,z)
-        catch { case t: Throwable =>
-          fail(new RuntimeException("producing resource cleanup action failed", t))
-          ._runFold0[F2,O,W2,W3](doCleanup, tracked, k)(g,z)
-        }
-      }
+      Stream.suspend {
+        // might want to consider bundling finalizer with the effect, thus
+        // as soon as effect completes, have the finalizer
+        if (tracked.startAcquire(id))
+          Stream.eval(S(r))
+            .onError { err => tracked.cancelAcquire(id); fail(err) }
+            .flatMap { r =>
+              try {
+                val c = S(cleanup(r))
+                tracked.finishAcquire(id,c)
+                emit(r)
+              }
+              catch { case err: Throwable =>
+                tracked.cancelAcquire(id)
+                fail(err)
+              }
+            }
+        else fail(Interrupted)
+      }._runFold0[F2,O,W2,W3](doCleanup, tracked, k)(g,z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
@@ -324,12 +357,14 @@ object Stream extends Streams[Stream] with StreamDerived {
   private[fs2] def release(id: Token): Stream[Nothing,Nothing] = new Stream[Nothing,Nothing] {
     type W = Nothing
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[Nothing,F2]): Free[F2,O]
       =
-      tracked.get(id).map(eval).getOrElse(Stream.emit(())).flatMap { (u: Unit) =>
-        empty[F2,W2]
-      }._runFold0(doCleanup, tracked.removed(id), k)(g, z)
+      tracked.startClose(id).map(f => eval(f).map(_ => tracked.finishClose(id)))
+             .getOrElse(emit(()))
+             .onError { e => tracked.finishClose(id); fail(e) }
+             .flatMap { _ => empty[F2,W2] }
+             ._runFold1(doCleanup, tracked, k)(g, z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[Nothing,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
@@ -341,7 +376,7 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def onError[F[_],W](s: Stream[F,W])(handle: Throwable => Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       = {
         val handle2: Throwable => Stream[F2,W] = handle andThen (Sub1.substStream(_))
@@ -374,7 +409,7 @@ object Stream extends Streams[Stream] with StreamDerived {
    */
   def suspend[F[_],W](self: => Stream[F,W]): Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
-      doCleanup: Boolean, tracked: ConcurrentLinkedMap[Token,F2[Unit]], k: Stack[F2,W2,W3])(
+      doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       = self._runFold0(doCleanup, tracked, k)(g, z)
 
@@ -427,9 +462,17 @@ object Stream extends Streams[Stream] with StreamDerived {
     def empty[F[_],W]: Handle[F,W] = new Handle(List(), Stream.empty)
   }
 
-  private def runCleanup[F[_]](l: ConcurrentLinkedMap[Token,F[Unit]]): Free[F,Unit] =
-    l.values.foldLeft[Free[F,Unit]](Free.pure(()))((tl,hd) =>
-      Free.eval(hd) flatMap { _ => tl } )
+  private def runCleanup[F[_]](l: Resources[Token,F[Unit]]): Free[F,Unit] =
+    l.closeAll match {
+      case Some(l) => runCleanup(l)
+      case None => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
+    }
+
+  private def runCleanup[F[_]](cleanups: Iterable[F[Unit]]): Free[F,Unit] =
+    // note - run cleanup actions in LIFO order, later actions run first
+    cleanups.foldLeft[Free[F,Unit]](Free.pure(()))(
+      (tl,hd) => Free.eval(hd) flatMap { _ => tl }
+    )
 
   private def concatRight[F[_],W](s: List[Stream[F,W]]): Stream[F,W] =
     if (s.isEmpty) empty
