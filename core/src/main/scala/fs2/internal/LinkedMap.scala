@@ -20,11 +20,25 @@ private[fs2] class LinkedMap[K,+V](
   def updated[V2>:V](k: K, v: V2): LinkedMap[K,V2] =
     new LinkedMap(entries.updated(k, (v,nextID)), insertionOrder.updated(nextID, k), nextID+1)
 
+  def edit[V2>:V](k: K, f: Option[V2] => Option[V2]): LinkedMap[K,V2] =
+    entries.get(k) match {
+      case None => f(None) match {
+        case None => this - k
+        case Some(v) => updated(k, v)
+      }
+      case Some((v,id)) => f(Some(v)) match {
+        case None => this - k
+        case Some(v) => new LinkedMap(entries.updated(k, (v,id)), insertionOrder, nextID)
+      }
+    }
+
   /** Remove this key from this map. */
   def -(k: K) = new LinkedMap(
     entries - k,
     entries.get(k).map { case (_,id) => insertionOrder - id }.getOrElse(insertionOrder),
     nextID)
+
+  def unorderedEntries: Iterable[(K,V)] = entries.mapValues(_._1)
 
   /** The keys of this map, in the order they were added. */
   def keys: Iterable[K] = insertionOrder.values
@@ -33,6 +47,10 @@ private[fs2] class LinkedMap[K,+V](
   def values: Iterable[V] = keys.flatMap(k => entries.get(k).toList.map(_._1))
 
   def isEmpty = entries.isEmpty
+
+  def size = entries.size
+
+  override def toString = "{ " + (keys zip values).mkString("  ") +" }"
 }
 
 private[fs2] object LinkedMap {

@@ -68,7 +68,7 @@ object Free {
   }
   private[fs2] case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
     def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
-      G.bind(r.runTranslate(g))(f andThen (_.runTranslate(g)))
+      G.bind(r._runTranslate(g))(f andThen (_.runTranslate(g)))
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
     : Trampoline[Unroll[A, G[Free[F,A]]]]
     = Sub1.substFree(r) match {

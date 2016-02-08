@@ -85,11 +85,25 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     c.get ?= 0L
   }
 
-  property("asynchronous resource allocation (2)") = forAll {
+  property("asynchronous resource allocation (2a)") = forAll { (u: Unit) =>
+    val s1 = Stream.fail(Err)
+    val s2 = Stream.fail(Err)
+    val c = new AtomicLong(0)
+    val b1 = bracket(c)(s1)
+    val b2 = s2: Stream[Task,Int]
+    // subtle test, get different scenarios depending on interleaving:
+    // `s2` completes with failure before the resource is acquired by `s2`.
+    // `b1` has just caught `s1` error when `s2` fails
+    // `b1` fully completes before `s2` fails
+    swallow { run { b1 merge b2 }}
+    c.get ?= 0L
+  }
+
+  property("asynchronous resource allocation (2b)") = forAll {
     (s1: PureStream[Int], s2: PureStream[Int], f1: Failure, f2: Failure) =>
     val c = new AtomicLong(0)
     val b1 = bracket(c)(s1.get)
-    val b2 = bracket(c)(s1.get)
+    val b2 = bracket(c)(s2.get)
     swallow { run { spuriousFail(b1,f1) merge b2 }}
     swallow { run { b1 merge spuriousFail(b2,f2) }}
     swallow { run { spuriousFail(b1,f1) merge spuriousFail(b2,f2) }}
@@ -125,10 +139,9 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     try { a; () }
     catch { case e: Throwable => () }
 
-  def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] =
-    Stream.bracket(Task.delay(c.decrementAndGet))(_ => s, _ => Task.delay(c.incrementAndGet))
-  def lbracket(c: AtomicLong)(s: Stream[Task,Int]): Stream[Task,Int] =
-    Stream.bracket(Task.delay { c.decrementAndGet; println("decrement " + c.get) })(
+  def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
+    Stream.bracket(Task.delay { c.decrementAndGet })(
       _ => s,
-      _ => Task.delay { c.incrementAndGet; println("increment " + c.get) })
+      _ => Task.delay { c.incrementAndGet })
+  }
 }
