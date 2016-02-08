@@ -68,6 +68,7 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A], lock: ReadWri
   override def toString = "Ref { "+ref.get.toString+" }"
 }
 
+private[fs2]
 object Ref {
 
   class ReadWriteSpinLock(readers: AtomicLong) { // readers = -1 means writer has lock
