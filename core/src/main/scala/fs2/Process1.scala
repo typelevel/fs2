@@ -198,7 +198,7 @@ object process1 {
 
   /** Emits the last `n` elements of the input. */
   def takeRight[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
-    _ pull Pull.takeRight(n)
+    _ pull { h => Pull.takeRight(n)(h).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
 
   /** Emit the longest prefix of the input for which all elements test true according to `f`. */
   def takeWhile[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =

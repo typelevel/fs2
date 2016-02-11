@@ -184,21 +184,17 @@ private[fs2] trait pull1 {
     } 
 
   /** Emits the last `n` elements of the input. */
-  def takeRight[F[_],I](n: Long): Handle[F,I] => Pull[F,I,Handle[F,I]]  = {
-    def go(acc: Vector[I]): Handle[F,I] => Pull[F,I,Handle[F,I]] = {
-      h => Pull.awaitN(if (n <= Int.MaxValue) n.toInt else Int.MaxValue, true)(h).optional.flatMap {
-        case None => acc match {
-          case hd +: tl => tl.foldLeft(Pull.output1(hd))(_ >> Pull.output1(_)) as Handle.empty
-          case _ => Pull.pure(h)
-        }
+  def takeRight[F[_],I](n: Long)(h: Handle[F,I]): Pull[F,Nothing,Vector[I]]  = {
+    def go(acc: Vector[I])(h: Handle[F,I]): Pull[F,Nothing,Vector[I]] = {
+      Pull.awaitN(if (n <= Int.MaxValue) n.toInt else Int.MaxValue, true)(h).optional.flatMap {
+        case None => Pull.pure(acc)
         case Some(cs #: h) =>
           val vector = cs.toVector.flatMap(_.toVector)
           go(acc.drop(vector.length) ++ vector)(h)
       }
     }
-
-    if (n <= 0) h => Pull.pure(h)
-    else go(Vector())
+    if (n <= 0) Pull.pure(Vector())
+    else go(Vector())(h)
   }
 
   /**
