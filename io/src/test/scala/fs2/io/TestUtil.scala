@@ -13,13 +13,15 @@ import org.scalacheck.Prop
   */
 object TestUtil {
 
-  implicit val DefaultAsynchronousChannelGroup = {
+  case class GroupName(get: String)
+
+  implicit def DefaultAsynchronousChannelGroup(implicit name: GroupName) = {
     val idx = new AtomicInteger(0)
     AsynchronousChannelProvider.provider().openAsynchronousChannelGroup(
       8
       , new ThreadFactory {
         def newThread(r: Runnable): Thread = {
-          val t = new Thread(r, s"fs2-io-default-AG-${idx.incrementAndGet() }")
+          val t = new Thread(r, s"fs2-AG-${name.get}-${idx.incrementAndGet() }")
           t.setDaemon(true)
           t
         }

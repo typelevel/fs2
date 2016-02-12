@@ -100,6 +100,10 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def terminated: Stream[F,Option[A]] =
     Stream.terminated(self)
 
+  /** Infix alias for `[[Stream.traversePull]]`. */
+  def traversePull[F2[_],B](f: A => Pull[F2,B,Any])(implicit S: Sub1[F,F2]):
+    Pull[F2,B,Unit] = Stream.traversePull(Sub1.substStream(self))(f)
+
   @deprecated("use `pipe2` or `pipe2v`, which now subsumes the functionality of `wye`", "0.9")
   def wye[F2[_],B,C](s2: Stream[F2,B])(f: (Stream[F2,A], Stream[F2,B]) => Stream[F2,C])(implicit S: Sub1[F,F2])
   : Stream[F2,C] = pipe2v(s2)(f)

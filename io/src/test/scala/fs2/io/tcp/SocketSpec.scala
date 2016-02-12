@@ -53,6 +53,7 @@ object SocketSpec extends Properties("tcp.socket") {
   // simple server that echoes what it receives and then terminates
   // every connection is open until the remote hangs
   def echoServer(address:InetSocketAddress): Stream[Task,Stream[Task, Int]] = {
+    implicit val name = GroupName("server")
     tcp.server[Task](address) map { pull =>
       (pull flatMap echoPull).run
     }
@@ -62,10 +63,11 @@ object SocketSpec extends Properties("tcp.socket") {
   // Note that this first send bytes the then reads all bytes sent back and repeats until `source` is nonEmpty.
   // Will terminate when server terminates.
   def requestReplyClient(address:InetSocketAddress)(source:Stream[Task,ByteVector]):Stream[Task,ByteVector] = {
-    tcp.client[Task](address).run flatMap { (socket:Socket[Task]) =>
+    implicit val name = GroupName("client")
+    tcp.client[Task](address) flatMap { (socket:Socket[Task]) =>
       println(("SOCKET CLIENT", socket))
-      source map writeAndRead(socket) flatMap { pull => pull.run }
-    }
+      source traversePull { bs => writeAndRead(socket)(bs).output }
+    } run
   }
 
   property("echo") = protect { acquireLock {

@@ -92,21 +92,31 @@ object Socket {
   : Pull[F, Nothing, Socket[F]] = Pull suspend {
 
     def setup: F[AsynchronousSocketChannel] = F.suspend {
+      print("CLIENT setup...")
       val ch = AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       ch.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sendBufferSize)
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
+      println("CLIENT setup completed")
       ch
     }
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] = F.async { cb =>
       F.suspend {
+        println("CLIENT connecting")
         ch.connect(to, null, new CompletionHandler[Void, Void] {
-          def completed(result: Void, attachment: Void): Unit = cb(Right(ch))
-          def failed(rsn: Throwable, attachment: Void): Unit = cb(Left(rsn))
+          def completed(result: Void, attachment: Void): Unit = {
+            println("connected: " + ch)
+            cb(Right(ch))
+          }
+          def failed(rsn: Throwable, attachment: Void): Unit = {
+            println("connection failed: " + rsn)
+            cb(Left(rsn))
+          }
         })
+        println("CLIENT connecting finished registration")
       }
     }
 

@@ -1,5 +1,6 @@
 package fs2
 
+private[fs2]
 trait PullDerived { self: fs2.Pull.type =>
 
   def map[F[_],W,R0,R](p: Pull[F,W,R0])(f: R0 => R): Pull[F,W,R] =
@@ -21,4 +22,8 @@ trait PullDerived { self: fs2.Pull.type =>
   }
 
   implicit def covaryPure[F[_],W,R](p: Pull[Pure,W,R]): Pull[F,W,R] = p.covary[F]
+
+  implicit class PullNoOutputOps[F[_],R](self: Pull[F,Nothing,R]) {
+    def output: Pull[F,R,Unit] = self.flatMap(Pull.output1)
+  }
 }
