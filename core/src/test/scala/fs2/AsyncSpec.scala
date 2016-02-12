@@ -10,12 +10,12 @@ object AsyncSpec extends Properties("Async") {
   val F = implicitly[Async[Task]]
 
   property("async success") = protect {
-    val t = F.async[Int] { cb => cb(Right(42)) }
+    val t = F.async[Int] { cb => F.suspend { F.pure { cb(Right(42)) } }}
     t.run ?= 42
   }
 
   property("async failure") = protect {
-    val t = F.async[Int] { cb => cb(Left(Err)) }
+    val t = F.async[Int] { cb => F.pure { cb(Left(Err)) } }
     val t2 = t.flatMap(_ => F.pure(10)).flatMap(_ => F.pure(11))
     (try { t.run; false } catch { case Err => true }) &&
     (try { t2.run; false } catch { case Err => true })

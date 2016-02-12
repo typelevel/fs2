@@ -381,6 +381,7 @@ object Task extends Instances {
      */
     def set(t: Task[A])(implicit S: Strategy): Task[Unit] = Task.delay { S { t.runAsync { r => actor ! Msg.Set(r) } }}
     def setFree(t: Free[Task,A])(implicit S: Strategy): Task[Unit] = set(t.run)
+    def runSet(r: Either[Throwable,A]): Unit = actor ! Msg.Set(r)
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
     def get: Task[A] =
@@ -451,6 +452,7 @@ private[fs2] trait Instances extends Instances1 {
   implicit def asyncExt(implicit S:Strategy): AsyncExt[Task] = new AsyncExt[Task] {
     type Ref[A] = Task.Ref[A]
     def set[A](q: Ref[A])(a: Task[A]): Task[Unit] = q.set(a)
+    def runSet[A](q: Ref[A])(a: Either[Throwable,A]): Unit = q.runSet(a)
     def ref[A]: Task[Ref[A]] = Task.ref[A](S)
     def get[A](r: Ref[A]): Task[A] = r.get
     def cancellableGet[A](r: Ref[A]): Task[(Task[A], Task[Unit])] = r.cancellableGet
