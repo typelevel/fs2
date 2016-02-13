@@ -23,12 +23,13 @@ object SocketSpec extends Properties("tcp.socket") {
   // finally it emits size of data echoed
   def echoPull(socket:Socket[Task]):Pull[Task,Nothing,Int] = {
     def go(acc:Int):Pull[Task,Nothing,Int] = {
+      println(("SERVER AWITING BYTES TO READ", acc, socket))
       for {
         available <- socket.available(1024,None)
         _ = println((" ON SERVER", available))
         size <- available match {
           case None => Pull.pure(acc)
-          case Some(bytes) => Pull.eval(socket.write(bytes,None)) >> go(acc + available.size)
+          case Some(bytes) => Pull.eval(socket.write(bytes,None)) >> go(acc + available.map(_.size).getOrElse(0))
         }
       } yield size
     }
@@ -44,6 +45,9 @@ object SocketSpec extends Properties("tcp.socket") {
         _ = println(("CLIENT WROTE", data))
         read <- socket.readOnce(data.size)
         _ = println(("CLIENT READ", data))
+        addr <- Pull.eval(socket.localAddress)
+        _ = println(("CLIENT CLOSING", addr))
+        _ <- Pull.eval(socket.close.map(_ => println(("SOCKET FORCED CLOSE", addr))))
       } yield read
     }
   }
@@ -55,7 +59,8 @@ object SocketSpec extends Properties("tcp.socket") {
   def echoServer(address:InetSocketAddress): Stream[Task,Stream[Task, Int]] = {
     implicit val name = GroupName("server")
     tcp.server[Task](address) map { pull =>
-      (pull flatMap echoPull).run
+      (pull flatMap echoPull).output.run
+        .onComplete(Stream.eval_(Task.delay(println("SERVER SOCKET DONE"))))
     }
   }
 
@@ -65,7 +70,6 @@ object SocketSpec extends Properties("tcp.socket") {
   def requestReplyClient(address:InetSocketAddress)(source:Stream[Task,ByteVector]):Stream[Task,ByteVector] = {
     implicit val name = GroupName("client")
     tcp.client[Task](address) flatMap { (socket:Socket[Task]) =>
-      println(("SOCKET CLIENT", socket))
       source traversePull { bs => writeAndRead(socket)(bs).output }
     } run
   }
@@ -74,11 +78,12 @@ object SocketSpec extends Properties("tcp.socket") {
     println("ECHO STARTED")
     val source = Stream(ByteVector(1,2,3,4))
     val server = concurrent.join(Int.MaxValue)(echoServer(localBindAddress))
-    //val client = requestReplyClient(localBindAddress)(source)
+    val client = requestReplyClient(localBindAddress)(source)
+                 .onComplete(Stream.eval_(Task.delay(println("CLIENT DONE"))))
 
-    val client = requestReplyClient(new InetSocketAddress("www.spinoco.com", 443))(source)
-    client.runLog.run.run ?= Vector()
-    //(server either client).take(2).runLog.run.run ?= Vector()
+    (server either client)
+    .map { x => println(("XXX OUT", x)); x }
+    .take(2).runLog.run.run.toSet ?= Set(Left(4), Right(ByteVector(1,2,3,4)))
   }}
 
 }

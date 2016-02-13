@@ -112,8 +112,10 @@ object Socket {
       }
     }
 
-    def cleanup(ch: AsynchronousSocketChannel): F[Unit] =
-      F.suspend(ch.close())
+    def cleanup(ch: AsynchronousSocketChannel): F[Unit] = {
+
+      F.suspend  {  println(("XXXR CLIENT SOCKET CLOSED", ch));  ch.close() }
+    }
 
 
     Pull.acquire(Stream.token, F.bind(setup)(connect), cleanup) map buildSocket(F)
@@ -171,10 +173,12 @@ object Socket {
       def available(maxBytes: Int, timeout: Option[FiniteDuration]): Pull[F, Nothing, Option[ByteVector]] =
         Pull.eval {
           F.async[Option[ByteVector]] { cb => F.suspend {
+
             val arr = new Array[Byte](maxBytes)
             val buf = ByteBuffer.wrap(arr)
             val handler = new CompletionHandler[Integer, Void] {
               def completed(result: Integer, attachment: Void): Unit = {
+                println(("XXXG AVAIL >>>>> COMPLETE", maxBytes, ch, result))
                 try {
                   buf.flip()
                   val bs = ByteVector.view(buf) // no need to copy since `buf` is not reused
@@ -183,9 +187,13 @@ object Socket {
                 }
                 catch { case e: Throwable => cb(Left(e)) }
               }
-              def failed(exc: Throwable, attachment: Void): Unit = cb(Left(exc))
+              def failed(exc: Throwable, attachment: Void): Unit = {
+                println(("XXXR AVAIL >>>>> FAILED", maxBytes, ch, exc.getMessage ))
+                cb(Left(exc))
+              }
             }
 
+            println(("XXXY READING", maxBytes, ch, timeout))
             timeout.fold(ch.read(buf, null, handler)) { duration =>
               ch.read(buf, duration.length, duration.unit, null, handler)
             }
