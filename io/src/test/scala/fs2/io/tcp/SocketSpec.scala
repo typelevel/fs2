@@ -45,9 +45,9 @@ object SocketSpec extends Properties("tcp.socket") {
         _ = println(("CLIENT WROTE", data))
         read <- socket.readOnce(data.size)
         _ = println(("CLIENT READ", data))
-        addr <- Pull.eval(socket.localAddress)
-        _ = println(("CLIENT CLOSING", addr))
-        _ <- Pull.eval(socket.close.map(_ => println(("SOCKET FORCED CLOSE", addr))))
+//        addr <- Pull.eval(socket.localAddress)
+//        _ = println(("CLIENT CLOSING", addr))
+//        _ <- Pull.eval(socket.close.map(_ => println(("SOCKET FORCED CLOSE", addr))))
       } yield read
     }
   }
