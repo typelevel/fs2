@@ -100,6 +100,22 @@ trait StreamDerived { self: fs2.Stream.type =>
   def peek1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
     h.await1 flatMap { case hd #: tl => Pull.pure(hd #: tl.push1(hd)) }
 
+
+  /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
+  def range(start: Int, stopExclusive: Int, by: Int = 1): Stream[Pure,Int] =
+    unfold(start)(i => if (i < stopExclusive) Some((i + by, Chunk.seq(Seq(i + by)))) else None)
+
+  /** Produce a (potentially infinite) source from an unfold. */
+  def unfold[S, A](s0: S)(f: S => Option[(S,Chunk[A])]): Stream[Pure,A] = {
+    def go(s: S):  Stream[Pure,A] =
+      f(s) match {
+        case Some((ns, chunk)) => Stream.chunk(chunk) ++ go(ns)
+        case None => Stream.empty
+      }
+    Stream.suspend(go(s0))
+  }
+
+
   implicit class HandleOps[+F[_],+A](h: Handle[F,A]) {
     def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
       self.push(h: Handle[F,A2])(c)

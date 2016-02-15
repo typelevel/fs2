@@ -38,16 +38,19 @@ object SocketSpec extends Properties("tcp.socket") {
 
   // Pull that writes and then reads what was written
   def writeAndRead(socket:Socket[Task])(data:ByteVector):Pull[Task,Nothing,ByteVector] = {
-    if (data.isEmpty) Pull.pure(ByteVector.empty)
+    if (data.isEmpty) {
+      for {
+        _ <- Pull.eval(socket.close.map(_ => println(("SOCKET FORCED CLOSE, EMPTY"))))
+      } yield (ByteVector.empty)
+    }
     else {
       for {
         _ <- Pull.eval(socket.write(data))
         _ = println(("CLIENT WROTE", data))
         read <- socket.readOnce(data.size)
         _ = println(("CLIENT READ", data))
-//        addr <- Pull.eval(socket.localAddress)
-//        _ = println(("CLIENT CLOSING", addr))
-//        _ <- Pull.eval(socket.close.map(_ => println(("SOCKET FORCED CLOSE", addr))))
+        addr <- Pull.eval(socket.localAddress)
+        _ <- Pull.eval(socket.close)
       } yield read
     }
   }
@@ -60,7 +63,6 @@ object SocketSpec extends Properties("tcp.socket") {
     implicit val name = GroupName("server")
     tcp.server[Task](address) map { pull =>
       (pull flatMap echoPull).output.run
-        .onComplete(Stream.eval_(Task.delay(println("SERVER SOCKET DONE"))))
     }
   }
 
@@ -70,20 +72,38 @@ object SocketSpec extends Properties("tcp.socket") {
   def requestReplyClient(address:InetSocketAddress)(source:Stream[Task,ByteVector]):Stream[Task,ByteVector] = {
     implicit val name = GroupName("client")
     tcp.client[Task](address) flatMap { (socket:Socket[Task]) =>
-      source traversePull { bs => writeAndRead(socket)(bs).output }
+      source traversePull { bs =>
+        writeAndRead(socket)(bs) .output
+      }
     } run
   }
 
-  property("echo") = protect { acquireLock {
-    println("ECHO STARTED")
-    val source = Stream(ByteVector(1,2,3,4))
-    val server = concurrent.join(Int.MaxValue)(echoServer(localBindAddress))
-    val client = requestReplyClient(localBindAddress)(source)
-                 .onComplete(Stream.eval_(Task.delay(println("CLIENT DONE"))))
+//  property("echo.request.and.terminate") = protect { acquireLock {
+//    val size = 15000
+//    val content = ByteVector.fill(size)(0xaa)
+//    val source = Stream(content)
+//    val server = concurrent.join(Int.MaxValue)(echoServer(localBindAddress))
+//    val client = requestReplyClient(localBindAddress)(source)
+//
+//    (server either client)
+//    .take(2).runLog.run.run.toSet ?= Set(Left(size), Right(content))
+//  }}
 
-    (server either client)
-    .map { x => println(("XXX OUT", x)); x }
-    .take(2).runLog.run.run.toSet ?= Set(Left(4), Right(ByteVector(1,2,3,4)))
+  property("echo.10k.requests") = protect { acquireLock {
+    try {
+      val size = 10
+      val content = ByteVector.fill(size)(0xaa)
+      val source = Stream(content)
+      val server = concurrent.join(Int.MaxValue)(echoServer(localBindAddress))
+      val client = requestReplyClient(localBindAddress)(source)
+      val clients = concurrent.join[Task, ByteVector](1)(Stream.range(0, 1).map{r=> println(("XXXR RUNNGING CLIENT", r)); client})
+
+      (server either clients)
+      .take(100)
+      .runLog.run.run ?= Vector()
+    } catch {
+      case t :Throwable => t.printStackTrace(); throw t
+    }
   }}
 
 }

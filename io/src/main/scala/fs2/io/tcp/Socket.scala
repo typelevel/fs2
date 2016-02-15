@@ -3,7 +3,7 @@ package fs2.io.tcp
 import java.net.{SocketAddress, StandardSocketOptions, InetSocketAddress}
 import java.nio.ByteBuffer
 import java.nio.channels.spi.AsynchronousChannelProvider
-import java.nio.channels.{InterruptedByTimeoutException, AsynchronousServerSocketChannel, CompletionHandler, AsynchronousSocketChannel, AsynchronousChannelGroup}
+import java.nio.channels.{AcceptPendingException, InterruptedByTimeoutException, AsynchronousServerSocketChannel, CompletionHandler, AsynchronousSocketChannel, AsynchronousChannelGroup}
 
 import fs2.util.Task
 import fs2.{async, Strategy, Pull, Async, Stream}
@@ -104,17 +104,20 @@ object Socket {
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] = F.async { cb =>
       F.suspend {
         ch.connect(to, null, new CompletionHandler[Void, Void] {
-          def completed(result: Void, attachment: Void): Unit =
+          def completed(result: Void, attachment: Void): Unit = {
+            println(("#### CONNECTED", ch))
             cb(Right(ch))
-          def failed(rsn: Throwable, attachment: Void): Unit =
+          }
+          def failed(rsn: Throwable, attachment: Void): Unit = {
+            println(("#### FAIL CX", ch, rsn))
             cb(Left(rsn))
+          }
         })
       }
     }
 
     def cleanup(ch: AsynchronousSocketChannel): F[Unit] = {
-
-      F.suspend  {  println(("XXXR CLIENT SOCKET CLOSED", ch));  ch.close() }
+      F.suspend  {  println(("XXXR CLOSE CLIENT", ch));  ch.close() }
     }
 
 
@@ -128,7 +131,9 @@ object Socket {
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
     implicit AG: AsynchronousChannelGroup, F: Async[F]
-  ): Stream[F, Pull[F, Nothing, Socket[F]]] = {
+  ): Stream[F, Pull[F, Nothing, Socket[F]]] = Stream.suspend {
+
+    @volatile var closed:Boolean = false
 
     def setup: F[AsynchronousServerSocketChannel] = F.suspend {
       val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
@@ -138,25 +143,35 @@ object Socket {
     }
 
     def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] =
-      F.suspend { sch.close() }
+      F.suspend { println("XXXR*** SERVER SOCKET channel closed"); closed = true; sch.close() }
 
 
-    def acceptIncoming(sch: AsynchronousServerSocketChannel): Pull[F, Nothing, Socket[F]] = Pull.suspend {
-      def accept: F[AsynchronousSocketChannel] =
-        F.async { cb => F.suspend {
-          sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-            def completed(result: AsynchronousSocketChannel, attachment: Void): Unit = cb(Right(result))
-            def failed(rsn: Throwable, attachment: Void): Unit = cb(Left(rsn))
-          })
-        }}
-      def close(ch: AsynchronousSocketChannel): F[Unit] =
-        F.suspend { ch.close() }
+    def acceptOneIncoming(sch: AsynchronousServerSocketChannel): Stream[F,Pull[F, Nothing, Socket[F]]] = Stream.eval {
+      F.async[Pull[F, Nothing, Socket[F]]] { cb => F.suspend {
 
-      Pull.acquire(Stream.token,accept,close) map buildSocket(F)
+        def close(ch: AsynchronousSocketChannel): F[Unit] = {
+          F.suspend { println(("XXXR CLOSE SERVER CH", ch)); ch.close()}
+        }
+        println(("XXXG ACCEPT ##################", closed))
+        sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+          def completed(result: AsynchronousSocketChannel, attachment: Void): Unit = {
+            val pull = Pull.acquire(Stream.token, F.pure(result), close) map buildSocket(F)
+            println("XXXG ACCEPT DONE")
+            cb(Right(pull))
+          }
+          def failed(rsn: Throwable, attachment: Void): Unit = {
+            println(("XXXG ACCEPT FAILED", sch, rsn, closed))
+            cb(Left(rsn))
+
+          }
+        })
+      }}
     }
 
-    def handleIncoming(sch: AsynchronousServerSocketChannel):Stream[F,Pull[F, Nothing, Socket[F]]] =
-      Stream.constant(sch) map acceptIncoming
+    def handleIncoming(sch: AsynchronousServerSocketChannel):Stream[F,Pull[F, Nothing, Socket[F]]] = {
+      acceptOneIncoming(sch).repeat
+    }
+
 
     Stream.bracket(setup)(handleIncoming, cleanup)
   }
