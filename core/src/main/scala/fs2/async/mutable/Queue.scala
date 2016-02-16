@@ -1,11 +1,9 @@
 package fs2.async.mutable
 
 import fs2._
-import fs2.async.AsyncExt.Change
+import fs2.Async.Change
 
-import fs2.async.{immutable, AsyncExt}
-
-
+import fs2.async.immutable
 
 /**
  * Asynchronous queue interface. Operations are all nonblocking in their
@@ -16,15 +14,12 @@ import fs2.async.{immutable, AsyncExt}
 trait Queue[F[_],A] {
 
   /**
-    * Enqueues one element in this `Queue`.
-    *
-    * If the queue is `full` this waits, until queue is empty.
-    *
-    * This completes after `a`  has been successfully enqueued to this `Queue`
-    * @param a
-    * @return
-    */
-  def enqueue1(a:A): F[Unit]
+   * Enqueues one element in this `Queue`.
+   * If the queue is `full` this waits until queue is empty.
+   *
+   * This completes after `a`  has been successfully enqueued to this `Queue`
+   */
+  def enqueue1(a: A): F[Unit]
 
   /**
    * Offers one element in this `Queue`.
@@ -67,7 +62,7 @@ trait Queue[F[_],A] {
 
 object Queue {
 
-  def unbounded[F[_],A](implicit F: AsyncExt[F]): F[Queue[F,A]] = {
+  def unbounded[F[_],A](implicit F: Async[F]): F[Queue[F,A]] = {
     /*
       * Internal state of the queue
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
@@ -87,20 +82,26 @@ object Queue {
         def upperBound: Option[Int] = None
         def enqueue1(a:A): F[Unit] = F.map(offer1(a))(_ => ())
         def offer1(a: A): F[Boolean] =
-          F.bind(F.modify(qref) { s => s.deq.headOption match {
-            case None => F.pure(s.copy(queue = s.queue :+ a))
-            case Some(deq) => F.bind(F.setPure(deq)(a)) { _ => F.pure(s.copy(deq = s.deq.tail)) }
-          }}) { c => F.map(signalSize(c.previous, c.now)) { _ => true }}
+          F.bind(F.modify(qref) { s =>
+            if (s.deq.isEmpty) s.copy(queue = s.queue :+ a)
+            else s.copy(deq = s.deq.tail)
+          }) { c =>
+            if (c.previous.deq.isEmpty) // we enqueued a value to the queue
+              F.map(signalSize(c.previous, c.now)) { _ => true }
+            else // queue was empty, we had waiting dequeuers
+              F.map(F.setPure(c.previous.deq.head)(a)) { _ => true }
+          }
 
         def dequeue1: F[A] =
+          F.bind(F.ref[A]) { r =>
           F.bind(F.modify(qref) { s =>
-            s.queue.headOption match {
-              case Some(a) => F.pure(s.copy(queue = s.queue.tail))
-              case None => F.map(F.ref[A]) { r => s.copy(deq = s.deq :+ r) }
+            if (s.queue.isEmpty) s.copy(deq = s.deq :+ r)
+            else s.copy(queue = s.queue.tail)
+          }) { c =>
+            F.bind(signalSize(c.previous, c.now)) { _ =>
+              if (c.previous.queue.nonEmpty) F.pure(c.previous.queue.head)
+              else F.get(r)
             }
-          }) { change => F.bind(signalSize(change.previous, change.now)) { _ =>
-            if (change.previous.queue.nonEmpty) F.pure(change.previous.queue.head)
-            else F.get(change.now.deq.last)
           }}
         def size = szSignal
         def full: immutable.Signal[F, Boolean] = Signal.constant[F,Boolean](false)
@@ -108,7 +109,7 @@ object Queue {
       }
     }}}
 
-  def bounded[F[_],A](maxSize: Int)(implicit F: AsyncExt[F]): F[Queue[F,A]] =
+  def bounded[F[_],A](maxSize: Int)(implicit F: Async[F]): F[Queue[F,A]] =
     F.bind(Semaphore(maxSize.toLong)) { permits =>
     F.map(unbounded[F,A]) { q =>
       new Queue[F,A] {

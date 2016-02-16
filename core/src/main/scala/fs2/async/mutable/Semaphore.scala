@@ -1,6 +1,6 @@
 package fs2.async.mutable
 
-import fs2.async.AsyncExt
+import fs2.Async
 
 /**
  * An asynchronous semaphore, useful as a concurrency primitive.
@@ -40,7 +40,7 @@ trait Semaphore[F[_]] {
 object Semaphore {
 
   /** Create a new `Semaphore`, initialized with `n` available permits. */
-  def apply[F[_]](n: Long)(implicit F: AsyncExt[F]): F[Semaphore[F]] = {
+  def apply[F[_]](n: Long)(implicit F: Async[F]): F[Semaphore[F]] = {
     def ensureNonneg(n: Long) = if (n < 0) throw new IllegalArgumentException("n must be nonnegative, was: " + n)
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
@@ -51,15 +51,15 @@ object Semaphore {
 
       def decrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
-        else F.bind(F.modify(ref) {
-          case Left(waiting) => F.map(F.ref[Unit]) { gate => Left(waiting :+ (n -> gate)) }
+        else F.bind(F.ref[Unit]) { gate => F.bind(F.modify(ref) {
+          case Left(waiting) => Left(waiting :+ (n -> gate))
           case Right(m) =>
-            if (n <= m) F.pure(Right(m-n))
-            else F.map(F.ref[Unit]) { gate => Left(Vector((n-m) -> gate)) }
-        }) { change => change.now match {
+            if (n <= m) Right(m-n)
+            else Left(Vector((n-m) -> gate))
+        }) { c => c.now match {
           case Left(waiting) => waiting.lastOption.map(p => F.get(p._2)).getOrElse(F.pure(()))
           case Right(_) => F.pure(())
-        }}
+        }}}
       }
 
       def incrementBy(n: Long) = { ensureNonneg(n)
@@ -74,9 +74,9 @@ object Semaphore {
               m -= waiting2.head._1
               waiting2 = waiting2.tail
             }
-            if (waiting2.nonEmpty) F.pure(Left(waiting2))
-            else F.pure(Right(m))
-          case Right(m) => F.pure(Right(m+n))
+            if (waiting2.nonEmpty) Left(waiting2)
+            else Right(m)
+          case Right(m) => Right(m+n)
         }) { change => change.previous match {
           case Left(waiting) =>
             // now compare old and new sizes to figure out which actions to run
@@ -91,8 +91,8 @@ object Semaphore {
       def tryDecrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(true)
         else F.map(F.modify(ref) {
-          case Right(m) if m >= n => F.pure(Right(m-n))
-          case w => F.pure(w)
+          case Right(m) if m >= n => Right(m-n)
+          case w => w
         })(_.now.isRight)
       }
 
@@ -103,5 +103,5 @@ object Semaphore {
   }}}
 
   /** Create a `Semaphore` with 0 initial permits. */
-  def empty[F[_]:AsyncExt]: F[Semaphore[F]] = apply(0)
+  def empty[F[_]:Async]: F[Semaphore[F]] = apply(0)
 }

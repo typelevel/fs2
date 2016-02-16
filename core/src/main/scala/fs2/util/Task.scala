@@ -1,10 +1,8 @@
 package fs2
 package util
 
-import async.AsyncExt
-import async.AsyncExt.Change
 import collection.JavaConversions._
-import fs2.internal.{Actor,Future}
+import fs2.internal.{Actor,Future,LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import java.util.concurrent.{ScheduledExecutorService, ConcurrentLinkedQueue, ExecutorService, Executors}
 import scala.concurrent.duration._
@@ -211,8 +209,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
 
 object Task extends Instances {
 
-  type Result[A] = Either[Throwable,A]
-  type Callback[A] = Result[A] => Unit
+  type Callback[A] = Either[Throwable,A] => Unit
 
   /** A `Task` which fails with the given `Throwable`. */
   def fail(e: Throwable): Task[Nothing] = new Task(Future.now(Left(e)))
@@ -305,92 +302,86 @@ object Task extends Instances {
   private trait MsgId
   private trait Msg[A]
   private object Msg {
-    case class Get[A](cb: Callback[A], id: () => MsgId) extends Msg[A]
-    case class Nevermind[A](id: MsgId, cb:Callback[Boolean]) extends Msg[A]
-    case class Set[A](r: Result[A]) extends Msg[A]
-    case class Modify[A](cb:Callback[A], id: () => MsgId) extends Msg[A]
-    case class ModifySet[A](r:Result[A]) extends Msg[A]
+    case class Read[A](cb: Callback[(A, Long)], id: MsgId) extends Msg[A]
+    case class Nevermind[A](id: MsgId, cb: Callback[Boolean]) extends Msg[A]
+    case class Set[A](r: Either[Throwable,A]) extends Msg[A]
+    case class TrySet[A](id: Long, r: Either[Throwable,A],
+                         cb: Callback[Boolean]) extends Msg[A]
   }
 
-  private type RefState[A] = Either[Queue[(MsgId,A => Task[A])],A]
-
   def ref[A](implicit S: Strategy): Task[Ref[A]] = Task.delay {
-    var result:Result[A] = null
-    var modified:Boolean = false //when true, the ref is just modified, and any sets/modify must be queued
-    var waiting: Map[MsgId,Callback[A]] = Map.empty  // any waiting gets before first set
-    var waitingModify:Map[MsgId,Callback[A]] = Map.empty // any sets/modify during ref is modified.
+    var result: Either[Throwable,A] = null
+    // any waiting calls to `access` before first `set`
+    var waiting: LinkedMap[MsgId, Callback[(A, Long)]] = LinkedMap.empty
+    // id which increases with each `set` or successful `modify`
+    var nonce: Long = 0
 
-    def deqModify(r:Result[A]):Unit = {
-      waitingModify.headOption match {
-        case None => modified = false
-        case Some((id,cb)) =>
-          modified = true
-          waitingModify = waitingModify - id
-          S { cb(r) }
-      }
-    }
-
-    def delayedSet(sr:Result[A])(r:Result[A]):Unit =
-      r.right.foreach { _ => S { actor ! Msg.Set(sr) } }
-
-    lazy val actor:Actor[Msg[A]] = Actor.actor[Msg[A]] {
-      case Msg.Get(cb,idf) =>
-        if (result eq null) waiting = waiting + (idf() -> cb)
-        else { val r = result; S { cb(r) } }
+    lazy val actor: Actor[Msg[A]] = Actor.actor[Msg[A]] {
+      case Msg.Read(cb, idf) =>
+        if (result eq null) waiting = waiting.updated(idf, cb)
+        else { val r = result; val id = nonce; S { cb(r.right.map((_,id))) } }
 
       case Msg.Set(r) =>
-        if (modified) {
-          waitingModify = waitingModify + (new MsgId{} -> delayedSet(r) _)
-        } else {
-          if (result eq null) {
-            waiting.values.foreach(cb => S { cb(r) })
-            waiting = Map.empty
-            deqModify(r)
-          }
-          result = r
+        if (result eq null) {
+          nonce += 1L
+          val id = nonce
+          waiting.values.foreach(cb => S { cb(r.right.map((_,id))) })
+          waiting = LinkedMap.empty
         }
-
-      case mod@Msg.Modify(cb,idf) =>
-        if (modified || (result eq null)) {
-          waitingModify = waitingModify + (idf() -> cb)
-        } else {
-         modified = true
-         val r = result
-         S { cb(r) }
-        }
-
-      case Msg.ModifySet(r) =>
         result = r
-        deqModify(r)
 
-      case Msg.Nevermind(id,cb) =>
-        val interrupted = waiting.isDefinedAt(id) || waitingModify.isDefinedAt(id)
+      case Msg.TrySet(id, r, cb) =>
+        if (id == nonce) {
+          nonce += 1L; val id2 = nonce
+          waiting.values.foreach(cb => S { cb(r.right.map((_,id2))) })
+          waiting = LinkedMap.empty
+          result = r
+          cb(Right(true))
+        }
+        else cb(Right(false))
+
+      case Msg.Nevermind(id, cb) =>
+        val interrupted = waiting.get(id).isDefined
         waiting = waiting - id
-        waitingModify = waiting -id
         S { cb (Right(interrupted)) }
     }
 
     new Ref(actor)
   }
 
-  class Ref[A](actor: Actor[Msg[A]]) {
+  class Ref[A] private[fs2](actor: Actor[Msg[A]]) {
+
+    def access: Task[(A, Either[Throwable,A] => Task[Boolean])] =
+      getStamped(new MsgId {}).map { case (a, id) =>
+        val set = (a: Either[Throwable,A]) =>
+          Task.unforkedAsync[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
+        (a, set)
+      }
 
     /**
      * Return a `Task` that submits `t` to this ref for evaluation.
      * When it completes it overwrites any previously `put` value.
      */
-    def set(t: Task[A])(implicit S: Strategy): Task[Unit] = Task.delay { S { t.runAsync { r => actor ! Msg.Set(r) } }}
-    def setFree(t: Free[Task,A])(implicit S: Strategy): Task[Unit] = set(t.run)
+    def set(t: Task[A])(implicit S: Strategy): Task[Unit] =
+      Task.delay { S { t.runAsync { r => actor ! Msg.Set(r) } }}
+    def setFree(t: Free[Task,A])(implicit S: Strategy): Task[Unit] =
+      set(t.run)
+    def runSet(e: Either[Throwable,A]): Unit =
+      actor ! Msg.Set(e)
+
+    private def getStamped(msg: MsgId): Task[(A,Long)] =
+      Task.unforkedAsync[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
-    def get: Task[A] =
-      Task.unforkedAsync[A] { cb => actor ! Msg.Get(cb, () => new MsgId {} ) }
+    def get: Task[A] = getStamped(new MsgId {}).map(_._1)
 
     /** Like `get`, but returns a `Task[Unit]` that can be used cancel the subscription. */
     def cancellableGet: Task[(Task[A], Task[Unit])] = Task.delay {
-      lazy val id = new MsgId {}
-      val get = Task.unforkedAsync[A] { cb => actor ! Msg.Get(cb, () => id ) }
-      val cancel = Task.unforkedAsync[Unit] { cb => actor ! Msg.Nevermind(id, r => cb(r.right.map(_ => ()))) }
+      val id = new MsgId {}
+      val get = getStamped(id).map(_._1)
+      val cancel = Task.unforkedAsync[Unit] {
+        cb => actor ! Msg.Nevermind(id, r => cb(r.right.map(_ => ())))
+      }
       (get, cancel)
     }
 
@@ -416,22 +407,6 @@ object Task extends Instances {
       t1.runAsync(win)
       t2.runAsync(win)
     }
-
-    def modify(f: A => Task[A]): Task[Change[A]] = {
-      for {
-        a <- Task.unforkedAsync[A] { cb => actor ! Msg.Modify(cb,() => new MsgId {})}
-        r <- f(a).attempt
-        _ <- Task.delay { actor ! Msg.ModifySet(r) }
-        aa <- r.fold(Task.fail,na => Task.now(Change(a,na)))
-      } yield aa
-    }
-
-    def cancellableModify(f: A => Task[A]): Task[(Task[Change[A]], Task[Boolean])] = Task.delay {
-      lazy val id = new MsgId {}
-      val mod = modify(f)
-      val cancel = Task.unforkedAsync[Boolean] { cb => actor ! Msg.Nevermind(id, cb) }
-      (mod,cancel)
-    }
   }
 }
 
@@ -447,17 +422,17 @@ private[fs2] trait Instances1 {
 
 private[fs2] trait Instances extends Instances1 {
 
-  implicit def asyncExt(implicit S:Strategy): AsyncExt[Task] = new AsyncExt[Task] {
+  implicit def asyncInstance(implicit S:Strategy): Async[Task] = new Async[Task] {
     type Ref[A] = Task.Ref[A]
-    def set[A](q: Ref[A])(a: Task[A]): Task[Unit] = q.set(a)
+    def access[A](r: Ref[A]) = r.access
+    def set[A](r: Ref[A])(a: Task[A]): Task[Unit] = r.set(a)
+    def runSet[A](r: Ref[A])(a: Either[Throwable,A]): Unit = r.runSet(a)
     def ref[A]: Task[Ref[A]] = Task.ref[A](S)
-    def get[A](r: Ref[A]): Task[A] = r.get
+    override def get[A](r: Ref[A]): Task[A] = r.get
     def cancellableGet[A](r: Ref[A]): Task[(Task[A], Task[Unit])] = r.cancellableGet
     def setFree[A](q: Ref[A])(a: Free[Task, A]): Task[Unit] = q.setFree(a)
     def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
     def pure[A](a: A): Task[A] = Task.now(a)
-    def modify[A](ref: Ref[A])(f: (A) => Task[A]): Task[Change[A]] = ref.modify(f)
-    def cancellableModify[A](r: Ref[A])(f: (A) => Task[A]): Task[(Task[Change[A]], Task[Boolean])] = r.cancellableModify(f)
     def fail[A](err: Throwable): Task[A] = Task.fail(err)
     def attempt[A](fa: Task[A]): Task[Either[Throwable, A]] = fa.attempt
   }
