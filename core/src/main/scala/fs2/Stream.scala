@@ -316,7 +316,8 @@ object Stream extends Streams[Stream] with StreamDerived {
       suspend { s.translate(uf1) ++ s2.translate(uf1) }
   }
 
-  private[fs2] def acquire[F[_],W](id: Token, r: F[W], cleanup: W => F[Unit]):
+  private[fs2]
+  def acquire[F[_],W](id: Token, r: F[W], cleanup: W => F[Unit]):
   Stream[F,W] = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
       doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(

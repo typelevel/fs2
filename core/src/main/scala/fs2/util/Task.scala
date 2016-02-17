@@ -381,6 +381,7 @@ object Task extends Instances {
      */
     def set(t: Task[A])(implicit S: Strategy): Task[Unit] = Task.delay { S { t.runAsync { r => actor ! Msg.Set(r) } }}
     def setFree(t: Free[Task,A])(implicit S: Strategy): Task[Unit] = set(t.run)
+    def runSet(r: Either[Throwable,A]): Unit = actor ! Msg.Set(r)
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
     def get: Task[A] =
@@ -442,6 +443,7 @@ private[fs2] trait Instances1 {
     def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
+    def suspend[A](a: => A): Task[A] = Task.delay(a)
   }
 }
 
@@ -450,12 +452,14 @@ private[fs2] trait Instances extends Instances1 {
   implicit def asyncExt(implicit S:Strategy): AsyncExt[Task] = new AsyncExt[Task] {
     type Ref[A] = Task.Ref[A]
     def set[A](q: Ref[A])(a: Task[A]): Task[Unit] = q.set(a)
+    def runSet[A](q: Ref[A])(a: Either[Throwable,A]): Unit = q.runSet(a)
     def ref[A]: Task[Ref[A]] = Task.ref[A](S)
     def get[A](r: Ref[A]): Task[A] = r.get
     def cancellableGet[A](r: Ref[A]): Task[(Task[A], Task[Unit])] = r.cancellableGet
     def setFree[A](q: Ref[A])(a: Free[Task, A]): Task[Unit] = q.setFree(a)
     def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
     def pure[A](a: A): Task[A] = Task.now(a)
+    def suspend[A](a: => A): Task[A] = Task.delay(a)
     def modify[A](ref: Ref[A])(f: (A) => Task[A]): Task[Change[A]] = ref.modify(f)
     def cancellableModify[A](r: Ref[A])(f: (A) => Task[A]): Task[(Task[Change[A]], Task[Boolean])] = r.cancellableModify(f)
     def fail[A](err: Throwable): Task[A] = Task.fail(err)

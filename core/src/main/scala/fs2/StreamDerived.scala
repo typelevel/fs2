@@ -3,7 +3,8 @@ package fs2
 import fs2.util.{RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
-private[fs2] trait StreamDerived { self: fs2.Stream.type =>
+private[fs2]
+trait StreamDerived { self: fs2.Stream.type =>
 
   def apply[F[_],W](a: W*): Stream[F,W] = self.chunk(Chunk.seq(a))
 
@@ -14,6 +15,24 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def repeatPull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Handle[F,A]])
   : Stream[F,B] =
     pull(s)(Pull.loop(using))
+
+  /**
+   * Sequence the stream of `Pull` actions produced by mapping `f` over `s`.
+   * Unlike `[[Pull.output]](s flatMap (f andThen _.run))`, which runs
+   * finalizers after each sequenced `Pull` action, `traversePull(s)(f)`
+   * produces a single `Pull` scope as its result. It is useful if the inner
+   * pulls each make use of some shared resource that should only be finalized
+   * when the stream `s` completes.
+   */
+  def traversePull[F[_],A,B](s: Stream[F,A])(f: A => Pull[F,B,Any]): Pull[F,B,Unit] = {
+    def go(h: Handle[F,A]): Pull[F,B,Unit] =
+      h.receive1 { case hd #: tl => f(hd) >> go(tl) }
+    s.open.flatMap(go)
+  }
+
+  /** Alias for `[[traversePull]](s)(identity)`. */
+  def sequencePull[F[_],A,B](s: Stream[F,Pull[F,A,Any]]): Pull[F,A,Unit] =
+    traversePull(s)(identity)
 
   def repeatEval[F[_],A](a: F[A]): Stream[F,A] = Stream.eval(a).repeat
 
@@ -80,6 +99,22 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
   def peek1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
     h.await1 flatMap { case hd #: tl => Pull.pure(hd #: tl.push1(hd)) }
+
+
+  /** Lazily produce the range `[start, stopExclusive)`. If you want to produce the sequence in one chunk, instead of lazily, use `emitAll(start until stopExclusive)`.  */
+  def range(start: Int, stopExclusive: Int, by: Int = 1): Stream[Pure,Int] =
+    unfold(start)(i => if (i < stopExclusive) Some((i + by, Chunk.seq(Seq(i + by)))) else None)
+
+  /** Produce a (potentially infinite) source from an unfold. */
+  def unfold[S, A](s0: S)(f: S => Option[(S,Chunk[A])]): Stream[Pure,A] = {
+    def go(s: S):  Stream[Pure,A] =
+      f(s) match {
+        case Some((ns, chunk)) => Stream.chunk(chunk) ++ go(ns)
+        case None => Stream.empty
+      }
+    Stream.suspend(go(s0))
+  }
+
 
   implicit class HandleOps[+F[_],+A](h: Handle[F,A]) {
     def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =

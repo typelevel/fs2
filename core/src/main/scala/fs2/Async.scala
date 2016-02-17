@@ -30,7 +30,9 @@ trait Async[F[_]] extends Catchable[F] { self =>
    */
   def set[A](q: Ref[A])(a: F[A]): F[Unit]
   def setFree[A](q: Ref[A])(a: Free[F,A]): F[Unit]
-  def setPure[A](q:Ref[A])(a:A):F[Unit] = set(q)(pure(a))
+  def setPure[A](q:Ref[A])(a: A): F[Unit] = set(q)(pure(a))
+  /** Actually run the effect of setting the ref. Has side effects. */
+  protected def runSet[A](q: Ref[A])(a: Either[Throwable,A]): Unit
 
   /**
    * Obtain the value of the `Ref`, or wait until it has been `set`.
@@ -48,11 +50,9 @@ trait Async[F[_]] extends Catchable[F] { self =>
    to translate from a callback-based API to a straightforward monadic
    version.
    */
-  def async[A](register: (Either[Throwable,A] => F[Unit]) => F[Unit]): F[A] =
-    bind(ref[Either[Throwable,A]]) { ref =>
-    bind(register { e => setPure(ref)(e) }) { _ =>
-    bind(get(ref)) { _.fold(fail, pure) }
-    }}
+  def async[A](register: (Either[Throwable,A] => Unit) => F[Unit]): F[A] =
+    bind(ref[A]) { ref =>
+    bind(register { e => runSet(ref)(e) }) { _ => get(ref) }}
 }
 
 object Async {
