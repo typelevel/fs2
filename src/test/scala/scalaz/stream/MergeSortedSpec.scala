@@ -28,7 +28,7 @@ class MergeSortedSpec extends Properties("mergeSorted") {
 
   private def distinctOn[A, B](on: A => B): List[A] => List[A] = as => as.groupBy1(on).values.map(_.head).toList
 
-  property("") = forAll { (unsortedFoos: List[Foo], unsortedBars: List[Bar], f: Foo => Int, g: Bar => Int) =>
+  property("basic") = forAll { (unsortedFoos: List[Foo], unsortedBars: List[Bar], f: Foo => Int, g: Bar => Int) =>
       val foos = distinctOn(f)(unsortedFoos).sortBy(f)
       val bars = distinctOn(g)(unsortedBars).sortBy(g)
 
