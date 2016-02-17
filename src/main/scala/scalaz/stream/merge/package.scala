@@ -1,5 +1,8 @@
 package scalaz.stream
 
+import scalaz.Ordering.{GT, LT, EQ}
+import scalaz.\&/.{That, This, Both}
+import scalaz.{\&/, Order}
 import scalaz.concurrent.{Strategy, Task}
 
 
@@ -41,5 +44,39 @@ package object merge {
   def mergeN[A](maxOpen: Int)(source: Process[Task, Process[Task, A]])(implicit S: Strategy): Process[Task, A] =
     scalaz.stream.nondeterminism.njoin(maxOpen, maxOpen)(source)(S)
 
+  /**
+    * Merge two source processes, `leftSource` and `rightSource`, that are ALREADY SORTED by distinct key `A`,
+    * and produce an output process, which will also be sorted by `A`.
+    *
+    * If a key is only present in the `leftSource`, the output for this key will be a `This` containing the value from
+    * the `leftSource`. If a key is only present in the 'rightSource`, the output for this key will be a `That`
+    * containing the value from the `rightSource`. If a key is present in both, the output for this key will be a
+    * `Both`, containing values from both sources.
+    *
+    * @param sourceLeft
+    * @param sourceRight
+    * @param fa
+    * @param fb
+    */
+  def mergeSorted[F[_], L, R, A: Order](sourceLeft: Process[F, L], fa: L => A)(sourceRight: Process[F, R], fb: R => A): Process[F, L \&/ R] = {
+    def next(l: L, r: R): Tee[L, R, L \&/ R] =
+      Order[A].order(fa(l), fb(r)) match {
+        case EQ => Process.emit(Both(l, r)) ++ nextLR
+        case LT => Process.emit(This(l)) ++ nextL(r)
+        case GT => Process.emit(That(r)) ++ nextR(l)
+      }
+
+    def passL: Tee[L, R, L \&/ R] = tee.passL map This.apply
+    def passR: Tee[L, R, L \&/ R] = tee.passR map That.apply
+
+    def nextL(r: R): Tee[L, R, L \&/ R] =
+      tee.receiveLOr[L, R, L \&/ R](Process.emit(That(r)) ++ passR)(next(_, r))
+    def nextR(l: L): Tee[L, R, L \&/ R] =
+      tee.receiveROr[L, R, L \&/ R](Process.emit(This(l)) ++ passL)(next(l, _))
+    def nextLR: Tee[L, R, L \&/ R] =
+      tee.receiveLOr(passR)(nextR)
+
+    sourceLeft.tee(sourceRight)(nextLR)
+  }
 
 }
