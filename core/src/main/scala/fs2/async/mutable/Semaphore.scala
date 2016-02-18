@@ -31,6 +31,14 @@ trait Semaphore[F[_]] {
    */
   def incrementBy(n: Long): F[Unit]
 
+  /**
+   * Obtain a snapshot of the current count. May be out of date the instant
+   * after it is retrieved. Use `[[tryDecrement]]` or `[[tryDecrementBy]]`
+   * if you wish to attempt a decrement and return immediately if the
+   * current count is not high enough to satisfy the request.
+   */
+  def count: F[Long]
+
   /** Decrement the number of permits by 1. Just calls `[[decrementBy]](1)`. */
   final def decrement: F[Unit] = decrementBy(1)
   /** Increment the number of permits by 1. Just calls `[[incrementBy]](1)`. */
@@ -47,8 +55,10 @@ object Semaphore {
     // or it is nonempty, and there are n permits available (Right)
     type S = Either[Vector[(Long,F.Ref[Unit])], Long]
     F.map(F.refOf[S](Right(n))) { ref => new Semaphore[F] {
-      private def open(gate: F.Ref[Unit]) = F.setPure(gate)(())
+      private def open(gate: F.Ref[Unit]): F[Unit] =
+        F.setPure(gate)(())
 
+      def count = F.map(F.get(ref))(count_)
       def decrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
         else F.bind(F.ref[Unit]) { gate => F.bind(F.modify(ref) {
@@ -57,33 +67,42 @@ object Semaphore {
             if (n <= m) Right(m-n)
             else Left(Vector((n-m) -> gate))
         }) { c => c.now match {
-          case Left(waiting) => waiting.lastOption.map(p => F.get(p._2)).getOrElse(F.pure(()))
+          case Left(waiting) =>
+            def err = sys.error("FS2 bug: Semaphore has empty waiting queue rather than 0 count")
+            F.get(waiting.lastOption.getOrElse(err)._2)
           case Right(_) => F.pure(())
         }}}
       }
 
+      private def count_(s: S): Long =
+        s.fold(ws => -ws.map(_._1).sum, identity)
+
       def incrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
-        else F.map(F.modify(ref) {
+        else F.bind(F.modify(ref) {
           case Left(waiting) =>
             // just figure out how many to strip from waiting queue,
             // but don't run anything here inside the modify
             var m = n
             var waiting2 = waiting
-            while (waiting2.nonEmpty && m >= waiting2.head._1) {
-              m -= waiting2.head._1
-              waiting2 = waiting2.tail
+            while (waiting2.nonEmpty && m > 0) {
+              val (k, gate) = waiting2.head
+              if (k > m) { waiting2 = (k-m, gate) +: waiting2.tail; m = 0; }
+              else { m -= k; waiting2 = waiting2.tail }
             }
             if (waiting2.nonEmpty) Left(waiting2)
             else Right(m)
           case Right(m) => Right(m+n)
-        }) { change => change.previous match {
+        }) { change =>
+          // invariant: count_(change.now) == count_(change.previous) + n
+          change.previous match {
           case Left(waiting) =>
             // now compare old and new sizes to figure out which actions to run
             val newSize = change.now.fold(_.size, _ => 0)
+            val released = waiting.size - newSize
             // just using Chunk for its stack-safe foldRight
-            fs2.Chunk.indexedSeq(waiting.take(waiting.size - newSize))
-                     .foldRight(F.pure(()))((hd,tl) => F.bind(open(hd._2))(_ => tl))
+            fs2.Chunk.indexedSeq(waiting.take(released))
+                     .foldRight(F.pure(())) { (hd,tl) => F.bind(open(hd._2)){ _ => tl }}
           case Right(_) => F.pure(())
         }}
       }
@@ -93,7 +112,7 @@ object Semaphore {
         else F.map(F.modify(ref) {
           case Right(m) if m >= n => Right(m-n)
           case w => w
-        })(_.now.isRight)
+        }) { c => c.now.fold(_ => false, n => c.previous.fold(_ => false, m => n != m)) }
       }
 
       def available = F.map(F.get(ref)) {

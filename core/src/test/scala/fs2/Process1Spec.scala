@@ -1,6 +1,5 @@
 package fs2
 
-import fs2.Chunk.{Booleans, Bytes, Doubles}
 import fs2.Stream._
 import fs2.TestUtil._
 import fs2.process1._

@@ -1,7 +1,6 @@
 package fs2
 package util
 
-import collection.JavaConversions._
 import fs2.internal.{Actor,Future,LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import java.util.concurrent.{ScheduledExecutorService, ConcurrentLinkedQueue, ExecutorService, Executors}
@@ -129,7 +128,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
    */
   def runAsyncFuture: scala.concurrent.Future[A] = {
     val promise = scala.concurrent.Promise[A]
-    runAsync(_.fold(promise.failure, promise.success))
+    runAsync { e => e.fold(promise.failure, promise.success); () }
     promise.future
   }
 

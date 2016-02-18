@@ -4,7 +4,6 @@ import java.util.concurrent.ScheduledExecutorService
 
 import scala.concurrent.duration._
 
-import fs2.async.AsyncExt
 import fs2.util.Task
 
 package object time {
@@ -40,7 +39,7 @@ package object time {
           d.toNanos,
           NANOSECONDS
         )
-        (()=>metronome.cancel(false), signal)
+        (() => { metronome.cancel(false); () }, signal)
       }
     }
     Stream.bracket(metronomeAndSignal)({ case (_, signal) => signal.discrete.drop(1) }, { case (cm, _) => Task.delay(cm()) })

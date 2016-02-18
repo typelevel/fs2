@@ -1,7 +1,7 @@
 package fs2
 
 import Async.{Change,Future}
-import fs2.util.{Free,Monad,Catchable}
+import fs2.util.{Free,Catchable}
 
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.util.Task]` requires an implicit `fs2.util.Strategy` in scope.")
 trait Async[F[_]] extends Catchable[F] { self =>
@@ -81,6 +81,17 @@ trait Async[F[_]] extends Catchable[F] { self =>
   def async[A](register: (Either[Throwable,A] => Unit) => F[Unit]): F[A] =
     bind(ref[A]) { ref =>
     bind(register { e => runSet(ref)(e) }) { _ => get(ref) }}
+
+  def parallelTraverse[A,B](s: Seq[A])(f: A => F[B]): F[Vector[B]] =
+    bind(traverse(s)(f andThen start)) { tasks => traverse(tasks)(identity) }
+
+  /**
+   * Begin asynchronous evaluation of `f` when the returned `F[F[A]]` is
+   * bound. The inner `F[A]` will block until the result is available.
+   */
+  def start[A](f: F[A]): F[F[A]] =
+    bind(ref[A]) { ref =>
+    bind(set(ref)(f)) { _ => pure(get(ref)) }}
 }
 
 object Async {
@@ -160,15 +171,15 @@ object Async {
       = new Future[F,(A,Int)] {
         def cancellableGet =
           F.bind(F.ref[(A,Int)]) { ref =>
-            val cancels: F[Vector[(F[Unit],Int)]] = F.traverseVector(es zip (0 until es.size)) { case (a,i) =>
+            val cancels: F[Vector[(F[Unit],Int)]] = F.traverse(es zip (0 until es.size)) { case (a,i) =>
               F.bind(a.cancellableGet) { case (a, cancelA) =>
               F.map(F.set(ref)(F.map(a)((_,i))))(_ => (cancelA,i)) }
             }
           F.bind(cancels) { cancels =>
           F.pure {
             val get = F.bind(F.get(ref)) { case (a,i) =>
-              F.map(F.traverseVector(cancels.collect { case (a,j) if j != i => a })(identity))(_ => (a,i)) }
-            val cancel = F.map(F.traverseVector(cancels)(_._1))(_ => ())
+              F.map(F.traverse(cancels.collect { case (a,j) if j != i => a })(identity))(_ => (a,i)) }
+            val cancel = F.map(F.traverse(cancels)(_._1))(_ => ())
             (get, cancel)
           }}}
         def get = F.bind(cancellableGet)(_._1)

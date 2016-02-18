@@ -11,9 +11,8 @@ import org.scalacheck._
 object QueueSpec extends Properties("QueueSpec") {
 
   property("unbounded producer/consumer") = forAll { (s: PureStream[Int]) =>
-    Stream.eval(async.unboundedQueue[Task,Int]).map { q =>
+    s.tag |: Stream.eval(async.unboundedQueue[Task,Int]).map { q =>
       val r = run(s.get)
-      println("unbounded producer/consumer test: " + s.tag + ", " + r)
       run(q.dequeue.merge(s.get.evalMap(q.enqueue1).drain).take(r.size)) == r
     } === Vector(true)
   }

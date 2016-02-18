@@ -5,8 +5,7 @@ trait Monad[F[_]] extends Functor[F] {
   def bind[A,B](a: F[A])(f: A => F[B]): F[B]
   def pure[A](a: A): F[A]
 
-  // keeping this private for now
-  private[fs2] def traverseVector[A,B](v: Vector[A])(f: A => F[B]): F[Vector[B]] =
+  def traverse[A,B](v: Seq[A])(f: A => F[B]): F[Vector[B]] =
     v.reverse.foldLeft(pure(Vector.empty[B])) {
       (tl,hd) => bind(f(hd)) { b => map(tl)(b +: _) }
     }

@@ -9,7 +9,8 @@ import Ref._
  * A reference which may be updated transactionally, without
  * use of `==` on `A`.
  */
-private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A], lock: ReadWriteSpinLock) {
+private[fs2]
+class Ref[A](id: AtomicLong, ref: AtomicReference[A], lock: ReadWriteSpinLock) {
 
   /**
    * Obtain a snapshot of the current value, and a setter
@@ -35,7 +36,7 @@ private[fs2] class Ref[A](id: AtomicLong, ref: AtomicReference[A], lock: ReadWri
         if (id.compareAndSet(expected, expected+1)) { ref.set(a); true }
         else false
       }
-      finally { lock.finishWrite }
+      finally { lock.finishWrite; () }
     }
   }
 

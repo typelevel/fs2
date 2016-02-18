@@ -6,7 +6,7 @@ import fs2.Stream
 import fs2.Async.Change
 
 import fs2.async.immutable
-import fs2.util.{Catchable,Monad}
+import fs2.util.Monad
 import fs2.internal.LinkedMap
 
 import scala.collection.immutable.{Queue => SQueue}
@@ -60,10 +60,11 @@ object Signal {
           case None => state
           case Some(a2) => (a2, state._2 + 1, state._3)
         }}) { c =>
-          if (c.now._2 != c.previous._2) // set was successful
-            F.map(F.traverseVector(c.now._3.values.toVector) { semaphore =>
+          if (c.now._2 != c.previous._2) { // set was successful
+            F.map(F.traverse(c.now._3.values.toVector) { semaphore =>
               F.bind(semaphore.tryDecrement) { _ => semaphore.increment }
-            }) { _ => Some(c.now._1) }
+            }) { (vs: Vector[Unit]) => Some(c.now._1) }
+          }
           else F.pure(None)
         }
 

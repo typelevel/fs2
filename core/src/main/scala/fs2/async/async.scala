@@ -1,7 +1,5 @@
 package fs2
 
-import fs2.util.Catchable
-
 package object async {
 
   /**
