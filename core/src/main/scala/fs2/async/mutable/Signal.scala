@@ -76,7 +76,7 @@ object Signal {
 
         def discrete: Stream[F, A] = {
           val s: F[(ID, Semaphore[F])] =
-            F.bind(Semaphore(0)) { s =>
+            F.bind(Semaphore(1)) { s =>
             val id = new ID {}
             F.map(F.modify(state)(state => state.copy(_3 = state._3.updated(id, s)))) { _ =>
               (id, s)
