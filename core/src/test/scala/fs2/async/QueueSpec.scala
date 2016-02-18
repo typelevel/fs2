@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck.Prop._
 import org.scalacheck._
 
-object QueueSpec extends Properties("QueueSpec") {
+object QueueSpec extends Properties("Queue") {
 
   property("unbounded producer/consumer") = forAll { (s: PureStream[Int]) =>
     s.tag |: Stream.eval(async.unboundedQueue[Task,Int]).map { q =>

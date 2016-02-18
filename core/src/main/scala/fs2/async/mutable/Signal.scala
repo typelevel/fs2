@@ -68,15 +68,15 @@ object Signal {
           else F.pure(None)
         }
 
-        def changes: fs2.Stream[F, Unit] =
+        def changes: Stream[F, Unit] =
           discrete.map(_ => ())
 
-        def continuous: fs2.Stream[F, A] =
+        def continuous: Stream[F, A] =
           Stream.repeatEval(get)
 
-        def discrete: fs2.Stream[F, A] = {
+        def discrete: Stream[F, A] = {
           val s: F[(ID, Semaphore[F])] =
-            F.bind(Semaphore(1)) { s =>
+            F.bind(Semaphore(0)) { s =>
             val id = new ID {}
             F.map(F.modify(state)(state => state.copy(_3 = state._3.updated(id, s)))) { _ =>
               (id, s)
