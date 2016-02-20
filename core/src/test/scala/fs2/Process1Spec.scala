@@ -85,19 +85,19 @@ object Process1Spec extends Properties("process1") {
 
   property("filter (2)") = forAll { (s: PureStream[Double]) =>
     val predicate = (i: Double) => i - i.floor < 0.5
-    val s2 = s.get.mapChunks(c => Chunk.doubles(c.iterator.toArray[Double]))
+    val s2 = s.get.mapChunks(c => Chunk.doubles(c.toArray))
     s2.filter(predicate) ==? run(s2).filter(predicate)
   }
 
   property("filter (3)") = forAll { (s: PureStream[Byte]) =>
     val predicate = (b: Byte) => b < 0
-    val s2 = s.get.mapChunks(c => Chunk.bytes(c.iterator.toArray[Byte]))
+    val s2 = s.get.mapChunks(c => Chunk.bytes(c.toArray))
     s2.filter(predicate) ==? run(s2).filter(predicate)
   }
 
   property("filter (4)") = forAll { (s: PureStream[Boolean]) =>
     val predicate = (b: Boolean) => !b
-    val s2 = s.get.mapChunks(c => Chunk.booleans(c.iterator.toArray[Boolean]))
+    val s2 = s.get.mapChunks(c => Chunk.booleans(c.toArray))
     s2.filter(predicate) ==? run(s2).filter(predicate)
   }
 

@@ -1,5 +1,7 @@
 package fs2
 
+import scala.reflect.ClassTag
+
 /**
  * Chunk represents a strict, in-memory sequence of `A` values.
  */
@@ -9,6 +11,7 @@ trait Chunk[+A] { self =>
     if (size == 0) None
     else Some(apply(0) -> drop(1))
   def apply(i: Int): A
+  def copyToArray[B >: A](xs: Array[B]): Unit
   def drop(n: Int): Chunk[A]
   def take(n: Int): Chunk[A]
   def filter(f: A => Boolean): Chunk[A]
@@ -19,6 +22,11 @@ trait Chunk[+A] { self =>
     if (index < 0) None else Some(index)
   }
   def isEmpty = size == 0
+  def toArray[B >: A: ClassTag]: Array[B] = {
+    val arr = new Array[B](size)
+    copyToArray(arr)
+    arr
+  }
   def toList = foldRight(Nil: List[A])(_ :: _)
   def toVector = foldLeft(Vector.empty[A])(_ :+ _)
   def collect[B](pf: PartialFunction[A,B]): Chunk[B] = {
@@ -60,6 +68,7 @@ object Chunk {
   val empty: Chunk[Nothing] = new Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = throw new IllegalArgumentException(s"Chunk.empty($i)")
+    def copyToArray[B >: Nothing](xs: Array[B]): Unit = ()
     def drop(n: Int) = empty
     def filter(f: Nothing => Boolean) = empty
     def take(n: Int) = empty
@@ -70,6 +79,7 @@ object Chunk {
   def singleton[A](a: A): Chunk[A] = new Chunk[A] { self =>
     def size = 1
     def apply(i: Int) = if (i == 0) a else throw new IllegalArgumentException(s"Chunk.singleton($i)")
+    def copyToArray[B >: A](xs: Array[B]): Unit = xs(0) = a
     def drop(n: Int) = if (n > 0) empty else self
     def filter(f: A => Boolean) = if (f(a)) self else empty
     def take(n: Int) = if (n > 0) self else empty
@@ -83,6 +93,7 @@ object Chunk {
     override def isEmpty = a.isEmpty
     override def uncons = if (a.isEmpty) None else Some(a.head -> indexedSeq(a drop 1))
     def apply(i: Int) = a(i)
+    def copyToArray[B >: A](xs: Array[B]): Unit = a.copyToArray(xs)
     def drop(n: Int) = indexedSeq(a.drop(n))
     def filter(f: A => Boolean) = indexedSeq(a.filter(f))
     def take(n: Int) = indexedSeq(a.take(n))
@@ -98,6 +109,7 @@ object Chunk {
     override def isEmpty = a.isEmpty
     override def uncons = if (a.isEmpty) None else Some(a.head -> seq(a drop 1))
     def apply(i: Int) = vec(i)
+    def copyToArray[B >: A](xs: Array[B]): Unit = a.copyToArray(xs)
     def drop(n: Int) = seq(a.drop(n))
     def filter(f: A => Boolean) = seq(a.filter(f))
     def take(n: Int) = seq(a.take(n))
@@ -129,6 +141,8 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Boolean = values(offset + i)
     def apply(i: Int) = values(offset + i)
+    def copyToArray[B >: Boolean](xs: Array[B]): Unit =
+      values.iterator.slice(offset, offset + sz).copyToArray(xs)
     def drop(n: Int) =
       if (n >= size) empty
       else new Booleans(values, offset + n, size - n)
@@ -149,6 +163,8 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Byte = values(offset + i)
     def apply(i: Int) = values(offset + i)
+    def copyToArray[B >: Byte](xs: Array[B]): Unit =
+      values.iterator.slice(offset, offset + sz).copyToArray(xs)
     def drop(n: Int) =
       if (n >= size) empty
       else new Bytes(values, offset + n, size - n)
@@ -169,6 +185,8 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Long = values(offset + i)
     def apply(i: Int) = values(offset + i)
+    def copyToArray[B >: Long](xs: Array[B]): Unit =
+      values.iterator.slice(offset, offset + sz).copyToArray(xs)
     def drop(n: Int) =
       if (n >= size) empty
       else new Longs(values, offset + n, size - n)
@@ -189,6 +207,8 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Double = values(offset + i)
     def apply(i: Int) = values(offset + i)
+    def copyToArray[B >: Double](xs: Array[B]): Unit =
+      values.iterator.slice(offset, offset + sz).copyToArray(xs)
     def drop(n: Int) =
       if (n >= size) empty
       else new Doubles(values, offset + n, size - n)
