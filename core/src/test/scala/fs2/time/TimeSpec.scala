@@ -13,10 +13,9 @@ class TimeSpec extends Properties("time") {
   implicit val scheduler = java.util.concurrent.Executors.newScheduledThreadPool(2)
   implicit val S = Strategy.fromExecutor(scheduler)
 
-  // TODO Failing due to potential bug in mutable discrete signals
-  // property("awakeEvery") = protect {
-  //   time.awakeEvery(100.millis).map(_.toMillis/100).take(5).runLog.run.run == Vector(1,2,3,4,5)
-  // }
+  property("awakeEvery") = protect {
+    time.awakeEvery(100.millis).map(_.toMillis/100).take(5).runLog.run.run == Vector(1,2,3,4,5)
+  }
 
   property("duration") = protect {
     val firstValueDiscrepancy = time.duration.take(1).runLog.run.run.last
