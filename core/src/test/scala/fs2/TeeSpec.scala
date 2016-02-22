@@ -2,13 +2,10 @@ package fs2
 
 import TestUtil._
 
-import tee._
-
 import org.scalacheck.Prop._
 import org.scalacheck.{Gen, Properties}
 
 object TeeSpec extends Properties("tee") {
-
 
   property("zipWith left/right side infinite") = protect {
     val ones = Stream.constant("1")

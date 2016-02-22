@@ -22,8 +22,11 @@ lazy val commonSettings = Seq(
     "-language:higherKinds",
     "-language:existentials",
     "-language:postfixOps",
-    "-Xfatal-warnings",
-    "-Yno-adapted-args"
+    // "-Xfatal-warnings", this makes repl useless in conjunction with warn-unused-import
+    "-Yno-adapted-args",
+    "-Ywarn-dead-code",
+    "-Ywarn-value-discard",
+    "-Ywarn-unused-import"
   ),
   libraryDependencies ++= Seq(
     "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"

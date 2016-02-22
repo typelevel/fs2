@@ -3,7 +3,6 @@ package fs2
 import Async.Future
 import Stream.Handle
 import fs2.{Pull => P}
-import fs2.util.NotNothing
 
 object wye {
 

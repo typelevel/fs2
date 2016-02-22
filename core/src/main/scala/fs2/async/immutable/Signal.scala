@@ -3,7 +3,8 @@ package fs2.async.immutable
 import fs2.{process1, Async, Stream}
 import fs2.util.Functor
 
-import fs2.async.{AsyncExt, immutable, mutable}
+import fs2.Async
+import fs2.async.{immutable, mutable}
 
 
 /**
@@ -65,10 +66,10 @@ object Signal {
    * Constructs Stream from the input stream `source`. If `source` terminates
    * then resulting stream terminates as well.
    */
-  def holdOption[F[_],A](source:Stream[F,A])(implicit F: AsyncExt[F]): Stream[F,immutable.Signal[F,Option[A]]] =
+  def holdOption[F[_],A](source:Stream[F,A])(implicit F: Async[F]): Stream[F,immutable.Signal[F,Option[A]]] =
     hold(None, source.map(Some(_)))
 
-  def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: AsyncExt[F]): Stream[F,immutable.Signal[F,A]] =
+  def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: Async[F]): Stream[F,immutable.Signal[F,A]] =
     Stream.eval(fs2.async.signalOf[F,A](initial)) flatMap { sig =>
       Stream(sig).merge(source.flatMap(a => Stream.eval_(sig.set(a))))
     }

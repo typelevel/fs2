@@ -142,6 +142,6 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
   def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
     Stream.bracket(Task.delay { c.decrementAndGet })(
       _ => s,
-      _ => Task.delay { c.incrementAndGet })
+      _ => Task.delay { c.incrementAndGet; () })
   }
 }
