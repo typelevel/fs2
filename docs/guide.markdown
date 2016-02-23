@@ -13,7 +13,7 @@ We'll consider each of these in turn.
 
 ## Building streams
 
-A `Stream[F,W]` (formerly `Process`) represents a discrete stream of `W` values which may request evaluation of `F` effects. We'll call `F` the _effect type_ and `W` the _output type_. Here are some example streams (these assume you've done `import fs2.{Stream,Task}`):
+A `Stream[F,W]` (formerly `Process`) represents a discrete stream of `W` values which may request evaluation of `F` effects. We'll call `F` the _effect type_ and `W` the _output type_. Here are some example streams (these assume you've done `import fs2.Stream` and `import fs2.util.Task`):
 
 * `Stream.emit(1)`: A `Stream[Nothing,Int]`. Its effect type is `Nothing` since it requests evaluation of no effects.
 * `Stream.empty`: A `Stream[Nothing,Nothing]` which emits no values. Its output type is `Nothing` since it emits no elements.
@@ -76,7 +76,7 @@ object Pull {
   def take[F[_],W](n: Int): Handle[F,W] => Pull[F,W,Handle[F,W]] =
     h => for {
       chunk #: h <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
-      tl <- Pull.write(chunk) >> take(n - chunk.size)(h)
+      tl <- Pull.output(chunk) >> take(n - chunk.size)(h)
     } yield tl
 
   ...
@@ -98,11 +98,11 @@ There's a lot going on in this one line:
   * We can also `h.await1` to read just a single element, `h.await` to read a single `Chunk` of however many are available, `Pull.awaitN(n)(h)` to obtain a `List[Chunk[A]]` totaling exactly `n` elements, and even `h.awaitAsync` and various other _asynchronous_ awaiting functions which we'll discuss in the next section.
 * Using the pattern `chunk #: h` (defined in `fs2.Step`), we destructure this `Step` to its `chunk: Chunk[W]` and its `h: Handle[F,W]`. This shadows the outer `h`, which is fine here since it isn't relevant anymore. (Note: nothing stops us from keeping the old `h` around and awaiting from it again if we like, though this isn't usually what we want since it will repeat all the effects of that await.)
 
-Moving on, the `Pull.write(chunk)` writes the chunk we just read to the _output_ of the `Pull`. This binds the `W` type in our `Pull[F,W,R]` we are constructing:
+Moving on, the `Pull.output(chunk)` writes the chunk we just read to the _output_ of the `Pull`. This binds the `W` type in our `Pull[F,W,R]` we are constructing:
 
-```
+```Scala
 // in fs2.Pull object
-def write[W](c: Chunk[W]): Pull[Nothing,W,Unit]
+def output[W](c: Chunk[W]): Pull[Nothing,W,Unit]
 ```
 
 It returns a result of `Unit`, which we generally don't care about. The `p >> p2` operator is equivalent to `p flatMap { _ => p2 }`; it just runs `p` for its effects but ignores its result.
@@ -111,7 +111,7 @@ So this line is writing the chunk we read, ignoring the `Unit` result, then recu
 
 ```Scala
       ...
-      tl <- Pull.write(chunk) >> take(n - chunk.size)(h)
+      tl <- Pull.output(chunk) >> take(n - chunk.size)(h)
     } yield tl
 ```
 
@@ -124,6 +124,8 @@ import fs2.{Pull,Stream}
 
 def take[F[_],W](n: Int)(s: Stream[F,W]): Stream[F,W] =
   s.open.flatMap { Pull.take(n) }.run
+  // s.open.flatMap(f).run is a common pattern -
+  // can be written `s.pull(f)`
 ```
 
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `run` completes. Note again that _nothing happens_ when we call `.run` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed by the `Stream.runFold` interpreter. This interpreter guarantees _once and only once_ semantics for resource cleanup actions introduced by the `Stream.bracket` function.
