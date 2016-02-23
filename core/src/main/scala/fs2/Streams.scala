@@ -1,7 +1,6 @@
 package fs2
 
-import Step.{#:}
-import fs2.util.{Free,NotNothing}
+import fs2.util.Free
 import fs2.util.~>
 
 trait Streams[Stream[+_[_],+_]] { self =>

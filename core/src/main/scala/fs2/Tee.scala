@@ -1,7 +1,6 @@
 package fs2
 
 import Stream.Handle
-import Step.{#:}
 import fs2.{Pull => P, Chunk => C}
 import fs2.util.{Free,Functor,Sub1}
 

@@ -1,40 +1,25 @@
-package fs2.async.mutable
-
+package fs2
+package async
+package mutable
 
 import fs2.Stream
-import fs2.async.AsyncExt.Change
+import fs2.Async.Change
 
-import fs2.async.{AsyncExt, immutable}
-import fs2.util.{Catchable,Monad}
-import fs2.util.Task.Callback
+import fs2.async.immutable
+import fs2.util.Monad
+import fs2.internal.LinkedMap
 
 import scala.collection.immutable.{Queue => SQueue}
 import scala.util.{Success, Try}
 
 /**
- * Created by pach on 10/10/15.
- */
-/**
  * A signal whose value may be set asynchronously. Provides continuous
  * and discrete streams for responding to changes to it's value.
- *
  */
 trait Signal[F[_],A] extends immutable.Signal[F,A] {
 
-
-  /**
-   * Asynchronously refreshes the value of the signal,
-   * keep the value of this `Signal` the same, but notify any listeners.
-   *
-   */
-  def refresh:F[Unit]
-
-  /**
-   * Sets the value of this `Signal`.
-   *
-   */
+  /** Sets the value of this `Signal`. */
   def set(a: A): F[Unit]
-
 
   /**
    * Asynchronously sets the current value of this `Signal` and returns new value of this `Signal`.
@@ -43,17 +28,17 @@ trait Signal[F[_],A] extends immutable.Signal[F,A] {
    * set the value (returning Some) or no-op (returning None)
    *
    * `F` returns the result of applying `op` to current value.
-   *
    */
-   def compareAndSet(op: A => Option[A]) : F[Option[A]]
+   def possiblyModify(op: A => Option[A]): F[Option[A]]
 
+  /**
+   * Asynchronously refreshes the value of the signal,
+   * keep the value of this `Signal` the same, but notify any listeners.
+   */
+  def refresh: F[Unit]
 }
 
-
 object Signal {
-
-
-  private type State[F[_],A] = (Int,A,SQueue[((Int,A)) => F[Unit]])
 
   def constant[F[_],A](a: A)(implicit F: Monad[F]): immutable.Signal[F,A] = new immutable.Signal[F,A] {
     def get = F.pure(a)
@@ -62,60 +47,46 @@ object Signal {
     def changes = Stream.empty
   }
 
-  def apply[F[_],A](initA:A)(implicit F:AsyncExt[F]): F[Signal[F,A]] =
-    F.bind(F.ref[State[F,A]]) { ref =>
-    F.map(F.set(ref)(F.pure((0,initA,SQueue.empty)))) { _ =>
-      def getChanged(stamp:Int):F[(Int,A)] = {
-        F.bind(F.ref[(Int,A)]){ chref =>
-          val modify =
-            F.modify(ref){ case s@(a,current,q) =>
-              if (current != stamp) F.pure(s)
-              else F.pure((a,current,q :+ {(va:((Int,A))) => F.set(chref)(F.pure(va))}))
-            }
+  private class ID
 
-          F.bind(modify){
-            case Change((current,a,_), _) =>
-              if (current != stamp) F.pure((current,a))
-              else F.get(chref)
+  def apply[F[_],A](initA: A)(implicit F: Async[F]): F[Signal[F,A]] =
+    F.map(F.refOf[(A, Long, LinkedMap[ID, Semaphore[F]])]((initA,0,LinkedMap.empty))) {
+    state => new Signal[F,A] {
+      def refresh: F[Unit] = F.map(possiblyModify(a => Some(a)))(_ => ())
+      def set(a: A): F[Unit] = F.map(possiblyModify(_ => Some(a)))(_ => ())
+      def get: F[A] = F.map(F.get(state))(_._1)
+      def possiblyModify(f: A => Option[A]): F[Option[A]] =
+        F.bind(F.modify(state) { state => f(state._1) match {
+          case None => state
+          case Some(a2) => (a2, state._2 + 1, state._3)
+        }}) { c =>
+          if (c.now._2 != c.previous._2) { // set was successful
+            F.map(F.traverse(c.now._3.values.toVector) { semaphore =>
+              F.bind(semaphore.tryDecrement) { _ => semaphore.increment }
+            }) { (vs: Vector[Unit]) => Some(c.now._1) }
           }
-        }
-      }
-
-      def getStamped:F[(Int,A)] = F.map(F.get(ref)){case (v,a,_) => (v,a)}
-
-      new Signal[F,A] {
-        def refresh: F[Unit] = F.map(compareAndSet(a => Some(a)))(_ => ())
-        def set(a: A): F[Unit] = F.map(compareAndSet(_ => Some(a)))(_ => ())
-        def get: F[A] = F.map(F.get(ref))(_._2)
-        def compareAndSet(op: (A) => Option[A]): F[Option[A]] = {
-          val modify:F[Change[State[F,A]]] =
-            F.modify(ref) { case (v,a,q) => F.pure(op(a).fold((v,a,q)){ na => (v+1,na,SQueue.empty)}) }
-
-          F.bind(modify) {
-           case Change((oldVersion,_,queued),(newVersion,newA,_)) =>
-             if (oldVersion == newVersion) F.pure(None:Option[A])
-             else {
-               queued.foldLeft(F.pure(Option(newA))) {
-                 case (r,f) =>  F.bind(f(newVersion -> newA))(_ => r)
-               }
-             }
-          }
+          else F.pure(None)
         }
 
-        def changes: fs2.Stream[F, Unit] =
+        def changes: Stream[F, Unit] =
           discrete.map(_ => ())
 
-        def continuous: fs2.Stream[F, A] =
-          Stream.eval(get).append(continuous)
+        def continuous: Stream[F, A] =
+          Stream.repeatEval(get)
 
-        def discrete: fs2.Stream[F, A] = {
-          def go(stamp:Int):fs2.Stream[F, A] = {
-            Stream.eval(getChanged(stamp))
-            .flatMap { case (s,a) => Stream(a).append(go(s)) }
-          }
-          Stream.eval(getStamped).flatMap { case (s,a) => Stream(a).append(go(s))}
+        def discrete: Stream[F, A] = {
+          val s: F[(ID, Semaphore[F])] =
+            F.bind(Semaphore(1)) { s =>
+            val id = new ID {}
+            F.map(F.modify(state)(state => state.copy(_3 = state._3.updated(id, s)))) { _ =>
+              (id, s)
+            }}
+          Stream.bracket(s)(
+            { case (id,s) => Stream.repeatEval(s.decrement).flatMap(_ => Stream.eval(get)) },
+            { case (id,s) => F.map(F.modify(state)(state => state.copy(_3 = state._3 - id))) {
+              _ => () }}
+          )
         }
-
       }
-    }}
+    }
 }

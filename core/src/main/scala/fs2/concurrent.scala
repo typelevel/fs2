@@ -1,6 +1,5 @@
 package fs2
 
-import Step.{#:}
 import Stream.Handle
 import Async.Future
 import fs2.{Pull => P}
@@ -16,10 +15,8 @@ object concurrent {
     : Pull[F,O,Unit] =
       // A) Nothing's open; block to obtain a new open stream
       if (open.isEmpty) s.await1.flatMap { case sh #: s =>
-        sh.open.flatMap { sh => sh.await.optional.flatMap {
-          case Some(step) =>
-            go(s, onlyOpen, open :+ Future.pure(P.pure(step): Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]]))
-          case None => go(s, onlyOpen, open)
+        sh.open.flatMap { sh => sh.awaitAsync.flatMap { f =>
+          go(s, onlyOpen, open :+ f)
         }}
       }
       // B) We have too many things open, or `s` is exhausted so we only consult `open`
@@ -41,7 +38,8 @@ object concurrent {
         nextS <- s.await1Async
         elementOrNewStream <- Future.race(open).race(nextS).force
         u <- elementOrNewStream match {
-          case Left(winner) => winner.get.optional.flatMap {
+          case Left(winner) =>
+            winner.get.optional.flatMap {
             case None => go(s, onlyOpen, winner.delete)
             case Some(out #: h) =>
               P.output(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
