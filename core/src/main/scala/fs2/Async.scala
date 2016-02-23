@@ -63,7 +63,16 @@ trait Async[F[_]] extends Catchable[F] { self =>
    */
   def set[A](r: Ref[A])(a: F[A]): F[Unit]
   def setFree[A](r: Ref[A])(a: Free[F,A]): F[Unit]
+  /**
+   * Defined as `set(r)(pure(a))`, which just schedules the set but does not
+   * wait for confirmation. Use `[[confirmSet]]` if you wish to block until
+   * the set has taken effect.
+   */
   def setPure[A](r: Ref[A])(a: A): F[Unit] = set(r)(pure(a))
+
+  /** Unlike `[[setPure]]`, waits until the `set` has taken effect before returning. */
+  def confirmSet[A](r: Ref[A])(a: A): F[Unit] = map(modify(r)(_ => a))(_ => ())
+
   /** Actually run the effect of setting the ref. Has side effects. */
   protected def runSet[A](q: Ref[A])(a: Either[Throwable,A]): Unit
 

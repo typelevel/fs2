@@ -2,9 +2,6 @@ package fs2
 package async
 
 import mutable.Queue
-import util.Monad
-import Step._
-import java.util.concurrent.atomic.AtomicLong
 
 object channel {
 
@@ -23,39 +20,26 @@ object channel {
   def diamond[F[_],A,B,C,D](s: Stream[F,A])
     (f: Stream[F,A] => Stream[F,B])
     (qs: F[Queue[F,Option[Chunk[A]]]], g: Stream[F,A] => Stream[F,C])
-    (combine: (Stream[F,B], F[Int], Stream[F,C]) => Stream[F,D])(implicit F: Async[F]): Stream[F,D]
+    (combine: (Stream[F,B], Stream[F,C]) => Stream[F,D])(implicit F: Async[F]): Stream[F,D]
     = Stream.eval(qs) flatMap { q =>
       def suspendf[A](a: => A) = F.map(F.pure(())) { _ => a }
       combine(
         f(
-          s.repeatPull { h => h.receive { case a #: h =>
-            Pull.eval(q.enqueue1(Some(a))) >>
-            Pull.output(a).as(h) }}
-           .onComplete { Stream.eval_(q.enqueue1(None)) }
+          Stream.bracket(F.pure(()))(
+            _ => s.repeatPull { _ receive { case a #: h =>
+              Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h) }},
+            _ => q.enqueue1(None)
+          )
         ),
-        q.size.get,
-        g(toFiniteStream(q) flatMap { c => Stream.chunk(c) })
+        g(process1.noneTerminate(q.dequeue) flatMap { c => Stream.chunk(c) })
       )
     }
 
-  /** Convert a `Queue[F,Option[A]]` to a stream by treating `None` as indicating end-of-stream. */
-  def toFiniteStream[F[_],A](q: Queue[F,Option[A]]): Stream[F,A] = Stream.eval(q.dequeue1).flatMap {
-    case None => Stream.empty
-    case Some(a) => Stream.emit(a) ++ toFiniteStream(q)
-  }
+  /** Synchronously send values through `sink`. */
+  def observe[F[_]:Async,A](s: Stream[F,A])(sink: Sink[F,A]): Stream[F,A] =
+    diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain)) { wye.merge(_,_) }
 
-  def observe[F[_]:AsyncExt,A](s: Stream[F,A])(sink: Sink[F,A]): Stream[F,A] =
-    diamond(s)(identity)(async.boundedQueue(1), sink) { (a,n,sinkResponses) =>
-      (a repeatPull2 sinkResponses) { (h1, hq) =>
-        Pull.eval(n) flatMap { numberQueued =>
-          if (numberQueued >= 1) hq.receive { case _ #: hq => Pull.pure((h1,hq)) }
-          else h1.receive { case a #: h1 => Pull.output(a).as((h1,hq)) }
-        }
-      }
-    }
-
-  def observeAsync[F[_]:AsyncExt,A](s: Stream[F,A])(sink: Sink[F,A], maxQueued: Int): Stream[F,A] =
-    diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain)) {
-      (a,_,sinkResponses) => wye.merge(a,sinkResponses)
-    }
+  /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+  def observeAsync[F[_]:Async,A](s: Stream[F,A])(sink: Sink[F,A], maxQueued: Int): Stream[F,A] =
+    diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain)) { wye.merge(_,_) }
 }
