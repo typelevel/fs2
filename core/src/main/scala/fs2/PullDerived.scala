@@ -2,6 +2,15 @@ package fs2
 
 trait PullDerived { self: fs2.Pull.type =>
 
+  /**
+   * Acquire a resource within a `Pull`. The cleanup action will be run at the end
+   * of the `.run` scope which executes the returned `Pull`.
+   */
+  def acquire[F[_],R](r: F[R], cleanup: R => F[Unit]): Pull[F,Nothing,R] =
+    Stream.bracket(r)(Stream.emit, cleanup).open.flatMap { h => h.await1.flatMap {
+      case r #: _ => Pull.pure(r)
+    }}
+
   def map[F[_],W,R0,R](p: Pull[F,W,R0])(f: R0 => R): Pull[F,W,R] =
     flatMap(p)(f andThen pure)
 

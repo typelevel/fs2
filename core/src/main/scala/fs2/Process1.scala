@@ -141,11 +141,11 @@ object process1 {
    * Halt the input stream at the first `None`.
    *
    * @example {{{
-   * scala> Stream(Some(1), Some(2), None, Some(3), None).noneTerminated.toVector
+   * scala> unNoneTerminate(Stream(Some(1), Some(2), None, Some(3), None)).toVector
    * res0: Vector[Int] = Vector(1, 2)
    * }}}
    */
-  def noneTerminate[F[_],I]: Stream[F,Option[I]] => Stream[F,I] =
+  def unNoneTerminate[F[_],I]: Stream[F,Option[I]] => Stream[F,I] =
     _ repeatPull { _.receive {
       case hd #: tl =>
         val out = hd.collect { case Some(i) => i }

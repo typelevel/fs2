@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1}
+import fs2.util.{Free,Monad,RealSupertype,Sub1}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`
@@ -60,6 +60,9 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def onError[F2[_],B>:A](f: Throwable => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.onError(Sub1.substStream(self): Stream[F2,B])(f)
 
+  def onFinalize[F2[_]](f: F2[Unit])(implicit S: Sub1[F,F2], F2: Monad[F2]): Stream[F2,A] =
+    Stream.bracket(F2.pure(()))(_ => Sub1.substStream(self), _ => f)
+
   def open: Pull[F, Nothing, Handle[F,A]] = Stream.open(self)
 
   def output: Pull[F,A,Unit] = Pull.outputs(self)
@@ -97,8 +100,12 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def tee[F2[_],B,C](s2: Stream[F2,B])(f: Tee[A,B,C])(implicit S: Sub1[F,F2]): Stream[F2,C] =
     pipe2v(s2)(fs2.tee.covary(f))
 
+  def noneTerminate: Stream[F,Option[A]] =
+    Stream.noneTerminate(self)
+
+  @deprecated("renamed to noneTerminate", "0.9")
   def terminated: Stream[F,Option[A]] =
-    Stream.terminated(self)
+    Stream.noneTerminate(self)
 
   @deprecated("use `pipe2` or `pipe2v`, which now subsumes the functionality of `wye`", "0.9")
   def wye[F2[_],B,C](s2: Stream[F2,B])(f: (Stream[F2,A], Stream[F2,B]) => Stream[F2,C])(implicit S: Sub1[F,F2])

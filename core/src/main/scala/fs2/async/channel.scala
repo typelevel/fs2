@@ -25,15 +25,35 @@ object channel {
       def suspendf[A](a: => A) = F.map(F.pure(())) { _ => a }
       combine(
         f(
-          Stream.bracket(F.pure(()))(
-            _ => s.repeatPull { _ receive { case a #: h =>
-              Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h) }},
-            _ => q.enqueue1(None)
-          )
+          s.repeatPull {
+            _ receive { case a #: h => Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h) }
+          }.onFinalize(q.enqueue1(None))
         ),
-        g(process1.noneTerminate(q.dequeue) flatMap { c => Stream.chunk(c) })
+        g(process1.unNoneTerminate(q.dequeue) flatMap { c => Stream.chunk(c) })
       )
     }
+
+  def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Stream[F,A] => Stream[F,B]])(
+    implicit F: Async[F]): Stream[F,A] => Stream[F,B] = {
+    in => for {
+      done <- Stream.eval(async.signalOf(false))
+      q <- Stream.eval(q)
+      b <- in.chunks.map(Some(_)).evalMap(q.enqueue1)
+             .drain
+             .onFinalize(q.enqueue1(None))
+             .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
+               f(process1.unNoneTerminate(q.dequeue) flatMap Stream.chunk)
+             }
+    } yield b
+  }
+
+  def joinAsync[F[_]:Async,A,B](maxQueued: Int)(s: Stream[F,Stream[F,A] => Stream[F,B]])
+    : Stream[F,A] => Stream[F,B]
+    = joinQueued[F,A,B](async.boundedQueue(maxQueued))(s)
+
+  def join[F[_]:Async,A,B](s: Stream[F,Stream[F,A] => Stream[F,B]])
+    : Stream[F,A] => Stream[F,B]
+    = joinQueued[F,A,B](async.synchronousQueue)(s)
 
   /** Synchronously send values through `sink`. */
   def observe[F[_]:Async,A](s: Stream[F,A])(sink: Sink[F,A]): Stream[F,A] =

@@ -12,6 +12,9 @@ object wye {
   def either[F[_]:Async,I,I2](s1: Stream[F,I], s2: Stream[F,I2]): Stream[F,Either[I,I2]] =
     merge(s1.map(Left(_)), s2.map(Right(_)))
 
+  def interrupt[F[_]:Async,I](s1: Stream[F,Boolean], s2: Stream[F,I]): Stream[F,I] =
+    sys.error("implement me")
+
   /**
    * Let through the right branch as long as the left branch is `false`,
    * listening asynchronously for the left branch to become `true`.

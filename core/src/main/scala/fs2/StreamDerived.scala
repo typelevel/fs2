@@ -30,7 +30,7 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
       }}}
     }
 
-  def terminated[F[_],A](p: Stream[F,A]): Stream[F,Option[A]] =
+  def noneTerminate[F[_],A](p: Stream[F,A]): Stream[F,Option[A]] =
     p.map(Some(_)) ++ emit(None)
 
   def drain[F[_],A](p: Stream[F,A]): Stream[F,Nothing] =
