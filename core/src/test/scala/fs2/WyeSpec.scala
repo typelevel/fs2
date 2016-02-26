@@ -47,5 +47,30 @@ object WyeSpec extends Properties("Wye") {
       bothOk && haltLOk && haltROk
     }
   }
+
+  property("interrupt (1)") = forAll { (s1: PureStream[Int]) =>
+    val s = async.mutable.Semaphore[Task](0).run
+    val interrupt = Stream.emit(true) ++ Stream.eval_(s.increment)
+    // tests that termination is successful even if stream being interrupted is hung
+    (run { s1.get.evalMap(_ => s.decrement).interruptWhen(interrupt) } ?= Vector()) &&
+    // tests that termination is successful even if interruption stream is infinitely false
+    (run { s1.get.covary[Task].interruptWhen(Stream.constant(false)) } ?= run(s1.get))
+  }
+
+  property("interrupt (2)") = forAll { (s1: PureStream[Int]) =>
+    val barrier = async.mutable.Semaphore[Task](0).run
+    val enableInterrupt = async.mutable.Semaphore[Task](0).run
+    val interruptedS1 = s1.get.evalMap { i =>
+      // enable interruption and hang when hitting a value divisible by 7
+      if (i % 7 == 0) enableInterrupt.increment.flatMap { _ => barrier.decrement.map(_ => i) }
+      else Task.now(i)
+    }
+    val interrupt = Stream.eval(enableInterrupt.decrement) flatMap { _ => Stream.emit(false) }
+    val out = run { interruptedS1.interruptWhen(interrupt) }
+    // as soon as we hit a value divisible by 7, we enable interruption then hang before emitting it,
+    // so there should be no elements in the output that are divisible by 7
+    // this also checks that interruption works fine even if one or both streams are in a hung state
+    out.forall(i => i % 7 != 0)
+  }
 }
 

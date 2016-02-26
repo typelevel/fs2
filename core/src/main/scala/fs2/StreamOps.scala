@@ -36,6 +36,12 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def flatMap[F2[_],B](f: A => Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.flatMap(Sub1.substStream(self))(f)
 
+  def interruptWhen[F2[_]](haltWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,A] =
+    fs2.wye.interrupt(haltWhenTrue, Sub1.substStream(self))
+
+  def interruptWhen[F2[_]](haltWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,A] =
+    fs2.wye.interrupt(haltWhenTrue.discrete, Sub1.substStream(self))
+
   /** Alias for `[[tee.interleave]](self, s2)`. */
   def interleave[F2[_], B >: A](s2: Stream[F2,B])(implicit R:RealSupertype[A,B], S:Sub1[F,F2]): Stream[F2,B] =
     fs2.tee.interleave.apply(Sub1.substStream(self), s2)
