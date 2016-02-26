@@ -8,27 +8,33 @@ object wye {
 
   type Wye[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
+  /**
+   * Defined as `s1.drain merge s2`. Runs `s1` and `s2` concurrently, ignoring
+   * any output of `s1`.
+   */
+  def mergeDrainL[F[_]:Async,I,I2](s1: Stream[F,I], s2: Stream[F,I2]): Stream[F,I2] =
+    s1.drain merge s2
+
+  /**
+   * Defined as `s1 merge s2.drain`. Runs `s1` and `s2` concurrently, ignoring
+   * any output of `s1`.
+   */
+  def mergeDrainR[F[_]:Async,I,I2](s1: Stream[F,I], s2: Stream[F,I2]): Stream[F,I] =
+    s1 merge s2.drain
+
   /** Like `[[merge]]`, but tags each output with the branch it came from. */
   def either[F[_]:Async,I,I2](s1: Stream[F,I], s2: Stream[F,I2]): Stream[F,Either[I,I2]] =
     merge(s1.map(Left(_)), s2.map(Right(_)))
 
-  def interrupt[F[_]:Async,I](s1: Stream[F,Boolean], s2: Stream[F,I]): Stream[F,I] =
-    sys.error("implement me")
-
   /**
-   * Let through the right branch as long as the left branch is `false`,
+   * Let through the `s2` branch as long as the `s1` branch is `false`,
    * listening asynchronously for the left branch to become `true`.
-   * This halts as soon as the right or left branch halts.
+   * This halts as soon as either branch halts.
    */
-  //def interrupt[I]: Wye[Boolean, I, I] =
-  //  receiveBoth {
-  //    case ReceiveR(i)    => emit(i) ++ interrupt
-  //    case ReceiveL(kill) => if (kill) halt else interrupt
-  //    case HaltOne(e)     => Halt(e)
-  //  }
-
-  // def interrupt[F[_]:Async,I]: Wye[F,Boolean,I,I] =
-  //  (s1, s2) =>
+  def interrupt[F[_]:Async,I](s1: Stream[F,Boolean], s2: Stream[F,I]): Stream[F,I] =
+    either(s1.noneTerminate, s2.noneTerminate)
+      .takeWhile(_.fold(halt => halt.map(!_).getOrElse(false), o => o.isDefined))
+      .collect { case Right(Some(i)) => i }
 
   /**
    * Interleave the two inputs nondeterministically. The output stream
@@ -55,4 +61,16 @@ object wye {
       (s1,s2) => s1.awaitAsync.flatMap { l => s2.awaitAsync.flatMap { r => go(l,r) }}
     }
   }
+
+  /** Like `merge`, but halts as soon as _either_ branch halts. */
+  def mergeHaltBoth[F[_]:Async,O](s1: Stream[F,O], s2: Stream[F,O]): Stream[F,O] =
+    s1.noneTerminate merge s2.noneTerminate pipe process1.unNoneTerminate
+
+  /** Like `merge`, but halts as soon as the `s1` branch halts. */
+  def mergeHaltL[F[_]:Async,O](s1: Stream[F,O], s2: Stream[F,O]): Stream[F,O] =
+    s1.noneTerminate merge s2.map(Some(_)) pipe process1.unNoneTerminate
+
+  /** Like `merge`, but halts as soon as the `s2` branch halts. */
+  def mergeHaltR[F[_]:Async,O](s1: Stream[F,O], s2: Stream[F,O]): Stream[F,O] =
+    mergeHaltL(s2, s1)
 }

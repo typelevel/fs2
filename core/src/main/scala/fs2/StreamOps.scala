@@ -27,7 +27,7 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
     Stream.drain(self)
 
   /** Alias for `[[wye.either]](self, s2)`. */
-  def either[F2[_]:Async,B](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,Either[A,B]] =
+  def either[F2[_]:Async,B](s2: Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,Either[A,B]] =
     fs2.wye.either(Sub1.substStream(self), s2)
 
   def evalMap[F2[_],B](f: A => F2[B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
@@ -53,6 +53,26 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   /** Alias for `[[wye.merge]](self, s2)`. */
   def merge[F2[_]:Async,B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     fs2.wye.merge(Sub1.substStream(self), s2)
+
+  /** Alias for `[[wye.mergeHaltBoth]](self, s2)`. */
+  def mergeHaltBoth[F2[_]:Async,B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
+    fs2.wye.mergeHaltBoth(Sub1.substStream(self), s2)
+
+  /** Alias for `[[wye.mergeHaltL]](self, s2)`. */
+  def mergeHaltL[F2[_]:Async,B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
+    fs2.wye.mergeHaltL(Sub1.substStream(self), s2)
+
+  /** Alias for `[[wye.mergeHaltR]](self, s2)`. */
+  def mergeHaltR[F2[_]:Async,B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
+    fs2.wye.mergeHaltR(Sub1.substStream(self), s2)
+
+  /** Alias for `[[wye.mergeDrainL]](self, s2)`. */
+  def mergeDrainL[F2[_]:Async,B](s2: Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
+    fs2.wye.mergeDrainL(Sub1.substStream(self)(S), s2)
+
+  /** Alias for `[[wye.mergeDrainR]](self, s2)`. */
+  def mergeDrainR[F2[_]:Async,B](s2: Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,A] =
+    fs2.wye.mergeDrainR(Sub1.substStream(self)(S), s2)
 
   def onComplete[F2[_],B>:A](regardless: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.onComplete(Sub1.substStream(self): Stream[F2,B], regardless)
