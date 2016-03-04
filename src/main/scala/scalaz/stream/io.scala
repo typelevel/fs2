@@ -220,8 +220,8 @@ object io {
 
   /**
    * Creates a `Channel[Task,Array[Byte],Array[Byte]]` from an `InputStream` by
-   * repeatedly filling the input buffer. The last chunk may be less
-   * than the requested size.
+   * repeatedly filling the input buffer. `is.read` will be called multiple times
+   * as needed; however, the last chunk may be less than the requested size.
    *
    * It is safe to recycle the same buffer for consecutive reads
    * as long as whatever consumes this `Process` never stores the `Array[Byte]`
@@ -240,7 +240,15 @@ object io {
         val m = src.read(buf)
         if (m == buf.length) buf
         else if (m == -1) throw Cause.Terminated(Cause.End)
-        else buf.take(m)
+        else { // multiple reads for stubborn InputStreams
+          @tailrec def loop(received: Int): Array[Byte] = {
+            val m2 = src.read(buf, received, buf.length - received)
+            if (m2 == -1) buf.take(received)
+            else if (m2 + received == buf.length) buf
+            else loop(m2 + received)
+          }
+          loop(m)
+        }
       }}
     }
 
