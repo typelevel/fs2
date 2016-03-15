@@ -221,6 +221,10 @@ object Process1Spec extends Properties("process1") {
     s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
   }
 
+  property("unNoneTerminate") = forAll { (s: PureStream[Option[Int]]) =>
+    s.get.pipe(unNoneTerminate) ==? s.get.toVector.takeWhile(_.isDefined).collect { case Some(i) => i }
+  }
+
   property("vectorChunkN") = forAll { (s: PureStream[Int], n: SmallPositive) =>
     s.get.vectorChunkN(n.get) ==? run(s.get).grouped(n.get).toVector
   }
