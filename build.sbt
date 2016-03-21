@@ -24,7 +24,7 @@ lazy val commonSettings = Seq(
     "-language:postfixOps",
     "-Xfatal-warnings",
     "-Yno-adapted-args",
-    "-Ywarn-dead-code",
+    // "-Ywarn-dead-code", // Too buggy to be useful, for instance https://issues.scala-lang.org/browse/SI-9521
     "-Ywarn-value-discard",
     "-Ywarn-unused-import"
   ),
