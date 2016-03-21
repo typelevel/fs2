@@ -1,7 +1,7 @@
 package fs2.internal
 
-import java.util.concurrent.atomic.{AtomicInteger, AtomicBoolean, AtomicReference}
-import java.util.concurrent.{Callable, ConcurrentLinkedQueue, CountDownLatch, ExecutorService, TimeoutException, ScheduledExecutorService, TimeUnit, Executors}
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.{Callable, TimeoutException, ScheduledExecutorService, TimeUnit}
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
 import fs2.Strategy

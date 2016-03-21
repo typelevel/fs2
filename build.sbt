@@ -13,8 +13,8 @@ lazy val contributors = Seq(
 
 lazy val commonSettings = Seq(
   organization := "co.fs2",
-  scalaVersion := "2.11.7",
-  crossScalaVersions := Seq("2.11.7", "2.12.0-M3"),
+  scalaVersion := "2.11.8",
+  crossScalaVersions := Seq("2.11.8", "2.12.0-M3"),
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -22,12 +22,14 @@ lazy val commonSettings = Seq(
     "-language:higherKinds",
     "-language:existentials",
     "-language:postfixOps",
-    // "-Xfatal-warnings", this makes repl useless in conjunction with warn-unused-import
+    "-Xfatal-warnings",
     "-Yno-adapted-args",
     "-Ywarn-dead-code",
     "-Ywarn-value-discard",
     "-Ywarn-unused-import"
   ),
+  scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
+  scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console)),
   libraryDependencies ++= Seq(
     "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
   ),

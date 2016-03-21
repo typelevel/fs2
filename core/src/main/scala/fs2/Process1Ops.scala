@@ -1,7 +1,5 @@
 package fs2
 
-import fs2.util.Sub1
-
 trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order

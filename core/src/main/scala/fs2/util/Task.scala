@@ -3,9 +3,8 @@ package util
 
 import fs2.internal.{Actor,Future,LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import java.util.concurrent.{ScheduledExecutorService, ConcurrentLinkedQueue, ExecutorService, Executors}
+import java.util.concurrent.ScheduledExecutorService
 import scala.concurrent.duration._
-import scala.collection.immutable.Queue
 
 /*
 `Task` is a trampolined computation producing an `A` that may
