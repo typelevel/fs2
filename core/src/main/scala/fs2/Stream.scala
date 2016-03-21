@@ -388,7 +388,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       Pull.onError(Sub1.substStream(s)._step0(rights).map {
         // keep the error handler in scope as we traverse the stream `s`
         case Step(hd,tl) =>
-             Step(hd, new Handle(List(), Stream.onError(tl.stream)(Sub1.substStreamF(handle))))
+             Step(hd, new Handle(tl.buffer, Stream.onError(tl.stream)(Sub1.substStreamF(handle))))
       }) { err =>
         Pull.suspend { Sub1.substStreamF(handle).apply(err)._step0(rights) }
       }
