@@ -17,6 +17,9 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def ++[F2[_],B>:A](p2: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.append(Sub1.substStream(self), p2)
 
+  def attempt: Stream[F,Either[Throwable,A]] =
+    self.map(Right(_)).onError(e => Stream.emit(Left(e)))
+
   def append[F2[_],B>:A](p2: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.append(Sub1.substStream(self), p2)
 

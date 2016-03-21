@@ -67,12 +67,18 @@ object StreamSpec extends Properties("Stream") {
     s2.onError(_ => Stream.empty) ==? run(s.get)
   }
 
-  property("onError (2)") = secure {
+  property("onError (2)") = protect {
     (Stream.fail(Err) onError { _ => Stream.emit(1) }) === Vector(1)
   }
 
-  property("onError (3)") = secure {
+  property("onError (3)") = protect {
     (Stream.emit(1) ++ Stream.fail(Err) onError { _ => Stream.emit(1) }) === Vector(1,1)
+  }
+
+  property("onError (4)") = protect {
+    Stream.eval(Task.delay(throw Err)).map(Right(_)).onError(t => Stream.emit(Left(t)))
+          .take(1)
+          .runLog.run.run ?= Vector(Left(Err))
   }
 
   property("range") = protect {
