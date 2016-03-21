@@ -14,7 +14,7 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
-  /** outputs first value, and then any changed value from the last value. `eqf` is used for equality **/
+  /** Outputs first value, and then any changed value from the last value. `eqf` is used for equality. **/
   def changes[F[_],I](eqf:(I,I) => Boolean):Stream[F,I] => Stream[F,I] =
     zipWithPrevious andThen collect {
       case (None,next) => next
