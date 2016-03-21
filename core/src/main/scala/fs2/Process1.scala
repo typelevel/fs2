@@ -188,9 +188,17 @@ object process1 {
   def sum[F[_],I](implicit ev: Numeric[I]): Stream[F,I] => Stream[F,I] =
     fold(ev.zero)(ev.plus)
 
+  /** Emits all elements of the input except the first one. */
+  def tail[F[_],I]: Stream[F,I] => Stream[F,I] =
+    drop(1)
+
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull Pull.take(n)
+
+  /** Emits the last `n` elements of the input. */
+  def takeRight[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
+    _ pull { h => Pull.takeRight(n)(h).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
 
   /** Emit the longest prefix of the input for which all elements test true according to `f`. */
   def takeWhile[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
