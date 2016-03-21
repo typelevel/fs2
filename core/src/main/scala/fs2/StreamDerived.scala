@@ -5,11 +5,69 @@ import fs2.util.{RealSupertype,Sub1,Task}
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2] trait StreamDerived { self: fs2.Stream.type =>
 
+  // nb: methods are in alphabetical order
+
   def apply[F[_],W](a: W*): Stream[F,W] = self.chunk(Chunk.seq(a))
+
+  def await1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
+    h.await flatMap { case Step(hd, tl) => hd.uncons match {
+      case None => await1(tl)
+      case Some((h,hs)) => Pull.pure(Step(h, tl push hs))
+    }}
+
+  def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep1[F,A]] =
+    h.awaitAsync map { _ map { _.map {
+      case Step(hd, tl) => hd.uncons match {
+        case None => Step(None, tl)
+        case Some((h,hs)) => Step(Some(h), tl.push(hs))
+      }}}
+    }
+
+  /**
+   * The infinite `Process`, always emits `a`.
+   * If for performance reasons it is good to emit `a` in chunks,
+   * specify size of chunk by `chunkSize` parameter
+   */
+  def constant[F[_],W](w: W, chunkSize: Int = 1): Stream[F, W] =
+    emits(List.fill(chunkSize)(w)) ++ constant(w, chunkSize)
+
+  def drain[F[_],A](p: Stream[F,A]): Stream[F,Nothing] =
+    p flatMap { _ => empty }
+
+  def emit[F[_],A](a: A): Stream[F,A] = chunk(Chunk.singleton(a))
+
+  @deprecated("use Stream.emits", "0.9")
+  def emitAll[F[_],A](as: Seq[A]): Stream[F,A] = chunk(Chunk.seq(as))
+
+  def emits[F[_],W](a: Seq[W]): Stream[F,W] = chunk(Chunk.seq(a))
+
+  def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] =
+    flatMap(eval(fa)) { _ => empty }
+
+  def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
+    flatMap(eval(f))(p => p)
+
+  def map[F[_],A,B](a: Stream[F,A])(f: A => B): Stream[F,B] =
+    Stream.map(a)(f)
+
+  def mask[F[_],A](a: Stream[F,A]): Stream[F,A] =
+    onError(a)(_ => empty)
+
+  def onComplete[F[_],A](p: Stream[F,A], regardless: => Stream[F,A]): Stream[F,A] =
+    onError(append(p, mask(regardless))) { err => append(mask(regardless), fail(err)) }
+
+  def peek[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] =
+    h.await flatMap { case hd #: tl => Pull.pure(hd #: tl.push(hd)) }
+
+  def peek1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
+    h.await1 flatMap { case hd #: tl => Pull.pure(hd #: tl.push1(hd)) }
 
   def pull[F[_],F2[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2])
   : Stream[F2,B] =
     Pull.run { Sub1.substPull(open(s)) flatMap (h => Sub1.substPull(using(h))) }
+
+  def push1[F[_],A](h: Handle[F,A])(a: A): Handle[F,A] =
+    push(h)(Chunk.singleton(a))
 
   def repeatPull[F[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F,B,Handle[F,A]])
   : Stream[F,B] =
@@ -22,64 +80,8 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   : Stream[F,C] =
     s.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.run
 
-  def await1Async[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep1[F,A]] =
-    h.awaitAsync map { _ map { _.map {
-      case Step(hd, tl) => hd.uncons match {
-        case None => Step(None, tl)
-        case Some((h,hs)) => Step(Some(h), tl.push(hs))
-      }}}
-    }
-
   def terminated[F[_],A](p: Stream[F,A]): Stream[F,Option[A]] =
     p.map(Some(_)) ++ emit(None)
-
-  def drain[F[_],A](p: Stream[F,A]): Stream[F,Nothing] =
-    p flatMap { _ => empty }
-
-  def onComplete[F[_],A](p: Stream[F,A], regardless: => Stream[F,A]): Stream[F,A] =
-    onError(append(p, mask(regardless))) { err => append(mask(regardless), fail(err)) }
-
-  def mask[F[_],A](a: Stream[F,A]): Stream[F,A] =
-    onError(a)(_ => empty)
-
-  def map[F[_],A,B](a: Stream[F,A])(f: A => B): Stream[F,B] =
-    Stream.map(a)(f)
-
-  def emit[F[_],A](a: A): Stream[F,A] = chunk(Chunk.singleton(a))
-
-  @deprecated("use Stream.emits", "0.9")
-  def emitAll[F[_],A](as: Seq[A]): Stream[F,A] = chunk(Chunk.seq(as))
-
-  def emits[F[_],W](a: Seq[W]): Stream[F,W] = chunk(Chunk.seq(a))
-
-  def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
-    flatMap(eval(f))(p => p)
-
-  def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] =
-    flatMap(eval(fa)) { _ => empty }
-
-  /**
-    * The infinite `Process`, always emits `a`.
-    * If for performance reasons it is good to emit `a` in chunks,
-    * specify size of chunk by `chunkSize` parameter
-    */
-  def constant[F[_],W](w: W, chunkSize: Int = 1): Stream[F, W] =
-    emits(List.fill(chunkSize)(w)) ++ constant(w, chunkSize)
-
-  def push1[F[_],A](h: Handle[F,A])(a: A): Handle[F,A] =
-    push(h)(Chunk.singleton(a))
-
-  def peek[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] =
-    h.await flatMap { case hd #: tl => Pull.pure(hd #: tl.push(hd)) }
-
-  def await1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
-    h.await flatMap { case Step(hd, tl) => hd.uncons match {
-      case None => await1(tl)
-      case Some((h,hs)) => Pull.pure(Step(h, tl push hs))
-    }}
-
-  def peek1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
-    h.await1 flatMap { case hd #: tl => Pull.pure(hd #: tl.push1(hd)) }
 
   implicit class HandleOps[+F[_],+A](h: Handle[F,A]) {
     def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
