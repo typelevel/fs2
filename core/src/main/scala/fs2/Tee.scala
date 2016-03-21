@@ -1,7 +1,7 @@
 package fs2
 
 import Stream.Handle
-import fs2.{Pull => P, Chunk => C}
+import fs2.{Pull => P}
 import fs2.util.{Free,Functor,Sub1}
 
 object tee {

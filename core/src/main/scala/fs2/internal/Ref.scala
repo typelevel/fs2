@@ -1,7 +1,6 @@
 package fs2.internal
 
 import java.util.concurrent.atomic._
-import java.util.concurrent.locks.ReentrantLock
 
 import Ref._
 

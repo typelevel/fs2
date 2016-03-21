@@ -1,8 +1,7 @@
 package fs2
 
-import collection.immutable.SortedSet
 import fs2.internal.{LinkedSet,Trampoline}
-import fs2.util.{Eq,Free,RealSupertype,Sub1}
+import fs2.util.{Eq,Sub1}
 import Stream.Token
 
 trait Pull[+F[_],+W,+R] extends PullOps[F,W,R] {
