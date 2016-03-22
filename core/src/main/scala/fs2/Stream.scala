@@ -20,6 +20,7 @@ trait Stream[+F[_],+W] extends StreamOps[F,W] {
     doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
     g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O] =
     Free.pure(()) flatMap { _ => // trampoline after every step, catch exceptions
+      // println("Stack size: " + k.size)
       def normal =
         try _runFold1(doCleanup, tracked, k)(g, z)
         catch { case t: Throwable =>
@@ -224,22 +225,22 @@ object Stream extends Streams[Stream] with StreamDerived {
     def translate[G[_]](uf1: F ~> G): Stream[G,W] = self.asInstanceOf[Stream[G,W]]
   }
 
-  def eval[F[_],W](f: F[W]): Stream[F,W] = new Stream[F,W] {
-    def _runFold1[F2[_],O,W2>:W,W3](
+  def attemptEval[F[_],W](f: F[W]): Stream[F,Either[Throwable,W]] = new Stream[F,Either[Throwable,W]] {
+    def _runFold1[F2[_],O,W2>:Either[Throwable,W],W3](
       doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2, O]
       =
-      Free.attemptEval(S(f)) flatMap {
-        case Left(e) => fail(e)._runFold0(doCleanup, tracked, k)(g, z)
-        case Right(a) => emit(a)._runFold0(doCleanup, tracked, k)(g, z)
-      }
+      Free.attemptEval(S(f)) flatMap { a => emit(a)._runFold0(doCleanup, tracked, k)(g, z) }
 
-    def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
+    def _step1[F2[_],W2>:Either[Throwable,W]](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
-      = Pull.eval(S(f)) map { w => Step(Chunk.singleton(w), new Handle(List(), concatRight(rights))) }
+      =
+      Pull.attemptEval(S(f)) map { w => Step(Chunk.singleton(w), new Handle(List(), concatRight(rights))) }
 
-    def translate[G[_]](uf1: F ~> G): Stream[G,W] = suspend { eval(uf1(f)) }
+    def translate[G[_]](uf1: F ~> G): Stream[G,Either[Throwable,W]] = suspend { attemptEval(uf1(f)) }
   }
+
+  def eval[F[_],W](f: F[W]): Stream[F,W] = attemptEval(f) flatMap (_ fold (fail, emit))
 
   def translate[F[_],G[_],W](s: Stream[F,W])(u: F ~> G) =
     s.translate(u)
@@ -489,11 +490,14 @@ object Stream extends Streams[Stream] with StreamDerived {
       bound: H[R]
     ): R
 
+    def size: Long
+
     trait H[+R] { def f[x]: (List[Segment[F,W1]], Either[W1 => x, W1 => Stream[F,x]], Stack[F,x,W2]) => R }
 
     def pushBind[W0](f: Either[W0 => W1, W0 => Stream[F,W1]]): Stack[F,W0,W2] = new Stack[F,W0,W2] {
       def apply[R](unbound: (List[Segment[F,W0]], Eq[W0,W2]) => R, bound: H[R]): R
       = bound.f(List(), f, self)
+      lazy val size = self.size + 1
     }
 
     def push(s: Segment[F,W1]): Stack[F,W1,W2] = self (
@@ -519,8 +523,8 @@ object Stream extends Streams[Stream] with StreamDerived {
             bound.f(s ++ segments, bind, tl)
           }
         )
+        lazy val size = self.size + s.size.toLong
       }
-
   }
 
   object Stack {
@@ -529,6 +533,8 @@ object Stream extends Streams[Stream] with StreamDerived {
     def segments[F[_],W1](s: List[Segment[F,W1]]): Stack[F,W1,W1] = new Stack[F,W1,W1] {
       def apply[R](unbound: (List[Segment[F,W1]], Eq[W1,W1]) => R, bound: H[R]): R
       = unbound(s, Eq.refl)
+
+      lazy val size = s.size.toLong
     }
 
     @annotation.tailrec

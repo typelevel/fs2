@@ -114,15 +114,16 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       }
   }
 
-  def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] = new Pull[F,Nothing,R] {
+  def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] =
+    attemptEval(f) flatMap { _ fold (fail, pure) }
+
+  def attemptEval[F[_],R](f: F[R]): Pull[F,Nothing,Either[Throwable,R]] =
+  new Pull[F,Nothing,Either[Throwable,R]] {
     type W = Nothing
-    def _run1[F2[_],W2>:W,R1>:R,R2](doCleanup: Boolean, tracked: LinkedSet[Token], k: Stack[F2,W2,R1,R2])(
+    def _run1[F2[_],W2>:W,R1>:Either[Throwable,R],R2](doCleanup: Boolean, tracked: LinkedSet[Token], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       =
-      Stream.eval(S(f)).attempt flatMap {
-        case Left(e) => fail(e)._run0(doCleanup, tracked, k)
-        case Right(r) => pure(r)._run0(doCleanup, tracked, k)
-      }
+      Stream.attemptEval(S(f)) flatMap { r => pure(r)._run0(doCleanup, tracked, k) }
   }
 
   def acquire[F[_],R](id: Token, r: F[R], cleanup: R => F[Unit]): Pull[F,Nothing,R] = new Pull[F,Nothing,R] {
