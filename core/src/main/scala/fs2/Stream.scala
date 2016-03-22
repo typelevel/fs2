@@ -497,7 +497,7 @@ object Stream extends Streams[Stream] with StreamDerived {
     def pushBind[W0](f: Either[W0 => W1, W0 => Stream[F,W1]]): Stack[F,W0,W2] = new Stack[F,W0,W2] {
       def apply[R](unbound: (List[Segment[F,W0]], Eq[W0,W2]) => R, bound: H[R]): R
       = bound.f(List(), f, self)
-      val size = self.size + 1
+      lazy val size = self.size + 1
     }
 
     def push(s: Segment[F,W1]): Stack[F,W1,W2] = self (
@@ -523,7 +523,7 @@ object Stream extends Streams[Stream] with StreamDerived {
             bound.f(s ++ segments, bind, tl)
           }
         )
-        val size = self.size + s.size.toLong
+        lazy val size = self.size + s.size.toLong
       }
   }
 
@@ -534,7 +534,7 @@ object Stream extends Streams[Stream] with StreamDerived {
       def apply[R](unbound: (List[Segment[F,W1]], Eq[W1,W1]) => R, bound: H[R]): R
       = unbound(s, Eq.refl)
 
-      val size = s.size.toLong
+      lazy val size = s.size.toLong
     }
 
     @annotation.tailrec
