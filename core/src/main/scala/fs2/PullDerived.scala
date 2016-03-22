@@ -15,10 +15,8 @@ trait PullDerived { self: fs2.Pull.type =>
    * Repeatedly use the output of the `Pull` as input for the next step of the pull.
    * Halts when a step terminates with `Pull.done` or `Pull.fail`.
    */
-  def loop[F[_],W,R](using: R => Pull[F,W,R]): R => Pull[F,W,Nothing] = {
-    lazy val tl = loop(using)
-    r => using(r) flatMap tl
-  }
+  def loop[F[_],W,R](using: R => Pull[F,W,R]): R => Pull[F,W,Nothing] =
+    r => using(r) flatMap loop(using)
 
   implicit def covaryPure[F[_],W,R](p: Pull[Pure,W,R]): Pull[F,W,R] = p.covary[F]
 }
