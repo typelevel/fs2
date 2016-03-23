@@ -69,11 +69,11 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.scan1]](f)`. */
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self pipe process1.scan1(f)
 
-  /** Alias for `self pipe [[process1.sum]](f)`. */
-  def sum[O2 >: O : Numeric]: Stream[F,O2] = self pipe process1.sum
-
   /** Alias for `self pipe [[process1.shiftRight]]`. */
   def shiftRight[O2 >: O](head: O2*): Stream[F,O2] = self pipe process1.shiftRight(head: _*)
+
+  /** Alias for `self pipe [[process1.sum]](f)`. */
+  def sum[O2 >: O : Numeric]: Stream[F,O2] = self pipe process1.sum
 
   /** Alias for `self pipe [[process1.tail]]`. */
   def tail: Stream[F,O] = self pipe process1.tail
