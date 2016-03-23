@@ -221,6 +221,10 @@ object Process1Spec extends Properties("process1") {
     s.get.scan1(f) ==? v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
   }
 
+  property("shiftRight") = forAll { (s: PureStream[Int], v: Vector[Int]) =>
+    s.get.shiftRight(v: _*) ==? v ++ run(s.get)
+  }
+
   property("tail") = forAll { (s: PureStream[Int]) =>
     s.get.tail ==? run(s.get).drop(1)
   }
