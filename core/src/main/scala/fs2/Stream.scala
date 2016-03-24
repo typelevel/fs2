@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.internal.{Resources,LinkedSet,Trampoline}
+import fs2.internal.{Resources,LinkedSet}
 import fs2.util._
 import fs2.Async.Future
 
@@ -134,7 +134,7 @@ object Stream extends Streams[Stream] with StreamDerived {
   private[fs2] def token: Token = new Token()
   case object Interrupted extends Throwable
 
-  def chunk[F[_],W](c: Chunk[W]) = new Stream[F,W] { self =>
+  def chunk[F[_],W](c: Chunk[W]): Stream[F,W] = new Stream[F,W] { self =>
     override def isEmpty = c.isEmpty
 
     def _runFold1[F2[_],O,W2>:W,W3](
@@ -167,7 +167,7 @@ object Stream extends Streams[Stream] with StreamDerived {
               bindf => c.foldRight(None: Option[Stream[F2,x]])(
                 (w,acc) => acc match {
                   case None => Some(bindf(w))
-                  case Some(acc) => Some(Stream.append(bindf(w), acc))
+                  case Some(acc) => Some(Stream.zppend(bindf(w), acc))
                 }
               ).getOrElse(empty[F2,x])
             )
@@ -300,17 +300,26 @@ object Stream extends Streams[Stream] with StreamDerived {
       suspend { s.translate(uf1) flatMap { w0 => f(w0).translate(uf1) } }
   }
 
-  def append[F[_],W](s: Stream[F,W], s2: => Stream[F,W]) = new Stream[F,W] {
+  def append[F[_],W](s: Stream[F,W], s2: => Stream[F,W]) =
+    zppend(s, suspend(s2))
+
+  // NB: internal version of `append` which is strict in both arguments
+  // This is the only version which is called internally (verifiable by
+  // searching for 'append' in this file and `Pull`), so we are guaranteed that
+  // the interpreter will not add unnecessary `suspend` nodes due to it needing
+  // to append streams
+  private[fs2]
+  def zppend[F[_],W](s: Stream[F,W], s2: Stream[F,W]) = new Stream[F,W] {
     def _runFold1[F2[_],O,W2>:W,W3](
       doCleanup: Boolean, tracked: Resources[Token,F2[Unit]], k: Stack[F2,W2,W3])(
       g: (O,W3) => O, z: O)(implicit S: Sub1[F,F2]): Free[F2,O]
       =
-      s._runFold0[F2,O,W2,W3](doCleanup, tracked, k.pushAppend(() => Sub1.substStream(s2)))(g,z)
+      s._runFold0[F2,O,W2,W3](doCleanup, tracked, k.pushZppend(Sub1.substStream(s2)))(g,z)
 
     def _step1[F2[_],W2>:W](rights: List[Stream[F2,W2]])(implicit S: Sub1[F,F2])
       : Pull[F2,Nothing,Step[Chunk[W2],Handle[F2,W2]]]
       =
-      Sub1.substStream(s)._step0(Sub1.substStream(suspend(s2)) :: rights)
+      Sub1.substStream(s)._step0(Sub1.substStream(s2) :: rights)
 
     def translate[G[_]](uf1: F ~> G): Stream[G,W] =
       suspend { s.translate(uf1) ++ s2.translate(uf1) }
@@ -476,12 +485,12 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   private def concatRight[F[_],W](s: List[Stream[F,W]]): Stream[F,W] =
     if (s.isEmpty) empty
-    else s.reverse.reduceLeft((tl,hd) => if (hd.isEmpty) tl else append(hd,tl))
+    else s.reverse.reduceLeft((tl,hd) => if (hd.isEmpty) tl else zppend(hd,tl))
 
   sealed trait Segment[F[_],W1]
   object Segment {
     case class Handler[F[_],W1](h: Throwable => Stream[F,W1]) extends Segment[F,W1]
-    case class Append[F[_],W1](s: Trampoline[Stream[F,W1]]) extends Segment[F,W1]
+    case class Zppend[F[_],W1](s: Stream[F,W1]) extends Segment[F,W1]
   }
 
   trait Stack[F[_],W1,W2] { self =>
@@ -509,7 +518,7 @@ object Stream extends Streams[Stream] with StreamDerived {
     )
 
     def pushHandler(f: Throwable => Stream[F,W1]) = push(Segment.Handler(f))
-    def pushAppend(s: () => Stream[F,W1]) = push(Segment.Append(Trampoline.delay(s())))
+    def pushZppend(s: Stream[F,W1]) = push(Segment.Zppend(s))
 
     def pushSegments(s: List[Segment[F,W1]]): Stack[F,W1,W2] =
       if (s.isEmpty) self
@@ -551,20 +560,20 @@ object Stream extends Streams[Stream] with StreamDerived {
     : (Stream[F,W1], List[Segment[F,W1]])
     = s match {
       case List() => (Stream.empty, List())
-      case Segment.Append(s) :: tl => (s.run, tl)
+      case Segment.Zppend(s) :: tl => (s, tl)
       case _ :: tl => succeed(tl)
     }
 
     def bindSegments[F[_],W1,W2](s: List[Segment[F,W1]])(f: W1 => Stream[F,W2])
     : List[Segment[F,W2]]
     = s map {
-      case Segment.Append(s) => Segment.Append(s map { s => flatMap(s)(f) })
+      case Segment.Zppend(s) => Segment.Zppend(flatMap(s)(f))
       case Segment.Handler(h) => Segment.Handler(h andThen (s => flatMap(s)(f)))
     }
 
     def mapSegments[F[_],W1,W2](s: List[Segment[F,W1]])(f: W1 => W2): List[Segment[F,W2]]
     = s map {
-      case Segment.Append(s) => Segment.Append(s map { s => map(s)(f) })
+      case Segment.Zppend(s) => Segment.Zppend(map(s)(f))
       case Segment.Handler(h) => Segment.Handler(h andThen (s => map(s)(f)))
     }
   }
