@@ -25,3 +25,14 @@ object RepeatEvalSanityTest extends App {
   }
   Stream.repeatEval(Task.delay(1)).pipe(id).covary[Task].run.run.run
 }
+
+object AppendSanityTest extends App {
+  val src = Stream.constant(1).covary[Task] ++ Stream.empty
+  val prg = src.pull(Pull.echo)
+  prg.run.run.run
+}
+
+object OnCompleteSanityTest extends App {
+  Stream.constant(1).covary[Task].onComplete(Stream.empty).pull(Pull.echo)
+  .run.run.run
+}
