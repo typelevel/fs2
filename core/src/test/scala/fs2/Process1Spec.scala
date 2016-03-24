@@ -205,6 +205,13 @@ object Process1Spec extends Properties("process1") {
     s.get.pipe(takeWhile(set)) ==? run(s.get).takeWhile(set)
   }
 
+  property("takeThrough") = forAll { (s: PureStream[Int], n: SmallPositive) =>
+    val f = (i: Int) => i % n.get == 0
+    val vec = run(s.get)
+    val result = if (vec.exists(i => !f(i))) vec.takeWhile(f) ++ vec.find(i => !(f(i))).toVector else vec.takeWhile(f)
+    s.get.takeThrough(f) ==? result
+  }
+
   property("scan") = forAll { (s: PureStream[Int], n: Int) =>
     val f = (a: Int, b: Int) => a + b
     s.get.scan(n)(f) ==? run(s.get).scanLeft(n)(f)

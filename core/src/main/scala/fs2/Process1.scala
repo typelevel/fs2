@@ -204,6 +204,10 @@ object process1 {
   def takeRight[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.takeRight(n)(h).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
 
+  /** Like `takeWhile`, but emits the first value which tests false. */
+  def takeThrough[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
+    _ pull Pull.takeThrough(f)
+
   /** Emit the longest prefix of the input for which all elements test true according to `f`. */
   def takeWhile[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull Pull.takeWhile(f)
