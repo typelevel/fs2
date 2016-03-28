@@ -2,17 +2,15 @@ package scalaz.stream
 package nio
 
 import scalaz.concurrent.Task
-import scalaz.{-\/, \/-}
+import scalaz.{-\/, \/, \/-}
 import scalaz.stream.Process.{emit, suspend}
-import scalaz.stream.Cause.{Error, Terminated, End}
-
+import scalaz.stream.Cause.{End, Error, Terminated}
 import scodec.bits.ByteVector
 
 import scala.io.Codec
-
-import java.nio.channels.{CompletionHandler, AsynchronousFileChannel}
-import java.nio.{CharBuffer, ByteBuffer}
-import java.nio.file.{StandardOpenOption, Path, Paths}
+import java.nio.channels.{AsynchronousFileChannel, CompletionHandler}
+import java.nio.{ByteBuffer, CharBuffer}
+import java.nio.file.{Path, Paths, StandardOpenOption}
 import java.net.URI
 
 
@@ -166,24 +164,46 @@ object file {
    * or in the event of an error.
    */
   def chunkReadBuffer(src: => AsynchronousFileChannel): Channel[Task,Int,ByteBuffer] = {
-    var pos = 0
+    var filePos = 0 // keep track of file position over multiple chunks
+    var foundEOF = false // the first time we find EOF, emit partially filled buffer; the second time, Terminate
+
+    def completionHandler(buff: ByteBuffer, expected: Int, bufPos: Int, cb: (Throwable \/ ByteBuffer) => Unit): CompletionHandler[Integer, Null] =
+      new CompletionHandler[Integer, Null] {
+        override def completed(found: Integer, attachment: Null): Unit = {
+          if (found == -1 || foundEOF) {
+            if (!foundEOF) { // first time we find EOF, emit partially filled buffer
+              foundEOF = true
+              buff.flip()
+              cb(\/-(buff))
+            }
+            else { // second time, Terminate
+              cb(-\/(Terminated(End)))
+            }
+          }
+          else if (found < expected) { // underfilled buffer but no EOF, attempt to read more
+            filePos += found
+            val missing: Int = expected - found
+            val nextBufPos: Int = bufPos + found
+            src.read(buff, filePos, null, completionHandler(buff, missing, nextBufPos, cb))
+          }
+
+          else { // buffer was filled, emit it
+            filePos += found
+            buff.flip()
+            cb(\/-(buff))
+          }
+        }
+
+        override def failed(exc: Throwable, attachment: Null): Unit =
+          cb(-\/(Terminated(Error(exc))))
+
+      }
+
     resource(Task.delay(src))(
       src => Task.delay(src.close)) { src =>
       Task.now { (size: Int) => Task.async[ByteBuffer] { cb =>
         val buff = ByteBuffer.allocate(size)
-        src.read(buff, pos, null, new CompletionHandler[Integer, Null] {
-          override def completed(result: Integer, attachment: Null): Unit = {
-            if (result == -1) cb(-\/(Terminated(End))) // finished
-            else {
-              pos += result
-              buff.flip()
-              cb(\/-(buff))
-            }
-          }
-
-          override def failed(exc: Throwable, attachment: Null): Unit =
-            cb(-\/(Terminated(Error(exc))))
-        })
+        src.read(buff, filePos, null, completionHandler(buff, size, bufPos = 0, cb))
       }}
     }
   }
