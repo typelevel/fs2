@@ -84,8 +84,7 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
 
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,A] = {
-    lazy val tail: Stream[F,A] = self.repeat
-    self ++ tail
+    self ++ repeat
   }
 
   def run:Free[F,Unit] =
