@@ -28,12 +28,27 @@ object Sub1 extends Sub1Instances0 {
   def substStream[F[_],G[_],A](p: Stream[F,A])(implicit S: Sub1[F,G]): Stream[G,A] =
     subst[Stream,F,G,A](p)
 
+  def substStream1[F[_],G[_],A](p: Stream1[F,A])(implicit S: Sub1[F,G]): Stream1[G,A] =
+    subst[Stream1,F,G,A](p)
+
+  def substStreamCore[F[_],G[_],A](p: StreamCore[F,A])(implicit S: Sub1[F,G])
+  : StreamCore[G,A] = subst[StreamCore,F,G,A](p)
+
+  def substSegment[F[_],G[_],A](p: StreamCore.Segment[F,A])(implicit S: Sub1[F,G]): StreamCore.Segment[G,A] =
+    subst[StreamCore.Segment,F,G,A](p)
+
   import Stream.Handle
   def substHandle[F[_],G[_],A](p: Handle[F,A])(implicit S: Sub1[F,G]): Handle[G,A] =
     subst[Handle,F,G,A](p)
 
   def substStreamF[F[_],G[_],A,B](g: A => Stream[F,B])(implicit S: Sub1[F,G]): A => Stream[G,B] =
     subst[({ type f[g[_],x] = A => Stream[g,x] })#f, F, G, B](g)
+
+  def substStream1F[F[_],G[_],A,B](g: A => Stream1[F,B])(implicit S: Sub1[F,G]): A => Stream1[G,B] =
+    subst[({ type f[g[_],x] = A => Stream1[g,x] })#f, F, G, B](g)
+
+  def substStreamCoreF[F[_],G[_],A,B](g: A => StreamCore[F,B])(implicit S: Sub1[F,G]): A => StreamCore[G,B] =
+    subst[({ type f[g[_],x] = A => StreamCore[g,x] })#f, F, G, B](g)
 
   def substKleisli[F[_],G[_],A,B](g: A => F[B])(implicit S: Sub1[F,G]): A => G[B] =
     subst[({ type f[g[_],x] = A => g[x] })#f, F, G, B](g)
