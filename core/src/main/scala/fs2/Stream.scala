@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1}
+import fs2.util.{Free,RealSupertype,Sub1,~>}
 import Async.Future
 
 /**
@@ -49,7 +49,7 @@ object Stream extends Streams[Stream] with StreamDerived {
     private[fs2] def stream: Stream[F,O] = {
       def go(buffer: List[Chunk[O]]): Stream[F,O] = buffer match {
         case List() => underlying
-        case c :: buffer => ??? // chunk(c) ++ go(buffer)
+        case c :: buffer => chunk(c) ++ go(buffer)
       }
       go(buffer)
     }
@@ -59,29 +59,56 @@ object Stream extends Streams[Stream] with StreamDerived {
     def empty[F[_],W]: Handle[F,W] = new Handle(List(), Stream.empty)
   }
 
+  def append[F[_], A](a: Stream[F,A], b: => Stream[F,A]) =
+    Stream.mk { StreamCore.append(a.get, StreamCore.suspend(b.get)) }
+
+  def await[F[_],W](h: Handle[F,W]) =
+    h.buffer match {
+      case List() => h.underlying.step
+      case hb :: tb => Pull.pure(Step(hb, new Handle(tb, h.underlying)))
+    }
+
+  def awaitAsync[F[_],W](h: Handle[F,W])(implicit F: Async[F]) =
+    h.buffer match {
+      case List() => h.underlying.stepAsync
+      case hb :: tb => Pull.pure(Future.pure(Pull.pure(Step(hb, new Handle(tb, h.underlying)))))
+    }
+
+  def bracket[F[_],R,A](r: F[R])(use: R => Stream[F,A], release: R => F[Unit]) = Stream.mk {
+    StreamCore.acquire(r, release andThen (Free.eval)) flatMap (use andThen (_.get))
+  }
+
+  def chunk[F[_], A](as: Chunk[A]): Stream[F,A] =
+    Stream.mk { StreamCore.chunk[F,A](as) }
+
+  def eval[F[_], A](fa: F[A]): Stream[F,A] =
+    Stream.mk { StreamCore.eval(fa) }
+
+  def fail[F[_]](e: Throwable): Stream[F,Nothing] =
+    Stream.mk { StreamCore.fail(e) }
+
   def flatMap[F[_],O,O2](s: Stream[F,O])(f: O => Stream[F,O2]): Stream[F,O2] =
     Stream.mk { s.get flatMap (o => f(o).get) }
 
   def onError[F[_],O](s: Stream[F,O])(h: Throwable => Stream[F,O]): Stream[F,O] =
     Stream.mk { s.get onError (e => h(e).get) }
 
-  def append[F[_], A](a: Stream[F,A],b: => Stream[F,A]): Stream[F,A] = ???
-  def await[F[_], A](h: Stream.Handle[F,A]): Stream.Pull[F,Nothing,Step[Chunk[A],Stream.Handle[F,A]]] = ???
-  def awaitAsync[F[_], A](h: Stream.Handle[F,A])(implicit F: Async[F]): Stream.Pull[F,Nothing,Stream.AsyncStep[F,A]] = ???
-  def bracket[F[_], R, A](acquire: F[R])(use: R => Stream[F,A],release: R => F[Unit]): Stream[F,A] = ???
-  def chunk[F[_], A](as: Chunk[A]): Stream[F,A] = ???
-  def eval[F[_], A](fa: F[A]): Stream[F,A] = ???
-  def fail[F[_]](e: Throwable): Stream[F,Nothing] = ???
-  def open[F[_], A](s: Stream[F,A]): Stream.Pull[F,Nothing,Stream.Handle[F,A]] = ???
-  def push[F[_], A](h: Stream.Handle[F,A])(c: Chunk[A]): Stream.Handle[F,A] = ???
-  def runFold[F[_], A, B](p: Stream[F,A],z: B)(f: (B, A) => B): util.Free[F,B] = ???
-  def translate[F[_], G[_], A](s: Stream[F,A])(u: util.~>[F,G]): Stream[G,A] = ???
+  def open[F[_],W](s: Stream[F,W]) =
+    Pull.pure(new Handle(List(), s))
+
+  def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) =
+    if (c.isEmpty) h
+    else new Handle(c :: h.buffer, h.underlying)
+
+  def runFold[F[_], A, B](p: Stream[F,A], z: B)(f: (B, A) => B): Free[F,B] =
+    p.runFold(z)(f)
+
+  def translate[F[_],G[_],A](s: Stream[F,A])(u: F ~> G): Stream[G,A] =
+    Stream.mk { s.get.translate(u) }
 
   private[fs2]
   def mk[F[_],O](s: StreamCore[F,O]): Stream[F,O] = new Stream[F,O] {
     def get[F2[_],O2>:O](implicit S: Sub1[F,F2], T: RealSupertype[O,O2]): StreamCore[F2,O2] =
       s.covary[F2].covaryOutput[O2]
   }
-
 }
-

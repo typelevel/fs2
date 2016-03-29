@@ -1,8 +1,7 @@
 package fs2
 
 import fs2.internal.Resources
-import fs2.util.{Catenable,Eq,Free,Sub1,RealSupertype}
-// import fs2.util.{Catenable,Eq,Free,Sub1,~>,RealSupertype}
+import fs2.util.{Catenable,Eq,Free,Sub1,~>,RealSupertype}
 import StreamCore.{Env,Stack,Token}
 
 sealed trait StreamCore[F[_],O] { self =>
@@ -31,14 +30,13 @@ sealed trait StreamCore[F[_],O] { self =>
     def push[O2](stack: Stack[F,O,O2]) = self.push { stack pushHandler f }
   }
 
-//  def translate[G[_]](f: F ~> G): StreamCore[G,O] = new StreamCore[G,O] {
-//    type O0 = self.O0
-//    def push[O2](stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]] =
-//      ???
-//      // self.push(stack).translate(f).map(_.translate)
-//  }
-//
-//
+  def translate[G[_]](f: F ~> G): StreamCore[G,O] = new StreamCore[G,O] {
+    type O0 = self.O0
+    def push[O2](stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]] =
+      ???
+      // self.push(stack).translate(f).map(_.translate)
+  }
+
   def maskErrors: StreamCore[F,O] = self.onError(_ => StreamCore.empty)
   def drain[O2]: StreamCore[F,O2] = self.flatMap(_ => StreamCore.empty)
 
@@ -230,10 +228,7 @@ object StreamCore {
     def push[O2](stack: Stack[F,O,O2]) =
       s.push { stack push Segment.Append(s2) }
   }
-  def suspend[F[_],O](s: => StreamCore[F,O]): StreamCore[F,O] = emit(()) flatMap { _ =>
-    try s
-    catch { case e: Throwable => fail(e) }
-  }
+  def suspend[F[_],O](s: => StreamCore[F,O]): StreamCore[F,O] = emit(()) flatMap { _ => s }
 
   sealed trait Segment[F[_],O1]
   object Segment {
