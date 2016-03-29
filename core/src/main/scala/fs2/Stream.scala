@@ -104,7 +104,7 @@ object Stream extends Streams[Stream] with StreamDerived {
     p.runFold(z)(f)
 
   def translate[F[_],G[_],A](s: Stream[F,A])(u: F ~> G): Stream[G,A] =
-    Stream.mk { s.get.translate(u) }
+    Stream.mk { s.get.translate(StreamCore.NT.T(u)) }
 
   private[fs2]
   def mk[F[_],O](s: StreamCore[F,O]): Stream[F,O] = new Stream[F,O] {

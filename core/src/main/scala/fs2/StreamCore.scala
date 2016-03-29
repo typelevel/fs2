@@ -2,13 +2,19 @@ package fs2
 
 import fs2.internal.Resources
 import fs2.util.{Catenable,Eq,Free,Sub1,~>,RealSupertype}
-import StreamCore.{Env,Stack,Token}
+import StreamCore.{Env,NT,Stack,Token}
 
 sealed trait StreamCore[F[_],O] { self =>
   type O0
 
   private[fs2]
-  def push[O2](stack: Stack[F,O,O2]): Scope[F,Stack[F,O0,O2]]
+  def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]]
+
+  def translate[G[_]](f: NT[F,G]): StreamCore[G,O] = new StreamCore[G,O] {
+    type O0 = self.O0
+    def push[G2[_],O2](u: NT[G,G2], stack: Stack[G2,O,O2]): Scope[G2,Stack[G2,O0,O2]] =
+      self.push(f andThen u, stack)
+  }
 
   // proof that this is sound - `translate`
   def covary[F2[_]](implicit S: Sub1[F,F2]): StreamCore[F2,O] =
@@ -19,23 +25,20 @@ sealed trait StreamCore[F[_],O] { self =>
 
   def flatMap[O2](f: O => StreamCore[F,O2]): StreamCore[F,O2] =
     new StreamCore[F,O2] { type O0 = self.O0
-      def push[O3](stack: Stack[F,O2,O3]) = self.push { stack pushBind f }
+      def push[G[_],O3](u: NT[F,G], stack: Stack[G,O2,O3]) =
+        self.push(u, stack pushBind (f andThen (NT.convert(_)(u))))
     }
   def map[O2](f: O => O2): StreamCore[F,O2] = mapChunks(_ map f)
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): StreamCore[F,O2] =
     new StreamCore[F,O2] { type O0 = self.O0
-      def push[O3](stack: Stack[F,O2,O3]) = self.push { stack pushMap f }
+      def push[G[_],O3](u: NT[F,G], stack: Stack[G,O2,O3]) =
+        self.push(u, stack pushMap f)
     }
-  def onError(f: Throwable => StreamCore[F,O]): StreamCore[F,O] = new StreamCore[F,O] { type O0 = self.O0
-    def push[O2](stack: Stack[F,O,O2]) = self.push { stack pushHandler f }
-  }
-
-  def translate[G[_]](f: F ~> G): StreamCore[G,O] = new StreamCore[G,O] {
-    type O0 = self.O0
-    def push[O2](stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]] =
-      ???
-      // self.push(stack).translate(f).map(_.translate)
-  }
+  def onError(f: Throwable => StreamCore[F,O]): StreamCore[F,O] =
+    new StreamCore[F,O] { type O0 = self.O0
+      def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
+        self.push(u, stack pushHandler (f andThen (NT.convert(_)(u))))
+    }
 
   def maskErrors: StreamCore[F,O] = self.onError(_ => StreamCore.empty)
   def drain[O2]: StreamCore[F,O2] = self.flatMap(_ => StreamCore.empty)
@@ -44,7 +47,7 @@ sealed trait StreamCore[F[_],O] { self =>
     StreamCore.append(self onError (e => StreamCore.append(s2, StreamCore.fail(e))), s2)
 
   def step: Scope[F, Option[Either[Throwable,Step[Chunk[O],StreamCore[F,O]]]]]
-    = push(Stack.empty[F,O]) flatMap (StreamCore.step)
+    = push(NT.Id(), Stack.empty[F,O]) flatMap (StreamCore.step)
 
   def runFold[O2](z: O2)(f: (O2,O) => O2): Free[F,O2] =
     runFoldScope(z)(f).bindEnv(Env(Resources.empty[Token,Free[F,Unit]], () => false))
@@ -120,6 +123,38 @@ object StreamCore {
     case class CancelAcquire(token: Token) extends RF[Nothing,Unit]
   }
 
+  sealed trait NT[-F[_],+G[_]] {
+    def same: Either[Sub1[F,G], F ~> G]
+    def andThen[H[_]](f: NT[G,H]): NT[F,H]
+    def apply[A](f: F[A]): G[A]
+  }
+
+  object NT {
+    case class Id[F[_]]() extends NT[F,F] {
+      def same = Left(Sub1.sub1[F])
+      def andThen[H[_]](f: NT[F,H]): NT[F,H] = f
+      def apply[A](f: F[A]): F[A] = f
+    }
+    case class T[F[_],G[_]](u: F ~> G) extends NT[F,G] {
+      def same = Right(u)
+      def apply[A](f: F[A]): G[A] = u(f)
+      def andThen[H[_]](f: NT[G,H]): NT[F,H] = f.same.fold(
+        f => T(u andThen f.uf1),
+        f => T(u andThen f)
+      )
+    }
+    def convert[F[_],G[_],O](s: StreamCore[F,O])(u: NT[F,G]): StreamCore[G,O] =
+      u.same.fold(sub => Sub1.substStreamCore(s)(sub), u => s.translate(NT.T(u)))
+    def convert[F[_],G[_],O](s: Segment[F,O])(u: NT[F,G]): Segment[G,O] =
+      u.same.fold(sub => Sub1.substSegment(s)(sub), u => s.translate(NT.T(u)))
+    def convert[F[_],G[_],O](s: Catenable[Segment[F,O]])(u: NT[F,G]): Catenable[Segment[G,O]] = {
+      type f[g[_],x] = Catenable[Segment[g,x]]
+      u.same.fold(sub => Sub1.subst[f,F,G,O](s)(sub), _ => s.map(_ translate u))
+    }
+    def convert[F[_],G[_],O](s: Scope[F,O])(u: NT[F,G]): Scope[G,O] =
+      u.same.fold(Sub1.subst[Scope,F,G,O](s)(_), s translate _)
+  }
+
   case object Interrupted extends Exception { override def fillInStackTrace = this }
 
   private[fs2]
@@ -141,7 +176,7 @@ object StreamCore {
           }
           case Segment.Emit(chunk) => Scope.pure(Some(Right(Step(chunk, StreamCore.segments(segs)))))
           case Segment.Handler(h) => step(Stack.segments(segs))
-          case Segment.Append(s) => s.push(Stack.segments(segs)) flatMap (step)
+          case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segs)) flatMap (step)
         }
       },
       new stack.H[Scope[F,Option[Either[Throwable,Step[Chunk[O],StreamCore[F,O]]]]]] { def f[x] =
@@ -162,7 +197,7 @@ object StreamCore {
               }
             }
             case Segment.Append(s) =>
-              s.push(stack.pushBindOrMap(f).pushSegments(segs)) flatMap (step)
+              s.push(NT.Id(), stack.pushBindOrMap(f).pushSegments(segs)) flatMap (step)
             case Segment.Fail(err) => Stack.fail[F,O0](segs)(err) match {
               case Left(err) => step(stack.pushFail(err))
               case Right((s, segs)) =>
@@ -177,11 +212,13 @@ object StreamCore {
 
   def segment[F[_],O](s: Segment[F,O]): StreamCore[F,O] = new StreamCore[F,O] {
     type O0 = O
-    def push[O2](stack: Stack[F,O,O2]) = Scope.pure { stack push s }
+    def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
+      Scope.pure { stack push (NT.convert(s)(u)) }
   }
   def segments[F[_],O](s: Catenable[Segment[F,O]]): StreamCore[F,O] = new StreamCore[F,O] {
     type O0 = O
-    def push[O2](stack: Stack[F,O,O2]) = Scope.pure { stack pushSegments s }
+    def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
+      Scope.pure { stack pushSegments (NT.convert(s)(u)) }
   }
 
   def scope[F[_],O](s: StreamCore[F,O]): StreamCore[F,O] = StreamCore.evalScope(Scope.snapshot).flatMap { tokens =>
@@ -206,31 +243,44 @@ object StreamCore {
   }
 
   private[fs2]
-  def release[F[_]](tokens: List[Token]): StreamCore[F,Unit] = ???
+  def release[F[_]](tokens: List[Token]): StreamCore[F,Unit] =
+    evalScope(Scope.release(tokens))
 
   def evalScope[F[_],O](s: Scope[F,O]): StreamCore[F,O] = new StreamCore[F,O] {
     type O0 = O
-    def push[O2](stack: Stack[F,O,O2]) = s map { o => stack push (Segment.Emit(Chunk.singleton(o))) }
+    def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
+      NT.convert(s)(u) map { o => stack push (Segment.Emit(Chunk.singleton(o))) }
   }
+
   def chunk[F[_],O](c: Chunk[O]): StreamCore[F,O] = segment(Segment.Emit[F,O](c))
   def emit[F[_],O](w: O): StreamCore[F,O] = chunk(Chunk.singleton(w))
   def empty[F[_],O]: StreamCore[F,O] = chunk(Chunk.empty)
   def fail[F[_],O](err: Throwable): StreamCore[F,O] = segment(Segment.Fail[F,O](err))
   def attemptEval[F[_],O](f: F[O]): StreamCore[F,Either[Throwable,O]] = new StreamCore[F,Either[Throwable,O]] {
     type O0 = Either[Throwable,O]
-    def push[O2](stack: Stack[F,Either[Throwable,O],O2]) =
-      Scope.attemptEval(f) map { o => stack push Segment.Emit(Chunk.singleton(o)) }
+    def push[G[_],O2](u: NT[F,G], stack: Stack[G,Either[Throwable,O],O2]) =
+      Scope.attemptEval(u(f)) map { o => stack push Segment.Emit(Chunk.singleton(o)) }
   }
   def eval[F[_],O](f: F[O]): StreamCore[F,O] = attemptEval(f) flatMap { _ fold(fail, emit) }
 
-  def append[F[_],O](s: StreamCore[F,O], s2: StreamCore[F,O]): StreamCore[F,O] = new StreamCore[F,O] {
-    type O0 = s.O0
-    def push[O2](stack: Stack[F,O,O2]) =
-      s.push { stack push Segment.Append(s2) }
-  }
+  def append[F[_],O](s: StreamCore[F,O], s2: StreamCore[F,O]): StreamCore[F,O] =
+    new StreamCore[F,O] {
+      type O0 = s.O0
+      def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
+        s.push(u, stack push Segment.Append(s2 translate u))
+    }
   def suspend[F[_],O](s: => StreamCore[F,O]): StreamCore[F,O] = emit(()) flatMap { _ => s }
 
-  sealed trait Segment[F[_],O1]
+  sealed trait Segment[F[_],O1] {
+    import Segment._
+
+    def translate[G[_]](u: NT[F,G]): Segment[G,O1] = this match {
+      case Append(s) => Append(s translate u)
+      case Handler(h) => Handler(h andThen (_ translate u))
+      case Emit(c) => Emit(c)
+      case Fail(e) => Fail(e)
+    }
+  }
   object Segment {
     case class Fail[F[_],O1](err: Throwable) extends Segment[F,O1]
     case class Emit[F[_],O1](c: Chunk[O1]) extends Segment[F,O1]

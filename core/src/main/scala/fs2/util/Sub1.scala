@@ -2,9 +2,12 @@ package fs2
 package util
 
 /** A `Sub[F,G]` is evidence that `forall x . F[x] <: G[x]` */
-sealed trait Sub1[-F[_],G[_]] {
+sealed trait Sub1[-F[_],+G[_]] { self =>
   def apply[A](f: F[A]): G[A] =
     Sub1.subst[({ type ap[h[_],x] = h[x] })#ap, F, G, A](f)(this)
+  def uf1: F ~> G = new (F ~> G) {
+    def apply[A](f: F[A]): G[A] = self(f)
+  }
 }
 
 private[fs2] trait Sub1Instances1 {

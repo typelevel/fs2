@@ -1,12 +1,24 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1}
-import fs2.StreamCore.{Env,R,Token}
+import fs2.util.{Free,RealSupertype,Sub1,~>}
+import fs2.StreamCore.{Env,R,RF,Token}
 
 case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
   def map[O2](f: O => O2): Scope[F,O2] = Scope(get map f)
+
   def flatMap[F2[x]>:F[x],O2](f: O => Scope[F2,O2]): Scope[F2,O2] =
     Scope(get flatMap[R[F2]#f,O2] (f andThen (_.get)))
+
+  def translate[G[_]](f: F ~> G): Scope[G,O] = Scope { Free.suspend[R[G]#f,O] {
+    get.translate[R[G]#f](new (R[F]#f ~> R[G]#f) {
+      def apply[A](r: RF[F,A]) = r match {
+        case RF.Eval(fa) => RF.Eval(f(fa))
+        case RF.FinishAcquire(token, cleanup) => RF.FinishAcquire(token, cleanup.translate(f))
+        case _ => r.asInstanceOf[RF[G,A]] // Eval and FinishAcquire are only ctors that bind `F`
+      }
+    })
+  }}
+
   def bindEnv[F2[_]](env: Env[F2])(implicit S: Sub1[F,F2]): Free[F2,O] = Free.suspend {
     type FO[x] = Free[F2,x]
     val B = new Free.B[R[F]#f,FO,O] { def f[x] = (r,g) => r match {
