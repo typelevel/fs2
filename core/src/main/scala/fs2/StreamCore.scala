@@ -66,7 +66,7 @@ sealed trait StreamCore[F[_],O] { self =>
       case Some(Right(s)) => StreamCore.emit(Some(s))
     }
 
-  def stepAsync(implicit F: Async[F]): StreamCore[F, Async.Future[F,StreamCore[F,O]]] =
+  def fetchAsync(implicit F: Async[F]): StreamCore[F, Async.Future[F,StreamCore[F,O]]] =
     unconsAsync map { f => f map {
       case None => StreamCore.empty
       case Some(Left(err)) => StreamCore.fail(err)

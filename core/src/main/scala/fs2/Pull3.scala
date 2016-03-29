@@ -3,9 +3,9 @@ package fs2
 import fs2.util.{Free,RealSupertype,Sub1}
 import Pull3._
 
-class Pull3[F[_],O,R](val get: Scope[F,Free[P[F,O]#f,Option[Either[Throwable,R]]]]) {
+class Pull3[+F[_],+O,+R](val get: Scope[F,Free[P[F,O]#f,Option[Either[Throwable,R]]]]) {
 
-  def run: StreamCore[F,O] = StreamCore.scope { StreamCore.evalScope { get map { f =>
+  def run: Stream1[F,O] = Stream1 { StreamCore.scope { StreamCore.evalScope { get map { f =>
     type G[x] = StreamCore[F,O]; type Out = Option[Either[Throwable,R]]
     f.fold[P[F,O]#f,G,Out](
       o => o match {
@@ -19,9 +19,9 @@ class Pull3[F[_],O,R](val get: Scope[F,Free[P[F,O]#f,Option[Either[Throwable,R]]
         case Right(r) => StreamCore.Try(g(r))
       }}
     )(Sub1.sub1[P[F,O]#f], implicitly[RealSupertype[Out,Out]])
-  }} flatMap (identity) }
+  }} flatMap (identity) }}
 
-  def flatMap[R2](f: R => Pull3[F,O,R2]): Pull3[F,O,R2] = ???
+  def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull3[F2,O2,R2])(implicit S: Sub1[F,F2]): Pull3[F2,O2,R2] = ???
 }
 
 object Pull3 {
@@ -36,5 +36,14 @@ object Pull3 {
 
   def output[F[_],O](s: StreamCore[F,O]): Pull3[F,O,Unit] =
     new Pull3(Scope.pure(Free.eval[P[F,O]#f,Unit](PF.Output(s)).map(_ => Some(Right(())))))
+
+  def pure[R](r: R): Pull3[Nothing,Nothing,R] =
+    new Pull3(Scope.pure(Free.pure(Some(Right(r)))))
+
+  def fail(err: Throwable): Pull3[Nothing,Nothing,Nothing] =
+    new Pull3(Scope.pure(Free.pure(Some(Left(err)))))
+
+  def done: Pull3[Nothing,Nothing,Nothing] =
+    new Pull3(Scope.pure(Free.pure(None)))
 }
 
