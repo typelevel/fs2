@@ -103,6 +103,9 @@ object Stream extends Streams[Stream] with StreamDerived {
   def runFold[F[_], A, B](p: Stream[F,A], z: B)(f: (B, A) => B): Free[F,B] =
     p.runFold(z)(f)
 
+  def scope[F[_],O](s: Stream[F,O]): Stream[F,O] =
+    Stream.mk { StreamCore.scope { s.get } }
+
   def translate[F[_],G[_],A](s: Stream[F,A])(u: F ~> G): Stream[G,A] =
     Stream.mk { s.get.translate(StreamCore.NT.T(u)) }
 

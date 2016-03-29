@@ -19,7 +19,7 @@ class Pull[+F[_],+O,+R](private[fs2] val get: Scope[F,Free[P[F,O]#f,Option[Eithe
         case Right(r) => StreamCore.Try(g(r))
       }}
     )(Sub1.sub1[P[F,O]#f], implicitly[RealSupertype[Out,Out]])
-  }} flatMap (identity) }}
+  }} flatMap (x => x) }}
 
 }
 
@@ -34,25 +34,44 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
     case class Output[F[_],O](s: StreamCore[F,O]) extends PF[F,O,Unit]
   }
 
-  def output[F[_],O](s: StreamCore[F,O]): Pull[F,O,Unit] =
-    new Pull(Scope.pure(Free.eval[P[F,O]#f,Unit](PF.Output(s)).map(_ => Some(Right(())))))
-
-  def pure[R](r: R): Pull[Nothing,Nothing,R] =
-    new Pull(Scope.pure(Free.pure(Some(Right(r)))))
-
-  def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
-    new Pull(Scope.pure(Free.pure(Some(Left(err)))))
+  def attemptEval[F[_],R](f: F[R]): Pull[F,Nothing,Either[Throwable,R]] =
+    new Pull(Scope.pure(Free.attemptEval[P[F,Nothing]#f,R](PF.Eval(f)).map(e => Some(Right(e)))))
 
   def done: Pull[Nothing,Nothing,Nothing] =
     new Pull(Scope.pure(Free.pure(None)))
 
-  def flatMap[F[_],O,R0,R](p: Pull[F,O,R0])(f: R0 => Pull[F,O,R]): Pull[F,O,R] =
-    ???
+  def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] =
+    attemptEval(f) flatMap { _.fold(fail, pure) }
 
-  def eval[F[_], R](f: F[R]): Pull[F,Nothing,R] = ???
+  def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
+    new Pull(Scope.pure(Free.pure(Some(Left(err)))))
+
+  def flatMap[F[_],O,R0,R](p: Pull[F,O,R0])(f: R0 => Pull[F,O,R]): Pull[F,O,R] = ???
+
   def onError[F[_], O, R](p: Pull[F,O,R])(handle: Throwable => Pull[F,O,R]): Pull[F,O,R] = ???
-  def or[F[_], O, R](p1: Pull[F,O,R],p2: => Pull[F,O,R]): Pull[F,O,R] = ???
-  def outputs[F[_], O](s: Pull.Stream[F,O]): Pull[F,O,Unit] = ???
-  def run[F[_], O, R](p: Pull[F,O,R]): Pull.Stream[F,O] = ???
+
+  def or[F[_], O, R](p1: Pull[F,O,R], p2: => Pull[F,O,R]): Pull[F,O,R] = new Pull (
+    p1.get.map { _ map {
+      case None => Some(Right(Left(Try(p2))))
+      case Some(Left(err)) => Some(Left(err))
+      case Some(Right(r)) => Some(Right(Right(r)))
+    }}
+  ) flatMap {
+    case Left(p2) => p2
+    case Right(r) => pure(r)
+  }
+
+  def outputs[F[_],O](s: Stream[F,O]): Pull[F,O,Unit] =
+    new Pull(Scope.pure(Free.eval[P[F,O]#f,Unit](PF.Output(s.get)).map(_ => Some(Right(())))))
+
+  def pure[R](r: R): Pull[Nothing,Nothing,R] =
+    new Pull(Scope.pure(Free.pure(Some(Right(r)))))
+
+  def run[F[_], O, R](p: Pull[F,O,R]): Stream[F,O] = p.run
+
+  private
+  def Try[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
+    try p
+    catch { case e: Throwable => fail(e) }
 }
 
