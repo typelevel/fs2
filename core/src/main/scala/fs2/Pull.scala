@@ -26,7 +26,7 @@ trait Pull[+F[_],+W,+R] extends PullOps[F,W,R] {
     implicit S: Sub1[F,F2]): Stream[F2,W2]
 }
 
-object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
+object Pull extends Pulls[Pull] with PullDerived with pull1 {
   type Stream[+F[_],+W] = fs2.Stream[F,W]
 
   val done: Pull[Nothing,Nothing,Nothing] = new Pull[Nothing,Nothing,Nothing] {

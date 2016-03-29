@@ -21,6 +21,20 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
   def isClosing: Boolean = { val t = tokens.get._1; t == Closing || t == Closed }
   def isEmpty: Boolean = tokens.get._2.isEmpty
   def size: Int = tokens.get._2.size
+  /** Take a snapshot of current tokens. */
+  def snapshot: Set[T] = tokens.get._2.keys.toSet
+  /** Return the list of tokens allocated since the given snapshot, newest first. */
+  def newSince(snapshot: Set[T]): List[T] =
+    tokens.get._2.keys.toList.reverse.filter(k => !snapshot(k))
+  def release(ts: List[T]): Option[List[R]] = tokens.access match {
+    case ((open,m), update) =>
+      if (ts.forall(t => (m.get(t): Option[Option[R]]) != Some(None))) {
+        val rs = ts.flatMap(t => m.get(t).toList.flatten)
+        val m2 = m.removeKeys(ts)
+        if (!update(open -> m2)) release(ts) else Some(rs)
+      }
+      else None
+  }
 
   /**
    * Close this `Resources` and return all acquired resources.
@@ -65,8 +79,6 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
 
   /**
    * Start acquiring `t`.
-   * Returns `None` if `t` is being acquired or `t` is
-   * not present in this `Resources`.
    */
   @annotation.tailrec
   final def startAcquire(t: T): Boolean = tokens.access match {
@@ -98,7 +110,6 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
 
   /**
    * Associate `r` with the given `t`.
-   * Returns `open` status of this `Resources` as of the update.
    */
   @annotation.tailrec
   final def finishAcquire(t: T, r: R): Unit = tokens.access match {
