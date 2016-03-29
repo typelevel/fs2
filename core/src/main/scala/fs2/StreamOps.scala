@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1}
+import fs2.util.{Free,RealSupertype,Sub1,~>}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`
@@ -102,6 +102,9 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
 
   def terminated: Stream[F,Option[A]] =
     Stream.terminated(self)
+
+  def translate[G[_]](f: F ~> G): Stream[G,A] =
+    Stream.translate(self)(f)
 
   @deprecated("use `pipe2` or `pipe2v`, which now subsumes the functionality of `wye`", "0.9")
   def wye[F2[_],B,C](s2: Stream[F2,B])(f: (Stream[F2,A], Stream[F2,B]) => Stream[F2,C])(implicit S: Sub1[F,F2])

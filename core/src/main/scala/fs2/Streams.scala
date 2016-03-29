@@ -23,7 +23,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   // translating effects
 
-  def translate[F[_],G[_],W](s: Stream[F,W])(u: F ~> G): Stream[G,W]
+  def translate[F[_],G[_],A](s: Stream[F,A])(u: F ~> G): Stream[G,A]
 
   // failure and error recovery
 
