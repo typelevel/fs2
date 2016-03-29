@@ -3,6 +3,32 @@ package fs2
 import fs2.util.Free
 import fs2.util.~>
 
+/**
+Laws:
+
+`append` forms a monoid in conjunction with `empty`:
+
+  * `append(empty, p) == p` and `append(p, empty) == p`.
+  * `append(append(p1,p2), p3) == append(p1, append(p2,p3))`
+
+`fail` is caught by `onError`:
+
+  * `onError(fail(e))(f) == f(e)`
+
+`Stream` forms a monad with `emit` and `flatMap`:
+
+  * `emit >=> f == f`
+  * `f >=> emit == f`
+  * `(f >=> g) >=> h == f >=> (g >=> h)`
+  where `emit(a)` is defined as `chunk(Chunk.singleton(a)) and
+        `f >=> g` is defined as `a => a flatMap f flatMap g`
+
+The monad is the list-style sequencing monad:
+
+  * `append(a, b) flatMap f == append(a flatMap f, b flatMap f)`
+  * `empty flatMap f == empty`
+
+*/
 trait Streams[Stream[+_[_],+_]] { self =>
 
   // list-like operations
@@ -15,11 +41,9 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   def flatMap[F[_],A,B](a: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B]
 
-
   // evaluating effects
 
   def eval[F[_],A](fa: F[A]): Stream[F,A]
-
 
   // translating effects
 
