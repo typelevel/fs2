@@ -101,12 +101,11 @@ sealed trait StreamCore[F[_],O] { self =>
   }
 }
 
+private[fs2]
 object StreamCore {
 
-  private[fs2]
   class Token()
 
-  private[fs2]
   case class Env[F[_]](tracked: Resources[Token,Free[F,Unit]], interrupted: () => Boolean)
 
   trait R[F[_]] { type f[x] = RF[F,x] }
@@ -154,7 +153,8 @@ object StreamCore {
             case Segment.Emit(chunk) => f match {
               case Left(f) =>
                 val stack2 = stack.pushAppend(StreamCore.segments(segs).mapChunks(f))
-                step(try { stack2.pushEmit(f(chunk)) } catch { case e: Throwable => stack2.pushFail(e) })
+                step(try { stack2.pushEmit(f(chunk)) }
+                     catch { case e: Throwable => stack2.pushFail(e) })
               case Right(f) => chunk.uncons match {
                 case None => step(stack.pushBind(f).pushSegments(segs))
                 case Some((hd,tl)) => step {
@@ -163,10 +163,12 @@ object StreamCore {
                 }
               }
             }
-            case Segment.Append(s) => s.push(stack.pushBindOrMap(f).pushSegments(segs)) flatMap (step)
+            case Segment.Append(s) =>
+              s.push(stack.pushBindOrMap(f).pushSegments(segs)) flatMap (step)
             case Segment.Fail(err) => Stack.fail[F,O0](segs)(err) match {
               case Left(err) => step(stack.pushFail(err))
-              case Right((s, segs)) => step(stack.pushBindOrMap(f).pushSegments(segs).pushAppend(s))
+              case Right((s, segs)) =>
+                step(stack.pushBindOrMap(f).pushSegments(segs).pushAppend(s))
             }
             case Segment.Handler(_) => step(stack.pushBindOrMap(f).pushSegments(segs))
           }
