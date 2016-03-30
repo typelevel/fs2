@@ -45,21 +45,26 @@ trait Signal[F[_],A]  {
    * Asynchronously get the current value of this `Signal`
    */
   def get: F[A]
+
 }
 
 
 object Signal {
 
-  implicit class ImmutableSignalSyntax[F[_] : Async,A] (val self: Signal[F,A])  {
+  implicit class ImmutableSignalSyntax[F[_]:Async,A] (val self: Signal[F,A])  {
     /**
      * Converts this signal to signal of `B` by applying `f`
      */
-    def map[B](f: A => B):Signal[F,B] = new Signal[F,B] {
+    def map[B](f: A => B): Signal[F,B] = new Signal[F,B] {
       def continuous: Stream[F, B] = self.continuous.map(f)
       def changes: Stream[F, Unit] = self.discrete.pipe(process1.changes(_ == _)).map(_ => ())
       def discrete: Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
     }
+  }
+
+  implicit class BooleanSignalSyntax[F[_]:Async] (val self: Signal[F,Boolean]) {
+    def interrupt[A](s: Stream[F,A]): Stream[F,A] = fs2.wye.interrupt(self.discrete, s)
   }
 
   /**

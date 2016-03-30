@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1}
+import fs2.util.{Free,Monad,RealSupertype,Sub1}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`
@@ -30,14 +30,20 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
     Stream.drain(self)
 
   /** Alias for `[[wye.either]](self, s2)`. */
-  def either[F2[_]:Async,B](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,Either[A,B]] =
-    fs2.wye.either.apply(Sub1.substStream(self), s2)
+  def either[F2[_]:Async,B](s2: Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,Either[A,B]] =
+    fs2.wye.either(Sub1.substStream(self), s2)
 
   def evalMap[F2[_],B](f: A => F2[B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.flatMap(Sub1.substStream(self))(f andThen Stream.eval)
 
   def flatMap[F2[_],B](f: A => Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
     Stream.flatMap(Sub1.substStream(self))(f)
+
+  def interruptWhen[F2[_]](haltWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,A] =
+    fs2.wye.interrupt(haltWhenTrue, Sub1.substStream(self))
+
+  def interruptWhen[F2[_]](haltWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,A] =
+    fs2.wye.interrupt(haltWhenTrue.discrete, Sub1.substStream(self))
 
   /** Alias for `[[tee.interleave]](self, s2)`. */
   def interleave[F2[_], B >: A](s2: Stream[F2,B])(implicit R:RealSupertype[A,B], S:Sub1[F,F2]): Stream[F2,B] =
@@ -54,14 +60,37 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
     Stream.map(self)(f)
 
   /** Alias for `[[wye.merge]](self, s2)`. */
-  def merge[F2[_]:Async,B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
-    fs2.wye.merge.apply(Sub1.substStream(self), s2)
+  def merge[F2[_],B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2], F2: Async[F2]): Stream[F2,B] =
+    fs2.wye.merge(Sub1.substStream(self), s2)
+
+  /** Alias for `[[wye.mergeHaltBoth]](self, s2)`. */
+  def mergeHaltBoth[F2[_],B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2], F2: Async[F2]): Stream[F2,B] =
+    fs2.wye.mergeHaltBoth(Sub1.substStream(self), s2)
+
+  /** Alias for `[[wye.mergeHaltL]](self, s2)`. */
+  def mergeHaltL[F2[_],B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2], F2: Async[F2]): Stream[F2,B] =
+    fs2.wye.mergeHaltL(Sub1.substStream(self), s2)
+
+  /** Alias for `[[wye.mergeHaltR]](self, s2)`. */
+  def mergeHaltR[F2[_],B>:A](s2: Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2], F2: Async[F2]): Stream[F2,B] =
+    fs2.wye.mergeHaltR(Sub1.substStream(self), s2)
+
+  /** Alias for `[[wye.mergeDrainL]](self, s2)`. */
+  def mergeDrainL[F2[_],B](s2: Stream[F2,B])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,B] =
+    fs2.wye.mergeDrainL(Sub1.substStream(self)(S), s2)
+
+  /** Alias for `[[wye.mergeDrainR]](self, s2)`. */
+  def mergeDrainR[F2[_],B](s2: Stream[F2,B])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,A] =
+    fs2.wye.mergeDrainR(Sub1.substStream(self)(S), s2)
 
   def onComplete[F2[_],B>:A](regardless: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.onComplete(Sub1.substStream(self): Stream[F2,B], regardless)
 
   def onError[F2[_],B>:A](f: Throwable => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.onError(Sub1.substStream(self): Stream[F2,B])(f)
+
+  def onFinalize[F2[_]](f: F2[Unit])(implicit S: Sub1[F,F2], F2: Monad[F2]): Stream[F2,A] =
+    Stream.bracket(F2.pure(()))(_ => Sub1.substStream(self), _ => f)
 
   def open: Pull[F, Nothing, Handle[F,A]] = Stream.open(self)
 
@@ -99,8 +128,12 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def tee[F2[_],B,C](s2: Stream[F2,B])(f: Tee[A,B,C])(implicit S: Sub1[F,F2]): Stream[F2,C] =
     pipe2v(s2)(fs2.tee.covary(f))
 
+  def noneTerminate: Stream[F,Option[A]] =
+    Stream.noneTerminate(self)
+
+  @deprecated("renamed to noneTerminate", "0.9")
   def terminated: Stream[F,Option[A]] =
-    Stream.terminated(self)
+    Stream.noneTerminate(self)
 
   @deprecated("use `pipe2` or `pipe2v`, which now subsumes the functionality of `wye`", "0.9")
   def wye[F2[_],B,C](s2: Stream[F2,B])(f: (Stream[F2,A], Stream[F2,B]) => Stream[F2,C])(implicit S: Sub1[F,F2])

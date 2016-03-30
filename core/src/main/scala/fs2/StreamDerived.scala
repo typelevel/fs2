@@ -68,6 +68,9 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   def mask[F[_],A](a: Stream[F,A]): Stream[F,A] =
     onError(a)(_ => empty)
 
+  def noneTerminate[F[_],A](p: Stream[F,A]): Stream[F,Option[A]] =
+    p.map(Some(_)) ++ emit(None)
+
   def onComplete[F[_],A](p: Stream[F,A], regardless: => Stream[F,A]): Stream[F,A] =
     onError(append(p, mask(regardless))) { err => append(mask(regardless), fail(err)) }
 
