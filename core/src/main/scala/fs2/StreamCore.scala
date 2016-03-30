@@ -10,6 +10,9 @@ sealed trait StreamCore[F[_],O] { self =>
   private[fs2]
   def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]]
 
+  def attempt: StreamCore[F,Either[Throwable,O]] =
+    self.map(a => Right(a): Either[Throwable,O]).onError(e => StreamCore.emit(Left(e)))
+
   def translate[G[_]](f: NT[F,G]): StreamCore[G,O] = new StreamCore[G,O] {
     type O0 = self.O0
     def push[G2[_],O2](u: NT[G,G2], stack: Stack[G2,O,O2]): Scope[G2,Stack[G2,O0,O2]] =
@@ -26,7 +29,7 @@ sealed trait StreamCore[F[_],O] { self =>
   def flatMap[O2](f: O => StreamCore[F,O2]): StreamCore[F,O2] =
     new StreamCore[F,O2] { type O0 = self.O0
       def push[G[_],O3](u: NT[F,G], stack: Stack[G,O2,O3]) =
-        self.push(u, stack pushBind (f andThen (NT.convert(_)(u))))
+        Scope.suspend { self.push(u, stack pushBind (f andThen (NT.convert(_)(u)))) }
     }
   def map[O2](f: O => O2): StreamCore[F,O2] = mapChunks(_ map f)
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): StreamCore[F,O2] =
@@ -37,7 +40,7 @@ sealed trait StreamCore[F[_],O] { self =>
   def onError(f: Throwable => StreamCore[F,O]): StreamCore[F,O] =
     new StreamCore[F,O] { type O0 = self.O0
       def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
-        self.push(u, stack pushHandler (f andThen (NT.convert(_)(u))))
+        Scope.suspend { self.push(u, stack pushHandler (f andThen (NT.convert(_)(u)))) }
     }
 
   def maskErrors: StreamCore[F,O] = self.onError(_ => StreamCore.empty)
@@ -275,7 +278,7 @@ object StreamCore {
     new StreamCore[F,O] {
       type O0 = s.O0
       def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
-        s.push(u, stack push Segment.Append(s2 translate u))
+        Scope.suspend { s.push(u, stack push Segment.Append(s2 translate u)) }
     }
   def suspend[F[_],O](s: => StreamCore[F,O]): StreamCore[F,O] = emit(()) flatMap { _ => s }
 

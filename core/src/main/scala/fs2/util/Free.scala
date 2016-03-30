@@ -14,8 +14,9 @@ sealed trait Free[+F[_],+A] {
 
   def translate[G[_]](u: F ~> G): Free[G,A] = {
     type FG[x] = Free[G,x]
-    fold[F,FG,A](Free.pure, Free.fail, new B[F,FG,A] { def f[x] = (r,g) =>
-      r.fold(fr => Free.eval(u(fr)), Free.pure) flatMap g
+    fold[F,FG,A](Free.pure, Free.fail, new B[F,FG,A] { def f[x] = r =>
+      r.fold({ case (fr,g) => Free.attemptEval(u(fr)) flatMap g },
+             { case (r,g) => g(r) })
     })
   }
 
@@ -46,7 +47,9 @@ sealed trait Free[+F[_],+A] {
 
 object Free {
 
-  trait B[F[_],G[_],A] { def f[x]: (Either[F[x],x], x => G[A]) => G[A] }
+  trait B[F[_],G[_],A] {
+    def f[x]: Either[(F[x], Either[Throwable,x] => G[A]), (x, x => G[A])] => G[A]
+  }
 
   def attemptEval[F[_],A](a: F[A]): Free[F,Either[Throwable,A]] = Eval(a)
   def fail(err: Throwable): Free[Nothing,Nothing] = Fail(err)
@@ -91,7 +94,7 @@ object Free {
     def _fold[F2[_],G[_],A2>:Either[Throwable,A]](
       done: Either[Throwable,A] => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
       implicit S: Sub1[F,F2], T: RealSupertype[Either[Throwable,A],A2])
-    : G[A2] = bound.f(Left(S(fa)), (a: A) => done(Right(a)))
+    : G[A2] = bound.f(Left((S(fa), (a: Either[Throwable,A]) => done(a))))
   }
   private[fs2] case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
     def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
@@ -116,11 +119,13 @@ object Free {
       done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
       implicit S: Sub1[F,F2], T: RealSupertype[A,A2])
     : G[A2] = Sub1.substFree(r) match {
-      case Pure(r) => bound.f[R](Right(r), f andThen (_.fold(done, fail, bound)))
+      case Pure(r) => bound.f[R](Right((r, f andThen (_.fold(done, fail, bound)))))
       case Fail(err) => fail(err)
       // NB: Scala won't let us pattern match on Eval here, but this is safe since `.step`
       // removes any left-associated binds
-      case eval => bound.f[R](Left(eval.asInstanceOf[Eval[F2,R]].fa), f andThen (_.fold(done, fail, bound)))
+      case eval => bound.f[R](Left(
+        eval.asInstanceOf[Eval[F2,R]].fa ->
+          f.asInstanceOf[Any => Free[F,A]].andThen(_.fold(done, fail, bound))))
     }
   }
 

@@ -13,10 +13,10 @@ class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Either[Throwa
         case Some(e) => e.fold(StreamCore.fail(_), _ => StreamCore.empty)
       },
       err => StreamCore.fail(err),
-      new Free.B[P[F,O]#f,G,Out] { def f[x] = (r, g) => r match {
-        case Left(PF.Eval(fr)) => StreamCore.evalScope(fr) flatMap g
-        case Left(PF.Output(o)) => StreamCore.append(o, StreamCore.suspend(g(())))
-        case Right(r) => StreamCore.Try(g(r))
+      new Free.B[P[F,O]#f,G,Out] { def f[x] = r => r match {
+        case Left((PF.Eval(fr), g)) => StreamCore.evalScope(fr).attempt flatMap g
+        case Left((PF.Output(o), g)) => StreamCore.append(o, StreamCore.suspend(g(Right(()))))
+        case Right((r,g)) => StreamCore.Try(g(r))
       }}
     )(Sub1.sub1[P[F,O]#f], implicitly[RealSupertype[Out,Out]])
   }}

@@ -41,9 +41,6 @@ abstract class Catenable[+A] {
   }
 
   def map[B](f: A => B): Catenable[B] = Catenable.fromSeq(toStream.map(f))
-
-  override def hashCode = toStream.hashCode
-  override def equals(a: Any) = a.asInstanceOf[Catenable[A]].toStream == toStream
 }
 
 object Catenable {

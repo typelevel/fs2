@@ -21,23 +21,30 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
 
   def bindEnv[F2[_]](env: Env[F2])(implicit S: Sub1[F,F2]): Free[F2,O] = Free.suspend {
     type FO[x] = Free[F2,x]
-    val B = new Free.B[R[F]#f,FO,O] { def f[x] = (r,g) => r match {
-      case Right(r) => g(r)
-      case Left(i) => i match {
-        case StreamCore.RF.Eval(fx) => Free.eval(S(fx)) flatMap g
-        case StreamCore.RF.Interrupted => g(env.interrupted())
-        case StreamCore.RF.Snapshot => g(env.tracked.snapshot)
-        case StreamCore.RF.NewSince(tokens) => g(env.tracked.newSince(tokens))
+    val B = new Free.B[R[F]#f,FO,O] { def f[x] = r => r match {
+      case Right((r,g)) => g(r)
+      case Left((i,g)) => i match {
+        case StreamCore.RF.Eval(fx) => Free.attemptEval(S(fx)) flatMap g
+        case StreamCore.RF.Interrupted => g(Right(env.interrupted()))
+        case StreamCore.RF.Snapshot => g(Right(env.tracked.snapshot))
+        case StreamCore.RF.NewSince(tokens) => g(Right(env.tracked.newSince(tokens)))
         case StreamCore.RF.Release(tokens) => env.tracked.release(tokens) match {
           // right way to handle this case - update the tokens map to run the finalizers
           // for this group when finishing the last acquire
           case None => sys.error("todo: release tokens while resources are being acquired")
           case Some(rs) =>
-            rs.foldRight(Free.pure(()): Free[F2,Unit])((hd,tl) => hd flatMap { _ => tl }) flatMap g
+            rs.foldRight(Free.pure(()): Free[F2,Unit])((hd,tl) => hd flatMap { _ => tl })
+              .flatMap { _ => g(Right(())) }
         }
-        case StreamCore.RF.StartAcquire(token) => env.tracked.startAcquire(token); g(())
-        case StreamCore.RF.FinishAcquire(token, c) => env.tracked.finishAcquire(token, Sub1.substFree(c)); g(())
-        case StreamCore.RF.CancelAcquire(token) => env.tracked.cancelAcquire(token); g(())
+        case StreamCore.RF.StartAcquire(token) =>
+          env.tracked.startAcquire(token)
+          g(Right(()))
+        case StreamCore.RF.FinishAcquire(token, c) =>
+          env.tracked.finishAcquire(token, Sub1.substFree(c))
+          g(Right(()))
+        case StreamCore.RF.CancelAcquire(token) =>
+          env.tracked.cancelAcquire(token)
+          g(Right(()))
       }
     }}
     get.fold[R[F]#f,FO,O](Free.pure, Free.fail, B)(Sub1.sub1[R[F]#f],implicitly[RealSupertype[O,O]])
@@ -45,6 +52,7 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
 }
 
 object Scope {
+  def suspend[F[_],O](s: => Scope[F,O]): Scope[F,O] = pure(()) flatMap { _ => s }
   def pure[F[_],O](o: O): Scope[F,O] = Scope(Free.pure(o))
   def attemptEval[F[_],O](o: F[O]): Scope[F,Either[Throwable,O]] =
     Scope(Free.attemptEval[R[F]#f,O](StreamCore.RF.Eval(o)))
