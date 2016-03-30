@@ -12,8 +12,12 @@ sealed trait Free[+F[_],+A] {
     : G[A2]
     = this.step._fold(done, fail, bound)
 
-  def translate[G[_]](g: F ~> G): Free[G,A] =
-    ???
+  def translate[G[_]](u: F ~> G): Free[G,A] = {
+    type FG[x] = Free[G,x]
+    fold[F,FG,A](Free.pure, Free.fail, new B[F,FG,A] { def f[x] = (r,g) =>
+      r.fold(fr => Free.eval(u(fr)), Free.pure) flatMap g
+    })
+  }
 
   protected def _fold[F2[_],G[_],A2>:A](done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
     implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2]

@@ -24,9 +24,11 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
     get.runFold(z)(f)
 
   final def step: Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]] =
-    new Pull(get.step.map { o => Free.pure {
-      o.map(_.right.map(s => s.copy(tail = new Handle(List(), Stream.mk(s.tail)))))
-    }})
+    Pull.evalScope(get.step).flatMap {
+      case None => Pull.done
+      case Some(Left(err)) => Pull.fail(err)
+      case Some(Right(s)) => Pull.pure(s.copy(tail = new Handle(List(), Stream.mk(s.tail))))
+    }
 
   final def stepAsync[F2[_],O2>:O](
     implicit S: Sub1[F,F2], F2: Async[F2], T: RealSupertype[O,O2])
