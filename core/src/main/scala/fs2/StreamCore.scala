@@ -165,10 +165,8 @@ object StreamCore {
     }
     def convert[F[_],G[_],O](s: StreamCore[F,O])(u: NT[F,G]): StreamCore[G,O] =
       u.same.fold(sub => Sub1.substStreamCore(s)(sub), u => s.translate(NT.T(u)))
-    def convert[F[_],G[_],O1,O2](f: O1 => StreamCore[F,O2])(u: NT[F,G]): O1 => StreamCore[G,O2] = {
-      // nb: can't use sub in the first case or f could end up accumulating identity transforms
-      u.same.fold(sub => f.asInstanceOf[O1 => StreamCore[G,O2]], u => o1 => f(o1).translate(NT.T(u)))
-    }
+    def convert[F[_],G[_],O1,O2](f: O1 => StreamCore[F,O2])(u: NT[F,G]): O1 => StreamCore[G,O2] =
+      u.same.fold(sub => Sub1.substStreamCoreF(f)(sub), u => o1 => f(o1).translate(NT.T(u)))
     def convert[F[_],G[_],O](s: Segment[F,O])(u: NT[F,G]): Segment[G,O] =
       u.same.fold(sub => Sub1.substSegment(s)(sub), u => s.translate(NT.T(u)))
     def convert[F[_],G[_],O](s: Catenable[Segment[F,O]])(u: NT[F,G]): Catenable[Segment[G,O]] = {
