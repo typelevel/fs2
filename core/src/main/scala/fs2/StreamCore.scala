@@ -335,7 +335,9 @@ object StreamCore {
   object Segment {
     case class Fail[F[_],O1](err: Throwable) extends Segment[F,O1]
     case class Emit[F[_],O1](c: Chunk[O1]) extends Segment[F,O1]
-    case class Handler[F[_],O1](h: Throwable => StreamCore[F,O1]) extends Segment[F,O1]
+    case class Handler[F[_],O1](h: Throwable => StreamCore[F,O1]) extends Segment[F,O1] {
+      override def toString = s"Handler(h#${System.identityHashCode(h)})"
+    }
     case class Append[F[_],O1](s: StreamCore[F,O1]) extends Segment[F,O1]
   }
 
