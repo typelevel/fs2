@@ -62,6 +62,10 @@ object Signal {
     }
   }
 
+  implicit class BooleanSignalSyntax[F[_]:Async] (val self: Signal[F,Boolean]) {
+    def interrupt[A](s: Stream[F,A]) = fs2.wye.interrupt(self.discrete, s)
+  }
+
   /**
    * Constructs Stream from the input stream `source`. If `source` terminates
    * then resulting stream terminates as well.

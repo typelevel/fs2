@@ -209,6 +209,23 @@ object process1 {
     _ repeatPull { Pull.receive1 { case i #: h => Pull.output1(i) as h }}
 
   /**
+   * Halt the input stream at the first `None`.
+   *
+   * @example {{{
+   * scala> unNoneTerminate(Stream(Some(1), Some(2), None, Some(3), None)).toVector
+   * res0: Vector[Int] = Vector(1, 2)
+   * }}}
+   */
+  def unNoneTerminate[F[_],I]: Stream[F,Option[I]] => Stream[F,I] =
+    _ repeatPull { _.receive {
+      case hd #: tl =>
+        val out = Chunk.indexedSeq(hd.toVector.takeWhile { _.isDefined }.collect { case Some(i) => i })
+        if (out.size == hd.size) Pull.output(out) as tl
+        else if (out.isEmpty) Pull.done
+        else Pull.output(out) >> Pull.done
+    }}
+
+  /**
    * Groups inputs into separate `Vector` objects of size `n`.
    *
    * @example {{{
