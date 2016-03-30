@@ -8,6 +8,7 @@ class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Either[Throwa
   def run: Stream[F,O] = Stream.mk { StreamCore.scope {
     type G[x] = StreamCore[F,O]; type Out = Option[Either[Throwable,R]]
     get.fold[P[F,O]#f,G,Out](
+      StreamCore.suspend,
       o => o match {
         case None => StreamCore.empty
         case Some(e) => e.fold(StreamCore.fail(_), _ => StreamCore.empty)

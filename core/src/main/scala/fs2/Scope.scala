@@ -47,7 +47,7 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
           g(Right(()))
       }
     }}
-    get.fold[R[F]#f,FO,O](Free.pure, Free.fail, B)(Sub1.sub1[R[F]#f],implicitly[RealSupertype[O,O]])
+    get.fold[R[F]#f,FO,O](Free.suspend, Free.pure, Free.fail, B)(Sub1.sub1[R[F]#f],implicitly[RealSupertype[O,O]])
   }
 }
 

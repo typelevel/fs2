@@ -7,20 +7,20 @@ sealed trait Free[+F[_],+A] {
   def flatMap[F2[x]>:F[x],B](f: A => Free[F2,B]): Free[F2,B] = Bind(this, f)
   def map[B](f: A => B): Free[F,B] = Bind(this, f andThen (Free.Pure(_)))
 
-  def fold[F2[_],G[_],A2>:A](done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
+  def fold[F2[_],G[_],A2>:A](suspend: (=> G[A2]) => G[A2], done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
     implicit S: Sub1[F,F2], T: RealSupertype[A,A2])
     : G[A2]
-    = this.step._fold(done, fail, bound)
+    = this.step._fold(suspend, done, fail, bound)
 
   def translate[G[_]](u: F ~> G): Free[G,A] = {
     type FG[x] = Free[G,x]
-    fold[F,FG,A](Free.pure, Free.fail, new B[F,FG,A] { def f[x] = r =>
+    fold[F,FG,A](Free.suspend, Free.pure, Free.fail, new B[F,FG,A] { def f[x] = r =>
       r.fold({ case (fr,g) => Free.attemptEval(u(fr)) flatMap g },
              { case (r,g) => g(r) })
     })
   }
 
-  protected def _fold[F2[_],G[_],A2>:A](done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
+  protected def _fold[F2[_],G[_],A2>:A](suspend: (=> G[A2]) => G[A2], done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
     implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2]
 
   def runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
@@ -70,7 +70,7 @@ object Free {
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
     : Trampoline[Unroll[Nothing, G[Free[Nothing,Nothing]]]]
     = Trampoline.done { Unroll.Fail(err) }
-    def _fold[F2[_],G[_],A2>:Nothing](done: Nothing => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
+    def _fold[F2[_],G[_],A2>:Nothing](suspend: (=> G[A2]) => G[A2], done: Nothing => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
       implicit S: Sub1[Nothing,F2], T: RealSupertype[Nothing,A2]): G[A2] = fail(err)
   }
   private[fs2] case class Pure[A](a: A) extends Free[Nothing,A] {
@@ -79,7 +79,7 @@ object Free {
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
     : Trampoline[Unroll[A, G[Free[Nothing,A]]]]
     = Trampoline.done { Unroll.Pure(a) }
-    def _fold[F2[_],G[_],A2>:A](done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
+    def _fold[F2[_],G[_],A2>:A](suspend: (=> G[A2]) => G[A2], done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
       implicit S: Sub1[Nothing,F2], T: RealSupertype[A,A2])
     : G[A2] = done(a)
   }
@@ -92,6 +92,7 @@ object Free {
     = Trampoline.done { Unroll.Eval(G.map(S(fa))(a => Free.pure(Right(a)))) }
 
     def _fold[F2[_],G[_],A2>:Either[Throwable,A]](
+      suspend: (=> G[A2]) => G[A2],
       done: Either[Throwable,A] => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
       implicit S: Sub1[F,F2], T: RealSupertype[Either[Throwable,A],A2])
     : G[A2] = bound.f(Left((S(fa), (a: Either[Throwable,A]) => done(a))))
@@ -116,17 +117,18 @@ object Free {
         Trampoline.done { Unroll.Eval(G.map(ga) { any => fr(Right(any)) }) }
     }
     def _fold[F2[_],G[_],A2>:A](
+      suspend: (=> G[A2]) => G[A2],
       done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
       implicit S: Sub1[F,F2], T: RealSupertype[A,A2])
-    : G[A2] = Sub1.substFree(r) match {
-      case Pure(r) => bound.f[R](Right((r, f andThen (_.fold(done, fail, bound)))))
+    : G[A2] = suspend { Sub1.substFree(r) match {
+      case Pure(r) => bound.f[R](Right((r, f andThen (_.fold(suspend, done, fail, bound)))))
       case Fail(err) => fail(err)
       // NB: Scala won't let us pattern match on Eval here, but this is safe since `.step`
       // removes any left-associated binds
       case eval => bound.f[R](Left(
         eval.asInstanceOf[Eval[F2,R]].fa ->
-          f.asInstanceOf[Any => Free[F,A]].andThen(_.fold(done, fail, bound))))
-    }
+          f.asInstanceOf[Any => Free[F,A]].andThen(_.fold(suspend, done, fail, bound))))
+    }}
   }
 
   sealed trait Unroll[+A,+B]
