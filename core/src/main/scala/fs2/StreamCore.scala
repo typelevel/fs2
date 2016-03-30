@@ -33,7 +33,7 @@ sealed trait StreamCore[F[_],O] { self =>
   def flatMap[O2](f: O => StreamCore[F,O2]): StreamCore[F,O2] =
     new StreamCore[F,O2] { type O0 = self.O0
       def push[G[_],O3](u: NT[F,G], stack: Stack[G,O2,O3]) =
-        Scope.suspend { self.push(u, stack pushBind (f andThen (NT.convert(_)(u)))) }
+        Scope.suspend { self.push(u, stack pushBind NT.convert(f)(u)) }
       def render = s"($self flatMap $f)"
     }
   def map[O2](f: O => O2): StreamCore[F,O2] = mapChunks(_ map f)
@@ -46,7 +46,7 @@ sealed trait StreamCore[F[_],O] { self =>
   def onError(f: Throwable => StreamCore[F,O]): StreamCore[F,O] =
     new StreamCore[F,O] { type O0 = self.O0
       def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
-        Scope.suspend { self.push(u, stack pushHandler (f andThen (NT.convert(_)(u)))) }
+        Scope.suspend { self.push(u, stack pushHandler NT.convert(f)(u)) }
       def render = s"($self onError $f)"
     }
 
@@ -165,6 +165,10 @@ object StreamCore {
     }
     def convert[F[_],G[_],O](s: StreamCore[F,O])(u: NT[F,G]): StreamCore[G,O] =
       u.same.fold(sub => Sub1.substStreamCore(s)(sub), u => s.translate(NT.T(u)))
+    def convert[F[_],G[_],O1,O2](f: O1 => StreamCore[F,O2])(u: NT[F,G]): O1 => StreamCore[G,O2] = {
+      // nb: can't use sub in the first case or f could end up accumulating identity transforms
+      u.same.fold(sub => f.asInstanceOf[O1 => StreamCore[G,O2]], u => o1 => f(o1).translate(NT.T(u)))
+    }
     def convert[F[_],G[_],O](s: Segment[F,O])(u: NT[F,G]): Segment[G,O] =
       u.same.fold(sub => Sub1.substSegment(s)(sub), u => s.translate(NT.T(u)))
     def convert[F[_],G[_],O](s: Catenable[Segment[F,O]])(u: NT[F,G]): Catenable[Segment[G,O]] = {
@@ -307,21 +311,21 @@ object StreamCore {
 
     def translate[G[_]](u: NT[F,G]): Segment[G,O1] = this match {
       case Append(s) => Append(s translate u)
-      case Handler(h) => Handler(h andThen (_ translate u))
+      case Handler(h) => Handler(NT.convert(h)(u))
       case Emit(c) => Emit(c)
       case Fail(e) => Fail(e)
     }
 
     def mapChunks[O2](f: Chunk[O1] => Chunk[O2]): Segment[F, O2] = this match {
       case Append(s) => Append(s.mapChunks(f))
-      case Handler(h) => Handler(h andThen (_.mapChunks(f)))
+      case Handler(h) => Handler(t => h(t).mapChunks(f))
       case Emit(c) => Emit(f(c))
       case Fail(e) => Fail(e)
     }
 
     def foo[O2](f: O1 => StreamCore[F, O2]): Segment[F, O2] = this match {
       case Append(s) => Append(s.flatMap(f))
-      case Handler(h) => Handler(h andThen (_.flatMap(f)))
+      case Handler(h) => Handler(t => h(t).flatMap(f))
       case Emit(c) => if (c.isEmpty) Emit(Chunk.empty) else Append(c.toVector.map(o => Try(f(o))).reduceRight((s, acc) => StreamCore.append(s, acc)))
       case Fail(e) => Fail(e)
     }
