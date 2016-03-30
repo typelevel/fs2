@@ -1,7 +1,7 @@
 package fs2.internal
 
-import java.util.concurrent.atomic.{AtomicInteger, AtomicBoolean, AtomicReference}
-import java.util.concurrent.{Callable, ConcurrentLinkedQueue, CountDownLatch, ExecutorService, TimeoutException, ScheduledExecutorService, TimeUnit, Executors}
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.{Callable, TimeoutException, ScheduledExecutorService, TimeUnit}
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
 import fs2.Strategy
@@ -106,15 +106,17 @@ class Future[+A] {
     async[Either[Throwable,A]] { cb =>
       val cancel = new AtomicBoolean(false)
       val done = new AtomicBoolean(false)
-      S.schedule(new Runnable {
-        def run() {
-          if (done.compareAndSet(false,true)) {
-            cancel.set(true)
-            cb(Left(new TimeoutException()))
+      try {
+        S.schedule(new Runnable {
+          def run() {
+            if (done.compareAndSet(false,true)) {
+              cancel.set(true)
+              cb(Left(new TimeoutException()))
+            }
           }
         }
-      }
-      , timeoutInMillis, TimeUnit.MILLISECONDS)
+        , timeoutInMillis, TimeUnit.MILLISECONDS)
+      } catch { case e: Throwable => cb(Left(e)) }
 
       runAsyncInterruptibly(a => if(done.compareAndSet(false,true)) cb(Right(a)), cancel)
     } (Strategy.sequential)
@@ -154,10 +156,14 @@ private[fs2] object Future {
 
   /** Create a `Future` that will evaluate `a` after at least the given delay. */
   def schedule[A](a: => A, delay: Duration)(implicit pool: ScheduledExecutorService): Future[A] =
-    Async { cb =>
+    apply(a)(Scheduled(delay))
+
+  case class Scheduled(delay: Duration)(implicit pool: ScheduledExecutorService) extends Strategy {
+    def apply(thunk: => Unit) = {
       pool.schedule(new Callable[Unit] {
-        def call = cb(a).run
+        def call = thunk
       }, delay.toMillis, TimeUnit.MILLISECONDS)
       ()
     }
+  }
 }

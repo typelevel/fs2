@@ -1,7 +1,6 @@
 package fs2.async.mutable
 
 import fs2._
-import fs2.Async.Change
 
 import fs2.async.immutable
 

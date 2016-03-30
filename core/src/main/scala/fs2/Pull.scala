@@ -1,8 +1,7 @@
 package fs2
 
-import collection.immutable.SortedSet
 import fs2.internal.{LinkedSet,Trampoline}
-import fs2.util.{Eq,Free,RealSupertype,Sub1}
+import fs2.util.{Eq,Sub1}
 import Stream.Token
 
 trait Pull[+F[_],+W,+R] extends PullOps[F,W,R] {
@@ -115,12 +114,16 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       }
   }
 
-  def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] = new Pull[F,Nothing,R] {
+  def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] =
+    attemptEval(f) flatMap { _ fold (fail, pure) }
+
+  def attemptEval[F[_],R](f: F[R]): Pull[F,Nothing,Either[Throwable,R]] =
+  new Pull[F,Nothing,Either[Throwable,R]] {
     type W = Nothing
-    def _run1[F2[_],W2>:W,R1>:R,R2](doCleanup: Boolean, tracked: LinkedSet[Token], k: Stack[F2,W2,R1,R2])(
+    def _run1[F2[_],W2>:W,R1>:Either[Throwable,R],R2](doCleanup: Boolean, tracked: LinkedSet[Token], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       =
-      Stream.eval(S(f)) flatMap { r => pure(r)._run0(doCleanup, tracked, k) }
+      Stream.attemptEval(S(f)) flatMap { r => pure(r)._run0(doCleanup, tracked, k) }
   }
 
   def acquire[F[_],R](id: Token, r: F[R], cleanup: R => F[Unit]): Pull[F,Nothing,R] = new Pull[F,Nothing,R] {
@@ -138,7 +141,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
     def _run1[F2[_],W2>:W,R1>:R,R2](doCleanup: Boolean, tracked: LinkedSet[Token], k: Stack[F2,W2,R1,R2])(
       implicit S: Sub1[F,F2]): Stream[F2,W2]
       =
-      Sub1.substStream(s).append(pure(())._run1(doCleanup, tracked, k))
+      Stream.zppend(Sub1.substStream(s), pure(())._run0(doCleanup, tracked, k))
   }
 
   def or[F[_],W,R](p1: Pull[F,W,R], p2: => Pull[F,W,R]): Pull[F,W,R] = new Pull[F,W,R] {
@@ -213,7 +216,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 with pull2 {
       empty.push(s)
   }
   private[fs2] def runCleanup(doCleanup: Boolean, s: LinkedSet[Token]): Stream[Nothing,Nothing] =
-    if (doCleanup) s.iterator.foldLeft(Stream.empty)((s,id) => Stream.append(Stream.release(id), s))
+    if (doCleanup) s.iterator.foldLeft(Stream.empty)((s,id) => Stream.zppend(Stream.release(id), s))
     else Stream.empty[Nothing,Nothing]
   private[fs2] def orRight[F[_],W,R](s: List[Pull[F,W,R]]): Pull[F,W,R] =
     s.reverse.foldLeft(done: Pull[F,W,R])((tl,hd) => or(hd,tl))

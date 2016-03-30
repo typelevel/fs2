@@ -2,8 +2,6 @@ package fs2.internal
 
 import fs2.Strategy
 import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.{Callable,ExecutorService}
-import scala.concurrent.ExecutionContext
 
 /*
  * Implementation is taken from `scalaz` library, with only minor changes. See:

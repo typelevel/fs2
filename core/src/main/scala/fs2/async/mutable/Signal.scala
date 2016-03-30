@@ -3,14 +3,10 @@ package async
 package mutable
 
 import fs2.Stream
-import fs2.Async.Change
 
 import fs2.async.immutable
 import fs2.util.Monad
 import fs2.internal.LinkedMap
-
-import scala.collection.immutable.{Queue => SQueue}
-import scala.util.{Success, Try}
 
 /**
  * A signal whose value may be set asynchronously. Provides continuous

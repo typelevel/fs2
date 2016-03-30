@@ -20,6 +20,7 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
   def isClosed: Boolean = tokens.get._1 == Closed
   def isClosing: Boolean = { val t = tokens.get._1; t == Closing || t == Closed }
   def isEmpty: Boolean = tokens.get._2.isEmpty
+  def size: Int = tokens.get._2.size
 
   /**
    * Close this `Resources` and return all acquired resources.

@@ -22,17 +22,19 @@ object StreamPerformanceSpec extends Properties("StreamPerformance") {
     Chunk.seq((0 until N) map emit).foldRight(empty: Stream[Pure,Int])(_ ++ _)
   )
 
-  property("left-associated ++") = secure { Ns.forall { N =>
+  property("left-associated ++") = protect { Ns.forall { N =>
+  logTime("left-associated ++ ("+N.toString+")") {
    (1 until N).map(emit).foldLeft(emit(0))(_ ++ _) ===
    Vector.range(0,N)
-  }}
+  }}}
 
-  property("right-associated ++") = secure { Ns.forall { N =>
+  property("right-associated ++") = protect { Ns.forall { N =>
+  logTime("right-associated ++ ("+N.toString+")") {
     Chunk.seq((0 until N).map(emit)).foldRight(empty: Stream[Pure,Int])(_ ++ _) ===
     Vector.range(0,N)
-  }}
+  }}}
 
-  property("left-associated flatMap 1") = secure {
+  property("left-associated flatMap 1") = protect {
     Ns.forall { N => logTime("left-associated flatMap 1 ("+N.toString+")") {
       (1 until N).map(emit).foldLeft(emit(0))(
         (acc,a) => acc flatMap { _ => a }) ===
@@ -40,7 +42,7 @@ object StreamPerformanceSpec extends Properties("StreamPerformance") {
     }}
   }
 
-  property("right-associated flatMap 1") = secure {
+  property("right-associated flatMap 1") = protect {
     Ns.forall { N => logTime("right-associated flatMap 1 ("+N.toString+")") {
       (1 until N).map(emit).reverse.foldLeft(emit(0))(
         (acc,a) => a flatMap { _ => acc }) ===
@@ -48,7 +50,7 @@ object StreamPerformanceSpec extends Properties("StreamPerformance") {
     }}
   }
 
-  property("left-associated flatMap 2") = secure {
+  property("left-associated flatMap 2") = protect {
     Ns.forall { N => logTime("left-associated flatMap 2 ("+N.toString+")") {
       (1 until N).map(emit).foldLeft(emit(0) ++ emit(1) ++ emit(2))(
         (acc,a) => acc flatMap { _ => a }) ===
@@ -56,14 +58,14 @@ object StreamPerformanceSpec extends Properties("StreamPerformance") {
     }}
   }
 
-  property("right-associated flatMap 1") = secure {
+  property("right-associated flatMap 1") = protect {
     Ns.forall { N => logTime("right-associated flatMap 1 ("+N.toString+")") {
       (1 until N).map(emit).reverse.foldLeft(emit(0) ++ emit(1) ++ emit(2))(
         (acc,a) => a flatMap { _ => acc }) === Vector(0,1,2)
     }}
   }
 
-  property("transduce (id)") = secure {
+  property("transduce (id)") = protect {
     Ns.forall { N => logTime("transduce (id) " + N) {
       (chunk(Chunk.seq(0 until N)): Stream[Task,Int]).repeatPull { (s: Handle[Task,Int]) =>
         for {
@@ -74,7 +76,7 @@ object StreamPerformanceSpec extends Properties("StreamPerformance") {
     }
   }
 
-  property("bracket + onError (1)") = secure { Ns.forall { N =>
+  property("bracket + onError (1)") = protect { Ns.forall { N =>
     val open = new AtomicInteger(0)
     val ok = new AtomicInteger(0)
     val bracketed = bracket(Task.delay { open.incrementAndGet })(

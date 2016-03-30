@@ -17,7 +17,9 @@ private[fs2] class LinkedMap[K,+V](
   def get(k: K): Option[V] = entries.get(k).map(_._1)
 
   /** Insert an entry into this map, overriding any previous entry for the given `K`. */
-  def updated[V2>:V](k: K, v: V2): LinkedMap[K,V2] =
+  def updated[V2>:V](k: K, v: V2): LinkedMap[K,V2] = (this - k).updated_(k, v)
+
+  private def updated_[V2>:V](k: K, v: V2): LinkedMap[K,V2] =
     new LinkedMap(entries.updated(k, (v,nextID)), insertionOrder.updated(nextID, k), nextID+1)
 
   def edit[V2>:V](k: K, f: Option[V2] => Option[V2]): LinkedMap[K,V2] =
@@ -48,7 +50,7 @@ private[fs2] class LinkedMap[K,+V](
 
   def isEmpty = entries.isEmpty
 
-  def size = entries.size
+  def size = entries.size max insertionOrder.size
 
   override def toString = "{ " + (keys zip values).mkString("  ") +" }"
 }

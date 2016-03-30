@@ -4,7 +4,7 @@ import fs2.{process1, Async, Stream}
 import fs2.util.Functor
 
 import fs2.Async
-import fs2.async.{immutable, mutable}
+import fs2.async.immutable
 
 
 /**

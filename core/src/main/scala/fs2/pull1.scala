@@ -179,7 +179,21 @@ private[fs2] trait pull1 {
     if (n <= 0) Pull.pure(h)
     else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
       case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong)(h)
+    } 
+
+  /** Emits the last `n` elements of the input. */
+  def takeRight[F[_],I](n: Long)(h: Handle[F,I]): Pull[F,Nothing,Vector[I]]  = {
+    def go(acc: Vector[I])(h: Handle[F,I]): Pull[F,Nothing,Vector[I]] = {
+      Pull.awaitN(if (n <= Int.MaxValue) n.toInt else Int.MaxValue, true)(h).optional.flatMap {
+        case None => Pull.pure(acc)
+        case Some(cs #: h) =>
+          val vector = cs.toVector.flatMap(_.toVector)
+          go(acc.drop(vector.length) ++ vector)(h)
+      }
     }
+    if (n <= 0) Pull.pure(Vector())
+    else go(Vector())(h)
+  }
 
   /**
    * Emit the elements of the input `Handle` until the predicate `p` fails,

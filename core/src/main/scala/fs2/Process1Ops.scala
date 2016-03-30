@@ -1,7 +1,5 @@
 package fs2
 
-import fs2.util.Sub1
-
 trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order
@@ -74,8 +72,14 @@ trait Process1Ops[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self pipe [[process1.sum]](f)`. */
   def sum[O2 >: O : Numeric]: Stream[F,O2] = self pipe process1.sum
 
+  /** Alias for `self pipe [[process1.tail]]`. */
+  def tail: Stream[F,O] = self pipe process1.tail
+
   /** Alias for `self pipe [[process1.take]](n)`. */
   def take(n: Long): Stream[F,O] = self pipe process1.take(n)
+
+  /** Alias for `self pipe [[process1.takeRight]]`. */
+  def takeRight(n: Long): Stream[F,O] = self pipe process1.takeRight(n)
 
   /** Alias for `self pipe [[process1.takeWhile]]`. */
   def takeWhile(p: O => Boolean): Stream[F,O] = self pipe process1.takeWhile(p)

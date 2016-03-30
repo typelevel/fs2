@@ -195,6 +195,11 @@ object Process1Spec extends Properties("process1") {
     s.get.take(n) ==? run(s.get).take(n)
   }
 
+  property("takeRight") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+    val n = if (negate) -n0.get else n0.get
+    s.get.takeRight(n) ==? run(s.get).takeRight(n)
+  }
+
   property("takeWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
     val set = run(s.get).take(n.get).toSet
     s.get.pipe(takeWhile(set)) ==? run(s.get).takeWhile(set)
@@ -214,6 +219,10 @@ object Process1Spec extends Properties("process1") {
     val v = run(s.get)
     val f = (a: Int, b: Int) => a + b
     s.get.scan1(f) ==? v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
+  }
+
+  property("tail") = forAll { (s: PureStream[Int]) =>
+    s.get.tail ==? run(s.get).drop(1)
   }
 
   property("take.chunks") = secure {

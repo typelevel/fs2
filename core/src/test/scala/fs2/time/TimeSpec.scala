@@ -5,7 +5,6 @@ import org.scalacheck.Prop._
 import org.scalacheck.{Gen, Properties}
 import scala.concurrent.duration._
 
-import fs2.util.Task
 import Stream._
 
 class TimeSpec extends Properties("time") {
