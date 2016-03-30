@@ -1,5 +1,7 @@
 package object fs2 {
 
+  private[fs2] def trace(msg: => String): Unit = ()
+
   type Process1[-I,+O] = process1.Process1[I,O]
   type Tee[-I,-I2,+O] = tee.Tee[I,I2,O]
   type Wye[F[_],-I,-I2,+O] = wye.Wye[F,I,I2,O]
