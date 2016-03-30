@@ -25,7 +25,7 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
   def snapshot: Set[T] = tokens.get._2.keys.toSet
   /** Return the list of tokens allocated since the given snapshot, newest first. */
   def newSince(snapshot: Set[T]): List[T] =
-    tokens.get._2.keys.toList.reverse.filter(k => !snapshot(k))
+    tokens.get._2.keys.toList.filter(k => !snapshot(k))
   def release(ts: List[T]): Option[List[R]] = tokens.access match {
     case ((open,m), update) =>
       if (ts.forall(t => (m.get(t): Option[Option[R]]) != Some(None))) {

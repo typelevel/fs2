@@ -8,7 +8,7 @@ import org.scalacheck._
 
 object ResourceSafetySpec extends Properties("ResourceSafety") {
 
-  property("pure fail") = secure {
+  property("pure fail") = protect {
     try { Stream.emit(0).flatMap(_ => Stream.fail(Err)) === Vector(); false }
     catch { case Err => true } // expected
   }
@@ -34,7 +34,7 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     c.get ?= 0
   }
 
-  property("1 million brackets in sequence") = secure {
+  property("1 million brackets in sequence") = protect {
     val c = new AtomicLong(0)
     val b = bracket(c)(Stream.emit(1))
     val bs = List.fill(1000000)(b).foldLeft(Stream.empty: Stream[Task,Int])(_ ++ _)

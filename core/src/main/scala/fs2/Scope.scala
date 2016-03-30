@@ -32,9 +32,7 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
           // right way to handle this case - update the tokens map to run the finalizers
           // for this group when finishing the last acquire
           case None => sys.error("todo: release tokens while resources are being acquired")
-          case Some(rs) =>
-            rs.foldRight(Free.pure(()): Free[F2,Unit])((hd,tl) => hd flatMap { _ => tl })
-              .flatMap { _ => g(Right(())) }
+          case Some(rs) => StreamCore.runCleanup(rs) flatMap { e => g(Right(e)) }
         }
         case StreamCore.RF.StartAcquire(token) =>
           env.tracked.startAcquire(token)
@@ -66,11 +64,11 @@ object Scope {
     Scope(Free.eval[R[F]#f,Set[Token]](StreamCore.RF.Snapshot))
   def newSince[F[_]](snapshot: Set[Token]): Scope[F,List[Token]] =
     Scope(Free.eval[R[F]#f,List[Token]](StreamCore.RF.NewSince(snapshot)))
-  def release[F[_]](tokens: List[Token]): Scope[F,Unit] =
-    Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.Release(tokens)))
+  def release[F[_]](tokens: List[Token]): Scope[F,Either[Throwable,Unit]] =
+    Scope(Free.eval[R[F]#f,Either[Throwable,Unit]](StreamCore.RF.Release(tokens)))
   def startAcquire[F[_]](token: Token): Scope[F,Unit] =
     Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.StartAcquire(token)))
-  def finishAcquire[F[_]](token: Token, cleanup: Free[F,Unit]): Scope[F,Unit] =
+  def finishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]): Scope[F,Unit] =
     Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.FinishAcquire(token, cleanup)))
   def cancelAcquire[F[_]](token: Token): Scope[F,Unit] =
     Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.CancelAcquire(token)))

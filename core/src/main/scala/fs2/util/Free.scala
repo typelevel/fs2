@@ -20,6 +20,16 @@ sealed trait Free[+F[_],+A] {
     })
   }
 
+  def attempt: Free[F,Either[Throwable,A]] = {
+    type G[x] = Free[F,Either[Throwable,x]]
+    fold[F,G,A](x => x, a => Free.pure(Right(a)), e => Free.pure(Left(e)),
+      new B[F,G,A] { def f[x] = r =>
+        r.fold({ case (fr,g) => Free.attemptEval(fr) flatMap g },
+               { case (r,g) => g(r) })
+      }
+    )
+  }
+
   protected def _fold[F2[_],G[_],A2>:A](suspend: (=> G[A2]) => G[A2], done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
     implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2]
 

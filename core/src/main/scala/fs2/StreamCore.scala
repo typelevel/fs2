@@ -60,7 +60,7 @@ sealed trait StreamCore[F[_],O] { self =>
     = push(NT.Id(), Stack.empty[F,O]) flatMap (StreamCore.step)
 
   def runFold[O2](z: O2)(f: (O2,O) => O2): Free[F,O2] =
-    runFoldScope(z)(f).bindEnv(Env(Resources.empty[Token,Free[F,Unit]], () => false))
+    runFoldScope(z)(f).bindEnv(Env(Resources.empty[Token,Free[F,Either[Throwable,Unit]]], () => false))
 
   def runFoldScope[O2](z: O2)(f: (O2,O) => O2): Scope[F,O2] = step flatMap {
     case None => Scope.pure(z)
@@ -87,13 +87,13 @@ sealed trait StreamCore[F[_],O] { self =>
   def unconsAsync(implicit F: Async[F]): StreamCore[F,Async.Future[F,Option[Either[Throwable, Step[Chunk[O], StreamCore[F,O]]]]]] =
   StreamCore.eval(F.ref[Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]]]).flatMap { ref =>
     val token = new Token()
-    val resources = Resources.empty[Token,Free[F,Unit]]
+    val resources = Resources.empty[Token,Free[F,Either[Throwable,Unit]]]
     val interrupt = new java.util.concurrent.atomic.AtomicBoolean(false)
-    val rootCleanup = Free.suspend { resources.closeAll match {
+    val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll match {
       case None =>
         Free.eval(F.get(ref)) flatMap { _ =>
           resources.closeAll match {
-            case None => Free.pure(())
+            case None => Free.pure(Right(()))
             case Some(resources) => StreamCore.runCleanup(resources)
           }
         }
@@ -127,7 +127,7 @@ object StreamCore {
     override def toString = s"Token(${##})"
   }
 
-  case class Env[F[_]](tracked: Resources[Token,Free[F,Unit]], interrupted: () => Boolean)
+  case class Env[F[_]](tracked: Resources[Token,Free[F,Either[Throwable,Unit]]], interrupted: () => Boolean)
 
   trait R[F[_]] { type f[x] = RF[F,x] }
 
@@ -137,9 +137,9 @@ object StreamCore {
     case object Interrupted extends RF[Nothing,Boolean]
     case object Snapshot extends RF[Nothing,Set[Token]]
     case class NewSince(snapshot: Set[Token]) extends RF[Nothing,List[Token]]
-    case class Release(tokens: List[Token]) extends RF[Nothing,Unit]
+    case class Release(tokens: List[Token]) extends RF[Nothing,Either[Throwable,Unit]]
     case class StartAcquire(token: Token) extends RF[Nothing,Unit]
-    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Unit]) extends RF[F,Unit]
+    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]) extends RF[F,Unit]
     case class CancelAcquire(token: Token) extends RF[Nothing,Unit]
   }
 
@@ -264,7 +264,7 @@ object StreamCore {
       StreamCore.eval(r)
              .onError { e => StreamCore.evalScope(Scope.cancelAcquire(token)) flatMap { _ => StreamCore.fail(e) }}
              .flatMap { r =>
-               StreamCore.evalScope(Scope.finishAcquire(token, cleanup(r)))
+               StreamCore.evalScope(Scope.finishAcquire(token, cleanup(r).attempt))
                .flatMap { _ => StreamCore.emit(r).onComplete(StreamCore.release(List(token)).drain) }
              }
     }
@@ -272,7 +272,7 @@ object StreamCore {
 
   private[fs2]
   def release[F[_]](tokens: List[Token]): StreamCore[F,Unit] =
-    evalScope(Scope.release(tokens))
+    evalScope(Scope.release(tokens)) flatMap { _ fold(fail, emit) }
 
   def evalScope[F[_],O](s: Scope[F,O]): StreamCore[F,O] = new StreamCore[F,O] {
     type O0 = O
@@ -400,17 +400,19 @@ object StreamCore {
   }
 
   private
-  def runCleanup[F[_]](l: Resources[Token,Free[F,Unit]]): Free[F,Unit] =
+  def runCleanup[F[_]](l: Resources[Token,Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] =
     l.closeAll match {
       case Some(l) => runCleanup(l)
       case None => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
     }
 
-  private
-  def runCleanup[F[_]](cleanups: Iterable[Free[F,Unit]]): Free[F,Unit] =
+  private[fs2]
+  def runCleanup[F[_]](cleanups: Iterable[Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] = {
     // note - run cleanup actions in LIFO order, later actions run first
-    cleanups.foldLeft[Free[F,Unit]](Free.pure(()))(
-      (tl,hd) => hd flatMap { _ => tl }
+    // all actions are run but only first error is reported
+    cleanups.foldLeft[Free[F,Either[Throwable,Unit]]](Free.pure(Right(())))(
+      (tl,hd) => hd flatMap { _.fold(e => tl flatMap { _ => Free.pure(Left(e)) }, _ => tl) }
     )
+  }
 }
 
