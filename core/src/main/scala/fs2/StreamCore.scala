@@ -119,15 +119,13 @@ sealed trait StreamCore[F[_],O] { self =>
     val s: F[Unit] = F.set(ref) { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
-        F.read(ref).appendOnForce { Pull.suspend {
+        F.read(ref).appendOnForce { Scope.suspend {
           // Important - if `resources.isEmpty`, we allocated a resource, but it turned
           // out that our step didn't acquire new resources. This is quite common.
           // Releasing the token is therefore a noop, but is important for memory usage as
           // it prevents noop finalizers from accumulating in the `runFold` interpreter state.
-          if (resources.isEmpty)
-            Pull.outputs[F,Nothing](
-              Stream.mk[F,Nothing](StreamCore.release(List(token)).drain[Nothing]))
-          else Pull.pure(())
+          if (resources.isEmpty) Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }
+          else Scope.pure(())
         }}
       }
     }

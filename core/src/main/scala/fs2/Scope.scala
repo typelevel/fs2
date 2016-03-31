@@ -4,6 +4,9 @@ import fs2.util.{Free,RealSupertype,Sub1,~>}
 import fs2.StreamCore.{Env,R,RF,Token}
 
 case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
+
+  def as[O2](o2: O2): Scope[F,O2] = map(_ => o2)
+
   def map[O2](f: O => O2): Scope[F,O2] = Scope(get map f)
 
   def flatMap[F2[x]>:F[x],O2](f: O => Scope[F2,O2]): Scope[F2,O2] =
