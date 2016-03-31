@@ -25,3 +25,9 @@ object RepeatEvalSanityTest extends App {
   }
   Stream.repeatEval(Task.delay(1)).pipe(id).covary[Task].run.run.run
 }
+
+object DrainOnCompleteSanityTest extends App {
+  import TestUtil.S
+  val s = Stream.repeatEval(Task.delay(1)).pull(Pull.echo).drain.onComplete(Stream.eval_(Task.delay(println("done"))))
+  (Stream.empty[Task, Unit] merge s).run.run.run
+}
