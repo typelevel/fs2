@@ -23,6 +23,9 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
   override final def runFold[O2](z: O2)(f: (O2,O) => O2): Free[F,O2] =
     get.runFold(z)(f)
 
+  override final def runFoldTrace[O2](t: Trace)(z: O2)(f: (O2,O) => O2): Free[F,O2] =
+    get.runFoldTrace(t)(z)(f)
+
   final def step: Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]] =
     Pull.evalScope(get.step).flatMap {
       case None => Pull.done
@@ -104,6 +107,9 @@ object Stream extends Streams[Stream] with StreamDerived {
 
   def runFold[F[_], A, B](p: Stream[F,A], z: B)(f: (B, A) => B): Free[F,B] =
     p.runFold(z)(f)
+
+  def runFoldTrace[F[_], A, B](t: Trace)(p: Stream[F,A], z: B)(f: (B, A) => B): Free[F,B] =
+    p.runFoldTrace(t)(z)(f)
 
   def scope[F[_],O](s: Stream[F,O]): Stream[F,O] =
     Stream.mk { StreamCore.scope { s.get } }
