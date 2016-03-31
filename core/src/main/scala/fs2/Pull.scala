@@ -5,7 +5,8 @@ import Pull._
 
 class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Either[Throwable,R]]]) extends PullOps[F,O,R] {
 
-  def run: Stream[F,O] = Stream.mk { StreamCore.scope {
+  private
+  def run_(asStep: Boolean): Stream[F,O] = Stream.mk { val s = {
     type G[x] = StreamCore[F,O]; type Out = Option[Either[Throwable,R]]
     get.fold[P[F,O]#f,G,Out](
       StreamCore.suspend,
@@ -20,8 +21,14 @@ class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Either[Throwa
         case Right((r,g)) => StreamCore.Try(g(r))
       }}
     )(Sub1.sub1[P[F,O]#f], implicitly[RealSupertype[Out,Out]])
-  }}
+  }; if (asStep) s else StreamCore.scope(s) }
 
+
+  def run: Stream[F,O] = run_(false)
+
+  /** Run this `Pull`, but don't cleanup any resources acquired. */
+  private[fs2]
+  def runAsStep: Stream[F,O] = run_(true)
 }
 
 object Pull extends Pulls[Pull] with PullDerived with pull1 {

@@ -4,16 +4,22 @@ import fs2.util.Free
 import fs2.util.~>
 
 /**
-Laws:
+Laws (using infix syntax):
 
 `append` forms a monoid in conjunction with `empty`:
 
-  * `append(empty, p) == p` and `append(p, empty) == p`.
-  * `append(append(p1,p2), p3) == append(p1, append(p2,p3))`
+  * `empty append p == p` and `p append empty == p`.
+  * `(p1 append p2) append p3 == p1 append (p2 append p3)`
 
-`fail` is caught by `onError`:
+And `push` is consistent with using `append` to prepend a single chunk:
 
-  * `onError(fail(e))(f) == f(e)`
+  * `push(c)(s) == chunk(c) append s`
+
+`fail` propagates until being caught by `onError`:
+
+  * `fail(e) onError h == h(e)`
+  * `fail(e) append s == fail(e)`
+  * `fail(e) flatMap f == fail(e)`
 
 `Stream` forms a monad with `emit` and `flatMap`:
 
@@ -25,9 +31,8 @@ Laws:
 
 The monad is the list-style sequencing monad:
 
-  * `append(a, b) flatMap f == append(a flatMap f, b flatMap f)`
+  * `(a append b) flatMap f == (a flatMap f) append (b flatMap f)`
   * `empty flatMap f == empty`
-
 */
 trait Streams[Stream[+_[_],+_]] { self =>
 
@@ -70,6 +75,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
   type AsyncStep1[F[_],A] = Async.Future[F, Pull[F, Nothing, Step[Option[A], Handle[F,A]]]]
 
   def push[F[_],A](h: Handle[F,A])(c: Chunk[A]): Handle[F,A]
+  def cons[F[_],A](h: Stream[F,A])(c: Chunk[A]): Stream[F,A]
 
   def await[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]]
 

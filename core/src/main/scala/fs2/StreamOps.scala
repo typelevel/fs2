@@ -23,6 +23,14 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def append[F2[_],B>:A](p2: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     Stream.append(Sub1.substStream(self), p2)
 
+  /** Prepend a single chunk onto the front of this stream. */
+  def cons[A2>:A](c: Chunk[A2])(implicit T: RealSupertype[A,A2]): Stream[F,A2] =
+    Stream.cons[F,A2](self)(c)
+
+  /** Prepend a single value onto the front of this stream. */
+  def cons1[A2>:A](a: A2)(implicit T: RealSupertype[A,A2]): Stream[F,A2] =
+    cons(Chunk.singleton(a))
+
   def covary[F2[_]](implicit S: Sub1[F,F2]): Stream[F2,A] =
     Sub1.substStream(self)
 

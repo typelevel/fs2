@@ -40,6 +40,18 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
 
   def uncons: Stream[F, Option[Step[Chunk[O], Stream[F,O]]]] =
     Stream.mk { get.uncons.map(_ map { case Step(hd,tl) => Step(hd, Stream.mk(tl)) }) }
+
+  def uncons1: Stream[F, Option[Step[O,Stream[F,O]]]] =
+    Stream.mk {
+      def go(s: StreamCore[F,O]): StreamCore[F,Option[Step[O,Stream[F,O]]]] = s.uncons.flatMap {
+        case None => StreamCore.emit(None)
+        case Some(Step(hd,tl)) => hd.uncons match {
+          case Some((hc,tc)) => StreamCore.emit(Some(Step(hc, Stream.mk(tl).cons(tc))))
+          case None => go(tl)
+        }
+      }
+      go(get)
+    }
 }
 
 object Stream extends Streams[Stream] with StreamDerived {
@@ -95,8 +107,12 @@ object Stream extends Streams[Stream] with StreamDerived {
   def onError[F[_],O](s: Stream[F,O])(h: Throwable => Stream[F,O]): Stream[F,O] =
     Stream.mk { s.get onError (e => h(e).get) }
 
-  def open[F[_],W](s: Stream[F,W]) =
+  def open[F[_],O](s: Stream[F,O]) =
     Pull.pure(new Handle(List(), s))
+
+  def cons[F[_],O](h: Stream[F,O])(c: Chunk[O]) =
+    if (c.isEmpty) h
+    else Stream.mk { h.get.pushEmit(c) }
 
   def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) =
     if (c.isEmpty) h

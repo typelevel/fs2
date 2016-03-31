@@ -4,11 +4,13 @@ import fs2.internal.Resources
 import fs2.util.{Catenable,Eq,Free,Sub1,~>,RealSupertype}
 import StreamCore.{Env,NT,Stack,Token}
 
+private[fs2]
 sealed trait StreamCore[F[_],O] { self =>
   type O0
 
-  private[fs2]
   def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]]
+  def pushEmit(c: Chunk[O]): StreamCore[F,O] = StreamCore.append(StreamCore.chunk(c), self)
+
   def render: String
 
   final override def toString = render
@@ -16,12 +18,15 @@ sealed trait StreamCore[F[_],O] { self =>
   def attempt: StreamCore[F,Either[Throwable,O]] =
     self.map(a => Right(a): Either[Throwable,O]).onError(e => StreamCore.emit(Left(e)))
 
-  def translate[G[_]](f: NT[F,G]): StreamCore[G,O] = new StreamCore[G,O] {
-    type O0 = self.O0
-    def push[G2[_],O2](u: NT[G,G2], stack: Stack[G2,O,O2]): Scope[G2,Stack[G2,O0,O2]] =
-      self.push(f andThen u, stack)
-    def render = s"$self.translate($f)"
-  }
+  def translate[G[_]](f: NT[F,G]): StreamCore[G,O] =
+    f.same.fold(sub => Sub1.substStreamCore(self)(sub), f => {
+      new StreamCore[G,O] {
+        type O0 = self.O0
+        def push[G2[_],O2](u: NT[G,G2], stack: Stack[G2,O,O2]): Scope[G2,Stack[G2,O0,O2]] =
+          self.push(NT.T(f) andThen u, stack)
+        def render = s"$self.translate($f)"
+      }
+    })
 
   // proof that this is sound - `translate`
   def covary[F2[_]](implicit S: Sub1[F,F2]): StreamCore[F2,O] =

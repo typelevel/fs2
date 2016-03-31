@@ -107,6 +107,7 @@ object Async {
       def force = self.force flatMap { a => p as a }
     }
     def force: Pull[F,Nothing,A]
+    def stream: Stream[F,A] = force.flatMap(a => Pull.output1(a)).runAsStep
     def map[B](f: A => B)(implicit F: Async[F]): Future[F,B] = new Future[F,B] {
       def get = F.map(self.get)(f)
       def cancellableGet = F.map(self.cancellableGet) { case (a,cancelA) => (F.map(a)(f), cancelA) }
