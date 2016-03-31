@@ -119,8 +119,14 @@ trait StreamOps[+F[_],+A] extends Process1Ops[F,A] /* with TeeOps[F,A] with WyeO
   def run:Free[F,Unit] =
     Stream.runFold(self,())((_,_) => ())
 
+  def runTrace(t: Trace):Free[F,Unit] =
+    Stream.runFoldTrace(t)(self,())((_,_) => ())
+
   def runFold[B](z: B)(f: (B,A) => B): Free[F,B] =
     Stream.runFold(self, z)(f)
+
+  def runFoldTrace[B](t: Trace)(z: B)(f: (B,A) => B): Free[F,B] =
+    Stream.runFoldTrace(t)(self, z)(f)
 
   def runLog: Free[F,Vector[A]] =
     Stream.runFold(self, Vector.empty[A])(_ :+ _)
