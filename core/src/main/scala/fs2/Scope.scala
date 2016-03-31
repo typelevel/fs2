@@ -19,6 +19,8 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
     })
   }}
 
+  def attempt: Scope[F,Either[Throwable,O]] = Scope { get.attempt }
+
   def bindEnv[F2[_]](env: Env[F2])(implicit S: Sub1[F,F2]): Free[F2,O] = Free.suspend {
     type FO[x] = Free[F2,x]
     val B = new Free.B[R[F]#f,FO,O] { def f[x] = r => r match {

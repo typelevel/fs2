@@ -20,12 +20,16 @@ sealed trait Free[+F[_],+A] {
     })
   }
 
-  def attempt: Free[F,Either[Throwable,A]] = {
+  def attempt: Free[F,Either[Throwable,A]] = attempt_(true)
+  def attemptStrict: Free[F,Either[Throwable,A]] = attempt_(false)
+
+  private
+  def attempt_(trampoline: Boolean): Free[F,Either[Throwable,A]] = {
     type G[x] = Free[F,Either[Throwable,x]]
-    fold[F,G,A](x => x, a => Free.pure(Right(a)), e => Free.pure(Left(e)),
+    fold[F,G,A](if (trampoline) Free.suspend else x => x, a => Free.pure(Right(a)), e => Free.pure(Left(e)),
       new B[F,G,A] { def f[x] = r =>
         r.fold({ case (fr,g) => Free.attemptEval(fr) flatMap g },
-               { case (r,g) => g(r) })
+               { case (r,g) => try g(r) catch { case t: Throwable => Free.pure(Left(t)) } })
       }
     )
   }
