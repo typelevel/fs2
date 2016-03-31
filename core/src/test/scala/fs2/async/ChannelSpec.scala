@@ -26,9 +26,9 @@ object ChannelSpec extends Properties("async.channel") {
     val s = Stream.constant(1)
     val s2 = s.covary[Task].flatMap { i => Stream.emit(i).onFinalize(Task.delay { println(s"finalizing $i")}) }
     val q = async.unboundedQueue[Task,Int].run
-    q.enqueue1(0).run
+    // q.enqueue1(0).run
     // run { s2 }
-    run { (trace("s2")(s2) merge trace("q")(q.dequeue)).take(5) }
+    run { (trace("s2")(s2) merge trace("q")(q.dequeue)).take(10) }
     true
   }
 }
