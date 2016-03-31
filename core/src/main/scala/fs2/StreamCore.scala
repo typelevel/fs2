@@ -77,15 +77,15 @@ sealed trait StreamCore[F[_],O] { self =>
       case Some(Right(s)) => StreamCore.emit(Some(s))
     }
 
-  def fetchAsync(implicit F: Async[F]): StreamCore[F, Async.Future[F,StreamCore[F,O]]] =
+  def fetchAsync(implicit F: Async[F]): Scope[F, Async.Future[F,StreamCore[F,O]]] =
     unconsAsync map { f => f map {
       case None => StreamCore.empty
       case Some(Left(err)) => StreamCore.fail(err)
       case Some(Right(Step(hd, tl))) => StreamCore.append(StreamCore.chunk(hd), tl)
     }}
 
-  def unconsAsync(implicit F: Async[F]): StreamCore[F,Async.Future[F,Option[Either[Throwable, Step[Chunk[O], StreamCore[F,O]]]]]] =
-  StreamCore.eval(F.ref[Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]]]).flatMap { ref =>
+  def unconsAsync(implicit F: Async[F]): Scope[F,Async.Future[F,Option[Either[Throwable, Step[Chunk[O], StreamCore[F,O]]]]]] =
+  Scope.eval(F.ref[Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]]]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.empty[Token,Free[F,Either[Throwable,Unit]]]
     val interrupt = new java.util.concurrent.atomic.AtomicBoolean(false)
@@ -103,8 +103,8 @@ sealed trait StreamCore[F[_],O] { self =>
     def tweakEnv: Scope[F,Unit] =
       Scope.startAcquire(token) flatMap { _ => Scope.finishAcquire(token, rootCleanup) }
     val s: F[Unit] = F.set(ref) { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
-    StreamCore.evalScope(tweakEnv).flatMap { _ =>
-      StreamCore.eval(s) map { _ =>
+    tweakEnv.flatMap { _ =>
+      Scope.eval(s) map { _ =>
         F.read(ref).appendOnForce { Pull.suspend {
           // Important - if `resources.isEmpty`, we allocated a resource, but it turned
           // out that our step didn't acquire new resources. This is quite common.
@@ -267,12 +267,12 @@ object StreamCore {
   def acquire[F[_],R](r: F[R], cleanup: R => Free[F,Unit]): StreamCore[F,R] = StreamCore.suspend {
     val token = new Token()
     StreamCore.evalScope(Scope.startAcquire(token)) flatMap { _ =>
-      StreamCore.eval(r)
-             .onError { e => StreamCore.evalScope(Scope.cancelAcquire(token)) flatMap { _ => StreamCore.fail(e) }}
-             .flatMap { r =>
-               StreamCore.evalScope(Scope.finishAcquire(token, cleanup(r).attempt))
-               .flatMap { _ => StreamCore.emit(r).onComplete(StreamCore.release(List(token)).drain) }
-             }
+      StreamCore.attemptEval(r).flatMap {
+        case Left(e) => StreamCore.evalScope(Scope.cancelAcquire(token)) flatMap { _ => StreamCore.fail(e) }
+        case Right(r) =>
+          StreamCore.evalScope(Scope.finishAcquire(token, cleanup(r).attempt))
+                    .flatMap { _ => StreamCore.emit(r).onComplete(StreamCore.release(List(token)).drain) }
+      }
     }
   }
 

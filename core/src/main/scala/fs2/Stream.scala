@@ -13,7 +13,7 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
   def get[F2[_],O2>:O](implicit S: Sub1[F,F2], T: RealSupertype[O,O2]): StreamCore[F2,O2]
 
   final def fetchAsync[F2[_],O2>:O](implicit F2: Async[F2], S: Sub1[F,F2], T: RealSupertype[O,O2]): Stream[F2, Future[F2,Stream[F2,O2]]] =
-    Stream.mk { get[F2,O2].fetchAsync.map(_ map (Stream.mk(_))) }
+    Stream.mk { StreamCore.evalScope(get[F2,O2].fetchAsync).map(_ map (Stream.mk(_))) }
 
   override final def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F,O2] =
     Stream.mk { get mapChunks f }
