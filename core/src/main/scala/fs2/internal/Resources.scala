@@ -43,10 +43,10 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: S
    * Returns `None` if any resources are in process of being acquired.
    */
   @annotation.tailrec
-  final def closeAll: Option[List[R]] = tokens.access match {
+  final def closeAll: Option[List[(T,R)]] = tokens.access match {
     case ((open,m),update) =>
       val totallyDone = m.values.forall(_ != None)
-      def rs = m.values.collect { case Some(r) => r }.toList
+      def rs = m.orderedEntries.collect { case (t,Some(r)) => (t,r) }.toList
       def m2 = if (!totallyDone) m else LinkedMap.empty[T,Option[R]]
       if (!update((if (totallyDone) Closed else Closing, m2))) closeAll
       else if (totallyDone) Some(rs)

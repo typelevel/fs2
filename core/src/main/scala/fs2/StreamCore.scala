@@ -114,11 +114,11 @@ sealed trait StreamCore[F[_],O] { self =>
         Free.eval(F.get(ref)) flatMap { _ =>
           resources.closeAll match {
             case None => Free.pure(Right(()))
-            case Some(resources) => StreamCore.runCleanup(resources)
+            case Some(resources) => StreamCore.runCleanup(resources.map(_._2))
           }
         }
         case Some(resources) =>
-          StreamCore.runCleanup(resources)
+          StreamCore.runCleanup(resources.map(_._2))
     }}
     def tweakEnv: Scope[F,Unit] =
       Scope.startAcquire(token) flatMap { _ => Scope.finishAcquire(token, rootCleanup) }
@@ -126,12 +126,15 @@ sealed trait StreamCore[F[_],O] { self =>
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
         F.read(ref).appendOnForce { Scope.suspend {
-          // Important - if `resources.isEmpty`, we allocated a resource, but it turned
-          // out that our step didn't acquire new resources. This is quite common.
-          // Releasing the token is therefore a noop, but is important for memory usage as
-          // it prevents noop finalizers from accumulating in the `runFold` interpreter state.
-          if (resources.isEmpty) Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }
-          else Scope.pure(())
+          // Important - we copy any locally acquired resources to our parent and remove the
+          // placeholder root token, which was only needed if the parent terminated early, before the future
+          // was forced
+          val removeRoot = Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }
+          (resources.closeAll match {
+            case None => Scope.fail(new IllegalStateException("FS2 bug: resources still being acquired"))
+            case Some(rs) => removeRoot flatMap { _ => Scope.traverse(rs) {
+              case (token,r) => Scope.acquire(token,r) }}
+          }) flatMap { (rs: List[Unit]) => Scope.pure(()) }
         }}
       }
     }
@@ -457,7 +460,7 @@ object StreamCore {
   private
   def runCleanup[F[_]](l: Resources[Token,Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] =
     l.closeAll match {
-      case Some(l) => runCleanup(l)
+      case Some(l) => runCleanup(l.map(_._2))
       case None => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
     }
 

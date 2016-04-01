@@ -37,7 +37,6 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
           case None =>
             g(Left(new RuntimeException("attempting to release resources still in process of being acquired")))
           case Some((rs,leftovers)) =>
-            println(s"!!!! releasing: ${env.tracked.name} $tokens $rs")
             StreamCore.runCleanup(rs) flatMap { e => g(Right(e)) map { case (ts,o) => (leftovers ++ ts, o) } }
         }
         case StreamCore.RF.StartAcquire(token) =>
@@ -80,6 +79,11 @@ object Scope {
     Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.StartAcquire(token)))
   def finishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]): Scope[F,Unit] =
     Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.FinishAcquire(token, cleanup)))
+  def acquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]): Scope[F,Unit] =
+    startAcquire(token) flatMap { _ => finishAcquire(token, cleanup) }
   def cancelAcquire[F[_]](token: Token): Scope[F,Unit] =
     Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.CancelAcquire(token)))
+
+  def traverse[F[_],A,B](l: List[A])(f: A => Scope[F,B]): Scope[F,List[B]] =
+    l.foldRight(Scope.pure[F,List[B]](List()))((hd,tl) => f(hd) flatMap { b => tl map (b :: _) })
 }

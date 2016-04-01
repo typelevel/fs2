@@ -44,6 +44,8 @@ private[fs2] class LinkedMap[K,+V](
 
   def unorderedEntries: Iterable[(K,V)] = entries.mapValues(_._1)
 
+  def orderedEntries: Iterable[(K,V)] = keys zip values
+
   /** The keys of this map, in the order they were added. */
   def keys: Iterable[K] = insertionOrder.values
 
