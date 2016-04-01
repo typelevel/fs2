@@ -22,14 +22,14 @@ object StreamPerformanceSpec extends Properties("StreamPerformance") {
     Chunk.seq((0 until N) map emit).foldRight(empty: Stream[Pure,Int])(_ ++ _)
   )
 
-  property("left-associated ++") = protect { Ns.forall { N =>
-  logTime("left-associated ++ ("+N.toString+")") {
+  property("left-associated ++") = secure { Ns.forall { N =>
+   logTime("left-associated ++ ("+N.toString+")") {
    (1 until N).map(emit).foldLeft(emit(0))(_ ++ _) ===
    Vector.range(0,N)
   }}}
 
-  property("right-associated ++") = protect { Ns.forall { N =>
-  logTime("right-associated ++ ("+N.toString+")") {
+  property("right-associated ++") = secure { Ns.forall { N =>
+    logTime("right-associated ++ ("+N.toString+")") {
     Chunk.seq((0 until N).map(emit)).foldRight(empty: Stream[Pure,Int])(_ ++ _) ===
     Vector.range(0,N)
   }}}

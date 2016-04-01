@@ -3,7 +3,8 @@ package fs2
 import fs2.util.{RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
-private[fs2] trait StreamDerived { self: fs2.Stream.type =>
+private[fs2]
+trait StreamDerived { self: fs2.Stream.type =>
 
   // nb: methods are in alphabetical order
 
@@ -125,7 +126,10 @@ private[fs2] trait StreamDerived { self: fs2.Stream.type =>
   : Stream[F,C] =
     s.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.run
 
-  def terminated[F[_],A](p: Stream[F,A]): Stream[F,Option[A]] =
+  def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] =
+    emit(()) flatMap { _ => s }
+
+  def noneTerminate[F[_],A](p: Stream[F,A]): Stream[F,Option[A]] =
     p.map(Some(_)) ++ emit(None)
 
   /** Produce a (potentially infinite) stream from an unfold. */
