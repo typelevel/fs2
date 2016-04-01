@@ -60,6 +60,6 @@ object channel {
     diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain)) { wye.merge(_,_) }
 
   /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-  def observeAsync[F[_]:Async,A](s: Stream[F,A])(sink: Sink[F,A], maxQueued: Int): Stream[F,A] =
+  def observeAsync[F[_]:Async,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A]): Stream[F,A] =
     diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain)) { wye.merge(_,_) }
 }

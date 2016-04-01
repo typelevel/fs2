@@ -6,19 +6,26 @@ import fs2.util.Task
 // import fs2.Stream.Handle
 import org.scalacheck.Prop._
 import org.scalacheck._
-// import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicLong
 
 object ChannelSpec extends Properties("async.channel") {
 
-  //property("observe") = forAll { (s: PureStream[Int]) =>
-  //  println(run { s.get })
-  //  val sum = new AtomicLong(0)
-  //  val out = run {
-  //    channel.observeAsync(10)(s.get.covary[Task]) {
-  //      _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
-  //    }}
-  //  out.map(_.toLong).sum ?= sum.get
-  //}
+  property("observe/observeAsync") = forAll { (s: PureStream[Int]) =>
+    val sum = new AtomicLong(0)
+    val out = run {
+      channel.observe(s.get.covary[Task]) {
+        _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+      }
+    }
+    val ok1 = out.map(_.toLong).sum ?= sum.get
+    sum.set(0)
+    val out2 = run {
+      channel.observeAsync(s.get.covary[Task], maxQueued = 10) {
+        _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+      }
+    }
+    ok1 && (out2.map(_.toLong).sum ?= sum.get)
+  }
 
   def trace[F[_],A](msg: String)(s: Stream[F,A]) = s mapChunks { a => println(msg + ": " + a.toList); a }
 
