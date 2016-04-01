@@ -55,6 +55,7 @@ sealed trait Free[+F[_],+A] {
   @annotation.tailrec
   private[fs2] final def step: Free[F,A] = this match {
     case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g)).step
+    case Bind(Pure(x), f) => f(x).step
     case _ => this
   }
 }

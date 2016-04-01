@@ -162,19 +162,19 @@ object StreamCore {
   }
 
   sealed trait NT[-F[_],+G[_]] {
-    def same: Either[Sub1[F,G], F ~> G]
+    val same: Either[Sub1[F,G], F ~> G]
     def andThen[H[_]](f: NT[G,H]): NT[F,H]
     def apply[A](f: F[A]): G[A]
   }
 
   object NT {
     case class Id[F[_]]() extends NT[F,F] {
-      def same = Left(Sub1.sub1[F])
+      val same = Left(Sub1.sub1[F])
       def andThen[H[_]](f: NT[F,H]): NT[F,H] = f
       def apply[A](f: F[A]): F[A] = f
     }
     case class T[F[_],G[_]](u: F ~> G) extends NT[F,G] {
-      def same = Right(u)
+      val same = Right(u)
       def apply[A](f: F[A]): G[A] = u(f)
       def andThen[H[_]](f: NT[G,H]): NT[F,H] = f.same.fold(
         f => T(u andThen f.uf1),
@@ -182,17 +182,32 @@ object StreamCore {
       )
     }
     def convert[F[_],G[_],O](s: StreamCore[F,O])(u: NT[F,G]): StreamCore[G,O] =
-      u.same.fold(sub => Sub1.substStreamCore(s)(sub), u => s.translate(NT.T(u)))
+      u.same match {
+        case Left(sub) => Sub1.substStreamCore(s)(sub)
+        case Right(u) => s.translate(NT.T(u))
+      }
     def convert[F[_],G[_],O1,O2](f: O1 => StreamCore[F,O2])(u: NT[F,G]): O1 => StreamCore[G,O2] =
-      u.same.fold(sub => Sub1.substStreamCoreF(f)(sub), u => o1 => f(o1).translate(NT.T(u)))
+      u.same match {
+        case Left(sub) => Sub1.substStreamCoreF(f)(sub)
+        case Right(u) => o1 => f(o1).translate(NT.T(u))
+      }
     def convert[F[_],G[_],O](s: Segment[F,O])(u: NT[F,G]): Segment[G,O] =
-      u.same.fold(sub => Sub1.substSegment(s)(sub), u => s.translate(NT.T(u)))
+      u.same match {
+        case Left(sub) => Sub1.substSegment(s)(sub)
+        case Right(u) => s.translate(NT.T(u))
+      }
     def convert[F[_],G[_],O](s: Catenable[Segment[F,O]])(u: NT[F,G]): Catenable[Segment[G,O]] = {
       type f[g[_],x] = Catenable[Segment[g,x]]
-      u.same.fold(sub => Sub1.subst[f,F,G,O](s)(sub), _ => s.map(_ translate u))
+      u.same match {
+        case Left(sub) => Sub1.subst[f,F,G,O](s)(sub)
+        case Right(_) => s.map(_ translate u)
+      }
     }
     def convert[F[_],G[_],O](s: Scope[F,O])(u: NT[F,G]): Scope[G,O] =
-      u.same.fold(Sub1.subst[Scope,F,G,O](s)(_), s translate _)
+      u.same match {
+        case Left(sub) => Sub1.subst[Scope,F,G,O](s)(sub)
+        case Right(u) => s translate u
+      }
   }
 
   case object Interrupted extends Exception { override def fillInStackTrace = this }
@@ -333,11 +348,14 @@ object StreamCore {
   sealed trait Segment[F[_],O1] {
     import Segment._
 
-    def translate[G[_]](u: NT[F,G]): Segment[G,O1] = this match {
-      case Append(s) => Append(s translate u)
-      case Handler(h) => Handler(NT.convert(h)(u))
-      case Emit(c) => Emit(c)
-      case Fail(e) => Fail(e)
+    def translate[G[_]](u: NT[F,G]): Segment[G,O1] = u.same match {
+      case Left(sub) => Sub1.substSegment(this)(sub)
+      case Right(uu) => this match {
+        case Append(s) => Append(s translate u)
+        case Handler(h) => Handler(NT.convert(h)(u))
+        case Emit(c) => Emit(c)
+        case Fail(e) => Fail(e)
+      }
     }
 
     def mapChunks[O2](f: Chunk[O1] => Chunk[O2]): Segment[F, O2] = this match {
@@ -451,6 +469,4 @@ object StreamCore {
       (tl,hd) => hd flatMap { _.fold(e => tl flatMap { _ => Free.pure(Left(e)) }, _ => tl) }
     )
   }
-
 }
-
