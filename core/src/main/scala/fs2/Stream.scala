@@ -37,10 +37,13 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
     implicit S: Sub1[F,F2], F2: Async[F2], T: RealSupertype[O,O2])
     : Pull[F2,Nothing,Future[F2,Pull[F2,Nothing,Step[Chunk[O2], Handle[F2,O2]]]]]
     =
-    Pull.evalScope { get.unconsAsync.map { _ map {
-      case None => Pull.done
-      case Some(Left(err)) => Pull.fail(err)
-      case Some(Right(Step(hd,tl))) => Pull.pure(Step(hd, new Handle(List(), Stream.mk(tl))))
+    Pull.evalScope { get.unconsAsync.map { _ map { case (leftovers,o) =>
+      val inner: Pull[F2,Nothing,Step[Chunk[O2], Handle[F2,O2]]] = o match {
+        case None => Pull.done
+        case Some(Left(err)) => Pull.fail(err)
+        case Some(Right(Step(hd,tl))) => Pull.pure(Step(hd, new Handle(List(), Stream.mk(tl))))
+      }
+      if (leftovers.isEmpty) inner else Pull.release(leftovers) flatMap { _ => inner }
     }}}
 
   def uncons: Stream[F, Option[Step[Chunk[O], Stream[F,O]]]] =
