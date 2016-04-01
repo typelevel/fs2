@@ -14,7 +14,8 @@ import Resources._
  *
  * Once `Closed` or `Closing`, there is no way to reopen a `Resources`.
  */
-private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]) {
+private[fs2]
+class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: String = "Resources") {
 
   def isOpen: Boolean = tokens.get._1 == Open
   def isClosed: Boolean = tokens.get._1 == Closed
@@ -26,21 +27,20 @@ private[fs2] class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])]
   /** Return the list of tokens allocated since the given snapshot, newest first. */
   def newSince(snapshot: Set[T]): List[T] =
     tokens.get._2.keys.toList.filter(k => !snapshot(k))
-  def release(ts: List[T]): Option[List[R]] = tokens.access match {
+  def release(ts: List[T]): Option[(List[R],List[T])] = tokens.access match {
     case ((open,m), update) =>
       if (ts.forall(t => (m.get(t): Option[Option[R]]) != Some(None))) {
         val rs = ts.flatMap(t => m.get(t).toList.flatten)
         val m2 = m.removeKeys(ts)
-        if (!update(open -> m2)) release(ts) else Some(rs)
+        if (!update(open -> m2)) release(ts) else Some(rs -> ts.filter(t => m.get(t).isEmpty))
       }
       else None
   }
 
   /**
    * Close this `Resources` and return all acquired resources.
-   * The `Boolean` is `false` if there are any outstanding
-   * resources in the `Acquiring` state. After finishing,
-   * no calls to `startAcquire` will succeed.
+   * After finishing, no calls to `startAcquire` will succeed.
+   * Returns `None` if any resources are in process of being acquired.
    */
   @annotation.tailrec
   final def closeAll: Option[List[R]] = tokens.access match {
@@ -129,6 +129,9 @@ private[fs2] object Resources {
 
   def empty[T,R]: Resources[T,R] =
     new Resources[T,R](Ref(Open -> LinkedMap.empty))
+
+  def emptyNamed[T,R](name: String): Resources[T,R] =
+    new Resources[T,R](Ref(Open -> LinkedMap.empty), name)
 
   trait Status
   case object Closed extends Status

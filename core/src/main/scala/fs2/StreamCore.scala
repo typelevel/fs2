@@ -71,7 +71,9 @@ sealed trait StreamCore[F[_],O] { self =>
     runFoldTrace(Trace.Off)(z)(f)
 
   def runFoldTrace[O2](t: Trace)(z: O2)(f: (O2,O) => O2): Free[F,O2] =
-    runFoldScopeTrace(t)(z)(f).bindEnv(Env(Resources.empty[Token,Free[F,Either[Throwable,Unit]]], () => false))
+    runFoldScopeTrace(t)(z)(f)
+      .bindEnv(Env(Resources.empty[Token,Free[F,Either[Throwable,Unit]]], () => false))
+      .map(_._2)
 
   def runFoldScope[O2](z: O2)(f: (O2,O) => O2): Scope[F,O2] =
     runFoldScopeTrace(Trace.Off)(z)(f)
@@ -92,16 +94,20 @@ sealed trait StreamCore[F[_],O] { self =>
     }
 
   def fetchAsync(implicit F: Async[F]): Scope[F, Async.Future[F,StreamCore[F,O]]] =
-    unconsAsync map { f => f map {
-      case None => StreamCore.empty
-      case Some(Left(err)) => StreamCore.fail(err)
-      case Some(Right(Step(hd, tl))) => StreamCore.append(StreamCore.chunk(hd), tl)
+    unconsAsync map { f => f map { case (leftovers,o) =>
+      val inner: StreamCore[F,O] = o match {
+        case None => StreamCore.empty
+        case Some(Left(err)) => StreamCore.fail(err)
+        case Some(Right(Step(hd, tl))) => StreamCore.append(StreamCore.chunk(hd), tl)
+      }
+      if (leftovers.isEmpty) inner else StreamCore.release(leftovers) flatMap { _ => inner }
     }}
 
-  def unconsAsync(implicit F: Async[F]): Scope[F,Async.Future[F,Option[Either[Throwable, Step[Chunk[O], StreamCore[F,O]]]]]] =
-  Scope.eval(F.ref[Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]]]).flatMap { ref =>
+  def unconsAsync(implicit F: Async[F])
+  : Scope[F,Async.Future[F, (List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]]
+  = Scope.eval(F.ref[(List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]).flatMap { ref =>
     val token = new Token()
-    val resources = Resources.empty[Token,Free[F,Either[Throwable,Unit]]]
+    val resources = Resources.emptyNamed[Token,Free[F,Either[Throwable,Unit]]]("unconsAsync")
     val interrupt = new java.util.concurrent.atomic.AtomicBoolean(false)
     val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll match {
       case None =>

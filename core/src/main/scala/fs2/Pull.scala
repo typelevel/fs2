@@ -1,7 +1,8 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1}
 import Pull._
+import StreamCore.Token
+import fs2.util.{Free,RealSupertype,Sub1}
 
 class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Either[Throwable,R]]]) extends PullOps[F,O,R] {
 
@@ -84,6 +85,10 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
 
   def outputs[F[_],O](s: Stream[F,O]): Pull[F,O,Unit] =
     new Pull(Free.eval[P[F,O]#f,Unit](PF.Output(s.get)).map(_ => Some(Right(()))))
+
+  private[fs2]
+  def release(ts: List[Token]): Pull[Nothing,Nothing,Unit] =
+    outputs(Stream.mk(StreamCore.release(ts).drain))
 
   def pure[R](r: R): Pull[Nothing,Nothing,R] =
     new Pull(Free.pure(Some(Right(r))))

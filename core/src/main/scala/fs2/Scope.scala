@@ -24,8 +24,8 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
 
   def attempt: Scope[F,Either[Throwable,O]] = Scope { get.attempt }
 
-  def bindEnv[F2[_]](env: Env[F2])(implicit S: Sub1[F,F2]): Free[F2,O] = Free.suspend {
-    type FO[x] = Free[F2,x]
+  def bindEnv[F2[_]](env: Env[F2])(implicit S: Sub1[F,F2]): Free[F2,(List[Token],O)] = Free.suspend {
+    type FO[x] = Free[F2,(List[Token],x)]
     val B = new Free.B[R[F]#f,FO,O] { def f[x] = r => r match {
       case Right((r,g)) => g(r)
       case Left((i,g)) => i match {
@@ -34,10 +34,11 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
         case StreamCore.RF.Snapshot => g(Right(env.tracked.snapshot))
         case StreamCore.RF.NewSince(tokens) => g(Right(env.tracked.newSince(tokens)))
         case StreamCore.RF.Release(tokens) => env.tracked.release(tokens) match {
-          // right way to handle this case - update the tokens map to run the finalizers
-          // for this group when finishing the last acquire
-          case None => sys.error("todo: release tokens while resources are being acquired")
-          case Some(rs) => StreamCore.runCleanup(rs) flatMap { e => g(Right(e)) }
+          case None =>
+            g(Left(new RuntimeException("attempting to release resources still in process of being acquired")))
+          case Some((rs,leftovers)) =>
+            println(s"!!!! releasing: ${env.tracked.name} $tokens $rs")
+            StreamCore.runCleanup(rs) flatMap { e => g(Right(e)) map { case (ts,o) => (leftovers ++ ts, o) } }
         }
         case StreamCore.RF.StartAcquire(token) =>
           env.tracked.startAcquire(token)
@@ -50,7 +51,11 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
           g(Right(()))
       }
     }}
-    get.fold[R[F]#f,FO,O](Free.suspend, Free.pure, Free.fail, B)(Sub1.sub1[R[F]#f],implicitly[RealSupertype[O,O]])
+    get.fold[R[F]#f,FO,O](
+      Free.suspend,
+      r => Free.pure((Nil,r)),
+      Free.fail,
+      B)(Sub1.sub1[R[F]#f],implicitly[RealSupertype[O,O]])
   }
 }
 
