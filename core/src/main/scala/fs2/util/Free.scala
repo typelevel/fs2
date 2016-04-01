@@ -52,10 +52,14 @@ sealed trait Free[+F[_],+A] {
   def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
     (this: Free[F2,A2]).runTranslate(UF1.id)
 
+  private[fs2] final def step: Free[F,A] = _step(0)
+
   @annotation.tailrec
-  private[fs2] final def step: Free[F,A] = this match {
-    case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g)).step
-    /* case Bind(Pure(x), f) => f(x).step  TODO - this case improves performance 2x but causes hanging await.merge test to hang */
+  private[fs2] final def _step(iteration: Int): Free[F,A] = this match {
+    case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g))._step(0)
+    case Bind(Pure(x), f) =>
+      // NB: Performance trick - eagerly step through bind/pure streams, but yield after so many iterations
+      if (iteration < 10) f(x)._step(iteration + 1) else this
     case _ => this
   }
 }
