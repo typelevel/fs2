@@ -48,7 +48,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   // evaluating effects
 
-  def eval[F[_],A](fa: F[A]): Stream[F,A]
+  def attemptEval[F[_],A](fa: F[A]): Stream[F,Either[Throwable,A]]
 
   // translating effects
 

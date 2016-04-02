@@ -103,8 +103,8 @@ object Stream extends Streams[Stream] with StreamDerived {
   def chunk[F[_], A](as: Chunk[A]): Stream[F,A] =
     Stream.mk { StreamCore.chunk[F,A](as) }
 
-  def eval[F[_], A](fa: F[A]): Stream[F,A] =
-    Stream.mk { StreamCore.eval(fa) }
+  def attemptEval[F[_], A](fa: F[A]): Stream[F,Either[Throwable, A]] =
+    Stream.mk { StreamCore.attemptEval(fa) }
 
   def evalScope[F[_], A](fa: Scope[F,A]): Stream[F,A] =
     Stream.mk { StreamCore.evalScope(fa) }

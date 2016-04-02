@@ -59,12 +59,22 @@ sealed trait Free[+F[_],+A] {
     case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g))._step(0)
     case Bind(Pure(x), f) =>
       // NB: Performance trick - eagerly step through bind/pure streams, but yield after so many iterations
-      if (iteration < 10) f(x)._step(iteration + 1) else this
+      if (iteration < Free.eagerBindStepDepth) f(x)._step(iteration + 1) else this
     case _ => this
   }
 }
 
 object Free {
+  private val EagerBindStepDepthPropKey = "FreeEagerBindStepDepth"
+  private val EagerBindStepDepthDefault = 250
+  val eagerBindStepDepth = sys.props.get(EagerBindStepDepthPropKey) match {
+    case Some(value) => try value.toInt catch {
+      case _: NumberFormatException =>
+        println(s"Warning: The system property $EagerBindStepDepthPropKey is set to a illegal value ($value) - continuing with the default ($EagerBindStepDepthDefault).")
+        EagerBindStepDepthDefault
+    }
+    case None => EagerBindStepDepthDefault
+  }
 
   trait B[F[_],G[_],A] {
     def f[x]: Either[(F[x], Either[Throwable,x] => G[A]), (x, x => G[A])] => G[A]
