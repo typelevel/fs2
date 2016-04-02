@@ -119,4 +119,10 @@ object StreamSpec extends Properties("Stream") {
     Stream.unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
       .runLog.run.run.toList == List.range(10, 0, -1)
   }
+
+  property("translate stack safety") = protect {
+    import fs2.util.{~>}
+    Stream.repeatEval(Task.delay(0)).translate(new (Task ~> Task) { def apply[X](x: Task[X]) = Task.suspend(x) }).take(1000000).run.run.run
+    true
+  }
 }

@@ -180,7 +180,7 @@ object StreamCore {
       val same = Right(u)
       def apply[A](f: F[A]): G[A] = u(f)
       def andThen[H[_]](f: NT[G,H]): NT[F,H] = f.same.fold(
-        f => T(u andThen f.uf1),
+        f => T(Sub1.substUF1(u)(f)),
         f => T(u andThen f)
       )
     }
