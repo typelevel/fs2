@@ -37,7 +37,8 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
           case None =>
             g(Left(new RuntimeException("attempting to release resources still in process of being acquired")))
           case Some((rs,leftovers)) =>
-            StreamCore.runCleanup(rs) flatMap { e => g(Right(e)) map { case (ts,o) => (leftovers ++ ts, o) } }
+            if (leftovers.isEmpty) StreamCore.runCleanup(rs) flatMap { e => g(Right(e)) }
+            else StreamCore.runCleanup(rs) flatMap { e => g(Right(e)) map { case (ts,o) => (leftovers ++ ts, o) } }
         }
         case StreamCore.RF.StartAcquire(token) =>
           env.tracked.startAcquire(token)
