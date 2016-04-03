@@ -56,7 +56,9 @@ sealed trait Free[+F[_],+A] {
 
   @annotation.tailrec
   private[fs2] final def _step(iteration: Int): Free[F,A] = this match {
+    case Suspend(r) => r()._step(0)
     case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g))._step(0)
+    case Bind(Suspend(r), f) => (r() flatMap f)._step(0)
     case Bind(Pure(x), f) =>
       // NB: Performance trick - eagerly step through bind/pure streams, but yield after so many iterations
       if (iteration < Free.eagerBindStepDepth) f(x)._step(iteration + 1) else this
@@ -90,8 +92,7 @@ object Free {
     case Left(e) => fail(e)
     case Right(a) => pure(a)
   }
-  def suspend[F[_],A](fa: => Free[F,A]): Free[F,A] =
-    pure(()) flatMap { _ => fa }
+  def suspend[F[_],A](fa: => Free[F,A]): Free[F,A] = Suspend(() => fa)
 
   private[fs2] case class Fail(err: Throwable) extends Free[Nothing,Nothing] {
     def _runTranslate[G[_],A2>:Nothing](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
@@ -125,6 +126,14 @@ object Free {
       done: Either[Throwable,A] => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
       implicit S: Sub1[F,F2], T: RealSupertype[Either[Throwable,A],A2])
     : G[A2] = bound.f(Left((S(fa), (a: Either[Throwable,A]) => done(a))))
+  }
+  private[fs2] case class Suspend[+F[_],A](r: () => Free[F,A]) extends Free[F,A] {
+    def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] = r()._runTranslate(g)
+    def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G]): Trampoline[Unroll[A, G[Free[F,A]]]] = Trampoline.suspend { r()._unroll }
+    def _fold[F2[_],G[_],A2>:A](
+      suspend: (=> G[A2]) => G[A2],
+      done: A => G[A2], fail: Throwable => G[A2], bound: B[F2,G,A2])(
+      implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2] = r()._fold(suspend, done, fail, bound)
   }
   private[fs2] case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
     def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
