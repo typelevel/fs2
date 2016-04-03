@@ -45,6 +45,8 @@ trait StreamDerived { self: fs2.Stream.type =>
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] =
     flatMap(eval(fa)) { _ => empty }
 
+  def eval[F[_], A](fa: F[A]): Stream[F, A] = attemptEval(fa) flatMap { _ fold(fail, emit) }
+
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     flatMap(eval(f))(p => p)
 
