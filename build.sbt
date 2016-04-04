@@ -21,9 +21,9 @@ git.formattedShaVersion := {
   }
 }
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.11.8"
 
-crossScalaVersions := Seq("2.10.5", "2.11.7", "2.12.0-M2")
+crossScalaVersions := Seq("2.10.6", "2.11.8", "2.12.0-M3")
 
 scalacOptions ++= Seq(
   "-feature",
