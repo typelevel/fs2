@@ -1,3 +1,5 @@
+import com.typesafe.sbt.pgp.PgpKeys.publishSigned
+
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
 lazy val contributors = Seq(
@@ -110,6 +112,7 @@ lazy val root = project.in(file(".")).
   settings(
     publish := (),
     publishLocal := (),
+    publishSigned := (),
     publishArtifact := false
   ).
   aggregate(core, io, benchmark)
