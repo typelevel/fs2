@@ -3,7 +3,6 @@ package async
 
 import TestUtil._
 import fs2.util.Task
-import fs2.Stream.Handle
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck.Prop._
 import org.scalacheck._

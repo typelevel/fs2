@@ -1,7 +1,6 @@
 package fs2.async.mutable
 
 import fs2._
-import fs2.Async.Change
 
 import fs2.async.immutable
 
@@ -123,6 +122,23 @@ object Queue {
         def size = q.size
         def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
         def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
+      }
+    }}
+
+  def synchronous[F[_],A](implicit F: Async[F]): F[Queue[F,A]] =
+    F.bind(Semaphore(0)) { permits =>
+    F.map(unbounded[F,A]) { q =>
+      new Queue[F,A] {
+        def upperBound: Option[Int] = Some(0)
+        def enqueue1(a: A): F[Unit] =
+          F.bind(permits.decrement) { _ => q.enqueue1(a) }
+        def offer1(a: A): F[Boolean] =
+          F.bind(permits.tryDecrement) { b => if (b) q.offer1(a) else F.pure(false) }
+        def dequeue1: F[A] =
+          F.bind(permits.increment) { _ => q.dequeue1 }
+        def size = q.size
+        def full: immutable.Signal[F, Boolean] = Signal.constant(true)
+        def available: immutable.Signal[F, Int] = Signal.constant(0)
       }
     }}
 }

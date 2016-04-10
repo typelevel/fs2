@@ -4,7 +4,7 @@ import fs2.{process1, Async, Stream}
 import fs2.util.Functor
 
 import fs2.Async
-import fs2.async.{immutable, mutable}
+import fs2.async.immutable
 
 
 /**
@@ -60,6 +60,10 @@ object Signal {
       def discrete: Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
     }
+  }
+
+  implicit class BooleanSignalSyntax[F[_]:Async] (val self: Signal[F,Boolean]) {
+    def interrupt[A](s: Stream[F,A]) = fs2.wye.interrupt(self.discrete, s)
   }
 
   /**

@@ -14,7 +14,7 @@ object process1 {
 
   // nb: methods are in alphabetical order
 
-  /** outputs first value, and then any changed value from the last value. `eqf` is used for equality **/
+  /** Outputs first value, and then any changed value from the last value. `eqf` is used for equality. **/
   def changes[F[_],I](eqf:(I,I) => Boolean):Stream[F,I] => Stream[F,I] =
     zipWithPrevious andThen collect {
       case (None,next) => next
@@ -188,9 +188,17 @@ object process1 {
   def sum[F[_],I](implicit ev: Numeric[I]): Stream[F,I] => Stream[F,I] =
     fold(ev.zero)(ev.plus)
 
+  /** Emits all elements of the input except the first one. */
+  def tail[F[_],I]: Stream[F,I] => Stream[F,I] =
+    drop(1)
+
   /** Emit the first `n` elements of the input `Handle` and return the new `Handle`. */
   def take[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull Pull.take(n)
+
+  /** Emits the last `n` elements of the input. */
+  def takeRight[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
+    _ pull { h => Pull.takeRight(n)(h).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
 
   /** Emit the longest prefix of the input for which all elements test true according to `f`. */
   def takeWhile[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
@@ -199,6 +207,23 @@ object process1 {
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I]: Stream[F,I] => Stream[F,I] =
     _ repeatPull { Pull.receive1 { case i #: h => Pull.output1(i) as h }}
+
+  /**
+   * Halt the input stream at the first `None`.
+   *
+   * @example {{{
+   * scala> unNoneTerminate(Stream(Some(1), Some(2), None, Some(3), None)).toVector
+   * res0: Vector[Int] = Vector(1, 2)
+   * }}}
+   */
+  def unNoneTerminate[F[_],I]: Stream[F,Option[I]] => Stream[F,I] =
+    _ repeatPull { _.receive {
+      case hd #: tl =>
+        val out = Chunk.indexedSeq(hd.toVector.takeWhile { _.isDefined }.collect { case Some(i) => i })
+        if (out.size == hd.size) Pull.output(out) as tl
+        else if (out.isEmpty) Pull.done
+        else Pull.output(out) >> Pull.done
+    }}
 
   /**
    * Groups inputs into separate `Vector` objects of size `n`.

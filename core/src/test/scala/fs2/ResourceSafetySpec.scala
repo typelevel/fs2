@@ -2,14 +2,13 @@ package fs2
 
 import TestUtil._
 import fs2.util.Task
-import fs2.Stream.Handle
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck.Prop._
 import org.scalacheck._
 
 object ResourceSafetySpec extends Properties("ResourceSafety") {
 
-  property("pure fail") = secure {
+  property("pure fail") = protect {
     try { Stream.emit(0).flatMap(_ => Stream.fail(Err)) === Vector(); false }
     catch { case Err => true } // expected
   }
@@ -35,10 +34,10 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
     c.get ?= 0
   }
 
-  property("1 million brackets in sequence") = secure {
+  property("1 million brackets in sequence") = protect {
     val c = new AtomicLong(0)
     val b = bracket(c)(Stream.emit(1))
-    val bs = List.fill(1000000)(b).foldLeft(Stream.empty: Stream[Task,Int])(_ ++ _)
+    val bs = Stream.range(0, 1000000).flatMap(_ => b)
     run { bs }
     c.get ?= 0
   }

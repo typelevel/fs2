@@ -28,18 +28,20 @@ package object time {
    */
   def awakeEvery(d: Duration)(implicit S: Strategy, scheduler: ScheduledExecutorService): Stream[Task,Duration] = {
     def metronomeAndSignal: Task[(()=>Unit,async.mutable.Signal[Task,Duration])] = {
-      async.signalOf[Task, Duration](Duration(0, NANOSECONDS)).map { signal =>
+      async.signalOf[Task, Duration](Duration(0, NANOSECONDS)).flatMap { signal =>
         val t0 = Duration(System.nanoTime, NANOSECONDS)
-        val metronome = scheduler.scheduleAtFixedRate(
-          new Runnable { def run = {
-            val d = Duration(System.nanoTime, NANOSECONDS) - t0
-            signal.set(d).run
-          }},
-          d.toNanos,
-          d.toNanos,
-          NANOSECONDS
-        )
-        (() => { metronome.cancel(false); () }, signal)
+        Task {
+          val metronome = scheduler.scheduleAtFixedRate(
+            new Runnable { def run = {
+              val d = Duration(System.nanoTime, NANOSECONDS) - t0
+              signal.set(d).run
+            }},
+            d.toNanos,
+            d.toNanos,
+            NANOSECONDS
+          )
+          (() => { metronome.cancel(false); () }, signal)
+        } (Strategy.sequential)
       }
     }
     Stream.bracket(metronomeAndSignal)({ case (_, signal) => signal.discrete.drop(1) }, { case (cm, _) => Task.delay(cm()) })

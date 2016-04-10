@@ -3,9 +3,8 @@ package util
 
 import fs2.internal.{Actor,Future,LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import java.util.concurrent.{ScheduledExecutorService, ConcurrentLinkedQueue, ExecutorService, Executors}
+import java.util.concurrent.ScheduledExecutorService
 import scala.concurrent.duration._
-import scala.collection.immutable.Queue
 
 /*
 `Task` is a trampolined computation producing an `A` that may
@@ -238,7 +237,7 @@ object Task extends Instances {
 
   /** Create a `Future` that will evaluate `a` using the given `Strategy`. */
   def apply[A](a: => A)(implicit S: Strategy): Task[A] =
-    new Task(Future(Try(a)))
+    async(_(Try(a)))
 
   /**
    * Don't use this. It doesn't do what you think. If you have a `t: Task[A]` you'd
@@ -285,11 +284,13 @@ object Task extends Instances {
    version. The callback is run using the strategy `S`.
    */
   def async[A](register: (Either[Throwable,A] => Unit) => Unit)(implicit S: Strategy): Task[A] =
-    new Task(Future.async(register)(S))
+    new Task(Future.Async(cb => register {
+      a => try { S { cb(a).run } } catch { case e: Throwable => cb(Left(e)).run }
+    }))
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
   def schedule[A](a: => A, delay: Duration)(implicit pool: ScheduledExecutorService): Task[A] =
-    new Task(Future.schedule(Try(a), delay))
+    apply(a)(Future.Scheduled(delay))
 
   /** Utility function - evaluate `a` and catch and return any exceptions. */
   def Try[A](a: => A): Either[Throwable,A] =

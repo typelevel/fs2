@@ -25,6 +25,14 @@ package object async {
     mutable.Queue.bounded[F,A](maxSize)
 
   /**
+   * A synchronous queue always has size 0. Any calls to `enqueue1` block
+   * until there is an offsetting call to `dequeue1`. Any calls to `dequeue1`
+   * block until there is an offsetting call to `enqueue1`.
+   */
+  def synchronousQueue[F[_],A](implicit F: Async[F]): F[mutable.Queue[F,A]] =
+    mutable.Queue.synchronous[F,A]
+
+  /**
    * Converts a discrete stream to a signal. Returns a single-element stream.
    *
    * Resulting signal is initially `initial`, and is updated with latest value
