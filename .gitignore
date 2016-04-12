@@ -11,3 +11,5 @@ tags
 *#
 z_local.sbt
 .DS_Store
+.ensime
+/.ensime_cache

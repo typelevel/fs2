@@ -137,3 +137,14 @@ lazy val benchmark = project.in(file("benchmark")).
     publishLocal := (),
     publishArtifact := false
   ).dependsOn(io)
+
+lazy val docs = project.in(file("docs")).
+  settings(commonSettings ++ tutSettings).
+  settings(
+    name := "fs2-docs",
+    tutSourceDirectory := file("docs") / "src",
+    tutTargetDirectory := file("docs"),
+    scalacOptions ~= {_.filterNot("-Ywarn-unused-import" == _)}
+    )
+  .dependsOn(core, io)
+  

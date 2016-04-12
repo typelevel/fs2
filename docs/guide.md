@@ -32,14 +32,22 @@ For the full set of operations primitive operations on `Stream`, see the [`Strea
 
 To interpret a `Stream[F,A]`, use `runFold`, `runLog`, or one of the other `run*` functions on `Stream`. These produce a `fs2.Free` which can then be interpreted to produce actual effects. Here's a complete example:
 
-```Scala
-import fs2.{Stream, Task}
+```scala
+import fs2.Stream
+// import fs2.Stream
+
+import fs2.util.Task
+// import fs2.util.Task
 
 def run[A](s: Stream[Task,A]): Vector[A] =
   s.runLog.run.run // explanation below
+// run: [A](s: fs2.Stream[fs2.util.Task,A])Vector[A]
 
 val s: Stream[Nothing,Int] = Stream((0 until 100): _*)
+// s: fs2.Stream[Nothing,Int] = fs2.Stream$$anon$1@10b489e8
+
 run(s) == Vector.range(0, 100)
+// res0: Boolean = true
 ```
 
 What's going on with all the `.run` calls? The `s.runLog` produces a `fs2.Free[Task,Vector[A]]`. Calling `run` on that gives us a `Task[Vector[A]]`. And finally, calling `.run` on that `Task` gives us our `Vector[A]`. Note that this last `.run` is the _only_ portion of the code that actually _does_ anything. Streams (and `Free` and `Task`) are just different kinds of _descriptions_ of what is to be done. Nothing actually happens until we run this final description.
@@ -67,11 +75,20 @@ The `trait Pull[+F[_],+W,+R]` represents a program that may pull values from one
 
 Let's look at the core operation for implementing `take`. It's just a recursive function:
 
-```Scala
-package fs2
-import fs2.Step._ // provides '#:' constructor, also called Step
+```scala
+import fs2._
+// import fs2._
 
-object Pull {
+import fs2.Pull
+// import fs2.Pull
+
+import fs2.Stream.Handle
+// import fs2.Stream.Handle
+
+import fs2.Step._ // provides '#:' constructor, also called Step
+// import fs2.Step._
+
+object Pull_ {
 
   def take[F[_],W](n: Int): Handle[F,W] => Pull[F,W,Handle[F,W]] =
     h => for {
@@ -79,8 +96,8 @@ object Pull {
       tl <- Pull.output(chunk) >> take(n - chunk.size)(h)
     } yield tl
 
-  ...
 }
+// defined object Pull_
 ```
 
 Let's break it down line by line:
@@ -119,11 +136,14 @@ For the recursive call, we update the state, subtracting the `chunk.size` elemen
 
 To actually use a `Pull` to transform a `Stream`, we have to `run` it:
 
-```Scala
+```scala
 import fs2.{Pull,Stream}
+// import fs2.{Pull, Stream}
 
 def take[F[_],W](n: Int)(s: Stream[F,W]): Stream[F,W] =
   s.open.flatMap { Pull.take(n) }.run
+// take: [F[_], W](n: Int)(s: fs2.Stream[F,W])fs2.Stream[F,W]
+
   // s.open.flatMap(f).run is a common pattern -
   // can be written `s.pull(f)`
 ```
@@ -142,8 +162,11 @@ TODO
 
 `Stream[F,W]` and `Pull[F,W,R]` are covariant in `F`, `W`, and `R`. This is important for usability and convenience, but covariance can often paper over what should really be type errors. For instance:
 
-``` Scala
-val s = Stream.emit(1) ++ Stream.emit("hello")
+```scala
+     | Stream.emit(1) ++ Stream.emit("hello")
+<console>:26: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
+       Stream.emit(1) ++ Stream.emit("hello")
+                      ^
 ```
 
 We are trying to append a `Stream[Nothing,Int]` and a `Stream[Nothing,String]`, which really ought be a type error, but with covariance, Scala will gleefully infer `Any` as their common upper bound. Yikes. Luckily, FS2 implements a trick to catch these situations:
@@ -160,9 +183,15 @@ scala> Stream.emit(1) ++ Stream("hi")
 
 Informative! If you really want a dubious supertype like `Any`, `AnyRef`, `AnyVal`, `Product`, or `Serializable` to be inferred, just follow the instructions in the error message to supply a `RealSupertype` instance explicitly.
 
-``` Scala
-scala> Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any])
-res1: fs2.Stream[Nothing,Any] = fs2.Stream$$anon$4@2b7fa2d4
+```scala
+scala> import fs2._
+import fs2._
+
+scala> import fs2.util._
+import fs2.util._
+
+scala> Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Sub1.sub1[Task])
+res4: fs2.Stream[fs2.util.Task,Any] = fs2.Stream$$anon$1@7f44e12
 ```
 
 Ugly, as it should be.
