@@ -16,7 +16,7 @@ lazy val contributors = Seq(
 lazy val commonSettings = Seq(
   organization := "co.fs2",
   scalaVersion := "2.11.8",
-  crossScalaVersions := Seq("2.11.8", "2.12.0-M3"),
+  crossScalaVersions := Seq("2.11.8", "2.12.0-M4"),
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -145,6 +145,5 @@ lazy val docs = project.in(file("docs")).
     tutSourceDirectory := file("docs") / "src",
     tutTargetDirectory := file("docs"),
     scalacOptions ~= {_.filterNot("-Ywarn-unused-import" == _)}
-    )
-  .dependsOn(core, io)
-  
+  ).dependsOn(core, io)
+
