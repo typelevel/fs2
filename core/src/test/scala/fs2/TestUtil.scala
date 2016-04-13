@@ -1,5 +1,8 @@
 package fs2
 
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{ThreadFactory, Executors, ScheduledExecutorService}
+
 import fs2.util.{Sub1,Task}
 import org.scalacheck.{Arbitrary, Gen}
 
@@ -9,6 +12,14 @@ object TestUtil {
 
   implicit val S = Strategy.fromFixedDaemonPool(8)
   // implicit val S = Strategy.fromCachedDaemonPool("test-thread-worker")
+  implicit val Sch : ScheduledExecutorService = Executors.newScheduledThreadPool(8, new ThreadFactory {
+    val idx = new AtomicInteger(0)
+    def newThread(r: Runnable): Thread = {
+      val t = new Thread(s"fs2.spec-default.Scheduler-${idx.incrementAndGet()}")
+      t.setDaemon(true)
+      t
+    }
+  })
 
   def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.run
   def runFor[A](timeout:FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.runFor(timeout)

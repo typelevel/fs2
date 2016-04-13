@@ -179,6 +179,7 @@ object Chunk {
       (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
     def foldRight[B](z: B)(f: (Byte,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+    override def toString: String = s"Bytes(offset=$offset, sz=$sz, values=${values.toSeq})"
   }
   class Longs(val values: Array[Long], val offset: Int, sz: Int) extends Chunk[Long] {
   self =>
