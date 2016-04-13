@@ -5,7 +5,7 @@ organization := "org.scalaz.stream"
 name := "scalaz-stream"
 
 // this is equivalent to declaring compatibility checks
-git.baseVersion := "0.8"
+git.baseVersion := "0.8.1"
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 git.gitTagToVersionNumber := {
