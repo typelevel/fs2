@@ -196,16 +196,20 @@ protected[tcp] object Socket {
             empty[F,Stream[F, Socket[F]]]
           case (count,false) =>
             def acceptChannel:F[AsynchronousSocketChannel] = F.async { cb => F.pure {
-              sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = {
-                  println(("XXXG COMPLETED ACCEPT", count, acceptsOpen.decrementAndGet()))
-                  cb(Right(ch))
-                }
-                def failed(rsn: Throwable, attachment: Void): Unit = {
-                  println(("XXXG ACCEPT FAILED", sch, rsn))
-                  cb(Left(rsn))
-                }
-              })
+              try {
+                sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+                  def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = {
+                    println(("XXXG COMPLETED ACCEPT", count, acceptsOpen.decrementAndGet()))
+                    cb(Right(ch))
+                  }
+                  def failed(rsn: Throwable, attachment: Void): Unit = {
+                    println(("XXXG ACCEPT FAILED", sch, rsn))
+                    cb(Left(rsn))
+                  }
+                })
+              } catch {
+                case t: Throwable => t.printStackTrace(); throw t
+              }
             }}
 
             def close(ch:AsynchronousSocketChannel):F[Unit] = {
@@ -217,8 +221,8 @@ protected[tcp] object Socket {
 
             eval(acceptChannel) flatMap { accepted =>
               val increment = signal.possiblyModify { case (cnt,closed) => Some((cnt + 1, closed)) }
-              
-                emit(bracket(increment)(_ => emit(mkSocket(accepted)),_ => close(accepted))) ++ acceptIncoming(sch)
+               eval_(increment) ++ emit(emit(mkSocket(accepted))) ++ acceptIncoming(sch)
+               // emit(bracket(increment)(_ => emit(mkSocket(accepted)),_ => close(accepted))) ++ acceptIncoming(sch)
             }
 
 
