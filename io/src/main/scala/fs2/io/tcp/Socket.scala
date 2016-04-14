@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import fs2.Chunk.Bytes
 import fs2._
+import fs2.Stream._
 
 import scala.concurrent.duration._
 
@@ -145,7 +146,7 @@ protected[tcp] object Socket {
     }
 
     setup flatMap { ch =>
-      Stream.bracket(connect(ch))({_ => println("XXXY CONNECTED" -> ch); mkSocket(ch)}, cleanup)
+      Stream.bracket(connect(ch))({_ => println("XXXY CONNECTED" -> ch); emit(mkSocket(ch))}, cleanup)
     }
 
   }
@@ -188,37 +189,42 @@ protected[tcp] object Socket {
       val acceptsOpen=new AtomicInteger(0)
 
       def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F,Stream[F, Socket[F]]] = {
-        Stream.eval_(F.suspend(println("XXXY Accepting"))) ++
-        Stream.eval(signal.get) flatMap  {
+        eval_(F.suspend(println("XXXY Accepting"))) ++
+        eval(signal.get) flatMap  {
           case (count,true) =>
             println(("XXXR CLOSED:", count))
-            Stream.empty[F,Stream[F, Socket[F]]]
+            empty[F,Stream[F, Socket[F]]]
           case (count,false) =>
-            Stream.eval(F.async[Stream[F, Socket[F]]] { cb => F.pure {
-            println(("XXXG OPEN ##################", count, acceptsOpen.incrementAndGet()))
-
-            sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-              def close(ch:AsynchronousSocketChannel):F[Unit] = {
-                F.bind(F.suspend{println(("XXXR Closing ", ch));ch.close()}) { _ =>
-                  F.map(signal.possiblyModify { case (cnt,closed ) => Some((cnt -1, closed)) })(_ => ())
+            def acceptChannel:F[AsynchronousSocketChannel] = F.async { cb => F.pure {
+              sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
+                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = {
+                  println(("XXXG COMPLETED ACCEPT", count, acceptsOpen.decrementAndGet()))
+                  cb(Right(ch))
                 }
-              }
+                def failed(rsn: Throwable, attachment: Void): Unit = {
+                  println(("XXXG ACCEPT FAILED", sch, rsn))
+                  cb(Left(rsn))
+                }
+              })
+            }}
 
-              def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = {
-                val increment = signal.possiblyModify { case (cnt,closed) => Some((cnt + 1, closed)) }
-                println(("XXXG COMPLETED ACCEPT", count, acceptsOpen.decrementAndGet()))
-                cb(Right(Stream.bracket(increment)(_ => mkSocket(ch), _ => close(ch))))
+            def close(ch:AsynchronousSocketChannel):F[Unit] = {
+              F.bind(F.suspend{println(("XXXR Closing ", ch));ch.close()}) { _ =>
+                F.map(signal.possiblyModify { case (cnt,closed ) => Some((cnt -1, closed)) })(_ => ())
               }
-              def failed(rsn: Throwable, attachment: Void): Unit = {
-                println(("XXXG ACCEPT FAILED", sch, rsn))
-                cb(Left(rsn))
-              }
-            })
-          }})
+            }
+
+
+            eval(acceptChannel) flatMap { accepted =>
+              val increment = signal.possiblyModify { case (cnt,closed) => Some((cnt + 1, closed)) }
+              
+                emit(bracket(increment)(_ => emit(mkSocket(accepted)),_ => close(accepted))) ++ acceptIncoming(sch)
+            }
+
 
         }
-
       }
+
 
 
 
@@ -229,7 +235,7 @@ protected[tcp] object Socket {
   }
 
 
-  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F]):Stream[F,Socket[F]] = {
+  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F]):Socket[F] = {
 
 
     // Reads data to remaining capacity of supplied bytebuffer
@@ -298,36 +304,34 @@ protected[tcp] object Socket {
     ///////////////////////////////////
     ///////////////////////////////////
 
-    Stream.suspend {
-      Stream.emit {
-        new Socket[F] {
-          def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Bytes]] = readN0(numBytes,timeout)
-          def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Bytes]] = read0(maxBytes,timeout)
-          def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Bytes] = {
-            (Stream.eval(read(maxBytes,timeout)) flatMap {
-              case Some(bytes) =>
-                println(("XXXG READ", bytes))
-                Stream.emit(bytes) ++ reads(maxBytes, timeout)
-              case None =>
-                println(("XXXG DONE"))
-                Stream.empty
-            }).onComplete(Stream.eval_(F.suspend(println("READS TERMINATED"))))
-          }
 
-          def write(bytes: Bytes, timeout: Option[FiniteDuration]): F[Unit] = write0(bytes,timeout)
-          def writes(stream: Stream[F, Bytes], timeout: Option[FiniteDuration]): Stream[F, Unit] =
-            stream.flatMap { bs => Stream.eval(write(bs, timeout)) ++ Stream.eval_(F.suspend(println("WRITE DONE"))) }
-            .onComplete(Stream.eval_(F.suspend(println("WRITES TERMINATED"))))
-
-          def localAddress: F[SocketAddress] = F.suspend(ch.getLocalAddress)
-          def remoteAddress: F[SocketAddress] = F.suspend(ch.getRemoteAddress)
-
-          def close: F[Unit] = F.suspend(ch.close())
-          def endOfOutput: F[Unit] = F.suspend{ ch.shutdownOutput(); () }
-          def endOfInput: F[Unit] = F.suspend{ ch.shutdownInput(); () }
-        }
+    new Socket[F] {
+      def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Bytes]] = readN0(numBytes,timeout)
+      def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Bytes]] = read0(maxBytes,timeout)
+      def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Bytes] = {
+        (Stream.eval(read(maxBytes,timeout)) flatMap {
+          case Some(bytes) =>
+            println(("XXXG READ", bytes))
+            Stream.emit(bytes) ++ reads(maxBytes, timeout)
+          case None =>
+            println(("XXXG DONE"))
+            Stream.empty
+        }).onComplete(Stream.eval_(F.suspend(println("READS TERMINATED"))))
       }
+
+      def write(bytes: Bytes, timeout: Option[FiniteDuration]): F[Unit] = write0(bytes,timeout)
+      def writes(stream: Stream[F, Bytes], timeout: Option[FiniteDuration]): Stream[F, Unit] =
+        stream.flatMap { bs => Stream.eval(write(bs, timeout)) ++ Stream.eval_(F.suspend(println("WRITE DONE"))) }
+        .onComplete(Stream.eval_(F.suspend(println("WRITES TERMINATED"))))
+
+      def localAddress: F[SocketAddress] = F.suspend(ch.getLocalAddress)
+      def remoteAddress: F[SocketAddress] = F.suspend(ch.getRemoteAddress)
+
+      def close: F[Unit] = F.suspend(ch.close())
+      def endOfOutput: F[Unit] = F.suspend{ ch.shutdownOutput(); () }
+      def endOfInput: F[Unit] = F.suspend{ ch.shutdownInput(); () }
     }
+
   }
 
 
