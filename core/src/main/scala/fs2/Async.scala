@@ -7,6 +7,9 @@ import fs2.util.{Free,Functor,Catchable}
 trait Async[F[_]] extends Catchable[F] { self =>
   type Ref[A]
 
+  /** create suspended computation evaluated lazily **/
+  def suspend[A](a: => A):F[A]
+
   /** Create an asynchronous, concurrent mutable reference. */
   def ref[A]: F[Ref[A]]
 
