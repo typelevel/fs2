@@ -14,7 +14,7 @@ The 0.9 release will include major new capabilities:
 * Pushback and peeking of streams, useful for streaming parsing tasks.
 * A simpler core, consisting of 22 primitive operations, from which all functionality in the library is derived.
 
-There's [an incomplete and slightly out of date guide for the new design](https://github.com/functional-streams-for-scala/fs2/blob/topic/redesign/docs/guide.markdown) if you'd like to get a feel for what the new version will be like.
+There's [an incomplete and slightly out of date guide for the new design](https://github.com/functional-streams-for-scala/fs2/blob/topic/redesign/docs/guide.md) if you'd like to get a feel for what the new version will be like.
 
 The rest of these docs pertain to the 0.8 scalaz-stream release. If you'd like to follow FS2 development, see [the 0.9 milestone](https://github.com/functional-streams-for-scala/fs2/milestones/0.9.0).
 
