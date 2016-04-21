@@ -40,17 +40,17 @@ import fs2.util.Task
 // import fs2.util.Task
 
 def run[A](s: Stream[Task,A]): Vector[A] =
-  s.runLog.run.run // explanation below
+  s.runLog.run.unsafeRun // explanation below
 // run: [A](s: fs2.Stream[fs2.util.Task,A])Vector[A]
 
 val s: Stream[Nothing,Int] = Stream((0 until 100): _*)
-// s: fs2.Stream[Nothing,Int] = fs2.Stream$$anon$1@10b489e8
+// s: fs2.Stream[Nothing,Int] = fs2.Stream$$anon$1@4003ebf7
 
 run(s) == Vector.range(0, 100)
 // res0: Boolean = true
 ```
 
-What's going on with all the `.run` calls? The `s.runLog` produces a `fs2.Free[Task,Vector[A]]`. Calling `run` on that gives us a `Task[Vector[A]]`. And finally, calling `.run` on that `Task` gives us our `Vector[A]`. Note that this last `.run` is the _only_ portion of the code that actually _does_ anything. Streams (and `Free` and `Task`) are just different kinds of _descriptions_ of what is to be done. Nothing actually happens until we run this final description.
+What's going on with all the `run` calls? The `s.runLog` produces a `fs2.Free[Task,Vector[A]]`. Calling `run` on that gives us a `Task[Vector[A]]`. And finally, calling `.unsafeRun` on that `Task` gives us our `Vector[A]`. Note that this last `.unsafeRun` is the _only_ portion of the code that actually _does_ anything. Streams (and `Free` and `Task`) are just different kinds of _descriptions_ of what is to be done. Nothing actually happens until we run this final description.
 
 Note also that FS2 does not care what effect type you use for your streams. You may use the built-in [`Task` type](http://code.fs2.co/master/src/main/scala/fs2/Streams.scala) for effects or bring your own, just by implementing a few interfaces for your effect type. (`fs2.Catchable` and optionally `fs2.Async` if you wish to use various concurrent operations discussed later.)
 
@@ -191,7 +191,7 @@ scala> import fs2.util._
 import fs2.util._
 
 scala> Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Sub1.sub1[Task])
-res4: fs2.Stream[fs2.util.Task,Any] = fs2.Stream$$anon$1@7f44e12
+res4: fs2.Stream[fs2.util.Task,Any] = fs2.Stream$$anon$1@dae0aba
 ```
 
 Ugly, as it should be.

@@ -3,24 +3,16 @@ package fs2
 import Stream.Handle
 import fs2.util.{Free,Functor,Sub1}
 
-object process1 {
-
-  /**
-   * A `Process1` is just an ordinary function that accepts an open `Stream`
-   * as input, outputs `O` values, and returns a new `Handle` when it is
-   * done reading.
-   */
-  type Process1[-I,+O] = Stream[Pure,I] => Stream[Pure,O]
+object pipe {
 
   // nb: methods are in alphabetical order
 
   /** Outputs first value, and then any changed value from the last value. `eqf` is used for equality. **/
-  def changes[F[_],I](eqf:(I,I) => Boolean):Stream[F,I] => Stream[F,I] =
+  def changes[F[_],I](eqf:(I,I) => Boolean): Stream[F,I] => Stream[F,I] =
     zipWithPrevious andThen collect {
       case (None,next) => next
       case (Some(last), next) if !eqf(last,next) => next
     }
-
 
   /** Outputs chunks with a limited maximum size, splitting as necessary. */
   def chunkLimit[F[_],I](n: Int): Stream[F,I] => Stream[F,Chunk[I]] =
@@ -146,12 +138,12 @@ object process1 {
     _ repeatPull { _.receive {
       case hd #: tl => Pull.prefetch(tl) flatMap { p => Pull.output(hd) >> p }}}
 
-  /** Alias for `[[process1.fold1]]` */
+  /** Alias for `[[pipe.fold1]]` */
   def reduce[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] = fold1(f)
 
   /**
    * Left fold which outputs all intermediate results. Example:
-   *   `Stream(1,2,3,4) pipe process1.scan(0)(_ + _) == Stream(0,1,3,6,10)`.
+   *   `Stream(1,2,3,4) through pipe.scan(0)(_ + _) == Stream(0,1,3,6,10)`.
    *
    * More generally:
    *   `Stream().scan(z)(f) == Stream(z)`
@@ -179,7 +171,7 @@ object process1 {
     }
 
   /**
-   * Like `[[process1.scan]]`, but uses the first element of the stream as the seed.
+   * Like `[[pipe.scan]]`, but uses the first element of the stream as the seed.
    */
   def scan1[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] =
     _ pull { Pull.receive1 { case o #: h => _scan0(o)(f)(h) }}
@@ -286,10 +278,10 @@ object process1 {
 
   // stepping a process
 
-  def covary[F[_],I,O](p: Process1[I,O]): Stream[F,I] => Stream[F,O] =
-    p.asInstanceOf[Stream[F,I] => Stream[F,O]]
+  def covary[F[_],I,O](p: Stream[Pure,I] => Stream[Pure,O]): Pipe[F,I,O] =
+    p.asInstanceOf[Pipe[F,I,O]]
 
-  def stepper[I,O](p: Process1[I,O]): Stepper[I,O] = {
+  def stepper[I,O](p: Stream[Pure,I] => Stream[Pure,O]): Stepper[I,O] = {
     type Read[+R] = Option[Chunk[I]] => R
     def readFunctor: Functor[Read] = new Functor[Read] {
       def map[A,B](fa: Read[A])(g: A => B): Read[B]

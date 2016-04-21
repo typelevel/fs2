@@ -18,9 +18,9 @@ object channel {
    * in preference to using this function directly.
    */
   def diamond[F[_],A,B,C,D](s: Stream[F,A])
-    (f: Stream[F,A] => Stream[F,B])
-    (qs: F[Queue[F,Option[Chunk[A]]]], g: Stream[F,A] => Stream[F,C])
-    (combine: (Stream[F,B], Stream[F,C]) => Stream[F,D])(implicit F: Async[F]): Stream[F,D]
+    (f: Pipe[F,A, B])
+    (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
+    (combine: Pipe2[F,B,C,D])(implicit F: Async[F]): Stream[F,D]
     = Stream.eval(qs) flatMap { q =>
       def suspendf[A](a: => A) = F.map(F.pure(())) { _ => a }
       combine(
@@ -29,7 +29,7 @@ object channel {
             _ receive { case a #: h => Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h) }
           }.onFinalize(q.enqueue1(None))
         ),
-        g(process1.unNoneTerminate(q.dequeue) flatMap { c => Stream.chunk(c) })
+        g(pipe.unNoneTerminate(q.dequeue) flatMap { c => Stream.chunk(c) })
       )
     }
 
@@ -42,7 +42,7 @@ object channel {
              .drain
              .onFinalize(q.enqueue1(None))
              .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
-               f(process1.unNoneTerminate(q.dequeue) flatMap Stream.chunk)
+               f(pipe.unNoneTerminate(q.dequeue) flatMap Stream.chunk)
              }
     } yield b
   }
@@ -57,9 +57,9 @@ object channel {
 
   /** Synchronously send values through `sink`. */
   def observe[F[_]:Async,A](s: Stream[F,A])(sink: Sink[F,A]): Stream[F,A] =
-    diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain)) { wye.merge(_,_) }
+    diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain))(pipe2.merge)
 
   /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
   def observeAsync[F[_]:Async,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A]): Stream[F,A] =
-    diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain)) { wye.merge(_,_) }
+    diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(pipe2.merge)
 }

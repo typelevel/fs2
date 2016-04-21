@@ -32,7 +32,7 @@ object ChannelSpec extends Properties("async.channel") {
   property("sanity-test") = protect { // (s: PureStream[Int]) =>
     val s = Stream.range(0,100)
     val s2 = s.covary[Task].flatMap { i => Stream.emit(i).onFinalize(Task.delay { println(s"finalizing $i")}) }
-    val q = async.unboundedQueue[Task,Int].run
+    val q = async.unboundedQueue[Task,Int].unsafeRun
     // q.enqueue1(0).run
     // run { s2 }
     run { merge2(trace("s2")(s2), trace("q")(q.dequeue)).take(10) }

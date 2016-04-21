@@ -13,15 +13,15 @@ object CompressSpec extends Properties("compress") {
     s.getBytes
 
   property("deflate.empty input") = protect {
-    Stream.empty[Pure, Byte].pipe(deflate()).toVector.isEmpty
+    Stream.empty[Pure, Byte].through(deflate()).toVector.isEmpty
   }
 
   property("inflate.empty input") = protect {
-    Stream.empty[Pure, Byte].pipe(inflate()).toVector.isEmpty
+    Stream.empty[Pure, Byte].through(inflate()).toVector.isEmpty
   }
 
   property("deflate |> inflate ~= id") = forAll { (s: PureStream[Byte]) =>
-    s.get ==? s.get.pipe(compress.deflate()).pipe(compress.inflate()).toVector
+    s.get ==? s.get.through(compress.deflate()).through(compress.inflate()).toVector
   }
 
   property("deflate.compresses input") = protect {
@@ -31,7 +31,7 @@ object CompressSpec extends Properties("compress") {
         |of certain program behaviors by classifying phrases according to the
         |kinds of values they compute."
         |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
-    val compressed = Stream.chunk(Chunk.bytes(uncompressed)).pipe(deflate(9)).toVector
+    val compressed = Stream.chunk(Chunk.bytes(uncompressed)).throughp(deflate(9)).toVector
 
     compressed.length < uncompressed.length
   }

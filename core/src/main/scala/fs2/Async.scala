@@ -166,15 +166,19 @@ object Async {
           F.bind(F.ref[((A,Scope[F,Unit]),Int)]) { ref =>
             val cancels: F[Vector[(F[Unit],Int)]] = F.traverse(es zip (0 until es.size)) { case (a,i) =>
               F.bind(a.cancellableGet) { case (a, cancelA) =>
-              F.map(F.set(ref)(F.map(a)((_,i))))(_ => (cancelA,i)) }
+                F.map(F.set(ref)(F.map(a)((_,i))))(_ => (cancelA,i))
+              }
             }
-          F.bind(cancels) { cancels =>
-          F.pure {
-            val get = F.bind(F.get(ref)) { case (a,i) =>
-              F.map(F.traverse(cancels.collect { case (a,j) if j != i => a })(identity))(_ => (a,i)) }
-            val cancel = F.map(F.traverse(cancels)(_._1))(_ => ())
-            (F.map(get) { case ((a,onForce),i) => ((a,i),onForce) }, cancel)
-          }}}
+            F.bind(cancels) { cancels =>
+              F.pure {
+                val get = F.bind(F.get(ref)) { case (a,i) =>
+                  F.map(F.traverse(cancels.collect { case (a,j) if j != i => a })(identity))(_ => (a,i))
+                }
+                val cancel = F.map(F.traverse(cancels)(_._1))(_ => ())
+                (F.map(get) { case ((a,onForce),i) => ((a,i),onForce) }, cancel)
+              }
+            }
+          }
         def get = F.bind(cancellableGet)(_._1)
       }
   }

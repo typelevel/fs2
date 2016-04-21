@@ -1,13 +1,11 @@
 package object fs2 {
+  type Pipe[F[_],-I,+O] = Stream[F,I] => Stream[F,O]
+  type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
+  type Sink[F[_],-I] = Pipe[F,I,Unit]
 
-  type Process1[-I,+O] = process1.Process1[I,O]
-  type Tee[-I,-I2,+O] = tee.Tee[I,I2,O]
-  type Wye[F[_],-I,-I2,+O] = wye.Wye[F,I,I2,O]
-  type Channel[F[_],-I,+O] = Stream[F,I] => Stream[F,O]
-  type Sink[F[_],-I] = Channel[F,I,Unit]
+  implicit def autoCovaryPurePipe[F[_],I,O](p: Pipe[Pure,I,O]): Pipe[F,I,O] =
+    pipe.covary[F,I,O](p)
 
-  @deprecated("renamed to fs2.Stream", "0.9")
-  type Process[+F[_],+O] = Stream[F,O]
-  @deprecated("renamed to fs2.Stream", "0.9")
-  val Process = Stream
+  implicit def autoCovaryPurePipe2[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] =
+    pipe2.covary[F,I,I2,O](p)
 }
