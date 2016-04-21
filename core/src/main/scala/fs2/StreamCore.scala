@@ -126,15 +126,20 @@ sealed trait StreamCore[F[_],O] { self =>
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
         F.read(ref).appendOnForce { Scope.suspend {
-          // Important - we copy any locally acquired resources to our parent and remove the
-          // placeholder root token, which was only needed if the parent terminated early, before the future
-          // was forced
+          // Important: copy any locally acquired resources to our parent and remove the placeholder
+          // root token, which only needed if the parent terminated early, before the future was forced
           val removeRoot = Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }
           (resources.closeAll match {
             case None => Scope.fail(new IllegalStateException("FS2 bug: resources still being acquired"))
             case Some(rs) => removeRoot flatMap { _ => Scope.traverse(rs) {
-              case (token,r) => Scope.acquire(token,r) }}
-          }) flatMap { (rs: List[Unit]) => Scope.pure(()) }
+              case (token,r) => Scope.acquire(token,r)
+            }}
+          }) flatMap { (rs: List[Either[Throwable,Unit]]) =>
+            rs.collect { case Left(e) => e } match {
+              case Nil => Scope.pure(())
+              case e :: _ => Scope.fail(e)
+            }
+          }
         }}
       }
     }
@@ -159,7 +164,7 @@ object StreamCore {
     case object Snapshot extends RF[Nothing,Set[Token]]
     case class NewSince(snapshot: Set[Token]) extends RF[Nothing,List[Token]]
     case class Release(tokens: List[Token]) extends RF[Nothing,Either[Throwable,Unit]]
-    case class StartAcquire(token: Token) extends RF[Nothing,Unit]
+    case class StartAcquire(token: Token) extends RF[Nothing,Boolean]
     case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]) extends RF[F,Unit]
     case class CancelAcquire(token: Token) extends RF[Nothing,Unit]
   }

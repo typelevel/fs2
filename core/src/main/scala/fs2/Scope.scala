@@ -41,8 +41,7 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
             else StreamCore.runCleanup(rs) flatMap { e => g(Right(e)) map { case (ts,o) => (leftovers ++ ts, o) } }
         }
         case StreamCore.RF.StartAcquire(token) =>
-          env.tracked.startAcquire(token)
-          g(Right(()))
+          g(Right(env.tracked.startAcquire(token)))
         case StreamCore.RF.FinishAcquire(token, c) =>
           env.tracked.finishAcquire(token, Sub1.substFree(c))
           g(Right(()))
@@ -66,6 +65,8 @@ object Scope {
     Scope(Free.attemptEval[R[F]#f,O](StreamCore.RF.Eval(o)))
   def eval[F[_],O](o: F[O]): Scope[F,O] =
     attemptEval(o) flatMap { _.fold(fail, pure) }
+  def evalFree[F[_],O](o: Free[F,O]): Scope[F,O] =
+    Scope { o.translate[R[F]#f](new (F ~> R[F]#f) { def apply[x](f: F[x]) = StreamCore.RF.Eval(f) }) }
   def fail[F[_],O](err: Throwable): Scope[F,O] =
     Scope(Free.fail(err))
   def interrupted[F[_]]: Scope[F,Boolean] =
@@ -76,12 +77,15 @@ object Scope {
     Scope(Free.eval[R[F]#f,List[Token]](StreamCore.RF.NewSince(snapshot)))
   def release[F[_]](tokens: List[Token]): Scope[F,Either[Throwable,Unit]] =
     Scope(Free.eval[R[F]#f,Either[Throwable,Unit]](StreamCore.RF.Release(tokens)))
-  def startAcquire[F[_]](token: Token): Scope[F,Unit] =
-    Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.StartAcquire(token)))
+  def startAcquire[F[_]](token: Token): Scope[F,Boolean] =
+    Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.StartAcquire(token)))
   def finishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]): Scope[F,Unit] =
     Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.FinishAcquire(token, cleanup)))
-  def acquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]): Scope[F,Unit] =
-    startAcquire(token) flatMap { _ => finishAcquire(token, cleanup) }
+  def acquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]): Scope[F,Either[Throwable,Unit]] =
+    startAcquire(token) flatMap { ok =>
+      if (ok) finishAcquire(token, cleanup).map(Right(_))
+      else evalFree(cleanup)
+    }
   def cancelAcquire[F[_]](token: Token): Scope[F,Unit] =
     Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.CancelAcquire(token)))
 
