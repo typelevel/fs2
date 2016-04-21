@@ -1,16 +1,16 @@
 package fs2
 
+import Async.Future
 import Stream.Handle
 import fs2.{Pull => P}
 import fs2.util.{Free,Functor,Sub1}
 
-object tee {
+object pipe2 {
 
-  type Tee[-I,-I2,+O] = (Stream[Pure,I], Stream[Pure,I2]) => Stream[Pure,O]
+  // NB: Pure instances
 
-  def covary[F[_],I,I2,O](p: Tee[I,I2,O]): (Stream[F,I], Stream[F,I2]) => Stream[F,O] =
-    p.asInstanceOf[(Stream[F,I],Stream[F,I2]) => Stream[F,O]]
-
+  def covary[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] =
+    p.asInstanceOf[Pipe2[F,I,I2,O]]
 
   private def zipChunksWith[I,I2,O](f: (I, I2) => O)(c1: Chunk[I], c2: Chunk[I2]): Step[Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]] = {
       def go(v1: Vector[I], v2: Vector[I2], acc: Vector[O]): Step[Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]] = (v1, v2) match {
@@ -64,7 +64,7 @@ object tee {
       _.pull2(_)(goB)
   }
 
-  def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): (Stream[F, I], Stream[F, I2]) => Stream[F, O] = {
+  def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): Pipe2[F,I,I2,O] = {
       def cont1(z: Either[Step[Chunk[I], Handle[F, I]], Handle[F, I]]): Pull[F, O, Nothing] = {
         def putLeft(c: Chunk[I]) = {
           val co = Chunk.seq(c.toVector.zip( Vector.fill(c.size)(pad2)))
@@ -97,25 +97,25 @@ object tee {
   }
 
 
-  def zipWith[F[_],I,I2,O](f: (I, I2) => O) : (Stream[F, I], Stream[F, I2]) => Stream[F, O] =
+  def zipWith[F[_],I,I2,O](f: (I, I2) => O) : Pipe2[F,I,I2,O] =
     zipWithHelper[F,I,I2,O](sh => Pull.done, h => Pull.done)(f)
 
-  def zipAll[F[_],I,I2](pad1: I, pad2: I2): (Stream[F, I], Stream[F, I2]) => Stream[F, (I, I2)] =
+  def zipAll[F[_],I,I2](pad1: I, pad2: I2): Pipe2[F,I,I2,(I,I2)] =
     zipAllWith(pad1,pad2)(Tuple2.apply)
 
-  def zip[F[_],I,I2]: (Stream[F, I], Stream[F, I2]) => Stream[F, (I, I2)] =
+  def zip[F[_],I,I2]: Pipe2[F,I,I2,(I,I2)] =
     zipWith(Tuple2.apply)
 
-  def interleaveAll[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] = { (s1, s2) =>
+  def interleaveAll[F[_], O]: Pipe2[F,O,O,O] = { (s1, s2) =>
     (zipAll(None: Option[O], None: Option[O])(s1.map(Some.apply),s2.map(Some.apply))) flatMap {
       case (i1Opt,i2Opt) => Stream(i1Opt.toSeq :_*) ++ Stream(i2Opt.toSeq :_*)
     }
   }
 
-  def interleave[F[_], O]: (Stream[F,O], Stream[F,O]) => Stream[F,O] =
+  def interleave[F[_], O]: Pipe2[F,O,O,O] =
     zip(_,_) flatMap { case (i1,i2) => Stream(i1,i2) }
 
-  def stepper[I,I2,O](p: Tee[I,I2,O]): Stepper[I,I2,O] = {
+  def stepper[I,I2,O](p: Pipe2[Pure,I,I2,O]): Stepper[I,I2,O] = {
     type Read[+R] = Either[Option[Chunk[I]] => R, Option[Chunk[I2]] => R]
     def readFunctor: Functor[Read] = new Functor[Read] {
       def map[A,B](fa: Read[A])(g: A => B): Read[B] = fa match {
@@ -176,4 +176,72 @@ object tee {
     case class AwaitL[I,I2,O](receive: Option[Chunk[I]] => Stepper[I,I2,O]) extends Step[I,I2,O]
     case class AwaitR[I,I2,O](receive: Option[Chunk[I2]] => Stepper[I,I2,O]) extends Step[I,I2,O]
   }
+
+  // NB: Effectful instances
+
+  /**
+   * Defined as `s1.drain merge s2`. Runs `s1` and `s2` concurrently, ignoring
+   * any output of `s1`.
+   */
+  def mergeDrainL[F[_]:Async,I,I2]: Pipe2[F,I,I2,I2] = (s1, s2) =>
+    s1.drain merge s2
+
+  /**
+   * Defined as `s1 merge s2.drain`. Runs `s1` and `s2` concurrently, ignoring
+   * any output of `s1`.
+   */
+  def mergeDrainR[F[_]:Async,I,I2]: Pipe2[F,I,I2,I] = (s1, s2) =>
+    s1 merge s2.drain
+
+  /** Like `[[merge]]`, but tags each output with the branch it came from. */
+  def either[F[_]:Async,I,I2]: Pipe2[F,I,I2,Either[I,I2]] = (s1, s2) =>
+    s1.map(Left(_)) merge s2.map(Right(_))
+
+  /**
+   * Let through the `s2` branch as long as the `s1` branch is `false`,
+   * listening asynchronously for the left branch to become `true`.
+   * This halts as soon as either branch halts.
+   */
+  def interrupt[F[_]:Async,I]: Pipe2[F,Boolean,I,I] = (s1, s2) =>
+    either.apply(s1.noneTerminate, s2.noneTerminate)
+      .takeWhile(_.fold(halt => halt.map(!_).getOrElse(false), o => o.isDefined))
+      .collect { case Right(Some(i)) => i }
+
+  /**
+   * Interleave the two inputs nondeterministically. The output stream
+   * halts after BOTH `s1` and `s2` terminate normally, or in the event
+   * of an uncaught failure on either `s1` or `s2`. Has the property that
+   * `merge(Stream.empty, s) == s` and `merge(fail(e), s)` will
+   * eventually terminate with `fail(e)`, possibly after emitting some
+   * elements of `s` first.
+   */
+  def merge[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) => {
+    def go(l: Future[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]],
+           r: Future[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]): Pull[F,O,Nothing] =
+      (l race r).force flatMap {
+        case Left(l) => l.optional flatMap {
+          case None => r.force.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
+          case Some(hd #: l) => P.output(hd) >> l.awaitAsync.flatMap(go(_, r))
+        }
+        case Right(r) => r.optional flatMap {
+          case None => l.force.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
+          case Some(hd #: r) => P.output(hd) >> r.awaitAsync.flatMap(go(l, _))
+        }
+      }
+    s1.pull2(s2) {
+      (s1,s2) => s1.awaitAsync.flatMap { l => s2.awaitAsync.flatMap { r => go(l,r) }}
+    }
+  }
+
+  /** Like `merge`, but halts as soon as _either_ branch halts. */
+  def mergeHaltBoth[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) =>
+    s1.noneTerminate merge s2.noneTerminate through pipe.unNoneTerminate
+
+  /** Like `merge`, but halts as soon as the `s1` branch halts. */
+  def mergeHaltL[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) =>
+    s1.noneTerminate merge s2.map(Some(_)) through pipe.unNoneTerminate
+
+  /** Like `merge`, but halts as soon as the `s2` branch halts. */
+  def mergeHaltR[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) =>
+    mergeHaltL.apply(s2, s1)
 }

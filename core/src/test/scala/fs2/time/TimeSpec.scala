@@ -13,11 +13,11 @@ class TimeSpec extends Properties("time") {
   implicit val S = Strategy.fromExecutor(scheduler)
 
   property("awakeEvery") = protect {
-    time.awakeEvery(100.millis).map(_.toMillis/100).take(5).runLog.run.run == Vector(1,2,3,4,5)
+    time.awakeEvery(100.millis).map(_.toMillis/100).take(5).runLog.run.unsafeRun == Vector(1,2,3,4,5)
   }
 
   property("duration") = protect {
-    val firstValueDiscrepancy = time.duration.take(1).runLog.run.run.last
+    val firstValueDiscrepancy = time.duration.take(1).runLog.run.unsafeRun.last
     val reasonableErrorInMillis = 200
     val reasonableErrorInNanos = reasonableErrorInMillis * 1000000
     def p = firstValueDiscrepancy.toNanos < reasonableErrorInNanos
@@ -34,7 +34,7 @@ class TimeSpec extends Properties("time") {
   property("every") =
     forAll(smallDelay) { delay: Duration =>
       type BD = (Boolean, Duration)
-      val durationSinceLastTrue: Process1[BD, BD] = {
+      val durationSinceLastTrue: Pipe[Pure,BD,BD] = {
         def go(lastTrue: Duration): Handle[Pure,BD] => Pull[Pure,BD,Handle[Pure,BD]] = h => {
           h.receive1 {
             case pair #: tl =>
@@ -50,11 +50,11 @@ class TimeSpec extends Properties("time") {
       val draws = (600.millis / delay) min 10 // don't take forever
 
       val durationsSinceSpike = time.every(delay).
-        tee(time.duration)(tee zipWith {(a,b) => (a,b)}).
-        take(draws.toInt) pipe
-        durationSinceLastTrue
+        zip(time.duration).
+        take(draws.toInt).
+        through(durationSinceLastTrue)
 
-      val result = durationsSinceSpike.runLog.run.run.toList
+      val result = durationsSinceSpike.runLog.run.unsafeRun.toList
       val (head :: tail) = result
 
       head._1 :| "every always emits true first" &&

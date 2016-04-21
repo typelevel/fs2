@@ -2,12 +2,12 @@ package fs2
 
 import fs2.Stream._
 import fs2.TestUtil._
-import fs2.process1._
+import fs2.pipe._
 import fs2.util.Task
 import org.scalacheck.Prop._
 import org.scalacheck.{Gen, Properties}
 
-object Process1Spec extends Properties("process1") {
+object PipeSpec extends Properties("pipe") {
 
   property("chunkLimit") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
     val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
@@ -38,17 +38,17 @@ object Process1Spec extends Properties("process1") {
   property("chunks") = forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
     val v = Vector(Vector(11,2,2,2), Vector(2,2,3), Vector(2,3,4), Vector(1,2,2,2,2,2,3,3))
     val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-    s.pipe(chunks).map(_.toVector) ==? v
+    s.throughp(chunks).map(_.toVector) ==? v
   }
 
   property("chunks (2)") = forAll(nestedVectorGen[Int](0,10, emptyChunks = true)) { (v: Vector[Vector[Int]]) =>
     val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-    s.pipe(chunks).flatMap(Stream.chunk) ==? v.flatten
+    s.throughp(chunks).flatMap(Stream.chunk) ==? v.flatten
   }
 
   property("collect") = forAll { (s: PureStream[Int]) =>
     val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-    s.get.pipe(fs2.process1.collect(pf)) ==? run(s.get).collect(pf)
+    s.get.through(fs2.pipe.collect(pf)) ==? run(s.get).collect(pf)
   }
 
   property("collectFirst") = forAll { (s: PureStream[Int]) =>
@@ -64,12 +64,12 @@ object Process1Spec extends Properties("process1") {
 
   property("drop") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
     val n = if (negate) -n0.get else n0.get
-    s.get.pipe(drop(n)) ==? run(s.get).drop(n)
+    s.get.through(drop(n)) ==? run(s.get).drop(n)
   }
 
   property("dropWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
     val set = run(s.get).take(n.get).toSet
-    s.get.pipe(dropWhile(set)) ==? run(s.get).dropWhile(set)
+    s.get.through(dropWhile(set)) ==? run(s.get).dropWhile(set)
   }
 
   property("exists") = forAll { (s: PureStream[Int], n: SmallPositive) =>
@@ -137,15 +137,15 @@ object Process1Spec extends Properties("process1") {
     val s = (v.map(Stream.emits): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
     val s2 = (v2.map(Stream.emits(_)): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
     val start = System.currentTimeMillis
-    s.pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id) ==? Vector()
-    s2.pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id).pipe(process1.id) ==? Vector.fill(1000)(0)
+    s.through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id) ==? Vector()
+    s2.through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id) ==? Vector.fill(1000)(0)
     println("done checking performance; took " + (System.currentTimeMillis - start) + " milliseconds")
     true
   }
 
   property("last") = forAll { (s: PureStream[Int]) =>
     val shouldCompile = s.get.last
-    s.get.pipe(last) ==? Vector(run(s.get).lastOption)
+    s.get.through(last) ==? Vector(run(s.get).lastOption)
   }
 
   property("lastOr") = forAll { (s: PureStream[Int], n: SmallPositive) =>
@@ -154,7 +154,7 @@ object Process1Spec extends Properties("process1") {
   }
 
   property("lift") = forAll { (s: PureStream[Double]) =>
-    s.get.pipe(lift(_.toString)) ==? run(s.get).map(_.toString)
+    s.get.through(lift(_.toString)) ==? run(s.get).map(_.toString)
   }
 
   property("mapAccumulate") = forAll { (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
@@ -202,7 +202,7 @@ object Process1Spec extends Properties("process1") {
 
   property("takeWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
     val set = run(s.get).take(n.get).toSet
-    s.get.pipe(takeWhile(set)) ==? run(s.get).takeWhile(set)
+    s.get.through(takeWhile(set)) ==? run(s.get).takeWhile(set)
   }
 
   property("scan") = forAll { (s: PureStream[Int], n: Int) =>
@@ -226,8 +226,8 @@ object Process1Spec extends Properties("process1") {
   }
 
   property("take.chunks") = secure {
-    val s = Stream(1, 2) ++ Stream(3, 4)
-    s.pipe(take(3)).pipe(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
+    val s = Stream.pure(1, 2) ++ Stream(3, 4)
+    s.through(take(3)).through(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
   }
 
   property("vectorChunkN") = forAll { (s: PureStream[Int], n: SmallPositive) =>
@@ -235,11 +235,11 @@ object Process1Spec extends Properties("process1") {
   }
 
   property("zipWithIndex") = forAll { (s: PureStream[Int]) =>
-    s.get.pipe(zipWithIndex) ==? run(s.get).zipWithIndex
+    s.get.through(zipWithIndex) ==? run(s.get).zipWithIndex
   }
 
   property("zipWithNext") = forAll { (s: PureStream[Int]) =>
-    s.get.pipe(zipWithNext) ==? {
+    s.get.through(zipWithNext) ==? {
       val xs = run(s.get)
       xs.zipAll(xs.map(Some(_)).drop(1), -1, None)
     }
@@ -252,7 +252,7 @@ object Process1Spec extends Properties("process1") {
   }
 
   property("zipWithPrevious") = forAll { (s: PureStream[Int]) =>
-    s.get.pipe(zipWithPrevious) ==? {
+    s.get.through(zipWithPrevious) ==? {
       val xs = run(s.get)
       (None +: xs.map(Some(_))).zip(xs)
     }
@@ -265,7 +265,7 @@ object Process1Spec extends Properties("process1") {
   }
 
   property("zipWithPreviousAndNext") = forAll { (s: PureStream[Int]) =>
-    s.get.pipe(zipWithPreviousAndNext) ==? {
+    s.get.through(zipWithPreviousAndNext) ==? {
       val xs = run(s.get)
       val zipWithPrevious = (None +: xs.map(Some(_))).zip(xs)
       val zipWithPreviousAndNext = zipWithPrevious

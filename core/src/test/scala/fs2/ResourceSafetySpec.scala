@@ -128,9 +128,9 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
       case None => s.get
       case Some(f) => spuriousFail(s.get, f)
     })
-    swallow { run { s2 through process1.prefetch }}
-    swallow { run { s2 through process1.prefetch through process1.prefetch }}
-    swallow { run { s2 through process1.prefetch through process1.prefetch through process1.prefetch }}
+    swallow { run { s2 through pipe.prefetch }}
+    swallow { run { s2 through pipe.prefetch through pipe.prefetch }}
+    swallow { run { s2 through pipe.prefetch through pipe.prefetch through pipe.prefetch }}
     c.get ?= 0L
   }
 

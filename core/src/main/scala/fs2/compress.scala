@@ -8,7 +8,7 @@ import scala.collection.mutable.ArrayBuffer
 
 object compress {
   /**
-    * Returns a `Process1` that deflates (compresses) its input elements using
+    * Returns a `Pipe` that deflates (compresses) its input elements using
     * a `java.util.zip.Deflater` with the parameters `level`, `nowrap` and `strategy`.
     * @param level the compression level (0-9)
     * @param nowrap if true then use GZIP compatible compression
@@ -16,16 +16,19 @@ object compress {
     *                   compressor. Default size is 32 KB.
     * @param strategy compression strategy -- see `java.util.zip.Deflater` for details
     */
-  def deflate(level: Int = Deflater.DEFAULT_COMPRESSION,
+  def deflate[F[_]](level: Int = Deflater.DEFAULT_COMPRESSION,
               nowrap: Boolean = false,
               bufferSize: Int = 1024 * 32,
-              strategy: Int = Deflater.DEFAULT_STRATEGY): Process1[Byte, Byte] =
-    _ pull { _.awaitNonempty flatMap { step =>
-      val deflater = new Deflater(level, nowrap)
-      deflater.setStrategy(strategy)
-      val buffer = new Array[Byte](bufferSize)
-      _deflate_step(deflater, buffer)(step)
-    }}
+              strategy: Int = Deflater.DEFAULT_STRATEGY): Pipe[F,Byte,Byte] = {
+    val pure: Pipe[Pure,Byte,Byte] =
+      _ pull { _.awaitNonempty flatMap { step =>
+        val deflater = new Deflater(level, nowrap)
+        deflater.setStrategy(strategy)
+        val buffer = new Array[Byte](bufferSize)
+        _deflate_step(deflater, buffer)(step)
+      }}
+    pipe.covary[F,Byte,Byte](pure)
+  }
   private def _deflate_step(deflater: Deflater, buffer: Array[Byte]): Step[Chunk[Byte], Handle[Pure, Byte]] => Pull[Pure, Byte, Handle[Pure, Byte]] = {
     case c #: h =>
       deflater.setInput(c.toArray)
@@ -51,21 +54,24 @@ object compress {
   }
 
   /**
-    * Returns a `Process1` that inflates (decompresses) its input elements using
+    * Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
     * @param nowrap if true then support GZIP compatible compression
     * @param bufferSize size of the internal buffer that is used by the
     *                   decompressor. Default size is 32 KB.
     */
-  def inflate(nowrap: Boolean = false,
-              bufferSize: Int = 1024 * 32): Process1[Byte, Byte] =
-    _ pull { _.awaitNonempty flatMap { case c #: h =>
-      val inflater = new Inflater(nowrap)
-      val buffer = new Array[Byte](bufferSize)
-      inflater.setInput(c.toArray)
-      val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-      Pull.output(Chunk.bytes(result)) >> _inflate_handle(inflater, buffer)(h)
-    }}
+  def inflate[F[_]](nowrap: Boolean = false,
+              bufferSize: Int = 1024 * 32): Pipe[F,Byte,Byte] = {
+    val pure: Pipe[Pure,Byte,Byte] =
+      _ pull { _.awaitNonempty flatMap { case c #: h =>
+        val inflater = new Inflater(nowrap)
+        val buffer = new Array[Byte](bufferSize)
+        inflater.setInput(c.toArray)
+        val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
+        Pull.output(Chunk.bytes(result)) >> _inflate_handle(inflater, buffer)(h)
+      }}
+    pipe.covary[F,Byte,Byte](pure)
+  }
   private def _inflate_step(inflater: Inflater, buffer: Array[Byte]): Step[Chunk[Byte], Handle[Pure, Byte]] => Pull[Pure, Byte, Handle[Pure, Byte]] = {
     case c #: h =>
       inflater.setInput(c.toArray)

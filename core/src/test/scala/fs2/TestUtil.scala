@@ -10,11 +10,11 @@ object TestUtil {
   implicit val S = Strategy.fromFixedDaemonPool(8)
   // implicit val S = Strategy.fromCachedDaemonPool("test-thread-worker")
 
-  def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.run
-  def runFor[A](timeout:FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.runFor(timeout)
+  def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRun
+  def runFor[A](timeout:FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
 
   def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
-    s.runLog.run.attemptRun match {
+    s.runLog.run.unsafeAttemptRun match {
       case Left(e) if e == err => true
       case _ => false
     }
