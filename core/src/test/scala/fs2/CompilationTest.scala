@@ -27,5 +27,11 @@ object ThisModuleShouldCompile {
   /* Check that `Async[Task]` can be found in companion object without imports. */
   implicit val S = Strategy.sequential
   val i = Stream.eval(Task.now(1)).pull { h => h.invAwaitAsync }
+
+  val j: Pipe[Task,Int,Int] = pipe.take[Pure,Int](2)
+  val k = pipe.take[Pure,Int](2).covary[Task]
+  val l = pipe.take[Pure,Int](2).attachL(pipe2.interleave)
+  val m = pipe.take[Pure,Int](2).attachR(pipe2.interleave)
+  val n = pipe.take[Pure,Int](2).attachR(pipe2.interleave)
 }
 

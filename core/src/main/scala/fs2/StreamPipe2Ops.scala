@@ -2,7 +2,11 @@ package fs2
 
 import fs2.util.{RealSupertype,Sub1}
 
-trait Pipe2Ops[+F[_],+O] { self: Stream[F,O] =>
+/**
+ * Mixin trait for various non-primitive operations exposed on `Stream`
+ * that are implemented in terms of `Pipe2`.
+ */
+private[fs2] trait StreamPipe2Ops[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `(this through2v s2)(pipe2.either)`. */
   def either[F2[_]:Async,O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2]): Stream[F2,Either[O,O2]] =

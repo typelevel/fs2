@@ -4,7 +4,7 @@ import fs2.util.{RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2]
-trait StreamDerived { self: fs2.Stream.type =>
+trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
 
   // nb: methods are in alphabetical order
 
@@ -204,7 +204,8 @@ trait StreamDerived { self: fs2.Stream.type =>
     /** Transform this stream using the given pure `Pipe2`. */
     def through2p[B,C](s2: Stream[F,B])(f: Pipe2[Pure,A,B,C]): Stream[F,C] =
       f(s,s2)
-    def to(f: Sink[F,A]): Stream[F,Unit] = f(s)
+    /** Applies the given sink to this stream and drains the output. */
+    def to(f: Sink[F,A]): Stream[F,Unit] = f(s).drain
   }
 
   implicit class StreamPureOps[+A](s: Stream[Pure,A]) {

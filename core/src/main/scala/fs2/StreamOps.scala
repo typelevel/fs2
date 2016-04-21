@@ -6,8 +6,7 @@ import fs2.util.{Free,Monad,RealSupertype,Sub1,~>}
  * Mixin trait for various non-primitive operations exposed on `Stream`
  * for syntactic convenience.
  */
-private[fs2]
-trait StreamOps[+F[_],+A] extends PipeOps[F,A] with Pipe2Ops[F,A] {
+private[fs2] trait StreamOps[+F[_],+A] extends StreamPipeOps[F,A] with StreamPipe2Ops[F,A] {
   self: Stream[F,A] =>
 
   import Stream.Handle
@@ -96,7 +95,7 @@ trait StreamOps[+F[_],+A] extends PipeOps[F,A] with Pipe2Ops[F,A] {
 
   /** Like `to`, but the specified `Sink`'s effect may be a supertype of `F`. */
   def tov[F2[_]](f: Sink[F2,A])(implicit S: Sub1[F,F2]): Stream[F2,Unit] =
-    f(Sub1.substStream(self))
+    f(Sub1.substStream(self)).drain
 
   def translate[G[_]](u: F ~> G): Stream[G,A] = Stream.translate(self)(u)
 

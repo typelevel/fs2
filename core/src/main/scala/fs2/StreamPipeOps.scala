@@ -1,6 +1,10 @@
 package fs2
 
-trait PipeOps[+F[_],+O] { self: Stream[F,O] =>
+/**
+ * Mixin trait for various non-primitive operations exposed on `Stream`
+ * that are implemented in terms of `Pipe`.
+ */
+private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order
 
