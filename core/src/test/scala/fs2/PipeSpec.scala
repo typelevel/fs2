@@ -130,8 +130,8 @@ object PipeSpec extends Properties("pipe") {
     s.get.mapChunks(identity).chunks ==? run(s.get.chunks)
   }
 
-  property("performance of multi-stage throughline") = secure {
-    println("checking performance of multistage throughline... this should finish quickly")
+  property("performance of multi-stage pipeline") = secure {
+    println("checking performance of multistage pipeline... this should finish quickly")
     val v = Vector.fill(1000)(Vector.empty[Int])
     val v2 = Vector.fill(1000)(Vector(0))
     val s = (v.map(Stream.emits): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
