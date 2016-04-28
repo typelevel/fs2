@@ -84,7 +84,11 @@ object StreamSpec extends Properties("Stream") {
   property("range") = protect {
     Stream.range(0, 100).toList == List.range(0, 100) &&
       Stream.range(0, 1).toList == List.range(0, 1) &&
-      Stream.range(0, 0).toList == List.range(0, 0)
+      Stream.range(0, 0).toList == List.range(0, 0) &&
+      Stream.range(0, 101, 2).toList == List.range(0, 101, 2) &&
+      Stream.range(5,0, -1).toList == List.range(5,0,-1) &&
+      Stream.range(5,0, 1).toList == Nil &&
+      Stream.range(10, 50, 0).toList == Nil
   }
 
   property("ranges") = forAll(Gen.choose(1, 101)) { size =>
