@@ -9,3 +9,5 @@ cache:
   directories:
     - $HOME/.ivy2
     - $HOME/.sbt
+script:
+  - travis_wait sbt ++$TRAVIS_SCALA_VERSION test
