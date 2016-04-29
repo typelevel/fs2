@@ -1,61 +1,45 @@
 package fs2
 
-import Stream.Handle
-import Async.Future
-import fs2.{Pull => P}
-
+import util.Free
 
 object concurrent {
 
-  def join[F[_]:Async,O](maxOpen: Int)(s: Stream[F,Stream[F,O]]): Stream[F,O] = {
+  def join[F[_],O](maxOpen: Int)(s: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
     if (maxOpen <= 0) throw new IllegalArgumentException("maxOpen must be > 0, was: " + maxOpen)
-    def go(s: Handle[F,Stream[F,O]],
-           onlyOpen: Boolean, // `true` if `s` should be ignored
-           open: Vector[Future[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]])
-    : Pull[F,O,Unit] =
-      // A) Nothing's open; block to obtain a new open stream
-      if (open.isEmpty) s.await1.flatMap { case sh #: s =>
-        sh.open.flatMap { sh => sh.awaitAsync.flatMap { f =>
-          go(s, onlyOpen, open :+ f)
-        }}
-      }
-      // B) We have too many things open, or `s` is exhausted so we only consult `open`
-      // race to obtain a step from each of the currently open handles
-      else if (open.size >= maxOpen || onlyOpen) {
-        Future.race(open).force.flatMap { winner =>
-          winner.get.optional.flatMap {
-            case None => go(s, onlyOpen, winner.delete) // winning `Pull` is done, remove it
-            case Some(out #: h) =>
-              // winner has more values, write these to output
-              // and update the handle for the winning position
-              P.output(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
-          }
-        }
-      }
-      // C) Like B), but we are allowed to open more handles, so race opening a new handle
-      // with pulling from already open handles
-      else for {
-        nextS <- s.await1Async
-        elementOrNewStream <- Future.race(open).race(nextS).force
-        u <- elementOrNewStream match {
-          case Left(winner) =>
-            winner.get.optional.flatMap {
-            case None => go(s, onlyOpen, winner.delete)
-            case Some(out #: h) =>
-              P.output(out) >> h.awaitAsync.flatMap { next => go(s, onlyOpen, winner.replace(next)) }
-          }
-          case Right(anotherOpen) =>
-            anotherOpen.optional.flatMap {
-              case Some(s2) => s2 match {
-                case None #: s => go(s, true, open)
-                case Some(s2) #: s => s2.open.flatMap { h2 =>
-                  h2.awaitAsync.flatMap { f => go(s, onlyOpen, open :+ f) }
-                }
+    for {
+      killSignal <- Stream.eval(async.signalOf(false))
+      openLeases <- Stream.eval(async.mutable.Semaphore(maxOpen))
+      outerDone <- Stream.eval(F.refOf[Boolean](false))
+      outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
+      o <- s.evalMap { (s: Stream[F,O]) =>
+        F.bind(openLeases.decrement) { _ =>
+        F.start {
+          val done =
+            F.bind(openLeases.increment) { _ =>
+            F.bind(F.get(outerDone)) { outerDone =>
+            F.bind(openLeases.count) { n =>
+              if (n == maxOpen && outerDone) {
+                outputQueue.enqueue1(None)
               }
-              case None => go(s, true, open)
-            }
+              else F.pure(())
+            }}}
+          s.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }
+           .interruptWhen(killSignal).run.flatMap { _ => Free.eval(done) }.run
+        }}
+      }.onFinalize(F.bind(openLeases.count) { n =>
+          F.bind(if (n == maxOpen) outputQueue.offer1(None) else F.pure(true)) { _ =>
+            F.setPure(outerDone)(true)
+          }
+      }) mergeDrainL {
+        outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {
+          case Left(e) => Stream.eval(killSignal.set(true)).flatMap { _ => Stream.fail(e) }
+          case Right(c) => Stream.chunk(c)
         }
-      } yield u
-    s pull { h => go(h, false, Vector.empty) }
+      } onFinalize {
+        // set kill signal, then wait for any outstanding inner streams to complete
+        F.bind(killSignal.set(true)) { _ =>
+        F.bind(openLeases.clear) { m => openLeases.decrementBy(maxOpen - m) }}
+      }
+    } yield o
   }
 }

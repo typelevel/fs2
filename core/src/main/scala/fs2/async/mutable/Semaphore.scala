@@ -39,6 +39,13 @@ trait Semaphore[F[_]] {
    */
   def count: F[Long]
 
+  /**
+   * Reset the count of this semaphore back to zero, and return the previous count.
+   * Throws an `IllegalArgumentException` if count is below zero (due to pending
+   * decrements).
+   */
+  def clear: F[Long]
+
   /** Decrement the number of permits by 1. Just calls `[[decrementBy]](1)`. */
   final def decrement: F[Unit] = decrementBy(1)
   /** Increment the number of permits by 1. Just calls `[[incrementBy]](1)`. */
@@ -73,6 +80,15 @@ object Semaphore {
           case Right(_) => F.pure(())
         }}}
       }
+
+      def clear: F[Long] =
+        F.bind(F.modify(ref) {
+        case Left(e) => throw new IllegalStateException("cannot clear a semaphore with negative count")
+        case Right(n) => Right(0)
+        }) { c => c.previous match {
+          case Right(n) => F.pure(n)
+          case Left(_) => sys.error("impossible, exception thrown above")
+        }}
 
       private def count_(s: S): Long =
         s.fold(ws => -ws.map(_._1).sum, identity)

@@ -138,6 +138,17 @@ object pipe {
     _ repeatPull { _.receive {
       case hd #: tl => Pull.prefetch(tl) flatMap { p => Pull.output(hd) >> p }}}
 
+  /** Rethrow any `Left(err)`. Preserves chunkiness. */
+  def rethrow[F[_],I]: Stream[F,Either[Throwable,I]] => Stream[F,I] =
+    _.chunks.flatMap { es =>
+      val errs = es collect { case Left(e) => e }
+      val ok = es collect { case Right(i) => i }
+      errs.uncons match {
+        case None => Stream.chunk(ok)
+        case Some((err, _)) => Stream.fail(err) // only first error is reported
+      }
+    }
+
   /** Alias for `[[pipe.fold1]]` */
   def reduce[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] = fold1(f)
 

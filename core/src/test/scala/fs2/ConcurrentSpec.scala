@@ -38,10 +38,10 @@ object ConcurrentSpec extends Properties("concurrent") {
     run { s1.get }.toSet
   }
 
-  property("join (3)") = forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
+  property("join (3)") = protect { forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
     run { concurrent.join(n.get)(s1.get.map(_.get.covary[Task]).covary[Task]) }.toSet ?=
     run { s1.get.flatMap(_.get) }.toSet
-  }
+  }}
 
   property("merge (left/right failure)") = forAll { (s1: PureStream[Int], f: Failure) =>
     try { run (s1.get merge f.get); false }
