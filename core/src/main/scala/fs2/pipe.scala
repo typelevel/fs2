@@ -187,6 +187,10 @@ object pipe {
   def scan1[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] =
     _ pull { Pull.receive1 { case o #: h => _scan0(o)(f)(h) }}
 
+  /** Emit the given values, then echo the rest of the input. */
+  def shiftRight[F[_],I](head: I*): Stream[F,I] => Stream[F,I] =
+    _ pull { h => Pull.echo(h.push(Chunk.indexedSeq(Vector(head: _*)))) }
+
   /** Writes the sum of all input elements, or zero if the input is empty. */
   def sum[F[_],I](implicit ev: Numeric[I]): Stream[F,I] => Stream[F,I] =
     fold(ev.zero)(ev.plus)
@@ -202,6 +206,10 @@ object pipe {
   /** Emits the last `n` elements of the input. */
   def takeRight[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.takeRight(n)(h).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
+
+  /** Like `takeWhile`, but emits the first value which tests false. */
+  def takeThrough[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
+    _ pull Pull.takeThrough(f)
 
   /** Emit the longest prefix of the input for which all elements test true according to `f`. */
   def takeWhile[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
