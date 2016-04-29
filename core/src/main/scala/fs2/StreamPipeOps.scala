@@ -73,6 +73,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self through [[pipe.scan1]](f)`. */
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.scan1(f)
 
+  /** Alias for `self through [[pipe.shiftRight]]`. */
+  def shiftRight[O2 >: O](head: O2*): Stream[F,O2] = self through pipe.shiftRight(head: _*)
+
   /** Alias for `self through [[pipe.sum]](f)`. */
   def sum[O2 >: O : Numeric]: Stream[F,O2] = self through pipe.sum
 
@@ -84,6 +87,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self through [[pipe.takeRight]]`. */
   def takeRight(n: Long): Stream[F,O] = self through pipe.takeRight(n)
+
+  /** Alias for `self through [[pipe.takeThrough]]`. */
+  def takeThrough(p: O => Boolean): Stream[F,O] = self through pipe.takeThrough(p)
 
   /** Alias for `self through [[pipe.takeWhile]]`. */
   def takeWhile(p: O => Boolean): Stream[F,O] = self through pipe.takeWhile(p)
