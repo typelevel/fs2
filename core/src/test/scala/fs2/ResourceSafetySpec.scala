@@ -117,6 +117,7 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
       if (allowFailure) f.map(f => spuriousFail(bracket(c)(s.get), f)).getOrElse(bracket(c)(s.get))
       else bracket(c)(s.get)
     })
+    swallow { run { concurrent.join(n.get)(s2).take(10) }}
     swallow { run { concurrent.join(n.get)(s2) }}
     c.get ?= 0L
   }
