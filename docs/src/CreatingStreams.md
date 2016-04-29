@@ -32,7 +32,7 @@ In addition to creating pure streams using some generative function, we can also
 val greeting = Stream.eval(Task.now("Hi there!"))
 val hi = greeting.runLog.run.unsafeRun
 ```
-This producees a `Stream[Task, String]`, which we can then force evaluation of using the `runLog.run.run`, which has the type of `Free[Task,Vector[String]] -> Task[Vector[String]] -> Vector[String]`. As you can see, the various `run` calls have the effect of stepping up one layer from `Stream` to `Task`  to `A`.
+This producees a `Stream[Task, String]`, which we can then force evaluation of using the `runLog.run.unsafeRun`. This stack of `run` calls peels back the layers from `Stream` to `Task`  to `A`, which in this example is a `Vector[String]`.
 
 Because `greeting` is a `Stream`, we can use all sorts of great stream operators on it
 ```tut:book
