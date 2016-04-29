@@ -95,7 +95,12 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
    * `emits(start until stopExclusive)`.
    */
   def range[F[_]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F,Int] =
-    unfold(start)(i => if (i < stopExclusive) Some((i, i + by)) else None)
+    unfold(start){i => 
+      if ((by > 0 && i < stopExclusive && start < stopExclusive) || 
+          (by < 0 && i > stopExclusive && start > stopExclusive)) 
+        Some((i, i + by))
+      else None
+    }
 
   /**
    * Lazily produce a sequence of nonoverlapping ranges, where each range
