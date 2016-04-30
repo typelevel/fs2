@@ -133,7 +133,10 @@ class ResourceSafetySpec extends Fs2Spec {
 
     def swallow(a: => Any): Unit =
       try { a; () }
-      catch { case e: Throwable => () }
+      catch {
+        case e: InterruptedException => throw e
+        case e: Throwable => ()
+      }
 
     def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
       Stream.bracket(Task.delay { c.decrementAndGet })(
