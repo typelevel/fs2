@@ -35,10 +35,12 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
   }
 
   property("1 million brackets in sequence") = protect {
+    println("Starting 1 million brackets in sequence...")
     val c = new AtomicLong(0)
     val b = bracket(c)(Stream.emit(1))
     val bs = Stream.range(0, 1000000).flatMap(_ => b)
     run { bs }
+    println("Done 1 million brackets in sequence")
     c.get ?= 0
   }
 
