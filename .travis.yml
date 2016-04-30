@@ -14,9 +14,6 @@ cache:
   - $HOME/.ivy2
   - $HOME/.sbt
 
-script:
-- travis_wait sbt ++$TRAVIS_SCALA_VERSION test
-
 env:
   global:
   - secure: gYw+NTUc3uR9fGjXNFU3AWEzk6V3hh1ZZlWA+Cp7QagRWPyPsuq9zdXYmpNH60EN9IlC73+qd6xEO/szejgQfY7BN1THr+NPzHTSJzR0ZtytR/C3IROvkvMiqnc8TtvjH/ECEyDauRvNGDR1y2T7mOZcwYZlgvk99D1S1JuBNe0=
