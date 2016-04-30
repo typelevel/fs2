@@ -1,295 +1,297 @@
 package fs2
 
 import fs2.Stream._
-import fs2.TestUtil._
 import fs2.pipe._
 import fs2.util.Task
-import org.scalacheck.Prop._
-import org.scalacheck.{Gen, Properties}
+import org.scalacheck.Gen
 
-object PipeSpec extends Properties("pipe") {
+class PipeSpec extends Fs2Spec {
 
-  property("chunkLimit") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
-    val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
-    sizeV.forall(_ <= n0.get) && sizeV.sum == s.get.toVector.size
-  }
+  "Pipe" - {
 
-  property("chunkN.fewer") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
-    val chunkedV = s.get.chunkN(n0.get, true).toVector
-    val unchunkedV = s.get.toVector
-    // All but last list have n0 values
-    chunkedV.dropRight(1).forall(_.map(_.size).sum == n0.get) &&
-      // Last list has at most n0 values
-      chunkedV.lastOption.fold(true)(_.map(_.size).sum <= n0.get) &&
-      // Flattened sequence is equal to vector without chunking
-      chunkedV.foldLeft(Vector.empty[Int])((v, l) =>v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == unchunkedV
-  }
-
-  property("chunkN.no-fewer") = forAll { (s: PureStream[Int], n0: SmallPositive) =>
-    val chunkedV = s.get.chunkN(n0.get, false).toVector
-    val unchunkedV = s.get.toVector
-    val expectedSize = unchunkedV.size - (unchunkedV.size % n0.get)
-    // All lists have n0 values
-    chunkedV.forall(_.map(_.size).sum == n0.get) &&
-      // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
-      chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == unchunkedV.take(expectedSize)
-  }
-
-  property("chunks") = forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
-    val v = Vector(Vector(11,2,2,2), Vector(2,2,3), Vector(2,3,4), Vector(1,2,2,2,2,2,3,3))
-    val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-    s.throughp(chunks).map(_.toVector) ==? v
-  }
-
-  property("chunks (2)") = forAll(nestedVectorGen[Int](0,10, emptyChunks = true)) { (v: Vector[Vector[Int]]) =>
-    val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-    s.throughp(chunks).flatMap(Stream.chunk) ==? v.flatten
-  }
-
-  property("collect") = forAll { (s: PureStream[Int]) =>
-    val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-    s.get.through(fs2.pipe.collect(pf)) ==? run(s.get).collect(pf)
-  }
-
-  property("collectFirst") = forAll { (s: PureStream[Int]) =>
-    val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-    s.get.collectFirst(pf) ==? run(s.get).collectFirst(pf).toVector
-  }
-
-  property("delete") = forAll { (s: PureStream[Int]) =>
-    val v = run(s.get)
-    val i = Gen.oneOf(v).sample.getOrElse(0)
-    s.get.delete(_ == i) ==? v.diff(Vector(i))
-  }
-
-  property("drop") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-    val n = if (negate) -n0.get else n0.get
-    s.get.through(drop(n)) ==? run(s.get).drop(n)
-  }
-
-  property("dropWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
-    val set = run(s.get).take(n.get).toSet
-    s.get.through(dropWhile(set)) ==? run(s.get).dropWhile(set)
-  }
-
-  property("exists") = forAll { (s: PureStream[Int], n: SmallPositive) =>
-    val f = (i: Int) => i % n.get == 0
-    s.get.exists(f) ==? Vector(run(s.get).exists(f))
-  }
-
-  property("filter") = forAll { (s: PureStream[Int], n: SmallPositive) =>
-    val predicate = (i: Int) => i % n.get == 0
-    s.get.filter(predicate) ==? run(s.get).filter(predicate)
-  }
-
-  property("filter (2)") = forAll { (s: PureStream[Double]) =>
-    val predicate = (i: Double) => i - i.floor < 0.5
-    val s2 = s.get.mapChunks(c => Chunk.doubles(c.toArray))
-    s2.filter(predicate) ==? run(s2).filter(predicate)
-  }
-
-  property("filter (3)") = forAll { (s: PureStream[Byte]) =>
-    val predicate = (b: Byte) => b < 0
-    val s2 = s.get.mapChunks(c => Chunk.bytes(c.toArray))
-    s2.filter(predicate) ==? run(s2).filter(predicate)
-  }
-
-  property("filter (4)") = forAll { (s: PureStream[Boolean]) =>
-    val predicate = (b: Boolean) => !b
-    val s2 = s.get.mapChunks(c => Chunk.booleans(c.toArray))
-    s2.filter(predicate) ==? run(s2).filter(predicate)
-  }
-
-  property("find") = forAll { (s: PureStream[Int], i: Int) =>
-    val predicate = (item: Int) => item < i
-    s.get.find(predicate) ==? run(s.get).find(predicate).toVector
-  }
-
-  property("fold") = forAll { (s: PureStream[Int], n: Int) =>
-    val f = (a: Int, b: Int) => a + b
-    s.get.fold(n)(f) ==? Vector(run(s.get).foldLeft(n)(f))
-  }
-
-  property("fold (2)") = forAll { (s: PureStream[Int], n: String) =>
-    val f = (a: String, b: Int) => a + b
-    s.get.fold(n)(f) ==? Vector(run(s.get).foldLeft(n)(f))
-  }
-
-  property("fold1") = forAll { (s: PureStream[Int]) =>
-    val v = run(s.get)
-    val f = (a: Int, b: Int) => a + b
-    s.get.fold1(f) ==? v.headOption.fold(Vector.empty[Int])(h => Vector(v.drop(1).foldLeft(h)(f)))
-  }
-
-  property("forall") = forAll { (s: PureStream[Int], n: SmallPositive) =>
-    val f = (i: Int) => i % n.get == 0
-    s.get.forall(f) ==? Vector(run(s.get).forall(f))
-  }
-
-  property("mapChunked") = forAll { (s: PureStream[Int]) =>
-    s.get.mapChunks(identity).chunks ==? run(s.get.chunks)
-  }
-
-  property("performance of multi-stage pipeline") = secure {
-    println("checking performance of multistage pipeline... this should finish quickly")
-    val v = Vector.fill(1000)(Vector.empty[Int])
-    val v2 = Vector.fill(1000)(Vector(0))
-    val s = (v.map(Stream.emits): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
-    val s2 = (v2.map(Stream.emits(_)): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
-    val start = System.currentTimeMillis
-    s.through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id) ==? Vector()
-    s2.through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id) ==? Vector.fill(1000)(0)
-    println("done checking performance; took " + (System.currentTimeMillis - start) + " milliseconds")
-    true
-  }
-
-  property("last") = forAll { (s: PureStream[Int]) =>
-    val shouldCompile = s.get.last
-    s.get.through(last) ==? Vector(run(s.get).lastOption)
-  }
-
-  property("lastOr") = forAll { (s: PureStream[Int], n: SmallPositive) =>
-    val default = n.get
-    s.get.lastOr(default) ==? Vector(run(s.get).lastOption.getOrElse(default))
-  }
-
-  property("lift") = forAll { (s: PureStream[Double]) =>
-    s.get.through(lift(_.toString)) ==? run(s.get).map(_.toString)
-  }
-
-  property("mapAccumulate") = forAll { (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
-    val f = (_: Int) % n1.get == 0
-    val r = s.get.mapAccumulate(n0)((s, i) => (s + i, f(i)))
-
-    r.map(_._1) ==? run(s.get).scan(n0)(_ + _).tail
-    r.map(_._2) ==? run(s.get).map(f)
-  }
-
-  property("prefetch") = forAll { (s: PureStream[Int]) =>
-    s.get.covary[Task].through(prefetch) ==? run(s.get)
-  }
-
-  property("prefetch (timing)") = secure {
-    // should finish in about 3-4 seconds
-    val s = Stream(1,2,3)
-          . evalMap(i => Task.delay { Thread.sleep(1000); i })
-          . through(prefetch)
-          . flatMap { i => Stream.eval(Task.delay { Thread.sleep(1000); i}) }
-    val start = System.currentTimeMillis
-    run(s)
-    val stop = System.currentTimeMillis
-    println("prefetch (timing) took " + (stop-start) + " milliseconds, should be under 6000 milliseconds")
-    (stop-start) < 6000
-  }
-
-  property("sum") = forAll { (s: PureStream[Int]) =>
-    s.get.sum ==? Vector(run(s.get).sum)
-  }
-
-  property("sum (2)") = forAll { (s: PureStream[Double]) =>
-    s.get.sum ==? Vector(run(s.get).sum)
-  }
-
-  property("take") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-    val n = if (negate) -n0.get else n0.get
-    s.get.take(n) ==? run(s.get).take(n)
-  }
-
-  property("takeRight") = forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-    val n = if (negate) -n0.get else n0.get
-    s.get.takeRight(n) ==? run(s.get).takeRight(n)
-  }
-
-  property("takeWhile") = forAll { (s: PureStream[Int], n: SmallNonnegative) =>
-    val set = run(s.get).take(n.get).toSet
-    s.get.through(takeWhile(set)) ==? run(s.get).takeWhile(set)
-  }
-
-  property("takeThrough") = forAll { (s: PureStream[Int], n: SmallPositive) =>
-    val f = (i: Int) => i % n.get == 0
-    val vec = run(s.get)
-    val result = if (vec.exists(i => !f(i))) vec.takeWhile(f) ++ vec.find(i => !(f(i))).toVector else vec.takeWhile(f)
-    s.get.takeThrough(f) ==? result
-  }
-
-  property("scan") = forAll { (s: PureStream[Int], n: Int) =>
-    val f = (a: Int, b: Int) => a + b
-    s.get.scan(n)(f) ==? run(s.get).scanLeft(n)(f)
-  }
-
-  property("scan (2)") = forAll { (s: PureStream[Int], n: String) =>
-    val f = (a: String, b: Int) => a + b
-    s.get.scan(n)(f) ==? run(s.get).scanLeft(n)(f)
-  }
-
-  property("scan1") = forAll { (s: PureStream[Int]) =>
-    val v = run(s.get)
-    val f = (a: Int, b: Int) => a + b
-    s.get.scan1(f) ==? v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
-  }
-
-  property("shiftRight") = forAll { (s: PureStream[Int], v: Vector[Int]) =>
-    s.get.shiftRight(v: _*) ==? v ++ run(s.get)
-  }
-
-  property("tail") = forAll { (s: PureStream[Int]) =>
-    s.get.tail ==? run(s.get).drop(1)
-  }
-
-  property("take.chunks") = secure {
-    val s = Stream.pure(1, 2) ++ Stream(3, 4)
-    s.through(take(3)).through(chunks).map(_.toVector) ==? Vector(Vector(1, 2), Vector(3))
-  }
-
-  property("vectorChunkN") = forAll { (s: PureStream[Int], n: SmallPositive) =>
-    s.get.vectorChunkN(n.get) ==? run(s.get).grouped(n.get).toVector
-  }
-
-  property("zipWithIndex") = forAll { (s: PureStream[Int]) =>
-    s.get.through(zipWithIndex) ==? run(s.get).zipWithIndex
-  }
-
-  property("zipWithNext") = forAll { (s: PureStream[Int]) =>
-    s.get.through(zipWithNext) ==? {
-      val xs = run(s.get)
-      xs.zipAll(xs.map(Some(_)).drop(1), -1, None)
+    "chunkLimit" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
+      val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
+      assert(sizeV.forall(_ <= n0.get) && sizeV.sum == s.get.toVector.size)
     }
-  }
 
-  property("zipWithNext (2)") = protect {
-    Stream().zipWithNext === Vector() &&
-    Stream(0).zipWithNext === Vector((0, None)) &&
-    Stream(0, 1, 2).zipWithNext === Vector((0, Some(1)), (1, Some(2)), (2, None))
-  }
-
-  property("zipWithPrevious") = forAll { (s: PureStream[Int]) =>
-    s.get.through(zipWithPrevious) ==? {
-      val xs = run(s.get)
-      (None +: xs.map(Some(_))).zip(xs)
+    "chunkN.fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
+      val chunkedV = s.get.chunkN(n0.get, true).toVector
+      val unchunkedV = s.get.toVector
+      assert {
+        // All but last list have n0 values
+        chunkedV.dropRight(1).forall(_.map(_.size).sum == n0.get) &&
+        // Last list has at most n0 values
+        chunkedV.lastOption.fold(true)(_.map(_.size).sum <= n0.get) &&
+        // Flattened sequence is equal to vector without chunking
+        chunkedV.foldLeft(Vector.empty[Int])((v, l) =>v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == unchunkedV
+      }
     }
-  }
 
-  property("zipWithPrevious (2)") = protect {
-    Stream().zipWithPrevious === Vector() &&
-    Stream(0).zipWithPrevious === Vector((None, 0)) &&
-    Stream(0, 1, 2).zipWithPrevious === Vector((None, 0), (Some(0), 1), (Some(1), 2))
-  }
-
-  property("zipWithPreviousAndNext") = forAll { (s: PureStream[Int]) =>
-    s.get.through(zipWithPreviousAndNext) ==? {
-      val xs = run(s.get)
-      val zipWithPrevious = (None +: xs.map(Some(_))).zip(xs)
-      val zipWithPreviousAndNext = zipWithPrevious
-        .zipAll(xs.map(Some(_)).drop(1), (None, -1), None)
-        .map { case ((prev, that), next) => (prev, that, next) }
-
-      zipWithPreviousAndNext
+    "chunkN.no-fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
+      val chunkedV = s.get.chunkN(n0.get, false).toVector
+      val unchunkedV = s.get.toVector
+      val expectedSize = unchunkedV.size - (unchunkedV.size % n0.get)
+      assert {
+        // All lists have n0 values
+        chunkedV.forall(_.map(_.size).sum == n0.get) &&
+        // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
+        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == unchunkedV.take(expectedSize)
+      }
     }
-  }
 
-  property("zipWithPreviousAndNext (2)") = protect {
-    Stream().zipWithPreviousAndNext === Vector() &&
-    Stream(0).zipWithPreviousAndNext === Vector((None, 0, None)) &&
-    Stream(0, 1, 2).zipWithPreviousAndNext === Vector((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))
+    "chunks" in forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
+      val v = Vector(Vector(11,2,2,2), Vector(2,2,3), Vector(2,3,4), Vector(1,2,2,2,2,2,3,3))
+      val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
+      runLog(s.throughp(chunks).map(_.toVector)) shouldBe v
+    }
+
+    "chunks (2)" in forAll(nestedVectorGen[Int](0,10, emptyChunks = true)) { (v: Vector[Vector[Int]]) =>
+      val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
+      runLog(s.throughp(chunks).flatMap(Stream.chunk)) shouldBe v.flatten
+    }
+
+    "collect" in forAll { (s: PureStream[Int]) =>
+      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+      runLog(s.get.through(fs2.pipe.collect(pf))) shouldBe runLog(s.get).collect(pf)
+    }
+
+    "collectFirst" in forAll { (s: PureStream[Int]) =>
+      val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
+      runLog(s.get.collectFirst(pf)) shouldBe runLog(s.get).collectFirst(pf).toVector
+    }
+
+    "delete" in forAll { (s: PureStream[Int]) =>
+      val v = runLog(s.get)
+      val i = Gen.oneOf(v).sample.getOrElse(0)
+      runLog(s.get.delete(_ == i)) shouldBe v.diff(Vector(i))
+    }
+
+    "drop" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.through(drop(n))) shouldBe runLog(s.get).drop(n)
+    }
+
+    "dropWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
+      val set = runLog(s.get).take(n.get).toSet
+      runLog(s.get.through(dropWhile(set))) shouldBe runLog(s.get).dropWhile(set)
+    }
+
+    "exists" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      val f = (i: Int) => i % n.get == 0
+      runLog(s.get.exists(f)) shouldBe Vector(runLog(s.get).exists(f))
+    }
+
+    "filter" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      val predicate = (i: Int) => i % n.get == 0
+      runLog(s.get.filter(predicate)) shouldBe runLog(s.get).filter(predicate)
+    }
+
+    "filter (2)" in forAll { (s: PureStream[Double]) =>
+      val predicate = (i: Double) => i - i.floor < 0.5
+      val s2 = s.get.mapChunks(c => Chunk.doubles(c.toArray))
+      runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
+    }
+
+    "filter (3)" in forAll { (s: PureStream[Byte]) =>
+      val predicate = (b: Byte) => b < 0
+      val s2 = s.get.mapChunks(c => Chunk.bytes(c.toArray))
+      runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
+    }
+
+    "filter (4)" in forAll { (s: PureStream[Boolean]) =>
+      val predicate = (b: Boolean) => !b
+      val s2 = s.get.mapChunks(c => Chunk.booleans(c.toArray))
+      runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
+    }
+
+    "find" in forAll { (s: PureStream[Int], i: Int) =>
+      val predicate = (item: Int) => item < i
+      runLog(s.get.find(predicate)) shouldBe runLog(s.get).find(predicate).toVector
+    }
+
+    "fold" in forAll { (s: PureStream[Int], n: Int) =>
+      val f = (a: Int, b: Int) => a + b
+      runLog(s.get.fold(n)(f)) shouldBe Vector(runLog(s.get).foldLeft(n)(f))
+    }
+
+    "fold (2)" in forAll { (s: PureStream[Int], n: String) =>
+      val f = (a: String, b: Int) => a + b
+      runLog(s.get.fold(n)(f)) shouldBe Vector(runLog(s.get).foldLeft(n)(f))
+    }
+
+    "fold1" in forAll { (s: PureStream[Int]) =>
+      val v = runLog(s.get)
+      val f = (a: Int, b: Int) => a + b
+      runLog(s.get.fold1(f)) shouldBe v.headOption.fold(Vector.empty[Int])(h => Vector(v.drop(1).foldLeft(h)(f)))
+    }
+
+    "forall" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      val f = (i: Int) => i % n.get == 0
+      runLog(s.get.forall(f)) shouldBe Vector(runLog(s.get).forall(f))
+    }
+
+    "mapChunked" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.mapChunks(identity).chunks) shouldBe runLog(s.get.chunks)
+    }
+
+    "performance of multi-stage pipeline" in {
+      val v = Vector.fill(1000)(Vector.empty[Int])
+      val v2 = Vector.fill(1000)(Vector(0))
+      val s = (v.map(Stream.emits): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
+      val s2 = (v2.map(Stream.emits(_)): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
+      val start = System.currentTimeMillis
+      runLog(s.through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id)) shouldBe Vector()
+      runLog(s2.through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id)) shouldBe Vector.fill(1000)(0)
+    }
+
+    "last" in forAll { (s: PureStream[Int]) =>
+      val shouldCompile = s.get.last
+      runLog(s.get.through(last)) shouldBe Vector(runLog(s.get).lastOption)
+    }
+
+    "lastOr" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      val default = n.get
+      runLog(s.get.lastOr(default)) shouldBe Vector(runLog(s.get).lastOption.getOrElse(default))
+    }
+
+    "lift" in forAll { (s: PureStream[Double]) =>
+      runLog(s.get.through(lift(_.toString))) shouldBe runLog(s.get).map(_.toString)
+    }
+
+    "mapAccumulate" in forAll { (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
+      val f = (_: Int) % n1.get == 0
+      val r = s.get.mapAccumulate(n0)((s, i) => (s + i, f(i)))
+
+      runLog(r.map(_._1)) shouldBe runLog(s.get).scan(n0)(_ + _).tail
+      runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
+    }
+
+    "prefetch" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.covary[Task].through(prefetch)) shouldBe runLog(s.get)
+    }
+
+    "prefetch (timing)" in {
+      // should finish in about 3-4 seconds
+      val s = Stream(1,2,3)
+            . evalMap(i => Task.delay { Thread.sleep(1000); i })
+            . through(prefetch)
+            . flatMap { i => Stream.eval(Task.delay { Thread.sleep(1000); i}) }
+      val start = System.currentTimeMillis
+      runLog(s)
+      val stop = System.currentTimeMillis
+      println("prefetch (timing) took " + (stop-start) + " milliseconds, should be under 6000 milliseconds")
+      assert((stop-start) < 6000)
+    }
+
+    "sum" in forAll { (s: PureStream[Int]) =>
+      s.get.sum.toVector shouldBe Vector(runLog(s.get).sum)
+    }
+
+    "sum (2)" in forAll { (s: PureStream[Double]) =>
+      s.get.sum.toVector shouldBe Vector(runLog(s.get).sum)
+    }
+
+    "take" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.take(n)) shouldBe runLog(s.get).take(n)
+    }
+
+    "takeRight" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.takeRight(n)) shouldBe runLog(s.get).takeRight(n)
+    }
+
+    "takeWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
+      val set = runLog(s.get).take(n.get).toSet
+      runLog(s.get.through(takeWhile(set))) shouldBe runLog(s.get).takeWhile(set)
+    }
+
+    "takeThrough" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      val f = (i: Int) => i % n.get == 0
+      val vec = runLog(s.get)
+      val result = if (vec.exists(i => !f(i))) vec.takeWhile(f) ++ vec.find(i => !(f(i))).toVector else vec.takeWhile(f)
+      runLog(s.get.takeThrough(f)) shouldBe result
+    }
+
+    "scan" in forAll { (s: PureStream[Int], n: Int) =>
+      val f = (a: Int, b: Int) => a + b
+      runLog(s.get.scan(n)(f)) shouldBe runLog(s.get).scanLeft(n)(f)
+    }
+
+    "scan (2)" in forAll { (s: PureStream[Int], n: String) =>
+      val f = (a: String, b: Int) => a + b
+      runLog(s.get.scan(n)(f)) shouldBe runLog(s.get).scanLeft(n)(f)
+    }
+
+    "scan1" in forAll { (s: PureStream[Int]) =>
+      val v = runLog(s.get)
+      val f = (a: Int, b: Int) => a + b
+      runLog(s.get.scan1(f)) shouldBe v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
+    }
+
+    "shiftRight" in forAll { (s: PureStream[Int], v: Vector[Int]) =>
+      runLog(s.get.shiftRight(v: _*)) shouldBe v ++ runLog(s.get)
+    }
+
+    "tail" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.tail) shouldBe runLog(s.get).drop(1)
+    }
+
+    "take.chunks" in {
+      val s = Stream.pure(1, 2) ++ Stream(3, 4)
+      runLog(s.through(take(3)).through(chunks).map(_.toVector)) shouldBe Vector(Vector(1, 2), Vector(3))
+    }
+
+    "vectorChunkN" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      runLog(s.get.vectorChunkN(n.get)) shouldBe runLog(s.get).grouped(n.get).toVector
+    }
+
+    "zipWithIndex" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.through(zipWithIndex)) shouldBe runLog(s.get).zipWithIndex
+    }
+
+    "zipWithNext" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.through(zipWithNext)) shouldBe {
+        val xs = runLog(s.get)
+        xs.zipAll(xs.map(Some(_)).drop(1), -1, None)
+      }
+    }
+
+    "zipWithNext (2)" in {
+      runLog(Stream().zipWithNext) shouldBe Vector()
+      runLog(Stream(0).zipWithNext) shouldBe Vector((0, None))
+      runLog(Stream(0, 1, 2).zipWithNext) shouldBe Vector((0, Some(1)), (1, Some(2)), (2, None))
+    }
+
+    "zipWithPrevious" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.through(zipWithPrevious)) shouldBe {
+        val xs = runLog(s.get)
+        (None +: xs.map(Some(_))).zip(xs)
+      }
+    }
+
+    "zipWithPrevious (2)" in {
+      runLog(Stream().zipWithPrevious) shouldBe Vector()
+      runLog(Stream(0).zipWithPrevious) shouldBe Vector((None, 0))
+      runLog(Stream(0, 1, 2).zipWithPrevious) shouldBe Vector((None, 0), (Some(0), 1), (Some(1), 2))
+    }
+
+    "zipWithPreviousAndNext" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.through(zipWithPreviousAndNext)) shouldBe {
+        val xs = runLog(s.get)
+        val zipWithPrevious = (None +: xs.map(Some(_))).zip(xs)
+        val zipWithPreviousAndNext = zipWithPrevious
+          .zipAll(xs.map(Some(_)).drop(1), (None, -1), None)
+          .map { case ((prev, that), next) => (prev, that, next) }
+
+        zipWithPreviousAndNext
+      }
+    }
+
+    "zipWithPreviousAndNext (2)" in {
+      runLog(Stream().zipWithPreviousAndNext) shouldBe Vector()
+      runLog(Stream(0).zipWithPreviousAndNext) shouldBe Vector((None, 0, None))
+      runLog(Stream(0, 1, 2).zipWithPreviousAndNext) shouldBe Vector((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))
+    }
   }
 }
