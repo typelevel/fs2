@@ -1,14 +1,15 @@
 package fs2
 
 import java.util.concurrent.atomic.AtomicInteger
+
 import java.util.concurrent.{ThreadFactory, Executors, ScheduledExecutorService}
 
-import fs2.util.{Sub1,Task}
+import fs2.util.Task
 import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.duration._
 
-object TestUtil {
+trait TestUtil {
 
   implicit val S = Strategy.fromFixedDaemonPool(8)
   // implicit val S = Strategy.fromCachedDaemonPool("test-thread-worker")
@@ -21,32 +22,14 @@ object TestUtil {
     }
   })
 
-  def run[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRun
-  def runFor[A](timeout:FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
+  def runLog[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRun
+  def runFor[A](timeout: FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
 
   def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
     s.runLog.run.unsafeAttemptRun match {
       case Left(e) if e == err => true
       case _ => false
     }
-
-  def logTiming[A](msg: String)(a: => A): A = {
-    import scala.concurrent.duration._
-    val start = System.currentTimeMillis
-    val result = a
-    val stop = System.currentTimeMillis
-    println(msg + " took " + (stop-start).milliseconds)
-    result
-  }
-
-  implicit class EqualsOp[F[_],A](s: Stream[F,A])(implicit S: Sub1[F,Task]) {
-    def ===(v: Vector[A]) = run(s.covary) == v
-    def ==?(v: Vector[A]) = {
-      val l = run(s.covary)
-      val r = v
-      l == r || { println("left: " + l); println("right: " + r); false }
-    }
-  }
 
   implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(
     Gen.frequency(
@@ -137,3 +120,5 @@ object TestUtil {
 
   val nonEmptyNestedVectorGen: Gen[Vector[Vector[Int]]] = nestedVectorGen[Int](1,10)
 }
+
+object TestUtil extends TestUtil

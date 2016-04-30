@@ -411,7 +411,6 @@ private[fs2] trait Instances extends Instances1 {
 
   implicit def asyncInstance(implicit S:Strategy): Async[Task] = new Async[Task] {
     type Ref[A] = Task.Ref[A]
-    def suspend[A](a: => A): Task[A] = Task.delay(a)
     def access[A](r: Ref[A]) = r.access
     def set[A](r: Ref[A])(a: Task[A]): Task[Unit] = r.set(a)
     def runSet[A](r: Ref[A])(a: Either[Throwable,A]): Unit = r.runSet(a)
