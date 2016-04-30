@@ -56,7 +56,8 @@ object Semaphore {
 
   /** Create a new `Semaphore`, initialized with `n` available permits. */
   def apply[F[_]](n: Long)(implicit F: Async[F]): F[Semaphore[F]] = {
-    def ensureNonneg(n: Long) = if (n < 0) throw new IllegalArgumentException("n must be nonnegative, was: " + n)
+    def ensureNonneg(n: Long) = assert(n >= 0, s"n must be nonnegative, was: $n ")
+
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is nonempty, and there are n permits available (Right)
