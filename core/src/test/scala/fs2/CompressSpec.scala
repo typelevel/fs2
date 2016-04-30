@@ -1,38 +1,38 @@
 package fs2
 
 import fs2.Stream._
-import fs2.TestUtil._
-import org.scalacheck.Prop._
-import org.scalacheck.Properties
 
 import compress._
 
-object CompressSpec extends Properties("compress") {
+class CompressSpec extends Fs2Spec {
 
   def getBytes(s: String): Array[Byte] =
     s.getBytes
 
-  property("deflate.empty input") = protect {
-    Stream.empty[Pure, Byte].through(deflate()).toVector.isEmpty
-  }
+  "Compress" - {
 
-  property("inflate.empty input") = protect {
-    Stream.empty[Pure, Byte].through(inflate()).toVector.isEmpty
-  }
+    "deflate.empty input" in {
+      assert(Stream.empty[Pure, Byte].through(deflate()).toVector.isEmpty)
+    }
 
-  property("deflate |> inflate ~= id") = forAll { (s: PureStream[Byte]) =>
-    s.get ==? s.get.through(compress.deflate()).through(compress.inflate()).toVector
-  }
+    "inflate.empty input" in {
+      assert(Stream.empty[Pure, Byte].through(inflate()).toVector.isEmpty)
+    }
 
-  property("deflate.compresses input") = protect {
-    val uncompressed = getBytes(
-      """"
-        |"A type system is a tractable syntactic method for proving the absence
-        |of certain program behaviors by classifying phrases according to the
-        |kinds of values they compute."
-        |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
-    val compressed = Stream.chunk(Chunk.bytes(uncompressed)).throughp(deflate(9)).toVector
+    "deflate |> inflate ~= id" in forAll { (s: PureStream[Byte]) =>
+      s.get.toVector shouldBe s.get.through(compress.deflate()).through(compress.inflate()).toVector
+    }
 
-    compressed.length < uncompressed.length
+    "deflate.compresses input" in {
+      val uncompressed = getBytes(
+        """"
+          |"A type system is a tractable syntactic method for proving the absence
+          |of certain program behaviors by classifying phrases according to the
+          |kinds of values they compute."
+          |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
+      val compressed = Stream.chunk(Chunk.bytes(uncompressed)).throughp(deflate(9)).toVector
+
+      compressed.length should be < uncompressed.length
+    }
   }
 }
