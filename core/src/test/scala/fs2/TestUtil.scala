@@ -5,12 +5,15 @@ import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.duration._
 
+object TestStrategy {
+  implicit val S = Strategy.fromFixedDaemonPool(8)
+}
+
 trait TestUtil {
 
-  implicit val S = Strategy.fromFixedDaemonPool(8)
+  implicit val S = TestStrategy.S
 
-  def runLog[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRun
-  def runFor[A](timeout: FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
+  def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
 
   def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
     s.runLog.run.unsafeAttemptRun match {
@@ -109,3 +112,4 @@ trait TestUtil {
 }
 
 object TestUtil extends TestUtil
+
