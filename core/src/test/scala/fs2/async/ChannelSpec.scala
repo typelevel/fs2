@@ -1,44 +1,41 @@
 package fs2
 package async
 
-import TestUtil._
 import fs2.util.Task
-// import fs2.Stream.Handle
-import org.scalacheck.Prop._
-import org.scalacheck._
 import java.util.concurrent.atomic.AtomicLong
 
-object ChannelSpec extends Properties("async.channel") {
+class ChannelSpec extends Fs2Spec {
 
-  property("observe/observeAsync") = forAll { (s: PureStream[Int]) =>
-    val sum = new AtomicLong(0)
-    val out = run {
-      channel.observe(s.get.covary[Task]) {
-        _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+  "Async channels" - {
+
+    "observe/observeAsync" in {
+      forAll { (s: PureStream[Int]) =>
+        val sum = new AtomicLong(0)
+        val out = runLog {
+          channel.observe(s.get.covary[Task]) {
+            _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+          }
+        }
+        out.map(_.toLong).sum shouldBe sum.get
+        sum.set(0)
+        val out2 = runLog {
+          channel.observeAsync(s.get.covary[Task], maxQueued = 10) {
+            _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+          }
+        }
+        out2.map(_.toLong).sum shouldBe sum.get
       }
     }
-    val ok1 = out.map(_.toLong).sum ?= sum.get
-    sum.set(0)
-    val out2 = run {
-      channel.observeAsync(s.get.covary[Task], maxQueued = 10) {
-        _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
-      }
+
+    "sanity-test" in {
+      val s = Stream.range(0,100)
+      val s2 = s.covary[Task].flatMap { i => Stream.emit(i).onFinalize(Task.delay { println(s"finalizing $i")}) }
+      val q = async.unboundedQueue[Task,Int].unsafeRun
+      runLog { merge2(trace("s2")(s2), trace("q")(q.dequeue)).take(10) } shouldBe Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
     }
-    ok1 && (out2.map(_.toLong).sum ?= sum.get)
   }
 
   def trace[F[_],A](msg: String)(s: Stream[F,A]) = s mapChunks { a => println(msg + ": " + a.toList); a }
-
-  property("sanity-test") = protect { // (s: PureStream[Int]) =>
-    val s = Stream.range(0,100)
-    val s2 = s.covary[Task].flatMap { i => Stream.emit(i).onFinalize(Task.delay { println(s"finalizing $i")}) }
-    val q = async.unboundedQueue[Task,Int].unsafeRun
-    // q.enqueue1(0).run
-    // run { s2 }
-    run { merge2(trace("s2")(s2), trace("q")(q.dequeue)).take(10) }
-    // ( (trace("s2")(s2) merge trace("q")(q.dequeue)).take(10) ).runTrace(Trace.Off).run.run
-    true
-  }
 
   import Async.Future
   def merge2[F[_]:Async,A](a: Stream[F,A], a2: Stream[F,A]): Stream[F,A] = {
