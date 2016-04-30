@@ -119,16 +119,16 @@ object Chunk {
     override def iterator = a.iterator
   }
 
-  def booleans(values: Array[Boolean]): Chunk[Boolean] =
+  def booleans(values: Array[Boolean]): Booleans =
     new Booleans(values, 0, values.length)
 
-  def bytes(values: Array[Byte]): Chunk[Byte] =
+  def bytes(values: Array[Byte]): Bytes =
     new Bytes(values, 0, values.length)
 
-  def longs(values: Array[Long]): Chunk[Long] =
+  def longs(values: Array[Long]): Longs =
     new Longs(values, 0, values.length)
 
-  def doubles(values: Array[Double]): Chunk[Double] =
+  def doubles(values: Array[Double]): Doubles =
     new Doubles(values, 0, values.length)
 
   // copy-pasted code below for each primitive
