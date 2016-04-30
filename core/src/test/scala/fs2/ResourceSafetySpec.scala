@@ -1,6 +1,7 @@
 package fs2
 
 import fs2.util.Task
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck._
 
@@ -135,6 +136,7 @@ class ResourceSafetySpec extends Fs2Spec {
       try { a; () }
       catch {
         case e: InterruptedException => throw e
+        case e: TimeoutException => throw e
         case e: Throwable => ()
       }
 
