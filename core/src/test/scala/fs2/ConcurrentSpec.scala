@@ -9,7 +9,7 @@ object ConcurrentSpec extends Properties("concurrent") {
 
   property("either") = forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
     val shouldCompile = s1.get.either(s2.get.covary[Task])
-    val es = run { s1.get.covary[Task].pipe2(s2.get)(wye.either(_,_)) }
+    val es = run { s1.get.covary[Task].through2(s2.get)(pipe2.either) }
     (es.collect { case Left(i) => i } ?= run(s1.get)) &&
     (es.collect { case Right(i) => i } ?= run(s2.get))
   }
@@ -21,11 +21,11 @@ object ConcurrentSpec extends Properties("concurrent") {
 
   property("merge (left/right identity)") = forAll { (s1: PureStream[Int]) =>
     (run { s1.get.merge(Stream.empty.covary[Task]) } ?= run(s1.get)) &&
-    (run { Stream.empty.pipe2(s1.get.covary[Task])(wye.merge(_,_)) } ?= run(s1.get))
+    (run { Stream.empty.through2(s1.get.covary[Task])(pipe2.merge) } ?= run(s1.get))
   }
 
   property("merge/join consistency") = forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
-    run { s1.get.pipe2v(s2.get.covary[Task])(wye.merge(_,_)) }.toSet ?=
+    run { s1.get.through2v(s2.get.covary[Task])(pipe2.merge) }.toSet ?=
     run { concurrent.join(2)(Stream(s1.get.covary[Task], s2.get.covary[Task])) }.toSet
   }
 
@@ -38,10 +38,10 @@ object ConcurrentSpec extends Properties("concurrent") {
     run { s1.get }.toSet
   }
 
-  property("join (3)") = forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
+  property("join (3)") = protect { forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
     run { concurrent.join(n.get)(s1.get.map(_.get.covary[Task]).covary[Task]) }.toSet ?=
     run { s1.get.flatMap(_.get) }.toSet
-  }
+  }}
 
   property("merge (left/right failure)") = forAll { (s1: PureStream[Int], f: Failure) =>
     try { run (s1.get merge f.get); false }

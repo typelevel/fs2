@@ -35,10 +35,12 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
   }
 
   property("1 million brackets in sequence") = protect {
+    println("Starting 1 million brackets in sequence...")
     val c = new AtomicLong(0)
     val b = bracket(c)(Stream.emit(1))
     val bs = Stream.range(0, 1000000).flatMap(_ => b)
     run { bs }
+    println("Done 1 million brackets in sequence")
     c.get ?= 0
   }
 
@@ -117,6 +119,7 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
       if (allowFailure) f.map(f => spuriousFail(bracket(c)(s.get), f)).getOrElse(bracket(c)(s.get))
       else bracket(c)(s.get)
     })
+    swallow { run { concurrent.join(n.get)(s2).take(10) }}
     swallow { run { concurrent.join(n.get)(s2) }}
     c.get ?= 0L
   }
@@ -128,9 +131,9 @@ object ResourceSafetySpec extends Properties("ResourceSafety") {
       case None => s.get
       case Some(f) => spuriousFail(s.get, f)
     })
-    swallow { run { s2 through process1.prefetch }}
-    swallow { run { s2 through process1.prefetch through process1.prefetch }}
-    swallow { run { s2 through process1.prefetch through process1.prefetch through process1.prefetch }}
+    swallow { run { s2 through pipe.prefetch }}
+    swallow { run { s2 through pipe.prefetch through pipe.prefetch }}
+    swallow { run { s2 through pipe.prefetch through pipe.prefetch through pipe.prefetch }}
     c.get ?= 0L
   }
 

@@ -55,7 +55,7 @@ object StreamSpec extends Properties("Stream") {
   }
 
   property("iterateEval") = protect {
-    Stream.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.run.run == List.iterate(0, 100)(_ + 1)
+    Stream.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.run.unsafeRun == List.iterate(0, 100)(_ + 1)
   }
 
   property("map") = forAll { (s: PureStream[Int]) =>
@@ -78,17 +78,21 @@ object StreamSpec extends Properties("Stream") {
   property("onError (4)") = protect {
     Stream.eval(Task.delay(throw Err)).map(Right(_)).onError(t => Stream.emit(Left(t)))
           .take(1)
-          .runLog.run.run ?= Vector(Left(Err))
+          .runLog.run.unsafeRun ?= Vector(Left(Err))
   }
 
   property("range") = protect {
     Stream.range(0, 100).toList == List.range(0, 100) &&
       Stream.range(0, 1).toList == List.range(0, 1) &&
-      Stream.range(0, 0).toList == List.range(0, 0)
+      Stream.range(0, 0).toList == List.range(0, 0) &&
+      Stream.range(0, 101, 2).toList == List.range(0, 101, 2) &&
+      Stream.range(5,0, -1).toList == List.range(5,0,-1) &&
+      Stream.range(5,0, 1).toList == Nil &&
+      Stream.range(10, 50, 0).toList == Nil
   }
 
   property("ranges") = forAll(Gen.choose(1, 101)) { size =>
-    Stream.ranges[Task](0, 100, size).flatMap { case (i,j) => Stream.emits(i until j) }.runLog.run.run ==
+    Stream.ranges[Task](0, 100, size).flatMap { case (i,j) => Stream.emits(i until j) }.runLog.run.unsafeRun ==
       IndexedSeq.range(0, 100)
   }
 
@@ -117,12 +121,12 @@ object StreamSpec extends Properties("Stream") {
 
   property("unfoldEval") = protect {
     Stream.unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
-      .runLog.run.run.toList == List.range(10, 0, -1)
+      .runLog.run.unsafeRun.toList == List.range(10, 0, -1)
   }
 
   property("translate stack safety") = protect {
     import fs2.util.{~>}
-    Stream.repeatEval(Task.delay(0)).translate(new (Task ~> Task) { def apply[X](x: Task[X]) = Task.suspend(x) }).take(1000000).run.run.run
+    Stream.repeatEval(Task.delay(0)).translate(new (Task ~> Task) { def apply[X](x: Task[X]) = Task.suspend(x) }).take(1000000).run.run.unsafeRun
     true
   }
 }

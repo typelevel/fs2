@@ -20,7 +20,7 @@ object SemaphoreSpec extends Properties("SemaphoreSpec") {
 
   property("offsetting increment/decrements") = forAll { (ms0: Vector[Int]) =>
     val T = implicitly[Async[Task]]
-    val s = async.mutable.Semaphore[Task](0).run
+    val s = async.mutable.Semaphore[Task](0).unsafeRun
     val longs = ms0.map(_.toLong.abs)
     val longsRev = longs.reverse
     val t: Task[Unit] = for {
@@ -30,8 +30,8 @@ object SemaphoreSpec extends Properties("SemaphoreSpec") {
       _ <- decrs: Task[Vector[Unit]]
       _ <- incrs: Task[Vector[Unit]]
     } yield ()
-    t.run
-    val ok1 = "two threads" |: (s.count.run == 0)
+    t.unsafeRun
+    val ok1 = "two threads" |: (s.count.unsafeRun == 0)
     val t2: Task[Unit] = for {
       // N parallel incrementing tasks and N parallel decrementing tasks
       decrs <- Task.start { T.parallelTraverse(longs)(s.decrementBy) }
@@ -39,8 +39,8 @@ object SemaphoreSpec extends Properties("SemaphoreSpec") {
       _ <- decrs: Task[Vector[Unit]]
       _ <- incrs: Task[Vector[Unit]]
     } yield ()
-    t2.run
-    val ok2 = "N threads" |: (s.count.run == 0)
+    t2.unsafeRun
+    val ok2 = "N threads" |: (s.count.unsafeRun == 0)
     ok1 && ok2
   }
 }

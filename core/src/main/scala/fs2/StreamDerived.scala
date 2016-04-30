@@ -4,11 +4,13 @@ import fs2.util.{RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2]
-trait StreamDerived { self: fs2.Stream.type =>
+trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
 
   // nb: methods are in alphabetical order
 
   def apply[F[_],W](a: W*): Stream[F,W] = self.chunk(Chunk.seq(a))
+
+  def pure[W](a: W*): Stream[Pure,W] = apply[Pure,W](a: _*)
 
   def await1[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[A, Handle[F,A]]] =
     h.await flatMap { case Step(hd, tl) => hd.uncons match {
@@ -93,7 +95,12 @@ trait StreamDerived { self: fs2.Stream.type =>
    * `emits(start until stopExclusive)`.
    */
   def range[F[_]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F,Int] =
-    unfold(start)(i => if (i < stopExclusive) Some((i, i + by)) else None)
+    unfold(start){i => 
+      if ((by > 0 && i < stopExclusive && start < stopExclusive) || 
+          (by < 0 && i > stopExclusive && start > stopExclusive)) 
+        Some((i, i + by))
+      else None
+    }
 
   /**
    * Lazily produce a sequence of nonoverlapping ranges, where each range
@@ -184,24 +191,32 @@ trait StreamDerived { self: fs2.Stream.type =>
   }
 
   implicit class StreamInvariantOps[F[_],A](s: Stream[F,A]) {
-    def through[B](f: Stream[F,A] => Stream[F,B]): Stream[F,B] = f(s)
-    def to[B](f: Stream[F,A] => Stream[F,Unit]): Stream[F,Unit] = f(s)
     def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
       Stream.pull(s)(using)
     def pull2[B,C](s2: Stream[F,B])(using: (Handle[F,A], Handle[F,B]) => Pull[F,C,Any]): Stream[F,C] =
       s.open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.run
-    def pipe2[B,C](s2: Stream[F,B])(f: (Stream[F,A], Stream[F,B]) => Stream[F,C]): Stream[F,C] =
-      f(s,s2)
     def repeatPull[B](using: Handle[F,A] => Pull[F,B,Handle[F,A]]): Stream[F,B] =
       Stream.repeatPull(s)(using)
     def repeatPull2[B,C](s2: Stream[F,B])(using: (Handle[F,A],Handle[F,B]) => Pull[F,C,(Handle[F,A],Handle[F,B])]): Stream[F,C] =
       Stream.repeatPull2(s,s2)(using)
+    /** Transform this stream using the given `Pipe`. */
+    def through[B](f: Pipe[F,A,B]): Stream[F,B] = f(s)
+    /** Transform this stream using the given pure `Pipe`. */
+    def throughp[B](f: Pipe[Pure,A,B]): Stream[F,B] = f(s)
+    /** Transform this stream using the given `Pipe2`. */
+    def through2[B,C](s2: Stream[F,B])(f: Pipe2[F,A,B,C]): Stream[F,C] =
+      f(s,s2)
+    /** Transform this stream using the given pure `Pipe2`. */
+    def through2p[B,C](s2: Stream[F,B])(f: Pipe2[Pure,A,B,C]): Stream[F,C] =
+      f(s,s2)
+    /** Applies the given sink to this stream and drains the output. */
+    def to(f: Sink[F,A]): Stream[F,Unit] = f(s).drain
   }
 
   implicit class StreamPureOps[+A](s: Stream[Pure,A]) {
     def toList: List[A] =
-      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).run.run.reverse
-    def toVector: Vector[A] = s.covary[Task].runLog.run.run
+      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).run.unsafeRun.reverse
+    def toVector: Vector[A] = s.covary[Task].runLog.run.unsafeRun
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]

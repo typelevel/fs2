@@ -11,12 +11,12 @@ object SignalSpec extends Properties("Signal") {
 
   property("get/set/discrete") = forAll { (vs0: List[Long]) =>
     val vs = vs0 map { n => if (n == 0) 1 else n }
-    val s = async.signalOf[Task,Long](0L).run
+    val s = async.signalOf[Task,Long](0L).unsafeRun
     val r = new AtomicLong(0)
-    val u = s.discrete.map(r.set).run.run.runFullyAsyncFuture
+    val u = s.discrete.map(r.set).run.run.async.unsafeRunAsyncFuture
     vs.forall { v =>
-      s.set(v).run
-      while (s.get.run != v) {} // wait for set to arrive
+      s.set(v).unsafeRun
+      while (s.get.unsafeRun != v) {} // wait for set to arrive
       // can't really be sure when the discrete subscription will be set up,
       // but once we've gotten one update (r != 0), we know we're subscribed
       // and should see result of all subsequent calls to set

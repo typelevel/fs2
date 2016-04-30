@@ -195,6 +195,15 @@ private[fs2] trait pull1 {
     else go(Vector())(h)
   }
 
+  /** Like `takeWhile`, but emits the first value which tests false. */
+  def takeThrough[F[_],I](p: I => Boolean): Handle[F,I] => Pull[F,I,Handle[F,I]] =
+    receive { case chunk #: h =>
+      chunk.indexWhere(!p(_)) match {
+        case Some(i) => Pull.output(chunk.take(i+1)) >> Pull.pure(h.push(chunk.drop(i+1)))
+        case None => Pull.output(chunk) >> takeThrough(p)(h)
+      }
+    }
+
   /**
    * Emit the elements of the input `Handle` until the predicate `p` fails,
    * and return the new `Handle`. If nonempty, the returned `Handle` will have

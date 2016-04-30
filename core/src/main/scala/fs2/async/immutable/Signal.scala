@@ -1,15 +1,13 @@
 package fs2.async.immutable
 
-import fs2.{process1, Async, Stream}
+import fs2.{pipe, Async, Stream}
 import fs2.util.Functor
 
 import fs2.Async
 import fs2.async.immutable
 
 
-/**
- * Created by pach on 10/10/15.
- */
+/** A holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_],A]  {
 
   /**
@@ -56,14 +54,14 @@ object Signal {
      */
     def map[B](f: A => B):Signal[F,B] = new Signal[F,B] {
       def continuous: Stream[F, B] = self.continuous.map(f)
-      def changes: Stream[F, Unit] = self.discrete.pipe(process1.changes(_ == _)).map(_ => ())
+      def changes: Stream[F, Unit] = self.discrete.through(pipe.changes(_ == _)).map(_ => ())
       def discrete: Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
     }
   }
 
   implicit class BooleanSignalSyntax[F[_]:Async] (val self: Signal[F,Boolean]) {
-    def interrupt[A](s: Stream[F,A]) = fs2.wye.interrupt(self.discrete, s)
+    def interrupt[A](s: Stream[F,A]): Stream[F,A] = s.interruptWhen(self)
   }
 
   /**
