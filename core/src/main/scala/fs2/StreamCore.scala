@@ -471,9 +471,9 @@ object StreamCore {
 
   private[fs2]
   def runCleanup[F[_]](cleanups: Iterable[Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] = {
-    // note - run cleanup actions in LIFO order, later actions run first
+    // note - run cleanup actions in FIFO order, but avoid left-nesting binds
     // all actions are run but only first error is reported
-    cleanups.foldLeft[Free[F,Either[Throwable,Unit]]](Free.pure(Right(())))(
+    cleanups.toList.reverse.foldLeft[Free[F,Either[Throwable,Unit]]](Free.pure(Right(())))(
       (tl,hd) => hd flatMap { _.fold(e => tl flatMap { _ => Free.pure(Left(e)) }, _ => tl) }
     )
   }
