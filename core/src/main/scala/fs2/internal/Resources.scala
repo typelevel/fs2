@@ -112,13 +112,13 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: S
    * Associate `r` with the given `t`.
    */
   @annotation.tailrec
-  final def finishAcquire(t: T, r: R): Unit = tokens.access match {
+  final def finishAcquire(t: T, r: R): Boolean = tokens.access match {
     case ((open,m), update) =>
       m.get(t) match {
         case Some(None) =>
           val m2 = m.edit(t, _ => Some(Some(r)))
-          if (!update(open -> m2)) finishAcquire(t,r) // retry on contention
-        case r => sys.error("expected acquiring status, got: " + r)
+          update(open -> m2) || finishAcquire(t,r) // retry on contention
+        case r => false
       }
   }
 

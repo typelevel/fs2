@@ -121,7 +121,11 @@ sealed trait StreamCore[F[_],O] { self =>
           StreamCore.runCleanup(resources.map(_._2))
     }}
     def tweakEnv: Scope[F,Unit] =
-      Scope.startAcquire(token) flatMap { _ => Scope.finishAcquire(token, rootCleanup) }
+      Scope.startAcquire(token) flatMap { _ =>
+      Scope.finishAcquire(token, rootCleanup) flatMap { ok =>
+        if (ok) Scope.pure(())
+        else Scope.evalFree(rootCleanup).flatMap(_.fold(Scope.fail, Scope.pure))
+      }}
     val s: F[Unit] = F.set(ref) { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
@@ -165,7 +169,7 @@ object StreamCore {
     case class NewSince(snapshot: Set[Token]) extends RF[Nothing,List[Token]]
     case class Release(tokens: List[Token]) extends RF[Nothing,Either[Throwable,Unit]]
     case class StartAcquire(token: Token) extends RF[Nothing,Boolean]
-    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]) extends RF[F,Unit]
+    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]) extends RF[F,Boolean]
     case class CancelAcquire(token: Token) extends RF[Nothing,Unit]
   }
 
