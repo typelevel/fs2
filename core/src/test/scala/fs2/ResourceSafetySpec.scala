@@ -160,6 +160,16 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       eventually { c.get shouldBe 0L }
     }
 
+  "asynchronous resource allocation (7)" in forAll {
+      (s: PureStream[(PureStream[Int], Failure)], f: Failure) =>
+      val c = new AtomicLong(0)
+      val s2 = bracket(c)(s.get.evalMap { case (s, f) =>
+        Task.start(bracket(c)(spuriousFail(s.get.evalMap { x => Task.async[Int](_ => ()) }, f)).run.run)
+      })
+      swallow { runLog { s2 }}
+      eventually { c.get shouldBe 0L }
+    }
+
     def swallow(a: => Any): Unit =
       try { a; () }
       catch {
