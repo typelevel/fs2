@@ -143,6 +143,23 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       eventually { c.get shouldBe 0L }
     }
 
+    "asynchronous resource allocation (6)" in {
+      // simpler version of (5) above which previously failed reliably, checks the case where a
+      // stream is interrupted while in the middle of a resource acquire that is immediately followed
+      // by a step that never completes!
+      val s = Stream(Stream(1))
+      val signal = async.signalOf[Task,Boolean](false).unsafeRun
+      val c = new AtomicLong(1)
+      signal.set(true).schedule(20.millis).async.unsafeRun // after 20 ms, interrupt
+      runLog { s.evalMap { inner => Task.start {
+        Stream.bracket(Task.delay { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
+          _ => inner,
+          _ => Task.delay { c.decrementAndGet; () }
+        ).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run.run
+      }}}
+      eventually { c.get shouldBe 0L }
+    }
+
     def swallow(a: => Any): Unit =
       try { a; () }
       catch {
