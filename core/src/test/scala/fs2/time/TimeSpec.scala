@@ -8,9 +8,6 @@ import Stream._
 
 class TimeSpec extends Fs2Spec {
 
-  implicit val scheduler = java.util.concurrent.Executors.newScheduledThreadPool(2)
-  override implicit val S = Strategy.fromExecutor(scheduler)
-
   "time" - {
 
     "awakeEvery" in {
