@@ -293,5 +293,15 @@ class PipeSpec extends Fs2Spec {
       runLog(Stream(0).zipWithPreviousAndNext) shouldBe Vector((None, 0, None))
       runLog(Stream(0, 1, 2).zipWithPreviousAndNext) shouldBe Vector((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))
     }
+
+    "zipWithScan" in {
+      runLog(Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length)) shouldBe Vector("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
+      runLog(Stream().zipWithScan(())((acc, i) => ???)) shouldBe Vector()
+    }
+
+    "zipWithScan1" in {
+      runLog(Stream("uno", "dos", "tres", "cuatro").zipWithScan1(0)(_ + _.length)) shouldBe Vector("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
+      runLog(Stream().zipWithScan1(())((acc, i) => ???)) shouldBe Vector()
+    }
   }
 }

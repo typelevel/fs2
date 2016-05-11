@@ -112,4 +112,10 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self through [[pipe.zipWithPreviousAndNext]]`. */
   def zipWithPreviousAndNext: Stream[F, (Option[O], O, Option[O])] = self through pipe.zipWithPreviousAndNext
+
+  /** Alias for `self through [[pipe.zipWithScan]]`. */
+  def zipWithScan[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan(z)(f)
+
+  /** Alias for `self through [[pipe.zipWithScan1]]`. */
+  def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan1(z)(f)
 }
