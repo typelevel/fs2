@@ -50,7 +50,12 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Either[List[() => Unit], 
       val totallyDone = m.values.forall(_.isRight)
       def rs = m.orderedEntries.collect { case (t,Right(r)) => (t,r) }.toList
       lazy val m2 =
-        if (!totallyDone) LinkedMap(m.orderedEntries.zip(waiting).collect { case ((t, Left(ws)), w) => (t, Left(w::ws)) })
+        if (!totallyDone) {
+          val ws = waiting
+          val beingAcquired = m.orderedEntries.iterator.collect { case (_, Left(_)) => 1 }.sum
+          if (ws.lengthCompare(beingAcquired) < 0) throw new IllegalArgumentException("closeAll - waiting too short")
+          LinkedMap(m.orderedEntries.zip(ws).collect { case ((t, Left(ws)), w) => (t, Left(w::ws)) })
+        }
         else LinkedMap.empty[T,Either[List[() => Unit],R]]
       if (update((if (totallyDone) Closed else Closing, m2))) {
         if (totallyDone) Right(rs)
