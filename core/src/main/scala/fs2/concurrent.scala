@@ -27,41 +27,56 @@ object concurrent {
   // todo: document when the finalizers are calle in which situation
   def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
     assert(maxOpen > 0,"maxOpen must be > 0, was: " + maxOpen)
+
+    def throttle[A](checkIfKilled: F[Boolean]): Pipe[F,Stream[F,A],Unit] = {
+
+      def runInnerStream(inner: Stream[F,A], onInnerStreamDone: F[Unit]): Pull[F,Nothing,Unit] = {
+        val startInnerStream: F[(F.Ref[Unit], F[Unit])] = {
+          F.bind(F.ref[Unit]) { gate =>
+          F.map(F.start((Stream.eval_(F.suspend(println("RUNNING INNER TASK"))) ++ Stream.eval(checkIfKilled)).
+                           flatMap { killed =>
+                             println("Inner stream running; killed = " + killed)
+                             if (killed) Stream.empty else inner
+                           }.
+                           onFinalize { F.bind(F.suspend(println(" - Finalizing inner stream"))) { _ => F.bind(F.setPure(gate)(())) { _ => println(" - Set gate"); onInnerStreamDone } } }.
+                           run.run
+          )) { t => gate -> t }}
+        }
+        Pull.acquire(startInnerStream) { case (gate, t) => println("Blocking on gate..."); F.map(F.get(gate)) { _ => println("...done blocking on gate"); () } }.map { _ => () }
+      }
+
+      def go(doneQueue: async.mutable.Queue[F,Unit])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Unit]) => Pull[F,Nothing,Unit] = (h, d) => {
+        if (open < maxOpen)
+          Pull.receive1Option[F,Stream[F,A],Nothing,Unit] {
+            case Some(inner #: h) => runInnerStream(inner, F.map(F.start(doneQueue.enqueue1(())))(_ => ())).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
+            case None => println("done go loop"); Pull.done
+          }(h)
+        else
+          d.receive1 { case _ #: d =>
+            println(" - Inner stream completed: " + (open - 1) + " / " + maxOpen)
+            go(doneQueue)(open - 1)(h, d)
+          }
+      }
+
+      in => Stream.eval(async.unboundedQueue[F,Unit]).flatMap { doneQueue => in.pull2(doneQueue.dequeue)(go(doneQueue)(0)) }
+    }
+
     for {
       killSignal <- Stream.eval(async.signalOf(false))
-      openLeases <- Stream.eval(async.mutable.Semaphore(maxOpen))
-      outerDone <- Stream.eval(F.refOf[Boolean](false))
-      outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
-      o <- outer.evalMap { (inner: Stream[F,O]) =>
-        F.bind(openLeases.decrement) { _ =>
-        F.start {
-          val done =
-            F.bind(openLeases.increment) { _ =>
-            F.bind(F.get(outerDone)) { outerDone =>
-            F.bind(openLeases.count) { n =>
-              if (n == maxOpen && outerDone) {
-                outputQueue.enqueue1(None)
-              }
-              else F.pure(())
-            }}}
-          inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }
-          .interruptWhen(killSignal)
-          .onFinalize(done)
-          .run.run
-        }}
-      }.onFinalize(F.bind(openLeases.count) { n =>
-          F.bind(if (n == maxOpen) outputQueue.offer1(None) else F.pure(true)) { _ =>
-            F.setPure(outerDone)(true)
-          }
-      }) mergeDrainL {
+      _ = println("--------------------------------------------------------------------------------")
+      // outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
+      outputQueue <- Stream.eval(async.unboundedQueue[F,Option[Either[Throwable,Chunk[O]]]])
+      o <- outer.map { inner =>
+        inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
+      }.through(throttle(killSignal.get)).onFinalize {
+        outputQueue.enqueue1(None)
+      }.mergeDrainL {
         outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {
-          case Left(e) => Stream.eval(killSignal.set(true)).flatMap { _ => Stream.fail(e) }
+          case Left(e) => Stream.eval(killSignal.possiblyModify(_ => Some(true))).flatMap { _ => println("set kill signal due to error"); Stream.fail(e) }
           case Right(c) => Stream.chunk(c)
         }
-      } onFinalize {
-        // set kill signal, then wait for any outstanding inner streams to complete
-        F.bind(killSignal.set(true)) { _ =>
-        F.bind(openLeases.clear) { m => openLeases.decrementBy(maxOpen - m) }}
+      }.onFinalize {
+        F.map(killSignal.possiblyModify(_ => Some(true))) { _ => println("set kill signal") }
       }
     } yield o
   }

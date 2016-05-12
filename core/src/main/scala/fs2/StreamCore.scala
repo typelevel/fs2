@@ -108,7 +108,6 @@ sealed trait StreamCore[F[_],O] { self =>
   = Scope.eval(F.ref[(List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Either[Throwable,Unit]]]("unconsAsync")
-    val interrupt = new java.util.concurrent.atomic.AtomicBoolean(false)
     val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
     lazy val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
