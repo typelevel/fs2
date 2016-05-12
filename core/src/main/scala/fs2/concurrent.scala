@@ -46,11 +46,11 @@ object concurrent {
         if (open < maxOpen)
           Pull.receive1Option[F,Stream[F,A],Nothing,Unit] {
             case Some(inner #: h) => runInnerStream(inner, doneQueue.enqueue1(())).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
-            case None => Pull.done
+            case None => println("done go loop"); Pull.done
           }(h)
         else
           d.receive1 { case _ #: d =>
-            println(" - Inner stream completed: " + (open - 1))
+            println(" - Inner stream completed: " + (open - 1) + " / " + maxOpen)
             go(doneQueue)(open - 1)(h, d)
           }
       }

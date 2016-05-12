@@ -17,7 +17,7 @@ abstract class Fs2Spec extends FreeSpec
   override implicit val patienceConfig: PatienceConfig = PatienceConfig(timeout = 1.minute)
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = 25, workers = 1)
+    PropertyCheckConfiguration(minSuccessful = 50, workers = 1)
 
   override def runTest(testName: String, args: Args): Status = {
     println("Starting " + testName)
