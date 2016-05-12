@@ -28,59 +28,54 @@ object concurrent {
   def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
     assert(maxOpen > 0,"maxOpen must be > 0, was: " + maxOpen)
 
-    case class State(outerDone: Boolean, open: Int, killed: Boolean)
+    def throttle[A](checkIfKilled: F[Boolean], allDone: F[Unit]): Pipe[F,Stream[F,A],Unit] = {
 
-    def throttle[A](stateSignal: async.mutable.Signal[F,State], killLock: async.mutable.Semaphore[F]): Pipe[F,Stream[F,A],F[Unit]] = {
-      def go(open: Int): (Stream.Handle[F,State], Stream.Handle[F,Stream[F,A]]) => Pull[F,F[Unit],Unit] = (state, s) => {
-          if (open < maxOpen) {
-            s.receive1 { case inner #: s =>
-              val monitoredStream = {
-                val checkIfKilled: F[Boolean] = {
-                  F.bind(killLock.decrement) { _ =>
-                  F.bind(stateSignal.get) { state =>
-                  F.map(killLock.increment) { _ =>
-                    state.killed
-                  }}}
-                }
-                Stream.bracket(stateSignal.possiblyModify { st => Some(st.copy(open = st.open + 1)) })(
-                  _ => Stream.eval(checkIfKilled).flatMap { killed => if (killed) Stream.empty else inner },
-                  _ => F.map(stateSignal.possiblyModify { st => Some(st.copy(open = st.open - 1)) }) { _ => () }
-                )
-              }
-              Pull.eval(F.start(monitoredStream.run.run)) >> go(open + 1)(state, s)
-            }
-          } else {
-            state.receive1 { case now #: state => go(now.open)(state, s) }
-          }
+      def runInnerStream(inner: Stream[F,A], onInnerStreamDone: F[Unit]): Pull[F,Nothing,Unit] = {
+        val startInnerStream: F[F.Ref[Unit]] = {
+          F.bind(F.ref[Unit]) { gate =>
+          F.map(F.start(Stream.eval(checkIfKilled).
+                           flatMap { killed => if (killed) Stream.empty else inner }.
+                           onFinalize { F.bind(F.setPure(gate)(())) { _ => onInnerStreamDone } }.
+                           run.run
+          )) { _ => gate }}
         }
-      s => stateSignal.discrete.pull2(s)(go(0))
+        Pull.acquire(startInnerStream)(gate => F.get(gate)).map { gate => () }
+      }
+
+      def awaitAllDone(open: Int, q: async.mutable.Queue[F,Unit]): F[Unit] = {
+        def loop(open: Int): Stream.Handle[F,Unit] => Pull[F,Nothing,Unit] = h => {
+          if (open == 0) Pull.eval(allDone)
+          else h.receive1 { case _ #: h => loop(open - 1)(h) }
+        }
+        F.map(F.start(q.dequeue.pull(loop(open)).run.run)) { _ => () }
+      }
+
+      def go(doneQueue: async.mutable.Queue[F,Unit])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Unit]) => Pull[F,Nothing,Unit] = (h, d) => {
+        if (open < maxOpen)
+          Pull.receive1Option[F,Stream[F,A],Nothing,Unit] {
+            case Some(inner #: h) => runInnerStream(inner, doneQueue.enqueue1(())).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
+            case None =>
+              Pull.eval(awaitAllDone(open, doneQueue))
+          }(h)
+        else
+          d.receive1 { case _ #: d => go(doneQueue)(open - 1)(h, d) }
+      }
+
+      in => Stream.eval(async.unboundedQueue[F,Unit]).flatMap { doneQueue => in.pull2(doneQueue.dequeue)(go(doneQueue)(0)) }
     }
 
     for {
-      stateSignal <- Stream.eval(async.signalOf(State(false, 0, false)))
-      killLock <- Stream.eval(async.mutable.Semaphore(1))
+      killSignal <- Stream.eval(async.signalOf(false))
       outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
       o <- outer.map { inner =>
-        inner.chunks.attempt.evalMap { o =>
-          outputQueue.enqueue1(Some(o))
-        }.interruptWhen(stateSignal.map { _.killed })
-      }.through(throttle(stateSignal, killLock)).onFinalize {
-        F.map(stateSignal.possiblyModify { s => Some(s.copy(outerDone = true)) }) { _ => () }
-      }.mergeDrainL {
-        stateSignal.discrete.takeWhile { s => !s.outerDone || (s.outerDone && s.open != 0) }.onFinalize {
-          outputQueue.enqueue1(None)
-        }
-      }.mergeDrainL {
+        inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
+      }.through(throttle(killSignal.get, outputQueue.enqueue1(None))).mergeDrainL {
         outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {
-          case Left(e) => Stream.eval(stateSignal.possiblyModify(s => Some(s.copy(killed = true)))).flatMap { _ => Stream.fail(e) }
+          case Left(e) => Stream.eval(killSignal.possiblyModify(_ => Some(true))).flatMap { _ => Stream.fail(e) }
           case Right(c) => Stream.chunk(c)
         }
       }.onFinalize {
-        F.bind(killLock.decrement) { _ =>
-        F.bind(stateSignal.possiblyModify(s => if (s.killed) None else Some(s.copy(killed = true)))) { _ =>
-        F.bind(killLock.increment) { _ =>
-          stateSignal.discrete.takeWhile { s => s.open > 0 }.run.run
-        }}}
+        F.map(killSignal.possiblyModify(_ => Some(true))) { _ => () }
       }
     } yield o
   }
