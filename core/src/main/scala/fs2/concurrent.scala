@@ -39,7 +39,7 @@ object concurrent {
                            run.run
           )) { _ => gate }}
         }
-        Pull.acquire(startInnerStream) { gate => println("Blocking on gate..."); F.get(gate) }.map { _ => println("...done blocking on gate"); () }
+        Pull.acquire(startInnerStream) { gate => println("Blocking on gate..."); F.map(F.get(gate)) { _ => println("...done blocking on gate"); () } }.map { _ => () }
       }
 
       def go(doneQueue: async.mutable.Queue[F,Unit])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Unit]) => Pull[F,Nothing,Unit] = (h, d) => {
