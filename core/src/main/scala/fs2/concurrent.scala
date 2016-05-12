@@ -61,7 +61,8 @@ object concurrent {
     for {
       killSignal <- Stream.eval(async.signalOf(false))
       _ = println("--------------------------------------------------------------------------------")
-      outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
+      // outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
+      outputQueue <- Stream.eval(async.unboundedQueue[F,Option[Either[Throwable,Chunk[O]]]])
       o <- outer.map { inner =>
         inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
       }.through(throttle(killSignal.get)).onFinalize {
