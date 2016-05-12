@@ -31,7 +31,7 @@ object concurrent {
     def throttle[A](checkIfKilled: F[Boolean]): Pipe[F,Stream[F,A],Unit] = {
 
       def runInnerStream(inner: Stream[F,A], onInnerStreamDone: F[Unit]): Pull[F,Nothing,Unit] = {
-        val startInnerStream: F[F.Ref[Unit]] = {
+        val startInnerStream: F[(F.Ref[Unit], F[Unit])] = {
           F.bind(F.ref[Unit]) { gate =>
           F.map(F.start(Stream.eval(checkIfKilled).
                            flatMap { killed =>
@@ -40,9 +40,9 @@ object concurrent {
                            }.
                            onFinalize { F.bind(F.suspend(println(" - Finalizing inner stream"))) { _ => F.bind(F.setPure(gate)(())) { _ => println(" - Set gate"); onInnerStreamDone } } }.
                            run.run
-          )) { _ => gate }}
+          )) { t => gate -> t }}
         }
-        Pull.acquire(startInnerStream) { gate => println("Blocking on gate..."); F.map(F.get(gate)) { _ => println("...done blocking on gate"); () } }.map { _ => () }
+        Pull.acquire(startInnerStream) { case (gate, t) => println("Blocking on gate..."); F.map(F.get(gate)) { _ => println("...done blocking on gate"); () } }.map { _ => () }
       }
 
       def go(doneQueue: async.mutable.Queue[F,Unit])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Unit]) => Pull[F,Nothing,Unit] = (h, d) => {
