@@ -60,7 +60,8 @@ private[fs2] class LinkedMap[K,+V](
 }
 
 private[fs2] object LinkedMap {
-  def empty[K,V] = new LinkedMap[K,V](Map.empty, LongMap.empty, 0)
+  def empty[K,V]: LinkedMap[K,V] = new LinkedMap[K,V](Map.empty, LongMap.empty, 0)
+  def apply[K,V](s: Iterable[(K,V)]): LinkedMap[K,V] = s.foldLeft(empty[K,V])((acc,kv) => acc.updated(kv._1, kv._2))
 }
 
 private[fs2] class LinkedSet[K](ks: LinkedMap[K,Unit]) {

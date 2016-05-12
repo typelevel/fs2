@@ -7,11 +7,13 @@ import scala.concurrent.duration._
 
 object TestStrategy {
   implicit val S = Strategy.fromFixedDaemonPool(8)
+  implicit lazy val scheduler = java.util.concurrent.Executors.newScheduledThreadPool(2)
 }
 
 trait TestUtil {
 
   implicit val S = TestStrategy.S
+  implicit def scheduler = TestStrategy.scheduler
 
   def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
 

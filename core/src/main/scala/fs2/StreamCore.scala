@@ -109,15 +109,23 @@ sealed trait StreamCore[F[_],O] { self =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Either[Throwable,Unit]]]("unconsAsync")
     val interrupt = new java.util.concurrent.atomic.AtomicBoolean(false)
-    val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll match {
-      case None =>
-        Free.eval(F.get(ref)) flatMap { _ =>
-          resources.closeAll match {
-            case None => Free.pure(Right(()))
-            case Some(resources) => StreamCore.runCleanup(resources.map(_._2))
+    val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
+    lazy val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
+      case Left(waiting) =>
+        Free.eval(F.traverse(Vector.fill(waiting)(F.ref[Unit]))(identity)) flatMap { gates =>
+          resources.closeAll(gates.toStream.map(gate => () => F.runSet(gate)(Right(())))) match {
+            case Left(_) => Free.eval(F.traverse(gates)(F.get)) flatMap { _ =>
+              resources.closeAll(noopWaiters) match {
+                case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")
+                                rootCleanup
+                case Right(resources) => StreamCore.runCleanup(resources.map(_._2))
+              }
+            }
+            case Right(resources) =>
+              StreamCore.runCleanup(resources.map(_._2))
           }
         }
-        case Some(resources) =>
+        case Right(resources) =>
           StreamCore.runCleanup(resources.map(_._2))
     }}
     def tweakEnv: Scope[F,Unit] =
@@ -133,9 +141,9 @@ sealed trait StreamCore[F[_],O] { self =>
           // Important: copy any locally acquired resources to our parent and remove the placeholder
           // root token, which only needed if the parent terminated early, before the future was forced
           val removeRoot = Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }
-          (resources.closeAll match {
-            case None => Scope.fail(new IllegalStateException("FS2 bug: resources still being acquired"))
-            case Some(rs) => removeRoot flatMap { _ => Scope.traverse(rs) {
+          (resources.closeAll(scala.collection.immutable.Stream()) match {
+            case Left(_) => Scope.fail(new IllegalStateException("FS2 bug: resources still being acquired"))
+            case Right(rs) => removeRoot flatMap { _ => Scope.traverse(rs) {
               case (token,r) => Scope.acquire(token,r)
             }}
           }) flatMap { (rs: List[Either[Throwable,Unit]]) =>
@@ -468,9 +476,9 @@ object StreamCore {
 
   private
   def runCleanup[F[_]](l: Resources[Token,Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] =
-    l.closeAll match {
-      case Some(l) => runCleanup(l.map(_._2))
-      case None => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
+    l.closeAll(scala.collection.immutable.Stream()) match {
+      case Right(l) => runCleanup(l.map(_._2))
+      case Left(_) => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
     }
 
   private[fs2]
