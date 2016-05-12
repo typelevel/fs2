@@ -135,9 +135,10 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Either[List[() => Unit], 
       m.get(t) match {
         case Some(Left(waiting)) =>
           val m2 = m.edit(t, _ => Some(Right(r)))
-          if (update(open -> m2))
+          if (update(open -> m2)) {
             waiting.foreach(thunk => thunk())
-          else
+            true
+          } else
             finishAcquire(t,r) // retry on contention
         case r => sys.error("expected acquiring status, got: " + r)
       }
