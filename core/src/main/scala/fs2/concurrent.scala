@@ -44,6 +44,7 @@ object concurrent {
 
       def awaitAllDone(open: Int, q: async.mutable.Queue[F,Unit]): F[Unit] = {
         def loop(open: Int): Stream.Handle[F,Unit] => Pull[F,Nothing,Unit] = h => {
+          println(" - Awaiting all done: " + open)
           if (open == 0) Pull.eval(allDone)
           else h.receive1 { case _ #: h => loop(open - 1)(h) }
         }
@@ -58,7 +59,10 @@ object concurrent {
               Pull.eval(awaitAllDone(open, doneQueue))
           }(h)
         else
-          d.receive1 { case _ #: d => go(doneQueue)(open - 1)(h, d) }
+          d.receive1 { case _ #: d =>
+            println(" - Inner stream completed: " + (open - 1))
+            go(doneQueue)(open - 1)(h, d)
+          }
       }
 
       in => Stream.eval(async.unboundedQueue[F,Unit]).flatMap { doneQueue => in.pull2(doneQueue.dequeue)(go(doneQueue)(0)) }
@@ -71,11 +75,11 @@ object concurrent {
         inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
       }.through(throttle(killSignal.get, outputQueue.enqueue1(None))).mergeDrainL {
         outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {
-          case Left(e) => Stream.eval(killSignal.possiblyModify(_ => Some(true))).flatMap { _ => Stream.fail(e) }
+          case Left(e) => Stream.eval(killSignal.possiblyModify(_ => Some(true))).flatMap { _ => println("set kill signal due to error"); Stream.fail(e) }
           case Right(c) => Stream.chunk(c)
         }
       }.onFinalize {
-        F.map(killSignal.possiblyModify(_ => Some(true))) { _ => () }
+        F.map(killSignal.possiblyModify(_ => Some(true))) { _ => println("set kill signal") }
       }
     } yield o
   }
