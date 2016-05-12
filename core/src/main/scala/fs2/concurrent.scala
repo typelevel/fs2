@@ -33,7 +33,7 @@ object concurrent {
       def runInnerStream(inner: Stream[F,A], onInnerStreamDone: F[Unit]): Pull[F,Nothing,Unit] = {
         val startInnerStream: F[(F.Ref[Unit], F[Unit])] = {
           F.bind(F.ref[Unit]) { gate =>
-          F.map(F.start(Stream.eval(checkIfKilled).
+          F.map(F.start((Stream.eval_(F.suspend(println("RUNNING INNER TASK"))) ++ Stream.eval(checkIfKilled)).
                            flatMap { killed =>
                              println("Inner stream running; killed = " + killed)
                              if (killed) Stream.empty else inner
