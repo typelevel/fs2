@@ -28,7 +28,7 @@ object concurrent {
   def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
     assert(maxOpen > 0,"maxOpen must be > 0, was: " + maxOpen)
 
-    def throttle[A](checkIfKilled: F[Boolean], allDone: F[Unit]): Pipe[F,Stream[F,A],Unit] = {
+    def throttle[A](checkIfKilled: F[Boolean]): Pipe[F,Stream[F,A],Unit] = {
 
       def runInnerStream(inner: Stream[F,A], onInnerStreamDone: F[Unit]): Pull[F,Nothing,Unit] = {
         val startInnerStream: F[F.Ref[Unit]] = {
@@ -39,32 +39,19 @@ object concurrent {
                            run.run
           )) { _ => gate }}
         }
-        Pull.acquire(startInnerStream)(gate => F.get(gate)).map { gate => () }
-      }
-
-      def awaitAllDone(open: Int, q: async.mutable.Queue[F,Unit]): F[Unit] = {
-        def loop(open: Int): Stream.Handle[F,Unit] => Pull[F,Nothing,Unit] = h => {
-          println(" - Awaiting all done: " + open)
-          if (open == 0) Pull.eval(allDone)
-          else h.receive1 { case _ #: h => loop(open - 1)(h) }
-        }
-        F.map(F.start(q.dequeue.pull(loop(open)).run.run)) { _ => () }
+        Pull.acquire(startInnerStream)(gate => F.get(gate)).map { _ => () }
       }
 
       def go(doneQueue: async.mutable.Queue[F,Unit])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Unit]) => Pull[F,Nothing,Unit] = (h, d) => {
         if (open < maxOpen)
           Pull.receive1Option[F,Stream[F,A],Nothing,Unit] {
             case Some(inner #: h) => runInnerStream(inner, doneQueue.enqueue1(())).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
-            case None =>
-              Pull.eval(awaitAllDone(open, doneQueue))
+            case None => Pull.done
           }(h)
         else
-          Pull.eval(checkIfKilled).flatMap { killed =>
-            if (killed) Pull.eval(awaitAllDone(open, doneQueue))
-            else d.receive1 { case _ #: d =>
-              println(" - Inner stream completed: " + (open - 1))
-              go(doneQueue)(open - 1)(h, d)
-            }
+          d.receive1 { case _ #: d =>
+            println(" - Inner stream completed: " + (open - 1))
+            go(doneQueue)(open - 1)(h, d)
           }
       }
 
@@ -77,7 +64,9 @@ object concurrent {
       outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
       o <- outer.map { inner =>
         inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
-      }.through(throttle(killSignal.get, outputQueue.enqueue1(None))).mergeDrainL {
+      }.through(throttle(killSignal.get)).onFinalize {
+        outputQueue.enqueue1(None)
+      }.mergeDrainL {
         outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {
           case Left(e) => Stream.eval(killSignal.possiblyModify(_ => Some(true))).flatMap { _ => println("set kill signal due to error"); Stream.fail(e) }
           case Right(c) => Stream.chunk(c)
