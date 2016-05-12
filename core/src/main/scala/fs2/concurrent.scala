@@ -59,9 +59,12 @@ object concurrent {
               Pull.eval(awaitAllDone(open, doneQueue))
           }(h)
         else
-          d.receive1 { case _ #: d =>
-            println(" - Inner stream completed: " + (open - 1))
-            go(doneQueue)(open - 1)(h, d)
+          Pull.eval(checkIfKilled).flatMap { killed =>
+            if (killed) Pull.eval(awaitAllDone(open, doneQueue))
+            else d.receive1 { case _ #: d =>
+              println(" - Inner stream completed: " + (open - 1))
+              go(doneQueue)(open - 1)(h, d)
+            }
           }
       }
 
@@ -70,6 +73,7 @@ object concurrent {
 
     for {
       killSignal <- Stream.eval(async.signalOf(false))
+      _ = println("--------------------------------------------------------------------------------")
       outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
       o <- outer.map { inner =>
         inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
