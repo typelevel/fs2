@@ -12,12 +12,12 @@ abstract class Fs2Spec extends FreeSpec
   with Eventually
   with TestUtil {
 
-  val timeLimit = 1.minute
+  val timeLimit = 10.minutes
 
   override implicit val patienceConfig: PatienceConfig = PatienceConfig(timeout = 1.minute)
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = 25, workers = 1)
+    PropertyCheckConfiguration(minSuccessful = 1000, workers = 1)
 
   override def runTest(testName: String, args: Args): Status = {
     println("Starting " + testName)
