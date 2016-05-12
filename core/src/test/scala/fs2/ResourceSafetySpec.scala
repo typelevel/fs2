@@ -111,14 +111,18 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
 
     "asynchronous resource allocation (3)" in forAll {
       (s: PureStream[(PureStream[Int], Option[Failure])], allowFailure: Boolean, f: Failure, n: SmallPositive) =>
-      val c = new AtomicLong(0)
-      val s2 = bracket(c)(s.get.map { case (s, f) =>
-        if (allowFailure) f.map(f => spuriousFail(bracket(c)(s.get), f)).getOrElse(bracket(c)(s.get))
-        else bracket(c)(s.get)
+      val outer = new AtomicLong(0)
+      val inner = new AtomicLong(0)
+      val s2 = bracket(outer)(s.get.map { case (s, f) =>
+        if (allowFailure) f.map(f => spuriousFail(bracket(inner)(s.get), f)).getOrElse(bracket(inner)(s.get))
+        else bracket(inner)(s.get)
       })
       swallow { runLog { concurrent.join(n.get)(s2).take(10) }}
       swallow { runLog { concurrent.join(n.get)(s2) }}
-      c.get shouldBe 0L
+      outer.get shouldBe 0L
+      // Inner finalizers are run on a different thread, so on slow systems, we might observe a stale value here -
+      // hence, wrap the condition in an eventually
+      eventually(timeout(1.second)) { inner.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (4)" in forAll { (s: PureStream[Int], f: Option[Failure]) =>
