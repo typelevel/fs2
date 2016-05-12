@@ -124,7 +124,7 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Either[List[() => Unit], 
    * Associate `r` with the given `t`.
    */
   @annotation.tailrec
-  final def finishAcquire(t: T, r: R): Unit = tokens.access match {
+  final def finishAcquire(t: T, r: R): Boolean = tokens.access match {
     case ((open,m), update) =>
       m.get(t) match {
         case Some(Left(waiting)) =>
