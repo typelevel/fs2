@@ -35,7 +35,7 @@ object concurrent {
           F.bind(F.ref[Unit]) { gate =>
           F.map(F.start(Stream.eval(checkIfKilled).
                            flatMap { killed => if (killed) Stream.empty else inner }.
-                           onFinalize { F.bind(F.setPure(gate)(())) { _ => onInnerStreamDone } }.
+                           onFinalize { F.bind(F.suspend(println("Finalizing inner stream"))) { _ => F.bind(F.setPure(gate)(())) { _ => println(" - Set gate"); onInnerStreamDone } } }.
                            run.run
           )) { _ => gate }}
         }
