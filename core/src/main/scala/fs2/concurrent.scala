@@ -35,17 +35,17 @@ object concurrent {
           F.bind(F.ref[Unit]) { gate =>
           F.map(F.start(Stream.eval(checkIfKilled).
                            flatMap { killed => if (killed) Stream.empty else inner }.
-                           onFinalize { F.bind(F.suspend(println("Finalizing inner stream"))) { _ => F.bind(F.setPure(gate)(())) { _ => println(" - Set gate"); onInnerStreamDone } } }.
+                           onFinalize { F.bind(F.suspend(println(" - Finalizing inner stream"))) { _ => F.bind(F.setPure(gate)(())) { _ => println(" - Set gate"); onInnerStreamDone } } }.
                            run.run
           )) { _ => gate }}
         }
-        Pull.acquire(startInnerStream)(gate => F.get(gate)).map { _ => () }
+        Pull.acquire(startInnerStream) { gate => println("Blocking on gate..."); F.get(gate) }.map { _ => println("...done blocking on gate"); () }
       }
 
       def go(doneQueue: async.mutable.Queue[F,Unit])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Unit]) => Pull[F,Nothing,Unit] = (h, d) => {
         if (open < maxOpen)
           Pull.receive1Option[F,Stream[F,A],Nothing,Unit] {
-            case Some(inner #: h) => runInnerStream(inner, doneQueue.enqueue1(())).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
+            case Some(inner #: h) => runInnerStream(inner, F.map(F.start(doneQueue.enqueue1(())))(_ => ())).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
             case None => println("done go loop"); Pull.done
           }(h)
         else
