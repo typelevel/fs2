@@ -1,8 +1,5 @@
 package fs2
 
-import java.util.concurrent.atomic.AtomicInteger
-
-import java.util.concurrent.{ThreadFactory, Executors, ScheduledExecutorService}
 
 import fs2.util.Task
 import org.scalacheck.{Arbitrary, Gen}
@@ -17,7 +14,7 @@ object TestStrategy {
 trait TestUtil {
 
  implicit val S = TestStrategy.S
-  implicit def scheduler = TestStrategy.scheduler
+ implicit val scheduler = TestStrategy.scheduler
 
   def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
 
