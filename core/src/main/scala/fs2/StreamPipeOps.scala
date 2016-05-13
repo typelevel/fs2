@@ -30,6 +30,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self through [[pipe.drop]]`. */
   def drop(n: Int): Stream[F,O] = self through pipe.drop(n)
 
+  /** Alias for `self through [[pipe.dropRight]]`. */
+  def dropRight(n: Int): Stream[F,O] = self through pipe.dropRight(n)
+
   /** Alias for `self through [[pipe.dropWhile]]` */
   def dropWhile(p: O => Boolean): Stream[F,O] = self through pipe.dropWhile(p)
 
@@ -50,6 +53,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self through [[pipe.forall]]`. */
   def forall(f: O => Boolean): Stream[F, Boolean] = self through pipe.forall(f)
+
+  /** Alias for `self through [[pipe.intersperse]]`. */
+  def intersperse[O2 >: O](separator: O2): Stream[F,O2] = self through pipe.intersperse(separator)
 
   /** Alias for `self through [[pipe.last]]`. */
   def last: Stream[F,Option[O]] = self through pipe.last
