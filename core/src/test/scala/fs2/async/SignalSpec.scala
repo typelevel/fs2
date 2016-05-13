@@ -23,6 +23,19 @@ class SignalSpec extends Fs2Spec {
         })
       }
     }
+    "discrete" in {
+      // verifies that discrete always receives the most recent value, even when updates occur rapidly
+      forAll { (v0: Long, vsTl: List[Long]) =>
+        val vs = v0 :: vsTl
+        val s = async.signalOf[Task,Long](0L).unsafeRun
+        val r = new AtomicLong(0)
+        val u = s.discrete.map { i => Thread.sleep(10); r.set(i) }.run.run.async.unsafeRunAsyncFuture
+        vs.foreach { v => s.set(v).unsafeRun }
+        val last = vs.last
+        while (r.get != last) {}
+        true
+      }
+    }
   }
 }
 

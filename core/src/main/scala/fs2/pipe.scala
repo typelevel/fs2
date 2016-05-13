@@ -295,6 +295,32 @@ object pipe {
     }
   }
 
+  /**
+   * Zips the input with a running total according to `S`, up to but not including the current element. Thus the initial
+   * `z` value is the first emitted to the output:
+   * {{{
+   * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length).toList
+   * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
+   * }}}
+   *
+   * @see [[zipWithScan1]]
+   */
+  def zipWithScan[F[_],I,S](z: S)(f: (S, I) => S): Stream[F,I] => Stream[F,(I,S)] =
+    _.mapAccumulate(z) { (s,i) => val s2 = f(s,i); (s2, (i,s)) }.map(_._2)
+
+  /**
+   * Zips the input with a running total according to `S`, including the current element. Thus the initial
+   * `z` value is the first emitted to the output:
+   * {{{
+   * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length).toList
+   * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
+   * }}}
+   *
+   * @see [[zipWithScan]]
+   */
+  def zipWithScan1[F[_],I,S](z: S)(f: (S, I) => S): Stream[F,I] => Stream[F,(I,S)] =
+    _.mapAccumulate(z) { (s,i) => val s2 = f(s,i); (s2, (i,s2)) }.map(_._2)
+
   // stepping a process
 
   def covary[F[_],I,O](p: Stream[Pure,I] => Stream[Pure,O]): Pipe[F,I,O] =

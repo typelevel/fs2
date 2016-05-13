@@ -68,7 +68,7 @@ trait Async[F[_]] extends Catchable[F] { self =>
   def setFree[A](r: Ref[A])(a: Free[F,A]): F[Unit]
   def setPure[A](r: Ref[A])(a: A): F[Unit] = set(r)(pure(a))
   /** Actually run the effect of setting the ref. Has side effects. */
-  protected def runSet[A](q: Ref[A])(a: Either[Throwable,A]): Unit
+  private[fs2] def runSet[A](q: Ref[A])(a: Either[Throwable,A]): Unit
 
   /**
    * Like `get`, but returns an `F[Unit]` that can be used cancel the subscription.

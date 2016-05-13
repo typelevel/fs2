@@ -9,21 +9,17 @@ import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.duration._
 
+object TestStrategy {
+  implicit val S = Strategy.fromFixedDaemonPool(8)
+  implicit lazy val scheduler = java.util.concurrent.Executors.newScheduledThreadPool(2)
+}
+
 trait TestUtil {
 
-  implicit val S = Strategy.fromFixedDaemonPool(8)
-  // implicit val S = Strategy.fromCachedDaemonPool("test-thread-worker")
-  implicit val Sch : ScheduledExecutorService = Executors.newScheduledThreadPool(8, new ThreadFactory {
-    val idx = new AtomicInteger(0)
-    def newThread(r: Runnable): Thread = {
-      val t = new Thread(r,s"fs2.spec-default-scheduler-${idx.incrementAndGet()}")
-      t.setDaemon(true)
-      t
-    }
-  })
+ implicit val S = TestStrategy.S
+  implicit def scheduler = TestStrategy.scheduler
 
-  def runLog[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRun
-  def runFor[A](timeout: FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
+  def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
 
   def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
     s.runLog.run.unsafeAttemptRun match {
@@ -122,3 +118,4 @@ trait TestUtil {
 }
 
 object TestUtil extends TestUtil
+

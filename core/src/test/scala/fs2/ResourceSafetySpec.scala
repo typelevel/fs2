@@ -1,10 +1,12 @@
 package fs2
 
+import scala.concurrent.duration._
 import fs2.util.Task
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck._
 
-class ResourceSafetySpec extends Fs2Spec {
+class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventually {
 
   "Resource Safety" - {
 
@@ -109,14 +111,18 @@ class ResourceSafetySpec extends Fs2Spec {
 
     "asynchronous resource allocation (3)" in forAll {
       (s: PureStream[(PureStream[Int], Option[Failure])], allowFailure: Boolean, f: Failure, n: SmallPositive) =>
-      val c = new AtomicLong(0)
-      val s2 = bracket(c)(s.get.map { case (s, f) =>
-        if (allowFailure) f.map(f => spuriousFail(bracket(c)(s.get), f)).getOrElse(bracket(c)(s.get))
-        else bracket(c)(s.get)
+      val outer = new AtomicLong(0)
+      val inner = new AtomicLong(0)
+      val s2 = bracket(outer)(s.get.map { case (s, f) =>
+        if (allowFailure) f.map(f => spuriousFail(bracket(inner)(s.get), f)).getOrElse(bracket(inner)(s.get))
+        else bracket(inner)(s.get)
       })
       swallow { runLog { concurrent.join(n.get)(s2).take(10) }}
       swallow { runLog { concurrent.join(n.get)(s2) }}
-      c.get shouldBe 0L
+      outer.get shouldBe 0L
+      // Inner finalizers are run on a different thread, so on slow systems, we might observe a stale value here -
+      // hence, wrap the condition in an eventually
+      eventually(timeout(1.second)) { inner.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (4)" in forAll { (s: PureStream[Int], f: Option[Failure]) =>
@@ -131,9 +137,40 @@ class ResourceSafetySpec extends Fs2Spec {
       c.get shouldBe 0L
     }
 
+    "asynchronous resource allocation (5)" in forAll { (s: PureStream[PureStream[Int]]) =>
+      val signal = async.signalOf[Task,Boolean](false).unsafeRun
+      val c = new AtomicLong(0)
+      signal.set(true).schedule(20.millis).async.unsafeRun
+      runLog { s.get.evalMap { inner =>
+        Task.start(bracket(c)(inner.get).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run.run)
+      }}
+      eventually { c.get shouldBe 0L }
+    }
+
+    "asynchronous resource allocation (6)" in {
+      // simpler version of (5) above which previously failed reliably, checks the case where a
+      // stream is interrupted while in the middle of a resource acquire that is immediately followed
+      // by a step that never completes!
+      val s = Stream(Stream(1))
+      val signal = async.signalOf[Task,Boolean](false).unsafeRun
+      val c = new AtomicLong(1)
+      signal.set(true).schedule(20.millis).async.unsafeRun // after 20 ms, interrupt
+      runLog { s.evalMap { inner => Task.start {
+        Stream.bracket(Task.delay { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
+          _ => inner,
+          _ => Task.delay { c.decrementAndGet; () }
+        ).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run.run
+      }}}
+      eventually { c.get shouldBe 0L }
+    }
+
     def swallow(a: => Any): Unit =
       try { a; () }
-      catch { case e: Throwable => () }
+      catch {
+        case e: InterruptedException => throw e
+        case e: TimeoutException => throw e
+        case e: Throwable => ()
+      }
 
     def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
       Stream.bracket(Task.delay { c.decrementAndGet })(

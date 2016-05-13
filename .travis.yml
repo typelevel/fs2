@@ -20,5 +20,5 @@ env:
   - secure: WUTPbVxp6LhGYXdLYg1rNCsLnPdpoqxyOnND6oFZ11ffOCwb7eLlBjPwobt1iQlNLTw8ZTdsJ3IyE9+CVlgfSWVSi0BLDcpNcZcx1Mg1m37JPTp+3r/xExo8fjYySWlQfXmlnRoeZc0kfX5d3/bKlRpNEl/fZGeitSWDeEyGjzc=
 
 after_success:
-  - "[[ $TRAVIS_BRANCH == \"topic/redesign\" ]] && { sbt publish; };"
+  - test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "topic/redesign" && sbt publish
 
