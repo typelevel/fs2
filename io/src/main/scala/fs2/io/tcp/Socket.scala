@@ -201,9 +201,6 @@ protected[tcp] object Socket {
 
 
       Stream.bracket(setup)(sch => acceptIncoming(sch), cleanup)
-
-
-
   }
 
 
@@ -294,12 +291,5 @@ protected[tcp] object Socket {
       def endOfOutput: F[Unit] = F.suspend{ ch.shutdownOutput(); () }
       def endOfInput: F[Unit] = F.suspend{ ch.shutdownInput(); () }
     }
-
   }
-
-
-
-
-
-
 }
