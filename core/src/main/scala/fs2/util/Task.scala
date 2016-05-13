@@ -338,10 +338,12 @@ object Task extends Instances {
   class Ref[A] private[fs2](actor: Actor[Msg[A]]) {
 
     def access: Task[(A, Either[Throwable,A] => Task[Boolean])] =
-      getStamped(new MsgId {}).map { case (a, id) =>
-        val set = (a: Either[Throwable,A]) =>
-          Task.unforkedAsync[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
-        (a, set)
+      Task.delay(new MsgId {}).flatMap { mid =>
+        getStamped(mid).map { case (a, id) =>
+          val set = (a: Either[Throwable,A]) =>
+            Task.unforkedAsync[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
+          (a, set)
+        }
       }
 
     /**
@@ -359,7 +361,7 @@ object Task extends Instances {
       Task.unforkedAsync[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
-    def get: Task[A] = getStamped(new MsgId {}).map(_._1)
+    def get: Task[A] = Task.delay(new MsgId {}).flatMap { mid => getStamped(mid).map(_._1) }
 
     /** Like `get`, but returns a `Task[Unit]` that can be used cancel the subscription. */
     def cancellableGet: Task[(Task[A], Task[Unit])] = Task.delay {
