@@ -1,5 +1,6 @@
 package fs2
 
+
 import fs2.util.Task
 import org.scalacheck.{Arbitrary, Gen}
 
@@ -12,8 +13,8 @@ object TestStrategy {
 
 trait TestUtil {
 
-  implicit val S = TestStrategy.S
-  implicit def scheduler = TestStrategy.scheduler
+ implicit val S = TestStrategy.S
+ implicit val scheduler = TestStrategy.scheduler
 
   def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
 

@@ -1,5 +1,7 @@
 package fs2
 
+import java.lang.Thread.UncaughtExceptionHandler
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executor, Executors, ThreadFactory}
 import scala.concurrent.ExecutionContext
 
@@ -13,10 +15,17 @@ object Strategy {
   /** A `ThreadFactory` which creates daemon threads, using the given name. */
   def daemonThreadFactory(threadName: String): ThreadFactory = new ThreadFactory {
     val defaultThreadFactory = Executors.defaultThreadFactory()
+    val idx = new AtomicInteger(0)
     def newThread(r: Runnable) = {
       val t = defaultThreadFactory.newThread(r)
       t.setDaemon(true)
-      t.setName(threadName)
+      t.setName(s"$threadName-${idx.incrementAndGet()}")
+      t.setUncaughtExceptionHandler(new UncaughtExceptionHandler {
+        def uncaughtException(t: Thread, e: Throwable): Unit = {
+          System.err.println(s"------------ UNHANDLED EXCEPTION ---------- (${t.getName})")
+          e.printStackTrace(System.err)
+        }
+      })
       t
     }
   }
