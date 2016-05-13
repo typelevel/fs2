@@ -27,7 +27,7 @@ class SocketSpec extends Fs2Spec {
     // spawns echo server, takes whatever client sends and echoes it back
     // up to 10 clients concurrently (10k total) send message and awaits echo of it
     // success is that all clients got what they have sent
-    "echo.requests" in { acquireLock {
+    "echo.requests" in {
 
         val message = Chunk.bytes("fs2.rocks".getBytes)
         val clientCount = 10000
@@ -67,9 +67,9 @@ class SocketSpec extends Fs2Spec {
           .take(clientCount).runLog.run.unsafeRun
 
 
-        (result.size == clientCount) &&
-          (result.map {  new String(_) }.toSet == Set("fs2.rocks"))
-      }}
+        (result.size shouldBe clientCount)
+          (result.map {  new String(_) }.toSet shouldBe Set("fs2.rocks"))
+      }
   }
 
 
