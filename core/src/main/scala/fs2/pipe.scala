@@ -42,6 +42,21 @@ object pipe {
   def drop[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.drop(n)(h) flatMap Pull.echo)
 
+  /** Emits all but the last `n` elements of the input. */
+  def dropRight[F[_],I](n: Int): Stream[F,I] => Stream[F,I] = {
+    if (n <= 0) identity
+    else {
+      def go(acc: Vector[I]): Handle[F,I] => Pull[F,I,Unit] = {
+        _.receive {
+          case chunk #: h =>
+            val all = acc ++ chunk.toVector
+            Pull.output(Chunk.indexedSeq(all.dropRight(n))) >> go(all.takeRight(n))(h)
+        }
+      }
+      _ pull go(Vector.empty)
+    }
+  }
+
   /** Drop the elements of the input until the predicate `p` fails, then echo the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.dropWhile(p)(h) flatMap Pull.echo)
@@ -79,6 +94,19 @@ object pipe {
    */
   def forall[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,Boolean] =
     _ pull (h => Pull.forall(p)(h) flatMap Pull.output1)
+
+  /** Emits the specified separator between every pair of elements in the source stream. */
+  def intersperse[F[_],I](separator: I): Stream[F,I] => Stream[F,I] =
+    _ pull { h => Pull.echo1(h) flatMap Pull.loop { (h: Stream.Handle[F,I]) =>
+      h.receive { case chunk #: h =>
+        val interspersed = {
+          val bldr = Vector.newBuilder[I]
+          chunk.toVector.foreach { i => bldr += separator; bldr += i }
+          Chunk.indexedSeq(bldr.result)
+        }
+        Pull.output(interspersed) >> Pull.pure(h)
+      }
+    }}
 
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I]: Stream[F,I] => Stream[F,I] =

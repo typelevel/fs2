@@ -71,6 +71,11 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.through(drop(n))) shouldBe runLog(s.get).drop(n)
     }
 
+    "dropRight" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.dropRight(n)) shouldBe runLog(s.get).dropRight(n)
+    }
+
     "dropWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
       val set = runLog(s.get).take(n.get).toSet
       runLog(s.get.through(dropWhile(set))) shouldBe runLog(s.get).dropWhile(set)
@@ -128,6 +133,10 @@ class PipeSpec extends Fs2Spec {
     "forall" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val f = (i: Int) => i % n.get == 0
       runLog(s.get.forall(f)) shouldBe Vector(runLog(s.get).forall(f))
+    }
+
+    "intersperse" in forAll { (s: PureStream[Int], n: Int) =>
+      runLog(s.get.intersperse(n)) shouldBe runLog(s.get).flatMap(i => Vector(i, n)).dropRight(1)
     }
 
     "mapChunked" in forAll { (s: PureStream[Int]) =>
