@@ -1,9 +1,11 @@
 package fs2
 package util
 
-import fs2.internal.{Actor,Future,LinkedMap}
+
+import fs2.internal.{Actor, Future, LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import java.util.concurrent.ScheduledExecutorService
+
 import scala.concurrent.duration._
 
 /*
@@ -167,17 +169,17 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
     timed(timeout.toMillis)
 
   /**
-   Ensures the result of this Task satisfies the given predicate,
-   or fails with the given value.
+    * Ensures the result of this Task satisfies the given predicate,
+    * or fails with the given value.
    */
   def ensure(failure: => Throwable)(f: A => Boolean): Task[A] =
     flatMap(a => if(f(a)) Task.now(a) else Task.fail(failure))
 
   /**
-   Returns a `Task` that, when run, races evaluation of `this` and `t`,
-   and returns the result of whichever completes first. The losing task
-   continues to execute in the background though its result will be sent
-   nowhere.
+    * Returns a `Task` that, when run, races evaluation of `this` and `t`,
+    * and returns the result of whichever completes first. The losing task
+    * continues to execute in the background though its result will be sent
+    * nowhere.
    */
   def race[B](t: Task[B])(implicit S: Strategy): Task[Either[A,B]] = {
     Task.ref[Either[A,B]].flatMap { ref =>
@@ -234,13 +236,13 @@ object Task extends Instances {
     apply(a) flatMap { a => a }
 
   /**
-   Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
-   into the outer task, `t` will be running in the background, and the inner task
-   is conceptually a future which can be forced at any point via `flatMap`.
+    * Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
+    * into the outer task, `t` will be running in the background, and the inner task
+    * is conceptually a future which can be forced at any point via `flatMap`.
 
-   For example:
+    * For example:
 
-   {{{
+    * {{{
      for {
        f <- Task.start { expensiveTask1 }
        // at this point, `expensive1` is evaluating in background
@@ -257,17 +259,17 @@ object Task extends Instances {
     ref[A].flatMap { ref => ref.set(t) map (_ => ref.get) }
 
   /**
-   Like [[async]], but run the callback in the same thread in the same
-   thread, rather than evaluating the callback using a `Strategy`.
+    * Like [[async]], but run the callback in the same thread in the same
+    * thread, rather than evaluating the callback using a `Strategy`.
    */
   def unforkedAsync[A](register: (Either[Throwable,A] => Unit) => Unit): Task[A] =
     async(register)(Strategy.sequential)
 
   /**
-   Create a `Task` from an asynchronous computation, which takes the form
-   of a function with which we can register a callback. This can be used
-   to translate from a callback-based API to a straightforward monadic
-   version. The callback is run using the strategy `S`.
+    * Create a `Task` from an asynchronous computation, which takes the form
+    * of a function with which we can register a callback. This can be used
+    * to translate from a callback-based API to a straightforward monadic
+    * version. The callback is run using the strategy `S`.
    */
   def async[A](register: (Either[Throwable,A] => Unit) => Unit)(implicit S: Strategy): Task[A] =
     new Task(Future.Async(cb => register {
@@ -426,4 +428,10 @@ private[fs2] trait Instances extends Instances1 {
     def fail[A](err: Throwable): Task[A] = Task.fail(err)
     def attempt[A](fa: Task[A]): Task[Either[Throwable, A]] = fa.attempt
   }
+
+  implicit val runInstance: Async.Run[Task] = new Async.Run[Task] {
+    def runEffects(f: Task[Unit]): Option[Throwable] =
+      f.unsafeAttemptRun.left.toOption
+  }
+
 }
