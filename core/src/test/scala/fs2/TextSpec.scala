@@ -3,7 +3,7 @@ package fs2
 import org.scalacheck._
 import fs2.text._
 
-class Utf8DecodeSpec extends Fs2Spec {
+class TextSpec extends Fs2Spec {
   "text" - {
     "utf8Decoder" - {
 
@@ -11,17 +11,17 @@ class Utf8DecodeSpec extends Fs2Spec {
       def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 
       def checkChar(c: Char) = (1 to 6).foreach { n =>
-        Stream.chunk(utf8Bytes(c.toString)).pure.chunkLimit(n).through(utf8Decode).toList shouldBe List(c.toString)
+        Stream.chunk(utf8Bytes(c.toString)).pure.chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(c.toString)
       }
 
       def checkBytes(is: Int*) = (1 to 6).foreach { n =>
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-        Stream.chunk(bytes).pure.chunkLimit(n).through(utf8Decode).toList shouldBe List(utf8String(bytes))
+        Stream.chunk(bytes).pure.chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(utf8String(bytes))
       }
 
       def checkBytes2(is: Int*) = {
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-        Stream.pure(bytes).through(utf8Decode).toList.mkString shouldBe utf8String(bytes)
+        Stream.pure(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe utf8String(bytes)
       }
 
       "all chars" in forAll { (c: Char) => checkChar(c) }
@@ -35,21 +35,24 @@ class Utf8DecodeSpec extends Fs2Spec {
       "incomplete 3 byte char" in checkBytes(0xE2, 0x82)
       "incomplete 4 byte char" in checkBytes(0xF0, 0xA4, 0xAD)
 
-      "preserve complete inputs" in forAll { (l: List[String]) =>
-        Stream.pure(l: _*).map(utf8Bytes).through(utf8Decode).toList shouldBe l
+      "preserve complete inputs" in forAll { (l0: List[String]) =>
+        val l = l0.filter { _.nonEmpty }
+        Stream.pure(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe l
+        Stream.pure(l0: _*).map(utf8Bytes).through(utf8DecodeC).toList shouldBe l0
       }
 
       "utf8Encode |> utf8Decode = id" in forAll { (s: String) =>
-        Stream.pure(s).through(utf8Encode).through(utf8Decode).toList shouldBe List(s)
+        Stream.pure(s).through(utf8EncodeC).through(utf8DecodeC).toList shouldBe List(s)
+        if (s.nonEmpty) Stream.pure(s).through(utf8Encode).through(utf8Decode).toList shouldBe List(s)
       }
 
       "1 byte sequences" in forAll { (s: String) =>
-        Stream.chunk(utf8Bytes(s)).pure.chunkLimit(1).through(utf8Decode).toList shouldBe s.grouped(1).toList
+        Stream.chunk(utf8Bytes(s)).pure.chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe s.grouped(1).toList
       }
 
       "n byte sequences" in forAll { (s: String) =>
         val n = Gen.choose(1,9).sample.getOrElse(1)
-        Stream.chunk(utf8Bytes(s)).pure.chunkLimit(1).through(utf8Decode).toList.mkString shouldBe s
+        Stream.chunk(utf8Bytes(s)).pure.chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe s
       }
 
       // The next tests were taken from:
@@ -151,6 +154,36 @@ class Utf8DecodeSpec extends Fs2Spec {
       "5.3" - {
         "5.3.1" in checkBytes(0xef, 0xbf, 0xbe)
         "5.3.2" in checkBytes(0xef, 0xbf, 0xbf)
+      }
+    }
+
+    "lines" - {
+      def escapeCrLf(s: String): String =
+        s.replaceAll("\r\n", "<CRLF>").replaceAll("\n", "<LF>")
+
+      def escapeCrLfs(ls: List[String]): List[String] =
+        ls.map(escapeCrLf)
+
+      "newlines appear in between chunks" in forAll { (lines0: PureStream[String]) =>
+        val lines = lines0.get.map(escapeCrLf)
+        lines.intersperse("\n").throughp(text.lines).toList shouldBe lines.toList
+        lines.intersperse("\r\n").throughp(text.lines).toList shouldBe lines.toList
+      }
+
+      "single string" in forAll { (lines0: PureStream[String]) =>
+        val lines = lines0.get.map(escapeCrLf)
+        if (lines.toList.nonEmpty) {
+          val s = lines.intersperse("\r\n").toList.mkString
+          Stream.emit(s).throughp(text.lines).toList shouldBe lines.toList
+        }
+      }
+
+      "grouped in 3 characater chunks" in forAll { (lines0: PureStream[String]) =>
+        val lines = lines0.get.map(escapeCrLf)
+        if (lines.toList.nonEmpty) {
+          val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
+          Stream.emits(s).throughp(text.lines).toList shouldBe lines.toList
+        }
       }
     }
   }
