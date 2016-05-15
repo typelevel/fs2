@@ -44,7 +44,7 @@ def run[A](s: Stream[Task,A]): Vector[A] =
 // run: [A](s: fs2.Stream[fs2.util.Task,A])Vector[A]
 
 val s: Stream[Nothing,Int] = Stream((0 until 100): _*)
-// s: fs2.Stream[Nothing,Int] = fs2.Stream$$anon$1@31ae9d36
+// s: fs2.Stream[Nothing,Int] = fs2.Stream$$anon$1@447a43b3
 
 run(s) == Vector.range(0, 100)
 // res0: Boolean = true
@@ -191,7 +191,7 @@ scala> import fs2.util._
 import fs2.util._
 
 scala> Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Sub1.sub1[Task])
-res4: fs2.Stream[fs2.util.Task,Any] = fs2.Stream$$anon$1@7ffe8ae6
+res4: fs2.Stream[fs2.util.Task,Any] = fs2.Stream$$anon$1@1f0c2b15
 ```
 
 Ugly, as it should be.

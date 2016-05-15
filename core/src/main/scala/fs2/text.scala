@@ -7,8 +7,12 @@ import fs2.Stream.Handle
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
 
+  /** Converts UTF-8 encoded byte stream to a stream of `String`. */
+  def utf8Decode[F[_]]: Pipe[F, Byte, String] =
+    _.chunks.through(utf8DecodeC)
+
   /** Converts UTF-8 encoded `Chunk[Byte]` inputs to `String`. */
-  def utf8Decode[F[_]]: Pipe[F, Chunk[Byte], String] = {
+  def utf8DecodeC[F[_]]: Pipe[F, Chunk[Byte], String] = {
     /**
       * Returns the number of continuation bytes if `b` is an ASCII byte or a
       * leading byte of a multi-byte sequence, and -1 otherwise.
@@ -63,7 +67,76 @@ object text {
     pipe.covary[F, Chunk[Byte], String](_.open.flatMap(doPull(Chunk.empty) _).run)
   }
 
-  /** Converts `String` to UTF-8 encoded `Chunk[Byte]`. */
-  def utf8Encode[F[_]]: Pipe[F, String, Chunk[Byte]] =
-    _.mapChunks(_.map(s => Chunk.bytes(s.getBytes(utf8Charset))))
+  /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
+  def utf8Encode[F[_]]: Pipe[F, String, Byte] =
+    _.flatMap(s => Stream.chunk(Chunk.bytes(s.getBytes(utf8Charset))))
+
+  /** Encodes a stream of `String` in to a stream of `Chunk[Byte]` using the UTF-8 charset. */
+  def utf8EncodeC[F[_]]: Pipe[F, String, Chunk[Byte]] =
+    _.map(s => Chunk.bytes(s.getBytes(utf8Charset)))
+
+  /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
+  def lines[F[_]]: Pipe[F, String, String] = {
+
+    def linesFromString(string: String): (Vector[String], String) = {
+      var i = 0
+      var start = 0
+      var out = Vector.empty[String]
+      while (i < string.size) {
+        string(i) match {
+          case '\n' =>
+            out = out :+ string.substring(start, i)
+            start = i + 1
+          case '\r' =>
+            if (i + 1 < string.size && string(i + 1) == '\n') {
+              out = out :+ string.substring(start, i)
+              start = i + 2
+              i += 1
+            }
+          case c =>
+            ()
+        }
+        i += 1
+      }
+      val carry = string.substring(start, string.size)
+      (out, carry)
+    }
+
+    def extractLines(buffer: Vector[String], chunk: Chunk[String]): (Chunk[String], Vector[String]) = {
+      @annotation.tailrec
+      def loop(remainingInput: Vector[String], buffer: Vector[String], output: Vector[String], pendingLineFeed: Boolean): (Chunk[String], Vector[String]) = {
+        if (remainingInput.isEmpty) {
+          Chunk.indexedSeq(output) -> buffer
+        } else {
+          var next = remainingInput.head
+          if (pendingLineFeed) {
+            if (next.headOption == Some('\n')) {
+              val out = (buffer.init ++ buffer.last.init).mkString
+              loop(next.tail +: remainingInput.tail, Vector.empty, output :+ out, false)
+            } else {
+              loop(remainingInput, buffer, output, false)
+            }
+          } else {
+            val (out, carry) = linesFromString(next)
+            val pendingLF = if (carry.nonEmpty) carry.last == '\r' else pendingLineFeed
+            loop(remainingInput.tail,
+              if (out.isEmpty) buffer :+ carry else Vector(carry),
+              if (out.isEmpty) output else output ++ ((buffer :+ out.head).mkString +: out.tail), pendingLF)
+          }
+        }
+      }
+      loop(chunk.toVector, buffer, Vector.empty, false)
+    }
+
+    def go(buffer: Vector[String]): Handle[F, String] => Pull[F, String, Unit] = {
+      Pull.receiveOption[F,String,String,Unit] {
+        case Some(chunk #: h) =>
+          val (toOutput, newBuffer) = extractLines(buffer, chunk)
+          Pull.output(toOutput) >> go(newBuffer)(h)
+        case None if buffer.nonEmpty => Pull.output1(buffer.mkString)
+        case None => Pull.done
+      }(_)
+    }
+    _.pull(go(Vector.empty))
+  }
 }

@@ -105,6 +105,13 @@ lazy val publishingSettings = Seq(
   }
 )
 
+lazy val noPublish = Seq(
+  publish := (),
+  publishLocal := (),
+  publishSigned := (),
+  publishArtifact := false
+)
+
 lazy val releaseSettings = Seq(
   releaseCrossBuild := true,
   releasePublishArtifactsAction := PgpKeys.publishSigned.value
@@ -112,12 +119,7 @@ lazy val releaseSettings = Seq(
 
 lazy val root = project.in(file(".")).
   settings(commonSettings).
-  settings(
-    publish := (),
-    publishLocal := (),
-    publishSigned := (),
-    publishArtifact := false
-  ).
+  settings(noPublish).
   aggregate(core, io, benchmark)
 
 lazy val core = project.in(file("core")).
@@ -134,11 +136,9 @@ lazy val io = project.in(file("io")).
 
 lazy val benchmark = project.in(file("benchmark")).
   settings(commonSettings).
+  settings(noPublish).
   settings(
-    name := "fs2-benchmark",
-    publish := (),
-    publishLocal := (),
-    publishArtifact := false
+    name := "fs2-benchmark"
   ).dependsOn(io)
 
 lazy val docs = project.in(file("docs")).
