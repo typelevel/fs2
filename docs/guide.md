@@ -111,9 +111,9 @@ def eval[F[_],A](f: F[A]): Stream[F,A]
 
 _Note_: FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type. ([`Catchable`][Catchable] and optionally [`Async`][Async] if you wish to use various concurrent operations discussed later.)
 
-[Task]: ../../core/src/main/scala/fs2/util/Task.scala
-[Catchable]: ../../core/src/main/scala/fs2/util/Catchable.scala
-[Async]: ../../core/src/main/scala/fs2/util/Async.scala
+[Task]: ../core/src/main/scala/fs2/util/Task.scala
+[Catchable]: ../core/src/main/scala/fs2/util/Catchable.scala
+[Async]: ../core/src/main/scala/fs2/util/Async.scala
 
 It produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained) Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
