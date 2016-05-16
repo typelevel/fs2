@@ -156,7 +156,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
    * A `Task` which returns a `TimeoutException` after `timeout`,
    * and attempts to cancel the running computation.
    */
-  def timed(timeout: FiniteDuration)(implicit S: Scheduler): Task[A] =
+  def timed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
     new Task(get.timed(timeout).map(_.right.flatMap(x => x)))
 
   /**
@@ -180,7 +180,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
   }
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule(delay: FiniteDuration)(implicit S: Scheduler): Task[A] =
+  def schedule(delay: FiniteDuration)(implicit strategy: Strategy, scheduler: Scheduler): Task[A] =
     Task.schedule((), delay) flatMap { _ => this }
 }
 
@@ -268,8 +268,8 @@ object Task extends Instances {
     }))
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Scheduler): Task[A] =
-    apply(a)(Future.Scheduled(delay))
+  def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
+    apply(a)(scheduler.delayedStrategy(delay))
 
   /** Utility function - evaluate `a` and catch and return any exceptions. */
   def Try[A](a: => A): Either[Throwable,A] =

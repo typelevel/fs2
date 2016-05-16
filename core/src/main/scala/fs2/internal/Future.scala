@@ -96,14 +96,14 @@ class Future[+A] {
     }
   }
 
-  def timed(timeout: FiniteDuration)(implicit S: Scheduler): Future[Either[Throwable,A]] =
+  def timed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Future[Either[Throwable,A]] =
     //instead of run this though chooseAny, it is run through simple primitive,
     //as we are never interested in results of timeout callback, and this is more resource savvy
     async[Either[Throwable,A]] { cb =>
       val cancel = new AtomicBoolean(false)
       val done = new AtomicBoolean(false)
       try {
-        S.scheduleOnce(timeout) {
+        scheduler.scheduleOnce(timeout) {
           if (done.compareAndSet(false,true)) {
             cancel.set(true)
             cb(Left(new TimeoutException()))
@@ -114,7 +114,7 @@ class Future[+A] {
       runAsyncInterruptibly(a => if(done.compareAndSet(false,true)) cb(Right(a)), cancel)
     } (Strategy.sequential)
 
-  def after(t: FiniteDuration)(implicit S: Scheduler): Future[A] =
+  def after(t: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Future[A] =
     Future.schedule((), t) flatMap { _ => this }
 }
 
@@ -142,10 +142,6 @@ private[fs2] object Future {
   }
 
   /** Create a `Future` that will evaluate `a` after at least the given delay. */
-  def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Scheduler): Future[A] =
-    apply(a)(Scheduled(delay))
-
-  case class Scheduled(delay: FiniteDuration)(implicit S: Scheduler) extends Strategy {
-    def apply(thunk: => Unit) = { S.scheduleOnce(delay)(thunk); () }
-  }
+  def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Future[A] =
+    apply(a)(scheduler.delayedStrategy(delay))
 }
