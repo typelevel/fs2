@@ -230,20 +230,20 @@ object pipe {
    * }}}
    * @throws IllegalArgumentException if `n` <= 0
    */
-  def sliding[F[_],I](n: Int): Stream[F,I] => Stream[F,Chunk[I]] = {
+  def sliding[F[_],I](n: Int): Stream[F,I] => Stream[F,Vector[I]] = {
     require(n > 0, "n must be > 0")
-    def go(window: Vector[I]): Handle[F,I] => Pull[F,Chunk[I],Unit] = h => {
+    def go(window: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = h => {
       h.receive {
         case chunk #: h =>
           val out: Vector[Vector[I]] =
             chunk.toVector.scanLeft(window)((w, i) => w.tail :+ i).tail
           if (out.isEmpty) go(window)(h)
-          else Pull.output(Chunk.indexedSeq(out.map(Chunk.indexedSeq))) >> go(out.last)(h)
+          else Pull.output(Chunk.indexedSeq(out)) >> go(out.last)(h)
       }
     }
     _ pull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
       val window = chunks.foldLeft(Vector.empty[I])(_ ++ _.toVector)
-      Pull.output1(Chunk.indexedSeq(window)) >> go(window)(h)
+      Pull.output1(window) >> go(window)(h)
     }}
   }
 
