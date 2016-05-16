@@ -9,6 +9,10 @@ package object async {
   def signalOf[F[_]:Async,A](initialValue: A): F[mutable.Signal[F,A]] =
     mutable.Signal(initialValue)
 
+  /** Create a `[[mutable.Semaphore]]`, initialized to the given count. */
+  def semaphore[F[_]:Async](initialCount: Long): F[mutable.Semaphore[F]] =
+    mutable.Semaphore(initialCount)
+
   /** Defined as `[[hold]](None, source.map(Some(_)))` */
   def holdOption[F[_]:Async,A](source: Stream[F, A]): Stream[F, immutable.Signal[F,Option[A]]] =
      immutable.Signal.holdOption(source)
