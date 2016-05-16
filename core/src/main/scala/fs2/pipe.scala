@@ -7,6 +7,12 @@ object pipe {
 
   // nb: methods are in alphabetical order
 
+  /** Behaves like the identity function, but requests `n` elements at a time from the input. */
+  def buffer[F[_],I](n: Int): Stream[F,I] => Stream[F,I] =
+    _.repeatPull { h => Pull.awaitN(n)(h).flatMap { case chunks #: h =>
+      chunks.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } as h
+    }}
+
   /** Outputs first value, and then any changed value from the last value. `eqf` is used for equality. **/
   def changes[F[_],I](eqf:(I,I) => Boolean): Stream[F,I] => Stream[F,I] =
     zipWithPrevious andThen collect {

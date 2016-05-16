@@ -9,6 +9,13 @@ class PipeSpec extends Fs2Spec {
 
   "Pipe" - {
 
+    "buffer" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      var counter = 0
+      val s2 = (s.get ++ Stream.emits(List.fill(n.get + 1)(0))).repeat
+      s2.evalMap { i => Task.delay { counter += 1; i }}.buffer(n.get).take(n.get + 1).run.run.unsafeRun
+      counter shouldBe (n.get * 2)
+    }
+
     "chunkLimit" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
       val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
       assert(sizeV.forall(_ <= n0.get) && sizeV.sum == s.get.toVector.size)

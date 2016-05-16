@@ -8,6 +8,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order
 
+  /** Alias for `self through [[pipe.buffer]]`. */
+  def buffer(n: Int): Stream[F,O] = self through pipe.buffer(n)
+
   /** Alias for `self through [[pipe.chunkLimit]]`. */
   def chunkLimit(n: Int): Stream[F,Chunk[O]] = self through pipe.chunkLimit(n)
 
