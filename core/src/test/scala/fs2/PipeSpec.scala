@@ -192,6 +192,10 @@ class PipeSpec extends Fs2Spec {
       assert((stop-start) < 6000)
     }
 
+    "sliding" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      s.get.sliding(n.get).toList.map(_.toVector) shouldBe s.get.toList.sliding(n.get).map(_.toVector).toList
+    }
+
     "sum" in forAll { (s: PureStream[Int]) =>
       s.get.sum.toVector shouldBe Vector(runLog(s.get).sum)
     }

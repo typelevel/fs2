@@ -82,6 +82,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self through [[pipe.shiftRight]]`. */
   def shiftRight[O2 >: O](head: O2*): Stream[F,O2] = self through pipe.shiftRight(head: _*)
 
+  /** Alias for `self through [[pipe.sliding]]`. */
+  def sliding(n: Int): Stream[F,Chunk[O]] = self through pipe.sliding(n)
+
   /** Alias for `self through [[pipe.sum]](f)`. */
   def sum[O2 >: O : Numeric]: Stream[F,O2] = self through pipe.sum
 

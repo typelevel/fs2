@@ -219,6 +219,34 @@ object pipe {
   def shiftRight[F[_],I](head: I*): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.echo(h.push(Chunk.indexedSeq(Vector(head: _*)))) }
 
+  /**
+   * Groups inputs in fixed size chunks by passing a "sliding window"
+   * of size `n` over them. If the input contains less than or equal to
+   * `n` elements, only one chunk of this size will be emitted.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4).sliding(2).toList
+   * res0: List[Chunk[Int]] = List(Chunk(1, 2), Chunk(2, 3), Chunk(3, 4))
+   * }}}
+   * @throws IllegalArgumentException if `n` <= 0
+   */
+  def sliding[F[_],I](n: Int): Stream[F,I] => Stream[F,Chunk[I]] = {
+    require(n > 0, "n must be > 0")
+    def go(window: Vector[I]): Handle[F,I] => Pull[F,Chunk[I],Unit] = h => {
+      h.receive {
+        case chunk #: h =>
+          val out: Vector[Vector[I]] =
+            chunk.toVector.scanLeft(window)((w, i) => w.tail :+ i).tail
+          if (out.isEmpty) go(window)(h)
+          else Pull.output(Chunk.indexedSeq(out.map(Chunk.indexedSeq))) >> go(out.last)(h)
+      }
+    }
+    _ pull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
+      val window = chunks.foldLeft(Vector.empty[I])(_ ++ _.toVector)
+      Pull.output1(Chunk.indexedSeq(window)) >> go(window)(h)
+    }}
+  }
+
   /** Writes the sum of all input elements, or zero if the input is empty. */
   def sum[F[_],I](implicit ev: Numeric[I]): Stream[F,I] => Stream[F,I] =
     fold(ev.zero)(ev.plus)
