@@ -11,6 +11,12 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self through [[pipe.buffer]]`. */
   def buffer(n: Int): Stream[F,O] = self through pipe.buffer(n)
 
+  /** Alias for `self through [[pipe.bufferAll]]`. */
+  def bufferAll: Stream[F,O] = self through pipe.bufferAll
+
+  /** Alias for `self through [[pipe.bufferBy]]`. */
+  def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
+
   /** Alias for `self through [[pipe.chunkLimit]]`. */
   def chunkLimit(n: Int): Stream[F,Chunk[O]] = self through pipe.chunkLimit(n)
 
