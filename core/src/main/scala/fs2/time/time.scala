@@ -1,7 +1,5 @@
 package fs2
 
-import java.util.concurrent.ScheduledExecutorService
-
 import scala.concurrent.duration._
 
 package object time {
@@ -14,31 +12,27 @@ package object time {
    * return (approximately) `5s, 10s, 20s`, and will lie dormant
    * between emitted values.
    *
-   * By default, this uses a shared `ScheduledExecutorService`
-   * for the timed events, and runs the consumer using the `S` `Strategy`,
-   * to allow for the stream to decide whether result shall be run on
+   * This uses an implicit `Scheduler` for the timed events, and
+   * runs the consumer using the `S` `Strategy`, to allow for the
+   * stream to decide whether result shall be run on
    * different thread pool, or with `Strategy.sequential` on the
    * same thread pool as the scheduler.
    *
-   * @param d           Duration between emits of the resulting stream
+   * @param d           FiniteDuration between emits of the resulting stream
+   * @param S           Strategy to run the stream
    * @param scheduler   Scheduler used to schedule tasks
    */
-  def awakeEvery[F[_]](d: Duration)(implicit F: Async[F], runner: Async.Run[F], scheduler: ScheduledExecutorService): Stream[F,Duration] = {
-    def metronomeAndSignal: F[(()=>Unit,async.mutable.Signal[F,Duration])] = {
-      F.bind(async.signalOf[F, Duration](Duration(0, NANOSECONDS))) { signal =>
-        val t0 = Duration(System.nanoTime, NANOSECONDS)
+  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], FR: Async.Run[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
+    def metronomeAndSignal: F[(()=>Unit,async.mutable.Signal[F,FiniteDuration])] = {
+      F.bind(async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))) { signal =>
+        val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
         F.suspend {
-          val metronome = scheduler.scheduleAtFixedRate(
-            new Runnable { def run = {
-              val d = Duration(System.nanoTime, NANOSECONDS) - t0
-              runner.runEffects(signal.set(d))
-              ()
-            }},
-            d.toNanos,
-            d.toNanos,
-            NANOSECONDS
-          )
-          (() => { metronome.cancel(false); () }, signal)
+          val cancel = scheduler.scheduleAtFixedRate(d, d) {
+            val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
+            FR.runEffects(signal.set(d))
+            ()
+          }
+          (cancel, signal)
         }
       }
     }
@@ -61,7 +55,7 @@ package object time {
    * If you'd like a 'discrete' stream that will actually block until `d` has elapsed,
    * use `awakeEvery` instead.
    */
-  def every[F[_]](d: Duration): Stream[F, Boolean] = {
+  def every[F[_]](d: FiniteDuration): Stream[F, Boolean] = {
     def go(lastSpikeNanos: Long): Stream[F, Boolean] =
       Stream.suspend {
         val now = System.nanoTime
@@ -72,12 +66,9 @@ package object time {
   }
 
   /**
-   * A single-element `Stream` that waits for the duration `d`
-   * before emitting its value. This uses a shared
-   * `ScheduledThreadPoolExecutor` to signal duration and
-   * avoid blocking on thread. After the signal,
-   * the execution continues with `S` strategy.
+   * A single-element `Stream` that waits for the duration `d` before emitting its value. This uses the implicit
+   * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues with `S` strategy.
    */
-  def sleep[F[_]: Async : Async.Run](d: FiniteDuration)(implicit S: Strategy, schedulerPool: ScheduledExecutorService): Stream[F, Nothing] =
+  def sleep[F[_]: Async : Async.Run](d: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Stream[F, Nothing] =
     awakeEvery(d).take(1).drain
 }

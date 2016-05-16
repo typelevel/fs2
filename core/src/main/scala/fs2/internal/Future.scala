@@ -1,10 +1,10 @@
 package fs2.internal
 
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.{Callable, TimeoutException, ScheduledExecutorService, TimeUnit}
+import java.util.concurrent.TimeoutException
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
-import fs2.Strategy
+import fs2.{ Scheduler, Strategy }
 
 // for internal use only!
 
@@ -81,54 +81,41 @@ class Future[+A] {
     }
   }
 
-  def runFor(timeoutInMillis: Long): A = attemptRunFor(timeoutInMillis) match {
+  def runFor(timeout: FiniteDuration): A = attemptRunFor(timeout) match {
     case Left(e) => throw e
     case Right(a) => a
   }
 
-  def runFor(timeout: Duration): A = runFor(timeout.toMillis)
-
-  def attemptRunFor(timeoutInMillis: Long): Either[Throwable,A] = {
+  def attemptRunFor(timeout: FiniteDuration): Either[Throwable,A] = {
     val sync = new SyncVar[Either[Throwable,A]]
     val interrupt = new AtomicBoolean(false)
     runAsyncInterruptibly(a => sync.put(Right(a)), interrupt)
-    sync.get(timeoutInMillis).getOrElse {
+    sync.get(timeout.toMillis).getOrElse {
       interrupt.set(true)
       Left(new TimeoutException())
     }
   }
 
-  def attemptRunFor(timeout: Duration): Either[Throwable,A] = attemptRunFor(timeout.toMillis)
-
-  def timed(timeoutInMillis: Long)(implicit S: ScheduledExecutorService): Future[Either[Throwable,A]] =
+  def timed(timeout: FiniteDuration)(implicit S: Scheduler): Future[Either[Throwable,A]] =
     //instead of run this though chooseAny, it is run through simple primitive,
     //as we are never interested in results of timeout callback, and this is more resource savvy
     async[Either[Throwable,A]] { cb =>
       val cancel = new AtomicBoolean(false)
       val done = new AtomicBoolean(false)
       try {
-        S.schedule(new Runnable {
-          def run() {
-            if (done.compareAndSet(false,true)) {
-              cancel.set(true)
-              cb(Left(new TimeoutException()))
-            }
+        S.scheduleOnce(timeout) {
+          if (done.compareAndSet(false,true)) {
+            cancel.set(true)
+            cb(Left(new TimeoutException()))
           }
         }
-        , timeoutInMillis, TimeUnit.MILLISECONDS)
       } catch { case e: Throwable => cb(Left(e)) }
 
       runAsyncInterruptibly(a => if(done.compareAndSet(false,true)) cb(Right(a)), cancel)
     } (Strategy.sequential)
 
-  def timed(timeout: Duration)(implicit S: ScheduledExecutorService):
-    Future[Either[Throwable,A]] = timed(timeout.toMillis)
-
-  def after(t: Duration)(implicit S: ScheduledExecutorService): Future[A] =
+  def after(t: FiniteDuration)(implicit S: Scheduler): Future[A] =
     Future.schedule((), t) flatMap { _ => this }
-
-  def after(millis: Long)(implicit S: ScheduledExecutorService): Future[A] =
-    after(millis milliseconds)
 }
 
 private[fs2] object Future {
@@ -155,15 +142,10 @@ private[fs2] object Future {
   }
 
   /** Create a `Future` that will evaluate `a` after at least the given delay. */
-  def schedule[A](a: => A, delay: Duration)(implicit pool: ScheduledExecutorService): Future[A] =
+  def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Scheduler): Future[A] =
     apply(a)(Scheduled(delay))
 
-  case class Scheduled(delay: Duration)(implicit pool: ScheduledExecutorService) extends Strategy {
-    def apply(thunk: => Unit) = {
-      pool.schedule(new Callable[Unit] {
-        def call = thunk
-      }, delay.toMillis, TimeUnit.MILLISECONDS)
-      ()
-    }
+  case class Scheduled(delay: FiniteDuration)(implicit S: Scheduler) extends Strategy {
+    def apply(thunk: => Unit) = { S.scheduleOnce(delay)(thunk); () }
   }
 }

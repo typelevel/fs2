@@ -4,7 +4,6 @@ package util
 
 import fs2.internal.{Actor, Future, LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import java.util.concurrent.ScheduledExecutorService
 
 import scala.concurrent.duration._
 
@@ -138,35 +137,27 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
 
   /**
    * Run this `Task` and block until its result is available, or until
-   * `timeoutInMillis` milliseconds have elapsed, at which point a `TimeoutException`
+   * `timeout` has elapsed, at which point a `TimeoutException`
    * will be thrown and the `Future` will attempt to be canceled.
    */
-  def unsafeRunFor(timeoutInMillis: Long): A = get.runFor(timeoutInMillis) match {
+  def unsafeRunFor(timeout: FiniteDuration): A = get.runFor(timeout) match {
     case Left(e) => throw e
     case Right(a) => a
   }
-
-  def unsafeRunFor(timeout: Duration): A = unsafeRunFor(timeout.toMillis)
 
   /**
    * Like `unsafeRunFor`, but returns exceptions as values. Both `TimeoutException`
    * and other exceptions will be folded into the same `Throwable`.
    */
-  def unsafeAttemptRunFor(timeoutInMillis: Long): Either[Throwable,A] =
-    get.attemptRunFor(timeoutInMillis).right flatMap { a => a }
-
-  def unsafeAttemptRunFor(timeout: Duration): Either[Throwable,A] =
-    unsafeAttemptRunFor(timeout.toMillis)
+  def unsafeAttemptRunFor(timeout: FiniteDuration): Either[Throwable,A] =
+    get.attemptRunFor(timeout).right flatMap { a => a }
 
   /**
-   * A `Task` which returns a `TimeoutException` after `timeoutInMillis`,
+   * A `Task` which returns a `TimeoutException` after `timeout`,
    * and attempts to cancel the running computation.
    */
-  def timed(timeoutInMillis: Long)(implicit S: ScheduledExecutorService): Task[A] =
-    new Task(get.timed(timeoutInMillis).map(_.right.flatMap(x => x)))
-
-  def timed(timeout: Duration)(implicit S: ScheduledExecutorService): Task[A] =
-    timed(timeout.toMillis)
+  def timed(timeout: FiniteDuration)(implicit S: Scheduler): Task[A] =
+    new Task(get.timed(timeout).map(_.right.flatMap(x => x)))
 
   /**
     * Ensures the result of this Task satisfies the given predicate,
@@ -189,7 +180,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
   }
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule(delay: Duration)(implicit pool: ScheduledExecutorService): Task[A] =
+  def schedule(delay: FiniteDuration)(implicit S: Scheduler): Task[A] =
     Task.schedule((), delay) flatMap { _ => this }
 }
 
@@ -277,7 +268,7 @@ object Task extends Instances {
     }))
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule[A](a: => A, delay: Duration)(implicit pool: ScheduledExecutorService): Task[A] =
+  def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Scheduler): Task[A] =
     apply(a)(Future.Scheduled(delay))
 
   /** Utility function - evaluate `a` and catch and return any exceptions. */
@@ -414,7 +405,7 @@ private[fs2] trait Instances1 {
 private[fs2] trait Instances extends Instances1 {
 
   implicit def asyncInstance(implicit S:Strategy): Async[Task] = new Async[Task] {
-    type Ref[A] = Task.Ref[A] 
+    type Ref[A] = Task.Ref[A]
     def access[A](r: Ref[A]) = r.access
     def set[A](r: Ref[A])(a: Task[A]): Task[Unit] = r.set(a)
     def runSet[A](r: Ref[A])(a: Either[Throwable,A]): Unit = r.runSet(a)
