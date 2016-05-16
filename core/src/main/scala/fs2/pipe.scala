@@ -7,6 +7,44 @@ object pipe {
 
   // nb: methods are in alphabetical order
 
+  /** Behaves like the identity function, but requests `n` elements at a time from the input. */
+  def buffer[F[_],I](n: Int): Stream[F,I] => Stream[F,I] =
+    _.repeatPull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
+      chunks.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } as h
+    }}
+
+  /** Behaves like the identity process, but emits no output until the source is exhausted. */
+  def bufferAll[F[_],I]: Pipe[F,I,I] = bufferBy(_ => true)
+
+  /**
+   * Behaves like the identity process, but requests elements from its
+   * input in blocks that end whenever the predicate switches from true to false.
+   */
+  def bufferBy[F[_],I](f: I => Boolean): Pipe[F,I,I] = {
+    def go(buffer: Vector[Chunk[I]], last: Boolean): Handle[F,I] => Pull[F,I,Unit] = h => {
+      Pull.receiveOption[F,I,I,Unit] {
+        case Some(chunk #: h) =>
+          val (out, buf, last) = {
+            chunk.foldLeft((Vector.empty[Chunk[I]], Vector.empty[I], false)) { case ((out, buf, last), i) =>
+              val cur = f(i)
+              if (!f(i) && last) (out :+ Chunk.indexedSeq(buf :+ i), Vector.empty, cur)
+              else (out, buf :+ i, cur)
+            }
+          }
+          if (out.isEmpty) {
+            go(buffer :+ Chunk.indexedSeq(buf), last)(h)
+          } else {
+            (buffer ++ out).foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } >>
+              go(Vector(Chunk.indexedSeq(buf)), last)(h)
+          }
+
+        case None =>
+          buffer.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) }
+      }(h)
+    }
+    _.pull { h => go(Vector.empty, false)(h) }
+  }
+
   /** Outputs first value, and then any changed value from the last value. `eqf` is used for equality. **/
   def changes[F[_],I](eqf:(I,I) => Boolean): Stream[F,I] => Stream[F,I] =
     zipWithPrevious andThen collect {
@@ -218,6 +256,34 @@ object pipe {
   /** Emit the given values, then echo the rest of the input. */
   def shiftRight[F[_],I](head: I*): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.echo(h.push(Chunk.indexedSeq(Vector(head: _*)))) }
+
+  /**
+   * Groups inputs in fixed size chunks by passing a "sliding window"
+   * of size `n` over them. If the input contains less than or equal to
+   * `n` elements, only one chunk of this size will be emitted.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4).sliding(2).toList
+   * res0: List[Chunk[Int]] = List(Chunk(1, 2), Chunk(2, 3), Chunk(3, 4))
+   * }}}
+   * @throws IllegalArgumentException if `n` <= 0
+   */
+  def sliding[F[_],I](n: Int): Stream[F,I] => Stream[F,Vector[I]] = {
+    require(n > 0, "n must be > 0")
+    def go(window: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = h => {
+      h.receive {
+        case chunk #: h =>
+          val out: Vector[Vector[I]] =
+            chunk.toVector.scanLeft(window)((w, i) => w.tail :+ i).tail
+          if (out.isEmpty) go(window)(h)
+          else Pull.output(Chunk.indexedSeq(out)) >> go(out.last)(h)
+      }
+    }
+    _ pull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
+      val window = chunks.foldLeft(Vector.empty[I])(_ ++ _.toVector)
+      Pull.output1(window) >> go(window)(h)
+    }}
+  }
 
   /** Writes the sum of all input elements, or zero if the input is empty. */
   def sum[F[_],I](implicit ev: Numeric[I]): Stream[F,I] => Stream[F,I] =

@@ -8,6 +8,15 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order
 
+  /** Alias for `self through [[pipe.buffer]]`. */
+  def buffer(n: Int): Stream[F,O] = self through pipe.buffer(n)
+
+  /** Alias for `self through [[pipe.bufferAll]]`. */
+  def bufferAll: Stream[F,O] = self through pipe.bufferAll
+
+  /** Alias for `self through [[pipe.bufferBy]]`. */
+  def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
+
   /** Alias for `self through [[pipe.chunkLimit]]`. */
   def chunkLimit(n: Int): Stream[F,Chunk[O]] = self through pipe.chunkLimit(n)
 
@@ -81,6 +90,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self through [[pipe.shiftRight]]`. */
   def shiftRight[O2 >: O](head: O2*): Stream[F,O2] = self through pipe.shiftRight(head: _*)
+
+  /** Alias for `self through [[pipe.sliding]]`. */
+  def sliding(n: Int): Stream[F,Vector[O]] = self through pipe.sliding(n)
 
   /** Alias for `self through [[pipe.sum]](f)`. */
   def sum[O2 >: O : Numeric]: Stream[F,O2] = self through pipe.sum

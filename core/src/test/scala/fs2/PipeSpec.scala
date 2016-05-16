@@ -9,6 +9,32 @@ class PipeSpec extends Fs2Spec {
 
   "Pipe" - {
 
+    "buffer" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      runLog { s.get.buffer(n.get) } shouldBe s.get.toVector
+
+      var counter = 0
+      val s2 = (s.get ++ Stream.emits(List.fill(n.get + 1)(0))).repeat
+      runLog { s2.evalMap { i => Task.delay { counter += 1; i }}.buffer(n.get).take(n.get + 1) }
+      counter shouldBe (n.get * 2)
+    }
+
+    "bufferAll" in forAll { (s: PureStream[Int]) =>
+      runLog { s.get.bufferAll } shouldBe s.get.toVector
+      var counter = 0
+      runLog { (s.get ++ s.get).evalMap { i => Task.delay { counter += 1; i } }.bufferAll.take(s.get.toList.size + 1) }
+      counter shouldBe (s.get.toList.size * 2)
+    }
+
+    "bufferBy" in forAll { (s: PureStream[Int]) =>
+      runLog { s.get.bufferBy(_ >= 0) } shouldBe s.get.toVector
+
+      var counter = 0
+      val s2 = s.get.map(_.abs)
+      val s3 = (s2 ++ Stream.emit(-1) ++ s2).evalMap { i => Task.delay { counter += 1; i }}
+      runLog { s3.bufferBy(_ >= 0).take(s.get.toList.size + 2) }
+      counter shouldBe (s.get.toList.size * 2 + 1)
+    }
+
     "chunkLimit" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
       val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
       assert(sizeV.forall(_ <= n0.get) && sizeV.sum == s.get.toVector.size)
@@ -190,6 +216,10 @@ class PipeSpec extends Fs2Spec {
       val stop = System.currentTimeMillis
       println("prefetch (timing) took " + (stop-start) + " milliseconds, should be under 6000 milliseconds")
       assert((stop-start) < 6000)
+    }
+
+    "sliding" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      s.get.sliding(n.get).toList shouldBe s.get.toList.sliding(n.get).map(_.toVector).toList
     }
 
     "sum" in forAll { (s: PureStream[Int]) =>

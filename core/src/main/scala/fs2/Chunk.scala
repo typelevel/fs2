@@ -60,7 +60,10 @@ trait Chunk[+A] { self =>
     def next = { val result = apply(i); i += 1; result }
   }
   override def toString = toList.mkString("Chunk(", ", ", ")")
-  override def equals(a: Any) = a.asInstanceOf[Chunk[A]].toList == toList
+  override def equals(a: Any) = a match {
+    case c: Chunk[A] => c.toList == toList
+    case _ => false
+  }
   override def hashCode = iterator.toStream.hashCode
 }
 
