@@ -8,7 +8,7 @@ import scala.concurrent.duration._
 
 object TestStrategy {
   implicit val S = Strategy.fromFixedDaemonPool(8)
-  implicit lazy val scheduler = java.util.concurrent.Executors.newScheduledThreadPool(2)
+  implicit lazy val scheduler = Scheduler.fromFixedDaemonPool(2)
 }
 
 trait TestUtil {

@@ -5,17 +5,18 @@ import org.scalacheck.Gen
 import scala.concurrent.duration._
 
 import Stream._
+import fs2.util.Task
 
 class TimeSpec extends Fs2Spec {
 
   "time" - {
 
     "awakeEvery" in {
-      time.awakeEvery(100.millis).map(_.toMillis/100).take(5).runLog.run.unsafeRun shouldBe Vector(1,2,3,4,5)
+      time.awakeEvery[Task](100.millis).map(_.toMillis/100).take(5).runLog.run.unsafeRun shouldBe Vector(1,2,3,4,5)
     }
 
     "duration" in {
-      val firstValueDiscrepancy = time.duration.take(1).runLog.run.unsafeRun.last
+      val firstValueDiscrepancy = time.duration[Task].take(1).runLog.run.unsafeRun.last
       val reasonableErrorInMillis = 200
       val reasonableErrorInNanos = reasonableErrorInMillis * 1000000
       def p = firstValueDiscrepancy.toNanos < reasonableErrorInNanos
@@ -27,10 +28,10 @@ class TimeSpec extends Fs2Spec {
 
     "every" in {
       val smallDelay = Gen.choose(10, 300) map {_.millis}
-      forAll(smallDelay) { delay: Duration =>
-        type BD = (Boolean, Duration)
+      forAll(smallDelay) { delay: FiniteDuration =>
+        type BD = (Boolean, FiniteDuration)
         val durationSinceLastTrue: Pipe[Pure,BD,BD] = {
-          def go(lastTrue: Duration): Handle[Pure,BD] => Pull[Pure,BD,Handle[Pure,BD]] = h => {
+          def go(lastTrue: FiniteDuration): Handle[Pure,BD] => Pull[Pure,BD,Handle[Pure,BD]] = h => {
             h.receive1 {
               case pair #: tl =>
                 pair match {
@@ -44,8 +45,8 @@ class TimeSpec extends Fs2Spec {
 
         val draws = (600.millis / delay) min 10 // don't take forever
 
-        val durationsSinceSpike = time.every(delay).
-          zip(time.duration).
+        val durationsSinceSpike = time.every[Task](delay).
+          zip(time.duration[Task]).
           take(draws.toInt).
           through(durationSinceLastTrue)
 
