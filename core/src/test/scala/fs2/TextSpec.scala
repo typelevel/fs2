@@ -159,10 +159,7 @@ class TextSpec extends Fs2Spec {
 
     "lines" - {
       def escapeCrLf(s: String): String =
-        s.replaceAll("\r\n", "<CRLF>").replaceAll("\n", "<LF>")
-
-      def escapeCrLfs(ls: List[String]): List[String] =
-        ls.map(escapeCrLf)
+        s.replaceAll("\r\n", "<CRLF>").replaceAll("\n", "<LF>").replaceAll("\r", "<CR>")
 
       "newlines appear in between chunks" in forAll { (lines0: PureStream[String]) =>
         val lines = lines0.get.map(escapeCrLf)
