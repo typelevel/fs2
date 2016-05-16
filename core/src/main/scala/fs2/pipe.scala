@@ -9,7 +9,7 @@ object pipe {
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input. */
   def buffer[F[_],I](n: Int): Stream[F,I] => Stream[F,I] =
-    _.repeatPull { h => Pull.awaitN(n)(h).flatMap { case chunks #: h =>
+    _.repeatPull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
       chunks.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } as h
     }}
 
