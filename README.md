@@ -72,7 +72,7 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### Projects using FS2 ###
 
-If you have a project you'd like to include in this list, send a message to the [scalaz mailing list](https://groups.google.com/forum/#!forum/scalaz) and we'll add a link to it here.
+If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it here.
 
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using scalaz-stream
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using scalaz-stream and [scodec](https://github.com/scodec/scodec)
