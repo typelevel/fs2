@@ -20,8 +20,8 @@ env:
   - secure: WUTPbVxp6LhGYXdLYg1rNCsLnPdpoqxyOnND6oFZ11ffOCwb7eLlBjPwobt1iQlNLTw8ZTdsJ3IyE9+CVlgfSWVSi0BLDcpNcZcx1Mg1m37JPTp+3r/xExo8fjYySWlQfXmlnRoeZc0kfX5d3/bKlRpNEl/fZGeitSWDeEyGjzc=
 
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION test
-  - sbt ++$TRAVIS_SCALA_VERSION docs/tut
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms1g -J-Xmx1g test
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms1g -J-Xmx1g docs/tut
 
 after_success:
   - test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "topic/redesign" && sbt publish
