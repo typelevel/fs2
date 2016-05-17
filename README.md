@@ -41,7 +41,7 @@ The library supports a number of other interesting use cases:
 
 ### Where to get the latest version ###
 
-The 0.9 release is coming soon and you can start using the milestone release now. You may want [Read the migration guide](docs/migration-guide.md)
+The 0.9 release is coming soon and you can start using the milestone release now. You may want to first [read the migration guide](docs/migration-guide.md) if you are upgrading from 0.8 or earlier.
 
 ```
 // available for Scala 2.11.8, 2.12.0-M4
