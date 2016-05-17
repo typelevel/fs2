@@ -37,15 +37,17 @@ s1.toVector
 Streams have lots of handy 'list-like' functions, here's a very small sample:
 
 ```tut
+(Stream(1,2,3) ++ Stream(4,5)).toList
 Stream(1,2,3).map(_ + 1).toList
 Stream(1,2,3).filter(_ % 2 != 0).toList
 Stream(1,2,3).fold(0)(_ + _).toList
 Stream(None,Some(2),Some(3)).collect { case Some(i) => i }.toList
 Stream.range(0,5).intersperse(42).toList
 Stream(1,2,3).flatMap(i => Stream(i,i)).toList
+Stream(1,2,3).repeat.take(9).toList
 ```
 
-Of these, only `flatMap` is primitive, the rest are built using combinations of various other primitives. We'll take a look at how that works shortly.
+Of these, only `flatMap` and `++` are primitive, the rest are built using combinations of various other primitives. We'll take a look at how that works shortly.
 
 FS2 streams are chunked internally for performance. You can construct an individual stream chunk using `Stream.chunk`, which accepts an `fs2.Chunk` and lots of functions in the library are chunk-aware and/or try to preserve 'chunkiness' when possible:
 
