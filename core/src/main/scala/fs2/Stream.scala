@@ -46,6 +46,8 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
       if (leftovers.isEmpty) inner else Pull.release(leftovers) flatMap { _ => inner }
     }}}
 
+  override def toString = get[F,O].toString
+
   def uncons: Stream[F, Option[Step[Chunk[O], Stream[F,O]]]] =
     Stream.mk { get.uncons.map(_ map { case Step(hd,tl) => Step(hd, Stream.mk(tl)) }) }
 

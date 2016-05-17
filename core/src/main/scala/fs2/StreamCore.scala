@@ -395,7 +395,7 @@ object StreamCore {
     case class Fail[F[_],O1](err: Throwable) extends Segment[F,O1]
     case class Emit[F[_],O1](c: Chunk[O1]) extends Segment[F,O1]
     case class Handler[F[_],O1](h: Throwable => StreamCore[F,O1]) extends Segment[F,O1] {
-      override def toString = s"Handler(h#${System.identityHashCode(h)})"
+      override def toString = "Handler"
     }
     case class Append[F[_],O1](s: StreamCore[F,O1]) extends Segment[F,O1]
   }
@@ -417,8 +417,7 @@ object StreamCore {
     def pushBind[O0](f: O0 => StreamCore[F,O1]): Stack[F,O0,O2] = pushBindOrMap(Right(f))
     def pushMap[O0](f: Chunk[O0] => Chunk[O1]): Stack[F,O0,O2] = pushBindOrMap(Left(f))
     def pushBindOrMap[O0](f: Either[Chunk[O0] => Chunk[O1], O0 => StreamCore[F,O1]]): Stack[F,O0,O2] = new Stack[F,O0,O2] {
-      def render = f.fold(ff => s"Map(f#${System.identityHashCode(ff)})",
-                          ff => s"Bind(f#${System.identityHashCode(ff)})") :: self.render
+      def render = f.fold(ff => "Map", ff => "Bind") :: self.render
       def apply[R](unbound: (Catenable[Segment[F,O0]], Eq[O0,O2]) => R, bound: H[R]): R
       = bound.f(Catenable.empty, f, self)
     }

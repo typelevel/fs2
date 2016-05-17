@@ -159,6 +159,8 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
   def timed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
     new Task(get.timed(timeout).map(_.right.flatMap(x => x)))
 
+  override def toString = "Task"
+
   /**
     * Ensures the result of this Task satisfies the given predicate,
     * or fails with the given value.
@@ -399,6 +401,8 @@ private[fs2] trait Instances1 {
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
     def suspend[A](a: => A) = Task.delay(a)
+
+    override def toString = "Catchable[Task]"
   }
 }
 
@@ -418,11 +422,13 @@ private[fs2] trait Instances extends Instances1 {
     def suspend[A](a: => A): Task[A] = Task.delay(a)
     def fail[A](err: Throwable): Task[A] = Task.fail(err)
     def attempt[A](fa: Task[A]): Task[Either[Throwable, A]] = fa.attempt
+    override def toString = "Async[Task]"
   }
 
   implicit val runInstance: Async.Run[Task] = new Async.Run[Task] {
     def unsafeRunEffects(f: Task[Unit]): Option[Throwable] =
       f.unsafeAttemptRun.left.toOption
+    override def toString = "Run[Task]"
   }
 
 }
