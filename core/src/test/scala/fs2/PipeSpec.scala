@@ -97,6 +97,15 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.through(drop(n))) shouldBe runLog(s.get).drop(n)
     }
 
+    "dropLast" in forAll { (s: PureStream[Int]) =>
+      runLog { s.get.dropLast } shouldBe s.get.toVector.dropRight(1)
+    }
+
+    "dropLastIf" in forAll { (s: PureStream[Int]) =>
+      runLog { s.get.dropLastIf(_ => false) } shouldBe s.get.toVector
+      runLog { s.get.dropLastIf(_ => true) } shouldBe s.get.toVector.dropRight(1)
+    }
+
     "dropRight" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
       val n = if (negate) -n0.get else n0.get
       runLog(s.get.dropRight(n)) shouldBe runLog(s.get).dropRight(n)
@@ -220,6 +229,17 @@ class PipeSpec extends Fs2Spec {
 
     "sliding" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       s.get.sliding(n.get).toList shouldBe s.get.toList.sliding(n.get).map(_.toVector).toList
+    }
+
+    "split" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      val s2 = s.get.map(_.abs).filter(_ != 0)
+      runLog { s2.chunkLimit(n.get).intersperse(Chunk.singleton(0)).flatMap(Stream.chunk).split(_ == 0) } shouldBe s2.chunkLimit(n.get).map(_.toVector).toVector
+    }
+
+    "split (2)" in {
+      Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector(4))
+      Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3))
+      Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector())
     }
 
     "sum" in forAll { (s: PureStream[Int]) =>
