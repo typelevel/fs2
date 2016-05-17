@@ -29,7 +29,7 @@ package object time {
         F.suspend {
           val cancel = scheduler.scheduleAtFixedRate(d, d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
-            FR.runEffects(signal.set(d))
+            FR.unsafeRunEffects(signal.set(d))
             ()
           }
           (cancel, signal)

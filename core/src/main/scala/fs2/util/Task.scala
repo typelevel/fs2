@@ -421,7 +421,7 @@ private[fs2] trait Instances extends Instances1 {
   }
 
   implicit val runInstance: Async.Run[Task] = new Async.Run[Task] {
-    def runEffects(f: Task[Unit]): Option[Throwable] =
+    def unsafeRunEffects(f: Task[Unit]): Option[Throwable] =
       f.unsafeAttemptRun.left.toOption
   }
 
