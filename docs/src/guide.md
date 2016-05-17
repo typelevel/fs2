@@ -482,7 +482,7 @@ trait CSVHandle {
 def rows[F[_]](h: CSVHandle)(implicit F: Async[F], R: Run[F]): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => R.runEffects(q.enqueue1(e)); () }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => R.unsafeRunEffects(q.enqueue1(e)); () }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
 ```
