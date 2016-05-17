@@ -24,5 +24,5 @@ script:
   - test $TRAVIS_SCALA_VERSION == "2.11.8" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut
 
 after_success:
-  - test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "topic/redesign" && sbt publish
+  - test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "series/0.9" && sbt publish
 
