@@ -78,11 +78,6 @@ lazy val publishingSettings = Seq(
   publishMavenStyle := true,
   pomIncludeRepository := { _ => false },
   pomExtra := {
-    <url>https://github.com/functional-streams-for-scala/fs2</url>
-    <scm>
-      <url>git@github.com:functional-streams-for-scala/fs2.git</url>
-      <connection>scm:git:git@github.com:functional-streams-for-scala/fs2.git</connection>
-    </scm>
     <developers>
       {for ((username, name) <- contributors) yield
       <developer>
