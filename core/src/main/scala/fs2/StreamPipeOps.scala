@@ -39,6 +39,12 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self through [[pipe.drop]]`. */
   def drop(n: Int): Stream[F,O] = self through pipe.drop(n)
 
+  /** Alias for `self through [[pipe.dropLast]]`. */
+  def dropLast: Stream[F,O] = self through pipe.dropLast
+
+  /** Alias for `self through [[pipe.dropLastIf]]`. */
+  def dropLastIf(p: O => Boolean): Stream[F,O] = self through pipe.dropLastIf(p)
+
   /** Alias for `self through [[pipe.dropRight]]`. */
   def dropRight(n: Int): Stream[F,O] = self through pipe.dropRight(n)
 
@@ -93,6 +99,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self through [[pipe.sliding]]`. */
   def sliding(n: Int): Stream[F,Vector[O]] = self through pipe.sliding(n)
+
+  /** Alias for `self through [[pipe.split]]`. */
+  def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
 
   /** Alias for `self through [[pipe.sum]](f)`. */
   def sum[O2 >: O : Numeric]: Stream[F,O2] = self through pipe.sum

@@ -80,6 +80,27 @@ object pipe {
   def drop[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.drop(n)(h) flatMap Pull.echo)
 
+  /** Drops the last element. */
+  def dropLast[F[_],I]: Pipe[F,I,I] =
+    dropLastIf(_ => true)
+
+  /** Drops the last element if the predicate evaluates to true. */
+  def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
+    def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = h => {
+      Pull.receiveNonemptyOption[F,I,I,Unit] {
+        case Some(chunk #: h) => Pull.output(last) >> go(chunk)(h)
+        case None =>
+          val i = last(last.size - 1)
+          if (p(i)) Pull.output(last.take(last.size - 1))
+          else Pull.output(last)
+      }(h)
+    }
+    _.pull { Pull.receiveNonemptyOption {
+      case Some(c #: h) => go(c)(h)
+      case None => Pull.done
+    }}
+  }
+
   /** Emits all but the last `n` elements of the input. */
   def dropRight[F[_],I](n: Int): Stream[F,I] => Stream[F,I] = {
     if (n <= 0) identity
@@ -283,6 +304,30 @@ object pipe {
       val window = chunks.foldLeft(Vector.empty[I])(_ ++ _.toVector)
       Pull.output1(window) >> go(window)(h)
     }}
+  }
+
+  /**
+   * Break the input into chunks where the delimiter matches the predicate.
+   * The delimiter does not appear in the output. Two adjacent delimiters in the
+   * input result in an empty chunk in the output.
+   */
+  def split[F[_],I](f: I => Boolean): Pipe[F,I,Vector[I]] = {
+    def go(buffer: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = {
+      Pull.receiveOption[F,I,Vector[I],Unit] {
+        case Some(chunk #: h) =>
+          chunk.indexWhere(f) match {
+            case None =>
+              go(buffer ++ chunk.toVector)(h)
+            case Some(idx) =>
+              val out = buffer ++ chunk.take(idx).toVector
+              val carry = if (idx + 1 < chunk.size) chunk.drop(idx + 1) else Chunk.empty
+              Pull.output1(out) >> go(Vector.empty)(h.push(carry))
+          }
+        case None =>
+          if (buffer.nonEmpty) Pull.output1(buffer) else Pull.done
+      }
+    }
+    _.pull(go(Vector.empty))
   }
 
   /** Writes the sum of all input elements, or zero if the input is empty. */
