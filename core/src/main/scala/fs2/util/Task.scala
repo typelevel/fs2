@@ -395,14 +395,15 @@ object Task extends Instances {
 
 /* Prefer an `Async` and `Catchable`, but will settle for implicit `Monad`. */
 private[fs2] trait Instances1 {
-  implicit def monad: Catchable[Task] = new Catchable[Task] {
+  implicit def effect: Effect[Task] = new Effect[Task] {
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
-    def suspend[A](a: => A) = Task.delay(a)
+    def delay[A](a: => A) = Task.delay(a)
+    def suspend[A](fa: => Task[A]) = Task.suspend(fa)
 
-    override def toString = "Catchable[Task]"
+    override def toString = "Effect[Task]"
   }
 }
 
@@ -419,7 +420,8 @@ private[fs2] trait Instances extends Instances1 {
     def setFree[A](q: Ref[A])(a: Free[Task, A]): Task[Unit] = q.setFree(a)
     def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
     def pure[A](a: A): Task[A] = Task.now(a)
-    def suspend[A](a: => A): Task[A] = Task.delay(a)
+    def delay[A](a: => A) = Task.delay(a)
+    def suspend[A](fa: => Task[A]) = Task.suspend(fa)
     def fail[A](err: Throwable): Task[A] = Task.fail(err)
     def attempt[A](fa: Task[A]): Task[Either[Throwable, A]] = fa.attempt
     override def toString = "Async[Task]"
