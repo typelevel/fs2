@@ -11,7 +11,7 @@ This is the offical FS2 guide. It gives an overview of the library and its featu
 * [Overview](#overview)
 * [Building streams](#building-streams)
 * [Chunking](#chunking)
-* [Basic stream operations](#stream-operations)
+* [Basic stream operations](#basic-stream-operations)
 * [Error handling](#error-handling)
 * [Resource acquisition](#resource-acquisition)
 * [Exercises (stream building)](#exercises)
@@ -292,7 +292,7 @@ scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.run.
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 850 elided
+  ... 846 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
