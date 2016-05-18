@@ -2,7 +2,7 @@
 
 This walks through the implementation of the example given in [the README](../README.md). This program opens a file, `fahrenheit.txt`, containing temperatures in degrees fahrenheit, one per line, and converts each temperature to celsius, incrementally writing to the file `celsius.txt`. Both files will be closed, regardless of whether any errors occur.
 
-```tut
+```tut:book
 object Converter {
   import fs2.{io, text}
   import fs2.util.Task
