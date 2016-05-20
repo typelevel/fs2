@@ -482,7 +482,7 @@ object pipe {
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
         case List() => s.stream.step.flatMap { s => Pull.output1(s) }
-         .run.runFold(None: Option[Step[Chunk[O],Handle[Read, O]]])(
+         .run.runFoldFree(None: Option[Step[Chunk[O],Handle[Read, O]]])(
           (_,s) => Some(s))
       }
     def go(s: Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]): Stepper[I,O] =

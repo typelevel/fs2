@@ -152,47 +152,32 @@ To run an effectful stream, use one of the `run` methods on `Stream`, for instan
 
 ```scala
 scala> val ra = eff.runLog
-ra: fs2.util.Free[fs2.util.Task,Vector[Int]] = Bind(Bind(Pure(()),<function1>),<function1>)
+ra: fs2.util.Task[Vector[Int]] = Task
 
 scala> val rb = eff.run // purely for effects
-rb: fs2.util.Free[fs2.util.Task,Unit] = Bind(Bind(Pure(()),<function1>),<function1>)
+rb: fs2.util.Task[Unit] = Task
 
 scala> val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-rc: fs2.util.Free[fs2.util.Task,Int] = Bind(Bind(Pure(()),<function1>),<function1>)
+rc: fs2.util.Task[Int] = Task
 ```
-
-Notice these all return an `fs2.util.Free[Task,_]`. `Free` has various useful functions on it (for instance, we can translate to a different effect type), but most of the time we'll just want to run it using the `run` method:
-
-```scala
-scala> ra.run
-res13: fs2.util.Task[Vector[Int]] = Task
-
-scala> rb.run
-res14: fs2.util.Task[Unit] = Task
-
-scala> rc.run
-res15: fs2.util.Task[Int] = Task
-```
-
-This requires an implicit `Catchable[Task]` in scope (or a `Catchable[F]` for whatever your effect type, `F`).
 
 Notice nothing has actually happened yet (our `println` hasn't been executed), we just have a `Task`. If we want to run this for its effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task`:
 
 ```scala
-scala> ra.run.unsafeRun
+scala> ra.unsafeRun
 TASK BEING RUN!!
-res16: Vector[Int] = Vector(2)
+res13: Vector[Int] = Vector(2)
 
-scala> ra.run.unsafeRun
+scala> ra.unsafeRun
 TASK BEING RUN!!
-res17: Vector[Int] = Vector(2)
+res14: Vector[Int] = Vector(2)
 ```
 
 Here we finally see the task is executed. Rerunning the task executes the entire computation again; nothing is cached for you automatically. Here's a complete example:
 
 ```scala
-scala> Stream.eval(Task.now(23)).runLog.run.unsafeRun
-res18: Vector[Int] = Vector(23)
+scala> Stream.eval(Task.now(23)).runLog.unsafeRun
+res15: Vector[Int] = Vector(23)
 ```
 
 ### Basic stream operations
@@ -207,20 +192,20 @@ scala> val appendEx2 = Stream(1,2,3) ++ Stream.eval(Task.now(4))
 appendEx2: fs2.Stream[fs2.util.Task,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 scala> appendEx1.toVector
-res19: Vector[Int] = Vector(1, 2, 3, 42)
+res16: Vector[Int] = Vector(1, 2, 3, 42)
 
-scala> appendEx2.runLog.run.unsafeRun
-res20: Vector[Int] = Vector(1, 2, 3, 4)
+scala> appendEx2.runLog.unsafeRun
+res17: Vector[Int] = Vector(1, 2, 3, 4)
 
 scala> appendEx1.map(_ + 1).toList
-res21: List[Int] = List(2, 3, 4, 43)
+res18: List[Int] = List(2, 3, 4, 43)
 ```
 
 The `flatMap` operation is the same idea as lists - it maps, then concatenates:
 
 ```scala
 scala> appendEx1.flatMap(i => Stream.emits(List(i,i))).toList
-res22: List[Int] = List(1, 1, 2, 2, 3, 3, 42, 42)
+res19: List[Int] = List(1, 1, 2, 2, 3, 3, 42, 42)
 ```
 
 Regardless of how a `Stream` is built up, each operation takes constant time. So `p ++ p2` takes constant time, regardless of whether `p` is `Stream.emit(1)` or it's a huge stream with millions of elements and lots of embedded effects. Likewise with `p.flatMap(f)` and `onError`, which we'll see in a minute. The runtime of these operations do not depend on the structure of `p`.
@@ -245,17 +230,17 @@ All these fail when running:
 ```scala
 scala> try err.toList catch { case e: Exception => println(e) }
 java.lang.Exception: oh noes!
-res23: Any = ()
+res20: Any = ()
 ```
 
 ```scala
 scala> try err2.toList catch { case e: Exception => println(e) }
 java.lang.Exception: !@#$
-res24: Any = ()
+res21: Any = ()
 ```
 
 ```scala
-scala> try err3.run.run.unsafeRun catch { case e: Exception => println(e) }
+scala> try err3.run.unsafeRun catch { case e: Exception => println(e) }
 java.lang.Exception: error in effect!!!
 ```
 
@@ -263,7 +248,7 @@ The `onError` method lets us catch any of these errors:
 
 ```scala
 scala> err.onError { e => Stream.emit(e.getMessage) }.toList
-res26: List[String] = List(oh noes!)
+res23: List[String] = List(oh noes!)
 ```
 
 ### Resource acquisition
@@ -282,18 +267,18 @@ release: fs2.util.Task[Unit] = Task
 ```
 
 ```scala
-scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.run.unsafeRun
+scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRun
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 814 elided
+  ... 774 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
 
 ```scala
 scala> count.get
-res28: Long = 0
+res25: Long = 0
 ```
 
 No matter how you transform an FS2 `Stream` or where any errors occur, the library guarantees that if the resource is acquired via a `bracket`, the release action associated with that `bracket` will be run. Here's the signature of `bracket`:
@@ -312,17 +297,17 @@ Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips a
 
 ```scala
 scala> Stream(1,0).repeat.take(6).toList
-res29: List[Int] = List(1, 0, 1, 0, 1, 0)
+res26: List[Int] = List(1, 0, 1, 0, 1, 0)
 
 scala> Stream(1,2,3).drain.toList
-res30: List[Nothing] = List()
+res27: List[Nothing] = List()
 
-scala> Stream.eval_(Task.delay(println("!!"))).runLog.run.unsafeRun
+scala> Stream.eval_(Task.delay(println("!!"))).runLog.unsafeRun
 !!
-res31: Vector[Nothing] = Vector()
+res28: Vector[Nothing] = Vector()
 
 scala> (Stream(1,2) ++ (throw new Exception("nooo!!!"))).attempt.toList
-res32: List[Either[Throwable,Int]] = List(Right(1), Right(2), Left(java.lang.Exception: nooo!!!))
+res29: List[Either[Throwable,Int]] = List(Right(1), Right(2), Left(java.lang.Exception: nooo!!!))
 ```
 
 ### Statefully transforming streams
@@ -355,7 +340,7 @@ object Pull_ {
 // defined object Pull_
 
 Stream(1,2,3,4).pure.pull(Pull_.take(2)).toList
-// res33: List[Int] = List(1, 2)
+// res30: List[Int] = List(1, 2)
 ```
 
 Let's break it down line by line:
@@ -397,13 +382,13 @@ scala> val s2 = Stream(1,2,3,4).pure.pull(Pull_.take(2))
 s2: fs2.Stream[fs2.Pure,Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
 
 scala> s2.toList
-res34: List[Int] = List(1, 2)
+res31: List[Int] = List(1, 2)
 
 scala> val s3 = Stream.pure(1,2,3,4).pull(Pull_.take(2)) // alternately
 s3: fs2.Stream[fs2.Pure,Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
 
 scala> s3.toList
-res35: List[Int] = List(1, 2)
+res32: List[Int] = List(1, 2)
 ```
 
 _Note:_ The `.pure` converts a `Stream[Nothing,A]` to a `Stream[Pure,A]`. Scala will not infer `Nothing` for a type parameter, so using `Pure` as the effect provides better type inference in some cases.
@@ -412,7 +397,7 @@ The `pull` method on `Stream` just calls `open` then `run`. We could express the
 
 ```scala
 scala> Stream(1,2,3,4).pure.open.flatMap { Pull_.take(2) }.run
-res36: fs2.Stream[[x]fs2.Pure[x],Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+res33: fs2.Stream[[x]fs2.Pure[x],Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
 ```
 
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `run` completes. Note again that _nothing happens_ when we call `.run` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
@@ -428,26 +413,26 @@ val s = Stream.pure(1,2,3,4,5) // alternately Stream(...).pure
 
 // all equivalent
 pipe.take(2)(s).toList
-// res38: List[Int] = List(1, 2)
+// res35: List[Int] = List(1, 2)
 
 s.through(pipe.take(2)).toList
-// res39: List[Int] = List(1, 2)
+// res36: List[Int] = List(1, 2)
 
 s.take(2).toList
-// res40: List[Int] = List(1, 2)
+// res37: List[Int] = List(1, 2)
 
 val ns = Stream.range(10,100,by=10)
 // ns: fs2.Stream[Nothing,Int] = Segment(Emit(Chunk(()))).flatMap(<function1>)
 
 // all equivalent
 s.through2(ns)(pipe2.zip).toList
-// res42: List[(Int, Int)] = List((1,10), (2,20), (3,30), (4,40), (5,50))
+// res39: List[(Int, Int)] = List((1,10), (2,20), (3,30), (4,40), (5,50))
 
 pipe2.zip(s, ns).toList
-// res43: List[(Int, Int)] = List((1,10), (2,20), (3,30), (4,40), (5,50))
+// res40: List[(Int, Int)] = List((1,10), (2,20), (3,30), (4,40), (5,50))
 
 s.zip(ns).toList
-// res44: List[(Int, Int)] = List((1,10), (2,20), (3,30), (4,40), (5,50))
+// res41: List[(Int, Int)] = List((1,10), (2,20), (3,30), (4,40), (5,50))
 ```
 
 ### Exercises
@@ -456,13 +441,13 @@ Try implementing `takeWhile`, `intersperse`, and `scan`:
 
 ```scala
 scala> Stream.range(0,100).takeWhile(_ < 7).toList
-res45: List[Int] = List(0, 1, 2, 3, 4, 5, 6)
+res42: List[Int] = List(0, 1, 2, 3, 4, 5, 6)
 
 scala> Stream("Alice","Bob","Carol").intersperse("|").toList
-res46: List[String] = List(Alice, |, Bob, |, Carol)
+res43: List[String] = List(Alice, |, Bob, |, Carol)
 
 scala> Stream.range(1,10).scan(0)(_ + _).toList // running sum
-res47: List[Int] = List(0, 1, 3, 6, 10, 15, 21, 28, 36, 45)
+res44: List[Int] = List(0, 1, 3, 6, 10, 15, 21, 28, 36, 45)
 ```
 
 ### Concurrency
@@ -470,10 +455,10 @@ res47: List[Int] = List(0, 1, 3, 6, 10, 15, 21, 28, 36, 45)
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
 
 ```scala
-scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.run.unsafeRun
+scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun
 <console>:17: error: No implicit `Async[fs2.util.Task]` found.
 Note that the implicit `Async[fs2.util.Task]` requires an implicit `fs2.util.Strategy` in scope.
-       Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.run.unsafeRun
+       Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun
                           ^
 ```
 
@@ -483,8 +468,8 @@ Oop, we need an `fs2.Strategy` in implicit scope in order to get an `Async[Task]
 scala> implicit val S = fs2.Strategy.fromFixedDaemonPool(8, threadName = "worker")
 S: fs2.Strategy = Strategy
 
-scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.run.unsafeRun
-res49: Vector[Int] = Vector(1, 2, 3, 4)
+scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun
+res46: Vector[Int] = Vector(1, 2, 3, 4)
 ```
 
 The `merge` function is defined in [`pipe2`](../core/src/main/scala/fs2/pipe2), along with other useful concurrency functions, like `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
@@ -555,9 +540,9 @@ def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 val s = Stream.eval_(Task.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[fs2.util.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
-s.runLog.run.unsafeRun
+s.runLog.unsafeRun
 // BOOOOM!!!
-// res50: Vector[String] = Vector(...moving on)
+// res47: Vector[String] = Vector(...moving on)
 ```
 
 _Note:_ `Stream.eval_(f)` is just `Stream.eval(f).flatMap(_ => Stream.empty)`.
@@ -574,9 +559,9 @@ val T = implicitly[Async[Task]]
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[fs2.util.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
-s.runLog.run.unsafeRun
+s.runLog.unsafeRun
 // BOOOOM!!!
-// res51: Vector[String] = Vector(...moving on)
+// res48: Vector[String] = Vector(...moving on)
 ```
 
 When using this approach, be sure that the expression you pass to delay doesn't throw exceptions.
@@ -630,8 +615,8 @@ val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =
 }
 // bytes: fs2.util.Task[Array[Byte]] = Task
 
-Stream.eval(bytes).map(_.toList).runLog.run.unsafeRun
-// res53: Vector[List[Byte]] = Vector(List(0, 1, 2))
+Stream.eval(bytes).map(_.toList).runLog.unsafeRun
+// res50: Vector[List[Byte]] = Vector(List(0, 1, 2))
 ```
 
 Be sure to check out the [`fs2.io`](../io) package which has nice FS2 bindings to these libraries, using exactly these approaches.
@@ -703,7 +688,7 @@ scala> import fs2.util.{RealSupertype, Sub1}
 import fs2.util.{RealSupertype, Sub1}
 
 scala> Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Sub1.sub1[Task])
-res55: fs2.Stream[fs2.util.Task,Any] = append(Segment(Emit(Chunk(1))), Segment(Emit(Chunk(()))).flatMap(<function1>))
+res52: fs2.Stream[fs2.util.Task,Any] = append(Segment(Emit(Chunk(1))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 ```
 
 Ugly, as it should be.

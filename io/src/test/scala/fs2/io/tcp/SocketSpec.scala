@@ -64,7 +64,7 @@ class SocketSpec extends Fs2Spec {
             echoServer.drain
             , clients
           ))
-          .take(clientCount).runLog.run.unsafeRun
+          .take(clientCount).runLog.unsafeRun
 
 
         (result.size shouldBe clientCount)

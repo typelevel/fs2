@@ -44,7 +44,7 @@ class ConcurrentSpec extends Fs2Spec {
 
     "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
       an[Err.type] should be thrownBy {
-        s1.get.merge(f.get).run.run.unsafeRun
+        s1.get.merge(f.get).run.unsafeRun
       }
     }
 

@@ -25,7 +25,7 @@ val converter: Task[Unit] =
     .intersperse("\n")
     .through(text.utf8Encode)
     .through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
-    .run.run
+    .run
 
 // at the end of the universe...
 val u: Unit = converter.unsafeRun

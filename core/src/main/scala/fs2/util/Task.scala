@@ -218,7 +218,7 @@ object Task extends Instances {
 
   /** Create a `Future` that will evaluate `a` using the given `Strategy`. */
   def apply[A](a: => A)(implicit S: Strategy): Task[A] =
-    async(_(Try(a)))
+    async { cb => S(cb(Try(a))) }
 
   /**
    * Don't use this. It doesn't do what you think. If you have a `t: Task[A]` you'd

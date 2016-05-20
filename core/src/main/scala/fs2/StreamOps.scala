@@ -70,20 +70,20 @@ private[fs2] trait StreamOps[+F[_],+A] extends StreamPipeOps[F,A] with StreamPip
     self ++ repeat
   }
 
-  def run:Free[F,Unit] =
-    Stream.runFold(self,())((_,_) => ())
+  def runFree:Free[F,Unit] =
+    Stream.runFoldFree(self,())((_,_) => ())
 
-  def runTrace(t: Trace):Free[F,Unit] =
-    Stream.runFoldTrace(t)(self,())((_,_) => ())
+  def runTraceFree(t: Trace):Free[F,Unit] =
+    Stream.runFoldTraceFree(t)(self,())((_,_) => ())
 
-  def runFold[B](z: B)(f: (B,A) => B): Free[F,B] =
-    Stream.runFold(self, z)(f)
+  def runFoldFree[B](z: B)(f: (B,A) => B): Free[F,B] =
+    Stream.runFoldFree(self, z)(f)
 
-  def runFoldTrace[B](t: Trace)(z: B)(f: (B,A) => B): Free[F,B] =
-    Stream.runFoldTrace(t)(self, z)(f)
+  def runFoldTraceFree[B](t: Trace)(z: B)(f: (B,A) => B): Free[F,B] =
+    Stream.runFoldTraceFree(t)(self, z)(f)
 
-  def runLog: Free[F,Vector[A]] =
-    Stream.runFold(self, Vector.empty[A])(_ :+ _)
+  def runLogFree: Free[F,Vector[A]] =
+    Stream.runFoldFree(self, Vector.empty[A])(_ :+ _)
 
   /** Like `through`, but the specified `Pipe`'s effect may be a supertype of `F`. */
   def throughv[F2[_],B](f: Pipe[F2,A,B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
