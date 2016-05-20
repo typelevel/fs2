@@ -142,7 +142,7 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       val c = new AtomicLong(0)
       signal.set(true).schedule(20.millis).async.unsafeRun
       runLog { s.get.evalMap { inner =>
-        Task.start(bracket(c)(inner.get).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run.run)
+        Task.start(bracket(c)(inner.get).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run)
       }}
       eventually { c.get shouldBe 0L }
     }
@@ -159,7 +159,7 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
         Stream.bracket(Task.delay { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
           _ => inner,
           _ => Task.delay { c.decrementAndGet; () }
-        ).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run.run
+        ).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run
       }}}
       eventually { c.get shouldBe 0L }
     }

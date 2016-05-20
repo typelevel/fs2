@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{RealSupertype,Sub1,Task}
+import fs2.util.{Catchable,RealSupertype,Sub1,Task}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2]
@@ -95,9 +95,9 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
    * `emits(start until stopExclusive)`.
    */
   def range[F[_]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F,Int] =
-    unfold(start){i => 
-      if ((by > 0 && i < stopExclusive && start < stopExclusive) || 
-          (by < 0 && i > stopExclusive && start > stopExclusive)) 
+    unfold(start){i =>
+      if ((by > 0 && i < stopExclusive && start < stopExclusive) ||
+          (by < 0 && i > stopExclusive && start > stopExclusive))
         Some((i, i + by))
       else None
     }
@@ -199,6 +199,16 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
       Stream.repeatPull(s)(using)
     def repeatPull2[B,C](s2: Stream[F,B])(using: (Handle[F,A],Handle[F,B]) => Pull[F,C,(Handle[F,A],Handle[F,B])]): Stream[F,C] =
       Stream.repeatPull2(s,s2)(using)
+    def run(implicit F: Catchable[F]):F[Unit] =
+      s.runFree.run
+    def runTrace(t: Trace)(implicit F: Catchable[F]):F[Unit] =
+      s.runTraceFree(t).run
+    def runFold[B](z: B)(f: (B,A) => B)(implicit F: Catchable[F]): F[B] =
+      s.runFoldFree(z)(f).run
+    def runFoldTrace[B](t: Trace)(z: B)(f: (B,A) => B)(implicit F: Catchable[F]): F[B] =
+      s.runFoldTraceFree(t)(z)(f).run
+    def runLog(implicit F: Catchable[F]): F[Vector[A]] =
+      s.runLogFree.run
     /** Transform this stream using the given `Pipe`. */
     def through[B](f: Pipe[F,A,B]): Stream[F,B] = f(s)
     /** Transform this stream using the given pure `Pipe`. */
@@ -215,8 +225,8 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
 
   implicit class StreamPureOps[+A](s: Stream[Pure,A]) {
     def toList: List[A] =
-      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).run.unsafeRun.reverse
-    def toVector: Vector[A] = s.covary[Task].runLog.run.unsafeRun
+      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).unsafeRun.reverse
+    def toVector: Vector[A] = s.covary[Task].runLog.unsafeRun
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]

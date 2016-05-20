@@ -20,7 +20,7 @@ object Converter {
       .intersperse("\n")
       .through(text.utf8Encode)
       .through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
-      .run.run
+      .run
 }
 // defined object Converter
 
@@ -94,13 +94,10 @@ scala> val written: Stream[Task, Unit] = encodedBytes.through(io.file.writeAll(P
 written: fs2.Stream[fs2.util.Task,Unit] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
 ```
 
-There are a number of ways of interpreting the stream. In this case, we call `run`, which returns a description of the program in the `Free` monad, where the output of the stream is ignored - we run it solely for its effect. That description can then interpreted in to a value of the effect type.
+There are a number of ways of interpreting the stream. In this case, we call `run`, which returns a val value of the effect type, `Task`. The output of the stream is ignored - we run it solely for its effect.
 
 ```scala
-scala> val freeInterpretation: fs2.util.Free[Task, Unit] = written.run
-freeInterpretation: fs2.util.Free[fs2.util.Task,Unit] = Bind(Bind(Pure(()),<function1>),<function1>)
-
-scala> val task: Task[Unit] = freeInterpretation.run
+scala> val task: Task[Unit] = written.run
 task: fs2.util.Task[Unit] = Task
 ```
 

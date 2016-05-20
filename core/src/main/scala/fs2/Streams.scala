@@ -86,7 +86,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   // evaluation
 
-  def runFold[F[_],A,B](p: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
-  def runFoldTrace[F[_],A,B](t: Trace)(p: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
+  def runFoldFree[F[_],A,B](p: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
+  def runFoldTraceFree[F[_],A,B](t: Trace)(p: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
 }
 

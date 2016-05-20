@@ -20,7 +20,7 @@ object Converter {
       .intersperse("\n")
       .through(text.utf8Encode)
       .through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
-      .run.run
+      .run
 }
 
 Converter.converter.unsafeRun
@@ -83,11 +83,10 @@ We then write the encoded bytes to a file. Note that nothing has happened at thi
 val written: Stream[Task, Unit] = encodedBytes.through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
 ```
 
-There are a number of ways of interpreting the stream. In this case, we call `run`, which returns a description of the program in the `Free` monad, where the output of the stream is ignored - we run it solely for its effect. That description can then interpreted in to a value of the effect type.
+There are a number of ways of interpreting the stream. In this case, we call `run`, which returns a val value of the effect type, `Task`. The output of the stream is ignored - we run it solely for its effect.
 
 ```tut
-val freeInterpretation: fs2.util.Free[Task, Unit] = written.run
-val task: Task[Unit] = freeInterpretation.run
+val task: Task[Unit] = written.run
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `Task` by calling `unsafeRun` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.

@@ -47,7 +47,7 @@ object concurrent {
             Stream.eval(checkIfKilled).
                    flatMap { killed => if (killed) Stream.empty else inner }.
                    onFinalize { F.bind(F.setPure(gate)(())) { _ => onInnerStreamDone } }.
-                   run.run
+                   run
           )) { _ => gate }}
         }
         Pull.acquire(startInnerStream) { gate => F.get(gate) }.map { _ => () }
