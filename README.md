@@ -4,7 +4,9 @@ FS2: Functional Streams for Scala (previously 'Scalaz-Stream')
 [![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=series/0.9)](http://travis-ci.org/functional-streams-for-scala/fs2)
 [![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
 
-### About the library ###
+Quick links: [About the library](#about), [Docs and getting help](#docs), [How to get latest version](#getit)
+
+### <a id="about"></a>About the library ###
 
 FS2 is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. Here's a simple example of its use:
 
@@ -39,7 +41,14 @@ The library supports a number of other interesting use cases:
 * _Dynamic resource allocation:_ A streaming computation may allocate resources dynamically (for instance, reading a list of files to process from a stream built off a network socket), and the library will ensure these resources get released in the event of normal termination or when errors occur.
 * _Nondeterministic and concurrent processing:_ A computation may read from multiple input streams simultaneously, using whichever result comes back first, and a pipeline of transformation can allow for nondeterminism and queueing at each stage.
 
-### Where to get the latest version ###
+### <a id="docs"></a>Documentation and getting help ###
+
+* [The official guide](docs/guide.md) is a good starting point for learning more about the library.
+* Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
+
+Blog posts and other external resources are listed on the [Additional Resources](https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources) page.
+
+### <a id="getit"></a> Where to get the latest version ###
 
 The 0.9 release is coming soon and you can start using the milestone release now. You may want to first [read the migration guide](docs/migration-guide.md) if you are upgrading from 0.8 or earlier.
 
@@ -62,13 +71,6 @@ The latest stable release is 0.8 ([source](https://github.com/functional-streams
 // available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
 libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8"
 ```
-
-### Documentation and getting help ###
-
-* [The official guide](docs/guide.md) is a good starting point for learning more about the library
-* Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
-
-Blog posts and other external resources are listed on the [Additional Resources](https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources) page.
 
 ### Projects using FS2 ###
 
