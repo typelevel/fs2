@@ -26,7 +26,7 @@ package object time {
     def metronomeAndSignal: F[(()=>Unit,async.mutable.Signal[F,FiniteDuration])] = {
       F.bind(async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))) { signal =>
         val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
-        F.suspend {
+        F.delay {
           val cancel = scheduler.scheduleAtFixedRate(d, d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
             FR.unsafeRunEffects(signal.set(d))
@@ -36,7 +36,7 @@ package object time {
         }
       }
     }
-    Stream.bracket(metronomeAndSignal)({ case (_, signal) => signal.discrete.drop(1) }, { case (cm, _) => F.suspend(cm()) })
+    Stream.bracket(metronomeAndSignal)({ case (_, signal) => signal.discrete.drop(1) }, { case (cm, _) => F.delay(cm()) })
   }
 
   /**
@@ -45,8 +45,8 @@ package object time {
    * the OS may only update the current time every ten milliseconds or so.
    */
   def duration[F[_]](implicit F: Async[F]): Stream[F, FiniteDuration] =
-    Stream.eval(F.suspend(System.nanoTime)).flatMap { t0 =>
-      Stream.repeatEval(F.suspend(FiniteDuration(System.nanoTime - t0, NANOSECONDS)))
+    Stream.eval(F.delay(System.nanoTime)).flatMap { t0 =>
+      Stream.repeatEval(F.delay(FiniteDuration(System.nanoTime - t0, NANOSECONDS)))
     }
 
   /**

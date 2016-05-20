@@ -292,7 +292,7 @@ scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.run.
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 846 elided
+  ... 834 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -562,7 +562,7 @@ s.runLog.run.unsafeRun
 // res51: Vector[String] = Vector(...moving on)
 ```
 
-The way you bring synchronous effects into your effect type may differ. [`Async.suspend`](../core/src/main/scala/fs2/Async.scala) can be used for this generally, without committing to a particular effect:
+The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/src/main/scala/fs2/Async.scala) can be used for this generally, without committing to a particular effect:
 
 ```scala
 import fs2.Async
@@ -571,7 +571,7 @@ import fs2.Async
 val T = implicitly[Async[Task]]
 // T: fs2.Async[fs2.util.Task] = Async[Task]
 
-val s = Stream.eval_(T.suspend { destroyUniverse() }) ++ Stream("...moving on")
+val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[fs2.util.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 s.runLog.run.unsafeRun
@@ -579,7 +579,7 @@ s.runLog.run.unsafeRun
 // res52: Vector[String] = Vector(...moving on)
 ```
 
-When using this approach, be sure the expression you pass to suspend doesn't throw exceptions.
+When using this approach, be sure the expression you pass to delay doesn't throw exceptions.
 
 #### Asynchronous effects (callbacks invoked once)
 
@@ -626,7 +626,7 @@ val c = new Connection {
 
 // recall T: Async[Task]
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
-  T.suspend { c.readBytesE(cb) }
+  T.delay { c.readBytesE(cb) }
 }
 // bytes: fs2.util.Task[Array[Byte]] = Task
 

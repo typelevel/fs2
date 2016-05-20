@@ -126,7 +126,7 @@ protected[tcp] object Socket {
     }
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] = F.async { cb =>
-      F.suspend {
+      F.delay {
         ch.connect(to, null, new CompletionHandler[Void, Void] {
           def completed(result: Void, attachment: Void): Unit = cb(Right(ch))
           def failed(rsn: Throwable, attachment: Void): Unit =  cb(Left(rsn))
@@ -135,7 +135,7 @@ protected[tcp] object Socket {
     }
 
     def cleanup(ch: AsynchronousSocketChannel): F[Unit] =
-      F.suspend  { ch.close() }
+      F.delay  { ch.close() }
 
 
     setup flatMap { ch =>
@@ -155,7 +155,7 @@ protected[tcp] object Socket {
     , F:Async[F]
   ): Stream[F, Stream[F, Socket[F]]] = Stream.suspend {
 
-      def setup: F[AsynchronousServerSocketChannel] = F.suspend {
+      def setup: F[AsynchronousServerSocketChannel] = F.delay {
         val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
         ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
@@ -163,7 +163,7 @@ protected[tcp] object Socket {
         ch
       }
 
-      def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] = F.suspend{
+      def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] = F.delay{
         if (sch.isOpen) sch.close()
       }
 
@@ -179,7 +179,7 @@ protected[tcp] object Socket {
             }
 
           def close(ch: AsynchronousSocketChannel): F[Unit] =
-            F.bind(F.attempt(F.suspend {
+            F.bind(F.attempt(F.delay {
               if (ch.isOpen) ch.close()
             }))(_ => F.pure(()))
 
@@ -285,11 +285,11 @@ protected[tcp] object Socket {
       def writes(stream: Stream[F, Bytes], timeout: Option[FiniteDuration]): Stream[F, Unit] =
         stream.flatMap { bs => Stream.eval(write(bs, timeout)) }
 
-      def localAddress: F[SocketAddress] = F.suspend(ch.getLocalAddress)
-      def remoteAddress: F[SocketAddress] = F.suspend(ch.getRemoteAddress)
-      def close: F[Unit] = F.suspend(ch.close())
-      def endOfOutput: F[Unit] = F.suspend{ ch.shutdownOutput(); () }
-      def endOfInput: F[Unit] = F.suspend{ ch.shutdownInput(); () }
+      def localAddress: F[SocketAddress] = F.delay(ch.getLocalAddress)
+      def remoteAddress: F[SocketAddress] = F.delay(ch.getRemoteAddress)
+      def close: F[Unit] = F.delay(ch.close())
+      def endOfOutput: F[Unit] = F.delay{ ch.shutdownOutput(); () }
+      def endOfInput: F[Unit] = F.delay{ ch.shutdownInput(); () }
     }
   }
 }

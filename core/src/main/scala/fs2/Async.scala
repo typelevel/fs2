@@ -1,10 +1,10 @@
 package fs2
 
 import Async.{Change,Future}
-import fs2.util.{Free,Functor,Catchable}
+import fs2.util.{Free,Functor,Effect}
 
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.util.Task]` requires an implicit `fs2.util.Strategy` in scope.")
-trait Async[F[_]] extends Catchable[F] { self =>
+trait Async[F[_]] extends Effect[F] { self =>
   type Ref[A]
 
   /** Create an asynchronous, concurrent mutable reference. */

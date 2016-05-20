@@ -434,17 +434,17 @@ val s = Stream.eval_(Task.delay { destroyUniverse() }) ++ Stream("...moving on")
 s.runLog.run.unsafeRun
 ```
 
-The way you bring synchronous effects into your effect type may differ. [`Async.suspend`](../core/src/main/scala/fs2/Async.scala) can be used for this generally, without committing to a particular effect:
+The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/src/main/scala/fs2/Async.scala) can be used for this generally, without committing to a particular effect:
 
 ```tut:book
 import fs2.Async
 
 val T = implicitly[Async[Task]]
-val s = Stream.eval_(T.suspend { destroyUniverse() }) ++ Stream("...moving on")
+val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 s.runLog.run.unsafeRun
 ```
 
-When using this approach, be sure the expression you pass to suspend doesn't throw exceptions.
+When using this approach, be sure the expression you pass to delay doesn't throw exceptions.
 
 #### Asynchronous effects (callbacks invoked once)
 
@@ -489,7 +489,7 @@ val c = new Connection {
 
 // recall T: Async[Task]
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
-  T.suspend { c.readBytesE(cb) }
+  T.delay { c.readBytesE(cb) }
 }
 
 Stream.eval(bytes).map(_.toList).runLog.run.unsafeRun
