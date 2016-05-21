@@ -559,9 +559,9 @@ Stream.emit(1) ++ Stream.emit("hello")
 Informative! If you really want a dubious supertype like `Any`, `AnyRef`, `AnyVal`, `Product`, or `Serializable` to be inferred, just follow the instructions in the error message to supply a `RealSupertype` instance explicitly.
 
 ```tut
-import fs2.util.{RealSupertype, Sub1}
+import fs2.util.{Lub1,RealSupertype}
 
-Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Sub1.sub1[Task])
+Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Lub1.id[Nothing])
 ```
 
 Ugly, as it should be.

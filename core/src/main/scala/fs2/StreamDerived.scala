@@ -212,12 +212,12 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
     /** Transform this stream using the given `Pipe`. */
     def through[B](f: Pipe[F,A,B]): Stream[F,B] = f(s)
     /** Transform this stream using the given pure `Pipe`. */
-    def throughp[B](f: Pipe[Pure,A,B]): Stream[F,B] = f(s)
+    def throughPure[B](f: Pipe[Pure,A,B]): Stream[F,B] = f(s)
     /** Transform this stream using the given `Pipe2`. */
     def through2[B,C](s2: Stream[F,B])(f: Pipe2[F,A,B,C]): Stream[F,C] =
       f(s,s2)
     /** Transform this stream using the given pure `Pipe2`. */
-    def through2p[B,C](s2: Stream[F,B])(f: Pipe2[Pure,A,B,C]): Stream[F,C] =
+    def through2Pure[B,C](s2: Stream[F,B])(f: Pipe2[Pure,A,B,C]): Stream[F,C] =
       f(s,s2)
     /** Applies the given sink to this stream and drains the output. */
     def to(f: Sink[F,A]): Stream[F,Unit] = f(s).drain

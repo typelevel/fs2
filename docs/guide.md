@@ -712,11 +712,11 @@ scala> Stream.emit(1) ++ Stream.emit("hello")
 Informative! If you really want a dubious supertype like `Any`, `AnyRef`, `AnyVal`, `Product`, or `Serializable` to be inferred, just follow the instructions in the error message to supply a `RealSupertype` instance explicitly.
 
 ```scala
-scala> import fs2.util.{RealSupertype, Sub1}
-import fs2.util.{RealSupertype, Sub1}
+scala> import fs2.util.{Lub1,RealSupertype}
+import fs2.util.{Lub1, RealSupertype}
 
-scala> Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Sub1.sub1[Task])
-res56: fs2.Stream[fs2.util.Task,Any] = append(Segment(Emit(Chunk(1))), Segment(Emit(Chunk(()))).flatMap(<function1>))
+scala> Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Lub1.id[Nothing])
+res56: fs2.Stream[Nothing,Any] = append(Segment(Emit(Chunk(1))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 ```
 
 Ugly, as it should be.

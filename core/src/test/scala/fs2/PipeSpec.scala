@@ -68,12 +68,12 @@ class PipeSpec extends Fs2Spec {
     "chunks" in forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
       val v = Vector(Vector(11,2,2,2), Vector(2,2,3), Vector(2,3,4), Vector(1,2,2,2,2,2,3,3))
       val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-      runLog(s.throughp(chunks).map(_.toVector)) shouldBe v
+      runLog(s.throughPure(chunks).map(_.toVector)) shouldBe v
     }
 
     "chunks (2)" in forAll(nestedVectorGen[Int](0,10, emptyChunks = true)) { (v: Vector[Vector[Int]]) =>
       val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-      runLog(s.throughp(chunks).flatMap(Stream.chunk)) shouldBe v.flatten
+      runLog(s.throughPure(chunks).flatMap(Stream.chunk)) shouldBe v.flatten
     }
 
     "collect" in forAll { (s: PureStream[Int]) =>
