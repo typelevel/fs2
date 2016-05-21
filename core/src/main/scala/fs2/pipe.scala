@@ -474,7 +474,7 @@ object pipe {
     def prompts: Stream[Read,I] =
       Stream.eval[Read, Option[Chunk[I]]](identity).flatMap[Read,I] {
         case None => Stream.empty
-        case Some(chunk) => Stream.chunk(chunk).append[Read,I](prompts)
+        case Some(chunk) => Stream.chunk(chunk).append(prompts)
       }
 
     def outputs: Stream[Read,O] = covary[Read,I,O](p)(prompts)

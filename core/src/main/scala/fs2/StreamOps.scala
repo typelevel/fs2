@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Free,Monad,RealSupertype,Sub1,~>}
+import fs2.util.{Free,Lub1,Monad,RealSupertype,Sub1,~>}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`
@@ -13,14 +13,18 @@ private[fs2] trait StreamOps[+F[_],+A] extends StreamPipeOps[F,A] with StreamPip
 
   // NB: methods in alphabetical order
 
-  def ++[F2[_],B>:A](p2: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
-    Stream.append(Sub1.substStream(self), p2)
+  def ++[G[_],Lub[_],B>:A](p2: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] = {
+    import L.{subF,subG}
+    Stream.append(Sub1.substStream(self), Sub1.substStream(p2))
+  }
 
   def attempt: Stream[F,Either[Throwable,A]] =
     self.map(Right(_)).onError(e => Stream.emit(Left(e)))
 
-  def append[F2[_],B>:A](p2: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
-    Stream.append(Sub1.substStream(self), p2)
+  def append[G[_],Lub[_],B>:A](p2: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] = {
+    import L.{subF,subG}
+    Stream.append(Sub1.substStream(self), Sub1.substStream(p2))
+  }
 
   /** Prepend a single chunk onto the front of this stream. */
   def cons[A2>:A](c: Chunk[A2])(implicit T: RealSupertype[A,A2]): Stream[F,A2] =
