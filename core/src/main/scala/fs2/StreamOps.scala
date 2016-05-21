@@ -36,11 +36,11 @@ private[fs2] trait StreamOps[+F[_],+A] extends StreamPipeOps[F,A] with StreamPip
   def drain: Stream[F, Nothing] =
     Stream.drain(self)
 
-  def evalMap[F2[_],B](f: A => F2[B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
-    Stream.flatMap(Sub1.substStream(self))(f andThen Stream.eval)
+  def evalMap[G[_],Lub[_],B](f: A => G[B])(implicit L: Lub1[F,G,Lub]): Stream[Lub,B] =
+    Stream.flatMap(Sub1.substStream(self)(L.subF))(a => Sub1.substStream(Stream.eval(f(a)))(L.subG))
 
-  def flatMap[F2[_],B](f: A => Stream[F2,B])(implicit S: Sub1[F,F2]): Stream[F2,B] =
-    Stream.flatMap(Sub1.substStream(self))(f)
+  def flatMap[G[_],Lub[_],B](f: A => Stream[G,B])(implicit L: Lub1[F,G,Lub]): Stream[Lub,B] =
+    Stream.flatMap(Sub1.substStream(self)(L.subF))(a => Sub1.substStream(f(a))(L.subG))
 
   def mask: Stream[F,A] =
     Stream.mask(self)
