@@ -2,10 +2,10 @@ package fs2
 package util
 
 /**
- * A `Lub1[F,G]` is evidence that `forall x`:
- *  - `Lub1[F,G].Lub[x] >: F[x]`
- *  - `Lub1[F,G].Lub[x] >: G[x]`
- *  - there is no `L[x]` for which `L[x] >: F[x]` and `L[x] >: G[x]` and `L[x] <: Lub1[F,G].Lub[x]`
+ * A `Lub1[F,G,Lub]` is evidence that `forall x`:
+ *  - `Lub[x] >: F[x]`
+ *  - `Lub[x] >: G[x]`
+ *  - there is no `L[x]` for which `L[x] >: F[x]` and `L[x] >: G[x]` and `L[x] <: Lub[x]`
  */
 sealed trait Lub1[-F[_],-G[_],+Lub[_]] {
   implicit def subF: Sub1[F,Lub]
