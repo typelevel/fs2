@@ -14,7 +14,7 @@ object ResourceTrackerSanityTest extends App {
 
 object RepeatPullSanityTest extends App {
   def id[A]: Pipe[Pure, A, A] = _ repeatPull Pull.receive1 { case h #: t => Pull.output1(h) as t }
-  Stream.constant(1).covary[Task].throughp(id).run.unsafeRun
+  Stream.constant(1).covary[Task].throughPure(id).run.unsafeRun
 }
 
 object RepeatEvalSanityTest extends App {
@@ -23,7 +23,7 @@ object RepeatEvalSanityTest extends App {
       _.receive1 { case h #: t => Pull.output1(h) >> go(t) }
     _ pull go
   }
-  Stream.repeatEval(Task.delay(1)).throughp(id).run.unsafeRun
+  Stream.repeatEval(Task.delay(1)).throughPure(id).run.unsafeRun
 }
 
 object AppendSanityTest extends App {

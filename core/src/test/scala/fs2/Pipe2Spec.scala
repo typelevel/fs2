@@ -24,18 +24,18 @@ class Pipe2Spec extends Fs2Spec {
     "zipAllWith left/right side infinite" in {
       val ones = Stream.constant("1")
       val p = Stream("A","B","C")
-      runLog(ones.through2p(p)(pipe2.zipAllWith("2","Z")(_ + _)).take(5)) shouldBe
+      runLog(ones.through2Pure(p)(pipe2.zipAllWith("2","Z")(_ + _)).take(5)) shouldBe
           Vector("1A", "1B", "1C", "1Z", "1Z")
-      runLog(p.through2p(ones)(pipe2.zipAllWith("Z","2")(_ + _)).take(5)) shouldBe
+      runLog(p.through2Pure(ones)(pipe2.zipAllWith("Z","2")(_ + _)).take(5)) shouldBe
         Vector("A1", "B1", "C1", "Z1", "Z1")
     }
 
     "zipAllWith both side infinite" in {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      runLog(ones.through2p(as)(pipe2.zipAllWith("2", "Z")(_ + _)).take(3)) shouldBe
+      runLog(ones.through2Pure(as)(pipe2.zipAllWith("2", "Z")(_ + _)).take(3)) shouldBe
        Vector("1A", "1A", "1A")
-      runLog(as.through2p(ones)(pipe2.zipAllWith("Z", "2")(_ + _)).take(3)) shouldBe
+      runLog(as.through2Pure(ones)(pipe2.zipAllWith("Z", "2")(_ + _)).take(3)) shouldBe
        Vector("A1", "A1", "A1")
     }
 
@@ -56,15 +56,15 @@ class Pipe2Spec extends Fs2Spec {
     "zipAll left/right side infinite" in {
       val ones = Stream.constant("1")
       val p = Stream("A","B","C")
-      runLog(ones.through2p(p)(pipe2.zipAll("2","Z")).take(5)) shouldBe Vector("1" -> "A", "1" -> "B", "1" -> "C", "1" -> "Z", "1" -> "Z")
-      runLog(p.through2p(ones)(pipe2.zipAll("Z","2")).take(5)) shouldBe Vector("A" -> "1", "B" -> "1", "C" -> "1", "Z" -> "1", "Z" -> "1")
+      runLog(ones.through2Pure(p)(pipe2.zipAll("2","Z")).take(5)) shouldBe Vector("1" -> "A", "1" -> "B", "1" -> "C", "1" -> "Z", "1" -> "Z")
+      runLog(p.through2Pure(ones)(pipe2.zipAll("Z","2")).take(5)) shouldBe Vector("A" -> "1", "B" -> "1", "C" -> "1", "Z" -> "1", "Z" -> "1")
     }
 
     "zipAll both side infinite" in {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      runLog(ones.through2p(as)(pipe2.zipAll("2", "Z")).take(3)) shouldBe Vector("1" -> "A", "1" -> "A", "1" -> "A")
-      runLog(as.through2p(ones)(pipe2.zipAll("Z", "2")).take(3)) shouldBe Vector("A" -> "1", "A" -> "1", "A" -> "1")
+      runLog(ones.through2Pure(as)(pipe2.zipAll("2", "Z")).take(3)) shouldBe Vector("1" -> "A", "1" -> "A", "1" -> "A")
+      runLog(as.through2Pure(ones)(pipe2.zipAll("Z", "2")).take(3)) shouldBe Vector("A" -> "1", "A" -> "1", "A" -> "1")
     }
 
     "interleave left/right side infinite" in {
