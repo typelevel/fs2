@@ -13,18 +13,14 @@ private[fs2] trait StreamOps[+F[_],+A] extends StreamPipeOps[F,A] with StreamPip
 
   // NB: methods in alphabetical order
 
-  def ++[G[_],Lub[_],B>:A](p2: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] = {
-    import L.{subF,subG}
-    Stream.append(Sub1.substStream(self), Sub1.substStream(p2))
-  }
+  def ++[G[_],Lub[_],B>:A](p2: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] =
+    Stream.append(Sub1.substStream(self)(L.subF), Sub1.substStream(p2)(L.subG))
 
   def attempt: Stream[F,Either[Throwable,A]] =
     self.map(Right(_)).onError(e => Stream.emit(Left(e)))
 
-  def append[G[_],Lub[_],B>:A](p2: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] = {
-    import L.{subF,subG}
-    Stream.append(Sub1.substStream(self), Sub1.substStream(p2))
-  }
+  def append[G[_],Lub[_],B>:A](p2: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] =
+    Stream.append(Sub1.substStream(self)(L.subF), Sub1.substStream(p2)(L.subG))
 
   /** Prepend a single chunk onto the front of this stream. */
   def cons[A2>:A](c: Chunk[A2])(implicit T: RealSupertype[A,A2]): Stream[F,A2] =
@@ -52,11 +48,11 @@ private[fs2] trait StreamOps[+F[_],+A] extends StreamPipeOps[F,A] with StreamPip
   def map[B](f: A => B): Stream[F,B] =
     Stream.map(self)(f)
 
-  def onComplete[F2[_],B>:A](regardless: => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
-    Stream.onComplete(Sub1.substStream(self): Stream[F2,B], regardless)
+  def onComplete[G[_],Lub[_],B>:A](regardless: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] =
+    Stream.onComplete(Sub1.substStream(self)(L.subF), Sub1.substStream(regardless)(L.subG))
 
-  def onError[F2[_],B>:A](f: Throwable => Stream[F2,B])(implicit R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
-    Stream.onError(Sub1.substStream(self): Stream[F2,B])(f)
+  def onError[G[_],Lub[_],B>:A](f: Throwable => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] =
+    Stream.onError(Sub1.substStream(self)(L.subF): Stream[Lub,B])(f andThen { g => Sub1.substStream(g)(L.subG) })
 
   def onFinalize[F2[_]](f: F2[Unit])(implicit S: Sub1[F,F2], F2: Monad[F2]): Stream[F2,A] =
     Stream.bracket(F2.pure(()))(_ => Sub1.substStream(self), _ => f)
