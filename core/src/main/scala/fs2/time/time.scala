@@ -18,6 +18,12 @@ package object time {
    * different thread pool, or with `Strategy.sequential` on the
    * same thread pool as the scheduler.
    *
+   * Note: for very small values of `d`, it is possible that multiple
+   * periods elapse and only some of those periods are visible in the
+   * stream. This occurs when the scheduler fires faster than
+   * periods are able to be published internally, possibly due to
+   * a `Strategy` that is slow to evaluate.
+   *
    * @param d           FiniteDuration between emits of the resulting stream
    * @param S           Strategy to run the stream
    * @param scheduler   Scheduler used to schedule tasks
@@ -25,12 +31,13 @@ package object time {
   def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], FR: Async.Run[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
     def metronomeAndSignal: F[(()=>Unit,async.mutable.Signal[F,FiniteDuration])] = {
       F.bind(async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))) { signal =>
+        val lock = new java.util.concurrent.Semaphore(1)
         val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
         F.delay {
           val cancel = scheduler.scheduleAtFixedRate(d, d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
-            FR.unsafeRunEffects(signal.set(d))
-            ()
+            if (lock.tryAcquire)
+              FR.unsafeRunAsyncEffects(F.map(signal.set(d)) { _ => lock.release })(_ => ())
           }
           (cancel, signal)
         }

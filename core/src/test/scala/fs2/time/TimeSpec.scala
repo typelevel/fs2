@@ -15,6 +15,11 @@ class TimeSpec extends Fs2Spec {
       time.awakeEvery[Task](100.millis).map(_.toMillis/100).take(5).runLog.unsafeRun shouldBe Vector(1,2,3,4,5)
     }
 
+    "awakeEvery liveness" in {
+      val s = time.awakeEvery[Task](1.milli).evalMap { i => Task.async[Unit](cb => S(cb(Right(())))) }.take(200)
+      runLog { concurrent.join(5)(Stream(s, s, s, s, s)) }
+    }
+
     "duration" in {
       val firstValueDiscrepancy = time.duration[Task].take(1).runLog.unsafeRun.last
       val reasonableErrorInMillis = 200
