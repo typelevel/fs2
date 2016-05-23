@@ -427,9 +427,9 @@ private[fs2] trait Instances extends Instances1 {
     override def toString = "Async[Task]"
   }
 
-  implicit val runInstance: Async.Run[Task] = new Async.Run[Task] {
+  implicit def runInstance(implicit S:Strategy): Async.Run[Task] = new Async.Run[Task] {
     def unsafeRunAsyncEffects(f: Task[Unit])(cb: Either[Throwable,Unit] => Unit) =
-      f.unsafeRunAsync(cb)
+      S(f.unsafeRunAsync(cb))
     override def toString = "Run[Task]"
   }
 
