@@ -31,21 +31,18 @@ package object time {
   def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], FR: Async.Run[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
     def metronomeAndSignal: F[(()=>Unit,async.mutable.Signal[F,FiniteDuration])] = {
       F.bind(async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))) { signal =>
-      F.bind(async.semaphore[F](1)) { lock =>
+        val lock = new java.util.concurrent.Semaphore(1)
         val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
         F.delay {
           val cancel = scheduler.scheduleAtFixedRate(d, d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
-            val set = F.bind(lock.tryDecrement) { locked =>
-              if (locked) F.bind(signal.set(d)) { _ => lock.increment }
-              else F.pure(())
-            }
-            FR.unsafeRunAsyncEffects(set)(_ => ())
+            if (lock.tryAcquire)
+              FR.unsafeRunAsyncEffects(F.map(signal.set(d)) { _ => lock.release })(_ => ())
           }
           (cancel, signal)
         }
       }
-    }}
+    }
     Stream.bracket(metronomeAndSignal)({ case (_, signal) => signal.discrete.drop(1) }, { case (cm, _) => F.delay(cm()) })
   }
 
