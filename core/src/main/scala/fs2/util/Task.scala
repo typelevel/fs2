@@ -428,8 +428,8 @@ private[fs2] trait Instances extends Instances1 {
   }
 
   implicit def runInstance(implicit S:Strategy): Async.Run[Task] = new Async.Run[Task] {
-    def unsafeRunAsyncEffects(f: Task[Unit])(cb: Either[Throwable,Unit] => Unit) =
-      S(f.unsafeRunAsync(cb))
+    def unsafeRunAsyncEffects(f: Task[Unit])(onError: Throwable => Unit) =
+      S(f.unsafeRunAsync(_.fold(onError, _ => ())))
     override def toString = "Run[Task]"
   }
 

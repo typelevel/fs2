@@ -193,14 +193,13 @@ object Async {
   trait Run[F[_]]  {
 
     /**
-     * Asynchronously run this `F` and block until it completes. Performs side effects.
-     * If the evaluation of the `F` terminates with an exception, then the callback
-     * will be called with a `Left(t)`. Otherwise, the callback will be called with
-     * a `Right`.
+     * Asynchronously run this `F`. Performs side effects.
+     * If the evaluation of the `F` terminates with an exception, then the `onError`
+     * callback will be called.
      *
      * Purpose of this combinator is to allow libraries that perform multiple callback
      * (like enqueueing the messages, setting signals) to be written abstract over `F`.
      */
-    def unsafeRunAsyncEffects(f: F[Unit])(cb: Either[Throwable,Unit] => Unit): Unit
+    def unsafeRunAsyncEffects(f: F[Unit])(onError: Throwable => Unit): Unit
   }
 }
