@@ -29,13 +29,13 @@ package object file {
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
   def readAll[F[_]](path: Path, chunkSize: Int)(implicit F: Effect[F]): Stream[F, Byte] =
-    pulls.fromPath(path, List(StandardOpenOption.READ)).flatMap(pulls.readAllFromFileHandle(chunkSize)).run
+    pulls.fromPath(path, List(StandardOpenOption.READ)).flatMap(pulls.readAllFromFileHandle(chunkSize)).close
 
   /**
     * Reads all data asynchronously from the file at the specified `java.nio.file.Path`.
     */
   def readAllAsync[F[_]](path: Path, chunkSize: Int)(implicit F: Async[F], S: Strategy): Stream[F, Byte] =
-    pulls.fromPathAsync(path, List(StandardOpenOption.READ)).flatMap(pulls.readAllFromFileHandle(chunkSize)).run
+    pulls.fromPathAsync(path, List(StandardOpenOption.READ)).flatMap(pulls.readAllFromFileHandle(chunkSize)).close
 
   //
   // Stream transducers
@@ -51,7 +51,7 @@ package object file {
       in <- s.open
       out <- pulls.fromPath(path, StandardOpenOption.WRITE :: flags.toList)
       _ <- pulls.writeAllToFileHandle(in, out)
-    } yield ()).run
+    } yield ()).close
 
   /**
     * Writes all data asynchronously to the file at the specified `java.nio.file.Path`.
@@ -63,7 +63,7 @@ package object file {
       in <- s.open
       out <- pulls.fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList)
       _ <- _writeAll0(in, out, 0)
-    } yield ()).run
+    } yield ()).close
 
   private def _writeAll0[F[_]](in: Handle[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] = for {
     hd #: tail <- in.await

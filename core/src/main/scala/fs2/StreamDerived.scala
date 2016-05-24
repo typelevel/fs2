@@ -84,7 +84,7 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
 
   def pull[F[_],F2[_],A,B](s: Stream[F,A])(using: Handle[F,A] => Pull[F2,B,Any])(implicit S: Sub1[F,F2])
   : Stream[F2,B] =
-    Pull.run { Sub1.substPull(open(s)) flatMap (h => Sub1.substPull(using(h))) }
+    Pull.close { Sub1.substPull(open(s)) flatMap (h => Sub1.substPull(using(h))) }
 
   def push1[F[_],A](h: Handle[F,A])(a: A): Handle[F,A] =
     push(h)(Chunk.singleton(a))
@@ -133,7 +133,7 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
   def repeatPull2[F[_],A,B,C](s: Stream[F,A], s2: Stream[F,B])(
     using: (Handle[F,A], Handle[F,B]) => Pull[F,C,(Handle[F,A],Handle[F,B])])
   : Stream[F,C] =
-    s.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.run
+    s.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.close
 
   def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] =
     emit(()) flatMap { _ => s }
@@ -194,7 +194,7 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
     def pull[B](using: Handle[F,A] => Pull[F,B,Any]): Stream[F,B] =
       Stream.pull(s)(using)
     def pull2[B,C](s2: Stream[F,B])(using: (Handle[F,A], Handle[F,B]) => Pull[F,C,Any]): Stream[F,C] =
-      s.open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.run
+      s.open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.close
     def repeatPull[B](using: Handle[F,A] => Pull[F,B,Handle[F,A]]): Stream[F,B] =
       Stream.repeatPull(s)(using)
     def repeatPull2[B,C](s2: Stream[F,B])(using: (Handle[F,A],Handle[F,B]) => Pull[F,C,(Handle[F,A],Handle[F,B])]): Stream[F,C] =

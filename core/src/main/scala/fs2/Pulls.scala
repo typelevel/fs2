@@ -52,5 +52,5 @@ trait Pulls[Pull[+_[_],+_,+_]] {
   def or[F[_],O,R](p1: Pull[F,O,R], p2: => Pull[F,O,R]): Pull[F,O,R]
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
-  def run[F[_],O,R](p: Pull[F,O,R]): Stream[F,O]
+  def close[F[_],O,R](p: Pull[F,O,R]): Stream[F,O]
 }

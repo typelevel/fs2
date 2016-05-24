@@ -64,7 +64,7 @@ object text {
       }
     }
 
-    pipe.covary[F, Chunk[Byte], String](_.open.flatMap(doPull(Chunk.empty) _).run)
+    pipe.covary[F, Chunk[Byte], String](_.open.flatMap(doPull(Chunk.empty) _).close)
   }
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
