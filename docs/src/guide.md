@@ -313,7 +313,7 @@ So this line is writing the chunk we read, ignoring the `Unit` result, then recu
 
 For the recursive call, we update the state, subtracting the `chunk.size` elements we've seen. Easy!
 
-To actually use a `Pull` to transform a `Stream`, we have to `run` it:
+To actually use a `Pull` to transform a `Stream`, we have to `close` it:
 
 ```tut
 val s2 = Stream(1,2,3,4).pure.pull(Pull_.take(2))
@@ -324,13 +324,13 @@ s3.toList
 
 _Note:_ The `.pure` converts a `Stream[Nothing,A]` to a `Stream[Pure,A]`. Scala will not infer `Nothing` for a type parameter, so using `Pure` as the effect provides better type inference in some cases.
 
-The `pull` method on `Stream` just calls `open` then `run`. We could express the above as:
+The `pull` method on `Stream` just calls `open` then `close`. We could express the above as:
 
 ```tut
-Stream(1,2,3,4).pure.open.flatMap { Pull_.take(2) }.run
+Stream(1,2,3,4).pure.open.flatMap { Pull_.take(2) }.close
 ```
 
-FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `run` completes. Note again that _nothing happens_ when we call `.run` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
+FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `close` completes. Note again that _nothing happens_ when we call `.close` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
 
 There are lots of useful transformation functions in [`pipe`](../core/src/scala/main/fs2/pipe) and [`pipe2`](../core/src/main/fs2/pipe2) built using the `Pull` type, for example:
 
