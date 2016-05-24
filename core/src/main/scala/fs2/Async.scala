@@ -189,29 +189,17 @@ object Async {
    */
   case class Change[+A](previous: A, now: A)
 
-
-  /** Used to strictly evaluate `F`. */
+  /** Used to evaluate `F`. */
   trait Run[F[_]]  {
 
     /**
-     * Run this `F` and block until it completes. Performs side effects.
-     * If the evaluation of the `F` terminates with an exception,
-     * then this will return that exception as Optional value.
-     * Otherwise this terminates with None.
-     *
-     * Note that hence this blocks, special care must be taken on thread usage.
-     * Typically, this has to be run off the thread that allows blocking and
-     * is outside the main Executor Service or Scheduler.
-     *
-     * If you run it inside the scheduler or `Strategy` that is used to run
-     * rest of your program you may encounter deadlocks due to thread resources
-     * being used.
-     *
-     * It is not recommended to use this inside user code.
+     * Asynchronously run this `F`. Performs side effects.
+     * If the evaluation of the `F` terminates with an exception, then the `onError`
+     * callback will be called.
      *
      * Purpose of this combinator is to allow libraries that perform multiple callback
      * (like enqueueing the messages, setting signals) to be written abstract over `F`.
      */
-    def unsafeRunEffects(f: F[Unit]): Option[Throwable]
+    def unsafeRunAsyncEffects(f: F[Unit])(onError: Throwable => Unit): Unit
   }
 }
