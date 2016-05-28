@@ -189,6 +189,13 @@ object Async {
    */
   case class Change[+A](previous: A, now: A)
 
+  object Change {
+    implicit class ChangeSyntax[A](val self:Change[A]) extends AnyVal {
+      def modified: Boolean = self.previous != self.now
+      def map[B](f: A => B):Change[B] = Change(f(self.previous), f(self.now))
+    }
+  }
+
   /** Used to evaluate `F`. */
   trait Run[F[_]]  {
 
