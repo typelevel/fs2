@@ -1,6 +1,5 @@
 package fs2.async.mutable
 
-import fs2.Async.Change
 import fs2._
 import fs2.Stream._
 
@@ -20,8 +19,9 @@ import fs2.Stream._
 trait Topic[F[_],A] {
 
   /**
-    * Published any elements from source of `A` to this topic. This will stop publishing if the source has no elements
-    * or, any subscriber is far behind the `maxQueued` limit.
+    * Published any elements from source of `A` to this topic.
+    * If any of the subscribers reach its `maxQueued` limit, then this will hold to publish next element
+    * before that subscriber consumes it's elements or terminates.
     */
   def publish:Sink[F,A]
 
@@ -33,21 +33,9 @@ trait Topic[F[_],A] {
     * If one of the subscribers is over the `maxQueued` limit, this will wait to complete until that subscriber processes
     * some of its elements to get room for this new. published `A`
     *
-    * @param a
-    * @return
     */
   def publish1(a:A):F[Unit]
 
-  /**
-    * Offers one `A` to topic.
-    *
-    * This will either publishes `A` to all its subscribers and return true, or this will return false publishing to None of them.
-    * In case publish failed, this indicates that some of the subscribers was over `maxQueued` parameter.
-    *
-    * @param a
-    * @return
-    */
-  def offer1(a:A):F[Boolean]
 
 
   /**
@@ -75,13 +63,13 @@ trait Topic[F[_],A] {
     * then publishers will hold into publishing to the queue.
     *
     */
-  def subscribeSize(maxQueued:Int):Stream[F,(Int,A)]
+  def subscribeSize(maxQueued:Int):Stream[F,(A, Int)]
 
 
   /**
-    * Discrete stream of current active subscribers
+    * Signal of current active subscribers
     */
-  def subscribers:Stream[F,Int]
+  def subscribers:fs2.async.immutable.Signal[F,Int]
 
 }
 
@@ -94,155 +82,73 @@ object Topic {
     // Id identifying each subscriber uniquely
     class ID
 
-
-    // State of each subscriber.
-    sealed trait Subscriber
-
-    // Subscriber awaits nest `A`
-    case class Await(maxQueued:Int, ref:F.Ref[Chunk[A]]) extends Subscriber
-
-    //Subscriber is running, next elements has to be enqueued in `q`
-    case class Running(maxQueued:Int, q:Vector[A]) extends Subscriber
-
-    // internal state of the topic
-    // `last` is last value published to topic, or if nothing was published then this eq to initial
-    // `ready` all subscribers that are ready to accept any published value
-    // `full` subscribers that are full and will block any publishers to enqueue `a`
-    //  `publishers` any publishers awaiting to be consumed
-    case class State(
-      last:A
-      , ready:Map[ID, Subscriber]
-      , full:Map[ID, Running]
-      , publishers:Vector[(Chunk[A], F.Ref[Unit])]
-    )
+    sealed trait Subscriber {
+      def publish(a:A):F[Unit]
+      def id:ID
+      def subscribe:Stream[F,A]
+      def subscribeSize:Stream[F,(A,Int)]
+      def unSubscribe:F[Unit]
+    }
 
 
 
 
-    F.map(F.refOf(State(initial,Map.empty, Map.empty, Vector.empty))) { (stateRef:F.Ref[State]) =>
+    F.bind(F.refOf((initial,Vector.empty[Subscriber]))) { state =>
+    F.map(async.signalOf[F,Int](0)) { subSignal =>
 
-      def publish0(chunk:Chunk[A]):F[Unit] = {
-
-        ???
-      }
-
-
-      def appendChunk(s:State, chunk:Chunk[A]):(State, F[Unit]) = {
-        val (ready, f) =
-          s.ready.foldLeft((Map[ID, Subscriber](),F.pure(()))) {
-            case ((m,f0), (id,Await(max,ref))) => (m + (id -> Running(max,Vector.empty))) -> F.bind(f0)(_ => F.setPure(ref)(chunk))
-            case ((m,f0), (id,Running(max,q))) => (m + (id -> Running(max,q ++ chunk.toVector)) -> f0)
-          }
-
-        s.copy(ready = ready) -> f
-      }
-
-
-      def offer0(a:A):F[Boolean] = {
-        F.bind(F.modify2(stateRef){ s =>
-          if (s.full.nonEmpty) s -> F.pure(false)
-          else {
-            val (ns,f) = appendChunk(s, Chunk.singleton(a))
-            ns -> F.map(f){_ => true}
-          }
-        }) { _._2 }
-      }
-
-
-      def subscribe0(maxQueued: Int, id:ID): Stream[F, A] = {
-        def register:F[A] =
-          F.bind(F.modify(stateRef){s => s.copy(ready =  s.ready + (id -> Running(maxQueued,Vector.empty)))}) { c =>
-            F.pure(c.previous.last)
-          }
-
-        def empty(s: State,r:Running) = s.copy(ready = s.ready + (id -> r.copy(q = Vector.empty))) -> Some(Chunk.seq(r.q))
-
-        def tryAwaits0(s:State):(State, Option[F[Chunk[A]]]) = ???
-
-        def tryAwaits(c:Change[State]):F[Unit] = {
-          if (c.previous.full.nonEmpty && c.now.full.isEmpty && c.now.publishers.nonEmpty) {
-            F.bind(F.modify2(stateRef)(tryAwaits0)) {
-              case (c0,Some(fa)) => ???
-              case (c0, None) => F.pure(())
-            }
-          } else F.pure(())
-        }
-
-        def registerRef0(ref:F.Ref[Chunk[A]])(s: State):(State,Option[Chunk[A]]) = {
-          def register :(State,Option[Chunk[A]]) = s.copy(ready = s.ready + (id -> Await(maxQueued, ref)), full = s.full - id) -> None
-
-          s.ready.get(id) match {
-            case Some(r:Running) =>
-              if (r.q.nonEmpty) empty(s,r) else register
-            case _ => register //impossible
-          }
-        }
-
-        def registerRef:F[Chunk[A]] = {
-          F.bind(F.ref[Chunk[A]]) { ref =>
-            F.bind(F.modify2(stateRef)(registerRef0(ref))) {
-              case (_, None) => F.get(ref)
-              case (c, Some(chunk)) => F.map(tryAwaits(c))(_ => chunk)
-            }
-          }
-        }
-
-
-        def getNext0(s: State):(State,Option[Chunk[A]]) = {
-
-          s.ready.get(id) match {
-            case Some(r@Running(_,q)) => if (q.nonEmpty) empty(s,r) else s -> None
-            case Some(Await(max,ref)) => s -> None // impossible
-            case None =>
-              s.full.get(id) match {
-                case Some(r@Running(_,q)) => if (q.nonEmpty) empty(s,r) else s -> None
-                case None => s -> None
+      def mkSubscriber(maxQueued: Int):F[Subscriber] = {
+        F.bind(async.boundedQueue[F,A](maxQueued)) { q =>
+        F.bind(F.ref[A]) { firstA =>
+        F.bind(F.ref[Boolean]) { done =>
+          val sub = new Subscriber {
+            def unSubscribe: F[Unit] = {
+              F.bind(F.modify(state) { case (a,subs) => a -> subs.filterNot(_.id == id) }) { _ =>
+                F.bind(subSignal.modify(_ - 1))(_ => F.setPure(done)(true))
               }
+            }
+            def subscribe: Stream[F, A] = eval(F.get(firstA)) ++ q.dequeue
+            def publish(a: A): F[Unit] = {
+              F.bind(q.offer1(a)) { offered =>
+                if (offered) F.pure(())
+                else {
+                  eval(F.get(done)).interruptWhen(q.full.discrete.map(! _ )).last.flatMap {
+                    case None => eval(publish(a))
+                    case Some(_) => Stream.empty
+                  }.run
+                }
+              }
+
+            }
+            def subscribeSize: Stream[F, (A,Int)] = eval(F.get(firstA)).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
+            val id: ID = new ID
           }
-        }
 
-        def getNext:F[Chunk[A]] = {
-          F.bind(F.modify2(stateRef)(getNext0)){
-            case (_,None) => registerRef
-            case (c,Some(chunk)) => F.map(tryAwaits(c))(_ => chunk)
+          F.bind(F.modify(state){ case(a,s) => a -> (s :+ sub) }) { c =>
+            F.bind(subSignal.modify(_ + 1))(_ => F.map(F.setPure(firstA)(c.now._1))(_ => sub))
           }
-
-        }
-
-        def unRegister:F[Unit] = {
-          F.map(F.modify(stateRef) { s => s.copy(ready = s.ready - id, full = s.full - id) }){_ => () }
-        }
-
-        (eval(register) ++ repeatEval(getNext).flatMap(Stream.chunk)).onFinalize(unRegister)
+        }}}
       }
-
 
 
 
       new Topic[F,A] {
-        def publish:Sink[F,A] = {
-          pipe.chunks andThen { _.evalMap(publish0) }
-        }
-        def subscribers: Stream[F, Int] = {
-          repeatEval(F.map(F.get(stateRef)){ s => s.ready.size + s.full.size })
-        }
-        def offer1(a: A): F[Boolean] = offer0(a)
-        def publish1(a: A): F[Unit] = publish0(Chunk.singleton(a))
-        def subscribe(maxQueued: Int): Stream[F, A] = subscribe0(maxQueued, new ID)
-        def subscribeSize(maxQueued: Int): Stream[F, (Int, A)] = {
-          val id = new ID
-          def getSize:F[Int] =
-            F.map(F.get(stateRef)){ s =>
-              (s.ready.get(id).collect {
-                case Running(_,q) => q.size
-              } orElse s.full.get(id).map(_.q.size)).getOrElse(0)
-            }
-          subscribe0(maxQueued,id) flatMap { a =>
-            eval(getSize) map { _ -> a }
-          }
-        }
+        def publish:Sink[F,A] =
+          _ flatMap( a => eval(publish1(a)))
+
+        def subscribers: Signal[F, Int] = subSignal
+
+        def publish1(a: A): F[Unit] =
+          F.bind(F.modify(state){ case (_,subs) => a -> subs }) { c => F.map(F.traverse(c.now._2)(_.publish(a)))(_ => ()) }
+
+        def subscribe(maxQueued: Int): Stream[F, A] =
+          bracket(mkSubscriber(maxQueued))(_.subscribe, _.unSubscribe)
+
+        def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
+          bracket(mkSubscriber(maxQueued))(_.subscribeSize, _.unSubscribe)
+
+
       }
-    }
+    }}
 
   }
 
