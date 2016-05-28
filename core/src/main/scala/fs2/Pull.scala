@@ -7,7 +7,7 @@ import fs2.util.{Free,RealSupertype,Sub1}
 class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Either[Throwable,R]]]) extends PullOps[F,O,R] {
 
   private
-  def run_(asStep: Boolean): Stream[F,O] = Stream.mk { val s = {
+  def close_(asStep: Boolean): Stream[F,O] = Stream.mk { val s = {
     type G[x] = StreamCore[F,O]; type Out = Option[Either[Throwable,R]]
     get.fold[P[F,O]#f,G,Out](
       StreamCore.suspend,
@@ -25,11 +25,11 @@ class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Either[Throwa
   }; if (asStep) s else StreamCore.scope(s) }
 
 
-  def run: Stream[F,O] = run_(false)
+  def close: Stream[F,O] = close_(false)
 
-  /** Run this `Pull`, but don't cleanup any resources acquired. */
+  /** Close this `Pull`, but don't cleanup any resources acquired. */
   private[fs2]
-  def runAsStep: Stream[F,O] = run_(true)
+  def closeAsStep: Stream[F,O] = close_(true)
 }
 
 object Pull extends Pulls[Pull] with PullDerived with pull1 {
@@ -93,7 +93,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
   def pure[R](r: R): Pull[Nothing,Nothing,R] =
     new Pull(Free.pure(Some(Right(r))))
 
-  def run[F[_], O, R](p: Pull[F,O,R]): Stream[F,O] = p.run
+  def close[F[_], O, R](p: Pull[F,O,R]): Stream[F,O] = p.close
 
   private
   def Try[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
