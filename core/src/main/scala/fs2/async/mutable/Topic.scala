@@ -57,7 +57,7 @@ trait Topic[F[_],A] {
     * Additionally this emits current size of the queue of `A` for this subscriber allowing
     * you to terminate (or adjust) the subscription if subscriber is way behind the elements available.
     *
-    * Note that queue size is approximate and may not be exactly the size when `a` was take.
+    * Note that queue size is approximate and may not be exactly the size when `A` was taken.
     *
     * If the subscriber is over `maxQueued` bound of messages awaiting to be processed,
     * then publishers will hold into publishing to the queue.
