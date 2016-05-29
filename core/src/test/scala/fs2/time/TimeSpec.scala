@@ -24,11 +24,11 @@ class TimeSpec extends Fs2Spec {
       val firstValueDiscrepancy = time.duration[Task].take(1).runLog.unsafeRun.last
       val reasonableErrorInMillis = 200
       val reasonableErrorInNanos = reasonableErrorInMillis * 1000000
-      def p = firstValueDiscrepancy.toNanos < reasonableErrorInNanos
+      def s = firstValueDiscrepancy.toNanos < reasonableErrorInNanos
 
-      withClue("first duration is near zero on first run") { assert(p) }
+      withClue("first duration is near zero on first run") { assert(s) }
       Thread.sleep(reasonableErrorInMillis)
-      withClue("first duration is near zero on second run") { assert(p) }
+      withClue("first duration is near zero on second run") { assert(s) }
     }
 
     "every" in {

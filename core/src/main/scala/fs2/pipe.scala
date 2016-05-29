@@ -13,11 +13,11 @@ object pipe {
       chunks.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } as h
     }}
 
-  /** Behaves like the identity process, but emits no output until the source is exhausted. */
+  /** Behaves like the identity stream, but emits no output until the source is exhausted. */
   def bufferAll[F[_],I]: Pipe[F,I,I] = bufferBy(_ => true)
 
   /**
-   * Behaves like the identity process, but requests elements from its
+   * Behaves like the identity stream, but requests elements from its
    * input in blocks that end whenever the predicate switches from true to false.
    */
   def bufferBy[F[_],I](f: I => Boolean): Pipe[F,I,I] = {
@@ -460,12 +460,12 @@ object pipe {
   def zipWithScan1[F[_],I,S](z: S)(f: (S, I) => S): Stream[F,I] => Stream[F,(I,S)] =
     _.mapAccumulate(z) { (s,i) => val s2 = f(s,i); (s2, (i,s2)) }.map(_._2)
 
-  // stepping a process
+  // stepping a stream
 
-  def covary[F[_],I,O](p: Stream[Pure,I] => Stream[Pure,O]): Pipe[F,I,O] =
-    p.asInstanceOf[Pipe[F,I,O]]
+  def covary[F[_],I,O](s: Stream[Pure,I] => Stream[Pure,O]): Pipe[F,I,O] =
+    s.asInstanceOf[Pipe[F,I,O]]
 
-  def stepper[I,O](p: Stream[Pure,I] => Stream[Pure,O]): Stepper[I,O] = {
+  def stepper[I,O](s: Stream[Pure,I] => Stream[Pure,O]): Stepper[I,O] = {
     type Read[+R] = Option[Chunk[I]] => R
     def readFunctor: Functor[Read] = new Functor[Read] {
       def map[A,B](fa: Read[A])(g: A => B): Read[B]
@@ -477,7 +477,7 @@ object pipe {
         case Some(chunk) => Stream.chunk(chunk).append(prompts)
       }
 
-    def outputs: Stream[Read,O] = covary[Read,I,O](p)(prompts)
+    def outputs: Stream[Read,O] = covary[Read,I,O](s)(prompts)
     def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))

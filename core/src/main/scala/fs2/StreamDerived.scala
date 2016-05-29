@@ -27,15 +27,15 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
     }
 
   /**
-   * The infinite `Process`, always emits `a`.
+   * The infinite `Stream`, always emits `a`.
    * If for performance reasons it is good to emit `a` in chunks,
    * specify size of chunk by `chunkSize` parameter
    */
   def constant[F[_],W](w: W, chunkSize: Int = 1): Stream[F, W] =
     emits(List.fill(chunkSize)(w)) ++ constant(w, chunkSize)
 
-  def drain[F[_],A](p: Stream[F,A]): Stream[F,Nothing] =
-    p flatMap { _ => empty }
+  def drain[F[_],A](s: Stream[F,A]): Stream[F,Nothing] =
+    s flatMap { _ => empty }
 
   def emit[F[_],A](a: A): Stream[F,A] = chunk(Chunk.singleton(a))
 
@@ -50,7 +50,7 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
   def eval[F[_], A](fa: F[A]): Stream[F, A] = attemptEval(fa) flatMap { _ fold(fail, emit) }
 
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
-    flatMap(eval(f))(p => p)
+    flatMap(eval(f))(s => s)
 
   /**
    * An infinite `Stream` that repeatedly applies a given function
@@ -73,8 +73,8 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
   def mask[F[_],A](a: Stream[F,A]): Stream[F,A] =
     onError(a)(_ => empty)
 
-  def onComplete[F[_],A](p: Stream[F,A], regardless: => Stream[F,A]): Stream[F,A] =
-    onError(append(p, mask(regardless))) { err => append(mask(regardless), fail(err)) }
+  def onComplete[F[_],A](s: Stream[F,A], regardless: => Stream[F,A]): Stream[F,A] =
+    onError(append(s, mask(regardless))) { err => append(mask(regardless), fail(err)) }
 
   def peek[F[_],A](h: Handle[F,A]): Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] =
     h.await flatMap { case hd #: tl => Pull.pure(hd #: tl.push(hd)) }
@@ -138,8 +138,8 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
   def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] =
     emit(()) flatMap { _ => s }
 
-  def noneTerminate[F[_],A](p: Stream[F,A]): Stream[F,Option[A]] =
-    p.map(Some(_)) ++ emit(None)
+  def noneTerminate[F[_],A](s: Stream[F,A]): Stream[F,Option[A]] =
+    s.map(Some(_)) ++ emit(None)
 
   /** Produce a (potentially infinite) stream from an unfold. */
   def unfold[F[_],S,A](s0: S)(f: S => Option[(A,S)]): Stream[F,A] = {
