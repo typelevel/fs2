@@ -9,9 +9,9 @@ class Pipe2Spec extends Fs2Spec {
 
     "zipWith left/right side infinite" in {
       val ones = Stream.constant("1")
-      val p = Stream("A","B","C")
-      runLog(ones.zipWith(p)(_ + _)) shouldBe Vector("1A", "1B", "1C")
-      runLog(p.zipWith(ones)(_ + _)) shouldBe Vector("A1", "B1", "C1")
+      val s = Stream("A","B","C")
+      runLog(ones.zipWith(s)(_ + _)) shouldBe Vector("1A", "1B", "1C")
+      runLog(s.zipWith(ones)(_ + _)) shouldBe Vector("A1", "B1", "C1")
     }
 
     "zipWith both side infinite" in {
@@ -23,10 +23,10 @@ class Pipe2Spec extends Fs2Spec {
 
     "zipAllWith left/right side infinite" in {
       val ones = Stream.constant("1")
-      val p = Stream("A","B","C")
-      runLog(ones.through2Pure(p)(pipe2.zipAllWith("2","Z")(_ + _)).take(5)) shouldBe
+      val s = Stream("A","B","C")
+      runLog(ones.through2Pure(s)(pipe2.zipAllWith("2","Z")(_ + _)).take(5)) shouldBe
           Vector("1A", "1B", "1C", "1Z", "1Z")
-      runLog(p.through2Pure(ones)(pipe2.zipAllWith("Z","2")(_ + _)).take(5)) shouldBe
+      runLog(s.through2Pure(ones)(pipe2.zipAllWith("Z","2")(_ + _)).take(5)) shouldBe
         Vector("A1", "B1", "C1", "Z1", "Z1")
     }
 
@@ -41,9 +41,9 @@ class Pipe2Spec extends Fs2Spec {
 
     "zip left/right side infinite" in {
       val ones = Stream.constant("1")
-      val p = Stream("A","B","C")
-      runLog(ones.zip(p)) shouldBe Vector("1" -> "A", "1" -> "B", "1" -> "C")
-      runLog(p.zip(ones)) shouldBe Vector("A" -> "1", "B" -> "1", "C" -> "1")
+      val s = Stream("A","B","C")
+      runLog(ones.zip(s)) shouldBe Vector("1" -> "A", "1" -> "B", "1" -> "C")
+      runLog(s.zip(ones)) shouldBe Vector("A" -> "1", "B" -> "1", "C" -> "1")
     }
 
     "zip both side infinite" in {
@@ -55,9 +55,9 @@ class Pipe2Spec extends Fs2Spec {
 
     "zipAll left/right side infinite" in {
       val ones = Stream.constant("1")
-      val p = Stream("A","B","C")
-      runLog(ones.through2Pure(p)(pipe2.zipAll("2","Z")).take(5)) shouldBe Vector("1" -> "A", "1" -> "B", "1" -> "C", "1" -> "Z", "1" -> "Z")
-      runLog(p.through2Pure(ones)(pipe2.zipAll("Z","2")).take(5)) shouldBe Vector("A" -> "1", "B" -> "1", "C" -> "1", "Z" -> "1", "Z" -> "1")
+      val s = Stream("A","B","C")
+      runLog(ones.through2Pure(s)(pipe2.zipAll("2","Z")).take(5)) shouldBe Vector("1" -> "A", "1" -> "B", "1" -> "C", "1" -> "Z", "1" -> "Z")
+      runLog(s.through2Pure(ones)(pipe2.zipAll("Z","2")).take(5)) shouldBe Vector("A" -> "1", "B" -> "1", "C" -> "1", "Z" -> "1", "Z" -> "1")
     }
 
     "zipAll both side infinite" in {
@@ -69,9 +69,9 @@ class Pipe2Spec extends Fs2Spec {
 
     "interleave left/right side infinite" in {
       val ones = Stream.constant("1")
-      val p = Stream("A","B","C")
-      runLog(ones.interleave(p)) shouldBe Vector("1", "A", "1", "B", "1", "C")
-      runLog(p.interleave(ones)) shouldBe Vector("A", "1", "B", "1", "C", "1")
+      val s = Stream("A","B","C")
+      runLog(ones.interleave(s)) shouldBe Vector("1", "A", "1", "B", "1", "C")
+      runLog(s.interleave(ones)) shouldBe Vector("A", "1", "B", "1", "C", "1")
     }
 
     "interleave both side infinite" in {
@@ -83,9 +83,9 @@ class Pipe2Spec extends Fs2Spec {
 
     "interleaveAll left/right side infinite" in {
       val ones = Stream.constant("1")
-      val p = Stream("A","B","C")
-      runLog(ones.interleaveAll(p).take(9)) shouldBe Vector("1", "A", "1", "B", "1", "C", "1", "1", "1")
-      runLog(p.interleaveAll(ones).take(9)) shouldBe Vector("A", "1", "B", "1", "C", "1", "1", "1", "1")
+      val s = Stream("A","B","C")
+      runLog(ones.interleaveAll(s).take(9)) shouldBe Vector("1", "A", "1", "B", "1", "C", "1", "1", "1")
+      runLog(s.interleaveAll(ones).take(9)) shouldBe Vector("A", "1", "B", "1", "C", "1", "1", "1", "1")
     }
 
     "interleaveAll both side infinite" in {

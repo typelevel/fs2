@@ -8,8 +8,8 @@ Laws (using infix syntax):
 
 `append` forms a monoid in conjunction with `empty`:
 
-  * `empty append p == p` and `p append empty == p`.
-  * `(p1 append p2) append p3 == p1 append (p2 append p3)`
+  * `empty append s == s` and `s append empty == s`.
+  * `(s1 append s2) append s3 == s1 append (s2 append s3)`
 
 And `push` is consistent with using `append` to prepend a single chunk:
 
@@ -58,7 +58,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   def fail[F[_]](e: Throwable): Stream[F,Nothing]
 
-  def onError[F[_],A](p: Stream[F,A])(handle: Throwable => Stream[F,A]): Stream[F,A]
+  def onError[F[_],A](s: Stream[F,A])(handle: Throwable => Stream[F,A]): Stream[F,A]
 
   // safe resource usage
 
@@ -86,7 +86,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   // evaluation
 
-  def runFoldFree[F[_],A,B](p: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
-  def runFoldTraceFree[F[_],A,B](t: Trace)(p: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
+  def runFoldFree[F[_],A,B](s: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
+  def runFoldTraceFree[F[_],A,B](t: Trace)(s: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
 }
 

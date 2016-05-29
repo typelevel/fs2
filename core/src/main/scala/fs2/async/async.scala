@@ -43,7 +43,7 @@ package object async {
    * produced by `source`. If `source` is empty, the resulting signal will always
    * be `initial`.
    *
-   * @param source   discrete process publishing values to this signal
+   * @param source   discrete stream publishing values to this signal
    */
   def hold[F[_]:Async,A](initial: A, source: Stream[F, A]): Stream[F, immutable.Signal[F,A]] =
      immutable.Signal.hold(initial, source)

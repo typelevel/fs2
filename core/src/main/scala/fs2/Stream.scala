@@ -131,11 +131,11 @@ object Stream extends Streams[Stream] with StreamDerived {
     if (c.isEmpty) h
     else new Handle(c :: h.buffer, h.underlying)
 
-  def runFoldFree[F[_], A, B](p: Stream[F,A], z: B)(f: (B, A) => B): Free[F,B] =
-    p.runFoldFree(z)(f)
+  def runFoldFree[F[_], A, B](s: Stream[F,A], z: B)(f: (B, A) => B): Free[F,B] =
+    s.runFoldFree(z)(f)
 
-  def runFoldTraceFree[F[_], A, B](t: Trace)(p: Stream[F,A], z: B)(f: (B, A) => B): Free[F,B] =
-    p.runFoldTraceFree(t)(z)(f)
+  def runFoldTraceFree[F[_], A, B](t: Trace)(s: Stream[F,A], z: B)(f: (B, A) => B): Free[F,B] =
+    s.runFoldTraceFree(t)(z)(f)
 
   def scope[F[_],O](s: Stream[F,O]): Stream[F,O] =
     Stream.mk { StreamCore.scope { s.get } }
