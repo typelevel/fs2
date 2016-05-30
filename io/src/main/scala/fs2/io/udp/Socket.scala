@@ -57,9 +57,9 @@ object Socket {
     , sendBufferSize: Int
     , reuseAddress: Boolean
   )( implicit  F:Async[F] ): Stream[F,Socket[F]] = {
-    Stream.bracket(F.suspend(new DatagramSocket(bind)))(
+    Stream.bracket(F.delay(new DatagramSocket(bind)))(
       ch => Stream.bracket(mkSocket(bind,queueMax,ch))(s => emit(s), _.close)
-      , ch => F.suspend(ch.close())
+      , ch => F.delay(ch.close())
     )
   }
 
@@ -83,16 +83,16 @@ object Socket {
       t.run()
 
 
-      def write0(packet: Packet): F[Unit] = F.suspend {
+      def write0(packet: Packet): F[Unit] = F.delay {
         val data = new DatagramPacket(packet.bytes.values, packet.bytes.size, packet.remote)
         dgs.send(data)
       }
 
       def close0: F[Unit] = {
-        F.bind(F.suspend(closedNow.set(true))) { _ =>
+        F.bind(F.delay(closedNow.set(true))) { _ =>
         F.bind(stopRead.set(true)) { _ =>
           if (dgs.isClosed) F.pure(())
-          else F.suspend(dgs.close())
+          else F.delay(dgs.close())
 
         }}
 
@@ -103,7 +103,7 @@ object Socket {
 
       new Socket[F] {
         def localAddress: F[SocketAddress] =
-          F.suspend(dgs.getLocalSocketAddress)
+          F.delay(dgs.getLocalSocketAddress)
 
         def reads: Stream[F, Packet] =
           readQueue.dequeue.interruptWhen(stopRead)
