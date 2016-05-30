@@ -8,6 +8,8 @@ import scala.concurrent.ExecutionContext
 /** Provides a function for evaluating thunks, possibly asynchronously. */
 trait Strategy {
   def apply(thunk: => Unit): Unit
+
+  override def toString = "Strategy"
 }
 
 object Strategy {

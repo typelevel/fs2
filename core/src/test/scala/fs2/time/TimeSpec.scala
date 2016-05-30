@@ -5,35 +5,38 @@ import org.scalacheck.Gen
 import scala.concurrent.duration._
 
 import Stream._
+import fs2.util.Task
 
 class TimeSpec extends Fs2Spec {
-
-  implicit val scheduler = java.util.concurrent.Executors.newScheduledThreadPool(2)
-  override implicit val S = Strategy.fromExecutor(scheduler)
 
   "time" - {
 
     "awakeEvery" in {
-      time.awakeEvery(100.millis).map(_.toMillis/100).take(5).runLog.run.unsafeRun shouldBe Vector(1,2,3,4,5)
+      time.awakeEvery[Task](100.millis).map(_.toMillis/100).take(5).runLog.unsafeRun shouldBe Vector(1,2,3,4,5)
+    }
+
+    "awakeEvery liveness" in {
+      val s = time.awakeEvery[Task](1.milli).evalMap { i => Task.async[Unit](cb => S(cb(Right(())))) }.take(200)
+      runLog { concurrent.join(5)(Stream(s, s, s, s, s)) }
     }
 
     "duration" in {
-      val firstValueDiscrepancy = time.duration.take(1).runLog.run.unsafeRun.last
+      val firstValueDiscrepancy = time.duration[Task].take(1).runLog.unsafeRun.last
       val reasonableErrorInMillis = 200
       val reasonableErrorInNanos = reasonableErrorInMillis * 1000000
-      def p = firstValueDiscrepancy.toNanos < reasonableErrorInNanos
+      def s = firstValueDiscrepancy.toNanos < reasonableErrorInNanos
 
-      withClue("first duration is near zero on first run") { assert(p) }
+      withClue("first duration is near zero on first run") { assert(s) }
       Thread.sleep(reasonableErrorInMillis)
-      withClue("first duration is near zero on second run") { assert(p) }
+      withClue("first duration is near zero on second run") { assert(s) }
     }
 
     "every" in {
       val smallDelay = Gen.choose(10, 300) map {_.millis}
-      forAll(smallDelay) { delay: Duration =>
-        type BD = (Boolean, Duration)
+      forAll(smallDelay) { delay: FiniteDuration =>
+        type BD = (Boolean, FiniteDuration)
         val durationSinceLastTrue: Pipe[Pure,BD,BD] = {
-          def go(lastTrue: Duration): Handle[Pure,BD] => Pull[Pure,BD,Handle[Pure,BD]] = h => {
+          def go(lastTrue: FiniteDuration): Handle[Pure,BD] => Pull[Pure,BD,Handle[Pure,BD]] = h => {
             h.receive1 {
               case pair #: tl =>
                 pair match {
@@ -47,12 +50,12 @@ class TimeSpec extends Fs2Spec {
 
         val draws = (600.millis / delay) min 10 // don't take forever
 
-        val durationsSinceSpike = time.every(delay).
-          zip(time.duration).
+        val durationsSinceSpike = time.every[Task](delay).
+          zip(time.duration[Task]).
           take(draws.toInt).
           through(durationSinceLastTrue)
 
-        val result = durationsSinceSpike.runLog.run.unsafeRun.toList
+        val result = durationsSinceSpike.runLog.unsafeRun.toList
         val (head :: tail) = result
 
         withClue("every always emits true first") { assert(head._1) }

@@ -124,14 +124,14 @@ object pipe2 {
       }
     }
     def promptsL: Stream[Read,I] =
-      Stream.eval[Read, Option[Chunk[I]]](Left(identity)).flatMap[Read,I] {
+      Stream.eval[Read, Option[Chunk[I]]](Left(identity)).flatMap {
         case None => Stream.empty
-        case Some(chunk) => Stream.chunk(chunk).append[Read,I](promptsL)
+        case Some(chunk) => Stream.chunk(chunk).append(promptsL)
       }
     def promptsR: Stream[Read,I2] =
-      Stream.eval[Read, Option[Chunk[I2]]](Right(identity)).flatMap[Read,I2] {
+      Stream.eval[Read, Option[Chunk[I2]]](Right(identity)).flatMap {
         case None => Stream.empty
-        case Some(chunk) => Stream.chunk(chunk).append[Read,I2](promptsR)
+        case Some(chunk) => Stream.chunk(chunk).append(promptsR)
       }
 
     def outputs: Stream[Read,O] = covary[Read,I,I2,O](p)(promptsL, promptsR)
@@ -139,7 +139,7 @@ object pipe2 {
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
         case List() => s.stream.step.flatMap { s => Pull.output1(s) }
-         .run.runFold(None: Option[Step[Chunk[O],Handle[Read, O]]])(
+         .close.runFoldFree(None: Option[Step[Chunk[O],Handle[Read, O]]])(
           (_,s) => Some(s))
       }
     def go(s: Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]): Stepper[I,I2,O] =

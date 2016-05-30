@@ -15,7 +15,7 @@ import Resources._
  * Once `Closed` or `Closing`, there is no way to reopen a `Resources`.
  */
 private[fs2]
-class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: String = "Resources") {
+class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Either[List[() => Unit], R]])], val name: String = "Resources") {
 
   def isOpen: Boolean = tokens.get._1 == Open
   def isClosed: Boolean = tokens.get._1 == Closed
@@ -29,8 +29,8 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: S
     tokens.get._2.keys.toList.filter(k => !snapshot(k))
   def release(ts: List[T]): Option[(List[R],List[T])] = tokens.access match {
     case ((open,m), update) =>
-      if (ts.forall(t => (m.get(t): Option[Option[R]]) != Some(None))) {
-        val rs = ts.flatMap(t => m.get(t).toList.flatten)
+      if (ts.forall(t => m.get(t).forall(_.fold(_ => false, _ => true)))) {
+        val rs = ts.flatMap(t => m.get(t).toList.collect { case Right(r) => r })
         val m2 = m.removeKeys(ts)
         if (!update(open -> m2)) release(ts) else Some(rs -> ts.filter(t => m.get(t).isEmpty))
       }
@@ -40,17 +40,34 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: S
   /**
    * Close this `Resources` and return all acquired resources.
    * After finishing, no calls to `startAcquire` will succeed.
-   * Returns `None` if any resources are in process of being acquired.
+   * Returns `Left(n)` if there are n > 0 resources in the process of being
+   * acquired, and registers a thunk to be invoked when the resource
+   * is done being acquired.
    */
   @annotation.tailrec
-  final def closeAll: Option[List[(T,R)]] = tokens.access match {
+  final def closeAll(waiting: => Stream[() => Unit]): Either[Int, List[(T,R)]] = tokens.access match {
     case ((open,m),update) =>
-      val totallyDone = m.values.forall(_ != None)
-      def rs = m.orderedEntries.collect { case (t,Some(r)) => (t,r) }.toList
-      def m2 = if (!totallyDone) m else LinkedMap.empty[T,Option[R]]
-      if (!update((if (totallyDone) Closed else Closing, m2))) closeAll
-      else if (totallyDone) Some(rs)
-      else None
+      val totallyDone = m.values.forall(_.isRight)
+      def rs = m.orderedEntries.collect { case (t,Right(r)) => (t,r) }.toList
+      lazy val m2 =
+        if (!totallyDone) {
+          var ws = waiting
+          val beingAcquired = m.orderedEntries.iterator.collect { case (_, Left(_)) => 1 }.sum
+          if (ws.lengthCompare(beingAcquired) < 0) throw new IllegalArgumentException("closeAll - waiting too short")
+          LinkedMap(m.orderedEntries.map {
+            case (t, Left(ews)) =>
+              val w = ws.head
+              ws = ws.tail
+              (t, Left(w::ews))
+            case (t, Right(r)) => (t, Right(r))
+          })
+        }
+        else LinkedMap.empty[T,Either[List[() => Unit],R]]
+      if (update((if (totallyDone) Closed else Closing, m2))) {
+        if (totallyDone) Right(rs)
+        else Left(m2.values.filter(_.isLeft).size)
+      }
+      else closeAll(waiting)
   }
 
   /**
@@ -62,17 +79,17 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: S
   final def startClose(t: T): Option[R] = tokens.access match {
     case ((Open,m),update) => m.get(t) match {
       case None => None // note: not flatMap so can be tailrec
-      case Some(Some(r)) => // close of an acquired resource
-        if (update((Open, m.updated(t, None)))) Some(r)
+      case Some(Right(r)) => // close of an acquired resource
+        if (update((Open, m.updated(t, Left(List()))))) Some(r)
         else startClose(t)
-      case Some(None) => None // close of any acquiring resource fails
+      case Some(Left(_)) => None // close of any acquiring resource fails
     }
     case _ => None // if already closed or closing
   }
 
   final def finishClose(t: T): Unit = tokens.modify {
     case (open,m) => m.get(t) match {
-      case Some(None) => (open, m-t)
+      case Some(Left(_)) => (open, m-t)
       case _ => sys.error("close of unknown resource: "+t)
     }
   }
@@ -86,7 +103,7 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: S
       m.get(t) match {
         case Some(r) => sys.error("startAcquire on already used token: "+(t -> r))
         case None => open == Open && {
-          update(open -> m.edit(t, _ => Some(None))) || startAcquire(t)
+          update(open -> m.edit(t, _ => Some(Left(List())))) || startAcquire(t)
         }
       }
   }
@@ -98,13 +115,14 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: S
   final def cancelAcquire(t: T): Unit = tokens.access match {
     case ((open,m), update) =>
       m.get(t) match {
-        case Some(Some(r)) => () // sys.error("token already acquired: "+ (t -> r))
+        case Some(Right(r)) => () // sys.error("token already acquired: "+ (t -> r))
         case None => ()
-        case Some(None) =>
+        case Some(Left(cbs)) =>
           val m2 = m - t
           val totallyDone = m2.values.forall(_ != None)
           val status = if (totallyDone && open == Closing) Closed else open
-          if (!update(status -> m2)) cancelAcquire(t)
+          if (update(status -> m2)) cbs.foreach(thunk => thunk())
+          else cancelAcquire(t)
       }
   }
 
@@ -112,12 +130,16 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Option[R]])], val name: S
    * Associate `r` with the given `t`.
    */
   @annotation.tailrec
-  final def finishAcquire(t: T, r: R): Unit = tokens.access match {
+  final def finishAcquire(t: T, r: R): Boolean = tokens.access match {
     case ((open,m), update) =>
       m.get(t) match {
-        case Some(None) =>
-          val m2 = m.edit(t, _ => Some(Some(r)))
-          if (!update(open -> m2)) finishAcquire(t,r) // retry on contention
+        case Some(Left(waiting)) =>
+          val m2 = m.edit(t, _ => Some(Right(r)))
+          if (update(open -> m2)) {
+            waiting.foreach(thunk => thunk())
+            true
+          } else
+            finishAcquire(t,r) // retry on contention
         case r => sys.error("expected acquiring status, got: " + r)
       }
   }

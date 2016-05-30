@@ -8,6 +8,15 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   // note: these are in alphabetical order
 
+  /** Alias for `self through [[pipe.buffer]]`. */
+  def buffer(n: Int): Stream[F,O] = self through pipe.buffer(n)
+
+  /** Alias for `self through [[pipe.bufferAll]]`. */
+  def bufferAll: Stream[F,O] = self through pipe.bufferAll
+
+  /** Alias for `self through [[pipe.bufferBy]]`. */
+  def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
+
   /** Alias for `self through [[pipe.chunkLimit]]`. */
   def chunkLimit(n: Int): Stream[F,Chunk[O]] = self through pipe.chunkLimit(n)
 
@@ -30,6 +39,15 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self through [[pipe.drop]]`. */
   def drop(n: Int): Stream[F,O] = self through pipe.drop(n)
 
+  /** Alias for `self through [[pipe.dropLast]]`. */
+  def dropLast: Stream[F,O] = self through pipe.dropLast
+
+  /** Alias for `self through [[pipe.dropLastIf]]`. */
+  def dropLastIf(p: O => Boolean): Stream[F,O] = self through pipe.dropLastIf(p)
+
+  /** Alias for `self through [[pipe.dropRight]]`. */
+  def dropRight(n: Int): Stream[F,O] = self through pipe.dropRight(n)
+
   /** Alias for `self through [[pipe.dropWhile]]` */
   def dropWhile(p: O => Boolean): Stream[F,O] = self through pipe.dropWhile(p)
 
@@ -50,6 +68,9 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self through [[pipe.forall]]`. */
   def forall(f: O => Boolean): Stream[F, Boolean] = self through pipe.forall(f)
+
+  /** Alias for `self through [[pipe.intersperse]]`. */
+  def intersperse[O2 >: O](separator: O2): Stream[F,O2] = self through pipe.intersperse(separator)
 
   /** Alias for `self through [[pipe.last]]`. */
   def last: Stream[F,Option[O]] = self through pipe.last
@@ -75,6 +96,12 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self through [[pipe.shiftRight]]`. */
   def shiftRight[O2 >: O](head: O2*): Stream[F,O2] = self through pipe.shiftRight(head: _*)
+
+  /** Alias for `self through [[pipe.sliding]]`. */
+  def sliding(n: Int): Stream[F,Vector[O]] = self through pipe.sliding(n)
+
+  /** Alias for `self through [[pipe.split]]`. */
+  def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
 
   /** Alias for `self through [[pipe.sum]](f)`. */
   def sum[O2 >: O : Numeric]: Stream[F,O2] = self through pipe.sum
@@ -112,4 +139,10 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
 
   /** Alias for `self through [[pipe.zipWithPreviousAndNext]]`. */
   def zipWithPreviousAndNext: Stream[F, (Option[O], O, Option[O])] = self through pipe.zipWithPreviousAndNext
+
+  /** Alias for `self through [[pipe.zipWithScan]]`. */
+  def zipWithScan[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan(z)(f)
+
+  /** Alias for `self through [[pipe.zipWithScan1]]`. */
+  def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan1(z)(f)
 }

@@ -2,11 +2,11 @@ package fs2
 package async
 package mutable
 
-import fs2.Stream
-
+import fs2.Async.Change
+import fs2._
+import fs2.Stream._
 import fs2.async.immutable
 import fs2.util.Monad
-import fs2.internal.LinkedMap
 
 /**
  * A signal whose value may be set asynchronously. Provides continuous
@@ -20,12 +20,11 @@ trait Signal[F[_],A] extends immutable.Signal[F,A] {
   /**
    * Asynchronously sets the current value of this `Signal` and returns new value of this `Signal`.
    *
-   * `op` is consulted to set this signal. It is supplied with current value to either
-   * set the value (returning Some) or no-op (returning None)
+   * `f` is consulted to set this signal.
    *
    * `F` returns the result of applying `op` to current value.
    */
-   def possiblyModify(op: A => Option[A]): F[Option[A]]
+   def modify(f: A => A): F[Change[A]]
 
   /**
    * Asynchronously refreshes the value of the signal,
@@ -43,46 +42,49 @@ object Signal {
     def changes = Stream.empty
   }
 
-  private class ID
-
   def apply[F[_],A](initA: A)(implicit F: Async[F]): F[Signal[F,A]] =
-    F.map(F.refOf[(A, Long, LinkedMap[ID, Semaphore[F]])]((initA,0,LinkedMap.empty))) {
+    F.map(F.refOf[(A, Long, Vector[F.Ref[(A,Long)]])]((initA,0,Vector.empty))) {
     state => new Signal[F,A] {
-      def refresh: F[Unit] = F.map(possiblyModify(a => Some(a)))(_ => ())
-      def set(a: A): F[Unit] = F.map(possiblyModify(_ => Some(a)))(_ => ())
+      def refresh: F[Unit] = F.map(modify(identity))(_ => ())
+      def set(a: A): F[Unit] = F.map(modify(_ => a))(_ => ())
       def get: F[A] = F.map(F.get(state))(_._1)
-      def possiblyModify(f: A => Option[A]): F[Option[A]] =
-        F.bind(F.modify(state) { state => f(state._1) match {
-          case None => state
-          case Some(a2) => (a2, state._2 + 1, state._3)
-        }}) { c =>
-          if (c.now._2 != c.previous._2) { // set was successful
-            F.map(F.traverse(c.now._3.values.toVector) { semaphore =>
-              F.bind(semaphore.tryDecrement) { _ => semaphore.increment }
-            }) { (vs: Vector[Unit]) => Some(c.now._1) }
+      def modify(f: A => A): F[Change[A]] = {
+        F.bind(F.modify(state) { case (a,l,_) =>
+          (f(a),l+1,Vector.empty)
+        }) { c =>
+          if (c.previous._3.isEmpty) F.pure(c.map(_._1))
+          else {
+            val now = c.now._1 -> c.now._2
+            F.bind(F.traverse(c.previous._3)(ref => F.setPure(ref)(now))) { _ =>
+              F.pure(c.map(_._1))
+            }
           }
-          else F.pure(None)
-        }
-
-        def changes: Stream[F, Unit] =
-          discrete.map(_ => ())
-
-        def continuous: Stream[F, A] =
-          Stream.repeatEval(get)
-
-        def discrete: Stream[F, A] = {
-          val s: F[(ID, Semaphore[F])] =
-            F.bind(Semaphore(1)) { s =>
-            val id = new ID {}
-            F.map(F.modify(state)(state => state.copy(_3 = state._3.updated(id, s)))) { _ =>
-              (id, s)
-            }}
-          Stream.bracket(s)(
-            { case (id,s) => Stream.repeatEval(s.decrement).flatMap(_ => Stream.eval(get)) },
-            { case (id,s) => F.map(F.modify(state)(state => state.copy(_3 = state._3 - id))) {
-              _ => () }}
-          )
         }
       }
+
+      def changes: Stream[F, Unit] =
+        discrete.map(_ => ())
+
+      def continuous: Stream[F, A] =
+        Stream.repeatEval(get)
+
+      def discrete: Stream[F, A] = {
+        def go(lastA:A, last:Long):Stream[F,A] = {
+          def getNext:F[(A,Long)] = {
+            F.bind(F.ref[(A,Long)]) { ref =>
+              F.bind(F.modify(state) { case s@(a, l, listen) =>
+                if (l != last) s
+                else (a, l, listen :+ ref)
+              }) { c =>
+                if (c.modified) F.get(ref)
+                else F.pure(c.now._1 -> c.now._2)
+              }
+            }
+          }
+          emit(lastA) ++ (eval(getNext) flatMap { go _ tupled })
+        }
+
+        Stream.eval(F.get(state)) flatMap { case (a,l,_) => go(a,l) }
+      }}
     }
 }

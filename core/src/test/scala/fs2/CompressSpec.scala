@@ -30,7 +30,7 @@ class CompressSpec extends Fs2Spec {
           |of certain program behaviors by classifying phrases according to the
           |kinds of values they compute."
           |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
-      val compressed = Stream.chunk(Chunk.bytes(uncompressed)).throughp(deflate(9)).toVector
+      val compressed = Stream.chunk(Chunk.bytes(uncompressed)).throughPure(deflate(9)).toVector
 
       compressed.length should be < uncompressed.length
     }

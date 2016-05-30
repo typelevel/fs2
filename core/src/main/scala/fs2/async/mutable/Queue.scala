@@ -145,16 +145,23 @@ object Queue {
   /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
   def synchronousNoneTerminated[F[_],A](implicit F: Async[F]): F[Queue[F,Option[A]]] =
     F.bind(Semaphore(0)) { permits =>
+    F.bind(F.refOf(false)) { doneRef =>
     F.map(unbounded[F,Option[A]]) { q =>
       new Queue[F,Option[A]] {
         def upperBound: Option[Int] = Some(0)
-        def enqueue1(a: Option[A]): F[Unit] = a match {
-          case None => q.enqueue1(None)
-          case _ => F.bind(permits.decrement) { _ => q.enqueue1(a) }
+        def enqueue1(a: Option[A]): F[Unit] = F.bind(F.access(doneRef)) { case (done, update) =>
+          if (done) F.pure(())
+          else a match {
+            case None => F.bind(update(Right(true))) { successful => if (successful) q.enqueue1(None) else enqueue1(None) }
+            case _ => F.bind(permits.decrement) { _ => q.enqueue1(a) }
+          }
         }
-        def offer1(a: Option[A]): F[Boolean] = a match {
-          case None => q.offer1(None)
-          case _ => F.bind(permits.tryDecrement) { b => if (b) q.offer1(a) else F.pure(false) }
+        def offer1(a: Option[A]): F[Boolean] = F.bind(F.access(doneRef)) { case (done, update) =>
+          if (done) F.pure(true)
+          else a match {
+            case None => F.bind(update(Right(true))) { successful => if (successful) q.offer1(None) else offer1(None) }
+            case _ => F.bind(permits.decrement) { _ => q.offer1(a) }
+          }
         }
         def dequeue1: F[Option[A]] =
           F.bind(permits.increment) { _ => q.dequeue1 }
@@ -162,5 +169,5 @@ object Queue {
         def full: immutable.Signal[F, Boolean] = Signal.constant(true)
         def available: immutable.Signal[F, Int] = Signal.constant(0)
       }
-    }}
+    }}}
 }

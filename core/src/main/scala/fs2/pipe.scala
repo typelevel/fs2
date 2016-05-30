@@ -7,6 +7,44 @@ object pipe {
 
   // nb: methods are in alphabetical order
 
+  /** Behaves like the identity function, but requests `n` elements at a time from the input. */
+  def buffer[F[_],I](n: Int): Stream[F,I] => Stream[F,I] =
+    _.repeatPull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
+      chunks.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } as h
+    }}
+
+  /** Behaves like the identity stream, but emits no output until the source is exhausted. */
+  def bufferAll[F[_],I]: Pipe[F,I,I] = bufferBy(_ => true)
+
+  /**
+   * Behaves like the identity stream, but requests elements from its
+   * input in blocks that end whenever the predicate switches from true to false.
+   */
+  def bufferBy[F[_],I](f: I => Boolean): Pipe[F,I,I] = {
+    def go(buffer: Vector[Chunk[I]], last: Boolean): Handle[F,I] => Pull[F,I,Unit] = h => {
+      Pull.receiveOption[F,I,I,Unit] {
+        case Some(chunk #: h) =>
+          val (out, buf, last) = {
+            chunk.foldLeft((Vector.empty[Chunk[I]], Vector.empty[I], false)) { case ((out, buf, last), i) =>
+              val cur = f(i)
+              if (!f(i) && last) (out :+ Chunk.indexedSeq(buf :+ i), Vector.empty, cur)
+              else (out, buf :+ i, cur)
+            }
+          }
+          if (out.isEmpty) {
+            go(buffer :+ Chunk.indexedSeq(buf), last)(h)
+          } else {
+            (buffer ++ out).foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } >>
+              go(Vector(Chunk.indexedSeq(buf)), last)(h)
+          }
+
+        case None =>
+          buffer.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) }
+      }(h)
+    }
+    _.pull { h => go(Vector.empty, false)(h) }
+  }
+
   /** Outputs first value, and then any changed value from the last value. `eqf` is used for equality. **/
   def changes[F[_],I](eqf:(I,I) => Boolean): Stream[F,I] => Stream[F,I] =
     zipWithPrevious andThen collect {
@@ -41,6 +79,42 @@ object pipe {
   /** Drop `n` elements of the input, then echo the rest. */
   def drop[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull (h => Pull.drop(n)(h) flatMap Pull.echo)
+
+  /** Drops the last element. */
+  def dropLast[F[_],I]: Pipe[F,I,I] =
+    dropLastIf(_ => true)
+
+  /** Drops the last element if the predicate evaluates to true. */
+  def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
+    def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = h => {
+      Pull.receiveNonemptyOption[F,I,I,Unit] {
+        case Some(chunk #: h) => Pull.output(last) >> go(chunk)(h)
+        case None =>
+          val i = last(last.size - 1)
+          if (p(i)) Pull.output(last.take(last.size - 1))
+          else Pull.output(last)
+      }(h)
+    }
+    _.pull { Pull.receiveNonemptyOption {
+      case Some(c #: h) => go(c)(h)
+      case None => Pull.done
+    }}
+  }
+
+  /** Emits all but the last `n` elements of the input. */
+  def dropRight[F[_],I](n: Int): Stream[F,I] => Stream[F,I] = {
+    if (n <= 0) identity
+    else {
+      def go(acc: Vector[I]): Handle[F,I] => Pull[F,I,Unit] = {
+        _.receive {
+          case chunk #: h =>
+            val all = acc ++ chunk.toVector
+            Pull.output(Chunk.indexedSeq(all.dropRight(n))) >> go(all.takeRight(n))(h)
+        }
+      }
+      _ pull go(Vector.empty)
+    }
+  }
 
   /** Drop the elements of the input until the predicate `p` fails, then echo the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
@@ -79,6 +153,19 @@ object pipe {
    */
   def forall[F[_], I](p: I => Boolean): Stream[F,I] => Stream[F,Boolean] =
     _ pull (h => Pull.forall(p)(h) flatMap Pull.output1)
+
+  /** Emits the specified separator between every pair of elements in the source stream. */
+  def intersperse[F[_],I](separator: I): Stream[F,I] => Stream[F,I] =
+    _ pull { h => Pull.echo1(h) flatMap Pull.loop { (h: Stream.Handle[F,I]) =>
+      h.receive { case chunk #: h =>
+        val interspersed = {
+          val bldr = Vector.newBuilder[I]
+          chunk.toVector.foreach { i => bldr += separator; bldr += i }
+          Chunk.indexedSeq(bldr.result)
+        }
+        Pull.output(interspersed) >> Pull.pure(h)
+      }
+    }}
 
   /** Write all inputs to the output of the returned `Pull`. */
   def id[F[_],I]: Stream[F,I] => Stream[F,I] =
@@ -191,6 +278,58 @@ object pipe {
   def shiftRight[F[_],I](head: I*): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.echo(h.push(Chunk.indexedSeq(Vector(head: _*)))) }
 
+  /**
+   * Groups inputs in fixed size chunks by passing a "sliding window"
+   * of size `n` over them. If the input contains less than or equal to
+   * `n` elements, only one chunk of this size will be emitted.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4).sliding(2).toList
+   * res0: List[Chunk[Int]] = List(Chunk(1, 2), Chunk(2, 3), Chunk(3, 4))
+   * }}}
+   * @throws IllegalArgumentException if `n` <= 0
+   */
+  def sliding[F[_],I](n: Int): Stream[F,I] => Stream[F,Vector[I]] = {
+    require(n > 0, "n must be > 0")
+    def go(window: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = h => {
+      h.receive {
+        case chunk #: h =>
+          val out: Vector[Vector[I]] =
+            chunk.toVector.scanLeft(window)((w, i) => w.tail :+ i).tail
+          if (out.isEmpty) go(window)(h)
+          else Pull.output(Chunk.indexedSeq(out)) >> go(out.last)(h)
+      }
+    }
+    _ pull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
+      val window = chunks.foldLeft(Vector.empty[I])(_ ++ _.toVector)
+      Pull.output1(window) >> go(window)(h)
+    }}
+  }
+
+  /**
+   * Break the input into chunks where the delimiter matches the predicate.
+   * The delimiter does not appear in the output. Two adjacent delimiters in the
+   * input result in an empty chunk in the output.
+   */
+  def split[F[_],I](f: I => Boolean): Pipe[F,I,Vector[I]] = {
+    def go(buffer: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = {
+      Pull.receiveOption[F,I,Vector[I],Unit] {
+        case Some(chunk #: h) =>
+          chunk.indexWhere(f) match {
+            case None =>
+              go(buffer ++ chunk.toVector)(h)
+            case Some(idx) =>
+              val out = buffer ++ chunk.take(idx).toVector
+              val carry = if (idx + 1 < chunk.size) chunk.drop(idx + 1) else Chunk.empty
+              Pull.output1(out) >> go(Vector.empty)(h.push(carry))
+          }
+        case None =>
+          if (buffer.nonEmpty) Pull.output1(buffer) else Pull.done
+      }
+    }
+    _.pull(go(Vector.empty))
+  }
+
   /** Writes the sum of all input elements, or zero if the input is empty. */
   def sum[F[_],I](implicit ev: Numeric[I]): Stream[F,I] => Stream[F,I] =
     fold(ev.zero)(ev.plus)
@@ -295,29 +434,55 @@ object pipe {
     }
   }
 
-  // stepping a process
+  /**
+   * Zips the input with a running total according to `S`, up to but not including the current element. Thus the initial
+   * `z` value is the first emitted to the output:
+   * {{{
+   * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length).toList
+   * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
+   * }}}
+   *
+   * @see [[zipWithScan1]]
+   */
+  def zipWithScan[F[_],I,S](z: S)(f: (S, I) => S): Stream[F,I] => Stream[F,(I,S)] =
+    _.mapAccumulate(z) { (s,i) => val s2 = f(s,i); (s2, (i,s)) }.map(_._2)
 
-  def covary[F[_],I,O](p: Stream[Pure,I] => Stream[Pure,O]): Pipe[F,I,O] =
-    p.asInstanceOf[Pipe[F,I,O]]
+  /**
+   * Zips the input with a running total according to `S`, including the current element. Thus the initial
+   * `z` value is the first emitted to the output:
+   * {{{
+   * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length).toList
+   * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
+   * }}}
+   *
+   * @see [[zipWithScan]]
+   */
+  def zipWithScan1[F[_],I,S](z: S)(f: (S, I) => S): Stream[F,I] => Stream[F,(I,S)] =
+    _.mapAccumulate(z) { (s,i) => val s2 = f(s,i); (s2, (i,s2)) }.map(_._2)
 
-  def stepper[I,O](p: Stream[Pure,I] => Stream[Pure,O]): Stepper[I,O] = {
+  // stepping a stream
+
+  def covary[F[_],I,O](s: Stream[Pure,I] => Stream[Pure,O]): Pipe[F,I,O] =
+    s.asInstanceOf[Pipe[F,I,O]]
+
+  def stepper[I,O](s: Stream[Pure,I] => Stream[Pure,O]): Stepper[I,O] = {
     type Read[+R] = Option[Chunk[I]] => R
     def readFunctor: Functor[Read] = new Functor[Read] {
       def map[A,B](fa: Read[A])(g: A => B): Read[B]
         = fa andThen g
     }
     def prompts: Stream[Read,I] =
-      Stream.eval[Read, Option[Chunk[I]]](identity).flatMap[Read,I] {
+      Stream.eval[Read, Option[Chunk[I]]](identity).flatMap {
         case None => Stream.empty
-        case Some(chunk) => Stream.chunk(chunk).append[Read,I](prompts)
+        case Some(chunk) => Stream.chunk(chunk).append(prompts)
       }
 
-    def outputs: Stream[Read,O] = covary[Read,I,O](p)(prompts)
+    def outputs: Stream[Read,O] = covary[Read,I,O](s)(prompts)
     def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
     = s.buffer match {
         case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
         case List() => s.stream.step.flatMap { s => Pull.output1(s) }
-         .run.runFold(None: Option[Step[Chunk[O],Handle[Read, O]]])(
+         .close.runFoldFree(None: Option[Step[Chunk[O],Handle[Read, O]]])(
           (_,s) => Some(s))
       }
     def go(s: Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]): Stepper[I,O] =

@@ -108,20 +108,31 @@ sealed trait StreamCore[F[_],O] { self =>
   = Scope.eval(F.ref[(List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Either[Throwable,Unit]]]("unconsAsync")
-    val interrupt = new java.util.concurrent.atomic.AtomicBoolean(false)
-    val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll match {
-      case None =>
-        Free.eval(F.get(ref)) flatMap { _ =>
-          resources.closeAll match {
-            case None => Free.pure(Right(()))
-            case Some(resources) => StreamCore.runCleanup(resources.map(_._2))
+    val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
+    lazy val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
+      case Left(waiting) =>
+        Free.eval(F.traverse(Vector.fill(waiting)(F.ref[Unit]))(identity)) flatMap { gates =>
+          resources.closeAll(gates.toStream.map(gate => () => F.runSet(gate)(Right(())))) match {
+            case Left(_) => Free.eval(F.traverse(gates)(F.get)) flatMap { _ =>
+              resources.closeAll(noopWaiters) match {
+                case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")
+                                rootCleanup
+                case Right(resources) => StreamCore.runCleanup(resources.map(_._2))
+              }
+            }
+            case Right(resources) =>
+              StreamCore.runCleanup(resources.map(_._2))
           }
         }
-        case Some(resources) =>
+        case Right(resources) =>
           StreamCore.runCleanup(resources.map(_._2))
     }}
     def tweakEnv: Scope[F,Unit] =
-      Scope.startAcquire(token) flatMap { _ => Scope.finishAcquire(token, rootCleanup) }
+      Scope.startAcquire(token) flatMap { _ =>
+      Scope.finishAcquire(token, rootCleanup) flatMap { ok =>
+        if (ok) Scope.pure(())
+        else Scope.evalFree(rootCleanup).flatMap(_.fold(Scope.fail, Scope.pure))
+      }}
     val s: F[Unit] = F.set(ref) { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
@@ -129,9 +140,9 @@ sealed trait StreamCore[F[_],O] { self =>
           // Important: copy any locally acquired resources to our parent and remove the placeholder
           // root token, which only needed if the parent terminated early, before the future was forced
           val removeRoot = Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }
-          (resources.closeAll match {
-            case None => Scope.fail(new IllegalStateException("FS2 bug: resources still being acquired"))
-            case Some(rs) => removeRoot flatMap { _ => Scope.traverse(rs) {
+          (resources.closeAll(scala.collection.immutable.Stream()) match {
+            case Left(_) => Scope.fail(new IllegalStateException("FS2 bug: resources still being acquired"))
+            case Right(rs) => removeRoot flatMap { _ => Scope.traverse(rs) {
               case (token,r) => Scope.acquire(token,r)
             }}
           }) flatMap { (rs: List[Either[Throwable,Unit]]) =>
@@ -165,7 +176,7 @@ object StreamCore {
     case class NewSince(snapshot: Set[Token]) extends RF[Nothing,List[Token]]
     case class Release(tokens: List[Token]) extends RF[Nothing,Either[Throwable,Unit]]
     case class StartAcquire(token: Token) extends RF[Nothing,Boolean]
-    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]) extends RF[F,Unit]
+    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]) extends RF[F,Boolean]
     case class CancelAcquire(token: Token) extends RF[Nothing,Unit]
   }
 
@@ -384,7 +395,7 @@ object StreamCore {
     case class Fail[F[_],O1](err: Throwable) extends Segment[F,O1]
     case class Emit[F[_],O1](c: Chunk[O1]) extends Segment[F,O1]
     case class Handler[F[_],O1](h: Throwable => StreamCore[F,O1]) extends Segment[F,O1] {
-      override def toString = s"Handler(h#${System.identityHashCode(h)})"
+      override def toString = "Handler"
     }
     case class Append[F[_],O1](s: StreamCore[F,O1]) extends Segment[F,O1]
   }
@@ -406,8 +417,7 @@ object StreamCore {
     def pushBind[O0](f: O0 => StreamCore[F,O1]): Stack[F,O0,O2] = pushBindOrMap(Right(f))
     def pushMap[O0](f: Chunk[O0] => Chunk[O1]): Stack[F,O0,O2] = pushBindOrMap(Left(f))
     def pushBindOrMap[O0](f: Either[Chunk[O0] => Chunk[O1], O0 => StreamCore[F,O1]]): Stack[F,O0,O2] = new Stack[F,O0,O2] {
-      def render = f.fold(ff => s"Map(f#${System.identityHashCode(ff)})",
-                          ff => s"Bind(f#${System.identityHashCode(ff)})") :: self.render
+      def render = f.fold(ff => "Map", ff => "Bind") :: self.render
       def apply[R](unbound: (Catenable[Segment[F,O0]], Eq[O0,O2]) => R, bound: H[R]): R
       = bound.f(Catenable.empty, f, self)
     }
@@ -464,16 +474,16 @@ object StreamCore {
 
   private
   def runCleanup[F[_]](l: Resources[Token,Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] =
-    l.closeAll match {
-      case Some(l) => runCleanup(l.map(_._2))
-      case None => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
+    l.closeAll(scala.collection.immutable.Stream()) match {
+      case Right(l) => runCleanup(l.map(_._2))
+      case Left(_) => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
     }
 
   private[fs2]
   def runCleanup[F[_]](cleanups: Iterable[Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] = {
-    // note - run cleanup actions in LIFO order, later actions run first
+    // note - run cleanup actions in FIFO order, but avoid left-nesting binds
     // all actions are run but only first error is reported
-    cleanups.foldLeft[Free[F,Either[Throwable,Unit]]](Free.pure(Right(())))(
+    cleanups.toList.reverse.foldLeft[Free[F,Either[Throwable,Unit]]](Free.pure(Right(())))(
       (tl,hd) => hd flatMap { _.fold(e => tl flatMap { _ => Free.pure(Left(e)) }, _ => tl) }
     )
   }

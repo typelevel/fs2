@@ -1,32 +1,25 @@
 package fs2
 
-import java.util.concurrent.atomic.AtomicInteger
-
-import java.util.concurrent.{ThreadFactory, Executors, ScheduledExecutorService}
 
 import fs2.util.Task
 import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.duration._
 
+object TestStrategy {
+  implicit val S = Strategy.fromFixedDaemonPool(8)
+  implicit lazy val scheduler = Scheduler.fromFixedDaemonPool(2)
+}
+
 trait TestUtil {
 
-  implicit val S = Strategy.fromFixedDaemonPool(8)
-  // implicit val S = Strategy.fromCachedDaemonPool("test-thread-worker")
-  implicit val Sch : ScheduledExecutorService = Executors.newScheduledThreadPool(8, new ThreadFactory {
-    val idx = new AtomicInteger(0)
-    def newThread(r: Runnable): Thread = {
-      val t = new Thread(r,s"fs2.spec-default-scheduler-${idx.incrementAndGet()}")
-      t.setDaemon(true)
-      t
-    }
-  })
+ implicit val S = TestStrategy.S
+ implicit val scheduler = TestStrategy.scheduler
 
-  def runLog[A](s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRun
-  def runFor[A](timeout: FiniteDuration = 3.seconds)(s: Stream[Task,A]): Vector[A] = s.runLog.run.unsafeRunFor(timeout)
+  def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.unsafeRunFor(timeout)
 
   def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
-    s.runLog.run.unsafeAttemptRun match {
+    s.runLog.unsafeAttemptRun match {
       case Left(e) if e == err => true
       case _ => false
     }
@@ -122,3 +115,4 @@ trait TestUtil {
 }
 
 object TestUtil extends TestUtil
+

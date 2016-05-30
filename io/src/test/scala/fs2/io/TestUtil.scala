@@ -6,9 +6,6 @@ import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.locks.ReentrantLock
-
-import org.scalacheck.Prop
 
 
 object TestUtil {
@@ -40,12 +37,5 @@ object TestUtil {
   val localBindAddress = localAddress(9999)
 
 
-  // the io specs may fight for local machine resources
-  // to prevent race conditions between resource specs, lock assures only one spec will go at time
-  val specLock = new ReentrantLock()
-  def acquireLock(prop : => Prop):Prop = {
-    try {  specLock.lock(); prop }
-    finally { specLock.unlock() }
-  }
 
 }

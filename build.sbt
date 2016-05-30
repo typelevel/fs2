@@ -1,4 +1,5 @@
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
+import sbtrelease.Version
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
@@ -52,16 +53,27 @@ lazy val testSettings = Seq(
   publishArtifact in Test := true
 )
 
-lazy val scaladocSettings = Seq(
-  scalacOptions in (Compile, doc) ++= Seq(
-    "-doc-source-url", scmInfo.value.get.browseUrl + "/tree/master€{FILE_PATH}.scala",
-    "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
-    "-implicits",
-    "-implicits-show-all"
-  ),
-  scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
-  autoAPIMappings := true
-)
+lazy val scaladocSettings = {
+  def scmBranch(v: String) = {
+    val Some(ver) = Version(v)
+    if(ver.qualifier.exists(_ == "-SNAPSHOT"))
+      // support branch (0.9.0-SNAPSHOT -> series/0.9)
+      s"series/${ver.copy(bugfix = None, qualifier = None).string}"
+    else
+      // release tag (0.9.0-M2 -> v0.9.0-M2)
+      s"v${ver.string}"
+  }
+  Seq(
+    scalacOptions in (Compile, doc) ++= Seq(
+      "-doc-source-url", s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
+      "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
+      "-implicits",
+      "-implicits-show-all"
+    ),
+    scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
+    autoAPIMappings := true
+  )
+}
 
 lazy val publishingSettings = Seq(
   publishTo := {
@@ -78,11 +90,6 @@ lazy val publishingSettings = Seq(
   publishMavenStyle := true,
   pomIncludeRepository := { _ => false },
   pomExtra := {
-    <url>https://github.com/functional-streams-for-scala/fs2</url>
-    <scm>
-      <url>git@github.com:functional-streams-for-scala/fs2.git</url>
-      <connection>scm:git:git@github.com:functional-streams-for-scala/fs2.git</connection>
-    </scm>
     <developers>
       {for ((username, name) <- contributors) yield
       <developer>
@@ -105,6 +112,13 @@ lazy val publishingSettings = Seq(
   }
 )
 
+lazy val noPublish = Seq(
+  publish := (),
+  publishLocal := (),
+  publishSigned := (),
+  publishArtifact := false
+)
+
 lazy val releaseSettings = Seq(
   releaseCrossBuild := true,
   releasePublishArtifactsAction := PgpKeys.publishSigned.value
@@ -112,12 +126,7 @@ lazy val releaseSettings = Seq(
 
 lazy val root = project.in(file(".")).
   settings(commonSettings).
-  settings(
-    publish := (),
-    publishLocal := (),
-    publishSigned := (),
-    publishArtifact := false
-  ).
+  settings(noPublish).
   aggregate(core, io, benchmark)
 
 lazy val core = project.in(file("core")).
@@ -134,11 +143,9 @@ lazy val io = project.in(file("io")).
 
 lazy val benchmark = project.in(file("benchmark")).
   settings(commonSettings).
+  settings(noPublish).
   settings(
-    name := "fs2-benchmark",
-    publish := (),
-    publishLocal := (),
-    publishArtifact := false
+    name := "fs2-benchmark"
   ).dependsOn(io)
 
 lazy val docs = project.in(file("docs")).

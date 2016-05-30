@@ -1,9 +1,10 @@
 package fs2
 package util
 
-import fs2.internal.{Actor,Future,LinkedMap}
+
+import fs2.internal.{Actor, Future, LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import java.util.concurrent.ScheduledExecutorService
+
 import scala.concurrent.duration._
 
 /*
@@ -136,48 +137,42 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
 
   /**
    * Run this `Task` and block until its result is available, or until
-   * `timeoutInMillis` milliseconds have elapsed, at which point a `TimeoutException`
+   * `timeout` has elapsed, at which point a `TimeoutException`
    * will be thrown and the `Future` will attempt to be canceled.
    */
-  def unsafeRunFor(timeoutInMillis: Long): A = get.runFor(timeoutInMillis) match {
+  def unsafeRunFor(timeout: FiniteDuration): A = get.runFor(timeout) match {
     case Left(e) => throw e
     case Right(a) => a
   }
-
-  def unsafeRunFor(timeout: Duration): A = unsafeRunFor(timeout.toMillis)
 
   /**
    * Like `unsafeRunFor`, but returns exceptions as values. Both `TimeoutException`
    * and other exceptions will be folded into the same `Throwable`.
    */
-  def unsafeAttemptRunFor(timeoutInMillis: Long): Either[Throwable,A] =
-    get.attemptRunFor(timeoutInMillis).right flatMap { a => a }
-
-  def unsafeAttemptRunFor(timeout: Duration): Either[Throwable,A] =
-    unsafeAttemptRunFor(timeout.toMillis)
+  def unsafeAttemptRunFor(timeout: FiniteDuration): Either[Throwable,A] =
+    get.attemptRunFor(timeout).right flatMap { a => a }
 
   /**
-   * A `Task` which returns a `TimeoutException` after `timeoutInMillis`,
+   * A `Task` which returns a `TimeoutException` after `timeout`,
    * and attempts to cancel the running computation.
    */
-  def timed(timeoutInMillis: Long)(implicit S: ScheduledExecutorService): Task[A] =
-    new Task(get.timed(timeoutInMillis).map(_.right.flatMap(x => x)))
+  def timed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
+    new Task(get.timed(timeout).map(_.right.flatMap(x => x)))
 
-  def timed(timeout: Duration)(implicit S: ScheduledExecutorService): Task[A] =
-    timed(timeout.toMillis)
+  override def toString = "Task"
 
   /**
-   Ensures the result of this Task satisfies the given predicate,
-   or fails with the given value.
+    * Ensures the result of this Task satisfies the given predicate,
+    * or fails with the given value.
    */
   def ensure(failure: => Throwable)(f: A => Boolean): Task[A] =
     flatMap(a => if(f(a)) Task.now(a) else Task.fail(failure))
 
   /**
-   Returns a `Task` that, when run, races evaluation of `this` and `t`,
-   and returns the result of whichever completes first. The losing task
-   continues to execute in the background though its result will be sent
-   nowhere.
+    * Returns a `Task` that, when run, races evaluation of `this` and `t`,
+    * and returns the result of whichever completes first. The losing task
+    * continues to execute in the background though its result will be sent
+    * nowhere.
    */
   def race[B](t: Task[B])(implicit S: Strategy): Task[Either[A,B]] = {
     Task.ref[Either[A,B]].flatMap { ref =>
@@ -187,7 +182,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
   }
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule(delay: Duration)(implicit pool: ScheduledExecutorService): Task[A] =
+  def schedule(delay: FiniteDuration)(implicit strategy: Strategy, scheduler: Scheduler): Task[A] =
     Task.schedule((), delay) flatMap { _ => this }
 }
 
@@ -223,7 +218,7 @@ object Task extends Instances {
 
   /** Create a `Future` that will evaluate `a` using the given `Strategy`. */
   def apply[A](a: => A)(implicit S: Strategy): Task[A] =
-    async(_(Try(a)))
+    async { cb => S(cb(Try(a))) }
 
   /**
    * Don't use this. It doesn't do what you think. If you have a `t: Task[A]` you'd
@@ -234,13 +229,13 @@ object Task extends Instances {
     apply(a) flatMap { a => a }
 
   /**
-   Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
-   into the outer task, `t` will be running in the background, and the inner task
-   is conceptually a future which can be forced at any point via `flatMap`.
+    * Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
+    * into the outer task, `t` will be running in the background, and the inner task
+    * is conceptually a future which can be forced at any point via `flatMap`.
 
-   For example:
+    * For example:
 
-   {{{
+    * {{{
      for {
        f <- Task.start { expensiveTask1 }
        // at this point, `expensive1` is evaluating in background
@@ -257,17 +252,17 @@ object Task extends Instances {
     ref[A].flatMap { ref => ref.set(t) map (_ => ref.get) }
 
   /**
-   Like [[async]], but run the callback in the same thread in the same
-   thread, rather than evaluating the callback using a `Strategy`.
+    * Like [[async]], but run the callback in the same thread in the same
+    * thread, rather than evaluating the callback using a `Strategy`.
    */
   def unforkedAsync[A](register: (Either[Throwable,A] => Unit) => Unit): Task[A] =
     async(register)(Strategy.sequential)
 
   /**
-   Create a `Task` from an asynchronous computation, which takes the form
-   of a function with which we can register a callback. This can be used
-   to translate from a callback-based API to a straightforward monadic
-   version. The callback is run using the strategy `S`.
+    * Create a `Task` from an asynchronous computation, which takes the form
+    * of a function with which we can register a callback. This can be used
+    * to translate from a callback-based API to a straightforward monadic
+    * version. The callback is run using the strategy `S`.
    */
   def async[A](register: (Either[Throwable,A] => Unit) => Unit)(implicit S: Strategy): Task[A] =
     new Task(Future.Async(cb => register {
@@ -275,8 +270,8 @@ object Task extends Instances {
     }))
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule[A](a: => A, delay: Duration)(implicit pool: ScheduledExecutorService): Task[A] =
-    apply(a)(Future.Scheduled(delay))
+  def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
+    apply(a)(scheduler.delayedStrategy(delay))
 
   /** Utility function - evaluate `a` and catch and return any exceptions. */
   def Try[A](a: => A): Either[Throwable,A] =
@@ -338,10 +333,12 @@ object Task extends Instances {
   class Ref[A] private[fs2](actor: Actor[Msg[A]]) {
 
     def access: Task[(A, Either[Throwable,A] => Task[Boolean])] =
-      getStamped(new MsgId {}).map { case (a, id) =>
-        val set = (a: Either[Throwable,A]) =>
-          Task.unforkedAsync[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
-        (a, set)
+      Task.delay(new MsgId {}).flatMap { mid =>
+        getStamped(mid).map { case (a, id) =>
+          val set = (a: Either[Throwable,A]) =>
+            Task.unforkedAsync[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
+          (a, set)
+        }
       }
 
     /**
@@ -359,7 +356,7 @@ object Task extends Instances {
       Task.unforkedAsync[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
-    def get: Task[A] = getStamped(new MsgId {}).map(_._1)
+    def get: Task[A] = Task.delay(new MsgId {}).flatMap { mid => getStamped(mid).map(_._1) }
 
     /** Like `get`, but returns a `Task[Unit]` that can be used cancel the subscription. */
     def cancellableGet: Task[(Task[A], Task[Unit])] = Task.delay {
@@ -396,21 +393,24 @@ object Task extends Instances {
   }
 }
 
-/* Prefer an `Async` and `Catchable`, but will settle for implicit `Monad`. */
+/* Prefer an `Async` but will settle for implicit `Effect`. */
 private[fs2] trait Instances1 {
-  implicit def monad: Catchable[Task] = new Catchable[Task] {
+  implicit def effect: Effect[Task] = new Effect[Task] {
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
-    def suspend[A](a: => A) = Task.delay(a)
+    override def delay[A](a: => A) = Task.delay(a)
+    def suspend[A](fa: => Task[A]) = Task.suspend(fa)
+
+    override def toString = "Effect[Task]"
   }
 }
 
 private[fs2] trait Instances extends Instances1 {
 
   implicit def asyncInstance(implicit S:Strategy): Async[Task] = new Async[Task] {
-    type Ref[A] = Task.Ref[A] 
+    type Ref[A] = Task.Ref[A]
     def access[A](r: Ref[A]) = r.access
     def set[A](r: Ref[A])(a: Task[A]): Task[Unit] = r.set(a)
     def runSet[A](r: Ref[A])(a: Either[Throwable,A]): Unit = r.runSet(a)
@@ -420,8 +420,17 @@ private[fs2] trait Instances extends Instances1 {
     def setFree[A](q: Ref[A])(a: Free[Task, A]): Task[Unit] = q.setFree(a)
     def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
     def pure[A](a: A): Task[A] = Task.now(a)
-    def suspend[A](a: => A): Task[A] = Task.delay(a)
+    override def delay[A](a: => A) = Task.delay(a)
+    def suspend[A](fa: => Task[A]) = Task.suspend(fa)
     def fail[A](err: Throwable): Task[A] = Task.fail(err)
     def attempt[A](fa: Task[A]): Task[Either[Throwable, A]] = fa.attempt
+    override def toString = "Async[Task]"
   }
+
+  implicit def runInstance(implicit S:Strategy): Async.Run[Task] = new Async.Run[Task] {
+    def unsafeRunAsyncEffects(f: Task[Unit])(onError: Throwable => Unit) =
+      S(f.unsafeRunAsync(_.fold(onError, _ => ())))
+    override def toString = "Run[Task]"
+  }
+
 }

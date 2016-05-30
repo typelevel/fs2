@@ -1,14 +1,11 @@
 package fs2
 
 import Async.{Change,Future}
-import fs2.util.{Free,Functor,Catchable}
+import fs2.util.{Free,Functor,Effect}
 
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.util.Task]` requires an implicit `fs2.util.Strategy` in scope.")
-trait Async[F[_]] extends Catchable[F] { self =>
+trait Async[F[_]] extends Effect[F] { self =>
   type Ref[A]
-
-  /** create suspended computation evaluated lazily **/
-  def suspend[A](a: => A):F[A]
 
   /** Create an asynchronous, concurrent mutable reference. */
   def ref[A]: F[Ref[A]]
@@ -68,7 +65,7 @@ trait Async[F[_]] extends Catchable[F] { self =>
   def setFree[A](r: Ref[A])(a: Free[F,A]): F[Unit]
   def setPure[A](r: Ref[A])(a: A): F[Unit] = set(r)(pure(a))
   /** Actually run the effect of setting the ref. Has side effects. */
-  protected def runSet[A](q: Ref[A])(a: Either[Throwable,A]): Unit
+  private[fs2] def runSet[A](q: Ref[A])(a: Either[Throwable,A]): Unit
 
   /**
    * Like `get`, but returns an `F[Unit]` that can be used cancel the subscription.
@@ -191,4 +188,25 @@ object Async {
    * is the new value computed by `f`.
    */
   case class Change[+A](previous: A, now: A)
+
+  object Change {
+    implicit class ChangeSyntax[A](val self:Change[A]) extends AnyVal {
+      def modified: Boolean = self.previous != self.now
+      def map[B](f: A => B):Change[B] = Change(f(self.previous), f(self.now))
+    }
+  }
+
+  /** Used to evaluate `F`. */
+  trait Run[F[_]]  {
+
+    /**
+     * Asynchronously run this `F`. Performs side effects.
+     * If the evaluation of the `F` terminates with an exception, then the `onError`
+     * callback will be called.
+     *
+     * Purpose of this combinator is to allow libraries that perform multiple callback
+     * (like enqueueing the messages, setting signals) to be written abstract over `F`.
+     */
+    def unsafeRunAsyncEffects(f: F[Unit])(onError: Throwable => Unit): Unit
+  }
 }

@@ -9,6 +9,32 @@ class PipeSpec extends Fs2Spec {
 
   "Pipe" - {
 
+    "buffer" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      runLog { s.get.buffer(n.get) } shouldBe s.get.toVector
+
+      var counter = 0
+      val s2 = (s.get ++ Stream.emits(List.fill(n.get + 1)(0))).repeat
+      runLog { s2.evalMap { i => Task.delay { counter += 1; i }}.buffer(n.get).take(n.get + 1) }
+      counter shouldBe (n.get * 2)
+    }
+
+    "bufferAll" in forAll { (s: PureStream[Int]) =>
+      runLog { s.get.bufferAll } shouldBe s.get.toVector
+      var counter = 0
+      runLog { (s.get ++ s.get).evalMap { i => Task.delay { counter += 1; i } }.bufferAll.take(s.get.toList.size + 1) }
+      counter shouldBe (s.get.toList.size * 2)
+    }
+
+    "bufferBy" in forAll { (s: PureStream[Int]) =>
+      runLog { s.get.bufferBy(_ >= 0) } shouldBe s.get.toVector
+
+      var counter = 0
+      val s2 = s.get.map(_.abs)
+      val s3 = (s2 ++ Stream.emit(-1) ++ s2).evalMap { i => Task.delay { counter += 1; i }}
+      runLog { s3.bufferBy(_ >= 0).take(s.get.toList.size + 2) }
+      counter shouldBe (s.get.toList.size * 2 + 1)
+    }
+
     "chunkLimit" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
       val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
       assert(sizeV.forall(_ <= n0.get) && sizeV.sum == s.get.toVector.size)
@@ -42,12 +68,12 @@ class PipeSpec extends Fs2Spec {
     "chunks" in forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
       val v = Vector(Vector(11,2,2,2), Vector(2,2,3), Vector(2,3,4), Vector(1,2,2,2,2,2,3,3))
       val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-      runLog(s.throughp(chunks).map(_.toVector)) shouldBe v
+      runLog(s.throughPure(chunks).map(_.toVector)) shouldBe v
     }
 
     "chunks (2)" in forAll(nestedVectorGen[Int](0,10, emptyChunks = true)) { (v: Vector[Vector[Int]]) =>
       val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-      runLog(s.throughp(chunks).flatMap(Stream.chunk)) shouldBe v.flatten
+      runLog(s.throughPure(chunks).flatMap(Stream.chunk)) shouldBe v.flatten
     }
 
     "collect" in forAll { (s: PureStream[Int]) =>
@@ -69,6 +95,20 @@ class PipeSpec extends Fs2Spec {
     "drop" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
       val n = if (negate) -n0.get else n0.get
       runLog(s.get.through(drop(n))) shouldBe runLog(s.get).drop(n)
+    }
+
+    "dropLast" in forAll { (s: PureStream[Int]) =>
+      runLog { s.get.dropLast } shouldBe s.get.toVector.dropRight(1)
+    }
+
+    "dropLastIf" in forAll { (s: PureStream[Int]) =>
+      runLog { s.get.dropLastIf(_ => false) } shouldBe s.get.toVector
+      runLog { s.get.dropLastIf(_ => true) } shouldBe s.get.toVector.dropRight(1)
+    }
+
+    "dropRight" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.dropRight(n)) shouldBe runLog(s.get).dropRight(n)
     }
 
     "dropWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
@@ -130,6 +170,10 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.forall(f)) shouldBe Vector(runLog(s.get).forall(f))
     }
 
+    "intersperse" in forAll { (s: PureStream[Int], n: Int) =>
+      runLog(s.get.intersperse(n)) shouldBe runLog(s.get).flatMap(i => Vector(i, n)).dropRight(1)
+    }
+
     "mapChunked" in forAll { (s: PureStream[Int]) =>
       runLog(s.get.mapChunks(identity).chunks) shouldBe runLog(s.get.chunks)
     }
@@ -181,6 +225,21 @@ class PipeSpec extends Fs2Spec {
       val stop = System.currentTimeMillis
       println("prefetch (timing) took " + (stop-start) + " milliseconds, should be under 6000 milliseconds")
       assert((stop-start) < 6000)
+    }
+
+    "sliding" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      s.get.sliding(n.get).toList shouldBe s.get.toList.sliding(n.get).map(_.toVector).toList
+    }
+
+    "split" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      val s2 = s.get.map(_.abs).filter(_ != 0)
+      runLog { s2.chunkLimit(n.get).intersperse(Chunk.singleton(0)).flatMap(Stream.chunk).split(_ == 0) } shouldBe s2.chunkLimit(n.get).map(_.toVector).toVector
+    }
+
+    "split (2)" in {
+      Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector(4))
+      Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3))
+      Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector())
     }
 
     "sum" in forAll { (s: PureStream[Int]) =>
@@ -292,6 +351,16 @@ class PipeSpec extends Fs2Spec {
       runLog(Stream().zipWithPreviousAndNext) shouldBe Vector()
       runLog(Stream(0).zipWithPreviousAndNext) shouldBe Vector((None, 0, None))
       runLog(Stream(0, 1, 2).zipWithPreviousAndNext) shouldBe Vector((None, 0, Some(1)), (Some(0), 1, Some(2)), (Some(1), 2, None))
+    }
+
+    "zipWithScan" in {
+      runLog(Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length)) shouldBe Vector("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
+      runLog(Stream().zipWithScan(())((acc, i) => ???)) shouldBe Vector()
+    }
+
+    "zipWithScan1" in {
+      runLog(Stream("uno", "dos", "tres", "cuatro").zipWithScan1(0)(_ + _.length)) shouldBe Vector("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
+      runLog(Stream().zipWithScan1(())((acc, i) => ???)) shouldBe Vector()
     }
   }
 }

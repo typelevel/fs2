@@ -55,6 +55,4 @@ package object tcp {
   ): Stream[F, Stream[F, Socket[F]]] =
   Socket.server(bind,maxQueued,reuseAddress,receiveBufferSize)
 
-
-
 }
