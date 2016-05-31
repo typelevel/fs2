@@ -7,7 +7,7 @@ import scala.collection.mutable.{Queue=>MutableQueue}
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.nio.channels.{DatagramChannel, Selector, SelectionKey, ClosedChannelException}
+import java.nio.channels.{CancelledKeyException,ClosedChannelException,DatagramChannel,Selector,SelectionKey}
 import java.util.concurrent.locks.ReentrantLock
 
 /**
@@ -106,7 +106,10 @@ object AsynchronousSocketGroup {
     override def read(ctx: Context, cb: Either[Throwable,Packet] => Unit): Unit = {
       onSelectorThread {
         ctx._3.queueReader(cb)
-        ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_READ)
+        try ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_READ)
+        catch {
+          case t: CancelledKeyException => // Ignore; key was closed
+        }
         ()
       } { cb(Left(new ClosedChannelException)) }
     }
@@ -114,7 +117,10 @@ object AsynchronousSocketGroup {
     override def write(ctx: Context, packet: Packet, cb: Option[Throwable] => Unit): Unit = {
       onSelectorThread {
         ctx._3.queueWriter((packet, cb))
-        ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_WRITE)
+        try ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_WRITE)
+        catch {
+          case t: CancelledKeyException => // Ignore; key was closed
+        }
         ()
       } { cb(Some(new ClosedChannelException)) }
     }
@@ -207,9 +213,13 @@ object AsynchronousSocketGroup {
             selectedKeys.remove
             val channel = key.channel.asInstanceOf[DatagramChannel]
             val attachment = key.attachment.asInstanceOf[Attachment]
-            if (key.isValid) {
-              if (key.isReadable) read1(key, channel, attachment, readBuffer)
-              if (key.isWritable) write1(key, channel, attachment)
+            try {
+              if (key.isValid) {
+                if (key.isReadable) read1(key, channel, attachment, readBuffer)
+                if (key.isWritable) write1(key, channel, attachment)
+              }
+            } catch {
+              case t: CancelledKeyException => // Ignore; key was closed
             }
           }
         }
