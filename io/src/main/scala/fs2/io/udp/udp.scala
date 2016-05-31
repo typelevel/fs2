@@ -50,7 +50,7 @@ package object udp {
       channel
     }
     Stream.bracket(mkChannel)(
-      ch => Stream.bracket(Socket.mkSocket(ch))(s => Stream.emit(s), _.close),
+      ch => Stream.bracket(Socket.mkSocket(ch, bind.toString))(s => Stream.emit(s), _.close),
       ch => F.delay(ch.close)
     )
   }

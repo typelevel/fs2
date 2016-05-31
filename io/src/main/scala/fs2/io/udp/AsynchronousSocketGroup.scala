@@ -10,8 +10,13 @@ import java.nio.channels.{DatagramChannel, Selector, SelectionKey, ClosedChannel
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 
+/**
+ * Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
+ *
+ * Each `AsynchronousSocketGroup` is assigned a single daemon thread that performs all read/write operations.
+ */
 sealed trait AsynchronousSocketGroup {
-  private[udp] def register(channel: DatagramChannel): (AsynchronousSocketGroup.Attachment, SelectionKey)
+  private[udp] def register(channel: DatagramChannel): (SelectionKey, AsynchronousSocketGroup.Attachment)
   private[udp] def enqueue(f: => Unit): Unit
 }
 
@@ -65,7 +70,7 @@ object AsynchronousSocketGroup {
     private val selector = Selector.open()
     private val pendingThunks: MutableQueue[() => Unit] = MutableQueue()
 
-    override def register(channel: DatagramChannel): (AsynchronousSocketGroup.Attachment, SelectionKey) = {
+    override def register(channel: DatagramChannel): (SelectionKey, AsynchronousSocketGroup.Attachment) = {
       channel.configureBlocking(false)
       val attachment = new AsynchronousSocketGroup.Attachment()
       val key = {
@@ -77,7 +82,7 @@ object AsynchronousSocketGroup {
           selectorLock.unlock
         }
       }
-      (attachment, key)
+      (key, attachment)
     }
 
     override def enqueue(f: => Unit): Unit = {
@@ -86,6 +91,50 @@ object AsynchronousSocketGroup {
       }
       selector.wakeup()
       ()
+    }
+
+    private def read1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, readBuffer: ByteBuffer): Unit = {
+      readBuffer.clear
+      val src = channel.receive(readBuffer)
+      if (src ne null) {
+        attachment.dequeueReader match {
+          case Some(reader) =>
+            readBuffer.flip
+            val bytes = Array.ofDim[Byte](readBuffer.remaining)
+            readBuffer.get(bytes)
+            readBuffer.clear
+            reader(Right(new Packet(src, Chunk.bytes(bytes))))
+            if (!attachment.hasReaders) {
+              key.interestOps(key.interestOps & ~SelectionKey.OP_READ)
+              ()
+            }
+          case None =>
+            sys.error("key marked for read but no reader")
+        }
+      }
+    }
+
+    private def write1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment): Unit = {
+      attachment.peekWriter match {
+        case Some((p, cb)) =>
+          try {
+            val sent = channel.send(ByteBuffer.wrap(p.bytes.toArray), p.remote)
+            if (sent > 0) {
+              attachment.dequeueWriter
+              cb(None)
+            }
+          } catch {
+            case e: IOException =>
+              attachment.dequeueWriter
+              cb(Some(e))
+          }
+          if (!attachment.hasWriters) {
+            key.interestOps(key.interestOps & ~SelectionKey.OP_WRITE)
+            ()
+          }
+        case None =>
+          sys.error("key marked for write but no writer")
+      }
     }
 
     private val doneNow = new AtomicBoolean(false)
@@ -104,48 +153,15 @@ object AsynchronousSocketGroup {
             val channel = key.channel.asInstanceOf[DatagramChannel]
             val attachment = key.attachment.asInstanceOf[Attachment]
             if (key.isValid) {
-              if (key.isReadable) {
-                readBuffer.clear
-                val src = channel.receive(readBuffer)
-                if (src ne null) {
-                  attachment.dequeueReader match {
-                    case Some(reader) =>
-                      readBuffer.flip
-                      val bytes = Array.ofDim[Byte](readBuffer.remaining)
-                      readBuffer.get(bytes)
-                      readBuffer.clear
-                      reader(Right(new Packet(src, Chunk.bytes(bytes))))
-                      if (!attachment.hasReaders) key.interestOps(key.interestOps & ~SelectionKey.OP_READ)
-                    case None =>
-                      sys.error("key marked for read but no reader")
-                  }
-                }
-              }
-              if (key.isWritable) {
-                attachment.peekWriter match {
-                  case Some((p, cb)) =>
-                    try {
-                      val sent = channel.send(ByteBuffer.wrap(p.bytes.toArray), p.remote)
-                      if (sent > 0) {
-                        attachment.dequeueWriter
-                        cb(None)
-                      }
-                    } catch {
-                      case e: IOException =>
-                        attachment.dequeueWriter
-                        cb(Some(e))
-                    }
-                    if (!attachment.hasWriters) key.interestOps(key.interestOps & ~SelectionKey.OP_WRITE)
-                  case None =>
-                    sys.error("key marked for write but no writer")
-                }
-              }
+              if (key.isReadable) read1(key, channel, attachment, readBuffer)
+              if (key.isWritable) write1(key, channel, attachment)
             }
           }
         }
       }
     })
     selectorThread.start()
+
+    override def toString = "AsynchronousSocketGroup"
   }
 }
-

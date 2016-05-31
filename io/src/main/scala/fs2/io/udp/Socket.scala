@@ -43,10 +43,10 @@ sealed trait Socket[F[_]] {
 
 object Socket {
 
-  private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup, F: Async[F]): F[Socket[F]] = F.delay {
-    val (attachment, key) = AG.register(channel)
-
+  private[fs2] def mkSocket[F[_]](channel: DatagramChannel, description: String)(implicit AG: AsynchronousSocketGroup, F: Async[F]): F[Socket[F]] = F.delay {
     new Socket[F] {
+      private val (key, attachment) = AG.register(channel)
+
       def localAddress: F[SocketAddress] =
         F.delay(channel.socket.getLocalSocketAddress)
 
@@ -80,6 +80,8 @@ object Socket {
           channel.close
         }
       }
+
+      override def toString = s"Socket($description)"
     }
   }
 }
