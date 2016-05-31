@@ -36,7 +36,7 @@ package object udp {
     , multicastInterface: Option[NetworkInterface] = None
     , multicastTTL: Option[Int] = None
     , multicastLoopback: Boolean = true
-  )(implicit AG: AsynchronousSocketGroup, F:Async[F]): Stream[F,Socket[F]] = {
+  )(implicit AG: AsynchronousSocketGroup, F: Async[F], FR: Async.Run[F]): Stream[F,Socket[F]] = {
     val mkChannel = F.delay {
       val channel = DatagramChannel.open()
       channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)

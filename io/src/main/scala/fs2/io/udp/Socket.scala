@@ -18,7 +18,7 @@ sealed trait Socket[F[_]] {
    * Note that multiple `reads` may execute at same time, causing each evaluation to receive fair
    * amount of messages.
    *
-   * @return
+   * @return stream of packets
    */
   def reads: Stream[F,Packet]
 
@@ -43,21 +43,24 @@ sealed trait Socket[F[_]] {
 
 object Socket {
 
-  private[fs2] def mkSocket[F[_]](channel: DatagramChannel, description: String)(implicit AG: AsynchronousSocketGroup, F: Async[F]): F[Socket[F]] = F.delay {
+  private[fs2] def mkSocket[F[_]](channel: DatagramChannel, description: String)(implicit AG: AsynchronousSocketGroup, F: Async[F], FR: Async.Run[F]): F[Socket[F]] = F.delay {
     new Socket[F] {
       private val ctx = AG.register(channel)
+
+      private def invoke(f: => Unit): Unit =
+        FR.unsafeRunAsyncEffects(F.delay(f))(_ => ())
 
       def localAddress: F[Option[SocketAddress]] =
         F.delay(Option(channel.socket.getLocalSocketAddress))
 
-      def read: F[Packet] = F.async(cb => F.delay { AG.read(ctx, cb) })
+      def read: F[Packet] = F.async(cb => F.delay { AG.read(ctx, result => invoke(cb(result))) })
 
       def reads: Stream[F, Packet] =
         Stream.repeatEval(read)
 
       def write(packet: Packet): F[Unit] =
         F.async(cb => F.delay {
-          AG.write(ctx, packet, _ match { case Some(t) => cb(Left(t)); case None => cb(Right(())) })
+          AG.write(ctx, packet, _ match { case Some(t) => invoke(cb(Left(t))); case None => invoke(cb(Right(()))) })
         })
 
       def writes: Sink[F, Packet] =
