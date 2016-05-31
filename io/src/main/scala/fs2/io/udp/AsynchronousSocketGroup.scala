@@ -16,65 +16,68 @@ import java.util.concurrent.locks.ReentrantLock
  * Each `AsynchronousSocketGroup` is assigned a single daemon thread that performs all read/write operations.
  */
 sealed trait AsynchronousSocketGroup {
-  private[udp] def register(channel: DatagramChannel): (SelectionKey, AsynchronousSocketGroup.Attachment)
-  private[udp] def read(key: SelectionKey, attachment: AsynchronousSocketGroup.Attachment, cb: Either[Throwable,Packet] => Unit): Unit
-  private[udp] def write(key: SelectionKey, attachment: AsynchronousSocketGroup.Attachment, packet: Packet, cb: Option[Throwable] => Unit): Unit
-  private[udp] def close(channel: DatagramChannel, attachment: AsynchronousSocketGroup.Attachment): Unit
+  private[udp] type Context
+  private[udp] def register(channel: DatagramChannel): Context
+  private[udp] def read(ctx: Context, cb: Either[Throwable,Packet] => Unit): Unit
+  private[udp] def write(ctx: Context, packet: Packet, cb: Option[Throwable] => Unit): Unit
+  private[udp] def close(ctx: Context): Unit
 }
 
 object AsynchronousSocketGroup {
 
-  private[udp] class Attachment(
-    readers: MutableQueue[Either[Throwable,Packet] => Unit] = MutableQueue(),
-    writers: MutableQueue[(Packet,Option[Throwable] => Unit)] = MutableQueue()
-  ) {
-
-    def dequeueReader: Option[Either[Throwable,Packet] => Unit] = {
-      if (readers.isEmpty) None
-      else Some(readers.dequeue())
-    }
-
-    def queueReader(reader: Either[Throwable,Packet] => Unit): Unit = {
-      readers += reader
-      ()
-    }
-
-    def hasReaders: Boolean = readers.nonEmpty
-
-    def peekWriter: Option[(Packet,Option[Throwable] => Unit)] = {
-      if (writers.isEmpty) None
-      else Some(writers.head)
-    }
-
-    def dequeueWriter: Option[(Packet,Option[Throwable] => Unit)] = {
-      if (writers.isEmpty) None
-      else Some(writers.dequeue())
-    }
-
-    def queueWriter(writer: (Packet,Option[Throwable] => Unit)): Unit = {
-      writers += writer
-      ()
-    }
-
-    def hasWriters: Boolean = writers.nonEmpty
-
-    def close: Unit = {
-      readers.foreach { cb => cb(Left(new ClosedChannelException)) }
-      readers.clear
-      writers.foreach { case (_, cb) => cb(Some(new ClosedChannelException)) }
-      writers.clear
-    }
-  }
-
   def apply(): AsynchronousSocketGroup = new AsynchronousSocketGroup {
+
+    class Attachment(
+      readers: MutableQueue[Either[Throwable,Packet] => Unit] = MutableQueue(),
+      writers: MutableQueue[(Packet,Option[Throwable] => Unit)] = MutableQueue()
+    ) {
+
+      def dequeueReader: Option[Either[Throwable,Packet] => Unit] = {
+        if (readers.isEmpty) None
+        else Some(readers.dequeue())
+      }
+
+      def queueReader(reader: Either[Throwable,Packet] => Unit): Unit = {
+        readers += reader
+        ()
+      }
+
+      def hasReaders: Boolean = readers.nonEmpty
+
+      def peekWriter: Option[(Packet,Option[Throwable] => Unit)] = {
+        if (writers.isEmpty) None
+        else Some(writers.head)
+      }
+
+      def dequeueWriter: Option[(Packet,Option[Throwable] => Unit)] = {
+        if (writers.isEmpty) None
+        else Some(writers.dequeue())
+      }
+
+      def queueWriter(writer: (Packet,Option[Throwable] => Unit)): Unit = {
+        writers += writer
+        ()
+      }
+
+      def hasWriters: Boolean = writers.nonEmpty
+
+      def close: Unit = {
+        readers.foreach { cb => cb(Left(new ClosedChannelException)) }
+        readers.clear
+        writers.foreach { case (_, cb) => cb(Some(new ClosedChannelException)) }
+        writers.clear
+      }
+    }
+
+    type Context = (DatagramChannel, SelectionKey, Attachment)
 
     private val selectorLock = new ReentrantLock()
     private val selector = Selector.open()
     private val pendingThunks: MutableQueue[() => Unit] = MutableQueue()
 
-    override def register(channel: DatagramChannel): (SelectionKey, AsynchronousSocketGroup.Attachment) = {
+    override def register(channel: DatagramChannel): Context = {
       channel.configureBlocking(false)
-      val attachment = new AsynchronousSocketGroup.Attachment()
+      val attachment = new Attachment()
       val key = {
         selectorLock.lock
         try {
@@ -84,29 +87,29 @@ object AsynchronousSocketGroup {
           selectorLock.unlock
         }
       }
-      (key, attachment)
+      (channel, key, attachment)
     }
 
-    override def read(key: SelectionKey, attachment: Attachment, cb: Either[Throwable,Packet] => Unit): Unit = {
+    override def read(ctx: Context, cb: Either[Throwable,Packet] => Unit): Unit = {
       onSelectorThread {
-        attachment.queueReader(cb)
-        key.interestOps(key.interestOps | SelectionKey.OP_READ)
+        ctx._3.queueReader(cb)
+        ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_READ)
         ()
       }
     }
 
-    override def write(key: SelectionKey, attachment: Attachment, packet: Packet, cb: Option[Throwable] => Unit): Unit = {
+    override def write(ctx: Context, packet: Packet, cb: Option[Throwable] => Unit): Unit = {
       onSelectorThread {
-        attachment.queueWriter((packet, cb))
-        key.interestOps(key.interestOps | SelectionKey.OP_WRITE)
+        ctx._3.queueWriter((packet, cb))
+        ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_WRITE)
         ()
       }
     }
 
-    override def close(channel: DatagramChannel, attachment: AsynchronousSocketGroup.Attachment): Unit = {
+    override def close(ctx: Context): Unit = {
       onSelectorThread {
-        channel.close
-        attachment.close
+        ctx._1.close
+        ctx._3.close
       }
     }
 

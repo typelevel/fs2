@@ -45,25 +45,25 @@ object Socket {
 
   private[fs2] def mkSocket[F[_]](channel: DatagramChannel, description: String)(implicit AG: AsynchronousSocketGroup, F: Async[F]): F[Socket[F]] = F.delay {
     new Socket[F] {
-      private val (key, attachment) = AG.register(channel)
+      private val ctx = AG.register(channel)
 
       def localAddress: F[SocketAddress] =
         F.delay(channel.socket.getLocalSocketAddress)
 
-      def read: F[Packet] = F.async(cb => F.delay { AG.read(key, attachment, cb) })
+      def read: F[Packet] = F.async(cb => F.delay { AG.read(ctx, cb) })
 
       def reads: Stream[F, Packet] =
         Stream.repeatEval(read)
 
       def write(packet: Packet): F[Unit] =
         F.async(cb => F.delay {
-          AG.write(key, attachment, packet, _ match { case Some(t) => cb(Left(t)); case None => cb(Right(())) })
+          AG.write(ctx, packet, _ match { case Some(t) => cb(Left(t)); case None => cb(Right(())) })
         })
 
       def writes: Sink[F, Packet] =
         _.flatMap(p => Stream.eval(write(p)))
 
-      def close: F[Unit] = F.delay { AG.close(channel, attachment) }
+      def close: F[Unit] = F.delay { AG.close(ctx) }
 
       override def toString = s"Socket($description)"
     }
