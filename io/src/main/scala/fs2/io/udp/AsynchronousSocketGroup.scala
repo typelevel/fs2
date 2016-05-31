@@ -5,6 +5,7 @@ package udp
 import scala.collection.mutable.{Queue=>MutableQueue}
 
 import java.io.IOException
+import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.{DatagramChannel, Selector, SelectionKey, ClosedChannelException}
 import java.util.concurrent.locks.ReentrantLock
@@ -145,7 +146,7 @@ object AsynchronousSocketGroup {
 
     private def read1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, readBuffer: ByteBuffer): Unit = {
       readBuffer.clear
-      val src = channel.receive(readBuffer)
+      val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]
       if (src ne null) {
         attachment.dequeueReader match {
           case Some(reader) =>

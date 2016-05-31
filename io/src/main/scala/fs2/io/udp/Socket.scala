@@ -1,7 +1,7 @@
 package fs2.io.udp
 
-import java.net.{ InetAddress, NetworkInterface, SocketAddress }
-import java.nio.channels.DatagramChannel
+import java.net.{InetAddress,NetworkInterface,InetSocketAddress}
+import java.nio.channels.{ClosedChannelException,DatagramChannel}
 
 import fs2._
 
@@ -34,8 +34,8 @@ sealed trait Socket[F[_]] {
    */
   def writes: Sink[F,Packet]
 
-  /** Returns the local address of this udp socket if the socket is bound. */
-  def localAddress: F[Option[SocketAddress]]
+  /** Returns the local address of this udp socket. */
+  def localAddress: F[InetSocketAddress]
 
   /** Closes this socket. */
   def close: F[Unit]
@@ -77,15 +77,15 @@ sealed trait Socket[F[_]] {
 
 object Socket {
 
-  private[fs2] def mkSocket[F[_]](channel: DatagramChannel, description: String)(implicit AG: AsynchronousSocketGroup, F: Async[F], FR: Async.Run[F]): F[Socket[F]] = F.delay {
+  private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup, F: Async[F], FR: Async.Run[F]): F[Socket[F]] = F.delay {
     new Socket[F] {
       private val ctx = AG.register(channel)
 
       private def invoke(f: => Unit): Unit =
         FR.unsafeRunAsyncEffects(F.delay(f))(_ => ())
 
-      def localAddress: F[Option[SocketAddress]] =
-        F.delay(Option(channel.socket.getLocalSocketAddress))
+      def localAddress: F[InetSocketAddress] =
+        F.delay(Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]).getOrElse(throw new ClosedChannelException))
 
       def read: F[Packet] = F.async(cb => F.delay { AG.read(ctx, result => invoke(cb(result))) })
 
@@ -120,7 +120,7 @@ object Socket {
         }
       }
 
-      override def toString = s"Socket($description)"
+      override def toString = s"Socket(${Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]).getOrElse("<unbound>")})"
     }
   }
 }
