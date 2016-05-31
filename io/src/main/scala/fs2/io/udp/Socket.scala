@@ -1,6 +1,6 @@
 package fs2.io.udp
 
-import java.net.SocketAddress
+import java.net.{ InetAddress, NetworkInterface, SocketAddress }
 import java.nio.channels.DatagramChannel
 
 import fs2._
@@ -39,7 +39,41 @@ sealed trait Socket[F[_]] {
 
   /** Closes this socket. */
   def close: F[Unit]
+
+  /**
+   * Joins a multicast group on a specific network interface.
+   *
+   * @param group address of group to join
+   * @param interface network interface upon which to listen for datagrams
+   */
+  def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership]
+
+  /**
+   * Joins a source specific multicast group on a specific network interface.
+   *
+   * @param group address of group to join
+   * @param interface network interface upon which to listen for datagrams
+   * @param source limits received packets to those sent by the source
+   */
+  def join(group: InetAddress, interface: NetworkInterface, source: InetAddress): F[GroupMembership]
+
+  /** Result of joining a multicast group on a UDP socket. */
+  sealed trait GroupMembership {
+    /** Leaves the multicast group, resulting in no further packets from this group being read. */
+    def drop: F[Unit]
+  }
+
+  /** Result of joining an any-source multicast group on a UDP socket. */
+  sealed trait AnySourceGroupMembership extends GroupMembership {
+
+    /** Blocks packets from the specified source address. */
+    def block(source: InetAddress): F[Unit]
+
+    /** Unblocks packets from the specified source address. */
+    def unblock(source: InetAddress): F[Unit]
+  }
 }
+
 
 object Socket {
 
@@ -67,6 +101,24 @@ object Socket {
         _.flatMap(p => Stream.eval(write(p)))
 
       def close: F[Unit] = F.delay { AG.close(ctx) }
+
+      def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership] = F.delay {
+        val membership = channel.join(group, interface)
+        new AnySourceGroupMembership {
+          def drop = F.delay { membership.drop }
+          def block(source: InetAddress) = F.delay { membership.block(source); () }
+          def unblock(source: InetAddress) = F.delay { membership.unblock(source); () }
+          override def toString = "AnySourceGroupMembership"
+        }
+      }
+
+      def join(group: InetAddress, interface: NetworkInterface, source: InetAddress): F[GroupMembership] = F.delay {
+        val membership = channel.join(group, interface, source)
+        new GroupMembership {
+          def drop = F.delay { membership.drop }
+          override def toString = "GroupMembership"
+        }
+      }
 
       override def toString = s"Socket($description)"
     }

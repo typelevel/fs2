@@ -1,6 +1,6 @@
 package fs2.io
 
-import java.net.{NetworkInterface,StandardSocketOptions,SocketAddress,InetSocketAddress}
+import java.net.{InetSocketAddress,NetworkInterface,ProtocolFamily,SocketAddress,StandardSocketOptions}
 import java.nio.channels.DatagramChannel
 
 import fs2._
@@ -23,6 +23,7 @@ package object udp {
     * @param sendBufferSize       size of send buffer  (@see [[java.net.StandardSocketOptions.SO_SNDBUF]])
     * @param receiveBufferSize    size of receive buffer (@see [[java.net.StandardSocketOptions.SO_RCVBUF]])
     * @param allowBroadcast
+    * @param protocolFamily
     * @param multicastInterface
     * @param multicastTTL
     * @param multicastLoopback
@@ -33,12 +34,13 @@ package object udp {
     , sendBufferSize: Option[Int] = None
     , receiveBufferSize: Option[Int] = None
     , allowBroadcast: Boolean = false
+    , protocolFamily: Option[ProtocolFamily] = None
     , multicastInterface: Option[NetworkInterface] = None
     , multicastTTL: Option[Int] = None
     , multicastLoopback: Boolean = true
   )(implicit AG: AsynchronousSocketGroup, F: Async[F], FR: Async.Run[F]): Stream[F,Socket[F]] = {
     val mkChannel = F.delay {
-      val channel = DatagramChannel.open()
+      val channel = protocolFamily.map { pf => DatagramChannel.open(pf) }.getOrElse(DatagramChannel.open())
       channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       sendBufferSize.foreach { sz => channel.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sz) }
       receiveBufferSize.foreach { sz => channel.setOption[Integer](StandardSocketOptions.SO_RCVBUF, sz) }
