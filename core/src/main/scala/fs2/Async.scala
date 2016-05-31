@@ -44,11 +44,29 @@ trait Async[F[_]] extends Effect[F] { self =>
       }
     }
 
+  /** like `tryModify` but allows to return `B` along with change **/
+  def tryModify2[A,B](r: Ref[A])(f: A => (A,B)): F[Option[(Change[A], B)]] =
+    bind(access(r)) { case (previous,set) =>
+      val (now,b0) = f(previous)
+      map(set(Right(now))) { b =>
+        if (b) Some(Change(previous, now) -> b0)
+        else None
+      }
+  }
+
+
   /** Repeatedly invoke `[[tryModify]](f)` until it succeeds. */
   def modify[A](r: Ref[A])(f: A => A): F[Change[A]] =
     bind(tryModify(r)(f)) {
       case None => modify(r)(f)
       case Some(change) => pure(change)
+    }
+
+  /** like modify, but allows to extra `b` in single step **/
+  def modify2[A,B](r:Ref[A])(f: A => (A,B)): F[(Change[A], B)] =
+    bind(tryModify2(r)(f)) {
+      case None => modify2(r)(f)
+      case Some(changeAndB) => pure(changeAndB)
     }
 
   /** Obtain the value of the `Ref`, or wait until it has been `set`. */

@@ -1,5 +1,7 @@
 package fs2
 
+import fs2.async.mutable.Topic
+
 package object async {
 
   /**
@@ -47,4 +49,11 @@ package object async {
    */
   def hold[F[_]:Async,A](initial: A, source: Stream[F, A]): Stream[F, immutable.Signal[F,A]] =
      immutable.Signal.hold(initial, source)
+
+  /**
+    * Creates asynchronous topic, that allows distribute published `A` to arbitrary number of subscribers.
+    * Each subscriber is guaranteed to received at least initial `A` passed, or last value published by any publisher.
+    */
+  def topic[F[_]:Async, A](initial: A):F[Topic[F,A]] =
+    Topic(initial)
 }
