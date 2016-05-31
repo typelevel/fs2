@@ -91,11 +91,11 @@ object AsynchronousSocketGroup {
     private val selectorThread = new Thread(new Runnable {
       def run = try {
         val readBuffer = ByteBuffer.allocate(1 << 16)
-        while (!doneNow.get) {
+        while (!doneNow.get && !Thread.currentThread.isInterrupted) {
           pendingThunks.synchronized { while (pendingThunks.nonEmpty) pendingThunks.dequeue()() }
           selectorLock.lock
           selectorLock.unlock
-          selector.select()
+          println(selector.select)
           val selectedKeys = selector.selectedKeys.iterator
           while (selectedKeys.hasNext) {
             val key = selectedKeys.next
