@@ -17,7 +17,9 @@ import java.util.concurrent.locks.ReentrantLock
  */
 sealed trait AsynchronousSocketGroup {
   private[udp] def register(channel: DatagramChannel): (SelectionKey, AsynchronousSocketGroup.Attachment)
-  private[udp] def enqueue(f: => Unit): Unit
+  private[udp] def read(key: SelectionKey, attachment: AsynchronousSocketGroup.Attachment, cb: Either[Throwable,Packet] => Unit): Unit
+  private[udp] def write(key: SelectionKey, attachment: AsynchronousSocketGroup.Attachment, packet: Packet, cb: Option[Throwable] => Unit): Unit
+  private[udp] def close(channel: DatagramChannel, attachment: AsynchronousSocketGroup.Attachment): Unit
 }
 
 object AsynchronousSocketGroup {
@@ -85,7 +87,30 @@ object AsynchronousSocketGroup {
       (key, attachment)
     }
 
-    override def enqueue(f: => Unit): Unit = {
+    override def read(key: SelectionKey, attachment: Attachment, cb: Either[Throwable,Packet] => Unit): Unit = {
+      onSelectorThread {
+        attachment.queueReader(cb)
+        key.interestOps(key.interestOps | SelectionKey.OP_READ)
+        ()
+      }
+    }
+
+    override def write(key: SelectionKey, attachment: Attachment, packet: Packet, cb: Option[Throwable] => Unit): Unit = {
+      onSelectorThread {
+        attachment.queueWriter((packet, cb))
+        key.interestOps(key.interestOps | SelectionKey.OP_WRITE)
+        ()
+      }
+    }
+
+    override def close(channel: DatagramChannel, attachment: AsynchronousSocketGroup.Attachment): Unit = {
+      onSelectorThread {
+        channel.close
+        attachment.close
+      }
+    }
+
+    private def onSelectorThread(f: => Unit): Unit = {
       pendingThunks.synchronized {
         pendingThunks.+=(() => f)
       }

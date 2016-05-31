@@ -1,7 +1,7 @@
 package fs2.io.udp
 
 import java.net.SocketAddress
-import java.nio.channels.{DatagramChannel,SelectionKey}
+import java.nio.channels.DatagramChannel
 
 import fs2._
 
@@ -50,36 +50,20 @@ object Socket {
       def localAddress: F[SocketAddress] =
         F.delay(channel.socket.getLocalSocketAddress)
 
-      def read: F[Packet] =
-        F.async(cb => F.delay {
-          AG.enqueue {
-            attachment.queueReader(cb)
-            key.interestOps(key.interestOps | SelectionKey.OP_READ)
-            ()
-          }
-        })
+      def read: F[Packet] = F.async(cb => F.delay { AG.read(key, attachment, cb) })
 
       def reads: Stream[F, Packet] =
         Stream.repeatEval(read)
 
       def write(packet: Packet): F[Unit] =
         F.async(cb => F.delay {
-          AG.enqueue {
-            attachment.queueWriter((packet, _ match { case Some(t) => cb(Left(t)); case None => cb(Right(())) }))
-            key.interestOps(key.interestOps | SelectionKey.OP_WRITE)
-            ()
-          }
+          AG.write(key, attachment, packet, _ match { case Some(t) => cb(Left(t)); case None => cb(Right(())) })
         })
 
       def writes: Sink[F, Packet] =
         _.flatMap(p => Stream.eval(write(p)))
 
-      def close: F[Unit] = F.delay {
-        AG.enqueue {
-          attachment.close
-          channel.close
-        }
-      }
+      def close: F[Unit] = F.delay { AG.close(channel, attachment) }
 
       override def toString = s"Socket($description)"
     }
