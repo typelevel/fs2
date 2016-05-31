@@ -4,6 +4,7 @@ package udp
 
 import scala.collection.mutable.{Queue=>MutableQueue}
 
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.{DatagramChannel, Selector, SelectionKey, ClosedChannelException}
 import java.util.concurrent.atomic.AtomicBoolean
@@ -88,14 +89,14 @@ object AsynchronousSocketGroup {
     }
 
     private val doneNow = new AtomicBoolean(false)
-    private val selectorThread = new Thread(new Runnable {
-      def run = try {
+    private val selectorThread = Strategy.daemonThreadFactory("fs2-udp-selector").newThread(new Runnable {
+      def run = {
         val readBuffer = ByteBuffer.allocate(1 << 16)
         while (!doneNow.get && !Thread.currentThread.isInterrupted) {
           pendingThunks.synchronized { while (pendingThunks.nonEmpty) pendingThunks.dequeue()() }
           selectorLock.lock
           selectorLock.unlock
-          println(selector.select)
+          selector.select
           val selectedKeys = selector.selectedKeys.iterator
           while (selectedKeys.hasNext) {
             val key = selectedKeys.next
@@ -123,12 +124,18 @@ object AsynchronousSocketGroup {
               if (key.isWritable) {
                 attachment.peekWriter match {
                   case Some((p, cb)) =>
-                    val sent = channel.send(ByteBuffer.wrap(p.bytes.toArray), p.remote)
-                    if (sent > 0) {
-                      attachment.dequeueWriter
-                      cb(None)
-                      if (!attachment.hasWriters) key.interestOps(key.interestOps & ~SelectionKey.OP_WRITE)
+                    try {
+                      val sent = channel.send(ByteBuffer.wrap(p.bytes.toArray), p.remote)
+                      if (sent > 0) {
+                        attachment.dequeueWriter
+                        cb(None)
+                      }
+                    } catch {
+                      case e: IOException =>
+                        attachment.dequeueWriter
+                        cb(Some(e))
                     }
+                    if (!attachment.hasWriters) key.interestOps(key.interestOps & ~SelectionKey.OP_WRITE)
                   case None =>
                     sys.error("key marked for write but no writer")
                 }
@@ -136,10 +143,8 @@ object AsynchronousSocketGroup {
             }
           }
         }
-      } catch { case t: Throwable => t.printStackTrace }
+      }
     })
-    selectorThread.setName("fs2-udp-selector")
-    selectorThread.setDaemon(true)
     selectorThread.start()
   }
 }
