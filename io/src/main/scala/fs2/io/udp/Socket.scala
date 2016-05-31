@@ -34,8 +34,8 @@ sealed trait Socket[F[_]] {
    */
   def writes: Sink[F,Packet]
 
-  /** Returns the local address of this udp socket. */
-  def localAddress: F[SocketAddress]
+  /** Returns the local address of this udp socket if the socket is bound. */
+  def localAddress: F[Option[SocketAddress]]
 
   /** Closes this socket. */
   def close: F[Unit]
@@ -47,8 +47,8 @@ object Socket {
     new Socket[F] {
       private val ctx = AG.register(channel)
 
-      def localAddress: F[SocketAddress] =
-        F.delay(channel.socket.getLocalSocketAddress)
+      def localAddress: F[Option[SocketAddress]] =
+        F.delay(Option(channel.socket.getLocalSocketAddress))
 
       def read: F[Packet] = F.async(cb => F.delay { AG.read(ctx, cb) })
 

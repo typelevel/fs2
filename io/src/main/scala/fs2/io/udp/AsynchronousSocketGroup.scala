@@ -7,7 +7,6 @@ import scala.collection.mutable.{Queue=>MutableQueue}
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.{DatagramChannel, Selector, SelectionKey, ClosedChannelException}
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 
 /**
@@ -21,6 +20,11 @@ sealed trait AsynchronousSocketGroup {
   private[udp] def read(ctx: Context, cb: Either[Throwable,Packet] => Unit): Unit
   private[udp] def write(ctx: Context, packet: Packet, cb: Option[Throwable] => Unit): Unit
   private[udp] def close(ctx: Context): Unit
+
+  /**
+   * Shuts down the daemon thread used for selection and rejects all future read/write requests.
+   */
+  def close: Unit
 }
 
 object AsynchronousSocketGroup {
@@ -38,8 +42,11 @@ object AsynchronousSocketGroup {
       }
 
       def queueReader(reader: Either[Throwable,Packet] => Unit): Unit = {
-        readers += reader
-        ()
+        if (closed) reader(Left(new ClosedChannelException))
+        else {
+          readers += reader
+          ()
+        }
       }
 
       def hasReaders: Boolean = readers.nonEmpty
@@ -55,8 +62,11 @@ object AsynchronousSocketGroup {
       }
 
       def queueWriter(writer: (Packet,Option[Throwable] => Unit)): Unit = {
-        writers += writer
-        ()
+        if (closed) writer._2(Some(new ClosedChannelException))
+        else {
+          writers += writer
+          ()
+        }
       }
 
       def hasWriters: Boolean = writers.nonEmpty
@@ -73,6 +83,8 @@ object AsynchronousSocketGroup {
 
     private val selectorLock = new ReentrantLock()
     private val selector = Selector.open()
+    private val closeLock = new Object
+    @volatile private var closed = false
     private val pendingThunks: MutableQueue[() => Unit] = MutableQueue()
 
     override def register(channel: DatagramChannel): Context = {
@@ -95,7 +107,7 @@ object AsynchronousSocketGroup {
         ctx._3.queueReader(cb)
         ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_READ)
         ()
-      }
+      } { cb(Left(new ClosedChannelException)) }
     }
 
     override def write(ctx: Context, packet: Packet, cb: Option[Throwable] => Unit): Unit = {
@@ -103,22 +115,32 @@ object AsynchronousSocketGroup {
         ctx._3.queueWriter((packet, cb))
         ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_WRITE)
         ()
-      }
+      } { cb(Some(new ClosedChannelException)) }
     }
 
     override def close(ctx: Context): Unit = {
       onSelectorThread {
         ctx._1.close
         ctx._3.close
-      }
+      } { () }
     }
 
-    private def onSelectorThread(f: => Unit): Unit = {
-      pendingThunks.synchronized {
-        pendingThunks.+=(() => f)
+    override def close: Unit = {
+      closeLock.synchronized { closed = true }
+    }
+
+    private def onSelectorThread(f: => Unit)(ifClosed: => Unit): Unit = {
+      closeLock.synchronized {
+        if (closed) {
+          ifClosed
+        } else {
+          pendingThunks.synchronized {
+            pendingThunks.+=(() => f)
+          }
+          selector.wakeup()
+          ()
+        }
       }
-      selector.wakeup()
-      ()
     }
 
     private def read1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, readBuffer: ByteBuffer): Unit = {
@@ -165,12 +187,16 @@ object AsynchronousSocketGroup {
       }
     }
 
-    private val doneNow = new AtomicBoolean(false)
+    private def runPendingThunks: Unit = {
+      val thunksToRun = pendingThunks.synchronized { pendingThunks.dequeueAll(_ => true) }
+      thunksToRun foreach { _() }
+    }
+
     private val selectorThread = Strategy.daemonThreadFactory("fs2-udp-selector").newThread(new Runnable {
       def run = {
         val readBuffer = ByteBuffer.allocate(1 << 16)
-        while (!doneNow.get && !Thread.currentThread.isInterrupted) {
-          pendingThunks.synchronized { while (pendingThunks.nonEmpty) pendingThunks.dequeue()() }
+        while (!closed && !Thread.currentThread.isInterrupted) {
+          runPendingThunks
           selectorLock.lock
           selectorLock.unlock
           selector.select
@@ -186,6 +212,8 @@ object AsynchronousSocketGroup {
             }
           }
         }
+        close
+        runPendingThunks
       }
     })
     selectorThread.start()
