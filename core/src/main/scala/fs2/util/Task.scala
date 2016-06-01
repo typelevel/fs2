@@ -269,6 +269,15 @@ object Task extends Instances {
       a => try { S { cb(a).run } } catch { case e: Throwable => cb(Left(e)).run }
     }))
 
+  /**
+    * Create a `Task` from a `scala.concurrent.Future`.
+    */
+  def fromFuture[A](fut: scala.concurrent.Future[A])(implicit S: Strategy, E: scala.concurrent.ExecutionContext): Task[A] =
+    async { cb => fut.onComplete {
+      case scala.util.Success(a) => cb(Right(a))
+      case scala.util.Failure(t) => cb(Left(t))
+    }}
+
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
   def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
     apply(a)(scheduler.delayedStrategy(delay))
