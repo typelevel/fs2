@@ -59,7 +59,10 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       val group = InetAddress.getByName("232.10.10.10")
       val msg = Chunk.bytes("Hello, world!".getBytes)
       runLog {
-        open[Task](protocolFamily = Some(StandardProtocolFamily.INET)).flatMap { serverSocket =>
+        open[Task](
+          protocolFamily = Some(StandardProtocolFamily.INET),
+          multicastTTL = Some(1)
+        ).flatMap { serverSocket =>
           Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
             val v4Interfaces = NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
               interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
