@@ -18,14 +18,14 @@ package object tcp {
     * @param keepAlive            whether keep-alive on tcp is used (@see [[java.net.StandardSocketOptions.SO_KEEPALIVE]])
     * @param noDelay              whether tcp no-delay flag is set  (@see [[java.net.StandardSocketOptions.TCP_NODELAY]])
     */
-  def client[F[_]: Async](
+  def client[F[_]](
     to: InetSocketAddress
     , reuseAddress: Boolean = true
     , sendBufferSize: Int = 256 * 1024
     , receiveBufferSize: Int = 256 * 1024
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
-  )( implicit AG: AsynchronousChannelGroup): Stream[F,Socket[F]] =
+  )( implicit AG: AsynchronousChannelGroup, F: Async[F], FR: Async.Run[F]): Stream[F,Socket[F]] =
   Socket.client(to,reuseAddress,sendBufferSize,receiveBufferSize,keepAlive,noDelay)
 
 
@@ -46,12 +46,12 @@ package object tcp {
     * @param reuseAddress       whether address has to be reused (@see [[java.net.StandardSocketOptions.SO_REUSEADDR]])
     * @param receiveBufferSize  size of receive buffer (@see [[java.net.StandardSocketOptions.SO_RCVBUF]])
     */
-  def server[F[_]:Async](
+  def server[F[_]](
     bind: InetSocketAddress
     , maxQueued: Int = 0
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
-    implicit AG: AsynchronousChannelGroup
+    implicit AG: AsynchronousChannelGroup, F: Async[F], FR: Async.Run[F]
   ): Stream[F, Stream[F, Socket[F]]] =
   Socket.server(bind,maxQueued,reuseAddress,receiveBufferSize)
 

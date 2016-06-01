@@ -91,7 +91,7 @@ object FileHandle {
     *
     * Uses a `java.nio.Channels.CompletionHandler` to handle callbacks from IO operations.
     */
-  private[fs2] def fromAsynchronousFileChannel[F[_]](chan: AsynchronousFileChannel)(implicit F: Async[F], S: Strategy): FileHandle[F] = {
+  private[fs2] def fromAsynchronousFileChannel[F[_]](chan: AsynchronousFileChannel)(implicit F: Async[F], FR: Async.Run[F]): FileHandle[F] = {
     new FileHandle[F] {
       type Lock = FileLock
 
