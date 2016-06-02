@@ -8,22 +8,34 @@ class ChannelSpec extends Fs2Spec {
 
   "Async channels" - {
 
-    "observe/observeAsync" in {
-      forAll { (s: PureStream[Int]) =>
-        val sum = new AtomicLong(0)
-        val out = runLog {
-          channel.observe(s.get.covary[Task]) {
-            _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+    "observe/observeAsync" - {
+      "basic functionality" in {
+        forAll { (s: PureStream[Int]) =>
+          val sum = new AtomicLong(0)
+          val out = runLog {
+            channel.observe(s.get.covary[Task]) {
+              _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+            }
           }
-        }
-        out.map(_.toLong).sum shouldBe sum.get
-        sum.set(0)
-        val out2 = runLog {
-          channel.observeAsync(s.get.covary[Task], maxQueued = 10) {
-            _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+          out.map(_.toLong).sum shouldBe sum.get
+          sum.set(0)
+          val out2 = runLog {
+            channel.observeAsync(s.get.covary[Task], maxQueued = 10) {
+              _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+            }
           }
+          out2.map(_.toLong).sum shouldBe sum.get
         }
-        out2.map(_.toLong).sum shouldBe sum.get
+      }
+      "handle errors from observing sink" in {
+        forAll { (s: PureStream[Int]) =>
+          runLog {
+            channel.observe(s.get.covary[Task]) { _ => Stream.fail(Err) }.attempt
+          } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
+          runLog {
+            channel.observeAsync(s.get.covary[Task], 2) { _ => Stream.fail(Err) }.attempt
+          } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
+        }
       }
     }
 
