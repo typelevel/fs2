@@ -29,7 +29,8 @@ object channel {
             _ receive { case a #: h => Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h) }
           }.onFinalize(q.enqueue1(None))
         ),
-        g(pipe.unNoneTerminate(q.dequeue) flatMap { c => Stream.chunk(c) })
+        g(pipe.unNoneTerminate(q.dequeue) flatMap { c => Stream.chunk(c) }).
+          onError { t => pipe.unNoneTerminate(q.dequeue).drain ++ Stream.fail(t) }
       )
     }
 
