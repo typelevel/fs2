@@ -37,6 +37,19 @@ class ChannelSpec extends Fs2Spec {
           } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
         }
       }
+      "handle finite observing sink" in {
+        forAll { (s: PureStream[Int]) =>
+          runLog {
+            channel.observe(s.get.covary[Task]) { _ => Stream.empty }
+          } should contain theSameElementsAs s.get.toVector
+          runLog {
+            channel.observe(s.get.covary[Task]) { _.take(2).drain }
+          } should contain theSameElementsAs s.get.toVector
+          runLog {
+            channel.observeAsync(s.get.covary[Task], 2) { _ => Stream.empty }
+          } should contain theSameElementsAs s.get.toVector
+        }
+      }
     }
 
     "sanity-test" in {

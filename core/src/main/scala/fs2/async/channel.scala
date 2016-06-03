@@ -22,17 +22,28 @@ object channel {
     (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
     (combine: Pipe2[F,B,C,D])(implicit F: Async[F]): Stream[F,D]
     = Stream.eval(qs) flatMap { q =>
-      def suspendf[A](a: => A) = F.map(F.pure(())) { _ => a }
+      Stream.eval(signalOf[F,Boolean](false)) flatMap { done =>
       combine(
         f(
           s.repeatPull {
             _ receive { case a #: h => Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h) }
           }.onFinalize(q.enqueue1(None))
         ),
-        g(pipe.unNoneTerminate(q.dequeue) flatMap { c => Stream.chunk(c) }).
-          onError { t => pipe.unNoneTerminate(q.dequeue).drain ++ Stream.fail(t) }
+        (pipe.unNoneTerminate(
+          q.dequeue.
+            evalMap { c =>
+              if (c.isEmpty) F.map(done.set(true))(_ => c)
+              else F.pure(c)
+            }).
+            flatMap { c => Stream.chunk(c) }.
+            through(g) ++
+              Stream.eval(done.get).flatMap { done =>
+                if (done) Stream.empty
+                else pipe.unNoneTerminate(q.dequeue).drain
+              }
+        ).onError { t => pipe.unNoneTerminate(q.dequeue).drain ++ Stream.fail(t) }
       )
-    }
+    }}
 
   def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Stream[F,A] => Stream[F,B]])(
     implicit F: Async[F]): Stream[F,A] => Stream[F,B] = {
