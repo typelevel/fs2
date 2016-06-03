@@ -491,7 +491,7 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 ```scala
 scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun
 <console>:17: error: No implicit `Async[fs2.util.Task]` found.
-Note that the implicit `Async[fs2.util.Task]` requires an implicit `fs2.util.Strategy` in scope.
+Note that the implicit `Async[fs2.util.Task]` requires an implicit `fs2.Strategy` in scope.
        Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun
                           ^
 ```
