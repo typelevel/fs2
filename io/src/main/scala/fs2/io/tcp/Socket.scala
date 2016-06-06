@@ -113,6 +113,7 @@ protected[tcp] object Socket {
     implicit
     AG: AsynchronousChannelGroup
     , F:Async[F]
+    , FR:Async.Run[F]
   ): Stream[F,Socket[F]] = Stream.suspend {
 
     def setup: Stream[F,AsynchronousSocketChannel] = Stream.suspend {
@@ -128,8 +129,8 @@ protected[tcp] object Socket {
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] = F.async { cb =>
       F.delay {
         ch.connect(to, null, new CompletionHandler[Void, Void] {
-          def completed(result: Void, attachment: Void): Unit = cb(Right(ch))
-          def failed(rsn: Throwable, attachment: Void): Unit =  cb(Left(rsn))
+          def completed(result: Void, attachment: Void): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Right(ch))))(_ => ())
+          def failed(rsn: Throwable, attachment: Void): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(rsn))))(_ => ())
         })
       }
     }
@@ -153,6 +154,7 @@ protected[tcp] object Socket {
     , receiveBufferSize: Int )(
     implicit AG: AsynchronousChannelGroup
     , F:Async[F]
+    , FR:Async.Run[F]
   ): Stream[F, Stream[F, Socket[F]]] = Stream.suspend {
 
       def setup: F[AsynchronousServerSocketChannel] = F.delay {
@@ -172,8 +174,8 @@ protected[tcp] object Socket {
           def acceptChannel: F[AsynchronousSocketChannel] =
             F.async[AsynchronousSocketChannel] { cb => F.pure {
               sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = cb(Right(ch))
-                def failed(rsn: Throwable, attachment: Void): Unit = cb(Left(rsn))
+                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Right(ch))))(_ => ())
+                def failed(rsn: Throwable, attachment: Void): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(rsn))))(_ => ())
               })
             }
             }
@@ -204,8 +206,7 @@ protected[tcp] object Socket {
   }
 
 
-  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F]):Socket[F] = {
-
+  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F], FR:Async.Run[F]):Socket[F] = {
 
     // Reads data to remaining capacity of supplied bytebuffer
     // Also measures time the read took returning this as tuple
@@ -215,9 +216,9 @@ protected[tcp] object Socket {
       ch.read(buff, timeoutMs, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
         def completed(result: Integer, attachment: Unit): Unit =  {
           val took = System.currentTimeMillis() - started
-          cb(Right((result, took)))
+          FR.unsafeRunAsyncEffects(F.delay(cb(Right((result, took)))))(_ => ())
         }
-        def failed(err: Throwable, attachment: Unit): Unit = cb(Left(err))
+        def failed(err: Throwable, attachment: Unit): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(err))))(_ => ())
       })
     }}
 
@@ -249,10 +250,12 @@ protected[tcp] object Socket {
           val start = System.currentTimeMillis()
           ch.write(buff, remains, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
             def completed(result: Integer, attachment: Unit): Unit = {
-              if (buff.remaining() <= 0) cb(Right(None))
-              else cb(Right(Some(System.currentTimeMillis() - start)))
+              FR.unsafeRunAsyncEffects(F.delay(cb(Right(
+                if (buff.remaining() <= 0) None
+                else Some(System.currentTimeMillis() - start)
+              ))))(_ => ())
             }
-            def failed(err: Throwable, attachment: Unit): Unit = cb(Left(err))
+            def failed(err: Throwable, attachment: Unit): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(err))))(_ => ())
           })
         }}) {
           case None => F.pure(())

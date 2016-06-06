@@ -282,6 +282,14 @@ object Task extends Instances {
   def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
     apply(a)(scheduler.delayedStrategy(delay))
 
+  def traverse[A,B](v: Seq[A])(f: A => Task[B]): Task[Vector[B]] =
+    v.reverse.foldLeft(Task.now(Vector.empty[B])) {
+      (tl,hd) => f(hd) flatMap { b => tl.map(b +: _) }
+    }
+
+  def parallelTraverse[A,B](s: Seq[A])(f: A => Task[B])(implicit S: Strategy): Task[Vector[B]] =
+    traverse(s)(f andThen Task.start) flatMap { tasks => traverse(tasks)(identity) }
+
   /** Utility function - evaluate `a` and catch and return any exceptions. */
   def Try[A](a: => A): Either[Throwable,A] =
     try Right(a) catch { case e: Throwable => Left(e) }
