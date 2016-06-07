@@ -28,16 +28,21 @@ class TaskBenchmark {
   def sumCurrentThread: Int = {
     sum(range.start, range.end)
   }
+  
+  val singleThreadedStrategy = Strategy.fromFixedDaemonPool(1)
 
   @Benchmark
   def sumSingleThread: Int = {
-   implicit val S: Strategy = Strategy.fromFixedDaemonPool(1)
+   implicit val S: Strategy = singleThreadedStrategy
    taskSum.unsafeRun
   }
-
+  
+  val multiThreadedStrategy = Strategy.fromFixedDaemonPool(4)
+  
   @Benchmark
   def sumMultiThread: Int = {
-    implicit val S: Strategy = Strategy.fromFixedDaemonPool(4)
+	//This needs to be removed
+    implicit val S: Strategy = multiThreadedStrategy
     (for {
       t1 <- Task.start { taskSum }
       t2 <- Task.start{ taskSum }
