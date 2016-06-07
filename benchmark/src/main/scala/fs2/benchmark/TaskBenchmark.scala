@@ -26,20 +26,20 @@ class TaskBenchmark {
 
   //to compare with
   @Benchmark
-  def sumCurrentThread: Unit = {
-    val s = sum(range.start, range.end)
+  def sumCurrentThread: Int = {
+    sum(range.start, range.end)
   }
 
   @Benchmark
-  def sumSingleThread: Unit = {
+  def sumSingleThread: Int = {
    implicit val S: Strategy = Strategy.fromFixedDaemonPool(1)
-   val s = taskSum.unsafeRun
+   taskSum.unsafeRun
   }
 
   @Benchmark
-  def sumMultiThread: Unit = {
+  def sumMultiThread: Int = {
     implicit val S: Strategy = Strategy.fromFixedDaemonPool(4)
-    val s = (for {
+    (for {
       t1 <- Task.start { taskSum }
       t2 <- Task.start{ taskSum }
       t3 <- Task.start { taskSum }
