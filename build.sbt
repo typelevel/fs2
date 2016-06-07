@@ -146,7 +146,9 @@ lazy val benchmark = project.in(file("benchmark")).
   settings(noPublish).
   settings(
     name := "fs2-benchmark"
-  ).dependsOn(io)
+  )
+  .enablePlugins(JmhPlugin)
+  .dependsOn(io)
 
 lazy val docs = project.in(file("docs")).
   settings(commonSettings ++ tutSettings).
