@@ -22,7 +22,7 @@ env:
 script:
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 test
   - (test $TRAVIS_SCALA_VERSION == "2.11.8" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut) || test $TRAVIS_SCALA_VERSION == "2.12.0-M4"
-  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g benchmark/"jmh:run -i 3 -wi 3 -f1 -t4" 
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g benchmark/"jmh:run -i 1 -wi 1 -f1 -t4" 
 
 after_success:
   - test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "series/0.9" && sbt publish
