@@ -8,17 +8,16 @@ import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 @State(Scope.Thread)
 class TaskBenchmark {
 
-  val range = 1 to 10000
+  val range = 1 to 1000000
 
   def sum(start: Int, end: Int): Int = {
-    //use a while loop to not introduce any
     var i = start
     var sum = 0
 
     while(i < end) {
       i += 1
       sum += i
-    }
+	}
     sum
   }
 
