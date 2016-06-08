@@ -142,7 +142,7 @@ object Chunk {
     new Booleans(values, 0, values.length)
 
   def booleans(values: Array[Boolean], offset: Int, size: Int): Chunk[Boolean] = {
-    require(offset >= 0 && offset < values.size)
+    require(offset >= 0 && offset <= values.size)
     require(offset + size <= values.size)
     new Booleans(values, offset, size)
   }
@@ -151,7 +151,7 @@ object Chunk {
     new Bytes(values, 0, values.length)
 
   def bytes(values: Array[Byte], offset: Int, size: Int): Chunk[Byte] = {
-    require(offset >= 0 && offset < values.size)
+    require(offset >= 0 && offset <= values.size)
     require(offset + size <= values.size)
     new Bytes(values, offset, size)
   }
@@ -160,7 +160,7 @@ object Chunk {
     new Longs(values, 0, values.length)
 
   def longs(values: Array[Long], offset: Int, size: Int): Chunk[Long] = {
-    require(offset >= 0 && offset < values.size)
+    require(offset >= 0 && offset <= values.size)
     require(offset + size <= values.size)
     new Longs(values, offset, size)
   }
@@ -169,7 +169,7 @@ object Chunk {
     new Doubles(values, 0, values.length)
 
   def doubles(values: Array[Double], offset: Int, size: Int): Chunk[Double] = {
-    require(offset >= 0 && offset < values.size)
+    require(offset >= 0 && offset <= values.size)
     require(offset + size <= values.size)
     new Doubles(values, offset, size)
   }
