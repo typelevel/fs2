@@ -59,6 +59,22 @@ trait Chunk[+A] { self =>
     def hasNext = i < self.size
     def next = { val result = apply(i); i += 1; result }
   }
+  def toBooleans[B >: A](implicit ev: B =:= Boolean): Chunk.Booleans = this match {
+    case c: Chunk.Booleans => c
+    case other => new Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray, 0, size)
+  }
+  def toBytes[B >: A](implicit ev: B =:= Byte): Chunk.Bytes = this match {
+    case c: Chunk.Bytes => c
+    case other => new Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
+  }
+  def toLongs[B >: A](implicit ev: B =:= Long): Chunk.Longs = this match {
+    case c: Chunk.Longs => c
+    case other => new Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray, 0, size)
+  }
+  def toDoubles[B >: A](implicit ev: B =:= Double): Chunk.Doubles = this match {
+    case c: Chunk.Doubles => c
+    case other => new Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray, 0, size)
+  }
   override def toString = toList.mkString("Chunk(", ", ", ")")
   override def equals(a: Any) = a match {
     case c: Chunk[A] => c.toList == toList
@@ -122,24 +138,48 @@ object Chunk {
     override def iterator = a.iterator
   }
 
-  def booleans(values: Array[Boolean]): Booleans =
+  def booleans(values: Array[Boolean]): Chunk[Boolean] =
     new Booleans(values, 0, values.length)
 
-  def bytes(values: Array[Byte]): Bytes =
+  def booleans(values: Array[Boolean], offset: Int, size: Int): Chunk[Boolean] = {
+    require(offset >= 0 && offset < values.size)
+    require(offset + size <= values.size)
+    new Booleans(values, offset, size)
+  }
+
+  def bytes(values: Array[Byte]): Chunk[Byte] =
     new Bytes(values, 0, values.length)
 
-  def longs(values: Array[Long]): Longs =
+  def bytes(values: Array[Byte], offset: Int, size: Int): Chunk[Byte] = {
+    require(offset >= 0 && offset < values.size)
+    require(offset + size <= values.size)
+    new Bytes(values, offset, size)
+  }
+
+  def longs(values: Array[Long]): Chunk[Long] =
     new Longs(values, 0, values.length)
 
-  def doubles(values: Array[Double]): Doubles =
+  def longs(values: Array[Long], offset: Int, size: Int): Chunk[Long] = {
+    require(offset >= 0 && offset < values.size)
+    require(offset + size <= values.size)
+    new Longs(values, offset, size)
+  }
+
+  def doubles(values: Array[Double]): Chunk[Double] =
     new Doubles(values, 0, values.length)
+
+  def doubles(values: Array[Double], offset: Int, size: Int): Chunk[Double] = {
+    require(offset >= 0 && offset < values.size)
+    require(offset + size <= values.size)
+    new Doubles(values, offset, size)
+  }
 
   // copy-pasted code below for each primitive
   // sadly, @specialized does not work here since the generated class names are
   // not human readable and we want to be able to use these type names in pattern
   // matching, e.g. `h.receive { case (bits: Booleans) #: h => /* do stuff unboxed */ } `
 
-  class Booleans(val values: Array[Boolean], val offset: Int, sz: Int) extends Chunk[Boolean] {
+  final class Booleans private[Chunk](val values: Array[Boolean], val offset: Int, sz: Int) extends Chunk[Boolean] {
   self =>
     val size = sz min (values.length - offset)
     def at(i: Int): Boolean = values(offset + i)
@@ -161,7 +201,7 @@ object Chunk {
     def foldRight[B](z: B)(f: (Boolean,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
   }
-  class Bytes(val values: Array[Byte], val offset: Int, sz: Int) extends Chunk[Byte] {
+  final class Bytes private[Chunk](val values: Array[Byte], val offset: Int, sz: Int) extends Chunk[Byte] {
   self =>
     val size = sz min (values.length - offset)
     def at(i: Int): Byte = values(offset + i)
@@ -184,7 +224,7 @@ object Chunk {
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
     override def toString: String = s"Bytes(offset=$offset, sz=$sz, values=${values.toSeq})"
   }
-  class Longs(val values: Array[Long], val offset: Int, sz: Int) extends Chunk[Long] {
+  final class Longs private[Chunk](val values: Array[Long], val offset: Int, sz: Int) extends Chunk[Long] {
   self =>
     val size = sz min (values.length - offset)
     def at(i: Int): Long = values(offset + i)
@@ -206,7 +246,7 @@ object Chunk {
     def foldRight[B](z: B)(f: (Long,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
   }
-  class Doubles(val values: Array[Double], val offset: Int, sz: Int) extends Chunk[Double] {
+  final class Doubles private[Chunk](val values: Array[Double], val offset: Int, sz: Int) extends Chunk[Double] {
   self =>
     val size = sz min (values.length - offset)
     def at(i: Int): Double = values(offset + i)

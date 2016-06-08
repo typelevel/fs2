@@ -8,7 +8,7 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.{CancelledKeyException,ClosedChannelException,DatagramChannel,Selector,SelectionKey}
-import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.CountDownLatch
 
 /**
  * Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
@@ -23,7 +23,7 @@ sealed trait AsynchronousSocketGroup {
   private[udp] def close(ctx: Context): Unit
 
   /**
-   * Shuts down the daemon thread used for selection and rejects all future read/write requests.
+   * Shuts down the daemon thread used for selection and rejects all future register/read/write requests.
    */
   def close: Unit
 }
@@ -36,6 +36,13 @@ object AsynchronousSocketGroup {
       readers: MutableQueue[Either[Throwable,Packet] => Unit] = MutableQueue(),
       writers: MutableQueue[(Packet,Option[Throwable] => Unit)] = MutableQueue()
     ) {
+
+      def hasReaders: Boolean = readers.nonEmpty
+
+      def peekReader: Option[Either[Throwable,Packet] => Unit] = {
+        if (readers.isEmpty) None
+        else Some(readers.head)
+      }
 
       def dequeueReader: Option[Either[Throwable,Packet] => Unit] = {
         if (readers.isEmpty) None
@@ -50,7 +57,7 @@ object AsynchronousSocketGroup {
         }
       }
 
-      def hasReaders: Boolean = readers.nonEmpty
+      def hasWriters: Boolean = writers.nonEmpty
 
       def peekWriter: Option[(Packet,Option[Throwable] => Unit)] = {
         if (writers.isEmpty) None
@@ -70,8 +77,6 @@ object AsynchronousSocketGroup {
         }
       }
 
-      def hasWriters: Boolean = writers.nonEmpty
-
       def close: Unit = {
         readers.foreach { cb => cb(Left(new ClosedChannelException)) }
         readers.clear
@@ -80,55 +85,98 @@ object AsynchronousSocketGroup {
       }
     }
 
-    type Context = (DatagramChannel, SelectionKey, Attachment)
+    type Context = SelectionKey
 
-    private val selectorLock = new ReentrantLock()
     private val selector = Selector.open()
     private val closeLock = new Object
     @volatile private var closed = false
     private val pendingThunks: MutableQueue[() => Unit] = MutableQueue()
+    private val readBuffer = ByteBuffer.allocate(1 << 16)
 
     override def register(channel: DatagramChannel): Context = {
-      channel.configureBlocking(false)
-      val attachment = new Attachment()
-      val key = {
-        selectorLock.lock
-        try {
-          selector.wakeup
-          channel.register(selector, 0, attachment)
-        } finally {
-          selectorLock.unlock
-        }
-      }
-      (channel, key, attachment)
+      var key: SelectionKey = null
+      val latch = new CountDownLatch(1)
+      onSelectorThread {
+        channel.configureBlocking(false)
+        val attachment = new Attachment()
+        key = channel.register(selector, 0, attachment)
+        latch.countDown
+      } { latch.countDown }
+      latch.await
+      if (key eq null) throw new ClosedChannelException()
+      key
     }
 
-    override def read(ctx: Context, cb: Either[Throwable,Packet] => Unit): Unit = {
+    override def read(key: SelectionKey, cb: Either[Throwable,Packet] => Unit): Unit = {
       onSelectorThread {
-        ctx._3.queueReader(cb)
-        try ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_READ)
-        catch {
-          case t: CancelledKeyException => // Ignore; key was closed
+        val channel = key.channel.asInstanceOf[DatagramChannel]
+        val attachment = key.attachment.asInstanceOf[Attachment]
+        if (attachment.hasReaders) {
+          attachment.queueReader(cb)
+        } else {
+          if (!read1(key, channel, attachment, cb)) {
+            attachment.queueReader(cb)
+            try { key.interestOps(key.interestOps | SelectionKey.OP_READ); () }
+            catch { case t: CancelledKeyException => /* Ignore; key was closed */ }
+          }
         }
-        ()
       } { cb(Left(new ClosedChannelException)) }
     }
 
-    override def write(ctx: Context, packet: Packet, cb: Option[Throwable] => Unit): Unit = {
+    private def read1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, reader: Either[Throwable,Packet] => Unit): Boolean = {
+      readBuffer.clear
+      val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]
+      if (src eq null) {
+        false
+      } else {
+        readBuffer.flip
+        val bytes = Array.ofDim[Byte](readBuffer.remaining)
+        readBuffer.get(bytes)
+        readBuffer.clear
+        reader(Right(new Packet(src, Chunk.bytes(bytes))))
+        true
+      }
+    }
+
+    override def write(key: SelectionKey, packet: Packet, cb: Option[Throwable] => Unit): Unit = {
       onSelectorThread {
-        ctx._3.queueWriter((packet, cb))
-        try ctx._2.interestOps(ctx._2.interestOps | SelectionKey.OP_WRITE)
-        catch {
-          case t: CancelledKeyException => // Ignore; key was closed
+        val channel = key.channel.asInstanceOf[DatagramChannel]
+        val attachment = key.attachment.asInstanceOf[Attachment]
+        if (attachment.hasWriters) {
+          attachment.queueWriter((packet, cb))
+        } else {
+          if (!write1(key, channel, attachment, packet, cb)) {
+            attachment.queueWriter((packet, cb))
+            try { key.interestOps(key.interestOps | SelectionKey.OP_WRITE); () }
+            catch { case t: CancelledKeyException => /* Ignore; key was closed */ }
+          }
         }
-        ()
       } { cb(Some(new ClosedChannelException)) }
     }
 
-    override def close(ctx: Context): Unit = {
+    private def write1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, p: Packet, cb: Option[Throwable] => Unit): Boolean = {
+      try {
+        val sent = channel.send(ByteBuffer.wrap(p.bytes.toArray), p.remote)
+        if (sent > 0) {
+          cb(None)
+          true
+        } else {
+          false
+        }
+      } catch {
+        case e: IOException =>
+          cb(Some(e))
+          true
+      }
+    }
+
+    override def close(key: SelectionKey): Unit = {
       onSelectorThread {
-        ctx._1.close
-        ctx._3.close
+        val channel = key.channel.asInstanceOf[DatagramChannel]
+        val attachment = key.attachment.asInstanceOf[Attachment]
+        key.cancel
+        channel.close
+        attachment.close
       } { () }
     }
 
@@ -150,50 +198,6 @@ object AsynchronousSocketGroup {
       }
     }
 
-    private def read1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, readBuffer: ByteBuffer): Unit = {
-      readBuffer.clear
-      val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]
-      if (src ne null) {
-        attachment.dequeueReader match {
-          case Some(reader) =>
-            readBuffer.flip
-            val bytes = Array.ofDim[Byte](readBuffer.remaining)
-            readBuffer.get(bytes)
-            readBuffer.clear
-            reader(Right(new Packet(src, Chunk.bytes(bytes))))
-            if (!attachment.hasReaders) {
-              key.interestOps(key.interestOps & ~SelectionKey.OP_READ)
-              ()
-            }
-          case None =>
-            sys.error("key marked for read but no reader")
-        }
-      }
-    }
-
-    private def write1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment): Unit = {
-      attachment.peekWriter match {
-        case Some((p, cb)) =>
-          try {
-            val sent = channel.send(ByteBuffer.wrap(p.bytes.toArray), p.remote)
-            if (sent > 0) {
-              attachment.dequeueWriter
-              cb(None)
-            }
-          } catch {
-            case e: IOException =>
-              attachment.dequeueWriter
-              cb(Some(e))
-          }
-          if (!attachment.hasWriters) {
-            key.interestOps(key.interestOps & ~SelectionKey.OP_WRITE)
-            ()
-          }
-        case None =>
-          sys.error("key marked for write but no writer")
-      }
-    }
-
     private def runPendingThunks: Unit = {
       val thunksToRun = pendingThunks.synchronized { pendingThunks.dequeueAll(_ => true) }
       thunksToRun foreach { _() }
@@ -201,11 +205,8 @@ object AsynchronousSocketGroup {
 
     private val selectorThread = Strategy.daemonThreadFactory("fs2-udp-selector").newThread(new Runnable {
       def run = {
-        val readBuffer = ByteBuffer.allocate(1 << 16)
         while (!closed && !Thread.currentThread.isInterrupted) {
           runPendingThunks
-          selectorLock.lock
-          selectorLock.unlock
           selector.select
           val selectedKeys = selector.selectedKeys.iterator
           while (selectedKeys.hasNext) {
@@ -215,8 +216,26 @@ object AsynchronousSocketGroup {
             val attachment = key.attachment.asInstanceOf[Attachment]
             try {
               if (key.isValid) {
-                if (key.isReadable) read1(key, channel, attachment, readBuffer)
-                if (key.isWritable) write1(key, channel, attachment)
+                if (key.isReadable) {
+                  var success = true
+                  while (success && attachment.hasReaders) {
+                    val reader = attachment.peekReader.get
+                    success = read1(key, channel, attachment, reader)
+                    if (success) attachment.dequeueReader
+                  }
+                }
+                if (key.isWritable) {
+                  var success = true
+                  while (success && attachment.hasWriters) {
+                    val (p, writer) = attachment.peekWriter.get
+                    success = write1(key, channel, attachment, p, writer)
+                    if (success) attachment.dequeueWriter
+                  }
+                }
+                key.interestOps(
+                  (if (attachment.hasReaders) SelectionKey.OP_READ else 0) |
+                  (if (attachment.hasWriters) SelectionKey.OP_WRITE else 0)
+                )
               }
             } catch {
               case t: CancelledKeyException => // Ignore; key was closed

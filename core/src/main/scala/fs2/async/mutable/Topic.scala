@@ -8,13 +8,11 @@ import fs2.Stream._
   *
   * Topic allows you to distribute `A` published by arbitrary number of publishers to arbitrary number of subscribers.
   *
-  * Topic has built-in back-pressure support implemented as maximum bound (`maxQueued`) that subscriber is allowed to enqueue.
-  * Once that bound is hit, the publish may hold on until subscriber consumes some of its published elements .
+  * Topic has built-in back-pressure support implemented as maximum bound (`maxQueued`) that a subscriber is allowed to enqueue.
+  * Once that bound is hit, publishing may semantically block until the lagging subscriber consumes some of its queued elements.
   *
   * Additionally the subscriber has possibility to terminate whenever size of enqueued elements is over certain size
   * by using `subscribeSize`.
-  *
-  *
   */
 trait Topic[F[_],A] {
 
@@ -25,7 +23,6 @@ trait Topic[F[_],A] {
     */
   def publish:Sink[F,A]
 
-
   /**
     * Publish one `A` to topic.
     *
@@ -35,8 +32,6 @@ trait Topic[F[_],A] {
     *
     */
   def publish1(a:A):F[Unit]
-
-
 
   /**
     * Subscribes to receive any published `A` to this topic.
@@ -65,18 +60,13 @@ trait Topic[F[_],A] {
     */
   def subscribeSize(maxQueued:Int):Stream[F,(A, Int)]
 
-
   /**
     * Signal of current active subscribers
     */
   def subscribers:fs2.async.immutable.Signal[F,Int]
-
 }
 
-
-
 object Topic {
-
 
   def apply[F[_], A](initial:A)(implicit F: Async[F]):F[Topic[F,A]] = {
     // Id identifying each subscriber uniquely
@@ -89,9 +79,6 @@ object Topic {
       def subscribeSize:Stream[F,(A,Int)]
       def unSubscribe:F[Unit]
     }
-
-
-
 
     F.bind(F.refOf((initial,Vector.empty[Subscriber]))) { state =>
     F.map(async.signalOf[F,Int](0)) { subSignal =>
@@ -129,8 +116,6 @@ object Topic {
         }}}
       }
 
-
-
       new Topic[F,A] {
         def publish:Sink[F,A] =
           _ flatMap( a => eval(publish1(a)))
@@ -145,12 +130,7 @@ object Topic {
 
         def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
           bracket(mkSubscriber(maxQueued))(_.subscribeSize, _.unSubscribe)
-
-
       }
     }}
-
   }
-
-
 }

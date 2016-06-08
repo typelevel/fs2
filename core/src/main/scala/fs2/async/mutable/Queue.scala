@@ -21,6 +21,12 @@ trait Queue[F[_],A] {
   def enqueue1(a: A): F[Unit]
 
   /**
+   * Enqueues each element of the input stream to this `Queue` by
+   * calling `enqueue1` on each element.
+   */
+  def enqueue: Sink[F, A] = _.evalMap(enqueue1)
+
+  /**
    * Offers one element in this `Queue`.
    *
    * Evaluates to `false` if the queue is full, indicating the `a` was not queued up.
@@ -30,11 +36,11 @@ trait Queue[F[_],A] {
    */
   def offer1(a: A): F[Boolean]
 
-  /** Repeatedly call `dequeue1` forever. */
-  def dequeue: Stream[F, A] = Stream.repeatEval(dequeue1)
-
   /** Dequeue one `A` from this queue. Completes once one is ready. */
   def dequeue1: F[A]
+
+  /** Repeatedly call `dequeue1` forever. */
+  def dequeue: Stream[F, A] = Stream.repeatEval(dequeue1)
 
   /**
    * The time-varying size of this `Queue`. This signal refreshes

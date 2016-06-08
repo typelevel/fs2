@@ -1,6 +1,5 @@
 package fs2
 
-import fs2.Chunk.{Longs, Doubles, Bytes, Booleans}
 import org.scalacheck.{Gen, Arbitrary}
 
 import scala.reflect.ClassTag
@@ -15,7 +14,7 @@ class ChunkSpec extends Fs2Spec {
         values <- Gen.containerOfN[Array, Boolean](n, Arbitrary.arbBool.arbitrary)
         offset <- Gen.choose(0, n)
         sz <- Gen.choose(0, n - offset)
-      } yield new Booleans(values, offset, sz)
+      } yield Chunk.booleans(values, offset, sz)
     }
 
     implicit val arbByteChunk: Arbitrary[Chunk[Byte]] = Arbitrary {
@@ -24,7 +23,7 @@ class ChunkSpec extends Fs2Spec {
         values <- Gen.containerOfN[Array, Byte](n, Arbitrary.arbByte.arbitrary)
         offset <- Gen.choose(0, n)
         sz <- Gen.choose(0, n - offset)
-      } yield new Bytes(values, offset, sz)
+      } yield Chunk.bytes(values, offset, sz)
     }
 
     implicit val arbDoubleChunk: Arbitrary[Chunk[Double]] = Arbitrary {
@@ -33,7 +32,7 @@ class ChunkSpec extends Fs2Spec {
         values <- Gen.containerOfN[Array, Double](n, Arbitrary.arbDouble.arbitrary)
         offset <- Gen.choose(0, n)
         sz <- Gen.choose(0, n - offset)
-      } yield new Doubles(values, offset, sz)
+      } yield Chunk.doubles(values, offset, sz)
     }
 
     implicit val arbLongChunk: Arbitrary[Chunk[Long]] = Arbitrary {
@@ -42,7 +41,7 @@ class ChunkSpec extends Fs2Spec {
         values <- Gen.containerOfN[Array, Long](n, Arbitrary.arbLong.arbitrary)
         offset <- Gen.choose(0, n)
         sz <- Gen.choose(0, n - offset)
-      } yield new Longs(values, offset, sz)
+      } yield Chunk.longs(values, offset, sz)
     }
 
     def checkSize[A](c: Chunk[A]) = c.size shouldBe c.toVector.size
