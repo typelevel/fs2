@@ -125,15 +125,20 @@ object AsynchronousSocketGroup {
 
     private def read1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, reader: Either[Throwable,Packet] => Unit): Boolean = {
       readBuffer.clear
-      val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]
-      if (src eq null) {
-        false
-      } else {
-        readBuffer.flip
-        val bytes = Array.ofDim[Byte](readBuffer.remaining)
-        readBuffer.get(bytes)
-        readBuffer.clear
-        reader(Right(new Packet(src, Chunk.bytes(bytes))))
+      try {
+        val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]
+        if (src eq null) {
+          false
+        } else {
+          readBuffer.flip
+          val bytes = Array.ofDim[Byte](readBuffer.remaining)
+          readBuffer.get(bytes)
+          readBuffer.clear
+          reader(Right(new Packet(src, Chunk.bytes(bytes))))
+          true
+        }
+      } catch {
+        case t: IOException => reader(Left(t))
         true
       }
     }
