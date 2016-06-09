@@ -13,7 +13,7 @@ package object udp {
    * @param remote   remote party to send/receive packet to/from
    * @param bytes    data to send/receive
    */
-  case class Packet(remote: InetSocketAddress, bytes: Chunk.Bytes)
+  case class Packet(remote: InetSocketAddress, bytes: Chunk[Byte])
 
   /**
    * Provides a singleton stream of a UDP Socket that when run will bind to specified adress

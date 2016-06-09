@@ -50,6 +50,7 @@ lazy val commonSettings = Seq(
 lazy val testSettings = Seq(
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+  // fork in Test := true, Causes issues on Travis
   publishArtifact in Test := true
 )
 

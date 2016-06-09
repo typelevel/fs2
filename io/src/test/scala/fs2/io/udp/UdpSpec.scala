@@ -35,11 +35,12 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
     }
 
     "echo lots" in {
-      val msgs = (1 to 100).toVector.map { n => Chunk.bytes(("Hello, world! " + n).getBytes) }
-      val numClients = 100
-      val numParallelClients = 20
+      val msgs = (1 to 20).toVector.map { n => Chunk.bytes(("Hello, world! " + n).getBytes) }
+      val numClients = 50
+      val numParallelClients = 10
       runLog {
         open[Task]().flatMap { serverSocket =>
+          var log = false
           Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket.reads.evalMap { packet => serverSocket.write(packet) }.drain

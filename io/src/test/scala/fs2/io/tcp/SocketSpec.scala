@@ -30,17 +30,14 @@ class SocketSpec extends Fs2Spec {
     "echo.requests" in {
 
         val message = Chunk.bytes("fs2.rocks".getBytes)
-        val clientCount = 10000
+        val clientCount = 5000
 
         val echoServer: Stream[Task, Unit] = {
           val ps =
             server[Task](localBindAddress)
             .map {
               _.flatMap { (socket: Socket[Task]) =>
-                socket.writes(
-                  socket.reads(1024)
-                )
-                .onFinalize(socket.endOfOutput)
+                socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)
               }
             }
 
@@ -51,8 +48,8 @@ class SocketSpec extends Fs2Spec {
           val pc: Stream[Task, Stream[Task, Array[Byte]]] =
             Stream.range[Task](0, clientCount).map { idx =>
               client[Task](localBindAddress).flatMap { socket =>
-                socket.writes(emit(message), None).drain.onFinalize(socket.endOfOutput) ++
-                  socket.reads(1024, None).map(_.toArray)
+                Stream.chunk(message).to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
+                  socket.reads(1024, None).chunks.map(_.toArray)
               }
             }
 

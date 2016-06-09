@@ -7,7 +7,6 @@ import fs2._
 
 package object tcp {
 
-
   /**
     * Process that connects to remote server (TCP) and runs the stream `ouput`.
     *
@@ -27,8 +26,6 @@ package object tcp {
     , noDelay: Boolean = false
   )( implicit AG: AsynchronousChannelGroup, F: Async[F], FR: Async.Run[F]): Stream[F,Socket[F]] =
   Socket.client(to,reuseAddress,sendBufferSize,receiveBufferSize,keepAlive,noDelay)
-
-
 
   /**
     * Process that binds to supplied address and handles incoming TCP connections
@@ -54,5 +51,4 @@ package object tcp {
     implicit AG: AsynchronousChannelGroup, F: Async[F], FR: Async.Run[F]
   ): Stream[F, Stream[F, Socket[F]]] =
   Socket.server(bind,maxQueued,reuseAddress,receiveBufferSize)
-
 }
