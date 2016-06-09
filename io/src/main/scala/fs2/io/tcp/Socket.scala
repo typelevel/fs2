@@ -146,7 +146,7 @@ protected[tcp] object Socket {
     implicit AG: AsynchronousChannelGroup
     , F:Async[F]
     , FR:Async.Run[F]
-  ): Stream[F, Stream[F, Socket[F]]] = Stream.suspend {
+  ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] = Stream.suspend {
 
       def setup: F[AsynchronousServerSocketChannel] = F.delay {
         val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
@@ -189,7 +189,7 @@ protected[tcp] object Socket {
         }
       }
 
-      Stream.bracket(setup)(sch => acceptIncoming(sch), cleanup)
+      Stream.bracket(setup)(sch => Stream.emit(Left(sch.getLocalAddress.asInstanceOf[InetSocketAddress])) ++ acceptIncoming(sch).map(Right(_)), cleanup)
   }
 
 

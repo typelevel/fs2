@@ -1,5 +1,6 @@
 package fs2.io.tcp
 
+import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
 
 import fs2._
@@ -11,7 +12,6 @@ import fs2.Stream._
 
 object SocketSpec {
   implicit val tcpACG : AsynchronousChannelGroup = namedACG("tcp")
-  println(s">>> BINDING TO:  $localBindAddress")
 }
 
 /**
@@ -32,13 +32,17 @@ class SocketSpec extends Fs2Spec {
         val message = Chunk.bytes("fs2.rocks".getBytes)
         val clientCount = 5000
 
+        val localBindAddress = Task.ref[InetSocketAddress].unsafeRun
+
         val echoServer: Stream[Task, Unit] = {
           val ps =
-            server[Task](localBindAddress)
-            .map {
-              _.flatMap { (socket: Socket[Task]) =>
-                socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)
-              }
+            serverWithLocalAddress[Task](new InetSocketAddress(0))
+            .flatMap {
+              case Left(local) => Stream.eval_(localBindAddress.set(Task.now(local)))
+              case Right(s) =>
+                Stream.emit(s.flatMap { (socket: Socket[Task]) =>
+                  socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)
+                })
             }
 
           concurrent.join(Int.MaxValue)(ps)
@@ -47,9 +51,11 @@ class SocketSpec extends Fs2Spec {
         val clients: Stream[Task, Array[Byte]] = {
           val pc: Stream[Task, Stream[Task, Array[Byte]]] =
             Stream.range[Task](0, clientCount).map { idx =>
-              client[Task](localBindAddress).flatMap { socket =>
-                Stream.chunk(message).to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
-                  socket.reads(1024, None).chunks.map(_.toArray)
+              Stream.eval(localBindAddress.get).flatMap { local =>
+                client[Task](local).flatMap { socket =>
+                  Stream.chunk(message).to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
+                    socket.reads(1024, None).chunks.map(_.toArray)
+                }
               }
             }
 

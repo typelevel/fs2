@@ -26,16 +26,10 @@ object TestUtil {
           })
           t
         }
-
       }
     )
   }
 
-
-
   def localAddress(port: Int) = new InetSocketAddress("localhost", port)
-  val localBindAddress = localAddress(9999)
-
-
-
 }
+
