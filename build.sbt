@@ -48,7 +48,7 @@ resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snap
 libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-core" % "7.2.2",
   "org.scalaz" %% "scalaz-concurrent" % "7.2.2",
-  "org.scodec" %% "scodec-bits" % "1.0.12",
+  "org.scodec" %% "scodec-bits" % "1.1.0",
   "org.scalaz" %% "scalaz-scalacheck-binding" % "7.2.2" % "test",
   "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
 )
