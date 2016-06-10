@@ -50,8 +50,8 @@ object NioServer {
       receive1[ByteVector, ByteVector \/ ByteVector]({
         i =>
           val toEcho = i.take(sz)
-          if (sz - toEcho.size <= 0) emitAll(Seq(\/-(toEcho), -\/(toEcho))) ++ halt
-          else  emitAll(Seq(\/-(toEcho), -\/(toEcho))) ++ remaining(sz -toEcho.size)
+          if (sz - toEcho.size.toInt <= 0) emitAll(Seq(\/-(toEcho), -\/(toEcho))) ++ halt
+          else  emitAll(Seq(\/-(toEcho), -\/(toEcho))) ++ remaining(sz - toEcho.size.toInt)
       })
     }
 
@@ -73,7 +73,7 @@ object NioClient {
           case ReceiveL(rcvd) =>
             emitO(rcvd) ++
               (if (collected + rcvd.size >= data.size) halt
-              else go(collected + rcvd.size))
+              else go(collected + rcvd.size.toInt))
           case ReceiveR(data) => tell(data) ++ go(collected)
           case HaltL(rsn)     => Halt(rsn)
           case HaltR(End)       => go(collected)

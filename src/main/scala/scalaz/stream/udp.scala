@@ -75,7 +75,7 @@ object udp {
    */
   def send(to: InetSocketAddress, bytes: ByteVector): Process[Connection,Unit] =
     ask.flatMap { socket => eval { Task.delay {
-      val p = new DatagramPacket(bytes.toArray, 0, bytes.length, to.getAddress, to.getPort)
+      val p = new DatagramPacket(bytes.toArray, 0, bytes.length.toInt, to.getAddress, to.getPort)
       socket.send(p)
     }}}
 
