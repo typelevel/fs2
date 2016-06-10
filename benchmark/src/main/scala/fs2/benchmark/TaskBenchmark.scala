@@ -5,9 +5,11 @@ import fs2.util._
 
 import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 
-@State(Scope.Thread)
-class TaskBenchmark {
 
+@State(Scope.Thread)
+class TaskBenchmark extends BenchmarkUtils {
+
+  implicit val s: Strategy = scaledStrategy
   val range = 1 to 1000000
 
   def sum(start: Int, end: Int): Int = {
@@ -21,7 +23,7 @@ class TaskBenchmark {
     sum
   }
 
-  def taskSum(implicit S: Strategy): Task[Int] = Task(sum(range.start, range.end))
+  def taskSum: Task[Int] = Task(sum(range.start, range.end))
 
   //to compare with
   @Benchmark
@@ -29,32 +31,17 @@ class TaskBenchmark {
     sum(range.start, range.end)
   }
   
-  val singleThreadedStrategy = Strategy.fromFixedDaemonPool(1)
 
   @Benchmark
   def sumSingleThread: Int = {
-   implicit val S: Strategy = singleThreadedStrategy
    taskSum.unsafeRun
   }
   
-  val multiThreadedStrategy = Strategy.fromFixedDaemonPool(4)
-  
   @Benchmark
   def sumMultiThread: Int = {
-	//This needs to be removed
-    implicit val S: Strategy = multiThreadedStrategy
-    (for {
-      t1 <- Task.start { taskSum }
-      t2 <- Task.start{ taskSum }
-      t3 <- Task.start { taskSum }
-      t4 <- Task.start { taskSum }
-      r1 <- t1
-      r2 <- t2
-      r3 <- t3
-      r4 <- t4
-    } yield r1 + r2 + r3 + r4 ).unsafeRun
+    (1 to cores).map(_ => Task.start(taskSum) ).foldLeft(Task.now(Task.now(0))) { (b, x) =>
+      b.flatMap(y => x.map(_.flatMap(xx => y.map(xx + _))))
+    }.flatMap(identity).unsafeRun
   }
-
-
 }
 
