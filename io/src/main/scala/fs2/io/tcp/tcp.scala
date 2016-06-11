@@ -50,5 +50,17 @@ package object tcp {
     , receiveBufferSize: Int = 256 * 1024)(
     implicit AG: AsynchronousChannelGroup, F: Async[F], FR: Async.Run[F]
   ): Stream[F, Stream[F, Socket[F]]] =
-  Socket.server(bind,maxQueued,reuseAddress,receiveBufferSize)
+    serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize).collect { case Right(s) => s }
+
+   /**
+    * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
+    */
+  def serverWithLocalAddress[F[_]](
+    bind: InetSocketAddress
+    , maxQueued: Int = 0
+    , reuseAddress: Boolean = true
+    , receiveBufferSize: Int = 256 * 1024)(
+    implicit AG: AsynchronousChannelGroup, F: Async[F], FR: Async.Run[F]
+  ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
+    Socket.server(bind,maxQueued,reuseAddress,receiveBufferSize)
 }
