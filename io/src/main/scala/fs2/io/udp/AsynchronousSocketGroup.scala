@@ -2,13 +2,16 @@ package fs2
 package io
 package udp
 
-import scala.collection.mutable.{Queue=>MutableQueue}
+import scala.collection.JavaConverters._
+import scala.collection.mutable.PriorityQueue
+import scala.concurrent.duration.FiniteDuration
 
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.nio.channels.{CancelledKeyException,ClosedChannelException,DatagramChannel,Selector,SelectionKey}
-import java.util.concurrent.CountDownLatch
+import java.nio.channels.{CancelledKeyException,ClosedChannelException,DatagramChannel,InterruptedByTimeoutException,Selector,SelectionKey}
+import java.util.ArrayDeque
+import java.util.concurrent.{ConcurrentLinkedQueue,CountDownLatch}
 
 /**
  * Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
@@ -18,8 +21,8 @@ import java.util.concurrent.CountDownLatch
 sealed trait AsynchronousSocketGroup {
   private[udp] type Context
   private[udp] def register(channel: DatagramChannel): Context
-  private[udp] def read(ctx: Context, cb: Either[Throwable,Packet] => Unit): Unit
-  private[udp] def write(ctx: Context, packet: Packet, cb: Option[Throwable] => Unit): Unit
+  private[udp] def read(ctx: Context, timeout: Option[FiniteDuration], cb: Either[Throwable,Packet] => Unit): Unit
+  private[udp] def write(ctx: Context, packet: Packet, timeout: Option[FiniteDuration], cb: Option[Throwable] => Unit): Unit
   private[udp] def close(ctx: Context): Unit
 
   /**
@@ -32,55 +35,93 @@ object AsynchronousSocketGroup {
 
   def apply(): AsynchronousSocketGroup = new AsynchronousSocketGroup {
 
+    class Timeout(val expiry: Long, onTimeout: () => Unit) {
+      private var done: Boolean = false
+      def cancel: Unit = done = true
+      def timedOut: Unit = {
+        if (!done) {
+          done = true
+          onTimeout()
+        }
+      }
+    }
+
+    object Timeout {
+      def apply(duration: FiniteDuration)(onTimeout: => Unit): Timeout = new Timeout(System.currentTimeMillis + duration.toMillis, () => onTimeout)
+      implicit val ordTimeout: Ordering[Timeout] = Ordering.by[Timeout, Long](_.expiry)
+    }
+
     class Attachment(
-      readers: MutableQueue[Either[Throwable,Packet] => Unit] = MutableQueue(),
-      writers: MutableQueue[(Packet,Option[Throwable] => Unit)] = MutableQueue()
+      readers: ArrayDeque[(Either[Throwable,Packet] => Unit,Option[Timeout])] = new ArrayDeque(),
+      writers: ArrayDeque[((Packet,Option[Throwable] => Unit),Option[Timeout])] = new ArrayDeque()
     ) {
 
-      def hasReaders: Boolean = readers.nonEmpty
+      def hasReaders: Boolean = !readers.isEmpty
 
       def peekReader: Option[Either[Throwable,Packet] => Unit] = {
         if (readers.isEmpty) None
-        else Some(readers.head)
+        else Some(readers.peek()._1)
       }
 
       def dequeueReader: Option[Either[Throwable,Packet] => Unit] = {
         if (readers.isEmpty) None
-        else Some(readers.dequeue())
-      }
-
-      def queueReader(reader: Either[Throwable,Packet] => Unit): Unit = {
-        if (closed) reader(Left(new ClosedChannelException))
         else {
-          readers += reader
-          ()
+          val (reader, timeout) = readers.pop()
+          timeout.foreach(_.cancel)
+          Some(reader)
         }
       }
 
-      def hasWriters: Boolean = writers.nonEmpty
+      def queueReader(reader: Either[Throwable,Packet] => Unit, timeout: Option[Timeout]): () => Unit = {
+        if (closed) {
+          reader(Left(new ClosedChannelException))
+          timeout.foreach(_.cancel)
+          () => ()
+        } else {
+          val r = (reader, timeout)
+          readers.add(r)
+          () => { readers.remove(r); () }
+        }
+      }
+
+      def hasWriters: Boolean = !writers.isEmpty
 
       def peekWriter: Option[(Packet,Option[Throwable] => Unit)] = {
         if (writers.isEmpty) None
-        else Some(writers.head)
+        else Some(writers.peek()._1)
       }
 
       def dequeueWriter: Option[(Packet,Option[Throwable] => Unit)] = {
         if (writers.isEmpty) None
-        else Some(writers.dequeue())
+        else {
+          val (w, timeout) = writers.pop()
+          timeout.foreach(_.cancel)
+          Some(w)
+        }
       }
 
-      def queueWriter(writer: (Packet,Option[Throwable] => Unit)): Unit = {
-        if (closed) writer._2(Some(new ClosedChannelException))
-        else {
-          writers += writer
-          ()
+      def queueWriter(writer: (Packet,Option[Throwable] => Unit), timeout: Option[Timeout]): () => Unit = {
+        if (closed) {
+          writer._2(Some(new ClosedChannelException))
+          timeout.foreach(_.cancel)
+          () => ()
+        } else {
+          val w = (writer, timeout)
+          writers.add(w)
+          () => { writers.remove(w); () }
         }
       }
 
       def close: Unit = {
-        readers.foreach { cb => cb(Left(new ClosedChannelException)) }
+        readers.iterator.asScala.foreach { case (cb, t) =>
+          cb(Left(new ClosedChannelException))
+          t.foreach(_.cancel)
+        }
         readers.clear
-        writers.foreach { case (_, cb) => cb(Some(new ClosedChannelException)) }
+        writers.iterator.asScala.foreach { case ((_, cb), t) =>
+          cb(Some(new ClosedChannelException))
+          t.foreach(_.cancel)
+        }
         writers.clear
       }
     }
@@ -90,7 +131,8 @@ object AsynchronousSocketGroup {
     private val selector = Selector.open()
     private val closeLock = new Object
     @volatile private var closed = false
-    private val pendingThunks: MutableQueue[() => Unit] = MutableQueue()
+    private val pendingThunks: ConcurrentLinkedQueue[() => Unit] = new ConcurrentLinkedQueue()
+    private val pendingTimeouts: PriorityQueue[Timeout] = new PriorityQueue()
     private val readBuffer = ByteBuffer.allocate(1 << 16)
 
     override def register(channel: DatagramChannel): Context = {
@@ -107,15 +149,22 @@ object AsynchronousSocketGroup {
       key
     }
 
-    override def read(key: SelectionKey, cb: Either[Throwable,Packet] => Unit): Unit = {
+    override def read(key: SelectionKey, timeout: Option[FiniteDuration], cb: Either[Throwable,Packet] => Unit): Unit = {
       onSelectorThread {
         val channel = key.channel.asInstanceOf[DatagramChannel]
         val attachment = key.attachment.asInstanceOf[Attachment]
+        var cancelReader: () => Unit = null
+        val t = timeout map { t0 => Timeout(t0) {
+          cb(Left(new InterruptedByTimeoutException))
+          if (cancelReader ne null) cancelReader()
+        }}
         if (attachment.hasReaders) {
-          attachment.queueReader(cb)
+          cancelReader = attachment.queueReader(cb, t)
+          t.foreach { t => pendingTimeouts += t }
         } else {
           if (!read1(key, channel, attachment, cb)) {
-            attachment.queueReader(cb)
+            cancelReader = attachment.queueReader(cb, t)
+            t.foreach { t => pendingTimeouts += t }
             try { key.interestOps(key.interestOps | SelectionKey.OP_READ); () }
             catch { case t: CancelledKeyException => /* Ignore; key was closed */ }
           }
@@ -143,15 +192,22 @@ object AsynchronousSocketGroup {
       }
     }
 
-    override def write(key: SelectionKey, packet: Packet, cb: Option[Throwable] => Unit): Unit = {
+    override def write(key: SelectionKey, packet: Packet, timeout: Option[FiniteDuration], cb: Option[Throwable] => Unit): Unit = {
       onSelectorThread {
         val channel = key.channel.asInstanceOf[DatagramChannel]
         val attachment = key.attachment.asInstanceOf[Attachment]
+        var cancelWriter: () => Unit = null
+        val t = timeout map { t0 => Timeout(t0) {
+          cb(Some(new InterruptedByTimeoutException))
+          if (cancelWriter ne null) cancelWriter()
+        }}
         if (attachment.hasWriters) {
-          attachment.queueWriter((packet, cb))
+          cancelWriter = attachment.queueWriter((packet, cb), t)
+          t.foreach { t => pendingTimeouts += t }
         } else {
           if (!write1(key, channel, attachment, packet, cb)) {
-            attachment.queueWriter((packet, cb))
+            cancelWriter = attachment.queueWriter((packet, cb), t)
+            t.foreach { t => pendingTimeouts += t }
             try { key.interestOps(key.interestOps | SelectionKey.OP_WRITE); () }
             catch { case t: CancelledKeyException => /* Ignore; key was closed */ }
           }
@@ -194,9 +250,7 @@ object AsynchronousSocketGroup {
         if (closed) {
           ifClosed
         } else {
-          pendingThunks.synchronized {
-            pendingThunks.+=(() => f)
-          }
+          pendingThunks.add(() => f)
           selector.wakeup()
           ()
         }
@@ -204,15 +258,19 @@ object AsynchronousSocketGroup {
     }
 
     private def runPendingThunks: Unit = {
-      val thunksToRun = pendingThunks.synchronized { pendingThunks.dequeueAll(_ => true) }
-      thunksToRun foreach { _() }
+      var next = pendingThunks.poll()
+      while (next ne null) {
+        next()
+        next = pendingThunks.poll()
+      }
     }
 
     private val selectorThread = Strategy.daemonThreadFactory("fs2-udp-selector").newThread(new Runnable {
       def run = {
         while (!closed && !Thread.currentThread.isInterrupted) {
           runPendingThunks
-          selector.select
+          val timeout = pendingTimeouts.headOption.map { t => (t.expiry - System.currentTimeMillis) max 0L }
+          selector.select(timeout.getOrElse(0L))
           val selectedKeys = selector.selectedKeys.iterator
           while (selectedKeys.hasNext) {
             val key = selectedKeys.next
@@ -245,6 +303,13 @@ object AsynchronousSocketGroup {
             } catch {
               case t: CancelledKeyException => // Ignore; key was closed
             }
+          }
+          val now = System.currentTimeMillis
+          var nextTimeout = pendingTimeouts.headOption
+          while (nextTimeout.isDefined && nextTimeout.get.expiry <= now) {
+            nextTimeout.get.timedOut
+            pendingTimeouts.dequeue()
+            nextTimeout = pendingTimeouts.headOption
           }
         }
         close

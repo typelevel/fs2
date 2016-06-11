@@ -23,7 +23,7 @@ trait Socket[F[_]] {
     *
     * If `timeout` is specified, then resulting `F` will evaluate to failure with [[java.nio.channels.InterruptedByTimeoutException]]
     * if read was not satisfied in given timeout. Read is satisfied, when at least single Byte was received
-    * before `timeout` expires
+    * before `timeout` expires.
     *
     * This may return None, as well when end of stream has been reached before timeout expired and no data
     * has been received.

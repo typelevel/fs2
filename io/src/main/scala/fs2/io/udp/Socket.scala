@@ -3,14 +3,19 @@ package fs2.io.udp
 import java.net.{InetAddress,NetworkInterface,InetSocketAddress}
 import java.nio.channels.{ClosedChannelException,DatagramChannel}
 
+import scala.concurrent.duration.FiniteDuration
+
 import fs2._
 
 sealed trait Socket[F[_]] {
 
   /**
    * Reads a single packet from this udp socket.
+   *
+   * If `timeout` is specified, then resulting `F` will fail with [[java.nio.channels.InterruptedByTimeoutException]]
+   * if read was not satisfied in given timeout.
    */
-  def read: F[Packet]
+  def read(timeout: Option[FiniteDuration] = None): F[Packet]
 
   /**
    * Reads packets received from this udp socket.
@@ -18,21 +23,30 @@ sealed trait Socket[F[_]] {
    * Note that multiple `reads` may execute at same time, causing each evaluation to receive fair
    * amount of messages.
    *
+   * If `timeout` is specified, then resulting stream will fail with [[java.nio.channels.InterruptedByTimeoutException]]
+   * if a read was not satisfied in given timeout.
+   *
    * @return stream of packets
    */
-  def reads: Stream[F,Packet]
+  def reads(timeout: Option[FiniteDuration] = None): Stream[F,Packet]
 
   /**
    * Write a single packet to this udp socket.
    *
+   * If `timeout` is specified, then resulting `F` will fail with [[java.nio.channels.InterruptedByTimeoutException]]
+   * if write was not completed in given timeout.
+   *
    * @param packet  Packet to write
    */
-  def write(packet: Packet): F[Unit]
+  def write(packet: Packet, timeout: Option[FiniteDuration] = None): F[Unit]
 
   /**
    * Writes supplied packets to this udp socket.
+   *
+   * If `timeout` is specified, then resulting sink will fail with [[java.nio.channels.InterruptedByTimeoutException]]
+   * if a write was not completed in given timeout.
    */
-  def writes: Sink[F,Packet]
+  def writes(timeout: Option[FiniteDuration] = None): Sink[F,Packet]
 
   /** Returns the local address of this udp socket. */
   def localAddress: F[InetSocketAddress]
@@ -87,18 +101,18 @@ object Socket {
       def localAddress: F[InetSocketAddress] =
         F.delay(Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]).getOrElse(throw new ClosedChannelException))
 
-      def read: F[Packet] = F.async(cb => F.delay { AG.read(ctx, result => invoke(cb(result))) })
+      def read(timeout: Option[FiniteDuration]): F[Packet] = F.async(cb => F.delay { AG.read(ctx, timeout, result => invoke(cb(result))) })
 
-      def reads: Stream[F, Packet] =
-        Stream.repeatEval(read)
+      def reads(timeout: Option[FiniteDuration]): Stream[F, Packet] =
+        Stream.repeatEval(read(timeout))
 
-      def write(packet: Packet): F[Unit] =
+      def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
         F.async(cb => F.delay {
-          AG.write(ctx, packet, _ match { case Some(t) => invoke(cb(Left(t))); case None => invoke(cb(Right(()))) })
+          AG.write(ctx, packet, timeout, _ match { case Some(t) => invoke(cb(Left(t))); case None => invoke(cb(Right(()))) })
         })
 
-      def writes: Sink[F, Packet] =
-        _.flatMap(p => Stream.eval(write(p)))
+      def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =
+        _.flatMap(p => Stream.eval(write(p, timeout)))
 
       def close: F[Unit] = F.delay { AG.close(ctx) }
 
