@@ -34,7 +34,7 @@ lazy val commonSettings = Seq(
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
   scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console)),
   libraryDependencies ++= Seq(
-    "org.scalatest" %% "scalatest" % "3.0.0-M16-SNAP4" % "test",
+    "org.scalatest" %% "scalatest" % "3.0.0-RC2" % "test",
     "org.scalacheck" %% "scalacheck" % "1.13.1" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
