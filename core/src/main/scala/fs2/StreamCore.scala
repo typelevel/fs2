@@ -326,7 +326,7 @@ object StreamCore {
       StreamCore.attemptEval(r).flatMap {
         case Left(e) => StreamCore.evalScope(Scope.cancelAcquire(token)) flatMap { _ => StreamCore.fail(e) }
         case Right(r) =>
-          StreamCore.evalScope(Scope.finishAcquire(token, cleanup(r).attempt))
+          StreamCore.evalScope(Scope.finishAcquire(token, Free.suspend(cleanup(r).attempt)))
                     .flatMap { _ => StreamCore.emit(r).onComplete(StreamCore.release(List(token)).drain) }
       }
     }

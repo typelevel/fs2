@@ -76,6 +76,23 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       withClue(s.tag) { 0L shouldBe c.get }
     }
 
+    "bracket release should not be called until necessary" in {
+      val buffer = collection.mutable.ListBuffer[Symbol]()
+      runLog {
+        val s = Stream.bracket(Task.delay(buffer += 'Acquired))(
+          _ => {
+            buffer += 'Used
+            Stream.emit(())
+          },
+          _ => {
+            buffer += 'ReleaseInvoked
+            Task.delay { buffer += 'Released; () }
+          })
+        s.flatMap { s => buffer += 'FlatMapped; Stream.emit(s) }
+      }
+      buffer.toList shouldBe List('Acquired, 'Used, 'FlatMapped, 'ReleaseInvoked, 'Released)
+    }
+
     "asynchronous resource allocation (1)" in forAll { (s1: PureStream[Int], f1: Failure) =>
       val c = new AtomicLong(0)
       val b1 = bracket(c)(s1.get)
