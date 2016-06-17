@@ -10,7 +10,6 @@ import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 class TaskBenchmark extends BenchmarkUtils {
 
   implicit val s: Strategy = scaledStrategy
-  val range = 1 to 1000000
 
   //don't really want to create any objects in our benchmark...
   def sum(start: Int, end: Int): Int = {
@@ -24,60 +23,50 @@ class TaskBenchmark extends BenchmarkUtils {
     sum
   }
 
-  def taskSum: Task[Int] = Task(sum(range.start, range.end))
+  @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
+  @Benchmark
+  def sumCurrent(n: Int): Int = sum(0, n)
 
-  //to compare with
+  @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def sumCurrent: Int = {
-    sum(range.start, range.end)
-  }
-  
+  def sumSingle(n: Int): Int = Task(sum(0, n)).unsafeRun
 
+  @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def sumSingle: Int = {
-   taskSum.unsafeRun
-  }
-  
-  @Benchmark
-  def sumMulti: Int = {
-    (1 to cores).map(_ => Task.start(taskSum) ).foldLeft(Task.now(Task.now(0))) { (b, x) =>
+  def sumMulti(n: Int): Int = {
+    (1 to cores).map(_ => Task.start(Task(sum(0, n))) ).foldLeft(Task.now(Task.now(0))) { (b, x) =>
       b.flatMap(y => x.map(_.flatMap(xx => y.map(xx + _))))
     }.flatMap(identity).unsafeRun
   }
 
+  @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def sumRace: Int = {
-    (1 to cores).foldLeft(taskSum)((b, a) => b.race(taskSum).map(_.merge)).unsafeRun
+  def sumRace(n: Int): Int = {
+    (1 to cores).foldLeft(Task(sum(0, n)))((b, a) => b.race(Task(sum(0, n))).map(_.merge)).unsafeRun
   }
 
-  val incRange = 1 to 10000
-
-  //don't measure construction time
-  val _incMap = incRange.foldLeft(Task.now(0))((t, _) => t.map(identity))
-
+  @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def incMap: Int = {
-    _incMap.unsafeRun
+  def incMap(n: Int): Int = {
+    (1 to n).foldLeft(Task.now(0))((t, _) => t.map(identity)).unsafeRun
   }
 
-  //don't measure construction time
-  val _incFlatMap = incRange.foldLeft(Task.now(0))((t, _) => t.flatMap(Task.now))
-
+  @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def incFlatmap: Int = {
-    _incFlatMap.unsafeRun
+  def incFlatmap(n: Int): Int = {
+    (1 to n).foldLeft(Task.now(0))((t, _) => t.flatMap(Task.now)).unsafeRun
   }
 
-  val traverseRange = 1 to 1000
-
+  @GenerateN(1, 4, 100, 200, 400, 800, 1600)
   @Benchmark
-  def traverseSingle: Vector[Int] = {
-    Task.traverse(traverseRange)(Task.now).unsafeRun
+  def traverseSingle(n: Int): Vector[Int] = {
+    Task.traverse(0 to n)(Task.now).unsafeRun
   }
 
+  @GenerateN(1, 4, 100, 200, 400, 800, 1600)
   @Benchmark
-  def traverseParallel: Vector[Int] = {
-    Task.parallelTraverse(traverseRange)(Task.now).unsafeRun
+  def traverseParallel(n: Int): Vector[Int] = {
+    Task.parallelTraverse(0 to n)(Task.now).unsafeRun
   }
 
 }

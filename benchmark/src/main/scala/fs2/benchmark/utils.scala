@@ -13,3 +13,4 @@ trait BenchmarkUtils {
   /** strategy scaled to number of cores */
   lazy val scaledStrategy: Strategy = Strategy.fromFixedDaemonPool(cores)
 }
+

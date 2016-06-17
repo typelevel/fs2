@@ -141,14 +141,29 @@ lazy val io = project.in(file("io")).
     name := "fs2-io"
   ).dependsOn(core % "compile->compile;test->test")
 
+lazy val benchmarkMacros = project.in(file("benchmark-macros"))
+  .settings(commonSettings)
+  .settings(noPublish)
+  .settings(
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
+    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
+  )
+  .settings(
+     name := "fs2-benchmark-macros"
+  )
+
 lazy val benchmark = project.in(file("benchmark")).
   settings(commonSettings).
   settings(noPublish).
   settings(
     name := "fs2-benchmark"
   )
+  .settings(
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
+    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
+  )
   .enablePlugins(JmhPlugin)
-  .dependsOn(io)
+  .dependsOn(io, benchmarkMacros)
 
 lazy val docs = project.in(file("docs")).
   settings(commonSettings ++ tutSettings).
