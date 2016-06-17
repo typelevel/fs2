@@ -27,21 +27,58 @@ class TaskBenchmark extends BenchmarkUtils {
 
   //to compare with
   @Benchmark
-  def sumCurrentThread: Int = {
+  def sumCurrent: Int = {
     sum(range.start, range.end)
   }
   
 
   @Benchmark
-  def sumSingleThread: Int = {
+  def sumSingle: Int = {
    taskSum.unsafeRun
   }
   
   @Benchmark
-  def sumMultiThread: Int = {
+  def sumMulti: Int = {
     (1 to cores).map(_ => Task.start(taskSum) ).foldLeft(Task.now(Task.now(0))) { (b, x) =>
       b.flatMap(y => x.map(_.flatMap(xx => y.map(xx + _))))
     }.flatMap(identity).unsafeRun
   }
+
+  @Benchmark
+  def sumRace: Int = {
+    (1 to cores).foldLeft(taskSum)((b, a) => b.race(taskSum).map(_.merge)).unsafeRun
+  }
+
+  //remove construction noise
+  def cfold[A](a: A, end: Int)(f: (A, Int) => A): A = {
+    var i = 0
+    var na = a
+    while(i < end) {
+      i += 1
+      na = f(na, i)
+    }
+    na
+  }
+
+  @Benchmark
+  def incMap: Int = {
+    cfold(Task.now(0), 10000)((t, _) => t.map(identity)).unsafeRun
+  }
+
+  @Benchmark
+  def incFlatmap: Int = {
+    cfold(Task.now(0), 10000)((t, _) => t.flatMap(Task.now)).unsafeRun
+  }
+
+  @Benchmark
+  def traverseSingle: Vector[Int] = {
+    Task.traverse(0 to 10000)(Task.now).unsafeRun
+  }
+
+  @Benchmark
+  def traverseParallel: Vector[Int] = {
+    Task.parallelTraverse(0 to 10000)(Task.now).unsafeRun
+  }
+
 }
 
