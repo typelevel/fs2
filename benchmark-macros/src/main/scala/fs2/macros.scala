@@ -1,4 +1,5 @@
 package fs2
+package benchmark
 
 import scala.language.experimental.macros
 import scala.annotation.StaticAnnotation

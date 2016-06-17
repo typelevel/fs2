@@ -25,48 +25,48 @@ class TaskBenchmark extends BenchmarkUtils {
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def sumCurrent(n: Int): Int = sum(0, n)
+  def current(N: Int): Int = sum(0, N)
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def sumSingle(n: Int): Int = Task(sum(0, n)).unsafeRun
+  def apply(N: Int): Int = Task(sum(0, N)).unsafeRun
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def sumMulti(n: Int): Int = {
-    (1 to cores).map(_ => Task.start(Task(sum(0, n))) ).foldLeft(Task.now(Task.now(0))) { (b, x) =>
+  def start(N: Int): Int = {
+    (1 to cores).map(_ => Task.start(Task(sum(0, N))) ).foldLeft(Task.now(Task.now(0))) { (b, x) =>
       b.flatMap(y => x.map(_.flatMap(xx => y.map(xx + _))))
     }.flatMap(identity).unsafeRun
   }
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def sumRace(n: Int): Int = {
-    (1 to cores).foldLeft(Task(sum(0, n)))((b, a) => b.race(Task(sum(0, n))).map(_.merge)).unsafeRun
+  def race(N: Int): Int = {
+    (1 to cores).foldLeft(Task(sum(0, N)))((b, a) => b.race(Task(sum(0, N))).map(_.merge)).unsafeRun
   }
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def incMap(n: Int): Int = {
-    (1 to n).foldLeft(Task.now(0))((t, _) => t.map(identity)).unsafeRun
+  def map(N: Int): Int = {
+    (1 to N).foldLeft(Task.now(0))((t, _) => t.map(identity)).unsafeRun
   }
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
-  def incFlatmap(n: Int): Int = {
-    (1 to n).foldLeft(Task.now(0))((t, _) => t.flatMap(Task.now)).unsafeRun
+  def flatMap(N: Int): Int = {
+    (1 to N).foldLeft(Task.now(0))((t, _) => t.flatMap(Task.now)).unsafeRun
   }
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600)
   @Benchmark
-  def traverseSingle(n: Int): Vector[Int] = {
-    Task.traverse(0 to n)(Task.now).unsafeRun
+  def traverse(N: Int): Vector[Int] = {
+    Task.traverse(0 to N)(Task.now).unsafeRun
   }
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600)
   @Benchmark
-  def traverseParallel(n: Int): Vector[Int] = {
-    Task.parallelTraverse(0 to n)(Task.now).unsafeRun
+  def parallelTraverse(N: Int): Vector[Int] = {
+    Task.parallelTraverse(0 to N)(Task.now).unsafeRun
   }
 
 }
