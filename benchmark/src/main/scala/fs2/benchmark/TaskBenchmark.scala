@@ -12,6 +12,7 @@ class TaskBenchmark extends BenchmarkUtils {
   implicit val s: Strategy = scaledStrategy
   val range = 1 to 1000000
 
+  //don't really want to create any objects in our benchmark...
   def sum(start: Int, end: Int): Int = {
     var i = start
     var sum = 0
@@ -49,35 +50,34 @@ class TaskBenchmark extends BenchmarkUtils {
     (1 to cores).foldLeft(taskSum)((b, a) => b.race(taskSum).map(_.merge)).unsafeRun
   }
 
-  //remove construction noise
-  def cfold[A](a: A, end: Int)(f: (A, Int) => A): A = {
-    var i = 0
-    var na = a
-    while(i < end) {
-      i += 1
-      na = f(na, i)
-    }
-    na
-  }
+  val incRange = 1 to 10000
+
+  //don't measure construction time
+  val _incMap = incRange.foldLeft(Task.now(0))((t, _) => t.map(identity))
 
   @Benchmark
   def incMap: Int = {
-    cfold(Task.now(0), 10000)((t, _) => t.map(identity)).unsafeRun
+    _incMap.unsafeRun
   }
+
+  //don't measure construction time
+  val _incFlatMap = incRange.foldLeft(Task.now(0))((t, _) => t.flatMap(Task.now))
 
   @Benchmark
   def incFlatmap: Int = {
-    cfold(Task.now(0), 10000)((t, _) => t.flatMap(Task.now)).unsafeRun
+    _incFlatMap.unsafeRun
   }
+
+  val traverseRange = 1 to 1000
 
   @Benchmark
   def traverseSingle: Vector[Int] = {
-    Task.traverse(0 to 10000)(Task.now).unsafeRun
+    Task.traverse(traverseRange)(Task.now).unsafeRun
   }
 
   @Benchmark
   def traverseParallel: Vector[Int] = {
-    Task.parallelTraverse(0 to 10000)(Task.now).unsafeRun
+    Task.parallelTraverse(traverseRange)(Task.now).unsafeRun
   }
 
 }
