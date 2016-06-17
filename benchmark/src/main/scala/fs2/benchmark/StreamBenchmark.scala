@@ -39,11 +39,8 @@ class StreamBenchmark extends BenchmarkUtils {
     (Stream.chunk(Chunk.seq(0 to 256000)).pure).repeatPull { s =>
       for {
         s2 <- Pull.awaitN(N)(s)
-        _  <- Pull.output(s2.head)
+        _  <- Pull.output(s2.head.head)
       } yield s2.tail
     }.covary[Task].runLast.unsafeRun.get
   }
-
-
-
 }
