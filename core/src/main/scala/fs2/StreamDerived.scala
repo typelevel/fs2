@@ -209,6 +209,8 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
       s.runFoldTraceFree(t)(z)(f).run
     def runLog(implicit F: Catchable[F]): F[Vector[A]] =
       s.runLogFree.run
+    def runLast(implicit F: Catchable[F]): F[Option[A]] =
+      runFold(Option.empty[A])((_, a) => Some(a))
     /** Transform this stream using the given `Pipe`. */
     def through[B](f: Pipe[F,A,B]): Stream[F,B] = f(s)
     /** Transform this stream using the given pure `Pipe`. */
