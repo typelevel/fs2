@@ -184,8 +184,12 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Boolean = values(offset + i)
     def apply(i: Int) = values(offset + i)
-    def copyToArray[B >: Boolean](xs: Array[B]): Unit =
-      values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    def copyToArray[B >: Boolean](xs: Array[B]): Unit = {
+      if (xs.isInstanceOf[Array[Boolean]])
+        System.arraycopy(values, offset, xs, 0, sz)
+      else
+        values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    }
     def drop(n: Int) =
       if (n >= size) empty
       else new Booleans(values, offset + n, size - n)
@@ -206,8 +210,12 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Byte = values(offset + i)
     def apply(i: Int) = values(offset + i)
-    def copyToArray[B >: Byte](xs: Array[B]): Unit =
-      values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    def copyToArray[B >: Byte](xs: Array[B]): Unit = {
+      if (xs.isInstanceOf[Array[Byte]])
+        System.arraycopy(values, offset, xs, 0, sz)
+      else
+        values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    }
     def drop(n: Int) =
       if (n >= size) empty
       else new Bytes(values, offset + n, size - n)
@@ -229,8 +237,12 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Long = values(offset + i)
     def apply(i: Int) = values(offset + i)
-    def copyToArray[B >: Long](xs: Array[B]): Unit =
-      values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    def copyToArray[B >: Long](xs: Array[B]): Unit = {
+      if (xs.isInstanceOf[Array[Long]])
+        System.arraycopy(values, offset, xs, 0, sz)
+      else
+        values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    }
     def drop(n: Int) =
       if (n >= size) empty
       else new Longs(values, offset + n, size - n)
@@ -251,8 +263,12 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Double = values(offset + i)
     def apply(i: Int) = values(offset + i)
-    def copyToArray[B >: Double](xs: Array[B]): Unit =
-      values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    def copyToArray[B >: Double](xs: Array[B]): Unit = {
+      if (xs.isInstanceOf[Array[Double]])
+        System.arraycopy(values, offset, xs, 0, sz)
+      else
+        values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    }
     def drop(n: Int) =
       if (n >= size) empty
       else new Doubles(values, offset + n, size - n)
