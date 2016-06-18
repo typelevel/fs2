@@ -11,7 +11,7 @@ trait Chunk[+A] { self =>
     if (size == 0) None
     else Some(apply(0) -> drop(1))
   def apply(i: Int): A
-  def copyToArray[B >: A](xs: Array[B]): Unit
+  def copyToArray[B >: A](xs: Array[B], start: Int = 0): Unit
   def drop(n: Int): Chunk[A]
   def take(n: Int): Chunk[A]
   def filter(f: A => Boolean): Chunk[A]
@@ -87,7 +87,7 @@ object Chunk {
   val empty: Chunk[Nothing] = new Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = throw new IllegalArgumentException(s"Chunk.empty($i)")
-    def copyToArray[B >: Nothing](xs: Array[B]): Unit = ()
+    def copyToArray[B >: Nothing](xs: Array[B], start: Int): Unit = ()
     def drop(n: Int) = empty
     def filter(f: Nothing => Boolean) = empty
     def take(n: Int) = empty
@@ -98,7 +98,7 @@ object Chunk {
   def singleton[A](a: A): Chunk[A] = new Chunk[A] { self =>
     def size = 1
     def apply(i: Int) = if (i == 0) a else throw new IllegalArgumentException(s"Chunk.singleton($i)")
-    def copyToArray[B >: A](xs: Array[B]): Unit = xs(0) = a
+    def copyToArray[B >: A](xs: Array[B], start: Int): Unit = xs(start) = a
     def drop(n: Int) = if (n > 0) empty else self
     def filter(f: A => Boolean) = if (f(a)) self else empty
     def take(n: Int) = if (n > 0) self else empty
@@ -112,7 +112,7 @@ object Chunk {
     override def isEmpty = a.isEmpty
     override def uncons = if (a.isEmpty) None else Some(a.head -> indexedSeq(a drop 1))
     def apply(i: Int) = a(i)
-    def copyToArray[B >: A](xs: Array[B]): Unit = a.copyToArray(xs)
+    def copyToArray[B >: A](xs: Array[B], start: Int): Unit = a.copyToArray(xs, start)
     def drop(n: Int) = indexedSeq(a.drop(n))
     def filter(f: A => Boolean) = indexedSeq(a.filter(f))
     def take(n: Int) = indexedSeq(a.take(n))
@@ -128,7 +128,7 @@ object Chunk {
     override def isEmpty = a.isEmpty
     override def uncons = if (a.isEmpty) None else Some(a.head -> seq(a drop 1))
     def apply(i: Int) = vec(i)
-    def copyToArray[B >: A](xs: Array[B]): Unit = a.copyToArray(xs)
+    def copyToArray[B >: A](xs: Array[B], start: Int): Unit = a.copyToArray(xs, start)
     def drop(n: Int) = seq(a.drop(n))
     def filter(f: A => Boolean) = seq(a.filter(f))
     def take(n: Int) = seq(a.take(n))
@@ -174,6 +174,86 @@ object Chunk {
     new Doubles(values, offset, size)
   }
 
+  def concat[A](chunks: Seq[Chunk[A]]): Chunk[A] = {
+    if (chunks.isEmpty) {
+      Chunk.empty
+    } else if (chunks.forall(c => c.isInstanceOf[Chunk.Booleans] || c.iterator.forall(_.isInstanceOf[Boolean]))) {
+      concatBooleans(chunks.asInstanceOf[Seq[Chunk[Boolean]]]).asInstanceOf[Chunk[A]]
+    } else if (chunks.forall(c => c.isInstanceOf[Chunk.Bytes] || c.iterator.forall(_.isInstanceOf[Byte]))) {
+      concatBytes(chunks.asInstanceOf[Seq[Chunk[Byte]]]).asInstanceOf[Chunk[A]]
+    } else if (chunks.forall(c => c.isInstanceOf[Chunk.Doubles] || c.iterator.forall(_.isInstanceOf[Double]))) {
+      concatDoubles(chunks.asInstanceOf[Seq[Chunk[Double]]]).asInstanceOf[Chunk[A]]
+    } else if (chunks.forall(c => c.isInstanceOf[Chunk.Longs] || c.iterator.forall(_.isInstanceOf[Long]))) {
+      concatLongs(chunks.asInstanceOf[Seq[Chunk[Long]]]).asInstanceOf[Chunk[A]]
+    } else {
+      Chunk.indexedSeq(chunks.foldLeft(Vector.empty[A])(_ ++ _.toVector))
+    }
+  }
+
+  def concatBooleans(chunks: Seq[Chunk[Boolean]]): Chunk[Boolean] = {
+    if (chunks.isEmpty) Chunk.empty
+    else {
+      val size = chunks.foldLeft(0)(_ + _.size)
+      val arr = Array.ofDim[Boolean](size)
+      var offset = 0
+      chunks.foreach { c =>
+        if (!c.isEmpty) {
+          c.copyToArray(arr, offset)
+          offset += c.size
+        }
+      }
+      Chunk.booleans(arr)
+    }
+  }
+
+  def concatBytes(chunks: Seq[Chunk[Byte]]): Chunk[Byte] = {
+    if (chunks.isEmpty) Chunk.empty
+    else {
+      val size = chunks.foldLeft(0)(_ + _.size)
+      val arr = Array.ofDim[Byte](size)
+      var offset = 0
+      chunks.foreach { c =>
+        if (!c.isEmpty) {
+          c.copyToArray(arr, offset)
+          offset += c.size
+        }
+      }
+      Chunk.bytes(arr)
+    }
+  }
+
+  def concatDoubles(chunks: Seq[Chunk[Double]]): Chunk[Double] = {
+    if (chunks.isEmpty) Chunk.empty
+    else {
+      val size = chunks.foldLeft(0)(_ + _.size)
+      val arr = Array.ofDim[Double](size)
+      var offset = 0
+      chunks.foreach { c =>
+        if (!c.isEmpty) {
+          c.copyToArray(arr, offset)
+          offset += c.size
+        }
+      }
+      Chunk.doubles(arr)
+    }
+  }
+
+  def concatLongs(chunks: Seq[Chunk[Long]]): Chunk[Long] = {
+    if (chunks.isEmpty) Chunk.empty
+    else {
+      val size = chunks.foldLeft(0)(_ + _.size)
+      val arr = Array.ofDim[Long](size)
+      var offset = 0
+      chunks.foreach { c =>
+        if (!c.isEmpty) {
+          c.copyToArray(arr, offset)
+          offset += c.size
+        }
+      }
+      Chunk.longs(arr)
+    }
+  }
+
   // copy-pasted code below for each primitive
   // sadly, @specialized does not work here since the generated class names are
   // not human readable and we want to be able to use these type names in pattern
@@ -184,8 +264,8 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Boolean = values(offset + i)
     def apply(i: Int) = values(offset + i)
-    def copyToArray[B >: Boolean](xs: Array[B]): Unit =
-      values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    def copyToArray[B >: Boolean](xs: Array[B], start: Int): Unit =
+      values.iterator.slice(offset, offset + sz).copyToArray(xs, start)
     def drop(n: Int) =
       if (n >= size) empty
       else new Booleans(values, offset + n, size - n)
@@ -206,8 +286,8 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Byte = values(offset + i)
     def apply(i: Int) = values(offset + i)
-    def copyToArray[B >: Byte](xs: Array[B]): Unit =
-      values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    def copyToArray[B >: Byte](xs: Array[B], start: Int): Unit =
+      values.iterator.slice(offset, offset + sz).copyToArray(xs, start)
     def drop(n: Int) =
       if (n >= size) empty
       else new Bytes(values, offset + n, size - n)
@@ -229,8 +309,8 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Long = values(offset + i)
     def apply(i: Int) = values(offset + i)
-    def copyToArray[B >: Long](xs: Array[B]): Unit =
-      values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    def copyToArray[B >: Long](xs: Array[B], start: Int): Unit =
+      values.iterator.slice(offset, offset + sz).copyToArray(xs, start)
     def drop(n: Int) =
       if (n >= size) empty
       else new Longs(values, offset + n, size - n)
@@ -251,8 +331,8 @@ object Chunk {
     val size = sz min (values.length - offset)
     def at(i: Int): Double = values(offset + i)
     def apply(i: Int) = values(offset + i)
-    def copyToArray[B >: Double](xs: Array[B]): Unit =
-      values.iterator.slice(offset, offset + sz).copyToArray(xs)
+    def copyToArray[B >: Double](xs: Array[B], start: Int): Unit =
+      values.iterator.slice(offset, offset + sz).copyToArray(xs, start)
     def drop(n: Int) =
       if (n >= size) empty
       else new Doubles(values, offset + n, size - n)
