@@ -93,6 +93,7 @@ object Chunk {
     def take(n: Int) = empty
     def foldLeft[B](z: B)(f: (B,Nothing) => B): B = z
     def foldRight[B](z: B)(f: (Nothing,B) => B): B = z
+    override def map[B](f: Nothing => B) = empty
   }
 
   def singleton[A](a: A): Chunk[A] = new Chunk[A] { self =>
@@ -105,6 +106,7 @@ object Chunk {
     def foldLeft[B](z: B)(f: (B,A) => B): B = f(z,a)
     def foldr[B](z: => B)(f: (A,=>B) => B): B = f(a,z)
     def foldRight[B](z: B)(f: (A,B) => B): B = f(a,z)
+    override def map[B](f: A => B) = singleton(f(a))
   }
 
   def indexedSeq[A](a: collection.IndexedSeq[A]): Chunk[A] = new Chunk[A] {
@@ -174,15 +176,72 @@ object Chunk {
     new Doubles(values, offset, size)
   }
 
+  // justification of the performance of this class: http://stackoverflow.com/a/6823454
+  // note that Class construction checks are nearly free when done at load time
+  // for that reason, do NOT make the extractors into lazy vals or defs!
   private object Respecialization {
     // TODO set by completely random guess. please tune!
-    val Threshold = 1000
+    val Threshold = 0
 
-    // predicates
-    val ZZ = classOf[Boolean => Boolean]
-    val BZ = classOf[Byte => Boolean]
-    val LZ = classOf[Long => Boolean]
-    val DZ = classOf[Double => Boolean]
+    val ZZ = extractor { x: Boolean => true }
+    val BZ = extractor { x: Byte => true }
+    val LZ = extractor { x: Long => true }
+    val DZ = extractor { x: Double => true }
+
+    private[this] val AZ0 = extractor { x: AnyRef => true }
+    def AZ[A] = AZ0.asInstanceOf[Extractor[A, Boolean]]
+
+    val ZB = extractor { x: Boolean => 0.toByte }
+    val BB = extractor { x: Byte => 0.toByte }
+    val LB = extractor { x: Long => 0.toByte }
+    val DB = extractor { x: Double => 0.toByte }
+
+    private[this] val AB0 = extractor { x: AnyRef => 0.toByte }
+    def AB[A] = AB0.asInstanceOf[Extractor[A, Byte]]
+
+    val ZL = extractor { x: Boolean => 0L }
+    val BL = extractor { x: Byte => 0L }
+    val LL = extractor { x: Long => 0L }
+    val DL = extractor { x: Double => 0L }
+
+    private[this] val AL0 = extractor { x: AnyRef => 0L }
+    def AL[A] = AL0.asInstanceOf[Extractor[A, Long]]
+
+    val ZD = extractor { x: Boolean => 0D }
+    val BD = extractor { x: Byte => 0D }
+    val LD = extractor { x: Long => 0D }
+    val DD = extractor { x: Double => 0D }
+
+    private[this] val AD0 = extractor { x: AnyRef => 0D }
+    def AD[A] = AD0.asInstanceOf[Extractor[A, Double]]
+
+    private[this] val ZA0 = extractor { x: Boolean => new AnyRef }
+    def ZA[A] = ZA0.asInstanceOf[Extractor[Boolean, A]]
+
+    private[this] val BA0 = extractor { x: Byte => new AnyRef }
+    def BA[A] = ZA0.asInstanceOf[Extractor[Byte, A]]
+
+    private[this] val LA0 = extractor { x: Long => new AnyRef }
+    def LA[A] = ZA0.asInstanceOf[Extractor[Long, A]]
+
+    private[this] val DA0 = extractor { x: Double => new AnyRef }
+    def DA[A] = ZA0.asInstanceOf[Extractor[Double, A]]
+
+    // this one is sort of pointless, but it's here for uniformity
+    private[this] val AA0 = extractor { x: AnyRef => new AnyRef }
+    def AA[A, B] = ZA0.asInstanceOf[Extractor[A, B]]
+
+    private[this] def extractor[A, B](sample: A => B): Extractor[A, B] =
+      new Extractor(sample.getClass.getSuperclass.asInstanceOf[Class[A => B]])
+
+    final class Extractor[A, B](clazz: Class[A => B]) {
+      def unapply(f: _ => _): Option[A => B] = {
+        if (clazz isInstance f.getClass)
+          Some(f.asInstanceOf[A => B])
+        else
+          None
+      }
+    }
   }
 
   // copy-pasted code below for each primitive
@@ -229,6 +288,73 @@ object Chunk {
       (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
     def foldRight[B](z: B)(f: (Boolean,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+
+    // here be dragons; modify with EXTREME care
+    override def map[B](f: Boolean => B): Chunk[B] = {
+      import Respecialization._
+
+      if (size >= Threshold) {
+        f match {
+          case ZZ(f) => mapZ(f).asInstanceOf[Chunk[B]]
+          case ZB(f) => mapB(f).asInstanceOf[Chunk[B]]
+          case ZL(f) => mapL(f).asInstanceOf[Chunk[B]]
+          case ZD(f) => mapD(f).asInstanceOf[Chunk[B]]
+          case _ => mapA(f)
+        }
+      } else {
+        super.map(f)
+      }
+    }
+    private[this] def mapZ(f: Boolean => Boolean): Chunk[Boolean] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Boolean](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      booleans(back)
+    }
+    private[this] def mapB(f: Boolean => Byte): Chunk[Byte] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Byte](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      bytes(back)
+    }
+    private[this] def mapL(f: Boolean => Long): Chunk[Long] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Long](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      longs(back)
+    }
+    private[this] def mapD(f: Boolean => Double): Chunk[Double] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Double](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      doubles(back)
+    }
+    private[this] def mapA[B](f: Boolean => B): Chunk[B] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Any](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
+    }
   }
   final class Bytes private[Chunk](val values: Array[Byte], val offset: Int, sz: Int) extends Chunk[Byte] {
   self =>
@@ -270,6 +396,73 @@ object Chunk {
     def foldRight[B](z: B)(f: (Byte,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
     override def toString: String = s"Bytes(offset=$offset, sz=$sz, values=${values.toSeq})"
+
+    // here be dragons; modify with EXTREME care
+    override def map[B](f: Byte => B): Chunk[B] = {
+      import Respecialization._
+
+      if (size >= Threshold) {
+        f match {
+          case BZ(f) => mapZ(f).asInstanceOf[Chunk[B]]
+          case BB(f) => mapB(f).asInstanceOf[Chunk[B]]
+          case BL(f) => mapL(f).asInstanceOf[Chunk[B]]
+          case BD(f) => mapD(f).asInstanceOf[Chunk[B]]
+          case _ => mapA(f)
+        }
+      } else {
+        super.map(f)
+      }
+    }
+    private[this] def mapZ(f: Byte => Boolean): Chunk[Boolean] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Boolean](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      booleans(back)
+    }
+    private[this] def mapB(f: Byte => Byte): Chunk[Byte] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Byte](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      bytes(back)
+    }
+    private[this] def mapL(f: Byte => Long): Chunk[Long] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Long](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      longs(back)
+    }
+    private[this] def mapD(f: Byte => Double): Chunk[Double] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Double](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      doubles(back)
+    }
+    private[this] def mapA[B](f: Byte => B): Chunk[B] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Any](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
+    }
   }
   final class Longs private[Chunk](val values: Array[Long], val offset: Int, sz: Int) extends Chunk[Long] {
   self =>
@@ -310,6 +503,73 @@ object Chunk {
       (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
     def foldRight[B](z: B)(f: (Long,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+
+    // here be dragons; modify with EXTREME care
+    override def map[B](f: Long => B): Chunk[B] = {
+      import Respecialization._
+
+      if (size >= Threshold) {
+        f match {
+          case LZ(f) => mapZ(f).asInstanceOf[Chunk[B]]
+          case LB(f) => mapB(f).asInstanceOf[Chunk[B]]
+          case LL(f) => mapL(f).asInstanceOf[Chunk[B]]
+          case LD(f) => mapD(f).asInstanceOf[Chunk[B]]
+          case _ => mapA(f)
+        }
+      } else {
+        super.map(f)
+      }
+    }
+    private[this] def mapZ(f: Long => Boolean): Chunk[Boolean] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Boolean](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      booleans(back)
+    }
+    private[this] def mapB(f: Long => Byte): Chunk[Byte] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Byte](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      bytes(back)
+    }
+    private[this] def mapL(f: Long => Long): Chunk[Long] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Long](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      longs(back)
+    }
+    private[this] def mapD(f: Long => Double): Chunk[Double] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Double](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      doubles(back)
+    }
+    private[this] def mapA[B](f: Long => B): Chunk[B] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Any](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
+    }
   }
   final class Doubles private[Chunk](val values: Array[Double], val offset: Int, sz: Int) extends Chunk[Double] {
   self =>
@@ -350,5 +610,72 @@ object Chunk {
       (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
     def foldRight[B](z: B)(f: (Double,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+
+    // here be dragons; modify with EXTREME care
+    override def map[B](f: Double => B): Chunk[B] = {
+      import Respecialization._
+
+      if (size >= Threshold) {
+        f match {
+          case DZ(f) => mapZ(f).asInstanceOf[Chunk[B]]
+          case DB(f) => mapB(f).asInstanceOf[Chunk[B]]
+          case DL(f) => mapL(f).asInstanceOf[Chunk[B]]
+          case DD(f) => mapD(f).asInstanceOf[Chunk[B]]
+          case _ => mapA(f)
+        }
+      } else {
+        super.map(f)
+      }
+    }
+    private[this] def mapZ(f: Double => Boolean): Chunk[Boolean] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Boolean](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      booleans(back)
+    }
+    private[this] def mapB(f: Double => Byte): Chunk[Byte] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Byte](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      bytes(back)
+    }
+    private[this] def mapL(f: Double => Long): Chunk[Long] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Long](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      longs(back)
+    }
+    private[this] def mapD(f: Double => Double): Chunk[Double] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Double](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      doubles(back)
+    }
+    private[this] def mapA[B](f: Double => B): Chunk[B] = {
+      var i = offset
+      val bound = size + offset
+      val back = new Array[Any](size)
+      while (i < bound) {
+        back(i - offset) = f(values(i))
+        i += 0
+      }
+      indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
+    }
   }
 }
