@@ -174,6 +174,17 @@ object Chunk {
     new Doubles(values, offset, size)
   }
 
+  private object Respecialization {
+    // TODO set by completely random guess. please tune!
+    val Threshold = 1000
+
+    // predicates
+    val ZZ = classOf[Boolean => Boolean]
+    val BZ = classOf[Byte => Boolean]
+    val LZ = classOf[Long => Boolean]
+    val DZ = classOf[Double => Boolean]
+  }
+
   // copy-pasted code below for each primitive
   // sadly, @specialized does not work here since the generated class names are
   // not human readable and we want to be able to use these type names in pattern
@@ -194,8 +205,22 @@ object Chunk {
       if (n >= size) empty
       else new Booleans(values, offset + n, size - n)
     def filter(f: Boolean => Boolean) = {
-      val arr = values.iterator.slice(offset, offset + sz).filter(f).toArray
-      new Booleans(arr, 0, arr.length)
+      var i = offset
+      val bound = offset + sz
+
+      val values2 = new Array[Boolean](size)
+      var size2 = 0
+
+      while (i < bound) {
+        if (f(values(i))) {
+          values2(size2) = values(i)
+          size2 += 1
+        }
+
+        i += 1
+      }
+
+      new Booleans(values2, 0, size2)
     }
     def take(n: Int) =
       if (n >= size) self
@@ -220,8 +245,22 @@ object Chunk {
       if (n >= size) empty
       else new Bytes(values, offset + n, size - n)
     def filter(f: Byte => Boolean) = {
-      val arr = values.iterator.slice(offset, offset + sz).filter(f).toArray
-      new Bytes(arr, 0, arr.length)
+      var i = offset
+      val bound = offset + sz
+
+      val values2 = new Array[Byte](size)
+      var size2 = 0
+
+      while (i < bound) {
+        if (f(values(i))) {
+          values2(size2) = values(i)
+          size2 += 1
+        }
+
+        i += 1
+      }
+
+      new Bytes(values2, 0, size2)
     }
     def take(n: Int) =
       if (n >= size) self
@@ -247,8 +286,22 @@ object Chunk {
       if (n >= size) empty
       else new Longs(values, offset + n, size - n)
     def filter(f: Long => Boolean) = {
-      val arr = values.iterator.slice(offset, offset + sz).filter(f).toArray
-      new Longs(arr, 0, arr.length)
+      var i = offset
+      val bound = offset + sz
+
+      val values2 = new Array[Long](size)
+      var size2 = 0
+
+      while (i < bound) {
+        if (f(values(i))) {
+          values2(size2) = values(i)
+          size2 += 1
+        }
+
+        i += 1
+      }
+
+      new Longs(values2, 0, size2)
     }
     def take(n: Int) =
       if (n >= size) self
@@ -273,8 +326,22 @@ object Chunk {
       if (n >= size) empty
       else new Doubles(values, offset + n, size - n)
     def filter(f: Double => Boolean) = {
-      val arr = values.iterator.slice(offset, offset + sz).filter(f).toArray
-      new Doubles(arr, 0, arr.length)
+      var i = offset
+      val bound = offset + sz
+
+      val values2 = new Array[Double](size)
+      var size2 = 0
+
+      while (i < bound) {
+        if (f(values(i))) {
+          values2(size2) = values(i)
+          size2 += 1
+        }
+
+        i += 1
+      }
+
+      new Doubles(values2, 0, size2)
     }
     def take(n: Int) =
       if (n >= size) self
