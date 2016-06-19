@@ -19,7 +19,7 @@ trait TestUtil {
   def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.unsafeRunFor(timeout)
 
   def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
-    s.runLog.unsafeAttemptRun match {
+    s.runLog.unsafeAttemptRun() match {
       case Left(e) if e == err => true
       case _ => false
     }

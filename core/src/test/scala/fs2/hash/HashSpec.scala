@@ -41,8 +41,8 @@ class HashSpec extends Fs2Spec {
       .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
       .through(sha512)
     val vec = Vector.fill(100)(s).par
-    val res = s.runLog.unsafeRun
-    vec.map(_.runLog.unsafeRun) shouldBe Vector.fill(100)(res)
+    val res = s.runLog.unsafeRun()
+    vec.map(_.runLog.unsafeRun()) shouldBe Vector.fill(100)(res)
   }
 }
 

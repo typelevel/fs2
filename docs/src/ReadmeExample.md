@@ -23,7 +23,7 @@ object Converter {
       .run
 }
 
-Converter.converter.unsafeRun
+Converter.converter.unsafeRun()
 ```
 
 Let's dissect this line by line.
@@ -89,8 +89,8 @@ There are a number of ways of interpreting the stream. In this case, we call `ru
 val task: Task[Unit] = written.run
 ```
 
-We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `Task` by calling `unsafeRun` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.
+We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `Task` by calling `unsafeRun()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.
 
 ```tut
-val result: Unit = task.unsafeRun
+val result: Unit = task.unsafeRun()
 ```

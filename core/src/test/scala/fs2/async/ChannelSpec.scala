@@ -55,7 +55,7 @@ class ChannelSpec extends Fs2Spec {
     "sanity-test" in {
       val s = Stream.range(0,100)
       val s2 = s.covary[Task].flatMap { i => Stream.emit(i).onFinalize(Task.delay { println(s"finalizing $i")}) }
-      val q = async.unboundedQueue[Task,Int].unsafeRun
+      val q = async.unboundedQueue[Task,Int].unsafeRun()
       runLog { merge2(trace("s2")(s2), trace("q")(q.dequeue)).take(10) } shouldBe Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
     }
   }

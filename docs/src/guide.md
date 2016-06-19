@@ -98,10 +98,10 @@ eff.toList
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
 ```tut
-eff.runLogFree.run.unsafeRun
+eff.runLogFree.run.unsafeRun()
 ```
 
-What's with the `.runLogFree.run.unsafeRun`? Let's break it down. The first `.runLogFree` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect, the `Free` effect:
+What's with the `.runLogFree.run.unsafeRun()`? Let's break it down. The first `.runLogFree` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect, the `Free` effect:
 
 ```tut:book
 val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
@@ -134,8 +134,8 @@ If we want to run this for its effects 'at the end of the universe', we can use 
 ```tut
 // val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 // val ra = eff.runLog
-ra.unsafeRun
-ra.unsafeRun
+ra.unsafeRun()
+ra.unsafeRun()
 ```
 
 Here we finally see the task is executed. As shown, rerunning the task executes the entire computation again; nothing is cached for you automatically.
@@ -166,7 +166,7 @@ val appendEx1 = Stream(1,2,3) ++ Stream.emit(42)
 val appendEx2 = Stream(1,2,3) ++ Stream.eval(Task.now(4))
 
 appendEx1.toVector
-appendEx2.runLog.unsafeRun
+appendEx2.runLog.unsafeRun()
 
 appendEx1.map(_ + 1).toList
 ```
@@ -200,7 +200,7 @@ try err2.toList catch { case e: Exception => println(e) }
 ```
 
 ```tut
-try err3.run.unsafeRun catch { case e: Exception => println(e) }
+try err3.run.unsafeRun() catch { case e: Exception => println(e) }
 ```
 
 The `onError` method lets us catch any of these errors:
@@ -220,7 +220,7 @@ val release = Task.delay { println("decremented: " + count.decrementAndGet); () 
 ```
 
 ```tut:fail
-Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRun
+Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRun()
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -246,7 +246,7 @@ Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips a
 ```tut
 Stream(1,0).repeat.take(6).toList
 Stream(1,2,3).drain.toList
-Stream.eval_(Task.delay(println("!!"))).runLog.unsafeRun
+Stream.eval_(Task.delay(println("!!"))).runLog.unsafeRun()
 (Stream(1,2) ++ (throw new Exception("nooo!!!"))).attempt.toList
 ```
 
@@ -367,7 +367,7 @@ Stream.range(1,10).scan(0)(_ + _).toList // running sum
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
 
 ```tut:fail
-Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun
+Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
 ```
 
 Oop, we need an `fs2.Strategy` in implicit scope in order to get an `Async[Task]`. Let's add that:
@@ -375,7 +375,7 @@ Oop, we need an `fs2.Strategy` in implicit scope in order to get an `Async[Task]
 ```tut
 implicit val S = fs2.Strategy.fromFixedDaemonPool(8, threadName = "worker")
 
-Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun
+Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
 ```
 
 The `merge` function is defined in [`pipe2`](../core/src/main/scala/fs2/pipe2), along with other useful concurrency functions, like `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
@@ -439,7 +439,7 @@ These are easy to deal with. Just wrap these effects in a `Stream.eval`:
 def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 
 val s = Stream.eval_(Task.delay { destroyUniverse() }) ++ Stream("...moving on")
-s.runLog.unsafeRun
+s.runLog.unsafeRun()
 ```
 
 The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/src/main/scala/fs2/Async.scala) can be used for this generally, without committing to a particular effect:
@@ -449,7 +449,7 @@ import fs2.Async
 
 val T = implicitly[Async[Task]]
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
-s.runLog.unsafeRun
+s.runLog.unsafeRun()
 ```
 
 When using this approach, be sure the expression you pass to delay doesn't throw exceptions.
@@ -500,7 +500,7 @@ val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =
   T.delay { c.readBytesE(cb) }
 }
 
-Stream.eval(bytes).map(_.toList).runLog.unsafeRun
+Stream.eval(bytes).map(_.toList).runLog.unsafeRun()
 ```
 
 Be sure to check out the [`fs2.io`](../io) package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.

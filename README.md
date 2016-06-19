@@ -30,7 +30,7 @@ val converter: Task[Unit] =
     .run
 
 // at the end of the universe...
-val u: Unit = converter.unsafeRun
+val u: Unit = converter.unsafeRun()
 ```
 
 This will construct a `Task`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blanklines and commented lines. It then parses temperatures in degrees fahrenheit, converts these to celsius, UTF-8 encodes the output and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed in the event of normal termination or exceptions.
