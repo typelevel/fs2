@@ -155,9 +155,9 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
     }
 
     "asynchronous resource allocation (5)" in forAll { (s: PureStream[PureStream[Int]]) =>
-      val signal = async.signalOf[Task,Boolean](false).unsafeRun
+      val signal = async.signalOf[Task,Boolean](false).unsafeRun()
       val c = new AtomicLong(0)
-      signal.set(true).schedule(20.millis).async.unsafeRun
+      signal.set(true).schedule(20.millis).async.unsafeRun()
       runLog { s.get.evalMap { inner =>
         Task.start(bracket(c)(inner.get).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run)
       }}
@@ -169,9 +169,9 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       // stream is interrupted while in the middle of a resource acquire that is immediately followed
       // by a step that never completes!
       val s = Stream(Stream(1))
-      val signal = async.signalOf[Task,Boolean](false).unsafeRun
+      val signal = async.signalOf[Task,Boolean](false).unsafeRun()
       val c = new AtomicLong(1)
-      signal.set(true).schedule(20.millis).async.unsafeRun // after 20 ms, interrupt
+      signal.set(true).schedule(20.millis).async.unsafeRun() // after 20 ms, interrupt
       runLog { s.evalMap { inner => Task.start {
         Stream.bracket(Task.delay { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
           _ => inner,

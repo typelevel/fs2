@@ -12,7 +12,7 @@ class TimeSpec extends Fs2Spec {
   "time" - {
 
     "awakeEvery" in {
-      time.awakeEvery[Task](100.millis).map(_.toMillis/100).take(5).runLog.unsafeRun shouldBe Vector(1,2,3,4,5)
+      time.awakeEvery[Task](100.millis).map(_.toMillis/100).take(5).runLog.unsafeRun() shouldBe Vector(1,2,3,4,5)
     }
 
     "awakeEvery liveness" in {
@@ -21,7 +21,7 @@ class TimeSpec extends Fs2Spec {
     }
 
     "duration" in {
-      val firstValueDiscrepancy = time.duration[Task].take(1).runLog.unsafeRun.last
+      val firstValueDiscrepancy = time.duration[Task].take(1).runLog.unsafeRun().last
       val reasonableErrorInMillis = 200
       val reasonableErrorInNanos = reasonableErrorInMillis * 1000000
       def s = firstValueDiscrepancy.toNanos < reasonableErrorInNanos
@@ -55,7 +55,7 @@ class TimeSpec extends Fs2Spec {
           take(draws.toInt).
           through(durationSinceLastTrue)
 
-        val result = durationsSinceSpike.runLog.unsafeRun.toList
+        val result = durationsSinceSpike.runLog.unsafeRun().toList
         val (head :: tail) = result
 
         withClue("every always emits true first") { assert(head._1) }

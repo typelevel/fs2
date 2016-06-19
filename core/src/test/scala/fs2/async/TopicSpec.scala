@@ -13,7 +13,7 @@ class TopicSpec extends Fs2Spec {
 
     "subscribers see all elements published" in {
 
-      val topic = async.topic[Task,Int](-1).unsafeRun
+      val topic = async.topic[Task,Int](-1).unsafeRun()
       val count = 100
       val subs = 10
       val publisher = time.sleep[Task](1.second) ++ Stream.range[Task](0,count).through(topic.publish)
@@ -22,7 +22,7 @@ class TopicSpec extends Fs2Spec {
       val result =
       concurrent.join(subs + 1)(
         Stream.range(0,subs).map(idx => subscriber.map(idx -> _)) ++ publisher.drain
-      ).runLog.unsafeRun
+      ).runLog.unsafeRun()
 
       val expected = (for { i <- 0 until subs } yield i).map { idx =>
         idx -> (for { i <- -1 until count } yield i).toVector
@@ -35,8 +35,8 @@ class TopicSpec extends Fs2Spec {
 
     "synchronous publish" in {
 
-      val topic = async.topic[Task,Int](-1).unsafeRun
-      val signal = async.signalOf[Task,Int](0).unsafeRun
+      val topic = async.topic[Task,Int](-1).unsafeRun()
+      val signal = async.signalOf[Task,Int](0).unsafeRun()
       val count = 100
       val subs = 10
 
@@ -46,7 +46,7 @@ class TopicSpec extends Fs2Spec {
       val result =
         concurrent.join(subs + 1)(
           Stream.range(0,subs).map(idx => subscriber.map(idx -> _)) ++ publisher.drain
-        ).runLog.unsafeRun
+        ).runLog.unsafeRun()
 
       result.toMap.size shouldBe subs
 
