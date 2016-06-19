@@ -129,7 +129,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
    * Like `unsafeRunAsync` but returns a standard library `Future` instead of requiring
    * a callback.
    */
-  def unsafeRunAsyncFuture: scala.concurrent.Future[A] = {
+  def unsafeRunAsyncFuture(): scala.concurrent.Future[A] = {
     val promise = scala.concurrent.Promise[A]
     unsafeRunAsync { e => e.fold(promise.failure, promise.success); () }
     promise.future
