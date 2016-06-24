@@ -4,11 +4,21 @@ trait PullDerived { self: fs2.Pull.type =>
 
   /**
    * Acquire a resource within a `Pull`. The cleanup action will be run at the end
-   * of the `.run` scope which executes the returned `Pull`.
+   * of the `.close` scope which executes the returned `Pull`. The acquired
+   * resource is returned as the result value of the pull.
    */
   def acquire[F[_],R](r: F[R])(cleanup: R => F[Unit]): Pull[F,Nothing,R] =
-    Stream.bracket(r)(Stream.emit, cleanup).open.flatMap { h => h.await1.flatMap {
-      case r #: _ => Pull.pure(r)
+    acquireCancellable(r)(cleanup).map(_._2)
+
+  /**
+   * Like [[acquire]] but the result value is a tuple consisting of a cancellation
+   * pull and the acquired resource. Running the cancellation pull frees the resource.
+   * This allows the acquired resource to be released earlier than at the end of the
+   * containing pull scope.
+   */
+  def acquireCancellable[F[_],R](r: F[R])(cleanup: R => F[Unit]): Pull[F,Nothing,(Pull[F,Nothing,Unit],R)] =
+    Stream.bracketWithToken(r)(Stream.emit, cleanup).open.flatMap { h => h.await1.flatMap {
+      case (token, r) #: _ => Pull.pure((Pull.release(List(token)), r))
     }}
 
   def map[F[_],W,R0,R](p: Pull[F,W,R0])(f: R0 => R): Pull[F,W,R] =

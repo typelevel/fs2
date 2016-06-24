@@ -98,8 +98,13 @@ object Stream extends Streams[Stream] with StreamDerived {
       case hb :: tb => Pull.pure(Future.pure(Pull.pure(Step(hb, new Handle(tb, h.underlying)))))
     }
 
-  def bracket[F[_],R,A](r: F[R])(use: R => Stream[F,A], release: R => F[Unit]) = Stream.mk {
-    StreamCore.acquire(r, release andThen (Free.eval)) flatMap (use andThen (_.get))
+  def bracket[F[_],R,A](r: F[R])(use: R => Stream[F,A], release: R => F[Unit]): Stream[F,A] = Stream.mk {
+    StreamCore.acquire(r, release andThen (Free.eval)) flatMap { case (_, r) => use(r).get }
+  }
+
+  private[fs2]
+  def bracketWithToken[F[_],R,A](r: F[R])(use: R => Stream[F,A], release: R => F[Unit]): Stream[F,(StreamCore.Token,A)] = Stream.mk {
+    StreamCore.acquire(r, release andThen (Free.eval)) flatMap { case (token, r) => use(r).get.map(a => (token, a)) }
   }
 
   def chunk[F[_], A](as: Chunk[A]): Stream[F,A] =

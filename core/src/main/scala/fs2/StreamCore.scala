@@ -320,14 +320,14 @@ object StreamCore {
     }
   }
 
-  def acquire[F[_],R](r: F[R], cleanup: R => Free[F,Unit]): StreamCore[F,R] = StreamCore.suspend {
+  def acquire[F[_],R](r: F[R], cleanup: R => Free[F,Unit]): StreamCore[F,(Token,R)] = StreamCore.suspend {
     val token = new Token()
     StreamCore.evalScope(Scope.startAcquire(token)) flatMap { _ =>
       StreamCore.attemptEval(r).flatMap {
         case Left(e) => StreamCore.evalScope(Scope.cancelAcquire(token)) flatMap { _ => StreamCore.fail(e) }
         case Right(r) =>
           StreamCore.evalScope(Scope.finishAcquire(token, Free.suspend(cleanup(r).attempt)))
-                    .flatMap { _ => StreamCore.emit(r).onComplete(StreamCore.release(List(token)).drain) }
+                    .flatMap { _ => StreamCore.emit((token,r)).onComplete(StreamCore.release(List(token)).drain) }
       }
     }
   }

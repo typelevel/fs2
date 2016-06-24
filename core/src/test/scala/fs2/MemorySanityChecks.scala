@@ -39,3 +39,15 @@ object DrainOnCompleteSanityTest extends App {
   val s = Stream.repeatEval(Task.delay(1)).pull(Pull.echo).drain.onComplete(Stream.eval_(Task.delay(println("done"))))
   (Stream.empty[Task, Unit] merge s).run.unsafeRun()
 }
+
+object ConcurrentJoinSanityTest extends App {
+  import TestUtil.S
+  concurrent.join(5)(Stream.constant(Stream.empty).covary[Task]).run.unsafeRun
+}
+
+object DanglingDequeueSanityTest extends App {
+  import TestUtil.S
+  Stream.eval(async.unboundedQueue[Task,Int]).flatMap { q =>
+    Stream.constant(1).flatMap { _ => Stream.empty mergeHaltBoth q.dequeue }
+  }.run.unsafeRun
+}
