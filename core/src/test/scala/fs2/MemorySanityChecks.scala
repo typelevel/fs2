@@ -1,7 +1,5 @@
 package fs2
 
-import fs2.util.Task
-
 // Sanity tests - not run as part of unit tests, but these should run forever
 // at constant memory.
 //

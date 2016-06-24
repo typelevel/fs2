@@ -5,7 +5,6 @@ import org.scalacheck.Gen
 import scala.concurrent.duration._
 
 import Stream._
-import fs2.util.Task
 
 class TimeSpec extends Fs2Spec {
 

@@ -1,7 +1,6 @@
 package fs2
 package async
 
-import fs2.util.Task
 import java.util.concurrent.atomic.AtomicLong
 
 class ChannelSpec extends Fs2Spec {

@@ -1,6 +1,5 @@
 package fs2
 
-import fs2.util.Task
 import org.scalacheck.Gen
 
 class Pipe2Spec extends Fs2Spec {

@@ -1,7 +1,6 @@
 package fs2
 
 import TestUtil._
-import fs2.util.Task
 
 object BracketBug extends App {
 

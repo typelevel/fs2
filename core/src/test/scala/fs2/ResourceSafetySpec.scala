@@ -1,7 +1,6 @@
 package fs2
 
 import scala.concurrent.duration._
-import fs2.util.Task
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck._

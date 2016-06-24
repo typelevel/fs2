@@ -5,7 +5,6 @@ import java.net.InetAddress
 import java.nio.channels.AsynchronousChannelGroup
 
 import fs2._
-import fs2.util.Task
 
 import fs2.io.TestUtil._
 import fs2.Stream._

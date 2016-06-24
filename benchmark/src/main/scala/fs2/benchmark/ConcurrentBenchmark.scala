@@ -1,8 +1,6 @@
 package fs2
 package benchmark
 
-import fs2.util._
-
 import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 
 @State(Scope.Thread)

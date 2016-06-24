@@ -72,12 +72,12 @@ Of these, only `flatMap` and `++` are primitive, the rest are built using combin
 So far, we've just looked at pure streams. FS2 streams can also include evaluation of effects:
 
 ```tut:book
-import fs2.util.Task
+import fs2.Task
 
 val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 ```
 
-[`Task`](../core/src/main/scala/fs2/util/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
+[`Task`](../core/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
 The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
@@ -85,7 +85,7 @@ The `eval` function works for any effect type, not just `Task`. FS2 does not car
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
 
-[Task]: ../core/src/main/scala/fs2/util/Task.scala
+[Task]: ../core/src/main/scala/fs2/Task.scala
 [Catchable]: ../core/src/main/scala/fs2/util/Catchable.scala
 [Async]: ../core/src/main/scala/fs2/Async.scala
 
@@ -389,7 +389,7 @@ def join[F[_]:Async,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]]): Stream[F,O]
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. `s merge s2` could be implemented as `concurrent.join(2)(Stream(s,s2))`.
 
-The `Async` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.util.Task`][Task] type for convenience, and `Task` has an `Async`, users can bring their own effect types provided they also supply an `Async` instance.
+The `Async` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Async`, users can bring their own effect types provided they also supply an `Async` instance.
 
 If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `Stream.awaitAsync` requests the next step of a `Handle` asynchronously. Its signature is:
 

@@ -1,8 +1,6 @@
 package fs2
 package async
 
-import fs2.util.Task
-
 class QueueSpec extends Fs2Spec {
   "Queue" - {
     "unbounded producer/consumer" in {

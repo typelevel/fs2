@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Task,UF1}
+import fs2.util.UF1
 import org.scalacheck.Gen
 
 class StreamSpec extends Fs2Spec {

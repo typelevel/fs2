@@ -2,7 +2,6 @@ package fs2.async
 
 import fs2._
 import fs2.Stream._
-import fs2.util.Task
 
 import scala.concurrent.duration._
 

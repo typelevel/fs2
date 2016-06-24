@@ -1,7 +1,5 @@
 package fs2
 
-
-import fs2.util.Task
 import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.duration._

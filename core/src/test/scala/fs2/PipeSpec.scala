@@ -2,7 +2,6 @@ package fs2
 
 import fs2.Stream._
 import fs2.pipe._
-import fs2.util.Task
 import org.scalacheck.Gen
 
 class PipeSpec extends Fs2Spec {
