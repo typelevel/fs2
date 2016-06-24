@@ -1,6 +1,7 @@
 package fs2.io.tcp
 
 import java.net.InetSocketAddress
+import java.net.InetAddress
 import java.nio.channels.AsynchronousChannelGroup
 
 import fs2._
@@ -36,7 +37,7 @@ class SocketSpec extends Fs2Spec {
 
         val echoServer: Stream[Task, Unit] = {
           val ps =
-            serverWithLocalAddress[Task](new InetSocketAddress(0))
+            serverWithLocalAddress[Task](new InetSocketAddress(InetAddress.getByName(null), 0))
             .flatMap {
               case Left(local) => Stream.eval_(localBindAddress.set(Task.now(local)))
               case Right(s) =>
