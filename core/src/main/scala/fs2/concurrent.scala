@@ -40,33 +40,38 @@ object concurrent {
 
     def throttle[A](checkIfKilled: F[Boolean]): Pipe[F,Stream[F,A],Unit] = {
 
-      def runInnerStream(inner: Stream[F,A], onInnerStreamDone: F[Unit]): Pull[F,Nothing,Unit] = {
-        Pull.eval(F.ref[Pull[F,Nothing,Unit]]).flatMap { doneRef =>
+      def runInnerStream(inner: Stream[F,A], doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]]): Pull[F,Nothing,Unit] = {
+        Pull.eval(F.ref[Pull[F,Nothing,Unit]]).flatMap { earlyReleaseRef =>
           val startInnerStream: F[F.Ref[Unit]] = {
             F.bind(F.ref[Unit]) { gate =>
             F.map(F.start(
               Stream.eval(checkIfKilled).
                      flatMap { killed => if (killed) Stream.empty else inner }.
-                     onFinalize { F.bind(F.setPure(gate)(())) { _ => onInnerStreamDone } }.
-                     onComplete { Stream.eval(F.get(doneRef)).flatMap { _.close } }.
+                     onFinalize {
+                       F.bind(F.setPure(gate)(())) { _ =>
+                         F.bind(F.get(earlyReleaseRef)) { earlyRelease =>
+                           F.map(F.start(doneQueue.enqueue1(earlyRelease)))(_ => ())
+                         }
+                       }
+                     }.
                      run
             )) { _ => gate }}
           }
-          Pull.acquire(startInnerStream) { gate => F.get(gate) }.flatMap { case (release, _) => Pull.eval(F.setPure(doneRef)(release)) }
+          Pull.acquire(startInnerStream) { gate => F.get(gate) }.flatMap { case (release, _) => Pull.eval(F.setPure(earlyReleaseRef)(release)) }
         }
       }
 
-      def go(doneQueue: async.mutable.Queue[F,Unit])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Unit]) => Pull[F,Nothing,Unit] = (h, d) => {
+      def go(doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Pull[F,Nothing,Unit]]) => Pull[F,Nothing,Unit] = (h, d) => {
         if (open < maxOpen)
           Pull.receive1Option[F,Stream[F,A],Nothing,Unit] {
-            case Some(inner #: h) => runInnerStream(inner, F.map(F.start(doneQueue.enqueue1(())))(_ => ())).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
+            case Some(inner #: h) => runInnerStream(inner, doneQueue).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
             case None => Pull.done
           }(h)
         else
-          d.receive1 { case _ #: d => go(doneQueue)(open - 1)(h, d) }
+          d.receive1 { case earlyRelease #: d => earlyRelease >> go(doneQueue)(open - 1)(h, d) }
       }
 
-      in => Stream.eval(async.unboundedQueue[F,Unit]).flatMap { doneQueue => in.pull2(doneQueue.dequeue)(go(doneQueue)(0)) }
+      in => Stream.eval(async.unboundedQueue[F,Pull[F,Nothing,Unit]]).flatMap { doneQueue => in.pull2(doneQueue.dequeue)(go(doneQueue)(0)) }
     }
 
     for {
