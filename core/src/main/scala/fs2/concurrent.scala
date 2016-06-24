@@ -41,16 +41,19 @@ object concurrent {
     def throttle[A](checkIfKilled: F[Boolean]): Pipe[F,Stream[F,A],Unit] = {
 
       def runInnerStream(inner: Stream[F,A], onInnerStreamDone: F[Unit]): Pull[F,Nothing,Unit] = {
-        val startInnerStream: F[F.Ref[Unit]] = {
-          F.bind(F.ref[Unit]) { gate =>
-          F.map(F.start(
-            Stream.eval(checkIfKilled).
-                   flatMap { killed => if (killed) Stream.empty else inner }.
-                   onFinalize { F.bind(F.setPure(gate)(())) { _ => onInnerStreamDone } }.
-                   run
-          )) { _ => gate }}
+        Pull.eval(F.ref[Pull[F,Nothing,Unit]]).flatMap { doneRef =>
+          val startInnerStream: F[F.Ref[Unit]] = {
+            F.bind(F.ref[Unit]) { gate =>
+            F.map(F.start(
+              Stream.eval(checkIfKilled).
+                     flatMap { killed => if (killed) Stream.empty else inner }.
+                     onFinalize { F.bind(F.setPure(gate)(())) { _ => onInnerStreamDone } }.
+                     onComplete { Stream.eval(F.get(doneRef)).flatMap { _.close } }.
+                     run
+            )) { _ => gate }}
+          }
+          Pull.acquire(startInnerStream) { gate => F.get(gate) }.flatMap { case (release, _) => Pull.eval(F.setPure(doneRef)(release)) }
         }
-        Pull.acquire(startInnerStream) { gate => F.get(gate) }.map { _ => () }
       }
 
       def go(doneQueue: async.mutable.Queue[F,Unit])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Unit]) => Pull[F,Nothing,Unit] = (h, d) => {
@@ -72,6 +75,27 @@ object concurrent {
       o <- outer.map { inner =>
         inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
       }.through(throttle(killSignal.get)).onFinalize {
+        outputQueue.enqueue1(None)
+      }.mergeDrainL {
+        outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {
+          case Left(e) => Stream.eval(killSignal.set(true)).flatMap { _ => Stream.fail(e) }
+          case Right(c) => Stream.chunk(c)
+        }
+      }.onFinalize { killSignal.set(true) }
+    } yield o
+  }
+
+  /**
+   * Like [[join]], but all inner streams are simultaneously opened. This performs better than `join`
+   * in cases where it is safe to open all streams simultaneously.
+   */
+  def joinUnbounded[F[_],O](outer: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
+    for {
+      killSignal <- Stream.eval(async.signalOf(false))
+      outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
+      o <- outer.map { inner =>
+        F.start(inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal).run)
+      }.onFinalize {
         outputQueue.enqueue1(None)
       }.mergeDrainL {
         outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {

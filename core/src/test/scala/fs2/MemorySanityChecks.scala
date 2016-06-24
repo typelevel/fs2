@@ -39,3 +39,8 @@ object DrainOnCompleteSanityTest extends App {
   val s = Stream.repeatEval(Task.delay(1)).pull(Pull.echo).drain.onComplete(Stream.eval_(Task.delay(println("done"))))
   (Stream.empty[Task, Unit] merge s).run.unsafeRun()
 }
+
+object ConcurrentJoinSanityTest extends App {
+  import TestUtil.S
+  concurrent.join(5)(Stream.constant(Stream.empty).covary[Task]).run.unsafeRun
+}
