@@ -57,7 +57,7 @@ object concurrent {
                      run
             )) { _ => gate }}
           }
-          Pull.acquire(startInnerStream) { gate => F.get(gate) }.flatMap { case (release, _) => Pull.eval(F.setPure(earlyReleaseRef)(release)) }
+          Pull.acquireCancellable(startInnerStream) { gate => F.get(gate) }.flatMap { case (release, _) => Pull.eval(F.setPure(earlyReleaseRef)(release)) }
         }
       }
 

@@ -66,7 +66,7 @@ object pulls {
     * The `Pull` closes the provided `java.nio.channels.FileChannel` when it is done.
     */
   def fromFileChannel[F[_]](channel: F[FileChannel])(implicit F: Effect[F]): Pull[F, Nothing, FileHandle[F]] =
-    Pull.acquire(F.map(channel)(FileHandle.fromFileChannel[F]))(_.close()).map { case (_, ch) => ch }
+    Pull.acquire(F.map(channel)(FileHandle.fromFileChannel[F]))(_.close())
 
   /**
     * Given a `java.nio.channels.AsynchronousFileChannel`, will create a `Pull` which allows asynchronous operations against the underlying file.
@@ -74,5 +74,5 @@ object pulls {
     * The `Pull` closes the provided `java.nio.channels.AsynchronousFileChannel` when it is done.
     */
   def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(implicit F: Async[F], FR: Async.Run[F]): Pull[F, Nothing, FileHandle[F]] =
-    Pull.acquire(F.map(channel)(FileHandle.fromAsynchronousFileChannel[F]))(_.close()).map { case (_, ch) => ch }
+    Pull.acquire(F.map(channel)(FileHandle.fromAsynchronousFileChannel[F]))(_.close())
 }
