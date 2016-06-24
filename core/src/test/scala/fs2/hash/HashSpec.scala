@@ -4,8 +4,6 @@ package hash
 import java.security.MessageDigest
 import org.scalacheck.Gen
 
-import fs2.util.Task
-
 class HashSpec extends Fs2Spec {
   def digest(algo: String, str: String): List[Byte] =
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
@@ -45,4 +43,3 @@ class HashSpec extends Fs2Spec {
     vec.map(_.runLog.unsafeRun()) shouldBe Vector.fill(100)(res)
   }
 }
-

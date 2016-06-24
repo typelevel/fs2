@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Catchable,RealSupertype,Sub1,Task}
+import fs2.util.{Catchable,RealSupertype,Sub1}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2]

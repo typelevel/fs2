@@ -7,8 +7,6 @@ import java.nio.channels.InterruptedByTimeoutException
 import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
-import fs2.util.Task
-
 import org.scalatest.BeforeAndAfterAll
 
 class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
@@ -59,6 +57,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
     }
 
     "multicast" in {
+      pending // Fails often based on routing table of host machine
       val group = InetAddress.getByName("232.10.10.10")
       val msg = Chunk.bytes("Hello, world!".getBytes)
       runLog {

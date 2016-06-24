@@ -1,7 +1,6 @@
 package fs2
 package async
 
-import fs2.util.Task
 import java.util.concurrent.atomic.AtomicLong
 
 class SignalSpec extends Fs2Spec {
@@ -38,4 +37,3 @@ class SignalSpec extends Fs2Spec {
     }
   }
 }
-

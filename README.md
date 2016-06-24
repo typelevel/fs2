@@ -11,8 +11,7 @@ Quick links: [About the library](#about), [Docs and getting help](#docs), [How t
 FS2 is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. Here's a simple example of its use:
 
 ``` scala
-import fs2.{io, text}
-import fs2.util.Task
+import fs2.{io, text, Task}
 import java.nio.file.Paths
 
 def fahrenheitToCelsius(f: Double): Double =

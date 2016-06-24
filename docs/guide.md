@@ -98,14 +98,14 @@ Of these, only `flatMap` and `++` are primitive, the rest are built using combin
 So far, we've just looked at pure streams. FS2 streams can also include evaluation of effects:
 
 ```scala
-import fs2.util.Task
-// import fs2.util.Task
+import fs2.Task
+// import fs2.Task
 
 val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
-// eff: fs2.Stream[fs2.util.Task,Int] = attemptEval(Task).flatMap(<function1>)
+// eff: fs2.Stream[fs2.Task,Int] = attemptEval(Task).flatMap(<function1>)
 ```
 
-[`Task`](../core/src/main/scala/fs2/util/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
+[`Task`](../core/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
 The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
@@ -113,7 +113,7 @@ The `eval` function works for any effect type, not just `Task`. FS2 does not car
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
 
-[Task]: ../core/src/main/scala/fs2/util/Task.scala
+[Task]: ../core/src/main/scala/fs2/Task.scala
 [Catchable]: ../core/src/main/scala/fs2/util/Catchable.scala
 [Async]: ../core/src/main/scala/fs2/Async.scala
 
@@ -121,7 +121,7 @@ def eval[F[_],A](f: F[A]): Stream[F,A]
 
 ```scala
 scala> eff.toList
-<console>:16: error: value toList is not a member of fs2.Stream[fs2.util.Task,Int]
+<console>:16: error: value toList is not a member of fs2.Stream[fs2.Task,Int]
        eff.toList
            ^
 ```
@@ -138,29 +138,29 @@ What's with the `.runLogFree.run.unsafeRun()`? Let's break it down. The first `.
 
 ```scala
 val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
-// eff: fs2.Stream[fs2.util.Task,Int] = attemptEval(Task).flatMap(<function1>)
+// eff: fs2.Stream[fs2.Task,Int] = attemptEval(Task).flatMap(<function1>)
 
 val ra = eff.runLogFree // gather all output into a Vector
-// ra: fs2.util.Free[fs2.util.Task,Vector[Int]] = Bind(Bind(Pure(()),<function1>),<function1>)
+// ra: fs2.util.Free[fs2.Task,Vector[Int]] = Bind(Bind(Pure(()),<function1>),<function1>)
 
 val rb = eff.runFree // purely for effects
-// rb: fs2.util.Free[fs2.util.Task,Unit] = Bind(Bind(Pure(()),<function1>),<function1>)
+// rb: fs2.util.Free[fs2.Task,Unit] = Bind(Bind(Pure(()),<function1>),<function1>)
 
 val rc = eff.runFoldFree(0)(_ + _) // run and accumulate some result
-// rc: fs2.util.Free[fs2.util.Task,Int] = Bind(Bind(Pure(()),<function1>),<function1>)
+// rc: fs2.util.Free[fs2.Task,Int] = Bind(Bind(Pure(()),<function1>),<function1>)
 ```
 
 Notice these all return an `fs2.util.Free[Task,_]`. `Free` has various useful functions on it (for instance, we can translate to a different effect type), but most of the time we'll just want to run it using the `run` method:
 
 ```scala
 ra.run
-// res12: fs2.util.Task[Vector[Int]] = Task
+// res12: fs2.Task[Vector[Int]] = Task
 
 rb.run
-// res13: fs2.util.Task[Unit] = Task
+// res13: fs2.Task[Unit] = Task
 
 rc.run
-// res14: fs2.util.Task[Int] = Task
+// res14: fs2.Task[Int] = Task
 ```
 
 Calling `run` on `Free` requires an implicit `Catchable[Task]` in scope (or a `Catchable[F]` for whatever your effect type, `F`), and this is the only place any constraints are placed on your effect type (aside from use of asynchronous operations [we discuss later](#concurrency)). Calling `.run` on `Free` yields a single monolithic `Task` representing our entire stream program, but our effect still hasn't been run (our `println` still hasn't executed).
@@ -169,13 +169,13 @@ This is such a common operation that there's special syntax for converting a str
 
 ```scala
 val ra = eff.runLog // gather all output into a Vector
-// ra: fs2.util.Task[Vector[Int]] = Task
+// ra: fs2.Task[Vector[Int]] = Task
 
 val rb = eff.run // purely for effects
-// rb: fs2.util.Task[Unit] = Task
+// rb: fs2.Task[Unit] = Task
 
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: fs2.util.Task[Int] = Task
+// rc: fs2.Task[Int] = Task
 ```
 
 If we want to run this for its effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task`:
@@ -223,7 +223,7 @@ scala> val appendEx1 = Stream(1,2,3) ++ Stream.emit(42)
 appendEx1: fs2.Stream[Nothing,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 scala> val appendEx2 = Stream(1,2,3) ++ Stream.eval(Task.now(4))
-appendEx2: fs2.Stream[fs2.util.Task,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
+appendEx2: fs2.Stream[fs2.Task,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 scala> appendEx1.toVector
 res20: Vector[Int] = Vector(1, 2, 3, 42)
@@ -256,7 +256,7 @@ scala> val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
 err2: fs2.Stream[Nothing,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 scala> val err3 = Stream.eval(Task.delay(throw new Exception("error in effect!!!")))
-err3: fs2.Stream[fs2.util.Task,Nothing] = attemptEval(Task).flatMap(<function1>)
+err3: fs2.Stream[fs2.Task,Nothing] = attemptEval(Task).flatMap(<function1>)
 ```
 
 All these fail when running:
@@ -294,10 +294,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = Task.delay { println("incremented: " + count.incrementAndGet); () }
-acquire: fs2.util.Task[Unit] = Task
+acquire: fs2.Task[Unit] = Task
 
 scala> val release = Task.delay { println("decremented: " + count.decrementAndGet); () }
-release: fs2.util.Task[Unit] = Task
+release: fs2.Task[Unit] = Task
 ```
 
 ```scala
@@ -490,8 +490,8 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 
 ```scala
 scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
-<console>:17: error: No implicit `Async[fs2.util.Task]` found.
-Note that the implicit `Async[fs2.util.Task]` requires an implicit `fs2.Strategy` in scope.
+<console>:17: error: No implicit `Async[fs2.Task]` found.
+Note that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.
        Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
                           ^
 ```
@@ -517,7 +517,7 @@ def join[F[_]:Async,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]]): Stream[F,O]
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. `s merge s2` could be implemented as `concurrent.join(2)(Stream(s,s2))`.
 
-The `Async` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.util.Task`][Task] type for convenience, and `Task` has an `Async`, users can bring their own effect types provided they also supply an `Async` instance.
+The `Async` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Async`, users can bring their own effect types provided they also supply an `Async` instance.
 
 If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `Stream.awaitAsync` requests the next step of a `Handle` asynchronously. Its signature is:
 
@@ -568,7 +568,7 @@ def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 // destroyUniverse: ()Unit
 
 val s = Stream.eval_(Task.delay { destroyUniverse() }) ++ Stream("...moving on")
-// s: fs2.Stream[fs2.util.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
+// s: fs2.Stream[fs2.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 s.runLog.unsafeRun()
 // BOOOOM!!!
@@ -582,10 +582,10 @@ import fs2.Async
 // import fs2.Async
 
 val T = implicitly[Async[Task]]
-// T: fs2.Async[fs2.util.Task] = Async[Task]
+// T: fs2.Async[fs2.Task] = Async[Task]
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
-// s: fs2.Stream[fs2.util.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
+// s: fs2.Stream[fs2.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 s.runLog.unsafeRun()
 // BOOOOM!!!
@@ -641,7 +641,7 @@ val c = new Connection {
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   T.delay { c.readBytesE(cb) }
 }
-// bytes: fs2.util.Task[Array[Byte]] = Task
+// bytes: fs2.Task[Array[Byte]] = Task
 
 Stream.eval(bytes).map(_.toList).runLog.unsafeRun()
 // res54: Vector[List[Byte]] = Vector(List(0, 1, 2))

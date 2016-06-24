@@ -1,8 +1,6 @@
 package fs2
 package benchmark
 
-import fs2.util._
-
 import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 
 
@@ -19,7 +17,7 @@ class TaskBenchmark extends BenchmarkUtils {
     while(i < end) {
       i += 1
       sum += i
-	}
+  }
     sum
   }
 
