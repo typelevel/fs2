@@ -50,7 +50,7 @@ object concurrent {
                      onFinalize {
                        F.bind(F.setPure(gate)(())) { _ =>
                          F.bind(F.get(earlyReleaseRef)) { earlyRelease =>
-                           F.map(F.start(doneQueue.enqueue1(earlyRelease)))(_ => ())
+                           F.map(doneQueue.enqueue1(earlyRelease))(_ => ())
                          }
                        }
                      }.

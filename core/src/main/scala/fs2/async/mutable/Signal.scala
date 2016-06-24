@@ -70,18 +70,23 @@ object Signal {
 
       def discrete: Stream[F, A] = {
         def go(lastA:A, last:Long):Stream[F,A] = {
-          def getNext:F[(A,Long)] = {
+          def getNext:F[(F[(A,Long)],F[Unit])] = {
             F.bind(F.ref[(A,Long)]) { ref =>
-              F.bind(F.modify(state) { case s@(a, l, listen) =>
+              F.map(F.modify(state) { case s@(a, l, listen) =>
                 if (l != last) s
                 else (a, l, listen :+ ref)
               }) { c =>
-                if (c.modified) F.get(ref)
-                else F.pure(c.now._1 -> c.now._2)
+                if (c.modified) {
+                  val cleanup = F.map(F.modify(state) {
+                    case s@(a, l, listen) => if (l != last) s else (a, l, listen.filterNot(_ == ref))
+                  })(_ => ())
+                  (F.get(ref),cleanup)
+                }
+                else (F.pure(c.now._1 -> c.now._2), F.pure(()))
               }
             }
           }
-          emit(lastA) ++ (eval(getNext) flatMap { go _ tupled })
+          emit(lastA) ++ Stream.bracket(getNext)(n => eval(n._1).flatMap { case (lastA, last) => go(lastA, last) }, n => n._2)
         }
 
         Stream.eval(F.get(state)) flatMap { case (a,l,_) => go(a,l) }
