@@ -1,5 +1,7 @@
 package fs2
 
+import fs2.util.Sub1
+
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`
  * that are implemented in terms of `Pipe`.
@@ -84,6 +86,13 @@ private[fs2] trait StreamPipeOps[+F[_],+O] { self: Stream[F,O] =>
   /** Alias for `self through [[pipe.mapAccumulate]]` */
   def mapAccumulate[S,O2](init: S)(f: (S, O) => (S, O2)): Stream[F, (S, O2)] =
     self through pipe.mapAccumulate(init)(f)
+
+  /** Alias for `self through [[pipe.prefetch]](f).` */
+  def prefetch[F2[_]](implicit S:Sub1[F,F2], F2:Async[F2]): Stream[F2,O] =
+    Sub1.substStream(self)(S) through pipe.prefetch
+
+  /** Alias for `self through [[pipe.rechunkN]](f).` */
+  def rechunkN(n: Int, allowFewer: Boolean = true): Stream[F,O] = self through pipe.rechunkN(n, allowFewer)
 
   /** Alias for `self through [[pipe.reduce]](z)(f)`. */
   def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.reduce(f)

@@ -225,6 +225,15 @@ object pipe {
     _ repeatPull { _.receive {
       case hd #: tl => Pull.prefetch(tl) flatMap { p => Pull.output(hd) >> p }}}
 
+  /**
+   * Modifies the chunk structure of the underlying stream, emitting potentially unboxed
+   * chunks of `n` elements. If `allowFewer` is true, the final chunk of the stream
+   * may be less than `n` elements. Otherwise, if the final chunk is less than `n`
+   * elements, it is dropped.
+   */
+  def rechunkN[F[_],I](n: Int, allowFewer: Boolean = true): Stream[F,I] => Stream[F,I] =
+    in => chunkN(n, allowFewer)(in).flatMap { chunks => Stream.chunk(Chunk.concat(chunks)) }
+
   /** Rethrow any `Left(err)`. Preserves chunkiness. */
   def rethrow[F[_],I]: Stream[F,Either[Throwable,I]] => Stream[F,I] =
     _.chunks.flatMap { es =>
