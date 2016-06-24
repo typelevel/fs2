@@ -89,25 +89,4 @@ object concurrent {
       }.onFinalize { killSignal.set(true) }
     } yield o
   }
-
-  /**
-   * Like [[join]], but all inner streams are simultaneously opened. This performs better than `join`
-   * in cases where it is safe to open all streams simultaneously.
-   */
-  def joinUnbounded[F[_],O](outer: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
-    for {
-      killSignal <- Stream.eval(async.signalOf(false))
-      outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
-      o <- outer.map { inner =>
-        F.start(inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal).run)
-      }.onFinalize {
-        outputQueue.enqueue1(None)
-      }.mergeDrainL {
-        outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {
-          case Left(e) => Stream.eval(killSignal.set(true)).flatMap { _ => Stream.fail(e) }
-          case Right(c) => Stream.chunk(c)
-        }
-      }.onFinalize { killSignal.set(true) }
-    } yield o
-  }
 }
