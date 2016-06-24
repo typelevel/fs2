@@ -44,3 +44,10 @@ object ConcurrentJoinSanityTest extends App {
   import TestUtil.S
   concurrent.join(5)(Stream.constant(Stream.empty).covary[Task]).run.unsafeRun
 }
+
+object DanglingDequeueSanityTest extends App {
+  import TestUtil.S
+  Stream.eval(async.unboundedQueue[Task,Int]).flatMap { q =>
+    Stream.constant(1).flatMap { _ => Stream.empty mergeHaltBoth q.dequeue }
+  }.run.unsafeRun
+}

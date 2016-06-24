@@ -39,8 +39,11 @@ trait Queue[F[_],A] {
   /** Dequeue one `A` from this queue. Completes once one is ready. */
   def dequeue1: F[A]
 
+  /** Like `dequeue1` but provides a way to cancel the dequeue. */
+  def cancellableDequeue1: F[(F[A],F[Unit])]
+
   /** Repeatedly call `dequeue1` forever. */
-  def dequeue: Stream[F, A] = Stream.repeatEval(dequeue1)
+  def dequeue: Stream[F,A] = Stream.bracket(cancellableDequeue1)(d => Stream.eval(d._1), d => d._2).repeat
 
   /**
    * The time-varying size of this `Queue`. This signal refreshes
@@ -97,17 +100,26 @@ object Queue {
               F.map(F.setPure(c.previous.deq.head)(a)) { _ => true }
           }
 
-        def dequeue1: F[A] =
+        def dequeue1: F[A] = F.bind(cancellableDequeue1) { _._1 }
+
+        def cancellableDequeue1: F[(F[A],F[Unit])] =
           F.bind(F.ref[A]) { r =>
-          F.bind(F.modify(qref) { s =>
+          F.map(F.modify(qref) { s =>
             if (s.queue.isEmpty) s.copy(deq = s.deq :+ r)
             else s.copy(queue = s.queue.tail)
           }) { c =>
-            F.bind(signalSize(c.previous, c.now)) { _ =>
+            val deq = F.bind(signalSize(c.previous, c.now)) { _ =>
               if (c.previous.queue.nonEmpty) F.pure(c.previous.queue.head)
               else F.get(r)
             }
+            val cleanup =
+              if (c.previous.queue.nonEmpty) F.pure(())
+              else F.map(F.modify(qref) { s =>
+                s.copy(deq = s.deq.filterNot(_ == r))
+              })(_ => ())
+            (deq,cleanup)
           }}
+
         def size = szSignal
         def full: immutable.Signal[F, Boolean] = Signal.constant[F,Boolean](false)
         def available: immutable.Signal[F, Int] = Signal.constant[F,Int](Int.MaxValue)
@@ -123,8 +135,9 @@ object Queue {
           F.bind(permits.decrement) { _ => q.enqueue1(a) }
         def offer1(a: A): F[Boolean] =
           F.bind(permits.tryDecrement) { b => if (b) q.offer1(a) else F.pure(false) }
-        def dequeue1: F[A] =
-          F.bind(q.dequeue1) { a => F.map(permits.increment)(_ => a) }
+        def dequeue1: F[A] = F.bind(cancellableDequeue1) { _._1 }
+        def cancellableDequeue1: F[(F[A],F[Unit])] =
+          F.map(q.cancellableDequeue1) { case (deq,cancel) => (F.bind(deq)(a => F.map(permits.increment)(_ => a)), cancel) }
         def size = q.size
         def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
         def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
@@ -140,8 +153,9 @@ object Queue {
           F.bind(permits.decrement) { _ => q.enqueue1(a) }
         def offer1(a: A): F[Boolean] =
           F.bind(permits.tryDecrement) { b => if (b) q.offer1(a) else F.pure(false) }
-        def dequeue1: F[A] =
-          F.bind(permits.increment) { _ => q.dequeue1 }
+        def dequeue1: F[A] = F.bind(cancellableDequeue1) { _._1 }
+        def cancellableDequeue1: F[(F[A],F[Unit])] =
+          F.bind(permits.increment) { _ => q.cancellableDequeue1 }
         def size = q.size
         def full: immutable.Signal[F, Boolean] = Signal.constant(true)
         def available: immutable.Signal[F, Int] = Signal.constant(0)
@@ -169,8 +183,9 @@ object Queue {
             case _ => F.bind(permits.decrement) { _ => q.offer1(a) }
           }
         }
-        def dequeue1: F[Option[A]] =
-          F.bind(permits.increment) { _ => q.dequeue1 }
+        def dequeue1: F[Option[A]] = F.bind(cancellableDequeue1) { _._1 }
+        def cancellableDequeue1: F[(F[Option[A]],F[Unit])] =
+          F.bind(permits.increment) { _ => q.cancellableDequeue1 }
         def size = q.size
         def full: immutable.Signal[F, Boolean] = Signal.constant(true)
         def available: immutable.Signal[F, Int] = Signal.constant(0)
