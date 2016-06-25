@@ -102,11 +102,11 @@ object text {
       (out, carry)
     }
 
-    def extractLines(buffer: Vector[String], chunk: Chunk[String]): (Chunk[String], Vector[String]) = {
+    def extractLines(buffer: Vector[String], chunk: Chunk[String], pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) = {
       @annotation.tailrec
-      def loop(remainingInput: Vector[String], buffer: Vector[String], output: Vector[String], pendingLineFeed: Boolean): (Chunk[String], Vector[String]) = {
+      def loop(remainingInput: Vector[String], buffer: Vector[String], output: Vector[String], pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) = {
         if (remainingInput.isEmpty) {
-          Chunk.indexedSeq(output) -> buffer
+          (Chunk.indexedSeq(output), buffer, pendingLineFeed)
         } else {
           var next = remainingInput.head
           if (pendingLineFeed) {
@@ -125,18 +125,18 @@ object text {
           }
         }
       }
-      loop(chunk.toVector, buffer, Vector.empty, false)
+      loop(chunk.toVector, buffer, Vector.empty, pendingLineFeed)
     }
 
-    def go(buffer: Vector[String]): Handle[F, String] => Pull[F, String, Unit] = {
+    def go(buffer: Vector[String], pendingLineFeed: Boolean): Handle[F, String] => Pull[F, String, Unit] = {
       Pull.receiveOption[F,String,String,Unit] {
         case Some(chunk #: h) =>
-          val (toOutput, newBuffer) = extractLines(buffer, chunk)
-          Pull.output(toOutput) >> go(newBuffer)(h)
+          val (toOutput, newBuffer, newPendingLineFeed) = extractLines(buffer, chunk, pendingLineFeed)
+          Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed)(h)
         case None if buffer.nonEmpty => Pull.output1(buffer.mkString)
         case None => Pull.done
       }(_)
     }
-    _.pull(go(Vector.empty))
+    _.pull(go(Vector.empty, false))
   }
 }

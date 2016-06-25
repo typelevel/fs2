@@ -180,6 +180,7 @@ class TextSpec extends Fs2Spec {
         if (lines.toList.nonEmpty) {
           val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
           Stream.emits(s).throughPure(text.lines).toList shouldBe lines.toList
+          Stream.emits(s).unchunk.throughPure(text.lines).toList shouldBe lines.toList
         }
       }
     }
