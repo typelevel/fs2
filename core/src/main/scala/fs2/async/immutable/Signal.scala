@@ -2,13 +2,11 @@ package fs2.async.immutable
 
 import fs2.{pipe, Async, Stream}
 import fs2.util.Functor
-
 import fs2.Async
 import fs2.async.immutable
 
-
 /** A holder of a single value of type `A` that can be read in the effect `F`. */
-trait Signal[F[_],A]  {
+trait Signal[F[_], A] { self =>
 
   /**
    * Returns the discrete version stream of this signal, updated only when `value`
@@ -43,6 +41,18 @@ trait Signal[F[_],A]  {
    * Asynchronously get the current value of this `Signal`
    */
   def get: F[A]
+
+  /**
+   * Returns an alternate view of this `Signal` where its elements are of type [[B]],
+   * given a function from `A` to `B`.
+   */
+  def map[B](f: A => B)(implicit F: Functor[F]): Signal[F, B] =
+    new Signal[F, B] {
+      def discrete: Stream[F, B] = self.discrete.map(f)
+      def continuous: Stream[F, B] = self.continuous.map(f)
+      def changes: Stream[F, Unit] = self.changes
+      def get: F[B] = F.map(self.get)(f)
+    }
 }
 
 
@@ -74,5 +84,10 @@ object Signal {
   def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: Async[F]): Stream[F,immutable.Signal[F,A]] =
     Stream.eval(fs2.async.signalOf[F,A](initial)) flatMap { sig =>
       Stream(sig).merge(source.flatMap(a => Stream.eval_(sig.set(a))))
+    }
+
+  implicit def fs2SignalFunctor[F[_]](implicit F: Functor[F]): Functor[({type l[A]=Signal[F, A]})#l] =
+    new Functor[({type l[A]=Signal[F, A]})#l] {
+      def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = fa.map(f)
     }
 }
