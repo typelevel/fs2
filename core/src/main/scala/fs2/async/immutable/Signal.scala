@@ -2,13 +2,11 @@ package fs2.async.immutable
 
 import fs2.{pipe, Async, Stream}
 import fs2.util.Functor
-
 import fs2.Async
 import fs2.async.immutable
 
-
 /** A holder of a single value of type `A` that can be read in the effect `F`. */
-trait Signal[F[_],A]  {
+trait Signal[F[_], A] { self =>
 
   /**
    * Returns the discrete version stream of this signal, updated only when `value`
@@ -45,14 +43,13 @@ trait Signal[F[_],A]  {
   def get: F[A]
 }
 
-
 object Signal {
 
-  implicit class ImmutableSignalSyntax[F[_] : Async,A] (val self: Signal[F,A])  {
+  implicit class ImmutableSignalSyntax[F[_] : Async, A] (val self: Signal[F, A])  {
     /**
      * Converts this signal to signal of `B` by applying `f`
      */
-    def map[B](f: A => B):Signal[F,B] = new Signal[F,B] {
+    def map[B](f: A => B): Signal[F,B] = new Signal[F, B] {
       def continuous: Stream[F, B] = self.continuous.map(f)
       def changes: Stream[F, Unit] = self.discrete.through(pipe.changes(_ == _)).map(_ => ())
       def discrete: Stream[F, B] = self.discrete.map(f)

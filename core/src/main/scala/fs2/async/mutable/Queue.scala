@@ -1,7 +1,7 @@
 package fs2.async.mutable
 
 import fs2._
-
+import fs2.util.Functor
 import fs2.async.immutable
 
 /**
@@ -10,7 +10,7 @@ import fs2.async.immutable
  * a queue may have a bound on its size, in which case enqueuing may
  * block until there is an offsetting dequeue.
  */
-trait Queue[F[_],A] {
+trait Queue[F[_], A] { self =>
 
   /**
    * Enqueues one element in this `Queue`.
@@ -40,17 +40,17 @@ trait Queue[F[_],A] {
   def dequeue1: F[A]
 
   /** Like `dequeue1` but provides a way to cancel the dequeue. */
-  def cancellableDequeue1: F[(F[A],F[Unit])]
+  def cancellableDequeue1: F[(F[A], F[Unit])]
 
   /** Repeatedly call `dequeue1` forever. */
-  def dequeue: Stream[F,A] = Stream.bracket(cancellableDequeue1)(d => Stream.eval(d._1), d => d._2).repeat
+  def dequeue: Stream[F, A] = Stream.bracket(cancellableDequeue1)(d => Stream.eval(d._1), d => d._2).repeat
 
   /**
    * The time-varying size of this `Queue`. This signal refreshes
    * only when size changes. Offsetting enqueues and de-queues may
    * not result in refreshes.
    */
-  def size: immutable.Signal[F,Int]
+  def size: immutable.Signal[F, Int]
 
   /** The size bound on the queue. `None` if the queue is unbounded. */
   def upperBound: Option[Int]
@@ -59,13 +59,30 @@ trait Queue[F[_],A] {
    * Returns the available number of entries in the queue.
    * Always `Int.MaxValue` when the queue is unbounded.
    */
-  def available: immutable.Signal[F,Int]
+  def available: immutable.Signal[F, Int]
 
   /**
    * Returns `true` when the queue has reached its upper size bound.
    * Always `false` when the queue is unbounded.
    */
-  def full: immutable.Signal[F,Boolean]
+  def full: immutable.Signal[F, Boolean]
+
+  /**
+   * Returns an alternate view of this `Queue` where its elements are of type [[B]],
+   * given back and forth function from `A` to `B`.
+   */
+  def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): Queue[F, B] =
+    new Queue[F, B] {
+      def available: immutable.Signal[F, Int] = self.available
+      def full: immutable.Signal[F, Boolean] = self.full
+      def size: immutable.Signal[F, Int] = self.size
+      def upperBound: Option[Int] = self.upperBound
+      def enqueue1(a: B): F[Unit] = self.enqueue1(g(a))
+      def offer1(a: B): F[Boolean] = self.offer1(g(a))
+      def dequeue1: F[B] = F.map(self.dequeue1)(f)
+      def cancellableDequeue1: F[(F[B],F[Unit])] =
+        F.map(self.cancellableDequeue1)(bu => F.map(bu._1)(f) -> bu._2)
+    }
 }
 
 object Queue {

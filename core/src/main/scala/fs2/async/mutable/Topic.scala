@@ -14,14 +14,14 @@ import fs2.Stream._
   * Additionally the subscriber has possibility to terminate whenever size of enqueued elements is over certain size
   * by using `subscribeSize`.
   */
-trait Topic[F[_],A] {
+trait Topic[F[_], A] { self =>
 
   /**
     * Published any elements from source of `A` to this topic.
     * If any of the subscribers reach its `maxQueued` limit, then this will hold to publish next element
     * before that subscriber consumes it's elements or terminates.
     */
-  def publish:Sink[F,A]
+  def publish: Sink[F, A]
 
   /**
     * Publish one `A` to topic.
@@ -31,7 +31,7 @@ trait Topic[F[_],A] {
     * some of its elements to get room for this new. published `A`
     *
     */
-  def publish1(a:A):F[Unit]
+  def publish1(a: A): F[Unit]
 
   /**
     * Subscribes to receive any published `A` to this topic.
@@ -42,7 +42,7 @@ trait Topic[F[_],A] {
     * then publishers will hold into publishing to the queue.
     *
     */
-  def subscribe(maxQueued:Int):Stream[F,A]
+  def subscribe(maxQueued: Int): Stream[F, A]
 
   /**
     * Subscribes to receive published `A` to this topic.
@@ -58,12 +58,26 @@ trait Topic[F[_],A] {
     * then publishers will hold into publishing to the queue.
     *
     */
-  def subscribeSize(maxQueued:Int):Stream[F,(A, Int)]
+  def subscribeSize(maxQueued: Int): Stream[F, (A, Int)]
 
   /**
     * Signal of current active subscribers
     */
-  def subscribers:fs2.async.immutable.Signal[F,Int]
+  def subscribers: fs2.async.immutable.Signal[F, Int]
+
+  /**
+   * Returns an alternate view of this `Topic` where its elements are of type [[B]],
+   * given back and forth function from `A` to `B`.
+   */
+  def imap[B](f: A => B)(g: B => A): Topic[F, B] =
+    new Topic[F, B] {
+      def publish: Sink[F, B] = sfb => self.publish(sfb.map(g))
+      def publish1(b: B): F[Unit] = self.publish1(g(b))
+      def subscribe(maxQueued: Int): Stream[F, B] = self.subscribe(maxQueued).map(f)
+      def subscribers: fs2.async.immutable.Signal[F, Int] = self.subscribers
+      def subscribeSize(maxQueued: Int): Stream[F, (B, Int)] =
+        self.subscribeSize(maxQueued).map { case (a, i) => f(a) -> i }
+    }
 }
 
 object Topic {
