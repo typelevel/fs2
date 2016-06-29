@@ -102,7 +102,7 @@ Here's a complete example of running an effectful stream. We'll explain this in 
 eff.runLog.unsafeRun()
 ```
 
-What's with the `.runLogFree.run.unsafeRun()`? Let's break it down. The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
+The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
 
 ```tut:book
 val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
@@ -112,17 +112,20 @@ val rb = eff.run // purely for effects
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
 ```
 
-Notice these all return a `Task` of some sort, but that this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed). If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task`:
+Notice these all return a `Task` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
 
-```tut:book
+If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task` (if you are bringing your own effect type, how you run your effects may of course differ):
+
+```tut
 ra.unsafeRun()
 rb.unsafeRun()
 rc.unsafeRun()
-
 rc.unsafeRun()
 ```
 
-Here we finally see the task is executed. As shown, rerunning the task executes the entire computation again; nothing is cached for you automatically.
+Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
+
+_Note:_ The various `run*` functions aren't specialized to `Task` and work for any `F[_]` with an implicit `Catchable[F]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
 
 ### Chunking
 

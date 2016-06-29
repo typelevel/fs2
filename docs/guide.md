@@ -135,7 +135,7 @@ TASK BEING RUN!!
 res11: Vector[Int] = Vector(2)
 ```
 
-What's with the `.runLogFree.run.unsafeRun()`? Let's break it down. The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
+The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
 
 ```scala
 val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
@@ -151,26 +151,30 @@ val rc = eff.runFold(0)(_ + _) // run and accumulate some result
 // rc: fs2.Task[Int] = Task
 ```
 
-Notice these all return a `Task` of some sort, but that this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed). If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task`:
+Notice these all return a `Task` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
+
+If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task` (if you are bringing your own effect type, how you run your effects may of course differ):
 
 ```scala
-ra.unsafeRun()
-// TASK BEING RUN!!
-// res12: Vector[Int] = Vector(2)
+scala> ra.unsafeRun()
+TASK BEING RUN!!
+res12: Vector[Int] = Vector(2)
 
-rb.unsafeRun()
-// TASK BEING RUN!!
+scala> rb.unsafeRun()
+TASK BEING RUN!!
 
-rc.unsafeRun()
-// TASK BEING RUN!!
-// res14: Int = 2
+scala> rc.unsafeRun()
+TASK BEING RUN!!
+res14: Int = 2
 
-rc.unsafeRun()
-// TASK BEING RUN!!
-// res15: Int = 2
+scala> rc.unsafeRun()
+TASK BEING RUN!!
+res15: Int = 2
 ```
 
-Here we finally see the task is executed. As shown, rerunning the task executes the entire computation again; nothing is cached for you automatically.
+Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
+
+_Note:_ The various `run*` functions aren't specialized to `Task` and work for any `F[_]` with an implicit `Catchable[F]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
 
 ### Chunking
 
@@ -285,7 +289,7 @@ scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsa
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 818 elided
+  ... 830 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
