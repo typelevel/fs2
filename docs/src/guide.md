@@ -21,7 +21,8 @@ This is the offical FS2 guide. It gives an overview of the library and its featu
 * [Exercises (concurrency)](#exercises-2)
 * [Talking to the external world](#talking-to-the-external-world)
 * [Learning more](#learning-more)
-* [Appendix](#a1)
+* [Appendix: Sane subtyping with better error messages](#a1)
+* [Appendix: How interruption of streams works](#a2)
 
 _Unless otherwise noted, the type `Stream` mentioned in this document refers to the type `fs2.Stream` and NOT `scala.collection.immutable.Stream`._
 
@@ -98,44 +99,27 @@ eff.toList
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
 ```tut
-eff.runLogFree.run.unsafeRun()
+eff.runLog.unsafeRun()
 ```
 
-What's with the `.runLogFree.run.unsafeRun()`? Let's break it down. The first `.runLogFree` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect, the `Free` effect:
+What's with the `.runLogFree.run.unsafeRun()`? Let's break it down. The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
 
 ```tut:book
 val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 
-val ra = eff.runLogFree // gather all output into a Vector
-val rb = eff.runFree // purely for effects
-val rc = eff.runFoldFree(0)(_ + _) // run and accumulate some result
-```
-
-Notice these all return an `fs2.util.Free[Task,_]`. `Free` has various useful functions on it (for instance, we can translate to a different effect type), but most of the time we'll just want to run it using the `run` method:
-
-```tut:book
-ra.run
-rb.run
-rc.run
-```
-
-Calling `run` on `Free` requires an implicit `Catchable[Task]` in scope (or a `Catchable[F]` for whatever your effect type, `F`), and this is the only place any constraints are placed on your effect type (aside from use of asynchronous operations [we discuss later](#concurrency)). Calling `.run` on `Free` yields a single monolithic `Task` representing our entire stream program, but our effect still hasn't been run (our `println` still hasn't executed).
-
-This is such a common operation that there's special syntax for converting a stream to a `Free` and then running that `Free`:
-
-```tut:book
 val ra = eff.runLog // gather all output into a Vector
 val rb = eff.run // purely for effects
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
 ```
 
-If we want to run this for its effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task`:
+Notice these all return a `Task` of some sort, but that this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed). If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task`:
 
-```tut
-// val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
-// val ra = eff.runLog
+```tut:book
 ra.unsafeRun()
-ra.unsafeRun()
+rb.unsafeRun()
+rc.unsafeRun()
+
+rc.unsafeRun()
 ```
 
 Here we finally see the task is executed. As shown, rerunning the task executes the entire computation again; nothing is cached for you automatically.
@@ -208,6 +192,8 @@ The `onError` method lets us catch any of these errors:
 ```tut
 err.onError { e => Stream.emit(e.getMessage) }.toList
 ```
+
+_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a2) for more details._
 
 ### Resource acquisition
 
@@ -565,3 +551,59 @@ Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Lub1.id[Nothing])
 ```
 
 Ugly, as it should be.
+
+### <a id="a2"></a> Appendix A2: How interruption of streams works
+
+In FS2, a stream can terminate in one of three ways:
+
+1. Normal input exhaustion. For instance, the stream `Stream(1,2,3)` terminates after the single chunk (containing the values `1, 2, 3`) is emitted.
+2. An uncaught exception. For instance, the stream `Stream(1,2,3) ++ (throw Err)` terminates with `Err` after the single chunk is emitted.
+3. Interruption by the stream consumer. Interruption can be _synchronous_, as in `(Stream(1) ++ (throw Err)) take 1`, which will deterministically halt the stream before the `++`, or it can be _asynchronous_, as in `s1 merge s2 take 3`.
+
+Regarding 3:
+
+* A stream will never be interrupted while it is acquiring a resource (via `bracket`) or while it is releasing a resource. The `bracket` function guarantees that if FS2 starts acquiring the resource, the corresponding release action will be run.
+* Other than that, Streams can be interrupted in between any two 'steps' of the stream. The steps themselves are atomic from the perspective of FS2. `Stream.eval(eff)` is a single step, `Stream.emit(1)` is a single step, `Stream(1,2,3)` is a single step (emitting a chunk), and all other operations (like `onError`, `++`, and `flatMap`) are multiple steps and can be interrupted. But importantly, user-provided effects that are passed to `eval` are never interrupted once they are started (and FS2 does not have enough knowledge of user-provided effects to know how to interrupt them anyway).
+* _Always use `bracket` or a `bracket`-based function like `onFinalize` for supplying resource cleanup logic or any other logic you want to be run regardless of how the stream terminates. Don't use `onComplete`, `onError`, or `++` for this purpose._
+
+Let's look at some examples of how this plays out, starting with the synchronous interruption case:
+
+```tut
+case object Err extends Throwable
+
+(Stream(1) ++ (throw Err)).take(1).toList
+(Stream(1) ++ Stream.fail(Err)).take(1).toList
+```
+
+The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
+
+```tut
+(Stream(1) onComplete Stream.fail(Err)).take(1).toList
+```
+
+The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doeesn't know this until it actually runs another step of the stream.
+
+If instead we use `onFinalize`, the code is guaranteed to run, regardless of whether `take` interrupts:
+
+```tut:book
+Stream(1).covary[Task].
+          onFinalize(Task.delay { println("finalized!") }).
+          take(1).
+          runLog.unsafeRun()
+```
+
+That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
+
+```tut
+val s1 = (Stream(1) ++ Stream(2)).covary[Task]
+val s2 = (Stream.empty ++ Stream.fail(Err)) onError { e => println(e); Stream.fail(e) }
+val merged = s1 merge s2 take 1
+```
+
+The result is highly nondeterministic. Here are a few ways it can play out:
+
+* `s1` may complete before the error in `s2` is encountered, in which case nothing will be printed and no error will occur.
+* `s2` may encounter the error before any of `s1` is emitted. When the error is reraised by `s2`, that will terminate the `merge` and asynchronously interrupt `s1`, and the `take` terminates with that same error.
+* `s2` may encounter the error before any of `s1` is emited, but during the period where the value is caught by `onError`, `s1` may emit a value and the `take(1)` may terminate, triggering interruption of both `s1` and `s2`, before the error is reraised but after the exception is printed! In this case, the stream will still terminate without error.
+
+The correctness of your program should not depend on how different streams interleave, and once again, you should not use `onError` or other interruptible functions for resource cleanup. Use `bracket` or `onFinalize` for this purpose.

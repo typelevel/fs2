@@ -54,6 +54,13 @@ private[fs2] trait StreamOps[+F[_],+A] extends StreamPipeOps[F,A] with StreamPip
   def observeAsync[F2[_],B>:A](sink: Sink[F2,B], maxQueued: Int)(implicit F: Async[F2], R: RealSupertype[A,B], S: Sub1[F,F2]): Stream[F2,B] =
     async.channel.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
 
+  /**
+   * Run `regardless` if this stream terminates normally or with an error, but _not_ if
+   * this stream is interrupted. The `regardless` argument should _not_ be used for resource cleanup;
+   * use `bracket` or `onFinalize` for that purpose.
+   *
+   * See http://fs2.co/blob/series/0.9/docs/guide.md#a2 for details.
+   */
   def onComplete[G[_],Lub[_],B>:A](regardless: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] =
     Stream.onComplete(Sub1.substStream(self)(L.subF), Sub1.substStream(regardless)(L.subG))
 
