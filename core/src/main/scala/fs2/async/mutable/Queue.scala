@@ -93,7 +93,7 @@ object Queue {
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
       * @param deq      A list of waiting dequeuers, added to when queue is empty
       */
-    case class State(queue: Vector[A], deq: Vector[F.Ref[A]])
+    case class State(queue: Vector[A], deq: Vector[Async.Ref[F,A]])
 
     F.bind(Signal(0)) { szSignal =>
     F.map(F.refOf[State](State(Vector.empty,Vector.empty))) { qref =>
@@ -107,31 +107,31 @@ object Queue {
         def upperBound: Option[Int] = None
         def enqueue1(a:A): F[Unit] = F.map(offer1(a))(_ => ())
         def offer1(a: A): F[Boolean] =
-          F.bind(F.modify(qref) { s =>
+          F.bind(qref.modify { s =>
             if (s.deq.isEmpty) s.copy(queue = s.queue :+ a)
             else s.copy(deq = s.deq.tail)
           }) { c =>
             if (c.previous.deq.isEmpty) // we enqueued a value to the queue
               F.map(signalSize(c.previous, c.now)) { _ => true }
             else // queue was empty, we had waiting dequeuers
-              F.map(F.setPure(c.previous.deq.head)(a)) { _ => true }
+              F.map(c.previous.deq.head.setPure(a)) { _ => true }
           }
 
         def dequeue1: F[A] = F.bind(cancellableDequeue1) { _._1 }
 
         def cancellableDequeue1: F[(F[A],F[Unit])] =
           F.bind(F.ref[A]) { r =>
-          F.map(F.modify(qref) { s =>
+          F.map(qref.modify { s =>
             if (s.queue.isEmpty) s.copy(deq = s.deq :+ r)
             else s.copy(queue = s.queue.tail)
           }) { c =>
             val deq = F.bind(signalSize(c.previous, c.now)) { _ =>
               if (c.previous.queue.nonEmpty) F.pure(c.previous.queue.head)
-              else F.get(r)
+              else r.get
             }
             val cleanup =
               if (c.previous.queue.nonEmpty) F.pure(())
-              else F.map(F.modify(qref) { s =>
+              else F.map(qref.modify { s =>
                 s.copy(deq = s.deq.filterNot(_ == r))
               })(_ => ())
             (deq,cleanup)
@@ -186,14 +186,14 @@ object Queue {
     F.map(unbounded[F,Option[A]]) { q =>
       new Queue[F,Option[A]] {
         def upperBound: Option[Int] = Some(0)
-        def enqueue1(a: Option[A]): F[Unit] = F.bind(F.access(doneRef)) { case (done, update) =>
+        def enqueue1(a: Option[A]): F[Unit] = F.bind(doneRef.access) { case (done, update) =>
           if (done) F.pure(())
           else a match {
             case None => F.bind(update(Right(true))) { successful => if (successful) q.enqueue1(None) else enqueue1(None) }
             case _ => F.bind(permits.decrement) { _ => q.enqueue1(a) }
           }
         }
-        def offer1(a: Option[A]): F[Boolean] = F.bind(F.access(doneRef)) { case (done, update) =>
+        def offer1(a: Option[A]): F[Boolean] = F.bind(doneRef.access) { case (done, update) =>
           if (done) F.pure(true)
           else a match {
             case None => F.bind(update(Right(true))) { successful => if (successful) q.offer1(None) else offer1(None) }
