@@ -49,6 +49,26 @@ class ChannelSpec extends Fs2Spec {
           } should contain theSameElementsAs s.get.toVector
         }
       }
+      "handle multiple consecutive observations" in {
+        forAll { (s: PureStream[Int], f: Failure) =>
+          runLog {
+            val sink: Sink[Task,Int] = _.evalMap(i => Task.delay(()))
+            val src: Stream[Task, Int] = s.get.covary[Task]
+            src.observe(sink).observe(sink)
+          } shouldBe s.get.toVector
+        }
+      }
+      "no hangs on failures" in {
+        forAll { (s: PureStream[Int], f: Failure) =>
+          swallow {
+            runLog {
+              val sink: Sink[Task,Int] = in => spuriousFail(in.evalMap(i => Task.delay(i)), f).map(_ => ())
+              val src: Stream[Task, Int] = spuriousFail(s.get.covary[Task], f)
+              src.observe(sink).observe(sink)
+            } shouldBe s.get.toVector
+          }
+        }
+      }
     }
 
     "sanity-test" in {
