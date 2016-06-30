@@ -180,6 +180,14 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       eventually { c.get shouldBe 0L }
     }
 
+    "preempted Task onFinish" in {
+      val c = new AtomicLong(0L)
+      val increment = Task.delay { c.incrementAndGet; () }
+      val slowStuff = Task.delay { Thread.sleep(100) } onFinish { _ => increment }
+      slowStuff.timed(20.millis).unsafeAttemptRun()
+      c.get shouldBe 1L
+    }
+
     def swallow(a: => Any): Unit =
       try { a; () }
       catch {
