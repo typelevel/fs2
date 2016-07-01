@@ -1,7 +1,6 @@
 package fs2
 
 import scala.concurrent.duration._
-import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck._
 
@@ -15,10 +14,6 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
         ()
       }
     }
-
-    def spuriousFail(s: Stream[Task,Int], f: Failure): Stream[Task,Int] =
-      s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get
-                       else Stream.emit(i) }
 
     "bracket (normal termination / failing)" in forAll { (s0: List[PureStream[Int]], f: Failure, ignoreFailure: Boolean) =>
       val c = new AtomicLong(0)
@@ -179,14 +174,6 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       }}}
       eventually { c.get shouldBe 0L }
     }
-
-    def swallow(a: => Any): Unit =
-      try { a; () }
-      catch {
-        case e: InterruptedException => throw e
-        case e: TimeoutException => throw e
-        case e: Throwable => ()
-      }
 
     def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
       Stream.bracket(Task.delay { c.decrementAndGet })(
