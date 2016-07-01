@@ -36,7 +36,7 @@ trait Pulls[Pull[+_[_],+_,+_]] {
   /** If `p` terminates with `fail(e)`, invoke `handle(e)`. */
   def onError[F[_],O,R](p: Pull[F,O,R])(handle: Throwable => Pull[F,O,R]): Pull[F,O,R]
 
-  /** Monadic flatMap. */
+  /** Monadic bind. */
   def flatMap[F[_],O,R0,R](p: Pull[F,O,R0])(f: R0 => Pull[F,O,R]): Pull[F,O,R]
 
   /** Promote an effect to a `Pull`. */
