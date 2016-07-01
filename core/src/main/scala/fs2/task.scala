@@ -57,17 +57,6 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
     })
 
   /**
-   * Returns a new `Task` in which `f` is scheduled to be run on completion.
-   * This would typically be used to release any resources acquired by this
-   * `Task`.
-   */
-  def onFinish(f: Option[Throwable] => Task[Unit]): Task[A] =
-    new Task(get flatMap {
-      case Left(e) => f(Some(e)).get flatMap { _ => Future.now(Left(e)) }
-      case r => f(None).get flatMap { _ => Future.now(r) }
-    })
-
-  /**
    * Calls `attempt` and handles some exceptions using the given partial
    * function, calling Task.now on the result. Any nonmatching exceptions
    * are reraised.
@@ -154,8 +143,11 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
   /**
    * A `Task` which returns a `TimeoutException` after `timeout`,
    * and attempts to cancel the running computation.
+   *
+   * This method is unsafe because upon reaching the specified timeout, the running
+   * task is interrupted at a non-determinstic point in its execution.
    */
-  def timed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
+  def unsafeTimed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
     new Task(get.timed(timeout).map(_.right.flatMap(x => x)))
 
   override def toString = "Task"
