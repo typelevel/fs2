@@ -3,10 +3,10 @@ package async
 package mutable
 
 import fs2.Async.Change
-import fs2._
 import fs2.Stream._
 import fs2.async.immutable
 import fs2.util.{Monad, Functor}
+import fs2.util.syntax._
 
 /**
  * A signal whose value may be set asynchronously. Provides continuous
@@ -41,11 +41,11 @@ trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
       def discrete: Stream[F, B] = self.discrete.map(f)
       def continuous: Stream[F, B] = self.continuous.map(f)
       def changes: Stream[F, Unit] = self.changes
-      def get: F[B] = F.map(self.get)(f)
+      def get: F[B] = self.get.map(f)
       def set(b: B): F[Unit] = self.set(g(b))
       def refresh: F[Unit] = self.refresh
       def modify(bb: B => B): F[Change[B]] =
-        F.map(self.modify(a => g(bb(f(a))))) { case Change(prev, now) => Change(f(prev), f(now)) }
+        self.modify(a => g(bb(f(a)))).map { case Change(prev, now) => Change(f(prev), f(now)) }
     }
 }
 
@@ -59,21 +59,19 @@ object Signal {
   }
 
   def apply[F[_],A](initA: A)(implicit F: Async[F]): F[Signal[F,A]] =
-    F.map(F.refOf[(A, Long, Vector[Async.Ref[F,(A,Long)]])]((initA,0,Vector.empty))) {
+    F.refOf[(A, Long, Vector[Async.Ref[F,(A,Long)]])]((initA,0,Vector.empty)).map {
     state => new Signal[F,A] {
-      def refresh: F[Unit] = F.map(modify(identity))(_ => ())
-      def set(a: A): F[Unit] = F.map(modify(_ => a))(_ => ())
-      def get: F[A] = F.map(state.get)(_._1)
+      def refresh: F[Unit] = modify(identity).as(())
+      def set(a: A): F[Unit] = modify(_ => a).as(())
+      def get: F[A] = state.get.map(_._1)
       def modify(f: A => A): F[Change[A]] = {
-        F.bind(state.modify { case (a,l,_) =>
+        state.modify { case (a,l,_) =>
           (f(a),l+1,Vector.empty)
-        }) { c =>
+        }.flatMap { c =>
           if (c.previous._3.isEmpty) F.pure(c.map(_._1))
           else {
             val now = c.now._1 -> c.now._2
-            F.bind(F.traverse(c.previous._3)(ref => ref.setPure(now))) { _ =>
-              F.pure(c.map(_._1))
-            }
+            c.previous._3.traverse(ref => ref.setPure(now)) >> F.pure(c.map(_._1))
           }
         }
       }
@@ -87,15 +85,15 @@ object Signal {
       def discrete: Stream[F, A] = {
         def go(lastA:A, last:Long):Stream[F,A] = {
           def getNext:F[(F[(A,Long)],F[Unit])] = {
-            F.bind(F.ref[(A,Long)]) { ref =>
-              F.map(state.modify { case s@(a, l, listen) =>
+            F.ref[(A,Long)].flatMap { ref =>
+              state.modify { case s@(a, l, listen) =>
                 if (l != last) s
                 else (a, l, listen :+ ref)
-              }) { c =>
+              }.map { c =>
                 if (c.modified) {
-                  val cleanup = F.map(state.modify {
+                  val cleanup = state.modify {
                     case s@(a, l, listen) => if (l != last) s else (a, l, listen.filterNot(_ == ref))
-                  })(_ => ())
+                  }.as(())
                   (ref.get,cleanup)
                 }
                 else (F.pure(c.now._1 -> c.now._2), F.pure(()))

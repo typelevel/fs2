@@ -2,6 +2,7 @@ package fs2
 
 import Async.Ref
 import fs2.util.{Free,Functor,Effect}
+import fs2.util.syntax._
 
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.")
 trait Async[F[_]] extends Effect[F] { self =>
@@ -10,7 +11,7 @@ trait Async[F[_]] extends Effect[F] { self =>
   def ref[A]: F[Ref[F,A]]
 
   /** Create an asynchronous, concurrent mutable reference, initialized to `a`. */
-  def refOf[A](a: A): F[Ref[F,A]] = bind(ref[A])(r => map(r.setPure(a))(_ => r))
+  def refOf[A](a: A): F[Ref[F,A]] = flatMap(ref[A])(r => map(r.setPure(a))(_ => r))
 
   /**
    Create an `F[A]` from an asynchronous computation, which takes the form
@@ -19,19 +20,19 @@ trait Async[F[_]] extends Effect[F] { self =>
    version.
    */
   def async[A](register: (Either[Throwable,A] => Unit) => F[Unit]): F[A] =
-    bind(ref[A]) { ref =>
-    bind(register { e => ref.runSet(e) }) { _ => ref.get }}
+    flatMap(ref[A]) { ref =>
+    flatMap(register { e => ref.runSet(e) }) { _ => ref.get }}
 
   def parallelTraverse[A,B](s: Seq[A])(f: A => F[B]): F[Vector[B]] =
-    bind(traverse(s)(f andThen start)) { tasks => traverse(tasks)(identity) }
+    flatMap(traverse(s)(f andThen start)) { tasks => traverse(tasks)(identity) }
 
   /**
    * Begin asynchronous evaluation of `f` when the returned `F[F[A]]` is
    * bound. The inner `F[A]` will block until the result is available.
    */
   def start[A](f: F[A]): F[F[A]] =
-    bind(ref[A]) { ref =>
-    bind(ref.set(f)) { _ => pure(ref.get) }}
+    flatMap(ref[A]) { ref =>
+    flatMap(ref.set(f)) { _ => pure(ref.get) }}
 }
 
 object Async {
@@ -44,7 +45,7 @@ object Async {
 
   /** An asynchronous, concurrent mutable reference. */
   trait Ref[F[_],A] { self =>
-    protected val F: Async[F]
+    implicit protected val F: Async[F]
 
     /**
      * Obtain a snapshot of the current value of the `Ref`, and a setter
@@ -55,18 +56,17 @@ object Async {
      */
     def access: F[(A, Either[Throwable,A] => F[Boolean])]
 
-
     /** Obtain the value of the `Ref`, or wait until it has been `set`. */
-    def get: F[A] = F.map(access)(_._1)
+    def get: F[A] = access.map(_._1)
 
     /** Like `get`, but returns an `F[Unit]` that can be used cancel the subscription. */
     def cancellableGet: F[(F[A], F[Unit])]
 
     /** The read-only portion of a `Ref`. */
     def read: Future[F,A] = new Future[F,A] {
-      def get = F.map(self.get)((_,Scope.pure(())))
-      def cancellableGet = F.map(self.cancellableGet) { case (f,cancel) =>
-        (F.map(f)((_,Scope.pure(()))), cancel)
+      def get = self.get.map((_,Scope.pure(())))
+      def cancellableGet = self.cancellableGet.map { case (f,cancel) =>
+        (f.map((_,Scope.pure(()))), cancel)
       }
     }
 
@@ -76,9 +76,9 @@ object Async {
      * the variable is read and the time it is set.
      */
     def tryModify(f: A => A): F[Option[Change[A]]] =
-      F.bind(access) { case (previous,set) =>
+      access.flatMap { case (previous,set) =>
         val now = f(previous)
-        F.map(set(Right(now))) { b =>
+        set(Right(now)).map { b =>
           if (b) Some(Change(previous, now))
           else None
         }
@@ -86,9 +86,9 @@ object Async {
 
     /** Like `tryModify` but allows to return `B` along with change. **/
     def tryModify2[B](f: A => (A,B)): F[Option[(Change[A], B)]] =
-      F.bind(access) { case (previous,set) =>
+      access.flatMap { case (previous,set) =>
         val (now,b0) = f(previous)
-        F.map(set(Right(now))) { b =>
+        set(Right(now)).map { b =>
           if (b) Some(Change(previous, now) -> b0)
           else None
         }
@@ -96,14 +96,14 @@ object Async {
 
     /** Repeatedly invoke `[[tryModify]](f)` until it succeeds. */
     def modify(f: A => A): F[Change[A]] =
-      F.bind(tryModify(f)) {
+      tryModify(f).flatMap {
         case None => modify(f)
         case Some(change) => F.pure(change)
       }
 
     /** Like modify, but allows to extra `b` in single step. **/
     def modify2[B](f: A => (A,B)): F[(Change[A], B)] =
-      F.bind(tryModify2(f)) {
+      tryModify2(f).flatMap {
         case None => modify2(f)
         case Some(changeAndB) => F.pure(changeAndB)
       }
@@ -128,34 +128,36 @@ object Async {
     private[fs2] def get: F[(A, Scope[F,Unit])]
     private[fs2] def cancellableGet: F[(F[(A, Scope[F,Unit])], F[Unit])]
     private[fs2] def appendOnForce(p: Scope[F,Unit])(implicit F: Functor[F]): Future[F,A] = new Future[F,A] {
-      def get = F.map(self.get) { case (a,s0) => (a, s0 flatMap { _ => p }) }
+      def get = self.get.map { case (a,s0) => (a, s0 flatMap { _ => p }) }
       def cancellableGet =
-        F.map(self.cancellableGet) { case (f,cancel) =>
-          (F.map(f) { case (a,s0) => (a, s0 flatMap { _ => p }) }, cancel)
+        self.cancellableGet.map { case (f,cancel) =>
+          (f.map { case (a,s0) => (a, s0 flatMap { _ => p }) }, cancel)
         }
     }
     def force: Pull[F,Nothing,A] = Pull.eval(get) flatMap { case (a,onForce) => Pull.evalScope(onForce as a) }
     def stream: Stream[F,A] = Stream.eval(get) flatMap { case (a,onForce) => Stream.evalScope(onForce as a) }
     def map[B](f: A => B)(implicit F: Async[F]): Future[F,B] = new Future[F,B] {
-      def get = F.map(self.get) { case (a,onForce) => (f(a), onForce) }
-      def cancellableGet = F.map(self.cancellableGet) { case (a,cancelA) =>
-        (F.map(a) { case (a,onForce) => (f(a),onForce) }, cancelA)
+      def get = self.get.map { case (a,onForce) => (f(a), onForce) }
+      def cancellableGet = self.cancellableGet.map { case (a,cancelA) =>
+        (a.map { case (a,onForce) => (f(a),onForce) }, cancelA)
       }
     }
     def race[B](b: Future[F,B])(implicit F: Async[F]): Future[F,Either[A,B]] = new Future[F, Either[A,B]] {
-      def get = F.bind(cancellableGet)(_._1)
-      def cancellableGet =
-        F.bind(F.ref[Either[(A,Scope[F,Unit]),(B,Scope[F,Unit])]]) { ref =>
-        F.bind(self.cancellableGet) { case (a, cancelA) =>
-        F.bind(b.cancellableGet) { case (b, cancelB) =>
-        F.bind(ref.set(F.map(a)(Left(_)))) { _ =>
-        F.bind(ref.set(F.map(b)(Right(_)))) { _ =>
-        F.pure {
-         (F.bind(ref.get) {
-           case Left((a,onForce)) => F.map(cancelB)(_ => (Left(a),onForce))
-           case Right((b,onForce)) => F.map(cancelA)(_ => (Right(b),onForce)) },
-          F.bind(cancelA)(_ => cancelB))
-        }}}}}}
+      def get = cancellableGet.flatMap(_._1)
+      def cancellableGet = for {
+        ref <- F.ref[Either[(A,Scope[F,Unit]),(B,Scope[F,Unit])]]
+        t0 <- self.cancellableGet
+        (a, cancelA) = t0
+        t1 <- b.cancellableGet
+        (b, cancelB) = t1
+        _ <- ref.set(a.map(Left(_)))
+        _ <- ref.set(b.map(Right(_)))
+      } yield {
+        (ref.get.flatMap {
+          case Left((a,onForce)) => cancelB.as((Left(a),onForce))
+          case Right((b,onForce)) => cancelA.as((Right(b),onForce))
+        }, cancelA >> cancelB)
+      }
     }
 
     def raceSame(b: Future[F,A])(implicit F: Async[F]): Future[F, RaceResult[A,Future[F,A]]] =
@@ -191,23 +193,23 @@ object Async {
       : Future[F,(A,Int)]
       = new Future[F,(A,Int)] {
         def cancellableGet =
-          F.bind(F.ref[((A,Scope[F,Unit]),Int)]) { ref =>
-            val cancels: F[Vector[(F[Unit],Int)]] = F.traverse(es zip (0 until es.size)) { case (a,i) =>
-              F.bind(a.cancellableGet) { case (a, cancelA) =>
-                F.map(ref.set(F.map(a)((_,i))))(_ => (cancelA,i))
+          F.ref[((A,Scope[F,Unit]),Int)].flatMap { ref =>
+            val cancels: F[Vector[(F[Unit],Int)]] = (es zip (0 until es.size)).traverse { case (a,i) =>
+              a.cancellableGet.flatMap { case (a, cancelA) =>
+                ref.set(a.map((_,i))).as((cancelA,i))
               }
             }
-            F.bind(cancels) { cancels =>
+            cancels.flatMap { cancels =>
               F.pure {
-                val get = F.bind(ref.get) { case (a,i) =>
-                  F.map(F.traverse(cancels.collect { case (a,j) if j != i => a })(identity))(_ => (a,i))
+                val get = ref.get.flatMap { case (a,i) =>
+                  F.sequence(cancels.collect { case (a,j) if j != i => a }).map(_ => (a,i))
                 }
-                val cancel = F.map(F.traverse(cancels)(_._1))(_ => ())
-                (F.map(get) { case ((a,onForce),i) => ((a,i),onForce) }, cancel)
+                val cancel = cancels.traverse(_._1).as(())
+                (get.map { case ((a,onForce),i) => ((a,i),onForce) }, cancel)
               }
             }
           }
-        def get = F.bind(cancellableGet)(_._1)
+        def get = cancellableGet.flatMap(_._1)
       }
   }
   /**
@@ -215,13 +217,9 @@ object Async {
    * (the value passed to modify function, `f` in the call to `modify(f)`. And `now`
    * is the new value computed by `f`.
    */
-  case class Change[+A](previous: A, now: A)
-
-  object Change {
-    implicit class ChangeSyntax[A](val self:Change[A]) extends AnyVal {
-      def modified: Boolean = self.previous != self.now
-      def map[B](f: A => B):Change[B] = Change(f(self.previous), f(self.now))
-    }
+  case class Change[+A](previous: A, now: A) {
+    def modified: Boolean = previous != now
+    def map[B](f: A => B): Change[B] = Change(f(previous), f(now))
   }
 
   /** Used to evaluate `F`. */

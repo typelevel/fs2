@@ -1,7 +1,8 @@
 package fs2
 package async
 
-import mutable.Queue
+import fs2.async.mutable.Queue
+import fs2.util.syntax._
 
 object channel {
 
@@ -28,7 +29,7 @@ object channel {
       combine(
         f {
           val enqueueNone: F[Unit] =
-            F.bind(enqueueNoneSemaphore.tryDecrement) { decremented =>
+            enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
               if (decremented) q.enqueue1(None)
               else F.pure(())
             }
@@ -51,7 +52,7 @@ object channel {
           (pipe.unNoneTerminate(
             q.dequeue.
               evalMap { c =>
-                if (c.isEmpty) F.map(dequeueNoneSemaphore.tryDecrement)(_ => c)
+                if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
                 else F.pure(c)
               }).
               flatMap { c => Stream.chunk(c) }.
