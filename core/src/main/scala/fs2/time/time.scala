@@ -2,6 +2,8 @@ package fs2
 
 import scala.concurrent.duration._
 
+import fs2.util.syntax._
+
 package object time {
 
   /**
@@ -30,14 +32,14 @@ package object time {
    */
   def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], FR: Async.Run[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
     def metronomeAndSignal: F[(()=>Unit,async.mutable.Signal[F,FiniteDuration])] = {
-      F.bind(async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))) { signal =>
+      async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS)).flatMap { signal =>
         val lock = new java.util.concurrent.Semaphore(1)
         val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
         F.delay {
           val cancel = scheduler.scheduleAtFixedRate(d, d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
             if (lock.tryAcquire)
-              FR.unsafeRunAsyncEffects(F.map(signal.set(d)) { _ => lock.release })(_ => ())
+              FR.unsafeRunAsyncEffects(signal.set(d) >> F.delay(lock.release))(_ => ())
           }
           (cancel, signal)
         }

@@ -17,7 +17,7 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
       def apply[A](r: RF[F,A]) = r match {
         case RF.Eval(fa) => RF.Eval(f(fa))
         case RF.FinishAcquire(token, cleanup) => RF.FinishAcquire(token, cleanup.translate(f))
-        case _ => r.asInstanceOf[RF[G,A]] // Eval and FinishAcquire are only ctors that bind `F`
+        case _ => r.asInstanceOf[RF[G,A]] // Eval and FinishAcquire are only ctors that flatMap `F`
       }
     })
   }}

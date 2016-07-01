@@ -111,7 +111,7 @@ sealed trait StreamCore[F[_],O] { self =>
     val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
     lazy val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
-        Free.eval(F.traverse(Vector.fill(waiting)(F.ref[Unit]))(identity)) flatMap { gates =>
+        Free.eval(F.sequence(Vector.fill(waiting)(F.ref[Unit]))) flatMap { gates =>
           resources.closeAll(gates.toStream.map(gate => () => gate.runSet(Right(())))) match {
             case Left(_) => Free.eval(F.traverse(gates)(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
@@ -426,8 +426,8 @@ object StreamCore {
       case _ => self (
         (segments, eq) => Eq.subst[({type f[x] = Stack[F,O1,x] })#f, O1, O2](
                           Stack.segments(s :: segments))(eq),
-        new self.H[Stack[F,O1,O2]] { def f[x] = (segments,bindf,tl) =>
-          tl.pushBindOrMap(bindf).pushSegments(s :: segments)
+        new self.H[Stack[F,O1,O2]] { def f[x] = (segments,flatMapf,tl) =>
+          tl.pushBindOrMap(flatMapf).pushSegments(s :: segments)
         }
       )
     }
@@ -440,8 +440,8 @@ object StreamCore {
         self (
           (segments, eq) => if (segments.isEmpty) unbound(s, eq) // common case
                             else unbound(s ++ segments, eq),
-          new self.H[R] { def f[x] = (segments, bind, tl) =>
-            bound.f(s ++ segments, bind, tl)
+          new self.H[R] { def f[x] = (segments, flatMap, tl) =>
+            bound.f(s ++ segments, flatMap, tl)
           }
         )
       }
@@ -481,7 +481,7 @@ object StreamCore {
 
   private[fs2]
   def runCleanup[F[_]](cleanups: Iterable[Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] = {
-    // note - run cleanup actions in FIFO order, but avoid left-nesting binds
+    // note - run cleanup actions in FIFO order, but avoid left-nesting flatMaps
     // all actions are run but only first error is reported
     cleanups.toList.reverse.foldLeft[Free[F,Either[Throwable,Unit]]](Free.pure(Right(())))(
       (tl,hd) => hd flatMap { _.fold(e => tl flatMap { _ => Free.pure(Left(e)) }, _ => tl) }

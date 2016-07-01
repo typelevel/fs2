@@ -242,7 +242,7 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
   implicit def streamCatchableInstance[F[_]]: Catchable[({ type λ[a] = Stream[F, a] })#λ] =
     new Catchable[({ type λ[a] = Stream[F, a] })#λ] {
       def pure[A](a: A): Stream[F,A] = Stream.emit(a)
-      def bind[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
+      def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
       def attempt[A](s: Stream[F,A]): Stream[F,Either[Throwable,A]] = s.attempt
       def fail[A](e: Throwable): Stream[F,A] = Stream.fail(e)
     }

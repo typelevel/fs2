@@ -405,7 +405,7 @@ object Task extends Instances {
 private[fs2] trait Instances1 {
   implicit def effect: Effect[Task] = new Effect[Task] {
     def pure[A](a: A) = Task.now(a)
-    def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
+    def flatMap[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
     override def delay[A](a: => A) = Task.delay(a)
     def suspend[A](fa: => Task[A]) = Task.suspend(fa)
     def fail[A](err: Throwable) = Task.fail(err)
@@ -419,7 +419,7 @@ private[fs2] trait Instances extends Instances1 {
   implicit def asyncInstance(implicit S:Strategy): Async[Task] = new Async[Task] {
     def ref[A]: Task[Async.Ref[Task,A]] = Task.ref[A](S, this)
     def pure[A](a: A): Task[A] = Task.now(a)
-    def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
+    def flatMap[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
     override def delay[A](a: => A) = Task.delay(a)
     def suspend[A](fa: => Task[A]) = Task.suspend(fa)
     def fail[A](err: Throwable): Task[A] = Task.fail(err)

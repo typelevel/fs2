@@ -1,5 +1,6 @@
 package fs2
 
+import fs2.util.syntax._
 
 object concurrent {
 
@@ -43,19 +44,21 @@ object concurrent {
       def runInnerStream(inner: Stream[F,A], doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]]): Pull[F,Nothing,Unit] = {
         Pull.eval(F.ref[Pull[F,Nothing,Unit]]).flatMap { earlyReleaseRef =>
           val startInnerStream: F[Async.Ref[F,Unit]] = {
-            F.bind(F.ref[Unit]) { gate =>
-            F.map(F.start(
-              Stream.eval(checkIfKilled).
-                     flatMap { killed => if (killed) Stream.empty else inner }.
-                     onFinalize {
-                       F.bind(gate.setPure(())) { _ =>
-                         F.bind(earlyReleaseRef.get) { earlyRelease =>
-                           F.map(doneQueue.enqueue1(earlyRelease))(_ => ())
-                         }
-                       }
-                     }.
-                     run
-            )) { _ => gate }}
+            for {
+              gate <- F.ref[Unit]
+              _ <- F.start(
+                     Stream.eval(checkIfKilled).
+                       flatMap { killed => if (killed) Stream.empty else inner }.
+                       onFinalize {
+                         for {
+                           _ <- gate.setPure(())
+                           earlyRelease <- earlyReleaseRef.get
+                           _ <- doneQueue.enqueue1(earlyRelease)
+                         } yield ()
+                       }.
+                       run
+                     )
+            } yield gate
           }
           Pull.acquireCancellable(startInnerStream) { gate => gate.get }.flatMap { case (release, _) => Pull.eval(earlyReleaseRef.setPure(release)) }
         }

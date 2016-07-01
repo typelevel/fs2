@@ -1,4 +1,6 @@
-package fs2.io.tcp
+package fs2
+package io
+package tcp
 
 
 import java.net.{StandardSocketOptions, InetSocketAddress, SocketAddress}
@@ -7,8 +9,8 @@ import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.channels.{AsynchronousCloseException, AsynchronousServerSocketChannel, CompletionHandler, AsynchronousSocketChannel, AsynchronousChannelGroup}
 import java.util.concurrent.TimeUnit
 
-import fs2._
 import fs2.Stream._
+import fs2.util.syntax._
 
 import scala.concurrent.duration._
 
@@ -139,7 +141,7 @@ protected[tcp] object Socket {
 
 
   def server[F[_]](
-    bind: InetSocketAddress
+    flatMap: InetSocketAddress
     , maxQueued: Int
     , reuseAddress: Boolean
     , receiveBufferSize: Int )(
@@ -152,7 +154,7 @@ protected[tcp] object Socket {
         val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
         ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-        ch.bind(bind)
+        ch.bind(flatMap)
         ch
       }
 
@@ -171,11 +173,9 @@ protected[tcp] object Socket {
             }}
 
           def close(ch: AsynchronousSocketChannel): F[Unit] =
-            F.bind(F.attempt(F.delay {
-              if (ch.isOpen) ch.close()
-            }))(_ => F.pure(()))
+            F.delay { if (ch.isOpen) ch.close() }.attempt.as(())
 
-          eval(F.attempt(acceptChannel)).map {
+          eval(acceptChannel.attempt).map {
             case Left(err) => Stream.empty
             case Right(accepted) => emit(mkSocket(accepted)).onFinalize(close(accepted))
           } ++ go
@@ -198,7 +198,7 @@ protected[tcp] object Socket {
     // Reads data to remaining capacity of supplied bytebuffer
     // Also measures time the read took returning this as tuple
     // of (bytes_read, read_duration)
-    def readChunk(buff:ByteBuffer, timeoutMs:Long):F[(Int,Long)] = F.async { cb =>  F.pure {
+    def readChunk(buff:ByteBuffer, timeoutMs:Long):F[(Int,Long)] = F.async { cb => F.pure {
       val started = System.currentTimeMillis()
       ch.read(buff, timeoutMs, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
         def completed(result: Integer, attachment: Unit): Unit =  {
@@ -211,7 +211,7 @@ protected[tcp] object Socket {
 
     def read0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
       val buff = ByteBuffer.allocate(max)
-      F.map(readChunk(buff,timeout.map(_.toMillis).getOrElse(0l))) {
+      readChunk(buff,timeout.map(_.toMillis).getOrElse(0l)).map {
         case (read,_) =>
           if (read < 0) None
           else Some(Chunk.bytes(buff.array(), 0, read))
@@ -220,7 +220,7 @@ protected[tcp] object Socket {
 
     def readN0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
       def go(buff: ByteBuffer, timeoutMs:Long):F[Option[Chunk[Byte]]] = {
-        F.bind(readChunk(buff,timeoutMs)) { case (readBytes, took) =>
+        readChunk(buff,timeoutMs).flatMap { case (readBytes, took) =>
           if (readBytes < 0 || buff.remaining() <= 0) F.pure(Some(Chunk.bytes(buff.array(), 0, buff.position())))
           else go(buff,(timeoutMs - took) max 0)
         }
@@ -230,7 +230,7 @@ protected[tcp] object Socket {
 
     def write0(bytes:Chunk[Byte],timeout: Option[FiniteDuration]): F[Unit] = {
       def go(buff:ByteBuffer,remains:Long):F[Unit] = {
-        F.bind(F.async[Option[Long]] { cb => F.pure {
+        F.async[Option[Long]] { cb => F.pure {
           val start = System.currentTimeMillis()
           ch.write(buff, remains, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
             def completed(result: Integer, attachment: Unit): Unit = {
@@ -241,7 +241,7 @@ protected[tcp] object Socket {
             }
             def failed(err: Throwable, attachment: Unit): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(err))))(_ => ())
           })
-        }}) {
+        }}.flatMap {
           case None => F.pure(())
           case Some(took) => go(buff,(remains - took) max 0)
         }

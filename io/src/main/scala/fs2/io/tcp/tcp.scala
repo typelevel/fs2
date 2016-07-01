@@ -28,7 +28,7 @@ package object tcp {
   Socket.client(to,reuseAddress,sendBufferSize,receiveBufferSize,keepAlive,noDelay)
 
   /**
-    * Process that binds to supplied address and handles incoming TCP connections
+    * Process that flatMaps to supplied address and handles incoming TCP connections
     * using the specified handler.
     *
     * The outer stream returned scopes the lifetime of the server socket.
@@ -37,30 +37,30 @@ package object tcp {
     * The inner streams represents individual connections, handled by `handler`. If
     * any inner stream fails, this will _NOT_ cause the server connection to fail/close/terminate.
     *
-    * @param bind               address to which this process has to be bound
+    * @param flatMap               address to which this process has to be bound
     * @param maxQueued          Number of queued requests before they will become rejected by server
     *                           Supply <= 0 if unbounded
     * @param reuseAddress       whether address has to be reused (@see [[java.net.StandardSocketOptions.SO_REUSEADDR]])
     * @param receiveBufferSize  size of receive buffer (@see [[java.net.StandardSocketOptions.SO_RCVBUF]])
     */
   def server[F[_]](
-    bind: InetSocketAddress
+    flatMap: InetSocketAddress
     , maxQueued: Int = 0
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
     implicit AG: AsynchronousChannelGroup, F: Async[F], FR: Async.Run[F]
   ): Stream[F, Stream[F, Socket[F]]] =
-    serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize).collect { case Right(s) => s }
+    serverWithLocalAddress(flatMap, maxQueued, reuseAddress, receiveBufferSize).collect { case Right(s) => s }
 
    /**
     * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
     */
   def serverWithLocalAddress[F[_]](
-    bind: InetSocketAddress
+    flatMap: InetSocketAddress
     , maxQueued: Int = 0
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
     implicit AG: AsynchronousChannelGroup, F: Async[F], FR: Async.Run[F]
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
-    Socket.server(bind,maxQueued,reuseAddress,receiveBufferSize)
+    Socket.server(flatMap,maxQueued,reuseAddress,receiveBufferSize)
 }
