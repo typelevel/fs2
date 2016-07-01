@@ -112,8 +112,8 @@ sealed trait StreamCore[F[_],O] { self =>
     lazy val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
         Free.eval(F.traverse(Vector.fill(waiting)(F.ref[Unit]))(identity)) flatMap { gates =>
-          resources.closeAll(gates.toStream.map(gate => () => F.runSet(gate)(Right(())))) match {
-            case Left(_) => Free.eval(F.traverse(gates)(F.get)) flatMap { _ =>
+          resources.closeAll(gates.toStream.map(gate => () => gate.runSet(Right(())))) match {
+            case Left(_) => Free.eval(F.traverse(gates)(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")
                                 rootCleanup
@@ -133,10 +133,10 @@ sealed trait StreamCore[F[_],O] { self =>
         if (ok) Scope.pure(())
         else Scope.evalFree(rootCleanup).flatMap(_.fold(Scope.fail, Scope.pure))
       }}
-    val s: F[Unit] = F.set(ref) { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
+    val s: F[Unit] = ref.set { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
-        F.read(ref).appendOnForce { Scope.suspend {
+        ref.read.appendOnForce { Scope.suspend {
           // Important: copy any locally acquired resources to our parent and remove the placeholder
           // root token, which only needed if the parent terminated early, before the future was forced
           val removeRoot = Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }

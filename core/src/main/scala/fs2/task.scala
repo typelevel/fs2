@@ -306,7 +306,7 @@ object Task extends Instances {
                          cb: Callback[Boolean]) extends Msg[A]
   }
 
-  def ref[A](implicit S: Strategy): Task[Ref[A]] = Task.delay {
+  def ref[A](implicit S: Strategy, F: Async[Task]): Task[Ref[A]] = Task.delay {
     var result: Either[Throwable,A] = null
     // any waiting calls to `access` before first `set`
     var waiting: LinkedMap[MsgId, Callback[(A, Long)]] = LinkedMap.empty
@@ -343,10 +343,10 @@ object Task extends Instances {
         S { cb (Right(interrupted)) }
     }
 
-    new Ref(actor)
+    new Ref(actor)(S, F)
   }
 
-  class Ref[A] private[fs2](actor: Actor[Msg[A]]) {
+  class Ref[A] private[fs2](actor: Actor[Msg[A]])(implicit S: Strategy, protected val F: Async[Task]) extends Async.Ref[Task,A] {
 
     def access: Task[(A, Either[Throwable,A] => Task[Boolean])] =
       Task.delay(new MsgId {}).flatMap { mid =>
@@ -361,10 +361,10 @@ object Task extends Instances {
      * Return a `Task` that submits `t` to this ref for evaluation.
      * When it completes it overwrites any previously `put` value.
      */
-    def set(t: Task[A])(implicit S: Strategy): Task[Unit] =
+    def set(t: Task[A]): Task[Unit] =
       Task.delay { S { t.unsafeRunAsync { r => actor ! Msg.Set(r) } }}
-    def setFree(t: Free[Task,A])(implicit S: Strategy): Task[Unit] =
-      set(t.run)
+    def setFree(t: Free[Task,A]): Task[Unit] =
+      set(t.run(F))
     def runSet(e: Either[Throwable,A]): Unit =
       actor ! Msg.Set(e)
 
@@ -372,7 +372,7 @@ object Task extends Instances {
       Task.unforkedAsync[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
 
     /** Return the most recently completed `set`, or block until a `set` value is available. */
-    def get: Task[A] = Task.delay(new MsgId {}).flatMap { mid => getStamped(mid).map(_._1) }
+    override def get: Task[A] = Task.delay(new MsgId {}).flatMap { mid => getStamped(mid).map(_._1) }
 
     /** Like `get`, but returns a `Task[Unit]` that can be used cancel the subscription. */
     def cancellableGet: Task[(Task[A], Task[Unit])] = Task.delay {
@@ -412,13 +412,12 @@ object Task extends Instances {
 /* Prefer an `Async` but will settle for implicit `Effect`. */
 private[fs2] trait Instances1 {
   implicit def effect: Effect[Task] = new Effect[Task] {
-    def fail[A](err: Throwable) = Task.fail(err)
-    def attempt[A](t: Task[A]) = t.attempt
     def pure[A](a: A) = Task.now(a)
     def bind[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
     override def delay[A](a: => A) = Task.delay(a)
     def suspend[A](fa: => Task[A]) = Task.suspend(fa)
-
+    def fail[A](err: Throwable) = Task.fail(err)
+    def attempt[A](t: Task[A]) = t.attempt
     override def toString = "Effect[Task]"
   }
 }
@@ -426,16 +425,9 @@ private[fs2] trait Instances1 {
 private[fs2] trait Instances extends Instances1 {
 
   implicit def asyncInstance(implicit S:Strategy): Async[Task] = new Async[Task] {
-    type Ref[A] = Task.Ref[A]
-    def access[A](r: Ref[A]) = r.access
-    def set[A](r: Ref[A])(a: Task[A]): Task[Unit] = r.set(a)
-    def runSet[A](r: Ref[A])(a: Either[Throwable,A]): Unit = r.runSet(a)
-    def ref[A]: Task[Ref[A]] = Task.ref[A](S)
-    override def get[A](r: Ref[A]): Task[A] = r.get
-    def cancellableGet[A](r: Ref[A]): Task[(Task[A], Task[Unit])] = r.cancellableGet
-    def setFree[A](q: Ref[A])(a: Free[Task, A]): Task[Unit] = q.setFree(a)
-    def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
+    def ref[A]: Task[Async.Ref[Task,A]] = Task.ref[A](S, this)
     def pure[A](a: A): Task[A] = Task.now(a)
+    def bind[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
     override def delay[A](a: => A) = Task.delay(a)
     def suspend[A](fa: => Task[A]) = Task.suspend(fa)
     def fail[A](err: Throwable): Task[A] = Task.fail(err)

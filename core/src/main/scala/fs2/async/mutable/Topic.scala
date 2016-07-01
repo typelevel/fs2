@@ -103,16 +103,16 @@ object Topic {
         F.bind(F.ref[Boolean]) { done =>
           val sub = new Subscriber {
             def unSubscribe: F[Unit] = {
-              F.bind(F.modify(state) { case (a,subs) => a -> subs.filterNot(_.id == id) }) { _ =>
-                F.bind(subSignal.modify(_ - 1))(_ => F.setPure(done)(true))
+              F.bind(state.modify { case (a,subs) => a -> subs.filterNot(_.id == id) }) { _ =>
+                F.bind(subSignal.modify(_ - 1))(_ => done.setPure(true))
               }
             }
-            def subscribe: Stream[F, A] = eval(F.get(firstA)) ++ q.dequeue
+            def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
             def publish(a: A): F[Unit] = {
               F.bind(q.offer1(a)) { offered =>
                 if (offered) F.pure(())
                 else {
-                  eval(F.get(done)).interruptWhen(q.full.discrete.map(! _ )).last.flatMap {
+                  eval(done.get).interruptWhen(q.full.discrete.map(! _ )).last.flatMap {
                     case None => eval(publish(a))
                     case Some(_) => Stream.empty
                   }.run
@@ -120,12 +120,12 @@ object Topic {
               }
 
             }
-            def subscribeSize: Stream[F, (A,Int)] = eval(F.get(firstA)).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
+            def subscribeSize: Stream[F, (A,Int)] = eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
             val id: ID = new ID
           }
 
-          F.bind(F.modify(state){ case(a,s) => a -> (s :+ sub) }) { c =>
-            F.bind(subSignal.modify(_ + 1))(_ => F.map(F.setPure(firstA)(c.now._1))(_ => sub))
+          F.bind(state.modify { case(a,s) => a -> (s :+ sub) }) { c =>
+            F.bind(subSignal.modify(_ + 1))(_ => F.map(firstA.setPure(c.now._1))(_ => sub))
           }
         }}}
       }
@@ -137,7 +137,7 @@ object Topic {
         def subscribers: Signal[F, Int] = subSignal
 
         def publish1(a: A): F[Unit] =
-          F.bind(F.modify(state){ case (_,subs) => a -> subs }) { c => F.map(F.traverse(c.now._2)(_.publish(a)))(_ => ()) }
+          F.bind(state.modify{ case (_,subs) => a -> subs }) { c => F.map(F.traverse(c.now._2)(_.publish(a)))(_ => ()) }
 
         def subscribe(maxQueued: Int): Stream[F, A] =
           bracket(mkSubscriber(maxQueued))(_.subscribe, _.unSubscribe)
