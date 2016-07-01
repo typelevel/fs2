@@ -17,7 +17,7 @@ package object udp {
   case class Packet(remote: InetSocketAddress, bytes: Chunk[Byte])
 
   /**
-   * Provides a singleton stream of a UDP Socket that when run will flatMap to specified adress
+   * Provides a singleton stream of a UDP Socket that when run will bind to specified adress
    * by `flatMap`.
    *
    * @param address              address to bind to; defaults to an ephemeral port on all interfaces
