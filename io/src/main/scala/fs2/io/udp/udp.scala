@@ -20,7 +20,7 @@ package object udp {
    * Provides a singleton stream of a UDP Socket that when run will flatMap to specified adress
    * by `flatMap`.
    *
-   * @param flatMap                 address to flatMap to; defaults to an ephemeral port on all interfaces
+   * @param address              address to bind to; defaults to an ephemeral port on all interfaces
    * @param reuseAddress         whether address has to be reused (@see [[java.net.StandardSocketOptions.SO_REUSEADDR]])
    * @param sendBufferSize       size of send buffer  (@see [[java.net.StandardSocketOptions.SO_SNDBUF]])
    * @param receiveBufferSize    size of receive buffer (@see [[java.net.StandardSocketOptions.SO_RCVBUF]])
@@ -31,7 +31,7 @@ package object udp {
    * @param multicastLoopback    whether sent multicast packets should be looped back to this host
    */
   def open[F[_]](
-    flatMap: InetSocketAddress = new InetSocketAddress(0)
+    addresss: InetSocketAddress = new InetSocketAddress(0)
     , reuseAddress: Boolean = false
     , sendBufferSize: Option[Int] = None
     , receiveBufferSize: Option[Int] = None
@@ -50,7 +50,7 @@ package object udp {
       multicastInterface.foreach { iface => channel.setOption[NetworkInterface](StandardSocketOptions.IP_MULTICAST_IF, iface) }
       multicastTTL.foreach { ttl => channel.setOption[Integer](StandardSocketOptions.IP_MULTICAST_TTL, ttl) }
       channel.setOption[java.lang.Boolean](StandardSocketOptions.IP_MULTICAST_LOOP, multicastLoopback)
-      channel.bind(flatMap)
+      channel.bind(addresss)
       channel
     }
     Stream.bracket(mkChannel.flatMap(ch => Socket.mkSocket(ch)))(s => Stream.emit(s), _.close)

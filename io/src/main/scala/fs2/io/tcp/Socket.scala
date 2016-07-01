@@ -141,7 +141,7 @@ protected[tcp] object Socket {
 
 
   def server[F[_]](
-    bind: InetSocketAddress
+    address: InetSocketAddress
     , maxQueued: Int
     , reuseAddress: Boolean
     , receiveBufferSize: Int )(
@@ -154,7 +154,7 @@ protected[tcp] object Socket {
         val ch = AsynchronousChannelProvider.provider().openAsynchronousServerSocketChannel(AG)
         ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
         ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-        ch.bind(bind)
+        ch.bind(address)
         ch
       }
 
