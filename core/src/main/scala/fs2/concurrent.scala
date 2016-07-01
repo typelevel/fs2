@@ -63,10 +63,10 @@ object concurrent {
 
       def go(doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Pull[F,Nothing,Unit]]) => Pull[F,Nothing,Unit] = (h, d) => {
         if (open < maxOpen)
-          Pull.receive1Option[F,Stream[F,A],Nothing,Unit] {
+          h.receive1Option {
             case Some(inner #: h) => runInnerStream(inner, doneQueue).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
             case None => Pull.done
-          }(h)
+          }
         else
           d.receive1 { case earlyRelease #: d => earlyRelease >> go(doneQueue)(open - 1)(h, d) }
       }

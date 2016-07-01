@@ -21,8 +21,8 @@ object pipe {
    * input in blocks that end whenever the predicate switches from true to false.
    */
   def bufferBy[F[_],I](f: I => Boolean): Pipe[F,I,I] = {
-    def go(buffer: Vector[Chunk[I]], last: Boolean): Handle[F,I] => Pull[F,I,Unit] = h => {
-      Pull.receiveOption[F,I,I,Unit] {
+    def go(buffer: Vector[Chunk[I]], last: Boolean): Handle[F,I] => Pull[F,I,Unit] = {
+      _.receiveOption {
         case Some(chunk #: h) =>
           val (out, buf, last) = {
             chunk.foldLeft((Vector.empty[Chunk[I]], Vector.empty[I], false)) { case ((out, buf, last), i) =>
@@ -40,7 +40,7 @@ object pipe {
 
         case None =>
           buffer.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) }
-      }(h)
+      }
     }
     _.pull { h => go(Vector.empty, false)(h) }
   }
@@ -86,14 +86,14 @@ object pipe {
 
   /** Drops the last element if the predicate evaluates to true. */
   def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
-    def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = h => {
-      Pull.receiveNonemptyOption[F,I,I,Unit] {
+    def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = {
+      Pull.receiveNonemptyOption {
         case Some(chunk #: h) => Pull.output(last) >> go(chunk)(h)
         case None =>
           val i = last(last.size - 1)
           if (p(i)) Pull.output(last.take(last.size - 1))
           else Pull.output(last)
-      }(h)
+      }
     }
     _.pull { Pull.receiveNonemptyOption {
       case Some(c #: h) => go(c)(h)
@@ -322,7 +322,7 @@ object pipe {
    */
   def split[F[_],I](f: I => Boolean): Pipe[F,I,Vector[I]] = {
     def go(buffer: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = {
-      Pull.receiveOption[F,I,Vector[I],Unit] {
+      Pull.receiveOption {
         case Some(chunk #: h) =>
           chunk.indexWhere(f) match {
             case None =>

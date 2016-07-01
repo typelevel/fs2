@@ -129,13 +129,13 @@ object text {
     }
 
     def go(buffer: Vector[String], pendingLineFeed: Boolean): Handle[F, String] => Pull[F, String, Unit] = {
-      Pull.receiveOption[F,String,String,Unit] {
+      _.receiveOption {
         case Some(chunk #: h) =>
           val (toOutput, newBuffer, newPendingLineFeed) = extractLines(buffer, chunk, pendingLineFeed)
           Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed)(h)
         case None if buffer.nonEmpty => Pull.output1(buffer.mkString)
         case None => Pull.done
-      }(_)
+      }
     }
     _.pull(go(Vector.empty, false))
   }
