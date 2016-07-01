@@ -186,8 +186,14 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
       Pull[F, Nothing, AsyncStep1[F,A2]] = self.await1Async(h)
     def invAwaitAsync[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
       Pull[F, Nothing, AsyncStep[F,A2]] = self.awaitAsync(h)
-    def receive1[O,B](f: Step[A,Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = h.await1.flatMap(f)
     def receive[O,B](f: Step[Chunk[A],Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = h.await.flatMap(f)
+    def receive1[O,B](f: Step[A,Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = h.await1.flatMap(f)
+    def receiveOption[O,B](f: Option[Step[Chunk[A],Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      Pull.receiveOption(f)(h)
+    def receive1Option[O,B](f: Option[Step[A,Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      Pull.receive1Option(f)(h)
+    def receiveNonemptyOption[O,B](f: Option[Step[Chunk[A],Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      Pull.receiveNonemptyOption(f)(h)
   }
 
   implicit class StreamInvariantOps[F[_],A](s: Stream[F,A]) {

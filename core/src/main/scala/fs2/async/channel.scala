@@ -21,27 +21,26 @@ object channel {
     (f: Pipe[F,A, B])
     (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
     (combine: Pipe2[F,B,C,D])(implicit F: Async[F]): Stream[F,D]
-    = Stream.eval(qs) flatMap { q =>
+    = {
+      Stream.eval(qs) flatMap { q =>
       Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
       Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
-
-        val enqueueNone: F[Unit] =
-          F.bind(enqueueNoneSemaphore.tryDecrement) { decremented =>
-            if (decremented) q.enqueue1(None)
-            else F.pure(())
-          }
-
       combine(
-        f(
+        f {
+          val enqueueNone: F[Unit] =
+            F.bind(enqueueNoneSemaphore.tryDecrement) { decremented =>
+              if (decremented) q.enqueue1(None)
+              else F.pure(())
+            }
           s.repeatPull {
-            Pull.receiveOption[F,A,A,Stream.Handle[F,A]] {
+            _.receiveOption {
               case Some(a #: h) =>
                 Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h)
               case None =>
                 Pull.eval(enqueueNone) >> Pull.done
-            }(_)
+            }
           }.onFinalize(enqueueNone)
-        ),
+        },
         {
           val drainQueue: Stream[F,Nothing] =
             Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
@@ -61,6 +60,7 @@ object channel {
         }
       )
     }}}
+  }
 
   def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Stream[F,A] => Stream[F,B]])(
     implicit F: Async[F]): Stream[F,A] => Stream[F,B] = {
