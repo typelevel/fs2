@@ -164,5 +164,11 @@ class ChunkSpec extends Fs2Spec {
     "concat.bytes" in forAll { cs: List[Chunk[Byte]] => checkConcat[Byte, Chunk.Bytes](cs) }
     "concat.doubles" in forAll { cs: List[Chunk[Double]] => checkConcat[Double, Chunk.Doubles](cs) }
     "concat.longs" in forAll { cs: List[Chunk[Long]] => checkConcat[Long, Chunk.Longs](cs) }
+
+    "map.boolean => byte" in forAll { c: Chunk[Boolean] =>
+      (c map { b => if (b) 0.toByte else 1.toByte }).toArray shouldBe (c.toArray map { b => if (b) 0.toByte else 1.toByte })
+    }
+
+    "map.long => long" in forAll { c: Chunk[Long] => (c map (1 +)).toArray shouldBe (c.toArray map (1 +)) }
   }
 }
