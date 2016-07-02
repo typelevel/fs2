@@ -180,8 +180,8 @@ object Chunk {
   // note that Class construction checks are nearly free when done at load time
   // for that reason, do NOT make the extractors into lazy vals or defs!
   private object Respecialization {
-    // TODO set by completely random guess. please tune!
-    val Threshold = 0
+    // TODO drawn without verification from DarkDimius (measure and tune!)
+    val Threshold = 4
 
     val ZZ = extractor { x: Boolean => true } disabled
     val BZ = extractor { x: Byte => true } disabled
