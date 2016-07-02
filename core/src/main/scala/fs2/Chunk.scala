@@ -311,7 +311,7 @@ object Chunk {
       val back = new Array[Boolean](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       booleans(back)
     }
@@ -321,7 +321,7 @@ object Chunk {
       val back = new Array[Byte](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       bytes(back)
     }
@@ -331,7 +331,7 @@ object Chunk {
       val back = new Array[Long](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       longs(back)
     }
@@ -341,7 +341,7 @@ object Chunk {
       val back = new Array[Double](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       doubles(back)
     }
@@ -351,7 +351,7 @@ object Chunk {
       val back = new Array[Any](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
     }
@@ -419,7 +419,7 @@ object Chunk {
       val back = new Array[Boolean](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       booleans(back)
     }
@@ -429,7 +429,7 @@ object Chunk {
       val back = new Array[Byte](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       bytes(back)
     }
@@ -439,7 +439,7 @@ object Chunk {
       val back = new Array[Long](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       longs(back)
     }
@@ -449,7 +449,7 @@ object Chunk {
       val back = new Array[Double](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       doubles(back)
     }
@@ -459,7 +459,7 @@ object Chunk {
       val back = new Array[Any](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
     }
@@ -526,7 +526,7 @@ object Chunk {
       val back = new Array[Boolean](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       booleans(back)
     }
@@ -536,7 +536,7 @@ object Chunk {
       val back = new Array[Byte](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       bytes(back)
     }
@@ -546,7 +546,7 @@ object Chunk {
       val back = new Array[Long](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       longs(back)
     }
@@ -556,7 +556,7 @@ object Chunk {
       val back = new Array[Double](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       doubles(back)
     }
@@ -566,7 +566,7 @@ object Chunk {
       val back = new Array[Any](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
     }
@@ -633,7 +633,7 @@ object Chunk {
       val back = new Array[Boolean](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       booleans(back)
     }
@@ -643,7 +643,7 @@ object Chunk {
       val back = new Array[Byte](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       bytes(back)
     }
@@ -653,7 +653,7 @@ object Chunk {
       val back = new Array[Long](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       longs(back)
     }
@@ -663,7 +663,7 @@ object Chunk {
       val back = new Array[Double](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       doubles(back)
     }
@@ -673,7 +673,7 @@ object Chunk {
       val back = new Array[Any](size)
       while (i < bound) {
         back(i - offset) = f(values(i))
-        i += 0
+        i += 1
       }
       indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
     }
