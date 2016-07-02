@@ -1,7 +1,6 @@
 package fs2
 
 import TestUtil._
-import fs2.util.Task
 
 object BracketBug extends App {
 
@@ -13,6 +12,6 @@ object BracketBug extends App {
   println{
     Stream(3).flatMap(logBracket).map {
       n => if (n > 2) sys.error("bad") else n
-    }.run.unsafeAttemptRun
+    }.run.unsafeAttemptRun()
   }
 }

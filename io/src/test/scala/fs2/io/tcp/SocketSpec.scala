@@ -1,10 +1,10 @@
 package fs2.io.tcp
 
 import java.net.InetSocketAddress
+import java.net.InetAddress
 import java.nio.channels.AsynchronousChannelGroup
 
 import fs2._
-import fs2.util.Task
 
 import fs2.io.TestUtil._
 import fs2.Stream._
@@ -32,11 +32,11 @@ class SocketSpec extends Fs2Spec {
         val message = Chunk.bytes("fs2.rocks".getBytes)
         val clientCount = 5000
 
-        val localBindAddress = Task.ref[InetSocketAddress].unsafeRun
+        val localBindAddress = Task.ref[InetSocketAddress].unsafeRun()
 
         val echoServer: Stream[Task, Unit] = {
           val ps =
-            serverWithLocalAddress[Task](new InetSocketAddress(0))
+            serverWithLocalAddress[Task](new InetSocketAddress(InetAddress.getByName(null), 0))
             .flatMap {
               case Left(local) => Stream.eval_(localBindAddress.set(Task.now(local)))
               case Right(s) =>
@@ -67,7 +67,7 @@ class SocketSpec extends Fs2Spec {
             echoServer.drain
             , clients
           ))
-          .take(clientCount).runLog.unsafeRun
+          .take(clientCount).runLog.unsafeRun()
 
 
         (result.size shouldBe clientCount)

@@ -1,6 +1,8 @@
-package fs2.async.mutable
+package fs2
+package async
+package mutable
 
-import fs2.Async
+import fs2.util.syntax._
 
 /**
  * An asynchronous semaphore, useful as a concurrency primitive.
@@ -61,32 +63,32 @@ object Semaphore {
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is nonempty, and there are n permits available (Right)
-    type S = Either[Vector[(Long,F.Ref[Unit])], Long]
-    F.map(F.refOf[S](Right(n))) { ref => new Semaphore[F] {
-      private def open(gate: F.Ref[Unit]): F[Unit] =
-        F.setPure(gate)(())
+    type S = Either[Vector[(Long,Async.Ref[F,Unit])], Long]
+    F.refOf[S](Right(n)).map { ref => new Semaphore[F] {
+      private def open(gate: Async.Ref[F,Unit]): F[Unit] =
+        gate.setPure(())
 
-      def count = F.map(F.get(ref))(count_)
+      def count = ref.get.map(count_)
       def decrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
-        else F.bind(F.ref[Unit]) { gate => F.bind(F.modify(ref) {
+        else F.ref[Unit].flatMap { gate => ref.modify {
           case Left(waiting) => Left(waiting :+ (n -> gate))
           case Right(m) =>
             if (n <= m) Right(m-n)
             else Left(Vector((n-m) -> gate))
-        }) { c => c.now match {
+        }.flatMap { c => c.now match {
           case Left(waiting) =>
             def err = sys.error("FS2 bug: Semaphore has empty waiting queue rather than 0 count")
-            F.get(waiting.lastOption.getOrElse(err)._2)
+            waiting.lastOption.getOrElse(err)._2.get
           case Right(_) => F.pure(())
         }}}
       }
 
       def clear: F[Long] =
-        F.bind(F.modify(ref) {
-        case Left(e) => throw new IllegalStateException("cannot clear a semaphore with negative count")
-        case Right(n) => Right(0)
-        }) { c => c.previous match {
+        ref.modify {
+          case Left(e) => throw new IllegalStateException("cannot clear a semaphore with negative count")
+          case Right(n) => Right(0)
+        }.flatMap { c => c.previous match {
           case Right(n) => F.pure(n)
           case Left(_) => sys.error("impossible, exception thrown above")
         }}
@@ -96,7 +98,7 @@ object Semaphore {
 
       def incrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
-        else F.bind(F.modify(ref) {
+        else ref.modify {
           case Left(waiting) =>
             // just figure out how many to strip from waiting queue,
             // but don't run anything here inside the modify
@@ -110,7 +112,7 @@ object Semaphore {
             if (waiting2.nonEmpty) Left(waiting2)
             else Right(m)
           case Right(m) => Right(m+n)
-        }) { change =>
+        }.flatMap { change =>
           // invariant: count_(change.now) == count_(change.previous) + n
           change.previous match {
           case Left(waiting) =>
@@ -119,20 +121,20 @@ object Semaphore {
             val released = waiting.size - newSize
             // just using Chunk for its stack-safe foldRight
             fs2.Chunk.indexedSeq(waiting.take(released))
-                     .foldRight(F.pure(())) { (hd,tl) => F.bind(open(hd._2)){ _ => tl }}
+                     .foldRight(F.pure(())) { (hd,tl) => open(hd._2) >> tl }
           case Right(_) => F.pure(())
         }}
       }
 
       def tryDecrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(true)
-        else F.map(F.modify(ref) {
+        else ref.modify {
           case Right(m) if m >= n => Right(m-n)
           case w => w
-        }) { c => c.now.fold(_ => false, n => c.previous.fold(_ => false, m => n != m)) }
+        }.map { c => c.now.fold(_ => false, n => c.previous.fold(_ => false, m => n != m)) }
       }
 
-      def available = F.map(F.get(ref)) {
+      def available = ref.get.map {
         case Left(_) => 0
         case Right(n) => n
       }

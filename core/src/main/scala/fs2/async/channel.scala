@@ -1,7 +1,8 @@
 package fs2
 package async
 
-import mutable.Queue
+import fs2.async.mutable.Queue
+import fs2.util.syntax._
 
 object channel {
 
@@ -21,29 +22,46 @@ object channel {
     (f: Pipe[F,A, B])
     (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
     (combine: Pipe2[F,B,C,D])(implicit F: Async[F]): Stream[F,D]
-    = Stream.eval(qs) flatMap { q =>
-      Stream.eval(signalOf[F,Boolean](false)) flatMap { done =>
+    = {
+      Stream.eval(qs) flatMap { q =>
+      Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
+      Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
       combine(
-        f(
+        f {
+          val enqueueNone: F[Unit] =
+            enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
+              if (decremented) q.enqueue1(None)
+              else F.pure(())
+            }
           s.repeatPull {
-            _ receive { case a #: h => Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h) }
-          }.onFinalize(q.enqueue1(None))
-        ),
-        (pipe.unNoneTerminate(
-          q.dequeue.
-            evalMap { c =>
-              if (c.isEmpty) F.map(done.set(true))(_ => c)
-              else F.pure(c)
-            }).
-            flatMap { c => Stream.chunk(c) }.
-            through(g) ++
-              Stream.eval(done.get).flatMap { done =>
-                if (done) Stream.empty
-                else pipe.unNoneTerminate(q.dequeue).drain
-              }
-        ).onError { t => pipe.unNoneTerminate(q.dequeue).drain ++ Stream.fail(t) }
+            _.receiveOption {
+              case Some(a #: h) =>
+                Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h)
+              case None =>
+                Pull.eval(enqueueNone) >> Pull.done
+            }
+          }.onFinalize(enqueueNone)
+        },
+        {
+          val drainQueue: Stream[F,Nothing] =
+            Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
+              if (dequeue) pipe.unNoneTerminate(q.dequeue).drain
+              else Stream.empty
+            }
+
+          (pipe.unNoneTerminate(
+            q.dequeue.
+              evalMap { c =>
+                if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
+                else F.pure(c)
+              }).
+              flatMap { c => Stream.chunk(c) }.
+              through(g) ++ drainQueue
+          ).onError { t => drainQueue ++ Stream.fail(t) }
+        }
       )
-    }}
+    }}}
+  }
 
   def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Stream[F,A] => Stream[F,B]])(
     implicit F: Async[F]): Stream[F,A] => Stream[F,B] = {

@@ -1,7 +1,6 @@
 package fs2
 package async
 
-import fs2.util.Task
 import java.util.concurrent.atomic.AtomicLong
 
 class ChannelSpec extends Fs2Spec {
@@ -50,12 +49,32 @@ class ChannelSpec extends Fs2Spec {
           } should contain theSameElementsAs s.get.toVector
         }
       }
+      "handle multiple consecutive observations" in {
+        forAll { (s: PureStream[Int], f: Failure) =>
+          runLog {
+            val sink: Sink[Task,Int] = _.evalMap(i => Task.delay(()))
+            val src: Stream[Task, Int] = s.get.covary[Task]
+            src.observe(sink).observe(sink)
+          } shouldBe s.get.toVector
+        }
+      }
+      "no hangs on failures" in {
+        forAll { (s: PureStream[Int], f: Failure) =>
+          swallow {
+            runLog {
+              val sink: Sink[Task,Int] = in => spuriousFail(in.evalMap(i => Task.delay(i)), f).map(_ => ())
+              val src: Stream[Task, Int] = spuriousFail(s.get.covary[Task], f)
+              src.observe(sink).observe(sink)
+            } shouldBe s.get.toVector
+          }
+        }
+      }
     }
 
     "sanity-test" in {
       val s = Stream.range(0,100)
       val s2 = s.covary[Task].flatMap { i => Stream.emit(i).onFinalize(Task.delay { println(s"finalizing $i")}) }
-      val q = async.unboundedQueue[Task,Int].unsafeRun
+      val q = async.unboundedQueue[Task,Int].unsafeRun()
       runLog { merge2(trace("s2")(s2), trace("q")(q.dequeue)).take(10) } shouldBe Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
     }
   }

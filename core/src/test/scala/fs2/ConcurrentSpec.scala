@@ -1,7 +1,5 @@
 package fs2
 
-import fs2.util.Task
-
 class ConcurrentSpec extends Fs2Spec {
 
   "concurrent" - {
@@ -44,7 +42,7 @@ class ConcurrentSpec extends Fs2Spec {
 
     "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
       an[Err.type] should be thrownBy {
-        s1.get.merge(f.get).run.unsafeRun
+        s1.get.merge(f.get).run.unsafeRun()
       }
     }
 

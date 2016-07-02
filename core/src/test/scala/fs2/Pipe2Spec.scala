@@ -1,6 +1,5 @@
 package fs2
 
-import fs2.util.Task
 import org.scalacheck.Gen
 
 class Pipe2Spec extends Fs2Spec {
@@ -123,7 +122,7 @@ class Pipe2Spec extends Fs2Spec {
 
     "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
       an[Err.type] should be thrownBy {
-        (s1.get merge f.get).run.unsafeRun
+        (s1.get merge f.get).run.unsafeRun()
       }
     }
 
@@ -145,7 +144,7 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "interrupt (1)" in forAll { (s1: PureStream[Int]) =>
-      val s = async.mutable.Semaphore[Task](0).unsafeRun
+      val s = async.mutable.Semaphore[Task](0).unsafeRun()
       val interrupt = Stream.emit(true) ++ Stream.eval_(s.increment)
       // tests that termination is successful even if stream being interrupted is hung
       runLog { s1.get.evalMap(_ => s.decrement).interruptWhen(interrupt) } shouldBe Vector()
@@ -154,8 +153,8 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "interrupt (2)" in forAll { (s1: PureStream[Int]) =>
-      val barrier = async.mutable.Semaphore[Task](0).unsafeRun
-      val enableInterrupt = async.mutable.Semaphore[Task](0).unsafeRun
+      val barrier = async.mutable.Semaphore[Task](0).unsafeRun()
+      val enableInterrupt = async.mutable.Semaphore[Task](0).unsafeRun()
       val interruptedS1 = s1.get.evalMap { i =>
         // enable interruption and hang when hitting a value divisible by 7
         if (i % 7 == 0) enableInterrupt.increment.flatMap { _ => barrier.decrement.map(_ => i) }

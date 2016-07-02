@@ -1,7 +1,5 @@
 package fs2
 
-import fs2.util.Task
-
 object ThisModuleShouldCompile {
 
   /* Some checks that `.pull` can be used without annotations */
@@ -39,4 +37,3 @@ object ThisModuleShouldCompile {
   val m = pipe.take[Pure,Int](2).attachR(pipe2.interleave)
   val n = pipe.take[Pure,Int](2).attachR(pipe2.interleave)
 }
-

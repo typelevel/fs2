@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Catchable,RealSupertype,Sub1,Task}
+import fs2.util.{Catchable,RealSupertype,Sub1}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2]
@@ -186,8 +186,14 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
       Pull[F, Nothing, AsyncStep1[F,A2]] = self.await1Async(h)
     def invAwaitAsync[A2>:A](implicit F: Async[F], A2: RealSupertype[A,A2]):
       Pull[F, Nothing, AsyncStep[F,A2]] = self.awaitAsync(h)
-    def receive1[O,B](f: Step[A,Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = h.await1.flatMap(f)
     def receive[O,B](f: Step[Chunk[A],Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = h.await.flatMap(f)
+    def receive1[O,B](f: Step[A,Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = h.await1.flatMap(f)
+    def receiveOption[O,B](f: Option[Step[Chunk[A],Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      Pull.receiveOption(f)(h)
+    def receive1Option[O,B](f: Option[Step[A,Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      Pull.receive1Option(f)(h)
+    def receiveNonemptyOption[O,B](f: Option[Step[Chunk[A],Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      Pull.receiveNonemptyOption(f)(h)
   }
 
   implicit class StreamInvariantOps[F[_],A](s: Stream[F,A]) {
@@ -227,8 +233,8 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
 
   implicit class StreamPureOps[+A](s: Stream[Pure,A]) {
     def toList: List[A] =
-      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).unsafeRun.reverse
-    def toVector: Vector[A] = s.covary[Task].runLog.unsafeRun
+      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).unsafeRun().reverse
+    def toVector: Vector[A] = s.covary[Task].runLog.unsafeRun()
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]
@@ -236,7 +242,7 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
   implicit def streamCatchableInstance[F[_]]: Catchable[({ type λ[a] = Stream[F, a] })#λ] =
     new Catchable[({ type λ[a] = Stream[F, a] })#λ] {
       def pure[A](a: A): Stream[F,A] = Stream.emit(a)
-      def bind[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
+      def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
       def attempt[A](s: Stream[F,A]): Stream[F,Either[Throwable,A]] = s.attempt
       def fail[A](e: Throwable): Stream[F,A] = Stream.fail(e)
     }

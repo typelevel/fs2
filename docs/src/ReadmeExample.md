@@ -4,8 +4,7 @@ This walks through the implementation of the example given in [the README](../RE
 
 ```tut:book
 object Converter {
-  import fs2.{io, text}
-  import fs2.util.Task
+  import fs2.{io, text, Task}
   import java.nio.file.Paths
 
   def fahrenheitToCelsius(f: Double): Double =
@@ -23,20 +22,19 @@ object Converter {
       .run
 }
 
-Converter.converter.unsafeRun
+Converter.converter.unsafeRun()
 ```
 
 Let's dissect this line by line.
 
-`Stream[Task, Byte]` is a stream of `Byte` values which may periodically evaluate an `fs2.util.Task` in order to produce additional values. `Stream` is the core data type of FS2. It is parameterized on a type constructor (here, `Task`) which defines what sort of external requests it can make, and an output type (here, `Byte`), which defines what type of values it _emits_.
+`Stream[Task, Byte]` is a stream of `Byte` values which may periodically evaluate an `fs2.Task` in order to produce additional values. `Stream` is the core data type of FS2. It is parameterized on a type constructor (here, `Task`) which defines what sort of external requests it can make, and an output type (here, `Byte`), which defines what type of values it _emits_.
 
 Operations on `Stream` are defined for any choice of type constructor, not just `Task`.
 
 `fs2.io` has a number of helper functions for constructing or working with streams that talk to the outside world. `readAll` creates a stream of bytes from a file name (specified via a `java.nio.file.Path`). It encapsulates the logic for opening and closing the file, so that users of this stream do not need to remember to close the file when they are done or in the event of exceptions during processing of the stream.
 
 ```tut:silent
-import fs2.{io, text}
-import fs2.util.Task
+import fs2.{io, text, Task}
 import java.nio.file.Paths
 import Converter._
 ```
@@ -89,8 +87,8 @@ There are a number of ways of interpreting the stream. In this case, we call `ru
 val task: Task[Unit] = written.run
 ```
 
-We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `Task` by calling `unsafeRun` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.
+We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `Task` by calling `unsafeRun()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.
 
 ```tut
-val result: Unit = task.unsafeRun
+val result: Unit = task.unsafeRun()
 ```

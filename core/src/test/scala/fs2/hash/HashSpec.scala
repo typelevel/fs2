@@ -4,8 +4,6 @@ package hash
 import java.security.MessageDigest
 import org.scalacheck.Gen
 
-import fs2.util.Task
-
 class HashSpec extends Fs2Spec {
   def digest(algo: String, str: String): List[Byte] =
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
@@ -41,8 +39,7 @@ class HashSpec extends Fs2Spec {
       .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
       .through(sha512)
     val vec = Vector.fill(100)(s).par
-    val res = s.runLog.unsafeRun
-    vec.map(_.runLog.unsafeRun) shouldBe Vector.fill(100)(res)
+    val res = s.runLog.unsafeRun()
+    vec.map(_.runLog.unsafeRun()) shouldBe Vector.fill(100)(res)
   }
 }
-

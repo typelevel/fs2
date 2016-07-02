@@ -1,7 +1,9 @@
-package fs2.async.mutable
+package fs2
+package async
+package mutable
 
-import fs2._
 import fs2.Stream._
+import fs2.util.syntax._
 
 /**
   * Asynchronous Topic.
@@ -14,14 +16,14 @@ import fs2.Stream._
   * Additionally the subscriber has possibility to terminate whenever size of enqueued elements is over certain size
   * by using `subscribeSize`.
   */
-trait Topic[F[_],A] {
+trait Topic[F[_], A] { self =>
 
   /**
     * Published any elements from source of `A` to this topic.
     * If any of the subscribers reach its `maxQueued` limit, then this will hold to publish next element
     * before that subscriber consumes it's elements or terminates.
     */
-  def publish:Sink[F,A]
+  def publish: Sink[F, A]
 
   /**
     * Publish one `A` to topic.
@@ -31,7 +33,7 @@ trait Topic[F[_],A] {
     * some of its elements to get room for this new. published `A`
     *
     */
-  def publish1(a:A):F[Unit]
+  def publish1(a: A): F[Unit]
 
   /**
     * Subscribes to receive any published `A` to this topic.
@@ -42,7 +44,7 @@ trait Topic[F[_],A] {
     * then publishers will hold into publishing to the queue.
     *
     */
-  def subscribe(maxQueued:Int):Stream[F,A]
+  def subscribe(maxQueued: Int): Stream[F, A]
 
   /**
     * Subscribes to receive published `A` to this topic.
@@ -58,12 +60,26 @@ trait Topic[F[_],A] {
     * then publishers will hold into publishing to the queue.
     *
     */
-  def subscribeSize(maxQueued:Int):Stream[F,(A, Int)]
+  def subscribeSize(maxQueued: Int): Stream[F, (A, Int)]
 
   /**
     * Signal of current active subscribers
     */
-  def subscribers:fs2.async.immutable.Signal[F,Int]
+  def subscribers: fs2.async.immutable.Signal[F, Int]
+
+  /**
+   * Returns an alternate view of this `Topic` where its elements are of type [[B]],
+   * given back and forth function from `A` to `B`.
+   */
+  def imap[B](f: A => B)(g: B => A): Topic[F, B] =
+    new Topic[F, B] {
+      def publish: Sink[F, B] = sfb => self.publish(sfb.map(g))
+      def publish1(b: B): F[Unit] = self.publish1(g(b))
+      def subscribe(maxQueued: Int): Stream[F, B] = self.subscribe(maxQueued).map(f)
+      def subscribers: fs2.async.immutable.Signal[F, Int] = self.subscribers
+      def subscribeSize(maxQueued: Int): Stream[F, (B, Int)] =
+        self.subscribeSize(maxQueued).map { case (a, i) => f(a) -> i }
+    }
 }
 
 object Topic {
@@ -80,41 +96,39 @@ object Topic {
       def unSubscribe:F[Unit]
     }
 
-    F.bind(F.refOf((initial,Vector.empty[Subscriber]))) { state =>
-    F.map(async.signalOf[F,Int](0)) { subSignal =>
+    F.refOf((initial,Vector.empty[Subscriber])).flatMap { state =>
+    async.signalOf[F,Int](0).map { subSignal =>
 
-      def mkSubscriber(maxQueued: Int):F[Subscriber] = {
-        F.bind(async.boundedQueue[F,A](maxQueued)) { q =>
-        F.bind(F.ref[A]) { firstA =>
-        F.bind(F.ref[Boolean]) { done =>
-          val sub = new Subscriber {
-            def unSubscribe: F[Unit] = {
-              F.bind(F.modify(state) { case (a,subs) => a -> subs.filterNot(_.id == id) }) { _ =>
-                F.bind(subSignal.modify(_ - 1))(_ => F.setPure(done)(true))
+      def mkSubscriber(maxQueued: Int):F[Subscriber] = for {
+        q <- async.boundedQueue[F,A](maxQueued)
+        firstA <- F.ref[A]
+        done <- F.ref[Boolean]
+        sub = new Subscriber {
+          def unSubscribe: F[Unit] = for {
+            _ <- state.modify { case (a,subs) => a -> subs.filterNot(_.id == id) }
+            _ <- subSignal.modify(_ - 1)
+            _ <- done.setPure(true)
+          } yield ()
+          def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
+          def publish(a: A): F[Unit] = {
+            q.offer1(a).flatMap { offered =>
+              if (offered) F.pure(())
+              else {
+                eval(done.get).interruptWhen(q.full.discrete.map(! _ )).last.flatMap {
+                  case None => eval(publish(a))
+                  case Some(_) => Stream.empty
+                }.run
               }
             }
-            def subscribe: Stream[F, A] = eval(F.get(firstA)) ++ q.dequeue
-            def publish(a: A): F[Unit] = {
-              F.bind(q.offer1(a)) { offered =>
-                if (offered) F.pure(())
-                else {
-                  eval(F.get(done)).interruptWhen(q.full.discrete.map(! _ )).last.flatMap {
-                    case None => eval(publish(a))
-                    case Some(_) => Stream.empty
-                  }.run
-                }
-              }
 
-            }
-            def subscribeSize: Stream[F, (A,Int)] = eval(F.get(firstA)).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
-            val id: ID = new ID
           }
-
-          F.bind(F.modify(state){ case(a,s) => a -> (s :+ sub) }) { c =>
-            F.bind(subSignal.modify(_ + 1))(_ => F.map(F.setPure(firstA)(c.now._1))(_ => sub))
-          }
-        }}}
-      }
+          def subscribeSize: Stream[F, (A,Int)] = eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
+          val id: ID = new ID
+        }
+        c <- state.modify { case(a,s) => a -> (s :+ sub) }
+        _ <- subSignal.modify(_ + 1)
+        _ <- firstA.setPure(c.now._1)
+      } yield sub
 
       new Topic[F,A] {
         def publish:Sink[F,A] =
@@ -123,7 +137,7 @@ object Topic {
         def subscribers: Signal[F, Int] = subSignal
 
         def publish1(a: A): F[Unit] =
-          F.bind(F.modify(state){ case (_,subs) => a -> subs }) { c => F.map(F.traverse(c.now._2)(_.publish(a)))(_ => ()) }
+          state.modify{ case (_,subs) => a -> subs }.flatMap { c => c.now._2.traverse(_.publish(a)).as(()) }
 
         def subscribe(maxQueued: Int): Stream[F, A] =
           bracket(mkSubscriber(maxQueued))(_.subscribe, _.unSubscribe)

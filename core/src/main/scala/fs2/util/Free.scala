@@ -58,7 +58,7 @@ sealed trait Free[+F[_],+A] {
   private[fs2] final def _step(iteration: Int): Free[F,A] = this match {
     case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g))._step(0)
     case Bind(Pure(x), f) =>
-      // NB: Performance trick - eagerly step through bind/pure streams, but yield after so many iterations
+      // NB: Performance trick - eagerly step through flatMap/pure streams, but yield after so many iterations
       if (iteration < Free.eagerBindStepDepth) f(x)._step(iteration + 1) else this
     case _ => this
   }
@@ -128,7 +128,7 @@ object Free {
   }
   private[fs2] case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
     def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
-      G.bind(r._runTranslate(g))(f andThen (_.runTranslate(g)))
+      G.flatMap(r._runTranslate(g))(f andThen (_.runTranslate(g)))
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
     : Trampoline[Unroll[A, G[Free[F,A]]]]
     = Sub1.substFree(r) match {
@@ -138,7 +138,7 @@ object Free {
       case Fail(err) => Trampoline.done { Unroll.Fail(err) }
       case eval =>
         // NB: not bothering to convince Scala this is legit but since
-        // `.step` returns a right-associated bind, and `Eval[F,A]` has type
+        // `.step` returns a right-associated flatMap, and `Eval[F,A]` has type
         // Free[Either[Throwable,A]], this is safe
         val ga: G[Any] = eval.asInstanceOf[Eval[G,Any]].fa
         val fr: Either[Throwable,Any] => Free[F,A]
@@ -153,7 +153,7 @@ object Free {
       case Pure(r) => bound.f[R](Right((r, f andThen (_.fold(suspend, done, fail, bound)))))
       case Fail(err) => fail(err)
       // NB: Scala won't let us pattern match on Eval here, but this is safe since `.step`
-      // removes any left-associated binds
+      // removes any left-associated flatMaps
       case eval => bound.f[R](Left(
         eval.asInstanceOf[Eval[F2,R]].fa ->
           f.asInstanceOf[Any => Free[F,A]].andThen(_.fold(suspend, done, fail, bound))))
@@ -170,6 +170,6 @@ object Free {
   implicit def monad[F[_]]: Monad[({ type f[x] = Free[F,x]})#f] =
   new Monad[({ type f[x] = Free[F,x]})#f] {
     def pure[A](a: A) = Pure(a)
-    def bind[A,B](a: Free[F,A])(f: A => Free[F,B]) = a flatMap f
+    def flatMap[A,B](a: Free[F,A])(f: A => Free[F,B]) = a flatMap f
   }
 }

@@ -1,8 +1,6 @@
 package fs2
 
 import scala.concurrent.duration._
-import fs2.util.Task
-import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck._
 
@@ -16,10 +14,6 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
         ()
       }
     }
-
-    def spuriousFail(s: Stream[Task,Int], f: Failure): Stream[Task,Int] =
-      s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get
-                       else Stream.emit(i) }
 
     "bracket (normal termination / failing)" in forAll { (s0: List[PureStream[Int]], f: Failure, ignoreFailure: Boolean) =>
       val c = new AtomicLong(0)
@@ -155,9 +149,9 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
     }
 
     "asynchronous resource allocation (5)" in forAll { (s: PureStream[PureStream[Int]]) =>
-      val signal = async.signalOf[Task,Boolean](false).unsafeRun
+      val signal = async.signalOf[Task,Boolean](false).unsafeRun()
       val c = new AtomicLong(0)
-      signal.set(true).schedule(20.millis).async.unsafeRun
+      signal.set(true).schedule(20.millis).async.unsafeRun()
       runLog { s.get.evalMap { inner =>
         Task.start(bracket(c)(inner.get).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run)
       }}
@@ -169,9 +163,9 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       // stream is interrupted while in the middle of a resource acquire that is immediately followed
       // by a step that never completes!
       val s = Stream(Stream(1))
-      val signal = async.signalOf[Task,Boolean](false).unsafeRun
+      val signal = async.signalOf[Task,Boolean](false).unsafeRun()
       val c = new AtomicLong(1)
-      signal.set(true).schedule(20.millis).async.unsafeRun // after 20 ms, interrupt
+      signal.set(true).schedule(20.millis).async.unsafeRun() // after 20 ms, interrupt
       runLog { s.evalMap { inner => Task.start {
         Stream.bracket(Task.delay { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
           _ => inner,
@@ -180,14 +174,6 @@ class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventuall
       }}}
       eventually { c.get shouldBe 0L }
     }
-
-    def swallow(a: => Any): Unit =
-      try { a; () }
-      catch {
-        case e: InterruptedException => throw e
-        case e: TimeoutException => throw e
-        case e: Throwable => ()
-      }
 
     def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
       Stream.bracket(Task.delay { c.decrementAndGet })(

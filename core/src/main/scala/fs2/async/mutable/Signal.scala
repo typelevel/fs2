@@ -3,16 +3,16 @@ package async
 package mutable
 
 import fs2.Async.Change
-import fs2._
 import fs2.Stream._
 import fs2.async.immutable
-import fs2.util.Monad
+import fs2.util.{Monad, Functor}
+import fs2.util.syntax._
 
 /**
  * A signal whose value may be set asynchronously. Provides continuous
  * and discrete streams for responding to changes to it's value.
  */
-trait Signal[F[_],A] extends immutable.Signal[F,A] {
+trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
 
   /** Sets the value of this `Signal`. */
   def set(a: A): F[Unit]
@@ -24,13 +24,29 @@ trait Signal[F[_],A] extends immutable.Signal[F,A] {
    *
    * `F` returns the result of applying `op` to current value.
    */
-   def modify(f: A => A): F[Change[A]]
+  def modify(f: A => A): F[Change[A]]
 
   /**
    * Asynchronously refreshes the value of the signal,
    * keep the value of this `Signal` the same, but notify any listeners.
    */
   def refresh: F[Unit]
+
+  /**
+   * Returns an alternate view of this `Signal` where its elements are of type [[B]],
+   * given a function from `A` to `B`.
+   */
+  def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): Signal[F, B] =
+    new Signal[F, B] {
+      def discrete: Stream[F, B] = self.discrete.map(f)
+      def continuous: Stream[F, B] = self.continuous.map(f)
+      def changes: Stream[F, Unit] = self.changes
+      def get: F[B] = self.get.map(f)
+      def set(b: B): F[Unit] = self.set(g(b))
+      def refresh: F[Unit] = self.refresh
+      def modify(bb: B => B): F[Change[B]] =
+        self.modify(a => g(bb(f(a)))).map { case Change(prev, now) => Change(f(prev), f(now)) }
+    }
 }
 
 object Signal {
@@ -43,21 +59,19 @@ object Signal {
   }
 
   def apply[F[_],A](initA: A)(implicit F: Async[F]): F[Signal[F,A]] =
-    F.map(F.refOf[(A, Long, Vector[F.Ref[(A,Long)]])]((initA,0,Vector.empty))) {
+    F.refOf[(A, Long, Vector[Async.Ref[F,(A,Long)]])]((initA,0,Vector.empty)).map {
     state => new Signal[F,A] {
-      def refresh: F[Unit] = F.map(modify(identity))(_ => ())
-      def set(a: A): F[Unit] = F.map(modify(_ => a))(_ => ())
-      def get: F[A] = F.map(F.get(state))(_._1)
+      def refresh: F[Unit] = modify(identity).as(())
+      def set(a: A): F[Unit] = modify(_ => a).as(())
+      def get: F[A] = state.get.map(_._1)
       def modify(f: A => A): F[Change[A]] = {
-        F.bind(F.modify(state) { case (a,l,_) =>
+        state.modify { case (a,l,_) =>
           (f(a),l+1,Vector.empty)
-        }) { c =>
+        }.flatMap { c =>
           if (c.previous._3.isEmpty) F.pure(c.map(_._1))
           else {
             val now = c.now._1 -> c.now._2
-            F.bind(F.traverse(c.previous._3)(ref => F.setPure(ref)(now))) { _ =>
-              F.pure(c.map(_._1))
-            }
+            c.previous._3.traverse(ref => ref.setPure(now)) >> F.pure(c.map(_._1))
           }
         }
       }
@@ -70,21 +84,26 @@ object Signal {
 
       def discrete: Stream[F, A] = {
         def go(lastA:A, last:Long):Stream[F,A] = {
-          def getNext:F[(A,Long)] = {
-            F.bind(F.ref[(A,Long)]) { ref =>
-              F.bind(F.modify(state) { case s@(a, l, listen) =>
+          def getNext:F[(F[(A,Long)],F[Unit])] = {
+            F.ref[(A,Long)].flatMap { ref =>
+              state.modify { case s@(a, l, listen) =>
                 if (l != last) s
                 else (a, l, listen :+ ref)
-              }) { c =>
-                if (c.modified) F.get(ref)
-                else F.pure(c.now._1 -> c.now._2)
+              }.map { c =>
+                if (c.modified) {
+                  val cleanup = state.modify {
+                    case s@(a, l, listen) => if (l != last) s else (a, l, listen.filterNot(_ == ref))
+                  }.as(())
+                  (ref.get,cleanup)
+                }
+                else (F.pure(c.now._1 -> c.now._2), F.pure(()))
               }
             }
           }
-          emit(lastA) ++ (eval(getNext) flatMap { go _ tupled })
+          emit(lastA) ++ Stream.bracket(getNext)(n => eval(n._1).flatMap { case (lastA, last) => go(lastA, last) }, n => n._2)
         }
 
-        Stream.eval(F.get(state)) flatMap { case (a,l,_) => go(a,l) }
+        Stream.eval(state.get) flatMap { case (a,l,_) => go(a,l) }
       }}
     }
 }

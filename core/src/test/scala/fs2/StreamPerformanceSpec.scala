@@ -1,7 +1,6 @@
 package fs2
 
 import java.util.concurrent.atomic.AtomicInteger
-import fs2.util._
 
 class StreamPerformanceSpec extends Fs2Spec {
 

@@ -1,7 +1,6 @@
 package fs2
 
-
-import fs2.util.Task
+import java.util.concurrent.TimeoutException
 import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.duration._
@@ -19,9 +18,21 @@ trait TestUtil {
   def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.unsafeRunFor(timeout)
 
   def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
-    s.runLog.unsafeAttemptRun match {
+    s.runLog.unsafeAttemptRun() match {
       case Left(e) if e == err => true
       case _ => false
+    }
+
+  def spuriousFail(s: Stream[Task,Int], f: Failure): Stream[Task,Int] =
+    s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get
+                     else Stream.emit(i) }
+
+  def swallow(a: => Any): Unit =
+    try { a; () }
+    catch {
+      case e: InterruptedException => throw e
+      case e: TimeoutException => throw e
+      case e: Throwable => ()
     }
 
   implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(
@@ -115,4 +126,3 @@ trait TestUtil {
 }
 
 object TestUtil extends TestUtil
-
