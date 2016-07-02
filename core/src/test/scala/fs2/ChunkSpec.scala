@@ -152,5 +152,11 @@ class ChunkSpec extends Fs2Spec {
     "toarray.double" in forAll { c: Chunk[Double] => checkToArray(c) }
     "toarray.long" in forAll { c: Chunk[Long] => checkToArray(c) }
     "toarray.unspecialized" in forAll { c: Chunk[Int] => checkToArray(c) }
+
+    "map.boolean => byte" in forAll { c: Chunk[Boolean] =>
+      (c map { b => if (b) 0.toByte else 1.toByte }).toArray shouldBe (c.toArray map { b => if (b) 0.toByte else 1.toByte })
+    }
+
+    "map.long => long" in forAll { c: Chunk[Long] => (c map (1 +)).toArray shouldBe (c.toArray map (1 +)) }
   }
 }

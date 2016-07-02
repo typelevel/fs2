@@ -183,32 +183,32 @@ object Chunk {
     // TODO set by completely random guess. please tune!
     val Threshold = 0
 
-    val ZZ = extractor { x: Boolean => true }
-    val BZ = extractor { x: Byte => true }
-    val LZ = extractor { x: Long => true }
-    val DZ = extractor { x: Double => true }
+    val ZZ = extractor { x: Boolean => true } disabled
+    val BZ = extractor { x: Byte => true } disabled
+    val LZ = extractor { x: Long => true } disabled
+    val DZ = extractor { x: Double => true } disabled
 
     private[this] val AZ0 = extractor { x: AnyRef => true }
     def AZ[A] = AZ0.asInstanceOf[Extractor[A, Boolean]]
 
-    val ZB = extractor { x: Boolean => 0.toByte }
-    val BB = extractor { x: Byte => 0.toByte }
-    val LB = extractor { x: Long => 0.toByte }
-    val DB = extractor { x: Double => 0.toByte }
+    val ZB = extractor { x: Boolean => 0.toByte } disabled
+    val BB = extractor { x: Byte => 0.toByte } disabled
+    val LB = extractor { x: Long => 0.toByte } disabled
+    val DB = extractor { x: Double => 0.toByte } disabled
 
     private[this] val AB0 = extractor { x: AnyRef => 0.toByte }
     def AB[A] = AB0.asInstanceOf[Extractor[A, Byte]]
 
-    val ZL = extractor { x: Boolean => 0L }
-    val BL = extractor { x: Byte => 0L }
+    val ZL = extractor { x: Boolean => 0L } disabled
+    val BL = extractor { x: Byte => 0L } disabled
     val LL = extractor { x: Long => 0L }
     val DL = extractor { x: Double => 0L }
 
     private[this] val AL0 = extractor { x: AnyRef => 0L }
     def AL[A] = AL0.asInstanceOf[Extractor[A, Long]]
 
-    val ZD = extractor { x: Boolean => 0D }
-    val BD = extractor { x: Byte => 0D }
+    val ZD = extractor { x: Boolean => 0D } disabled
+    val BD = extractor { x: Byte => 0D } disabled
     val LD = extractor { x: Long => 0D }
     val DD = extractor { x: Double => 0D }
 
@@ -234,9 +234,12 @@ object Chunk {
     private[this] def extractor[A, B](sample: A => B): Extractor[A, B] =
       new Extractor(sample.getClass.getSuperclass.asInstanceOf[Class[A => B]])
 
-    final class Extractor[A, B](clazz: Class[A => B]) {
+    final class Extractor[A, B](clazz: Class[A => B], enabled: Boolean = true) {
+
+      def disabled: Extractor[A, B] = new Extractor(clazz, enabled = false)
+
       def unapply(f: _ => _): Option[A => B] = {
-        if (clazz isInstance f.getClass)
+        if (enabled && clazz == f.getClass.getSuperclass)
           Some(f.asInstanceOf[A => B])
         else
           None
