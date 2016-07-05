@@ -114,10 +114,10 @@ sealed trait Process[+F[_], +O]
   final def onHalt[F2[x] >: F[x], O2 >: O](f: Cause => Process[F2, O2]): Process[F2, O2] = {
      val next = (t: Cause) => Trampoline.delay(Try(f(t)))
      this match {
-       case (append: Append[F2, O2] @unchecked) => Append(append.head, append.stack :+ next)
-       case emt@Emit(_)        => Append(emt, Vector(next))
-       case awt@Await(_, _, _) => Append(awt, Vector(next))
-       case hlt@Halt(rsn)      => Append(hlt, Vector(next))
+       case ap@Append(_, _)    => Append[F2, O2](ap.asInstanceOf[Append[F2, O2]].head, ap.asInstanceOf[Append[F2, O2]].stack :+ next)
+       case emt@Emit(_)        => Append[F2, O2](emt, Vector(next))
+       case awt@Await(_, _, _) => Append[F2, O2](awt, Vector(next))
+       case hlt@Halt(rsn)      => Append[F2, O2](hlt, Vector(next))
      }
   }
 
@@ -458,7 +458,7 @@ sealed trait Process[+F[_], +O]
     case Step(head, next) => head match {
       case Emit(as) => as.headOption.map(x => F.point[Option[(O2, Process[F2, O2])]](Some((x, Process.emitAll[O2](as drop 1) +: next)))) getOrElse
           next.continue.unconsOption
-      case await: Await[F2, _, O2] => await.evaluate.flatMap(p => (p +: next).unconsOption(F,C))
+      case awt@Await(_, _, _) => awt.asInstanceOf[Await[F2, _, O2]].evaluate.flatMap(p => (p +: next).unconsOption(F,C))
     }
     case Halt(cause) => cause match {
       case End | Kill => F.point(None)
