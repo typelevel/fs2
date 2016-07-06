@@ -112,7 +112,7 @@ sealed trait StreamCore[F[_],O] { self =>
     lazy val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
         Free.eval(F.sequence(Vector.fill(waiting)(F.ref[Unit]))) flatMap { gates =>
-          resources.closeAll(gates.toStream.map(gate => () => gate.runSet(Right(())))) match {
+          resources.closeAll(gates.toStream.map(gate => () => gate.unsafeRunSet(Right(())))) match {
             case Left(_) => Free.eval(F.traverse(gates)(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")

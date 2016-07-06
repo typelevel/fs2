@@ -21,7 +21,7 @@ trait Async[F[_]] extends Effect[F] { self =>
    */
   def async[A](register: (Either[Throwable,A] => Unit) => F[Unit]): F[A] =
     flatMap(ref[A]) { ref =>
-    flatMap(register { e => ref.runSet(e) }) { _ => ref.get }}
+    flatMap(register { e => ref.unsafeRunSet(e) }) { _ => ref.get }}
 
   def parallelTraverse[A,B](s: Seq[A])(f: A => F[B]): F[Vector[B]] =
     flatMap(traverse(s)(f andThen start)) { tasks => traverse(tasks)(identity) }
@@ -120,7 +120,7 @@ object Async {
     def setPure(a: A): F[Unit] = set(F.pure(a))
 
     /** Actually run the effect of setting the ref. Has side effects. */
-    private[fs2] def runSet(a: Either[Throwable,A]): Unit
+    def unsafeRunSet(a: Either[Throwable,A]): Unit
 
   }
 
