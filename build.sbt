@@ -34,8 +34,8 @@ lazy val commonSettings = Seq(
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
   scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console)),
   libraryDependencies ++= Seq(
-    "org.scalatest" %% "scalatest" % "3.0.0-RC4" % "test",
-    "org.scalacheck" %% "scalacheck" % "1.13.1" % "test"
+    "org.scalatest" %%% "scalatest" % "3.0.0-RC4" % "test",
+    "org.scalacheck" %%% "scalacheck" % "1.13.1" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
@@ -113,6 +113,23 @@ lazy val publishingSettings = Seq(
   }
 )
 
+lazy val commonJsSettings = Seq(
+  requiresDOM := false,
+  scalaJSStage in Test := FastOptStage,
+  jsEnv in Test := NodeJSEnv().value
+/*
+  scalacOptions in Compile += {
+    val dir = project.base.toURI.toString.replaceFirst("[^/]+/?$", "")
+    val url = s"https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
+    val tagOrBranch = {
+      if (version.value endsWith "SNAPSHOT") gitCurrentBranch.value
+      else ("v" + version.value)
+    }
+    s"-P:scalajs:mapSourceURI:$dir->$url/$tagOrBranch/"
+  }
+*/
+)
+
 lazy val noPublish = Seq(
   publish := (),
   publishLocal := (),
@@ -128,19 +145,23 @@ lazy val releaseSettings = Seq(
 lazy val root = project.in(file(".")).
   settings(commonSettings).
   settings(noPublish).
-  aggregate(core, io, benchmark)
+  aggregate(coreJVM, coreJS, io, benchmark)
 
-lazy val core = project.in(file("core")).
-  settings(commonSettings).
+lazy val core = crossProject.in(file("core")).
+  settings(commonSettings: _*).
   settings(
     name := "fs2-core"
-  )
+  ).
+  jsSettings(commonJsSettings: _*)
+
+lazy val coreJVM = core.jvm
+lazy val coreJS = core.js
 
 lazy val io = project.in(file("io")).
   settings(commonSettings).
   settings(
     name := "fs2-io"
-  ).dependsOn(core % "compile->compile;test->test")
+  ).dependsOn(coreJVM % "compile->compile;test->test")
 
 lazy val benchmarkMacros = project.in(file("benchmark-macros"))
   .settings(commonSettings)
@@ -173,5 +194,5 @@ lazy val docs = project.in(file("docs")).
     tutSourceDirectory := file("docs") / "src",
     tutTargetDirectory := file("docs"),
     scalacOptions ~= {_.filterNot("-Ywarn-unused-import" == _)}
-  ).dependsOn(core, io)
+  ).dependsOn(coreJVM, io)
 

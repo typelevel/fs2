@@ -13,10 +13,10 @@ trait Scheduler {
   def scheduleOnce(delay: FiniteDuration)(thunk: => Unit)(implicit S: Strategy): () => Unit
 
   /**
-   * Evaluates the thunk after the initial delay and then every period, using the strategy.
+   * Evaluates the thunk every period, using the strategy.
    * Returns a thunk that when evaluated, cancels the execution.
    */
-  def scheduleAtFixedRate(initialDelay: FiniteDuration, period: FiniteDuration)(thunk: => Unit)(implicit S: Strategy): () => Unit
+  def scheduleAtFixedRate(period: FiniteDuration)(thunk: => Unit)(implicit S: Strategy): () => Unit
 
   /**
    * Returns a strategy that executes all tasks after a specified delay.
@@ -37,8 +37,8 @@ object Scheduler {
       val f = service.schedule(new Runnable { def run = S(thunk) }, delay.toNanos, TimeUnit.NANOSECONDS)
       () => { f.cancel(false); () }
     }
-    override def scheduleAtFixedRate(initialDelay: FiniteDuration, period: FiniteDuration)(thunk: => Unit)(implicit S: Strategy): () => Unit = {
-      val f = service.scheduleAtFixedRate(new Runnable { def run = S(thunk) }, initialDelay.toNanos, period.toNanos, TimeUnit.NANOSECONDS)
+    override def scheduleAtFixedRate(period: FiniteDuration)(thunk: => Unit)(implicit S: Strategy): () => Unit = {
+      val f = service.scheduleAtFixedRate(new Runnable { def run = S(thunk) }, period.toNanos, period.toNanos, TimeUnit.NANOSECONDS)
       () => { f.cancel(false); () }
     }
     override def toString = s"Scheduler($service)"

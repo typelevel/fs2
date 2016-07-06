@@ -36,7 +36,7 @@ package object time {
         val lock = new java.util.concurrent.Semaphore(1)
         val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
         F.delay {
-          val cancel = scheduler.scheduleAtFixedRate(d, d) {
+          val cancel = scheduler.scheduleAtFixedRate(d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
             if (lock.tryAcquire)
               FR.unsafeRunAsyncEffects(signal.set(d) >> F.delay(lock.release))(_ => ())
