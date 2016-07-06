@@ -81,6 +81,13 @@ class Future[+A] {
     }
   }
 
+  def runSync: Either[(A => Unit) => Unit, A] =
+    (this.step: @unchecked) match {
+      case Now(a) => Right(a)
+      case Async(onFinish) => Left(cb => onFinish(a => Trampoline.done(cb(a))))
+      case BindAsync(onFinish, g) => Left(cb => onFinish(x => Trampoline.delay(g(x)).map(_.listen(a => Trampoline.done(cb(a))))))
+    }
+
   def runFor(timeout: FiniteDuration): A = attemptRunFor(timeout) match {
     case Left(e) => throw e
     case Right(a) => a

@@ -98,7 +98,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
     case Right(a) => a
   }
 
-  /** Like `run`, but returns exceptions as values. */
+  /** Like `unsafeRun`, but returns exceptions as values. */
   def unsafeAttemptRun(): Either[Throwable,A] =
     try get.run catch { case t: Throwable => Left(t) }
 
@@ -122,6 +122,30 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
     unsafeRunAsync { e => e.fold(promise.failure, promise.success); () }
     promise.future
   }
+
+  /**
+   * Runs this `Task` up until an async boundary. If the task completes synchronously,
+   * the result is returned wrapped in a `Right`. If an async boundary is encountered,
+   * a continuation is returned wrapped in a `Left`.
+   * To return exceptions in an `Either`, use `unsafeAttemptRunSync()`.
+   */
+  def unsafeRunSync(): Either[(Either[Throwable,A] => Unit) => Unit, A] = get.runSync.right.map { _ match {
+    case Left(e) => throw e
+    case Right(a) => a
+  }}
+
+  /** Like `unsafeRunSync`, but returns exceptions as values. */
+  def unsafeAttemptRunSync(): Either[(Either[Throwable,A] => Unit) => Unit, Either[Throwable,A]] = get.runSync
+
+  /**
+   * Runs this `Task` up until an async boundary. If the task completes synchronously,
+   * the result is returned. If an async boundary is encountered, `None` is returned.
+   * To return exceptions in an `Either`, use `unsafeAttemptValue()`.
+   */
+  def unsafeValue(): Option[A] = unsafeRunSync.right.toOption
+
+  /** Like `unsafeValue`, but returns exceptions as values. */
+  def unsafeAttemptValue(): Option[Either[Throwable,A]] = get.value
 
   /**
    * Run this `Task` and block until its result is available, or until
