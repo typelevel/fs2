@@ -357,7 +357,7 @@ object Task extends Instances {
       Task.delay { S { t.unsafeRunAsync { r => actor ! Msg.Set(r) } }}
     def setFree(t: Free[Task,A]): Task[Unit] =
       set(t.run(F))
-    def runSet(e: Either[Throwable,A]): Unit =
+    def unsafeRunSet(e: Either[Throwable,A]): Unit =
       actor ! Msg.Set(e)
 
     private def getStamped(msg: MsgId): Task[(A,Long)] =
