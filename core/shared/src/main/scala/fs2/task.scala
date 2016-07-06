@@ -145,7 +145,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
   def unsafeValue(): Option[A] = unsafeRunSync.right.toOption
 
   /** Like `unsafeValue`, but returns exceptions as values. */
-  def unsafeAttemptValue(): Option[Either[Throwable,A]] = get.value
+  def unsafeAttemptValue(): Option[Either[Throwable,A]] = get.runSync.right.toOption
 
   /**
    * Run this `Task` and block until its result is available, or until
