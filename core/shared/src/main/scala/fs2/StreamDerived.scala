@@ -1,7 +1,5 @@
 package fs2
 
-import scala.util.Try
-
 import fs2.util.{Catchable,RealSupertype,Sub1}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
@@ -233,10 +231,12 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
     def to(f: Sink[F,A]): Stream[F,Unit] = f(s).drain
   }
 
+  private type EitherThrowable[+A] = Either[Throwable, A]
+
   implicit class StreamPureOps[+A](s: Stream[Pure,A]) {
     def toList: List[A] =
-      s.covary[Try].runFold(List.empty[A])((b, a) => a :: b).get.reverse
-    def toVector: Vector[A] = s.covary[Try].runLog.get
+      s.covary[EitherThrowable].runFold(List.empty[A])((b, a) => a :: b).fold(t => throw t, identity).reverse
+    def toVector: Vector[A] = s.covary[EitherThrowable].runLog.fold(t => throw t, identity)
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]
