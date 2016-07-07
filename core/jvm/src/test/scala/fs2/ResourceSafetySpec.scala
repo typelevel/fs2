@@ -4,7 +4,7 @@ import scala.concurrent.duration._
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck._
 
-class ResourceSafetySpec extends Fs2Spec with org.scalatest.concurrent.Eventually {
+class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
   "Resource Safety" - {
 

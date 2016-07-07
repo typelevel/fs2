@@ -3,25 +3,11 @@ package fs2
 import java.util.concurrent.TimeoutException
 import org.scalacheck.{Arbitrary, Gen}
 
-import scala.concurrent.duration._
+import scala.concurrent.Future
 
-object TestStrategy {
-  implicit val S = Strategy.fromFixedDaemonPool(8)
-  implicit lazy val scheduler = Scheduler.fromFixedDaemonPool(2)
-}
+trait TestUtil extends TestUtilPlatform {
 
-trait TestUtil {
-
- implicit val S = TestStrategy.S
- implicit val scheduler = TestStrategy.scheduler
-
-  def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = 1.minute): Vector[A] = s.runLog.unsafeRunFor(timeout)
-
-  def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
-    s.runLog.unsafeAttemptRun() match {
-      case Left(e) if e == err => true
-      case _ => false
-    }
+  def runLogF[A](s: Stream[Task,A]): Future[Vector[A]] = s.runLog.unsafeRunAsyncFuture
 
   def spuriousFail(s: Stream[Task,Int], f: Failure): Stream[Task,Int] =
     s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get
