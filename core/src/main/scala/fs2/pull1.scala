@@ -150,7 +150,7 @@ private[fs2] trait pull1 {
    */
   def prefetch[F[_]:Async,I](h: Handle[F,I]): Pull[F,Nothing,Pull[F,Nothing,Handle[F,I]]] =
     h.awaitAsync map { fut =>
-      fut.force flatMap { p =>
+      fut.pull flatMap { p =>
         p map { case hd #: h => h push hd }
       }
     }
@@ -179,7 +179,7 @@ private[fs2] trait pull1 {
     if (n <= 0) Pull.pure(h)
     else Pull.awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue)(h).flatMap {
       case chunk #: h => Pull.output(chunk) >> take(n - chunk.size.toLong)(h)
-    } 
+    }
 
   /** Emits the last `n` elements of the input. */
   def takeRight[F[_],I](n: Long)(h: Handle[F,I]): Pull[F,Nothing,Vector[I]]  = {

@@ -1,17 +1,16 @@
 package fs2
 
-import Async.Ref
-import fs2.util.{Functor,Effect}
+import fs2.util.Effect
 import fs2.util.syntax._
 
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.")
 trait Async[F[_]] extends Effect[F] { self =>
 
   /** Create an asynchronous, concurrent mutable reference. */
-  def ref[A]: F[Ref[F,A]]
+  def ref[A]: F[Async.Ref[F,A]]
 
   /** Create an asynchronous, concurrent mutable reference, initialized to `a`. */
-  def refOf[A](a: A): F[Ref[F,A]] = flatMap(ref[A])(r => map(r.setPure(a))(_ => r))
+  def refOf[A](a: A): F[Async.Ref[F,A]] = flatMap(ref[A])(r => map(r.setPure(a))(_ => r))
 
   /**
    Create an `F[A]` from an asynchronous computation, which takes the form
@@ -61,14 +60,6 @@ object Async {
 
     /** Like `get`, but returns an `F[Unit]` that can be used cancel the subscription. */
     def cancellableGet: F[(F[A], F[Unit])]
-
-    /** The read-only portion of a `Ref`. */
-    def read: Future[F,A] = new Future[F,A] {
-      def get = self.get.map((_,Scope.pure(())))
-      def cancellableGet = self.cancellableGet.map { case (f,cancel) =>
-        (f.map((_,Scope.pure(()))), cancel)
-      }
-    }
 
     /**
      * Try modifying the reference once, returning `None` if another
@@ -125,94 +116,6 @@ object Async {
     def setPure(a: A): F[Unit] = set(F.pure(a))
   }
 
-  trait Future[F[_],A] { self =>
-    private[fs2] def get: F[(A, Scope[F,Unit])]
-    private[fs2] def cancellableGet: F[(F[(A, Scope[F,Unit])], F[Unit])]
-    private[fs2] def appendOnForce(p: Scope[F,Unit])(implicit F: Functor[F]): Future[F,A] = new Future[F,A] {
-      def get = self.get.map { case (a,s0) => (a, s0 flatMap { _ => p }) }
-      def cancellableGet =
-        self.cancellableGet.map { case (f,cancel) =>
-          (f.map { case (a,s0) => (a, s0 flatMap { _ => p }) }, cancel)
-        }
-    }
-    def force: Pull[F,Nothing,A] = Pull.eval(get) flatMap { case (a,onForce) => Pull.evalScope(onForce as a) }
-    def stream: Stream[F,A] = Stream.eval(get) flatMap { case (a,onForce) => Stream.evalScope(onForce as a) }
-    def map[B](f: A => B)(implicit F: Async[F]): Future[F,B] = new Future[F,B] {
-      def get = self.get.map { case (a,onForce) => (f(a), onForce) }
-      def cancellableGet = self.cancellableGet.map { case (a,cancelA) =>
-        (a.map { case (a,onForce) => (f(a),onForce) }, cancelA)
-      }
-    }
-    def race[B](b: Future[F,B])(implicit F: Async[F]): Future[F,Either[A,B]] = new Future[F, Either[A,B]] {
-      def get = cancellableGet.flatMap(_._1)
-      def cancellableGet = for {
-        ref <- F.ref[Either[(A,Scope[F,Unit]),(B,Scope[F,Unit])]]
-        t0 <- self.cancellableGet
-        (a, cancelA) = t0
-        t1 <- b.cancellableGet
-        (b, cancelB) = t1
-        _ <- ref.set(a.map(Left(_)))
-        _ <- ref.set(b.map(Right(_)))
-      } yield {
-        (ref.get.flatMap {
-          case Left((a,onForce)) => cancelB.as((Left(a),onForce))
-          case Right((b,onForce)) => cancelA.as((Right(b),onForce))
-        }, cancelA >> cancelB)
-      }
-    }
-
-    def raceSame(b: Future[F,A])(implicit F: Async[F]): Future[F, RaceResult[A,Future[F,A]]] =
-      self.race(b).map {
-        case Left(a) => RaceResult(a, b)
-        case Right(a) => RaceResult(a, self)
-      }
-  }
-
-  def race[F[_]:Async,A](es: Vector[Future[F,A]])
-    : Future[F,Focus[A,Future[F,A]]]
-    = Future.race(es)
-
-  case class Focus[A,B](get: A, index: Int, v: Vector[B]) {
-    def replace(b: B): Vector[B] = v.patch(index, List(b), 1)
-    def delete: Vector[B] = v.patch(index, List(), 1)
-  }
-
-  case class RaceResult[+A,+B](winner: A, loser: B)
-
-  object Future {
-
-    def pure[F[_],A](a: A)(implicit F: Async[F]): Future[F,A] = new Future[F,A] {
-      def get = F.pure(a -> Scope.pure(()))
-      def cancellableGet = F.pure((get, F.pure(())))
-    }
-
-    def race[F[_]:Async,A](es: Vector[Future[F,A]])
-      : Future[F,Focus[A,Future[F,A]]]
-      = indexedRace(es) map { case (a, i) => Focus(a, i, es) }
-
-    private[fs2] def indexedRace[F[_],A](es: Vector[Future[F,A]])(implicit F: Async[F])
-      : Future[F,(A,Int)]
-      = new Future[F,(A,Int)] {
-        def cancellableGet =
-          F.ref[((A,Scope[F,Unit]),Int)].flatMap { ref =>
-            val cancels: F[Vector[(F[Unit],Int)]] = (es zip (0 until es.size)).traverse { case (a,i) =>
-              a.cancellableGet.flatMap { case (a, cancelA) =>
-                ref.set(a.map((_,i))).as((cancelA,i))
-              }
-            }
-            cancels.flatMap { cancels =>
-              F.pure {
-                val get = ref.get.flatMap { case (a,i) =>
-                  F.sequence(cancels.collect { case (a,j) if j != i => a }).map(_ => (a,i))
-                }
-                val cancel = cancels.traverse(_._1).as(())
-                (get.map { case ((a,onForce),i) => ((a,i),onForce) }, cancel)
-              }
-            }
-          }
-        def get = cancellableGet.flatMap(_._1)
-      }
-  }
   /**
    * The result of a `Ref` modification. `previous` contains value before modification
    * (the value passed to modify function, `f` in the call to `modify(f)`. And `now`
@@ -222,4 +125,6 @@ object Async {
     def modified: Boolean = previous != now
     def map[B](f: A => B): Change[B] = Change(f(previous), f(now))
   }
+
+
 }

@@ -93,7 +93,7 @@ sealed trait StreamCore[F[_],O] { self =>
       case Some(Right(s)) => StreamCore.emit(Some(s))
     }
 
-  def fetchAsync(implicit F: Async[F]): Scope[F, Async.Future[F,StreamCore[F,O]]] =
+  def fetchAsync(implicit F: Async[F]): Scope[F, ScopedFuture[F,StreamCore[F,O]]] =
     unconsAsync map { f => f map { case (leftovers,o) =>
       val inner: StreamCore[F,O] = o match {
         case None => StreamCore.empty
@@ -104,7 +104,7 @@ sealed trait StreamCore[F[_],O] { self =>
     }}
 
   def unconsAsync(implicit F: Async[F])
-  : Scope[F,Async.Future[F, (List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]]
+  : Scope[F,ScopedFuture[F, (List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]]
   = Scope.eval(F.ref[(List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Either[Throwable,Unit]]]("unconsAsync")
@@ -136,7 +136,7 @@ sealed trait StreamCore[F[_],O] { self =>
     val s: F[Unit] = ref.set { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
-        ref.read.appendOnForce { Scope.suspend {
+        ScopedFuture.readRef(ref).appendOnForce { Scope.suspend {
           // Important: copy any locally acquired resources to our parent and remove the placeholder
           // root token, which only needed if the parent terminated early, before the future was forced
           val removeRoot = Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }
