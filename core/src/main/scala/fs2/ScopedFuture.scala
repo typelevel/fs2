@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Functor,Monad}
+import fs2.util.{Async,Functor,Monad}
 import fs2.util.syntax._
 
 /**

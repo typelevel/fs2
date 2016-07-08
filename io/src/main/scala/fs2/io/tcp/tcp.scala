@@ -1,9 +1,9 @@
-package fs2.io
+package fs2
+package io
 
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
-import fs2._
-
+import fs2.util.Async
 
 package object tcp {
 

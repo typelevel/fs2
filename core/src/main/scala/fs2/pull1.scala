@@ -1,5 +1,7 @@
 package fs2
 
+import fs2.util.Async
+
 private[fs2] trait pull1 {
   import Stream.Handle
 

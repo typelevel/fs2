@@ -2,6 +2,7 @@ package fs2
 package async
 
 import java.util.concurrent.atomic.AtomicLong
+import fs2.util.Async
 
 class ChannelSpec extends Fs2Spec {
 
@@ -81,9 +82,8 @@ class ChannelSpec extends Fs2Spec {
 
   def trace[F[_],A](msg: String)(s: Stream[F,A]) = s mapChunks { a => println(msg + ": " + a.toList); a }
 
-  import Async.Future
   def merge2[F[_]:Async,A](a: Stream[F,A], a2: Stream[F,A]): Stream[F,A] = {
-    type FS = Future[F,Stream[F,A]] // Option[Step[Chunk[A],Stream[F,A]]]]
+    type FS = ScopedFuture[F,Stream[F,A]] // Option[Step[Chunk[A],Stream[F,A]]]]
     def go(fa: FS, fa2: FS): Stream[F,A] = (fa race fa2).stream.flatMap {
       case Left(sa) => sa.uncons.flatMap {
         case Some(hd #: sa) => Stream.chunk(hd) ++ (sa.fetchAsync flatMap (go(_,fa2)))

@@ -1,11 +1,13 @@
-package fs2.io.udp
+package fs2
+package io
+package udp
 
 import java.net.{InetAddress,NetworkInterface,InetSocketAddress}
 import java.nio.channels.{ClosedChannelException,DatagramChannel}
 
 import scala.concurrent.duration.FiniteDuration
 
-import fs2._
+import fs2.util.Async
 
 sealed trait Socket[F[_]] {
 

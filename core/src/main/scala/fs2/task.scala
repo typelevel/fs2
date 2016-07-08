@@ -1,7 +1,7 @@
 package fs2
 
 import fs2.internal.{Actor,Future,LinkedMap}
-import fs2.util.{Effect}
+import fs2.util.{Async,Effect}
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import scala.concurrent.duration._

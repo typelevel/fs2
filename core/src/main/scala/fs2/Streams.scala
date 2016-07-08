@@ -1,7 +1,6 @@
 package fs2
 
-import fs2.util.Free
-import fs2.util.~>
+import fs2.util.{~>,Async,Free}
 
 /**
 Laws (using infix syntax):

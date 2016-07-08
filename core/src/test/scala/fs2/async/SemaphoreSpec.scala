@@ -1,6 +1,8 @@
 package fs2
 package async
 
+import fs2.util.Async
+
 class SemaphoreSpec extends Fs2Spec {
 
   override implicit val S: Strategy = fs2.Strategy.fromCachedDaemonPool("SemaphoreSpec")

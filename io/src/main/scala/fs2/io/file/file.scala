@@ -1,11 +1,11 @@
-package fs2.io
+package fs2
+package io
 
 import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption}
 
-import fs2._
 import fs2.Stream.Handle
-import fs2.util.Effect
+import fs2.util.{Async,Effect}
 
 package object file {
 

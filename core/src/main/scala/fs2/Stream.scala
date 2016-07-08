@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1,~>}
+import fs2.util.{Async,Free,RealSupertype,Sub1,~>}
 
 /**
  * A stream producing output of type `O`, which may evaluate `F`

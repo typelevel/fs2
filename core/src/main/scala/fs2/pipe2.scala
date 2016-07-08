@@ -2,7 +2,7 @@ package fs2
 
 import Stream.Handle
 import fs2.{Pull => P}
-import fs2.util.{Free,Functor,Sub1}
+import fs2.util.{Async,Free,Functor,Sub1}
 
 object pipe2 {
 

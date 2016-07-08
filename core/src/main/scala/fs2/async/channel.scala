@@ -2,6 +2,7 @@ package fs2
 package async
 
 import fs2.async.mutable.Queue
+import fs2.util.Async
 import fs2.util.syntax._
 
 object channel {

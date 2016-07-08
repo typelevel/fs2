@@ -1,7 +1,7 @@
 package fs2
 
 import fs2.internal.Resources
-import fs2.util.{Catenable,Eq,Free,Sub1,~>,RealSupertype}
+import fs2.util.{Async,Catenable,Eq,Free,Sub1,~>,RealSupertype}
 import StreamCore.{Env,NT,Stack,Token}
 
 private[fs2]

@@ -2,6 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 
+import fs2.util.Async
 import fs2.util.syntax._
 
 package object time {

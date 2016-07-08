@@ -1,6 +1,6 @@
 package fs2
+package util
 
-import fs2.util.Effect
 import fs2.util.syntax._
 
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.")
@@ -24,6 +24,9 @@ trait Async[F[_]] extends Effect[F] { self =>
 
   def parallelTraverse[A,B](s: Seq[A])(f: A => F[B]): F[Vector[B]] =
     flatMap(traverse(s)(f andThen start)) { tasks => traverse(tasks)(identity) }
+
+  def parallelSequence[A](v: Seq[F[A]]): F[Vector[A]] =
+    parallelTraverse(v)(identity)
 
   /**
    * Begin asynchronous evaluation of `f` when the returned `F[F[A]]` is
@@ -125,6 +128,4 @@ object Async {
     def modified: Boolean = previous != now
     def map[B](f: A => B): Change[B] = Change(f(previous), f(now))
   }
-
-
 }

@@ -2,7 +2,6 @@ package fs2
 package io
 package tcp
 
-
 import java.net.{StandardSocketOptions, InetSocketAddress, SocketAddress}
 import java.nio.ByteBuffer
 import java.nio.channels.spi.AsynchronousChannelProvider
@@ -10,6 +9,7 @@ import java.nio.channels.{AsynchronousCloseException, AsynchronousServerSocketCh
 import java.util.concurrent.TimeUnit
 
 import fs2.Stream._
+import fs2.util.Async
 import fs2.util.syntax._
 
 import scala.concurrent.duration._

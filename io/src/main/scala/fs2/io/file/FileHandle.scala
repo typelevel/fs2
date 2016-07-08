@@ -5,7 +5,7 @@ package file
 import java.nio.ByteBuffer
 import java.nio.channels.{AsynchronousFileChannel, FileChannel, FileLock}
 
-import fs2.util.Effect
+import fs2.util.{Async,Effect}
 import fs2.util.syntax._
 
 trait FileHandle[F[_]] {

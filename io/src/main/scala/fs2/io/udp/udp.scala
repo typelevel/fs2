@@ -4,6 +4,7 @@ package io
 import java.net.{InetSocketAddress,NetworkInterface,ProtocolFamily,StandardSocketOptions}
 import java.nio.channels.DatagramChannel
 
+import fs2.util.Async
 import fs2.util.syntax._
 
 package object udp {
