@@ -30,7 +30,7 @@ package object time {
    * @param S           Strategy to run the stream
    * @param scheduler   Scheduler used to schedule tasks
    */
-  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], FR: Async.Run[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
+  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
     def metronomeAndSignal: F[(()=>Unit,async.mutable.Signal[F,FiniteDuration])] = {
       async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS)).flatMap { signal =>
         val lock = new java.util.concurrent.Semaphore(1)
@@ -39,7 +39,7 @@ package object time {
           val cancel = scheduler.scheduleAtFixedRate(d, d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
             if (lock.tryAcquire)
-              FR.unsafeRunAsyncEffects(signal.set(d) >> F.delay(lock.release))(_ => ())
+              F.unsafeRunAsync(signal.set(d) >> F.delay(lock.release))(_ => ())
           }
           (cancel, signal)
         }
@@ -78,6 +78,6 @@ package object time {
    * A single-element `Stream` that waits for the duration `d` before emitting its value. This uses the implicit
    * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues with `S` strategy.
    */
-  def sleep[F[_]: Async : Async.Run](d: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Stream[F, Nothing] =
+  def sleep[F[_]: Async](d: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Stream[F, Nothing] =
     awakeEvery(d).take(1).drain
 }

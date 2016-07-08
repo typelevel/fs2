@@ -1,7 +1,7 @@
 package fs2
 
 import fs2.internal.{Actor, Future, LinkedMap}
-import fs2.util.{Effect,Free}
+import fs2.util.Effect
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import scala.concurrent.duration._
@@ -212,14 +212,6 @@ object Task extends Instances {
     async { cb => S(cb(Try(a))) }
 
   /**
-   * Don't use this. It doesn't do what you think. If you have a `t: Task[A]` you'd
-   * like to evaluate concurrently, use `Task.start(t) flatMap { ft => ..}`.
-   */
-  @deprecated(message = "use `Task.start`", since = "0.8")
-  def fork[A](a: => Task[A])(implicit S: Strategy): Task[A] =
-    apply(a) flatMap { a => a }
-
-  /**
     * Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
     * into the outer task, `t` will be running in the background, and the inner task
     * is conceptually a future which can be forced at any point via `flatMap`.
@@ -355,10 +347,6 @@ object Task extends Instances {
      */
     def set(t: Task[A]): Task[Unit] =
       Task.delay { S { t.unsafeRunAsync { r => actor ! Msg.Set(r) } }}
-    def setFree(t: Free[Task,A]): Task[Unit] =
-      set(t.run(F))
-    def runSet(e: Either[Throwable,A]): Unit =
-      actor ! Msg.Set(e)
 
     private def getStamped(msg: MsgId): Task[(A,Long)] =
       Task.unforkedAsync[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
@@ -403,34 +391,25 @@ object Task extends Instances {
 
 /* Prefer an `Async` but will settle for implicit `Effect`. */
 private[fs2] trait Instances1 {
-  implicit def effect: Effect[Task] = new Effect[Task] {
+
+  protected class EffectTask extends Effect[Task] {
     def pure[A](a: A) = Task.now(a)
     def flatMap[A,B](a: Task[A])(f: A => Task[B]): Task[B] = a flatMap f
     override def delay[A](a: => A) = Task.delay(a)
     def suspend[A](fa: => Task[A]) = Task.suspend(fa)
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt
+    def unsafeRunAsync[A](t: Task[A])(cb: Either[Throwable, A] => Unit): Unit = t.unsafeRunAsync(cb)
     override def toString = "Effect[Task]"
   }
+
+  implicit val effectInstance: Effect[Task] = new EffectTask
 }
 
 private[fs2] trait Instances extends Instances1 {
 
-  implicit def asyncInstance(implicit S:Strategy): Async[Task] = new Async[Task] {
+  implicit def asyncInstance(implicit S:Strategy): Async[Task] = new EffectTask with Async[Task] {
     def ref[A]: Task[Async.Ref[Task,A]] = Task.ref[A](S, this)
-    def pure[A](a: A): Task[A] = Task.now(a)
-    def flatMap[A, B](a: Task[A])(f: (A) => Task[B]): Task[B] = a flatMap f
-    override def delay[A](a: => A) = Task.delay(a)
-    def suspend[A](fa: => Task[A]) = Task.suspend(fa)
-    def fail[A](err: Throwable): Task[A] = Task.fail(err)
-    def attempt[A](fa: Task[A]): Task[Either[Throwable, A]] = fa.attempt
     override def toString = "Async[Task]"
   }
-
-  implicit def runInstance(implicit S:Strategy): Async.Run[Task] = new Async.Run[Task] {
-    def unsafeRunAsyncEffects(f: Task[Unit])(onError: Throwable => Unit) =
-      S(f.unsafeRunAsync(_.fold(onError, _ => ())))
-    override def toString = "Run[Task]"
-  }
-
 }

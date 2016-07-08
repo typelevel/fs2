@@ -1,7 +1,7 @@
 package fs2
 
 import Async.Ref
-import fs2.util.{Free,Functor,Effect}
+import fs2.util.{Functor,Effect}
 import fs2.util.syntax._
 
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.")
@@ -21,7 +21,7 @@ trait Async[F[_]] extends Effect[F] { self =>
    */
   def async[A](register: (Either[Throwable,A] => Unit) => F[Unit]): F[A] =
     flatMap(ref[A]) { ref =>
-    flatMap(register { e => ref.runSet(e) }) { _ => ref.get }}
+    flatMap(register { e => unsafeRunAsync(ref.set(e.fold(fail, pure)))(_ => ()) }) { _ => ref.get }}
 
   def parallelTraverse[A,B](s: Seq[A])(f: A => F[B]): F[Vector[B]] =
     flatMap(traverse(s)(f andThen start)) { tasks => traverse(tasks)(identity) }
@@ -113,15 +113,16 @@ object Async {
      * the task is running in the background. Multiple tasks may be added to a
      * `Ref[A]`.
      *
-     * Satisfies: `set(r)(t) flatMap { _ => get(r) } == t`.
+     * Satisfies: `r.set(t) flatMap { _ => r.get } == t`.
      */
     def set(a: F[A]): F[Unit]
-    def setFree(a: Free[F,A]): F[Unit]
+
+    /**
+     * Asynchronously set a reference to a pure value.
+     *
+     * Satisfies: `r.setPure(a) flatMap { _ => r.get(a) } == pure(a)`.
+     */
     def setPure(a: A): F[Unit] = set(F.pure(a))
-
-    /** Actually run the effect of setting the ref. Has side effects. */
-    private[fs2] def runSet(a: Either[Throwable,A]): Unit
-
   }
 
   trait Future[F[_],A] { self =>
@@ -220,19 +221,5 @@ object Async {
   case class Change[+A](previous: A, now: A) {
     def modified: Boolean = previous != now
     def map[B](f: A => B): Change[B] = Change(f(previous), f(now))
-  }
-
-  /** Used to evaluate `F`. */
-  trait Run[F[_]]  {
-
-    /**
-     * Asynchronously run this `F`. Performs side effects.
-     * If the evaluation of the `F` terminates with an exception, then the `onError`
-     * callback will be called.
-     *
-     * Purpose of this combinator is to allow libraries that perform multiple callback
-     * (like enqueueing the messages, setting signals) to be written abstract over `F`.
-     */
-    def unsafeRunAsyncEffects(f: F[Unit])(onError: Throwable => Unit): Unit
   }
 }

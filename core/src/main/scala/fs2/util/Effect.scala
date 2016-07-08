@@ -12,4 +12,10 @@ trait Effect[F[_]] extends Catchable[F] {
    * Evaluates `a` each time the returned effect is run.
    */
   def delay[A](a: => A): F[A] = suspend(pure(a))
+
+  /**
+   * Evaluates the specified `F[A]`, possibly asynchronously, and calls the specified
+   * callback with the result of the evaluation.
+   */
+  def unsafeRunAsync[A](fa: F[A])(cb: Either[Throwable, A] => Unit): Unit
 }
