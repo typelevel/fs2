@@ -29,7 +29,7 @@ trait Scheduler {
 }
 
 object Scheduler {
-  implicit val default: Scheduler = new Scheduler {
+  val default: Scheduler = new Scheduler {
     override def scheduleOnce(delay: FiniteDuration)(thunk: => Unit)(implicit S: Strategy): () => Unit = {
       val handle = setTimeout(delay)(S(thunk))
       () => { clearTimeout(handle) }

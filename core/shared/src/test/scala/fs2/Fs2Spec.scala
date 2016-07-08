@@ -1,5 +1,7 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
+
 import org.scalatest.{ Args, AsyncFreeSpec, FreeSpec, Matchers, Status, Suite }
 import org.scalatest.concurrent.{ AsyncTimeLimitedTests, TimeLimitedTests }
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
@@ -11,6 +13,7 @@ abstract class Fs2Spec extends FreeSpec with Fs2SpecLike with TimeLimitedTests {
 
 abstract class AsyncFs2Spec extends AsyncFreeSpec with Fs2SpecLike with AsyncTimeLimitedTests {
   val timeLimit = 90.seconds
+  implicit override def executionContext: ExecutionContext = ExecutionContext.Implicits.global
 }
 
 trait Fs2SpecLike extends Suite

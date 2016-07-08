@@ -12,7 +12,7 @@ trait Strategy {
 object Strategy {
 
   /** Default strategy for use in Scala.JS. */
-  implicit val default: Strategy = fromExecutionContext(scala.concurrent.ExecutionContext.Implicits.global)
+  val default: Strategy = fromExecutionContext(scala.concurrent.ExecutionContext.Implicits.global)
 
   /** Create a `Strategy` from an `ExecutionContext`. */
   def fromExecutionContext(es: ExecutionContext): Strategy = new Strategy {

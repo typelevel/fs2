@@ -1,3 +1,4 @@
 package fs2
 
-object TestStrategy
+object TestStrategy {
+}

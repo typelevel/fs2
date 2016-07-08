@@ -31,21 +31,23 @@ package object time {
    * @param scheduler   Scheduler used to schedule tasks
    */
   def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], FR: Async.Run[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
-    def metronomeAndSignal: F[(()=>Unit,async.mutable.Signal[F,FiniteDuration])] = {
-      async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS)).flatMap { signal =>
-        val lock = new java.util.concurrent.Semaphore(1)
-        val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
-        F.delay {
+    def metronomeAndSignal: F[(F[Unit],async.mutable.Signal[F,FiniteDuration])] = {
+      for {
+        signal <- async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))
+        t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
+        result <- F.delay {
+          @volatile var running = new java.util.concurrent.atomic.AtomicBoolean(false)
           val cancel = scheduler.scheduleAtFixedRate(d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
-            if (lock.tryAcquire)
-              FR.unsafeRunAsyncEffects(signal.set(d) >> F.delay(lock.release))(_ => ())
+            if (running.compareAndSet(false, true)) {
+              FR.unsafeRunAsyncEffects { F.map(signal.set(d)) { _ => running.set(false) } }(_ => running.set(false))
+            }
           }
-          (cancel, signal)
+          (F.delay(cancel()), signal)
         }
-      }
+      } yield result
     }
-    Stream.bracket(metronomeAndSignal)({ case (_, signal) => signal.discrete.drop(1) }, { case (cm, _) => F.delay(cm()) })
+    Stream.bracket(metronomeAndSignal)({ case (_, signal) => signal.discrete.drop(1) }, { case (cm, _) => cm })
   }
 
   /**
