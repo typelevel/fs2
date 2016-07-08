@@ -1,7 +1,6 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1,~>}
-import Async.Future
+import fs2.util.{Async,Free,RealSupertype,Sub1,~>}
 
 /**
  * A stream producing output of type `O`, which may evaluate `F`
@@ -12,7 +11,7 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
 
   def get[F2[_],O2>:O](implicit S: Sub1[F,F2], T: RealSupertype[O,O2]): StreamCore[F2,O2]
 
-  final def fetchAsync[F2[_],O2>:O](implicit F2: Async[F2], S: Sub1[F,F2], T: RealSupertype[O,O2]): Stream[F2, Future[F2,Stream[F2,O2]]] =
+  final def fetchAsync[F2[_],O2>:O](implicit F2: Async[F2], S: Sub1[F,F2], T: RealSupertype[O,O2]): Stream[F2, ScopedFuture[F2,Stream[F2,O2]]] =
     Stream.mk { StreamCore.evalScope(get[F2,O2].fetchAsync).map(_ map (Stream.mk(_))) }
 
   override final def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F,O2] =
@@ -35,7 +34,7 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
 
   final def stepAsync[F2[_],O2>:O](
     implicit S: Sub1[F,F2], F2: Async[F2], T: RealSupertype[O,O2])
-    : Pull[F2,Nothing,Future[F2,Pull[F2,Nothing,Step[Chunk[O2], Handle[F2,O2]]]]]
+    : Pull[F2,Nothing,ScopedFuture[F2,Pull[F2,Nothing,Step[Chunk[O2], Handle[F2,O2]]]]]
     =
     Pull.evalScope { get.unconsAsync.map { _ map { case (leftovers,o) =>
       val inner: Pull[F2,Nothing,Step[Chunk[O2], Handle[F2,O2]]] = o match {
@@ -95,7 +94,7 @@ object Stream extends Streams[Stream] with StreamDerived {
   def awaitAsync[F[_],W](h: Handle[F,W])(implicit F: Async[F]) =
     h.buffer match {
       case List() => h.underlying.stepAsync
-      case hb :: tb => Pull.pure(Future.pure(Pull.pure(Step(hb, new Handle(tb, h.underlying)))))
+      case hb :: tb => Pull.pure(ScopedFuture.pure(Pull.pure(Step(hb, new Handle(tb, h.underlying)))))
     }
 
   def bracket[F[_],R,A](r: F[R])(use: R => Stream[F,A], release: R => F[Unit]): Stream[F,A] = Stream.mk {

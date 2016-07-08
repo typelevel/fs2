@@ -2,10 +2,9 @@ package fs2
 package async
 package mutable
 
-import fs2.Async.Change
 import fs2.Stream._
 import fs2.async.immutable
-import fs2.util.{Monad, Functor}
+import fs2.util.{Async,Monad,Functor}
 import fs2.util.syntax._
 
 /**
@@ -24,7 +23,7 @@ trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
    *
    * `F` returns the result of applying `op` to current value.
    */
-  def modify(f: A => A): F[Change[A]]
+  def modify(f: A => A): F[Async.Change[A]]
 
   /**
    * Asynchronously refreshes the value of the signal,
@@ -44,8 +43,8 @@ trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
       def get: F[B] = self.get.map(f)
       def set(b: B): F[Unit] = self.set(g(b))
       def refresh: F[Unit] = self.refresh
-      def modify(bb: B => B): F[Change[B]] =
-        self.modify(a => g(bb(f(a)))).map { case Change(prev, now) => Change(f(prev), f(now)) }
+      def modify(bb: B => B): F[Async.Change[B]] =
+        self.modify(a => g(bb(f(a)))).map { case Async.Change(prev, now) => Async.Change(f(prev), f(now)) }
     }
 }
 
@@ -64,7 +63,7 @@ object Signal {
       def refresh: F[Unit] = modify(identity).as(())
       def set(a: A): F[Unit] = modify(_ => a).as(())
       def get: F[A] = state.get.map(_._1)
-      def modify(f: A => A): F[Change[A]] = {
+      def modify(f: A => A): F[Async.Change[A]] = {
         state.modify { case (a,l,_) =>
           (f(a),l+1,Vector.empty)
         }.flatMap { c =>

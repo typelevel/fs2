@@ -1,8 +1,7 @@
 package fs2.async.immutable
 
-import fs2.{pipe, Async, Stream}
-import fs2.util.Functor
-import fs2.Async
+import fs2.{pipe,Stream}
+import fs2.util.{Async,Functor}
 import fs2.async.immutable
 
 /** A holder of a single value of type `A` that can be read in the effect `F`. */

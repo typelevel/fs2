@@ -2,7 +2,6 @@ package fs2
 package io
 package tcp
 
-
 import java.net.{StandardSocketOptions, InetSocketAddress, SocketAddress}
 import java.nio.ByteBuffer
 import java.nio.channels.spi.AsynchronousChannelProvider
@@ -10,6 +9,7 @@ import java.nio.channels.{AsynchronousCloseException, AsynchronousServerSocketCh
 import java.util.concurrent.TimeUnit
 
 import fs2.Stream._
+import fs2.util.Async
 import fs2.util.syntax._
 
 import scala.concurrent.duration._
@@ -109,7 +109,6 @@ protected[tcp] object Socket {
     implicit
     AG: AsynchronousChannelGroup
     , F:Async[F]
-    , FR:Async.Run[F]
   ): Stream[F,Socket[F]] = Stream.suspend {
 
     def setup: Stream[F,AsynchronousSocketChannel] = Stream.suspend {
@@ -125,8 +124,8 @@ protected[tcp] object Socket {
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] = F.async { cb =>
       F.delay {
         ch.connect(to, null, new CompletionHandler[Void, Void] {
-          def completed(result: Void, attachment: Void): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Right(ch))))(_ => ())
-          def failed(rsn: Throwable, attachment: Void): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(rsn))))(_ => ())
+          def completed(result: Void, attachment: Void): Unit = F.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => ())
+          def failed(rsn: Throwable, attachment: Void): Unit = F.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => ())
         })
       }
     }
@@ -147,7 +146,6 @@ protected[tcp] object Socket {
     , receiveBufferSize: Int )(
     implicit AG: AsynchronousChannelGroup
     , F:Async[F]
-    , FR:Async.Run[F]
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] = Stream.suspend {
 
       def setup: F[AsynchronousServerSocketChannel] = F.delay {
@@ -167,8 +165,8 @@ protected[tcp] object Socket {
           def acceptChannel: F[AsynchronousSocketChannel] =
             F.async[AsynchronousSocketChannel] { cb => F.pure {
               sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Right(ch))))(_ => ())
-                def failed(rsn: Throwable, attachment: Void): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(rsn))))(_ => ())
+                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = F.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => ())
+                def failed(rsn: Throwable, attachment: Void): Unit = F.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => ())
               })
             }}
 
@@ -193,7 +191,7 @@ protected[tcp] object Socket {
   }
 
 
-  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F], FR:Async.Run[F]):Socket[F] = {
+  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F]):Socket[F] = {
 
     // Reads data to remaining capacity of supplied bytebuffer
     // Also measures time the read took returning this as tuple
@@ -203,9 +201,9 @@ protected[tcp] object Socket {
       ch.read(buff, timeoutMs, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
         def completed(result: Integer, attachment: Unit): Unit =  {
           val took = System.currentTimeMillis() - started
-          FR.unsafeRunAsyncEffects(F.delay(cb(Right((result, took)))))(_ => ())
+          F.unsafeRunAsync(F.delay(cb(Right((result, took)))))(_ => ())
         }
-        def failed(err: Throwable, attachment: Unit): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(err))))(_ => ())
+        def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.delay(cb(Left(err))))(_ => ())
       })
     }}
 
@@ -234,12 +232,12 @@ protected[tcp] object Socket {
           val start = System.currentTimeMillis()
           ch.write(buff, remains, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
             def completed(result: Integer, attachment: Unit): Unit = {
-              FR.unsafeRunAsyncEffects(F.delay(cb(Right(
+              F.unsafeRunAsync(F.delay(cb(Right(
                 if (buff.remaining() <= 0) None
                 else Some(System.currentTimeMillis() - start)
               ))))(_ => ())
             }
-            def failed(err: Throwable, attachment: Unit): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(err))))(_ => ())
+            def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.delay(cb(Left(err))))(_ => ())
           })
         }}.flatMap {
           case None => F.pure(())

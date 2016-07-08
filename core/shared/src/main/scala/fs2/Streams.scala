@@ -1,7 +1,6 @@
 package fs2
 
-import fs2.util.Free
-import fs2.util.~>
+import fs2.util.{~>,Async,Free}
 
 /**
 Laws (using infix syntax):
@@ -71,8 +70,8 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   def Pull: Pulls[Pull]
 
-  type AsyncStep[F[_],A] = Async.Future[F, Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]]]
-  type AsyncStep1[F[_],A] = Async.Future[F, Pull[F, Nothing, Step[Option[A], Handle[F,A]]]]
+  type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]]]
+  type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, Step[Option[A], Handle[F,A]]]]
 
   def push[F[_],A](h: Handle[F,A])(c: Chunk[A]): Handle[F,A]
   def cons[F[_],A](h: Stream[F,A])(c: Chunk[A]): Stream[F,A]
@@ -89,4 +88,3 @@ trait Streams[Stream[+_[_],+_]] { self =>
   def runFoldFree[F[_],A,B](s: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
   def runFoldTraceFree[F[_],A,B](t: Trace)(s: Stream[F,A], z: B)(f: (B,A) => B): Free[F,B]
 }
-

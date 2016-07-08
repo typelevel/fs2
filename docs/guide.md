@@ -108,7 +108,7 @@ val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 
 [`Task`](../core/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
-The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Effect`][Effect] or [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
 ```Scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
@@ -116,7 +116,8 @@ def eval[F[_],A](f: F[A]): Stream[F,A]
 
 [Task]: ../core/src/main/scala/fs2/Task.scala
 [Catchable]: ../core/src/main/scala/fs2/util/Catchable.scala
-[Async]: ../core/src/main/scala/fs2/Async.scala
+[Effect]: ../core/src/main/scala/fs2/util/Effect.scala
+[Async]: ../core/src/main/scala/fs2/util/Async.scala
 
 `eval` produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained). Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
@@ -289,7 +290,7 @@ scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsa
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 830 elided
+  ... 818 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -559,14 +560,14 @@ s.runLog.unsafeRun()
 // res48: Vector[String] = Vector(...moving on)
 ```
 
-The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/src/main/scala/fs2/Async.scala) can be used for this generally, without committing to a particular effect:
+The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/src/main/scala/fs2/util/Async.scala) can be used for this generally, without committing to a particular effect:
 
 ```scala
-import fs2.Async
-// import fs2.Async
+import fs2.util.Async
+// import fs2.util.Async
 
 val T = implicitly[Async[Task]]
-// T: fs2.Async[fs2.Task] = Async[Task]
+// T: fs2.util.Async[fs2.Task] = Async[Task]
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[fs2.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
@@ -642,9 +643,6 @@ _Note:_ Some of these APIs don't provide any means of throttling the producer, i
 Let's look at a complete example:
 
 ```scala
-import fs2.Async.Run
-// import fs2.Async.Run
-
 import fs2.async
 // import fs2.async
 
@@ -656,13 +654,13 @@ trait CSVHandle {
 }
 // defined trait CSVHandle
 
-def rows[F[_]](h: CSVHandle)(implicit F: Async[F], R: Run[F]): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: Async[F]): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => R.unsafeRunAsyncEffects(q.enqueue1(e))(_ => ()) }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => F.unsafeRunAsync(q.enqueue1(e))(_ => ()) }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
-// rows: [F[_]](h: CSVHandle)(implicit F: fs2.Async[F], implicit R: fs2.Async.Run[F])fs2.Stream[F,Row]
+// rows: [F[_]](h: CSVHandle)(implicit F: fs2.util.Async[F])fs2.Stream[F,Row]
 ```
 
 See [`Queue`](../core/src/main/scala/fs2/async/mutable/Queue) for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
@@ -688,7 +686,7 @@ Also feel free to come discuss and ask/answer questions in [the gitter channel](
 
 ```scala
 scala> Stream.emit(1) ++ Stream.emit("hello")
-<console>:21: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
+<console>:20: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
        Stream.emit(1) ++ Stream.emit("hello")
                       ^
 ```

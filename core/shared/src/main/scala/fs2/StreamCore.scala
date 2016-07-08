@@ -1,7 +1,7 @@
 package fs2
 
 import fs2.internal.Resources
-import fs2.util.{Catenable,Eq,Free,Sub1,~>,RealSupertype}
+import fs2.util.{Async,Catenable,Eq,Free,Sub1,~>,RealSupertype}
 import StreamCore.{Env,NT,Stack,Token}
 
 private[fs2]
@@ -93,7 +93,7 @@ sealed trait StreamCore[F[_],O] { self =>
       case Some(Right(s)) => StreamCore.emit(Some(s))
     }
 
-  def fetchAsync(implicit F: Async[F]): Scope[F, Async.Future[F,StreamCore[F,O]]] =
+  def fetchAsync(implicit F: Async[F]): Scope[F, ScopedFuture[F,StreamCore[F,O]]] =
     unconsAsync map { f => f map { case (leftovers,o) =>
       val inner: StreamCore[F,O] = o match {
         case None => StreamCore.empty
@@ -104,7 +104,7 @@ sealed trait StreamCore[F[_],O] { self =>
     }}
 
   def unconsAsync(implicit F: Async[F])
-  : Scope[F,Async.Future[F, (List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]]
+  : Scope[F,ScopedFuture[F, (List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]]
   = Scope.eval(F.ref[(List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Either[Throwable,Unit]]]("unconsAsync")
@@ -112,7 +112,7 @@ sealed trait StreamCore[F[_],O] { self =>
     lazy val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
         Free.eval(F.sequence(Vector.fill(waiting)(F.ref[Unit]))) flatMap { gates =>
-          resources.closeAll(gates.toStream.map(gate => () => gate.runSet(Right(())))) match {
+          resources.closeAll(gates.toStream.map(gate => () => F.unsafeRunAsync(gate.setPure(()))(_ => ()))) match {
             case Left(_) => Free.eval(F.traverse(gates)(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")
@@ -136,7 +136,7 @@ sealed trait StreamCore[F[_],O] { self =>
     val s: F[Unit] = ref.set { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
-        ref.read.appendOnForce { Scope.suspend {
+        ScopedFuture.readRef(ref).appendOnForce { Scope.suspend {
           // Important: copy any locally acquired resources to our parent and remove the placeholder
           // root token, which only needed if the parent terminated early, before the future was forced
           val removeRoot = Scope.release(List(token)) flatMap { _.fold(Scope.fail, Scope.pure) }

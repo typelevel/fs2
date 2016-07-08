@@ -1,12 +1,12 @@
 package fs2.util
 
+/** Monad which tracks exceptions thrown during evaluation. */
 trait Catchable[F[_]] extends Monad[F] {
   def fail[A](err: Throwable): F[A]
   def attempt[A](fa: F[A]): F[Either[Throwable,A]]
 }
 
 object Catchable {
-
   implicit val eitherThrowableInstance: Catchable[({type λ[a] = Either[Throwable,a]})#λ] = new Catchable[({type λ[a] = Either[Throwable,a]})#λ] {
     def pure[A](a: A): Either[Throwable,A] = Right(a)
     def flatMap[A, B](a: Either[Throwable,A])(f: A => Either[Throwable,B]): Either[Throwable,B] = a.right.flatMap(f)

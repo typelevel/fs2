@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{RealSupertype,Sub1}
+import fs2.util.{Async,RealSupertype,Sub1}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`

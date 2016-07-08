@@ -5,7 +5,7 @@ package file
 import java.nio.ByteBuffer
 import java.nio.channels.{AsynchronousFileChannel, FileChannel, FileLock}
 
-import fs2.util.Effect
+import fs2.util.{Async,Effect}
 import fs2.util.syntax._
 
 trait FileHandle[F[_]] {
@@ -93,7 +93,7 @@ object FileHandle {
     *
     * Uses a `java.nio.Channels.CompletionHandler` to handle callbacks from IO operations.
     */
-  private[fs2] def fromAsynchronousFileChannel[F[_]](chan: AsynchronousFileChannel)(implicit F: Async[F], FR: Async.Run[F]): FileHandle[F] = {
+  private[fs2] def fromAsynchronousFileChannel[F[_]](chan: AsynchronousFileChannel)(implicit F: Async[F]): FileHandle[F] = {
     new FileHandle[F] {
       type Lock = FileLock
 
@@ -160,7 +160,7 @@ object FileHandle {
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] = {
         val buf = ByteBuffer.allocate(numBytes)
-        F.delay(chan.read(buf, offset)).map { len => 
+        F.delay(chan.read(buf, offset)).map { len =>
           if (len < 0) None else if (len == 0) Some(Chunk.empty) else Some(Chunk.bytes(buf.array.take(len)))
         }
       }

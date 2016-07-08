@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.Sub1
+import fs2.util.{Async,Sub1}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`

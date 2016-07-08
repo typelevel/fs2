@@ -2,6 +2,7 @@ package fs2
 package async
 package mutable
 
+import fs2.util.Async
 import fs2.util.syntax._
 
 /**

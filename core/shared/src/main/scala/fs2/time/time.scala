@@ -2,6 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 
+import fs2.util.Async
 import fs2.util.syntax._
 
 package object time {
@@ -30,7 +31,7 @@ package object time {
    * @param S           Strategy to run the stream
    * @param scheduler   Scheduler used to schedule tasks
    */
-  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], FR: Async.Run[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
+  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], S: Strategy, scheduler: Scheduler): Stream[F,FiniteDuration] = {
     def metronomeAndSignal: F[(F[Unit],async.mutable.Signal[F,FiniteDuration])] = {
       for {
         signal <- async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))
@@ -40,7 +41,7 @@ package object time {
           val cancel = scheduler.scheduleAtFixedRate(d) {
             val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
             if (running.compareAndSet(false, true)) {
-              FR.unsafeRunAsyncEffects { F.map(signal.set(d)) { _ => running.set(false) } }(_ => running.set(false))
+              F.unsafeRunAsync(signal.set(d) >> F.delay(running.set(false)))(_ => running.set(false))
             }
           }
           (F.delay(cancel()), signal)
@@ -80,6 +81,6 @@ package object time {
    * A single-element `Stream` that waits for the duration `d` before emitting its value. This uses the implicit
    * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues with `S` strategy.
    */
-  def sleep[F[_]: Async : Async.Run](d: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Stream[F, Nothing] =
+  def sleep[F[_]: Async](d: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Stream[F, Nothing] =
     awakeEvery(d).take(1).drain
 }

@@ -2,7 +2,7 @@ package fs2
 package async
 package mutable
 
-import fs2.util.Functor
+import fs2.util.{Async,Functor}
 import fs2.util.syntax._
 
 /**

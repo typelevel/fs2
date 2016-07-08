@@ -1,22 +1,22 @@
-package fs2.io
+package fs2
+package io
 
 import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption}
 
-import fs2._
 import fs2.Stream.Handle
-import fs2.util.Effect
+import fs2.util.{Async,Effect}
 
 package object file {
 
   /**
     * Provides a handler for NIO methods which require a `java.nio.channels.CompletionHandler` instance.
     */
-  private[fs2] def asyncCompletionHandler[F[_], O](f: CompletionHandler[O, Null] => F[Unit])(implicit F: Async[F], FR: Async.Run[F]): F[O] = {
+  private[fs2] def asyncCompletionHandler[F[_], O](f: CompletionHandler[O, Null] => F[Unit])(implicit F: Async[F]): F[O] = {
     F.async[O] { cb =>
       f(new CompletionHandler[O, Null] {
-        override def completed(result: O, attachment: Null): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Right(result))))(_ => ())
-        override def failed(exc: Throwable, attachment: Null): Unit = FR.unsafeRunAsyncEffects(F.delay(cb(Left(exc))))(_ => ())
+        override def completed(result: O, attachment: Null): Unit = F.unsafeRunAsync(F.delay(cb(Right(result))))(_ => ())
+        override def failed(exc: Throwable, attachment: Null): Unit = F.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => ())
       })
     }
   }
@@ -34,7 +34,7 @@ package object file {
   /**
     * Reads all data asynchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAllAsync[F[_]](path: Path, chunkSize: Int)(implicit F: Async[F], FR: Async.Run[F]): Stream[F, Byte] =
+  def readAllAsync[F[_]](path: Path, chunkSize: Int)(implicit F: Async[F]): Stream[F, Byte] =
     pulls.fromPathAsync(path, List(StandardOpenOption.READ)).flatMap(pulls.readAllFromFileHandle(chunkSize)).close
 
   //
@@ -58,7 +58,7 @@ package object file {
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
-  def writeAllAsync[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE))(implicit F: Async[F], FR: Async.Run[F]): Sink[F, Byte] =
+  def writeAllAsync[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE))(implicit F: Async[F]): Sink[F, Byte] =
     s => (for {
       in <- s.open
       out <- pulls.fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList)
