@@ -3,6 +3,7 @@ package async
 package mutable
 
 import fs2.Stream._
+import fs2.util.Async
 import fs2.util.syntax._
 
 /**

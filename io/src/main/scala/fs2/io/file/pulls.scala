@@ -6,7 +6,7 @@ import java.nio.channels._
 import java.nio.file._
 
 import fs2.Stream.Handle
-import fs2.util.Effect
+import fs2.util.{Async,Effect}
 import fs2.util.syntax._
 
 object pulls {
@@ -59,7 +59,7 @@ object pulls {
     *
     * The `Pull` closes the acquired `java.nio.channels.AsynchronousFileChannel` when it is done.
     */
-  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Async[F], FR: Async.Run[F]): Pull[F, Nothing, FileHandle[F]] =
+  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Async[F]): Pull[F, Nothing, FileHandle[F]] =
     fromAsynchronousFileChannel(F.delay(AsynchronousFileChannel.open(path, flags: _*)))
 
   /**
@@ -75,6 +75,6 @@ object pulls {
     *
     * The `Pull` closes the provided `java.nio.channels.AsynchronousFileChannel` when it is done.
     */
-  def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(implicit F: Async[F], FR: Async.Run[F]): Pull[F, Nothing, FileHandle[F]] =
+  def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(implicit F: Async[F]): Pull[F, Nothing, FileHandle[F]] =
     Pull.acquire(channel.map(FileHandle.fromAsynchronousFileChannel[F]))(_.close())
 }

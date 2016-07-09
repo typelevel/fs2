@@ -23,4 +23,17 @@ object syntax {
   implicit class CatchableOps[F[_],A](val self: F[A]) extends AnyVal {
     def attempt(implicit F: Catchable[F]): F[Either[Throwable,A]] = F.attempt(self)
   }
+
+  implicit class EffectOps[F[_],A](val self: F[A]) extends AnyVal {
+    def unsafeRunAsync(cb: Either[Throwable, A] => Unit)(implicit F: Effect[F]): Unit = F.unsafeRunAsync(self)(cb)
+  }
+
+  implicit class AsyncOps[F[_],A](val self: F[A]) extends AnyVal {
+    def start(implicit F: Async[F]): F[F[A]] = F.start(self)
+  }
+
+  implicit class ParallelTraverseOps[F[_],A](val self: Seq[A]) extends AnyVal {
+    def parallelTraverse[B](f: A => F[B])(implicit F: Async[F]): F[Vector[B]] = F.parallelTraverse(self)(f)
+    def parallelSequence[B](implicit F: Async[F], ev: A =:= F[B]): F[Vector[B]] = F.parallelSequence(self.asInstanceOf[Seq[F[B]]])
+  }
 }

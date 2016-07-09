@@ -1,9 +1,8 @@
 package fs2
 
-import Async.Future
 import Stream.Handle
 import fs2.{Pull => P}
-import fs2.util.{Free,Functor,Sub1}
+import fs2.util.{Async,Free,Functor,Sub1}
 
 object pipe2 {
 
@@ -216,15 +215,15 @@ object pipe2 {
    * elements of `s` first.
    */
   def merge[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) => {
-    def go(l: Future[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]],
-           r: Future[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]): Pull[F,O,Nothing] =
-      (l race r).force flatMap {
+    def go(l: ScopedFuture[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]],
+           r: ScopedFuture[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]): Pull[F,O,Nothing] =
+      (l race r).pull flatMap {
         case Left(l) => l.optional flatMap {
-          case None => r.force.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
+          case None => r.pull.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
           case Some(hd #: l) => P.output(hd) >> l.awaitAsync.flatMap(go(_, r))
         }
         case Right(r) => r.optional flatMap {
-          case None => l.force.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
+          case None => l.pull.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
           case Some(hd #: r) => P.output(hd) >> r.awaitAsync.flatMap(go(l, _))
         }
       }

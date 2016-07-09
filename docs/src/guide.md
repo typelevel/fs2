@@ -80,7 +80,7 @@ val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 
 [`Task`](../core/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
-The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Effect`][Effect] or [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
 ```Scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
@@ -88,7 +88,8 @@ def eval[F[_],A](f: F[A]): Stream[F,A]
 
 [Task]: ../core/src/main/scala/fs2/Task.scala
 [Catchable]: ../core/src/main/scala/fs2/util/Catchable.scala
-[Async]: ../core/src/main/scala/fs2/Async.scala
+[Effect]: ../core/src/main/scala/fs2/util/Effect.scala
+[Async]: ../core/src/main/scala/fs2/util/Async.scala
 
 `eval` produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained). Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
@@ -431,10 +432,10 @@ val s = Stream.eval_(Task.delay { destroyUniverse() }) ++ Stream("...moving on")
 s.runLog.unsafeRun()
 ```
 
-The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/src/main/scala/fs2/Async.scala) can be used for this generally, without committing to a particular effect:
+The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/src/main/scala/fs2/util/Async.scala) can be used for this generally, without committing to a particular effect:
 
 ```tut:book
-import fs2.Async
+import fs2.util.Async
 
 val T = implicitly[Async[Task]]
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
@@ -503,7 +504,6 @@ _Note:_ Some of these APIs don't provide any means of throttling the producer, i
 Let's look at a complete example:
 
 ```tut:book
-import fs2.Async.Run
 import fs2.async
 
 type Row = List[String]
@@ -512,10 +512,10 @@ trait CSVHandle {
   def withRows(cb: Either[Throwable,Row] => Unit): Unit
 }
 
-def rows[F[_]](h: CSVHandle)(implicit F: Async[F], R: Run[F]): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: Async[F]): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => R.unsafeRunAsyncEffects(q.enqueue1(e))(_ => ()) }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => F.unsafeRunAsync(q.enqueue1(e))(_ => ()) }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
 ```
