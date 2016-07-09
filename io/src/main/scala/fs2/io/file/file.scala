@@ -15,8 +15,8 @@ package object file {
   private[fs2] def asyncCompletionHandler[F[_], O](f: CompletionHandler[O, Null] => F[Unit])(implicit F: Async[F]): F[O] = {
     F.async[O] { cb =>
       f(new CompletionHandler[O, Null] {
-        override def completed(result: O, attachment: Null): Unit = F.unsafeRunAsync(F.delay(cb(Right(result))))(_ => ())
-        override def failed(exc: Throwable, attachment: Null): Unit = F.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => ())
+        override def completed(result: O, attachment: Null): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Right(result)))))(_ => ())
+        override def failed(exc: Throwable, attachment: Null): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(exc)))))(_ => ())
       })
     }
   }

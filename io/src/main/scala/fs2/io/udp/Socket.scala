@@ -98,7 +98,7 @@ object Socket {
       private val ctx = AG.register(channel)
 
       private def invoke(f: => Unit): Unit =
-        F.unsafeRunAsync(F.delay(f))(_ => ())
+        F.unsafeRunAsync(F.start(F.delay(f)))(_ => ())
 
       def localAddress: F[InetSocketAddress] =
         F.delay(Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]).getOrElse(throw new ClosedChannelException))
