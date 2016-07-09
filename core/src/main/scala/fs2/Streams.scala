@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{~>,Async,Free}
+import fs2.util.{~>,Async,Attempt,Free}
 
 /**
 Laws (using infix syntax):
@@ -47,7 +47,7 @@ trait Streams[Stream[+_[_],+_]] { self =>
 
   // evaluating effects
 
-  def attemptEval[F[_],A](fa: F[A]): Stream[F,Either[Throwable,A]]
+  def attemptEval[F[_],A](fa: F[A]): Stream[F,Attempt[A]]
 
   // translating effects
 

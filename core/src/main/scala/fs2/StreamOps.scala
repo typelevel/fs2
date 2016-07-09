@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Async,Free,Lub1,Monad,RealSupertype,Sub1,~>}
+import fs2.util.{Async,Attempt,Free,Lub1,Monad,RealSupertype,Sub1,~>}
 
 /**
  * Mixin trait for various non-primitive operations exposed on `Stream`
@@ -16,7 +16,7 @@ private[fs2] trait StreamOps[+F[_],+A] extends StreamPipeOps[F,A] with StreamPip
   def ++[G[_],Lub[_],B>:A](s2: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] =
     Stream.append(Sub1.substStream(self)(L.subF), Sub1.substStream(s2)(L.subG))
 
-  def attempt: Stream[F,Either[Throwable,A]] =
+  def attempt: Stream[F,Attempt[A]] =
     self.map(Right(_)).onError(e => Stream.emit(Left(e)))
 
   def append[G[_],Lub[_],B>:A](s2: => Stream[G,B])(implicit R: RealSupertype[A,B], L: Lub1[F,G,Lub]): Stream[Lub,B] =

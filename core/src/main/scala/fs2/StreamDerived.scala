@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Async,Catchable,RealSupertype,Sub1}
+import fs2.util.{Async,Attempt,Catchable,RealSupertype,Sub1}
 
 /** Various derived operations that are mixed into the `Stream` companion object. */
 private[fs2]
@@ -233,8 +233,8 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
 
   implicit class StreamPureOps[+A](s: Stream[Pure,A]) {
     def toList: List[A] =
-      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).unsafeRun().reverse
-    def toVector: Vector[A] = s.covary[Task].runLog.unsafeRun()
+      s.covary[Attempt].runFold(List.empty[A])((b, a) => a :: b).fold(t => throw t, identity).reverse
+    def toVector: Vector[A] = s.covary[Attempt].runLog.fold(t => throw t, identity)
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]
@@ -243,7 +243,7 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
     new Catchable[({ type λ[a] = Stream[F, a] })#λ] {
       def pure[A](a: A): Stream[F,A] = Stream.emit(a)
       def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
-      def attempt[A](s: Stream[F,A]): Stream[F,Either[Throwable,A]] = s.attempt
+      def attempt[A](s: Stream[F,A]): Stream[F,Attempt[A]] = s.attempt
       def fail[A](e: Throwable): Stream[F,A] = Stream.fail(e)
     }
 }

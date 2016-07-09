@@ -8,7 +8,7 @@ import Catenable._
  * steps takes O(N). Like a difference list, conversion to a `Stream[A]`
  * takes linear time, regardless of how the sequence is built up.
  */
-abstract class Catenable[+A] {
+sealed abstract class Catenable[+A] {
   def uncons: Option[(A, Catenable[A])] = {
     @annotation.tailrec
     def go(c: Catenable[A], rights: List[Catenable[A]]): Option[(A,Catenable[A])] = c match {

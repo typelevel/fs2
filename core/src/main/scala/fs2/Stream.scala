@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Async,Free,RealSupertype,Sub1,~>}
+import fs2.util.{Async,Attempt,Free,RealSupertype,Sub1,~>}
 
 /**
  * A stream producing output of type `O`, which may evaluate `F`
@@ -109,7 +109,7 @@ object Stream extends Streams[Stream] with StreamDerived {
   def chunk[F[_], A](as: Chunk[A]): Stream[F,A] =
     Stream.mk { StreamCore.chunk[F,A](as) }
 
-  def attemptEval[F[_], A](fa: F[A]): Stream[F,Either[Throwable, A]] =
+  def attemptEval[F[_], A](fa: F[A]): Stream[F,Attempt[A]] =
     Stream.mk { StreamCore.attemptEval(fa) }
 
   def evalScope[F[_], A](fa: Scope[F,A]): Stream[F,A] =
