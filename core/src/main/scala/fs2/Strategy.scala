@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executor, Executors, ThreadFactory}
 import scala.concurrent.ExecutionContext
 
+import fs2.util.NonFatal
+
 /** Provides a function for evaluating thunks, possibly asynchronously. */
 trait Strategy {
   def apply(thunk: => Unit): Unit
@@ -15,7 +17,7 @@ trait Strategy {
 object Strategy {
 
   /** A `ThreadFactory` which creates daemon threads, using the given name. */
-  def daemonThreadFactory(threadName: String): ThreadFactory = new ThreadFactory {
+  def daemonThreadFactory(threadName: String, exitJvmOnFatalError: Boolean = true): ThreadFactory = new ThreadFactory {
     val defaultThreadFactory = Executors.defaultThreadFactory()
     val idx = new AtomicInteger(0)
     def newThread(r: Runnable) = {
@@ -26,6 +28,12 @@ object Strategy {
         def uncaughtException(t: Thread, e: Throwable): Unit = {
           System.err.println(s"------------ UNHANDLED EXCEPTION ---------- (${t.getName})")
           e.printStackTrace(System.err)
+          if (exitJvmOnFatalError) {
+            e match {
+              case NonFatal(_) => ()
+              case fatal => System.exit(-1)
+            }
+          }
         }
       })
       t

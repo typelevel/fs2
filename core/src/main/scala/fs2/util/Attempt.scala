@@ -9,4 +9,7 @@ object Attempt {
    */
   def apply[A](a: => A): Attempt[A] =
     try Right(a) catch { case NonFatal(t) => Left(t) }
+
+  def success[A](a: A): Attempt[A] = Right(a)
+  def failure[A](t: Throwable): Attempt[A] = Left(t)
 }
