@@ -12,14 +12,14 @@ sealed trait Lub1[-F[_],-G[_],+Lub[_]] {
   implicit def subG: Sub1[G,Lub]
 }
 
-trait Lub1Instances0 {
+private[fs2] trait Lub1Instances0 {
   implicit def lub1[F[_],G[_],Lub[_]](implicit S1: Sub1[F,Lub], S2: Sub1[G,Lub]): Lub1[F,G,Lub] = new Lub1[F,G,Lub] {
     def subF = S1
     def subG = S2
   }
 }
 
-trait Lub1Instances1 extends Lub1Instances0 {
+private[fs2] trait Lub1Instances1 extends Lub1Instances0 {
   implicit def lubOfFAndPureIsF[F[_]]: Lub1[F,Pure,F] = new Lub1[F,Pure,F] {
     def subF = implicitly
     def subG = implicitly
@@ -36,4 +36,3 @@ object Lub1 extends Lub1Instances1 {
     def subG = implicitly
   }
 }
-

@@ -124,8 +124,8 @@ protected[tcp] object Socket {
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] = F.async { cb =>
       F.delay {
         ch.connect(to, null, new CompletionHandler[Void, Void] {
-          def completed(result: Void, attachment: Void): Unit = F.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => ())
-          def failed(rsn: Throwable, attachment: Void): Unit = F.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => ())
+          def completed(result: Void, attachment: Void): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Right(ch)))))(_ => ())
+          def failed(rsn: Throwable, attachment: Void): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(rsn)))))(_ => ())
         })
       }
     }
@@ -165,8 +165,8 @@ protected[tcp] object Socket {
           def acceptChannel: F[AsynchronousSocketChannel] =
             F.async[AsynchronousSocketChannel] { cb => F.pure {
               sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = F.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => ())
-                def failed(rsn: Throwable, attachment: Void): Unit = F.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => ())
+                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Right(ch)))))(_ => ())
+                def failed(rsn: Throwable, attachment: Void): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(rsn)))))(_ => ())
               })
             }}
 
@@ -201,9 +201,9 @@ protected[tcp] object Socket {
       ch.read(buff, timeoutMs, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
         def completed(result: Integer, attachment: Unit): Unit =  {
           val took = System.currentTimeMillis() - started
-          F.unsafeRunAsync(F.delay(cb(Right((result, took)))))(_ => ())
+          F.unsafeRunAsync(F.start(F.delay(cb(Right((result, took))))))(_ => ())
         }
-        def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.delay(cb(Left(err))))(_ => ())
+        def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(err)))))(_ => ())
       })
     }}
 
@@ -232,12 +232,12 @@ protected[tcp] object Socket {
           val start = System.currentTimeMillis()
           ch.write(buff, remains, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
             def completed(result: Integer, attachment: Unit): Unit = {
-              F.unsafeRunAsync(F.delay(cb(Right(
+              F.unsafeRunAsync(F.start(F.delay(cb(Right(
                 if (buff.remaining() <= 0) None
                 else Some(System.currentTimeMillis() - start)
-              ))))(_ => ())
+              )))))(_ => ())
             }
-            def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.delay(cb(Left(err))))(_ => ())
+            def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(err)))))(_ => ())
           })
         }}.flatMap {
           case None => F.pure(())

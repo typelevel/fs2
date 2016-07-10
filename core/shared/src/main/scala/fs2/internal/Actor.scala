@@ -1,6 +1,7 @@
 package fs2.internal
 
 import fs2.Strategy
+import fs2.util.NonFatal
 import java.util.concurrent.atomic.AtomicReference
 
 /*
@@ -55,7 +56,7 @@ private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable =>
   @annotation.tailrec
   private def act(n: Node[A], i: Int = 1024): Unit = {
     try handler(n.a) catch {
-      case ex: Throwable => onError(ex)
+      case NonFatal(ex) => onError(ex)
     }
     val n2 = n.get
     if (n2 eq null) scheduleLastTry(n)
@@ -86,4 +87,3 @@ private[fs2] object Actor {
   def actor[A](handler: A => Unit, onError: Throwable => Unit = ActorUtils.rethrowError)
               (implicit s: Strategy): Actor[A] = new Actor[A](handler, onError)(s)
 }
-

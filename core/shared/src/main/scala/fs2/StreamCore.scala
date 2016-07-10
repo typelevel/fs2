@@ -1,7 +1,7 @@
 package fs2
 
 import fs2.internal.Resources
-import fs2.util.{Async,Catenable,Eq,Free,Sub1,~>,RealSupertype}
+import fs2.util.{Async,Attempt,Catenable,Eq,Free,NonFatal,Sub1,~>,RealSupertype}
 import StreamCore.{Env,NT,Stack,Token}
 
 private[fs2]
@@ -15,8 +15,8 @@ sealed trait StreamCore[F[_],O] { self =>
 
   final override def toString = render
 
-  def attempt: StreamCore[F,Either[Throwable,O]] =
-    self.map(a => Right(a): Either[Throwable,O]).onError(e => StreamCore.emit(Left(e)))
+  def attempt: StreamCore[F,Attempt[O]] =
+    self.map(a => Right(a): Attempt[O]).onError(e => StreamCore.emit(Left(e)))
 
   def translate[G[_]](f: NT[F,G]): StreamCore[G,O] =
     f.same.fold(sub => Sub1.substStreamCore(self)(sub), f => {
@@ -61,10 +61,10 @@ sealed trait StreamCore[F[_],O] { self =>
   def onComplete(s2: StreamCore[F,O]): StreamCore[F,O] =
     StreamCore.append(self onError (e => StreamCore.append(s2, StreamCore.fail(e))), s2)
 
-  def step: Scope[F, Option[Either[Throwable,Step[Chunk[O],StreamCore[F,O]]]]]
+  def step: Scope[F, Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]
     = push(NT.Id(), Stack.empty[F,O]) flatMap (StreamCore.step)
 
-  def stepTrace(t: Trace): Scope[F, Option[Either[Throwable,Step[Chunk[O],StreamCore[F,O]]]]]
+  def stepTrace(t: Trace): Scope[F, Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]
     = push(NT.Id(), Stack.empty[F,O]) flatMap (StreamCore.stepTrace(t))
 
   def runFold[O2](z: O2)(f: (O2,O) => O2): Free[F,O2] =
@@ -72,7 +72,7 @@ sealed trait StreamCore[F[_],O] { self =>
 
   def runFoldTrace[O2](t: Trace)(z: O2)(f: (O2,O) => O2): Free[F,O2] =
     runFoldScopeTrace(t)(z)(f)
-      .bindEnv(Env(Resources.empty[Token,Free[F,Either[Throwable,Unit]]], () => false))
+      .bindEnv(Env(Resources.empty[Token,Free[F,Attempt[Unit]]], () => false))
       .map(_._2)
 
   def runFoldScope[O2](z: O2)(f: (O2,O) => O2): Scope[F,O2] =
@@ -83,7 +83,7 @@ sealed trait StreamCore[F[_],O] { self =>
     case Some(Left(err)) => Scope.fail(err)
     case Some(Right(Step(hd,tl))) =>
       try tl.runFoldScopeTrace(t)(hd.foldLeft(z)(f))(f)
-      catch { case e: Throwable => Scope.fail(e) }
+      catch { case NonFatal(e) => Scope.fail(e) }
   }
 
   def uncons: StreamCore[F, Option[Step[Chunk[O], StreamCore[F,O]]]] =
@@ -104,12 +104,12 @@ sealed trait StreamCore[F[_],O] { self =>
     }}
 
   def unconsAsync(implicit F: Async[F])
-  : Scope[F,ScopedFuture[F, (List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]]
-  = Scope.eval(F.ref[(List[Token], Option[Either[Throwable, Step[Chunk[O],StreamCore[F,O]]]])]).flatMap { ref =>
+  : Scope[F,ScopedFuture[F, (List[Token], Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]])]]
+  = Scope.eval(F.ref[(List[Token], Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]])]).flatMap { ref =>
     val token = new Token()
-    val resources = Resources.emptyNamed[Token,Free[F,Either[Throwable,Unit]]]("unconsAsync")
+    val resources = Resources.emptyNamed[Token,Free[F,Attempt[Unit]]]("unconsAsync")
     val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
-    lazy val rootCleanup: Free[F,Either[Throwable,Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
+    lazy val rootCleanup: Free[F,Attempt[Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
         Free.eval(F.sequence(Vector.fill(waiting)(F.ref[Unit]))) flatMap { gates =>
           resources.closeAll(gates.toStream.map(gate => () => F.unsafeRunAsync(gate.setPure(()))(_ => ()))) match {
@@ -145,7 +145,7 @@ sealed trait StreamCore[F[_],O] { self =>
             case Right(rs) => removeRoot flatMap { _ => Scope.traverse(rs) {
               case (token,r) => Scope.acquire(token,r)
             }}
-          }) flatMap { (rs: List[Either[Throwable,Unit]]) =>
+          }) flatMap { (rs: List[Attempt[Unit]]) =>
             rs.collect { case Left(e) => e } match {
               case Nil => Scope.pure(())
               case e :: _ => Scope.fail(e)
@@ -164,7 +164,7 @@ object StreamCore {
     override def toString = s"Token(${##})"
   }
 
-  case class Env[F[_]](tracked: Resources[Token,Free[F,Either[Throwable,Unit]]], interrupted: () => Boolean)
+  case class Env[F[_]](tracked: Resources[Token,Free[F,Attempt[Unit]]], interrupted: () => Boolean)
 
   trait R[F[_]] { type f[x] = RF[F,x] }
 
@@ -174,9 +174,9 @@ object StreamCore {
     case object Interrupted extends RF[Nothing,Boolean]
     case object Snapshot extends RF[Nothing,Set[Token]]
     case class NewSince(snapshot: Set[Token]) extends RF[Nothing,List[Token]]
-    case class Release(tokens: List[Token]) extends RF[Nothing,Either[Throwable,Unit]]
+    case class Release(tokens: List[Token]) extends RF[Nothing,Attempt[Unit]]
     case class StartAcquire(token: Token) extends RF[Nothing,Boolean]
-    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]) extends RF[F,Boolean]
+    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Attempt[Unit]]) extends RF[F,Boolean]
     case class CancelAcquire(token: Token) extends RF[Nothing,Unit]
   }
 
@@ -231,17 +231,15 @@ object StreamCore {
 
   case object Interrupted extends Exception { override def fillInStackTrace = this }
 
-  private[fs2]
-  def Try[F[_],O](s: => StreamCore[F,O]): StreamCore[F,O] =
-    try s
-    catch { case e: Throwable => fail(e) }
+  private[fs2] def attemptStream[F[_],O](s: => StreamCore[F,O]): StreamCore[F,O] =
+    try s catch { case NonFatal(e) => fail(e) }
 
   def step[F[_],O0,O](stack: Stack[F,O0,O])
-  : Scope[F,Option[Either[Throwable,Step[Chunk[O],StreamCore[F,O]]]]]
+  : Scope[F,Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]
   = stepTrace(Trace.Off)(stack)
 
   def stepTrace[F[_],O0,O](trace: Trace)(stack: Stack[F,O0,O])
-  : Scope[F,Option[Either[Throwable,Step[Chunk[O],StreamCore[F,O]]]]]
+  : Scope[F,Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]
   = Scope.interrupted.flatMap { interrupted =>
     if (interrupted) Scope.pure(Some(Left(Interrupted)))
     else {
@@ -261,7 +259,7 @@ object StreamCore {
             case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segs)) flatMap stepTrace(trace)
           }
         },
-        new stack.H[Scope[F,Option[Either[Throwable,Step[Chunk[O],StreamCore[F,O]]]]]] { def f[x] =
+        new stack.H[Scope[F,Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]] { def f[x] =
           (segs, f, stack) => { segs.uncons match {
             case None => stepTrace(trace)(stack)
             case Some((hd, segs)) => hd match {
@@ -270,7 +268,7 @@ object StreamCore {
                   val segs2 = segs.map(_.mapChunks(f))
                   val stack2 = stack.pushSegments(segs2)
                   stepTrace(trace)(try { stack2.pushEmit(f(chunk)) }
-                       catch { case e: Throwable => stack2.pushFail(e) })
+                       catch { case NonFatal(e) => stack2.pushFail(e) })
                 case Right(f) => chunk.uncons match {
                   case None => stepTrace(trace)(stack.pushBind(f).pushSegments(segs))
                   case Some((hd,tl)) => stepTrace(trace)({
@@ -279,7 +277,7 @@ object StreamCore {
                     val stack2 = stack.pushSegments(segs2)
                     try stack2.pushAppend(f(hd))
                     catch {
-                      case t: Throwable => stack2.pushFail(t)
+                      case NonFatal(t) => stack2.pushFail(t)
                     }
                   })
                 }
@@ -347,9 +345,9 @@ object StreamCore {
   def emit[F[_],O](w: O): StreamCore[F,O] = chunk(Chunk.singleton(w))
   def empty[F[_],O]: StreamCore[F,O] = chunk(Chunk.empty)
   def fail[F[_],O](err: Throwable): StreamCore[F,O] = segment(Segment.Fail[F,O](err))
-  def attemptEval[F[_],O](f: F[O]): StreamCore[F,Either[Throwable,O]] = new StreamCore[F,Either[Throwable,O]] {
-    type O0 = Either[Throwable,O]
-    def push[G[_],O2](u: NT[F,G], stack: Stack[G,Either[Throwable,O],O2]) =
+  def attemptEval[F[_],O](f: F[O]): StreamCore[F,Attempt[O]] = new StreamCore[F,Attempt[O]] {
+    type O0 = Attempt[O]
+    def push[G[_],O2](u: NT[F,G], stack: Stack[G,Attempt[O],O2]) =
       Scope.attemptEval(u(f)) map { o => stack push Segment.Emit(Chunk.singleton(o)) }
     def render = s"attemptEval($f)"
   }
@@ -387,7 +385,7 @@ object StreamCore {
     def interpretBind[O2](f: O1 => StreamCore[F, O2]): Segment[F, O2] = this match {
       case Append(s) => Append(s.flatMap(f))
       case Handler(h) => Handler(t => h(t).flatMap(f))
-      case Emit(c) => if (c.isEmpty) Emit(Chunk.empty) else Append(c.toVector.map(o => Try(f(o))).reduceRight((s, acc) => StreamCore.append(s, acc)))
+      case Emit(c) => if (c.isEmpty) Emit(Chunk.empty) else Append(c.toVector.map(o => attemptStream(f(o))).reduceRight((s, acc) => StreamCore.append(s, acc)))
       case Fail(e) => Fail(e)
     }
   }
@@ -464,26 +462,26 @@ object StreamCore {
 
     @annotation.tailrec
     def fail[F[_],O1](s: Catenable[Segment[F,O1]])(err: Throwable)
-    : Either[Throwable, (StreamCore[F,O1], Catenable[Segment[F,O1]])]
+    : Attempt[(StreamCore[F,O1], Catenable[Segment[F,O1]])]
     = s.uncons match {
       case None => Left(err)
-      case Some((Segment.Handler(f),tl)) => Right(Try(f(err)) -> tl)
+      case Some((Segment.Handler(f),tl)) => Right(attemptStream(f(err)) -> tl)
       case Some((_, tl)) => fail(tl)(err)
     }
   }
 
   private
-  def runCleanup[F[_]](l: Resources[Token,Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] =
+  def runCleanup[F[_]](l: Resources[Token,Free[F,Attempt[Unit]]]): Free[F,Attempt[Unit]] =
     l.closeAll(scala.collection.immutable.Stream()) match {
       case Right(l) => runCleanup(l.map(_._2))
       case Left(_) => sys.error("internal FS2 error: cannot run cleanup actions while resources are being acquired: "+l)
     }
 
   private[fs2]
-  def runCleanup[F[_]](cleanups: Iterable[Free[F,Either[Throwable,Unit]]]): Free[F,Either[Throwable,Unit]] = {
+  def runCleanup[F[_]](cleanups: Iterable[Free[F,Attempt[Unit]]]): Free[F,Attempt[Unit]] = {
     // note - run cleanup actions in FIFO order, but avoid left-nesting flatMaps
     // all actions are run but only first error is reported
-    cleanups.toList.reverse.foldLeft[Free[F,Either[Throwable,Unit]]](Free.pure(Right(())))(
+    cleanups.toList.reverse.foldLeft[Free[F,Attempt[Unit]]](Free.pure(Right(())))(
       (tl,hd) => hd flatMap { _.fold(e => tl flatMap { _ => Free.pure(Left(e)) }, _ => tl) }
     )
   }

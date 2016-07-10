@@ -5,6 +5,8 @@ import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.Future
 
+import fs2.util.NonFatal
+
 trait TestUtil extends TestUtilPlatform {
 
   def runLogF[A](s: Stream[Task,A]): Future[Vector[A]] = s.runLog.unsafeRunAsyncFuture
@@ -18,7 +20,7 @@ trait TestUtil extends TestUtilPlatform {
     catch {
       case e: InterruptedException => throw e
       case e: TimeoutException => throw e
-      case e: Throwable => ()
+      case NonFatal(e) => ()
     }
 
   implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(

@@ -18,6 +18,7 @@ trait Async[F[_]] extends Effect[F] { self =>
    to translate from a callback-based API to a straightforward monadic
    version.
    */
+  // Note: `register` does not use the `Attempt` alias due to scalac inference limitation
   def async[A](register: (Either[Throwable,A] => Unit) => F[Unit]): F[A] =
     flatMap(ref[A]) { ref =>
     flatMap(register { e => unsafeRunAsync(ref.set(e.fold(fail, pure)))(_ => ()) }) { _ => ref.get }}
@@ -56,7 +57,7 @@ object Async {
      * setter first. Once it has noop'd or been used once, a setter
      * never succeeds again.
      */
-    def access: F[(A, Either[Throwable,A] => F[Boolean])]
+    def access: F[(A, Attempt[A] => F[Boolean])]
 
     /** Obtain the value of the `Ref`, or wait until it has been `set`. */
     def get: F[A] = access.map(_._1)
