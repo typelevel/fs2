@@ -5,6 +5,8 @@ import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.duration._
 
+import fs2.util.NonFatal
+
 object TestStrategy {
   implicit val S = Strategy.fromFixedDaemonPool(8)
   implicit lazy val scheduler = Scheduler.fromFixedDaemonPool(2)
@@ -32,7 +34,7 @@ trait TestUtil {
     catch {
       case e: InterruptedException => throw e
       case e: TimeoutException => throw e
-      case e: Throwable => ()
+      case NonFatal(e) => ()
     }
 
   implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(

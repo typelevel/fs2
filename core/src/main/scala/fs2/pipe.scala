@@ -1,7 +1,7 @@
 package fs2
 
 import Stream.Handle
-import fs2.util.{Async,Free,Functor,Sub1}
+import fs2.util.{Async,Attempt,Free,Functor,Sub1}
 
 object pipe {
 
@@ -235,7 +235,7 @@ object pipe {
     in => chunkN(n, allowFewer)(in).flatMap { chunks => Stream.chunk(Chunk.concat(chunks)) }
 
   /** Rethrow any `Left(err)`. Preserves chunkiness. */
-  def rethrow[F[_],I]: Stream[F,Either[Throwable,I]] => Stream[F,I] =
+  def rethrow[F[_],I]: Stream[F,Attempt[I]] => Stream[F,I] =
     _.chunks.flatMap { es =>
       val errs = es collect { case Left(e) => e }
       val ok = es collect { case Right(i) => i }

@@ -17,5 +17,5 @@ trait Effect[F[_]] extends Catchable[F] {
    * Evaluates the specified `F[A]`, possibly asynchronously, and calls the specified
    * callback with the result of the evaluation.
    */
-  def unsafeRunAsync[A](fa: F[A])(cb: Either[Throwable, A] => Unit): Unit
+  def unsafeRunAsync[A](fa: F[A])(cb: Attempt[A] => Unit): Unit
 }

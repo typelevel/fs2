@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.Async
+import fs2.util.{Async,Attempt}
 import fs2.util.syntax._
 
 object concurrent {
@@ -80,7 +80,7 @@ object concurrent {
 
     for {
       killSignal <- Stream.eval(async.signalOf(false))
-      outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]])
+      outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Attempt[Chunk[O]]])
       o <- outer.map { inner =>
         inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
       }.through(throttle(killSignal.get)).onFinalize {

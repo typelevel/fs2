@@ -4,7 +4,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeoutException
 import scala.concurrent.SyncVar
 import scala.concurrent.duration._
-import fs2.{ Scheduler, Strategy }
+import fs2.{Scheduler,Strategy}
+import fs2.util.{Attempt,NonFatal}
 
 // for internal use only!
 
@@ -86,8 +87,8 @@ class Future[+A] {
     case Right(a) => a
   }
 
-  def attemptRunFor(timeout: FiniteDuration): Either[Throwable,A] = {
-    val sync = new SyncVar[Either[Throwable,A]]
+  def attemptRunFor(timeout: FiniteDuration): Attempt[A] = {
+    val sync = new SyncVar[Attempt[A]]
     val interrupt = new AtomicBoolean(false)
     runAsyncInterruptibly(a => sync.put(Right(a)), interrupt)
     sync.get(timeout.toMillis).getOrElse {
@@ -96,10 +97,10 @@ class Future[+A] {
     }
   }
 
-  def timed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Future[Either[Throwable,A]] =
+  def timed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Future[Attempt[A]] =
     //instead of run this though chooseAny, it is run through simple primitive,
     //as we are never interested in results of timeout callback, and this is more resource savvy
-    async[Either[Throwable,A]] { cb =>
+    async[Attempt[A]] { cb =>
       val cancel = new AtomicBoolean(false)
       val done = new AtomicBoolean(false)
       try {
@@ -109,7 +110,7 @@ class Future[+A] {
             cb(Left(new TimeoutException()))
           }
         }
-      } catch { case e: Throwable => cb(Left(e)) }
+      } catch { case NonFatal(e) => cb(Left(e)) }
 
       runAsyncInterruptibly(a => if(done.compareAndSet(false,true)) cb(Right(a)), cancel)
     } (Strategy.sequential)

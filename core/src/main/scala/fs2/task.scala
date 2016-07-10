@@ -1,7 +1,7 @@
 package fs2
 
 import fs2.internal.{Actor,Future,LinkedMap}
-import fs2.util.{Async,Effect}
+import fs2.util.{Async,Attempt,Effect,NonFatal}
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import scala.concurrent.duration._
@@ -17,7 +17,7 @@ import scala.concurrent.duration._
  *
  * Task is also exception-safe. Any exceptions raised during processing may
  * be accessed via the `attempt` method, which converts a `Task[A]` to a
- * `Task[Either[Throwable,A]]`.
+ * `Task[Attempt[A]]`.
  *
  * Unlike the `scala.concurrent.Future` type introduced in scala 2.10,
  * `map` and `flatMap` do NOT spawn new tasks and do not require an implicit
@@ -35,22 +35,22 @@ import scala.concurrent.duration._
  * since the order of effects and the points of allowed concurrency are made
  * fully explicit and do not depend on Scala's evaluation order.
  */
-class Task[+A](val get: Future[Either[Throwable,A]]) {
+class Task[+A](val get: Future[Attempt[A]]) {
 
   def flatMap[B](f: A => Task[B]): Task[B] =
     new Task(get flatMap {
       case Left(e) => Future.now(Left(e))
-      case Right(a) => Task.Try(f(a)) match {
+      case Right(a) => Attempt(f(a)) match {
         case Left(e) => Future.now(Left(e))
         case Right(task) => task.get
       }
     })
 
   def map[B](f: A => B): Task[B] =
-    new Task(get map { _.right.flatMap { a => Task.Try(f(a)) } })
+    new Task(get map { _.right.flatMap { a => Attempt(f(a)) } })
 
   /** 'Catches' exceptions in the given task and returns them as values. */
-  def attempt: Task[Either[Throwable,A]] =
+  def attempt: Task[Attempt[A]] =
     new Task(get map {
       case Left(e) => Right(Left(e))
       case Right(a) => Right(Right(a))
@@ -99,8 +99,8 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
   }
 
   /** Like `run`, but returns exceptions as values. */
-  def unsafeAttemptRun(): Either[Throwable,A] =
-    try get.run catch { case t: Throwable => Left(t) }
+  def unsafeAttemptRun(): Attempt[A] =
+    try get.run catch { case NonFatal(t) => Left(t) }
 
   /**
    * Run this computation to obtain either a result or an exception, then
@@ -109,7 +109,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
    * `Async` encountered, control is transferred to whatever thread backs the
    * `Async` and this function returns immediately.
    */
-  def unsafeRunAsync(f: Either[Throwable,A] => Unit): Unit =
+  def unsafeRunAsync(f: Attempt[A] => Unit): Unit =
     get.runAsync(f)
 
   /**
@@ -137,7 +137,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
    * Like `unsafeRunFor`, but returns exceptions as values. Both `TimeoutException`
    * and other exceptions will be folded into the same `Throwable`.
    */
-  def unsafeAttemptRunFor(timeout: FiniteDuration): Either[Throwable,A] =
+  def unsafeAttemptRunFor(timeout: FiniteDuration): Attempt[A] =
     get.attemptRunFor(timeout).right flatMap { a => a }
 
   /**
@@ -179,7 +179,7 @@ class Task[+A](val get: Future[Either[Throwable,A]]) {
 
 object Task extends Instances {
 
-  type Callback[A] = Either[Throwable,A] => Unit
+  type Callback[A] = Attempt[A] => Unit
 
   /** A `Task` which fails with the given `Throwable`. */
   def fail(e: Throwable): Task[Nothing] = new Task(Future.now(Left(e)))
@@ -202,14 +202,14 @@ object Task extends Instances {
    * stack overflows.
    */
   def suspend[A](a: => Task[A]): Task[A] = new Task(Future.suspend(
-    Try(a.get) match {
+    Attempt(a.get) match {
       case Left(e) => Future.now(Left(e))
       case Right(f) => f
   }))
 
   /** Create a `Future` that will evaluate `a` using the given `Strategy`. */
   def apply[A](a: => A)(implicit S: Strategy): Task[A] =
-    async { cb => S(cb(Try(a))) }
+    async { cb => S(cb(Attempt(a))) }
 
   /**
     * Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
@@ -238,7 +238,7 @@ object Task extends Instances {
     * Like [[async]], but run the callback in the same thread in the same
     * thread, rather than evaluating the callback using a `Strategy`.
    */
-  def unforkedAsync[A](register: (Either[Throwable,A] => Unit) => Unit): Task[A] =
+  def unforkedAsync[A](register: (Attempt[A] => Unit) => Unit): Task[A] =
     async(register)(Strategy.sequential)
 
   /**
@@ -247,9 +247,10 @@ object Task extends Instances {
     * to translate from a callback-based API to a straightforward monadic
     * version. The callback is run using the strategy `S`.
    */
+  // Note: `register` does not use the `Attempt` alias due to scalac inference limitation
   def async[A](register: (Either[Throwable,A] => Unit) => Unit)(implicit S: Strategy): Task[A] =
-    new Task(Future.Async(cb => register {
-      a => try { S { cb(a).run } } catch { case e: Throwable => cb(Left(e)).run }
+    new Task[A](Future.Async(cb => register {
+      a => try { S { cb(a).run } } catch { case NonFatal(e) => cb(Left(e)).run }
     }))
 
   /**
@@ -273,25 +274,17 @@ object Task extends Instances {
   def parallelTraverse[A,B](s: Seq[A])(f: A => Task[B])(implicit S: Strategy): Task[Vector[B]] =
     traverse(s)(f andThen Task.start) flatMap { tasks => traverse(tasks)(identity) }
 
-  /** Utility function - evaluate `a` and catch and return any exceptions. */
-  def Try[A](a: => A): Either[Throwable,A] =
-    try Right(a) catch { case e: Throwable => Left(e) }
-
-  def TryTask[A](a: => Task[A]): Task[A] =
-    try a catch { case e: Throwable => fail(e) }
-
   private trait MsgId
   private trait Msg[A]
   private object Msg {
     case class Read[A](cb: Callback[(A, Long)], id: MsgId) extends Msg[A]
     case class Nevermind[A](id: MsgId, cb: Callback[Boolean]) extends Msg[A]
-    case class Set[A](r: Either[Throwable,A]) extends Msg[A]
-    case class TrySet[A](id: Long, r: Either[Throwable,A],
-                         cb: Callback[Boolean]) extends Msg[A]
+    case class Set[A](r: Attempt[A]) extends Msg[A]
+    case class TrySet[A](id: Long, r: Attempt[A], cb: Callback[Boolean]) extends Msg[A]
   }
 
   def ref[A](implicit S: Strategy, F: Async[Task]): Task[Ref[A]] = Task.delay {
-    var result: Either[Throwable,A] = null
+    var result: Attempt[A] = null
     // any waiting calls to `access` before first `set`
     var waiting: LinkedMap[MsgId, Callback[(A, Long)]] = LinkedMap.empty
     // id which increases with each `set` or successful `modify`
@@ -332,10 +325,10 @@ object Task extends Instances {
 
   class Ref[A] private[fs2](actor: Actor[Msg[A]])(implicit S: Strategy, protected val F: Async[Task]) extends Async.Ref[Task,A] {
 
-    def access: Task[(A, Either[Throwable,A] => Task[Boolean])] =
+    def access: Task[(A, Attempt[A] => Task[Boolean])] =
       Task.delay(new MsgId {}).flatMap { mid =>
         getStamped(mid).map { case (a, id) =>
-          val set = (a: Either[Throwable,A]) =>
+          val set = (a: Attempt[A]) =>
             Task.unforkedAsync[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
           (a, set)
         }
@@ -373,7 +366,7 @@ object Task extends Instances {
     def setRace(t1: Task[A], t2: Task[A]): Task[Unit] = Task.delay {
       val ref = new AtomicReference(actor)
       val won = new AtomicBoolean(false)
-      val win = (res: Either[Throwable,A]) => {
+      val win = (res: Attempt[A]) => {
         // important for GC: we don't reference this ref
         // or the actor directly, and the winner destroys any
         // references behind it!
@@ -399,7 +392,7 @@ private[fs2] trait Instances1 {
     def suspend[A](fa: => Task[A]) = Task.suspend(fa)
     def fail[A](err: Throwable) = Task.fail(err)
     def attempt[A](t: Task[A]) = t.attempt
-    def unsafeRunAsync[A](t: Task[A])(cb: Either[Throwable, A] => Unit): Unit = t.unsafeRunAsync(cb)
+    def unsafeRunAsync[A](t: Task[A])(cb: Attempt[A] => Unit): Unit = t.unsafeRunAsync(cb)
     override def toString = "Effect[Task]"
   }
 

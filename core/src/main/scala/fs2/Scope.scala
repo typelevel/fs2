@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Free,RealSupertype,Sub1,~>}
+import fs2.util.{Attempt,Free,RealSupertype,Sub1,~>}
 import fs2.StreamCore.{Env,R,RF,Token}
 
 case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
@@ -22,7 +22,7 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
     })
   }}
 
-  def attempt: Scope[F,Either[Throwable,O]] = Scope { get.attempt }
+  def attempt: Scope[F,Attempt[O]] = Scope { get.attempt }
 
   def bindEnv[F2[_]](env: Env[F2])(implicit S: Sub1[F,F2]): Free[F2,(List[Token],O)] = Free.suspend {
     type FO[x] = Free[F2,(List[Token],x)]
@@ -60,7 +60,7 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
 object Scope {
   def suspend[F[_],O](s: => Scope[F,O]): Scope[F,O] = pure(()) flatMap { _ => s }
   def pure[F[_],O](o: O): Scope[F,O] = Scope(Free.pure(o))
-  def attemptEval[F[_],O](o: F[O]): Scope[F,Either[Throwable,O]] =
+  def attemptEval[F[_],O](o: F[O]): Scope[F,Attempt[O]] =
     Scope(Free.attemptEval[R[F]#f,O](StreamCore.RF.Eval(o)))
   def eval[F[_],O](o: F[O]): Scope[F,O] =
     attemptEval(o) flatMap { _.fold(fail, pure) }
@@ -74,13 +74,13 @@ object Scope {
     Scope(Free.eval[R[F]#f,Set[Token]](StreamCore.RF.Snapshot))
   def newSince[F[_]](snapshot: Set[Token]): Scope[F,List[Token]] =
     Scope(Free.eval[R[F]#f,List[Token]](StreamCore.RF.NewSince(snapshot)))
-  def release[F[_]](tokens: List[Token]): Scope[F,Either[Throwable,Unit]] =
-    Scope(Free.eval[R[F]#f,Either[Throwable,Unit]](StreamCore.RF.Release(tokens)))
+  def release[F[_]](tokens: List[Token]): Scope[F,Attempt[Unit]] =
+    Scope(Free.eval[R[F]#f,Attempt[Unit]](StreamCore.RF.Release(tokens)))
   def startAcquire[F[_]](token: Token): Scope[F,Boolean] =
     Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.StartAcquire(token)))
-  def finishAcquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]): Scope[F,Boolean] =
+  def finishAcquire[F[_]](token: Token, cleanup: Free[F,Attempt[Unit]]): Scope[F,Boolean] =
     Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.FinishAcquire(token, cleanup)))
-  def acquire[F[_]](token: Token, cleanup: Free[F,Either[Throwable,Unit]]): Scope[F,Either[Throwable,Unit]] =
+  def acquire[F[_]](token: Token, cleanup: Free[F,Attempt[Unit]]): Scope[F,Attempt[Unit]] =
     startAcquire(token) flatMap { ok =>
       if (ok) finishAcquire(token, cleanup).flatMap { ok =>
         if (ok) Scope.pure(Right(())) else evalFree(cleanup)
