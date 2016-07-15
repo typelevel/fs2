@@ -175,6 +175,12 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       eventually { c.get shouldBe 0L }
     }
 
+    "evaluating a bracketed stream multiple times is safe" in {
+      val s = Stream.bracket(Task.now(()))(Stream.emit, _ => Task.now(())).run
+      s.unsafeRun
+      s.unsafeRun
+    }
+
     def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
       Stream.bracket(Task.delay { c.decrementAndGet })(
         _ => s,
