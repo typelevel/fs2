@@ -12,7 +12,7 @@ abstract class Fs2Spec extends FreeSpec
   with Eventually
   with TestUtil {
 
-  val timeLimit = 120.seconds
+  val timeLimit = 3.minutes
 
   override implicit val patienceConfig: PatienceConfig = PatienceConfig(timeout = timeLimit)
 
