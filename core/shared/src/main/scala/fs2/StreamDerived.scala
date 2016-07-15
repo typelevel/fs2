@@ -233,8 +233,10 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
 
   implicit class StreamPureOps[+A](s: Stream[Pure,A]) {
     def toList: List[A] =
-      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).unsafeRun.reverse
-    def toVector: Vector[A] = s.covary[Task].runLog.unsafeRun
+      s.covary[Task].runFold(List.empty[A])((b, a) => a :: b).unsafeRunSync.
+        fold(_ => sys.error("FS2 bug: covarying pure stream can not result in async task"), _.reverse)
+    def toVector: Vector[A] = s.covary[Task].runLog.unsafeRunSync.
+        fold(_ => sys.error("FS2 bug: covarying pure stream can not result in async task"), identity)
   }
 
   implicit def covaryPure[F[_],A](s: Stream[Pure,A]): Stream[F,A] = s.covary[F]
