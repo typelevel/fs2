@@ -46,11 +46,18 @@ package object file {
   def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Effect[F]): Stream[F, Byte] = {
     val buf = new Array[Byte](chunkSize)
 
-    def singleRead(is: InputStream, buf: Array[Byte]): F[Chunk[Byte]] =
-      F.delay(is.read(buf)).map(Chunk.bytes(buf, 0, _))
+    def singleRead(is: InputStream, buf: Array[Byte]): F[Option[Chunk[Byte]]] =
+      F.delay(is.read(buf)).map { numBytes =>
+        if (numBytes < 0) None
+        else if (numBytes == 0) Some(Chunk.empty)
+        else Some(Chunk.bytes(buf, 0, numBytes))
+      }
 
     def useIs(is: InputStream) =
-      Stream.eval(singleRead(is, buf)).flatMap(Stream.chunk).repeat
+      Stream.eval(singleRead(is, buf))
+        .repeat
+        .through(pipe.unNoneTerminate)
+        .flatMap(Stream.chunk)
 
     if (closeAfterUse)
       Stream.bracket(fis)(useIs, is => F.delay(is.close()))
