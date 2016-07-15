@@ -48,8 +48,7 @@ trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
       def get: F[B] = self.get.map(f)
       def set(b: B): F[Unit] = self.set(g(b))
       def refresh: F[Unit] = self.refresh
-      def modify(bb: B => B): F[Async.Change[B]] =
-        self.modify(a => g(bb(f(a)))).map { case Async.Change(prev, now) => Async.Change(f(prev), f(now)) }
+      def modify(bb: B => B): F[Async.Change[B]] = modify2( b => (bb(b),()) ).map(_._1)
       def modify2[B2](bb: B => (B,B2)):F[(Async.Change[B], B2)] =
         self.modify2 { a =>   val (a2, b2) = bb(f(a)) ; g(a2) -> b2 }
         .map { case (Async.Change(prev, now),b2) => Async.Change(f(prev), f(now)) -> b2 }
@@ -71,18 +70,7 @@ object Signal {
       def refresh: F[Unit] = modify(identity).as(())
       def set(a: A): F[Unit] = modify(_ => a).as(())
       def get: F[A] = state.get.map(_._1)
-      def modify(f: A => A): F[Async.Change[A]] = {
-        state.modify { case (a,l,_) =>
-          (f(a),l+1,Vector.empty)
-        }.flatMap { c =>
-          if (c.previous._3.isEmpty) F.pure(c.map(_._1))
-          else {
-            val now = c.now._1 -> c.now._2
-            c.previous._3.traverse(ref => ref.setPure(now)) >> F.pure(c.map(_._1))
-          }
-        }
-      }
-
+      def modify(f: A => A): F[Async.Change[A]] = modify2( a => (f(a),()) ).map(_._1)
       def modify2[B](f: A => (A,B)):F[(Async.Change[A], B)] = {
         state.modify2 { case (a,l, _) =>
           val (a0,b) = f(a)
