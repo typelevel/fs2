@@ -256,7 +256,7 @@ object Task extends Instances {
   /**
     * Create a `Task` from a `scala.concurrent.Future`.
     */
-  def fromFuture[A](fut: scala.concurrent.Future[A])(implicit S: Strategy, E: scala.concurrent.ExecutionContext): Task[A] =
+   def fromFuture[A](fut: => scala.concurrent.Future[A])(implicit S: Strategy, E: scala.concurrent.ExecutionContext): Task[A] =
     async { cb => fut.onComplete {
       case scala.util.Success(a) => cb(Right(a))
       case scala.util.Failure(t) => cb(Left(t))
