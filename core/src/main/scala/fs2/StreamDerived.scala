@@ -161,6 +161,16 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
     suspend(go(s0))
   }
 
+  /** Like [[unfoldEval]], but takes an effecful computation that manages its state internally. */
+  def unfoldEval0[F[_], A](f: F[Option[A]]): Stream[F,A] = {
+    def go: Stream[F, A] =
+      eval(f).flatMap {
+        case Some(a) => emit(a) ++ go
+        case None    => empty
+      }
+    suspend(go)
+  }
+
   implicit class HandleOps[+F[_],+A](h: Handle[F,A]) {
     def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
       self.push(h: Handle[F,A2])(c)

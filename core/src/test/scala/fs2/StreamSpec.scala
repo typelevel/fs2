@@ -123,6 +123,17 @@ class StreamSpec extends Fs2Spec {
         .runLog.unsafeRun().toList shouldBe List.range(10, 0, -1)
     }
 
+    "unfoldEval0" in {
+      val next = {
+        var n = 11
+        Task.delay {  
+          n = n - 1
+          Some(n).filter(_ > 0)
+        }
+      }
+      Stream.unfoldEval0(next).runLog.unsafeRun().toList shouldBe List.range(10, 0, -1)
+    }
+
     "translate stack safety" in {
       import fs2.util.{~>}
       Stream.repeatEval(Task.delay(0)).translate(new (Task ~> Task) { def apply[X](x: Task[X]) = Task.suspend(x) }).take(1000000).run.unsafeRun()
