@@ -53,16 +53,16 @@ The 0.9 release is coming soon and you can start using the milestone release now
 
 ```
 // available for Scala 2.11.8, 2.12.0-M5
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.0-M5"
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.0-M6"
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.0-M5"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.0-M6"
 ```
 
 API docs:
 
-* [The core library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.11/0.9.0-M5/fs2-core_2.11-0.9.0-M5-javadoc.jar/!/index.html#package)
-* [The `io` library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.11/0.9.0-M5/fs2-io_2.11-0.9.0-M5-javadoc.jar/!/index.html#package), FS2 bindings for NIO-based file I/O and TCP networking, and (coming soon) UDP
+* [The core library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-M5/0.9.0-M6/fs2-core_2.12.0-M5-0.9.0-M6-javadoc.jar/!/index.html#package)
+* [The `io` library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-M5/0.9.0-M6/fs2-io_2.12.0-M5-0.9.0-M6-javadoc.jar/!/index.html#package), FS2 bindings for NIO-based file I/O and TCP networking, and (coming soon) UDP
 
 The latest stable release is 0.8.2 ([source](https://github.com/functional-streams-for-scala/fs2/tree/release/0.8.2)). To get it, add the following to your SBT build:
 

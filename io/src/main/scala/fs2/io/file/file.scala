@@ -1,11 +1,13 @@
 package fs2
 package io
 
+import java.io.{InputStream, OutputStream}
 import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption}
 
 import fs2.Stream.Handle
-import fs2.util.{Async,Effect}
+import fs2.util.{Async, Effect}
+import fs2.util.syntax._
 
 package object file {
 
@@ -37,9 +39,31 @@ package object file {
   def readAllAsync[F[_]](path: Path, chunkSize: Int)(implicit F: Async[F]): Stream[F, Byte] =
     pulls.fromPathAsync(path, List(StandardOpenOption.READ)).flatMap(pulls.readAllFromFileHandle(chunkSize)).close
 
-  //
-  // Stream transducers
-  //
+  /**
+    * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
+    * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
+    */
+  def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Effect[F]): Stream[F, Byte] = {
+    val buf = new Array[Byte](chunkSize)
+
+    def singleRead(is: InputStream, buf: Array[Byte]): F[Option[Chunk[Byte]]] =
+      F.delay(is.read(buf)).map { numBytes =>
+        if (numBytes < 0) None
+        else if (numBytes == 0) Some(Chunk.empty)
+        else Some(Chunk.bytes(buf, 0, numBytes))
+      }
+
+    def useIs(is: InputStream) =
+      Stream.eval(singleRead(is, buf))
+        .repeat
+        .through(pipe.unNoneTerminate)
+        .flatMap(Stream.chunk)
+
+    if (closeAfterUse)
+      Stream.bracket(fis)(useIs, is => F.delay(is.close()))
+    else
+      Stream.eval(fis).flatMap(useIs)
+  }
 
   /**
     * Writes all data synchronously to the file at the specified `java.nio.file.Path`.
@@ -78,4 +102,28 @@ package object file {
       else
         _writeAll1(buf.drop(written), out, offset + written)
     }
+
+  /**
+    * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
+    * the `OutputStream` should not be closed after use.
+    */
+  def writeOutputStream[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(implicit F: Effect[F]): Sink[F, Byte] = s => {
+    def useOs(os: OutputStream): Stream[F, Unit] =
+      s.chunks.evalMap { bytes => F.delay(os.write(bytes.toArray))}
+
+    if (closeAfterUse)
+      Stream.bracket(fos)(useOs, os => F.delay(os.close()))
+    else
+      Stream.eval(fos).flatMap(useOs)
+  }
+
+  //
+  // STDIN/STDOUT Helpers
+
+  def stdin[F[_]](bufSize: Int)(implicit F: Effect[F]): Stream[F, Byte] =
+    readInputStream(F.delay(System.in), bufSize, false)
+
+  def stdout[F[_]](implicit F: Effect[F]): Sink[F, Byte] =
+    writeOutputStream(F.delay(System.out), false)
+
 }
