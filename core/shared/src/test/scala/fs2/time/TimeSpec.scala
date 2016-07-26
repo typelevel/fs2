@@ -9,7 +9,7 @@ class TimeSpec extends AsyncFs2Spec {
   "time" - {
 
     "awakeEvery" in {
-      runLogF(time.awakeEvery[Task](200.millis).map(_.toMillis/200).take(5)).map {
+      runLogF(time.awakeEvery[Task](500.millis).map(_.toMillis/500).take(5)).map {
         _ shouldBe Vector(1,2,3,4,5)
       }
     }
@@ -41,19 +41,19 @@ class TimeSpec extends AsyncFs2Spec {
         _ pull go(0.seconds)
       }
 
-      val delay = 100.millis
-      val draws = (600.millis / delay) min 10 // don't take forever
+      val delay = 20.millis
+      val draws = (600.millis / delay) min 50 // don't take forever
 
       val durationsSinceSpike = time.every[Task](delay).
-        zip(time.duration[Task]).
+        map(d => (d, System.nanoTime.nanos)).
         take(draws.toInt).
         through(durationSinceLastTrue)
 
       durationsSinceSpike.runLog.unsafeRunAsyncFuture().map { result =>
         val (head :: tail) = result.toList
         withClue("every always emits true first") { assert(head._1) }
-        withClue("true means the delay has passed") { assert(tail.filter(_._1).map(_._2).forall { _ >= delay }) }
-        withClue("false means the delay has not passed") { assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay }) }
+        withClue("true means the delay has passed: " + tail) { assert(tail.filter(_._1).map(_._2).forall { _ >= delay }) }
+        withClue("false means the delay has not passed: " + tail) { assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay }) }
       }
     }
   }
