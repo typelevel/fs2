@@ -54,27 +54,26 @@ lazy val testSettings = Seq(
   publishArtifact in Test := true
 )
 
-lazy val scaladocSettings = {
-  def scmBranch(v: String) = {
-    val Some(ver) = Version(v)
-    if(ver.qualifier.exists(_ == "-SNAPSHOT"))
-      // support branch (0.9.0-SNAPSHOT -> series/0.9)
-      s"series/${ver.copy(bugfix = None, qualifier = None).string}"
-    else
-      // release tag (0.9.0-M2 -> v0.9.0-M2)
-      s"v${ver.string}"
-  }
-  Seq(
-    scalacOptions in (Compile, doc) ++= Seq(
-      "-doc-source-url", s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
-      "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
-      "-implicits",
-      "-implicits-show-all"
-    ),
-    scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
-    autoAPIMappings := true
-  )
+def scmBranch(v: String): String = {
+  val Some(ver) = Version(v)
+  if(ver.qualifier.exists(_ == "-SNAPSHOT"))
+    // support branch (0.9.0-SNAPSHOT -> series/0.9)
+    s"series/${ver.copy(bugfix = None, qualifier = None).string}"
+  else
+    // release tag (0.9.0-M2 -> v0.9.0-M2)
+    s"v${ver.string}"
 }
+
+lazy val scaladocSettings = Seq(
+  scalacOptions in (Compile, doc) ++= Seq(
+    "-doc-source-url", s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
+    "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
+    "-implicits",
+    "-implicits-show-all"
+  ),
+  scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
+  autoAPIMappings := true
+)
 
 lazy val publishingSettings = Seq(
   publishTo := {
@@ -116,18 +115,12 @@ lazy val publishingSettings = Seq(
 lazy val commonJsSettings = Seq(
   requiresDOM := false,
   scalaJSStage in Test := FastOptStage,
-  jsEnv in Test := NodeJSEnv().value
-/*
+  jsEnv in Test := NodeJSEnv().value,
   scalacOptions in Compile += {
     val dir = project.base.toURI.toString.replaceFirst("[^/]+/?$", "")
-    val url = s"https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
-    val tagOrBranch = {
-      if (version.value endsWith "SNAPSHOT") gitCurrentBranch.value
-      else ("v" + version.value)
-    }
-    s"-P:scalajs:mapSourceURI:$dir->$url/$tagOrBranch/"
+    val url = "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
+    s"-P:scalajs:mapSourceURI:$dir->$url/${scmBranch(version.value)}/"
   }
-*/
 )
 
 lazy val noPublish = Seq(
@@ -195,4 +188,3 @@ lazy val docs = project.in(file("docs")).
     tutTargetDirectory := file("docs"),
     scalacOptions ~= {_.filterNot("-Ywarn-unused-import" == _)}
   ).dependsOn(coreJVM, io)
-
