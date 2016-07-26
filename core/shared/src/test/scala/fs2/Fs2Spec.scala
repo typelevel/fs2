@@ -5,14 +5,14 @@ import scala.concurrent.ExecutionContext
 import org.scalatest.{ Args, AsyncFreeSpec, FreeSpec, Matchers, Status, Suite }
 import org.scalatest.concurrent.{ AsyncTimeLimitedTests, TimeLimitedTests }
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
-import org.scalatest.time.SpanSugar._
+import org.scalatest.time.Span
 
 abstract class Fs2Spec extends FreeSpec with Fs2SpecLike with TimeLimitedTests {
-  val timeLimit = 3.minutes
+  val timeLimit: Span = timeout
 }
 
 abstract class AsyncFs2Spec extends AsyncFreeSpec with Fs2SpecLike with AsyncTimeLimitedTests {
-  val timeLimit = 3.minutes
+  val timeLimit: Span = timeout
   implicit override def executionContext: ExecutionContext = ExecutionContext.Implicits.global
 }
 

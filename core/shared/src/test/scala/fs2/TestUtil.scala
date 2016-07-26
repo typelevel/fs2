@@ -4,10 +4,13 @@ import java.util.concurrent.TimeoutException
 import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.Future
+import scala.concurrent.duration._
 
 import fs2.util.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
+
+  val timeout: FiniteDuration = 3.minutes
 
   def runLogF[A](s: Stream[Task,A]): Future[Vector[A]] = s.runLog.unsafeRunAsyncFuture
 

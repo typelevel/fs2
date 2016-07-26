@@ -6,21 +6,7 @@ import org.scalacheck.Gen
 class StreamSpec extends Fs2Spec {
 
   "Stream" - {
-
-    "chunk-formation (1)" in {
-      Chunk.empty.toList shouldBe List()
-      Chunk.singleton(23).toList shouldBe List(23)
-    }
-
-    "chunk-formation (2)" in forAll { (c: Vector[Int]) =>
-      Chunk.seq(c).toVector shouldBe c
-      Chunk.seq(c).toList shouldBe c.toList
-      Chunk.indexedSeq(c).toVector shouldBe c
-      Chunk.indexedSeq(c).toList shouldBe c.toList
-      Chunk.seq(c).iterator.toList shouldBe c.iterator.toList
-      Chunk.indexedSeq(c).iterator.toList shouldBe c.iterator.toList
-    }
-
+    
     "chunk" in forAll { (c: Vector[Int]) =>
       runLog(Stream.chunk(Chunk.seq(c))) shouldBe c
     }
