@@ -34,8 +34,8 @@ lazy val commonSettings = Seq(
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
   scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console)),
   libraryDependencies ++= Seq(
-    "org.scalatest" %% "scalatest" % "3.0.0-RC4" % "test",
-    "org.scalacheck" %% "scalacheck" % "1.13.1" % "test"
+    "org.scalatest" %%% "scalatest" % "3.0.0-RC4" % "test",
+    "org.scalacheck" %%% "scalacheck" % "1.13.1" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
@@ -54,27 +54,26 @@ lazy val testSettings = Seq(
   publishArtifact in Test := true
 )
 
-lazy val scaladocSettings = {
-  def scmBranch(v: String) = {
-    val Some(ver) = Version(v)
-    if(ver.qualifier.exists(_ == "-SNAPSHOT"))
-      // support branch (0.9.0-SNAPSHOT -> series/0.9)
-      s"series/${ver.copy(bugfix = None, qualifier = None).string}"
-    else
-      // release tag (0.9.0-M2 -> v0.9.0-M2)
-      s"v${ver.string}"
-  }
-  Seq(
-    scalacOptions in (Compile, doc) ++= Seq(
-      "-doc-source-url", s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
-      "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
-      "-implicits",
-      "-implicits-show-all"
-    ),
-    scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
-    autoAPIMappings := true
-  )
+def scmBranch(v: String): String = {
+  val Some(ver) = Version(v)
+  if(ver.qualifier.exists(_ == "-SNAPSHOT"))
+    // support branch (0.9.0-SNAPSHOT -> series/0.9)
+    s"series/${ver.copy(bugfix = None, qualifier = None).string}"
+  else
+    // release tag (0.9.0-M2 -> v0.9.0-M2)
+    s"v${ver.string}"
 }
+
+lazy val scaladocSettings = Seq(
+  scalacOptions in (Compile, doc) ++= Seq(
+    "-doc-source-url", s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
+    "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
+    "-implicits",
+    "-implicits-show-all"
+  ),
+  scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
+  autoAPIMappings := true
+)
 
 lazy val publishingSettings = Seq(
   publishTo := {
@@ -113,6 +112,17 @@ lazy val publishingSettings = Seq(
   }
 )
 
+lazy val commonJsSettings = Seq(
+  requiresDOM := false,
+  scalaJSStage in Test := FastOptStage,
+  jsEnv in Test := NodeJSEnv().value,
+  scalacOptions in Compile += {
+    val dir = project.base.toURI.toString.replaceFirst("[^/]+/?$", "")
+    val url = "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
+    s"-P:scalajs:mapSourceURI:$dir->$url/${scmBranch(version.value)}/"
+  }
+)
+
 lazy val noPublish = Seq(
   publish := (),
   publishLocal := (),
@@ -128,19 +138,23 @@ lazy val releaseSettings = Seq(
 lazy val root = project.in(file(".")).
   settings(commonSettings).
   settings(noPublish).
-  aggregate(core, io, benchmark)
+  aggregate(coreJVM, coreJS, io, benchmark)
 
-lazy val core = project.in(file("core")).
-  settings(commonSettings).
+lazy val core = crossProject.in(file("core")).
+  settings(commonSettings: _*).
   settings(
     name := "fs2-core"
-  )
+  ).
+  jsSettings(commonJsSettings: _*)
+
+lazy val coreJVM = core.jvm
+lazy val coreJS = core.js
 
 lazy val io = project.in(file("io")).
   settings(commonSettings).
   settings(
     name := "fs2-io"
-  ).dependsOn(core % "compile->compile;test->test")
+  ).dependsOn(coreJVM % "compile->compile;test->test")
 
 lazy val benchmarkMacros = project.in(file("benchmark-macros"))
   .settings(commonSettings)
@@ -173,5 +187,4 @@ lazy val docs = project.in(file("docs")).
     tutSourceDirectory := file("docs") / "src",
     tutTargetDirectory := file("docs"),
     scalacOptions ~= {_.filterNot("-Ywarn-unused-import" == _)}
-  ).dependsOn(core, io)
-
+  ).dependsOn(coreJVM, io)
