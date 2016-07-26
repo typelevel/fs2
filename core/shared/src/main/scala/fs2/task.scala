@@ -122,7 +122,7 @@ class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
   }}
 
   /** Like `unsafeRunSync`, but returns exceptions as values. */
-  def unsafeAttemptRunSync(): Either[Callback[A] => Unit, Either[Throwable,A]] = get.runSync
+  def unsafeAttemptRunSync(): Either[Callback[A] => Unit, Attempt[A]] = get.runSync
 
   /**
    * Runs this `Task` up until an async boundary. If the task completes synchronously,
@@ -132,7 +132,7 @@ class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
   def unsafeValue(): Option[A] = unsafeRunSync.right.toOption
 
   /** Like `unsafeValue`, but returns exceptions as values. */
-  def unsafeAttemptValue(): Option[Either[Throwable,A]] = get.runSync.right.toOption
+  def unsafeAttemptValue(): Option[Attempt[A]] = get.runSync.right.toOption
 
     /**
    * A `Task` which returns a `TimeoutException` after `timeout`,
@@ -232,7 +232,7 @@ object Task extends TaskPlatform with Instances {
     * Like [[async]], but run the callback in the same thread in the same
     * thread, rather than evaluating the callback using a `Strategy`.
    */
-  def unforkedAsync[A](register: (Either[Throwable,A] => Unit) => Unit): Task[A] =
+  def unforkedAsync[A](register: (Attempt[A] => Unit) => Unit): Task[A] =
     async(register)(Strategy.sequential)
 
   /**
