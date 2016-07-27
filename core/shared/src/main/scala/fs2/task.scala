@@ -248,9 +248,9 @@ object Task extends TaskPlatform with Instances {
     }))
 
   /**
-    * Create a `Task` from a `scala.concurrent.Future`.
-    */
-   def fromFuture[A](fut: => scala.concurrent.Future[A])(implicit S: Strategy, E: scala.concurrent.ExecutionContext): Task[A] =
+   * Create a `Task` from a `scala.concurrent.Future`.
+   */
+  def fromFuture[A](fut: => scala.concurrent.Future[A])(implicit S: Strategy, E: scala.concurrent.ExecutionContext): Task[A] =
     async { cb => fut.onComplete {
       case scala.util.Success(a) => cb(Right(a))
       case scala.util.Failure(t) => cb(Left(t))
@@ -258,7 +258,7 @@ object Task extends TaskPlatform with Instances {
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
   def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
-    apply(a)(scheduler.delayedStrategy(delay))
+    async { cb => scheduler.delayedStrategy(delay)(cb(Attempt(a))) }
 
   def traverse[A,B](v: Seq[A])(f: A => Task[B]): Task[Vector[B]] =
     v.reverse.foldLeft(Task.now(Vector.empty[B])) {
