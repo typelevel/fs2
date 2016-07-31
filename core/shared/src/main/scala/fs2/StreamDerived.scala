@@ -44,6 +44,8 @@ trait StreamDerived extends PipeDerived { self: fs2.Stream.type =>
 
   def emits[F[_],W](a: Seq[W]): Stream[F,W] = chunk(Chunk.seq(a))
 
+  def empty[F[_],A]: Stream[F,A] = chunk(Chunk.empty: Chunk[A])
+
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] =
     flatMap(eval(fa)) { _ => empty }
 

@@ -4,6 +4,26 @@ import Pull._
 import StreamCore.Token
 import fs2.util.{Attempt,Free,NonFatal,RealSupertype,Sub1}
 
+/**
+ * A pull allows acquiring elements from a stream in a resource safe way,
+ * emitting elements of type `O`, working with a resource of type `R`,
+ * and evaluating effects of type `F`.
+ *
+ * Laws:
+ *
+ * `or` forms a monoid in conjunction with `done`:
+ *   - `or(done, p) == p` and `or(p, done) == p`.
+ *   - `or(or(p1,p2), p3) == or(p1, or(p2,p3))`
+ *
+ * `fail` is caught by `onError`:
+ *   - `onError(fail(e))(f) == f(e)`
+ *
+ * `Pull` forms a monad with `pure` and `flatMap`:
+ *   - `pure >=> f == f`
+ *   - `f >=> pure == f`
+ *   - `(f >=> g) >=> h == f >=> (g >=> h)`
+ * where `f >=> g` is defined as `a => a flatMap f flatMap g`
+ */
 class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Attempt[R]]]) extends PullOps[F,O,R] {
 
   private
@@ -32,7 +52,7 @@ class Pull[+F[_],+O,+R](private[fs2] val get: Free[P[F,O]#f,Option[Attempt[R]]])
   def closeAsStep: Stream[F,O] = close_(true)
 }
 
-object Pull extends Pulls[Pull] with PullDerived with pull1 {
+object Pull extends PullDerived with pull1 {
   type Stream[+F[_],+W] = fs2.Stream[F,W]
 
   trait P[F[_],O] { type f[x] = PF[F,O,x] }
@@ -46,15 +66,18 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
   def attemptEval[F[_],R](f: F[R]): Pull[F,Nothing,Attempt[R]] =
     new Pull(Free.attemptEval[P[F,Nothing]#f,R](PF.Eval(Scope.eval(f))).map(e => Some(Right(e))))
 
+  /** The completed `Pull`. Reads and outputs nothing. */
   def done: Pull[Nothing,Nothing,Nothing] =
     new Pull(Free.pure(None))
 
+  /** Promote an effect to a `Pull`. */
   def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] =
     attemptEval(f) flatMap { _.fold(fail, pure) }
 
   def evalScope[F[_],R](f: Scope[F,R]): Pull[F,Nothing,R] =
     new Pull(Free.eval[P[F,Nothing]#f,R](PF.Eval(f)).map(e => Some(Right(e))))
 
+  /** The `Pull` that reads and outputs nothing, and fails with the given error. */
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
     new Pull(Free.pure(Some(Left(err))))
 
@@ -66,6 +89,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
     }
   )
 
+  /** If `p` terminates with `fail(e)`, invoke `handle(e)`. */
   def onError[F[_],O,R](p: Pull[F,O,R])(handle: Throwable => Pull[F,O,R]): Pull[F,O,R] =
     new Pull(
       p.get.flatMap[P[F,O]#f,Option[Attempt[R]]] {
@@ -75,6 +99,10 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
       }
     )
 
+  /**
+   * Consult `p2` if `p` fails due to an `await` on an exhausted `Handle`.
+   * If `p` fails due to an error, `p2` is not consulted.
+   */
   def or[F[_],O,R](p1: Pull[F,O,R], p2: => Pull[F,O,R]): Pull[F,O,R] = new Pull (
     p1.get.flatMap[P[F,O]#f,Option[Attempt[R]]] {
       case Some(Right(r)) => Free.pure(Some(Right(r)))
@@ -83,6 +111,7 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
     }
   )
 
+  /** Write a stream to the output of this `Pull`. */
   def outputs[F[_],O](s: Stream[F,O]): Pull[F,O,Unit] =
     new Pull(Free.eval[P[F,O]#f,Unit](PF.Output(s.get)).map(_ => Some(Right(()))))
 
@@ -90,9 +119,11 @@ object Pull extends Pulls[Pull] with PullDerived with pull1 {
   def release(ts: List[Token]): Pull[Nothing,Nothing,Unit] =
     outputs(Stream.mk(StreamCore.release(ts).drain))
 
+  /** The `Pull` that reads and outputs nothing, and succeeds with the given value, `R`. */
   def pure[R](r: R): Pull[Nothing,Nothing,R] =
     new Pull(Free.pure(Some(Right(r))))
 
+  /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
   def close[F[_], O, R](p: Pull[F,O,R]): Stream[F,O] = p.close
 
   private def attemptPull[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =

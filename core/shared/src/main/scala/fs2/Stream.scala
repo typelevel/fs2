@@ -5,6 +5,32 @@ import fs2.util.{Async,Attempt,Free,RealSupertype,Sub1,~>}
 /**
  * A stream producing output of type `O`, which may evaluate `F`
  * effects. If `F` is `Nothing` or `[[fs2.Pure]]`, the stream is pure.
+ *
+ *
+ * Laws (using infix syntax):
+ *
+ * `append` forms a monoid in conjunction with `empty`:
+ *   - `empty append s == s` and `s append empty == s`.
+ *   -`(s1 append s2) append s3 == s1 append (s2 append s3)`
+ *
+ * And `push` is consistent with using `append` to prepend a single chunk:
+ *   -`push(c)(s) == chunk(c) append s`
+ *
+ * `fail` propagates until being caught by `onError`:
+ *   - `fail(e) onError h == h(e)`
+ *   - `fail(e) append s == fail(e)`
+ *   - `fail(e) flatMap f == fail(e)`
+ *
+ * `Stream` forms a monad with `emit` and `flatMap`:
+ *   - `emit >=> f == f`
+ *   - `f >=> emit == f`
+ *   - `(f >=> g) >=> h == f >=> (g >=> h)`
+ *  where `emit(a)` is defined as `chunk(Chunk.singleton(a)) and
+ *  `f >=> g` is defined as `a => a flatMap f flatMap g`
+ *
+ * The monad is the list-style sequencing monad:
+ *   - `(a append b) flatMap f == (a flatMap f) append (b flatMap f)`
+ *   - `empty flatMap f == empty`
  */
 abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
   import Stream.Handle
@@ -63,9 +89,7 @@ abstract class Stream[+F[_],+O] extends StreamOps[F,O] { self =>
     }
 }
 
-object Stream extends Streams[Stream] with StreamDerived {
-  type Pull[+F[_],+W,+R] = fs2.Pull[F,W,R]
-  val Pull = fs2.Pull
+object Stream extends StreamDerived {
 
   class Handle[+F[_],+O](private[fs2] val buffer: List[Chunk[O]],
                          private[fs2] val underlying: Stream[F,O]) {
@@ -82,16 +106,19 @@ object Stream extends Streams[Stream] with StreamDerived {
     def empty[F[_],W]: Handle[F,W] = new Handle(List(), Stream.empty)
   }
 
-  def append[F[_], A](a: Stream[F,A], b: => Stream[F,A]) =
+  def append[F[_], A](a: Stream[F,A], b: => Stream[F,A]): Stream[F,A] =
     Stream.mk { StreamCore.append(a.get, StreamCore.suspend(b.get)) }
 
-  def await[F[_],W](h: Handle[F,W]) =
+  def await[F[_],W](h: Handle[F,W]): Pull[F,Nothing,Step[Chunk[W],Handle[F,W]]] =
     h.buffer match {
       case List() => h.underlying.step
       case hb :: tb => Pull.pure(Step(hb, new Handle(tb, h.underlying)))
     }
 
-  def awaitAsync[F[_],W](h: Handle[F,W])(implicit F: Async[F]) =
+  type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, Step[Chunk[A], Stream.Handle[F,A]]]]
+  type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, Step[Option[A], Stream.Handle[F,A]]]]
+
+  def awaitAsync[F[_],W](h: Handle[F,W])(implicit F: Async[F]): Pull[F,Nothing,AsyncStep[F,W]] =
     h.buffer match {
       case List() => h.underlying.stepAsync
       case hb :: tb => Pull.pure(ScopedFuture.pure(Pull.pure(Step(hb, new Handle(tb, h.underlying)))))
@@ -124,14 +151,14 @@ object Stream extends Streams[Stream] with StreamDerived {
   def onError[F[_],O](s: Stream[F,O])(h: Throwable => Stream[F,O]): Stream[F,O] =
     Stream.mk { s.get onError (e => h(e).get) }
 
-  def open[F[_],O](s: Stream[F,O]) =
+  def open[F[_],O](s: Stream[F,O]): Pull[F,Nothing,Handle[F,O]] =
     Pull.pure(new Handle(List(), s))
 
-  def cons[F[_],O](h: Stream[F,O])(c: Chunk[O]) =
+  def cons[F[_],O](h: Stream[F,O])(c: Chunk[O]): Stream[F,O] =
     if (c.isEmpty) h
     else Stream.mk { h.get.pushEmit(c) }
 
-  def push[F[_],W](h: Handle[F,W])(c: Chunk[W]) =
+  def push[F[_],W](h: Handle[F,W])(c: Chunk[W]): Handle[F,W] =
     if (c.isEmpty) h
     else new Handle(c :: h.buffer, h.underlying)
 
