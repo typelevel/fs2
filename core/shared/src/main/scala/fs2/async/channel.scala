@@ -36,7 +36,7 @@ object channel {
             }
           s.repeatPull {
             _.receiveOption {
-              case Some(a #: h) =>
+              case Some((a, h)) =>
                 Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h)
               case None =>
                 Pull.eval(enqueueNone) >> Pull.done

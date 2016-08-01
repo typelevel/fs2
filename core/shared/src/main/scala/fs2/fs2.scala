@@ -21,6 +21,6 @@ package object fs2 {
    */
   type Sink[F[_],-I] = Pipe[F,I,Unit]
 
-  type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, Step[Chunk[A], Stream.Handle[F,A]]]]
-  type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, Step[Option[A], Stream.Handle[F,A]]]]
+  type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Chunk[A], Stream.Handle[F,A])]]
+  type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Option[A], Stream.Handle[F,A])]]
 }

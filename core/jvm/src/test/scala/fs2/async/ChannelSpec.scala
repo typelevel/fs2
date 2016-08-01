@@ -86,11 +86,11 @@ class ChannelSpec extends Fs2Spec {
     type FS = ScopedFuture[F,Stream[F,A]] // Option[Step[Chunk[A],Stream[F,A]]]]
     def go(fa: FS, fa2: FS): Stream[F,A] = (fa race fa2).stream.flatMap {
       case Left(sa) => sa.uncons.flatMap {
-        case Some(hd #: sa) => Stream.chunk(hd) ++ (sa.fetchAsync flatMap (go(_,fa2)))
+        case Some((hd, sa)) => Stream.chunk(hd) ++ (sa.fetchAsync flatMap (go(_,fa2)))
         case None => println("left stream terminated"); fa2.stream.flatMap(identity)
       }
       case Right(sa2) => sa2.uncons.flatMap {
-        case Some(hd #: sa2) => Stream.chunk(hd) ++ (sa2.fetchAsync flatMap (go(fa,_)))
+        case Some((hd, sa2)) => Stream.chunk(hd) ++ (sa2.fetchAsync flatMap (go(fa,_)))
         case None => println("right stream terminated"); fa.stream.flatMap(identity)
       }
     }

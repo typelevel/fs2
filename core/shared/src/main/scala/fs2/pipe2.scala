@@ -11,28 +11,27 @@ object pipe2 {
   def covary[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] =
     p.asInstanceOf[Pipe2[F,I,I2,O]]
 
-  private def zipChunksWith[I,I2,O](f: (I, I2) => O)(c1: Chunk[I], c2: Chunk[I2]): Step[Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]] = {
-      def go(v1: Vector[I], v2: Vector[I2], acc: Vector[O]): Step[Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]] = (v1, v2) match {
-        case (Seq(),Seq())        => Step(Chunk.seq(acc.reverse), None)
-        case (v1,   Seq())        => Step(Chunk.seq(acc.reverse), Some(Left(Chunk.seq(v1))))
-        case (Seq(),   v2)        => Step(Chunk.seq(acc.reverse), Some(Right(Chunk.seq(v2))))
+  private def zipChunksWith[I,I2,O](f: (I, I2) => O)(c1: Chunk[I], c2: Chunk[I2]): (Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]) = {
+      def go(v1: Vector[I], v2: Vector[I2], acc: Vector[O]): (Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]) = (v1, v2) match {
+        case (Seq(),Seq())        => (Chunk.seq(acc.reverse), None)
+        case (v1,   Seq())        => (Chunk.seq(acc.reverse), Some(Left(Chunk.seq(v1))))
+        case (Seq(),   v2)        => (Chunk.seq(acc.reverse), Some(Right(Chunk.seq(v2))))
         case (i1 +: v1, i2 +: v2) => go(v1, v2, f(i1, i2) +: acc)
       }
       go(c1.toVector, c2.toVector, Vector.empty[O])
   }
 
-  private type ZipWithCont[F[_],I,O,R] = Either[Step[Chunk[I], Handle[F, I]],
-                                         Handle[F, I]] => Pull[F,O,R]
+  private type ZipWithCont[F[_],I,O,R] = Either[(Chunk[I], Handle[F, I]), Handle[F, I]] => Pull[F,O,R]
 
   private def zipWithHelper[F[_],I,I2,O]
                       (k1: ZipWithCont[F,I,O,Nothing],
                        k2: ZipWithCont[F,I2,O,Nothing])
                       (f: (I, I2) => O):
                           (Stream[F, I], Stream[F, I2]) => Stream[F, O] = {
-      def zipChunksGo(s1 : Step[Chunk[I], Handle[F, I]],
-                      s2 : Step[Chunk[I2], Handle[F, I2]]): Pull[F, O, Nothing] = (s1, s2) match {
-                            case (c1 #: h1, c2 #: h2) => zipChunksWith(f)(c1, c2) match {
-                              case (co #: r) => Pull.output(co) >> (r match {
+      def zipChunksGo(s1 : (Chunk[I], Handle[F, I]),
+                      s2 : (Chunk[I2], Handle[F, I2])): Pull[F, O, Nothing] = (s1, s2) match {
+                            case ((c1, h1), (c2, h2)) => zipChunksWith(f)(c1, c2) match {
+                              case ((co, r)) => Pull.output(co) >> (r match {
                                 case None => goB(h1, h2)
                                 case Some(Left(c1rest)) => go1(c1rest, h1, h2)
                                 case Some(Right(c2rest)) => go2(c2rest, h1, h2)
@@ -41,14 +40,14 @@ object pipe2 {
                        }
       def go1(c1r: Chunk[I], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
         P.receiveNonemptyOption[F,I2,O,Nothing]{
-          case Some(s2) => zipChunksGo(c1r #: h1, s2)
-          case None => k1(Left(c1r #: h1))
+          case Some(s2) => zipChunksGo((c1r, h1), s2)
+          case None => k1(Left((c1r, h1)))
         }(h2)
       }
       def go2(c2r: Chunk[I2], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
         P.receiveNonemptyOption[F,I,O,Nothing]{
-          case Some(s1) => zipChunksGo(s1, c2r #: h2)
-          case None => k2(Left(c2r #: h2))
+          case Some(s1) => zipChunksGo(s1, (c2r, h2))
+          case None => k2(Left((c2r, h2)))
         }(h1)
       }
       def goB(h1 : Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
@@ -64,31 +63,31 @@ object pipe2 {
   }
 
   def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): Pipe2[F,I,I2,O] = {
-      def cont1(z: Either[Step[Chunk[I], Handle[F, I]], Handle[F, I]]): Pull[F, O, Nothing] = {
+      def cont1(z: Either[(Chunk[I], Handle[F, I]), Handle[F, I]]): Pull[F, O, Nothing] = {
         def putLeft(c: Chunk[I]) = {
           val co = Chunk.seq(c.toVector.zip( Vector.fill(c.size)(pad2)))
                         .map(f.tupled)
           P.output(co)
         }
         def contLeft(h: Handle[F,I]): Pull[F,O,Nothing] = h.receive {
-            case c #: h => putLeft(c) >> contLeft(h)
+            case (c, h) => putLeft(c) >> contLeft(h)
         }
         z match {
-          case Left(c #: h) => putLeft(c) >> contLeft(h)
+          case Left((c, h)) => putLeft(c) >> contLeft(h)
           case Right(h)     => contLeft(h)
         }
       }
-      def cont2(z: Either[Step[Chunk[I2], Handle[F, I2]], Handle[F, I2]]): Pull[F, O, Nothing] = {
+      def cont2(z: Either[(Chunk[I2], Handle[F, I2]), Handle[F, I2]]): Pull[F, O, Nothing] = {
         def putRight(c: Chunk[I2]) = {
           val co = Chunk.seq(Vector.fill(c.size)(pad1).zip(c.toVector))
                         .map(f.tupled)
           P.output(co)
         }
         def contRight(h: Handle[F,I2]): Pull[F,O,Nothing] = h.receive {
-            case c #: h => putRight(c) >> contRight(h)
+            case (c, h) => putRight(c) >> contRight(h)
         }
         z match {
-          case Left(c #: h) => putRight(c) >> contRight(h)
+          case Left((c, h)) => putRight(c) >> contRight(h)
           case Right(h)     => contRight(h)
         }
       }
@@ -134,19 +133,19 @@ object pipe2 {
       }
 
     def outputs: Stream[Read,O] = covary[Read,I,I2,O](p)(promptsL, promptsR)
-    def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
+    def stepf(s: Handle[Read,O]): Free[Read, Option[(Chunk[O],Handle[Read, O])]]
     = s.buffer match {
-        case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
+        case hd :: tl => Free.pure(Some((hd, new Handle[Read,O](tl, s.stream))))
         case List() => s.stream.step.flatMap { s => Pull.output1(s) }
-         .close.runFoldFree(None: Option[Step[Chunk[O],Handle[Read, O]]])(
+         .close.runFoldFree(None: Option[(Chunk[O],Handle[Read, O])])(
           (_,s) => Some(s))
       }
-    def go(s: Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]): Stepper[I,I2,O] =
+    def go(s: Free[Read, Option[(Chunk[O],Handle[Read, O])]]): Stepper[I,I2,O] =
       Stepper.Suspend { () =>
         s.unroll[Read](readFunctor, Sub1.sub1[Read]) match {
           case Free.Unroll.Fail(err) => Stepper.Fail(err)
           case Free.Unroll.Pure(None) => Stepper.Done
-          case Free.Unroll.Pure(Some(s)) => Stepper.Emits(s.head, go(stepf(s.tail)))
+          case Free.Unroll.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
           case Free.Unroll.Eval(recv) => recv match {
             case Left(recv) => Stepper.AwaitL(chunk => go(recv(chunk)))
             case Right(recv) => Stepper.AwaitR(chunk => go(recv(chunk)))
@@ -215,16 +214,16 @@ object pipe2 {
    * elements of `s` first.
    */
   def merge[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) => {
-    def go(l: ScopedFuture[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]],
-           r: ScopedFuture[F, Pull[F, Nothing, Step[Chunk[O], Handle[F,O]]]]): Pull[F,O,Nothing] =
+    def go(l: ScopedFuture[F, Pull[F, Nothing, (Chunk[O], Handle[F,O])]],
+           r: ScopedFuture[F, Pull[F, Nothing, (Chunk[O], Handle[F,O])]]): Pull[F,O,Nothing] =
       (l race r).pull flatMap {
         case Left(l) => l.optional flatMap {
-          case None => r.pull.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
-          case Some(hd #: l) => P.output(hd) >> l.awaitAsync.flatMap(go(_, r))
+          case None => r.pull.flatMap(identity).flatMap { case (hd, tl) => P.output(hd) >> P.echo(tl) }
+          case Some((hd, l)) => P.output(hd) >> l.awaitAsync.flatMap(go(_, r))
         }
         case Right(r) => r.optional flatMap {
-          case None => l.pull.flatMap(identity).flatMap { case hd #: tl => P.output(hd) >> P.echo(tl) }
-          case Some(hd #: r) => P.output(hd) >> r.awaitAsync.flatMap(go(l, _))
+          case None => l.pull.flatMap(identity).flatMap { case (hd, tl) => P.output(hd) >> P.echo(tl) }
+          case Some((hd, r)) => P.output(hd) >> r.awaitAsync.flatMap(go(l, _))
         }
       }
     s1.pull2(s2) {

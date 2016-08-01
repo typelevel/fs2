@@ -62,8 +62,8 @@ class StreamPerformanceSpec extends Fs2Spec {
         runLog((chunk(Chunk.seq(0 until N)): Stream[Task,Int]).repeatPull { (s: Handle[Task,Int]) =>
           for {
             s2 <- s.await1
-            _ <- Pull.output1(s2.head)
-          } yield s2.tail
+            _ <- Pull.output1(s2._1)
+          } yield s2._2
         }) shouldBe Vector.range(0,N)
       }
     }}

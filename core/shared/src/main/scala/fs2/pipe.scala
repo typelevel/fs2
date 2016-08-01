@@ -9,7 +9,7 @@ object pipe {
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input. */
   def buffer[F[_],I](n: Int): Stream[F,I] => Stream[F,I] =
-    _.repeatPull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
+    _.repeatPull { h => Pull.awaitN(n, true)(h).flatMap { case (chunks, h) =>
       chunks.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } as h
     }}
 
@@ -23,7 +23,7 @@ object pipe {
   def bufferBy[F[_],I](f: I => Boolean): Pipe[F,I,I] = {
     def go(buffer: Vector[Chunk[I]], last: Boolean): Handle[F,I] => Pull[F,I,Unit] = {
       _.receiveOption {
-        case Some(chunk #: h) =>
+        case Some((chunk, h)) =>
           val (out, buf, last) = {
             chunk.foldLeft((Vector.empty[Chunk[I]], Vector.empty[I], false)) { case ((out, buf, last), i) =>
               val cur = f(i)
@@ -54,15 +54,15 @@ object pipe {
 
   /** Outputs chunks with a limited maximum size, splitting as necessary. */
   def chunkLimit[F[_],I](n: Int): Stream[F,I] => Stream[F,Chunk[I]] =
-    _ repeatPull { h => Pull.awaitLimit(n)(h) flatMap { case chunk #: h => Pull.output1(chunk) as h } }
+    _ repeatPull { h => Pull.awaitLimit(n)(h) flatMap { case (chunk, h) => Pull.output1(chunk) as h } }
 
   /** Outputs a list of chunks, the total size of all chunks is limited and split as necessary. */
   def chunkN[F[_],I](n: Int, allowFewer: Boolean = true): Stream[F,I] => Stream[F,List[Chunk[I]]] =
-    _ repeatPull { h => Pull.awaitN(n, allowFewer)(h) flatMap { case chunks #: h => Pull.output1(chunks) as h }}
+    _ repeatPull { h => Pull.awaitN(n, allowFewer)(h) flatMap { case (chunks, h) => Pull.output1(chunks) as h }}
 
   /** Output all chunks from the input `Handle`. */
   def chunks[F[_],I]: Stream[F,I] => Stream[F,Chunk[I]] =
-    _ repeatPull { _.await.flatMap { case chunk #: h => Pull.output1(chunk) as h }}
+    _ repeatPull { _.await.flatMap { case (chunk, h) => Pull.output1(chunk) as h }}
 
   /** Map/filter simultaneously. Calls `collect` on each `Chunk` in the stream. */
   def collect[F[_],I,I2](pf: PartialFunction[I, I2]): Stream[F,I] => Stream[F,I2] =
@@ -70,7 +70,7 @@ object pipe {
 
   /** Emits the first element of the Stream for which the partial function is defined. */
   def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Stream[F,I] => Stream[F,I2] =
-    _ pull { h => Pull.find(pf.isDefinedAt)(h) flatMap { case i #: h => Pull.output1(pf(i)) }}
+    _ pull { h => Pull.find(pf.isDefinedAt)(h) flatMap { case (i, h) => Pull.output1(pf(i)) }}
 
   /** Skip the first element that matches the predicate. */
   def delete[F[_],I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
@@ -88,7 +88,7 @@ object pipe {
   def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
     def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = {
       Pull.receiveNonemptyOption {
-        case Some(chunk #: h) => Pull.output(last) >> go(chunk)(h)
+        case Some((chunk, h)) => Pull.output(last) >> go(chunk)(h)
         case None =>
           val i = last(last.size - 1)
           if (p(i)) Pull.output(last.take(last.size - 1))
@@ -96,7 +96,7 @@ object pipe {
       }
     }
     _.pull { Pull.receiveNonemptyOption {
-      case Some(c #: h) => go(c)(h)
+      case Some((c, h)) => go(c)(h)
       case None => Pull.done
     }}
   }
@@ -107,7 +107,7 @@ object pipe {
     else {
       def go(acc: Vector[I]): Handle[F,I] => Pull[F,I,Unit] = {
         _.receive {
-          case chunk #: h =>
+          case (chunk, h) =>
             val all = acc ++ chunk.toVector
             Pull.output(Chunk.indexedSeq(all.dropRight(n))) >> go(all.takeRight(n))(h)
         }
@@ -130,8 +130,7 @@ object pipe {
 
   /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
   def find[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
-    _ pull { h => Pull.find(f)(h).flatMap { case o #: h => Pull.output1(o) }}
-
+    _ pull { h => Pull.find(f)(h).flatMap { case (o, h) => Pull.output1(o) }}
 
   /**
    * Folds all inputs using an initial value `z` and supplied binary operator,
@@ -157,7 +156,7 @@ object pipe {
   /** Emits the specified separator between every pair of elements in the source stream. */
   def intersperse[F[_],I](separator: I): Stream[F,I] => Stream[F,I] =
     _ pull { h => Pull.echo1(h) flatMap Pull.loop { (h: Stream.Handle[F,I]) =>
-      h.receive { case chunk #: h =>
+      h.receive { case (chunk, h) =>
         val interspersed = {
           val bldr = Vector.newBuilder[I]
           chunk.toVector.foreach { i => bldr += separator; bldr += i }
@@ -191,7 +190,7 @@ object pipe {
 
   /** Output a transformed version of all chunks from the input `Handle`. */
   def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O]): Stream[F,I] => Stream[F,O] =
-    _ repeatPull { _.await.flatMap { case chunk #: h => Pull.output(f(chunk)) as h }}
+    _ repeatPull { _.await.flatMap { case (chunk, h) => Pull.output(f(chunk)) as h }}
 
   /**
     * Maps a running total according to `S` and the input with the function `f`.
@@ -203,7 +202,7 @@ object pipe {
     * }}}
     */
   def mapAccumulate[F[_],S,I,O](init: S)(f: (S,I) => (S,O)): Stream[F,I] => Stream[F,(S,O)] =
-    _ pull Pull.receive { case chunk #: h =>
+    _ pull Pull.receive { case (chunk, h) =>
       val f2 = (s: S, i: I) => {
         val (newS, newO) = f(s, i)
         (newS, (newS, newO))
@@ -212,7 +211,7 @@ object pipe {
       Pull.output(o) >> _mapAccumulate0(s)(f2)(h)
     }
   private def _mapAccumulate0[F[_],S,I,O](init: S)(f: (S,I) => (S,(S,O))): Handle[F,I] => Pull[F,(S,O),Handle[F,I]] =
-    Pull.receive { case chunk #: h =>
+    Pull.receive { case (chunk, h) =>
       val (s, o) = chunk.mapAccumulate(init)(f)
       Pull.output(o) >> _mapAccumulate0(s)(f)(h)
     }
@@ -223,7 +222,7 @@ object pipe {
    */
   def prefetch[F[_]:Async,I]: Stream[F,I] => Stream[F,I] =
     _ repeatPull { _.receive {
-      case hd #: tl => Pull.prefetch(tl) flatMap { p => Pull.output(hd) >> p }}}
+      case (hd, tl) => Pull.prefetch(tl) flatMap { p => Pull.output(hd) >> p }}}
 
   /**
    * Modifies the chunk structure of the underlying stream, emitting potentially unboxed
@@ -266,13 +265,13 @@ object pipe {
 
   private def _scan0[F[_],O,I](z: O)(f: (O, I) => O): Handle[F,I] => Pull[F,O,Handle[F,I]] =
     h => h.await.optional flatMap {
-      case Some(chunk #: h) =>
+      case Some((chunk, h)) =>
         val s = chunk.scanLeft(z)(f)
         Pull.output(s) >> _scan1(s(s.size - 1))(f)(h)
       case None => Pull.output(Chunk.singleton(z)) as Handle.empty
     }
   private def _scan1[F[_],O,I](z: O)(f: (O, I) => O): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-    Pull.receive { case chunk #: h =>
+    Pull.receive { case (chunk, h) =>
       val s = chunk.scanLeft(z)(f).drop(1)
       Pull.output(s) >> _scan1(s(s.size - 1))(f)(h)
     }
@@ -281,7 +280,7 @@ object pipe {
    * Like `[[pipe.scan]]`, but uses the first element of the stream as the seed.
    */
   def scan1[F[_],I](f: (I, I) => I): Stream[F,I] => Stream[F,I] =
-    _ pull { Pull.receive1 { case o #: h => _scan0(o)(f)(h) }}
+    _ pull { Pull.receive1 { (o, h) => _scan0(o)(f)(h) }}
 
   /** Emit the given values, then echo the rest of the input. */
   def shiftRight[F[_],I](head: I*): Stream[F,I] => Stream[F,I] =
@@ -302,14 +301,14 @@ object pipe {
     require(n > 0, "n must be > 0")
     def go(window: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = h => {
       h.receive {
-        case chunk #: h =>
+        case (chunk, h) =>
           val out: Vector[Vector[I]] =
             chunk.toVector.scanLeft(window)((w, i) => w.tail :+ i).tail
           if (out.isEmpty) go(window)(h)
           else Pull.output(Chunk.indexedSeq(out)) >> go(out.last)(h)
       }
     }
-    _ pull { h => Pull.awaitN(n, true)(h).flatMap { case chunks #: h =>
+    _ pull { h => Pull.awaitN(n, true)(h).flatMap { case (chunks, h) =>
       val window = chunks.foldLeft(Vector.empty[I])(_ ++ _.toVector)
       Pull.output1(window) >> go(window)(h)
     }}
@@ -323,7 +322,7 @@ object pipe {
   def split[F[_],I](f: I => Boolean): Pipe[F,I,Vector[I]] = {
     def go(buffer: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = {
       Pull.receiveOption {
-        case Some(chunk #: h) =>
+        case Some((chunk, h)) =>
           chunk.indexWhere(f) match {
             case None =>
               go(buffer ++ chunk.toVector)(h)
@@ -365,7 +364,7 @@ object pipe {
 
   /** Convert the input to a stream of solely 1-element chunks. */
   def unchunk[F[_],I]: Stream[F,I] => Stream[F,I] =
-    _ repeatPull { Pull.receive1 { case i #: h => Pull.output1(i) as h }}
+    _ repeatPull { Pull.receive1 { case (i, h) => Pull.output1(i) as h }}
 
   /**
    * Halt the input stream at the first `None`.
@@ -377,7 +376,7 @@ object pipe {
    */
   def unNoneTerminate[F[_],I]: Stream[F,Option[I]] => Stream[F,I] =
     _ repeatPull { _.receive {
-      case hd #: tl =>
+      case (hd, tl) =>
         val out = Chunk.indexedSeq(hd.toVector.takeWhile { _.isDefined }.collect { case Some(i) => i })
         if (out.size == hd.size) Pull.output(out) as tl
         else if (out.isEmpty) Pull.done
@@ -410,13 +409,13 @@ object pipe {
     def go(last: I): Handle[F, I] => Pull[F, (I, Option[I]), Handle[F, I]] =
       Pull.receiveOption {
         case None => Pull.output1((last, None)) as Handle.empty
-        case Some(chunk #: h) =>
+        case Some((chunk, h)) =>
           val (newLast, zipped) = chunk.mapAccumulate(last) {
             case (prev, next) => (next, (prev, Some(next)))
           }
           Pull.output(zipped) >> go(newLast)(h)
       }
-    _ pull Pull.receive1 { case head #: h => go(head)(h) }
+    _ pull Pull.receive1 { case (head, h) => go(head)(h) }
   }
 
   /**
@@ -487,19 +486,19 @@ object pipe {
       }
 
     def outputs: Stream[Read,O] = covary[Read,I,O](s)(prompts)
-    def stepf(s: Handle[Read,O]): Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]
+    def stepf(s: Handle[Read,O]): Free[Read, Option[(Chunk[O],Handle[Read, O])]]
     = s.buffer match {
-        case hd :: tl => Free.pure(Some(Step(hd, new Handle[Read,O](tl, s.stream))))
+        case hd :: tl => Free.pure(Some((hd, new Handle[Read,O](tl, s.stream))))
         case List() => s.stream.step.flatMap { s => Pull.output1(s) }
-         .close.runFoldFree(None: Option[Step[Chunk[O],Handle[Read, O]]])(
+         .close.runFoldFree(None: Option[(Chunk[O],Handle[Read, O])])(
           (_,s) => Some(s))
       }
-    def go(s: Free[Read, Option[Step[Chunk[O],Handle[Read, O]]]]): Stepper[I,O] =
+    def go(s: Free[Read, Option[(Chunk[O],Handle[Read, O])]]): Stepper[I,O] =
       Stepper.Suspend { () =>
         s.unroll[Read](readFunctor, Sub1.sub1[Read]) match {
           case Free.Unroll.Fail(err) => Stepper.Fail(err)
           case Free.Unroll.Pure(None) => Stepper.Done
-          case Free.Unroll.Pure(Some(s)) => Stepper.Emits(s.head, go(stepf(s.tail)))
+          case Free.Unroll.Pure(Some((hd, tl))) => Stepper.Emits(hd, go(stepf(tl)))
           case Free.Unroll.Eval(recv) => Stepper.Await(chunk => go(recv(chunk)))
         }
       }
@@ -507,11 +506,10 @@ object pipe {
   }
 
   sealed trait Stepper[-A,+B] {
-    import Stepper._
     @annotation.tailrec
-    final def step: Step[A,B] = this match {
-      case Suspend(s) => s().step
-      case _ => this.asInstanceOf[Step[A,B]]
+    final def step: Stepper.Step[A,B] = this match {
+      case Stepper.Suspend(s) => s().step
+      case _ => this.asInstanceOf[Stepper.Step[A,B]]
     }
   }
 

@@ -54,8 +54,8 @@ object text {
 
     def doPull(buf: Chunk[Byte])(h: Handle[Pure, Chunk[Byte]]): Pull[Pure, String, Handle[Pure, Chunk[Byte]]] = {
       h.await.optional flatMap {
-        case Some(byteChunks #: tail) =>
-          val (output, nextBuffer) = byteChunks.foldLeft((List.empty[String], buf))(processSingleChunk)
+        case Some((byteChunks, tail)) =>
+          val (output, nextBuffer) = byteChunks.foldLeft((Nil: List[String], buf))(processSingleChunk)
           Pull.output(Chunk.seq(output.reverse)) >> doPull(nextBuffer)(tail)
         case None if !buf.isEmpty =>
           Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.done
@@ -130,7 +130,7 @@ object text {
 
     def go(buffer: Vector[String], pendingLineFeed: Boolean): Handle[F, String] => Pull[F, String, Unit] = {
       _.receiveOption {
-        case Some(chunk #: h) =>
+        case Some((chunk, h)) =>
           val (toOutput, newBuffer, newPendingLineFeed) = extractLines(buffer, chunk, pendingLineFeed)
           Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed)(h)
         case None if buffer.nonEmpty => Pull.output1(buffer.mkString)

@@ -268,22 +268,22 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.split]]`. */
   def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
 
-  def step: Pull[F,Nothing,Step[Chunk[O],Handle[F,O]]] =
+  def step: Pull[F,Nothing,(Chunk[O],Handle[F,O])] =
     Pull.evalScope(get.step).flatMap {
       case None => Pull.done
       case Some(Left(err)) => Pull.fail(err)
-      case Some(Right(s)) => Pull.pure(s.copy(tail = new Handle(List(), Stream.mk(s.tail))))
+      case Some(Right((hd, tl))) => Pull.pure((hd, new Handle(Nil, Stream.mk(tl))))
     }
 
   def stepAsync[F2[_],O2>:O](
     implicit S: Sub1[F,F2], F2: Async[F2], T: RealSupertype[O,O2])
-    : Pull[F2,Nothing,ScopedFuture[F2,Pull[F2,Nothing,Step[Chunk[O2], Handle[F2,O2]]]]]
+    : Pull[F2,Nothing,ScopedFuture[F2,Pull[F2,Nothing,(Chunk[O2], Handle[F2,O2])]]]
     =
     Pull.evalScope { get.covary[F2].unconsAsync.map { _ map { case (leftovers,o) =>
-      val inner: Pull[F2,Nothing,Step[Chunk[O2], Handle[F2,O2]]] = o match {
+      val inner: Pull[F2,Nothing,(Chunk[O2], Handle[F2,O2])] = o match {
         case None => Pull.done
         case Some(Left(err)) => Pull.fail(err)
-        case Some(Right(Step(hd,tl))) => Pull.pure(Step(hd, new Handle(List(), Stream.mk(tl))))
+        case Some(Right((hd,tl))) => Pull.pure((hd, new Handle(List(), Stream.mk(tl))))
       }
       if (leftovers.isEmpty) inner else Pull.release(leftovers) flatMap { _ => inner }
     }}}
@@ -324,15 +324,15 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.unchunk]]`. */
   def unchunk: Stream[F,O] = self through pipe.unchunk
 
-  def uncons: Stream[F, Option[Step[Chunk[O], Stream[F,O]]]] =
-    Stream.mk(get.uncons.map(_ map { case Step(hd,tl) => Step(hd, Stream.mk(tl)) }))
+  def uncons: Stream[F, Option[(Chunk[O], Stream[F,O])]] =
+    Stream.mk(get.uncons.map(_ map { case (hd,tl) => (hd, Stream.mk(tl)) }))
 
-  def uncons1: Stream[F, Option[Step[O,Stream[F,O]]]] =
+  def uncons1: Stream[F, Option[(O,Stream[F,O])]] =
     Stream.mk {
-      def go(s: StreamCore[F,O]): StreamCore[F,Option[Step[O,Stream[F,O]]]] = s.uncons.flatMap {
+      def go(s: StreamCore[F,O]): StreamCore[F,Option[(O,Stream[F,O])]] = s.uncons.flatMap {
         case None => StreamCore.emit(None)
-        case Some(Step(hd,tl)) => hd.uncons match {
-          case Some((hc,tc)) => StreamCore.emit(Some(Step(hc, Stream.mk(tl).cons(tc))))
+        case Some((hd,tl)) => hd.uncons match {
+          case Some((hc,tc)) => StreamCore.emit(Some((hc, Stream.mk(tl).cons(tc))))
           case None => go(tl)
         }
       }
@@ -519,45 +519,43 @@ object Stream {
     def push1[A2>:A](a: A2)(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
       push(Chunk.singleton(a))
 
-    def #:[H](hd: H): Step[H, Handle[F,A]] = Step(hd, this)
-
-    def await: Pull[F,Nothing,Step[Chunk[A],Handle[F,A]]] =
+    def await: Pull[F,Nothing,(Chunk[A],Handle[F,A])] =
       buffer match {
         case List() => underlying.step
-        case hb :: tb => Pull.pure(Step(hb, new Handle(tb, underlying)))
+        case hb :: tb => Pull.pure((hb, new Handle(tb, underlying)))
       }
 
-    def await1: Pull[F,Nothing,Step[A,Handle[F,A]]] =
-      await flatMap { case Step(hd, tl) => hd.uncons match {
+    def await1: Pull[F,Nothing,(A,Handle[F,A])] =
+      await flatMap { case (hd, tl) => hd.uncons match {
         case None => tl.await1
-        case Some((h,hs)) => Pull.pure(Step(h, tl push hs))
+        case Some((h,hs)) => Pull.pure((h, tl push hs))
       }}
 
-    def awaitNonempty: Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] = Pull.awaitNonempty(this)
+    def awaitNonempty: Pull[F, Nothing, (Chunk[A], Handle[F,A])] = Pull.awaitNonempty(this)
 
     def echo1: Pull[F,A,Handle[F,A]] = Pull.echo1(this)
 
     def echoChunk: Pull[F,A,Handle[F,A]] = Pull.echoChunk(this)
 
-    def peek: Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]] =
-      await flatMap { case hd #: tl => Pull.pure(hd #: tl.push(hd)) }
+    def peek: Pull[F, Nothing, (Chunk[A], Handle[F,A])] =
+      await flatMap { case (hd, tl) => Pull.pure((hd, tl.push(hd))) }
 
-    def peek1: Pull[F, Nothing, Step[A, Handle[F,A]]] =
-      await1 flatMap { case hd #: tl => Pull.pure(hd #: tl.push1(hd)) }
+    def peek1: Pull[F, Nothing, (A, Handle[F,A])] =
+      await1 flatMap { case (hd, tl) => Pull.pure((hd, tl.push1(hd))) }
 
     def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, AsyncStep[F2,A2]] = {
       val h = Sub1.substHandle(this)(S)
       h.buffer match {
         case List() => h.underlying.stepAsync
-        case hb :: tb => Pull.pure(ScopedFuture.pure(Pull.pure(Step(hb, new Handle(tb, h.underlying)))))
+        case hb :: tb => Pull.pure(ScopedFuture.pure(Pull.pure((hb, new Handle(tb, h.underlying)))))
       }
     }
 
     def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, AsyncStep1[F2,A2]] = {
       awaitAsync map { _ map { _.map {
-          case Step(hd, tl) => hd.uncons match {
-            case None => Step(None, tl)
-            case Some((h,hs)) => Step(Some(h), tl.push(hs))
+          case (hd, tl) => hd.uncons match {
+            case None => (None, tl)
+            case Some((h,hs)) => (Some(h), tl.push(hs))
           }}}
         }
     }
@@ -570,17 +568,17 @@ object Stream {
 
     implicit class HandleInvariantEffectOps[F[_],+A](private val self: Handle[F,A]) extends AnyVal {
 
-      def receive[O,B](f: Step[Chunk[A],Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = self.await.flatMap(f)
+      def receive[O,B](f: (Chunk[A],Handle[F,A]) => Pull[F,O,B]): Pull[F,O,B] = self.await.flatMap(f.tupled)
 
-      def receive1[O,B](f: Step[A,Handle[F,A]] => Pull[F,O,B]): Pull[F,O,B] = self.await1.flatMap(f)
+      def receive1[O,B](f: (A,Handle[F,A]) => Pull[F,O,B]): Pull[F,O,B] = self.await1.flatMap(f.tupled)
 
-      def receiveOption[O,B](f: Option[Step[Chunk[A],Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      def receiveOption[O,B](f: Option[(Chunk[A],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
         Pull.receiveOption(f)(self)
 
-      def receive1Option[O,B](f: Option[Step[A,Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      def receive1Option[O,B](f: Option[(A,Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
         Pull.receive1Option(f)(self)
 
-      def receiveNonemptyOption[O,B](f: Option[Step[Chunk[A],Handle[F,A]]] => Pull[F,O,B]): Pull[F,O,B] =
+      def receiveNonemptyOption[O,B](f: Option[(Chunk[A],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
         Pull.receiveNonemptyOption(f)(self)
     }
   }

@@ -90,7 +90,7 @@ package object file {
     } yield ()).close
 
   private def _writeAll0[F[_]](in: Handle[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] = for {
-    hd #: tail <- in.await
+    (hd, tail) <- in.await
     _ <- _writeAll1(hd, out, offset)
     next <- _writeAll0(tail, out, offset + hd.size)
   } yield next
