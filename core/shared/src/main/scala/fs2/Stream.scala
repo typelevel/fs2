@@ -1,5 +1,6 @@
 package fs2
 
+import fs2.internal.Trace
 import fs2.util.{Async,Attempt,Catchable,Free,Lub1,Monad,RealSupertype,Sub1,~>}
 
 /**

@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.internal.Resources
+import fs2.internal.{Resources,Trace}
 import fs2.util.{Async,Attempt,Catenable,Eq,Free,NonFatal,Sub1,~>,RealSupertype}
 import StreamCore.{Env,NT,Stack,Token}
 
