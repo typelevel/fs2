@@ -4,8 +4,7 @@ import fs2.internal.Resources
 import fs2.util.{Async,Attempt,Catenable,Eq,Free,NonFatal,Sub1,~>,RealSupertype}
 import StreamCore.{Env,NT,Stack,Token}
 
-private[fs2]
-sealed trait StreamCore[F[_],O] { self =>
+private[fs2] sealed trait StreamCore[F[_],O] { self =>
   type O0
 
   def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]]

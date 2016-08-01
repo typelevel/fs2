@@ -216,7 +216,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def output: Pull[F,O,Unit] = Pull.outputs(self)
 
   def pull[F2[_],O2](using: Handle[F,O] => Pull[F2,O2,Any])(implicit S: Sub1[F,F2]) : Stream[F2,O2] =
-    Pull.close { Sub1.substPull(open).flatMap(h => Sub1.substPull(using(h))) }
+    Sub1.substPull(open).flatMap(h => Sub1.substPull(using(h))).close
 
   /** Converts a `Stream[Nothing,O]` in to a `Stream[Pure,O]`. */
   def pure(implicit S: Sub1[F,Pure]): Stream[Pure,O] = covary[Pure]
