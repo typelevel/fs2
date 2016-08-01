@@ -23,13 +23,13 @@ object ThisModuleShouldCompile {
   val d4 = Stream.eval(Task.now(4)) ++ Stream(1,2,3).pure.covary[Task]
   val d5 = Stream.eval(Task.now(4)) ++ (Stream(1,2,3).pure: Stream[Task, Int])
   val e = Stream(1,2,3).flatMap(i => Stream.eval(Task.now(i)))
-  val f = (Stream(1,2,3).covary[Task]).pullv(h => h.await1 flatMap { case Step(hd,_) => Pull.output1(hd) })
-  val g = Stream(1,2,3).pullv(h => h.await1 flatMap { case Step(hd,_) => Pull.output1(hd) })
-  val h = Stream(1,2,3).pullv(h => h.await1 flatMap { case Step(hd,_) => Pull.eval(Task.now(1)) >> Pull.output1(hd) })
+  val f = (Stream(1,2,3).covary[Task]).pull(h => h.await1 flatMap { case Step(hd,_) => Pull.output1(hd) })
+  val g = Stream(1,2,3).pull(h => h.await1 flatMap { case Step(hd,_) => Pull.output1(hd) })
+  val h = Stream(1,2,3).pull(h => h.await1 flatMap { case Step(hd,_) => Pull.eval(Task.now(1)) >> Pull.output1(hd) })
 
   /* Check that `Async[Task]` can be found in companion object without imports. */
   implicit val S = Strategy.sequential
-  val i = Stream.eval(Task.now(1)).pull { h => h.invAwaitAsync }
+  val i = Stream.eval(Task.now(1)).pull { h => h.awaitAsync }
 
   val j: Pipe[Task,Int,Int] = pipe.take[Pure,Int](2)
   val k = pipe.take[Pure,Int](2).covary[Task]
