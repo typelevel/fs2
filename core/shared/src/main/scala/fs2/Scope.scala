@@ -56,12 +56,12 @@ final class Scope[+F[_],+O] private (private val get: Free[R[F]#f,O]) {
       B)(Sub1.sub1[R[F]#f],implicitly[RealSupertype[O,O]])
   }
 
-  override def toString = "Scope"
+  override def toString = s"Scope($get)"
 }
 
 object Scope {
   def suspend[F[_],O](s: => Scope[F,O]): Scope[F,O] = pure(()) flatMap { _ => s }
-  
+
   def pure[F[_],O](o: O): Scope[F,O] = new Scope(Free.pure(o))
 
   def attemptEval[F[_],O](o: F[O]): Scope[F,Attempt[O]] =
