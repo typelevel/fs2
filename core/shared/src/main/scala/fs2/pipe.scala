@@ -1,6 +1,5 @@
 package fs2
 
-import Stream.Handle
 import fs2.util.{Async,Attempt,Free,Functor,Sub1}
 
 object pipe {
@@ -155,7 +154,7 @@ object pipe {
 
   /** Emits the specified separator between every pair of elements in the source stream. */
   def intersperse[F[_],I](separator: I): Stream[F,I] => Stream[F,I] =
-    _ pull { h => Pull.echo1(h) flatMap Pull.loop { (h: Stream.Handle[F,I]) =>
+    _ pull { h => Pull.echo1(h) flatMap Pull.loop { (h: Handle[F,I]) =>
       h.receive { case (chunk, h) =>
         val interspersed = {
           val bldr = Vector.newBuilder[I]

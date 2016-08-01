@@ -1,7 +1,6 @@
 package fs2
 
 import java.util.zip.{DataFormatException, Deflater, Inflater}
-import fs2.Stream.Handle
 
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer

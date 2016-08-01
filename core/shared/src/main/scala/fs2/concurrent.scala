@@ -65,7 +65,7 @@ object concurrent {
         }
       }
 
-      def go(doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]])(open: Int): (Stream.Handle[F,Stream[F,A]], Stream.Handle[F,Pull[F,Nothing,Unit]]) => Pull[F,Nothing,Unit] = (h, d) => {
+      def go(doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]])(open: Int): (Handle[F,Stream[F,A]], Handle[F,Pull[F,Nothing,Unit]]) => Pull[F,Nothing,Unit] = (h, d) => {
         if (open < maxOpen)
           h.receive1Option {
             case Some((inner, h)) => runInnerStream(inner, doneQueue).flatMap { gate => go(doneQueue)(open + 1)(h, d) }

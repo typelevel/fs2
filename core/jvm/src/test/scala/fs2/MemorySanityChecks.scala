@@ -17,7 +17,7 @@ object RepeatPullSanityTest extends App {
 
 object RepeatEvalSanityTest extends App {
   def id[A]: Pipe[Pure, A, A] = {
-    def go: Stream.Handle[Pure, A] => Pull[Pure, A, Stream.Handle[Pure, A]] =
+    def go: Handle[Pure, A] => Pull[Pure, A, Handle[Pure, A]] =
       _.receive1 { case (h, t) => Pull.output1(h) >> go(t) }
     _ pull go
   }

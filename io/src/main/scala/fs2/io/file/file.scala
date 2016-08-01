@@ -5,7 +5,6 @@ import java.io.{InputStream, OutputStream}
 import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption}
 
-import fs2.Stream.Handle
 import fs2.util.{Async, Effect}
 import fs2.util.syntax._
 

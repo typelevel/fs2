@@ -2,8 +2,6 @@ package fs2
 
 import java.nio.charset.Charset
 
-import fs2.Stream.Handle
-
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
 

@@ -5,7 +5,6 @@ package file
 import java.nio.channels._
 import java.nio.file._
 
-import fs2.Stream.Handle
 import fs2.util.{Async,Effect}
 import fs2.util.syntax._
 

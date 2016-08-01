@@ -34,7 +34,6 @@ object Sub1 extends Sub1Instances0 {
   def substSegment[F[_],G[_],A](s: StreamCore.Segment[F,A])(implicit S: Sub1[F,G]): StreamCore.Segment[G,A] =
     subst[StreamCore.Segment,F,G,A](s)
 
-  import Stream.Handle
   def substHandle[F[_],G[_],A](h: Handle[F,A])(implicit S: Sub1[F,G]): Handle[G,A] =
     subst[Handle,F,G,A](h)
 
@@ -56,4 +55,3 @@ object Sub1 extends Sub1Instances0 {
   def substUF1[F[_],G[_],H[_]](u: F ~> G)(implicit S: Sub1[G,H]): F ~> H =
     subst[({ type f[g[_],x] = F ~> g })#f,G,H,Nothing](u)
 }
-

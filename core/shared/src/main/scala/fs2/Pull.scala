@@ -2,7 +2,6 @@ package fs2
 
 import fs2.util.{Async,Attempt,Free,NonFatal,RealSupertype,Sub1}
 import StreamCore.Token
-import Stream.Handle
 import Pull._
 
 /**
