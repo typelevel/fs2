@@ -4,7 +4,7 @@ This markdown file contains code examples which can be compiled using tut. Switc
 
 # FS2: The Official Guide
 
-This is the offical FS2 guide. It gives an overview of the library and its features and it's kept up to date with the code. If you spot a problem with this guide, a nonworking example, or simply have some suggested improvments, open a pull request! It's very much a WIP.
+This is the official FS2 guide. It gives an overview of the library and its features and it's kept up to date with the code. If you spot a problem with this guide, a nonworking example, or simply have some suggested improvments, open a pull request! It's very much a WIP.
 
 ### Table of contents
 
@@ -106,7 +106,7 @@ val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[fs2.Task,Int] = attemptEval(Task).flatMap(<function1>)
 ```
 
-[`Task`](../core/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
+[`Task`](../core/shared/src/main/scala/fs2/task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
 The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Effect`][Effect] or [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
@@ -114,10 +114,10 @@ The `eval` function works for any effect type, not just `Task`. FS2 does not car
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
 
-[Task]: ../core/src/main/scala/fs2/Task.scala
-[Catchable]: ../core/src/main/scala/fs2/util/Catchable.scala
-[Effect]: ../core/src/main/scala/fs2/util/Effect.scala
-[Async]: ../core/src/main/scala/fs2/util/Async.scala
+[Task]: ../core/shared/src/main/scala/fs2/task.scala
+[Catchable]: ../core/shared/src/main/scala/fs2/util/Catchable.scala
+[Effect]: ../core/shared/src/main/scala/fs2/util/Effect.scala
+[Async]: ../core/shared/src/main/scala/fs2/util/Async.scala
 
 `eval` produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained). Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
@@ -308,7 +308,7 @@ def bracket[F[_],R,O](acquire: F[R])(use: R => Stream[F,O], release: R => F[Unit
 
 FS2 guarantees _once and only once_ semantics for resource cleanup actions introduced by the `Stream.bracket` function.
 
-For the full set of operations primitive operations on `Stream`, see the [`Streams` trait](../core/src/main/scala/fs2/Streams.scala), which the [`Stream` companion object](../core/src/main/scala/fs2/Stream.scala) implements. There are only 11 primitive operations, and we've already seen most of them above! Note that for clarity, the primitives in `Streams` are defined in a `trait` as standalone functions, but for convenience these same functions are exposed with infix syntax on the `Stream` type. So `Stream.onError(s)(h)` may be invoked as `s.onError(h)`, and so on.
+For the full set of operations primitive operations on `Stream`, see the [`Streams` trait](../core/shared/src/main/scala/fs2/Streams.scala), which the [`Stream` companion object](../core/shared/src/main/scala/fs2/Stream.scala) implements. There are only 11 primitive operations, and we've already seen most of them above! Note that for clarity, the primitives in `Streams` are defined in a `trait` as standalone functions, but for convenience these same functions are exposed with infix syntax on the `Stream` type. So `Stream.onError(s)(h)` may be invoked as `s.onError(h)`, and so on.
 
 ### Exercises
 
@@ -340,7 +340,7 @@ Regardless of how complex the job, the `fs2.Pull` and `fs2.Stream.Handle` types 
 def open[F[_],I](s: Stream[F,I]): Pull[F,Nothing,Handle[F,I]]
 ```
 
-The `trait Pull[+F[_],+O,+R]` represents a program that may pull values from one or more `Handle` values, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pulls` trait](../core/src/main/scala/fs2/Pulls.scala) for the full set of primitive operations on `Pull`.
+The `trait Pull[+F[_],+O,+R]` represents a program that may pull values from one or more `Handle` values, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pulls` trait](../core/shared/src/main/scala/fs2/Pulls.scala) for the full set of primitive operations on `Pull`.
 
 Let's look at the core operation for implementing `take`. It's just a recursive function:
 
@@ -421,7 +421,7 @@ res34: fs2.Stream[[x]fs2.Pure[x],Int] = evalScope(Scope(Bind(Eval(Snapshot),<fun
 
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `close` completes. Note again that _nothing happens_ when we call `.close` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
 
-There are lots of useful transformation functions in [`pipe`](../core/src/scala/main/fs2/pipe) and [`pipe2`](../core/src/main/fs2/pipe2) built using the `Pull` type, for example:
+There are lots of useful transformation functions in [`pipe`](../core/shared/src/main/scala/fs2/pipe.scala) and [`pipe2`](../core/shared/src/main/scala/fs2/pipe2.scala) built using the `Pull` type, for example:
 
 ```scala
 import fs2.{pipe, pipe2}
@@ -491,7 +491,7 @@ scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).run
 res47: Vector[Int] = Vector(1, 2, 3, 4)
 ```
 
-The `merge` function is defined in [`pipe2`](../core/src/main/scala/fs2/pipe2), along with other useful concurrency functions, like `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
+The `merge` function is defined in [`pipe2`](../core/shared/src/main/scala/fs2/pipe2.scala), along with other useful concurrency functions, like `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
 
 The function `concurrent.join` runs multiple streams concurrently. The signature is:
 
@@ -512,9 +512,9 @@ type AsyncStep[F[_],A] = Async.Future[F, Pull[F, Nothing, Step[Chunk[A], Handle[
 def awaitAsync[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep[F,A]]
 ```
 
-A `Future[F,A]` represents a running computation that will eventually yield an `A`. A `Future[F,A]` has a method `.force`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. A `Future[F,A]` may be raced with another `Future` also---see the implementation of [`pipe2.merge`](../core/src/main/scala/fs2/pipe2).
+A `Future[F,A]` represents a running computation that will eventually yield an `A`. A `Future[F,A]` has a method `.force`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. A `Future[F,A]` may be raced with another `Future` also---see the implementation of [`pipe2.merge`](../core/shared/src/main/scala/fs2/pipe2.scala).
 
-In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [`async` package object](../core/src/main/scala/fs2/async/async.scala) for more details. We'll make use of some of these in the next section when discussing how to talk to the external world.
+In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [`async` package object](../core/shared/src/main/scala/fs2/async/async.scala) for more details. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
 ### Exercises
 
@@ -560,7 +560,7 @@ s.runLog.unsafeRun()
 // res48: Vector[String] = Vector(...moving on)
 ```
 
-The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/src/main/scala/fs2/util/Async.scala) can be used for this generally, without committing to a particular effect:
+The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/shared/src/main/scala/fs2/util/Async.scala) can be used for this generally, without committing to a particular effect:
 
 ```scala
 import fs2.util.Async
@@ -663,7 +663,7 @@ def rows[F[_]](h: CSVHandle)(implicit F: Async[F]): Stream[F,Row] =
 // rows: [F[_]](h: CSVHandle)(implicit F: fs2.util.Async[F])fs2.Stream[F,Row]
 ```
 
-See [`Queue`](../core/src/main/scala/fs2/async/mutable/Queue) for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
+See [`Queue`](../core/shared/src/main/scala/fs2/async/mutable/Queue.scala) for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
 
 ### Learning more
 
