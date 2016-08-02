@@ -4,7 +4,7 @@ This markdown file contains code examples which can be compiled using tut. Switc
 
 # FS2: The Official Guide
 
-This is the offical FS2 guide. It gives an overview of the library and its features and it's kept up to date with the code. If you spot a problem with this guide, a nonworking example, or simply have some suggested improvments, open a pull request! It's very much a WIP.
+This is the official FS2 guide. It gives an overview of the library and its features and it's kept up to date with the code. If you spot a problem with this guide, a nonworking example, or simply have some suggested improvments, open a pull request! It's very much a WIP.
 
 ### Table of contents
 
@@ -338,7 +338,7 @@ Regardless of how complex the job, the `fs2.Pull` and `fs2.Handle` types can usu
 def open[F[_],I](s: Stream[F,I]): Pull[F,Nothing,Handle[F,I]]
 ```
 
-The `trait Pull[+F[_],+O,+R]` represents a program that may pull values from one or more `Handle` values, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pulls` trait](../core/src/main/scala/fs2/Pulls.scala) for the full set of primitive operations on `Pull`.
+The `trait Pull[+F[_],+O,+R]` represents a program that may pull values from one or more `Handle` values, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pulls` trait](../core/shared/src/main/scala/fs2/Pulls.scala) for the full set of primitive operations on `Pull`.
 
 Let's look at the core operation for implementing `take`. It's just a recursive function:
 
@@ -417,7 +417,7 @@ res34: fs2.Stream[[x]fs2.Pure[x],Int] = evalScope(Scope(Bind(Eval(Snapshot),<fun
 
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `close` completes. Note again that _nothing happens_ when we call `.close` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
 
-There are lots of useful transformation functions in [`pipe`](../core/shared/src/scala/main/fs2/pipe.scala) and [`pipe2`](../core/shared/src/main/fs2/pipe2.scala) built using the `Pull` type, for example:
+There are lots of useful transformation functions in [`pipe`](../core/shared/src/main/scala/fs2/pipe.scala) and [`pipe2`](../core/shared/src/main/scala/fs2/pipe2.scala) built using the `Pull` type, for example:
 
 ```scala
 import fs2.{pipe, pipe2}
