@@ -106,7 +106,7 @@ val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[fs2.Task,Int] = attemptEval(Task).flatMap(<function1>)
 ```
 
-[`Task`](../core/shared/src/main/scala/fs2/task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
+[`Task`](../core/shared/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
 The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Effect`][Effect] or [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
@@ -114,7 +114,7 @@ The `eval` function works for any effect type, not just `Task`. FS2 does not car
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
 
-[Task]: ../core/shared/src/main/scala/fs2/task.scala
+[Task]: ../core/shared/src/main/scala/fs2/Task.scala
 [Catchable]: ../core/shared/src/main/scala/fs2/util/Catchable.scala
 [Effect]: ../core/shared/src/main/scala/fs2/util/Effect.scala
 [Async]: ../core/shared/src/main/scala/fs2/util/Async.scala
@@ -308,8 +308,6 @@ def bracket[F[_],R,O](acquire: F[R])(use: R => Stream[F,O], release: R => F[Unit
 
 FS2 guarantees _once and only once_ semantics for resource cleanup actions introduced by the `Stream.bracket` function.
 
-For the full set of operations primitive operations on `Stream`, see the [`Streams` trait](../core/shared/src/main/scala/fs2/Streams.scala), which the [`Stream` companion object](../core/shared/src/main/scala/fs2/Stream.scala) implements. There are only 11 primitive operations, and we've already seen most of them above! Note that for clarity, the primitives in `Streams` are defined in a `trait` as standalone functions, but for convenience these same functions are exposed with infix syntax on the `Stream` type. So `Stream.onError(s)(h)` may be invoked as `s.onError(h)`, and so on.
-
 ### Exercises
 
 Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips all output from a stream, `eval_`, which runs an effect and ignores its output, and `attempt`, which catches any errors produced by a stream:
@@ -326,14 +324,14 @@ scala> Stream.eval_(Task.delay(println("!!"))).runLog.unsafeRun()
 res29: Vector[Nothing] = Vector()
 
 scala> (Stream(1,2) ++ (throw new Exception("nooo!!!"))).attempt.toList
-res30: List[Either[Throwable,Int]] = List(Right(1), Right(2), Left(java.lang.Exception: nooo!!!))
+res30: List[fs2.util.Attempt[Int]] = List(Right(1), Right(2), Left(java.lang.Exception: nooo!!!))
 ```
 
 ### Statefully transforming streams
 
-We often wish to statefully transform one or more streams in some way, possibly evaluating effects as we do so. As a running example, consider taking just the first 5 elements of a `s: Stream[Task,Int]`. To produce a `Stream[Task,Int]` which takes just the first 5 elements of `s`, we need to repeadedly await (or pull) values from `s`, keeping track of the number of values seen so far and stopping as soon as we hit 5 elements. In more complex scenarios, we may want to evaluate additional effects as we pull from one or more streams.
+We often wish to statefully transform one or more streams in some way, possibly evaluating effects as we do so. As a running example, consider taking just the first 5 elements of a `s: Stream[Task,Int]`. To produce a `Stream[Task,Int]` which takes just the first 5 elements of `s`, we need to repeatedly await (or pull) values from `s`, keeping track of the number of values seen so far and stopping as soon as we hit 5 elements. In more complex scenarios, we may want to evaluate additional effects as we pull from one or more streams.
 
-Regardless of how complex the job, the `fs2.Pull` and `fs2.Stream.Handle` types can usually express it. `Handle[F,I]` represents a 'currently open' `Stream[F,I]`. We obtain one using `Stream.open`, or the method on `Stream`, `s.open`, which returns the `Handle` inside an effect type called `Pull`:
+Regardless of how complex the job, the `fs2.Pull` and `fs2.Handle` types can usually express it. `Handle[F,I]` represents a 'currently open' `Stream[F,I]`. We obtain one using `Stream.open`, or the method on `Stream`, `s.open`, which returns the `Handle` inside an effect type called `Pull`:
 
 ```Scala
 // in fs2.Stream object
@@ -347,12 +345,10 @@ Let's look at the core operation for implementing `take`. It's just a recursive 
 ```scala
 object Pull_ {
   import fs2._
-  import fs2.Stream.Handle
-  import fs2.Step._ // provides '#:' constructor, also called Step
 
   def take[F[_],O](n: Int)(h: Handle[F,O]): Pull[F,O,Nothing] =
     for {
-      chunk #: h <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
+      (chunk, h) <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
       tl <- Pull.output(chunk) >> take(n - chunk.size)(h)
     } yield tl
 }
@@ -365,15 +361,15 @@ Stream(1,2,3,4).pure.pull(Pull_.take(2)).toList
 Let's break it down line by line:
 
 ```Scala
-chunk #: h <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
+(chunk, h) <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
 ```
 
 There's a lot going on in this one line:
 
 * If `n <= 0`, we're done, and stop pulling.
-* Otherwise we have more values to `take`, so we `Pull.awaitLimit(n)(h)`, which returns a `Step[Chunk[A],Handle[F,I]]` (again, inside of the `Pull` effect).
+* Otherwise we have more values to `take`, so we `Pull.awaitLimit(n)(h)`, which returns a `(Chunk[A],Handle[F,I])` (again, inside of the `Pull` effect).
 * The `Pull.awaitLimit(n)(h)` reads from the handle but gives us a `Chunk[O]` with _no more than_ `n` elements. (We can also `h.await1` to read just a single element, `h.await` to read a single `Chunk` of however many are available, `Pull.awaitN(n)(h)` to obtain a `List[Chunk[A]]` totaling exactly `n` elements, and even `h.awaitAsync` and various other _asynchronous_ awaiting functions which we'll discuss in the [Concurrency](#concurrency) section.)
-* Using the pattern `chunk #: h` (defined in `fs2.Step`), we destructure this `Step` to its `chunk: Chunk[O]` and its `h: Handle[F,O]`. This shadows the outer `h`, which is fine here since it isn't relevant anymore. (Note: nothing stops us from keeping the old `h` around and awaiting from it again if we like, though this isn't usually what we want since it will repeat all the effects of that await.)
+* Using the pattern `(chunk, h)`, we destructure this step to its `chunk: Chunk[O]` and its `h: Handle[F,O]`. This shadows the outer `h`, which is fine here since it isn't relevant anymore. (Note: nothing stops us from keeping the old `h` around and awaiting from it again if we like, though this isn't usually what we want since it will repeat all the effects of that await.)
 
 Moving on, the `Pull.output(chunk)` writes the chunk we just read to the _output_ of the `Pull`. This binds the `O` type in our `Pull[F,O,R]` we are constructing:
 
@@ -673,9 +669,9 @@ Want to learn more?
   * [The README example](ReadmeExample.md)
   * More contributions welcome! Open a PR, following the style of one of the examples above. You can either start with a large block of code and break it down line by line, or work up to something more complicated using some smaller bits of code first.
 * Detailed coverage of different modules in the library:
-  * File I/O - _coming soon_
-  * TCP networking - _help wanted_
-  * UDP networking - _help wanted_
+  * File I/O
+  * TCP networking
+  * UDP networking
   * Contributions welcome! If you are familiar with one of the modules of the library and would like to contribute a more detailed guide for it, submit a PR.
 
 Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
@@ -737,7 +733,7 @@ scala> (Stream(1) onComplete Stream.fail(Err)).take(1).toList
 res56: List[Int] = List(1)
 ```
 
-The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doeesn't know this until it actually runs another step of the stream.
+The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doesn't know this until it actually runs another step of the stream.
 
 If instead we use `onFinalize`, the code is guaranteed to run, regardless of whether `take` interrupts:
 
@@ -767,6 +763,6 @@ The result is highly nondeterministic. Here are a few ways it can play out:
 
 * `s1` may complete before the error in `s2` is encountered, in which case nothing will be printed and no error will occur.
 * `s2` may encounter the error before any of `s1` is emitted. When the error is reraised by `s2`, that will terminate the `merge` and asynchronously interrupt `s1`, and the `take` terminates with that same error.
-* `s2` may encounter the error before any of `s1` is emited, but during the period where the value is caught by `onError`, `s1` may emit a value and the `take(1)` may terminate, triggering interruption of both `s1` and `s2`, before the error is reraised but after the exception is printed! In this case, the stream will still terminate without error.
+* `s2` may encounter the error before any of `s1` is emitted, but during the period where the value is caught by `onError`, `s1` may emit a value and the `take(1)` may terminate, triggering interruption of both `s1` and `s2`, before the error is reraised but after the exception is printed! In this case, the stream will still terminate without error.
 
 The correctness of your program should not depend on how different streams interleave, and once again, you should not use `onError` or other interruptible functions for resource cleanup. Use `bracket` or `onFinalize` for this purpose.

@@ -1,11 +1,10 @@
 package fs2
 
-import fs2.internal.Resources
+import fs2.internal.{Resources,Trace}
 import fs2.util.{Async,Attempt,Catenable,Eq,Free,NonFatal,Sub1,~>,RealSupertype}
 import StreamCore.{Env,NT,Stack,Token}
 
-private[fs2]
-sealed trait StreamCore[F[_],O] { self =>
+private[fs2] sealed trait StreamCore[F[_],O] { self =>
   type O0
 
   def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]]
@@ -61,10 +60,10 @@ sealed trait StreamCore[F[_],O] { self =>
   def onComplete(s2: StreamCore[F,O]): StreamCore[F,O] =
     StreamCore.append(self onError (e => StreamCore.append(s2, StreamCore.fail(e))), s2)
 
-  def step: Scope[F, Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]
+  def step: Scope[F, Option[Attempt[(Chunk[O],StreamCore[F,O])]]]
     = push(NT.Id(), Stack.empty[F,O]) flatMap (StreamCore.step)
 
-  def stepTrace(t: Trace): Scope[F, Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]
+  def stepTrace(t: Trace): Scope[F, Option[Attempt[(Chunk[O],StreamCore[F,O])]]]
     = push(NT.Id(), Stack.empty[F,O]) flatMap (StreamCore.stepTrace(t))
 
   def runFold[O2](z: O2)(f: (O2,O) => O2): Free[F,O2] =
@@ -81,12 +80,12 @@ sealed trait StreamCore[F[_],O] { self =>
   def runFoldScopeTrace[O2](t: Trace)(z: O2)(f: (O2,O) => O2): Scope[F,O2] = stepTrace(t) flatMap {
     case None => Scope.pure(z)
     case Some(Left(err)) => Scope.fail(err)
-    case Some(Right(Step(hd,tl))) =>
+    case Some(Right((hd,tl))) =>
       try tl.runFoldScopeTrace(t)(hd.foldLeft(z)(f))(f)
       catch { case NonFatal(e) => Scope.fail(e) }
   }
 
-  def uncons: StreamCore[F, Option[Step[Chunk[O], StreamCore[F,O]]]] =
+  def uncons: StreamCore[F, Option[(Chunk[O], StreamCore[F,O])]] =
     StreamCore.evalScope(step) flatMap {
       case None => StreamCore.emit(None)
       case Some(Left(err)) => StreamCore.fail(err)
@@ -98,14 +97,14 @@ sealed trait StreamCore[F[_],O] { self =>
       val inner: StreamCore[F,O] = o match {
         case None => StreamCore.empty
         case Some(Left(err)) => StreamCore.fail(err)
-        case Some(Right(Step(hd, tl))) => StreamCore.append(StreamCore.chunk(hd), tl)
+        case Some(Right((hd, tl))) => StreamCore.append(StreamCore.chunk(hd), tl)
       }
       if (leftovers.isEmpty) inner else StreamCore.release(leftovers) flatMap { _ => inner }
     }}
 
   def unconsAsync(implicit F: Async[F])
-  : Scope[F,ScopedFuture[F, (List[Token], Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]])]]
-  = Scope.eval(F.ref[(List[Token], Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]])]).flatMap { ref =>
+  : Scope[F,ScopedFuture[F, (List[Token], Option[Attempt[(Chunk[O],StreamCore[F,O])]])]]
+  = Scope.eval(F.ref[(List[Token], Option[Attempt[(Chunk[O],StreamCore[F,O])]])]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Attempt[Unit]]]("unconsAsync")
     val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
@@ -234,67 +233,65 @@ object StreamCore {
   private[fs2] def attemptStream[F[_],O](s: => StreamCore[F,O]): StreamCore[F,O] =
     try s catch { case NonFatal(e) => fail(e) }
 
-  def step[F[_],O0,O](stack: Stack[F,O0,O])
-  : Scope[F,Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]
-  = stepTrace(Trace.Off)(stack)
+  def step[F[_],O0,O](stack: Stack[F,O0,O]): Scope[F,Option[Attempt[(Chunk[O],StreamCore[F,O])]]] =
+    stepTrace(Trace.Off)(stack)
 
-  def stepTrace[F[_],O0,O](trace: Trace)(stack: Stack[F,O0,O])
-  : Scope[F,Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]
-  = Scope.interrupted.flatMap { interrupted =>
-    if (interrupted) Scope.pure(Some(Left(Interrupted)))
-    else {
-      if (trace.enabled) trace {
-        "Stepping stack:\n" + stack.render.zipWithIndex.map { case (entry, idx) => s"  $idx: $entry" }.mkString("", "\n", "\n")
-      }
-      stack (
-        (segs, eq) => Eq.subst[({ type f[x] = Catenable[Segment[F,x]] })#f, O0, O](segs)(eq).uncons match {
-          case None => Scope.pure(None)
-          case Some((hd, segs)) => hd match {
-            case Segment.Fail(err) => Stack.fail[F,O](segs)(err) match {
-              case Left(err) => Scope.pure(Some(Left(err)))
-              case Right((s, segs)) => stepTrace(trace)(Stack.segments(segs).pushAppend(s))
-            }
-            case Segment.Emit(chunk) => Scope.pure(Some(Right(Step(chunk, StreamCore.segments(segs)))))
-            case Segment.Handler(h) => stepTrace(trace)(Stack.segments(segs))
-            case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segs)) flatMap stepTrace(trace)
-          }
-        },
-        new stack.H[Scope[F,Option[Attempt[Step[Chunk[O],StreamCore[F,O]]]]]] { def f[x] =
-          (segs, f, stack) => { segs.uncons match {
-            case None => stepTrace(trace)(stack)
+  def stepTrace[F[_],O0,O](trace: Trace)(stack: Stack[F,O0,O]): Scope[F,Option[Attempt[(Chunk[O],StreamCore[F,O])]]] =
+    Scope.interrupted.flatMap { interrupted =>
+      if (interrupted) Scope.pure(Some(Left(Interrupted)))
+      else {
+        if (trace.enabled) trace {
+          "Stepping stack:\n" + stack.render.zipWithIndex.map { case (entry, idx) => s"  $idx: $entry" }.mkString("", "\n", "\n")
+        }
+        stack (
+          (segs, eq) => Eq.subst[({ type f[x] = Catenable[Segment[F,x]] })#f, O0, O](segs)(eq).uncons match {
+            case None => Scope.pure(None)
             case Some((hd, segs)) => hd match {
-              case Segment.Emit(chunk) => f match {
-                case Left(f) =>
-                  val segs2 = segs.map(_.mapChunks(f))
-                  val stack2 = stack.pushSegments(segs2)
-                  stepTrace(trace)(try { stack2.pushEmit(f(chunk)) }
-                       catch { case NonFatal(e) => stack2.pushFail(e) })
-                case Right(f) => chunk.uncons match {
-                  case None => stepTrace(trace)(stack.pushBind(f).pushSegments(segs))
-                  case Some((hd,tl)) => stepTrace(trace)({
-                    val segs2: Catenable[Segment[F, x]] =
-                      (if (tl.isEmpty) segs else segs.push(Segment.Emit(tl))).map(_.interpretBind(f))
-                    val stack2 = stack.pushSegments(segs2)
-                    try stack2.pushAppend(f(hd))
-                    catch {
-                      case NonFatal(t) => stack2.pushFail(t)
-                    }
-                  })
-                }
+              case Segment.Fail(err) => Stack.fail[F,O](segs)(err) match {
+                case Left(err) => Scope.pure(Some(Left(err)))
+                case Right((s, segs)) => stepTrace(trace)(Stack.segments(segs).pushAppend(s))
               }
-              case Segment.Append(s) =>
-                s.push(NT.Id(), stack.pushBindOrMap(f).pushSegments(segs)) flatMap stepTrace(trace)
-              case Segment.Fail(err) => Stack.fail[F,O0](segs)(err) match {
-                case Left(err) => stepTrace(trace)(stack.pushFail(err))
-                case Right((s, segs)) =>
-                  stepTrace(trace)(stack.pushBindOrMap(f).pushSegments(segs).pushAppend(s))
-              }
-              case Segment.Handler(_) => stepTrace(trace)(stack.pushBindOrMap(f).pushSegments(segs))
+              case Segment.Emit(chunk) => Scope.pure(Some(Right((chunk, StreamCore.segments(segs)))))
+              case Segment.Handler(h) => stepTrace(trace)(Stack.segments(segs))
+              case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segs)) flatMap stepTrace(trace)
             }
-          }
-        }}
-    )}
-  }
+          },
+          new stack.H[Scope[F,Option[Attempt[(Chunk[O],StreamCore[F,O])]]]] { def f[x] =
+            (segs, f, stack) => { segs.uncons match {
+              case None => stepTrace(trace)(stack)
+              case Some((hd, segs)) => hd match {
+                case Segment.Emit(chunk) => f match {
+                  case Left(f) =>
+                    val segs2 = segs.map(_.mapChunks(f))
+                    val stack2 = stack.pushSegments(segs2)
+                    stepTrace(trace)(try { stack2.pushEmit(f(chunk)) }
+                         catch { case NonFatal(e) => stack2.pushFail(e) })
+                  case Right(f) => chunk.uncons match {
+                    case None => stepTrace(trace)(stack.pushBind(f).pushSegments(segs))
+                    case Some((hd,tl)) => stepTrace(trace)({
+                      val segs2: Catenable[Segment[F, x]] =
+                        (if (tl.isEmpty) segs else segs.push(Segment.Emit(tl))).map(_.interpretBind(f))
+                      val stack2 = stack.pushSegments(segs2)
+                      try stack2.pushAppend(f(hd))
+                      catch {
+                        case NonFatal(t) => stack2.pushFail(t)
+                      }
+                    })
+                  }
+                }
+                case Segment.Append(s) =>
+                  s.push(NT.Id(), stack.pushBindOrMap(f).pushSegments(segs)) flatMap stepTrace(trace)
+                case Segment.Fail(err) => Stack.fail[F,O0](segs)(err) match {
+                  case Left(err) => stepTrace(trace)(stack.pushFail(err))
+                  case Right((s, segs)) =>
+                    stepTrace(trace)(stack.pushBindOrMap(f).pushSegments(segs).pushAppend(s))
+                }
+                case Segment.Handler(_) => stepTrace(trace)(stack.pushBindOrMap(f).pushSegments(segs))
+              }
+            }
+          }}
+      )}
+    }
 
   def segment[F[_],O](s: Segment[F,O]): StreamCore[F,O] = new StreamCore[F,O] {
     type O0 = O

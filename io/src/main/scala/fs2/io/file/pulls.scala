@@ -5,7 +5,6 @@ package file
 import java.nio.channels._
 import java.nio.file._
 
-import fs2.Stream.Handle
 import fs2.util.{Async,Effect}
 import fs2.util.syntax._
 
@@ -33,7 +32,7 @@ object pulls {
     _writeAllToFileHandle1(in, out, 0)
 
   private def _writeAllToFileHandle1[F[_]](in: Handle[F, Byte], out: FileHandle[F], offset: Long)(implicit F: Effect[F]): Pull[F, Nothing, Unit] = for {
-    hd #: tail <- in.await
+    (hd, tail) <- in.await
     _ <- _writeAllToFileHandle2(hd, out, offset)
     next <- _writeAllToFileHandle1(tail, out, offset + hd.size)
   } yield next

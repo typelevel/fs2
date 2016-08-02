@@ -1,4 +1,4 @@
-package fs2
+package fs2.internal
 
 trait Trace {
   def enabled: Boolean
@@ -15,4 +15,3 @@ object Trace {
     def apply(msg: String) = ()
   }
 }
-

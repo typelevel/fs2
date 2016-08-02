@@ -1,7 +1,6 @@
 package fs2
 
 import java.util.zip.{DataFormatException, Deflater, Inflater}
-import fs2.Stream.Handle
 
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
@@ -29,8 +28,8 @@ object compress {
       }}
     pipe.covary[F,Byte,Byte](pure)
   }
-  private def _deflate_step(deflater: Deflater, buffer: Array[Byte]): Step[Chunk[Byte], Handle[Pure, Byte]] => Pull[Pure, Byte, Handle[Pure, Byte]] = {
-    case c #: h =>
+  private def _deflate_step(deflater: Deflater, buffer: Array[Byte]): ((Chunk[Byte], Handle[Pure, Byte])) => Pull[Pure, Byte, Handle[Pure, Byte]] = {
+    case (c, h) =>
       deflater.setInput(c.toArray)
       val result = _deflate_collect(deflater, buffer, ArrayBuffer.empty, false).toArray
       Pull.output(Chunk.bytes(result)) >> _deflate_handle(deflater, buffer)(h)
@@ -63,7 +62,7 @@ object compress {
   def inflate[F[_]](nowrap: Boolean = false,
               bufferSize: Int = 1024 * 32): Pipe[F,Byte,Byte] = {
     val pure: Pipe[Pure,Byte,Byte] =
-      _ pull { _.awaitNonempty flatMap { case c #: h =>
+      _ pull { _.awaitNonempty flatMap { case (c, h) =>
         val inflater = new Inflater(nowrap)
         val buffer = new Array[Byte](bufferSize)
         inflater.setInput(c.toArray)
@@ -72,8 +71,8 @@ object compress {
       }}
     pipe.covary[F,Byte,Byte](pure)
   }
-  private def _inflate_step(inflater: Inflater, buffer: Array[Byte]): Step[Chunk[Byte], Handle[Pure, Byte]] => Pull[Pure, Byte, Handle[Pure, Byte]] = {
-    case c #: h =>
+  private def _inflate_step(inflater: Inflater, buffer: Array[Byte]): ((Chunk[Byte], Handle[Pure, Byte])) => Pull[Pure, Byte, Handle[Pure, Byte]] = {
+    case (c, h) =>
       inflater.setInput(c.toArray)
       val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
       Pull.output(Chunk.bytes(result)) >> _inflate_handle(inflater, buffer)(h)

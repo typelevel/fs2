@@ -27,16 +27,15 @@ class TimeSpec extends AsyncFs2Spec {
     }
 
     "every" in {
-      pending // Too finicky on Traviss
+      pending // Too finicky on Travis
       type BD = (Boolean, FiniteDuration)
       val durationSinceLastTrue: Pipe[Pure,BD,BD] = {
-        def go(lastTrue: FiniteDuration): Stream.Handle[Pure,BD] => Pull[Pure,BD,Unit] = h => {
-          h.receive1 {
-            case pair #: tl =>
-              pair match {
-                case (true , d) => Pull.output1((true , d - lastTrue)) >> go(d)(tl)
-                case (false, d) => Pull.output1((false, d - lastTrue)) >> go(lastTrue)(tl)
-              }
+        def go(lastTrue: FiniteDuration): Handle[Pure,BD] => Pull[Pure,BD,Unit] = h => {
+          h.receive1 { (pair, tl) =>
+            pair match {
+              case (true , d) => Pull.output1((true , d - lastTrue)) >> go(d)(tl)
+              case (false, d) => Pull.output1((false, d - lastTrue)) >> go(lastTrue)(tl)
+            }
           }
         }
         _ pull go(0.seconds)

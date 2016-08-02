@@ -11,14 +11,14 @@ object ResourceTrackerSanityTest extends App {
 }
 
 object RepeatPullSanityTest extends App {
-  def id[A]: Pipe[Pure, A, A] = _ repeatPull Pull.receive1 { case h #: t => Pull.output1(h) as t }
+  def id[A]: Pipe[Pure, A, A] = _ repeatPull Pull.receive1 { (h, t) => Pull.output1(h) as t }
   Stream.constant(1).covary[Task].throughPure(id).run.unsafeRun()
 }
 
 object RepeatEvalSanityTest extends App {
   def id[A]: Pipe[Pure, A, A] = {
-    def go: Stream.Handle[Pure, A] => Pull[Pure, A, Stream.Handle[Pure, A]] =
-      _.receive1 { case h #: t => Pull.output1(h) >> go(t) }
+    def go: Handle[Pure, A] => Pull[Pure, A, Handle[Pure, A]] =
+      _.receive1 { case (h, t) => Pull.output1(h) >> go(t) }
     _ pull go
   }
   Stream.repeatEval(Task.delay(1)).throughPure(id).run.unsafeRun()

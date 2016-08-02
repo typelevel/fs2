@@ -3,16 +3,16 @@ package fs2
 import fs2.util.{Attempt,Free,RealSupertype,Sub1,~>}
 import fs2.StreamCore.{Env,R,RF,Token}
 
-case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
+final class Scope[+F[_],+O] private (private val get: Free[R[F]#f,O]) {
 
   def as[O2](o2: O2): Scope[F,O2] = map(_ => o2)
 
-  def map[O2](f: O => O2): Scope[F,O2] = Scope(get map f)
+  def map[O2](f: O => O2): Scope[F,O2] = new Scope(get map f)
 
   def flatMap[F2[x]>:F[x],O2](f: O => Scope[F2,O2]): Scope[F2,O2] =
-    Scope(get flatMap[R[F2]#f,O2] (f andThen (_.get)))
+    new Scope(get flatMap[R[F2]#f,O2] (f andThen (_.get)))
 
-  def translate[G[_]](f: F ~> G): Scope[G,O] = Scope { Free.suspend[R[G]#f,O] {
+  def translate[G[_]](f: F ~> G): Scope[G,O] = new Scope(Free.suspend[R[G]#f,O] {
     get.translate[R[G]#f](new (R[F]#f ~> R[G]#f) {
       def apply[A](r: RF[F,A]) = r match {
         case RF.Eval(fa) => RF.Eval(f(fa))
@@ -20,9 +20,9 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
         case _ => r.asInstanceOf[RF[G,A]] // Eval and FinishAcquire are only ctors that flatMap `F`
       }
     })
-  }}
+  })
 
-  def attempt: Scope[F,Attempt[O]] = Scope { get.attempt }
+  def attempt: Scope[F,Attempt[O]] = new Scope(get.attempt)
 
   def bindEnv[F2[_]](env: Env[F2])(implicit S: Sub1[F,F2]): Free[F2,(List[Token],O)] = Free.suspend {
     type FO[x] = Free[F2,(List[Token],x)]
@@ -55,31 +55,45 @@ case class Scope[+F[_],+O](get: Free[R[F]#f,O]) {
       Free.fail,
       B)(Sub1.sub1[R[F]#f],implicitly[RealSupertype[O,O]])
   }
+
+  override def toString = s"Scope($get)"
 }
 
 object Scope {
   def suspend[F[_],O](s: => Scope[F,O]): Scope[F,O] = pure(()) flatMap { _ => s }
-  def pure[F[_],O](o: O): Scope[F,O] = Scope(Free.pure(o))
+
+  def pure[F[_],O](o: O): Scope[F,O] = new Scope(Free.pure(o))
+
   def attemptEval[F[_],O](o: F[O]): Scope[F,Attempt[O]] =
-    Scope(Free.attemptEval[R[F]#f,O](StreamCore.RF.Eval(o)))
+    new Scope(Free.attemptEval[R[F]#f,O](StreamCore.RF.Eval(o)))
+
   def eval[F[_],O](o: F[O]): Scope[F,O] =
     attemptEval(o) flatMap { _.fold(fail, pure) }
+
   def evalFree[F[_],O](o: Free[F,O]): Scope[F,O] =
-    Scope { o.translate[R[F]#f](new (F ~> R[F]#f) { def apply[x](f: F[x]) = StreamCore.RF.Eval(f) }) }
+    new Scope(o.translate[R[F]#f](new (F ~> R[F]#f) { def apply[x](f: F[x]) = StreamCore.RF.Eval(f) }))
+
   def fail[F[_],O](err: Throwable): Scope[F,O] =
-    Scope(Free.fail(err))
+    new Scope(Free.fail(err))
+
   def interrupted[F[_]]: Scope[F,Boolean] =
-    Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.Interrupted))
+    new Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.Interrupted))
+
   def snapshot[F[_]]: Scope[F,Set[Token]] =
-    Scope(Free.eval[R[F]#f,Set[Token]](StreamCore.RF.Snapshot))
+    new Scope(Free.eval[R[F]#f,Set[Token]](StreamCore.RF.Snapshot))
+
   def newSince[F[_]](snapshot: Set[Token]): Scope[F,List[Token]] =
-    Scope(Free.eval[R[F]#f,List[Token]](StreamCore.RF.NewSince(snapshot)))
+    new Scope(Free.eval[R[F]#f,List[Token]](StreamCore.RF.NewSince(snapshot)))
+
   def release[F[_]](tokens: List[Token]): Scope[F,Attempt[Unit]] =
-    Scope(Free.eval[R[F]#f,Attempt[Unit]](StreamCore.RF.Release(tokens)))
+    new Scope(Free.eval[R[F]#f,Attempt[Unit]](StreamCore.RF.Release(tokens)))
+
   def startAcquire[F[_]](token: Token): Scope[F,Boolean] =
-    Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.StartAcquire(token)))
+    new Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.StartAcquire(token)))
+
   def finishAcquire[F[_]](token: Token, cleanup: Free[F,Attempt[Unit]]): Scope[F,Boolean] =
-    Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.FinishAcquire(token, cleanup)))
+    new Scope(Free.eval[R[F]#f,Boolean](StreamCore.RF.FinishAcquire(token, cleanup)))
+
   def acquire[F[_]](token: Token, cleanup: Free[F,Attempt[Unit]]): Scope[F,Attempt[Unit]] =
     startAcquire(token) flatMap { ok =>
       if (ok) finishAcquire(token, cleanup).flatMap { ok =>
@@ -87,8 +101,9 @@ object Scope {
       }
       else evalFree(cleanup)
     }
+
   def cancelAcquire[F[_]](token: Token): Scope[F,Unit] =
-    Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.CancelAcquire(token)))
+    new Scope(Free.eval[R[F]#f,Unit](StreamCore.RF.CancelAcquire(token)))
 
   def traverse[F[_],A,B](l: List[A])(f: A => Scope[F,B]): Scope[F,List[B]] =
     l.foldRight(Scope.pure[F,List[B]](List()))((hd,tl) => f(hd) flatMap { b => tl map (b :: _) })
