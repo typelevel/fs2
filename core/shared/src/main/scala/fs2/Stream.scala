@@ -271,7 +271,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
     Pull.evalScope(get.step).flatMap {
       case None => Pull.done
       case Some(Left(err)) => Pull.fail(err)
-      case Some(Right((hd, tl))) => Pull.pure((hd, new Handle(Nil, Stream.mk(tl))))
+      case Some(Right((c, h))) => Pull.pure((c, new Handle(Nil, Stream.mk(h))))
     }
 
   def stepAsync[F2[_],O2>:O](

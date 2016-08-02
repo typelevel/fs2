@@ -11,7 +11,7 @@ object ResourceTrackerSanityTest extends App {
 }
 
 object RepeatPullSanityTest extends App {
-  def id[A]: Pipe[Pure, A, A] = _ repeatPull Pull.receive1 { case (h, t) => Pull.output1(h) as t }
+  def id[A]: Pipe[Pure, A, A] = _ repeatPull Pull.receive1 { (h, t) => Pull.output1(h) as t }
   Stream.constant(1).covary[Task].throughPure(id).run.unsafeRun()
 }
 
