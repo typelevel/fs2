@@ -38,25 +38,25 @@ object pipe2 {
                             }
                        }
       def go1(c1r: Chunk[I], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-        P.receiveNonemptyOption[F,I2,O,Nothing]{
+        h2.receiveNonemptyOption {
           case Some(s2) => zipChunksGo((c1r, h1), s2)
           case None => k1(Left((c1r, h1)))
-        }(h2)
+        }
       }
       def go2(c2r: Chunk[I2], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-        P.receiveNonemptyOption[F,I,O,Nothing]{
+        h1.receiveNonemptyOption {
           case Some(s1) => zipChunksGo(s1, (c2r, h2))
           case None => k2(Left((c2r, h2)))
-        }(h1)
+        }
       }
       def goB(h1 : Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-        P.receiveNonemptyOption[F,I,O,Nothing]{
-          case Some(s1) => P.receiveNonemptyOption[F,I2,O,Nothing] {
+        h1.receiveNonemptyOption {
+          case Some(s1) => h2.receiveNonemptyOption {
             case Some(s2) => zipChunksGo(s1, s2)
             case None => k1(Left(s1))
-          }(h2)
+          }
           case None => k2(Right(h2))
-        }(h1)
+        }
       }
       _.pull2(_)(goB)
   }
@@ -217,11 +217,11 @@ object pipe2 {
            r: ScopedFuture[F, Pull[F, Nothing, (Chunk[O], Handle[F,O])]]): Pull[F,O,Nothing] =
       (l race r).pull flatMap {
         case Left(l) => l.optional flatMap {
-          case None => r.pull.flatMap(identity).flatMap { case (hd, tl) => P.output(hd) >> P.echo(tl) }
+          case None => r.pull.flatMap(identity).flatMap { case (hd, tl) => P.output(hd) >> tl.echo }
           case Some((hd, l)) => P.output(hd) >> l.awaitAsync.flatMap(go(_, r))
         }
         case Right(r) => r.optional flatMap {
-          case None => l.pull.flatMap(identity).flatMap { case (hd, tl) => P.output(hd) >> P.echo(tl) }
+          case None => l.pull.flatMap(identity).flatMap { case (hd, tl) => P.output(hd) >> tl.echo }
           case Some((hd, r)) => P.output(hd) >> r.awaitAsync.flatMap(go(l, _))
         }
       }

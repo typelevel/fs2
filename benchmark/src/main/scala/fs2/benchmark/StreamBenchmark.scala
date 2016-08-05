@@ -36,7 +36,7 @@ class StreamBenchmark extends BenchmarkUtils {
   def awaitPull(N: Int): Int = {
     (Stream.chunk(Chunk.seq(0 to 256000)).pure).repeatPull { s =>
       for {
-        (h,t) <- Pull.awaitN(N)(s)
+        (h,t) <- s.awaitN(N)
         _  <- Pull.output(h.head)
       } yield t
     }.covary[Task].runLast.unsafeRun().get

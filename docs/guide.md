@@ -338,7 +338,7 @@ Regardless of how complex the job, the `fs2.Pull` and `fs2.Handle` types can usu
 def open[F[_],I](s: Stream[F,I]): Pull[F,Nothing,Handle[F,I]]
 ```
 
-The `trait Pull[+F[_],+O,+R]` represents a program that may pull values from one or more `Handle` values, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pulls` trait](../core/shared/src/main/scala/fs2/Pulls.scala) for the full set of primitive operations on `Pull`.
+The `trait Pull[+F[_],+O,+R]` represents a program that may pull values from one or more `Handle` values, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pull` class](../core/shared/src/main/scala/fs2/Pull.scala) for the full set of operations on `Pull`.
 
 Let's look at the core operation for implementing `take`. It's just a recursive function:
 
@@ -348,7 +348,7 @@ object Pull_ {
 
   def take[F[_],O](n: Int)(h: Handle[F,O]): Pull[F,O,Nothing] =
     for {
-      (chunk, h) <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
+      (chunk, h) <- if (n <= 0) Pull.done else h.awaitLimit(n)
       tl <- Pull.output(chunk) >> take(n - chunk.size)(h)
     } yield tl
 }
@@ -367,8 +367,8 @@ Let's break it down line by line:
 There's a lot going on in this one line:
 
 * If `n <= 0`, we're done, and stop pulling.
-* Otherwise we have more values to `take`, so we `Pull.awaitLimit(n)(h)`, which returns a `(Chunk[A],Handle[F,I])` (again, inside of the `Pull` effect).
-* The `Pull.awaitLimit(n)(h)` reads from the handle but gives us a `Chunk[O]` with _no more than_ `n` elements. (We can also `h.await1` to read just a single element, `h.await` to read a single `Chunk` of however many are available, `Pull.awaitN(n)(h)` to obtain a `List[Chunk[A]]` totaling exactly `n` elements, and even `h.awaitAsync` and various other _asynchronous_ awaiting functions which we'll discuss in the [Concurrency](#concurrency) section.)
+* Otherwise we have more values to `take`, so we `h.awaitLimit(n)`, which returns a `(Chunk[A],Handle[F,I])` (again, inside of the `Pull` effect).
+* The `h.awaitLimit(n)` reads from the handle but gives us a `Chunk[O]` with _no more than_ `n` elements. (We can also `h.await1` to read just a single element, `h.await` to read a single `Chunk` of however many are available, `h.awaitN(n)` to obtain a `List[Chunk[A]]` totaling exactly `n` elements, and even `h.awaitAsync` and various other _asynchronous_ awaiting functions which we'll discuss in the [Concurrency](#concurrency) section.)
 * Using the pattern `(chunk, h)`, we destructure this step to its `chunk: Chunk[O]` and its `h: Handle[F,O]`. This shadows the outer `h`, which is fine here since it isn't relevant anymore. (Note: nothing stops us from keeping the old `h` around and awaiting from it again if we like, though this isn't usually what we want since it will repeat all the effects of that await.)
 
 Moving on, the `Pull.output(chunk)` writes the chunk we just read to the _output_ of the `Pull`. This binds the `O` type in our `Pull[F,O,R]` we are constructing:
@@ -380,7 +380,7 @@ def output[O](c: Chunk[O]): Pull[Nothing,O,Unit]
 
 It returns a result of `Unit`, which we generally don't care about. The `p >> p2` operator is equivalent to `p flatMap { _ => p2 }`; it just runs `p` for its effects but ignores its result.
 
-So this line is writing the chunk we read, ignoring the `Unit` result, then recusively calling `take` with the new `Handle`, `h`:
+So this line is writing the chunk we read, ignoring the `Unit` result, then recursively calling `take` with the new `Handle`, `h`:
 
 ```Scala
       ...
@@ -411,7 +411,7 @@ _Note:_ The `.pure` converts a `Stream[Nothing,A]` to a `Stream[Pure,A]`. Scala 
 The `pull` method on `Stream` just calls `open` then `close`. We could express the above as:
 
 ```scala
-scala> Stream(1,2,3,4).pure.open.flatMap { Pull_.take(2) }.close
+scala> Stream(1,2,3,4).pure.open.flatMap { _.take(2) }.close
 res34: fs2.Stream[[x]fs2.Pure[x],Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
 ```
 
@@ -500,15 +500,15 @@ It flattens the nested stream, letting up to `maxOpen` inner streams run at a ti
 
 The `Async` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Async`, users can bring their own effect types provided they also supply an `Async` instance.
 
-If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `Stream.awaitAsync` requests the next step of a `Handle` asynchronously. Its signature is:
+If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `h.awaitAsync` requests the next step of a `Handle h` asynchronously. Its signature is:
 
 ```Scala
-type AsyncStep[F[_],A] = Async.Future[F, Pull[F, Nothing, Step[Chunk[A], Handle[F,A]]]]
+type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Chunk[A], Handle[F,A])]]
 
-def awaitAsync[F[_],A](h: Handle[F,A])(implicit F: Async[F]): Pull[F, Nothing, AsyncStep[F,A]]
+def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]]
 ```
 
-A `Future[F,A]` represents a running computation that will eventually yield an `A`. A `Future[F,A]` has a method `.force`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. A `Future[F,A]` may be raced with another `Future` also---see the implementation of [`pipe2.merge`](../core/shared/src/main/scala/fs2/pipe2.scala).
+A `ScopedFuture[F,A]` represents a running computation that will eventually yield an `A`. A `ScopedFuture[F,A]` has a method `.pull`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. A `ScopedFuture[F,A]` may be raced with another `ScopedFuture` also---see the implementation of [`pipe2.merge`](../core/shared/src/main/scala/fs2/pipe2.scala).
 
 In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [`async` package object](../core/shared/src/main/scala/fs2/async/async.scala) for more details. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
