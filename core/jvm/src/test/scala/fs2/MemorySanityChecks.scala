@@ -11,7 +11,7 @@ object ResourceTrackerSanityTest extends App {
 }
 
 object RepeatPullSanityTest extends App {
-  def id[A]: Pipe[Pure, A, A] = _ repeatPull Pull.receive1 { (h, t) => Pull.output1(h) as t }
+  def id[A]: Pipe[Pure, A, A] = _ repeatPull { _.receive1 { (h, t) => Pull.output1(h) as t } }
   Stream.constant(1).covary[Task].throughPure(id).run.unsafeRun()
 }
 
@@ -25,16 +25,16 @@ object RepeatEvalSanityTest extends App {
 }
 
 object AppendSanityTest extends App {
-  (Stream.constant(1).covary[Task] ++ Stream.empty).pull(Pull.echo).run.unsafeRun()
+  (Stream.constant(1).covary[Task] ++ Stream.empty).pull(_.echo).run.unsafeRun()
 }
 
 object OnCompleteSanityTest extends App {
-  Stream.constant(1).covary[Task].onComplete(Stream.empty).pull(Pull.echo).run.unsafeRun()
+  Stream.constant(1).covary[Task].onComplete(Stream.empty).pull(_.echo).run.unsafeRun()
 }
 
 object DrainOnCompleteSanityTest extends App {
   import TestUtil.S
-  val s = Stream.repeatEval(Task.delay(1)).pull(Pull.echo).drain.onComplete(Stream.eval_(Task.delay(println("done"))))
+  val s = Stream.repeatEval(Task.delay(1)).pull(_.echo).drain.onComplete(Stream.eval_(Task.delay(println("done"))))
   (Stream.empty[Task, Unit] merge s).run.unsafeRun()
 }
 
