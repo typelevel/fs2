@@ -52,17 +52,15 @@ sealed trait Free[+F[_],+A] {
   def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
     (this: Free[F2,A2]).runTranslate(UF1.id)
 
-  private[fs2] final def step: Free[F,A] = _step(0)
-
   @annotation.tailrec
-  private[fs2] final def _step(iteration: Int): Free[F,A] = this match {
-    case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g))._step(0)
+  private[fs2] final def step: Free[F,A] = this match {
+    case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g)).step
     case _ => this
   }
 }
 
 object Free {
-  
+
   trait B[F[_],G[_],A] {
     def f[x]: Either[(F[x], Attempt[x] => G[A]), (x, x => G[A])] => G[A]
   }
