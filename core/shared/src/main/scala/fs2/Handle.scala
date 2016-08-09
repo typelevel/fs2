@@ -78,9 +78,9 @@ final class Handle[+F[_],+A](
       if (allowFewer) next.optional.map(_.getOrElse((Nil, Handle.empty))) else next
   }
 
-  /** Await the next available nonempty `Chunk`. */
-  def awaitNonempty: Pull[F,Nothing,(Chunk[A],Handle[F,A])] =
-    this.receive { case s @ (hd, tl) => if (hd.isEmpty) tl.awaitNonempty else Pull.pure(s) }
+  /** Await the next available non-empty `Chunk`. */
+  def awaitNonEmpty: Pull[F,Nothing,(Chunk[A],Handle[F,A])] =
+    this.receive { case s @ (hd, tl) => if (hd.isEmpty) tl.awaitNonEmpty else Pull.pure(s) }
 
   /** Await the next available chunk from the input, or `None` if the input is exhausted. */
   def awaitOption: Pull[F,Nothing,Option[(Chunk[A],Handle[F,A])]] =
@@ -91,8 +91,8 @@ final class Handle[+F[_],+A](
     await1.map(Some(_)) or Pull.pure(None)
 
   /** Await the next available non-empty chunk from the input, or `None` if the input is exhausted. */
-  def awaitNonemptyOption: Pull[F, Nothing, Option[(Chunk[A], Handle[F,A])]] =
-    awaitNonempty.map(Some(_)) or Pull.pure(None)
+  def awaitNonEmptyOption: Pull[F, Nothing, Option[(Chunk[A], Handle[F,A])]] =
+    awaitNonEmpty.map(Some(_)) or Pull.pure(None)
 
   /** Copy the next available chunk to the output. */
   def copy: Pull[F,A,Handle[F,A]] =
@@ -111,7 +111,7 @@ final class Handle[+F[_],+A](
 
   /**
    * Drop elements of the this `Handle` until the predicate `p` fails, and return the new `Handle`.
-   * If nonempty, the first element of the returned `Handle` will fail `p`.
+   * If non-empty, the first element of the returned `Handle` will fail `p`.
    */
   def dropWhile(p: A => Boolean): Pull[F,Nothing,Handle[F,A]] =
     this.receive { (chunk, h) =>
@@ -175,7 +175,7 @@ final class Handle[+F[_],+A](
     }
   }
 
-  /** Return the last element of the input, if nonempty. */
+  /** Return the last element of the input, if non-empty. */
   def last: Pull[F,Nothing,Option[A]] = {
     def go(prev: Option[A]): Handle[F,A] => Pull[F,Nothing,Option[A]] =
       h => h.await.optional.flatMap {
@@ -234,7 +234,7 @@ final class Handle[+F[_],+A](
 
   /**
    * Emit the elements of this `Handle` until the predicate `p` fails,
-   * and return the new `Handle`. If nonempty, the returned `Handle` will have
+   * and return the new `Handle`. If non-empty, the returned `Handle` will have
    * a first element `i` for which `p(i)` is `false`. */
   def takeWhile(p: A => Boolean): Pull[F,A,Handle[F,A]] =
     this.receive { (chunk, h) =>
@@ -269,8 +269,8 @@ object Handle {
     def receive1Option[O,B](f: Option[(A,Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
       self.await1Option.flatMap(f)
 
-    def receiveNonemptyOption[O,B](f: Option[(Chunk[A],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
-      self.awaitNonemptyOption.flatMap(f)
+    def receiveNonEmptyOption[O,B](f: Option[(Chunk[A],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
+      self.awaitNonEmptyOption.flatMap(f)
   }
 
   type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Chunk[A], Handle[F,A])]]
