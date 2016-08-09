@@ -20,7 +20,7 @@ object compress {
               bufferSize: Int = 1024 * 32,
               strategy: Int = Deflater.DEFAULT_STRATEGY): Pipe[F,Byte,Byte] = {
     val pure: Pipe[Pure,Byte,Byte] =
-      _ pull { _.awaitNonempty flatMap { step =>
+      _ pull { _.awaitNonEmpty flatMap { step =>
         val deflater = new Deflater(level, nowrap)
         deflater.setStrategy(strategy)
         val buffer = new Array[Byte](bufferSize)
@@ -35,7 +35,7 @@ object compress {
       Pull.output(Chunk.bytes(result)) >> _deflate_handle(deflater, buffer)(h)
   }
   private def _deflate_handle(deflater: Deflater, buffer: Array[Byte]): Handle[Pure, Byte] => Pull[Pure, Byte, Handle[Pure, Byte]] =
-    _.awaitNonempty flatMap _deflate_step(deflater, buffer) or _deflate_finish(deflater, buffer)
+    _.awaitNonEmpty flatMap _deflate_step(deflater, buffer) or _deflate_finish(deflater, buffer)
   @tailrec
   private def _deflate_collect(deflater: Deflater, buffer: Array[Byte], acc: ArrayBuffer[Byte], fin: Boolean): ArrayBuffer[Byte] = {
     if ((fin && deflater.finished) || (!fin && deflater.needsInput)) acc
@@ -62,7 +62,7 @@ object compress {
   def inflate[F[_]](nowrap: Boolean = false,
               bufferSize: Int = 1024 * 32): Pipe[F,Byte,Byte] = {
     val pure: Pipe[Pure,Byte,Byte] =
-      _ pull { _.awaitNonempty flatMap { case (c, h) =>
+      _ pull { _.awaitNonEmpty flatMap { case (c, h) =>
         val inflater = new Inflater(nowrap)
         val buffer = new Array[Byte](bufferSize)
         inflater.setInput(c.toArray)
@@ -78,7 +78,7 @@ object compress {
       Pull.output(Chunk.bytes(result)) >> _inflate_handle(inflater, buffer)(h)
   }
   private def _inflate_handle(inflater: Inflater, buffer: Array[Byte]): Handle[Pure, Byte] => Pull[Pure, Byte, Handle[Pure, Byte]] =
-    _.awaitNonempty flatMap _inflate_step(inflater, buffer) or _inflate_finish(inflater)
+    _.awaitNonEmpty flatMap _inflate_step(inflater, buffer) or _inflate_finish(inflater)
   @tailrec
   private def _inflate_collect(inflater: Inflater, buffer: Array[Byte], acc: ArrayBuffer[Byte]): ArrayBuffer[Byte] = {
     if (inflater.finished || inflater.needsInput) acc

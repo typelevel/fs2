@@ -63,7 +63,7 @@ object Semaphore {
 
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
-    // or it is nonempty, and there are n permits available (Right)
+    // or it is non-empty, and there are n permits available (Right)
     type S = Either[Vector[(Long,Async.Ref[F,Unit])], Long]
     F.refOf[S](Right(n)).map { ref => new Semaphore[F] {
       private def open(gate: Async.Ref[F,Unit]): F[Unit] =

@@ -86,7 +86,7 @@ object pipe {
   /** Drops the last element if the predicate evaluates to true. */
   def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
     def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = {
-      _.receiveNonemptyOption {
+      _.receiveNonEmptyOption {
         case Some((chunk, h)) => Pull.output(last) >> go(chunk)(h)
         case None =>
           val i = last(last.size - 1)
@@ -94,7 +94,7 @@ object pipe {
           else Pull.output(last)
       }
     }
-    _.pull { _.receiveNonemptyOption {
+    _.pull { _.receiveNonEmptyOption {
       case Some((c, h)) => go(c)(h)
       case None => Pull.done
     }}
@@ -169,11 +169,11 @@ object pipe {
   def id[F[_],I]: Stream[F,I] => Stream[F,I] =
     s => s
 
-  /** Return the last element of the input `Handle`, if nonempty. */
+  /** Return the last element of the input `Handle`, if non-empty. */
   def last[F[_],I]: Stream[F,I] => Stream[F,Option[I]] =
     _ pull { h => h.last.flatMap { o => Pull.output1(o) }}
 
-  /** Return the last element of the input `Handle` if nonempty, otherwise li. */
+  /** Return the last element of the input `Handle` if non-empty, otherwise li. */
   def lastOr[F[_],I](li: => I): Stream[F,I] => Stream[F,I] =
     _ pull { h => h.last.flatMap {
       case Some(o) => Pull.output1(o)

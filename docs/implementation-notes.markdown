@@ -52,7 +52,7 @@ object Chain {
 }
 ```
 
-Notice `Chain` just has a function `apply` which is equivalent to a 1-step pattern match. We supply two handlers, one which is invoked if the `Chain` is empty, and one which is invoked if the chain is a `cons`. If the chain is empty, the handler obtains a "proof" that `A == B` in the form of a pair of functions from `A => B` and `B => A` (there are other better ways to encode this proof, but this is very simple). If the chain is nonempty, we have an existential `x` and the handler must be universal in that type parameter. Here's an example of this in use:
+Notice `Chain` just has a function `apply` which is equivalent to a 1-step pattern match. We supply two handlers, one which is invoked if the `Chain` is empty, and one which is invoked if the chain is a `cons`. If the chain is empty, the handler obtains a "proof" that `A == B` in the form of a pair of functions from `A => B` and `B => A` (there are other better ways to encode this proof, but this is very simple). If the chain is non-empty, we have an existential `x` and the handler must be universal in that type parameter. Here's an example of this in use:
 
 ```Scala
 // k : Chain[F,A,B]

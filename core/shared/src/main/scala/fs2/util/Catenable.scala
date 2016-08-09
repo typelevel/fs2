@@ -23,7 +23,7 @@ sealed abstract class Catenable[+A] {
   }
   def isEmpty: Boolean = this match {
     case Empty => true
-    case _ => false // okay since `append` smart constructor guarantees each branch nonempty
+    case _ => false // okay since `append` smart constructor guarantees each branch non-empty
   }
 
   def ++[A2>:A](c: Catenable[A2])(implicit T: RealSupertype[A,A2]): Catenable[A2] =
