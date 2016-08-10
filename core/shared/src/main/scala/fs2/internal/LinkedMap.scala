@@ -42,8 +42,6 @@ private[fs2] class LinkedMap[K,+V](
 
   def removeKeys(ks: Seq[K]) = ks.foldLeft(this)((m,k) => m - k)
 
-  def unorderedEntries: Iterable[(K,V)] = entries.mapValues(_._1)
-
   def orderedEntries: Iterable[(K,V)] = keys zip values
 
   /** The keys of this map, in the order they were added. */
