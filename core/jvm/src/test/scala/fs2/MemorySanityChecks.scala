@@ -28,13 +28,9 @@ object AppendSanityTest extends App {
   (Stream.constant(1).covary[Task] ++ Stream.empty).pull(_.echo).run.unsafeRun()
 }
 
-object OnCompleteSanityTest extends App {
-  Stream.constant(1).covary[Task].onComplete(Stream.empty).pull(_.echo).run.unsafeRun()
-}
-
 object DrainOnCompleteSanityTest extends App {
   import TestUtil.S
-  val s = Stream.repeatEval(Task.delay(1)).pull(_.echo).drain.onComplete(Stream.eval_(Task.delay(println("done"))))
+  val s = Stream.repeatEval(Task.delay(1)).pull(_.echo).drain ++ Stream.eval_(Task.delay(println("done")))
   (Stream.empty[Task, Unit] merge s).run.unsafeRun()
 }
 

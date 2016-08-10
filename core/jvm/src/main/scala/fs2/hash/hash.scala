@@ -18,6 +18,6 @@ package object hash {
         d.update(bytes.values, bytes.offset, bytes.size)
       case c =>
         d.update(c.toArray)
-    }.drain.onComplete(Stream.chunk(Chunk.bytes(d.digest())))
+    }.drain ++ Stream.chunk(Chunk.bytes(d.digest()))
   }
 }

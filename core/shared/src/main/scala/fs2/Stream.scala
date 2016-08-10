@@ -193,18 +193,6 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Async[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
     async.channel.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
 
-  /**
-   * Run `regardless` if this stream terminates normally or with an error, but _not_ if
-   * this stream is interrupted. The `regardless` argument should _not_ be used for resource cleanup;
-   * use `bracket` or `onFinalize` for that purpose.
-   *
-   * See http://fs2.co/blob/series/0.9/docs/guide.md#a2 for details.
-   */
-  def onComplete[G[_],Lub[_],O2>:O](regardless: => Stream[G,O2])(implicit R: RealSupertype[O,O2], L: Lub1[F,G,Lub]): Stream[Lub,O2] =
-    (Sub1.substStream(this)(L.subF) ++ Sub1.substStream(regardless)(L.subG).mask).onError { err =>
-      Sub1.substStream(regardless)(L.subG).mask ++ Stream.fail(err)
-    }
-
   def onError[G[_],Lub[_],O2>:O](f: Throwable => Stream[G,O2])(implicit R: RealSupertype[O,O2], L: Lub1[F,G,Lub]): Stream[Lub,O2] =
     Stream.mk { (Sub1.substStream(self)(L.subF): Stream[Lub,O2]).get.onError { e => Sub1.substStream(f(e))(L.subG).get } }
 

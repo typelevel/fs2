@@ -20,7 +20,7 @@ Stateful transformations like `take` and so/on are defined in a completely diffe
 [pull]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.11/0.9.0-M1/fs2-core_2.11-0.9.0-M1-javadoc.jar/!/index.html#fs2.Pull
 [async]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.11/0.9.0-M1/fs2-core_2.11-0.9.0-M1-javadoc.jar/!/index.html#fs2.Async
 
-All resources should be acquired using `bracket`. Placing finalizers / cleanup actions in an `onComplete` will not guarantee they are run if a stream is being consumed asynchronously or is terminated early by its consumer.
+All resources should be acquired using `bracket`. Standalone cleanup actions should be placed in an `onFinalize`. The `onComplete` method has been removed as it did not guarantee that its parameter would be run if a stream was consumed asynchronously or was terminated early by its consumer.
 
 ## Small stuff
 
@@ -40,3 +40,4 @@ All resources should be acquired using `bracket`. Placing finalizers / cleanup a
   * Example - Before: `s.wye(s2)(wye.blah)` After `s.through2(s2)(pipe2.blah)`
   * TODO: explanation of `throughv` and `through2v` if needed
 * Use `t.onFinalize(eff)` instead of `t.onComplete(Stream.eval_(eff))`
+* `onHalt` no longer exists

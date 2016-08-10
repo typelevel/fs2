@@ -4,7 +4,7 @@ This markdown file contains code examples which can be compiled using tut. Switc
 
 # FS2: The Official Guide
 
-This is the official FS2 guide. It gives an overview of the library and its features and it's kept up to date with the code. If you spot a problem with this guide, a nonworking example, or simply have some suggested improvments, open a pull request! It's very much a WIP.
+This is the official FS2 guide. It gives an overview of the library and its features and it's kept up to date with the code. If you spot a problem with this guide, a nonworking example, or simply have some suggested improvements, open a pull request! It's very much a WIP.
 
 ### Table of contents
 
@@ -711,7 +711,7 @@ Regarding 3:
 
 * A stream will never be interrupted while it is acquiring a resource (via `bracket`) or while it is releasing a resource. The `bracket` function guarantees that if FS2 starts acquiring the resource, the corresponding release action will be run.
 * Other than that, Streams can be interrupted in between any two 'steps' of the stream. The steps themselves are atomic from the perspective of FS2. `Stream.eval(eff)` is a single step, `Stream.emit(1)` is a single step, `Stream(1,2,3)` is a single step (emitting a chunk), and all other operations (like `onError`, `++`, and `flatMap`) are multiple steps and can be interrupted. But importantly, user-provided effects that are passed to `eval` are never interrupted once they are started (and FS2 does not have enough knowledge of user-provided effects to know how to interrupt them anyway).
-* _Always use `bracket` or a `bracket`-based function like `onFinalize` for supplying resource cleanup logic or any other logic you want to be run regardless of how the stream terminates. Don't use `onComplete`, `onError`, or `++` for this purpose._
+* _Always use `bracket` or a `bracket`-based function like `onFinalize` for supplying resource cleanup logic or any other logic you want to be run regardless of how the stream terminates. Don't use `onError` or `++` for this purpose._
 
 Let's look at some examples of how this plays out, starting with the synchronous interruption case:
 
@@ -730,7 +730,9 @@ The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of t
 
 ```scala
 scala> (Stream(1) onComplete Stream.fail(Err)).take(1).toList
-res56: List[Int] = List(1)
+<console>:22: error: value onComplete is not a member of fs2.Stream[Nothing,Int]
+       (Stream(1) onComplete Stream.fail(Err)).take(1).toList
+                  ^
 ```
 
 The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doesn't know this until it actually runs another step of the stream.
