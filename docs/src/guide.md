@@ -577,7 +577,7 @@ case object Err extends Throwable
 The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
 
 ```tut
-(Stream(1) onComplete Stream.fail(Err)).take(1).toList
+(Stream(1) ++ Stream.fail(Err)).take(1).toList
 ```
 
 The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doesn't know this until it actually runs another step of the stream.
