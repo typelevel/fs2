@@ -162,6 +162,24 @@ object Queue {
       }
     }}
 
+  def circularBuffer[F[_],A](maxSize: Int)(implicit F: Async[F]): F[Queue[F,A]] =
+    Semaphore(maxSize.toLong).flatMap { permits =>
+    unbounded[F,A].map { q =>
+      new Queue[F,A] {
+        def upperBound: Option[Int] = Some(maxSize)
+        def enqueue1(a:A): F[Unit] =
+          permits.tryDecrement.flatMap { b => if (b) q.enqueue1(a) else (q.dequeue1 >> q.enqueue1(a)) }
+        def offer1(a: A): F[Boolean] =
+          enqueue1(a).as(true)
+        def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
+        def cancellableDequeue1: F[(F[A],F[Unit])] =
+          q.cancellableDequeue1.map { case (deq,cancel) => (deq.flatMap(a => permits.increment.as(a)), cancel) }
+        def size = q.size
+        def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
+        def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
+      }
+    }}
+
   def synchronous[F[_],A](implicit F: Async[F]): F[Queue[F,A]] =
     Semaphore(0).flatMap { permits =>
     unbounded[F,A].map { q =>
