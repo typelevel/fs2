@@ -4,7 +4,7 @@ package io
 import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption}
 
-import fs2.util.{Async, Effect}
+import fs2.util.{Async, Suspendable}
 
 package object file {
 
@@ -27,7 +27,7 @@ package object file {
   /**
     * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
     */
-  def readAll[F[_]](path: Path, chunkSize: Int)(implicit F: Effect[F]): Stream[F, Byte] =
+  def readAll[F[_]: Suspendable](path: Path, chunkSize: Int): Stream[F, Byte] =
     pulls.fromPath(path, List(StandardOpenOption.READ)).flatMap(pulls.readAllFromFileHandle(chunkSize)).close
 
   /**
@@ -41,7 +41,7 @@ package object file {
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
-  def writeAll[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE))(implicit F: Effect[F]): Sink[F, Byte] =
+  def writeAll[F[_]: Suspendable](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)): Sink[F, Byte] =
     s => (for {
       in <- s.open
       out <- pulls.fromPath(path, StandardOpenOption.WRITE :: flags.toList)

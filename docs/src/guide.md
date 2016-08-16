@@ -80,7 +80,7 @@ val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 
 [`Task`](../core/shared/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
-The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable] and optionally [`Effect`][Effect] or [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable], [`Suspendable`][Suspendable], [`Effect`][Effect], and optionally [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
 ```Scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
@@ -88,6 +88,7 @@ def eval[F[_],A](f: F[A]): Stream[F,A]
 
 [Task]: ../core/shared/src/main/scala/fs2/Task.scala
 [Catchable]: ../core/shared/src/main/scala/fs2/util/Catchable.scala
+[Suspendable]: ../core/shared/src/main/scala/fs2/util/Suspendable.scala
 [Effect]: ../core/shared/src/main/scala/fs2/util/Effect.scala
 [Async]: ../core/shared/src/main/scala/fs2/util/Async.scala
 

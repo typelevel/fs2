@@ -5,7 +5,7 @@ package file
 import java.nio.channels._
 import java.nio.file._
 
-import fs2.util.{Async,Effect}
+import fs2.util.{Async,Suspendable}
 import fs2.util.syntax._
 
 object pulls {
@@ -28,16 +28,16 @@ object pulls {
   /**
    * Given a `Handle[F, Byte]` and `FileHandle[F]`, writes all data from the `Handle` to the file.
    */
-  def writeAllToFileHandle[F[_]](in: Handle[F, Byte], out: FileHandle[F])(implicit F: Effect[F]): Pull[F, Nothing, Unit] =
+  def writeAllToFileHandle[F[_]](in: Handle[F, Byte], out: FileHandle[F]): Pull[F, Nothing, Unit] =
     _writeAllToFileHandle1(in, out, 0)
 
-  private def _writeAllToFileHandle1[F[_]](in: Handle[F, Byte], out: FileHandle[F], offset: Long)(implicit F: Effect[F]): Pull[F, Nothing, Unit] = for {
+  private def _writeAllToFileHandle1[F[_]](in: Handle[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] = for {
     (hd, tail) <- in.await
     _ <- _writeAllToFileHandle2(hd, out, offset)
     next <- _writeAllToFileHandle1(tail, out, offset + hd.size)
   } yield next
 
-  private def _writeAllToFileHandle2[F[_]](buf: Chunk[Byte], out: FileHandle[F], offset: Long)(implicit F: Effect[F]): Pull[F, Nothing, Unit] =
+  private def _writeAllToFileHandle2[F[_]](buf: Chunk[Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =
     Pull.eval(out.write(buf, offset)) flatMap { (written: Int) =>
       if (written >= buf.size)
         Pull.pure(())
@@ -50,7 +50,7 @@ object pulls {
     *
     * The `Pull` closes the acquired `java.nio.channels.FileChannel` when it is done.
     */
-  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Effect[F]): Pull[F, Nothing, FileHandle[F]] =
+  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Suspendable[F]): Pull[F, Nothing, FileHandle[F]] =
     fromFileChannel(F.delay(FileChannel.open(path, flags: _*)))
 
   /**
@@ -58,7 +58,7 @@ object pulls {
     *
     * The `Pull` closes the acquired `java.nio.channels.AsynchronousFileChannel` when it is done.
     */
-  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Async[F]): Pull[F, Nothing, FileHandle[F]] =
+  def fromPathAsync[F[_]: Async](path: Path, flags: Seq[OpenOption])(implicit F: Suspendable[F]): Pull[F, Nothing, FileHandle[F]] =
     fromAsynchronousFileChannel(F.delay(AsynchronousFileChannel.open(path, flags: _*)))
 
   /**
@@ -66,7 +66,7 @@ object pulls {
     *
     * The `Pull` closes the provided `java.nio.channels.FileChannel` when it is done.
     */
-  def fromFileChannel[F[_]](channel: F[FileChannel])(implicit F: Effect[F]): Pull[F, Nothing, FileHandle[F]] =
+  def fromFileChannel[F[_]: Suspendable](channel: F[FileChannel]): Pull[F, Nothing, FileHandle[F]] =
     Pull.acquire(channel.map(FileHandle.fromFileChannel[F]))(_.close())
 
   /**
@@ -74,6 +74,6 @@ object pulls {
     *
     * The `Pull` closes the provided `java.nio.channels.AsynchronousFileChannel` when it is done.
     */
-  def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(implicit F: Async[F]): Pull[F, Nothing, FileHandle[F]] =
+  def fromAsynchronousFileChannel[F[_]: Async](channel: F[AsynchronousFileChannel]): Pull[F, Nothing, FileHandle[F]] =
     Pull.acquire(channel.map(FileHandle.fromAsynchronousFileChannel[F]))(_.close())
 }

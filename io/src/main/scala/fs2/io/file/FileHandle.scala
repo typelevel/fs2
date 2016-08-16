@@ -5,7 +5,7 @@ package file
 import java.nio.ByteBuffer
 import java.nio.channels.{AsynchronousFileChannel, FileChannel, FileLock}
 
-import fs2.util.{Async,Effect}
+import fs2.util.{Async,Suspendable}
 import fs2.util.syntax._
 
 trait FileHandle[F[_]] {
@@ -142,7 +142,7 @@ object FileHandle {
   /**
     * Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`.
     */
-  private[fs2] def fromFileChannel[F[_]](chan: FileChannel)(implicit F: Effect[F]): FileHandle[F] = {
+  private[fs2] def fromFileChannel[F[_]](chan: FileChannel)(implicit F: Suspendable[F]): FileHandle[F] = {
     new FileHandle[F] {
       type Lock = FileLock
 
