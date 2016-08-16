@@ -3,18 +3,18 @@ package io
 
 import java.io.{InputStream, OutputStream}
 
-import fs2.util.Effect
+import fs2.util.Suspendable
 import fs2.util.syntax._
 
 private[io] object JavaInputOutputStream {
-  def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit F: Effect[F]): F[Option[Chunk[Byte]]] =
+  def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit F: Suspendable[F]): F[Option[Chunk[Byte]]] =
     F.delay(is.read(buf)).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
       else Some(Chunk.bytes(buf, 0, numBytes))
     }
 
-  def readInputStreamGeneric[F[_]](fis: F[InputStream], chunkSize: Int, f: (InputStream, Array[Byte]) => F[Option[Chunk[Byte]]], closeAfterUse: Boolean = true)(implicit F: Effect[F]): Stream[F, Byte] = {
+  def readInputStreamGeneric[F[_]](fis: F[InputStream], chunkSize: Int, f: (InputStream, Array[Byte]) => F[Option[Chunk[Byte]]], closeAfterUse: Boolean = true)(implicit F: Suspendable[F]): Stream[F, Byte] = {
     val buf = new Array[Byte](chunkSize)
 
     def useIs(is: InputStream) =
@@ -29,10 +29,10 @@ private[io] object JavaInputOutputStream {
       Stream.eval(fis).flatMap(useIs)
   }
 
-  def writeBytesToOutputStream[F[_]](os: OutputStream, bytes: Chunk[Byte])(implicit F: Effect[F]): F[Unit] =
+  def writeBytesToOutputStream[F[_]](os: OutputStream, bytes: Chunk[Byte])(implicit F: Suspendable[F]): F[Unit] =
     F.delay(os.write(bytes.toArray))
 
-  def writeOutputStreamGeneric[F[_]](fos: F[OutputStream], closeAfterUse: Boolean, f: (OutputStream, Chunk[Byte]) => F[Unit])(implicit F: Effect[F]): Sink[F, Byte] = s => {
+  def writeOutputStreamGeneric[F[_]](fos: F[OutputStream], closeAfterUse: Boolean, f: (OutputStream, Chunk[Byte]) => F[Unit])(implicit F: Suspendable[F]): Sink[F, Byte] = s => {
     def useOs(os: OutputStream): Stream[F, Unit] =
       s.chunks.evalMap(f(os, _))
 
@@ -41,5 +41,5 @@ private[io] object JavaInputOutputStream {
     else
       Stream.eval(fos).flatMap(useOs)
   }
-
 }
+

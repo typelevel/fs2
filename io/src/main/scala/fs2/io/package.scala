@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Async, Effect}
+import fs2.util.{Async, Suspendable}
 import fs2.util.syntax._
 import java.io.{InputStream, OutputStream}
 
@@ -13,7 +13,7 @@ package object io {
     *
     * Blocks the current thread.
     */
-  def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Effect[F]): Stream[F, Byte] =
+  def readInputStream[F[_]: Suspendable](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true): Stream[F, Byte] =
     readInputStreamGeneric(fis, chunkSize, readBytesFromInputStream[F], closeAfterUse)
 
   /**
@@ -36,7 +36,7 @@ package object io {
     *
     * Blocks the current thread.
     */
-  def writeOutputStream[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(implicit F: Effect[F]): Sink[F, Byte] =
+  def writeOutputStream[F[_]: Suspendable](fos: F[OutputStream], closeAfterUse: Boolean = true): Sink[F, Byte] =
     writeOutputStreamGeneric(fos, closeAfterUse, writeBytesToOutputStream[F])
 
   /**
@@ -56,13 +56,13 @@ package object io {
   //
   // STDIN/STDOUT Helpers
 
-  def stdin[F[_]](bufSize: Int)(implicit F: Effect[F]): Stream[F, Byte] =
+  def stdin[F[_]](bufSize: Int)(implicit F: Suspendable[F]): Stream[F, Byte] =
     readInputStream(F.delay(System.in), bufSize, false)
 
   def stdinAsync[F[_]](bufSize: Int)(implicit F: Async[F]): Stream[F, Byte] =
     readInputStreamAsync(F.delay(System.in), bufSize, false)
 
-  def stdout[F[_]](implicit F: Effect[F]): Sink[F, Byte] =
+  def stdout[F[_]](implicit F: Suspendable[F]): Sink[F, Byte] =
     writeOutputStream(F.delay(System.out), false)
 
   def stdoutAsync[F[_]](implicit F: Async[F]): Sink[F, Byte] =
