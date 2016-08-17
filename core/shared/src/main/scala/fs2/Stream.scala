@@ -85,6 +85,13 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.delete]]`. */
   def delete(f: O => Boolean): Stream[F,O] = self through pipe.delete(f)
 
+  /** Alias for `self through [[pipe.distinctConsecutive]]`. */
+  def distinctConsecutive: Stream[F,O] = self through pipe.distinctConsecutive
+
+  /** Alias for `self through [[pipe.distinctConsecutiveBy]]`. */
+  def distinctConsecutiveBy[O2](f: O => O2): Stream[F,O] =
+    self through pipe.distinctConsecutiveBy(f)
+
   def drain: Stream[F, Nothing] = flatMap { _ => Stream.empty }
 
   /** Alias for `self through [[pipe.drop]]`. */
@@ -120,6 +127,9 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
 
   /** Alias for `self through [[pipe.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = self through pipe.filter(f)
+
+  /** Alias for `self through [[pipe.filterWithPrevious]]`. */
+  def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = self through pipe.filterWithPrevious(f)
 
   /** Alias for `self through [[pipe.find]]`. */
   def find(f: O => Boolean): Stream[F,O] = self through pipe.find(f)

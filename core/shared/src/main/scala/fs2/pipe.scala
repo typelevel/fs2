@@ -75,6 +75,25 @@ object pipe {
   def delete[F[_],I](p: I => Boolean): Stream[F,I] => Stream[F,I] =
     _ pull { h => h.takeWhile((i:I) => !p(i)).flatMap(_.drop(1)).flatMap(_.echo) }
 
+  /**
+   * Emits only elements that are distinct from their immediate predecessors,
+   * using natural equality for comparison.
+   */
+  def distinctConsecutive[F[_],I]: Stream[F,I] => Stream[F,I] =
+    filterWithPrevious((i1, i2) => i1 != i2)
+
+  /**
+   * Emits only elements that are distinct from their immediate predecessors
+   * according to `f`, using natural equality for comparison.
+   *
+   * Note that `f` is called for each element in the stream multiple times
+   * and hence should be fast (e.g., an accessor). It is not intended to be
+   * used for computationally intensive conversions. For such conversions,
+   * consider something like: `src.map(i => (i, f(i))).distinctConsecutiveBy(_._2).map(_._1)`
+   */
+  def distinctConsecutiveBy[F[_],I,I2](f: I => I2): Stream[F,I] => Stream[F,I] =
+    filterWithPrevious((i1, i2) => f(i1) != f(i2))
+
   /** Drop `n` elements of the input, then echo the rest. */
   def drop[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
     _ pull { h => h.drop(n).flatMap(_.echo) }
@@ -126,6 +145,30 @@ object pipe {
   /** Emit only inputs which match the supplied predicate. */
   def filter[F[_], I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
     mapChunks(_ filter f)
+
+  /**
+   * Like `filter`, but the predicate `f` depends on the previously emitted and
+   * current elements.
+   */
+  def filterWithPrevious[F[_],I](f: (I, I) => Boolean): Stream[F,I] => Stream[F,I] = {
+    def go(last: I): Handle[F,I] => Pull[F,I,Unit] =
+      _.receive { (c, h) =>
+        // Check if we can emit this chunk unmodified
+        val (allPass, newLast) = c.foldLeft((true, last)) { case ((acc, last), i) =>
+          (acc && f(last, i), i)
+        }
+        if (allPass) {
+          Pull.output(c) >> go(newLast)(h)
+        } else {
+          val (acc, newLast) = c.foldLeft((Vector.empty[I], last)) { case ((acc, last), i) =>
+            if (f(last, i)) (acc :+ i, i)
+            else (acc, last)
+          }
+          Pull.output(Chunk.indexedSeq(acc)) >> go(newLast)(h)
+        }
+      }
+    _ pull { h => h.receive1 { (i, h) => Pull.output1(i) >> go(i)(h) } }
+  }
 
   /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
   def find[F[_],I](f: I => Boolean): Stream[F,I] => Stream[F,I] =
