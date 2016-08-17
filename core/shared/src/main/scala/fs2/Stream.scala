@@ -128,8 +128,8 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = self through pipe.filter(f)
 
-  /** Alias for `self through [[pipe.filterWithLast]]`. */
-  def filterWithLast(f: (O, O) => Boolean): Stream[F,O] = self through pipe.filterWithLast(f)
+  /** Alias for `self through [[pipe.filterWithPrevious]]`. */
+  def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = self through pipe.filterWithPrevious(f)
 
   /** Alias for `self through [[pipe.find]]`. */
   def find(f: O => Boolean): Stream[F,O] = self through pipe.find(f)

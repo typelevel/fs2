@@ -80,7 +80,7 @@ object pipe {
    * using natural equality for comparison.
    */
   def distinctConsecutive[F[_],I]: Stream[F,I] => Stream[F,I] =
-    filterWithLast((i1, i2) => i1 != i2)
+    filterWithPrevious((i1, i2) => i1 != i2)
 
   /**
    * Emits only elements that are distinct from their immediate predecessors
@@ -92,7 +92,7 @@ object pipe {
    * consider something like: `src.map(i => (i, f(i))).distinctConsecutiveBy(_._2).map(_._1)`
    */
   def distinctConsecutiveBy[F[_],I,I2](f: I => I2): Stream[F,I] => Stream[F,I] =
-    filterWithLast((i1, i2) => f(i1) != f(i2))
+    filterWithPrevious((i1, i2) => f(i1) != f(i2))
 
   /** Drop `n` elements of the input, then echo the rest. */
   def drop[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
@@ -150,7 +150,7 @@ object pipe {
    * Like `filter`, but the predicate `f` depends on the previously emitted and
    * current elements.
    */
-  def filterWithLast[F[_],I](f: (I, I) => Boolean): Stream[F,I] => Stream[F,I] = {
+  def filterWithPrevious[F[_],I](f: (I, I) => Boolean): Stream[F,I] => Stream[F,I] = {
     def go(last: I): Handle[F,I] => Pull[F,I,Unit] =
       _.receive { (c, h) =>
         // Check if we can emit this chunk unmodified
