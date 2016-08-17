@@ -80,14 +80,19 @@ object pipe {
    * using natural equality for comparison.
    */
   def distinctConsecutive[F[_],I]: Stream[F,I] => Stream[F,I] =
-    filterBy2((i1, i2) => i1 != i2)
+    filterWithLast((i1, i2) => i1 != i2)
 
   /**
    * Emits only elements that are distinct from their immediate predecessors
    * according to `f`, using natural equality for comparison.
+   *
+   * Note that `f` is called for each element in the stream multiple times
+   * and hence should be fast (e.g., an accessor). It is not intended to be
+   * used for computationally intensive conversions. For such conversions,
+   * consider something like: `src.map(i => (i, f(i))).distinctConsecutiveBy(_._2).map(_._1)`
    */
   def distinctConsecutiveBy[F[_],I,I2](f: I => I2): Stream[F,I] => Stream[F,I] =
-    filterBy2((i1, i2) => f(i1) != f(i2))
+    filterWithLast((i1, i2) => f(i1) != f(i2))
 
   /** Drop `n` elements of the input, then echo the rest. */
   def drop[F[_],I](n: Long): Stream[F,I] => Stream[F,I] =
@@ -145,7 +150,7 @@ object pipe {
    * Like `filter`, but the predicate `f` depends on the previously emitted and
    * current elements.
    */
-  def filterBy2[F[_],I](f: (I, I) => Boolean): Stream[F,I] => Stream[F,I] = {
+  def filterWithLast[F[_],I](f: (I, I) => Boolean): Stream[F,I] => Stream[F,I] = {
     def go(last: I): Handle[F,I] => Pull[F,I,Unit] =
       _.receive { (c, h) =>
         // Check if we can emit this chunk unmodified
