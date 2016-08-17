@@ -91,6 +91,14 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.delete(_ == i)) shouldBe v.diff(Vector(i))
     }
 
+    "distinctConsecutive" in {
+      Stream.empty.covary[Pure].distinctConsecutive.toList shouldBe Nil
+      Stream(1, 2, 3, 4).distinctConsecutive.toList shouldBe List(1, 2, 3, 4)
+      Stream(1, 1, 2, 2, 3, 3, 4, 3).distinctConsecutive.toList shouldBe List(1, 2, 3, 4, 3)
+      Stream("1", "2", "33", "44", "5", "66").distinctConsecutiveBy(_.length).toList shouldBe
+        List("1", "33", "5", "66")
+    }
+
     "drop" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
       val n = if (negate) -n0.get else n0.get
       runLog(s.get.through(drop(n))) shouldBe runLog(s.get).drop(n)
