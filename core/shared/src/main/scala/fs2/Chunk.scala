@@ -829,6 +829,10 @@ object NonEmptyChunk {
       def foldRight[B](z: B)(f: (A, B) => B): B = c.foldRight(z)(f)
       def size: Int = c.size
       def take(n: Int): Chunk[A] = c.take(n)
+      override def toBooleans[B >: A](implicit ev: B =:= Boolean): Chunk.Booleans = c.toBooleans(ev)
+      override def toBytes[B >: A](implicit ev: B =:= Byte): Chunk.Bytes = c.toBytes(ev)
+      override def toLongs[B >: A](implicit ev: B =:= Long): Chunk.Longs = c.toLongs(ev)
+      override def toDoubles[B >: A](implicit ev: B =:= Double): Chunk.Doubles = c.toDoubles(ev)
     }
   }
 }

@@ -9,8 +9,9 @@ class TimeSpec extends AsyncFs2Spec {
   "time" - {
 
     "awakeEvery" in {
-      runLogF(time.awakeEvery[Task](500.millis).map(_.toMillis/500).take(5)).map {
-        _ shouldBe Vector(1,2,3,4,5)
+      runLogF(time.awakeEvery[Task](500.millis).map(_.toMillis).take(5)).map { r =>
+        r.zipWithIndex.foreach { case (n, idx) => n shouldBe ((idx + 1) * 500L) +- 50 }
+        Succeeded
       }
     }
 

@@ -57,6 +57,8 @@ sealed trait Free[+F[_],+A] {
     case Bind(Bind(x, f), g) => (x flatMap (a => f(a) flatMap g)).step
     case _ => this
   }
+
+  override def toString = "Free"
 }
 
 object Free {

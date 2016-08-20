@@ -8,7 +8,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
   type O0
 
   def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]): Scope[G,Stack[G,O0,O2]]
-  def pushEmit(c: Chunk[O]): StreamCore[F,O] = if (c.isEmpty) self else StreamCore.append(StreamCore.chunk(c), self)
+  def pushEmit(c: Chunk[O]): StreamCore[F,O] = StreamCore.append(StreamCore.chunk(c), self)
 
   def render: String
 
@@ -38,20 +38,20 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
     new StreamCore[F,O2] { type O0 = self.O0
       def push[G[_],O3](u: NT[F,G], stack: Stack[G,O2,O3]) =
         Scope.suspend { self.push(u, stack pushBind NT.convert(f)(u)) }
-      def render = s"$self.flatMap($f)"
+      def render = s"$self.flatMap(<function1>)"
     }
   def map[O2](f: O => O2): StreamCore[F,O2] = mapChunks(_ map f)
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): StreamCore[F,O2] =
     new StreamCore[F,O2] { type O0 = self.O0
       def push[G[_],O3](u: NT[F,G], stack: Stack[G,O2,O3]) =
         self.push(u, stack pushMap f)
-      def render = s"$self.mapChunks($f)"
+      def render = s"$self.mapChunks(<function1>)"
     }
   def onError(f: Throwable => StreamCore[F,O]): StreamCore[F,O] =
     new StreamCore[F,O] { type O0 = self.O0
       def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
         Scope.suspend { self.push(u, stack pushHandler NT.convert(f)(u)) }
-      def render = s"$self.onError($f)"
+      def render = s"$self.onError(<function1>)"
     }
 
   def maskErrors: StreamCore[F,O] = self.onError(_ => StreamCore.empty)
@@ -251,7 +251,9 @@ object StreamCore {
                 case Left(err) => Scope.pure(Some(Left(err)))
                 case Right((s, segs)) => stepTrace(trace)(Stack.segments(segs).pushAppend(s))
               }
-              case Segment.Emit(chunk) => if (chunk.isEmpty) Scope.pure(None) else Scope.pure(Some(Right((NonEmptyChunk.fromChunkUnsafe(chunk), StreamCore.segments(segs)))))
+              case Segment.Emit(chunk) =>
+                if (chunk.isEmpty) stepTrace(trace)(Stack.segments(segs))
+                else Scope.pure(Some(Right((NonEmptyChunk.fromChunkUnsafe(chunk), StreamCore.segments(segs)))))
               case Segment.Handler(h) => stepTrace(trace)(Stack.segments(segs))
               case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segs)) flatMap stepTrace(trace)
             }
