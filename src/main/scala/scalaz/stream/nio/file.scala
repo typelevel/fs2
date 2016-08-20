@@ -167,7 +167,7 @@ object file {
     var filePos = 0 // keep track of file position over multiple chunks
     var foundEOF = false // the first time we find EOF, emit partially filled buffer; the second time, Terminate
 
-    def completionHandler(buff: ByteBuffer, expected: Int, bufPos: Int, cb: (Throwable \/ ByteBuffer) => Unit): CompletionHandler[Integer, Null] =
+    def completionHandler(src: AsynchronousFileChannel, buff: ByteBuffer, expected: Int, bufPos: Int, cb: (Throwable \/ ByteBuffer) => Unit): CompletionHandler[Integer, Null] =
       new CompletionHandler[Integer, Null] {
         override def completed(found: Integer, attachment: Null): Unit = {
           if (found == -1 || foundEOF) {
@@ -184,7 +184,7 @@ object file {
             filePos += found
             val missing: Int = expected - found
             val nextBufPos: Int = bufPos + found
-            src.read(buff, filePos, null, completionHandler(buff, missing, nextBufPos, cb))
+            src.read(buff, filePos, null, completionHandler(src, buff, missing, nextBufPos, cb))
           }
 
           else { // buffer was filled, emit it
@@ -203,7 +203,7 @@ object file {
       src => Task.delay(src.close)) { src =>
       Task.now { (size: Int) => Task.async[ByteBuffer] { cb =>
         val buff = ByteBuffer.allocate(size)
-        src.read(buff, filePos, null, completionHandler(buff, size, bufPos = 0, cb))
+        src.read(buff, filePos, null, completionHandler(src, buff, size, bufPos = 0, cb))
       }}
     }
   }
