@@ -52,15 +52,15 @@ object pipe {
     }
 
   /** Outputs chunks with a limited maximum size, splitting as necessary. */
-  def chunkLimit[F[_],I](n: Int): Stream[F,I] => Stream[F,Chunk[I]] =
+  def chunkLimit[F[_],I](n: Int): Stream[F,I] => Stream[F,NonEmptyChunk[I]] =
     _ repeatPull { _.awaitLimit(n) flatMap { case (chunk, h) => Pull.output1(chunk) as h } }
 
   /** Outputs a list of chunks, the total size of all chunks is limited and split as necessary. */
-  def chunkN[F[_],I](n: Int, allowFewer: Boolean = true): Stream[F,I] => Stream[F,List[Chunk[I]]] =
+  def chunkN[F[_],I](n: Int, allowFewer: Boolean = true): Stream[F,I] => Stream[F,List[NonEmptyChunk[I]]] =
     _ repeatPull { _.awaitN(n, allowFewer) flatMap { case (chunks, h) => Pull.output1(chunks) as h }}
 
   /** Output all chunks from the input `Handle`. */
-  def chunks[F[_],I]: Stream[F,I] => Stream[F,Chunk[I]] =
+  def chunks[F[_],I]: Stream[F,I] => Stream[F,NonEmptyChunk[I]] =
     _ repeatPull { _.await.flatMap { case (chunk, h) => Pull.output1(chunk) as h }}
 
   /** Map/filter simultaneously. Calls `collect` on each `Chunk` in the stream. */
@@ -105,7 +105,7 @@ object pipe {
   /** Drops the last element if the predicate evaluates to true. */
   def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
     def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = {
-      _.receiveNonEmptyOption {
+      _.receiveOption {
         case Some((chunk, h)) => Pull.output(last) >> go(chunk)(h)
         case None =>
           val i = last(last.size - 1)
@@ -113,7 +113,7 @@ object pipe {
           else Pull.output(last)
       }
     }
-    _.pull { _.receiveNonEmptyOption {
+    _.pull { _.receiveOption {
       case Some((c, h)) => go(c)(h)
       case None => Pull.done
     }}

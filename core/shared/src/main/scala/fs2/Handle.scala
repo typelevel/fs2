@@ -6,7 +6,7 @@ import fs2.util.{Async,RealSupertype,Sub1}
  * A currently open `Stream[F,A]`, allowing chunks to be pulled or pushed.
  */
 final class Handle[+F[_],+A](
-  private[fs2] val buffer: List[Chunk[A]],
+  private[fs2] val buffer: List[NonEmptyChunk[A]],
   private[fs2] val underlying: Stream[F,A]
 ) {
 
@@ -22,18 +22,18 @@ final class Handle[+F[_],+A](
 
   def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
     if (c.isEmpty) this
-    else new Handle(c :: buffer, underlying)
+    else new Handle(NonEmptyChunk.fromChunkUnsafe(c) :: buffer, underlying)
 
   def push1[A2>:A](a: A2)(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
     push(Chunk.singleton(a))
 
-  def await: Pull[F,Nothing,(Chunk[A],Handle[F,A])] =
+  def await: Pull[F,Nothing,(NonEmptyChunk[A],Handle[F,A])] =
     buffer match {
-      case List() => underlying.step
+      case Nil => underlying.step
       case hb :: tb => Pull.pure((hb, new Handle(tb, underlying)))
     }
 
-  /** Await a single element from this `Handle`. */
+  /** Awaits a single element from this `Handle`. */
   def await1: Pull[F,Nothing,(A,Handle[F,A])] =
     await flatMap { case (hd, tl) => hd.uncons match {
       case None => tl.await1
@@ -43,7 +43,7 @@ final class Handle[+F[_],+A](
   def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]] = {
     val h = Sub1.substHandle(this)(S)
     h.buffer match {
-      case List() => h.underlying.stepAsync
+      case Nil => h.underlying.stepAsync
       case hb :: tb => Pull.pure(ScopedFuture.pure(Pull.pure((hb, new Handle(tb, h.underlying)))))
     }
   }
@@ -57,52 +57,46 @@ final class Handle[+F[_],+A](
       }
   }
 
-  /** Like `await`, but return a `Chunk` of no more than `maxChunkSize` elements. */
-  def awaitLimit(maxChunkSize: Int): Pull[F,Nothing,(Chunk[A],Handle[F,A])] =
+  /** Like `await`, but returns a `NonEmptyChunk` of no more than `maxChunkSize` elements. */
+  def awaitLimit(maxChunkSize: Int): Pull[F,Nothing,(NonEmptyChunk[A],Handle[F,A])] = {
+    require(maxChunkSize > 0)
     await.map { case s @ (hd, tl) =>
       if (hd.size <= maxChunkSize) s
-      else (hd.take(maxChunkSize), tl.push(hd.drop(maxChunkSize)))
+      else (NonEmptyChunk.fromChunkUnsafe(hd.take(maxChunkSize)), tl.push(hd.drop(maxChunkSize)))
     }
+  }
 
-  /** Return a `List[Chunk[I]]` from the input whose combined size has a maximum value `n`. */
-  def awaitN(n: Int, allowFewer: Boolean = false): Pull[F,Nothing,(List[Chunk[A]],Handle[F,A])] =
+  /** Returns a `List[NonEmptyChunk[A]]` from the input whose combined size has a maximum value `n`. */
+  def awaitN(n: Int, allowFewer: Boolean = false): Pull[F,Nothing,(List[NonEmptyChunk[A]],Handle[F,A])] =
     if (n <= 0) Pull.pure((Nil, this))
     else for {
       (hd, tl) <- awaitLimit(n)
       (hd2, tl) <- _awaitN0(n, allowFewer)((hd, tl))
     } yield ((hd :: hd2), tl)
 
-  private def _awaitN0[G[_], X](n: Int, allowFewer: Boolean): ((Chunk[X],Handle[G,X])) => Pull[G, Nothing, (List[Chunk[X]], Handle[G,X])] = {
+  private def _awaitN0[G[_], X](n: Int, allowFewer: Boolean): ((NonEmptyChunk[X],Handle[G,X])) => Pull[G, Nothing, (List[NonEmptyChunk[X]], Handle[G,X])] = {
     case (hd, tl) =>
       val next = tl.awaitN(n - hd.size, allowFewer)
       if (allowFewer) next.optional.map(_.getOrElse((Nil, Handle.empty))) else next
   }
 
-  /** Await the next available non-empty `Chunk`. */
-  def awaitNonEmpty: Pull[F,Nothing,(Chunk[A],Handle[F,A])] =
-    this.receive { case s @ (hd, tl) => if (hd.isEmpty) tl.awaitNonEmpty else Pull.pure(s) }
-
-  /** Await the next available chunk from the input, or `None` if the input is exhausted. */
-  def awaitOption: Pull[F,Nothing,Option[(Chunk[A],Handle[F,A])]] =
+  /** Awaits the next available chunk from the input, or `None` if the input is exhausted. */
+  def awaitOption: Pull[F,Nothing,Option[(NonEmptyChunk[A],Handle[F,A])]] =
     await.map(Some(_)) or Pull.pure(None)
 
-  /** Await the next available element from the input, or `None` if the input is exhausted. */
+  /** Awaits the next available element from the input, or `None` if the input is exhausted. */
   def await1Option: Pull[F,Nothing,Option[(A,Handle[F,A])]] =
     await1.map(Some(_)) or Pull.pure(None)
 
-  /** Await the next available non-empty chunk from the input, or `None` if the input is exhausted. */
-  def awaitNonEmptyOption: Pull[F, Nothing, Option[(Chunk[A], Handle[F,A])]] =
-    awaitNonEmpty.map(Some(_)) or Pull.pure(None)
-
-  /** Copy the next available chunk to the output. */
+  /** Copies the next available chunk to the output. */
   def copy: Pull[F,A,Handle[F,A]] =
     this.receive { (chunk, h) => Pull.output(chunk) >> Pull.pure(h) }
 
-  /** Copy the next available element to the output. */
+  /** Copies the next available element to the output. */
   def copy1: Pull[F,A,Handle[F,A]] =
     this.receive1 { (hd, h) => Pull.output1(hd) >> Pull.pure(h) }
 
-  /** Drop the first `n` elements of this `Handle`, and return the new `Handle`. */
+  /** Drops the first `n` elements of this `Handle`, and returns the new `Handle`. */
   def drop(n: Long): Pull[F, Nothing, Handle[F, A]] =
     if (n <= 0) Pull.pure(this)
     else awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue).flatMap {
@@ -110,7 +104,7 @@ final class Handle[+F[_],+A](
     }
 
   /**
-   * Drop elements of the this `Handle` until the predicate `p` fails, and return the new `Handle`.
+   * Drops elements of the this `Handle` until the predicate `p` fails, and returns the new `Handle`.
    * If non-empty, the first element of the returned `Handle` will fail `p`.
    */
   def dropWhile(p: A => Boolean): Pull[F,Nothing,Handle[F,A]] =
@@ -122,15 +116,15 @@ final class Handle[+F[_],+A](
       }
     }
 
-  /** Write all inputs to the output of the returned `Pull`. */
+  /** Writes all inputs to the output of the returned `Pull`. */
   def echo: Pull[F,A,Nothing] =
     echoChunk.flatMap(_.echo)
 
-  /** Read a single element from the input and emit it to the output. Returns the new `Handle`. */
+  /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
   def echo1: Pull[F,A,Handle[F,A]] =
     this.receive1 { (a, h) => Pull.output1(a) >> Pull.pure(h) }
 
-  /** Read the next available chunk from the input and emit it to the output. Returns the new `Handle`. */
+  /** Reads the next available chunk from the input and emits it to the output. Returns the new `Handle`. */
   def echoChunk: Pull[F,A,Handle[F,A]] =
     this.receive { (c, h) => Pull.output(c) >> Pull.pure(h) }
 
@@ -138,7 +132,7 @@ final class Handle[+F[_],+A](
   def fetchN(n: Int): Pull[F,Nothing,Handle[F,A]] =
     awaitN(n) map { case (buf, h) => buf.reverse.foldLeft(h)(_ push _) }
 
-  /** Await the next available element where the predicate returns true */
+  /** Awaits the next available element where the predicate returns true. */
   def find(f: A => Boolean): Pull[F,Nothing,(A,Handle[F,A])] =
     this.receive { (chunk, h) =>
       chunk.indexWhere(f) match {
@@ -165,7 +159,7 @@ final class Handle[+F[_],+A](
   def fold1[A2 >: A](f: (A2, A2) => A2): Pull[F,Nothing,A2] =
     this.receive1 { (o, h) => h.fold[A2](o)(f) }
 
-  /** Write a single `true` value if all input matches the predicate, false otherwise */
+  /** Writes a single `true` value if all input matches the predicate, `false` otherwise. */
   def forall(p: A => Boolean): Pull[F,Nothing,Boolean] = {
     await1.optional flatMap {
       case Some((a, h)) =>
@@ -175,7 +169,7 @@ final class Handle[+F[_],+A](
     }
   }
 
-  /** Return the last element of the input, if non-empty. */
+  /** Returns the last element of the input, if non-empty. */
   def last: Pull[F,Nothing,Option[A]] = {
     def go(prev: Option[A]): Handle[F,A] => Pull[F,Nothing,Option[A]] =
       h => h.await.optional.flatMap {
@@ -202,7 +196,7 @@ final class Handle[+F[_],+A](
       }
     }
 
-  /** Emit the first `n` elements of the input and return the new `Handle`. */
+  /** Emits the first `n` elements of the input and return the new `Handle`. */
   def take(n: Long): Pull[F,A,Handle[F,A]] =
     if (n <= 0) Pull.pure(this)
     else awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue).flatMap {
@@ -233,8 +227,8 @@ final class Handle[+F[_],+A](
     }
 
   /**
-   * Emit the elements of this `Handle` until the predicate `p` fails,
-   * and return the new `Handle`. If non-empty, the returned `Handle` will have
+   * Emits the elements of this `Handle` until the predicate `p` fails,
+   * and returns the new `Handle`. If non-empty, the returned `Handle` will have
    * a first element `i` for which `p(i)` is `false`. */
   def takeWhile(p: A => Boolean): Pull[F,A,Handle[F,A]] =
     this.receive { (chunk, h) =>
@@ -251,7 +245,7 @@ final class Handle[+F[_],+A](
 }
 
 object Handle {
-  def empty[F[_],A]: Handle[F,A] = new Handle(List(), Stream.empty)
+  def empty[F[_],A]: Handle[F,A] = new Handle(Nil, Stream.empty)
 
   implicit class HandleInvariantEffectOps[F[_],+A](private val self: Handle[F,A]) extends AnyVal {
 
@@ -268,11 +262,8 @@ object Handle {
     /** Apply `f` to the next available element, or `None` if the input is exhausted. */
     def receive1Option[O,B](f: Option[(A,Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
       self.await1Option.flatMap(f)
-
-    def receiveNonEmptyOption[O,B](f: Option[(Chunk[A],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
-      self.awaitNonEmptyOption.flatMap(f)
   }
 
-  type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Chunk[A], Handle[F,A])]]
+  type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
   type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Option[A], Handle[F,A])]]
 }

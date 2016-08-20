@@ -3,7 +3,7 @@ package fs2
 import scala.reflect.ClassTag
 
 /**
- * Chunk represents a strict, in-memory sequence of `A` values.
+ * A strict, in-memory sequence of `A` values.
  */
 trait Chunk[+A] { self =>
   def size: Int
@@ -21,14 +21,15 @@ trait Chunk[+A] { self =>
     val index = iterator.indexWhere(p)
     if (index < 0) None else Some(index)
   }
-  def isEmpty = size == 0
+  def isEmpty: Boolean = size == 0
+  def nonEmpty: Boolean = size != 0
   def toArray[B >: A: ClassTag]: Array[B] = {
     val arr = new Array[B](size)
     copyToArray(arr)
     arr
   }
-  def toList = foldRight(Nil: List[A])(_ :: _)
-  def toVector = foldLeft(Vector.empty[A])(_ :+ _)
+  def toList: List[A] = foldRight(Nil: List[A])(_ :: _)
+  def toVector: Vector[A] = foldLeft(Vector.empty[A])(_ :+ _)
   def collect[B](pf: PartialFunction[A,B]): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size)
     iterator.collect(pf).copyToBuffer(buf)
@@ -96,7 +97,7 @@ object Chunk {
     override def map[B](f: Nothing => B) = empty
   }
 
-  def singleton[A](a: A): Chunk[A] = new Chunk[A] { self =>
+  def singleton[A](a: A): NonEmptyChunk[A] = NonEmptyChunk.fromChunkUnsafe(new Chunk[A] { self =>
     def size = 1
     def apply(i: Int) = if (i == 0) a else throw new IllegalArgumentException(s"Chunk.singleton($i)")
     def copyToArray[B >: A](xs: Array[B], start: Int): Unit = xs(start) = a
@@ -107,7 +108,7 @@ object Chunk {
     def foldr[B](z: => B)(f: (A,=>B) => B): B = f(a,z)
     def foldRight[B](z: B)(f: (A,B) => B): B = f(a,z)
     override def map[B](f: A => B) = singleton(f(a))
-  }
+  })
 
   def indexedSeq[A](a: collection.IndexedSeq[A]): Chunk[A] = new Chunk[A] {
     def size = a.size
@@ -759,6 +760,75 @@ object Chunk {
         i += 1
       }
       indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
+    }
+  }
+}
+
+/**
+ * A chunk which has at least one element.
+ */
+sealed trait NonEmptyChunk[+A] extends Chunk[A] {
+
+  def unconsNonEmpty: (A, Chunk[A])
+
+  def head: A = unconsNonEmpty._1
+  def tail: Chunk[A] = unconsNonEmpty._2
+
+  def reduceLeft[A2 >: A](f: (A2, A) => A2): A2 = {
+    val (hd, tl) = unconsNonEmpty
+    tl.foldLeft(hd: A2)(f)
+  }
+
+  def reduceRight[A2 >: A](f: (A, A2) => A2): A2 = {
+    if (tail.isEmpty) head
+    else {
+      val init = tail.take(tail.size - 1)
+      val last = tail(tail.size - 1)
+      val penutltimate = init.foldRight(last: A2)(f)
+      f(head, penutltimate)
+    }
+  }
+
+  override def map[B](f: A => B): NonEmptyChunk[B] =
+    NonEmptyChunk.fromChunkUnsafe(super.map(f))
+
+  override def mapAccumulate[S,B](s0: S)(f: (S,A) => (S,B)): (S,NonEmptyChunk[B]) = {
+    val (s, c) = super.mapAccumulate(s0)(f)
+    (s, NonEmptyChunk.fromChunkUnsafe(c))
+  }
+
+  override def scanLeft[B](z: B)(f: (B, A) => B): NonEmptyChunk[B] =
+    NonEmptyChunk.fromChunkUnsafe(super.scanLeft(z)(f))
+}
+
+object NonEmptyChunk {
+
+  def apply[A](hd: A, tl: Chunk[A]): NonEmptyChunk[A] =
+    fromChunkUnsafe(Chunk.concat(List(singleton(hd), tl)))
+
+  def unapply[A](c: NonEmptyChunk[A]): Some[(A, Chunk[A])] = Some(c.unconsNonEmpty)
+
+  def singleton[A](a: A): NonEmptyChunk[A] = Chunk.singleton(a)
+
+  def fromChunk[A](c: Chunk[A]): Option[NonEmptyChunk[A]] = c match {
+    case c: NonEmptyChunk[A] => Some(c)
+    case c =>
+      if (c.isEmpty) None
+      else Some(fromChunkUnsafe(c))
+  }
+
+  private[fs2] def fromChunkUnsafe[A](c: Chunk[A]): NonEmptyChunk[A] = c match {
+    case c: NonEmptyChunk[A] => c
+    case _ => new NonEmptyChunk[A] {
+      def unconsNonEmpty: (A, Chunk[A]) = c.uncons.get
+      def apply(i: Int): A = c(i)
+      def copyToArray[B >: A](xs: Array[B], start: Int): Unit = c.copyToArray(xs, start)
+      def drop(n: Int): Chunk[A] = c.drop(n)
+      def filter(f: A => Boolean): Chunk[A] = c.filter(f)
+      def foldLeft[B](z: B)(f: (B, A) => B): B = c.foldLeft(z)(f)
+      def foldRight[B](z: B)(f: (A, B) => B): B = c.foldRight(z)(f)
+      def size: Int = c.size
+      def take(n: Int): Chunk[A] = c.take(n)
     }
   }
 }
