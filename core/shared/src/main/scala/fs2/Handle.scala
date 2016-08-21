@@ -35,10 +35,10 @@ final class Handle[+F[_],+A](
 
   /** Awaits a single element from this `Handle`. */
   def await1: Pull[F,Nothing,(A,Handle[F,A])] =
-    await flatMap { case (hd, tl) => hd.uncons match {
-      case None => tl.await1
-      case Some((h,hs)) => Pull.pure((h, tl push hs))
-    }}
+    await flatMap { case (hd, tl) =>
+      val (h, hs) = hd.unconsNonEmpty
+      Pull.pure((h, tl push hs))
+    }
 
   def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]] = {
     val h = Sub1.substHandle(this)(S)
@@ -49,12 +49,10 @@ final class Handle[+F[_],+A](
   }
 
   def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep1[F2,A2]] = {
-    awaitAsync map { _ map { _.map {
-        case (hd, tl) => hd.uncons match {
-          case None => (None, tl)
-          case Some((h,hs)) => (Some(h), tl.push(hs))
-        }}}
-      }
+    awaitAsync map { _ map { _.map { case (hd, tl) =>
+      val (h, hs) = hd.unconsNonEmpty
+      (Some(h), tl.push(hs))
+    }}}
   }
 
   /** Like `await`, but returns a `NonEmptyChunk` of no more than `maxChunkSize` elements. */
