@@ -170,7 +170,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           _ => Task.delay { c.decrementAndGet; () }
         ).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run
       }}}
-      eventually(timeout(1.second)) { c.get shouldBe 0L }
+      eventually { c.get shouldBe 0L }
     }
 
     "evaluating a bracketed stream multiple times is safe" in {
