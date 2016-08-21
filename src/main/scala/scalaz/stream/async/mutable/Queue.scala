@@ -158,6 +158,8 @@ private[stream] object Queue {
   def mk[A](bound: Int, recover: Boolean,
             beforeEnqueue: (Seq[A], Vector[A]) => Vector[A])(implicit S: Strategy): Queue[A] = {
     sealed trait M
+
+    case class Do(f: () => Unit) extends M
     case class Enqueue(a: Seq[A], cb: Throwable \/ Unit => Unit) extends M
     case class Dequeue(ref: ConsumerRef, limit: Int, cb: Throwable \/ Seq[A] => Unit) extends M
     case class Fail(cause: Cause, cb: Throwable \/ Unit => Unit) extends M
@@ -246,8 +248,8 @@ private[stream] object Queue {
 
         queued = remainder
         signalSize(queued.size)
-        if (unAcked.size > 0 && bound > 0 && queued.size <= bound) {
-          val ackCount = bound - queued.size min unAcked.size
+        if (unAcked.size > 0 && bound > 0 && queued.size < bound) {
+          val ackCount = (bound - queued.size) min unAcked.size
           unAcked.take(ackCount).foreach(cb => S(cb(\/-(()))))
           unAcked = unAcked.drop(ackCount)
         }
@@ -255,23 +257,35 @@ private[stream] object Queue {
     }
 
     def enqueueOne(as: Seq[A], cb: Throwable \/ Unit => Unit) = {
-      queued = beforeEnqueue(as, queued)
-      queued = queued fast_++ as
+      def run() = {
+        queued = beforeEnqueue(as, queued)
+        queued = queued fast_++ as
 
-      if (consumers.size > 0 && queued.size > 0) {
-        val deqCount = consumers.size min queued.size
+        if (consumers.size > 0 && queued.size > 0) {
+          val deqCount = consumers.size min queued.size
 
-        consumers.take(deqCount).zip(queued.take(deqCount))
-        .foreach { case ((_,cb), a) => S(cb(\/-(a))) }
+          consumers.take(deqCount).zip(queued.take(deqCount))
+          .foreach { case ((_,cb), a) => S(cb(\/-(a))) }
 
-        consumers = consumers.drop(deqCount)
-        queued = queued.drop(deqCount)
+          consumers = consumers.drop(deqCount)
+          queued = queued.drop(deqCount)
+        }
+
+        S { cb(\/-(())) }
+
+        signalSize(queued.size)
       }
 
-      if (bound > 0 && queued.size > bound) unAcked = unAcked :+ cb
-      else S(cb(\/-(())))
+      if (bound > 0 && queued.size > bound) {
+        val cont: Throwable \/ Unit => Unit = {
+          case \/-(_) => actor ! Do(run)
+          case l @ -\/(_) => cb(l)
+        }
 
-      signalSize(queued.size)
+        unAcked = unAcked :+ cont
+      } else {
+        run()
+      }
     }
 
     def stop(cause: Cause, cb: Throwable \/ Unit => Unit): Unit = {
@@ -290,8 +304,9 @@ private[stream] object Queue {
     }
 
 
-    val actor: Actor[M] = Actor({ (m: M) =>
+    lazy val actor: Actor[M] = Actor({ (m: M) =>
       if (closed.isEmpty) m match {
+        case Do(f) => f()
         case Dequeue(ref, limit, cb)     => dequeueBatch(ref, limit, cb)
         case Enqueue(as, cb) => enqueueOne(as, cb)
         case Fail(cause, cb)   => stop(cause, cb)
@@ -316,6 +331,7 @@ private[stream] object Queue {
         }
 
       } else m match {
+        case Do(f) => f()
         case Dequeue(ref, limit, cb) if queued.nonEmpty => dequeueBatch(ref, limit, cb)
         case Dequeue(ref, limit, cb)                    => signalClosed(cb)
         case Enqueue(as, cb)                     => signalClosed(cb)

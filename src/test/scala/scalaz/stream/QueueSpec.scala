@@ -390,4 +390,14 @@ class QueueSpec extends Properties("queue") {
 
     p.runLast.run == Some(List(1, 2, 3))
   }
+
+  property("dequeue.unblock-despite-double-overful") = protect {
+    val q = async.boundedQueue[Int](2)
+
+    val driver = Process.range(0, 20) map { i => Process eval q.enqueueOne(i) }
+
+    val results = (merge.mergeN(driver) merge (q.dequeue take 20)).run.attemptRunFor(3000)
+
+    results.isRight :| s"got $results"
+  }
 }
