@@ -22,7 +22,7 @@ trait Fs2SpecLike extends Suite
   with TestUtil {
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = 100, workers = 4)
+    PropertyCheckConfiguration(minSuccessful = 25, workers = 4)
 
   override def runTest(testName: String, args: Args): Status = {
     println("Starting " + testName)
