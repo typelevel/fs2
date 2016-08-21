@@ -93,7 +93,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val b2 = f1.get
       swallow { runLog { b1.merge(b2) }}
       swallow { runLog { b2.merge(b1) }}
-      c.get shouldBe 0L
+      eventually(timeout(1.second)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (2a)" in forAll { (u: Unit) =>
@@ -107,7 +107,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       // `b1` has just caught `s1` error when `s2` fails
       // `b1` fully completes before `s2` fails
       swallow { runLog { b1 merge b2 }}
-      c.get shouldBe 0L
+      eventually(timeout(1.second)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (2b)" in forAll { (s1: PureStream[Int], s2: PureStream[Int], f1: Failure, f2: Failure) =>
@@ -117,7 +117,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       swallow { runLog { spuriousFail(b1,f1) merge b2 }}
       swallow { runLog { b1 merge spuriousFail(b2,f2) }}
       swallow { runLog { spuriousFail(b1,f1) merge spuriousFail(b2,f2) }}
-      c.get shouldBe 0L
+      eventually(timeout(1.second)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (3)" in forAll {
@@ -131,8 +131,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       swallow { runLog { concurrent.join(n.get)(s2).take(10) }}
       swallow { runLog { concurrent.join(n.get)(s2) }}
       outer.get shouldBe 0L
-      // Inner finalizers are run on a different thread, so on slow systems, we might observe a stale value here -
-      // hence, wrap the condition in an eventually
       eventually(timeout(1.second)) { inner.get shouldBe 0L }
     }
 
@@ -145,7 +143,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       swallow { runLog { s2 through pipe.prefetch }}
       swallow { runLog { s2 through pipe.prefetch through pipe.prefetch }}
       swallow { runLog { s2 through pipe.prefetch through pipe.prefetch through pipe.prefetch }}
-      c.get shouldBe 0L
+      eventually(timeout(1.second)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (5)" in forAll { (s: PureStream[PureStream[Int]]) =>
@@ -155,7 +153,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       runLog { s.get.evalMap { inner =>
         Task.start(bracket(c)(inner.get).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run)
       }}
-      eventually { c.get shouldBe 0L }
+      eventually(timeout(1.second)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (6)" in {
@@ -172,7 +170,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           _ => Task.delay { c.decrementAndGet; () }
         ).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run
       }}}
-      eventually { c.get shouldBe 0L }
+      eventually(timeout(1.second)) { c.get shouldBe 0L }
     }
 
     "evaluating a bracketed stream multiple times is safe" in {
