@@ -38,20 +38,20 @@ object pipe2 {
                             }
                        }
       def go1(c1r: Chunk[I], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-        h2.receiveNonEmptyOption {
+        h2.receiveOption {
           case Some(s2) => zipChunksGo((c1r, h1), s2)
           case None => k1(Left((c1r, h1)))
         }
       }
       def go2(c2r: Chunk[I2], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-        h1.receiveNonEmptyOption {
+        h1.receiveOption {
           case Some(s1) => zipChunksGo(s1, (c2r, h2))
           case None => k2(Left((c2r, h2)))
         }
       }
-      def goB(h1 : Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-        h1.receiveNonEmptyOption {
-          case Some(s1) => h2.receiveNonEmptyOption {
+      def goB(h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
+        h1.receiveOption {
+          case Some(s1) => h2.receiveOption {
             case Some(s2) => zipChunksGo(s1, s2)
             case None => k1(Left(s1))
           }
@@ -213,8 +213,8 @@ object pipe2 {
    * elements of `s` first.
    */
   def merge[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) => {
-    def go(l: ScopedFuture[F, Pull[F, Nothing, (Chunk[O], Handle[F,O])]],
-           r: ScopedFuture[F, Pull[F, Nothing, (Chunk[O], Handle[F,O])]]): Pull[F,O,Nothing] =
+    def go(l: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[O], Handle[F,O])]],
+           r: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[O], Handle[F,O])]]): Pull[F,O,Nothing] =
       (l race r).pull flatMap {
         case Left(l) => l.optional flatMap {
           case None => r.pull.flatMap(identity).flatMap { case (hd, tl) => P.output(hd) >> tl.echo }

@@ -177,8 +177,10 @@ class TextSpec extends Fs2Spec {
 
       "grouped in 3 characater chunks" in forAll { (lines0: PureStream[String]) =>
         val lines = lines0.get.map(escapeCrLf)
-        if (lines.toList.nonEmpty) {
-          val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
+        val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
+        if (s.isEmpty) {
+          Stream.emits(s).throughPure(text.lines).toList shouldBe Nil
+        } else {
           Stream.emits(s).throughPure(text.lines).toList shouldBe lines.toList
           Stream.emits(s).unchunk.throughPure(text.lines).toList shouldBe lines.toList
         }

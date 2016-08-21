@@ -56,14 +56,14 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
 
   /** Alias for `self through [[pipe.chunkLimit]]`. */
-  def chunkLimit(n: Int): Stream[F,Chunk[O]] = self through pipe.chunkLimit(n)
+  def chunkLimit(n: Int): Stream[F,NonEmptyChunk[O]] = self through pipe.chunkLimit(n)
 
   /** Alias for `self through [[pipe.chunkN]]`. */
-  def chunkN(n: Int, allowFewer: Boolean = true): Stream[F,List[Chunk[O]]] =
+  def chunkN(n: Int, allowFewer: Boolean = true): Stream[F,List[NonEmptyChunk[O]]] =
     self through pipe.chunkN(n, allowFewer)
 
   /** Alias for `self through [[pipe.chunks]]`. */
-  def chunks: Stream[F,Chunk[O]] = self through pipe.chunks
+  def chunks: Stream[F,NonEmptyChunk[O]] = self through pipe.chunks
 
   /** Alias for `self through [[pipe.collect]]`. */
   def collect[O2](pf: PartialFunction[O, O2]) = self through pipe.collect(pf)
@@ -265,7 +265,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.split]]`. */
   def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
 
-  def step: Pull[F,Nothing,(Chunk[O],Handle[F,O])] =
+  def step: Pull[F,Nothing,(NonEmptyChunk[O],Handle[F,O])] =
     Pull.evalScope(get.step).flatMap {
       case None => Pull.done
       case Some(Left(err)) => Pull.fail(err)
@@ -274,13 +274,13 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
 
   def stepAsync[F2[_],O2>:O](
     implicit S: Sub1[F,F2], F2: Async[F2], T: RealSupertype[O,O2])
-    : Pull[F2,Nothing,ScopedFuture[F2,Pull[F2,Nothing,(Chunk[O2], Handle[F2,O2])]]]
+    : Pull[F2,Nothing,ScopedFuture[F2,Pull[F2,Nothing,(NonEmptyChunk[O2], Handle[F2,O2])]]]
     =
     Pull.evalScope { get.covary[F2].unconsAsync.map { _ map { case (leftovers,o) =>
-      val inner: Pull[F2,Nothing,(Chunk[O2], Handle[F2,O2])] = o match {
+      val inner: Pull[F2,Nothing,(NonEmptyChunk[O2], Handle[F2,O2])] = o match {
         case None => Pull.done
         case Some(Left(err)) => Pull.fail(err)
-        case Some(Right((hd,tl))) => Pull.pure((hd, new Handle(List(), Stream.mk(tl))))
+        case Some(Right((hd,tl))) => Pull.pure((hd, new Handle(Nil, Stream.mk(tl))))
       }
       if (leftovers.isEmpty) inner else Pull.release(leftovers) flatMap { _ => inner }
     }}}

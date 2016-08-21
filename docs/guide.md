@@ -189,9 +189,10 @@ import fs2.Chunk
 scala> val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
 s1c: fs2.Stream[Nothing,Double] = Segment(Emit(Chunk(1.0, 2.0, 3.0)))
 
-scala> s1c.mapChunks {
-     |   case ds : Chunk.Doubles => /* do things unboxed */ ds
-     |   case ds => ds.map(_ + 1)
+scala> s1c.mapChunks { ds =>
+     |   val doubles = ds.toDoubles
+     |   /* do things unboxed using doubles.{values,offset,size} */
+     |   doubles
      | }
 res16: fs2.Stream[Nothing,Double] = Segment(Emit(Chunk(1.0, 2.0, 3.0))).mapChunks(<function1>)
 ```
@@ -291,7 +292,7 @@ scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsa
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 822 elided
+  ... 826 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -368,9 +369,9 @@ Let's break it down line by line:
 There's a lot going on in this one line:
 
 * If `n <= 0`, we're done, and stop pulling.
-* Otherwise we have more values to `take`, so we `h.awaitLimit(n)`, which returns a `(Chunk[A],Handle[F,I])` (again, inside of the `Pull` effect).
-* The `h.awaitLimit(n)` reads from the handle but gives us a `Chunk[O]` with _no more than_ `n` elements. (We can also `h.await1` to read just a single element, `h.await` to read a single `Chunk` of however many are available, `h.awaitN(n)` to obtain a `List[Chunk[A]]` totaling exactly `n` elements, and even `h.awaitAsync` and various other _asynchronous_ awaiting functions which we'll discuss in the [Concurrency](#concurrency) section.)
-* Using the pattern `(chunk, h)`, we destructure this step to its `chunk: Chunk[O]` and its `h: Handle[F,O]`. This shadows the outer `h`, which is fine here since it isn't relevant anymore. (Note: nothing stops us from keeping the old `h` around and awaiting from it again if we like, though this isn't usually what we want since it will repeat all the effects of that await.)
+* Otherwise we have more values to `take`, so we `h.awaitLimit(n)`, which returns a `(NonEmptyChunk[A],Handle[F,I])` (again, inside of the `Pull` effect).
+* The `h.awaitLimit(n)` reads from the handle but gives us a `NonEmptyChunk[O]` with _no more than_ `n` elements. (We can also `h.await1` to read just a single element, `h.await` to read a single `NonEmptyChunk` of however many are available, `h.awaitN(n)` to obtain a `List[NonEmptyChunk[A]]` totaling exactly `n` elements, and even `h.awaitAsync` and various other _asynchronous_ awaiting functions which we'll discuss in the [Concurrency](#concurrency) section.)
+* Using the pattern `(chunk, h)`, we destructure this step to its `chunk: NonEmptyChunk[O]` and its `h: Handle[F,O]`. This shadows the outer `h`, which is fine here since it isn't relevant anymore. (Note: nothing stops us from keeping the old `h` around and awaiting from it again if we like, though this isn't usually what we want since it will repeat all the effects of that await.)
 
 Moving on, the `Pull.output(chunk)` writes the chunk we just read to the _output_ of the `Pull`. This binds the `O` type in our `Pull[F,O,R]` we are constructing:
 
@@ -504,7 +505,7 @@ The `Async` bound on `F` is required anywhere concurrency is used in the library
 If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `h.awaitAsync` requests the next step of a `Handle h` asynchronously. Its signature is:
 
 ```Scala
-type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Chunk[A], Handle[F,A])]]
+type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
 
 def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]]
 ```

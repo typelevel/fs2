@@ -13,11 +13,9 @@ package object hash {
 
   def digest[F[_]](digest: => MessageDigest): Pipe[F,Byte,Byte] = in => Stream.suspend {
     val d = digest
-    in.chunks.map {
-      case bytes: Chunk.Bytes =>
-        d.update(bytes.values, bytes.offset, bytes.size)
-      case c =>
-        d.update(c.toArray)
+    in.chunks.map { c =>
+      val bytes = c.toBytes
+      d.update(bytes.values, bytes.offset, bytes.size)
     }.drain ++ Stream.chunk(Chunk.bytes(d.digest()))
   }
 }
