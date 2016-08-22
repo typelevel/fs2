@@ -321,17 +321,16 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.unchunk]]`. */
   def unchunk: Stream[F,O] = self through pipe.unchunk
 
-  def uncons: Stream[F, Option[(Chunk[O], Stream[F,O])]] =
+  def uncons: Stream[F, Option[(NonEmptyChunk[O], Stream[F,O])]] =
     Stream.mk(get.uncons.map(_ map { case (hd,tl) => (hd, Stream.mk(tl)) }))
 
   def uncons1: Stream[F, Option[(O,Stream[F,O])]] =
     Stream.mk {
       def go(s: StreamCore[F,O]): StreamCore[F,Option[(O,Stream[F,O])]] = s.uncons.flatMap {
         case None => StreamCore.emit(None)
-        case Some((hd,tl)) => hd.uncons match {
-          case Some((hc,tc)) => StreamCore.emit(Some((hc, Stream.mk(tl).cons(tc))))
-          case None => go(tl)
-        }
+        case Some((hd,tl)) =>
+          val (hc, tc) = hd.unconsNonEmpty
+          StreamCore.emit(Some((hc, Stream.mk(tl).cons(tc))))
       }
       go(get)
     }
@@ -550,6 +549,11 @@ object Stream {
     def toVector: Vector[O] =
       self.covary[Task].runLog.unsafeRunSync.
         fold(_ => sys.error("FS2 bug: covarying pure stream can not result in async task"), identity)
+  }
+
+  implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) extends AnyVal {
+    
+    def unNoneTerminate: Stream[F,O] = self.through(pipe.unNoneTerminate)
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */

@@ -85,7 +85,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
       catch { case NonFatal(e) => Scope.fail(e) }
   }
 
-  def uncons: StreamCore[F, Option[(Chunk[O], StreamCore[F,O])]] =
+  def uncons: StreamCore[F, Option[(NonEmptyChunk[O], StreamCore[F,O])]] =
     StreamCore.evalScope(step) flatMap {
       case None => StreamCore.emit(None)
       case Some(Left(err)) => StreamCore.fail(err)
