@@ -10,7 +10,9 @@ class TimeSpec extends AsyncFs2Spec {
 
     "awakeEvery" in {
       runLogF(time.awakeEvery[Task](500.millis).map(_.toMillis).take(5)).map { r =>
-        r.zipWithIndex.foreach { case (n, idx) => n shouldBe ((idx + 1) * 500L) +- 150 }
+        r.toList.sliding(2).map { s => (s.head, s.tail.head) }.map { case (prev, next) => next - prev }.foreach { delta =>
+          delta shouldBe 500L +- 100
+        }
         Succeeded
       }
     }
