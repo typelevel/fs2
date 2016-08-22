@@ -16,7 +16,7 @@ trait Suspendable[F[_]] extends Monad[F] {
   def suspend[A](fa: => F[A]): F[A]
 
   /**
-   * Promotes a non-strict value to an `F`, catching exceptions in the process.
+   * Promotes a non-strict value to an `F`.
    * Evaluates `a` each time the returned effect is run.
    */
   def delay[A](a: => A): F[A] = suspend(pure(a))
