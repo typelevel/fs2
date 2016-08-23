@@ -49,33 +49,36 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-The 0.9 release is coming soon and you can start using the milestone release now. You may want to first [read the migration guide](docs/migration-guide.md) if you are upgrading from 0.8 or earlier.
+The 0.9 release is coming soon and you can start using the release candidate now. You may want to first [read the migration guide](docs/migration-guide.md) if you are upgrading from 0.8 or earlier.
 
 ```
 // available for Scala 2.11.8, 2.12.0-M5
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.0-RC1"
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.0-RC2"
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.0-RC1"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.0-RC2"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
 // available for Scala 2.11.8, 2.12.0-M5
-libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.0-RC1"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.0-RC2"
 ```
 
 API docs:
 
-* [The core library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-M5/0.9.0-RC1/fs2-core_2.12.0-M5-0.9.0-RC1-javadoc.jar/!/index.html#package)
-* [The `io` library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-M5/0.9.0-RC1/fs2-io_2.12.0-M5-0.9.0-RC1-javadoc.jar/!/index.html#package), FS2 bindings for NIO-based file I/O and TCP networking, and (coming soon) UDP
+* [The core library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-M5/0.9.0-RC2/fs2-core_2.12.0-M5-0.9.0-RC2-javadoc.jar/!/index.html#package)
+* [The `io` library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-M5/0.9.0-RC2/fs2-io_2.12.0-M5-0.9.0-RC2-javadoc.jar/!/index.html#package), FS2 bindings for NIO-based file I/O and TCP/UDP networking
 
-The latest stable release is 0.8.2 ([source](https://github.com/functional-streams-for-scala/fs2/tree/release/0.8.2)). To get it, add the following to your SBT build:
+The latest stable release is 0.8.4 ([source](https://github.com/functional-streams-for-scala/fs2/tree/release/0.8.4)). To get it, add the following to your SBT build:
 
 ```
-// available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8.2"
+// available for Scala 2.10.6, 2.11.8, 2.12.0-M5 and built against scalaz 7.1
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8.4"
+
+// available for Scala 2.10.6, 2.11.8, 2.12.0-M5 and built against scalaz 7.2
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8.4a"
 ```
 
 ### Projects using FS2 ###
