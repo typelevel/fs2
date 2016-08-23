@@ -10,7 +10,7 @@ import fs2.util.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
 
-  val timeout: FiniteDuration = 3.minutes
+  val timeout: FiniteDuration = 10.minutes
 
   def runLogF[A](s: Stream[Task,A]): Future[Vector[A]] = s.runLog.unsafeRunAsyncFuture
 
