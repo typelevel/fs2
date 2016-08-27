@@ -3,6 +3,11 @@ package fs2
 import fs2.util.{Attempt,Free,RealSupertype,Sub1,~>}
 import fs2.StreamCore.{Env,Algebra,AlgebraF,Token}
 
+/**
+ * Tracks resources acquired while running a stream.
+ *
+ * Note: `Scope` is not typically used directly by user code.
+ */
 final class Scope[+F[_],+O] private (private val get: Free[AlgebraF[F]#f,O]) {
 
   def as[O2](o2: O2): Scope[F,O2] = map(_ => o2)

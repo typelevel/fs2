@@ -3,9 +3,8 @@ package fs2
 import fs2.util.{Async,Attempt,Catchable,Free,Lub1,Monad,RealSupertype,Sub1,~>}
 
 /**
- * A stream producing output of type `O`, which may evaluate `F`
+ * A stream producing output of type `O` and which may evaluate `F`
  * effects. If `F` is `Nothing` or `[[fs2.Pure]]`, the stream is pure.
- *
  *
  * Laws (using infix syntax):
  *

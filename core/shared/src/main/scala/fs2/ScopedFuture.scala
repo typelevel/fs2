@@ -4,9 +4,9 @@ import fs2.util.{Async,Functor,Monad}
 import fs2.util.syntax._
 
 /**
- * Future that evaluates to a value of type `A` and a `Scope[F,Unit]`.
+ * A future that evaluates to a value of type `A` and a `Scope[F,Unit]`.
  *
- * To use a `Future`, convert to a `Pull` (via `f.pull`) or a `Stream` (via `f.stream`).
+ * To use a `ScopedFuture`, convert to a `Pull` (via `f.pull`) or a `Stream` (via `f.stream`).
  */
 sealed trait ScopedFuture[F[_],A] { self =>
 

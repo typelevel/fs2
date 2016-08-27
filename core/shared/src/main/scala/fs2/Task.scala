@@ -167,7 +167,7 @@ class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
     Task.schedule((), delay) flatMap { _ => this }
 }
 
-object Task extends TaskPlatform with Instances {
+object Task extends TaskPlatform with TaskInstances {
 
   type Callback[A] = Attempt[A] => Unit
 
@@ -373,7 +373,7 @@ object Task extends TaskPlatform with Instances {
 }
 
 /* Prefer an `Async` but will settle for implicit `Effect`. */
-private[fs2] trait Instances1 {
+private[fs2] trait TaskInstancesLowPriority {
 
   protected class EffectTask extends Effect[Task] {
     def pure[A](a: A) = Task.now(a)
@@ -389,7 +389,7 @@ private[fs2] trait Instances1 {
   implicit val effectInstance: Effect[Task] = new EffectTask
 }
 
-private[fs2] trait Instances extends Instances1 {
+private[fs2] trait TaskInstances extends TaskInstancesLowPriority {
 
   implicit def asyncInstance(implicit S:Strategy): Async[Task] = new EffectTask with Async[Task] {
     def ref[A]: Task[Async.Ref[Task,A]] = Task.ref[A](S, this)
