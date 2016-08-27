@@ -1,6 +1,5 @@
 package fs2
 
-import fs2.internal.Trace
 import fs2.util.{Async,Attempt,Catchable,Free,Lub1,Monad,RealSupertype,Sub1,~>}
 
 /**
@@ -225,14 +224,8 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def runFree: Free[F,Unit] =
     runFoldFree(())((_,_) => ())
 
-  def runTraceFree(t: Trace): Free[F,Unit] =
-    runFoldTraceFree(t)(())((_,_) => ())
-
   def runFoldFree[O2](z: O2)(f: (O2,O) => O2): Free[F,O2] =
     get.runFold(z)(f)
-
-  def runFoldTraceFree[O2](t: Trace)(z: O2)(f: (O2,O) => O2): Free[F,O2] =
-    get.runFoldTrace(t)(z)(f)
 
   def runLogFree: Free[F,Vector[O]] =
     runFoldFree(Vector.empty[O])(_ :+ _)
@@ -507,14 +500,8 @@ object Stream {
     def run(implicit F: Catchable[F]):F[Unit] =
       self.runFree.run
 
-    def runTrace(t: Trace)(implicit F: Catchable[F]):F[Unit] =
-      self.runTraceFree(t).run
-
     def runFold[O2](z: O2)(f: (O2,O) => O2)(implicit F: Catchable[F]): F[O2] =
       self.runFoldFree(z)(f).run
-
-    def runFoldTrace[O2](t: Trace)(z: O2)(f: (O2,O) => O2)(implicit F: Catchable[F]): F[O2] =
-      self.runFoldTraceFree(t)(z)(f).run
 
     def runLog(implicit F: Catchable[F]): F[Vector[O]] =
       self.runLogFree.run
@@ -552,7 +539,7 @@ object Stream {
   }
 
   implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) extends AnyVal {
-    
+
     def unNoneTerminate: Stream[F,O] = self.through(pipe.unNoneTerminate)
   }
 

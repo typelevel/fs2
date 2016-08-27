@@ -60,9 +60,9 @@ sealed trait ScopedFuture[F[_],A] { self =>
 
 object ScopedFuture {
 
-  case class RaceResult[+A,+B](winner: A, loser: B)
+  final case class RaceResult[+A,+B](winner: A, loser: B)
 
-  case class Focus[A,B](get: A, index: Int, v: Vector[B]) {
+  final case class Focus[A,B](get: A, index: Int, v: Vector[B]) {
     def replace(b: B): Vector[B] = v.patch(index, List(b), 1)
     def delete: Vector[B] = v.patch(index, List(), 1)
   }

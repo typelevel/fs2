@@ -271,10 +271,10 @@ object Task extends TaskPlatform with Instances {
   private trait MsgId
   private trait Msg[A]
   private object Msg {
-    case class Read[A](cb: Callback[(A, Long)], id: MsgId) extends Msg[A]
-    case class Nevermind[A](id: MsgId, cb: Callback[Boolean]) extends Msg[A]
-    case class Set[A](r: Attempt[A]) extends Msg[A]
-    case class TrySet[A](id: Long, r: Attempt[A], cb: Callback[Boolean]) extends Msg[A]
+    final case class Read[A](cb: Callback[(A, Long)], id: MsgId) extends Msg[A]
+    final case class Nevermind[A](id: MsgId, cb: Callback[Boolean]) extends Msg[A]
+    final case class Set[A](r: Attempt[A]) extends Msg[A]
+    final case class TrySet[A](id: Long, r: Attempt[A], cb: Callback[Boolean]) extends Msg[A]
   }
 
   def ref[A](implicit S: Strategy, F: Async[Task]): Task[Ref[A]] = Task.delay {

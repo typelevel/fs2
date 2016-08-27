@@ -24,11 +24,16 @@ class StreamBenchmark extends BenchmarkUtils {
     (1 until N).map(Stream.emit).foldLeft(Stream.emit(0))((acc,a) => acc.flatMap(_ => a)).covary[Task].runLast.unsafeRun().get
   }
 
-
   @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
   @Benchmark
   def rightAssocFlatMap(N: Int): Int = {
     (1 until N).map(Stream.emit).reverse.foldLeft(Stream.emit(0))((acc, a) => a.flatMap( _ => acc)).covary[Task].runLast.unsafeRun().get
+  }
+
+  @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+  @Benchmark
+  def eval(N: Int): Unit = {
+    Stream.repeatEval(Task.delay(())).take(N).runLast.unsafeRun().get
   }
 
   @GenerateN(1, 2, 4, 8, 16, 32, 64, 128, 256)

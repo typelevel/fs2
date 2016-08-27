@@ -164,14 +164,14 @@ object pipe2 {
   }
 
   object Stepper {
-    private[fs2] case class Suspend[I,I2,O](force: () => Stepper[I,I2,O]) extends Stepper[I,I2,O]
+    private[fs2] final case class Suspend[I,I2,O](force: () => Stepper[I,I2,O]) extends Stepper[I,I2,O]
 
     sealed trait Step[-I,-I2,+O] extends Stepper[I,I2,O]
-    case object Done extends Step[Any,Any,Nothing]
-    case class Fail(err: Throwable) extends Step[Any,Any,Nothing]
-    case class Emits[I,I2,O](chunk: Chunk[O], next: Stepper[I,I2,O]) extends Step[I,I2,O]
-    case class AwaitL[I,I2,O](receive: Option[Chunk[I]] => Stepper[I,I2,O]) extends Step[I,I2,O]
-    case class AwaitR[I,I2,O](receive: Option[Chunk[I2]] => Stepper[I,I2,O]) extends Step[I,I2,O]
+    final case object Done extends Step[Any,Any,Nothing]
+    final case class Fail(err: Throwable) extends Step[Any,Any,Nothing]
+    final case class Emits[I,I2,O](chunk: Chunk[O], next: Stepper[I,I2,O]) extends Step[I,I2,O]
+    final case class AwaitL[I,I2,O](receive: Option[Chunk[I]] => Stepper[I,I2,O]) extends Step[I,I2,O]
+    final case class AwaitR[I,I2,O](receive: Option[Chunk[I2]] => Stepper[I,I2,O]) extends Step[I,I2,O]
   }
 
   // NB: Effectful instances

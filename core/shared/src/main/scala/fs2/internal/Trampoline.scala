@@ -5,16 +5,17 @@ private[fs2] sealed trait Trampoline[+A] {
 
   def flatMap[B](f: A => Trampoline[B]): Trampoline[B] =
     FlatMap(this, f)
+    
   def map[B](f: A => B): Trampoline[B] =
-    flatMap(f andThen (Return(_)))
+    flatMap(a => Return(f(a)))
 
   def run: A = Trampoline.run(this)
 }
 
 private[fs2] object Trampoline {
-  private case class Return[A](a: A) extends Trampoline[A]
-  private case class Suspend[A](resume: () => A) extends Trampoline[A]
-  private case class FlatMap[A,B](sub: Trampoline[A], k: A => Trampoline[B]) extends Trampoline[B]
+  private final case class Return[A](a: A) extends Trampoline[A]
+  private final case class Suspend[A](resume: () => A) extends Trampoline[A]
+  private final case class FlatMap[A,B](sub: Trampoline[A], k: A => Trampoline[B]) extends Trampoline[B]
 
   def delay[A](a: => A): Trampoline[A] = Suspend(() => a)
   def done[A](a: A): Trampoline[A] = Return(a)
@@ -32,4 +33,3 @@ private[fs2] object Trampoline {
     }
   }
 }
-

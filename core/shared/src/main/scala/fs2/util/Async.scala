@@ -125,7 +125,7 @@ object Async {
    * (the value passed to modify function, `f` in the call to `modify(f)`. And `now`
    * is the new value computed by `f`.
    */
-  case class Change[+A](previous: A, now: A) {
+  final case class Change[+A](previous: A, now: A) {
     def modified: Boolean = previous != now
     def map[B](f: A => B): Change[B] = Change(f(previous), f(now))
   }

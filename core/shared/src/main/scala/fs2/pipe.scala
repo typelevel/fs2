@@ -556,12 +556,12 @@ object pipe {
   }
 
   object Stepper {
-    private[fs2] case class Suspend[A,B](force: () => Stepper[A,B]) extends Stepper[A,B]
+    private[fs2] final case class Suspend[A,B](force: () => Stepper[A,B]) extends Stepper[A,B]
 
     sealed trait Step[-A,+B] extends Stepper[A,B]
-    case object Done extends Step[Any,Nothing]
-    case class Fail(err: Throwable) extends Step[Any,Nothing]
-    case class Emits[A,B](chunk: Chunk[B], next: Stepper[A,B]) extends Step[A,B]
-    case class Await[A,B](receive: Option[Chunk[A]] => Stepper[A,B]) extends Step[A,B]
+    final case object Done extends Step[Any,Nothing]
+    final case class Fail(err: Throwable) extends Step[Any,Nothing]
+    final case class Emits[A,B](chunk: Chunk[B], next: Stepper[A,B]) extends Step[A,B]
+    final case class Await[A,B](receive: Option[Chunk[A]] => Stepper[A,B]) extends Step[A,B]
   }
 }
