@@ -2,6 +2,7 @@ package fs2.util
 
 import fs2.internal.Trampoline
 
+/** A specialized free monad which captures exceptions thrown during evaluation. */
 sealed trait Free[+F[_],+A] {
   import Free._
   final def flatMap[F2[x]>:F[x],B](f: A => Free[F2,B]): Free[F2,B] = Bind(this, f)

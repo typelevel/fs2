@@ -3,9 +3,9 @@ package fs2
 import fs2.util.{Async,RealSupertype,Sub1}
 
 /**
- * A currently open `Stream[F,A]`, allowing chunks to be pulled or pushed.
+ * A currently open `Stream[F,A]` which allows chunks to be pulled or pushed.
  */
-final class Handle[+F[_],+A](
+final class Handle[+F[_],+A] private[fs2] (
   private[fs2] val buffer: List[NonEmptyChunk[A]],
   private[fs2] val underlying: Stream[F,A]
 ) {

@@ -19,16 +19,12 @@ import scala.concurrent.duration._
  * be accessed via the `attempt` method, which converts a `Task[A]` to a
  * `Task[Attempt[A]]`.
  *
- * Unlike the `scala.concurrent.Future` type introduced in scala 2.10,
- * `map` and `flatMap` do NOT spawn new tasks and do not require an implicit
- * `ExecutionContext`. Instead, `map` and `flatMap` merely add to
- * the current (trampolined) continuation that will be run by the
- * 'current' thread, unless explicitly forked via `Task.start` or
- * `Future.apply`. This means that `Future` achieves much better thread
- * reuse than the 2.10 implementation and avoids needless thread
- * pool submit cycles.
+ * Unlike `scala.concurrent.Future`, `map` and `flatMap` do NOT spawn new
+ * tasks and do not require an implicit `ExecutionContext`. Instead, `map`
+ * and `flatMap` merely add to the current (trampolined) continuation that
+ * will be run by the 'current' thread, unless explicitly forked via `Task.start`.
  *
- * `Task` also differs from the `scala.concurrent.Future` type in that it
+ * `Task` also differs from `scala.concurrent.Future` in that it
  * does not represent a _running_ computation. Instead, we
  * reintroduce concurrency _explicitly_ using the `Task.start` function.
  * This simplifies our implementation and makes code easier to reason about,

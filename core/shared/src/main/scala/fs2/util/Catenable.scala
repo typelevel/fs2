@@ -2,7 +2,7 @@ package fs2.util
 
 import Catenable._
 
-/*
+/**
  * Trivial catenable sequence. Supports O(1) append, and (amortized)
  * O(1) `uncons`, such that walking the sequence via N successive `uncons`
  * steps takes O(N). Like a difference list, conversion to a `Stream[A]`
@@ -45,8 +45,8 @@ sealed abstract class Catenable[+A] {
 
 object Catenable {
   case object Empty extends Catenable[Nothing]
-  private case class Single[A](a: A) extends Catenable[A]
-  private case class Append[A](left: Catenable[A], right: Catenable[A]) extends Catenable[A]
+  private final case class Single[A](a: A) extends Catenable[A]
+  private final case class Append[A](left: Catenable[A], right: Catenable[A]) extends Catenable[A]
 
   val empty: Catenable[Nothing] = Empty
   def single[A](a: A): Catenable[A] = Single(a)
