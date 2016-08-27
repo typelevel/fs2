@@ -28,19 +28,19 @@ final class Pull[+F[_],+O,+R] private (private val get: Free[AlgebraF[F,O]#f,Opt
 
   private def close_(asStep: Boolean): Stream[F,O] = Stream.mk { val s = {
     type G[x] = StreamCore[F,O]; type Out = Option[Attempt[R]]
-    get.fold[AlgebraF[F,O]#f,G,Out](
-      StreamCore.suspend,
-      o => o match {
+    get.fold[AlgebraF[F,O]#f,G,Out](new Free.Fold[AlgebraF[F,O]#f,G,Out] {
+      def suspend(g: => G[Out]) = StreamCore.suspend(g)
+      def done(o: Out) = o match {
         case None => StreamCore.empty
-        case Some(e) => e.fold(StreamCore.fail(_), _ => StreamCore.empty)
-      },
-      err => StreamCore.fail(err),
-      new Free.B[AlgebraF[F,O]#f,G,Out] { def f[x] = r => r match {
-        case Left((Algebra.Eval(fr), g)) => StreamCore.evalScope(fr.attempt) flatMap g
-        case Left((Algebra.Output(o), g)) => StreamCore.append(o, StreamCore.suspend(g(Right(()))))
-        case Right((r,g)) => StreamCore.attemptStream(g(r))
-      }}
-    )(Sub1.sub1[AlgebraF[F,O]#f], implicitly[RealSupertype[Out,Out]])
+        case Some(e) => e.fold(StreamCore.fail, _ => StreamCore.empty)
+      }
+      def fail(t: Throwable) = StreamCore.fail(t)
+      def eval[X](fx: AlgebraF[F,O]#f[X])(f: Attempt[X] => G[X]) = fx match {
+        case Algebra.Eval(fr) => StreamCore.evalScope(fr.attempt).flatMap(f)
+        case Algebra.Output(o) => StreamCore.append(o, StreamCore.suspend(f(Right(()))))
+      }
+      def bind[X](x: X)(f: X => G[Out]) = StreamCore.attemptStream(f(x))
+    })(Sub1.sub1[AlgebraF[F,O]#f], implicitly[RealSupertype[Out,Out]])
   }; if (asStep) s else StreamCore.scope(s) }
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
