@@ -159,24 +159,24 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
 private[fs2]
 object StreamCore {
 
-  class Token() {
+  final class Token {
     override def toString = s"Token(${##})"
   }
 
   case class Env[F[_]](tracked: Resources[Token,Free[F,Attempt[Unit]]], interrupted: () => Boolean)
 
-  trait R[F[_]] { type f[x] = RF[F,x] }
+  trait AlgebraF[F[_]] { type f[x] = Algebra[F,x] }
 
-  sealed trait RF[+F[_],+A]
-  object RF {
-    case class Eval[F[_],A](f: F[A]) extends RF[F,A]
-    case object Interrupted extends RF[Nothing,Boolean]
-    case object Snapshot extends RF[Nothing,Set[Token]]
-    case class NewSince(snapshot: Set[Token]) extends RF[Nothing,List[Token]]
-    case class Release(tokens: List[Token]) extends RF[Nothing,Attempt[Unit]]
-    case class StartAcquire(token: Token) extends RF[Nothing,Boolean]
-    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Attempt[Unit]]) extends RF[F,Boolean]
-    case class CancelAcquire(token: Token) extends RF[Nothing,Unit]
+  sealed trait Algebra[+F[_],+A]
+  object Algebra {
+    case class Eval[F[_],A](f: F[A]) extends Algebra[F,A]
+    case object Interrupted extends Algebra[Nothing,Boolean]
+    case object Snapshot extends Algebra[Nothing,Set[Token]]
+    case class NewSince(snapshot: Set[Token]) extends Algebra[Nothing,List[Token]]
+    case class Release(tokens: List[Token]) extends Algebra[Nothing,Attempt[Unit]]
+    case class StartAcquire(token: Token) extends Algebra[Nothing,Boolean]
+    case class FinishAcquire[F[_]](token: Token, cleanup: Free[F,Attempt[Unit]]) extends Algebra[F,Boolean]
+    case class CancelAcquire(token: Token) extends Algebra[Nothing,Unit]
   }
 
   sealed trait NT[-F[_],+G[_]] {
@@ -243,55 +243,61 @@ object StreamCore {
         if (trace.enabled) trace {
           "Stepping stack:\n" + stack.render.zipWithIndex.map { case (entry, idx) => s"  $idx: $entry" }.mkString("", "\n", "\n")
         }
-        stack (
-          (segs, eq) => Eq.subst[({ type f[x] = Catenable[Segment[F,x]] })#f, O0, O](segs)(eq).uncons match {
-            case None => Scope.pure(None)
-            case Some((hd, segs)) => hd match {
-              case Segment.Fail(err) => Stack.fail[F,O](segs)(err) match {
-                case Left(err) => Scope.pure(Some(Left(err)))
-                case Right((s, segs)) => stepTrace(trace)(Stack.segments(segs).pushAppend(s))
+        stack.fold(new Stack.Fold[F,O0,O,Scope[F,Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]]] {
+          def unbound(segs: Catenable[Segment[F,O0]], eq: Eq[O0, O]) = {
+            Eq.subst[({ type f[x] = Catenable[Segment[F,x]] })#f, O0, O](segs)(eq).uncons match {
+              case None => Scope.pure(None)
+              case Some((hd, segs)) => hd match {
+                case Segment.Fail(err) => Stack.fail[F,O](segs)(err) match {
+                  case Left(err) => Scope.pure(Some(Left(err)))
+                  case Right((s, segs)) => stepTrace(trace)(Stack.segments(segs).pushAppend(s))
+                }
+                case Segment.Emit(chunk) =>
+                  if (chunk.isEmpty) stepTrace(trace)(Stack.segments(segs))
+                  else Scope.pure(Some(Right((NonEmptyChunk.fromChunkUnsafe(chunk), StreamCore.segments(segs)))))
+                case Segment.Handler(h) => stepTrace(trace)(Stack.segments(segs))
+                case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segs)) flatMap stepTrace(trace)
               }
-              case Segment.Emit(chunk) =>
-                if (chunk.isEmpty) stepTrace(trace)(Stack.segments(segs))
-                else Scope.pure(Some(Right((NonEmptyChunk.fromChunkUnsafe(chunk), StreamCore.segments(segs)))))
-              case Segment.Handler(h) => stepTrace(trace)(Stack.segments(segs))
-              case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segs)) flatMap stepTrace(trace)
             }
-          },
-          new stack.H[Scope[F,Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]]] { def f[x] =
-            (segs, f, stack) => { segs.uncons match {
+          }
+
+          def map[X](segs: Catenable[Segment[F,O0]], f: Chunk[O0] => Chunk[X], stack: Stack[F,X,O]): Scope[F,Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]] = {
+            segs.uncons match {
               case None => stepTrace(trace)(stack)
               case Some((hd, segs)) => hd match {
-                case Segment.Emit(chunk) => f match {
-                  case Left(f) =>
-                    val segs2 = segs.map(_.mapChunks(f))
-                    val stack2 = stack.pushSegments(segs2)
-                    stepTrace(trace)(try { stack2.pushEmit(f(chunk)) }
-                         catch { case NonFatal(e) => stack2.pushFail(e) })
-                  case Right(f) => chunk.uncons match {
-                    case None => stepTrace(trace)(stack.pushBind(f).pushSegments(segs))
-                    case Some((hd,tl)) => stepTrace(trace)({
-                      val segs2: Catenable[Segment[F, x]] =
-                        (if (tl.isEmpty) segs else segs.push(Segment.Emit(tl))).map(_.interpretBind(f))
-                      val stack2 = stack.pushSegments(segs2)
-                      try stack2.pushAppend(f(hd))
-                      catch {
-                        case NonFatal(t) => stack2.pushFail(t)
-                      }
-                    })
-                  }
-                }
+                case Segment.Emit(chunk) =>
+                  val segs2 = segs.map(_.mapChunks(f))
+                  val stack2 = stack.pushSegments(segs2)
+                  stepTrace(trace)(try { stack2.pushEmit(f(chunk)) } catch { case NonFatal(e) => stack2.pushFail(e) })
                 case Segment.Append(s) =>
-                  s.push(NT.Id(), stack.pushBindOrMap(f).pushSegments(segs)) flatMap stepTrace(trace)
-                case Segment.Fail(err) => Stack.fail[F,O0](segs)(err) match {
-                  case Left(err) => stepTrace(trace)(stack.pushFail(err))
-                  case Right((s, segs)) =>
-                    stepTrace(trace)(stack.pushBindOrMap(f).pushSegments(segs).pushAppend(s))
-                }
-                case Segment.Handler(_) => stepTrace(trace)(stack.pushBindOrMap(f).pushSegments(segs))
+                  s.push(NT.Id(), stack.pushMap(f).pushSegments(segs)) flatMap stepTrace(trace)
+                case Segment.Fail(err) => stepTrace(trace)(stack.pushFail(err))
+                case Segment.Handler(_) => stepTrace(trace)(stack.pushMap(f).pushSegments(segs))
               }
             }
-          }}
+          }
+
+          def bind[X](segs: Catenable[Segment[F,O0]], f: O0 => StreamCore[F,X], stack: Stack[F,X,O]): Scope[F,Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]] = {
+            segs.uncons match {
+              case None => stepTrace(trace)(stack)
+              case Some((hd, segs)) => hd match {
+                case Segment.Emit(chunk) =>
+                  chunk.uncons match {
+                    case None => stepTrace(trace)(stack.pushBind(f).pushSegments(segs))
+                    case Some((hd,tl)) => stepTrace(trace)({
+                      val segs2: Catenable[Segment[F,X]] =
+                        (if (tl.isEmpty) segs else segs.push(Segment.Emit(tl))).map(_.interpretBind(f))
+                      val stack2 = stack.pushSegments(segs2)
+                      try stack2.pushAppend(f(hd)) catch { case NonFatal(t) => stack2.pushFail(t) }
+                    })
+                  }
+                case Segment.Append(s) =>
+                  s.push(NT.Id(), stack.pushBind(f).pushSegments(segs)) flatMap stepTrace(trace)
+                case Segment.Fail(err) => stepTrace(trace)(stack.pushFail(err))
+                case Segment.Handler(_) => stepTrace(trace)(stack.pushBind(f).pushSegments(segs))
+              }}
+            }
+          }
       )}
     }
 
@@ -398,59 +404,62 @@ object StreamCore {
   }
 
   trait Stack[F[_],O1,O2] { self =>
-    def apply[R](
-      unbound: (Catenable[Segment[F,O1]], Eq[O1,O2]) => R,
-      bound: H[R]
-    ): R
+    def fold[R](fold: Stack.Fold[F,O1,O2,R]): R
 
     def render: List[String]
-
-    trait H[+R] { def f[x]: (Catenable[Segment[F,O1]], Either[Chunk[O1] => Chunk[x], O1 => StreamCore[F,x]], Stack[F,x,O2]) => R }
 
     def pushHandler(f: Throwable => StreamCore[F,O1]) = push(Segment.Handler(f))
     def pushEmit(s: Chunk[O1]) = push(Segment.Emit(s))
     def pushFail(e: Throwable) = push(Segment.Fail(e))
     def pushAppend(s: StreamCore[F,O1]) = push(Segment.Append(s))
-    def pushBind[O0](f: O0 => StreamCore[F,O1]): Stack[F,O0,O2] = pushBindOrMap(Right(f))
-    def pushMap[O0](f: Chunk[O0] => Chunk[O1]): Stack[F,O0,O2] = pushBindOrMap(Left(f))
-    def pushBindOrMap[O0](f: Either[Chunk[O0] => Chunk[O1], O0 => StreamCore[F,O1]]): Stack[F,O0,O2] = new Stack[F,O0,O2] {
-      def render = f.fold(ff => "Map", ff => "Bind") :: self.render
-      def apply[R](unbound: (Catenable[Segment[F,O0]], Eq[O0,O2]) => R, bound: H[R]): R
-      = bound.f(Catenable.empty, f, self)
+    def pushBind[O0](f: O0 => StreamCore[F,O1]): Stack[F,O0,O2] = new Stack[F,O0,O2] {
+      def fold[R](fold: Stack.Fold[F,O0,O2,R]): R = fold.bind(Catenable.empty, f, self)
+      def render = "Bind" :: self.render
+    }
+    def pushMap[O0](f: Chunk[O0] => Chunk[O1]): Stack[F,O0,O2] = new Stack[F,O0,O2] {
+      def fold[R](fold: Stack.Fold[F,O0,O2,R]): R = fold.map(Catenable.empty, f, self)
+      def render = "Map" :: self.render
     }
     def push(s: Segment[F,O1]): Stack[F,O1,O2] = s match {
       case Segment.Emit(c) if c.isEmpty => this
-      case _ => self (
-        (segments, eq) => Eq.subst[({type f[x] = Stack[F,O1,x] })#f, O1, O2](
-                          Stack.segments(s :: segments))(eq),
-        new self.H[Stack[F,O1,O2]] { def f[x] = (segments,flatMapf,tl) =>
-          tl.pushBindOrMap(flatMapf).pushSegments(s :: segments)
-        }
-      )
+      case _ => self.fold(new Stack.Fold[F,O1,O2,Stack[F,O1,O2]] {
+        def unbound(segments: Catenable[Segment[F,O1]], eq: Eq[O1, O2]) =
+          Eq.subst[({type f[x] = Stack[F,O1,x] })#f, O1, O2](Stack.segments(s :: segments))(eq)
+        def map[X](segments: Catenable[Segment[F,O1]], f: Chunk[O1] => Chunk[X], stack: Stack[F,X,O2]) =
+          stack.pushMap(f).pushSegments(s :: segments)
+        def bind[X](segments: Catenable[Segment[F,O1]], f: O1 => StreamCore[F,X], stack: Stack[F,X,O2]) =
+          stack.pushBind(f).pushSegments(s :: segments)
+      })
     }
     def pushSegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
       if (s.isEmpty) self
       else new Stack[F,O1,O2] {
         def render = Stack.describeSegments(s) :: self.render
-        def apply[R](unbound: (Catenable[Segment[F,O1]], Eq[O1,O2]) => R, bound: H[R]): R
-        =
-        self (
-          (segments, eq) => if (segments.isEmpty) unbound(s, eq) // common case
-                            else unbound(s ++ segments, eq),
-          new self.H[R] { def f[x] = (segments, flatMap, tl) =>
-            bound.f(s ++ segments, flatMap, tl)
-          }
-        )
+        def fold[R](fold: Stack.Fold[F,O1,O2,R]): R =
+          self.fold(new Stack.Fold[F,O1,O2,R] {
+            def unbound(segments: Catenable[Segment[F,O1]], eq: Eq[O1, O2]) =
+              if (segments.isEmpty) fold.unbound(s, eq) // common case
+              else fold.unbound(s ++ segments, eq)
+            def map[X](segments: Catenable[Segment[F,O1]], f: Chunk[O1] => Chunk[X], stack: Stack[F,X,O2]) =
+              fold.map(s ++ segments, f, stack)
+            def bind[X](segments: Catenable[Segment[F,O1]], f: O1 => StreamCore[F,X], stack: Stack[F,X,O2]) =
+              fold.bind(s ++ segments, f, stack)
+          })
       }
   }
 
   object Stack {
+    trait Fold[F[_],O1,O2,+R] {
+      def unbound(segments: Catenable[Segment[F,O1]], eq: Eq[O1, O2]): R
+      def map[X](segments: Catenable[Segment[F,O1]], f: Chunk[O1] => Chunk[X], stack: Stack[F,X,O2]): R
+      def bind[X](segments: Catenable[Segment[F,O1]], f: O1 => StreamCore[F,X], stack: Stack[F,X,O2]): R
+    }
+
     def empty[F[_],O1]: Stack[F,O1,O1] = segments(Catenable.empty)
 
     def segments[F[_],O1](s: Catenable[Segment[F,O1]]): Stack[F,O1,O1] = new Stack[F,O1,O1] {
-        def render = List(describeSegments(s))
-      def apply[R](unbound: (Catenable[Segment[F,O1]], Eq[O1,O1]) => R, bound: H[R]): R
-      = unbound(s, Eq.refl)
+      def fold[R](fold: Fold[F,O1,O1,R]): R = fold.unbound(s, Eq.refl)
+      def render = List(describeSegments(s))
     }
 
     private[fs2]
