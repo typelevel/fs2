@@ -93,7 +93,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def drain: Stream[F, Nothing] = flatMap { _ => Stream.empty }
 
   /** Alias for `self through [[pipe.drop]]`. */
-  def drop(n: Int): Stream[F,O] = self through pipe.drop(n)
+  def drop(n: Long): Stream[F,O] = self through pipe.drop(n)
 
   /** Alias for `self through [[pipe.dropLast]]`. */
   def dropLast: Stream[F,O] = self through pipe.dropLast
