@@ -2,6 +2,7 @@ package fs2
 
 import fs2.internal.Resources
 import fs2.util.{Async,Attempt,Catenable,Eq,Free,NonFatal,Sub1,~>,RealSupertype}
+import fs2.util.syntax._
 import StreamCore.{Env,NT,Stack,Token}
 
 private[fs2] sealed trait StreamCore[F[_],O] { self =>
@@ -100,9 +101,9 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
     val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
     lazy val rootCleanup: Free[F,Attempt[Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
-        Free.eval(F.sequence(Vector.fill(waiting)(F.ref[Unit]))) flatMap { gates =>
+        Free.eval(Vector.fill(waiting)(F.ref[Unit]).sequence) flatMap { gates =>
           resources.closeAll(gates.toStream.map(gate => () => F.unsafeRunAsync(gate.setPure(()))(_ => ()))) match {
-            case Left(_) => Free.eval(F.traverse(gates)(_.get)) flatMap { _ =>
+            case Left(_) => Free.eval(gates.traverse(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")
                                 rootCleanup

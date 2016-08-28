@@ -31,7 +31,7 @@ import scala.concurrent.duration._
  * since the order of effects and the points of allowed concurrency are made
  * fully explicit and do not depend on Scala's evaluation order.
  */
-class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
+final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
   import Task.Callback
 
   def flatMap[B](f: A => Task[B]): Task[B] =

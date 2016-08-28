@@ -1,8 +1,14 @@
 package fs2.util
 
-/** Monad which tracks exceptions thrown during evaluation. */
+/**
+ * Monad which tracks exceptions thrown during evaluation.
+ *
+ * For infix syntax, import `fs2.util.syntax._`.
+ */
 trait Catchable[F[_]] extends Monad[F] {
+  /** Lifts a pure exception in to the error mode of the `F` effect. */
   def fail[A](err: Throwable): F[A]
+  /** Provides access to the error in `fa`, if present, by wrapping it in a `Left`. */
   def attempt[A](fa: F[A]): F[Attempt[A]]
 }
 

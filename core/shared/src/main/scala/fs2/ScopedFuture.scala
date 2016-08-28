@@ -95,7 +95,7 @@ object ScopedFuture {
           cancels.flatMap { cancels =>
             F.pure {
               val get = ref.get.flatMap { case (a,i) =>
-                F.sequence(cancels.collect { case (a,j) if j != i => a }).map(_ => (a,i))
+                cancels.collect { case (a,j) if j != i => a }.sequence.as((a,i))
               }
               val cancel = cancels.traverse(_._1).as(())
               (get.map { case ((a,onForce),i) => ((a,i),onForce) }, cancel)

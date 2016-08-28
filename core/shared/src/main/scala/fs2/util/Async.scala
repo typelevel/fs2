@@ -3,34 +3,44 @@ package util
 
 import fs2.util.syntax._
 
+/**
+ * Type class which describes effects that support asynchronous evaluation.
+ *
+ * Instances of this type class are defined by providing an implementation of `ref`,
+ * which allocates a mutable memory cell that supports various asynchronous operations.
+ *
+ * For infix syntax, import `fs2.util.syntax._`.
+ */
 @annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.")
 trait Async[F[_]] extends Effect[F] { self =>
 
-  /** Create an asynchronous, concurrent mutable reference. */
+  /** Creates an asynchronous, concurrent mutable reference. */
   def ref[A]: F[Async.Ref[F,A]]
 
-  /** Create an asynchronous, concurrent mutable reference, initialized to `a`. */
+  /** Creates an asynchronous, concurrent mutable reference, initialized to `a`. */
   def refOf[A](a: A): F[Async.Ref[F,A]] = flatMap(ref[A])(r => map(r.setPure(a))(_ => r))
 
   /**
-   Create an `F[A]` from an asynchronous computation, which takes the form
-   of a function with which we can register a callback. This can be used
-   to translate from a callback-based API to a straightforward monadic
-   version.
+   * Creates an `F[A]` from an asynchronous computation, which takes the form
+   * of a function with which we can register a callback. This can be used
+   * to translate from a callback-based API to a straightforward monadic
+   * version.
    */
   // Note: `register` does not use the `Attempt` alias due to scalac inference limitation
   def async[A](register: (Either[Throwable,A] => Unit) => F[Unit]): F[A] =
     flatMap(ref[A]) { ref =>
     flatMap(register { e => unsafeRunAsync(ref.set(e.fold(fail, pure)))(_ => ()) }) { _ => ref.get }}
 
-  def parallelTraverse[A,B](s: Seq[A])(f: A => F[B]): F[Vector[B]] =
-    flatMap(traverse(s)(f andThen start)) { tasks => traverse(tasks)(identity) }
+  /** Like `traverse` but each `F[B]` computed from an `A` is evaluated in parallel. */
+  def parallelTraverse[G[_],A,B](g: G[A])(f: A => F[B])(implicit G: Traverse[G]): F[G[B]] =
+    flatMap(G.traverse(g)(f andThen start)(self)) { _.sequence(G, self) }
 
-  def parallelSequence[A](v: Seq[F[A]]): F[Vector[A]] =
+  /** Like `sequence` but each `F[A]` is evaluated in parallel. */
+  def parallelSequence[G[_],A](v: G[F[A]])(implicit G: Traverse[G]): F[G[A]] =
     parallelTraverse(v)(identity)
 
   /**
-   * Begin asynchronous evaluation of `f` when the returned `F[F[A]]` is
+   * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
    * bound. The inner `F[A]` will block until the result is available.
    */
   def start[A](f: F[A]): F[F[A]] =
@@ -40,10 +50,10 @@ trait Async[F[_]] extends Effect[F] { self =>
 
 object Async {
 
-  /** Create an asynchronous, concurrent mutable reference. */
+  /** Creates an asynchronous, concurrent mutable reference. */
   def ref[F[_],A](implicit F:Async[F]): F[Async.Ref[F,A]] = F.ref
 
-  /** Create an asynchronous, concurrent mutable reference, initialized to `a`. */
+  /** Creates an asynchronous, concurrent mutable reference, initialized to `a`. */
   def refOf[F[_],A](a: A)(implicit F:Async[F]): F[Async.Ref[F,A]] = F.refOf(a)
 
   /** An asynchronous, concurrent mutable reference. */
@@ -51,7 +61,7 @@ object Async {
     implicit protected val F: Async[F]
 
     /**
-     * Obtain a snapshot of the current value of the `Ref`, and a setter
+     * Obtains a snapshot of the current value of the `Ref`, and a setter
      * for updating the value. The setter may noop (in which case `false`
      * is returned) if another concurrent call to `access` uses its
      * setter first. Once it has noop'd or been used once, a setter
@@ -59,14 +69,14 @@ object Async {
      */
     def access: F[(A, Attempt[A] => F[Boolean])]
 
-    /** Obtain the value of the `Ref`, or wait until it has been `set`. */
+    /** Obtains the value of the `Ref`, or wait until it has been `set`. */
     def get: F[A] = access.map(_._1)
 
     /** Like `get`, but returns an `F[Unit]` that can be used cancel the subscription. */
     def cancellableGet: F[(F[A], F[Unit])]
 
     /**
-     * Try modifying the reference once, returning `None` if another
+     * Tries modifying the reference once, returning `None` if another
      * concurrent `set` or `modify` completes between the time
      * the variable is read and the time it is set.
      */
@@ -89,7 +99,7 @@ object Async {
         }
     }
 
-    /** Repeatedly invoke `[[tryModify]](f)` until it succeeds. */
+    /** Repeatedly invokes `[[tryModify]](f)` until it succeeds. */
     def modify(f: A => A): F[Change[A]] =
       tryModify(f).flatMap {
         case None => modify(f)
@@ -104,7 +114,7 @@ object Async {
       }
 
     /**
-     * Asynchronously set a reference. After the returned `F[Unit]` is bound,
+     * *Asynchronously* sets a reference. After the returned `F[Unit]` is bound,
      * the task is running in the background. Multiple tasks may be added to a
      * `Ref[A]`.
      *
@@ -113,7 +123,7 @@ object Async {
     def set(a: F[A]): F[Unit]
 
     /**
-     * Asynchronously set a reference to a pure value.
+     * *Asynchronously* sets a reference to a pure value.
      *
      * Satisfies: `r.setPure(a) flatMap { _ => r.get(a) } == pure(a)`.
      */
@@ -121,8 +131,8 @@ object Async {
   }
 
   /**
-   * The result of a `Ref` modification. `previous` contains value before modification
-   * (the value passed to modify function, `f` in the call to `modify(f)`. And `now`
+   * The result of a `Ref` modification. `previous` is the value before modification
+   * (the value passed to modify function, `f` in the call to `modify(f)`. `now`
    * is the new value computed by `f`.
    */
   final case class Change[+A](previous: A, now: A) {

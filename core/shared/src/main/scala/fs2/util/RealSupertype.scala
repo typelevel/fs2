@@ -27,7 +27,7 @@ object RealSupertype extends NothingSubtypesItself {
     _i.asInstanceOf[RealSupertype[A,B]]
 }
 
-/* Evidence that `T` is not `Any`. */
+/** Evidence that `T` is not `Any`. */
 trait RealType[T]
 private[fs2] trait RealTypeInstance {
   private val _i0 = new RealType[Unit] {}

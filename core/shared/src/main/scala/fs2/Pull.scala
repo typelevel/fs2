@@ -5,7 +5,7 @@ import StreamCore.Token
 import Pull._
 
 /**
- * A pull allows acquiring elements from a stream in a resource safe way,
+ * Allows acquiring elements from a stream in a resource safe way,
  * emitting elements of type `O`, working with a resource of type `R`,
  * and evaluating effects of type `F`.
  *
