@@ -75,7 +75,7 @@ package object io {
     * If the `close` of resulting input stream is invoked manually, then this will await until the
     * original stream completely terminates.
     *
-    * It is suggested that hence all InputStream methods block (including close), that the resulting stream
+    * It is suggested that hence all InputStream methods block (including close), that the resulting InputStream
     * is consumed on different thread pool than one that is backing Async[F].
     *
     * Note that the implementation is not thread safe, that means only one thread is allowed at any time

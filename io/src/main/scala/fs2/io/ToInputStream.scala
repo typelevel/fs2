@@ -64,8 +64,8 @@ object ToInputStream {
 
 
     /**
-      * Takes source and runs it through queue, interrupting when interruptWhenTrue yields to true
-      * Also nto when the exception in stream is encountered the exception is emitted on the left to the queue
+      * Takes source and runs it through queue, interrupting when dnState signals stream is done.
+      * Note when the exception in stream is encountered the exception is emitted on the left to the queue
       * and that would be the last message enqueued.
       *
       * Emits only once, but runs in background until either source is exhausted or `interruptWhenTrue` yields to true
@@ -171,11 +171,11 @@ object ToInputStream {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
       // won't modify state if the data cannot be acquired
-      def tryGetChunk(s0:DownStreamState):(DownStreamState, Option[Bytes]) = s0 match {
-        case s@Done(None) =>  s -> None
-        case s@Done(Some(err)) => s -> None
-        case s@Ready(None) => s -> None
-        case s@Ready(Some(bytes)) =>
+      def tryGetChunk(s:DownStreamState):(DownStreamState, Option[Bytes]) = s match {
+        case Done(None) =>  s -> None
+        case Done(Some(err)) => s -> None
+        case Ready(None) => s -> None
+        case Ready(Some(bytes)) =>
           if (bytes.size <= len) Ready(None) -> Some(bytes)
           else {
             val out = bytes.take(len).toBytes
