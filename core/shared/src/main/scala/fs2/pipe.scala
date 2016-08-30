@@ -2,6 +2,7 @@ package fs2
 
 import fs2.util.{Async,Attempt,Free,Functor,Sub1}
 
+/** Generic implementations of common pipes. */
 object pipe {
 
   // nb: methods are in alphabetical order

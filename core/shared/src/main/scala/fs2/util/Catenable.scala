@@ -9,6 +9,8 @@ import Catenable._
  * takes linear time, regardless of how the sequence is built up.
  */
 sealed abstract class Catenable[+A] {
+
+  /** Returns the head and tail of this catenable if non empty, none otherwise. Amortized O(1). */
   def uncons: Option[(A, Catenable[A])] = {
     @annotation.tailrec
     def go(c: Catenable[A], rights: List[Catenable[A]]): Option[(A,Catenable[A])] = c match {
@@ -21,17 +23,21 @@ sealed abstract class Catenable[+A] {
     }
     go(this, List())
   }
+
   def isEmpty: Boolean = this match {
     case Empty => true
     case _ => false // okay since `append` smart constructor guarantees each branch non-empty
   }
 
+  /** Concatenates this with `c` in O(1) runtime. */
   def ++[A2>:A](c: Catenable[A2])(implicit T: RealSupertype[A,A2]): Catenable[A2] =
     append(this, c)
 
+  /** Alias for [[push]]. */
   def ::[A2>:A](a: A2)(implicit T: RealSupertype[A,A2]): Catenable[A2] =
     this.push(a)
 
+  /** Returns a new catenable consisting of `a` followed by this. O(1) runtime. */
   def push[A2>:A](a: A2)(implicit T: RealSupertype[A,A2]): Catenable[A2] =
     append(single(a), this)
 
@@ -44,12 +50,14 @@ sealed abstract class Catenable[+A] {
 }
 
 object Catenable {
-  case object Empty extends Catenable[Nothing]
+  private case object Empty extends Catenable[Nothing]
   private final case class Single[A](a: A) extends Catenable[A]
   private final case class Append[A](left: Catenable[A], right: Catenable[A]) extends Catenable[A]
 
   val empty: Catenable[Nothing] = Empty
+
   def single[A](a: A): Catenable[A] = Single(a)
+
   def append[A](c: Catenable[A], c2: Catenable[A]): Catenable[A] = c match {
     case Empty => c2
     case _ => c2 match {
@@ -57,6 +65,7 @@ object Catenable {
       case _ => Append(c,c2)
     }
   }
+
   def fromSeq[A](s: Seq[A]): Catenable[A] =
     if (s.isEmpty) empty
     else s.view.map(single).reduceRight(Append(_,_))

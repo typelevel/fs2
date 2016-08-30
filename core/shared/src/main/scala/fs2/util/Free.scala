@@ -57,7 +57,7 @@ sealed trait Free[+F[_],+A] {
     case _ => this
   }
 
-  override def toString = "Free"
+  override def toString = "Free(..)"
 }
 
 object Free {

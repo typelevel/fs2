@@ -3,6 +3,7 @@ package fs2
 import fs2.{Pull => P}
 import fs2.util.{Async,Free,Functor,Sub1}
 
+/** Generic implementations of common 2-argument pipes. */
 object pipe2 {
 
   // NB: Pure instances

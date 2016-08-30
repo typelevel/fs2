@@ -329,7 +329,7 @@ private[fs2] object StreamCore {
     type O0 = O
     def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
       NT.convert(s)(u) map { o => stack push (Segment.Emit(Chunk.singleton(o))) }
-    def render = s"evalScope($s)"
+    def render = "evalScope(<scope>)"
   }
 
   def chunk[F[_],O](c: Chunk[O]): StreamCore[F,O] = segment(Segment.Emit[F,O](c))

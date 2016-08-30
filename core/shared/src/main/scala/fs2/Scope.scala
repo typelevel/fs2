@@ -59,7 +59,7 @@ final class Scope[+F[_],+O] private (private val get: Free[AlgebraF[F]#f,O]) {
     })(Sub1.sub1[AlgebraF[F]#f],implicitly[RealSupertype[O,O]])
   }
 
-  override def toString = s"Scope($get)"
+  override def toString = s"Scope(..)"
 }
 
 object Scope {

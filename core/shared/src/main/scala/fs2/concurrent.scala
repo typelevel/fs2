@@ -3,6 +3,7 @@ package fs2
 import fs2.util.{Async,Attempt}
 import fs2.util.syntax._
 
+/** Provides utilities for working with streams concurrently. */
 object concurrent {
 
   /**
