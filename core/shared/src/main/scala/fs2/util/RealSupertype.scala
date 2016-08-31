@@ -1,7 +1,7 @@
 package fs2.util
 
 /**
- * A `RealSupertype[A,B]` is evidence that `A <: B`.
+ * Evidence that `A <: B`.
  * This module provides implicit `RealSupertype[Sub,Super]` only if
  * `Super` is not one of: `Any`, `AnyVal`, `AnyRef`, `Product`, or `Serializable`.
  */
@@ -27,6 +27,7 @@ object RealSupertype extends NothingSubtypesItself {
     _i.asInstanceOf[RealSupertype[A,B]]
 }
 
+/** Evidence that `T` is not `Any`. */
 trait RealType[T]
 private[fs2] trait RealTypeInstance {
   private val _i0 = new RealType[Unit] {}

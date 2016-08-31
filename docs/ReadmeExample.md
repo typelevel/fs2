@@ -46,17 +46,17 @@ import fs2.Stream
 
 scala> val src: Stream[Task, Byte] =
      |   io.file.readAll[Task](Paths.get("testdata/fahrenheit.txt"), 4096)
-src: fs2.Stream[fs2.Task,Byte] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+src: fs2.Stream[fs2.Task,Byte] = evalScope(<scope>).flatMap(<function1>)
 ```
 
 A stream can be attached to a pipe, allowing for stateful transformations of the input values. Here, we attach the source stream to the `text.utf8Decode` pipe, which converts the stream of bytes to a stream of strings. We then attach the result to the `text.lines` pipe, which buffers strings and emits full lines. Pipes are expressed using the type `Pipe[F,I,O]`, which describes a pipe that can accept input values of type `I` and can output values of type `O`, potentially evaluating an effect periodically.
 
 ```scala
 scala> val decoded: Stream[Task, String] = src.through(text.utf8Decode)
-decoded: fs2.Stream[fs2.Task,String] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+decoded: fs2.Stream[fs2.Task,String] = evalScope(<scope>).flatMap(<function1>)
 
 scala> val lines: Stream[Task, String] = decoded.through(text.lines)
-lines: fs2.Stream[fs2.Task,String] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+lines: fs2.Stream[fs2.Task,String] = evalScope(<scope>).flatMap(<function1>)
 ```
 
 Many of the functions defined for `List` are defined for `Stream` as well, for instance `filter` and `map`. Note that no side effects occur when we call `filter` or `map`. `Stream` is a purely functional value which can _describe_ a streaming computation that interacts with the outside world. Nothing will occur until we interpret this description, and `Stream` values are thread-safe and can be shared freely.
@@ -64,32 +64,32 @@ Many of the functions defined for `List` are defined for `Stream` as well, for i
 ```scala
 scala> val filtered: Stream[Task, String] =
      |   lines.filter(s => !s.trim.isEmpty && !s.startsWith("//"))
-filtered: fs2.Stream[fs2.Task,String] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+filtered: fs2.Stream[fs2.Task,String] = evalScope(<scope>).flatMap(<function1>)
 
 scala> val mapped: Stream[Task, String] =
      |   filtered.map(line => fahrenheitToCelsius(line.toDouble).toString)
-mapped: fs2.Stream[fs2.Task,String] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>).mapChunks(<function1>)
+mapped: fs2.Stream[fs2.Task,String] = evalScope(<scope>).flatMap(<function1>).mapChunks(<function1>)
 ```
 
 Adds a newline between emitted strings of `mapped`.
 
 ```scala
 scala> val withNewlines: Stream[Task, String] = mapped.intersperse("\n")
-withNewlines: fs2.Stream[fs2.Task,String] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+withNewlines: fs2.Stream[fs2.Task,String] = evalScope(<scope>).flatMap(<function1>)
 ```
 
 We use another pipe, `text.utf8Encode`, to convert the stream of strings back to a stream of bytes.
 
 ```scala
 scala> val encodedBytes: Stream[Task, Byte] = withNewlines.through(text.utf8Encode)
-encodedBytes: fs2.Stream[fs2.Task,Byte] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>).flatMap(<function1>)
+encodedBytes: fs2.Stream[fs2.Task,Byte] = evalScope(<scope>).flatMap(<function1>).flatMap(<function1>)
 ```
 
 We then write the encoded bytes to a file. Note that nothing has happened at this point -- we are just constructing a description of a computation that, when interpreted, will incrementally consume the stream, sending converted values to the specified file.
 
 ```scala
 scala> val written: Stream[Task, Unit] = encodedBytes.through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
-written: fs2.Stream[fs2.Task,Unit] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+written: fs2.Stream[fs2.Task,Unit] = evalScope(<scope>).flatMap(<function1>)
 ```
 
 There are a number of ways of interpreting the stream. In this case, we call `run`, which returns a val value of the effect type, `Task`. The output of the stream is ignored - we run it solely for its effect.

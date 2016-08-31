@@ -5,7 +5,7 @@ import StreamCore.Token
 import Pull._
 
 /**
- * A pull allows acquiring elements from a stream in a resource safe way,
+ * Allows acquiring elements from a stream in a resource safe way,
  * emitting elements of type `O`, working with a resource of type `R`,
  * and evaluating effects of type `F`.
  *
@@ -96,8 +96,8 @@ object Pull {
 
   private sealed trait Algebra[+F[_],+O,+R]
   private object Algebra {
-    case class Eval[F[_],O,R](f: Scope[F,R]) extends Algebra[F,O,R]
-    case class Output[F[_],O](s: StreamCore[F,O]) extends Algebra[F,O,Unit]
+    final case class Eval[F[_],O,R](f: Scope[F,R]) extends Algebra[F,O,R]
+    final case class Output[F[_],O](s: StreamCore[F,O]) extends Algebra[F,O,Unit]
   }
 
   private sealed trait AlgebraF[F[_],O] { type f[x] = Algebra[F,O,x] }

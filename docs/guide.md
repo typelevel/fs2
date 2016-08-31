@@ -396,13 +396,13 @@ To actually use a `Pull` to transform a `Stream`, we have to `close` it:
 
 ```scala
 scala> val s2 = Stream(1,2,3,4).pure.pull(Pull_.take(2))
-s2: fs2.Stream[fs2.Pure,Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+s2: fs2.Stream[fs2.Pure,Int] = evalScope(<scope>).flatMap(<function1>)
 
 scala> s2.toList
 res32: List[Int] = List(1, 2)
 
 scala> val s3 = Stream.pure(1,2,3,4).pull(Pull_.take(2)) // alternately
-s3: fs2.Stream[fs2.Pure,Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+s3: fs2.Stream[fs2.Pure,Int] = evalScope(<scope>).flatMap(<function1>)
 
 scala> s3.toList
 res33: List[Int] = List(1, 2)
@@ -414,7 +414,7 @@ The `pull` method on `Stream` just calls `open` then `close`. We could express t
 
 ```scala
 scala> Stream(1,2,3,4).pure.open.flatMap { _.take(2) }.close
-res34: fs2.Stream[[x]fs2.Pure[x],Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+res34: fs2.Stream[[x]fs2.Pure[x],Int] = evalScope(<scope>).flatMap(<function1>)
 ```
 
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `close` completes. Note again that _nothing happens_ when we call `.close` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
@@ -758,7 +758,7 @@ scala> val s2 = (Stream.empty ++ Stream.fail(Err)) onError { e => println(e); St
 s2: fs2.Stream[Nothing,Nothing] = append(Segment(Emit(Chunk())), Segment(Emit(Chunk(()))).flatMap(<function1>)).onError(<function1>)
 
 scala> val merged = s1 merge s2 take 1
-merged: fs2.Stream[fs2.Task,Int] = evalScope(Scope(Bind(Eval(Snapshot),<function1>))).flatMap(<function1>)
+merged: fs2.Stream[fs2.Task,Int] = evalScope(<scope>).flatMap(<function1>)
 ```
 
 The result is highly nondeterministic. Here are a few ways it can play out:

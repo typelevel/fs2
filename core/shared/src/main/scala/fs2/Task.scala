@@ -19,23 +19,19 @@ import scala.concurrent.duration._
  * be accessed via the `attempt` method, which converts a `Task[A]` to a
  * `Task[Attempt[A]]`.
  *
- * Unlike the `scala.concurrent.Future` type introduced in scala 2.10,
- * `map` and `flatMap` do NOT spawn new tasks and do not require an implicit
- * `ExecutionContext`. Instead, `map` and `flatMap` merely add to
- * the current (trampolined) continuation that will be run by the
- * 'current' thread, unless explicitly forked via `Task.start` or
- * `Future.apply`. This means that `Future` achieves much better thread
- * reuse than the 2.10 implementation and avoids needless thread
- * pool submit cycles.
+ * Unlike `scala.concurrent.Future`, `map` and `flatMap` do NOT spawn new
+ * tasks and do not require an implicit `ExecutionContext`. Instead, `map`
+ * and `flatMap` merely add to the current (trampolined) continuation that
+ * will be run by the 'current' thread, unless explicitly forked via `Task.start`.
  *
- * `Task` also differs from the `scala.concurrent.Future` type in that it
+ * `Task` also differs from `scala.concurrent.Future` in that it
  * does not represent a _running_ computation. Instead, we
  * reintroduce concurrency _explicitly_ using the `Task.start` function.
  * This simplifies our implementation and makes code easier to reason about,
  * since the order of effects and the points of allowed concurrency are made
  * fully explicit and do not depend on Scala's evaluation order.
  */
-class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
+final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
   import Task.Callback
 
   def flatMap[B](f: A => Task[B]): Task[B] =
@@ -171,7 +167,7 @@ class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
     Task.schedule((), delay) flatMap { _ => this }
 }
 
-object Task extends TaskPlatform with Instances {
+object Task extends TaskPlatform with TaskInstances {
 
   type Callback[A] = Attempt[A] => Unit
 
@@ -271,10 +267,10 @@ object Task extends TaskPlatform with Instances {
   private trait MsgId
   private trait Msg[A]
   private object Msg {
-    case class Read[A](cb: Callback[(A, Long)], id: MsgId) extends Msg[A]
-    case class Nevermind[A](id: MsgId, cb: Callback[Boolean]) extends Msg[A]
-    case class Set[A](r: Attempt[A]) extends Msg[A]
-    case class TrySet[A](id: Long, r: Attempt[A], cb: Callback[Boolean]) extends Msg[A]
+    final case class Read[A](cb: Callback[(A, Long)], id: MsgId) extends Msg[A]
+    final case class Nevermind[A](id: MsgId, cb: Callback[Boolean]) extends Msg[A]
+    final case class Set[A](r: Attempt[A]) extends Msg[A]
+    final case class TrySet[A](id: Long, r: Attempt[A], cb: Callback[Boolean]) extends Msg[A]
   }
 
   def ref[A](implicit S: Strategy, F: Async[Task]): Task[Ref[A]] = Task.delay {
@@ -377,7 +373,7 @@ object Task extends TaskPlatform with Instances {
 }
 
 /* Prefer an `Async` but will settle for implicit `Effect`. */
-private[fs2] trait Instances1 {
+private[fs2] trait TaskInstancesLowPriority {
 
   protected class EffectTask extends Effect[Task] {
     def pure[A](a: A) = Task.now(a)
@@ -393,7 +389,7 @@ private[fs2] trait Instances1 {
   implicit val effectInstance: Effect[Task] = new EffectTask
 }
 
-private[fs2] trait Instances extends Instances1 {
+private[fs2] trait TaskInstances extends TaskInstancesLowPriority {
 
   implicit def asyncInstance(implicit S:Strategy): Async[Task] = new EffectTask with Async[Task] {
     def ref[A]: Task[Async.Ref[Task,A]] = Task.ref[A](S, this)

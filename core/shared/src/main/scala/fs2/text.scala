@@ -2,6 +2,7 @@ package fs2
 
 import java.nio.charset.Charset
 
+/** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
   private val utf8Charset = Charset.forName("UTF-8")
 

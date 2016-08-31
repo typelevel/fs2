@@ -3,6 +3,7 @@ package fs2
 import fs2.util.Async
 import fs2.async.mutable.Topic
 
+/** Provides utilities for asynchronous computations. */
 package object async {
 
   /**

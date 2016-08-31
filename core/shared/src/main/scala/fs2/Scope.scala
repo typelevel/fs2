@@ -3,6 +3,11 @@ package fs2
 import fs2.util.{Attempt,Free,RealSupertype,Sub1,~>}
 import fs2.StreamCore.{Env,Algebra,AlgebraF,Token}
 
+/**
+ * Tracks resources acquired while running a stream.
+ *
+ * Note: `Scope` is not typically used directly by user code.
+ */
 final class Scope[+F[_],+O] private (private val get: Free[AlgebraF[F]#f,O]) {
 
   def as[O2](o2: O2): Scope[F,O2] = map(_ => o2)
@@ -10,7 +15,7 @@ final class Scope[+F[_],+O] private (private val get: Free[AlgebraF[F]#f,O]) {
   def map[O2](f: O => O2): Scope[F,O2] = new Scope(get map f)
 
   def flatMap[F2[x]>:F[x],O2](f: O => Scope[F2,O2]): Scope[F2,O2] =
-    new Scope(get flatMap[AlgebraF[F2]#f,O2] (f andThen (_.get)))
+    new Scope(get.flatMap[AlgebraF[F2]#f,O2](o => f(o).get))
 
   def translate[G[_]](f: F ~> G): Scope[G,O] = new Scope(Free.suspend[AlgebraF[G]#f,O] {
     get.translate[AlgebraF[G]#f](new (AlgebraF[F]#f ~> AlgebraF[G]#f) {
@@ -54,7 +59,7 @@ final class Scope[+F[_],+O] private (private val get: Free[AlgebraF[F]#f,O]) {
     })(Sub1.sub1[AlgebraF[F]#f],implicitly[RealSupertype[O,O]])
   }
 
-  override def toString = s"Scope($get)"
+  override def toString = s"Scope(..)"
 }
 
 object Scope {

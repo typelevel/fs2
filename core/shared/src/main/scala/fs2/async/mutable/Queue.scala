@@ -94,7 +94,7 @@ object Queue {
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
       * @param deq      A list of waiting dequeuers, added to when queue is empty
       */
-    case class State(queue: Vector[A], deq: Vector[Async.Ref[F,A]])
+    final case class State(queue: Vector[A], deq: Vector[Async.Ref[F,A]])
 
     Signal(0).flatMap { szSignal =>
     F.refOf[State](State(Vector.empty,Vector.empty)).map { qref =>

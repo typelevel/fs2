@@ -1,6 +1,6 @@
 package fs2.util
 
-/** A `forall a . f a -> g a`. */
+/** A `forall a . f a -> g a`. Aliased as `F ~> G`. */
 trait UF1[-F[_],+G[_]] { self =>
   def apply[A](f: F[A]): G[A]
   def andThen[H[_]](g: G ~> H): UF1[F,H] = new UF1[F,H] {

@@ -4,9 +4,9 @@ import fs2.util.{Async,Functor,Monad}
 import fs2.util.syntax._
 
 /**
- * Future that evaluates to a value of type `A` and a `Scope[F,Unit]`.
+ * A future that evaluates to a value of type `A` and a `Scope[F,Unit]`.
  *
- * To use a `Future`, convert to a `Pull` (via `f.pull`) or a `Stream` (via `f.stream`).
+ * To use a `ScopedFuture`, convert to a `Pull` (via `f.pull`) or a `Stream` (via `f.stream`).
  */
 sealed trait ScopedFuture[F[_],A] { self =>
 
@@ -60,9 +60,9 @@ sealed trait ScopedFuture[F[_],A] { self =>
 
 object ScopedFuture {
 
-  case class RaceResult[+A,+B](winner: A, loser: B)
+  final case class RaceResult[+A,+B](winner: A, loser: B)
 
-  case class Focus[A,B](get: A, index: Int, v: Vector[B]) {
+  final case class Focus[A,B](get: A, index: Int, v: Vector[B]) {
     def replace(b: B): Vector[B] = v.patch(index, List(b), 1)
     def delete: Vector[B] = v.patch(index, List(), 1)
   }
@@ -95,7 +95,7 @@ object ScopedFuture {
           cancels.flatMap { cancels =>
             F.pure {
               val get = ref.get.flatMap { case (a,i) =>
-                F.sequence(cancels.collect { case (a,j) if j != i => a }).map(_ => (a,i))
+                cancels.collect { case (a,j) if j != i => a }.sequence.as((a,i))
               }
               val cancel = cancels.traverse(_._1).as(())
               (get.map { case ((a,onForce),i) => ((a,i),onForce) }, cancel)

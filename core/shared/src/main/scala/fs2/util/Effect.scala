@@ -1,6 +1,11 @@
 package fs2.util
 
-/** Monad which supports catching exceptions, suspending evaluation, and potentially asynchronous evaluation. */
+/**
+ * Monad which supports catching exceptions, suspending evaluation, and
+ * (potentially asynchronous) evaluation (i.e. extraction of a value).
+ *
+ * For infix syntax, import `fs2.util.syntax._`.
+ */
 trait Effect[F[_]] extends Catchable[F] with Suspendable[F] {
 
   /**
