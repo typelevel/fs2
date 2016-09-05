@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 
 
 
-class ToInputStreamSpec extends Fs2Spec {
+class JavaInputOutputStreamSpec extends Fs2Spec {
 
   "ToInputStream" - {
 

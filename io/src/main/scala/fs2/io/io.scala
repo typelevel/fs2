@@ -83,6 +83,6 @@ package object io {
     *
     */
   def toInputStream[F[_]](implicit F:Async[F]):Pipe[F,Byte,InputStream] =
-    ToInputStream.apply
+    JavaInputOutputStream.toInputStream
 
 }
