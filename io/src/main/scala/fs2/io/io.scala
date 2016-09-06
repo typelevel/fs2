@@ -67,4 +67,22 @@ package object io {
 
   def stdoutAsync[F[_]](implicit F: Async[F]): Sink[F, Byte] =
     writeOutputStreamAsync(F.delay(System.out), false)
+
+  /**
+    * Pipe that wil convert Stream of bytes to Stream that will emit one single java.io.InputStream,
+    * that is eventually closed whenever the resulting stream terminates.
+    *
+    * If the `close` of resulting input stream is invoked manually, then this will await until the
+    * original stream completely terminates.
+    *
+    * It is suggested that hence all InputStream methods block (including close), that the resulting InputStream
+    * is consumed on different thread pool than one that is backing Async[F].
+    *
+    * Note that the implementation is not thread safe, that means only one thread is allowed at any time
+    * to operate on the resulting java.io.InputStream.
+    *
+    */
+  def toInputStream[F[_]](implicit F:Async[F]):Pipe[F,Byte,InputStream] =
+    JavaInputOutputStream.toInputStream
+
 }
