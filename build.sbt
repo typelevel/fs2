@@ -149,7 +149,7 @@ lazy val core = crossProject.in(file("core")).
   jsSettings(commonJsSettings: _*)
 
 lazy val coreJVM = core.jvm
-lazy val coreJS = core.js
+lazy val coreJS = core.js.disablePlugins(DoctestPlugin)
 
 lazy val io = project.in(file("io")).
   settings(commonSettings).
