@@ -1,43 +1,34 @@
 package fs2.async.immutable
 
-import fs2.{pipe,Stream}
+import fs2.Stream
 import fs2.util.{Async,Functor}
 import fs2.async.immutable
 
-/** A holder of a single value of type `A` that can be read in the effect `F`. */
+/** Data type of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] { self =>
 
   /**
-   * Returns the discrete version stream of this signal, updated only when `value`
+   * Returns the discrete version of this signal, updated only when the value
    * is changed.
    *
-   * Value _may_ change several times between reads, but it is
-   * guaranteed this will always get latest known value after any change.
+   * The value _may_ change several times between reads, but it is
+   * guaranteed the latest value will be emitted after a series of changes.
    *
-   * If you want to be notified about every single change use `async.queue` for signalling.
-   *
-   * It will emit the current value of the Signal after being run or when the signal
-   * is set for the first time
+   * If you want to be notified about every single change, use `async.queue` for signalling.
    */
   def discrete: Stream[F, A]
 
   /**
-   * Returns the continuous version of this signal, always equal to the
-   * current `A` inside `value`.
+   * Returns the continuous version of this signal, which emits the
+   * current `A` value on each request for an element from the stream.
    *
    * Note that this may not see all changes of `A` as it
-   * gets always current fresh `A` at every request.
+   * always gets the current `A` at each request for an element.
    */
   def continuous: Stream[F, A]
 
   /**
-   * Returns the discrete version of `changed`. Will emit `Unit`
-   * when the `value` is changed.
-   */
-  def changes: Stream[F, Unit]
-
-  /**
-   * Asynchronously get the current value of this `Signal`
+   * Asynchronously gets the current value of this `Signal`.
    */
   def get: F[A]
 }
@@ -45,12 +36,12 @@ trait Signal[F[_], A] { self =>
 object Signal {
 
   implicit class ImmutableSignalSyntax[F[_] : Async, A] (val self: Signal[F, A])  {
+
     /**
-     * Converts this signal to signal of `B` by applying `f`
+     * Converts this signal to signal of `B` by applying `f`.
      */
     def map[B](f: A => B): Signal[F,B] = new Signal[F, B] {
       def continuous: Stream[F, B] = self.continuous.map(f)
-      def changes: Stream[F, Unit] = self.discrete.through(pipe.changes(_ == _)).map(_ => ())
       def discrete: Stream[F, B] = self.discrete.map(f)
       def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
     }

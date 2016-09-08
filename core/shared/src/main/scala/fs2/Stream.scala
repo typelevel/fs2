@@ -53,6 +53,12 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.bufferBy]]`. */
   def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
 
+  /** Alias for `self through [[pipe.changes]]`. */
+  def changes: Stream[F,O] = self through pipe.changes
+
+  /** Alias for `self through [[pipe.changesBy]]`. */
+  def changesBy[O2](f: O => O2): Stream[F,O] = self through pipe.changesBy(f)
+
   /** Alias for `self through [[pipe.chunkLimit]]`. */
   def chunkLimit(n: Int): Stream[F,NonEmptyChunk[O]] = self through pipe.chunkLimit(n)
 
@@ -82,13 +88,6 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
 
   /** Alias for `self through [[pipe.delete]]`. */
   def delete(f: O => Boolean): Stream[F,O] = self through pipe.delete(f)
-
-  /** Alias for `self through [[pipe.distinctConsecutive]]`. */
-  def distinctConsecutive: Stream[F,O] = self through pipe.distinctConsecutive
-
-  /** Alias for `self through [[pipe.distinctConsecutiveBy]]`. */
-  def distinctConsecutiveBy[O2](f: O => O2): Stream[F,O] =
-    self through pipe.distinctConsecutiveBy(f)
 
   def drain: Stream[F, Nothing] = flatMap { _ => Stream.empty }
 
@@ -448,7 +447,7 @@ object Stream {
    * Note: The last emitted range may be truncated at `stopExclusive`. For
    * instance, `ranges(0,5,4)` results in `(0,4), (4,5)`.
    *
-   * @throws IllegalArgumentException if `size` <= 0
+   * @throws scala.IllegalArgumentException if `size` <= 0
    */
   def ranges[F[_]](start: Int, stopExclusive: Int, size: Int): Stream[F,(Int,Int)] = {
     require(size > 0, "size must be > 0, was: " + size)

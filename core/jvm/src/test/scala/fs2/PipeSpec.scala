@@ -34,6 +34,14 @@ class PipeSpec extends Fs2Spec {
       counter shouldBe (s.get.toList.size * 2 + 1)
     }
 
+    "changes" in {
+      Stream.empty.covary[Pure].changes.toList shouldBe Nil
+      Stream(1, 2, 3, 4).changes.toList shouldBe List(1, 2, 3, 4)
+      Stream(1, 1, 2, 2, 3, 3, 4, 3).changes.toList shouldBe List(1, 2, 3, 4, 3)
+      Stream("1", "2", "33", "44", "5", "66").changesBy(_.length).toList shouldBe
+        List("1", "33", "5", "66")
+    }
+    
     "chunkLimit" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
       val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
       assert(sizeV.forall(_ <= n0.get) && sizeV.sum == s.get.toVector.size)
@@ -89,14 +97,6 @@ class PipeSpec extends Fs2Spec {
       val v = runLog(s.get)
       val i = Gen.oneOf(v).sample.getOrElse(0)
       runLog(s.get.delete(_ == i)) shouldBe v.diff(Vector(i))
-    }
-
-    "distinctConsecutive" in {
-      Stream.empty.covary[Pure].distinctConsecutive.toList shouldBe Nil
-      Stream(1, 2, 3, 4).distinctConsecutive.toList shouldBe List(1, 2, 3, 4)
-      Stream(1, 1, 2, 2, 3, 3, 4, 3).distinctConsecutive.toList shouldBe List(1, 2, 3, 4, 3)
-      Stream("1", "2", "33", "44", "5", "66").distinctConsecutiveBy(_.length).toList shouldBe
-        List("1", "33", "5", "66")
     }
 
     "drop" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>

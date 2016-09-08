@@ -44,7 +44,8 @@ lazy val commonSettings = Seq(
     import fs2._
     import fs2.util._
   """,
-  doctestWithDependencies := false
+  doctestWithDependencies := false,
+  doctestTestFramework := DoctestTestFramework.ScalaTest
 ) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
 lazy val testSettings = Seq(

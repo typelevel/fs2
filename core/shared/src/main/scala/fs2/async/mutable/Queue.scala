@@ -69,8 +69,8 @@ trait Queue[F[_], A] { self =>
   def full: immutable.Signal[F, Boolean]
 
   /**
-   * Returns an alternate view of this `Queue` where its elements are of type [[B]],
-   * given back and forth function from `A` to `B`.
+   * Returns an alternate view of this `Queue` where its elements are of type `B`,
+   * given two functions, `A => B` and `B => A`.
    */
   def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): Queue[F, B] =
     new Queue[F, B] {
