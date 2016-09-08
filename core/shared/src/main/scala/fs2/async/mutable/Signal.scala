@@ -7,10 +7,7 @@ import fs2.async.immutable
 import fs2.util.{Async,Monad,Functor}
 import fs2.util.syntax._
 
-/**
- * A signal whose value may be set asynchronously. Provides continuous
- * and discrete streams for responding to changes to it's value.
- */
+/** Data type of a single value of type `A` that can be read and written in the effect `F`. */
 trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
 
   /** Sets the value of this `Signal`. */
@@ -26,25 +23,24 @@ trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
   def modify(f: A => A): F[Async.Change[A]]
 
   /**
-    *  like `modify` but allows to extract `B` from `A` and return it together with Change
-    */
+   * Like [[modify]] but allows extraction of a `B` from `A` and returns it along with the `Change`.
+   */
   def modify2[B](f: A => (A,B)):F[(Async.Change[A], B)]
 
   /**
    * Asynchronously refreshes the value of the signal,
-   * keep the value of this `Signal` the same, but notify any listeners.
+   * keeping the value of this `Signal` the same, but notifing any listeners.
    */
   def refresh: F[Unit]
 
   /**
-   * Returns an alternate view of this `Signal` where its elements are of type [[B]],
-   * given a function from `A` to `B`.
+   * Returns an alternate view of this `Signal` where its elements are of type `B`,
+   * given two functions, `A => B` and `B => A`.
    */
   def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): Signal[F, B] =
     new Signal[F, B] {
       def discrete: Stream[F, B] = self.discrete.map(f)
       def continuous: Stream[F, B] = self.continuous.map(f)
-      def changes: Stream[F, Unit] = self.changes
       def get: F[B] = self.get.map(f)
       def set(b: B): F[Unit] = self.set(g(b))
       def refresh: F[Unit] = self.refresh
