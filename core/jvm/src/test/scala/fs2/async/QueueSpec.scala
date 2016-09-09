@@ -21,6 +21,17 @@ class QueueSpec extends Fs2Spec {
         }
       }
     }
+    "dequeueAvailable" in {
+      forAll { (s: PureStream[Int]) =>
+        withClue(s.tag) {
+          val result = runLog(Stream.eval(async.unboundedQueue[Task,Option[Int]]).flatMap { q =>
+            s.get.noneTerminate.evalMap(q.enqueue1).drain ++ q.dequeueAvailable.through(pipe.unNoneTerminate).chunks
+          })
+          result.size should be < 2
+          result.flatMap(_.toVector) shouldBe s.get.toVector
+        }
+      }
+    }
     "dequeueBatch unbounded" in {
       forAll { (s: PureStream[Int], batchSize: SmallPositive) =>
         withClue(s.tag) {
