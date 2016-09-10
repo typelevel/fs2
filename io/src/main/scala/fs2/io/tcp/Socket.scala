@@ -27,7 +27,7 @@ trait Socket[F[_]] {
    * Evaluates to None, if there are no more bytes to be read in future, due stream reached End-Of-Stream state
    * before returning even single byte. Otherwise returns Some(bytes) with bytes that were ready to be read.
    *
-   * If `timeout` is specified, then resulting `F` will evaluate to failure with [[java.nio.channels.InterruptedByTimeoutException]]
+   * If `timeout` is specified, then resulting `F` will evaluate to failure with `java.nio.channels.InterruptedByTimeoutException`
    * if read was not satisfied in given timeout. Read is satisfied, when at least single Byte was received
    * before `timeout` expires.
    *
@@ -38,14 +38,14 @@ trait Socket[F[_]] {
 
   /**
    * Reads stream of bytes from this socket with `read` semantics. Terminates when eof is received.
-   * On timeout, this fails with [[java.nio.channels.InterruptedByTimeoutException]].
+   * On timeout, this fails with `java.nio.channels.InterruptedByTimeoutException`.
    */
   def reads(maxBytes:Int, timeout: Option[FiniteDuration] = None): Stream[F,Byte]
 
   /**
    * Reads exactly `numBytes` from the peer in a single chunk.
    * If `timeout` is provided and no data arrives within the specified duration, then this results in
-   * failure with [[java.nio.channels.InterruptedByTimeoutException]]
+   * failure with `java.nio.channels.InterruptedByTimeoutException`.
    *
    * When returned size of bytes is < `numBytes` that indicates end-of-stream has been reached.
    */
@@ -69,7 +69,7 @@ trait Socket[F[_]] {
   /**
    * Writes `bytes` to the peer. If `timeout` is provided
    * and the operation does not complete in the specified duration,
-   * the returned `Process` fails with a [[java.nio.channels.InterruptedByTimeoutException]].
+   * the returned `Process` fails with a `java.nio.channels.InterruptedByTimeoutException`.
    *
    * Completes when bytes are written to the socket.
    */

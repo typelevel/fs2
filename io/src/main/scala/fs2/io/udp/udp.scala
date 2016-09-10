@@ -19,15 +19,14 @@ package object udp {
   final case class Packet(remote: InetSocketAddress, bytes: Chunk[Byte])
 
   /**
-   * Provides a singleton stream of a UDP Socket that when run will bind to specified adress
-   * by `flatMap`.
+   * Provides a singleton stream of a UDP Socket that, when run, will bind to the specified adress.
    *
    * @param address              address to bind to; defaults to an ephemeral port on all interfaces
-   * @param reuseAddress         whether address has to be reused (@see [[java.net.StandardSocketOptions.SO_REUSEADDR]])
-   * @param sendBufferSize       size of send buffer  (@see [[java.net.StandardSocketOptions.SO_SNDBUF]])
-   * @param receiveBufferSize    size of receive buffer (@see [[java.net.StandardSocketOptions.SO_RCVBUF]])
+   * @param reuseAddress         whether address has to be reused (@see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+   * @param sendBufferSize       size of send buffer  (@see `java.net.StandardSocketOptions.SO_SNDBUF`)
+   * @param receiveBufferSize    size of receive buffer (@see `java.net.StandardSocketOptions.SO_RCVBUF`)
    * @param allowBroadcast       whether broadcast messages are allowed to be sent; defaults to true
-   * @param protocolFamily       protocol family to use when opening the supporting [[DatagramChannel]]
+   * @param protocolFamily       protocol family to use when opening the supporting `DatagramChannel`
    * @param multicastInterface   network interface for sending multicast packets
    * @param multicastTTL         time to live of sent multicast packets
    * @param multicastLoopback    whether sent multicast packets should be looped back to this host

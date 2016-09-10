@@ -19,7 +19,7 @@ sealed trait Socket[F[_]] {
   /**
    * Reads a single packet from this udp socket.
    *
-   * If `timeout` is specified, then resulting `F` will fail with [[java.nio.channels.InterruptedByTimeoutException]]
+   * If `timeout` is specified, then resulting `F` will fail with `java.nio.channels.InterruptedByTimeoutException`
    * if read was not satisfied in given timeout.
    */
   def read(timeout: Option[FiniteDuration] = None): F[Packet]
@@ -30,7 +30,7 @@ sealed trait Socket[F[_]] {
    * Note that multiple `reads` may execute at same time, causing each evaluation to receive fair
    * amount of messages.
    *
-   * If `timeout` is specified, then resulting stream will fail with [[java.nio.channels.InterruptedByTimeoutException]]
+   * If `timeout` is specified, then resulting stream will fail with `java.nio.channels.InterruptedByTimeoutException`
    * if a read was not satisfied in given timeout.
    *
    * @return stream of packets
@@ -40,7 +40,7 @@ sealed trait Socket[F[_]] {
   /**
    * Write a single packet to this udp socket.
    *
-   * If `timeout` is specified, then resulting `F` will fail with [[java.nio.channels.InterruptedByTimeoutException]]
+   * If `timeout` is specified, then resulting `F` will fail with `java.nio.channels.InterruptedByTimeoutException`
    * if write was not completed in given timeout.
    *
    * @param packet  Packet to write
@@ -50,7 +50,7 @@ sealed trait Socket[F[_]] {
   /**
    * Writes supplied packets to this udp socket.
    *
-   * If `timeout` is specified, then resulting sink will fail with [[java.nio.channels.InterruptedByTimeoutException]]
+   * If `timeout` is specified, then resulting sink will fail with `java.nio.channels.InterruptedByTimeoutException`
    * if a write was not completed in given timeout.
    */
   def writes(timeout: Option[FiniteDuration] = None): Sink[F,Packet]
