@@ -14,11 +14,11 @@ package object tcp {
    * when the outer stream terminates.
    *
    * @param to                   address of remote server
-   * @param reuseAddress         whether address may be reused (@see `java.net.StandardSocketOptions.SO_REUSEADDR`)
-   * @param sendBufferSize       size of send buffer  (@see `java.net.StandardSocketOptions.SO_SNDBUF`)
-   * @param receiveBufferSize    size of receive buffer  (@see `java.net.StandardSocketOptions.SO_RCVBUF`)
-   * @param keepAlive            whether keep-alive on tcp is used (@see `java.net.StandardSocketOptions.SO_KEEPALIVE`)
-   * @param noDelay              whether tcp no-delay flag is set  (@see `java.net.StandardSocketOptions.TCP_NODELAY`)
+   * @param reuseAddress         whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+   * @param sendBufferSize       size of send buffer  (see `java.net.StandardSocketOptions.SO_SNDBUF`)
+   * @param receiveBufferSize    size of receive buffer  (see `java.net.StandardSocketOptions.SO_RCVBUF`)
+   * @param keepAlive            whether keep-alive on tcp is used (see `java.net.StandardSocketOptions.SO_KEEPALIVE`)
+   * @param noDelay              whether tcp no-delay flag is set  (see `java.net.StandardSocketOptions.TCP_NODELAY`)
    */
   def client[F[_]](
     to: InetSocketAddress
@@ -47,8 +47,8 @@ package object tcp {
    * @param bind               address to accept connections from
    * @param maxQueued          number of queued requests before they will become rejected by server
    *                           (supply <= 0 for unbounded)
-   * @param reuseAddress       whether address may be reused (@see `java.net.StandardSocketOptions.SO_REUSEADDR`)
-   * @param receiveBufferSize  size of receive buffer (@see `java.net.StandardSocketOptions.SO_RCVBUF`)
+   * @param reuseAddress       whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+   * @param receiveBufferSize  size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
    */
   def server[F[_]](
     bind: InetSocketAddress
