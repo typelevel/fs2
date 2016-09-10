@@ -9,6 +9,11 @@ import scala.concurrent.duration.FiniteDuration
 
 import fs2.util.Async
 
+/**
+ * Provides the ability to read/write from a UDP socket in the effect `F`.
+ *
+ * To construct a `Socket`, use the methods in the [[fs2.io.udp]] package object.
+ */
 sealed trait Socket[F[_]] {
 
   /**
@@ -91,7 +96,7 @@ sealed trait Socket[F[_]] {
 }
 
 
-object Socket {
+private[udp] object Socket {
 
   private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup, F: Async[F]): F[Socket[F]] = F.delay {
     new Socket[F] {
