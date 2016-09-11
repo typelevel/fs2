@@ -37,27 +37,27 @@ trait Queue[F[_], A] { self =>
    */
   def offer1(a: A): F[Boolean]
 
-  /** Dequeue one `A` from this queue. Completes once one is ready. */
+  /** Dequeues one `A` from this queue. Completes once one is ready. */
   def dequeue1: F[A]
 
   /** Like `dequeue1` but provides a way to cancel the dequeue. */
   def cancellableDequeue1: F[(F[A], F[Unit])]
 
-  /** Dequeue at most `batchSize` `A`s from this queue. Completes once at least one value is ready. */
+  /** Dequeues at most `batchSize` `A`s from this queue. Completes once at least one value is ready. */
   def dequeueBatch1(batchSize: Int): F[NonEmptyChunk[A]]
 
   /** Like `dequeueBatch1` but provides a way to cancel the dequeue. */
   def cancellableDequeueBatch1(batchSize: Int): F[(F[NonEmptyChunk[A]], F[Unit])]
 
-  /** Repeatedly call `dequeue1` forever. */
+  /** Repeatedly calls `dequeue1` forever. */
   def dequeue: Stream[F, A] = Stream.bracket(cancellableDequeue1)(d => Stream.eval(d._1), d => d._2).repeat
 
-  /** Call `dequeueBatch1` once with a provided bound on the elements dequeued. */
+  /** Calls `dequeueBatch1` once with a provided bound on the elements dequeued. */
   def dequeueBatch: Pipe[F, Int, A] = _.flatMap { batchSize =>
     Stream.bracket(cancellableDequeueBatch1(batchSize))(d => Stream.eval(d._1).flatMap(Stream.chunk), d => d._2)
   }
 
-  /** Call `dequeueBatch1` forever, with a bound of `Int.MaxValue` */
+  /** Calls `dequeueBatch1` forever, with a bound of `Int.MaxValue` */
   def dequeueAvailable: Stream[F, A] = Stream.constant(Int.MaxValue).through(dequeueBatch)
 
   /**
@@ -106,6 +106,7 @@ trait Queue[F[_], A] { self =>
 
 object Queue {
 
+  /** Creates a queue with no size bound. */
   def unbounded[F[_],A](implicit F: Async[F]): F[Queue[F,A]] = {
     /*
       * Internal state of the queue
@@ -173,6 +174,7 @@ object Queue {
       }
     }}}
 
+  /** Creates a queue with the specified size bound. */
   def bounded[F[_],A](maxSize: Int)(implicit F: Async[F]): F[Queue[F,A]] =
     Semaphore(maxSize.toLong).flatMap { permits =>
     unbounded[F,A].map { q =>
@@ -194,6 +196,7 @@ object Queue {
       }
     }}
 
+  /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
   def circularBuffer[F[_],A](maxSize: Int)(implicit F: Async[F]): F[Queue[F,A]] =
     Semaphore(maxSize.toLong).flatMap { permits =>
     unbounded[F,A].map { q =>
@@ -214,6 +217,7 @@ object Queue {
       }
     }}
 
+  /** Creates a queue which allows a single element to be enqueued at any time. */
   def synchronous[F[_],A](implicit F: Async[F]): F[Queue[F,A]] =
     Semaphore(0).flatMap { permits =>
     unbounded[F,A].map { q =>
