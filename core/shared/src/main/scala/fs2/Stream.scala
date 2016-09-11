@@ -196,10 +196,10 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
   def observe[F2[_],O2>:O](sink: Sink[F2,O2])(implicit F: Async[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
-    async.channel.observe(Sub1.substStream(self)(S))(sink)
+    pipe.observe(Sub1.substStream(self)(S))(sink)
 
   def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Async[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
-    async.channel.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
+    pipe.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
 
   def onError[G[_],Lub[_],O2>:O](f: Throwable => Stream[G,O2])(implicit R: RealSupertype[O,O2], L: Lub1[F,G,Lub]): Stream[Lub,O2] =
     Stream.mk { (Sub1.substStream(self)(L.subF): Stream[Lub,O2]).get.onError { e => Sub1.substStream(f(e))(L.subG).get } }
