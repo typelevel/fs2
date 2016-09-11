@@ -4,42 +4,96 @@ import scala.reflect.ClassTag
 
 /**
  * A strict, in-memory sequence of `A` values.
+ *
+ * Chunks can be constructed via various constructor methods on the `Chunk` companion object.
+ *
+ * Chunks are internally specialized for both single element chunks and unboxed arrays of primitives.
+ *
+ * Supports unboxed operations for booleans, bytes, longs, and doubles, using a
+ * `Chunk` implementation that is backed by an array of primitives. When possible,
+ * operations on `Chunk` preserves unboxed-ness. To get access the the underlying
+ * unboxed arrays, use `toBooleans`, `toBytes`, `toLongs`, and `toDoubles`.
+ *
+ * Note: the [[NonEmptyChunk]] type is a subtype of `Chunk` which is limited to chunks with at least
+ * one element.
  */
 trait Chunk[+A] { self =>
+
+  /** Returns the number of elements in this chunk. */
   def size: Int
+
+  /** If this chunk is non-empty, returns the first element of the chunk and the rest as a new chunk. Otherwise, returns none. */
   def uncons: Option[(A, Chunk[A])] =
     if (size == 0) None
     else Some(apply(0) -> drop(1))
+
+  /** Gets the `i`-th element of this chunk, throwing an `IndexOutOfBoundsException` if the index is not in the range ``[0,size)`. */
   def apply(i: Int): A
+
+  /** Copies the elements of this chunk in to the specified array at the specified start index. */
   def copyToArray[B >: A](xs: Array[B], start: Int = 0): Unit
+
+  /** Returns a new chunk made up of the elemenets of this chunk without the first `n` elements. */
   def drop(n: Int): Chunk[A]
+
+  /** Returns a new chunk made up of the first `n` elemenets of this chunk. */
   def take(n: Int): Chunk[A]
+
+  /** Returns a new chunk made up of the elements of this chunk for which the specified predicate returns true. */
   def filter(f: A => Boolean): Chunk[A]
+
+  /**
+   * Reduces this chunk to a value of type `B` by applying `f` to each element, left to right,
+   * passing the output of each invocation of `f` to the next invocation of `f` and starting with `z`.
+   */
   def foldLeft[B](z: B)(f: (B,A) => B): B
+
+  /**
+   * Reduces this chunk to a value of type `B` by applying `f` to each element, right to left,
+   * passing the output of each invocation of `f` to the next invocation of `f` and starting with `z`.
+   */
   def foldRight[B](z: B)(f: (A,B) => B): B
+
+  /** Returns the index of the first element for which `p` returns true. */
   def indexWhere(p: A => Boolean): Option[Int] = {
     val index = iterator.indexWhere(p)
     if (index < 0) None else Some(index)
   }
+
+  /** Returns true if this chunk has no elements. */
   def isEmpty: Boolean = size == 0
+
+  /** Returns true if this chunk has at least 1 element. */
   def nonEmpty: Boolean = size != 0
+
+  /** Copies the elements of this chunk to an array. */
   def toArray[B >: A: ClassTag]: Array[B] = {
     val arr = new Array[B](size)
     copyToArray(arr)
     arr
   }
+
+  /** Converts this chunk to a list. */
   def toList: List[A] = foldRight(Nil: List[A])(_ :: _)
+
+  /** Converts this chunk to a vector. */
   def toVector: Vector[A] = foldLeft(Vector.empty[A])(_ :+ _)
+
+  /** Maps and filters this chunk simultaneously using the supplied partial function. */
   def collect[B](pf: PartialFunction[A,B]): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size)
     iterator.collect(pf).copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
+
+  /** Maps each element of this chunk using the supplied `f`. */
   def map[B](f: A => B): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size)
     iterator.map(f).copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
+
+  /** Simultaneously folds and maps this chunk, returning the output of the fold and the transformed chunk. */
   def mapAccumulate[S,B](s0: S)(f: (S,A) => (S,B)): (S,Chunk[B]) = {
     val buf = new collection.mutable.ArrayBuffer[B](size)
     var s = s0
@@ -50,41 +104,74 @@ trait Chunk[+A] { self =>
     }
     (s, Chunk.indexedSeq(buf))
   }
+
+  /** Like `foldLeft` but each intermediate `B` value is output. */
   def scanLeft[B](z: B)(f: (B, A) => B): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size + 1)
     iterator.scanLeft(z)(f).copyToBuffer(buf)
     Chunk.indexedSeq(buf)
   }
+
+  /** Creates an iterator that iterates the elements of this chunk. The returned iterator is not thread safe. */
   def iterator: Iterator[A] = new Iterator[A] {
-    var i = 0
+    private[this] var i = 0
     def hasNext = i < self.size
     def next = { val result = apply(i); i += 1; result }
   }
+
+  /**
+   * Converts this chunk to a `Chunk.Booleans`, allowing access to the underlying array of elements.
+   * If this chunk is already backed by an unboxed array of booleans, this method runs in constant time.
+   * Otherwise, this method will copy of the elements of this chunk in to a single array.
+   */
   def toBooleans[B >: A](implicit ev: B =:= Boolean): Chunk.Booleans = this match {
     case c: Chunk.Booleans => c
     case other => new Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray, 0, size)
   }
+
+  /**
+   * Converts this chunk to a `Chunk.Bytes`, allowing access to the underlying array of elements.
+   * If this chunk is already backed by an unboxed array of booleans, this method runs in constant time.
+   * Otherwise, this method will copy of the elements of this chunk in to a single array.
+   */
   def toBytes[B >: A](implicit ev: B =:= Byte): Chunk.Bytes = this match {
     case c: Chunk.Bytes => c
     case other => new Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
   }
+
+  /**
+   * Converts this chunk to a `Chunk.Longs`, allowing access to the underlying array of elements.
+   * If this chunk is already backed by an unboxed array of booleans, this method runs in constant time.
+   * Otherwise, this method will copy of the elements of this chunk in to a single array.
+   */
   def toLongs[B >: A](implicit ev: B =:= Long): Chunk.Longs = this match {
     case c: Chunk.Longs => c
     case other => new Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray, 0, size)
   }
+
+  /**
+   * Converts this chunk to a `Chunk.Doubles`, allowing access to the underlying array of elements.
+   * If this chunk is already backed by an unboxed array of booleans, this method runs in constant time.
+   * Otherwise, this method will copy of the elements of this chunk in to a single array.
+   */
   def toDoubles[B >: A](implicit ev: B =:= Double): Chunk.Doubles = this match {
     case c: Chunk.Doubles => c
     case other => new Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray, 0, size)
   }
-  override def toString = toList.mkString("Chunk(", ", ", ")")
-  override def equals(a: Any) = a match {
+
+  override def toString: String = toList.mkString("Chunk(", ", ", ")")
+
+  override def equals(a: Any): Boolean = a match {
     case c: Chunk[A] => c.toList == toList
     case _ => false
   }
-  override def hashCode = iterator.toStream.hashCode
+
+  override def hashCode: Int = iterator.toStream.hashCode
 }
 
 object Chunk {
+
+  /** Empty chunk. */
   val empty: Chunk[Nothing] = new Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = throw new IllegalArgumentException(s"Chunk.empty($i)")
@@ -97,6 +184,7 @@ object Chunk {
     override def map[B](f: Nothing => B) = empty
   }
 
+  /** Creates a chunk of one element. */
   def singleton[A](a: A): NonEmptyChunk[A] = NonEmptyChunk.fromChunkUnsafe(new Chunk[A] { self =>
     def size = 1
     def apply(i: Int) = if (i == 0) a else throw new IllegalArgumentException(s"Chunk.singleton($i)")
@@ -110,6 +198,7 @@ object Chunk {
     override def map[B](f: A => B) = singleton(f(a))
   })
 
+  /** Creates a chunk from an indexed sequence, using the existing index-based access provided by the indexed sequence. */
   def indexedSeq[A](a: collection.IndexedSeq[A]): Chunk[A] = new Chunk[A] {
     def size = a.size
     override def isEmpty = a.isEmpty
@@ -125,6 +214,7 @@ object Chunk {
     override def iterator = a.iterator
   }
 
+  /** Creates a chunk from a sequence, using a lazy copy of the sequence to support indexed based access. */
   def seq[A](a: Seq[A]): Chunk[A] = new Chunk[A] {
     lazy val vec = a.toIndexedSeq
     def size = a.size
@@ -141,58 +231,80 @@ object Chunk {
     override def iterator = a.iterator
   }
 
+  /** Creates a chunk backed by an unboxed array. */
   def booleans(values: Array[Boolean]): Chunk[Boolean] =
     new Booleans(values, 0, values.length)
 
+  /** Creates a chunk backed by an unboxed array. */
   def booleans(values: Array[Boolean], offset: Int, size: Int): Chunk[Boolean] = {
     require(offset >= 0 && offset <= values.size)
     require(offset + size <= values.size)
     new Booleans(values, offset, size)
   }
 
+  /** Creates a chunk backed by an unboxed array. */
   def bytes(values: Array[Byte]): Chunk[Byte] =
     new Bytes(values, 0, values.length)
 
+  /** Creates a chunk backed by an unboxed array. */
   def bytes(values: Array[Byte], offset: Int, size: Int): Chunk[Byte] = {
     require(offset >= 0 && offset <= values.size)
     require(offset + size <= values.size)
     new Bytes(values, offset, size)
   }
 
+  /** Creates a chunk backed by an unboxed array. */
   def longs(values: Array[Long]): Chunk[Long] =
     new Longs(values, 0, values.length)
 
+  /** Creates a chunk backed by an unboxed array. */
   def longs(values: Array[Long], offset: Int, size: Int): Chunk[Long] = {
     require(offset >= 0 && offset <= values.size)
     require(offset + size <= values.size)
     new Longs(values, offset, size)
   }
 
+  /** Creates a chunk backed by an unboxed array. */
   def doubles(values: Array[Double]): Chunk[Double] =
     new Doubles(values, 0, values.length)
 
+  /** Creates a chunk backed by an unboxed array. */
   def doubles(values: Array[Double], offset: Int, size: Int): Chunk[Double] = {
     require(offset >= 0 && offset <= values.size)
     require(offset + size <= values.size)
     new Doubles(values, offset, size)
   }
 
+  /** Concatenates the specified sequence of chunks in to a single chunk. */
   def concat[A](chunks: Seq[Chunk[A]]): Chunk[A] = {
     if (chunks.isEmpty) {
       Chunk.empty
-    } else if (chunks.forall(c => c.isInstanceOf[Chunk.Booleans] || c.iterator.forall(_.isInstanceOf[Boolean]))) {
+    } else if (chunks.forall(c =>
+      c.isInstanceOf[Chunk.Booleans] ||
+      (c.isInstanceOf[NonEmptyChunk.Wrapped[_]] && c.asInstanceOf[NonEmptyChunk.Wrapped[_]].underlying.isInstanceOf[Chunk.Booleans]) ||
+      c.iterator.forall(_.isInstanceOf[Boolean]))) {
       concatBooleans(chunks.asInstanceOf[Seq[Chunk[Boolean]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.isInstanceOf[Chunk.Bytes] || c.iterator.forall(_.isInstanceOf[Byte]))) {
+    } else if (chunks.forall(c =>
+      c.isInstanceOf[Chunk.Bytes] ||
+      (c.isInstanceOf[NonEmptyChunk.Wrapped[_]] && c.asInstanceOf[NonEmptyChunk.Wrapped[_]].underlying.isInstanceOf[Chunk.Bytes]) ||
+      c.iterator.forall(_.isInstanceOf[Byte]))) {
       concatBytes(chunks.asInstanceOf[Seq[Chunk[Byte]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.isInstanceOf[Chunk.Doubles] || c.iterator.forall(_.isInstanceOf[Double]))) {
+    } else if (chunks.forall(c =>
+       c.isInstanceOf[Chunk.Doubles] ||
+      (c.isInstanceOf[NonEmptyChunk.Wrapped[_]] && c.asInstanceOf[NonEmptyChunk.Wrapped[_]].underlying.isInstanceOf[Chunk.Doubles]) ||
+      c.iterator.forall(_.isInstanceOf[Double]))) {
       concatDoubles(chunks.asInstanceOf[Seq[Chunk[Double]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c => c.isInstanceOf[Chunk.Longs] || c.iterator.forall(_.isInstanceOf[Long]))) {
+    } else if (chunks.forall(c =>
+      c.isInstanceOf[Chunk.Longs] ||
+      (c.isInstanceOf[NonEmptyChunk.Wrapped[_]] && c.asInstanceOf[NonEmptyChunk.Wrapped[_]].underlying.isInstanceOf[Chunk.Longs]) ||
+      c.iterator.forall(_.isInstanceOf[Long]))) {
       concatLongs(chunks.asInstanceOf[Seq[Chunk[Long]]]).asInstanceOf[Chunk[A]]
     } else {
       Chunk.indexedSeq(chunks.foldLeft(Vector.empty[A])(_ ++ _.toVector))
     }
   }
 
+  /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
   def concatBooleans(chunks: Seq[Chunk[Boolean]]): Chunk[Boolean] = {
     if (chunks.isEmpty) Chunk.empty
     else {
@@ -209,6 +321,7 @@ object Chunk {
     }
   }
 
+  /** Concatenates the specified sequence of byte chunks in to a single chunk. */
   def concatBytes(chunks: Seq[Chunk[Byte]]): Chunk[Byte] = {
     if (chunks.isEmpty) Chunk.empty
     else {
@@ -225,6 +338,7 @@ object Chunk {
     }
   }
 
+  /** Concatenates the specified sequence of double chunks in to a single chunk. */
   def concatDoubles(chunks: Seq[Chunk[Double]]): Chunk[Double] = {
     if (chunks.isEmpty) Chunk.empty
     else {
@@ -241,6 +355,7 @@ object Chunk {
     }
   }
 
+  /** Concatenates the specified sequence of long chunks in to a single chunk. */
   def concatLongs(chunks: Seq[Chunk[Long]]): Chunk[Long] = {
     if (chunks.isEmpty) Chunk.empty
     else {
@@ -333,6 +448,7 @@ object Chunk {
   // not human readable and we want to be able to use these type names in pattern
   // matching, e.g. `h.receive { case (bits: Booleans) #: h => /* do stuff unboxed */ } `
 
+  /** Specialized chunk supporting unboxed operations on booleans. */
   final class Booleans private[Chunk](val values: Array[Boolean], val offset: Int, sz: Int) extends Chunk[Boolean] {
   self =>
     val size = sz min (values.length - offset)
@@ -440,6 +556,8 @@ object Chunk {
       indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
     }
   }
+
+  /** Specialized chunk supporting unboxed operations on bytes. */
   final class Bytes private[Chunk](val values: Array[Byte], val offset: Int, sz: Int) extends Chunk[Byte] {
   self =>
     val size = sz min (values.length - offset)
@@ -548,6 +666,8 @@ object Chunk {
       indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
     }
   }
+
+  /** Specialized chunk supporting unboxed operations on longs. */
   final class Longs private[Chunk](val values: Array[Long], val offset: Int, sz: Int) extends Chunk[Long] {
   self =>
     val size = sz min (values.length - offset)
@@ -655,6 +775,8 @@ object Chunk {
       indexedSeq(back.toIndexedSeq.asInstanceOf[IndexedSeq[B]])
     }
   }
+
+  /** Specialized chunk supporting unboxed operations on doubles. */
   final class Doubles private[Chunk](val values: Array[Double], val offset: Int, sz: Int) extends Chunk[Double] {
   self =>
     val size = sz min (values.length - offset)
@@ -769,16 +891,22 @@ object Chunk {
  */
 sealed trait NonEmptyChunk[+A] extends Chunk[A] {
 
+  /** Like [[uncons]] but returns the head and tail directly instead of being wrapped in an `Option`. */
   def unconsNonEmpty: (A, Chunk[A])
 
+  /** Returns the first element in the chunk. */
   def head: A = unconsNonEmpty._1
+
+  /** Returns the all but the first element of the chunk. */
   def tail: Chunk[A] = unconsNonEmpty._2
 
+  /** Like `foldLeft` but uses the first element of the chunk as the starting value. */
   def reduceLeft[A2 >: A](f: (A2, A) => A2): A2 = {
     val (hd, tl) = unconsNonEmpty
     tl.foldLeft(hd: A2)(f)
   }
 
+  /** Like `foldRight` but uses the first element of the chunk as the starting value. */
   def reduceRight[A2 >: A](f: (A, A2) => A2): A2 = {
     if (tail.isEmpty) head
     else {
@@ -803,13 +931,17 @@ sealed trait NonEmptyChunk[+A] extends Chunk[A] {
 
 object NonEmptyChunk {
 
+  /** Constructs a `NonEmptyChunk` from the specified head and tail values. */
   def apply[A](hd: A, tl: Chunk[A]): NonEmptyChunk[A] =
     fromChunkUnsafe(Chunk.concat(List(singleton(hd), tl)))
 
+  /** Supports pattern matching on a non-empty chunk. */
   def unapply[A](c: NonEmptyChunk[A]): Some[(A, Chunk[A])] = Some(c.unconsNonEmpty)
 
+  /** Constructs a `NonEmptyChunk` from a single element. */
   def singleton[A](a: A): NonEmptyChunk[A] = Chunk.singleton(a)
 
+  /** Constructs a `NonEmptyChunk` from the specified, potentially empty, chunk. */
   def fromChunk[A](c: Chunk[A]): Option[NonEmptyChunk[A]] = c match {
     case c: NonEmptyChunk[A] => Some(c)
     case c =>
@@ -819,20 +951,22 @@ object NonEmptyChunk {
 
   private[fs2] def fromChunkUnsafe[A](c: Chunk[A]): NonEmptyChunk[A] = c match {
     case c: NonEmptyChunk[A] => c
-    case _ => new NonEmptyChunk[A] {
-      def unconsNonEmpty: (A, Chunk[A]) = c.uncons.get
-      def apply(i: Int): A = c(i)
-      def copyToArray[B >: A](xs: Array[B], start: Int): Unit = c.copyToArray(xs, start)
-      def drop(n: Int): Chunk[A] = c.drop(n)
-      def filter(f: A => Boolean): Chunk[A] = c.filter(f)
-      def foldLeft[B](z: B)(f: (B, A) => B): B = c.foldLeft(z)(f)
-      def foldRight[B](z: B)(f: (A, B) => B): B = c.foldRight(z)(f)
-      def size: Int = c.size
-      def take(n: Int): Chunk[A] = c.take(n)
-      override def toBooleans[B >: A](implicit ev: B =:= Boolean): Chunk.Booleans = c.toBooleans(ev)
-      override def toBytes[B >: A](implicit ev: B =:= Byte): Chunk.Bytes = c.toBytes(ev)
-      override def toLongs[B >: A](implicit ev: B =:= Long): Chunk.Longs = c.toLongs(ev)
-      override def toDoubles[B >: A](implicit ev: B =:= Double): Chunk.Doubles = c.toDoubles(ev)
-    }
+    case _ => new Wrapped(c)
+  }
+
+  private[fs2] final class Wrapped[A](val underlying: Chunk[A]) extends NonEmptyChunk[A] {
+    def unconsNonEmpty: (A, Chunk[A]) = underlying.uncons.get
+    def apply(i: Int): A = underlying(i)
+    def copyToArray[B >: A](xs: Array[B], start: Int): Unit = underlying.copyToArray(xs, start)
+    def drop(n: Int): Chunk[A] = underlying.drop(n)
+    def filter(f: A => Boolean): Chunk[A] = underlying.filter(f)
+    def foldLeft[B](z: B)(f: (B, A) => B): B = underlying.foldLeft(z)(f)
+    def foldRight[B](z: B)(f: (A, B) => B): B = underlying.foldRight(z)(f)
+    def size: Int = underlying.size
+    def take(n: Int): Chunk[A] = underlying.take(n)
+    override def toBooleans[B >: A](implicit ev: B =:= Boolean): Chunk.Booleans = underlying.toBooleans(ev)
+    override def toBytes[B >: A](implicit ev: B =:= Byte): Chunk.Bytes = underlying.toBytes(ev)
+    override def toLongs[B >: A](implicit ev: B =:= Long): Chunk.Longs = underlying.toLongs(ev)
+    override def toDoubles[B >: A](implicit ev: B =:= Double): Chunk.Doubles = underlying.toDoubles(ev)
   }
 }
