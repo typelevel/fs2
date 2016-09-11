@@ -4,6 +4,8 @@ import fs2.util.{Async,RealSupertype,Sub1}
 
 /**
  * A currently open `Stream[F,A]` which allows chunks to be pulled or pushed.
+ *
+ * To get a handle from a stream, use [[Stream.open]].
  */
 final class Handle[+F[_],+A] private[fs2] (
   private[fs2] val buffer: List[NonEmptyChunk[A]],
@@ -18,28 +20,41 @@ final class Handle[+F[_],+A] private[fs2] (
     go(buffer)
   }
 
+  /** Applies `f` to each element from the source stream, yielding a new handle with a potentially different element type.*/
   def map[A2](f: A => A2): Handle[F,A2] = new Handle(buffer.map(_ map f), underlying map f)
 
+  /** Returns a new handle with the specified chunk prepended to elements from the source stream. */
   def push[A2>:A](c: Chunk[A2])(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
     if (c.isEmpty) this
     else new Handle(NonEmptyChunk.fromChunkUnsafe(c) :: buffer, underlying)
 
+  /** Like [[push]] but for a single element instead of a chunk. */
   def push1[A2>:A](a: A2)(implicit A2: RealSupertype[A,A2]): Handle[F,A2] =
     push(Chunk.singleton(a))
 
+  /**
+   * Waits for a chunk of elements to be available in the source stream.
+   * The chunk of elements along with a new handle are provided as the resource of the returned pull.
+   * The new handle can be used for subsequent operations, like awaiting again.
+   */
   def await: Pull[F,Nothing,(NonEmptyChunk[A],Handle[F,A])] =
     buffer match {
       case Nil => underlying.step
       case hb :: tb => Pull.pure((hb, new Handle(tb, underlying)))
     }
 
-  /** Awaits a single element from this `Handle`. */
+  /** Like [[await]] but waits for a single element instead of an entire chunk. */
   def await1: Pull[F,Nothing,(A,Handle[F,A])] =
     await flatMap { case (hd, tl) =>
       val (h, hs) = hd.unconsNonEmpty
       Pull.pure((h, tl push hs))
     }
 
+  /**
+   * Asynchronously awaits for a chunk of elements to be available in the source stream.
+   * An async step is returned as the resource of the returned pull. The async step is a [[ScopedFuture]], which can be raced
+   * with another scoped future or forced via [[ScopedFuture#pull]].
+   */
   def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]] = {
     val h = Sub1.substHandle(this)(S)
     h.buffer match {
@@ -48,6 +63,7 @@ final class Handle[+F[_],+A] private[fs2] (
     }
   }
 
+  /** Like [[awaitAsync]] but waits for a single element instead of an entire chunk. */
   def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep1[F2,A2]] = {
     awaitAsync map { _ map { _.map { case (hd, tl) =>
       val (h, hs) = hd.unconsNonEmpty
@@ -55,7 +71,7 @@ final class Handle[+F[_],+A] private[fs2] (
     }}}
   }
 
-  /** Like `await`, but returns a `NonEmptyChunk` of no more than `maxChunkSize` elements. */
+  /** Like [[await]], but returns a `NonEmptyChunk` of no more than `maxChunkSize` elements. */
   def awaitLimit(maxChunkSize: Int): Pull[F,Nothing,(NonEmptyChunk[A],Handle[F,A])] = {
     require(maxChunkSize > 0)
     await.map { case s @ (hd, tl) =>
@@ -177,14 +193,16 @@ final class Handle[+F[_],+A] private[fs2] (
     go(None)(this)
   }
 
+  /** Like [[await]] but does not consume the chunk (i.e., the chunk is pushed back). */
   def peek: Pull[F, Nothing, (Chunk[A], Handle[F,A])] =
     await flatMap { case (hd, tl) => Pull.pure((hd, tl.push(hd))) }
 
+  /** Like [[await1]] but does not consume the element (i.e., the element is pushed back). */
   def peek1: Pull[F, Nothing, (A, Handle[F,A])] =
     await1 flatMap { case (hd, tl) => Pull.pure((hd, tl.push1(hd))) }
 
   /**
-   * Like `[[await]]`, but runs the `await` asynchronously. A `flatMap` into
+   * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
    * inner `Pull` logically blocks until this await completes.
    */
   def prefetch[F2[_]](implicit sub: Sub1[F,F2], F: Async[F2]): Pull[F2,Nothing,Pull[F2,Nothing,Handle[F2,A]]] =
@@ -237,12 +255,14 @@ final class Handle[+F[_],+A] private[fs2] (
       }
     }
 
+  /** Converts this handle to a handle of the specified subtype. */
   implicit def covary[F2[_]](implicit S: Sub1[F,F2]): Handle[F2,A] = Sub1.substHandle(this)
 
   override def toString = s"Handle($buffer, $underlying)"
 }
 
 object Handle {
+  /** Empty handle. */
   def empty[F[_],A]: Handle[F,A] = new Handle(Nil, Stream.empty)
 
   implicit class HandleInvariantEffectOps[F[_],+A](private val self: Handle[F,A]) extends AnyVal {
@@ -262,6 +282,9 @@ object Handle {
       self.await1Option.flatMap(f)
   }
 
+  /** Result of asynchronously awaiting a chunk from a handle. */
   type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
+
+  /** Result of asynchronously awaiting an element from a handle. */
   type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Option[A], Handle[F,A])]]
 }

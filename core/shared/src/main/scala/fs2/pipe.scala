@@ -504,7 +504,7 @@ object pipe {
 
   // stepping a stream
 
-  /** Converts a pure pipe to an arbitrary effect. */
+  /** Converts a pure pipe to an effectful pipe of the specified type. */
   def covary[F[_],I,O](s: Pipe[Pure,I,O]): Pipe[F,I,O] =
     s.asInstanceOf[Pipe[F,I,O]]
 

@@ -83,6 +83,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def cons1[O2>:O](a: O2)(implicit T: RealSupertype[O,O2]): Stream[F,O2] =
     cons(Chunk.singleton(a))
 
+  /** Converts this stream to a stream of the specified subtype. */
   def covary[F2[_]](implicit S: Sub1[F,F2]): Stream[F2,O] =
     Sub1.substStream(self)
 

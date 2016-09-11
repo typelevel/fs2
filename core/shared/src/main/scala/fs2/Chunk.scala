@@ -86,7 +86,7 @@ trait Chunk[+A] { self =>
     Chunk.indexedSeq(buf)
   }
 
-  /** Maps each element of this chunk using the supplied `f`. */
+  /** Applies `f` to each element of this chunk, resulting in a new chunk of the same size. */
   def map[B](f: A => B): Chunk[B] = {
     val buf = new collection.mutable.ArrayBuffer[B](size)
     iterator.map(f).copyToBuffer(buf)

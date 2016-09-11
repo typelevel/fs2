@@ -8,6 +8,7 @@ object pipe2 {
 
   // NB: Pure instances
 
+  /** Converts a pure `Pipe2` to an effectful `Pipe2` of the specified type. */
   def covary[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] =
     p.asInstanceOf[Pipe2[F,I,I2,O]]
 
