@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Async,Attempt,Catchable,Free,Lub1,Monad,RealSupertype,Sub1,~>}
+import fs2.util.{Applicative,Async,Attempt,Catchable,Free,Lub1,RealSupertype,Sub1,~>}
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -204,7 +204,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def onError[G[_],Lub[_],O2>:O](f: Throwable => Stream[G,O2])(implicit R: RealSupertype[O,O2], L: Lub1[F,G,Lub]): Stream[Lub,O2] =
     Stream.mk { (Sub1.substStream(self)(L.subF): Stream[Lub,O2]).get.onError { e => Sub1.substStream(f(e))(L.subG).get } }
 
-  def onFinalize[F2[_]](f: F2[Unit])(implicit S: Sub1[F,F2], F2: Monad[F2]): Stream[F2,O] =
+  def onFinalize[F2[_]](f: F2[Unit])(implicit S: Sub1[F,F2], F2: Applicative[F2]): Stream[F2,O] =
     Stream.bracket(F2.pure(()))(_ => Sub1.substStream(self), _ => f)
 
   def open: Pull[F, Nothing, Handle[F,O]] = Pull.pure(new Handle(List(), self))
