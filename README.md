@@ -11,8 +11,8 @@ Quick links:
 * [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
 * [Docs and getting help](#docs)
 
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-M5/0.9.0/fs2-io_2.12.0-M5-0.9.0-javadoc.jar/!/index.html#package
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-M5/0.9.0/fs2-core_2.12.0-M5-0.9.0-javadoc.jar/!/index.html#package
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-RC1/0.9.0/fs2-io_2.12.0-RC1-0.9.0-javadoc.jar/!/index.html#package
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-RC1/0.9.0/fs2-core_2.12.0-RC1-0.9.0-javadoc.jar/!/index.html#package
 
 ### <a id="about"></a>About the library ###
 
