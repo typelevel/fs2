@@ -3,9 +3,9 @@ Upgrading from 0.8 or earlier? A lot has changed, and this document is intended 
 ## Overview of changes
 
 * Library now has zero third-party dependencies; instead there are bindings to both scalaz and cats as separate libraries, see [fs2-scalaz](https://github.com/functional-streams-for-scala/fs2-scalaz) and [f2-cats](https://github.com/functional-streams-for-scala/fs2-cats)
+* Much more expressive stream transformation primitives, including support for pushback, prefetching, arbitrary use of asynchronous steps, and the ability to transform any number of streams. This is much more flexible than the previous approach of baking in support for a few fixed 'shapes' like `Process1`, `Tee`, and `Wye`.
 * Chunking now baked into the library along with support for working with unboxed chunks of primitives; most library operations try to preserve chunkiness whenever possible
 * Library no longer reliant on `Task` and users can bring their own effect types
-* Much more expressive stream transformation primitives, including support for pushback, prefetching, and arbitrary use of asynchronous steps
 * The async package has been generalized to work with any effect type with an [`Async` instance][async]. Added [`Semaphore`](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.11/0.9.0-RC2/fs2-core_2.11-0.9.0-RC2-javadoc.jar/!/index.html#fs2.async.mutable.Semaphore), an asynchronous semaphore, used as a concurrency primitive in various places.
 * New functionality in [`pipe`](../core/src/main/scala/fs2/pipe.scala) for forking a stream and sending output through two branches. Used to implement `observe` and `observeAsync` and some experimental combinators (`pipe.join`).
 * Library now implemented atop a small set of core primitives; there is only one stream interpreter, about 45 LOC, which does not use casts, rest of library could be implemented in 'userspace'
