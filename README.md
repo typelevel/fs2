@@ -57,21 +57,21 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-The 0.9 release is coming soon and you can start using the release candidate now. You may want to first [read the migration guide](docs/migration-guide.md) if you are upgrading from 0.8 or earlier.
+The 0.9 release is out and we recommend upgrading. You may want to first [read the migration guide](docs/migration-guide.md) if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
 
 ```
 // available for Scala 2.11.8, 2.12.0-M5
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.0-RC2"
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.0"
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.0-RC2"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.0"
 ```
 
 The fs2-core library is also supported on Scala.js:
 
 ```
 // available for Scala 2.11.8, 2.12.0-M5
-libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.0-RC2"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.0"
 ```
 
 API docs:
@@ -79,15 +79,7 @@ API docs:
 * [The core library][core-api]
 * [The `io` library][io-api], FS2 bindings for NIO-based file I/O and TCP/UDP networking
 
-The latest stable release is 0.8.4 ([source](https://github.com/functional-streams-for-scala/fs2/tree/release/0.8.4)). To get it, add the following to your SBT build:
-
-```
-// available for Scala 2.10.6, 2.11.8, 2.12.0-M5 and built against scalaz 7.1
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8.4"
-
-// available for Scala 2.10.6, 2.11.8, 2.12.0-M5 and built against scalaz 7.2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8.4a"
-```
+The previous stable release is 0.8.4 ([source](https://github.com/functional-streams-for-scala/fs2/tree/release/0.8.4)).
 
 ### Projects using FS2 ###
 
@@ -109,4 +101,4 @@ FS2 has evolved from earlier work on streaming APIs in Scala and Haskell and in 
 
 ### Presentations, Blogs, etc. ###
 
-See [https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources].
+See [Additional resources](https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources).
