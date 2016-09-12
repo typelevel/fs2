@@ -8,6 +8,7 @@ Also see the [GitHub contributor stats](https://github.com/scalaz/scalaz-stream/
 
 - Paul Chiusano ([@pchiusano](https://github.com/pchiusano)): project founder and maintainer
 - Pavel Chlupáček ([@pchlupacek](https://github.com/pchlupacek)): concurrency, original implementation of `Append` algebra
+- Gary Coady ([@fiadliel](https://github.com/fiadliel)): NIO file implementation, port of compress from scalaz-stream, other minor features
 - Alissa Pajer ([@alissapajer](https://github.com/alissapajer)): concurrency bug hunting, features, maintainance
 - Daniel Spiewak ([@djspiewak](https://github.com/djspiewak)): concurrency plumbing, bug fixes, performance and correctness obsession
   + Public key (for release signing): [3587 7FB3 2BAE 5960](https://keybase.io/djspiewak)
