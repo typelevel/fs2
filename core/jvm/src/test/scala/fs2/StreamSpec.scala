@@ -6,7 +6,7 @@ import org.scalacheck.Gen
 class StreamSpec extends Fs2Spec {
 
   "Stream" - {
-    
+
     "chunk" in forAll { (c: Vector[Int]) =>
       runLog(Stream.chunk(Chunk.seq(c))) shouldBe c
     }
@@ -87,7 +87,7 @@ class StreamSpec extends Fs2Spec {
     }
 
     "translate (2)" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.translate(UF1.id[Pure])) shouldBe runLog(s.get)
+      runLog(s.get.translate(UF1.id[Pure]).covary[Task]) shouldBe runLog(s.get)
     }
 
     "toList" in forAll { (s: PureStream[Int]) =>

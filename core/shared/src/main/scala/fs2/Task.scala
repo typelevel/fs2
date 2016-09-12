@@ -44,7 +44,7 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
     })
 
   def map[B](f: A => B): Task[B] =
-    new Task(get map { _.right.flatMap { a => Attempt(f(a)) } })
+    new Task(get map { _.flatMap { a => Attempt(f(a)) } })
 
   /** 'Catches' exceptions in the given task and returns them as values. */
   def attempt: Task[Attempt[A]] =
@@ -112,7 +112,7 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
    * a continuation is returned wrapped in a `Left`.
    * To return exceptions in an `Either`, use `unsafeAttemptRunSync()`.
    */
-  def unsafeRunSync(): Either[Callback[A] => Unit, A] = get.runSync.right.map { _ match {
+  def unsafeRunSync(): Either[Callback[A] => Unit, A] = get.runSync.map { _ match {
     case Left(e) => throw e
     case Right(a) => a
   }}
@@ -125,10 +125,10 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
    * the result is returned. If an async boundary is encountered, `None` is returned.
    * To return exceptions in an `Either`, use `unsafeAttemptValue()`.
    */
-  def unsafeValue(): Option[A] = unsafeRunSync.right.toOption
+  def unsafeValue(): Option[A] = unsafeRunSync.toOption
 
   /** Like `unsafeValue`, but returns exceptions as values. */
-  def unsafeAttemptValue(): Option[Attempt[A]] = get.runSync.right.toOption
+  def unsafeAttemptValue(): Option[Attempt[A]] = get.runSync.toOption
 
     /**
    * A `Task` which returns a `TimeoutException` after `timeout`,
@@ -138,7 +138,7 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
    * task is interrupted at a non-determinstic point in its execution.
    */
   def unsafeTimed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
-    new Task(get.timed(timeout).map(_.right.flatMap(x => x)))
+    new Task(get.timed(timeout).map(_.flatMap(x => x)))
 
   override def toString = "Task"
 
@@ -169,7 +169,7 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
 
 object Task extends TaskPlatform with TaskInstances {
 
-  type Callback[A] = Attempt[A] => Unit
+  type Callback[-A] = Attempt[A] => Unit
 
   /** A `Task` which fails with the given `Throwable`. */
   def fail(e: Throwable): Task[Nothing] = new Task(Future.now(Left(e)))
@@ -283,13 +283,13 @@ object Task extends TaskPlatform with TaskInstances {
     lazy val actor: Actor[Msg[A]] = Actor.actor[Msg[A]] {
       case Msg.Read(cb, idf) =>
         if (result eq null) waiting = waiting.updated(idf, cb)
-        else { val r = result; val id = nonce; S { cb(r.right.map((_,id))) } }
+        else { val r = result; val id = nonce; S { cb(r.map((_,id))) } }
 
       case Msg.Set(r) =>
         if (result eq null) {
           nonce += 1L
           val id = nonce
-          waiting.values.foreach(cb => S { cb(r.right.map((_,id))) })
+          waiting.values.foreach(cb => S { cb(r.map((_,id))) })
           waiting = LinkedMap.empty
         }
         result = r
@@ -297,7 +297,7 @@ object Task extends TaskPlatform with TaskInstances {
       case Msg.TrySet(id, r, cb) =>
         if (id == nonce) {
           nonce += 1L; val id2 = nonce
-          waiting.values.foreach(cb => S { cb(r.right.map((_,id2))) })
+          waiting.values.foreach(cb => S { cb(r.map((_,id2))) })
           waiting = LinkedMap.empty
           result = r
           cb(Right(true))
@@ -342,7 +342,7 @@ object Task extends TaskPlatform with TaskInstances {
       val id = new MsgId {}
       val get = getStamped(id).map(_._1)
       val cancel = Task.unforkedAsync[Unit] {
-        cb => actor ! Msg.Nevermind(id, r => cb(r.right.map(_ => ())))
+        cb => actor ! Msg.Nevermind(id, r => cb(r.map(_ => ())))
       }
       (get, cancel)
     }
