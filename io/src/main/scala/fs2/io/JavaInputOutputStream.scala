@@ -88,7 +88,7 @@ private[io] object JavaInputOutputStream {
         .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
         .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
         .run
-      )){ r => markUpstreamDone(r.left.toOption) }
+      )){ r => markUpstreamDone(r.swap.toOption) }
     }).map(_ => ())
 
     /**
@@ -274,4 +274,3 @@ private[io] object JavaInputOutputStream {
   }
 
 }
-

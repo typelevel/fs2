@@ -17,7 +17,7 @@ lazy val contributors = Seq(
 lazy val commonSettings = Seq(
   organization := "co.fs2",
   scalaVersion := "2.11.8",
-  crossScalaVersions := Seq("2.11.8", "2.12.0-M5"),
+  crossScalaVersions := Seq("2.11.8", "2.12.0-RC1"),
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -35,7 +35,7 @@ lazy val commonSettings = Seq(
   scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console)),
   libraryDependencies ++= Seq(
     "org.scalatest" %%% "scalatest" % "3.0.0" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.13.1" % "test"
+    "org.scalacheck" %%% "scalacheck" % "1.13.2" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
@@ -176,7 +176,15 @@ lazy val benchmark = project.in(file("benchmark")).
   )
   .settings(
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
+    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _),
+    // Work-around for issue with sbt-jmh from https://github.com/ktoso/sbt-jmh/issues/76
+    libraryDependencies := {
+      libraryDependencies.value.map {
+        case x if x.name == "sbt-jmh-extras" =>
+          x.cross(CrossVersion.binaryMapped(_ => "2.10"))
+        case x => x
+      }
+    }
   )
   .enablePlugins(JmhPlugin)
   .dependsOn(io, benchmarkMacros)
