@@ -2,7 +2,7 @@ Upgrading from 0.8 or earlier? A lot has changed, and this document is intended 
 
 ## Overview of changes
 
-* Library now has zero third-party dependencies; instead there are bindings to both scalaz and cats as separate libraries, see https://github.com/functional-streams-for-scala/fs2-scalaz and https://github.com/functional-streams-for-scala/fs2-cats
+* Library now has zero third-party dependencies; instead there are bindings to both scalaz and cats as separate libraries, see [fs2-scalaz](https://github.com/functional-streams-for-scala/fs2-scalaz) and [f2-cats](https://github.com/functional-streams-for-scala/fs2-cats)
 * Chunking now baked into the library along with support for working with unboxed chunks of primitives; most library operations try to preserve chunkiness whenever possible
 * Library no longer reliant on `Task` and users can bring their own effect types
 * Much more expressive stream transformation primitives, including support for pushback, prefetching, and arbitrary use of asynchronous steps
