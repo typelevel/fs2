@@ -4,6 +4,7 @@ package file
 
 import java.nio.channels._
 import java.nio.file._
+import java.util.concurrent.ExecutorService
 
 import fs2.util.{Async,Suspendable}
 import fs2.util.syntax._
@@ -56,8 +57,10 @@ object pulls {
    *
    * The `Pull` closes the acquired `java.nio.channels.AsynchronousFileChannel` when it is done.
    */
-  def fromPathAsync[F[_]: Async](path: Path, flags: Seq[OpenOption])(implicit F: Suspendable[F]): Pull[F, Nothing, FileHandle[F]] =
-    fromAsynchronousFileChannel(F.delay(AsynchronousFileChannel.open(path, flags: _*)))
+  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption], executorService: Option[ExecutorService] = None)(implicit F: Async[F]): Pull[F, Nothing, FileHandle[F]] = {
+    import collection.JavaConverters._
+    fromAsynchronousFileChannel(F.delay(AsynchronousFileChannel.open(path, flags.toSet.asJava, executorService.orNull)))
+  }
 
   /**
    * Given a `java.nio.channels.FileChannel`, will create a `Pull` which allows synchronous operations against the underlying file.
