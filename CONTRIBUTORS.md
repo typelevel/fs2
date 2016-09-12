@@ -4,7 +4,7 @@ This project is the work of numerous individuals. Names are listed below, ordere
 
 Each individual maintains their own description, and if you don't see your name listed here, please do open a PR!
 
-Also see the [GitHub contributor stats](https://github.com/scalaz/scalaz-stream/graphs/contributors).
+Also see the [GitHub contributor stats](https://github.com/functional-streams-for-scala/fs2/graphs/contributors).
 
 - Paul Chiusano ([@pchiusano](https://github.com/pchiusano)): project founder and maintainer
 - Pavel Chlupáček ([@pchlupacek](https://github.com/pchlupacek)): concurrency, original implementation of `Append` algebra
