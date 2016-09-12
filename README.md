@@ -9,7 +9,7 @@ Quick links:
 * [About the library](#about)
 * [How to get latest version](#getit)
 * [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
-* [Docs and getting help](#docs), 
+* [Docs and getting help](#docs)
 
 [io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-M5/0.9.0-RC2/fs2-io_2.12.0-M5-0.9.0-RC2-javadoc.jar/!/index.html#package
 [core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-M5/0.9.0-RC2/fs2-core_2.12.0-M5-0.9.0-RC2-javadoc.jar/!/index.html#package
