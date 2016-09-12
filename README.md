@@ -85,9 +85,10 @@ libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8.4a"
 
 If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it here.
 
-* [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using scalaz-stream
-* [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using scalaz-stream and [scodec](https://github.com/scodec/scodec)
-* [streamz](https://github.com/krasserm/streamz): A library that allows a `Process` to consume from and produce to [Apache Camel](http://camel.apache.org/) endpoints, [Akka Persistence](http://doc.akka.io/docs/akka/2.3.5/scala/persistence.html) journals and snapshot stores and [Akka Stream](http://akka.io/docs/#akka-streams-and-http) flows (reactive streams) with full back-pressure support.
+* [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
+* [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
+* [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
+* [streamz](https://github.com/krasserm/streamz): A library that allows a `Stream` to consume from and produce to [Apache Camel](http://camel.apache.org/) endpoints, [Akka Persistence](http://doc.akka.io/docs/akka/2.3.5/scala/persistence.html) journals and snapshot stores and [Akka Stream](http://akka.io/docs/#akka-streams-and-http) flows (reactive streams) with full back-pressure support.
 
 ### Related projects ###
 
@@ -97,3 +98,7 @@ FS2 has evolved from earlier work on streaming APIs in Scala and Haskell and in 
 * [The FP in Scala stream processing library](https://github.com/fpinscala/fpinscala/blob/master/answers/src/main/scala/fpinscala/streamingio/StreamingIO.scala) developed for the book [FP in Scala](https://www.manning.com/books/functional-programming-in-scala)
 * [Reflex](https://hackage.haskell.org/package/reflex), an FRP library in Haskell, by Ryan Trinkle
 * There are various other iteratee-style libraries for doing compositional, streaming I/O in Scala, notably the [`scalaz/iteratee`](https://github.com/scalaz/scalaz/tree/scalaz-seven/iteratee) package and [iteratees in Play](https://www.playframework.com/documentation/2.0/Iteratees).
+
+### Presentations, Blogs, etc. ###
+
+See [https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources].
