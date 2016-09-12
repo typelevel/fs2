@@ -3,6 +3,7 @@ package io
 
 import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption}
+import java.util.concurrent.ExecutorService
 
 import fs2.util.{Async, Suspendable}
 
@@ -34,8 +35,8 @@ package object file {
   /**
    * Reads all data asynchronously from the file at the specified `java.nio.file.Path`.
    */
-  def readAllAsync[F[_]](path: Path, chunkSize: Int)(implicit F: Async[F]): Stream[F, Byte] =
-    pulls.fromPathAsync(path, List(StandardOpenOption.READ)).flatMap(pulls.readAllFromFileHandle(chunkSize)).close
+  def readAllAsync[F[_]](path: Path, chunkSize: Int, executorService: Option[ExecutorService] = None)(implicit F: Async[F]): Stream[F, Byte] =
+    pulls.fromPathAsync(path, List(StandardOpenOption.READ), executorService).flatMap(pulls.readAllFromFileHandle(chunkSize)).close
 
   /**
    * Writes all data synchronously to the file at the specified `java.nio.file.Path`.
@@ -54,10 +55,10 @@ package object file {
    *
    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
    */
-  def writeAllAsync[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE))(implicit F: Async[F]): Sink[F, Byte] =
+  def writeAllAsync[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE), executorService: Option[ExecutorService] = None)(implicit F: Async[F]): Sink[F, Byte] =
     s => (for {
       in <- s.open
-      out <- pulls.fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList)
+      out <- pulls.fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService)
       _ <- _writeAll0(in, out, 0)
     } yield ()).close
 
