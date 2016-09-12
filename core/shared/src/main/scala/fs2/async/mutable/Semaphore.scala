@@ -14,7 +14,7 @@ trait Semaphore[F[_]] {
   def available: F[Long]
 
   /**
-   * Decrement the number of available permits by `n`, blocking until `n`
+   * Decrements the number of available permits by `n`, blocking until `n`
    * are available. Error if `n < 0`. The blocking is semantic; we do not
    * literally block a thread waiting for permits to become available.
    * Note that decrements are satisfied in strict FIFO order, so given
@@ -23,19 +23,20 @@ trait Semaphore[F[_]] {
    */
   def decrementBy(n: Long): F[Unit]
 
-  /** Acquire `n` permits now and return `true`, or return `false` immediately. Error if `n < 0`. */
+  /** Acquires `n` permits now and returns `true`, or returns `false` immediately. Error if `n < 0`. */
   def tryDecrementBy(n: Long): F[Boolean]
-  /** Just calls `[[tryDecrementBy]](1)`. */
+
+  /** Alias for `[[tryDecrementBy]](1)`. */
   def tryDecrement: F[Boolean] = tryDecrementBy(1)
 
   /**
-   * Increment the number of available permits by `n`. Error if `n < 0`.
+   * Increments the number of available permits by `n`. Error if `n < 0`.
    * This will have the effect of unblocking `n` acquisitions.
    */
   def incrementBy(n: Long): F[Unit]
 
   /**
-   * Obtain a snapshot of the current count. May be out of date the instant
+   * Obtains a snapshot of the current count. May be out of date the instant
    * after it is retrieved. Use `[[tryDecrement]]` or `[[tryDecrementBy]]`
    * if you wish to attempt a decrement and return immediately if the
    * current count is not high enough to satisfy the request.
@@ -43,21 +44,22 @@ trait Semaphore[F[_]] {
   def count: F[Long]
 
   /**
-   * Reset the count of this semaphore back to zero, and return the previous count.
+   * Resets the count of this semaphore back to zero, and returns the previous count.
    * Throws an `IllegalArgumentException` if count is below zero (due to pending
    * decrements).
    */
   def clear: F[Long]
 
-  /** Decrement the number of permits by 1. Just calls `[[decrementBy]](1)`. */
+  /** Decrements the number of permits by 1. Alias for `[[decrementBy]](1)`. */
   final def decrement: F[Unit] = decrementBy(1)
-  /** Increment the number of permits by 1. Just calls `[[incrementBy]](1)`. */
+
+  /** Increments the number of permits by 1. Alias for `[[incrementBy]](1)`. */
   final def increment: F[Unit] = incrementBy(1)
 }
 
 object Semaphore {
 
-  /** Create a new `Semaphore`, initialized with `n` available permits. */
+  /** Creates a new `Semaphore`, initialized with `n` available permits. */
   def apply[F[_]](n: Long)(implicit F: Async[F]): F[Semaphore[F]] = {
     def ensureNonneg(n: Long) = assert(n >= 0, s"n must be nonnegative, was: $n ")
 
@@ -141,6 +143,6 @@ object Semaphore {
       }
   }}}
 
-  /** Create a `Semaphore` with 0 initial permits. */
+  /** Creates a `Semaphore` with 0 initial permits. */
   def empty[F[_]:Async]: F[Semaphore[F]] = apply(0)
 }

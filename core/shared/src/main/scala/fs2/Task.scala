@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 import scala.concurrent.duration._
 
 /**
- * `Task` is a trampolined computation producing an `A` that may
+ * Trampolined computation producing an `A` that may
  * include asynchronous steps. Arbitrary monadic expressions involving
  * `map` and `flatMap` are guaranteed to use constant stack space.
  * In addition, using `Task.async`, one may construct a `Task` from

@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Async,Attempt,Catchable,Free,Lub1,Monad,RealSupertype,Sub1,~>}
+import fs2.util.{Applicative,Async,Attempt,Catchable,Free,Lub1,RealSupertype,Sub1,~>}
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -83,6 +83,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def cons1[O2>:O](a: O2)(implicit T: RealSupertype[O,O2]): Stream[F,O2] =
     cons(Chunk.singleton(a))
 
+  /** Converts this stream to a stream of the specified subtype. */
   def covary[F2[_]](implicit S: Sub1[F,F2]): Stream[F2,O] =
     Sub1.substStream(self)
 
@@ -195,15 +196,15 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
   def observe[F2[_],O2>:O](sink: Sink[F2,O2])(implicit F: Async[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
-    async.channel.observe(Sub1.substStream(self)(S))(sink)
+    pipe.observe(Sub1.substStream(self)(S))(sink)
 
   def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Async[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
-    async.channel.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
+    pipe.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
 
   def onError[G[_],Lub[_],O2>:O](f: Throwable => Stream[G,O2])(implicit R: RealSupertype[O,O2], L: Lub1[F,G,Lub]): Stream[Lub,O2] =
     Stream.mk { (Sub1.substStream(self)(L.subF): Stream[Lub,O2]).get.onError { e => Sub1.substStream(f(e))(L.subG).get } }
 
-  def onFinalize[F2[_]](f: F2[Unit])(implicit S: Sub1[F,F2], F2: Monad[F2]): Stream[F2,O] =
+  def onFinalize[F2[_]](f: F2[Unit])(implicit S: Sub1[F,F2], F2: Applicative[F2]): Stream[F2,O] =
     Stream.bracket(F2.pure(()))(_ => Sub1.substStream(self), _ => f)
 
   def open: Pull[F, Nothing, Handle[F,O]] = Pull.pure(new Handle(List(), self))

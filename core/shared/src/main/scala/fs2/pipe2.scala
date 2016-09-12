@@ -8,6 +8,7 @@ object pipe2 {
 
   // NB: Pure instances
 
+  /** Converts a pure `Pipe2` to an effectful `Pipe2` of the specified type. */
   def covary[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] =
     p.asInstanceOf[Pipe2[F,I,I2,O]]
 
@@ -62,6 +63,11 @@ object pipe2 {
       _.pull2(_)(goB)
   }
 
+  /**
+   * Determinsitically zips elements with the specified function, terminating
+   * when the ends of both branches are reached naturally, padding the left
+   * branch with `pad1` and padding the right branch with `pad2` as necessary.
+   */
   def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): Pipe2[F,I,I2,O] = {
       def cont1(z: Either[(Chunk[I], Handle[F, I]), Handle[F, I]]): Pull[F, O, Nothing] = {
         def putLeft(c: Chunk[I]) = {
@@ -94,25 +100,37 @@ object pipe2 {
       zipWithHelper[F,I,I2,O](cont1, cont2)(f)
   }
 
-
+  /**
+   * Determinsitically zips elements using the specified function,
+   * terminating when the end of either branch is reached naturally.
+   */
   def zipWith[F[_],I,I2,O](f: (I, I2) => O) : Pipe2[F,I,I2,O] =
     zipWithHelper[F,I,I2,O](sh => Pull.done, h => Pull.done)(f)
 
+  /**
+   * Determinsitically zips elements, terminating when the ends of both branches
+   * are reached naturally, padding the left branch with `pad1` and padding the right branch
+   * with `pad2` as necessary.
+   */
   def zipAll[F[_],I,I2](pad1: I, pad2: I2): Pipe2[F,I,I2,(I,I2)] =
     zipAllWith(pad1,pad2)(Tuple2.apply)
 
+  /** Determinsitically zips elements, terminating when the end of either branch is reached naturally. */
   def zip[F[_],I,I2]: Pipe2[F,I,I2,(I,I2)] =
     zipWith(Tuple2.apply)
 
+  /** Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally. */
   def interleaveAll[F[_], O]: Pipe2[F,O,O,O] = { (s1, s2) =>
     (zipAll(None: Option[O], None: Option[O])(s1.map(Some.apply),s2.map(Some.apply))) flatMap {
       case (i1Opt,i2Opt) => Stream(i1Opt.toSeq :_*) ++ Stream(i2Opt.toSeq :_*)
     }
   }
 
+  /** Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally. */
   def interleave[F[_], O]: Pipe2[F,O,O,O] =
     zip(_,_) flatMap { case (i1,i2) => Stream(i1,i2) }
 
+  /** Creates a [[Stepper]], which allows incrementally stepping a pure `Pipe2`. */
   def stepper[I,I2,O](p: Pipe2[Pure,I,I2,O]): Stepper[I,I2,O] = {
     type Read[+R] = Either[Option[Chunk[I]] => R, Option[Chunk[I2]] => R]
     def readFunctor: Functor[Read] = new Functor[Read] {
@@ -155,6 +173,12 @@ object pipe2 {
     go(stepf(new Handle[Read,O](List(), outputs)))
   }
 
+  /**
+   * Allows stepping of a pure pipe. Each invocation of [[step]] results in
+   * a value of the [[Stepper.Step]] algebra, indicating that the pipe is either done, it
+   * failed with an exception, it emitted a chunk of output, or it is awaiting input
+   * from either the left or right branch.
+   */
   sealed trait Stepper[-I,-I2,+O] {
     import Stepper._
     @annotation.tailrec
@@ -167,11 +191,17 @@ object pipe2 {
   object Stepper {
     private[fs2] final case class Suspend[I,I2,O](force: () => Stepper[I,I2,O]) extends Stepper[I,I2,O]
 
+    /** Algebra describing the result of stepping a pure `Pipe2`. */
     sealed trait Step[-I,-I2,+O] extends Stepper[I,I2,O]
+    /** Pipe indicated it is done. */
     final case object Done extends Step[Any,Any,Nothing]
+    /** Pipe failed with the specified exception. */
     final case class Fail(err: Throwable) extends Step[Any,Any,Nothing]
+    /** Pipe emitted a chunk of elements. */
     final case class Emits[I,I2,O](chunk: Chunk[O], next: Stepper[I,I2,O]) extends Step[I,I2,O]
+    /** Pipe is awaiting input from the left. */
     final case class AwaitL[I,I2,O](receive: Option[Chunk[I]] => Stepper[I,I2,O]) extends Step[I,I2,O]
+    /** Pipe is awaiting input from the right. */
     final case class AwaitR[I,I2,O](receive: Option[Chunk[I2]] => Stepper[I,I2,O]) extends Step[I,I2,O]
   }
 
@@ -206,7 +236,7 @@ object pipe2 {
       .collect { case Right(Some(i)) => i }
 
   /**
-   * Interleave the two inputs nondeterministically. The output stream
+   * Interleaves the two inputs nondeterministically. The output stream
    * halts after BOTH `s1` and `s2` terminate normally, or in the event
    * of an uncaught failure on either `s1` or `s2`. Has the property that
    * `merge(Stream.empty, s) == s` and `merge(fail(e), s)` will

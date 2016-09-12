@@ -1,6 +1,8 @@
 package fs2
 
+import fs2.async.mutable.Queue
 import fs2.util.{Async,Attempt,Free,Functor,Sub1}
+import fs2.util.syntax._
 
 /** Generic implementations of common pipes. */
 object pipe {
@@ -502,11 +504,11 @@ object pipe {
   def zipWithScan1[F[_],I,S](z: S)(f: (S, I) => S): Pipe[F,I,(I,S)] =
     _.mapAccumulate(z) { (s,i) => val s2 = f(s,i); (s2, (i,s2)) }.map(_._2)
 
-  // stepping a stream
-
-  /** Converts a pure pipe to an arbitrary effect. */
+  /** Converts a pure pipe to an effectful pipe of the specified type. */
   def covary[F[_],I,O](s: Pipe[Pure,I,O]): Pipe[F,I,O] =
     s.asInstanceOf[Pipe[F,I,O]]
+
+  // Combinators for working with pipes
 
   /** Creates a [[Stepper]], which allows incrementally stepping a pure pipe. */
   def stepper[I,O](s: Pipe[Pure,I,O]): Stepper[I,O] = {
@@ -568,4 +570,94 @@ object pipe {
     /** Pipe is awaiting input. */
     final case class Await[A,B](receive: Option[Chunk[A]] => Stepper[A,B]) extends Step[A,B]
   }
+
+  /**
+   * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
+   * Implemented by enqueueing elements as they are seen by `f` onto a `Queue` used by the `g` branch.
+   * USE EXTREME CARE WHEN USING THIS FUNCTION. Deadlocks are possible if `combine` pulls from the `g`
+   * branch synchronously before the queue has been populated by the `f` branch.
+   *
+   * The `combine` function receives an `F[Int]` effect which evaluates to the current size of the
+   * `g`-branch's queue.
+   *
+   * When possible, use one of the safe combinators like `[[observe]]`, which are built using this function,
+   * in preference to using this function directly.
+   */
+  def diamond[F[_],A,B,C,D](s: Stream[F,A])
+    (f: Pipe[F,A, B])
+    (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
+    (combine: Pipe2[F,B,C,D])(implicit F: Async[F]): Stream[F,D] = {
+      Stream.eval(qs) flatMap { q =>
+      Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
+      Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
+      combine(
+        f {
+          val enqueueNone: F[Unit] =
+            enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
+              if (decremented) q.enqueue1(None)
+              else F.pure(())
+            }
+          s.repeatPull {
+            _.receiveOption {
+              case Some((a, h)) =>
+                Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h)
+              case None =>
+                Pull.eval(enqueueNone) >> Pull.done
+            }
+          }.onFinalize(enqueueNone)
+        },
+        {
+          val drainQueue: Stream[F,Nothing] =
+            Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
+              if (dequeue) pipe.unNoneTerminate(q.dequeue).drain
+              else Stream.empty
+            }
+
+          (pipe.unNoneTerminate(
+            q.dequeue.
+              evalMap { c =>
+                if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
+                else F.pure(c)
+              }).
+              flatMap { c => Stream.chunk(c) }.
+              through(g) ++ drainQueue
+          ).onError { t => drainQueue ++ Stream.fail(t) }
+        }
+      )
+    }}}
+  }
+
+  /** Queue based version of [[join]] that uses the specified queue. */
+  def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Async[F]): Pipe[F,A,B] = in => {
+    for {
+      done <- Stream.eval(async.signalOf(false))
+      q <- Stream.eval(q)
+      b <- in.chunks.map(Some(_)).evalMap(q.enqueue1)
+             .drain
+             .onFinalize(q.enqueue1(None))
+             .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
+               f(pipe.unNoneTerminate(q.dequeue) flatMap Stream.chunk)
+             }
+    } yield b
+  }
+
+  /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
+  def joinAsync[F[_]:Async,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]]): Pipe[F,A,B] =
+    joinQueued[F,A,B](async.boundedQueue(maxQueued))(s)
+
+  /**
+   * Joins a stream of pipes in to a single pipe.
+   * Input is fed to the first pipe until it terminates, at which point input is
+   * fed to the second pipe, and so on.
+   */
+  def join[F[_]:Async,A,B](s: Stream[F,Pipe[F,A,B]]): Pipe[F,A,B] =
+    joinQueued[F,A,B](async.synchronousQueue)(s)
+
+  /** Synchronously send values through `sink`. */
+  def observe[F[_]:Async,A](s: Stream[F,A])(sink: Sink[F,A]): Stream[F,A] =
+    diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain))(pipe2.merge)
+
+  /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+  def observeAsync[F[_]:Async,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A]): Stream[F,A] =
+    diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(pipe2.merge)
 }

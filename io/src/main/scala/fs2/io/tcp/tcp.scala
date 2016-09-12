@@ -5,18 +5,21 @@ import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
 import fs2.util.Async
 
+/** Provides support for TCP networking. */
 package object tcp {
 
   /**
-    * Process that connects to remote server (TCP) and runs the stream `ouput`.
-    *
-    * @param to                   Address of remote server
-    * @param reuseAddress         whether address has to be reused (@see [[java.net.StandardSocketOptions.SO_REUSEADDR]])
-    * @param sendBufferSize       size of send buffer  (@see [[java.net.StandardSocketOptions.SO_SNDBUF]])
-    * @param receiveBufferSize    size of receive buffer  (@see [[java.net.StandardSocketOptions.SO_RCVBUF]])
-    * @param keepAlive            whether keep-alive on tcp is used (@see [[java.net.StandardSocketOptions.SO_KEEPALIVE]])
-    * @param noDelay              whether tcp no-delay flag is set  (@see [[java.net.StandardSocketOptions.TCP_NODELAY]])
-    */
+   * Stream that connects to the specified server and emits a single socket,
+   * allowing reads/writes via operations on the socket. The socket is closed
+   * when the outer stream terminates.
+   *
+   * @param to                   address of remote server
+   * @param reuseAddress         whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+   * @param sendBufferSize       size of send buffer  (see `java.net.StandardSocketOptions.SO_SNDBUF`)
+   * @param receiveBufferSize    size of receive buffer  (see `java.net.StandardSocketOptions.SO_RCVBUF`)
+   * @param keepAlive            whether keep-alive on tcp is used (see `java.net.StandardSocketOptions.SO_KEEPALIVE`)
+   * @param noDelay              whether tcp no-delay flag is set  (see `java.net.StandardSocketOptions.TCP_NODELAY`)
+   */
   def client[F[_]](
     to: InetSocketAddress
     , reuseAddress: Boolean = true
@@ -24,37 +27,43 @@ package object tcp {
     , receiveBufferSize: Int = 256 * 1024
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
-  )( implicit AG: AsynchronousChannelGroup, F: Async[F]): Stream[F,Socket[F]] =
+  )(implicit AG: AsynchronousChannelGroup, F: Async[F]): Stream[F,Socket[F]] =
   Socket.client(to,reuseAddress,sendBufferSize,receiveBufferSize,keepAlive,noDelay)
 
   /**
-    * Process that flatMaps to supplied address and handles incoming TCP connections
-    * using the specified handler.
-    *
-    * The outer stream returned scopes the lifetime of the server socket.
-    * When the returned process terminates, all open connections will terminate as well.
-    *
-    * The inner streams represents individual connections, handled by `handler`. If
-    * any inner stream fails, this will _NOT_ cause the server connection to fail/close/terminate.
-    *
-    * @param flatMap               address to which this process has to be bound
-    * @param maxQueued          Number of queued requests before they will become rejected by server
-    *                           Supply <= 0 if unbounded
-    * @param reuseAddress       whether address has to be reused (@see [[java.net.StandardSocketOptions.SO_REUSEADDR]])
-    * @param receiveBufferSize  size of receive buffer (@see [[java.net.StandardSocketOptions.SO_RCVBUF]])
-    */
+   * Stream that binds to the specified address and provides a connection for,
+   * represented as a [[Socket]], for each client that connects to the bound address.
+   *
+   * Returns a stream of stream of sockets.
+   *
+   * The outer stream scopes the lifetime of the server socket.
+   * When the outer stream terminates, all open connections will terminate as well.
+   * The outer stream emits an element (an inner stream) for each client connection.
+   *
+   * Each inner stream represents an individual connection, and as such, is a stream
+   * that emits a single socket. Failures that occur in an inner stream do *NOT* cause
+   * the outer stream to fail.
+   *
+   * @param bind               address to accept connections from
+   * @param maxQueued          number of queued requests before they will become rejected by server
+   *                           (supply <= 0 for unbounded)
+   * @param reuseAddress       whether address may be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
+   * @param receiveBufferSize  size of receive buffer (see `java.net.StandardSocketOptions.SO_RCVBUF`)
+   */
   def server[F[_]](
-    flatMap: InetSocketAddress
+    bind: InetSocketAddress
     , maxQueued: Int = 0
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
     implicit AG: AsynchronousChannelGroup, F: Async[F]
   ): Stream[F, Stream[F, Socket[F]]] =
-    serverWithLocalAddress(flatMap, maxQueued, reuseAddress, receiveBufferSize).collect { case Right(s) => s }
+    serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize).collect { case Right(s) => s }
 
-   /**
-    * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
-    */
+  /**
+   * Like [[server]] but provides the `InetSocketAddress` of the bound server socket before providing accepted sockets.
+   *
+   * The outer stream first emits a left value specifying the bound address followed by right values -- one per client connection.
+   */
   def serverWithLocalAddress[F[_]](
     flatMap: InetSocketAddress
     , maxQueued: Int = 0

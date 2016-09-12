@@ -2,6 +2,7 @@ package fs2
 
 import java.security.MessageDigest
 
+/** Provides various cryptographic hashes as pipes. */
 package object hash {
 
   def md2[F[_]]: Pipe[F,Byte,Byte] = digest(MessageDigest.getInstance("MD2"))

@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Async,Functor,Monad}
+import fs2.util.{Applicative,Async,Functor}
 import fs2.util.syntax._
 
 /**
@@ -22,10 +22,13 @@ sealed trait ScopedFuture[F[_],A] { self =>
       }
   }
 
+  /** Converts this future to a pull, that when flat mapped, semantically blocks on the result of the future. */
   def pull: Pull[F,Nothing,A] = Pull.eval(get) flatMap { case (a,onForce) => Pull.evalScope(onForce as a) }
 
+  /** Converts this future to a stream, that when flat mapped, semantically blocks on the result of the future. */
   def stream: Stream[F,A] = Stream.eval(get) flatMap { case (a,onForce) => Stream.evalScope(onForce as a) }
 
+  /** Returns a new future from this future by applying `f` with the completed value `A`. */
   def map[B](f: A => B)(implicit F: Async[F]): ScopedFuture[F,B] = new ScopedFuture[F,B] {
     def get = self.get.map { case (a,onForce) => (f(a), onForce) }
     def cancellableGet = self.cancellableGet.map { case (a,cancelA) =>
@@ -33,6 +36,7 @@ sealed trait ScopedFuture[F[_],A] { self =>
     }
   }
 
+  /** Returns a new future that completes with the result of the first future that completes between this future and `b`. */
   def race[B](b: ScopedFuture[F,B])(implicit F: Async[F]): ScopedFuture[F,Either[A,B]] = new ScopedFuture[F, Either[A,B]] {
     def get = cancellableGet.flatMap(_._1)
     def cancellableGet = for {
@@ -51,6 +55,7 @@ sealed trait ScopedFuture[F[_],A] { self =>
     }
   }
 
+  /** Like [[race]] but requires that the specified future has the same result type as this future. */
   def raceSame(b: ScopedFuture[F,A])(implicit F: Async[F]): ScopedFuture[F, ScopedFuture.RaceResult[A,ScopedFuture[F,A]]] =
     self.race(b).map {
       case Left(a) => ScopedFuture.RaceResult(a, b)
@@ -60,18 +65,25 @@ sealed trait ScopedFuture[F[_],A] { self =>
 
 object ScopedFuture {
 
+  /** Result of [[ScopedFuture#raceSame]]. */
   final case class RaceResult[+A,+B](winner: A, loser: B)
 
+  /** Associates a value of type `A` with the `index`-th position of vector `v`. */
   final case class Focus[A,B](get: A, index: Int, v: Vector[B]) {
+    /** Returns a new vector equal to `v` with the value at `index` replaced with `b`. */
     def replace(b: B): Vector[B] = v.patch(index, List(b), 1)
+
+    /** Returns a new vector equal to `v` with the value at `index` removed. */
     def delete: Vector[B] = v.patch(index, List(), 1)
   }
 
-  def pure[F[_],A](a: A)(implicit F: Monad[F]): ScopedFuture[F,A] = new ScopedFuture[F,A] {
+  /** Lifts a pure value in to [[ScopedFuture]]. */
+  def pure[F[_],A](a: A)(implicit F: Applicative[F]): ScopedFuture[F,A] = new ScopedFuture[F,A] {
     def get = F.pure(a -> Scope.pure(()))
     def cancellableGet = F.pure((get, F.pure(())))
   }
 
+  /** Returns a future that gets its value from reading the specified ref. */
   def readRef[F[_],A](r: Async.Ref[F,A])(implicit F: Async[F]): ScopedFuture[F,A] =
     new ScopedFuture[F,A] {
       def get = r.get.map((_,Scope.pure(())))
@@ -80,6 +92,7 @@ object ScopedFuture {
       }
     }
 
+  /** Races the specified collection of futures, returning the value of the first that completes. */
   def race[F[_]:Async,A](es: Vector[ScopedFuture[F,A]]): ScopedFuture[F,Focus[A,ScopedFuture[F,A]]] =
     indexedRace(es) map { case (a, i) => Focus(a, i, es) }
 

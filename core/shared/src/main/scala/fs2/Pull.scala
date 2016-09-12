@@ -49,6 +49,7 @@ final class Pull[+F[_],+O,+R] private (private val get: Free[AlgebraF[F,O]#f,Opt
   /** Close this `Pull`, but don't cleanup any resources acquired. */
   private[fs2] def closeAsStep: Stream[F,O] = close_(true)
 
+  /** Returns this pull's resource wrapped in `Some` or returns `None` if this pull fails due to an exhausted `Handle`. */
   def optional: Pull[F,O,Option[R]] =
     map(Some(_)).or(Pull.pure(None))
 
@@ -64,9 +65,16 @@ final class Pull[+F[_],+O,+R] private (private val get: Free[AlgebraF[F,O]#f,Opt
     }
   )
 
-  def map[R2](f: R => R2): Pull[F,O,R2] =
-    flatMap(f andThen pure)
+  /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
+  def map[R2](f: R => R2): Pull[F,O,R2] = new Pull(
+    get.map {
+      case Some(Right(r)) => Some(Right(f(r)))
+      case None => None
+      case Some(Left(err)) => Some(Left(err))
+    }
+  )
 
+  /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,O2,R2]): Pull[F2,O2,R2] = new Pull(
     get.flatMap[AlgebraF[F2,O2]#f,Option[Attempt[R2]]] {
       case Some(Right(r)) => attemptPull(f(r)).get
@@ -75,8 +83,10 @@ final class Pull[+F[_],+O,+R] private (private val get: Free[AlgebraF[F,O]#f,Opt
     }
   )
 
+  /** If `f` returns true when passed the resource of this pull, this pull is returned. Otherwise, `Pull.done` is returned. */
   def filter(f: R => Boolean): Pull[F,O,R] = withFilter(f)
 
+  /** If `f` returns true when passed the resource of this pull, this pull is returned. Otherwise, `Pull.done` is returned. */
   def withFilter(f: R => Boolean): Pull[F,O,R] =
     flatMap(r => if (f(r)) Pull.pure(r) else Pull.done)
 
@@ -87,7 +97,8 @@ final class Pull[+F[_],+O,+R] private (private val get: Free[AlgebraF[F,O]#f,Opt
   /** Definition: `p as r == p map (_ => r)`. */
   def as[R2](r: R2): Pull[F,O,R2] = map (_ => r)
 
-  def covary[F2[_]](implicit S: Sub1[F,F2]): Pull[F2,O,R] = Sub1.substPull(this)
+  /** Converts this pull to a pull of the specified subtype. */
+  implicit def covary[F2[_]](implicit S: Sub1[F,F2]): Pull[F2,O,R] = Sub1.substPull(this)
 
   override def toString = "Pull"
 }
@@ -121,6 +132,11 @@ object Pull {
       case ((token, r), _) => Pull.pure((Pull.release(List(token)), r))
     }}
 
+  /**
+   * Creates a pull that when interpreted, evalutes the specified effectful value and returns
+   * the result as the resource of the pull. If evaluating the effect results in an exception,
+   * the exception is returned as a `Left`. Otherwise, the result is returned as a `Right`.
+   */
   def attemptEval[F[_],R](f: F[R]): Pull[F,Nothing,Attempt[R]] =
     new Pull(Free.attemptEval[AlgebraF[F,Nothing]#f,R](Algebra.Eval(Scope.eval(f))).map(e => Some(Right(e))))
 
@@ -131,10 +147,15 @@ object Pull {
   def done: Pull[Nothing,Nothing,Nothing] =
     new Pull(Free.pure(None))
 
-  /** Promote an effect to a `Pull`. */
+  /**
+   * Creates a pull that when interpreted, evalutes the specified effectful value and returns
+   * the result as the resource of the pull. If evaluating the effect results in an exception,
+   * the exception fails the pull (via [[fail]]).
+   */
   def eval[F[_],R](f: F[R]): Pull[F,Nothing,R] =
     attemptEval(f) flatMap { _.fold(fail, pure) }
 
+  /** Lifts a scope in to a pull. */
   def evalScope[F[_],R](f: Scope[F,R]): Pull[F,Nothing,R] =
     new Pull(Free.eval[AlgebraF[F,Nothing]#f,R](Algebra.Eval(f)).map(e => Some(Right(e))))
 
@@ -176,7 +197,9 @@ object Pull {
   private[fs2] def release(ts: List[Token]): Pull[Nothing,Nothing,Unit] =
     outputs(Stream.mk(StreamCore.release(ts).drain))
 
+  /** Returns a pull that lazily evaluates `p`. */
   def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] = Pull.pure(()) flatMap { _ => p }
 
+  /** Converts a pure pull to an effectful pull of the specified type. */
   implicit def covaryPure[F[_],W,R](p: Pull[Pure,W,R]): Pull[F,W,R] = p.covary[F]
 }

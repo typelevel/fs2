@@ -4,7 +4,7 @@ package mutable
 
 import fs2.Stream._
 import fs2.async.immutable
-import fs2.util.{Async,Monad,Functor}
+import fs2.util.{Applicative,Async,Functor}
 import fs2.util.syntax._
 
 /** Data type of a single value of type `A` that can be read and written in the effect `F`. */
@@ -53,7 +53,7 @@ trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
 
 object Signal {
 
-  def constant[F[_],A](a: A)(implicit F: Monad[F]): immutable.Signal[F,A] = new immutable.Signal[F,A] {
+  def constant[F[_],A](a: A)(implicit F: Applicative[F]): immutable.Signal[F,A] = new immutable.Signal[F,A] {
     def get = F.pure(a)
     def continuous = Stream.constant(a)
     def discrete = Stream.empty // never changes, so never any updates
