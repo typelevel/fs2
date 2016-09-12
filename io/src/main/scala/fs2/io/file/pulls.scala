@@ -56,8 +56,8 @@ object pulls {
    *
    * The `Pull` closes the acquired `java.nio.channels.AsynchronousFileChannel` when it is done.
    */
-  def fromPathAsync[F[_]: Async](path: Path, flags: Seq[OpenOption])(implicit F: Suspendable[F]): Pull[F, Nothing, FileHandle[F]] =
-    fromAsynchronousFileChannel(F.delay(AsynchronousFileChannel.open(path, flags: _*)))
+  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Async[F]): Pull[F, Nothing, FileHandle[F]] =
+    fromAsynchronousFileChannel(F.start(F.delay(AsynchronousFileChannel.open(path, flags: _*))).flatMap(identity))
 
   /**
    * Given a `java.nio.channels.FileChannel`, will create a `Pull` which allows synchronous operations against the underlying file.
