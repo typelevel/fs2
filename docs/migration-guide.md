@@ -27,7 +27,7 @@ All resources should be acquired using `bracket`. Standalone cleanup actions sho
   * `type Pipe[F,A,B] = Stream[F,A] => Stream[F,B]`
   * `type Pipe2[F,A,B,C] = (Stream[F,A], Stream[F,B]) => Stream[F,C]`
   * `Pipe` covers what `Channel` and `Process1` could do before
-  * `Pipe2` covers what `Tee` and `Wye`
+  * `Pipe2` covers what `Tee` and `Wye` could do before
   * [see the code for the package object](../core/src/main/scala/fs2/fs2.scala)
 * Following this renaming, any functions in `process1` have been moved to the module [`pipe`](../core/src/main/scala/fs2/pipe.scala), and `tee` and `wye` have both been combined into [`pipe2`](../core/src/main/scala/fs2/pipe2.scala).
 * `mergeN` is now `concurrent.join`
