@@ -4,7 +4,15 @@ FS2: Functional Streams for Scala (previously 'Scalaz-Stream')
 [![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=series/0.9)](http://travis-ci.org/functional-streams-for-scala/fs2)
 [![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
 
-Quick links: [About the library](#about), [Docs and getting help](#docs), [How to get latest version](#getit)
+Quick links: 
+
+* [About the library](#about)
+* [How to get latest version](#getit)
+* [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
+* [Docs and getting help](#docs), 
+
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-M5/0.9.0-RC2/fs2-io_2.12.0-M5-0.9.0-RC2-javadoc.jar/!/index.html#package
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-M5/0.9.0-RC2/fs2-core_2.12.0-M5-0.9.0-RC2-javadoc.jar/!/index.html#package
 
 ### <a id="about"></a>About the library ###
 
@@ -68,8 +76,8 @@ libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.0-RC2"
 
 API docs:
 
-* [The core library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-M5/0.9.0-RC2/fs2-core_2.12.0-M5-0.9.0-RC2-javadoc.jar/!/index.html#package)
-* [The `io` library](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-M5/0.9.0-RC2/fs2-io_2.12.0-M5-0.9.0-RC2-javadoc.jar/!/index.html#package), FS2 bindings for NIO-based file I/O and TCP/UDP networking
+* [The core library][core-api]
+* [The `io` library][io-api], FS2 bindings for NIO-based file I/O and TCP/UDP networking
 
 The latest stable release is 0.8.4 ([source](https://github.com/functional-streams-for-scala/fs2/tree/release/0.8.4)). To get it, add the following to your SBT build:
 
