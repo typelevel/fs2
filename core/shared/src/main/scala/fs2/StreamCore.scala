@@ -257,7 +257,10 @@ private[fs2] object StreamCore {
                   step(try { stack2.pushEmit(f(chunk)) } catch { case NonFatal(e) => stack2.pushFail(e) })
                 case Segment.Append(s) =>
                   s.push(NT.Id(), stack.pushMap(f).pushSegments(segs)) flatMap step
-                case Segment.Fail(err) => step(stack.pushFail(err))
+                case Segment.Fail(err) => Stack.fail(segs)(err) match {
+                  case Left(err) => step(stack.pushFail(err))
+                  case Right((hd, segs)) => step(stack.pushMap(f).pushSegments(segs).pushAppend(hd))
+                }
                 case Segment.Handler(_) => step(stack.pushMap(f).pushSegments(segs))
               }
             }
@@ -279,7 +282,10 @@ private[fs2] object StreamCore {
                   }
                 case Segment.Append(s) =>
                   s.push(NT.Id(), stack.pushBind(f).pushSegments(segs)) flatMap step
-                case Segment.Fail(err) => step(stack.pushFail(err))
+                case Segment.Fail(err) => Stack.fail(segs)(err) match {
+                  case Left(err) => step(stack.pushFail(err))
+                  case Right((hd, segs)) => step(stack.pushBind(f).pushSegments(segs).pushAppend(hd))
+                }
                 case Segment.Handler(_) => step(stack.pushBind(f).pushSegments(segs))
               }}
             }

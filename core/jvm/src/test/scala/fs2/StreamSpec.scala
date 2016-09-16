@@ -66,6 +66,16 @@ class StreamSpec extends Fs2Spec {
             .runLog.unsafeRun() shouldBe Vector(Left(Err))
     }
 
+    "onError (5)" in {
+      val r = Stream.fail[Task](Err).onError(e => Stream.emit(e)).flatMap(Stream.emit).runLog.unsafeRun()
+      val r2 = Stream.fail[Task](Err).onError(e => Stream.emit(e)).map(identity).runLog.unsafeRun()
+      val r3 = concurrent.join[Task, Int](4)(Stream(Stream.emit(1), Stream.fail(Err), Stream.emit(2)))
+                         .attempt.runLog.unsafeRun()
+      r shouldBe Vector(Err)
+      r2 shouldBe Vector(Err)
+      r3.contains(Left(Err)) shouldBe true
+    }
+
     "range" in {
       Stream.range(0, 100).toList shouldBe List.range(0, 100)
       Stream.range(0, 1).toList shouldBe List.range(0, 1)
