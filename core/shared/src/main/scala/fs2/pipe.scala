@@ -495,8 +495,8 @@ object pipe {
    * Zips the input with a running total according to `S`, including the current element. Thus the initial
    * `z` value is the first emitted to the output:
    * {{{
-   * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length).toList
-   * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
+   * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan1(0)(_ + _.length).toList
+   * res0: List[(String, Int)] = List((uno,3), (dos,6), (tres,10), (cuatro,16))
    * }}}
    *
    * @see [[zipWithScan]]
