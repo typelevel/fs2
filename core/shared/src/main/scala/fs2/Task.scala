@@ -54,6 +54,13 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
     })
 
   /**
+   * Calls attempt and allows you to fold the `Attempt` up into a B 
+   * by passing the `Throwable` to `f` and `A` to `g`.
+   */
+  def attemptFold[B](f: Throwable => B, g: A => B): Task[B] = 
+    attempt.map(_.fold(f,g))
+
+  /**
    * Calls `attempt` and handles some exceptions using the given partial
    * function, calling Task.now on the result. Any nonmatching exceptions
    * are reraised.
