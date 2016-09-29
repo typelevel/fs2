@@ -15,3 +15,7 @@ trait Applicative[F[_]] extends Functor[F] {
   /** Converts an `F[A]` to an `F[B]` using an effectful function `F[A => B]`. */
   def ap[A,B](fa: F[A])(f: F[A => B]): F[B]
 }
+
+object Applicative {
+  def apply[F[_]](implicit F: Applicative[F]): Applicative[F] = F
+}

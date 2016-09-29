@@ -22,3 +22,6 @@ trait Suspendable[F[_]] extends Monad[F] {
   def delay[A](a: => A): F[A] = suspend(pure(a))
 }
 
+object Suspendable {
+  def apply[F[_]](implicit F: Suspendable[F]): Suspendable[F] = F
+}

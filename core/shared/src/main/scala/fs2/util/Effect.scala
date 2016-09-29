@@ -14,3 +14,7 @@ trait Effect[F[_]] extends Catchable[F] with Suspendable[F] {
    */
   def unsafeRunAsync[A](fa: F[A])(cb: Attempt[A] => Unit): Unit
 }
+
+object Effect {
+  def apply[F[_]](implicit F: Effect[F]): Effect[F] = F
+}
