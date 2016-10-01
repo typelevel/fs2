@@ -136,6 +136,21 @@ lazy val releaseSettings = Seq(
   releasePublishArtifactsAction := PgpKeys.publishSigned.value
 )
 
+lazy val mimaSettings = Seq(
+  mimaPreviousArtifacts := previousVersion(version.value).map { pv =>
+    organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
+  }.toSet,
+  mimaBinaryIssueFilters ++= Seq()
+)
+
+def previousVersion(currentVersion: String): Option[String] = {
+  val Version = """(\d+)\.(\d+)\.(\d+).*""".r
+  val Version(x, y, z) = currentVersion
+  if (z == "0") None
+  else Some(s"$x.$y.${z.toInt - 1}")
+}
+
+
 lazy val root = project.in(file(".")).
   settings(commonSettings).
   settings(noPublish).
@@ -148,27 +163,28 @@ lazy val core = crossProject.in(file("core")).
   ).
   jsSettings(commonJsSettings: _*)
 
-lazy val coreJVM = core.jvm
-lazy val coreJS = core.js.disablePlugins(DoctestPlugin)
+lazy val coreJVM = core.jvm.settings(mimaSettings)
+lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
 lazy val io = project.in(file("io")).
   settings(commonSettings).
+  settings(mimaSettings).
   settings(
     name := "fs2-io"
   ).dependsOn(coreJVM % "compile->compile;test->test")
 
-lazy val benchmarkMacros = project.in(file("benchmark-macros"))
-  .settings(commonSettings)
-  .settings(noPublish)
-  .settings(
+lazy val benchmarkMacros = project.in(file("benchmark-macros")).
+  disablePlugins(MimaPlugin).
+  settings(commonSettings).
+  settings(noPublish).
+  settings(
+    name := "fs2-benchmark-macros",
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
     libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
   )
-  .settings(
-     name := "fs2-benchmark-macros"
-  )
 
 lazy val benchmark = project.in(file("benchmark")).
+  disablePlugins(MimaPlugin).
   settings(commonSettings).
   settings(noPublish).
   settings(

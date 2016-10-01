@@ -20,7 +20,7 @@ env:
   - secure: WUTPbVxp6LhGYXdLYg1rNCsLnPdpoqxyOnND6oFZ11ffOCwb7eLlBjPwobt1iQlNLTw8ZTdsJ3IyE9+CVlgfSWVSi0BLDcpNcZcx1Mg1m37JPTp+3r/xExo8fjYySWlQfXmlnRoeZc0kfX5d3/bKlRpNEl/fZGeitSWDeEyGjzc=
 
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 test
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 test mimaReportBinaryIssues
   - (test $TRAVIS_SCALA_VERSION == "2.11.8" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut) || test $TRAVIS_SCALA_VERSION == "2.12.0-RC1"
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 benchmark/"jmh:run -i 10 -wi 10 -f1 -t1 --jvmArgs -Xms2g --jvmArgs -Xmx2g"
 
