@@ -18,6 +18,7 @@ trait Traverse[F[_]] extends Functor[F] {
 }
 
 object Traverse {
+  def apply[F[_]](implicit F: Traverse[F]): Traverse[F] = F
 
   implicit val vectorInstance: Traverse[Vector] = new Traverse[Vector] {
     def map[A,B](v: Vector[A])(f: A => B): Vector[B] = v map f

@@ -49,6 +49,7 @@ trait Async[F[_]] extends Effect[F] { self =>
 }
 
 object Async {
+  def apply[F[_]](implicit F: Async[F]): Async[F] = F
 
   /** Creates an asynchronous, concurrent mutable reference. */
   def ref[F[_],A](implicit F:Async[F]): F[Async.Ref[F,A]] = F.ref

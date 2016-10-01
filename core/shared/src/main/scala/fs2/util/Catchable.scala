@@ -14,6 +14,7 @@ trait Catchable[F[_]] extends Monad[F] {
 }
 
 object Catchable {
+  def apply[F[_]](implicit F: Catchable[F]): Catchable[F] = F
 
   implicit val attemptInstance: Catchable[Attempt] = new Catchable[Attempt] {
     def pure[A](a: A): Attempt[A] = Right(a)
