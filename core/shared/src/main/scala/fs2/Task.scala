@@ -1,9 +1,10 @@
 package fs2
 
-import fs2.internal.{Actor,Future,LinkedMap}
+import fs2.internal.{Actor,LinkedMap,Trampoline}
 import fs2.util.{Async,Attempt,Effect,NonFatal}
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
+import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 
 /**
@@ -31,33 +32,36 @@ import scala.concurrent.duration._
  * since the order of effects and the points of allowed concurrency are made
  * fully explicit and do not depend on Scala's evaluation order.
  */
-final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
-  import Task.Callback
+sealed abstract class Task[+A] {
+  import Task._
 
-  def flatMap[B](f: A => Task[B]): Task[B] =
-    new Task(get flatMap {
-      case Left(e) => Future.now(Left(e))
-      case Right(a) => Attempt(f(a)) match {
-        case Left(e) => Future.now(Left(e))
-        case Right(task) => task.get
-      }
-    })
+  def flatMap[B](f: A => Task[B]): Task[B] = {
+    this match {
+      case Now(a) => Suspend(() => try f(a) catch { case NonFatal(t) => Fail(t) })
+      case Fail(t) => Fail(t)
+      case Suspend(thunk) => BindSuspend(thunk, f)
+      case AsyncT(listen) => BindAsync(listen, f)
+      case BindSuspend(thunk, g) =>
+        Suspend(() => BindSuspend(thunk, g andThen (_ flatMap f)))
+      case BindAsync(listen, g) =>
+        Suspend(() => BindAsync(listen, g andThen (_ flatMap f)))
+    }
+  }
 
-  def map[B](f: A => B): Task[B] =
-    new Task(get map { _.flatMap { a => Attempt(f(a)) } })
+  def map[B](f: A => B): Task[B] = this match {
+    case Now(a) => try Now(f(a)) catch { case NonFatal(t) => Fail(t) }
+    case Fail(t) => Fail(t)
+    case _ => flatMap(f andThen now)
+  }
 
   /** 'Catches' exceptions in the given task and returns them as values. */
-  def attempt: Task[Attempt[A]] =
-    new Task(get map {
-      case Left(e) => Right(Left(e))
-      case Right(a) => Right(Right(a))
-    })
+  def attempt: Task[Attempt[A]]
 
   /**
-   * Calls attempt and allows you to fold the `Attempt` up into a B 
+   * Calls attempt and allows you to fold the `Attempt` up into a B
    * by passing the `Throwable` to `f` and `A` to `g`.
    */
-  def attemptFold[B](f: Throwable => B, g: A => B): Task[B] = 
+  def attemptFold[B](f: Throwable => B, g: A => B): Task[B] =
     attempt.map(_.fold(f,g))
 
   /**
@@ -84,13 +88,56 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
    * `flatMap` for more fine grained control of exception handling.
    */
   def or[B>:A](t2: Task[B]): Task[B] =
-    new Task(this.get flatMap {
-      case Left(e) => t2.get
-      case a => Future.now(a)
-    })
+    attempt.flatMap {
+      case Left(t) => t2
+      case Right(a) => Now(a)
+    }
 
   /** Returns a task that performs all evaluation asynchronously. */
   def async(implicit S: Strategy): Task[A] = Task.start(this).flatMap(identity)
+
+  /**
+   * Ensures the result of this Task satisfies the given predicate,
+   * or fails with the given value.
+   */
+  def ensure(failure: => Throwable)(f: A => Boolean): Task[A] =
+    flatMap(a => if(f(a)) Task.now(a) else Task.fail(failure))
+
+  /**
+   * Returns a `Task` that, when run, races evaluation of `this` and `t`,
+   * and returns the result of whichever completes first. The losing task
+   * continues to execute in the background though its result will be sent
+   * nowhere.
+   */
+  def race[B](t: Task[B])(implicit S: Strategy): Task[Either[A,B]] = {
+    Task.ref[Either[A,B]].flatMap { ref =>
+      ref.setRace(this map (Left(_)), t map (Right(_)))
+          .flatMap { _ => ref.get }
+    }
+  }
+
+  /** Create a `Task` that will evaluate `a` after at least the given delay. */
+  def schedule(delay: FiniteDuration)(implicit strategy: Strategy, scheduler: Scheduler): Task[A] =
+    Task.schedule((), delay) flatMap { _ => this }
+
+  private def unsafeRunAsyncTrampoline(cb: Attempt[A] => Trampoline[Unit]): Unit =
+    (unsafeStep: @unchecked) match {
+      case Now(a) => cb(Right(a)).run
+      case Fail(t) => cb(Left(t)).run
+      case AsyncT(onFinish) => onFinish(cb)
+      case BindAsync(onFinish, g) =>
+        onFinish {
+          case Left(t) => Trampoline.done(fail(t).unsafeRunAsyncTrampoline(cb))
+          case Right(x) => Trampoline.delay(try g(x) catch { case NonFatal(t) => Fail(t) }) map (_ unsafeRunAsyncTrampoline cb)
+        }
+    }
+
+  @annotation.tailrec
+  private final def unsafeStep: Task[A] = this match {
+    case Suspend(thunk) => thunk().unsafeStep
+    case BindSuspend(thunk, f) => (thunk() flatMap f).unsafeStep
+    case _ => this
+  }
 
   /**
    * Run this computation to obtain either a result or an exception, then
@@ -100,7 +147,7 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
    * `Async` and this function returns immediately.
    */
   def unsafeRunAsync(f: Attempt[A] => Unit): Unit =
-    get.runAsync(f)
+    unsafeRunAsyncTrampoline(a => Trampoline.done(f(a)))
 
   /**
    * Run this computation and return the result as a standard library `Future`.
@@ -119,13 +166,21 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
    * a continuation is returned wrapped in a `Left`.
    * To return exceptions in an `Either`, use `unsafeAttemptRunSync()`.
    */
-  def unsafeRunSync(): Either[Callback[A] => Unit, A] = get.runSync.map { _ match {
-    case Left(e) => throw e
-    case Right(a) => a
-  }}
+  def unsafeRunSync(): Either[Callback[A] => Unit, A] =
+    unsafeAttemptRunSync().map(_.fold(t => throw t, a => a))
 
   /** Like `unsafeRunSync`, but returns exceptions as values. */
-  def unsafeAttemptRunSync(): Either[Callback[A] => Unit, Attempt[A]] = get.runSync
+  def unsafeAttemptRunSync(): Either[Callback[A] => Unit, Attempt[A]] =
+    (unsafeStep: @unchecked) match {
+      case Now(a) => Right(Right(a))
+      case Fail(t) => Right(Left(t))
+      case AsyncT(onFinish) => Left(cb => onFinish(a => Trampoline.done(cb(a))))
+      case BindAsync(onFinish, g) =>
+        Left(cb => onFinish {
+          case Left(t) => Trampoline.done(fail(t).unsafeRunAsync(cb))
+          case Right(x) => Trampoline.delay(try g(x) catch { case NonFatal(t) => Fail(t) }).map(_.unsafeRunAsync(a => cb(a)))
+        })
+    }
 
   /**
    * Runs this `Task` up until an async boundary. If the task completes synchronously,
@@ -135,7 +190,7 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
   def unsafeValue(): Option[A] = unsafeRunSync.toOption
 
   /** Like `unsafeValue`, but returns exceptions as values. */
-  def unsafeAttemptValue(): Option[Attempt[A]] = get.runSync.toOption
+  def unsafeAttemptValue(): Option[Attempt[A]] = unsafeAttemptRunSync.toOption
 
     /**
    * A `Task` which returns a `TimeoutException` after `timeout`,
@@ -145,44 +200,88 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
    * task is interrupted at a non-determinstic point in its execution.
    */
   def unsafeTimed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
-    new Task(get.timed(timeout).map(_.flatMap(x => x)))
+    unforkedAsync[A] { cb =>
+      val cancel = new AtomicBoolean(false)
+      val done = new AtomicBoolean(false)
+      try {
+        scheduler.scheduleOnce(timeout) {
+          if (done.compareAndSet(false, true)) {
+            cancel.set(true)
+            cb(Left(timeoutException(timeout)))
+          }
+        }
+      } catch { case NonFatal(t) => cb(Left(t)) }
+      unsafeRunAsyncInterruptibly(a => if (done.compareAndSet(false, true)) cb(a), cancel)
+    }
+
+  private[fs2] def unsafeRunAsyncInterruptibly(cb: Attempt[A] => Unit, cancel: AtomicBoolean): Unit =
+    unsafeRunAsyncInterruptiblyTrampoline(a => Trampoline.done(cb(a)), cancel)
+
+  private def unsafeRunAsyncInterruptiblyTrampoline(cb: Attempt[A] => Trampoline[Unit], cancel: AtomicBoolean): Unit =
+    unsafeStepInterruptibly(cancel) match {
+      case Now(a) if !cancel.get => cb(Right(a)).run
+      case Fail(t) if !cancel.get => cb(Left(t)).run
+      case AsyncT(onFinish) if !cancel.get =>
+        onFinish(a =>
+          if (!cancel.get) cb(a)
+          else Trampoline.done(()))
+      case BindAsync(onFinish, g) if !cancel.get =>
+        onFinish {
+          case Left(t) => Trampoline.done(fail(t).unsafeRunAsyncInterruptiblyTrampoline(cb, cancel))
+          case Right(x) =>
+            if (!cancel.get) Trampoline.delay(try g(x) catch { case NonFatal(t) => Fail(t) }) map (_.unsafeRunAsyncInterruptiblyTrampoline(cb, cancel))
+            else Trampoline.done(())
+        }
+      case _ if cancel.get => ()
+    }
+
+  /** Like `step`, but may be interrupted by setting `cancel` to true. */
+  @annotation.tailrec
+  private final def unsafeStepInterruptibly(cancel: AtomicBoolean): Task[A] =
+    if (!cancel.get) this match {
+      case Suspend(thunk) => thunk().unsafeStepInterruptibly(cancel)
+      case BindSuspend(thunk, f) => (thunk() flatMap f).unsafeStepInterruptibly(cancel)
+      case _ => this
+    }
+    else this
 
   override def toString = "Task"
-
-  /**
-    * Ensures the result of this Task satisfies the given predicate,
-    * or fails with the given value.
-   */
-  def ensure(failure: => Throwable)(f: A => Boolean): Task[A] =
-    flatMap(a => if(f(a)) Task.now(a) else Task.fail(failure))
-
-  /**
-    * Returns a `Task` that, when run, races evaluation of `this` and `t`,
-    * and returns the result of whichever completes first. The losing task
-    * continues to execute in the background though its result will be sent
-    * nowhere.
-   */
-  def race[B](t: Task[B])(implicit S: Strategy): Task[Either[A,B]] = {
-    Task.ref[Either[A,B]].flatMap { ref =>
-      ref.setRace(this map (Left(_)), t map (Right(_)))
-          .flatMap { _ => ref.get }
-    }
-  }
-
-  /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule(delay: FiniteDuration)(implicit strategy: Strategy, scheduler: Scheduler): Task[A] =
-    Task.schedule((), delay) flatMap { _ => this }
 }
 
 object Task extends TaskPlatform with TaskInstances {
 
+  private final case class Now[+A](a: A) extends Task[A] {
+    def attempt: Now[Attempt[A]] = Now(Right(a))
+  }
+  private final case class Fail(t: Throwable) extends Task[Nothing] {
+    def attempt: Now[Attempt[Nothing]] = Now(Left(t))
+  }
+  private final case class Suspend[+A](thunk: () => Task[A]) extends Task[A] {
+    def attempt: Suspend[Attempt[A]] = Suspend(() => try thunk().attempt catch { case NonFatal(t) => Now(Left(t)) })
+  }
+  private final case class BindSuspend[A,B](thunk: () => Task[A], f: A => Task[B]) extends Task[B] {
+    def attempt: BindSuspend[Attempt[A], Attempt[B]] = BindSuspend(
+      () => try thunk().attempt catch { case NonFatal(t) => Now(Left(t)) },
+      _.fold(t => Now(Left(t)), a => f(a).attempt))
+  }
+  private final case class AsyncT[+A](onFinish: (Attempt[A] => Trampoline[Unit]) => Unit) extends Task[A] {
+    def attempt: AsyncT[Attempt[A]] = AsyncT { cb => onFinish { attempt => cb(Right(attempt)) } }
+  }
+  private final case class BindAsync[A,B](onFinish: (Attempt[A] => Trampoline[Unit]) => Unit, f: A => Task[B]) extends Task[B] {
+    def attempt: BindAsync[Attempt[A], Attempt[B]] = BindAsync(
+      cb => onFinish { attempt => cb(Right(attempt)) },
+      _.fold(
+        t => Now(Left(t)),
+        a => f(a).attempt))
+  }
+
   type Callback[-A] = Attempt[A] => Unit
 
   /** A `Task` which fails with the given `Throwable`. */
-  def fail(e: Throwable): Task[Nothing] = new Task(Future.now(Left(e)))
+  def fail(t: Throwable): Task[Nothing] = Fail(t)
 
   /** Convert a strict value to a `Task`. Also see `delay`. */
-  def now[A](a: A): Task[A] = new Task(Future.now(Right(a)))
+  def now[A](a: A): Task[A] = Now(a)
 
   /**
    * Promote a non-strict value to a `Task`, catching exceptions in
@@ -198,11 +297,7 @@ object Task extends TaskPlatform with TaskInstances {
    * call stack. The standard trampolining primitive, useful for avoiding
    * stack overflows.
    */
-  def suspend[A](a: => Task[A]): Task[A] = new Task(Future.suspend(
-    Attempt(a.get) match {
-      case Left(e) => Future.now(Left(e))
-      case Right(f) => f
-  }))
+  def suspend[A](a: => Task[A]): Task[A] = Suspend(() => try a catch { case NonFatal(t) => fail(t) })
 
   /** Create a `Future` that will evaluate `a` using the given `Strategy`. */
   def apply[A](a: => A)(implicit S: Strategy): Task[A] =
@@ -212,9 +307,9 @@ object Task extends TaskPlatform with TaskInstances {
     * Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
     * into the outer task, `t` will be running in the background, and the inner task
     * is conceptually a future which can be forced at any point via `flatMap`.
-
+    *
     * For example:
-
+    *
     * {{{
      for {
        f <- Task.start { expensiveTask1 }
@@ -246,9 +341,10 @@ object Task extends TaskPlatform with TaskInstances {
    */
   // Note: `register` does not use the `Attempt` alias due to scalac inference limitation
   def async[A](register: (Either[Throwable,A] => Unit) => Unit)(implicit S: Strategy): Task[A] =
-    new Task[A](Future.Async(cb => register {
-      a => try { S { cb(a).run } } catch { case NonFatal(e) => cb(Left(e)).run }
-    }))
+    AsyncT { cb =>
+      register { attempt =>
+        try S(cb(attempt).run)
+        catch { case NonFatal(t) => cb(Left(t)).run } } }
 
   /**
    * Create a `Task` from a `scala.concurrent.Future`.
@@ -377,6 +473,9 @@ object Task extends TaskPlatform with TaskInstances {
       t2.unsafeRunAsync(win)
     }
   }
+
+  private[fs2] def timeoutException(timeout: FiniteDuration): TimeoutException =
+    new TimeoutException(s"Timed out after $timeout")
 }
 
 /* Prefer an `Async` but will settle for implicit `Effect`. */
@@ -398,7 +497,7 @@ private[fs2] trait TaskInstancesLowPriority {
 
 private[fs2] trait TaskInstances extends TaskInstancesLowPriority {
 
-  implicit def asyncInstance(implicit S:Strategy): Async[Task] = new EffectTask with Async[Task] {
+  implicit def asyncInstance(implicit S: Strategy): Async[Task] = new EffectTask with Async[Task] {
     def ref[A]: Task[Async.Ref[Task,A]] = Task.ref[A](S, this)
     override def toString = "Async[Task]"
   }
