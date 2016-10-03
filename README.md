@@ -88,7 +88,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
-* [streamz](https://github.com/krasserm/streamz): A library that allows a `Stream` to consume from and produce to [Apache Camel](http://camel.apache.org/) endpoints, [Akka Persistence](http://doc.akka.io/docs/akka/2.3.5/scala/persistence.html) journals and snapshot stores and [Akka Stream](http://akka.io/docs/#akka-streams-and-http) flows (reactive streams) with full back-pressure support.
+* [streamz](https://github.com/krasserm/streamz): A library that supports the conversion of [Akka Stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) `Source`s, `Flow`s and `Sink`s to and from FS2 `Stream`s, `Pipe`s and `Sink`s, respectively. It also supports the usage of [Apache Camel](http://camel.apache.org/) endpoints in FS2 `Stream`s.
 
 ### Related projects ###
 
