@@ -123,5 +123,9 @@ class StreamSpec extends Fs2Spec {
       import fs2.util.{~>}
       Stream.repeatEval(Task.delay(0)).translate(new (Task ~> Task) { def apply[X](x: Task[X]) = Task.suspend(x) }).take(1000000).run.unsafeRun()
     }
+
+    "repeaat empty" in {
+      Stream.empty.pure.repeat.toList shouldBe List()
+    }
   }
 }
