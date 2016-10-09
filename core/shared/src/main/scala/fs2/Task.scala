@@ -48,10 +48,7 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
 
   /** 'Catches' exceptions in the given task and returns them as values. */
   def attempt: Task[Attempt[A]] =
-    new Task(get map {
-      case Left(e) => Right(Left(e))
-      case Right(a) => Right(Right(a))
-    })
+    new Task(get.map(a => Right(a)))
 
   /**
    * Calls attempt and allows you to fold the `Attempt` up into a B 
