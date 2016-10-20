@@ -17,7 +17,7 @@ lazy val contributors = Seq(
 lazy val commonSettings = Seq(
   organization := "co.fs2",
   scalaVersion := "2.11.8",
-  crossScalaVersions := Seq("2.11.8", "2.12.0-RC1"),
+  crossScalaVersions := Seq("2.11.8", "2.12.0-RC2"),
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -176,15 +176,7 @@ lazy val benchmark = project.in(file("benchmark")).
   )
   .settings(
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _),
-    // Work-around for issue with sbt-jmh from https://github.com/ktoso/sbt-jmh/issues/76
-    libraryDependencies := {
-      libraryDependencies.value.map {
-        case x if x.name == "sbt-jmh-extras" =>
-          x.cross(CrossVersion.binaryMapped(_ => "2.10"))
-        case x => x
-      }
-    }
+    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
   )
   .enablePlugins(JmhPlugin)
   .dependsOn(io, benchmarkMacros)
