@@ -11,8 +11,8 @@ Quick links:
 * [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
 * [Docs and getting help](#docs)
 
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-RC1/0.9.1/fs2-io_2.12.0-RC1-0.9.1-javadoc.jar/!/index.html#package
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-RC1/0.9.1/fs2-core_2.12.0-RC1-0.9.1-javadoc.jar/!/index.html#package
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-RC2/0.9.1/fs2-io_2.12.0-RC2-0.9.1-javadoc.jar/!/index.html#package
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-RC2/0.9.1/fs2-core_2.12.0-RC2-0.9.1-javadoc.jar/!/index.html#package
 
 ### <a id="about"></a>About the library ###
 
@@ -60,7 +60,7 @@ Blog posts and other external resources are listed on the [Additional Resources]
 The 0.9 release is out and we recommend upgrading. You may want to first [read the migration guide](docs/migration-guide.md) if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
 
 ```
-// available for Scala 2.11.8, 2.12.0-RC1
+// available for Scala 2.11.8, 2.12.0-RC1, 2.12.0-RC2
 libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.1"
 
 // optional I/O library
@@ -70,7 +70,7 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.1"
 The fs2-core library is also supported on Scala.js:
 
 ```
-// available for Scala 2.11.8, 2.12.0-RC1
+// available for Scala 2.11.8, 2.12.0-RC1, 2.12.0-RC2
 libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.1"
 ```
 
