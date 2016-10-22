@@ -5,11 +5,8 @@ package fs2
   */
 class TaskSpec extends Fs2Spec{
 
-
   "Task" - {
-
     "Ref" - {
-
       "Set increments nonce" in {
 
         Task.ref[Int].flatMap{ref =>
@@ -23,14 +20,7 @@ class TaskSpec extends Fs2Spec{
           }
 
         }.unsafeRun() shouldBe false
-
-
       }
-
-
     }
-
-
   }
-
 }
