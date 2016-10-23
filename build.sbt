@@ -50,7 +50,7 @@ libraryDependencies ++= Seq(
   "org.scalaz" %% "scalaz-concurrent" % "7.1.10",
   "org.scodec" %% "scodec-bits" % "1.1.2",
   "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.10" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.13.3" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
 )
 
 sonatypeProfileName := "org.scalaz"

@@ -9,8 +9,8 @@ scalaz-stream
 To get the latest version of the library, add the following to your SBT build:
 
 ```
-// available for Scala 2.10.5, 2.11.7, 2.12.0-M1, 2.12.0-M2
-libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8"
+// available for Scala 2.10.6, 2.11.8, 2.12.0-RC2
+libraryDependencies += "org.scalaz.stream" %% "scalaz-stream" % "0.8.5"
 ```
 
 As of version 0.8, scalaz-stream is solely published against scalaz 7.1.x.  The most recent build for 7.0.x is scalaz-stream 0.7.3.
