@@ -23,7 +23,7 @@ git.formattedShaVersion := {
 
 scalaVersion := "2.11.8"
 
-crossScalaVersions := Seq("2.10.6", "2.11.8", "2.12.0-M5")
+crossScalaVersions := Seq("2.10.6", "2.11.8", "2.12.0-RC2")
 
 scalacOptions ++= Seq(
   "-feature",
@@ -46,11 +46,11 @@ scalacOptions in (Compile, doc) ++= Seq(
 resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots"))
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.1.9",
-  "org.scalaz" %% "scalaz-concurrent" % "7.1.9",
-  "org.scodec" %% "scodec-bits" % "1.1.0",
-  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.9" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
+  "org.scalaz" %% "scalaz-core" % "7.1.10",
+  "org.scalaz" %% "scalaz-concurrent" % "7.1.10",
+  "org.scodec" %% "scodec-bits" % "1.1.2",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.1.10" % "test",
+  "org.scalacheck" %% "scalacheck" % "1.13.3" % "test"
 )
 
 sonatypeProfileName := "org.scalaz"
