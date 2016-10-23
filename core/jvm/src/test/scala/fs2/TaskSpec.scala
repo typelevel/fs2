@@ -1,8 +1,5 @@
 package fs2
 
-/**
-  * Created by adamchlupacek on 22/10/16.
-  */
 class TaskSpec extends Fs2Spec{
 
   "Task" - {
@@ -15,10 +12,8 @@ class TaskSpec extends Fs2Spec{
               ref.setPure(2).flatMap{_ =>
                 set(Right(3))
               }
-
             }
           }
-
         }.unsafeRun() shouldBe false
       }
     }
