@@ -1,5 +1,7 @@
 package fs2
 
+import scala.concurrent.duration._
+
 class TaskSpec extends Fs2Spec{
 
   "Task" - {
@@ -10,7 +12,7 @@ class TaskSpec extends Fs2Spec{
           ref.setPure(1).flatMap{_ =>
             ref.access.flatMap{case ((_, set)) =>
               ref.setPure(2).flatMap{_ =>
-                set(Right(3))
+                set(Right(3)).schedule(100.millis)
               }
             }
           }
