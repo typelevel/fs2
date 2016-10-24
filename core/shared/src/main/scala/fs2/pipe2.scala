@@ -216,7 +216,7 @@ object pipe2 {
 
   /**
    * Defined as `s1 merge s2.drain`. Runs `s1` and `s2` concurrently, ignoring
-   * any output of `s1`.
+   * any output of `s2`.
    */
   def mergeDrainR[F[_]:Async,I,I2]: Pipe2[F,I,I2,I] = (s1, s2) =>
     s1 merge s2.drain
