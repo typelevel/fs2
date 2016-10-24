@@ -91,6 +91,10 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.delete]]`. */
   def delete(f: O => Boolean): Stream[F,O] = self through pipe.delete(f)
 
+  /** Removes all output values from this stream.
+   * For example, `Stream.eval(Task.delay(println("x"))).drain.runLog`
+   * will, when `unsafeRun` in called, print "x" but return `Vector()`.
+   */
   def drain: Stream[F, Nothing] = flatMap { _ => Stream.empty }
 
   /** Alias for `self through [[pipe.drop]]`. */
