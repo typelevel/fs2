@@ -25,7 +25,7 @@ trait Queue[F[_], A] { self =>
    * Enqueues each element of the input stream to this `Queue` by
    * calling `enqueue1` on each element.
    */
-  def enqueue: Sink[F, A] = _.evalMap(enqueue1)
+  def enqueue: Sink[F, A] = _.evalMap_(enqueue1)
 
   /**
    * Offers one element in this `Queue`.

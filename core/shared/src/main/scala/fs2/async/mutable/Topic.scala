@@ -128,8 +128,8 @@ object Topic {
       } yield sub
 
       new Topic[F,A] {
-        def publish:Sink[F,A] =
-          _ flatMap( a => eval(publish1(a)))
+        def publish: Sink[F,A] =
+          _ flatMap(a => eval_(publish1(a)))
 
         def subscribers: Signal[F, Int] = subSignal
 

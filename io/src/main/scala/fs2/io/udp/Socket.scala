@@ -119,7 +119,7 @@ private[udp] object Socket {
         })
 
       def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =
-        _.flatMap(p => Stream.eval(write(p, timeout)))
+        _.flatMap(p => Stream.eval_(write(p, timeout)))
 
       def close: F[Unit] = F.delay { AG.close(ctx) }
 
