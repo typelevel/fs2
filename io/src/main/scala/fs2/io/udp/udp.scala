@@ -32,7 +32,7 @@ package object udp {
    * @param multicastLoopback    whether sent multicast packets should be looped back to this host
    */
   def open[F[_]](
-    addresss: InetSocketAddress = new InetSocketAddress(0)
+    address: InetSocketAddress = new InetSocketAddress(0)
     , reuseAddress: Boolean = false
     , sendBufferSize: Option[Int] = None
     , receiveBufferSize: Option[Int] = None
@@ -51,7 +51,7 @@ package object udp {
       multicastInterface.foreach { iface => channel.setOption[NetworkInterface](StandardSocketOptions.IP_MULTICAST_IF, iface) }
       multicastTTL.foreach { ttl => channel.setOption[Integer](StandardSocketOptions.IP_MULTICAST_TTL, ttl) }
       channel.setOption[java.lang.Boolean](StandardSocketOptions.IP_MULTICAST_LOOP, multicastLoopback)
-      channel.bind(addresss)
+      channel.bind(address)
       channel
     }
     Stream.bracket(mkChannel.flatMap(ch => Socket.mkSocket(ch)))(s => Stream.emit(s), _.close)
