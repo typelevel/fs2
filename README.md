@@ -11,8 +11,8 @@ Quick links:
 * [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
 * [Docs and getting help](#docs)
 
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-RC1/0.9.1/fs2-io_2.12.0-RC1-0.9.1-javadoc.jar/!/index.html#package
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-RC1/0.9.1/fs2-core_2.12.0-RC1-0.9.1-javadoc.jar/!/index.html#package
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12.0-RC2/0.9.1/fs2-io_2.12.0-RC2-0.9.1-javadoc.jar/!/index.html#package
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12.0-RC2/0.9.1/fs2-core_2.12.0-RC2-0.9.1-javadoc.jar/!/index.html#package
 
 ### <a id="about"></a>About the library ###
 
@@ -40,13 +40,13 @@ val converter: Task[Unit] =
 val u: Unit = converter.unsafeRun()
 ```
 
-This will construct a `Task`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blanklines and commented lines. It then parses temperatures in degrees fahrenheit, converts these to celsius, UTF-8 encodes the output and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed in the event of normal termination or exceptions.
+This will construct a `Task`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blanklines and commented lines. It then parses temperatures in degrees Fahrenheit, converts these to Celsius, UTF-8 encodes the output, and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed upon normal termination or if exceptions occur.
 
 The library supports a number of other interesting use cases:
-
-* _Zipping and merging of streams:_ A streaming computations may read from multiple sources in a streaming fashion, zipping or merging their elements using a arbitrary `Tee`. In general, clients have a great deal of flexibility in what sort of topologies they can define--source, sinks, and effectful channels are all first-class concepts in the library.
-* _Dynamic resource allocation:_ A streaming computation may allocate resources dynamically (for instance, reading a list of files to process from a stream built off a network socket), and the library will ensure these resources get released in the event of normal termination or when errors occur.
-* _Nondeterministic and concurrent processing:_ A computation may read from multiple input streams simultaneously, using whichever result comes back first, and a pipeline of transformation can allow for nondeterminism and queueing at each stage.
+I
+* _Zipping and merging of streams:_ A streaming computation may read from multiple sources in a streaming fashion, zipping or merging their elements using an arbitrary `Tee`. In general, clients have a great deal of flexibility in what sort of topologies they can define--source, sink, and effectful channels are all first-class concepts in the library.
+* _Dynamic resource allocation:_ A streaming computation may allocate resources dynamically (for instance, reading a list of files to process from a stream built off a network socket), and the library will ensure these resources get released upon normal termination or if exceptions occur.
+* _Nondeterministic and concurrent processing:_ A computation may read from multiple input streams simultaneously, using whichever result comes back first, and a pipeline of transformations can allow for nondeterminism and queueing at each stage.
 
 ### <a id="docs"></a>Documentation and getting help ###
 
@@ -60,7 +60,7 @@ Blog posts and other external resources are listed on the [Additional Resources]
 The 0.9 release is out and we recommend upgrading. You may want to first [read the migration guide](docs/migration-guide.md) if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
 
 ```
-// available for Scala 2.11.8, 2.12.0-RC1
+// available for Scala 2.11.8, 2.12.0-RC1, 2.12.0-RC2
 libraryDependencies += "co.fs2" %% "fs2-core" % "0.9.1"
 
 // optional I/O library
@@ -70,7 +70,7 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "0.9.1"
 The fs2-core library is also supported on Scala.js:
 
 ```
-// available for Scala 2.11.8, 2.12.0-RC1
+// available for Scala 2.11.8, 2.12.0-RC1, 2.12.0-RC2
 libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.1"
 ```
 
@@ -88,7 +88,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
-* [streamz](https://github.com/krasserm/streamz): A library that allows a `Stream` to consume from and produce to [Apache Camel](http://camel.apache.org/) endpoints, [Akka Persistence](http://doc.akka.io/docs/akka/2.3.5/scala/persistence.html) journals and snapshot stores and [Akka Stream](http://akka.io/docs/#akka-streams-and-http) flows (reactive streams) with full back-pressure support.
+* [streamz](https://github.com/krasserm/streamz): A library that supports the conversion of [Akka Stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) `Source`s, `Flow`s and `Sink`s to and from FS2 `Stream`s, `Pipe`s and `Sink`s, respectively. It also supports the usage of [Apache Camel](http://camel.apache.org/) endpoints in FS2 `Stream`s.
 
 ### Related projects ###
 

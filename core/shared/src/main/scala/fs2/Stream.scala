@@ -1,5 +1,6 @@
 package fs2
 
+import scala.collection.immutable.VectorBuilder
 import fs2.util.{Applicative,Async,Attempt,Catchable,Free,Lub1,RealSupertype,Sub1,~>}
 
 /**
@@ -90,6 +91,10 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.delete]]`. */
   def delete(f: O => Boolean): Stream[F,O] = self through pipe.delete(f)
 
+  /** Removes all output values from this stream.
+   * For example, `Stream.eval(Task.delay(println("x"))).drain.runLog`
+   * will, when `unsafeRun` in called, print "x" but return `Vector()`.
+   */
   def drain: Stream[F, Nothing] = flatMap { _ => Stream.empty }
 
   /** Alias for `self through [[pipe.drop]]`. */
@@ -227,7 +232,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
     get.runFold(z)(f)
 
   def runLogFree: Free[F,Vector[O]] =
-    runFoldFree(Vector.empty[O])(_ :+ _)
+    Free.suspend(runFoldFree(new VectorBuilder[O])(_ += _).map(_.result))
 
   /** Alias for `self through [[pipe.prefetch]](f).` */
   def prefetch[F2[_]](implicit S:Sub1[F,F2], F2:Async[F2]): Stream[F2,O] =

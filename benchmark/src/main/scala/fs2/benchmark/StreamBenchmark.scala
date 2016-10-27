@@ -36,6 +36,12 @@ class StreamBenchmark extends BenchmarkUtils {
     Stream.repeatEval(Task.delay(())).take(N).runLast.unsafeRun().get
   }
 
+  @GenerateN(0, 2, 3, 6, 12, 25, 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
+  @Benchmark
+  def runLog(N: Int): Vector[Int] = {
+    Stream.emits(0 until N).covary[Task].runLog.unsafeRun()
+  }
+
   @GenerateN(1, 2, 4, 8, 16, 32, 64, 128, 256)
   @Benchmark
   def awaitPull(N: Int): Int = {

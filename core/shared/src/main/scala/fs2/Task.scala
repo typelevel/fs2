@@ -389,8 +389,8 @@ object Task extends TaskPlatform with TaskInstances {
         else { val r = result; val id = nonce; S { cb(r.map((_,id))) } }
 
       case Msg.Set(r) =>
+        nonce += 1L
         if (result eq null) {
-          nonce += 1L
           val id = nonce
           waiting.values.foreach(cb => S { cb(r.map((_,id))) })
           waiting = LinkedMap.empty
