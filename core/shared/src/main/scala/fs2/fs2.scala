@@ -20,7 +20,7 @@ package object fs2 {
    *
    * Sinks are typically applied with the `to` operation on `Stream`.
    */
-  type Sink[F[_],-I] = Pipe[F,I,Unit]
+  type Sink[F[_],-I] = Pipe[F,I,Nothing]
 
   // Trick to get right-biased syntax for Either in 2.11 while retaining source compatibility with 2.12 and leaving
   // -Xfatal-warnings and -Xwarn-unused-imports enabled. Delete when no longer supporting 2.11.

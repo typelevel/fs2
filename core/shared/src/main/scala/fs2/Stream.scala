@@ -119,6 +119,9 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def evalMap[G[_],Lub[_],O2](f: O => G[O2])(implicit L: Lub1[F,G,Lub]): Stream[Lub,O2] =
     Sub1.substStream(self)(L.subF).flatMap(a => Sub1.substStream(Stream.eval(f(a)))(L.subG))
 
+  def evalMap_[G[_],Lub[_],O2](f: O => G[O2])(implicit L: Lub1[F,G,Lub]): Stream[Lub,Nothing] =
+    evalMap(f).drain
+
   /** Alias for `self through [[pipe.exists]]`. */
   def exists(f: O => Boolean): Stream[F, Boolean] = self through pipe.exists(f)
 
@@ -528,7 +531,7 @@ object Stream {
       f(self,s2)
 
     /** Applies the given sink to this stream and drains the output. */
-    def to(f: Sink[F,O]): Stream[F,Unit] = f(self).drain
+    def to(f: Sink[F,O]): Stream[F,Nothing] = f(self)
   }
 
   implicit class StreamPureOps[+O](private val self: Stream[Pure,O]) extends AnyVal {

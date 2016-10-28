@@ -379,14 +379,14 @@ class PipeSpec extends Fs2Spec {
           val sum = new AtomicLong(0)
           val out = runLog {
             pipe.observe(s.get.covary[Task]) {
-              _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+              _.evalMap_(i => Task.delay { sum.addAndGet(i.toLong) })
             }
           }
           out.map(_.toLong).sum shouldBe sum.get
           sum.set(0)
           val out2 = runLog {
             pipe.observeAsync(s.get.covary[Task], maxQueued = 10) {
-              _.evalMap(i => Task.delay { sum.addAndGet(i.toLong); () })
+              _.evalMap_(i => Task.delay { sum.addAndGet(i.toLong) })
             }
           }
           out2.map(_.toLong).sum shouldBe sum.get
@@ -418,7 +418,7 @@ class PipeSpec extends Fs2Spec {
       "handle multiple consecutive observations" in {
         forAll { (s: PureStream[Int], f: Failure) =>
           runLog {
-            val sink: Sink[Task,Int] = _.evalMap(i => Task.delay(()))
+            val sink: Sink[Task,Int] = _.evalMap_(i => Task.delay(()))
             val src: Stream[Task, Int] = s.get.covary[Task]
             src.observe(sink).observe(sink)
           } shouldBe s.get.toVector
@@ -428,7 +428,7 @@ class PipeSpec extends Fs2Spec {
         forAll { (s: PureStream[Int], f: Failure) =>
           swallow {
             runLog {
-              val sink: Sink[Task,Int] = in => spuriousFail(in.evalMap(i => Task.delay(i)), f).map(_ => ())
+              val sink: Sink[Task,Int] = in => spuriousFail(in.evalMap(i => Task.delay(i)), f).drain
               val src: Stream[Task, Int] = spuriousFail(s.get.covary[Task], f)
               src.observe(sink).observe(sink)
             } shouldBe s.get.toVector

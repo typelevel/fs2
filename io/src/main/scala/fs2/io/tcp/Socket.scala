@@ -254,7 +254,7 @@ protected[tcp] object Socket {
 
       def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = write0(bytes,timeout)
       def writes(timeout: Option[FiniteDuration]): Sink[F, Byte] =
-        _.chunks.flatMap { bs => Stream.eval(write(bs, timeout)) }
+        _.chunks.flatMap { bs => Stream.eval_(write(bs, timeout)) }
 
       def localAddress: F[SocketAddress] = F.delay(ch.getLocalAddress)
       def remoteAddress: F[SocketAddress] = F.delay(ch.getRemoteAddress)

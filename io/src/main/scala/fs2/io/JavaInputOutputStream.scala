@@ -38,8 +38,8 @@ private[io] object JavaInputOutputStream {
     F.delay(os.write(bytes.toArray))
 
   def writeOutputStreamGeneric[F[_]](fos: F[OutputStream], closeAfterUse: Boolean, f: (OutputStream, Chunk[Byte]) => F[Unit])(implicit F: Suspendable[F]): Sink[F, Byte] = s => {
-    def useOs(os: OutputStream): Stream[F, Unit] =
-      s.chunks.evalMap(f(os, _))
+    def useOs(os: OutputStream): Stream[F, Nothing] =
+      s.chunks.evalMap(f(os, _)).drain
 
     if (closeAfterUse)
       Stream.bracket(fos)(useOs, os => F.delay(os.close()))
