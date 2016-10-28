@@ -25,4 +25,4 @@ script:
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 benchmark/"jmh:run -i 10 -wi 10 -f1 -t1 --jvmArgs -Xms2g --jvmArgs -Xmx2g"
 
 after_success:
-  - test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "series/0.9" && sbt +publish
+  - test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "series/1.0" && sbt +publish
