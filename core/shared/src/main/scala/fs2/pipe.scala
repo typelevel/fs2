@@ -191,6 +191,29 @@ object pipe {
   def forall[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
     _ pull { h => h.forall(p) flatMap Pull.output1 }
 
+  /**
+   * Partitions the input into a stream of chunks according to a discriminator function.
+   * Each chunk is annotated with the value of the discriminator function applied to
+   * any of the chunk's elements.
+   */
+  def groupBy[F[_], K, V](f: V => K): Pipe[F, V, (K, Vector[V])] = {
+    def go(current: K, buffer: Vector[V]): Handle[F, V] => Pull[F, (K, Vector[V]), Unit] = _.receiveOption {
+      case Some((chunk, h)) =>
+        chunk.indexWhere(f(_) != current) match {
+          case None =>
+            go(current, buffer ++ chunk.toVector)(h)
+          case Some(idx) =>
+            val next = f(chunk(idx))
+            val out = buffer ++ chunk.take(idx).toVector
+            val carry = if (chunk.size > idx) chunk.drop(idx) else Chunk.empty
+            Pull.output1(current -> out) >> go(next, Vector.empty)(h.push(carry))
+        }
+      case None =>
+        if (buffer.nonEmpty) Pull.output1(current -> buffer) else Pull.done
+    }
+    _ pull { _.receive1 { (v, h) => go(f(v), Vector(v))(h) } }
+  }
+
   /** Emits the specified separator between every pair of elements in the source stream. */
   def intersperse[F[_],I](separator: I): Pipe[F,I,I] =
     _ pull { h => h.echo1 flatMap Pull.loop { (h: Handle[F,I]) =>
