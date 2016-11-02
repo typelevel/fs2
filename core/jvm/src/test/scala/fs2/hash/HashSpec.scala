@@ -9,7 +9,7 @@ class HashSpec extends Fs2Spec {
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
 
   def checkDigest[A](h: Pipe[Pure,Byte,Byte], algo: String, str: String) = {
-    val n = Gen.choose(1, str.length).sample.getOrElse(1)
+    val n = if (str.length > 0) Gen.choose(1, str.length).sample.getOrElse(1) else 1
     val s =
       if (str.isEmpty) Stream.empty
       else str.getBytes.grouped(n).foldLeft(Stream.empty[Pure,Byte])((acc, c) => acc ++ Stream.chunk(Chunk.bytes(c)))
