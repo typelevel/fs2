@@ -5,6 +5,14 @@ import scala.concurrent.duration._
 class TaskSpec extends Fs2Spec{
 
   "Task" - {
+
+    "traverse evaluates effects in left-to-right order" in {
+      var acc = collection.mutable.ListBuffer[Int]()
+      val result = Task.traverse((1 to 5).toList)(n => Task.delay(acc += n))
+      result.unsafeRunSync()
+      acc.toList shouldBe List(1, 2, 3, 4, 5)
+    }
+
     "Ref" - {
 
       /**
