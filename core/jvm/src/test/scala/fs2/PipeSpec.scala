@@ -98,7 +98,7 @@ class PipeSpec extends Fs2Spec {
 
     "delete" in forAll { (s: PureStream[Int]) =>
       val v = runLog(s.get)
-      val i = Gen.oneOf(v).sample.getOrElse(0)
+      val i = if (v.isEmpty) 0 else Gen.oneOf(v).sample.getOrElse(0)
       runLog(s.get.delete(_ == i)) shouldBe v.diff(Vector(i))
     }
 
