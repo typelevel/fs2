@@ -24,7 +24,7 @@ object Traverse {
     def map[A,B](v: Vector[A])(f: A => B): Vector[B] = v map f
     def traverse[G[_], A, B](v: Vector[A])(f: A => G[B])(implicit G: Applicative[G]): G[Vector[B]] = {
       v.reverse.foldLeft(G.pure(Vector.empty[B])) {
-        (tl,hd) => G.map2(f(hd), tl)(_ +: _)
+        (tl,hd) => Applicative.map2(f(hd), tl)(_ +: _)
       }
     }
   }
@@ -33,7 +33,7 @@ object Traverse {
     def map[A,B](l: List[A])(f: A => B): List[B] = l map f
     def traverse[G[_], A, B](l: List[A])(f: A => G[B])(implicit G: Applicative[G]): G[List[B]] = {
       l.reverse.foldLeft(G.pure(List.empty[B])) {
-        (tl,hd) => G.map2(f(hd), tl)(_ :: _)
+        (tl,hd) => Applicative.map2(f(hd), tl)(_ :: _)
       }
     }
   }
