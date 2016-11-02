@@ -17,7 +17,7 @@ lazy val contributors = Seq(
 lazy val commonSettings = Seq(
   organization := "co.fs2",
   scalaVersion := "2.11.8",
-  crossScalaVersions := Seq("2.11.8", "2.12.0-RC2"),
+  crossScalaVersions := Seq("2.11.8", "2.12.0"),
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -35,7 +35,7 @@ lazy val commonSettings = Seq(
   scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console)),
   libraryDependencies ++= Seq(
     "org.scalatest" %%% "scalatest" % "3.0.0" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.13.2" % "test"
+    "org.scalacheck" %%% "scalacheck" % "1.13.4" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
