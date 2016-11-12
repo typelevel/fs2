@@ -306,7 +306,7 @@ object Task extends TaskPlatform with TaskInstances {
       try S(cb(Attempt(a)).run)
       catch { case NonFatal(t) => cb(Left(t)).run }
     }
-    
+
   /**
     * Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
     * into the outer task, `t` will be running in the background, and the inner task
@@ -389,7 +389,7 @@ object Task extends TaskPlatform with TaskInstances {
     // id which increases with each `set` or successful `modify`
     var nonce: Long = 0
 
-    lazy val actor: Actor[Msg[A]] = Actor.actor[Msg[A]] {
+    val actor: Actor[Msg[A]] = Actor.actor[Msg[A]] {
       case Msg.Read(cb, idf) =>
         if (result eq null) waiting = waiting.updated(idf, cb)
         else { val r = result; val id = nonce; S { cb(r.map((_,id))) } }
