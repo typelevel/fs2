@@ -13,11 +13,10 @@ class TaskBenchmark extends BenchmarkUtils {
   def sum(start: Int, end: Int): Int = {
     var i = start
     var sum = 0
-
     while(i < end) {
       i += 1
       sum += i
-  }
+    }
     sum
   }
 
@@ -68,4 +67,3 @@ class TaskBenchmark extends BenchmarkUtils {
   }
 
 }
-
