@@ -142,7 +142,7 @@ sealed abstract class Task[+A] {
   /**
    * Run this computation to obtain either a result or an exception, then
    * invoke the given callback. Any pure, non-asynchronous computation at the
-   * head of this `Future` will be forced in the calling thread. At the first
+   * head of this `Task` will be forced in the calling thread. At the first
    * `Async` encountered, control is transferred to whatever thread backs the
    * `Async` and this function returns immediately.
    */
@@ -290,19 +290,23 @@ object Task extends TaskPlatform with TaskInstances {
    * Memoize `a` with a lazy value before calling this function if
    * memoization is desired.
    */
-  def delay[A](a: => A): Task[A] = suspend(now(a))
+  def delay[A](a: => A): Task[A] = suspend(Now(a))
 
   /**
-   * Produce `f` in the main trampolining loop, `Future.step`, using a fresh
+   * Produce `f` in the main trampolining loop, `step`, using a fresh
    * call stack. The standard trampolining primitive, useful for avoiding
    * stack overflows.
    */
-  def suspend[A](a: => Task[A]): Task[A] = Suspend(() => try a catch { case NonFatal(t) => fail(t) })
+  def suspend[A](a: => Task[A]): Task[A] =
+    Suspend(() => try a catch { case NonFatal(t) => fail(t) })
 
-  /** Create a `Future` that will evaluate `a` using the given `Strategy`. */
+  /** Create a `Task` that will evaluate `a` using the given `Strategy`. */
   def apply[A](a: => A)(implicit S: Strategy): Task[A] =
-    async { cb => S(cb(Attempt(a))) }
-
+    AsyncT { cb =>
+      try S(cb(Attempt(a)).run)
+      catch { case NonFatal(t) => cb(Left(t)).run }
+    }
+    
   /**
     * Given `t: Task[A]`, `start(t)` returns a `Task[Task[A]]`. After `flatMap`-ing
     * into the outer task, `t` will be running in the background, and the inner task
@@ -344,7 +348,9 @@ object Task extends TaskPlatform with TaskInstances {
     AsyncT { cb =>
       register { attempt =>
         try S(cb(attempt).run)
-        catch { case NonFatal(t) => cb(Left(t)).run } } }
+        catch { case NonFatal(t) => cb(Left(t)).run }
+      }
+    }
 
   /**
    * Create a `Task` from a `scala.concurrent.Future`.
