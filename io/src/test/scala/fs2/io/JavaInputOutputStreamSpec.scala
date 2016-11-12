@@ -14,7 +14,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
     implicit val streamByteGen: Arbitrary[Stream[Task, Byte]] = Arbitrary {
       for {
         data <- implicitly[Arbitrary[String]].arbitrary
-        chunkSize <- Gen.chooseNum(1, data.length)
+        chunkSize <- if (data.length > 0) Gen.chooseNum(1, data.length) else Gen.fail
       } yield {
         def go(rem: String): Stream[Task, Byte] = {
           if (chunkSize >= rem.length) Stream.chunk(Chunk.bytes(rem.getBytes))

@@ -146,6 +146,9 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.forall]]`. */
   def forall(f: O => Boolean): Stream[F, Boolean] = self through pipe.forall(f)
 
+  /** Alias for `self through [[pipe.groupBy]]`. */
+  def groupBy[O2](f: O => O2): Stream[F, (O2, Vector[O])] = self through pipe.groupBy(f)
+
   def interleave[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R:RealSupertype[O,O2], S:Sub1[F,F2]): Stream[F2,O2] =
     (self through2v s2)(pipe2.interleave)
 
@@ -310,7 +313,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
 
   /** Like `to`, but the specified `Sink`'s effect may be a supertype of `F`. */
   def tov[F2[_]](f: Sink[F2,O])(implicit S: Sub1[F,F2]): Stream[F2,Unit] =
-    f(Sub1.substStream(self)).drain
+    f(Sub1.substStream(self))
 
   def translate[G[_]](u: F ~> G): Stream[G,O] =
     Stream.mk { get.translate(StreamCore.NT.T(u)) }
@@ -528,7 +531,7 @@ object Stream {
       f(self,s2)
 
     /** Applies the given sink to this stream and drains the output. */
-    def to(f: Sink[F,O]): Stream[F,Unit] = f(self).drain
+    def to(f: Sink[F,O]): Stream[F,Unit] = f(self)
   }
 
   implicit class StreamPureOps[+O](private val self: Stream[Pure,O]) extends AnyVal {

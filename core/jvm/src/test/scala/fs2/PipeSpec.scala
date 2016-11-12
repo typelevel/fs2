@@ -98,7 +98,7 @@ class PipeSpec extends Fs2Spec {
 
     "delete" in forAll { (s: PureStream[Int]) =>
       val v = runLog(s.get)
-      val i = Gen.oneOf(v).sample.getOrElse(0)
+      val i = if (v.isEmpty) 0 else Gen.oneOf(v).sample.getOrElse(0)
       runLog(s.get.delete(_ == i)) shouldBe v.diff(Vector(i))
     }
 
@@ -178,6 +178,15 @@ class PipeSpec extends Fs2Spec {
     "forall" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val f = (i: Int) => i % n.get == 0
       runLog(s.get.forall(f)) shouldBe Vector(runLog(s.get).forall(f))
+    }
+
+    "groupBy" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+      val f = (i: Int) => i % n.get
+      val s1 = s.get.groupBy(f)
+      val s2 = s.get.map(f).changes
+      runLog(s1.map(_._2)).flatten shouldBe runLog(s.get)
+      runLog(s1.map(_._1)) shouldBe runLog(s2)
+      runLog(s1.map { case (k, vs) => vs.forall(f(_) == k) }) shouldBe runLog(s2.map(_ => true))
     }
 
     "intersperse" in forAll { (s: PureStream[Int], n: Int) =>
