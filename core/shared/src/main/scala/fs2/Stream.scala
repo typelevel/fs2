@@ -149,6 +149,9 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.groupBy]]`. */
   def groupBy[O2](f: O => O2): Stream[F, (O2, Vector[O])] = self through pipe.groupBy(f)
 
+  /** Alias for `self through [[pipe.head]]`. */
+  def head: Stream[F,O] = self through pipe.head
+
   def interleave[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R:RealSupertype[O,O2], S:Sub1[F,F2]): Stream[F2,O2] =
     (self through2v s2)(pipe2.interleave)
 
