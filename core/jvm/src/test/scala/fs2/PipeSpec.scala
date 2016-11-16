@@ -189,6 +189,10 @@ class PipeSpec extends Fs2Spec {
       runLog(s1.map { case (k, vs) => vs.forall(f(_) == k) }) shouldBe runLog(s2.map(_ => true))
     }
 
+    "head" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.head) shouldBe runLog(s.get).take(1)
+    }
+
     "intersperse" in forAll { (s: PureStream[Int], n: Int) =>
       runLog(s.get.intersperse(n)) shouldBe runLog(s.get).flatMap(i => Vector(i, n)).dropRight(1)
     }

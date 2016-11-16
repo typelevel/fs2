@@ -214,6 +214,10 @@ object pipe {
     _ pull { _.receive1 { (v, h) => go(f(v), Vector(v))(h) } }
   }
 
+  /** Emits the first element of this stream (if non-empty) and then halts. */
+  def head[F[_],I]: Pipe[F,I,I] =
+    take(1)
+
   /** Emits the specified separator between every pair of elements in the source stream. */
   def intersperse[F[_],I](separator: I): Pipe[F,I,I] =
     _ pull { h => h.echo1 flatMap Pull.loop { (h: Handle[F,I]) =>
