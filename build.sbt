@@ -32,7 +32,7 @@ lazy val commonSettings = Seq(
     "-Ywarn-unused-import"
   ),
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
-  scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console)),
+  scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
     "org.scalatest" %%% "scalatest" % "3.0.0" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.4" % "test"
@@ -180,7 +180,7 @@ lazy val benchmarkMacros = project.in(file("benchmark-macros")).
   settings(
     name := "fs2-benchmark-macros",
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
   )
 
 lazy val benchmark = project.in(file("benchmark")).
@@ -192,7 +192,7 @@ lazy val benchmark = project.in(file("benchmark")).
   )
   .settings(
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
   )
   .enablePlugins(JmhPlugin)
   .dependsOn(io, benchmarkMacros)
