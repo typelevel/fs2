@@ -184,98 +184,7 @@ trait MonomorphicChunk[+A] extends Chunk[A] {
 }
 
 trait PolymorphicChunk[+A] extends Chunk[A] {
-
   final def conform[B: ClassTag] = None
-
-  /**
-   * An implementation of concatAll which special-cases the primitive chunks
-   * defined *here* and attempts to recover specialization downstream.  Alternative
-   * specialized chunk implementations will, necessarily, be omitted from this
-   * "downstream respecialization" process.
-   */
-  final override def concatAll[B >: A](chunks: Seq[Chunk[B]]): Chunk[B] = {
-    def itr = this.iterator ++ chunks.iterator
-
-    /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
-    def concatBooleans(chunks: Seq[Chunk[Boolean]]): Chunk[Boolean] = {
-      if (chunks.isEmpty) Chunk.empty
-      else {
-        val size = chunks.foldLeft(0)(_ + _.size)
-        val arr = Array.ofDim[Boolean](size)
-        var offset = 0
-        chunks.foreach { c =>
-          if (!c.isEmpty) {
-            c.copyToArray(arr, offset)
-            offset += c.size
-          }
-        }
-        Chunk.booleans(arr)
-      }
-    }
-
-    /** Concatenates the specified sequence of byte chunks in to a single chunk. */
-    def concatBytes(chunks: Seq[Chunk[Byte]]): Chunk[Byte] = {
-      if (chunks.isEmpty) Chunk.empty
-      else {
-        val size = chunks.foldLeft(0)(_ + _.size)
-        val arr = Array.ofDim[Byte](size)
-        var offset = 0
-        chunks.foreach { c =>
-          if (!c.isEmpty) {
-            c.copyToArray(arr, offset)
-            offset += c.size
-          }
-        }
-        Chunk.bytes(arr)
-      }
-    }
-
-    /** Concatenates the specified sequence of double chunks in to a single chunk. */
-    def concatDoubles(chunks: Seq[Chunk[Double]]): Chunk[Double] = {
-      if (chunks.isEmpty) Chunk.empty
-      else {
-        val size = chunks.foldLeft(0)(_ + _.size)
-        val arr = Array.ofDim[Double](size)
-        var offset = 0
-        chunks.foreach { c =>
-          if (!c.isEmpty) {
-            c.copyToArray(arr, offset)
-            offset += c.size
-          }
-        }
-        Chunk.doubles(arr)
-      }
-    }
-
-    /** Concatenates the specified sequence of long chunks in to a single chunk. */
-    def concatLongs(chunks: Seq[Chunk[Long]]): Chunk[Long] = {
-      if (chunks.isEmpty) Chunk.empty
-      else {
-        val size = chunks.foldLeft(0)(_ + _.size)
-        val arr = Array.ofDim[Long](size)
-        var offset = 0
-        chunks.foreach { c =>
-          if (!c.isEmpty) {
-            c.copyToArray(arr, offset)
-            offset += c.size
-          }
-        }
-        Chunk.longs(arr)
-      }
-    }
-
-    // djs: you know, I have serious doubts that this is ACTUALLY improving performance...
-    if (itr forall { _.isInstanceOf[Boolean] })
-      concatBooleans((this +: chunks).asInstanceOf[Seq[Chunk[Boolean]]]).asInstanceOf[Chunk[B]]
-    else if (itr forall { _.isInstanceOf[Byte] })
-      concatBytes((this +: chunks).asInstanceOf[Seq[Chunk[Byte]]]).asInstanceOf[Chunk[B]]
-    else if (itr forall { _.isInstanceOf[Double] })
-      concatDoubles((this +: chunks).asInstanceOf[Seq[Chunk[Double]]]).asInstanceOf[Chunk[B]]
-    else if (itr forall { _.isInstanceOf[Long] })
-      concatLongs((this +: chunks).asInstanceOf[Seq[Chunk[Long]]]).asInstanceOf[Chunk[B]]
-    else
-      super.concatAll(chunks)
-  }
 }
 
 object Chunk {
@@ -1020,7 +929,7 @@ object Chunk {
 /**
  * A chunk which has at least one element.
  */
-sealed trait NonEmptyChunk[+A] extends PolymorphicChunk[A] {
+sealed trait NonEmptyChunk[+A] extends Chunk[A] {
 
   /** Like [[uncons]] but returns the head and tail directly instead of being wrapped in an `Option`. */
   def unconsNonEmpty: (A, Chunk[A])
@@ -1095,6 +1004,8 @@ object NonEmptyChunk {
     def foldRight[B](z: B)(f: (A, B) => B): B = underlying.foldRight(z)(f)
     def size: Int = underlying.size
     def take(n: Int): Chunk[A] = underlying.take(n)
+    def conform[B: ClassTag] = underlying.conform[B]
+    override def concatAll[B >: A](chunks: Seq[Chunk[B]]) = underlying.concatAll(chunks)
     override def toBooleans[B >: A](implicit ev: B =:= Boolean): Chunk.Booleans = underlying.toBooleans(ev)
     override def toBytes[B >: A](implicit ev: B =:= Byte): Chunk.Bytes = underlying.toBytes(ev)
     override def toLongs[B >: A](implicit ev: B =:= Long): Chunk.Longs = underlying.toLongs(ev)
