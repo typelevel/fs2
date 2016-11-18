@@ -22,6 +22,7 @@ class ChunkSpec extends Fs2Spec {
       Chunk.indexedSeq(c).iterator.toList shouldBe c.iterator.toList
     }
 
+
     implicit val arbBooleanChunk: Arbitrary[Chunk[Boolean]] = Arbitrary {
       for {
         n <- Gen.choose(0, 100)
@@ -167,13 +168,13 @@ class ChunkSpec extends Fs2Spec {
     "toarray.long" in forAll { c: Chunk[Long] => checkToArray(c) }
     "toarray.unspecialized" in forAll { c: Chunk[Int] => checkToArray(c) }
 
+
     def checkConcat[A, T: ClassTag](cs: Seq[Chunk[A]]) = {
       val result = Chunk.concat(cs)
       result.toVector shouldBe cs.foldLeft(Vector.empty[A])(_ ++ _.toVector)
       if (!result.isEmpty) result shouldBe a[T]
       result
     }
-
     "concat.boolean" in forAll { cs: List[Chunk[Boolean]] => checkConcat[Boolean, Chunk.Booleans](cs) }
     "concat.bytes" in forAll { cs: List[Chunk[Byte]] => checkConcat[Byte, Chunk.Bytes](cs) }
     "concat.doubles" in forAll { cs: List[Chunk[Double]] => checkConcat[Double, Chunk.Doubles](cs) }

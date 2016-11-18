@@ -1,6 +1,6 @@
 package fs2
 
-import scala.reflect.ClassTag
+import scala.reflect.{classTag, ClassTag}
 
 /**
  * A strict, in-memory sequence of `A` values.
@@ -41,6 +41,13 @@ trait Chunk[+A] { self =>
 
   /** Returns a new chunk made up of the elements of this chunk for which the specified predicate returns true. */
   def filter(f: A => Boolean): Chunk[A]
+
+  /** Returns Some(this) if A =:= B. This function is pessimistic, in that it will assume None unless proven safe */
+  def conform[B: ClassTag]: Option[Chunk[B]]
+
+  /** Returns a new chunk consisting of the elements from the current chunk followed by the elements of the given chunks, in order */
+  def concatAll[B >: A](chunks: Seq[Chunk[B]]): Chunk[B] =
+    Chunk.indexedSeq(chunks.foldLeft(this.toVector: Vector[B]) { _ ++ _.toVector })
 
   /**
    * Reduces this chunk to a value of type `B` by applying `f` to each element, left to right,
@@ -169,6 +176,17 @@ trait Chunk[+A] { self =>
   override def hashCode: Int = iterator.toStream.hashCode
 }
 
+trait MonomorphicChunk[+A] extends Chunk[A] {
+  protected val tag: ClassTag[_]    // can't use type A because of invariance
+
+  final def conform[B](implicit ev: ClassTag[B]): Option[Chunk[B]] =
+    if (ev == tag) Some(this.asInstanceOf[Chunk[B]]) else None
+}
+
+trait PolymorphicChunk[+A] extends Chunk[A] {
+  final def conform[B: ClassTag] = None
+}
+
 object Chunk {
 
   /** Empty chunk. */
@@ -181,11 +199,13 @@ object Chunk {
     def take(n: Int) = empty
     def foldLeft[B](z: B)(f: (B,Nothing) => B): B = z
     def foldRight[B](z: B)(f: (Nothing,B) => B): B = z
+    def conform[B: ClassTag] = Some(this.asInstanceOf[Chunk[B]])
+    override def concatAll[B](chunks: Seq[Chunk[B]]): Chunk[B] = Chunk.concat(chunks)
     override def map[B](f: Nothing => B) = empty
   }
 
   /** Creates a chunk of one element. */
-  def singleton[A](a: A): NonEmptyChunk[A] = NonEmptyChunk.fromChunkUnsafe(new Chunk[A] { self =>
+  def singleton[A](a: A): NonEmptyChunk[A] = NonEmptyChunk.fromChunkUnsafe(new PolymorphicChunk[A] { self =>
     def size = 1
     def apply(i: Int) = if (i == 0) a else throw new IllegalArgumentException(s"Chunk.singleton($i)")
     def copyToArray[B >: A](xs: Array[B], start: Int): Unit = xs(start) = a
@@ -199,7 +219,7 @@ object Chunk {
   })
 
   /** Creates a chunk from an indexed sequence, using the existing index-based access provided by the indexed sequence. */
-  def indexedSeq[A](a: collection.IndexedSeq[A]): Chunk[A] = new Chunk[A] {
+  def indexedSeq[A](a: collection.IndexedSeq[A]): Chunk[A] = new PolymorphicChunk[A] {
     def size = a.size
     override def isEmpty = a.isEmpty
     override def uncons = if (a.isEmpty) None else Some(a.head -> indexedSeq(a drop 1))
@@ -215,7 +235,7 @@ object Chunk {
   }
 
   /** Creates a chunk from a sequence, using a lazy copy of the sequence to support indexed based access. */
-  def seq[A](a: Seq[A]): Chunk[A] = new Chunk[A] {
+  def seq[A](a: Seq[A]): Chunk[A] = new PolymorphicChunk[A] {
     lazy val vec = a.toIndexedSeq
     def size = a.size
     override def isEmpty = a.isEmpty
@@ -277,99 +297,10 @@ object Chunk {
 
   /** Concatenates the specified sequence of chunks in to a single chunk. */
   def concat[A](chunks: Seq[Chunk[A]]): Chunk[A] = {
-    if (chunks.isEmpty) {
+    if (chunks.isEmpty)
       Chunk.empty
-    } else if (chunks.forall(c =>
-      c.isInstanceOf[Chunk.Booleans] ||
-      (c.isInstanceOf[NonEmptyChunk.Wrapped[_]] && c.asInstanceOf[NonEmptyChunk.Wrapped[_]].underlying.isInstanceOf[Chunk.Booleans]) ||
-      c.iterator.forall(_.isInstanceOf[Boolean]))) {
-      concatBooleans(chunks.asInstanceOf[Seq[Chunk[Boolean]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c =>
-      c.isInstanceOf[Chunk.Bytes] ||
-      (c.isInstanceOf[NonEmptyChunk.Wrapped[_]] && c.asInstanceOf[NonEmptyChunk.Wrapped[_]].underlying.isInstanceOf[Chunk.Bytes]) ||
-      c.iterator.forall(_.isInstanceOf[Byte]))) {
-      concatBytes(chunks.asInstanceOf[Seq[Chunk[Byte]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c =>
-       c.isInstanceOf[Chunk.Doubles] ||
-      (c.isInstanceOf[NonEmptyChunk.Wrapped[_]] && c.asInstanceOf[NonEmptyChunk.Wrapped[_]].underlying.isInstanceOf[Chunk.Doubles]) ||
-      c.iterator.forall(_.isInstanceOf[Double]))) {
-      concatDoubles(chunks.asInstanceOf[Seq[Chunk[Double]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c =>
-      c.isInstanceOf[Chunk.Longs] ||
-      (c.isInstanceOf[NonEmptyChunk.Wrapped[_]] && c.asInstanceOf[NonEmptyChunk.Wrapped[_]].underlying.isInstanceOf[Chunk.Longs]) ||
-      c.iterator.forall(_.isInstanceOf[Long]))) {
-      concatLongs(chunks.asInstanceOf[Seq[Chunk[Long]]]).asInstanceOf[Chunk[A]]
-    } else {
-      Chunk.indexedSeq(chunks.foldLeft(Vector.empty[A])(_ ++ _.toVector))
-    }
-  }
-
-  /** Concatenates the specified sequence of boolean chunks in to a single chunk. */
-  def concatBooleans(chunks: Seq[Chunk[Boolean]]): Chunk[Boolean] = {
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = Array.ofDim[Boolean](size)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.booleans(arr)
-    }
-  }
-
-  /** Concatenates the specified sequence of byte chunks in to a single chunk. */
-  def concatBytes(chunks: Seq[Chunk[Byte]]): Chunk[Byte] = {
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = Array.ofDim[Byte](size)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.bytes(arr)
-    }
-  }
-
-  /** Concatenates the specified sequence of double chunks in to a single chunk. */
-  def concatDoubles(chunks: Seq[Chunk[Double]]): Chunk[Double] = {
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = Array.ofDim[Double](size)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.doubles(arr)
-    }
-  }
-
-  /** Concatenates the specified sequence of long chunks in to a single chunk. */
-  def concatLongs(chunks: Seq[Chunk[Long]]): Chunk[Long] = {
-    if (chunks.isEmpty) Chunk.empty
-    else {
-      val size = chunks.foldLeft(0)(_ + _.size)
-      val arr = Array.ofDim[Long](size)
-      var offset = 0
-      chunks.foreach { c =>
-        if (!c.isEmpty) {
-          c.copyToArray(arr, offset)
-          offset += c.size
-        }
-      }
-      Chunk.longs(arr)
-    }
+    else
+      chunks.head concatAll chunks.tail
   }
 
   // justification of the performance of this class: http://stackoverflow.com/a/6823454
@@ -449,8 +380,8 @@ object Chunk {
   // matching, e.g. `h.receive { case (bits: Booleans) #: h => /* do stuff unboxed */ } `
 
   /** Specialized chunk supporting unboxed operations on booleans. */
-  final class Booleans private[Chunk](val values: Array[Boolean], val offset: Int, sz: Int) extends Chunk[Boolean] {
-  self =>
+  final class Booleans private[Chunk](val values: Array[Boolean], val offset: Int, sz: Int) extends MonomorphicChunk[Boolean] { self =>
+    protected val tag = classTag[Boolean]
     val size = sz min (values.length - offset)
     def at(i: Int): Boolean = values(offset + i)
     def apply(i: Int) = values(offset + i)
@@ -488,6 +419,33 @@ object Chunk {
       (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
     def foldRight[B](z: B)(f: (Boolean,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+
+    override def concatAll[B >: Boolean](chunks: Seq[Chunk[B]]): Chunk[B] = {
+      val conformed = chunks flatMap { _.conform[Boolean] }
+
+      if (chunks.isEmpty) {
+        this
+      } else if ((chunks lengthCompare conformed.size) == 0) {
+        val size = conformed.foldLeft(this.size)(_ + _.size)
+        val arr = Array.ofDim[Boolean](size)
+        var offset = 0
+
+        if (!isEmpty) {
+          copyToArray(arr, offset)
+          offset += this.size
+        }
+
+        conformed.foreach { c =>
+          if (!c.isEmpty) {
+            c.copyToArray(arr, offset)
+            offset += c.size
+          }
+        }
+        Chunk.booleans(arr)
+      } else {
+        super.concatAll(chunks)
+      }
+    }
 
     // here be dragons; modify with EXTREME care
     override def map[B](f: Boolean => B): Chunk[B] = {
@@ -558,8 +516,8 @@ object Chunk {
   }
 
   /** Specialized chunk supporting unboxed operations on bytes. */
-  final class Bytes private[Chunk](val values: Array[Byte], val offset: Int, sz: Int) extends Chunk[Byte] {
-  self =>
+  final class Bytes private[Chunk](val values: Array[Byte], val offset: Int, sz: Int) extends MonomorphicChunk[Byte] { self =>
+    protected val tag = classTag[Byte]
     val size = sz min (values.length - offset)
     def at(i: Int): Byte = values(offset + i)
     def apply(i: Int) = values(offset + i)
@@ -597,6 +555,34 @@ object Chunk {
       (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
     def foldRight[B](z: B)(f: (Byte,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+
+    override def concatAll[B >: Byte](chunks: Seq[Chunk[B]]): Chunk[B] = {
+      val conformed = chunks flatMap { _.conform[Byte] }
+
+      if (chunks.isEmpty) {
+        this
+      } else if ((chunks lengthCompare conformed.size) == 0) {
+        val size = conformed.foldLeft(this.size)(_ + _.size)
+        val arr = Array.ofDim[Byte](size)
+        var offset = 0
+
+        if (!isEmpty) {
+          copyToArray(arr, offset)
+          offset += this.size
+        }
+
+        conformed.foreach { c =>
+          if (!c.isEmpty) {
+            c.copyToArray(arr, offset)
+            offset += c.size
+          }
+        }
+        Chunk.bytes(arr)
+      } else {
+        super.concatAll(chunks)
+      }
+    }
+
     override def toString: String = s"Bytes(offset=$offset, sz=$sz, values=${values.toSeq})"
 
     // here be dragons; modify with EXTREME care
@@ -668,8 +654,8 @@ object Chunk {
   }
 
   /** Specialized chunk supporting unboxed operations on longs. */
-  final class Longs private[Chunk](val values: Array[Long], val offset: Int, sz: Int) extends Chunk[Long] {
-  self =>
+  final class Longs private[Chunk](val values: Array[Long], val offset: Int, sz: Int) extends MonomorphicChunk[Long] { self =>
+    protected val tag = classTag[Long]
     val size = sz min (values.length - offset)
     def at(i: Int): Long = values(offset + i)
     def apply(i: Int) = values(offset + i)
@@ -707,6 +693,33 @@ object Chunk {
       (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
     def foldRight[B](z: B)(f: (Long,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+
+    override def concatAll[B >: Long](chunks: Seq[Chunk[B]]): Chunk[B] = {
+      val conformed = chunks flatMap { _.conform[Long] }
+
+      if (chunks.isEmpty) {
+        this
+      } else if ((chunks lengthCompare conformed.size) == 0) {
+        val size = conformed.foldLeft(this.size)(_ + _.size)
+        val arr = Array.ofDim[Long](size)
+        var offset = 0
+
+        if (!isEmpty) {
+          copyToArray(arr, offset)
+          offset += this.size
+        }
+
+        conformed.foreach { c =>
+          if (!c.isEmpty) {
+            c.copyToArray(arr, offset)
+            offset += c.size
+          }
+        }
+        Chunk.longs(arr)
+      } else {
+        super.concatAll(chunks)
+      }
+    }
 
     // here be dragons; modify with EXTREME care
     override def map[B](f: Long => B): Chunk[B] = {
@@ -777,8 +790,8 @@ object Chunk {
   }
 
   /** Specialized chunk supporting unboxed operations on doubles. */
-  final class Doubles private[Chunk](val values: Array[Double], val offset: Int, sz: Int) extends Chunk[Double] {
-  self =>
+  final class Doubles private[Chunk](val values: Array[Double], val offset: Int, sz: Int) extends MonomorphicChunk[Double] { self =>
+    protected val tag = classTag[Double]
     val size = sz min (values.length - offset)
     def at(i: Int): Double = values(offset + i)
     def apply(i: Int) = values(offset + i)
@@ -816,6 +829,33 @@ object Chunk {
       (0 until size).foldLeft(z)((z,i) => f(z, at(i)))
     def foldRight[B](z: B)(f: (Double,B) => B): B =
       ((size-1) to 0 by -1).foldLeft(z)((tl,hd) => f(at(hd), tl))
+
+    override def concatAll[B >: Double](chunks: Seq[Chunk[B]]): Chunk[B] = {
+      val conformed = chunks flatMap { _.conform[Double] }
+
+      if (chunks.isEmpty) {
+        this
+      } else if ((chunks lengthCompare conformed.size) == 0) {
+        val size = conformed.foldLeft(this.size)(_ + _.size)
+        val arr = Array.ofDim[Double](size)
+        var offset = 0
+
+        if (!isEmpty) {
+          copyToArray(arr, offset)
+          offset += this.size
+        }
+
+        conformed.foreach { c =>
+          if (!c.isEmpty) {
+            c.copyToArray(arr, offset)
+            offset += c.size
+          }
+        }
+        Chunk.doubles(arr)
+      } else {
+        super.concatAll(chunks)
+      }
+    }
 
     // here be dragons; modify with EXTREME care
     override def map[B](f: Double => B): Chunk[B] = {
@@ -954,7 +994,7 @@ object NonEmptyChunk {
     case _ => new Wrapped(c)
   }
 
-  private[fs2] final class Wrapped[A](val underlying: Chunk[A]) extends NonEmptyChunk[A] {
+  private final class Wrapped[A](val underlying: Chunk[A]) extends NonEmptyChunk[A] {
     def unconsNonEmpty: (A, Chunk[A]) = underlying.uncons.get
     def apply(i: Int): A = underlying(i)
     def copyToArray[B >: A](xs: Array[B], start: Int): Unit = underlying.copyToArray(xs, start)
@@ -964,6 +1004,8 @@ object NonEmptyChunk {
     def foldRight[B](z: B)(f: (A, B) => B): B = underlying.foldRight(z)(f)
     def size: Int = underlying.size
     def take(n: Int): Chunk[A] = underlying.take(n)
+    def conform[B: ClassTag] = underlying.conform[B]
+    override def concatAll[B >: A](chunks: Seq[Chunk[B]]) = underlying.concatAll(chunks)
     override def toBooleans[B >: A](implicit ev: B =:= Boolean): Chunk.Booleans = underlying.toBooleans(ev)
     override def toBytes[B >: A](implicit ev: B =:= Byte): Chunk.Bytes = underlying.toBytes(ev)
     override def toLongs[B >: A](implicit ev: B =:= Long): Chunk.Longs = underlying.toLongs(ev)
