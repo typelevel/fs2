@@ -1,12 +1,11 @@
 package fs2
-package scodec
+package interop.scodec
 
 import scala.reflect.{ClassTag, classTag}
-import _root_.scodec.bits.ByteVector
+import scodec.bits.ByteVector
 
 final class ByteVectorChunk private (val toByteVector: ByteVector)
-    extends MonomorphicChunk[Byte]
-{
+    extends MonomorphicChunk[Byte] {
   def apply(i: Int): Byte =
     toByteVector(i)
 
@@ -15,7 +14,7 @@ final class ByteVectorChunk private (val toByteVector: ByteVector)
       case byteArray: Array[Byte] =>
         toByteVector.copyToArray(byteArray, start)
       case _ =>
-        toByteVector.toArray.iterator.copyToArray(xs, start)
+        iterator.copyToArray(xs, start)
     }
 
   def drop(n: Int): Chunk[Byte] =
@@ -57,11 +56,14 @@ final class ByteVectorChunk private (val toByteVector: ByteVector)
     classTag[Byte]
 
   override def concatAll[B >: Byte](chunks: Seq[Chunk[B]]): Chunk[B] = {
-    val conformed = chunks collect { case toByteVectorc: ByteVectorChunk => toByteVectorc }
+    val conformed = chunks flatMap { _.conform[Byte] }
     if (chunks.isEmpty) {
       this
     } else if ((chunks lengthCompare conformed.size) == 0) {
-      ByteVectorChunk(conformed.foldLeft(toByteVector)(_ ++ _.toByteVector))
+      ByteVectorChunk(conformed.foldLeft(toByteVector) {
+        case (bv, bvc: ByteVectorChunk) => bv ++ bvc.toByteVector
+        case (bv, c) => bv ++ ByteVector.view(c.toArray)
+      })
     } else {
       super.concatAll(chunks)
     }

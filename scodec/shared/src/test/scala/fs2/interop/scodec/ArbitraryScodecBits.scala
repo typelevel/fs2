@@ -1,11 +1,11 @@
 /* The arbitrary ByteVectors are taken from scodec.bits.Arbitraries */
 package fs2
-package scodec
+package interop.scodec
 
 import java.nio.ByteBuffer
 
 import scala.{Stream => SStream}
-import _root_.scodec.bits.ByteVector
+import scodec.bits.ByteVector
 
 import org.scalacheck.{Gen, Arbitrary, Shrink}
 import org.scalacheck.Arbitrary.arbitrary
