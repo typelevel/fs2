@@ -52,7 +52,7 @@ class TextSpec extends Fs2Spec {
 
       "n byte sequences" in forAll { (s: String) =>
         val n = Gen.choose(1,9).sample.getOrElse(1)
-        Stream.chunk(utf8Bytes(s)).pure.chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe s
+        Stream.chunk(utf8Bytes(s)).pure.chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe s
       }
 
       // The next tests were taken from:
