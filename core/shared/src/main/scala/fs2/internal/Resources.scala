@@ -65,7 +65,7 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Either[List[() => Unit], 
         else LinkedMap.empty[T,Either[List[() => Unit],R]]
       if (update((if (totallyDone) Closed else Closing, m2))) {
         if (totallyDone) Right(rs)
-        else Left(m2.values.filter(_.isLeft).size)
+        else Left(m2.values.count(_.isLeft))
       }
       else closeAll(waiting)
   }
