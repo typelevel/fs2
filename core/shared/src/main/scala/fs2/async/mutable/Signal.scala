@@ -3,7 +3,6 @@ package async
 package mutable
 
 import fs2.Stream._
-import fs2.async.immutable
 import fs2.util.{Applicative,Async,Functor}
 import fs2.util.syntax._
 
