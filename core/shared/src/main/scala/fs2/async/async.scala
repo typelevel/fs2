@@ -40,7 +40,7 @@ package object async {
    * Creates a queue that functions as a circular buffer. Up to `size` elements of
    * type `A` will accumulate on the queue and then it will begin overwriting
    * the oldest elements. Thus an enqueue process will never wait.
-   * @param size The size of the circular buffer (must be > 0)
+   * @param maxSize The size of the circular buffer (must be > 0)
    */
   def circularBuffer[F[_],A](maxSize: Int)(implicit F: Async[F]): F[mutable.Queue[F,A]] =
     mutable.Queue.circularBuffer[F,A](maxSize)
