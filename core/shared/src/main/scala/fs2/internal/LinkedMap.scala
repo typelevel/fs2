@@ -51,7 +51,7 @@ private[fs2] class LinkedMap[K,+V](
 
   def size = entries.size max insertionOrder.size
 
-  override def toString = "{ " + (keys zip values).mkString("  ") +" }"
+  override def toString = (keys zip values).mkString("{ ", "  ", " }")
 }
 
 private[fs2] object LinkedMap {
