@@ -39,6 +39,7 @@ final class Pull[+F[_],+O,+R] private (private val get: Free[AlgebraF[F,O]#f,Opt
         case Algebra.Eval(fr) => StreamCore.evalScope(fr.attempt).flatMap(f)
         case Algebra.Output(o) => StreamCore.append(o, StreamCore.suspend(f(Right(()))))
       }
+      def map[X](x: X)(f: X => Out) = StreamCore.attemptStream(done(f(x)))
       def bind[X](x: X)(f: X => G[Out]) = StreamCore.attemptStream(f(x))
     })(Sub1.sub1[AlgebraF[F,O]#f], implicitly[RealSupertype[Out,Out]])
   }; if (asStep) s else StreamCore.scope(s) }
