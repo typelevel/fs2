@@ -55,6 +55,7 @@ final class Scope[+F[_],+O] private (private val get: Free[AlgebraF[F]#f,O]) {
           env.tracked.cancelAcquire(token)
           g(Right(()))
       }
+      def map[X](r: X)(g: X => O) = done(g(r))
       def bind[X](r: X)(g: X => FO[O]) = g(r)
     })(Sub1.sub1[AlgebraF[F]#f],implicitly[RealSupertype[O,O]])
   }

@@ -21,4 +21,10 @@ class FreeBenchmark extends BenchmarkUtils {
     val nestedFlatMapsFree = (0 to N).foldLeft(Free.pure(0): Free[Task, Int]) { (acc, i) => acc.flatMap(j => Free.pure(i + j)) }
     nestedFlatMapsFree.run
   }
+
+  @Benchmark
+  def alternatingMapFlatMap = {
+    val nestedMapsFree = (0 to N).foldLeft(Free.pure(0): Free[Task, Int]) { (acc, i) => if (i % 2 == 0) acc.map(_ + i) else acc.flatMap(j => Free.pure(i + j))}
+    nestedMapsFree.run
+  }
 }

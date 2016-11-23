@@ -7,7 +7,7 @@ sealed trait Free[+F[_],+A] {
   import Free._
   def flatMap[F2[x]>:F[x],B](f: A => Free[F2,B]): Free[F2,B] = Bind(this, f)
 
-  final def map[B](f: A => B): Free[F,B] = flatMap(a => Free.Pure(f(a)))
+  def map[B](f: A => B): Free[F,B] = Map(this, f)
 
   def fold[F2[_],G[_],A2>:A](f: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2]
 
@@ -18,6 +18,7 @@ sealed trait Free[+F[_],+A] {
       def done(a: A) = Free.pure(a)
       def fail(t: Throwable) = Free.fail(t)
       def eval[X](fx: F[X])(f: Attempt[X] => FG[A]) = Free.attemptEval(u(fx)).flatMap(f)
+      def map[X](x: X)(f: X => A) = Free.pure(f(x))
       def bind[X](x: X)(f: X => FG[A]) = f(x)
     })
   }
@@ -32,6 +33,7 @@ sealed trait Free[+F[_],+A] {
       def done(a: A) = Free.pure(Right(a))
       def fail(t: Throwable) = Free.pure(Left(t))
       def eval[X](fx: F[X])(f: Attempt[X] => G[A]) = Free.attemptEval(fx) flatMap f
+      def map[X](x: X)(f: X => A) = try Free.pure(Right(f(x))) catch { case NonFatal(t) => Free.pure(Left(t)) }
       def bind[X](x: X)(f: X => G[A]) = try f(x) catch { case NonFatal(t) => Free.pure(Left(t)) }
     })
   }
@@ -53,6 +55,7 @@ object Free {
     def done(a: A): G[A]
     def fail(t: Throwable): G[A]
     def eval[X](fx: F[X])(f: Attempt[X] => G[A]): G[A]
+    def map[X](x: X)(f: X => A): G[A]
     def bind[X](x: X)(f: X => G[A]): G[A]
   }
 
@@ -93,7 +96,36 @@ object Free {
     def fold[F2[_],G[_],A2>:Attempt[A]](f: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[Attempt[A],A2]): G[A2] =
       f.eval(S(fa))(f.done)
   }
+  private final case class Map[+F[_],R,A](r: Free[F,R], f: R => A) extends Free[F,A] {
+    override def map[B](g: A => B): Free[F,B] =
+      Map(r, f andThen g)
+    override def flatMap[F2[x]>:F[x],B](g: A => Free[F2,B]): Free[F2,B] =
+      Bind(r, f andThen g)
+    def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
+      F2.map(r.run(F2))(r => f(r))
+    def unroll_[G[+_]](implicit G: Functor[G], S: Sub1[F,G]): Trampoline[Unroll[A, G[Free[F,A]]]] = Sub1.substFree(r) match {
+      case Pure(r) =>
+        try Trampoline.done { Unroll.Pure(f(r)) }
+        catch { case NonFatal(err) => Trampoline.done { Unroll.Fail(err) } }
+      case Fail(err) => Trampoline.done { Unroll.Fail(err) }
+      case eval =>
+        val ga: G[Any] = eval.asInstanceOf[Eval[G,Any]].fa
+        val fr: Attempt[Any] => A = f.asInstanceOf[Attempt[Any] => A]
+        Trampoline.done { Unroll.Eval(G.map(ga)(a => pure(fr(Right(a))))) }
+    }
+    def fold[F2[_],G[_],A2>:A](fold: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2] =
+      fold.suspend { Sub1.substFree(r) match {
+        case Pure(r) => fold.map(r)(f)
+        case Fail(err) => fold.fail(err)
+        case eval =>
+          val fa: F2[Any] = eval.asInstanceOf[Eval[F2,Any]].fa
+          val fr: Attempt[Any] => A = f.asInstanceOf[Attempt[Any] => A]
+          fold.eval(fa)(fr andThen fold.done)
+      }}
+  }
   private final case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
+    override def map[B](g: A => B): Free[F,B] =
+      Bind(r, (r: R) => f(r).map(g))
     override def flatMap[F2[x]>:F[x],B](g: A => Free[F2,B]): Free[F2,B] =
       Bind(r, (r: R) => f(r).flatMap(g))
     def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
@@ -105,20 +137,22 @@ object Free {
       case Fail(err) => Trampoline.done { Unroll.Fail(err) }
       case eval =>
         // NB: not bothering to convince Scala this is legit but since
-        // `flatMap` builds right-associated, and `Eval[F,A]` has type
+        // `flatMap` and `map` build right-associated, and `Eval[F,A]` has type
         // Free[Attempt[A]], this is safe
         val ga: G[Any] = eval.asInstanceOf[Eval[G,Any]].fa
-        val fr: Attempt[Any] => Free[F,A]
-           = f.asInstanceOf[Attempt[Any] => Free[F,A]]
+        val fr: Attempt[Any] => Free[F,A] = f.asInstanceOf[Attempt[Any] => Free[F,A]]
         Trampoline.done { Unroll.Eval(G.map(ga) { any => fr(Right(any)) }) }
     }
     def fold[F2[_],G[_],A2>:A](fold: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2] =
       fold.suspend { Sub1.substFree(r) match {
         case Pure(r) => fold.bind(r) { r => f(r).fold(fold) }
         case Fail(err) => fold.fail(err)
-        // NB: Scala won't let us pattern match on Eval here, but this is safe since `flatMap`
-        // prevents left-associated flatMaps
-        case eval => fold.eval(eval.asInstanceOf[Eval[F2,R]].fa)(a => f.asInstanceOf[Any => Free[F,A]](a).fold(fold))
+        // NB: Scala won't let us pattern match on Eval here, but this is safe since `flatMap` and `map`
+        // prevent left-associated flatMaps
+        case eval =>
+          val fa: F2[Any] = eval.asInstanceOf[Eval[F2,Any]].fa
+          val fr: Attempt[Any] => Free[F,A] = f.asInstanceOf[Attempt[Any] => Free[F,A]]
+          fold.eval(fa)(a => fr(a).fold(fold))
       }}
   }
 
