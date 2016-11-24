@@ -38,18 +38,15 @@ sealed trait Free[+F[_],+A] {
 
   protected def _fold[F2[_],G[_],A2>:A](f: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2]
 
-  final def runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
-    step._runTranslate(g)
+  final def run[F2[x]>:F[x],A2>:A](implicit F2: Catchable[F2]): F2[A2] =
+    step._run(F2)
 
-  protected def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2]
+  protected def _run[F2[x]>:F[x],A2>:A](implicit F2: Catchable[F2]): F2[A2]
 
   final def unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G]): Unroll[A, G[Free[F,A]]] =
     this.step._unroll.run
 
   protected def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G]): Trampoline[Unroll[A, G[Free[F,A]]]]
-
-  final def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
-    (this: Free[F2,A2]).runTranslate(UF1.id)
 
   @annotation.tailrec
   private[fs2] final def step: Free[F,A] = this match {
@@ -88,24 +85,24 @@ object Free {
     Pure((), false) flatMap { _ => fa }
 
   private final case class Fail(err: Throwable) extends Free[Nothing,Nothing] {
-    def _runTranslate[G[_],A2>:Nothing](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
-      G.fail(err)
+    def _run[F2[x]>:Nothing,A2>:Nothing](implicit F2: Catchable[F2]): F2[A2] =
+      F2.fail(err)
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
     : Trampoline[Unroll[Nothing, G[Free[Nothing,Nothing]]]]
     = Trampoline.done { Unroll.Fail(err) }
     def _fold[F2[_],G[_],A2>:Nothing](f: Fold[F2,G,A2])(implicit S: Sub1[Nothing,F2], T: RealSupertype[Nothing,A2]): G[A2] = f.fail(err)
   }
   private final case class Pure[A](a: A, allowEagerStep: Boolean) extends Free[Nothing,A] {
-    def _runTranslate[G[_],A2>:A](g: Nothing ~> G)(implicit G: Catchable[G]): G[A2] =
-      G.pure(a)
+    def _run[F2[x]>:Nothing,A2>:A](implicit F2: Catchable[F2]): F2[A2] =
+      F2.pure(a)
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
     : Trampoline[Unroll[A, G[Free[Nothing,A]]]]
     = Trampoline.done { Unroll.Pure(a) }
     def _fold[F2[_],G[_],A2>:A](f: Fold[F2,G,A2])(implicit S: Sub1[Nothing,F2], T: RealSupertype[A,A2]): G[A2] = f.done(a)
   }
   private final case class Eval[F[_],A](fa: F[A]) extends Free[F,Attempt[A]] {
-    def _runTranslate[G[_],A2>:Attempt[A]](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
-      G.attempt { g(fa) }.asInstanceOf[G[A2]]
+    def _run[F2[x]>:F[x],A2>:Attempt[A]](implicit F2: Catchable[F2]): F2[A2] =
+      F2.attempt(fa).asInstanceOf[F2[A2]]
 
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
     : Trampoline[Unroll[Attempt[A], G[Free[F,Attempt[A]]]]]
@@ -115,8 +112,8 @@ object Free {
       f.eval(S(fa))(f.done)
   }
   private final case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
-    def _runTranslate[G[_],A2>:A](g: F ~> G)(implicit G: Catchable[G]): G[A2] =
-      G.flatMap(r._runTranslate(g))(r => f(r).runTranslate(g))
+    def _run[F2[x]>:F[x],A2>:A](implicit F2: Catchable[F2]): F2[A2] =
+      F2.flatMap(r._run(F2))(r => f(r).run(F2))
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
     : Trampoline[Unroll[A, G[Free[F,A]]]]
     = Sub1.substFree(r) match {
