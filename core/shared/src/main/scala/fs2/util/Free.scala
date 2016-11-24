@@ -7,7 +7,7 @@ sealed trait Free[+F[_],+A] {
   import Free._
   def flatMap[F2[x]>:F[x],B](f: A => Free[F2,B]): Free[F2,B] = Bind(this, f)
 
-  def map[B](f: A => B): Free[F,B] = Map(this, f)
+  def map[B](f: A => B): Free[F,B] = Map(this, Map.Stack.Base(f))
 
   def fold[F2[_],G[_],A2>:A](f: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2]
 
@@ -96,9 +96,9 @@ object Free {
     def fold[F2[_],G[_],A2>:Attempt[A]](f: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[Attempt[A],A2]): G[A2] =
       f.eval(S(fa))(f.done)
   }
-  private final case class Map[+F[_],R,A](r: Free[F,R], f: R => A) extends Free[F,A] {
+  private final case class Map[+F[_],R,A](r: Free[F,R], f: Map.Stack[R, A]) extends Free[F,A] {
     override def map[B](g: A => B): Free[F,B] =
-      Map(r, f andThen g)
+      Map(r, Map.Stack.Base(g) compose f)
     override def flatMap[F2[x]>:F[x],B](g: A => Free[F2,B]): Free[F2,B] =
       Bind(r, f andThen g)
     def run[F2[x]>:F[x], A2>:A](implicit F2: Catchable[F2]): F2[A2] =
@@ -122,6 +122,50 @@ object Free {
           val fr: Attempt[Any] => A = f.asInstanceOf[Attempt[Any] => A]
           fold.eval(fa)(fr andThen fold.done)
       }}
+  }
+  private object Map {
+    sealed trait Stack[A, B] extends (A => B) {
+      override def compose[C](f: C => A): Stack[C, B] = Stack.Compose(f, this)
+    }
+
+    object Stack {
+      final case class Base[A, B](f: A => B) extends Stack[A, B] {
+        def apply(a: A) = f(a)
+      }
+
+      final case class Compose[E, A, B](f: A => E, tail: Stack[E, B]) extends Stack[A, B] {
+        def apply(a: A) = {
+          /*
+          // this is what we wish we could write
+          @tailrec
+          def inner[X, Y](x: X, st: Stack[X, Y]): Y = st match {
+            case Base(f) => f(x)
+            case Compose(f, tail) => inner(f(x), tail)
+          }
+
+          inner(f(a), tail)
+          // ...but it won't be tail recursive because scalac has a bug with tailrec and GADTs
+          */
+
+          var x: Any = a
+          var st: Stack[Any, Any] = this.asInstanceOf[Stack[Any, Any]]
+
+          while (st != null) {
+            st match {
+              case Base(f) =>
+                x = f(x)
+                st = null
+
+              case Compose(f, tail) =>
+                x = f(x)
+                st = tail.asInstanceOf[Stack[Any, Any]]
+            }
+          }
+
+          x.asInstanceOf[B]
+        }
+      }
+    }
   }
   private final case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
     override def map[B](g: A => B): Free[F,B] =
