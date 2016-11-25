@@ -389,7 +389,7 @@ private[fs2] object StreamCore {
           case Some((hd, segments)) => hd match {
             case Segment.Fail(err) => Stack.fail[F,O](segments)(err) match {
               case Left(err) => Scope.pure(StepResult.Failed(err))
-              case Right((s, segs)) => Stack.segments(segments).pushAppend(s).step
+              case Right((s, segments)) => Stack.segments(segments).pushAppend(s).step
             }
             case Segment.Emit(chunk) =>
               if (chunk.isEmpty) Stack.segments(segments).step
