@@ -154,7 +154,7 @@ def previousVersion(currentVersion: String): Option[String] = {
 lazy val root = project.in(file(".")).
   settings(commonSettings).
   settings(noPublish).
-  aggregate(coreJVM, coreJS, io, benchmark)
+  aggregate(coreJVM, coreJS, io, scodecJVM, scodecJS, benchmark)
 
 lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
