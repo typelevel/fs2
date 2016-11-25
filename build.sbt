@@ -154,7 +154,7 @@ def previousVersion(currentVersion: String): Option[String] = {
 lazy val root = project.in(file(".")).
   settings(commonSettings).
   settings(noPublish).
-  aggregate(coreJVM, coreJS, io, benchmark)
+  aggregate(coreJVM, coreJS, io, scodecJVM, scodecJS, benchmark)
 
 lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
@@ -172,6 +172,17 @@ lazy val io = project.in(file("io")).
   settings(
     name := "fs2-io"
   ).dependsOn(coreJVM % "compile->compile;test->test")
+
+lazy val scodec = crossProject.in(file("scodec")).
+  settings(commonSettings).
+  settings(
+    name := "fs2-scodec",
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.2"
+  ).dependsOn(core % "compile->compile;test->test")
+  .jsSettings(commonJsSettings: _*)
+
+lazy val scodecJVM = scodec.jvm.settings(mimaSettings)
+lazy val scodecJS = scodec.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
 lazy val benchmarkMacros = project.in(file("benchmark-macros")).
   disablePlugins(MimaPlugin).

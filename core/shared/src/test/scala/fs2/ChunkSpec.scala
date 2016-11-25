@@ -2,7 +2,7 @@ package fs2
 
 import org.scalacheck.{Gen, Arbitrary}
 
-import scala.reflect.ClassTag
+import ChunkProps._
 
 class ChunkSpec extends Fs2Spec {
 
@@ -59,126 +59,65 @@ class ChunkSpec extends Fs2Spec {
       } yield Chunk.longs(values, offset, sz)
     }
 
-    def checkSize[A](c: Chunk[A]) = c.size shouldBe c.toVector.size
+    "size.boolean" in propSize[Boolean, Chunk[Boolean]]
+    "size.byte" in propSize[Byte, Chunk[Byte]]
+    "size.double" in propSize[Double, Chunk[Double]]
+    "size.long" in propSize[Long, Chunk[Long]]
+    "size.unspecialized" in propSize[Int, Chunk[Int]]
 
-    "size.boolean" in forAll { c: Chunk[Boolean] => checkSize(c) }
-    "size.byte" in forAll { c: Chunk[Byte] => checkSize(c) }
-    "size.double" in forAll { c: Chunk[Double] => checkSize(c) }
-    "size.long" in forAll { c: Chunk[Long] => checkSize(c) }
-    "size.unspecialized" in forAll { c: Chunk[Int] => checkSize(c) }
+    "take.boolean" in propTake[Boolean, Chunk[Boolean]]
+    "take.byte" in propTake[Byte, Chunk[Byte]]
+    "take.double" in propTake[Double, Chunk[Double]]
+    "take.long" in propTake[Long, Chunk[Long]]
+    "take.unspecialized" in propTake[Int, Chunk[Int]]
 
-    def checkTake[A](c: Chunk[A], n: Int) =
-      c.take(n).toVector shouldBe c.toVector.take(n)
+    "drop.boolean" in propDrop[Boolean, Chunk[Boolean]]
+    "drop.byte" in propDrop[Byte, Chunk[Byte]]
+    "drop.double" in propDrop[Double, Chunk[Double]]
+    "drop.long" in propDrop[Long, Chunk[Long]]
+    "drop.unspecialized" in propDrop[Int, Chunk[Int]]
 
-    "take.boolean" in forAll { (c: Chunk[Boolean], n: SmallNonnegative) => checkTake(c, n.get) }
-    "take.byte" in forAll { (c: Chunk[Byte], n: SmallNonnegative) => checkTake(c, n.get) }
-    "take.double" in forAll {(c: Chunk[Double], n: SmallNonnegative) => checkTake(c, n.get) }
-    "take.long" in forAll { (c: Chunk[Long], n: SmallNonnegative) => checkTake(c, n.get) }
-    "take.unspecialized" in forAll { (c: Chunk[Int], n: SmallNonnegative) => checkTake(c, n.get) }
+    "uncons.boolean" in propUncons[Boolean, Chunk[Boolean]]
+    "uncons.byte" in propUncons[Byte, Chunk[Byte]]
+    "uncons.double" in propUncons[Double, Chunk[Double]]
+    "uncons.long" in propUncons[Long, Chunk[Long]]
+    "uncons.unspecialized" in propUncons[Int, Chunk[Int]]
 
-    def checkDrop[A](c: Chunk[A], n: Int) =
-      c.drop(n).toVector shouldBe c.toVector.drop(n)
+    "isempty.boolean" in propIsEmpty[Boolean, Chunk[Boolean]]
+    "isempty.byte" in propIsEmpty[Byte, Chunk[Byte]]
+    "isempty.double" in propIsEmpty[Double, Chunk[Double]]
+    "isempty.long" in propIsEmpty[Long, Chunk[Long]]
+    "isempty.unspecialized" in propIsEmpty[Int, Chunk[Int]]
 
-    "drop.boolean" in forAll { (c: Chunk[Boolean], n: SmallNonnegative) => checkDrop(c, n.get) }
-    "drop.byte" in forAll { (c: Chunk[Byte], n: SmallNonnegative) => checkDrop(c, n.get) }
-    "drop.double" in forAll {(c: Chunk[Double], n: SmallNonnegative) => checkDrop(c, n.get) }
-    "drop.long" in forAll { (c: Chunk[Long], n: SmallNonnegative) => checkDrop(c, n.get) }
-    "drop.unspecialized" in forAll { (c: Chunk[Int], n: SmallNonnegative) => checkDrop(c, n.get) }
+    "filter.boolean" in propFilter[Boolean, Chunk[Boolean]]
+    "filter.byte" in propFilter[Byte, Chunk[Byte]]
+    "filter.double" in propFilter[Double, Chunk[Double]]
+    "filter.long" in propFilter[Long, Chunk[Long]]
+    "filter.unspecialized" in propFilter[Int, Chunk[Int]]
 
-    def checkUncons[A](c: Chunk[A]) = assert {
-      if (c.toVector.isEmpty)
-        c.uncons.isEmpty
-      else
-        c.uncons.contains((c(0), c.drop(1)))
-    }
+    "foldleft.boolean" in propFoldLeft[Boolean, Chunk[Boolean]]
+    "foldleft.byte" in propFoldLeft[Byte, Chunk[Byte]]
+    "foldleft.double" in propFoldLeft[Double, Chunk[Double]]
+    "foldleft.long" in propFoldLeft[Long, Chunk[Long]]
+    "foldleft.unspecialized" in propFoldLeft[Int, Chunk[Int]]
 
-    "uncons.boolean" in forAll { c: Chunk[Boolean] => checkUncons(c) }
-    "uncons.byte" in forAll { c: Chunk[Byte] => checkUncons(c) }
-    "uncons.double" in forAll { c: Chunk[Double] => checkUncons(c) }
-    "uncons.long" in forAll { c: Chunk[Long] => checkUncons(c) }
-    "uncons.unspecialized" in forAll { c: Chunk[Int] => checkUncons(c) }
+    "foldright.boolean" in propFoldRight[Boolean, Chunk[Boolean]]
+    "foldright.byte" in propFoldRight[Byte, Chunk[Byte]]
+    "foldright.double" in propFoldRight[Double, Chunk[Double]]
+    "foldright.long" in propFoldRight[Long, Chunk[Long]]
+    "foldright.unspecialized" in propFoldRight[Int, Chunk[Int]]
 
-    def checkIsEmpty[A](c: Chunk[A]) =
-      c.isEmpty shouldBe c.toVector.isEmpty
+    "toarray.boolean" in propToArray[Boolean, Chunk[Boolean]]
+    "toarray.byte" in propToArray[Byte, Chunk[Byte]]
+    "toarray.double" in propToArray[Double, Chunk[Double]]
+    "toarray.long" in propToArray[Long, Chunk[Long]]
+    "toarray.unspecialized" in propToArray[Int, Chunk[Int]]
 
-    "isempty.boolean" in forAll { c: Chunk[Boolean] => checkIsEmpty(c) }
-    "isempty.byte" in forAll { c: Chunk[Byte] => checkIsEmpty(c) }
-    "isempty.double" in forAll { c: Chunk[Double] => checkIsEmpty(c) }
-    "isempty.long" in forAll { c: Chunk[Long] => checkIsEmpty(c) }
-    "isempty.unspecialized" in forAll { c: Chunk[Int] => checkIsEmpty(c) }
-
-    def checkFilter[A](c: Chunk[A], pred: A => Boolean) =
-      c.filter(pred).toVector shouldBe c.toVector.filter(pred)
-
-    "filter.boolean" in forAll { c: Chunk[Boolean] =>
-      val predicate = (b: Boolean) => !b
-      checkFilter(c, predicate)
-    }
-    "filter.byte" in forAll { c: Chunk[Byte] =>
-      val predicate = (b: Byte) => b < 0
-      checkFilter(c, predicate)
-    }
-    "filter.double" in forAll { c: Chunk[Double] =>
-      val predicate = (i: Double) => i - i.floor < 0.5
-      checkFilter(c, predicate)
-    }
-    "filter.long" in forAll { (c: Chunk[Long], n: SmallPositive) =>
-      val predicate = (i: Long) => i % n.get == 0
-      checkFilter(c, predicate)
-    }
-    "filter.unspecialized" in forAll { (c: Chunk[Int], n: SmallPositive) =>
-      val predicate = (i: Int) => i % n.get == 0
-      checkFilter(c, predicate)
-    }
-
-    def checkFoldLeft[A, B](c: Chunk[A], z: B)(f: (B, A) => B) =
-      c.foldLeft(z)(f) shouldBe c.toVector.foldLeft(z)(f)
-
-    "foldleft.boolean" in forAll { c: Chunk[Boolean] =>
-      val f = (b: Boolean) => if (b) 1 else 0
-      checkFoldLeft(c, 0L)(_ + f(_))
-    }
-    "foldleft.byte" in forAll { c: Chunk[Byte] =>
-      checkFoldLeft(c, 0L)(_ + _.toLong)
-    }
-    "foldleft.double" in forAll { c: Chunk[Double] => checkFoldLeft(c, 0.0)(_ + _) }
-    "foldleft.long" in forAll { c: Chunk[Long] => checkFoldLeft(c, 0L)(_ + _) }
-    "foldleft.unspecialized" in forAll { c: Chunk[Int] => checkFoldLeft(c, 0L)(_ + _) }
-
-    def checkFoldRight[A, B](c: Chunk[A], z: B)(f: (A, B) => B) =
-      c.foldRight(z)(f) shouldBe c.toVector.foldRight(z)(f)
-
-    "foldright.boolean" in forAll { c: Chunk[Boolean] =>
-      val f = (b: Boolean) => if (b) 1 else 0
-      checkFoldRight(c, 0L)(f(_) + _)
-    }
-    "foldright.byte" in forAll { c: Chunk[Byte] =>
-      checkFoldRight(c, 0L)(_.toLong + _)
-    }
-    "foldright.double" in forAll { c: Chunk[Double] => checkFoldRight(c, 0.0)(_ + _) }
-    "foldright.long" in forAll { c: Chunk[Long] => checkFoldRight(c, 0L)(_ + _) }
-    "foldright.unspecialized" in forAll { c: Chunk[Int] => checkFoldRight(c, 0L)(_ + _) }
-
-    def checkToArray[A: ClassTag](c: Chunk[A]) =
-      c.toArray.toVector shouldBe c.toVector
-
-    "toarray.boolean" in forAll { c: Chunk[Boolean] => checkToArray(c) }
-    "toarray.byte" in forAll { c: Chunk[Byte] => checkToArray(c) }
-    "toarray.double" in forAll { c: Chunk[Double] => checkToArray(c) }
-    "toarray.long" in forAll { c: Chunk[Long] => checkToArray(c) }
-    "toarray.unspecialized" in forAll { c: Chunk[Int] => checkToArray(c) }
-
-
-    def checkConcat[A, T: ClassTag](cs: Seq[Chunk[A]]) = {
-      val result = Chunk.concat(cs)
-      result.toVector shouldBe cs.foldLeft(Vector.empty[A])(_ ++ _.toVector)
-      if (!result.isEmpty) result shouldBe a[T]
-      result
-    }
-    "concat.boolean" in forAll { cs: List[Chunk[Boolean]] => checkConcat[Boolean, Chunk.Booleans](cs) }
-    "concat.bytes" in forAll { cs: List[Chunk[Byte]] => checkConcat[Byte, Chunk.Bytes](cs) }
-    "concat.doubles" in forAll { cs: List[Chunk[Double]] => checkConcat[Double, Chunk.Doubles](cs) }
-    "concat.longs" in forAll { cs: List[Chunk[Long]] => checkConcat[Long, Chunk.Longs](cs) }
+    "concat.boolean" in propConcat[Boolean, Chunk[Boolean]]
+    "concat.byte" in propConcat[Byte, Chunk[Byte]]
+    "concat.double" in propConcat[Double, Chunk[Double]]
+    "concat.long" in propConcat[Long, Chunk[Long]]
+    "concat.unspecialized" in propConcat[Int, Chunk[Int]]
 
     "map.boolean => byte" in forAll { c: Chunk[Boolean] =>
       (c map { b => if (b) 0.toByte else 1.toByte }).toArray shouldBe (c.toArray map { b => if (b) 0.toByte else 1.toByte })
