@@ -342,26 +342,26 @@ private[fs2] object StreamCore {
 
     def render: List[String]
 
-    def pushHandler(f: Throwable => StreamCore[F,O1]) = push(Segment.Handler(f))
-    def pushEmit(s: Chunk[O1]) = push(Segment.Emit(s))
-    def pushFail(e: Throwable) = push(Segment.Fail(e))
-    def pushAppend(s: StreamCore[F,O1]) = push(Segment.Append(s))
-    def pushBind[O0](f: O0 => StreamCore[F,O1]): Stack[F,O0,O2] =
+    final def pushHandler(f: Throwable => StreamCore[F,O1]) = push(Segment.Handler(f))
+    final def pushEmit(s: Chunk[O1]) = push(Segment.Emit(s))
+    final def pushFail(e: Throwable) = push(Segment.Fail(e))
+    final def pushAppend(s: StreamCore[F,O1]) = push(Segment.Append(s))
+    final def pushBind[O0](f: O0 => StreamCore[F,O1]): Stack[F,O0,O2] =
       Stack.Bind(Catenable.empty, f, this)
-    def pushMap[O0](f: Chunk[O0] => Chunk[O1]): Stack[F,O0,O2] =
+    final def pushMap[O0](f: Chunk[O0] => Chunk[O1]): Stack[F,O0,O2] =
       Stack.Map(Catenable.empty, f, this)
-    def push(s: Segment[F,O1]): Stack[F,O1,O2] = s match {
+    final def push(s: Segment[F,O1]): Stack[F,O1,O2] = s match {
       case Segment.Emit(c) if c.isEmpty => this
       case _ => pushNonEmptySegment(s)
     }
     protected def pushNonEmptySegment(s: Segment[F,O1]): Stack[F,O1,O2]
 
-    def pushSegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
+    final def pushSegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
       if (s.isEmpty) this
-      else pushSegmentsNonEmpty(s)
-    protected def pushSegmentsNonEmpty(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2]
+      else pushNonEmptySegments(s)
+    protected def pushNonEmptySegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2]
 
-    def step: Scope[F,StepResult[F,O2]] =
+    final def step: Scope[F,StepResult[F,O2]] =
       Scope.interrupted.flatMap { interrupted =>
         if (interrupted) Scope.pure(StepResult.Failed(Interrupted))
         else _step
@@ -380,7 +380,7 @@ private[fs2] object StreamCore {
       def pushNonEmptySegment(s: Segment[F,O]): Stack[F,O,O] =
         Segments(s :: segments)
 
-      def pushSegmentsNonEmpty(s: Catenable[Segment[F,O]]): Stack[F,O,O] =
+      def pushNonEmptySegments(s: Catenable[Segment[F,O]]): Stack[F,O,O] =
         Segments(s ++ segments)
 
       def _step: Scope[F,StepResult[F,O]] = {
@@ -412,7 +412,7 @@ private[fs2] object StreamCore {
       def pushNonEmptySegment(s: Segment[F,O1]): Stack[F,O1,O2] =
         Map(s :: segments, f, stack)
 
-      def pushSegmentsNonEmpty(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
+      def pushNonEmptySegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
         Map(s ++ segments, f, stack)
 
       def _step: Scope[F,StepResult[F,O2]] =
@@ -454,7 +454,7 @@ private[fs2] object StreamCore {
       def pushNonEmptySegment(s: Segment[F,O1]): Stack[F,O1,O2] =
         Bind(s :: segments, f, stack)
 
-      def pushSegmentsNonEmpty(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
+      def pushNonEmptySegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
         Bind(s ++ segments, f, stack)
 
       def _step: Scope[F,StepResult[F,O2]] =
