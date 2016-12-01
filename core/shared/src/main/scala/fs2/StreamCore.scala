@@ -1,7 +1,7 @@
 package fs2
 
 import fs2.internal.Resources
-import fs2.util.{Async,Attempt,Catenable,Eq,Free,NonFatal,Sub1,~>,RealSupertype}
+import fs2.util.{Async,Attempt,Catenable,Free,NonFatal,Sub1,~>,RealSupertype}
 import fs2.util.syntax._
 import StreamCore.{Env,NT,Stack,Token}
 
@@ -60,8 +60,8 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
   final def onComplete(s2: StreamCore[F,O]): StreamCore[F,O] =
     StreamCore.append(self onError (e => StreamCore.append(s2, StreamCore.fail(e))), s2)
 
-  final def step: Scope[F, Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]]
-    = push(NT.Id(), Stack.empty[F,O]) flatMap StreamCore.step
+  final def step: Scope[F, StreamCore.StepResult[F,O]]
+    = push(NT.Id(), Stack.empty[F,O]).flatMap(_.step)
 
   final def runFold[O2](z: O2)(f: (O2,O) => O2): Free[F,O2] =
     runFoldScope(z)(f)
@@ -69,18 +69,18 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
       .map(_._2)
 
   final def runFoldScope[O2](z: O2)(f: (O2,O) => O2): Scope[F,O2] = step flatMap {
-    case None => Scope.pure(z)
-    case Some(Left(err)) => Scope.fail(err)
-    case Some(Right((hd,tl))) =>
+    case StreamCore.StepResult.Done => Scope.pure(z)
+    case StreamCore.StepResult.Failed(err) => Scope.fail(err)
+    case StreamCore.StepResult.Emits(hd,tl) =>
       try tl.runFoldScope(hd.foldLeft(z)(f))(f)
       catch { case NonFatal(e) => Scope.fail(e) }
   }
 
   final def uncons: StreamCore[F, Option[(NonEmptyChunk[O], StreamCore[F,O])]] =
     StreamCore.evalScope(step) flatMap {
-      case None => StreamCore.emit(None)
-      case Some(Left(err)) => StreamCore.fail(err)
-      case Some(Right(s)) => StreamCore.emit(Some(s))
+      case StreamCore.StepResult.Done => StreamCore.emit(None)
+      case StreamCore.StepResult.Failed(err) => StreamCore.fail(err)
+      case StreamCore.StepResult.Emits(out, s) => StreamCore.emit(Some((out, s)))
     }
 
   final def fetchAsync(implicit F: Async[F]): Scope[F, ScopedFuture[F,StreamCore[F,O]]] =
@@ -123,7 +123,11 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
         if (ok) Scope.pure(())
         else Scope.evalFree(rootCleanup).flatMap(_.fold(Scope.fail, Scope.pure))
       }}
-    val s: F[Unit] = ref.set { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run }
+    val s: F[Unit] = ref.set { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run.map {
+      case (ts, StreamCore.StepResult.Done) => (ts, None)
+      case (ts, StreamCore.StepResult.Failed(t)) => (ts, Some(Left(t)))
+      case (ts, StreamCore.StepResult.Emits(out, s)) => (ts, Some(Right((out, s))))
+    } }
     tweakEnv.flatMap { _ =>
       Scope.eval(s) map { _ =>
         ScopedFuture.readRef(ref).appendOnForce { Scope.suspend {
@@ -225,73 +229,12 @@ private[fs2] object StreamCore {
   private[fs2] def attemptStream[F[_],O](s: => StreamCore[F,O]): StreamCore[F,O] =
     try s catch { case NonFatal(e) => fail(e) }
 
-  def step[F[_],O0,O](stack: Stack[F,O0,O]): Scope[F,Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]] =
-    Scope.interrupted.flatMap { interrupted =>
-      if (interrupted) Scope.pure(Some(Left(Interrupted)))
-      else {
-        stack.fold(new Stack.Fold[F,O0,O,Scope[F,Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]]] {
-          def unbound(segs: Catenable[Segment[F,O0]], eq: Eq[O0, O]) = {
-            Eq.subst[({ type f[x] = Catenable[Segment[F,x]] })#f, O0, O](segs)(eq).uncons match {
-              case None => Scope.pure(None)
-              case Some((hd, segs)) => hd match {
-                case Segment.Fail(err) => Stack.fail[F,O](segs)(err) match {
-                  case Left(err) => Scope.pure(Some(Left(err)))
-                  case Right((s, segs)) => step(Stack.segments(segs).pushAppend(s))
-                }
-                case Segment.Emit(chunk) =>
-                  if (chunk.isEmpty) step(Stack.segments(segs))
-                  else Scope.pure(Some(Right((NonEmptyChunk.fromChunkUnsafe(chunk), StreamCore.segments(segs)))))
-                case Segment.Handler(h) => step(Stack.segments(segs))
-                case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segs)) flatMap step
-              }
-            }
-          }
-
-          def map[X](segs: Catenable[Segment[F,O0]], f: Chunk[O0] => Chunk[X], stack: Stack[F,X,O]): Scope[F,Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]] = {
-            segs.uncons match {
-              case None => step(stack)
-              case Some((hd, segs)) => hd match {
-                case Segment.Emit(chunk) =>
-                  val segs2 = segs.map(_.mapChunks(f))
-                  val stack2 = stack.pushSegments(segs2)
-                  step(try { stack2.pushEmit(f(chunk)) } catch { case NonFatal(e) => stack2.pushFail(e) })
-                case Segment.Append(s) =>
-                  s.push(NT.Id(), stack.pushMap(f).pushSegments(segs)) flatMap step
-                case Segment.Fail(err) => Stack.fail(segs)(err) match {
-                  case Left(err) => step(stack.pushFail(err))
-                  case Right((hd, segs)) => step(stack.pushMap(f).pushSegments(segs).pushAppend(hd))
-                }
-                case Segment.Handler(_) => step(stack.pushMap(f).pushSegments(segs))
-              }
-            }
-          }
-
-          def bind[X](segs: Catenable[Segment[F,O0]], f: O0 => StreamCore[F,X], stack: Stack[F,X,O]): Scope[F,Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]]] = {
-            segs.uncons match {
-              case None => step(stack)
-              case Some((hd, segs)) => hd match {
-                case Segment.Emit(chunk) =>
-                  chunk.uncons match {
-                    case None => step(stack.pushBind(f).pushSegments(segs))
-                    case Some((hd,tl)) => step({
-                      val segs2: Catenable[Segment[F,X]] =
-                        (if (tl.isEmpty) segs else segs.push(Segment.Emit(tl))).map(_.interpretBind(f))
-                      val stack2 = stack.pushSegments(segs2)
-                      try stack2.pushAppend(f(hd)) catch { case NonFatal(t) => stack2.pushFail(t) }
-                    })
-                  }
-                case Segment.Append(s) =>
-                  s.push(NT.Id(), stack.pushBind(f).pushSegments(segs)) flatMap step
-                case Segment.Fail(err) => Stack.fail(segs)(err) match {
-                  case Left(err) => step(stack.pushFail(err))
-                  case Right((hd, segs)) => step(stack.pushBind(f).pushSegments(segs).pushAppend(hd))
-                }
-                case Segment.Handler(_) => step(stack.pushBind(f).pushSegments(segs))
-              }}
-            }
-          }
-      )}
-    }
+  sealed trait StepResult[+F[_], +A]
+  object StepResult {
+    final case object Done extends StepResult[Nothing, Nothing]
+    final case class Failed(t: Throwable) extends StepResult[Nothing, Nothing]
+    final case class Emits[F[_], A](out: NonEmptyChunk[A], next: StreamCore[F,A]) extends StepResult[F, A]
+  }
 
   private def segment[F[_],O](s: Segment[F,O]): StreamCore[F,O] = new StreamCore[F,O] {
     type O0 = O
@@ -395,70 +338,161 @@ private[fs2] object StreamCore {
     final case class Append[F[_],O1](s: StreamCore[F,O1]) extends Segment[F,O1]
   }
 
-  trait Stack[F[_],O1,O2] { self =>
-    def fold[R](fold: Stack.Fold[F,O1,O2,R]): R
+  sealed trait Stack[F[_],O1,O2] {
 
     def render: List[String]
 
-    def pushHandler(f: Throwable => StreamCore[F,O1]) = push(Segment.Handler(f))
-    def pushEmit(s: Chunk[O1]) = push(Segment.Emit(s))
-    def pushFail(e: Throwable) = push(Segment.Fail(e))
-    def pushAppend(s: StreamCore[F,O1]) = push(Segment.Append(s))
-    def pushBind[O0](f: O0 => StreamCore[F,O1]): Stack[F,O0,O2] = new Stack[F,O0,O2] {
-      def fold[R](fold: Stack.Fold[F,O0,O2,R]): R = fold.bind(Catenable.empty, f, self)
-      def render = "Bind" :: self.render
-    }
-    def pushMap[O0](f: Chunk[O0] => Chunk[O1]): Stack[F,O0,O2] = new Stack[F,O0,O2] {
-      def fold[R](fold: Stack.Fold[F,O0,O2,R]): R = fold.map(Catenable.empty, f, self)
-      def render = "Map" :: self.render
-    }
-    def push(s: Segment[F,O1]): Stack[F,O1,O2] = s match {
+    final def pushHandler(f: Throwable => StreamCore[F,O1]) = push(Segment.Handler(f))
+    final def pushEmit(s: Chunk[O1]) = push(Segment.Emit(s))
+    final def pushFail(e: Throwable) = push(Segment.Fail(e))
+    final def pushAppend(s: StreamCore[F,O1]) = push(Segment.Append(s))
+    final def pushBind[O0](f: O0 => StreamCore[F,O1]): Stack[F,O0,O2] =
+      Stack.Bind(Catenable.empty, f, this)
+    final def pushMap[O0](f: Chunk[O0] => Chunk[O1]): Stack[F,O0,O2] =
+      Stack.Map(Catenable.empty, f, this)
+    final def push(s: Segment[F,O1]): Stack[F,O1,O2] = s match {
       case Segment.Emit(c) if c.isEmpty => this
-      case _ => self.fold(new Stack.Fold[F,O1,O2,Stack[F,O1,O2]] {
-        def unbound(segments: Catenable[Segment[F,O1]], eq: Eq[O1, O2]) =
-          Eq.subst[({type f[x] = Stack[F,O1,x] })#f, O1, O2](Stack.segments(s :: segments))(eq)
-        def map[X](segments: Catenable[Segment[F,O1]], f: Chunk[O1] => Chunk[X], stack: Stack[F,X,O2]) =
-          stack.pushMap(f).pushSegments(s :: segments)
-        def bind[X](segments: Catenable[Segment[F,O1]], f: O1 => StreamCore[F,X], stack: Stack[F,X,O2]) =
-          stack.pushBind(f).pushSegments(s :: segments)
-      })
+      case _ => pushNonEmptySegment(s)
     }
-    def pushSegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
-      if (s.isEmpty) self
-      else new Stack[F,O1,O2] {
-        def render = Stack.describeSegments(s) :: self.render
-        def fold[R](fold: Stack.Fold[F,O1,O2,R]): R =
-          self.fold(new Stack.Fold[F,O1,O2,R] {
-            def unbound(segments: Catenable[Segment[F,O1]], eq: Eq[O1, O2]) =
-              if (segments.isEmpty) fold.unbound(s, eq) // common case
-              else fold.unbound(s ++ segments, eq)
-            def map[X](segments: Catenable[Segment[F,O1]], f: Chunk[O1] => Chunk[X], stack: Stack[F,X,O2]) =
-              fold.map(s ++ segments, f, stack)
-            def bind[X](segments: Catenable[Segment[F,O1]], f: O1 => StreamCore[F,X], stack: Stack[F,X,O2]) =
-              fold.bind(s ++ segments, f, stack)
-          })
+    protected def pushNonEmptySegment(s: Segment[F,O1]): Stack[F,O1,O2]
+
+    final def pushSegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
+      if (s.isEmpty) this
+      else pushNonEmptySegments(s)
+    protected def pushNonEmptySegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2]
+
+    final def step: Scope[F,StepResult[F,O2]] =
+      Scope.interrupted.flatMap { interrupted =>
+        if (interrupted) Scope.pure(StepResult.Failed(Interrupted))
+        else _step
       }
+
+    protected def _step: Scope[F,StepResult[F,O2]]
   }
 
   object Stack {
-    trait Fold[F[_],O1,O2,+R] {
-      def unbound(segments: Catenable[Segment[F,O1]], eq: Eq[O1, O2]): R
-      def map[X](segments: Catenable[Segment[F,O1]], f: Chunk[O1] => Chunk[X], stack: Stack[F,X,O2]): R
-      def bind[X](segments: Catenable[Segment[F,O1]], f: O1 => StreamCore[F,X], stack: Stack[F,X,O2]): R
+    private final case class Segments[F[_],O](segments: Catenable[Segment[F,O]]) extends Stack[F,O,O] {
+
+      def render = {
+        val segmentsList = segments.toStream.toList
+        List(s"Segments (${segmentsList.size})\n"+segmentsList.zipWithIndex.map { case (s, idx) => s"    s$idx: $s" }.mkString("\n"))
+      }
+      def pushNonEmptySegment(s: Segment[F,O]): Stack[F,O,O] =
+        Segments(s :: segments)
+
+      def pushNonEmptySegments(s: Catenable[Segment[F,O]]): Stack[F,O,O] =
+        Segments(s ++ segments)
+
+      def _step: Scope[F,StepResult[F,O]] = {
+        segments.uncons match {
+          case None => Scope.pure(StepResult.Done)
+          case Some((hd, segments)) => hd match {
+            case Segment.Fail(err) => Stack.fail[F,O](segments)(err) match {
+              case Left(err) => Scope.pure(StepResult.Failed(err))
+              case Right((s, segments)) => Stack.segments(segments).pushAppend(s).step
+            }
+            case Segment.Emit(chunk) =>
+              if (chunk.isEmpty) Stack.segments(segments).step
+              else Scope.pure(StepResult.Emits(NonEmptyChunk.fromChunkUnsafe(chunk), StreamCore.segments(segments)))
+            case Segment.Handler(h) => Stack.segments(segments).step
+            case Segment.Append(s) => s.push(NT.Id(), Stack.segments(segments)).flatMap(_.step)
+          }
+        }
+      }
+    }
+
+    private sealed trait Map[F[_],O1,O2] extends Stack[F,O1,O2] {
+      val segments: Catenable[Segment[F,O1]]
+      type X
+      val f: Chunk[O1] => Chunk[X]
+      val stack: Stack[F,X,O2]
+
+      def render = "Map" :: stack.render
+
+      def pushNonEmptySegment(s: Segment[F,O1]): Stack[F,O1,O2] =
+        Map(s :: segments, f, stack)
+
+      def pushNonEmptySegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
+        Map(s ++ segments, f, stack)
+
+      def _step: Scope[F,StepResult[F,O2]] =
+        segments.uncons match {
+          case None => stack.step
+          case Some((hd, segments)) => hd match {
+            case Segment.Emit(chunk) =>
+              val segs2 = segments.map(_.mapChunks(f))
+              val stack2 = stack.pushSegments(segs2)
+              (try { stack2.pushEmit(f(chunk)) } catch { case NonFatal(e) => stack2.pushFail(e) }).step
+            case Segment.Append(s) =>
+              s.push(NT.Id(), stack.pushMap(f).pushSegments(segments)).flatMap(_.step)
+            case Segment.Fail(err) => Stack.fail(segments)(err) match {
+              case Left(err) => stack.pushFail(err).step
+              case Right((hd, segments)) => stack.pushMap(f).pushSegments(segments).pushAppend(hd).step
+            }
+            case Segment.Handler(_) => stack.pushMap(f).pushSegments(segments).step
+          }
+        }
+    }
+    private object Map {
+      def apply[F[_],O1,O2,X0](segments0: Catenable[Segment[F,O1]], f0: Chunk[O1] => Chunk[X0], stack0: Stack[F,X0,O2]): Map[F,O1,O2] =
+        new Map[F,O1,O2] {
+          val segments = segments0
+          type X = X0
+          val f = f0
+          val stack = stack0
+        }
+    }
+
+    private sealed trait Bind[F[_],O1,O2] extends Stack[F,O1,O2] {
+      val segments: Catenable[Segment[F,O1]]
+      type X
+      val f: O1 => StreamCore[F,X]
+      val stack: Stack[F,X,O2]
+
+      def render = "Bind" :: stack.render
+
+      def pushNonEmptySegment(s: Segment[F,O1]): Stack[F,O1,O2] =
+        Bind(s :: segments, f, stack)
+
+      def pushNonEmptySegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
+        Bind(s ++ segments, f, stack)
+
+      def _step: Scope[F,StepResult[F,O2]] =
+        segments.uncons match {
+          case None => stack.step
+          case Some((hd, segments)) => hd match {
+            case Segment.Emit(chunk) =>
+              chunk.uncons match {
+                case None => stack.pushBind(f).pushSegments(segments).step
+                case Some((hd,tl)) =>
+                  val segs2 =
+                    (if (tl.isEmpty) segments else segments.push(Segment.Emit(tl))).map(_.interpretBind(f))
+                  val stack2 = stack.pushSegments(segs2)
+                  (try stack2.pushAppend(f(hd)) catch { case NonFatal(t) => stack2.pushFail(t) }).step
+              }
+            case Segment.Append(s) =>
+              s.push(NT.Id(), stack.pushBind(f).pushSegments(segments)).flatMap(_.step)
+            case Segment.Fail(err) => Stack.fail(segments)(err) match {
+              case Left(err) => stack.pushFail(err).step
+              case Right((hd, segments)) => stack.pushBind(f).pushSegments(segments).pushAppend(hd).step
+            }
+            case Segment.Handler(_) => stack.pushBind(f).pushSegments(segments).step
+          }
+        }
+    }
+    private object Bind {
+      def apply[F[_],O1,O2,X0](segments0: Catenable[Segment[F,O1]], f0: O1 => StreamCore[F,X0], stack0: Stack[F,X0,O2]): Bind[F,O1,O2] =
+        new Bind[F,O1,O2] {
+          val segments = segments0
+          type X = X0
+          val f = f0
+          val stack = stack0
+        }
     }
 
     def empty[F[_],O1]: Stack[F,O1,O1] = segments(Catenable.empty)
 
-    def segments[F[_],O1](s: Catenable[Segment[F,O1]]): Stack[F,O1,O1] = new Stack[F,O1,O1] {
-      def fold[R](fold: Fold[F,O1,O1,R]): R = fold.unbound(s, Eq.refl)
-      def render = List(describeSegments(s))
-    }
-
-    private[fs2]
-    def describeSegments[F[_],O](s: Catenable[Segment[F,O]]): String = {
-      val segments = s.toStream.toList
-      s"Segments (${segments.size})\n"+segments.zipWithIndex.map { case (s, idx) => s"    s$idx: $s" }.mkString("\n")
-    }
+    def segments[F[_],O1](s: Catenable[Segment[F,O1]]): Stack[F,O1,O1] = Segments(s)
 
     @annotation.tailrec
     def fail[F[_],O1](s: Catenable[Segment[F,O1]])(err: Throwable)
