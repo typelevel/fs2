@@ -247,7 +247,7 @@ private[fs2] object StreamCore {
     type O0 = O
     def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
       Scope.pure { stack pushSegments (NT.convert(s)(u)) }
-    def render = "Segments(" + s.toStream.toList.mkString(", ") + ")"
+    def render = "Segments(" + s.toList.mkString(", ") + ")"
   }
 
   def scope[F[_],O](s: StreamCore[F,O]): StreamCore[F,O] = StreamCore.evalScope(Scope.snapshot).flatMap { tokens =>
@@ -374,11 +374,11 @@ private[fs2] object StreamCore {
     private final case class Segments[F[_],O](segments: Catenable[Segment[F,O]]) extends Stack[F,O,O] {
 
       def render = {
-        val segmentsList = segments.toStream.toList
+        val segmentsList = segments.toList
         List(s"Segments (${segmentsList.size})\n"+segmentsList.zipWithIndex.map { case (s, idx) => s"    s$idx: $s" }.mkString("\n"))
       }
       def pushNonEmptySegment(s: Segment[F,O]): Stack[F,O,O] =
-        Segments(s :: segments)
+        Segments(s +: segments)
 
       def pushNonEmptySegments(s: Catenable[Segment[F,O]]): Stack[F,O,O] =
         Segments(s ++ segments)
@@ -410,7 +410,7 @@ private[fs2] object StreamCore {
       def render = "Map" :: stack.render
 
       def pushNonEmptySegment(s: Segment[F,O1]): Stack[F,O1,O2] =
-        Map(s :: segments, f, stack)
+        Map(s +: segments, f, stack)
 
       def pushNonEmptySegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
         Map(s ++ segments, f, stack)
@@ -452,7 +452,7 @@ private[fs2] object StreamCore {
       def render = "Bind" :: stack.render
 
       def pushNonEmptySegment(s: Segment[F,O1]): Stack[F,O1,O2] =
-        Bind(s :: segments, f, stack)
+        Bind(s +: segments, f, stack)
 
       def pushNonEmptySegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
         Bind(s ++ segments, f, stack)
@@ -466,7 +466,7 @@ private[fs2] object StreamCore {
                 case None => stack.pushBind(f).pushSegments(segments).step
                 case Some((hd,tl)) =>
                   val segs2 =
-                    (if (tl.isEmpty) segments else segments.push(Segment.Emit(tl))).map(_.interpretBind(f))
+                    (if (tl.isEmpty) segments else segments.cons(Segment.Emit(tl))).map(_.interpretBind(f))
                   val stack2 = stack.pushSegments(segs2)
                   (try stack2.pushAppend(f(hd)) catch { case NonFatal(t) => stack2.pushFail(t) }).step
               }
