@@ -13,19 +13,21 @@ sealed abstract class Catenable[+A] {
   /** Returns the head and tail of this catenable if non empty, none otherwise. Amortized O(1). */
   final def uncons: Option[(A, Catenable[A])] = {
     var c: Catenable[A] = this
-    var rights: List[Catenable[A]] = Nil
+    val rights = new collection.mutable.ArrayBuffer[Catenable[A]]
     var result: Option[(A, Catenable[A])] = null
     while (result eq null) {
       c match {
         case Empty =>
-          rights match {
-            case Nil => result = None
-            case h :: t => c = h; rights = t
+          if (rights.isEmpty) {
+            result = None
+          } else {
+            c = rights.last
+            rights.trimEnd(1)
           }
         case Single(a) =>
-          val next = if (rights.isEmpty) empty else rights.reverse.reduceLeft((x, y) => Append(y,x))
+          val next = if (rights.isEmpty) empty else rights.reduceLeft((x, y) => Append(y,x))
           result = Some(a -> next)
-        case Append(l, r) => c = l; rights = r :: rights
+        case Append(l, r) => c = l; rights += r
       }
     }
     result
@@ -68,19 +70,21 @@ sealed abstract class Catenable[+A] {
   /** Applies the supplied function to each element, left to right. */
   final def foreach(f: A => Unit): Unit = {
     var c: Catenable[A] = this
-    var rights: List[Catenable[A]] = Nil
+    val rights = new collection.mutable.ArrayBuffer[Catenable[A]]
     while (c ne null) {
       c match {
         case Empty =>
-          rights match {
-            case Nil => c = null
-            case h :: t => c = h; rights = t
+          if (rights.isEmpty) {
+            c = null
+          } else {
+            c = rights.last
+            rights.trimEnd(1)
           }
         case Single(a) =>
           f(a)
-          c = if (rights.isEmpty) Empty else rights.reverse.reduceLeft((x, y) => Append(y,x))
-          rights = Nil
-        case Append(l, r) => c = l; rights = r :: rights
+          c = if (rights.isEmpty) Empty else rights.reduceLeft((x, y) => Append(y,x))
+          rights.clear()
+        case Append(l, r) => c = l; rights += r
       }
     }
   }
@@ -125,14 +129,21 @@ object Catenable {
 
   /** Creates a catenable from the specified elements. */
   def apply[A](as: A*): Catenable[A] = {
-    // Assumption: `as` is small enough that calling size doesn't outweigh benefit of calling empty/single
-    as.size match {
-      case 0 => empty
-      case 1 => single(as.head)
-      case n if n <= 1024 =>
-        // nb: avoid cost of reversing input if colection is small
-        as.view.map(single).reduceRight(Append(_, _))
-      case n => as.view.reverse.map(single).reduceLeft((x, y) => Append(y, x))
+    as match {
+      case w: collection.mutable.WrappedArray[A] =>
+        if (w.isEmpty) empty
+        else if (w.size == 1) single(w.head)
+        else {
+          val arr: Array[A] = w.array
+          var c: Catenable[A] = single(arr.last)
+          var idx = arr.size - 2
+          while (idx >= 0) {
+            c = Append(single(arr(idx)), c)
+            idx -= 1
+          }
+          c
+        }
+      case _ => fromSeq(as)
     }
   }
 }
