@@ -19,9 +19,14 @@ class CatenableBenchmark extends BenchmarkUtils {
   @Benchmark def mapLargeCatenable = largeCatenable.map(_ + 1)
   @Benchmark def mapLargeVector = largeVector.map(_ + 1)
 
-  @Benchmark def consSmallCatenable = 0 :: smallCatenable
+  @Benchmark def foldLeftSmallCatenable = smallCatenable.foldLeft(0)(_ + _)
+  @Benchmark def foldLeftSmallVector = smallVector.foldLeft(0)(_ + _)
+  @Benchmark def foldLeftLargeCatenable = largeCatenable.foldLeft(0)(_ + _)
+  @Benchmark def foldLeftLargeVector = largeVector.foldLeft(0)(_ + _)
+
+  @Benchmark def consSmallCatenable = 0 +: smallCatenable
   @Benchmark def consSmallVector = 0 +: smallVector
-  @Benchmark def consLargeCatenable = 0 :: largeCatenable
+  @Benchmark def consLargeCatenable = 0 +: largeCatenable
   @Benchmark def consLargeVector = 0 +: largeVector
 
   @Benchmark def createTinyCatenable = Catenable(1)
