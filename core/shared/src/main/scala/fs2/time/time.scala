@@ -78,9 +78,27 @@ package object time {
   }
 
   /**
-   * A single-element `Stream` that waits for the duration `d` before emitting its value. This uses the implicit
-   * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues with `S` strategy.
+   * A single-element `Stream` that waits for the duration `d` before emitting unit. This uses the implicit
+   * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues
+   * on the captured `Async` `Strategy`.
    */
-  def sleep[F[_]: Async](d: FiniteDuration)(implicit scheduler: Scheduler): Stream[F, Nothing] =
-    awakeEvery(d).take(1).drain
+  def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], scheduler: Scheduler): Stream[F, Unit] = {
+    val ping: F[Unit] = F async { cb =>
+      F delay {
+        scheduler.scheduleOnce(d) {
+          cb(Right(()))
+        }
+
+        ()
+      }
+    }
+
+    Stream eval ping
+  }
+
+  /**
+   * Identical to `sleep(d).drain`.
+   */
+  def sleep_[F[_]](d: FiniteDuration)(implicit F: Async[F], scheduler: Scheduler): Stream[F, Nothing] =
+    sleep(d).drain
 }

@@ -24,8 +24,17 @@ class TimeSpec extends AsyncFs2Spec {
     }
 
     "duration" in {
-      time.duration[Task].take(1).runLog.unsafeRunAsyncFuture().map { _.last }.map { firstValueDiscrepancy =>
-        firstValueDiscrepancy.toNanos should be < (200.millis.toNanos)
+      val delay = 200 millis
+
+      val blockingSleep = Task delay {
+        Thread.sleep(delay.toMillis)
+      }
+
+      val emitAndSleep = Stream.emit(()) ++ Stream.eval(blockingSleep)
+      val t = emitAndSleep zip time.duration[Task] drop 1 map { _._2 } runLog
+
+      t.unsafeRunAsyncFuture() collect {
+        case Vector(d) => assert(d >= delay)
       }
     }
 
@@ -57,6 +66,18 @@ class TimeSpec extends AsyncFs2Spec {
         withClue("every always emits true first") { assert(head._1) }
         withClue("true means the delay has passed: " + tail) { assert(tail.filter(_._1).map(_._2).forall { _ >= delay }) }
         withClue("false means the delay has not passed: " + tail) { assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay }) }
+      }
+    }
+
+    "sleep" in {
+      val delay = 200 millis
+
+      // force a sync up in duration, then measure how long sleep takes
+      val emitAndSleep = Stream.emit(()) ++ time.sleep[Task](delay)
+      val t = emitAndSleep zip time.duration[Task] drop 1 map { _._2 } runLog
+
+      t.unsafeRunAsyncFuture() collect {
+        case Vector(d) => assert(d >= delay)
       }
     }
   }
