@@ -120,6 +120,12 @@ class StreamSpec extends Fs2Spec {
       }.toList shouldBe List(3, 3, 3, 2, 2, 1)
     }
 
+    "unfoldChunk" in {
+      Stream.unfoldChunk(4L) { s =>
+        if(s > 0) Some((Chunk.longs(Array[Long](s,s)), s-1)) else None
+      }.toList shouldBe List[Long](4,4,3,3,2,2,1,1)
+    }
+
     "unfoldEval" in {
       Stream.unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
         .runLog.unsafeRun().toList shouldBe List.range(10, 0, -1)
@@ -128,6 +134,11 @@ class StreamSpec extends Fs2Spec {
     "unfoldSeqEval" in {
       Stream.unfoldSeqEval(3)(s => Task.now(if(s > 0) Some((Seq.fill(s)(s), s-1)) else None))
         .runLog.unsafeRun().toList shouldBe List(3, 3, 3, 2, 2, 1)
+    }
+
+    "unfoldChunkEval" in {
+      Stream.unfoldChunkEval(true)(s => Task.now(if(s) Some((Chunk.booleans(Array[Boolean](s)),false)) else None))
+        .runLog.unsafeRun().toList shouldBe List(true)
     }
 
     "translate stack safety" in {

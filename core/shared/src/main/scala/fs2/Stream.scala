@@ -518,6 +518,16 @@ object Stream {
     suspend(go(s0))
   }
 
+/** Produce a (potentially infinite) stream from an unfold of Chunks. */
+  def unfoldChunk[F[_],S,A](s0: S)(f: S => Option[(Chunk[A],S)]): Stream[F,A] = {
+    def go(s: S): Stream[F,A] =
+      f(s) match {
+        case Some((a, sn)) => chunk(a) ++ go(sn)
+        case None => empty
+      }
+    suspend(go(s0))
+  }
+
   /** Like [[unfold]], but takes an effectful function. */
   def unfoldEval[F[_],S,A](s0: S)(f: S => F[Option[(A,S)]]): Stream[F,A] = {
     def go(s: S): Stream[F,A] =
@@ -528,11 +538,21 @@ object Stream {
     suspend(go(s0))
   }
 
-    /** Like [[unfoldSeq]], but takes an effectful function. */
+  /** Like [[unfoldSeq]], but takes an effectful function. */
   def unfoldSeqEval[F[_],S,A](s0: S)(f: S => F[Option[(Seq[A],S)]]): Stream[F,A] = {
     def go(s: S): Stream[F,A] =
       eval(f(s)).flatMap {
         case Some((a, sn)) => emits(a) ++ go(sn)
+        case None => empty
+      }
+    suspend(go(s0))
+  }
+
+  /** Like [[unfoldChunk]], but takes an effectful function. */
+  def unfoldChunkEval[F[_],S,A](s0: S)(f: S => F[Option[(Chunk[A],S)]]): Stream[F,A] = {
+    def go(s: S): Stream[F,A] =
+      eval(f(s)).flatMap {
+        case Some((a, sn)) => chunk(a) ++ go(sn)
         case None => empty
       }
     suspend(go(s0))
