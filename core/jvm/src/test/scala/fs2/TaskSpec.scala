@@ -32,5 +32,16 @@ class TaskSpec extends Fs2Spec{
         }.unsafeRun() shouldBe false
       }
     }
+
+    "fromAttempt" - {
+      "convert failed attempt to failed Task" in {
+        val ex = new RuntimeException
+        Task.fromAttempt(Left(ex)).unsafeAttemptRun() shouldBe Left(ex)
+      }
+      "convert successful attempt to successful Task" in {
+        Task.fromAttempt(Right(123)).unsafeRun() shouldBe 123
+      }
+    }
+
   }
 }

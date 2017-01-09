@@ -256,6 +256,13 @@ object Task extends TaskPlatform with TaskInstances {
       case scala.util.Failure(t) => cb(Left(t))
     }}
 
+  /**
+    * Create a `Task` from an `Attempt`.
+    */
+  def fromAttempt[A](attempt: Attempt[A]): Task[A] = {
+    attempt.fold(Task.fail, Task.now)
+  }
+
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
   def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
     async { cb => scheduler.delayedStrategy(delay)(cb(Attempt(a))) }
