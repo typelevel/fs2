@@ -17,10 +17,10 @@ package object time {
    * between emitted values.
    *
    * This uses an implicit `Scheduler` for the timed events, and
-   * runs the consumer using the `S` `Strategy`, to allow for the
-   * stream to decide whether result shall be run on
-   * different thread pool, or with `Strategy.sequential` on the
-   * same thread pool as the scheduler.
+   * runs the consumer using the `F` `Async[F]`, to allow for the
+   * stream to decide whether result shall be run on different
+   * thread pool, or with `Strategy.sequential` on the same thread
+   * pool as the scheduler.
    *
    * Note: for very small values of `d`, it is possible that multiple
    * periods elapse and only some of those periods are visible in the
@@ -79,7 +79,8 @@ package object time {
 
   /**
    * A single-element `Stream` that waits for the duration `d` before emitting its value. This uses the implicit
-   * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues with `S` strategy.
+   * `Scheduler` to signal duration and avoid blocking on thread. After the signal,
+   * the execution continues using the execution `Strategy` associated with the implicitly provided `Async[F]`.
    */
   def sleep[F[_]: Async](d: FiniteDuration)(implicit scheduler: Scheduler): Stream[F, Nothing] =
     awakeEvery(d).take(1).drain
