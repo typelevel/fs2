@@ -2,8 +2,9 @@ package fs2
 
 import fs2.util.UF1
 import org.scalacheck.Gen
+import org.scalatest.Inside
 
-class StreamSpec extends Fs2Spec {
+class StreamSpec extends Fs2Spec with Inside {
 
   "Stream" - {
 
@@ -110,6 +111,13 @@ class StreamSpec extends Fs2Spec {
 
     "toVector" in forAll { (s: PureStream[Int]) =>
       s.get.toVector shouldBe runLog(s.get)
+    }
+
+    "uncons" in {
+      val result = Stream(1,2,3).uncons1.toList
+      inside(result) { case List(Some((1, tail))) =>
+          tail.toList shouldBe (List(2,3))
+      }
     }
 
     "unfold" in {
