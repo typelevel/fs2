@@ -197,21 +197,50 @@ object pipe {
    * any of the chunk's elements.
    */
   def groupBy[F[_], K, V](f: V => K): Pipe[F, V, (K, Vector[V])] = {
-    def go(current: K, buffer: Vector[V]): Handle[F, V] => Pull[F, (K, Vector[V]), Unit] = _.receiveOption {
-      case Some((chunk, h)) =>
-        chunk.indexWhere(f(_) != current) match {
-          case None =>
-            go(current, buffer ++ chunk.toVector)(h)
-          case Some(idx) =>
-            val next = f(chunk(idx))
-            val out = buffer ++ chunk.take(idx).toVector
-            val carry = if (chunk.size > idx) chunk.drop(idx) else Chunk.empty
-            Pull.output1(current -> out) >> go(next, Vector.empty)(h.push(carry))
-        }
-      case None =>
-        if (buffer.nonEmpty) Pull.output1(current -> buffer) else Pull.done
+
+    def go(current: Option[(K, Vector[V])]): 
+        Handle[F, V] => Pull[F, (K, Vector[V]), Unit] = h => {
+
+      h.receiveOption { 
+        case Some((chunk, h)) => 
+          val (k1, out) = current.getOrElse((f(chunk(0)), Vector[V]()))
+          doChunk(chunk, h, k1, out, Vector.empty)
+        case None => 
+          val l = current.map { case (k1, out) => Pull.output1((k1, out)) } getOrElse Pull.pure(()) 
+          l >> Pull.done
+      }
     }
-    _ pull { _.receive1 { (v, h) => go(f(v), Vector(v))(h) } }
+
+    def doChunk(chunk: Chunk[V], h: Handle[F, V], k1: K, out: Vector[V], acc: Vector[(K, Vector[V])]):
+        Pull[F, (K, Vector[V]), Unit] = {
+
+      val differsAt = chunk.indexWhere(f(_) != k1).getOrElse(-1)
+      if (differsAt == -1) {
+        // whole chunk matches the current key, add this chunk to the accumulated output
+        val newOut: Vector[V] = out ++ chunk.toVector
+        if (acc.isEmpty) {
+          go(Some((k1, newOut)))(h)
+        } else {
+          // potentially outputs one additional chunk (by splitting the last one in two)
+          Pull.output(Chunk.indexedSeq(acc)) >> go(Some((k1, newOut)))(h)
+        }
+      } else {
+        // at least part of this chunk does not match the current key, need to group and retain chunkiness
+        var startIndex = 0
+        var endIndex = differsAt
+
+        // split the chunk into the bit where the keys match and the bit where they don't
+        val matching = chunk.take(differsAt)
+        val newOut: Vector[V] = out ++ matching.toVector
+        val nonMatching = chunk.drop(differsAt)
+        // nonMatching is guaranteed to be non-empty here, because we know the last element of the chunk doesn't have
+        // the same key as the first
+        val k2 = f(nonMatching(0))
+        doChunk(nonMatching, h, k2, Vector[V](), acc :+ ((k1, newOut)))
+      }
+    }
+
+    in => in.pull(go(None))
   }
 
   /** Emits the first element of this stream (if non-empty) and then halts. */
