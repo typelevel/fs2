@@ -388,6 +388,10 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.zipWithScan1]]`. */
   def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan1(z)(f)
 
+  /** Alias for `s >> s2 == s flatMap { _ => s2 }`. */
+  def >>[G[_],Lub[_],O2](f: Stream[G,O2])(implicit L: Lub1[F,G,Lub]): Stream[Lub,O2] =
+    Stream.mk { Sub1.substStream(self)(L.subF).get flatMap (_ => Sub1.substStream(f)(L.subG).get) }
+
   override def toString = get.toString
 }
 
