@@ -35,6 +35,10 @@ class StreamSpec extends Fs2Spec {
       runLog(s.get.flatMap(inner => inner.get)) shouldBe { runLog(s.get).flatMap(inner => runLog(inner.get)) }
     }
 
+    ">>" in forAll { (s: PureStream[Int], s2: PureStream[Int] ) =>
+      runLog(s.get >> s2.get) shouldBe { runLog(s.get.flatMap(_ => s2.get)) }
+    }
+
     "iterate" in {
       Stream.iterate(0)(_ + 1).take(100).toList shouldBe List.iterate(0, 100)(_ + 1)
     }
