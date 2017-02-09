@@ -346,9 +346,78 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.unchunk]]`. */
   def unchunk: Stream[F,O] = self through pipe.unchunk
 
+  /**
+    * Same as `uncons1` except operates over chunks instead of single elements of type `A`
+    */
   def uncons: Stream[F, Option[(NonEmptyChunk[O], Stream[F,O])]] =
     Stream.mk(get.uncons.map(_ map { case (hd,tl) => (hd, Stream.mk(tl)) }))
 
+  /**
+    * A new [[Stream]] of one element containing the head element of this [[Stream]] along
+    * with a reference to the remaining [[Stream]] after evaluation of the first element.
+    *
+    * {{{
+    *   scala> Stream(1,2,3).uncons1.toList
+    *   res1: List[Option[(Int, Stream[Nothing, Int])]] = List(Some((1,append(Segment(Emit(Chunk(2, 3))), Segments()))))
+    * }}}
+    *
+    * If the usefulness of this function is not be immediately apparent, consider the following scenario where we might
+    * want to implement a function to map over the first `n` elements of a [[Stream]]
+    *
+    * {{{
+    *   scala> def mapNFirst[F[_], A](s: Stream[F, A], n: Int, f: A => A): Stream[F, A] = s.take(n).map(f) ++ s.drop(n)
+    * }}}
+    *
+    * This solution might seem reasonable, but in fact it will not behave as expected.
+    *
+    * In the case where our [[Stream]] is pure, we get the expected result:
+    *
+    * {{{
+    *   scala> val pureStream = Stream(1,2,3,4)
+    *   scala> mapNFirst[Nothing, Int](pureStream, 2, _ + 100).toList
+    *   res1: List[Int] = List(101, 102, 3, 4)
+    * }}}
+    *
+    * However, if our [[Stream]] is effectful, we do not get the expected result:
+    *
+    * {{{
+    *   scala> // For lack of a better way to simulate a Stream of bytes from some external input
+    *   scala> // such as an Http connection
+    *   scala> var externalState = -1
+    *   scala> val task = Task.delay{ externalState += 1; externalState}
+    *   scala> val effStream = Stream.repeatEval[Task, Int](task)
+    *   scala> mapNFirst[Task, Int](effStream, 2, _ + 100).take(6).runLog.unsafeValue.get
+    *   res1: Vector[Int] = Vector(100, 101, 4, 5, 6, 7)
+    * }}}
+    *
+    * We lost two values because we dropped 2 elements from an effectful [[Stream]] that had already produced
+    * it's two first values.
+    *
+    * Getting rid of the `drop(n)` will not solve our problem as then we will have repeated elements in the case of a
+    * pure [[Stream]]
+    *
+    * We need to use `uncons1` in order to get a handle on the new "tail" of the [[Stream]], whether or not it is pure:
+    *
+    * {{{
+    *   scala> def mapNFirst1[F[_], A](s: Stream[F, A], n: Int, f: A => A): Stream[F, A] = {
+    *        |   s.uncons1.flatMap {
+    *        |     case Some((a, tail)) =>
+    *        |       if (n < 1) tail cons1 a
+    *        |       else mapNFirst1(tail, n - 1, f) cons1 f(a)
+    *        |     case None => Stream.empty
+    *        |   }
+    *        | }
+    *
+    *   scala> mapNFirst1[Nothing, Int](pureStream, 2, _ + 100).toList
+    *   res1: List[Int] = List(101, 102, 3, 4)
+    *
+    *   scala> var externalState1 = -1
+    *   scala> val task1 = Task.delay{ externalState1 += 1; externalState1}
+    *   scala> val effStream1 = Stream.repeatEval[Task, Int](task1)
+    *   scala> mapNFirst1[Task, Int](effStream1, 2, _ + 100).take(6).runLog.unsafeValue.get
+    *   res1: Vector[Int] = Vector(100, 101, 2, 3, 4, 5)
+    * }}}
+    */
   def uncons1: Stream[F, Option[(O,Stream[F,O])]] =
     Stream.mk {
       def go(s: StreamCore[F,O]): StreamCore[F,Option[(O,Stream[F,O])]] = s.uncons.flatMap {
