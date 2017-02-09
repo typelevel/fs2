@@ -23,8 +23,8 @@ object Traverse {
   implicit val vectorInstance: Traverse[Vector] = new Traverse[Vector] {
     def map[A,B](v: Vector[A])(f: A => B): Vector[B] = v map f
     def traverse[G[_], A, B](v: Vector[A])(f: A => G[B])(implicit G: Applicative[G]): G[Vector[B]] = {
-      v.reverse.foldLeft(G.pure(Vector.empty[B])) {
-        (tl,hd) => Applicative.map2(f(hd), tl)(_ +: _)
+      v.foldRight(G.pure(Vector.empty[B])) {
+        (hd, init) => Applicative.map2(f(hd), init)(_ +: _)
       }
     }
   }
@@ -32,8 +32,8 @@ object Traverse {
   implicit val listInstance: Traverse[List] = new Traverse[List] {
     def map[A,B](l: List[A])(f: A => B): List[B] = l map f
     def traverse[G[_], A, B](l: List[A])(f: A => G[B])(implicit G: Applicative[G]): G[List[B]] = {
-      l.reverse.foldLeft(G.pure(List.empty[B])) {
-        (tl,hd) => Applicative.map2(f(hd), tl)(_ :: _)
+      l.foldRight(G.pure(List.empty[B])) {
+        (hd, init) => Applicative.map2(f(hd), init)(_ :: _)
       }
     }
   }
@@ -41,8 +41,8 @@ object Traverse {
   implicit val seqInstance: Traverse[Seq] = new Traverse[Seq] {
     def map[A,B](l: Seq[A])(f: A => B): Seq[B] = l map f
     def traverse[G[_], A, B](l: Seq[A])(f: A => G[B])(implicit G: Applicative[G]): G[Seq[B]] = {
-      l.reverse.foldLeft(G.pure(Seq.empty[B])) {
-        (tl,hd) => Applicative.map2(f(hd), tl)(_ +: _)
+      l.foldRight(G.pure(Seq.empty[B])) {
+        (hd, init) => Applicative.map2(f(hd), init)(_ +: _)
       }
     }
   }
