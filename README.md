@@ -102,3 +102,9 @@ FS2 has evolved from earlier work on streaming APIs in Scala and Haskell and in 
 ### Presentations, Blogs, etc. ###
 
 See [Additional resources](https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources).
+
+### Acknowledgments ###
+
+[![YourKit](https://www.yourkit.com/images/yklogo.png)](https://www.yourkit.com/)
+
+Special thanks to [YourKit](https://www.yourkit.com/) for supporting this project's ongoing performance tuning efforts with licenses to their excellent product.
