@@ -37,4 +37,14 @@ object Traverse {
       }
     }
   }
+
+  implicit val seqInstance: Traverse[Seq] = new Traverse[Seq] {
+    def map[A,B](l: Seq[A])(f: A => B): Seq[B] = l map f
+    def traverse[G[_], A, B](l: Seq[A])(f: A => G[B])(implicit G: Applicative[G]): G[Seq[B]] = {
+      l.reverse.foldLeft(G.pure(Seq.empty[B])) {
+        (tl,hd) => Applicative.map2(f(hd), tl)(_ +: _)
+      }
+    }
+  }
+
 }
