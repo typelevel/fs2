@@ -17,5 +17,12 @@ class TraverseSpec extends Fs2Spec {
       result.unsafeRunSync()
       acc shouldBe Seq(1, 2, 3, 4, 5)
     }
+
+    "evaluate effects in left-to-right order (Vector)" in {
+      var acc = collection.mutable.ListBuffer[Int]()
+      val result = Traverse[Vector].traverse((1 to 5).toVector)(n => Task.delay(acc += n))
+      result.unsafeRunSync()
+      acc.toVector shouldBe Vector(1, 2, 3, 4, 5)
+    }
   }
 }
