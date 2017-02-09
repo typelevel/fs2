@@ -45,3 +45,25 @@ object DanglingDequeueSanityTest extends App {
     Stream.constant(1).flatMap { _ => Stream.empty mergeHaltBoth q.dequeue }
   }.run.unsafeRun
 }
+
+object AwakeEverySanityTest extends App {
+  import scala.concurrent.duration._
+  import TestUtil.{ S, scheduler }
+  time.awakeEvery[Task](1.millis).flatMap {
+    _ => Stream.eval(Task(()))
+  }.run.unsafeRun
+}
+
+object SignalDiscreteSanityTest extends App {
+  import TestUtil.S
+  Stream.eval(async.signalOf[Task, Unit](())).flatMap { signal =>
+    signal.discrete.evalMap(a => signal.set(a))
+  }.run.unsafeRun
+}
+
+object SignalContinuousSanityTest extends App {
+  import TestUtil.S
+  Stream.eval(async.signalOf[Task, Unit](())).flatMap { signal =>
+    signal.continuous.evalMap(a => signal.set(a))
+  }.run.unsafeRun
+}
