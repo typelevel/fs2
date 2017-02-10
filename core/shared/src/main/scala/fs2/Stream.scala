@@ -11,10 +11,10 @@ import fs2.util.{Applicative,Async,Attempt,Catchable,Free,Lub1,RealSupertype,Sub
  *
  * `append` forms a monoid in conjunction with `empty`:
  *   - `empty append s == s` and `s append empty == s`.
- *   -`(s1 append s2) append s3 == s1 append (s2 append s3)`
+ *   - `(s1 append s2) append s3 == s1 append (s2 append s3)`
  *
  * And `push` is consistent with using `append` to prepend a single chunk:
- *   -`push(c)(s) == chunk(c) append s`
+ *   - `push(c)(s) == chunk(c) append s`
  *
  * `fail` propagates until being caught by `onError`:
  *   - `fail(e) onError h == h(e)`
@@ -22,15 +22,37 @@ import fs2.util.{Applicative,Async,Attempt,Catchable,Free,Lub1,RealSupertype,Sub
  *   - `fail(e) flatMap f == fail(e)`
  *
  * `Stream` forms a monad with `emit` and `flatMap`:
- *   - `emit >=> f == f`
- *   - `f >=> emit == f`
- *   - `(f >=> g) >=> h == f >=> (g >=> h)`
+ *   - `emit >=> f == f` (left identity)
+ *   - `f >=> emit === f` (right identity - note weaker equality notion here)
+ *   - `(f >=> g) >=> h == f >=> (g >=> h)` (associativity)
  *  where `emit(a)` is defined as `chunk(Chunk.singleton(a)) and
  *  `f >=> g` is defined as `a => a flatMap f flatMap g`
  *
  * The monad is the list-style sequencing monad:
  *   - `(a append b) flatMap f == (a flatMap f) append (b flatMap f)`
  *   - `empty flatMap f == empty`
+ *
+ * '''Technical notes'''
+ *
+ * ''Note:'' since the chunk structure of the stream is observable, and
+ * `s flatMap (emit)` produces a stream of singleton chunks,
+ * the right identity law uses a weaker notion of equality, `===` which
+ * normalizes both sides with respect to chunk structure:
+ *
+ *   `(s1 === s2) = normalize(s1) == normalize(s2)`
+ *   where `==` is full equality
+ *   (`a == b` iff `f(a)` is identical to `f(b)` for all `f`)
+ *
+ * `normalize(s)` can be defined as `s.repeatPull(_.echo1)`, which just
+ * produces a singly-chunked stream from any input stream `s`.
+ *
+ * ''Note:'' For efficiency `[[Stream.map]]` function operates on an entire
+ * chunk at a time and preserves chunk structure, which differs from
+ * the `map` derived from the monad (`s map f == s flatMap (f andThen emit)`)
+ * which would produce singleton chunks. In particular, if `f` throws errors, the
+ * chunked version will fail on the first ''chunk'' with an error, while
+ * the unchunked version will fail on the first ''element'' with an error.
+ * Exceptions in pure code like this are strongly discouraged.
  */
 final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) { self =>
 
@@ -324,9 +346,78 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.unchunk]]`. */
   def unchunk: Stream[F,O] = self through pipe.unchunk
 
+  /**
+    * Same as `uncons1` except operates over chunks instead of single elements of type `A`
+    */
   def uncons: Stream[F, Option[(NonEmptyChunk[O], Stream[F,O])]] =
     Stream.mk(get.uncons.map(_ map { case (hd,tl) => (hd, Stream.mk(tl)) }))
 
+  /**
+    * A new [[Stream]] of one element containing the head element of this [[Stream]] along
+    * with a reference to the remaining [[Stream]] after evaluation of the first element.
+    *
+    * {{{
+    *   scala> Stream(1,2,3).uncons1.toList
+    *   res1: List[Option[(Int, Stream[Nothing, Int])]] = List(Some((1,append(Segment(Emit(Chunk(2, 3))), Segments()))))
+    * }}}
+    *
+    * If the usefulness of this function is not be immediately apparent, consider the following scenario where we might
+    * want to implement a function to map over the first `n` elements of a [[Stream]]
+    *
+    * {{{
+    *   scala> def mapNFirst[F[_], A](s: Stream[F, A], n: Int, f: A => A): Stream[F, A] = s.take(n).map(f) ++ s.drop(n)
+    * }}}
+    *
+    * This solution might seem reasonable, but in fact it will not behave as expected.
+    *
+    * In the case where our [[Stream]] is pure, we get the expected result:
+    *
+    * {{{
+    *   scala> val pureStream = Stream(1,2,3,4)
+    *   scala> mapNFirst[Nothing, Int](pureStream, 2, _ + 100).toList
+    *   res1: List[Int] = List(101, 102, 3, 4)
+    * }}}
+    *
+    * However, if our [[Stream]] is effectful, we do not get the expected result:
+    *
+    * {{{
+    *   scala> // For lack of a better way to simulate a Stream of bytes from some external input
+    *   scala> // such as an Http connection
+    *   scala> var externalState = -1
+    *   scala> val task = Task.delay{ externalState += 1; externalState}
+    *   scala> val effStream = Stream.repeatEval[Task, Int](task)
+    *   scala> mapNFirst[Task, Int](effStream, 2, _ + 100).take(6).runLog.unsafeValue.get
+    *   res1: Vector[Int] = Vector(100, 101, 4, 5, 6, 7)
+    * }}}
+    *
+    * We lost two values because we dropped 2 elements from an effectful [[Stream]] that had already produced
+    * it's two first values.
+    *
+    * Getting rid of the `drop(n)` will not solve our problem as then we will have repeated elements in the case of a
+    * pure [[Stream]]
+    *
+    * We need to use `uncons1` in order to get a handle on the new "tail" of the [[Stream]], whether or not it is pure:
+    *
+    * {{{
+    *   scala> def mapNFirst1[F[_], A](s: Stream[F, A], n: Int, f: A => A): Stream[F, A] = {
+    *        |   s.uncons1.flatMap {
+    *        |     case Some((a, tail)) =>
+    *        |       if (n < 1) tail cons1 a
+    *        |       else mapNFirst1(tail, n - 1, f) cons1 f(a)
+    *        |     case None => Stream.empty
+    *        |   }
+    *        | }
+    *
+    *   scala> mapNFirst1[Nothing, Int](pureStream, 2, _ + 100).toList
+    *   res1: List[Int] = List(101, 102, 3, 4)
+    *
+    *   scala> var externalState1 = -1
+    *   scala> val task1 = Task.delay{ externalState1 += 1; externalState1}
+    *   scala> val effStream1 = Stream.repeatEval[Task, Int](task1)
+    *   scala> mapNFirst1[Task, Int](effStream1, 2, _ + 100).take(6).runLog.unsafeValue.get
+    *   res1: Vector[Int] = Vector(100, 101, 2, 3, 4, 5)
+    * }}}
+    */
   def uncons1: Stream[F, Option[(O,Stream[F,O])]] =
     Stream.mk {
       def go(s: StreamCore[F,O]): StreamCore[F,Option[(O,Stream[F,O])]] = s.uncons.flatMap {
@@ -490,11 +581,31 @@ object Stream {
     suspend(go(s0))
   }
 
+  /** Produce a (potentially infinite) stream from an unfold of Chunks. */
+  def unfoldChunk[F[_],S,A](s0: S)(f: S => Option[(Chunk[A],S)]): Stream[F,A] = {
+    def go(s: S): Stream[F,A] =
+      f(s) match {
+        case Some((a, sn)) => chunk(a) ++ go(sn)
+        case None => empty
+      }
+    suspend(go(s0))
+  }
+
   /** Like [[unfold]], but takes an effectful function. */
   def unfoldEval[F[_],S,A](s0: S)(f: S => F[Option[(A,S)]]): Stream[F,A] = {
     def go(s: S): Stream[F,A] =
       eval(f(s)).flatMap {
         case Some((a, sn)) => emit(a) ++ go(sn)
+        case None => empty
+      }
+    suspend(go(s0))
+  }
+
+  /** Like [[unfoldChunk]], but takes an effectful function. */
+  def unfoldChunkEval[F[_],S,A](s0: S)(f: S => F[Option[(Chunk[A],S)]]): Stream[F,A] = {
+    def go(s: S): Stream[F,A] =
+      eval(f(s)).flatMap {
+        case Some((a, sn)) => chunk(a) ++ go(sn)
         case None => empty
       }
     suspend(go(s0))

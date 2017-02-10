@@ -2,8 +2,9 @@ package fs2
 
 import fs2.util.UF1
 import org.scalacheck.Gen
+import org.scalatest.Inside
 
-class StreamSpec extends Fs2Spec {
+class StreamSpec extends Fs2Spec with Inside {
 
   "Stream" - {
 
@@ -112,15 +113,33 @@ class StreamSpec extends Fs2Spec {
       s.get.toVector shouldBe runLog(s.get)
     }
 
+    "uncons" in {
+      val result = Stream(1,2,3).uncons1.toList
+      inside(result) { case List(Some((1, tail))) =>
+          tail.toList shouldBe (List(2,3))
+      }
+    }
+
     "unfold" in {
       Stream.unfold((0, 1)) {
         case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
       }.map(_._1).toList shouldBe List(0, 1, 1, 2, 3, 5, 8, 13)
     }
 
+    "unfoldChunk" in {
+      Stream.unfoldChunk(4L) { s =>
+        if(s > 0) Some((Chunk.longs(Array[Long](s,s)), s-1)) else None
+      }.toList shouldBe List[Long](4,4,3,3,2,2,1,1)
+    }
+
     "unfoldEval" in {
       Stream.unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
         .runLog.unsafeRun().toList shouldBe List.range(10, 0, -1)
+    }
+
+    "unfoldChunkEval" in {
+      Stream.unfoldChunkEval(true)(s => Task.now(if(s) Some((Chunk.booleans(Array[Boolean](s)),false)) else None))
+        .runLog.unsafeRun().toList shouldBe List(true)
     }
 
     "translate stack safety" in {

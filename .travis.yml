@@ -1,28 +1,29 @@
 language: scala
 
 scala:
-- 2.11.8
-- 2.12.0
+  - 2.11.8
+  - 2.12.0
 
 jdk:
-- oraclejdk8
+  - oraclejdk8
 
 sudo: false
 
 cache:
   directories:
-  - $HOME/.ivy2
-  - $HOME/.sbt
+    - $HOME/.ivy2
+    - $HOME/.coursier
+    - $HOME/.sbt
 
 env:
   global:
-  - secure: gYw+NTUc3uR9fGjXNFU3AWEzk6V3hh1ZZlWA+Cp7QagRWPyPsuq9zdXYmpNH60EN9IlC73+qd6xEO/szejgQfY7BN1THr+NPzHTSJzR0ZtytR/C3IROvkvMiqnc8TtvjH/ECEyDauRvNGDR1y2T7mOZcwYZlgvk99D1S1JuBNe0=
-  - secure: WUTPbVxp6LhGYXdLYg1rNCsLnPdpoqxyOnND6oFZ11ffOCwb7eLlBjPwobt1iQlNLTw8ZTdsJ3IyE9+CVlgfSWVSi0BLDcpNcZcx1Mg1m37JPTp+3r/xExo8fjYySWlQfXmlnRoeZc0kfX5d3/bKlRpNEl/fZGeitSWDeEyGjzc=
+    - COURSIER_PROGRESS=0
+    - secure: gYw+NTUc3uR9fGjXNFU3AWEzk6V3hh1ZZlWA+Cp7QagRWPyPsuq9zdXYmpNH60EN9IlC73+qd6xEO/szejgQfY7BN1THr+NPzHTSJzR0ZtytR/C3IROvkvMiqnc8TtvjH/ECEyDauRvNGDR1y2T7mOZcwYZlgvk99D1S1JuBNe0=
+    - secure: WUTPbVxp6LhGYXdLYg1rNCsLnPdpoqxyOnND6oFZ11ffOCwb7eLlBjPwobt1iQlNLTw8ZTdsJ3IyE9+CVlgfSWVSi0BLDcpNcZcx1Mg1m37JPTp+3r/xExo8fjYySWlQfXmlnRoeZc0kfX5d3/bKlRpNEl/fZGeitSWDeEyGjzc=
 
 script:
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 test mimaReportBinaryIssues
   - (test $TRAVIS_SCALA_VERSION == "2.11.8" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut) || test $TRAVIS_SCALA_VERSION == "2.12.0"
-  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 benchmark/"jmh:run -i 5 -wi 5 -f1 -t1 --jvmArgs -Xms2g --jvmArgs -Xmx2g"
 
 after_success:
   - test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "series/0.9" && sbt +publish

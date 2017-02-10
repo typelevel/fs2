@@ -11,8 +11,8 @@ Quick links:
 * [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
 * [Docs and getting help](#docs)
 
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.9.2/fs2-io_2.12-0.9.2-javadoc.jar/!/index.html#package
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.9.2/fs2-core_2.12-0.9.2-javadoc.jar/!/index.html#package
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.9.2/fs2-io_2.12-0.9.2-javadoc.jar/!/fs2/io/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.9.2/fs2-core_2.12-0.9.2-javadoc.jar/!/fs2/index.html
 
 ### <a id="about"></a>About the library ###
 
@@ -88,7 +88,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [scodec-stream](https://github.com/scodec/scodec-stream): A library for streaming binary decoding and encoding, built using fs2 and [scodec](https://github.com/scodec/scodec).
-* [streamz](https://github.com/krasserm/streamz): A library that supports the conversion of [Akka Stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) `Source`s, `Flow`s and `Sink`s to and from FS2 `Stream`s, `Pipe`s and `Sink`s, respectively. It also supports the usage of [Apache Camel](http://camel.apache.org/) endpoints in FS2 `Stream`s.
+* [streamz](https://github.com/krasserm/streamz): A library that supports the conversion of [Akka Stream](http://doc.akka.io/docs/akka/2.4/scala/stream/index.html) `Source`s, `Flow`s and `Sink`s to and from FS2 `Stream`s, `Pipe`s and `Sink`s, respectively. It also supports the usage of [Apache Camel](http://camel.apache.org/) endpoints in FS2 `Stream`s and Akka Stream `Source`s, `Flow`s and `SubFlow`s.
 
 ### Related projects ###
 
@@ -102,3 +102,9 @@ FS2 has evolved from earlier work on streaming APIs in Scala and Haskell and in 
 ### Presentations, Blogs, etc. ###
 
 See [Additional resources](https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources).
+
+### Acknowledgments ###
+
+[![YourKit](https://www.yourkit.com/images/yklogo.png)](https://www.yourkit.com/)
+
+Special thanks to [YourKit](https://www.yourkit.com/) for supporting this project's ongoing performance tuning efforts with licenses to their excellent product.

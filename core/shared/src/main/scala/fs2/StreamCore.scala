@@ -275,7 +275,7 @@ private[fs2] object StreamCore {
                     case None => step(stack.pushBind(f).pushSegments(segs))
                     case Some((hd,tl)) => step({
                       val segs2: Catenable[Segment[F,X]] =
-                        (if (tl.isEmpty) segs else segs.push(Segment.Emit(tl))).map(_.interpretBind(f))
+                        (if (tl.isEmpty) segs else segs.cons(Segment.Emit(tl))).map(_.interpretBind(f))
                       val stack2 = stack.pushSegments(segs2)
                       try stack2.pushAppend(f(hd)) catch { case NonFatal(t) => stack2.pushFail(t) }
                     })
@@ -304,7 +304,7 @@ private[fs2] object StreamCore {
     type O0 = O
     def push[G[_],O2](u: NT[F,G], stack: Stack[G,O,O2]) =
       Scope.pure { stack pushSegments (NT.convert(s)(u)) }
-    def render = "Segments(" + s.toStream.toList.mkString(", ") + ")"
+    def render = "Segments(" + s.toList.mkString(", ") + ")"
   }
 
   def scope[F[_],O](s: StreamCore[F,O]): StreamCore[F,O] = StreamCore.evalScope(Scope.snapshot).flatMap { tokens =>
@@ -416,11 +416,11 @@ private[fs2] object StreamCore {
       case Segment.Emit(c) if c.isEmpty => this
       case _ => self.fold(new Stack.Fold[F,O1,O2,Stack[F,O1,O2]] {
         def unbound(segments: Catenable[Segment[F,O1]], eq: Eq[O1, O2]) =
-          Eq.subst[({type f[x] = Stack[F,O1,x] })#f, O1, O2](Stack.segments(s :: segments))(eq)
+          Eq.subst[({type f[x] = Stack[F,O1,x] })#f, O1, O2](Stack.segments(s +: segments))(eq)
         def map[X](segments: Catenable[Segment[F,O1]], f: Chunk[O1] => Chunk[X], stack: Stack[F,X,O2]) =
-          stack.pushMap(f).pushSegments(s :: segments)
+          stack.pushMap(f).pushSegments(s +: segments)
         def bind[X](segments: Catenable[Segment[F,O1]], f: O1 => StreamCore[F,X], stack: Stack[F,X,O2]) =
-          stack.pushBind(f).pushSegments(s :: segments)
+          stack.pushBind(f).pushSegments(s +: segments)
       })
     }
     def pushSegments(s: Catenable[Segment[F,O1]]): Stack[F,O1,O2] =
@@ -456,7 +456,7 @@ private[fs2] object StreamCore {
 
     private[fs2]
     def describeSegments[F[_],O](s: Catenable[Segment[F,O]]): String = {
-      val segments = s.toStream.toList
+      val segments = s.toList
       s"Segments (${segments.size})\n"+segments.zipWithIndex.map { case (s, idx) => s"    s$idx: $s" }.mkString("\n")
     }
 

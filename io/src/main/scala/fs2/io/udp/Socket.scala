@@ -115,7 +115,7 @@ private[udp] object Socket {
 
       def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
         F.async(cb => F.delay {
-          AG.write(ctx, packet, timeout, _ match { case Some(t) => invoke(cb(Left(t))); case None => invoke(cb(Right(()))) })
+          AG.write(ctx, packet, timeout, t => invoke(cb(t.toLeft(()))))
         })
 
       def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =

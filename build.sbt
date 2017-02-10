@@ -1,5 +1,6 @@
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import sbtrelease.Version
+import com.typesafe.tools.mima.core._
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
@@ -16,8 +17,6 @@ lazy val contributors = Seq(
 
 lazy val commonSettings = Seq(
   organization := "co.fs2",
-  scalaVersion := "2.11.8",
-  crossScalaVersions := Seq("2.11.8", "2.12.0"),
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -32,7 +31,7 @@ lazy val commonSettings = Seq(
     "-Ywarn-unused-import"
   ),
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
-  scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console)),
+  scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
     "org.scalatest" %%% "scalatest" % "3.0.0" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.4" % "test"
@@ -161,7 +160,14 @@ lazy val core = crossProject.in(file("core")).
   settings(
     name := "fs2-core"
   ).
-  jsSettings(commonJsSettings: _*)
+  jsSettings(commonJsSettings: _*).
+  jvmSettings(
+    mimaBinaryIssueFilters ++= Seq(
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.copy"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.this"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.apply")
+    )
+  )
 
 lazy val coreJVM = core.jvm.settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
@@ -180,7 +186,7 @@ lazy val benchmarkMacros = project.in(file("benchmark-macros")).
   settings(
     name := "fs2-benchmark-macros",
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
   )
 
 lazy val benchmark = project.in(file("benchmark")).
@@ -192,7 +198,7 @@ lazy val benchmark = project.in(file("benchmark")).
   )
   .settings(
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-    libraryDependencies <+= scalaVersion("org.scala-lang" % "scala-reflect" % _)
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
   )
   .enablePlugins(JmhPlugin)
   .dependsOn(io, benchmarkMacros)

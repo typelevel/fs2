@@ -11,7 +11,7 @@ import scala.reflect.ClassTag
  *
  * Supports unboxed operations for booleans, bytes, longs, and doubles, using a
  * `Chunk` implementation that is backed by an array of primitives. When possible,
- * operations on `Chunk` preserves unboxed-ness. To get access the the underlying
+ * operations on `Chunk` preserves unboxed-ness. To get access the underlying
  * unboxed arrays, use `toBooleans`, `toBytes`, `toLongs`, and `toDoubles`.
  *
  * Note: the [[NonEmptyChunk]] type is a subtype of `Chunk` which is limited to chunks with at least

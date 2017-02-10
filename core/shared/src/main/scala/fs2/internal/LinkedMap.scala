@@ -6,9 +6,6 @@ import scala.collection.immutable.LongMap
  * A Map which tracks the insertion order of entries, so that entries may be
  * traversed in the order they were inserted.
  */
-
-import scala.collection.immutable.LongMap
-
 private[fs2] class LinkedMap[K,+V](
   entries: Map[K,(V,Long)],
   insertionOrder: LongMap[K],
@@ -54,7 +51,7 @@ private[fs2] class LinkedMap[K,+V](
 
   def size = entries.size max insertionOrder.size
 
-  override def toString = "{ " + (keys zip values).mkString("  ") +" }"
+  override def toString = (keys zip values).mkString("{ ", "  ", " }")
 }
 
 private[fs2] object LinkedMap {
