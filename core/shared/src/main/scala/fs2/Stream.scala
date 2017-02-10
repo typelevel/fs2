@@ -278,6 +278,12 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.scan1]](f)`. */
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.scan1(f)
 
+  /**
+   * Used in conjunction with `[[Stream.uncons]]` or `[[Stream.uncons1]]`.
+   * When `s.scope` starts, the set of live resources is recorded.
+   * When `s.scope` finishes, any newly allocated resources since the start of `s`
+   * are all cleaned up.
+   */
   def scope: Stream[F,O] =
     Stream.mk { StreamCore.scope { self.get } }
 
@@ -361,62 +367,41 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
     *   res1: List[Option[(Int, Stream[Nothing, Int])]] = List(Some((1,append(Segment(Emit(Chunk(2, 3))), Segments()))))
     * }}}
     *
-    * If the usefulness of this function is not be immediately apparent, consider the following scenario where we might
-    * want to implement a function to map over the first `n` elements of a [[Stream]]
+    * You can use this to implement any stateful stream function, like `take`:
     *
     * {{{
-    *   scala> def mapNFirst[F[_], A](s: Stream[F, A], n: Int, f: A => A): Stream[F, A] = s.take(n).map(f) ++ s.drop(n)
+    *   def take[F[_],A](n: Int)(s: Stream[F,A]): Stream[F,A] =
+    *     if (n <= 0) Stream.empty
+    *     else s.uncons1.flatMap {
+    *       case None => Stream.empty
+    *       case Some((hd, tl)) => Stream.emit(hd) ++ take(n-1)(tl)
+    *     }
     * }}}
     *
-    * This solution might seem reasonable, but in fact it will not behave as expected.
+    * So `uncons` and `uncons1` can be viewed as an alternative to using `Pull`, with
+    * an important caveat: if you use `uncons` or `uncons1`, you are responsible for
+    * telling FS2 when you're done unconsing the stream, which you do using `[[Stream.scope]]`.
     *
-    * In the case where our [[Stream]] is pure, we get the expected result:
+    * For instance, the above definition of `take` doesn't call `scope`, so any finalizers
+    * attached won't be run until the very end of any enclosing `scope` or `Pull`
+    * (or the end of the stream if there is no enclosing scope). So in the following code:
     *
     * {{{
-    *   scala> val pureStream = Stream(1,2,3,4)
-    *   scala> mapNFirst[Nothing, Int](pureStream, 2, _ + 100).toList
-    *   res1: List[Int] = List(101, 102, 3, 4)
+    *    take(2)(Stream(1,2,3).onFinalize(Task.delay(println("done"))) ++
+    *    anotherStream
     * }}}
     *
-    * However, if our [[Stream]] is effectful, we do not get the expected result:
+    * The "done" would not be printed until the end of `anotherStream`. To get the
+    * prompt finalization behavior, we would have to do:
     *
     * {{{
-    *   scala> // For lack of a better way to simulate a Stream of bytes from some external input
-    *   scala> // such as an Http connection
-    *   scala> var externalState = -1
-    *   scala> val task = Task.delay{ externalState += 1; externalState}
-    *   scala> val effStream = Stream.repeatEval[Task, Int](task)
-    *   scala> mapNFirst[Task, Int](effStream, 2, _ + 100).take(6).runLog.unsafeValue.get
-    *   res1: Vector[Int] = Vector(100, 101, 4, 5, 6, 7)
+    *    take(2)(Stream(1,2,3).onFinalize(Task.delay(println("done"))).scope ++
+    *    anotherStream
     * }}}
     *
-    * We lost two values because we dropped 2 elements from an effectful [[Stream]] that had already produced
-    * it's two first values.
-    *
-    * Getting rid of the `drop(n)` will not solve our problem as then we will have repeated elements in the case of a
-    * pure [[Stream]]
-    *
-    * We need to use `uncons1` in order to get a handle on the new "tail" of the [[Stream]], whether or not it is pure:
-    *
-    * {{{
-    *   scala> def mapNFirst1[F[_], A](s: Stream[F, A], n: Int, f: A => A): Stream[F, A] = {
-    *        |   s.uncons1.flatMap {
-    *        |     case Some((a, tail)) =>
-    *        |       if (n < 1) tail cons1 a
-    *        |       else mapNFirst1(tail, n - 1, f) cons1 f(a)
-    *        |     case None => Stream.empty
-    *        |   }
-    *        | }
-    *
-    *   scala> mapNFirst1[Nothing, Int](pureStream, 2, _ + 100).toList
-    *   res1: List[Int] = List(101, 102, 3, 4)
-    *
-    *   scala> var externalState1 = -1
-    *   scala> val task1 = Task.delay{ externalState1 += 1; externalState1}
-    *   scala> val effStream1 = Stream.repeatEval[Task, Int](task1)
-    *   scala> mapNFirst1[Task, Int](effStream1, 2, _ + 100).take(6).runLog.unsafeValue.get
-    *   res1: Vector[Int] = Vector(100, 101, 2, 3, 4, 5)
-    * }}}
+    * Note the call to `scope` after the completion of `take`, which ensures that
+    * when that stream completes, any streams which have been opened by the `take`
+    * are deemed closed and their finalizers can be run.
     */
   def uncons1: Stream[F, Option[(O,Stream[F,O])]] =
     Stream.mk {
