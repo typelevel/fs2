@@ -113,16 +113,17 @@ class StreamSpec extends Fs2Spec with Inside {
       s.get.toVector shouldBe runLog(s.get)
     }
 
+    "uncons" in {
+      val result = Stream(1,2,3).uncons1.toList
+      inside(result) { case List(Some((1, tail))) =>
+          tail.toList shouldBe (List(2,3))
+      }
+    }
+
     "unfold" in {
       Stream.unfold((0, 1)) {
         case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
       }.map(_._1).toList shouldBe List(0, 1, 1, 2, 3, 5, 8, 13)
-    }
-
-    "unfoldSeq" in {
-      Stream.unfoldSeq(3) { s =>
-        if(s > 0) Some((Seq.fill(s)(s), s-1)) else None
-      }.toList shouldBe List(3, 3, 3, 2, 2, 1)
     }
 
     "unfoldChunk" in {
@@ -134,18 +135,6 @@ class StreamSpec extends Fs2Spec with Inside {
     "unfoldEval" in {
       Stream.unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
         .runLog.unsafeRun().toList shouldBe List.range(10, 0, -1)
-    }
-    
-    "uncons" in {
-      val result = Stream(1,2,3).uncons1.toList
-      inside(result) { case List(Some((1, tail))) =>
-          tail.toList shouldBe (List(2,3))
-      }
-    }
-
-    "unfoldSeqEval" in {
-      Stream.unfoldSeqEval(3)(s => Task.now(if(s > 0) Some((Seq.fill(s)(s), s-1)) else None))
-        .runLog.unsafeRun().toList shouldBe List(3, 3, 3, 2, 2, 1)
     }
 
     "unfoldChunkEval" in {
