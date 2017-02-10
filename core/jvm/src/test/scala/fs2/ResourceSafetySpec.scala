@@ -70,6 +70,12 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       withClue(s.tag) { 0L shouldBe c.get }
     }
 
+    "early termination of uncons" in {
+      var n = 0
+      Stream(1,2,3).onFinalize(Task.delay(n = 1)).uncons.run.unsafeRun
+      n shouldBe 1
+    }
+
     "bracket release should not be called until necessary" in {
       val buffer = collection.mutable.ListBuffer[Symbol]()
       runLog {

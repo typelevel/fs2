@@ -68,7 +68,12 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
       .bindEnv(Env(Resources.empty[Token,Free[F,Attempt[Unit]]], () => false))
       .map(_._2)
 
-  final def runFoldScope[O2](z: O2)(f: (O2,O) => O2): Scope[F,O2] = step flatMap {
+  final def runFoldScope[O2](z: O2)(f: (O2,O) => O2): Scope[F,O2] =
+    // note, establish a root scope, otherwise unwrapped use of uncons can
+    // lead to finalizers not being run if the uncons'd streams aren't fully traversed
+    StreamCore.scope(this).runFoldScopeImpl(z)(f)
+
+  private final def runFoldScopeImpl[O2](z: O2)(f: (O2,O) => O2): Scope[F,O2] = step flatMap {
     case None => Scope.pure(z)
     case Some(Left(err)) => Scope.fail(err)
     case Some(Right((hd,tl))) =>
