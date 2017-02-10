@@ -1,5 +1,6 @@
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import sbtrelease.Version
+import com.typesafe.tools.mima.core._
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
@@ -161,7 +162,14 @@ lazy val core = crossProject.in(file("core")).
   settings(
     name := "fs2-core"
   ).
-  jsSettings(commonJsSettings: _*)
+  jsSettings(commonJsSettings: _*).
+  jvmSettings(
+    mimaBinaryIssueFilters ++= Seq(
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.copy"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.this"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.apply")
+    )
+  )
 
 lazy val coreJVM = core.jvm.settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
