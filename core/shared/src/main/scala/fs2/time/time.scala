@@ -31,17 +31,21 @@ package object time {
    * @param d           FiniteDuration between emits of the resulting stream
    * @param scheduler   Scheduler used to schedule tasks
    */
-  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], scheduler: Scheduler): Stream[F,FiniteDuration] = {
-    def metronomeAndSignal: F[(F[Unit],async.mutable.Signal[F,FiniteDuration])] = {
+  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Async[F], scheduler: Scheduler): Stream[F, FiniteDuration] = {
+    def metronomeAndSignal: F[(F[Unit],async.immutable.Signal[F,FiniteDuration])] = {
       for {
         signal <- async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))
-        t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
         result <- F.delay {
-          @volatile var running = new java.util.concurrent.atomic.AtomicBoolean(false)
+          val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
+          // Note: we guard execution here because slow systems that are biased towards
+          // scheduler threads can result in run away submission to the strategy. This has
+          // happened with Scala.js, where the scheduler is backed by setInterval and appears
+          // to be given priority over the tasks submitted to unsafeRunAsync.
+          val running = new java.util.concurrent.atomic.AtomicBoolean(false)
           val cancel = scheduler.scheduleAtFixedRate(d) {
-            val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
             if (running.compareAndSet(false, true)) {
-              F.unsafeRunAsync(signal.set(d) >> F.delay(running.set(false)))(_ => running.set(false))
+              val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
+              F.unsafeRunAsync(signal.set(d))(_ => running.set(false))
             }
           }
           (F.delay(cancel()), signal)
