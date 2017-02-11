@@ -208,7 +208,7 @@ protected[tcp] object Socket {
         }
       }
 
-      // Whet the read operation is done, this will read up to buffer's position bytes from the buffer
+      // When the read operation is done, this will read up to buffer's position bytes from the buffer
       // this expects the buffer's position to be at bytes read + 1
       // Additionally this releases the semaphore to allow for other read operation to take a place
       def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] = {
