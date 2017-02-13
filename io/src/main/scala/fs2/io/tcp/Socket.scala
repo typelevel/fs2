@@ -210,34 +210,36 @@ protected[tcp] object Socket {
 
       // When the read operation is done, this will read up to buffer's position bytes from the buffer
       // this expects the buffer's position to be at bytes read + 1
-      // Additionally this releases the semaphore to allow for other read operation to take a place
       def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] = {
         val read = buff.position()
-        if (read == 0) readSemaphore.increment >> F.pure(Chunk.bytes(Array.empty))
+        if (read == 0) F.pure(Chunk.bytes(Array.empty))
         else {
           val dest = Array.ofDim[Byte](read)
           buff.flip()
           buff.get(dest)
-          readSemaphore.increment >> F.pure(Chunk.bytes(dest))
+          F.pure(Chunk.bytes(dest))
         }
       }
 
       def read0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
         readSemaphore.decrement >>
-        getBufferOf(max) flatMap { buff =>
+        F.attempt[Option[Chunk[Byte]]](getBufferOf(max) flatMap { buff =>
           readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)) flatMap {
             case (read, _) =>
               if (read < 0) F.pure(None)
               else releaseBuffer(buff) map (Some(_))
           }
-        }
+        }).flatMap { r => readSemaphore.increment >> (r match {
+          case Left(err) => F.fail(err)
+          case Right(maybeChunk) => F.pure(maybeChunk)
+        })}
       }
 
       def readN0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
         readSemaphore.decrement >>
-        getBufferOf(max) flatMap { buff =>
+        F.attempt(getBufferOf(max) flatMap { buff =>
           def go(timeoutMs: Long): F[Option[Chunk[Byte]]] = {
-            readChunk(buff, timeoutMs).flatMap { case (readBytes, took) =>
+            readChunk(buff, timeoutMs) flatMap { case (readBytes, took) =>
               if (readBytes < 0 || buff.position() >= max) {
                 // read is done
                 releaseBuffer(buff) map (Some(_))
@@ -246,7 +248,10 @@ protected[tcp] object Socket {
           }
 
           go(timeout.map(_.toMillis).getOrElse(0l))
-        }
+        }) flatMap { r => readSemaphore.increment >> (r match {
+          case Left(err) => F.fail(err)
+          case Right(maybeChunk) => F.pure(maybeChunk)
+        })}
       }
 
       def write0(bytes:Chunk[Byte],timeout: Option[FiniteDuration]): F[Unit] = {
