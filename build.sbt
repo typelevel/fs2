@@ -139,7 +139,12 @@ lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := previousVersion(version.value).map { pv =>
     organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
   }.toSet,
-  mimaBinaryIssueFilters ++= Seq()
+  mimaBinaryIssueFilters ++= Seq(
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.copy"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.this"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.apply"),
+    ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.tcp.Socket.mkSocket")
+  )
 )
 
 def previousVersion(currentVersion: String): Option[String] = {
@@ -160,14 +165,7 @@ lazy val core = crossProject.in(file("core")).
   settings(
     name := "fs2-core"
   ).
-  jsSettings(commonJsSettings: _*).
-  jvmSettings(
-    mimaBinaryIssueFilters ++= Seq(
-      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.copy"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.this"),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.apply")
-    )
-  )
+  jsSettings(commonJsSettings: _*)
 
 lazy val coreJVM = core.jvm.settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
