@@ -7,7 +7,6 @@ import java.nio.file._
 import java.util.concurrent.ExecutorService
 
 import fs2.util.{Async,Suspendable}
-import fs2.util.syntax._
 
 /** Provides various `Pull`s for working with files. */
 object pulls {
@@ -49,7 +48,7 @@ object pulls {
    *
    * The `Pull` closes the acquired `java.nio.channels.FileChannel` when it is done.
    */
-  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Suspendable[F]): Pull[F, Nothing, FileHandle[F]] =
+  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Suspendable[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     fromFileChannel(F.delay(FileChannel.open(path, flags: _*)))
 
   /**
@@ -57,7 +56,7 @@ object pulls {
    *
    * The `Pull` closes the acquired `java.nio.channels.AsynchronousFileChannel` when it is done.
    */
-  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption], executorService: Option[ExecutorService] = None)(implicit F: Async[F]): Pull[F, Nothing, FileHandle[F]] = {
+  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption], executorService: Option[ExecutorService] = None)(implicit F: Async[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
     import collection.JavaConverters._
     fromAsynchronousFileChannel(F.delay(AsynchronousFileChannel.open(path, flags.toSet.asJava, executorService.orNull)))
   }
@@ -67,14 +66,14 @@ object pulls {
    *
    * The `Pull` closes the provided `java.nio.channels.FileChannel` when it is done.
    */
-  def fromFileChannel[F[_]: Suspendable](channel: F[FileChannel]): Pull[F, Nothing, FileHandle[F]] =
-    Pull.acquire(channel.map(FileHandle.fromFileChannel[F]))(_.close())
+  def fromFileChannel[F[_]](channel: F[FileChannel])(implicit F: Suspendable[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+    Pull.acquireCancellable(channel)(ch => F.delay(ch.close())).map(_.map(FileHandle.fromFileChannel[F]))
 
   /**
    * Given a `java.nio.channels.AsynchronousFileChannel`, will create a `Pull` which allows asynchronous operations against the underlying file.
    *
    * The `Pull` closes the provided `java.nio.channels.AsynchronousFileChannel` when it is done.
    */
-  def fromAsynchronousFileChannel[F[_]: Async](channel: F[AsynchronousFileChannel]): Pull[F, Nothing, FileHandle[F]] =
-    Pull.acquire(channel.map(FileHandle.fromAsynchronousFileChannel[F]))(_.close())
+  def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(implicit F: Async[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+    Pull.acquireCancellable(channel)(ch => F.delay(ch.close())).map(_.map(FileHandle.fromAsynchronousFileChannel[F]))
 }
