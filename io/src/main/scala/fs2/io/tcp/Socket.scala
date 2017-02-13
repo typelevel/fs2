@@ -120,7 +120,7 @@ protected[tcp] object Socket {
       F.delay  { ch.close() }
 
     setup flatMap { ch =>
-      Stream.bracket(connect(ch))({_ =>  emit(mkSocket(ch))}, cleanup)
+      Stream.bracket(connect(ch))( {_ => eval(mkSocket(ch)) }, cleanup)
     }
   }
 
@@ -161,7 +161,7 @@ protected[tcp] object Socket {
 
           eval(acceptChannel.attempt).map {
             case Left(err) => Stream.empty
-            case Right(accepted) => emit(mkSocket(accepted)).onFinalize(close(accepted))
+            case Right(accepted) => eval(mkSocket(accepted)).onFinalize(close(accepted))
           } ++ go
         }
 
@@ -177,90 +177,133 @@ protected[tcp] object Socket {
   }
 
 
-  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F]):Socket[F] = {
+  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F]):F[Socket[F]] = {
+    async.semaphore(1) flatMap { readSemaphore =>
+    F.refOf(ByteBuffer.allocate(0)) map { bufferRef =>
 
-    // Reads data to remaining capacity of supplied bytebuffer
-    // Also measures time the read took returning this as tuple
-    // of (bytes_read, read_duration)
-    def readChunk(buff:ByteBuffer, timeoutMs:Long):F[(Int,Long)] = F.async { cb => F.pure {
-      val started = System.currentTimeMillis()
-      ch.read(buff, timeoutMs, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
-        def completed(result: Integer, attachment: Unit): Unit =  {
-          val took = System.currentTimeMillis() - started
-          F.unsafeRunAsync(F.start(F.delay(cb(Right((result, took))))))(_ => ())
-        }
-        def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(err)))))(_ => ())
-      })
-    }}
+      // Reads data to remaining capacity of supplied ByteBuffer
+      // Also measures time the read took returning this as tuple
+      // of (bytes_read, read_duration)
+      def readChunk(buff:ByteBuffer, timeoutMs:Long):F[(Int,Long)] = F.async { cb => F.pure {
+        val started = System.currentTimeMillis()
+        ch.read(buff, timeoutMs, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
+          def completed(result: Integer, attachment: Unit): Unit =  {
+            val took = System.currentTimeMillis() - started
+            F.unsafeRunAsync(F.start(F.delay(cb(Right((result, took))))))(_ => ())
+          }
+          def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(err)))))(_ => ())
+        })
+      }}
 
-    def read0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
-      val buff = ByteBuffer.allocate(max)
-      readChunk(buff,timeout.map(_.toMillis).getOrElse(0l)).map {
-        case (read,_) =>
-          if (read < 0) None
-          else Some(Chunk.bytes(buff.array(), 0, read))
-      }
-    }
-
-    def readN0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
-      def go(buff: ByteBuffer, timeoutMs:Long):F[Option[Chunk[Byte]]] = {
-        readChunk(buff,timeoutMs).flatMap { case (readBytes, took) =>
-          if (readBytes < 0 || buff.remaining() <= 0) F.pure(Some(Chunk.bytes(buff.array(), 0, buff.position())))
-          else go(buff,(timeoutMs - took) max 0)
+      // gets buffer of desired capacity, ready for the first read operation
+      // If the buffer does not have desired capacity it is resized (recreated)
+      // buffer is also reset to be ready to be written into.
+      def getBufferOf(sz: Int): F[ByteBuffer] = {
+        bufferRef.get.flatMap { buff =>
+          if (buff.capacity() < sz) bufferRef.modify { _ => ByteBuffer.allocate(sz) } map { _.now }
+          else {
+            buff.clear()
+            F.pure(buff)
+          }
         }
       }
-      go(ByteBuffer.allocate(max),timeout.map(_.toMillis).getOrElse(0l))
-    }
 
-    def write0(bytes:Chunk[Byte],timeout: Option[FiniteDuration]): F[Unit] = {
-      def go(buff:ByteBuffer,remains:Long):F[Unit] = {
-        F.async[Option[Long]] { cb => F.pure {
-          val start = System.currentTimeMillis()
-          ch.write(buff, remains, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
-            def completed(result: Integer, attachment: Unit): Unit = {
-              F.unsafeRunAsync(F.start(F.delay(cb(Right(
-                if (buff.remaining() <= 0) None
-                else Some(System.currentTimeMillis() - start)
-              )))))(_ => ())
+      // When the read operation is done, this will read up to buffer's position bytes from the buffer
+      // this expects the buffer's position to be at bytes read + 1
+      def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] = {
+        val read = buff.position()
+        if (read == 0) F.pure(Chunk.bytes(Array.empty))
+        else {
+          val dest = Array.ofDim[Byte](read)
+          buff.flip()
+          buff.get(dest)
+          F.pure(Chunk.bytes(dest))
+        }
+      }
+
+      def read0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
+        readSemaphore.decrement >>
+        F.attempt[Option[Chunk[Byte]]](getBufferOf(max) flatMap { buff =>
+          readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)) flatMap {
+            case (read, _) =>
+              if (read < 0) F.pure(None)
+              else releaseBuffer(buff) map (Some(_))
+          }
+        }).flatMap { r => readSemaphore.increment >> (r match {
+          case Left(err) => F.fail(err)
+          case Right(maybeChunk) => F.pure(maybeChunk)
+        })}
+      }
+
+      def readN0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
+        readSemaphore.decrement >>
+        F.attempt(getBufferOf(max) flatMap { buff =>
+          def go(timeoutMs: Long): F[Option[Chunk[Byte]]] = {
+            readChunk(buff, timeoutMs) flatMap { case (readBytes, took) =>
+              if (readBytes < 0 || buff.position() >= max) {
+                // read is done
+                releaseBuffer(buff) map (Some(_))
+              } else go((timeoutMs - took) max 0)
             }
-            def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(err)))))(_ => ())
-          })
-        }}.flatMap {
-          case None => F.pure(())
-          case Some(took) => go(buff,(remains - took) max 0)
-        }
+          }
+
+          go(timeout.map(_.toMillis).getOrElse(0l))
+        }) flatMap { r => readSemaphore.increment >> (r match {
+          case Left(err) => F.fail(err)
+          case Right(maybeChunk) => F.pure(maybeChunk)
+        })}
       }
 
-      val bytes0 = bytes.toBytes
-      go(
-        ByteBuffer.wrap(bytes0.values, bytes0.offset, bytes0.size)
-        , timeout.map(_.toMillis).getOrElse(0l)
-      )
-    }
-
-    ///////////////////////////////////
-    ///////////////////////////////////
-
-
-    new Socket[F] {
-      def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] = readN0(numBytes,timeout)
-      def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] = read0(maxBytes,timeout)
-      def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] = {
-        Stream.eval(read(maxBytes,timeout)) flatMap {
-          case Some(bytes) => Stream.chunk(bytes) ++ reads(maxBytes, timeout)
-          case None => Stream.empty
+      def write0(bytes:Chunk[Byte],timeout: Option[FiniteDuration]): F[Unit] = {
+        def go(buff:ByteBuffer,remains:Long):F[Unit] = {
+          F.async[Option[Long]] { cb => F.pure {
+            val start = System.currentTimeMillis()
+            ch.write(buff, remains, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
+              def completed(result: Integer, attachment: Unit): Unit = {
+                F.unsafeRunAsync(F.start(F.delay(cb(Right(
+                  if (buff.remaining() <= 0) None
+                  else Some(System.currentTimeMillis() - start)
+                )))))(_ => ())
+              }
+              def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(err)))))(_ => ())
+            })
+          }}.flatMap {
+            case None => F.pure(())
+            case Some(took) => go(buff,(remains - took) max 0)
+          }
         }
+
+        val bytes0 = bytes.toBytes
+        go(
+          ByteBuffer.wrap(bytes0.values, bytes0.offset, bytes0.size)
+          , timeout.map(_.toMillis).getOrElse(0l)
+        )
       }
 
-      def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = write0(bytes,timeout)
-      def writes(timeout: Option[FiniteDuration]): Sink[F, Byte] =
-        _.chunks.flatMap { bs => Stream.eval(write(bs, timeout)) }
+      ///////////////////////////////////
+      ///////////////////////////////////
 
-      def localAddress: F[SocketAddress] = F.delay(ch.getLocalAddress)
-      def remoteAddress: F[SocketAddress] = F.delay(ch.getRemoteAddress)
-      def close: F[Unit] = F.delay(ch.close())
-      def endOfOutput: F[Unit] = F.delay{ ch.shutdownOutput(); () }
-      def endOfInput: F[Unit] = F.delay{ ch.shutdownInput(); () }
-    }
+
+      new Socket[F] {
+        def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] = readN0(numBytes,timeout)
+        def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] = read0(maxBytes,timeout)
+        def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] = {
+          Stream.eval(read(maxBytes,timeout)) flatMap {
+            case Some(bytes) => Stream.chunk(bytes) ++ reads(maxBytes, timeout)
+            case None => Stream.empty
+          }
+        }
+
+        def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = write0(bytes,timeout)
+        def writes(timeout: Option[FiniteDuration]): Sink[F, Byte] =
+          _.chunks.flatMap { bs => Stream.eval(write(bs, timeout)) }
+
+        def localAddress: F[SocketAddress] = F.delay(ch.getLocalAddress)
+        def remoteAddress: F[SocketAddress] = F.delay(ch.getRemoteAddress)
+        def close: F[Unit] = F.delay(ch.close())
+        def endOfOutput: F[Unit] = F.delay{ ch.shutdownOutput(); () }
+        def endOfInput: F[Unit] = F.delay{ ch.shutdownInput(); () }
+      }
+    }}
   }
 }
