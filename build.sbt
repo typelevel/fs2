@@ -139,10 +139,6 @@ lazy val mimaSettings = Seq(
     organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
   }.toSet,
   mimaBinaryIssueFilters ++= Seq(
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.copy"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.this"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.apply"),
-    ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.tcp.Socket.mkSocket")
   )
 )
 
