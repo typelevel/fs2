@@ -331,8 +331,8 @@ object Task extends TaskPlatform with TaskInstances {
     ref[A].flatMap { ref => ref.set(t) map (_ => ref.get) }
 
   /**
-    * Like [[async]], but run the callback in the same thread in the same
-    * thread, rather than evaluating the callback using a `Strategy`.
+    * Like [[async]], but run the callback in the same thread, rather than
+    * evaluating the callback using a `Strategy`.
    */
   def unforkedAsync[A](register: (Attempt[A] => Unit) => Unit): Task[A] =
     async(register)(Strategy.sequential)
