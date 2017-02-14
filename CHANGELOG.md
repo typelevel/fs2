@@ -1,3 +1,7 @@
+0.9.4
+=====
+ - Fixed memory leak in `Stream#runFoldScope` introduced by [#808](https://github.com/functional-streams-for-scala/fs2/issues/808).
+
 0.9.3
 =====
  - Fixed memory leak in `Signal#discrete`. [#799](https://github.com/functional-streams-for-scala/fs2/issues/799)

@@ -77,7 +77,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
     case None => Scope.pure(z)
     case Some(Left(err)) => Scope.fail(err)
     case Some(Right((hd,tl))) =>
-      try tl.runFoldScope(hd.foldLeft(z)(f))(f)
+      try tl.runFoldScopeImpl(hd.foldLeft(z)(f))(f)
       catch { case NonFatal(e) => Scope.fail(e) }
   }
 
