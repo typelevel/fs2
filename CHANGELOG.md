@@ -1,6 +1,7 @@
 0.9.4
 =====
  - Fixed memory leak in `Stream#runFoldScope` introduced by [#808](https://github.com/functional-streams-for-scala/fs2/issues/808).
+ - Added OSGi metadata to the core and io JARs.
 
 0.9.3
 =====
