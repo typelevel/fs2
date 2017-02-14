@@ -67,3 +67,9 @@ object SignalContinuousSanityTest extends App {
     signal.continuous.evalMap(a => signal.set(a))
   }.run.unsafeRun
 }
+
+object ConstantEvalSanityTest extends App {
+  import TestUtil.S
+  Stream.constant(()).flatMap { _ => Stream.eval(Task.delay(())) }.run.unsafeRun
+}
+
