@@ -138,7 +138,12 @@ lazy val mimaSettings = Seq(
   mimaPreviousArtifacts := previousVersion(version.value).map { pv =>
     organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
   }.toSet,
-  mimaBinaryIssueFilters ++= Seq()
+  mimaBinaryIssueFilters ++= Seq(
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.copy"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.this"),
+    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.apply"),
+    ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.tcp.Socket.mkSocket")
+  )
 )
 
 def previousVersion(currentVersion: String): Option[String] = {
@@ -161,14 +166,28 @@ lazy val core = crossProject.in(file("core")).
   ).
   jsSettings(commonJsSettings: _*)
 
-lazy val coreJVM = core.jvm.settings(mimaSettings)
+lazy val coreJVM = core.jvm.enablePlugins(SbtOsgi).
+  settings(
+    OsgiKeys.exportPackage := Seq("fs2.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", "*"),
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings
+  ).
+  settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
 lazy val io = project.in(file("io")).
+  enablePlugins(SbtOsgi).
   settings(commonSettings).
   settings(mimaSettings).
   settings(
-    name := "fs2-io"
+    name := "fs2-io",
+    OsgiKeys.exportPackage := Seq("fs2.io.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", """fs2.*;version="${Bundle-Version}"""", "*"),
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings
   ).dependsOn(coreJVM % "compile->compile;test->test")
 
 lazy val scodec = crossProject.in(file("scodec")).
