@@ -19,11 +19,6 @@ trait FileHandle[F[_]] {
   type Lock
 
   /**
-   * Close the `FileHandle`.
-   */
-  def close(): F[Unit]
-
-  /**
    * Force any updates for the underlying file to storage.
    * @param metaData If true, also attempts to force file metadata updates to storage.
    */
@@ -104,9 +99,6 @@ private[file] object FileHandle {
     new FileHandle[F] {
       type Lock = FileLock
 
-      override def close(): F[Unit] =
-        F.delay(chan.close())
-
       override def force(metaData: Boolean): F[Unit] =
         F.delay(chan.force(metaData))
 
@@ -152,9 +144,6 @@ private[file] object FileHandle {
   private[file] def fromFileChannel[F[_]](chan: FileChannel)(implicit F: Suspendable[F]): FileHandle[F] = {
     new FileHandle[F] {
       type Lock = FileLock
-
-      override def close(): F[Unit] =
-        F.delay(chan.close())
 
       override def force(metaData: Boolean): F[Unit] =
         F.delay(chan.force(metaData))

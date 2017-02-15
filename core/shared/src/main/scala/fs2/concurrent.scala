@@ -62,7 +62,7 @@ object concurrent {
                      )
             } yield gate
           }
-          Pull.acquireCancellable(startInnerStream) { gate => gate.get }.flatMap { case (release, _) => Pull.eval(earlyReleaseRef.setPure(release)) }
+          Pull.acquireCancellable(startInnerStream) { gate => gate.get }.flatMap { c => Pull.eval(earlyReleaseRef.setPure(c.cancel)) }
         }
       }
 

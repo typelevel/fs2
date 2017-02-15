@@ -113,23 +113,38 @@ object Pull {
 
   private sealed trait AlgebraF[F[_],O] { type f[x] = Algebra[F,O,x] }
 
+  /** Result of `acquireCancellable`. */
+  trait Cancellable[+F[_],+R] {
+    val cancel: Pull[F,Nothing,Unit]
+    val resource: R
+
+    def map[R2](f: R => R2): Cancellable[F,R2]
+  }
+  object Cancellable {
+    def apply[F[_],R](cancel0: Pull[F,Nothing,Unit], r: R): Cancellable[F,R] = new Cancellable[F,R] {
+      val cancel = cancel0
+      val resource = r
+      def map[R2](f: R => R2): Cancellable[F,R2] = apply(cancel, f(r))
+    }
+  }
+
   /**
    * Acquire a resource within a `Pull`. The cleanup action will be run at the end
    * of the `.close` scope which executes the returned `Pull`. The acquired
    * resource is returned as the result value of the pull.
    */
   def acquire[F[_],R](r: F[R])(cleanup: R => F[Unit]): Pull[F,Nothing,R] =
-    acquireCancellable(r)(cleanup).map(_._2)
+    acquireCancellable(r)(cleanup).map(_.resource)
 
   /**
-   * Like [[acquire]] but the result value is a tuple consisting of a cancellation
+   * Like [[acquire]] but the result value consists of a cancellation
    * pull and the acquired resource. Running the cancellation pull frees the resource.
    * This allows the acquired resource to be released earlier than at the end of the
    * containing pull scope.
    */
-  def acquireCancellable[F[_],R](r: F[R])(cleanup: R => F[Unit]): Pull[F,Nothing,(Pull[F,Nothing,Unit],R)] =
+  def acquireCancellable[F[_],R](r: F[R])(cleanup: R => F[Unit]): Pull[F,Nothing,Cancellable[F,R]] =
     Stream.bracketWithToken(r)(Stream.emit, cleanup).open.flatMap { h => h.await1.flatMap {
-      case ((token, r), _) => Pull.pure((Pull.release(List(token)), r))
+      case ((token, r), _) => Pull.pure(Cancellable(Pull.release(List(token)), r))
     }}
 
   /**
