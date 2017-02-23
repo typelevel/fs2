@@ -3,7 +3,6 @@ package reactive
 
 import fs2.util._
 import fs2.util.syntax._
-import fs2.async.mutable._
 
 import org.reactivestreams.{Subscriber => RSubscriber, Publisher, Subscription}
 
