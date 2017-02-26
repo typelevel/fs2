@@ -144,9 +144,9 @@ private[io] object JavaInputOutputStream {
 
       def go(acc:Array[Byte]):F[Int] = {
         F.flatMap(readOnce(acc,0,1,queue,dnState)) { read =>
-          if (read < 0) F.pure(read)
+          if (read < 0) F.pure(-1)
           else if (read == 0) go(acc)
-          else F.pure(acc(0).toInt)
+          else F.pure(acc(0) & 0xFF)
         }
       }
 
