@@ -75,6 +75,14 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
       result shouldBe Vector(true)
     }
 
+    "converts to 0..255 int values except EOF mark" in {
+      val s: Stream[Task, Byte] = Stream.range(0, 256, 1).map(_.toByte)
+      val result = s.through(toInputStream).map { is =>
+        Vector.fill(257)(is.read())
+      }.runLog.map(_.flatten).unsafeRun()
+      result shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector
+    }
+
   }
 
 
