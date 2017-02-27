@@ -57,7 +57,7 @@ def scmBranch(v: String): String = {
   val Some(ver) = Version(v)
   if(ver.qualifier.exists(_ == "-SNAPSHOT"))
     // support branch (0.9.0-SNAPSHOT -> series/0.9)
-    s"series/${ver.copy(bugfix = None, qualifier = None).string}"
+    s"series/${ver.copy(subversions = ver.subversions.take(1), qualifier = None).string}"
   else
     // release tag (0.9.0-M2 -> v0.9.0-M2)
     s"v${ver.string}"
