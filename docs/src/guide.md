@@ -272,7 +272,7 @@ Stream(1,2,3,4).pure.pull(Pull_.take(2)).toList
 Let's break it down line by line:
 
 ```Scala
-(chunk, h) <- if (n <= 0) Pull.done else Pull.awaitLimit(n)(h)
+(chunk, h) <- if (n <= 0) Pull.done else h.awaitLimit(n)
 ```
 
 There's a lot going on in this one line:

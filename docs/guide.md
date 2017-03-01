@@ -124,7 +124,7 @@ def eval[F[_],A](f: F[A]): Stream[F,A]
 
 ```scala
 scala> eff.toList
-<console>:16: error: value toList is not a member of fs2.Stream[fs2.Task,Int]
+<console>:15: error: value toList is not a member of fs2.Stream[fs2.Task,Int]
        eff.toList
            ^
 ```
@@ -363,7 +363,7 @@ Stream(1,2,3,4).pure.pull(Pull_.take(2)).toList
 Let's break it down line by line:
 
 ```Scala
-(chunk, h) <- if (n <= 0) Pull.done else h.awaitLimit(n)(h)
+(chunk, h) <- if (n <= 0) Pull.done else h.awaitLimit(n)
 ```
 
 There's a lot going on in this one line:
@@ -473,7 +473,7 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 
 ```scala
 scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
-<console>:17: error: No implicit `Async[fs2.Task]` found.
+<console>:16: error: No implicit `Async[fs2.Task]` found.
 Note that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.
        Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
                           ^
@@ -684,7 +684,7 @@ Also feel free to come discuss and ask/answer questions in [the gitter channel](
 
 ```scala
 scala> Stream.emit(1) ++ Stream.emit("hello")
-<console>:20: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
+<console>:19: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
        Stream.emit(1) ++ Stream.emit("hello")
                       ^
 ```
