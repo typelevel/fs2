@@ -339,6 +339,11 @@ object pipe {
   /** Alias for `[[pipe.fold1]]` */
   def reduce[F[_],I](f: (I, I) => I): Pipe[F,I,I] = fold1(f)
 
+  def scanAsync[F[_],I,O](z: O)(f: (O, I) => F[O])(implicit F: Async[F]): Pipe[F,I,O] = 
+    scan[F,I,F[O]](F.pure(z)) { (b, a) =>
+      b.flatMap(f(_, a))
+    } andThen { _.flatMap(Stream.eval(_)) }
+
   /**
    * Left fold which outputs all intermediate results. Example:
    *   `Stream(1,2,3,4) through pipe.scan(0)(_ + _) == Stream(0,1,3,6,10)`.
