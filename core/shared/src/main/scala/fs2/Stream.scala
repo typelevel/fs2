@@ -287,6 +287,8 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.scan1]](f)`. */
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.scan1(f)
 
+  /** Alias for `self throughv [[pipe.scanF]](z)(f)`. */
+  def scanF[F2[_], O2](z: O2)(f: (O2, O) => F2[O2])(implicit S: Sub1[F, F2]): Stream[F2, O2] =  self throughv pipe.scanF(z)(f)
   /**
    * Used in conjunction with `[[Stream.uncons]]` or `[[Stream.uncons1]]`.
    * When `s.scope` starts, the set of live resources is recorded.
