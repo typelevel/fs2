@@ -112,6 +112,16 @@ lazy val publishingSettings = Seq(
 )
 
 lazy val commonJsSettings = Seq(
+  scalaJSOptimizerOptions ~= { options =>
+    // https://github.com/scala-js/scala-js/issues/2798
+    try {
+      scala.util.Properties.isJavaAtLeast("1.8")
+      options
+    } catch {
+      case _: NumberFormatException =>
+        options.withParallel(false)
+    }
+  },
   requiresDOM := false,
   scalaJSStage in Test := FastOptStage,
   jsEnv in Test := NodeJSEnv().value,
