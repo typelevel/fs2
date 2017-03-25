@@ -374,6 +374,25 @@ object pipe {
   def scan1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
     _ pull { _.receive1 { (o, h) => _scan0(o)(f)(h) }}
 
+  private def _scanF0[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
+    h => h.await1Option.flatMap {
+      case Some((i, h)) => Pull.eval(f(z, i)).flatMap { o =>
+        Pull.output(Chunk.seq(Vector(z, o))) >> _scanF1(o)(f)(h)
+      }
+      case None => Pull.output(Chunk.singleton(z)) as Handle.empty
+    }
+
+  private def _scanF1[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
+    h => h.await1.flatMap {
+      case (i, h) => Pull.eval(f(z, i)).flatMap { o =>
+        Pull.output(Chunk.singleton(o)) >> _scanF1(o)(f)(h)
+      }}
+
+  /** Like `[[pipe.scan]]`, but accepts a function returning an F[_] */
+  def scanF[F[_], O, I](z: O)(f: (O, I) => F[O]): Pipe[F, I, O] =
+    _ pull (_scanF0(z)(f))
+
+
   /** Emits the given values, then echoes the rest of the input. */
   def shiftRight[F[_],I](head: I*): Pipe[F,I,I] =
     _ pull { h => h.push(Chunk.indexedSeq(Vector(head: _*))).echo }

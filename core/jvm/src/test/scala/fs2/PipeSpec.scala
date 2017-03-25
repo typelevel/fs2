@@ -311,6 +311,12 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.scan1(f)) shouldBe v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
     }
 
+    "scanF" in forAll { (s: PureStream[Int], n: String) =>
+      val f: (String, Int) => Task[String] = (a: String, b: Int) => Task.now(a + b)
+      val g = (a: String, b: Int) => a + b
+      runLog(s.get.covary[Task].scanF[Task, String](n)(f)) shouldBe runLog(s.get).scanLeft(n)(g)
+    }
+
     "shiftRight" in forAll { (s: PureStream[Int], v: Vector[Int]) =>
       runLog(s.get.shiftRight(v: _*)) shouldBe v ++ runLog(s.get)
     }
