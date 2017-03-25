@@ -425,6 +425,8 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
       go(get)
     }
 
+  def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] = self.asInstanceOf[Stream[F, Option[O2]]] through pipe.unNone
+
   /** Alias for `self through [[pipe.vectorChunkN]]`. */
   def vectorChunkN(n: Int, allowFewer: Boolean = true): Stream[F,Vector[O]] =
     self through pipe.vectorChunkN(n, allowFewer)
