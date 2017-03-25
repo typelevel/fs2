@@ -244,6 +244,15 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
 
   def output: Pull[F,O,Unit] = Pull.outputs(self)
 
+  /** Alias for `(pauseWhenTrue through2 this)(pipe2.pause)`. */
+  def pauseWhen[F2[_]](pauseWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+    (pauseWhenTrue through2 Sub1.substStream(self))(pipe2.pause[F2,O])
+
+  /** Alias for `(pauseWhenTrue.discrete through2 this)(pipe2.pause)`. */
+  def pauseWhen[F2[_]](pauseWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+    (pauseWhenTrue.discrete through2 Sub1.substStream(self))(pipe2.pause)
+
+
   def pull[F2[_],O2](using: Handle[F,O] => Pull[F2,O2,Any])(implicit S: Sub1[F,F2]) : Stream[F2,O2] =
     Sub1.substPull(open).flatMap(h => Sub1.substPull(using(h))).close
 

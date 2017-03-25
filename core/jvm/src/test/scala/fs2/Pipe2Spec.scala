@@ -1,6 +1,9 @@
 package fs2
 
+import scala.concurrent.duration._
 import org.scalacheck.Gen
+
+import fs2.util.syntax._
 
 class Pipe2Spec extends Fs2Spec {
 
@@ -166,6 +169,17 @@ class Pipe2Spec extends Fs2Spec {
       // so there should be no elements in the output that are divisible by 7
       // this also checks that interruption works fine even if one or both streams are in a hung state
       assert(out.forall(i => i % 7 != 0))
+    }
+
+    "pause" in forAll { (s1: PureStream[Int]) =>
+      val pausedStream = Stream.eval(async.signalOf[Task,Boolean](false)).flatMap { pause =>
+        time.awakeEvery[Task](10.millis).scan(0)((acc, _) => acc + 1).evalMap { n =>
+          if (n % 2 != 0) pause.set(true) >> Task.start(pause.set(false).schedule(10.millis)) >> Task.now(n)
+          else Task.now(n)
+        }.take(5)
+      }
+      val out = runLog { pausedStream }
+      assert(out == Vector(0, 1, 2, 3, 4))
     }
   }
 }
