@@ -458,6 +458,9 @@ object pipe {
   def unchunk[F[_],I]: Pipe[F,I,I] =
     _ repeatPull { _.receive1 { case (i, h) => Pull.output1(i) as h }}
 
+  /** Filters any 'None'. */
+  def unNone[F[_], I]: Pipe[F, Option[I], I] = _.collect { case Some(i) => i }
+
   /**
    * Halts the input stream at the first `None`.
    *

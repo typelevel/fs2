@@ -324,6 +324,10 @@ class PipeSpec extends Fs2Spec {
       runLog(s.through(take(3)).through(chunks).map(_.toVector)) shouldBe Vector(Vector(1, 2), Vector(3))
     }
 
+    "unNone" in forAll { (s: PureStream[Option[Int]]) =>
+      runLog(s.get.unNone.chunks) shouldBe runLog(s.get.filter(_.isDefined).map(_.get).chunks)
+    }
+
     "vectorChunkN" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       runLog(s.get.vectorChunkN(n.get)) shouldBe runLog(s.get).grouped(n.get).toVector
     }
