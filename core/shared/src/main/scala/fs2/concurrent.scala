@@ -66,17 +66,56 @@ object concurrent {
         }
       }
 
-      def go(doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]])(open: Int): (Handle[F,Stream[F,A]], Handle[F,Pull[F,Nothing,Unit]]) => Pull[F,Nothing,Unit] = (h, d) => {
-        if (open < maxOpen)
-          h.receive1Option {
-            case Some((inner, h)) => runInnerStream(inner, doneQueue).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
-            case None => Pull.done
+      def go(
+        doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]],
+        open: Int,
+        outerFuture: ScopedFuture[F,Pull[F,Nothing,(Option[Stream[F,A]],Handle[F,Stream[F,A]])]],
+        doneFuture: ScopedFuture[F,Pull[F,Nothing,(Option[Pull[F,Nothing,Unit]],Handle[F,Pull[F,Nothing,Unit]])]]
+      ): Pull[F,Nothing,Unit] = {
+        (outerFuture race doneFuture).pull.flatMap {
+          case Left(outerPull) => outerPull.optional.flatMap {
+            case None =>
+              if (open == 0) Pull.done
+              else doneFuture.pull.flatMap(identity).flatMap {
+                case (Some(earlyRelease), d) =>
+                  earlyRelease >> Pull.loop[F,Nothing,(Int,Handle[F,Pull[F,Nothing,Unit]])] { case (open, d) =>
+                    if (open > 0) d.receive1 { (earlyRelease, d) => earlyRelease.as((open - 1, d)) }
+                    else Pull.done
+                  }((open - 1, d))
+                case (None, d) =>
+                  sys.error("Impossible; await1Async should not pass a None")
+              }
+            case Some((None, h)) =>
+              sys.error("Impossible; await1Async should not pass a None")
+            case Some((Some(inner), h)) =>
+              runInnerStream(inner, doneQueue).flatMap { gate =>
+                if (open + 1 < maxOpen) {
+                  h.await1Async.flatMap { outerFuture => go(doneQueue, open + 1, outerFuture, doneFuture) }
+                } else {
+                  doneFuture.pull.flatMap(identity).flatMap {
+                  case (None, d) =>
+                    sys.error("Impossible; await1Async should not pass a None")
+                  case (Some(earlyRelease), d) =>
+                    earlyRelease >> h.await1Async.flatMap { outerFuture =>
+                      d.await1Async.flatMap { doneFuture =>
+                        go(doneQueue, open, outerFuture, doneFuture)
+                      }
+                    }
+                }}
+              }
           }
-        else
-          d.receive1 { (earlyRelease, d) => earlyRelease >> go(doneQueue)(open - 1)(h, d) }
+          case Right(donePull) => donePull.flatMap {
+            case (Some(earlyRelease), d) =>
+              earlyRelease >> d.await1Async.flatMap { doneFuture => go(doneQueue, open - 1, outerFuture, doneFuture) }
+            case (None, d) =>
+              sys.error("Impossible; await1Async should not pass a None")
+          }
+        }
       }
 
-      in => Stream.eval(async.unboundedQueue[F,Pull[F,Nothing,Unit]]).flatMap { doneQueue => in.pull2(doneQueue.dequeue)(go(doneQueue)(0)) }
+      in => Stream.eval(async.unboundedQueue[F,Pull[F,Nothing,Unit]]).flatMap { doneQueue =>
+        in.pull2(doneQueue.dequeue)((h, d) => h.await1Async.flatMap { outerFuture => d.await1Async.flatMap { doneFuture => go(doneQueue, 0, outerFuture, doneFuture) }})
+      }
     }
 
     for {
