@@ -30,7 +30,7 @@ object concurrent {
     *
     * Finalizers on the outer stream are run after all inner streams have been pulled
     * from the outer stream -- hence, finalizers on the outer stream will likely run
-    * before the last finalizer on the last inner stream.
+    * BEFORE the LAST finalizer on the last inner stream.
     *
     * Finalizers on the returned stream are run after the outer stream has finished
     * and all open inner streams have finished.
