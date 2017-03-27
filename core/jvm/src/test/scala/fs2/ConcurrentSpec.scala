@@ -27,7 +27,7 @@ class ConcurrentSpec extends Fs2Spec {
     }
 
     "join (1)" in forAll { (s1: PureStream[Int]) =>
-      runLog { concurrent.join(1)(s1.get.covary[Task].map(Stream.emit)) } shouldBe runLog { s1.get }
+      runLog { concurrent.join(1)(s1.get.covary[Task].map(Stream.emit)) }.toSet shouldBe runLog { s1.get }.toSet
     }
 
     "join (2)" in forAll { (s1: PureStream[Int], n: SmallPositive) =>
