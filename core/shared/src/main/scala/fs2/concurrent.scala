@@ -30,7 +30,7 @@ object concurrent {
     *
     * Finalizers on the outer stream are run after all inner streams have been pulled
     * from the outer stream -- hence, finalizers on the outer stream will likely run
-    * before the last finalizer on the last inner stream.
+    * BEFORE the LAST finalizer on the last inner stream.
     *
     * Finalizers on the returned stream are run after the outer stream has finished
     * and all open inner streams have finished.
@@ -39,59 +39,56 @@ object concurrent {
     * @param outer      Stream of streams to join.
     */
   def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
-    assert(maxOpen > 0,"maxOpen must be > 0, was: " + maxOpen)
+    assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
 
-    def throttle[A](checkIfKilled: F[Boolean]): Pipe[F,Stream[F,A],Unit] = {
+    Stream.eval(async.signalOf(false)) flatMap { killSignal =>
+    Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
+    Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
+    Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Attempt[Chunk[O]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+      val incrementRunning: F[Unit] = running.modify(_ + 1) as (())
+      val decrementRunning: F[Unit] = running.modify(_ - 1) as (())
 
-      def runInnerStream(inner: Stream[F,A], doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]]): Pull[F,Nothing,Unit] = {
-        Pull.eval(F.ref[Pull[F,Nothing,Unit]]).flatMap { earlyReleaseRef =>
-          val startInnerStream: F[Async.Ref[F,Unit]] = {
-            for {
-              gate <- F.ref[Unit]
-              _ <- F.start(
-                     Stream.eval(checkIfKilled).
-                       flatMap { killed => if (killed) Stream.empty else inner }.
-                       onFinalize {
-                         for {
-                           _ <- gate.setPure(())
-                           earlyRelease <- earlyReleaseRef.get
-                           _ <- doneQueue.enqueue1(earlyRelease)
-                         } yield ()
-                       }.
-                       run
-                     )
-            } yield gate
+      // runs inner stream
+      // each stream is forked.
+      // terminates when killSignal is true
+      // if fails will enq in queue failure
+      def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
+        Stream.eval_(
+          available.decrement >> incrementRunning >>
+          F.start {
+            inner.chunks.attempt
+            .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
+            .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+            .run.flatMap { _ =>
+              available.increment >> decrementRunning
+            }
           }
-          Pull.acquireCancellable(startInnerStream) { gate => gate.get }.flatMap { case (release, _) => Pull.eval(earlyReleaseRef.setPure(release)) }
-        }
+        )
       }
 
-      def go(doneQueue: async.mutable.Queue[F,Pull[F,Nothing,Unit]])(open: Int): (Handle[F,Stream[F,A]], Handle[F,Pull[F,Nothing,Unit]]) => Pull[F,Nothing,Unit] = (h, d) => {
-        if (open < maxOpen)
-          h.receive1Option {
-            case Some((inner, h)) => runInnerStream(inner, doneQueue).flatMap { gate => go(doneQueue)(open + 1)(h, d) }
-            case None => Pull.done
-          }
-        else
-          d.receive1 { (earlyRelease, d) => earlyRelease >> go(doneQueue)(open - 1)(h, d) }
+      // runs the outer stream, interrupts when kill == true, and then decrements the `available`
+      def runOuter: F[Unit] = {
+        outer.interruptWhen(killSignal) flatMap runInner onFinalize decrementRunning run
       }
 
-      in => Stream.eval(async.unboundedQueue[F,Pull[F,Nothing,Unit]]).flatMap { doneQueue => in.pull2(doneQueue.dequeue)(go(doneQueue)(0)) }
-    }
+      // monitors when the all streams (outer/inner) are terminated an then suplies None to output Queue
+      def doneMonitor: F[Unit]= {
+        running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
+          Stream.eval(outputQ.enqueue1(None))
+        } run
+      }
 
-    for {
-      killSignal <- Stream.eval(async.signalOf(false))
-      outputQueue <- Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Attempt[Chunk[O]]])
-      o <- outer.map { inner =>
-        inner.chunks.attempt.evalMap { o => outputQueue.enqueue1(Some(o)) }.interruptWhen(killSignal)
-      }.through(throttle(killSignal.get)).onFinalize {
-        outputQueue.enqueue1(None)
-      }.mergeDrainL {
-        outputQueue.dequeue.through(pipe.unNoneTerminate).flatMap {
-          case Left(e) => Stream.eval(killSignal.set(true)).flatMap { _ => Stream.fail(e) }
-          case Right(c) => Stream.chunk(c)
-        }
-      }.onFinalize { killSignal.set(true) }
-    } yield o
+      Stream.eval_(F.start(runOuter)) ++
+      Stream.eval_(F.start(doneMonitor)) ++
+      outputQ.dequeue.unNoneTerminate.flatMap {
+        case Left(e) => Stream.fail(e)
+        case Right(c) => Stream.chunk(c)
+      } onFinalize {
+        killSignal.set(true) >> (running.discrete.dropWhile(_ > 0) take 1 run) // await all open inner streams and the outer stream to be terminated
+      }
+
+    }}}}
+
   }
+
 }
