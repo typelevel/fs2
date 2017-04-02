@@ -3,6 +3,7 @@ FS2: Functional Streams for Scala (previously 'Scalaz-Stream')
 
 [![Build Status](https://travis-ci.org/functional-streams-for-scala/fs2.svg?branch=series/0.9)](http://travis-ci.org/functional-streams-for-scala/fs2)
 [![Gitter Chat](https://badges.gitter.im/functional-streams-for-scala/fs2.svg)](https://gitter.im/functional-streams-for-scala/fs2)
+[![Latest version](https://index.scala-lang.org/functional-streams-for-scala/fs2/fs2-core/latest.svg?color=orange)](https://index.scala-lang.org/functional-streams-for-scala/fs2/fs2-core)
 
 Quick links:
 
