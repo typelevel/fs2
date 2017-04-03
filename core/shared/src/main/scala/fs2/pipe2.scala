@@ -13,6 +13,7 @@ object pipe2 {
     p.asInstanceOf[Pipe2[F,I,I2,O]]
 
   private def zipChunksWith[I,I2,O](f: (I, I2) => O)(c1: Chunk[I], c2: Chunk[I2]): (Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]) = {
+      @annotation.tailrec
       def go(v1: Vector[I], v2: Vector[I2], acc: Vector[O]): (Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]) = (v1, v2) match {
         case (Seq(),Seq())        => (Chunk.seq(acc.reverse), None)
         case (v1,   Seq())        => (Chunk.seq(acc.reverse), Some(Left(Chunk.seq(v1))))
