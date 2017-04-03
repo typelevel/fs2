@@ -141,6 +141,9 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def evalMap[G[_],Lub[_],O2](f: O => G[O2])(implicit L: Lub1[F,G,Lub]): Stream[Lub,O2] =
     Sub1.substStream(self)(L.subF).flatMap(a => Sub1.substStream(Stream.eval(f(a)))(L.subG))
 
+  /** Alias for `self throughv [[pipe.evalScan]](z)(f)`. */
+  def evalScan[F2[_], O2](z: O2)(f: (O2, O) => F2[O2])(implicit S: Sub1[F, F2]): Stream[F2, O2] =  self throughv pipe.evalScan(z)(f)
+
   /** Alias for `self through [[pipe.exists]]`. */
   def exists(f: O => Boolean): Stream[F, Boolean] = self through pipe.exists(f)
 
@@ -243,6 +246,15 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def open: Pull[F, Nothing, Handle[F,O]] = Pull.pure(new Handle(List(), self))
 
   def output: Pull[F,O,Unit] = Pull.outputs(self)
+
+  /** Alias for `(pauseWhenTrue through2 this)(pipe2.pause)`. */
+  def pauseWhen[F2[_]](pauseWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+    (pauseWhenTrue through2 Sub1.substStream(self))(pipe2.pause[F2,O])
+
+  /** Alias for `(pauseWhenTrue.discrete through2 this)(pipe2.pause)`. */
+  def pauseWhen[F2[_]](pauseWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+    (pauseWhenTrue.discrete through2 Sub1.substStream(self))(pipe2.pause)
+
 
   def pull[F2[_],O2](using: Handle[F,O] => Pull[F2,O2,Any])(implicit S: Sub1[F,F2]) : Stream[F2,O2] =
     Sub1.substPull(open).flatMap(h => Sub1.substPull(using(h))).close

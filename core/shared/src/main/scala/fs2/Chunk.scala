@@ -940,6 +940,9 @@ sealed trait NonEmptyChunk[+A] extends Chunk[A] {
   /** Returns the all but the first element of the chunk. */
   def tail: Chunk[A] = unconsNonEmpty._2
 
+  /** Returns the last element in the chunk. */
+  def last: A = apply(size - 1)
+
   /** Like `foldLeft` but uses the first element of the chunk as the starting value. */
   def reduceLeft[A2 >: A](f: (A2, A) => A2): A2 = {
     val (hd, tl) = unconsNonEmpty

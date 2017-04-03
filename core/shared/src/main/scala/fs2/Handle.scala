@@ -268,7 +268,7 @@ object Handle {
   implicit class HandleInvariantEffectOps[F[_],+A](private val self: Handle[F,A]) extends AnyVal {
 
     /** Apply `f` to the next available `Chunk`. */
-    def receive[O,B](f: (Chunk[A],Handle[F,A]) => Pull[F,O,B]): Pull[F,O,B] = self.await.flatMap(f.tupled)
+    def receive[O,B](f: (NonEmptyChunk[A],Handle[F,A]) => Pull[F,O,B]): Pull[F,O,B] = self.await.flatMap(f.tupled)
 
     /** Apply `f` to the next available element. */
     def receive1[O,B](f: (A,Handle[F,A]) => Pull[F,O,B]): Pull[F,O,B] = self.await1.flatMap(f.tupled)

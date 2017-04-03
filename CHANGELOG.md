@@ -1,3 +1,11 @@
+0.9.5
+=====
+ - Fixed memory leak in `concurrent.join` where up to `maxOpen` streams that had finished executing were kept in memory until the end of the outer stream was reached. [#834](https://github.com/functional-streams-for-scala/fs2/issues/834)
+ - Fixed a bug in `fs2.io.JavaInputOutputStream`, ensuring bytes are converted to 0-255 before being returned.
+ - Added `pipe2.pause` and `Stream#pause` combinators -- similar to `interrupt` but allows the stream to be resumed.
+ - Added `Stream#evalScan` - a variant of `scan` where the supplied function returns an effectful value.
+ - Added `pipe.unNone` and `Stream#unNone`, which converts a `Stream[F, Option[A]]` to a `Stream[F, A]`, ignoring any `None` values.
+
 0.9.4
 =====
  - Fixed memory leak in `Stream#runFoldScope` introduced by [#808](https://github.com/functional-streams-for-scala/fs2/issues/808).
