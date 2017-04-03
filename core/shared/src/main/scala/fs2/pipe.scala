@@ -211,6 +211,7 @@ object pipe {
       }
     }
 
+    @annotation.tailrec
     def doChunk(chunk: Chunk[V], h: Handle[F, V], k1: K, out: Vector[V], acc: Vector[(K, Vector[V])]):
         Pull[F, (K, Vector[V]), Unit] = {
 
