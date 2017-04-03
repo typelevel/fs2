@@ -143,7 +143,8 @@ lazy val mimaSettings = Seq(
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.copy"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.this"),
     ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.apply"),
-    ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.tcp.Socket.mkSocket")
+    ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.tcp.Socket.mkSocket"),
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.NonEmptyChunk.last")
   )
 )
 

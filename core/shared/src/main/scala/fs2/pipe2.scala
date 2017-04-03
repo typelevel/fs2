@@ -272,4 +272,41 @@ object pipe2 {
   /** Like `merge`, but halts as soon as the `s2` branch halts. */
   def mergeHaltR[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) =>
     mergeHaltL.apply(s2, s1)
+
+  /** Like `interrupt` but resumes the stream when left branch goes to true. */
+  def pause[F[_]:Async,I]: Pipe2[F,Boolean,I,I] = {
+    def unpaused(
+      controlFuture: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[Boolean], Handle[F, Boolean])]],
+      srcFuture: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[I], Handle[F, I])]]
+    ): Pull[F, I, Nothing] = {
+      (controlFuture race srcFuture).pull.flatMap {
+        case Left(controlPull) => controlPull.flatMap {
+          case (c, controlHandle) =>
+            if (c.last) paused(controlHandle, srcFuture)
+            else controlHandle.awaitAsync.flatMap(unpaused(_, srcFuture))
+        }
+        case Right(srcPull) => srcPull.flatMap { case (c, srcHandle) =>
+          Pull.output(c) >> srcHandle.awaitAsync.flatMap(unpaused(controlFuture, _))
+        }
+      }
+    }
+
+    def paused(
+      controlHandle: Handle[F, Boolean],
+      srcFuture: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[I], Handle[F, I])]]
+    ): Pull[F, I, Nothing] = {
+      controlHandle.receive { (c, controlHandle) =>
+        if (c.last) paused(controlHandle, srcFuture)
+        else controlHandle.awaitAsync.flatMap { controlFuture => unpaused(controlFuture, srcFuture) }
+      }
+    }
+
+    (control, src) => control.open.flatMap { controlHandle => src.open.flatMap { srcHandle =>
+      controlHandle.awaitAsync.flatMap { controlFuture =>
+        srcHandle.awaitAsync.flatMap { srcFuture =>
+          unpaused(controlFuture, srcFuture)
+        }
+      }
+    }}.close
+  }
 }
