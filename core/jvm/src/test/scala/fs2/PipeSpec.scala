@@ -126,6 +126,12 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.through(dropWhile(set))) shouldBe runLog(s.get).dropWhile(set)
     }
 
+    "evalScan" in forAll { (s: PureStream[Int], n: String) =>
+      val f: (String, Int) => Task[String] = (a: String, b: Int) => Task.now(a + b)
+      val g = (a: String, b: Int) => a + b
+      runLog(s.get.covary[Task].evalScan[Task, String](n)(f)) shouldBe runLog(s.get).scanLeft(n)(g)
+    }
+
     "exists" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val f = (i: Int) => i % n.get == 0
       runLog(s.get.exists(f)) shouldBe Vector(runLog(s.get).exists(f))
@@ -309,12 +315,6 @@ class PipeSpec extends Fs2Spec {
       val v = runLog(s.get)
       val f = (a: Int, b: Int) => a + b
       runLog(s.get.scan1(f)) shouldBe v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
-    }
-
-    "scanF" in forAll { (s: PureStream[Int], n: String) =>
-      val f: (String, Int) => Task[String] = (a: String, b: Int) => Task.now(a + b)
-      val g = (a: String, b: Int) => a + b
-      runLog(s.get.covary[Task].scanF[Task, String](n)(f)) shouldBe runLog(s.get).scanLeft(n)(g)
     }
 
     "shiftRight" in forAll { (s: PureStream[Int], v: Vector[Int]) =>
