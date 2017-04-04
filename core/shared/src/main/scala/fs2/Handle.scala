@@ -67,7 +67,7 @@ final class Handle[+F[_],+A] private[fs2] (
   def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep1[F2,A2]] = {
     awaitAsync map { _ map { _.map { case (hd, tl) =>
       val (h, hs) = hd.unconsNonEmpty
-      (Some(h), tl.push(hs))
+      (h, tl.push(hs))
     }}}
   }
 
@@ -286,5 +286,5 @@ object Handle {
   type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
 
   /** Result of asynchronously awaiting an element from a handle. */
-  type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (Option[A], Handle[F,A])]]
+  type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (A, Handle[F,A])]]
 }
