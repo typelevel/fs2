@@ -1,12 +1,11 @@
 package fs2
 package benchmark
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 
 @State(Scope.Thread)
-class ConcurrentBenchmark extends BenchmarkUtils {
-
-  implicit val S: Strategy = scaledStrategy
+class ConcurrentBenchmark {
 
   @GenerateN(1, 2, 4, 7, 16, 32, 64, 128, 256)
   @Benchmark

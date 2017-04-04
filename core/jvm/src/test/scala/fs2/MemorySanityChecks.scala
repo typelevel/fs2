@@ -1,5 +1,7 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
+
 // Sanity tests - not run as part of unit tests, but these should run forever
 // at constant memory.
 //
@@ -29,18 +31,18 @@ object AppendSanityTest extends App {
 }
 
 object DrainOnCompleteSanityTest extends App {
-  import TestUtil.S
+  import ExecutionContext.Implicits.global
   val s = Stream.repeatEval(Task.delay(1)).pull(_.echo).drain ++ Stream.eval_(Task.delay(println("done")))
   (Stream.empty[Task, Unit] merge s).run.unsafeRun()
 }
 
 object ConcurrentJoinSanityTest extends App {
-  import TestUtil.S
+  import ExecutionContext.Implicits.global
   concurrent.join(5)(Stream.constant(Stream.empty).covary[Task]).run.unsafeRun
 }
 
 object DanglingDequeueSanityTest extends App {
-  import TestUtil.S
+  import ExecutionContext.Implicits.global
   Stream.eval(async.unboundedQueue[Task,Int]).flatMap { q =>
     Stream.constant(1).flatMap { _ => Stream.empty mergeHaltBoth q.dequeue }
   }.run.unsafeRun
@@ -48,28 +50,28 @@ object DanglingDequeueSanityTest extends App {
 
 object AwakeEverySanityTest extends App {
   import scala.concurrent.duration._
-  import TestUtil.{ S, scheduler }
+  import ExecutionContext.Implicits.global
+  import TestUtil.scheduler
   time.awakeEvery[Task](1.millis).flatMap {
     _ => Stream.eval(Task(()))
   }.run.unsafeRun
 }
 
 object SignalDiscreteSanityTest extends App {
-  import TestUtil.S
+  import ExecutionContext.Implicits.global
   Stream.eval(async.signalOf[Task, Unit](())).flatMap { signal =>
     signal.discrete.evalMap(a => signal.set(a))
   }.run.unsafeRun
 }
 
 object SignalContinuousSanityTest extends App {
-  import TestUtil.S
+  import ExecutionContext.Implicits.global
   Stream.eval(async.signalOf[Task, Unit](())).flatMap { signal =>
     signal.continuous.evalMap(a => signal.set(a))
   }.run.unsafeRun
 }
 
 object ConstantEvalSanityTest extends App {
-  import TestUtil.S
+  import ExecutionContext.Implicits.global
   Stream.constant(()).flatMap { _ => Stream.eval(Task.delay(())) }.run.unsafeRun
 }
-

@@ -6,8 +6,6 @@ import fs2.util.syntax._
 
 class SemaphoreSpec extends Fs2Spec {
 
-  override implicit val S: Strategy = fs2.Strategy.fromCachedDaemonPool("SemaphoreSpec")
-
   "Semaphore" - {
 
     "decrement n synchronously" in {

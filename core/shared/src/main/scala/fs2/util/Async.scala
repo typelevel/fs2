@@ -11,7 +11,6 @@ import fs2.util.syntax._
  *
  * For infix syntax, import `fs2.util.syntax._`.
  */
-@annotation.implicitNotFound("No implicit `Async[${F}]` found.\nNote that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.")
 trait Async[F[_]] extends Effect[F] { self =>
 
   /** Creates an asynchronous, concurrent mutable reference. */

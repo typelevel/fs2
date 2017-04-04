@@ -19,14 +19,13 @@ package object time {
    * This uses an implicit `Scheduler` for the timed events, and
    * runs the consumer using the `F` `Async[F]`, to allow for the
    * stream to decide whether result shall be run on different
-   * thread pool, or with `Strategy.sequential` on the same thread
-   * pool as the scheduler.
+   * thread pool.
    *
    * Note: for very small values of `d`, it is possible that multiple
    * periods elapse and only some of those periods are visible in the
    * stream. This occurs when the scheduler fires faster than
    * periods are able to be published internally, possibly due to
-   * a `Strategy` that is slow to evaluate.
+   * a execution context that is slow to evaluate.
    *
    * @param d           FiniteDuration between emits of the resulting stream
    * @param scheduler   Scheduler used to schedule tasks
@@ -38,9 +37,9 @@ package object time {
         result <- F.delay {
           val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
           // Note: we guard execution here because slow systems that are biased towards
-          // scheduler threads can result in run away submission to the strategy. This has
-          // happened with Scala.js, where the scheduler is backed by setInterval and appears
-          // to be given priority over the tasks submitted to unsafeRunAsync.
+          // scheduler threads can result in run away submission to the execution context.
+          // This has happened with Scala.js, where the scheduler is backed by setInterval
+          // and appears to be given priority over the tasks submitted to unsafeRunAsync.
           val running = new java.util.concurrent.atomic.AtomicBoolean(false)
           val cancel = scheduler.scheduleAtFixedRate(d) {
             if (running.compareAndSet(false, true)) {
@@ -84,7 +83,7 @@ package object time {
   /**
    * A single-element `Stream` that waits for the duration `d` before emitting unit. This uses the implicit
    * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues
-   * on the captured `Async` `Strategy`.
+   * via the `Async` execution strategy.
    */
   def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], scheduler: Scheduler): Stream[F, Unit] = {
     val ping: F[Unit] = F async { cb =>

@@ -6,7 +6,7 @@ import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 import fs2.util.Free
 
 @State(Scope.Thread)
-class FreeBenchmark extends BenchmarkUtils {
+class FreeBenchmark {
 
   val N = 1000000
 

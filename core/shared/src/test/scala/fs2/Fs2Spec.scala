@@ -13,7 +13,7 @@ abstract class Fs2Spec extends FreeSpec with Fs2SpecLike with TimeLimitedTests {
 
 abstract class AsyncFs2Spec extends AsyncFreeSpec with Fs2SpecLike with AsyncTimeLimitedTests {
   val timeLimit: Span = timeout
-  implicit override def executionContext: ExecutionContext = ExecutionContext.Implicits.global
+  implicit override val executionContext: ExecutionContext = ExecutionContext.Implicits.global
 }
 
 trait Fs2SpecLike extends Suite

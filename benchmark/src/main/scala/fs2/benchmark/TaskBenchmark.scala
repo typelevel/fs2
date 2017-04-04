@@ -1,13 +1,13 @@
 package fs2
 package benchmark
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 
-
 @State(Scope.Thread)
-class TaskBenchmark extends BenchmarkUtils {
+class TaskBenchmark {
 
-  implicit val s: Strategy = scaledStrategy
+  val cores: Int = Runtime.getRuntime.availableProcessors
 
   //don't really want to create any objects in our benchmark...
   def sum(start: Int, end: Int): Int = {

@@ -6,7 +6,7 @@ import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 import fs2.util.Catenable
 
 @State(Scope.Thread)
-class CatenableBenchmark extends BenchmarkUtils {
+class CatenableBenchmark {
 
   val smallCatenable = Catenable(1, 2, 3, 4, 5)
   val smallVector = Vector(1, 2, 3, 4, 5)
