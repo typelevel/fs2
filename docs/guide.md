@@ -124,7 +124,7 @@ def eval[F[_],A](f: F[A]): Stream[F,A]
 
 ```scala
 scala> eff.toList
-<console>:15: error: value toList is not a member of fs2.Stream[fs2.Task,Int]
+<console>:16: error: value toList is not a member of fs2.Stream[fs2.Task,Int]
        eff.toList
            ^
 ```
@@ -473,17 +473,16 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 
 ```scala
 scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
-<console>:16: error: No implicit `Async[fs2.Task]` found.
-Note that the implicit `Async[fs2.Task]` requires an implicit `fs2.Strategy` in scope.
+<console>:17: error: could not find implicit value for parameter F2: fs2.util.Async[fs2.Task]
        Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
                           ^
 ```
 
-Oop, we need an `fs2.Strategy` in implicit scope in order to get an `Async[Task]`. Let's add that:
+Oop, we need a `scala.concurrent.ExecutionContext` in implicit scope in order to get an `Async[Task]`. Let's add that:
 
 ```scala
-scala> implicit val S = fs2.Strategy.fromFixedDaemonPool(8, threadName = "worker")
-S: fs2.Strategy = Strategy
+scala> import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext.Implicits.global
 
 scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
 res47: Vector[Int] = Vector(1, 2, 3, 4)
@@ -684,7 +683,7 @@ Also feel free to come discuss and ask/answer questions in [the gitter channel](
 
 ```scala
 scala> Stream.emit(1) ++ Stream.emit("hello")
-<console>:19: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
+<console>:20: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
        Stream.emit(1) ++ Stream.emit("hello")
                       ^
 ```

@@ -1,6 +1,5 @@
 package fs2
 
-object TestStrategy {
-  implicit val S: Strategy = Strategy.fromFixedDaemonPool(8)
+object TestScheduler {
   implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(2)
 }

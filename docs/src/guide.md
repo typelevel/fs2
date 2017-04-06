@@ -358,10 +358,10 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
 ```
 
-Oop, we need an `fs2.Strategy` in implicit scope in order to get an `Async[Task]`. Let's add that:
+Oop, we need a `scala.concurrent.ExecutionContext` in implicit scope in order to get an `Async[Task]`. Let's add that:
 
 ```tut
-implicit val S = fs2.Strategy.fromFixedDaemonPool(8, threadName = "worker")
+import scala.concurrent.ExecutionContext.Implicits.global
 
 Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
 ```

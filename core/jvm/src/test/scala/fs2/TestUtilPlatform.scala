@@ -1,11 +1,12 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 trait TestUtilPlatform {
 
-  implicit val S: Strategy = TestStrategy.S
-  implicit val scheduler: Scheduler = TestStrategy.scheduler
+  implicit val executionContext: ExecutionContext = ExecutionContext.Implicits.global
+  implicit val scheduler: Scheduler = TestScheduler.scheduler
 
   val timeout: FiniteDuration
 

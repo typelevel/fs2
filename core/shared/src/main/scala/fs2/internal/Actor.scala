@@ -1,7 +1,8 @@
 package fs2.internal
 
-import fs2.Strategy
-import fs2.util.NonFatal
+import scala.concurrent.ExecutionContext
+import fs2.util.{ ExecutionContexts, NonFatal }
+import ExecutionContexts._
 import java.util.concurrent.atomic.AtomicReference
 
 /*
@@ -18,11 +19,11 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Processes messages of type `A`, one at a time. Messages are submitted to
  * the actor with the method `!`. Processing is typically performed asynchronously,
- * this is controlled by the provided `strategy`.
+ * this is controlled by the provided execution context.
  *
  * Memory consistency guarantee: when each message is processed by the `handler`, any memory that it
  * mutates is guaranteed to be visible by the `handler` when it processes the next message, even if
- * the `strategy` runs the invocations of `handler` on separate threads. This is achieved because
+ * the execution context runs the invocations of `handler` on separate threads. This is achieved because
  * the `Actor` reads a volatile memory location before entering its event loop, and writes to the same
  * location before suspending.
  *
@@ -31,11 +32,11 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * @param handler  The message handler
  * @param onError  Exception handler, called if the message handler throws any `Throwable`.
- * @param strategy Execution strategy, for example, a strategy that is backed by an `ExecutorService`
+ * @param ec       Execution context
  * @tparam A       The type of messages accepted by this actor.
  */
 private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable => Unit = ActorUtils.rethrowError)
-                         (implicit val strategy: Strategy) {
+                         (implicit val ec: ExecutionContext) {
   private val head = new AtomicReference[Node[A]]
 
   /** Alias for `apply` */
@@ -49,9 +50,9 @@ private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable =>
   /** Pass the message `a` to the mailbox of this actor */
   def apply(a: A): Unit = this ! a
 
-  def contramap[B](f: B => A): Actor[B] = new Actor[B](b => this ! f(b), onError)(strategy)
+  def contramap[B](f: B => A): Actor[B] = new Actor[B](b => this ! f(b), onError)(ec)
 
-  private def schedule(n: Node[A]): Unit = strategy(act(n))
+  private def schedule(n: Node[A]): Unit = ec.executeThunk(act(n))
 
   @annotation.tailrec
   private def act(n: Node[A], i: Int = 1024): Unit = {
@@ -64,7 +65,7 @@ private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable =>
     else act(n2, i - 1)
   }
 
-  private def scheduleLastTry(n: Node[A]): Unit = strategy(lastTry(n))
+  private def scheduleLastTry(n: Node[A]): Unit = ec.executeThunk(lastTry(n))
 
   private def lastTry(n: Node[A]): Unit = if (!head.compareAndSet(n, null)) act(next(n))
 
@@ -85,5 +86,5 @@ private object ActorUtils {
 private[fs2] object Actor {
 
   def actor[A](handler: A => Unit, onError: Throwable => Unit = ActorUtils.rethrowError)
-              (implicit s: Strategy): Actor[A] = new Actor[A](handler, onError)(s)
+              (implicit ec: ExecutionContext): Actor[A] = new Actor[A](handler, onError)(ec)
 }

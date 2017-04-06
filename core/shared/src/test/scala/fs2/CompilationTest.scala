@@ -28,7 +28,7 @@ object ThisModuleShouldCompile {
   val h = Stream(1,2,3).pull(h => h.await1 flatMap { case (hd,_) => Pull.eval(Task.now(1)) >> Pull.output1(hd) })
 
   /* Check that `Async[Task]` can be found in companion object without imports. */
-  implicit val S = Strategy.sequential
+  import scala.concurrent.ExecutionContext.Implicits.global
   val i = Stream.eval(Task.now(1)).pull { h => h.awaitAsync }
 
   val j: Pipe[Task,Int,Int] = pipe.take[Pure,Int](2)

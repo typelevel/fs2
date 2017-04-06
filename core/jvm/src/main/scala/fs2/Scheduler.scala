@@ -1,36 +1,44 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
-import java.util.concurrent.{ Executors, ScheduledExecutorService, TimeUnit }
+
+import java.lang.Thread.UncaughtExceptionHandler
+import java.util.concurrent.{ Executors, ScheduledExecutorService, ThreadFactory, TimeUnit }
+import java.util.concurrent.atomic.AtomicInteger
+import scala.concurrent.ExecutionContext
+
+import fs2.util.NonFatal
 
 /** Provides the ability to schedule evaluation of thunks in the future. */
 trait Scheduler {
 
   /**
-   * Evaluates the thunk using the strategy after the delay.
+   * Evaluates the thunk after the delay.
    * Returns a thunk that when evaluated, cancels the execution.
    */
   def scheduleOnce(delay: FiniteDuration)(thunk: => Unit): () => Unit
 
   /**
-   * Evaluates the thunk every period, using the strategy.
+   * Evaluates the thunk every period.
    * Returns a thunk that when evaluated, cancels the execution.
    */
   def scheduleAtFixedRate(period: FiniteDuration)(thunk: => Unit): () => Unit
 
   /**
-   * Returns a strategy that executes all tasks after a specified delay.
+   * Returns an execution context that executes all tasks after a specified delay.
    */
-  def delayedStrategy(delay: FiniteDuration): Strategy = new Strategy {
-    def apply(thunk: => Unit) = { scheduleOnce(delay)(thunk); () }
-    override def toString = s"DelayedStrategy($delay)"
+  def delayedExecutionContext(delay: FiniteDuration, reporter: Throwable => Unit = ExecutionContext.defaultReporter): ExecutionContext = new ExecutionContext {
+    def execute(runnable: Runnable): Unit = { scheduleOnce(delay)(runnable.run); () }
+    def reportFailure(cause: Throwable): Unit = reporter(cause)
+    override def toString = s"DelayedExecutionContext($delay)"
   }
 }
 
 object Scheduler {
 
   def fromFixedDaemonPool(corePoolSize: Int, threadName: String = "Scheduler.fromFixedDaemonPool"): Scheduler =
-    fromScheduledExecutorService(Executors.newScheduledThreadPool(corePoolSize, Strategy.daemonThreadFactory(threadName)))
+    fromScheduledExecutorService(Executors.newScheduledThreadPool(corePoolSize, daemonThreadFactory(threadName)))
 
   def fromScheduledExecutorService(service: ScheduledExecutorService): Scheduler = new Scheduler {
     override def scheduleOnce(delay: FiniteDuration)(thunk: => Unit): () => Unit = {
@@ -42,6 +50,29 @@ object Scheduler {
       () => { f.cancel(false); () }
     }
     override def toString = s"Scheduler($service)"
+  }
+
+  /** A `ThreadFactory` which creates daemon threads, using the given name. */
+  private[fs2] def daemonThreadFactory(threadName: String, exitJvmOnFatalError: Boolean = true): ThreadFactory = new ThreadFactory {
+    val defaultThreadFactory = Executors.defaultThreadFactory()
+    val idx = new AtomicInteger(0)
+    def newThread(r: Runnable) = {
+      val t = defaultThreadFactory.newThread(r)
+      t.setDaemon(true)
+      t.setName(s"$threadName-${idx.incrementAndGet()}")
+      t.setUncaughtExceptionHandler(new UncaughtExceptionHandler {
+        def uncaughtException(t: Thread, e: Throwable): Unit = {
+          ExecutionContext.defaultReporter(e)
+          if (exitJvmOnFatalError) {
+            e match {
+              case NonFatal(_) => ()
+              case fatal => System.exit(-1)
+            }
+          }
+        }
+      })
+      t
+    }
   }
 
 }

@@ -1,10 +1,11 @@
 package fs2
 
 import fs2.internal.{Actor,LinkedMap,Trampoline}
-import fs2.util.{Async,Attempt,Effect,NonFatal}
+import fs2.util.{Async,Attempt,Effect,ExecutionContexts,NonFatal}
+import ExecutionContexts._
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
-import scala.concurrent.TimeoutException
+import scala.concurrent.{ ExecutionContext, TimeoutException }
 import scala.concurrent.duration._
 
 /**
@@ -94,7 +95,7 @@ sealed abstract class Task[+A] {
     }
 
   /** Returns a task that performs all evaluation asynchronously. */
-  def async(implicit S: Strategy): Task[A] = Task.start(this).flatMap(identity)
+  def async(implicit ec: ExecutionContext): Task[A] = Task.start(this).flatMap(identity)
 
   /**
    * Ensures the result of this Task satisfies the given predicate,
@@ -109,7 +110,7 @@ sealed abstract class Task[+A] {
    * continues to execute in the background though its result will be sent
    * nowhere.
    */
-  def race[B](t: Task[B])(implicit S: Strategy): Task[Either[A,B]] = {
+  def race[B](t: Task[B])(implicit ec: ExecutionContext): Task[Either[A,B]] = {
     Task.ref[Either[A,B]].flatMap { ref =>
       ref.setRace(this map (Left(_)), t map (Right(_)))
           .flatMap { _ => ref.get }
@@ -117,7 +118,7 @@ sealed abstract class Task[+A] {
   }
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule(delay: FiniteDuration)(implicit strategy: Strategy, scheduler: Scheduler): Task[A] =
+  def schedule(delay: FiniteDuration)(implicit ec: ExecutionContext, scheduler: Scheduler): Task[A] =
     Task.schedule((), delay) flatMap { _ => this }
 
   private def unsafeRunAsyncTrampoline(cb: Attempt[A] => Trampoline[Unit]): Unit =
@@ -199,7 +200,7 @@ sealed abstract class Task[+A] {
    * This method is unsafe because upon reaching the specified timeout, the running
    * task is interrupted at a non-determinstic point in its execution.
    */
-  def unsafeTimed(timeout: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
+  def unsafeTimed(timeout: FiniteDuration)(implicit ec: ExecutionContext, scheduler: Scheduler): Task[A] =
     unforkedAsync[A] { cb =>
       val cancel = new AtomicBoolean(false)
       val done = new AtomicBoolean(false)
@@ -300,10 +301,10 @@ object Task extends TaskPlatform with TaskInstances {
   def suspend[A](a: => Task[A]): Task[A] =
     Suspend(() => try a catch { case NonFatal(t) => fail(t) })
 
-  /** Create a `Task` that will evaluate `a` using the given `Strategy`. */
-  def apply[A](a: => A)(implicit S: Strategy): Task[A] =
+  /** Create a `Task` that will evaluate `a` using the given `ExecutionContext`. */
+  def apply[A](a: => A)(implicit ec: ExecutionContext): Task[A] =
     AsyncT { cb =>
-      try S(cb(Attempt(a)).run)
+      try ec.executeThunk(cb(Attempt(a)).run)
       catch { case NonFatal(t) => cb(Left(t)).run }
     }
 
@@ -327,27 +328,27 @@ object Task extends TaskPlatform with TaskInstances {
      } yield (result1 + result2)
    }}}
   */
-  def start[A](t: Task[A])(implicit S: Strategy): Task[Task[A]] =
+  def start[A](t: Task[A])(implicit ec: ExecutionContext): Task[Task[A]] =
     ref[A].flatMap { ref => ref.set(t) map (_ => ref.get) }
 
   /**
     * Like [[async]], but run the callback in the same thread, rather than
-    * evaluating the callback using a `Strategy`.
+    * evaluating the callback using an `ExecutionContext`.
    */
   def unforkedAsync[A](register: (Attempt[A] => Unit) => Unit): Task[A] =
-    async(register)(Strategy.sequential)
+    async(register)(ExecutionContexts.sequential)
 
   /**
     * Create a `Task` from an asynchronous computation, which takes the form
     * of a function with which we can register a callback. This can be used
     * to translate from a callback-based API to a straightforward monadic
-    * version. The callback is run using the strategy `S`.
+    * version. The callback is run using the supplied execution context.
    */
   // Note: `register` does not use the `Attempt` alias due to scalac inference limitation
-  def async[A](register: (Either[Throwable,A] => Unit) => Unit)(implicit S: Strategy): Task[A] =
+  def async[A](register: (Either[Throwable,A] => Unit) => Unit)(implicit ec: ExecutionContext): Task[A] =
     AsyncT { cb =>
       register { attempt =>
-        try S(cb(attempt).run)
+        try ec.executeThunk(cb(attempt).run)
         catch { case NonFatal(t) => cb(Left(t)).run }
       }
     }
@@ -355,7 +356,7 @@ object Task extends TaskPlatform with TaskInstances {
   /**
    * Create a `Task` from a `scala.concurrent.Future`.
    */
-  def fromFuture[A](fut: => scala.concurrent.Future[A])(implicit S: Strategy, E: scala.concurrent.ExecutionContext): Task[A] =
+  def fromFuture[A](fut: => scala.concurrent.Future[A])(implicit ec: ExecutionContext): Task[A] =
     async { cb => fut.onComplete {
       case scala.util.Success(a) => cb(Right(a))
       case scala.util.Failure(t) => cb(Left(t))
@@ -369,15 +370,15 @@ object Task extends TaskPlatform with TaskInstances {
   }
 
   /** Create a `Task` that will evaluate `a` after at least the given delay. */
-  def schedule[A](a: => A, delay: FiniteDuration)(implicit S: Strategy, scheduler: Scheduler): Task[A] =
-    async { cb => scheduler.delayedStrategy(delay)(cb(Attempt(a))) }
+  def schedule[A](a: => A, delay: FiniteDuration)(implicit ec: ExecutionContext, scheduler: Scheduler): Task[A] =
+    async { cb => scheduler.delayedExecutionContext(delay).executeThunk(cb(Attempt(a))) }
 
   def traverse[A,B](v: Seq[A])(f: A => Task[B]): Task[Vector[B]] =
     v.reverse.foldLeft(Task.now(Vector.empty[B])) {
       (tl,hd) => f(hd) flatMap { b => tl.map(b +: _) }
     }
 
-  def parallelTraverse[A,B](s: Seq[A])(f: A => Task[B])(implicit S: Strategy): Task[Vector[B]] =
+  def parallelTraverse[A,B](s: Seq[A])(f: A => Task[B])(implicit ec: ExecutionContext): Task[Vector[B]] =
     traverse(s)(f andThen Task.start) flatMap { tasks => traverse(tasks)(identity) }
 
   private trait MsgId
@@ -389,7 +390,7 @@ object Task extends TaskPlatform with TaskInstances {
     final case class TrySet[A](id: Long, r: Attempt[A], cb: Callback[Boolean]) extends Msg[A]
   }
 
-  def ref[A](implicit S: Strategy, F: Async[Task]): Task[Ref[A]] = Task.delay {
+  def ref[A](implicit ec: ExecutionContext, F: Async[Task]): Task[Ref[A]] = Task.delay {
     var result: Attempt[A] = null
     // any waiting calls to `access` before first `set`
     var waiting: LinkedMap[MsgId, Callback[(A, Long)]] = LinkedMap.empty
@@ -399,13 +400,13 @@ object Task extends TaskPlatform with TaskInstances {
     val actor: Actor[Msg[A]] = Actor.actor[Msg[A]] {
       case Msg.Read(cb, idf) =>
         if (result eq null) waiting = waiting.updated(idf, cb)
-        else { val r = result; val id = nonce; S { cb(r.map((_,id))) } }
+        else { val r = result; val id = nonce; ec.executeThunk { cb(r.map((_,id))) } }
 
       case Msg.Set(r) =>
         nonce += 1L
         if (result eq null) {
           val id = nonce
-          waiting.values.foreach(cb => S { cb(r.map((_,id))) })
+          waiting.values.foreach(cb => ec.executeThunk { cb(r.map((_,id))) })
           waiting = LinkedMap.empty
         }
         result = r
@@ -413,7 +414,7 @@ object Task extends TaskPlatform with TaskInstances {
       case Msg.TrySet(id, r, cb) =>
         if (id == nonce) {
           nonce += 1L; val id2 = nonce
-          waiting.values.foreach(cb => S { cb(r.map((_,id2))) })
+          waiting.values.foreach(cb => ec.executeThunk { cb(r.map((_,id2))) })
           waiting = LinkedMap.empty
           result = r
           cb(Right(true))
@@ -423,13 +424,13 @@ object Task extends TaskPlatform with TaskInstances {
       case Msg.Nevermind(id, cb) =>
         val interrupted = waiting.get(id).isDefined
         waiting = waiting - id
-        S { cb (Right(interrupted)) }
+        ec.executeThunk { cb (Right(interrupted)) }
     }
 
-    new Ref(actor)(S, F)
+    new Ref(actor)(ec, F)
   }
 
-  class Ref[A] private[fs2](actor: Actor[Msg[A]])(implicit S: Strategy, protected val F: Async[Task]) extends Async.Ref[Task,A] {
+  class Ref[A] private[fs2](actor: Actor[Msg[A]])(implicit ec: ExecutionContext, protected val F: Async[Task]) extends Async.Ref[Task,A] {
 
     def access: Task[(A, Attempt[A] => Task[Boolean])] =
       Task.delay(new MsgId {}).flatMap { mid =>
@@ -445,7 +446,7 @@ object Task extends TaskPlatform with TaskInstances {
      * When it completes it overwrites any previously `put` value.
      */
     def set(t: Task[A]): Task[Unit] =
-      Task.delay { S { t.unsafeRunAsync { r => actor ! Msg.Set(r) } }}
+      Task.delay { ec.executeThunk { t.unsafeRunAsync { r => actor ! Msg.Set(r) } }}
 
     private def getStamped(msg: MsgId): Task[(A,Long)] =
       Task.unforkedAsync[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
@@ -510,8 +511,8 @@ private[fs2] trait TaskInstancesLowPriority {
 
 private[fs2] trait TaskInstances extends TaskInstancesLowPriority {
 
-  implicit def asyncInstance(implicit S: Strategy): Async[Task] = new EffectTask with Async[Task] {
-    def ref[A]: Task[Async.Ref[Task,A]] = Task.ref[A](S, this)
+  implicit def asyncInstance(implicit ec: ExecutionContext): Async[Task] = new EffectTask with Async[Task] {
+    def ref[A]: Task[Async.Ref[Task,A]] = Task.ref[A](ec, this)
     override def toString = "Async[Task]"
   }
 }
