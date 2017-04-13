@@ -72,7 +72,7 @@ The fs2-core library is also supported on Scala.js:
 
 ```
 // available for Scala 2.11.8, 2.12.0
-libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.4"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "0.9.5"
 ```
 
 API docs:
