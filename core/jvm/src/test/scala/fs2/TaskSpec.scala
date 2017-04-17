@@ -17,6 +17,10 @@ class TaskSpec extends Fs2Spec{
       (0 until 5000).foldLeft(Task.delay(0))((acc, i) => acc.attempt.flatMap { case Left(t) => Task.fail(t); case Right(a) => Task.delay(a) }).unsafeRun
     }
 
+    "attempt" in {
+      Task.delay(throw Err).flatMap(x => Task.delay(x)).attempt.unsafeRun shouldBe Left(Err)
+    }
+
     "Ref" - {
 
       /**
