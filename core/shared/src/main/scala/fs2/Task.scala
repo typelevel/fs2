@@ -1,7 +1,7 @@
 package fs2
 
 import fs2.internal.{Actor,LinkedMap,Trampoline}
-import fs2.util.{Async,Attempt,Effect,ExecutionContexts,NonFatal}
+import fs2.util.{Async,Attempt,Effect,ExecutionContexts,NonFatal,SFunction1}
 import ExecutionContexts._
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
@@ -36,16 +36,19 @@ import scala.concurrent.duration._
 sealed abstract class Task[+A] {
   import Task._
 
-  def flatMap[B](f: A => Task[B]): Task[B] = {
+  def flatMap[B](f: A => Task[B]): Task[B] =
+    flatMapTotal(SFunction1[A, Task[B]](a => try f(a) catch { case NonFatal(t) => Fail(t) }))
+
+  private def flatMapTotal[B](f: SFunction1[A, Task[B]]): Task[B] = {
     this match {
-      case Now(a) => Suspend(() => try f(a) catch { case NonFatal(t) => Fail(t) })
+      case Now(a) => Suspend(SFunction1[Unit, A](_ => a).andThen(f))
       case Fail(t) => Fail(t)
       case Suspend(thunk) => BindSuspend(thunk, f)
       case AsyncT(listen) => BindAsync(listen, f)
       case BindSuspend(thunk, g) =>
-        Suspend(() => BindSuspend(thunk, g andThen (_ flatMap f)))
+        Suspend(SFunction1[Unit, Task[B]](_ => BindSuspend(thunk, g andThen (_ flatMapTotal f))))
       case BindAsync(listen, g) =>
-        Suspend(() => BindAsync(listen, g andThen (_ flatMap f)))
+        Suspend(SFunction1[Unit, Task[B]](_ => BindAsync(listen, g andThen (_ flatMapTotal f))))
     }
   }
 
@@ -135,8 +138,8 @@ sealed abstract class Task[+A] {
 
   @annotation.tailrec
   private final def unsafeStep: Task[A] = this match {
-    case Suspend(thunk) => thunk().unsafeStep
-    case BindSuspend(thunk, f) => (thunk() flatMap f).unsafeStep
+    case Suspend(thunk) => thunk(()).unsafeStep
+    case BindSuspend(thunk, f) => thunk(()).flatMapTotal(f).unsafeStep
     case _ => this
   }
 
@@ -240,8 +243,8 @@ sealed abstract class Task[+A] {
   @annotation.tailrec
   private final def unsafeStepInterruptibly(cancel: AtomicBoolean): Task[A] =
     if (!cancel.get) this match {
-      case Suspend(thunk) => thunk().unsafeStepInterruptibly(cancel)
-      case BindSuspend(thunk, f) => (thunk() flatMap f).unsafeStepInterruptibly(cancel)
+      case Suspend(thunk) => thunk(()).unsafeStepInterruptibly(cancel)
+      case BindSuspend(thunk, f) => (thunk(()) flatMapTotal f).unsafeStepInterruptibly(cancel)
       case _ => this
     }
     else this
@@ -257,23 +260,17 @@ object Task extends TaskPlatform with TaskInstances {
   private final case class Fail(t: Throwable) extends Task[Nothing] {
     def attempt: Now[Attempt[Nothing]] = Now(Left(t))
   }
-  private final case class Suspend[+A](thunk: () => Task[A]) extends Task[A] {
-    def attempt: Suspend[Attempt[A]] = Suspend(() => try thunk().attempt catch { case NonFatal(t) => Now(Left(t)) })
+  private final case class Suspend[A](thunk: SFunction1[Unit, Task[A]]) extends Task[A] {
+    def attempt: Suspend[Attempt[A]] = Suspend(thunk.andThen(_.attempt))
   }
-  private final case class BindSuspend[A,B](thunk: () => Task[A], f: A => Task[B]) extends Task[B] {
-    def attempt: BindSuspend[Attempt[A], Attempt[B]] = BindSuspend(
-      () => try thunk().attempt catch { case NonFatal(t) => Now(Left(t)) },
-      _.fold(t => Now(Left(t)), a => f(a).attempt))
+  private final case class BindSuspend[A,B](thunk: SFunction1[Unit, Task[A]], f: SFunction1[A, Task[B]]) extends Task[B] {
+    def attempt: BindSuspend[A, Attempt[B]] = BindSuspend(thunk, f.andThen(_.attempt))
   }
   private final case class AsyncT[+A](onFinish: (Attempt[A] => Trampoline[Unit]) => Unit) extends Task[A] {
     def attempt: AsyncT[Attempt[A]] = AsyncT { cb => onFinish { attempt => cb(Right(attempt)) } }
   }
-  private final case class BindAsync[A,B](onFinish: (Attempt[A] => Trampoline[Unit]) => Unit, f: A => Task[B]) extends Task[B] {
-    def attempt: BindAsync[Attempt[A], Attempt[B]] = BindAsync(
-      cb => onFinish { attempt => cb(Right(attempt)) },
-      _.fold(
-        t => Now(Left(t)),
-        a => f(a).attempt))
+  private final case class BindAsync[A,B](onFinish: (Attempt[A] => Trampoline[Unit]) => Unit, f: SFunction1[A, Task[B]]) extends Task[B] {
+    def attempt: BindAsync[A, Attempt[B]] = BindAsync(onFinish, f.andThen(_.attempt))
   }
 
   type Callback[-A] = Attempt[A] => Unit
@@ -299,7 +296,7 @@ object Task extends TaskPlatform with TaskInstances {
    * stack overflows.
    */
   def suspend[A](a: => Task[A]): Task[A] =
-    Suspend(() => try a catch { case NonFatal(t) => fail(t) })
+    Suspend(SFunction1(_ => try a catch { case NonFatal(t) => fail(t) }))
 
   /** Create a `Task` that will evaluate `a` using the given `ExecutionContext`. */
   def apply[A](a: => A)(implicit ec: ExecutionContext): Task[A] =
