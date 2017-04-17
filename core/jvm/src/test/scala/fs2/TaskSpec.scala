@@ -13,6 +13,10 @@ class TaskSpec extends Fs2Spec{
       acc.toList shouldBe List(1, 2, 3, 4, 5)
     }
 
+    "stack safety" in {
+      (0 until 5000).foldLeft(Task.delay(0))((acc, i) => acc.attempt.flatMap { case Left(t) => Task.fail(t); case Right(a) => Task.delay(a) }).unsafeRun
+    }
+
     "Ref" - {
 
       /**
