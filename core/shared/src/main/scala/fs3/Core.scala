@@ -1,11 +1,12 @@
 package fs2.fast
 
 import fs2.util.{Free => _, _}
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import scala.collection.JavaConverters
 
 // TODO
-// add resource allocation algebra
+// X add resource allocation algebra
 // add exception handling algebra
 // add variance
 // add fancy pure streams type
@@ -112,9 +113,9 @@ final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
    * know we will acquire a resource, we are guaranteed that doing `midAcquires.waitUntil0`
    * will unblock only when `resources` is no longer growing.
    */
-  def runFold[A](startCompletion: AtomicBoolean, // whether stream completion has begun
-                 midAcquires: TwoWayLatch, // number of resources in the middle of being acquired
-                 resources: ConcurrentHashMap[Stream.Token, F[Unit]]) // current set of resources
+  def runFold[A](startCompletion: AtomicBoolean,
+                 midAcquires: TwoWayLatch,
+                 resources: ConcurrentHashMap[Stream.Token, F[Unit]])
                 (init: A)(f: (A, O) => A)(implicit F: Async[F]): F[A] = {
     type AlgebraF[x] = Algebra[F,O,x]
     def go(acc: A, v: ViewL[AlgebraF, Option[(Catenable[O], Stream[F, O])]]): F[A] = v match {
@@ -124,10 +125,10 @@ final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
           case Some((hd, tl)) => go(hd.toList.foldLeft(acc)(f), tl.uncons.algebra.viewL)
         }
       case bound: ViewL.Bound[AlgebraF, _, Option[(Catenable[O], Stream[F, O])]] =>
+        val g = bound.f.asInstanceOf[Any => Free[AlgebraF, Option[(Catenable[O], Stream[F, O])]]]
         bound.fx match {
           case wrap: Algebra.Wrap[F, O, _] =>
             val wrapped: F[Any] = wrap.value.asInstanceOf[F[Any]]
-            val g = bound.f.asInstanceOf[Any => Free[AlgebraF, Option[(Catenable[O], Stream[F, O])]]]
             F.flatMap(wrapped) { x => go(acc, g(x).viewL) }
           case Algebra.Acquire(resource, release) =>
             midAcquires.increment
@@ -140,22 +141,32 @@ final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
                   val finalizer = release(r) // todo catch exceptions
                   resources.put(token, finalizer)
                   midAcquires.decrement
-                  val g = bound.f.asInstanceOf[Any => Free[AlgebraF, Option[(Catenable[O], Stream[F, O])]]]
                   go(acc, g((r, token)).viewL)
               }
-          case Algebra.Release(token) => ???
-          case Algebra.Snapshot() => ???
-          case Algebra.UnconsAsync(s) => ???
-          //case class Wrap[F[_],O,R](value: F[R]) extends NoOutput[F,O,R]
-          //case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends NoOutput[F,O,(R,Token)]
-          //case class Release[F[_],O](token: Token) extends NoOutput[F,O,Unit]
-          //case class Snapshot[F[_],O]() extends NoOutput[F,O,Set[Token]]
-          //case class UnconsAsync[F[_],X,Y,O](s: Stream[F,O])
+          case Algebra.Release(token) =>
+            val finalizer = resources.remove(token)
+            if (finalizer.asInstanceOf[AnyRef] eq null) go(acc, g(()).viewL)
+            else F.flatMap(F.attempt(finalizer)) {
+              case Left(err) => ??? // todo
+              case Right(_) => go(acc, g(()).viewL)
+            }
+          case Algebra.Snapshot() =>
+            // todo - think through whether we need to take a consistent snapshot of resources
+            // if so we need a monotonically increasing nonce associated with each resource
+            val tokens = JavaConverters.enumerationAsScalaIterator(resources.keys).toSet
+            go(acc, g(tokens).viewL)
+          case Algebra.UnconsAsync(s) =>
+            val task = F.start {
+              type R = Option[(Catenable[_], Stream[F,_])]
+              Stream.fromPull(s.uncons.flatMap(Pull.output1))
+                    .runFold(startCompletion, midAcquires, resources)(None: R) { (o,a) => a }
+            }
+            go(acc, g(Pull.eval(task)).viewL)
           case Algebra.Output(_) => sys.error("impossible")
           case Algebra.Outputs(_) => sys.error("impossible")
         }
     }
-    go(init, uncons.algebra.viewL)
+    F.suspend { go(init, uncons.algebra.viewL) }
   }
 }
 
