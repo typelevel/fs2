@@ -79,6 +79,8 @@ final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
 
   def >>[O2](after: Stream[F, O2]): Stream[F, O2] = flatMap(_ => after)
 
+  def ++(s: => Stream[F,O]): Stream[F,O] = Stream.fromPull(pull flatMap (_ => s.pull))
+
   def uncons[X]: Pull[F, X, Option[(Catenable[O], Stream[F, O])]] = {
     type AlgebraF[x] = Algebra[F,O,x]
     def assumeNoOutput[Y,R](p: Pull[F,Y,R]): Pull[F,X,R] =
@@ -197,11 +199,13 @@ final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
     }
     F.suspend { go(init, uncons.algebra.viewL) }
   }
+
 }
 
 object Stream {
   def eval[F[_],O](fo: F[O]): Stream[F,O] = Stream.fromPull(Pull.eval(fo).flatMap(Pull.output1))
   def emit[F[_],O](o: O): Stream[F,O] = Stream.fromPull(Pull.output1(o))
+  def empty[F[_],O]: Stream[F,O] = Stream.fromPull(Pull.pure(()))
   def fail[F[_],O](e: Throwable): Stream[F,O] = Stream.fromPull(Pull.fail(e))
 
   def fromPull[F[_],O](pull: Pull[F,O,Unit]): Stream[F,O] = new Stream(pull)
@@ -224,26 +228,51 @@ object Stream {
   case object Interrupted extends Throwable { override def fillInStackTrace = this }
 }
 
-/*
-If stream is sequential, it's very straightforward:
-  - Resources are acquired and added to the map
-  - At end of stream, all resources cleared from map
-  - At end of stream segments, there can be some manual cleanup (via onComplete)
-If we have concurrency, we have some issues:
-  - There's an outer stream, and asynchronous steps of N inner streams
-  - Need to ensure that any resources acquired by inner streams get freed when
-    outer stream completes
-  - Also want to safely terminate any inner streams when outer stream completes
-  - Scenarios:
-    * Outer stream completes, no inner stream is mid-acquire
-    * Outer stream completes, 1 or more inner streams is mid-acquire
-  - Algorithm:
-    * When outer stream reaches end, it "begins completion".
-    * After a stream "begins completion", inner streams that are mid-acquire are allowed
-      to continue running, and any inner streams that aren't mid-acquire are killed
-    * A stream transitions from "begins completion" to "completing" once no inner streams are mid-acquire
-    * Once "completing", free all resources that have been acquired, outer stream is now "completed"
-  - Correctness conditions:
-    * Once outer stream "begins completion", no inner stream should be able to begin an acquire.
-    * Outer stream should wait to transition to "completing" as long as there are inner streams mid-acquire
-*/
+object Woot extends App {
+  import fs2.Task
+  implicit val S = scala.concurrent.ExecutionContext.Implicits.global
+
+  val N = 10000
+  val s = (0 until N).map(Stream.emit[Task,Int](_)).foldLeft(Stream.empty[Task,Int])(_ ++ _)
+  val s2 = (0 until N).map(fs2.Stream.emit).foldLeft(fs2.Stream.empty: fs2.Stream[Task,Int])(_ ++ _)
+
+  timeit("new") {
+    s.runFold(new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap)(0)(_ + _).unsafeRun()
+  }
+  timeit("old") {
+    s2.runFold(0)(_ + _).unsafeRun()
+  }
+
+  def timeit(label: String, threshold: Double = 0.99)(action: => Long): Long = {
+    // todo - better statistics to determine when to stop, based on
+    // assumption that distribution of runtimes approaches some fixed normal distribution
+    // (as all methods relevant to overall performance get JIT'd)
+    var N = 32
+    var i = 0
+    var startTime = System.nanoTime
+    var stopTime = System.nanoTime
+    var sample = 1L
+    var previousSample = Long.MaxValue
+    var K = 0L
+    var ratio = sample.toDouble / previousSample.toDouble
+    while (sample > previousSample || sample*N < 1e8 || ratio < threshold) {
+      previousSample = sample
+      N = (N.toDouble*1.2).toInt ; i = 0 ; startTime = System.nanoTime
+      while (i < N) { K += action; i += 1 }
+      stopTime = System.nanoTime
+      sample = (stopTime - startTime) / N
+      ratio = sample.toDouble / previousSample.toDouble
+      println(s"iteration $label: " + formatNanos(sample) + " (average of " + N + " samples)")
+    }
+    println(label + ": " + formatNanos(sample) + " (average of " + N + " samples)")
+    println("total number of samples across all iterations: " + K)
+    sample
+  }
+
+  def formatNanos(nanos: Long) = {
+    if (nanos > 1e9) (nanos.toDouble/1e9).toString + " seconds"
+    else if (nanos > 1e6) (nanos.toDouble/1e6).toString + " milliseconds"
+    else if (nanos > 1e3) (nanos.toDouble/1e3).toString + " microseconds"
+    else nanos.toString + " nanoseconds"
+  }
+}
