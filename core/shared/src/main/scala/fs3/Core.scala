@@ -13,7 +13,7 @@ import scala.collection.JavaConverters
 // performance testing
 // integrate with rest of fs2
 
-final class Pull[F[_], O, R](val algebra: Free[({type f[x] = Stream.Algebra[F, O, x]})#f, R]) {
+final class Pull[F[_], O, R](val algebra: Free[({type f[x] = Stream.Algebra[F, O, x]})#f, R]) extends AnyVal {
   def flatMap[R2](f: R => Pull[F, O, R2]): Pull[F, O, R2] =
     Pull(algebra.flatMap { r => f(r).algebra })
   def >>[R2](after: Pull[F, O, R2]): Pull[F, O, R2] = flatMap(_ => after)
