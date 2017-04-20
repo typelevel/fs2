@@ -19,7 +19,7 @@ import scala.collection.JavaConverters
 // performance testing
 // integrate with rest of fs2
 
-final class Pull[F[_], O, R](val algebra: Free[({type f[x] = Stream.Algebra[F, O, x]})#f, R]) extends AnyVal {
+final class Pull[F[_], O, R](val algebra: Pull.PullF[F,O,R]) extends AnyVal {
   def flatMap[R2](f: R => Pull[F, O, R2]): Pull[F, O, R2] =
     Pull(algebra.flatMap { r => f(r).algebra })
   def >>[R2](after: => Pull[F, O, R2]): Pull[F, O, R2] = flatMap(_ => after)
@@ -31,6 +31,7 @@ final class Pull[F[_], O, R](val algebra: Free[({type f[x] = Stream.Algebra[F, O
 }
 
 object Pull {
+  type PullF[F[_],O,+R] = Free[({type f[x]=Algebra[F,O,x]})#f, R]
 
   def apply[F[_],O,R](value: Free[({type f[x] = Stream.Algebra[F,O,x]})#f, R]): Pull[F, O, R] =
     new Pull[F, O, R](value)
@@ -69,6 +70,7 @@ object Pull {
 
 object Stream {
   type Stream[F[_],O] = Pull[F,O,Unit]
+  type StreamF[F[_],O] = Pull.PullF[F,O,Unit]
 
   def eval[F[_],O](fo: F[O]): Stream[F,O] = Pull.eval(fo).flatMap(Pull.output1)
   def emit[F[_],O](o: O): Stream[F,O] = Pull.output1(o)
@@ -84,7 +86,6 @@ object Stream {
   object Algebra {
     case class Output[F[_],O,R](values: Catenable[O]) extends Algebra[F,O,R]
     case class Outputs[F[_],O,R](stream: Stream[F, O]) extends Algebra[F,O,R]
-
     case class Wrap[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
     case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
     case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]

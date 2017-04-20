@@ -5,10 +5,10 @@ import Free.ViewL
 import Free.ViewL._
 import Free._
 
-sealed abstract class Free[F[_], R] {
+sealed abstract class Free[F[_], +R] {
 
   def flatMap[R2](f: R => Free[F, R2]): Free[F, R2] = Bind(this, f)
-  def onError(h: Throwable => Free[F,R]): Free[F,R] = OnError(this, h)
+  def onError[R2>:R](h: Throwable => Free[F,R2]): Free[F,R2] = OnError(this, h)
   lazy val viewL: ViewL[F,R] = ViewL(this) // todo - review this
   def translate[G[_]](f: F ~> G): Free[G, R] = this.viewL match {
     case Done(r) => Pure(r)
@@ -39,7 +39,7 @@ object Free {
     try f
     catch { case e: Throwable => Fail(e) }
 
-  sealed abstract class ViewL[F[_], R]
+  sealed abstract class ViewL[F[_], +R]
 
   object ViewL {
     case class Bound[F[_], X, R](fx: F[X], f: X => Free[F, R], onError: Option[Throwable => Free[F,R]]) extends ViewL[F, R] {
