@@ -9,7 +9,7 @@ sealed abstract class Free[F[_], R] {
 
   def flatMap[R2](f: R => Free[F, R2]): Free[F, R2] = Bind(this, f)
   def onError(h: Throwable => Free[F,R]): Free[F,R] = OnError(this, h)
-  def viewL: ViewL[F,R] = ViewL(this)
+  lazy val viewL: ViewL[F,R] = ViewL(this) // todo - review this
   def translate[G[_]](f: F ~> G): Free[G, R] = this.viewL match {
     case Done(r) => Pure(r)
     case Bound(fx, k, onError) => onError match {
