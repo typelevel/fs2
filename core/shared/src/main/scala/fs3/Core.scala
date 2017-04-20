@@ -1,6 +1,11 @@
 package fs2.fast
+package core
 
+import Stream.Algebra
+import Stream.Stream
 import fs2.util.{Free => _, _}
+import fs2.internal.TwoWayLatch
+import Free.ViewL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.JavaConverters
@@ -9,6 +14,7 @@ import scala.collection.JavaConverters
 // X add resource allocation algebra
 // X add exception handling algebra
 // add variance
+//
 // add fancy pure streams type
 // performance testing
 // integrate with rest of fs2
@@ -16,16 +22,15 @@ import scala.collection.JavaConverters
 final class Pull[F[_], O, R](val algebra: Free[({type f[x] = Stream.Algebra[F, O, x]})#f, R]) extends AnyVal {
   def flatMap[R2](f: R => Pull[F, O, R2]): Pull[F, O, R2] =
     Pull(algebra.flatMap { r => f(r).algebra })
-  def >>[R2](after: Pull[F, O, R2]): Pull[F, O, R2] = flatMap(_ => after)
-  def covary[F2[_]](implicit S: Sub1[F,F2]): Pull[F2, O, R] = this.asInstanceOf[Pull[F2, O, R]]
-  def covaryOutput[O2 >: O]: Pull[F, O2, R] = this.asInstanceOf[Pull[F, O2, R]]
-  def covaryResult[R2 >: R]: Pull[F, O, R2] = this.asInstanceOf[Pull[F, O, R2]]
+  def >>[R2](after: => Pull[F, O, R2]): Pull[F, O, R2] = flatMap(_ => after)
   def onError(h: Throwable => Pull[F,O,R]): Pull[F,O,R] =
     new Pull(algebra onError (e => h(e).algebra))
+  def covary[G[_]](implicit S: Sub1[F,G]): Pull[G,O,R] = this.asInstanceOf[Pull[G,O,R]]
+  def covaryOutput[O2](implicit T: RealSupertype[O,O2]): Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
+  def covaryResult[R2](implicit T: RealSupertype[R,R2]): Pull[F,O,R2] = this.asInstanceOf[Pull[F,O,R2]]
 }
 
 object Pull {
-  import Stream.Algebra
 
   def apply[F[_],O,R](value: Free[({type f[x] = Stream.Algebra[F,O,x]})#f, R]): Pull[F, O, R] =
     new Pull[F, O, R](value)
@@ -62,54 +67,71 @@ object Pull {
   }
 }
 
-final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
-  import Free.ViewL
-  import Stream.Algebra
+object Stream {
+  type Stream[F[_],O] = Pull[F,O,Unit]
 
-  def covary[F2[x] >: F[x]]: Stream[F2, O] = this.asInstanceOf[Stream[F2, O]]
-  def covaryOutput[O2 >: O]: Stream[F, O2] = this.asInstanceOf[Stream[F, O2]]
+  def eval[F[_],O](fo: F[O]): Stream[F,O] = Pull.eval(fo).flatMap(Pull.output1)
+  def emit[F[_],O](o: O): Stream[F,O] = Pull.output1(o)
 
-  def flatMap[O2](f: O => Stream[F, O2]): Stream[F, O2] = Stream.fromPull {
-    uncons.flatMap {
-      case None => Pull.pure(())
-      case Some((hd, tl)) =>
-        Pull.outputs(Stream.fromPull(hd.map(f).map(_.pull).toList.foldRight(Pull.pure[F, O2, Unit](()))((o, acc) => o >> acc))) >> tl.flatMap(f).pull
-    }
+  private[fs2] val empty_ = Pull.pure[Nothing,Nothing,Unit](()): Stream[Nothing,Nothing]
+
+  def empty[F[_],O]: Stream[F,O] = empty_.asInstanceOf[Stream[F,O]]
+  def fail[F[_],O](e: Throwable): Stream[F,O] = Pull.fail(e)
+
+  sealed class Token
+  sealed trait Algebra[F[_],O,R]
+
+  object Algebra {
+    case class Output[F[_],O,R](values: Catenable[O]) extends Algebra[F,O,R]
+    case class Outputs[F[_],O,R](stream: Stream[F, O]) extends Algebra[F,O,R]
+
+    case class Wrap[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
+    case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
+    case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
+    case class Snapshot[F[_],O]() extends Algebra[F,O,Set[Token]]
+    case class UnconsAsync[F[_],X,Y,O](s: Stream[F,O])
+      extends Algebra[F,X,Pull[F,Y,Option[(Catenable[O], Stream[F,O])]]]
   }
 
-  def >>[O2](after: Stream[F, O2]): Stream[F, O2] = flatMap(_ => after)
+  case object Interrupted extends Throwable { override def fillInStackTrace = this }
 
-  def ++(s: => Stream[F,O]): Stream[F,O] = Stream.fromPull(pull flatMap (_ => s.pull))
+  def flatMap[F[_],O,O2](s: Stream[F,O])(f: O => Stream[F,O2]): Stream[F,O2] =
+    uncons(s) flatMap {
+      case None => Stream.empty
+      case Some((hd, tl)) =>
+        Pull.outputs(hd.map(f).toList.foldRight(Stream.empty[F,O2])(append(_,_))) >>
+        flatMap(tl)(f)
+    }
 
-  def uncons[X]: Pull[F, X, Option[(Catenable[O], Stream[F, O])]] = {
+  def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
+    s1 >> s2
+
+  def uncons[F[_],X,O](s: Stream[F,O]): Pull[F, X, Option[(Catenable[O], Stream[F, O])]] = {
     type AlgebraF[x] = Algebra[F,O,x]
-    def assumeNoOutput[Y,R](p: Pull[F,Y,R]): Pull[F,X,R] =
-      p.asInstanceOf[Pull[F,X,R]]
-    pull.algebra.viewL match {
-      case done: ViewL.Done[AlgebraF, Unit] =>
-        Pull.pure(None)
+    def assumeNoOutput[Y,R](p: Pull[F,Y,R]): Pull[F,X,R] = p.asInstanceOf[Pull[F,X,R]]
+
+    s.algebra.viewL match {
+      case done: ViewL.Done[AlgebraF, Unit] => Pull.pure(None)
       case failed: ViewL.Failed[AlgebraF, _] => Pull.fail(failed.error)
       case bound: ViewL.Bound[AlgebraF, _, Unit] =>
+        val f = bound.f.asInstanceOf[Unit => Free[AlgebraF, Unit]]
         bound.fx match {
-          case Algebra.Output(os) =>
-            val f = bound.f.asInstanceOf[Unit => Free[AlgebraF, Unit]]
-            Pull.pure(Some((os, Stream.fromPull(Pull(f(()))))))
+          case Algebra.Output(os) => Pull.pure(Some((os, Pull(f(())))))
           case Algebra.Outputs(s) =>
-            val f = bound.f.asInstanceOf[Unit => Free[AlgebraF, Unit]]
-            s.uncons.flatMap {
-              case None => Stream.fromPull(Pull(f(()))).uncons
+            uncons(s) flatMap {
+              case None => Stream.uncons(Pull(f(())))
               case Some((hd, tl)) =>
-                Pull.pure(Some((hd, tl >> Stream.fromPull(Pull(f(()))))))
+                Pull.pure(Some((hd, tl >> Pull(f(())))))
             }
           case algebra => // Wrap, Acquire, Release, Snapshot, UnconsAsync
             bound.onError match {
               case None =>
                 assumeNoOutput(Pull(Free.Eval(algebra)))
-                  .flatMap(x => Stream.fromPull(Pull(bound.f(x))).uncons)
+                  .flatMap(x => uncons(Pull(bound.f(x))))
               case Some(onError) =>
                 assumeNoOutput(Pull(Free.Eval(algebra)))
-                  .flatMap(x => Stream.fromPull(Pull(bound.f(x))).uncons)
-                  .onError(e => Stream.fromPull(Pull(bound.handleError(e))).uncons)
+                  .flatMap(x => uncons(Pull(bound.f(x))))
+                  .onError(e => uncons(Pull(bound.handleError(e))))
             }
         }
     }
@@ -136,35 +158,33 @@ final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
    * know we will acquire a resource, we are guaranteed that doing `midAcquires.waitUntil0`
    * will unblock only when `resources` is no longer growing.
    */
-  def runFold[A](startCompletion: AtomicBoolean,
-                 midAcquires: TwoWayLatch,
-                 resources: ConcurrentHashMap[Stream.Token, F[Unit]])
-                (init: A)(f: (A, O) => A)(implicit F: Async[F]): F[A] = {
+  def runFold[F2[_],O,B](stream: Stream[F2,O], init: B)(f: (B, O) => B,
+      startCompletion: AtomicBoolean,
+      midAcquires: TwoWayLatch,
+      resources: ConcurrentHashMap[Stream.Token, F2[Unit]])(implicit A: Async[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
-    def go(acc: A, v: ViewL[AlgebraF, Option[(Catenable[O], Stream[F, O])]]): F[A] = v match {
-      case done: ViewL.Done[AlgebraF, Option[(Catenable[O], Stream[F, O])]] =>
-        done.r match {
-          case None => F.pure(acc)
-          case Some((hd, tl)) => go(hd.toList.foldLeft(acc)(f), tl.uncons.algebra.viewL)
-        }
-      case failed: ViewL.Failed[AlgebraF, _] =>
-        F.fail(failed.error)
+    type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
+    def go(acc: B, v: ViewL[AlgebraF, Option[(Catenable[O], Stream[F, O])]]): F[B] = v match {
+      case done: ViewL.Done[AlgebraF, Option[(Catenable[O], Stream[F, O])]] => done.r match {
+        case None => A.pure(acc)
+        case Some((hd, tl)) => go(hd.toList.foldLeft(acc)(f), uncons(tl).algebra.viewL)
+      }
+      case failed: ViewL.Failed[AlgebraF, _] => A.fail(failed.error)
       case bound: ViewL.Bound[AlgebraF, _, Option[(Catenable[O], Stream[F, O])]] =>
         val g = bound.tryBind.asInstanceOf[Any => Free[AlgebraF, Option[(Catenable[O], Stream[F, O])]]]
         bound.fx match {
           case wrap: Algebra.Wrap[F, O, _] =>
-            val wrapped: F[Any] = wrap.value.asInstanceOf[F[Any]]
-            F.flatMap(wrapped) { x => go(acc, g(x).viewL) }
+            A.flatMap(wrap.value.asInstanceOf[F[Any]]) { x => go(acc, g(x).viewL) }
           case Algebra.Acquire(resource, release) =>
             midAcquires.increment
-            if (startCompletion.get) { midAcquires.decrement; F.fail(Stream.Interrupted) }
+            if (startCompletion.get) { midAcquires.decrement; A.fail(Stream.Interrupted) }
             else
-              F.flatMap(F.attempt(resource)) {
+              A.flatMap(A.attempt(resource)) {
                 case Left(err) => go(acc, bound.handleError(err).viewL)
                 case Right(r) =>
                   val token = new Stream.Token()
                   lazy val finalizer_ = release(r)
-                  val finalizer = F.suspend { finalizer_ }
+                  val finalizer = A.suspend { finalizer_ }
                   resources.put(token, finalizer)
                   midAcquires.decrement
                   go(acc, g((r, token)).viewL)
@@ -172,7 +192,7 @@ final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
           case Algebra.Release(token) =>
             val finalizer = resources.remove(token)
             if (finalizer.asInstanceOf[AnyRef] eq null) go(acc, g(()).viewL)
-            else F.flatMap(F.attempt(finalizer)) {
+            else A.flatMap(A.attempt(finalizer)) {
               case Left(err) => go(acc, bound.handleError(err).viewL)
               case Right(_) => go(acc, g(()).viewL)
             }
@@ -184,48 +204,18 @@ final class Stream[F[_], O](val pull: Pull[F, O, Unit]) {
           case Algebra.UnconsAsync(s) =>
             type UO = Option[(Catenable[_], Stream[F,_])]
             type R = Either[Throwable, UO]
-            val task: F[F[R]] = F.start {
-              F.attempt {
-                Stream.fromPull(s.uncons.flatMap(Pull.output1))
-                      .runFold(startCompletion, midAcquires, resources)(None: UO) { (o,a) => a }
-              }
-            }
-            F.flatMap(task) { (task: F[R]) =>
-              go(acc, g(Pull.rethrow(Pull.eval[F,O,R](task))).viewL)
-            }
+            val task: F[F[R]] = A.start { A.attempt {
+              runFold(
+                uncons(s.asInstanceOf[Stream[F,Any]]).flatMap(Pull.output1(_)),
+                None: UO)((o,a) => a, startCompletion, midAcquires, resources)
+            }}
+            A.flatMap(task) { (task: F[R]) => go(acc, g(Pull.rethrow(Pull.eval[F,O,R](task))).viewL) }
           case Algebra.Output(_) => sys.error("impossible")
           case Algebra.Outputs(_) => sys.error("impossible")
         }
     }
-    F.suspend { go(init, uncons.algebra.viewL) }
+    A.suspend { go(init, uncons(stream).algebra.viewL) }
   }
-
-}
-
-object Stream {
-  def eval[F[_],O](fo: F[O]): Stream[F,O] = Stream.fromPull(Pull.eval(fo).flatMap(Pull.output1))
-  def emit[F[_],O](o: O): Stream[F,O] = Stream.fromPull(Pull.output1(o))
-  def empty[F[_],O]: Stream[F,O] = Stream.fromPull(Pull.pure(()))
-  def fail[F[_],O](e: Throwable): Stream[F,O] = Stream.fromPull(Pull.fail(e))
-
-  def fromPull[F[_],O](pull: Pull[F,O,Unit]): Stream[F,O] = new Stream(pull)
-
-  sealed class Token
-  sealed trait Algebra[F[_],O,R]
-
-  object Algebra {
-    case class Output[F[_],O,R](values: Catenable[O]) extends Algebra[F,O,R]
-    case class Outputs[F[_],O,R](stream: Stream[F, O]) extends Algebra[F,O,R]
-
-    case class Wrap[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
-    case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
-    case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
-    case class Snapshot[F[_],O]() extends Algebra[F,O,Set[Token]]
-    case class UnconsAsync[F[_],X,Y,O](s: Stream[F,O])
-      extends Algebra[F,X,Pull[F,Y,Option[(Catenable[O], Stream[F,O])]]]
-  }
-
-  case object Interrupted extends Throwable { override def fillInStackTrace = this }
 }
 
 object Woot extends App {
@@ -233,21 +223,26 @@ object Woot extends App {
   implicit val S = scala.concurrent.ExecutionContext.Implicits.global
 
   val N = 10000
-  val s = (0 until N).map(Stream.emit[Task,Int](_)).foldLeft(Stream.empty[Task,Int])(_ ++ _)
+  val s = (0 until N).map(Stream.emit[Task,Int](_)).foldLeft(Stream.empty[Task,Int])(Stream.append(_,_))
   val s2 = (0 until N).map(fs2.Stream.emit).foldLeft(fs2.Stream.empty: fs2.Stream[Task,Int])(_ ++ _)
 
+  def printSum(s: Stream[Task,Int]) = println {
+    Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRun()
+  }
+  printSum(s)
+  println { s2.runFold(0)(_ + _).unsafeRun() }
   timeit("new") {
-    s.runFold(new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap)(0)(_ + _).unsafeRun()
+    Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRun()
   }
   timeit("old") {
     s2.runFold(0)(_ + _).unsafeRun()
   }
 
-  def timeit(label: String, threshold: Double = 0.99)(action: => Long): Long = {
+  def timeit(label: String, threshold: Double = 0.95)(action: => Long): Long = {
     // todo - better statistics to determine when to stop, based on
     // assumption that distribution of runtimes approaches some fixed normal distribution
     // (as all methods relevant to overall performance get JIT'd)
-    var N = 32
+    var N = 64
     var i = 0
     var startTime = System.nanoTime
     var stopTime = System.nanoTime
@@ -263,6 +258,7 @@ object Woot extends App {
       sample = (stopTime - startTime) / N
       ratio = sample.toDouble / previousSample.toDouble
       println(s"iteration $label: " + formatNanos(sample) + " (average of " + N + " samples)")
+      System.gc()
     }
     println(label + ": " + formatNanos(sample) + " (average of " + N + " samples)")
     println("total number of samples across all iterations: " + K)

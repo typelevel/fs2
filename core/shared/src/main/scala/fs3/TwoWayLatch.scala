@@ -1,4 +1,4 @@
-package fs2.fast
+package fs2.internal
 
 import java.util.concurrent.Phaser
 
