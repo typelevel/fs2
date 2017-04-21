@@ -99,14 +99,6 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.collectFirst(pf)) shouldBe runLog(s.get).collectFirst(pf).toVector
     }
 
-    "combineAll" in forAll { (s: PureStream[Int]) =>
-      s.get.combineAll.toVector shouldBe Vector(runLog(s.get).combineAll)
-    }
-
-    "combineAll (2)" in forAll { (s: PureStream[Double]) =>
-      s.get.combineAll.toVector shouldBe Vector(runLog(s.get).combineAll)
-    }
-
     "delete" in forAll { (s: PureStream[Int]) =>
       val v = runLog(s.get)
       val i = if (v.isEmpty) 0 else Gen.oneOf(v).sample.getOrElse(0)
@@ -184,6 +176,14 @@ class PipeSpec extends Fs2Spec {
     "fold (2)" in forAll { (s: PureStream[Int], n: String) =>
       val f = (a: String, b: Int) => a + b
       runLog(s.get.fold(n)(f)) shouldBe Vector(runLog(s.get).foldLeft(n)(f))
+    }
+
+    "foldMonoid" in forAll { (s: PureStream[Int]) =>
+      s.get.foldMonoid.toVector shouldBe Vector(runLog(s.get).combineAll)
+    }
+
+    "foldMonoid (2)" in forAll { (s: PureStream[Double]) =>
+      s.get.foldMonoid.toVector shouldBe Vector(runLog(s.get).combineAll)
     }
 
     "fold1" in forAll { (s: PureStream[Int]) =>

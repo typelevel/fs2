@@ -1,6 +1,6 @@
 package fs2
 
-import cats.{ Eq, Functor, Monoid }
+import cats.{ Eq, Functor }
 import cats.implicits._
 
 import fs2.async.mutable.Queue
@@ -87,10 +87,6 @@ object pipe {
   /** Emits the first element of the Stream for which the partial function is defined. */
   def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
     _ pull { h => h.find(pf.isDefinedAt) flatMap { case (i, h) => Pull.output1(pf(i)) }}
-
-  /** Writes the combination of all input elements, or empty if the input is empty. */
-  def combineAll[F[_],I](implicit I: Monoid[I]): Pipe[F,I,I] =
-    fold(I.empty)(I.combine)
 
   /** Skips the first element that matches the predicate. */
   def delete[F[_],I](p: I => Boolean): Pipe[F,I,I] =

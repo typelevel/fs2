@@ -615,9 +615,6 @@ object Stream {
     /** Alias for `self through [[pipe.changes]]`. */
     def changes(implicit eq: Eq[O]): Stream[F,O] = self through pipe.changes
 
-    /** Alias for `self through [[pipe.combineAll]](f)`. */
-    def combineAll(implicit O: Monoid[O]): Stream[F,O] = self through pipe.combineAll
-
     /** Folds this stream with the monoid for `O`. */
     def foldMonoid(implicit O: Monoid[O]): Stream[F,O] = self.fold(O.empty)(O.combine)
 
