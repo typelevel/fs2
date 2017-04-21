@@ -2,20 +2,19 @@ package fs2
 package fast
 
 import fs2.util.Catenable
-import Segment.{TailCall,tailcall}
+import Segment.{TailCall,tailcall,MaxFusionDepth}
 
 // todo -
 //   X get rid of depth parameter
 //   X add append buffer
 //   X pass depth to step function
-//   use exceptions for tail calls
+//   X use exceptions for tail calls
 //   support chunks directly
 
 abstract class Segment[+O] { self =>
   type S0
   def s0: S0
-  val step: (S0, () => Unit, S0 => Unit, (O, S0) => Unit) => Unit
-  def depth: Int
+  val step: (Int, S0, () => Unit, S0 => Unit, (O, S0) => Unit) => Unit
   // val step: (S0, () => Unit, S0 => Unit, (O, S0) => Unit, (Chunk[O], S0) => Unit) => Unit
 
   def foldLeft[B](z: B)(f: (B,O) => B): B = {
@@ -25,13 +24,13 @@ abstract class Segment[+O] { self =>
     val done = () => { keepGoing = false }
     val skip = (snew: S0) => { s = snew }
     val emit = (o: O, snew: S0) => { s = snew; b = f(b, o) }
-    while (keepGoing) stepTrampolined(s, done, skip, emit)
+    while (keepGoing) stepTrampolined(0, s, done, skip, emit)
     b
   }
 
   final def stepTrampolined(
-      s0: S0, done: () => Unit, skip: S0 => Unit, emit: (O, S0) => Unit): Unit = {
-    try step(s0, done, skip, emit)
+      depth: Int, s0: S0, done: () => Unit, skip: S0 => Unit, emit: (O, S0) => Unit): Unit = {
+    try step(depth, s0, done, skip, emit)
     catch { case TailCall(c) =>
       var more = true
       var call = c
@@ -49,7 +48,7 @@ abstract class Segment[+O] { self =>
     val buf = new collection.mutable.ArrayBuffer[O]
     var keepGoing = true
     while (keepGoing)
-      self.stepTrampolined(s, () => keepGoing = false, s0 => s = s0, (o, s0) => {
+      self.stepTrampolined(0, s, () => keepGoing = false, s0 => s = s0, (o, s0) => {
         val (ok, ss2) = f(o,ss)
         if (ok) { ss = ss2; buf += o; s = s0 }
         else keepGoing = false
@@ -72,10 +71,10 @@ abstract class Segment[+O] { self =>
     var keepGoing = true
     var s = s0
     while (keepGoing) {
-      stepTrampolined(
-        s, () => keepGoing = false,
-           s1 => { s = s1 },
-           (o, s) => { keepGoing = false; result = Some((o, self.reset(s))) })
+      stepTrampolined(0, s,
+        () => keepGoing = false,
+        s1 => { s = s1 },
+        (o, s) => { keepGoing = false; result = Some((o, self.reset(s))) })
     }
     result
   }
@@ -89,67 +88,73 @@ abstract class Segment[+O] { self =>
   def prepend[O2>:O](u: Segment[O2]): Segment[O2] = u ++ self
 
   def ++[O2>:O](u: Segment[O2]): Segment[O2] =
-    Segment.Catenated(self.depth, Catenable(self)) ++ u
-
-  def suspend: Segment[O] = new Segment[O] {
-    type S0 = self.S0
-    val s0 = self.s0
-    val depth = 0
-    val step = (s, done, skip, emit) =>
-      tailcall { self.step(s, done, skip, emit) }
-  }
+    Segment.Catenated(Catenable(self)) ++ u
 
   def loop[S1,B](s1: S1)(f: (O, S1, () => Unit, S1 => Unit, (B,S1) => Unit) => Unit): Segment[B] =
-    if (depth < Segment.MaxFusionDepth) new Segment[B] {
+    new Segment[B] {
       type S0 = (self.S0, S1)
       val s0 = (self.s0, s1)
-      val depth = self.depth + 1
-      val step = (s, done, skip, emit) => {
+      val step = (depth, s, done, skip, emit) => {
         val s0 = s._1
         val s1 = s._2
-        self.step(s0, done, s0 => skip((s0, s1)), (o, s0) => {
-          f(o, s1, done, s1 => skip((s0,s1)), (b, s1) => emit(b, (s0,s1)))
-        })
+        if (depth < MaxFusionDepth)
+          self.step(depth+1, s0, done, s0 => skip((s0, s1)), (o, s0) => {
+            f(o, s1, done, s1 => skip((s0,s1)), (b, s1) => emit(b, (s0,s1)))
+          })
+        else tailcall {
+          self.step(0, s0, done, s0 => skip((s0, s1)), (o, s0) => {
+            f(o, s1, done, s1 => skip((s0,s1)), (b, s1) => emit(b, (s0,s1)))
+          })
+        }
       }
     }
-    else suspend.loop(s1)(f)
 
   def map[O2](f: O => O2): Segment[O2] =
-    if (depth < Segment.MaxFusionDepth) new Segment[O2] {
+    new Segment[O2] {
       type S0 = self.S0
       def s0 = self.s0
-      val depth = self.depth + 1
-      val step = (s, done, skip, emit) =>
-        if (math.random < 0.95)
-          self.step(s, done, skip, (o, s0) => emit(f(o), s0))
+      val step = (depth, s, done, skip, emit) =>
+        if (depth < MaxFusionDepth)
+          self.step(depth+1, s, done, skip, (o, s0) => emit(f(o), s0))
         else
-          tailcall { self.step(s, done, skip, (o, s0) => emit(f(o), s0)) }
+          tailcall { self.step(0, s, done, skip, (o, s0) => emit(f(o), s0)) }
     }
-    else suspend.map(f)
 
   def filter(f: O => Boolean): Segment[O] =
-    if (depth < Segment.MaxFusionDepth) new Segment[O] {
+    new Segment[O] {
       type S0 = self.S0
       def s0 = self.s0
-      val depth = self.depth + 1
-      val step = (s, done, skip, emit) =>
-        self.step(s, done, skip, (o, s0) => if (f(o)) emit(o, s0) else skip(s0))
+      val step = (depth, s, done, skip, emit) =>
+        if (depth < MaxFusionDepth)
+          self.step(depth+1, s, done, skip, (o, s0) => if (f(o)) emit(o, s0) else skip(s0))
+        else tailcall {
+          self.step(0, s, done, skip, (o, s0) => if (f(o)) emit(o, s0) else skip(s0))
+        }
     }
-    else suspend.filter(f)
 
   def zip[O2](s: Segment[O2]): Segment[(O,O2)] =
-    if (depth < Segment.MaxFusionDepth) new Segment[(O,O2)] {
+    new Segment[(O,O2)] {
       type S0 = (self.S0, Option[O], s.S0)
       def s0 = (self.s0, None, s.s0)
-      val depth = self.depth + 1
-      val step = (zs, done, skip, emit) => zs._2 match {
-        case None => self.step(zs._1, done, s0 => skip((s0, None, zs._3)),
-                              (o, s0) => skip((s0, Some(o), zs._3)))
-        case Some(o) => s.step(zs._3, done, s2 => skip((zs._1, zs._2, s2)),
+      val step = (depth, zs, done, skip, emit) => zs._2 match {
+        case None =>
+          if (depth < MaxFusionDepth)
+            self.step(depth+1, zs._1, done, s0 => skip((s0, None, zs._3)),
+                                (o, s0) => skip((s0, Some(o), zs._3)))
+          else tailcall {
+            self.step(0, zs._1, done, s0 => skip((s0, None, zs._3)),
+                                (o, s0) => skip((s0, Some(o), zs._3)))
+          }
+        case Some(o) =>
+          if (depth < MaxFusionDepth)
+            s.step(depth+1, zs._3, done, s2 => skip((zs._1, zs._2, s2)),
                               (o2, s2) => emit((o,o2), (zs._1, None, s2)))
+          else tailcall {
+            s.step(depth+1, zs._3, done, s2 => skip((zs._1, zs._2, s2)),
+                              (o2, s2) => emit((o,o2), (zs._1, None, s2)))
+          }
       }
     }
-    else suspend.zip(s)
 
   def take(n: Int): Segment[O] =
     loop(n)((o, n, done, skip, emit) => if (n <= 0) done() else emit(o, n-1))
@@ -175,7 +180,6 @@ abstract class Segment[+O] { self =>
     type S0 = self.S0
     def s0 = s
     val step = self.step
-    val depth = self.depth
   }
 
   /**
@@ -197,14 +201,14 @@ object Segment {
     type S0 = Unit
     def s0 = ()
     def depth = 0
-    val step = (_,done,_,_) => done()
+    val step = (_,_,done,_,_) => done()
   }
 
   def single[O](o: O): Segment[O] = new Segment[O] {
     type S0 = Boolean
     def s0 = true
     def depth = 0
-    val step = (s,done,skip,emit) => if (s) emit(o, false) else done()
+    val step = (depth,s,done,skip,emit) => if (s) emit(o, false) else done()
   }
 
   def apply[O](os: O*): Segment[O] = seq(os)
@@ -219,7 +223,7 @@ object Segment {
     type S0 = S
     def s0 = s
     def depth = 0
-    val step = (s, done, skip, emit) => f(s) match {
+    val step = (_, s, done, skip, emit) => f(s) match {
       case None => done()
       case Some((h,t)) => emit(h,t)
     }
@@ -229,25 +233,35 @@ object Segment {
     type S0 = Long
     def s0 = n
     def depth = 0
-    val step = (n, done, skip, emit) => emit(n, n + 1)
+    val step = (_, n, done, skip, emit) => emit(n, n + 1)
   }
 
-  case class Catenated[O](depth: Int, s0: Catenable[Segment[O]]) extends Segment[O] {
+  case class Catenated[O](s0: Catenable[Segment[O]]) extends Segment[O] {
     type S0 = Catenable[Segment[O]]
-    val step = (s, done, skip, emit) => s.uncons match {
-      case None => done()
-      case Some((hd,tl)) =>
-        hd.step(hd.s0, () => skip(tl),
-                       s0 => skip(hd.reset(s0) +: tl),
-                       (o,s0) => emit(o, hd.reset(s0) +: tl))
-    }
+    val step = (depth, s, done, skip, emit) =>
+      if (depth < MaxFusionDepth)
+        s.uncons match {
+        case None => done()
+        case Some((hd,tl)) =>
+          hd.step(depth, hd.s0, () => skip(tl),
+                         s0 => skip(hd.reset(s0) +: tl),
+                         (o,s0) => emit(o, hd.reset(s0) +: tl))
+      }
+      else tailcall { s.uncons match {
+        case None => done()
+        case Some((hd,tl)) =>
+          hd.step(0, hd.s0,
+            () => skip(tl),
+            s0 => skip(hd.reset(s0) +: tl),
+            (o,s0) => emit(o, hd.reset(s0) +: tl))
+      }}
     override def ++[O2>:O](u: Segment[O2]) = u match {
-      case Catenated(_, segs) => Catenated(depth max u.depth, s0 ++ segs)
-      case _ => Catenated(depth max u.depth, s0 :+ u)
+      case Catenated(segs) => Catenated(s0 ++ segs)
+      case _ => Catenated(s0 :+ u)
     }
     override def prepend[O2>:O](u: Segment[O2]) = u match {
-      case Catenated(_, segs) => Catenated(depth max u.depth, segs ++ s0)
-      case _ => Catenated(depth max u.depth, u +: s0)
+      case Catenated(segs) => Catenated(segs ++ s0)
+      case _ => Catenated(u +: s0)
     }
   }
 
@@ -256,8 +270,8 @@ object Segment {
     override def toString = "TailCall"
   }
 
-  /** The max number of operations that will be fused before producing a fresh stack via `[[Segment.suspend]]`. */
-  val MaxFusionDepth = 5
+  /** The max number of operations that will be fused before trampolining via `[[Segment.tailcall]]`. */
+  val MaxFusionDepth = 50
 
   private[fs2]
   def tailcall(u: => Unit) = throw TailCall(() => u)
