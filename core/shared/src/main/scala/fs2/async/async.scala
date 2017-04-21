@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.Async
+import fs2.util.Concurrent
 import fs2.async.mutable.Topic
 
 /** Provides utilities for asynchronous computations. */
@@ -10,22 +10,22 @@ package object async {
    * Creates a new continuous signal which may be controlled asynchronously,
    * and immediately sets the value to `initialValue`.
    */
-  def signalOf[F[_]:Async,A](initialValue: A): F[mutable.Signal[F,A]] =
+  def signalOf[F[_]:Concurrent,A](initialValue: A): F[mutable.Signal[F,A]] =
     mutable.Signal(initialValue)
 
   /** Creates a `[[mutable.Semaphore]]`, initialized to the given count. */
-  def semaphore[F[_]:Async](initialCount: Long): F[mutable.Semaphore[F]] =
+  def semaphore[F[_]:Concurrent](initialCount: Long): F[mutable.Semaphore[F]] =
     mutable.Semaphore(initialCount)
 
   /** Creates an unbounded asynchronous queue. See [[mutable.Queue]] for more documentation. */
-  def unboundedQueue[F[_]:Async,A]: F[mutable.Queue[F,A]] =
+  def unboundedQueue[F[_]:Concurrent,A]: F[mutable.Queue[F,A]] =
     mutable.Queue.unbounded[F,A]
 
   /**
    * Creates a bounded asynchronous queue. Calls to `enqueue1` will wait until the
    * queue's size is less than `maxSize`. See [[mutable.Queue]] for more documentation.
    */
-  def boundedQueue[F[_]:Async,A](maxSize: Int): F[mutable.Queue[F,A]] =
+  def boundedQueue[F[_]:Concurrent,A](maxSize: Int): F[mutable.Queue[F,A]] =
     mutable.Queue.bounded[F,A](maxSize)
 
   /**
@@ -33,7 +33,7 @@ package object async {
    * block until there is an offsetting call to `dequeue1`. Any calls to `dequeue1`
    * block until there is an offsetting call to `enqueue1`.
    */
-  def synchronousQueue[F[_],A](implicit F: Async[F]): F[mutable.Queue[F,A]] =
+  def synchronousQueue[F[_],A](implicit F: Concurrent[F]): F[mutable.Queue[F,A]] =
     mutable.Queue.synchronous[F,A]
 
   /**
@@ -42,7 +42,7 @@ package object async {
    * the oldest elements. Thus an enqueue process will never wait.
    * @param maxSize The size of the circular buffer (must be > 0)
    */
-  def circularBuffer[F[_],A](maxSize: Int)(implicit F: Async[F]): F[mutable.Queue[F,A]] =
+  def circularBuffer[F[_],A](maxSize: Int)(implicit F: Concurrent[F]): F[mutable.Queue[F,A]] =
     mutable.Queue.circularBuffer[F,A](maxSize)
 
   /**
@@ -54,11 +54,11 @@ package object async {
    *
    * @param source   discrete stream publishing values to this signal
    */
-  def hold[F[_]:Async,A](initial: A, source: Stream[F, A]): Stream[F, immutable.Signal[F,A]] =
+  def hold[F[_]:Concurrent,A](initial: A, source: Stream[F, A]): Stream[F, immutable.Signal[F,A]] =
      immutable.Signal.hold(initial, source)
 
   /** Defined as `[[hold]](None, source.map(Some(_)))` */
-  def holdOption[F[_]:Async,A](source: Stream[F, A]): Stream[F, immutable.Signal[F,Option[A]]] =
+  def holdOption[F[_]:Concurrent,A](source: Stream[F, A]): Stream[F, immutable.Signal[F,Option[A]]] =
      immutable.Signal.holdOption(source)
 
   /**
@@ -66,6 +66,6 @@ package object async {
     * an arbitrary number of subscribers. Each subscriber is guaranteed to
     * receive at least the initial `A` or last value published by any publisher.
     */
-  def topic[F[_]:Async,A](initial: A): F[Topic[F,A]] =
+  def topic[F[_]:Concurrent,A](initial: A): F[Topic[F,A]] =
     Topic(initial)
 }

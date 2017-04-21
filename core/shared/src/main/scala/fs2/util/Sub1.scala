@@ -52,6 +52,6 @@ object Sub1 extends Sub1Instances0 {
   def substPull[F[_],G[_],W,R](p: Pull[F,W,R])(implicit S: Sub1[F,G]): Pull[G,W,R] =
     subst[({ type f[g[_],x] = Pull[g,W,x] })#f,F,G,R](p)
 
-  def substUF1[F[_],G[_],H[_]](u: F ~> G)(implicit S: Sub1[G,H]): F ~> H =
-    subst[({ type f[g[_],x] = F ~> g })#f,G,H,Nothing](u)
+  def substUF1[F[_],G[_],H[_]](u: UF1[F, G])(implicit S: Sub1[G,H]): UF1[F, H] =
+    subst[({ type f[g[_],x] = UF1[F, g] })#f,G,H,Nothing](u)
 }

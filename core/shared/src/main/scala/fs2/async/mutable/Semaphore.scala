@@ -2,8 +2,9 @@ package fs2
 package async
 package mutable
 
-import fs2.util.Async
-import fs2.util.syntax._
+import cats.implicits._
+
+import fs2.util.Concurrent
 
 /**
  * An asynchronous semaphore, useful as a concurrency primitive.
@@ -60,15 +61,15 @@ trait Semaphore[F[_]] {
 object Semaphore {
 
   /** Creates a new `Semaphore`, initialized with `n` available permits. */
-  def apply[F[_]](n: Long)(implicit F: Async[F]): F[Semaphore[F]] = {
+  def apply[F[_]](n: Long)(implicit F: Concurrent[F]): F[Semaphore[F]] = {
     def ensureNonneg(n: Long) = assert(n >= 0, s"n must be nonnegative, was: $n ")
 
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is non-empty, and there are n permits available (Right)
-    type S = Either[Vector[(Long,Async.Ref[F,Unit])], Long]
+    type S = Either[Vector[(Long,Concurrent.Ref[F,Unit])], Long]
     F.refOf[S](Right(n)).map { ref => new Semaphore[F] {
-      private def open(gate: Async.Ref[F,Unit]): F[Unit] =
+      private def open(gate: Concurrent.Ref[F,Unit]): F[Unit] =
         gate.setPure(())
 
       def count = ref.get.map(count_)
@@ -144,5 +145,5 @@ object Semaphore {
   }}}
 
   /** Creates a `Semaphore` with 0 initial permits. */
-  def empty[F[_]:Async]: F[Semaphore[F]] = apply(0)
+  def empty[F[_]:Concurrent]: F[Semaphore[F]] = apply(0)
 }

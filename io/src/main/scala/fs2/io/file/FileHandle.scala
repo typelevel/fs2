@@ -5,8 +5,10 @@ package file
 import java.nio.ByteBuffer
 import java.nio.channels.{AsynchronousFileChannel, FileChannel, FileLock}
 
-import fs2.util.{Async,Suspendable}
-import fs2.util.syntax._
+import cats.effect.Sync
+import cats.implicits._
+
+import fs2.util.Concurrent
 
 /**
  * Provides the ability to read/write/lock/inspect a file in the effect `F`.
@@ -95,7 +97,7 @@ private[file] object FileHandle {
    *
    * Uses a `java.nio.Channels.CompletionHandler` to handle callbacks from IO operations.
    */
-  private[file] def fromAsynchronousFileChannel[F[_]](chan: AsynchronousFileChannel)(implicit F: Async[F]): FileHandle[F] = {
+  private[file] def fromAsynchronousFileChannel[F[_]](chan: AsynchronousFileChannel)(implicit F: Concurrent[F]): FileHandle[F] = {
     new FileHandle[F] {
       type Lock = FileLock
 
@@ -103,14 +105,14 @@ private[file] object FileHandle {
         F.delay(chan.force(metaData))
 
       override def lock: F[Lock] =
-        asyncCompletionHandler[F, Lock](f => F.pure(chan.lock(null, f)))
+        asyncCompletionHandler[F, Lock](f => chan.lock(null, f))
 
       override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
-        asyncCompletionHandler[F, Lock](f => F.pure(chan.lock(position, size, shared, null, f)))
+        asyncCompletionHandler[F, Lock](f => chan.lock(position, size, shared, null, f))
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] = {
         val buf = ByteBuffer.allocate(numBytes)
-        asyncCompletionHandler[F, Integer](f => F.pure(chan.read(buf, offset, null, f))).map { len =>
+        asyncCompletionHandler[F, Integer](f => chan.read(buf, offset, null, f)).map { len =>
           if (len < 0) None else if (len == 0) Some(Chunk.empty) else Some(Chunk.bytes(buf.array.take(len)))
         }
       }
@@ -132,7 +134,7 @@ private[file] object FileHandle {
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
         F.map(
-          asyncCompletionHandler[F, Integer](f => F.pure(chan.write(ByteBuffer.wrap(bytes.toArray), offset, null, f))))(
+          asyncCompletionHandler[F, Integer](f => chan.write(ByteBuffer.wrap(bytes.toArray), offset, null, f)))(
           i => i.toInt
         )
     }
@@ -141,7 +143,7 @@ private[file] object FileHandle {
   /**
    * Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`.
    */
-  private[file] def fromFileChannel[F[_]](chan: FileChannel)(implicit F: Suspendable[F]): FileHandle[F] = {
+  private[file] def fromFileChannel[F[_]](chan: FileChannel)(implicit F: Sync[F]): FileHandle[F] = {
     new FileHandle[F] {
       type Lock = FileLock
 

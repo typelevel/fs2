@@ -3,7 +3,7 @@ package io
 
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
-import fs2.util.Async
+import fs2.util.Concurrent
 
 /** Provides support for TCP networking. */
 package object tcp {
@@ -27,7 +27,7 @@ package object tcp {
     , receiveBufferSize: Int = 256 * 1024
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
-  )(implicit AG: AsynchronousChannelGroup, F: Async[F]): Stream[F,Socket[F]] =
+  )(implicit AG: AsynchronousChannelGroup, F: Concurrent[F]): Stream[F,Socket[F]] =
   Socket.client(to,reuseAddress,sendBufferSize,receiveBufferSize,keepAlive,noDelay)
 
   /**
@@ -55,7 +55,7 @@ package object tcp {
     , maxQueued: Int = 0
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
-    implicit AG: AsynchronousChannelGroup, F: Async[F]
+    implicit AG: AsynchronousChannelGroup, F: Concurrent[F]
   ): Stream[F, Stream[F, Socket[F]]] =
     serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize).collect { case Right(s) => s }
 
@@ -69,7 +69,7 @@ package object tcp {
     , maxQueued: Int = 0
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
-    implicit AG: AsynchronousChannelGroup, F: Async[F]
+    implicit AG: AsynchronousChannelGroup, F: Concurrent[F]
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
     Socket.server(flatMap,maxQueued,reuseAddress,receiveBufferSize)
 }

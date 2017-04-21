@@ -1,7 +1,10 @@
 package fs2
 
 import scala.collection.immutable.VectorBuilder
-import fs2.util.{Applicative,Async,Attempt,Catchable,Free,Lub1,RealSupertype,Sub1,~>}
+import cats.{ Applicative, Eq, MonadError, Monoid, Semigroup }
+import cats.effect.IO
+import cats.implicits._
+import fs2.util.{ Attempt, Concurrent, Free, Lub1, RealSupertype, Sub1, UF1 }
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -76,11 +79,8 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.bufferBy]]`. */
   def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
 
-  /** Alias for `self through [[pipe.changes]]`. */
-  def changes: Stream[F,O] = self through pipe.changes
-
   /** Alias for `self through [[pipe.changesBy]]`. */
-  def changesBy[O2](f: O => O2): Stream[F,O] = self through pipe.changesBy(f)
+  def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F,O] = self through pipe.changesBy(f)
 
   /** Alias for `self through [[pipe.chunkLimit]]`. */
   def chunkLimit(n: Int): Stream[F,NonEmptyChunk[O]] = self through pipe.chunkLimit(n)
@@ -135,7 +135,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def dropWhile(p: O => Boolean): Stream[F,O] = self through pipe.dropWhile(p)
 
   /** Alias for `(this through2v s2)(pipe2.either)`. */
-  def either[F2[_]:Async,O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2]): Stream[F2,Either[O,O2]] =
+  def either[F2[_]:Concurrent,O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2]): Stream[F2,Either[O,O2]] =
     (self through2v s2)(pipe2.either)
 
   def evalMap[G[_],Lub[_],O2](f: O => G[O2])(implicit L: Lub1[F,G,Lub]): Stream[Lub,O2] =
@@ -150,7 +150,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def flatMap[G[_],Lub[_],O2](f: O => Stream[G,O2])(implicit L: Lub1[F,G,Lub]): Stream[Lub,O2] =
     Stream.mk { Sub1.substStream(self)(L.subF).get flatMap (o => Sub1.substStream(f(o))(L.subG).get) }
 
-  def fetchAsync[F2[_],O2>:O](implicit F2: Async[F2], S: Sub1[F,F2], T: RealSupertype[O,O2]): Stream[F2, ScopedFuture[F2,Stream[F2,O2]]] =
+  def fetchAsync[F2[_],O2>:O](implicit F2: Concurrent[F2], S: Sub1[F,F2], T: RealSupertype[O,O2]): Stream[F2, ScopedFuture[F2,Stream[F2,O2]]] =
     Stream.mk(StreamCore.evalScope(get.covary[F2].covaryOutput[O2].fetchAsync).map(_ map (Stream.mk(_))))
 
   /** Alias for `self through [[pipe.filter]]`. */
@@ -168,11 +168,14 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.fold1]](f)`. */
   def fold1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.fold1(f)
 
+  /** Alias for `map(f).foldMonoid`. */
+  def foldMap[O2](f: O => O2)(implicit O2: Monoid[O2]): Stream[F,O2] = fold(O2.empty)((acc, o) => O2.combine(acc, f(o)))
+
   /** Alias for `self through [[pipe.forall]]`. */
   def forall(f: O => Boolean): Stream[F, Boolean] = self through pipe.forall(f)
 
   /** Alias for `self through [[pipe.groupBy]]`. */
-  def groupBy[O2](f: O => O2): Stream[F, (O2, Vector[O])] = self through pipe.groupBy(f)
+  def groupBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Vector[O])] = self through pipe.groupBy(f)
 
   /** Alias for `self through [[pipe.head]]`. */
   def head: Stream[F,O] = self through pipe.head
@@ -184,11 +187,11 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
     (self through2v s2)(pipe2.interleaveAll)
 
   /** Alias for `(haltWhenTrue through2 this)(pipe2.interrupt)`. */
-  def interruptWhen[F2[_]](haltWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+  def interruptWhen[F2[_]](haltWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O] =
     (haltWhenTrue through2 Sub1.substStream(self))(pipe2.interrupt)
 
   /** Alias for `(haltWhenTrue.discrete through2 this)(pipe2.interrupt)`. */
-  def interruptWhen[F2[_]](haltWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+  def interruptWhen[F2[_]](haltWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O] =
     (haltWhenTrue.discrete through2 Sub1.substStream(self))(pipe2.interrupt)
 
   /** Alias for `self through [[pipe.intersperse]]`. */
@@ -211,30 +214,30 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
 
   def mask: Stream[F,O] = onError(_ => Stream.empty)
 
-  def merge[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O2] =
+  def merge[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O2] =
     (self through2v s2)(pipe2.merge)
 
-  def mergeHaltBoth[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O2] =
+  def mergeHaltBoth[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O2] =
     (self through2v s2)(pipe2.mergeHaltBoth)
 
-  def mergeHaltL[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O2] =
+  def mergeHaltL[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O2] =
     (self through2v s2)(pipe2.mergeHaltL)
 
-  def mergeHaltR[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O2] =
+  def mergeHaltR[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O2] =
     (self through2v s2)(pipe2.mergeHaltR)
 
-  def mergeDrainL[F2[_],O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O2] =
+  def mergeDrainL[F2[_],O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O2] =
     (self through2v s2)(pipe2.mergeDrainL)
 
-  def mergeDrainR[F2[_],O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+  def mergeDrainR[F2[_],O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O] =
     (self through2v s2)(pipe2.mergeDrainR)
 
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
-  def observe[F2[_],O2>:O](sink: Sink[F2,O2])(implicit F: Async[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
+  def observe[F2[_],O2>:O](sink: Sink[F2,O2])(implicit F: Concurrent[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
     pipe.observe(Sub1.substStream(self)(S))(sink)
 
-  def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Async[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
+  def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Concurrent[F2], R: RealSupertype[O,O2], S: Sub1[F,F2]): Stream[F2,O2] =
     pipe.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
 
   def onError[G[_],Lub[_],O2>:O](f: Throwable => Stream[G,O2])(implicit R: RealSupertype[O,O2], L: Lub1[F,G,Lub]): Stream[Lub,O2] =
@@ -248,11 +251,11 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def output: Pull[F,O,Unit] = Pull.outputs(self)
 
   /** Alias for `(pauseWhenTrue through2 this)(pipe2.pause)`. */
-  def pauseWhen[F2[_]](pauseWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+  def pauseWhen[F2[_]](pauseWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O] =
     (pauseWhenTrue through2 Sub1.substStream(self))(pipe2.pause[F2,O])
 
   /** Alias for `(pauseWhenTrue.discrete through2 this)(pipe2.pause)`. */
-  def pauseWhen[F2[_]](pauseWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Async[F2]): Stream[F2,O] =
+  def pauseWhen[F2[_]](pauseWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Concurrent[F2]): Stream[F2,O] =
     (pauseWhenTrue.discrete through2 Sub1.substStream(self))(pipe2.pause)
 
 
@@ -275,7 +278,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
     Free.suspend(runFoldFree(new VectorBuilder[O])(_ += _).map(_.result))
 
   /** Alias for `self through [[pipe.prefetch]](f).` */
-  def prefetch[F2[_]](implicit S:Sub1[F,F2], F2:Async[F2]): Stream[F2,O] =
+  def prefetch[F2[_]](implicit S:Sub1[F,F2], F2:Concurrent[F2]): Stream[F2,O] =
     Sub1.substStream(self)(S) through pipe.prefetch
 
   /** Alias for `self through [[pipe.rechunkN]](f).` */
@@ -290,8 +293,6 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   /** Alias for `self through [[pipe.scan1]](f)`. */
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.scan1(f)
 
-  /** Alias for `self throughv [[pipe.scanF]](z)(f)`. */
-  def scanF[F2[_], O2](z: O2)(f: (O2, O) => F2[O2])(implicit S: Sub1[F, F2]): Stream[F2, O2] =  self throughv pipe.scanF(z)(f)
   /**
    * Used in conjunction with `[[Stream.uncons]]` or `[[Stream.uncons1]]`.
    * When `s.scope` starts, the set of live resources is recorded.
@@ -318,7 +319,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
     }
 
   def stepAsync[F2[_],O2>:O](
-    implicit S: Sub1[F,F2], F2: Async[F2], T: RealSupertype[O,O2])
+    implicit S: Sub1[F,F2], F2: Concurrent[F2], T: RealSupertype[O,O2])
     : Pull[F2,Nothing,ScopedFuture[F2,Pull[F2,Nothing,(NonEmptyChunk[O2], Handle[F2,O2])]]]
     =
     Pull.evalScope { get.covary[F2].unconsAsync.map { _ map { case (leftovers,o) =>
@@ -329,9 +330,6 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
       }
       if (leftovers.isEmpty) inner else Pull.release(leftovers) flatMap { _ => inner }
     }}}
-
-  /** Alias for `self through [[pipe.sum]](f)`. */
-  def sum[O2 >: O : Numeric]: Stream[F,O2] = self through pipe.sum
 
   /** Alias for `self through [[pipe.tail]]`. */
   def tail: Stream[F,O] = self through pipe.tail
@@ -360,7 +358,7 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def tov[F2[_]](f: Sink[F2,O])(implicit S: Sub1[F,F2]): Stream[F2,Unit] =
     f(Sub1.substStream(self))
 
-  def translate[G[_]](u: F ~> G): Stream[G,O] =
+  def translate[G[_]](u: UF1[F, G]): Stream[G,O] =
     Stream.mk { get.translate(StreamCore.NT.T(u)) }
 
   /** Alias for `self through [[pipe.unchunk]]`. */
@@ -614,8 +612,21 @@ object Stream {
 
   implicit class StreamInvariantOps[F[_],O](private val self: Stream[F,O]) extends AnyVal {
 
+    /** Alias for `self through [[pipe.changes]]`. */
+    def changes(implicit eq: Eq[O]): Stream[F,O] = self through pipe.changes
+
+    /** Alias for `self through [[pipe.combineAll]](f)`. */
+    def combineAll(implicit O: Monoid[O]): Stream[F,O] = self through pipe.combineAll
+
+    /** Folds this stream with the monoid for `O`. */
+    def foldMonoid(implicit O: Monoid[O]): Stream[F,O] = self.fold(O.empty)(O.combine)
+
     def pull2[O2,O3](s2: Stream[F,O2])(using: (Handle[F,O], Handle[F,O2]) => Pull[F,O3,Any]): Stream[F,O3] =
       self.open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.close
+
+    /** Reduces this stream with the Semigroup for `O`. */
+    def reduceSemigroup(implicit S: Semigroup[O]): Stream[F, O] =
+      self.reduce(S.combine(_, _))
 
     def repeatPull[O2](using: Handle[F,O] => Pull[F,O2,Handle[F,O]]): Stream[F,O2] =
       self.pull(Pull.loop(using))
@@ -623,16 +634,22 @@ object Stream {
     def repeatPull2[O2,O3](s2: Stream[F,O2])(using: (Handle[F,O],Handle[F,O2]) => Pull[F,O3,(Handle[F,O],Handle[F,O2])]): Stream[F,O3] =
       self.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.close
 
-    def run(implicit F: Catchable[F]):F[Unit] =
+    def run(implicit F: MonadError[F, Throwable]):F[Unit] =
       self.runFree.run
 
-    def runFold[O2](z: O2)(f: (O2,O) => O2)(implicit F: Catchable[F]): F[O2] =
+    def runFold[O2](z: O2)(f: (O2,O) => O2)(implicit F: MonadError[F, Throwable]): F[O2] =
       self.runFoldFree(z)(f).run
 
-    def runLog(implicit F: Catchable[F]): F[Vector[O]] =
+    def runFoldMonoid(implicit F: MonadError[F, Throwable], O: Monoid[O]): F[O] =
+      runFold(O.empty)(O.combine)
+
+    def runFoldSemigroup(implicit F: MonadError[F, Throwable], O: Semigroup[O]): F[Option[O]] =
+      runFold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
+
+    def runLog(implicit F: MonadError[F, Throwable]): F[Vector[O]] =
       self.runLogFree.run
 
-    def runLast(implicit F: Catchable[F]): F[Option[O]] =
+    def runLast(implicit F: MonadError[F, Throwable]): F[Option[O]] =
       self.runFold(Option.empty[O])((_, a) => Some(a))
 
     /** Transform this stream using the given `Pipe`. */
@@ -656,12 +673,10 @@ object Stream {
   implicit class StreamPureOps[+O](private val self: Stream[Pure,O]) extends AnyVal {
 
     def toList: List[O] =
-      self.covary[Task].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.
-        fold(_ => sys.error("FS2 bug: covarying pure stream can not result in async task"), _.reverse)
+      self.covary[IO].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.reverse
 
     def toVector: Vector[O] =
-      self.covary[Task].runLog.unsafeRunSync.
-        fold(_ => sys.error("FS2 bug: covarying pure stream can not result in async task"), identity)
+      self.covary[IO].runLog.unsafeRunSync
   }
 
   implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) extends AnyVal {
@@ -695,12 +710,21 @@ object Stream {
 
   implicit def covaryPurePipe2[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] = pipe2.covary[F,I,I2,O](p)
 
-  implicit def streamCatchableInstance[F[_]]: Catchable[({ type λ[a] = Stream[F, a] })#λ] =
-    new Catchable[({ type λ[a] = Stream[F, a] })#λ] {
+  implicit def streamMonadErrorInstance[F[_]]: MonadError[Stream[F,?], Throwable] =
+    new MonadError[Stream[F,?], Throwable] {
       def pure[A](a: A): Stream[F,A] = Stream.emit(a)
       def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
-      def attempt[A](s: Stream[F,A]): Stream[F,Attempt[A]] = s.attempt
-      def fail[A](e: Throwable): Stream[F,A] = Stream.fail(e)
+      def tailRecM[A,B](a: A)(f: A => Stream[F,Either[A,B]]): Stream[F,B] =
+        f(a).flatMap {
+          case Left(a) => tailRecM(a)(f)
+          case Right(b) => pure(b)
+        }
+      def handleErrorWith[A](s: Stream[F,A])(f: Throwable => Stream[F, A]): Stream[F, A] =
+        s.attempt.flatMap {
+          case Left(t) => f(t)
+          case Right(a) => Stream.emit(a)
+        }
+      def raiseError[A](e: Throwable): Stream[F,A] = Stream.fail(e)
     }
 
   private[fs2] def mk[F[_],O](s: StreamCore[F,O]): Stream[F,O] = new Stream[F,O](new CoreRef(s))

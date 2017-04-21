@@ -6,15 +6,16 @@ import org.scalacheck.{Arbitrary, Gen}
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
+import cats.effect.IO
 import fs2.util.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
 
   val timeout: FiniteDuration = 10.minutes
 
-  def runLogF[A](s: Stream[Task,A]): Future[Vector[A]] = s.runLog.unsafeRunAsyncFuture
+  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = s.runLog.shift.unsafeToFuture
 
-  def spuriousFail(s: Stream[Task,Int], f: Failure): Stream[Task,Int] =
+  def spuriousFail(s: Stream[IO,Int], f: Failure): Stream[IO,Int] =
     s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get
                      else Stream.emit(i) }
 
@@ -87,18 +88,18 @@ trait TestUtil extends TestUtilPlatform {
   case object Err extends RuntimeException("oh noes!!")
 
   /** Newtype for generating various failing streams. */
-  case class Failure(tag: String, get: Stream[Task,Int])
+  case class Failure(tag: String, get: Stream[IO,Int])
 
   implicit def failingStreamArb: Arbitrary[Failure] = Arbitrary(
     Gen.oneOf[Failure](
       Failure("pure-failure", Stream.fail(Err)),
-      Failure("failure-inside-effect", Stream.eval(Task.delay(throw Err))),
-      Failure("failure-mid-effect", Stream.eval(Task.now(()).flatMap(_ => throw Err))),
+      Failure("failure-inside-effect", Stream.eval(IO(throw Err))),
+      Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
       Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw Err)),
-      Failure("failure-in-pure-pull", Stream.emit[Task,Int](42).pull(h => throw Err)),
+      Failure("failure-in-pure-pull", Stream.emit[IO,Int](42).pull(h => throw Err)),
       Failure("failure-in-async-code",
-        Stream.eval[Task,Int](Task.delay(throw Err)).pull { h =>
+        Stream.eval[IO,Int](IO(throw Err)).pull { h =>
           h.awaitAsync.flatMap(_.pull).flatMap(identity) })
     )
   )

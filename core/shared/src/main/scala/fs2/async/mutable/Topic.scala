@@ -2,9 +2,10 @@ package fs2
 package async
 package mutable
 
+import cats.implicits._
+
 import fs2.Stream._
-import fs2.util.Async
-import fs2.util.syntax._
+import fs2.util.Concurrent
 
 /**
  * Asynchronous Topic.
@@ -81,7 +82,7 @@ trait Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial:A)(implicit F: Async[F]):F[Topic[F,A]] = {
+  def apply[F[_], A](initial:A)(implicit F: Concurrent[F]):F[Topic[F,A]] = {
     // Id identifying each subscriber uniquely
     class ID
 

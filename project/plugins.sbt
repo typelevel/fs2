@@ -8,5 +8,4 @@ addSbtPlugin("com.typesafe" % "sbt-mima-plugin" % "0.1.14")
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "1.1")
 addSbtPlugin("org.tpolecat" % "tut-plugin" % "0.4.8")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.2.21")
-addSbtPlugin("org.scala-js" % "sbt-scalajs" % "0.6.14")
-
+addSbtPlugin("org.scala-js" % "sbt-scalajs" % "0.6.15")

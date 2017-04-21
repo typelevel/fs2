@@ -32,6 +32,7 @@ lazy val commonSettings = Seq(
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
+    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
     "org.scalatest" %%% "scalatest" % "3.0.0" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.4" % "test"
   ),
@@ -41,6 +42,8 @@ lazy val commonSettings = Seq(
   initialCommands := s"""
     import fs2._
     import fs2.util._
+    import cats.effect.IO
+    import scala.concurrent.ExecutionContext.Implicits.global
   """,
   doctestWithDependencies := false,
   doctestTestFramework := DoctestTestFramework.ScalaTest
@@ -168,7 +171,12 @@ lazy val root = project.in(file(".")).
 lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
-    name := "fs2-core"
+    name := "fs2-core",
+    resolvers += Resolver.bintrayRepo("djspiewak", "maven"), // Temporary until cats-effect is published on Maven Central
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % "0.9.0",
+      "cats-effect" %%% "cats-effect" % "0.1-650a34e"
+    )
   ).
   jsSettings(commonJsSettings: _*)
 

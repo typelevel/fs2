@@ -1,11 +1,12 @@
 package fs2
 package io
 
+import cats.implicits._
+
 import java.net.{InetSocketAddress,NetworkInterface,ProtocolFamily,StandardSocketOptions}
 import java.nio.channels.DatagramChannel
 
-import fs2.util.Async
-import fs2.util.syntax._
+import fs2.util.Concurrent
 
 /** Provides support for UDP networking. */
 package object udp {
@@ -41,7 +42,7 @@ package object udp {
     , multicastInterface: Option[NetworkInterface] = None
     , multicastTTL: Option[Int] = None
     , multicastLoopback: Boolean = true
-  )(implicit AG: AsynchronousSocketGroup, F: Async[F]): Stream[F,Socket[F]] = {
+  )(implicit AG: AsynchronousSocketGroup, F: Concurrent[F]): Stream[F,Socket[F]] = {
     val mkChannel = F.delay {
       val channel = protocolFamily.map { pf => DatagramChannel.open(pf) }.getOrElse(DatagramChannel.open())
       channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
