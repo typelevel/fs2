@@ -11,17 +11,29 @@ object Testing extends App {
   implicit val S = scala.concurrent.ExecutionContext.Implicits.global
 
   val N = 10000
-  val s = (0 until N).map(Stream.emit[Task,Int](_)).foldLeft(Stream.empty[Task,Int])(Stream.append(_,_))
+  val s = Stream.flatMap(
+    (0 until N).map(Stream.emit[Task,Int](_))
+               .foldLeft(Stream.empty[Task,Int])(Stream.append(_,_))
+  ) { i => Stream.emit(i) }
+
   val s2 = (0 until N).map(fs2.Stream.emit).foldLeft(fs2.Stream.empty: fs2.Stream[Task,Int])(_ ++ _)
-  // def s3f = (0 until N).map(Segment.single).foldLeft(Segment.empty : Segment[Int])(_ ++ _)
   def s3f = Segment.from(0).take(N).map(_.toInt)
+  // def s3f = (0 until N).map(Segment.single).foldLeft(Segment.empty : Segment[Int])(_ ++ _)
+
+  val bomb = (0 until 5000).foldLeft(s3f)((s3,i) => s3.map(i => i))
+  // val bomb0 = (0 until 5000).foldLeft(s3f)((s3,i) => (if (i % 5 == 0) Segment.seq(s3.toChunk.toList) else s3).map(i => i))
+  //val bomb0 = (0 until 5000).foldLeft(s3f)((s3,i) => s3.map(i => i))
+  //val bomb = { bomb0.toChunk; bomb0 }
+  // def s3f = Segment.from(0).take(N).map(_.toInt)
 
   def printSum(s: Stream[Task,Int]) = println {
     Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRun()
   }
   printSum(s)
   println(s3f.foldLeft(0)(_ + _))
-  // println(Segment.from(5).take(3))
+  println(bomb.foldLeft(0)(_ + _))
+  // println(s3f.foldLeft(0)(_ + _))
+  //println(Segment.from(0).take(9) zip Segment.from(1) filter (_._1 < 5))
 
   //timeit("segment init") {
   //  s3f
@@ -38,9 +50,9 @@ object Testing extends App {
   //  sum
   //}
 
-  //timeit("new") {
-  //  Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRun()
-  //}
+  timeit("new") {
+    Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRun()
+  }
   //timeit("old") {
   //  s2.runFold(0)(_ + _).unsafeRun()
   //}

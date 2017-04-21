@@ -2,6 +2,7 @@ package fs2
 package fast
 
 import fs2.util.Catenable
+import Segment.{TailCall,tailcall}
 
 // todo -
 //   X get rid of depth parameter
@@ -24,8 +25,21 @@ abstract class Segment[+O] { self =>
     val done = () => { keepGoing = false }
     val skip = (snew: S0) => { s = snew }
     val emit = (o: O, snew: S0) => { s = snew; b = f(b, o) }
-    while (keepGoing) step(s, done, skip, emit)
+    while (keepGoing) stepTrampolined(s, done, skip, emit)
     b
+  }
+
+  final def stepTrampolined(
+      s0: S0, done: () => Unit, skip: S0 => Unit, emit: (O, S0) => Unit): Unit = {
+    try step(s0, done, skip, emit)
+    catch { case TailCall(c) =>
+      var more = true
+      var call = c
+      while (more) {
+        try { call(); more = false }
+        catch { case TailCall(c) => call = c }
+      }
+    }
   }
 
   /** Version of `span` which accumulates state. */
@@ -35,7 +49,7 @@ abstract class Segment[+O] { self =>
     val buf = new collection.mutable.ArrayBuffer[O]
     var keepGoing = true
     while (keepGoing)
-      self.step(s, () => keepGoing = false, s0 => s = s0, (o, s0) => {
+      self.stepTrampolined(s, () => keepGoing = false, s0 => s = s0, (o, s0) => {
         val (ok, ss2) = f(o,ss)
         if (ok) { ss = ss2; buf += o; s = s0 }
         else keepGoing = false
@@ -58,9 +72,10 @@ abstract class Segment[+O] { self =>
     var keepGoing = true
     var s = s0
     while (keepGoing) {
-      step(s, () => keepGoing = false,
-              s1 => { s = s1 },
-              (o, s) => { keepGoing = false; result = Some((o, self.reset(s))) })
+      stepTrampolined(
+        s, () => keepGoing = false,
+           s1 => { s = s1 },
+           (o, s) => { keepGoing = false; result = Some((o, self.reset(s))) })
     }
     result
   }
@@ -76,9 +91,16 @@ abstract class Segment[+O] { self =>
   def ++[O2>:O](u: Segment[O2]): Segment[O2] =
     Segment.Catenated(self.depth, Catenable(self)) ++ u
 
+  def suspend: Segment[O] = new Segment[O] {
+    type S0 = self.S0
+    val s0 = self.s0
+    val depth = 0
+    val step = (s, done, skip, emit) =>
+      tailcall { self.step(s, done, skip, emit) }
+  }
+
   def loop[S1,B](s1: S1)(f: (O, S1, () => Unit, S1 => Unit, (B,S1) => Unit) => Unit): Segment[B] =
-    if (depth > Segment.MaxFusionDepth) memoize.loop(s1)(f)
-    else new Segment[B] {
+    if (depth < Segment.MaxFusionDepth) new Segment[B] {
       type S0 = (self.S0, S1)
       val s0 = (self.s0, s1)
       val depth = self.depth + 1
@@ -90,32 +112,33 @@ abstract class Segment[+O] { self =>
         })
       }
     }
+    else suspend.loop(s1)(f)
 
-  def map[O2](f: O => O2): Segment[O2] = {
-    if (depth > Segment.MaxFusionDepth)
-      memoize.map(f)
-    else new Segment[O2] {
+  def map[O2](f: O => O2): Segment[O2] =
+    if (depth < Segment.MaxFusionDepth) new Segment[O2] {
       type S0 = self.S0
       def s0 = self.s0
       val depth = self.depth + 1
       val step = (s, done, skip, emit) =>
-        self.step(s, done, skip, (o, s0) => emit(f(o), s0))
+        if (math.random < 0.95)
+          self.step(s, done, skip, (o, s0) => emit(f(o), s0))
+        else
+          tailcall { self.step(s, done, skip, (o, s0) => emit(f(o), s0)) }
     }
-  }
+    else suspend.map(f)
 
   def filter(f: O => Boolean): Segment[O] =
-    if (depth > Segment.MaxFusionDepth) memoize.filter(f)
-    else new Segment[O] {
+    if (depth < Segment.MaxFusionDepth) new Segment[O] {
       type S0 = self.S0
       def s0 = self.s0
       val depth = self.depth + 1
       val step = (s, done, skip, emit) =>
         self.step(s, done, skip, (o, s0) => if (f(o)) emit(o, s0) else skip(s0))
     }
+    else suspend.filter(f)
 
   def zip[O2](s: Segment[O2]): Segment[(O,O2)] =
-    if (depth > Segment.MaxFusionDepth) memoize.zip(s)
-    else new Segment[(O,O2)] {
+    if (depth < Segment.MaxFusionDepth) new Segment[(O,O2)] {
       type S0 = (self.S0, Option[O], s.S0)
       def s0 = (self.s0, None, s.s0)
       val depth = self.depth + 1
@@ -126,6 +149,7 @@ abstract class Segment[+O] { self =>
                               (o2, s2) => emit((o,o2), (zs._1, None, s2)))
       }
     }
+    else suspend.zip(s)
 
   def take(n: Int): Segment[O] =
     loop(n)((o, n, done, skip, emit) => if (n <= 0) done() else emit(o, n-1))
@@ -227,12 +251,14 @@ object Segment {
     }
   }
 
-  abstract class TailCall extends Throwable {
-    val call : Unit => Unit
+  case class TailCall(call: () => Unit) extends Throwable {
     override def fillInStackTrace = this
     override def toString = "TailCall"
   }
 
-  /** The max number of operations that will be fused before producing a fresh stack via `[[Segment.memoize]]`. */
+  /** The max number of operations that will be fused before producing a fresh stack via `[[Segment.suspend]]`. */
   val MaxFusionDepth = 5
+
+  private[fs2]
+  def tailcall(u: => Unit) = throw TailCall(() => u)
 }
