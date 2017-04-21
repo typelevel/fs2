@@ -185,7 +185,7 @@ object Segment {
 
   def apply[O](os: O*): Segment[O] = seq(os)
 
-  def chunk[O](c: Chunk[O]): Segment[O] = ???
+  def chunk[O](c: Chunk[O]): Segment[O] = unfold(c)(_.uncons)
 
   def seq[O](s: Seq[O]): Segment[O] = chunk(Chunk.seq(s))
 
@@ -225,6 +225,12 @@ object Segment {
       case Catenated(_, segs) => Catenated(depth max u.depth, segs ++ s0)
       case _ => Catenated(depth max u.depth, u +: s0)
     }
+  }
+
+  abstract class TailCall extends Throwable {
+    val call : Unit => Unit
+    override def fillInStackTrace = this
+    override def toString = "TailCall"
   }
 
   /** The max number of operations that will be fused before producing a fresh stack via `[[Segment.memoize]]`. */
