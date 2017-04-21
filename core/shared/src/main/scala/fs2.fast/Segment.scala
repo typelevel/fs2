@@ -18,6 +18,24 @@ abstract class Segment[+O] { self =>
     b
   }
 
+  def uncons = {
+    var result: Option[(O, Segment[O])] = None
+    var keepGoing = true
+    var s = s0
+    while (keepGoing) {
+      step(s, () => keepGoing = false,
+              s1 => { s = s1 },
+              (o, s) => { keepGoing = false; result = Some((o, self.reset(s))) })
+    }
+    result
+  }
+
+  def toChunk: Chunk[O] = {
+    val buf = new collection.mutable.ArrayBuffer[O]
+    foldLeft(())((u,o) => buf += o)
+    Chunk.indexedSeq(buf)
+  }
+
   def ++[O2>:O](u: Segment[O2]): Segment[O2] = unbalancedAppend(u)
 
   private[fs2]
@@ -54,6 +72,29 @@ abstract class Segment[+O] { self =>
   def take(n: Int): Segment[O] =
     loop(n)((o, n, done, skip, emit) => if (n <= 0) done() else emit(o, n-1))
 
+  def takeWhile(f: O => Boolean): Segment[O] =
+    loop(())((o,_,done,skip,emit) => if (f(o)) emit(o, ()) else done())
+
+  def filter(f: O => Boolean): Segment[O] = new Segment[O] {
+    type S0 = self.S0
+    val depth = self.depth + 1
+    def s0 = self.s0
+    val step = (s, done, skip, emit) =>
+      self.step(s, done, skip, (o, s0) => if (f(o)) emit(o, s0) else skip(s0))
+  }
+
+  def zip[O2](s: Segment[O2]): Segment[(O,O2)] = new Segment[(O,O2)] {
+    type S0 = (self.S0, Option[O], s.S0)
+    val depth = s.depth + self.depth + 1
+    def s0 = (self.s0, None, s.s0)
+    val step = (zs, done, skip, emit) => zs._2 match {
+      case None => self.step(zs._1, done, s0 => skip((s0, None, zs._3)),
+                            (o, s0) => skip((s0, Some(o), zs._3)))
+      case Some(o) => s.step(zs._3, done, s2 => skip((zs._1, zs._2, s2)),
+                            (o2, s2) => emit((o,o2), (zs._1, None, s2)))
+    }
+  }
+
   def map[O2](f: O => O2): Segment[O2] = new Segment[O2] {
     type S0 = self.S0
     val depth = self.depth + 1
@@ -62,32 +103,53 @@ abstract class Segment[+O] { self =>
       self.step(s, done, skip, (o, s0) => emit(f(o), s0))
   }
 
-  def uncons = {
-    var result: Option[(O, Segment[O])] = None
-    var keepGoing = true
-    var s = s0
-    while (keepGoing) {
-      step(s, () => keepGoing = false,
-              s1 => { s = s1 },
-              (o, s) => { keepGoing = false;
-                          val tl = new Segment[O] {
-                            type S0 = self.S0
-                            def s0 = s
-                            val depth = self.depth
-                            val step = self.step
-                          }
-                          result = Some((o, tl)) })
-    }
-    result
-  }
-
-  def toChunk: Chunk[O] = {
+  /** Version of `span` which accumulates state. */
+  def spans[S](spanState: S)(f: (O,S) => (Boolean,S)): (Chunk[O], Segment[O]) = {
+    var s = self.s0
+    var ss = spanState
     val buf = new collection.mutable.ArrayBuffer[O]
-    foldLeft(())((u,o) => buf += o)
-    Chunk.indexedSeq(buf)
+    var keepGoing = true
+    while (keepGoing)
+      self.step(s, () => keepGoing = false, s0 => s = s0, (o, s0) => {
+        val (ok, ss2) = f(o,ss)
+        if (ok) { ss = ss2; buf += o; s = s0 }
+        else keepGoing = false
+      })
+    (Chunk.indexedSeq(buf), self.reset(s))
   }
 
-  override def toString = "Segment(" + this.take(10).toChunk.toList.mkString(", ") + ")"
+  /**
+   * `s.span(f)` is equal to `(s.takeWhile(f).toChunk, s.dropWhile(f))`,
+   * but has a more efficient implementation.
+   */
+  def span(f: O => Boolean): (Chunk[O], Segment[O]) =
+    spans(())((o,u) => (f(o),u))
+
+  def drop(n: Int): Segment[O] =
+    loop(n)((o,n,done,skip,emit) => if (n <= 0) emit(o,0) else skip(n-1))
+
+  def dropWhile(f: O => Boolean): Segment[O] =
+    loop(())((o,u,done,skip,emit) => if (f(o)) skip(()) else emit(o, ()))
+
+  /** Sets the starting state of the unfold backing this `Segment`. */
+  def reset(s: S0): Segment[O] = new Segment[O] {
+    type S0 = self.S0
+    def s0 = s
+    val depth = self.depth
+    val step = self.step
+  }
+
+  /**
+   * `s.splitAt(n)` is equivalent to `(s.take(n).toChunk, s.drop(n))`
+   * but avoids traversing the segment twice.
+   */
+  def splitAt(n: Int): (Chunk[O], Segment[O]) =
+    spans(n)((o,n) => if (n <= 0) (false,n) else (true,n-1))
+
+  override def toString = splitAt(10) match {
+    case (hd, tl) =>
+      "Segment(" + hd.toList.mkString(", ") + (if (tl.uncons.isEmpty) ")" else " ... )")
+  }
 }
 
 object Segment {
