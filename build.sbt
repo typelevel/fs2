@@ -172,11 +172,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    resolvers += Resolver.bintrayRepo("djspiewak", "maven"), // Temporary until cats-effect is published on Maven Central
-    libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "0.9.0",
-      "cats-effect" %%% "cats-effect" % "0.1-650a34e"
-    )
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.1-d1b5231"
   ).
   jsSettings(commonJsSettings: _*)
 
