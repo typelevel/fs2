@@ -80,14 +80,13 @@ val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 
 [`Task`](../core/shared/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
-The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, `cats.effect.Effect`, and [`fs2.util.Concurrent`][Concurrent] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, and `cats.effect.Effect` if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
 ```Scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
 
 [Task]: ../core/shared/src/main/scala/fs2/Task.scala
-[Concurrent]: ../core/shared/src/main/scala/fs2/util/Concurrent.scala
 
 `eval` produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained). Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
@@ -355,7 +354,7 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
 ```
 
-Oop, we need a `scala.concurrent.ExecutionContext` in implicit scope in order to get an `Concurrent[Task]`. Let's add that:
+Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope in order to get an `Concurrent[Task]`. Let's add that:
 
 ```tut
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -374,7 +373,7 @@ def join[F[_]:Concurrent,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]]): Stream[
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. `s merge s2` could be implemented as `concurrent.join(2)(Stream(s,s2))`.
 
-The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Concurrent`, users can bring their own effect types provided they also supply an `Concurrent` instance.
+The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. It defines concurrency primitives for the effect type `F`. An instance is implicitly available for any effect type which has an instance of `cats.effect.Effect`. It implements concurrency primitives in terms of the `Effect` instance and an `ExecutionContext`. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Concurrent`, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
 If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `h.awaitAsync` requests the next step of a `Handle h` asynchronously. Its signature is:
 
@@ -432,7 +431,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 ```tut:book
 import cats.effect.Sync
 
-val T = implicitly[Sync[Task]]
+val T = Sync[Task]
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 s.runLog.unsafeRun()
 ```
@@ -481,7 +480,7 @@ val c = new Connection {
 }
 
 // Effect extends both Sync and Async
-val T = implicitly[cats.effect.Effect[Task]]
+val T = cats.effect.Effect[Task]
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }

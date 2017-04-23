@@ -159,7 +159,7 @@ object Concurrent {
   }
 
   /** Constructs a `Concurrent` instance from a supplied `Effect` instance and execution context. */
-  def mk[F[_]](F: Effect[F])(implicit ec: ExecutionContext): Concurrent[F] = {
+  implicit def mk[F[_]](implicit effect: Effect[F], ec: ExecutionContext): Concurrent[F] = {
     final class MsgId
     sealed abstract class Msg[A]
     object Msg {
@@ -170,24 +170,24 @@ object Concurrent {
     }
 
     new Concurrent[F] { self =>
-      def pure[A](a: A): F[A] = F.pure(a)
-      def handleErrorWith[A](fa: F[A])(f: Throwable => F[A]): F[A] = F.handleErrorWith(fa)(f)
-      def raiseError[A](e: Throwable): F[A] = F.raiseError(e)
-      def async[A](k: (Either[Throwable, A] => Unit) => Unit): F[A] = F.async(k)
-      def runAsync[A](fa: F[A])(cb: Either[Throwable, A] => IO[Unit]): IO[Unit] = F.runAsync(fa)(cb)
-      def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B] = F.flatMap(fa)(f)
-      def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = F.tailRecM(a)(f)
-      def liftIO[A](ioa: IO[A]): F[A] = F.liftIO(ioa)
-      def suspend[A](thunk: => F[A]): F[A] = F.suspend(thunk)
+      def pure[A](a: A): F[A] = effect.pure(a)
+      def handleErrorWith[A](fa: F[A])(f: Throwable => F[A]): F[A] = effect.handleErrorWith(fa)(f)
+      def raiseError[A](e: Throwable): F[A] = effect.raiseError(e)
+      def async[A](k: (Either[Throwable, A] => Unit) => Unit): F[A] = effect.async(k)
+      def runAsync[A](fa: F[A])(cb: Either[Throwable, A] => IO[Unit]): IO[Unit] = effect.runAsync(fa)(cb)
+      def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B] = effect.flatMap(fa)(f)
+      def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] = effect.tailRecM(a)(f)
+      def liftIO[A](ioa: IO[A]): F[A] = effect.liftIO(ioa)
+      def suspend[A](thunk: => F[A]): F[A] = effect.suspend(thunk)
       def unsafeRunAsync[A](fa: F[A])(f: Either[Throwable, A] => IO[Unit]): Unit =
-        F.runAsync(F.shift(fa)(ec))(f).unsafeRunSync
+        effect.runAsync(effect.shift(fa)(ec))(f).unsafeRunSync
 
       def race[A, B](fa: F[A], fb: F[B]): F[Either[A, B]] =
         flatMap(ref[Either[A,B]]) { ref =>
-          flatMap(ref.race(F.map(fa)(Left(_)), F.map(fb)(Right(_)))) { _ => ref.get }
+          flatMap(ref.race(effect.map(fa)(Left(_)), effect.map(fb)(Right(_)))) { _ => ref.get }
         }
 
-      def ref[A]: F[Concurrent.Ref[F,A]] = F.delay {
+      def ref[A]: F[Concurrent.Ref[F,A]] = effect.delay {
         var result: Attempt[A] = null
         // any waiting calls to `access` before first `set`
         var waiting: LinkedMap[MsgId, Attempt[(A, Long)] => Unit] = LinkedMap.empty
@@ -237,8 +237,8 @@ object Concurrent {
           implicit val F: Concurrent[F] = self
 
           def access: F[(A, Attempt[A] => F[Boolean])] =
-            F.delay(new MsgId).flatMap { mid =>
-              getStamped(mid).map { case (a, id) =>
+            F.flatMap(F.delay(new MsgId)) { mid =>
+              F.map(getStamped(mid)) { case (a, id) =>
                 val set = (a: Attempt[A]) =>
                   F.async[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
                 (a, set)
@@ -256,12 +256,12 @@ object Concurrent {
             F.async[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
 
           /** Return the most recently completed `set`, or block until a `set` value is available. */
-          override def get: F[A] = F.delay(new MsgId).flatMap { mid => getStamped(mid).map(_._1) }
+          override def get: F[A] = F.flatMap(F.delay(new MsgId)) { mid => F.map(getStamped(mid))(_._1) }
 
           /** Like `get`, but returns a `F[Unit]` that can be used cancel the subscription. */
           def cancellableGet: F[(F[A], F[Unit])] = F.delay {
             val id = new MsgId
-            val get = getStamped(id).map(_._1)
+            val get = F.map(getStamped(id))(_._1)
             val cancel = F.async[Unit] {
               cb => actor ! Msg.Nevermind(id, r => cb((r: Either[Throwable, Boolean]).map(_ => ())))
             }
@@ -294,6 +294,4 @@ object Concurrent {
       }
     }
   }
-
-  implicit def ioInstance(implicit ec: ExecutionContext): Concurrent[IO] = mk(IO.ioEffect)(ec)
 }

@@ -159,7 +159,7 @@ final class Task[+A](private[fs2] val get: Future[Attempt[A]]) {
     Task.schedule((), delay) flatMap { _ => this }
 }
 
-object Task extends TaskPlatform with TaskInstances {
+object Task extends TaskPlatform {
 
   type Callback[-A] = Attempt[A] => Unit
 
@@ -262,10 +262,6 @@ object Task extends TaskPlatform with TaskInstances {
 
   def parallelTraverse[A,B](s: Seq[A])(f: A => Task[B])(implicit ec: ExecutionContext): Task[Vector[B]] =
     traverse(s)(f andThen Task.start) flatMap { tasks => traverse(tasks)(identity) }
-}
-
-/* Prefer a `Concurrent` but will settle for implicit `Effect`. */
-private[fs2] trait TaskInstancesLowPriority {
 
   implicit val effectInstance: Effect[Task] = new Effect[Task] {
     def pure[A](a: A) = Task.now(a)
@@ -289,9 +285,4 @@ private[fs2] trait TaskInstancesLowPriority {
     def liftIO[A](ioa: IO[A]): Task[A] = async { k => ioa.unsafeRunAsync(k) }
     override def toString = "Effect[Task]"
   }
-}
-
-private[fs2] trait TaskInstances extends TaskInstancesLowPriority {
-
-  implicit def concurrentInstance(implicit ec: ExecutionContext): Concurrent[Task] = Concurrent.mk(effectInstance)(ec)
 }
