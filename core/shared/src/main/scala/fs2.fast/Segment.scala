@@ -40,6 +40,21 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
+  def result: Option[R] = None
+
+  def uncons: Either[R, (O,Segment[O,R])] = {
+    var result: Either[R, (O, Segment[O,R])] = null
+    var keepGoing = true
+    var s = self.s0
+    while (keepGoing) {
+      self.stepTrampolined(0, s,
+        r => { keepGoing = false; result = Left(r) },
+        s1 => { s = s1 },
+        (o, s) => { keepGoing = false; result = Right((o, self.reset(s))) })
+    }
+    result
+  }
+
   /** Version of `span` which accumulates state. */
   def spans[S](spanState: S)(f: (O,S) => (Boolean,S)): (Chunk[O], Segment[O,R]) = {
     var s = self.s0
@@ -130,7 +145,7 @@ abstract class Segment[+O,+R] { self =>
 
   override def toString = self.void.splitAt(10) match {
     case (hd, tl) =>
-      "Segment(" + hd.toList.mkString(", ") + (if (tl.uncons.isEmpty) ")" else " ... )")
+      "Segment(" + hd.toList.mkString(", ") + (if (tl.uncons.isLeft) ")" else " ... )")
   }
 }
 
@@ -142,6 +157,7 @@ object Segment {
     type S0 = Unit
     def s0 = ()
     val step = (_,_,done,_,_) => done(r)
+    override def result = Some(r)
   }
 
   def single[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
@@ -199,19 +215,6 @@ object Segment {
 
   implicit class StreamSegment[+O](val self: Segment[O,Unit]) extends AnyVal {
 
-    def uncons: Option[(O,Segment[O,Unit])] = {
-      var result: Option[(O, Segment[O,Unit])] = None
-      var keepGoing = true
-      var s = self.s0
-      while (keepGoing) {
-        self.stepTrampolined(0, s,
-          _ => keepGoing = false,
-          s1 => { s = s1 },
-          (o, s) => { keepGoing = false; result = Some((o, self.reset(s))) })
-      }
-      result
-    }
-
     def toChunk: Chunk[O] = {
       val buf = new collection.mutable.ArrayBuffer[O]
       self.foldLeft(())((u,o) => buf += o)
@@ -229,9 +232,9 @@ object Segment {
       }
     }
 
-    def toScalaStream: scala.Stream[O] = uncons match {
-      case None => scala.Stream.empty
-      case Some((hd, tl)) => hd #:: tl.toScalaStream
+    def toScalaStream: scala.Stream[O] = self.uncons match {
+      case Left(_) => scala.Stream.empty
+      case Right((hd, tl)) => hd #:: tl.toScalaStream
     }
 
     def memoize: Segment[O,Unit] = Segment.unfold(toScalaStream)(_ match {

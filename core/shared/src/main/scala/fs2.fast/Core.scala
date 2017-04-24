@@ -36,6 +36,9 @@ object Pull {
   def apply[F[_],O,R](value: Free[({type f[x] = Stream.Algebra[F,O,x]})#f, R]): Pull[F, O, R] =
     new Pull[F, O, R](value)
 
+  def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
+    pure(()) flatMap { _ => p } // todo - revist
+
   def fail[F[_],O,R](err: Throwable): Pull[F,O,R] =
     apply[F,O,R](Free.Fail[({type f[x] = Stream.Algebra[F,O,x]})#f,R](err))
 
@@ -49,19 +52,24 @@ object Pull {
     Pull(Free.Eval[AlgebraF,R](Algebra.Wrap(fr)))
   }
 
-  def output[F[_],O](os: Catenable[O]): Pull[F,O,Unit] = {
+  def output[F[_],O](os: Segment[O,Unit]): Pull[F,O,Unit] = {
     type AlgebraF[x] = Algebra[F,O,x]
     Pull(Free.Eval[AlgebraF,Unit](Algebra.Output(os)))
   }
 
   def output1[F[_],O](o: O): Pull[F,O,Unit] =
-    output(Catenable.single(o))
+    output(Segment.single(o))
 
   def outputs[F[_],O](s: Stream[F, O]): Pull[F,O,Unit] = s
 
   def pure[F[_],O,R](r: R): Pull[F,O,R] = {
     type AlgebraF[x] = Algebra[F,O,x]
     Pull[F, O, R](Free.Pure[AlgebraF, R](r))
+  }
+
+  def segment[F[_],O,R](s: Segment[O,R]): Pull[F,O,R] = {
+    type AlgebraF[x] = Algebra[F,O,x]
+    Pull[F, O, R](Free.Eval[AlgebraF, R](Algebra.Segment(s)))
   }
 }
 
@@ -81,7 +89,8 @@ object Stream {
   sealed trait Algebra[F[_],O,R]
 
   object Algebra {
-    case class Output[F[_],O,R](values: Catenable[O]) extends Algebra[F,O,R]
+    case class Output[F[_],O](values: fs2.fast.Segment[O,Unit]) extends Algebra[F,O,Unit]
+    case class Segment[F[_],O,R](values: fs2.fast.Segment[O,R]) extends Algebra[F,O,R]
     case class Wrap[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
     case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
     case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
@@ -96,14 +105,13 @@ object Stream {
     uncons(s) flatMap {
       case None => Stream.empty
       case Some((hd, tl)) =>
-        Pull.outputs(hd.map(f).toList.foldRight(Stream.empty[F,O2])(append(_,_))) >>
-        flatMap(tl)(f)
+        hd.map(f).toChunk.foldRight(Stream.empty[F,O2])(append(_,_)) >> flatMap(tl)(f)
     }
 
   def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
     s1 >> s2
 
-  def uncons[F[_],X,O](s: Stream[F,O]): Pull[F, X, Option[(Catenable[O], Stream[F, O])]] = {
+  def uncons[F[_],X,O](s: Stream[F,O], chunkSize: Int = 1024): Pull[F, X, Option[(Segment[O,Unit], Stream[F, O])]] = {
     type AlgebraF[x] = Algebra[F,O,x]
     def assumeNoOutput[Y,R](p: Pull[F,Y,R]): Pull[F,X,R] = p.asInstanceOf[Pull[F,X,R]]
 
@@ -113,7 +121,24 @@ object Stream {
       case bound: ViewL.Bound[AlgebraF, _, Unit] =>
         val f = bound.f.asInstanceOf[Unit => Free[AlgebraF, Unit]]
         bound.fx match {
-          case Algebra.Output(os) => Pull.pure(Some((os, Pull(f(())))))
+          case os : Algebra.Output[F, O] =>
+            Pull.pure[F,X,Option[(Segment[O,Unit], Stream[F, O])]](Some((os.values, Pull(f(())))))
+          case os : Algebra.Segment[F, O, y] =>
+            try {
+              val (hd, tl) = os.values.splitAt(chunkSize)
+              tl.result match {
+                case None =>
+                  Pull.pure[F,X,Option[(Segment[O,Unit], Stream[F, O])]](
+                    Some(Segment.chunk(hd) ->
+                      Pull(Free.Eval[AlgebraF,y](Stream.Algebra.Segment(tl)) flatMap bound.f))
+                  )
+                case Some(r) =>
+                  Pull.pure[F,X,Option[(Segment[O,Unit], Stream[F, O])]](Some(Segment.chunk(hd) -> Pull(bound.f(r))))
+              }
+            }
+            catch { case e: Throwable => Pull.suspend[F,X,Option[(Segment[O,Unit], Stream[F, O])]] {
+              uncons(Pull(bound.handleError(e)))
+            }}
           case algebra => // Wrap, Acquire, Release, Snapshot, UnconsAsync
             bound.onError match {
               case None =>
@@ -155,14 +180,14 @@ object Stream {
       resources: ConcurrentHashMap[Stream.Token, F2[Unit]])(implicit A: Async[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
-    def go(acc: B, v: ViewL[AlgebraF, Option[(Catenable[O], Stream[F, O])]]): F[B] = v match {
-      case done: ViewL.Done[AlgebraF, Option[(Catenable[O], Stream[F, O])]] => done.r match {
+    def go(acc: B, v: ViewL[AlgebraF, Option[(Segment[O,Unit], Stream[F, O])]]): F[B] = v match {
+      case done: ViewL.Done[AlgebraF, Option[(Segment[O,Unit], Stream[F, O])]] => done.r match {
         case None => A.pure(acc)
-        case Some((hd, tl)) => go(hd.toList.foldLeft(acc)(f), uncons(tl).algebra.viewL)
+        case Some((hd, tl)) => go(hd.foldLeft(acc)(f), uncons(tl).algebra.viewL)
       }
       case failed: ViewL.Failed[AlgebraF, _] => A.fail(failed.error)
-      case bound: ViewL.Bound[AlgebraF, _, Option[(Catenable[O], Stream[F, O])]] =>
-        val g = bound.tryBind.asInstanceOf[Any => Free[AlgebraF, Option[(Catenable[O], Stream[F, O])]]]
+      case bound: ViewL.Bound[AlgebraF, _, Option[(Segment[O,Unit], Stream[F, O])]] =>
+        val g = bound.tryBind.asInstanceOf[Any => Free[AlgebraF, Option[(Segment[O,Unit], Stream[F, O])]]]
         bound.fx match {
           case wrap: Algebra.Wrap[F, O, _] =>
             A.flatMap(wrap.value.asInstanceOf[F[Any]]) { x => go(acc, g(x).viewL) }
@@ -193,7 +218,7 @@ object Stream {
             val tokens = JavaConverters.enumerationAsScalaIterator(resources.keys).toSet
             go(acc, g(tokens).viewL)
           case Algebra.UnconsAsync(s) =>
-            type UO = Option[(Catenable[_], Stream[F,_])]
+            type UO = Option[(Segment[_,Unit], Stream[F,_])]
             type R = Either[Throwable, UO]
             val task: F[F[R]] = A.start { A.attempt {
               runFold(
@@ -201,7 +226,7 @@ object Stream {
                 None: UO)((o,a) => a, startCompletion, midAcquires, resources)
             }}
             A.flatMap(task) { (task: F[R]) => go(acc, g(Pull.rethrow(Pull.eval[F,O,R](task))).viewL) }
-          case Algebra.Output(_) => sys.error("impossible")
+          case _ => sys.error("impossible Segment or Output following uncons")
         }
     }
     A.suspend { go(init, uncons(stream).algebra.viewL) }
