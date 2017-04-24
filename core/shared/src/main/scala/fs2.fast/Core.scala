@@ -57,10 +57,7 @@ object Pull {
   def output1[F[_],O](o: O): Pull[F,O,Unit] =
     output(Catenable.single(o))
 
-  def outputs[F[_],O](s: Stream[F, O]): Pull[F,O,Unit] = {
-    type AlgebraF[x] = Algebra[F,O,x]
-    Pull(Free.Eval[AlgebraF, Unit](Algebra.Outputs(s)))
-  }
+  def outputs[F[_],O](s: Stream[F, O]): Pull[F,O,Unit] = s
 
   def pure[F[_],O,R](r: R): Pull[F,O,R] = {
     type AlgebraF[x] = Algebra[F,O,x]
@@ -85,7 +82,6 @@ object Stream {
 
   object Algebra {
     case class Output[F[_],O,R](values: Catenable[O]) extends Algebra[F,O,R]
-    case class Outputs[F[_],O,R](stream: Stream[F, O]) extends Algebra[F,O,R]
     case class Wrap[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
     case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
     case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
@@ -118,12 +114,6 @@ object Stream {
         val f = bound.f.asInstanceOf[Unit => Free[AlgebraF, Unit]]
         bound.fx match {
           case Algebra.Output(os) => Pull.pure(Some((os, Pull(f(())))))
-          case Algebra.Outputs(s) =>
-            uncons(s) flatMap {
-              case None => Stream.uncons(Pull(f(())))
-              case Some((hd, tl)) =>
-                Pull.pure(Some((hd, tl >> Pull(f(())))))
-            }
           case algebra => // Wrap, Acquire, Release, Snapshot, UnconsAsync
             bound.onError match {
               case None =>
@@ -212,7 +202,6 @@ object Stream {
             }}
             A.flatMap(task) { (task: F[R]) => go(acc, g(Pull.rethrow(Pull.eval[F,O,R](task))).viewL) }
           case Algebra.Output(_) => sys.error("impossible")
-          case Algebra.Outputs(_) => sys.error("impossible")
         }
     }
     A.suspend { go(init, uncons(stream).algebra.viewL) }
