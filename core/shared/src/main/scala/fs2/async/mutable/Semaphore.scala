@@ -70,7 +70,7 @@ object Semaphore {
     type S = Either[Vector[(Long,Concurrent.Ref[F,Unit])], Long]
     F.refOf[S](Right(n)).map { ref => new Semaphore[F] {
       private def open(gate: Concurrent.Ref[F,Unit]): F[Unit] =
-        gate.setPure(())
+        gate.setAsyncPure(())
 
       def count = ref.get.map(count_)
       def decrementBy(n: Long) = { ensureNonneg(n)

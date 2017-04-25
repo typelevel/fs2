@@ -23,7 +23,7 @@ trait Concurrent[F[_]] extends Effect[F] { self =>
   def ref[A]: F[Concurrent.Ref[F,A]]
 
   /** Creates an asynchronous, concurrent mutable reference, initialized to `a`. */
-  def refOf[A](a: A): F[Concurrent.Ref[F,A]] = flatMap(ref[A])(r => map(r.setPure(a))(_ => r))
+  def refOf[A](a: A): F[Concurrent.Ref[F,A]] = flatMap(ref[A])(r => map(r.setAsyncPure(a))(_ => r))
 
   /** Like `traverse` but each `F[B]` computed from an `A` is evaluated in parallel. */
   def parallelTraverse[G[_],A,B](g: G[A])(f: A => F[B])(implicit G: Traverse[G]): F[G[B]] =
@@ -39,7 +39,7 @@ trait Concurrent[F[_]] extends Effect[F] { self =>
    */
   def start[A](f: F[A]): F[F[A]] =
     flatMap(ref[A]) { ref =>
-      map(ref.set(f)) { _ => ref.get }
+      map(ref.setAsync(f)) { _ => ref.get }
     }
 
   /**
@@ -128,16 +128,26 @@ object Concurrent {
      * the task is running in the background. Multiple tasks may be added to a
      * `Ref[A]`.
      *
-     * Satisfies: `r.set(t) flatMap { _ => r.get } == t`.
+     * Satisfies: `r.setAsync(t) flatMap { _ => r.get } == t`
      */
-    def set(a: F[A]): F[Unit]
+    def setAsync(a: F[A]): F[Unit]
 
     /**
      * *Asynchronously* sets a reference to a pure value.
      *
-     * Satisfies: `r.setPure(a) flatMap { _ => r.get(a) } == pure(a)`.
+     * Satisfies: `r.setAsyncPure(a) flatMap { _ => r.get(a) } == pure(a)`
      */
-    def setPure(a: A): F[Unit] = set(F.pure(a))
+    def setAsyncPure(a: A): F[Unit] = setAsync(F.pure(a))
+
+    /**
+     * *Synchronously* sets a reference. The returned value completes evaluating after the reference has been successfully set.
+     */
+    def setSync(a: F[A]): F[Unit]
+
+    /**
+     * *Synchronously* sets a reference to a pure value.
+     */
+    def setSyncPure(a: A): F[Unit] = setSync(F.pure(a))
 
     /**
      * Runs `f1` and `f2` simultaneously, but only the winner gets to
@@ -165,7 +175,7 @@ object Concurrent {
     object Msg {
       final case class Read[A](cb: Attempt[(A, Long)] => Unit, id: MsgId) extends Msg[A]
       final case class Nevermind[A](id: MsgId, cb: Attempt[Boolean] => Unit) extends Msg[A]
-      final case class Set[A](r: Attempt[A]) extends Msg[A]
+      final case class Set[A](r: Attempt[A], cb: () => Unit) extends Msg[A]
       final case class TrySet[A](id: Long, r: Attempt[A], cb: Attempt[Boolean] => Unit) extends Msg[A]
     }
 
@@ -204,7 +214,7 @@ object Concurrent {
               ec.executeThunk { cb((r: Either[Throwable, A]).map((_,id))) }
             }
 
-          case Msg.Set(r) =>
+          case Msg.Set(r, cb) =>
             nonce += 1L
             if (result eq null) {
               val id = nonce
@@ -214,6 +224,7 @@ object Concurrent {
               waiting = LinkedMap.empty
             }
             result = r
+            cb()
 
           case Msg.TrySet(id, r, cb) =>
             if (id == nonce) {
@@ -245,12 +256,11 @@ object Concurrent {
               }
             }
 
-          /**
-           * Return a `F` that submits `t` to this ref for evaluation.
-           * When it completes it overwrites any previously `put` value.
-           */
-          def set(t: F[A]): F[Unit] =
-            F.liftIO(F.runAsync(F.shift(t)(ec)) { r => IO(actor ! Msg.Set(r)) })
+          def setAsync(t: F[A]): F[Unit] =
+            F.liftIO(F.runAsync(F.shift(t)(ec)) { r => IO(actor ! Msg.Set(r, () => ())) })
+
+          def setSync(t: F[A]): F[Unit] =
+            F.liftIO(F.runAsync(F.shift(t)(ec)) { r => IO.async { cb => actor ! Msg.Set(r, () => cb(Right(()))) } })
 
           private def getStamped(msg: MsgId): F[(A,Long)] =
             F.async[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
@@ -284,7 +294,7 @@ object Concurrent {
               if (won.compareAndSet(false, true)) {
                 val actor = ref.get
                 ref.set(null)
-                actor ! Msg.Set(res)
+                actor ! Msg.Set(res, () => ())
               }
             }
             unsafeRunAsync(f1)(res => IO(win(res)))

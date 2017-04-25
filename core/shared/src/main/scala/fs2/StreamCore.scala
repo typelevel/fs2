@@ -109,7 +109,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
     lazy val rootCleanup: Free[F,Attempt[Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
         Free.eval(Vector.fill(waiting)(F.ref[Unit]).sequence) flatMap { gates =>
-          resources.closeAll(gates.toStream.map(gate => () => F.unsafeRunAsync(gate.setPure(()))(_ => IO.pure(())))) match {
+          resources.closeAll(gates.toStream.map(gate => () => F.unsafeRunAsync(gate.setAsyncPure(()))(_ => IO.pure(())))) match {
             case Left(_) => Free.eval(gates.traverse(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")
@@ -130,7 +130,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
         if (ok) Scope.pure(())
         else Scope.evalFree(rootCleanup).flatMap(_.fold(Scope.fail, Scope.pure))
       }}
-    val s: F[Unit] = ref.set { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run.map {
+    val s: F[Unit] = ref.setAsync { step.bindEnv(StreamCore.Env(resources, () => resources.isClosed)).run.map {
       case (ts, StreamCore.StepResult.Done) => (ts, None)
       case (ts, StreamCore.StepResult.Failed(t)) => (ts, Some(Left(t)))
       case (ts, StreamCore.StepResult.Emits(out, s)) => (ts, Some(Right((out, s))))

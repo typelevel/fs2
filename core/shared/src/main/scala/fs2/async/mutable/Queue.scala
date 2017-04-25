@@ -136,7 +136,7 @@ object Queue {
             if (c.previous.deq.isEmpty) // we enqueued a value to the queue
               signalSize(c.previous, c.now).as(true)
             else // queue was empty, we had waiting dequeuers
-              c.previous.deq.head.setPure(NonEmptyChunk.singleton(a)).as(true)
+              c.previous.deq.head.setAsyncPure(NonEmptyChunk.singleton(a)).as(true)
           }
 
         def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }

@@ -47,8 +47,8 @@ sealed trait ScopedFuture[F[_],A] { self =>
       (a, cancelA) = t0
       t1 <- b.cancellableGet
       (b, cancelB) = t1
-      _ <- ref.set(a.map(Left(_)))
-      _ <- ref.set(b.map(Right(_)))
+      _ <- ref.setAsync(a.map(Left(_)))
+      _ <- ref.setAsync(b.map(Right(_)))
     } yield {
       (ref.get.flatMap {
         case Left((a,onForce)) => cancelB.as((Left(a),onForce))
@@ -104,7 +104,7 @@ object ScopedFuture {
         F.ref[((A,Scope[F,Unit]),Int)].flatMap { ref =>
           val cancels: F[Vector[(F[Unit],Int)]] = (es zip (0 until es.size)).traverse { case (a,i) =>
             a.cancellableGet.flatMap { case (a, cancelA) =>
-              ref.set(a.map((_,i))).as((cancelA,i))
+              ref.setAsync(a.map((_,i))).as((cancelA,i))
             }
           }
           cancels.flatMap { cancels =>
