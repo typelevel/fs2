@@ -2,8 +2,10 @@ package fs2
 package async
 package mutable
 
-import fs2.util.{Async,Functor}
-import fs2.util.syntax._
+import cats.Functor
+import cats.implicits._
+
+import fs2.util.Concurrent
 
 /**
  * Asynchronous queue interface. Operations are all nonblocking in their
@@ -107,13 +109,13 @@ trait Queue[F[_], A] { self =>
 object Queue {
 
   /** Creates a queue with no size bound. */
-  def unbounded[F[_],A](implicit F: Async[F]): F[Queue[F,A]] = {
+  def unbounded[F[_],A](implicit F: Concurrent[F]): F[Queue[F,A]] = {
     /*
       * Internal state of the queue
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
       * @param deq      A list of waiting dequeuers, added to when queue is empty
       */
-    final case class State(queue: Vector[A], deq: Vector[Async.Ref[F,NonEmptyChunk[A]]])
+    final case class State(queue: Vector[A], deq: Vector[Concurrent.Ref[F,NonEmptyChunk[A]]])
 
     Signal(0).flatMap { szSignal =>
     F.refOf[State](State(Vector.empty,Vector.empty)).map { qref =>
@@ -175,7 +177,7 @@ object Queue {
     }}}
 
   /** Creates a queue with the specified size bound. */
-  def bounded[F[_],A](maxSize: Int)(implicit F: Async[F]): F[Queue[F,A]] =
+  def bounded[F[_],A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F,A]] =
     Semaphore(maxSize.toLong).flatMap { permits =>
     unbounded[F,A].map { q =>
       new Queue[F,A] {
@@ -197,7 +199,7 @@ object Queue {
     }}
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
-  def circularBuffer[F[_],A](maxSize: Int)(implicit F: Async[F]): F[Queue[F,A]] =
+  def circularBuffer[F[_],A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F,A]] =
     Semaphore(maxSize.toLong).flatMap { permits =>
     unbounded[F,A].map { q =>
       new Queue[F,A] {
@@ -218,7 +220,7 @@ object Queue {
     }}
 
   /** Creates a queue which allows a single element to be enqueued at any time. */
-  def synchronous[F[_],A](implicit F: Async[F]): F[Queue[F,A]] =
+  def synchronous[F[_],A](implicit F: Concurrent[F]): F[Queue[F,A]] =
     Semaphore(0).flatMap { permits =>
     unbounded[F,A].map { q =>
       new Queue[F,A] {
@@ -240,7 +242,7 @@ object Queue {
     }}
 
   /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
-  def synchronousNoneTerminated[F[_],A](implicit F: Async[F]): F[Queue[F,Option[A]]] =
+  def synchronousNoneTerminated[F[_],A](implicit F: Concurrent[F]): F[Queue[F,Option[A]]] =
     Semaphore(0).flatMap { permits =>
     F.refOf(false).flatMap { doneRef =>
     unbounded[F,Option[A]].map { q =>

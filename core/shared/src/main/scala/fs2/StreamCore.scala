@@ -1,9 +1,11 @@
 package fs2
 
 import fs2.internal.Resources
-import fs2.util.{Async,Attempt,Catenable,Free,NonFatal,Sub1,~>,RealSupertype}
-import fs2.util.syntax._
+import fs2.util.{Attempt,Catenable,Concurrent,Free,NonFatal,Sub1,RealSupertype,UF1}
 import StreamCore.{Env,NT,Stack,Token}
+
+import cats.effect.IO
+import cats.implicits._
 
 private[fs2] sealed trait StreamCore[F[_],O] { self =>
   type O0
@@ -88,7 +90,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
       case StreamCore.StepResult.Emits(out, s) => StreamCore.emit(Some((out, s)))
     }
 
-  final def fetchAsync(implicit F: Async[F]): Scope[F, ScopedFuture[F,StreamCore[F,O]]] =
+  final def fetchAsync(implicit F: Concurrent[F]): Scope[F, ScopedFuture[F,StreamCore[F,O]]] =
     unconsAsync map { f => f map { case (leftovers,o) =>
       val inner: StreamCore[F,O] = o match {
         case None => StreamCore.empty
@@ -98,7 +100,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
       if (leftovers.isEmpty) inner else StreamCore.release(leftovers) flatMap { _ => inner }
     }}
 
-  final def unconsAsync(implicit F: Async[F])
+  final def unconsAsync(implicit F: Concurrent[F])
   : Scope[F,ScopedFuture[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]]
   = Scope.eval(F.ref[(List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]).flatMap { ref =>
     val token = new Token()
@@ -107,7 +109,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
     lazy val rootCleanup: Free[F,Attempt[Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
         Free.eval(Vector.fill(waiting)(F.ref[Unit]).sequence) flatMap { gates =>
-          resources.closeAll(gates.toStream.map(gate => () => F.unsafeRunAsync(gate.setPure(()))(_ => ()))) match {
+          resources.closeAll(gates.toStream.map(gate => () => F.unsafeRunAsync(gate.setPure(()))(_ => IO.pure(())))) match {
             case Left(_) => Free.eval(gates.traverse(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")
@@ -179,7 +181,7 @@ private[fs2] object StreamCore {
   }
 
   sealed trait NT[-F[_],+G[_]] {
-    val same: Either[Sub1[F,G], F ~> G]
+    val same: Either[Sub1[F,G], UF1[F, G]]
     def andThen[H[_]](f: NT[G,H]): NT[F,H]
   }
 
@@ -188,7 +190,7 @@ private[fs2] object StreamCore {
       val same = Left(Sub1.sub1[F])
       def andThen[H[_]](f: NT[F,H]): NT[F,H] = f
     }
-    final case class T[F[_],G[_]](u: F ~> G) extends NT[F,G] {
+    final case class T[F[_],G[_]](u: UF1[F, G]) extends NT[F,G] {
       val same = Right(u)
       def andThen[H[_]](f: NT[G,H]): NT[F,H] = f.same.fold(
         f => T(Sub1.substUF1(u)(f)),

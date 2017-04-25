@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.util.{Attempt,Free,RealSupertype,Sub1,~>}
+import fs2.util.{Attempt,Free,RealSupertype,Sub1,UF1}
 import fs2.StreamCore.{Env,Algebra,AlgebraF,Token}
 
 /**
@@ -17,8 +17,8 @@ final class Scope[+F[_],+O] private (private val get: Free[AlgebraF[F]#f,O]) {
   def flatMap[F2[x]>:F[x],O2](f: O => Scope[F2,O2]): Scope[F2,O2] =
     new Scope(get.flatMap[AlgebraF[F2]#f,O2](o => f(o).get))
 
-  def translate[G[_]](f: F ~> G): Scope[G,O] = new Scope(Free.suspend[AlgebraF[G]#f,O] {
-    get.translate[AlgebraF[G]#f](new (AlgebraF[F]#f ~> AlgebraF[G]#f) {
+  def translate[G[_]](f: UF1[F, G]): Scope[G,O] = new Scope(Free.suspend[AlgebraF[G]#f,O] {
+    get.translate[AlgebraF[G]#f](new UF1[AlgebraF[F]#f, AlgebraF[G]#f] {
       def apply[A](r: Algebra[F,A]) = r match {
         case Algebra.Eval(fa) => Algebra.Eval(f(fa))
         case Algebra.FinishAcquire(token, cleanup) => Algebra.FinishAcquire(token, cleanup.translate(f))
@@ -74,7 +74,7 @@ object Scope {
     attemptEval(o) flatMap { _.fold(fail, pure) }
 
   def evalFree[F[_],O](o: Free[F,O]): Scope[F,O] =
-    new Scope(o.translate[AlgebraF[F]#f](new (F ~> AlgebraF[F]#f) { def apply[x](f: F[x]) = Algebra.Eval(f) }))
+    new Scope(o.translate[AlgebraF[F]#f](new UF1[F, AlgebraF[F]#f] { def apply[x](f: F[x]) = Algebra.Eval(f) }))
 
   def fail[F[_],O](err: Throwable): Scope[F,O] =
     new Scope(Free.fail(err))

@@ -1,6 +1,7 @@
 package fs2
 
 import java.util.concurrent.atomic.AtomicInteger
+import cats.effect.IO
 
 class StreamPerformanceSpec extends Fs2Spec {
 
@@ -59,7 +60,7 @@ class StreamPerformanceSpec extends Fs2Spec {
 
     "transduce (id)" - { Ns.foreach { N =>
       N.toString in {
-        runLog((chunk(Chunk.seq(0 until N)): Stream[Task,Int]).repeatPull { (s: Handle[Task,Int]) =>
+        runLog((chunk(Chunk.seq(0 until N)): Stream[IO,Int]).repeatPull { (s: Handle[IO,Int]) =>
           for {
             s2 <- s.await1
             _ <- Pull.output1(s2._1)
@@ -72,13 +73,13 @@ class StreamPerformanceSpec extends Fs2Spec {
       N.toString in {
         val open = new AtomicInteger(0)
         val ok = new AtomicInteger(0)
-        val bracketed = bracket(Task.delay { open.incrementAndGet })(
+        val bracketed = bracket(IO { open.incrementAndGet })(
           _ => emit(1) ++ Stream.fail(FailWhale),
-          _ => Task.delay { ok.incrementAndGet; open.decrementAndGet; () }
+          _ => IO { ok.incrementAndGet; open.decrementAndGet; () }
         )
         // left-associative onError chains
         assert(throws (FailWhale) {
-          List.fill(N)(bracketed).foldLeft(Stream.fail(FailWhale): Stream[Task,Int]) {
+          List.fill(N)(bracketed).foldLeft(Stream.fail(FailWhale): Stream[IO,Int]) {
             (acc,hd) => acc onError { _ => hd }
           }
         })
@@ -87,7 +88,7 @@ class StreamPerformanceSpec extends Fs2Spec {
         ok.set(0)
         // right-associative onError chains
         assert(throws (FailWhale) {
-          List.fill(N)(bracketed).foldLeft(Stream.fail(FailWhale): Stream[Task,Int]) {
+          List.fill(N)(bracketed).foldLeft(Stream.fail(FailWhale): Stream[IO,Int]) {
             (tl,hd) => hd onError { _ => tl }
           }
         })

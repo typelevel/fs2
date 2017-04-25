@@ -1,5 +1,6 @@
 package fs2.util
 
+import cats.{Functor,Monad,MonadError}
 import fs2.internal.Trampoline
 
 /** A specialized free monad which captures exceptions thrown during evaluation. */
@@ -11,7 +12,7 @@ sealed trait Free[+F[_],+A] {
   final def fold[F2[_],G[_],A2>:A](f: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2] =
     this.step._fold(f)
 
-  final def translate[G[_]](u: F ~> G): Free[G,A] = {
+  final def translate[G[_]](u: UF1[F, G]): Free[G,A] = {
     type FG[x] = Free[G,x]
     fold[F,FG,A](new Fold[F,FG,A] {
       def suspend(g: => FG[A]) = Free.suspend(g)
@@ -38,10 +39,10 @@ sealed trait Free[+F[_],+A] {
 
   protected def _fold[F2[_],G[_],A2>:A](f: Fold[F2,G,A2])(implicit S: Sub1[F,F2], T: RealSupertype[A,A2]): G[A2]
 
-  final def run[F2[x]>:F[x],A2>:A](implicit F2: Catchable[F2]): F2[A2] =
+  final def run[F2[x]>:F[x],A2>:A](implicit F2: MonadError[F2, Throwable]): F2[A2] =
     step._run(F2)
 
-  protected def _run[F2[x]>:F[x],A2>:A](implicit F2: Catchable[F2]): F2[A2]
+  protected def _run[F2[x]>:F[x],A2>:A](implicit F2: MonadError[F2, Throwable]): F2[A2]
 
   final def unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G]): Unroll[A, G[Free[F,A]]] =
     this.step._unroll.run
@@ -85,15 +86,15 @@ object Free {
     Pure((), false) flatMap { _ => fa }
 
   private final case class Fail(err: Throwable) extends Free[Nothing,Nothing] {
-    def _run[F2[x]>:Nothing,A2>:Nothing](implicit F2: Catchable[F2]): F2[A2] =
-      F2.fail(err)
+    def _run[F2[x]>:Nothing,A2>:Nothing](implicit F2: MonadError[F2, Throwable]): F2[A2] =
+      F2.raiseError(err)
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
     : Trampoline[Unroll[Nothing, G[Free[Nothing,Nothing]]]]
     = Trampoline.done { Unroll.Fail(err) }
     def _fold[F2[_],G[_],A2>:Nothing](f: Fold[F2,G,A2])(implicit S: Sub1[Nothing,F2], T: RealSupertype[Nothing,A2]): G[A2] = f.fail(err)
   }
   private final case class Pure[A](a: A, allowEagerStep: Boolean) extends Free[Nothing,A] {
-    def _run[F2[x]>:Nothing,A2>:A](implicit F2: Catchable[F2]): F2[A2] =
+    def _run[F2[x]>:Nothing,A2>:A](implicit F2: MonadError[F2, Throwable]): F2[A2] =
       F2.pure(a)
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[Nothing,G])
     : Trampoline[Unroll[A, G[Free[Nothing,A]]]]
@@ -101,7 +102,7 @@ object Free {
     def _fold[F2[_],G[_],A2>:A](f: Fold[F2,G,A2])(implicit S: Sub1[Nothing,F2], T: RealSupertype[A,A2]): G[A2] = f.done(a)
   }
   private final case class Eval[F[_],A](fa: F[A]) extends Free[F,Attempt[A]] {
-    def _run[F2[x]>:F[x],A2>:Attempt[A]](implicit F2: Catchable[F2]): F2[A2] =
+    def _run[F2[x]>:F[x],A2>:Attempt[A]](implicit F2: MonadError[F2, Throwable]): F2[A2] =
       F2.attempt(fa).asInstanceOf[F2[A2]]
 
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
@@ -112,7 +113,7 @@ object Free {
       f.eval(S(fa))(f.done)
   }
   private final case class Bind[+F[_],R,A](r: Free[F,R], f: R => Free[F,A]) extends Free[F,A] {
-    def _run[F2[x]>:F[x],A2>:A](implicit F2: Catchable[F2]): F2[A2] =
+    def _run[F2[x]>:F[x],A2>:A](implicit F2: MonadError[F2, Throwable]): F2[A2] =
       F2.flatMap(r._run(F2))(r => f(r).run(F2))
     def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G])
     : Trampoline[Unroll[A, G[Free[F,A]]]]
@@ -145,9 +146,10 @@ object Free {
     final case class Eval[B](e: B) extends Unroll[Nothing,B]
   }
 
-  implicit def monad[F[_]]: Monad[({ type f[x] = Free[F,x]})#f] =
-    new Monad[({ type f[x] = Free[F,x]})#f] {
+  implicit def monad[F[_]]: Monad[Free[F,?]] =
+    new Monad[Free[F,?]] {
       def pure[A](a: A) = Pure(a, true)
       def flatMap[A,B](a: Free[F,A])(f: A => Free[F,B]) = a flatMap f
+      def tailRecM[A,B](a: A)(f: A => Free[F,Either[A,B]]): Free[F,B] = defaultTailRecM[Free[F,?], A, B](a)(f)
     }
 }

@@ -1,7 +1,8 @@
 package fs2
 
+import cats.Functor
 import fs2.{Pull => P}
-import fs2.util.{Async,Free,Functor,Sub1}
+import fs2.util.{Concurrent,Free,Sub1}
 
 /** Generic implementations of common 2-argument pipes. */
 object pipe2 {
@@ -212,18 +213,18 @@ object pipe2 {
    * Defined as `s1.drain merge s2`. Runs `s1` and `s2` concurrently, ignoring
    * any output of `s1`.
    */
-  def mergeDrainL[F[_]:Async,I,I2]: Pipe2[F,I,I2,I2] = (s1, s2) =>
+  def mergeDrainL[F[_]:Concurrent,I,I2]: Pipe2[F,I,I2,I2] = (s1, s2) =>
     s1.drain merge s2
 
   /**
    * Defined as `s1 merge s2.drain`. Runs `s1` and `s2` concurrently, ignoring
    * any output of `s2`.
    */
-  def mergeDrainR[F[_]:Async,I,I2]: Pipe2[F,I,I2,I] = (s1, s2) =>
+  def mergeDrainR[F[_]:Concurrent,I,I2]: Pipe2[F,I,I2,I] = (s1, s2) =>
     s1 merge s2.drain
 
   /** Like `[[merge]]`, but tags each output with the branch it came from. */
-  def either[F[_]:Async,I,I2]: Pipe2[F,I,I2,Either[I,I2]] = (s1, s2) =>
+  def either[F[_]:Concurrent,I,I2]: Pipe2[F,I,I2,Either[I,I2]] = (s1, s2) =>
     s1.map(Left(_)) merge s2.map(Right(_))
 
   /**
@@ -231,7 +232,7 @@ object pipe2 {
    * listening asynchronously for the left branch to become `true`.
    * This halts as soon as either branch halts.
    */
-  def interrupt[F[_]:Async,I]: Pipe2[F,Boolean,I,I] = (s1, s2) =>
+  def interrupt[F[_]:Concurrent,I]: Pipe2[F,Boolean,I,I] = (s1, s2) =>
     either.apply(s1.noneTerminate, s2.noneTerminate)
       .takeWhile(_.fold(halt => halt.map(!_).getOrElse(false), o => o.isDefined))
       .collect { case Right(Some(i)) => i }
@@ -244,7 +245,7 @@ object pipe2 {
    * eventually terminate with `fail(e)`, possibly after emitting some
    * elements of `s` first.
    */
-  def merge[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) => {
+  def merge[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) => {
     def go(l: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[O], Handle[F,O])]],
            r: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[O], Handle[F,O])]]): Pull[F,O,Nothing] =
       (l race r).pull flatMap {
@@ -263,19 +264,19 @@ object pipe2 {
   }
 
   /** Like `merge`, but halts as soon as _either_ branch halts. */
-  def mergeHaltBoth[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) =>
+  def mergeHaltBoth[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) =>
     s1.noneTerminate merge s2.noneTerminate through pipe.unNoneTerminate
 
   /** Like `merge`, but halts as soon as the `s1` branch halts. */
-  def mergeHaltL[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) =>
+  def mergeHaltL[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) =>
     s1.noneTerminate merge s2.map(Some(_)) through pipe.unNoneTerminate
 
   /** Like `merge`, but halts as soon as the `s2` branch halts. */
-  def mergeHaltR[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) =>
+  def mergeHaltR[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) =>
     mergeHaltL.apply(s2, s1)
 
   /** Like `interrupt` but resumes the stream when left branch goes to true. */
-  def pause[F[_]:Async,I]: Pipe2[F,Boolean,I,I] = {
+  def pause[F[_]:Concurrent,I]: Pipe2[F,Boolean,I,I] = {
     def unpaused(
       controlFuture: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[Boolean], Handle[F, Boolean])]],
       srcFuture: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[I], Handle[F, I])]]

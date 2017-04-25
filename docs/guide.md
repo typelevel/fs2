@@ -108,17 +108,13 @@ val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
 
 [`Task`](../core/shared/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
 
-The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type ([`Catchable`][Catchable], [`Suspendable`][Suspendable], [`Effect`][Effect], and optionally [`Async`][Async] if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, and `cats.effect.Effect` if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
 ```Scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
 
 [Task]: ../core/shared/src/main/scala/fs2/Task.scala
-[Catchable]: ../core/shared/src/main/scala/fs2/util/Catchable.scala
-[Suspendable]: ../core/shared/src/main/scala/fs2/util/Suspendable.scala
-[Effect]: ../core/shared/src/main/scala/fs2/util/Effect.scala
-[Async]: ../core/shared/src/main/scala/fs2/util/Async.scala
 
 `eval` produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained). Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
@@ -176,7 +172,7 @@ res15: Int = 2
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `Task` and work for any `F[_]` with an implicit `Catchable[F]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
+_Note:_ The various `run*` functions aren't specialized to `Task` and work for any `F[_]` with an implicit `MonadError[F, Throwable]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
 
 ### Chunking
 
@@ -292,7 +288,7 @@ scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsa
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 826 elided
+  ... 810 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -473,12 +469,12 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 
 ```scala
 scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
-<console>:17: error: could not find implicit value for parameter F2: fs2.util.Async[fs2.Task]
+<console>:17: error: could not find implicit value for parameter F2: fs2.util.Concurrent[fs2.Task]
        Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
                           ^
 ```
 
-Oop, we need a `scala.concurrent.ExecutionContext` in implicit scope in order to get an `Async[Task]`. Let's add that:
+Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope in order to get an `Concurrent[Task]`. Let's add that:
 
 ```scala
 scala> import scala.concurrent.ExecutionContext.Implicits.global
@@ -493,20 +489,20 @@ The `merge` function is defined in [`pipe2`](../core/shared/src/main/scala/fs2/p
 The function `concurrent.join` runs multiple streams concurrently. The signature is:
 
 ```Scala
-// note Async[F] bound
-def join[F[_]:Async,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]]): Stream[F,O]
+// note Concurrent[F] bound
+def join[F[_]:Concurrent,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]]): Stream[F,O]
 ```
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. `s merge s2` could be implemented as `concurrent.join(2)(Stream(s,s2))`.
 
-The `Async` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Async`, users can bring their own effect types provided they also supply an `Async` instance.
+The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. It defines concurrency primitives for the effect type `F`. An instance is implicitly available for any effect type which has an instance of `cats.effect.Effect`. It implements concurrency primitives in terms of the `Effect` instance and an `ExecutionContext`. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Concurrent`, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
 If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `h.awaitAsync` requests the next step of a `Handle h` asynchronously. Its signature is:
 
 ```Scala
 type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
 
-def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]]
+def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Concurrent[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]]
 ```
 
 A `ScopedFuture[F,A]` represents a running computation that will eventually yield an `A`. A `ScopedFuture[F,A]` has a method `.pull`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. A `ScopedFuture[F,A]` may be raced with another `ScopedFuture` also---see the implementation of [`pipe2.merge`](../core/shared/src/main/scala/fs2/pipe2.scala).
@@ -521,14 +517,14 @@ Without looking at the implementations, try implementing `pipe2.interrupt` and `
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
 /** Like `merge`, but halts as soon as _either_ branch halts. */
-def mergeHaltBoth[F[_]:Async,O]: Pipe2[F,O,O,O] = (s1, s2) => ???
+def mergeHaltBoth[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) => ???
 
 /**
  * Let through the `s2` branch as long as the `s1` branch is `false`,
  * listening asynchronously for the left branch to become `true`.
  * This halts as soon as either branch halts.
  */
-def interrupt[F[_]:Async,I]: Pipe2[F,Boolean,I,I] = (s1, s2) => ???
+def interrupt[F[_]:Concurrent,I]: Pipe2[F,Boolean,I,I] = (s1, s2) => ???
 ```
 
 ### Talking to the external world
@@ -557,14 +553,14 @@ s.runLog.unsafeRun()
 // res48: Vector[String] = Vector(...moving on)
 ```
 
-The way you bring synchronous effects into your effect type may differ. [`Async.delay`](../core/shared/src/main/scala/fs2/util/Async.scala) can be used for this generally, without committing to a particular effect:
+The way you bring synchronous effects into your effect type may differ. `Sync.delay` can be used for this generally, without committing to a particular effect:
 
 ```scala
-import fs2.util.Async
-// import fs2.util.Async
+import cats.effect.Sync
+// import cats.effect.Sync
 
-val T = implicitly[Async[Task]]
-// T: fs2.util.Async[fs2.Task] = Async[Task]
+val T = Sync[Task]
+// T: cats.effect.Sync[fs2.Task] = Effect[Task]
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[fs2.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
@@ -593,10 +589,10 @@ trait Connection {
 // defined trait Connection
 ```
 
-That is, we provide a `Connection` with two callbacks (or a single callback that accepts an `Either`), and at some point later, the callback will be invoked _once_. The `Async` trait provides a handy function in these situations:
+That is, we provide a `Connection` with two callbacks (or a single callback that accepts an `Either`), and at some point later, the callback will be invoked _once_. The `cats.effect.Async` trait provides a handy function in these situations:
 
 ```Scala
-trait Async[F[_]] {
+trait Async[F[_]] extends MonadError[F, Throwable] {
   ...
   /**
    Create an `F[A]` from an asynchronous computation, which takes the form
@@ -604,7 +600,7 @@ trait Async[F[_]] {
    to translate from a callback-based API to a straightforward monadic
    version.
    */
-  def async[A](register: (Either[Throwable,A] => Unit) => F[Unit]): F[A]
+  def async[A](register: (Either[Throwable,A] => Unit) => Unit): F[A]
 }
 ```
 
@@ -619,9 +615,12 @@ val c = new Connection {
 }
 // c: Connection = <connection>
 
-// recall T: Async[Task]
+// Effect extends both Sync and Async
+val T = cats.effect.Effect[Task]
+// T: cats.effect.Effect[fs2.Task] = Effect[Task]
+
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
-  T.delay { c.readBytesE(cb) }
+  c.readBytesE(cb)
 }
 // bytes: fs2.Task[Array[Byte]] = Task
 
@@ -643,6 +642,9 @@ Let's look at a complete example:
 import fs2.async
 // import fs2.async
 
+import cats.effect.IO
+// import cats.effect.IO
+
 type Row = List[String]
 // defined type alias Row
 
@@ -651,13 +653,13 @@ trait CSVHandle {
 }
 // defined trait CSVHandle
 
-def rows[F[_]](h: CSVHandle)(implicit F: Async[F]): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: fs2.util.Concurrent[F]): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => F.unsafeRunAsync(q.enqueue1(e))(_ => ()) }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => F.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
-// rows: [F[_]](h: CSVHandle)(implicit F: fs2.util.Async[F])fs2.Stream[F,Row]
+// rows: [F[_]](h: CSVHandle)(implicit F: fs2.util.Concurrent[F])fs2.Stream[F,Row]
 ```
 
 See [`Queue`](../core/shared/src/main/scala/fs2/async/mutable/Queue.scala) for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
@@ -683,7 +685,7 @@ Also feel free to come discuss and ask/answer questions in [the gitter channel](
 
 ```scala
 scala> Stream.emit(1) ++ Stream.emit("hello")
-<console>:20: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
+<console>:21: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
        Stream.emit(1) ++ Stream.emit("hello")
                       ^
 ```

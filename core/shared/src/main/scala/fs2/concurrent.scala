@@ -1,7 +1,8 @@
 package fs2
 
-import fs2.util.{Async,Attempt}
-import fs2.util.syntax._
+import cats.implicits._
+
+import fs2.util.{Attempt,Concurrent}
 
 /** Provides utilities for working with streams concurrently. */
 object concurrent {
@@ -38,7 +39,7 @@ object concurrent {
     * @param maxOpen    Maximum number of open inner streams at any time. Must be > 0.
     * @param outer      Stream of streams to join.
     */
-  def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Async[F]): Stream[F,O] = {
+  def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Concurrent[F]): Stream[F,O] = {
     assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
 
     Stream.eval(async.signalOf(false)) flatMap { killSignal =>

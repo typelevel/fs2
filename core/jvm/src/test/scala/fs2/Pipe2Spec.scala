@@ -1,9 +1,10 @@
 package fs2
 
 import scala.concurrent.duration._
+import cats.effect.IO
+import cats.implicits._
 import org.scalacheck.Gen
-
-import fs2.util.syntax._
+import fs2.util.Concurrent
 
 class Pipe2Spec extends Fs2Spec {
 
@@ -107,33 +108,33 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "either" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
-      val shouldCompile = s1.get.either(s2.get.covary[Task])
-      val es = runLog { s1.get.covary[Task].through2(s2.get)(pipe2.either) }
+      val shouldCompile = s1.get.either(s2.get.covary[IO])
+      val es = runLog { s1.get.covary[IO].through2(s2.get)(pipe2.either) }
       es.collect { case Left(i) => i } shouldBe runLog(s1.get)
       es.collect { case Right(i) => i } shouldBe runLog(s2.get)
     }
 
     "merge" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
-      runLog { s1.get.merge(s2.get.covary[Task]) }.toSet shouldBe
+      runLog { s1.get.merge(s2.get.covary[IO]) }.toSet shouldBe
       (runLog(s1.get).toSet ++ runLog(s2.get).toSet)
     }
 
     "merge (left/right identity)" in forAll { (s1: PureStream[Int]) =>
-      runLog { s1.get.merge(Stream.empty.covary[Task]) } shouldBe runLog(s1.get)
-      runLog { Stream.empty.through2(s1.get.covary[Task])(pipe2.merge) } shouldBe runLog(s1.get)
+      runLog { s1.get.merge(Stream.empty.covary[IO]) } shouldBe runLog(s1.get)
+      runLog { Stream.empty.through2(s1.get.covary[IO])(pipe2.merge) } shouldBe runLog(s1.get)
     }
 
     "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
       an[Err.type] should be thrownBy {
-        (s1.get merge f.get).run.unsafeRun()
+        (s1.get merge f.get).run.unsafeRunSync()
       }
     }
 
     "mergeHalt{L/R/Both}" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
       withClue(s1.tag + " " + s2.tag) {
-        val outBoth = runLog { s1.get.covary[Task].map(Left(_)) mergeHaltBoth s2.get.map(Right(_)) }
-        val outL = runLog { s1.get.covary[Task].map(Left(_)) mergeHaltL s2.get.map(Right(_)) }
-        val outR = runLog { s1.get.covary[Task].map(Left(_)) mergeHaltR s2.get.map(Right(_)) }
+        val outBoth = runLog { s1.get.covary[IO].map(Left(_)) mergeHaltBoth s2.get.map(Right(_)) }
+        val outL = runLog { s1.get.covary[IO].map(Left(_)) mergeHaltL s2.get.map(Right(_)) }
+        val outR = runLog { s1.get.covary[IO].map(Left(_)) mergeHaltR s2.get.map(Right(_)) }
         // out should contain at least all the elements from one of the input streams
         val e1 = runLog(s1.get)
         val e2 = runLog(s2.get)
@@ -147,21 +148,24 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "interrupt (1)" in forAll { (s1: PureStream[Int]) =>
-      val s = async.mutable.Semaphore[Task](0).unsafeRun()
+      val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
       val interrupt = Stream.emit(true) ++ Stream.eval_(s.increment)
       // tests that termination is successful even if stream being interrupted is hung
       runLog { s1.get.evalMap(_ => s.decrement).interruptWhen(interrupt) } shouldBe Vector()
-      // tests that termination is successful even if interruption stream is infinitely false
-      runLog { s1.get.covary[Task].interruptWhen(Stream.constant(false)) } shouldBe runLog(s1.get)
     }
 
     "interrupt (2)" in forAll { (s1: PureStream[Int]) =>
-      val barrier = async.mutable.Semaphore[Task](0).unsafeRun()
-      val enableInterrupt = async.mutable.Semaphore[Task](0).unsafeRun()
+      // tests that termination is successful even if interruption stream is infinitely false
+      runLog { s1.get.covary[IO].interruptWhen(Stream.constant(false)) } shouldBe runLog(s1.get)
+    }
+
+    "interrupt (3)" in forAll { (s1: PureStream[Int]) =>
+      val barrier = async.mutable.Semaphore[IO](0).unsafeRunSync()
+      val enableInterrupt = async.mutable.Semaphore[IO](0).unsafeRunSync()
       val interruptedS1 = s1.get.evalMap { i =>
         // enable interruption and hang when hitting a value divisible by 7
         if (i % 7 == 0) enableInterrupt.increment.flatMap { _ => barrier.decrement.map(_ => i) }
-        else Task.now(i)
+        else IO.pure(i)
       }
       val interrupt = Stream.eval(enableInterrupt.decrement) flatMap { _ => Stream.emit(false) }
       val out = runLog { interruptedS1.interruptWhen(interrupt) }
@@ -172,10 +176,10 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "pause" in forAll { (s1: PureStream[Int]) =>
-      val pausedStream = Stream.eval(async.signalOf[Task,Boolean](false)).flatMap { pause =>
-        time.awakeEvery[Task](10.millis).scan(0)((acc, _) => acc + 1).evalMap { n =>
-          if (n % 2 != 0) pause.set(true) >> Task.start(pause.set(false).schedule(10.millis)) >> Task.now(n)
-          else Task.now(n)
+      val pausedStream = Stream.eval(async.signalOf[IO,Boolean](false)).flatMap { pause =>
+        time.awakeEvery[IO](10.millis).scan(0)((acc, _) => acc + 1).evalMap { n =>
+          if (n % 2 != 0) pause.set(true) >> Concurrent[IO].start((time.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).run) >> IO.pure(n)
+          else IO.pure(n)
         }.take(5)
       }
       val out = runLog { pausedStream }

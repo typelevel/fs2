@@ -1,8 +1,10 @@
 package fs2
 
+import cats.{ Eq, Functor }
+import cats.implicits._
+
 import fs2.async.mutable.Queue
-import fs2.util.{Async,Attempt,Free,Functor,Sub1}
-import fs2.util.syntax._
+import fs2.util.{ Attempt, Concurrent, Free, Sub1 }
 
 /** Generic implementations of common pipes. */
 object pipe {
@@ -51,8 +53,8 @@ object pipe {
    * Emits only elements that are distinct from their immediate predecessors,
    * using natural equality for comparison.
    */
-  def changes[F[_],I]: Pipe[F,I,I] =
-    filterWithPrevious((i1, i2) => i1 != i2)
+  def changes[F[_],I](implicit eq: Eq[I]): Pipe[F,I,I] =
+    filterWithPrevious(eq.neqv)
 
   /**
    * Emits only elements that are distinct from their immediate predecessors
@@ -63,8 +65,8 @@ object pipe {
    * used for computationally intensive conversions. For such conversions,
    * consider something like: `src.map(i => (i, f(i))).changesBy(_._2).map(_._1)`
    */
-  def changesBy[F[_],I,I2](f: I => I2): Pipe[F,I,I] =
-    filterWithPrevious((i1, i2) => f(i1) != f(i2))
+  def changesBy[F[_],I,I2](f: I => I2)(implicit eq: Eq[I2]): Pipe[F,I,I] =
+    filterWithPrevious((i1, i2) => eq.neqv(f(i1), f(i2)))
 
   /** Outputs chunks with a limited maximum size, splitting as necessary. */
   def chunkLimit[F[_],I](n: Int): Pipe[F,I,NonEmptyChunk[I]] =
@@ -214,17 +216,17 @@ object pipe {
    * Each chunk is annotated with the value of the discriminator function applied to
    * any of the chunk's elements.
    */
-  def groupBy[F[_], K, V](f: V => K): Pipe[F, V, (K, Vector[V])] = {
+  def groupBy[F[_], K, V](f: V => K)(implicit eq: Eq[K]): Pipe[F, V, (K, Vector[V])] = {
 
-    def go(current: Option[(K, Vector[V])]): 
+    def go(current: Option[(K, Vector[V])]):
         Handle[F, V] => Pull[F, (K, Vector[V]), Unit] = h => {
 
-      h.receiveOption { 
-        case Some((chunk, h)) => 
+      h.receiveOption {
+        case Some((chunk, h)) =>
           val (k1, out) = current.getOrElse((f(chunk(0)), Vector[V]()))
           doChunk(chunk, h, k1, out, Vector.empty)
-        case None => 
-          val l = current.map { case (k1, out) => Pull.output1((k1, out)) } getOrElse Pull.pure(()) 
+        case None =>
+          val l = current.map { case (k1, out) => Pull.output1((k1, out)) } getOrElse Pull.pure(())
           l >> Pull.done
       }
     }
@@ -233,7 +235,7 @@ object pipe {
     def doChunk(chunk: Chunk[V], h: Handle[F, V], k1: K, out: Vector[V], acc: Vector[(K, Vector[V])]):
         Pull[F, (K, Vector[V]), Unit] = {
 
-      val differsAt = chunk.indexWhere(f(_) != k1).getOrElse(-1)
+      val differsAt = chunk.indexWhere(v => eq.neqv(f(v), k1)).getOrElse(-1)
       if (differsAt == -1) {
         // whole chunk matches the current key, add this chunk to the accumulated output
         val newOut: Vector[V] = out ++ chunk.toVector
@@ -331,7 +333,7 @@ object pipe {
    * Behaves like `id`, but starts fetching the next chunk before emitting the current,
    * enabling processing on either side of the `prefetch` to run in parallel.
    */
-  def prefetch[F[_]:Async,I]: Pipe[F,I,I] =
+  def prefetch[F[_]:Concurrent,I]: Pipe[F,I,I] =
     _ repeatPull { _.receive {
       case (hd, tl) => tl.prefetch flatMap { p => Pull.output(hd) >> p }}}
 
@@ -393,25 +395,6 @@ object pipe {
   def scan1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
     _ pull { _.receive1 { (o, h) => _scan0(o)(f)(h) }}
 
-  private def _scanF0[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
-    h => h.await1Option.flatMap {
-      case Some((i, h)) => Pull.eval(f(z, i)).flatMap { o =>
-        Pull.output(Chunk.seq(Vector(z, o))) >> _scanF1(o)(f)(h)
-      }
-      case None => Pull.output(Chunk.singleton(z)) as Handle.empty
-    }
-
-  private def _scanF1[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
-    h => h.await1.flatMap {
-      case (i, h) => Pull.eval(f(z, i)).flatMap { o =>
-        Pull.output(Chunk.singleton(o)) >> _scanF1(o)(f)(h)
-      }}
-
-  /** Like `[[pipe.scan]]`, but accepts a function returning an F[_] */
-  def scanF[F[_], O, I](z: O)(f: (O, I) => F[O]): Pipe[F, I, O] =
-    _ pull (_scanF0(z)(f))
-
-
   /** Emits the given values, then echoes the rest of the input. */
   def shiftRight[F[_],I](head: I*): Pipe[F,I,I] =
     _ pull { h => h.push(Chunk.indexedSeq(Vector(head: _*))).echo }
@@ -467,10 +450,6 @@ object pipe {
     }
     _.pull(go(Vector.empty))
   }
-
-  /** Writes the sum of all input elements, or zero if the input is empty. */
-  def sum[F[_],I](implicit ev: Numeric[I]): Pipe[F,I,I] =
-    fold(ev.zero)(ev.plus)
 
   /** Emits all elements of the input except the first one. */
   def tail[F[_],I]: Pipe[F,I,I] =
@@ -683,7 +662,7 @@ object pipe {
   def diamond[F[_],A,B,C,D](s: Stream[F,A])
     (f: Pipe[F,A, B])
     (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
-    (combine: Pipe2[F,B,C,D])(implicit F: Async[F]): Stream[F,D] = {
+    (combine: Pipe2[F,B,C,D])(implicit F: Concurrent[F]): Stream[F,D] = {
       Stream.eval(qs) flatMap { q =>
       Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
       Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
@@ -725,7 +704,7 @@ object pipe {
   }
 
   /** Queue based version of [[join]] that uses the specified queue. */
-  def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Async[F]): Pipe[F,A,B] = in => {
+  def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Concurrent[F]): Pipe[F,A,B] = in => {
     for {
       done <- Stream.eval(async.signalOf(false))
       q <- Stream.eval(q)
@@ -739,7 +718,7 @@ object pipe {
   }
 
   /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
-  def joinAsync[F[_]:Async,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]]): Pipe[F,A,B] =
+  def joinAsync[F[_]:Concurrent,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]]): Pipe[F,A,B] =
     joinQueued[F,A,B](async.boundedQueue(maxQueued))(s)
 
   /**
@@ -747,14 +726,14 @@ object pipe {
    * Input is fed to the first pipe until it terminates, at which point input is
    * fed to the second pipe, and so on.
    */
-  def join[F[_]:Async,A,B](s: Stream[F,Pipe[F,A,B]]): Pipe[F,A,B] =
+  def join[F[_]:Concurrent,A,B](s: Stream[F,Pipe[F,A,B]]): Pipe[F,A,B] =
     joinQueued[F,A,B](async.synchronousQueue)(s)
 
   /** Synchronously send values through `sink`. */
-  def observe[F[_]:Async,A](s: Stream[F,A])(sink: Sink[F,A]): Stream[F,A] =
+  def observe[F[_]:Concurrent,A](s: Stream[F,A])(sink: Sink[F,A]): Stream[F,A] =
     diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain))(pipe2.merge)
 
   /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-  def observeAsync[F[_]:Async,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A]): Stream[F,A] =
+  def observeAsync[F[_]:Concurrent,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A]): Stream[F,A] =
     diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(pipe2.merge)
 }

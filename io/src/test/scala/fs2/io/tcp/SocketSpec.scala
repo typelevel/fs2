@@ -4,11 +4,12 @@ import java.net.InetSocketAddress
 import java.net.InetAddress
 import java.nio.channels.AsynchronousChannelGroup
 
-import fs2._
+import cats.effect.IO
 
+import fs2._
 import fs2.io.TestUtil._
 import fs2.Stream._
-
+import fs2.util.Concurrent
 
 object SocketSpec {
   implicit val tcpACG : AsynchronousChannelGroup = namedACG("tcp")
@@ -32,15 +33,15 @@ class SocketSpec extends Fs2Spec {
         val message = Chunk.bytes("fs2.rocks".getBytes)
         val clientCount = 5000
 
-        val localBindAddress = Task.ref[InetSocketAddress].unsafeRun()
+        val localBindAddress = Concurrent[IO].ref[InetSocketAddress].unsafeRunSync()
 
-        val echoServer: Stream[Task, Unit] = {
+        val echoServer: Stream[IO, Unit] = {
           val ps =
-            serverWithLocalAddress[Task](new InetSocketAddress(InetAddress.getByName(null), 0))
+            serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
             .flatMap {
-              case Left(local) => Stream.eval_(localBindAddress.set(Task.now(local)))
+              case Left(local) => Stream.eval_(localBindAddress.set(IO.pure(local)))
               case Right(s) =>
-                Stream.emit(s.flatMap { (socket: Socket[Task]) =>
+                Stream.emit(s.flatMap { (socket: Socket[IO]) =>
                   socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)
                 })
             }
@@ -48,11 +49,11 @@ class SocketSpec extends Fs2Spec {
           concurrent.join(Int.MaxValue)(ps)
         }
 
-        val clients: Stream[Task, Array[Byte]] = {
-          val pc: Stream[Task, Stream[Task, Array[Byte]]] =
-            Stream.range[Task](0, clientCount).map { idx =>
+        val clients: Stream[IO, Array[Byte]] = {
+          val pc: Stream[IO, Stream[IO, Array[Byte]]] =
+            Stream.range[IO](0, clientCount).map { idx =>
               Stream.eval(localBindAddress.get).flatMap { local =>
-                client[Task](local).flatMap { socket =>
+                client[IO](local).flatMap { socket =>
                   Stream.chunk(message).to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
                     socket.reads(1024, None).chunks.map(_.toArray)
                 }
@@ -67,7 +68,7 @@ class SocketSpec extends Fs2Spec {
             echoServer.drain
             , clients
           ))
-          .take(clientCount).runLog.unsafeRun()
+          .take(clientCount).runLog.unsafeRunSync()
 
 
         (result.size shouldBe clientCount)
