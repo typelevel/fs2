@@ -238,7 +238,7 @@ object concurrent {
     }
 
   /**
-   * Like `unsafeRunSync` but execution is shifted to the execution context used by this `Concurrent` instance.
+   * Like `unsafeRunSync` but execution is shifted to the supplied execution context.
    * This method returns immediately after submitting execution to the execution context.
    */
   def unsafeRunAsync[F[_], A](fa: F[A])(f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =

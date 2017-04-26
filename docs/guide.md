@@ -643,11 +643,8 @@ _Note:_ Some of these APIs don't provide any means of throttling the producer, i
 Let's look at a complete example:
 
 ```scala
-import fs2.async
-// import fs2.async
-
-import fs2.util.Concurrent
-// import fs2.util.Concurrent
+import fs2.{ async, concurrent }
+// import fs2.{async, concurrent}
 
 import scala.concurrent.ExecutionContext
 // import scala.concurrent.ExecutionContext
@@ -666,7 +663,7 @@ trait CSVHandle {
 def rows[F[_]](h: CSVHandle)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => Concurrent.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => concurrent.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
 // rows: [F[_]](h: CSVHandle)(implicit F: cats.effect.Effect[F], implicit ec: scala.concurrent.ExecutionContext)fs2.Stream[F,Row]
@@ -695,7 +692,7 @@ Also feel free to come discuss and ask/answer questions in [the gitter channel](
 
 ```scala
 scala> Stream.emit(1) ++ Stream.emit("hello")
-<console>:23: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
+<console>:22: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
        Stream.emit(1) ++ Stream.emit("hello")
                       ^
 ```

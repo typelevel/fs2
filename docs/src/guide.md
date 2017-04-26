@@ -501,8 +501,7 @@ _Note:_ Some of these APIs don't provide any means of throttling the producer, i
 Let's look at a complete example:
 
 ```tut:book
-import fs2.async
-import fs2.util.Concurrent
+import fs2.{ async, concurrent }
 import scala.concurrent.ExecutionContext
 import cats.effect.{ Effect, IO }
 
@@ -515,7 +514,7 @@ trait CSVHandle {
 def rows[F[_]](h: CSVHandle)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => Concurrent.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => concurrent.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
 ```
