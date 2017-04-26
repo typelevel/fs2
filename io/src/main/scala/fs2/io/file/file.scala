@@ -8,7 +8,6 @@ import java.nio.file.{ Path, StandardOpenOption }
 import java.util.concurrent.ExecutorService
 
 import cats.effect.{ Effect, IO,Sync }
-import fs2.util.Concurrent
 
 /** Provides support for working with files. */
 package object file {
@@ -20,9 +19,9 @@ package object file {
     F.async[O] { cb =>
       f(new CompletionHandler[O, Null] {
         override def completed(result: O, attachment: Null): Unit =
-          Concurrent.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.pure(()))
+          concurrent.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.pure(()))
         override def failed(exc: Throwable, attachment: Null): Unit =
-          Concurrent.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.pure(()))
+          concurrent.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.pure(()))
       })
     }
   }

@@ -16,7 +16,7 @@ class ConcurrentSpec extends Fs2Spec {
         */
       "Interleaving set and access " in {
 
-        Concurrent.ref[IO, Int].flatMap{ref =>
+        concurrent.ref[IO, Int].flatMap{ref =>
           ref.setAsyncPure(1).flatMap{ _ =>
             ref.access.flatMap{ case ((_, set)) =>
               ref.setAsyncPure(2).flatMap{ _ =>
@@ -28,7 +28,7 @@ class ConcurrentSpec extends Fs2Spec {
       }
 
       "setSync" in {
-        Concurrent.ref[IO, Int].flatMap { ref =>
+        concurrent.ref[IO, Int].flatMap { ref =>
           ref.setSyncPure(0) >> ref.setSync(IO(1)) >> ref.get
         }.unsafeToFuture.map { _ shouldBe 1 }
       }

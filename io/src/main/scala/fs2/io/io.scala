@@ -7,8 +7,6 @@ import java.io.{InputStream, OutputStream}
 import cats.effect.{ Effect, Sync }
 import cats.implicits._
 
-import fs2.util.Concurrent
-
 /** Provides various ways to work with streams that perform IO. */
 package object io {
   import JavaInputOutputStream._
@@ -31,7 +29,7 @@ package object io {
    */
   def readInputStreamAsync[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] = {
     def readAsync(is: InputStream, buf: Array[Byte]) =
-      Concurrent.start(readBytesFromInputStream(is, buf)).flatten
+      concurrent.start(readBytesFromInputStream(is, buf)).flatten
 
     readInputStreamGeneric(fis, chunkSize, readAsync, closeAfterUse)
   }
@@ -54,7 +52,7 @@ package object io {
    */
   def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] = {
     def writeAsync(os: OutputStream, buf: Chunk[Byte]) =
-      Concurrent.start(writeBytesToOutputStream(os, buf)).flatMap(identity)
+      concurrent.start(writeBytesToOutputStream(os, buf)).flatMap(identity)
 
     writeOutputStreamGeneric(fos, closeAfterUse, writeAsync)
   }

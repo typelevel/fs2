@@ -10,8 +10,6 @@ import java.nio.channels.{ ClosedChannelException, DatagramChannel }
 
 import cats.effect.{ Effect, IO }
 
-import fs2.util.Concurrent
-
 /**
  * Provides the ability to read/write from a UDP socket in the effect `F`.
  *
@@ -106,7 +104,7 @@ private[udp] object Socket {
       private val ctx = AG.register(channel)
 
       private def invoke(f: => Unit): Unit =
-        Concurrent.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
+        concurrent.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
 
       def localAddress: F[InetSocketAddress] =
         F.delay(Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]).getOrElse(throw new ClosedChannelException))

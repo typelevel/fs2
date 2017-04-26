@@ -1,18 +1,18 @@
 package fs2
-package util
 
 import cats.{ Eq, Traverse }
 import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO }
 
 import fs2.internal.{Actor,LinkedMap}
-import ExecutionContexts._
+import fs2.util.Attempt
+import fs2.util.ExecutionContexts._
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import scala.concurrent.ExecutionContext
 
 /** Provides concurrency support for effect types. */
-object Concurrent {
+object concurrent {
 
   private final class MsgId
   private sealed abstract class Msg[A]
@@ -243,4 +243,9 @@ object Concurrent {
    */
   def unsafeRunAsync[F[_], A](fa: F[A])(f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =
     F.runAsync(F.shift(fa)(ec))(f).unsafeRunSync
+
+  /** Deprecated alias for [[Stream.join]]. */
+  @deprecated("Use Stream.join instead", "1.0")
+  def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
+    Stream.join(maxOpen)(outer)
 }

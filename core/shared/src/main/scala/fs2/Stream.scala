@@ -7,7 +7,7 @@ import cats.{ Applicative, Eq, MonadError, Monoid, Semigroup }
 import cats.effect.{ Effect, IO }
 import cats.implicits._
 
-import fs2.util.{ Attempt, Concurrent, Free, Lub1, RealSupertype, Sub1, UF1 }
+import fs2.util.{ Attempt, Free, Lub1, RealSupertype, Sub1, UF1 }
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -565,7 +565,7 @@ object Stream {
       def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
         Stream.eval_(
           available.decrement >> incrementRunning >>
-          Concurrent.start {
+          concurrent.start {
             inner.chunks.attempt
             .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
             .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
@@ -588,8 +588,8 @@ object Stream {
         } run
       }
 
-      Stream.eval_(Concurrent.start(runOuter)) ++
-      Stream.eval_(Concurrent.start(doneMonitor)) ++
+      Stream.eval_(concurrent.start(runOuter)) ++
+      Stream.eval_(concurrent.start(doneMonitor)) ++
       outputQ.dequeue.unNoneTerminate.flatMap {
         case Left(e) => Stream.fail(e)
         case Right(c) => Stream.chunk(c)

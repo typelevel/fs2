@@ -10,7 +10,7 @@ import cats.implicits.{ catsSyntaxEither => _, _ }
 
 import fs2.Chunk.Bytes
 import fs2.async.mutable
-import fs2.util.Concurrent.Change
+import fs2.concurrent.Change
 import fs2.util._
 
 private[io] object JavaInputOutputStream {
@@ -77,7 +77,7 @@ private[io] object JavaInputOutputStream {
       , queue:mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext):Stream[F,Unit] = Stream.eval(Concurrent.start {
+    )(implicit F: Effect[F], ec: ExecutionContext):Stream[F,Unit] = Stream.eval(concurrent.start {
       def markUpstreamDone(result:Option[Throwable]):F[Unit] = {
         F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
           queue.enqueue1(Left(result))
@@ -103,7 +103,7 @@ private[io] object JavaInputOutputStream {
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Unit = {
       val done = new SyncVar[Attempt[Unit]]
-      Concurrent.unsafeRunAsync(close(upState,dnState)) { r => IO(done.put(r)) }
+      concurrent.unsafeRunAsync(close(upState,dnState)) { r => IO(done.put(r)) }
       done.get.fold(throw _, identity)
     }
 
@@ -125,7 +125,7 @@ private[io] object JavaInputOutputStream {
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Int = {
       val sync = new SyncVar[Attempt[Int]]
-      Concurrent.unsafeRunAsync(readOnce[F](dest,off,len,queue,dnState))(r => IO(sync.put(r)))
+      concurrent.unsafeRunAsync(readOnce[F](dest,off,len,queue,dnState))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 
@@ -152,7 +152,7 @@ private[io] object JavaInputOutputStream {
       }
 
       val sync = new SyncVar[Attempt[Int]]
-      Concurrent.unsafeRunAsync(go(Array.ofDim(1)))(r => IO(sync.put(r)))
+      concurrent.unsafeRunAsync(go(Array.ofDim(1)))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 

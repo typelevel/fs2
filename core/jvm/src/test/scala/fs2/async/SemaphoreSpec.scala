@@ -4,8 +4,6 @@ package async
 import cats.effect.IO
 import cats.implicits._
 
-import fs2.util.Concurrent
-
 class SemaphoreSpec extends Fs2Spec {
 
   "Semaphore" - {
@@ -26,8 +24,8 @@ class SemaphoreSpec extends Fs2Spec {
         val longsRev = longs.reverse
         val t: IO[Unit] = for {
           // just two parallel tasks, one incrementing, one decrementing
-          decrs <- Concurrent.start { longs.traverse(s.decrementBy) }
-          incrs <- Concurrent.start { longsRev.traverse(s.incrementBy) }
+          decrs <- concurrent.start { longs.traverse(s.decrementBy) }
+          incrs <- concurrent.start { longsRev.traverse(s.incrementBy) }
           _ <- decrs: IO[Vector[Unit]]
           _ <- incrs: IO[Vector[Unit]]
         } yield ()
@@ -36,8 +34,8 @@ class SemaphoreSpec extends Fs2Spec {
 
         val t2: IO[Unit] = for {
           // N parallel incrementing tasks and N parallel decrementing tasks
-          decrs <- Concurrent.start { Concurrent.parallelTraverse(longs)(s.decrementBy) }
-          incrs <- Concurrent.start { Concurrent.parallelTraverse(longsRev)(s.incrementBy) }
+          decrs <- concurrent.start { concurrent.parallelTraverse(longs)(s.decrementBy) }
+          incrs <- concurrent.start { concurrent.parallelTraverse(longsRev)(s.incrementBy) }
           _ <- decrs: IO[Vector[Unit]]
           _ <- incrs: IO[Vector[Unit]]
         } yield ()

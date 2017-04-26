@@ -6,7 +6,6 @@ import scala.concurrent.duration._
 import cats.effect.{ Async, Effect, IO, Sync }
 import cats.implicits._
 
-import fs2.util.Concurrent
 import fs2.util.ExecutionContexts._
 
 /** Provides utilities for working with streams related to time. */
@@ -48,7 +47,7 @@ package object time {
           val cancel = scheduler.scheduleAtFixedRate(d) {
             if (running.compareAndSet(false, true)) {
               val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
-              Concurrent.unsafeRunAsync(signal.set(d))(_ => IO(running.set(false)))
+              concurrent.unsafeRunAsync(signal.set(d))(_ => IO(running.set(false)))
             }
           }
           (F.delay(cancel()), signal)

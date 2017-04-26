@@ -6,8 +6,6 @@ import cats.{Applicative,Functor}
 import cats.effect.Effect
 import cats.implicits._
 
-import fs2.util.Concurrent
-
 /**
  * A future that evaluates to a value of type `A` and a `Scope[F,Unit]`.
  *
@@ -45,7 +43,7 @@ sealed trait ScopedFuture[F[_],A] { self =>
   def race[B](b: ScopedFuture[F,B])(implicit F: Effect[F], ec: ExecutionContext): ScopedFuture[F,Either[A,B]] = new ScopedFuture[F, Either[A,B]] {
     def get = cancellableGet.flatMap(_._1)
     def cancellableGet = for {
-      ref <- Concurrent.ref[F,Either[(A,Scope[F,Unit]),(B,Scope[F,Unit])]]
+      ref <- concurrent.ref[F,Either[(A,Scope[F,Unit]),(B,Scope[F,Unit])]]
       t0 <- self.cancellableGet
       (a, cancelA) = t0
       t1 <- b.cancellableGet
@@ -89,7 +87,7 @@ object ScopedFuture {
   }
 
   /** Returns a future that gets its value from reading the specified ref. */
-  def readRef[F[_],A](r: Concurrent.Ref[F,A])(implicit F: Functor[F]): ScopedFuture[F,A] =
+  def readRef[F[_],A](r: concurrent.Ref[F,A])(implicit F: Functor[F]): ScopedFuture[F,A] =
     new ScopedFuture[F,A] {
       def get = r.get.map((_,Scope.pure(())))
       def cancellableGet = r.cancellableGet.map { case (f,cancel) =>
@@ -104,7 +102,7 @@ object ScopedFuture {
   private[fs2] def indexedRace[F[_],A](es: Vector[ScopedFuture[F,A]])(implicit F: Effect[F], ec: ExecutionContext): ScopedFuture[F,(A,Int)]
     = new ScopedFuture[F,(A,Int)] {
       def cancellableGet =
-        Concurrent.ref[F,((A,Scope[F,Unit]),Int)].flatMap { ref =>
+        concurrent.ref[F,((A,Scope[F,Unit]),Int)].flatMap { ref =>
           val cancels: F[Vector[(F[Unit],Int)]] = (es zip (0 until es.size)).traverse { case (a,i) =>
             a.cancellableGet.flatMap { case (a, cancelA) =>
               ref.setAsync(a.map((_,i))).as((cancelA,i))

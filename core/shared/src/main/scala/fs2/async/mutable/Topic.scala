@@ -8,7 +8,6 @@ import cats.effect.Effect
 import cats.implicits._
 
 import fs2.Stream._
-import fs2.util.Concurrent
 
 /**
  * Asynchronous Topic.
@@ -97,13 +96,13 @@ object Topic {
       def unSubscribe:F[Unit]
     }
 
-    Concurrent.refOf[F,(A,Vector[Subscriber])]((initial,Vector.empty[Subscriber])).flatMap { state =>
+    concurrent.refOf[F,(A,Vector[Subscriber])]((initial,Vector.empty[Subscriber])).flatMap { state =>
     async.signalOf[F,Int](0).map { subSignal =>
 
       def mkSubscriber(maxQueued: Int):F[Subscriber] = for {
         q <- async.boundedQueue[F,A](maxQueued)
-        firstA <- Concurrent.ref[F,A]
-        done <- Concurrent.ref[F,Boolean]
+        firstA <- concurrent.ref[F,A]
+        done <- concurrent.ref[F,Boolean]
         sub = new Subscriber {
           def unSubscribe: F[Unit] = for {
             _ <- state.modify { case (a,subs) => a -> subs.filterNot(_.id == id) }

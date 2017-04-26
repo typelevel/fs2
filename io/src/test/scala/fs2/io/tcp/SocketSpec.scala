@@ -9,7 +9,6 @@ import cats.effect.IO
 import fs2._
 import fs2.io.TestUtil._
 import fs2.Stream._
-import fs2.util.Concurrent
 
 object SocketSpec {
   implicit val tcpACG : AsynchronousChannelGroup = namedACG("tcp")
@@ -33,7 +32,7 @@ class SocketSpec extends Fs2Spec {
         val message = Chunk.bytes("fs2.rocks".getBytes)
         val clientCount = 5000
 
-        val localBindAddress = Concurrent.ref[IO, InetSocketAddress].unsafeRunSync()
+        val localBindAddress = concurrent.ref[IO, InetSocketAddress].unsafeRunSync()
 
         val echoServer: Stream[IO, Unit] = {
           val ps =

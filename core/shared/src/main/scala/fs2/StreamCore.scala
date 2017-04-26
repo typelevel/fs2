@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.ExecutionContext
 
 import fs2.internal.Resources
-import fs2.util.{Attempt,Catenable,Concurrent,Free,NonFatal,Sub1,RealSupertype,UF1}
+import fs2.util.{Attempt,Catenable,Free,NonFatal,Sub1,RealSupertype,UF1}
 import StreamCore.{Env,NT,Stack,Token}
 
 import cats.effect.{Effect,IO}
@@ -104,14 +104,14 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
 
   final def unconsAsync(implicit F: Effect[F], ec: ExecutionContext)
   : Scope[F,ScopedFuture[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]]
-  = Scope.eval(Concurrent.ref[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]).flatMap { ref =>
+  = Scope.eval(concurrent.ref[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Attempt[Unit]]]("unconsAsync")
     val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
     lazy val rootCleanup: Free[F,Attempt[Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
-        Free.eval(Vector.fill(waiting)(Concurrent.ref[F,Unit]).sequence) flatMap { gates =>
-          resources.closeAll(gates.toStream.map(gate => () => Concurrent.unsafeRunAsync(gate.setAsyncPure(()))(_ => IO.pure(())))) match {
+        Free.eval(Vector.fill(waiting)(concurrent.ref[F,Unit]).sequence) flatMap { gates =>
+          resources.closeAll(gates.toStream.map(gate => () => concurrent.unsafeRunAsync(gate.setAsyncPure(()))(_ => IO.pure(())))) match {
             case Left(_) => Free.eval(gates.traverse(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")

@@ -8,8 +8,6 @@ import cats.Functor
 import cats.effect.Effect
 import cats.implicits._
 
-import fs2.util.Concurrent
-
 /**
  * Asynchronous queue interface. Operations are all nonblocking in their
  * implementations, but may be 'semantically' blocking. For instance,
@@ -118,10 +116,10 @@ object Queue {
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
       * @param deq      A list of waiting dequeuers, added to when queue is empty
       */
-    final case class State(queue: Vector[A], deq: Vector[Concurrent.Ref[F,NonEmptyChunk[A]]])
+    final case class State(queue: Vector[A], deq: Vector[concurrent.Ref[F,NonEmptyChunk[A]]])
 
     Signal(0).flatMap { szSignal =>
-    Concurrent.refOf[F,State](State(Vector.empty,Vector.empty)).map { qref =>
+    concurrent.refOf[F,State](State(Vector.empty,Vector.empty)).map { qref =>
       // Signals size change of queue, if that has changed
       def signalSize(s: State, ns: State) : F[Unit] = {
         if (s.queue.size != ns.queue.size) szSignal.set(ns.queue.size)
@@ -151,7 +149,7 @@ object Queue {
           cancellableDequeueBatch1(batchSize).flatMap { _._1 }
 
         def cancellableDequeueBatch1(batchSize: Int): F[(F[NonEmptyChunk[A]],F[Unit])] =
-          Concurrent.ref[F,NonEmptyChunk[A]].flatMap { r =>
+          concurrent.ref[F,NonEmptyChunk[A]].flatMap { r =>
             qref.modify { s =>
               if (s.queue.isEmpty) s.copy(deq = s.deq :+ r)
               else s.copy(queue = s.queue.drop(batchSize))
@@ -247,7 +245,7 @@ object Queue {
   /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
   def synchronousNoneTerminated[F[_],A](implicit F: Effect[F], ec: ExecutionContext): F[Queue[F,Option[A]]] =
     Semaphore(0).flatMap { permits =>
-    Concurrent.refOf[F, Boolean](false).flatMap { doneRef =>
+    concurrent.refOf[F, Boolean](false).flatMap { doneRef =>
     unbounded[F,Option[A]].map { q =>
       new Queue[F,Option[A]] {
         def upperBound: Option[Int] = Some(0)
