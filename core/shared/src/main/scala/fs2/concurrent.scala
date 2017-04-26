@@ -1,8 +1,11 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
+
+import cats.effect.Effect
 import cats.implicits._
 
-import fs2.util.{Attempt,Concurrent}
+import fs2.util.{ Attempt, Concurrent }
 
 /** Provides utilities for working with streams concurrently. */
 object concurrent {
@@ -39,7 +42,7 @@ object concurrent {
     * @param maxOpen    Maximum number of open inner streams at any time. Must be > 0.
     * @param outer      Stream of streams to join.
     */
-  def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Concurrent[F]): Stream[F,O] = {
+  def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
     assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
 
     Stream.eval(async.signalOf(false)) flatMap { killSignal =>
@@ -56,7 +59,7 @@ object concurrent {
       def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
         Stream.eval_(
           available.decrement >> incrementRunning >>
-          F.start {
+          Concurrent.start {
             inner.chunks.attempt
             .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
             .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
@@ -79,8 +82,8 @@ object concurrent {
         } run
       }
 
-      Stream.eval_(F.start(runOuter)) ++
-      Stream.eval_(F.start(doneMonitor)) ++
+      Stream.eval_(Concurrent.start(runOuter)) ++
+      Stream.eval_(Concurrent.start(doneMonitor)) ++
       outputQ.dequeue.unNoneTerminate.flatMap {
         case Left(e) => Stream.fail(e)
         case Right(c) => Stream.chunk(c)

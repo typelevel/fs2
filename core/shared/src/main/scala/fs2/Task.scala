@@ -214,7 +214,7 @@ object Task extends TaskPlatform {
    }}}
   */
   def start[A](t: Task[A])(implicit ec: ExecutionContext): Task[Task[A]] =
-    Concurrent[Task].ref[A].flatMap { ref => ref.setAsync(t) map (_ => ref.get) }
+    Concurrent.ref[Task, A].flatMap { ref => ref.setAsync(t) map (_ => ref.get) }
 
   /**
     * Like [[async]], but run the callback in the same thread in the same

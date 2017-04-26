@@ -41,7 +41,7 @@ class TaskBenchmark {
   @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
   @Benchmark
   def race(N: Int): Int = {
-    (1 to cores).foldLeft(Task(sum(0, N)))((b, a) => Concurrent[Task].race(b, Task(sum(0, N))).map(_.merge)).unsafeRun()
+    (1 to cores).foldLeft(Task(sum(0, N)))((b, a) => Concurrent.race(b, Task(sum(0, N))).map(_.merge)).unsafeRun()
   }
 
   @GenerateN(1, 4, 100, 200, 400, 800, 1600, 3200, 6400, 12800)

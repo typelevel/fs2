@@ -1,11 +1,13 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
+import cats.effect.{ Async, Effect, IO, Sync }
 import cats.implicits._
-import cats.effect.IO
 
 import fs2.util.Concurrent
+import fs2.util.ExecutionContexts._
 
 /** Provides utilities for working with streams related to time. */
 package object time {
@@ -19,7 +21,7 @@ package object time {
    * between emitted values.
    *
    * This uses an implicit `Scheduler` for the timed events, and
-   * runs the consumer using the `F` `Concurrent[F]`, to allow for the
+   * runs the consumer using the `F` `Effect[F]`, to allow for the
    * stream to decide whether result shall be run on different
    * thread pool.
    *
@@ -32,7 +34,7 @@ package object time {
    * @param d           FiniteDuration between emits of the resulting stream
    * @param scheduler   Scheduler used to schedule tasks
    */
-  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Concurrent[F], scheduler: Scheduler): Stream[F, FiniteDuration] = {
+  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Stream[F, FiniteDuration] = {
     def metronomeAndSignal: F[(F[Unit],async.immutable.Signal[F,FiniteDuration])] = {
       for {
         signal <- async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))
@@ -46,7 +48,7 @@ package object time {
           val cancel = scheduler.scheduleAtFixedRate(d) {
             if (running.compareAndSet(false, true)) {
               val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
-              F.unsafeRunAsync(signal.set(d))(_ => IO(running.set(false)))
+              Concurrent.unsafeRunAsync(signal.set(d))(_ => IO(running.set(false)))
             }
           }
           (F.delay(cancel()), signal)
@@ -61,7 +63,7 @@ package object time {
    * Note that the actual granularity of these elapsed times depends on the OS, for instance
    * the OS may only update the current time every ten milliseconds or so.
    */
-  def duration[F[_]](implicit F: Concurrent[F]): Stream[F, FiniteDuration] =
+  def duration[F[_]](implicit F: Sync[F]): Stream[F, FiniteDuration] =
     Stream.eval(F.delay(System.nanoTime)).flatMap { t0 =>
       Stream.repeatEval(F.delay(FiniteDuration(System.nanoTime - t0, NANOSECONDS)))
     }
@@ -85,18 +87,18 @@ package object time {
   /**
    * A single-element `Stream` that waits for the duration `d` before emitting unit. This uses the implicit
    * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues
-   * via the execution strategy defined by `Concurrent`.
+   * on the supplied execution context.
    */
-  def sleep[F[_]](d: FiniteDuration)(implicit F: Concurrent[F], scheduler: Scheduler): Stream[F, Unit] = {
+  def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], scheduler: Scheduler, ec: ExecutionContext): Stream[F, Unit] = {
     Stream.eval(F.async[Unit] { cb =>
       scheduler.scheduleOnce(d) {
-        cb(Right(()))
+        ec.executeThunk { cb(Right(())) }
       }
       ()
     })
   }
 
   /** Identical to `sleep(d).drain`. */
-  def sleep_[F[_]](d: FiniteDuration)(implicit F: Concurrent[F], scheduler: Scheduler): Stream[F, Nothing] =
+  def sleep_[F[_]](d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Stream[F, Nothing] =
     sleep(d).drain
 }

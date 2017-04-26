@@ -1,10 +1,13 @@
 package fs2
 
-import cats.effect.Sync
+import scala.concurrent.ExecutionContext
+
+import java.io.{InputStream, OutputStream}
+
+import cats.effect.{ Effect, Sync }
 import cats.implicits._
 
 import fs2.util.Concurrent
-import java.io.{InputStream, OutputStream}
 
 /** Provides various ways to work with streams that perform IO. */
 package object io {
@@ -23,12 +26,12 @@ package object io {
    * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
    * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
    *
-   * This will block a thread in the current `Concurrent` instance, so the size of any associated
+   * This will block a thread in the `ExecutionContext`, so the size of any associated
    * threadpool should be sized appropriately.
    */
-  def readInputStreamAsync[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Concurrent[F]): Stream[F, Byte] = {
+  def readInputStreamAsync[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] = {
     def readAsync(is: InputStream, buf: Array[Byte]) =
-      F.start(readBytesFromInputStream(is, buf)).flatten
+      Concurrent.start(readBytesFromInputStream(is, buf)).flatten
 
     readInputStreamGeneric(fis, chunkSize, readAsync, closeAfterUse)
   }
@@ -46,12 +49,12 @@ package object io {
    * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
    * the `OutputStream` should not be closed after use.
    *
-   * This will block a thread in the current `Concurrent` instance, so the size of any associated
+   * This will block a thread in the `ExecutorService`, so the size of any associated
    * threadpool should be sized appropriately.
    */
-  def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(implicit F: Concurrent[F]): Sink[F, Byte] = {
+  def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] = {
     def writeAsync(os: OutputStream, buf: Chunk[Byte]) =
-      F.start(writeBytesToOutputStream(os, buf)).flatMap(identity)
+      Concurrent.start(writeBytesToOutputStream(os, buf)).flatMap(identity)
 
     writeOutputStreamGeneric(fos, closeAfterUse, writeAsync)
   }
@@ -64,7 +67,7 @@ package object io {
     readInputStream(F.delay(System.in), bufSize, false)
 
   /** Stream of bytes read asynchronously from standard input. */
-  def stdinAsync[F[_]](bufSize: Int)(implicit F: Concurrent[F]): Stream[F, Byte] =
+  def stdinAsync[F[_]](bufSize: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] =
     readInputStreamAsync(F.delay(System.in), bufSize, false)
 
   /** Sink of bytes that writes emitted values to standard output. */
@@ -72,7 +75,7 @@ package object io {
     writeOutputStream(F.delay(System.out), false)
 
   /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdoutAsync[F[_]](implicit F: Concurrent[F]): Sink[F, Byte] =
+  def stdoutAsync[F[_]](implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] =
     writeOutputStreamAsync(F.delay(System.out), false)
 
   /**
@@ -83,11 +86,11 @@ package object io {
     * original stream completely terminates.
     *
     * Because all `InputStream` methods block (including `close`), the resulting `InputStream`
-    * should be consumed on a different thread pool than the one that is backing `Concurrent[F]`.
+    * should be consumed on a different thread pool than the one that is backing the `ExecutionContext`.
     *
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
-  def toInputStream[F[_]](implicit F: Concurrent[F]): Pipe[F,Byte,InputStream] =
+  def toInputStream[F[_]](implicit F: Effect[F], ec: ExecutionContext): Pipe[F,Byte,InputStream] =
     JavaInputOutputStream.toInputStream
 }

@@ -1,10 +1,12 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
+
 import fs2.internal.Resources
 import fs2.util.{Attempt,Catenable,Concurrent,Free,NonFatal,Sub1,RealSupertype,UF1}
 import StreamCore.{Env,NT,Stack,Token}
 
-import cats.effect.IO
+import cats.effect.{Effect,IO}
 import cats.implicits._
 
 private[fs2] sealed trait StreamCore[F[_],O] { self =>
@@ -90,7 +92,7 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
       case StreamCore.StepResult.Emits(out, s) => StreamCore.emit(Some((out, s)))
     }
 
-  final def fetchAsync(implicit F: Concurrent[F]): Scope[F, ScopedFuture[F,StreamCore[F,O]]] =
+  final def fetchAsync(implicit F: Effect[F], ec: ExecutionContext): Scope[F, ScopedFuture[F,StreamCore[F,O]]] =
     unconsAsync map { f => f map { case (leftovers,o) =>
       val inner: StreamCore[F,O] = o match {
         case None => StreamCore.empty
@@ -100,16 +102,16 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
       if (leftovers.isEmpty) inner else StreamCore.release(leftovers) flatMap { _ => inner }
     }}
 
-  final def unconsAsync(implicit F: Concurrent[F])
+  final def unconsAsync(implicit F: Effect[F], ec: ExecutionContext)
   : Scope[F,ScopedFuture[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]]
-  = Scope.eval(F.ref[(List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]).flatMap { ref =>
+  = Scope.eval(Concurrent.ref[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Attempt[Unit]]]("unconsAsync")
     val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
     lazy val rootCleanup: Free[F,Attempt[Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
-        Free.eval(Vector.fill(waiting)(F.ref[Unit]).sequence) flatMap { gates =>
-          resources.closeAll(gates.toStream.map(gate => () => F.unsafeRunAsync(gate.setAsyncPure(()))(_ => IO.pure(())))) match {
+        Free.eval(Vector.fill(waiting)(Concurrent.ref[F,Unit]).sequence) flatMap { gates =>
+          resources.closeAll(gates.toStream.map(gate => () => Concurrent.unsafeRunAsync(gate.setAsyncPure(()))(_ => IO.pure(())))) match {
             case Left(_) => Free.eval(gates.traverse(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")

@@ -2,12 +2,13 @@ package fs2
 package io
 package udp
 
-import java.net.{InetAddress,NetworkInterface,InetSocketAddress}
-import java.nio.channels.{ClosedChannelException,DatagramChannel}
-
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
-import cats.effect.IO
+import java.net.{ InetAddress, NetworkInterface, InetSocketAddress }
+import java.nio.channels.{ ClosedChannelException, DatagramChannel }
+
+import cats.effect.{ Effect, IO }
 
 import fs2.util.Concurrent
 
@@ -100,12 +101,12 @@ sealed trait Socket[F[_]] {
 
 private[udp] object Socket {
 
-  private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup, F: Concurrent[F]): F[Socket[F]] = F.delay {
+  private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup, F: Effect[F], ec: ExecutionContext): F[Socket[F]] = F.delay {
     new Socket[F] {
       private val ctx = AG.register(channel)
 
       private def invoke(f: => Unit): Unit =
-        F.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
+        Concurrent.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
 
       def localAddress: F[InetSocketAddress] =
         F.delay(Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]).getOrElse(throw new ClosedChannelException))

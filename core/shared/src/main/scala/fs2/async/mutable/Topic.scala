@@ -2,6 +2,9 @@ package fs2
 package async
 package mutable
 
+import scala.concurrent.ExecutionContext
+
+import cats.effect.Effect
 import cats.implicits._
 
 import fs2.Stream._
@@ -82,7 +85,7 @@ trait Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial:A)(implicit F: Concurrent[F]):F[Topic[F,A]] = {
+  def apply[F[_], A](initial:A)(implicit F: Effect[F], ec: ExecutionContext):F[Topic[F,A]] = {
     // Id identifying each subscriber uniquely
     class ID
 
@@ -94,13 +97,13 @@ object Topic {
       def unSubscribe:F[Unit]
     }
 
-    F.refOf((initial,Vector.empty[Subscriber])).flatMap { state =>
+    Concurrent.refOf[F,(A,Vector[Subscriber])]((initial,Vector.empty[Subscriber])).flatMap { state =>
     async.signalOf[F,Int](0).map { subSignal =>
 
       def mkSubscriber(maxQueued: Int):F[Subscriber] = for {
         q <- async.boundedQueue[F,A](maxQueued)
-        firstA <- F.ref[A]
-        done <- F.ref[Boolean]
+        firstA <- Concurrent.ref[F,A]
+        done <- Concurrent.ref[F,Boolean]
         sub = new Subscriber {
           def unSubscribe: F[Unit] = for {
             _ <- state.modify { case (a,subs) => a -> subs.filterNot(_.id == id) }

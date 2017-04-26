@@ -2,7 +2,10 @@ package fs2
 package async
 package mutable
 
+import scala.concurrent.ExecutionContext
+
 import cats.{ Eq, Applicative, Functor }
+import cats.effect.Effect
 import cats.implicits._
 
 import fs2.Stream._
@@ -61,9 +64,9 @@ object Signal {
     def changes = Stream.empty
   }
 
-  def apply[F[_],A](initA: A)(implicit F: Concurrent[F]): F[Signal[F,A]] = {
+  def apply[F[_],A](initA: A)(implicit F: Effect[F], ec: ExecutionContext): F[Signal[F,A]] = {
     class ID
-    F.refOf[(A, Long, Map[ID, Concurrent.Ref[F, (A, Long)]])]((initA, 0, Map.empty)).map {
+    Concurrent.refOf[F, (A, Long, Map[ID, Concurrent.Ref[F, (A, Long)]])]((initA, 0, Map.empty)).map {
     state => new Signal[F,A] {
       def refresh: F[Unit] = modify(identity).as(())
       def set(a: A): F[Unit] = modify(_ => a).as(())
@@ -91,7 +94,7 @@ object Signal {
       def discrete: Stream[F, A] = {
         def go(id: ID, last: Long): Stream[F, A] = {
           def getNext: F[(A, Long)] = {
-            F.ref[(A, Long)] flatMap { ref =>
+            Concurrent.ref[F, (A, Long)] flatMap { ref =>
               state.modify { case s@(a, l, listen) =>
                 if (l != last) s
                 else (a, l, listen + (id -> ref))

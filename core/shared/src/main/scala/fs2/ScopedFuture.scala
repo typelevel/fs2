@@ -1,6 +1,9 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
+
 import cats.{Applicative,Functor}
+import cats.effect.Effect
 import cats.implicits._
 
 import fs2.util.Concurrent
@@ -31,7 +34,7 @@ sealed trait ScopedFuture[F[_],A] { self =>
   def stream: Stream[F,A] = Stream.eval(get) flatMap { case (a,onForce) => Stream.evalScope(onForce as a) }
 
   /** Returns a new future from this future by applying `f` with the completed value `A`. */
-  def map[B](f: A => B)(implicit F: Concurrent[F]): ScopedFuture[F,B] = new ScopedFuture[F,B] {
+  def map[B](f: A => B)(implicit F: Functor[F]): ScopedFuture[F,B] = new ScopedFuture[F,B] {
     def get = self.get.map { case (a,onForce) => (f(a), onForce) }
     def cancellableGet = self.cancellableGet.map { case (a,cancelA) =>
       (a.map { case (a,onForce) => (f(a),onForce) }, cancelA)
@@ -39,10 +42,10 @@ sealed trait ScopedFuture[F[_],A] { self =>
   }
 
   /** Returns a new future that completes with the result of the first future that completes between this future and `b`. */
-  def race[B](b: ScopedFuture[F,B])(implicit F: Concurrent[F]): ScopedFuture[F,Either[A,B]] = new ScopedFuture[F, Either[A,B]] {
+  def race[B](b: ScopedFuture[F,B])(implicit F: Effect[F], ec: ExecutionContext): ScopedFuture[F,Either[A,B]] = new ScopedFuture[F, Either[A,B]] {
     def get = cancellableGet.flatMap(_._1)
     def cancellableGet = for {
-      ref <- F.ref[Either[(A,Scope[F,Unit]),(B,Scope[F,Unit])]]
+      ref <- Concurrent.ref[F,Either[(A,Scope[F,Unit]),(B,Scope[F,Unit])]]
       t0 <- self.cancellableGet
       (a, cancelA) = t0
       t1 <- b.cancellableGet
@@ -58,7 +61,7 @@ sealed trait ScopedFuture[F[_],A] { self =>
   }
 
   /** Like [[race]] but requires that the specified future has the same result type as this future. */
-  def raceSame(b: ScopedFuture[F,A])(implicit F: Concurrent[F]): ScopedFuture[F, ScopedFuture.RaceResult[A,ScopedFuture[F,A]]] =
+  def raceSame(b: ScopedFuture[F,A])(implicit F: Effect[F], ec: ExecutionContext): ScopedFuture[F, ScopedFuture.RaceResult[A,ScopedFuture[F,A]]] =
     self.race(b).map {
       case Left(a) => ScopedFuture.RaceResult(a, b)
       case Right(a) => ScopedFuture.RaceResult(a, self)
@@ -86,7 +89,7 @@ object ScopedFuture {
   }
 
   /** Returns a future that gets its value from reading the specified ref. */
-  def readRef[F[_],A](r: Concurrent.Ref[F,A])(implicit F: Concurrent[F]): ScopedFuture[F,A] =
+  def readRef[F[_],A](r: Concurrent.Ref[F,A])(implicit F: Functor[F]): ScopedFuture[F,A] =
     new ScopedFuture[F,A] {
       def get = r.get.map((_,Scope.pure(())))
       def cancellableGet = r.cancellableGet.map { case (f,cancel) =>
@@ -95,13 +98,13 @@ object ScopedFuture {
     }
 
   /** Races the specified collection of futures, returning the value of the first that completes. */
-  def race[F[_]:Concurrent,A](es: Vector[ScopedFuture[F,A]]): ScopedFuture[F,Focus[A,ScopedFuture[F,A]]] =
+  def race[F[_],A](es: Vector[ScopedFuture[F,A]])(implicit F: Effect[F], ec: ExecutionContext): ScopedFuture[F,Focus[A,ScopedFuture[F,A]]] =
     indexedRace(es) map { case (a, i) => Focus(a, i, es) }
 
-  private[fs2] def indexedRace[F[_],A](es: Vector[ScopedFuture[F,A]])(implicit F: Concurrent[F]): ScopedFuture[F,(A,Int)]
+  private[fs2] def indexedRace[F[_],A](es: Vector[ScopedFuture[F,A]])(implicit F: Effect[F], ec: ExecutionContext): ScopedFuture[F,(A,Int)]
     = new ScopedFuture[F,(A,Int)] {
       def cancellableGet =
-        F.ref[((A,Scope[F,Unit]),Int)].flatMap { ref =>
+        Concurrent.ref[F,((A,Scope[F,Unit]),Int)].flatMap { ref =>
           val cancels: F[Vector[(F[Unit],Int)]] = (es zip (0 until es.size)).traverse { case (a,i) =>
             a.cancellableGet.flatMap { case (a, cancelA) =>
               ref.setAsync(a.map((_,i))).as((cancelA,i))

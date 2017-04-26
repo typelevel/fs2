@@ -1,11 +1,11 @@
 package fs2
 package io
 
-import scala.concurrent.SyncVar
+import scala.concurrent.{ ExecutionContext, SyncVar }
 
-import java.io.{IOException, InputStream, OutputStream}
+import java.io.{ IOException, InputStream, OutputStream }
 
-import cats.effect.{IO, Sync}
+import cats.effect.{ Effect, IO, Sync }
 import cats.implicits.{ catsSyntaxEither => _, _ }
 
 import fs2.Chunk.Bytes
@@ -50,7 +50,7 @@ private[io] object JavaInputOutputStream {
   }
 
 
-  def toInputStream[F[_]](implicit F:Concurrent[F]): Pipe[F,Byte,InputStream] = {
+  def toInputStream[F[_]](implicit F: Effect[F], ec: ExecutionContext): Pipe[F,Byte,InputStream] = {
     /** See Implementation notes at the end of this code block **/
 
     /** state of the upstream, we only indicate whether upstream is done and if it failed **/
@@ -77,7 +77,7 @@ private[io] object JavaInputOutputStream {
       , queue:mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Concurrent[F]):Stream[F,Unit] = Stream.eval(F.start {
+    )(implicit F: Effect[F], ec: ExecutionContext):Stream[F,Unit] = Stream.eval(Concurrent.start {
       def markUpstreamDone(result:Option[Throwable]):F[Unit] = {
         F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
           queue.enqueue1(Left(result))
@@ -101,9 +101,9 @@ private[io] object JavaInputOutputStream {
     def closeIs[F[_]](
       upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Concurrent[F]):Unit = {
+    )(implicit F: Effect[F], ec: ExecutionContext):Unit = {
       val done = new SyncVar[Attempt[Unit]]
-      F.unsafeRunAsync(close(upState,dnState)) { r => IO(done.put(r)) }
+      Concurrent.unsafeRunAsync(close(upState,dnState)) { r => IO(done.put(r)) }
       done.get.fold(throw _, identity)
     }
 
@@ -123,9 +123,9 @@ private[io] object JavaInputOutputStream {
       , len: Int
       , queue: mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Concurrent[F]):Int = {
+    )(implicit F: Effect[F], ec: ExecutionContext):Int = {
       val sync = new SyncVar[Attempt[Int]]
-      F.unsafeRunAsync(readOnce[F](dest,off,len,queue,dnState))(r => IO(sync.put(r)))
+      Concurrent.unsafeRunAsync(readOnce[F](dest,off,len,queue,dnState))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 
@@ -141,7 +141,7 @@ private[io] object JavaInputOutputStream {
     def readIs1[F[_]](
       queue: mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Concurrent[F]):Int = {
+    )(implicit F: Effect[F], ec: ExecutionContext):Int = {
 
       def go(acc:Array[Byte]):F[Int] = {
         F.flatMap(readOnce(acc,0,1,queue,dnState)) { read =>
@@ -152,7 +152,7 @@ private[io] object JavaInputOutputStream {
       }
 
       val sync = new SyncVar[Attempt[Int]]
-      F.unsafeRunAsync(go(Array.ofDim(1)))(r => IO(sync.put(r)))
+      Concurrent.unsafeRunAsync(go(Array.ofDim(1)))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 
@@ -163,7 +163,7 @@ private[io] object JavaInputOutputStream {
       , len: Int
       , queue: mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Concurrent[F]):F[Int] = {
+    )(implicit F: Effect[F], ec: ExecutionContext):F[Int] = {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
       // won't modify state if the data cannot be acquired
@@ -228,7 +228,7 @@ private[io] object JavaInputOutputStream {
     def close[F[_]](
       upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Concurrent[F]):F[Unit] = {
+    )(implicit F: Effect[F], ec: ExecutionContext):F[Unit] = {
       F.flatMap(dnState.modify {
         case s@Done(_) => s
         case other => Done(None)

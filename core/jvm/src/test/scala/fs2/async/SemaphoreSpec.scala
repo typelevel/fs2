@@ -21,14 +21,13 @@ class SemaphoreSpec extends Fs2Spec {
 
     "offsetting increment/decrements" in {
       forAll { (ms0: Vector[Int]) =>
-        val T = implicitly[Concurrent[IO]]
         val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
         val longs = ms0.map(_.toLong.abs)
         val longsRev = longs.reverse
         val t: IO[Unit] = for {
           // just two parallel tasks, one incrementing, one decrementing
-          decrs <- T.start { longs.traverse(s.decrementBy) }
-          incrs <- T.start { longsRev.traverse(s.incrementBy) }
+          decrs <- Concurrent.start { longs.traverse(s.decrementBy) }
+          incrs <- Concurrent.start { longsRev.traverse(s.incrementBy) }
           _ <- decrs: IO[Vector[Unit]]
           _ <- incrs: IO[Vector[Unit]]
         } yield ()
@@ -37,8 +36,8 @@ class SemaphoreSpec extends Fs2Spec {
 
         val t2: IO[Unit] = for {
           // N parallel incrementing tasks and N parallel decrementing tasks
-          decrs <- T.start { T.parallelTraverse(longs)(s.decrementBy) }
-          incrs <- T.start { T.parallelTraverse(longsRev)(s.incrementBy) }
+          decrs <- Concurrent.start { Concurrent.parallelTraverse(longs)(s.decrementBy) }
+          incrs <- Concurrent.start { Concurrent.parallelTraverse(longsRev)(s.incrementBy) }
           _ <- decrs: IO[Vector[Unit]]
           _ <- incrs: IO[Vector[Unit]]
         } yield ()

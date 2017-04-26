@@ -1,11 +1,13 @@
 package fs2
 package io
 
+import scala.concurrent.ExecutionContext
+
 import java.nio.channels.CompletionHandler
-import java.nio.file.{Path, StandardOpenOption}
+import java.nio.file.{ Path, StandardOpenOption }
 import java.util.concurrent.ExecutorService
 
-import cats.effect.{IO,Sync}
+import cats.effect.{ Effect, IO,Sync }
 import fs2.util.Concurrent
 
 /** Provides support for working with files. */
@@ -14,13 +16,13 @@ package object file {
   /**
    * Provides a handler for NIO methods which require a `java.nio.channels.CompletionHandler` instance.
    */
-  private[fs2] def asyncCompletionHandler[F[_], O](f: CompletionHandler[O, Null] => Unit)(implicit F: Concurrent[F]): F[O] = {
+  private[fs2] def asyncCompletionHandler[F[_], O](f: CompletionHandler[O, Null] => Unit)(implicit F: Effect[F], ec: ExecutionContext): F[O] = {
     F.async[O] { cb =>
       f(new CompletionHandler[O, Null] {
         override def completed(result: O, attachment: Null): Unit =
-          F.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.pure(()))
+          Concurrent.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.pure(()))
         override def failed(exc: Throwable, attachment: Null): Unit =
-          F.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.pure(()))
+          Concurrent.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.pure(()))
       })
     }
   }
@@ -38,7 +40,7 @@ package object file {
   /**
    * Reads all data asynchronously from the file at the specified `java.nio.file.Path`.
    */
-  def readAllAsync[F[_]](path: Path, chunkSize: Int, executorService: Option[ExecutorService] = None)(implicit F: Concurrent[F]): Stream[F, Byte] =
+  def readAllAsync[F[_]](path: Path, chunkSize: Int, executorService: Option[ExecutorService] = None)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] =
     pulls.fromPathAsync(path, List(StandardOpenOption.READ), executorService).flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource)).close
 
   /**
@@ -58,7 +60,7 @@ package object file {
    *
    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
    */
-  def writeAllAsync[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE), executorService: Option[ExecutorService] = None)(implicit F: Concurrent[F]): Sink[F, Byte] =
+  def writeAllAsync[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE), executorService: Option[ExecutorService] = None)(implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] =
     s => (for {
       in <- s.open
       out <- pulls.fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService)

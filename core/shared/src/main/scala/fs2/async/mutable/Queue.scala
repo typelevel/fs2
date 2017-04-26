@@ -2,7 +2,10 @@ package fs2
 package async
 package mutable
 
+import scala.concurrent.ExecutionContext
+
 import cats.Functor
+import cats.effect.Effect
 import cats.implicits._
 
 import fs2.util.Concurrent
@@ -109,7 +112,7 @@ trait Queue[F[_], A] { self =>
 object Queue {
 
   /** Creates a queue with no size bound. */
-  def unbounded[F[_],A](implicit F: Concurrent[F]): F[Queue[F,A]] = {
+  def unbounded[F[_],A](implicit F: Effect[F], ec: ExecutionContext): F[Queue[F,A]] = {
     /*
       * Internal state of the queue
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
@@ -118,7 +121,7 @@ object Queue {
     final case class State(queue: Vector[A], deq: Vector[Concurrent.Ref[F,NonEmptyChunk[A]]])
 
     Signal(0).flatMap { szSignal =>
-    F.refOf[State](State(Vector.empty,Vector.empty)).map { qref =>
+    Concurrent.refOf[F,State](State(Vector.empty,Vector.empty)).map { qref =>
       // Signals size change of queue, if that has changed
       def signalSize(s: State, ns: State) : F[Unit] = {
         if (s.queue.size != ns.queue.size) szSignal.set(ns.queue.size)
@@ -148,7 +151,7 @@ object Queue {
           cancellableDequeueBatch1(batchSize).flatMap { _._1 }
 
         def cancellableDequeueBatch1(batchSize: Int): F[(F[NonEmptyChunk[A]],F[Unit])] =
-          F.ref[NonEmptyChunk[A]].flatMap { r =>
+          Concurrent.ref[F,NonEmptyChunk[A]].flatMap { r =>
             qref.modify { s =>
               if (s.queue.isEmpty) s.copy(deq = s.deq :+ r)
               else s.copy(queue = s.queue.drop(batchSize))
@@ -177,7 +180,7 @@ object Queue {
     }}}
 
   /** Creates a queue with the specified size bound. */
-  def bounded[F[_],A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F,A]] =
+  def bounded[F[_],A](maxSize: Int)(implicit F: Effect[F], ec: ExecutionContext): F[Queue[F,A]] =
     Semaphore(maxSize.toLong).flatMap { permits =>
     unbounded[F,A].map { q =>
       new Queue[F,A] {
@@ -199,7 +202,7 @@ object Queue {
     }}
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
-  def circularBuffer[F[_],A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F,A]] =
+  def circularBuffer[F[_],A](maxSize: Int)(implicit F: Effect[F], ec: ExecutionContext): F[Queue[F,A]] =
     Semaphore(maxSize.toLong).flatMap { permits =>
     unbounded[F,A].map { q =>
       new Queue[F,A] {
@@ -220,7 +223,7 @@ object Queue {
     }}
 
   /** Creates a queue which allows a single element to be enqueued at any time. */
-  def synchronous[F[_],A](implicit F: Concurrent[F]): F[Queue[F,A]] =
+  def synchronous[F[_],A](implicit F: Effect[F], ec: ExecutionContext): F[Queue[F,A]] =
     Semaphore(0).flatMap { permits =>
     unbounded[F,A].map { q =>
       new Queue[F,A] {
@@ -242,9 +245,9 @@ object Queue {
     }}
 
   /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
-  def synchronousNoneTerminated[F[_],A](implicit F: Concurrent[F]): F[Queue[F,Option[A]]] =
+  def synchronousNoneTerminated[F[_],A](implicit F: Effect[F], ec: ExecutionContext): F[Queue[F,Option[A]]] =
     Semaphore(0).flatMap { permits =>
-    F.refOf(false).flatMap { doneRef =>
+    Concurrent.refOf[F, Boolean](false).flatMap { doneRef =>
     unbounded[F,Option[A]].map { q =>
       new Queue[F,Option[A]] {
         def upperBound: Option[Int] = Some(0)
