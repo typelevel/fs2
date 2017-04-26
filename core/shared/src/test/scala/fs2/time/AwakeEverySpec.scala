@@ -21,7 +21,7 @@ class AwakeEverySpec extends AsyncFs2Spec {
 
     "awakeEvery liveness" in {
       val s = time.awakeEvery[IO](1.milli).evalMap { i => IO.async[Unit](cb => executionContext.executeThunk(cb(Right(())))) }.take(200)
-      runLogF { concurrent.join(5)(Stream(s, s, s, s, s)) }.map { _ => Succeeded }
+      runLogF { Stream(s, s, s, s, s).join(5) }.map { _ => Succeeded }
     }
   }
 }

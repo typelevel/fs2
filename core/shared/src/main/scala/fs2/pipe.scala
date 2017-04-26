@@ -1,10 +1,13 @@
 package fs2
 
+import scala.concurrent.ExecutionContext
+
 import cats.{ Eq, Functor }
+import cats.effect.Effect
 import cats.implicits._
 
 import fs2.async.mutable.Queue
-import fs2.util.{ Attempt, Concurrent, Free, Sub1 }
+import fs2.util.{ Attempt, Free, Sub1 }
 
 /** Generic implementations of common pipes. */
 object pipe {
@@ -333,7 +336,7 @@ object pipe {
    * Behaves like `id`, but starts fetching the next chunk before emitting the current,
    * enabling processing on either side of the `prefetch` to run in parallel.
    */
-  def prefetch[F[_]:Concurrent,I]: Pipe[F,I,I] =
+  def prefetch[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe[F,I,I] =
     _ repeatPull { _.receive {
       case (hd, tl) => tl.prefetch flatMap { p => Pull.output(hd) >> p }}}
 
@@ -662,7 +665,7 @@ object pipe {
   def diamond[F[_],A,B,C,D](s: Stream[F,A])
     (f: Pipe[F,A, B])
     (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
-    (combine: Pipe2[F,B,C,D])(implicit F: Concurrent[F]): Stream[F,D] = {
+    (combine: Pipe2[F,B,C,D])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,D] = {
       Stream.eval(qs) flatMap { q =>
       Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
       Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
@@ -704,7 +707,7 @@ object pipe {
   }
 
   /** Queue based version of [[join]] that uses the specified queue. */
-  def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Concurrent[F]): Pipe[F,A,B] = in => {
+  def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Effect[F], ec: ExecutionContext): Pipe[F,A,B] = in => {
     for {
       done <- Stream.eval(async.signalOf(false))
       q <- Stream.eval(q)
@@ -718,7 +721,7 @@ object pipe {
   }
 
   /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
-  def joinAsync[F[_]:Concurrent,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]]): Pipe[F,A,B] =
+  def joinAsync[F[_]:Effect,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
     joinQueued[F,A,B](async.boundedQueue(maxQueued))(s)
 
   /**
@@ -726,14 +729,14 @@ object pipe {
    * Input is fed to the first pipe until it terminates, at which point input is
    * fed to the second pipe, and so on.
    */
-  def join[F[_]:Concurrent,A,B](s: Stream[F,Pipe[F,A,B]]): Pipe[F,A,B] =
+  def join[F[_]:Effect,A,B](s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
     joinQueued[F,A,B](async.synchronousQueue)(s)
 
   /** Synchronously send values through `sink`. */
-  def observe[F[_]:Concurrent,A](s: Stream[F,A])(sink: Sink[F,A]): Stream[F,A] =
+  def observe[F[_]:Effect,A](s: Stream[F,A])(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
     diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain))(pipe2.merge)
 
   /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-  def observeAsync[F[_]:Concurrent,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A]): Stream[F,A] =
+  def observeAsync[F[_]:Effect,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
     diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(pipe2.merge)
 }

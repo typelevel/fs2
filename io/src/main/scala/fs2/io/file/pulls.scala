@@ -2,13 +2,13 @@ package fs2
 package io
 package file
 
+import scala.concurrent.ExecutionContext
+
 import java.nio.channels._
 import java.nio.file._
 import java.util.concurrent.ExecutorService
 
-import cats.effect.Sync
-
-import fs2.util.Concurrent
+import cats.effect.{ Effect, Sync }
 
 /** Provides various `Pull`s for working with files. */
 object pulls {
@@ -58,7 +58,7 @@ object pulls {
    *
    * The `Pull` closes the acquired `java.nio.channels.AsynchronousFileChannel` when it is done.
    */
-  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption], executorService: Option[ExecutorService] = None)(implicit F: Concurrent[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
+  def fromPathAsync[F[_]](path: Path, flags: Seq[OpenOption], executorService: Option[ExecutorService] = None)(implicit F: Effect[F], ec: ExecutionContext): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
     import collection.JavaConverters._
     fromAsynchronousFileChannel(F.delay(AsynchronousFileChannel.open(path, flags.toSet.asJava, executorService.orNull)))
   }
@@ -76,6 +76,6 @@ object pulls {
    *
    * The `Pull` closes the provided `java.nio.channels.AsynchronousFileChannel` when it is done.
    */
-  def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(implicit F: Concurrent[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+  def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(implicit F: Effect[F], ec: ExecutionContext): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     Pull.acquireCancellable(channel)(ch => F.delay(ch.close())).map(_.map(FileHandle.fromAsynchronousFileChannel[F]))
 }

@@ -51,7 +51,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
               }
             }
-            val clients = concurrent.join(numParallelClients)(Stream.constant(client).take(numClients))
+            val clients = Stream.join(numParallelClients)(Stream.constant(client).take(numClients))
             server mergeHaltBoth clients
           }
         }

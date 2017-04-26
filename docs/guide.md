@@ -469,12 +469,14 @@ FS2 comes with lots of concurrent operations. The `merge` function runs two stre
 
 ```scala
 scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
-<console>:17: error: could not find implicit value for parameter F2: fs2.util.Concurrent[fs2.Task]
+<console>:17: error: Cannot find an implicit ExecutionContext. You might pass
+an (implicit ec: ExecutionContext) parameter to your method
+or import scala.concurrent.ExecutionContext.Implicits.global.
        Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
                           ^
 ```
 
-Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope in order to get an `Concurrent[Task]`. Let's add that:
+Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add that:
 
 ```scala
 scala> import scala.concurrent.ExecutionContext.Implicits.global
@@ -489,20 +491,22 @@ The `merge` function is defined in [`pipe2`](../core/shared/src/main/scala/fs2/p
 The function `concurrent.join` runs multiple streams concurrently. The signature is:
 
 ```Scala
-// note Concurrent[F] bound
-def join[F[_]:Concurrent,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]]): Stream[F,O]
+// note Effect[F] bound and ExecutionContext parameter
+import scala.concurrent.ExecutionContext
+import cats.effect.Effect
+def join[F[_]:Effect,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit ec: ExecutionContext): Stream[F,O]
 ```
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. `s merge s2` could be implemented as `concurrent.join(2)(Stream(s,s2))`.
 
-The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. It defines concurrency primitives for the effect type `F`. An instance is implicitly available for any effect type which has an instance of `cats.effect.Effect`. It implements concurrency primitives in terms of the `Effect` instance and an `ExecutionContext`. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Concurrent`, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
+The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Effect` instance, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
 If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `h.awaitAsync` requests the next step of a `Handle h` asynchronously. Its signature is:
 
 ```Scala
 type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
 
-def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Concurrent[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]]
+def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Effect[F2], A2: RealSupertype[A,A2], ec: ExecutionContext): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]]
 ```
 
 A `ScopedFuture[F,A]` represents a running computation that will eventually yield an `A`. A `ScopedFuture[F,A]` has a method `.pull`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. A `ScopedFuture[F,A]` may be raced with another `ScopedFuture` also---see the implementation of [`pipe2.merge`](../core/shared/src/main/scala/fs2/pipe2.scala).
@@ -517,14 +521,14 @@ Without looking at the implementations, try implementing `pipe2.interrupt` and `
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
 /** Like `merge`, but halts as soon as _either_ branch halts. */
-def mergeHaltBoth[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) => ???
+def mergeHaltBoth[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) => ???
 
 /**
  * Let through the `s2` branch as long as the `s1` branch is `false`,
  * listening asynchronously for the left branch to become `true`.
  * This halts as soon as either branch halts.
  */
-def interrupt[F[_]:Concurrent,I]: Pipe2[F,Boolean,I,I] = (s1, s2) => ???
+def interrupt[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe2[F,Boolean,I,I] = (s1, s2) => ???
 ```
 
 ### Talking to the external world
@@ -639,11 +643,14 @@ _Note:_ Some of these APIs don't provide any means of throttling the producer, i
 Let's look at a complete example:
 
 ```scala
-import fs2.async
-// import fs2.async
+import fs2.{ async, concurrent }
+// import fs2.{async, concurrent}
 
-import cats.effect.IO
-// import cats.effect.IO
+import scala.concurrent.ExecutionContext
+// import scala.concurrent.ExecutionContext
+
+import cats.effect.{ Effect, IO }
+// import cats.effect.{Effect, IO}
 
 type Row = List[String]
 // defined type alias Row
@@ -653,13 +660,13 @@ trait CSVHandle {
 }
 // defined trait CSVHandle
 
-def rows[F[_]](h: CSVHandle)(implicit F: fs2.util.Concurrent[F]): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => F.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => concurrent.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
-// rows: [F[_]](h: CSVHandle)(implicit F: fs2.util.Concurrent[F])fs2.Stream[F,Row]
+// rows: [F[_]](h: CSVHandle)(implicit F: cats.effect.Effect[F], implicit ec: scala.concurrent.ExecutionContext)fs2.Stream[F,Row]
 ```
 
 See [`Queue`](../core/shared/src/main/scala/fs2/async/mutable/Queue.scala) for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
@@ -685,7 +692,7 @@ Also feel free to come discuss and ask/answer questions in [the gitter channel](
 
 ```scala
 scala> Stream.emit(1) ++ Stream.emit("hello")
-<console>:21: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
+<console>:22: error: Dubious upper bound Any inferred for Int; supply `RealSupertype.allow[Int,Any]` here explicitly if this is not due to a type error
        Stream.emit(1) ++ Stream.emit("hello")
                       ^
 ```

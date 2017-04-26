@@ -2,10 +2,12 @@ package fs2
 package async
 package mutable
 
+import scala.concurrent.ExecutionContext
+
+import cats.effect.Effect
 import cats.implicits._
 
 import fs2.Stream._
-import fs2.util.Concurrent
 
 /**
  * Asynchronous Topic.
@@ -82,7 +84,7 @@ trait Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial:A)(implicit F: Concurrent[F]):F[Topic[F,A]] = {
+  def apply[F[_], A](initial:A)(implicit F: Effect[F], ec: ExecutionContext):F[Topic[F,A]] = {
     // Id identifying each subscriber uniquely
     class ID
 
@@ -94,18 +96,18 @@ object Topic {
       def unSubscribe:F[Unit]
     }
 
-    F.refOf((initial,Vector.empty[Subscriber])).flatMap { state =>
+    concurrent.refOf[F,(A,Vector[Subscriber])]((initial,Vector.empty[Subscriber])).flatMap { state =>
     async.signalOf[F,Int](0).map { subSignal =>
 
       def mkSubscriber(maxQueued: Int):F[Subscriber] = for {
         q <- async.boundedQueue[F,A](maxQueued)
-        firstA <- F.ref[A]
-        done <- F.ref[Boolean]
+        firstA <- concurrent.ref[F,A]
+        done <- concurrent.ref[F,Boolean]
         sub = new Subscriber {
           def unSubscribe: F[Unit] = for {
             _ <- state.modify { case (a,subs) => a -> subs.filterNot(_.id == id) }
             _ <- subSignal.modify(_ - 1)
-            _ <- done.setPure(true)
+            _ <- done.setAsyncPure(true)
           } yield ()
           def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
           def publish(a: A): F[Unit] = {
@@ -125,7 +127,7 @@ object Topic {
         }
         c <- state.modify { case(a,s) => a -> (s :+ sub) }
         _ <- subSignal.modify(_ + 1)
-        _ <- firstA.setPure(c.now._1)
+        _ <- firstA.setAsyncPure(c.now._1)
       } yield sub
 
       new Topic[F,A] {

@@ -4,7 +4,6 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.implicits._
 import org.scalacheck.Gen
-import fs2.util.Concurrent
 
 class Pipe2Spec extends Fs2Spec {
 
@@ -178,7 +177,7 @@ class Pipe2Spec extends Fs2Spec {
     "pause" in forAll { (s1: PureStream[Int]) =>
       val pausedStream = Stream.eval(async.signalOf[IO,Boolean](false)).flatMap { pause =>
         time.awakeEvery[IO](10.millis).scan(0)((acc, _) => acc + 1).evalMap { n =>
-          if (n % 2 != 0) pause.set(true) >> Concurrent[IO].start((time.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).run) >> IO.pure(n)
+          if (n % 2 != 0) pause.set(true) >> concurrent.start((time.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).run) >> IO.pure(n)
           else IO.pure(n)
         }.take(5)
       }

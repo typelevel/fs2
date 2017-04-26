@@ -9,12 +9,12 @@ import cats.effect.IO
 // tested as a result of the ScalaTest limitation.
 class ScalaJsSanityTests extends AsyncFs2Spec {
 
-  "concurrent.join" in {
+  "Stream.join" in {
     val src: Stream[IO, Stream[IO, Int]] =
       Stream.range(1, 100).covary[IO].map { i =>
         Stream.repeatEval(IO(i)).take(10)
       }
-    runLogF(concurrent.join(10)(src)).map { result =>
+    runLogF(Stream.join(10)(src)).map { result =>
       result.sorted shouldBe (1 until 100).toVector.flatMap(Vector.fill(10)(_)).sorted
     }
   }

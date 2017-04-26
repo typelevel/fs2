@@ -2,13 +2,13 @@ package fs2
 package io
 package file
 
+import scala.concurrent.ExecutionContext
+
 import java.nio.ByteBuffer
-import java.nio.channels.{AsynchronousFileChannel, FileChannel, FileLock}
+import java.nio.channels.{ AsynchronousFileChannel, FileChannel, FileLock }
 
-import cats.effect.Sync
+import cats.effect.{ Effect, Sync }
 import cats.implicits._
-
-import fs2.util.Concurrent
 
 /**
  * Provides the ability to read/write/lock/inspect a file in the effect `F`.
@@ -97,7 +97,7 @@ private[file] object FileHandle {
    *
    * Uses a `java.nio.Channels.CompletionHandler` to handle callbacks from IO operations.
    */
-  private[file] def fromAsynchronousFileChannel[F[_]](chan: AsynchronousFileChannel)(implicit F: Concurrent[F]): FileHandle[F] = {
+  private[file] def fromAsynchronousFileChannel[F[_]](chan: AsynchronousFileChannel)(implicit F: Effect[F], ec: ExecutionContext): FileHandle[F] = {
     new FileHandle[F] {
       type Lock = FileLock
 

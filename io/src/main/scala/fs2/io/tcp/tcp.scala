@@ -1,9 +1,12 @@
 package fs2
 package io
 
+import scala.concurrent.ExecutionContext
+
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
-import fs2.util.Concurrent
+
+import cats.effect.Effect
 
 /** Provides support for TCP networking. */
 package object tcp {
@@ -27,7 +30,7 @@ package object tcp {
     , receiveBufferSize: Int = 256 * 1024
     , keepAlive: Boolean = false
     , noDelay: Boolean = false
-  )(implicit AG: AsynchronousChannelGroup, F: Concurrent[F]): Stream[F,Socket[F]] =
+  )(implicit AG: AsynchronousChannelGroup, F: Effect[F], ec: ExecutionContext): Stream[F,Socket[F]] =
   Socket.client(to,reuseAddress,sendBufferSize,receiveBufferSize,keepAlive,noDelay)
 
   /**
@@ -55,7 +58,7 @@ package object tcp {
     , maxQueued: Int = 0
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
-    implicit AG: AsynchronousChannelGroup, F: Concurrent[F]
+    implicit AG: AsynchronousChannelGroup, F: Effect[F], ec: ExecutionContext
   ): Stream[F, Stream[F, Socket[F]]] =
     serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize).collect { case Right(s) => s }
 
@@ -69,7 +72,7 @@ package object tcp {
     , maxQueued: Int = 0
     , reuseAddress: Boolean = true
     , receiveBufferSize: Int = 256 * 1024)(
-    implicit AG: AsynchronousChannelGroup, F: Concurrent[F]
+    implicit AG: AsynchronousChannelGroup, F: Effect[F], ec: ExecutionContext
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
     Socket.server(flatMap,maxQueued,reuseAddress,receiveBufferSize)
 }

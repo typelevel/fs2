@@ -3,12 +3,11 @@ package fs2
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck.Gen
 
-import cats.effect.IO
+import cats.effect.{ Effect, IO }
 import cats.implicits._
 
 import fs2.Stream._
 import fs2.pipe._
-import fs2.util.Concurrent
 
 class PipeSpec extends Fs2Spec {
 
@@ -473,7 +472,7 @@ class PipeSpec extends Fs2Spec {
 
   def trace[F[_],A](msg: String)(s: Stream[F,A]) = s mapChunks { a => println(msg + ": " + a.toList); a }
 
-  def merge2[F[_]:Concurrent,A](a: Stream[F,A], a2: Stream[F,A]): Stream[F,A] = {
+  def merge2[F[_]:Effect,A](a: Stream[F,A], a2: Stream[F,A]): Stream[F,A] = {
     type FS = ScopedFuture[F,Stream[F,A]] // Option[Step[Chunk[A],Stream[F,A]]]]
     def go(fa: FS, fa2: FS): Stream[F,A] = (fa race fa2).stream.flatMap {
       case Left(sa) => sa.uncons.flatMap {

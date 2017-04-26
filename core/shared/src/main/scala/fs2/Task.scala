@@ -5,7 +5,7 @@ import scala.concurrent.duration._
 import cats.effect.{Effect,IO}
 
 import fs2.internal.Future
-import fs2.util.{Attempt,Concurrent,ExecutionContexts,NonFatal}
+import fs2.util.{Attempt,ExecutionContexts,NonFatal}
 
 /**
  * Trampolined computation producing an `A` that may
@@ -214,7 +214,7 @@ object Task extends TaskPlatform {
    }}}
   */
   def start[A](t: Task[A])(implicit ec: ExecutionContext): Task[Task[A]] =
-    Concurrent[Task].ref[A].flatMap { ref => ref.set(t) map (_ => ref.get) }
+    concurrent.ref[Task, A].flatMap { ref => ref.setAsync(t) map (_ => ref.get) }
 
   /**
     * Like [[async]], but run the callback in the same thread in the same
