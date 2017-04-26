@@ -11,6 +11,6 @@ class ConcurrentBenchmark {
   @Benchmark
   def join(N: Int): Int = {
     val each = Stream.chunk(Chunk.seq(0 to 1000).map(i => Stream.eval(Task.now(i))))
-    concurrent.join(N)(each).runLast.unsafeRun().get
+    Stream.join(N)(each).runLast.unsafeRun().get
   }
 }

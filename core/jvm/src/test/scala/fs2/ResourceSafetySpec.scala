@@ -135,8 +135,8 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         if (allowFailure) f.map(f => spuriousFail(bracket(inner)(s.get), f)).getOrElse(bracket(inner)(s.get))
         else bracket(inner)(s.get)
       })
-      swallow { runLog { concurrent.join(n.get)(s2).take(10) }}
-      swallow { runLog { concurrent.join(n.get)(s2) }}
+      swallow { runLog { Stream.join(n.get)(s2).take(10) }}
+      swallow { runLog { Stream.join(n.get)(s2) }}
       outer.get shouldBe 0L
       eventually { inner.get shouldBe 0L }
     }

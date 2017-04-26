@@ -46,7 +46,7 @@ class SocketSpec extends Fs2Spec {
                 })
             }
 
-          concurrent.join(Int.MaxValue)(ps)
+          ps.joinUnbounded
         }
 
         val clients: Stream[IO, Array[Byte]] = {
@@ -60,11 +60,11 @@ class SocketSpec extends Fs2Spec {
               }
             }
 
-          concurrent.join(10)(pc)
+          Stream.join(10)(pc)
         }
 
         val result =
-          concurrent.join(2)(Stream(
+          Stream.join(2)(Stream(
             echoServer.drain
             , clients
           ))

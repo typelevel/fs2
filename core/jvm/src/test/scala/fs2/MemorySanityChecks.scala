@@ -39,7 +39,7 @@ object DrainOnCompleteSanityTest extends App {
 
 object ConcurrentJoinSanityTest extends App {
   import ExecutionContext.Implicits.global
-  concurrent.join(5)(Stream.constant(Stream.empty).covary[IO]).run.unsafeRunSync
+  Stream.join(5)(Stream.constant(Stream.empty).covary[IO]).run.unsafeRunSync
 }
 
 object DanglingDequeueSanityTest extends App {

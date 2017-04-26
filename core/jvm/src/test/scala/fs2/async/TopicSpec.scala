@@ -21,7 +21,7 @@ class TopicSpec extends Fs2Spec {
       val subscriber = topic.subscribe(Int.MaxValue).take(count+1).fold(Vector.empty[Int]){ _ :+ _ }
 
       val result =
-      concurrent.join(subs + 1)(
+      Stream.join(subs + 1)(
         Stream.range(0,subs).map(idx => subscriber.map(idx -> _)) ++ publisher.drain
       ).runLog.unsafeRunSync()
 
@@ -45,7 +45,7 @@ class TopicSpec extends Fs2Spec {
       val subscriber = topic.subscribe(1).take(count+1).flatMap { is => eval(signal.get).map(is -> _) }.fold(Vector.empty[(Int,Int)]){ _ :+ _ }
 
       val result =
-        concurrent.join(subs + 1)(
+        Stream.join(subs + 1)(
           Stream.range(0,subs).map(idx => subscriber.map(idx -> _)) ++ publisher.drain
         ).runLog.unsafeRunSync()
 

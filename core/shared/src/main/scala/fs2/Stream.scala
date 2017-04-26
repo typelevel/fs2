@@ -2,10 +2,12 @@ package fs2
 
 import scala.collection.immutable.VectorBuilder
 import scala.concurrent.ExecutionContext
+
 import cats.{ Applicative, Eq, MonadError, Monoid, Semigroup }
 import cats.effect.{ Effect, IO }
 import cats.implicits._
-import fs2.util.{ Attempt, Free, Lub1, RealSupertype, Sub1, UF1 }
+
+import fs2.util.{ Attempt, Concurrent, Free, Lub1, RealSupertype, Sub1, UF1 }
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -515,6 +517,93 @@ object Stream {
     eval(f).flatMap(s => s)
 
   /**
+    * Nondeterministically merges a stream of streams (`outer`) in to a single stream,
+    * opening at most `maxOpen` streams at any point in time.
+    *
+    * The outer stream is evaluated and each resulting inner stream is run concurrently,
+    * up to `maxOpen` stream. Once this limit is reached, evaluation of the outer stream
+    * is paused until one or more inner streams finish evaluating.
+    *
+    * When the outer stream stops gracefully, all inner streams continue to run,
+    * resulting in a stream that will stop when all inner streams finish
+    * their evaluation.
+    *
+    * When the outer stream fails, evaluation of all inner streams is interrupted
+    * and the resulting stream will fail with same failure.
+    *
+    * When any of the inner streams fail, then the outer stream and all other inner
+    * streams are interrupted, resulting in stream that fails with the error of the
+    * stream that cased initial failure.
+    *
+    * Finalizers on each inner stream are run at the end of the inner stream,
+    * concurrently with other stream computations.
+    *
+    * Finalizers on the outer stream are run after all inner streams have been pulled
+    * from the outer stream -- hence, finalizers on the outer stream will likely run
+    * BEFORE the LAST finalizer on the last inner stream.
+    *
+    * Finalizers on the returned stream are run after the outer stream has finished
+    * and all open inner streams have finished.
+    *
+    * @param maxOpen    Maximum number of open inner streams at any time. Must be > 0.
+    * @param outer      Stream of streams to join.
+    */
+  def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
+    assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
+
+    Stream.eval(async.signalOf(false)) flatMap { killSignal =>
+    Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
+    Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
+    Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Attempt[Chunk[O]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+      val incrementRunning: F[Unit] = running.modify(_ + 1) as (())
+      val decrementRunning: F[Unit] = running.modify(_ - 1) as (())
+
+      // runs inner stream
+      // each stream is forked.
+      // terminates when killSignal is true
+      // if fails will enq in queue failure
+      def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
+        Stream.eval_(
+          available.decrement >> incrementRunning >>
+          Concurrent.start {
+            inner.chunks.attempt
+            .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
+            .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+            .run.flatMap { _ =>
+              available.increment >> decrementRunning
+            }
+          }
+        )
+      }
+
+      // runs the outer stream, interrupts when kill == true, and then decrements the `available`
+      def runOuter: F[Unit] = {
+        outer.interruptWhen(killSignal) flatMap runInner onFinalize decrementRunning run
+      }
+
+      // monitors when the all streams (outer/inner) are terminated an then suplies None to output Queue
+      def doneMonitor: F[Unit]= {
+        running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
+          Stream.eval(outputQ.enqueue1(None))
+        } run
+      }
+
+      Stream.eval_(Concurrent.start(runOuter)) ++
+      Stream.eval_(Concurrent.start(doneMonitor)) ++
+      outputQ.dequeue.unNoneTerminate.flatMap {
+        case Left(e) => Stream.fail(e)
+        case Right(c) => Stream.chunk(c)
+      } onFinalize {
+        killSignal.set(true) >> (running.discrete.dropWhile(_ > 0) take 1 run) // await all open inner streams and the outer stream to be terminated
+      }
+    }}}}
+  }
+
+  /** Like [[join]] but races all inner streams simultaneously. */
+  def joinUnbounded[F[_],O](outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
+    join(Int.MaxValue)(outer)
+
+  /**
    * An infinite `Stream` that repeatedly applies a given function
    * to a start value. `start` is the first value emitted, followed
    * by `f(start)`, then `f(f(start))`, and so on.
@@ -679,6 +768,14 @@ object Stream {
   implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) extends AnyVal {
 
     def unNoneTerminate: Stream[F,O] = self.through(pipe.unNoneTerminate)
+  }
+
+  implicit class StreamStreamOps[F[_],O](private val self: Stream[F,Stream[F,O]]) extends AnyVal {
+    /** Alias for `Stream.join(maxOpen)(self)`. */
+    def join(maxOpen: Int)(implicit F: Effect[F], ec: ExecutionContext) = Stream.join(maxOpen)(self)
+
+    /** Alias for `Stream.joinUnbounded(self)`. */
+    def joinUnbounded(implicit F: Effect[F], ec: ExecutionContext) = Stream.joinUnbounded(self)
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */
