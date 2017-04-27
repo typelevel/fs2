@@ -2,6 +2,7 @@ package fs2
 
 import scala.collection.immutable.VectorBuilder
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration.FiniteDuration
 
 import cats.{ Applicative, Eq, MonadError, Monoid, Semigroup }
 import cats.effect.{ Effect, IO }
@@ -428,8 +429,6 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
       go(get)
     }
 
-  def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] = self.asInstanceOf[Stream[F, Option[O2]]] through pipe.unNone
-
   /** Alias for `self through [[pipe.vectorChunkN]]`. */
   def vectorChunkN(n: Int, allowFewer: Boolean = true): Stream[F,Vector[O]] =
     self through pipe.vectorChunkN(n, allowFewer)
@@ -442,6 +441,10 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
 
   /** Alias for `self through [[pipe.zipWithIndex]]`. */
   def zipWithIndex: Stream[F, (O, Int)] = self through pipe.zipWithIndex
+
+  /** Alias for `self through [[pipe.debounce]]`. */
+  def debounce[F2[_]](d: FiniteDuration)(implicit S: Sub1[F, F2], F: Effect[F2], scheduler: Scheduler, ec: ExecutionContext): Stream[F2, O] =
+    Sub1.substStream(self) through pipe.debounce(d)
 
   /** Alias for `self through [[pipe.zipWithNext]]`. */
   def zipWithNext: Stream[F, (O, Option[O])] = self through pipe.zipWithNext
@@ -767,7 +770,12 @@ object Stream {
 
   implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) extends AnyVal {
 
-    def unNoneTerminate: Stream[F,O] = self.through(pipe.unNoneTerminate)
+    /** Alias for `[[pipe.unNone]]` */
+    def unNone: Stream[F, O] = self through pipe.unNone
+
+    /** Alias for `[[pipe.unNoneTerminate]]` */
+    def unNoneTerminate: Stream[F,O] = self through pipe.unNoneTerminate
+
   }
 
   implicit class StreamStreamOps[F[_],O](private val self: Stream[F,Stream[F,O]]) extends AnyVal {

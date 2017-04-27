@@ -63,5 +63,15 @@ class TimeSpec extends AsyncFs2Spec {
         case Vector(d) => assert(d >= delay)
       }
     }
+
+    "debounce" in {
+      val delay = 100 milliseconds
+      val s1 = Stream(1, 2, 3) ++ time.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ time.sleep[IO](delay / 2) ++ Stream(6)
+      val t = s1.debounce(delay) runLog
+
+      t.unsafeToFuture() map { r =>
+        assert(r == Vector(3, 6))
+      }
+    }
   }
 }
