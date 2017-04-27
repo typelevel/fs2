@@ -2,7 +2,7 @@ package fs2
 package fast
 
 import fs2.util.Catenable
-import Segment.{TailCall,tailcall,MaxFusionDepth}
+import Segment.{TailCall,tailcall,MaxFusionDepth,Step}
 
 // todo -
 //   X get rid of depth parameter
@@ -14,7 +14,7 @@ import Segment.{TailCall,tailcall,MaxFusionDepth}
 abstract class Segment[+O,+R] { self =>
   type S0
   def s0: S0
-  val step: (Int, S0, R => Unit, S0 => Unit, (O, S0) => Unit) => Unit
+  val step: Step[S0,O,R]
 
   def foldLeft[B](z: B)(f: (B,O) => B): B = {
     var s = s0
@@ -75,7 +75,7 @@ abstract class Segment[+O,+R] { self =>
     new Segment[B,R2] {
       type S0 = (self.S0, S1)
       val s0 = (self.s0, s1)
-      val step = (depth, s, done, skip, emit) => {
+      val step: Step[S0,B,R2] = (depth, s, done, skip, emit) => {
         val s0 = s._1
         val s1 = s._2
         if (depth < MaxFusionDepth)
@@ -94,7 +94,7 @@ abstract class Segment[+O,+R] { self =>
     new Segment[O2,R] {
       type S0 = self.S0
       def s0 = self.s0
-      val step = (depth, s, done, skip, emit) =>
+      val step: Step[S0,O2,R] = (depth, s, done, skip, emit) =>
         if (depth < MaxFusionDepth)
           self.step(depth+1, s, done, skip, (o, s0) => emit(f(o), s0))
         else
@@ -105,7 +105,7 @@ abstract class Segment[+O,+R] { self =>
     new Segment[O,R] {
       type S0 = self.S0
       def s0 = self.s0
-      val step = (depth, s, done, skip, emit) =>
+      val step: Step[S0,O,R] = (depth, s, done, skip, emit) =>
         if (depth < MaxFusionDepth)
           self.step(depth+1, s, done, skip, (o, s0) => if (f(o)) emit(o, s0) else skip(s0))
         else tailcall {
@@ -117,7 +117,7 @@ abstract class Segment[+O,+R] { self =>
   def reset(s: S0): Segment[O,R] = new Segment[O,R] {
     type S0 = self.S0
     def s0 = s
-    val step = self.step
+    val step: Step[S0,O,R] = self.step
   }
 
   /**
@@ -136,7 +136,7 @@ abstract class Segment[+O,+R] { self =>
   def mapResult[O2>:O,R2](f: R => R2): Segment[O2,R2] = new Segment[O2,R2] {
     type S0 = self.S0
     val s0 = self.s0
-    val step = (depth, s, done, skip, emit) =>
+    val step: Step[S0,O2,R2] = (depth, s, done, skip, emit) =>
       if (depth < MaxFusionDepth) self.step(depth+1,s,r => done(f(r)),skip,emit)
       else tailcall { self.step(0,s, r => done(f(r)),skip,emit) }
   }
@@ -151,19 +151,21 @@ abstract class Segment[+O,+R] { self =>
 
 object Segment {
 
+  final type Step[S0,+O,+R] = (Int, S0, R => Unit, S0 => Unit, (O, S0) => Unit) => Unit
+
   val empty: Segment[Nothing,Unit] = pure(())
 
   def pure[R](r: R): Segment[Nothing,R] = new Segment[Nothing,R] {
     type S0 = Unit
     def s0 = ()
-    val step = (_,_,done,_,_) => done(r)
+    val step: Step[S0,Nothing,R] = (_,_,done,_,_) => done(r)
     override def result = Some(r)
   }
 
   def single[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
     type S0 = Boolean
     def s0 = true
-    val step = (depth,s,done,skip,emit) => if (s) emit(o, false) else done(())
+    val step: Step[S0,O,Unit] = (depth,s,done,skip,emit) => if (s) emit(o, false) else done(())
   }
 
   def apply[O](os: O*): Segment[O,Unit] = seq(os)
@@ -178,7 +180,7 @@ object Segment {
     type S0 = S
     def s0 = s
     def depth = 0
-    val step = (_, s, done, skip, emit) => f(s) match {
+    val step: Step[S0,O,Unit] = (_, s, done, skip, emit) => f(s) match {
       case None => done(())
       case Some((h,t)) => emit(h,t)
     }
@@ -188,12 +190,12 @@ object Segment {
     type S0 = Long
     def s0 = n
     def depth = 0
-    val step = (_, n, done, skip, emit) => emit(n, n + 1)
+    val step: Step[S0,Long,Nothing] = (_, n, done, skip, emit) => emit(n, n + 1)
   }
 
   case class Catenated[O](s0: Catenable[Segment[O,Unit]]) extends Segment[O,Unit] {
     type S0 = Catenable[Segment[O,Unit]]
-    val step = (depth, s, done, skip, emit) =>
+    val step: Step[S0,O,Unit] = (depth, s, done, skip, emit) =>
       if (depth < MaxFusionDepth)
         s.uncons match {
         case None => done(())
@@ -217,7 +219,7 @@ object Segment {
 
     def toChunk: Chunk[O] = {
       val buf = new collection.mutable.ArrayBuffer[O]
-      self.foldLeft(())((u,o) => buf += o)
+      self.foldLeft(()) { (u,o) => buf += o; () }
       Chunk.indexedSeq(buf)
     }
 
@@ -245,8 +247,8 @@ object Segment {
     def zip[O2](s: Segment[O2,Unit]): Segment[(O,O2),Unit] =
       new Segment[(O,O2),Unit] {
         type S0 = (self.S0, Option[O], s.S0)
-        def s0 = (self.s0, None, s.s0)
-        val step = (depth, zs, done, skip, emit) => zs._2 match {
+        def s0: S0 = (self.s0, None, s.s0)
+        val step: Step[S0,(O,O2),Unit] = (depth, zs, done, skip, emit) => zs._2 match {
           case None =>
             if (depth < MaxFusionDepth)
               self.step(depth+1, zs._1, done, s0 => skip((s0, None, zs._3)),

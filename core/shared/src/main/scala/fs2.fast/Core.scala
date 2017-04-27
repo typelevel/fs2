@@ -9,7 +9,7 @@ import fs2.internal.TwoWayLatch
 import Free.ViewL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import scala.collection.JavaConverters
+import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
 import cats.effect.Effect
 
@@ -218,7 +218,7 @@ object Stream {
           case Algebra.Snapshot() =>
             // todo - think through whether we need to take a consistent snapshot of resources
             // if so we need a monotonically increasing nonce associated with each resource
-            val tokens = JavaConverters.enumerationAsScalaIterator(resources.keys).toSet
+            val tokens = resources.keySet.asScala.toSet
             go(acc, g(tokens).viewL)
           case Algebra.UnconsAsync(s) =>
             type UO = Option[(Segment[_,Unit], Stream[F,_])]
