@@ -5,18 +5,18 @@ import Stream.Stream
 import fs2.internal.TwoWayLatch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import cats.effect.IO
 
 object Testing extends App {
-  import fs2.Task
   implicit val S = scala.concurrent.ExecutionContext.Implicits.global
 
   val N = 10000
   val s = Stream.flatMap(
-    (0 until N).map(Stream.emit[Task,Int](_))
-               .foldLeft(Stream.empty[Task,Int])(Stream.append(_,_))
+    (0 until N).map(Stream.emit[IO,Int](_))
+               .foldLeft(Stream.empty[IO,Int])(Stream.append(_,_))
   ) { i => Stream.emit(i) }
 
-  val s2 = (0 until N).map(fs2.Stream.emit).foldLeft(fs2.Stream.empty: fs2.Stream[Task,Int])(_ ++ _)
+  val s2 = (0 until N).map(fs2.Stream.emit).foldLeft(fs2.Stream.empty: fs2.Stream[IO,Int])(_ ++ _)
   def s3f = Segment.from(0).take(N).map(_.toInt)
   // def s3f = (0 until N).map(Segment.single).foldLeft(Segment.empty : Segment[Int])(_ ++ _)
 
@@ -26,8 +26,8 @@ object Testing extends App {
   //val bomb = { bomb0.toChunk; bomb0 }
   // def s3f = Segment.from(0).take(N).map(_.toInt)
 
-  def printSum(s: Stream[Task,Int]) = println {
-    Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRun()
+  def printSum(s: Stream[IO,Int]) = println {
+    Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRunSync()
   }
   printSum(s)
   println(s3f.foldLeft(0)(_ + _))
@@ -51,10 +51,10 @@ object Testing extends App {
   //}
 
   timeit("new") {
-    Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRun()
+    Stream.runFold(s, 0)(_ + _, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap).unsafeRunSync()
   }
   //timeit("old") {
-  //  s2.runFold(0)(_ + _).unsafeRun()
+  //  s2.runFold(0)(_ + _).unsafeRunSync()
   //}
 
   def timeit(label: String, threshold: Double = 0.95)(action: => Long): Long = {
