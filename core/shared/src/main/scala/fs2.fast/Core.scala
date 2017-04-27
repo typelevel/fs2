@@ -3,12 +3,15 @@ package core
 
 import Stream.Algebra
 import Stream.Stream
+import fs2.concurrent
 import fs2.util.{Free => _, _}
 import fs2.internal.TwoWayLatch
 import Free.ViewL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.JavaConverters
+import scala.concurrent.ExecutionContext
+import cats.effect.Effect
 
 // TODO
 // X add resource allocation algebra
@@ -160,14 +163,14 @@ object Stream {
    *    `midAcquires` tracks number of resources that are in the middle of being acquired.
    *    `resources` tracks the current set of resources in use by the stream, keyed by `Token`.
    *
-   * When `startCompletion` becomes `true`, if `midAcquires` has 0 count, `F.fail(Interrupted)`
+   * When `startCompletion` becomes `true`, if `midAcquires` has 0 count, `F.raiseError(Interrupted)`
    * is returned.
    *
-   * If `midAcquires` has nonzero count, we `midAcquires.waitUntil0`, then `F.fail(Interrupted)`.
+   * If `midAcquires` has nonzero count, we `midAcquires.waitUntil0`, then `F.raiseError(Interrupted)`.
    *
    * Before starting an acquire, we `midAcquires.increment`. We then check `startCompletion`:
    *   If false, proceed with the acquisition, update `resources`, and call `midAcquires.decrement` when done.
-   *   If true, `midAcquire.decrement` and F.fail(Interrupted) immediately.
+   *   If true, `midAcquire.decrement` and F.raiseError(Interrupted) immediately.
    *
    * No new resource acquisitions can begin after `startCompletion` becomes true, and because
    * we are conservative about incrementing the `midAcquires` latch, doing so even before we
@@ -177,30 +180,30 @@ object Stream {
   def runFold[F2[_],O,B](stream: Stream[F2,O], init: B)(f: (B, O) => B,
       startCompletion: AtomicBoolean,
       midAcquires: TwoWayLatch,
-      resources: ConcurrentHashMap[Stream.Token, F2[Unit]])(implicit A: Async[F2]): F2[B] = {
+      resources: ConcurrentHashMap[Stream.Token, F2[Unit]])(implicit F: Effect[F2], ec: ExecutionContext): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
     def go(acc: B, v: ViewL[AlgebraF, Option[(Segment[O,Unit], Stream[F, O])]]): F[B] = v match {
       case done: ViewL.Done[AlgebraF, Option[(Segment[O,Unit], Stream[F, O])]] => done.r match {
-        case None => A.pure(acc)
+        case None => F.pure(acc)
         case Some((hd, tl)) => go(hd.foldLeft(acc)(f), uncons(tl).algebra.viewL)
       }
-      case failed: ViewL.Failed[AlgebraF, _] => A.fail(failed.error)
+      case failed: ViewL.Failed[AlgebraF, _] => F.raiseError(failed.error)
       case bound: ViewL.Bound[AlgebraF, _, Option[(Segment[O,Unit], Stream[F, O])]] =>
         val g = bound.tryBind.asInstanceOf[Any => Free[AlgebraF, Option[(Segment[O,Unit], Stream[F, O])]]]
         bound.fx match {
           case wrap: Algebra.Wrap[F, O, _] =>
-            A.flatMap(wrap.value.asInstanceOf[F[Any]]) { x => go(acc, g(x).viewL) }
+            F.flatMap(wrap.value.asInstanceOf[F[Any]]) { x => go(acc, g(x).viewL) }
           case Algebra.Acquire(resource, release) =>
             midAcquires.increment
-            if (startCompletion.get) { midAcquires.decrement; A.fail(Stream.Interrupted) }
+            if (startCompletion.get) { midAcquires.decrement; F.raiseError(Stream.Interrupted) }
             else
-              A.flatMap(A.attempt(resource)) {
+              F.flatMap(F.attempt(resource)) {
                 case Left(err) => go(acc, bound.handleError(err).viewL)
                 case Right(r) =>
                   val token = new Stream.Token()
                   lazy val finalizer_ = release(r)
-                  val finalizer = A.suspend { finalizer_ }
+                  val finalizer = F.suspend { finalizer_ }
                   resources.put(token, finalizer)
                   midAcquires.decrement
                   go(acc, g((r, token)).viewL)
@@ -208,7 +211,7 @@ object Stream {
           case Algebra.Release(token) =>
             val finalizer = resources.remove(token)
             if (finalizer.asInstanceOf[AnyRef] eq null) go(acc, g(()).viewL)
-            else A.flatMap(A.attempt(finalizer)) {
+            else F.flatMap(F.attempt(finalizer)) {
               case Left(err) => go(acc, bound.handleError(err).viewL)
               case Right(_) => go(acc, g(()).viewL)
             }
@@ -220,16 +223,15 @@ object Stream {
           case Algebra.UnconsAsync(s) =>
             type UO = Option[(Segment[_,Unit], Stream[F,_])]
             type R = Either[Throwable, UO]
-            val task: F[F[R]] = A.start { A.attempt {
+            val task: F[F[R]] = concurrent.start { F.attempt {
               runFold(
                 uncons(s.asInstanceOf[Stream[F,Any]]).flatMap(Pull.output1(_)),
                 None: UO)((o,a) => a, startCompletion, midAcquires, resources)
             }}
-            A.flatMap(task) { (task: F[R]) => go(acc, g(Pull.rethrow(Pull.eval[F,O,R](task))).viewL) }
+            F.flatMap(task) { (task: F[R]) => go(acc, g(Pull.rethrow(Pull.eval[F,O,R](task))).viewL) }
           case _ => sys.error("impossible Segment or Output following uncons")
         }
     }
-    A.suspend { go(init, uncons(stream).algebra.viewL) }
+    F.suspend { go(init, uncons(stream).algebra.viewL) }
   }
 }
-

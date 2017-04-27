@@ -10,7 +10,7 @@ sealed abstract class Free[F[_], +R] {
   def flatMap[R2](f: R => Free[F, R2]): Free[F, R2] = Bind(this, f)
   def onError[R2>:R](h: Throwable => Free[F,R2]): Free[F,R2] = OnError(this, h)
   lazy val viewL: ViewL[F,R] = ViewL(this) // todo - review this
-  def translate[G[_]](f: F ~> G): Free[G, R] = this.viewL match {
+  def translate[G[_]](f: UF1[F, G]): Free[G, R] = this.viewL match {
     case Done(r) => Pure(r)
     case Bound(fx, k, onError) => onError match {
       case None => Eval(f(fx)) flatMap (x => k(x).translate(f))
@@ -24,20 +24,19 @@ sealed abstract class Free[F[_], +R] {
 
 object Free {
   case class Pure[F[_], R](r: R) extends Free[F, R] {
-    override def translate[G[_]](f: F ~> G): Free[G, R] = this.asInstanceOf[Free[G,R]]
+    override def translate[G[_]](f: UF1[F, G]): Free[G, R] = this.asInstanceOf[Free[G,R]]
   }
   case class Eval[F[_], R](fr: F[R]) extends Free[F, R] {
-    override def translate[G[_]](f: F ~> G): Free[G, R] = Eval(f(fr))
+    override def translate[G[_]](f: UF1[F, G]): Free[G, R] = Eval(f(fr))
   }
   case class Bind[F[_], X, R](fx: Free[F, X], f: X => Free[F, R]) extends Free[F, R]
   case class OnError[F[_],R](fr: Free[F,R], onError: Throwable => Free[F,R]) extends Free[F,R]
   case class Fail[F[_], R](error: Throwable) extends Free[F,R] {
-    override def translate[G[_]](f: F ~> G): Free[G, R] = this.asInstanceOf[Free[G,R]]
+    override def translate[G[_]](f: UF1[F, G]): Free[G, R] = this.asInstanceOf[Free[G,R]]
   }
 
   def Try[F[_],R](f: => Free[F,R]): Free[F,R] =
-    try f
-    catch { case e: Throwable => Fail(e) }
+    try f catch { case NonFatal(t) => Fail(t) }
 
   sealed abstract class ViewL[F[_], +R]
 
@@ -96,4 +95,3 @@ object Free {
     }
   }
 }
-
