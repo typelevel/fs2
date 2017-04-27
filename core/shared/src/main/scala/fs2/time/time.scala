@@ -28,7 +28,7 @@ package object time {
    * periods elapse and only some of those periods are visible in the
    * stream. This occurs when the scheduler fires faster than
    * periods are able to be published internally, possibly due to
-   * a execution context that is slow to evaluate.
+   * an execution context that is slow to evaluate.
    *
    * @param d           FiniteDuration between emits of the resulting stream
    * @param scheduler   Scheduler used to schedule tasks

@@ -217,8 +217,8 @@ object Task extends TaskPlatform {
     concurrent.ref[Task, A].flatMap { ref => ref.setAsync(t) map (_ => ref.get) }
 
   /**
-    * Like [[async]], but run the callback in the same thread in the same
-    * thread, rather than evaluating the callback using a `ExecutionContext`.
+    * Like [[async]], but run the callback in the same thread, rather
+    * than evaluating the callback using an `ExecutionContext`.
    */
   def unforkedAsync[A](register: (Attempt[A] => Unit) => Unit): Task[A] =
     async(register)(ExecutionContexts.sequential)
