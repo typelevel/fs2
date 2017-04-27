@@ -1,5 +1,6 @@
 package fs2
 
+import cats.effect.IO
 import fs2.util.UF1
 import org.scalacheck.Gen
 import org.scalatest.Inside
@@ -13,7 +14,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "fail (1)" in forAll { (f: Failure) =>
-      an[Err.type] should be thrownBy f.get.run.unsafeRun()
+      an[Err.type] should be thrownBy f.get.run.unsafeRunSync()
     }
 
     "fail (2)" in {
@@ -25,7 +26,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "eval" in {
-      runLog(Stream.eval(Task.delay(23))) shouldBe Vector(23)
+      runLog(Stream.eval(IO(23))) shouldBe Vector(23)
     }
 
     "++" in forAll { (s: PureStream[Int], s2: PureStream[Int]) =>
@@ -45,7 +46,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "iterateEval" in {
-      Stream.iterateEval(0)(i => Task.delay(i + 1)).take(100).runLog.unsafeRun() shouldBe List.iterate(0, 100)(_ + 1)
+      Stream.iterateEval(0)(i => IO(i + 1)).take(100).runLog.unsafeRunSync() shouldBe List.iterate(0, 100)(_ + 1)
     }
 
     "map" in forAll { (s: PureStream[Int]) =>
@@ -66,16 +67,16 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "onError (4)" in {
-      Stream.eval(Task.delay(throw Err)).map(Right(_)).onError(t => Stream.emit(Left(t)))
+      Stream.eval(IO(throw Err)).map(Right(_)).onError(t => Stream.emit(Left(t)))
             .take(1)
-            .runLog.unsafeRun() shouldBe Vector(Left(Err))
+            .runLog.unsafeRunSync() shouldBe Vector(Left(Err))
     }
 
     "onError (5)" in {
-      val r = Stream.fail[Task](Err).onError(e => Stream.emit(e)).flatMap(Stream.emit).runLog.unsafeRun()
-      val r2 = Stream.fail[Task](Err).onError(e => Stream.emit(e)).map(identity).runLog.unsafeRun()
-      val r3 = concurrent.join[Task, Int](4)(Stream(Stream.emit(1), Stream.fail(Err), Stream.emit(2)))
-                         .attempt.runLog.unsafeRun()
+      val r = Stream.fail[IO](Err).onError(e => Stream.emit(e)).flatMap(Stream.emit).runLog.unsafeRunSync()
+      val r2 = Stream.fail[IO](Err).onError(e => Stream.emit(e)).map(identity).runLog.unsafeRunSync()
+      val r3 = Stream.join[IO, Int](4)(Stream(Stream.emit(1), Stream.fail(Err), Stream.emit(2)))
+                         .attempt.runLog.unsafeRunSync()
       r shouldBe Vector(Err)
       r2 shouldBe Vector(Err)
       r3.contains(Left(Err)) shouldBe true
@@ -92,17 +93,17 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "ranges" in forAll(Gen.choose(1, 101)) { size =>
-      Stream.ranges[Task](0, 100, size).flatMap { case (i,j) => Stream.emits(i until j) }.runLog.unsafeRun() shouldBe
+      Stream.ranges[IO](0, 100, size).flatMap { case (i,j) => Stream.emits(i until j) }.runLog.unsafeRunSync() shouldBe
         IndexedSeq.range(0, 100)
     }
 
     "translate (1)" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.flatMap(i => Stream.eval(Task.now(i))).translate(UF1.id[Task])) shouldBe
+      runLog(s.get.flatMap(i => Stream.eval(IO.pure(i))).translate(UF1.id[IO])) shouldBe
       runLog(s.get)
     }
 
     "translate (2)" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.translate(UF1.id[Pure]).covary[Task]) shouldBe runLog(s.get)
+      runLog(s.get.translate(UF1.id[Pure]).covary[IO]) shouldBe runLog(s.get)
     }
 
     "toList" in forAll { (s: PureStream[Int]) =>
@@ -133,18 +134,17 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "unfoldEval" in {
-      Stream.unfoldEval(10)(s => Task.now(if (s > 0) Some((s, s - 1)) else None))
-        .runLog.unsafeRun().toList shouldBe List.range(10, 0, -1)
+      Stream.unfoldEval(10)(s => IO.pure(if (s > 0) Some((s, s - 1)) else None))
+        .runLog.unsafeRunSync().toList shouldBe List.range(10, 0, -1)
     }
 
     "unfoldChunkEval" in {
-      Stream.unfoldChunkEval(true)(s => Task.now(if(s) Some((Chunk.booleans(Array[Boolean](s)),false)) else None))
-        .runLog.unsafeRun().toList shouldBe List(true)
+      Stream.unfoldChunkEval(true)(s => IO.pure(if(s) Some((Chunk.booleans(Array[Boolean](s)),false)) else None))
+        .runLog.unsafeRunSync().toList shouldBe List(true)
     }
 
     "translate stack safety" in {
-      import fs2.util.{~>}
-      Stream.repeatEval(Task.delay(0)).translate(new (Task ~> Task) { def apply[X](x: Task[X]) = Task.suspend(x) }).take(1000000).run.unsafeRun()
+      Stream.repeatEval(IO(0)).translate(new UF1[IO, IO] { def apply[X](x: IO[X]) = IO.suspend(x) }).take(1000000).run.unsafeRunSync()
     }
   }
 }

@@ -1,5 +1,8 @@
 package fs2.util
 
+import cats.{ Applicative, Eval, Foldable, Traverse }
+import cats.implicits._
+
 import Catenable._
 
 /**
@@ -145,5 +148,14 @@ object Catenable {
         }
       case _ => fromSeq(as)
     }
+  }
+
+  implicit val traverseInstance: Traverse[Catenable] = new Traverse[Catenable] {
+    def foldLeft[A, B](fa: Catenable[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
+    def foldRight[A, B](fa: Catenable[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = Foldable[List].foldRight(fa.toList, b)(f)
+    override def toList[A](fa: Catenable[A]): List[A] = fa.toList
+    override def isEmpty[A](fa: Catenable[A]): Boolean = fa.isEmpty
+    def traverse[F[_], A, B](fa: Catenable[A])(f: A => F[B])(implicit G: Applicative[F]): F[Catenable[B]] =
+      Traverse[List].traverse(fa.toList)(f).map(Catenable.apply)
   }
 }

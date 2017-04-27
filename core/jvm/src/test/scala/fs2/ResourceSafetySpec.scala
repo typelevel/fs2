@@ -1,7 +1,7 @@
 package fs2
 
-import scala.concurrent.duration._
 import java.util.concurrent.atomic.AtomicLong
+import cats.effect.IO
 import org.scalacheck._
 
 class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
@@ -18,7 +18,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     "bracket (normal termination / failing)" in forAll { (s0: List[PureStream[Int]], f: Failure, ignoreFailure: Boolean) =>
       val c = new AtomicLong(0)
       val s = s0.map { s => bracket(c)(if (ignoreFailure) s.get else spuriousFail(s.get,f)) }
-      val s2 = s.foldLeft(Stream.empty: Stream[Task,Int])(_ ++ _)
+      val s2 = s.foldLeft(Stream.empty: Stream[IO,Int])(_ ++ _)
       swallow { runLog(s2) }
       swallow { runLog(s2.take(1000)) }
       withClue(f.tag) { 0L shouldBe c.get }
@@ -46,9 +46,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       // Also test for case where finalizer itself throws an error
       val innermost =
         if (!finalizerFail) f.get
-        else Stream.bracket(Task.delay(c.decrementAndGet))(
+        else Stream.bracket(IO(c.decrementAndGet))(
                _ => f.get,
-               _ => Task.delay { c.incrementAndGet; throw Err })
+               _ => IO { c.incrementAndGet; throw Err })
       val nested = Chunk.seq(s0).foldRight(innermost)((i,inner) => bracket(c)(Stream.emit(i) ++ inner))
       try { runLog { nested }; throw Err } // this test should always fail, so the `run` should throw
       catch { case Err => () }
@@ -72,21 +72,21 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "early termination of uncons" in {
       var n = 0
-      Stream(1,2,3).onFinalize(Task.delay(n = 1)).uncons.run.unsafeRun
+      Stream(1,2,3).onFinalize(IO(n = 1)).uncons.run.unsafeRunSync
       n shouldBe 1
     }
 
     "bracket release should not be called until necessary" in {
       val buffer = collection.mutable.ListBuffer[Symbol]()
       runLog {
-        val s = Stream.bracket(Task.delay(buffer += 'Acquired))(
+        val s = Stream.bracket(IO(buffer += 'Acquired))(
           _ => {
             buffer += 'Used
             Stream.emit(())
           },
           _ => {
             buffer += 'ReleaseInvoked
-            Task.delay { buffer += 'Released; () }
+            IO { buffer += 'Released; () }
           })
         s.flatMap { s => buffer += 'FlatMapped; Stream.emit(s) }
       }
@@ -107,7 +107,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s2 = Stream.fail(Err)
       val c = new AtomicLong(0)
       val b1 = bracket(c)(s1)
-      val b2 = s2: Stream[Task,Int]
+      val b2 = s2: Stream[IO,Int]
       // subtle test, get different scenarios depending on interleaving:
       // `s2` completes with failure before the resource is acquired by `s2`.
       // `b1` has just caught `s1` error when `s2` fails
@@ -134,8 +134,8 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         if (allowFailure) f.map(f => spuriousFail(bracket(inner)(s.get), f)).getOrElse(bracket(inner)(s.get))
         else bracket(inner)(s.get)
       })
-      swallow { runLog { concurrent.join(n.get)(s2).take(10) }}
-      swallow { runLog { concurrent.join(n.get)(s2) }}
+      swallow { runLog { Stream.join(n.get)(s2).take(10) }}
+      swallow { runLog { Stream.join(n.get)(s2) }}
       outer.get shouldBe 0L
       eventually { inner.get shouldBe 0L }
     }
@@ -153,11 +153,11 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (5)" in forAll { (s: PureStream[PureStream[Int]]) =>
-      val signal = async.signalOf[Task,Boolean](false).unsafeRun()
+      val signal = async.signalOf[IO,Boolean](false).unsafeRunSync()
       val c = new AtomicLong(0)
-      signal.set(true).schedule(20.millis).async.unsafeRun()
+      IO { Thread.sleep(20L) }.flatMap(_ => signal.set(true)).shift.unsafeRunSync()
       runLog { s.get.evalMap { inner =>
-        Task.start(bracket(c)(inner.get).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run)
+        concurrent.start(bracket(c)(inner.get).evalMap { _ => IO.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run)
       }}
       eventually { c.get shouldBe 0L }
     }
@@ -167,28 +167,28 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       // stream is interrupted while in the middle of a resource acquire that is immediately followed
       // by a step that never completes!
       val s = Stream(Stream(1))
-      val signal = async.signalOf[Task,Boolean](false).unsafeRun()
+      val signal = async.signalOf[IO,Boolean](false).unsafeRunSync()
       val c = new AtomicLong(1)
-      signal.set(true).schedule(20.millis).async.unsafeRun() // after 20 ms, interrupt
-      runLog { s.evalMap { inner => Task.start {
-        Stream.bracket(Task.delay { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
+      IO { Thread.sleep(20L) }.flatMap(_ => signal.set(true)).shift.unsafeRunSync() // after 20 ms, interrupt
+      runLog { s.evalMap { inner => concurrent.start {
+        Stream.bracket(IO { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
           _ => inner,
-          _ => Task.delay { c.decrementAndGet; () }
-        ).evalMap { _ => Task.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run
+          _ => IO { c.decrementAndGet; () }
+        ).evalMap { _ => IO.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run
       }}}
       eventually { c.get shouldBe 0L }
     }
 
     "evaluating a bracketed stream multiple times is safe" in {
-      val s = Stream.bracket(Task.now(()))(Stream.emit, _ => Task.now(())).run
-      s.unsafeRun
-      s.unsafeRun
+      val s = Stream.bracket(IO.pure(()))(Stream.emit, _ => IO.pure(())).run
+      s.unsafeRunSync
+      s.unsafeRunSync
     }
 
-    def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
-      Stream.bracket(Task.delay { c.decrementAndGet })(
+    def bracket[A](c: AtomicLong)(s: Stream[IO,A]): Stream[IO,A] = Stream.suspend {
+      Stream.bracket(IO { c.decrementAndGet })(
         _ => s,
-        _ => Task.delay { c.incrementAndGet; () })
+        _ => IO { c.incrementAndGet; () })
     }
   }
 }

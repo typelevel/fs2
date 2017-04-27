@@ -2,17 +2,19 @@ package fs2
 package io
 package tcp
 
+import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
+
 import java.net.{StandardSocketOptions, InetSocketAddress, SocketAddress}
 import java.nio.ByteBuffer
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.channels.{AsynchronousCloseException, AsynchronousServerSocketChannel, CompletionHandler, AsynchronousSocketChannel, AsynchronousChannelGroup}
 import java.util.concurrent.TimeUnit
 
-import fs2.Stream._
-import fs2.util.Async
-import fs2.util.syntax._
+import cats.effect.{ Effect, IO }
+import cats.implicits._
 
-import scala.concurrent.duration._
+import fs2.Stream._
 
 /**
  * Provides the ability to read/write from a TCP socket in the effect `F`.
@@ -92,9 +94,7 @@ protected[tcp] object Socket {
     , keepAlive: Boolean
     , noDelay: Boolean
   )(
-    implicit
-    AG: AsynchronousChannelGroup
-    , F:Async[F]
+    implicit AG: AsynchronousChannelGroup, F: Effect[F], ec: ExecutionContext
   ): Stream[F,Socket[F]] = Stream.suspend {
 
     def setup: Stream[F,AsynchronousSocketChannel] = Stream.suspend {
@@ -108,12 +108,12 @@ protected[tcp] object Socket {
     }
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] = F.async { cb =>
-      F.delay {
-        ch.connect(to, null, new CompletionHandler[Void, Void] {
-          def completed(result: Void, attachment: Void): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Right(ch)))))(_ => ())
-          def failed(rsn: Throwable, attachment: Void): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(rsn)))))(_ => ())
-        })
-      }
+      ch.connect(to, null, new CompletionHandler[Void, Void] {
+        def completed(result: Void, attachment: Void): Unit =
+          concurrent.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.pure(()))
+        def failed(rsn: Throwable, attachment: Void): Unit =
+          concurrent.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.pure(()))
+      })
     }
 
     def cleanup(ch: AsynchronousSocketChannel): F[Unit] =
@@ -130,8 +130,7 @@ protected[tcp] object Socket {
     , maxQueued: Int
     , reuseAddress: Boolean
     , receiveBufferSize: Int )(
-    implicit AG: AsynchronousChannelGroup
-    , F:Async[F]
+    implicit AG: AsynchronousChannelGroup, F: Effect[F], ec: ExecutionContext
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] = Stream.suspend {
 
       def setup: F[AsynchronousServerSocketChannel] = F.delay {
@@ -149,12 +148,14 @@ protected[tcp] object Socket {
       def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F,Stream[F, Socket[F]]] = {
         def go: Stream[F,Stream[F, Socket[F]]] = {
           def acceptChannel: F[AsynchronousSocketChannel] =
-            F.async[AsynchronousSocketChannel] { cb => F.pure {
+            F.async[AsynchronousSocketChannel] { cb =>
               sch.accept(null, new CompletionHandler[AsynchronousSocketChannel, Void] {
-                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Right(ch)))))(_ => ())
-                def failed(rsn: Throwable, attachment: Void): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(rsn)))))(_ => ())
+                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                  concurrent.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.pure(()))
+                def failed(rsn: Throwable, attachment: Void): Unit =
+                  concurrent.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.pure(()))
               })
-            }}
+            }
 
           def close(ch: AsynchronousSocketChannel): F[Unit] =
             F.delay { if (ch.isOpen) ch.close() }.attempt.as(())
@@ -177,23 +178,24 @@ protected[tcp] object Socket {
   }
 
 
-  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F:Async[F]):F[Socket[F]] = {
+  def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F: Effect[F], ec: ExecutionContext):F[Socket[F]] = {
     async.semaphore(1) flatMap { readSemaphore =>
-    F.refOf(ByteBuffer.allocate(0)) map { bufferRef =>
+    concurrent.refOf(ByteBuffer.allocate(0)) map { bufferRef =>
 
       // Reads data to remaining capacity of supplied ByteBuffer
       // Also measures time the read took returning this as tuple
       // of (bytes_read, read_duration)
-      def readChunk(buff:ByteBuffer, timeoutMs:Long):F[(Int,Long)] = F.async { cb => F.pure {
+      def readChunk(buff:ByteBuffer, timeoutMs:Long):F[(Int,Long)] = F.async { cb =>
         val started = System.currentTimeMillis()
         ch.read(buff, timeoutMs, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
-          def completed(result: Integer, attachment: Unit): Unit =  {
+          def completed(result: Integer, attachment: Unit): Unit = {
             val took = System.currentTimeMillis() - started
-            F.unsafeRunAsync(F.start(F.delay(cb(Right((result, took))))))(_ => ())
+            concurrent.unsafeRunAsync(F.delay(cb(Right((result, took)))))(_ => IO.pure(()))
           }
-          def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(err)))))(_ => ())
+          def failed(err: Throwable, attachment: Unit): Unit =
+            concurrent.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.pure(()))
         })
-      }}
+      }
 
       // gets buffer of desired capacity, ready for the first read operation
       // If the buffer does not have desired capacity it is resized (recreated)
@@ -230,7 +232,7 @@ protected[tcp] object Socket {
               else releaseBuffer(buff) map (Some(_))
           }
         }).flatMap { r => readSemaphore.increment >> (r match {
-          case Left(err) => F.fail(err)
+          case Left(err) => F.raiseError(err)
           case Right(maybeChunk) => F.pure(maybeChunk)
         })}
       }
@@ -249,25 +251,26 @@ protected[tcp] object Socket {
 
           go(timeout.map(_.toMillis).getOrElse(0l))
         }) flatMap { r => readSemaphore.increment >> (r match {
-          case Left(err) => F.fail(err)
+          case Left(err) => F.raiseError(err)
           case Right(maybeChunk) => F.pure(maybeChunk)
         })}
       }
 
       def write0(bytes:Chunk[Byte],timeout: Option[FiniteDuration]): F[Unit] = {
         def go(buff:ByteBuffer,remains:Long):F[Unit] = {
-          F.async[Option[Long]] { cb => F.pure {
+          F.async[Option[Long]] { cb =>
             val start = System.currentTimeMillis()
             ch.write(buff, remains, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
               def completed(result: Integer, attachment: Unit): Unit = {
-                F.unsafeRunAsync(F.start(F.delay(cb(Right(
+                concurrent.unsafeRunAsync(F.delay(cb(Right(
                   if (buff.remaining() <= 0) None
                   else Some(System.currentTimeMillis() - start)
-                )))))(_ => ())
+                ))))(_ => IO.pure(()))
               }
-              def failed(err: Throwable, attachment: Unit): Unit = F.unsafeRunAsync(F.start(F.delay(cb(Left(err)))))(_ => ())
+              def failed(err: Throwable, attachment: Unit): Unit =
+                concurrent.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.pure(()))
             })
-          }}.flatMap {
+          }.flatMap {
             case None => F.pure(())
             case Some(took) => go(buff,(remains - took) max 0)
           }

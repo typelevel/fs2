@@ -3,6 +3,10 @@ package fs2
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
+import cats.effect.IO
+
+import java.util.concurrent.TimeoutException
+
 trait TestUtilPlatform {
 
   implicit val executionContext: ExecutionContext = ExecutionContext.Implicits.global
@@ -10,10 +14,11 @@ trait TestUtilPlatform {
 
   val timeout: FiniteDuration
 
-  def runLog[A](s: Stream[Task,A], timeout: FiniteDuration = timeout): Vector[A] = s.runLog.unsafeRunFor(timeout)
+  def runLog[A](s: Stream[IO,A], timeout: FiniteDuration = timeout): Vector[A] =
+    s.runLog.unsafeRunTimed(timeout).getOrElse(throw new TimeoutException("IO run timed out"))
 
-  def throws[A](err: Throwable)(s: Stream[Task,A]): Boolean =
-    s.runLog.unsafeAttemptRun() match {
+  def throws[A](err: Throwable)(s: Stream[IO,A]): Boolean =
+    s.runLog.attempt.unsafeRunSync() match {
       case Left(e) if e == err => true
       case _ => false
     }

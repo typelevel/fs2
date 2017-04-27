@@ -1,12 +1,11 @@
 package fs2
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.duration.FiniteDuration
-
 import java.lang.Thread.UncaughtExceptionHandler
 import java.util.concurrent.{ Executors, ScheduledExecutorService, ThreadFactory, TimeUnit }
 import java.util.concurrent.atomic.AtomicInteger
+
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration.FiniteDuration
 
 import fs2.util.NonFatal
 

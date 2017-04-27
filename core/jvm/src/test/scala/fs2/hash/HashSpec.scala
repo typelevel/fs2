@@ -1,6 +1,7 @@
 package fs2
 package hash
 
+import cats.effect.IO
 import java.security.MessageDigest
 import org.scalacheck.Gen
 
@@ -35,11 +36,11 @@ class HashSpec extends Fs2Spec {
   }
 
   "thread-safety" in {
-    val s = Stream.range[Task](1,100)
+    val s = Stream.range[IO](1,100)
       .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
       .through(sha512)
     val vec = Vector.fill(100)(s).par
-    val res = s.runLog.unsafeRun()
-    vec.map(_.runLog.unsafeRun()) shouldBe Vector.fill(100)(res)
+    val res = s.runLog.unsafeRunSync()
+    vec.map(_.runLog.unsafeRunSync()) shouldBe Vector.fill(100)(res)
   }
 }

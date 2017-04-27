@@ -2,12 +2,13 @@ package fs2
 package io
 package udp
 
-import java.net.{InetAddress,NetworkInterface,InetSocketAddress}
-import java.nio.channels.{ClosedChannelException,DatagramChannel}
-
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
-import fs2.util.Async
+import java.net.{ InetAddress, NetworkInterface, InetSocketAddress }
+import java.nio.channels.{ ClosedChannelException, DatagramChannel }
+
+import cats.effect.{ Effect, IO }
 
 /**
  * Provides the ability to read/write from a UDP socket in the effect `F`.
@@ -98,25 +99,23 @@ sealed trait Socket[F[_]] {
 
 private[udp] object Socket {
 
-  private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup, F: Async[F]): F[Socket[F]] = F.delay {
+  private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup, F: Effect[F], ec: ExecutionContext): F[Socket[F]] = F.delay {
     new Socket[F] {
       private val ctx = AG.register(channel)
 
       private def invoke(f: => Unit): Unit =
-        F.unsafeRunAsync(F.start(F.delay(f)))(_ => ())
+        concurrent.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
 
       def localAddress: F[InetSocketAddress] =
         F.delay(Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]).getOrElse(throw new ClosedChannelException))
 
-      def read(timeout: Option[FiniteDuration]): F[Packet] = F.async(cb => F.delay { AG.read(ctx, timeout, result => invoke(cb(result))) })
+      def read(timeout: Option[FiniteDuration]): F[Packet] = F.async(cb => AG.read(ctx, timeout, result => invoke(cb(result))))
 
       def reads(timeout: Option[FiniteDuration]): Stream[F, Packet] =
         Stream.repeatEval(read(timeout))
 
       def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
-        F.async(cb => F.delay {
-          AG.write(ctx, packet, timeout, t => invoke(cb(t.toLeft(()))))
-        })
+        F.async(cb => AG.write(ctx, packet, timeout, t => invoke(cb(t.toLeft(())))))
 
       def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =
         _.flatMap(p => Stream.eval(write(p, timeout)))

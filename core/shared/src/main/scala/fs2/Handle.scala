@@ -1,6 +1,8 @@
 package fs2
 
-import fs2.util.{Async,RealSupertype,Sub1}
+import scala.concurrent.ExecutionContext
+import cats.effect.Effect
+import fs2.util.{RealSupertype,Sub1}
 
 /**
  * A currently open `Stream[F,A]` which allows chunks to be pulled or pushed.
@@ -55,7 +57,7 @@ final class Handle[+F[_],+A] private[fs2] (
    * An async step is returned as the resource of the returned pull. The async step is a [[ScopedFuture]], which can be raced
    * with another scoped future or forced via [[ScopedFuture#pull]].
    */
-  def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]] = {
+  def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Effect[F2], A2: RealSupertype[A,A2], ec: ExecutionContext): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]] = {
     val h = Sub1.substHandle(this)(S)
     h.buffer match {
       case Nil => h.underlying.stepAsync
@@ -64,7 +66,7 @@ final class Handle[+F[_],+A] private[fs2] (
   }
 
   /** Like [[awaitAsync]] but waits for a single element instead of an entire chunk. */
-  def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Async[F2], A2: RealSupertype[A,A2]): Pull[F2, Nothing, Handle.AsyncStep1[F2,A2]] = {
+  def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Effect[F2], A2: RealSupertype[A,A2], ec: ExecutionContext): Pull[F2, Nothing, Handle.AsyncStep1[F2,A2]] = {
     awaitAsync map { _ map { _.map { case (hd, tl) =>
       val (h, hs) = hd.unconsNonEmpty
       (h, tl.push(hs))
@@ -205,7 +207,7 @@ final class Handle[+F[_],+A] private[fs2] (
    * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
    * inner `Pull` logically blocks until this await completes.
    */
-  def prefetch[F2[_]](implicit sub: Sub1[F,F2], F: Async[F2]): Pull[F2,Nothing,Pull[F2,Nothing,Handle[F2,A]]] =
+  def prefetch[F2[_]](implicit sub: Sub1[F,F2], F: Effect[F2], ec: ExecutionContext): Pull[F2,Nothing,Pull[F2,Nothing,Handle[F2,A]]] =
     awaitAsync map { fut =>
       fut.pull flatMap { p =>
         p map { case (hd, h) => h push hd }

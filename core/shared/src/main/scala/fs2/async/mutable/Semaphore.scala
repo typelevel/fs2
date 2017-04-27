@@ -2,8 +2,10 @@ package fs2
 package async
 package mutable
 
-import fs2.util.Async
-import fs2.util.syntax._
+import scala.concurrent.ExecutionContext
+
+import cats.effect.Effect
+import cats.implicits._
 
 /**
  * An asynchronous semaphore, useful as a concurrency primitive.
@@ -60,21 +62,21 @@ trait Semaphore[F[_]] {
 object Semaphore {
 
   /** Creates a new `Semaphore`, initialized with `n` available permits. */
-  def apply[F[_]](n: Long)(implicit F: Async[F]): F[Semaphore[F]] = {
+  def apply[F[_]](n: Long)(implicit F: Effect[F], ec: ExecutionContext): F[Semaphore[F]] = {
     def ensureNonneg(n: Long) = assert(n >= 0, s"n must be nonnegative, was: $n ")
 
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is non-empty, and there are n permits available (Right)
-    type S = Either[Vector[(Long,Async.Ref[F,Unit])], Long]
-    F.refOf[S](Right(n)).map { ref => new Semaphore[F] {
-      private def open(gate: Async.Ref[F,Unit]): F[Unit] =
-        gate.setPure(())
+    type S = Either[Vector[(Long,concurrent.Ref[F,Unit])], Long]
+    concurrent.refOf[F,S](Right(n)).map { ref => new Semaphore[F] {
+      private def open(gate: concurrent.Ref[F,Unit]): F[Unit] =
+        gate.setAsyncPure(())
 
       def count = ref.get.map(count_)
       def decrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
-        else F.ref[Unit].flatMap { gate => ref.modify {
+        else concurrent.ref[F,Unit].flatMap { gate => ref.modify {
           case Left(waiting) => Left(waiting :+ (n -> gate))
           case Right(m) =>
             if (n <= m) Right(m-n)
@@ -144,5 +146,5 @@ object Semaphore {
   }}}
 
   /** Creates a `Semaphore` with 0 initial permits. */
-  def empty[F[_]:Async]: F[Semaphore[F]] = apply(0)
+  def empty[F[_]:Effect](implicit ec: ExecutionContext): F[Semaphore[F]] = apply(0)
 }

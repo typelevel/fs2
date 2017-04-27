@@ -1,7 +1,11 @@
 package fs2.async.immutable
 
+import scala.concurrent.ExecutionContext
+
+import cats.Functor
+import cats.effect.Effect
+
 import fs2.Stream
-import fs2.util.{Async,Functor}
 import fs2.async.immutable
 
 /** Data type of a single value of type `A` that can be read in the effect `F`. */
@@ -35,30 +39,30 @@ trait Signal[F[_], A] { self =>
 
 object Signal {
 
-  implicit class ImmutableSignalSyntax[F[_] : Async, A] (val self: Signal[F, A])  {
+  implicit class ImmutableSignalSyntax[F[_], A] (val self: Signal[F, A])  {
 
     /**
      * Converts this signal to signal of `B` by applying `f`.
      */
-    def map[B](f: A => B): Signal[F,B] = new Signal[F, B] {
+    def map[B](f: A => B)(implicit F: Functor[F]): Signal[F,B] = new Signal[F, B] {
       def continuous: Stream[F, B] = self.continuous.map(f)
       def discrete: Stream[F, B] = self.discrete.map(f)
-      def get: F[B] = implicitly[Functor[F]].map(self.get)(f)
+      def get: F[B] = F.map(self.get)(f)
     }
   }
 
-  implicit class BooleanSignalSyntax[F[_]:Async] (val self: Signal[F,Boolean]) {
-    def interrupt[A](s: Stream[F,A]): Stream[F,A] = s.interruptWhen(self)
+  implicit class BooleanSignalSyntax[F[_]] (val self: Signal[F,Boolean]) {
+    def interrupt[A](s: Stream[F,A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,A] = s.interruptWhen(self)
   }
 
   /**
    * Constructs Stream from the input stream `source`. If `source` terminates
    * then resulting stream terminates as well.
    */
-  def holdOption[F[_],A](source:Stream[F,A])(implicit F: Async[F]): Stream[F,immutable.Signal[F,Option[A]]] =
+  def holdOption[F[_],A](source:Stream[F,A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,immutable.Signal[F,Option[A]]] =
     hold(None, source.map(Some(_)))
 
-  def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: Async[F]): Stream[F,immutable.Signal[F,A]] =
+  def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,immutable.Signal[F,A]] =
     Stream.eval(fs2.async.signalOf[F,A](initial)) flatMap { sig =>
       Stream(sig).merge(source.flatMap(a => Stream.eval_(sig.set(a))))
     }

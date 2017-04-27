@@ -57,7 +57,7 @@ object compress {
   /**
     * Returns a `Pipe` that inflates (decompresses) its input elements using
     * a `java.util.zip.Inflater` with the parameter `nowrap`.
-    * @param nowrap if true then support GZIP compatible compression
+    * @param nowrap if true then support GZIP compatible decompression
     * @param bufferSize size of the internal buffer that is used by the
     *                   decompressor. Default size is 32 KB.
     */
