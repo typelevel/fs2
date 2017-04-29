@@ -1,6 +1,13 @@
 package fs2.fast
 
+import scala.concurrent.ExecutionContext
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+
+import cats.effect.Effect
+
 import core.Stream.StreamF
+import fs2.internal.TwoWayLatch
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -58,6 +65,9 @@ final class Stream[+F[_],+O] private(private val free: StreamF[Nothing,Nothing])
   private[fs2]
   def get[F2[x]>:F[x],O2>:O]: core.Stream.Stream[F2,O2] =
     new core.Pull(free.asInstanceOf[StreamF[F2,O2]])
+
+  def runFold[F2[x]>:F[x],B](init: B)(f: (B, O) => B)(implicit F: Effect[F2], ec: ExecutionContext): F2[B] =
+    core.Stream.runFold(get[F2,O], init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap)
 }
 
 object Stream {
