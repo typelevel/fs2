@@ -62,6 +62,7 @@ private[fs2] object LinkedMap {
 private[fs2] class LinkedSet[K](ks: LinkedMap[K,Unit]) {
   def +(k: K) = new LinkedSet(ks.updated(k, ()))
   def -(k: K) = new LinkedSet(ks - k)
+  def --(keys: Iterable[K]) = new LinkedSet(ks removeKeys keys.toSeq)
   def values: Iterable[K] = ks.keys
   def iterator = values.iterator
   def isEmpty = ks.isEmpty

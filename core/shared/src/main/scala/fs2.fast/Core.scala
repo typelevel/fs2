@@ -5,7 +5,7 @@ import Stream.Algebra
 import Stream.Stream
 import fs2.concurrent
 import fs2.util.{Free => _, _}
-import fs2.internal.TwoWayLatch
+import fs2.internal.{LinkedSet,TwoWayLatch}
 import Free.ViewL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -16,9 +16,8 @@ import cats.effect.Effect
 // TODO
 // X add resource allocation algebra
 // X add exception handling algebra
-// add variance
-//
-// add fancy pure streams type
+// X add variance
+// X add fancy pure streams type
 // performance testing
 // integrate with rest of fs2
 
@@ -31,6 +30,7 @@ final class Pull[F[_], O, R](val algebra: Pull.PullF[F,O,R]) extends AnyVal {
   def covary[G[_]](implicit S: Sub1[F,G]): Pull[G,O,R] = this.asInstanceOf[Pull[G,O,R]]
   def covaryOutput[O2](implicit T: RealSupertype[O,O2]): Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
   def covaryResult[R2](implicit T: RealSupertype[R,R2]): Pull[F,O,R2] = this.asInstanceOf[Pull[F,O,R2]]
+  def covariant: fs2.fast.Pull[F,O,R] = fs2.fast.Pull.fromFree(algebra)
 }
 
 object Pull {
@@ -41,6 +41,11 @@ object Pull {
 
   def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
     pure(()) flatMap { _ => p } // todo - revist
+
+  def snapshot[F[_],O]: Pull[F,O,LinkedSet[Stream.Token]] = {
+    type AlgebraF[x] = Algebra[F,O,x]
+    apply[F,O,LinkedSet[Stream.Token]](Free.Eval[AlgebraF,LinkedSet[Stream.Token]](Algebra.Snapshot()))
+  }
 
   def fail[F[_],O,R](err: Throwable): Pull[F,O,R] =
     apply[F,O,R](Free.Fail[({type f[x] = Stream.Algebra[F,O,x]})#f,R](err))
@@ -97,7 +102,7 @@ object Stream {
     case class Wrap[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
     case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
     case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
-    case class Snapshot[F[_],O]() extends Algebra[F,O,Set[Token]]
+    case class Snapshot[F[_],O]() extends Algebra[F,O,LinkedSet[Token]]
     case class UnconsAsync[F[_],X,Y,O](s: Stream[F,O])
       extends Algebra[F,X,Pull[F,Y,Option[(Catenable[O], Stream[F,O])]]]
   }
