@@ -105,6 +105,9 @@ object Pull {
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
     new Pull(Algebra.fail[Nothing,Nothing,Nothing](err))
 
+  def segment[F[_],O,R](s: Segment[O,R]): Pull[F,O,R] =
+    fromFree(Algebra.segment[F,O,R](s))
+
   def output1[F[_],O](o: O): Pull[F,O,Unit] =
     fromFree(Algebra.output1[F,O](o))
 
