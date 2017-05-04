@@ -26,38 +26,33 @@ final class Handle[+F[_],+A] private[fs2] (
   /** Applies `f` to each element from the source stream, yielding a new handle with a potentially different element type.*/
   def map[A2](f: A => A2): Handle[F,A2] = new Handle(buffer.map(_ map f), underlying map f)
 
-  // /** Returns a new handle with the specified chunk prepended to elements from the source stream. */
-  // def push[A2>:A](c: Chunk[A2]): Handle[F,A2] =
-  //   if (c.isEmpty) this
-  //   else new Handle(NonEmptyChunk.fromChunkUnsafe(c) :: buffer, underlying)
-  //
-  // /** Like [[push]] but for a single element instead of a chunk. */
-  // def push1[A2>:A](a: A2): Handle[F,A2] =
-  //   push(Chunk.singleton(a))
+  /** Returns a new handle with the specified chunk prepended to elements from the source stream. */
+  def push[A2>:A](s: Segment[A2,Unit]): Handle[F,A2] =
+    //if (s.isEmpty) this else     TODO no isEmpty on segment
+    new Handle(s :: buffer, underlying)
+
+  /** Like [[push]] but for a single element instead of a chunk. */
+  def push1[A2>:A](a: A2): Handle[F,A2] =
+    push(Segment.single(a))
 
   /**
    * Waits for a chunk of elements to be available in the source stream.
    * The chunk of elements along with a new handle are provided as the resource of the returned pull.
    * The new handle can be used for subsequent operations, like awaiting again.
    */
-  def awaitSegment: Pull[F,Nothing,Option[(Segment[A,Unit], Handle[F,A])]] =
+  def await: Pull[F,Nothing,Option[(Segment[A,Unit], Handle[F,A])]] =
     buffer match {
       case hb :: tb => Pull.pure(Some((hb, new Handle(tb, underlying))))
       case Nil => underlying.step
     }
 
-  /**
-   * Waits for a chunk of elements to be available in the source stream.
-   * The chunk of elements along with a new handle are provided as the resource of the returned pull.
-   * The new handle can be used for subsequent operations, like awaiting again.
-   */
-  def await: Pull[F,Nothing,Option[Segment[A,Handle[F,A]]]] = ???
-
   // /** Like [[await]] but waits for a single element instead of an entire chunk. */
-  // def await1: Pull[F,Nothing,(A,Handle[F,A])] =
-  //   await flatMap { case (hd, tl) =>
-  //     val (h, hs) = hd.unconsNonEmpty
-  //     Pull.pure((h, tl push hs))
+  // def await1: Pull[F,Nothing,Option[(A,Handle[F,A])]] =
+  //   await map {
+  //     case None => None
+  //     case Some((hd, tl)) =>
+  //       val (h, hs) = hd.unconsNonEmpty
+  //       Pull.pure(Some((h, tl push hs)))
   //   }
 
   //
