@@ -1,6 +1,6 @@
 package fs2.fast
 
-import fs2.{Chunk,Pure}
+import fs2.{Chunk,NonEmptyChunk,Pure}
 
 import scala.concurrent.ExecutionContext
 import java.util.concurrent.ConcurrentHashMap
@@ -66,6 +66,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   private[fs2] def get[F2[x]>:F[x],O2>:O]: Free[Algebra[F2,O2,?],Unit] = free.asInstanceOf[Free[Algebra[F2,O2,?],Unit]]
 
+  def as[O2](o2: O2): Stream[F,O2] = map(_ => o2)
+
   def covary[F2[x]>:F[x]]: Stream[F2,O] = this.asInstanceOf
   def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf
   def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = this.asInstanceOf
@@ -110,6 +112,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     import scala.collection.immutable.VectorBuilder
     F.suspend(F.map(runFold[F2, VectorBuilder[O2]](new VectorBuilder[O2])(_ += _))(_.result))
   }
+
+  def step: Pull[F,Nothing,(NonEmptyChunk[O],Handle[F,O])] = ??? // TODO
 }
 
 object Stream {

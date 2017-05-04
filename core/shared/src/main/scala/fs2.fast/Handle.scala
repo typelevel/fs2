@@ -42,8 +42,7 @@ final class Handle[+F[_],+A] private[fs2] (
    */
   def await: Pull[F,Nothing,(NonEmptyChunk[A],Handle[F,A])] =
     buffer match {
-      case Nil => ??? // TODO
-        // OLD: underlying.step //def step: Pull[F,Nothing,(NonEmptyChunk[O],Handle[F,O])]
+      case Nil => underlying.step
       case hb :: tb => Pull.pure((hb, new Handle(tb, underlying)))
     }
 
@@ -258,7 +257,7 @@ final class Handle[+F[_],+A] private[fs2] (
         case None    => Pull.output(chunk) >> h.takeWhile(p)
       }
     }
-  
+
   /** Converts this handle to a handle of the specified subtype. */
   implicit def covary[F2[x]>:F[x]]: Handle[F2,A] = this.asInstanceOf
 
