@@ -1,7 +1,7 @@
 package fs2.fast
 
-import core.Pull.PullF
 import fs2.internal.LinkedSet
+import fs2.fast.internal.{Algebra,Free}
 // import fs2.util.{RealSupertype, Lub1, Sub1}
 
 /**
@@ -21,30 +21,24 @@ import fs2.internal.LinkedSet
  * `fail` is caught by `onError`:
  *   - `onError(fail(e))(f) == f(e)`
  */
-final class Pull[+F[_],+O,+R] private(private val free: PullF[Nothing,Nothing,R]) extends AnyVal {
+final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Nothing,?],R]) extends AnyVal {
 
-  private[fs2]
-  def get[F2[x]>:F[x],O2>:O,R2>:R]: core.Pull[F2,O2,R2] =
-    new core.Pull(getFree)
-
-  private[fs2]
-  def getFree[F2[x]>:F[x],O2>:O,R2>:R]: PullF[F2,O2,R2] =
-    free.asInstanceOf[PullF[F2,O2,R2]]
+  private[fs2] def get[F2[x]>:F[x],O2>:O,R2>:R]: Free[Algebra[F2,O2,?],R2] = free.asInstanceOf[Free[Algebra[F2,O2,?],R2]]
 
   private def close_(asStep: Boolean): Stream[F,O] =
-    if (asStep) Stream.fromFree(getFree[F,O,R] map (_ => ()))
-    else Stream.fromFree(this.scope[F].getFree[F,O,R] map (_ => ()))
+    if (asStep) Stream.fromFree(get[F,O,R] map (_ => ()))
+    else Stream.fromFree(scope[F].get[F,O,R] map (_ => ()))
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
   def close: Stream[F,O] = close_(false)
 
   /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
   def onError[F2[x]>:F[x],O2>:O,R2>:R](h: Throwable => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    get[F2,O2,R2] onError (e => h(e).get) covariant
+    Pull.fromFree(get[F2,O2,R2] onError { e => h(e).get })
 
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    get[F2,O2,R] flatMap (r => f(r).get) covariant
+    Pull.fromFree(get[F2,O2,R] flatMap { r => f(r).get })
 
   /** Defined as `p >> p2 == p flatMap { _ => p2 }`. */
   def >>[F2[x]>:F[x],O2>:O,R2](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
@@ -56,14 +50,14 @@ final class Pull[+F[_],+O,+R] private(private val free: PullF[Nothing,Nothing,R]
 
   def covary[F2[x]>:F[x]]: Pull[F2,O,R] = this.asInstanceOf
 
-  def scope[F2[x]>:F[x]]: Pull[F2,O,R] = core.Pull.snapshot[F2,O].covariant flatMap { tokens0 =>
+  def scope[F2[x]>:F[x]]: Pull[F2,O,R] = Pull.snapshot[F2,O] flatMap { tokens0 =>
     this flatMap { r =>
-      core.Pull.snapshot.covariant flatMap { tokens1 =>
+      Pull.snapshot flatMap { tokens1 =>
         val newTokens = tokens1 -- tokens0.values
         Pull.releaseAll(newTokens).as(r)
       }
     } onError { e =>
-      core.Pull.snapshot.covariant flatMap { tokens1 =>
+      Pull.snapshot flatMap { tokens1 =>
         val newTokens = tokens1 -- tokens0.values
         Pull.releaseAll(newTokens) >> Pull.fail(e)
       }
@@ -75,13 +69,23 @@ final class Pull[+F[_],+O,+R] private(private val free: PullF[Nothing,Nothing,R]
 
 object Pull {
 
-  def fromFree[F[_],O,R](free: PullF[F,O,R]): Pull[F,O,R] =
-    new Pull(free.asInstanceOf[PullF[Nothing,Nothing,R]])
+  def fromFree[F[_],O,R](free: Free[Algebra[F,O,?],R]): Pull[F,O,R] =
+    new Pull(free.asInstanceOf[Free[Algebra[Nothing,Nothing,?],R]])
 
   /** The `Pull` that reads and outputs nothing, and fails with the given error. */
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
-    new Pull(core.Pull.fail[Nothing,Nothing,Nothing](err).algebra)
+    new Pull(Algebra.fail[Nothing,Nothing,Nothing](err))
 
-  def releaseAll[F[_]](tokens: LinkedSet[core.Stream.Token]): Pull[F,Nothing,Unit] =
+  private def snapshot[F[_],O]: Pull[F,O,LinkedSet[Algebra.Token]] =
+    fromFree[F,O,LinkedSet[Algebra.Token]](Algebra.snapshot)
+
+  def releaseAll[F[_]](tokens: LinkedSet[Algebra.Token]): Pull[F,Nothing,Unit] =
     ???
+
+  // import fs2.internal.LinkedSet
+  //
+  // // def snapshot[F[_],O]: Pull[F,O,LinkedSet[core.Stream.Token]] = {
+  //   type AlgebraF[x] = core.Stream.Algebra[F,O,x]
+  //   fromFree[F,O,LinkedSet[core.Stream.Token]](Free.Eval[AlgebraF,LinkedSet[Stream.Token]](Algebra.Snapshot()))
+  // }
 }

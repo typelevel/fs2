@@ -6,8 +6,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 import cats.effect.Effect
 
-import core.Stream.StreamF
 import fs2.internal.TwoWayLatch
+import fs2.fast.internal.{Algebra,Free}
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -60,19 +60,52 @@ import fs2.internal.TwoWayLatch
  * the unchunked version will fail on the first ''element'' with an error.
  * Exceptions in pure code like this are strongly discouraged.
  */
-final class Stream[+F[_],+O] private(private val free: StreamF[Nothing,Nothing]) extends AnyVal {
+final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
 
-  private[fs2]
-  def get[F2[x]>:F[x],O2>:O]: core.Stream.Stream[F2,O2] =
-    new core.Pull(free.asInstanceOf[StreamF[F2,O2]])
+  private[fs2] def get[F2[x]>:F[x],O2>:O]: Free[Algebra[F2,O2,?],Unit] = free.asInstanceOf[Free[Algebra[F2,O2,?],Unit]]
+
+  def flatMap[F2[x]>:F[x],O2](f: O => Stream[F2,O2]): Stream[F2,O2] =
+    Stream.fromFree(Algebra.uncons(get[F2,O]).flatMap {
+      case None => Stream.empty[F2,O2].get
+      case Some((hd, tl)) =>
+        (hd.map(f).toChunk.foldRight(Stream.empty[F2,O2])(Stream.append(_,_)) ++ Stream.fromFree(tl).flatMap(f)).get
+    })
+
+  /** Defined as `s >> s2 == s flatMap { _ => s2 }`. */
+  def >>[F2[x]>:F[x],O2](s2: => Stream[F2,O2]): Stream[F2,O2] =
+    this flatMap { _ => s2 }
+
+  def ++[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
+    Stream.append(this, s2)
 
   def runFold[F2[x]>:F[x],B](init: B)(f: (B, O) => B)(implicit F: Effect[F2], ec: ExecutionContext): F2[B] =
-    core.Stream.runFold(get[F2,O], init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap)
+    Algebra.runFold(get[F2,O], init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap)
+
+  def runLog[F2[x]>:F[x],O2>:O](implicit F: Effect[F2], ec: ExecutionContext): F2[Vector[O2]] = {
+    import scala.collection.immutable.VectorBuilder
+    F.suspend(F.map(runFold[F2, VectorBuilder[O2]](new VectorBuilder[O2])(_ += _))(_.result))
+  }
 }
 
 object Stream {
+  private[fs2] def fromFree[F[_],O](free: Free[Algebra[F,O,?],Unit]): Stream[F,O] =
+    new Stream(free.asInstanceOf[Free[Algebra[Nothing,Nothing,?],Unit]])
 
-  def fromFree[F[_],O](free: StreamF[F,O]): Stream[F,O] =
-    new Stream(free.asInstanceOf[StreamF[Nothing,Nothing]])
+  def apply[F[_],O](os: O*): Stream[F,O] = fromFree[F,O](Algebra.output(Segment(os: _*)))
 
+  def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree[F,O](Algebra.eval(fo).flatMap(Algebra.output1))
+  def emit[F[_],O](o: O): Stream[F,O] = fromFree[F,O](Algebra.output1(o))
+
+  private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
+  def empty[F[_],O]: Stream[F,O] = empty_.asInstanceOf[Stream[F,O]]
+
+  def fail[F[_],O](e: Throwable): Stream[F,O] = fromFree(Algebra.fail(e))
+
+  def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
+    Stream.fromFree(s1.get.flatMap { _ => s2.get })
+
+  def pure[F[_],O](o: O): Stream[F,O] = fromFree[F,O](Algebra.output(Segment.single(o)))
+
+  def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
+    pure(()).flatMap { _ => s }
 }
