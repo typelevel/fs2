@@ -19,13 +19,16 @@ private[fs2] object Algebra {
     override def toString = s"Token(${##})"
   }
 
+  type AsFree[F[_],O,R] = Free[Algebra[F,O,?],R]
+
   final case class Output[F[_],O](values: Segment[O,Unit]) extends Algebra[F,O,Unit]
   final case class WrapSegment[F[_],O,R](values: Segment[O,R]) extends Algebra[F,O,R]
   final case class Eval[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
   final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
   final case class Snapshot[F[_],O]() extends Algebra[F,O,LinkedSet[Token]]
-  final case class UnconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit]) extends Algebra[F,X,Pull[F,Y,Option[(Catenable[O], Free[Algebra[F,O,?],Unit])]]]
+  final case class UnconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit])
+    extends Algebra[F,X,Free[Algebra[F,Y,?],Option[(Catenable[O], Free[Algebra[F,O,?],Unit])]]]
 
   def output[F[_],O](values: Segment[O,Unit]): Free[Algebra[F,O,?],Unit] =
     Free.Eval[Algebra[F,O,?],Unit](Output(values))
@@ -48,8 +51,8 @@ private[fs2] object Algebra {
   def snapshot[F[_],O]: Free[Algebra[F,O,?],LinkedSet[Token]] =
     Free.Eval[Algebra[F,O,?],LinkedSet[Token]](Snapshot())
 
-  def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit]): Free[Algebra[F,O,?],Pull[F,Y,Option[(Catenable[O], Free[Algebra[F,O,?],Unit])]]] =
-    Free.Eval[Algebra[F,O,?],Pull[F,Y,Option[(Catenable[O],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s))
+  def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit]): Free[Algebra[F,O,?],Free[Algebra[F,Y,?],Option[(Catenable[O], Free[Algebra[F,O,?],Unit])]]] =
+    Free.Eval[Algebra[F,O,?],Free[Algebra[F,Y,?],Option[(Catenable[O],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s))
 
   def pure[F[_],O,R](r: R): Free[Algebra[F,O,?],R] =
     Free.Pure[Algebra[F,O,?],R](r)

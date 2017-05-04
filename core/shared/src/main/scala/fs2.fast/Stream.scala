@@ -66,6 +66,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   private[fs2] def get[F2[x]>:F[x],O2>:O]: Free[Algebra[F2,O2,?],Unit] = free.asInstanceOf[Free[Algebra[F2,O2,?],Unit]]
 
+  def covary[F2[x]>:F[x]]: Stream[F2,O] = this.asInstanceOf
+  def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf
+  def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = this.asInstanceOf
+
   def flatMap[F2[x]>:F[x],O2](f: O => Stream[F2,O2]): Stream[F2,O2] =
     Stream.fromFree(Algebra.uncons(get[F2,O]).flatMap {
       case None => Stream.empty[F2,O2].get
@@ -79,6 +83,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   def ++[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
     Stream.append(this, s2)
+
+  def open: Pull[F,Nothing,Handle[F,O]] = Pull.pure(new Handle(List(), this))
 
   /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
@@ -110,35 +116,35 @@ object Stream {
   private[fs2] def fromFree[F[_],O](free: Free[Algebra[F,O,?],Unit]): Stream[F,O] =
     new Stream(free.asInstanceOf[Free[Algebra[Nothing,Nothing,?],Unit]])
 
-  def apply[F[_],O](os: O*): Stream[F,O] = fromFree[F,O](Algebra.output(Segment(os: _*)))
+  def apply[F[_],O](os: O*): Stream[F,O] = fromFree(Algebra.output[F,O](Segment(os: _*)))
 
   def attemptEval[F[_],O](fo: F[O]): Stream[F,Either[Throwable,O]] =
     fromFree(Pull.attemptEval(fo).flatMap(Pull.output1).get)
 
   def bracket[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,O] =
-    Stream.fromFree[F,O](Algebra.acquire[F,O,R](r, release).flatMap { case (r, token) =>
-      use(r).onComplete { Stream.fromFree(Algebra.release(token)) }.get
+    fromFree(Algebra.acquire[F,O,R](r, release).flatMap { case (r, token) =>
+      use(r).onComplete { fromFree(Algebra.release(token)) }.get
     })
 
   private[fs2] def bracketWithToken[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,(Algebra.Token,O)] =
-    Stream.fromFree[F,(Algebra.Token,O)](Algebra.acquire[F,(Algebra.Token,O),R](r, release).flatMap { case (r, token) =>
-      use(r).map(o => (token,o)).onComplete { Stream.fromFree(Algebra.release(token)) }.get
+    fromFree(Algebra.acquire[F,(Algebra.Token,O),R](r, release).flatMap { case (r, token) =>
+      use(r).map(o => (token,o)).onComplete { fromFree(Algebra.release(token)) }.get
     })
 
-  def chunk[F[_],O](os: Chunk[O]): Stream[F,O] = fromFree[F,O](Algebra.output(Segment.chunk(os)))
-  def emit[F[_],O](o: O): Stream[F,O] = fromFree[F,O](Algebra.output1(o))
+  def chunk[F[_],O](os: Chunk[O]): Stream[F,O] = fromFree(Algebra.output[F,O](Segment.chunk(os)))
+  def emit[F[_],O](o: O): Stream[F,O] = fromFree(Algebra.output1[F,O](o))
   def emits[F[_],O](os: Seq[O]): Stream[F,O] = chunk(Chunk.seq(os))
 
   private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
   def empty[F[_],O]: Stream[F,O] = empty_.asInstanceOf[Stream[F,O]]
 
-  def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree[F,O](Algebra.eval(fo).flatMap(Algebra.output1))
+  def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree(Algebra.eval(fo).flatMap(Algebra.output1))
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa) >> empty
 
   def fail[F[_],O](e: Throwable): Stream[F,O] = fromFree(Algebra.fail(e))
 
   def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
-    Stream.fromFree(s1.get.flatMap { _ => s2.get })
+    fromFree(s1.get.flatMap { _ => s2.get })
 
   def pure[O](o: O*): Stream[Pure,O] = apply[Pure,O](o: _*)
 
