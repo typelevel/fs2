@@ -6,7 +6,7 @@ import scala.concurrent.ExecutionContext
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-import cats.effect.Effect
+import cats.effect.{Effect,IO}
 
 import fs2.internal.TwoWayLatch
 import fs2.fast.internal.{Algebra,Free}
@@ -72,6 +72,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
       Algebra.uncons[F,Nothing,O](get[F,O]) map { _ map { case (seg, s) => seg -> Stream.fromFree(s) } }
     }
 
+  /** `s as x == s map (_ => x)` */
   def as[O2](o2: O2): Stream[F,O2] = map(_ => o2)
 
   def covary[F2[x]>:F[x]]: Stream[F2,O] = this.asInstanceOf
@@ -155,6 +156,15 @@ object Stream {
   def emit[F[_],O](o: O): Stream[F,O] = fromFree(Algebra.output1[F,O](o))
   def emits[F[_],O](os: Seq[O]): Stream[F,O] = chunk(Chunk.seq(os))
 
+  def unfold[F[_],S,O](s: S)(f: S => Option[(O,S)]): Stream[F,O] =
+    segment(Segment.unfold(s)(f))
+
+  def range[F[_]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F,Int] =
+    unfold(start) { i =>
+      if (i >= stopExclusive) None
+      else Some(i -> (i + by))
+    }
+
   private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
   def empty[F[_],O]: Stream[F,O] = empty_.asInstanceOf[Stream[F,O]]
 
@@ -173,4 +183,19 @@ object Stream {
 
   def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
     emit(()).flatMap { _ => s }
+
+  implicit class StreamPureOps[+O](private val self: Stream[fs2.Pure,O]) {
+
+    def covary[F2[_]]: Stream[F2,O] = self.asInstanceOf
+
+    def toList: List[O] = {
+      import scala.concurrent.ExecutionContext.Implicits.global
+      covary[IO].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.reverse
+    }
+
+    def toVector: Vector[O] = {
+      import scala.concurrent.ExecutionContext.Implicits.global
+      covary[IO].runLog.unsafeRunSync
+    }
+  }
 }
