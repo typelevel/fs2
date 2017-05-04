@@ -1,4 +1,4 @@
-package fs2.fast.core
+package fs2.fast.internal
 
 import fs2.util._
 import Free.ViewL
