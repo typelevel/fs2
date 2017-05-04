@@ -26,6 +26,8 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
 
   private[fs2] def get[F2[x]>:F[x],O2>:O,R2>:R]: Free[Algebra[F2,O2,?],R2] = free.asInstanceOf[Free[Algebra[F2,O2,?],R2]]
 
+  def as[R2](r2: R2): Pull[F,O,R2] = map(_ => r2)
+
   private def close_(asStep: Boolean): Stream[F,O] =
     if (asStep) Stream.fromFree(get[F,O,R] map (_ => ()))
     else Stream.fromFree(scope[F].get[F,O,R] map (_ => ()))
@@ -68,8 +70,7 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
     (this onError (e => p2 >> Pull.fail(e))) flatMap { _ =>  p2 }
 
   /** Returns this pull's resource wrapped in `Some` or returns `None` if this pull fails due to an exhausted `Handle`. */
-  def optional: Pull[F,O,Option[R]] = ??? // TODO
-    // OLD map(Some(_)).or(Pull.pure(None))
+  def optional: Pull[F,O,Option[R]] = map(Some(_)).or(Pull.pure(None))
 
   def scope[F2[x]>:F[x]]: Pull[F2,O,R] = Pull.snapshot[F2,O] flatMap { tokens0 =>
     this flatMap { r =>
@@ -84,8 +85,6 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
       }
     }
   }
-
-  def as[R2](r2: R2): Pull[F,O,R2] = ???
 }
 
 object Pull {
