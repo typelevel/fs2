@@ -147,7 +147,13 @@ private[fs2] object Algebra {
         val g = bound.tryBind.asInstanceOf[Any => Free[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]]
         bound.fx match {
           case wrap: Algebra.Eval[F, O, _] =>
-            F.flatMap(wrap.value.asInstanceOf[F[Any]]) { x => go(acc, g(x).viewL) }
+            F.flatMap(F.attempt(wrap.value.asInstanceOf[F[Any]])) {
+              case Right(x) => go(acc, g(x).viewL)
+              case Left(e) => bound.onError match {
+                case None => go(acc, fail(e).viewL)
+                case Some(onErr) => go(acc, onErr(e).viewL)
+              }
+            }
           case Algebra.Acquire(resource, release) =>
             midAcquires.increment
             if (startCompletion.get) { midAcquires.decrement; F.raiseError(Interrupted) }
