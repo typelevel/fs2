@@ -74,7 +74,7 @@ object Free {
         }
         case OnError(fx, onErrInner) => k match {
           case None => onErr match {
-            case None => go(fx, None, None)
+            case None => go(fx, None, Some((e: Throwable) => onErrInner(e).asInstanceOf[Free[F,R]]))
             case Some(onErr) => go(fx, None,
               Some((e: Throwable) => OnError(onErrInner(e).asInstanceOf[Free[F,R]], onErr)))
           }

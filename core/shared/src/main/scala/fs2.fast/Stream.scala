@@ -1,5 +1,7 @@
 package fs2.fast
 
+import fs2.{Chunk,Pure}
+
 import scala.concurrent.ExecutionContext
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -78,6 +80,16 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def ++[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
     Stream.append(this, s2)
 
+  /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
+  def onError[F2[x]>:F[x],O2>:O](h: Throwable => Stream[F2,O2]): Stream[F2,O2] =
+    Stream.fromFree(get[F2,O2] onError { e => h(e).get })
+
+  /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
+  def repeat: Stream[F,O] = this ++ repeat
+
+  def run[F2[x]>:F[x]](implicit F: Effect[F2], ec: ExecutionContext): F2[Unit] =
+    runFold[F2,Unit](())((u, _) => u)
+
   def runFold[F2[x]>:F[x],B](init: B)(f: (B, O) => B)(implicit F: Effect[F2], ec: ExecutionContext): F2[B] =
     Algebra.runFold(get[F2,O], init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap)
 
@@ -93,19 +105,26 @@ object Stream {
 
   def apply[F[_],O](os: O*): Stream[F,O] = fromFree[F,O](Algebra.output(Segment(os: _*)))
 
-  def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree[F,O](Algebra.eval(fo).flatMap(Algebra.output1))
+  def attemptEval[F[_],O](fo: F[O]): Stream[F,Either[Throwable,O]] =
+    fromFree(Pull.attemptEval(fo).flatMap(Pull.output1).get)
+
+  def chunk[F[_],O](os: Chunk[O]): Stream[F,O] = fromFree[F,O](Algebra.output(Segment.chunk(os)))
   def emit[F[_],O](o: O): Stream[F,O] = fromFree[F,O](Algebra.output1(o))
+  def emits[F[_],O](os: Seq[O]): Stream[F,O] = chunk(Chunk.seq(os))
 
   private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
   def empty[F[_],O]: Stream[F,O] = empty_.asInstanceOf[Stream[F,O]]
+
+  def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree[F,O](Algebra.eval(fo).flatMap(Algebra.output1))
+  def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa) >> empty
 
   def fail[F[_],O](e: Throwable): Stream[F,O] = fromFree(Algebra.fail(e))
 
   def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
     Stream.fromFree(s1.get.flatMap { _ => s2.get })
 
-  def pure[F[_],O](o: O): Stream[F,O] = fromFree[F,O](Algebra.output(Segment.single(o)))
+  def pure[O](o: O*): Stream[Pure,O] = apply[Pure,O](o: _*)
 
   def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
-    pure(()).flatMap { _ => s }
+    emit(()).flatMap { _ => s }
 }

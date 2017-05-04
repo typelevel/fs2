@@ -1,5 +1,6 @@
 package fs2.fast
 
+import fs2.Chunk
 import fs2.internal.LinkedSet
 import fs2.fast.internal.{Algebra,Free}
 // import fs2.util.{RealSupertype, Lub1, Sub1}
@@ -72,9 +73,21 @@ object Pull {
   def fromFree[F[_],O,R](free: Free[Algebra[F,O,?],R]): Pull[F,O,R] =
     new Pull(free.asInstanceOf[Free[Algebra[Nothing,Nothing,?],R]])
 
+  def attemptEval[F[_],R](fr: F[R]): Pull[F,Nothing,Either[Throwable,R]] =
+    fromFree[F,Nothing,Either[Throwable,R]](
+      Algebra.eval[F,Nothing,R](fr).
+        map(r => Right(r): Either[Throwable,R]).
+        onError(t => Algebra.pure[F,Nothing,Either[Throwable,R]](Left(t))))
+
   /** The `Pull` that reads and outputs nothing, and fails with the given error. */
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
     new Pull(Algebra.fail[Nothing,Nothing,Nothing](err))
+
+  def output1[F[_],O](o: O): Pull[F,O,Unit] =
+    fromFree[F,O,Unit](Algebra.output1(o))
+
+  def output[F[_],O](os: Chunk[O]): Pull[F,O,Unit] =
+    fromFree[F,O,Unit](Algebra.output(Segment.chunk(os)))
 
   private def snapshot[F[_],O]: Pull[F,O,LinkedSet[Algebra.Token]] =
     fromFree[F,O,LinkedSet[Algebra.Token]](Algebra.snapshot)
