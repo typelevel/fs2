@@ -3,12 +3,9 @@ package fs2.fast
 import fs2.{Chunk,Pure}
 
 import scala.concurrent.ExecutionContext
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 
 import cats.effect.{Effect,IO}
 
-import fs2.internal.TwoWayLatch
 import fs2.fast.internal.{Algebra,Free}
 
 /**
@@ -118,7 +115,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     runFold[F2,Unit](())((u, _) => u)
 
   def runFold[F2[x]>:F[x],B](init: B)(f: (B, O) => B)(implicit F: Effect[F2], ec: ExecutionContext): F2[B] =
-    Algebra.runFold(get[F2,O], init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentHashMap)
+    Algebra.runFold(get[F2,O], init)(f)
 
   def runLog[F2[x]>:F[x],O2>:O](implicit F: Effect[F2], ec: ExecutionContext): F2[Vector[O2]] = {
     import scala.collection.immutable.VectorBuilder

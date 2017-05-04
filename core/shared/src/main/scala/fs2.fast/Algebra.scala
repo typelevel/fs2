@@ -2,8 +2,8 @@ package fs2
 package fast
 package internal
 
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.ConcurrentSkipListMap
+import java.util.concurrent.atomic.{ AtomicBoolean, AtomicLong }
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
 import cats.effect.Effect
@@ -15,8 +15,10 @@ private[fs2] sealed trait Algebra[F[_],O,R]
 
 private[fs2] object Algebra {
 
-  final class Token {
-    override def toString = s"Token(${##})"
+  private val tokenNonce: AtomicLong = new AtomicLong(Long.MinValue)
+  class Token {
+    val nonce: Long = tokenNonce.incrementAndGet
+    override def toString = s"Token(${##}/${nonce})"
   }
 
   type AsFree[F[_],O,R] = Free[Algebra[F,O,?],R]
@@ -115,6 +117,15 @@ private[fs2] object Algebra {
 
   /**
    * Left-fold the output of a stream.
+   */
+  def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Effect[F2], ec: ExecutionContext): F2[B] = {
+    runFold_(stream, init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentSkipListMap(new java.util.Comparator[Token] {
+      def compare(x: Token, y: Token) = x.nonce compare y.nonce
+    }))
+  }
+
+  /**
+   * Left-fold the output of a stream.
    *
    *    `startCompletion` is used to control whether stream completion has begun.
    *    `midAcquires` tracks number of resources that are in the middle of being acquired.
@@ -134,10 +145,10 @@ private[fs2] object Algebra {
    * know we will acquire a resource, we are guaranteed that doing `midAcquires.waitUntil0`
    * will unblock only when `resources` is no longer growing.
    */
-  def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B,
+  private def runFold_[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B,
       startCompletion: AtomicBoolean,
       midAcquires: TwoWayLatch,
-      resources: ConcurrentHashMap[Token, F2[Unit]])(implicit F: Effect[F2], ec: ExecutionContext): F2[B] = {
+      resources: ConcurrentSkipListMap[Token, F2[Unit]])(implicit F: Effect[F2], ec: ExecutionContext): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
     def go(acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B] = v match {
@@ -181,13 +192,13 @@ private[fs2] object Algebra {
           case Algebra.Snapshot() =>
             // todo - think through whether we need to take a consistent snapshot of resources
             // if so we need a monotonically increasing nonce associated with each resource
-            val tokens = resources.keySet.asScala.toSet
+            val tokens = resources.keySet.iterator.asScala.foldLeft(LinkedSet.empty[Token])(_ + _)
             go(acc, g(tokens).viewL)
           case Algebra.UnconsAsync(s) =>
             type UO = Option[(Segment[_,Unit], Free[Algebra[F,Any,?],Unit])]
             type R = Either[Throwable, UO]
             val task: F[F[R]] = concurrent.start { F.attempt {
-              runFold(
+              runFold_(
                 uncons(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
                 None: UO)((o,a) => a, startCompletion, midAcquires, resources)
             }}
