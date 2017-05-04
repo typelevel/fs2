@@ -1,6 +1,6 @@
 package fs2.fast
 
-import fs2.{Chunk,NonEmptyChunk,Pure}
+import fs2.{Chunk,Pure}
 
 import scala.concurrent.ExecutionContext
 import java.util.concurrent.ConcurrentHashMap
@@ -113,7 +113,12 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     F.suspend(F.map(runFold[F2, VectorBuilder[O2]](new VectorBuilder[O2])(_ += _))(_.result))
   }
 
-  def step: Pull[F,Nothing,(NonEmptyChunk[O],Handle[F,O])] = ??? // TODO
+  def step: Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]] =
+    Pull.fromFree(Algebra.uncons(get)).flatMap {
+      case None => Pull.pure(None)
+      case Some((hd, tl)) =>
+        Pull.pure(Some((hd, new Handle(Nil, Stream.fromFree(tl)))))
+    }
 }
 
 object Stream {
@@ -151,6 +156,9 @@ object Stream {
     fromFree(s1.get.flatMap { _ => s2.get })
 
   def pure[O](o: O*): Stream[Pure,O] = apply[Pure,O](o: _*)
+
+  def segment[F[_],O](s: Segment[O,Unit]): Stream[F,O] =
+    fromFree(Algebra.segment[F,O,Unit](s))
 
   def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
     emit(()).flatMap { _ => s }

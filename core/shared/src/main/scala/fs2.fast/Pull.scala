@@ -46,12 +46,12 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
 
   def or[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] = ??? // TODO
 
-  /** If `f` returns true when passed the resource of this pull, this pull is returned. Otherwise, `Pull.done` is returned. */
-  def filter(f: R => Boolean): Pull[F,O,R] = withFilter(f)
-
-  /** If `f` returns true when passed the resource of this pull, this pull is returned. Otherwise, `Pull.done` is returned. */
-  def withFilter(f: R => Boolean): Pull[F,O,R] =
-    flatMap(r => if (f(r)) Pull.pure(r) else Pull.done)
+  // /** If `f` returns true when passed the resource of this pull, this pull is returned. Otherwise, `Pull.done` is returned. */
+  // def filter(f: R => Boolean): Pull[F,O,R] = withFilter(f)
+  //
+  // /** If `f` returns true when passed the resource of this pull, this pull is returned. Otherwise, `Pull.done` is returned. */
+  // def withFilter(f: R => Boolean): Pull[F,O,R] =
+  //   flatMap(r => if (f(r)) Pull.pure(r) else Pull.done)
 
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
@@ -99,7 +99,7 @@ object Pull {
         onError(t => Algebra.pure[F,Nothing,Either[Throwable,R]](Left(t))))
 
   /** The completed `Pull`. Reads and outputs nothing. */
-  def done: Pull[Nothing,Nothing,Nothing] = ??? // TODO
+  val done: Pull[Nothing,Nothing,Unit] = fromFree[Nothing,Nothing,Unit](Algebra.pure[Nothing,Nothing,Unit](()))
 
   /** The `Pull` that reads and outputs nothing, and fails with the given error. */
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
