@@ -80,9 +80,16 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def ++[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
     Stream.append(this, s2)
 
+  /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
+  def onComplete[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
+    (this onError (e => s2 ++ Stream.fail(e))) ++ s2
+
   /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
   def onError[F2[x]>:F[x],O2>:O](h: Throwable => Stream[F2,O2]): Stream[F2,O2] =
     Stream.fromFree(get[F2,O2] onError { e => h(e).get })
+
+  def map[O2](f: O => O2): Stream[F,O2] =
+    Stream.fromFree[F,O2](Algebra.mapOutput(get, f))
 
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat
@@ -107,6 +114,16 @@ object Stream {
 
   def attemptEval[F[_],O](fo: F[O]): Stream[F,Either[Throwable,O]] =
     fromFree(Pull.attemptEval(fo).flatMap(Pull.output1).get)
+
+  def bracket[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,O] =
+    Stream.fromFree[F,O](Algebra.acquire[F,O,R](r, release).flatMap { case (r, token) =>
+      use(r).onComplete { Stream.fromFree(Algebra.release(token)) }.get
+    })
+
+  private[fs2] def bracketWithToken[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,(Algebra.Token,O)] =
+    Stream.fromFree[F,(Algebra.Token,O)](Algebra.acquire[F,(Algebra.Token,O),R](r, release).flatMap { case (r, token) =>
+      use(r).map(o => (token,o)).onComplete { Stream.fromFree(Algebra.release(token)) }.get
+    })
 
   def chunk[F[_],O](os: Chunk[O]): Stream[F,O] = fromFree[F,O](Algebra.output(Segment.chunk(os)))
   def emit[F[_],O](o: O): Stream[F,O] = fromFree[F,O](Algebra.output1(o))
