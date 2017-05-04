@@ -63,6 +63,12 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   private[fs2] def get[F2[x]>:F[x],O2>:O]: Free[Algebra[F2,O2,?],Unit] = free.asInstanceOf[Free[Algebra[F2,O2,?],Unit]]
 
+  /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
+  def unsegment: Pull[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]] =
+    Pull.fromFree[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]] {
+      Algebra.uncons[F,Nothing,O](get[F,O]) map { _ map { case (seg, s) => seg -> Stream.fromFree(s) } }
+    }
+
   def as[O2](o2: O2): Stream[F,O2] = map(_ => o2)
 
   def covary[F2[x]>:F[x]]: Stream[F2,O] = this.asInstanceOf
@@ -93,8 +99,13 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def onError[F2[x]>:F[x],O2>:O](h: Throwable => Stream[F2,O2]): Stream[F2,O2] =
     Stream.fromFree(get[F2,O2] onError { e => h(e).get })
 
-  def map[O2](f: O => O2): Stream[F,O2] =
-    Stream.fromFree[F,O2](Algebra.mapOutput(get, f))
+  def map[O2](f: O => O2): Stream[F,O2] = {
+    def go(s: Stream[F,O]): Pull[F,O2,Unit] = s.unsegment flatMap {
+      case None => Pull.pure(())
+      case Some((hd, tl)) => Pull.segment(hd map f) >> go(tl)
+    }
+    go(this).close
+  }
 
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat

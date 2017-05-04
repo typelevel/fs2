@@ -70,27 +70,6 @@ private[fs2] object Algebra {
     case Right(r) => pure(r)
   }
 
-  def mapOutput[F[_],O,R,O2](f: Free[Algebra[F,O,?],R], g: O => O2): Free[Algebra[F,O2,?],R] = f match {
-    case p: Free.Pure[Algebra[F,O,?],R] => pure(p.r)
-    case e: Free.Eval[Algebra[F,O,?],R] => Free.Eval[Algebra[F,O2,?],R](e.fr match {
-      case o: Output[F,O] => Output[F,O2](o.values.map(g))
-      case w: WrapSegment[F,O,R] => WrapSegment[F,O2,R](w.values.map(g))
-      case e: Eval[F,O,R] => Eval[F,O2,R](e.value)
-      case a: Acquire[F,O,_] => Acquire(a.resource, a.release)
-      case r: Release[F,O] => Release[F,O2](r.token)
-      case s: Snapshot[F,O] => Snapshot[F,O2]()
-      case u: UnconsAsync[F,_,_,_] =>
-        UnconsAsync(mapOutput(u.s.asInstanceOf[Free[Algebra[F,O,?],Unit]], g)).asInstanceOf[Algebra[F,O2,R]]
-    })
-    case b: Free.Bind[Algebra[F,O,?],_,R] =>
-      Free.Bind[Algebra[F,O2,?],Any,R](
-        mapOutput(b.fx.asInstanceOf[Free[Algebra[F,O,?],Any]], g),
-        b.f.asInstanceOf[Any => Free[Algebra[F,O,?],R]].andThen(h => mapOutput(h, g)))
-    case f: Free.Fail[Algebra[F,O,?],R] => Free.Fail[Algebra[F,O2,?],R](f.error)
-    case o: Free.OnError[Algebra[F,O,?],R] =>
-      Free.OnError[Algebra[F,O2,?],R](mapOutput(o.fr, g), o.onError.andThen(mapOutput(_, g)))
-  }
-
   def uncons[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int = 1024): Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] = {
     type AlgebraF[x] = Algebra[F,O,x]
     def assumeNoOutput[Y,R](p: Free[Algebra[F,Y,?],R]): Free[Algebra[F,X,?],R] = p.asInstanceOf[Free[Algebra[F,X,?],R]]
