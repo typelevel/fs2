@@ -46,14 +46,16 @@ final class Handle[+F[_],+A] private[fs2] (
       case Nil => underlying.step
     }
 
-  // /** Like [[await]] but waits for a single element instead of an entire chunk. */
-  // def await1: Pull[F,Nothing,Option[(A,Handle[F,A])]] =
-  //   await map {
-  //     case None => None
-  //     case Some((hd, tl)) =>
-  //       val (h, hs) = hd.unconsNonEmpty
-  //       Pull.pure(Some((h, tl push hs)))
-  //   }
+  /** Like [[await]] but waits for a single element instead of an entire chunk. */
+  def await1: Pull[F,Nothing,Option[(A,Handle[F,A])]] =
+    await flatMap {
+      case None => Pull.pure(None)
+      case Some((hd, tl)) =>
+        hd.uncons match {
+          case Left(()) => tl.await1
+          case Right((h, rest)) => Pull.pure(Some((h, tl push rest)))
+        }
+    }
 
   //
   // // /**
