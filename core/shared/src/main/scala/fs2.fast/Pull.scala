@@ -111,6 +111,9 @@ object Pull {
   def output1[F[_],O](o: O): Pull[F,O,Unit] =
     fromFree(Algebra.output1[F,O](o))
 
+  def output[F[_],O](os: Segment[O,Unit]): Pull[F,O,Unit] =
+    fromFree(Algebra.output[F,O](os))
+
   def output[F[_],O](os: Chunk[O]): Pull[F,O,Unit] =
     fromFree(Algebra.output[F,O](Segment.chunk(os)))
 
@@ -120,6 +123,12 @@ object Pull {
   private def snapshot[F[_],O]: Pull[F,O,LinkedSet[Algebra.Token]] =
     fromFree[F,O,LinkedSet[Algebra.Token]](Algebra.snapshot)
 
-  private def releaseAll[F[_]](tokens: LinkedSet[Algebra.Token]): Pull[F,Nothing,Unit] =
-    ??? // TODO
+  private def releaseAll[F[_]](tokens: LinkedSet[Algebra.Token]): Pull[F,Nothing,Unit] = {
+    def go(err: Option[Throwable], tokens: List[Algebra.Token]): Pull[F,Nothing,Unit] = tokens match {
+      case Nil => err map (Pull.fail) getOrElse Pull.pure(())
+      case tok :: tokens =>
+        fromFree[F,Nothing,Unit](Algebra.release(tok)) onError (e => go(Some(e), tokens))
+    }
+    go(None, tokens.values.toList.reverse)
+  }
 }

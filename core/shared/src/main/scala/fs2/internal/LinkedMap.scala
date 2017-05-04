@@ -7,9 +7,9 @@ import scala.collection.immutable.LongMap
  * traversed in the order they were inserted.
  */
 private[fs2] class LinkedMap[K,+V](
-  entries: Map[K,(V,Long)],
-  insertionOrder: LongMap[K],
-  nextID: Long) {
+  val entries: Map[K,(V,Long)],
+  private[fs2] val insertionOrder: LongMap[K],
+  val nextID: Long) {
 
   def get(k: K): Option[V] = entries.get(k).map(_._1)
 
@@ -64,7 +64,7 @@ private[fs2] class LinkedSet[K](ks: LinkedMap[K,Unit]) {
   def -(k: K) = new LinkedSet(ks - k)
   def --(keys: Iterable[K]) = new LinkedSet(ks removeKeys keys.toSeq)
   def values: Iterable[K] = ks.keys
-  def iterator = values.iterator
+  def iterator = ks.insertionOrder.iterator
   def isEmpty = ks.isEmpty
 }
 

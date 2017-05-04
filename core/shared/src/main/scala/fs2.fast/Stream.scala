@@ -176,14 +176,14 @@ object Stream {
   def pure[O](o: O*): Stream[Pure,O] = apply[Pure,O](o: _*)
 
   def segment[F[_],O](s: Segment[O,Unit]): Stream[F,O] =
-    fromFree(Algebra.segment[F,O,Unit](s))
+    fromFree(Algebra.output[F,O](s))
 
   def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
     emit(()).flatMap { _ => s }
 
   implicit class StreamPureOps[+O](private val self: Stream[fs2.Pure,O]) {
 
-    def covary[F2[_]]: Stream[F2,O] = self.asInstanceOf
+    def covary[F2[_]]: Stream[F2,O] = self.asInstanceOf[Stream[F2,O]]
 
     def toList: List[O] = {
       import scala.concurrent.ExecutionContext.Implicits.global
