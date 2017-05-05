@@ -21,8 +21,6 @@ private[fs2] object Algebra {
     override def toString = s"Token(${##}/${nonce})"
   }
 
-  type AsFree[F[_],O,R] = Free[Algebra[F,O,?],R]
-
   final case class Output[F[_],O](values: Segment[O,Unit]) extends Algebra[F,O,Unit]
   final case class WrapSegment[F[_],O,R](values: Segment[O,R]) extends Algebra[F,O,R]
   final case class Eval[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
