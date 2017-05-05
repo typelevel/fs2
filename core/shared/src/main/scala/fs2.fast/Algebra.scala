@@ -28,7 +28,7 @@ private[fs2] object Algebra {
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
   final case class Snapshot[F[_],O]() extends Algebra[F,O,LinkedSet[Token]]
   final case class UnconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit])
-    extends Algebra[F,X,Free[Algebra[F,Y,?],Option[(Catenable[O], Free[Algebra[F,O,?],Unit])]]]
+    extends Algebra[F,X,Free[Algebra[F,Y,?],Option[(Catenable[O],Free[Algebra[F,O,?],Unit])]]]
 
   def output[F[_],O](values: Segment[O,Unit]): Free[Algebra[F,O,?],Unit] =
     Free.Eval[Algebra[F,O,?],Unit](Output(values))
