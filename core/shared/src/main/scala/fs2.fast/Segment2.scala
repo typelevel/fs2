@@ -39,23 +39,41 @@ abstract class Segment2[+O,+R] { self =>
     result.get
   }
 
-  final def fold[B](z: B)(f: (B,O) => B): Segment2[Nothing,(B,R)] = new Segment2[Nothing,(B,R)] {
+  final def sum[N>:O](initial: N)(implicit N: Numeric[N]): Segment2[Nothing,N] = new Segment2[Nothing,N] {
+    def bind0 = (depth, emit, emits, done) => {
+      var b = N.zero
+      self.bind(depth,
+        o => b = N.plus(b, o),
+        { case os : Chunk.Longs =>
+            var i = 0
+            var cs = 0L
+            while (i < os.size) { cs += os.at(i); i += 1 }
+            b = N.plus(b, cs.asInstanceOf[N])
+          case os =>
+            var i = 0
+            while (i < os.size) { b = N.plus(b, os(i)); i += 1 }
+        },
+        r => done(b)).tweak(_.sum(b))
+    }
+  }
+
+  final def fold[B](z: B)(f: (B,O) => B): Segment2[Nothing,B] = new Segment2[Nothing,B] {
     def bind0 = (depth, emit, emits, done) => {
       var b = z
       self.bind(depth,
         o => b = f(b, o),
         os => { var i = 0; while (i < os.size) { b = f(b, os(i)); i += 1 } },
-        r => done((b,r))).tweak(_.fold(b)(f))
+        r => done(b)).tweak(_.fold(b)(f))
     }
   }
 
-  final def scan[B](z: B)(f: (B,O) => B): Segment2[B,(B,R)] = new Segment2[B,(B,R)] {
+  final def scan[B](z: B)(f: (B,O) => B): Segment2[B,B] = new Segment2[B,B] {
     def bind0 = (depth, emit, emits, done) => {
       var b = z
       self.bind(depth,
         o => { emit(b); b = f(b, o) },
         os => { var i = 0; while (i < os.size) { emit(b); b = f(b, os(i)); i += 1 } },
-        r => { emit(b); done((b,r)) }).tweak(_.scan(b)(f))
+        r => { emit(b); done(b) }).tweak(_.scan(b)(f))
     }
   }
 

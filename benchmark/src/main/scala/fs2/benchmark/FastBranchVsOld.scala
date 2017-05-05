@@ -11,6 +11,17 @@ object FastBranchVsOld extends App {
 
   println("--- summation --- ")
   suite(
+    timeit("segment new") {
+      import fs2.fast._
+      Segment2.from(init).take(N.toLong).sum(0L).run
+    },
+    timeit("segment old") {
+      import fs2.fast._
+      Segment.unfold(init) { i =>
+        if (i < N) Some((i, i + 1))
+        else None
+      }.foldLeft(0L)(_ + _)
+    },
     timeit("new fs2") {
       import fs2.fast._
       def sum[F[_]](acc: Int, s: Stream[F,Int]): Pull[F,Int,Unit] =
