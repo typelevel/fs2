@@ -108,11 +108,11 @@ abstract class Segment[+O,+R] { self =>
     acc
   }
 
-  final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]) = new Segment[O2,R2] {
+  final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] = new Segment[O2,R2] {
     def bind0 = (depth, emit, emits, done) => {
       val b2 = s2.bind(depth + 1, emit, emits, done)
       var s: Step[O2,R2] = null
-      var b1 = self.bind(depth + 1, emit, emits, _ => s = b2)
+      var b1 = self.bind(depth + 1, emit, emits, _ => s = b2).tweak(_ ++ s2)
       s = b1
       step(s.remainder) { s() }
     }
