@@ -140,7 +140,7 @@ object Stream {
   def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
     fromFree(s1.get.flatMap { _ => s2.get })
 
-  def apply[F[_],O](os: O*): Stream[F,O] = fromFree(Algebra.output[F,O](Segment(os: _*)))
+  def apply[F[_],O](os: O*): Stream[F,O] = fromFree(Algebra.output[F,O](Segment.chunk(Chunk.seq(os))))
 
   def attemptEval[F[_],O](fo: F[O]): Stream[F,Either[Throwable,O]] =
     fromFree(Pull.attemptEval(fo).flatMap(Pull.output1).get)

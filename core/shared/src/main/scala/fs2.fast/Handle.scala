@@ -51,10 +51,9 @@ final class Handle[+F[_],+A] private[fs2] (
     await flatMap {
       case None => Pull.pure(None)
       case Some((hd, tl)) =>
-        hd.uncons match {
-          case Left(()) => tl.await1
-          case Right((h, rest)) => Pull.pure(Some((h, tl push rest)))
-        }
+        val (h, rem) = hd.splitAt(1)
+        if (h.isEmpty) tl.push(rem).await1
+        else Pull.pure(Some((h(0), tl.push(rem))))
     }
 
   //

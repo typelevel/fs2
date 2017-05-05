@@ -1,295 +1,239 @@
-package fs2
-package fast
+package fs2.fast
 
+import fs2.Chunk
 import fs2.util.Catenable
-import Segment.{TailCall,tailcall,MaxFusionDepth,Step}
-
-// todo -
-//   X get rid of depth parameter
-//   X add append buffer
-//   X pass depth to step function
-//   X use exceptions for tail calls
-//   support chunks directly
+import Segment._
+import cats.Eval
 
 abstract class Segment[+O,+R] { self =>
-  type S0
-  def s0: S0
-  val step: Step[S0,O,R]
+  private[fs2]
+  def bind0: (Depth, O => Unit, Chunk[O] => Unit, R => Unit) => Step[O,R]
 
-  def foldLeft[B](z: B)(f: (B,O) => B): B = {
-    var s = s0
-    var b = z
-    var keepGoing = true
-    val done = (r: R) => { keepGoing = false }
-    val skip = (snew: S0) => { s = snew }
-    val emit = (o: O, snew: S0) => { s = snew; b = f(b, o) }
-    while (keepGoing) stepTrampolined(0, s, done, skip, emit)
-    b
-  }
-
-  final def stepTrampolined(
-      depth: Int, s0: S0, done: R => Unit, skip: S0 => Unit, emit: (O, S0) => Unit): Unit = {
-    try step(depth, s0, done, skip, emit)
-    catch { case TailCall(c) =>
-      var more = true
-      var call = c
-      while (more) {
-        try { call(); more = false }
-        catch { case TailCall(c) => call = c }
+  final def bind: (Depth, O => Unit, Chunk[O] => Unit, R => Unit) => Step[O,R] =
+    (depth, emit, emits, done) =>
+      if (depth < MaxFusionDepth) bind0(depth + 1, emit, emits, done)
+      else {
+        val s = bind0(0, emit, emits, done)
+        Step(s.remainder0, () => throw TailCall(s.step))
       }
+
+  final def uncons: Either[R, (Chunk[O],Segment[O,R])] = {
+    var result: Either[R,Chunk[O]] = null
+    var ok = true
+    val step = bind(0,
+      o => { result = Right(Chunk.singleton(o)); ok = false },
+      os => { result = Right(Chunk.indexedSeq(os.toVector)); ok = false }, // todo use array copy
+      r => { result = Left(r); ok = false })
+    while (ok) step()
+    result match {
+      case Right(c) => Right(c -> step.remainder)
+      case l@Left(_) => l.asInstanceOf
     }
   }
 
-  def result: Option[R] = None
-
-  def uncons: Either[R, (O,Segment[O,R])] = {
-    var result: Either[R, (O, Segment[O,R])] = null
-    var keepGoing = true
-    var s = self.s0
-    while (keepGoing) {
-      self.stepTrampolined(0, s,
-        r => { keepGoing = false; result = Left(r) },
-        s1 => { s = s1 },
-        (o, s) => { keepGoing = false; result = Right((o, self.reset(s))) })
-    }
-    result
+  final def run: R = {
+    var result: Option[R] = None
+    var ok = true
+    val step = bind(0, _ => (), _ => (), r => { result = Some(r); ok = false })
+    while (ok) step()
+    result.get
   }
 
-  /** Version of `span` which accumulates state. */
-  def spans[S](spanState: S)(f: (O,S) => (Boolean,S)): (Chunk[O], Segment[O,R]) = {
-    var s = self.s0
-    var ss = spanState
+  final def sum[N>:O](initial: N)(implicit N: Numeric[N]): Segment[Nothing,N] = new Segment[Nothing,N] {
+    def bind0 = (depth, emit, emits, done) => {
+      var b = N.zero
+      self.bind(depth,
+        o => b = N.plus(b, o),
+        { case os : Chunk.Longs =>
+            var i = 0
+            var cs = 0L
+            while (i < os.size) { cs += os.at(i); i += 1 }
+            b = N.plus(b, cs.asInstanceOf[N])
+          case os =>
+            var i = 0
+            while (i < os.size) { b = N.plus(b, os(i)); i += 1 }
+        },
+        r => done(b)).tweak(_.sum(b))
+    }
+  }
+
+  final def fold[B](z: B)(f: (B,O) => B): Segment[Nothing,B] = new Segment[Nothing,B] {
+    def bind0 = (depth, emit, emits, done) => {
+      var b = z
+      self.bind(depth,
+        o => b = f(b, o),
+        os => { var i = 0; while (i < os.size) { b = f(b, os(i)); i += 1 } },
+        r => done(b)).tweak(_.fold(b)(f))
+    }
+  }
+
+  final def scan[B](z: B)(f: (B,O) => B): Segment[B,B] = new Segment[B,B] {
+    def bind0 = (depth, emit, emits, done) => {
+      var b = z
+      self.bind(depth,
+        o => { emit(b); b = f(b, o) },
+        os => { var i = 0; while (i < os.size) { emit(b); b = f(b, os(i)); i += 1 } },
+        r => { emit(b); done(b) }).tweak(_.scan(b)(f))
+    }
+  }
+
+  final def take(n: Long): Segment[O,Option[(R,Long)]] = new Segment[O,Option[(R,Long)]] {
+    def bind0 = (depth, emit, emits, done) => {
+      var rem = n
+      self.bind(depth + 1,
+        o => { if (rem > 0) { rem -= 1; emit(o) } else done(None) },
+        os => { if (os.size <= rem) { rem -= ChunkSize; emits(os) }
+                else {
+                  var i = 0
+                  while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
+                  done(None)
+                }
+              },
+        r => done(Some(r -> rem))
+      ).tweak(_.take(rem))
+    }
+  }
+
+  final def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
+    def bind0 = (depth, emit, emits, done) =>
+      self.bind(depth + 1,
+        o => emit(f(o)),
+        os => { var i = 0; while (i < os.size) { emit(f(os(i))); i += 1; } },
+        done).tweak(_ map f)
+  }
+
+  final def foldLeft[O2](init: O2)(f: (O2,O) => O2): O2 = {
+    var acc = init
+    self.map(o => acc = f(acc, o)).run
+    acc
+  }
+
+  final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]) = new Segment[O2,R2] {
+    def bind0 = (depth, emit, emits, done) => {
+      val b2 = s2.bind(depth + 1, emit, emits, done)
+      var s: Step[O2,R2] = null
+      var b1 = self.bind(depth + 1, emit, emits, _ => s = b2)
+      s = b1
+      step(s.remainder) { s() }
+    }
+  }
+
+  final def push[O2>:O](c: Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
+    def bind0 = (depth, emit, emits, done) => {
+      emits(c)
+      self.bind(depth + 1, emit, emits, done)
+    }
+  }
+
+  final def toList: List[O] = {
+    val buf = new collection.mutable.ListBuffer[O]
+    self.map { o => buf += o }.run
+    buf.toList
+  }
+
+  final def toChunk: Chunk[O] = {
     val buf = new collection.mutable.ArrayBuffer[O]
-    var keepGoing = true
-    var result : Option[R] = None
-    while (keepGoing)
-      self.stepTrampolined(0, s, r => { keepGoing = false; result = Some(r) }, s0 => s = s0, (o, s0) => {
-        val (ok, ss2) = f(o,ss)
-        if (ok) { ss = ss2; buf += o; s = s0 }
-        else keepGoing = false
-      })
-    (Chunk.indexedSeq(buf), result match { case None => self.reset(s); case Some(r) => Segment.pure(r) })
-  }
-
-  def loop[S1,B,R2>:R](s1: S1)(f: (O, S1, R2 => Unit, S1 => Unit, (B,S1) => Unit) => Unit): Segment[B,R2] =
-    new Segment[B,R2] {
-      type S0 = (self.S0, S1)
-      val s0 = (self.s0, s1)
-      val step: Step[S0,B,R2] = (depth, s, done, skip, emit) => {
-        val s0 = s._1
-        val s1 = s._2
-        if (depth < MaxFusionDepth)
-          self.step(depth+1, s0, done, s0 => skip((s0, s1)), (o, s0) => {
-            f(o, s1, done, s1 => skip((s0,s1)), (b, s1) => emit(b, (s0,s1)))
-          })
-        else tailcall {
-          self.step(0, s0, done, s0 => skip((s0, s1)), (o, s0) => {
-            f(o, s1, done, s1 => skip((s0,s1)), (b, s1) => emit(b, (s0,s1)))
-          })
-        }
-      }
-    }
-
-  def map[O2](f: O => O2): Segment[O2,R] =
-    new Segment[O2,R] {
-      type S0 = self.S0
-      def s0 = self.s0
-      val step: Step[S0,O2,R] = (depth, s, done, skip, emit) =>
-        if (depth < MaxFusionDepth)
-          self.step(depth+1, s, done, skip, (o, s0) => emit(f(o), s0))
-        else
-          tailcall { self.step(0, s, done, skip, (o, s0) => emit(f(o), s0)) }
-    }
-
-  def filter(f: O => Boolean): Segment[O,R] =
-    new Segment[O,R] {
-      type S0 = self.S0
-      def s0 = self.s0
-      val step: Step[S0,O,R] = (depth, s, done, skip, emit) =>
-        if (depth < MaxFusionDepth)
-          self.step(depth+1, s, done, skip, (o, s0) => if (f(o)) emit(o, s0) else skip(s0))
-        else tailcall {
-          self.step(0, s, done, skip, (o, s0) => if (f(o)) emit(o, s0) else skip(s0))
-        }
-    }
-
-  /** Sets the starting state of the unfold backing this `Segment`. */
-  def reset(s: S0): Segment[O,R] = new Segment[O,R] {
-    type S0 = self.S0
-    def s0 = s
-    val step: Step[S0,O,R] = self.step
+    self.map { o => buf += o; () }.run
+    Chunk.indexedSeq(buf)
   }
 
   /**
    * `s.splitAt(n)` is equivalent to `(s.take(n).toChunk, s.drop(n))`
    * but avoids traversing the segment twice.
    */
-  def splitAt(n: Int): (Chunk[O], Segment[O,R]) =
-    spans(n)((o,n) => if (n <= 0) (false,n) else (true,n-1))
-
-  def drop(n: Int): Segment[O,R] =
-    self.loop(n)((o,n,done,skip,emit) => if (n <= 0) emit(o,0) else skip(n-1))
-
-  def dropWhile(f: O => Boolean): Segment[O,R] =
-    self.loop(())((o,u,done,skip,emit) => if (f(o)) skip(()) else emit(o, ()))
-
-  def mapResult[O2>:O,R2](f: R => R2): Segment[O2,R2] = new Segment[O2,R2] {
-    type S0 = self.S0
-    val s0 = self.s0
-    val step: Step[S0,O2,R2] = (depth, s, done, skip, emit) =>
-      if (depth < MaxFusionDepth) self.step(depth+1,s,r => done(f(r)),skip,emit)
-      else tailcall { self.step(0,s, r => done(f(r)),skip,emit) }
-  }
-
-  def void: Segment[O,Unit] = mapResult(_ => ())
-
-  override def toString = self.void.splitAt(10) match {
-    case (hd, tl) =>
-      "Segment(" + hd.toList.mkString(", ") + (if (tl.uncons.isLeft) ")" else " ... )")
+  def splitAt(n: Int): (Chunk[O], Segment[O,R]) = {
+    def go(n: Int, acc: Catenable[Chunk[O]], seg: Segment[O,R]): (Chunk[O], Segment[O,R]) = {
+      seg.uncons match {
+        case Left(r) => (Chunk.concat(acc.toList), Segment.pure(r))
+        case Right((chunk,rem)) =>
+          chunk.size match {
+            case sz if n == sz => (Chunk.concat((acc :+ chunk).toList), rem)
+            case sz if n < sz => (chunk.take(n), rem.push(chunk.drop(n)))
+            case sz => go(n - chunk.size, acc :+ chunk, rem)
+          }
+      }
+    }
+    go(n, Catenable.empty, this)
   }
 }
 
 object Segment {
-
-  final type Step[S0,+O,+R] = (Int, S0, R => Unit, S0 => Unit, (O, S0) => Unit) => Unit
-
   val empty: Segment[Nothing,Unit] = pure(())
 
   def pure[R](r: R): Segment[Nothing,R] = new Segment[Nothing,R] {
-    type S0 = Unit
-    def s0 = ()
-    val step: Step[S0,Nothing,R] = (_,_,done,_,_) => done(r)
-    override def result = Some(r)
+    def bind0 = (_,_,_,done) => step(pure(r))(done(r))
   }
 
   def single[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
-    type S0 = Boolean
-    def s0 = true
-    val step: Step[S0,O,Unit] = (depth,s,done,skip,emit) => if (s) emit(o, false) else done(())
+    def bind0 = (_, emit, _, done) => step(empty) { emit(o); done(()) }
   }
 
-  def apply[O](os: O*): Segment[O,Unit] = seq(os)
-
-  def chunk[O](c: Chunk[O]): Segment[O,Unit] = unfold(c)(_.uncons)
-
-  def seq[O](s: Seq[O]): Segment[O,Unit] = chunk(Chunk.seq(s))
-
-  def indexedSeq[O](s: IndexedSeq[O]): Segment[O,Unit] = chunk(Chunk.indexedSeq(s))
+  def chunk[O](os: Chunk[O]): Segment[O,Unit] = new Segment[O,Unit] {
+    def bind0 = (_, _, emits, done) => step(empty) { emits(os); done(()) }
+  }
 
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {
-    type S0 = S
-    def s0 = s
-    def depth = 0
-    val step: Step[S0,O,Unit] = (_, s, done, skip, emit) => f(s) match {
-      case None => done(())
-      case Some((h,t)) => emit(h,t)
-    }
-  }
-
-  def from(n: Long): Segment[Long,Nothing] = new Segment[Long,Nothing] {
-    type S0 = Long
-    def s0 = n
-    def depth = 0
-    val step: Step[S0,Long,Nothing] = (_, n, done, skip, emit) => emit(n, n + 1)
-  }
-
-  case class Catenated[O](s0: Catenable[Segment[O,Unit]]) extends Segment[O,Unit] {
-    type S0 = Catenable[Segment[O,Unit]]
-    val step: Step[S0,O,Unit] = (depth, s, done, skip, emit) =>
-      if (depth < MaxFusionDepth)
-        s.uncons match {
-        case None => done(())
-        case Some((hd,tl)) =>
-          hd.step(depth, hd.s0,
-            _ => skip(tl),
-            s0 => skip(hd.reset(s0) +: tl),
-            (o,s0) => emit(o, hd.reset(s0) +: tl))
-      }
-      else tailcall { s.uncons match {
-        case None => done(())
-        case Some((hd,tl)) =>
-          hd.step(0, hd.s0,
-            _ => skip(tl),
-            s0 => skip(hd.reset(s0) +: tl),
-            (o,s0) => emit(o, hd.reset(s0) +: tl))
-      }}
-  }
-
-  implicit class StreamSegment[+O](val self: Segment[O,Unit]) extends AnyVal {
-
-    def toChunk: Chunk[O] = {
-      val buf = new collection.mutable.ArrayBuffer[O]
-      self.foldLeft(()) { (u,o) => buf += o; () }
-      Chunk.indexedSeq(buf)
-    }
-
-    def ++[O2>:O](u: Segment[O2,Unit]): Segment[O2,Unit] = self match {
-      case Segment.Catenated(a) => u match {
-        case Segment.Catenated(b) => Segment.Catenated(a ++ b)
-        case _ => Segment.Catenated(a :+ u)
-      }
-      case self => u match {
-        case Segment.Catenated(b) => Segment.Catenated(self +: b)
-        case _ => Segment.Catenated(Catenable(self, u))
-      }
-    }
-
-    def toScalaStream: scala.Stream[O] = self.uncons match {
-      case Left(_) => scala.Stream.empty
-      case Right((hd, tl)) => hd #:: tl.toScalaStream
-    }
-
-    def memoize: Segment[O,Unit] = Segment.unfold(toScalaStream)(_ match {
-      case scala.Stream() => None
-      case hd #:: tl => Some((hd, tl))
-    })
-
-    def zip[O2](s: Segment[O2,Unit]): Segment[(O,O2),Unit] =
-      new Segment[(O,O2),Unit] {
-        type S0 = (self.S0, Option[O], s.S0)
-        def s0: S0 = (self.s0, None, s.s0)
-        val step: Step[S0,(O,O2),Unit] = (depth, zs, done, skip, emit) => zs._2 match {
-          case None =>
-            if (depth < MaxFusionDepth)
-              self.step(depth+1, zs._1, done, s0 => skip((s0, None, zs._3)),
-                                  (o, s0) => skip((s0, Some(o), zs._3)))
-            else tailcall {
-              self.step(0, zs._1, done, s0 => skip((s0, None, zs._3)),
-                                  (o, s0) => skip((s0, Some(o), zs._3)))
-            }
-          case Some(o) =>
-            if (depth < MaxFusionDepth)
-              s.step(depth+1, zs._3, done, s2 => skip((zs._1, zs._2, s2)),
-                                (o2, s2) => emit((o,o2), (zs._1, None, s2)))
-            else tailcall {
-              s.step(depth+1, zs._3, done, s2 => skip((zs._1, zs._2, s2)),
-                                (o2, s2) => emit((o,o2), (zs._1, None, s2)))
-            }
+    def bind0 = (depth, emit, emits, done) => {
+      var s0 = s
+      step(empty) {
+        f(s0) match {
+          case None => done(())
+          case Some((h,t)) => emit(h); s0 = t
         }
       }
-
-    def take(n: Int): Segment[O,Unit] =
-      self.loop(n)((o, n, done, skip, emit) => if (n <= 0) done(()) else emit(o, n-1))
-
-    def takeWhile(f: O => Boolean): Segment[O,Unit] =
-      self.loop(())((o,_,done,skip,emit) => if (f(o)) emit(o, ()) else done(()))
-
-    /**
-     * `s.span(f)` is equal to `(s.takeWhile(f).toChunk, s.dropWhile(f))`,
-     * but has a more efficient implementation.
-     */
-    def span(f: O => Boolean): (Chunk[O], Segment[O,Unit]) =
-      self.spans(())((o,u) => (f(o),u))
+    }
   }
 
-  /** The max number of operations that will be fused before trampolining via `[[Segment.tailcall]]`. */
+  def step[O,R](rem: => Segment[O,R])(s: => Unit): Step[O,R] =
+    Step(Eval.always(rem), () => s)
+
+  case class Step[+O,+R](remainder0: Eval[Segment[O,R]], step: () => Unit) {
+    final def apply(): Unit = stepSafely(this)
+    final def remainder: Segment[O,R] = remainder0.value
+    final def tweak[O2,R2](f: Segment[O,R] => Segment[O2,R2]): Step[O2,R2] =
+      Step(remainder0 map f, step)
+  }
+
+  def from(n: Long, by: Long = 1): Segment[Long,Nothing] = new Segment[Long,Nothing] {
+    def bind0 = (_, _, emits, _) => {
+      var m = n
+      var buf = new Array[Long](ChunkSize)
+      step(from(m,by)) {
+        var i = 0
+        while (i < buf.length) { buf(i) = m; m += by; i += 1 }
+        emits(Chunk.longs(buf))
+      }
+    }
+  }
+
   val MaxFusionDepth = 50
+  val ChunkSize = 32
 
-  case class TailCall(call: () => Unit) extends Throwable {
-    override def fillInStackTrace = this
-    override def toString = "TailCall"
+  def stepSafely(t: Step[Any,Any]): Unit = {
+    try t.step()
+    catch { case TailCall(t) =>
+      var tc = t
+      while(true) {
+        try { tc(); return () }
+        catch { case TailCall(t) => tc = t }
+      }
+    }
   }
 
-  private[fs2]
-  def tailcall(u: => Unit) = throw TailCall(() => u)
+  case class TailCall(k: () => Any) extends Throwable {
+    override def fillInStackTrace = this
+  }
+
+  type Depth = Int
+}
+
+object TestSegment extends App {
+
+  println {
+    // Chunk.longs(new Array[Long](32)).map(_.toDouble)
+    // Segment.from(1).take(10).toList
+    (Segment.from(1).take(3) ++ Segment.from(1).take(4)).toList
+    // Segment.from(1).scan(0L)(_ + _).take(10).toList
+    // Segment.from(1).take(35).map(_.toDouble).toList
+  }
 }

@@ -25,8 +25,8 @@ object Testing extends App {
     s.runFold(0)(_ + _).unsafeRunSync()
   }
   printSum(s)
-  println(s3f.foldLeft(0)(_ + _))
-  println(bomb.foldLeft(0)(_ + _))
+  // println(s3f.foldLeft(0)(_ + _))
+  // println(bomb.foldLeft(0)(_ + _))
   // println(s3f.foldLeft(0)(_ + _))
   //println(Segment.from(0).take(9) zip Segment.from(1) filter (_._1 < 5))
 
@@ -35,9 +35,9 @@ object Testing extends App {
   //  42
   //}
   val s3 = s3f
-  timeit("segment") {
-    s3.foldLeft(0)(_ + _)
-  }
+  // timeit("segment") {
+  //   s3.foldLeft(0)(_ + _)
+  // }
   //timeit("unboxed") {
   //  var i = 0
   //  var sum = 0

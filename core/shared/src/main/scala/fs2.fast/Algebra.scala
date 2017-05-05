@@ -84,15 +84,8 @@ private[fs2] object Algebra {
           case os : Algebra.WrapSegment[F, O, y] =>
             try {
               val (hd, tl) = os.values.splitAt(chunkSize)
-              tl.result match {
-                case None =>
-                  pure[F,X,Option[(Segment[O,Unit], Free[AlgebraF,Unit])]](
-                    Some(Segment.chunk(hd) ->
-                      Free.Eval[AlgebraF,y](WrapSegment(tl)).flatMap(bound.f))
-                  )
-                case Some(r) =>
-                  pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(Segment.chunk(hd) -> bound.f(r)))
-              }
+              val r = tl.run
+              pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(Segment.chunk(hd) -> bound.f(r)))
             }
             catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
               uncons(bound.handleError(e))
