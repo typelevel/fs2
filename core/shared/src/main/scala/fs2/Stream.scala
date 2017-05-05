@@ -2,6 +2,7 @@ package fs2
 
 import scala.collection.immutable.VectorBuilder
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration.FiniteDuration
 
 import cats.{ Applicative, Eq, MonadError, Monoid, Semigroup }
 import cats.effect.{ Effect, IO }
@@ -440,6 +441,10 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
 
   /** Alias for `self through [[pipe.zipWithIndex]]`. */
   def zipWithIndex: Stream[F, (O, Int)] = self through pipe.zipWithIndex
+
+  /** Alias for `self through [[pipe.debounce]]`. */
+  def debounce[F2[_]](d: FiniteDuration)(implicit S: Sub1[F, F2], F: Effect[F2], scheduler: Scheduler, ec: ExecutionContext): Stream[F2, O] =
+    Sub1.substStream(self) through pipe.debounce(d)
 
   /** Alias for `self through [[pipe.zipWithNext]]`. */
   def zipWithNext: Stream[F, (O, Option[O])] = self through pipe.zipWithNext
