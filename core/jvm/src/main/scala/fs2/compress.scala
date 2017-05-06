@@ -22,12 +22,12 @@ object compress {
               bufferSize: Int = 1024 * 32,
               strategy: Int = Deflater.DEFAULT_STRATEGY): Pipe[F,Byte,Byte] = {
     val pure: Pipe[Pure,Byte,Byte] =
-      _ pull { _.await flatMap { step =>
+      _ pull {
         val deflater = new Deflater(level, nowrap)
         deflater.setStrategy(strategy)
         val buffer = new Array[Byte](bufferSize)
-        _deflate_step(deflater, buffer)(step)
-      }}
+        _deflate_handle(deflater, buffer)
+      }
     pipe.covary[F,Byte,Byte](pure)
   }
   private def _deflate_step(deflater: Deflater, buffer: Array[Byte]): ((Chunk[Byte], Handle[Pure, Byte])) => Pull[Pure, Byte, Handle[Pure, Byte]] = {
