@@ -128,11 +128,16 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     F.suspend(F.map(runFold[F2, VectorBuilder[O2]](new VectorBuilder[O2])(_ += _))(_.result))
   }
 
-  def step: Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]] =
+  def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]] =
     Pull.fromFree(Algebra.uncons(get)).flatMap {
       case None => Pull.pure(None)
       case Some((hd, tl)) =>
         Pull.pure(Some((hd, new Handle(Nil, Stream.fromFree(tl)))))
+    }
+
+  def unconsAsync[F2[x]>:F[x],O2>:O,O3]: Pull[F2,O2,Pull[F2,O3,Option[(Segment[O2,Unit], Stream[F2,O2])]]] =
+    Pull.fromFree(Algebra.unconsAsync(get[F2,O2])).map { x =>
+      Pull.fromFree(x.map(_.map { case (segment, stream) => (segment, Stream.fromFree(stream)) }))
     }
 }
 

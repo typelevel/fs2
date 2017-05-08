@@ -16,7 +16,7 @@ abstract class Segment[+O,+R] { self =>
       if (depth < MaxFusionDepth) stage0(depth + 1, emit, emits, done)
       else {
         val s = stage0(0, emit, emits, done)
-        Step(s.remainder0, () => throw TailCall(s.step))
+        new Step(s.remainder0, () => throw TailCall(s.step))
       }
 
   final def uncons: Either[R, (Chunk[O],Segment[O,R])] = {
@@ -236,13 +236,14 @@ object Segment {
   }
 
   def step[O,R](rem: => Segment[O,R])(s: => Unit): Step[O,R] =
-    Step(Eval.always(rem), () => s)
+    new Step(Eval.always(rem), () => s)
 
-  case class Step[+O,+R](remainder0: Eval[Segment[O,R]], step: () => Unit) {
+  final class Step[+O,+R](val remainder0: Eval[Segment[O,R]], val step: () => Unit) {
     final def apply(): Unit = stepSafely(this)
     final def remainder: Segment[O,R] = remainder0.value
     final def mapRemainder[O2,R2](f: Segment[O,R] => Segment[O2,R2]): Step[O2,R2] =
-      Step(remainder0 map f, step)
+      new Step(remainder0 map f, step)
+    override def toString = "Step$" + ##
   }
 
   def from(n: Long, by: Long = 1): Segment[Long,Nothing] = new Segment[Long,Nothing] {

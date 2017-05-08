@@ -49,7 +49,7 @@ final class Handle[+F[_],+O] private[fs2] (
   def await: Pull[F,Nothing,Option[(Segment[O,Unit], Handle[F,O])]] =
     buffer match {
       case hb :: tb => Pull.pure(Some((hb, new Handle(tb, underlying))))
-      case Nil => underlying.step
+      case Nil => underlying.uncons
     }
 
   /** Like [[await]] but waits for a single element instead of an entire chunk. */
