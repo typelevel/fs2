@@ -204,15 +204,18 @@ object Segment {
     def stage0 = (depth, emit, emits, done) => {
       var tails = s.toList.tails.drop(1).toList
       var res : Option[R] = None
-      val staged = s.map(_.stage(depth + 1, emit, emits, r => { res = Some(r); done(r) }))
+      var ind = 0
+      val staged = s.map(_.stage(depth + 1, emit, emits, r => { res = Some(r); ind += 1 }))
       var i = staged
       def rem = Catenated(i.map(_.remainder))
       step(rem) {
         i.uncons match {
           case None => done(res.get)
           case Some((hd, tl)) =>
+            val ind0 = ind
             hd()
-            i = hd +: tl
+            if (ind == ind0) i = hd +: tl
+            else i = tl
         }
       }
     }
