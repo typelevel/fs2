@@ -10,6 +10,9 @@ import fs2.util.Catenable
 
 class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChecks {
 
+  implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
+    PropertyCheckConfiguration(minSuccessful = 2000, workers = 4)
+
   def genSegment[O](genO: Gen[O]): Gen[Segment[O,Unit]] = Gen.oneOf(
     Gen.const(()).map(Segment.pure(_)),
     genO.map(Segment.single),

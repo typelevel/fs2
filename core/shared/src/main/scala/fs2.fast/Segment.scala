@@ -90,7 +90,7 @@ abstract class Segment[+O,+R] { self =>
       var rem = n
       self.stage(depth + 1,
         o => { if (rem > 0) { rem -= 1; emit(o) } else done(None) },
-        os => { if (os.size <= rem) { rem -= ChunkSize; emits(os) }
+        os => { if (os.size <= rem) { rem -= os.size; emits(os) }
                 else {
                   var i = 0
                   while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
@@ -201,14 +201,13 @@ object Segment {
 
   private[fs2]
   case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
-    // require(!s.isEmpty)
     def stage0 = (depth, emit, emits, done) => {
       var tails = s.toList.tails.drop(1).toList
       var res: Option[R] = None
       var ind = 0
       val staged = s.map(_.stage(depth + 1, emit, emits, r => { res = Some(r); ind += 1 }))
       var i = staged
-      def rem = Catenated(i.map(_.remainder))
+      def rem = if (i.isEmpty) pure(res.get) else Catenated(i.map(_.remainder))
       step(rem) {
         i.uncons match {
           case None => done(res.get)
@@ -249,7 +248,7 @@ object Segment {
   def from(n: Long, by: Long = 1): Segment[Long,Nothing] = new Segment[Long,Nothing] {
     def stage0 = (_, _, emits, _) => {
       var m = n
-      var buf = new Array[Long](ChunkSize)
+      var buf = new Array[Long](32)
       step(from(m,by)) {
         var i = 0
         while (i < buf.length) { buf(i) = m; m += by; i += 1 }
@@ -260,7 +259,6 @@ object Segment {
   }
 
   val MaxFusionDepth = 50
-  val ChunkSize = 32
 
   def stepSafely(t: Step[Any,Any]): Unit = {
     try t.step()
