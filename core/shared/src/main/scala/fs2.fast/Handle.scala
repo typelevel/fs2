@@ -36,9 +36,10 @@ final class Handle[+F[_],+A] private[fs2] (
     push(Segment.single(a))
 
   /**
-   * Waits for a chunk of elements to be available in the source stream.
-   * The chunk of elements along with a new handle are provided as the resource of the returned pull.
+   * Waits for a segment of elements to be available in the source stream.
+   * The segment of elements along with a new handle are provided as the resource of the returned pull.
    * The new handle can be used for subsequent operations, like awaiting again.
+   * A `None` is returned as the resource of the pull upon reaching the end of the stream.
    */
   def await: Pull[F,Nothing,Option[(Segment[A,Unit], Handle[F,A])]] =
     buffer match {
@@ -52,7 +53,7 @@ final class Handle[+F[_],+A] private[fs2] (
       case None => Pull.pure(None)
       case Some((hd, tl)) =>
         val (h, rem) = hd.splitAt(1)
-        if (h.isEmpty) tl.push(rem).await1
+        if (h.isEmpty) tl.await1
         else Pull.pure(Some((h(0), tl.push(rem))))
     }
 
@@ -270,24 +271,25 @@ final class Handle[+F[_],+A] private[fs2] (
 
 object Handle {
   /** Empty handle. */
-  def empty[F[_],A]: Handle[F,A] = new Handle(Nil, Stream.empty)
+  private val empty_ : Handle[Nothing,Nothing] = new Handle(Nil, Stream.empty)
+  def empty[F[_],A]: Handle[F,A] = empty_.asInstanceOf[Handle[F,A]]
 
-  // implicit class HandleInvariantEffectOps[F[_],+A](private val self: Handle[F,A]) extends AnyVal {
-  //
-  //   /** Apply `f` to the next available `Chunk`. */
-  //   def receive[O,B](f: (NonEmptyChunk[A],Handle[F,A]) => Pull[F,O,B]): Pull[F,O,B] = self.await.flatMap(f.tupled)
-  //
-  //   /** Apply `f` to the next available element. */
-  //   def receive1[O,B](f: (A,Handle[F,A]) => Pull[F,O,B]): Pull[F,O,B] = self.await1.flatMap(f.tupled)
-  //
-  //   /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
-  //   def receiveOption[O,B](f: Option[(Chunk[A],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
-  //     self.awaitOption.flatMap(f)
-  //
-  //   /** Apply `f` to the next available element, or `None` if the input is exhausted. */
-  //   def receive1Option[O,B](f: Option[(A,Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
-  //     self.await1Option.flatMap(f)
-  // }
+  implicit class HandleInvariantEffectOps[F[_],+A](private val self: Handle[F,A]) extends AnyVal {
+
+    /** Apply `f` to the next available `Segment`. */
+    def receive[O,B](f: Option[(Segment[A,Unit],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] = self.await.flatMap(f)
+
+    /** Apply `f` to the next available element. */
+    def receive1[O,B](f: Option[(A,Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] = self.await1.flatMap(f)
+
+    // /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+    // def receiveOption[O,B](f: Option[(Chunk[A],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
+    //   self.awaitOption.flatMap(f)
+    //
+    // /** Apply `f` to the next available element, or `None` if the input is exhausted. */
+    // def receive1Option[O,B](f: Option[(A,Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
+    //   self.await1Option.flatMap(f)
+  }
 
   // /** Result of asynchronously awaiting a chunk from a handle. */
   // type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]

@@ -93,6 +93,14 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def ++[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
     Stream.append(this, s2)
 
+  def map[O2](f: O => O2): Stream[F,O2] = {
+    def go(s: Stream[F,O]): Pull[F,O2,Unit] = s.unsegment flatMap {
+      case None => Pull.pure(())
+      case Some((hd, tl)) => Pull.segment(hd map f) >> go(tl)
+    }
+    go(this).close
+  }
+
   def open: Pull[F,Nothing,Handle[F,O]] = Pull.pure(new Handle(List(), this))
 
   /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
@@ -103,13 +111,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def onError[F2[x]>:F[x],O2>:O](h: Throwable => Stream[F2,O2]): Stream[F2,O2] =
     Stream.fromFree(get[F2,O2] onError { e => h(e).get })
 
-  def map[O2](f: O => O2): Stream[F,O2] = {
-    def go(s: Stream[F,O]): Pull[F,O2,Unit] = s.unsegment flatMap {
-      case None => Pull.pure(())
-      case Some((hd, tl)) => Pull.segment(hd map f) >> go(tl)
-    }
-    go(this).close
-  }
+  def pull[F2[x]>:F[x],O2](using: Handle[F,O] => Pull[F2,O2,Any]) : Stream[F2,O2] =
+    open.flatMap(using).close
 
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat

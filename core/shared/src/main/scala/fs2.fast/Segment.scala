@@ -18,16 +18,19 @@ abstract class Segment[+O,+R] { self =>
       }
 
   final def uncons: Either[R, (Chunk[O],Segment[O,R])] = {
-    var result: Either[R,Chunk[O]] = null
+    var out: Catenable[Chunk[O]] = Catenable.empty
+    var result: Option[R] = None
     var ok = true
     val step = bind(0,
-      o => { result = Right(Chunk.singleton(o)); ok = false },
-      os => { result = Right(Chunk.indexedSeq(os.toVector)); ok = false }, // todo use array copy
-      r => { result = Left(r); ok = false })
+      o => { out = out :+ Chunk.singleton(o); ok = false },
+      os => { out = out :+ Chunk.indexedSeq(os.toVector); ok = false }, // todo use array copy
+      r => { result = Some(r); ok = false })
     while (ok) step()
     result match {
-      case Right(c) => Right(c -> step.remainder)
-      case l@Left(_) => l.asInstanceOf
+      case None => Right(Chunk.concat(out.toList) -> step.remainder)
+      case Some(r) =>
+        if (out.isEmpty) Left(r)
+        else Right(Chunk.concat(out.toList) -> pure(r))
     }
   }
 
