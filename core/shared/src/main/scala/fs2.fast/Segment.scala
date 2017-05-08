@@ -60,6 +60,7 @@ abstract class Segment[+O,+R] { self =>
         },
         r => done(b)).mapRemainder(_.sum(b))
     }
+    override def toString = s"($self).sum($initial)"
   }
 
   final def fold[B](z: B)(f: (B,O) => B): Segment[Nothing,B] = new Segment[Nothing,B] {
@@ -70,6 +71,7 @@ abstract class Segment[+O,+R] { self =>
         os => { var i = 0; while (i < os.size) { b = f(b, os(i)); i += 1 } },
         r => done(b)).mapRemainder(_.fold(b)(f))
     }
+    override def toString = s"($self).fold($z)($f)"
   }
 
   final def scan[B](z: B)(f: (B,O) => B): Segment[B,B] = new Segment[B,B] {
@@ -80,6 +82,7 @@ abstract class Segment[+O,+R] { self =>
         os => { var i = 0; while (i < os.size) { emit(b); b = f(b, os(i)); i += 1 } },
         r => { emit(b); done(b) }).mapRemainder(_.scan(b)(f))
     }
+    override def toString = s"($self).scan($z)($f)"
   }
 
   final def take(n: Long): Segment[O,Option[(R,Long)]] = new Segment[O,Option[(R,Long)]] {
@@ -97,6 +100,7 @@ abstract class Segment[+O,+R] { self =>
         r => done(Some(r -> rem))
       ).mapRemainder(_.take(rem))
     }
+    override def toString = s"($self).take($n)"
   }
 
   final def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
@@ -105,6 +109,7 @@ abstract class Segment[+O,+R] { self =>
         o => emit(f(o)),
         os => { var i = 0; while (i < os.size) { emit(f(os(i))); i += 1; } },
         done).mapRemainder(_ map f)
+    override def toString = s"($self).map($f)"
   }
 
   final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] = new Segment[O2,R2] {
@@ -115,6 +120,7 @@ abstract class Segment[+O,+R] { self =>
       s = b1
       step(s.remainder) { s() }
     }
+    override def toString = s"($self).++($s2)"
   }
 
   final def push[O2>:O](c: Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
@@ -129,6 +135,7 @@ abstract class Segment[+O,+R] { self =>
         }
       }
     }
+    override def toString = s"($self).push($c)"
   }
 
   final def foreachChunk(f: Chunk[O] => Unit): Unit = {
@@ -150,6 +157,8 @@ abstract class Segment[+O,+R] { self =>
    * but avoids traversing the segment twice.
    */
   def splitAt(n: Int): (Chunk[O], Segment[O,R]) = {
+    // TODO rewrite this as an interpreter
+    @annotation.tailrec
     def go(n: Int, acc: Catenable[Chunk[O]], seg: Segment[O,R]): (Chunk[O], Segment[O,R]) = {
       seg.uncons match {
         case Left(r) => (Chunk.concat(acc.toList), Segment.pure(r))
@@ -166,10 +175,12 @@ abstract class Segment[+O,+R] { self =>
 }
 
 object Segment {
-  val empty: Segment[Nothing,Unit] = pure(())
+  private val empty_ : Segment[Nothing,Unit] = pure(())
+  def empty[O]: Segment[O,Unit] = empty_
 
-  def pure[R](r: R): Segment[Nothing,R] = new Segment[Nothing,R] {
+  def pure[O,R](r: R): Segment[O,R] = new Segment[O,R] {
     def stage0 = (_,_,_,done) => step(pure(r))(done(r))
+    override def toString = s"pure($r)"
   }
 
   def single[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
@@ -181,6 +192,7 @@ object Segment {
         emitted = true
       }
     }
+    override def toString = s"single($o)"
   }
 
   def chunk[O](os: Chunk[O]): Segment[O,Unit] = new Segment[O,Unit] {
@@ -192,7 +204,10 @@ object Segment {
         emitted = true
       }
     }
+    override def toString = s"chunk($os)"
   }
+
+  def seq[O](os: Seq[O]): Segment[O,Unit] = chunk(Chunk.seq(os))
 
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {
     def stage0 = (depth, emit, emits, done) => {
@@ -204,6 +219,7 @@ object Segment {
         }
       }
     }
+    override def toString = s"unfold($s)($f)"
   }
 
   def step[O,R](rem: => Segment[O,R])(s: => Unit): Step[O,R] =
@@ -226,6 +242,7 @@ object Segment {
         emits(Chunk.longs(buf))
       }
     }
+    override def toString = s"from($n, $by)"
   }
 
   val MaxFusionDepth = 50
