@@ -8,7 +8,6 @@ import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
 import cats.effect.Effect
 
-import fs2.util.Catenable
 import fs2.internal.{ LinkedSet, TwoWayLatch }
 
 private[fs2] sealed trait Algebra[F[_],O,R]
@@ -28,7 +27,7 @@ private[fs2] object Algebra {
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
   final case class Snapshot[F[_],O]() extends Algebra[F,O,LinkedSet[Token]]
   final case class UnconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit])
-    extends Algebra[F,X,Free[Algebra[F,Y,?],Option[(Catenable[O],Free[Algebra[F,O,?],Unit])]]]
+    extends Algebra[F,X,Free[Algebra[F,Y,?],Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]]
 
   def output[F[_],O](values: Segment[O,Unit]): Free[Algebra[F,O,?],Unit] =
     Free.Eval[Algebra[F,O,?],Unit](Output(values))
@@ -51,8 +50,8 @@ private[fs2] object Algebra {
   def snapshot[F[_],O]: Free[Algebra[F,O,?],LinkedSet[Token]] =
     Free.Eval[Algebra[F,O,?],LinkedSet[Token]](Snapshot())
 
-  def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit]): Free[Algebra[F,O,?],Free[Algebra[F,Y,?],Option[(Catenable[O], Free[Algebra[F,O,?],Unit])]]] =
-    Free.Eval[Algebra[F,O,?],Free[Algebra[F,Y,?],Option[(Catenable[O],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s))
+  def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit]): Free[Algebra[F,O,?],Free[Algebra[F,Y,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]] =
+    Free.Eval[Algebra[F,O,?],Free[Algebra[F,Y,?],Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s))
 
   def pure[F[_],O,R](r: R): Free[Algebra[F,O,?],R] =
     Free.Pure[Algebra[F,O,?],R](r)
