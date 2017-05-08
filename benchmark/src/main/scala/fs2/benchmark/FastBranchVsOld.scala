@@ -12,13 +12,13 @@ object FastBranchVsOld extends App {
   def segmentAppendTest(n: Int) =
     timeit(s"segment append ($n)") {
       import fs2.fast._
-      (0 until n).foldLeft(Segment.single(0))((acc,i) => acc ++ Segment.single(i)).fold(0)(_ + _).run
+      (0 until n).foldLeft(Segment.singleton(0))((acc,i) => acc ++ Segment.singleton(i)).fold(0)(_ + _).run
     }
 
   def segmentPushTest(n: Int) =
     timeit(s"segment push ($n)") {
       import fs2.fast._
-      (0 until n).foldRight(Segment.single(0))((i,acc) => acc.push(Chunk.singleton(i))).fold(0)(_ + _).run
+      (0 until n).foldRight(Segment.singleton(0))((i,acc) => acc.push(Chunk.singleton(i))).fold(0)(_ + _).run
     }
 
   println("--- summation --- ")

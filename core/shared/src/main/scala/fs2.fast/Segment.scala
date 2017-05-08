@@ -173,16 +173,16 @@ object Segment {
     override def toString = s"pure($r)"
   }
 
-  def single[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
+  def singleton[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
     def stage0 = (_, emit, _, done) => {
       var emitted = false
-      step(if (emitted) empty else single(o)) {
+      step(if (emitted) empty else singleton(o)) {
         emit(o)
         done(())
         emitted = true
       }
     }
-    override def toString = s"single($o)"
+    override def toString = s"singleton($o)"
   }
 
   def chunk[O](os: Chunk[O]): Segment[O,Unit] = new Segment[O,Unit] {

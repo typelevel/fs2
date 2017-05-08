@@ -38,7 +38,7 @@ final class Handle[+F[_],+O] private[fs2] (
 
   /** Like [[push]] but for a single element instead of a chunk. */
   def push1[O2>:O](o: O2): Handle[F,O2] =
-    push(Segment.single(o))
+    push(Segment.singleton(o))
 
   /**
    * Waits for a segment of elements to be available in the source stream.
