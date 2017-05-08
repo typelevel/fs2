@@ -62,20 +62,16 @@ final class Handle[+F[_],+O] private[fs2] (
         else Pull.pure(Some((h(0), tl.push(rem))))
     }
 
-  //
-  // // /**
-  // //  * Asynchronously awaits for a chunk of elements to be available in the source stream.
-  // //  * An async step is returned as the resource of the returned pull. The async step is a [[ScopedFuture]], which can be raced
-  // //  * with another scoped future or forced via [[ScopedFuture#pull]].
-  // //  */
-  // // def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Effect[F2], A2: RealSupertype[A,A2], ec: ExecutionContext): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]] = {
-  // //   val h = Sub1.substHandle(this)(S)
-  // //   h.buffer match {
-  // //     case Nil => h.underlying.stepAsync
-  // //     case hb :: tb => Pull.pure(ScopedFuture.pure(Pull.pure((hb, new Handle(tb, h.underlying)))))
-  // //   }
-  // // }
-  // //
+
+  /**
+   * Asynchronously awaits for a segment of elements to be available in the source stream.
+   */
+  def awaitAsync: Pull[F,O,Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]]] =
+    buffer match {
+      case hd :: tl => Pull.pure(Pull.pure(Some((hd, new Handle(tl, underlying)))))
+      case Nil => underlying.unconsAsync.map(_.map(_.map { case (segment, stream) => (segment, new Handle(Nil, stream))}))
+    }
+
   // // /** Like [[awaitAsync]] but waits for a single element instead of an entire chunk. */
   // // def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Effect[F2], A2: RealSupertype[A,A2], ec: ExecutionContext): Pull[F2, Nothing, Handle.AsyncStep1[F2,A2]] = {
   // //   awaitAsync map { _ map { _.map { case (hd, tl) =>
