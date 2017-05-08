@@ -13,9 +13,9 @@ abstract class Segment[+O,+R] { self =>
   private[fs2]
   final def stage: (Depth, O => Unit, Chunk[O] => Unit, R => Unit) => Step[O,R] =
     (depth, emit, emits, done) =>
-      if (depth < MaxFusionDepth) stage0(depth + 1, emit, emits, done)
+      if (depth < MaxFusionDepth) stage0(depth.increment, emit, emits, done)
       else {
-        val s = stage0(0, emit, emits, done)
+        val s = stage0(Depth(0), emit, emits, done)
         new Step(s.remainder0, () => throw TailCall(s.step))
       }
 
@@ -23,7 +23,7 @@ abstract class Segment[+O,+R] { self =>
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
     var ok = true
-    val step = stage(0,
+    val step = stage(Depth(0),
       o => { out = out :+ Chunk.singleton(o); ok = false },
       os => { out = out :+ Chunk.indexedSeq(os.toVector); ok = false }, // todo use array copy
       r => { result = Some(r); ok = false })
@@ -39,7 +39,7 @@ abstract class Segment[+O,+R] { self =>
   final def run: R = {
     var result: Option[R] = None
     var ok = true
-    val step = stage(0, _ => (), _ => (), r => { result = Some(r); ok = false })
+    val step = stage(Depth(0), _ => (), _ => (), r => { result = Some(r); ok = false })
     while (ok) step()
     result.get
   }
@@ -88,7 +88,7 @@ abstract class Segment[+O,+R] { self =>
   final def take(n: Long): Segment[O,Option[(R,Long)]] = new Segment[O,Option[(R,Long)]] {
     def stage0 = (depth, emit, emits, done) => {
       var rem = n
-      self.stage(depth + 1,
+      self.stage(depth.increment,
         o => { if (rem > 0) { rem -= 1; emit(o) } else done(None) },
         os => { if (os.size <= rem) { rem -= os.size; emits(os) }
                 else {
@@ -105,7 +105,7 @@ abstract class Segment[+O,+R] { self =>
 
   final def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
     def stage0 = (depth, emit, emits, done) =>
-      self.stage(depth + 1,
+      self.stage(depth.increment,
         o => emit(f(o)),
         os => { var i = 0; while (i < os.size) { emit(f(os(i))); i += 1; } },
         done).mapRemainder(_ map f)
@@ -130,7 +130,7 @@ abstract class Segment[+O,+R] { self =>
 
   final def foreachChunk(f: Chunk[O] => Unit): Unit = {
     var ok = true
-    val step = stage(0, o => f(Chunk.singleton(o)), f, r => { ok = false })
+    val step = stage(Depth(0), o => f(Chunk.singleton(o)), f, r => { ok = false })
     while (ok) step()
   }
 
@@ -205,7 +205,7 @@ object Segment {
       var tails = s.toList.tails.drop(1).toList
       var res: Option[R] = None
       var ind = 0
-      val staged = s.map(_.stage(depth + 1, emit, emits, r => { res = Some(r); ind += 1 }))
+      val staged = s.map(_.stage(depth.increment, emit, emits, r => { res = Some(r); ind += 1 }))
       var i = staged
       def rem = if (i.isEmpty) pure(res.get) else Catenated(i.map(_.remainder))
       step(rem) {
@@ -235,17 +235,6 @@ object Segment {
     override def toString = s"unfold($s)($f)"
   }
 
-  def step[O,R](rem: => Segment[O,R])(s: => Unit): Step[O,R] =
-    new Step(Eval.always(rem), () => s)
-
-  final class Step[+O,+R](val remainder0: Eval[Segment[O,R]], val step: () => Unit) {
-    final def apply(): Unit = stepSafely(this)
-    final def remainder: Segment[O,R] = remainder0.value
-    final def mapRemainder[O2,R2](f: Segment[O,R] => Segment[O2,R2]): Step[O2,R2] =
-      new Step(remainder0 map f, step)
-    override def toString = "Step$" + ##
-  }
-
   def from(n: Long, by: Long = 1): Segment[Long,Nothing] = new Segment[Long,Nothing] {
     def stage0 = (_, _, emits, _) => {
       var m = n
@@ -259,9 +248,20 @@ object Segment {
     override def toString = s"from($n, $by)"
   }
 
-  val MaxFusionDepth = 50
+  def step[O,R](rem: => Segment[O,R])(s: => Unit): Step[O,R] =
+    new Step(Eval.always(rem), () => s)
 
-  def stepSafely(t: Step[Any,Any]): Unit = {
+  final class Step[+O,+R](val remainder0: Eval[Segment[O,R]], val step: () => Unit) {
+    final def apply(): Unit = stepSafely(this)
+    final def remainder: Segment[O,R] = remainder0.value
+    final def mapRemainder[O2,R2](f: Segment[O,R] => Segment[O2,R2]): Step[O2,R2] =
+      new Step(remainder0 map f, step)
+    override def toString = "Step$" + ##
+  }
+
+  private val MaxFusionDepth: Depth = Depth(50)
+
+  private def stepSafely(t: Step[Any,Any]): Unit = {
     try t.step()
     catch { case TailCall(t) =>
       var tc = t
@@ -272,9 +272,12 @@ object Segment {
     }
   }
 
-  case class TailCall(k: () => Any) extends Throwable {
+  private final case class TailCall(k: () => Any) extends Throwable {
     override def fillInStackTrace = this
   }
 
-  type Depth = Int
+  final case class Depth(value: Int) extends AnyVal {
+    def increment: Depth = Depth(value + 1)
+    def <(that: Depth): Boolean = value < that.value
+  }
 }
