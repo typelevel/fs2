@@ -114,7 +114,11 @@ abstract class Segment[+O,+R] { self =>
 
   final def push[O2>:O](c: Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
     def bind0 = (depth, emit, emits, done) => {
-      self.bind(depth + 1, emit, emits, r => { emits(c); done(r) }).tweak(_ push c)
+      var s: Step[O2,R] = self.bind(depth + 1, emit, emits, done)
+      step(s.remainder) {
+        emits(c)
+        self.bind(depth + 1, emit, emits, done)()
+      }
     }
   }
 
