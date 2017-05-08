@@ -202,7 +202,6 @@ object Segment {
   private[fs2]
   case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
     def stage0 = (depth, emit, emits, done) => {
-      var tails = s.toList.tails.drop(1).toList
       var res: Option[R] = None
       var ind = 0
       val staged = s.map(_.stage(depth + 1, emit, emits, r => { res = Some(r); ind += 1 }))

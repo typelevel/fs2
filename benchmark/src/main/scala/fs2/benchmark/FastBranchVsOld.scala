@@ -9,44 +9,32 @@ object FastBranchVsOld extends App {
   // use random initial value to prevent loop getting optimized away
   def init = (math.random * 10).toInt
 
+  def segmentAppendTest(n: Int) =
+    timeit(s"segment append ($n)") {
+      import fs2.fast._
+      (0 until n).foldLeft(Segment.single(0))((acc,i) => acc ++ Segment.single(i)).fold(0)(_ + _).run
+    }
+
+  def segmentPushTest(n: Int) =
+    timeit(s"segment push ($n)") {
+      import fs2.fast._
+      (0 until n).foldRight(Segment.single(0))((i,acc) => acc.push(Chunk.singleton(i))).fold(0)(_ + _).run
+    }
+
   println("--- summation --- ")
   suite(
-    timeit("segment push (100)") {
-      import fs2.fast._
-      (0 until 100).foldRight(Segment.single(0))((i,acc) => acc.push(Chunk.singleton(i))).fold(0)(_ + _).run
-    },
-    timeit("segment push (200)") {
-      import fs2.fast._
-      (0 until 200).foldRight(Segment.single(0))((i,acc) => acc.push(Chunk.singleton(i))).fold(0)(_ + _).run
-    },
-    timeit("segment push (400)") {
-      import fs2.fast._
-      (0 until 400).foldRight(Segment.single(0))((i,acc) => acc.push(Chunk.singleton(i))).fold(0)(_ + _).run
-    },
-    timeit("segment push (800)") {
-      import fs2.fast._
-      (0 until 800).foldRight(Segment.single(0))((i,acc) => acc.push(Chunk.singleton(i))).fold(0)(_ + _).run
-    },
-    timeit("segment append (100)") {
-      import fs2.fast._
-      (0 until 100).foldLeft(Segment.single(0))((acc,i) => acc ++ Segment.single(i)).fold(0)(_ + _).run
-    },
-    timeit("segment append (200)") {
-      import fs2.fast._
-      (0 until 200).foldLeft(Segment.single(0))((acc,i) => acc ++ Segment.single(i)).fold(0)(_ + _).run
-    },
-    timeit("segment append (400)") {
-      import fs2.fast._
-      (0 until 400).foldLeft(Segment.single(0))((acc,i) => acc ++ Segment.single(i)).fold(0)(_ + _).run
-    },
-    timeit("segment append (800)") {
-      import fs2.fast._
-      (0 until 800).foldLeft(Segment.single(0))((acc,i) => acc ++ Segment.single(i)).fold(0)(_ + _).run
-    },
-    timeit("segment appendr (800)") {
-      import fs2.fast._
-      (0 until 800).foldRight(Segment.single(0))((i,acc) => Segment.single(i) ++ acc).fold(0)(_ + _).run
-    }
+    segmentPushTest(100),
+    segmentPushTest(200),
+    segmentPushTest(400),
+    segmentPushTest(800),
+    segmentPushTest(1600),
+    segmentPushTest(3200),
+    segmentAppendTest(100),
+    segmentAppendTest(200),
+    segmentAppendTest(400),
+    segmentAppendTest(800),
+    segmentAppendTest(1600),
+    segmentAppendTest(3200)
     //timeit("segment new") {
     //  import fs2.fast._
     //  Segment.from(init).take(N.toLong).sum(0L).run
