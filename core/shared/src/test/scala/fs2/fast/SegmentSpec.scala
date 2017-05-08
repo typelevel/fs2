@@ -47,6 +47,13 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
       }
     }
 
+    "splitAt" in {
+      forAll { (s: Segment[Int,Unit], n: Int) =>
+        val (hd, tl) = s.splitAt(n)
+        hd shouldBe s.toChunk.take(n)
+      }
+    }
+
     "sum" in {
       forAll { (s: Segment[Int,Unit]) =>
         s.sum(0).run shouldBe s.toChunk.toList.sum

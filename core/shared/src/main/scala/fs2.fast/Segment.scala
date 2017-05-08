@@ -155,7 +155,7 @@ abstract class Segment[+O,+R] { self =>
         case Right((chunk,rem)) =>
           chunk.size match {
             case sz if n == sz => (Chunk.concat((acc :+ chunk).toList), rem)
-            case sz if n < sz => (chunk.take(n), rem.push(chunk.drop(n)))
+            case sz if n < sz => (Chunk.concat((acc :+ chunk.take(n)).toList), rem.push(chunk.drop(n)))
             case sz => go(n - chunk.size, acc :+ chunk, rem)
           }
       }
@@ -201,9 +201,10 @@ object Segment {
 
   private[fs2]
   case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
+    // require(!s.isEmpty)
     def stage0 = (depth, emit, emits, done) => {
       var tails = s.toList.tails.drop(1).toList
-      var res : Option[R] = None
+      var res: Option[R] = None
       var ind = 0
       val staged = s.map(_.stage(depth + 1, emit, emits, r => { res = Some(r); ind += 1 }))
       var i = staged
@@ -219,6 +220,7 @@ object Segment {
         }
       }
     }
+    override def toString = s"catenated(${s.toList.mkString(", ")})"
   }
 
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {

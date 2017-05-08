@@ -5,18 +5,20 @@ package fs2.fast
 // import scala.concurrent.ExecutionContext
 // import cats.effect.Effect
 
+import fs2.Chunk
+
 /**
- * A currently open `Stream[F,A]` which allows chunks to be pulled or pushed.
+ * A currently open `Stream[F,O]` which allows chunks to be pulled or pushed.
  *
- * To get a handle from a stream, use [[Stream#open]].
+ * To get a handle from a stream, use [[Stream#open]] and subsequently `flatMap` or use [[Stream#pull]].
  */
-final class Handle[+F[_],+A] private[fs2] (
-  private[fs2] val buffer: List[Segment[A,Unit]],
-  private[fs2] val underlying: Stream[F,A]
+final class Handle[+F[_],+O] private[fs2] (
+  private val buffer: List[Segment[O,Unit]],
+  private val underlying: Stream[F,O]
 ) {
 
-  private[fs2] def stream: Stream[F,A] = {
-    def go(buffer: List[Segment[A,Unit]]): Stream[F,A] = buffer match {
+  private[fs2] def stream: Stream[F,O] = {
+    def go(buffer: List[Segment[O,Unit]]): Stream[F,O] = buffer match {
       case Nil => underlying
       case s :: buffer => Stream.segment(s) ++ go(buffer)
     }
@@ -24,16 +26,19 @@ final class Handle[+F[_],+A] private[fs2] (
   }
 
   /** Applies `f` to each element from the source stream, yielding a new handle with a potentially different element type.*/
-  def map[A2](f: A => A2): Handle[F,A2] = new Handle(buffer.map(_ map f), underlying map f)
+  def map[O2](f: O => O2): Handle[F,O2] = new Handle(buffer.map(_ map f), underlying map f)
 
-  /** Returns a new handle with the specified chunk prepended to elements from the source stream. */
-  def push[A2>:A](s: Segment[A2,Unit]): Handle[F,A2] =
-    //if (s.isEmpty) this else     TODO no isEmpty on segment
+  /** Returns a new handle with the specified segment prepended to elements from the source stream. */
+  def push[O2>:O](s: Segment[O2,Unit]): Handle[F,O2] =
     new Handle(s :: buffer, underlying)
 
+  /** Returns a new handle with the specified chunk prepended to elements from the source stream. */
+  def pushChunk[O2>:O](c: Chunk[O2]): Handle[F,O2] =
+    if (c.isEmpty) this else push(Segment.chunk(c))
+
   /** Like [[push]] but for a single element instead of a chunk. */
-  def push1[A2>:A](a: A2): Handle[F,A2] =
-    push(Segment.single(a))
+  def push1[O2>:O](o: O2): Handle[F,O2] =
+    push(Segment.single(o))
 
   /**
    * Waits for a segment of elements to be available in the source stream.
@@ -41,14 +46,14 @@ final class Handle[+F[_],+A] private[fs2] (
    * The new handle can be used for subsequent operations, like awaiting again.
    * A `None` is returned as the resource of the pull upon reaching the end of the stream.
    */
-  def await: Pull[F,Nothing,Option[(Segment[A,Unit], Handle[F,A])]] =
+  def await: Pull[F,Nothing,Option[(Segment[O,Unit], Handle[F,O])]] =
     buffer match {
       case hb :: tb => Pull.pure(Some((hb, new Handle(tb, underlying))))
       case Nil => underlying.step
     }
 
   /** Like [[await]] but waits for a single element instead of an entire chunk. */
-  def await1: Pull[F,Nothing,Option[(A,Handle[F,A])]] =
+  def await1: Pull[F,Nothing,Option[(O,Handle[F,O])]] =
     await flatMap {
       case None => Pull.pure(None)
       case Some((hd, tl)) =>
@@ -264,31 +269,41 @@ final class Handle[+F[_],+A] private[fs2] (
   //   }
 
   /** Converts this handle to a handle of the specified subtype. */
-  implicit def covary[F2[x]>:F[x]]: Handle[F2,A] = this.asInstanceOf
+  implicit def covary[F2[x]>:F[x]]: Handle[F2,O] = this.asInstanceOf[Handle[F2,O]]
 
   override def toString = s"Handle($buffer, $underlying)"
 }
 
 object Handle {
-  /** Empty handle. */
-  private val empty_ : Handle[Nothing,Nothing] = new Handle(Nil, Stream.empty)
-  def empty[F[_],A]: Handle[F,A] = empty_.asInstanceOf[Handle[F,A]]
 
-  implicit class HandleInvariantEffectOps[F[_],+A](private val self: Handle[F,A]) extends AnyVal {
+  private val empty_ : Handle[Nothing,Nothing] = new Handle(Nil, Stream.empty)
+
+  /** Empty handle. */
+  def empty[F[_],O]: Handle[F,O] = empty_
+
+  implicit class HandleInvariantEffectOps[F[_],+O](private val self: Handle[F,O]) extends AnyVal {
 
     /** Apply `f` to the next available `Segment`. */
-    def receive[O,B](f: Option[(Segment[A,Unit],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] = self.await.flatMap(f)
+    def receive[O2,R](f: (Segment[O,Unit],Handle[F,O]) => Pull[F,O2,R]): Pull[F,O2,Option[R]] =
+      self.await.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) => f(hd, tl).map(Some(_))
+      }
 
     /** Apply `f` to the next available element. */
-    def receive1[O,B](f: Option[(A,Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] = self.await1.flatMap(f)
+    def receive1[O2,R](f: (O,Handle[F,O]) => Pull[F,O2,R]): Pull[F,O2,Option[R]] =
+      self.await1.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) => f(hd, tl).map(Some(_))
+      }
 
-    // /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
-    // def receiveOption[O,B](f: Option[(Chunk[A],Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
-    //   self.awaitOption.flatMap(f)
-    //
-    // /** Apply `f` to the next available element, or `None` if the input is exhausted. */
-    // def receive1Option[O,B](f: Option[(A,Handle[F,A])] => Pull[F,O,B]): Pull[F,O,B] =
-    //   self.await1Option.flatMap(f)
+    /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+    def receiveOption[O2,R](f: Option[(Segment[O,Unit],Handle[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
+      self.await.flatMap(f)
+
+    /** Apply `f` to the next available element, or `None` if the input is exhausted. */
+    def receive1Option[O2,R](f: Option[(O,Handle[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
+      self.await1.flatMap(f)
   }
 
   // /** Result of asynchronously awaiting a chunk from a handle. */
