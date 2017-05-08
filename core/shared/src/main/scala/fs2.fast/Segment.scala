@@ -112,31 +112,21 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).map($f)"
   }
 
-  final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] = new Segment[O2,R2] {
-    def stage0 = (depth, emit, emits, done) => {
-      val b2 = s2.stage(depth + 1, emit, emits, done)
-      var s: Step[O2,R2] = null
-      var b1 = self.stage(depth + 1, emit, emits, _ => s = b2).mapRemainder(_ ++ s2)
-      s = b1
-      step(s.remainder) { s() }
+  final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] = this match {
+    case Catenated(s1s) => s2 match {
+      case Catenated(s2s) => Catenated(s1s ++ s2s)
+      case _ => Catenated(s1s :+ s2)
     }
-    override def toString = s"($self).++($s2)"
+    case s1 => s2 match {
+      case Catenated(s2s) => Catenated(s1 +: s2s)
+      case s2 => Catenated(Catenable(s1,s2))
+    }
   }
 
-  final def push[O2>:O](c: Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
-    def stage0 = (depth, emit, emits, done) => {
-      var pushed = false
-      val s: Step[O2,R] = self.stage(depth + 1, emit, emits, done)
-      step(if (pushed) s.remainder else s.remainder.push(c)) {
-        if (pushed) s()
-        else {
-          emits(c)
-          pushed = true
-        }
-      }
-    }
-    override def toString = s"($self).push($c)"
-  }
+  final def push[O2>:O](c: Chunk[O2]): Segment[O2,R] =
+    // note - cast is fine, as `this` is guaranteed to provide an `R`,
+    // overriding the `Unit` produced by `this`
+    chunk(c).asInstanceOf[Segment[O2,R]] ++ this
 
   final def foreachChunk(f: Chunk[O] => Unit): Unit = {
     var ok = true
@@ -208,6 +198,25 @@ object Segment {
   }
 
   def seq[O](os: Seq[O]): Segment[O,Unit] = chunk(Chunk.seq(os))
+
+  private[fs2]
+  case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
+    def stage0 = (depth, emit, emits, done) => {
+      var tails = s.toList.tails.drop(1).toList
+      var res : Option[R] = None
+      val staged = s.map(_.stage(depth + 1, emit, emits, r => { res = Some(r); done(r) }))
+      var i = staged
+      def rem = Catenated(i.map(_.remainder))
+      step(rem) {
+        i.uncons match {
+          case None => done(res.get)
+          case Some((hd, tl)) =>
+            hd()
+            i = hd +: tl
+        }
+      }
+    }
+  }
 
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {
     def stage0 = (depth, emit, emits, done) => {
