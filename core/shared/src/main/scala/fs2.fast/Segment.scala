@@ -118,12 +118,6 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
-  final def toList: List[O] = {
-    val buf = new collection.mutable.ListBuffer[O]
-    self.map { o => buf += o }.run
-    buf.toList
-  }
-
   final def toChunk: Chunk[O] = {
     val buf = new collection.mutable.ArrayBuffer[O]
     self.map { o => buf += o; () }.run
@@ -218,15 +212,4 @@ object Segment {
   }
 
   type Depth = Int
-}
-
-object TestSegment extends App {
-
-  println {
-    // Chunk.longs(new Array[Long](32)).map(_.toDouble)
-    // Segment.from(1).take(10).toList
-    (Segment.from(1).take(3) ++ Segment.from(1).take(4)).toList
-    // Segment.from(1).scan(0L)(_ + _).take(10).toList
-    // Segment.from(1).take(35).map(_.toDouble).toList
-  }
 }
