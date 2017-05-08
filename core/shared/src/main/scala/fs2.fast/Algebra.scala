@@ -84,8 +84,7 @@ private[fs2] object Algebra {
           case os : Algebra.WrapSegment[F, O, y] =>
             try {
               val (hd, tl) = os.values.splitAt(chunkSize)
-              val r = tl.run
-              pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(Segment.chunk(hd) -> bound.f(r)))
+              pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(Segment.chunk(hd) -> segment(tl).flatMap(bound.f)))
             }
             catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
               uncons(bound.handleError(e))
@@ -145,7 +144,7 @@ private[fs2] object Algebra {
     def go(acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B] = v match {
       case done: Free.ViewL.Done[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] => done.r match {
         case None => F.pure(acc)
-        case Some((hd, tl)) => go(hd.foldLeft(acc)(f), uncons(tl).viewL)
+        case Some((hd, tl)) => go(hd.fold(acc)(f).run, uncons(tl).viewL)
       }
       case failed: Free.ViewL.Failed[AlgebraF, _] => F.raiseError(failed.error)
       case bound: Free.ViewL.Bound[AlgebraF, _, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =>

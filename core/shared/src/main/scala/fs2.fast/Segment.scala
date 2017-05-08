@@ -102,12 +102,6 @@ abstract class Segment[+O,+R] { self =>
         done).tweak(_ map f)
   }
 
-  final def foldLeft[O2](init: O2)(f: (O2,O) => O2): O2 = {
-    var acc = init
-    self.map(o => acc = f(acc, o)).run
-    acc
-  }
-
   final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] = new Segment[O2,R2] {
     def bind0 = (depth, emit, emits, done) => {
       val b2 = s2.bind(depth + 1, emit, emits, done)
@@ -120,8 +114,7 @@ abstract class Segment[+O,+R] { self =>
 
   final def push[O2>:O](c: Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
     def bind0 = (depth, emit, emits, done) => {
-      emits(c)
-      self.bind(depth + 1, emit, emits, done)
+      self.bind(depth + 1, emit, emits, r => { emits(c); done(r) }).tweak(_ push c)
     }
   }
 
