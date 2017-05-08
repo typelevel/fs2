@@ -46,10 +46,10 @@ final class Handle[+F[_],+O] private[fs2] (
    * The new handle can be used for subsequent operations, like awaiting again.
    * A `None` is returned as the resource of the pull upon reaching the end of the stream.
    */
-  def await: Pull[F,Nothing,Option[(Segment[O,Unit], Handle[F,O])]] =
+  def await: Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]] =
     buffer match {
       case hb :: tb => Pull.pure(Some((hb, new Handle(tb, underlying))))
-      case Nil => underlying.uncons
+      case Nil => underlying.uncons.map(_.map { case (segment, stream) => (segment, new Handle(Nil, stream)) })
     }
 
   /** Like [[await]] but waits for a single element instead of an entire chunk. */
