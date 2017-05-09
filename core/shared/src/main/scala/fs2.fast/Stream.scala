@@ -63,12 +63,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   private[fs2] def get[F2[x]>:F[x],O2>:O]: Free[Algebra[F2,O2,?],Unit] = free.asInstanceOf[Free[Algebra[F2,O2,?],Unit]]
 
-  /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
-  def unsegment: Pull[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]] =
-    Pull.fromFree[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]] {
-      Algebra.uncons[F,Nothing,O](get[F,O]) map { _ map { case (seg, s) => seg -> Stream.fromFree(s) } }
-    }
-
   /** `s as x == s map (_ => x)` */
   def as[O2](o2: O2): Stream[F,O2] = map(_ => o2)
 
@@ -94,7 +88,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     Stream.append(this, s2)
 
   def map[O2](f: O => O2): Stream[F,O2] = {
-    def go(s: Stream[F,O]): Pull[F,O2,Unit] = s.unsegment flatMap {
+    def go(s: Stream[F,O]): Pull[F,O2,Unit] = s.uncons flatMap {
       case None => Pull.pure(())
       case Some((hd, tl)) => Pull.segment(hd map f) >> go(tl)
     }
@@ -139,12 +133,24 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     F.suspend(F.map(runFoldSync[F2, VectorBuilder[O2]](new VectorBuilder[O2])(_ += _))(_.result))
   }
 
-  def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
-    Pull.fromFree(Algebra.uncons(get)).flatMap {
-      case None => Pull.pure(None)
+  def take(n: Long): Stream[F,O] = {
+    def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = s.uncons flatMap {
+      case None => Pull.pure(())
       case Some((hd, tl)) =>
-        Pull.pure(Some((hd, Stream.fromFree(tl))))
+        Pull.segment(hd.take(n)) flatMap {
+          case None =>
+            Pull.pure(())
+          case Some(((), n)) =>
+            if (n > 0) go(tl, n)
+            else Pull.pure(())
+        }
     }
+    go(this, n).close
+  }
+
+  /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
+  def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
+    Pull.fromFree(Algebra.uncons(get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
 
   def unconsAsync: Pull[F,O,Pull[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]]] =
     Pull.fromFree(Algebra.unconsAsync(get)).map { x =>

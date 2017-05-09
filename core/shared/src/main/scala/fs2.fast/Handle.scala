@@ -59,7 +59,7 @@ final class Handle[+F[_],+O] private[fs2] (
       case Some((hd, tl)) =>
         val (h, rem) = hd.splitAt(1)
         if (h.isEmpty) tl.await1
-        else Pull.pure(Some((h(0), tl.push(rem))))
+        else Pull.pure(Some((h(0), rem.fold(_ => tl, tl.push(_)))))
     }
 
 

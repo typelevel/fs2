@@ -152,16 +152,16 @@ abstract class Segment[+O,+R] { self =>
    * `s.splitAt(n)` is equivalent to `(s.take(n).toChunk, s.drop(n))`
    * but avoids traversing the segment twice.
    */
-  def splitAt(n: Int): (Chunk[O], Segment[O,R]) = {
+  def splitAt(n: Int): (Chunk[O], Either[R, Segment[O,R]]) = {
     // TODO rewrite this as an interpreter
     @annotation.tailrec
-    def go(n: Int, acc: Catenable[Chunk[O]], seg: Segment[O,R]): (Chunk[O], Segment[O,R]) = {
+    def go(n: Int, acc: Catenable[Chunk[O]], seg: Segment[O,R]): (Chunk[O], Either[R, Segment[O,R]]) = {
       seg.uncons match {
-        case Left(r) => (Chunk.concat(acc.toList), Segment.pure(r))
+        case Left(r) => (Chunk.concat(acc.toList), Left(r))
         case Right((chunk,rem)) =>
           chunk.size match {
-            case sz if n == sz => (Chunk.concat((acc :+ chunk).toList), rem)
-            case sz if n < sz => (Chunk.concat((acc :+ chunk.take(n)).toList), rem.push(chunk.drop(n)))
+            case sz if n == sz => (Chunk.concat((acc :+ chunk).toList), Right(rem))
+            case sz if n < sz => (Chunk.concat((acc :+ chunk.take(n)).toList), Right(rem.push(chunk.drop(n))))
             case sz => go(n - chunk.size, acc :+ chunk, rem)
           }
       }
