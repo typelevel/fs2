@@ -54,9 +54,8 @@ final class Handle[+F[_],+O] private[fs2] (
 
   /** Like [[await]] but waits for a single element instead of an entire chunk. */
   def await1: Pull[F,Nothing,Option[(O,Handle[F,O])]] =
-    await flatMap {
-      case None => Pull.pure(None)
-      case Some((hd, tl)) =>
+    await flatMapOpt {
+      case (hd, tl) =>
         val (h, rem) = hd.splitAt(1)
         if (h.isEmpty) tl.await1
         else Pull.pure(Some((h(0), rem.fold(_ => tl, tl.push(_)))))
@@ -133,12 +132,10 @@ final class Handle[+F[_],+O] private[fs2] (
   /** Drops the first `n` elements of this `Handle`, and returns the new `Handle`. */
   def drop(n: Long): Pull[F,Nothing,Option[Handle[F,O]]] =
     if (n <= 0) Pull.pure(Some(this))
-    else awaitLimit(n).flatMap {
-      case Some(s) =>
-        Pull.segment(s.drain).flatMap { case (rem, tl) =>
-          if (rem > 0) tl.drop(rem) else Pull.pure(Some(tl))
-        }
-      case None => Pull.pure(None)
+    else awaitLimit(n).flatMapOpt { s =>
+      Pull.segment(s.drain).flatMap { case (rem, tl) =>
+        if (rem > 0) tl.drop(rem) else Pull.pure(Some(tl))
+      }
     }
 
   // /**
@@ -238,12 +235,10 @@ final class Handle[+F[_],+O] private[fs2] (
   /** Emits the first `n` elements of the input and return the new `Handle`. */
   def take(n: Long): Pull[F,O,Option[Handle[F,O]]] =
     if (n <= 0) Pull.pure(Some(this))
-    else awaitLimit(n).flatMap {
-      case Some(s) =>
-        Pull.segment(s).flatMap { case (rem, tl) =>
-          if (rem > 0) tl.take(rem) else Pull.pure(None)
-        }
-      case None => Pull.pure(None)
+    else awaitLimit(n).flatMapOpt { s =>
+      Pull.segment(s).flatMap { case (rem, tl) =>
+        if (rem > 0) tl.take(rem) else Pull.pure(None)
+      }
     }
 
   // /** Emits the last `n` elements of the input. */
@@ -299,17 +294,11 @@ object Handle {
 
     /** Apply `f` to the next available `Segment`. */
     def receive[O2,R](f: (Segment[O,Unit],Handle[F,O]) => Pull[F,O2,R]): Pull[F,O2,Option[R]] =
-      self.await.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) => f(hd, tl).map(Some(_))
-      }
+      self.await.flatMapOpt { case (hd, tl) => f(hd, tl).map(Some(_)) }
 
     /** Apply `f` to the next available element. */
     def receive1[O2,R](f: (O,Handle[F,O]) => Pull[F,O2,R]): Pull[F,O2,Option[R]] =
-      self.await1.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) => f(hd, tl).map(Some(_))
-      }
+      self.await1.flatMapOpt { case (hd, tl) => f(hd, tl).map(Some(_)) }
 
     /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
     def receiveOption[O2,R](f: Option[(Segment[O,Unit],Handle[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
@@ -319,10 +308,4 @@ object Handle {
     def receive1Option[O2,R](f: Option[(O,Handle[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
       self.await1.flatMap(f)
   }
-
-  // /** Result of asynchronously awaiting a chunk from a handle. */
-  // type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
-  //
-  // /** Result of asynchronously awaiting an element from a handle. */
-  // type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (A, Handle[F,A])]]
 }
