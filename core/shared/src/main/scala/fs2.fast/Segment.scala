@@ -322,19 +322,33 @@ object Segment {
       }
     }
     def size = array.length
-    def apply(i: Int) = array(i)
-    def asInts[O2>:O](implicit IsInt: O2 =:= Int): Array[Int] =
-      array.asInstanceOf[Array[Int]]
-    def asDoubles[O2>:O](implicit IsDouble: O2 =:= Double): Array[Double] =
-      array.asInstanceOf[Array[Double]]
-    def asBytes[O2>:O](implicit IsByte: O2 =:= Byte): Array[Byte] =
-      array.asInstanceOf[Array[Byte]]
-    def asLongs[O2>:O](implicit IsLong: O2 =:= Long): Array[Long] =
-      array.asInstanceOf[Array[Long]]
-    def asShorts[O2>:O](implicit IsShort: O2 =:= Short): Array[Short] =
-      array.asInstanceOf[Array[Short]]
-    def asFloats[O2>:O](implicit IsFloat: O2 =:= Float): Array[Float] =
-      array.asInstanceOf[Array[Float]]
+    def apply(i: Int): O = array(i)
+
+    def asInts[O2>:O](implicit IsInt: O2 =:= Int): Array[Int] = array.asInstanceOf[Array[Int]]
+    def asDoubles[O2>:O](implicit IsDouble: O2 =:= Double): Array[Double] = array.asInstanceOf[Array[Double]]
+    def asBytes[O2>:O](implicit IsByte: O2 =:= Byte): Array[Byte] = array.asInstanceOf[Array[Byte]]
+    def asLongs[O2>:O](implicit IsLong: O2 =:= Long): Array[Long] = array.asInstanceOf[Array[Long]]
+    def asShorts[O2>:O](implicit IsShort: O2 =:= Short): Array[Short] = array.asInstanceOf[Array[Short]]
+    def asFloats[O2>:O](implicit IsFloat: O2 =:= Float): Array[Float] = array.asInstanceOf[Array[Float]]
+
+    def tryAsBytes[O2>:O](implicit IsByte: O2 =:= Byte): Option[Array[Byte]] =
+      if (array.isInstanceOf[Array[Byte]]) Some(array.asInstanceOf[Array[Byte]])
+      else None
+    def tryAsShorts[O2>:O](implicit IsShort: O2 =:= Short): Option[Array[Short]] =
+      if (array.isInstanceOf[Array[Short]]) Some(array.asInstanceOf[Array[Short]])
+      else None
+    def tryAsInts[O2>:O](implicit IsInt: O2 =:= Int): Option[Array[Int]] =
+      if (array.isInstanceOf[Array[Int]]) Some(array.asInstanceOf[Array[Int]])
+      else None
+    def tryAsLongs[O2>:O](implicit IsLong: O2 =:= Long): Option[Array[Long]] =
+      if (array.isInstanceOf[Array[Long]]) Some(array.asInstanceOf[Array[Long]])
+      else None
+    def tryAsFloats[O2>:O](implicit IsFloat: O2 =:= Float): Option[Array[Float]] =
+      if (array.isInstanceOf[Array[Float]]) Some(array.asInstanceOf[Array[Float]])
+      else None
+    def tryAsDoubles[O2>:O](implicit IsDouble: O2 =:= Double): Option[Array[Double]] =
+      if (array.isInstanceOf[Array[Double]]) Some(array.asInstanceOf[Array[Double]])
+      else None
 
     override def toString = { val vs = array.mkString(", "); s"array($vs)" }
   }
