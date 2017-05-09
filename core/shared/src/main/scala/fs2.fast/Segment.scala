@@ -20,25 +20,30 @@ abstract class Segment[+O,+R] { self =>
                r => defer(done(r)))
       }
 
-  final def uncons: Either[R, (Chunk[O],Segment[O,R])] =
+  final def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
     unconsChunks match {
       case Left(r) => Left(r)
-      case Right((cs, tl)) => cs match {
-        case c :: cs => Right(c -> cs.foldRight(tl)((hd,tl) => tl push hd))
-        case Nil => tl.uncons // should never hit this case
+      case Right((cs, tl)) => cs.uncons match {
+        case Some((c,cs)) => Right(c -> cs.toList.foldRight(tl)((hd,tl) => tl push hd))
+        case None => tl.unconsChunk // should never hit this case
       }
     }
 
   @annotation.tailrec
   final def uncons1: Either[R, (O,Segment[O,R])] =
-    uncons match {
+    unconsChunk match {
       case Left(r) => Left(r)
       case Right((c, tl)) =>
         if (c.nonEmpty) Right(c(0) -> tl.push(Chunk.indexedSeq(c.toIndexedSeq.drop(1))))
         else tl.uncons1
     }
 
-  final def unconsChunks: Either[R, (List[Chunk[O]],Segment[O,R])] = {
+  final def uncons: Either[R, (Segment[O,Unit],Segment[O,R])] = unconsChunks match {
+    case Left(r) => Left(r)
+    case Right((cs,tl)) => Right(Catenated(cs) -> tl)
+  }
+
+  final def unconsChunks: Either[R, (Catenable[Chunk[O]],Segment[O,R])] = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
     var ok = true
@@ -50,10 +55,10 @@ abstract class Segment[+O,+R] { self =>
       r => { result = Some(r); ok = false }).value
     while (ok) steps(step, trampoline)
     result match {
-      case None => Right(out.toList -> step.remainder)
+      case None => Right(out -> step.remainder)
       case Some(r) =>
         if (out.isEmpty) Left(r)
-        else Right(out.toList -> pure(r))
+        else Right(out -> pure(r))
     }
   }
 
@@ -233,7 +238,7 @@ abstract class Segment[+O,+R] { self =>
       else Segment.Catenated(acc)
     @annotation.tailrec
     def go(n: Int, acc: Catenable[Segment[O,Unit]], seg: Segment[O,R]): (Segment[O,Unit], Either[R, Segment[O,R]]) = {
-      seg.uncons match {
+      seg.unconsChunk match {
         case Left(r) => (concat(acc), Left(r))
         case Right((chunk,rem)) =>
           chunk.size match {

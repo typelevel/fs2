@@ -77,10 +77,11 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
     "uncons" in {
       forAll { (xss: List[List[Int]]) =>
         val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Segment.seq(xs) ++ acc)
-        def unconsAll(acc: Catenable[Chunk[Int]], s: Segment[Int,Unit]): Catenable[Chunk[Int]] = s.uncons match {
-          case Right((hd, tl)) => unconsAll(acc :+ hd, tl)
-          case Left(()) => acc
-        }
+        def unconsAll(acc: Catenable[Chunk[Int]], s: Segment[Int,Unit]): Catenable[Chunk[Int]] =
+          s.unconsChunk match {
+            case Right((hd, tl)) => unconsAll(acc :+ hd, tl)
+            case Left(()) => acc
+          }
         unconsAll(Catenable.empty, seg).toList.map(_.toList) shouldBe xss
       }
     }
