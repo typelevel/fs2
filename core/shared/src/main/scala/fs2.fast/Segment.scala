@@ -309,4 +309,33 @@ object Segment {
     def increment: Depth = Depth(value + 1)
     def <(that: Depth): Boolean = value < that.value
   }
+
+  class DChunk[@specialized +O](array: Array[O]) extends Segment[O,Unit] {
+    def stage0 = (_, _, emit, emits, done) => Eval.now {
+      var emitted = false
+      step(if (emitted) empty else this) {
+        if (!emitted) {
+          emits(Chunk.indexedSeq(array)) // todo, just `emits(this)` once switch to `DChunk`
+          emitted = true
+        }
+        else done(())
+      }
+    }
+    def size = array.length
+    def apply(i: Int) = array(i)
+    def asInts[O2>:O](implicit IsInt: O2 =:= Int): Array[Int] =
+      array.asInstanceOf[Array[Int]]
+    def asDoubles[O2>:O](implicit IsDouble: O2 =:= Double): Array[Double] =
+      array.asInstanceOf[Array[Double]]
+    def asBytes[O2>:O](implicit IsByte: O2 =:= Byte): Array[Byte] =
+      array.asInstanceOf[Array[Byte]]
+    def asLongs[O2>:O](implicit IsLong: O2 =:= Long): Array[Long] =
+      array.asInstanceOf[Array[Long]]
+    def asShorts[O2>:O](implicit IsShort: O2 =:= Short): Array[Short] =
+      array.asInstanceOf[Array[Short]]
+    def asFloats[O2>:O](implicit IsFloat: O2 =:= Float): Array[Float] =
+      array.asInstanceOf[Array[Float]]
+
+    override def toString = { val vs = array.mkString(", "); s"array($vs)" }
+  }
 }
