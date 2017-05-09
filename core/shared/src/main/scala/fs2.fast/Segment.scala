@@ -14,7 +14,7 @@ abstract class Segment[+O,+R] { self =>
   final def stage: (Depth, (=> Unit)=>Unit, O => Unit, Chunk[O] => Unit, R => Unit) => Eval[Step[O,R]] =
     (depth, defer, emit, emits, done) =>
       if (depth < MaxFusionDepth) stage0(depth.increment, defer, emit, emits, done)
-      else Eval.defer {
+      else evalDefer {
         stage0(Depth(0), defer,
                o => defer(emit(o)),
                os => defer(emits(os)),
@@ -109,7 +109,7 @@ abstract class Segment[+O,+R] { self =>
   }
 
   final def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
-    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
         o => emit(f(o)),
         os => { var i = 0; while (i < os.size) { emit(f(os(i))); i += 1; } },
@@ -176,12 +176,12 @@ object Segment {
   def empty[O]: Segment[O,Unit] = empty_
 
   def pure[O,R](r: R): Segment[O,R] = new Segment[O,R] {
-    def stage0 = (_,_,_,_,done) => Eval.now(step(pure(r))(done(r)))
+    def stage0 = (_,_,_,_,done) => Eval.later(step(pure(r))(done(r)))
     override def toString = s"pure($r)"
   }
 
   def singleton[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
-    def stage0 = (_, _, emit, _, done) => Eval.now {
+    def stage0 = (_, _, emit, _, done) => Eval.later {
       var emitted = false
       step(if (emitted) empty else singleton(o)) {
         emit(o)
@@ -193,7 +193,7 @@ object Segment {
   }
 
   def chunk[O](os: Chunk[O]): Segment[O,Unit] = new Segment[O,Unit] {
-    def stage0 = (_, _, _, emits, done) => Eval.now {
+    def stage0 = (_, _, _, emits, done) => Eval.later {
       var emitted = false
       step(if (emitted) empty else chunk(os)) {
         emits(os)
@@ -233,7 +233,7 @@ object Segment {
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {
     def stage0 = (depth, _, emit, emits, done) => {
       var s0 = s
-      Eval.now { step(unfold(s0)(f)) {
+      Eval.later { step(unfold(s0)(f)) {
         f(s0) match {
           case None => done(())
           case Some((h,t)) => emit(h); s0 = t
@@ -247,7 +247,7 @@ object Segment {
     def stage0 = (_, _, _, emits, _) => {
       var m = n
       var buf = new Array[Long](32)
-      Eval.now { step(from(m,by)) {
+      Eval.later { step(from(m,by)) {
         var i = 0
         while (i < buf.length) { buf(i) = m; m += by; i += 1 }
         emits(Chunk.longs(buf))
@@ -279,6 +279,9 @@ object Segment {
   private def makeTrampoline = new java.util.LinkedList[() => Unit]()
   private def defer(t: java.util.LinkedList[() => Unit]): (=>Unit) => Unit =
     u => t.addLast(() => u)
+
+  // note - Eval.defer seems to not be stack safe
+  private def evalDefer[A](e: => Eval[A]): Eval[A] = Eval.now(()) flatMap { _ => e }
 
   final case class Depth(value: Int) extends AnyVal {
     def increment: Depth = Depth(value + 1)
