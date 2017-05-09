@@ -204,6 +204,28 @@ object Segment {
     override def toString = s"chunk($os)"
   }
 
+  def intArray(os: Array[Int], from: Int = 0): Segment[Int,Unit] = new Segment[Int,Unit] {
+    def stage0 = (_, _, emit, _, done) => Eval.later {
+      var i = from max 0
+      step(if (i < os.length) intArray(os, i) else empty) {
+        if (i < os.length) { emit(os(i)); i += 1 }
+        else done(())
+      }
+    }
+    override def toString = { val vs = os.toList.mkString(", "); s"intArray($vs)" }
+  }
+
+  def array[@specialized O](os: Array[O], from: Int = 0): Segment[O,Unit] = new Segment[O,Unit] {
+    def stage0 = (_, _, emit, _, done) => Eval.later {
+      var i = from max 0
+      step(if (i < os.length) array(os, i) else empty) {
+        if (i < os.length) { emit(os(i)); i += 1 }
+        else done(())
+      }
+    }
+    override def toString = { val vs = os.toList.mkString(", "); s"array($vs)" }
+  }
+
   def seq[O](os: Seq[O]): Segment[O,Unit] = chunk(Chunk.seq(os))
 
   private[fs2]
