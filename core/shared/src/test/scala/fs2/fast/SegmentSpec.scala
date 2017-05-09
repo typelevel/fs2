@@ -81,7 +81,7 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
     }
 
     "staging stack safety" in {
-      val N = 20
+      val N = 100000
       val s = (0 until N).foldLeft(Segment.singleton(0))((s,i) => s map (_ + i))
       s.sum(0).run shouldBe (0 until N).sum
     }
