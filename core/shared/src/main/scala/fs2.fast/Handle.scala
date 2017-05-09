@@ -63,7 +63,7 @@ final class Handle[+F[_],+O] private[fs2] (
   /**
    * Asynchronously awaits for a segment of elements to be available in the source stream.
    */
-  def awaitAsync: Pull[F,O,Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]]] =
+  def awaitAsync: Pull[F,Nothing,Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]]] =
     buffer match {
       case hd :: tl => Pull.pure(Pull.pure(Some((hd, new Handle(tl, underlying)))))
       case Nil => underlying.unconsAsync.map(_.map(_.map { case (segment, stream) => (segment, new Handle(Nil, stream))}))
@@ -89,8 +89,11 @@ final class Handle[+F[_],+O] private[fs2] (
   def awaitLimit(n: Long): Pull[F,Nothing,Option[Segment[O,(Long,Handle[F,O])]]] = {
     require(n > 0)
     await.map { _.map { case (hd, tl) =>
-      hd.take(n).mapResult { case (rem, result) =>
-        (rem, result.map(_ => tl).getOrElse(tl.push(hd.drop(n).voidResult)))
+      hd.take(n).mapResult {
+        case None =>
+          (0, tl.push(hd.drop(n).voidResult))
+        case Some((rem, _)) =>
+          (rem, tl)
       }
     }}
   }
@@ -116,22 +119,24 @@ final class Handle[+F[_],+O] private[fs2] (
   // /** Awaits the next available element from the input, or `None` if the input is exhausted. */
   // def await1Option: Pull[F,Nothing,Option[(A,Handle[F,A])]] =
   //   await1.map(Some(_)) or Pull.pure(None)
-  //
-  // /** Copies the next available chunk to the output. */
-  // def copy: Pull[F,A,Handle[F,A]] =
-  //   this.receive { (chunk, h) => Pull.output(chunk) >> Pull.pure(h) }
-  //
-  // /** Copies the next available element to the output. */
-  // def copy1: Pull[F,A,Handle[F,A]] =
-  //   this.receive1 { (hd, h) => Pull.output1(hd) >> Pull.pure(h) }
-  //
-  // /** Drops the first `n` elements of this `Handle`, and returns the new `Handle`. */
-  // def drop(n: Long): Pull[F, Nothing, Handle[F, A]] =
-  //   if (n <= 0) Pull.pure(this)
-  //   else awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue).flatMap {
-  //     case (chunk, h) => h.drop(n - chunk.size)
-  //   }
-  //
+
+  /** Copies the next available chunk to the output. */
+  def copy: Pull[F,O,Option[Handle[F,O]]] =
+    this.receive { (s, h) => Pull.output(s).as(Some(h)) }
+
+  /** Copies the next available element to the output. */
+  def copy1: Pull[F,O,Option[Handle[F,O]]] =
+    this.receive1 { (hd, h) => Pull.output1(hd).as(Some(h)) }
+
+  /** Drops the first `n` elements of this `Handle`, and returns the new `Handle`. */
+  def drop(n: Long): Pull[F,Nothing,Option[Handle[F,O]]] =
+    if (n <= 0) Pull.pure(Some(this))
+    else awaitLimit(n).flatMapOpt { s =>
+      Pull.segment(s.drain).flatMap { case (rem, tl) =>
+        if (rem > 0) tl.drop(rem) else Pull.pure(Some(tl))
+      }
+    }
+
   // /**
   //  * Drops elements of the this `Handle` until the predicate `p` fails, and returns the new `Handle`.
   //  * If non-empty, the first element of the returned `Handle` will fail `p`.
@@ -146,15 +151,15 @@ final class Handle[+F[_],+O] private[fs2] (
   //   }
 
   /** Writes all inputs to the output of the returned `Pull`. */
-  def echo: Pull[F,O,Unit] = Pull.loop[F,O,Handle[F,O]](_.echoChunk)(this)
+  def echo: Pull[F,O,Unit] = Pull.loop[F,O,Handle[F,O]](_.echoSegment)(this)
 
   /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
   def echo1: Pull[F,O,Option[Handle[F,O]]] =
-    this.receive1 { (o, h) => Pull.output1(o) >> Pull.pure(h) }
+    this.receive1 { (o, h) => Pull.output1(o).as(Some(h)) }
 
-  /** Reads the next available chunk from the input and emits it to the output. Returns the new `Handle`. */
-  def echoChunk: Pull[F,O,Option[Handle[F,O]]] =
-    this.receive { (c, h) => Pull.output(c) >> Pull.pure(h) }
+  /** Reads the next available segment from the input and emits it to the output. Returns the new `Handle`. */
+  def echoSegment: Pull[F,O,Option[Handle[F,O]]] =
+    this.receive { (s, h) => Pull.output(s).as(Some(h)) }
 
   // /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   // def fetchN(n: Int): Pull[F,Nothing,Handle[F,A]] =
@@ -209,32 +214,26 @@ final class Handle[+F[_],+O] private[fs2] (
 
   /** Like [[await]] but does not consume the segment (i.e., the segment is pushed back). */
   def peek: Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]] =
-    this.receive { (hd, tl) => Pull.pure((hd, tl.push(hd))) }
+    this.receive { (hd, tl) => Pull.pure(Some((hd, tl.push(hd)))) }
 
   /** Like [[await1]] but does not consume the element (i.e., the element is pushed back). */
   def peek1: Pull[F,Nothing,Option[(O,Handle[F,O])]] =
-    this.receive1 { (hd, tl) => Pull.pure((hd, tl.push1(hd))) }
+    this.receive1 { (hd, tl) => Pull.pure(Some((hd, tl.push1(hd)))) }
 
-  // // /**
-  // //  * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
-  // //  * inner `Pull` logically blocks until this await completes.
-  // //  */
-  // // def prefetch[F2[_]](implicit sub: Sub1[F,F2], F: Effect[F2], ec: ExecutionContext): Pull[F2,Nothing,Pull[F2,Nothing,Handle[F2,A]]] =
-  // //   awaitAsync map { fut =>
-  // //     fut.pull flatMap { p =>
-  // //       p map { case (hd, h) => h push hd }
-  // //     }
-  // //   }
+  /**
+   * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
+   * inner `Pull` logically blocks until this await completes.
+   */
+  def prefetch: Pull[F,Nothing,Pull[F,Nothing,Option[Handle[F,O]]]] =
+    awaitAsync.map { fut => fut.map { _.map { case (hd, h) => h push hd } } }
 
   /** Emits the first `n` elements of the input and return the new `Handle`. */
   def take(n: Long): Pull[F,O,Option[Handle[F,O]]] =
     if (n <= 0) Pull.pure(Some(this))
-    else awaitLimit(n).flatMap {
-      case Some(s) =>
-        Pull.segment(s).flatMap { case (rem, tl) =>
-          if (rem > 0) tl.take(rem) else Pull.pure(None)
-        }
-      case None => Pull.pure(None)
+    else awaitLimit(n).flatMapOpt { s =>
+      Pull.segment(s).flatMap { case (rem, tl) =>
+        if (rem > 0) tl.take(rem) else Pull.pure(None)
+      }
     }
 
   // /** Emits the last `n` elements of the input. */
@@ -289,18 +288,12 @@ object Handle {
   implicit class HandleInvariantEffectOps[F[_],+O](private val self: Handle[F,O]) extends AnyVal {
 
     /** Apply `f` to the next available `Segment`. */
-    def receive[O2,R](f: (Segment[O,Unit],Handle[F,O]) => Pull[F,O2,R]): Pull[F,O2,Option[R]] =
-      self.await.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) => f(hd, tl).map(Some(_))
-      }
+    def receive[O2,R](f: (Segment[O,Unit],Handle[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
+      self.await.flatMapOpt { case (hd, tl) => f(hd, tl) }
 
     /** Apply `f` to the next available element. */
-    def receive1[O2,R](f: (O,Handle[F,O]) => Pull[F,O2,R]): Pull[F,O2,Option[R]] =
-      self.await1.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) => f(hd, tl).map(Some(_))
-      }
+    def receive1[O2,R](f: (O,Handle[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
+      self.await1.flatMapOpt { case (hd, tl) => f(hd, tl) }
 
     /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
     def receiveOption[O2,R](f: Option[(Segment[O,Unit],Handle[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
@@ -310,10 +303,4 @@ object Handle {
     def receive1Option[O2,R](f: Option[(O,Handle[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
       self.await1.flatMap(f)
   }
-
-  // /** Result of asynchronously awaiting a chunk from a handle. */
-  // type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
-  //
-  // /** Result of asynchronously awaiting an element from a handle. */
-  // type AsyncStep1[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (A, Handle[F,A])]]
 }

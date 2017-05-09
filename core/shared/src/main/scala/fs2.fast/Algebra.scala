@@ -50,8 +50,8 @@ private[fs2] object Algebra {
   def snapshot[F[_],O]: Free[Algebra[F,O,?],LinkedSet[Token]] =
     Free.Eval[Algebra[F,O,?],LinkedSet[Token]](Snapshot())
 
-  def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit]): Free[Algebra[F,O,?],Free[Algebra[F,Y,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]] =
-    Free.Eval[Algebra[F,O,?],Free[Algebra[F,Y,?],Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s))
+  def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit]): Free[Algebra[F,X,?],Free[Algebra[F,Y,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]] =
+    Free.Eval[Algebra[F,X,?],Free[Algebra[F,Y,?],Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s))
 
   def pure[F[_],O,R](r: R): Free[Algebra[F,O,?],R] =
     Free.Pure[Algebra[F,O,?],R](r)

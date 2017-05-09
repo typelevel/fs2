@@ -112,19 +112,19 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).scan($z)($f)"
   }
 
-  final def take(n: Long): Segment[O,(Long,Option[R])] = new Segment[O,(Long,Option[R])] {
+  final def take(n: Long): Segment[O,Option[(Long,R)]] = new Segment[O,Option[(Long,R)]] {
     def stage0 = (depth, defer, emit, emits, done) => {
       var rem = n
       self.stage(depth.increment, defer,
-        o => { if (rem > 0) { rem -= 1; emit(o) } else done(rem -> None) },
+        o => { if (rem > 0) { rem -= 1; emit(o) } else done(None) },
         os => { if (os.size <= rem) { rem -= os.size; emits(os) }
                 else {
                   var i = 0
                   while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
-                  done(rem -> None)
+                  done(None)
                 }
               },
-        r => done(rem -> Some(r))
+        r => done(Some(rem -> r))
       ).map(_.mapRemainder(_.take(rem)))
     }
     override def toString = s"($self).take($n)"
@@ -183,6 +183,13 @@ abstract class Segment[+O,+R] { self =>
     // note - cast is fine, as `this` is guaranteed to provide an `R`,
     // overriding the `Any` produced by `c`
     c.asInstanceOf[Segment[O2,R]] ++ this
+
+  final def drain: Segment[Nothing,R] = new Segment[Nothing,R] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      self.stage(depth.increment, defer, o => (), os => (), done).map(_.mapRemainder(_.drain))
+    }
+    override def toString = s"($self).drain"
+  }
 
   final def foreachChunk(f: Chunk[O] => Unit): Unit = {
     var ok = true

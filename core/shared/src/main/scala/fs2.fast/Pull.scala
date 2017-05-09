@@ -126,4 +126,13 @@ object Pull {
     }
     go(None, tokens.values.toList.reverse)
   }
+
+  implicit class PullOptionOps[+F[_],+O,+R](self: Pull[F,O,Option[R]]) {
+    /** Alias for `self.flatMap(_.map(f).getOrElse(Pull.pure(None)))`. */
+    def flatMapOpt[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,O2,Option[R2]]): Pull[F2,O2,Option[R2]] =
+      self.flatMap {
+        case None => Pull.pure(None)
+        case Some(r) => f(r)
+      }
+  }
 }

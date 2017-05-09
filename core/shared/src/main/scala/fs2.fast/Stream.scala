@@ -142,11 +142,24 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
       case None => Pull.pure(())
       case Some((hd, tl)) =>
         Pull.segment(hd.take(n)) flatMap {
-          case (_, None) =>
+          case None =>
             Pull.pure(())
-          case (n, Some(())) =>
+          case Some((n, ())) =>
             if (n > 0) go(tl, n)
             else Pull.pure(())
+        }
+    }
+    go(this, n).close
+  }
+
+  def drop(n: Long): Stream[F,O] = {
+    def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = s.uncons flatMap {
+      case None => Pull.pure(())
+      case Some((hd, tl)) =>
+        Pull.segment(hd.drop(n)) flatMap {
+          case (n, ()) =>
+            if (n > 0) go(tl, n)
+            else Pull.fromFree(tl.get)
         }
     }
     go(this, n).close
@@ -156,7 +169,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
     Pull.fromFree(Algebra.uncons(get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
 
-  def unconsAsync: Pull[F,O,Pull[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]]] =
+  def unconsAsync: Pull[F,Nothing,Pull[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]]] =
     Pull.fromFree(Algebra.unconsAsync(get)).map { x =>
       Pull.fromFree(x.map(_.map { case (segment, stream) => (segment, Stream.fromFree(stream)) }))
     }
