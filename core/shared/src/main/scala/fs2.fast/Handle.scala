@@ -79,16 +79,25 @@ final class Handle[+F[_],+O] private[fs2] (
   // //     (h, tl.push(hs))
   // //   }}}
   // // }
-  //
-  // /** Like [[await]], but returns a `NonEmptyChunk` of no more than `maxChunkSize` elements. */
-  // def awaitLimit(maxChunkSize: Int): Pull[F,Nothing,Option[(NonEmptyChunk[A],Handle[F,A])]] = {
-  //   require(maxChunkSize > 0)
-  //   await.map { case s @ (hd, tl) =>
-  //     if (hd.size <= maxChunkSize) s
-  //     else (NonEmptyChunk.fromChunkUnsafe(hd.take(maxChunkSize)), tl.push(hd.drop(maxChunkSize)))
-  //   }
-  // }
-  //
+
+  /**
+   * Like [[await]], but returns a segment of no more than `n` elements.
+   *
+   * The returned segment has a result tuple consisting of the remaining limit
+   * (`n` minus the segment size, or 0, whichever is larger) and a handle for the remainder
+   * of the source stream.
+   *
+   * `Pull.pure(None)` is returned if the end of the source stream is reached.
+   */
+  def awaitLimit(n: Long): Pull[F,Nothing,Option[Segment[O,(Long,Handle[F,O])]]] = {
+    require(n > 0)
+    await.map { _.map { case (hd, tl) =>
+      hd.take(n).mapResult { case (rem, result) =>
+        (rem, result.map(_ => tl).getOrElse(tl.push(hd.drop(n).voidResult)))
+      }
+    }}
+  }
+
   // /** Returns a `List[NonEmptyChunk[A]]` from the input whose combined size has a maximum value `n`. */
   // def awaitN(n: Int, allowFewer: Boolean = false): Pull[F,Nothing,(List[NonEmptyChunk[A]],Handle[F,A])] =
   //   if (n <= 0) Pull.pure((Nil, this))
@@ -138,19 +147,18 @@ final class Handle[+F[_],+O] private[fs2] (
   //       case None    => h.dropWhile(p)
   //     }
   //   }
-  //
-  // /** Writes all inputs to the output of the returned `Pull`. */
-  // def echo: Pull[F,A,Nothing] =
-  //   echoChunk.flatMap(_.echo)
-  //
-  // /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
-  // def echo1: Pull[F,A,Handle[F,A]] =
-  //   this.receive1 { (a, h) => Pull.output1(a) >> Pull.pure(h) }
-  //
-  // /** Reads the next available chunk from the input and emits it to the output. Returns the new `Handle`. */
-  // def echoChunk: Pull[F,A,Handle[F,A]] =
-  //   this.receive { (c, h) => Pull.output(c) >> Pull.pure(h) }
-  //
+
+  /** Writes all inputs to the output of the returned `Pull`. */
+  def echo: Pull[F,O,Unit] = Pull.loop[F,O,Handle[F,O]](_.echoChunk)(this)
+
+  /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
+  def echo1: Pull[F,O,Option[Handle[F,O]]] =
+    this.receive1 { (o, h) => Pull.output1(o) >> Pull.pure(h) }
+
+  /** Reads the next available chunk from the input and emits it to the output. Returns the new `Handle`. */
+  def echoChunk: Pull[F,O,Option[Handle[F,O]]] =
+    this.receive { (c, h) => Pull.output(c) >> Pull.pure(h) }
+
   // /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   // def fetchN(n: Int): Pull[F,Nothing,Handle[F,A]] =
   //   awaitN(n) map { case (buf, h) => buf.reverse.foldLeft(h)(_ push _) }
@@ -201,15 +209,15 @@ final class Handle[+F[_],+O] private[fs2] (
   //     }
   //   go(None)(this)
   // }
-  //
-  // /** Like [[await]] but does not consume the chunk (i.e., the chunk is pushed back). */
-  // def peek: Pull[F, Nothing, (Chunk[A], Handle[F,A])] =
-  //   await flatMap { case (hd, tl) => Pull.pure((hd, tl.push(hd))) }
-  //
-  // /** Like [[await1]] but does not consume the element (i.e., the element is pushed back). */
-  // def peek1: Pull[F, Nothing, (A, Handle[F,A])] =
-  //   await1 flatMap { case (hd, tl) => Pull.pure((hd, tl.push1(hd))) }
-  //
+
+  /** Like [[await]] but does not consume the segment (i.e., the segment is pushed back). */
+  def peek: Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]] =
+    this.receive { (hd, tl) => Pull.pure((hd, tl.push(hd))) }
+
+  /** Like [[await1]] but does not consume the element (i.e., the element is pushed back). */
+  def peek1: Pull[F,Nothing,Option[(O,Handle[F,O])]] =
+    this.receive1 { (hd, tl) => Pull.pure((hd, tl.push1(hd))) }
+
   // // /**
   // //  * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
   // //  * inner `Pull` logically blocks until this await completes.
@@ -220,14 +228,18 @@ final class Handle[+F[_],+O] private[fs2] (
   // //       p map { case (hd, h) => h push hd }
   // //     }
   // //   }
-  //
-  // /** Emits the first `n` elements of the input and return the new `Handle`. */
-  // def take(n: Long): Pull[F,A,Handle[F,A]] =
-  //   if (n <= 0) Pull.pure(this)
-  //   else awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue).flatMap {
-  //     case (chunk, h) => Pull.output(chunk) >> h.take(n - chunk.size.toLong)
-  //   }
-  //
+
+  /** Emits the first `n` elements of the input and return the new `Handle`. */
+  def take(n: Long): Pull[F,O,Option[Handle[F,O]]] =
+    if (n <= 0) Pull.pure(Some(this))
+    else awaitLimit(n).flatMap {
+      case Some(s) =>
+        Pull.segment(s).flatMap { case (rem, tl) =>
+          if (rem > 0) tl.take(rem) else Pull.pure(None)
+        }
+      case None => Pull.pure(None)
+    }
+
   // /** Emits the last `n` elements of the input. */
   // def takeRight(n: Long): Pull[F,Nothing,Vector[A]]  = {
   //   def go(acc: Vector[A])(h: Handle[F,A]): Pull[F,Nothing,Vector[A]] = {

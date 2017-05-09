@@ -62,6 +62,8 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
   def onComplete[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
     (this onError (e => p2 >> Pull.fail(e))) flatMap { _ =>  p2 }
 
+  def race[F2[x]>:F[x],O2>:O,R2](p2: Pull[F2,O2,R2]): Pull[F2,O2,Either[R,R2]] = ???
+
   def scope[F2[x]>:F[x]]: Pull[F2,O,R] = Pull.snapshot[F2,O] flatMap { tokens0 =>
     this flatMap { r =>
       Pull.snapshot flatMap { tokens1 =>
@@ -95,8 +97,12 @@ object Pull {
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
     new Pull(Algebra.fail[Nothing,Nothing,Nothing](err))
 
-  def segment[F[_],O,R](s: Segment[O,R]): Pull[F,O,R] =
-    fromFree(Algebra.segment[F,O,R](s))
+  /**
+   * Repeatedly use the output of the `Pull` as input for the next step of the pull.
+   * Halts when a step terminates with `None` or `Pull.fail`.
+   */
+  def loop[F[_],O,R](using: R => Pull[F,O,Option[R]]): R => Pull[F,O,Unit] =
+    r => using(r) flatMap { _.map(loop(using)).getOrElse(Pull.pure(())) }
 
   def output1[F[_],O](o: O): Pull[F,O,Unit] =
     fromFree(Algebra.output1[F,O](o))
@@ -109,6 +115,9 @@ object Pull {
 
   def pure[F[_],R](r: R): Pull[F,Nothing,R] =
     fromFree(Algebra.pure(r))
+
+  def segment[F[_],O,R](s: Segment[O,R]): Pull[F,O,R] =
+    fromFree(Algebra.segment[F,O,R](s))
 
   private def snapshot[F[_],O]: Pull[F,O,LinkedSet[Algebra.Token]] =
     fromFree[F,O,LinkedSet[Algebra.Token]](Algebra.snapshot)

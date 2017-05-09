@@ -108,6 +108,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def pull[F2[x]>:F[x],O2](using: Handle[F,O] => Pull[F2,O2,Any]) : Stream[F2,O2] =
     open.flatMap(using).close
 
+  def pull2[F2[x]>:F[x],O2,O3](s2: Stream[F2,O2])(using: (Handle[F,O], Handle[F2,O2]) => Pull[F2,O3,Any]): Stream[F2,O3] =
+    open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.close
+
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat
 
@@ -138,9 +141,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
       case None => Pull.pure(())
       case Some((hd, tl)) =>
         Pull.segment(hd.take(n)) flatMap {
-          case None =>
+          case (_, None) =>
             Pull.pure(())
-          case Some(((), n)) =>
+          case (n, Some(())) =>
             if (n > 0) go(tl, n)
             else Pull.pure(())
         }

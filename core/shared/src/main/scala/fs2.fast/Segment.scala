@@ -90,22 +90,41 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).scan($z)($f)"
   }
 
-  final def take(n: Long): Segment[O,Option[(R,Long)]] = new Segment[O,Option[(R,Long)]] {
+  final def take(n: Long): Segment[O,(Long,Option[R])] = new Segment[O,(Long,Option[R])] {
     def stage0 = (depth, defer, emit, emits, done) => {
       var rem = n
       self.stage(depth.increment, defer,
-        o => { if (rem > 0) { rem -= 1; emit(o) } else done(None) },
+        o => { if (rem > 0) { rem -= 1; emit(o) } else done(rem -> None) },
         os => { if (os.size <= rem) { rem -= os.size; emits(os) }
                 else {
                   var i = 0
                   while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
-                  done(None)
+                  done(rem -> None)
                 }
               },
-        r => done(Some(r -> rem))
+        r => done(rem -> Some(r))
       ).map(_.mapRemainder(_.take(rem)))
     }
     override def toString = s"($self).take($n)"
+  }
+
+  final def drop(n: Long): Segment[O,(Long,R)] = new Segment[O,(Long,R)] {
+    def stage0 = (depth, defer, emit, emits, done) => {
+      var rem = n
+      self.stage(depth.increment, defer,
+        o => { if (rem > 0) rem -= 1 else emit(o) },
+        os => { if (rem == 0) emits(os)
+                else if (os.size <= rem) rem -= os.size
+                else {
+                  var i = 0
+                  while (rem > 0) { rem -= 1; i += 1 }
+                  while (i < os.size) { emit(os(i)); i += 1 }
+                }
+              },
+        r => done(rem -> r)
+      ).map(_.mapRemainder(_.drop(rem)))
+    }
+    override def toString = s"($self).drop($n)"
   }
 
   final def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
@@ -115,8 +134,17 @@ abstract class Segment[+O,+R] { self =>
         os => { var i = 0; while (i < os.size) { emit(f(os(i))); i += 1; } },
         done).map(_.mapRemainder(_ map f))
     }
-    override def toString = s"($self).map($f)"
+    override def toString = s"($self).map(<f1>)"
   }
+
+  final def mapResult[R2](f: R => R2): Segment[O,R2] = new Segment[O,R2] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      self.stage(depth.increment, defer, emit, emits, r => done(f(r))).map(_.mapRemainder(_ mapResult f))
+    }
+    override def toString = s"($self).mapResult(<f1>)"
+  }
+
+  final def voidResult: Segment[O,Unit] = mapResult(_ => ())
 
   final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] = this match {
     case Catenated(s1s) => s2 match {

@@ -32,6 +32,12 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
       }
     }
 
+    "drop" in {
+      forAll { (s: Segment[Int,Unit], n: Int) =>
+        s.drop(n).toChunk shouldBe s.toChunk.drop(n)
+      }
+    }
+
     "fold" in {
       forAll { (s: Segment[Int,Unit], init: Int, f: (Int, Int) => Int) =>
         s.fold(init)(f).run shouldBe s.toChunk.toList.foldLeft(init)(f)
