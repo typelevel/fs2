@@ -21,7 +21,7 @@ abstract class Segment[+O,+R] { self =>
       }
 
   final def uncons: Either[R, (Chunk[O],Segment[O,R])] =
-    unconsAll match {
+    unconsChunks match {
       case Left(r) => Left(r)
       case Right((cs, tl)) => cs match {
         case c :: cs => Right(c -> cs.foldRight(tl)((hd,tl) => tl push hd))
@@ -38,7 +38,7 @@ abstract class Segment[+O,+R] { self =>
         else tl.uncons1
     }
 
-  final def unconsAll: Either[R, (List[Chunk[O]],Segment[O,R])] = {
+  final def unconsChunks: Either[R, (List[Chunk[O]],Segment[O,R])] = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
     var ok = true
