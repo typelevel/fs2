@@ -1,12 +1,12 @@
 package fs2.fast
 
-import fs2.{Chunk,Pure}
+import fs2.{ Chunk, Pure }
 
 import scala.concurrent.ExecutionContext
 
-import cats.effect.{Effect,IO}
+import cats.effect.{ Effect, IO, Sync }
 
-import fs2.fast.internal.{Algebra,Free}
+import fs2.fast.internal.{ Algebra, Free }
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -120,12 +120,23 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def run[F2[x]>:F[x]](implicit F: Effect[F2], ec: ExecutionContext): F2[Unit] =
     runFold[F2,Unit](())((u, _) => u)
 
+  def runSync[F2[x]>:F[x]](implicit F: Sync[F2]): F2[Unit] =
+    runFoldSync[F2,Unit](())((u, _) => u)
+
   def runFold[F2[x]>:F[x],B](init: B)(f: (B, O) => B)(implicit F: Effect[F2], ec: ExecutionContext): F2[B] =
     Algebra.runFold(get[F2,O], init)(f)
+
+  def runFoldSync[F2[x]>:F[x],B](init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] =
+    Algebra.runFoldSync(get[F2,O], init)(f)
 
   def runLog[F2[x]>:F[x],O2>:O](implicit F: Effect[F2], ec: ExecutionContext): F2[Vector[O2]] = {
     import scala.collection.immutable.VectorBuilder
     F.suspend(F.map(runFold[F2, VectorBuilder[O2]](new VectorBuilder[O2])(_ += _))(_.result))
+  }
+
+  def runLogSync[F2[x]>:F[x],O2>:O](implicit F: Sync[F2]): F2[Vector[O2]] = {
+    import scala.collection.immutable.VectorBuilder
+    F.suspend(F.map(runFoldSync[F2, VectorBuilder[O2]](new VectorBuilder[O2])(_ += _))(_.result))
   }
 
   def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =

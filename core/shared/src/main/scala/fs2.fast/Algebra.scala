@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic.{ AtomicBoolean, AtomicLong }
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
-import cats.effect.Effect
+import cats.effect.{ Effect, Sync }
 
 import fs2.internal.{ LinkedSet, TwoWayLatch }
 
@@ -104,10 +104,31 @@ private[fs2] object Algebra {
 
   case object Interrupted extends Throwable { override def fillInStackTrace = this }
 
-  /**
-   * Left-fold the output of a stream.
-   */
+  /** Left-fold the output of a stream, supporting `unconsAsync`. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Effect[F2], ec: ExecutionContext): F2[B] = {
+    implicit val startable: Startable[F2] = new Startable[F2] {
+      def start[A](fa: F2[A]): F2[F2[A]] = concurrent.start(fa)
+    }
+    runFold0(stream, init)(f)
+  }
+
+  /**
+   * Left-fold the output of a stream, without support for `unconsAsync`.
+   *
+   * If an `unconsAsync` is encountered, `F.raiseError(UnexpectedUnconsAsync)` is returned.
+   */
+  def runFoldSync[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
+    implicit val startable: Startable[F2] = new Startable[F2] {
+      def start[A](fa: F2[A]): F2[F2[A]] = F.raiseError(UnexpectedUnconsAsync)
+    }
+    runFold0(stream, init)(f)
+  }
+
+  private trait Startable[F[_]] {
+    def start[A](fa: F[A]): F[F[A]]
+  }
+
+  private def runFold0[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2], S: Startable[F2]): F2[B] = {
     runFold_(stream, init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentSkipListMap(new java.util.Comparator[Token] {
       def compare(x: Token, y: Token) = x.nonce compare y.nonce
     }))
@@ -137,7 +158,7 @@ private[fs2] object Algebra {
   private def runFold_[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B,
       startCompletion: AtomicBoolean,
       midAcquires: TwoWayLatch,
-      resources: ConcurrentSkipListMap[Token, F2[Unit]])(implicit F: Effect[F2], ec: ExecutionContext): F2[B] = {
+      resources: ConcurrentSkipListMap[Token, F2[Unit]])(implicit F: Sync[F2], S: Startable[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
     def go(acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B] = v match {
@@ -186,7 +207,7 @@ private[fs2] object Algebra {
           case Algebra.UnconsAsync(s) =>
             type UO = Option[(Segment[_,Unit], Free[Algebra[F,Any,?],Unit])]
             type R = Either[Throwable, UO]
-            val task: F[F[R]] = concurrent.start { F.attempt {
+            val task: F[F[R]] = S.start { F.attempt {
               runFold_(
                 uncons(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
                 None: UO)((o,a) => a, startCompletion, midAcquires, resources)
