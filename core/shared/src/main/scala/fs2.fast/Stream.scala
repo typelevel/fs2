@@ -151,6 +151,19 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     go(this, n).close
   }
 
+  def drop(n: Long): Stream[F,O] = {
+    def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = s.uncons flatMap {
+      case None => Pull.pure(())
+      case Some((hd, tl)) =>
+        Pull.segment(hd.drop(n)) flatMap {
+          case (n, ()) =>
+            if (n > 0) go(tl, n)
+            else Pull.fromFree(tl.get)
+        }
+    }
+    go(this, n).close
+  }
+
   /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
   def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
     Pull.fromFree(Algebra.uncons(get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }

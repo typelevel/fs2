@@ -162,6 +162,13 @@ abstract class Segment[+O,+R] { self =>
     // overriding the `Unit` produced by `this`
     chunk(c).asInstanceOf[Segment[O2,R]] ++ this
 
+  final def drain: Segment[Nothing,R] = new Segment[Nothing,R] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      self.stage(depth.increment, defer, o => (), os => (), done).map(_.mapRemainder(_.drain))
+    }
+    override def toString = s"($self).drain"
+  }
+
   final def foreachChunk(f: Chunk[O] => Unit): Unit = {
     var ok = true
     val trampoline = makeTrampoline

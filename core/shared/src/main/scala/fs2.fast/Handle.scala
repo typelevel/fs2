@@ -62,7 +62,6 @@ final class Handle[+F[_],+O] private[fs2] (
         else Pull.pure(Some((h(0), rem.fold(_ => tl, tl.push(_)))))
     }
 
-
   /**
    * Asynchronously awaits for a segment of elements to be available in the source stream.
    */
@@ -122,22 +121,26 @@ final class Handle[+F[_],+O] private[fs2] (
   // /** Awaits the next available element from the input, or `None` if the input is exhausted. */
   // def await1Option: Pull[F,Nothing,Option[(A,Handle[F,A])]] =
   //   await1.map(Some(_)) or Pull.pure(None)
-  //
-  // /** Copies the next available chunk to the output. */
-  // def copy: Pull[F,A,Handle[F,A]] =
-  //   this.receive { (chunk, h) => Pull.output(chunk) >> Pull.pure(h) }
-  //
-  // /** Copies the next available element to the output. */
-  // def copy1: Pull[F,A,Handle[F,A]] =
-  //   this.receive1 { (hd, h) => Pull.output1(hd) >> Pull.pure(h) }
-  //
-  // /** Drops the first `n` elements of this `Handle`, and returns the new `Handle`. */
-  // def drop(n: Long): Pull[F, Nothing, Handle[F, A]] =
-  //   if (n <= 0) Pull.pure(this)
-  //   else awaitLimit(if (n <= Int.MaxValue) n.toInt else Int.MaxValue).flatMap {
-  //     case (chunk, h) => h.drop(n - chunk.size)
-  //   }
-  //
+
+  /** Copies the next available chunk to the output. */
+  def copy: Pull[F,O,Option[Handle[F,O]]] =
+    this.receive { (s, h) => Pull.output(s) >> Pull.pure(h) }
+
+  /** Copies the next available element to the output. */
+  def copy1: Pull[F,O,Option[Handle[F,O]]] =
+    this.receive1 { (hd, h) => Pull.output1(hd) >> Pull.pure(h) }
+
+  /** Drops the first `n` elements of this `Handle`, and returns the new `Handle`. */
+  def drop(n: Long): Pull[F,Nothing,Option[Handle[F,O]]] =
+    if (n <= 0) Pull.pure(Some(this))
+    else awaitLimit(n).flatMap {
+      case Some(s) =>
+        Pull.segment(s.drain).flatMap { case (rem, tl) =>
+          if (rem > 0) tl.drop(rem) else Pull.pure(Some(tl))
+        }
+      case None => Pull.pure(None)
+    }
+
   // /**
   //  * Drops elements of the this `Handle` until the predicate `p` fails, and returns the new `Handle`.
   //  * If non-empty, the first element of the returned `Handle` will fail `p`.
