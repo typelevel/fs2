@@ -75,9 +75,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def cons[O2>:O](c: Chunk[O2]): Stream[F,O2] =
     if (c.isEmpty) this else Stream.chunk(c) ++ this
 
-  def covary[F2[x]>:F[x]]: Stream[F2,O] = this.asInstanceOf
-  def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf
-  def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = this.asInstanceOf
+  def covary[F2[x]>:F[x]]: Stream[F2,O] = this.asInstanceOf[Stream[F2,O]]
+  def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf[Stream[F,O2]]
+  def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = this.asInstanceOf[Stream[F2,O2]]
 
   def flatMap[F2[x]>:F[x],O2](f: O => Stream[F2,O2]): Stream[F2,O2] =
     Stream.fromFree(Algebra.uncons(get[F2,O]).flatMap {

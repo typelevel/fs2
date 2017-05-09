@@ -3,7 +3,6 @@ package fs2.fast
 import fs2.Chunk
 import fs2.internal.LinkedSet
 import fs2.fast.internal.{Algebra,Free}
-// import fs2.util.{RealSupertype, Lub1, Sub1}
 
 /**
  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -35,23 +34,17 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
   def close: Stream[F,O] = close_(false)
 
-  def covary[F2[x]>:F[x]]: Pull[F2,O,R] = this.asInstanceOf
-  def covaryOutput[O2>:O]: Pull[F,O2,R] = this.asInstanceOf
-  def covaryResource[R2>:R]: Pull[F,O,R2] = this.asInstanceOf
-  def covaryAll[F2[x]>:F[x],O2>:O,R2>:R]: Pull[F2,O2,R2] = this.asInstanceOf
+  /** Close this `Pull`, but don't cleanup any resources acquired. */
+  private[fs2] def closeAsStep: Stream[F,O] = close_(true) // todo this isn't used anywhere
+
+  def covary[F2[x]>:F[x]]: Pull[F2,O,R] = this.asInstanceOf[Pull[F2,O,R]]
+  def covaryOutput[O2>:O]: Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
+  def covaryResource[R2>:R]: Pull[F,O,R2] = this.asInstanceOf[Pull[F,O,R2]]
+  def covaryAll[F2[x]>:F[x],O2>:O,R2>:R]: Pull[F2,O2,R2] = this.asInstanceOf[Pull[F2,O2,R2]]
 
   /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
   def onError[F2[x]>:F[x],O2>:O,R2>:R](h: Throwable => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
     Pull.fromFree(get[F2,O2,R2] onError { e => h(e).get })
-
-  def or[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] = ??? // TODO
-
-  // /** If `f` returns true when passed the resource of this pull, this pull is returned. Otherwise, `Pull.done` is returned. */
-  // def filter(f: R => Boolean): Pull[F,O,R] = withFilter(f)
-  //
-  // /** If `f` returns true when passed the resource of this pull, this pull is returned. Otherwise, `Pull.done` is returned. */
-  // def withFilter(f: R => Boolean): Pull[F,O,R] =
-  //   flatMap(r => if (f(r)) Pull.pure(r) else Pull.done)
 
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
@@ -68,9 +61,6 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
     (this onError (e => p2 >> Pull.fail(e))) flatMap { _ =>  p2 }
-
-  /** Returns this pull's resource wrapped in `Some` or returns `None` if this pull fails due to an exhausted `Handle`. */
-  def optional: Pull[F,O,Option[R]] = map(Some(_)).or(Pull.pure(None))
 
   def scope[F2[x]>:F[x]]: Pull[F2,O,R] = Pull.snapshot[F2,O] flatMap { tokens0 =>
     this flatMap { r =>
