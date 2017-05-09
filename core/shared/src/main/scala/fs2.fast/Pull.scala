@@ -3,7 +3,6 @@ package fs2.fast
 import fs2.Chunk
 import fs2.internal.LinkedSet
 import fs2.fast.internal.{Algebra,Free}
-// import fs2.util.{RealSupertype, Lub1, Sub1}
 
 /**
  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -34,6 +33,9 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
   def close: Stream[F,O] = close_(false)
+
+  /** Close this `Pull`, but don't cleanup any resources acquired. */
+  private[fs2] def closeAsStep: Stream[F,O] = close_(true) // todo this isn't used anywhere
 
   def covary[F2[x]>:F[x]]: Pull[F2,O,R] = this.asInstanceOf[Pull[F2,O,R]]
   def covaryOutput[O2>:O]: Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
