@@ -64,7 +64,7 @@ final class Handle[+F[_],+O] private[fs2] (
   /**
    * Asynchronously awaits for a segment of elements to be available in the source stream.
    */
-  def awaitAsync: Pull[F,O,Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]]] =
+  def awaitAsync: Pull[F,Nothing,Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]]] =
     buffer match {
       case hd :: tl => Pull.pure(Pull.pure(Some((hd, new Handle(tl, underlying)))))
       case Nil => underlying.unconsAsync.map(_.map(_.map { case (segment, stream) => (segment, new Handle(Nil, stream))}))
@@ -221,16 +221,12 @@ final class Handle[+F[_],+O] private[fs2] (
   def peek1: Pull[F,Nothing,Option[(O,Handle[F,O])]] =
     this.receive1 { (hd, tl) => Pull.pure(Some((hd, tl.push1(hd)))) }
 
-  // // /**
-  // //  * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
-  // //  * inner `Pull` logically blocks until this await completes.
-  // //  */
-  // // def prefetch[F2[_]](implicit sub: Sub1[F,F2], F: Effect[F2], ec: ExecutionContext): Pull[F2,Nothing,Pull[F2,Nothing,Handle[F2,A]]] =
-  // //   awaitAsync map { fut =>
-  // //     fut.pull flatMap { p =>
-  // //       p map { case (hd, h) => h push hd }
-  // //     }
-  // //   }
+  /**
+   * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
+   * inner `Pull` logically blocks until this await completes.
+   */
+  def prefetch: Pull[F,Nothing,Pull[F,Nothing,Option[Handle[F,O]]]] =
+    awaitAsync.map { fut => fut.map { _.map { case (hd, h) => h push hd } } }
 
   /** Emits the first `n` elements of the input and return the new `Handle`. */
   def take(n: Long): Pull[F,O,Option[Handle[F,O]]] =

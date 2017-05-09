@@ -168,7 +168,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
     Pull.fromFree(Algebra.uncons(get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
 
-  def unconsAsync: Pull[F,O,Pull[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]]] =
+  def unconsAsync: Pull[F,Nothing,Pull[F,Nothing,Option[(Segment[O,Unit], Stream[F,O])]]] =
     Pull.fromFree(Algebra.unconsAsync(get)).map { x =>
       Pull.fromFree(x.map(_.map { case (segment, stream) => (segment, Stream.fromFree(stream)) }))
     }
