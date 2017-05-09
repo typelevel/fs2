@@ -15,7 +15,7 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
 
   def genSegment[O](genO: Gen[O]): Gen[Segment[O,Unit]] = Gen.oneOf(
     Gen.const(()).map(Segment.pure(_)),
-    genO.map(Segment.single),
+    genO.map(Segment.singleton),
     Gen.listOf(genO).map(Segment.seq(_)),
     Gen.delay(for { lhs <- genSegment(genO); rhs <- genSegment(genO) } yield lhs ++ rhs),
     Gen.delay(for { seg <- genSegment(genO); c <- Gen.listOf(genO).map(Chunk.seq) } yield seg.push(c))
@@ -78,6 +78,12 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
         }
         unconsAll(Catenable.empty, seg).toList.map(_.toList) shouldBe xss
       }
+    }
+
+    "staging stack safety" in {
+      val N = 20
+      val s = (0 until N).foldLeft(Segment.singleton(0))((s,i) => s map (_ + i))
+      s.sum(0).run shouldBe (0 until N).sum
     }
   }
 }
