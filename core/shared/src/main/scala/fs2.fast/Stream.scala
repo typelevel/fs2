@@ -1,6 +1,6 @@
 package fs2.fast
 
-import fs2.{ Chunk, Pure }
+import fs2.{ Pure }
 
 import scala.concurrent.ExecutionContext
 
@@ -77,7 +77,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     Stream.fromFree(Algebra.uncons(get[F2,O]).flatMap {
       case None => Stream.empty[F2,O2].get
       case Some((hd, tl)) =>
-        (hd.map(f).toChunk.foldRight(Stream.empty[F2,O2])(Stream.append(_,_)) ++ Stream.fromFree(tl).flatMap(f)).get
+        val tl2 = Stream.fromFree(tl).flatMap(f)
+        (hd.map(f).foldRightLazy(tl2)(Stream.append(_,_))).get
     })
 
   /** Defined as `s >> s2 == s flatMap { _ => s2 }`. */
@@ -168,7 +169,7 @@ object Stream {
   def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
     fromFree(s1.get.flatMap { _ => s2.get })
 
-  def apply[F[_],O](os: O*): Stream[F,O] = fromFree(Algebra.output[F,O](Segment.chunk(Chunk.seq(os))))
+  def apply[F[_],O](os: O*): Stream[F,O] = fromFree(Algebra.output[F,O](Chunk.seq(os)))
 
   def attemptEval[F[_],O](fo: F[O]): Stream[F,Either[Throwable,O]] =
     fromFree(Pull.attemptEval(fo).flatMap(Pull.output1).get)
@@ -183,7 +184,7 @@ object Stream {
       use(r).map(o => (token,o)).onComplete { fromFree(Algebra.release(token)) }.get
     })
 
-  def chunk[F[_],O](os: Chunk[O]): Stream[F,O] = fromFree(Algebra.output[F,O](Segment.chunk(os)))
+  def chunk[F[_],O](os: Chunk[O]): Stream[F,O] = segment(os)
 
   @deprecated("Use s.cons(c) instead", "1.0")
   def cons[F[_],O](s: Stream[F,O])(c: Chunk[O]): Stream[F,O] = s.cons(c)

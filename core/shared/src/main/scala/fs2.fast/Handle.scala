@@ -5,8 +5,6 @@ package fs2.fast
 // import scala.concurrent.ExecutionContext
 // import cats.effect.Effect
 
-import fs2.Chunk
-
 /**
  * A currently open `Stream[F,O]` which allows chunks to be pulled or pushed.
  *
@@ -34,7 +32,7 @@ final class Handle[+F[_],+O] private[fs2] (
 
   /** Returns a new handle with the specified chunk prepended to elements from the source stream. */
   def pushChunk[O2>:O](c: Chunk[O2]): Handle[F,O2] =
-    if (c.isEmpty) this else push(Segment.chunk(c))
+    if (c.isEmpty) this else push(c)
 
   /** Like [[push]] but for a single element instead of a chunk. */
   def push1[O2>:O](o: O2): Handle[F,O2] =
@@ -56,12 +54,11 @@ final class Handle[+F[_],+O] private[fs2] (
   def await1: Pull[F,Nothing,Option[(O,Handle[F,O])]] =
     await flatMap {
       case None => Pull.pure(None)
-      case Some((hd, tl)) =>
-        val (h, rem) = hd.splitAt(1)
-        if (h.isEmpty) tl.await1
-        else Pull.pure(Some((h(0), rem.fold(_ => tl, tl.push(_)))))
+      case Some((hd, tl)) => hd.uncons1 match {
+        case Left(_) => tl.await1
+        case Right((hd,rem)) => Pull.pure(Some(hd -> tl.push(rem)))
+      }
     }
-
 
   /**
    * Asynchronously awaits for a segment of elements to be available in the source stream.

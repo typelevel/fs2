@@ -39,13 +39,6 @@ object FastBranchVsOld extends App {
     },
     timeit("dumb chunk map (2)") {
       import fs2.fast._
-      Segment.intArray(new Array[Int](1000))
-             .map(_ + 1)
-             .map(_ + 1)
-             .run(null).hashCode.toLong
-    },
-    timeit("dumb chunk map (2a)") {
-      import fs2.fast._
       Segment.array(new Array[Int](1000))
              .map(_ + 1)
              .map(_ + 1)
@@ -67,10 +60,10 @@ object FastBranchVsOld extends App {
     timeit("dumb chunk map (1)") {
       import fs2.fast._
       var x : Long = (math.random * 10).toLong
-      Segment.chunk(Chunk.bytes(new Array[Byte](50)))
-             .map(_ + (1:Byte))
-             .map(b => x += b)
-             .map(_ => ()).run
+      Chunk.bytes(new Array[Byte](50))
+           .map(_ + (1:Byte))
+           .map(b => x += b)
+           .map(_ => ()).run
       x
     }
   )

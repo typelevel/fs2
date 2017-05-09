@@ -1,6 +1,5 @@
 package fs2.fast
 
-import fs2.Chunk
 import fs2.internal.LinkedSet
 import fs2.fast.internal.{Algebra,Free}
 
@@ -109,9 +108,6 @@ object Pull {
 
   def output[F[_],O](os: Segment[O,Unit]): Pull[F,O,Unit] =
     fromFree(Algebra.output[F,O](os))
-
-  def output[F[_],O](os: Chunk[O]): Pull[F,O,Unit] =
-    fromFree(Algebra.output[F,O](Segment.chunk(os)))
 
   def pure[F[_],R](r: R): Pull[F,Nothing,R] =
     fromFree(Algebra.pure(r))

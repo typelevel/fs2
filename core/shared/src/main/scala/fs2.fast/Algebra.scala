@@ -84,7 +84,7 @@ private[fs2] object Algebra {
             try {
               val (hd, tl) = os.values.splitAt(chunkSize)
               pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(
-                Segment.chunk(hd) -> tl.fold(r => bound.f(r), segment(_).flatMap(bound.f))
+                hd -> tl.fold(r => bound.f(r), segment(_).flatMap(bound.f))
               ))
             }
             catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {

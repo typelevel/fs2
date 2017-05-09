@@ -5,7 +5,6 @@ import Arbitrary.arbitrary
 import org.scalatest.{ FreeSpec, Matchers }
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
 
-import fs2.Chunk
 import fs2.util.Catenable
 
 class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChecks {

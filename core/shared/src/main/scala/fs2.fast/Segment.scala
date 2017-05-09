@@ -1,7 +1,6 @@
 package fs2.fast
 
 import cats.Eval
-import fs2.Chunk
 import fs2.util.Catenable
 
 import Segment._
@@ -21,7 +20,25 @@ abstract class Segment[+O,+R] { self =>
                r => defer(done(r)))
       }
 
-  final def uncons: Either[R, (Chunk[O],Segment[O,R])] = {
+  final def uncons: Either[R, (Chunk[O],Segment[O,R])] =
+    unconsAll match {
+      case Left(r) => Left(r)
+      case Right((cs, tl)) => cs match {
+        case c :: cs => Right(c -> cs.foldRight(tl)((hd,tl) => tl push hd))
+        case Nil => tl.uncons // should never hit this case
+      }
+    }
+
+  @annotation.tailrec
+  final def uncons1: Either[R, (O,Segment[O,R])] =
+    uncons match {
+      case Left(r) => Left(r)
+      case Right((c, tl)) =>
+        if (c.nonEmpty) Right(c(0) -> tl.push(Chunk.indexedSeq(c.toIndexedSeq.drop(1))))
+        else tl.uncons1
+    }
+
+  final def unconsAll: Either[R, (List[Chunk[O]],Segment[O,R])] = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
     var ok = true
@@ -29,14 +46,14 @@ abstract class Segment[+O,+R] { self =>
     val step = stage(Depth(0),
       defer(trampoline),
       o => { out = out :+ Chunk.singleton(o); ok = false },
-      os => { out = out :+ Chunk.indexedSeq(os.toVector); ok = false }, // todo use array copy
+      os => { out = out :+ os; ok = false },
       r => { result = Some(r); ok = false }).value
     while (ok) steps(step, trampoline)
     result match {
-      case None => Right(Chunk.concat(out.toList) -> step.remainder)
+      case None => Right(out.toList -> step.remainder)
       case Some(r) =>
         if (out.isEmpty) Left(r)
-        else Right(Chunk.concat(out.toList) -> pure(r))
+        else Right(out.toList -> pure(r))
     }
   }
 
@@ -47,6 +64,11 @@ abstract class Segment[+O,+R] { self =>
     val step = stage(Depth(0), defer(trampoline), _ => (), _ => (), r => { result = Some(r); ok = false }).value
     while (ok) steps(step, trampoline)
     result.get
+  }
+
+  final def foldRightLazy[B](z: => B)(f: (O,=>B) => B): B = this.uncons match {
+    case Left(_) => z
+    case Right((hd,tl)) => hd.toIndexedSeq.foldRight(tl.foldRightLazy(z)(f))(f(_,_))
   }
 
   final def sum[N>:O](initial: N)(implicit N: Numeric[N]): Segment[Nothing,N] = new Segment[Nothing,N] {
@@ -157,10 +179,10 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
-  final def push[O2>:O](c: Chunk[O2]): Segment[O2,R] =
+  final def push[O2>:O](c: Segment[O2,Any]): Segment[O2,R] =
     // note - cast is fine, as `this` is guaranteed to provide an `R`,
-    // overriding the `Unit` produced by `this`
-    chunk(c).asInstanceOf[Segment[O2,R]] ++ this
+    // overriding the `Any` produced by `c`
+    c.asInstanceOf[Segment[O2,R]] ++ this
 
   final def foreachChunk(f: Chunk[O] => Unit): Unit = {
     var ok = true
@@ -175,27 +197,53 @@ abstract class Segment[+O,+R] { self =>
     acc
   }
 
-  final def toChunk: Chunk[O] = Chunk.concat(toChunks.toList)
+  def toChunk: Chunk[O] = {
+    val buf = new collection.mutable.ArrayBuffer[O]
+    foreachChunk(c => buf ++= c.toIndexedSeq)
+    Chunk.indexedSeq(buf)
+  }
+
+  def toIndexedSeq: IndexedSeq[O] = {
+    val buf = new collection.mutable.ArrayBuffer[O]
+    foreachChunk(c => buf ++= c.toIndexedSeq)
+    buf
+  }
+
+  final def toList: List[O] = {
+    val buf = new collection.mutable.ListBuffer[O]
+    foreachChunk(c => buf ++= c.toIndexedSeq)
+    buf.toList
+  }
 
   /**
    * `s.splitAt(n)` is equivalent to `(s.take(n).toChunk, s.drop(n))`
    * but avoids traversing the segment twice.
    */
-  def splitAt(n: Int): (Chunk[O], Either[R, Segment[O,R]]) = {
+  def splitAt(n: Int): (Segment[O,Unit], Either[R, Segment[O,R]]) = {
     // TODO rewrite this as an interpreter
+    def concat(acc: Catenable[Segment[O,Unit]]) =
+      if (acc.isEmpty) Segment.empty
+      else Segment.Catenated(acc)
     @annotation.tailrec
-    def go(n: Int, acc: Catenable[Chunk[O]], seg: Segment[O,R]): (Chunk[O], Either[R, Segment[O,R]]) = {
+    def go(n: Int, acc: Catenable[Segment[O,Unit]], seg: Segment[O,R]): (Segment[O,Unit], Either[R, Segment[O,R]]) = {
       seg.uncons match {
-        case Left(r) => (Chunk.concat(acc.toList), Left(r))
+        case Left(r) => (concat(acc), Left(r))
         case Right((chunk,rem)) =>
           chunk.size match {
-            case sz if n == sz => (Chunk.concat((acc :+ chunk).toList), Right(rem))
-            case sz if n < sz => (Chunk.concat((acc :+ chunk.take(n)).toList), Right(rem.push(chunk.drop(n))))
+            case sz if n == sz => (concat(acc :+ chunk), Right(rem))
+            case sz if n < sz => (concat(acc :+ chunk.take(n).voidResult),
+                                  Right(rem push chunk.drop(n)))
             case sz => go(n - chunk.size, acc :+ chunk, rem)
           }
       }
     }
     go(n, Catenable.empty, this)
+  }
+
+  override def hashCode = toIndexedSeq.hashCode
+  override def equals(a: Any): Boolean = a match {
+    case s: Segment[O,R] => this.toIndexedSeq == s.toIndexedSeq
+    case _ => false
   }
 }
 
@@ -220,29 +268,6 @@ object Segment {
     override def toString = s"singleton($o)"
   }
 
-  def chunk[O](os: Chunk[O]): Segment[O,Unit] = new Segment[O,Unit] {
-    def stage0 = (_, _, _, emits, done) => Eval.later {
-      var emitted = false
-      step(if (emitted) empty else chunk(os)) {
-        emits(os)
-        done(())
-        emitted = true
-      }
-    }
-    override def toString = s"chunk($os)"
-  }
-
-  def intArray(os: Array[Int], from: Int = 0): Segment[Int,Unit] = new Segment[Int,Unit] {
-    def stage0 = (_, _, emit, _, done) => Eval.later {
-      var i = from max 0
-      step(if (i < os.length) intArray(os, i) else empty) {
-        if (i < os.length) { emit(os(i)); i += 1 }
-        else done(())
-      }
-    }
-    override def toString = { val vs = os.toList.mkString(", "); s"intArray($vs)" }
-  }
-
   def array[@specialized O](os: Array[O], from: Int = 0): Segment[O,Unit] = new Segment[O,Unit] {
     def stage0 = (_, _, emit, _, done) => Eval.later {
       var i = from max 0
@@ -254,7 +279,7 @@ object Segment {
     override def toString = { val vs = os.toList.mkString(", "); s"array($vs)" }
   }
 
-  def seq[O](os: Seq[O]): Segment[O,Unit] = chunk(Chunk.seq(os))
+  def seq[O](os: Seq[O]): Chunk[O] = Chunk.seq(os)
 
   private[fs2]
   case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
@@ -338,46 +363,4 @@ object Segment {
     def <(that: Depth): Boolean = value < that.value
   }
 
-  class DChunk[@specialized +O](array: Array[O]) extends Segment[O,Unit] {
-    def stage0 = (_, _, emit, emits, done) => Eval.now {
-      var emitted = false
-      step(if (emitted) empty else this) {
-        if (!emitted) {
-          emits(Chunk.indexedSeq(array)) // todo, just `emits(this)` once switch to `DChunk`
-          emitted = true
-        }
-        else done(())
-      }
-    }
-    def size = array.length
-    def apply(i: Int): O = array(i)
-
-    def asInts[O2>:O](implicit IsInt: O2 =:= Int): Array[Int] = array.asInstanceOf[Array[Int]]
-    def asDoubles[O2>:O](implicit IsDouble: O2 =:= Double): Array[Double] = array.asInstanceOf[Array[Double]]
-    def asBytes[O2>:O](implicit IsByte: O2 =:= Byte): Array[Byte] = array.asInstanceOf[Array[Byte]]
-    def asLongs[O2>:O](implicit IsLong: O2 =:= Long): Array[Long] = array.asInstanceOf[Array[Long]]
-    def asShorts[O2>:O](implicit IsShort: O2 =:= Short): Array[Short] = array.asInstanceOf[Array[Short]]
-    def asFloats[O2>:O](implicit IsFloat: O2 =:= Float): Array[Float] = array.asInstanceOf[Array[Float]]
-
-    def tryAsBytes[O2>:O](implicit IsByte: O2 =:= Byte): Option[Array[Byte]] =
-      if (array.isInstanceOf[Array[Byte]]) Some(array.asInstanceOf[Array[Byte]])
-      else None
-    def tryAsShorts[O2>:O](implicit IsShort: O2 =:= Short): Option[Array[Short]] =
-      if (array.isInstanceOf[Array[Short]]) Some(array.asInstanceOf[Array[Short]])
-      else None
-    def tryAsInts[O2>:O](implicit IsInt: O2 =:= Int): Option[Array[Int]] =
-      if (array.isInstanceOf[Array[Int]]) Some(array.asInstanceOf[Array[Int]])
-      else None
-    def tryAsLongs[O2>:O](implicit IsLong: O2 =:= Long): Option[Array[Long]] =
-      if (array.isInstanceOf[Array[Long]]) Some(array.asInstanceOf[Array[Long]])
-      else None
-    def tryAsFloats[O2>:O](implicit IsFloat: O2 =:= Float): Option[Array[Float]] =
-      if (array.isInstanceOf[Array[Float]]) Some(array.asInstanceOf[Array[Float]])
-      else None
-    def tryAsDoubles[O2>:O](implicit IsDouble: O2 =:= Double): Option[Array[Double]] =
-      if (array.isInstanceOf[Array[Double]]) Some(array.asInstanceOf[Array[Double]])
-      else None
-
-    override def toString = { val vs = array.mkString(", "); s"array($vs)" }
-  }
 }
