@@ -152,15 +152,15 @@ final class Handle[+F[_],+O] private[fs2] (
   //   }
 
   /** Writes all inputs to the output of the returned `Pull`. */
-  def echo: Pull[F,O,Unit] = Pull.loop[F,O,Handle[F,O]](_.echoChunk)(this)
+  def echo: Pull[F,O,Unit] = Pull.loop[F,O,Handle[F,O]](_.echoSegment)(this)
 
   /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
   def echo1: Pull[F,O,Option[Handle[F,O]]] =
     this.receive1 { (o, h) => Pull.output1(o).as(Some(h)) }
 
-  /** Reads the next available chunk from the input and emits it to the output. Returns the new `Handle`. */
-  def echoChunk: Pull[F,O,Option[Handle[F,O]]] =
-    this.receive { (c, h) => Pull.output(c).as(Some(h)) }
+  /** Reads the next available segment from the input and emits it to the output. Returns the new `Handle`. */
+  def echoSegment: Pull[F,O,Option[Handle[F,O]]] =
+    this.receive { (s, h) => Pull.output(s).as(Some(h)) }
 
   // /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
   // def fetchN(n: Int): Pull[F,Nothing,Handle[F,A]] =
