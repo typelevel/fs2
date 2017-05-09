@@ -141,9 +141,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
       case None => Pull.pure(())
       case Some((hd, tl)) =>
         Pull.segment(hd.take(n)) flatMap {
-          case (_, None) =>
+          case None =>
             Pull.pure(())
-          case (n, Some(())) =>
+          case Some((n, ())) =>
             if (n > 0) go(tl, n)
             else Pull.pure(())
         }

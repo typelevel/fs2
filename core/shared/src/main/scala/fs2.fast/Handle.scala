@@ -92,8 +92,11 @@ final class Handle[+F[_],+O] private[fs2] (
   def awaitLimit(n: Long): Pull[F,Nothing,Option[Segment[O,(Long,Handle[F,O])]]] = {
     require(n > 0)
     await.map { _.map { case (hd, tl) =>
-      hd.take(n).mapResult { case (rem, result) =>
-        (rem, result.map(_ => tl).getOrElse(tl.push(hd.drop(n).voidResult)))
+      hd.take(n).mapResult {
+        case None =>
+          (0, tl.push(hd.drop(n).voidResult))
+        case Some((rem, _)) =>
+          (rem, tl)
       }
     }}
   }
