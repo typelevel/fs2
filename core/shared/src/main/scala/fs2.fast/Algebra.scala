@@ -33,7 +33,7 @@ private[fs2] object Algebra {
     Free.Eval[Algebra[F,O,?],Unit](Output(values))
 
   def output1[F[_],O](value: O): Free[Algebra[F,O,?],Unit] =
-    output(Segment.single(value))
+    output(Segment.singleton(value))
 
   def segment[F[_],O,R](values: Segment[O,R]): Free[Algebra[F,O,?],R] =
     Free.Eval[Algebra[F,O,?],R](WrapSegment(values))
