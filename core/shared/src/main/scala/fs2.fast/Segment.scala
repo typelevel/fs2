@@ -227,32 +227,33 @@ abstract class Segment[+O,+R] { self =>
     buf.toList
   }
 
-  /**
-   * `s.splitAt(n)` is equivalent to `(s.take(n).toChunk, s.drop(n))`
-   * but avoids traversing the segment twice.
-   */
-  def splitAt(n: Int): (Segment[O,Unit], Either[R, Segment[O,R]]) = {
-    // TODO rewrite this as an interpreter
-    def concat(acc: Catenable[Segment[O,Unit]]) =
-      if (acc.isEmpty) Segment.empty
-      else Segment.Catenated(acc)
-    @annotation.tailrec
-    def go(n: Int, acc: Catenable[Segment[O,Unit]], seg: Segment[O,R]): (Segment[O,Unit], Either[R, Segment[O,R]]) = {
-      seg.unconsChunk match {
-        case Left(r) => (concat(acc), Left(r))
-        case Right((chunk,rem)) =>
-          chunk.size match {
-            case sz if n == sz => (concat(acc :+ chunk), Right(rem))
-            case sz if n < sz => (concat(acc :+ chunk.take(n).voidResult),
-                                  Right(rem push chunk.drop(n)))
-            case sz => go(n - chunk.size, acc :+ chunk, rem)
-          }
-      }
-    }
-    go(n, Catenable.empty, this)
+  final def splitAt(n:Int): (Segment[O,Unit], Either[R,Segment[O,R]]) = {
+    var out: Catenable[Chunk[O]] = Catenable.empty
+    var result: Option[Either[R,Segment[O,(Long,Unit)]]] = None
+    var rem = n
+    val trampoline = makeTrampoline
+    val step = stage(Depth(0),
+      defer(trampoline),
+      o => { out = out :+ Chunk.singleton(o); rem -= 1 },
+      os => {
+        if (os.size <= rem) {
+          out = out :+ os
+          rem -= os.size
+        } else  {
+          out = out :+ os.take(rem).toChunk
+          result = Some(Right(os.drop(rem)))
+          rem = 0
+        }
+      },
+      r => result = Some(Left(r))).value
+    while (result == None && rem > 0) steps(step, trampoline)
+    val outAsSegment = if (out.isEmpty) Segment.empty else Catenated(out)
+    val resultAsEither: Either[R,Segment[O,R]] =
+      result.map(_.fold(r => Left(r), s => Right(step.remainder.push(s)))).getOrElse(Right(step.remainder))
+    (outAsSegment, resultAsEither)
   }
 
-  override def hashCode = toIndexedSeq.hashCode
+  override def hashCode: Int = toIndexedSeq.hashCode
   override def equals(a: Any): Boolean = a match {
     case s: Segment[O,R] => this.toIndexedSeq == s.toIndexedSeq
     case _ => false
@@ -288,7 +289,7 @@ object Segment {
         else done(())
       }
     }
-    override def toString = { val vs = os.toList.mkString(", "); s"array($vs)" }
+    override def toString = s"array(${os.mkString(", ")})"
   }
 
   def seq[O](os: Seq[O]): Chunk[O] = Chunk.seq(os)

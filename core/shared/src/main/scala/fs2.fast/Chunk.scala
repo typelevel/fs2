@@ -130,55 +130,55 @@ object Chunk {
   def apply[A](as: A*): Chunk[A] = seq(as)
 
   def array[A](values: Array[A]) = Boxed(values)
-  case class Boxed[A](values: Array[A]) extends Chunk[A] {
+  final case class Boxed[A](values: Array[A]) extends Chunk[A] {
     def size = values.length
     def apply(i: Int) = values(i)
   }
 
   def booleans(values: Array[Boolean]) = Booleans(values)
-  case class Booleans(values: Array[Boolean]) extends Chunk[Boolean] {
+  final case class Booleans(values: Array[Boolean]) extends Chunk[Boolean] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
   def bytes(values: Array[Byte]) = Bytes(values)
-  case class Bytes(values: Array[Byte]) extends Chunk[Byte] {
+  final case class Bytes(values: Array[Byte]) extends Chunk[Byte] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
   def shorts(values: Array[Short]) = Shorts(values)
-  case class Shorts(values: Array[Short]) extends Chunk[Short] {
+  final case class Shorts(values: Array[Short]) extends Chunk[Short] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
   def ints(values: Array[Int]) = Ints(values)
-  case class Ints(values: Array[Int]) extends Chunk[Int] {
+  final case class Ints(values: Array[Int]) extends Chunk[Int] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
   def longs(values: Array[Long]) = Longs(values)
-  case class Longs(values: Array[Long]) extends Chunk[Long] {
+  final case class Longs(values: Array[Long]) extends Chunk[Long] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
   def floats(values: Array[Float]) = Floats(values)
-  case class Floats(values: Array[Float]) extends Chunk[Float] {
+  final case class Floats(values: Array[Float]) extends Chunk[Float] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
   def doubles(values: Array[Double]) = Doubles(values)
-  case class Doubles(values: Array[Double]) extends Chunk[Double] {
+  final case class Doubles(values: Array[Double]) extends Chunk[Double] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
