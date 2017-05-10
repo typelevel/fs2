@@ -4,8 +4,10 @@ import fs2.{ Pure }
 
 import scala.concurrent.ExecutionContext
 
+import cats.{ Applicative, MonadError }
 import cats.effect.{ Effect, IO, Sync }
 
+import fs2.util.UF1
 import fs2.fast.internal.{ Algebra, Free }
 
 /**
@@ -66,19 +68,42 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def ++[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
     Stream.append(this, s2)
 
-  /** Defined as `s >> s2 == s flatMap { _ => s2 }`. */
-  def >>[F2[x]>:F[x],O2](s2: => Stream[F2,O2]): Stream[F2,O2] =
-    this flatMap { _ => s2 }
+  def append[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
+    Stream.append(this, s2)
+
+  def attempt: Stream[F,Either[Throwable,O]] =
+    map(Right(_)).onError(e => Stream.emit(Left(e)))
 
   /** `s as x == s map (_ => x)` */
   def as[O2](o2: O2): Stream[F,O2] = map(_ => o2)
 
-  def cons[O2>:O](c: Chunk[O2]): Stream[F,O2] =
+  /** Prepend a single segment onto the front of this stream. */
+  def cons[O2>:O](s: Segment[O2,Unit]): Stream[F,O2] =
+    Stream.segment(s) ++ this
+
+  /** Prepend a single chunk onto the front of this stream. */
+  def consChunk[O2>:O](c: Chunk[O2]): Stream[F,O2] =
     if (c.isEmpty) this else Stream.chunk(c) ++ this
 
+  /** Prepend a single value onto the front of this stream. */
+  def cons1[O2>:O](o: O2): Stream[F,O2] =
+    cons(Segment.singleton(o))
+
+  /** Lifts this stream to the specified effect type. */
   def covary[F2[x]>:F[x]]: Stream[F2,O] = this.asInstanceOf[Stream[F2,O]]
+
+  /** Lifts this stream to the specified output type. */
   def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf[Stream[F,O2]]
+
+  /** Lifts this stream to the specified effect and output types. */
   def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = this.asInstanceOf[Stream[F2,O2]]
+
+  /**
+   * Removes all output values from this stream.
+   * For example, `Stream.eval(IO(println("x"))).drain.runLog`
+   * will, when `unsafeRunSync` in called, print "x" but return `Vector()`.
+   */
+  def drain: Stream[F, Nothing] = flatMap { _ => Stream.empty }
 
   def drop(n: Long): Stream[F,O] = {
     def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = s.uncons flatMap {
@@ -93,6 +118,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     go(this, n).close
   }
 
+  def evalMap[F2[x]>:F[x],O2](f: O => F2[O2]): Stream[F2,O2] =
+    flatMap(o => Stream.eval(f(o)))
+
   def flatMap[F2[x]>:F[x],O2](f: O => Stream[F2,O2]): Stream[F2,O2] =
     Stream.fromFree(Algebra.uncons(get[F2,O]).flatMap {
       case None => Stream.empty[F2,O2].get
@@ -100,6 +128,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
         val tl2 = Stream.fromFree(tl).flatMap(f)
         (hd.map(f).foldRightLazy(tl2)(Stream.append(_,_))).get
     })
+
+  /** Defined as `s >> s2 == s flatMap { _ => s2 }`. */
+  def >>[F2[x]>:F[x],O2](s2: => Stream[F2,O2]): Stream[F2,O2] =
+    this flatMap { _ => s2 }
 
   def map[O2](f: O => O2): Stream[F,O2] = {
     def go(s: Stream[F,O]): Pull[F,O2,Unit] = s.uncons flatMap {
@@ -109,8 +141,12 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     go(this).close
   }
 
+  def mask: Stream[F,O] = onError(_ => Stream.empty)
+
   def merge[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
     through2v(s2)(pipe2.merge)
+
+  def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
   def open: Pull[F,Nothing,Handle[F,O]] = Pull.pure(new Handle(Nil, this))
 
@@ -121,6 +157,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
   def onError[F2[x]>:F[x],O2>:O](h: Throwable => Stream[F2,O2]): Stream[F2,O2] =
     Stream.fromFree(get[F2,O2] onError { e => h(e).get })
+
+  def onFinalize[F2[x]>:F[x]](f: F2[Unit])(F2: Applicative[F2]): Stream[F2,O] =
+    Stream.bracket(F2.pure(()))(_ => this, _ => f)
 
   def pull[F2[x]>:F[x],O2](using: Handle[F,O] => Pull[F2,O2,Any]) : Stream[F2,O2] =
     open.flatMap(using).close
@@ -348,6 +387,32 @@ object Stream {
     //
     // /** Applies the given sink to this stream and drains the output. */
     // def to(f: Sink[F,O]): Stream[F,Unit] = f(self)
+
+    def translate[G[_]](u: UF1[F, G])(implicit G: Effect[G]): Stream[G,O] =
+      translate_(u, Right(G))
+
+    def translateSync[G[_]](u: UF1[F, G])(implicit G: MonadError[G, Throwable]): Stream[G,O] =
+      translate_(u, Left(G))
+
+    private def translate_[G[_]](u: UF1[F, G], G: Either[MonadError[G, Throwable], Effect[G]]): Stream[G,O] = {
+      import Algebra._
+      def algFtoG[O]: UF1[Algebra[F,O,?],Algebra[G,O,?]] = new UF1[Algebra[F,O,?],Algebra[G,O,?]] { self =>
+        def apply[X](in: Algebra[F,O,X]): Algebra[G,O,X] = in match {
+          case Output(values) => Output[G,O](values)
+          case WrapSegment(values) => WrapSegment[G,O,X](values)
+          case Eval(value) => Eval[G,O,X](u(value))
+          case Acquire(resource, release) => Acquire(u(resource), r => u(release(r)))
+          case Release(token) => Release[G,O](token)
+          case Snapshot() => Snapshot[G,O]()
+          case UnconsAsync(s, effect, ec) =>
+            G match {
+              case Left(me) => Algebra.Eval(me.raiseError(new IllegalStateException("unconsAsync encountered while translating synchronously")))
+              case Right(ef) => UnconsAsync(s.translate[Algebra[G,Any,?]](algFtoG), ef, ec).asInstanceOf[Algebra[G,O,X]]
+            }
+        }
+      }
+      Stream.fromFree[G,O](self.get.translate[Algebra[G,O,?]](algFtoG))
+    }
 
     def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
       Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
