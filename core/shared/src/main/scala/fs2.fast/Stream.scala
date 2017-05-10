@@ -283,8 +283,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Effect[F2], R: RealSupertype[O,O2], S: Sub1[F,F2], ec: ExecutionContext): Stream[F2,O2] =
   //   pipe.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
 
-  def open: Pull[F,Nothing,Handle[F,O]] = Pull.pure(new Handle(Nil, this))
-
   /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x]>:F[x],O2>:O](s2: => Stream[F2,O2]): Stream[F2,O2] =
     (this onError (e => s2 ++ Stream.fail(e))) ++ s2
@@ -296,21 +294,164 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def onFinalize[F2[x]>:F[x]](f: F2[Unit])(F2: Applicative[F2]): Stream[F2,O] =
     Stream.bracket(F2.pure(()))(_ => this, _ => f)
 
+  def open: Pull[F,Nothing,Handle[F,O]] = Pull.pure(new Handle(Nil, this))
+
+  // def output: Pull[F,O,Unit] = Pull.outputs(self)
+
+  // /** Alias for `(pauseWhenTrue through2 this)(pipe2.pause)`. */
+  // def pauseWhen[F2[_]](pauseWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
+  //   (pauseWhenTrue through2 Sub1.substStream(self))(pipe2.pause[F2,O])
+  //
+  // /** Alias for `(pauseWhenTrue.discrete through2 this)(pipe2.pause)`. */
+  // def pauseWhen[F2[_]](pauseWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
+  //   (pauseWhenTrue.discrete through2 Sub1.substStream(self))(pipe2.pause)
+
+  // /** Alias for `self through [[pipe.prefetch]](f).` */
+  // def prefetch[F2[_]](implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
+  //   Sub1.substStream(self)(S) through pipe.prefetch
+
   def pull[F2[x]>:F[x],O2](using: Handle[F,O] => Pull[F2,O2,Any]) : Stream[F2,O2] =
     open.flatMap(using).close
 
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat
 
+  // /** Alias for `self through [[pipe.rechunkN]](f).` */
+  // def rechunkN(n: Int, allowFewer: Boolean = true): Stream[F,O] = self through pipe.rechunkN(n, allowFewer)
+  //
+  // /** Alias for `self through [[pipe.reduce]](z)(f)`. */
+  // def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.reduce(f)
+  //
+  // /** Alias for `self through [[pipe.scan]](z)(f)`. */
+  // def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = self through pipe.scan(z)(f)
+  //
+  // /** Alias for `self through [[pipe.scan1]](f)`. */
+  // def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.scan1(f)
+  //
+  // /**
+  //  * Used in conjunction with `[[Stream.uncons]]` or `[[Stream.uncons1]]`.
+  //  * When `s.scope` starts, the set of live resources is recorded.
+  //  * When `s.scope` finishes, any newly allocated resources since the start of `s`
+  //  * are all cleaned up.
+  //  */
+  // def scope: Stream[F,O] =
+  //   Stream.mk { StreamCore.scope { self.get } }
+  //
+  // /** Alias for `self through [[pipe.shiftRight]]`. */
+  // def shiftRight[O2 >: O](head: O2*): Stream[F,O2] = self through pipe.shiftRight(head: _*)
+  //
+  // /** Alias for `self through [[pipe.sliding]]`. */
+  // def sliding(n: Int): Stream[F,Vector[O]] = self through pipe.sliding(n)
+  //
+  // /** Alias for `self through [[pipe.split]]`. */
+  // def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
+  //
+  // /** Alias for `self through [[pipe.tail]]`. */
+  // def tail: Stream[F,O] = self through pipe.tail
+
   def take(n: Long): Stream[F,O] = pull(_.take(n))
+
+  // /** Alias for `self through [[pipe.takeRight]]`. */
+  // def takeRight(n: Long): Stream[F,O] = self through pipe.takeRight(n)
+  //
+  // /** Alias for `self through [[pipe.takeThrough]]`. */
+  // def takeThrough(p: O => Boolean): Stream[F,O] = self through pipe.takeThrough(p)
+  //
+  // /** Alias for `self through [[pipe.takeWhile]]`. */
+  // def takeWhile(p: O => Boolean): Stream[F,O] = self through pipe.takeWhile(p)
+  //
+  // /** Like `through`, but the specified `Pipe`'s effect may be a supertype of `F`. */
+  // def throughv[F2[_],O2](f: Pipe[F2,O,O2])(implicit S: Sub1[F,F2]): Stream[F2,O2] =
+  //   f(Sub1.substStream(self))
 
   /** Like `through2`, but the specified `Pipe2`'s effect may be a supertype of `F`. */
   def through2v[F2[x]>:F[x],O2,O3](s2: Stream[F2,O2])(f: Pipe2[F2,O,O2,O3]): Stream[F2,O3] =
     f(this, s2)
 
+  // /** Like `to`, but the specified `Sink`'s effect may be a supertype of `F`. */
+  // def tov[F2[_]](f: Sink[F2,O])(implicit S: Sub1[F,F2]): Stream[F2,Unit] =
+  //   f(Sub1.substStream(self))
+
+  // /** Alias for `self through [[pipe.unchunk]]`. */
+  // def unchunk: Stream[F,O] = self through pipe.unchunk
+
   /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
   def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
     Pull.fromFree(Algebra.uncons(get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
+
+  // /**
+  // * A new [[Stream]] of one element containing the head element of this [[Stream]] along
+  // * with a reference to the remaining [[Stream]] after evaluation of the first element.
+  // *
+  // * {{{
+  // *   scala> Stream(1,2,3).uncons1.toList
+  // *   res1: List[Option[(Int, Stream[Nothing, Int])]] = List(Some((1,append(Segment(Emit(Chunk(2, 3))), Segments()))))
+  // * }}}
+  // *
+  // * You can use this to implement any stateful stream function, like `take`:
+  // *
+  // * {{{
+  // *   def take[F[_],A](n: Int)(s: Stream[F,A]): Stream[F,A] =
+  // *     if (n <= 0) Stream.empty
+  // *     else s.uncons1.flatMap {
+  // *       case None => Stream.empty
+  // *       case Some((hd, tl)) => Stream.emit(hd) ++ take(n-1)(tl)
+  // *     }
+  // * }}}
+  // *
+  // * So `uncons` and `uncons1` can be viewed as an alternative to using `Pull`, with
+  // * an important caveat: if you use `uncons` or `uncons1`, you are responsible for
+  // * telling FS2 when you're done unconsing the stream, which you do using `[[Stream.scope]]`.
+  // *
+  // * For instance, the above definition of `take` doesn't call `scope`, so any finalizers
+  // * attached won't be run until the very end of any enclosing `scope` or `Pull`
+  // * (or the end of the stream if there is no enclosing scope). So in the following code:
+  // *
+  // * {{{
+  // *    take(2)(Stream(1,2,3).onFinalize(Task.delay(println("done"))) ++
+  // *    anotherStream
+  // * }}}
+  // *
+  // * The "done" would not be printed until the end of `anotherStream`. To get the
+  // * prompt finalization behavior, we would have to do:
+  // *
+  // * {{{
+  // *    take(2)(Stream(1,2,3).onFinalize(Task.delay(println("done"))).scope ++
+  // *    anotherStream
+  // * }}}
+  // *
+  // * Note the call to `scope` after the completion of `take`, which ensures that
+  // * when that stream completes, any streams which have been opened by the `take`
+  // * are deemed closed and their finalizers can be run.
+  // */
+  // def uncons1: Stream[F, Option[(O,Stream[F,O])]] =
+
+  // def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] = self.asInstanceOf[Stream[F, Option[O2]]] through pipe.unNone
+
+  // def zip[F2[_],O2](s2: Stream[F2,O2])(implicit S:Sub1[F,F2]): Stream[F2,(O,O2)] =
+  //   (self through2v s2)(pipe2.zip)
+  //
+  // def zipWith[F2[_],O2,O3](s2: Stream[F2,O2])(f: (O,O2) => O3)(implicit S:Sub1[F,F2]): Stream[F2, O3] =
+  //   (self through2v s2)(pipe2.zipWith(f))
+  //
+  // /** Alias for `self through [[pipe.zipWithIndex]]`. */
+  // def zipWithIndex: Stream[F, (O, Int)] = self through pipe.zipWithIndex
+  //
+  // /** Alias for `self through [[pipe.zipWithNext]]`. */
+  // def zipWithNext: Stream[F, (O, Option[O])] = self through pipe.zipWithNext
+  //
+  // /** Alias for `self through [[pipe.zipWithPrevious]]`. */
+  // def zipWithPrevious: Stream[F, (Option[O], O)] = self through pipe.zipWithPrevious
+  //
+  // /** Alias for `self through [[pipe.zipWithPreviousAndNext]]`. */
+  // def zipWithPreviousAndNext: Stream[F, (Option[O], O, Option[O])] = self through pipe.zipWithPreviousAndNext
+  //
+  // /** Alias for `self through [[pipe.zipWithScan]]`. */
+  // def zipWithScan[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan(z)(f)
+  //
+  // /** Alias for `self through [[pipe.zipWithScan1]]`. */
+  // def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan1(z)(f)
+
 }
 
 object Stream {
