@@ -52,13 +52,8 @@ object Free {
         case Some(h) => Try(h(e))
       }
       def tryBind: X => Free[F,R] = x =>
-        try propagateErrorHandler(f(x))
+        try f(x)
         catch { case e: Throwable => handleError(e) }
-      def propagateErrorHandler(fr: Free[F,R]): Free[F,R] =
-        onError match {
-          case None => fr
-          case Some(h) => fr.onError(h)
-        }
     }
     object Bound {
       def apply[F[_],X,R](fx: F[X], f: X => Free[F,R], onError: Option[Throwable => Free[F,R]]): Bound[F,X,R] =
@@ -101,8 +96,14 @@ object Free {
           val fw: Free[F, Any] = b.fx.asInstanceOf[Free[F, Any]]
           val f: Any => Free[F, X] = b.f.asInstanceOf[Any => Free[F, X]]
           k match {
-            case None => go(fw, Some(f.asInstanceOf[X => Free[F,R]]), onErr)
-            case Some(g) => go(fw, Some(w => f(w).flatMap(g)), onErr)
+            case None => onErr match {
+              case None => go(fw, Some(f.asInstanceOf[X => Free[F,R]]), onErr)
+              case Some(h) => go(fw, Some(f.asInstanceOf[X => Free[F,R]] andThen (_ onError h)), onErr)
+            }
+            case Some(g) => onErr match {
+              case None => go(fw, Some(w => f(w).flatMap(g)), onErr)
+              case Some(h) => go(fw, Some(w => f(w).flatMap(g).onError(h)), onErr)
+            }
           }
       }
       go(free.asInstanceOf[Free[F,X]], None, None)
