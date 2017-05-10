@@ -76,7 +76,7 @@ private[fs2] object Algebra {
       case done: ViewL.Done[AlgebraF, Unit] => pure(None)
       case failed: ViewL.Failed[AlgebraF, _] => fail(failed.error)
       case bound: ViewL.Bound[AlgebraF, _, Unit] =>
-        val f = bound.f.asInstanceOf[Unit => Free[AlgebraF, Unit]]
+        val f = bound.tryBind.asInstanceOf[Unit => Free[AlgebraF, Unit]]
         bound.fx match {
           case os : Algebra.Output[F, O] =>
             pure[F,X,Option[(Segment[O,Unit], Free[AlgebraF,Unit])]](Some((os.values, f(()))))
@@ -84,7 +84,7 @@ private[fs2] object Algebra {
             try {
               val (hd, tl) = os.values.splitAt(chunkSize)
               pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(
-                hd -> tl.fold(r => bound.f(r), segment(_).flatMap(bound.f))
+                hd -> tl.fold(r => bound.tryBind(r), segment(_).flatMap(bound.tryBind))
               ))
             }
             catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
@@ -94,17 +94,17 @@ private[fs2] object Algebra {
             bound.onError match {
               case None =>
                 assumeNoOutput(Free.Eval(algebra))
-                  .flatMap(x => uncons(bound.f(x)))
+                  .flatMap(x => uncons(bound.tryBind(x)))
               case Some(onError) =>
                 assumeNoOutput(Free.Eval(algebra))
-                  .flatMap(x => uncons(bound.f(x)))
+                  .flatMap(x => uncons(bound.tryBind(x)))
                   .onError(e => uncons(bound.handleError(e)))
             }
         }
     }
   }
 
-  case object Interrupted extends Throwable { override def fillInStackTrace = this }
+  final case object Interrupted extends Throwable { override def fillInStackTrace = this }
 
   /** Left-fold the output of a stream, supporting `unconsAsync`. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {

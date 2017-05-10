@@ -16,12 +16,13 @@ sealed abstract class Free[F[_], +R] {
   lazy val viewL: ViewL[F,R] = ViewL(this) // todo - review this
   def translate[G[_]](f: UF1[F, G]): Free[G, R] = this.viewL match {
     case Done(r) => Pure(r)
-    case Bound(fx, k, onError) => onError match {
-      case None => Eval(f(fx)) flatMap (x => k(x).translate(f))
-      case Some(onError) =>
-        OnError(Eval(f(fx)) flatMap (x => k(x).translate(f)),
-                err => onError(err).translate(f))
-    }
+    case b: Bound[F,_,R] =>
+      b.onError match {
+        case None => Eval(f(b.fx)) flatMap (x => b.tryBind(x).translate(f))
+        case Some(h) =>
+          OnError(Eval(f(b.fx)) flatMap (x => b.tryBind(x).translate(f)),
+                  err => h(err).translate(f))
+      }
     case Failed(err) => Fail(err)
   }
 }
@@ -45,14 +46,23 @@ object Free {
   sealed abstract class ViewL[F[_], +R]
 
   object ViewL {
-    case class Bound[F[_], X, R](fx: F[X], f: X => Free[F, R], onError: Option[Throwable => Free[F,R]]) extends ViewL[F, R] {
+    class Bound[F[_], X, R] private (val fx: F[X], f: X => Free[F, R], val onError: Option[Throwable => Free[F,R]]) extends ViewL[F, R] {
       def handleError(e: Throwable): Free[F,R] = onError match {
         case None => Fail[F,R](e)
         case Some(h) => Try(h(e))
       }
       def tryBind: X => Free[F,R] = x =>
-        try f(x)
+        try propagateErrorHandler(f(x))
         catch { case e: Throwable => handleError(e) }
+      def propagateErrorHandler(fr: Free[F,R]): Free[F,R] =
+        onError match {
+          case None => fr
+          case Some(h) => fr.onError(h)
+        }
+    }
+    object Bound {
+      def apply[F[_],X,R](fx: F[X], f: X => Free[F,R], onError: Option[Throwable => Free[F,R]]): Bound[F,X,R] =
+        new Bound(fx, f, onError)
     }
     case class Done[F[_], R](r: R) extends ViewL[F,R]
     case class Failed[F[_],R](error: Throwable) extends ViewL[F,R]
@@ -77,14 +87,14 @@ object Free {
         }
         case OnError(fx, onErrInner) => k match {
           case None => onErr match {
-            case None => go(fx, None, Some((e: Throwable) => onErrInner(e).asInstanceOf[Free[F,R]]))
+            case None => go(fx, None, Some((e: Throwable) => Try(onErrInner(e)).asInstanceOf[Free[F,R]]))
             case Some(onErr) => go(fx, None,
-              Some((e: Throwable) => OnError(onErrInner(e).asInstanceOf[Free[F,R]], onErr)))
+              Some((e: Throwable) => OnError(Try(onErrInner(e)).asInstanceOf[Free[F,R]], onErr)))
           }
           case Some(k2) => onErr match {
-            case None => go(fx, k, Some((e: Throwable) => onErrInner(e) flatMap k2))
+            case None => go(fx, k, Some((e: Throwable) => Try(onErrInner(e)) flatMap k2))
             case Some(onErr) => go(fx, k,
-              Some((e: Throwable) => OnError(onErrInner(e) flatMap k2, onErr)))
+              Some((e: Throwable) => OnError(Try(onErrInner(e)) flatMap k2, onErr)))
           }
         }
         case b: Free.Bind[F, _, X] =>
@@ -104,10 +114,10 @@ object Free {
       self.viewL match {
         case Done(r) => F.pure(r)
         case Failed(t) => F.raiseError(t)
-        case Bound(fx, f, onError) =>
-          onError match {
-            case None => F.flatMap(fx)(x => f(x).run)
-            case Some(h) => F.flatMap(fx)(x => f(x).run).handleErrorWith(t => h(t).run)
+        case b: Bound[F,_,R] =>
+          b.onError match {
+            case None => F.flatMap(b.fx)(x => b.tryBind(x).run)
+            case Some(h) => F.flatMap(b.fx)(x => b.tryBind(x).run).handleErrorWith(t => h(t).run)
           }
       }
   }
