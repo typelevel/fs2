@@ -100,7 +100,8 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     case other => Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray)
   }
 
-  override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] = Right(this -> Segment.empty)
+  override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] =
+    if (isEmpty) Left(()) else Right(this -> Chunk.empty)
   override def foreachChunk(f: Chunk[O] => Unit): Unit = f(this)
   override def toChunk = this
   override def toChunks = Catenable.single(this)
@@ -122,76 +123,104 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
 
 object Chunk {
 
-  def empty[A]: Chunk[A] = new Chunk[A] {
+  private val empty_ : Chunk[Nothing] = new Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = sys.error(s"Chunk.empty.apply($i)")
+    override def stage0 = (_,_,_,_,done) => Eval.now(Segment.step(empty_)(done(())))
+    override def unconsChunk: Either[Unit, (Chunk[Nothing],Segment[Nothing,Unit])] = Left(())
+    override def foreachChunk(f: Chunk[Nothing] => Unit): Unit = ()
+    override def toVector: Vector[Nothing] = Vector.empty
+    override def toString = "empty"
   }
+  def empty[A]: Chunk[A] = empty_
+
   def singleton[A](a: A): Chunk[A] = new Chunk[A] {
     def size = 1
     def apply(i: Int) = { require (i == 0); a }
   }
-  def vector[A](a: Vector[A]): Chunk[A] = new Chunk[A] {
-    def size = a.length
-    def apply(i: Int) = a(i)
-    override def toVector = a
+
+  def vector[A](a: Vector[A]): Chunk[A] = {
+    if (a.isEmpty) empty
+    else new Chunk[A] {
+      def size = a.length
+      def apply(i: Int) = a(i)
+      override def toVector = a
+    }
   }
-  def indexedSeq[A](a: IndexedSeq[A]): Chunk[A] = new Chunk[A] {
-    def size = a.length
-    def apply(i: Int) = a(i)
-    override def toVector = a.toVector
+
+  def indexedSeq[A](a: IndexedSeq[A]): Chunk[A] = {
+    if (a.isEmpty) empty
+    else new Chunk[A] {
+      def size = a.length
+      def apply(i: Int) = a(i)
+      override def toVector = a.toVector
+    }
   }
+
   def seq[A](a: Seq[A]): Chunk[A] = indexedSeq(a.toIndexedSeq)
+
   def apply[A](as: A*): Chunk[A] = seq(as)
 
-  def array[A](values: Array[A]) = Boxed(values)
+  def array[A](values: Array[A]): Chunk[A] = values match {
+    case a: Array[Boolean] => booleans(a)
+    case a: Array[Byte] => bytes(a)
+    case a: Array[Short] => shorts(a)
+    case a: Array[Int] => ints(a)
+    case a: Array[Long] => longs(a)
+    case a: Array[Float] => floats(a)
+    case a: Array[Double] => doubles(a)
+    case _ => boxed(values)
+  }
+
+  def boxed[A](values: Array[A]): Boxed[A] = Boxed(values)
   final case class Boxed[A](values: Array[A]) extends Chunk[A] {
     def size = values.length
     def apply(i: Int) = values(i)
   }
 
-  def booleans(values: Array[Boolean]) = Booleans(values)
+  def booleans(values: Array[Boolean]): Booleans = Booleans(values)
   final case class Booleans(values: Array[Boolean]) extends Chunk[Boolean] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
-  def bytes(values: Array[Byte]) = Bytes(values)
+  def bytes(values: Array[Byte]): Bytes = Bytes(values)
   final case class Bytes(values: Array[Byte]) extends Chunk[Byte] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
-  def shorts(values: Array[Short]) = Shorts(values)
+  def shorts(values: Array[Short]): Shorts = Shorts(values)
   final case class Shorts(values: Array[Short]) extends Chunk[Short] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
-  def ints(values: Array[Int]) = Ints(values)
+  def ints(values: Array[Int]): Ints = Ints(values)
   final case class Ints(values: Array[Int]) extends Chunk[Int] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
-  def longs(values: Array[Long]) = Longs(values)
+  def longs(values: Array[Long]): Longs = Longs(values)
   final case class Longs(values: Array[Long]) extends Chunk[Long] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
-  def floats(values: Array[Float]) = Floats(values)
+  def floats(values: Array[Float]): Floats = Floats(values)
   final case class Floats(values: Array[Float]) extends Chunk[Float] {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
   }
 
-  def doubles(values: Array[Double]) = Doubles(values)
+  def doubles(values: Array[Double]): Doubles = Doubles(values)
   final case class Doubles(values: Array[Double]) extends Chunk[Double] {
     def size = values.length
     def apply(i: Int) = values(i)

@@ -25,6 +25,13 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
 
   "Segment" - {
 
+    "++" in {
+      forAll { (xs: List[Int], ys: List[Int]) =>
+        val appended = Segment.seq(xs) ++ Segment.seq(ys)
+        appended.toVector shouldBe (xs.toVector ++ ys.toVector)
+      }
+    }
+
     "toChunk" in {
       forAll { (xs: List[Int]) =>
         Segment.seq(xs).toChunk.toVector shouldBe xs.toVector
@@ -74,15 +81,15 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
       }
     }
 
-    "uncons" in {
+    "unconsChunk" in {
       forAll { (xss: List[List[Int]]) =>
-        val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Segment.seq(xs) ++ acc)
+        val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Chunk.array(xs.toArray) ++ acc)
         def unconsAll(acc: Catenable[Chunk[Int]], s: Segment[Int,Unit]): Catenable[Chunk[Int]] =
           s.unconsChunk match {
             case Right((hd, tl)) => unconsAll(acc :+ hd, tl)
             case Left(()) => acc
           }
-        unconsAll(Catenable.empty, seg).toList.map(_.toVector.toList) shouldBe xss
+        unconsAll(Catenable.empty, seg).toList.map(_.toVector.toList) shouldBe xss.filter(_.nonEmpty)
       }
     }
 
@@ -103,6 +110,5 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
         go(Chunk.indexedSeq(0 until N))
       }
     }}
-
   }
 }

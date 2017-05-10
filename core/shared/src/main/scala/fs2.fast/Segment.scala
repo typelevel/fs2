@@ -23,10 +23,20 @@ abstract class Segment[+O,+R] { self =>
   def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
     unconsChunks match {
       case Left(r) => Left(r)
-      case Right((cs, tl)) => cs.uncons match {
-        case Some((c,cs)) => Right(c -> cs.toList.foldRight(tl)((hd,tl) => tl push hd))
-        case None => tl.unconsChunk // should never hit this case
-      }
+      case Right((cs, tl)) =>
+        firstNonEmptyChunk(cs) match {
+          case Some((c,cs)) => Right(c -> cs.toList.foldRight(tl)((hd,tl) => tl push hd))
+          case None => tl.unconsChunk // should never hit this case
+        }
+    }
+
+  @annotation.tailrec
+  private def firstNonEmptyChunk[O](cs: Catenable[Chunk[O]]): Option[(Chunk[O],Catenable[Chunk[O]])] =
+    cs.uncons match {
+      case None => None
+      case Some((c,cs)) =>
+        if (c.isEmpty) firstNonEmptyChunk(cs)
+        else Some(c -> cs)
     }
 
   @annotation.tailrec
@@ -174,16 +184,18 @@ abstract class Segment[+O,+R] { self =>
   final def voidResult: Segment[O,Unit] = mapResult(_ => ())
 
   final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] =
-    if (this eq empty) s2
-    else if (s2 eq empty) this
-    else this match {
-      case Catenated(s1s) => s2 match {
-        case Catenated(s2s) => Catenated(s1s ++ s2s)
-        case _ => Catenated(s1s :+ s2)
-      }
-      case s1 => s2 match {
-        case Catenated(s2s) => Catenated(s1 +: s2s)
-        case s2 => Catenated(Catenable(s1,s2))
+    s2 match {
+      case c2: Chunk[O2] if c2.isEmpty => this
+      case _ => this match {
+        case c: Chunk[O2] if c.isEmpty => s2
+        case Catenated(s1s) => s2 match {
+          case Catenated(s2s) => Catenated(s1s ++ s2s)
+          case _ => Catenated(s1s :+ s2)
+        }
+        case s1 => s2 match {
+          case Catenated(s2s) => Catenated(s1 +: s2s)
+          case s2 => Catenated(Catenable(s1,s2))
+        }
       }
     }
 
@@ -254,8 +266,7 @@ abstract class Segment[+O,+R] { self =>
 }
 
 object Segment {
-  private val empty_ : Segment[Nothing,Unit] = pure(())
-  def empty[O]: Segment[O,Unit] = empty_
+  def empty[O]: Segment[O,Unit] = Chunk.empty
 
   def pure[O,R](r: R): Segment[O,R] = new Segment[O,R] {
     def stage0 = (_,_,_,_,done) => Eval.later(step(pure(r))(done(r)))
@@ -274,18 +285,10 @@ object Segment {
     override def toString = s"singleton($o)"
   }
 
-  def array[@specialized O](os: Array[O], from: Int = 0): Segment[O,Unit] = new Segment[O,Unit] {
-    def stage0 = (_, _, emit, _, done) => Eval.later {
-      var i = from max 0
-      step(if (i < os.length) array(os, i) else empty) {
-        if (i < os.length) { emit(os(i)); i += 1 }
-        else done(())
-      }
-    }
-    override def toString = s"array(${os.mkString(", ")})"
-  }
-
-  def seq[O](os: Seq[O]): Chunk[O] = Chunk.seq(os)
+  def vector[O](os: Vector[O]): Segment[O,Unit] = Chunk.vector(os)
+  def indexedSeq[O](os: IndexedSeq[O]): Segment[O,Unit] = Chunk.indexedSeq(os)
+  def seq[O](os: Seq[O]): Segment[O,Unit] = Chunk.seq(os)
+  def array[O](os: Array[O]): Segment[O,Unit] = Chunk.array(os)
 
   private[fs2]
   case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
@@ -368,5 +371,4 @@ object Segment {
     def increment: Depth = Depth(value + 1)
     def <(that: Depth): Boolean = value < that.value
   }
-
 }
