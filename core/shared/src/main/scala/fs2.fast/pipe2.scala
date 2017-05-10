@@ -222,11 +222,11 @@ object pipe2 {
   //  */
   // def mergeDrainR[F[_]:Effect,I,I2](implicit ec: ExecutionContext): Pipe2[F,I,I2,I] = (s1, s2) =>
   //   s1 merge s2.drain
-  //
-  // /** Like `[[merge]]`, but tags each output with the branch it came from. */
-  // def either[F[_]:Effect,I,I2](implicit ec: ExecutionContext): Pipe2[F,I,I2,Either[I,I2]] = (s1, s2) =>
-  //   s1.map(Left(_)) merge s2.map(Right(_))
-  //
+
+  /** Like `[[merge]]`, but tags each output with the branch it came from. */
+  def either[F[_]:Effect,I,I2](implicit ec: ExecutionContext): Pipe2[F,I,I2,Either[I,I2]] = (s1, s2) =>
+    s1.map(Left(_)) merge s2.map(Right(_))
+
   // /**
   //  * Let through the `s2` branch as long as the `s1` branch is `false`,
   //  * listening asynchronously for the left branch to become `true`.
@@ -236,7 +236,7 @@ object pipe2 {
   //   either.apply(s1.noneTerminate, s2.noneTerminate)
   //     .takeWhile(_.fold(halt => halt.map(!_).getOrElse(false), o => o.isDefined))
   //     .collect { case Right(Some(i)) => i }
-  
+
   /**
    * Interleaves the two inputs nondeterministically. The output stream
    * halts after BOTH `s1` and `s2` terminate normally, or in the event
@@ -272,10 +272,10 @@ object pipe2 {
     }
   }
 
-  // /** Like `merge`, but halts as soon as _either_ branch halts. */
-  // def mergeHaltBoth[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) =>
-  //   s1.noneTerminate merge s2.noneTerminate through pipe.unNoneTerminate
-  //
+  /** Like `merge`, but halts as soon as _either_ branch halts. */
+  def mergeHaltBoth[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) =>
+    s1.noneTerminate merge s2.noneTerminate through pipe.unNoneTerminate
+
   // /** Like `merge`, but halts as soon as the `s1` branch halts. */
   // def mergeHaltL[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) =>
   //   s1.noneTerminate merge s2.map(Some(_)) through pipe.unNoneTerminate

@@ -81,6 +81,12 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
       }
     }
 
+    "takeWhile" in {
+      forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
+        s.takeWhile(f).toVector shouldBe s.toVector.takeWhile(f)
+      }
+    }
+
     "unconsChunk" in {
       forAll { (xss: List[List[Int]]) =>
         val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Chunk.array(xs.toArray) ++ acc)

@@ -145,6 +145,30 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).take($n)"
   }
 
+  final def takeWhile(f: O => Boolean): Segment[O,Option[R]] = new Segment[O,Option[R]] {
+    def stage0 = (depth, defer, emit, emits, done) => {
+      var ok = true
+      self.stage(depth.increment, defer,
+        o => { ok = ok && f(o); if (ok) emit(o) else done(None) },
+        os => {
+          var i = 0
+          while (ok && i < os.size) {
+            val o = os(i)
+            ok = f(o)
+            if (!ok) {
+              var j = 0
+              while (j < i) { emit(os(j)); j += 1 }
+            }
+            i += 1
+          }
+          if (ok) emits(os) else done(None)
+        },
+        r => done(Some(r))
+      ).map(_.mapRemainder(rem => if (ok) rem.takeWhile(f) else pure(None)))
+    }
+    override def toString = s"($self).takeWhile(<f1>)"
+  }
+
   final def drop(n: Long): Segment[O,(Long,R)] = new Segment[O,(Long,R)] {
     def stage0 = (depth, defer, emit, emits, done) => {
       var rem = n

@@ -77,6 +77,38 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** `s as x == s map (_ => x)` */
   def as[O2](o2: O2): Stream[F,O2] = map(_ => o2)
 
+  // /** Alias for `self through [[pipe.buffer]]`. */
+  // def buffer(n: Int): Stream[F,O] = self through pipe.buffer(n)
+  //
+  // /** Alias for `self through [[pipe.bufferAll]]`. */
+  // def bufferAll: Stream[F,O] = self through pipe.bufferAll
+  //
+  // /** Alias for `self through [[pipe.bufferBy]]`. */
+  // def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
+  //
+  // /** Alias for `self through [[pipe.changesBy]]`. */
+  // def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F,O] = self through pipe.changesBy(f)
+  //
+  // /** Alias for `self through [[pipe.chunkLimit]]`. */
+  // def chunkLimit(n: Int): Stream[F,NonEmptyChunk[O]] = self through pipe.chunkLimit(n)
+  //
+  // /** Alias for `self through [[pipe.chunkN]]`. */
+  // def chunkN(n: Int, allowFewer: Boolean = true): Stream[F,List[NonEmptyChunk[O]]] =
+  //   self through pipe.chunkN(n, allowFewer)
+  //
+  // /** Alias for `self through [[pipe.chunks]]`. */
+  // def chunks: Stream[F,NonEmptyChunk[O]] = self through pipe.chunks
+  //
+  // /** Alias for `self through [[pipe.collect]]`. */
+  // def collect[O2](pf: PartialFunction[O, O2]) = self through pipe.collect(pf)
+  //
+  // /** Alias for `self through [[pipe.collectFirst]]`. */
+  // def collectFirst[O2](pf: PartialFunction[O, O2]) = self through pipe.collectFirst(pf)
+  //
+  // /** Prepend a single chunk onto the front of this stream. */
+  // def cons[O2>:O](c: Chunk[O2])(implicit T: RealSupertype[O,O2]): Stream[F,O2] =
+  //   Stream.cons[F,O2](self)(c)
+
   /** Prepend a single segment onto the front of this stream. */
   def cons[O2>:O](s: Segment[O2,Unit]): Stream[F,O2] =
     Stream.segment(s) ++ this
@@ -98,6 +130,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Lifts this stream to the specified effect and output types. */
   def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = this.asInstanceOf[Stream[F2,O2]]
 
+  // /** Alias for `self through [[pipe.delete]]`. */
+  // def delete(f: O => Boolean): Stream[F,O] = self through pipe.delete(f)
+
   /**
    * Removes all output values from this stream.
    * For example, `Stream.eval(IO(println("x"))).drain.runLog`
@@ -118,8 +153,30 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     go(this, n).close
   }
 
+  // /** Alias for `self through [[pipe.dropLast]]`. */
+  // def dropLast: Stream[F,O] = self through pipe.dropLast
+  //
+  // /** Alias for `self through [[pipe.dropLastIf]]`. */
+  // def dropLastIf(p: O => Boolean): Stream[F,O] = self through pipe.dropLastIf(p)
+  //
+  // /** Alias for `self through [[pipe.dropRight]]`. */
+  // def dropRight(n: Int): Stream[F,O] = self through pipe.dropRight(n)
+  //
+  // /** Alias for `self through [[pipe.dropWhile]]` */
+  // def dropWhile(p: O => Boolean): Stream[F,O] = self through pipe.dropWhile(p)
+
+  /** Alias for `(this through2v s2)(pipe2.either)`. */
+  def either[F2[x]>:F[x],O2](s2: Stream[F2,O2])(implicit F: Effect[F2], ec: ExecutionContext): Stream[F2,Either[O,O2]] =
+    (covary[F2] through2v s2)(pipe2.either)
+
   def evalMap[F2[x]>:F[x],O2](f: O => F2[O2]): Stream[F2,O2] =
     flatMap(o => Stream.eval(f(o)))
+
+  // /** Alias for `self throughv [[pipe.evalScan]](z)(f)`. */
+  // def evalScan[F2[_], O2](z: O2)(f: (O2, O) => F2[O2])(implicit S: Sub1[F, F2]): Stream[F2, O2] =  self throughv pipe.evalScan(z)(f)
+  //
+  // /** Alias for `self through [[pipe.exists]]`. */
+  // def exists(f: O => Boolean): Stream[F, Boolean] = self through pipe.exists(f)
 
   def flatMap[F2[x]>:F[x],O2](f: O => Stream[F2,O2]): Stream[F2,O2] =
     Stream.fromFree(Algebra.uncons(get[F2,O]).flatMap {
@@ -133,6 +190,60 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def >>[F2[x]>:F[x],O2](s2: => Stream[F2,O2]): Stream[F2,O2] =
     this flatMap { _ => s2 }
 
+  // /** Alias for `self through [[pipe.filter]]`. */
+  // def filter(f: O => Boolean): Stream[F,O] = self through pipe.filter(f)
+
+  // /** Alias for `self through [[pipe.filterWithPrevious]]`. */
+  // def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = self through pipe.filterWithPrevious(f)
+
+  // /** Alias for `self through [[pipe.find]]`. */
+  // def find(f: O => Boolean): Stream[F,O] = self through pipe.find(f)
+
+  // /** Alias for `self through [[pipe.fold]](z)(f)`. */
+  // def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = self through pipe.fold(z)(f)
+
+  // /** Alias for `self through [[pipe.fold1]](f)`. */
+  // def fold1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.fold1(f)
+
+  // /** Alias for `map(f).foldMonoid`. */
+  // def foldMap[O2](f: O => O2)(implicit O2: Monoid[O2]): Stream[F,O2] = fold(O2.empty)((acc, o) => O2.combine(acc, f(o)))
+
+  // /** Alias for `self through [[pipe.forall]]`. */
+  // def forall(f: O => Boolean): Stream[F, Boolean] = self through pipe.forall(f)
+
+  // /** Alias for `self through [[pipe.groupBy]]`. */
+  // def groupBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Vector[O])] = self through pipe.groupBy(f)
+
+  // /** Alias for `self through [[pipe.head]]`. */
+  // def head: Stream[F,O] = self through pipe.head
+
+  // def interleave[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R:RealSupertype[O,O2], S:Sub1[F,F2]): Stream[F2,O2] =
+  //   (self through2v s2)(pipe2.interleave)
+
+  // def interleaveAll[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R:RealSupertype[O,O2], S:Sub1[F,F2]): Stream[F2,O2] =
+  //   (self through2v s2)(pipe2.interleaveAll)
+
+  // /** Alias for `(haltWhenTrue through2 this)(pipe2.interrupt)`. */
+  // def interruptWhen[F2[_]](haltWhenTrue: Stream[F2,Boolean])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
+  //   (haltWhenTrue through2 Sub1.substStream(self))(pipe2.interrupt)
+
+  // /** Alias for `(haltWhenTrue.discrete through2 this)(pipe2.interrupt)`. */
+  // def interruptWhen[F2[_]](haltWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
+  //   (haltWhenTrue.discrete through2 Sub1.substStream(self))(pipe2.interrupt)
+
+  // /** Alias for `self through [[pipe.intersperse]]`. */
+  // def intersperse[O2 >: O](separator: O2): Stream[F,O2] = self through pipe.intersperse(separator)
+
+  // /** Alias for `self through [[pipe.last]]`. */
+  // def last: Stream[F,Option[O]] = self through pipe.last
+
+  // /** Alias for `self through [[pipe.lastOr]]`. */
+  // def lastOr[O2 >: O](li: => O2): Stream[F,O2] = self through pipe.lastOr(li)
+
+  // /** Alias for `self through [[pipe.mapAccumulate]]` */
+  // def mapAccumulate[S,O2](init: S)(f: (S, O) => (S, O2)): Stream[F, (S, O2)] =
+  //   self through pipe.mapAccumulate(init)(f)
+
   def map[O2](f: O => O2): Stream[F,O2] = {
     def go(s: Stream[F,O]): Pull[F,O2,Unit] = s.uncons flatMap {
       case None => Pull.pure(())
@@ -141,12 +252,36 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     go(this).close
   }
 
+  // def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F,O2] =
+  //   Stream.mk(get mapChunks f)
+
   def mask: Stream[F,O] = onError(_ => Stream.empty)
 
   def merge[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
     through2v(s2)(pipe2.merge)
 
+  def mergeHaltBoth[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
+    through2v(s2)(pipe2.mergeHaltBoth)
+
+  // def mergeHaltL[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
+  //   (self through2v s2)(pipe2.mergeHaltL)
+  //
+  // def mergeHaltR[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
+  //   (self through2v s2)(pipe2.mergeHaltR)
+  //
+  // def mergeDrainL[F2[_],O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
+  //   (self through2v s2)(pipe2.mergeDrainL)
+  //
+  // def mergeDrainR[F2[_],O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
+  //   (self through2v s2)(pipe2.mergeDrainR)
+
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
+
+  // def observe[F2[_],O2>:O](sink: Sink[F2,O2])(implicit F: Effect[F2], R: RealSupertype[O,O2], S: Sub1[F,F2], ec: ExecutionContext): Stream[F2,O2] =
+  //   pipe.observe(Sub1.substStream(self)(S))(sink)
+  //
+  // def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Effect[F2], R: RealSupertype[O,O2], S: Sub1[F,F2], ec: ExecutionContext): Stream[F2,O2] =
+  //   pipe.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
 
   def open: Pull[F,Nothing,Handle[F,O]] = Pull.pure(new Handle(Nil, this))
 
@@ -167,20 +302,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat
 
-  def take(n: Long): Stream[F,O] = {
-    def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = s.uncons flatMap {
-      case None => Pull.pure(())
-      case Some((hd, tl)) =>
-        Pull.segment(hd.take(n)) flatMap {
-          case None =>
-            Pull.pure(())
-          case Some((n, ())) =>
-            if (n > 0) go(tl, n)
-            else Pull.pure(())
-        }
-    }
-    go(this, n).close
-  }
+  def take(n: Long): Stream[F,O] = pull(_.take(n))
 
   /** Like `through2`, but the specified `Pipe2`'s effect may be a supertype of `F`. */
   def through2v[F2[x]>:F[x],O2,O3](s2: Stream[F2,O2])(f: Pipe2[F2,O,O2,O3]): Stream[F2,O3] =
@@ -408,11 +530,11 @@ object Stream {
     def toVector: Vector[O] = covary[IO].runLog.unsafeRunSync
   }
 
-  // implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) extends AnyVal {
-  //
-  //   def unNoneTerminate: Stream[F,O] = self.through(pipe.unNoneTerminate)
-  // }
-  //
+  implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) {
+
+    def unNoneTerminate: Stream[F,O] = self.through(pipe.unNoneTerminate)
+  }
+
   // implicit class StreamStreamOps[F[_],O](private val self: Stream[F,Stream[F,O]]) extends AnyVal {
   //   /** Alias for `Stream.join(maxOpen)(self)`. */
   //   def join(maxOpen: Int)(implicit F: Effect[F], ec: ExecutionContext) = Stream.join(maxOpen)(self)
