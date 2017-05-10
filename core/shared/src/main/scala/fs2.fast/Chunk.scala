@@ -3,6 +3,8 @@ package fs2.fast
 import cats.Eval
 import scala.reflect.ClassTag
 
+import fs2.util.Catenable
+
 abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   def stage0 = (_, _, emit, emits, done) => Eval.now {
     var emitted = false
@@ -98,12 +100,19 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     case other => Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray)
   }
 
-  override def toIndexedSeq: IndexedSeq[O] = new IndexedSeq[O] {
-    def length = self.size
-    def apply(i: Int) = self.apply(i)
-  }
-
+  override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] = Right(this -> Segment.empty)
+  override def foreachChunk(f: Chunk[O] => Unit): Unit = f(this)
   override def toChunk = this
+  override def toChunks = Catenable.single(this)
+  override def toVector: Vector[O] = {
+    val buf = new collection.immutable.VectorBuilder[O]
+    var i = 0
+    while (i < size) {
+      buf += apply(i)
+      i += 1
+    }
+    buf.result
+  }
 
   override def toString = {
     val vs = (0 until size).view.map(i => apply(i)).mkString(", ")
@@ -121,10 +130,15 @@ object Chunk {
     def size = 1
     def apply(i: Int) = { require (i == 0); a }
   }
+  def vector[A](a: Vector[A]): Chunk[A] = new Chunk[A] {
+    def size = a.length
+    def apply(i: Int) = a(i)
+    override def toVector = a
+  }
   def indexedSeq[A](a: IndexedSeq[A]): Chunk[A] = new Chunk[A] {
     def size = a.length
     def apply(i: Int) = a(i)
-    override def toIndexedSeq = a
+    override def toVector = a.toVector
   }
   def seq[A](a: Seq[A]): Chunk[A] = indexedSeq(a.toIndexedSeq)
   def apply[A](as: A*): Chunk[A] = seq(as)

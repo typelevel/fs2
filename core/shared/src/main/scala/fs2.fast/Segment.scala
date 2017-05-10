@@ -20,7 +20,7 @@ abstract class Segment[+O,+R] { self =>
                r => defer(done(r)))
       }
 
-  final def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
+  def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
     unconsChunks match {
       case Left(r) => Left(r)
       case Right((cs, tl)) => cs.uncons match {
@@ -34,7 +34,7 @@ abstract class Segment[+O,+R] { self =>
     unconsChunk match {
       case Left(r) => Left(r)
       case Right((c, tl)) =>
-        if (c.nonEmpty) Right(c(0) -> tl.push(Chunk.indexedSeq(c.toIndexedSeq.drop(1))))
+        if (c.nonEmpty) Right(c(0) -> tl.push(Chunk.vector(c.toVector.drop(1))))
         else tl.uncons1
     }
 
@@ -73,7 +73,7 @@ abstract class Segment[+O,+R] { self =>
 
   final def foldRightLazy[B](z: => B)(f: (O,=>B) => B): B = this.uncons match {
     case Left(_) => z
-    case Right((hd,tl)) => hd.toIndexedSeq.foldRight(tl.foldRightLazy(z)(f))(f(_,_))
+    case Right((hd,tl)) => hd.toVector.foldRight(tl.foldRightLazy(z)(f))(f(_,_))
   }
 
   final def sum[N>:O](initial: N)(implicit N: Numeric[N]): Segment[Nothing,N] = new Segment[Nothing,N] {
@@ -173,16 +173,19 @@ abstract class Segment[+O,+R] { self =>
 
   final def voidResult: Segment[O,Unit] = mapResult(_ => ())
 
-  final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] = this match {
-    case Catenated(s1s) => s2 match {
-      case Catenated(s2s) => Catenated(s1s ++ s2s)
-      case _ => Catenated(s1s :+ s2)
+  final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] =
+    if (this eq empty) s2
+    else if (s2 eq empty) this
+    else this match {
+      case Catenated(s1s) => s2 match {
+        case Catenated(s2s) => Catenated(s1s ++ s2s)
+        case _ => Catenated(s1s :+ s2)
+      }
+      case s1 => s2 match {
+        case Catenated(s2s) => Catenated(s1 +: s2s)
+        case s2 => Catenated(Catenable(s1,s2))
+      }
     }
-    case s1 => s2 match {
-      case Catenated(s2s) => Catenated(s1 +: s2s)
-      case s2 => Catenated(Catenable(s1,s2))
-    }
-  }
 
   final def push[O2>:O](c: Segment[O2,Any]): Segment[O2,R] =
     // note - cast is fine, as `this` is guaranteed to provide an `R`,
@@ -196,35 +199,25 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).drain"
   }
 
-  final def foreachChunk(f: Chunk[O] => Unit): Unit = {
+  def foreachChunk(f: Chunk[O] => Unit): Unit = {
     var ok = true
     val trampoline = makeTrampoline
     val step = stage(Depth(0), defer(trampoline), o => f(Chunk.singleton(o)), f, r => { ok = false }).value
     while (ok) steps(step, trampoline)
   }
 
-  final def toChunks: Catenable[Chunk[O]] = {
+  def toChunks: Catenable[Chunk[O]] = {
     var acc: Catenable[Chunk[O]] = Catenable.empty
     foreachChunk(c => acc = acc :+ c)
     acc
   }
 
-  def toChunk: Chunk[O] = {
-    val buf = new collection.mutable.ArrayBuffer[O]
-    foreachChunk(c => buf ++= c.toIndexedSeq)
-    Chunk.indexedSeq(buf)
-  }
+  def toChunk: Chunk[O] = Chunk.vector(toVector)
 
-  def toIndexedSeq: IndexedSeq[O] = {
-    val buf = new collection.mutable.ArrayBuffer[O]
-    foreachChunk(c => buf ++= c.toIndexedSeq)
-    buf
-  }
-
-  final def toList: List[O] = {
-    val buf = new collection.mutable.ListBuffer[O]
-    foreachChunk(c => buf ++= c.toIndexedSeq)
-    buf.toList
+  def toVector: Vector[O] = {
+    val buf = new collection.immutable.VectorBuilder[O]
+    foreachChunk(c => buf ++= c.toVector)
+    buf.result
   }
 
   final def splitAt(n:Int): (Segment[O,Unit], Either[R,Segment[O,R]]) = {
@@ -253,9 +246,9 @@ abstract class Segment[+O,+R] { self =>
     (outAsSegment, resultAsEither)
   }
 
-  override def hashCode: Int = toIndexedSeq.hashCode
+  override def hashCode: Int = toVector.hashCode
   override def equals(a: Any): Boolean = a match {
-    case s: Segment[O,R] => this.toIndexedSeq == s.toIndexedSeq
+    case s: Segment[O,R] => this.toVector == s.toVector
     case _ => false
   }
 }
