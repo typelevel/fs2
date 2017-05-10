@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic.{ AtomicBoolean, AtomicLong }
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
-import cats.effect.{ Effect, IO, Sync }
+import cats.effect.{ Effect, Sync }
 
 import fs2.internal.{ LinkedSet, TwoWayLatch }
 
@@ -26,7 +26,7 @@ private[fs2] object Algebra {
   final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
   final case class Snapshot[F[_],O]() extends Algebra[F,O,LinkedSet[Token]]
-  final case class UnconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit])
+  final case class UnconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit], effect: Effect[F], ec: ExecutionContext)
     extends Algebra[F,X,AsyncPull[F,Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]]
 
   def output[F[_],O](values: Segment[O,Unit]): Free[Algebra[F,O,?],Unit] =
@@ -50,8 +50,8 @@ private[fs2] object Algebra {
   def snapshot[F[_],O]: Free[Algebra[F,O,?],LinkedSet[Token]] =
     Free.Eval[Algebra[F,O,?],LinkedSet[Token]](Snapshot())
 
-  def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit]): Free[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]] =
-    Free.Eval[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s))
+  def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit])(implicit F: Effect[F], ec: ExecutionContext): Free[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]] =
+    Free.Eval[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s, F, ec))
 
   def pure[F[_],O,R](r: R): Free[Algebra[F,O,?],R] =
     Free.Pure[Algebra[F,O,?],R](r)
@@ -107,33 +107,7 @@ private[fs2] object Algebra {
   case object Interrupted extends Throwable { override def fillInStackTrace = this }
 
   /** Left-fold the output of a stream, supporting `unconsAsync`. */
-  def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Effect[F2], ec: ExecutionContext): F2[B] = {
-    implicit val async: Async[F2] = new Async[F2] {
-      def fork[A](fa: F2[A]): F2[Unit] = F.liftIO(F.runAsync(fa)(_ => IO.unit))
-      def ref[A]: F2[concurrent.Ref[F2,A]] = concurrent.ref[F2,A]
-    }
-    runFold0(stream, init)(f)
-  }
-
-  /**
-   * Left-fold the output of a stream, without support for `unconsAsync`.
-   *
-   * If an `unconsAsync` is encountered, `F.raiseError(UnexpectedUnconsAsync)` is returned.
-   */
-  def runFoldSync[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
-    implicit val async: Async[F2] = new Async[F2] {
-      def fork[A](fa: F2[A]): F2[Unit] = F.raiseError(UnexpectedUnconsAsync)
-      def ref[A]: F2[concurrent.Ref[F2,A]] = F.raiseError(UnexpectedUnconsAsync)
-    }
-    runFold0(stream, init)(f)
-  }
-
-  private trait Async[F[_]] {
-    def fork[A](fa: F[A]): F[Unit]
-    def ref[A]: F[concurrent.Ref[F,A]]
-  }
-
-  private def runFold0[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2], A: Async[F2]): F2[B] = {
+  def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
     runFold_(stream, init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentSkipListMap(new java.util.Comparator[Token] {
       def compare(x: Token, y: Token) = x.nonce compare y.nonce
     }))
@@ -163,7 +137,7 @@ private[fs2] object Algebra {
   private def runFold_[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B,
       startCompletion: AtomicBoolean,
       midAcquires: TwoWayLatch,
-      resources: ConcurrentSkipListMap[Token, F2[Unit]])(implicit F: Sync[F2], A: Async[F2]): F2[B] = {
+      resources: ConcurrentSkipListMap[Token, F2[Unit]])(implicit F: Sync[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
     def go(acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B] = v match {
@@ -209,15 +183,15 @@ private[fs2] object Algebra {
             // if so we need a monotonically increasing nonce associated with each resource
             val tokens = resources.keySet.iterator.asScala.foldLeft(LinkedSet.empty[Token])(_ + _)
             go(acc, g(tokens).viewL)
-          case Algebra.UnconsAsync(s) =>
+          case Algebra.UnconsAsync(s, effect, ec) =>
             type UO = Option[(Segment[_,Unit], Free[Algebra[F,Any,?],Unit])]
-            val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(A.ref[Either[Throwable,UO]]) { ref =>
-              F.map(A.fork {
+            val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(concurrent.ref[F,Either[Throwable,UO]](effect, ec)) { ref =>
+              F.map(concurrent.fork {
                 F.flatMap(F.attempt(runFold_(
                   uncons(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
                   None: UO)((o,a) => a, startCompletion, midAcquires, resources)
                 ))(o => ref.setAsyncPure(o))
-              })(_ => AsyncPull.readAttemptRef(ref))
+              }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
             }
             F.flatMap(asyncPull) { ap => go(acc, g(ap).viewL) }
           case _ => sys.error("impossible Segment or Output following uncons")

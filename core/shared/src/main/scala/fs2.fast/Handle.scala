@@ -1,9 +1,7 @@
 package fs2.fast
 
-// import fs2.{Chunk,NonEmptyChunk}
-
-// import scala.concurrent.ExecutionContext
-// import cats.effect.Effect
+import scala.concurrent.ExecutionContext
+import cats.effect.Effect
 
 /**
  * A currently open `Stream[F,O]` which allows chunks to be pulled or pushed.
@@ -203,13 +201,6 @@ final class Handle[+F[_],+O] private[fs2] (
   def peek1: Pull[F,Nothing,Option[(O,Handle[F,O])]] =
     this.receive1 { (hd, tl) => Pull.pure(Some((hd, tl.push1(hd)))) }
 
-  /**
-   * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
-   * inner `Pull` logically blocks until this await completes.
-   */
-  def prefetch: Pull[F,Nothing,Pull[F,Nothing,Option[Handle[F,O]]]] =
-    this.awaitAsync.map { _.pull.map { _.map { case (hd, h) => h push hd } } }
-
   /** Emits the first `n` elements of the input and return the new `Handle`. */
   def take(n: Long): Pull[F,O,Option[Handle[F,O]]] =
     if (n <= 0) Pull.pure(Some(this))
@@ -271,7 +262,7 @@ object Handle {
   implicit class HandleInvariantOps[F[_],O](private val self: Handle[F,O]) extends AnyVal {
 
     /** Asynchronously awaits for a segment of elements to be available in the source stream. */
-    def awaitAsync: Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit],Handle[F,O])]]] =
+    def awaitAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit],Handle[F,O])]]] =
       self.buffer match {
         case hd :: tl => Pull.pure(AsyncPull.pure(Some((hd, new Handle(tl, self.underlying)))))
         case Nil => self.underlying.unconsAsync.map(_.map(_.map { case (hd, tl) => (hd, new Handle(Nil, tl))}))
@@ -284,6 +275,13 @@ object Handle {
   // //     (h, tl.push(hs))
   // //   }}}
   // // }
+
+    /**
+     * Like [[await]], but runs the `await` asynchronously. A `flatMap` into
+     * inner `Pull` logically blocks until this await completes.
+     */
+    def prefetch(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,Pull[F,Nothing,Option[Handle[F,O]]]] =
+      self.awaitAsync.map { _.pull.map { _.map { case (hd, h) => h push hd } } }
 
     /** Apply `f` to the next available `Segment`. */
     def receive[O2,R](f: (Segment[O,Unit],Handle[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =

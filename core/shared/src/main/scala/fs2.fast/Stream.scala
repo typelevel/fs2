@@ -309,26 +309,15 @@ object Stream {
     // def repeatPull2[O2,O3](s2: Stream[F,O2])(using: (Handle[F,O],Handle[F,O2]) => Pull[F,O3,(Handle[F,O],Handle[F,O2])]): Stream[F,O3] =
     //   self.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.close
 
-    def run(implicit F: Effect[F], ec: ExecutionContext): F[Unit] =
+    def run(implicit F: Sync[F]): F[Unit] =
       runFold(())((u, _) => u)
 
-    def runSync(implicit F: Sync[F]): F[Unit] =
-      runFoldSync(())((u, _) => u)
-
-    def runFold[B](init: B)(f: (B, O) => B)(implicit F: Effect[F], ec: ExecutionContext): F[B] =
+    def runFold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
       Algebra.runFold(self.get, init)(f)
 
-    def runFoldSync[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
-      Algebra.runFoldSync(self.get, init)(f)
-
-    def runLog(implicit F: Effect[F], ec: ExecutionContext): F[Vector[O]] = {
+    def runLog(implicit F: Sync[F]): F[Vector[O]] = {
       import scala.collection.immutable.VectorBuilder
       F.suspend(F.map(runFold(new VectorBuilder[O])(_ += _))(_.result))
-    }
-
-    def runLogSync(implicit F: Sync[F]): F[Vector[O]] = {
-      import scala.collection.immutable.VectorBuilder
-      F.suspend(F.map(runFoldSync(new VectorBuilder[O])(_ += _))(_.result))
     }
 
     // def runFoldMonoid(implicit F: MonadError[F, Throwable], O: Monoid[O]): F[O] =
@@ -360,22 +349,21 @@ object Stream {
     // /** Applies the given sink to this stream and drains the output. */
     // def to(f: Sink[F,O]): Stream[F,Unit] = f(self)
 
-    def unconsAsync: Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
+    def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
       Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
   }
 
 
   implicit class StreamPureOps[+O](private val self: Stream[Pure,O]) {
 
+    // TODO this is uncallable b/c covary is defined on Stream too
     def covary[F2[_]]: Stream[F2,O] = self.asInstanceOf[Stream[F2,O]]
 
     def toList: List[O] = {
-      import scala.concurrent.ExecutionContext.Implicits.global
       covary[IO].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.reverse
     }
 
     def toVector: Vector[O] = {
-      import scala.concurrent.ExecutionContext.Implicits.global
       covary[IO].runLog.unsafeRunSync
     }
   }

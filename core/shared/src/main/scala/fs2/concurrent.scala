@@ -227,6 +227,13 @@ object concurrent {
     ref[F, A].flatMap { ref => ref.setAsync(f).as(ref.get) }
 
   /**
+   * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
+   * bound. Like `start` but is more efficient.
+   */
+  def fork[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] =
+    F.liftIO(F.runAsync(f)(_ => IO.unit))
+
+  /**
     * Returns an effect that, when run, races evaluation of `fa` and `fb`,
     * and returns the result of whichever completes first. The losing effect
     * continues to execute in the background though its result will be sent
