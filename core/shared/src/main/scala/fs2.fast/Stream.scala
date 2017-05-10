@@ -381,12 +381,12 @@ object Stream {
     def through2[O2,O3](s2: Stream[F,O2])(f: Pipe2[F,O,O2,O3]): Stream[F,O3] =
       f(self,s2)
 
-    // /** Transform this stream using the given pure `Pipe2`. */
-    // def through2Pure[O2,O3](s2: Stream[F,O2])(f: Pipe2[Pure,O,O2,O3]): Stream[F,O3] =
-    //   f(self,s2)
-    //
-    // /** Applies the given sink to this stream and drains the output. */
-    // def to(f: Sink[F,O]): Stream[F,Unit] = f(self)
+    /** Transform this stream using the given pure `Pipe2`. */
+    def through2Pure[O2,O3](s2: Stream[F,O2])(f: Pipe2[Pure,O,O2,O3]): Stream[F,O3] =
+      f(self,s2)
+
+    /** Applies the given sink to this stream and drains the output. */
+    def to(f: Sink[F,O]): Stream[F,Unit] = f(self)
 
     def translate[G[_]](u: UF1[F, G])(implicit G: Effect[G]): Stream[G,O] =
       translate_(u, Right(G))
@@ -394,43 +394,21 @@ object Stream {
     def translateSync[G[_]](u: UF1[F, G])(implicit G: MonadError[G, Throwable]): Stream[G,O] =
       translate_(u, Left(G))
 
-    private def translate_[G[_]](u: UF1[F, G], G: Either[MonadError[G, Throwable], Effect[G]]): Stream[G,O] = {
-      import Algebra._
-      def algFtoG[O]: UF1[Algebra[F,O,?],Algebra[G,O,?]] = new UF1[Algebra[F,O,?],Algebra[G,O,?]] { self =>
-        def apply[X](in: Algebra[F,O,X]): Algebra[G,O,X] = in match {
-          case Output(values) => Output[G,O](values)
-          case WrapSegment(values) => WrapSegment[G,O,X](values)
-          case Eval(value) => Eval[G,O,X](u(value))
-          case Acquire(resource, release) => Acquire(u(resource), r => u(release(r)))
-          case Release(token) => Release[G,O](token)
-          case Snapshot() => Snapshot[G,O]()
-          case UnconsAsync(s, effect, ec) =>
-            G match {
-              case Left(me) => Algebra.Eval(me.raiseError(new IllegalStateException("unconsAsync encountered while translating synchronously")))
-              case Right(ef) => UnconsAsync(s.translate[Algebra[G,Any,?]](algFtoG), ef, ec).asInstanceOf[Algebra[G,O,X]]
-            }
-        }
-      }
-      Stream.fromFree[G,O](self.get.translate[Algebra[G,O,?]](algFtoG))
-    }
+    private def translate_[G[_]](u: UF1[F, G], G: Either[MonadError[G, Throwable], Effect[G]]): Stream[G,O] =
+      Stream.fromFree[G,O](Algebra.translate[F,G,O,Unit](self.get, u, G))
 
     def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
       Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
   }
-
 
   implicit class StreamPureOps[+O](private val self: Stream[Pure,O]) {
 
     // TODO this is uncallable b/c covary is defined on Stream too
     def covary[F2[_]]: Stream[F2,O] = self.asInstanceOf[Stream[F2,O]]
 
-    def toList: List[O] = {
-      covary[IO].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.reverse
-    }
+    def toList: List[O] = covary[IO].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.reverse
 
-    def toVector: Vector[O] = {
-      covary[IO].runLog.unsafeRunSync
-    }
+    def toVector: Vector[O] = covary[IO].runLog.unsafeRunSync
   }
 
   // implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) extends AnyVal {

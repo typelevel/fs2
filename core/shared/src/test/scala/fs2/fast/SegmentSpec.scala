@@ -27,7 +27,7 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
 
     "toChunk" in {
       forAll { (xs: List[Int]) =>
-        Segment.seq(xs).toChunk.toList shouldBe xs
+        Segment.seq(xs).toChunk.toVector shouldBe xs.toVector
       }
     }
 
@@ -39,7 +39,7 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
 
     "fold" in {
       forAll { (s: Segment[Int,Unit], init: Int, f: (Int, Int) => Int) =>
-        s.fold(init)(f).run shouldBe s.toChunk.toList.foldLeft(init)(f)
+        s.fold(init)(f).run shouldBe s.toChunk.toVector.foldLeft(init)(f)
       }
     }
 
@@ -51,7 +51,7 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
 
     "scan" in {
       forAll { (s: Segment[Int,Unit], init: Int, f: (Int, Int) => Int) =>
-        s.scan(init)(f).toChunk.toList shouldBe s.toChunk.toList.scanLeft(init)(f)
+        s.scan(init)(f).toChunk.toVector shouldBe s.toChunk.toVector.scanLeft(init)(f)
       }
     }
 
@@ -64,7 +64,7 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
 
     "sum" in {
       forAll { (s: Segment[Int,Unit]) =>
-        s.sum(0).run shouldBe s.toChunk.toList.sum
+        s.sum(0).run shouldBe s.toChunk.toVector.sum
       }
     }
 
@@ -82,7 +82,7 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
             case Right((hd, tl)) => unconsAll(acc :+ hd, tl)
             case Left(()) => acc
           }
-        unconsAll(Catenable.empty, seg).toList.map(_.toList) shouldBe xss
+        unconsAll(Catenable.empty, seg).toList.map(_.toVector.toList) shouldBe xss
       }
     }
 
@@ -91,5 +91,18 @@ class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChe
       val s = (0 until N).foldLeft(Segment.singleton(0))((s,i) => s map (_ + i))
       s.sum(0).run shouldBe (0 until N).sum
     }
+
+    val Ns = List(2,3,100,200,400,800,1600,3200,6400,12800,25600,51200,102400)
+    "uncons1 is O(1)" - { Ns.foreach { N =>
+      N.toString in {
+        def go[O,R](s: Segment[O,R]): R =
+          s.uncons1 match {
+            case Left(r) => r
+            case Right((o, s)) => go(s)
+          }
+        go(Chunk.indexedSeq(0 until N))
+      }
+    }}
+
   }
 }
