@@ -92,6 +92,9 @@ object Pull {
   /** The completed `Pull`. Reads and outputs nothing. */
   val done: Pull[Nothing,Nothing,Unit] = fromFree[Nothing,Nothing,Unit](Algebra.pure[Nothing,Nothing,Unit](()))
 
+  def eval[F[_],R](fr: F[R]): Pull[F,Nothing,R] =
+    fromFree(Algebra.eval[F,Nothing,R](fr))
+
   /** The `Pull` that reads and outputs nothing, and fails with the given error. */
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
     new Pull(Algebra.fail[Nothing,Nothing,Nothing](err))

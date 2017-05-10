@@ -61,23 +61,6 @@ final class Handle[+F[_],+O] private[fs2] (
     }
 
   /**
-   * Asynchronously awaits for a segment of elements to be available in the source stream.
-   */
-  def awaitAsync: Pull[F,Nothing,Pull[F,Nothing,Option[(Segment[O,Unit],Handle[F,O])]]] =
-    buffer match {
-      case hd :: tl => Pull.pure(Pull.pure(Some((hd, new Handle(tl, underlying)))))
-      case Nil => underlying.unconsAsync.map(_.map(_.map { case (segment, stream) => (segment, new Handle(Nil, stream))}))
-    }
-
-  // // /** Like [[awaitAsync]] but waits for a single element instead of an entire chunk. */
-  // // def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Effect[F2], A2: RealSupertype[A,A2], ec: ExecutionContext): Pull[F2, Nothing, Handle.AsyncStep1[F2,A2]] = {
-  // //   awaitAsync map { _ map { _.map { case (hd, tl) =>
-  // //     val (h, hs) = hd.unconsNonEmpty
-  // //     (h, tl.push(hs))
-  // //   }}}
-  // // }
-
-  /**
    * Like [[await]], but returns a segment of no more than `n` elements.
    *
    * The returned segment has a result tuple consisting of the remaining limit
@@ -225,7 +208,7 @@ final class Handle[+F[_],+O] private[fs2] (
    * inner `Pull` logically blocks until this await completes.
    */
   def prefetch: Pull[F,Nothing,Pull[F,Nothing,Option[Handle[F,O]]]] =
-    awaitAsync.map { fut => fut.map { _.map { case (hd, h) => h push hd } } }
+    this.awaitAsync.map { _.pull.map { _.map { case (hd, h) => h push hd } } }
 
   /** Emits the first `n` elements of the input and return the new `Handle`. */
   def take(n: Long): Pull[F,O,Option[Handle[F,O]]] =
@@ -285,7 +268,22 @@ object Handle {
   /** Empty handle. */
   def empty[F[_],O]: Handle[F,O] = empty_
 
-  implicit class HandleInvariantEffectOps[F[_],+O](private val self: Handle[F,O]) extends AnyVal {
+  implicit class HandleInvariantOps[F[_],O](private val self: Handle[F,O]) extends AnyVal {
+
+    /** Asynchronously awaits for a segment of elements to be available in the source stream. */
+    def awaitAsync: Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit],Handle[F,O])]]] =
+      self.buffer match {
+        case hd :: tl => Pull.pure(AsyncPull.pure(Some((hd, new Handle(tl, self.underlying)))))
+        case Nil => self.underlying.unconsAsync.map(_.map(_.map { case (hd, tl) => (hd, new Handle(Nil, tl))}))
+      }
+
+  // // /** Like [[awaitAsync]] but waits for a single element instead of an entire chunk. */
+  // // def await1Async[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Effect[F2], A2: RealSupertype[A,A2], ec: ExecutionContext): Pull[F2, Nothing, Handle.AsyncStep1[F2,A2]] = {
+  // //   awaitAsync map { _ map { _.map { case (hd, tl) =>
+  // //     val (h, hs) = hd.unconsNonEmpty
+  // //     (h, tl.push(hs))
+  // //   }}}
+  // // }
 
     /** Apply `f` to the next available `Segment`. */
     def receive[O2,R](f: (Segment[O,Unit],Handle[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =

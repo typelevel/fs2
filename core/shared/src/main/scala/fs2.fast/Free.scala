@@ -5,6 +5,9 @@ import Free.ViewL
 import Free.ViewL._
 import Free._
 
+import cats.MonadError
+import cats.implicits._
+
 sealed abstract class Free[F[_], +R] {
 
   def flatMap[R2](f: R => Free[F, R2]): Free[F, R2] = Bind(this, f)
@@ -94,5 +97,19 @@ object Free {
       }
       go(free.asInstanceOf[Free[F,X]], None, None)
     }
+  }
+
+  implicit class FreeRunOps[F[_],R](val self: Free[F,R]) extends AnyVal {
+    def run(implicit F: MonadError[F, Throwable]): F[R] = {
+      self.viewL match {
+        case Done(r) => F.pure(r)
+        case Failed(t) => F.raiseError(t)
+        case Bound(fx, f, onError) =>
+          onError match {
+            case None => F.flatMap(fx)(x => f(x).run)
+            case Some(h) => F.flatMap(fx)(x => f(x).run).handleErrorWith(t => h(t).run)
+          }
+      }
+  }
   }
 }
