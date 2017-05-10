@@ -4,7 +4,7 @@ import fs2.{ Pure }
 
 import scala.concurrent.ExecutionContext
 
-import cats.{ Applicative, MonadError }
+import cats.{ Applicative, MonadError, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
 
 import fs2.util.UF1
@@ -354,22 +354,19 @@ object Stream {
     def runFold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
       Algebra.runFold(self.get, init)(f)
 
+    def runFoldMonoid(implicit F: Sync[F], O: Monoid[O]): F[O] =
+      runFold(O.empty)(O.combine)
+
+    def runFoldSemigroup(implicit F: Sync[F], O: Semigroup[O]): F[Option[O]] =
+      runFold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
+
     def runLog(implicit F: Sync[F]): F[Vector[O]] = {
       import scala.collection.immutable.VectorBuilder
       F.suspend(F.map(runFold(new VectorBuilder[O])(_ += _))(_.result))
     }
 
-    // def runFoldMonoid(implicit F: MonadError[F, Throwable], O: Monoid[O]): F[O] =
-    //   runFold(O.empty)(O.combine)
-    //
-    // def runFoldSemigroup(implicit F: MonadError[F, Throwable], O: Semigroup[O]): F[Option[O]] =
-    //   runFold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
-    //
-    // def runLog(implicit F: MonadError[F, Throwable]): F[Vector[O]] =
-    //   self.runLogFree.run
-    //
-    // def runLast(implicit F: MonadError[F, Throwable]): F[Option[O]] =
-    //   self.runFold(Option.empty[O])((_, a) => Some(a))
+    def runLast(implicit F: Sync[F]): F[Option[O]] =
+      self.runFold(Option.empty[O])((_, a) => Some(a))
 
     /** Transform this stream using the given `Pipe`. */
     def through[O2](f: Pipe[F,O,O2]): Stream[F,O2] = f(self)
