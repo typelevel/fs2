@@ -5,8 +5,7 @@ import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO }
 
 import fs2.internal.{Actor,LinkedMap}
-import fs2.util.Attempt
-import fs2.util.ExecutionContexts._
+import fs2.internal.ExecutionContexts._
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import scala.concurrent.ExecutionContext
@@ -17,10 +16,10 @@ object concurrent {
   private final class MsgId
   private sealed abstract class Msg[A]
   private object Msg {
-    final case class Read[A](cb: Attempt[(A, Long)] => Unit, id: MsgId) extends Msg[A]
-    final case class Nevermind[A](id: MsgId, cb: Attempt[Boolean] => Unit) extends Msg[A]
-    final case class Set[A](r: Attempt[A], cb: () => Unit) extends Msg[A]
-    final case class TrySet[A](id: Long, r: Attempt[A], cb: Attempt[Boolean] => Unit) extends Msg[A]
+    final case class Read[A](cb: Either[Throwable,(A, Long)] => Unit, id: MsgId) extends Msg[A]
+    final case class Nevermind[A](id: MsgId, cb: Either[Throwable,Boolean] => Unit) extends Msg[A]
+    final case class Set[A](r: Either[Throwable,A], cb: () => Unit) extends Msg[A]
+    final case class TrySet[A](id: Long, r: Either[Throwable,A], cb: Either[Throwable,Boolean] => Unit) extends Msg[A]
   }
 
   /**
@@ -36,9 +35,9 @@ object concurrent {
   /** An asynchronous, concurrent mutable reference. */
   final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
 
-    private var result: Attempt[A] = null
+    private var result: Either[Throwable,A] = null
     // any waiting calls to `access` before first `set`
-    private var waiting: LinkedMap[MsgId, Attempt[(A, Long)] => Unit] = LinkedMap.empty
+    private var waiting: LinkedMap[MsgId, Either[Throwable,(A, Long)] => Unit] = LinkedMap.empty
     // id which increases with each `set` or successful `modify`
     private var nonce: Long = 0
 
@@ -89,10 +88,10 @@ object concurrent {
      * setter first. Once it has noop'd or been used once, a setter
      * never succeeds again.
      */
-    def access: F[(A, Attempt[A] => F[Boolean])] =
+    def access: F[(A, Either[Throwable,A] => F[Boolean])] =
       F.flatMap(F.delay(new MsgId)) { mid =>
         F.map(getStamped(mid)) { case (a, id) =>
-          val set = (a: Attempt[A]) =>
+          val set = (a: Either[Throwable,A]) =>
             F.async[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
           (a, set)
         }
@@ -186,7 +185,7 @@ object concurrent {
     def race(f1: F[A], f2: F[A]): F[Unit] = F.delay {
       val ref = new AtomicReference(actor)
       val won = new AtomicBoolean(false)
-      val win = (res: Attempt[A]) => {
+      val win = (res: Either[Throwable,A]) => {
         // important for GC: we don't reference this ref
         // or the actor directly, and the winner destroys any
         // references behind it!
@@ -251,8 +250,8 @@ object concurrent {
   def unsafeRunAsync[F[_], A](fa: F[A])(f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =
     F.runAsync(F.shift(fa)(ec))(f).unsafeRunSync
 
-  /** Deprecated alias for [[Stream.join]]. */
-  @deprecated("Use Stream.join instead", "1.0")
-  def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
-    Stream.join(maxOpen)(outer)
+  // /** Deprecated alias for [[Stream.join]]. */
+  // @deprecated("Use Stream.join instead", "1.0")
+  // def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
+  //   Stream.join(maxOpen)(outer)
 }

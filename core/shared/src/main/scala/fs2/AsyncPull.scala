@@ -1,28 +1,26 @@
-package fs2.fast
+package fs2
 
 import scala.concurrent.ExecutionContext
 
-import cats.Functor
+import cats.{ ~>, Functor }
 import cats.effect.Effect
 import cats.implicits._
 
-import fs2.concurrent
-import fs2.fast.internal.{ Algebra, Free }
-import fs2.util.UF1
+import fs2.internal.{ Algebra, Free }
 
-sealed trait AsyncPull[F[_],A] { self =>
+sealed abstract class AsyncPull[F[_],A] { self =>
 
   private[fs2] def get: Free[F, A]
 
   private[fs2] def cancellableGet: Free[F, (Free[F, A], Free[F, Unit])]
 
   /** Converts this future to a pull, that when flat mapped, semantically blocks on the result of the future. */
-  def pull: Pull[F,Nothing,A] = Pull.fromFree(get.translate[Algebra[F,Nothing,?]](new UF1[F,Algebra[F,Nothing,?]] {
+  def pull: Pull[F,Nothing,A] = Pull.fromFree(get.translate[Algebra[F,Nothing,?]](new (F ~> Algebra[F,Nothing,?]) {
     def apply[X](fx: F[X]) = Algebra.Eval(fx)
   }))
 
   /** Converts this future to a stream, that when flat mapped, semantically blocks on the result of the future. */
-  def stream: Stream[F,A] = Stream.fromFree(get.translate[Algebra[F,A,?]](new UF1[F,Algebra[F,A,?]] {
+  def stream: Stream[F,A] = Stream.fromFree(get.translate[Algebra[F,A,?]](new (F ~> Algebra[F,A,?]) {
     def apply[X](fx: F[X]) = Algebra.Eval(fx)
   }).flatMap(Algebra.output1))
 

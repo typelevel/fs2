@@ -1,4 +1,4 @@
-package fs2.util
+package fs2
 
 import cats.{ Applicative, Eval, Foldable, Traverse }
 import cats.implicits._
@@ -40,23 +40,23 @@ sealed abstract class Catenable[+A] {
   def isEmpty: Boolean
 
   /** Concatenates this with `c` in O(1) runtime. */
-  final def ++[A2>:A](c: Catenable[A2])(implicit T: RealSupertype[A,A2]): Catenable[A2] =
+  final def ++[A2>:A](c: Catenable[A2]): Catenable[A2] =
     append(this, c)
 
   /** Returns a new catenable consisting of `a` followed by this. O(1) runtime. */
-  final def cons[A2>:A](a: A2)(implicit T: RealSupertype[A,A2]): Catenable[A2] =
+  final def cons[A2>:A](a: A2): Catenable[A2] =
     append(single(a), this)
 
   /** Alias for [[cons]]. */
-  final def +:[A2>:A](a: A2)(implicit T: RealSupertype[A,A2]): Catenable[A2] =
+  final def +:[A2>:A](a: A2): Catenable[A2] =
     cons(a)
 
   /** Returns a new catenable consisting of this followed by `a`. O(1) runtime. */
-  final def snoc[A2>:A](a: A2)(implicit T: RealSupertype[A,A2]): Catenable[A2] =
+  final def snoc[A2>:A](a: A2): Catenable[A2] =
     append(this, single(a))
 
   /** Alias for [[snoc]]. */
-  final def :+[A2>:A](a: A2)(implicit T: RealSupertype[A,A2]): Catenable[A2] =
+  final def :+[A2>:A](a: A2): Catenable[A2] =
     snoc(a)
 
   /** Applies the supplied function to each element and returns a new catenable. */

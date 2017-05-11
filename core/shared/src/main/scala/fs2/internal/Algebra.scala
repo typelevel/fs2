@@ -1,16 +1,14 @@
-package fs2
-package fast
-package internal
+package fs2.internal
 
 import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic.{ AtomicBoolean, AtomicLong }
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
-import cats.MonadError
+import cats.{ ~>, MonadError }
 import cats.effect.{ Effect, Sync }
 
-import fs2.util.UF1
-import fs2.internal.{ LinkedSet, TwoWayLatch }
+import fs2.{ AsyncPull, Segment }
+import fs2.concurrent
 
 private[fs2] sealed trait Algebra[F[_],O,R]
 
@@ -202,9 +200,9 @@ private[fs2] object Algebra {
     F.suspend { go(init, uncons(stream).viewL) }
   }
 
-  def translate[F[_],G[_],O,R](fr: Free[Algebra[F,O,?],R], u: UF1[F, G], G: Either[MonadError[G, Throwable], Effect[G]]): Free[Algebra[G,O,?],R] = {
+  def translate[F[_],G[_],O,R](fr: Free[Algebra[F,O,?],R], u: F ~> G, G: Either[MonadError[G, Throwable], Effect[G]]): Free[Algebra[G,O,?],R] = {
     type F2[x] = F[x] // nb: workaround for scalac kind bug, where in the unconsAsync case, scalac thinks F has kind 0
-    def algFtoG[O]: UF1[Algebra[F,O,?],Algebra[G,O,?]] = new UF1[Algebra[F,O,?],Algebra[G,O,?]] { self =>
+    def algFtoG[O]: Algebra[F,O,?] ~> Algebra[G,O,?] = new (Algebra[F,O,?] ~> Algebra[G,O,?]) { self =>
       def apply[X](in: Algebra[F,O,X]): Algebra[G,O,X] = in match {
         case o: Output[F,O] => Output[G,O](o.values)
         case WrapSegment(values) => WrapSegment[G,O,X](values)

@@ -1,7 +1,6 @@
-package fs2.fast
+package fs2
 
 import cats.Eval
-import fs2.util.Catenable
 
 import Segment._
 

@@ -3,7 +3,7 @@ package fs2.internal
 import java.util.concurrent.Phaser
 
 /** Simple wrapper around `Phaser`. Like a `CountDownLatch` that can count up also. */
-private[fs2]
+private[internal]
 class TwoWayLatch private(phaser: Phaser) {
   /** Increase `currentCount` by 1. */
   def increment: Unit = { phaser.register(); () }

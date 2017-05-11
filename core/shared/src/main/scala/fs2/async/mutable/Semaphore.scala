@@ -124,9 +124,7 @@ object Semaphore {
             // now compare old and new sizes to figure out which actions to run
             val newSize = change.now.fold(_.size, _ => 0)
             val released = waiting.size - newSize
-            // just using Chunk for its stack-safe foldRight
-            fs2.Chunk.indexedSeq(waiting.take(released))
-                     .foldRight(F.pure(())) { (hd,tl) => open(hd._2) >> tl }
+            waiting.take(released).foldRight(F.pure(())) { (hd,tl) => open(hd._2) >> tl }
           case Right(_) => F.pure(())
         }}
       }

@@ -1,9 +1,8 @@
 package fs2.internal
 
 import scala.concurrent.ExecutionContext
-import fs2.util.{ ExecutionContexts, NonFatal }
-import ExecutionContexts._
 import java.util.concurrent.atomic.AtomicReference
+import ExecutionContexts._
 
 /*
  * Implementation is taken from `scalaz` library, with only minor changes. See:
