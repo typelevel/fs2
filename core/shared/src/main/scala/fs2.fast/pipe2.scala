@@ -246,30 +246,32 @@ object pipe2 {
    * elements of `s` first.
    */
   def merge[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) => {
-    def go(l: AsyncPull[F,Option[(Segment[O,Unit],Handle[F,O])]],
-           r: AsyncPull[F,Option[(Segment[O,Unit],Handle[F,O])]]): Pull[F,O,Unit] =
+    def go(l: AsyncPull[F,Option[(Segment[O,Unit],Stream[F,O])]],
+           r: AsyncPull[F,Option[(Segment[O,Unit],Stream[F,O])]]): Pull[F,O,Unit] =
       l.race(r).pull.flatMap {
         case Left(l) =>
           l match {
             case None => r.pull.flatMap {
               case None => Pull.done
-              case Some((hd, tl)) => Pull.output(hd) >> tl.echo
+              case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
             }
-            case Some((hd, tl)) => Pull.output(hd) >> tl.awaitAsync.flatMap(go(_, r))
+            case Some((hd, tl)) => Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(_, r))
           }
         case Right(r) =>
           r match {
             case None => l.pull.flatMap {
               case None => Pull.done
-              case Some((hd, tl)) => Pull.output(hd) >> tl.echo
+              case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
             }
-            case Some((hd, tl)) => Pull.output(hd) >> tl.awaitAsync.flatMap(go(l, _))
+            case Some((hd, tl)) => Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(l, _))
           }
       }
 
-    s1.pull2(s2) {
-      (s1,s2) => s1.awaitAsync.flatMap { l => s2.awaitAsync.flatMap { r => go(l,r) }}
-    }
+    s1.pull.unconsAsync.flatMap { s1 =>
+      s2.pull.unconsAsync.flatMap { s2 =>
+        go(s1,s2)
+      }
+    }.close
   }
 
   /** Like `merge`, but halts as soon as _either_ branch halts. */

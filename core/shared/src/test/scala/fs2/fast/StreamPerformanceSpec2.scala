@@ -79,8 +79,8 @@ class StreamPerformanceSpec extends FreeSpec with Matchers {
     "transduce (id)" - { Ns.foreach { N =>
       N.toString in {
         val start = System.nanoTime
-        runLog((chunk(Chunk.seq(0 until N)): Stream[IO,Int]).repeatPull { (s: Handle[IO,Int]) =>
-          s.receive1 { (hd, tl) => Pull.output1(hd).as(Some(tl)) }
+        runLog((chunk(Chunk.seq(0 until N)): Stream[IO,Int]).repeatPull { 
+          _.receive1 { (hd, tl) => Pull.output1(hd).as(Some(tl)) }
         }) shouldBe Vector.range(0,N)
         val elapsed = System.nanoTime - start
       }

@@ -294,7 +294,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def onFinalize[F2[x]>:F[x]](f: F2[Unit])(F2: Applicative[F2]): Stream[F2,O] =
     Stream.bracket(F2.pure(()))(_ => this, _ => f)
 
-  def open: Pull[F,Nothing,Handle[F,O]] = Pull.pure(new Handle(Nil, this))
+  // def toPull: Pull[F,Nothing,Stream[F,O]] = Pull.pure(this)
 
   // def output: Pull[F,O,Unit] = Pull.outputs(self)
 
@@ -310,8 +310,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // def prefetch[F2[_]](implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
   //   Sub1.substStream(self)(S) through pipe.prefetch
 
-  def pull[F2[x]>:F[x],O2](using: Handle[F,O] => Pull[F2,O2,Any]) : Stream[F2,O2] =
-    open.flatMap(using).close
+  // def pull[F2[x]>:F[x],O2](using: Handle[F,O] => Pull[F2,O2,Any]) : Stream[F2,O2] =
+  //   open.flatMap(using).close
 
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat
@@ -349,7 +349,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.tail]]`. */
   // def tail: Stream[F,O] = self through pipe.tail
 
-  def take(n: Long): Stream[F,O] = pull(_.take(n))
+  def take(n: Long): Stream[F,O] = this.pull.take(n).close
 
   // /** Alias for `self through [[pipe.takeRight]]`. */
   // def takeRight(n: Long): Stream[F,O] = self through pipe.takeRight(n)
@@ -598,15 +598,17 @@ object Stream {
     // /** Folds this stream with the monoid for `O`. */
     // def foldMonoid(implicit O: Monoid[O]): Stream[F,O] = self.fold(O.empty)(O.combine)
 
-    def pull2[O2,O3](s2: Stream[F,O2])(using: (Handle[F,O], Handle[F,O2]) => Pull[F,O3,Any]): Stream[F,O3] =
-      self.open.flatMap { h1 => s2.open.flatMap { h2 => using(h1,h2) }}.close
+    def pull: Stream.ToPull[F,O] = new Stream.ToPull(self.free)
+
+    def pull2[O2,O3](s2: Stream[F,O2])(using: (Stream.ToPull[F,O], Stream.ToPull[F,O2]) => Pull[F,O3,Any]): Stream[F,O3] =
+      using(pull, s2.pull).close
 
     // /** Reduces this stream with the Semigroup for `O`. */
     // def reduceSemigroup(implicit S: Semigroup[O]): Stream[F, O] =
     //   self.reduce(S.combine(_, _))
 
-    def repeatPull[O2](using: Handle[F,O] => Pull[F,O2,Option[Handle[F,O]]]): Stream[F,O2] =
-      self.pull(Pull.loop(using))
+    def repeatPull[O2](using: Stream.ToPull[F,O] => Pull[F,O2,Option[Stream[F,O]]]): Stream[F,O2] =
+      Pull.loop(using.andThen(_.map(_.map(_.pull))))(self.pull).close
 
     // def repeatPull2[O2,O3](s2: Stream[F,O2])(using: (Handle[F,O],Handle[F,O2]) => Pull[F,O3,(Handle[F,O],Handle[F,O2])]): Stream[F,O3] =
     //   self.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.close
@@ -684,6 +686,237 @@ object Stream {
   //   def joinUnbounded(implicit F: Effect[F], ec: ExecutionContext) = Stream.joinUnbounded(self)
   // }
 
+  final class ToPull[F[_],O] private[Stream] (private val free: Free[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
+
+    private def self: Stream[F,O] = Stream.fromFree(free.asInstanceOf[Free[Algebra[F,O,?],Unit]])
+
+    /**
+     * Waits for a segment of elements to be available in the source stream.
+     * The segment of elements along with a new stream are provided as the resource of the returned pull.
+     * The new stream can be used for subsequent operations, like awaiting again.
+     * A `None` is returned as the resource of the pull upon reaching the end of the stream.
+     */
+    def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
+      Pull.fromFree(Algebra.uncons(self.get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
+
+    /** Like [[uncons]] but waits for a single element instead of an entire segment. */
+    def uncons1: Pull[F,Nothing,Option[(O,Stream[F,O])]] =
+      uncons flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) => hd.uncons1 match {
+          case Left(_) => tl.pull.uncons1
+          case Right((hd,tl2)) => Pull.pure(Some(hd -> tl.cons(tl2)))
+        }
+      }
+
+    def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
+      Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
+
+    /**
+     * Like [[uncons]], but returns a segment of no more than `n` elements.
+     *
+     * The returned segment has a result tuple consisting of the remaining limit
+     * (`n` minus the segment size, or 0, whichever is larger) and the remainder
+     * of the source stream.
+     *
+     * `Pull.pure(None)` is returned if the end of the source stream is reached.
+     */
+    def unconsLimit(n: Long): Pull[F,Nothing,Option[Segment[O,(Long,Stream[F,O])]]] = {
+      require(n > 0)
+      uncons.map { _.map { case (hd, tl) =>
+        hd.take(n).mapResult {
+          case None =>
+            (0, tl.cons(hd.drop(n).voidResult))
+          case Some((rem, _)) =>
+            (rem, tl)
+        }
+      }}
+    }
+
+    // /** Returns a `List[NonEmptyChunk[A]]` from the input whose combined size has a maximum value `n`. */
+    // def awaitN(n: Int, allowFewer: Boolean = false): Pull[F,Nothing,(List[NonEmptyChunk[A]],Handle[F,A])] =
+    //   if (n <= 0) Pull.pure((Nil, this))
+    //   else for {
+    //     (hd, tl) <- awaitLimit(n)
+    //     (hd2, tl) <- _awaitN0(n, allowFewer)((hd, tl))
+    //   } yield ((hd :: hd2), tl)
+    //
+    // private def _awaitN0[G[_], X](n: Int, allowFewer: Boolean): ((NonEmptyChunk[X],Handle[G,X])) => Pull[G, Nothing, (List[NonEmptyChunk[X]], Handle[G,X])] = {
+    //   case (hd, tl) =>
+    //     val next = tl.awaitN(n - hd.size, allowFewer)
+    //     if (allowFewer) next.optional.map(_.getOrElse((Nil, Handle.empty))) else next
+    // }
+
+    /** Copies the next available chunk to the output. */
+    def copy: Pull[F,O,Option[Stream[F,O]]] =
+      receive { (hd, tl) => Pull.output(hd).as(Some(tl)) }
+
+    /** Copies the next available element to the output. */
+    def copy1: Pull[F,O,Option[Stream[F,O]]] =
+      receive1 { (hd, tl) => Pull.output1(hd).as(Some(tl)) }
+
+    /** Drops the first `n` elements of this `Stream`, and returns the new `Stream`. */
+    def drop(n: Long): Pull[F,Nothing,Option[Stream[F,O]]] =
+      if (n <= 0) Pull.pure(Some(self))
+      else unconsLimit(n).flatMapOpt { s =>
+        Pull.segment(s.drain).flatMap { case (rem, tl) =>
+          if (rem > 0) tl.pull.drop(rem) else Pull.pure(Some(tl))
+        }
+      }
+
+    // /**
+    //  * Drops elements of the this `Handle` until the predicate `p` fails, and returns the new `Handle`.
+    //  * If non-empty, the first element of the returned `Handle` will fail `p`.
+    //  */
+    // def dropWhile(p: A => Boolean): Pull[F,Nothing,Handle[F,A]] =
+    //   this.receive { (chunk, h) =>
+    //     chunk.indexWhere(!p(_)) match {
+    //       case Some(0) => Pull.pure(h push chunk)
+    //       case Some(i) => Pull.pure(h push chunk.drop(i))
+    //       case None    => h.dropWhile(p)
+    //     }
+    //   }
+
+    /** Writes all inputs to the output of the returned `Pull`. */
+    def echo: Pull[F,O,Unit] = Pull.loop[F,O,Stream[F,O]](_.pull.echoSegment)(self)
+
+    /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
+    def echo1: Pull[F,O,Option[Stream[F,O]]] =
+      receive1 { (hd, tl) => Pull.output1(hd).as(Some(tl)) }
+
+    /** Reads the next available segment from the input and emits it to the output. Returns the new `Handle`. */
+    def echoSegment: Pull[F,O,Option[Stream[F,O]]] =
+      receive { (hd, tl) => Pull.output(hd).as(Some(tl)) }
+
+    // /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
+    // def fetchN(n: Int): Pull[F,Nothing,Handle[F,A]] =
+    //   awaitN(n) map { case (buf, h) => buf.reverse.foldLeft(h)(_ push _) }
+    //
+    // /** Awaits the next available element where the predicate returns true. */
+    // def find(f: A => Boolean): Pull[F,Nothing,(A,Handle[F,A])] =
+    //   this.receive { (chunk, h) =>
+    //     chunk.indexWhere(f) match {
+    //       case None => h.find(f)
+    //       case Some(a) if a + 1 < chunk.size => Pull.pure((chunk(a), h.push(chunk.drop(a + 1))))
+    //       case Some(a) => Pull.pure((chunk(a), h))
+    //     }
+    //   }
+    //
+    // /**
+    //  * Folds all inputs using an initial value `z` and supplied binary operator, and writes the final
+    //  * result to the output of the supplied `Pull` when the stream has no more values.
+    //  */
+    // def fold[B](z: B)(f: (B, A) => B): Pull[F,Nothing,B] =
+    //   await.optional flatMap {
+    //     case Some((c, h)) => h.fold(c.foldLeft(z)(f))(f)
+    //     case None => Pull.pure(z)
+    //   }
+    //
+    // /**
+    //  * Folds all inputs using the supplied binary operator, and writes the final result to the output of
+    //  * the supplied `Pull` when the stream has no more values.
+    //  */
+    // def fold1[A2 >: A](f: (A2, A2) => A2): Pull[F,Nothing,A2] =
+    //   this.receive1 { (o, h) => h.fold[A2](o)(f) }
+    //
+    // /** Writes a single `true` value if all input matches the predicate, `false` otherwise. */
+    // def forall(p: A => Boolean): Pull[F,Nothing,Boolean] = {
+    //   await1.optional flatMap {
+    //     case Some((a, h)) =>
+    //       if (!p(a)) Pull.pure(false)
+    //       else h.forall(p)
+    //     case None => Pull.pure(true)
+    //   }
+    // }
+    //
+    // /** Returns the last element of the input, if non-empty. */
+    // def last: Pull[F,Nothing,Option[A]] = {
+    //   def go(prev: Option[A]): Handle[F,A] => Pull[F,Nothing,Option[A]] =
+    //     h => h.await.optional.flatMap {
+    //       case None => Pull.pure(prev)
+    //       case Some((c, h)) => go(c.foldLeft(prev)((_,a) => Some(a)))(h)
+    //     }
+    //   go(None)(this)
+    // }
+
+    /** Like [[await]] but does not consume the segment (i.e., the segment is pushed back). */
+    def peek: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
+      receive { (hd, tl) => Pull.pure(Some((hd, tl.cons(hd)))) }
+
+    /** Like [[await1]] but does not consume the element (i.e., the element is pushed back). */
+    def peek1: Pull[F,Nothing,Option[(O,Stream[F,O])]] =
+      receive1 { (hd, tl) => Pull.pure(Some((hd, tl.cons1(hd)))) }
+
+    /**
+     * Like [[uncons]], but runs the `uncons` asynchronously. A `flatMap` into
+     * inner `Pull` logically blocks until this await completes.
+     */
+    def prefetch(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,Pull[F,Nothing,Option[Stream[F,O]]]] =
+      unconsAsync.map { _.pull.map { _.map { case (hd, h) => h cons hd } } }
+
+    /** Apply `f` to the next available `Segment`. */
+    def receive[O2,R](f: (Segment[O,Unit],Stream[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
+      uncons.flatMapOpt { case (hd, tl) => f(hd, tl) }
+
+    /** Apply `f` to the next available element. */
+    def receive1[O2,R](f: (O,Stream[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
+      uncons1.flatMapOpt { case (hd, tl) => f(hd, tl) }
+
+    /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+    def receiveOption[O2,R](f: Option[(Segment[O,Unit],Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
+      uncons.flatMap(f)
+
+    /** Apply `f` to the next available element, or `None` if the input is exhausted. */
+    def receive1Option[O2,R](f: Option[(O,Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
+      uncons1.flatMap(f)
+
+    /** Emits the first `n` elements of the input and return the new `Handle`. */
+    def take(n: Long): Pull[F,O,Option[Stream[F,O]]] =
+      if (n <= 0) Pull.pure(Some(self))
+      else unconsLimit(n).flatMapOpt { s =>
+        Pull.segment(s).flatMap { case (rem, tl) =>
+          if (rem > 0) tl.pull.take(rem) else Pull.pure(None)
+        }
+      }
+
+    // /** Emits the last `n` elements of the input. */
+    // def takeRight(n: Long): Pull[F,Nothing,Vector[A]]  = {
+    //   def go(acc: Vector[A])(h: Handle[F,A]): Pull[F,Nothing,Vector[A]] = {
+    //     h.awaitN(if (n <= Int.MaxValue) n.toInt else Int.MaxValue, true).optional.flatMap {
+    //       case None => Pull.pure(acc)
+    //       case Some((cs, h)) =>
+    //         val vector = cs.toVector.flatMap(_.toVector)
+    //         go(acc.drop(vector.length) ++ vector)(h)
+    //     }
+    //   }
+    //   if (n <= 0) Pull.pure(Vector())
+    //   else go(Vector())(this)
+    // }
+    //
+    // /** Like `takeWhile`, but emits the first value which tests false. */
+    // def takeThrough(p: A => Boolean): Pull[F,A,Handle[F,A]] =
+    //   this.receive { (chunk, h) =>
+    //     chunk.indexWhere(!p(_)) match {
+    //       case Some(a) => Pull.output(chunk.take(a+1)) >> Pull.pure(h.push(chunk.drop(a+1)))
+    //       case None => Pull.output(chunk) >> h.takeThrough(p)
+    //     }
+    //   }
+    //
+    // /**
+    //  * Emits the elements of this `Handle` until the predicate `p` fails,
+    //  * and returns the new `Handle`. If non-empty, the returned `Handle` will have
+    //  * a first element `i` for which `p(i)` is `false`. */
+    // def takeWhile(p: A => Boolean): Pull[F,A,Handle[F,A]] =
+    //   this.receive { (chunk, h) =>
+    //     chunk.indexWhere(!p(_)) match {
+    //       case Some(0) => Pull.pure(h.push(chunk))
+    //       case Some(a) => Pull.output(chunk.take(a)) >> Pull.pure(h.push(chunk.drop(a)))
+    //       case None    => Pull.output(chunk) >> h.takeWhile(p)
+    //     }
+    //   }
+  }
+
+
   /** Provides operations on effectful pipes for syntactic convenience. */
   implicit class PipeOps[F[_],I,O](private val self: Pipe[F,I,O]) extends AnyVal {
 
@@ -711,7 +944,6 @@ object Stream {
     def covary[F[_]]: Pipe2[F,I,I2,O] = self.asInstanceOf[Pipe2[F,I,I2,O]]
       //pipe2.covary[F](self) todo
   }
-
 
   implicit def covaryPure[F[_],O](s: Stream[Pure,O]): Stream[F,O] = s.asInstanceOf[Stream[F,O]]
 
