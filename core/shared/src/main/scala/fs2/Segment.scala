@@ -197,6 +197,16 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).map(<f1>)"
   }
 
+  final def collect[O2](pf: PartialFunction[O,O2]): Segment[O2,R] = new Segment[O2,R] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      self.stage(depth.increment, defer,
+        o => if (pf.isDefinedAt(o)) emit(pf(o)),
+        os => { var i = 0; while (i < os.size) { val o = os(i); if (pf.isDefinedAt(o)) emit(pf(o)); i += 1; } },
+        done).map(_.mapRemainder(_ collect pf))
+    }
+    override def toString = s"($self).collect(<pf1>)"
+  }
+
   final def mapResult[R2](f: R => R2): Segment[O,R2] = new Segment[O,R2] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer, emit, emits, r => done(f(r))).map(_.mapRemainder(_ mapResult f))

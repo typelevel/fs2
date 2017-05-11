@@ -85,7 +85,7 @@ object pipe {
 
   /** Map/filter simultaneously. Calls `collect` on each `Chunk` in the stream. */
   def collect[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
-    ??? // TODO mapChunks(_.collect(pf))
+    mapSegments(_.collect(pf))
 
   // /** Emits the first element of the Stream for which the partial function is defined. */
   // def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
@@ -296,17 +296,21 @@ object pipe {
   //     case Some(o) => Pull.output1(o)
   //     case None => Pull.output1(li)
   //   }}
-  //
-  // /**
-  //  * Applies the specified pure function to each input and emits the result.
-  //  * Works in a chunky fashion and creates a `Chunk.indexedSeq` for each mapped chunk.
-  //  */
-  // def lift[F[_],I,O](f: I => O): Pipe[F,I,O] = _ map f
-  //
-  // /** Outputs a transformed version of all chunks from the input `Handle`. */
-  // def mapChunks[F[_],I,O](f: Chunk[I] => Chunk[O]): Pipe[F,I,O] =
-  //   _ repeatPull { _.await.flatMap { case (chunk, h) => Pull.output(f(chunk)) as h }}
-  //
+
+  /**
+   * Applies the specified pure function to each input and emits the result.
+   *
+  * @example {{{
+  * scala> Stream[Pure,String]("Hello", "World!").through(pipe.lift(_.size)).toList
+  * res0: List[Int] = List(5, 6)
+  * }}}
+  */
+  def lift[F[_],I,O](f: I => O): Pipe[F,I,O] = _ map f
+
+  /** Outputs a transformed version of all chunks from the input `Handle`. */
+  def mapSegments[F[_],I,O](f: Segment[I,Unit] => Segment[O,Unit]): Pipe[F,I,O] =
+    _ repeatPull { _.receive { (hd,tl) => Pull.output(f(hd)).as(Some(tl)) }}
+
   // /**
   //   * Maps a running total according to `S` and the input with the function `f`.
   //   *
@@ -476,14 +480,21 @@ object pipe {
   def unchunk[F[_],I]: Pipe[F,I,I] =
     _ repeatPull { _.receive1 { (hd,tl) => Pull.output1(hd).as(Some(tl)) }}
 
-  // /** Filters any 'None'. */
-  // def unNone[F[_], I]: Pipe[F, Option[I], I] = _.collect { case Some(i) => i }
+  /**
+   * Filters any 'None'.
+   *
+   * @example {{{
+   * scala> Stream[Pure,Option[Int]](Some(1), Some(2), None, Some(3), None).unNone.toList
+   * res0: List[Int] = List(1, 2, 3)
+   * }}}
+   */
+  def unNone[F[_], I]: Pipe[F, Option[I], I] = _.collect { case Some(i) => i }
 
   /**
    * Halts the input stream at the first `None`.
    *
    * @example {{{
-   * scala> Stream[fs2.Pure,Option[Int]](Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
+   * scala> Stream[Pure,Option[Int]](Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
    * res0: List[Int] = List(1, 2)
    * }}}
    */

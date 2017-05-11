@@ -34,6 +34,13 @@ class SegmentSpec extends Fs2Spec {
       }
     }
 
+    "collect" in {
+      forAll { (s: Segment[Int,Unit], f: Int => Double, defined: Int => Boolean) =>
+        val pf: PartialFunction[Int,Double] = { case n if defined(n) => f(n) }
+        s.collect(pf).toVector shouldBe s.toVector.collect(pf)
+      }
+    }
+
     "drop" in {
       forAll { (s: Segment[Int,Unit], n: Int) =>
         s.drop(n).toChunk shouldBe s.toChunk.drop(n)

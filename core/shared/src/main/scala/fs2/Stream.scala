@@ -660,6 +660,8 @@ object Stream {
 
   implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) {
 
+    def unNone: Stream[F,O] = self.through(pipe.unNone)
+    
     def unNoneTerminate: Stream[F,O] = self.through(pipe.unNoneTerminate)
   }
 
