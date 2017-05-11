@@ -98,7 +98,9 @@ object Free {
           k match {
             case None => onErr match {
               case None => go(fw, Some(f.asInstanceOf[X => Free[F,R]]), onErr)
-              case Some(h) => go(fw, Some(f.asInstanceOf[X => Free[F,R]] andThen (_ onError h)), onErr)
+              case Some(h) => go(fw,
+                Some((x: X) => Free.Pure(()) flatMap { _ => f.asInstanceOf[X => Free[F,R]](x) onError h }),
+                onErr)
             }
             case Some(g) => onErr match {
               case None => go(fw, Some(w => f(w).flatMap(g)), onErr)
