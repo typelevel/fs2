@@ -1,6 +1,7 @@
 package fs2
 
 import java.util.concurrent.atomic.AtomicInteger
+import cats.Id
 import cats.effect.IO
 
 class StreamPerformanceSpec extends Fs2Spec {
@@ -13,11 +14,11 @@ class StreamPerformanceSpec extends Fs2Spec {
 
     val Ns = List(2,3,100,200,400,800,1600,3200,6400,12800,25600,51200,102400)
 
-    def ranges(N: Int): List[Stream[Pure,Int]] = List(
+    def ranges(N: Int): List[Stream[Id,Int]] = List(
       // left associated ++
       (1 until N).map(emit).foldLeft(emit(0))(_ ++ _),
       // right associated ++
-      (0 until N).map(emit).foldRight(Stream.empty: Stream[Pure,Int])(_ ++ _)
+      (0 until N).map(emit).foldRight(Stream.empty: Stream[Id,Int])(_ ++ _)
     )
 
     "left-associated ++" - { Ns.foreach { N =>
@@ -28,7 +29,7 @@ class StreamPerformanceSpec extends Fs2Spec {
 
     "right-associated ++" - { Ns.foreach { N =>
       N.toString in {
-        runLog((0 until N).map(emit).foldRight(Stream.empty: Stream[Pure,Int])(_ ++ _)) shouldBe Vector.range(0,N)
+        runLog((0 until N).map(emit).foldRight(Stream.empty: Stream[Id,Int])(_ ++ _)) shouldBe Vector.range(0,N)
       }
     }}
 

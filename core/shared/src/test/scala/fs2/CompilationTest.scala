@@ -1,5 +1,6 @@
 package fs2
 
+import cats.Id
 import cats.effect.IO
 
 object ThisModuleShouldCompile {
@@ -16,7 +17,7 @@ object ThisModuleShouldCompile {
   def a5[F[_],A](s: Stream[F,A]): Stream[F,A] = s through pipe.take(2)
   def a6[F[_],A](s: Stream[F,A]): Stream[F,A] = s through pipe.take(2)
 
-  val b = pipe.take[Pure,Int](2)
+  val b = pipe.take[Id,Int](2)
   val c = Stream(1,2,3) ++ Stream(4,5,6)
   val d = Stream(1,2,3) ++ Stream.eval(IO.pure(4))
   val d1 = Stream(1,2,3).pure ++ Stream.eval(IO.pure(4))
@@ -32,9 +33,9 @@ object ThisModuleShouldCompile {
   import scala.concurrent.ExecutionContext.Implicits.global
   val i = Stream.eval(IO.pure(1)).pull.unconsAsync.close
 
-  val j: Pipe[IO,Int,Int] = pipe.take[Pure,Int](2)
-  val k = pipe.take[Pure,Int](2).covary[IO]
-  val l = pipe.take[Pure,Int](2).attachL(pipe2.interleave)
-  val m = pipe.take[Pure,Int](2).attachR(pipe2.interleave)
-  val n = pipe.take[Pure,Int](2).attachR(pipe2.interleave)
+  val j: Pipe[IO,Int,Int] = pipe.take[Id,Int](2)
+  val k = pipe.take[Id,Int](2).covary[IO]
+  val l = pipe.take[Id,Int](2).attachL(pipe2.interleave)
+  val m = pipe.take[Id,Int](2).attachR(pipe2.interleave)
+  val n = pipe.take[Id,Int](2).attachR(pipe2.interleave)
 }

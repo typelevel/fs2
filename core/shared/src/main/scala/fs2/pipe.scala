@@ -2,6 +2,7 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 
+import cats.Id
 // import cats.{ Eq, Functor }
 import cats.effect.Effect
 // import cats.implicits._
@@ -301,7 +302,7 @@ object pipe {
    * Applies the specified pure function to each input and emits the result.
    *
   * @example {{{
-  * scala> Stream[Pure,String]("Hello", "World!").through(pipe.lift(_.size)).toList
+  * scala> Stream.pure("Hello", "World!").through(pipe.lift(_.size)).toList
   * res0: List[Int] = List(5, 6)
   * }}}
   */
@@ -484,7 +485,7 @@ object pipe {
    * Filters any 'None'.
    *
    * @example {{{
-   * scala> Stream[Pure,Option[Int]](Some(1), Some(2), None, Some(3), None).unNone.toList
+   * scala> Stream.pure(Some(1), Some(2), None, Some(3), None).unNone.toList
    * res0: List[Int] = List(1, 2, 3)
    * }}}
    */
@@ -494,7 +495,7 @@ object pipe {
    * Halts the input stream at the first `None`.
    *
    * @example {{{
-   * scala> Stream[Pure,Option[Int]](Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
+   * scala> Stream.pure(Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
    * res0: List[Int] = List(1, 2)
    * }}}
    */
@@ -587,11 +588,11 @@ object pipe {
   //  */
   // def zipWithScan1[F[_],I,S](z: S)(f: (S, I) => S): Pipe[F,I,(I,S)] =
   //   _.mapAccumulate(z) { (s,i) => val s2 = f(s,i); (s2, (i,s2)) }.map(_._2)
-  //
-  // /** Converts a pure pipe to an effectful pipe of the specified type. */
-  // def covary[F[_],I,O](s: Pipe[Pure,I,O]): Pipe[F,I,O] =
-  //   s.asInstanceOf[Pipe[F,I,O]]
-  //
+
+  /** Converts a pure pipe to an effectful pipe of the specified type. */
+  def covary[F[_],I,O](s: Pipe[Id,I,O]): Pipe[F,I,O] =
+    s.asInstanceOf[Pipe[F,I,O]]
+
   // // Combinators for working with pipes
   //
   // /** Creates a [[Stepper]], which allows incrementally stepping a pure pipe. */
