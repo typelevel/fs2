@@ -1,13 +1,9 @@
-package fs2.fast
+package fs2
 
 import org.scalacheck.{ Arbitrary, Gen }
 import Arbitrary.arbitrary
-import org.scalatest.{ FreeSpec, Matchers }
-import org.scalatest.prop.GeneratorDrivenPropertyChecks
 
-import fs2.util.Catenable
-
-class SegmentSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChecks {
+class SegmentSpec extends Fs2Spec {
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(minSuccessful = 2000, workers = 4)

@@ -1,13 +1,10 @@
-package fs2.fast
+package fs2
 
-import org.scalatest.{ FreeSpec, Matchers }
-import org.scalatest.prop.GeneratorDrivenPropertyChecks
+import cats.effect._
 
-class ErrorHandlingSpec extends FreeSpec with Matchers with GeneratorDrivenPropertyChecks {
+class ErrorHandlingSpec extends Fs2Spec {
 
   "error handling" - {
-
-    import cats.effect._
 
     "ex1" in {
       var i = 0
@@ -61,15 +58,5 @@ class ErrorHandlingSpec extends FreeSpec with Matchers with GeneratorDrivenPrope
       }
       catch { case e: Throwable => i shouldBe 1 }
     }
-
-    "0.9 code, this should fail" in {
-      var i = 0
-      try
-      fs2.Stream(1).onError { _ => i += 1; fs2.Stream(2) }
-                   .flatMap { _ => fs2.Stream(i) ++ fs2.Stream.fail(new RuntimeException("woot")) }
-                   .toList
-      catch { case e: Throwable => i shouldBe 0 }
-    }
   }
 }
-

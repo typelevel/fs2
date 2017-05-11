@@ -12,8 +12,8 @@ object pipe2 {
   // /** Converts a pure `Pipe2` to an effectful `Pipe2` of the specified type. */
   // def covary[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] =
   //   p.asInstanceOf[Pipe2[F,I,I2,O]]
-  //
-  // private def zipChunksWith[I,I2,O](f: (I, I2) => O)(c1: Chunk[I], c2: Chunk[I2]): (Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]) = {
+
+  // private def zipSegmentsWith[I,I2,O](f: (I, I2) => O)(c1: Segment[I,Unit], c2: Segment[I2,Unit]): (Segment[O,Unit], Option[Either[Segment[I,Unit], Segment[I2,Unit]]]) = {
   //     @annotation.tailrec
   //     def go(v1: Vector[I], v2: Vector[I2], acc: Vector[O]): (Chunk[O], Option[Either[Chunk[I], Chunk[I2]]]) = (v1, v2) match {
   //       case (Seq(),Seq())        => (Chunk.seq(acc.reverse), None)
@@ -23,48 +23,45 @@ object pipe2 {
   //     }
   //     go(c1.toVector, c2.toVector, Vector.empty[O])
   // }
-  //
-  // private type ZipWithCont[F[_],I,O,R] = Either[(Chunk[I], Handle[F, I]), Handle[F, I]] => Pull[F,O,R]
-  //
-  // private def zipWithHelper[F[_],I,I2,O]
-  //                     (k1: ZipWithCont[F,I,O,Nothing],
-  //                      k2: ZipWithCont[F,I2,O,Nothing])
-  //                     (f: (I, I2) => O):
-  //                         (Stream[F, I], Stream[F, I2]) => Stream[F, O] = {
-  //     def zipChunksGo(s1 : (Chunk[I], Handle[F, I]),
-  //                     s2 : (Chunk[I2], Handle[F, I2])): Pull[F, O, Nothing] = (s1, s2) match {
-  //                           case ((c1, h1), (c2, h2)) => zipChunksWith(f)(c1, c2) match {
-  //                             case ((co, r)) => Pull.output(co) >> (r match {
-  //                               case None => goB(h1, h2)
-  //                               case Some(Left(c1rest)) => go1(c1rest, h1, h2)
-  //                               case Some(Right(c2rest)) => go2(c2rest, h1, h2)
-  //                             })
-  //                           }
-  //                      }
-  //     def go1(c1r: Chunk[I], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-  //       h2.receiveOption {
-  //         case Some(s2) => zipChunksGo((c1r, h1), s2)
-  //         case None => k1(Left((c1r, h1)))
-  //       }
-  //     }
-  //     def go2(c2r: Chunk[I2], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-  //       h1.receiveOption {
-  //         case Some(s1) => zipChunksGo(s1, (c2r, h2))
-  //         case None => k2(Left((c2r, h2)))
-  //       }
-  //     }
-  //     def goB(h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
-  //       h1.receiveOption {
-  //         case Some(s1) => h2.receiveOption {
-  //           case Some(s2) => zipChunksGo(s1, s2)
-  //           case None => k1(Left(s1))
-  //         }
-  //         case None => k2(Right(h2))
-  //       }
-  //     }
-  //     _.pull2(_)(goB)
-  // }
-  //
+
+  private type ZipWithCont[F[_],I,O,R] = Either[(Segment[I,Unit], Stream[F,I]), Stream[F,I]] => Pull[F,O,Option[R]]
+
+  private def zipWith_[F[_],I,I2,O](k1: ZipWithCont[F,I,O,Nothing], k2: ZipWithCont[F,I2,O,Nothing])(f: (I, I2) => O): Pipe2[F,I,I2,O] = {
+      // def zipChunksGo(s1 : (Segment[I,Unit], Stream[F,I]),
+      //                 s2 : (Segment[I2,Unit], Stream[F,I2])): Pull[F,O,Nothing] = (s1, s2) match {
+      //                       case ((c1, h1), (c2, h2)) => zipSegmentsWith(f)(c1, c2) match {
+      //                         case ((co, r)) => Pull.output(co) >> (r match {
+      //                           case None => goB(h1, h2)
+      //                           case Some(Left(c1rest)) => go1(c1rest, h1, h2)
+      //                           case Some(Right(c2rest)) => go2(c2rest, h1, h2)
+      //                         })
+      //                       }
+      //                  }
+      // def go1(c1r: Chunk[I], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
+      //   h2.receiveOption {
+      //     case Some(s2) => zipChunksGo((c1r, h1), s2)
+      //     case None => k1(Left((c1r, h1)))
+      //   }
+      // }
+      // def go2(c2r: Chunk[I2], h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
+      //   h1.receiveOption {
+      //     case Some(s1) => zipChunksGo(s1, (c2r, h2))
+      //     case None => k2(Left((c2r, h2)))
+      //   }
+      // }
+      // def goB(h1: Handle[F,I], h2: Handle[F,I2]): Pull[F, O, Nothing] = {
+      //   h1.receiveOption {
+      //     case Some(s1) => h2.receiveOption {
+      //       case Some(s2) => zipChunksGo(s1, s2)
+      //       case None => k1(Left(s1))
+      //     }
+      //     case None => k2(Right(h2))
+      //   }
+      // }
+      // _.pull2(_)(goB)
+      ???
+  }
+
   // /**
   //  * Determinsitically zips elements with the specified function, terminating
   //  * when the ends of both branches are reached naturally, padding the left
@@ -101,14 +98,14 @@ object pipe2 {
   //     }
   //     zipWithHelper[F,I,I2,O](cont1, cont2)(f)
   // }
-  //
-  // /**
-  //  * Determinsitically zips elements using the specified function,
-  //  * terminating when the end of either branch is reached naturally.
-  //  */
-  // def zipWith[F[_],I,I2,O](f: (I, I2) => O) : Pipe2[F,I,I2,O] =
-  //   zipWithHelper[F,I,I2,O](sh => Pull.done, h => Pull.done)(f)
-  //
+
+  /**
+   * Determinsitically zips elements using the specified function,
+   * terminating when the end of either branch is reached naturally.
+   */
+  def zipWith[F[_],I,I2,O](f: (I, I2) => O) : Pipe2[F,I,I2,O] =
+    zipWith_[F,I,I2,O](sh => Pull.pure(None), h => Pull.pure(None))(f)
+
   // /**
   //  * Determinsitically zips elements, terminating when the ends of both branches
   //  * are reached naturally, padding the left branch with `pad1` and padding the right branch
@@ -116,22 +113,22 @@ object pipe2 {
   //  */
   // def zipAll[F[_],I,I2](pad1: I, pad2: I2): Pipe2[F,I,I2,(I,I2)] =
   //   zipAllWith(pad1,pad2)(Tuple2.apply)
-  //
-  // /** Determinsitically zips elements, terminating when the end of either branch is reached naturally. */
-  // def zip[F[_],I,I2]: Pipe2[F,I,I2,(I,I2)] =
-  //   zipWith(Tuple2.apply)
-  //
+
+  /** Determinsitically zips elements, terminating when the end of either branch is reached naturally. */
+  def zip[F[_],I,I2]: Pipe2[F,I,I2,(I,I2)] =
+    zipWith(Tuple2.apply)
+
   // /** Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally. */
   // def interleaveAll[F[_], O]: Pipe2[F,O,O,O] = { (s1, s2) =>
   //   (zipAll(None: Option[O], None: Option[O])(s1.map(Some.apply),s2.map(Some.apply))) flatMap {
   //     case (i1Opt,i2Opt) => Stream(i1Opt.toSeq :_*) ++ Stream(i2Opt.toSeq :_*)
   //   }
   // }
-  //
-  // /** Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally. */
-  // def interleave[F[_], O]: Pipe2[F,O,O,O] =
-  //   zip(_,_) flatMap { case (i1,i2) => Stream(i1,i2) }
-  //
+
+  /** Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally. */
+  def interleave[F[_], O]: Pipe2[F,O,O,O] =
+    zip(_,_) flatMap { case (i1,i2) => Stream(i1,i2) }
+
   // /** Creates a [[Stepper]], which allows incrementally stepping a pure `Pipe2`. */
   // def stepper[I,I2,O](p: Pipe2[Pure,I,I2,O]): Stepper[I,I2,O] = {
   //   type Read[+R] = Either[Option[Chunk[I]] => R, Option[Chunk[I2]] => R]

@@ -7,7 +7,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 
 import cats.effect.IO
-import fs2.util.NonFatal
+import fs2.internal.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
 
@@ -32,7 +32,7 @@ trait TestUtil extends TestUtilPlatform {
       10 -> Gen.listOf(A.arbitrary).map(as => Chunk.indexedSeq(as.toVector)),
       10 -> Gen.listOf(A.arbitrary).map(Chunk.seq),
       5 -> A.arbitrary.map(a => Chunk.singleton(a)),
-      1 -> Chunk.empty
+      1 -> Chunk.empty[A]
     )
   )
 
@@ -61,7 +61,7 @@ trait TestUtil extends TestUtilPlatform {
     }
     def rightAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
-        val s = Chunk.seq(as).foldRight(Stream.empty[Pure,A])((a,acc) => Stream.emit(a) ++ acc)
+        val s = as.foldRight(Stream.empty[Pure,A])((a,acc) => Stream.emit(a) ++ acc)
         PureStream("right-associated", s)
       }
     }
@@ -97,10 +97,12 @@ trait TestUtil extends TestUtilPlatform {
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
       Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw Err)),
-      Failure("failure-in-pure-pull", Stream.emit[IO,Int](42).pull(h => throw Err)),
+      // Failure("failure-in-pure-pull", Stream.emit[IO,Int](42).pull(h => throw Err)),
       Failure("failure-in-async-code",
-        Stream.eval[IO,Int](IO(throw Err)).pull { h =>
-          h.awaitAsync.flatMap(_.pull).flatMap(identity) })
+        Stream.eval[IO,Int](IO(throw Err)).pull.unconsAsync.flatMap { _.pull.flatMap {
+          case None => Pull.pure(())
+          case Some((hd,tl)) => Pull.output(hd) >> Pull.pure(())
+        }}.close)
     )
   )
 

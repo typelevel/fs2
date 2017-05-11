@@ -17,7 +17,7 @@ class StreamPerformanceSpec extends Fs2Spec {
       // left associated ++
       (1 until N).map(emit).foldLeft(emit(0))(_ ++ _),
       // right associated ++
-      Chunk.seq((0 until N) map emit).foldRight(Stream.empty: Stream[Pure,Int])(_ ++ _)
+      (0 until N).map(emit).foldRight(Stream.empty: Stream[Pure,Int])(_ ++ _)
     )
 
     "left-associated ++" - { Ns.foreach { N =>
@@ -28,7 +28,7 @@ class StreamPerformanceSpec extends Fs2Spec {
 
     "right-associated ++" - { Ns.foreach { N =>
       N.toString in {
-        runLog(Chunk.seq((0 until N).map(emit)).foldRight(Stream.empty: Stream[Pure,Int])(_ ++ _)) shouldBe Vector.range(0,N)
+        runLog((0 until N).map(emit).foldRight(Stream.empty: Stream[Pure,Int])(_ ++ _)) shouldBe Vector.range(0,N)
       }
     }}
 
@@ -60,11 +60,8 @@ class StreamPerformanceSpec extends Fs2Spec {
 
     "transduce (id)" - { Ns.foreach { N =>
       N.toString in {
-        runLog((chunk(Chunk.seq(0 until N)): Stream[IO,Int]).repeatPull { (s: Handle[IO,Int]) =>
-          for {
-            s2 <- s.await1
-            _ <- Pull.output1(s2._1)
-          } yield s2._2
+        runLog((chunk(Chunk.seq(0 until N)): Stream[IO,Int]).repeatPull {
+          _.receive1 { (hd,tl) => Pull.output1(hd).as(Some(tl)) }
         }) shouldBe Vector.range(0,N)
       }
     }}

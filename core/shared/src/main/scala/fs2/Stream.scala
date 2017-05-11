@@ -101,10 +101,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   // /** Alias for `self through [[pipe.collectFirst]]`. */
   // def collectFirst[O2](pf: PartialFunction[O, O2]) = self through pipe.collectFirst(pf)
-  //
-  // /** Prepend a single chunk onto the front of this stream. */
-  // def cons[O2>:O](c: Chunk[O2])(implicit T: RealSupertype[O,O2]): Stream[F,O2] =
-  //   Stream.cons[F,O2](self)(c)
 
   /** Prepend a single segment onto the front of this stream. */
   def cons[O2>:O](s: Segment[O2,Unit]): Stream[F,O2] =
@@ -211,11 +207,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.groupBy]]`. */
   // def groupBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Vector[O])] = self through pipe.groupBy(f)
 
-  // /** Alias for `self through [[pipe.head]]`. */
-  // def head: Stream[F,O] = self through pipe.head
+  /** Alias for `self through [[pipe.head]]`. */
+  def head: Stream[F,O] = this through pipe.head
 
-  // def interleave[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R:RealSupertype[O,O2], S:Sub1[F,F2]): Stream[F2,O2] =
-  //   (self through2v s2)(pipe2.interleave)
+  def interleave[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2]): Stream[F2,O2] =
+    (this through2v s2)(pipe2.interleave)
 
   // def interleaveAll[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R:RealSupertype[O,O2], S:Sub1[F,F2]): Stream[F2,O2] =
   //   (self through2v s2)(pipe2.interleaveAll)
@@ -291,7 +287,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def onFinalize[F2[x]>:F[x]](f: F2[Unit])(F2: Applicative[F2]): Stream[F2,O] =
     Stream.bracket(F2.pure(()))(_ => this, _ => f)
 
-  // def toPull: Pull[F,Nothing,Stream[F,O]] = Pull.pure(this)
+  // def open: Pull[F,Nothing,Stream[F,O]] = Pull.pure(this)
 
   // def output: Pull[F,O,Unit] = Pull.outputs(self)
 
@@ -302,13 +298,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `(pauseWhenTrue.discrete through2 this)(pipe2.pause)`. */
   // def pauseWhen[F2[_]](pauseWhenTrue: async.immutable.Signal[F2,Boolean])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
   //   (pauseWhenTrue.discrete through2 Sub1.substStream(self))(pipe2.pause)
-
-  // /** Alias for `self through [[pipe.prefetch]](f).` */
-  // def prefetch[F2[_]](implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
-  //   Sub1.substStream(self)(S) through pipe.prefetch
-
-  // def pull[F2[x]>:F[x],O2](using: Handle[F,O] => Pull[F2,O2,Any]) : Stream[F2,O2] =
-  //   open.flatMap(using).close
 
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat
@@ -357,20 +346,17 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.takeWhile]]`. */
   def takeWhile(p: O => Boolean): Stream[F,O] = this through pipe.takeWhile(p)
 
-  // /** Like `through`, but the specified `Pipe`'s effect may be a supertype of `F`. */
-  // def throughv[F2[_],O2](f: Pipe[F2,O,O2])(implicit S: Sub1[F,F2]): Stream[F2,O2] =
-  //   f(Sub1.substStream(self))
+  /** Like `through`, but the specified `Pipe`'s effect may be a supertype of `F`. */
+  def throughv[F2[x]>:F[x],O2](f: Pipe[F2,O,O2]): Stream[F2,O2] = f(this)
 
   /** Like `through2`, but the specified `Pipe2`'s effect may be a supertype of `F`. */
-  def through2v[F2[x]>:F[x],O2,O3](s2: Stream[F2,O2])(f: Pipe2[F2,O,O2,O3]): Stream[F2,O3] =
-    f(this, s2)
+  def through2v[F2[x]>:F[x],O2,O3](s2: Stream[F2,O2])(f: Pipe2[F2,O,O2,O3]): Stream[F2,O3] = f(this, s2)
 
-  // /** Like `to`, but the specified `Sink`'s effect may be a supertype of `F`. */
-  // def tov[F2[_]](f: Sink[F2,O])(implicit S: Sub1[F,F2]): Stream[F2,Unit] =
-  //   f(Sub1.substStream(self))
+  /** Like `to`, but the specified `Sink`'s effect may be a supertype of `F`. */
+  def tov[F2[x]>:F[x]](f: Sink[F2,O]): Stream[F2,Unit] = f(this)
 
-  // /** Alias for `self through [[pipe.unchunk]]`. */
-  // def unchunk: Stream[F,O] = self through pipe.unchunk
+  /** Alias for `self through [[pipe.unchunk]]`. */
+  def unchunk: Stream[F,O] = this through pipe.unchunk
 
   /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
   def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
@@ -595,6 +581,10 @@ object Stream {
     // /** Folds this stream with the monoid for `O`. */
     // def foldMonoid(implicit O: Monoid[O]): Stream[F,O] = self.fold(O.empty)(O.combine)
 
+    /** Alias for `self through [[pipe.prefetch]](f).` */
+    def prefetch(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
+      self through pipe.prefetch
+
     def pull: Stream.ToPull[F,O] = new Stream.ToPull(self.free)
 
     def pull2[O2,O3](s2: Stream[F,O2])(using: (Stream.ToPull[F,O], Stream.ToPull[F,O2]) => Pull[F,O3,Any]): Stream[F,O3] =
@@ -606,9 +596,6 @@ object Stream {
 
     def repeatPull[O2](using: Stream.ToPull[F,O] => Pull[F,O2,Option[Stream[F,O]]]): Stream[F,O2] =
       Pull.loop(using.andThen(_.map(_.map(_.pull))))(self.pull).close
-
-    // def repeatPull2[O2,O3](s2: Stream[F,O2])(using: (Handle[F,O],Handle[F,O2]) => Pull[F,O3,(Handle[F,O],Handle[F,O2])]): Stream[F,O3] =
-    //   self.open.flatMap { s => s2.open.flatMap { s2 => Pull.loop(using.tupled)((s,s2)) }}.close
 
     def run(implicit F: Sync[F]): F[Unit] =
       runFold(())((u, _) => u)
@@ -662,12 +649,13 @@ object Stream {
 
   implicit class StreamPureOps[+O](private val self: Stream[Pure,O]) {
 
-    // TODO this is uncallable b/c covary is defined on Stream too
-    def covary[F2[_]]: Stream[F2,O] = self.asInstanceOf[Stream[F2,O]]
+    def covaryPure[F2[_]]: Stream[F2,O] = self.asInstanceOf[Stream[F2,O]]
 
-    def toList: List[O] = covary[IO].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.reverse
+    def pure: Stream[Pure,O] = self
 
-    def toVector: Vector[O] = covary[IO].runLog.unsafeRunSync
+    def toList: List[O] = covaryPure[IO].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.reverse
+
+    def toVector: Vector[O] = covaryPure[IO].runLog.unsafeRunSync
   }
 
   implicit class StreamOptionOps[F[_],O](private val self: Stream[F,Option[O]]) {

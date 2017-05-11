@@ -1,5 +1,4 @@
 package fs2
-package util
 
 import cats.effect.IO
 import cats.implicits._

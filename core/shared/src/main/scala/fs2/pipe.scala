@@ -1,9 +1,9 @@
 package fs2
 
-// import scala.concurrent.ExecutionContext
-//
+import scala.concurrent.ExecutionContext
+
 // import cats.{ Eq, Functor }
-// import cats.effect.Effect
+import cats.effect.Effect
 // import cats.implicits._
 //
 // import fs2.async.mutable.Queue
@@ -266,11 +266,10 @@ object pipe {
   //
   //   in => in.pull(go(None))
   // }
-  //
-  // /** Emits the first element of this stream (if non-empty) and then halts. */
-  // def head[F[_],I]: Pipe[F,I,I] =
-  //   take(1)
-  //
+
+  /** Emits the first element of this stream (if non-empty) and then halts. */
+  def head[F[_],I]: Pipe[F,I,I] = take(1)
+
   // /** Emits the specified separator between every pair of elements in the source stream. */
   // def intersperse[F[_],I](separator: I): Pipe[F,I,I] =
   //   _ pull { h => h.echo1 flatMap Pull.loop { (h: Handle[F,I]) =>
@@ -331,15 +330,14 @@ object pipe {
   //     val (s, o) = chunk.mapAccumulate(init)(f)
   //     Pull.output(o) >> _mapAccumulate0(s)(f)(h)
   //   }
-  //
-  // /**
-  //  * Behaves like `id`, but starts fetching the next chunk before emitting the current,
-  //  * enabling processing on either side of the `prefetch` to run in parallel.
-  //  */
-  // def prefetch[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe[F,I,I] =
-  //   _ repeatPull { _.receive {
-  //     case (hd, tl) => tl.prefetch flatMap { p => Pull.output(hd) >> p }}}
-  //
+
+  /**
+   * Behaves like `id`, but starts fetching the next segment before emitting the current,
+   * enabling processing on either side of the `prefetch` to run in parallel.
+   */
+  def prefetch[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe[F,I,I] =
+    _ repeatPull { _.receive { (hd, tl) => tl.pull.prefetch flatMap { p => Pull.output(hd) >> p }}}
+
   // /**
   //  * Modifies the chunk structure of the underlying stream, emitting potentially unboxed
   //  * chunks of `n` elements. If `allowFewer` is true, the final chunk of the stream
@@ -457,11 +455,11 @@ object pipe {
   // /** Emits all elements of the input except the first one. */
   // def tail[F[_],I]: Pipe[F,I,I] =
   //   drop(1)
-  //
-  // /** Emits the first `n` elements of the input `Handle` and returns the new `Handle`. */
-  // def take[F[_],I](n: Long): Pipe[F,I,I] =
-  //   _.pull(_.take(n))
-  //
+
+  /** Emits the first `n` elements of the input stream and returns the new stream. */
+  def take[F[_],I](n: Long): Pipe[F,I,I] =
+    _.pull.take(n).close
+
   // /** Emits the last `n` elements of the input. */
   // def takeRight[F[_],I](n: Long): Pipe[F,I,I] =
   //   _ pull { h => h.takeRight(n).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
@@ -474,10 +472,10 @@ object pipe {
   def takeWhile[F[_],I](f: I => Boolean): Pipe[F,I,I] =
     _.pull.takeWhile(f).close
 
-  // /** Converts the input to a stream of 1-element chunks. */
-  // def unchunk[F[_],I]: Pipe[F,I,I] =
-  //   _ repeatPull { _.receive1 { case (i, h) => Pull.output1(i) as h }}
-  //
+  /** Converts the input to a stream of 1-element chunks. */
+  def unchunk[F[_],I]: Pipe[F,I,I] =
+    _ repeatPull { _.receive1 { (hd,tl) => Pull.output1(hd).as(Some(tl)) }}
+
   // /** Filters any 'None'. */
   // def unNone[F[_], I]: Pipe[F, Option[I], I] = _.collect { case Some(i) => i }
 
