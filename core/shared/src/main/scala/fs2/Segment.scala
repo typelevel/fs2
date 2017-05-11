@@ -24,7 +24,7 @@ abstract class Segment[+O,+R] { self =>
       case Left(r) => Left(r)
       case Right((cs, tl)) =>
         firstNonEmptyChunk(cs) match {
-          case Some((c,cs)) => Right(c -> cs.toList.foldRight(tl)((hd,tl) => tl push hd))
+          case Some((c,cs)) => Right(c -> cs.toList.foldRight(tl)((hd,tl) => tl cons hd))
           case None => tl.unconsChunk // should never hit this case
         }
     }
@@ -43,7 +43,7 @@ abstract class Segment[+O,+R] { self =>
     unconsChunk match {
       case Left(r) => Left(r)
       case Right((c, tl)) =>
-        if (c.nonEmpty) Right(c(0) -> tl.push(Chunk.vector(c.toVector.drop(1))))
+        if (c.nonEmpty) Right(c(0) -> tl.cons(Chunk.vector(c.toVector.drop(1))))
         else tl.uncons1
     }
 
@@ -232,7 +232,7 @@ abstract class Segment[+O,+R] { self =>
       }
     }
 
-  final def push[O2>:O](c: Segment[O2,Any]): Segment[O2,R] =
+  final def cons[O2>:O](c: Segment[O2,Any]): Segment[O2,R] =
     // note - cast is fine, as `this` is guaranteed to provide an `R`,
     // overriding the `Any` produced by `c`
     c.asInstanceOf[Segment[O2,R]] ++ this
@@ -287,7 +287,7 @@ abstract class Segment[+O,+R] { self =>
     while (result == None && rem > 0) steps(step, trampoline)
     val outAsSegment = if (out.isEmpty) Segment.empty else Catenated(out)
     val resultAsEither: Either[R,Segment[O,R]] =
-      result.map(_.fold(r => Left(r), s => Right(step.remainder.push(s)))).getOrElse(Right(step.remainder))
+      result.map(_.fold(r => Left(r), s => Right(step.remainder.cons(s)))).getOrElse(Right(step.remainder))
     (outAsSegment, resultAsEither)
   }
 
