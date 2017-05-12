@@ -12,7 +12,7 @@ import fs2.internal.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
 
-  val timeout: FiniteDuration = 10.minutes
+  val timeout: FiniteDuration = 10.seconds
 
   def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = s.runLog.shift.unsafeToFuture
 
@@ -98,7 +98,7 @@ trait TestUtil extends TestUtilPlatform {
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
       Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw Err)),
-      // Failure("failure-in-pure-pull", Stream.emit[IO,Int](42).pull(h => throw Err)),
+      // Failure("failure-in-pure-pull", Stream.emit[IO,Int](42).pull.map(_ => throw Err)),
       Failure("failure-in-async-code",
         Stream.eval[IO,Int](IO(throw Err)).pull.unconsAsync.flatMap { _.pull.flatMap {
           case None => Pull.pure(())

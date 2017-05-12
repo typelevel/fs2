@@ -238,7 +238,7 @@ object pipe2 {
    */
   def merge[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) => {
     def go(l: AsyncPull[F,Option[(Segment[O,Unit],Stream[F,O])]],
-           r: AsyncPull[F,Option[(Segment[O,Unit],Stream[F,O])]]): Pull[F,O,Unit] =
+           r: AsyncPull[F,Option[(Segment[O,Unit],Stream[F,O])]]): Pull[F,O,Unit] = {
       l.race(r).pull.flatMap {
         case Left(l) =>
           l match {
@@ -257,6 +257,7 @@ object pipe2 {
             case Some((hd, tl)) => Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(l, _))
           }
       }
+    }
 
     s1.pull.unconsAsync.flatMap { s1 =>
       s2.pull.unconsAsync.flatMap { s2 =>

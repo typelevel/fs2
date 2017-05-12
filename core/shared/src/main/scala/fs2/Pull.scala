@@ -59,12 +59,12 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
     this flatMap { r =>
       Pull.snapshot flatMap { tokens1 =>
         val newTokens = tokens1 -- tokens0.values
-        Pull.releaseAll(newTokens).as(r)
+        if (newTokens.isEmpty) Pull.pure(r) else Pull.releaseAll(newTokens).as(r)
       }
     } onError { e =>
       Pull.snapshot flatMap { tokens1 =>
         val newTokens = tokens1 -- tokens0.values
-        Pull.releaseAll(newTokens) >> Pull.fail(e)
+        if (newTokens.isEmpty) Pull.fail(e) else Pull.releaseAll(newTokens) >> Pull.fail(e)
       }
     }
   }

@@ -302,7 +302,7 @@ object pipe {
    * Applies the specified pure function to each input and emits the result.
    *
    * @example {{{
-   * scala> Stream.pure("Hello", "World!").through(pipe.lift(_.size)).toList
+   * scala> Stream("Hello", "World!").through(pipe.lift(_.size)).toList
    * res0: List[Int] = List(5, 6)
    * }}}
    */
@@ -485,7 +485,7 @@ object pipe {
    * Filters any 'None'.
    *
    * @example {{{
-   * scala> Stream.pure(Some(1), Some(2), None, Some(3), None).unNone.toList
+   * scala> Stream(Some(1), Some(2), None, Some(3), None).unNone.toList
    * res0: List[Int] = List(1, 2, 3)
    * }}}
    */
@@ -495,7 +495,7 @@ object pipe {
    * Halts the input stream at the first `None`.
    *
    * @example {{{
-   * scala> Stream.pure(Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
+   * scala> Stream(Some(1), Some(2), None, Some(3), None).unNoneTerminate.toList
    * res0: List[Int] = List(1, 2)
    * }}}
    */

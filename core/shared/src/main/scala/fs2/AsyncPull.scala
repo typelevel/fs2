@@ -10,9 +10,9 @@ import fs2.internal.{ Algebra, Free }
 
 sealed abstract class AsyncPull[F[_],A] { self =>
 
-  private[fs2] def get: Free[F, A]
+  protected def get: Free[F, A]
 
-  private[fs2] def cancellableGet: Free[F, (Free[F, A], Free[F, Unit])]
+  protected def cancellableGet: Free[F, (Free[F, A], Free[F, Unit])]
 
   /** Converts this future to a pull, that when flat mapped, semantically blocks on the result of the future. */
   def pull: Pull[F,Nothing,A] = Pull.fromFree(get.translate[Algebra[F,Nothing,?]](new (F ~> Algebra[F,Nothing,?]) {
@@ -97,30 +97,4 @@ object AsyncPull {
         (Free.Eval(get).flatMap(_.fold(Free.Fail(_), Free.Pure(_))), Free.Eval(cancel))
       }
     }
-
-  // /** Races the specified collection of futures, returning the value of the first that completes. */
-  // def race[F[_],A](es: Vector[AsyncPull[F,A]])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,Focus[A,AsyncPull[F,A]]] =
-  //   indexedRace(es) map { case (a, i) => Focus(a, i, es) }
-  //
-  // private[fs2] def indexedRace[F[_],A](es: Vector[AsyncPull[F,A]])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,(A,Int)]
-  //   = new AsyncPull[F,(A,Int)] {
-  //     def cancellableGet =
-  //       concurrent.ref[F,(A,Int)].flatMap { ref =>
-  //         val cancels: F[Vector[(F[Unit],Int)]] = (es zip (0 until es.size)).traverse { case (a,i) =>
-  //           a.cancellableGet.flatMap { case (a, cancelA) =>
-  //             ref.setAsync(a.map((_,i))).as((cancelA,i))
-  //           }
-  //         }
-  //         cancels.flatMap { cancels =>
-  //           F.pure {
-  //             val get = ref.get.flatMap { case (a,i) =>
-  //               cancels.collect { case (a,j) if j != i => a }.sequence.as((a,i))
-  //             }
-  //             val cancel = cancels.traverse(_._1).as(())
-  //             (get, cancel)
-  //           }
-  //         }
-  //       }
-  //     def get = cancellableGet.flatMap(_._1)
-  //   }
 }
