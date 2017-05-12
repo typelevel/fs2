@@ -38,7 +38,7 @@ object pipe2 {
         case None => k1(Left(s1))
       }
       case None => k2(Right(s2))
-    }.close
+    }.stream
   }
 
   /**
@@ -262,7 +262,7 @@ object pipe2 {
       s2.pull.unconsAsync.flatMap { s2 =>
         go(s1,s2)
       }
-    }.close
+    }.stream
   }
 
   /**
@@ -279,7 +279,6 @@ object pipe2 {
   def mergeDrainR[F[_]:Effect,I,I2](implicit ec: ExecutionContext): Pipe2[F,I,I2,I] = (s1, s2) =>
     s1 merge s2.drain
 
-
   /** Like `merge`, but halts as soon as _either_ branch halts. */
   def mergeHaltBoth[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) =>
     s1.noneTerminate merge s2.noneTerminate through pipe.unNoneTerminate
@@ -292,40 +291,38 @@ object pipe2 {
   def mergeHaltR[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) =>
     mergeHaltL.apply(s2, s1)
 
-  // /** Like `interrupt` but resumes the stream when left branch goes to true. */
-  // def pause[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe2[F,Boolean,I,I] = {
-  //   def unpaused(
-  //     controlFuture: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[Boolean], Handle[F, Boolean])]],
-  //     srcFuture: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[I], Handle[F, I])]]
-  //   ): Pull[F, I, Nothing] = {
-  //     (controlFuture race srcFuture).pull.flatMap {
-  //       case Left(controlPull) => controlPull.flatMap {
-  //         case (c, controlHandle) =>
-  //           if (c.last) paused(controlHandle, srcFuture)
-  //           else controlHandle.awaitAsync.flatMap(unpaused(_, srcFuture))
-  //       }
-  //       case Right(srcPull) => srcPull.flatMap { case (c, srcHandle) =>
-  //         Pull.output(c) >> srcHandle.awaitAsync.flatMap(unpaused(controlFuture, _))
-  //       }
-  //     }
-  //   }
-  //
-  //   def paused(
-  //     controlHandle: Handle[F, Boolean],
-  //     srcFuture: ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[I], Handle[F, I])]]
-  //   ): Pull[F, I, Nothing] = {
-  //     controlHandle.receive { (c, controlHandle) =>
-  //       if (c.last) paused(controlHandle, srcFuture)
-  //       else controlHandle.awaitAsync.flatMap { controlFuture => unpaused(controlFuture, srcFuture) }
-  //     }
-  //   }
-  //
-  //   (control, src) => control.open.flatMap { controlHandle => src.open.flatMap { srcHandle =>
-  //     controlHandle.awaitAsync.flatMap { controlFuture =>
-  //       srcHandle.awaitAsync.flatMap { srcFuture =>
-  //         unpaused(controlFuture, srcFuture)
-  //       }
-  //     }
-  //   }}.close
-  // }
+  /** Like `interrupt` but resumes the stream when left branch goes to true. */
+  def pause[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe2[F,Boolean,I,I] = {
+    def unpaused(
+      controlFuture: AsyncPull[F, Option[(Chunk[Boolean], Stream[F, Boolean])]],
+      srcFuture: AsyncPull[F, Option[(Segment[I,Unit], Stream[F, I])]]
+    ): Pull[F, I, Option[Nothing]] = {
+      (controlFuture race srcFuture).pull.flatMap {
+        case Left(None) => Pull.pure(None)
+        case Right(None) => Pull.pure(None)
+        case Left(Some((c, controlStream))) =>
+          if (c.last) paused(controlStream, srcFuture)
+          else controlStream.pull.unconsChunkAsync.flatMap(unpaused(_, srcFuture))
+        case Right(Some((c, srcStream))) =>
+          Pull.output(c) >> srcStream.pull.unconsAsync.flatMap(unpaused(controlFuture, _))
+      }
+    }
+
+    def paused(
+      controlStream: Stream[F, Boolean],
+      srcFuture: AsyncPull[F, Option[(Segment[I,Unit], Stream[F, I])]]
+    ): Pull[F, I, Option[Nothing]] = {
+      controlStream.pull.receiveChunk { (c, controlStream) =>
+        if (c.last) paused(controlStream, srcFuture)
+        else controlStream.pull.unconsChunkAsync.flatMap(unpaused(_, srcFuture))
+      }
+    }
+
+    (control, src) =>
+      control.pull.unconsChunkAsync.flatMap { controlFuture =>
+        src.pull.unconsAsync.flatMap { srcFuture =>
+          unpaused(controlFuture, srcFuture)
+        }
+      }.stream
+  }
 }

@@ -463,7 +463,7 @@ object pipe {
 
   /** Emits the first `n` elements of the input stream and returns the new stream. */
   def take[F[_],I](n: Long): Pipe[F,I,I] =
-    _.pull.take(n).close
+    _.pull.take(n).stream
 
   // /** Emits the last `n` elements of the input. */
   // def takeRight[F[_],I](n: Long): Pipe[F,I,I] =
@@ -475,7 +475,7 @@ object pipe {
 
   /** Emits the longest prefix of the input for which all elements test true according to `f`. */
   def takeWhile[F[_],I](f: I => Boolean): Pipe[F,I,I] =
-    _.pull.takeWhile(f).close
+    _.pull.takeWhile(f).stream
 
   /** Converts the input to a stream of 1-element chunks. */
   def unchunk[F[_],I]: Pipe[F,I,I] =

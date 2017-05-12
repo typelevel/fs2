@@ -103,7 +103,7 @@ trait TestUtil extends TestUtilPlatform {
         Stream.eval[IO,Int](IO(throw Err)).pull.unconsAsync.flatMap { _.pull.flatMap {
           case None => Pull.pure(())
           case Some((hd,tl)) => Pull.output(hd) >> Pull.pure(())
-        }}.close)
+        }}.stream)
     )
   )
 

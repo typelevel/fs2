@@ -20,6 +20,8 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   final def isEmpty = size == 0
   final def nonEmpty = size > 0
 
+  final def last: O = apply(size - 1)
+
   /** Copies the elements of this chunk to an array. */
   def toArray[B >: O: ClassTag]: Array[B] = {
     val arr = new Array[B](size)

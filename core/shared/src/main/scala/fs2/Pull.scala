@@ -25,15 +25,8 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
 
   def as[R2](r2: R2): Pull[F,O,R2] = map(_ => r2)
 
-  private def close_(asStep: Boolean): Stream[F,O] =
-    if (asStep) Stream.fromFree(get[F,O,R] map (_ => ()))
-    else Stream.fromFree(scope[F].get[F,O,R] map (_ => ()))
-
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
-  def close: Stream[F,O] = close_(false)
-
-  /** Close this `Pull`, but don't cleanup any resources acquired. */
-  private[fs2] def closeAsStep: Stream[F,O] = close_(true) // todo this isn't used anywhere
+  def stream: Stream[F,O] = Stream.fromFree(scope[F].get[F,O,R] map (_ => ()))
 
   def covary[F2[x]>:F[x]]: Pull[F2,O,R] = this.asInstanceOf[Pull[F2,O,R]]
   def covaryOutput[O2>:O]: Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
