@@ -1,6 +1,5 @@
 package fs2
 
-import cats.Id
 import cats.effect.IO
 
 object ThisModuleShouldCompile {
@@ -17,7 +16,7 @@ object ThisModuleShouldCompile {
   def b[F[_],A](s: Stream[F,A]): Stream[F,A] = s through pipe.take(2)
   def c[F[_],A](s: Stream[F,A]): Stream[F,A] = s through pipe.take(2)
 
-  pipe.take[Id,Int](2)
+  pipe.take[Pure,Int](2)
   Stream(1,2,3) ++ Stream(4,5,6)
   Stream(1,2,3) ++ Stream.eval(IO.pure(4))
   Stream(1,2,3) ++ Stream.eval(IO.pure(4))
@@ -36,12 +35,12 @@ object ThisModuleShouldCompile {
   import scala.concurrent.ExecutionContext.Implicits.global
   Stream.eval(IO.pure(1)).pull.unconsAsync.stream
 
-  (pipe.take[Id,Int](2)): Pipe[IO,Int,Int]
-  pipe.take[Id,Int](2).covary[IO]
-  pipe.take[Id,Int](2).attachL(pipe2.interleave)
-  pipe.take[Id,Int](2).attachR(pipe2.interleave)
-  pipe.take[Id,Int](2).attachR(pipe2.interleave)
+  (pipe.take[Pure,Int](2)): Pipe[IO,Int,Int]
+  pipe.take[Pure,Int](2).covary[IO]
+  pipe.take[Pure,Int](2).attachL(pipe2.interleave)
+  pipe.take[Pure,Int](2).attachR(pipe2.interleave)
+  pipe.take[Pure,Int](2).attachR(pipe2.interleave)
 
-  val p: Pull[Id,Nothing,Option[(Segment[Int,Unit],Stream[Id,Int])]] = Stream(1, 2, 3).pull.uncons
-  val q: Pull[IO,Nothing,Option[(Segment[Int,Unit],Stream[Id,Int])]] = p
+  val p: Pull[Pure,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = Stream(1, 2, 3).pull.uncons
+  val q: Pull[IO,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = p
 }

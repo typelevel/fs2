@@ -2,8 +2,6 @@ package fs2
 
 import fs2.internal.{ Algebra, Free, LinkedSet }
 
-import cats.Id
-
 /**
  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
  * result of type `R`, and produces a `Stream[F,O]` on `p.stream`.
@@ -127,9 +125,9 @@ object Pull {
     }
   }
 
-  implicit def PullPureOps[O,R](p: Pull[Id,O,R]): PullPureOps[O,R] = new PullPureOps(p.get[Id,O,R])
-  final class PullPureOps[O,R](private val free: Free[Algebra[Id,O,?],R]) extends AnyVal {
-    private def self: Pull[Id,O,R] = Pull.fromFree[Id,O,R](free)
+  implicit def PullPureOps[O,R](p: Pull[Pure,O,R]): PullPureOps[O,R] = new PullPureOps(p.get[Pure,O,R])
+  final class PullPureOps[O,R](private val free: Free[Algebra[Pure,O,?],R]) extends AnyVal {
+    private def self: Pull[Pure,O,R] = Pull.fromFree[Pure,O,R](free)
 
     def covary[F[_]]: Pull[F,O,R] = self.asInstanceOf[Pull[F,O,R]]
     def covaryAll[F[_],O2>:O,R2>:R]: Pull[F,O2,R2] = self.asInstanceOf[Pull[F,O2,R2]]
@@ -165,9 +163,9 @@ object Pull {
       }
   }
 
-  implicit def PullPureOptionOps[O,R](p: Pull[Id,O,Option[R]]): PullPureOptionOps[O,R] = new PullPureOptionOps(p.get[Id,O,Option[R]])
-  final class PullPureOptionOps[O,R](private val free: Free[Algebra[Id,O,?],Option[R]]) extends AnyVal {
-    private def self: Pull[Id,O,Option[R]] = Pull.fromFree[Id,O,Option[R]](free)
+  implicit def PullPureOptionOps[O,R](p: Pull[Pure,O,Option[R]]): PullPureOptionOps[O,R] = new PullPureOptionOps(p.get[Pure,O,Option[R]])
+  final class PullPureOptionOps[O,R](private val free: Free[Algebra[Pure,O,?],Option[R]]) extends AnyVal {
+    private def self: Pull[Pure,O,Option[R]] = Pull.fromFree[Pure,O,Option[R]](free)
 
     /** Alias for `self.flatMap(_.map(f).getOrElse(Pull.pure(None)))`. */
     def flatMapOpt[F[_],O2>:O,R2](f: R => Pull[F,O2,Option[R2]]): Pull[F,O2,Option[R2]] =
@@ -177,5 +175,5 @@ object Pull {
       }
   }
 
-  implicit def covaryPure[F[_],O,R,O2>:O,R2>:R](p: Pull[Id,O,R]): Pull[F,O2,R2] = p.covaryAll[F,O2,R2]
+  implicit def covaryPure[F[_],O,R,O2>:O,R2>:R](p: Pull[Pure,O,R]): Pull[F,O2,R2] = p.covaryAll[F,O2,R2]
 }

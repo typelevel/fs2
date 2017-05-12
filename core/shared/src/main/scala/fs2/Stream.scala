@@ -2,14 +2,14 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 
-import cats.{ ~>, Applicative, Id, MonadError, Monoid, Semigroup }
+import cats.{ ~>, Applicative, MonadError, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
 
 import fs2.internal.{ Algebra, Free }
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
- * effects. If `F` is `Nothing` or `cats.Id`, the stream is pure.
+ * effects. If `F` is [[Pure]], the stream evaluates no effects.
  *
  * Laws (using infix syntax):
  *
@@ -330,7 +330,7 @@ object Stream {
   def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
     fromFree(s1.get.flatMap { _ => s2.get })
 
-  def apply[O](os: O*): Stream[Id,O] = fromFree(Algebra.output[Id,O](Chunk.seq(os)))
+  def apply[O](os: O*): Stream[Pure,O] = fromFree(Algebra.output[Pure,O](Chunk.seq(os)))
 
   def attemptEval[F[_],O](fo: F[O]): Stream[F,Either[Throwable,O]] =
     fromFree(Pull.attemptEval(fo).flatMap(Pull.output1).get)
@@ -362,7 +362,7 @@ object Stream {
   def emits[F[_],O](os: Seq[O]): Stream[F,O] = chunk(Chunk.seq(os))
 
   private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
-  def empty[F[_],O]: Stream[F,O] = empty_.asInstanceOf[Stream[F,O]]
+  def empty[F[_],O]: Stream[F,O] = empty_
 
   def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree(Algebra.eval(fo).flatMap(Algebra.output1))
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa) >> empty
@@ -588,14 +588,14 @@ object Stream {
     def through[O2](f: Pipe[F,O,O2]): Stream[F,O2] = f(self)
 
     /** Transform this stream using the given pure `Pipe`. */
-    def throughPure[O2](f: Pipe[Id,O,O2]): Stream[F,O2] = f(self)
+    def throughPure[O2](f: Pipe[Pure,O,O2]): Stream[F,O2] = f(self)
 
     /** Transform this stream using the given `Pipe2`. */
     def through2[O2,O3](s2: Stream[F,O2])(f: Pipe2[F,O,O2,O3]): Stream[F,O3] =
       f(self,s2)
 
     /** Transform this stream using the given pure `Pipe2`. */
-    def through2Pure[O2,O3](s2: Stream[F,O2])(f: Pipe2[Id,O,O2,O3]): Stream[F,O3] =
+    def through2Pure[O2,O3](s2: Stream[F,O2])(f: Pipe2[Pure,O,O2,O3]): Stream[F,O3] =
       f(self,s2)
 
     /** Applies the given sink to this stream and drains the output. */
@@ -620,9 +620,9 @@ object Stream {
       through2(s2)(pipe2.zipWith(f))
   }
 
-  implicit def StreamPureOps[O](s: Stream[Id,O]): StreamPureOps[O] = new StreamPureOps(s.get[Id,O])
-  final class StreamPureOps[O](private val free: Free[Algebra[Id,O,?],Unit]) extends AnyVal {
-    private def self: Stream[Id,O] = Stream.fromFree[Id,O](free)
+  implicit def StreamPureOps[O](s: Stream[Pure,O]): StreamPureOps[O] = new StreamPureOps(s.get[Pure,O])
+  final class StreamPureOps[O](private val free: Free[Algebra[Pure,O,?],Unit]) extends AnyVal {
+    private def self: Stream[Pure,O] = Stream.fromFree[Pure,O](free)
 
     def ++[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       Stream.append(covary[F], s2)
@@ -1014,7 +1014,7 @@ object Stream {
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
-  implicit class PurePipeOps[I,O](private val self: Pipe[Id,I,O]) extends AnyVal {
+  implicit class PurePipeOps[I,O](private val self: Pipe[Pure,I,O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe[F,I,O] = self.asInstanceOf[Pipe[F,I,O]]
@@ -1022,16 +1022,16 @@ object Stream {
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
-  implicit class PurePipe2Ops[I,I2,O](private val self: Pipe2[Id,I,I2,O]) extends AnyVal {
+  implicit class PurePipe2Ops[I,I2,O](private val self: Pipe2[Pure,I,I2,O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe2[F,I,I2,O] = self.asInstanceOf[Pipe2[F,I,I2,O]]
       //pipe2.covary[F](self) todo
   }
 
-  implicit def covaryPure[F[_],O,O2>:O](s: Stream[Id,O]): Stream[F,O2] = s.covaryAll[F,O2]
+  implicit def covaryPure[F[_],O,O2>:O](s: Stream[Pure,O]): Stream[F,O2] = s.covaryAll[F,O2]
 
-  implicit def covaryPurePipe[F[_],I,O](p: Pipe[Id,I,O]): Pipe[F,I,O] = p.covary[F]
+  implicit def covaryPurePipe[F[_],I,O](p: Pipe[Pure,I,O]): Pipe[F,I,O] = p.covary[F]
 
-  implicit def covaryPurePipe2[F[_],I,I2,O](p: Pipe2[Id,I,I2,O]): Pipe2[F,I,I2,O] = p.covary[F]
+  implicit def covaryPurePipe2[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] = p.covary[F]
 }

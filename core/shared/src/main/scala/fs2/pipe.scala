@@ -2,7 +2,6 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 
-import cats.Id
 // import cats.{ Eq, Functor }
 import cats.effect.Effect
 // import cats.implicits._
@@ -99,7 +98,7 @@ object pipe {
   /** Drops `n` elements of the input, then echoes the rest. */
   def drop[F[_],I](n: Long): Pipe[F,I,I] =
     _.pull.drop(n).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
-  
+
   // /** Drops the last element. */
   // def dropLast[F[_],I]: Pipe[F,I,I] =
   //   dropLastIf(_ => true)
@@ -580,7 +579,7 @@ object pipe {
   //   _.mapAccumulate(z) { (s,i) => val s2 = f(s,i); (s2, (i,s2)) }.map(_._2)
 
   /** Converts a pure pipe to an effectful pipe of the specified type. */
-  def covary[F[_],I,O](s: Pipe[Id,I,O]): Pipe[F,I,O] =
+  def covary[F[_],I,O](s: Pipe[Pure,I,O]): Pipe[F,I,O] =
     s.asInstanceOf[Pipe[F,I,O]]
 
   // // Combinators for working with pipes

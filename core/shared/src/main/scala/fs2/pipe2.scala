@@ -2,7 +2,6 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 // import cats.Functor
-import cats.Id
 import cats.effect.Effect
 
 /** Generic implementations of common 2-argument pipes. */
@@ -11,7 +10,7 @@ object pipe2 {
   // NB: Pure instances
 
   /** Converts a pure `Pipe2` to an effectful `Pipe2` of the specified type. */
-  def covary[F[_],I,I2,O](p: Pipe2[Id,I,I2,O]): Pipe2[F,I,I2,O] =
+  def covary[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] =
     p.asInstanceOf[Pipe2[F,I,I2,O]]
 
   private type ZipWithCont[F[_],I,O,R] = Either[(Segment[I,Unit], Stream[F,I]), Stream[F,I]] => Pull[F,O,Option[R]]

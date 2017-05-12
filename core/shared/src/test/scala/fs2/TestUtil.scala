@@ -6,7 +6,6 @@ import org.scalacheck.{Arbitrary, Gen}
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-import cats.Id
 import cats.effect.IO
 import fs2.internal.NonFatal
 
@@ -38,7 +37,7 @@ trait TestUtil extends TestUtilPlatform {
   )
 
   /** Newtype for generating test cases. Use the `tag` for labeling properties. */
-  case class PureStream[+A](tag: String, get: Stream[Id,A])
+  case class PureStream[+A](tag: String, get: Stream[Pure,A])
   implicit def arbPureStream[A:Arbitrary] = Arbitrary(PureStream.gen[A])
 
   case class SmallPositive(get: Int)
@@ -56,13 +55,13 @@ trait TestUtil extends TestUtilPlatform {
     }
     def leftAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
-        val s = as.foldLeft(Stream.empty[Id,A])((acc,a) => acc ++ Stream.emit(a))
+        val s = as.foldLeft(Stream.empty[Pure,A])((acc,a) => acc ++ Stream.emit(a))
         PureStream("left-associated", s)
       }
     }
     def rightAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
-        val s = as.foldRight(Stream.empty[Id,A])((a,acc) => Stream.emit(a) ++ acc)
+        val s = as.foldRight(Stream.empty[Pure,A])((a,acc) => Stream.emit(a) ++ acc)
         PureStream("right-associated", s)
       }
     }
