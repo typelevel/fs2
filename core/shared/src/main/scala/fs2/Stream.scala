@@ -108,6 +108,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def cons1[O2>:O](o: O2): Stream[F,O2] =
     cons(Segment.singleton(o))
 
+  /** Lifts this stream to the specified output type. */
+  def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf[Stream[F,O2]]
+
   // /** Alias for `self through [[pipe.delete]]`. */
   // def delete(f: O => Boolean): Stream[F,O] = self through pipe.delete(f)
 
@@ -484,9 +487,6 @@ object Stream {
 
     /** Lifts this stream to the specified effect type. */
     def covary[F2[x]>:F[x]]: Stream[F2,O] = self.asInstanceOf[Stream[F2,O]]
-
-    /** Lifts this stream to the specified output type. */
-    def covaryOutput[O2>:O]: Stream[F,O2] = self.asInstanceOf[Stream[F,O2]]
 
     /** Lifts this stream to the specified effect and output types. */
     def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = self.asInstanceOf[Stream[F2,O2]]

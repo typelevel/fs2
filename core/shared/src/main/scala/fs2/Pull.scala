@@ -2,11 +2,13 @@ package fs2
 
 import fs2.internal.{ Algebra, Free, LinkedSet }
 
+import cats.Id
+
 /**
  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
- * result of type `R`, and produces a `Stream[F,O]` on `p.close`.
+ * result of type `R`, and produces a `Stream[F,O]` on `p.stream`.
  *
- * Any resources acquired by `p` are freed following the `close`.
+ * Any resources acquired by `p` are freed following the `stream`.
  *
  * Laws:
  *
@@ -26,48 +28,13 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
   def as[R2](r2: R2): Pull[F,O,R2] = map(_ => r2)
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
-  def stream: Stream[F,O] = Stream.fromFree(scope[F].get[F,O,R] map (_ => ()))
+  def stream: Stream[F,O] = Stream.fromFree(this.scope.get[F,O,R] map (_ => ()))
 
-  def covary[F2[x]>:F[x]]: Pull[F2,O,R] = this.asInstanceOf[Pull[F2,O,R]]
   def covaryOutput[O2>:O]: Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
   def covaryResource[R2>:R]: Pull[F,O,R2] = this.asInstanceOf[Pull[F,O,R2]]
-  def covaryAll[F2[x]>:F[x],O2>:O,R2>:R]: Pull[F2,O2,R2] = this.asInstanceOf[Pull[F2,O2,R2]]
-
-  /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
-  def onError[F2[x]>:F[x],O2>:O,R2>:R](h: Throwable => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    Pull.fromFree(get[F2,O2,R2] onError { e => h(e).get })
-
-  /** Applies the resource of this pull to `f` and returns the result. */
-  def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    Pull.fromFree(get[F2,O2,R] flatMap { r => f(r).get })
-
-  /** Defined as `p >> p2 == p flatMap { _ => p2 }`. */
-  def >>[F2[x]>:F[x],O2>:O,R2](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    this flatMap { _ => p2 }
 
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
-  def map[R2](f: R => R2): Pull[F,O,R2] =
-    Pull.fromFree(get map f)
-
-  /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
-  def onComplete[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    (this onError (e => p2 >> Pull.fail(e))) flatMap { _ =>  p2 }
-
-  def race[F2[x]>:F[x],O2>:O,R2](p2: Pull[F2,O2,R2]): Pull[F2,O2,Either[R,R2]] = ???
-
-  def scope[F2[x]>:F[x]]: Pull[F2,O,R] = Pull.snapshot[F2,O] flatMap { tokens0 =>
-    this flatMap { r =>
-      Pull.snapshot flatMap { tokens1 =>
-        val newTokens = tokens1 -- tokens0.values
-        if (newTokens.isEmpty) Pull.pure(r) else Pull.releaseAll(newTokens).as(r)
-      }
-    } onError { e =>
-      Pull.snapshot flatMap { tokens1 =>
-        val newTokens = tokens1 -- tokens0.values
-        if (newTokens.isEmpty) Pull.fail(e) else Pull.releaseAll(newTokens) >> Pull.fail(e)
-      }
-    }
-  }
+  def map[R2](f: R => R2): Pull[F,O,R2] = Pull.fromFree(get map f)
 }
 
 object Pull {
@@ -122,9 +89,88 @@ object Pull {
     go(None, tokens.values.toList.reverse)
   }
 
-  implicit class PullOptionOps[+F[_],+O,+R](self: Pull[F,O,Option[R]]) {
+  implicit def PullInvariantOps[F[_],O,R](p: Pull[F,O,R]): PullInvariantOps[F,O,R] = new PullInvariantOps(p.get)
+  final class PullInvariantOps[F[_],O,R](private val free: Free[Algebra[F,O,?],R]) extends AnyVal {
+    private def self: Pull[F,O,R] = Pull.fromFree(free)
+
+    def covary[F2[x]>:F[x]]: Pull[F2,O,R] = self.asInstanceOf[Pull[F2,O,R]]
+    def covaryAll[F2[x]>:F[x],O2>:O,R2>:R]: Pull[F2,O2,R2] = self.asInstanceOf[Pull[F2,O2,R2]]
+
+    /** Applies the resource of this pull to `f` and returns the result. */
+    def flatMap[O2>:O,R2](f: R => Pull[F,O2,R2]): Pull[F,O2,R2] =
+      Pull.fromFree(self.get[F,O2,R] flatMap { r => f(r).get })
+
+    /** Defined as `p >> p2 == p flatMap { _ => p2 }`. */
+    def >>[O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
+      this flatMap { _ => p2 }
+
+    /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
+    def onComplete[O2>:O,R2>:R](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
+      (self onError (e => p2 >> Pull.fail(e))) flatMap { _ =>  p2 }
+
+    /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
+    def onError[O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] =
+      Pull.fromFree(self.get[F,O2,R2] onError { e => h(e).get })
+
+    def scope: Pull[F,O,R] = Pull.snapshot[F,O] flatMap { tokens0 =>
+      this flatMap { r =>
+        Pull.snapshot flatMap { tokens1 =>
+          val newTokens = tokens1 -- tokens0.values
+          if (newTokens.isEmpty) Pull.pure(r) else Pull.releaseAll(newTokens).as(r)
+        }
+      } onError { e =>
+        Pull.snapshot flatMap { tokens1 =>
+          val newTokens = tokens1 -- tokens0.values
+          if (newTokens.isEmpty) Pull.fail(e) else Pull.releaseAll(newTokens) >> Pull.fail(e)
+        }
+      }
+    }
+  }
+
+  implicit def PullPureOps[O,R](p: Pull[Id,O,R]): PullPureOps[O,R] = new PullPureOps(p.get[Id,O,R])
+  final class PullPureOps[O,R](private val free: Free[Algebra[Id,O,?],R]) extends AnyVal {
+    private def self: Pull[Id,O,R] = Pull.fromFree[Id,O,R](free)
+
+    def covary[F[_]]: Pull[F,O,R] = self.asInstanceOf[Pull[F,O,R]]
+    def covaryAll[F[_],O2>:O,R2>:R]: Pull[F,O2,R2] = self.asInstanceOf[Pull[F,O2,R2]]
+
+    /** Applies the resource of this pull to `f` and returns the result. */
+    def flatMap[F[_],O2>:O,R2](f: R => Pull[F,O2,R2]): Pull[F,O2,R2] =
+      covary[F].flatMap(f)
+
+    /** Defined as `p >> p2 == p flatMap { _ => p2 }`. */
+    def >>[F[_],O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
+      covary[F] >> p2
+
+    /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
+    def onComplete[F[_],O2>:O,R2>:R](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
+      covary[F].onComplete(p2)
+
+    /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
+    def onError[F[_],O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] =
+      covary[F].onError(h)
+
+    def scope[F[_]]: Pull[F,O,R] = covary[F].scope
+  }
+
+  implicit def PullInvariantOptionOps[F[_],O,R](p: Pull[F,O,Option[R]]): PullInvariantOptionOps[F,O,R] = new PullInvariantOptionOps(p.get)
+  final class PullInvariantOptionOps[F[_],O,R](private val free: Free[Algebra[F,O,?],Option[R]]) extends AnyVal {
+    private def self: Pull[F,O,Option[R]] = Pull.fromFree(free)
+
     /** Alias for `self.flatMap(_.map(f).getOrElse(Pull.pure(None)))`. */
-    def flatMapOpt[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,O2,Option[R2]]): Pull[F2,O2,Option[R2]] =
+    def flatMapOpt[O2>:O,R2](f: R => Pull[F,O2,Option[R2]]): Pull[F,O2,Option[R2]] =
+      self.flatMap {
+        case None => Pull.pure(None)
+        case Some(r) => f(r)
+      }
+  }
+
+  implicit def PullPureOptionOps[O,R](p: Pull[Id,O,Option[R]]): PullPureOptionOps[O,R] = new PullPureOptionOps(p.get[Id,O,Option[R]])
+  final class PullPureOptionOps[O,R](private val free: Free[Algebra[Id,O,?],Option[R]]) extends AnyVal {
+    private def self: Pull[Id,O,Option[R]] = Pull.fromFree[Id,O,Option[R]](free)
+
+    /** Alias for `self.flatMap(_.map(f).getOrElse(Pull.pure(None)))`. */
+    def flatMapOpt[F[_],O2>:O,R2](f: R => Pull[F,O2,Option[R2]]): Pull[F,O2,Option[R2]] =
       self.flatMap {
         case None => Pull.pure(None)
         case Some(r) => f(r)
