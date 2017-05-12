@@ -291,6 +291,82 @@ abstract class Segment[+O,+R] { self =>
     (outAsSegment, resultAsEither)
   }
 
+  def zipWith[O2,R2,O3](that: Segment[O2,R2])(f: (O,O2) => O3): Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] =
+    new Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] {
+      def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+        var l = new scala.collection.mutable.Queue[Chunk[O]]
+        var lpos = 0
+        var lStepped = false
+        var r = new scala.collection.mutable.Queue[Chunk[O2]]
+        var rpos = 0
+        var rStepped = false
+        def doZip: Unit = {
+          var lh = if (l.isEmpty) null else l.head
+          var rh = if (r.isEmpty) null else r.head
+          var out1: Option[O3] = None
+          var out: scala.collection.immutable.VectorBuilder[O3] = null
+          while ((lh ne null) && lpos < lh.size && (rh ne null) && rpos < rh.size) {
+            val zipCount = (lh.size - lpos) min (rh.size - rpos)
+            if (zipCount == 1) {
+              out1 = Some(f(lh(lpos),rh(rpos)))
+              lpos += 1
+              rpos += 1
+            } else {
+              if (out eq null) {
+                out = new scala.collection.immutable.VectorBuilder[O3]()
+                if (out1.isDefined) {
+                  out += out1.get
+                  out1 = None
+                }
+              }
+              var i = 0
+              while (i < zipCount) {
+                out += f(lh(lpos),rh(rpos))
+                i += 1
+                lpos += 1
+                rpos += 1
+              }
+            }
+            if (lpos == lh.size) {
+              l.dequeue
+              lh = if (l.isEmpty) null else l.head
+              lpos = 0
+            }
+            if (rpos == rh.size) {
+              r.dequeue
+              rh = if (r.isEmpty) null else r.head
+              rpos = 0
+            }
+          }
+          if (out1.isDefined) emit(out1.get)
+          else if (out ne null) emits(Chunk.vector(out.result))
+        }
+        val emitsL: Chunk[O] => Unit = os => { l += os; doZip }
+        val emitsR: Chunk[O2] => Unit = os => { r += os; doZip }
+        var theStepR: Segment.Step[O2,R2] = null
+        def unusedL: Segment[O,Unit] = if (l.isEmpty) Segment.empty else l.tail.foldLeft(if (lpos == 0) l.head else l.head.drop(lpos).voidResult)(_ ++ _)
+        def unusedR: Segment[O2,Unit] = if (r.isEmpty) Segment.empty else r.tail.foldLeft(if (rpos == 0) r.head else r.head.drop(rpos).voidResult)(_ ++ _)
+        for {
+          stepL <- self.stage(depth, defer, o => emitsL(Chunk.singleton(o)), emitsL, r2 => {
+            done(Left(r2 -> (if (theStepR eq null) that else theStepR.remainder.cons(unusedR))))
+          })
+          stepR <- that.stage(depth, defer, o2 => emitsR(Chunk.singleton(o2)), emitsR, r2 => {
+            done(Right(r2 -> (stepL.remainder.cons(unusedL))))
+          })
+        } yield {
+          theStepR = stepR
+          step {
+            val remL: Segment[O,R] = if (lStepped) stepL.remainder.cons(unusedL) else self
+            val remR: Segment[O2,R2] = if (rStepped) stepR.remainder.cons(unusedR) else that
+            remL.zipWith(remR)(f)
+          } {
+            if (l.isEmpty) { lStepped = true; stepL.step() } else { rStepped = true; stepR.step() }
+          }
+        }
+      }
+      override def toString = s"($self).zipWith($that)(<f1>)"
+    }
+
   override def hashCode: Int = toVector.hashCode
   override def equals(a: Any): Boolean = a match {
     case s: Segment[O,R] => this.toVector == s.toVector

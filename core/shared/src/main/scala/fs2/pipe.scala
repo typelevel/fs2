@@ -301,11 +301,11 @@ object pipe {
   /**
    * Applies the specified pure function to each input and emits the result.
    *
-  * @example {{{
-  * scala> Stream.pure("Hello", "World!").through(pipe.lift(_.size)).toList
-  * res0: List[Int] = List(5, 6)
-  * }}}
-  */
+   * @example {{{
+   * scala> Stream.pure("Hello", "World!").through(pipe.lift(_.size)).toList
+   * res0: List[Int] = List(5, 6)
+   * }}}
+   */
   def lift[F[_],I,O](f: I => O): Pipe[F,I,O] = _ map f
 
   /** Outputs a transformed version of all chunks from the input `Handle`. */

@@ -213,8 +213,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def interleave[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2]): Stream[F2,O2] =
     (this through2v s2)(pipe2.interleave)
 
-  // def interleaveAll[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R:RealSupertype[O,O2], S:Sub1[F,F2]): Stream[F2,O2] =
-  //   (self through2v s2)(pipe2.interleaveAll)
+  def interleaveAll[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2]): Stream[F2,O2] =
+    (this through2v s2)(pipe2.interleaveAll)
 
   /** Alias for `(haltWhenTrue through2 this)(pipe2.interrupt)`. */
   def interruptWhen[F2[x]>:F[x]](haltWhenTrue: Stream[F2,Boolean])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
@@ -256,17 +256,17 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def mergeHaltBoth[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
     through2v(s2)(pipe2.mergeHaltBoth)
 
-  // def mergeHaltL[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
-  //   (self through2v s2)(pipe2.mergeHaltL)
-  //
-  // def mergeHaltR[F2[_],O2>:O](s2: Stream[F2,O2])(implicit R: RealSupertype[O,O2], S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
-  //   (self through2v s2)(pipe2.mergeHaltR)
-  //
-  // def mergeDrainL[F2[_],O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
-  //   (self through2v s2)(pipe2.mergeDrainL)
-  //
-  // def mergeDrainR[F2[_],O2](s2: Stream[F2,O2])(implicit S: Sub1[F,F2], F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
-  //   (self through2v s2)(pipe2.mergeDrainR)
+  def mergeHaltL[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
+    through2v(s2)(pipe2.mergeHaltL)
+
+  def mergeHaltR[F2[x]>:F[x],O2>:O](s2: Stream[F2,O2])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
+    through2v(s2)(pipe2.mergeHaltR)
+
+  def mergeDrainL[F2[x]>:F[x],O2](s2: Stream[F2,O2])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O2] =
+    through2v(s2)(pipe2.mergeDrainL)
+
+  def mergeDrainR[F2[x]>:F[x],O2](s2: Stream[F2,O2])(implicit F2: Effect[F2], ec: ExecutionContext): Stream[F2,O] =
+    through2v(s2)(pipe2.mergeDrainR)
 
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
@@ -411,12 +411,12 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   // def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] = self.asInstanceOf[Stream[F, Option[O2]]] through pipe.unNone
 
-  // def zip[F2[_],O2](s2: Stream[F2,O2])(implicit S:Sub1[F,F2]): Stream[F2,(O,O2)] =
-  //   (self through2v s2)(pipe2.zip)
-  //
-  // def zipWith[F2[_],O2,O3](s2: Stream[F2,O2])(f: (O,O2) => O3)(implicit S:Sub1[F,F2]): Stream[F2, O3] =
-  //   (self through2v s2)(pipe2.zipWith(f))
-  //
+  def zip[F2[x]>:F[x],O2](s2: Stream[F2,O2]): Stream[F2,(O,O2)] =
+    through2v(s2)(pipe2.zip)
+
+  def zipWith[F2[x]>:F[x],O2,O3](s2: Stream[F2,O2])(f: (O,O2) => O3): Stream[F2, O3] =
+    through2v(s2)(pipe2.zipWith(f))
+
   // /** Alias for `self through [[pipe.zipWithIndex]]`. */
   // def zipWithIndex: Stream[F, (O, Int)] = self through pipe.zipWithIndex
   //
@@ -434,7 +434,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //
   // /** Alias for `self through [[pipe.zipWithScan1]]`. */
   // def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan1(z)(f)
-
 }
 
 object Stream {

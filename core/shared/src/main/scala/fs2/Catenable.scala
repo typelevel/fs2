@@ -99,6 +99,13 @@ sealed abstract class Catenable[+A] {
     builder.result
   }
 
+  /** Converts to a vector. */
+  final def toVector: Vector[A] = {
+    val builder = new scala.collection.immutable.VectorBuilder[A]()
+    foreach { a => builder += a; () }
+    builder.result
+  }
+
   override def toString = "Catenable(..)"
 }
 

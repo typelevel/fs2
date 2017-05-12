@@ -19,6 +19,15 @@ class SegmentSpec extends Fs2Spec {
   implicit def arbSegment[O: Arbitrary]: Arbitrary[Segment[O,Unit]] =
     Arbitrary(genSegment(arbitrary[O]))
 
+  def unconsAll[O,R](s: Segment[O,R]): (Catenable[Chunk[O]],R) = {
+    def go[O,R](acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
+      s.unconsChunk match {
+        case Right((hd, tl)) => go(acc :+ hd, tl)
+        case Left(r) => (acc, r)
+      }
+    go(Catenable.empty, s)
+  }
+
   "Segment" - {
 
     "++" in {
@@ -93,12 +102,23 @@ class SegmentSpec extends Fs2Spec {
     "unconsChunk" in {
       forAll { (xss: List[List[Int]]) =>
         val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Chunk.array(xs.toArray) ++ acc)
-        def unconsAll(acc: Catenable[Chunk[Int]], s: Segment[Int,Unit]): Catenable[Chunk[Int]] =
-          s.unconsChunk match {
-            case Right((hd, tl)) => unconsAll(acc :+ hd, tl)
-            case Left(()) => acc
-          }
-        unconsAll(Catenable.empty, seg).toList.map(_.toVector.toList) shouldBe xss.filter(_.nonEmpty)
+        unconsAll(seg)._1.toList.map(_.toVector.toList) shouldBe xss.filter(_.nonEmpty)
+      }
+    }
+
+    "zipWith" in {
+      forAll { (xs: Vector[Int], ys: Vector[Double], f: (Int, Double) => Long) =>
+        val (segments, leftover) = unconsAll(Segment.seq(xs).zipWith(Segment.seq(ys))(f))
+        segments.toVector.flatMap(_.toVector) shouldBe xs.zip(ys).toVector.map { case (x,y) => f(x,y) }
+        // val expectedResult: Either[Vector[Double],Vector[Int]] = {
+        //   if (xs.size < ys.size) Left(ys.drop(xs.size))
+        //   else Right(xs.drop(ys.size))
+        // }
+        leftover match {
+          case Left((_,leftoverYs)) => withClue("leftover ys")(leftoverYs.toVector shouldBe ys.drop(xs.size))
+          case Right((_,leftoverXs)) => withClue("leftover xs")(leftoverXs.toVector shouldBe xs.drop(ys.size))
+        }
+        // leftover.fold(l => Left(l._2.toVector), r => Right(r._2.toVector)) shouldBe expectedResult
       }
     }
 
