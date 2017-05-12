@@ -45,6 +45,11 @@ object pipe2 {
    * Determinsitically zips elements with the specified function, terminating
    * when the ends of both branches are reached naturally, padding the left
    * branch with `pad1` and padding the right branch with `pad2` as necessary.
+   *
+   * @example {{{
+   * scala> pipe2.zipAllWith(0, 0)(_ + _)(Stream(1, 2, 3), Stream(4, 5, 6, 7)).toList
+   * res0: List[Int] = List(5, 7, 9, 7)
+   * }}}
    */
   def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): Pipe2[F,I,I2,O] = {
     def cont1(z: Either[(Segment[I,Unit], Stream[F, I]), Stream[F, I]]): Pull[F,O,Option[Nothing]] = {
