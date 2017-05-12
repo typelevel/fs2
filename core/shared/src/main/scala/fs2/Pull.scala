@@ -176,4 +176,6 @@ object Pull {
         case Some(r) => f(r)
       }
   }
+
+  implicit def covaryPure[F[_],O,R,O2>:O,R2>:R](p: Pull[Id,O,R]): Pull[F,O2,R2] = p.covaryAll[F,O2,R2]
 }

@@ -41,4 +41,7 @@ object ThisModuleShouldCompile {
   pipe.take[Id,Int](2).attachL(pipe2.interleave)
   pipe.take[Id,Int](2).attachR(pipe2.interleave)
   pipe.take[Id,Int](2).attachR(pipe2.interleave)
+
+  val p: Pull[Id,Nothing,Option[(Segment[Int,Unit],Stream[Id,Int])]] = Stream(1, 2, 3).pull.uncons
+  val q: Pull[IO,Nothing,Option[(Segment[Int,Unit],Stream[Id,Int])]] = p
 }

@@ -1027,7 +1027,7 @@ object Stream {
       //pipe2.covary[F](self) todo
   }
 
-  implicit def covaryPure[F[_],O](s: Stream[Id,O]): Stream[F,O] = s.asInstanceOf[Stream[F,O]]
+  implicit def covaryPure[F[_],O,O2>:O](s: Stream[Id,O]): Stream[F,O2] = s.covaryAll[F,O2]
 
   implicit def covaryPurePipe[F[_],I,O](p: Pipe[Id,I,O]): Pipe[F,I,O] = p.covary[F]
 
