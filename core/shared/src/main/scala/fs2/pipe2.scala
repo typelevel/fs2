@@ -295,15 +295,17 @@ object pipe2 {
   /** Like `interrupt` but resumes the stream when left branch goes to true. */
   def pause[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe2[F,Boolean,I,I] = {
     def unpaused(
-      controlFuture: AsyncPull[F, Option[(Chunk[Boolean], Stream[F, Boolean])]],
+      controlFuture: AsyncPull[F, Option[(Segment[Boolean,Unit], Stream[F, Boolean])]],
       srcFuture: AsyncPull[F, Option[(Segment[I,Unit], Stream[F, I])]]
     ): Pull[F, I, Option[Nothing]] = {
       (controlFuture race srcFuture).pull.flatMap {
         case Left(None) => Pull.pure(None)
         case Right(None) => Pull.pure(None)
-        case Left(Some((c, controlStream))) =>
-          if (c.last) paused(controlStream, srcFuture)
-          else controlStream.pull.unconsChunkAsync.flatMap(unpaused(_, srcFuture))
+        case Left(Some((s, controlStream))) =>
+          Pull.segment(s.fold(false)(_ || _)).flatMap { p =>
+            if (p) paused(controlStream, srcFuture)
+            else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
+          }
         case Right(Some((c, srcStream))) =>
           Pull.output(c) >> srcStream.pull.unconsAsync.flatMap(unpaused(controlFuture, _))
       }
@@ -315,12 +317,12 @@ object pipe2 {
     ): Pull[F, I, Option[Nothing]] = {
       controlStream.pull.receiveChunk { (c, controlStream) =>
         if (c.last) paused(controlStream, srcFuture)
-        else controlStream.pull.unconsChunkAsync.flatMap(unpaused(_, srcFuture))
+        else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
       }
     }
 
     (control, src) =>
-      control.pull.unconsChunkAsync.flatMap { controlFuture =>
+      control.pull.unconsAsync.flatMap { controlFuture =>
         src.pull.unconsAsync.flatMap { srcFuture =>
           unpaused(controlFuture, srcFuture)
         }

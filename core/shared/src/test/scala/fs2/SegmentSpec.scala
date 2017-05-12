@@ -106,6 +106,15 @@ class SegmentSpec extends Fs2Spec {
       }
     }
 
+    "uncons1 on result of uncons always emits" in {
+      forAll { (s: Segment[Int,Unit]) =>
+        s.uncons match {
+          case Left(()) => ()
+          case Right((hd,tl)) => hd.uncons1.toOption.get
+        }
+      }
+    }
+
     "zipWith" in {
       forAll { (xs: Vector[Int], ys: Vector[Double], f: (Int, Double) => Long) =>
         val (segments, leftover) = unconsAll(Segment.seq(xs).zipWith(Segment.seq(ys))(f))

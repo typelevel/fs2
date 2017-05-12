@@ -95,11 +95,11 @@ object pipe {
   // /** Skips the first element that matches the predicate. */
   // def delete[F[_],I](p: I => Boolean): Pipe[F,I,I] =
   //   _ pull { h => h.takeWhile((i:I) => !p(i)).flatMap(_.drop(1)).flatMap(_.echo) }
-  //
-  // /** Drops `n` elements of the input, then echoes the rest. */
-  // def drop[F[_],I](n: Long): Pipe[F,I,I] =
-  //   _ pull { h => h.drop(n).flatMap(_.echo) }
-  //
+
+  /** Drops `n` elements of the input, then echoes the rest. */
+  def drop[F[_],I](n: Long): Pipe[F,I,I] =
+    _.pull.drop(n).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
+  
   // /** Drops the last element. */
   // def dropLast[F[_],I]: Pipe[F,I,I] =
   //   dropLastIf(_ => true)
@@ -310,7 +310,7 @@ object pipe {
 
   /** Outputs a transformed version of all chunks from the input `Handle`. */
   def mapSegments[F[_],I,O](f: Segment[I,Unit] => Segment[O,Unit]): Pipe[F,I,O] =
-    _ repeatPull { _.receive { (hd,tl) => Pull.output(f(hd)).as(Some(tl)) }}
+    _.mapSegments(f)
 
   // /**
   //   * Maps a running total according to `S` and the input with the function `f`.
@@ -365,36 +365,26 @@ object pipe {
   //
   // /** Alias for `[[pipe.fold1]]` */
   // def reduce[F[_],I](f: (I, I) => I): Pipe[F,I,I] = fold1(f)
-  //
-  // /**
-  //  * Left fold which outputs all intermediate results. Example:
-  //  *   `Stream(1,2,3,4) through pipe.scan(0)(_ + _) == Stream(0,1,3,6,10)`.
-  //  *
-  //  * More generally:
-  //  *   `Stream().scan(z)(f) == Stream(z)`
-  //  *   `Stream(x1).scan(z)(f) == Stream(z, f(z,x1))`
-  //  *   `Stream(x1,x2).scan(z)(f) == Stream(z, f(z,x1), f(f(z,x1),x2))`
-  //  *   etc
-  //  *
-  //  * Works in a chunky fashion, and creates a `Chunk.indexedSeq` for each converted chunk.
-  //  */
-  // def scan[F[_],I,O](z: O)(f: (O, I) => O): Pipe[F,I,O] = {
-  //   _ pull (_scan0(z)(f))
-  // }
-  //
-  // private def _scan0[F[_],O,I](z: O)(f: (O, I) => O): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-  //   h => h.await.optional flatMap {
-  //     case Some((chunk, h)) =>
-  //       val s = chunk.scanLeft(z)(f)
-  //       Pull.output(s) >> _scan1(s(s.size - 1))(f)(h)
-  //     case None => Pull.output(Chunk.singleton(z)) as Handle.empty
-  //   }
-  // private def _scan1[F[_],O,I](z: O)(f: (O, I) => O): Handle[F,I] => Pull[F,O,Handle[F,I]] =
-  //   _.receive { case (chunk, h) =>
-  //     val s = chunk.scanLeft(z)(f).drop(1)
-  //     Pull.output(s) >> _scan1(s(s.size - 1))(f)(h)
-  //   }
-  //
+
+  /**
+   * Left fold which outputs all intermediate results. Example:
+   *   `Stream(1,2,3,4) through pipe.scan(0)(_ + _) == Stream(0,1,3,6,10)`.
+   *
+   * More generally:
+   *   `Stream().scan(z)(f) == Stream(z)`
+   *   `Stream(x1).scan(z)(f) == Stream(z, f(z,x1))`
+   *   `Stream(x1,x2).scan(z)(f) == Stream(z, f(z,x1), f(f(z,x1),x2))`
+   *   etc
+   *
+   * Works in a chunky fashion, and creates a `Chunk.indexedSeq` for each converted chunk.
+   */
+  def scan[F[_],I,O](z: O)(f: (O, I) => O): Pipe[F,I,O] =
+    _.pull.receiveOption {
+      case None => Pull.done
+      case Some((hd,tl)) =>
+        Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc => scan(acc)(f)(tl).pull.echo }
+    }.stream
+
   // /**
   //  * Like `[[pipe.scan]]`, but uses the first element of the stream as the seed.
   //  */

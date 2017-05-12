@@ -178,7 +178,6 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "pause" in {
-      pending
       forAll { (s1: PureStream[Int]) =>
         val pausedStream = Stream.eval(async.signalOf[IO,Boolean](false)).flatMap { pause =>
           time.awakeEvery[IO](10.millis).scan(0)((acc, _) => acc + 1).evalMap { n =>

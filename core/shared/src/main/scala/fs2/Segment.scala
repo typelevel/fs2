@@ -60,7 +60,7 @@ abstract class Segment[+O,+R] { self =>
     val step = stage(Depth(0),
       defer(trampoline),
       o => { out = out :+ Chunk.singleton(o); ok = false },
-      os => { out = out :+ os; ok = false },
+      os => { if (os.nonEmpty) { out = out :+ os; ok = false } },
       r => { result = Some(r); ok = false }).value
     while (ok) steps(step, trampoline)
     result match {
@@ -115,13 +115,13 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).fold($z)($f)"
   }
 
-  final def scan[B](z: B)(f: (B,O) => B): Segment[B,B] = new Segment[B,B] {
+  final def scan[B](z: B, emitFinal: Boolean = true)(f: (B,O) => B): Segment[B,B] = new Segment[B,B] {
     def stage0 = (depth, defer, emit, emits, done) => {
       var b = z
       self.stage(depth.increment, defer,
         o => { emit(b); b = f(b, o) },
         os => { var i = 0; while (i < os.size) { emit(b); b = f(b, os(i)); i += 1 } },
-        r => { emit(b); done(b) }).map(_.mapRemainder(_.scan(b)(f)))
+        r => { if (emitFinal) emit(b); done(b) }).map(_.mapRemainder(_.scan(b)(f)))
     }
     override def toString = s"($self).scan($z)($f)"
   }
@@ -267,12 +267,13 @@ abstract class Segment[+O,+R] { self =>
 
   final def splitAt(n:Int): (Segment[O,Unit], Either[R,Segment[O,R]]) = {
     var out: Catenable[Chunk[O]] = Catenable.empty
+    var outCount = 0
     var result: Option[Either[R,Segment[O,(Long,Unit)]]] = None
     var rem = n
     val trampoline = makeTrampoline
     val step = stage(Depth(0),
       defer(trampoline),
-      o => { out = out :+ Chunk.singleton(o); rem -= 1 },
+      o => { out = out :+ Chunk.singleton(o); outCount += 1; rem -= 1 },
       os => {
         if (os.size <= rem) {
           out = out :+ os
@@ -282,10 +283,11 @@ abstract class Segment[+O,+R] { self =>
           result = Some(Right(os.drop(rem)))
           rem = 0
         }
+        outCount += 1
       },
       r => result = Some(Left(r))).value
     while (result == None && rem > 0) steps(step, trampoline)
-    val outAsSegment = if (out.isEmpty) Segment.empty else Catenated(out)
+    val outAsSegment = if (out.isEmpty) Segment.empty else if (outCount == 1) out.uncons.get._1 else Catenated(out)
     val resultAsEither: Either[R,Segment[O,R]] =
       result.map(_.fold(r => Left(r), s => Right(step.remainder.cons(s)))).getOrElse(Right(step.remainder))
     (outAsSegment, resultAsEither)

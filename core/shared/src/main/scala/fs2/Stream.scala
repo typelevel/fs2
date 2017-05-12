@@ -121,18 +121,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    */
   def drain: Stream[F, Nothing] = this.flatMap { _ => Stream.empty }
 
-  def drop(n: Long): Stream[F,O] = {
-    def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = s.uncons flatMap {
-      case None => Pull.pure(())
-      case Some((hd, tl)) =>
-        Pull.segment(hd.drop(n)) flatMap {
-          case (n, ()) =>
-            if (n > 0) go(tl, n)
-            else Pull.fromFree(tl.get)
-        }
-    }
-    go(this, n).stream
-  }
+  def drop(n: Long): Stream[F,O] = this.through(pipe.drop(n))
 
   // /** Alias for `self through [[pipe.dropLast]]`. */
   // def dropLast: Stream[F,O] = self through pipe.dropLast
@@ -192,16 +181,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // def mapAccumulate[S,O2](init: S)(f: (S, O) => (S, O2)): Stream[F, (S, O2)] =
   //   self through pipe.mapAccumulate(init)(f)
 
-  def map[O2](f: O => O2): Stream[F,O2] = {
-    def go(s: Stream[F,O]): Pull[F,O2,Unit] = s.uncons flatMap {
-      case None => Pull.pure(())
-      case Some((hd, tl)) => Pull.segment(hd map f) >> go(tl)
-    }
-    go(this).stream
-  }
+  def map[O2](f: O => O2): Stream[F,O2] =
+    this.repeatPull(_.receive { (hd, tl) => Pull.output(hd map f).as(Some(tl)) })
 
-  // def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F,O2] =
-  //   Stream.mk(get mapChunks f)
+  def mapSegments[O2](f: Segment[O,Unit] => Segment[O2,Unit]): Stream[F,O2] =
+    this.repeatPull { _.receive { (hd,tl) => Pull.output(f(hd)).as(Some(tl)) }}
 
   def mask: Stream[F,O] = this.onError(_ => Stream.empty)
 
@@ -224,10 +208,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // def rechunkN(n: Int, allowFewer: Boolean = true): Stream[F,O] = self through pipe.rechunkN(n, allowFewer)
   //
   // /** Alias for `self through [[pipe.reduce]](z)(f)`. */
-  // def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.reduce(f)
+
 
   /** Alias for `self through [[pipe.scan]](z)(f)`. */
-  def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = ??? //self through pipe.scan(z)(f)
+  def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = this through pipe.scan(z)(f)
 
   // /** Alias for `self through [[pipe.scan1]](f)`. */
   // def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.scan1(f)
@@ -253,7 +237,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.tail]]`. */
   // def tail: Stream[F,O] = self through pipe.tail
 
-  def take(n: Long): Stream[F,O] = this.pull.take(n).stream
+  def take(n: Long): Stream[F,O] = this.through(pipe.take(n))
 
   // /** Alias for `self through [[pipe.takeRight]]`. */
   // def takeRight(n: Long): Stream[F,O] = self through pipe.takeRight(n)
@@ -267,9 +251,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.unchunk]]`. */
   def unchunk: Stream[F,O] = this through pipe.unchunk
 
-  /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
-  def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
-    Pull.fromFree(Algebra.uncons(get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
+  // /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
+  // def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
+  //   Pull.fromFree(Algebra.uncons(get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
 
   // /**
   // * A new [[Stream]] of one element containing the head element of this [[Stream]] along
@@ -626,8 +610,8 @@ object Stream {
     private def translate_[G[_]](u: F ~> G, G: Either[MonadError[G, Throwable], Effect[G]]): Stream[G,O] =
       Stream.fromFree[G,O](Algebra.translate[F,G,O,Unit](self.get, u, G))
 
-    def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
-      Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
+    // def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
+    //   Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
 
     def zip[O2](s2: Stream[F,O2]): Stream[F,(O,O2)] =
       through2(s2)(pipe2.zip)
@@ -780,11 +764,29 @@ object Stream {
     def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
       Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
 
-    def unconsChunkAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Chunk[O], Stream[F,O])]]] =
-      ???
-
-    def uncons1Async(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(O, Stream[F,O])]]] =
-      ???
+    // def unconsChunkAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Chunk[O], Stream[F,O])]]] =
+    //   unconsAsync.map { ap =>
+    //     ap.map {
+    //       case None => None
+    //       case Some((hd,tl)) =>
+    //         hd.unconsChunk match {
+    //           case Left(()) => sys.error("FS2-bug; unconsChunk after uncons is guaranteed to produce at least 1 value")
+    //           case Right((hd,tl2)) => Some(hd -> tl.cons(tl2))
+    //         }
+    //     }
+    //   }
+    //
+    // def uncons1Async(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(O, Stream[F,O])]]] =
+    //   unconsAsync.map { ap =>
+    //     ap.map {
+    //       case None => None
+    //       case Some((hd,tl)) =>
+    //         hd.uncons1 match {
+    //           case Left(()) => sys.error("FS2-bug; uncons1 after uncons is guaranteed to produce at least 1 value")
+    //           case Right((hd,tl2)) => Some(hd -> tl.cons(tl2))
+    //         }
+    //     }
+    //   }
 
     /**
      * Like [[uncons]], but returns a segment of no more than `n` elements.
@@ -948,7 +950,7 @@ object Stream {
     def receive1Option[O2,R](f: Option[(O,Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
       uncons1.flatMap(f)
 
-    /** Emits the first `n` elements of the input and return the new `Handle`. */
+    /** Emits the first `n` elements of the input. */
     def take(n: Long): Pull[F,O,Option[Stream[F,O]]] =
       if (n <= 0) Pull.pure(Some(self))
       else unconsLimit(n).flatMapOpt { s =>
