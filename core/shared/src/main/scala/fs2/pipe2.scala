@@ -75,7 +75,7 @@ object pipe2 {
    * terminating when the end of either branch is reached naturally.
    *
    * @example {{{
-   * scala> Stream.pure(1, 2, 3).zipWith(Stream.pure(4, 5, 6, 7))(_ + _).toList
+   * scala> Stream(1, 2, 3).zipWith(Stream(4, 5, 6, 7))(_ + _).toList
    * res0: List[Int] = List(5, 7, 9)
    * }}}
    */
@@ -89,7 +89,7 @@ object pipe2 {
    *
    *
    * @example {{{
-   * scala> pipe2.zipAll(0, 0)(Stream.pure(1, 2, 3), Stream.pure(4, 5, 6, 7)).toList
+   * scala> pipe2.zipAll(0, 0)(Stream(1, 2, 3), Stream(4, 5, 6, 7)).toList
    * res0: List[(Int,Int)] = List((1,4), (2,5), (3,6), (0,7))
    * }}}
    */
@@ -100,21 +100,35 @@ object pipe2 {
    * Determinsitically zips elements, terminating when the end of either branch is reached naturally.
    *
    * @example {{{
-   * scala> Stream.pure(1, 2, 3).zip(Stream.pure(4, 5, 6, 7)).toList
+   * scala> Stream(1, 2, 3).zip(Stream(4, 5, 6, 7)).toList
    * res0: List[(Int,Int)] = List((1,4), (2,5), (3,6))
    * }}}
    */
   def zip[F[_],I,I2]: Pipe2[F,I,I2,(I,I2)] =
     zipWith(Tuple2.apply)
 
-  /** Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally. */
+  /**
+   * Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3).interleaveAll(Stream(4, 5, 6, 7)).toList
+   * res0: List[Int] = List(1, 4, 2, 5, 3, 6, 7)
+   * }}}
+   */
   def interleaveAll[F[_], O]: Pipe2[F,O,O,O] = { (s1, s2) =>
     (zipAll(None: Option[O], None: Option[O])(s1.map(Some.apply),s2.map(Some.apply))) flatMap {
       case (i1Opt,i2Opt) => Stream(i1Opt.toSeq :_*) ++ Stream(i2Opt.toSeq :_*)
     }
   }
 
-  /** Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally. */
+  /**
+   * Determinsitically interleaves elements, starting on the left, terminating when the end of either branch is reached naturally.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3).interleave(Stream(4, 5, 6, 7)).toList
+   * res0: List[Int] = List(1, 4, 2, 5, 3, 6)
+   * }}}
+   */
   def interleave[F[_], O]: Pipe2[F,O,O,O] =
     zip(_,_) flatMap { case (i1,i2) => Stream(i1,i2) }
 
