@@ -58,5 +58,23 @@ class ErrorHandlingSpec extends Fs2Spec {
       }
       catch { case e: Throwable => i shouldBe 1 }
     }
+
+    "ex6" in {
+      var i = 0
+      (Stream.range(0, 10).covary[IO] ++ Stream.fail(Err)).onError { t => i += 1; Stream.empty }.run.unsafeRunSync
+      i shouldBe 1
+    }
+
+    "ex7" in {
+      pending // FAILING CURRENTLY
+      (Stream.range(0, 3).covary[IO] ++ Stream.fail(Err)).unchunk.pull.echo.stream.run.unsafeRunSync
+    }
+
+    "ex8" in {
+      pending // FAILING CURRENTLY
+      var i = 0
+      (Stream.range(0, 3).covary[IO] ++ Stream.fail(Err)).unchunk.pull.echo.onError { t => i += 1; println(i); Pull.done }.stream.run.unsafeRunSync
+      i shouldBe 1
+    }
   }
 }
