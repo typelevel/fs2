@@ -2,7 +2,7 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 
-import cats.{ ~>, Applicative, MonadError, Monoid, Semigroup }
+import cats.{ ~>, Applicative, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
 
 import fs2.internal.{ Algebra, Free }
@@ -251,58 +251,60 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.unchunk]]`. */
   def unchunk: Stream[F,O] = this through pipe.unchunk
 
-  // /** Return leading `Segment[O,Unit]` emitted by this `Stream`. */
-  // def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
-  //   Pull.fromFree(Algebra.uncons(get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
+  /** Return leading `Segment[O,Unit]` emitted by this stream. */
+  def uncons: Stream[F,Option[(Segment[O,Unit],Stream[F,O])]] =
+    // this.pull.uncons.flatMap(Pull.output1).close <-- TODO Do we want scoping here? Doesn't seem to matter either way - finalizers are eagerly run
+    Stream.fromFree(Algebra.uncons(get[F,O]).flatMap(o => Algebra.output(Chunk.singleton(o)))).
+      map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
 
-  // /**
-  // * A new [[Stream]] of one element containing the head element of this [[Stream]] along
-  // * with a reference to the remaining [[Stream]] after evaluation of the first element.
-  // *
-  // * {{{
-  // *   scala> Stream(1,2,3).uncons1.toList
-  // *   res1: List[Option[(Int, Stream[Nothing, Int])]] = List(Some((1,append(Segment(Emit(Chunk(2, 3))), Segments()))))
-  // * }}}
-  // *
-  // * You can use this to implement any stateful stream function, like `take`:
-  // *
-  // * {{{
-  // *   def take[F[_],A](n: Int)(s: Stream[F,A]): Stream[F,A] =
-  // *     if (n <= 0) Stream.empty
-  // *     else s.uncons1.flatMap {
-  // *       case None => Stream.empty
-  // *       case Some((hd, tl)) => Stream.emit(hd) ++ take(n-1)(tl)
-  // *     }
-  // * }}}
-  // *
-  // * So `uncons` and `uncons1` can be viewed as an alternative to using `Pull`, with
-  // * an important caveat: if you use `uncons` or `uncons1`, you are responsible for
-  // * telling FS2 when you're done unconsing the stream, which you do using `[[Stream.scope]]`.
-  // *
-  // * For instance, the above definition of `take` doesn't call `scope`, so any finalizers
-  // * attached won't be run until the very end of any enclosing `scope` or `Pull`
-  // * (or the end of the stream if there is no enclosing scope). So in the following code:
-  // *
-  // * {{{
-  // *    take(2)(Stream(1,2,3).onFinalize(Task.delay(println("done"))) ++
-  // *    anotherStream
-  // * }}}
-  // *
-  // * The "done" would not be printed until the end of `anotherStream`. To get the
-  // * prompt finalization behavior, we would have to do:
-  // *
-  // * {{{
-  // *    take(2)(Stream(1,2,3).onFinalize(Task.delay(println("done"))).scope ++
-  // *    anotherStream
-  // * }}}
-  // *
-  // * Note the call to `scope` after the completion of `take`, which ensures that
-  // * when that stream completes, any streams which have been opened by the `take`
-  // * are deemed closed and their finalizers can be run.
-  // */
-  // def uncons1: Stream[F, Option[(O,Stream[F,O])]] =
-
-  // def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F, O2] = self.asInstanceOf[Stream[F, Option[O2]]] through pipe.unNone
+  /**
+  * A new [[Stream]] of one element containing the head element of this stream along
+  * with a reference to the remaining stream after evaluation of the first element.
+  *
+  * {{{
+  *   scala> Stream(1,2,3).uncons1.toList
+  *   res1: List[Option[(Int, Stream[Pure, Int])]] = List(Some((1,Stream(..))))
+  * }}}
+  *
+  * You can use this to implement any stateful stream function, like `take`:
+  *
+  * {{{
+     def take[F[_],A](n: Int)(s: Stream[F,A]): Stream[F,A] = {
+       if (n <= 0) Stream.empty
+       else s.uncons1.flatMap {
+         case None => Stream.empty
+         case Some((hd, tl)) => Stream.emit(hd) ++ take(n-1)(tl)
+       }
+     }
+   }}}
+  *
+  * So `uncons` and `uncons1` can be viewed as an alternative to using `Pull`, with
+  * an important caveat: if you use `uncons` or `uncons1`, you are responsible for
+  * telling FS2 when you're done unconsing the stream, which you do using `[[Stream.scope]]`.
+  *
+  * For instance, the above definition of `take` doesn't call `scope`, so any finalizers
+  * attached won't be run until the very end of any enclosing `scope` or `Pull`
+  * (or the end of the stream if there is no enclosing scope). So in the following code:
+  *
+  * {{{
+  *    take(2)(Stream(1,2,3).onFinalize(IO(println("done"))) ++
+  *    anotherStream
+  * }}}
+  *
+  * The "done" would not be printed until the end of `anotherStream`. To get the
+  * prompt finalization behavior, we would have to do:
+  *
+  * {{{
+  *    take(2)(Stream(1,2,3).onFinalize(IO(println("done"))).scope ++
+  *    anotherStream
+  * }}}
+  *
+  * Note the call to `scope` after the completion of `take`, which ensures that
+  * when that stream completes, any streams which have been opened by the `take`
+  * are deemed closed and their finalizers can be run.
+  */
+  def uncons1: Stream[F,Option[(O,Stream[F,O])]] =
+    this.pull.uncons1.flatMap(Pull.output1).stream
 
   // /** Alias for `self through [[pipe.zipWithIndex]]`. */
   // def zipWithIndex: Stream[F, (O, Int)] = self through pipe.zipWithIndex
@@ -321,6 +323,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //
   // /** Alias for `self through [[pipe.zipWithScan1]]`. */
   // def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan1(z)(f)
+
+  override def toString: String = "Stream(..)"
 }
 
 object Stream {
@@ -387,10 +391,17 @@ object Stream {
   def iterateEval[F[_],A](start: A)(f: A => F[A]): Stream[F,A] =
     emit(start) ++ eval(f(start)).flatMap(iterateEval(_)(f))
 
+  /**
+   * Lazily produce the range `[start, stopExclusive)`. If you want to produce
+   * the sequence in one chunk, instead of lazily, use
+   * `emits(start until stopExclusive)`.
+   */
   def range[F[_]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F,Int] =
-    unfold(start) { i =>
-      if (i >= stopExclusive) None
-      else Some(i -> (i + by))
+    unfold(start){i =>
+      if ((by > 0 && i < stopExclusive && start < stopExclusive) ||
+          (by < 0 && i > stopExclusive && start > stopExclusive))
+        Some((i, i + by))
+      else None
     }
 
   /**
@@ -602,12 +613,12 @@ object Stream {
     def to(f: Sink[F,O]): Stream[F,Unit] = f(self)
 
     def translate[G[_]](u: F ~> G)(implicit G: Effect[G]): Stream[G,O] =
-      translate_(u, Right(G))
+      translate_(u, Some(G))
 
-    def translateSync[G[_]](u: F ~> G)(implicit G: MonadError[G, Throwable]): Stream[G,O] =
-      translate_(u, Left(G))
+    def translateSync[G[_]](u: F ~> G): Stream[G,O] =
+      translate_(u, None)
 
-    private def translate_[G[_]](u: F ~> G, G: Either[MonadError[G, Throwable], Effect[G]]): Stream[G,O] =
+    private def translate_[G[_]](u: F ~> G, G: Option[Effect[G]]): Stream[G,O] =
       Stream.fromFree[G,O](Algebra.translate[F,G,O,Unit](self.get, u, G))
 
     // def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =

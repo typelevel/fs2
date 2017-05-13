@@ -4,7 +4,7 @@ import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic.{ AtomicBoolean, AtomicLong }
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
-import cats.{ ~>, MonadError }
+import cats.~>
 import cats.effect.{ Effect, Sync }
 
 import fs2.{ AsyncPull, Segment }
@@ -200,7 +200,7 @@ private[fs2] object Algebra {
     F.suspend { go(init, uncons(stream).viewL) }
   }
 
-  def translate[F[_],G[_],O,R](fr: Free[Algebra[F,O,?],R], u: F ~> G, G: Either[MonadError[G, Throwable], Effect[G]]): Free[Algebra[G,O,?],R] = {
+  def translate[F[_],G[_],O,R](fr: Free[Algebra[F,O,?],R], u: F ~> G, G: Option[Effect[G]]): Free[Algebra[G,O,?],R] = {
     type F2[x] = F[x] // nb: workaround for scalac kind bug, where in the unconsAsync case, scalac thinks F has kind 0
     def algFtoG[O]: Algebra[F,O,?] ~> Algebra[G,O,?] = new (Algebra[F,O,?] ~> Algebra[G,O,?]) { self =>
       def apply[X](in: Algebra[F,O,X]): Algebra[G,O,X] = in match {
@@ -210,11 +210,11 @@ private[fs2] object Algebra {
         case a: Acquire[F,O,_] => Acquire(u(a.resource), r => u(a.release(r)))
         case r: Release[F,O] => Release[G,O](r.token)
         case s: Snapshot[F,O] => Snapshot[G,O]()
-        case u: UnconsAsync[F2,_,_,_] =>
-          val uu: UnconsAsync[F2,Any,Any,Any] = u.asInstanceOf[UnconsAsync[F2,Any,Any,Any]]
+        case ua: UnconsAsync[F,_,_,_] =>
+          val uu: UnconsAsync[F2,Any,Any,Any] = ua.asInstanceOf[UnconsAsync[F2,Any,Any,Any]]
           G match {
-            case Left(me) => Algebra.Eval(me.raiseError(new IllegalStateException("unconsAsync encountered while translating synchronously")))
-            case Right(ef) => UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), ef, uu.ec).asInstanceOf[Algebra[G,O,X]]
+            case None => Algebra.Eval(u(uu.effect.raiseError[X](new IllegalStateException("unconsAsync encountered while translating synchronously"))))
+            case Some(ef) => UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), ef, uu.ec).asInstanceOf[Algebra[G,O,X]]
           }
       }
     }
