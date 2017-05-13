@@ -282,10 +282,10 @@ object pipe {
   //       Pull.output(interspersed) >> Pull.pure(h)
   //     }
   //   }}
-  //
-  // /** Identity pipe - every input is output unchanged. */
-  // def id[F[_],I]: Pipe[F,I,I] = s => s
-  //
+
+  /** Identity pipe - every input is output unchanged. */
+  def id[F[_],I]: Pipe[F,I,I] = s => s
+
   // /** Returns the last element of the input `Handle`, if non-empty. */
   // def last[F[_],I]: Pipe[F,I,Option[I]] =
   //   _ pull { h => h.last.flatMap { o => Pull.output1(o) }}
@@ -378,18 +378,24 @@ object pipe {
    * Works in a chunky fashion, and creates a `Chunk.indexedSeq` for each converted chunk.
    */
   def scan[F[_],I,O](z: O)(f: (O, I) => O): Pipe[F,I,O] =
+    s => scan_(z)(f)(s).stream
+
+  def scan_[F[_],I,O](z: O)(f: (O, I) => O): Stream[F,I] => Pull[F,O,Unit] =
     _.pull.receiveOption {
       case None => Pull.done
       case Some((hd,tl)) =>
-        Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc => scan(acc)(f)(tl).pull.echo }
+        Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc => scan_(acc)(f)(tl).stream.pull.echo }
+    }
+
+  /**
+   * Like `[[scan]]`, but uses the first element of the stream as the seed.
+   */
+  def scan1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
+    _.pull.receive1Option {
+      case None => Pull.done
+      case Some((hd,tl)) => scan_(hd)(f)(tl)
     }.stream
 
-  // /**
-  //  * Like `[[pipe.scan]]`, but uses the first element of the stream as the seed.
-  //  */
-  // def scan1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
-  //   _ pull { _.receive1 { (o, h) => _scan0(o)(f)(h) }}
-  //
   // /** Emits the given values, then echoes the rest of the input. */
   // def shiftRight[F[_],I](head: I*): Pipe[F,I,I] =
   //   _ pull { h => h.push(Chunk.indexedSeq(Vector(head: _*))).echo }

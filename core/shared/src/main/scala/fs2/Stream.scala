@@ -213,9 +213,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.scan]](z)(f)`. */
   def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = this through pipe.scan(z)(f)
 
-  // /** Alias for `self through [[pipe.scan1]](f)`. */
-  // def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.scan1(f)
-  //
+  /** Alias for `self through [[pipe.scan1]](f)`. */
+  def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = this through pipe.scan1(f)
+
   // /**
   //  * Used in conjunction with `[[Stream.uncons]]` or `[[Stream.uncons1]]`.
   //  * When `s.scope` starts, the set of live resources is recorded.
