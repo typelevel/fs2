@@ -78,10 +78,10 @@ object pipe {
   // /** Outputs a list of chunks, the total size of all chunks is limited and split as necessary. */
   // def chunkN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,List[NonEmptyChunk[I]]] =
   //   _ repeatPull { _.awaitN(n, allowFewer) flatMap { case (chunks, h) => Pull.output1(chunks) as h }}
-  //
-  // /** Outputs all chunks from the input `Handle`. */
-  // def chunks[F[_],I]: Pipe[F,I,NonEmptyChunk[I]] =
-  //   _ repeatPull { _.await.flatMap { case (chunk, h) => Pull.output1(chunk) as h }}
+
+  /** Outputs all chunks from the source stream. */
+  def chunks[F[_],I]: Pipe[F,I,Chunk[I]] =
+    _.repeatPull(_.receiveChunk((hd,tl) => Pull.output1(hd).as(Some(tl))))
 
   /** Map/filter simultaneously. Calls `collect` on each `Chunk` in the stream. */
   def collect[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
@@ -192,21 +192,21 @@ object pipe {
   // /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
   // def find[F[_],I](f: I => Boolean): Pipe[F,I,I] =
   //   _ pull { h => h.find(f).flatMap { case (o, h) => Pull.output1(o) }}
-  //
-  // /**
-  //  * Folds all inputs using an initial value `z` and supplied binary operator,
-  //  * and emits a single element stream.
-  //  */
-  // def fold[F[_],I,O](z: O)(f: (O, I) => O): Pipe[F,I,O] =
-  //   _ pull { h => h.fold(z)(f).flatMap(Pull.output1) }
-  //
-  // /**
-  //  * Folds all inputs using the supplied binary operator, and emits a single-element
-  //  * stream, or the empty stream if the input is empty.
-  //  */
-  // def fold1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
-  //   _ pull { h => h.fold1(f).flatMap(Pull.output1) }
-  //
+
+  /**
+   * Folds all inputs using an initial value `z` and supplied binary operator,
+   * and emits a single element stream.
+   */
+  def fold[F[_],I,O](z: O)(f: (O, I) => O): Pipe[F,I,O] =
+    _.pull.fold(z)(f).flatMap(Pull.output1).stream
+
+  /**
+   * Folds all inputs using the supplied binary operator, and emits a single-element
+   * stream, or the empty stream if the input is empty.
+   */
+  def fold1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
+    _.pull.fold1(f).flatMap(_.map(Pull.output1).getOrElse(Pull.done)).stream
+
   // /**
   //  * Emits a single `true` value if all input matches the predicate.
   //  * Halts with `false` as soon as a non-matching element is received.
@@ -451,10 +451,9 @@ object pipe {
   //   }
   //   _.pull(go(Vector.empty))
   // }
-  //
-  // /** Emits all elements of the input except the first one. */
-  // def tail[F[_],I]: Pipe[F,I,I] =
-  //   drop(1)
+
+  /** Emits all elements of the input except the first one. */
+  def tail[F[_],I]: Pipe[F,I,I] = drop(1)
 
   /** Emits the first `n` elements of the input stream and returns the new stream. */
   def take[F[_],I](n: Long): Pipe[F,I,I] =

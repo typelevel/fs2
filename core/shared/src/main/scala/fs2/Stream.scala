@@ -86,9 +86,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.chunkN]]`. */
   // def chunkN(n: Int, allowFewer: Boolean = true): Stream[F,List[NonEmptyChunk[O]]] =
   //   self through pipe.chunkN(n, allowFewer)
-  //
-  // /** Alias for `self through [[pipe.chunks]]`. */
-  // def chunks: Stream[F,NonEmptyChunk[O]] = self through pipe.chunks
+
+  /** Alias for `self through [[pipe.chunks]]`. */
+  def chunks: Stream[F,Chunk[O]] = this through pipe.chunks
 
   /** Alias for `self through [[pipe.collect]]`. */
   def collect[O2](pf: PartialFunction[O, O2]) = this through pipe.collect(pf)
@@ -150,14 +150,14 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.find]]`. */
   // def find(f: O => Boolean): Stream[F,O] = self through pipe.find(f)
 
-  // /** Alias for `self through [[pipe.fold]](z)(f)`. */
-  // def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = self through pipe.fold(z)(f)
+  /** Alias for `self through [[pipe.fold]](z)(f)`. */
+  def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = this through pipe.fold(z)(f)
 
-  // /** Alias for `self through [[pipe.fold1]](f)`. */
-  // def fold1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = self through pipe.fold1(f)
+  /** Alias for `self through [[pipe.fold1]](f)`. */
+  def fold1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = this through pipe.fold1(f)
 
-  // /** Alias for `map(f).foldMonoid`. */
-  // def foldMap[O2](f: O => O2)(implicit O2: Monoid[O2]): Stream[F,O2] = fold(O2.empty)((acc, o) => O2.combine(acc, f(o)))
+  /** Alias for `map(f).foldMonoid`. */
+  def foldMap[O2](f: O => O2)(implicit O2: Monoid[O2]): Stream[F,O2] = fold(O2.empty)((acc, o) => O2.combine(acc, f(o)))
 
   // /** Alias for `self through [[pipe.forall]]`. */
   // def forall(f: O => Boolean): Stream[F, Boolean] = self through pipe.forall(f)
@@ -888,24 +888,27 @@ object Stream {
     //       case Some(a) => Pull.pure((chunk(a), h))
     //     }
     //   }
-    //
-    // /**
-    //  * Folds all inputs using an initial value `z` and supplied binary operator, and writes the final
-    //  * result to the output of the supplied `Pull` when the stream has no more values.
-    //  */
-    // def fold[B](z: B)(f: (B, A) => B): Pull[F,Nothing,B] =
-    //   await.optional flatMap {
-    //     case Some((c, h)) => h.fold(c.foldLeft(z)(f))(f)
-    //     case None => Pull.pure(z)
-    //   }
-    //
-    // /**
-    //  * Folds all inputs using the supplied binary operator, and writes the final result to the output of
-    //  * the supplied `Pull` when the stream has no more values.
-    //  */
-    // def fold1[A2 >: A](f: (A2, A2) => A2): Pull[F,Nothing,A2] =
-    //   this.receive1 { (o, h) => h.fold[A2](o)(f) }
-    //
+
+    /**
+     * Folds all inputs using an initial value `z` and supplied binary operator, and writes the final
+     * result to the output of the supplied `Pull` when the stream has no more values.
+     */
+    def fold[O2](z: O2)(f: (O2, O) => O2): Pull[F,Nothing,O2] =
+      receiveOption {
+        case None => Pull.pure(z)
+        case Some((hd,tl)) => tl.pull.fold(hd.fold(z)(f).run)(f)
+      }
+
+    /**
+     * Folds all inputs using the supplied binary operator, and writes the final result to the output of
+     * the supplied `Pull` when the stream has no more values.
+     */
+    def fold1[O2 >: O](f: (O2, O2) => O2): Pull[F,Nothing,Option[O2]] =
+      receive1Option {
+        case None => Pull.pure(None)
+        case Some((hd,tl)) => tl.pull.fold(hd: O2)(f).map(Some(_))
+      }
+
     // /** Writes a single `true` value if all input matches the predicate, `false` otherwise. */
     // def forall(p: A => Boolean): Pull[F,Nothing,Boolean] = {
     //   await1.optional flatMap {
