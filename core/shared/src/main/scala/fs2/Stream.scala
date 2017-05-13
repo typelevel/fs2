@@ -499,6 +499,12 @@ object Stream {
 
   def emits[F[_],A](a: Seq[A]): Stream[F,A] = chunk(Chunk.seq(a))
 
+  /** Create a flat stream out of an effectful `Seq[A]`. */
+  def emitsEval[F[_],A](a: F[Seq[A]]): Stream[F, A] = eval(a).flatMap(emits)
+
+  /** Create a flat stream out of an effectful `Seq[A]`, throwing away results. */
+  def emitsEval_[F[_],A](a: F[Seq[A]]): Stream[F,Nothing] = emitsEval(a).flatMap(_ => empty)
+
   def empty[F[_],A]: Stream[F,A] = chunk(Chunk.empty: Chunk[A])
 
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa).flatMap { _ => empty }
@@ -567,6 +573,9 @@ object Stream {
   }
 
   def repeatEval[F[_],A](a: F[A]): Stream[F,A] = Stream.eval(a).repeat
+
+  /** Create a flat stream by repeating an effectful `Seq[A]`. */
+  def repeatEmitsEval[F[_],A](a: F[Seq[A]]): Stream[F,A] = repeatEval(a).flatMap(emits)
 
   def suspend[F[_],A](s: => Stream[F,A]): Stream[F,A] = emit(()) flatMap { _ => s }
 
