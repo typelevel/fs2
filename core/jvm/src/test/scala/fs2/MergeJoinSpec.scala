@@ -1,5 +1,6 @@
 // package fs2
 //
+// import scala.concurrent.duration._
 // import cats.effect.IO
 //
 // class MergeJoinSpec extends Fs2Spec {
@@ -70,6 +71,17 @@
 //         runLog(Stream.join(10)(Stream(full, hang2)).take(1)) shouldBe Vector(42)
 //         runLog(Stream.join(10)(Stream(full, hang3)).take(1)) shouldBe Vector(42)
 //         runLog(Stream.join(10)(Stream(hang3,hang2,full)).take(1)) shouldBe Vector(42)
+//       }
+//     }
+//
+//     "join - outer-failed" in {
+//       class Boom extends Throwable
+//       an[Boom] should be thrownBy {
+//         Stream.join[Task, Unit](Int.MaxValue)(
+//           Stream(
+//             time.sleep_[Task](1 minute)
+//           ) ++ Stream.fail(new Boom)
+//         ).run.unsafeRun()
 //       }
 //     }
 //   }

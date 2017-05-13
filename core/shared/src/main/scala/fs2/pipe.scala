@@ -1,6 +1,7 @@
 package fs2
 
 import scala.concurrent.ExecutionContext
+// import scala.concurrent.duration.FiniteDuration
 
 // import cats.{ Eq, Functor }
 import cats.effect.Effect
@@ -90,6 +91,28 @@ object pipe {
   // /** Emits the first element of the Stream for which the partial function is defined. */
   // def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
   //   _ pull { h => h.find(pf.isDefinedAt) flatMap { case (i, h) => Pull.output1(pf(i)) }}
+
+  // /** Debounce the stream with a minimum period of `d` between each element */
+  // def debounce[F[_], I](d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Pipe[F, I, I] = {
+  //   def go(i: I, h1: Handle[F, I]): Pull[F, I, Nothing] = {
+  //     time.sleep[F](d).open.flatMap { h2 =>
+  //       h2.awaitAsync.flatMap { l =>
+  //         h1.awaitAsync.flatMap { r =>
+  //           (l race r).pull.flatMap {
+  //             case Left(_) => Pull.output1(i) >> r.pull.flatMap(identity).flatMap {
+  //               case (hd, tl) => go(hd.last, tl)
+  //             }
+  //             case Right(r) => r.optional.flatMap {
+  //               case Some((hd, tl)) => go(hd.last, tl)
+  //               case None => Pull.output1(i) >> Pull.done
+  //             }
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+  //   _.pull { h => h.await.flatMap { case (hd, tl) => go(hd.last, tl) } }
+  // }
   //
   // /** Skips the first element that matches the predicate. */
   // def delete[F[_],I](p: I => Boolean): Pipe[F,I,I] =
