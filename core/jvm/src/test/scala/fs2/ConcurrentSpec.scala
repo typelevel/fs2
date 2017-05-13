@@ -1,5 +1,7 @@
 package fs2
 
+import scala.concurrent.duration._
+
 class ConcurrentSpec extends Fs2Spec {
 
   "concurrent" - {
@@ -70,5 +72,17 @@ class ConcurrentSpec extends Fs2Spec {
         runLog(concurrent.join(10)(Stream(hang3,hang2,full)).take(1)) shouldBe Vector(42)
       }
     }
+
+    "outer-failed" in {
+      class Boom extends Throwable
+      an[Boom] should be thrownBy {
+        concurrent.join[Task, Unit](Int.MaxValue)(
+          Stream(
+            time.sleep_[Task](1 minute)
+          ) ++ Stream.fail(new Boom)
+        ).run.unsafeRun()
+      }
+    }
+
   }
 }
