@@ -581,7 +581,10 @@ object Stream {
 
       // runs the outer stream, interrupts when kill == true, and then decrements the `available`
       def runOuter: F[Unit] = {
-        outer.interruptWhen(killSignal) flatMap runInner onFinalize decrementRunning run
+        (outer.interruptWhen(killSignal) flatMap runInner onFinalize decrementRunning run).attempt flatMap {
+          case Right(_) => F.pure(())
+          case Left(err) => outputQ.enqueue1(Some(Left(err)))
+        }
       }
 
       // monitors when the all streams (outer/inner) are terminated an then suplies None to output Queue
