@@ -827,16 +827,18 @@ object Stream {
 
     /** Alias for `[[pipe.unNoneTerminate]]` */
     def unNoneTerminate: Stream[F,O] = self through pipe.unNoneTerminate
-
   }
 
-  // implicit class StreamStreamOps[F[_],O](private val self: Stream[F,Stream[F,O]]) extends AnyVal {
-  //   /** Alias for `Stream.join(maxOpen)(self)`. */
-  //   def join(maxOpen: Int)(implicit F: Effect[F], ec: ExecutionContext) = Stream.join(maxOpen)(self)
-  //
-  //   /** Alias for `Stream.joinUnbounded(self)`. */
-  //   def joinUnbounded(implicit F: Effect[F], ec: ExecutionContext) = Stream.joinUnbounded(self)
-  // }
+  implicit def StreamStreamOps[F[_],O](s: Stream[F,Stream[F,O]]): StreamStreamOps[F,O] = new StreamStreamOps(s.get)
+  final class StreamStreamOps[F[_],O](private val free: Free[Algebra[F,Stream[F,O],?],Unit]) extends AnyVal {
+    private def self: Stream[F,Stream[F,O]] = Stream.fromFree(free)
+
+    /** Alias for `Stream.join(maxOpen)(self)`. */
+    def join(maxOpen: Int)(implicit F: Effect[F], ec: ExecutionContext) = Stream.join(maxOpen)(self)
+
+    /** Alias for `Stream.joinUnbounded(self)`. */
+    def joinUnbounded(implicit F: Effect[F], ec: ExecutionContext) = Stream.joinUnbounded(self)
+  }
 
   final class ToPull[F[_],O] private[Stream] (private val free: Free[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
 
