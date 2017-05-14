@@ -179,10 +179,10 @@ object pipe {
   // /** Like `[[pipe.scan]]`, but accepts a function returning an F[_] */
   // def evalScan[F[_], O, I](z: O)(f: (O, I) => F[O]): Pipe[F, I, O] =
   //   _ pull (_evalScan0(z)(f))
-  //
-  // /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
-  // def exists[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
-  //   _ pull { h => h.forall(!p(_)) flatMap { i => Pull.output1(!i) }}
+
+  /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
+  def exists[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
+    _.pull.forall(!p(_)).flatMap(Pull.output1).stream
 
   /** Emits only inputs which match the supplied predicate. */
   def filter[F[_], I](f: I => Boolean): Pipe[F,I,I] =

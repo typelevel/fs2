@@ -139,9 +139,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   // /** Alias for `self throughv [[pipe.evalScan]](z)(f)`. */
   // def evalScan[F2[_], O2](z: O2)(f: (O2, O) => F2[O2])(implicit S: Sub1[F, F2]): Stream[F2, O2] =  self throughv pipe.evalScan(z)(f)
-  //
-  // /** Alias for `self through [[pipe.exists]]`. */
-  // def exists(f: O => Boolean): Stream[F, Boolean] = self through pipe.exists(f)
+
+  /** Alias for `self through [[pipe.exists]]`. */
+  def exists(f: O => Boolean): Stream[F, Boolean] = this through pipe.exists(f)
 
   /** Alias for `self through [[pipe.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = this through pipe.filter(f)
