@@ -293,18 +293,20 @@ object pipe {
   /** Emits the first element of this stream (if non-empty) and then halts. */
   def head[F[_],I]: Pipe[F,I,I] = take(1)
 
-  // /** Emits the specified separator between every pair of elements in the source stream. */
-  // def intersperse[F[_],I](separator: I): Pipe[F,I,I] =
-  //   _ pull { h => h.echo1 flatMap Pull.loop { (h: Handle[F,I]) =>
-  //     h.receive { case (chunk, h) =>
-  //       val interspersed = {
-  //         val bldr = Vector.newBuilder[I]
-  //         chunk.toVector.foreach { i => bldr += separator; bldr += i }
-  //         Chunk.indexedSeq(bldr.result)
-  //       }
-  //       Pull.output(interspersed) >> Pull.pure(h)
-  //     }
-  //   }}
+  /** Emits the specified separator between every pair of elements in the source stream. */
+  def intersperse[F[_],I](separator: I): Pipe[F,I,I] =
+    _.pull.echo1.flatMap {
+      case None => Pull.pure(None)
+      case Some(s) =>
+        s.repeatPull { _.receive { (hd,tl) =>
+          val interspersed = {
+            val bldr = Vector.newBuilder[I]
+            hd.toVector.foreach { i => bldr += separator; bldr += i }
+            Chunk.vector(bldr.result)
+          }
+          Pull.output(interspersed) >> Pull.pure(Some(tl))
+        }}.pull.echo
+    }.stream
 
   /** Identity pipe - every input is output unchanged. */
   def id[F[_],I]: Pipe[F,I,I] = s => s
@@ -384,9 +386,9 @@ object pipe {
   //       case Some((err, _)) => Stream.fail(err) // only first error is reported
   //     }
   //   }
-  //
-  // /** Alias for `[[pipe.fold1]]` */
-  // def reduce[F[_],I](f: (I, I) => I): Pipe[F,I,I] = fold1(f)
+
+  /** Alias for `[[pipe.fold1]]` */
+  def reduce[F[_],I](f: (I, I) => I): Pipe[F,I,I] = fold1(f)
 
   /**
    * Left fold which outputs all intermediate results. Example:

@@ -170,8 +170,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.head]]`. */
   def head: Stream[F,O] = this through pipe.head
 
-  // /** Alias for `self through [[pipe.intersperse]]`. */
-  // def intersperse[O2 >: O](separator: O2): Stream[F,O2] = self through pipe.intersperse(separator)
+  /** Alias for `self through [[pipe.intersperse]]`. */
+  def intersperse[O2 >: O](separator: O2): Stream[F,O2] = this through pipe.intersperse(separator)
 
   // /** Alias for `self through [[pipe.last]]`. */
   // def last: Stream[F,Option[O]] = self through pipe.last
@@ -208,9 +208,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   // /** Alias for `self through [[pipe.rechunkN]](f).` */
   // def rechunkN(n: Int, allowFewer: Boolean = true): Stream[F,O] = self through pipe.rechunkN(n, allowFewer)
-  //
-  // /** Alias for `self through [[pipe.reduce]](z)(f)`. */
 
+  /** Alias for `self through [[pipe.reduce]](z)(f)`. */
+  def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = this through pipe.reduce(f)
 
   /** Alias for `self through [[pipe.scan]](z)(f)`. */
   def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = this through pipe.scan(z)(f)
@@ -239,9 +239,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //
   // /** Alias for `self through [[pipe.split]]`. */
   // def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
-  //
-  // /** Alias for `self through [[pipe.tail]]`. */
-  // def tail: Stream[F,O] = self through pipe.tail
+
+  /** Alias for `self through [[pipe.tail]]`. */
+  def tail: Stream[F,O] = this through pipe.tail
 
   def take(n: Long): Stream[F,O] = this.through(pipe.take(n))
 
@@ -668,9 +668,9 @@ object Stream {
     def pull2[O2,O3](s2: Stream[F,O2])(using: (Stream.ToPull[F,O], Stream.ToPull[F,O2]) => Pull[F,O3,Any]): Stream[F,O3] =
       using(pull, s2.pull).stream
 
-    // /** Reduces this stream with the Semigroup for `O`. */
-    // def reduceSemigroup(implicit S: Semigroup[O]): Stream[F, O] =
-    //   self.reduce(S.combine(_, _))
+    /** Reduces this stream with the Semigroup for `O`. */
+    def reduceSemigroup(implicit S: Semigroup[O]): Stream[F, O] =
+      self.reduce(S.combine(_, _))
 
     def repeatPull[O2](using: Stream.ToPull[F,O] => Pull[F,O2,Option[Stream[F,O]]]): Stream[F,O2] =
       Pull.loop(using.andThen(_.map(_.map(_.pull))))(self.pull).stream
