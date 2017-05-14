@@ -311,16 +311,16 @@ object pipe {
   /** Identity pipe - every input is output unchanged. */
   def id[F[_],I]: Pipe[F,I,I] = s => s
 
-  // /** Returns the last element of the input `Handle`, if non-empty. */
-  // def last[F[_],I]: Pipe[F,I,Option[I]] =
-  //   _ pull { h => h.last.flatMap { o => Pull.output1(o) }}
-  //
-  // /** Returns the last element of the input `Handle` if non-empty, otherwise li. */
-  // def lastOr[F[_],I](li: => I): Pipe[F,I,I] =
-  //   _ pull { h => h.last.flatMap {
-  //     case Some(o) => Pull.output1(o)
-  //     case None => Pull.output1(li)
-  //   }}
+  /** Returns the last element of the input `Handle`, if non-empty. */
+  def last[F[_],I]: Pipe[F,I,Option[I]] =
+    _.pull.last.flatMap(Pull.output1).stream
+
+  /** Returns the last element of the input `Handle` if non-empty, otherwise li. */
+  def lastOr[F[_],I](li: => I): Pipe[F,I,I] =
+    _.pull.last.flatMap {
+      case Some(o) => Pull.output1(o)
+      case None => Pull.output1(li)
+    }.stream
 
   /**
    * Applies the specified pure function to each input and emits the result.

@@ -173,11 +173,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.intersperse]]`. */
   def intersperse[O2 >: O](separator: O2): Stream[F,O2] = this through pipe.intersperse(separator)
 
-  // /** Alias for `self through [[pipe.last]]`. */
-  // def last: Stream[F,Option[O]] = self through pipe.last
+  /** Alias for `self through [[pipe.last]]`. */
+  def last: Stream[F,Option[O]] = this through pipe.last
 
-  // /** Alias for `self through [[pipe.lastOr]]`. */
-  // def lastOr[O2 >: O](li: => O2): Stream[F,O2] = self through pipe.lastOr(li)
+  /** Alias for `self through [[pipe.lastOr]]`. */
+  def lastOr[O2 >: O](li: => O2): Stream[F,O2] = this through pipe.lastOr(li)
 
   // /** Alias for `self through [[pipe.mapAccumulate]]` */
   // def mapAccumulate[S,O2](init: S)(f: (S, O) => (S, O2)): Stream[F, (S, O2)] =
@@ -1023,16 +1023,16 @@ object Stream {
     //     case None => Pull.pure(true)
     //   }
     // }
-    //
-    // /** Returns the last element of the input, if non-empty. */
-    // def last: Pull[F,Nothing,Option[A]] = {
-    //   def go(prev: Option[A]): Handle[F,A] => Pull[F,Nothing,Option[A]] =
-    //     h => h.await.optional.flatMap {
-    //       case None => Pull.pure(prev)
-    //       case Some((c, h)) => go(c.foldLeft(prev)((_,a) => Some(a)))(h)
-    //     }
-    //   go(None)(this)
-    // }
+
+    /** Returns the last element of the input, if non-empty. */
+    def last: Pull[F,Nothing,Option[O]] = {
+      def go(prev: Option[O], s: Stream[F,O]): Pull[F,Nothing,Option[O]] =
+        s.pull.receiveOption {
+          case None => Pull.pure(prev)
+          case Some((hd,tl)) => Pull.segment(hd.fold(prev)((_,o) => Some(o))).flatMap(go(_,tl))
+        }
+      go(None, self)
+    }
 
     /** Like [[receive]] but does not consume the segment (i.e., the segment is pushed back). */
     def peek: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
