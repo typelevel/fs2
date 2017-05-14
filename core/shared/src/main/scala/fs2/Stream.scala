@@ -143,8 +143,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.exists]]`. */
   // def exists(f: O => Boolean): Stream[F, Boolean] = self through pipe.exists(f)
 
-  // /** Alias for `self through [[pipe.filter]]`. */
-  // def filter(f: O => Boolean): Stream[F,O] = self through pipe.filter(f)
+  /** Alias for `self through [[pipe.filter]]`. */
+  def filter(f: O => Boolean): Stream[F,O] = this through pipe.filter(f)
 
   // /** Alias for `self through [[pipe.filterWithPrevious]]`. */
   // def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = self through pipe.filterWithPrevious(f)

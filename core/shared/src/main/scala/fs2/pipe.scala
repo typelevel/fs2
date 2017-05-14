@@ -183,11 +183,11 @@ object pipe {
   // /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
   // def exists[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
   //   _ pull { h => h.forall(!p(_)) flatMap { i => Pull.output1(!i) }}
-  //
-  // /** Emits only inputs which match the supplied predicate. */
-  // def filter[F[_], I](f: I => Boolean): Pipe[F,I,I] =
-  //   mapChunks(_ filter f)
-  //
+
+  /** Emits only inputs which match the supplied predicate. */
+  def filter[F[_], I](f: I => Boolean): Pipe[F,I,I] =
+    mapSegments(_ filter f)
+
   // /**
   //  * Like `filter`, but the predicate `f` depends on the previously emitted and
   //  * current elements.
@@ -236,7 +236,7 @@ object pipe {
    */
   def forall[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
     _.pull.forall(p).flatMap(Pull.output1).stream
-  
+
   // /**
   //  * Partitions the input into a stream of chunks according to a discriminator function.
   //  * Each chunk is annotated with the value of the discriminator function applied to
