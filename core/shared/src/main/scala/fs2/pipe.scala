@@ -374,17 +374,16 @@ object pipe {
   //  */
   // def rechunkN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,I] =
   //   in => chunkN(n, allowFewer)(in).flatMap { chunks => Stream.chunk(Chunk.concat(chunks)) }
-  //
-  // /** Rethrows any `Left(err)`. Preserves chunkiness. */
-  // def rethrow[F[_],I]: Pipe[F,Attempt[I],I] =
-  //   _.chunks.flatMap { es =>
-  //     val errs = es collect { case Left(e) => e }
-  //     val ok = es collect { case Right(i) => i }
-  //     errs.uncons match {
-  //       case None => Stream.chunk(ok)
-  //       case Some((err, _)) => Stream.fail(err) // only first error is reported
-  //     }
-  //   }
+
+  /** Rethrows any `Left(err)`. Preserves chunkiness. */
+  def rethrow[F[_],I]: Pipe[F,Either[Throwable,I],I] =
+    _.segments.flatMap { s =>
+      val errs = s.collect { case Left(e) => e }
+      errs.uncons1 match {
+        case Left(()) => Stream.segment(s.collect { case Right(i) => i })
+        case Right((hd,tl)) => Stream.fail(hd)
+      }
+    }
 
   /** Alias for `[[pipe.fold1]]` */
   def reduce[F[_],I](f: (I, I) => I): Pipe[F,I,I] = fold1(f)

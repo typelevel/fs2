@@ -206,6 +206,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.rechunkN]](f).` */
   // def rechunkN(n: Int, allowFewer: Boolean = true): Stream[F,O] = self through pipe.rechunkN(n, allowFewer)
 
+  /** Alias for `[[pipe.rethrow]]` */
+  def rethrow[O2](implicit ev: O <:< Either[Throwable,O2]): Stream[F,O2] =
+    this.asInstanceOf[Stream[F,Either[Throwable,O2]]] through pipe.rethrow
+
   /** Alias for `self through [[pipe.reduce]](z)(f)`. */
   def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = this through pipe.reduce(f)
 
@@ -308,6 +312,14 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   */
   def uncons1: Stream[F,Option[(O,Stream[F,O])]] =
     this.pull.uncons1.flatMap(Pull.output1).stream
+
+  /** Alias for `[[pipe.unNone]]` */
+  def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F,O2] =
+    this.asInstanceOf[Stream[F,Option[O2]]] through pipe.unNone
+
+  /** Alias for `[[pipe.unNoneTerminate]]` */
+  def unNoneTerminate[O2](implicit ev: O <:< Option[O2]): Stream[F,O2] =
+    this.asInstanceOf[Stream[F,Option[O2]]] through pipe.unNoneTerminate
 
   // /** Alias for `self through [[pipe.zipWithIndex]]`. */
   // def zipWithIndex: Stream[F, (O, Int)] = self through pipe.zipWithIndex
@@ -623,6 +635,14 @@ object Stream {
     def interruptWhen(haltWhenTrue: async.immutable.Signal[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       (haltWhenTrue.discrete through2 self)(pipe2.interrupt)
 
+    /** Alias for `Stream.join(maxOpen)(self)`. */
+    def join[O2](maxOpen: Int)(implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      Stream.join(maxOpen)(self.asInstanceOf[Stream[F,Stream[F,O2]]])
+
+    /** Alias for `Stream.joinUnbounded(self)`. */
+    def joinUnbounded[O2](implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      Stream.joinUnbounded(self.asInstanceOf[Stream[F,Stream[F,O2]]])
+
     def merge[O2>:O](s2: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       through2(s2)(pipe2.merge)
 
@@ -778,6 +798,14 @@ object Stream {
     def interruptWhen[F[_]](haltWhenTrue: async.immutable.Signal[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       (haltWhenTrue.discrete through2 covary[F])(pipe2.interrupt)
 
+    /** Alias for `Stream.join(maxOpen)(self)`. */
+    def join[F[_],O2](maxOpen: Int)(implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      Stream.join(maxOpen)(self.asInstanceOf[Stream[F,Stream[F,O2]]])
+
+    /** Alias for `Stream.joinUnbounded(self)`. */
+    def joinUnbounded[F[_],O2](implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      Stream.joinUnbounded(self.asInstanceOf[Stream[F,Stream[F,O2]]])
+
     def merge[F[_],O2>:O](s2: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].through2(s2)(pipe2.merge)
 
@@ -824,28 +852,6 @@ object Stream {
 
     def zipWith[F[_],O2,O3](s2: Stream[F,O2])(f: (O,O2) => O3): Stream[F, O3] =
       covary[F].through2(s2)(pipe2.zipWith(f))
-  }
-
-  implicit def StreamOptionOps[F[_],O](s: Stream[F,Option[O]]): StreamOptionOps[F,O] = new StreamOptionOps(s.get)
-  final class StreamOptionOps[F[_],O](private val free: Free[Algebra[F,Option[O],?],Unit]) extends AnyVal {
-    private def self: Stream[F,Option[O]] = Stream.fromFree(free)
-
-    /** Alias for `[[pipe.unNone]]` */
-    def unNone: Stream[F, O] = self through pipe.unNone
-
-    /** Alias for `[[pipe.unNoneTerminate]]` */
-    def unNoneTerminate: Stream[F,O] = self through pipe.unNoneTerminate
-  }
-
-  implicit def StreamStreamOps[F[_],O](s: Stream[F,Stream[F,O]]): StreamStreamOps[F,O] = new StreamStreamOps(s.get)
-  final class StreamStreamOps[F[_],O](private val free: Free[Algebra[F,Stream[F,O],?],Unit]) extends AnyVal {
-    private def self: Stream[F,Stream[F,O]] = Stream.fromFree(free)
-
-    /** Alias for `Stream.join(maxOpen)(self)`. */
-    def join(maxOpen: Int)(implicit F: Effect[F], ec: ExecutionContext) = Stream.join(maxOpen)(self)
-
-    /** Alias for `Stream.joinUnbounded(self)`. */
-    def joinUnbounded(implicit F: Effect[F], ec: ExecutionContext) = Stream.joinUnbounded(self)
   }
 
   final class ToPull[F[_],O] private[Stream] (private val free: Free[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
