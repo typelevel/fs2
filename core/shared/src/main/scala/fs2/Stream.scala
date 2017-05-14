@@ -161,8 +161,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `map(f).foldMonoid`. */
   def foldMap[O2](f: O => O2)(implicit O2: Monoid[O2]): Stream[F,O2] = fold(O2.empty)((acc, o) => O2.combine(acc, f(o)))
 
-  // /** Alias for `self through [[pipe.forall]]`. */
-  // def forall(f: O => Boolean): Stream[F, Boolean] = self through pipe.forall(f)
+  /** Alias for `self through [[pipe.forall]]`. */
+  def forall(f: O => Boolean): Stream[F, Boolean] = this through pipe.forall(f)
 
   // /** Alias for `self through [[pipe.groupBy]]`. */
   // def groupBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Vector[O])] = self through pipe.groupBy(f)
@@ -1014,15 +1014,17 @@ object Stream {
         case Some((hd,tl)) => tl.pull.fold(hd: O2)(f).map(Some(_))
       }
 
-    // /** Writes a single `true` value if all input matches the predicate, `false` otherwise. */
-    // def forall(p: A => Boolean): Pull[F,Nothing,Boolean] = {
-    //   await1.optional flatMap {
-    //     case Some((a, h)) =>
-    //       if (!p(a)) Pull.pure(false)
-    //       else h.forall(p)
-    //     case None => Pull.pure(true)
-    //   }
-    // }
+    /** Writes a single `true` value if all input matches the predicate, `false` otherwise. */
+    def forall(p: O => Boolean): Pull[F,Nothing,Boolean] = {
+      receiveOption {
+        case None => Pull.pure(true)
+        case Some((hd,tl)) =>
+          Pull.segment(hd.takeWhile(p).drain).flatMap {
+            case Some(()) => tl.pull.forall(p)
+            case None => Pull.pure(false)
+          }
+      }
+    }
 
     /** Returns the last element of the input, if non-empty. */
     def last: Pull[F,Nothing,Option[O]] = {

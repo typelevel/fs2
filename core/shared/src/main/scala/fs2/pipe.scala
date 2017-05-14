@@ -230,13 +230,13 @@ object pipe {
   def fold1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
     _.pull.fold1(f).flatMap(_.map(Pull.output1).getOrElse(Pull.done)).stream
 
-  // /**
-  //  * Emits a single `true` value if all input matches the predicate.
-  //  * Halts with `false` as soon as a non-matching element is received.
-  //  */
-  // def forall[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
-  //   _ pull { h => h.forall(p) flatMap Pull.output1 }
-  //
+  /**
+   * Emits a single `true` value if all input matches the predicate.
+   * Halts with `false` as soon as a non-matching element is received.
+   */
+  def forall[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
+    _.pull.forall(p).flatMap(Pull.output1).stream
+  
   // /**
   //  * Partitions the input into a stream of chunks according to a discriminator function.
   //  * Each chunk is annotated with the value of the discriminator function applied to
