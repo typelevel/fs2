@@ -419,6 +419,10 @@ object pipe {
       case Some((hd,tl)) => scan_(hd)(f)(tl)
     }.stream
 
+  /** Outputs all segments from the source stream. */
+  def segments[F[_],I]: Pipe[F,I,Segment[I,Unit]] =
+    _.repeatPull(_.receive((hd,tl) => Pull.output1(hd).as(Some(tl))))
+
   // /** Emits the given values, then echoes the rest of the input. */
   // def shiftRight[F[_],I](head: I*): Pipe[F,I,I] =
   //   _ pull { h => h.push(Chunk.indexedSeq(Vector(head: _*))).echo }

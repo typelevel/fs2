@@ -226,6 +226,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //  */
   // def scope: Stream[F,O] =
   //   Stream.mk { StreamCore.scope { self.get } }
+
+  /** Alias for `self through [[pipe.segments]]`. */
+  def segments: Stream[F,Segment[O,Unit]] = this through pipe.segments
+
   //
   // /** Alias for `self through [[pipe.shiftRight]]`. */
   // def shiftRight[O2 >: O](head: O2*): Stream[F,O2] = self through pipe.shiftRight(head: _*)
@@ -416,7 +420,7 @@ object Stream {
     Stream.eval(async.signalOf(false)) flatMap { killSignal =>
     Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
     Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
-    Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+    Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Segment[O,Unit]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
       val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
       val decrementRunning: F[Unit] = running.modify(_ - 1).as(())
 
@@ -428,7 +432,7 @@ object Stream {
         Stream.eval_(
           available.decrement >> incrementRunning >>
           concurrent.start {
-            inner.chunks.attempt
+            inner.segments.attempt
             .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
             .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
             .run.flatMap { _ =>
@@ -457,7 +461,7 @@ object Stream {
       Stream.eval_(concurrent.start(doneMonitor)) ++
       outputQ.dequeue.unNoneTerminate.flatMap {
         case Left(e) => Stream.fail(e)
-        case Right(c) => Stream.chunk(c)
+        case Right(s) => Stream.segment(s)
       } onFinalize {
         killSignal.set(true) >> (running.discrete.dropWhile(_ > 0) take 1 run) // await all open inner streams and the outer stream to be terminated
       }
