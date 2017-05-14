@@ -10,7 +10,7 @@ import cats.implicits._
 /**
  * An asynchronous semaphore, useful as a concurrency primitive.
  */
-trait Semaphore[F[_]] {
+abstract class Semaphore[F[_]] {
 
   /** Returns the number of permits currently available. Always nonnegative. */
   def available: F[Long]

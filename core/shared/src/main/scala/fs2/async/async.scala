@@ -62,11 +62,11 @@ package object async {
   def holdOption[F[_]:Effect,A](source: Stream[F, A])(implicit ec: ExecutionContext): Stream[F, immutable.Signal[F,Option[A]]] =
      immutable.Signal.holdOption(source)
 
-  // /**
-  //   * Creates an asynchronous topic, which distributes each published `A` to
-  //   * an arbitrary number of subscribers. Each subscriber is guaranteed to
-  //   * receive at least the initial `A` or last value published by any publisher.
-  //   */
-  // def topic[F[_]:Effect,A](initial: A)(implicit ec: ExecutionContext): F[mutable.Topic[F,A]] =
-  //   mutable.Topic(initial)
+  /**
+    * Creates an asynchronous topic, which distributes each published `A` to
+    * an arbitrary number of subscribers. Each subscriber is guaranteed to
+    * receive at least the initial `A` or last value published by any publisher.
+    */
+  def topic[F[_]:Effect,A](initial: A)(implicit ec: ExecutionContext): F[mutable.Topic[F,A]] =
+    mutable.Topic(initial)
 }

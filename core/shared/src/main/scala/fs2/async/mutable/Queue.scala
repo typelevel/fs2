@@ -14,7 +14,7 @@ import cats.implicits._
  * a queue may have a bound on its size, in which case enqueuing may
  * block until there is an offsetting dequeue.
  */
-trait Queue[F[_], A] { self =>
+abstract class Queue[F[_], A] { self =>
 
   /**
    * Enqueues one element in this `Queue`.
