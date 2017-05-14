@@ -162,23 +162,22 @@ object pipe {
   def dropWhile[F[_], I](p: I => Boolean): Pipe[F,I,I] =
     _.pull.dropWhile(p).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
 
-  // private def _evalScan0[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
-  //   h => h.await1Option.flatMap {
-  //     case Some((i, h)) => Pull.eval(f(z, i)).flatMap { o =>
-  //       Pull.output(Chunk.seq(Vector(z, o))) >> _evalScan1(o)(f)(h)
-  //     }
-  //     case None => Pull.output(Chunk.singleton(z)) as Handle.empty
-  //   }
-  //
-  // private def _evalScan1[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
-  //   h => h.await1.flatMap {
-  //     case (i, h) => Pull.eval(f(z, i)).flatMap { o =>
-  //       Pull.output(Chunk.singleton(o)) >> _evalScan1(o)(f)(h)
-  //     }}
-  //
-  // /** Like `[[pipe.scan]]`, but accepts a function returning an F[_] */
-  // def evalScan[F[_], O, I](z: O)(f: (O, I) => F[O]): Pipe[F, I, O] =
-  //   _ pull (_evalScan0(z)(f))
+  /** Like `[[pipe.scan]]`, but accepts a function returning an `F[_]`. */
+  def evalScan[F[_],O,I](z: O)(f: (O, I) => F[O]): Pipe[F,I,O] = {
+    def go(z: O, s: Stream[F,I]): Pull[F,O,Option[Stream[F,I]]] =
+      s.pull.uncons1.flatMap {
+        case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
+          Pull.output1(o) >> go(o,tl)
+        }
+        case None => Pull.pure(None)
+      }
+    _.pull.uncons1.flatMap {
+      case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
+        Pull.output(Chunk.seq(List(z,o))) >> go(o,tl)
+      }
+      case None => Pull.output1(z) >> Pull.pure(None)
+    }.stream
+  }
 
   /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
   def exists[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =

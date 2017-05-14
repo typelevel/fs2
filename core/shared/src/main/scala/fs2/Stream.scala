@@ -137,9 +137,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.dropWhile]]` */
   def dropWhile(p: O => Boolean): Stream[F,O] = this through pipe.dropWhile(p)
 
-  // /** Alias for `self throughv [[pipe.evalScan]](z)(f)`. */
-  // def evalScan[F2[_], O2](z: O2)(f: (O2, O) => F2[O2])(implicit S: Sub1[F, F2]): Stream[F2, O2] =  self throughv pipe.evalScan(z)(f)
-
   /** Alias for `self through [[pipe.exists]]`. */
   def exists(f: O => Boolean): Stream[F, Boolean] = this through pipe.exists(f)
 
@@ -593,6 +590,10 @@ object Stream {
     def evalMap[O2](f: O => F[O2]): Stream[F,O2] =
       self.flatMap(o => Stream.eval(f(o)))
 
+    /** Alias for [[pipe.evalScan]]. */
+    def evalScan[O2](z: O2)(f: (O2, O) => F[O2]): Stream[F,O2] =
+      self through pipe.evalScan(z)(f)
+
     def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] =
       Stream.fromFree(Algebra.uncons(self.get[F,O]).flatMap {
         case None => Stream.empty[F,O2].get
@@ -752,6 +753,9 @@ object Stream {
       covary[F].through2(s2)(pipe2.either)
 
     def evalMap[F[_],O2](f: O => F[O2]): Stream[F,O2] = covary[F].evalMap(f)
+
+    /** Alias for [[pipe.evalScan]]. */
+    def evalScan[F[_],O2](z: O2)(f: (O2, O) => F[O2]): Stream[F,O2] = covary[F].evalScan(z)(f)
 
     def flatMap[F[_],O2](f: O => Stream[F,O2]): Stream[F,O2] =
       covary[F].flatMap(f)
