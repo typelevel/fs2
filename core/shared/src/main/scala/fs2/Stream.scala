@@ -5,6 +5,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.{ ~>, Applicative, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
+import cats.implicits._
 
 import fs2.internal.{ Algebra, Free }
 
@@ -132,9 +133,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //
   // /** Alias for `self through [[pipe.dropRight]]`. */
   // def dropRight(n: Int): Stream[F,O] = self through pipe.dropRight(n)
-  //
-  // /** Alias for `self through [[pipe.dropWhile]]` */
-  // def dropWhile(p: O => Boolean): Stream[F,O] = self through pipe.dropWhile(p)
+
+  /** Alias for `self through [[pipe.dropWhile]]` */
+  def dropWhile(p: O => Boolean): Stream[F,O] = this through pipe.dropWhile(p)
 
   // /** Alias for `self throughv [[pipe.evalScan]](z)(f)`. */
   // def evalScan[F2[_], O2](z: O2)(f: (O2, O) => F2[O2])(implicit S: Sub1[F, F2]): Stream[F2, O2] =  self throughv pipe.evalScan(z)(f)
@@ -410,58 +411,57 @@ object Stream {
    * @param outer      Stream of streams to join.
    */
   def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
-    // assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
-    //
-    // Stream.eval(async.signalOf(false)) flatMap { killSignal =>
-    // Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
-    // Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
-    // Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Attempt[Chunk[O]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-    //   val incrementRunning: F[Unit] = running.modify(_ + 1) as (())
-    //   val decrementRunning: F[Unit] = running.modify(_ - 1) as (())
-    //
-    //   // runs inner stream
-    //   // each stream is forked.
-    //   // terminates when killSignal is true
-    //   // if fails will enq in queue failure
-    //   def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
-    //     Stream.eval_(
-    //       available.decrement >> incrementRunning >>
-    //       concurrent.start {
-    //         inner.chunks.attempt
-    //         .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
-    //         .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-    //         .run.flatMap { _ =>
-    //           available.increment >> decrementRunning
-    //         }
-    //       }
-    //     )
-    //   }
-    //
-    //   // runs the outer stream, interrupts when kill == true, and then decrements the `available`
-    //   def runOuter: F[Unit] = {
-    //     (outer.interruptWhen(killSignal) flatMap runInner onFinalize decrementRunning run).attempt flatMap {
-    //       case Right(_) => F.pure(())
-    //       case Left(err) => outputQ.enqueue1(Some(Left(err)))
-    //     }
-    //   }
-    //
-    //   // monitors when the all streams (outer/inner) are terminated an then suplies None to output Queue
-    //   def doneMonitor: F[Unit]= {
-    //     running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
-    //       Stream.eval(outputQ.enqueue1(None))
-    //     } run
-    //   }
-    //
-    //   Stream.eval_(concurrent.start(runOuter)) ++
-    //   Stream.eval_(concurrent.start(doneMonitor)) ++
-    //   outputQ.dequeue.unNoneTerminate.flatMap {
-    //     case Left(e) => Stream.fail(e)
-    //     case Right(c) => Stream.chunk(c)
-    //   } onFinalize {
-    //     killSignal.set(true) >> (running.discrete.dropWhile(_ > 0) take 1 run) // await all open inner streams and the outer stream to be terminated
-    //   }
-    // }}}}
-    ???
+    assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
+
+    Stream.eval(async.signalOf(false)) flatMap { killSignal =>
+    Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
+    Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
+    Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Chunk[O]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+      val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
+      val decrementRunning: F[Unit] = running.modify(_ - 1).as(())
+
+      // runs inner stream
+      // each stream is forked.
+      // terminates when killSignal is true
+      // if fails will enq in queue failure
+      def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
+        Stream.eval_(
+          available.decrement >> incrementRunning >>
+          concurrent.start {
+            inner.chunks.attempt
+            .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
+            .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+            .run.flatMap { _ =>
+              available.increment >> decrementRunning
+            }
+          }
+        )
+      }
+
+      // runs the outer stream, interrupts when kill == true, and then decrements the `available`
+      def runOuter: F[Unit] = {
+        (outer.interruptWhen(killSignal) flatMap runInner onFinalize decrementRunning run).attempt flatMap {
+          case Right(_) => F.pure(())
+          case Left(err) => outputQ.enqueue1(Some(Left(err)))
+        }
+      }
+
+      // monitors when the all streams (outer/inner) are terminated an then suplies None to output Queue
+      def doneMonitor: F[Unit]= {
+        running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
+          Stream.eval(outputQ.enqueue1(None))
+        } run
+      }
+
+      Stream.eval_(concurrent.start(runOuter)) ++
+      Stream.eval_(concurrent.start(doneMonitor)) ++
+      outputQ.dequeue.unNoneTerminate.flatMap {
+        case Left(e) => Stream.fail(e)
+        case Right(c) => Stream.chunk(c)
+      } onFinalize {
+        killSignal.set(true) >> (running.discrete.dropWhile(_ > 0) take 1 run) // await all open inner streams and the outer stream to be terminated
+      }
+    }}}}
   }
 
   /** Like [[join]] but races all inner streams simultaneously. */
@@ -952,18 +952,18 @@ object Stream {
         }
       }
 
-    // /**
-    //  * Drops elements of the this `Handle` until the predicate `p` fails, and returns the new `Handle`.
-    //  * If non-empty, the first element of the returned `Handle` will fail `p`.
-    //  */
-    // def dropWhile(p: A => Boolean): Pull[F,Nothing,Handle[F,A]] =
-    //   this.receive { (chunk, h) =>
-    //     chunk.indexWhere(!p(_)) match {
-    //       case Some(0) => Pull.pure(h push chunk)
-    //       case Some(i) => Pull.pure(h push chunk.drop(i))
-    //       case None    => h.dropWhile(p)
-    //     }
-    //   }
+    /**
+     * Drops elements of the this stream until the predicate `p` fails, and returns the new stream.
+     * If defined, the first element of the returned stream will fail `p`.
+     */
+    def dropWhile(p: O => Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
+      receive { (hd,tl) =>
+        val s = Pull.segment(hd.dropWhile(p)).flatMap { case (dropping, ()) =>
+          if (dropping) pipe.dropWhile(p)(tl).pull.echo
+          else Pull.pure(Some(tl))
+        }.stream
+        Pull.pure(Some(s))
+      }
 
     /** Writes all inputs to the output of the returned `Pull`. */
     def echo: Pull[F,O,Unit] = Pull.loop[F,O,Stream[F,O]](_.pull.echoSegment)(self)

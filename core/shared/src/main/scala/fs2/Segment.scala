@@ -162,7 +162,7 @@ abstract class Segment[+O,+R] { self =>
           }
           if (ok) emits(os) else done(None)
         },
-        r => done(Some(r))
+        r => if (ok) done(Some(r)) else done(None)
       ).map(_.mapRemainder(rem => if (ok) rem.takeWhile(f) else pure(None)))
     }
     override def toString = s"($self).takeWhile(<f1>)"
@@ -187,7 +187,29 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).drop($n)"
   }
 
-  final def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
+  final def dropWhile(f: O => Boolean): Segment[O,(Boolean,R)] = new Segment[O,(Boolean,R)] {
+    def stage0 = (depth, defer, emit, emits, done) => {
+      var dropping = true
+      self.stage(depth.increment, defer,
+        o => { if (dropping) dropping = f(o); if (!dropping) emit(o) },
+        os => {
+          if (dropping) {
+            var i = 0
+            while (dropping && i < os.size) {
+              val o = os(i)
+              dropping = f(o)
+              if (!dropping) while (i < os.size) { emit(os(i)); i += 1 }
+              i += 1
+            }
+          } else emits(os)
+        },
+        r => done((dropping, r))
+      ).map(_.mapRemainder(rem => if (dropping) rem.dropWhile(f) else rem.mapResult((false, _))))
+    }
+    override def toString = s"($self).dropWhile(<f1>)"
+  }
+
+  def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
         o => emit(f(o)),

@@ -20,7 +20,11 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   final def isEmpty = size == 0
   final def nonEmpty = size > 0
 
+  final def head: O = apply(0)
   final def last: O = apply(size - 1)
+
+  final override def map[O2](f: O => O2): Chunk[O2] =
+    super.map(f).toChunk
 
   /** Copies the elements of this chunk to an array. */
   def toArray[B >: O: ClassTag]: Array[B] = {

@@ -18,34 +18,34 @@ package object async {
   def semaphore[F[_]:Effect](initialCount: Long)(implicit ec: ExecutionContext): F[mutable.Semaphore[F]] =
     mutable.Semaphore(initialCount)
 
-  // /** Creates an unbounded asynchronous queue. See [[mutable.Queue]] for more documentation. */
-  // def unboundedQueue[F[_]:Effect,A](implicit ec: ExecutionContext): F[mutable.Queue[F,A]] =
-  //   mutable.Queue.unbounded[F,A]
-  //
-  // /**
-  //  * Creates a bounded asynchronous queue. Calls to `enqueue1` will wait until the
-  //  * queue's size is less than `maxSize`. See [[mutable.Queue]] for more documentation.
-  //  */
-  // def boundedQueue[F[_]:Effect,A](maxSize: Int)(implicit ec: ExecutionContext): F[mutable.Queue[F,A]] =
-  //   mutable.Queue.bounded[F,A](maxSize)
-  //
-  // /**
-  //  * Creates a synchronous queue, which always has size 0. Any calls to `enqueue1`
-  //  * block until there is an offsetting call to `dequeue1`. Any calls to `dequeue1`
-  //  * block until there is an offsetting call to `enqueue1`.
-  //  */
-  // def synchronousQueue[F[_],A](implicit F: Effect[F], ec: ExecutionContext): F[mutable.Queue[F,A]] =
-  //   mutable.Queue.synchronous[F,A]
-  //
-  // /**
-  //  * Creates a queue that functions as a circular buffer. Up to `size` elements of
-  //  * type `A` will accumulate on the queue and then it will begin overwriting
-  //  * the oldest elements. Thus an enqueue process will never wait.
-  //  * @param maxSize The size of the circular buffer (must be > 0)
-  //  */
-  // def circularBuffer[F[_],A](maxSize: Int)(implicit F: Effect[F], ec: ExecutionContext): F[mutable.Queue[F,A]] =
-  //   mutable.Queue.circularBuffer[F,A](maxSize)
-  
+  /** Creates an unbounded asynchronous queue. See [[mutable.Queue]] for more documentation. */
+  def unboundedQueue[F[_]:Effect,A](implicit ec: ExecutionContext): F[mutable.Queue[F,A]] =
+    mutable.Queue.unbounded[F,A]
+
+  /**
+   * Creates a bounded asynchronous queue. Calls to `enqueue1` will wait until the
+   * queue's size is less than `maxSize`. See [[mutable.Queue]] for more documentation.
+   */
+  def boundedQueue[F[_]:Effect,A](maxSize: Int)(implicit ec: ExecutionContext): F[mutable.Queue[F,A]] =
+    mutable.Queue.bounded[F,A](maxSize)
+
+  /**
+   * Creates a synchronous queue, which always has size 0. Any calls to `enqueue1`
+   * block until there is an offsetting call to `dequeue1`. Any calls to `dequeue1`
+   * block until there is an offsetting call to `enqueue1`.
+   */
+  def synchronousQueue[F[_],A](implicit F: Effect[F], ec: ExecutionContext): F[mutable.Queue[F,A]] =
+    mutable.Queue.synchronous[F,A]
+
+  /**
+   * Creates a queue that functions as a circular buffer. Up to `size` elements of
+   * type `A` will accumulate on the queue and then it will begin overwriting
+   * the oldest elements. Thus an enqueue process will never wait.
+   * @param maxSize The size of the circular buffer (must be > 0)
+   */
+  def circularBuffer[F[_],A](maxSize: Int)(implicit F: Effect[F], ec: ExecutionContext): F[mutable.Queue[F,A]] =
+    mutable.Queue.circularBuffer[F,A](maxSize)
+
   /**
    * Converts a discrete stream to a signal. Returns a single-element stream.
    *

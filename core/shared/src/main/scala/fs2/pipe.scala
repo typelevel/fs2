@@ -157,11 +157,11 @@ object pipe {
   //     _ pull go(Vector.empty)
   //   }
   // }
-  //
-  // /** Drops the elements of the input until the predicate `p` fails, then echoes the rest. */
-  // def dropWhile[F[_], I](p: I => Boolean): Pipe[F,I,I] =
-  //   _ pull { h => h.dropWhile(p).flatMap(_.echo) }
-  //
+
+  /** Drops the elements of the input until the predicate `p` fails, then echoes the rest. */
+  def dropWhile[F[_], I](p: I => Boolean): Pipe[F,I,I] =
+    _.pull.dropWhile(p).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
+
   // private def _evalScan0[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
   //   h => h.await1Option.flatMap {
   //     case Some((i, h)) => Pull.eval(f(z, i)).flatMap { o =>
