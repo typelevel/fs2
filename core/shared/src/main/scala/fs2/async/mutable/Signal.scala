@@ -11,7 +11,7 @@ import cats.implicits._
 import fs2.Stream._
 
 /** Data type of a single value of type `A` that can be read and written in the effect `F`. */
-trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
+abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
 
   /** Sets the value of this `Signal`. */
   def set(a: A): F[Unit]

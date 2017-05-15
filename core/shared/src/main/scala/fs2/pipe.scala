@@ -1,6 +1,7 @@
 package fs2
 
 import scala.concurrent.ExecutionContext
+// import scala.concurrent.duration.FiniteDuration
 
 // import cats.{ Eq, Functor }
 import cats.effect.Effect
@@ -14,12 +15,10 @@ object pipe {
 
   // nb: methods are in alphabetical order
 
-  // /** Behaves like the identity function, but requests `n` elements at a time from the input. */
-  // def buffer[F[_],I](n: Int): Pipe[F,I,I] =
-  //   _.repeatPull { _.awaitN(n, true).flatMap { case (chunks, h) =>
-  //     chunks.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } as h
-  //   }}
-  //
+  /** Behaves like the identity function, but requests `n` elements at a time from the input. */
+  def buffer[F[_],I](n: Int): Pipe[F,I,I] =
+    _.repeatPull { _.unconsN(n, allowFewer = true).flatMapOpt { case (hd,tl) => Pull.output(hd).as(Some(tl)) }}
+
   // /** Behaves like the identity stream, but emits no output until the source is exhausted. */
   // def bufferAll[F[_],I]: Pipe[F,I,I] = bufferBy(_ => true)
   //
@@ -90,6 +89,28 @@ object pipe {
   // /** Emits the first element of the Stream for which the partial function is defined. */
   // def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
   //   _ pull { h => h.find(pf.isDefinedAt) flatMap { case (i, h) => Pull.output1(pf(i)) }}
+
+  // /** Debounce the stream with a minimum period of `d` between each element */
+  // def debounce[F[_], I](d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Pipe[F, I, I] = {
+  //   def go(i: I, h1: Handle[F, I]): Pull[F, I, Nothing] = {
+  //     time.sleep[F](d).open.flatMap { h2 =>
+  //       h2.awaitAsync.flatMap { l =>
+  //         h1.awaitAsync.flatMap { r =>
+  //           (l race r).pull.flatMap {
+  //             case Left(_) => Pull.output1(i) >> r.pull.flatMap(identity).flatMap {
+  //               case (hd, tl) => go(hd.last, tl)
+  //             }
+  //             case Right(r) => r.optional.flatMap {
+  //               case Some((hd, tl)) => go(hd.last, tl)
+  //               case None => Pull.output1(i) >> Pull.done
+  //             }
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+  //   _.pull { h => h.await.flatMap { case (hd, tl) => go(hd.last, tl) } }
+  // }
   //
   // /** Skips the first element that matches the predicate. */
   // def delete[F[_],I](p: I => Boolean): Pipe[F,I,I] =
@@ -134,37 +155,36 @@ object pipe {
   //     _ pull go(Vector.empty)
   //   }
   // }
-  //
-  // /** Drops the elements of the input until the predicate `p` fails, then echoes the rest. */
-  // def dropWhile[F[_], I](p: I => Boolean): Pipe[F,I,I] =
-  //   _ pull { h => h.dropWhile(p).flatMap(_.echo) }
-  //
-  // private def _evalScan0[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
-  //   h => h.await1Option.flatMap {
-  //     case Some((i, h)) => Pull.eval(f(z, i)).flatMap { o =>
-  //       Pull.output(Chunk.seq(Vector(z, o))) >> _evalScan1(o)(f)(h)
-  //     }
-  //     case None => Pull.output(Chunk.singleton(z)) as Handle.empty
-  //   }
-  //
-  // private def _evalScan1[F[_], O, I](z: O)(f: (O, I) => F[O]): Handle[F, I] => Pull[F, O, Handle[F, I]] =
-  //   h => h.await1.flatMap {
-  //     case (i, h) => Pull.eval(f(z, i)).flatMap { o =>
-  //       Pull.output(Chunk.singleton(o)) >> _evalScan1(o)(f)(h)
-  //     }}
-  //
-  // /** Like `[[pipe.scan]]`, but accepts a function returning an F[_] */
-  // def evalScan[F[_], O, I](z: O)(f: (O, I) => F[O]): Pipe[F, I, O] =
-  //   _ pull (_evalScan0(z)(f))
-  //
-  // /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
-  // def exists[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
-  //   _ pull { h => h.forall(!p(_)) flatMap { i => Pull.output1(!i) }}
-  //
-  // /** Emits only inputs which match the supplied predicate. */
-  // def filter[F[_], I](f: I => Boolean): Pipe[F,I,I] =
-  //   mapChunks(_ filter f)
-  //
+
+  /** Drops the elements of the input until the predicate `p` fails, then echoes the rest. */
+  def dropWhile[F[_], I](p: I => Boolean): Pipe[F,I,I] =
+    _.pull.dropWhile(p).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
+
+  /** Like `[[pipe.scan]]`, but accepts a function returning an `F[_]`. */
+  def evalScan[F[_],O,I](z: O)(f: (O, I) => F[O]): Pipe[F,I,O] = {
+    def go(z: O, s: Stream[F,I]): Pull[F,O,Option[Stream[F,I]]] =
+      s.pull.uncons1.flatMap {
+        case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
+          Pull.output1(o) >> go(o,tl)
+        }
+        case None => Pull.pure(None)
+      }
+    _.pull.uncons1.flatMap {
+      case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
+        Pull.output(Chunk.seq(List(z,o))) >> go(o,tl)
+      }
+      case None => Pull.output1(z) >> Pull.pure(None)
+    }.stream
+  }
+
+  /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
+  def exists[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
+    _.pull.forall(!p(_)).flatMap(Pull.output1).stream
+
+  /** Emits only inputs which match the supplied predicate. */
+  def filter[F[_], I](f: I => Boolean): Pipe[F,I,I] =
+    mapSegments(_ filter f)
+
   // /**
   //  * Like `filter`, but the predicate `f` depends on the previously emitted and
   //  * current elements.
@@ -207,13 +227,13 @@ object pipe {
   def fold1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
     _.pull.fold1(f).flatMap(_.map(Pull.output1).getOrElse(Pull.done)).stream
 
-  // /**
-  //  * Emits a single `true` value if all input matches the predicate.
-  //  * Halts with `false` as soon as a non-matching element is received.
-  //  */
-  // def forall[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
-  //   _ pull { h => h.forall(p) flatMap Pull.output1 }
-  //
+  /**
+   * Emits a single `true` value if all input matches the predicate.
+   * Halts with `false` as soon as a non-matching element is received.
+   */
+  def forall[F[_], I](p: I => Boolean): Pipe[F,I,Boolean] =
+    _.pull.forall(p).flatMap(Pull.output1).stream
+
   // /**
   //  * Partitions the input into a stream of chunks according to a discriminator function.
   //  * Each chunk is annotated with the value of the discriminator function applied to
@@ -270,32 +290,34 @@ object pipe {
   /** Emits the first element of this stream (if non-empty) and then halts. */
   def head[F[_],I]: Pipe[F,I,I] = take(1)
 
-  // /** Emits the specified separator between every pair of elements in the source stream. */
-  // def intersperse[F[_],I](separator: I): Pipe[F,I,I] =
-  //   _ pull { h => h.echo1 flatMap Pull.loop { (h: Handle[F,I]) =>
-  //     h.receive { case (chunk, h) =>
-  //       val interspersed = {
-  //         val bldr = Vector.newBuilder[I]
-  //         chunk.toVector.foreach { i => bldr += separator; bldr += i }
-  //         Chunk.indexedSeq(bldr.result)
-  //       }
-  //       Pull.output(interspersed) >> Pull.pure(h)
-  //     }
-  //   }}
+  /** Emits the specified separator between every pair of elements in the source stream. */
+  def intersperse[F[_],I](separator: I): Pipe[F,I,I] =
+    _.pull.echo1.flatMap {
+      case None => Pull.pure(None)
+      case Some(s) =>
+        s.repeatPull { _.receive { (hd,tl) =>
+          val interspersed = {
+            val bldr = Vector.newBuilder[I]
+            hd.toVector.foreach { i => bldr += separator; bldr += i }
+            Chunk.vector(bldr.result)
+          }
+          Pull.output(interspersed) >> Pull.pure(Some(tl))
+        }}.pull.echo
+    }.stream
 
   /** Identity pipe - every input is output unchanged. */
   def id[F[_],I]: Pipe[F,I,I] = s => s
 
-  // /** Returns the last element of the input `Handle`, if non-empty. */
-  // def last[F[_],I]: Pipe[F,I,Option[I]] =
-  //   _ pull { h => h.last.flatMap { o => Pull.output1(o) }}
-  //
-  // /** Returns the last element of the input `Handle` if non-empty, otherwise li. */
-  // def lastOr[F[_],I](li: => I): Pipe[F,I,I] =
-  //   _ pull { h => h.last.flatMap {
-  //     case Some(o) => Pull.output1(o)
-  //     case None => Pull.output1(li)
-  //   }}
+  /** Returns the last element of the input `Handle`, if non-empty. */
+  def last[F[_],I]: Pipe[F,I,Option[I]] =
+    _.pull.last.flatMap(Pull.output1).stream
+
+  /** Returns the last element of the input `Handle` if non-empty, otherwise li. */
+  def lastOr[F[_],I](li: => I): Pipe[F,I,I] =
+    _.pull.last.flatMap {
+      case Some(o) => Pull.output1(o)
+      case None => Pull.output1(li)
+    }.stream
 
   /**
    * Applies the specified pure function to each input and emits the result.
@@ -350,20 +372,19 @@ object pipe {
   //  */
   // def rechunkN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,I] =
   //   in => chunkN(n, allowFewer)(in).flatMap { chunks => Stream.chunk(Chunk.concat(chunks)) }
-  //
-  // /** Rethrows any `Left(err)`. Preserves chunkiness. */
-  // def rethrow[F[_],I]: Pipe[F,Attempt[I],I] =
-  //   _.chunks.flatMap { es =>
-  //     val errs = es collect { case Left(e) => e }
-  //     val ok = es collect { case Right(i) => i }
-  //     errs.uncons match {
-  //       case None => Stream.chunk(ok)
-  //       case Some((err, _)) => Stream.fail(err) // only first error is reported
-  //     }
-  //   }
-  //
-  // /** Alias for `[[pipe.fold1]]` */
-  // def reduce[F[_],I](f: (I, I) => I): Pipe[F,I,I] = fold1(f)
+
+  /** Rethrows any `Left(err)`. Preserves chunkiness. */
+  def rethrow[F[_],I]: Pipe[F,Either[Throwable,I],I] =
+    _.segments.flatMap { s =>
+      val errs = s.collect { case Left(e) => e }
+      errs.uncons1 match {
+        case Left(()) => Stream.segment(s.collect { case Right(i) => i })
+        case Right((hd,tl)) => Stream.fail(hd)
+      }
+    }
+
+  /** Alias for `[[pipe.fold1]]` */
+  def reduce[F[_],I](f: (I, I) => I): Pipe[F,I,I] = fold1(f)
 
   /**
    * Left fold which outputs all intermediate results. Example:
@@ -395,6 +416,10 @@ object pipe {
       case None => Pull.done
       case Some((hd,tl)) => scan_(hd)(f)(tl)
     }.stream
+
+  /** Outputs all segments from the source stream. */
+  def segments[F[_],I]: Pipe[F,I,Segment[I,Unit]] =
+    _.repeatPull(_.receive((hd,tl) => Pull.output1(hd).as(Some(tl))))
 
   // /** Emits the given values, then echoes the rest of the input. */
   // def shiftRight[F[_],I](head: I*): Pipe[F,I,I] =

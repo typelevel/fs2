@@ -162,7 +162,7 @@ abstract class Segment[+O,+R] { self =>
           }
           if (ok) emits(os) else done(None)
         },
-        r => done(Some(r))
+        r => if (ok) done(Some(r)) else done(None)
       ).map(_.mapRemainder(rem => if (ok) rem.takeWhile(f) else pure(None)))
     }
     override def toString = s"($self).takeWhile(<f1>)"
@@ -187,7 +187,29 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).drop($n)"
   }
 
-  final def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
+  final def dropWhile(f: O => Boolean): Segment[O,(Boolean,R)] = new Segment[O,(Boolean,R)] {
+    def stage0 = (depth, defer, emit, emits, done) => {
+      var dropping = true
+      self.stage(depth.increment, defer,
+        o => { if (dropping) dropping = f(o); if (!dropping) emit(o) },
+        os => {
+          if (dropping) {
+            var i = 0
+            while (dropping && i < os.size) {
+              val o = os(i)
+              dropping = f(o)
+              if (!dropping) while (i < os.size) { emit(os(i)); i += 1 }
+              i += 1
+            }
+          } else emits(os)
+        },
+        r => done((dropping, r))
+      ).map(_.mapRemainder(rem => if (dropping) rem.dropWhile(f) else rem.mapResult((false, _))))
+    }
+    override def toString = s"($self).dropWhile(<f1>)"
+  }
+
+  def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
         o => emit(f(o)),
@@ -195,6 +217,16 @@ abstract class Segment[+O,+R] { self =>
         done).map(_.mapRemainder(_ map f))
     }
     override def toString = s"($self).map(<f1>)"
+  }
+
+  final def filter[O2](p: O => Boolean): Segment[O,R] = new Segment[O,R] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      self.stage(depth.increment, defer,
+        o => if (p(o)) emit(o),
+        os => { var i = 0; while (i < os.size) { val o = os(i); if (p(o)) emit(o); i += 1; } },
+        done).map(_.mapRemainder(_ filter p))
+    }
+    override def toString = s"($self).filter(<pf1>)"
   }
 
   final def collect[O2](pf: PartialFunction[O,O2]): Segment[O2,R] = new Segment[O2,R] {
@@ -265,7 +297,7 @@ abstract class Segment[+O,+R] { self =>
     buf.result
   }
 
-  final def splitAt(n:Int): (Segment[O,Unit], Either[R,Segment[O,R]]) = {
+  final def splitAt(n:Long): (Segment[O,Unit], Either[R,Segment[O,R]]) = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var outCount = 0
     var result: Option[Either[R,Segment[O,(Long,Unit)]]] = None
@@ -400,6 +432,7 @@ object Segment {
   def indexedSeq[O](os: IndexedSeq[O]): Segment[O,Unit] = Chunk.indexedSeq(os)
   def seq[O](os: Seq[O]): Segment[O,Unit] = Chunk.seq(os)
   def array[O](os: Array[O]): Segment[O,Unit] = Chunk.array(os)
+  def catenated[O,R](os: Catenable[Segment[O,R]]): Segment[O,R] = Catenated(os)
 
   private[fs2]
   case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
