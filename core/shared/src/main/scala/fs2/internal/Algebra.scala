@@ -82,9 +82,14 @@ private[fs2] object Algebra {
             pure[F,X,Option[(Segment[O,Unit], Free[AlgebraF,Unit])]](Some((os.values, f(()))))
           case os : Algebra.WrapSegment[F, O, y] =>
             try {
-              val (hd, tl) = os.values.splitAt(chunkSize)
+              val (hd, cnt, tl) = os.values.splitAt(chunkSize)
+              val hdAsSegment: Segment[O,Unit] = cnt match {
+                case 0 => Segment.empty
+                case 1 => hd.uncons.get._1
+                case n => Segment.catenated(hd).get
+              }
               pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(
-                hd -> tl.fold(r => bound.tryBind(r), segment(_).flatMap(bound.tryBind))
+                hdAsSegment -> tl.fold(r => bound.tryBind(r), segment(_).flatMap(bound.tryBind))
               ))
             }
             catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {

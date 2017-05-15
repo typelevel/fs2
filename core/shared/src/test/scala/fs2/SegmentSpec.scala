@@ -76,8 +76,8 @@ class SegmentSpec extends Fs2Spec {
 
     "splitAt" in {
       forAll { (s: Segment[Int,Unit], n: Int) =>
-        val (hd, tl) = s.splitAt(n)
-        hd shouldBe s.toChunk.take(n)
+        val (hd, cnt, tl) = s.splitAt(n)
+        Segment.catenated(hd).getOrElse(Segment.empty).toChunk shouldBe s.toChunk.take(n)
       }
     }
 

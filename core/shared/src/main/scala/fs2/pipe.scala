@@ -111,10 +111,10 @@ object pipe {
   //   }
   //   _.pull { h => h.await.flatMap { case (hd, tl) => go(hd.last, tl) } }
   // }
-  //
-  // /** Skips the first element that matches the predicate. */
-  // def delete[F[_],I](p: I => Boolean): Pipe[F,I,I] =
-  //   _ pull { h => h.takeWhile((i:I) => !p(i)).flatMap(_.drop(1)).flatMap(_.echo) }
+
+  /** Skips the first element that matches the predicate. */
+  def delete[F[_],I](p: I => Boolean): Pipe[F,I,I] =
+    _.pull.takeWhile(i => !p(i)).flatMapOpt(_.pull.drop(1).flatMapOpt(_.pull.echo.as(None))).stream
 
   /** Drops `n` elements of the input, then echoes the rest. */
   def drop[F[_],I](n: Long): Pipe[F,I,I] =
@@ -520,7 +520,7 @@ object pipe {
    */
   def unNoneTerminate[F[_],I]: Pipe[F,Option[I],I] =
     _ repeatPull { _.receive { (hd, tl) =>
-      Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.map(_ => tl))
+      Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.fold(_ => None, _ => Some(tl)))
     }}
 
   // /**
