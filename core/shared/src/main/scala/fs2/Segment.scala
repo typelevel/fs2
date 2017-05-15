@@ -297,7 +297,7 @@ abstract class Segment[+O,+R] { self =>
     buf.result
   }
 
-  final def splitAt(n:Int): (Segment[O,Unit], Either[R,Segment[O,R]]) = {
+  final def splitAt(n:Long): (Segment[O,Unit], Either[R,Segment[O,R]]) = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var outCount = 0
     var result: Option[Either[R,Segment[O,(Long,Unit)]]] = None
@@ -432,6 +432,7 @@ object Segment {
   def indexedSeq[O](os: IndexedSeq[O]): Segment[O,Unit] = Chunk.indexedSeq(os)
   def seq[O](os: Seq[O]): Segment[O,Unit] = Chunk.seq(os)
   def array[O](os: Array[O]): Segment[O,Unit] = Chunk.array(os)
+  def catenated[O,R](os: Catenable[Segment[O,R]]): Segment[O,R] = Catenated(os)
 
   private[fs2]
   case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {

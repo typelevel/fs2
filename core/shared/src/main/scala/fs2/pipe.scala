@@ -15,12 +15,10 @@ object pipe {
 
   // nb: methods are in alphabetical order
 
-  // /** Behaves like the identity function, but requests `n` elements at a time from the input. */
-  // def buffer[F[_],I](n: Int): Pipe[F,I,I] =
-  //   _.repeatPull { _.awaitN(n, true).flatMap { case (chunks, h) =>
-  //     chunks.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } as h
-  //   }}
-  //
+  /** Behaves like the identity function, but requests `n` elements at a time from the input. */
+  def buffer[F[_],I](n: Int): Pipe[F,I,I] =
+    _.repeatPull { _.unconsN(n, allowFewer = true).flatMapOpt { case (hd,tl) => Pull.output(hd).as(Some(tl)) }}
+
   // /** Behaves like the identity stream, but emits no output until the source is exhausted. */
   // def bufferAll[F[_],I]: Pipe[F,I,I] = bufferBy(_ => true)
   //

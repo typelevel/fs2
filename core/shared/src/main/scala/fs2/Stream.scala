@@ -70,9 +70,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** `s as x == s map (_ => x)` */
   def as[O2](o2: O2): Stream[F,O2] = map(_ => o2)
 
-  // /** Alias for `self through [[pipe.buffer]]`. */
-  // def buffer(n: Int): Stream[F,O] = self through pipe.buffer(n)
-  //
+  /** Alias for [[pipe.buffer]]. */
+  def buffer(n: Int): Stream[F,O] = this through pipe.buffer(n)
+
   // /** Alias for `self through [[pipe.bufferAll]]`. */
   // def bufferAll: Stream[F,O] = self through pipe.bufferAll
   //
@@ -929,25 +929,31 @@ object Stream {
         hd.take(n).mapResult {
           case None =>
             (0, tl.cons(hd.drop(n).voidResult))
-          case Some((rem, _)) =>
+          case Some((rem, ())) =>
             (rem, tl)
         }
       }}
     }
 
-    // /** Returns a `List[NonEmptyChunk[A]]` from the input whose combined size has a maximum value `n`. */
-    // def awaitN(n: Int, allowFewer: Boolean = false): Pull[F,Nothing,(List[NonEmptyChunk[A]],Handle[F,A])] =
-    //   if (n <= 0) Pull.pure((Nil, this))
-    //   else for {
-    //     (hd, tl) <- awaitLimit(n)
-    //     (hd2, tl) <- _awaitN0(n, allowFewer)((hd, tl))
-    //   } yield ((hd :: hd2), tl)
-    //
-    // private def _awaitN0[G[_], X](n: Int, allowFewer: Boolean): ((NonEmptyChunk[X],Handle[G,X])) => Pull[G, Nothing, (List[NonEmptyChunk[X]], Handle[G,X])] = {
-    //   case (hd, tl) =>
-    //     val next = tl.awaitN(n - hd.size, allowFewer)
-    //     if (allowFewer) next.optional.map(_.getOrElse((Nil, Handle.empty))) else next
-    // }
+    def unconsN(n: Long, allowFewer: Boolean = false): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
+      def go(acc: Catenable[Segment[O,Unit]], n: Long, s: Stream[F,O]): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
+        if (n <= 0) Pull.pure(Some((Segment.catenated(acc), s)))
+        else s.pull.unconsLimit(n).flatMap {
+          case None =>
+            if (allowFewer && acc.nonEmpty) Pull.pure(Some((Segment.catenated(acc), Stream.empty)))
+            else Pull.pure(None)
+          case Some(hd) =>
+            val (hd2,tl) = hd.splitAt(n) // nb: hd is guaranteed to be n elements or less
+            tl match {
+              case Left((rem, tl2)) =>
+                if (rem > 0) go(acc :+ hd2, rem, tl2)
+                else Pull.pure(Some((Segment.catenated(acc :+ hd2), tl2)))
+              case Right(tl2) =>
+                sys.error("FS2-bug: hd2 is known to be <= n elements so splitAt(n) cannot return a right")
+            }
+        }
+      go(Catenable.empty, n, self)
+    }
 
     /** Copies the next available chunk to the output. */
     def copy: Pull[F,O,Option[Stream[F,O]]] =
