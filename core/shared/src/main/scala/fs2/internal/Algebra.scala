@@ -90,16 +90,17 @@ private[fs2] object Algebra {
             catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
               uncons(bound.handleError(e))
             }}
-          case algebra => // Wrap, Acquire, Release, Snapshot, UnconsAsync
-            bound.onError match {
-              case None =>
-                assumeNoOutput(Free.Eval(algebra))
-                  .flatMap(x => uncons(bound.tryBind(x)))
-              case Some(onError) =>
-                assumeNoOutput(Free.Eval(algebra))
-                  .flatMap(x => uncons(bound.tryBind(x)))
-                  .onError(e => uncons(bound.handleError(e)))
-            }
+          case algebra => // Eval, Acquire, Release, Snapshot, UnconsAsync
+            if (bound.hasErrorHandler)
+              assumeNoOutput(Free.Eval(algebra))
+                .map(Right(_)).onError(e => pure(Left(e)))
+                .flatMap {
+                   case Left(e) => uncons(bound.handleError(e))
+                   case Right(x) => uncons(bound.tryBind(x))
+                }
+            else
+              assumeNoOutput(Free.Eval(algebra))
+                .flatMap(x => uncons(bound.tryBind(x)))
         }
     }
   }
@@ -152,10 +153,7 @@ private[fs2] object Algebra {
           case wrap: Algebra.Eval[F, O, _] =>
             F.flatMap(F.attempt(wrap.value.asInstanceOf[F[Any]])) {
               case Right(x) => go(acc, g(x).viewL)
-              case Left(e) => bound.onError match {
-                case None => go(acc, fail(e).viewL)
-                case Some(onErr) => go(acc, onErr(e).viewL)
-              }
+              case Left(e) => go(acc, bound.handleError(e).viewL)
             }
           case Algebra.Acquire(resource, release) =>
             midAcquires.increment

@@ -5,7 +5,6 @@ import Free.ViewL._
 import Free._
 
 import cats.{ ~>, MonadError }
-import cats.implicits._
 
 sealed abstract class Free[F[_], +R] {
 
@@ -15,13 +14,11 @@ sealed abstract class Free[F[_], +R] {
   lazy val viewL: ViewL[F,R] = ViewL(this) // todo - review this
   def translate[G[_]](f: F ~> G): Free[G, R] = this.viewL match {
     case Done(r) => Pure(r)
-    case b: Bound[F,_,R] =>
-      b.onError match {
-        case None => Eval(f(b.fx)) flatMap (x => b.tryBind(x).translate(f))
-        case Some(h) =>
-          OnError(Eval(f(b.fx)) flatMap (x => b.tryBind(x).translate(f)),
-                  err => h(err).translate(f))
-      }
+    case b: Bound[F,_,R] => b.translate(f) match {
+      case Done(r) => Pure(r)
+      case Failed(err) => Fail(err)
+      case b: Bound[G,_,R] => b.toFree
+    }
     case Failed(err) => Fail(err)
   }
 }
@@ -45,91 +42,109 @@ object Free {
   sealed abstract class ViewL[F[_], +R]
 
   object ViewL {
-    class Bound[F[_], X, R] private (val fx: F[X], f: X => Free[F, R], val onError: Option[Throwable => Free[F,R]]) extends ViewL[F, R] {
-      def handleError(e: Throwable): Free[F,R] = onError match {
-        case None => Fail[F,R](e)
-        case Some(h) => Try(h(e))
-      }
-      def tryBind: X => Free[F,R] = x =>
-        try f(x)
-        catch { case e: Throwable => handleError(e) }
+    class Bound[F[_], X, R] private (val fx: F[X], k: Continuation[F,X,R]) extends ViewL[F, R] {
+      def hasErrorHandler = k.hasErrorHandler
+      def handleError(e: Throwable): Free[F,R] = k(Fail(e))
+      def tryBind: X => Free[F,R] = x => k(Pure(x))
+      def toFree: Free[F,R] = k(Eval(fx))
+      def translate[G[_]](f: F ~> G): ViewL[G,R] =
+        try Bound(f(fx), k.translate(f))
+        catch { case NonFatal(e) => k(Fail(e)).translate(f).viewL }
     }
     object Bound {
-      def apply[F[_],X,R](fx: F[X], f: X => Free[F,R], onError: Option[Throwable => Free[F,R]]): Bound[F,X,R] =
-        new Bound(fx, f, onError)
+      def apply[F[_],X,R](fx: F[X], k: Continuation[F,X,R]): Bound[F,X,R] =
+        new Bound(fx, k)
     }
     case class Done[F[_], R](r: R) extends ViewL[F,R]
     case class Failed[F[_],R](error: Throwable) extends ViewL[F,R]
 
-    class Handler[F[_],R](val get: Option[Throwable => Free[F,R]]) extends AnyVal {
-      def push(onErrInner: Throwable => Free[F,R]): Handler[F,R] = get match {
-        case None => new Handler(Some(onErrInner))
-        case Some(onErr) => new Handler(Some((e: Throwable) => OnError(Try(onErrInner(e)), onErr)))
-      }
-      def attachHandler(f: Free[F,R]): Free[F,R] = get match {
-        case None => f
-        case Some(h) => OnError(f, h)
-      }
-      def apply(err: Throwable): Free[F,R] = get match {
-        case None => Fail(err)
-        case Some(h) => try h(err) catch { case e: Throwable => Fail(e) }
-      }
-      def flatMap[R2](f: R => Free[F,R2]): Handler[F,R2] = get match {
-        case None => new Handler(None)
-        case Some(h) => new Handler(Some((e: Throwable) => h(e) flatMap f)) // todo: trampoline?
-      }
+    abstract class Continuation[F[_],A,R] {
+      def apply(f: Free[F,A]): Free[F,R]
+      def compose[A0](k: Continuation[F,A0,A]): Continuation[F,A0,R] = Continuation.composed(k, this)
+      def hasErrorHandler: Boolean
+      def translate[G[_]](nt: F ~> G): Continuation[G,A,R]
+      def depth = 0
     }
-    object Handler { def empty[F[_],R]: Handler[F,R] = new Handler(None) }
+    object Continuation {
+      case class OnError[F[_],A](h: Throwable => Free[F,A]) extends Continuation[F,A,A] {
+        def apply(f: Free[F,A]): Free[F,A] = f match {
+          case Free.Fail(e) => try h(e) catch { case NonFatal(e) => Fail(e) }
+          case Free.Pure(x) => f
+          case _ => f onError h
+        }
+        override def compose[A0](k: Continuation[F,A0,A]) = k match {
+          case OnError(hi) =>
+            OnError[F,A0]((e: Throwable) => hi(e) onError h.asInstanceOf[Throwable => Free[F,A0]])
+              .asInstanceOf[Continuation[F,A0,A]]
+          case _ => composed(k, this)
+        }
+        def hasErrorHandler = true
+        def translate[G[_]](nt: F ~> G): Continuation[G,A,A] =
+          OnError((e: Throwable) => h(e).translate(nt))
+      }
+      def composed[F[_],A,B,C](f: Continuation[F,A,B], g: Continuation[F,B,C]): Continuation[F,A,C]
+        = new Continuation[F,A,C] {
+          val hasErrorHandler = f.hasErrorHandler || g.hasErrorHandler
+          override val depth = (f.depth max g.depth) + 1
+          def apply(a: Free[F,A]) =
+            if (depth < 25) g(f(a))
+            else Free.Pure(()) flatMap { _ => g(f(a)) }
+          def translate[G[_]](nt: F ~> G): Continuation[G,A,C] =
+            composed(f.translate(nt), g.translate(nt))
+        }
+
+      case class FlatMap[F[_],A,B](f: A => Free[F,B]) extends Continuation[F,A,B] {
+        def apply(a: Free[F,A]): Free[F,B] = a match {
+          case Free.Fail(_) => a.asInstanceOf[Free[F,B]]
+          case Free.Pure(a) => try f(a) catch { case NonFatal(e) => Fail(e) }
+          case _ => a flatMap f
+        }
+        override def compose[A0](k: Continuation[F,A0,A]): Continuation[F,A0,B] = k match {
+          case FlatMap(g) => FlatMap((a0: A0) => g(a0) flatMap f)
+          case _ => Continuation.composed(k, this)
+        }
+        def translate[G[_]](nt: F ~> G): Continuation[G,A,B] =
+          FlatMap((a: A) => f(a).translate(nt))
+        def hasErrorHandler = false
+      }
+      case class Done[F[_],A](proof: A =:= A) extends Continuation[F,A,A] {
+        def apply(a: Free[F,A]): Free[F,A] = a
+        def hasErrorHandler = false
+        override def compose[A0](k: Continuation[F,A0,A]) = k
+        def translate[G[_]](nt: F ~> G): Continuation[G,A,A] = this.asInstanceOf[Continuation[G,A,A]]
+      }
+      def done[F[_],A](implicit eq: A =:= A) = Done(eq)
+      def flatMap[F[_],A,B](f: A => Free[F,B]) = FlatMap(f)
+      def onError[F[_],A](h: Throwable => Free[F,A]) = OnError(h)
+    }
 
     // Pure(x)
+    // Eval(e)
     // Bind(Eval(e), f)
     // OnError(Bind(Eval(e), f), h)
+    // Bind(OnError(Eval(e), h), f)
 
     def apply[F[_], R](free: Free[F, R]): ViewL[F, R] = {
       type FreeF[x] = Free[F,x]
       type X = Any
       @annotation.tailrec
-      def go(free: Free[F, X], k: Option[X => Free[F,R]]
-                             , onErr: Handler[F,R]
-                             , onPureErr: Handler[F,R]): ViewL[F, R] = free match {
+      def go(free: Free[F, X], k: Continuation[F,X,R]): ViewL[F, R] = free match {
         case Pure(x) => k match {
-          case None => ViewL.Done(x.asInstanceOf[R])
-          case Some(f) => go(Try(f(x)).asInstanceOf[Free[F,X]], None, Handler.empty, Handler.empty)
+          case d: Continuation.Done[F,Any] => ViewL.Done(x.asInstanceOf[R])
+          case k => go(k(free), Continuation.done[F,X].asInstanceOf[Continuation[F,X,R]])
         }
-        case Eval(fx) => k match {
-          case None => ViewL.Bound(fx, (x: X) => Free.Pure(x.asInstanceOf[R]), onErr.get)
-          case Some(f) => ViewL.Bound(fx, f, onErr.get)
+        case Eval(fx) => ViewL.Bound(fx, k)
+        case Fail(err) => k match {
+          case d: Continuation.Done[F,Any] => ViewL.Failed(err)
+          case k => go(k(free), Continuation.done[F,X].asInstanceOf[Continuation[F,X,R]])
         }
-        case Fail(err) =>
-          go(onPureErr(err).asInstanceOf[Free[F,X]], None, Handler.empty, Handler.empty)
-        case OnError(fx, h) => k match {
-          case None => go(fx, None, onErr.push(h.asInstanceOf[Throwable => Free[F,R]]),
-                                    onPureErr.push(h.asInstanceOf[Throwable => Free[F,R]]))
-          // (a onError h) flatMap k2
-          case Some(k2) =>
-            val h2 = h.asInstanceOf[Throwable => Free[F,R]]
-            go(fx, k, onErr.push(h2).flatMap(k2), onPureErr.push(h2).flatMap(k2))
-        }
+        case OnError(fx, h) => go(fx, Continuation.composed(Continuation.onError(h), k))
         case b: Free.Bind[F, _, X] =>
           val fw: Free[F, Any] = b.fx.asInstanceOf[Free[F, Any]]
           val f: Any => Free[F, X] = b.f.asInstanceOf[Any => Free[F, X]]
-          k match {
-            case None => go(fw,
-              Some((x: X) => onErr.attachHandler(Try(f.asInstanceOf[X => Free[F,R]](x)))),
-                Handler.empty,
-                onPureErr)
-            case Some(g) =>
-              // keep onErr on the error handling stack in case there's an error in pure code
-              go(fw, Some(w => onErr.attachHandler(Try(f(w)).flatMap(g))), Handler.empty, onErr)
-          }
+          go(fw, Continuation.composed(Continuation.flatMap(f), k))
       }
-      // inline use of `Try`, avoid constructing intermediate `Fail` objects
-      // basic idea - onErr and onPureErr get pushed in event of OnError ctor
-      // in event of a Bind, we attach the current onErr to the continuation and set onErr to empty,
-      // but still keep onPureErr
-      // idea being - if we are successful, the `Bound.f` continuation will reattach error handlers
-      // so don't want to dup work
-      go(free.asInstanceOf[Free[F,X]], None, Handler.empty, Handler.empty)
+      go(free.asInstanceOf[Free[F,X]], Continuation.done[F,X].asInstanceOf[Continuation[F,X,R]])
     }
   }
 
@@ -138,11 +153,10 @@ object Free {
       self.viewL match {
         case Done(r) => F.pure(r)
         case Failed(t) => F.raiseError(t)
-        case b: Bound[F,_,R] =>
-          b.onError match {
-            case None => F.flatMap(b.fx)(x => b.tryBind(x).run)
-            case Some(h) => F.flatMap(b.fx)(x => b.tryBind(x).run).handleErrorWith(t => h(t).run)
-          }
+        case b: Bound[F,_,R] => F.flatMap(F.attempt(b.fx)) {
+          case Left(err) => b.handleError(err).run
+          case Right(x) => b.tryBind(x).run
+        }
       }
     }
   }
