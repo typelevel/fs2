@@ -95,8 +95,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.collect]]`. */
   def collect[O2](pf: PartialFunction[O, O2]) = this through pipe.collect(pf)
 
-  // /** Alias for `self through [[pipe.collectFirst]]`. */
-  // def collectFirst[O2](pf: PartialFunction[O, O2]) = self through pipe.collectFirst(pf)
+  /** Alias for `self through [[pipe.collectFirst]]`. */
+  def collectFirst[O2](pf: PartialFunction[O, O2]) = this through pipe.collectFirst(pf)
 
   /** Prepend a single segment onto the front of this stream. */
   def cons[O2>:O](s: Segment[O2,Unit]): Stream[F,O2] =
