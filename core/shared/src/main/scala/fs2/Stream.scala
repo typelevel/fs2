@@ -1003,9 +1003,9 @@ object Stream {
     def echoSegment: Pull[F,O,Option[Stream[F,O]]] =
       receive { (hd, tl) => Pull.output(hd).as(Some(tl)) }
 
-    // /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
-    // def fetchN(n: Int): Pull[F,Nothing,Handle[F,A]] =
-    //   awaitN(n) map { case (buf, h) => buf.reverse.foldLeft(h)(_ push _) }
+    /** Like `[[unconsN]]`, but leaves the buffered input unconsumed. */
+    def fetchN(n: Int): Pull[F,Nothing,Option[Stream[F,O]]] =
+      unconsN(n).map { _.map { case (hd, tl) => tl.cons(hd) } }
 
     /** Awaits the next available element where the predicate returns true. */
     def find(f: O => Boolean): Pull[F,Nothing,Option[(O,Stream[F,O])]] =
