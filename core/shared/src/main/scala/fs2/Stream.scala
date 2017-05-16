@@ -186,12 +186,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
-  // def observe[F2[_],O2>:O](sink: Sink[F2,O2])(implicit F: Effect[F2], R: RealSupertype[O,O2], S: Sub1[F,F2], ec: ExecutionContext): Stream[F2,O2] =
-  //   pipe.observe(Sub1.substStream(self)(S))(sink)
-  //
-  // def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Effect[F2], R: RealSupertype[O,O2], S: Sub1[F,F2], ec: ExecutionContext): Stream[F2,O2] =
-  //   pipe.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
-
   // def open: Pull[F,Nothing,Stream[F,O]] = Pull.pure(this)
 
   // def output: Pull[F,O,Unit] = Pull.outputs(self)
@@ -665,6 +659,12 @@ object Stream {
     def mergeDrainR[O2](s2: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       through2(s2)(pipe2.mergeDrainR)
 
+    def observe[O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      pipe.observe(self)(sink)
+
+    def observeAsync[O2>:O](sink: Sink[F,O2], maxQueued: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      pipe.observeAsync(self, maxQueued)(sink)
+
     /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
     def onComplete[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       (self onError (e => s2 ++ Stream.fail(e))) ++ s2
@@ -828,6 +828,12 @@ object Stream {
     def mergeDrainR[F[_],O2](s2: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       covary[F].through2(s2)(pipe2.mergeDrainR)
 
+    def observe[F[_],O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      covary[F].observe(sink)
+
+    def observeAsync[F[_],O2>:O](sink: Sink[F,O2], maxQueued: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      covary[F].observeAsync(sink, maxQueued)
+      
     /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
     def onComplete[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       covary[F].onComplete(s2)

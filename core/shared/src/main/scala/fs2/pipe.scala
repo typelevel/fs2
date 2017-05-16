@@ -6,9 +6,9 @@ import scala.concurrent.ExecutionContext
 // import cats.{ Eq, Functor }
 import cats.Eq
 import cats.effect.Effect
-// import cats.implicits._
-//
-// import fs2.async.mutable.Queue
+import cats.implicits._
+
+import fs2.async.mutable.Queue
 
 /** Generic implementations of common pipes. */
 object pipe {
@@ -693,94 +693,94 @@ object pipe {
   //   /** Pipe is awaiting input. */
   //   final case class Await[A,B](receive: Option[Chunk[A]] => Stepper[A,B]) extends Step[A,B]
   // }
-  //
-  // /**
-  //  * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
-  //  * Implemented by enqueueing elements as they are seen by `f` onto a `Queue` used by the `g` branch.
-  //  * USE EXTREME CARE WHEN USING THIS FUNCTION. Deadlocks are possible if `combine` pulls from the `g`
-  //  * branch synchronously before the queue has been populated by the `f` branch.
-  //  *
-  //  * The `combine` function receives an `F[Int]` effect which evaluates to the current size of the
-  //  * `g`-branch's queue.
-  //  *
-  //  * When possible, use one of the safe combinators like `[[observe]]`, which are built using this function,
-  //  * in preference to using this function directly.
-  //  */
-  // def diamond[F[_],A,B,C,D](s: Stream[F,A])
-  //   (f: Pipe[F,A, B])
-  //   (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
-  //   (combine: Pipe2[F,B,C,D])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,D] = {
-  //     Stream.eval(qs) flatMap { q =>
-  //     Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
-  //     Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
-  //     combine(
-  //       f {
-  //         val enqueueNone: F[Unit] =
-  //           enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
-  //             if (decremented) q.enqueue1(None)
-  //             else F.pure(())
-  //           }
-  //         s.repeatPull {
-  //           _.receiveOption {
-  //             case Some((a, h)) =>
-  //               Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h)
-  //             case None =>
-  //               Pull.eval(enqueueNone) >> Pull.done
-  //           }
-  //         }.onFinalize(enqueueNone)
-  //       },
-  //       {
-  //         val drainQueue: Stream[F,Nothing] =
-  //           Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
-  //             if (dequeue) pipe.unNoneTerminate(q.dequeue).drain
-  //             else Stream.empty
-  //           }
-  //
-  //         (pipe.unNoneTerminate(
-  //           q.dequeue.
-  //             evalMap { c =>
-  //               if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
-  //               else F.pure(c)
-  //             }).
-  //             flatMap { c => Stream.chunk(c) }.
-  //             through(g) ++ drainQueue
-  //         ).onError { t => drainQueue ++ Stream.fail(t) }
-  //       }
-  //     )
-  //   }}}
-  // }
-  //
-  // /** Queue based version of [[join]] that uses the specified queue. */
-  // def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Effect[F], ec: ExecutionContext): Pipe[F,A,B] = in => {
-  //   for {
-  //     done <- Stream.eval(async.signalOf(false))
-  //     q <- Stream.eval(q)
-  //     b <- in.chunks.map(Some(_)).evalMap(q.enqueue1)
-  //            .drain
-  //            .onFinalize(q.enqueue1(None))
-  //            .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
-  //              f(pipe.unNoneTerminate(q.dequeue) flatMap Stream.chunk)
-  //            }
-  //   } yield b
-  // }
-  //
-  // /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
-  // def joinAsync[F[_]:Effect,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
-  //   joinQueued[F,A,B](async.boundedQueue(maxQueued))(s)
-  //
-  // /**
-  //  * Joins a stream of pipes in to a single pipe.
-  //  * Input is fed to the first pipe until it terminates, at which point input is
-  //  * fed to the second pipe, and so on.
-  //  */
-  // def join[F[_]:Effect,A,B](s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
-  //   joinQueued[F,A,B](async.synchronousQueue)(s)
-  //
-  // /** Synchronously send values through `sink`. */
-  // def observe[F[_]:Effect,A](s: Stream[F,A])(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
-  //   diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain))(pipe2.merge)
-  //
-  // /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-  // def observeAsync[F[_]:Effect,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
-  //   diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(pipe2.merge)
+
+  /**
+   * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
+   * Implemented by enqueueing elements as they are seen by `f` onto a `Queue` used by the `g` branch.
+   * USE EXTREME CARE WHEN USING THIS FUNCTION. Deadlocks are possible if `combine` pulls from the `g`
+   * branch synchronously before the queue has been populated by the `f` branch.
+   *
+   * The `combine` function receives an `F[Int]` effect which evaluates to the current size of the
+   * `g`-branch's queue.
+   *
+   * When possible, use one of the safe combinators like `[[observe]]`, which are built using this function,
+   * in preference to using this function directly.
+   */
+  def diamond[F[_],A,B,C,D](s: Stream[F,A])
+    (f: Pipe[F,A,B])
+    (qs: F[Queue[F,Option[Segment[A,Unit]]]], g: Pipe[F,A,C])
+    (combine: Pipe2[F,B,C,D])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,D] = {
+      Stream.eval(qs) flatMap { q =>
+      Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
+      Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
+      combine(
+        f {
+          val enqueueNone: F[Unit] =
+            enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
+              if (decremented) q.enqueue1(None)
+              else F.pure(())
+            }
+          s.repeatPull {
+            _.receiveOption {
+              case Some((a, h)) =>
+                Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(Some(h))
+              case None =>
+                Pull.eval(enqueueNone) >> Pull.pure(None)
+            }
+          }.onFinalize(enqueueNone)
+        },
+        {
+          val drainQueue: Stream[F,Nothing] =
+            Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
+              if (dequeue) pipe.unNoneTerminate(q.dequeue).drain
+              else Stream.empty
+            }
+
+          (pipe.unNoneTerminate(
+            q.dequeue.
+              evalMap { c =>
+                if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
+                else F.pure(c)
+              }).
+              flatMap { c => Stream.segment(c) }.
+              through(g) ++ drainQueue
+          ).onError { t => drainQueue ++ Stream.fail(t) }
+        }
+      )
+    }}}
+  }
+
+  /** Queue based version of [[join]] that uses the specified queue. */
+  def joinQueued[F[_],A,B](q: F[Queue[F,Option[Segment[A,Unit]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Effect[F], ec: ExecutionContext): Pipe[F,A,B] = in => {
+    for {
+      done <- Stream.eval(async.signalOf(false))
+      q <- Stream.eval(q)
+      b <- in.segments.map(Some(_)).evalMap(q.enqueue1)
+             .drain
+             .onFinalize(q.enqueue1(None))
+             .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
+               f(pipe.unNoneTerminate(q.dequeue) flatMap Stream.segment)
+             }
+    } yield b
+  }
+
+  /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
+  def joinAsync[F[_]:Effect,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
+    joinQueued[F,A,B](async.boundedQueue(maxQueued))(s)
+
+  /**
+   * Joins a stream of pipes in to a single pipe.
+   * Input is fed to the first pipe until it terminates, at which point input is
+   * fed to the second pipe, and so on.
+   */
+  def join[F[_]:Effect,A,B](s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
+    joinQueued[F,A,B](async.synchronousQueue)(s)
+
+  /** Synchronously send values through `sink`. */
+  def observe[F[_]:Effect,A](s: Stream[F,A])(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
+    diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain))(pipe2.merge)
+
+  /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+  def observeAsync[F[_]:Effect,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
+    diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(pipe2.merge)
 }
