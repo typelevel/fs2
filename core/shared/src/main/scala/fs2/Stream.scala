@@ -244,13 +244,13 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.split]]`. */
   // def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
 
-  /** Alias for `self through [[pipe.tail]]`. */
+  /** Alias for [[pipe.tail]]. */
   def tail: Stream[F,O] = this through pipe.tail
 
-  def take(n: Long): Stream[F,O] = this.through(pipe.take(n))
+  def take(n: Long): Stream[F,O] = this through pipe.take(n)
 
-  // /** Alias for `self through [[pipe.takeRight]]`. */
-  // def takeRight(n: Long): Stream[F,O] = self through pipe.takeRight(n)
+  /** Alias for [[pipe.takeRight]]. */
+  def takeRight(n: Long): Stream[F,O] = this through pipe.takeRight(n)
 
   /** Alias for [[pipe.takeThrough]]. */
   def takeThrough(p: O => Boolean): Stream[F,O] = this through pipe.takeThrough(p)
@@ -1108,19 +1108,19 @@ object Stream {
           out >> (if (count >= n) Pull.pure(Some(rest)) else rest.pull.take(n - count))
       }
 
-    // /** Emits the last `n` elements of the input. */
-    // def takeRight(n: Long): Pull[F,Nothing,Vector[A]]  = {
-    //   def go(acc: Vector[A])(h: Handle[F,A]): Pull[F,Nothing,Vector[A]] = {
-    //     h.awaitN(if (n <= Int.MaxValue) n.toInt else Int.MaxValue, true).optional.flatMap {
-    //       case None => Pull.pure(acc)
-    //       case Some((cs, h)) =>
-    //         val vector = cs.toVector.flatMap(_.toVector)
-    //         go(acc.drop(vector.length) ++ vector)(h)
-    //     }
-    //   }
-    //   if (n <= 0) Pull.pure(Vector())
-    //   else go(Vector())(this)
-    // }
+    /** Emits the last `n` elements of the input. */
+    def takeRight(n: Long): Pull[F,Nothing,Chunk[O]]  = {
+      def go(acc: Vector[O], s: Stream[F,O]): Pull[F,Nothing,Chunk[O]] = {
+        s.pull.unconsN(n, true).flatMap {
+          case None => Pull.pure(Chunk.vector(acc))
+          case Some((hd, tl)) =>
+            val vector = hd.toVector
+            go(acc.drop(vector.length) ++ vector, tl)
+        }
+      }
+      if (n <= 0) Pull.pure(Chunk.empty)
+      else go(Vector.empty, self)
+    }
 
     /** Like [[takeWhile]], but emits the first value which tests false. */
     def takeThrough(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, true)

@@ -488,9 +488,9 @@ object pipe {
   def take[F[_],I](n: Long): Pipe[F,I,I] =
     _.pull.take(n).stream
 
-  // /** Emits the last `n` elements of the input. */
-  // def takeRight[F[_],I](n: Long): Pipe[F,I,I] =
-  //   _ pull { h => h.takeRight(n).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
+  /** Emits the last `n` elements of the input. */
+  def takeRight[F[_],I](n: Long): Pipe[F,I,I] =
+    _.pull.takeRight(n).flatMap(Pull.output).stream
 
   /** Like [[takeWhile]], but emits the first value which tests false. */
   def takeThrough[F[_],I](f: I => Boolean): Pipe[F,I,I] =
