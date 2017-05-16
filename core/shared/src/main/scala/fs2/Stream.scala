@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.ExecutionContext
 // import scala.concurrent.duration.FiniteDuration
 
-import cats.{ ~>, Applicative, Monoid, Semigroup }
+import cats.{ ~>, Applicative, Eq, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
 import cats.implicits._
 
@@ -78,16 +78,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //
   // /** Alias for `self through [[pipe.bufferBy]]`. */
   // def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
-  //
-  // /** Alias for `self through [[pipe.changesBy]]`. */
-  // def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F,O] = self through pipe.changesBy(f)
-  //
-  // /** Alias for `self through [[pipe.chunkLimit]]`. */
-  // def chunkLimit(n: Int): Stream[F,NonEmptyChunk[O]] = self through pipe.chunkLimit(n)
-  //
-  // /** Alias for `self through [[pipe.chunkN]]`. */
-  // def chunkN(n: Int, allowFewer: Boolean = true): Stream[F,List[NonEmptyChunk[O]]] =
-  //   self through pipe.chunkN(n, allowFewer)
+
+  /** Alias for `self through [[pipe.changesBy]]`. */
+  def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F,O] = this through pipe.changesBy(f)
 
   /** Alias for `self through [[pipe.chunks]]`. */
   def chunks: Stream[F,Chunk[O]] = this through pipe.chunks
@@ -95,8 +88,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.collect]]`. */
   def collect[O2](pf: PartialFunction[O, O2]) = this through pipe.collect(pf)
 
-  // /** Alias for `self through [[pipe.collectFirst]]`. */
-  // def collectFirst[O2](pf: PartialFunction[O, O2]) = self through pipe.collectFirst(pf)
+  /** Alias for `self through [[pipe.collectFirst]]`. */
+  def collectFirst[O2](pf: PartialFunction[O, O2]) = this through pipe.collectFirst(pf)
 
   /** Prepend a single segment onto the front of this stream. */
   def cons[O2>:O](s: Segment[O2,Unit]): Stream[F,O2] =
@@ -113,8 +106,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Lifts this stream to the specified output type. */
   def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf[Stream[F,O2]]
 
-  // /** Alias for `self through [[pipe.delete]]`. */
-  // def delete(f: O => Boolean): Stream[F,O] = self through pipe.delete(f)
+  /** Alias for [[pipe.delete]]. */
+  def delete(f: O => Boolean): Stream[F,O] = this through pipe.delete(f)
 
   /**
    * Removes all output values from this stream.
@@ -125,14 +118,17 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   def drop(n: Long): Stream[F,O] = this.through(pipe.drop(n))
 
-  // /** Alias for `self through [[pipe.dropLast]]`. */
-  // def dropLast: Stream[F,O] = self through pipe.dropLast
-  //
-  // /** Alias for `self through [[pipe.dropLastIf]]`. */
-  // def dropLastIf(p: O => Boolean): Stream[F,O] = self through pipe.dropLastIf(p)
-  //
-  // /** Alias for `self through [[pipe.dropRight]]`. */
-  // def dropRight(n: Int): Stream[F,O] = self through pipe.dropRight(n)
+  /** Alias for `self through [[pipe.dropLast]]`. */
+  def dropLast: Stream[F,O] = this through pipe.dropLast
+
+  /** Alias for `self through [[pipe.dropLastIf]]`. */
+  def dropLastIf(p: O => Boolean): Stream[F,O] = this through pipe.dropLastIf(p)
+
+  /** Alias for `self through [[pipe.dropRight]]`. */
+  def dropRight(n: Int): Stream[F,O] = this through pipe.dropRight(n)
+
+  /** Alias for `self through [[pipe.dropThrough]]` */
+  def dropThrough(p: O => Boolean): Stream[F,O] = this through pipe.dropThrough(p)
 
   /** Alias for `self through [[pipe.dropWhile]]` */
   def dropWhile(p: O => Boolean): Stream[F,O] = this through pipe.dropWhile(p)
@@ -143,11 +139,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = this through pipe.filter(f)
 
-  // /** Alias for `self through [[pipe.filterWithPrevious]]`. */
-  // def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = self through pipe.filterWithPrevious(f)
+  /** Alias for `self through [[pipe.filterWithPrevious]]`. */
+  def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = this through pipe.filterWithPrevious(f)
 
-  // /** Alias for `self through [[pipe.find]]`. */
-  // def find(f: O => Boolean): Stream[F,O] = self through pipe.find(f)
+  /** Alias for [[pipe.find]]. */
+  def find(f: O => Boolean): Stream[F,O] = this through pipe.find(f)
 
   /** Alias for `self through [[pipe.fold]](z)(f)`. */
   def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = this through pipe.fold(z)(f)
@@ -190,12 +186,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
-  // def observe[F2[_],O2>:O](sink: Sink[F2,O2])(implicit F: Effect[F2], R: RealSupertype[O,O2], S: Sub1[F,F2], ec: ExecutionContext): Stream[F2,O2] =
-  //   pipe.observe(Sub1.substStream(self)(S))(sink)
-  //
-  // def observeAsync[F2[_],O2>:O](sink: Sink[F2,O2], maxQueued: Int)(implicit F: Effect[F2], R: RealSupertype[O,O2], S: Sub1[F,F2], ec: ExecutionContext): Stream[F2,O2] =
-  //   pipe.observeAsync(Sub1.substStream(self)(S), maxQueued)(sink)
-
   // def open: Pull[F,Nothing,Stream[F,O]] = Pull.pure(this)
 
   // def output: Pull[F,O,Unit] = Pull.outputs(self)
@@ -228,7 +218,15 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // def scope: Stream[F,O] =
   //   Stream.mk { StreamCore.scope { self.get } }
 
-  /** Alias for `self through [[pipe.segments]]`. */
+  /** Alias for [[pipe.segmentLimit]]. */
+  def segmentLimit(n: Int): Stream[F,Segment[O,Unit]] =
+    this through pipe.segmentLimit(n)
+
+  /** Alias for [[pipe.segmentN]]. */
+  def segmentN(n: Int, allowFewer: Boolean = true): Stream[F,Segment[O,Unit]] =
+    this through pipe.segmentN(n, allowFewer)
+
+  /** Alias for [[pipe.segments]]. */
   def segments: Stream[F,Segment[O,Unit]] = this through pipe.segments
 
   //
@@ -241,16 +239,16 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.split]]`. */
   // def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
 
-  /** Alias for `self through [[pipe.tail]]`. */
+  /** Alias for [[pipe.tail]]. */
   def tail: Stream[F,O] = this through pipe.tail
 
-  def take(n: Long): Stream[F,O] = this.through(pipe.take(n))
+  def take(n: Long): Stream[F,O] = this through pipe.take(n)
 
-  // /** Alias for `self through [[pipe.takeRight]]`. */
-  // def takeRight(n: Long): Stream[F,O] = self through pipe.takeRight(n)
-  //
-  // /** Alias for `self through [[pipe.takeThrough]]`. */
-  // def takeThrough(p: O => Boolean): Stream[F,O] = self through pipe.takeThrough(p)
+  /** Alias for [[pipe.takeRight]]. */
+  def takeRight(n: Long): Stream[F,O] = this through pipe.takeRight(n)
+
+  /** Alias for [[pipe.takeThrough]]. */
+  def takeThrough(p: O => Boolean): Stream[F,O] = this through pipe.takeThrough(p)
 
   /** Alias for `self through [[pipe.takeWhile]]`. */
   def takeWhile(p: O => Boolean): Stream[F,O] = this through pipe.takeWhile(p)
@@ -582,8 +580,8 @@ object Stream {
     def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       Stream.append(self, s2)
 
-    // /** Alias for `self through [[pipe.changes]]`. */
-    // def changes(implicit eq: Eq[O]): Stream[F,O] = self through pipe.changes
+    /** Alias for `self through [[pipe.changes]]`. */
+    def changes(implicit eq: Eq[O]): Stream[F,O] = self through pipe.changes
 
     /** Lifts this stream to the specified effect type. */
     def covary[F2[x]>:F[x]]: Stream[F2,O] = self.asInstanceOf[Stream[F2,O]]
@@ -660,6 +658,12 @@ object Stream {
 
     def mergeDrainR[O2](s2: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       through2(s2)(pipe2.mergeDrainR)
+
+    def observe[O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      pipe.observe(self)(sink)
+
+    def observeAsync[O2>:O](sink: Sink[F,O2], maxQueued: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      pipe.observeAsync(self, maxQueued)(sink)
 
     /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
     def onComplete[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
@@ -824,6 +828,12 @@ object Stream {
     def mergeDrainR[F[_],O2](s2: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       covary[F].through2(s2)(pipe2.mergeDrainR)
 
+    def observe[F[_],O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      covary[F].observe(sink)
+
+    def observeAsync[F[_],O2>:O](sink: Sink[F,O2], maxQueued: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      covary[F].observeAsync(sink, maxQueued)
+      
     /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
     def onComplete[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       covary[F].onComplete(s2)
@@ -923,66 +933,70 @@ object Stream {
      *
      * `Pull.pure(None)` is returned if the end of the source stream is reached.
      */
-    def unconsLimit(n: Long): Pull[F,Nothing,Option[Segment[O,(Long,Stream[F,O])]]] = {
+    def unconsLimit(n: Long): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
       require(n > 0)
-      uncons.map { _.map { case (hd, tl) =>
-        hd.take(n).mapResult {
-          case None =>
-            (0, tl.cons(hd.drop(n).voidResult))
-          case Some((rem, ())) =>
-            (rem, tl)
+      uncons.flatMapOpt { case (hd,tl) =>
+        val (segments, cnt, result) = hd.splitAt(n)
+        val out = Segment.catenated(segments).getOrElse(Segment.empty)
+        val rest = result match {
+          case Left(()) => tl
+          case Right(tl2) => tl.cons(tl2)
         }
-      }}
+        Pull.pure(Some((out,rest)))
+      }
     }
 
     def unconsN(n: Long, allowFewer: Boolean = false): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
-      def go(acc: Catenable[Segment[O,Unit]], n: Long, s: Stream[F,O]): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
-        if (n <= 0) Pull.pure(Some((Segment.catenated(acc), s)))
-        else s.pull.unconsLimit(n).flatMap {
+      def go(acc: Catenable[Segment[O,Unit]], n: Long, s: Stream[F,O]): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
+        s.pull.uncons.flatMap {
           case None =>
-            if (allowFewer && acc.nonEmpty) Pull.pure(Some((Segment.catenated(acc), Stream.empty)))
+            if (allowFewer && acc.nonEmpty) Pull.pure(Some((Segment.catenated(acc).getOrElse(Segment.empty), Stream.empty)))
             else Pull.pure(None)
-          case Some(hd) =>
-            val (hd2,tl) = hd.splitAt(n) // nb: hd is guaranteed to be n elements or less
-            tl match {
-              case Left((rem, tl2)) =>
-                if (rem > 0) go(acc :+ hd2, rem, tl2)
-                else Pull.pure(Some((Segment.catenated(acc :+ hd2), tl2)))
-              case Right(tl2) =>
-                sys.error("FS2-bug: hd2 is known to be <= n elements so splitAt(n) cannot return a right")
+          case Some((hd,tl)) =>
+            val (segments, cnt, result) = hd.splitAt(n)
+            val rest = result match {
+              case Left(()) => tl
+              case Right(tl2) => tl.cons(tl2)
             }
+            if (cnt >= n) Pull.pure(Some((Segment.catenated(acc ++ segments).getOrElse(Segment.empty), rest)))
+            else go(acc ++ segments, n - cnt, rest)
         }
-      go(Catenable.empty, n, self)
+      }
+      if (n <= 0) Pull.pure(Some((Segment.empty, self)))
+      else go(Catenable.empty, n, self)
     }
-
-    /** Copies the next available chunk to the output. */
-    def copy: Pull[F,O,Option[Stream[F,O]]] =
-      receive { (hd, tl) => Pull.output(hd).as(Some(tl)) }
-
-    /** Copies the next available element to the output. */
-    def copy1: Pull[F,O,Option[Stream[F,O]]] =
-      receive1 { (hd, tl) => Pull.output1(hd).as(Some(tl)) }
 
     /** Drops the first `n` elements of this `Stream`, and returns the new `Stream`. */
     def drop(n: Long): Pull[F,Nothing,Option[Stream[F,O]]] =
       if (n <= 0) Pull.pure(Some(self))
-      else unconsLimit(n).flatMapOpt { s =>
-        Pull.segment(s.drain).flatMap { case (rem, tl) =>
-          if (rem > 0) tl.pull.drop(rem) else Pull.pure(Some(tl))
+      else uncons.flatMapOpt { case (hd,tl) =>
+        val (segments, count, result) = hd.splitAt(n)
+        val rest = result match {
+          case Left(()) => tl
+          case Right(tl2) => tl.cons(tl2)
         }
-      }
+        if (count >= n) Pull.pure(Some(rest)) else rest.pull.drop(n - count)
+    }
+
+    /** Like [[dropWhile]], but drops the first value which tests false. */
+    def dropThrough(p: O => Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
+      dropWhile_(p, true)
 
     /**
      * Drops elements of the this stream until the predicate `p` fails, and returns the new stream.
      * If defined, the first element of the returned stream will fail `p`.
      */
     def dropWhile(p: O => Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
-      receive { (hd,tl) =>
-        val s = Pull.segment(hd.dropWhile(p)).flatMap { case (dropping, ()) =>
-          if (dropping) pipe.dropWhile(p)(tl).pull.echo
-          else Pull.pure(Some(tl))
-        }.stream
-        Pull.pure(Some(s))
+      dropWhile_(p, false)
+
+    def dropWhile_(p: O => Boolean, emitFailure: Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
+      receive { (hd, tl) =>
+        val (segments, unfinished, result) = hd.splitWhile(p, emitFailure)
+        val rest = result match {
+          case Left(()) => tl
+          case Right(tl2) => tl.cons(tl2)
+        }
+        if (unfinished) rest.pull.dropWhile_(p, emitFailure) else Pull.pure(Some(rest))
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
@@ -996,19 +1010,19 @@ object Stream {
     def echoSegment: Pull[F,O,Option[Stream[F,O]]] =
       receive { (hd, tl) => Pull.output(hd).as(Some(tl)) }
 
-    // /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
-    // def fetchN(n: Int): Pull[F,Nothing,Handle[F,A]] =
-    //   awaitN(n) map { case (buf, h) => buf.reverse.foldLeft(h)(_ push _) }
-    //
-    // /** Awaits the next available element where the predicate returns true. */
-    // def find(f: A => Boolean): Pull[F,Nothing,(A,Handle[F,A])] =
-    //   this.receive { (chunk, h) =>
-    //     chunk.indexWhere(f) match {
-    //       case None => h.find(f)
-    //       case Some(a) if a + 1 < chunk.size => Pull.pure((chunk(a), h.push(chunk.drop(a + 1))))
-    //       case Some(a) => Pull.pure((chunk(a), h))
-    //     }
-    //   }
+    /** Like `[[unconsN]]`, but leaves the buffered input unconsumed. */
+    def fetchN(n: Int): Pull[F,Nothing,Option[Stream[F,O]]] =
+      unconsN(n).map { _.map { case (hd, tl) => tl.cons(hd) } }
+
+    /** Awaits the next available element where the predicate returns true. */
+    def find(f: O => Boolean): Pull[F,Nothing,Option[(O,Stream[F,O])]] =
+      receiveChunk { (hd, tl) =>
+        hd.indexWhere(f) match {
+          case None => tl.pull.find(f)
+          case Some(idx) if idx + 1 < hd.size => Pull.pure(Some((hd(idx), tl.cons(hd.drop(idx + 1).voidResult))))
+          case Some(idx) => Pull.pure(Some((hd(idx), tl)))
+        }
+      }
 
     /**
      * Folds all inputs using an initial value `z` and supplied binary operator, and writes the final
@@ -1036,8 +1050,8 @@ object Stream {
         case None => Pull.pure(true)
         case Some((hd,tl)) =>
           Pull.segment(hd.takeWhile(p).drain).flatMap {
-            case Some(()) => tl.pull.forall(p)
-            case None => Pull.pure(false)
+            case Right(()) => tl.pull.forall(p)
+            case Left(_) => Pull.pure(false)
           }
       }
     }
@@ -1079,9 +1093,13 @@ object Stream {
     def receive1[O2,R](f: (O,Stream[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
       uncons1.flatMapOpt { case (hd, tl) => f(hd, tl) }
 
-    /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+    /** Apply `f` to the next available segment, or `None` if the input is exhausted. */
     def receiveOption[O2,R](f: Option[(Segment[O,Unit],Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
       uncons.flatMap(f)
+
+    /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+    def receiveChunkOption[O2,R](f: Option[(Chunk[O],Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
+      unconsChunk.flatMap(f)
 
     /** Apply `f` to the next available element, or `None` if the input is exhausted. */
     def receive1Option[O2,R](f: Option[(O,Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
@@ -1089,54 +1107,51 @@ object Stream {
 
     /** Emits the first `n` elements of the input. */
     def take(n: Long): Pull[F,O,Option[Stream[F,O]]] =
-      if (n <= 0) Pull.pure(Some(self))
-      else unconsLimit(n).flatMapOpt { s =>
-        Pull.segment(s).flatMap { case (rem, tl) =>
-          if (rem > 0) tl.pull.take(rem) else Pull.pure(None)
-        }
+      if (n <= 0) Pull.pure(None)
+      else uncons.flatMapOpt {
+        case (hd,tl) =>
+          val (segments, count, result) = hd.splitAt(n)
+          val out = Segment.catenated(segments).map(Pull.output).getOrElse(Pull.pure(()))
+          val rest = result match {
+            case Left(()) => tl
+            case Right(tl2) => tl.cons(tl2)
+          }
+          out >> (if (count >= n) Pull.pure(Some(rest)) else rest.pull.take(n - count))
       }
 
-    // /** Emits the last `n` elements of the input. */
-    // def takeRight(n: Long): Pull[F,Nothing,Vector[A]]  = {
-    //   def go(acc: Vector[A])(h: Handle[F,A]): Pull[F,Nothing,Vector[A]] = {
-    //     h.awaitN(if (n <= Int.MaxValue) n.toInt else Int.MaxValue, true).optional.flatMap {
-    //       case None => Pull.pure(acc)
-    //       case Some((cs, h)) =>
-    //         val vector = cs.toVector.flatMap(_.toVector)
-    //         go(acc.drop(vector.length) ++ vector)(h)
-    //     }
-    //   }
-    //   if (n <= 0) Pull.pure(Vector())
-    //   else go(Vector())(this)
-    // }
-    //
-    // /** Like `takeWhile`, but emits the first value which tests false. */
-    // def takeThrough(p: A => Boolean): Pull[F,A,Handle[F,A]] =
-    //   this.receive { (chunk, h) =>
-    //     chunk.indexWhere(!p(_)) match {
-    //       case Some(a) => Pull.output(chunk.take(a+1)) >> Pull.pure(h.push(chunk.drop(a+1)))
-    //       case None => Pull.output(chunk) >> h.takeThrough(p)
-    //     }
-    //   }
+    /** Emits the last `n` elements of the input. */
+    def takeRight(n: Long): Pull[F,Nothing,Chunk[O]]  = {
+      def go(acc: Vector[O], s: Stream[F,O]): Pull[F,Nothing,Chunk[O]] = {
+        s.pull.unconsN(n, true).flatMap {
+          case None => Pull.pure(Chunk.vector(acc))
+          case Some((hd, tl)) =>
+            val vector = hd.toVector
+            go(acc.drop(vector.length) ++ vector, tl)
+        }
+      }
+      if (n <= 0) Pull.pure(Chunk.empty)
+      else go(Vector.empty, self)
+    }
+
+    /** Like [[takeWhile]], but emits the first value which tests false. */
+    def takeThrough(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, true)
 
     /**
      * Emits the elements of the stream until the predicate `p` fails,
      * and returns the remaining `Stream`. If non-empty, the returned stream will have
      * a first element `i` for which `p(i)` is `false`. */
-    def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] =
-      receive { (hd, tl) =>
-        hd.uncons match {
-          case Left(()) => tl.pull.takeWhile(p)
-          case Right((hd,tl2)) =>
-            Pull.segment(hd.takeWhile(p)).flatMap {
-              case None => Pull.pure(Some(tl.cons(tl2)))
-              case Some(()) => tl.cons(tl2).pull.takeWhile(p)
+    def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, false)
 
-            }
+    def takeWhile_(p: O => Boolean, emitFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =
+      receive { (hd, tl) =>
+        val (segments, unfinished, result) = hd.splitWhile(p, emitFailure = emitFailure)
+        val rest = result match {
+          case Left(()) => tl
+          case Right(tl2) => tl.cons(tl2)
         }
+        Segment.catenated(segments).map(Pull.output).getOrElse(Pull.pure(())) >> (if (unfinished) rest.pull.takeWhile_(p, emitFailure) else Pull.pure(Some(rest)))
       }
   }
-
 
   /** Provides operations on effectful pipes for syntactic convenience. */
   implicit class PipeOps[F[_],I,O](private val self: Pipe[F,I,O]) extends AnyVal {
@@ -1154,16 +1169,14 @@ object Stream {
   implicit class PurePipeOps[I,O](private val self: Pipe[Pure,I,O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe[F,I,O] = self.asInstanceOf[Pipe[F,I,O]]
-      //pipe.covary[F,I,O](self) todo
+    def covary[F[_]]: Pipe[F,I,O] = pipe.covary[F,I,O](self)
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit class PurePipe2Ops[I,I2,O](private val self: Pipe2[Pure,I,I2,O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe2[F,I,I2,O] = self.asInstanceOf[Pipe2[F,I,I2,O]]
-      //pipe2.covary[F](self) todo
+    def covary[F[_]]: Pipe2[F,I,I2,O] = pipe2.covary[F,I,I2,O](self)
   }
 
   implicit def covaryPure[F[_],O,O2>:O](s: Stream[Pure,O]): Stream[F,O2] = s.covaryAll[F,O2]

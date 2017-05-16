@@ -26,6 +26,16 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   final override def map[O2](f: O => O2): Chunk[O2] =
     super.map(f).toChunk
 
+  def indexWhere(p: O => Boolean): Option[Int] = {
+    var i = 0
+    var result = -1
+    while (result < 0 && i < size) {
+      if (p(apply(i))) result = i
+      i += 1
+    }
+    if (result == -1) None else Some(result)
+  }
+
   /** Copies the elements of this chunk to an array. */
   def toArray[B >: O: ClassTag]: Array[B] = {
     val arr = new Array[B](size)
@@ -119,6 +129,14 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     buf.result
   }
 
+  def splitAtChunk(n: Int): (Chunk[O], Chunk[O]) = {
+    if (n <= 0) (Chunk.empty, this)
+    else if (n >= size) (this, Chunk.empty)
+    else splitAtChunk_(n)
+  }
+
+  protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
+
   override def toString = {
     val vs = (0 until size).view.map(i => apply(i)).mkString(", ")
     s"Chunk($vs)"
@@ -134,6 +152,7 @@ object Chunk {
     override def unconsChunk: Either[Unit, (Chunk[Nothing],Segment[Nothing,Unit])] = Left(())
     override def foreachChunk(f: Chunk[Nothing] => Unit): Unit = ()
     override def toVector: Vector[Nothing] = Vector.empty
+    protected def splitAtChunk_(n: Int): (Chunk[Nothing], Chunk[Nothing]) = sys.error("impossible")
     override def toString = "empty"
   }
   def empty[A]: Chunk[A] = empty_
@@ -141,6 +160,7 @@ object Chunk {
   def singleton[A](a: A): Chunk[A] = new Chunk[A] {
     def size = 1
     def apply(i: Int) = { require (i == 0); a }
+    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) = sys.error("impossible")
   }
 
   def vector[A](a: Vector[A]): Chunk[A] = {
@@ -149,6 +169,10 @@ object Chunk {
       def size = a.length
       def apply(i: Int) = a(i)
       override def toVector = a
+      protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) = {
+        val (fst,snd) = a.splitAt(n)
+        vector(fst) -> vector(snd)
+      }
     }
   }
 
@@ -158,6 +182,10 @@ object Chunk {
       def size = a.length
       def apply(i: Int) = a(i)
       override def toVector = a.toVector
+      protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) = {
+        val (fst,snd) = a.splitAt(n)
+        indexedSeq(fst) -> indexedSeq(snd)
+      }
     }
   }
 
@@ -180,6 +208,10 @@ object Chunk {
   final case class Boxed[A](values: Array[A]) extends Chunk[A] {
     def size = values.length
     def apply(i: Int) = values(i)
+    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) = {
+      val (fst,snd) = values.splitAt(n)
+      boxed(fst) -> boxed(snd)
+    }
   }
 
   def booleans(values: Array[Boolean]): Chunk[Boolean] = Booleans(values)
@@ -187,6 +219,10 @@ object Chunk {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
+    protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) = {
+      val (fst,snd) = values.splitAt(n)
+      booleans(fst) -> booleans(snd)
+    }
   }
 
   def bytes(values: Array[Byte]): Chunk[Byte] = Bytes(values)
@@ -194,6 +230,10 @@ object Chunk {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
+    protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
+      val (fst,snd) = values.splitAt(n)
+      bytes(fst) -> bytes(snd)
+    }
   }
 
   def shorts(values: Array[Short]): Chunk[Short] = Shorts(values)
@@ -201,6 +241,10 @@ object Chunk {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
+    protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) = {
+      val (fst,snd) = values.splitAt(n)
+      shorts(fst) -> shorts(snd)
+    }
   }
 
   def ints(values: Array[Int]): Chunk[Int] = Ints(values)
@@ -208,6 +252,10 @@ object Chunk {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
+    protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) = {
+      val (fst,snd) = values.splitAt(n)
+      ints(fst) -> ints(snd)
+    }
   }
 
   def longs(values: Array[Long]): Chunk[Long] = Longs(values)
@@ -215,6 +263,10 @@ object Chunk {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
+    protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) = {
+      val (fst,snd) = values.splitAt(n)
+      longs(fst) -> longs(snd)
+    }
   }
 
   def floats(values: Array[Float]): Chunk[Float] = Floats(values)
@@ -222,6 +274,10 @@ object Chunk {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
+    protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) = {
+      val (fst,snd) = values.splitAt(n)
+      floats(fst) -> floats(snd)
+    }
   }
 
   def doubles(values: Array[Double]): Chunk[Double] = Doubles(values)
@@ -229,5 +285,9 @@ object Chunk {
     def size = values.length
     def apply(i: Int) = values(i)
     def at(i: Int) = values(i)
+    protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) = {
+      val (fst,snd) = values.splitAt(n)
+      doubles(fst) -> doubles(snd)
+    }
   }
 }

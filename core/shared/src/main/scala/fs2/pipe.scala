@@ -4,11 +4,11 @@ import scala.concurrent.ExecutionContext
 // import scala.concurrent.duration.FiniteDuration
 
 // import cats.{ Eq, Functor }
+import cats.Eq
 import cats.effect.Effect
-// import cats.implicits._
-//
-// import fs2.async.mutable.Queue
-// import fs2.util.{ Attempt, Free, Sub1 }
+import cats.implicits._
+
+import fs2.async.mutable.Queue
 
 /** Generic implementations of common pipes. */
 object pipe {
@@ -50,33 +50,25 @@ object pipe {
   //   }
   //   _.pull { h => go(Vector.empty, false)(h) }
   // }
-  //
-  // /**
-  //  * Emits only elements that are distinct from their immediate predecessors,
-  //  * using natural equality for comparison.
-  //  */
-  // def changes[F[_],I](implicit eq: Eq[I]): Pipe[F,I,I] =
-  //   filterWithPrevious(eq.neqv)
-  //
-  // /**
-  //  * Emits only elements that are distinct from their immediate predecessors
-  //  * according to `f`, using natural equality for comparison.
-  //  *
-  //  * Note that `f` is called for each element in the stream multiple times
-  //  * and hence should be fast (e.g., an accessor). It is not intended to be
-  //  * used for computationally intensive conversions. For such conversions,
-  //  * consider something like: `src.map(i => (i, f(i))).changesBy(_._2).map(_._1)`
-  //  */
-  // def changesBy[F[_],I,I2](f: I => I2)(implicit eq: Eq[I2]): Pipe[F,I,I] =
-  //   filterWithPrevious((i1, i2) => eq.neqv(f(i1), f(i2)))
-  //
-  // /** Outputs chunks with a limited maximum size, splitting as necessary. */
-  // def chunkLimit[F[_],I](n: Int): Pipe[F,I,NonEmptyChunk[I]] =
-  //   _ repeatPull { _.awaitLimit(n) flatMap { case (chunk, h) => Pull.output1(chunk) as h } }
-  //
-  // /** Outputs a list of chunks, the total size of all chunks is limited and split as necessary. */
-  // def chunkN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,List[NonEmptyChunk[I]]] =
-  //   _ repeatPull { _.awaitN(n, allowFewer) flatMap { case (chunks, h) => Pull.output1(chunks) as h }}
+
+  /**
+   * Emits only elements that are distinct from their immediate predecessors,
+   * using natural equality for comparison.
+   */
+  def changes[F[_],I](implicit eq: Eq[I]): Pipe[F,I,I] =
+    filterWithPrevious(eq.neqv)
+
+  /**
+   * Emits only elements that are distinct from their immediate predecessors
+   * according to `f`, using natural equality for comparison.
+   *
+   * Note that `f` is called for each element in the stream multiple times
+   * and hence should be fast (e.g., an accessor). It is not intended to be
+   * used for computationally intensive conversions. For such conversions,
+   * consider something like: `src.map(i => (i, f(i))).changesBy(_._2).map(_._1)`
+   */
+  def changesBy[F[_],I,I2](f: I => I2)(implicit eq: Eq[I2]): Pipe[F,I,I] =
+    filterWithPrevious((i1, i2) => eq.neqv(f(i1), f(i2)))
 
   /** Outputs all chunks from the source stream. */
   def chunks[F[_],I]: Pipe[F,I,Chunk[I]] =
@@ -86,9 +78,9 @@ object pipe {
   def collect[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
     mapSegments(_.collect(pf))
 
-  // /** Emits the first element of the Stream for which the partial function is defined. */
-  // def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
-  //   _ pull { h => h.find(pf.isDefinedAt) flatMap { case (i, h) => Pull.output1(pf(i)) }}
+  /** Emits the first element of the Stream for which the partial function is defined. */
+  def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
+    _.pull.find(pf.isDefinedAt).flatMapOpt { case (hd,tl) => Pull.output1(pf(hd)).as(None) }.stream
 
   // /** Debounce the stream with a minimum period of `d` between each element */
   // def debounce[F[_], I](d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Pipe[F, I, I] = {
@@ -111,50 +103,64 @@ object pipe {
   //   }
   //   _.pull { h => h.await.flatMap { case (hd, tl) => go(hd.last, tl) } }
   // }
-  //
-  // /** Skips the first element that matches the predicate. */
-  // def delete[F[_],I](p: I => Boolean): Pipe[F,I,I] =
-  //   _ pull { h => h.takeWhile((i:I) => !p(i)).flatMap(_.drop(1)).flatMap(_.echo) }
+
+  /** Skips the first element that matches the predicate. */
+  def delete[F[_],I](p: I => Boolean): Pipe[F,I,I] =
+    _.pull.takeWhile(i => !p(i)).flatMapOpt(_.pull.drop(1).flatMapOpt(_.pull.echo.as(None))).stream
 
   /** Drops `n` elements of the input, then echoes the rest. */
   def drop[F[_],I](n: Long): Pipe[F,I,I] =
     _.pull.drop(n).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
 
-  // /** Drops the last element. */
-  // def dropLast[F[_],I]: Pipe[F,I,I] =
-  //   dropLastIf(_ => true)
-  //
-  // /** Drops the last element if the predicate evaluates to true. */
-  // def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
-  //   def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = {
-  //     _.receiveOption {
-  //       case Some((chunk, h)) => Pull.output(last) >> go(chunk)(h)
-  //       case None =>
-  //         val i = last(last.size - 1)
-  //         if (p(i)) Pull.output(last.take(last.size - 1))
-  //         else Pull.output(last)
-  //     }
-  //   }
-  //   _.pull { _.receiveOption {
-  //     case Some((c, h)) => go(c)(h)
-  //     case None => Pull.done
-  //   }}
-  // }
-  //
-  // /** Emits all but the last `n` elements of the input. */
-  // def dropRight[F[_],I](n: Int): Pipe[F,I,I] = {
-  //   if (n <= 0) identity
-  //   else {
-  //     def go(acc: Vector[I]): Handle[F,I] => Pull[F,I,Unit] = {
-  //       _.receive {
-  //         case (chunk, h) =>
-  //           val all = acc ++ chunk.toVector
-  //           Pull.output(Chunk.indexedSeq(all.dropRight(n))) >> go(all.takeRight(n))(h)
-  //       }
-  //     }
-  //     _ pull go(Vector.empty)
-  //   }
-  // }
+  /** Drops the last element. */
+  def dropLast[F[_],I]: Pipe[F,I,I] =
+    dropLastIf(_ => true)
+
+  /** Drops the last element if the predicate evaluates to true. */
+  def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
+    def go(last: Chunk[I], s: Stream[F,I]): Pull[F,I,Unit] = {
+      s.pull.receiveChunkOption {
+        case Some((hd,tl)) =>
+          if (hd.nonEmpty) Pull.output(last) >> go(hd,tl)
+          else go(last,tl)
+        case None =>
+          val i = last.last
+          if (p(i)) {
+            val (prefix,_) = last.splitAtChunk(last.size - 1)
+            Pull.output(prefix)
+          } else Pull.output(last)
+      }
+    }
+    def unconsNonEmptyChunk(s: Stream[F,I]): Pull[F,Nothing,Option[(Chunk[I],Stream[F,I])]] =
+      s.pull.receiveChunkOption {
+        case Some((hd,tl)) =>
+          if (hd.nonEmpty) Pull.pure(Some((hd,tl)))
+          else unconsNonEmptyChunk(tl)
+        case None => Pull.pure(None)
+      }
+    unconsNonEmptyChunk(_).flatMap {
+      case Some((hd,tl)) => go(hd,tl)
+      case None => Pull.done
+    }.stream
+  }
+
+  /** Emits all but the last `n` elements of the input. */
+  def dropRight[F[_],I](n: Int): Pipe[F,I,I] = {
+    if (n <= 0) identity
+    else {
+      def go(acc: Vector[I], s: Stream[F,I]): Pull[F,I,Option[Unit]] = {
+        s.pull.receive { (hd,tl) =>
+          val all = acc ++ hd.toVector
+          Pull.output(Chunk.vector(all.dropRight(n))) >> go(all.takeRight(n), tl)
+        }
+      }
+      go(Vector.empty, _).stream
+    }
+  }
+
+  /** Like [[dropWhile]], but drops the first value which tests false. */
+  def dropThrough[F[_],I](p: I => Boolean): Pipe[F,I,I] =
+    _.pull.dropThrough(p).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
 
   /** Drops the elements of the input until the predicate `p` fails, then echoes the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Pipe[F,I,I] =
@@ -185,33 +191,33 @@ object pipe {
   def filter[F[_], I](f: I => Boolean): Pipe[F,I,I] =
     mapSegments(_ filter f)
 
-  // /**
-  //  * Like `filter`, but the predicate `f` depends on the previously emitted and
-  //  * current elements.
-  //  */
-  // def filterWithPrevious[F[_],I](f: (I, I) => Boolean): Pipe[F,I,I] = {
-  //   def go(last: I): Handle[F,I] => Pull[F,I,Unit] =
-  //     _.receive { (c, h) =>
-  //       // Check if we can emit this chunk unmodified
-  //       val (allPass, newLast) = c.foldLeft((true, last)) { case ((acc, last), i) =>
-  //         (acc && f(last, i), i)
-  //       }
-  //       if (allPass) {
-  //         Pull.output(c) >> go(newLast)(h)
-  //       } else {
-  //         val (acc, newLast) = c.foldLeft((Vector.empty[I], last)) { case ((acc, last), i) =>
-  //           if (f(last, i)) (acc :+ i, i)
-  //           else (acc, last)
-  //         }
-  //         Pull.output(Chunk.indexedSeq(acc)) >> go(newLast)(h)
-  //       }
-  //     }
-  //   _ pull { h => h.receive1 { (i, h) => Pull.output1(i) >> go(i)(h) } }
-  // }
-  //
-  // /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
-  // def find[F[_],I](f: I => Boolean): Pipe[F,I,I] =
-  //   _ pull { h => h.find(f).flatMap { case (o, h) => Pull.output1(o) }}
+  /**
+   * Like `filter`, but the predicate `f` depends on the previously emitted and
+   * current elements.
+   */
+  def filterWithPrevious[F[_],I](f: (I, I) => Boolean): Pipe[F,I,I] = {
+    def go(last: I, s: Stream[F,I]): Pull[F,I,Option[Unit]] =
+      s.pull.receive { (hd, tl) =>
+        // Check if we can emit this chunk unmodified
+        Pull.segment(hd.fold((true, last)) { case ((acc, last), i) => (acc && f(last, i), i) }).flatMap { case (allPass, newLast) =>
+          if (allPass) {
+            Pull.output(hd) >> go(newLast, tl)
+          } else {
+            Pull.segment(hd.fold((Vector.empty[I], last)) { case ((acc, last), i) =>
+              if (f(last, i)) (acc :+ i, i)
+              else (acc, last)
+            }).flatMap { case (acc, newLast) =>
+              Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
+            }
+          }
+        }
+      }
+    _.pull.receive1 { (hd, tl) => Pull.output1(hd) >> go(hd, tl) }.stream
+  }
+
+  /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
+  def find[F[_],I](f: I => Boolean): Pipe[F,I,I] =
+    _.pull.find(f).flatMap { _.map { case (hd,tl) => Pull.output1(hd) }.getOrElse(Pull.done) }.stream
 
   /**
    * Folds all inputs using an initial value `z` and supplied binary operator,
@@ -417,6 +423,19 @@ object pipe {
       case Some((hd,tl)) => scan_(hd)(f)(tl)
     }.stream
 
+  /** Outputs segments with a limited maximum size, splitting as necessary. */
+  def segmentLimit[F[_],I](n: Int): Pipe[F,I,Segment[I,Unit]] =
+    _ repeatPull { _.unconsLimit(n) flatMapOpt { case (hd,tl) => Pull.output1(hd).as(Some(tl)) } }
+
+  /**
+   * Outputs segments of size `n`.
+   *
+   * Segments from the source stream are split as necessary.
+   * If `allowFewer` is true, the last segment that is emitted may have less than `n` elements.
+   */
+  def segmentN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,Segment[I,Unit]] =
+    _ repeatPull { _.unconsN(n, allowFewer).flatMapOpt { case (hd,tl) => Pull.output1(hd).as(Some(tl)) }}
+
   /** Outputs all segments from the source stream. */
   def segments[F[_],I]: Pipe[F,I,Segment[I,Unit]] =
     _.repeatPull(_.receive((hd,tl) => Pull.output1(hd).as(Some(tl))))
@@ -484,13 +503,13 @@ object pipe {
   def take[F[_],I](n: Long): Pipe[F,I,I] =
     _.pull.take(n).stream
 
-  // /** Emits the last `n` elements of the input. */
-  // def takeRight[F[_],I](n: Long): Pipe[F,I,I] =
-  //   _ pull { h => h.takeRight(n).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
-  //
-  // /** Like `takeWhile`, but emits the first value which tests false. */
-  // def takeThrough[F[_],I](f: I => Boolean): Pipe[F,I,I] =
-  //   _.pull(_.takeThrough(f))
+  /** Emits the last `n` elements of the input. */
+  def takeRight[F[_],I](n: Long): Pipe[F,I,I] =
+    _.pull.takeRight(n).flatMap(Pull.output).stream
+
+  /** Like [[takeWhile]], but emits the first value which tests false. */
+  def takeThrough[F[_],I](f: I => Boolean): Pipe[F,I,I] =
+    _.pull.takeThrough(f).stream
 
   /** Emits the longest prefix of the input for which all elements test true according to `f`. */
   def takeWhile[F[_],I](f: I => Boolean): Pipe[F,I,I] =
@@ -520,7 +539,7 @@ object pipe {
    */
   def unNoneTerminate[F[_],I]: Pipe[F,Option[I],I] =
     _ repeatPull { _.receive { (hd, tl) =>
-      Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.map(_ => tl))
+      Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.fold(_ => None, _ => Some(tl)))
     }}
 
   // /**
@@ -674,94 +693,94 @@ object pipe {
   //   /** Pipe is awaiting input. */
   //   final case class Await[A,B](receive: Option[Chunk[A]] => Stepper[A,B]) extends Step[A,B]
   // }
-  //
-  // /**
-  //  * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
-  //  * Implemented by enqueueing elements as they are seen by `f` onto a `Queue` used by the `g` branch.
-  //  * USE EXTREME CARE WHEN USING THIS FUNCTION. Deadlocks are possible if `combine` pulls from the `g`
-  //  * branch synchronously before the queue has been populated by the `f` branch.
-  //  *
-  //  * The `combine` function receives an `F[Int]` effect which evaluates to the current size of the
-  //  * `g`-branch's queue.
-  //  *
-  //  * When possible, use one of the safe combinators like `[[observe]]`, which are built using this function,
-  //  * in preference to using this function directly.
-  //  */
-  // def diamond[F[_],A,B,C,D](s: Stream[F,A])
-  //   (f: Pipe[F,A, B])
-  //   (qs: F[Queue[F,Option[Chunk[A]]]], g: Pipe[F,A,C])
-  //   (combine: Pipe2[F,B,C,D])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,D] = {
-  //     Stream.eval(qs) flatMap { q =>
-  //     Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
-  //     Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
-  //     combine(
-  //       f {
-  //         val enqueueNone: F[Unit] =
-  //           enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
-  //             if (decremented) q.enqueue1(None)
-  //             else F.pure(())
-  //           }
-  //         s.repeatPull {
-  //           _.receiveOption {
-  //             case Some((a, h)) =>
-  //               Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(h)
-  //             case None =>
-  //               Pull.eval(enqueueNone) >> Pull.done
-  //           }
-  //         }.onFinalize(enqueueNone)
-  //       },
-  //       {
-  //         val drainQueue: Stream[F,Nothing] =
-  //           Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
-  //             if (dequeue) pipe.unNoneTerminate(q.dequeue).drain
-  //             else Stream.empty
-  //           }
-  //
-  //         (pipe.unNoneTerminate(
-  //           q.dequeue.
-  //             evalMap { c =>
-  //               if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
-  //               else F.pure(c)
-  //             }).
-  //             flatMap { c => Stream.chunk(c) }.
-  //             through(g) ++ drainQueue
-  //         ).onError { t => drainQueue ++ Stream.fail(t) }
-  //       }
-  //     )
-  //   }}}
-  // }
-  //
-  // /** Queue based version of [[join]] that uses the specified queue. */
-  // def joinQueued[F[_],A,B](q: F[Queue[F,Option[Chunk[A]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Effect[F], ec: ExecutionContext): Pipe[F,A,B] = in => {
-  //   for {
-  //     done <- Stream.eval(async.signalOf(false))
-  //     q <- Stream.eval(q)
-  //     b <- in.chunks.map(Some(_)).evalMap(q.enqueue1)
-  //            .drain
-  //            .onFinalize(q.enqueue1(None))
-  //            .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
-  //              f(pipe.unNoneTerminate(q.dequeue) flatMap Stream.chunk)
-  //            }
-  //   } yield b
-  // }
-  //
-  // /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
-  // def joinAsync[F[_]:Effect,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
-  //   joinQueued[F,A,B](async.boundedQueue(maxQueued))(s)
-  //
-  // /**
-  //  * Joins a stream of pipes in to a single pipe.
-  //  * Input is fed to the first pipe until it terminates, at which point input is
-  //  * fed to the second pipe, and so on.
-  //  */
-  // def join[F[_]:Effect,A,B](s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
-  //   joinQueued[F,A,B](async.synchronousQueue)(s)
-  //
-  // /** Synchronously send values through `sink`. */
-  // def observe[F[_]:Effect,A](s: Stream[F,A])(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
-  //   diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain))(pipe2.merge)
-  //
-  // /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-  // def observeAsync[F[_]:Effect,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
-  //   diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(pipe2.merge)
+
+  /**
+   * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
+   * Implemented by enqueueing elements as they are seen by `f` onto a `Queue` used by the `g` branch.
+   * USE EXTREME CARE WHEN USING THIS FUNCTION. Deadlocks are possible if `combine` pulls from the `g`
+   * branch synchronously before the queue has been populated by the `f` branch.
+   *
+   * The `combine` function receives an `F[Int]` effect which evaluates to the current size of the
+   * `g`-branch's queue.
+   *
+   * When possible, use one of the safe combinators like `[[observe]]`, which are built using this function,
+   * in preference to using this function directly.
+   */
+  def diamond[F[_],A,B,C,D](s: Stream[F,A])
+    (f: Pipe[F,A,B])
+    (qs: F[Queue[F,Option[Segment[A,Unit]]]], g: Pipe[F,A,C])
+    (combine: Pipe2[F,B,C,D])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,D] = {
+      Stream.eval(qs) flatMap { q =>
+      Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
+      Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
+      combine(
+        f {
+          val enqueueNone: F[Unit] =
+            enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
+              if (decremented) q.enqueue1(None)
+              else F.pure(())
+            }
+          s.repeatPull {
+            _.receiveOption {
+              case Some((a, h)) =>
+                Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(Some(h))
+              case None =>
+                Pull.eval(enqueueNone) >> Pull.pure(None)
+            }
+          }.onFinalize(enqueueNone)
+        },
+        {
+          val drainQueue: Stream[F,Nothing] =
+            Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
+              if (dequeue) pipe.unNoneTerminate(q.dequeue).drain
+              else Stream.empty
+            }
+
+          (pipe.unNoneTerminate(
+            q.dequeue.
+              evalMap { c =>
+                if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
+                else F.pure(c)
+              }).
+              flatMap { c => Stream.segment(c) }.
+              through(g) ++ drainQueue
+          ).onError { t => drainQueue ++ Stream.fail(t) }
+        }
+      )
+    }}}
+  }
+
+  /** Queue based version of [[join]] that uses the specified queue. */
+  def joinQueued[F[_],A,B](q: F[Queue[F,Option[Segment[A,Unit]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Effect[F], ec: ExecutionContext): Pipe[F,A,B] = in => {
+    for {
+      done <- Stream.eval(async.signalOf(false))
+      q <- Stream.eval(q)
+      b <- in.segments.map(Some(_)).evalMap(q.enqueue1)
+             .drain
+             .onFinalize(q.enqueue1(None))
+             .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
+               f(pipe.unNoneTerminate(q.dequeue) flatMap Stream.segment)
+             }
+    } yield b
+  }
+
+  /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
+  def joinAsync[F[_]:Effect,A,B](maxQueued: Int)(s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
+    joinQueued[F,A,B](async.boundedQueue(maxQueued))(s)
+
+  /**
+   * Joins a stream of pipes in to a single pipe.
+   * Input is fed to the first pipe until it terminates, at which point input is
+   * fed to the second pipe, and so on.
+   */
+  def join[F[_]:Effect,A,B](s: Stream[F,Pipe[F,A,B]])(implicit ec: ExecutionContext): Pipe[F,A,B] =
+    joinQueued[F,A,B](async.synchronousQueue)(s)
+
+  /** Synchronously send values through `sink`. */
+  def observe[F[_]:Effect,A](s: Stream[F,A])(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
+    diamond(s)(identity)(async.synchronousQueue, sink andThen (_.drain))(pipe2.merge)
+
+  /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+  def observeAsync[F[_]:Effect,A](s: Stream[F,A], maxQueued: Int)(sink: Sink[F,A])(implicit ec: ExecutionContext): Stream[F,A] =
+    diamond(s)(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(pipe2.merge)
 }
