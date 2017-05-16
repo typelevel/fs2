@@ -156,6 +156,10 @@ object pipe {
   //   }
   // }
 
+  /** Like [[dropWhile]], but drops the first value which tests false. */
+  def dropThrough[F[_],I](p: I => Boolean): Pipe[F,I,I] =
+    _.pull.dropThrough(p).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
+
   /** Drops the elements of the input until the predicate `p` fails, then echoes the rest. */
   def dropWhile[F[_], I](p: I => Boolean): Pipe[F,I,I] =
     _.pull.dropWhile(p).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
@@ -487,10 +491,10 @@ object pipe {
   // /** Emits the last `n` elements of the input. */
   // def takeRight[F[_],I](n: Long): Pipe[F,I,I] =
   //   _ pull { h => h.takeRight(n).flatMap(is => Pull.output(Chunk.indexedSeq(is))) }
-  //
-  // /** Like `takeWhile`, but emits the first value which tests false. */
-  // def takeThrough[F[_],I](f: I => Boolean): Pipe[F,I,I] =
-  //   _.pull(_.takeThrough(f))
+
+  /** Like [[takeWhile]], but emits the first value which tests false. */
+  def takeThrough[F[_],I](f: I => Boolean): Pipe[F,I,I] =
+    _.pull.takeThrough(f).stream
 
   /** Emits the longest prefix of the input for which all elements test true according to `f`. */
   def takeWhile[F[_],I](f: I => Boolean): Pipe[F,I,I] =

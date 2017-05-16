@@ -98,8 +98,19 @@ class SegmentSpec extends Fs2Spec {
         Segment.catenated(segments).getOrElse(Segment.empty).toVector shouldBe s.toVector.takeWhile(f)
         unfinished shouldBe (s.toVector.takeWhile(f).size == s.toVector.size)
         val remainder = s.toVector.dropWhile(f)
-        if (remainder.isEmpty)
-          tail shouldBe Left(())
+        if (remainder.isEmpty) tail should (be(Left(())) or be(Right(Segment.empty)))
+        else tail.map(_.toVector).getOrElse(Vector.empty) shouldBe remainder
+      }
+    }
+
+    "splitWhile (2)" in {
+      forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
+        val (segments, unfinished, tail) = s.splitWhile(f, emitFailure = true)
+        val svec = s.toVector
+        Segment.catenated(segments).getOrElse(Segment.empty).toVector shouldBe (svec.takeWhile(f) ++ svec.dropWhile(f).headOption)
+        unfinished shouldBe (svec.takeWhile(f).size == svec.size)
+        val remainder = svec.dropWhile(f).drop(1)
+        if (remainder.isEmpty) tail should (be(Left(())) or be(Right(Segment.empty)))
         else tail.map(_.toVector).getOrElse(Vector.empty) shouldBe remainder
       }
     }

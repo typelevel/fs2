@@ -314,7 +314,7 @@ abstract class Segment[+O,+R] { self =>
           } else  {
             val (before, after) = os.splitAtChunk(rem.toInt) // nb: toInt is safe b/c os.size is an Int and rem < os.size
             out = out :+ before
-            if (after.nonEmpty) result = Some(Right(after))
+            result = Some(Right(after))
             rem = 0
           }
         }
@@ -332,7 +332,7 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
-  final def splitWhile(p: O => Boolean): (Catenable[Segment[O,Unit]], Boolean, Either[R,Segment[O,R]]) = {
+  final def splitWhile(p: O => Boolean, emitFailure: Boolean = false): (Catenable[Segment[O,Unit]], Boolean, Either[R,Segment[O,R]]) = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[Either[R,Segment[O,Unit]]] = None
     var ok = true
@@ -349,9 +349,9 @@ abstract class Segment[+O,+R] { self =>
         }
         if (ok) out = out :+ os
         else {
-          val (before, after) = os.splitAtChunk(j)
+          val (before, after) = os.splitAtChunk(if (emitFailure) j + 1 else j)
           out = out :+ before
-          if (after.nonEmpty) result = Some(Right(after))
+          result = Some(Right(after))
         }
       }
     }

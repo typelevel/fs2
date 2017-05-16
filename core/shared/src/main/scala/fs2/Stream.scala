@@ -134,6 +134,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.dropRight]]`. */
   // def dropRight(n: Int): Stream[F,O] = self through pipe.dropRight(n)
 
+  /** Alias for `self through [[pipe.dropThrough]]` */
+  def dropThrough(p: O => Boolean): Stream[F,O] = this through pipe.dropThrough(p)
+
   /** Alias for `self through [[pipe.dropWhile]]` */
   def dropWhile(p: O => Boolean): Stream[F,O] = this through pipe.dropWhile(p)
 
@@ -248,9 +251,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   // /** Alias for `self through [[pipe.takeRight]]`. */
   // def takeRight(n: Long): Stream[F,O] = self through pipe.takeRight(n)
-  //
-  // /** Alias for `self through [[pipe.takeThrough]]`. */
-  // def takeThrough(p: O => Boolean): Stream[F,O] = self through pipe.takeThrough(p)
+
+  /** Alias for [[pipe.takeThrough]]. */
+  def takeThrough(p: O => Boolean): Stream[F,O] = this through pipe.takeThrough(p)
 
   /** Alias for `self through [[pipe.takeWhile]]`. */
   def takeWhile(p: O => Boolean): Stream[F,O] = this through pipe.takeWhile(p)
@@ -976,18 +979,25 @@ object Stream {
         if (count >= n) Pull.pure(Some(rest)) else rest.pull.drop(n - count)
     }
 
+    /** Like [[dropWhile]], but drops the first value which tests false. */
+    def dropThrough(p: O => Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
+      dropWhile_(p, true)
+
     /**
      * Drops elements of the this stream until the predicate `p` fails, and returns the new stream.
      * If defined, the first element of the returned stream will fail `p`.
      */
     def dropWhile(p: O => Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
+      dropWhile_(p, false)
+
+    def dropWhile_(p: O => Boolean, emitFailure: Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
       receive { (hd, tl) =>
-        val (segments, unfinished, result) = hd.splitWhile(p)
+        val (segments, unfinished, result) = hd.splitWhile(p, emitFailure)
         val rest = result match {
           case Left(()) => tl
           case Right(tl2) => tl.cons(tl2)
         }
-        if (unfinished) rest.pull.dropWhile(p) else Pull.pure(Some(rest))
+        if (unfinished) rest.pull.dropWhile_(p, emitFailure) else Pull.pure(Some(rest))
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
@@ -1119,28 +1129,24 @@ object Stream {
     //   if (n <= 0) Pull.pure(Vector())
     //   else go(Vector())(this)
     // }
-    //
-    // /** Like `takeWhile`, but emits the first value which tests false. */
-    // def takeThrough(p: A => Boolean): Pull[F,A,Handle[F,A]] =
-    //   this.receive { (chunk, h) =>
-    //     chunk.indexWhere(!p(_)) match {
-    //       case Some(a) => Pull.output(chunk.take(a+1)) >> Pull.pure(h.push(chunk.drop(a+1)))
-    //       case None => Pull.output(chunk) >> h.takeThrough(p)
-    //     }
-    //   }
+
+    /** Like [[takeWhile]], but emits the first value which tests false. */
+    def takeThrough(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, true)
 
     /**
      * Emits the elements of the stream until the predicate `p` fails,
      * and returns the remaining `Stream`. If non-empty, the returned stream will have
      * a first element `i` for which `p(i)` is `false`. */
-    def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] =
+    def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, false)
+
+    def takeWhile_(p: O => Boolean, emitFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =
       receive { (hd, tl) =>
-        val (segments, unfinished, result) = hd.splitWhile(p)
+        val (segments, unfinished, result) = hd.splitWhile(p, emitFailure = emitFailure)
         val rest = result match {
           case Left(()) => tl
           case Right(tl2) => tl.cons(tl2)
         }
-        Segment.catenated(segments).map(Pull.output).getOrElse(Pull.pure(())) >> (if (unfinished) rest.pull.takeWhile(p) else Pull.pure(Some(rest)))
+        Segment.catenated(segments).map(Pull.output).getOrElse(Pull.pure(())) >> (if (unfinished) rest.pull.takeWhile_(p, emitFailure) else Pull.pure(Some(rest)))
       }
   }
 
@@ -1160,16 +1166,14 @@ object Stream {
   implicit class PurePipeOps[I,O](private val self: Pipe[Pure,I,O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe[F,I,O] = self.asInstanceOf[Pipe[F,I,O]]
-      //pipe.covary[F,I,O](self) todo
+    def covary[F[_]]: Pipe[F,I,O] = pipe.covary[F,I,O](self)
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit class PurePipe2Ops[I,I2,O](private val self: Pipe2[Pure,I,I2,O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
-    def covary[F[_]]: Pipe2[F,I,I2,O] = self.asInstanceOf[Pipe2[F,I,I2,O]]
-      //pipe2.covary[F](self) todo
+    def covary[F[_]]: Pipe2[F,I,I2,O] = pipe2.covary[F,I,I2,O](self)
   }
 
   implicit def covaryPure[F[_],O,O2>:O](s: Stream[Pure,O]): Stream[F,O2] = s.covaryAll[F,O2]
