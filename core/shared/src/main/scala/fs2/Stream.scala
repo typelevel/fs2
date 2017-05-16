@@ -927,11 +927,7 @@ object Stream {
       require(n > 0)
       uncons.flatMapOpt { case (hd,tl) =>
         val (segments, cnt, result) = hd.splitAt(n)
-        val out = cnt match {
-          case 0 => Segment.empty
-          case 1 => segments.uncons.get._1
-          case n => Segment.catenated(segments).get
-        }
+        val out = Segment.catenated(segments).getOrElse(Segment.empty)
         val rest = result match {
           case Left(()) => tl
           case Right(tl2) => tl.cons(tl2)
@@ -1102,11 +1098,7 @@ object Stream {
       else uncons.flatMapOpt {
         case (hd,tl) =>
           val (segments, count, result) = hd.splitAt(n)
-          val out = count match {
-            case 0 => Pull.pure(())
-            case 1 => Pull.output(segments.uncons.get._1)
-            case n => segments.foldLeft(Pull.pure(()): Pull[F,O,Unit])((acc, s) => acc >> Pull.output(s))
-          }
+          val out = Segment.catenated(segments).map(Pull.output).getOrElse(Pull.pure(()))
           val rest = result match {
             case Left(()) => tl
             case Right(tl2) => tl.cons(tl2)
