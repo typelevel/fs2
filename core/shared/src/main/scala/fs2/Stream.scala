@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.ExecutionContext
 // import scala.concurrent.duration.FiniteDuration
 
-import cats.{ ~>, Applicative, Monoid, Semigroup }
+import cats.{ ~>, Applicative, Eq, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
 import cats.implicits._
 
@@ -78,9 +78,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //
   // /** Alias for `self through [[pipe.bufferBy]]`. */
   // def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
-  //
-  // /** Alias for `self through [[pipe.changesBy]]`. */
-  // def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F,O] = self through pipe.changesBy(f)
+
+  /** Alias for `self through [[pipe.changesBy]]`. */
+  def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F,O] = this through pipe.changesBy(f)
 
   /** Alias for `self through [[pipe.chunks]]`. */
   def chunks: Stream[F,Chunk[O]] = this through pipe.chunks
@@ -139,11 +139,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.filter]]`. */
   def filter(f: O => Boolean): Stream[F,O] = this through pipe.filter(f)
 
-  // /** Alias for `self through [[pipe.filterWithPrevious]]`. */
-  // def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = self through pipe.filterWithPrevious(f)
+  /** Alias for `self through [[pipe.filterWithPrevious]]`. */
+  def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = this through pipe.filterWithPrevious(f)
 
-  // /** Alias for `self through [[pipe.find]]`. */
-  // def find(f: O => Boolean): Stream[F,O] = self through pipe.find(f)
+  /** Alias for [[pipe.find]]. */
+  def find(f: O => Boolean): Stream[F,O] = this through pipe.find(f)
 
   /** Alias for `self through [[pipe.fold]](z)(f)`. */
   def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] = this through pipe.fold(z)(f)
@@ -586,8 +586,8 @@ object Stream {
     def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       Stream.append(self, s2)
 
-    // /** Alias for `self through [[pipe.changes]]`. */
-    // def changes(implicit eq: Eq[O]): Stream[F,O] = self through pipe.changes
+    /** Alias for `self through [[pipe.changes]]`. */
+    def changes(implicit eq: Eq[O]): Stream[F,O] = self through pipe.changes
 
     /** Lifts this stream to the specified effect type. */
     def covary[F2[x]>:F[x]]: Stream[F2,O] = self.asInstanceOf[Stream[F2,O]]

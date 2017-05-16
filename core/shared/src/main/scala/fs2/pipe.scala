@@ -4,11 +4,11 @@ import scala.concurrent.ExecutionContext
 // import scala.concurrent.duration.FiniteDuration
 
 // import cats.{ Eq, Functor }
+import cats.Eq
 import cats.effect.Effect
 // import cats.implicits._
 //
 // import fs2.async.mutable.Queue
-// import fs2.util.{ Attempt, Free, Sub1 }
 
 /** Generic implementations of common pipes. */
 object pipe {
@@ -50,25 +50,25 @@ object pipe {
   //   }
   //   _.pull { h => go(Vector.empty, false)(h) }
   // }
-  //
-  // /**
-  //  * Emits only elements that are distinct from their immediate predecessors,
-  //  * using natural equality for comparison.
-  //  */
-  // def changes[F[_],I](implicit eq: Eq[I]): Pipe[F,I,I] =
-  //   filterWithPrevious(eq.neqv)
-  //
-  // /**
-  //  * Emits only elements that are distinct from their immediate predecessors
-  //  * according to `f`, using natural equality for comparison.
-  //  *
-  //  * Note that `f` is called for each element in the stream multiple times
-  //  * and hence should be fast (e.g., an accessor). It is not intended to be
-  //  * used for computationally intensive conversions. For such conversions,
-  //  * consider something like: `src.map(i => (i, f(i))).changesBy(_._2).map(_._1)`
-  //  */
-  // def changesBy[F[_],I,I2](f: I => I2)(implicit eq: Eq[I2]): Pipe[F,I,I] =
-  //   filterWithPrevious((i1, i2) => eq.neqv(f(i1), f(i2)))
+
+  /**
+   * Emits only elements that are distinct from their immediate predecessors,
+   * using natural equality for comparison.
+   */
+  def changes[F[_],I](implicit eq: Eq[I]): Pipe[F,I,I] =
+    filterWithPrevious(eq.neqv)
+
+  /**
+   * Emits only elements that are distinct from their immediate predecessors
+   * according to `f`, using natural equality for comparison.
+   *
+   * Note that `f` is called for each element in the stream multiple times
+   * and hence should be fast (e.g., an accessor). It is not intended to be
+   * used for computationally intensive conversions. For such conversions,
+   * consider something like: `src.map(i => (i, f(i))).changesBy(_._2).map(_._1)`
+   */
+  def changesBy[F[_],I,I2](f: I => I2)(implicit eq: Eq[I2]): Pipe[F,I,I] =
+    filterWithPrevious((i1, i2) => eq.neqv(f(i1), f(i2)))
 
   /** Outputs all chunks from the source stream. */
   def chunks[F[_],I]: Pipe[F,I,Chunk[I]] =
@@ -191,33 +191,33 @@ object pipe {
   def filter[F[_], I](f: I => Boolean): Pipe[F,I,I] =
     mapSegments(_ filter f)
 
-  // /**
-  //  * Like `filter`, but the predicate `f` depends on the previously emitted and
-  //  * current elements.
-  //  */
-  // def filterWithPrevious[F[_],I](f: (I, I) => Boolean): Pipe[F,I,I] = {
-  //   def go(last: I): Handle[F,I] => Pull[F,I,Unit] =
-  //     _.receive { (c, h) =>
-  //       // Check if we can emit this chunk unmodified
-  //       val (allPass, newLast) = c.foldLeft((true, last)) { case ((acc, last), i) =>
-  //         (acc && f(last, i), i)
-  //       }
-  //       if (allPass) {
-  //         Pull.output(c) >> go(newLast)(h)
-  //       } else {
-  //         val (acc, newLast) = c.foldLeft((Vector.empty[I], last)) { case ((acc, last), i) =>
-  //           if (f(last, i)) (acc :+ i, i)
-  //           else (acc, last)
-  //         }
-  //         Pull.output(Chunk.indexedSeq(acc)) >> go(newLast)(h)
-  //       }
-  //     }
-  //   _ pull { h => h.receive1 { (i, h) => Pull.output1(i) >> go(i)(h) } }
-  // }
-  //
-  // /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
-  // def find[F[_],I](f: I => Boolean): Pipe[F,I,I] =
-  //   _ pull { h => h.find(f).flatMap { case (o, h) => Pull.output1(o) }}
+  /**
+   * Like `filter`, but the predicate `f` depends on the previously emitted and
+   * current elements.
+   */
+  def filterWithPrevious[F[_],I](f: (I, I) => Boolean): Pipe[F,I,I] = {
+    def go(last: I, s: Stream[F,I]): Pull[F,I,Option[Unit]] =
+      s.pull.receive { (hd, tl) =>
+        // Check if we can emit this chunk unmodified
+        Pull.segment(hd.fold((true, last)) { case ((acc, last), i) => (acc && f(last, i), i) }).flatMap { case (allPass, newLast) =>
+          if (allPass) {
+            Pull.output(hd) >> go(newLast, tl)
+          } else {
+            Pull.segment(hd.fold((Vector.empty[I], last)) { case ((acc, last), i) =>
+              if (f(last, i)) (acc :+ i, i)
+              else (acc, last)
+            }).flatMap { case (acc, newLast) =>
+              Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
+            }
+          }
+        }
+      }
+    _.pull.receive1 { (hd, tl) => Pull.output1(hd) >> go(hd, tl) }.stream
+  }
+
+  /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
+  def find[F[_],I](f: I => Boolean): Pipe[F,I,I] =
+    _.pull.find(f).flatMap { _.map { case (hd,tl) => Pull.output1(hd) }.getOrElse(Pull.done) }.stream
 
   /**
    * Folds all inputs using an initial value `z` and supplied binary operator,
