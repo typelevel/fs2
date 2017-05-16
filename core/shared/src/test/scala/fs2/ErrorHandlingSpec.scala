@@ -66,12 +66,14 @@ class ErrorHandlingSpec extends Fs2Spec {
     }
 
     "ex7" in {
-      pending // FAILING CURRENTLY
-      (Stream.range(0, 3).covary[IO] ++ Stream.fail(Err)).unchunk.pull.echo.stream.run.unsafeRunSync
+      try {
+        (Stream.range(0, 3).covary[IO] ++ Stream.fail(Err)).unchunk.pull.echo.stream.run.unsafeRunSync
+        fail("SHOULD NOT REACH")
+      }
+      catch { case e: Throwable => () }
     }
 
     "ex8" in {
-      pending // FAILING CURRENTLY
       var i = 0
       (Stream.range(0, 3).covary[IO] ++ Stream.fail(Err)).unchunk.pull.echo.onError { t => i += 1; println(i); Pull.done }.stream.run.unsafeRunSync
       i shouldBe 1
