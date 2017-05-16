@@ -125,14 +125,14 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   def drop(n: Long): Stream[F,O] = this.through(pipe.drop(n))
 
-  // /** Alias for `self through [[pipe.dropLast]]`. */
-  // def dropLast: Stream[F,O] = self through pipe.dropLast
-  //
-  // /** Alias for `self through [[pipe.dropLastIf]]`. */
-  // def dropLastIf(p: O => Boolean): Stream[F,O] = self through pipe.dropLastIf(p)
-  //
-  // /** Alias for `self through [[pipe.dropRight]]`. */
-  // def dropRight(n: Int): Stream[F,O] = self through pipe.dropRight(n)
+  /** Alias for `self through [[pipe.dropLast]]`. */
+  def dropLast: Stream[F,O] = this through pipe.dropLast
+
+  /** Alias for `self through [[pipe.dropLastIf]]`. */
+  def dropLastIf(p: O => Boolean): Stream[F,O] = this through pipe.dropLastIf(p)
+
+  /** Alias for `self through [[pipe.dropRight]]`. */
+  def dropRight(n: Int): Stream[F,O] = this through pipe.dropRight(n)
 
   /** Alias for `self through [[pipe.dropThrough]]` */
   def dropThrough(p: O => Boolean): Stream[F,O] = this through pipe.dropThrough(p)
@@ -1086,9 +1086,13 @@ object Stream {
     def receive1[O2,R](f: (O,Stream[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
       uncons1.flatMapOpt { case (hd, tl) => f(hd, tl) }
 
-    /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+    /** Apply `f` to the next available segment, or `None` if the input is exhausted. */
     def receiveOption[O2,R](f: Option[(Segment[O,Unit],Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
       uncons.flatMap(f)
+
+    /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
+    def receiveChunkOption[O2,R](f: Option[(Chunk[O],Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
+      unconsChunk.flatMap(f)
 
     /** Apply `f` to the next available element, or `None` if the input is exhausted. */
     def receive1Option[O2,R](f: Option[(O,Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =

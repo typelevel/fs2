@@ -86,9 +86,9 @@ object pipe {
   def collect[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
     mapSegments(_.collect(pf))
 
-  // /** Emits the first element of the Stream for which the partial function is defined. */
-  // def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
-  //   _ pull { h => h.find(pf.isDefinedAt) flatMap { case (i, h) => Pull.output1(pf(i)) }}
+  /** Emits the first element of the Stream for which the partial function is defined. */
+  def collectFirst[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
+    _.pull.find(pf.isDefinedAt).flatMapOpt { case (hd,tl) => Pull.output1(pf(hd)).as(None) }.stream
 
   // /** Debounce the stream with a minimum period of `d` between each element */
   // def debounce[F[_], I](d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Pipe[F, I, I] = {
@@ -120,41 +120,51 @@ object pipe {
   def drop[F[_],I](n: Long): Pipe[F,I,I] =
     _.pull.drop(n).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
 
-  // /** Drops the last element. */
-  // def dropLast[F[_],I]: Pipe[F,I,I] =
-  //   dropLastIf(_ => true)
-  //
-  // /** Drops the last element if the predicate evaluates to true. */
-  // def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
-  //   def go(last: Chunk[I]): Handle[F,I] => Pull[F,I,Unit] = {
-  //     _.receiveOption {
-  //       case Some((chunk, h)) => Pull.output(last) >> go(chunk)(h)
-  //       case None =>
-  //         val i = last(last.size - 1)
-  //         if (p(i)) Pull.output(last.take(last.size - 1))
-  //         else Pull.output(last)
-  //     }
-  //   }
-  //   _.pull { _.receiveOption {
-  //     case Some((c, h)) => go(c)(h)
-  //     case None => Pull.done
-  //   }}
-  // }
-  //
-  // /** Emits all but the last `n` elements of the input. */
-  // def dropRight[F[_],I](n: Int): Pipe[F,I,I] = {
-  //   if (n <= 0) identity
-  //   else {
-  //     def go(acc: Vector[I]): Handle[F,I] => Pull[F,I,Unit] = {
-  //       _.receive {
-  //         case (chunk, h) =>
-  //           val all = acc ++ chunk.toVector
-  //           Pull.output(Chunk.indexedSeq(all.dropRight(n))) >> go(all.takeRight(n))(h)
-  //       }
-  //     }
-  //     _ pull go(Vector.empty)
-  //   }
-  // }
+  /** Drops the last element. */
+  def dropLast[F[_],I]: Pipe[F,I,I] =
+    dropLastIf(_ => true)
+
+  /** Drops the last element if the predicate evaluates to true. */
+  def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
+    def go(last: Chunk[I], s: Stream[F,I]): Pull[F,I,Unit] = {
+      s.pull.receiveChunkOption {
+        case Some((hd,tl)) =>
+          if (hd.nonEmpty) Pull.output(last) >> go(hd,tl)
+          else go(last,tl)
+        case None =>
+          val i = last.last
+          if (p(i)) {
+            val (prefix,_) = last.splitAtChunk(last.size - 1)
+            Pull.output(prefix)
+          } else Pull.output(last)
+      }
+    }
+    def unconsNonEmptyChunk(s: Stream[F,I]): Pull[F,Nothing,Option[(Chunk[I],Stream[F,I])]] =
+      s.pull.receiveChunkOption {
+        case Some((hd,tl)) =>
+          if (hd.nonEmpty) Pull.pure(Some((hd,tl)))
+          else unconsNonEmptyChunk(tl)
+        case None => Pull.pure(None)
+      }
+    unconsNonEmptyChunk(_).flatMap {
+      case Some((hd,tl)) => go(hd,tl)
+      case None => Pull.done
+    }.stream
+  }
+
+  /** Emits all but the last `n` elements of the input. */
+  def dropRight[F[_],I](n: Int): Pipe[F,I,I] = {
+    if (n <= 0) identity
+    else {
+      def go(acc: Vector[I], s: Stream[F,I]): Pull[F,I,Option[Unit]] = {
+        s.pull.receive { (hd,tl) =>
+          val all = acc ++ hd.toVector
+          Pull.output(Chunk.vector(all.dropRight(n))) >> go(all.takeRight(n), tl)
+        }
+      }
+      go(Vector.empty, _).stream
+    }
+  }
 
   /** Like [[dropWhile]], but drops the first value which tests false. */
   def dropThrough[F[_],I](p: I => Boolean): Pipe[F,I,I] =
