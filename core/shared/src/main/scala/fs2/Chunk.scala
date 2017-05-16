@@ -26,6 +26,16 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   final override def map[O2](f: O => O2): Chunk[O2] =
     super.map(f).toChunk
 
+  def indexWhere(p: O => Boolean): Option[Int] = {
+    var i = 0
+    var result = -1
+    while (result < 0 && i < size) {
+      if (p(apply(i))) result = i
+      i += 1
+    }
+    if (result == -1) None else Some(result)
+  }
+
   /** Copies the elements of this chunk to an array. */
   def toArray[B >: O: ClassTag]: Array[B] = {
     val arr = new Array[B](size)

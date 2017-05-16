@@ -959,14 +959,6 @@ object Stream {
       else go(Catenable.empty, n, self)
     }
 
-    /** Copies the next available chunk to the output. */
-    def copy: Pull[F,O,Option[Stream[F,O]]] =
-      receive { (hd, tl) => Pull.output(hd).as(Some(tl)) }
-
-    /** Copies the next available element to the output. */
-    def copy1: Pull[F,O,Option[Stream[F,O]]] =
-      receive1 { (hd, tl) => Pull.output1(hd).as(Some(tl)) }
-
     /** Drops the first `n` elements of this `Stream`, and returns the new `Stream`. */
     def drop(n: Long): Pull[F,Nothing,Option[Stream[F,O]]] =
       if (n <= 0) Pull.pure(Some(self))
@@ -1014,16 +1006,16 @@ object Stream {
     // /** Like `[[awaitN]]`, but leaves the buffered input unconsumed. */
     // def fetchN(n: Int): Pull[F,Nothing,Handle[F,A]] =
     //   awaitN(n) map { case (buf, h) => buf.reverse.foldLeft(h)(_ push _) }
-    //
-    // /** Awaits the next available element where the predicate returns true. */
-    // def find(f: A => Boolean): Pull[F,Nothing,(A,Handle[F,A])] =
-    //   this.receive { (chunk, h) =>
-    //     chunk.indexWhere(f) match {
-    //       case None => h.find(f)
-    //       case Some(a) if a + 1 < chunk.size => Pull.pure((chunk(a), h.push(chunk.drop(a + 1))))
-    //       case Some(a) => Pull.pure((chunk(a), h))
-    //     }
-    //   }
+
+    /** Awaits the next available element where the predicate returns true. */
+    def find(f: O => Boolean): Pull[F,Nothing,Option[(O,Stream[F,O])]] =
+      receiveChunk { (hd, tl) =>
+        hd.indexWhere(f) match {
+          case None => tl.pull.find(f)
+          case Some(idx) if idx + 1 < hd.size => Pull.pure(Some((hd(idx), tl.cons(hd.drop(idx + 1).voidResult))))
+          case Some(idx) => Pull.pure(Some((hd(idx), tl)))
+        }
+      }
 
     /**
      * Folds all inputs using an initial value `z` and supplied binary operator, and writes the final
