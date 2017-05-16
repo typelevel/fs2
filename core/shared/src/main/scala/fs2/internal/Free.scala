@@ -24,6 +24,13 @@ sealed abstract class Free[F[_], +R] {
       case Right(a) => Free.Pure(a)
       case Left(e) => try h(e) catch { case NonFatal(e) => Free.Fail(e) } })
 
+  def asHandler(e: Throwable): Free[F,R] = this.viewL.get match {
+    case Pure(_) => Fail(e)
+    case Fail(e2) => Fail(e)
+    case Bind(_, k) => k(Left(e))
+    case Eval(_) => sys.error("impossible")
+  }
+
   lazy val viewL: ViewL[F,R] = ViewL(this) // todo - review this
 
   def translate[G[_]](f: F ~> G): Free[G, R] = this.viewL.get match {
@@ -35,7 +42,7 @@ sealed abstract class Free[F[_], +R] {
 }
 
 object Free {
-  // Pure(r), Fail(e), Eval(fr), Bind(Eval(fx), k),
+  // Pure(r), Fail(e), Bind(Eval(fx), k),
   class ViewL[F[_],+R](val get: Free[F,R]) extends AnyVal
 
   case class Pure[F[_], R](r: R) extends Free[F, R] {

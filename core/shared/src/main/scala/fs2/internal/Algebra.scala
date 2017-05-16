@@ -146,7 +146,11 @@ private[fs2] object Algebra {
     = v.get match {
       case done: Free.Pure[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] => done.r match {
         case None => F.pure(acc)
-        case Some((hd, tl)) => go(hd.fold(acc)(f).run, uncons(tl).viewL)
+        case Some((hd, tl)) =>
+          F.suspend {
+            try go(hd.fold(acc)(f).run, uncons(tl).viewL)
+            catch { case NonFatal(e) => go(acc, uncons(tl.asHandler(e)).viewL) }
+          }
       }
       case failed: Free.Fail[AlgebraF, _] => F.raiseError(failed.error)
       case bound: Free.Bind[AlgebraF, _, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =>

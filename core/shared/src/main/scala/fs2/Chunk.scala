@@ -23,9 +23,6 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   final def head: O = apply(0)
   final def last: O = apply(size - 1)
 
-  final override def map[O2](f: O => O2): Chunk[O2] =
-    super.map(f).toChunk
-
   def indexWhere(p: O => Boolean): Option[Int] = {
     var i = 0
     var result = -1
