@@ -81,13 +81,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //
   // /** Alias for `self through [[pipe.changesBy]]`. */
   // def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F,O] = self through pipe.changesBy(f)
-  //
-  // /** Alias for `self through [[pipe.chunkLimit]]`. */
-  // def chunkLimit(n: Int): Stream[F,NonEmptyChunk[O]] = self through pipe.chunkLimit(n)
-  //
-  // /** Alias for `self through [[pipe.chunkN]]`. */
-  // def chunkN(n: Int, allowFewer: Boolean = true): Stream[F,List[NonEmptyChunk[O]]] =
-  //   self through pipe.chunkN(n, allowFewer)
 
   /** Alias for `self through [[pipe.chunks]]`. */
   def chunks: Stream[F,Chunk[O]] = this through pipe.chunks
@@ -231,7 +224,15 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // def scope: Stream[F,O] =
   //   Stream.mk { StreamCore.scope { self.get } }
 
-  /** Alias for `self through [[pipe.segments]]`. */
+  /** Alias for [[pipe.segmentLimit]]. */
+  def segmentLimit(n: Int): Stream[F,Segment[O,Unit]] =
+    this through pipe.segmentLimit(n)
+
+  /** Alias for [[pipe.segmentN]]. */
+  def segmentN(n: Int, allowFewer: Boolean = true): Stream[F,Segment[O,Unit]] =
+    this through pipe.segmentN(n, allowFewer)
+
+  /** Alias for [[pipe.segments]]. */
   def segments: Stream[F,Segment[O,Unit]] = this through pipe.segments
 
   //

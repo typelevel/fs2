@@ -69,14 +69,6 @@ object pipe {
   //  */
   // def changesBy[F[_],I,I2](f: I => I2)(implicit eq: Eq[I2]): Pipe[F,I,I] =
   //   filterWithPrevious((i1, i2) => eq.neqv(f(i1), f(i2)))
-  //
-  // /** Outputs chunks with a limited maximum size, splitting as necessary. */
-  // def chunkLimit[F[_],I](n: Int): Pipe[F,I,NonEmptyChunk[I]] =
-  //   _ repeatPull { _.awaitLimit(n) flatMap { case (chunk, h) => Pull.output1(chunk) as h } }
-  //
-  // /** Outputs a list of chunks, the total size of all chunks is limited and split as necessary. */
-  // def chunkN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,List[NonEmptyChunk[I]]] =
-  //   _ repeatPull { _.awaitN(n, allowFewer) flatMap { case (chunks, h) => Pull.output1(chunks) as h }}
 
   /** Outputs all chunks from the source stream. */
   def chunks[F[_],I]: Pipe[F,I,Chunk[I]] =
@@ -430,6 +422,19 @@ object pipe {
       case None => Pull.done
       case Some((hd,tl)) => scan_(hd)(f)(tl)
     }.stream
+
+  /** Outputs segments with a limited maximum size, splitting as necessary. */
+  def segmentLimit[F[_],I](n: Int): Pipe[F,I,Segment[I,Unit]] =
+    _ repeatPull { _.unconsLimit(n) flatMapOpt { case (hd,tl) => Pull.output1(hd).as(Some(tl)) } }
+
+  /**
+   * Outputs segments of size `n`.
+   *
+   * Segments from the source stream are split as necessary.
+   * If `allowFewer` is true, the last segment that is emitted may have less than `n` elements.
+   */
+  def segmentN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,Segment[I,Unit]] =
+    _ repeatPull { _.unconsN(n, allowFewer).flatMapOpt { case (hd,tl) => Pull.output1(hd).as(Some(tl)) }}
 
   /** Outputs all segments from the source stream. */
   def segments[F[_],I]: Pipe[F,I,Segment[I,Unit]] =
