@@ -54,7 +54,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "onError (1)" in {
-      pending // fails when exception thrown from pure code - e.g., s.map(_ => throw Err)
+      // pending // fails when exception thrown from pure code - e.g., s.map(_ => throw Err)
       forAll { (s: PureStream[Int], f: Failure) =>
         val s2 = s.get ++ f.get
         runLog(s2.onError(_ => Stream.empty)) shouldBe runLog(s.get)

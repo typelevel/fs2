@@ -124,7 +124,6 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "merge (left/right failure)" in {
-      pending
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           runLog((s1.get.covary[IO] merge f.get))

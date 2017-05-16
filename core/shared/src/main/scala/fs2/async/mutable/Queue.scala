@@ -101,9 +101,9 @@ abstract class Queue[F[_], A] { self =>
       def cancellableDequeue1: F[(F[B],F[Unit])] =
         self.cancellableDequeue1.map(bu => bu._1.map(f) -> bu._2)
       def dequeueBatch1(batchSize: Int): F[Chunk[B]] =
-        self.dequeueBatch1(batchSize).map(_.map(f))
+        self.dequeueBatch1(batchSize).map(_.map(f).toChunk)
       def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[B]],F[Unit])] =
-        self.cancellableDequeueBatch1(batchSize).map(bu => bu._1.map(_.map(f)) -> bu._2)
+        self.cancellableDequeueBatch1(batchSize).map(bu => bu._1.map(_.map(f).toChunk) -> bu._2)
     }
 }
 
