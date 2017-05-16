@@ -78,12 +78,10 @@ class StreamSpec extends Fs2Spec with Inside {
     "onError (5)" in {
       val r = Stream.fail[IO,Throwable](Err).onError(e => Stream.emit(e)).flatMap(Stream.emit).runLog.unsafeRunSync()
       val r2 = Stream.fail[IO,Throwable](Err).onError(e => Stream.emit(e)).map(identity).runLog.unsafeRunSync()
-      // TODO
-      // val r3 = Stream.join[IO, Int](4)(Stream(Stream.emit(1), Stream.fail(Err), Stream.emit(2)))
-      //                    .attempt.runLog.unsafeRunSync()
+      val r3 = Stream(Stream.emit(1), Stream.fail(Err), Stream.emit(2)).covary[IO].join(4).attempt.runLog.unsafeRunSync()
       r shouldBe Vector(Err)
       r2 shouldBe Vector(Err)
-      // r3.contains(Left(Err)) shouldBe true
+      r3.contains(Left(Err)) shouldBe true
     }
 
     "range" in {
