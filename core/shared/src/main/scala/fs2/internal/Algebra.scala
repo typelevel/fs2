@@ -71,44 +71,45 @@ private[fs2] object Algebra {
     case Right(r) => pure(r)
   }
 
-  def uncons[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int = 1024):
-    Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] = Algebra.suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
-    Algebra.interrupt[F,X].flatMap { interrupt =>
-      s.viewL(interrupt).get match {
-        case done: Free.Pure[Algebra[F,O,?], Unit] => pure(None)
-        case failed: Free.Fail[Algebra[F,O,?], _] => fail(failed.error)
-        case bound: Free.Bind[Algebra[F,O,?],_,Unit] =>
-          val f = bound.f.asInstanceOf[Either[Throwable,Any] => Free[Algebra[F,O,?],Unit]]
-          val fx = bound.fx.asInstanceOf[Free.Eval[Algebra[F,O,?],_]].fr
-          fx match {
-            case os : Algebra.Output[F, O] =>
-              pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some((os.values, f(Right(())))))
-            case os : Algebra.WrapSegment[F, O, x] =>
-              try {
-                val (hd, cnt, tl) = os.values.splitAt(chunkSize)
-                val hdAsSegment: Segment[O,Unit] = hd.uncons.flatMap { case (h1,t1) =>
-                  t1.uncons.flatMap(_ => Segment.catenated(hd)).orElse(Some(h1))
-                }.getOrElse(Segment.empty)
-                pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(
-                  hdAsSegment -> { tl match {
-                    case Left(r) => f(Right(r))
-                    case Right(seg) => Free.Bind[Algebra[F,O,?],x,Unit](segment(seg), f)
-                  }})
-                )
-              }
-              catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
-                uncons(f(Left(e)), chunkSize)
-              }}
-            case algebra => // Eval, Acquire, Release, Snapshot, UnconsAsync
-              Free.Bind[Algebra[F,X,?],Any,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](
-                Free.Eval[Algebra[F,X,?],Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
-                f andThen (s => uncons[F,X,O](s, chunkSize))
-              )
-          }
-        case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
-      }
+  def uncons[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int = 1024): Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =
+    Algebra.suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
+      Algebra.interrupt[F,X].flatMap { interrupt => uncons_(s, chunkSize, interrupt) }
     }
-  }
+
+  private def uncons_[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int, interrupt: () => Boolean): Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =
+    s.viewL(interrupt).get match {
+      case done: Free.Pure[Algebra[F,O,?], Unit] => pure(None)
+      case failed: Free.Fail[Algebra[F,O,?], _] => fail(failed.error)
+      case bound: Free.Bind[Algebra[F,O,?],_,Unit] =>
+        val f = bound.f.asInstanceOf[Either[Throwable,Any] => Free[Algebra[F,O,?],Unit]]
+        val fx = bound.fx.asInstanceOf[Free.Eval[Algebra[F,O,?],_]].fr
+        fx match {
+          case os : Algebra.Output[F, O] =>
+            pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some((os.values, f(Right(())))))
+          case os : Algebra.WrapSegment[F, O, x] =>
+            try {
+              val (hd, cnt, tl) = os.values.splitAt(chunkSize)
+              val hdAsSegment: Segment[O,Unit] = hd.uncons.flatMap { case (h1,t1) =>
+                t1.uncons.flatMap(_ => Segment.catenated(hd)).orElse(Some(h1))
+              }.getOrElse(Segment.empty)
+              pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(
+                hdAsSegment -> { tl match {
+                  case Left(r) => f(Right(r))
+                  case Right(seg) => Free.Bind[Algebra[F,O,?],x,Unit](segment(seg), f)
+                }})
+              )
+            }
+            catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
+              uncons_(f(Left(e)), chunkSize, interrupt)
+            }}
+          case algebra => // Eval, Acquire, Release, Snapshot, UnconsAsync
+            Free.Bind[Algebra[F,X,?],Any,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](
+              Free.Eval[Algebra[F,X,?],Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
+              f andThen (s => uncons_[F,X,O](s, chunkSize, interrupt))
+            )
+        }
+      case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
+    }
 
   /** Left-fold the output of a stream, supporting `unconsAsync`. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
