@@ -11,7 +11,7 @@ import fs2.internal.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
 
-  val timeout: FiniteDuration = 10.seconds
+  val timeout: FiniteDuration = 1.minute
 
   def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = s.runLog.shift.unsafeToFuture
 

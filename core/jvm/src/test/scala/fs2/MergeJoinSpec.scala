@@ -55,11 +55,10 @@ class MergeJoinSpec extends Fs2Spec {
       val hang = Stream.repeatEval(IO.async[Unit] { cb => () }) // never call `cb`!
       val hang2: Stream[IO,Nothing] = full.drain
       val hang3: Stream[IO,Nothing] =
-        Stream.repeatEval[IO,Unit](IO.async { cb => cb(Right(())) }).drain
+        Stream.repeatEval[IO,Unit](IO.async { (cb: Either[Throwable,Unit] => Unit) => cb(Right(())) }.shift).drain
 
       "merge" in {
         runLog((full merge hang).take(1)) shouldBe Vector(42)
-        pending // next line hangs
         runLog((full merge hang2).take(1)) shouldBe Vector(42)
         runLog((full merge hang3).take(1)) shouldBe Vector(42)
         runLog((hang merge full).take(1)) shouldBe Vector(42)
@@ -68,23 +67,16 @@ class MergeJoinSpec extends Fs2Spec {
       }
 
       "join" in {
-        pending
         runLog(Stream(full, hang).join(10).take(1)) shouldBe Vector(42)
-        runLog(Stream(full, hang2).join(10).take(1)) shouldBe Vector(42)
+        pending
+        runLog(Stream(full, hang2).join(10).take(1)) shouldBe Vector(42) // TODO this leaves a thread running on foldRightLazy
         runLog(Stream(full, hang3).join(10).take(1)) shouldBe Vector(42)
         runLog(Stream(hang3,hang2,full).join(10).take(1)) shouldBe Vector(42)
       }
     }
 
     "join - outer-failed" in {
-      class Boom extends Throwable
-      an[Boom] should be thrownBy {
-        Stream.join[IO, Unit](Int.MaxValue)(
-          Stream(
-            time.sleep_[IO](1 minute)
-          ) ++ Stream.fail(new Boom)
-        ).run.unsafeRunSync()
-      }
+      an[Err.type] should be thrownBy { runLog(Stream(time.sleep_[IO](1 minute), Stream.fail(Err)).joinUnbounded) }
     }
   }
 }

@@ -222,15 +222,15 @@ object concurrent {
    * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
    * bound. The inner `F[A]` will block until the result is available.
    */
-  def start[F[_]: Effect, A](f: F[A])(implicit ec: ExecutionContext): F[F[A]] =
-    ref[F, A].flatMap { ref => ref.setAsync(f).as(ref.get) }
+  def start[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
+    ref[F, A].flatMap { ref => ref.setAsync(F.shift(f)).as(ref.get) }
 
   /**
    * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
    * bound. Like `start` but is more efficient.
    */
   def fork[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] =
-    F.liftIO(F.runAsync(f)(_ => IO.unit))
+    F.liftIO(F.runAsync(F.shift(f))(_ => IO.unit))
 
   /**
     * Returns an effect that, when run, races evaluation of `fa` and `fb`,

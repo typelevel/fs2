@@ -434,7 +434,7 @@ object Stream {
       def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
         Stream.eval_(
           available.decrement >> incrementRunning >>
-          concurrent.start {
+          concurrent.fork {
             inner.segments.attempt
             .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
             .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
@@ -742,9 +742,6 @@ object Stream {
     private def translate_[G[_]](u: F ~> G, G: Option[Effect[G]]): Stream[G,O] =
       Stream.fromFree[G,O](Algebra.translate[F,G,O,Unit](self.get, u, G))
 
-    // def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
-    //   Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
-
     def zip[O2](s2: Stream[F,O2]): Stream[F,(O,O2)] =
       through2(s2)(pipe2.zip)
 
@@ -895,30 +892,6 @@ object Stream {
 
     def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
       Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
-
-    // def unconsChunkAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Chunk[O], Stream[F,O])]]] =
-    //   unconsAsync.map { ap =>
-    //     ap.map {
-    //       case None => None
-    //       case Some((hd,tl)) =>
-    //         hd.unconsChunk match {
-    //           case Left(()) => sys.error("FS2-bug; unconsChunk after uncons is guaranteed to produce at least 1 value")
-    //           case Right((hd,tl2)) => Some(hd -> tl.cons(tl2))
-    //         }
-    //     }
-    //   }
-    //
-    // def uncons1Async(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(O, Stream[F,O])]]] =
-    //   unconsAsync.map { ap =>
-    //     ap.map {
-    //       case None => None
-    //       case Some((hd,tl)) =>
-    //         hd.uncons1 match {
-    //           case Left(()) => sys.error("FS2-bug; uncons1 after uncons is guaranteed to produce at least 1 value")
-    //           case Right((hd,tl2)) => Some(hd -> tl.cons(tl2))
-    //         }
-    //     }
-    //   }
 
     /**
      * Like [[uncons]], but returns a segment of no more than `n` elements.
