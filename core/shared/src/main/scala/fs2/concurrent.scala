@@ -5,7 +5,6 @@ import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO }
 
 import fs2.internal.{Actor,LinkedMap}
-import fs2.internal.ExecutionContexts._
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import scala.concurrent.ExecutionContext
@@ -48,7 +47,7 @@ object concurrent {
         } else {
           val r = result
           val id = nonce
-          ec.executeThunk { cb((r: Either[Throwable, A]).map((_,id))) }
+          ec.execute { () => cb((r: Either[Throwable, A]).map((_,id))) }
         }
 
       case Msg.Set(r, cb) =>
@@ -56,7 +55,7 @@ object concurrent {
         if (result eq null) {
           val id = nonce
           waiting.values.foreach { cb =>
-            ec.executeThunk { cb((r: Either[Throwable, A]).map((_,id))) }
+            ec.execute { () => cb((r: Either[Throwable, A]).map((_,id))) }
           }
           waiting = LinkedMap.empty
         }
@@ -67,7 +66,7 @@ object concurrent {
         if (id == nonce) {
           nonce += 1L; val id2 = nonce
           waiting.values.foreach { cb =>
-            ec.executeThunk { cb((r: Either[Throwable, A]).map((_,id2))) }
+            ec.execute { () => cb((r: Either[Throwable, A]).map((_,id2))) }
           }
           waiting = LinkedMap.empty
           result = r
@@ -78,7 +77,7 @@ object concurrent {
       case Msg.Nevermind(id, cb) =>
         val interrupted = waiting.get(id).isDefined
         waiting = waiting - id
-        ec.executeThunk { cb(Right(interrupted)) }
+        ec.execute { () => cb(Right(interrupted)) }
     }
 
     /**
