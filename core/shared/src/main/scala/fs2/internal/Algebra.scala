@@ -67,38 +67,36 @@ private[fs2] object Algebra {
     case Right(r) => pure(r)
   }
 
-  private trait AlgebraFT[F[_],O] { type f[x] = Algebra[F,O,x] }
-
-  def uncons[F[_],X,O](s: Free[AlgebraFT[F,O]#f,Unit], chunkSize: Int = 1024):
-    Free[AlgebraFT[F,X]#f,Option[(Segment[O,Unit], Free[AlgebraFT[F,O]#f,Unit])]] = {
+  def uncons[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int = 1024):
+    Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] = Free.Pure[Algebra[F,X,?],Unit](()).flatMap { _ =>
     s.viewL.get match {
-      case done: Free.Pure[AlgebraFT[F,O]#f, Unit] => pure(None)
-      case failed: Free.Fail[AlgebraFT[F,O]#f, _] => fail(failed.error)
-      case bound: Free.Bind[AlgebraFT[F,O]#f, _, Unit] =>
-        val f = bound.f.asInstanceOf[Either[Throwable,Any] => Free[AlgebraFT[F,O]#f, Unit]]
-        val fx = bound.fx.asInstanceOf[Free.Eval[AlgebraFT[F,O]#f,_]].fr
+      case done: Free.Pure[Algebra[F,O,?], Unit] => pure(None)
+      case failed: Free.Fail[Algebra[F,O,?], _] => fail(failed.error)
+      case bound: Free.Bind[Algebra[F,O,?],_,Unit] =>
+        val f = bound.f.asInstanceOf[Either[Throwable,Any] => Free[Algebra[F,O,?],Unit]]
+        val fx = bound.fx.asInstanceOf[Free.Eval[Algebra[F,O,?],_]].fr
         fx match {
           case os : Algebra.Output[F, O] =>
-            pure[F,X,Option[(Segment[O,Unit], Free[AlgebraFT[F,O]#f,Unit])]](Some((os.values, f(Right(())))))
+            pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some((os.values, f(Right(())))))
           case os : Algebra.WrapSegment[F, O, x] =>
             try {
               val (hd, cnt, tl) = os.values.splitAt(chunkSize)
               val hdAsSegment: Segment[O,Unit] = hd.uncons.flatMap { case (h1,t1) =>
                 t1.uncons.flatMap(_ => Segment.catenated(hd)).orElse(Some(h1))
               }.getOrElse(Segment.empty)
-              pure[F,X,Option[(Segment[O,Unit], Free[AlgebraFT[F,O]#f,Unit])]](Some(
+              pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(
                 hdAsSegment -> { tl match {
                   case Left(r) => f(Right(r))
-                  case Right(seg) => Free.Bind[AlgebraFT[F,O]#f,x,Unit](segment(seg), f)
+                  case Right(seg) => Free.Bind[Algebra[F,O,?],x,Unit](segment(seg), f)
                 }})
               )
             }
-            catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[AlgebraFT[F,O]#f,Unit])]] {
+            catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
               uncons(f(Left(e)), chunkSize)
             }}
           case algebra => // Eval, Acquire, Release, Snapshot, UnconsAsync
-            Free.Bind[AlgebraFT[F,X]#f,Any,Option[(Segment[O,Unit], Free[AlgebraFT[F,O]#f,Unit])]](
-              Free.Eval[AlgebraFT[F,X]#f,Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
+            Free.Bind[Algebra[F,X,?],Any,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](
+              Free.Eval[Algebra[F,X,?],Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
               f andThen (s => uncons[F,X,O](s, chunkSize))
             )
         }
@@ -111,7 +109,7 @@ private[fs2] object Algebra {
   /** Left-fold the output of a stream, supporting `unconsAsync`. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
     val startCompletion = new AtomicBoolean(false)
-    val s = Stream.fromFree(stream).onComplete(Stream.eval_(F.delay({println("DONE"); startCompletion.set(true)}))).get
+    val s = Stream.fromFree(stream).onComplete(Stream.eval_(F.delay(startCompletion.set(true)))).get
     runFold_(s, init)(f, startCompletion, TwoWayLatch(0), new ConcurrentSkipListMap(new java.util.Comparator[Token] {
       def compare(x: Token, y: Token) = x.nonce compare y.nonce
     }))
