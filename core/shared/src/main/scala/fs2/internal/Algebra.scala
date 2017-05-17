@@ -111,9 +111,10 @@ private[fs2] object Algebra {
 
   /** Left-fold the output of a stream, supporting `unconsAsync`. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
-    val startCompletion = new AtomicBoolean(false)
-    F.flatMap(F.attempt(runFoldInterruptibly(stream, () => startCompletion.get, init)(f))) { res =>
-      F.flatMap(F.delay(startCompletion.set(true))) { _ => res.fold(F.raiseError, F.pure) }
+    F.flatMap(F.delay(new AtomicBoolean(false))) { startCompletion =>
+      F.flatMap(F.attempt(runFoldInterruptibly(stream, () => startCompletion.get, init)(f))) { res =>
+        F.flatMap(F.delay(startCompletion.set(true))) { _ => res.fold(F.raiseError, F.pure) }
+      }
     }
   }
 
