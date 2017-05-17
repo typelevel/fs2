@@ -72,9 +72,7 @@ private[fs2] object Algebra {
   }
 
   def uncons[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int = 1024): Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =
-    Algebra.suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
-      Algebra.interrupt[F,X].flatMap { interrupt => uncons_(s, chunkSize, interrupt) }
-    }
+    Algebra.interrupt[F,X].flatMap { interrupt => uncons_(s, chunkSize, interrupt) }
 
   private def uncons_[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int, interrupt: () => Boolean): Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =
     s.viewL(interrupt).get match {
