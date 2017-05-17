@@ -407,7 +407,7 @@ object pipe {
   def scan[F[_],I,O](z: O)(f: (O, I) => O): Pipe[F,I,O] =
     s => scan_(z)(f)(s).stream
 
-  def scan_[F[_],I,O](z: O)(f: (O, I) => O): Stream[F,I] => Pull[F,O,Unit] =
+  private def scan_[F[_],I,O](z: O)(f: (O, I) => O): Stream[F,I] => Pull[F,O,Unit] =
     _.pull.receiveOption {
       case None => Pull.done
       case Some((hd,tl)) =>

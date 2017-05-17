@@ -112,39 +112,45 @@ private[fs2] object Algebra {
   /** Left-fold the output of a stream, supporting `unconsAsync`. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
     val startCompletion = new AtomicBoolean(false)
-    F.flatMap(F.attempt(runFold_(stream, init)(f, startCompletion, TwoWayLatch(0), new ConcurrentSkipListMap(new java.util.Comparator[Token] {
+    F.flatMap(F.attempt(runFoldInterruptibly(stream, () => startCompletion.get, init)(f))) { res =>
+      F.flatMap(F.delay(startCompletion.set(true))) { _ => res.fold(F.raiseError, F.pure) }
+    }
+  }
+
+  /** Left-fold the output of a stream, supporting `unconsAsync`. */
+  def runFoldInterruptibly[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], interrupt: () => Boolean, init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
+    runFold_(stream, init)(f, interrupt, TwoWayLatch(0), new ConcurrentSkipListMap(new java.util.Comparator[Token] {
       def compare(x: Token, y: Token) = x.nonce compare y.nonce
-    })))) { res => F.flatMap(F.delay(startCompletion.set(true))) { _ => res.fold(F.raiseError, F.pure) } }
+    }))
   }
 
   /**
    * Left-fold the output of a stream.
    *
-   *    `startCompletion` is used to control whether stream completion has begun.
+   *    `interrupt` is used to control whether stream completion has begun.
    *    `midAcquires` tracks number of resources that are in the middle of being acquired.
    *    `resources` tracks the current set of resources in use by the stream, keyed by `Token`.
    *
-   * When `startCompletion` becomes `true`, if `midAcquires` has 0 count, `F.raiseError(Interrupted)`
+   * When `interrupt` becomes `true`, if `midAcquires` has 0 count, `F.raiseError(Interrupted)`
    * is returned.
    *
    * If `midAcquires` has nonzero count, we `midAcquires.waitUntil0`, then `F.raiseError(Interrupted)`.
    *
-   * Before starting an acquire, we `midAcquires.increment`. We then check `startCompletion`:
+   * Before starting an acquire, we `midAcquires.increment`. We then check `interrupt`:
    *   If false, proceed with the acquisition, update `resources`, and call `midAcquires.decrement` when done.
    *   If true, `midAcquire.decrement` and F.raiseError(Interrupted) immediately.
    *
-   * No new resource acquisitions can begin after `startCompletion` becomes true, and because
+   * No new resource acquisitions can begin after `interrupt` becomes true, and because
    * we are conservative about incrementing the `midAcquires` latch, doing so even before we
    * know we will acquire a resource, we are guaranteed that doing `midAcquires.waitUntil0`
    * will unblock only when `resources` is no longer growing.
    */
   private def runFold_[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B,
-      startCompletion: AtomicBoolean,
+      interrupt: () => Boolean,
       midAcquires: TwoWayLatch,
       resources: ConcurrentSkipListMap[Token, F2[Unit]])(implicit F: Sync[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
-    val interrupt = () => startCompletion.get
     def go(acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B]
     = v.get match {
       case done: Free.Pure[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] => done.r match {
@@ -167,7 +173,7 @@ private[fs2] object Algebra {
             val resource = acquire.resource
             val release = acquire.release
             midAcquires.increment
-            if (startCompletion.get) { midAcquires.decrement; F.raiseError(Interrupted) }
+            if (interrupt()) { midAcquires.decrement; F.raiseError(Interrupted) }
             else
               F.flatMap(F.attempt(resource)) {
                 case Left(err) => go(acc, f(Left(err)).viewL(interrupt))
@@ -200,7 +206,7 @@ private[fs2] object Algebra {
               F.map(concurrent.fork {
                 F.flatMap(F.attempt(runFold_(
                   uncons(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
-                  None: UO)((o,a) => a, startCompletion, midAcquires, resources)
+                  None: UO)((o,a) => a, interrupt, midAcquires, resources)
                 ))(o => ref.setAsyncPure(o))
               }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
             }

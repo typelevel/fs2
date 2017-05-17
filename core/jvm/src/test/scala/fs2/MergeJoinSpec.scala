@@ -68,8 +68,7 @@ class MergeJoinSpec extends Fs2Spec {
 
       "join" in {
         runLog(Stream(full, hang).join(10).take(1)) shouldBe Vector(42)
-        pending
-        runLog(Stream(full, hang2).join(10).take(1)) shouldBe Vector(42) // TODO this leaves a thread running on foldRightLazy
+        runLog(Stream(full, hang2).join(10).take(1)) shouldBe Vector(42)
         runLog(Stream(full, hang3).join(10).take(1)) shouldBe Vector(42)
         runLog(Stream(hang3,hang2,full).join(10).take(1)) shouldBe Vector(42)
       }
