@@ -80,9 +80,9 @@ abstract class Segment[+O,+R] { self =>
     result.get
   }
 
-  final def foldRightLazy[B](z: => B)(f: (O,=>B) => B): B = this.uncons match {
+  final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = uncons1 match {
     case Left(_) => z
-    case Right((hd,tl)) => hd.toVector.foldRight(tl.foldRightLazy(z)(f))(f(_,_))
+    case Right((hd,tl)) => f(hd, tl.foldRightLazy(z)(f))
   }
 
   final def sum[N>:O](initial: N)(implicit N: Numeric[N]): Segment[Nothing,N] = new Segment[Nothing,N] {
