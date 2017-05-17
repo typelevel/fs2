@@ -369,8 +369,8 @@ object Stream {
 
   /** The infinite `Stream`, always emits `o`. */
   // def constant[F[_],O](o: O): Stream[F,O] = segment(Segment.constant(o))
-  // def constant[F[_],O](o: O): Stream[F,O] = emit(o) ++ constant(o)
-  def constant[F[_],O](o: O): Stream[F,O] = chunk(Chunk.singleton(o)).repeat
+  def constant[F[_],O](o: O): Stream[F,O] = emit(o) ++ constant(o)
+  // def constant[F[_],O](o: O): Stream[F,O] = chunk(Chunk.singleton(o)).repeat
 
   def emit[F[_],O](o: O): Stream[F,O] = fromFree(Algebra.output1[F,O](o))
   def emits[F[_],O](os: Seq[O]): Stream[F,O] = chunk(Chunk.seq(os))

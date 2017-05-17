@@ -64,7 +64,8 @@ abstract class Segment[+O,+R] { self =>
       r => { result = Some(r); ok = false }).value
     while (ok) steps(step, trampoline)
     result match {
-      case None => Right(out -> step.remainder)
+      case None =>
+        Right(out -> step.remainder)
       case Some(r) =>
         if (out.isEmpty) Left(r)
         else Right(out -> pure(r))
@@ -169,23 +170,25 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).takeWhile(<f1>)"
   }
 
-  final def drop(n: Long): Segment[O,(Long,R)] = new Segment[O,(Long,R)] {
-    def stage0 = (depth, defer, emit, emits, done) => {
-      var rem = n
-      self.stage(depth.increment, defer,
-        o => { if (rem > 0) rem -= 1 else emit(o) },
-        os => { if (rem == 0) emits(os)
-                else if (os.size <= rem) rem -= os.size
-                else {
-                  var i = 0
-                  while (rem > 0) { rem -= 1; i += 1 }
-                  while (i < os.size) { emit(os(i)); i += 1 }
-                }
-              },
-        r => done(rem -> r)
-      ).map(_.mapRemainder(_.drop(rem)))
+  final def drop(n: Long): Segment[O,(Long,R)] = {
+    if (n <= 0) this.mapResult(r => (0, r)) else new Segment[O,(Long,R)] {
+      def stage0 = (depth, defer, emit, emits, done) => {
+        var rem = n
+        self.stage(depth.increment, defer,
+          o => { if (rem > 0) rem -= 1 else emit(o) },
+          os => { if (rem == 0) emits(os)
+                  else if (os.size <= rem) rem -= os.size
+                  else {
+                    var i = 0
+                    while (rem > 0) { rem -= 1; i += 1 }
+                    while (i < os.size) { emit(os(i)); i += 1 }
+                  }
+                },
+          r => done(rem -> r)
+        ).map(_.mapRemainder(_.drop(rem)))
+      }
+      override def toString = s"($self).drop($n)"
     }
-    override def toString = s"($self).drop($n)"
   }
 
   final def dropWhile(f: O => Boolean): Segment[O,(Boolean,R)] = new Segment[O,(Boolean,R)] {
@@ -383,7 +386,7 @@ abstract class Segment[+O,+R] { self =>
           var out: scala.collection.immutable.VectorBuilder[O3] = null
           while ((lh ne null) && lpos < lh.size && (rh ne null) && rpos < rh.size) {
             val zipCount = (lh.size - lpos) min (rh.size - rpos)
-            if (zipCount == 1) {
+            if (zipCount == 1 && out1 == None && (out eq null)) {
               out1 = Some(f(lh(lpos),rh(rpos)))
               lpos += 1
               rpos += 1
@@ -419,24 +422,25 @@ abstract class Segment[+O,+R] { self =>
         }
         val emitsL: Chunk[O] => Unit = os => { l += os; doZip }
         val emitsR: Chunk[O2] => Unit = os => { r += os; doZip }
-        var theStepR: Segment.Step[O2,R2] = null
         def unusedL: Segment[O,Unit] = if (l.isEmpty) Segment.empty else l.tail.foldLeft(if (lpos == 0) l.head else l.head.drop(lpos).voidResult)(_ ++ _)
         def unusedR: Segment[O2,Unit] = if (r.isEmpty) Segment.empty else r.tail.foldLeft(if (rpos == 0) r.head else r.head.drop(rpos).voidResult)(_ ++ _)
+        var lResult: Option[R] = None
+        var rResult: Option[R2] = None
         for {
-          stepL <- self.stage(depth, defer, o => emitsL(Chunk.singleton(o)), emitsL, r2 => {
-            done(Left(r2 -> (if (theStepR eq null) that else theStepR.remainder.cons(unusedR))))
-          })
-          stepR <- that.stage(depth, defer, o2 => emitsR(Chunk.singleton(o2)), emitsR, r2 => {
-            done(Right(r2 -> (stepL.remainder.cons(unusedL))))
-          })
+          stepL <- self.stage(depth, defer, o => emitsL(Chunk.singleton(o)), emitsL, res => lResult = Some(res))
+          stepR <- that.stage(depth, defer, o2 => emitsR(Chunk.singleton(o2)), emitsR, res => rResult = Some(res))
         } yield {
-          theStepR = stepR
           step {
             val remL: Segment[O,R] = if (lStepped) stepL.remainder.cons(unusedL) else self
             val remR: Segment[O2,R2] = if (rStepped) stepR.remainder.cons(unusedR) else that
             remL.zipWith(remR)(f)
           } {
-            if (l.isEmpty) { lStepped = true; stepL.step() } else { rStepped = true; stepR.step() }
+            if (lResult.isDefined && l.isEmpty) {
+              done(Left(lResult.get -> stepR.remainder.cons(unusedR)))
+            } else if (rResult.isDefined && r.isEmpty) {
+              done(Right(rResult.get -> stepL.remainder.cons(unusedL)))
+            } else if (lResult.isEmpty && l.isEmpty) { lStepped = true; stepL.step() }
+            else { rStepped = true; stepR.step() }
           }
         }
       }
@@ -462,9 +466,9 @@ object Segment {
     def stage0 = (_, _, emit, _, done) => Eval.later {
       var emitted = false
       step(if (emitted) empty else singleton(o)) {
+        emitted = true
         emit(o)
         done(())
-        emitted = true
       }
     }
     override def toString = s"singleton($o)"

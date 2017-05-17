@@ -21,8 +21,8 @@ class SegmentSpec extends Fs2Spec {
 
   def unconsAll[O,R](s: Segment[O,R]): (Catenable[Chunk[O]],R) = {
     def go[O,R](acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
-      s.unconsChunk match {
-        case Right((hd, tl)) => go(acc :+ hd, tl)
+      s.unconsChunks match {
+        case Right((hds, tl)) => go(acc ++ hds, tl)
         case Left(r) => (acc, r)
       }
     go(Catenable.empty, s)
@@ -150,12 +150,15 @@ class SegmentSpec extends Fs2Spec {
     }
 
     "zipWith" in {
-      forAll { (xs: Vector[Int], ys: Vector[Double], f: (Int, Double) => Long) =>
-        val (segments, leftover) = unconsAll(Segment.seq(xs).zipWith(Segment.seq(ys))(f))
-        segments.toVector.flatMap(_.toVector) shouldBe xs.zip(ys).toVector.map { case (x,y) => f(x,y) }
+      forAll { (xs: Segment[Int,Unit], ys: Segment[Int,Unit]) =>
+        val xsv = xs.toVector
+        val ysv = ys.toVector
+        val f: (Int,Int) => (Int,Int) = (_,_)
+        val (segments, leftover) = unconsAll(xs.zipWith(ys)(f))
+        segments.toVector.flatMap(_.toVector) shouldBe xsv.zip(ysv).map { case (x,y) => f(x,y) }
         leftover match {
-          case Left((_,leftoverYs)) => withClue("leftover ys")(leftoverYs.toVector shouldBe ys.drop(xs.size))
-          case Right((_,leftoverXs)) => withClue("leftover xs")(leftoverXs.toVector shouldBe xs.drop(ys.size))
+          case Left((_,leftoverYs)) => withClue("leftover ys")(leftoverYs.toVector shouldBe ysv.drop(xsv.size))
+          case Right((_,leftoverXs)) => withClue("leftover xs")(leftoverXs.toVector shouldBe xsv.drop(ysv.size))
         }
       }
     }
