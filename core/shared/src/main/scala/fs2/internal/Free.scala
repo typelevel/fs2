@@ -24,27 +24,29 @@ sealed abstract class Free[F[_], +R] {
       case Right(a) => Free.Pure(a)
       case Left(e) => try h(e) catch { case NonFatal(e) => Free.Fail(e) } })
 
-  def asHandler(e: Throwable): Free[F,R] = this.viewL.get match {
+  def asHandler(e: Throwable, interrupt: () => Boolean): Free[F,R] = viewL(interrupt).get match {
     case Pure(_) => Fail(e)
     case Fail(e2) => Fail(e)
     case Bind(_, k) => k(Left(e))
     case Eval(_) => sys.error("impossible")
   }
 
-  lazy val viewL: ViewL[F,R] = ViewL(this) // todo - review this
+  def viewL(interrupt: () => Boolean): ViewL[F,R] = {
+    // TODO add caching here
+    ViewL(this, interrupt)
+  }
 
-  def translate[G[_]](f: F ~> G): Free[G, R] = this.viewL.get match {
-    case Pure(r) => Pure(r)
-    case Bind(fx, k) => Bind(fx translate f, k andThen (_ translate f))
-    case Fail(e) => Fail(e)
-    case Eval(fx) => Eval(f(fx))
+  def translate[G[_]](f: F ~> G): Free[G, R] = Free.suspend {
+    viewL(() => false).get match {
+      case Pure(r) => Pure(r)
+      case Bind(fx, k) => Bind(fx translate f, k andThen (_ translate f))
+      case Fail(e) => Fail(e)
+      case Eval(fx) => Eval(f(fx))
+    }
   }
 }
 
 object Free {
-  // Pure(r), Fail(e), Bind(Eval(fx), k),
-  class ViewL[F[_],+R](val get: Free[F,R]) extends AnyVal
-
   case class Pure[F[_], R](r: R) extends Free[F, R] {
     override def translate[G[_]](f: F ~> G): Free[G, R] = this.asInstanceOf[Free[G,R]]
   }
@@ -64,8 +66,13 @@ object Free {
   def pureContinuation[F[_],R]: Either[Throwable,R] => Free[F,R] =
     pureContinuation_.asInstanceOf[Either[Throwable,R] => Free[F,R]]
 
+  def suspend[F[_], R](fr: Free[F, R]): Free[F, R] =
+    Pure[F, Unit](()).flatMap(_ => fr)
+
+  // Pure(r), Fail(e), Bind(Eval(fx), k),
+  class ViewL[F[_],+R](val get: Free[F,R]) extends AnyVal
   object ViewL {
-    def apply[F[_], R](free: Free[F, R]): ViewL[F, R] = {
+    def apply[F[_], R](free: Free[F, R], interrupt: () => Boolean): ViewL[F, R] = {
       type FreeF[x] = Free[F,x]
       type X = Any
       @annotation.tailrec
@@ -77,8 +84,8 @@ object Free {
           val fw: Free[F, Any] = b.fx.asInstanceOf[Free[F, Any]]
           val f: Either[Throwable,Any] => Free[F, X] = b.f.asInstanceOf[Either[Throwable,Any] => Free[F, X]]
           fw match {
-            case Pure(x) => go(f(Right(x)))
-            case Fail(e) => go(f(Left(e)))
+            case Pure(x) => if (interrupt()) new ViewL(Free.Fail(Interrupted)) else go(f(Right(x)))
+            case Fail(e) => if (interrupt()) new ViewL(Free.Fail(Interrupted)) else go(f(Left(e)))
             case Eval(_) => new ViewL(b.asInstanceOf[Free[F,R]])
             case Bind(w, g) => go(Bind(w, kcompose(g, f)))
           }
@@ -94,8 +101,11 @@ object Free {
     e => Bind(a(e), b)
 
   implicit class FreeRunOps[F[_],R](val self: Free[F,R]) extends AnyVal {
-    def run(implicit F: MonadError[F, Throwable]): F[R] = {
-      self.viewL.get match {
+    def run(implicit F: MonadError[F, Throwable]): F[R] =
+      runInterruptibly(() => false)
+
+    def runInterruptibly(interrupt: () => Boolean)(implicit F: MonadError[F, Throwable]): F[R] = {
+      self.viewL(interrupt).get match {
         case Pure(r) => F.pure(r)
         case Fail(e) => F.raiseError(e)
         case Bind(fr, k) =>
