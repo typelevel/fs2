@@ -7,7 +7,7 @@ import scala.concurrent.ExecutionContext
 import cats.~>
 import cats.effect.{ Effect, Sync }
 
-import fs2.{ AsyncPull, Segment }
+import fs2.{ AsyncPull, Segment, Stream }
 import fs2.concurrent
 
 private[fs2] sealed trait Algebra[F[_],O,R]
@@ -110,7 +110,9 @@ private[fs2] object Algebra {
 
   /** Left-fold the output of a stream, supporting `unconsAsync`. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
-    runFold_(stream, init)(f, new AtomicBoolean(false), TwoWayLatch(0), new ConcurrentSkipListMap(new java.util.Comparator[Token] {
+    val startCompletion = new AtomicBoolean(false)
+    val s = Stream.fromFree(stream).onComplete(Stream.eval_(F.delay({println("DONE"); startCompletion.set(true)}))).get
+    runFold_(s, init)(f, startCompletion, TwoWayLatch(0), new ConcurrentSkipListMap(new java.util.Comparator[Token] {
       def compare(x: Token, y: Token) = x.nonce compare y.nonce
     }))
   }

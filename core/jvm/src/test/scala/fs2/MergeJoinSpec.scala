@@ -58,8 +58,8 @@ class MergeJoinSpec extends Fs2Spec {
         Stream.repeatEval[IO,Unit](IO.async { cb => cb(Right(())) }).drain
 
       "merge" in {
-        pending
         runLog((full merge hang).take(1)) shouldBe Vector(42)
+        pending // next line hangs
         runLog((full merge hang2).take(1)) shouldBe Vector(42)
         runLog((full merge hang3).take(1)) shouldBe Vector(42)
         runLog((hang merge full).take(1)) shouldBe Vector(42)

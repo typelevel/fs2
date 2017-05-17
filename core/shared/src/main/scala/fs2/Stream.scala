@@ -368,12 +368,12 @@ object Stream {
   def cons[F[_],O](s: Stream[F,O])(c: Chunk[O]): Stream[F,O] = s.cons(c)
 
   /**
-   * The infinite `Stream`, always emits `a`.
-   * If for performance reasons it is good to emit `a` in chunks,
+   * The infinite `Stream`, always emits `o`.
+   * If for performance reasons it is good to emit `o` in chunks,
    * specify size of chunk by `chunkSize` parameter
    */
-  def constant[F[_],A](a: A, chunkSize: Int = 1): Stream[F, A] =
-    emits(List.fill(chunkSize)(a)) ++ constant(a, chunkSize)
+  def constant[F[_],O](o: O, chunkSize: Int = 1): Stream[F,O] =
+    emits(List.fill(chunkSize)(o)) ++ constant(o, chunkSize)
 
   def emit[F[_],O](o: O): Stream[F,O] = fromFree(Algebra.output1[F,O](o))
   def emits[F[_],O](os: Seq[O]): Stream[F,O] = chunk(Chunk.seq(os))
@@ -833,7 +833,7 @@ object Stream {
 
     def observeAsync[F[_],O2>:O](sink: Sink[F,O2], maxQueued: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].observeAsync(sink, maxQueued)
-      
+
     /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
     def onComplete[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       covary[F].onComplete(s2)
