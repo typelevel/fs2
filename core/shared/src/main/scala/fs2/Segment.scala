@@ -501,6 +501,11 @@ object Segment {
     override def toString = s"catenated(${s.toList.mkString(", ")})"
   }
 
+  def constant[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.later { step(constant(o)) { emit(o) } }
+    override def toString = s"constant($o)"
+  }
+
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {
     def stage0 = (depth, _, emit, emits, done) => {
       var s0 = s
