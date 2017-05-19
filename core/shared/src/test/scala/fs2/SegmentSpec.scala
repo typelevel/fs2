@@ -136,7 +136,8 @@ class SegmentSpec extends Fs2Spec {
     "unconsChunk" in {
       forAll { (xss: List[List[Int]]) =>
         val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Chunk.array(xs.toArray) ++ acc)
-        unconsAll(seg)._1.toList.map(_.toVector.toList) shouldBe xss.filter(_.nonEmpty)
+        // Consecutive empty chunks are collapsed to a single empty chunk
+        unconsAll(seg)._1.toList.map(_.toVector.toList).filter(_.nonEmpty) shouldBe xss.filter(_.nonEmpty)
       }
     }
 

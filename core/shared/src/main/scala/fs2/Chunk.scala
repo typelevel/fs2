@@ -111,8 +111,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     case other => Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray)
   }
 
-  override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] =
-    if (isEmpty) Left(()) else Right(this -> Chunk.empty)
+  override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] = Right(this -> Chunk.empty)
   override def foreachChunk(f: Chunk[O] => Unit): Unit = f(this)
   override def toChunk = this
   override def toChunks = Catenable.single(this)

@@ -19,23 +19,15 @@ abstract class Segment[+O,+R] { self =>
                r => defer(done(r)))
       }
 
+  final def uncons: Either[R, (Segment[O,Unit],Segment[O,R])] = unconsChunks match {
+    case Left(r) => Left(r)
+    case Right((cs,tl)) => Right(Catenated(cs) -> tl)
+  }
+
   def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
     unconsChunks match {
       case Left(r) => Left(r)
-      case Right((cs, tl)) =>
-        firstNonEmptyChunk(cs) match { // TODO delete non-empty unwrapping
-          case Some((c,cs)) => Right(c -> cs.toList.foldRight(tl)((hd,tl) => tl cons hd))
-          case None => tl.unconsChunk // should never hit this case
-        }
-    }
-
-  @annotation.tailrec
-  private def firstNonEmptyChunk[O](cs: Catenable[Chunk[O]]): Option[(Chunk[O],Catenable[Chunk[O]])] =
-    cs.uncons match {
-      case None => None
-      case Some((c,cs)) =>
-        if (c.isEmpty) firstNonEmptyChunk(cs)
-        else Some(c -> cs)
+      case Right((cs,tl)) => Right(cs.uncons.map { case (hd,tl2) => hd -> tl.cons(Segment.catenated(tl2)) }.get)
     }
 
   @annotation.tailrec
@@ -47,11 +39,6 @@ abstract class Segment[+O,+R] { self =>
         else tl.uncons1
     }
 
-  final def uncons: Either[R, (Segment[O,Unit],Segment[O,R])] = unconsChunks match {
-    case Left(r) => Left(r)
-    case Right((cs,tl)) => Right(Catenated(cs) -> tl)
-  }
-
   final def unconsChunks: Either[R, (Catenable[Chunk[O]],Segment[O,R])] = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
@@ -60,7 +47,7 @@ abstract class Segment[+O,+R] { self =>
     val step = stage(Depth(0),
       defer(trampoline),
       o => { out = out :+ Chunk.singleton(o); ok = false },
-      os => { if (os.nonEmpty) { out = out :+ os; ok = false } }, // TODO allow empty chunk
+      os => { out = out :+ os; ok = false },
       r => { result = Some(r); ok = false }).value
     while (ok) steps(step, trampoline)
     result match {
