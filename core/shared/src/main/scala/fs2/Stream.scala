@@ -178,10 +178,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //   self through pipe.mapAccumulate(init)(f)
 
   def map[O2](f: O => O2): Stream[F,O2] =
-    this.repeatPull(_.receive { (hd, tl) => Pull.output(hd map f).as(Some(tl)) })
+    this.repeatPull(_.uncons.flatMap { case None => Pull.pure(None); case Some((hd, tl)) => Pull.output(hd map f).as(Some(tl)) })
 
   def mapSegments[O2](f: Segment[O,Unit] => Segment[O2,Unit]): Stream[F,O2] =
-    this.repeatPull { _.receive { (hd,tl) => Pull.output(f(hd)).as(Some(tl)) }}
+    this.repeatPull { _.uncons.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output(f(hd)).as(Some(tl)) }}
 
   def mask: Stream[F,O] = this.onError(_ => Stream.empty)
 
@@ -913,11 +913,13 @@ object Stream {
       dropWhile_(p, false)
 
     def dropWhile_(p: O => Boolean, dropFailure: Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
-      receive { (hd, tl) =>
-        hd.dropWhile(p, dropFailure) match {
-          case Left(_) => tl.pull.dropWhile_(p, dropFailure)
-          case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
-        }
+      uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) =>
+          hd.dropWhile(p, dropFailure) match {
+            case Left(_) => tl.pull.dropWhile_(p, dropFailure)
+            case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
+          }
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
@@ -925,11 +927,11 @@ object Stream {
 
     /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
     def echo1: Pull[F,O,Option[Stream[F,O]]] =
-      receive1 { (hd, tl) => Pull.output1(hd).as(Some(tl)) }
+      uncons1.flatMap { case None => Pull.pure(None); case Some((hd, tl)) => Pull.output1(hd).as(Some(tl)) }
 
     /** Reads the next available segment from the input and emits it to the output. Returns the new `Handle`. */
     def echoSegment: Pull[F,O,Option[Stream[F,O]]] =
-      receive { (hd, tl) => Pull.output(hd).as(Some(tl)) }
+      uncons.flatMap { case None => Pull.pure(None); case Some((hd, tl)) => Pull.output(hd).as(Some(tl)) }
 
     /** Like `[[unconsN]]`, but leaves the buffered input unconsumed. */
     def fetchN(n: Int): Pull[F,Nothing,Option[Stream[F,O]]] =
@@ -937,12 +939,14 @@ object Stream {
 
     /** Awaits the next available element where the predicate returns true. */
     def find(f: O => Boolean): Pull[F,Nothing,Option[(O,Stream[F,O])]] =
-      receiveChunk { (hd, tl) =>
-        hd.indexWhere(f) match {
-          case None => tl.pull.find(f)
-          case Some(idx) if idx + 1 < hd.size => Pull.pure(Some((hd(idx), hd.drop(idx + 1).fold(_ => tl, hd => tl.cons(hd)))))
-          case Some(idx) => Pull.pure(Some((hd(idx), tl)))
-        }
+      unconsChunk.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) =>
+          hd.indexWhere(f) match {
+            case None => tl.pull.find(f)
+            case Some(idx) if idx + 1 < hd.size => Pull.pure(Some((hd(idx), hd.drop(idx + 1).fold(_ => tl, hd => tl.cons(hd)))))
+            case Some(idx) => Pull.pure(Some((hd(idx), tl)))
+          }
       }
 
     /**
@@ -950,7 +954,7 @@ object Stream {
      * result to the output of the supplied `Pull` when the stream has no more values.
      */
     def fold[O2](z: O2)(f: (O2, O) => O2): Pull[F,Nothing,O2] =
-      receiveOption {
+      uncons.flatMap {
         case None => Pull.pure(z)
         case Some((hd,tl)) => tl.pull.fold(hd.fold(z)(f).run)(f) // TODO find a way to not call run
       }
@@ -960,14 +964,14 @@ object Stream {
      * the supplied `Pull` when the stream has no more values.
      */
     def fold1[O2 >: O](f: (O2, O2) => O2): Pull[F,Nothing,Option[O2]] =
-      receive1Option {
+      uncons1.flatMap {
         case None => Pull.pure(None)
         case Some((hd,tl)) => tl.pull.fold(hd: O2)(f).map(Some(_))
       }
 
     /** Writes a single `true` value if all input matches the predicate, `false` otherwise. */
     def forall(p: O => Boolean): Pull[F,Nothing,Boolean] = {
-      receiveOption {
+      uncons.flatMap {
         case None => Pull.pure(true)
         case Some((hd,tl)) =>
           Pull.segment(hd.takeWhile(p).drain).flatMap {
@@ -980,20 +984,20 @@ object Stream {
     /** Returns the last element of the input, if non-empty. */
     def last: Pull[F,Nothing,Option[O]] = {
       def go(prev: Option[O], s: Stream[F,O]): Pull[F,Nothing,Option[O]] =
-        s.pull.receiveOption {
+        s.pull.uncons.flatMap {
           case None => Pull.pure(prev)
           case Some((hd,tl)) => Pull.segment(hd.fold(prev)((_,o) => Some(o))).flatMap(go(_,tl))
         }
       go(None, self)
     }
 
-    /** Like [[receive]] but does not consume the segment (i.e., the segment is pushed back). */
+    /** Like [[uncons]] but does not consume the segment (i.e., the segment is pushed back). */
     def peek: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
-      receive { (hd, tl) => Pull.pure(Some((hd, tl.cons(hd)))) }
+      uncons.flatMap { case None => Pull.pure(None); case Some((hd, tl)) => Pull.pure(Some((hd, tl.cons(hd)))) }
 
-    /** Like [[receive]] but does not consume the element (i.e., the element is pushed back). */
+    /** Like [[uncons1]] but does not consume the element (i.e., the element is pushed back). */
     def peek1: Pull[F,Nothing,Option[(O,Stream[F,O])]] =
-      receive1 { (hd, tl) => Pull.pure(Some((hd, tl.cons1(hd)))) }
+      uncons1.flatMap { case None => Pull.pure(None); case Some((hd, tl)) => Pull.pure(Some((hd, tl.cons1(hd)))) }
 
     /**
      * Like [[uncons]], but runs the `uncons` asynchronously. A `flatMap` into
@@ -1001,30 +1005,6 @@ object Stream {
      */
     def prefetch(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,Pull[F,Nothing,Option[Stream[F,O]]]] =
       unconsAsync.map { _.pull.map { _.map { case (hd, h) => h cons hd } } }
-
-    /** Apply `f` to the next available `Segment`. */
-    def receive[O2,R](f: (Segment[O,Unit],Stream[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
-      uncons.flatMapOpt { case (hd, tl) => f(hd, tl) }
-
-    /** Apply `f` to the next available `Chunk`. */
-    def receiveChunk[O2,R](f: (Chunk[O],Stream[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
-      unconsChunk.flatMapOpt { case (hd, tl) => f(hd, tl) }
-
-    /** Apply `f` to the next available element. */
-    def receive1[O2,R](f: (O,Stream[F,O]) => Pull[F,O2,Option[R]]): Pull[F,O2,Option[R]] =
-      uncons1.flatMapOpt { case (hd, tl) => f(hd, tl) }
-
-    /** Apply `f` to the next available segment, or `None` if the input is exhausted. */
-    def receiveOption[O2,R](f: Option[(Segment[O,Unit],Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
-      uncons.flatMap(f)
-
-    /** Apply `f` to the next available chunk, or `None` if the input is exhausted. */
-    def receiveChunkOption[O2,R](f: Option[(Chunk[O],Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
-      unconsChunk.flatMap(f)
-
-    /** Apply `f` to the next available element, or `None` if the input is exhausted. */
-    def receive1Option[O2,R](f: Option[(O,Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
-      uncons1.flatMap(f)
 
     def scanSegments[S,O2](init: S)(f: (S, Segment[O,Unit]) => Segment[O2,S]): Pull[F,O2,S] =
       scanSegmentsOpt(init)(s => Some(seg => f(s,seg)))
@@ -1081,11 +1061,13 @@ object Stream {
     def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, false)
 
     def takeWhile_(p: O => Boolean, takeFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =
-      receive { (hd, tl) =>
-        Pull.segment(hd.takeWhile(p, takeFailure)).flatMap {
-          case Left(_) => tl.pull.takeWhile_(p, takeFailure)
-          case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
-        }
+      uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) =>
+          Pull.segment(hd.takeWhile(p, takeFailure)).flatMap {
+            case Left(_) => tl.pull.takeWhile_(p, takeFailure)
+            case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
+          }
       }
   }
 

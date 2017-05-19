@@ -4,6 +4,8 @@ import cats.Eval
 
 import Segment._
 
+// TODO drain, filter, and collect should periodically emit an empty chunk if they haven't emitted anything in N steps
+
 abstract class Segment[+O,+R] { self =>
   private[fs2]
   def stage0: (Depth, (=> Unit) => Unit, O => Unit, Chunk[O] => Unit, R => Unit) => Eval[Step[O,R]]

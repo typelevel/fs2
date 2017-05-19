@@ -20,19 +20,19 @@ object pipe2 {
       (t1, t2) match {
         case ((hd1, tl1), (hd2, tl2)) => Pull.segment(hd1.zipWith(hd2)(f)).flatMap {
           case Left(((),extra2)) =>
-            tl1.pull.receiveOption {
+            tl1.pull.uncons.flatMap {
               case None => k2(Left((extra2, tl2)))
               case Some(tl1) => go(tl1, (extra2, tl2))
             }
           case Right(((),extra1)) =>
-            tl2.pull.receiveOption {
+            tl2.pull.uncons.flatMap {
               case None => k1(Left((extra1, tl1)))
               case Some(tl2) => go((extra1, tl1), tl2)
             }
         }
       }
-    (s1, s2) => s1.pull.receiveOption {
-      case Some(s1) => s2.pull.receiveOption {
+    (s1, s2) => s1.pull.uncons.flatMap {
+      case Some(s1) => s2.pull.uncons.flatMap {
         case Some(s2) => go(s1, s2)
         case None => k1(Left(s1))
       }
@@ -52,8 +52,9 @@ object pipe2 {
    */
   def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): Pipe2[F,I,I2,O] = {
     def cont1(z: Either[(Segment[I,Unit], Stream[F, I]), Stream[F, I]]): Pull[F,O,Option[Nothing]] = {
-      def contLeft(s: Stream[F,I]): Pull[F,O,Option[Nothing]] = s.pull.receive {
-        (hd,tl) => Pull.output(hd.map(i => f(i,pad2))) >> contLeft(tl)
+      def contLeft(s: Stream[F,I]): Pull[F,O,Option[Nothing]] = s.pull.uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd,tl)) => Pull.output(hd.map(i => f(i,pad2))) >> contLeft(tl)
       }
       z match {
         case Left((hd,tl)) => Pull.output(hd.map(i => f(i,pad2))) >> contLeft(tl)
@@ -61,8 +62,9 @@ object pipe2 {
       }
     }
     def cont2(z: Either[(Segment[I2,Unit], Stream[F, I2]), Stream[F, I2]]): Pull[F,O,Option[Nothing]] = {
-      def contRight(s: Stream[F,I2]): Pull[F,O,Option[Nothing]] = s.pull.receive {
-        (hd,tl) => Pull.output(hd.map(i2 => f(pad1,i2))) >> contRight(tl)
+      def contRight(s: Stream[F,I2]): Pull[F,O,Option[Nothing]] = s.pull.uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd,tl)) => Pull.output(hd.map(i2 => f(pad1,i2))) >> contRight(tl)
       }
       z match {
         case Left((hd,tl)) => Pull.output(hd.map(i2 => f(pad1,i2))) >> contRight(tl)
@@ -312,9 +314,11 @@ object pipe2 {
       controlStream: Stream[F, Boolean],
       srcFuture: AsyncPull[F, Option[(Segment[I,Unit], Stream[F, I])]]
     ): Pull[F, I, Option[Nothing]] = {
-      controlStream.pull.receiveChunk { (c, controlStream) =>
-        if (c.last) paused(controlStream, srcFuture)
-        else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
+      controlStream.pull.unconsChunk.flatMap {
+        case None => Pull.pure(None)
+        case Some((c, controlStream)) =>
+          if (c.last) paused(controlStream, srcFuture)
+          else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
       }
     }
 

@@ -28,7 +28,7 @@ object pipe {
   //  */
   // def bufferBy[F[_],I](f: I => Boolean): Pipe[F,I,I] = {
   //   def go(buffer: Vector[Chunk[I]], last: Boolean): Handle[F,I] => Pull[F,I,Unit] = {
-  //     _.receiveOption {
+  //     _.uncons.flatMap {
   //       case Some((chunk, h)) =>
   //         val (out, buf, last) = {
   //           chunk.foldLeft((Vector.empty[Chunk[I]], Vector.empty[I], false)) { case ((out, buf, last), i) =>
@@ -72,7 +72,7 @@ object pipe {
 
   /** Outputs all chunks from the source stream. */
   def chunks[F[_],I]: Pipe[F,I,Chunk[I]] =
-    _.repeatPull(_.receiveChunk((hd,tl) => Pull.output1(hd).as(Some(tl))))
+    _.repeatPull(_.unconsChunk.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) })
 
   /** Map/filter simultaneously. Calls `collect` on each `Chunk` in the stream. */
   def collect[F[_],I,I2](pf: PartialFunction[I, I2]): Pipe[F,I,I2] =
@@ -119,7 +119,7 @@ object pipe {
   /** Drops the last element if the predicate evaluates to true. */
   def dropLastIf[F[_],I](p: I => Boolean): Pipe[F,I,I] = {
     def go(last: Chunk[I], s: Stream[F,I]): Pull[F,I,Unit] = {
-      s.pull.receiveChunkOption {
+      s.pull.unconsChunk.flatMap {
         case Some((hd,tl)) =>
           if (hd.nonEmpty) Pull.output(last) >> go(hd,tl)
           else go(last,tl)
@@ -132,7 +132,7 @@ object pipe {
       }
     }
     def unconsNonEmptyChunk(s: Stream[F,I]): Pull[F,Nothing,Option[(Chunk[I],Stream[F,I])]] =
-      s.pull.receiveChunkOption {
+      s.pull.unconsChunk.flatMap {
         case Some((hd,tl)) =>
           if (hd.nonEmpty) Pull.pure(Some((hd,tl)))
           else unconsNonEmptyChunk(tl)
@@ -149,9 +149,11 @@ object pipe {
     if (n <= 0) identity
     else {
       def go(acc: Vector[I], s: Stream[F,I]): Pull[F,I,Option[Unit]] = {
-        s.pull.receive { (hd,tl) =>
-          val all = acc ++ hd.toVector
-          Pull.output(Chunk.vector(all.dropRight(n))) >> go(all.takeRight(n), tl)
+        s.pull.uncons.flatMap {
+          case None => Pull.pure(None)
+          case Some((hd,tl)) =>
+            val all = acc ++ hd.toVector
+            Pull.output(Chunk.vector(all.dropRight(n))) >> go(all.takeRight(n), tl)
         }
       }
       go(Vector.empty, _).stream
@@ -197,22 +199,27 @@ object pipe {
    */
   def filterWithPrevious[F[_],I](f: (I, I) => Boolean): Pipe[F,I,I] = {
     def go(last: I, s: Stream[F,I]): Pull[F,I,Option[Unit]] =
-      s.pull.receive { (hd, tl) =>
-        // Check if we can emit this chunk unmodified
-        Pull.segment(hd.fold((true, last)) { case ((acc, last), i) => (acc && f(last, i), i) }).flatMap { case (allPass, newLast) =>
-          if (allPass) {
-            Pull.output(hd) >> go(newLast, tl)
-          } else {
-            Pull.segment(hd.fold((Vector.empty[I], last)) { case ((acc, last), i) =>
-              if (f(last, i)) (acc :+ i, i)
-              else (acc, last)
-            }).flatMap { case (acc, newLast) =>
-              Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
+      s.pull.uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd, tl)) =>
+          // Check if we can emit this chunk unmodified
+          Pull.segment(hd.fold((true, last)) { case ((acc, last), i) => (acc && f(last, i), i) }).flatMap { case (allPass, newLast) =>
+            if (allPass) {
+              Pull.output(hd) >> go(newLast, tl)
+            } else {
+              Pull.segment(hd.fold((Vector.empty[I], last)) { case ((acc, last), i) =>
+                if (f(last, i)) (acc :+ i, i)
+                else (acc, last)
+              }).flatMap { case (acc, newLast) =>
+                Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
+              }
             }
           }
-        }
       }
-    _.pull.receive1 { (hd, tl) => Pull.output1(hd) >> go(hd, tl) }.stream
+    _.pull.uncons1.flatMap {
+      case None => Pull.pure(None)
+      case Some((hd, tl)) => Pull.output1(hd) >> go(hd, tl)
+    }.stream
   }
 
   /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
@@ -250,7 +257,7 @@ object pipe {
   //   def go(current: Option[(K, Vector[V])]):
   //       Handle[F, V] => Pull[F, (K, Vector[V]), Unit] = h => {
   //
-  //     h.receiveOption {
+  //     h.uncons.flatMap {
   //       case Some((chunk, h)) =>
   //         val (k1, out) = current.getOrElse((f(chunk(0)), Vector[V]()))
   //         doChunk(chunk, h, k1, out, Vector.empty)
@@ -301,13 +308,15 @@ object pipe {
     _.pull.echo1.flatMap {
       case None => Pull.pure(None)
       case Some(s) =>
-        s.repeatPull { _.receive { (hd,tl) =>
-          val interspersed = {
-            val bldr = Vector.newBuilder[I]
-            hd.toVector.foreach { i => bldr += separator; bldr += i }
-            Chunk.vector(bldr.result)
-          }
-          Pull.output(interspersed) >> Pull.pure(Some(tl))
+        s.repeatPull { _.uncons.flatMap {
+          case None => Pull.pure(None)
+          case Some((hd,tl)) =>
+            val interspersed = {
+              val bldr = Vector.newBuilder[I]
+              hd.toVector.foreach { i => bldr += separator; bldr += i }
+              Chunk.vector(bldr.result)
+            }
+            Pull.output(interspersed) >> Pull.pure(Some(tl))
         }}.pull.echo
     }.stream
 
@@ -368,7 +377,10 @@ object pipe {
    * enabling processing on either side of the `prefetch` to run in parallel.
    */
   def prefetch[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe[F,I,I] =
-    _ repeatPull { _.receive { (hd, tl) => tl.pull.prefetch flatMap { p => Pull.output(hd) >> p }}}
+    _ repeatPull { _.uncons.flatMap {
+      case None => Pull.pure(None)
+      case Some((hd, tl)) => tl.pull.prefetch flatMap { p => Pull.output(hd) >> p }
+    }}
 
   // /**
   //  * Modifies the chunk structure of the underlying stream, emitting potentially unboxed
@@ -408,7 +420,7 @@ object pipe {
     s => scan_(z)(f)(s).stream
 
   private def scan_[F[_],I,O](z: O)(f: (O, I) => O): Stream[F,I] => Pull[F,O,Unit] =
-    _.pull.receiveOption {
+    _.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd,tl)) =>
         Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc => scan_(acc)(f)(tl).stream.pull.echo }
@@ -418,7 +430,7 @@ object pipe {
    * Like `[[scan]]`, but uses the first element of the stream as the seed.
    */
   def scan1[F[_],I](f: (I, I) => I): Pipe[F,I,I] =
-    _.pull.receive1Option {
+    _.pull.uncons1.flatMap {
       case None => Pull.done
       case Some((hd,tl)) => scan_(hd)(f)(tl)
     }.stream
@@ -438,7 +450,7 @@ object pipe {
 
   /** Outputs all segments from the source stream. */
   def segments[F[_],I]: Pipe[F,I,Segment[I,Unit]] =
-    _.repeatPull(_.receive((hd,tl) => Pull.output1(hd).as(Some(tl))))
+    _.repeatPull(_.uncons.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) })
 
   // /** Emits the given values, then echoes the rest of the input. */
   // def shiftRight[F[_],I](head: I*): Pipe[F,I,I] =
@@ -479,7 +491,7 @@ object pipe {
   //  */
   // def split[F[_],I](f: I => Boolean): Pipe[F,I,Vector[I]] = {
   //   def go(buffer: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = {
-  //     _.receiveOption {
+  //     _.uncons.flatMap {
   //       case Some((chunk, h)) =>
   //         chunk.indexWhere(f) match {
   //           case None =>
@@ -517,7 +529,7 @@ object pipe {
 
   /** Converts the input to a stream of 1-element chunks. */
   def unchunk[F[_],I]: Pipe[F,I,I] =
-    _ repeatPull { _.receive1 { (hd,tl) => Pull.output1(hd).as(Some(tl)) }}
+    _ repeatPull { _.uncons1.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) }}
 
   /**
    * Filters any 'None'.
@@ -538,8 +550,10 @@ object pipe {
    * }}}
    */
   def unNoneTerminate[F[_],I]: Pipe[F,Option[I],I] =
-    _ repeatPull { _.receive { (hd, tl) =>
-      Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.fold(_ => Some(tl), _ => None))
+    _ repeatPull { _.uncons.flatMap {
+      case None => Pull.pure(None)
+      case Some((hd, tl)) =>
+        Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.fold(_ => Some(tl), _ => None))
     }}
 
   // /**
@@ -568,7 +582,7 @@ object pipe {
   //  */
   // def zipWithNext[F[_], I]: Pipe[F,I,(I,Option[I])] = {
   //   def go(last: I): Handle[F, I] => Pull[F, (I, Option[I]), Handle[F, I]] =
-  //     _.receiveOption {
+  //     _.uncons.flatMap {
   //       case None => Pull.output1((last, None)) as Handle.empty
   //       case Some((chunk, h)) =>
   //         val (newLast, zipped) = chunk.mapAccumulate(last) {
@@ -723,7 +737,7 @@ object pipe {
               else F.pure(())
             }
           s.repeatPull {
-            _.receiveOption {
+            _.uncons.flatMap {
               case Some((a, h)) =>
                 Pull.eval(q.enqueue1(Some(a))) >> Pull.output(a).as(Some(h))
               case None =>
