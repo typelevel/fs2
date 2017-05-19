@@ -539,7 +539,7 @@ object pipe {
    */
   def unNoneTerminate[F[_],I]: Pipe[F,Option[I],I] =
     _ repeatPull { _.receive { (hd, tl) =>
-      Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.fold(_ => None, _ => Some(tl)))
+      Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.fold(_ => Some(tl), _ => None))
     }}
 
   // /**

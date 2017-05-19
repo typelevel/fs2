@@ -7,7 +7,7 @@ import scala.concurrent.ExecutionContext
 import cats.~>
 import cats.effect.{ Effect, Sync }
 
-import fs2.{ AsyncPull, Segment }
+import fs2.{ AsyncPull, Catenable, Segment }
 import fs2.concurrent
 
 private[fs2] sealed trait Algebra[F[_],O,R]
@@ -86,18 +86,15 @@ private[fs2] object Algebra {
             pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some((os.values, f(Right(())))))
           case os : Algebra.WrapSegment[F, O, x] =>
             try {
-              val (hd, cnt, tl) = os.values.splitAt(chunkSize)
-              val hdAsSegment: Segment[O,Unit] = hd.uncons.flatMap { case (h1,t1) =>
-                t1.uncons.map(_ => Segment.catenated(hd)).orElse(Some(h1))
-              }.getOrElse(Segment.empty)
-              pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(
-                hdAsSegment -> { tl match {
-                  case Left(r) => f(Right(r))
-                  case Right(seg) => Free.Bind[Algebra[F,O,?],x,Unit](segment(seg), f)
-                }})
-              )
-            }
-            catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
+              def asSegment(c: Catenable[Segment[O,Unit]]): Segment[O,Unit] =
+                c.uncons.flatMap { case (h1,t1) => t1.uncons.map(_ => Segment.catenated(c)).orElse(Some(h1)) }.getOrElse(Segment.empty)
+              os.values.splitAt(chunkSize) match {
+                case Left((r,segments,rem)) =>
+                  pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(asSegment(segments) -> f(Right(r))))
+                case Right((segments,tl)) =>
+                  pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(asSegment(segments) -> Free.Bind[Algebra[F,O,?],x,Unit](segment(tl), f)))
+              }
+            } catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
               uncons_(f(Left(e)), chunkSize, interrupt)
             }}
           case algebra => // Eval, Acquire, Release, Snapshot, UnconsAsync

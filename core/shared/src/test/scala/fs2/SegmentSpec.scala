@@ -6,12 +6,13 @@ import Arbitrary.arbitrary
 class SegmentSpec extends Fs2Spec {
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = 2000, workers = 4)
+    PropertyCheckConfiguration(minSuccessful = 10000, workers = 4)
 
   def genSegment[O](genO: Gen[O]): Gen[Segment[O,Unit]] = Gen.oneOf(
     Gen.const(()).map(Segment.pure(_)),
     genO.map(Segment.singleton),
     Gen.listOf(genO).map(Segment.seq(_)),
+    Gen.listOf(genO).map(_.foldLeft(Segment.empty[O])((acc, o) => acc ++ Segment.singleton(o))),
     Gen.delay(for { lhs <- genSegment(genO); rhs <- genSegment(genO) } yield lhs ++ rhs),
     Gen.delay(for { seg <- genSegment(genO); c <- Gen.listOf(genO).map(Chunk.seq) } yield seg.cons(c))
   )
@@ -58,7 +59,15 @@ class SegmentSpec extends Fs2Spec {
 
     "dropWhile" in {
       forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
-        s.dropWhile(f).toVector shouldBe s.toVector.dropWhile(f)
+        s.dropWhile(f).fold(_ => Vector.empty, _.toVector) shouldBe s.toVector.dropWhile(f)
+      }
+    }
+
+    "dropWhile (2)" in {
+      forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
+        val svec = s.toVector
+        val svecD = svec.dropWhile(f)
+        s.dropWhile(f, true).fold(_ => Vector.empty, _.toVector) shouldBe (if (svecD.isEmpty) Vector.empty else svecD.tail)
       }
     }
 
@@ -82,54 +91,76 @@ class SegmentSpec extends Fs2Spec {
 
     "splitAt" in {
       forAll { (s: Segment[Int,Unit], n: Int) =>
-        val (hd, cnt, tail) = s.splitAt(n)
-        Segment.catenated(hd).toChunk shouldBe s.toChunk.take(n)
-        cnt shouldBe s.toVector.take(n).size
-        if (n >= s.toVector.size && n > 0)
-          tail shouldBe Left(())
-        else
-          tail.map(_.toVector).getOrElse(Vector.empty) shouldBe s.toVector.drop(n)
+        val result = s.splitAt(n)
+        val v = s.toVector
+        if (n == 0 || n < v.size) {
+          val Right((segments, rest)) = result
+          segments.toVector.flatMap(_.toVector) shouldBe v.take(n)
+          rest.toVector shouldBe v.drop(n)
+        } else {
+          val Left((_, segments, rem)) = result
+          segments.toVector.flatMap(_.toVector) shouldBe v.take(n)
+          rem shouldBe (n - v.size)
+        }
       }
     }
 
     "splitWhile" in {
       forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
-        val (segments, unfinished, tail) = s.splitWhile(f)
+        val (segments, unfinished, tail) = s.splitWhile(f) match {
+          case Left((_,segments)) => (segments, true, Segment.empty)
+          case Right((segments,tail)) => (segments, false, tail)
+        }
         Segment.catenated(segments).toVector shouldBe s.toVector.takeWhile(f)
         unfinished shouldBe (s.toVector.takeWhile(f).size == s.toVector.size)
         val remainder = s.toVector.dropWhile(f)
-        if (remainder.isEmpty) tail should (be(Left(())) or be(Right(Segment.empty)))
-        else tail.map(_.toVector).getOrElse(Vector.empty) shouldBe remainder
+        if (remainder.isEmpty) tail shouldBe Segment.empty
+        else tail.toVector shouldBe remainder
       }
     }
 
     "splitWhile (2)" in {
       forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
-        val (segments, unfinished, tail) = s.splitWhile(f, emitFailure = true)
+        val (segments, unfinished, tail) = s.splitWhile(f, emitFailure = true) match {
+          case Left((_,segments)) => (segments, true, Segment.empty)
+          case Right((segments,tail)) => (segments, false, tail)
+        }
         val svec = s.toVector
         Segment.catenated(segments).toVector shouldBe (svec.takeWhile(f) ++ svec.dropWhile(f).headOption)
         unfinished shouldBe (svec.takeWhile(f).size == svec.size)
         val remainder = svec.dropWhile(f).drop(1)
-        if (remainder.isEmpty) tail should (be(Left(())) or be(Right(Segment.empty)))
-        else tail.map(_.toVector).getOrElse(Vector.empty) shouldBe remainder
+        if (remainder.isEmpty) tail shouldBe Segment.empty
+        else tail.toVector shouldBe remainder
       }
     }
 
     "sum" in {
       forAll { (s: Segment[Int,Unit]) =>
-        s.sum(0).run shouldBe s.toChunk.toVector.sum
+        s.sum(0).run shouldBe s.toVector.sum
       }
     }
 
     "take" in {
       forAll { (s: Segment[Int,Unit], n: Int) =>
-        s.take(n).toChunk shouldBe s.toChunk.take(n)
+        val v = s.toVector
+        s.take(n).toVector shouldBe v.take(n)
+        if (n > 0 && n >= v.size) {
+          s.take(n).void.run shouldBe Left(((), n - v.size))
+        } else {
+          s.take(n).void.run shouldBe Right(Segment.vector(v.drop(n)))
+        }
       }
     }
 
     "takeWhile" in {
       forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
         s.takeWhile(f).toVector shouldBe s.toVector.takeWhile(f)
+      }
+    }
+
+    "takeWhile (2)" in {
+      forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
+        s.takeWhile(f, true).toVector shouldBe (s.toVector.takeWhile(f) ++ s.toVector.dropWhile(f).headOption)
       }
     }
 

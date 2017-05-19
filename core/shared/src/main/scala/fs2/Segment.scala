@@ -119,52 +119,27 @@ abstract class Segment[+O,+R] { self =>
    * containing the number of elements remaining to take when the end of the source segment was reached,
    * or a right containing the remainder of the source segment after `n` elements are taken.
    */
-  final def take(n: Long): Segment[O,Either[(R,Long),Segment[O,R]]] = new Segment[O,Either[(R,Long),Segment[O,R]]] {
-    def stage0 = (depth, defer, emit, emits, done) => Eval.later {
-      var rem = n
-      var staged: Step[O,R] = null
-      staged = self.stage(depth.increment, defer,
-        o => { if (rem > 0) { rem -= 1; emit(o) } else done(Right(staged.remainder)) },
-        os => { if (os.size <= rem) { rem -= os.size; emits(os) }
-                else {
-                  var i = 0
-                  while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
-                  done(Right(staged.remainder.drop(i).toOption.get))
-                }
-              },
-        r => done(Left(r -> rem))
-      ).value
-      staged.mapRemainder(_.take(rem))
+  final def take(n: Long): Segment[O,Either[(R,Long),Segment[O,R]]] =
+    if (n <= 0) Segment.pure(Right(this))
+    else new Segment[O,Either[(R,Long),Segment[O,R]]] {
+      def stage0 = (depth, defer, emit, emits, done) => Eval.later {
+        var rem = n
+        var staged: Step[O,R] = null
+        staged = self.stage(depth.increment, defer,
+          o => { if (rem > 0) { rem -= 1; emit(o) } else done(Right(staged.remainder.cons(Chunk.singleton(o)))) },
+          os => { if (os.size <= rem) { rem -= os.size; emits(os) }
+                  else {
+                    var i = 0
+                    while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
+                    done(Right(staged.remainder.drop(i).toOption.get))
+                  }
+                },
+          r => done(Left(r -> rem))
+        ).value
+        staged.mapRemainder(_.take(rem))
+      }
+      override def toString = s"($self).take($n)"
     }
-    override def toString = s"($self).take($n)"
-  }
-
-  // final def takeWhile(p: O => Boolean): Segment[O,Either[R,Segment[O,R]]
-
-  final def takeWhile(f: O => Boolean): Segment[O,Either[Long,R]] = new Segment[O,Either[Long,R]] {
-    def stage0 = (depth, defer, emit, emits, done) => {
-      var ok = true
-      var count = 0L
-      self.stage(depth.increment, defer,
-        o => { ok = ok && f(o); if (ok) { emit(o); count += 1 } else done(Left(count)) },
-        os => {
-          var i = 0
-          while (ok && i < os.size) {
-            val o = os(i)
-            ok = f(o)
-            if (!ok) {
-              var j = 0
-              while (j < i) { emit(os(j)); count += 1; j += 1 }
-            }
-            i += 1
-          }
-          if (ok) emits(os) else done(Left(count))
-        },
-        r => done(Right(r))
-      ).map(_.mapRemainder(rem => if (ok) rem.takeWhile(f) else rem.mapResult(Right(_))))
-    }
-    override def toString = s"($self).takeWhile(<f1>)"
-  }
 
   final def drop(n: Long): Either[(R,Long),Segment[O,R]] = {
     var rem = n
@@ -183,45 +158,69 @@ abstract class Segment[+O,+R] { self =>
       },
       r => result = Some(r)).value
     while (rem > 0 && result.isEmpty) steps(step, trampoline)
-    val remainder: Segment[O,R] = step.remainder match {
-      case s @ Catenated(cs) =>
-        cs.uncons.map {
-          case (hd,tl) =>
-            hd match {
-              case c: Chunk[O] if c.isEmpty => Catenated(tl)
-              case _ => s
-            }
-        }.getOrElse(s)
-      case other => other
+    result match {
+      case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.cons(Segment.catenated(leftovers)))
+      case Some(r) => if (leftovers.isEmpty) Left((r,rem)) else Right(Segment.pure(r).cons(Segment.catenated(leftovers)))
     }
-    result.map(r => Left((r,rem))).getOrElse(Right(if (leftovers.isEmpty) remainder else remainder.cons(Segment.catenated(leftovers))))
   }
 
-  // final def dropWhile(p: O => Boolean): Either[R,Segment[O,R]]
-
-  final def dropWhile(f: O => Boolean): Segment[O,(Boolean,R)] = new Segment[O,(Boolean,R)] {
-    def stage0 = (depth, defer, emit, emits, done) => {
-      var dropping = true
-      self.stage(depth.increment, defer,
-        o => { if (dropping) dropping = f(o); if (!dropping) emit(o) },
+  final def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Segment[O,Either[R,Segment[O,R]]] = new Segment[O,Either[R,Segment[O,R]]] {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.later {
+      var ok = true
+      var staged: Step[O,R] = null
+      staged = self.stage(depth.increment, defer,
+        o => { if (ok) { ok = ok && p(o); if (ok || takeFailure) emit(o) else done(Right(staged.remainder.cons(Chunk.singleton(o)))) } },
         os => {
-          if (dropping) {
-            var i = 0
-            while (dropping && i < os.size) {
-              val o = os(i)
-              dropping = f(o)
-              if (!dropping) while (i < os.size) { emit(os(i)); i += 1 }
-              i += 1
+          var i = 0
+          while (ok && i < os.size) {
+            val o = os(i)
+            ok = p(o)
+            if (!ok) {
+              var j = 0
+              if (takeFailure) i += 1
+              while (j < i) { emit(os(j)); j += 1 }
             }
-          } else emits(os)
+            i += 1
+          }
+          if (ok) emits(os) else done(Right(staged.remainder.drop(i - 1).toOption.get))
         },
-        r => done((dropping, r))
-      ).map(_.mapRemainder(rem => if (dropping) rem.dropWhile(f) else rem.mapResult((false, _))))
+        r => done(Left(r))
+      ).value
+      staged.mapRemainder(rem => if (ok) rem.takeWhile(p) else rem.mapResult(Left(_)))
     }
-    override def toString = s"($self).dropWhile(<f1>)"
+    override def toString = s"($self).takeWhile(<f1>)"
   }
 
-  // final def splitWhile(p: O => Boolean): Either[R,Segment[O,R]]
+  final def dropWhile(p: O => Boolean, dropFailure: Boolean = false): Either[R,Segment[O,R]] = {
+    var dropping = true
+    var leftovers: Catenable[Chunk[O]] = Catenable.empty
+    var result: Option[R] = None
+    val trampoline = makeTrampoline
+    val step = stage(Depth(0), defer(trampoline),
+      o => { if (dropping) { dropping = p(o); if (!dropping && !dropFailure) leftovers = leftovers :+ Chunk.singleton(o) } },
+      os => {
+        var i = 0
+        while (dropping && i < os.size) {
+          dropping = p(os(i))
+          i += 1
+        }
+        if (!dropping) {
+          var j = i - 1
+          if (dropFailure) j += 1
+          if (j == 0) leftovers = leftovers :+ os
+          else while (j < os.size) {
+            leftovers = leftovers :+ Chunk.singleton(os(j))
+            j += 1
+          }
+        }
+      },
+      r => result = Some(r)).value
+    while (dropping && result.isEmpty) steps(step, trampoline)
+    result match {
+      case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.cons(Segment.catenated(leftovers)))
+      case Some(r) => if (leftovers.isEmpty) Left(r) else Right(Segment.pure(r).cons(Segment.catenated(leftovers)))
+    }
+  }
 
   def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
@@ -313,10 +312,8 @@ abstract class Segment[+O,+R] { self =>
     buf.result
   }
 
-  // final def splitAt(n: Long): Either[(R,Catenable[Segment[O,Unit]],Long),(Catenable[Segment[O,Unit]],Segment[O,R])]
-
-  final def splitAt(n: Long): (Catenable[Segment[O,Unit]], Long, Either[R,Segment[O,R]]) = {
-    if (n <= 0) (Catenable.empty, 0, Right(this))
+  final def splitAt(n: Long): Either[(R,Catenable[Segment[O,Unit]],Long),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
+    if (n <= 0) Right((Catenable.empty, this))
     else {
       var out: Catenable[Chunk[O]] = Catenable.empty
       var result: Option[Either[R,Segment[O,Unit]]] = None
@@ -343,13 +340,14 @@ abstract class Segment[+O,+R] { self =>
         os => emits(os),
         r => if (result.isEmpty) result = Some(Left(r))).value
       while (result.isEmpty) steps(step, trampoline)
-      val resultAsEither: Either[R,Segment[O,R]] =
-        result.map(_.map(s => step.remainder.cons(s))).getOrElse(Right(step.remainder))
-      (out, n - rem, resultAsEither)
+      result.map {
+        case Left(r) => Left((r,out,rem))
+        case Right(after) => Right((out,step.remainder.cons(after)))
+      }.getOrElse(Right((out, step.remainder)))
     }
   }
 
-  final def splitWhile(p: O => Boolean, emitFailure: Boolean = false): (Catenable[Segment[O,Unit]], Boolean, Either[R,Segment[O,R]]) = {
+  final def splitWhile(p: O => Boolean, emitFailure: Boolean = false): Either[(R,Catenable[Segment[O,Unit]]),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[Either[R,Segment[O,Unit]]] = None
     var ok = true
@@ -379,9 +377,10 @@ abstract class Segment[+O,+R] { self =>
       os => emits(os),
       r => if (result.isEmpty) result = Some(Left(r))).value
     while (result.isEmpty) steps(step, trampoline)
-    val resultAsEither: Either[R,Segment[O,R]] =
-      result.map(_.map(s => step.remainder.cons(s))).getOrElse(Right(step.remainder))
-    (out, ok, resultAsEither)
+    result.map {
+      case Left(r) => Left((r,out))
+      case Right(after) => Right((out,step.remainder.cons(after)))
+    }.getOrElse(Right((out, step.remainder)))
   }
 
   def zipWith[O2,R2,O3](that: Segment[O2,R2])(f: (O,O2) => O3): Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] =

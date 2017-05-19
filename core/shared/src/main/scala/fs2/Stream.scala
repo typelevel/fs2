@@ -859,13 +859,10 @@ object Stream {
     def unconsLimit(n: Long): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
       require(n > 0)
       uncons.flatMapOpt { case (hd,tl) =>
-        val (segments, cnt, result) = hd.splitAt(n)
-        val out = Segment.catenated(segments)
-        val rest = result match {
-          case Left(()) => tl
-          case Right(tl2) => tl.cons(tl2)
+        hd.splitAt(n) match {
+          case Left((_,segments,rem)) => Pull.pure(Some(Segment.catenated(segments) -> tl))
+          case Right((segments,tl2)) => Pull.pure(Some(Segment.catenated(segments) -> tl.cons(tl2)))
         }
-        Pull.pure(Some((out,rest)))
       }
     }
 
@@ -876,13 +873,13 @@ object Stream {
             if (allowFewer && acc.nonEmpty) Pull.pure(Some((Segment.catenated(acc), Stream.empty)))
             else Pull.pure(None)
           case Some((hd,tl)) =>
-            val (segments, cnt, result) = hd.splitAt(n)
-            val rest = result match {
-              case Left(()) => tl
-              case Right(tl2) => tl.cons(tl2)
+            hd.splitAt(n) match {
+              case Left((_,segments,rem)) =>
+                if (rem > 0) go(acc ++ segments, rem, tl)
+                else Pull.pure(Some(Segment.catenated(acc ++ segments) -> tl))
+              case Right((segments,tl2)) =>
+                Pull.pure(Some(Segment.catenated(acc ++ segments) -> tl.cons(tl2)))
             }
-            if (cnt >= n) Pull.pure(Some((Segment.catenated(acc ++ segments), rest)))
-            else go(acc ++ segments, n - cnt, rest)
         }
       }
       if (n <= 0) Pull.pure(Some((Segment.empty, self)))
@@ -915,14 +912,12 @@ object Stream {
     def dropWhile(p: O => Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
       dropWhile_(p, false)
 
-    def dropWhile_(p: O => Boolean, emitFailure: Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
+    def dropWhile_(p: O => Boolean, dropFailure: Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
       receive { (hd, tl) =>
-        val (segments, unfinished, result) = hd.splitWhile(p, emitFailure)
-        val rest = result match {
-          case Left(()) => tl
-          case Right(tl2) => tl.cons(tl2)
+        hd.dropWhile(p, dropFailure) match {
+          case Left(_) => tl.pull.dropWhile_(p, dropFailure)
+          case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
         }
-        if (unfinished) rest.pull.dropWhile_(p, emitFailure) else Pull.pure(Some(rest))
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
@@ -976,8 +971,8 @@ object Stream {
         case None => Pull.pure(true)
         case Some((hd,tl)) =>
           Pull.segment(hd.takeWhile(p).drain).flatMap {
-            case Right(()) => tl.pull.forall(p)
-            case Left(_) => Pull.pure(false)
+            case Left(()) => tl.pull.forall(p)
+            case Right(_) => Pull.pure(false)
           }
       }
     }
@@ -1085,14 +1080,12 @@ object Stream {
      * a first element `i` for which `p(i)` is `false`. */
     def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, false)
 
-    def takeWhile_(p: O => Boolean, emitFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =
+    def takeWhile_(p: O => Boolean, takeFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =
       receive { (hd, tl) =>
-        val (segments, unfinished, result) = hd.splitWhile(p, emitFailure = emitFailure)
-        val rest = result match {
-          case Left(()) => tl
-          case Right(tl2) => tl.cons(tl2)
+        Pull.segment(hd.takeWhile(p, takeFailure)).flatMap {
+          case Left(_) => tl.pull.takeWhile_(p, takeFailure)
+          case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
         }
-        Pull.output(Segment.catenated(segments)) >> (if (unfinished) rest.pull.takeWhile_(p, emitFailure) else Pull.pure(Some(rest)))
       }
   }
 
