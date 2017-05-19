@@ -116,13 +116,6 @@ class StreamSpec extends Fs2Spec with Inside {
       s.get.toVector shouldBe runLog(s.get)
     }
 
-    "uncons" in {
-      val result = Stream(1,2,3).uncons1.toList
-      inside(result) { case List(Some((1, tail))) =>
-          tail.toList shouldBe (List(2,3))
-      }
-    }
-
     "unfold" in {
       Stream.unfold((0, 1)) {
         case (f1, f2) => if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None

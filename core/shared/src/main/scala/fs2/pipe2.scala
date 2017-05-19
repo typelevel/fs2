@@ -52,22 +52,20 @@ object pipe2 {
    */
   def zipAllWith[F[_],I,I2,O](pad1: I, pad2: I2)(f: (I, I2) => O): Pipe2[F,I,I2,O] = {
     def cont1(z: Either[(Segment[I,Unit], Stream[F, I]), Stream[F, I]]): Pull[F,O,Option[Nothing]] = {
-      def putLeft(c: Chunk[I]) = Pull.output(c.zipWith(Chunk.vector(Vector.fill(c.size)(pad2)))(f).voidResult)
       def contLeft(s: Stream[F,I]): Pull[F,O,Option[Nothing]] = s.pull.receive {
-        (hd, tl) => putLeft(hd.toChunk) >> contLeft(tl)
+        (hd,tl) => Pull.output(hd.map(i => f(i,pad2))) >> contLeft(tl)
       }
       z match {
-        case Left((c, h)) => putLeft(c.toChunk) >> contLeft(h)
+        case Left((hd,tl)) => Pull.output(hd.map(i => f(i,pad2))) >> contLeft(tl)
         case Right(h)     => contLeft(h)
       }
     }
     def cont2(z: Either[(Segment[I2,Unit], Stream[F, I2]), Stream[F, I2]]): Pull[F,O,Option[Nothing]] = {
-      def putRight(c: Chunk[I2]) = Pull.output(Chunk.vector(Vector.fill(c.size)(pad1)).zipWith(c)(f).voidResult)
       def contRight(s: Stream[F,I2]): Pull[F,O,Option[Nothing]] = s.pull.receive {
-        (hd, tl) => putRight(hd.toChunk) >> contRight(tl)
+        (hd,tl) => Pull.output(hd.map(i2 => f(pad1,i2))) >> contRight(tl)
       }
       z match {
-        case Left((c, h)) => putRight(c.toChunk) >> contRight(h)
+        case Left((hd,tl)) => Pull.output(hd.map(i2 => f(pad1,i2))) >> contRight(tl)
         case Right(h)     => contRight(h)
       }
     }

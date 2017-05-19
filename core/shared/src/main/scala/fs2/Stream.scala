@@ -115,6 +115,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * will, when `unsafeRunSync` in called, print "x" but return `Vector()`.
    */
   def drain: Stream[F, Nothing] = this.flatMap { _ => Stream.empty }
+  // def drain: Stream[F, Nothing] = this.mapSegments(_ => Segment.empty) // TODO
 
   def drop(n: Long): Stream[F,O] = this.through(pipe.drop(n))
 
@@ -256,61 +257,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Alias for `self through [[pipe.unchunk]]`. */
   def unchunk: Stream[F,O] = this through pipe.unchunk
 
-  /** Return leading `Segment[O,Unit]` emitted by this stream. */
-  def uncons: Stream[F,Option[(Segment[O,Unit],Stream[F,O])]] =
-    // this.pull.uncons.flatMap(Pull.output1).close <-- TODO Do we want scoping here? Doesn't seem to matter either way - finalizers are eagerly run
-    Stream.fromFree(Algebra.uncons(get[F,O]).flatMap(o => Algebra.output(Chunk.singleton(o)))).
-      map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
-
-  /**
-  * A new [[Stream]] of one element containing the head element of this stream along
-  * with a reference to the remaining stream after evaluation of the first element.
-  *
-  * {{{
-  *   scala> Stream(1,2,3).uncons1.toList
-  *   res1: List[Option[(Int, Stream[Pure, Int])]] = List(Some((1,Stream(..))))
-  * }}}
-  *
-  * You can use this to implement any stateful stream function, like `take`:
-  *
-  * {{{
-     def take[F[_],A](n: Int)(s: Stream[F,A]): Stream[F,A] = {
-       if (n <= 0) Stream.empty
-       else s.uncons1.flatMap {
-         case None => Stream.empty
-         case Some((hd, tl)) => Stream.emit(hd) ++ take(n-1)(tl)
-       }
-     }
-   }}}
-  *
-  * So `uncons` and `uncons1` can be viewed as an alternative to using `Pull`, with
-  * an important caveat: if you use `uncons` or `uncons1`, you are responsible for
-  * telling FS2 when you're done unconsing the stream, which you do using `[[Stream.scope]]`.
-  *
-  * For instance, the above definition of `take` doesn't call `scope`, so any finalizers
-  * attached won't be run until the very end of any enclosing `scope` or `Pull`
-  * (or the end of the stream if there is no enclosing scope). So in the following code:
-  *
-  * {{{
-  *    take(2)(Stream(1,2,3).onFinalize(IO(println("done"))) ++
-  *    anotherStream
-  * }}}
-  *
-  * The "done" would not be printed until the end of `anotherStream`. To get the
-  * prompt finalization behavior, we would have to do:
-  *
-  * {{{
-  *    take(2)(Stream(1,2,3).onFinalize(IO(println("done"))).scope ++
-  *    anotherStream
-  * }}}
-  *
-  * Note the call to `scope` after the completion of `take`, which ensures that
-  * when that stream completes, any streams which have been opened by the `take`
-  * are deemed closed and their finalizers can be run.
-  */
-  def uncons1: Stream[F,Option[(O,Stream[F,O])]] =
-    this.pull.uncons1.flatMap(Pull.output1).stream
-
   /** Alias for `[[pipe.unNone]]` */
   def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F,O2] =
     this.asInstanceOf[Stream[F,Option[O2]]] through pipe.unNone
@@ -370,7 +316,6 @@ object Stream {
   /** The infinite `Stream`, always emits `o`. */
   // def constant[F[_],O](o: O): Stream[F,O] = segment(Segment.constant(o))
   def constant[F[_],O](o: O): Stream[F,O] = emit(o) ++ constant(o)
-  // def constant[F[_],O](o: O): Stream[F,O] = chunk(Chunk.singleton(o)).repeat
 
   def emit[F[_],O](o: O): Stream[F,O] = fromFree(Algebra.output1[F,O](o))
   def emits[F[_],O](os: Seq[O]): Stream[F,O] = chunk(Chunk.seq(os))
@@ -719,6 +664,12 @@ object Stream {
     def runLast(implicit F: Sync[F]): F[Option[O]] =
       self.runFold(Option.empty[O])((_, a) => Some(a))
 
+    def scanSegments[S,O2](init: S)(f: (S, Segment[O,Unit]) => Segment[O2,S]): Stream[F,O2] =
+      scanSegmentsOpt(init)(s => Some(seg => f(s,seg)))
+
+    def scanSegmentsOpt[S,O2](init: S)(f: S => Option[Segment[O,Unit] => Segment[O2,S]]): Stream[F,O2] =
+      self.pull.scanSegmentsOpt(init)(f).stream
+
     /** Transform this stream using the given `Pipe`. */
     def through[O2](f: Pipe[F,O,O2]): Stream[F,O2] = f(self)
 
@@ -909,7 +860,7 @@ object Stream {
       require(n > 0)
       uncons.flatMapOpt { case (hd,tl) =>
         val (segments, cnt, result) = hd.splitAt(n)
-        val out = Segment.catenated(segments).getOrElse(Segment.empty)
+        val out = Segment.catenated(segments)
         val rest = result match {
           case Left(()) => tl
           case Right(tl2) => tl.cons(tl2)
@@ -922,7 +873,7 @@ object Stream {
       def go(acc: Catenable[Segment[O,Unit]], n: Long, s: Stream[F,O]): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
         s.pull.uncons.flatMap {
           case None =>
-            if (allowFewer && acc.nonEmpty) Pull.pure(Some((Segment.catenated(acc).getOrElse(Segment.empty), Stream.empty)))
+            if (allowFewer && acc.nonEmpty) Pull.pure(Some((Segment.catenated(acc), Stream.empty)))
             else Pull.pure(None)
           case Some((hd,tl)) =>
             val (segments, cnt, result) = hd.splitAt(n)
@@ -930,7 +881,7 @@ object Stream {
               case Left(()) => tl
               case Right(tl2) => tl.cons(tl2)
             }
-            if (cnt >= n) Pull.pure(Some((Segment.catenated(acc ++ segments).getOrElse(Segment.empty), rest)))
+            if (cnt >= n) Pull.pure(Some((Segment.catenated(acc ++ segments), rest)))
             else go(acc ++ segments, n - cnt, rest)
         }
       }
@@ -941,14 +892,17 @@ object Stream {
     /** Drops the first `n` elements of this `Stream`, and returns the new `Stream`. */
     def drop(n: Long): Pull[F,Nothing,Option[Stream[F,O]]] =
       if (n <= 0) Pull.pure(Some(self))
-      else uncons.flatMapOpt { case (hd,tl) =>
-        val (segments, count, result) = hd.splitAt(n)
-        val rest = result match {
-          case Left(()) => tl
-          case Right(tl2) => tl.cons(tl2)
-        }
-        if (count >= n) Pull.pure(Some(rest)) else rest.pull.drop(n - count)
-    }
+      else uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd,tl)) =>
+          hd.drop(n) match {
+            case Left((_,rem)) =>
+              if (rem > 0) tl.pull.drop(rem)
+              else Pull.pure(Some(tl))
+            case Right(tl2) =>
+              Pull.pure(Some(tl.cons(tl2)))
+          }
+      }
 
     /** Like [[dropWhile]], but drops the first value which tests false. */
     def dropThrough(p: O => Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
@@ -991,7 +945,7 @@ object Stream {
       receiveChunk { (hd, tl) =>
         hd.indexWhere(f) match {
           case None => tl.pull.find(f)
-          case Some(idx) if idx + 1 < hd.size => Pull.pure(Some((hd(idx), tl.cons(hd.drop(idx + 1).voidResult))))
+          case Some(idx) if idx + 1 < hd.size => Pull.pure(Some((hd(idx), hd.drop(idx + 1).fold(_ => tl, hd => tl.cons(hd)))))
           case Some(idx) => Pull.pure(Some((hd(idx), tl)))
         }
       }
@@ -1003,7 +957,7 @@ object Stream {
     def fold[O2](z: O2)(f: (O2, O) => O2): Pull[F,Nothing,O2] =
       receiveOption {
         case None => Pull.pure(z)
-        case Some((hd,tl)) => tl.pull.fold(hd.fold(z)(f).run)(f)
+        case Some((hd,tl)) => tl.pull.fold(hd.fold(z)(f).run)(f) // TODO find a way to not call run
       }
 
     /**
@@ -1077,18 +1031,35 @@ object Stream {
     def receive1Option[O2,R](f: Option[(O,Stream[F,O])] => Pull[F,O2,R]): Pull[F,O2,R] =
       uncons1.flatMap(f)
 
+    def scanSegments[S,O2](init: S)(f: (S, Segment[O,Unit]) => Segment[O2,S]): Pull[F,O2,S] =
+      scanSegmentsOpt(init)(s => Some(seg => f(s,seg)))
+
+    def scanSegmentsOpt[S,O2](init: S)(f: S => Option[Segment[O,Unit] => Segment[O2,S]]): Pull[F,O2,S] = {
+      def go(acc: S, s: Stream[F,O]): Pull[F,O2,S] =
+        f(acc) match {
+          case None => Pull.pure(acc)
+          case Some(g) =>
+            s.pull.uncons.flatMap {
+              case Some((hd,tl)) =>
+                Pull.segment(g(hd)).flatMap { acc => go(acc,tl) }
+              case None =>
+                Pull.pure(acc)
+            }
+        }
+      go(init, self)
+    }
+
     /** Emits the first `n` elements of the input. */
     def take(n: Long): Pull[F,O,Option[Stream[F,O]]] =
       if (n <= 0) Pull.pure(None)
-      else uncons.flatMapOpt {
-        case (hd,tl) =>
-          val (segments, count, result) = hd.splitAt(n)
-          val out = Segment.catenated(segments).map(Pull.output).getOrElse(Pull.pure(()))
-          val rest = result match {
-            case Left(()) => tl
-            case Right(tl2) => tl.cons(tl2)
+      else uncons.flatMap {
+        case None => Pull.pure(None)
+        case Some((hd,tl)) =>
+          Pull.segment(hd.take(n)).flatMap {
+            case Left((_,rem)) =>
+              if (rem > 0) tl.pull.take(rem) else Pull.pure(None)
+            case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
           }
-          out >> (if (count >= n) Pull.pure(Some(rest)) else rest.pull.take(n - count))
       }
 
     /** Emits the last `n` elements of the input. */
@@ -1121,7 +1092,7 @@ object Stream {
           case Left(()) => tl
           case Right(tl2) => tl.cons(tl2)
         }
-        Segment.catenated(segments).map(Pull.output).getOrElse(Pull.pure(())) >> (if (unfinished) rest.pull.takeWhile_(p, emitFailure) else Pull.pure(Some(rest)))
+        Pull.output(Segment.catenated(segments)) >> (if (unfinished) rest.pull.takeWhile_(p, emitFailure) else Pull.pure(Some(rest)))
       }
   }
 

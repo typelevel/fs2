@@ -72,7 +72,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "early termination of uncons" in {
       var n = 0
-      Stream(1,2,3).onFinalize(IO(n = 1)).uncons.run.unsafeRunSync
+      Stream(1,2,3).onFinalize(IO(n = 1)).pull.echoSegment.stream.run.unsafeRunSync
       n shouldBe 1
     }
 

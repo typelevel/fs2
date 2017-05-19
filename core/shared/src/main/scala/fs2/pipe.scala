@@ -552,14 +552,16 @@ object pipe {
   //  */
   // def vectorChunkN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,Vector[I]] =
   //   chunkN(n, allowFewer) andThen (_.map(i => i.foldLeft(Vector.empty[I])((v, c) => v ++ c.iterator)))
-  //
-  // /** Zips the elements of the input `Handle` with its indices, and returns the new `Handle` */
-  // def zipWithIndex[F[_],I]: Pipe[F,I,(I,Int)] = {
-  //   mapAccumulate[F, Int, I, I](-1) {
-  //     case (i, x) => (i + 1, x)
-  //   } andThen(_.map(_.swap))
-  // }
-  //
+
+  /** Zips the elements of the input stream with its indices, and returns the new stream. */
+  def zipWithIndex[F[_],I]: Pipe[F,I,(I,Long)] =
+    _.scanSegments(0L) { (index, s) =>
+      s.withLength.zipWith(Segment.from(index))((_,_)).mapResult {
+        case Left(((_, len), remRight)) => len + index
+        case Right((_, remLeft)) => sys.error("impossible")
+      }
+    }
+
   // /**
   //  * Zips the elements of the input `Handle` with its next element wrapped into `Some`, and returns the new `Handle`.
   //  * The last element is zipped with `None`.

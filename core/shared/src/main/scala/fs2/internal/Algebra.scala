@@ -88,7 +88,7 @@ private[fs2] object Algebra {
             try {
               val (hd, cnt, tl) = os.values.splitAt(chunkSize)
               val hdAsSegment: Segment[O,Unit] = hd.uncons.flatMap { case (h1,t1) =>
-                t1.uncons.flatMap(_ => Segment.catenated(hd)).orElse(Some(h1))
+                t1.uncons.map(_ => Segment.catenated(hd)).orElse(Some(h1))
               }.getOrElse(Segment.empty)
               pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(
                 hdAsSegment -> { tl match {

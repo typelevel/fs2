@@ -52,7 +52,7 @@ class SegmentSpec extends Fs2Spec {
 
     "drop" in {
       forAll { (s: Segment[Int,Unit], n: Int) =>
-        s.drop(n).toChunk shouldBe s.toChunk.drop(n)
+        s.drop(n).fold(_ => Segment.empty, identity).toVector shouldBe s.toVector.drop(n)
       }
     }
 
@@ -83,7 +83,7 @@ class SegmentSpec extends Fs2Spec {
     "splitAt" in {
       forAll { (s: Segment[Int,Unit], n: Int) =>
         val (hd, cnt, tail) = s.splitAt(n)
-        Segment.catenated(hd).getOrElse(Segment.empty).toChunk shouldBe s.toChunk.take(n)
+        Segment.catenated(hd).toChunk shouldBe s.toChunk.take(n)
         cnt shouldBe s.toVector.take(n).size
         if (n >= s.toVector.size && n > 0)
           tail shouldBe Left(())
@@ -95,7 +95,7 @@ class SegmentSpec extends Fs2Spec {
     "splitWhile" in {
       forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
         val (segments, unfinished, tail) = s.splitWhile(f)
-        Segment.catenated(segments).getOrElse(Segment.empty).toVector shouldBe s.toVector.takeWhile(f)
+        Segment.catenated(segments).toVector shouldBe s.toVector.takeWhile(f)
         unfinished shouldBe (s.toVector.takeWhile(f).size == s.toVector.size)
         val remainder = s.toVector.dropWhile(f)
         if (remainder.isEmpty) tail should (be(Left(())) or be(Right(Segment.empty)))
@@ -107,7 +107,7 @@ class SegmentSpec extends Fs2Spec {
       forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
         val (segments, unfinished, tail) = s.splitWhile(f, emitFailure = true)
         val svec = s.toVector
-        Segment.catenated(segments).getOrElse(Segment.empty).toVector shouldBe (svec.takeWhile(f) ++ svec.dropWhile(f).headOption)
+        Segment.catenated(segments).toVector shouldBe (svec.takeWhile(f) ++ svec.dropWhile(f).headOption)
         unfinished shouldBe (svec.takeWhile(f).size == svec.size)
         val remainder = svec.dropWhile(f).drop(1)
         if (remainder.isEmpty) tail should (be(Left(())) or be(Right(Segment.empty)))
