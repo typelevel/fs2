@@ -573,12 +573,32 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //
   // /** Alias for `self through [[pipe.zipWithPreviousAndNext]]`. */
   // def zipWithPreviousAndNext: Stream[F, (Option[O], O, Option[O])] = self through pipe.zipWithPreviousAndNext
-  //
-  // /** Alias for `self through [[pipe.zipWithScan]]`. */
-  // def zipWithScan[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan(z)(f)
-  //
-  // /** Alias for `self through [[pipe.zipWithScan1]]`. */
-  // def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] = self through pipe.zipWithScan1(z)(f)
+
+  /**
+   * Zips the input with a running total according to `S`, up to but not including the current element. Thus the initial
+   * `z` value is the first emitted to the output:
+   * {{{
+   * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length).toList
+   * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
+   * }}}
+   *
+   * @see [[zipWithScan1]]
+   */
+  def zipWithScan[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] =
+    this.mapAccumulate(z) { (s,o) => val s2 = f(s,o); (s2, (o,s)) }.map(_._2)
+
+  /**
+   * Zips the input with a running total according to `S`, including the current element. Thus the initial
+   * `z` value is the first emitted to the output:
+   * {{{
+   * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan1(0)(_ + _.length).toList
+   * res0: List[(String, Int)] = List((uno,3), (dos,6), (tres,10), (cuatro,16))
+   * }}}
+   *
+   * @see [[zipWithScan]]
+   */
+  def zipWithScan1[O2](z: O2)(f: (O2, O) => O2): Stream[F,(O,O2)] =
+    this.mapAccumulate(z) { (s,o) => val s2 = f(s,o); (s2, (o,s2)) }.map(_._2)
 
   override def toString: String = "Stream(..)"
 }
