@@ -151,10 +151,6 @@ object Pipe {
   // def rechunkN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,I] =
   //   in => chunkN(n, allowFewer)(in).flatMap { chunks => Stream.chunk(Chunk.concat(chunks)) }
 
-  // /** Emits the given values, then echoes the rest of the input. */
-  // def shiftRight[F[_],I](head: I*): Pipe[F,I,I] =
-  //   _ pull { h => h.push(Chunk.indexedSeq(Vector(head: _*))).echo }
-  //
   // /**
   //  * Groups inputs in fixed size chunks by passing a "sliding window"
   //  * of size `n` over them. If the input contains less than or equal to
@@ -206,17 +202,6 @@ object Pipe {
   //   }
   //   _.pull(go(Vector.empty))
   // }
-
-  // /**
-  //  * Groups inputs into separate `Vector` objects of size `n`.
-  //  *
-  //  * @example {{{
-  //  * scala> Stream(1, 2, 3, 4, 5).vectorChunkN(2).toVector
-  //  * res0: Vector[Vector[Int]] = Vector(Vector(1, 2), Vector(3, 4), Vector(5))
-  //  * }}}
-  //  */
-  // def vectorChunkN[F[_],I](n: Int, allowFewer: Boolean = true): Pipe[F,I,Vector[I]] =
-  //   chunkN(n, allowFewer) andThen (_.map(i => i.foldLeft(Vector.empty[I])((v, c) => v ++ c.iterator)))
 
   // /**
   //  * Zips the elements of the input `Handle` with its next element wrapped into `Some`, and returns the new `Handle`.

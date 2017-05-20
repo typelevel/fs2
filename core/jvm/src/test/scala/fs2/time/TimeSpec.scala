@@ -1,5 +1,4 @@
 // package fs2
-// package time
 //
 // import cats.effect.IO
 // import scala.concurrent.duration._

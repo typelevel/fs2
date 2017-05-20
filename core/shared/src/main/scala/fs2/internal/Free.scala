@@ -5,7 +5,7 @@ import Free._
 
 import cats.{ ~>, MonadError }
 
-sealed abstract class Free[F[_], +R] {
+private[fs2] sealed abstract class Free[F[_], +R] {
 
   def flatMap[R2](f: R => Free[F, R2]): Free[F, R2] =
     Bind[F,R,R2](this, e => e match {
@@ -46,7 +46,7 @@ sealed abstract class Free[F[_], +R] {
   }
 }
 
-object Free {
+private[fs2] object Free {
   case class Pure[F[_], R](r: R) extends Free[F, R] {
     override def translate[G[_]](f: F ~> G): Free[G, R] = this.asInstanceOf[Free[G,R]]
   }

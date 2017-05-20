@@ -1,5 +1,4 @@
 package fs2
-package compress
 
 import fs2.Stream._
 
@@ -8,6 +7,8 @@ import org.scalacheck.Gen
 
 import java.io.ByteArrayOutputStream
 import java.util.zip.{Deflater, DeflaterOutputStream, Inflater, InflaterOutputStream}
+
+import compress._
 
 class CompressSpec extends Fs2Spec {
 

@@ -6,7 +6,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
 /** Provides utilities for compressing/decompressing byte streams. */
-package object compress {
+object compress {
 
   /**
     * Returns a `Pipe` that deflates (compresses) its input elements using

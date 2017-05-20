@@ -7,7 +7,7 @@ import cats.effect.{ Async, Effect, IO, Sync }
 import cats.implicits._
 
 /** Provides utilities for working with streams related to time. */
-package object time {
+object time {
 
   /**
    * Discrete stream that every `d` emits elapsed duration

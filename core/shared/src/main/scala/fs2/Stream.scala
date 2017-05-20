@@ -398,10 +398,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def segments: Stream[F,Segment[O,Unit]] =
     this.repeatPull(_.uncons.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) })
 
-  //
-  // /** Alias for `self through [[pipe.shiftRight]]`. */
-  // def shiftRight[O2 >: O](head: O2*): Stream[F,O2] = self through pipe.shiftRight(head: _*)
-  //
   // /** Alias for `self through [[pipe.sliding]]`. */
   // def sliding(n: Int): Stream[F,Vector[O]] = self through pipe.sliding(n)
   //
@@ -789,7 +785,7 @@ object Stream {
     def evalMap[O2](f: O => F[O2]): Stream[F,O2] =
       self.flatMap(o => Stream.eval(f(o)))
 
-    /** Like `[[scan]]`, but accepts a function returning an `F[_]`. */
+    /** Like `[[Stream#scan]]`, but accepts a function returning an `F[_]`. */
     def evalScan[O2](z: O2)(f: (O2, O) => F[O2]): Stream[F,O2] = {
       def go(z: O2, s: Stream[F,O]): Pull[F,O2,Option[Stream[F,O2]]] =
         s.pull.uncons1.flatMap {
@@ -1192,13 +1188,12 @@ object Stream {
     /** Lifts this stream to the specified effect and output types. */
     def covaryAll[F[_],O2>:O]: Stream[F,O2] = self.asInstanceOf[Stream[F,O2]]
 
-    /** Alias for [[pipe2.either]]. */
     def either[F[_],O2](s2: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,Either[O,O2]] =
       covary[F].either(s2)
 
     def evalMap[F[_],O2](f: O => F[O2]): Stream[F,O2] = covary[F].evalMap(f)
 
-    /** Alias for [[pipe.evalScan]]. */
+    /** Like `[[Stream#scan]]`, but accepts a function returning an `F[_]`. */
     def evalScan[F[_],O2](z: O2)(f: (O2, O) => F[O2]): Stream[F,O2] = covary[F].evalScan(z)(f)
 
     def flatMap[F[_],O2](f: O => Stream[F,O2]): Stream[F,O2] =
