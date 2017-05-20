@@ -78,6 +78,9 @@ object Pull {
   private def snapshot[F[_],O]: Pull[F,O,LinkedSet[Algebra.Token]] =
     fromFree[F,O,LinkedSet[Algebra.Token]](Algebra.snapshot)
 
+  def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
+    output(Chunk.empty).flatMap { _ => p }
+
   private def releaseAll[F[_]](tokens: LinkedSet[Algebra.Token]): Pull[F,Nothing,Unit] = {
     def go(err: Option[Throwable], tokens: List[Algebra.Token]): Pull[F,Nothing,Unit] = tokens match {
       case Nil => err map (Pull.fail) getOrElse Pull.pure(())
