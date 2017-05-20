@@ -21,8 +21,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 * [Exercises (concurrency)](#exercises-2)
 * [Talking to the external world](#talking-to-the-external-world)
 * [Learning more](#learning-more)
-* [Appendix: Sane subtyping with better error messages](#a1)
-* [Appendix: How interruption of streams works](#a2)
+* [Appendix: How interruption of streams works](#a1)
 
 _Unless otherwise noted, the type `Stream` mentioned in this document refers to the type `fs2.Stream` and NOT `scala.collection.immutable.Stream`._
 
@@ -192,7 +191,7 @@ The `onError` method lets us catch any of these errors:
 err.onError { e => Stream.emit(e.getMessage) }.toList
 ```
 
-_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a2) for more details._
+_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
 
 ### Resource acquisition
 
@@ -529,25 +528,7 @@ Want to learn more?
 
 Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
 
-### <a id="a1"></a> Appendix A1: Sane subtyping with better error messages
-
-`Stream[F,O]` and `Pull[F,O,R]` are covariant in `F`, `O`, and `R`. This is important for usability and convenience, but covariance can often paper over what should really be type errors. Luckily, FS2 implements a trick to catch these situations. For instance:
-
-```tut:fail
-Stream.emit(1) ++ Stream.emit("hello")
-```
-
-Informative! If you really want a dubious supertype like `Any`, `AnyRef`, `AnyVal`, `Product`, or `Serializable` to be inferred, just follow the instructions in the error message to supply a `RealSupertype` instance explicitly. The `++` method takes two implicit parameters -- a `RealSupertype` and a `Lub1`, the latter of which allows appending two streams that differ in effect type but share some common effect supertype. In this case, both of our streams have effect type `Nothing`, so we can explicitly provide an identity for the second parameter.
-
-```tut
-import fs2.util.{Lub1,RealSupertype}
-
-Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Lub1.id[Nothing])
-```
-
-Ugly, as it should be.
-
-### <a id="a2"></a> Appendix A2: How interruption of streams works
+### <a id="a1"></a> Appendix A1: How interruption of streams works
 
 In FS2, a stream can terminate in one of three ways:
 

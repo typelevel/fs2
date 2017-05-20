@@ -21,8 +21,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 * [Exercises (concurrency)](#exercises-2)
 * [Talking to the external world](#talking-to-the-external-world)
 * [Learning more](#learning-more)
-* [Appendix: Sane subtyping with better error messages](#a1)
-* [Appendix: How interruption of streams works](#a2)
+* [Appendix: How interruption of streams works](#a1)
 
 _Unless otherwise noted, the type `Stream` mentioned in this document refers to the type `fs2.Stream` and NOT `scala.collection.immutable.Stream`._
 
@@ -138,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.runLog // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$340625034
+// ra: cats.effect.IO[Vector[Int]] = IO$1901079473
 
 val rb = eff.run // purely for effects
-// rb: cats.effect.IO[Unit] = IO$113706904
+// rb: cats.effect.IO[Unit] = IO$1581108654
 
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$1312795313
+// rc: cats.effect.IO[Int] = IO$1957953226
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -262,7 +261,7 @@ scala> err.onError { e => Stream.emit(e.getMessage) }.toList
 res29: List[String] = List(oh noes!)
 ```
 
-_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a2) for more details._
+_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
 
 ### Resource acquisition
 
@@ -273,10 +272,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$585349340
+acquire: cats.effect.IO[Unit] = IO$885034812
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$537691486
+release: cats.effect.IO[Unit] = IO$621320943
 ```
 
 ```scala
@@ -284,7 +283,7 @@ scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsa
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 798 elided
+  ... 794 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -346,7 +345,8 @@ def tk[F[_],O](n: Int): Pipe[F,O,O] =
 Stream(1,2,3,4).through(tk(2)).toList
 ```
 
-<!-- Let's break it down line by line:
+<!-- TODO Rewrite
+Let's break it down line by line:
 
 ```Scala
 (chunk, h) <- if (n <= 0) Pull.done else h.awaitLimit(n)
@@ -617,25 +617,7 @@ Want to learn more?
 
 Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
 
-### <a id="a1"></a> Appendix A1: Sane subtyping with better error messages
-
-`Stream[F,O]` and `Pull[F,O,R]` are covariant in `F`, `O`, and `R`. This is important for usability and convenience, but covariance can often paper over what should really be type errors. Luckily, FS2 implements a trick to catch these situations. For instance:
-
-```scala
-     | Stream.emit(1) ++ Stream.emit("hello")
-```
-
-Informative! If you really want a dubious supertype like `Any`, `AnyRef`, `AnyVal`, `Product`, or `Serializable` to be inferred, just follow the instructions in the error message to supply a `RealSupertype` instance explicitly. The `++` method takes two implicit parameters -- a `RealSupertype` and a `Lub1`, the latter of which allows appending two streams that differ in effect type but share some common effect supertype. In this case, both of our streams have effect type `Nothing`, so we can explicitly provide an identity for the second parameter.
-
-```scala
-     | import fs2.util.{Lub1,RealSupertype}
-     | 
-     | Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Lub1.id[Nothing])
-```
-
-Ugly, as it should be.
-
-### <a id="a2"></a> Appendix A2: How interruption of streams works
+### <a id="a1"></a> Appendix A1: How interruption of streams works
 
 In FS2, a stream can terminate in one of three ways:
 
