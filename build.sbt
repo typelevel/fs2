@@ -28,7 +28,7 @@ lazy val commonSettings = Seq(
     // "-Ywarn-dead-code", // Too buggy to be useful, for instance https://issues.scala-lang.org/browse/SI-9521
     "-Ywarn-value-discard",
     "-Ywarn-unused-import"
-  ),
+  ) ++ (if (scalaBinaryVersion.value startsWith "2.11") List("-Xexperimental") else Nil), // 2.11 needs -Xexperimental to enable SAM conversion
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
@@ -127,7 +127,7 @@ lazy val commonJsSettings = Seq(
   },
   requiresDOM := false,
   scalaJSStage in Test := FastOptStage,
-  jsEnv in Test := NodeJSEnv().value,
+  jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
   scalacOptions in Compile += {
     val dir = project.base.toURI.toString.replaceFirst("[^/]+/?$", "")
     val url = "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"

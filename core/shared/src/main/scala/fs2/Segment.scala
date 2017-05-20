@@ -319,9 +319,10 @@ abstract class Segment[+O,+R] { self =>
     }
     buf.result
   }
+  
   def toVector: Vector[O] = {
     val buf = new collection.immutable.VectorBuilder[O]
-    foreachChunk(c => buf ++= c.toVector)
+    foreachChunk(c => { buf ++= c.toVector; () })
     buf.result
   }
 
