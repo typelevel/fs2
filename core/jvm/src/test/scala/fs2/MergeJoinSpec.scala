@@ -30,11 +30,11 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "join (1)" in forAll { (s1: PureStream[Int]) =>
-      runLog { Stream.join(1)(s1.get.covary[IO].map(Stream.emit)) }.toSet shouldBe runLog { s1.get }.toSet
+      runLog { Stream.join(1)(s1.get.covary[IO].map(Stream.emit(_).covary[IO])) }.toSet shouldBe runLog { s1.get }.toSet
     }
 
     "join (2)" in forAll { (s1: PureStream[Int], n: SmallPositive) =>
-      runLog { Stream.join(n.get)(s1.get.covary[IO].map(Stream.emit)) }.toSet shouldBe
+      runLog { Stream.join(n.get)(s1.get.covary[IO].map(Stream.emit(_).covary[IO])) }.toSet shouldBe
       runLog { s1.get }.toSet
     }
 
@@ -51,7 +51,7 @@ class MergeJoinSpec extends Fs2Spec {
 
     "hanging awaits" - {
 
-      val full = Stream.constant[IO,Int](42)
+      val full = Stream.constant(42).covary[IO]
       val hang = Stream.repeatEval(IO.async[Unit] { cb => () }) // never call `cb`!
       val hang2: Stream[IO,Nothing] = full.drain
       val hang3: Stream[IO,Nothing] =
@@ -75,7 +75,7 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "join - outer-failed" in {
-      an[Err.type] should be thrownBy { runLog(Stream(time.sleep_[IO](1 minute), Stream.fail(Err)).joinUnbounded) }
+      an[Err.type] should be thrownBy { runLog(Stream(time.sleep_[IO](1 minute), Stream.fail(Err).covary[IO]).joinUnbounded) }
     }
   }
 }

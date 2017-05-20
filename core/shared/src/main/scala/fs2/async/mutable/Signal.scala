@@ -103,13 +103,13 @@ object Signal {
               }
             }
           }
-          eval(getNext).flatMap { case (a, l) => emit[F,A](a) ++ go(id, l) }
+          eval(getNext).flatMap { case (a, l) => emit(a) ++ go(id, l) }
         }
 
         def cleanup(id: ID): F[Unit] = state.modify { s => s.copy(_3 = s._3 - id) }.as(())
 
         bracket(F.delay(new ID))(
-          { id => eval(state.get).flatMap { case (a, l, _) => emit[F,A](a) ++ go(id, l) } }
+          { id => eval(state.get).flatMap { case (a, l, _) => emit(a) ++ go(id, l) } }
           , id => cleanup(id)
         )
       }}

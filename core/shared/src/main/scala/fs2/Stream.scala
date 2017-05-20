@@ -98,6 +98,13 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def chunks: Stream[F,Chunk[O]] =
     this.repeatPull(_.unconsChunk.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) })
 
+  /** Outputs chunk with a limited maximum size, splitting as necessary. */
+  def chunkLimit(n: Int): Stream[F,Chunk[O]] =
+    this repeatPull { _.unconsLimit(n) flatMap {
+      case None => Pull.pure(None)
+      case Some((hd,tl)) => Pull.output1(hd.toChunk).as(Some(tl))
+    }}
+
   /** Map/filter simultaneously. Calls `collect` on each `Chunk` in the stream. */
   def collect[O2](pf: PartialFunction[O, O2]): Stream[F,O2] = mapSegments(_.collect(pf))
 
@@ -499,17 +506,13 @@ object Stream {
       use(r).map(o => (token,o)).onComplete { fromFree(Algebra.release(token)) }.get
     })
 
-  def chunk[F[_],O](os: Chunk[O]): Stream[F,O] = segment(os)
-
-  @deprecated("Use s.cons(c) instead", "1.0")
-  def cons[F[_],O](s: Stream[F,O])(c: Chunk[O]): Stream[F,O] = s.cons(c)
+  def chunk[O](os: Chunk[O]): Stream[Pure,O] = segment(os)
 
   /** The infinite `Stream`, always emits `o`. */
-  // def constant[F[_],O](o: O): Stream[F,O] = segment(Segment.constant(o))
-  def constant[F[_],O](o: O): Stream[F,O] = emit(o) ++ constant(o)
+  def constant[O](o: O): Stream[Pure,O] = emit(o) ++ constant(o)
 
-  def emit[F[_],O](o: O): Stream[F,O] = fromFree(Algebra.output1[F,O](o))
-  def emits[F[_],O](os: Seq[O]): Stream[F,O] = chunk(Chunk.seq(os))
+  def emit[O](o: O): Stream[Pure,O] = fromFree(Algebra.output1[Pure,O](o))
+  def emits[O](os: Seq[O]): Stream[Pure,O] = chunk(Chunk.seq(os))
 
   private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
   def empty[F[_],O]: Stream[F,O] = empty_
@@ -517,7 +520,7 @@ object Stream {
   def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree(Algebra.eval(fo).flatMap(Algebra.output1))
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa) >> empty
 
-  def fail[F[_],O](e: Throwable): Stream[F,O] = fromFree(Algebra.fail(e))
+  def fail[O](e: Throwable): Stream[Pure,O] = fromFree(Algebra.fail(e))
 
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     eval(f).flatMap(s => s)
@@ -619,7 +622,7 @@ object Stream {
    * to a start value. `start` is the first value emitted, followed
    * by `f(start)`, then `f(f(start))`, and so on.
    */
-  def iterate[F[_],A](start: A)(f: A => A): Stream[F,A] =
+  def iterate[A](start: A)(f: A => A): Stream[Pure,A] =
     emit(start) ++ iterate(f(start))(f)
 
   /**
@@ -634,7 +637,7 @@ object Stream {
    * the sequence in one chunk, instead of lazily, use
    * `emits(start until stopExclusive)`.
    */
-  def range[F[_]](start: Int, stopExclusive: Int, by: Int = 1): Stream[F,Int] =
+  def range(start: Int, stopExclusive: Int, by: Int = 1): Stream[Pure,Int] =
     unfold(start){i =>
       if ((by > 0 && i < stopExclusive && start < stopExclusive) ||
           (by < 0 && i > stopExclusive && start > stopExclusive))
@@ -653,7 +656,7 @@ object Stream {
    *
    * @throws IllegalArgumentException if `size` <= 0
    */
-  def ranges[F[_]](start: Int, stopExclusive: Int, size: Int): Stream[F,(Int,Int)] = {
+  def ranges(start: Int, stopExclusive: Int, size: Int): Stream[Pure,(Int,Int)] = {
     require(size > 0, "size must be > 0, was: " + size)
     unfold(start){
       lower =>
@@ -666,18 +669,18 @@ object Stream {
 
   def repeatEval[F[_],O](fo: F[O]): Stream[F,O] = eval(fo).repeat
 
-  def segment[F[_],O](s: Segment[O,Unit]): Stream[F,O] =
-    fromFree(Algebra.output[F,O](s))
+  def segment[O](s: Segment[O,Unit]): Stream[Pure,O] =
+    fromFree(Algebra.output[Pure,O](s))
 
   def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
     emit(()).flatMap { _ => s }
 
-  def unfold[F[_],S,O](s: S)(f: S => Option[(O,S)]): Stream[F,O] =
+  def unfold[S,O](s: S)(f: S => Option[(O,S)]): Stream[Pure,O] =
     segment(Segment.unfold(s)(f))
 
   /** Produce a (potentially infinite) stream from an unfold of Chunks. */
-  def unfoldChunk[F[_],S,A](s0: S)(f: S => Option[(Chunk[A],S)]): Stream[F,A] = {
-    def go(s: S): Stream[F,A] =
+  def unfoldChunk[S,A](s0: S)(f: S => Option[(Chunk[A],S)]): Stream[Pure,A] = {
+    def go(s: S): Stream[Pure,A] =
       f(s) match {
         case Some((a, sn)) => chunk(a) ++ go(sn)
         case None => empty

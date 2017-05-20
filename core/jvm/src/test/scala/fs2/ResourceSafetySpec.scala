@@ -189,7 +189,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "evaluating a bracketed stream multiple times is safe" in {
-      val s = Stream.bracket(IO.pure(()))(Stream.emit, _ => IO.pure(())).run
+      val s = Stream.bracket(IO.pure(()))(Stream.emit(_), _ => IO.pure(())).run
       s.unsafeRunSync
       s.unsafeRunSync
     }

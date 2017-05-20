@@ -76,9 +76,9 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "onError (5)" in {
-      val r = Stream.fail[IO,Throwable](Err).onError(e => Stream.emit(e)).flatMap(Stream.emit).runLog.unsafeRunSync()
-      val r2 = Stream.fail[IO,Throwable](Err).onError(e => Stream.emit(e)).map(identity).runLog.unsafeRunSync()
-      val r3 = Stream(Stream.emit(1), Stream.fail(Err), Stream.emit(2)).covary[IO].join(4).attempt.runLog.unsafeRunSync()
+      val r = Stream.fail(Err).covary[IO].onError(e => Stream.emit(e)).flatMap(Stream.emit(_)).runLog.unsafeRunSync()
+      val r2 = Stream.fail(Err).covary[IO].onError(e => Stream.emit(e)).map(identity).runLog.unsafeRunSync()
+      val r3 = Stream(Stream.emit(1).covary[IO], Stream.fail(Err).covary[IO], Stream.emit(2).covary[IO]).covary[IO].join(4).attempt.runLog.unsafeRunSync()
       r shouldBe Vector(Err)
       r2 shouldBe Vector(Err)
       r3.contains(Left(Err)) shouldBe true
@@ -95,7 +95,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "ranges" in forAll(Gen.choose(1, 101)) { size =>
-      Stream.ranges[IO](0, 100, size).flatMap { case (i,j) => Stream.emits(i until j) }.runLog.unsafeRunSync() shouldBe
+      Stream.ranges(0, 100, size).covary[IO].flatMap { case (i,j) => Stream.emits(i until j) }.runLog.unsafeRunSync() shouldBe
         IndexedSeq.range(0, 100)
     }
 

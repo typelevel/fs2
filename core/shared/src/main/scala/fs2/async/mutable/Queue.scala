@@ -57,11 +57,11 @@ abstract class Queue[F[_], A] { self =>
 
   /** Calls `dequeueBatch1` once with a provided bound on the elements dequeued. */
   def dequeueBatch: Pipe[F, Int, A] = _.flatMap { batchSize =>
-    Stream.bracket(cancellableDequeueBatch1(batchSize))(d => Stream.eval(d._1).flatMap(Stream.chunk), d => d._2)
+    Stream.bracket(cancellableDequeueBatch1(batchSize))(d => Stream.eval(d._1).flatMap(Stream.chunk(_)), d => d._2)
   }
 
   /** Calls `dequeueBatch1` forever, with a bound of `Int.MaxValue` */
-  def dequeueAvailable: Stream[F, A] = Stream.constant(Int.MaxValue).through(dequeueBatch)
+  def dequeueAvailable: Stream[F, A] = Stream.constant(Int.MaxValue).covary[F].through(dequeueBatch)
 
   /**
    * The time-varying size of this `Queue`. This signal refreshes

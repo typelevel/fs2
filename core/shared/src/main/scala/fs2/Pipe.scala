@@ -357,7 +357,7 @@ object Pipe {
              .drain
              .onFinalize(q.enqueue1(None))
              .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
-               f(q.dequeue.unNoneTerminate flatMap Stream.segment)
+               f(q.dequeue.unNoneTerminate flatMap { x => Stream.segment(x) })
              }
     } yield b
   }

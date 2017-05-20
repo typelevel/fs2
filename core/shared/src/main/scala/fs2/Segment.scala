@@ -308,6 +308,17 @@ abstract class Segment[+O,+R] { self =>
 
   def toChunk: Chunk[O] = Chunk.vector(toVector)
 
+  def toList: List[O] = {
+    val buf = new collection.mutable.ListBuffer[O]
+    foreachChunk { c =>
+      var i = 0
+      while (i < c.size) {
+        buf += c(i)
+        i += 1
+      }
+    }
+    buf.result
+  }
   def toVector: Vector[O] = {
     val buf = new collection.immutable.VectorBuilder[O]
     foreachChunk(c => buf ++= c.toVector)
