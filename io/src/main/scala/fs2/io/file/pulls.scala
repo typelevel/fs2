@@ -26,23 +26,24 @@ object pulls {
 
 
   /**
-   * Given a `Handle[F, Byte]` and `FileHandle[F]`, writes all data from the `Handle` to the file.
+   * Given a `Stream[F, Byte]` and `FileHandle[F]`, writes all data from the stream to the file.
    */
-  def writeAllToFileHandle[F[_]](in: Handle[F, Byte], out: FileHandle[F]): Pull[F, Nothing, Unit] =
+  def writeAllToFileHandle[F[_]](in: Stream[F, Byte], out: FileHandle[F]): Pull[F, Nothing, Unit] =
     _writeAllToFileHandle1(in, out, 0)
 
-  private def _writeAllToFileHandle1[F[_]](in: Handle[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] = for {
-    (hd, tail) <- in.await
-    _ <- _writeAllToFileHandle2(hd, out, offset)
-    next <- _writeAllToFileHandle1(tail, out, offset + hd.size)
-  } yield next
+  private def _writeAllToFileHandle1[F[_]](in: Stream[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =
+    in.pull.unconsChunk.flatMap {
+      case None => Pull.done
+      case Some((hd,tl)) =>
+        _writeAllToFileHandle2(hd, out, offset) >> _writeAllToFileHandle1(tl, out, offset + hd.size)
+    }
 
   private def _writeAllToFileHandle2[F[_]](buf: Chunk[Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =
     Pull.eval(out.write(buf, offset)) flatMap { (written: Int) =>
       if (written >= buf.size)
         Pull.pure(())
       else
-        _writeAllToFileHandle2(buf.drop(written), out, offset + written)
+        _writeAllToFileHandle2(buf.drop(written).toOption.get.toChunk, out, offset + written)
     }
 
   /**

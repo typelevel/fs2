@@ -40,6 +40,41 @@ object Pull {
   private[fs2] def fromFree[F[_],O,R](free: Free[Algebra[F,O,?],R]): Pull[F,O,R] =
     new Pull(free.asInstanceOf[Free[Algebra[Nothing,Nothing,?],R]])
 
+  /** Result of `acquireCancellable`. */
+  sealed abstract class Cancellable[+F[_],+R] {
+    val cancel: Pull[F,Nothing,Unit]
+    val resource: R
+
+    def map[R2](f: R => R2): Cancellable[F,R2]
+  }
+  object Cancellable {
+    def apply[F[_],R](cancel0: Pull[F,Nothing,Unit], r: R): Cancellable[F,R] = new Cancellable[F,R] {
+      val cancel = cancel0
+      val resource = r
+      def map[R2](f: R => R2): Cancellable[F,R2] = apply(cancel, f(r))
+    }
+  }
+
+  /**
+   * Acquire a resource within a `Pull`. The cleanup action will be run at the end
+   * of the `.stream` scope which executes the returned `Pull`. The acquired
+   * resource is returned as the result value of the pull.
+   */
+  def acquire[F[_],R](r: F[R])(cleanup: R => F[Unit]): Pull[F,Nothing,R] =
+    acquireCancellable(r)(cleanup).map(_.resource)
+
+  /**
+   * Like [[acquire]] but the result value consists of a cancellation
+   * pull and the acquired resource. Running the cancellation pull frees the resource.
+   * This allows the acquired resource to be released earlier than at the end of the
+   * containing pull scope.
+   */
+  def acquireCancellable[F[_],R](r: F[R])(cleanup: R => F[Unit]): Pull[F,Nothing,Cancellable[F,R]] =
+    Stream.bracketWithToken(r)(r => Stream.emit(r), cleanup).pull.uncons1.flatMap {
+      case None => Pull.fail(new RuntimeException("impossible"))
+      case Some(((token, r), tl)) => Pull.pure(Cancellable(release(token), r))
+    }
+
   def attemptEval[F[_],R](fr: F[R]): Pull[F,Nothing,Either[Throwable,R]] =
     fromFree(
       Algebra.eval[F,Nothing,R](fr).
@@ -80,6 +115,9 @@ object Pull {
 
   def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
     output(Chunk.empty).flatMap { _ => p }
+
+  private def release[F[_]](token: Algebra.Token): Pull[F,Nothing,Unit] =
+    fromFree[F,Nothing,Unit](Algebra.release(token))
 
   private def releaseAll[F[_]](tokens: LinkedSet[Algebra.Token]): Pull[F,Nothing,Unit] = {
     def go(err: Option[Throwable], tokens: List[Algebra.Token]): Pull[F,Nothing,Unit] = tokens match {

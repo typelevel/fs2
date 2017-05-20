@@ -3,8 +3,6 @@ package benchmark
 
 import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
 
-import fs2.util.Catenable
-
 @State(Scope.Thread)
 class CatenableBenchmark {
 
