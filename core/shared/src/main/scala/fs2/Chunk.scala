@@ -21,7 +21,6 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   final def nonEmpty = size > 0
 
   final def head: O = apply(0)
-  final def last: O = apply(size - 1)
 
   def indexWhere(p: O => Boolean): Option[Int] = {
     var i = 0

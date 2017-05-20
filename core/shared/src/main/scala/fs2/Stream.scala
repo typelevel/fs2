@@ -1,7 +1,7 @@
 package fs2
 
 import scala.concurrent.ExecutionContext
-// import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.FiniteDuration
 
 import cats.{ ~>, Applicative, Eq, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
@@ -192,7 +192,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
           if (hd.nonEmpty) Pull.output(last) >> go(hd,tl)
           else go(last,tl)
         case None =>
-          val o = last.last
+          val o = last(last.size - 1)
           if (p(o)) {
             val (prefix,_) = last.splitAtChunk(last.size - 1)
             Pull.output(prefix)
@@ -829,9 +829,48 @@ object Stream {
     /** Lifts this stream to the specified effect and output types. */
     def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = self.asInstanceOf[Stream[F2,O2]]
 
-    // /** Alias for `self through [[pipe.debounce]]`. */
-    // def debounce(d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Stream[F, O] =
-    //   self through pipe.debounce(d)
+    /** Debounce the stream with a minimum period of `d` between each element */
+    def debounce(d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext, scheduler: Scheduler): Stream[F, O] = {
+      def unconsLatest(s: Stream[F,O]): Pull[F,Nothing,Option[(O,Stream[F,O])]] =
+        s.pull.uncons.flatMap {
+          case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
+            case (_, Some(last)) => Pull.pure(Some(last -> tl))
+            case (_, None) => unconsLatest(tl)
+          }
+          case None => Pull.pure(None)
+        }
+
+      def go(o: O, s: Stream[F,O]): Pull[F,O,Unit] = {
+        time.sleep[F](d).pull.unconsAsync.flatMap { l =>
+          s.pull.unconsAsync.flatMap { r =>
+            (l race r).pull.flatMap {
+              case Left(_) =>
+                Pull.output1(o) >> r.pull.flatMap {
+                  case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
+                    case (_, Some(last)) => go(last, tl)
+                    case (_, None) => unconsLatest(tl).flatMap {
+                      case Some((last, tl)) => go(last, tl)
+                      case None => Pull.done
+                    }
+                  }
+                  case None => Pull.done
+                }
+              case Right(r) => r match {
+                case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
+                  case (_, Some(last)) => go(last, tl)
+                  case (_, None) => go(o, tl)
+                }
+                case None => Pull.output1(o)
+              }
+            }
+          }
+        }
+      }
+      unconsLatest(self).flatMap {
+        case Some((last,tl)) => go(last, tl)
+        case None => Pull.done
+      }.stream
+    }
 
     /**
      * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
@@ -1079,7 +1118,7 @@ object Stream {
         controlStream.pull.unconsChunk.flatMap {
           case None => Pull.pure(None)
           case Some((c, controlStream)) =>
-            if (c.last) paused(controlStream, srcFuture)
+            if (c(c.size - 1)) paused(controlStream, srcFuture)
             else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
         }
       }

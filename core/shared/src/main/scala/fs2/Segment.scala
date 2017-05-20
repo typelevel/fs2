@@ -505,6 +505,18 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).withLength_($init)"
   }
 
+  def last: Segment[Nothing,(R,Option[O])] = new Segment[Nothing,(R,Option[O])] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      var last: Option[O] = None
+      self.stage(depth.increment, defer,
+        o => last = Some(o),
+        os => last = Some(os(os.size - 1)),
+        r => done((r,last))
+      ).map(_.mapRemainder(_.last))
+    }
+    override def toString = s"($self).last"
+  }
+
   override def hashCode: Int = toVector.hashCode
   override def equals(a: Any): Boolean = a match {
     case s: Segment[O,R] => this.toVector == s.toVector

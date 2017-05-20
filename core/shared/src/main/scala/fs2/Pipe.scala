@@ -9,27 +9,6 @@ import fs2.async.mutable.Queue
 
 object Pipe {
 
-  // /** Debounce the stream with a minimum period of `d` between each element */
-  // def debounce[F[_], I](d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Pipe[F, I, I] = {
-  //   def go(i: I, h1: Handle[F, I]): Pull[F, I, Nothing] = {
-  //     time.sleep[F](d).open.flatMap { h2 =>
-  //       h2.awaitAsync.flatMap { l =>
-  //         h1.awaitAsync.flatMap { r =>
-  //           (l race r).pull.flatMap {
-  //             case Left(_) => Pull.output1(i) >> r.pull.flatMap(identity).flatMap {
-  //               case (hd, tl) => go(hd.last, tl)
-  //             }
-  //             case Right(r) => r.optional.flatMap {
-  //               case Some((hd, tl)) => go(hd.last, tl)
-  //               case None => Pull.output1(i) >> Pull.done
-  //             }
-  //           }
-  //         }
-  //       }
-  //     }
-  //   }
-  //   _.pull { h => h.await.flatMap { case (hd, tl) => go(hd.last, tl) } }
-  // }
 
   // /**
   //  * Partitions the input into a stream of chunks according to a discriminator function.
