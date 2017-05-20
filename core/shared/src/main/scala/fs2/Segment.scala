@@ -236,6 +236,23 @@ abstract class Segment[+O,+R] { self =>
 
   final def void: Segment[Unit,R] = map(_ => ())
 
+  def mapAccumulate[S,O2](init: S)(f: (S,O) => (S,O2)): Segment[O2,(R,S)] = new Segment[O2,(R,S)] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      var s = init
+      def doEmit(o: O) = {
+        val (newS,o2) = f(s,o)
+        s = newS
+        emit(o2)
+      }
+      self.stage(depth.increment, defer,
+        o => doEmit(o),
+        os => { var i = 0; while (i < os.size) { doEmit(os(i)); i += 1; } },
+        r => done(r -> s)
+      ).map(_.mapRemainder(_.mapAccumulate(s)(f)))
+    }
+    override def toString = s"($self).mapAccumulate($init)(<f1>)"
+  }
+
   final def filter[O2](p: O => Boolean): Segment[O,R] = new Segment[O,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
@@ -319,7 +336,7 @@ abstract class Segment[+O,+R] { self =>
     }
     buf.result
   }
-  
+
   def toVector: Vector[O] = {
     val buf = new collection.immutable.VectorBuilder[O]
     foreachChunk(c => { buf ++= c.toVector; () })

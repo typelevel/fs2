@@ -9,40 +9,6 @@ import fs2.async.mutable.Queue
 
 object Pipe {
 
-  // nb: methods are in alphabetical order
-
-  // /** Behaves like the identity stream, but emits no output until the source is exhausted. */
-  // def bufferAll[F[_],I]: Pipe[F,I,I] = bufferBy(_ => true)
-  //
-  // /**
-  //  * Behaves like the identity stream, but requests elements from its
-  //  * input in blocks that end whenever the predicate switches from true to false.
-  //  */
-  // def bufferBy[F[_],I](f: I => Boolean): Pipe[F,I,I] = {
-  //   def go(buffer: Vector[Chunk[I]], last: Boolean): Handle[F,I] => Pull[F,I,Unit] = {
-  //     _.uncons.flatMap {
-  //       case Some((chunk, h)) =>
-  //         val (out, buf, last) = {
-  //           chunk.foldLeft((Vector.empty[Chunk[I]], Vector.empty[I], false)) { case ((out, buf, last), i) =>
-  //             val cur = f(i)
-  //             if (!f(i) && last) (out :+ Chunk.indexedSeq(buf :+ i), Vector.empty, cur)
-  //             else (out, buf :+ i, cur)
-  //           }
-  //         }
-  //         if (out.isEmpty) {
-  //           go(buffer :+ Chunk.indexedSeq(buf), last)(h)
-  //         } else {
-  //           (buffer ++ out).foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) } >>
-  //             go(Vector(Chunk.indexedSeq(buf)), last)(h)
-  //         }
-  //
-  //       case None =>
-  //         buffer.foldLeft(Pull.pure(()): Pull[F,I,Unit]) { (acc, c) => acc >> Pull.output(c) }
-  //     }
-  //   }
-  //   _.pull { h => go(Vector.empty, false)(h) }
-  // }
-
   // /** Debounce the stream with a minimum period of `d` between each element */
   // def debounce[F[_], I](d: FiniteDuration)(implicit F: Effect[F], scheduler: Scheduler, ec: ExecutionContext): Pipe[F, I, I] = {
   //   def go(i: I, h1: Handle[F, I]): Pull[F, I, Nothing] = {
@@ -117,30 +83,6 @@ object Pipe {
   //
   //   in => in.pull(go(None))
   // }
-
-  // /**
-  //   * Maps a running total according to `S` and the input with the function `f`.
-  //   *
-  //   * @example {{{
-  //   * scala> Stream("Hello", "World")
-  //   *      |   .mapAccumulate(0)((l, s) => (l + s.length, s.head)).toVector
-  //   * res0: Vector[(Int, Char)] = Vector((5,H), (10,W))
-  //   * }}}
-  //   */
-  // def mapAccumulate[F[_],S,I,O](init: S)(f: (S,I) => (S,O)): Pipe[F,I,(S,O)] =
-  //   _.pull { _.receive { case (chunk, h) =>
-  //     val f2 = (s: S, i: I) => {
-  //       val (newS, newO) = f(s, i)
-  //       (newS, (newS, newO))
-  //     }
-  //     val (s, o) = chunk.mapAccumulate(init)(f2)
-  //     Pull.output(o) >> _mapAccumulate0(s)(f2)(h)
-  //   }}
-  // private def _mapAccumulate0[F[_],S,I,O](init: S)(f: (S,I) => (S,(S,O))): Handle[F,I] => Pull[F,(S,O),Handle[F,I]] =
-  //   _.receive { case (chunk, h) =>
-  //     val (s, o) = chunk.mapAccumulate(init)(f)
-  //     Pull.output(o) >> _mapAccumulate0(s)(f)(h)
-  //   }
 
   // /**
   //  * Modifies the chunk structure of the underlying stream, emitting potentially unboxed

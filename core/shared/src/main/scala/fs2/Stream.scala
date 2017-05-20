@@ -75,11 +75,35 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def buffer(n: Int): Stream[F,O] =
     this.repeatPull { _.unconsN(n, allowFewer = true).flatMapOpt { case (hd,tl) => Pull.output(hd).as(Some(tl)) }}
 
-  // /** Alias for `self through [[pipe.bufferAll]]`. */
-  // def bufferAll: Stream[F,O] = self through pipe.bufferAll
-  //
-  // /** Alias for `self through [[pipe.bufferBy]]`. */
-  // def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
+  /** Behaves like the identity stream, but emits no output until the source is exhausted. */
+  def bufferAll: Stream[F,O] = bufferBy(_ => true)
+
+  /**
+   * Behaves like the identity stream, but requests elements from its
+   * input in blocks that end whenever the predicate switches from true to false.
+   */
+  def bufferBy(f: O => Boolean): Stream[F,O] = {
+    def go(buffer: Vector[Chunk[O]], last: Boolean, s: Stream[F,O]): Pull[F,O,Unit] = {
+      s.pull.unconsChunk.flatMap {
+        case Some((hd,tl)) =>
+          val (out, buf, last) = {
+            hd.fold((Vector.empty[Chunk[O]], Vector.empty[O], false)) { case ((out, buf, last), i) =>
+              val cur = f(i)
+              if (!f(i) && last) (out :+ Chunk.vector(buf :+ i), Vector.empty, cur)
+              else (out, buf :+ i, cur)
+            }.run
+          }
+          if (out.isEmpty) {
+            go(buffer :+ Chunk.vector(buf), last, tl)
+          } else {
+            (buffer ++ out).foldLeft(Pull.pure(()): Pull[F,O,Unit]) { (acc, c) => acc >> Pull.output(c) } >>
+              go(Vector(Chunk.vector(buf)), last, tl)
+          }
+        case None => buffer.foldLeft(Pull.pure(()): Pull[F,O,Unit]) { (acc, s) => acc >> Pull.output(s) }
+      }
+    }
+    go(Vector.empty, false, this).stream
+  }
 
   /**
    * Emits only elements that are distinct from their immediate predecessors
@@ -295,9 +319,21 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
       case None => Pull.output1(fallback)
     }.stream
 
-  // /** Alias for `self through [[pipe.mapAccumulate]]` */
-  // def mapAccumulate[S,O2](init: S)(f: (S, O) => (S, O2)): Stream[F, (S, O2)] =
-  //   self through pipe.mapAccumulate(init)(f)
+  /**
+    * Maps a running total according to `S` and the input with the function `f`.
+    *
+    * @example {{{
+    * scala> Stream("Hello", "World").mapAccumulate(0)((l, s) => (l + s.length, s.head)).toVector
+    * res0: Vector[(Int, Char)] = Vector((5,H), (10,W))
+    * }}}
+    */
+  def mapAccumulate[S,O2](init: S)(f: (S, O) => (S, O2)): Stream[F, (S, O2)] = {
+    val f2 = (s: S, o: O) => {
+      val (newS, newO) = f(s, o)
+      (newS, (newS, newO))
+    }
+    this.scanSegments(init)((acc, seg) => seg.mapAccumulate(acc)(f2).mapResult(_._2))
+  }
 
   /**
    * Applies the specified pure function to each input and emits the result.
