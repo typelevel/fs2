@@ -5,18 +5,17 @@ import cats.effect.IO
 object ThisModuleShouldCompile {
 
   /* Some checks that `.pull` can be used without annotations */
-  Stream(1,2,3,4) through pipe.take(2)
-  Stream.eval(IO.pure(1)) through pipe.take(2)
-  Stream(1,2,3,4) through[Int] pipe.take(2)
+  Stream(1,2,3,4) through (_.take(2))
+  Stream.eval(IO.pure(1)) through (_.take(2))
+  Stream(1,2,3,4) through[Int] (_.take(2))
   Stream(1,2,3).covary[IO].pull.uncons1.stream
   Stream.eval(IO.pure(1)).pull.uncons1.stream
 
   /* Also in a polymorphic context. */
-  def a[F[_],A](s: Stream[F,A]) = s through pipe.take(2)
-  def b[F[_],A](s: Stream[F,A]): Stream[F,A] = s through pipe.take(2)
-  def c[F[_],A](s: Stream[F,A]): Stream[F,A] = s through pipe.take(2)
+  def a[F[_],A](s: Stream[F,A]) = s through (_.take(2))
+  def b[F[_],A](s: Stream[F,A]): Stream[F,A] = s through (_.take(2))
+  def c[F[_],A](s: Stream[F,A]): Stream[F,A] = s through (_.take(2))
 
-  pipe.take[Pure,Int](2)
   Stream(1,2,3) ++ Stream(4,5,6)
   Stream(1,2,3) ++ Stream.eval(IO.pure(4))
   Stream(1,2,3) ++ Stream.eval(IO.pure(4))
@@ -35,11 +34,12 @@ object ThisModuleShouldCompile {
   import scala.concurrent.ExecutionContext.Implicits.global
   Stream.eval(IO.pure(1)).pull.unconsAsync.stream
 
-  (pipe.take[Pure,Int](2)): Pipe[IO,Int,Int]
-  pipe.take[Pure,Int](2).covary[IO]
-  pipe.take[Pure,Int](2).attachL(pipe2.interleave)
-  pipe.take[Pure,Int](2).attachR(pipe2.interleave)
-  pipe.take[Pure,Int](2).attachR(pipe2.interleave)
+  val t2p: Pipe[Pure,Int,Int] = _.take(2)
+  val t2: Pipe[IO,Int,Int] = _.take(2)
+  t2p.covary[IO]
+  val p2: Pipe2[IO,Int,Int,Int] = (s1,s2) => s1.interleave(s2)
+  t2.attachL(p2)
+  t2.attachR(p2)
 
   val p: Pull[Pure,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = Stream(1, 2, 3).pull.uncons
   val q: Pull[IO,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = p

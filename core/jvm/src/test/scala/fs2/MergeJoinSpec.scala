@@ -9,7 +9,7 @@ class MergeJoinSpec extends Fs2Spec {
 
     "either" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
       val shouldCompile = s1.get.either(s2.get.covary[IO])
-      val es = runLog { s1.get.covary[IO].through2(s2.get)(pipe2.either) }
+      val es = runLog { s1.get.covary[IO].either(s2.get) }
       es.collect { case Left(i) => i } shouldBe runLog(s1.get)
       es.collect { case Right(i) => i } shouldBe runLog(s2.get)
     }
@@ -21,11 +21,11 @@ class MergeJoinSpec extends Fs2Spec {
 
     "merge (left/right identity)" in forAll { (s1: PureStream[Int]) =>
       runLog { s1.get.merge(Stream.empty[IO,Int]) } shouldBe runLog(s1.get)
-      runLog { Stream.empty.through2(s1.get.covary[IO])(pipe2.merge) } shouldBe runLog(s1.get)
+      runLog { Stream.empty.merge(s1.get.covary[IO]) } shouldBe runLog(s1.get)
     }
 
     "merge/join consistency" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
-      runLog { s1.get.covary[IO].through2(s2.get)(pipe2.merge) }.toSet shouldBe
+      runLog { s1.get.covary[IO].merge(s2.get) }.toSet shouldBe
       runLog { Stream.join(2)(Stream(s1.get.covary[IO], s2.get.covary[IO])) }.toSet
     }
 

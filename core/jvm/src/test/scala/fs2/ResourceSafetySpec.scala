@@ -151,9 +151,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         case None => s.get
         case Some(f) => spuriousFail(s.get, f)
       })
-      swallow { runLog { s2 through pipe.prefetch }}
-      swallow { runLog { s2 through pipe.prefetch through pipe.prefetch }}
-      swallow { runLog { s2 through pipe.prefetch through pipe.prefetch through pipe.prefetch }}
+      swallow { runLog { s2.prefetch }}
+      swallow { runLog { s2.prefetch.prefetch }}
+      swallow { runLog { s2.prefetch.prefetch.prefetch }}
       eventually { c.get shouldBe 0L }
     }
 
