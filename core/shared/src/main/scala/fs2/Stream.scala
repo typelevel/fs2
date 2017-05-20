@@ -434,11 +434,60 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def segments: Stream[F,Segment[O,Unit]] =
     this.repeatPull(_.uncons.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) })
 
-  // /** Alias for `self through [[pipe.sliding]]`. */
-  // def sliding(n: Int): Stream[F,Vector[O]] = self through pipe.sliding(n)
-  //
-  // /** Alias for `self through [[pipe.split]]`. */
-  // def split(f: O => Boolean): Stream[F,Vector[O]] = self through pipe.split(f)
+  /**
+   * Groups inputs in fixed size chunks by passing a "sliding window"
+   * of size `n` over them. If the input contains less than or equal to
+   * `n` elements, only one chunk of this size will be emitted.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4).sliding(2).toList
+   * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(2, 3), Vector(3, 4))
+   * }}}
+   * @throws scala.IllegalArgumentException if `n` <= 0
+   */
+   // TODO return Catenable[O]?
+  def sliding(n: Int): Stream[F,Vector[O]] = {
+    require(n > 0, "n must be > 0")
+    def go(window: Vector[O], s: Stream[F,O]): Pull[F,Vector[O],Unit] = {
+      s.pull.uncons.flatMap {
+        case None => Pull.done
+        case Some((hd,tl)) =>
+          hd.scan(window)((w, i) => w.tail :+ i).drop(1) match {
+            case Left((w2,_)) => go(w2, tl)
+            case Right(out) => Pull.segment(out).flatMap { window => go(window, tl) }
+          }
+      }
+    }
+    this.pull.unconsN(n, true).flatMap {
+      case None => Pull.done
+      case Some((hd, tl)) =>
+        val window = hd.toVector
+        Pull.output1(window) >> go(window, tl)
+    }.stream
+  }
+
+  /**
+   * Breaks the input into chunks where the delimiter matches the predicate.
+   * The delimiter does not appear in the output. Two adjacent delimiters in the
+   * input result in an empty chunk in the output.
+   */
+  def split(f: O => Boolean): Stream[F,Vector[O]] = {
+    def go(buffer: Catenable[Segment[O,Unit]], s: Stream[F,O]): Pull[F,Vector[O],Unit] = {
+      s.pull.uncons.flatMap {
+        case Some((hd,tl)) =>
+          hd.splitWhile(o => !(f(o))) match {
+            case Left((_,out)) =>
+              go(buffer ++ out, tl)
+            case Right((out,tl2)) =>
+              Pull.output1(Segment.catenated(buffer ++ out).toVector) >>
+                go(Catenable.empty, tl.cons(tl2.drop(1).fold(_ => Segment.empty, identity)))
+          }
+        case None =>
+          if (buffer.nonEmpty) Pull.output1(Segment.catenated(buffer).toVector) else Pull.done
+      }
+    }
+    go(Catenable.empty, this).stream
+  }
 
   /** Emits all elements of the input except the first one. */
   def tail: Stream[F,O] = drop(1)

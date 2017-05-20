@@ -94,58 +94,6 @@ object Pipe {
   //   in => chunkN(n, allowFewer)(in).flatMap { chunks => Stream.chunk(Chunk.concat(chunks)) }
 
   // /**
-  //  * Groups inputs in fixed size chunks by passing a "sliding window"
-  //  * of size `n` over them. If the input contains less than or equal to
-  //  * `n` elements, only one chunk of this size will be emitted.
-  //  *
-  //  * @example {{{
-  //  * scala> Stream(1, 2, 3, 4).sliding(2).toList
-  //  * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(2, 3), Vector(3, 4))
-  //  * }}}
-  //  * @throws scala.IllegalArgumentException if `n` <= 0
-  //  */
-  // def sliding[F[_],I](n: Int): Pipe[F,I,Vector[I]] = {
-  //   require(n > 0, "n must be > 0")
-  //   def go(window: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = h => {
-  //     h.receive {
-  //       case (chunk, h) =>
-  //         val out: Vector[Vector[I]] =
-  //           chunk.toVector.scanLeft(window)((w, i) => w.tail :+ i).tail
-  //         if (out.isEmpty) go(window)(h)
-  //         else Pull.output(Chunk.indexedSeq(out)) >> go(out.last)(h)
-  //     }
-  //   }
-  //   _ pull { h => h.awaitN(n, true).flatMap { case (chunks, h) =>
-  //     val window = chunks.foldLeft(Vector.empty[I])(_ ++ _.toVector)
-  //     Pull.output1(window) >> go(window)(h)
-  //   }}
-  // }
-  //
-  // /**
-  //  * Breaks the input into chunks where the delimiter matches the predicate.
-  //  * The delimiter does not appear in the output. Two adjacent delimiters in the
-  //  * input result in an empty chunk in the output.
-  //  */
-  // def split[F[_],I](f: I => Boolean): Pipe[F,I,Vector[I]] = {
-  //   def go(buffer: Vector[I]): Handle[F,I] => Pull[F,Vector[I],Unit] = {
-  //     _.uncons.flatMap {
-  //       case Some((chunk, h)) =>
-  //         chunk.indexWhere(f) match {
-  //           case None =>
-  //             go(buffer ++ chunk.toVector)(h)
-  //           case Some(idx) =>
-  //             val out = buffer ++ chunk.take(idx).toVector
-  //             val carry = if (idx + 1 < chunk.size) chunk.drop(idx + 1) else Chunk.empty
-  //             Pull.output1(out) >> go(Vector.empty)(h.push(carry))
-  //         }
-  //       case None =>
-  //         if (buffer.nonEmpty) Pull.output1(buffer) else Pull.done
-  //     }
-  //   }
-  //   _.pull(go(Vector.empty))
-  // }
-
-  // /**
   //  * Zips the elements of the input `Handle` with its next element wrapped into `Some`, and returns the new `Handle`.
   //  * The last element is zipped with `None`.
   //  */
