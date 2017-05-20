@@ -81,7 +81,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   // /** Alias for `self through [[pipe.bufferBy]]`. */
   // def bufferBy(f: O => Boolean): Stream[F,O] = self through pipe.bufferBy(f)
 
-  /** Alias for `self through [[pipe.changesBy]]`. */
   /**
    * Emits only elements that are distinct from their immediate predecessors
    * according to `f`, using natural equality for comparison.
@@ -112,7 +111,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def collectFirst[O2](pf: PartialFunction[O, O2]): Stream[F,O2] =
     this.pull.find(pf.isDefinedAt).flatMapOpt { case (hd,tl) => Pull.output1(pf(hd)).as(None) }.stream
 
-
   /** Prepend a single segment onto the front of this stream. */
   def cons[O2>:O](s: Segment[O2,Unit]): Stream[F,O2] =
     Stream.segment(s) ++ this
@@ -128,7 +126,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Lifts this stream to the specified output type. */
   def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf[Stream[F,O2]]
 
-
   /** Skips the first element that matches the predicate. */
   def delete(p: O => Boolean): Stream[F,O] =
     this.pull.takeWhile(i => !p(i)).flatMapOpt(_.pull.drop(1).flatMapOpt(_.pull.echo.as(None))).stream
@@ -138,8 +135,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * For example, `Stream.eval(IO(println("x"))).drain.runLog`
    * will, when `unsafeRunSync` in called, print "x" but return `Vector()`.
    */
-  def drain: Stream[F, Nothing] = this.flatMap { _ => Stream.empty }
-  // def drain: Stream[F, Nothing] = this.mapSegments(_ => Segment.empty) // TODO
+  def drain: Stream[F, Nothing] = this.mapSegments(_ => Segment.empty)
 
   /** Drops `n` elements of the input, then echoes the rest. */
   def drop(n: Long): Stream[F,O] =
@@ -236,7 +232,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     }.stream
   }
 
-  /** Emits the first input (if any) which matches the supplied predicate, to the output of the returned `Pull` */
+  /** Emits the first input (if any) which matches the supplied predicate. */
   def find(f: O => Boolean): Stream[F,O] =
     this.pull.find(f).flatMap { _.map { case (hd,tl) => Pull.output1(hd) }.getOrElse(Pull.done) }.stream
 
@@ -822,8 +818,8 @@ object Stream {
     def >>[O2](s2: => Stream[F,O2]): Stream[F,O2] =
       flatMap { _ => s2 }
 
-    // /** Folds this stream with the monoid for `O`. */
-    // def foldMonoid(implicit O: Monoid[O]): Stream[F,O] = self.fold(O.empty)(O.combine)
+    /** Folds this stream with the monoid for `O`. */
+    def foldMonoid(implicit O: Monoid[O]): Stream[F,O] = self.fold(O.empty)(O.combine)
 
     /**
      * Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.
