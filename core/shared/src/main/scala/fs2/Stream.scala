@@ -60,6 +60,10 @@ import fs2.internal.{ Algebra, Free }
  * chunked version will fail on the first ''chunk'' with an error, while
  * the unchunked version will fail on the first ''element'' with an error.
  * Exceptions in pure code like this are strongly discouraged.
+ *
+ * @hideImplicitConversion PureOps
+ * @hideImplicitConversion EmptyOps
+ * @hideImplicitConversion covaryPure
  */
 final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
 
@@ -73,7 +77,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input. */
   def buffer(n: Int): Stream[F,O] =
-    this.repeatPull { _.unconsN(n, allowFewer = true).flatMapOpt { case (hd,tl) => Pull.output(hd).as(Some(tl)) }}
+    this.repeatPull { _.unconsN(n, allowFewer = true).flatMap {
+      case Some((hd,tl)) => Pull.output(hd).as(Some(tl))
+      case None => Pull.pure(None)
+    }}
 
   /** Behaves like the identity stream, but emits no output until the source is exhausted. */
   def bufferAll: Stream[F,O] = bufferBy(_ => true)
@@ -133,7 +140,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   /** Emits the first element of the Stream for which the partial function is defined. */
   def collectFirst[O2](pf: PartialFunction[O, O2]): Stream[F,O2] =
-    this.pull.find(pf.isDefinedAt).flatMapOpt { case (hd,tl) => Pull.output1(pf(hd)).as(None) }.stream
+    this.pull.find(pf.isDefinedAt).flatMap {
+      case None => Pull.pure(None)
+      case Some((hd,tl)) => Pull.output1(pf(hd)).as(None)
+    }.stream
 
   /** Prepend a single segment onto the front of this stream. */
   def cons[O2>:O](s: Segment[O2,Unit]): Stream[F,O2] =
@@ -152,7 +162,13 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   /** Skips the first element that matches the predicate. */
   def delete(p: O => Boolean): Stream[F,O] =
-    this.pull.takeWhile(i => !p(i)).flatMapOpt(_.pull.drop(1).flatMapOpt(_.pull.echo.as(None))).stream
+    this.pull.takeWhile(i => !p(i)).flatMap {
+      case None => Pull.pure(None)
+      case Some(s) => s.pull.drop(1).flatMap {
+        case Some(s2) => s2.pull.echo.as(None)
+        case None => Pull.pure(None)
+      }
+    }.stream
 
   /**
    * Removes all output values from this stream.
@@ -419,7 +435,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   /** Outputs segments with a limited maximum size, splitting as necessary. */
   def segmentLimit(n: Int): Stream[F,Segment[O,Unit]] =
-    this repeatPull { _.unconsLimit(n) flatMapOpt { case (hd,tl) => Pull.output1(hd).as(Some(tl)) } }
+    this repeatPull { _.unconsLimit(n) flatMap {
+      case Some((hd,tl)) => Pull.output1(hd).as(Some(tl))
+      case None => Pull.pure(None)
+    }}
 
   /**
    * Outputs segments of size `n`.
@@ -428,7 +447,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * If `allowFewer` is true, the last segment that is emitted may have less than `n` elements.
    */
   def segmentN(n: Int, allowFewer: Boolean = true): Stream[F,Segment[O,Unit]] =
-    this repeatPull { _.unconsN(n, allowFewer).flatMapOpt { case (hd,tl) => Pull.output1(hd).as(Some(tl)) }}
+    this repeatPull { _.unconsN(n, allowFewer).flatMap {
+      case Some((hd,tl)) => Pull.output1(hd).as(Some(tl))
+      case None => Pull.pure(None)
+    }}
 
   /** Outputs all segments from the source stream. */
   def segments: Stream[F,Segment[O,Unit]] =
@@ -785,8 +807,8 @@ object Stream {
     suspend(go(s0))
   }
 
-  implicit def StreamInvariantOps[F[_],O](s: Stream[F,O]): StreamInvariantOps[F,O] = new StreamInvariantOps(s.get)
-  class StreamInvariantOps[F[_],O](private val free: Free[Algebra[F,O,?],Unit]) extends AnyVal {
+  implicit def InvariantOps[F[_],O](s: Stream[F,O]): InvariantOps[F,O] = new InvariantOps(s.get)
+  final class InvariantOps[F[_],O] private[Stream] (private val free: Free[Algebra[F,O,?],Unit]) extends AnyVal {
     private def self: Stream[F,O] = Stream.fromFree(free)
 
     def ++[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
@@ -1246,8 +1268,8 @@ object Stream {
       zipWith_[O2,O3](that)(sh => Pull.pure(None), h => Pull.pure(None))(f)
   }
 
-  implicit def StreamEmptyOps(s: Stream[Pure,Nothing]): StreamEmptyOps = new StreamEmptyOps(s.get[Pure,Nothing])
-  final class StreamEmptyOps(private val free: Free[Algebra[Pure,Nothing,?],Unit]) extends AnyVal {
+  implicit def EmptyOps(s: Stream[Pure,Nothing]): EmptyOps = new EmptyOps(s.get[Pure,Nothing])
+  final class EmptyOps private[Stream] (private val free: Free[Algebra[Pure,Nothing,?],Unit]) extends AnyVal {
     private def self: Stream[Pure,Nothing] = Stream.fromFree[Pure,Nothing](free)
 
     /** Lifts this stream to the specified effect type. */
@@ -1257,8 +1279,8 @@ object Stream {
     def covaryAll[F[_],O]: Stream[F,O] = self.asInstanceOf[Stream[F,O]]
   }
 
-  implicit def StreamPureOps[O](s: Stream[Pure,O]): StreamPureOps[O] = new StreamPureOps(s.get[Pure,O])
-  final class StreamPureOps[O](private val free: Free[Algebra[Pure,O,?],Unit]) extends AnyVal {
+  implicit def PureOps[O](s: Stream[Pure,O]): PureOps[O] = new PureOps(s.get[Pure,O])
+  final class PureOps[O] private[Stream] (private val free: Free[Algebra[Pure,O,?],Unit]) extends AnyVal {
     private def self: Stream[Pure,O] = Stream.fromFree[Pure,O](free)
 
     def ++[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
@@ -1417,11 +1439,13 @@ object Stream {
      */
     def unconsLimit(n: Long): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
       require(n > 0)
-      uncons.flatMapOpt { case (hd,tl) =>
-        hd.splitAt(n) match {
-          case Left((_,segments,rem)) => Pull.pure(Some(Segment.catenated(segments) -> tl))
-          case Right((segments,tl2)) => Pull.pure(Some(Segment.catenated(segments) -> tl.cons(tl2)))
-        }
+      uncons.flatMap {
+        case Some((hd,tl)) =>
+          hd.splitAt(n) match {
+            case Left((_,segments,rem)) => Pull.pure(Some(Segment.catenated(segments) -> tl))
+            case Right((segments,tl2)) => Pull.pure(Some(Segment.catenated(segments) -> tl.cons(tl2)))
+          }
+        case None => Pull.pure(None)
       }
     }
 
@@ -1643,14 +1667,14 @@ object Stream {
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
-  implicit class PurePipeOps[I,O](private val self: Pipe[Pure,I,O]) extends AnyVal {
+  implicit final class PurePipeOps[I,O](private val self: Pipe[Pure,I,O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe[F,I,O] = self.asInstanceOf[Pipe[F,I,O]]
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */
-  implicit class PurePipe2Ops[I,I2,O](private val self: Pipe2[Pure,I,I2,O]) extends AnyVal {
+  implicit final class PurePipe2Ops[I,I2,O](private val self: Pipe2[Pure,I,I2,O]) extends AnyVal {
 
     /** Lifts this pipe to the specified effect type. */
     def covary[F[_]]: Pipe2[F,I,I2,O] = self.asInstanceOf[Pipe2[F,I,I2,O]]

@@ -18,6 +18,9 @@ import fs2.internal.{ Algebra, Free, LinkedSet }
  *
  * `fail` is caught by `onError`:
  *   - `onError(fail(e))(f) == f(e)`
+ *
+ * @hideImplicitConversion PureOps
+ * @hideImplicitConversion covaryPure
  */
 final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Nothing,?],R]) extends AnyVal {
 
@@ -128,8 +131,8 @@ object Pull {
     go(None, tokens.values.toList.reverse)
   }
 
-  implicit def PullInvariantOps[F[_],O,R](p: Pull[F,O,R]): PullInvariantOps[F,O,R] = new PullInvariantOps(p.get)
-  final class PullInvariantOps[F[_],O,R](private val free: Free[Algebra[F,O,?],R]) extends AnyVal {
+  implicit def InvariantOps[F[_],O,R](p: Pull[F,O,R]): InvariantOps[F,O,R] = new InvariantOps(p.get)
+  final class InvariantOps[F[_],O,R] private[Pull] (private val free: Free[Algebra[F,O,?],R]) extends AnyVal {
     private def self: Pull[F,O,R] = Pull.fromFree(free)
 
     def covary[F2[x]>:F[x]]: Pull[F2,O,R] = self.asInstanceOf[Pull[F2,O,R]]
@@ -166,8 +169,8 @@ object Pull {
     }
   }
 
-  implicit def PullPureOps[O,R](p: Pull[Pure,O,R]): PullPureOps[O,R] = new PullPureOps(p.get[Pure,O,R])
-  final class PullPureOps[O,R](private val free: Free[Algebra[Pure,O,?],R]) extends AnyVal {
+  implicit def PureOps[O,R](p: Pull[Pure,O,R]): PureOps[O,R] = new PureOps(p.get[Pure,O,R])
+  final class PureOps[O,R] private[Pull] (private val free: Free[Algebra[Pure,O,?],R]) extends AnyVal {
     private def self: Pull[Pure,O,R] = Pull.fromFree[Pure,O,R](free)
 
     def covary[F[_]]: Pull[F,O,R] = self.asInstanceOf[Pull[F,O,R]]
@@ -190,30 +193,6 @@ object Pull {
       covary[F].onError(h)
 
     def scope[F[_]]: Pull[F,O,R] = covary[F].scope
-  }
-
-  implicit def PullInvariantOptionOps[F[_],O,R](p: Pull[F,O,Option[R]]): PullInvariantOptionOps[F,O,R] = new PullInvariantOptionOps(p.get)
-  final class PullInvariantOptionOps[F[_],O,R](private val free: Free[Algebra[F,O,?],Option[R]]) extends AnyVal {
-    private def self: Pull[F,O,Option[R]] = Pull.fromFree(free)
-
-    /** Alias for `self.flatMap(_.map(f).getOrElse(Pull.pure(None)))`. */
-    def flatMapOpt[O2>:O,R2](f: R => Pull[F,O2,Option[R2]]): Pull[F,O2,Option[R2]] =
-      self.flatMap {
-        case None => Pull.pure(None)
-        case Some(r) => f(r)
-      }
-  }
-
-  implicit def PullPureOptionOps[O,R](p: Pull[Pure,O,Option[R]]): PullPureOptionOps[O,R] = new PullPureOptionOps(p.get[Pure,O,Option[R]])
-  final class PullPureOptionOps[O,R](private val free: Free[Algebra[Pure,O,?],Option[R]]) extends AnyVal {
-    private def self: Pull[Pure,O,Option[R]] = Pull.fromFree[Pure,O,Option[R]](free)
-
-    /** Alias for `self.flatMap(_.map(f).getOrElse(Pull.pure(None)))`. */
-    def flatMapOpt[F[_],O2>:O,R2](f: R => Pull[F,O2,Option[R2]]): Pull[F,O2,Option[R2]] =
-      self.flatMap {
-        case None => Pull.pure(None)
-        case Some(r) => f(r)
-      }
   }
 
   implicit def covaryPure[F[_],O,R,O2>:O,R2>:R](p: Pull[Pure,O,R]): Pull[F,O2,R2] = p.covaryAll[F,O2,R2]

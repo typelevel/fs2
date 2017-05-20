@@ -71,6 +71,7 @@ lazy val scaladocSettings = Seq(
     "-doc-source-url", s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
     "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
     "-implicits",
+    "-implicits-sound-shadowing",
     "-implicits-show-all"
   ),
   scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },

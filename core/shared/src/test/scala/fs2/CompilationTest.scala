@@ -23,9 +23,18 @@ object ThisModuleShouldCompile {
   Stream.eval(IO.pure(4)) ++ Stream(1,2,3).covary[IO]
   Stream.eval(IO.pure(4)) ++ (Stream(1,2,3): Stream[IO, Int])
   Stream(1,2,3).flatMap(i => Stream.eval(IO.pure(i)))
-  (Stream(1,2,3).covary[IO]).pull.uncons1.flatMapOpt { case (hd,_) => Pull.output1(hd).as(None) }.stream
-  Stream(1,2,3).pull.uncons1.flatMapOpt { case (hd,_) => Pull.output1(hd).as(None) }.stream
-  Stream(1,2,3).pull.uncons1.flatMapOpt { case (hd,_) => Pull.eval(IO.pure(1)) >> Pull.output1(hd).as(None) }.stream
+  (Stream(1,2,3).covary[IO]).pull.uncons1.flatMap {
+    case Some((hd,_)) => Pull.output1(hd).as(None)
+    case None => Pull.pure(None)
+  }.stream
+  Stream(1,2,3).pull.uncons1.flatMap {
+    case Some((hd,_)) => Pull.output1(hd).as(None)
+    case None => Pull.pure(None)
+  }.stream
+  Stream(1,2,3).pull.uncons1.flatMap {
+    case Some((hd,_)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd).as(None)
+    case None => Pull.pure(None)
+  }.stream
   (Stream(1,2,3).evalMap(IO(_))): Stream[IO,Int]
   (Stream(1,2,3).flatMap(i => Stream.eval(IO(i)))): Stream[IO,Int]
 
