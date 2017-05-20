@@ -20,7 +20,7 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "merge (left/right identity)" in forAll { (s1: PureStream[Int]) =>
-      runLog { s1.get.merge(Stream.empty[IO,Int]) } shouldBe runLog(s1.get)
+      runLog { s1.get.covary[IO].merge(Stream.empty) } shouldBe runLog(s1.get)
       runLog { Stream.empty.merge(s1.get.covary[IO]) } shouldBe runLog(s1.get)
     }
 

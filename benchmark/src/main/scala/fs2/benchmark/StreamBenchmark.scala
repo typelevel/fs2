@@ -10,13 +10,13 @@ class StreamBenchmark {
   @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
   @Benchmark
   def leftAssocConcat(N: Int): Int = {
-    (1 until N).map(Stream.emit).foldRight(Stream.empty[Pure, Int])(_ ++ _).covary[IO].runLast.unsafeRunSync.get
+    (1 until N).map(Stream.emit).foldRight(Stream.empty.covaryOutput[Int])(_ ++ _).covary[IO].runLast.unsafeRunSync.get
   }
 
   @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
   @Benchmark
   def rightAssocConcat(N: Int): Int = {
-    (0 until N).map(Stream.emit).foldRight(Stream.empty[Pure, Int])(_ ++ _).covary[IO].runLast.unsafeRunSync.get
+    (0 until N).map(Stream.emit).foldRight(Stream.empty.covaryOutput[Int])(_ ++ _).covary[IO].runLast.unsafeRunSync.get
   }
 
   @GenerateN(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)

@@ -511,7 +511,7 @@ object Stream {
   def emits[O](os: Seq[O]): Stream[Pure,O] = chunk(Chunk.seq(os))
 
   private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
-  def empty[F[_],O]: Stream[F,O] = empty_
+  def empty: Stream[Pure,Nothing] = empty_
 
   def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree(Algebra.eval(fo).flatMap(Algebra.output1))
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa) >> empty
@@ -808,7 +808,7 @@ object Stream {
 
     def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] =
       Stream.fromFree(Algebra.uncons(self.get[F,O]).flatMap {
-        case None => Stream.empty[F,O2].get
+        case None => Stream.empty.covaryAll[F,O2].get
         case Some((hd, tl)) =>
           val tl2 = Stream.fromFree(tl).flatMap(f)
           (hd.map(f).foldRightLazy(tl2)(Stream.append(_,_))).get
@@ -1163,6 +1163,17 @@ object Stream {
      */
     def zipWith[O2,O3](that: Stream[F,O2])(f: (O,O2) => O3): Stream[F,O3] =
       zipWith_[O2,O3](that)(sh => Pull.pure(None), h => Pull.pure(None))(f)
+  }
+
+  implicit def StreamEmptyOps(s: Stream[Pure,Nothing]): StreamEmptyOps = new StreamEmptyOps(s.get[Pure,Nothing])
+  final class StreamEmptyOps(private val free: Free[Algebra[Pure,Nothing,?],Unit]) extends AnyVal {
+    private def self: Stream[Pure,Nothing] = Stream.fromFree[Pure,Nothing](free)
+
+    /** Lifts this stream to the specified effect type. */
+    def covary[F[_]]: Stream[F,Nothing] = self.asInstanceOf[Stream[F,Nothing]]
+
+    /** Lifts this stream to the specified effect and output types. */
+    def covaryAll[F[_],O]: Stream[F,O] = self.asInstanceOf[Stream[F,O]]
   }
 
   implicit def StreamPureOps[O](s: Stream[Pure,O]): StreamPureOps[O] = new StreamPureOps(s.get[Pure,O])

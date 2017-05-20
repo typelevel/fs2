@@ -55,13 +55,13 @@ trait TestUtil extends TestUtilPlatform {
     }
     def leftAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
-        val s = as.foldLeft(Stream.empty[Pure,A])((acc,a) => acc ++ Stream.emit(a))
+        val s = as.foldLeft(Stream.empty.covaryOutput[A])((acc,a) => acc ++ Stream.emit(a))
         PureStream("left-associated", s)
       }
     }
     def rightAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
-        val s = as.foldRight(Stream.empty[Pure,A])((a,acc) => Stream.emit(a) ++ acc)
+        val s = as.foldRight(Stream.empty.covaryOutput[A])((a,acc) => Stream.emit(a) ++ acc)
         PureStream("right-associated", s)
       }
     }

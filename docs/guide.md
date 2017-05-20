@@ -43,7 +43,7 @@ scala> import fs2.Stream
 import fs2.Stream
 
 scala> val s0 = Stream.empty
-s0: fs2.Stream[Nothing,Nothing] = Stream(..)
+s0: fs2.Stream[fs2.Pure,Nothing] = Stream(..)
 
 scala> val s1 = Stream.emit(1)
 s1: fs2.Stream[fs2.Pure,Int] = Stream(..)
@@ -55,7 +55,7 @@ scala> val s1b = Stream.emits(List(1,2,3)) // accepts any Seq
 s1b: fs2.Stream[fs2.Pure,Int] = Stream(..)
 ```
 
-The `s1` stream has the type `Stream[Nothing,Int]`. It's output type is of course `Int`, and its effect type is `Nothing`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are sometimes called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
+The `s1` stream has the type `Stream[Pure,Int]`. It's output type is of course `Int`, and its effect type is `Pure`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
 
 ```scala
 scala> s1.toList
@@ -137,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.runLog // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$1901079473
+// ra: cats.effect.IO[Vector[Int]] = IO$1102576649
 
 val rb = eff.run // purely for effects
-// rb: cats.effect.IO[Unit] = IO$1581108654
+// rb: cats.effect.IO[Unit] = IO$287970329
 
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$1957953226
+// rc: cats.effect.IO[Int] = IO$73989790
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -272,10 +272,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$885034812
+acquire: cats.effect.IO[Unit] = IO$526723390
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$621320943
+release: cats.effect.IO[Unit] = IO$2016293688
 ```
 
 ```scala
