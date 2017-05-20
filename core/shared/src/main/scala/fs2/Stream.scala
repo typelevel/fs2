@@ -572,7 +572,7 @@ object Stream {
       def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
         Stream.eval_(
           available.decrement >> incrementRunning >>
-          concurrent.fork {
+          async.fork {
             val s = inner.segments.attempt.
               flatMap(r => Stream.eval(outputQ.enqueue1(Some(r)))).
               interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
@@ -598,8 +598,8 @@ object Stream {
         } run
       }
 
-      Stream.eval_(concurrent.start(runOuter)) ++
-      Stream.eval_(concurrent.start(doneMonitor)) ++
+      Stream.eval_(async.start(runOuter)) ++
+      Stream.eval_(async.start(doneMonitor)) ++
       outputQ.dequeue.unNoneTerminate.flatMap {
         case Left(e) => Stream.fail(e)
         case Right(s) => Stream.segment(s)

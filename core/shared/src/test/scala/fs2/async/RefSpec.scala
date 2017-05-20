@@ -1,11 +1,12 @@
 package fs2
+package async
 
 import cats.effect.IO
 import cats.implicits._
 
 import scala.concurrent.duration._
 
-class ConcurrentSpec extends Fs2Spec {
+class RefSpec extends Fs2Spec {
 
     "Ref" - {
 
@@ -15,7 +16,7 @@ class ConcurrentSpec extends Fs2Spec {
         */
       "Interleaving set and access " in {
 
-        concurrent.ref[IO, Int].flatMap{ref =>
+        ref[IO, Int].flatMap{ ref =>
           ref.setAsyncPure(1).flatMap{ _ =>
             ref.access.flatMap{ case ((_, set)) =>
               ref.setAsyncPure(2).flatMap{ _ =>
@@ -27,10 +28,9 @@ class ConcurrentSpec extends Fs2Spec {
       }
 
       "setSync" in {
-        concurrent.ref[IO, Int].flatMap { ref =>
+        ref[IO, Int].flatMap { ref =>
           ref.setSyncPure(0) >> ref.setSync(IO(1)) >> ref.get
         }.unsafeToFuture.map { _ shouldBe 1 }
       }
     }
-
   }

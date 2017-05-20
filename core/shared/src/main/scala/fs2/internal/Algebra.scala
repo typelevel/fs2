@@ -8,7 +8,7 @@ import cats.~>
 import cats.effect.{ Effect, Sync }
 
 import fs2.{ AsyncPull, Catenable, Segment }
-import fs2.concurrent
+import fs2.async
 
 private[fs2] sealed trait Algebra[F[_],O,R]
 
@@ -200,8 +200,8 @@ private[fs2] object Algebra {
             val effect = unconsAsync.effect
             val ec = unconsAsync.ec
             type UO = Option[(Segment[_,Unit], Free[Algebra[F,Any,?],Unit])]
-            val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(concurrent.ref[F,Either[Throwable,UO]](effect, ec)) { ref =>
-              F.map(concurrent.fork {
+            val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(async.ref[F,Either[Throwable,UO]](effect, ec)) { ref =>
+              F.map(async.fork {
                 F.flatMap(F.attempt(runFold_(
                   uncons(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
                   None: UO)((o,a) => a, interrupt, midAcquires, resources)

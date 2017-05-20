@@ -45,7 +45,7 @@ package object time {
           val cancel = scheduler.scheduleAtFixedRate(d) {
             if (running.compareAndSet(false, true)) {
               val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
-              concurrent.unsafeRunAsync(signal.set(d))(_ => IO(running.set(false)))
+              async.unsafeRunAsync(signal.set(d))(_ => IO(running.set(false)))
             }
           }
           (F.delay(cancel()), signal)

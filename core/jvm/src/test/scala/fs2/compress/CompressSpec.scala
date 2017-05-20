@@ -3,8 +3,6 @@ package compress
 
 import fs2.Stream._
 
-import compress._
-
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Gen
 

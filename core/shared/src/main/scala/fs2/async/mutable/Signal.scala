@@ -23,12 +23,12 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
    *
    * `F` returns the result of applying `op` to current value.
    */
-  def modify(f: A => A): F[concurrent.Change[A]]
+  def modify(f: A => A): F[Ref.Change[A]]
 
   /**
    * Like [[modify]] but allows extraction of a `B` from `A` and returns it along with the `Change`.
    */
-  def modify2[B](f: A => (A,B)):F[(concurrent.Change[A], B)]
+  def modify2[B](f: A => (A,B)):F[(Ref.Change[A], B)]
 
   /**
    * Asynchronously refreshes the value of the signal,
@@ -47,10 +47,10 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
       def get: F[B] = self.get.map(f)
       def set(b: B): F[Unit] = self.set(g(b))
       def refresh: F[Unit] = self.refresh
-      def modify(bb: B => B): F[concurrent.Change[B]] = modify2( b => (bb(b),()) ).map(_._1)
-      def modify2[B2](bb: B => (B,B2)):F[(concurrent.Change[B], B2)] =
+      def modify(bb: B => B): F[Ref.Change[B]] = modify2( b => (bb(b),()) ).map(_._1)
+      def modify2[B2](bb: B => (B,B2)):F[(Ref.Change[B], B2)] =
         self.modify2 { a =>   val (a2, b2) = bb(f(a)) ; g(a2) -> b2 }
-        .map { case (concurrent.Change(prev, now),b2) => concurrent.Change(f(prev), f(now)) -> b2 }
+        .map { case (Ref.Change(prev, now),b2) => Ref.Change(f(prev), f(now)) -> b2 }
     }
 }
 
@@ -65,16 +65,16 @@ object Signal {
 
   def apply[F[_],A](initA: A)(implicit F: Effect[F], ec: ExecutionContext): F[Signal[F,A]] = {
     class ID
-    concurrent.refOf[F, (A, Long, Map[ID, concurrent.Ref[F, (A, Long)]])]((initA, 0, Map.empty)).map {
+    async.refOf[F, (A, Long, Map[ID, Ref[F, (A, Long)]])]((initA, 0, Map.empty)).map {
     state => new Signal[F,A] {
       def refresh: F[Unit] = modify(identity).as(())
       def set(a: A): F[Unit] = modify(_ => a).as(())
       def get: F[A] = state.get.map(_._1)
-      def modify(f: A => A): F[concurrent.Change[A]] = modify2( a => (f(a), ()) ).map(_._1)
-      def modify2[B](f: A => (A,B)):F[(concurrent.Change[A], B)] = {
+      def modify(f: A => A): F[Ref.Change[A]] = modify2( a => (f(a), ()) ).map(_._1)
+      def modify2[B](f: A => (A,B)):F[(Ref.Change[A], B)] = {
         state.modify2 { case (a, l, _) =>
           val (a0, b) = f(a)
-          (a0, l+1, Map.empty[ID, concurrent.Ref[F, (A, Long)]]) -> b
+          (a0, l+1, Map.empty[ID, Ref[F, (A, Long)]]) -> b
         }.flatMap { case (c, b) =>
           if (c.previous._3.isEmpty) F.pure(c.map(_._1) -> b)
           else {
@@ -93,7 +93,7 @@ object Signal {
       def discrete: Stream[F, A] = {
         def go(id: ID, last: Long): Stream[F, A] = {
           def getNext: F[(A, Long)] = {
-            concurrent.ref[F, (A, Long)] flatMap { ref =>
+            async.ref[F, (A, Long)] flatMap { ref =>
               state.modify { case s@(a, l, listen) =>
                 if (l != last) s
                 else (a, l, listen + (id -> ref))

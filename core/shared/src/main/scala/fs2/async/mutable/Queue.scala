@@ -116,10 +116,10 @@ object Queue {
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
       * @param deq      A list of waiting dequeuers, added to when queue is empty
       */
-    final case class State(queue: Vector[A], deq: Vector[concurrent.Ref[F,Chunk[A]]])
+    final case class State(queue: Vector[A], deq: Vector[Ref[F,Chunk[A]]])
 
     Signal(0).flatMap { szSignal =>
-    concurrent.refOf[F,State](State(Vector.empty,Vector.empty)).map { qref =>
+    async.refOf[F,State](State(Vector.empty,Vector.empty)).map { qref =>
       // Signals size change of queue, if that has changed
       def signalSize(s: State, ns: State) : F[Unit] = {
         if (s.queue.size != ns.queue.size) szSignal.set(ns.queue.size)
@@ -149,7 +149,7 @@ object Queue {
           cancellableDequeueBatch1(batchSize).flatMap { _._1 }
 
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]],F[Unit])] =
-          concurrent.ref[F,Chunk[A]].flatMap { r =>
+          ref[F,Chunk[A]].flatMap { r =>
             qref.modify { s =>
               if (s.queue.isEmpty) s.copy(deq = s.deq :+ r)
               else s.copy(queue = s.queue.drop(batchSize))
@@ -245,7 +245,7 @@ object Queue {
   /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
   def synchronousNoneTerminated[F[_],A](implicit F: Effect[F], ec: ExecutionContext): F[Queue[F,Option[A]]] =
     Semaphore(0).flatMap { permits =>
-    concurrent.refOf[F, Boolean](false).flatMap { doneRef =>
+    refOf[F, Boolean](false).flatMap { doneRef =>
     unbounded[F,Option[A]].map { q =>
       new Queue[F,Option[A]] {
         def upperBound: Option[Int] = Some(0)

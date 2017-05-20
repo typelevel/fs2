@@ -34,7 +34,7 @@ sealed abstract class AsyncPull[F[_],A] { self =>
   def race[B](b: AsyncPull[F,B])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,Either[A,B]] = new AsyncPull[F, Either[A,B]] {
     def get = cancellableGet.flatMap(_._1)
     def cancellableGet = Free.Eval(for {
-      ref <- concurrent.ref[F,Either[A,B]]
+      ref <- async.ref[F,Either[A,B]]
       t0 <- self.cancellableGet.run
       (a, cancelA) = t0
       t1 <- b.cancellableGet.run
@@ -80,7 +80,7 @@ object AsyncPull {
   }
 
   /** Returns an async pull that gets its value from reading the specified ref. */
-  def readRef[F[_],A](r: concurrent.Ref[F,A]): AsyncPull[F,A] =
+  def readRef[F[_],A](r: async.Ref[F,A]): AsyncPull[F,A] =
     new AsyncPull[F,A] {
       def get = Free.Eval(r.get)
       def cancellableGet = Free.Eval(r.cancellableGet).map { case (get, cancel) => (Free.Eval(get), Free.Eval(cancel)) }
@@ -90,7 +90,7 @@ object AsyncPull {
    * Like [[readRef]] but reads a `Ref[F,Either[Throwable,A]]` instead of a `Ref[F,A]`. If a `Left(t)` is read,
    * the `get` action fails with `t`.
    */
-  def readAttemptRef[F[_],A](r: concurrent.Ref[F,Either[Throwable,A]])(implicit F: Functor[F]): AsyncPull[F,A] =
+  def readAttemptRef[F[_],A](r: async.Ref[F,Either[Throwable,A]])(implicit F: Functor[F]): AsyncPull[F,A] =
     new AsyncPull[F,A] {
       def get = Free.Eval(r.get).flatMap(_.fold(Free.Fail(_), Free.Pure(_)))
       def cancellableGet = Free.Eval(r.cancellableGet).map { case (get, cancel) =>
