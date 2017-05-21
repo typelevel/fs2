@@ -1486,7 +1486,6 @@ object Stream {
     def observeAsync[F[_],O2>:O](sink: Sink[F,O2], maxQueued: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].observeAsync(sink, maxQueued)
 
-    /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
     def onComplete[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       covary[F].onComplete(s2)
 
@@ -1497,11 +1496,9 @@ object Stream {
     def onFinalize[F[_]](f: F[Unit])(implicit F: Applicative[F]): Stream[F,O] =
       covary[F].onFinalize(f)
 
-    /** Alias for `(pauseWhenTrue through2 this)(pipe2.pause)`. */
     def pauseWhen[F[_]](pauseWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       covary[F].pauseWhen(pauseWhenTrue)
 
-    /** Alias for `(pauseWhenTrue.discrete through2 this)(pipe2.pause)`. */
     def pauseWhen[F[_]](pauseWhenTrue: async.immutable.Signal[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       covary[F].pauseWhen(pauseWhenTrue)
 
