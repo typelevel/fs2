@@ -301,8 +301,53 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def forall(p: O => Boolean): Stream[F, Boolean] =
     this.pull.forall(p).flatMap(Pull.output1).stream
 
-  // /** Alias for `self through [[pipe.groupBy]]`. */
-  // def groupBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Vector[O])] = self through pipe.groupBy(f)
+  /**
+   * Partitions the input into a stream of chunks according to a discriminator function.
+   * Each chunk is annotated with the value of the discriminator function applied to
+   * any of the chunk's elements.
+   */
+  def groupBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Vector[O])] = {
+
+    def go(current: Option[(O2,Vector[O])], s: Stream[F,O]): Pull[F,(O2,Vector[O]),Unit] = {
+      s.pull.unconsChunk.flatMap {
+        case Some((hd,tl)) =>
+          val (k1, out) = current.getOrElse((f(hd(0)), Vector[O]()))
+          doChunk(hd, tl, k1, out, Vector.empty)
+        case None =>
+          val l = current.map { case (k1, out) => Pull.output1((k1, out)) } getOrElse Pull.pure(())
+          l >> Pull.done
+      }
+    }
+
+    @annotation.tailrec
+    def doChunk(chunk: Chunk[O], s: Stream[F,O], k1: O2, out: Vector[O], acc: Vector[(O2, Vector[O])]): Pull[F,(O2,Vector[O]),Unit] = {
+      val differsAt = chunk.indexWhere(v => eq.neqv(f(v), k1)).getOrElse(-1)
+      if (differsAt == -1) {
+        // whole chunk matches the current key, add this chunk to the accumulated output
+        val newOut: Vector[O] = out ++ chunk.toVector
+        if (acc.isEmpty) {
+          go(Some((k1, newOut)), s)
+        } else {
+          // potentially outputs one additional chunk (by splitting the last one in two)
+          Pull.output(Chunk.vector(acc)) >> go(Some((k1, newOut)), s)
+        }
+      } else {
+        // at least part of this chunk does not match the current key, need to group and retain chunkiness
+        var startIndex = 0
+        var endIndex = differsAt
+        // split the chunk into the bit where the keys match and the bit where they don't
+        val matching = chunk.take(differsAt)
+        val newOut: Vector[O] = out ++ matching.toVector
+        val nonMatching = chunk.drop(differsAt).fold(_ => Chunk.empty, identity).toChunk
+        // nonMatching is guaranteed to be non-empty here, because we know the last element of the chunk doesn't have
+        // the same key as the first
+        val k2 = f(nonMatching(0))
+        doChunk(nonMatching, s, k2, Vector[O](), acc :+ ((k1, newOut)))
+      }
+    }
+
+    go(None, this).stream
+  }
 
   /** Emits the first element of this stream (if non-empty) and then halts. */
   def head: Stream[F,O] = take(1)
@@ -372,11 +417,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
-  // def open: Pull[F,Nothing,Stream[F,O]] = Pull.pure(this)
-
-  // def output: Pull[F,O,Unit] = Pull.outputs(self)
-
-
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
   def repeat: Stream[F,O] = this ++ repeat
 
@@ -432,6 +472,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   //  */
   // def scope: Stream[F,O] =
   //   Stream.mk { StreamCore.scope { self.get } }
+  // TODO Delete this?
 
   /** Outputs segments with a limited maximum size, splitting as necessary. */
   def segmentLimit(n: Int): Stream[F,Segment[O,Unit]] =
@@ -565,14 +606,44 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
       }
     }
 
-  // /** Alias for `self through [[pipe.zipWithNext]]`. */
-  // def zipWithNext: Stream[F, (O, Option[O])] = self through pipe.zipWithNext
-  //
-  // /** Alias for `self through [[pipe.zipWithPrevious]]`. */
-  // def zipWithPrevious: Stream[F, (Option[O], O)] = self through pipe.zipWithPrevious
-  //
-  // /** Alias for `self through [[pipe.zipWithPreviousAndNext]]`. */
-  // def zipWithPreviousAndNext: Stream[F, (Option[O], O, Option[O])] = self through pipe.zipWithPreviousAndNext
+  /**
+   * Zips each element of this stream with the next element wrapped into `Some`.
+   * The last element is zipped with `None`.
+   */
+  def zipWithNext: Stream[F,(O,Option[O])] = {
+    def go(last: O, s: Stream[F,O]): Pull[F,(O,Option[O]),Unit] =
+      s.pull.uncons.flatMap {
+        case None => Pull.output1((last, None))
+        case Some((hd,tl)) =>
+          Pull.segment(hd.mapAccumulate(last) {
+            case (prev, next) => (next, (prev, Some(next)))
+          }).flatMap { case (_, newLast) => go(newLast, tl)}
+      }
+    this.pull.uncons1.flatMap {
+      case Some((hd,tl)) => go(hd,tl)
+      case None => Pull.done
+    }.stream
+  }
+
+  /**
+   * Zips each element of this stream with the previous element wrapped into `Some`.
+   * The first element is zipped with `None`.
+   */
+  def zipWithPrevious: Stream[F,(Option[O],O)] =
+    mapAccumulate[Option[O],(Option[O],O)](None) {
+      case (prev, next) => (Some(next), (prev, next))
+    }.map { case (_, prevNext) => prevNext }
+
+  /**
+   * Zips each element of this stream with its previous and next element wrapped into `Some`.
+   * The first element is zipped with `None` as the previous element,
+   * the last element is zipped with `None` as the next element.
+   */
+  def zipWithPreviousAndNext: Stream[F, (Option[O], O, Option[O])] =
+    zipWithPrevious.zipWithNext.map {
+      case ((prev, that), None) => (prev, that, None)
+      case ((prev, that), Some((_, next))) => (prev, that, Some(next))
+    }
 
   /**
    * Zips the input with a running total according to `S`, up to but not including the current element. Thus the initial
@@ -1632,6 +1703,8 @@ object Stream {
         }
       go(None, self)
     }
+
+    // def output: Pull[F,O,Unit] = Pull.outputs(self) TODO
 
     /** Like [[uncons]] but does not consume the segment (i.e., the segment is pushed back). */
     def peek: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
