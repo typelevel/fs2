@@ -2,6 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 import cats.effect.IO
+import cats.implicits._
 
 class MergeJoinSpec extends Fs2Spec {
 
@@ -55,7 +56,7 @@ class MergeJoinSpec extends Fs2Spec {
       val hang = Stream.repeatEval(IO.async[Unit] { cb => () }) // never call `cb`!
       val hang2: Stream[IO,Nothing] = full.drain
       val hang3: Stream[IO,Nothing] =
-        Stream.repeatEval[IO,Unit](IO.async { (cb: Either[Throwable,Unit] => Unit) => cb(Right(())) }.shift).drain
+        Stream.repeatEval[IO,Unit](IO.shift >> IO.async { (cb: Either[Throwable,Unit] => Unit) => cb(Right(())) }).drain
 
       "merge" in {
         runLog((full merge hang).take(1)) shouldBe Vector(42)

@@ -2,6 +2,7 @@ package fs2
 
 import java.util.concurrent.atomic.AtomicLong
 import cats.effect.IO
+import cats.implicits._
 import org.scalacheck._
 
 class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
@@ -162,7 +163,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       forAll { (s: PureStream[PureStream[Int]]) =>
         val signal = async.signalOf[IO,Boolean](false).unsafeRunSync()
         val c = new AtomicLong(0)
-        IO { Thread.sleep(20L) }.flatMap(_ => signal.set(true)).shift.unsafeRunSync()
+        (IO.shift >> IO { Thread.sleep(20L) } >> signal.set(true)).unsafeRunSync()
         runLog { s.get.evalMap { inner =>
           async.start(bracket(c)(inner.get).evalMap { _ => IO.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run)
         }}
@@ -178,7 +179,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s = Stream(Stream(1))
       val signal = async.signalOf[IO,Boolean](false).unsafeRunSync()
       val c = new AtomicLong(1)
-      IO { Thread.sleep(20L) }.flatMap(_ => signal.set(true)).shift.unsafeRunSync() // after 20 ms, interrupt
+      (IO.shift >> IO { Thread.sleep(20L) } >> signal.set(true)).unsafeRunSync() // after 20 ms, interrupt
       runLog { s.evalMap { inner => async.start {
         Stream.bracket(IO { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
           _ => inner,

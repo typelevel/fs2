@@ -1,6 +1,7 @@
 package fs2
 
 import cats.effect.IO
+import cats.implicits._
 import scala.concurrent.duration._
 
 class TimeSpec extends AsyncFs2Spec {
@@ -15,7 +16,7 @@ class TimeSpec extends AsyncFs2Spec {
       val emitAndSleep = Stream.emit(()) ++ Stream.eval(blockingSleep)
       val t = emitAndSleep zip time.duration[IO] drop 1 map { _._2 } runLog
 
-      t.shift.unsafeToFuture collect {
+      (IO.shift >> t).unsafeToFuture collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
       }
     }
@@ -45,7 +46,7 @@ class TimeSpec extends AsyncFs2Spec {
         take(draws.toInt).
         through(durationSinceLastTrue)
 
-      durationsSinceSpike.runLog.shift.unsafeToFuture().map { result =>
+      (IO.shift >> durationsSinceSpike.runLog).unsafeToFuture().map { result =>
         val (head :: tail) = result.toList
         withClue("every always emits true first") { assert(head._1) }
         withClue("true means the delay has passed: " + tail) { assert(tail.filter(_._1).map(_._2).forall { _ >= delay }) }
@@ -60,7 +61,7 @@ class TimeSpec extends AsyncFs2Spec {
       val emitAndSleep = Stream.emit(()) ++ time.sleep[IO](delay)
       val t = emitAndSleep zip time.duration[IO] drop 1 map { _._2 } runLog
 
-      t.shift.unsafeToFuture() collect {
+      (IO.shift >> t).unsafeToFuture() collect {
         case Vector(d) => assert(d >= delay)
       }
     }

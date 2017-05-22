@@ -92,14 +92,14 @@ package object async {
    * bound. The inner `F[A]` will block until the result is available.
    */
   def start[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
-    ref[F, A].flatMap { ref => ref.setAsync(F.shift(f)).as(ref.get) }
+    ref[F, A].flatMap { ref => ref.setAsync(F.shift(ec) >> f).as(ref.get) }
 
   /**
    * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
    * bound. Like `start` but is more efficient.
    */
   def fork[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] =
-    F.liftIO(F.runAsync(F.shift(f))(_ => IO.unit))
+    F.liftIO(F.runAsync(F.shift >> f) { r => IO.unit })
 
   /**
     * Returns an effect that, when run, races evaluation of `fa` and `fb`,
@@ -117,5 +117,5 @@ package object async {
    * This method returns immediately after submitting execution to the execution context.
    */
   def unsafeRunAsync[F[_], A](fa: F[A])(f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =
-    F.runAsync(F.shift(fa)(ec))(f).unsafeRunSync
+    F.runAsync(F.shift(ec) >> fa)(f).unsafeRunSync
 }

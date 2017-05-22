@@ -251,10 +251,10 @@ class PipeSpec extends Fs2Spec {
 
     "prefetch (timing)" in {
       // should finish in about 3-4 seconds
-      val s = Stream(1,2,3)
-            . evalMap(i => IO { Thread.sleep(1000); i })
-            . prefetch
-            . flatMap { i => Stream.eval(IO { Thread.sleep(1000); i}) }
+      val s = Stream(1,2,3).
+                evalMap(i => IO { Thread.sleep(1000); i }).
+                prefetch.
+                flatMap { i => Stream.eval(IO { Thread.sleep(1000); i}) }
       val start = System.currentTimeMillis
       runLog(s)
       val stop = System.currentTimeMillis

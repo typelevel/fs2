@@ -20,7 +20,7 @@ class RefSpec extends Fs2Spec {
           ref.setAsyncPure(1).flatMap{ _ =>
             ref.access.flatMap{ case ((_, set)) =>
               ref.setAsyncPure(2).flatMap{ _ =>
-                set(Right(3)).shift(scheduler.delayedExecutionContext(100.millis))
+                IO.shift(scheduler.delayedExecutionContext(100.millis)) >> set(Right(3))
               }
             }
           }

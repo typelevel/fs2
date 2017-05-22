@@ -135,7 +135,7 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
    * Satisfies: `r.setAsync(fa) flatMap { _ => r.get } == fa`
    */
   def setAsync(fa: F[A]): F[Unit] =
-    F.liftIO(F.runAsync(F.shift(fa)(ec)) { r => IO(actor ! Msg.Set(r, () => ())) })
+    F.liftIO(F.runAsync(F.shift(ec) >> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
 
   /**
    * *Asynchronously* sets a reference to a pure value.
@@ -148,7 +148,7 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
    * *Synchronously* sets a reference. The returned value completes evaluating after the reference has been successfully set.
    */
   def setSync(fa: F[A]): F[Unit] =
-    F.liftIO(F.runAsync(F.shift(fa)(ec)) { r => IO.async { cb => actor ! Msg.Set(r, () => cb(Right(()))) } })
+    F.liftIO(F.runAsync(F.shift(ec) >> fa) { r => IO.async { cb => actor ! Msg.Set(r, () => cb(Right(()))) } })
 
   /**
    * *Synchronously* sets a reference to a pure value.
