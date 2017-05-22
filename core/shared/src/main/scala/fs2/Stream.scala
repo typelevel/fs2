@@ -238,7 +238,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
   def exists(p: O => Boolean): Stream[F, Boolean] =
-    this.pull.forall(!p(_)).flatMap(Pull.output1).stream
+    this.pull.forall(!p(_)).flatMap(r => Pull.output1(!r)).stream
 
   /** Emits only inputs which match the supplied predicate. */
   def filter(p: O => Boolean): Stream[F,O] = mapSegments(_ filter p)
@@ -1169,7 +1169,7 @@ object Stream {
       self.diamond(identity)(async.synchronousQueue, sink andThen (_.drain))(_.merge(_))
 
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-    def observeAsync[O2>:O](sink: Sink[F,O2], maxQueued: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    def observeAsync[O2>:O](maxQueued: Int)(sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       self.diamond(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(_.merge(_))
 
     /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
@@ -1483,8 +1483,8 @@ object Stream {
     def observe[F[_],O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].observe(sink)
 
-    def observeAsync[F[_],O2>:O](sink: Sink[F,O2], maxQueued: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
-      covary[F].observeAsync(sink, maxQueued)
+    def observeAsync[F[_],O2>:O](maxQueued: Int)(sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+      covary[F].observeAsync(maxQueued)(sink)
 
     def onComplete[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       covary[F].onComplete(s2)

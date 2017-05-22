@@ -186,7 +186,7 @@ abstract class Segment[+O,+R] { self =>
           }
           if (ok) emits(os) else done(Right(staged.remainder.drop(i - 1).toOption.get))
         },
-        r => done(Left(r))
+        r => if (ok) done(Left(r)) else done(Right(staged.remainder))
       ).value
       staged.mapRemainder(rem => if (ok) rem.takeWhile(p) else rem.mapResult(Left(_)))
     }
