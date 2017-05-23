@@ -268,7 +268,10 @@ class PipeSpec extends Fs2Spec {
 
     "split" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val s2 = s.get.map(_.abs).filter(_ != 0)
-      runLog { s2.chunkLimit(n.get).intersperse(Chunk.singleton(0)).flatMap(Stream.chunk).split(_ == 0) } shouldBe s2.chunkLimit(n.get).map(_.toVector).toVector
+      withClue(s"n = $n, s = ${s.get.toList}, s2 = " + s2.toList) {
+      runLog { s2.chunkLimit(n.get).intersperse(Chunk.singleton(0)).flatMap(Stream.chunk).split(_ == 0).filter(_.nonEmpty) } shouldBe
+        s2.chunkLimit(n.get).filter(_.nonEmpty).map(_.toVector).toVector
+      }
     }
 
     "split (2)" in {

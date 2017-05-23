@@ -1,7 +1,7 @@
 package fs2
 
 import java.util.concurrent.TimeoutException
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -84,6 +84,10 @@ trait TestUtil extends TestUtilPlatform {
       Gen.oneOf(
         rightAssociated[A], leftAssociated[A], singleChunk[A],
         unchunked[A], randomlyChunked[A], uniformlyChunked[A])
+
+    implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
+
+    implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream("shrunk", Stream.chunk(Chunk.seq(as)))) }
   }
 
   case object Err extends RuntimeException("oh noes!!")
