@@ -94,14 +94,16 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       buffer.toList shouldBe List('Acquired, 'Used, 'FlatMapped, 'ReleaseInvoked, 'Released)
     }
 
-    "asynchronous resource allocation (1)" in forAll { (s1: PureStream[Int], f1: Failure) =>
+    "asynchronous resource allocation (1)" in {
       pending
-      val c = new AtomicLong(0)
-      val b1 = bracket(c)(s1.get)
-      val b2 = f1.get
-      swallow { runLog { b1.merge(b2) }}
-      swallow { runLog { b2.merge(b1) }}
-      eventually { c.get shouldBe 0L }
+      forAll { (s1: PureStream[Int], f1: Failure) =>
+        val c = new AtomicLong(0)
+        val b1 = bracket(c)(s1.get)
+        val b2 = f1.get
+        swallow { runLog { b1.merge(b2) }}
+        swallow { runLog { b2.merge(b1) }}
+        eventually { c.get shouldBe 0L }
+      }
     }
 
     "asynchronous resource allocation (2a)" in forAll { (u: Unit) =>
