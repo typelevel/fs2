@@ -4,7 +4,7 @@ Upgrading from 0.9? This document summarizes the changes and provides tips on mi
 
 * [Cats](#cats)
   * [Type Classes](#type-classes)
-  * [Task/IO](#task-io)
+  * [Task/IO](#taskio)
 * [Performance](#performance)
 * [API Simplification](#api-simplification)
 
@@ -79,6 +79,7 @@ In 1.0, we avoid these issues by avoiding use of `Nothing` for an effect type --
 val s1: Stream[IO,Int] = Stream(1, 2, 3)
 val s2: Stream[IO,Int] = if (guard) Stream.eval(IO(...)) else Stream.empty
 val s3: Stream[IO,Int] = s2.flatMap { n => Stream(1, 2, 3) }
+val s4: Stream[IO,Int] = Stream(1,2,3).flatMap { n => Stream(1, 2, 3) }
 ```
 
 There are times when you may have to manually covary a stream -- especially in situations where you had to explicitly supply type parameters in 0.9 (e.g., if in 0.9 you had to write `Stream[IO,Int](1,2,3)`, in 1.0 you *may* have to write `Stream(1,2,3).covary[IO]`).
