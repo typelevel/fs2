@@ -47,14 +47,14 @@ private[fs2] sealed abstract class Free[F[_], +R] {
 }
 
 private[fs2] object Free {
-  case class Pure[F[_], R](r: R) extends Free[F, R] {
+  final case class Pure[F[_], R](r: R) extends Free[F, R] {
     override def translate[G[_]](f: F ~> G): Free[G, R] = this.asInstanceOf[Free[G,R]]
   }
-  case class Eval[F[_], R](fr: F[R]) extends Free[F, R] {
+  final case class Eval[F[_], R](fr: F[R]) extends Free[F, R] {
     override def translate[G[_]](f: F ~> G): Free[G, R] = Eval(f(fr))
   }
-  case class Bind[F[_], X, R](fx: Free[F, X], f: Either[Throwable,X] => Free[F, R]) extends Free[F, R]
-  case class Fail[F[_], R](error: Throwable) extends Free[F,R] {
+  final case class Bind[F[_], X, R](fx: Free[F, X], f: Either[Throwable,X] => Free[F, R]) extends Free[F, R]
+  final case class Fail[F[_], R](error: Throwable) extends Free[F,R] {
     override def translate[G[_]](f: F ~> G): Free[G, R] = this.asInstanceOf[Free[G,R]]
   }
 
@@ -70,7 +70,7 @@ private[fs2] object Free {
     Pure[F, Unit](()).flatMap(_ => fr)
 
   // Pure(r), Fail(e), Bind(Eval(fx), k),
-  class ViewL[F[_],+R](val get: Free[F,R]) extends AnyVal
+  final class ViewL[F[_],+R](val get: Free[F,R]) extends AnyVal
   object ViewL {
     def apply[F[_], R](free: Free[F, R], interrupt: () => Boolean): ViewL[F, R] = {
       type X = Any
