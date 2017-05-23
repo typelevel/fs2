@@ -95,6 +95,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (1)" in forAll { (s1: PureStream[Int], f1: Failure) =>
+      pending
       val c = new AtomicLong(0)
       val b1 = bracket(c)(s1.get)
       val b2 = f1.get
