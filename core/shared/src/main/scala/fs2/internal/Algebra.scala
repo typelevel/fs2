@@ -74,7 +74,7 @@ private[fs2] object Algebra {
   def uncons[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int = 1024): Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =
     Algebra.interrupt[F,X].flatMap { interrupt => uncons_(s, chunkSize, interrupt) }
 
-  private def uncons_[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int, interrupt: () => Boolean): Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =
+  private def uncons_[F[_],X,O](s: Free[Algebra[F,O,?],Unit], chunkSize: Int, interrupt: () => Boolean): Free[Algebra[F,X,?],Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] = {
     s.viewL(interrupt).get match {
       case done: Free.Pure[Algebra[F,O,?], Unit] => pure(None)
       case failed: Free.Fail[Algebra[F,O,?], _] => fail(failed.error)
@@ -105,6 +105,7 @@ private[fs2] object Algebra {
         }
       case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
     }
+  }
 
   /** Left-fold the output of a stream, supporting `unconsAsync`. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] = {
@@ -202,10 +203,13 @@ private[fs2] object Algebra {
             type UO = Option[(Segment[_,Unit], Free[Algebra[F,Any,?],Unit])]
             val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(async.ref[F,Either[Throwable,UO]](effect, ec)) { ref =>
               F.map(async.fork {
-                F.flatMap(F.attempt(runFold_(
-                  uncons(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
-                  None: UO)((o,a) => a, interrupt, midAcquires, resources)
-                ))(o => ref.setAsyncPure(o))
+                F.flatMap(F.attempt(
+                  runFoldInterruptibly(
+                    uncons_(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]], 1024, interrupt).flatMap(output1(_)),
+                    interrupt,
+                    None: UO
+                  )((o,a) => a)
+                )) { o => ref.setAsyncPure(o) }
               }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
             }
             F.flatMap(asyncPull) { ap => go(acc, f(Right(ap)).viewL(interrupt)) }

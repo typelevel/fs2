@@ -1176,7 +1176,7 @@ object Stream {
     def onComplete[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       (self onError (e => s2 ++ Stream.fail(e))) ++ s2
 
-    /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
+    /** If `this` terminates with `Stream.fail(e)`, invoke `h(e)`. */
     def onError[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
       Stream.fromFree(self.get[F,O2] onError { e => h(e).get })
 

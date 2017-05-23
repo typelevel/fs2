@@ -99,7 +99,7 @@ package object async {
    * bound. Like `start` but is more efficient.
    */
   def fork[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] =
-    F.liftIO(F.runAsync(F.shift >> f) { r => IO.unit })
+    F.liftIO(F.runAsync(F.shift >> f) { _ => IO.unit })
 
   /**
     * Returns an effect that, when run, races evaluation of `fa` and `fb`,

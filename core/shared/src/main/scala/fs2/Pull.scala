@@ -123,10 +123,12 @@ object Pull {
     fromFree[F,Nothing,Unit](Algebra.release(token))
 
   private def releaseAll[F[_]](tokens: LinkedSet[Algebra.Token]): Pull[F,Nothing,Unit] = {
-    def go(err: Option[Throwable], tokens: List[Algebra.Token]): Pull[F,Nothing,Unit] = tokens match {
-      case Nil => err map (Pull.fail) getOrElse Pull.pure(())
-      case tok :: tokens =>
-        fromFree[F,Nothing,Unit](Algebra.release(tok)) onError (e => go(Some(e), tokens))
+    def go(err: Option[Throwable], tokens: List[Algebra.Token]): Pull[F,Nothing,Unit] = {
+      tokens match {
+        case Nil => err map (Pull.fail) getOrElse Pull.pure(())
+        case tok :: tokens =>
+          release(tok).onError { e => go(Some(e), tokens) } >> go(err, tokens)
+      }
     }
     go(None, tokens.values.toList.reverse)
   }
@@ -163,7 +165,8 @@ object Pull {
       } onError { e =>
         Pull.snapshot flatMap { tokens1 =>
           val newTokens = tokens1 -- tokens0.values
-          if (newTokens.isEmpty) Pull.fail(e) else Pull.releaseAll(newTokens) >> Pull.fail(e)
+          if (newTokens.isEmpty) Pull.fail(e)
+          else Pull.releaseAll(newTokens) >> Pull.fail(e)
         }
       }
     }
