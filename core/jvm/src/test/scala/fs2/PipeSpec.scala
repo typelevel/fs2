@@ -221,14 +221,13 @@ class PipeSpec extends Fs2Spec {
       val v2 = Vector.fill(1000)(Vector(0))
       val s = (v.map(Stream.emits(_)): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
       val s2 = (v2.map(Stream.emits(_)): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
-      val start = System.currentTimeMillis
       val id = (_: Stream[Pure,Int]).mapSegments(s => s)
       runLog(s.through(id).through(id).through(id).through(id).through(id)) shouldBe Vector()
       runLog(s2.through(id).through(id).through(id).through(id).through(id)) shouldBe Vector.fill(1000)(0)
     }
 
     "last" in forAll { (s: PureStream[Int]) =>
-      val shouldCompile = s.get.last
+      val _ = s.get.last
       runLog(s.get.last) shouldBe Vector(runLog(s.get).lastOption)
     }
 

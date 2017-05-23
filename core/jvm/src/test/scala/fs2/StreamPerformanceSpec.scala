@@ -13,13 +13,6 @@ class StreamPerformanceSpec extends Fs2Spec {
 
     val Ns = List(2,3,100,200,400,800,1600,3200,6400,12800,25600,51200,102400)
 
-    def ranges(N: Int): List[Stream[Pure,Int]] = List(
-      // left associated ++
-      (1 until N).map(emit).foldLeft(emit(0))(_ ++ _),
-      // right associated ++
-      (0 until N).map(emit).foldRight(Stream.empty: Stream[Pure,Int])(_ ++ _)
-    )
-
     "left-associated ++" - { Ns.foreach { N =>
       N.toString in {
         runLog((1 until N).map(emit).foldLeft(emit(0))(_ ++ _)) shouldBe Vector.range(0,N)

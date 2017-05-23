@@ -45,9 +45,12 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
    * If this chunk is already backed by an unboxed array of booleans, this method runs in constant time.
    * Otherwise, this method will copy of the elements of this chunk in to a single array.
    */
-  def toBooleans[B >: O](implicit ev: B =:= Boolean): Chunk.Booleans = this match {
-    case c: Chunk.Booleans => c
-    case other => Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray)
+  def toBooleans[B >: O](implicit ev: B =:= Boolean): Chunk.Booleans = {
+    val _ = ev // Convince scalac that ev is used
+    this match {
+      case c: Chunk.Booleans => c
+      case other => Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray)
+    }
   }
 
   /**
@@ -55,9 +58,12 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
    * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
    * Otherwise, this method will copy of the elements of this chunk in to a single array.
    */
-  def toBytes[B >: O](implicit ev: B =:= Byte): Chunk.Bytes = this match {
-    case c: Chunk.Bytes => c
-    case other => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray)
+  def toBytes[B >: O](implicit ev: B =:= Byte): Chunk.Bytes = {
+    val _ = ev // Convince scalac that ev is used
+    this match {
+      case c: Chunk.Bytes => c
+      case other => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray)
+    }
   }
 
   /**
@@ -65,9 +71,12 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
    * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
    * Otherwise, this method will copy of the elements of this chunk in to a single array.
    */
-  def toShorts[B >: O](implicit ev: B =:= Short): Chunk.Shorts = this match {
-    case c: Chunk.Shorts => c
-    case other => Chunk.Shorts(this.asInstanceOf[Chunk[Short]].toArray)
+  def toShorts[B >: O](implicit ev: B =:= Short): Chunk.Shorts = {
+    val _ = ev // Convince scalac that ev is used
+    this match {
+      case c: Chunk.Shorts => c
+      case other => Chunk.Shorts(this.asInstanceOf[Chunk[Short]].toArray)
+    }
   }
 
   /**
@@ -75,9 +84,12 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
    * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
    * Otherwise, this method will copy of the elements of this chunk in to a single array.
    */
-  def toInts[B >: O](implicit ev: B =:= Int): Chunk.Ints = this match {
-    case c: Chunk.Ints => c
-    case other => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray)
+  def toInts[B >: O](implicit ev: B =:= Int): Chunk.Ints = {
+    val _ = ev // Convince scalac that ev is used
+    this match {
+      case c: Chunk.Ints => c
+      case other => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray)
+    }
   }
 
   /**
@@ -85,9 +97,12 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
    * If this chunk is already backed by an unboxed array of longs, this method runs in constant time.
    * Otherwise, this method will copy of the elements of this chunk in to a single array.
    */
-  def toLongs[B >: O](implicit ev: B =:= Long): Chunk.Longs = this match {
-    case c: Chunk.Longs => c
-    case other => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray)
+  def toLongs[B >: O](implicit ev: B =:= Long): Chunk.Longs = {
+    val _ = ev // Convince scalac that ev is used
+    this match {
+      case c: Chunk.Longs => c
+      case other => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray)
+    }
   }
 
   /**
@@ -95,9 +110,12 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
    * If this chunk is already backed by an unboxed array of doubles, this method runs in constant time.
    * Otherwise, this method will copy of the elements of this chunk in to a single array.
    */
-  def toFloats[B >: O](implicit ev: B =:= Float): Chunk.Floats = this match {
-    case c: Chunk.Floats => c
-    case other => Chunk.Floats(this.asInstanceOf[Chunk[Float]].toArray)
+  def toFloats[B >: O](implicit ev: B =:= Float): Chunk.Floats = {
+    val _ = ev // Convince scalac that ev is used
+    this match {
+      case c: Chunk.Floats => c
+      case other => Chunk.Floats(this.asInstanceOf[Chunk[Float]].toArray)
+    }
   }
 
   /**
@@ -105,9 +123,12 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
    * If this chunk is already backed by an unboxed array of doubles, this method runs in constant time.
    * Otherwise, this method will copy of the elements of this chunk in to a single array.
    */
-  def toDoubles[B >: O](implicit ev: B =:= Double): Chunk.Doubles = this match {
-    case c: Chunk.Doubles => c
-    case other => Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray)
+  def toDoubles[B >: O](implicit ev: B =:= Double): Chunk.Doubles = {
+    val _ = ev // Convince scalac that ev is used
+    this match {
+      case c: Chunk.Doubles => c
+      case other => Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray)
+    }
   }
 
   override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] = Right(this -> Chunk.empty)

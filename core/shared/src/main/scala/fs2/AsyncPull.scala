@@ -2,7 +2,7 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 
-import cats.{ ~>, Functor }
+import cats.~>
 import cats.effect.Effect
 import cats.implicits._
 
@@ -90,7 +90,7 @@ object AsyncPull {
    * Like [[readRef]] but reads a `Ref[F,Either[Throwable,A]]` instead of a `Ref[F,A]`. If a `Left(t)` is read,
    * the `get` action fails with `t`.
    */
-  def readAttemptRef[F[_],A](r: async.Ref[F,Either[Throwable,A]])(implicit F: Functor[F]): AsyncPull[F,A] =
+  def readAttemptRef[F[_],A](r: async.Ref[F,Either[Throwable,A]]): AsyncPull[F,A] =
     new AsyncPull[F,A] {
       def get = Free.Eval(r.get).flatMap(_.fold(Free.Fail(_), Free.Pure(_)))
       def cancellableGet = Free.Eval(r.cancellableGet).map { case (get, cancel) =>

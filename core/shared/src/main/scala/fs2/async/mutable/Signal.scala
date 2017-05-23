@@ -60,7 +60,6 @@ object Signal {
     def get = F.pure(a)
     def continuous = Stream.constant(a)
     def discrete = Stream.empty // never changes, so never any updates
-    def changes = Stream.empty
   }
 
   def apply[F[_],A](initA: A)(implicit F: Effect[F], ec: ExecutionContext): F[Signal[F,A]] = {
@@ -83,9 +82,6 @@ object Signal {
           }
         }
       }
-
-      def changes: Stream[F, Unit] =
-        discrete.map(_ => ())
 
       def continuous: Stream[F, A] =
         Stream.repeatEval(get)

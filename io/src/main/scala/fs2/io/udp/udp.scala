@@ -13,14 +13,6 @@ import cats.implicits._
 package object udp {
 
   /**
-   * A single packet to send to the specified remote address or received from the specified address.
-   *
-   * @param remote   remote party to send/receive packet to/from
-   * @param bytes    data to send/receive
-   */
-  final case class Packet(remote: InetSocketAddress, bytes: Chunk[Byte])
-
-  /**
    * Provides a singleton stream of a UDP Socket that, when run, will bind to the specified adress.
    *
    * @param address              address to bind to; defaults to an ephemeral port on all interfaces

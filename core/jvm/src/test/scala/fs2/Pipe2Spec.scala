@@ -107,7 +107,7 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "either" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
-      val shouldCompile = s1.get.either(s2.get.covary[IO])
+      val _ = s1.get.either(s2.get.covary[IO])
       val es = runLog { s1.get.covary[IO].either(s2.get) }
       es.collect { case Left(i) => i } shouldBe runLog(s1.get)
       es.collect { case Right(i) => i } shouldBe runLog(s2.get)

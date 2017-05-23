@@ -62,7 +62,6 @@ private[io] object JavaInputOutputStream {
       }
     }
 
-
     /**
       * Takes source and runs it through queue, interrupting when dnState signals stream is done.
       * Note when the exception in stream is encountered the exception is emitted on the left to the queue
@@ -70,7 +69,7 @@ private[io] object JavaInputOutputStream {
       *
       * Emits only once, but runs in background until either source is exhausted or `interruptWhenTrue` yields to true
       */
-    def processInput[F[_]](
+    def processInput(
       source:Stream[F,Byte]
       , queue:mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , upState: mutable.Signal[F,UpStreamState]
@@ -96,7 +95,7 @@ private[io] object JavaInputOutputStream {
       * If the stream is closed, this will return once the upstream stream finishes its work and
       * releases any resources that upstream may hold.
       */
-    def closeIs[F[_]](
+    def closeIs(
       upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Unit = {
@@ -115,7 +114,7 @@ private[io] object JavaInputOutputStream {
       *
       *
       */
-    def readIs[F[_]](
+    def readIs(
       dest: Array[Byte]
       , off: Int
       , len: Int
@@ -123,7 +122,7 @@ private[io] object JavaInputOutputStream {
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Int = {
       val sync = new SyncVar[Either[Throwable,Int]]
-      async.unsafeRunAsync(readOnce[F](dest,off,len,queue,dnState))(r => IO(sync.put(r)))
+      async.unsafeRunAsync(readOnce(dest,off,len,queue,dnState))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 
@@ -136,7 +135,7 @@ private[io] object JavaInputOutputStream {
       *
       *
       */
-    def readIs1[F[_]](
+    def readIs1(
       queue: mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Int = {
@@ -155,13 +154,13 @@ private[io] object JavaInputOutputStream {
     }
 
 
-    def readOnce[F[_]](
+    def readOnce(
       dest: Array[Byte]
       , off: Int
       , len: Int
       , queue: mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext):F[Int] = {
+    )(implicit F: Sync[F]): F[Int] = {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
       // won't modify state if the data cannot be acquired
@@ -221,10 +220,10 @@ private[io] object JavaInputOutputStream {
     /**
       * Closes input stream and awaits completion of the upstream
       */
-    def close[F[_]](
+    def close(
       upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext):F[Unit] = {
+    )(implicit F: Effect[F]):F[Unit] = {
       F.flatMap(dnState.modify {
         case s@Done(_) => s
         case other => Done(None)

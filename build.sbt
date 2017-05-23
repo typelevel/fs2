@@ -24,10 +24,12 @@ lazy val commonSettings = Seq(
     "-language:existentials",
     "-language:postfixOps",
     "-Xfatal-warnings",
+    "-Xlint",
     "-Yno-adapted-args",
     // "-Ywarn-dead-code", // Too buggy to be useful, for instance https://issues.scala-lang.org/browse/SI-9521
     "-Ywarn-value-discard",
-    "-Ywarn-unused-import"
+    "-Ywarn-unused-import",
+    "-Ypartial-unification"
   ) ++ (if (scalaBinaryVersion.value startsWith "2.11") List("-Xexperimental") else Nil), // 2.11 needs -Xexperimental to enable SAM conversion
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",

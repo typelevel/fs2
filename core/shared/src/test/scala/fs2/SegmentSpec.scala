@@ -21,7 +21,7 @@ class SegmentSpec extends Fs2Spec {
     Arbitrary(genSegment(arbitrary[O]))
 
   def unconsAll[O,R](s: Segment[O,R]): (Catenable[Chunk[O]],R) = {
-    def go[O,R](acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
+    def go(acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
       s.unconsChunks match {
         case Right((hds, tl)) => go(acc ++ hds, tl)
         case Left(r) => (acc, r)

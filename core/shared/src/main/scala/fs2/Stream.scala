@@ -333,8 +333,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
         }
       } else {
         // at least part of this chunk does not match the current key, need to group and retain chunkiness
-        var startIndex = 0
-        var endIndex = differsAt
         // split the chunk into the bit where the keys match and the bit where they don't
         val matching = chunk.take(differsAt)
         val newOut: Vector[O] = out ++ matching.toVector
@@ -421,7 +419,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def repeat: Stream[F,O] = this ++ repeat
 
   /** Rethrows any `Left(err)`. Preserves chunkiness. */
-  def rethrow[O2](implicit ev: O <:< Either[Throwable,O2]): Stream[F,O2] =
+  def rethrow[O2](implicit ev: O <:< Either[Throwable,O2]): Stream[F,O2] = {
+    val _ = ev // Convince scalac that ev is used
     this.asInstanceOf[Stream[F,Either[Throwable,O2]]].segments.flatMap { s =>
       val errs = s.collect { case Left(e) => e }
       errs.uncons1 match {
@@ -429,6 +428,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
         case Right((hd,tl)) => Stream.fail(hd)
       }
     }
+  }
 
   /** Alias for [[fold1]]. */
   def reduce[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] = fold1(f)
@@ -579,8 +579,10 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * res0: List[Int] = List(1, 2, 3)
    * }}}
    */
-  def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F,O2] =
+  def unNone[O2](implicit ev: O <:< Option[O2]): Stream[F,O2] = {
+    val _ = ev // Convince scalac that ev is used
     this.asInstanceOf[Stream[F,Option[O2]]].collect { case Some(o2) => o2 }
+  }
 
   /**
    * Halts the input stream at the first `None`.
@@ -1093,12 +1095,17 @@ object Stream {
       interruptWhen(haltWhenTrue.discrete)
 
     /** Alias for `Stream.join(maxOpen)(self)`. */
-    def join[O2](maxOpen: Int)(implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    def join[O2](maxOpen: Int)(implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] = {
+      val _ = ev // Convince scalac that ev is used
       Stream.join(maxOpen)(self.asInstanceOf[Stream[F,Stream[F,O2]]])
+    }
+
 
     /** Alias for `Stream.joinUnbounded(self)`. */
-    def joinUnbounded[O2](implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    def joinUnbounded[O2](implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] = {
+      val _ = ev // Convince scalac that ev is used
       Stream.joinUnbounded(self.asInstanceOf[Stream[F,Stream[F,O2]]])
+    }
 
     /**
      * Interleaves the two inputs nondeterministically. The output stream
@@ -1299,7 +1306,7 @@ object Stream {
     private def translate_[G[_]](u: F ~> G, G: Option[Effect[G]]): Stream[G,O] =
       Stream.fromFree[G,O](Algebra.translate[F,G,O,Unit](self.get, u, G))
 
-    private type ZipWithCont[F[_],I,O,R] = Either[(Segment[I,Unit], Stream[F,I]), Stream[F,I]] => Pull[F,O,Option[R]]
+    private type ZipWithCont[G[_],I,O2,R] = Either[(Segment[I,Unit], Stream[G,I]), Stream[G,I]] => Pull[G,O2,Option[R]]
 
     private def zipWith_[O2,O3](that: Stream[F,O2])(k1: ZipWithCont[F,O,O3,Nothing], k2: ZipWithCont[F,O2,O3,Nothing])(f: (O, O2) => O3): Stream[F,O3] = {
       def go(t1: (Segment[O,Unit], Stream[F,O]), t2: (Segment[O2,Unit], Stream[F,O2])): Pull[F,O3,Option[Nothing]] =
@@ -1455,12 +1462,16 @@ object Stream {
       covary[F].interruptWhen(haltWhenTrue)
 
     /** Alias for `Stream.join(maxOpen)(self)`. */
-    def join[F[_],O2](maxOpen: Int)(implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    def join[F[_],O2](maxOpen: Int)(implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] = {
+      val _ = ev // Convince scalac that ev is used
       Stream.join(maxOpen)(self.asInstanceOf[Stream[F,Stream[F,O2]]])
+    }
 
     /** Alias for `Stream.joinUnbounded(self)`. */
-    def joinUnbounded[F[_],O2](implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    def joinUnbounded[F[_],O2](implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] = {
+      val _ = ev // Convince scalac that ev is used
       Stream.joinUnbounded(self.asInstanceOf[Stream[F,Stream[F,O2]]])
+    }
 
     def merge[F[_],O2>:O](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].merge(that)

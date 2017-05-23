@@ -61,7 +61,8 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
-  final def run[O2>:O](implicit U: O2 =:= Unit): R = {
+  final def run[O2>:O](implicit ev: O2 =:= Unit): R = {
+    val _ = ev // Convince scalac that ev is used
     var result: Option[R] = None
     var ok = true
     val trampoline = makeTrampoline
@@ -417,13 +418,13 @@ abstract class Segment[+O,+R] { self =>
   def zipWith[O2,R2,O3](that: Segment[O2,R2])(f: (O,O2) => O3): Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] =
     new Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] {
       def stage0 = (depth, defer, emit, emits, done) => evalDefer {
-        var l = new scala.collection.mutable.Queue[Chunk[O]]
+        val l = new scala.collection.mutable.Queue[Chunk[O]]
         var lpos = 0
         var lStepped = false
-        var r = new scala.collection.mutable.Queue[Chunk[O2]]
+        val r = new scala.collection.mutable.Queue[Chunk[O2]]
         var rpos = 0
         var rStepped = false
-        def doZip: Unit = {
+        def doZip(): Unit = {
           var lh = if (l.isEmpty) null else l.head
           var rh = if (r.isEmpty) null else r.head
           var out1: Option[O3] = None
@@ -600,7 +601,7 @@ object Segment {
   def from(n: Long, by: Long = 1): Segment[Long,Nothing] = new Segment[Long,Nothing] {
     def stage0 = (_, _, _, emits, _) => {
       var m = n
-      var buf = new Array[Long](32)
+      val buf = new Array[Long](32)
       Eval.later { step(from(m,by)) {
         var i = 0
         while (i < buf.length) { buf(i) = m; m += by; i += 1 }

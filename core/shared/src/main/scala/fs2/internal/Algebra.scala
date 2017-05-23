@@ -221,20 +221,20 @@ private[fs2] object Algebra {
 
   def translate[F[_],G[_],O,R](fr: Free[Algebra[F,O,?],R], u: F ~> G, G: Option[Effect[G]]): Free[Algebra[G,O,?],R] = {
     type F2[x] = F[x] // nb: workaround for scalac kind bug, where in the unconsAsync case, scalac thinks F has kind 0
-    def algFtoG[O]: Algebra[F,O,?] ~> Algebra[G,O,?] = new (Algebra[F,O,?] ~> Algebra[G,O,?]) { self =>
-      def apply[X](in: Algebra[F,O,X]): Algebra[G,O,X] = in match {
-        case o: Output[F,O] => Output[G,O](o.values)
-        case WrapSegment(values) => WrapSegment[G,O,X](values)
-        case Eval(value) => Eval[G,O,X](u(value))
-        case a: Acquire[F,O,_] => Acquire(u(a.resource), r => u(a.release(r)))
-        case r: Release[F,O] => Release[G,O](r.token)
-        case s: Snapshot[F,O] => Snapshot[G,O]()
-        case i: Interrupt[F,O] => Interrupt[G,O]()
+    def algFtoG[O2]: Algebra[F,O2,?] ~> Algebra[G,O2,?] = new (Algebra[F,O2,?] ~> Algebra[G,O2,?]) { self =>
+      def apply[X](in: Algebra[F,O2,X]): Algebra[G,O2,X] = in match {
+        case o: Output[F,O2] => Output[G,O2](o.values)
+        case WrapSegment(values) => WrapSegment[G,O2,X](values)
+        case Eval(value) => Eval[G,O2,X](u(value))
+        case a: Acquire[F,O2,_] => Acquire(u(a.resource), r => u(a.release(r)))
+        case r: Release[F,O2] => Release[G,O2](r.token)
+        case s: Snapshot[F,O2] => Snapshot[G,O2]()
+        case i: Interrupt[F,O2] => Interrupt[G,O2]()
         case ua: UnconsAsync[F,_,_,_] =>
           val uu: UnconsAsync[F2,Any,Any,Any] = ua.asInstanceOf[UnconsAsync[F2,Any,Any,Any]]
           G match {
             case None => Algebra.Eval(u(uu.effect.raiseError[X](new IllegalStateException("unconsAsync encountered while translating synchronously"))))
-            case Some(ef) => UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), ef, uu.ec).asInstanceOf[Algebra[G,O,X]]
+            case Some(ef) => UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), ef, uu.ec).asInstanceOf[Algebra[G,O2,X]]
           }
       }
     }

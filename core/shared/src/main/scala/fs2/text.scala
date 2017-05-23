@@ -107,10 +107,10 @@ object text {
         if (remainingInput.isEmpty) {
           (Chunk.indexedSeq(output), buffer, pendingLineFeed)
         } else {
-          var next = remainingInput.head
+          val next = remainingInput.head
           if (pendingLineFeed) {
             if (next.headOption == Some('\n')) {
-              val out = (buffer.init ++ buffer.last.init).mkString
+              val out = (buffer.init :+ buffer.last.init).mkString
               loop(next.tail +: remainingInput.tail, Vector.empty, output :+ out, false)
             } else {
               loop(remainingInput, buffer, output, false)

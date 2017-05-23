@@ -42,7 +42,6 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       val numParallelClients = 10
       runLog {
         open[IO]().flatMap { serverSocket =>
-          var log = false
           Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket.reads().evalMap { packet => serverSocket.write(packet) }.drain

@@ -73,7 +73,6 @@ private[fs2] object Free {
   class ViewL[F[_],+R](val get: Free[F,R]) extends AnyVal
   object ViewL {
     def apply[F[_], R](free: Free[F, R], interrupt: () => Boolean): ViewL[F, R] = {
-      type FreeF[x] = Free[F,x]
       type X = Any
       @annotation.tailrec
       def go(free: Free[F, X]): ViewL[F, R] = free match {
