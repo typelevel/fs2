@@ -104,14 +104,14 @@ private[fs2] sealed trait StreamCore[F[_],O] { self =>
 
   final def unconsAsync(implicit F: Effect[F], ec: ExecutionContext)
   : Scope[F,ScopedFuture[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]]
-  = Scope.eval(concurrent.ref[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]).flatMap { ref =>
+  = Scope.eval(async.ref[F, (List[Token], Option[Attempt[(NonEmptyChunk[O],StreamCore[F,O])]])]).flatMap { ref =>
     val token = new Token()
     val resources = Resources.emptyNamed[Token,Free[F,Attempt[Unit]]]("unconsAsync")
     val noopWaiters = scala.collection.immutable.Stream.continually(() => ())
     lazy val rootCleanup: Free[F,Attempt[Unit]] = Free.suspend { resources.closeAll(noopWaiters) match {
       case Left(waiting) =>
-        Free.eval(Vector.fill(waiting)(concurrent.ref[F,Unit]).sequence) flatMap { gates =>
-          resources.closeAll(gates.toStream.map(gate => () => concurrent.unsafeRunAsync(gate.setAsyncPure(()))(_ => IO.pure(())))) match {
+        Free.eval(Vector.fill(waiting)(async.ref[F,Unit]).sequence) flatMap { gates =>
+          resources.closeAll(gates.toStream.map(gate => () => async.unsafeRunAsync(gate.setAsyncPure(()))(_ => IO.pure(())))) match {
             case Left(_) => Free.eval(gates.traverse(_.get)) flatMap { _ =>
               resources.closeAll(noopWaiters) match {
                 case Left(_) => println("likely FS2 bug - resources still being acquired after Resources.closeAll call")
@@ -504,7 +504,7 @@ private[fs2] object StreamCore {
     def segments[F[_],O1](s: Catenable[Segment[F,O1]]): Stack[F,O1,O1] = Segments(s)
 
     @annotation.tailrec
-    def fail[F[_],O1](s: Catenable[Segment[F,O1]])(err: Throwable)
+    final def fail[F[_],O1](s: Catenable[Segment[F,O1]])(err: Throwable)
     : Attempt[(StreamCore[F,O1], Catenable[Segment[F,O1]])]
     = s.uncons match {
       case None => Left(err)

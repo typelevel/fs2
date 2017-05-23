@@ -1,8 +1,7 @@
 package fs2.internal
 
 import scala.concurrent.ExecutionContext
-import fs2.util.{ ExecutionContexts, NonFatal }
-import ExecutionContexts._
+import fs2.util.NonFatal
 import java.util.concurrent.atomic.AtomicReference
 
 /*
@@ -52,7 +51,7 @@ private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable =>
 
   def contramap[B](f: B => A): Actor[B] = new Actor[B](b => this ! f(b), onError)(ec)
 
-  private def schedule(n: Node[A]): Unit = ec.executeThunk(act(n))
+  private def schedule(n: Node[A]): Unit = ec.execute(() => act(n))
 
   @annotation.tailrec
   private def act(n: Node[A], i: Int = 1024): Unit = {
@@ -65,7 +64,7 @@ private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable =>
     else act(n2, i - 1)
   }
 
-  private def scheduleLastTry(n: Node[A]): Unit = ec.executeThunk(lastTry(n))
+  private def scheduleLastTry(n: Node[A]): Unit = ec.execute(() => lastTry(n))
 
   private def lastTry(n: Node[A]): Unit = if (!head.compareAndSet(n, null)) act(next(n))
 

@@ -10,7 +10,7 @@ import cats.implicits.{ catsSyntaxEither => _, _ }
 
 import fs2.Chunk.Bytes
 import fs2.async.mutable
-import fs2.concurrent.Change
+import fs2.async.Ref.Change
 import fs2.util._
 
 private[io] object JavaInputOutputStream {
@@ -72,18 +72,17 @@ private[io] object JavaInputOutputStream {
       *
       * Emits only once, but runs in background until either source is exhausted or `interruptWhenTrue` yields to true
       */
-    def processInput[F[_]](
+    def processInput(
       source:Stream[F,Byte]
       , queue:mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext):Stream[F,Unit] = Stream.eval(concurrent.start {
+    )(implicit F: Effect[F], ec: ExecutionContext):Stream[F,Unit] = Stream.eval(async.start {
       def markUpstreamDone(result:Option[Throwable]):F[Unit] = {
         F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
           queue.enqueue1(Left(result))
         }
       }
-
 
       F.flatMap(F.attempt(
         source.chunks
@@ -98,12 +97,12 @@ private[io] object JavaInputOutputStream {
       * If the stream is closed, this will return once the upstream stream finishes its work and
       * releases any resources that upstream may hold.
       */
-    def closeIs[F[_]](
+    def closeIs(
       upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Unit = {
       val done = new SyncVar[Attempt[Unit]]
-      concurrent.unsafeRunAsync(close(upState,dnState)) { r => IO(done.put(r)) }
+      async.unsafeRunAsync(close(upState,dnState)) { r => IO(done.put(r)) }
       done.get.fold(throw _, identity)
     }
 
@@ -117,7 +116,7 @@ private[io] object JavaInputOutputStream {
       *
       *
       */
-    def readIs[F[_]](
+    def readIs(
       dest: Array[Byte]
       , off: Int
       , len: Int
@@ -125,7 +124,7 @@ private[io] object JavaInputOutputStream {
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Int = {
       val sync = new SyncVar[Attempt[Int]]
-      concurrent.unsafeRunAsync(readOnce[F](dest,off,len,queue,dnState))(r => IO(sync.put(r)))
+      async.unsafeRunAsync(readOnce(dest,off,len,queue,dnState))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 
@@ -138,7 +137,7 @@ private[io] object JavaInputOutputStream {
       *
       *
       */
-    def readIs1[F[_]](
+    def readIs1(
       queue: mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Int = {
@@ -152,12 +151,12 @@ private[io] object JavaInputOutputStream {
       }
 
       val sync = new SyncVar[Attempt[Int]]
-      concurrent.unsafeRunAsync(go(Array.ofDim(1)))(r => IO(sync.put(r)))
+      async.unsafeRunAsync(go(Array.ofDim(1)))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 
 
-    def readOnce[F[_]](
+    def readOnce(
       dest: Array[Byte]
       , off: Int
       , len: Int
@@ -225,7 +224,7 @@ private[io] object JavaInputOutputStream {
     /**
       * Closes input stream and awaits completion of the upstream
       */
-    def close[F[_]](
+    def close(
       upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):F[Unit] = {

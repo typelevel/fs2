@@ -77,11 +77,11 @@ class MergeJoinSpec extends Fs2Spec {
     "join - outer-failed" in {
       class Boom extends Throwable
       an[Boom] should be thrownBy {
-        Stream.join[Task, Unit](Int.MaxValue)(
+        Stream.join[IO, Unit](Int.MaxValue)(
           Stream(
-            time.sleep_[Task](1 minute)
+            time.sleep_[IO](1 minute)
           ) ++ Stream.fail(new Boom)
-        ).run.unsafeRun()
+        ).run.unsafeRunSync()
       }
     }
   }

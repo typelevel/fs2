@@ -30,7 +30,7 @@ sealed trait AsynchronousSocketGroup {
   /**
    * Shuts down the daemon thread used for selection and rejects all future register/read/write requests.
    */
-  def close: Unit
+  def close(): Unit
 }
 
 object AsynchronousSocketGroup {
@@ -39,8 +39,8 @@ object AsynchronousSocketGroup {
 
     class Timeout(val expiry: Long, onTimeout: () => Unit) {
       private var done: Boolean = false
-      def cancel: Unit = done = true
-      def timedOut: Unit = {
+      def cancel(): Unit = done = true
+      def timedOut(): Unit = {
         if (!done) {
           done = true
           onTimeout()
@@ -114,7 +114,7 @@ object AsynchronousSocketGroup {
         }
       }
 
-      def close: Unit = {
+      def close(): Unit = {
         readers.iterator.asScala.foreach { case (cb, t) =>
           cb(Left(new ClosedChannelException))
           t.foreach(_.cancel)
@@ -243,7 +243,7 @@ object AsynchronousSocketGroup {
       } { () }
     }
 
-    override def close: Unit = {
+    override def close(): Unit = {
       closeLock.synchronized { closed = true }
     }
 
@@ -259,7 +259,7 @@ object AsynchronousSocketGroup {
       }
     }
 
-    private def runPendingThunks: Unit = {
+    private def runPendingThunks(): Unit = {
       var next = pendingThunks.poll()
       while (next ne null) {
         next()

@@ -86,21 +86,21 @@ object Ref {
 
     /** Decrement the reader count, possibly unblocking waiting writers
      *  if the count is now 0. */
-    final def finishRead: Unit = { readers.decrementAndGet; () }
+    final def finishRead(): Unit = { readers.decrementAndGet; () }
 
     /** Repeatedly [[tryStartRead]] until it succeeds. */
     @annotation.tailrec
-    final def startRead: Unit = if (!tryStartRead) startRead
+    final def startRead(): Unit = if (!tryStartRead) startRead
 
     /** Try obtaining the write lock, failing only due to other writer contention. */
-    private final def tryStartWrite: Boolean = readers.compareAndSet(0,-1)
+    private final def tryStartWrite(): Boolean = readers.compareAndSet(0,-1)
 
     /** Obtain the write lock. */
     @annotation.tailrec
-    final def startWrite: Unit = if (!tryStartWrite) startWrite
+    final def startWrite(): Unit = if (!tryStartWrite) startWrite
 
     /** Release the write lock, unblocking both readers and other writers. */
-    final def finishWrite: Boolean = readers.compareAndSet(-1,0)
+    final def finishWrite(): Boolean = readers.compareAndSet(-1,0)
   }
 
   def apply[A](a: A): Ref[A] =

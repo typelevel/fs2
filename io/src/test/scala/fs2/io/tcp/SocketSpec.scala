@@ -32,7 +32,7 @@ class SocketSpec extends Fs2Spec {
         val message = Chunk.bytes("fs2.rocks".getBytes)
         val clientCount = 5000
 
-        val localBindAddress = concurrent.ref[IO, InetSocketAddress].unsafeRunSync()
+        val localBindAddress = async.ref[IO, InetSocketAddress].unsafeRunSync()
 
         val echoServer: Stream[IO, Unit] = {
           val ps =

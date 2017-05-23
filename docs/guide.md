@@ -99,28 +99,26 @@ Of these, only `flatMap` and `++` are primitive, the rest are built using combin
 So far, we've just looked at pure streams. FS2 streams can also include evaluation of effects:
 
 ```scala
-import fs2.Task
-// import fs2.Task
+import cats.effect.IO
+// import cats.effect.IO
 
-val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
-// eff: fs2.Stream[fs2.Task,Int] = attemptEval(Task).flatMap(<function1>)
+val eff = Stream.eval(IO { println("BEING RUN!!"); 1 + 1 })
+// eff: fs2.Stream[cats.effect.IO,Int] = attemptEval(IO$351639187).flatMap(<function1>)
 ```
 
-[`Task`](../core/shared/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
+`IO` is an effect type we'll see a lot in these examples. Creating an `IO` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[IO,Int]`.
 
-The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, and `cats.effect.Effect` if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `IO`. FS2 does not care what effect type you use for your streams. You may use `IO` for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, and `cats.effect.Effect` if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
 ```Scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
 
-[Task]: ../core/shared/src/main/scala/fs2/Task.scala
-
 `eval` produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained). Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
 ```scala
 scala> eff.toList
-<console>:16: error: value toList is not a member of fs2.Stream[fs2.Task,Int]
+<console>:16: error: value toList is not a member of fs2.Stream[cats.effect.IO,Int]
        eff.toList
            ^
 ```
@@ -128,51 +126,51 @@ scala> eff.toList
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
 ```scala
-scala> eff.runLog.unsafeRun()
-TASK BEING RUN!!
+scala> eff.runLog.unsafeRunSync()
+BEING RUN!!
 res11: Vector[Int] = Vector(2)
 ```
 
 The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
 
 ```scala
-val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
-// eff: fs2.Stream[fs2.Task,Int] = attemptEval(Task).flatMap(<function1>)
+val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
+// eff: fs2.Stream[cats.effect.IO,Int] = attemptEval(IO$929363070).flatMap(<function1>)
 
 val ra = eff.runLog // gather all output into a Vector
-// ra: fs2.Task[Vector[Int]] = Task
+// ra: cats.effect.IO[Vector[Int]] = IO$1726520233
 
 val rb = eff.run // purely for effects
-// rb: fs2.Task[Unit] = Task
+// rb: cats.effect.IO[Unit] = IO$90960426
 
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: fs2.Task[Int] = Task
+// rc: cats.effect.IO[Int] = IO$1224104820
 ```
 
-Notice these all return a `Task` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
+Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
 
-If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task` (if you are bringing your own effect type, how you run your effects may of course differ):
+If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `IO` (if you are bringing your own effect type, how you run your effects may of course differ):
 
 ```scala
-scala> ra.unsafeRun()
+scala> ra.unsafeRunSync()
 TASK BEING RUN!!
 res12: Vector[Int] = Vector(2)
 
-scala> rb.unsafeRun()
+scala> rb.unsafeRunSync()
 TASK BEING RUN!!
 
-scala> rc.unsafeRun()
+scala> rc.unsafeRunSync()
 TASK BEING RUN!!
 res14: Int = 2
 
-scala> rc.unsafeRun()
+scala> rc.unsafeRunSync()
 TASK BEING RUN!!
 res15: Int = 2
 ```
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `Task` and work for any `F[_]` with an implicit `MonadError[F, Throwable]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
+_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `MonadError[F, Throwable]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
 
 ### Chunking
 
@@ -203,13 +201,13 @@ Streams have a small but powerful set of operations, some of which we've seen al
 scala> val appendEx1 = Stream(1,2,3) ++ Stream.emit(42)
 appendEx1: fs2.Stream[Nothing,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
-scala> val appendEx2 = Stream(1,2,3) ++ Stream.eval(Task.now(4))
-appendEx2: fs2.Stream[fs2.Task,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
+scala> val appendEx2 = Stream(1,2,3) ++ Stream.eval(IO.pure(4))
+appendEx2: fs2.Stream[cats.effect.IO,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 scala> appendEx1.toVector
 res17: Vector[Int] = Vector(1, 2, 3, 42)
 
-scala> appendEx2.runLog.unsafeRun()
+scala> appendEx2.runLog.unsafeRunSync()
 res18: Vector[Int] = Vector(1, 2, 3, 4)
 
 scala> appendEx1.map(_ + 1).toList
@@ -236,8 +234,8 @@ err: fs2.Stream[Nothing,Nothing] = Segment(Fail(java.lang.Exception: oh noes!))
 scala> val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
 err2: fs2.Stream[Nothing,Int] = append(Segment(Emit(Chunk(1, 2, 3))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
-scala> val err3 = Stream.eval(Task.delay(throw new Exception("error in effect!!!")))
-err3: fs2.Stream[fs2.Task,Nothing] = attemptEval(Task).flatMap(<function1>)
+scala> val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
+err3: fs2.Stream[cats.effect.IO,Nothing] = attemptEval(IO$1674701529).flatMap(<function1>)
 ```
 
 All these fail when running:
@@ -255,7 +253,7 @@ res22: Any = ()
 ```
 
 ```scala
-scala> try err3.run.unsafeRun() catch { case e: Exception => println(e) }
+scala> try err3.run.unsafeRunSync() catch { case e: Exception => println(e) }
 java.lang.Exception: error in effect!!!
 ```
 
@@ -276,19 +274,19 @@ If you have to acquire a resource and want to guarantee that some cleanup action
 scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
-scala> val acquire = Task.delay { println("incremented: " + count.incrementAndGet); () }
-acquire: fs2.Task[Unit] = Task
+scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
+acquire: cats.effect.IO[Unit] = IO$1011140329
 
-scala> val release = Task.delay { println("decremented: " + count.decrementAndGet); () }
-release: fs2.Task[Unit] = Task
+scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
+release: cats.effect.IO[Unit] = IO$1309888601
 ```
 
 ```scala
-scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRun()
+scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRunSync()
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 810 elided
+  ... 802 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -317,7 +315,7 @@ res27: List[Int] = List(1, 0, 1, 0, 1, 0)
 scala> Stream(1,2,3).drain.toList
 res28: List[Nothing] = List()
 
-scala> Stream.eval_(Task.delay(println("!!"))).runLog.unsafeRun()
+scala> Stream.eval_(IO(println("!!"))).runLog.unsafeRunSync()
 !!
 res29: Vector[Nothing] = Vector()
 
@@ -327,7 +325,7 @@ res30: List[fs2.util.Attempt[Int]] = List(Right(1), Right(2), Left(java.lang.Exc
 
 ### Statefully transforming streams
 
-We often wish to statefully transform one or more streams in some way, possibly evaluating effects as we do so. As a running example, consider taking just the first 5 elements of a `s: Stream[Task,Int]`. To produce a `Stream[Task,Int]` which takes just the first 5 elements of `s`, we need to repeatedly await (or pull) values from `s`, keeping track of the number of values seen so far and stopping as soon as we hit 5 elements. In more complex scenarios, we may want to evaluate additional effects as we pull from one or more streams.
+We often wish to statefully transform one or more streams in some way, possibly evaluating effects as we do so. As a running example, consider taking just the first 5 elements of a `s: Stream[IO,Int]`. To produce a `Stream[IO,Int]` which takes just the first 5 elements of `s`, we need to repeatedly await (or pull) values from `s`, keeping track of the number of values seen so far and stopping as soon as we hit 5 elements. In more complex scenarios, we may want to evaluate additional effects as we pull from one or more streams.
 
 Regardless of how complex the job, the `fs2.Pull` and `fs2.Handle` types can usually express it. `Handle[F,I]` represents a 'currently open' `Stream[F,I]`. We obtain one using `Stream.open`, or the method on `Stream`, `s.open`, which returns the `Handle` inside an effect type called `Pull`:
 
@@ -468,11 +466,11 @@ res45: List[Int] = List(0, 1, 3, 6, 10, 15, 21, 28, 36, 45)
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
 
 ```scala
-scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
+scala> Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
 <console>:17: error: Cannot find an implicit ExecutionContext. You might pass
 an (implicit ec: ExecutionContext) parameter to your method
 or import scala.concurrent.ExecutionContext.Implicits.global.
-       Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
+       Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
                           ^
 ```
 
@@ -482,7 +480,7 @@ Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add
 scala> import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.ExecutionContext.Implicits.global
 
-scala> Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
+scala> Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
 res47: Vector[Int] = Vector(1, 2, 3, 4)
 ```
 
@@ -499,7 +497,7 @@ def join[F[_]:Effect,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit ec:
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. `s merge s2` could be implemented as `concurrent.join(2)(Stream(s,s2))`.
 
-The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Effect` instance, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
+The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
 If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `h.awaitAsync` requests the next step of a `Handle h` asynchronously. Its signature is:
 
@@ -549,10 +547,10 @@ These are easy to deal with. Just wrap these effects in a `Stream.eval`:
 def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 // destroyUniverse: ()Unit
 
-val s = Stream.eval_(Task.delay { destroyUniverse() }) ++ Stream("...moving on")
-// s: fs2.Stream[fs2.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
+val s = Stream.eval_(IO { destroyUniverse() }) ++ Stream("...moving on")
+// s: fs2.Stream[cats.effect.IO,String] = append(attemptEval(IO$241635316).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
-s.runLog.unsafeRun()
+s.runLog.unsafeRunSync()
 // BOOOOM!!!
 // res48: Vector[String] = Vector(...moving on)
 ```
@@ -563,13 +561,13 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 // import cats.effect.Sync
 
-val T = Sync[Task]
-// T: cats.effect.Sync[fs2.Task] = Effect[Task]
+val T = Sync[IO]
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@5874605b
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
-// s: fs2.Stream[fs2.Task,String] = append(attemptEval(Task).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
+// s: fs2.Stream[cats.effect.IO,String] = append(attemptEval(IO$1241881313).flatMap(<function1>).flatMap(<function1>), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
-s.runLog.unsafeRun()
+s.runLog.unsafeRunSync()
 // BOOOOM!!!
 // res49: Vector[String] = Vector(...moving on)
 ```
@@ -620,15 +618,15 @@ val c = new Connection {
 // c: Connection = <connection>
 
 // Effect extends both Sync and Async
-val T = cats.effect.Effect[Task]
-// T: cats.effect.Effect[fs2.Task] = Effect[Task]
+val T = cats.effect.Effect[IO]
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@5874605b
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: fs2.Task[Array[Byte]] = Task
+// bytes: cats.effect.IO[Array[Byte]] = IO$1855143617
 
-Stream.eval(bytes).map(_.toList).runLog.unsafeRun()
+Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
 // res51: Vector[List[Byte]] = Vector(List(0, 1, 2))
 ```
 
@@ -663,7 +661,7 @@ trait CSVHandle {
 def rows[F[_]](h: CSVHandle)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => concurrent.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => async.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
 // rows: [F[_]](h: CSVHandle)(implicit F: cats.effect.Effect[F], implicit ec: scala.concurrent.ExecutionContext)fs2.Stream[F,Row]
@@ -748,10 +746,10 @@ The reason is simple: the consumer (the `take(1)`) terminates as soon as it has 
 If instead we use `onFinalize`, the code is guaranteed to run, regardless of whether `take` interrupts:
 
 ```scala
-Stream(1).covary[Task].
-          onFinalize(Task.delay { println("finalized!") }).
+Stream(1).covary[IO].
+          onFinalize(IO { println("finalized!") }).
           take(1).
-          runLog.unsafeRun()
+          runLog.unsafeRunSync()
 // finalized!
 // res57: Vector[Int] = Vector(1)
 ```
@@ -759,14 +757,14 @@ Stream(1).covary[Task].
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
 
 ```scala
-scala> val s1 = (Stream(1) ++ Stream(2)).covary[Task]
-s1: fs2.Stream[fs2.Task,Int] = append(Segment(Emit(Chunk(1))), Segment(Emit(Chunk(()))).flatMap(<function1>))
+scala> val s1 = (Stream(1) ++ Stream(2)).covary[IO]
+s1: fs2.Stream[cats.effect.IO,Int] = append(Segment(Emit(Chunk(1))), Segment(Emit(Chunk(()))).flatMap(<function1>))
 
 scala> val s2 = (Stream.empty ++ Stream.fail(Err)) onError { e => println(e); Stream.fail(e) }
 s2: fs2.Stream[Nothing,Nothing] = append(Segment(Emit(Chunk())), Segment(Emit(Chunk(()))).flatMap(<function1>)).onError(<function1>)
 
 scala> val merged = s1 merge s2 take 1
-merged: fs2.Stream[fs2.Task,Int] = evalScope(<scope>).flatMap(<function1>)
+merged: fs2.Stream[cats.effect.IO,Int] = evalScope(<scope>).flatMap(<function1>)
 ```
 
 The result is highly nondeterministic. Here are a few ways it can play out:

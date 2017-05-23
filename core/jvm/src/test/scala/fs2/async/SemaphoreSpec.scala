@@ -24,8 +24,8 @@ class SemaphoreSpec extends Fs2Spec {
         val longsRev = longs.reverse
         val t: IO[Unit] = for {
           // just two parallel tasks, one incrementing, one decrementing
-          decrs <- concurrent.start { longs.traverse(s.decrementBy) }
-          incrs <- concurrent.start { longsRev.traverse(s.incrementBy) }
+          decrs <- async.start { longs.traverse(s.decrementBy) }
+          incrs <- async.start { longsRev.traverse(s.incrementBy) }
           _ <- decrs: IO[Vector[Unit]]
           _ <- incrs: IO[Vector[Unit]]
         } yield ()
@@ -34,8 +34,8 @@ class SemaphoreSpec extends Fs2Spec {
 
         val t2: IO[Unit] = for {
           // N parallel incrementing tasks and N parallel decrementing tasks
-          decrs <- concurrent.start { concurrent.parallelTraverse(longs)(s.decrementBy) }
-          incrs <- concurrent.start { concurrent.parallelTraverse(longsRev)(s.incrementBy) }
+          decrs <- async.start { async.parallelTraverse(longs)(s.decrementBy) }
+          incrs <- async.start { async.parallelTraverse(longsRev)(s.incrementBy) }
           _ <- decrs: IO[Vector[Unit]]
           _ <- incrs: IO[Vector[Unit]]
         } yield ()

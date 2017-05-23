@@ -73,20 +73,18 @@ Of these, only `flatMap` and `++` are primitive, the rest are built using combin
 So far, we've just looked at pure streams. FS2 streams can also include evaluation of effects:
 
 ```tut:book
-import fs2.Task
+import cats.effect.IO
 
-val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
+val eff = Stream.eval(IO { println("BEING RUN!!"); 1 + 1 })
 ```
 
-[`Task`](../core/shared/src/main/scala/fs2/Task.scala) is an effect type we'll see a lot in these examples. Creating a `Task` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[Task,Int]`.
+`IO` is an effect type we'll see a lot in these examples. Creating an `IO` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[IO,Int]`.
 
-The `eval` function works for any effect type, not just `Task`. FS2 does not care what effect type you use for your streams. You may use the included [`Task` type][Task] for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, and `cats.effect.Effect` if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `IO`. FS2 does not care what effect type you use for your streams. You may use `IO` for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, and `cats.effect.Effect` if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
 ```Scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
-
-[Task]: ../core/shared/src/main/scala/fs2/Task.scala
 
 `eval` produces a stream that evaluates the given effect, then emits the result (notice that `F` is unconstrained). Any `Stream` formed using `eval` is called 'effectful' and can't be run using `toList` or `toVector`. If we try we'll get a compile error:
 
@@ -97,33 +95,33 @@ eff.toList
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
 ```tut
-eff.runLog.unsafeRun()
+eff.runLog.unsafeRunSync()
 ```
 
 The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
 
 ```tut:book
-val eff = Stream.eval(Task.delay { println("TASK BEING RUN!!"); 1 + 1 })
+val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 
 val ra = eff.runLog // gather all output into a Vector
 val rb = eff.run // purely for effects
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
 ```
 
-Notice these all return a `Task` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
+Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
 
-If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `Task` (if you are bringing your own effect type, how you run your effects may of course differ):
+If we want to run these for their effects 'at the end of the universe', we can use one of the `unsafe*` methods on `IO` (if you are bringing your own effect type, how you run your effects may of course differ):
 
 ```tut
-ra.unsafeRun()
-rb.unsafeRun()
-rc.unsafeRun()
-rc.unsafeRun()
+ra.unsafeRunSync()
+rb.unsafeRunSync()
+rc.unsafeRunSync()
+rc.unsafeRunSync()
 ```
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `Task` and work for any `F[_]` with an implicit `MonadError[F, Throwable]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
+_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `MonadError[F, Throwable]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
 
 ### Chunking
 
@@ -149,10 +147,10 @@ Streams have a small but powerful set of operations, some of which we've seen al
 
 ```tut
 val appendEx1 = Stream(1,2,3) ++ Stream.emit(42)
-val appendEx2 = Stream(1,2,3) ++ Stream.eval(Task.now(4))
+val appendEx2 = Stream(1,2,3) ++ Stream.eval(IO.pure(4))
 
 appendEx1.toVector
-appendEx2.runLog.unsafeRun()
+appendEx2.runLog.unsafeRunSync()
 
 appendEx1.map(_ + 1).toList
 ```
@@ -172,7 +170,7 @@ A stream can raise errors, either explicitly, using `Stream.fail`, or implicitly
 ```tut
 val err = Stream.fail(new Exception("oh noes!"))
 val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
-val err3 = Stream.eval(Task.delay(throw new Exception("error in effect!!!")))
+val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 ```
 
 All these fail when running:
@@ -186,7 +184,7 @@ try err2.toList catch { case e: Exception => println(e) }
 ```
 
 ```tut
-try err3.run.unsafeRun() catch { case e: Exception => println(e) }
+try err3.run.unsafeRunSync() catch { case e: Exception => println(e) }
 ```
 
 The `onError` method lets us catch any of these errors:
@@ -203,12 +201,12 @@ If you have to acquire a resource and want to guarantee that some cleanup action
 
 ```tut
 val count = new java.util.concurrent.atomic.AtomicLong(0)
-val acquire = Task.delay { println("incremented: " + count.incrementAndGet); () }
-val release = Task.delay { println("decremented: " + count.decrementAndGet); () }
+val acquire = IO { println("incremented: " + count.incrementAndGet); () }
+val release = IO { println("decremented: " + count.decrementAndGet); () }
 ```
 
 ```tut:fail
-Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRun()
+Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRunSync()
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -232,13 +230,13 @@ Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips a
 ```tut
 Stream(1,0).repeat.take(6).toList
 Stream(1,2,3).drain.toList
-Stream.eval_(Task.delay(println("!!"))).runLog.unsafeRun()
+Stream.eval_(IO(println("!!"))).runLog.unsafeRunSync()
 (Stream(1,2) ++ (throw new Exception("nooo!!!"))).attempt.toList
 ```
 
 ### Statefully transforming streams
 
-We often wish to statefully transform one or more streams in some way, possibly evaluating effects as we do so. As a running example, consider taking just the first 5 elements of a `s: Stream[Task,Int]`. To produce a `Stream[Task,Int]` which takes just the first 5 elements of `s`, we need to repeatedly await (or pull) values from `s`, keeping track of the number of values seen so far and stopping as soon as we hit 5 elements. In more complex scenarios, we may want to evaluate additional effects as we pull from one or more streams.
+We often wish to statefully transform one or more streams in some way, possibly evaluating effects as we do so. As a running example, consider taking just the first 5 elements of a `s: Stream[IO,Int]`. To produce a `Stream[IO,Int]` which takes just the first 5 elements of `s`, we need to repeatedly await (or pull) values from `s`, keeping track of the number of values seen so far and stopping as soon as we hit 5 elements. In more complex scenarios, we may want to evaluate additional effects as we pull from one or more streams.
 
 Regardless of how complex the job, the `fs2.Pull` and `fs2.Handle` types can usually express it. `Handle[F,I]` represents a 'currently open' `Stream[F,I]`. We obtain one using `Stream.open`, or the method on `Stream`, `s.open`, which returns the `Handle` inside an effect type called `Pull`:
 
@@ -351,7 +349,7 @@ Stream.range(1,10).scan(0)(_ + _).toList // running sum
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
 
 ```tut:fail
-Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
+Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
 ```
 
 Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add that:
@@ -359,7 +357,7 @@ Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add
 ```tut
 import scala.concurrent.ExecutionContext.Implicits.global
 
-Stream(1,2,3).merge(Stream.eval(Task.delay { Thread.sleep(200); 4 })).runLog.unsafeRun()
+Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
 ```
 
 The `merge` function is defined in [`pipe2`](../core/shared/src/main/scala/fs2/pipe2.scala), along with other useful concurrency functions, like `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
@@ -375,7 +373,7 @@ def join[F[_]:Effect,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit ec:
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. `s merge s2` could be implemented as `concurrent.join(2)(Stream(s,s2))`.
 
-The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, though FS2 provides the [`fs2.Task`][Task] type for convenience, and `Task` has an `Effect` instance, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
+The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
 If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `h.awaitAsync` requests the next step of a `Handle h` asynchronously. Its signature is:
 
@@ -424,8 +422,8 @@ These are easy to deal with. Just wrap these effects in a `Stream.eval`:
 ```tut:book
 def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 
-val s = Stream.eval_(Task.delay { destroyUniverse() }) ++ Stream("...moving on")
-s.runLog.unsafeRun()
+val s = Stream.eval_(IO { destroyUniverse() }) ++ Stream("...moving on")
+s.runLog.unsafeRunSync()
 ```
 
 The way you bring synchronous effects into your effect type may differ. `Sync.delay` can be used for this generally, without committing to a particular effect:
@@ -433,9 +431,9 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 ```tut:book
 import cats.effect.Sync
 
-val T = Sync[Task]
+val T = Sync[IO]
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
-s.runLog.unsafeRun()
+s.runLog.unsafeRunSync()
 ```
 
 When using this approach, be sure the expression you pass to delay doesn't throw exceptions.
@@ -482,12 +480,12 @@ val c = new Connection {
 }
 
 // Effect extends both Sync and Async
-val T = cats.effect.Effect[Task]
+val T = cats.effect.Effect[IO]
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
 
-Stream.eval(bytes).map(_.toList).runLog.unsafeRun()
+Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
 ```
 
 Be sure to check out the [`fs2.io`](../io) package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.
@@ -514,7 +512,7 @@ trait CSVHandle {
 def rows[F[_]](h: CSVHandle)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
-    _ <- Stream.suspend { h.withRows { e => concurrent.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
+    _ <- Stream.suspend { h.withRows { e => async.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
     row <- q.dequeue through pipe.rethrow
   } yield row
 ```
@@ -588,16 +586,16 @@ The reason is simple: the consumer (the `take(1)`) terminates as soon as it has 
 If instead we use `onFinalize`, the code is guaranteed to run, regardless of whether `take` interrupts:
 
 ```tut:book
-Stream(1).covary[Task].
-          onFinalize(Task.delay { println("finalized!") }).
+Stream(1).covary[IO].
+          onFinalize(IO { println("finalized!") }).
           take(1).
-          runLog.unsafeRun()
+          runLog.unsafeRunSync()
 ```
 
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
 
 ```tut
-val s1 = (Stream(1) ++ Stream(2)).covary[Task]
+val s1 = (Stream(1) ++ Stream(2)).covary[IO]
 val s2 = (Stream.empty ++ Stream.fail(Err)) onError { e => println(e); Stream.fail(e) }
 val merged = s1 merge s2 take 1
 ```

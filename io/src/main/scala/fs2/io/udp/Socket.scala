@@ -104,7 +104,7 @@ private[udp] object Socket {
       private val ctx = AG.register(channel)
 
       private def invoke(f: => Unit): Unit =
-        concurrent.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
+        async.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
 
       def localAddress: F[InetSocketAddress] =
         F.delay(Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress]).getOrElse(throw new ClosedChannelException))

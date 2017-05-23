@@ -96,13 +96,13 @@ object Topic {
       def unSubscribe:F[Unit]
     }
 
-    concurrent.refOf[F,(A,Vector[Subscriber])]((initial,Vector.empty[Subscriber])).flatMap { state =>
+    async.refOf[F,(A,Vector[Subscriber])]((initial,Vector.empty[Subscriber])).flatMap { state =>
     async.signalOf[F,Int](0).map { subSignal =>
 
       def mkSubscriber(maxQueued: Int):F[Subscriber] = for {
         q <- async.boundedQueue[F,A](maxQueued)
-        firstA <- concurrent.ref[F,A]
-        done <- concurrent.ref[F,Boolean]
+        firstA <- async.ref[F,A]
+        done <- async.ref[F,Boolean]
         sub = new Subscriber {
           def unSubscribe: F[Unit] = for {
             _ <- state.modify { case (a,subs) => a -> subs.filterNot(_.id == id) }
