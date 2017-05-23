@@ -204,11 +204,10 @@ private[fs2] object Algebra {
             val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(async.ref[F,Either[Throwable,UO]](effect, ec)) { ref =>
               F.map(async.fork {
                 F.flatMap(F.attempt(
-                  runFoldInterruptibly(
+                  runFold_(
                     uncons_(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]], 1024, interrupt).flatMap(output1(_)),
-                    interrupt,
                     None: UO
-                  )((o,a) => a)
+                  )((o,a) => a, interrupt, midAcquires, resources)
                 )) { o => ref.setAsyncPure(o) }
               }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
             }
