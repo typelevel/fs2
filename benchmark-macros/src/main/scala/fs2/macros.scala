@@ -24,9 +24,9 @@ final class GenerateNMacro(val c: whitebox.Context) {
       case List(q"""$as def $name($nparam: Int): $ret = $body""") =>
         ns.map { n =>
           val tn = TermName(s"${name}_$n")
-          q"""$as def $tn: $ret = {
+          q"""$as def $tn(): $ret = {
             val $nparam = $n
-            ..$body }"""           
+            ..$body }"""
         }
       case t =>
         c.abort(c.enclosingPosition, "unable to generate benchmark")
