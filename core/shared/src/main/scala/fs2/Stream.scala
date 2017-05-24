@@ -815,23 +815,23 @@ object Stream {
 
   implicit def covaryPurePipe2[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] = pipe2.covary[F,I,I2,O](p)
 
-  implicit def streamSyncInstance[F[_]]: Sync[Stream[F,?]] =
-    new Sync[Stream[F,?]] {
-      def pure[A](a: A): Stream[F,A] = Stream.emit(a)
-      def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
-      def tailRecM[A,B](a: A)(f: A => Stream[F,Either[A,B]]): Stream[F,B] =
-        f(a).flatMap {
-          case Left(a) => tailRecM(a)(f)
-          case Right(b) => pure(b)
-        }
-      def handleErrorWith[A](s: Stream[F,A])(f: Throwable => Stream[F, A]): Stream[F, A] =
-        s.attempt.flatMap {
-          case Left(t) => f(t)
-          case Right(a) => Stream.emit(a)
-        }
-      def raiseError[A](e: Throwable): Stream[F,A] = Stream.fail(e)
-      def suspend[A](s: => Stream[F,A]) = Stream.suspend(s)
+  // Note: non-implicit so that cats syntax doesn't override FS2 syntax
+  def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
+    def pure[A](a: A) = Stream(a)
+    def handleErrorWith[A](s: Stream[F,A])(h: Throwable => Stream[F,A]) = s.onError(h)
+    def raiseError[A](t: Throwable) = Stream.fail(t)
+    def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]) = s.flatMap(f)
+    def tailRecM[A, B](a: A)(f: A => Stream[F,Either[A,B]]) = f(a).flatMap {
+      case Left(a) => tailRecM(a)(f)
+      case Right(b) => Stream(b)
     }
+    def suspend[R](s: => Stream[F,R]) = Stream.suspend(s)
+  }
+
+  implicit def monoidInstance[F[_],O]: Monoid[Stream[F,O]] = new Monoid[Stream[F,O]] {
+    def empty = Stream.empty
+    def combine(x: Stream[F,O], y: Stream[F,O]) = x ++ y
+  }
 
   private[fs2] def mk[F[_],O](s: StreamCore[F,O]): Stream[F,O] = new Stream[F,O](new CoreRef(s))
 

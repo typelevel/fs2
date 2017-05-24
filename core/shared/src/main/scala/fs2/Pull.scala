@@ -226,7 +226,8 @@ object Pull {
   /** Converts a pure pull to an effectful pull of the specified type. */
   implicit def covaryPure[F[_],W,R](p: Pull[Pure,W,R]): Pull[F,W,R] = p.covary[F]
 
-  implicit def pullSyncInstance[F[_],O]: Sync[Pull[F,O,?]] = new Sync[Pull[F,O,?]] {
+  // Note: non-implicit so that cats syntax doesn't override FS2 syntax
+  def syncInstance[F[_],O]: Sync[Pull[F,O,?]] = new Sync[Pull[F,O,?]] {
     def pure[A](a: A): Pull[F,O,A] = Pull.pure(a)
     def handleErrorWith[A](p: Pull[F,O,A])(h: Throwable => Pull[F,O,A]) =
       p.attempt.flatMap {
