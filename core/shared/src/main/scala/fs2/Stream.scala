@@ -1644,7 +1644,7 @@ object Stream {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F,O,Unit] = Pull.loop[F,O,Stream[F,O]](_.pull.echoSegment)(self)
+    def echo: Pull[F,O,Unit] = Pull.loop[F,O,Stream[F,O]](_.pull.echoSegment)(self).as(())
 
     /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
     def echo1: Pull[F,O,Option[Stream[F,O]]] =

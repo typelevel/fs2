@@ -86,4 +86,41 @@ There are times when you may have to manually covary a stream -- especially in s
 
 #### Handle
 
-TODO
+In 0.9, the `fs2.Handle[F,O]` type provided an API bridge between streams and pulls. Writing a custom pull involved obtaining a handle for a stream and using a method on the handle to obtain a pull (e.g., `receive`). This often involved boilerplate like `s.open.flatMap { h => h.receive { ... }}.close` or `s.pull { h => h.receive { ... } }`.
+
+In 1.0, the `Handle` type has been removed. Instead, custom pulls are written directly against `Stream` objects. The `pull` method on `Stream` now returns a `Stream.ToPull` object, which has methods for getting a `Pull` from the `Stream`. For example:
+
+```scala
+// Equivalent to s.take(1)
+s.pull.uncons1.flatMap {
+  case None => Pull.pure(())
+  case Some((hd, tl)) => Pull.output(1)
+}.stream
+```
+
+There are a number of other minor API changes evident in this example, and many that aren't evident:
+ - the `await*` methods from `Handle` are now called `uncons*` on `ToPull`
+ - `uncons1` returns a `Pull[F,Nothing,Option[(O,Stream[F,O])]]` -- more on this in the next section
+ - the `receive*` methods have been removed in favor of `uncons*.flatMap(...)`
+ - the `open` method has no analog in this design -- `s.pull` gives a `ToPull` which can then be used to directly obtain a `Pull`
+ - the `close` method on `Pull` has been renamed to `stream`
+ - methods that used to return `Chunk`s generally return `Segment`s now. There's often a chunk based replacement (e.g., `unconsChunk`) in such scenarios. Try to use the `Segment` variants though, as they often lead to *significantly* better performance.
+
+#### Pull
+
+The `Pull` API has changed a little -- in 0.9, `Pull[F,O,R]` supported the notion of a "done" pull -- a pull which terminated without returning an `R` value. Internally, the pull type was represented by a free monad with a result type of `Option[R]`. This allowed any `Pull[F,O,R]` to terminate early by using `Pull.done`.
+
+In 1.0, this notion has been removed. A `Pull[F,O,R]` always evaluates to an `R` and there's no direct equivalent to `Pull.done`. To signal early termination, many pulls use an `Option` in the resource position -- e.g., `Pull[F,O,Option[R]]`, where a `None` represents termination (e.g., exhaustion of input from the source stream or an upstream pull terminating early). In the example in the last section, we saw that `uncons1` returns a `Pull[F,Nothing,Option[(O,Stream[F,O])]]` -- this tells us that pulling a single element from the stream either results in termination, if the stream is empty, or a single element along with the tail of the stream.
+
+As a result of this change, many combinators have slightly different shapes. Consider `Pull.loop`:
+
+```scala
+def loop[F[_],O,R](using: R => Pull[F,O,Option[R]]): R => Pull[F,O,Option[R]] =
+  r => using(r) flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
+```
+
+In order for `loop` to know when to stop looping, it needs some indication that `using` is done. In 0.9, this signal was baked in to `Pull` but in 1.0 the returned pull must explicitly signal completion via a `None`.
+
+#### Cats Type Class Instances
+
+Note that both `Stream` and `Pull` have type class instances for `cats.effect.Sync`, and hence all super type classes (e.g., `Monad`). These instances are defined in the `Stream` and `Pull` companion objects but they are *NOT* marked implicit. To use them implicitly, they must be manually assigned to an implicit val. This is because the Cats supplied syntax conflicts with `Stream` and `Pull` syntax, resulting in methods which ignore the covariance of `Stream` and `Pull`. Considering this is almost never the right option, these instances are non-implicit.

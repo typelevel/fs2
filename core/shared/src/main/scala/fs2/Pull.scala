@@ -102,8 +102,8 @@ object Pull {
    * Repeatedly use the output of the `Pull` as input for the next step of the pull.
    * Halts when a step terminates with `None` or `Pull.fail`.
    */
-  def loop[F[_],O,R](using: R => Pull[F,O,Option[R]]): R => Pull[F,O,Unit] =
-    r => using(r) flatMap { _.map(loop(using)).getOrElse(Pull.pure(())) }
+  def loop[F[_],O,R](using: R => Pull[F,O,Option[R]]): R => Pull[F,O,Option[R]] =
+    r => using(r) flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
 
   def output1[F[_],O](o: O): Pull[F,O,Unit] =
     fromFree(Algebra.output1[F,O](o))

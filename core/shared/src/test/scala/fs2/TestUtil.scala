@@ -102,7 +102,7 @@ trait TestUtil extends TestUtilPlatform {
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
       Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw Err)),
-      // Failure("failure-in-pure-pull", Stream.emit[IO,Int](42).pull.map(_ => throw Err)),
+      Failure("failure-in-pure-pull", Stream.emit(42).pull.uncons.map(_ => throw Err).stream),
       Failure("failure-in-async-code",
         Stream.eval[IO,Int](IO(throw Err)).pull.unconsAsync.flatMap { _.pull.flatMap {
           case None => Pull.pure(())
