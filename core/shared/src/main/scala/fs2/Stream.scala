@@ -5,7 +5,7 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
 import cats.{ Applicative, Eq, MonadError, Monoid, Semigroup }
-import cats.effect.{ Effect, IO }
+import cats.effect.{ Effect, IO, Sync }
 import cats.implicits._
 
 import fs2.util.{ Attempt, Free, Lub1, RealSupertype, Sub1, UF1 }
@@ -815,8 +815,8 @@ object Stream {
 
   implicit def covaryPurePipe2[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] = pipe2.covary[F,I,I2,O](p)
 
-  implicit def streamMonadErrorInstance[F[_]]: MonadError[Stream[F,?], Throwable] =
-    new MonadError[Stream[F,?], Throwable] {
+  implicit def streamSyncInstance[F[_]]: Sync[Stream[F,?]] =
+    new Sync[Stream[F,?]] {
       def pure[A](a: A): Stream[F,A] = Stream.emit(a)
       def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
       def tailRecM[A,B](a: A)(f: A => Stream[F,Either[A,B]]): Stream[F,B] =
@@ -830,6 +830,7 @@ object Stream {
           case Right(a) => Stream.emit(a)
         }
       def raiseError[A](e: Throwable): Stream[F,A] = Stream.fail(e)
+      def suspend[A](s: => Stream[F,A]) = Stream.suspend(s)
     }
 
   private[fs2] def mk[F[_],O](s: StreamCore[F,O]): Stream[F,O] = new Stream[F,O](new CoreRef(s))
