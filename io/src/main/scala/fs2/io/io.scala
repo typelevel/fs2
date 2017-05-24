@@ -29,7 +29,7 @@ package object io {
    */
   def readInputStreamAsync[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] = {
     def readAsync(is: InputStream, buf: Array[Byte]) =
-      concurrent.start(readBytesFromInputStream(is, buf)).flatten
+      async.start(readBytesFromInputStream(is, buf)).flatten
 
     readInputStreamGeneric(fis, chunkSize, readAsync, closeAfterUse)
   }
@@ -52,7 +52,7 @@ package object io {
    */
   def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] = {
     def writeAsync(os: OutputStream, buf: Chunk[Byte]) =
-      concurrent.start(writeBytesToOutputStream(os, buf)).flatMap(identity)
+      async.start(writeBytesToOutputStream(os, buf)).flatMap(identity)
 
     writeOutputStreamGeneric(fos, closeAfterUse, writeAsync)
   }

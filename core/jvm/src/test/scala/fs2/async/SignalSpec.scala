@@ -3,6 +3,7 @@ package async
 
 import java.util.concurrent.atomic.AtomicLong
 import cats.effect.IO
+import cats.implicits._
 
 class SignalSpec extends Fs2Spec {
   "Signal" - {
@@ -11,7 +12,7 @@ class SignalSpec extends Fs2Spec {
         val vs = vs0 map { n => if (n == 0) 1 else n }
         val s = async.signalOf[IO,Long](0L).unsafeRunSync()
         val r = new AtomicLong(0)
-        val u = s.discrete.map(r.set).run.shift.unsafeToFuture()
+        val u = (IO.shift >> s.discrete.map(r.set).run).unsafeToFuture()
         assert(vs.forall { v =>
           s.set(v).unsafeRunSync()
           while (s.get.unsafeRunSync() != v) {} // wait for set to arrive
@@ -29,7 +30,7 @@ class SignalSpec extends Fs2Spec {
         val vs = v0 :: vsTl
         val s = async.signalOf[IO,Long](0L).unsafeRunSync()
         val r = new AtomicLong(0)
-        val u = s.discrete.map { i => Thread.sleep(10); r.set(i) }.run.shift.unsafeToFuture()
+        val u = (IO.shift >> s.discrete.map { i => Thread.sleep(10); r.set(i) }.run).unsafeToFuture()
         vs.foreach { v => s.set(v).unsafeRunSync() }
         val last = vs.last
         while (r.get != last) {}

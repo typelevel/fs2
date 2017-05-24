@@ -5,7 +5,7 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
 import cats.{ Applicative, Eq, MonadError, Monoid, Semigroup }
-import cats.effect.{ Effect, IO }
+import cats.effect.{ Effect, IO, Sync }
 import cats.implicits._
 
 import fs2.util.{ Attempt, Free, Lub1, RealSupertype, Sub1, UF1 }
@@ -568,7 +568,7 @@ object Stream {
       def runInner(inner: Stream[F, O]): Stream[F, Nothing] = {
         Stream.eval_(
           available.decrement >> incrementRunning >>
-          concurrent.start {
+          async.fork {
             inner.chunks.attempt
             .flatMap(r => Stream.eval(outputQ.enqueue1(Some(r))))
             .interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
@@ -594,8 +594,8 @@ object Stream {
         } run
       }
 
-      Stream.eval_(concurrent.start(runOuter)) ++
-      Stream.eval_(concurrent.start(doneMonitor)) ++
+      Stream.eval_(async.fork(runOuter)) ++
+      Stream.eval_(async.fork(doneMonitor)) ++
       outputQ.dequeue.unNoneTerminate.flatMap {
         case Left(e) => Stream.fail(e)
         case Right(c) => Stream.chunk(c)
@@ -815,22 +815,23 @@ object Stream {
 
   implicit def covaryPurePipe2[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] = pipe2.covary[F,I,I2,O](p)
 
-  implicit def streamMonadErrorInstance[F[_]]: MonadError[Stream[F,?], Throwable] =
-    new MonadError[Stream[F,?], Throwable] {
-      def pure[A](a: A): Stream[F,A] = Stream.emit(a)
-      def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]): Stream[F,B] = s.flatMap(f)
-      def tailRecM[A,B](a: A)(f: A => Stream[F,Either[A,B]]): Stream[F,B] =
-        f(a).flatMap {
-          case Left(a) => tailRecM(a)(f)
-          case Right(b) => pure(b)
-        }
-      def handleErrorWith[A](s: Stream[F,A])(f: Throwable => Stream[F, A]): Stream[F, A] =
-        s.attempt.flatMap {
-          case Left(t) => f(t)
-          case Right(a) => Stream.emit(a)
-        }
-      def raiseError[A](e: Throwable): Stream[F,A] = Stream.fail(e)
+  // Note: non-implicit so that cats syntax doesn't override FS2 syntax
+  def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
+    def pure[A](a: A) = Stream(a)
+    def handleErrorWith[A](s: Stream[F,A])(h: Throwable => Stream[F,A]) = s.onError(h)
+    def raiseError[A](t: Throwable) = Stream.fail(t)
+    def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]) = s.flatMap(f)
+    def tailRecM[A, B](a: A)(f: A => Stream[F,Either[A,B]]) = f(a).flatMap {
+      case Left(a) => tailRecM(a)(f)
+      case Right(b) => Stream(b)
     }
+    def suspend[R](s: => Stream[F,R]) = Stream.suspend(s)
+  }
+
+  implicit def monoidInstance[F[_],O]: Monoid[Stream[F,O]] = new Monoid[Stream[F,O]] {
+    def empty = Stream.empty
+    def combine(x: Stream[F,O], y: Stream[F,O]) = x ++ y
+  }
 
   private[fs2] def mk[F[_],O](s: StreamCore[F,O]): Stream[F,O] = new Stream[F,O](new CoreRef(s))
 

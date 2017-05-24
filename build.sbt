@@ -23,13 +23,16 @@ lazy val commonSettings = Seq(
     "-language:higherKinds",
     "-language:existentials",
     "-language:postfixOps",
-    "-Xfatal-warnings",
-    "-Yno-adapted-args",
-    // "-Ywarn-dead-code", // Too buggy to be useful, for instance https://issues.scala-lang.org/browse/SI-9521
-    "-Ywarn-value-discard",
-    "-Ywarn-unused-import"
-  ),
-  scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
+    "-Ypartial-unification"
+  ) ++
+    (if (scalaBinaryVersion.value startsWith "2.12") List(
+      "-Xfatal-warnings",
+      "-Yno-adapted-args",
+      "-Ywarn-value-discard",
+      "-Ywarn-unused-import"
+    ) else Nil) ++ (if (scalaBinaryVersion.value startsWith "2.11") List("-Xexperimental") else Nil), // 2.11 needs -Xexperimental to enable SAM conversion
+  scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _).filterNot("-Xlint" == _).filterNot("-Xfatal-warnings" == _)},
+  scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
@@ -172,7 +175,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.1-d1b5231"
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.3-d37204d"
   ).
   jsSettings(commonJsSettings: _*)
 
@@ -245,7 +248,8 @@ lazy val benchmark = project.in(file("benchmark")).
   .dependsOn(io, benchmarkMacros)
 
 lazy val docs = project.in(file("docs")).
-  settings(commonSettings ++ tutSettings).
+  enablePlugins(TutPlugin).
+  settings(commonSettings).
   settings(
     name := "fs2-docs",
     tutSourceDirectory := file("docs") / "src",

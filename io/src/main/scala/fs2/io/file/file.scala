@@ -19,9 +19,9 @@ package object file {
     F.async[O] { cb =>
       f(new CompletionHandler[O, Null] {
         override def completed(result: O, attachment: Null): Unit =
-          concurrent.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.pure(()))
+          async.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.pure(()))
         override def failed(exc: Throwable, attachment: Null): Unit =
-          concurrent.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.pure(()))
+          async.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.pure(()))
       })
     }
   }

@@ -4,7 +4,6 @@ package time
 import scala.concurrent.duration._
 import cats.effect.IO
 import org.scalatest.Succeeded
-import fs2.util.ExecutionContexts._
 
 class AwakeEverySpec extends AsyncFs2Spec {
 
@@ -20,7 +19,7 @@ class AwakeEverySpec extends AsyncFs2Spec {
     }
 
     "awakeEvery liveness" in {
-      val s = time.awakeEvery[IO](1.milli).evalMap { i => IO.async[Unit](cb => executionContext.executeThunk(cb(Right(())))) }.take(200)
+      val s = time.awakeEvery[IO](1.milli).evalMap { i => IO.async[Unit](cb => executionContext.execute(() => cb(Right(())))) }.take(200)
       runLogF { Stream(s, s, s, s, s).join(5) }.map { _ => Succeeded }
     }
   }

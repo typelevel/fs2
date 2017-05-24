@@ -1,9 +1,9 @@
 package fs2.io
 
-import fs2.{Chunk, Fs2Spec, Stream, Task}
-import org.scalacheck.{Arbitrary, Gen}
-
 import scala.annotation.tailrec
+import cats.effect.IO
+import fs2.{Chunk, Fs2Spec, Stream}
+import org.scalacheck.{Arbitrary, Gen}
 
 
 
@@ -11,12 +11,12 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
 
   "ToInputStream" - {
 
-    implicit val streamByteGen: Arbitrary[Stream[Task, Byte]] = Arbitrary {
+    implicit val streamByteGen: Arbitrary[Stream[IO, Byte]] = Arbitrary {
       for {
         data <- implicitly[Arbitrary[String]].arbitrary
         chunkSize <- if (data.length > 0) Gen.chooseNum(1, data.length) else Gen.fail
       } yield {
-        def go(rem: String): Stream[Task, Byte] = {
+        def go(rem: String): Stream[IO, Byte] = {
           if (chunkSize >= rem.length) Stream.chunk(Chunk.bytes(rem.getBytes))
           else {
             val (out, remainder) = rem.splitAt(chunkSize)
@@ -27,9 +27,9 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
       }
     }
 
-   "arbitrary.streams" in forAll { (stream: Stream[Task, Byte]) =>
+   "arbitrary.streams" in forAll { (stream: Stream[IO, Byte]) =>
 
-      val example = stream.runLog.unsafeRun()
+      val example = stream.runLog.unsafeRunSync()
 
       val fromInputStream =
         stream.through(toInputStream).evalMap { is =>
@@ -37,14 +37,14 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
           // instead they have to fork this to dedicated thread pool
           val buff = Array.ofDim[Byte](20)
           @tailrec
-          def go(acc: Vector[Byte]): Task[Vector[Byte]] = {
+          def go(acc: Vector[Byte]): IO[Vector[Byte]] = {
             is.read(buff) match {
-              case -1 => Task.now(acc)
+              case -1 => IO.pure(acc)
               case read => go(acc ++ buff.take(read))
             }
           }
           go(Vector.empty)
-        }.runLog.map(_.flatten).unsafeRun()
+        }.runLog.map(_.flatten).unsafeRunSync()
 
       example shouldBe fromInputStream
 
@@ -53,33 +53,33 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
 
     "upstream.is.closed" in  {
       var closed: Boolean = false
-      val s: Stream[Task, Byte] = Stream(1.toByte).onFinalize(Task.delay(closed = true))
+      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO(closed = true))
 
-      s.through(toInputStream).run.unsafeRun()
+      s.through(toInputStream).run.unsafeRunSync()
 
       closed shouldBe true
     }
 
     "upstream.is.force-closed" in  {
       var closed: Boolean = false
-      val s: Stream[Task, Byte] = Stream(1.toByte).onFinalize(Task.delay(closed = true))
+      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO(closed = true))
 
       val result =
         s.through(toInputStream).evalMap { is =>
-          Task.delay {
+          IO {
             is.close()
             closed // verifies that once close() terminates upstream was already cleaned up
           }
-        }.runLog.unsafeRun()
+        }.runLog.unsafeRunSync()
 
       result shouldBe Vector(true)
     }
 
     "converts to 0..255 int values except EOF mark" in {
-      val s: Stream[Task, Byte] = Stream.range(0, 256, 1).map(_.toByte)
+      val s: Stream[IO, Byte] = Stream.range(0, 256, 1).map(_.toByte)
       val result = s.through(toInputStream).map { is =>
         Vector.fill(257)(is.read())
-      }.runLog.map(_.flatten).unsafeRun()
+      }.runLog.map(_.flatten).unsafeRunSync()
       result shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector
     }
 

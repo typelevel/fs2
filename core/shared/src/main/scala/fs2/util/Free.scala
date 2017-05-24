@@ -45,7 +45,7 @@ sealed trait Free[+F[_],+A] {
   protected def _run[F2[x]>:F[x],A2>:A](implicit F2: MonadError[F2, Throwable]): F2[A2]
 
   final def unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G]): Unroll[A, G[Free[F,A]]] =
-    this.step._unroll.run
+    this.step._unroll(G,S).run
 
   protected def _unroll[G[+_]](implicit G: Functor[G], S: Sub1[F,G]): Trampoline[Unroll[A, G[Free[F,A]]]]
 
@@ -119,7 +119,7 @@ object Free {
     : Trampoline[Unroll[A, G[Free[F,A]]]]
     = Sub1.substFree(r) match {
       case Pure(r, _) =>
-        try Trampoline.suspend { f(r).step._unroll }
+        try Trampoline.suspend { f(r).step._unroll(G,S) }
         catch { case NonFatal(err) => Trampoline.done { Unroll.Fail(err) } }
       case Fail(err) => Trampoline.done { Unroll.Fail(err) }
       case eval: Eval[G,_] =>
@@ -150,6 +150,10 @@ object Free {
     new Monad[Free[F,?]] {
       def pure[A](a: A) = Pure(a, true)
       def flatMap[A,B](a: Free[F,A])(f: A => Free[F,B]) = a flatMap f
-      def tailRecM[A,B](a: A)(f: A => Free[F,Either[A,B]]): Free[F,B] = defaultTailRecM[Free[F,?], A, B](a)(f)
+      def tailRecM[A,B](a: A)(f: A => Free[F,Either[A,B]]): Free[F,B] =
+        f(a).flatMap {
+          case Left(a2) => tailRecM(a2)(f)
+          case Right(b) => Free.pure(b)
+        }
     }
 }

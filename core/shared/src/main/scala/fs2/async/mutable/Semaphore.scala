@@ -68,15 +68,15 @@ object Semaphore {
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is non-empty, and there are n permits available (Right)
-    type S = Either[Vector[(Long,concurrent.Ref[F,Unit])], Long]
-    concurrent.refOf[F,S](Right(n)).map { ref => new Semaphore[F] {
-      private def open(gate: concurrent.Ref[F,Unit]): F[Unit] =
+    type S = Either[Vector[(Long,Ref[F,Unit])], Long]
+    async.refOf[F,S](Right(n)).map { ref => new Semaphore[F] {
+      private def open(gate: Ref[F,Unit]): F[Unit] =
         gate.setAsyncPure(())
 
       def count = ref.get.map(count_)
       def decrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
-        else concurrent.ref[F,Unit].flatMap { gate => ref.modify {
+        else async.ref[F,Unit].flatMap { gate => ref.modify {
           case Left(waiting) => Left(waiting :+ (n -> gate))
           case Right(m) =>
             if (n <= m) Right(m-n)

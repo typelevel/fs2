@@ -1,5 +1,7 @@
 package fs2
 
+import cats.effect.Sync
+
 import fs2.util.{Attempt,Free,NonFatal,RealSupertype,Sub1}
 import StreamCore.Token
 import Pull._
@@ -96,6 +98,12 @@ final class Pull[+F[_],+O,+R] private (private val get: Free[AlgebraF[F,O]#f,Opt
 
   /** Definition: `p as r == p map (_ => r)`. */
   def as[R2](r: R2): Pull[F,O,R2] = map (_ => r)
+
+  def attempt: Pull[F,O,Attempt[R]] = new Pull(
+    get.flatMap[AlgebraF[F,O]#f,Option[Attempt[Attempt[R]]]] {
+      case None => Free.pure(None)
+      case Some(e) => Free.pure(Some(e.map(Right(_))))
+    })
 
   /** Converts this pull to a pull of the specified subtype. */
   implicit def covary[F2[_]](implicit S: Sub1[F,F2]): Pull[F2,O,R] = Sub1.substPull(this)
@@ -217,4 +225,21 @@ object Pull {
 
   /** Converts a pure pull to an effectful pull of the specified type. */
   implicit def covaryPure[F[_],W,R](p: Pull[Pure,W,R]): Pull[F,W,R] = p.covary[F]
+
+  // Note: non-implicit so that cats syntax doesn't override FS2 syntax
+  def syncInstance[F[_],O]: Sync[Pull[F,O,?]] = new Sync[Pull[F,O,?]] {
+    def pure[A](a: A): Pull[F,O,A] = Pull.pure(a)
+    def handleErrorWith[A](p: Pull[F,O,A])(h: Throwable => Pull[F,O,A]) =
+      p.attempt.flatMap {
+        case Left(t) => h(t)
+        case Right(a) => Pull.pure(a)
+      }
+    def raiseError[A](t: Throwable) = Pull.fail(t)
+    def flatMap[A,B](p: Pull[F,O,A])(f: A => Pull[F,O,B]) = p.flatMap(f)
+    def tailRecM[A, B](a: A)(f: A => Pull[F,O,Either[A,B]]) = f(a).flatMap {
+      case Left(a) => tailRecM(a)(f)
+      case Right(b) => Pull.pure(b)
+    }
+    def suspend[R](p: => Pull[F,O,R]) = Pull.suspend(p)
+  }
 }

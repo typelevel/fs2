@@ -7,13 +7,14 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 
 import cats.effect.IO
+import cats.implicits._
 import fs2.util.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
 
   val timeout: FiniteDuration = 10.minutes
 
-  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = s.runLog.shift.unsafeToFuture
+  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift >> s.runLog).unsafeToFuture
 
   def spuriousFail(s: Stream[IO,Int], f: Failure): Stream[IO,Int] =
     s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get

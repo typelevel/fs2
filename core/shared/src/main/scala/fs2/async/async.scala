@@ -2,7 +2,9 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 
-import cats.effect.Effect
+import cats.Traverse
+import cats.implicits.{ catsSyntaxEither => _, _ }
+import cats.effect.{ Effect, IO }
 
 /** Provides utilities for asynchronous computations. */
 package object async {
@@ -69,4 +71,51 @@ package object async {
     */
   def topic[F[_]:Effect,A](initial: A)(implicit ec: ExecutionContext): F[mutable.Topic[F,A]] =
     mutable.Topic(initial)
+
+  /** Creates an asynchronous, concurrent mutable reference. */
+  def ref[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] =
+    F.delay(new Ref[F, A])
+
+  /** Creates an asynchronous, concurrent mutable reference, initialized to `a`. */
+  def refOf[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] = ref[F, A].flatMap(r => r.setAsyncPure(a).as(r))
+
+  /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
+  def parallelTraverse[F[_], G[_], A, B](fa: F[A])(f: A => G[B])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[B]] =
+    F.traverse(fa)(f andThen start[G, B]).flatMap(G.sequence(_))
+
+  /** Like `sequence` but each `G[A]` is evaluated in parallel. */
+  def parallelSequence[F[_], G[_], A](fga: F[G[A]])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[A]] =
+    parallelTraverse(fga)(identity)
+
+  /**
+   * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
+   * bound. The inner `F[A]` will block until the result is available.
+   */
+  def start[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
+    ref[F, A].flatMap { ref => ref.setAsync(F.shift(ec) >> f).as(ref.get) }
+
+  /**
+   * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
+   * bound. Like `start` but is more efficient.
+   */
+  def fork[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] =
+    F.liftIO(F.runAsync(F.shift >> f) { _ => IO.unit })
+
+  /**
+    * Returns an effect that, when run, races evaluation of `fa` and `fb`,
+    * and returns the result of whichever completes first. The losing effect
+    * continues to execute in the background though its result will be sent
+    * nowhere.
+   */
+  def race[F[_]: Effect, A, B](fa: F[A], fb: F[B])(implicit ec: ExecutionContext): F[Either[A, B]] =
+    ref[F, Either[A,B]].flatMap { ref =>
+      ref.race(fa.map(Left.apply), fb.map(Right.apply)) >> ref.get
+    }
+
+  /**
+   * Like `unsafeRunSync` but execution is shifted to the supplied execution context.
+   * This method returns immediately after submitting execution to the execution context.
+   */
+  def unsafeRunAsync[F[_], A](fa: F[A])(f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =
+    F.runAsync(F.shift(ec) >> fa)(f).unsafeRunSync
 }
