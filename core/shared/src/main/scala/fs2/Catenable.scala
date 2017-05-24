@@ -39,6 +39,9 @@ sealed abstract class Catenable[+A] {
   /** Returns true if there are no elements in this collection. */
   def isEmpty: Boolean
 
+  /** Returns false if there are no elements in this collection. */
+  def nonEmpty: Boolean = !isEmpty
+
   /** Concatenates this with `c` in O(1) runtime. */
   final def ++[A2>:A](c: Catenable[A2]): Catenable[A2] =
     append(this, c)

@@ -1,5 +1,6 @@
 package fs2
 
+import cats.effect.Sync
 import fs2.internal.{ Algebra, Free, LinkedSet }
 
 /**
@@ -27,6 +28,9 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
   private[fs2] def get[F2[x]>:F[x],O2>:O,R2>:R]: Free[Algebra[F2,O2,?],R2] = free.asInstanceOf[Free[Algebra[F2,O2,?],R2]]
 
   def as[R2](r2: R2): Pull[F,O,R2] = map(_ => r2)
+
+  def attempt: Pull[F,O,Either[Throwable,R]] =
+    Pull.fromFree(get[F,O,R].map(r => Right(r)).onError(t => Free.Pure(Left(t))))
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
   def stream: Stream[F,O] = Stream.fromFree(this.scope.get[F,O,R] map (_ => ()))
@@ -199,4 +203,17 @@ object Pull {
   }
 
   implicit def covaryPure[F[_],O,R,O2>:O,R2>:R](p: Pull[Pure,O,R]): Pull[F,O2,R2] = p.covaryAll[F,O2,R2]
+
+  // Note: non-implicit so that cats syntax doesn't override FS2 syntax
+  def syncInstance[F[_],O]: Sync[Pull[F,O,?]] = new Sync[Pull[F,O,?]] {
+    def pure[A](a: A): Pull[F,O,A] = Pull.pure(a)
+    def handleErrorWith[A](p: Pull[F,O,A])(h: Throwable => Pull[F,O,A]) = p.onError(h)
+    def raiseError[A](t: Throwable) = Pull.fail(t)
+    def flatMap[A,B](p: Pull[F,O,A])(f: A => Pull[F,O,B]) = p.flatMap(f)
+    def tailRecM[A, B](a: A)(f: A => Pull[F,O,Either[A,B]]) = f(a).flatMap {
+      case Left(a) => tailRecM(a)(f)
+      case Right(b) => Pull.pure(b)
+    }
+    def suspend[R](p: => Pull[F,O,R]) = Pull.suspend(p)
+  }
 }

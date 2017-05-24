@@ -1825,4 +1825,22 @@ object Stream {
   implicit def covaryPurePipe[F[_],I,O](p: Pipe[Pure,I,O]): Pipe[F,I,O] = p.covary[F]
 
   implicit def covaryPurePipe2[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] = p.covary[F]
+
+  // Note: non-implicit so that cats syntax doesn't override FS2 syntax
+  def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
+    def pure[A](a: A) = Stream(a)
+    def handleErrorWith[A](s: Stream[F,A])(h: Throwable => Stream[F,A]) = s.onError(h)
+    def raiseError[A](t: Throwable) = Stream.fail(t)
+    def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]) = s.flatMap(f)
+    def tailRecM[A, B](a: A)(f: A => Stream[F,Either[A,B]]) = f(a).flatMap {
+      case Left(a) => tailRecM(a)(f)
+      case Right(b) => Stream(b)
+    }
+    def suspend[R](s: => Stream[F,R]) = Stream.suspend(s)
+  }
+
+  implicit def monoidInstance[F[_],O]: Monoid[Stream[F,O]] = new Monoid[Stream[F,O]] {
+    def empty = Stream.empty
+    def combine(x: Stream[F,O], y: Stream[F,O]) = x ++ y
+  }
 }
