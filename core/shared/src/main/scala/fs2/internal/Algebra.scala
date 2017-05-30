@@ -224,7 +224,7 @@ private[fs2] object Algebra {
                     go(root, acc, f(Right((r, token))).viewL(interrupt))
                 }
             case release: Algebra.Release[F2,_] =>
-            // println("Releasing " + release.token)
+              // println("Releasing " + release.token)
               removeToken(release.token) match {
               case None => go(root, acc, f(Right(())).viewL(interrupt))
               case Some(finalizer) => F.flatMap(F.attempt(finalizer)) { e =>
@@ -242,16 +242,30 @@ private[fs2] object Algebra {
                   }
                 }
               }
+
               // p.scope.scope
               // println("Closing scope: " + c.toClose)
               if (scopes.get(c.scopeAfterClose) eq null) println("!!!!! " + c.scopeAfterClose)
-              //val toClose = scopes.asScala.keys.filter(c.toClose isParentOf _).toList
+              val toClose = scopes.asScala.keys.filter(c.toClose isParentOf _).toList
+              val closeAll: F2[(() => Unit, Either[Throwable,Unit])] = {
+                import cats.syntax.functor._
+                import cats.syntax.traverse._
+                import cats.instances.list._
+                import cats.instances.either._
+                toClose.traverse(closeScope).map { results =>
+                  val setInterrupts: () => Unit = {
+                    val interrupts = results.map(_._1)
+                    () => interrupts.foreach(_())
+                  }
+                  setInterrupts -> results.traverse(_._2).void
+                }
+              }
               // println("  live scopes " + scopes.asScala.keys.toList.mkString(" "))
               // println("  scopes being closed " + toClose.mkString(" "))
               // println("  c.scopeAfterClose " + c.scopeAfterClose)
               // println toClose, we are closing scopes too early
-              F.flatMap(closeScope(c.toClose)) { case (interrupt, e) =>
-                go(c.scopeAfterClose, acc, f(e).map { x => interrupt(); x }.viewL(scopes.get(c.scopeAfterClose)._2))
+              F.flatMap(closeAll) { case (setInterrupts, e) =>
+                go(c.scopeAfterClose, acc, f(e).map { x => setInterrupts(); x }.viewL(scopes.get(c.scopeAfterClose)._2))
               }
               // F.flatMap(releaseAll(Right(()), toClose map closeScope)) { e =>
               //   go(c.scopeAfterClose, acc, f(e).viewL(scopes.get(c.scopeAfterClose)._2))
