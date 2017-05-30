@@ -12,7 +12,7 @@ import fs2.internal.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
 
-  val timeout: FiniteDuration = 60.seconds
+  val timeout: FiniteDuration = 10.seconds
 
   def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift >> s.runLog).unsafeToFuture
 
@@ -87,7 +87,8 @@ trait TestUtil extends TestUtilPlatform {
 
     implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
 
-    implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream("shrunk", Stream.chunk(Chunk.seq(as)))) }
+    // implicit 
+    def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream("shrunk", Stream.chunk(Chunk.seq(as)))) }
   }
 
   case object Err extends RuntimeException("oh noes!!")
