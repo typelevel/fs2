@@ -245,7 +245,7 @@ private[fs2] object Algebra {
               // p.scope.scope
               // println("Closing scope: " + c.toClose)
               if (scopes.get(c.scopeAfterClose) eq null) println("!!!!! " + c.scopeAfterClose)
-              val toClose = scopes.asScala.keys.filter(c.toClose == _).toList
+              val toClose = scopes.asScala.keys.filter(c.toClose isParentOf _).toList
               // println("  live scopes " + scopes.asScala.keys.toList.mkString(" "))
               // println("  scopes being closed " + toClose.mkString(" "))
               // println("  c.scopeAfterClose " + c.scopeAfterClose)
