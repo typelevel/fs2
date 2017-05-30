@@ -232,34 +232,37 @@ private[fs2] object Algebra {
               }
             }
             case c: Algebra.CloseScope[F2,_] =>
-              def closeScope(root: Scope): F2[Either[Throwable,Unit]] = {
+              def closeScope(root: Scope): F2[(() => Unit, Either[Throwable,Unit])] = {
                 val tup = scopes.remove(root)
-                if (tup eq null) F.pure(Right(()))
+                if (tup eq null) F.pure((() => (), Right(())))
                 else tup match { case (midAcquires,_,setInterrupt,acquired) =>
-                  // println("  acquired: " + acquired)
-                  setInterrupt()
                   midAcquires.waitUntil0
-                  releaseAll(Right(()), acquired.asScala.values.map(F.attempt).toList.reverse)
+                  F.map(releaseAll(Right(()), acquired.asScala.values.map(F.attempt).toList.reverse)) { e =>
+                    setInterrupt -> e
+                  }
                 }
               }
               // p.scope.scope
               // println("Closing scope: " + c.toClose)
               if (scopes.get(c.scopeAfterClose) eq null) println("!!!!! " + c.scopeAfterClose)
-              val toClose = scopes.asScala.keys.filter(c.toClose == _).toList
+              // val toClose = scopes.asScala.keys.filter(c.toClose == _).toList
               // println("  live scopes " + scopes.asScala.keys.toList.mkString(" "))
               // println("  scopes being closed " + toClose.mkString(" "))
               // println("  c.scopeAfterClose " + c.scopeAfterClose)
               // println toClose, we are closing scopes too early
-              F.flatMap(releaseAll(Right(()), toClose map closeScope)) { e =>
-                go(c.scopeAfterClose, acc, f(e).viewL(scopes.get(c.scopeAfterClose)._2))
+              F.flatMap(closeScope(c.toClose)) { case (interrupt, e) =>
+                // go(c.scopeAfterClose, acc, F.flatMap(F.delay(interrupt()))(_ => f(e)).viewL(scopes.get(c.scopeAfterClose)._2))
+                go(c.scopeAfterClose, acc, f(e).map { x => interrupt(); x }.viewL(scopes.get(c.scopeAfterClose)._2))
               }
+              // F.flatMap(releaseAll(Right(()), toClose map closeScope)) { e =>
+              //   go(c.scopeAfterClose, acc, f(e).viewL(scopes.get(c.scopeAfterClose)._2))
+              // }
             case o: Algebra.OpenScope[F2,_] =>
               val innerScope = root :+ new Token()
               // println(s"Opening scope: ${innerScope}")
               val b = new AtomicBoolean(false)
               val innerInterrupt = () => interrupt() || b.get // incorporate parent interrupt
-              val tup = (TwoWayLatch(0), innerInterrupt, () => b.set(true),
-                         new ConcurrentSkipListMap[Token,F2[Unit]]())
+              val tup = (TwoWayLatch(0), innerInterrupt, () => b.set(true), new ConcurrentSkipListMap[Token,F2[Unit]]())
               scopes.put(innerScope, tup)
               go(innerScope, acc, f(Right(innerScope -> root)).viewL(interrupt))
             case _: Algebra.Interrupt[F2,_] =>
