@@ -95,7 +95,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (1)" in {
-      pending
       forAll { (s1: PureStream[Int], f1: Failure) =>
         val c = new AtomicLong(0)
         val b1 = bracket(c)(s1.get)
@@ -121,7 +120,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (2b)" in {
-      pending
       forAll { (s1: PureStream[Int], s2: PureStream[Int], f1: Failure, f2: Failure) =>
         val c = new AtomicLong(0)
         val b1 = bracket(c)(s1.get)
@@ -134,7 +132,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (3)" in {
-      pending
       forAll { (s: PureStream[(PureStream[Int], Option[Failure])], allowFailure: Boolean, f: Failure, n: SmallPositive) =>
         val outer = new AtomicLong(0)
         val inner = new AtomicLong(0)
@@ -162,7 +159,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (5)" in {
-      pending
       forAll { (s: PureStream[PureStream[Int]]) =>
         val signal = async.signalOf[IO,Boolean](false).unsafeRunSync()
         val c = new AtomicLong(0)
@@ -175,7 +171,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (6)" in {
-      pending
       // simpler version of (5) above which previously failed reliably, checks the case where a
       // stream is interrupted while in the middle of a resource acquire that is immediately followed
       // by a step that never completes!
