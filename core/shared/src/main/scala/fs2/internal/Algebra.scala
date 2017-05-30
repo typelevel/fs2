@@ -245,13 +245,12 @@ private[fs2] object Algebra {
               // p.scope.scope
               // println("Closing scope: " + c.toClose)
               if (scopes.get(c.scopeAfterClose) eq null) println("!!!!! " + c.scopeAfterClose)
-              // val toClose = scopes.asScala.keys.filter(c.toClose == _).toList
+              //val toClose = scopes.asScala.keys.filter(c.toClose isParentOf _).toList
               // println("  live scopes " + scopes.asScala.keys.toList.mkString(" "))
               // println("  scopes being closed " + toClose.mkString(" "))
               // println("  c.scopeAfterClose " + c.scopeAfterClose)
               // println toClose, we are closing scopes too early
               F.flatMap(closeScope(c.toClose)) { case (interrupt, e) =>
-                // go(c.scopeAfterClose, acc, F.flatMap(F.delay(interrupt()))(_ => f(e)).viewL(scopes.get(c.scopeAfterClose)._2))
                 go(c.scopeAfterClose, acc, f(e).map { x => interrupt(); x }.viewL(scopes.get(c.scopeAfterClose)._2))
               }
               // F.flatMap(releaseAll(Right(()), toClose map closeScope)) { e =>
