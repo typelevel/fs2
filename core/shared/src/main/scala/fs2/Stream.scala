@@ -454,7 +454,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     this.pull.uncons.flatMap {
       case None => Pull.output1(z) >> Pull.done
       case Some((hd,tl)) =>
-        Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc => tl.scan_(acc)(f).stream.pull.echo }
+        Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc =>
+          tl.scan_(acc)(f)
+        }
     }
 
   /** Like `[[scan]]`, but uses the first element of the stream as the seed. */

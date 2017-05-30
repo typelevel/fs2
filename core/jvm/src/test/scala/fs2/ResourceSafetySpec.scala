@@ -22,7 +22,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s2 = s.foldLeft(Stream.empty: Stream[IO,Int])(_ ++ _)
       swallow { runLog(s2) }
       swallow { runLog(s2.take(1000)) }
-      withClue(f.tag) { 0L shouldBe c.get }
+      withClue(f.tag) { c.get shouldBe 0L }
     }
 
     "bracket ++ throw Err" in forAll { (s: PureStream[Int]) =>

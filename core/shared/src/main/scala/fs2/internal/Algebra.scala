@@ -174,111 +174,118 @@ private[fs2] object Algebra {
       g: (B, O) => B, root: Scope, scopes: ScopeMap[F2])(implicit F: Sync[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
-    val interrupt: () => Boolean = scopes.get(root)._2
-    val midAcquires: TwoWayLatch = scopes.get(root)._1
-    val resources: CMap[Token,F2[Unit]] = scopes.get(root)._4
-    def removeToken(t: Token): Option[F2[Unit]] = {
-      var f = resources.remove(t)
-      if (!(f.asInstanceOf[AnyRef] eq null)) Some(f)
-      else {
-        val i = scopes.values.iterator; while (i.hasNext) {
-          f = i.next._4.remove(t)
-          if (!(f.asInstanceOf[AnyRef] eq null)) return Some(f)
+    def go(root: Scope, acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B] = {
+      val interrupt: () => Boolean = scopes.get(root)._2
+      val midAcquires: TwoWayLatch = scopes.get(root)._1
+      val resources: CMap[Token,F2[Unit]] = scopes.get(root)._4
+      def removeToken(t: Token): Option[F2[Unit]] = {
+        var f = resources.remove(t)
+        if (!(f.asInstanceOf[AnyRef] eq null)) Some(f)
+        else {
+          val i = scopes.values.iterator; while (i.hasNext) {
+            f = i.next._4.remove(t)
+            if (!(f.asInstanceOf[AnyRef] eq null)) return Some(f)
+          }
+          None
         }
-        None
       }
-    }
-    def go(root: Scope, acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B]
-    = v.get match {
-      case done: Free.Pure[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] => done.r match {
-        case None => F.pure(acc)
-        case Some((hd, tl)) =>
-          F.suspend {
-            try go(root, hd.fold(acc)(g).run, uncons(tl).viewL(interrupt))
-            catch { case NonFatal(e) => go(root, acc, uncons(tl.asHandler(e, interrupt)).viewL(interrupt)) }
-          }
-      }
-      case failed: Free.Fail[AlgebraF, _] => F.raiseError(failed.error)
-      case bound: Free.Bind[AlgebraF, _, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =>
-        val f = bound.f.asInstanceOf[
-          Either[Throwable,Any] => Free[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]]
-        val fx = bound.fx.asInstanceOf[Free.Eval[AlgebraF,_]].fr
-        fx match {
-          case wrap: Algebra.Eval[F, O, _] =>
-            F.flatMap(F.attempt(wrap.value)) { e => go(root, acc, f(e).viewL(interrupt)) }
-          case acquire: Algebra.Acquire[F2,_,_] =>
-            val resource = acquire.resource
-            val release = acquire.release
-            midAcquires.increment
-            if (interrupt()) { midAcquires.decrement; F.raiseError(Interrupted) }
-            else
-              F.flatMap(F.attempt(resource)) {
-                case Left(err) => go(root, acc, f(Left(err)).viewL(interrupt))
-                case Right(r) =>
-                  val token = new Token()
-                  lazy val finalizer_ = release(r)
-                  val finalizer = F.suspend { finalizer_ }
-                  resources.put(token, finalizer)
-                  midAcquires.decrement
-                  go(root, acc, f(Right((r, token))).viewL(interrupt))
-              }
-          case release: Algebra.Release[F2,_] => removeToken(release.token) match {
-            case None => go(root, acc, f(Right(())).viewL(interrupt))
-            case Some(finalizer) => F.flatMap(F.attempt(finalizer)) { e =>
-              go(root, acc, f(e).viewL(interrupt))
+      v.get match {
+        case done: Free.Pure[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] => done.r match {
+          case None => F.pure(acc)
+          case Some((hd, tl)) =>
+            F.suspend {
+              try go(root, hd.fold(acc)(g).run, uncons(tl).viewL(interrupt))
+              catch { case NonFatal(e) => go(root, acc, uncons(tl.asHandler(e, interrupt)).viewL(interrupt)) }
             }
-          }
-          case c: Algebra.CloseScope[F2,_] =>
-            def closeScope(root: Scope): F2[Either[Throwable,Unit]] = {
-              val tup = scopes.remove(root)
-              if (tup eq null) F.pure(Right(()))
-              else tup match { case (midAcquires,_,setInterrupt,acquired) =>
-                setInterrupt()
-                midAcquires.waitUntil0
-                releaseAll(Right(()), acquired.asScala.values.map(F.attempt).toList.reverse)
+        }
+        case failed: Free.Fail[AlgebraF, _] => F.raiseError(failed.error)
+        case bound: Free.Bind[AlgebraF, _, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] =>
+          val f = bound.f.asInstanceOf[
+            Either[Throwable,Any] => Free[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]]
+          val fx = bound.fx.asInstanceOf[Free.Eval[AlgebraF,_]].fr
+          fx match {
+            case wrap: Algebra.Eval[F, O, _] =>
+              F.flatMap(F.attempt(wrap.value)) { e => go(root, acc, f(e).viewL(interrupt)) }
+            case acquire: Algebra.Acquire[F2,_,_] =>
+              val resource = acquire.resource
+              val release = acquire.release
+              midAcquires.increment
+              if (interrupt()) { midAcquires.decrement; F.raiseError(Interrupted) }
+              else
+                F.flatMap(F.attempt(resource)) {
+                  case Left(err) => go(root, acc, f(Left(err)).viewL(interrupt))
+                  case Right(r) =>
+                    val token = new Token()
+                    // println("Acquired resource: " + token)
+                    lazy val finalizer_ = release(r)
+                    val finalizer = F.suspend { finalizer_ }
+                    resources.put(token, finalizer)
+                    midAcquires.decrement
+                    go(root, acc, f(Right((r, token))).viewL(interrupt))
+                }
+            case release: Algebra.Release[F2,_] =>
+            // println("Releasing " + release.token)
+              removeToken(release.token) match {
+              case None => go(root, acc, f(Right(())).viewL(interrupt))
+              case Some(finalizer) => F.flatMap(F.attempt(finalizer)) { e =>
+                go(root, acc, f(e).viewL(interrupt))
               }
             }
-            // p.scope.scope
-            if (scopes.get(c.scopeAfterClose) eq null) println("!!!!! " + c.scopeAfterClose)
-            val toClose = scopes.asScala.keys.filter(c.toClose == _).toList
-            println("live scopes " + scopes.asScala.keys.toList.mkString(" "))
-            println("scopes being closed " + toClose.mkString(" "))
-            println("c.scopeAfterClose " + c.scopeAfterClose)
-            // println toClose, we are closing scopes too early
-            F.flatMap(releaseAll(Right(()), toClose map closeScope)) { e =>
-              go(c.scopeAfterClose, acc, f(e).viewL(scopes.get(c.scopeAfterClose)._2))
-            }
-          case o: Algebra.OpenScope[F2,_] =>
-            val innerScope = root :+ new Token()
-            val b = new AtomicBoolean(false)
-            val innerInterrupt = () => interrupt() || b.get // incorporate parent interrupt
-            val tup = (TwoWayLatch(0), innerInterrupt, () => b.set(true),
-                       new ConcurrentSkipListMap[Token,F2[Unit]]())
-            scopes.put(innerScope, tup)
-            go(innerScope, acc, f(Right(innerScope -> root)).viewL(interrupt))
-          case _: Algebra.Interrupt[F2,_] =>
-            go(root, acc, f(Right(interrupt)).viewL(interrupt))
-          case unconsAsync: Algebra.UnconsAsync[F2,_,_,_] =>
-            val s = unconsAsync.s
-            val effect = unconsAsync.effect
-            val ec = unconsAsync.ec
-            type UO = Option[(Segment[_,Unit], Free[Algebra[F,Any,?],Unit])]
-            val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(async.ref[F,Either[Throwable,UO]](effect, ec)) { ref =>
-              F.map(async.fork {
-                F.flatMap(F.attempt(
-                  runFold_(
-                    uncons_(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]], 1024, interrupt).flatMap(output1(_)),
-                    None: UO
-                  )((o,a) => a, root, scopes)
-                )) { o => ref.setAsyncPure(o) }
-              }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
-            }
-            F.flatMap(asyncPull) { ap => go(root, acc, f(Right(ap)).viewL(interrupt)) }
-          case _ => sys.error("impossible Segment or Output following uncons")
-        }
-      case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
+            case c: Algebra.CloseScope[F2,_] =>
+              def closeScope(root: Scope): F2[Either[Throwable,Unit]] = {
+                val tup = scopes.remove(root)
+                if (tup eq null) F.pure(Right(()))
+                else tup match { case (midAcquires,_,setInterrupt,acquired) =>
+                  // println("  acquired: " + acquired)
+                  setInterrupt()
+                  midAcquires.waitUntil0
+                  releaseAll(Right(()), acquired.asScala.values.map(F.attempt).toList.reverse)
+                }
+              }
+              // p.scope.scope
+              // println("Closing scope: " + c.toClose)
+              if (scopes.get(c.scopeAfterClose) eq null) println("!!!!! " + c.scopeAfterClose)
+              val toClose = scopes.asScala.keys.filter(c.toClose == _).toList
+              // println("  live scopes " + scopes.asScala.keys.toList.mkString(" "))
+              // println("  scopes being closed " + toClose.mkString(" "))
+              // println("  c.scopeAfterClose " + c.scopeAfterClose)
+              // println toClose, we are closing scopes too early
+              F.flatMap(releaseAll(Right(()), toClose map closeScope)) { e =>
+                go(c.scopeAfterClose, acc, f(e).viewL(scopes.get(c.scopeAfterClose)._2))
+              }
+            case o: Algebra.OpenScope[F2,_] =>
+              val innerScope = root :+ new Token()
+              // println(s"Opening scope: ${innerScope}")
+              val b = new AtomicBoolean(false)
+              val innerInterrupt = () => interrupt() || b.get // incorporate parent interrupt
+              val tup = (TwoWayLatch(0), innerInterrupt, () => b.set(true),
+                         new ConcurrentSkipListMap[Token,F2[Unit]]())
+              scopes.put(innerScope, tup)
+              go(innerScope, acc, f(Right(innerScope -> root)).viewL(interrupt))
+            case _: Algebra.Interrupt[F2,_] =>
+              go(root, acc, f(Right(interrupt)).viewL(interrupt))
+            case unconsAsync: Algebra.UnconsAsync[F2,_,_,_] =>
+              val s = unconsAsync.s
+              val effect = unconsAsync.effect
+              val ec = unconsAsync.ec
+              type UO = Option[(Segment[_,Unit], Free[Algebra[F,Any,?],Unit])]
+              val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(async.ref[F,Either[Throwable,UO]](effect, ec)) { ref =>
+                F.map(async.fork {
+                  F.flatMap(F.attempt(
+                    runFold_(
+                      uncons_(s.asInstanceOf[Free[Algebra[F,Any,?],Unit]], 1024, interrupt).flatMap(output1(_)),
+                      None: UO
+                    )((o,a) => a, root, scopes)
+                  )) { o => ref.setAsyncPure(o) }
+                }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
+              }
+              F.flatMap(asyncPull) { ap => go(root, acc, f(Right(ap)).viewL(interrupt)) }
+            case _ => sys.error("impossible Segment or Output following uncons")
+          }
+        case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
+      }
     }
-    F.suspend { go(root, init, uncons(stream).viewL(interrupt)) }
+    F.suspend { go(root, init, uncons(stream).viewL(scopes.get(root)._2)) }
   }
 
   def translate[F[_],G[_],O,R](fr: Free[Algebra[F,O,?],R], u: F ~> G, G: Option[Effect[G]]): Free[Algebra[G,O,?],R] = {
