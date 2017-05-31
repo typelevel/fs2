@@ -35,9 +35,9 @@ private[fs2] object Algebra {
   final case class UnconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit], effect: Effect[F], ec: ExecutionContext)
     extends Algebra[F,X,AsyncPull[F,Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]]
   final case class Interrupt[F[_],O]() extends Algebra[F,O,() => Boolean]
-  // note - OpenScope returns old-scope, which should be passed to `CloseScope`
-  final case class OpenScope[F[_],O]() extends Algebra[F,O,Scope[F]]
-  final case class CloseScope[F[_],O](scopeAfterClose: Scope[F]) extends Algebra[F,O,Unit]
+  final case class GetScope[F[_],O]() extends Algebra[F,O,Scope[F]]
+  final case class OpenScope[F[_],O]() extends Algebra[F,O,(Scope[F],Scope[F])]
+  final case class CloseScope[F[_],O](toClose: Scope[F], scopeAfterClose: Scope[F]) extends Algebra[F,O,Unit]
 
   def output[F[_],O](values: Segment[O,Unit]): Free[Algebra[F,O,?],Unit] =
     Free.Eval[Algebra[F,O,?],Unit](Output(values))
@@ -63,11 +63,14 @@ private[fs2] object Algebra {
   def interrupt[F[_],O]: Free[Algebra[F,O,?],() => Boolean] =
     Free.Eval[Algebra[F,O,?],() => Boolean](Interrupt())
 
-  def openScope[F[_],O]: Free[Algebra[F,O,?],Scope[F]] =
-    Free.Eval[Algebra[F,O,?],Scope[F]](OpenScope())
+  def openScope[F[_],O]: Free[Algebra[F,O,?],(Scope[F],Scope[F])] =
+    Free.Eval[Algebra[F,O,?],(Scope[F],Scope[F])](OpenScope())
 
-  def closeScope[F[_],O](scopeAfterClose: Scope[F]): Free[Algebra[F,O,?],Unit] =
-    Free.Eval[Algebra[F,O,?],Unit](CloseScope(scopeAfterClose))
+  def closeScope[F[_],O](toClose: Scope[F], scopeAfterClose: Scope[F]): Free[Algebra[F,O,?],Unit] =
+    Free.Eval[Algebra[F,O,?],Unit](CloseScope(toClose, scopeAfterClose))
+
+  def getScope[F[_],O]: Free[Algebra[F,O,?],Scope[F]] =
+    Free.Eval[Algebra[F,O,?],Scope[F]](GetScope())
 
   def pure[F[_],O,R](r: R): Free[Algebra[F,O,?],R] =
     Free.Pure[Algebra[F,O,?],R](r)
@@ -121,6 +124,7 @@ private[fs2] object Algebra {
       if (closing || closed) throw new IllegalStateException("Cannot open new scope on a closed scope")
       else {
         val spawn = new Scope[F]()
+        spawn.trace = trace
         spawns = spawns :+ spawn
         spawn
       }
@@ -149,7 +153,13 @@ private[fs2] object Algebra {
     }
 
     def shouldInterrupt: Boolean = monitor.synchronized { closed && interrupt && false /* TODO */ }
-    def setInterrupt(): Unit = monitor.synchronized { spawns.foreach(_.setInterrupt()); interrupt = true }
+    def setInterrupt(): Unit = monitor.synchronized {
+      spawns.foreach(_.setInterrupt())
+      interrupt = true
+    }
+    var trace = false
+
+    override def toString: String = ##.toString
   }
 
 
@@ -203,14 +213,14 @@ private[fs2] object Algebra {
     }
 
   def scope[F[_],O,R](pull: Free[Algebra[F,O,?],R]): Free[Algebra[F,O,?],R] =
-    openScope flatMap { oldScope =>
+    openScope flatMap { case (oldScope, newScope) =>
       Free.Bind(pull, (e: Either[Throwable,R]) => e match {
-        case Left(e) => closeScope(oldScope) flatMap { _ => fail(e) }
-        case Right(r) => closeScope(oldScope) map { _ => r }
+        case Left(e) => closeScope(newScope, oldScope) flatMap { _ => fail(e) }
+        case Right(r) => closeScope(newScope, oldScope) map { _ => r }
       })
     }
 
-  private def runFold_[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(
+  def runFold_[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(
       g: (B, O) => B, scope: Scope[F2])(implicit F: Sync[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
@@ -261,19 +271,27 @@ private[fs2] object Algebra {
                 }
               }
             case c: Algebra.CloseScope[F2,_] =>
-              // println(s"Closing scope: ${scope}")
-              F.flatMap(scope.close) { e =>
+              // println(s"Closing scope: ${c.toClose} back to ${c.scopeAfterClose}")
+              F.flatMap(c.toClose.close) { e =>
                 go(c.scopeAfterClose, acc,
                   f(e).
-                    onError { t => scope.setInterrupt(); Free.Fail(t) }.
-                    map { x => scope.setInterrupt(); x }.
+                    onError { t => c.toClose.setInterrupt(); Free.Fail(t) }.
+                    map { x => c.toClose.setInterrupt(); x }.
                     viewL(() => c.scopeAfterClose.shouldInterrupt))
               }
 
             case o: Algebra.OpenScope[F2,_] =>
+            try {
               val innerScope = scope.open
-              // println(s"Opening scope: ${innerScope}")
-              go(innerScope, acc, f(Right(scope)).viewL(interrupt))
+              // println(s"Opening scope: ${innerScope} from $scope")
+              go(innerScope, acc, f(Right(scope -> innerScope)).viewL(interrupt))
+            } catch {
+              case t: Throwable =>
+                // t.printStackTrace
+                throw t
+            }
+            case _: Algebra.GetScope[F2,_] =>
+              go(scope, acc, f(Right(scope)).viewL(interrupt))
             case _: Algebra.Interrupt[F2,_] =>
               go(scope, acc, f(Right(interrupt)).viewL(interrupt))
             case unconsAsync: Algebra.UnconsAsync[F2,_,_,_] =>
@@ -297,7 +315,7 @@ private[fs2] object Algebra {
         case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }
-    F.suspend { go(scope, init, uncons(stream).viewL(() => scope.isClosed)) }
+    F.suspend { go(scope, init, uncons(stream).viewL(() => scope.shouldInterrupt)) }
   }
 
   def translate[F[_],G[_],O,R](fr: Free[Algebra[F,O,?],R], u: F ~> G, G: Option[Effect[G]]): Free[Algebra[G,O,?],R] = {
@@ -310,6 +328,7 @@ private[fs2] object Algebra {
         case a: Acquire[F,O2,_] => Acquire(u(a.resource), r => u(a.release(r)))
         case r: Release[F,O2] => Release[G,O2](r.token)
         case i: Interrupt[F,O2] => Interrupt[G,O2]()
+        case gs: GetScope[F,O2] => gs.asInstanceOf[Algebra[G,O2,X]]
         case os: OpenScope[F,O2] => os.asInstanceOf[Algebra[G,O2,X]]
         case cs: CloseScope[F,O2] => cs.asInstanceOf[CloseScope[G,O2]]
         case ua: UnconsAsync[F,_,_,_] =>
