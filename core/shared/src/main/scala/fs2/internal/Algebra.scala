@@ -1,11 +1,9 @@
 package fs2.internal
 
-// import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic._
-// import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
 import cats.~>
-import cats.effect.{ Effect, Sync }
+import cats.effect.{ Effect, IO, Sync }
 
 import fs2.{ AsyncPull, Catenable, Segment }
 import fs2.async
@@ -23,8 +21,7 @@ private[fs2] object Algebra {
       case _ => false
     }
     override def hashCode: Int = nonce.hashCode
-    // override def toString = s"Token(${##}/${nonce})"
-    override def toString = s"#${nonce + Long.MaxValue}"
+    override def toString = s"Token(${##}/${nonce})"
   }
 
   final case class Output[F[_],O](values: Segment[O,Unit]) extends Algebra[F,O,Unit]
@@ -92,6 +89,7 @@ private[fs2] object Algebra {
     private var closed: Boolean = false
     private var interrupt: Boolean = false
     private var midAcquires: Int = 0
+    private var midAcquiresDone: () => Unit = () => ()
     private val resources: collection.mutable.LinkedHashMap[Token, F[Unit]] = new collection.mutable.LinkedHashMap[Token, F[Unit]]()
     private var spawns: Vector[Scope[F]] = Vector.empty // TODO Pick a collection with better performance characteristics
 
@@ -108,12 +106,12 @@ private[fs2] object Algebra {
       if (closed) throw new IllegalStateException("FS2 bug: scope cannot be closed while acquire is outstanding")
       resources += (t -> finalizer)
       midAcquires -= 1
-      this.notifyAll
+      if (midAcquires == 0) midAcquiresDone()
     }
 
     def cancelAcquire(): Unit = monitor.synchronized {
       midAcquires -= 1
-      this.notifyAll
+      if (midAcquires == 0) midAcquiresDone()
     }
 
     def releaseResource(t: Token): Option[F[Unit]] = monitor.synchronized {
@@ -130,26 +128,47 @@ private[fs2] object Algebra {
       }
     }
 
-    private def closeAndReturnFinalizers: List[F[Unit]] = monitor.synchronized {
+    private def closeAndReturnFinalizers(asyncSupport: Option[(Effect[F], ExecutionContext)]): F[List[F[Unit]]] = monitor.synchronized {
       if (closed || closing) {
-        Nil
+        F.pure(Nil)
       } else {
         closing = true
-        val spawnFinalizers = spawns.toList.flatMap(_.closeAndReturnFinalizers)
-        while (midAcquires > 0) this.wait
-        closed = true
-        val result = spawnFinalizers ++ resources.values.toList
-        resources.clear()
-        result
+        def finishClose: F[List[F[Unit]]] = {
+          import cats.syntax.traverse._
+          import cats.syntax.functor._
+          import cats.instances.list._
+          val spawnFinalizers = spawns.toList.traverse(_.closeAndReturnFinalizers(asyncSupport)).map(_.flatten)
+          spawnFinalizers.map { s =>
+            monitor.synchronized {
+              closed = true
+              val result = s ++ resources.values.toList
+              resources.clear()
+              result
+            }
+          }
+        }
+        if (midAcquires == 0) {
+          finishClose
+        } else {
+          asyncSupport match {
+            case None => throw new IllegalStateException(s"FS2 bug: closing a scope with midAcquires ${midAcquires} but no async steps")
+            case Some((effect, ec)) =>
+              val ref = new async.Ref[F,Unit]()(effect, ec)
+              midAcquiresDone = () => {
+                effect.runAsync(ref.setAsyncPure(()))(_ => IO.unit).unsafeRunSync
+              }
+              F.flatMap(ref.get) { _ => finishClose }
+          }
+        }
       }
     }
 
-    def close: F[Either[Throwable,Unit]] = {
+    def close(asyncSupport: Option[(Effect[F],ExecutionContext)]): F[Either[Throwable,Unit]] = {
       def runAll(sofar: Option[Throwable], finalizers: List[F[Unit]]): F[Either[Throwable,Unit]] = finalizers match {
         case Nil => F.pure(sofar.toLeft(()))
         case h :: t => F.flatMap(F.attempt(h)) { res => runAll(sofar orElse res.fold(Some(_), _ => None), t) }
       }
-      runAll(None, closeAndReturnFinalizers)
+      F.flatMap(closeAndReturnFinalizers(asyncSupport)) { finalizers => runAll(None, finalizers) }
     }
 
     def shouldInterrupt: Boolean = monitor.synchronized { closed && interrupt && false /* TODO */ }
@@ -207,8 +226,8 @@ private[fs2] object Algebra {
   def runFoldInterruptibly[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], interrupt: () => Boolean, init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] =
     F.flatMap(F.delay(new Scope[F2]())) { scope =>
       F.flatMap(F.attempt(runFold_(stream, init)(f, scope))) {
-        case Left(t) => F.flatMap(scope.close)(_ => F.raiseError(t))
-        case Right(b) => F.flatMap(scope.close)(_ => F.pure(b))
+        case Left(t) => F.flatMap(scope.close(None))(_ => F.raiseError(t))
+        case Right(b) => F.flatMap(scope.close(None))(_ => F.pure(b))
       }
     }
 
@@ -224,15 +243,15 @@ private[fs2] object Algebra {
       g: (B, O) => B, scope: Scope[F2])(implicit F: Sync[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
-    def go(scope: Scope[F], acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B] = {
+    def go(scope: Scope[F], asyncSupport: Option[(Effect[F],ExecutionContext)], acc: B, v: Free.ViewL[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]): F[B] = {
       val interrupt = () => scope.shouldInterrupt
       v.get match {
         case done: Free.Pure[AlgebraF, Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] => done.r match {
           case None => F.pure(acc)
           case Some((hd, tl)) =>
             F.suspend {
-              try go(scope, hd.fold(acc)(g).run, uncons(tl).viewL(interrupt))
-              catch { case NonFatal(e) => go(scope, acc, uncons(tl.asHandler(e, interrupt)).viewL(interrupt)) }
+              try go(scope, asyncSupport, hd.fold(acc)(g).run, uncons(tl).viewL(interrupt))
+              catch { case NonFatal(e) => go(scope, asyncSupport, acc, uncons(tl.asHandler(e, interrupt)).viewL(interrupt)) }
             }
         }
         case failed: Free.Fail[AlgebraF, _] => F.raiseError(failed.error)
@@ -242,7 +261,7 @@ private[fs2] object Algebra {
           val fx = bound.fx.asInstanceOf[Free.Eval[AlgebraF,_]].fr
           fx match {
             case wrap: Algebra.Eval[F, O, _] =>
-              F.flatMap(F.attempt(wrap.value)) { e => go(scope, acc, f(e).viewL(interrupt)) }
+              F.flatMap(F.attempt(wrap.value)) { e => go(scope, asyncSupport, acc, f(e).viewL(interrupt)) }
             case acquire: Algebra.Acquire[F2,_,_] =>
               val resource = acquire.resource
               val release = acquire.release
@@ -250,30 +269,27 @@ private[fs2] object Algebra {
                 F.flatMap(F.attempt(resource)) {
                   case Left(err) =>
                     scope.cancelAcquire
-                    go(scope, acc, f(Left(err)).viewL(interrupt))
+                    go(scope, asyncSupport, acc, f(Left(err)).viewL(interrupt))
                   case Right(r) =>
                     val token = new Token()
-                    // println("Acquired resource " + token + " in scope " + scope)
                     lazy val finalizer_ = release(r)
                     val finalizer = F.suspend { finalizer_ }
                     scope.finishAcquire(token, finalizer)
-                    go(scope, acc, f(Right((r, token))).viewL(interrupt))
+                    go(scope, asyncSupport, acc, f(Right((r, token))).viewL(interrupt))
                 }
               } else {
                 F.raiseError(Interrupted)
               }
             case release: Algebra.Release[F2,_] =>
-              // println("Releasing " + release.token)
               scope.releaseResource(release.token) match {
-                case None => go(scope, acc, f(Right(())).viewL(interrupt))
+                case None => go(scope, asyncSupport, acc, f(Right(())).viewL(interrupt))
                 case Some(finalizer) => F.flatMap(F.attempt(finalizer)) { e =>
-                  go(scope, acc, f(e).viewL(interrupt))
+                  go(scope, asyncSupport, acc, f(e).viewL(interrupt))
                 }
               }
             case c: Algebra.CloseScope[F2,_] =>
-              // println(s"Closing scope: ${c.toClose} back to ${c.scopeAfterClose}")
-              F.flatMap(c.toClose.close) { e =>
-                go(c.scopeAfterClose, acc,
+              F.flatMap(c.toClose.close(asyncSupport)) { e =>
+                go(c.scopeAfterClose, asyncSupport, acc,
                   f(e).
                     onError { t => c.toClose.setInterrupt(); Free.Fail(t) }.
                     map { x => c.toClose.setInterrupt(); x }.
@@ -283,17 +299,17 @@ private[fs2] object Algebra {
             case o: Algebra.OpenScope[F2,_] =>
             try {
               val innerScope = scope.open
-              // println(s"Opening scope: ${innerScope} from $scope")
-              go(innerScope, acc, f(Right(scope -> innerScope)).viewL(interrupt))
+              go(innerScope, asyncSupport, acc, f(Right(scope -> innerScope)).viewL(interrupt))
             } catch {
               case t: Throwable =>
+                // TODO pass t to error handler here?
                 // t.printStackTrace
                 throw t
             }
             case _: Algebra.GetScope[F2,_] =>
-              go(scope, acc, f(Right(scope)).viewL(interrupt))
+              go(scope, asyncSupport, acc, f(Right(scope)).viewL(interrupt))
             case _: Algebra.Interrupt[F2,_] =>
-              go(scope, acc, f(Right(interrupt)).viewL(interrupt))
+              go(scope, asyncSupport, acc, f(Right(interrupt)).viewL(interrupt))
             case unconsAsync: Algebra.UnconsAsync[F2,_,_,_] =>
               val s = unconsAsync.s
               val effect = unconsAsync.effect
@@ -309,13 +325,13 @@ private[fs2] object Algebra {
                   )) { o => ref.setAsyncPure(o) }
                 }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
               }
-              F.flatMap(asyncPull) { ap => go(scope, acc, f(Right(ap)).viewL(interrupt)) }
+              F.flatMap(asyncPull) { ap => go(scope, Some(effect -> ec), acc, f(Right(ap)).viewL(interrupt)) }
             case _ => sys.error("impossible Segment or Output following uncons")
           }
         case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }
-    F.suspend { go(scope, init, uncons(stream).viewL(() => scope.shouldInterrupt)) }
+    F.suspend { go(scope, None, init, uncons(stream).viewL(() => scope.shouldInterrupt)) }
   }
 
   def translate[F[_],G[_],O,R](fr: Free[Algebra[F,O,?],R], u: F ~> G, G: Option[Effect[G]]): Free[Algebra[G,O,?],R] = {
