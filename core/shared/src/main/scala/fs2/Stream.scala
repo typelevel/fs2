@@ -703,7 +703,7 @@ object Stream {
   def chunk[O](os: Chunk[O]): Stream[Pure,O] = segment(os)
 
   /** The infinite `Stream`, always emits `o`. */
-  def constant[O](o: O): Stream[Pure,O] = emit(o) ++ constant(o)
+  def constant[O](o: O): Stream[Pure,O] = emit(o) ++ constant(o) // TODO fix this to use Segment.constant
 
   def emit[O](o: O): Stream[Pure,O] = fromFree(Algebra.output1[Pure,O](o))
   def emits[O](os: Seq[O]): Stream[Pure,O] = chunk(Chunk.seq(os))
@@ -780,15 +780,15 @@ object Stream {
         )
       }
 
-      // runs the outer stream, interrupts when kill == true, and then decrements the `available`
+      // runs the outer stream, interrupts when kill == true, and then decrements the `running`
       def runOuter: F[Unit] = {
-        (outer.interruptWhen(killSignal) flatMap runInner onFinalize decrementRunning run).attempt flatMap {
-          case Right(_) => F.pure(())
-          case Left(err) => outputQ.enqueue1(Some(Left(err)))
+        (outer.interruptWhen(killSignal) flatMap runInner run).attempt flatMap {
+          case Right(_) => decrementRunning
+          case Left(err) => outputQ.enqueue1(Some(Left(err))) >> decrementRunning
         }
       }
 
-      // monitors when the all streams (outer/inner) are terminated an then suplies None to output Queue
+      // monitors when the all streams (outer/inner) are terminated an then supplies None to output Queue
       def doneMonitor: F[Unit]= {
         running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
           Stream.eval(outputQ.enqueue1(None))
