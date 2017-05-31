@@ -147,7 +147,7 @@ private[fs2] object Algebra {
     def close: F[Either[Throwable,Unit]] = {
       def runAll(sofar: Option[Throwable], finalizers: List[F[Unit]]): F[Either[Throwable,Unit]] = finalizers match {
         case Nil => F.pure(sofar.toLeft(()))
-        case h :: t => F.flatMap(F.attempt(h)) { res => runAll(sofar orElse res.swap.toOption, t) }
+        case h :: t => F.flatMap(F.attempt(h)) { res => runAll(sofar orElse res.fold(Some(_), _ => None), t) }
       }
       runAll(None, closeAndReturnFinalizers)
     }
