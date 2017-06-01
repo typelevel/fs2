@@ -41,25 +41,19 @@ class SocketSpec extends Fs2Spec {
       }
 
       val clients: Stream[IO, Array[Byte]] = {
-        val pc: Stream[IO, Stream[IO, Array[Byte]]] =
-          Stream.range(0, clientCount).covary[IO].map { idx =>
-            Stream.eval(localBindAddress.get).flatMap { local =>
-              client[IO](local).flatMap { socket =>
-            Stream.eval_(IO(println("START " + idx))) ++
-                Stream.chunk(message).covary[IO].to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
-                  socket.reads(1024, None).chunks.map(_.toArray)
-              }
-            } ++ Stream.eval_(IO(println("DONE " + idx)))
+        Stream.range(0, clientCount).covary[IO].map { idx =>
+          Stream.eval(localBindAddress.get).flatMap { local =>
+            client[IO](local).flatMap { socket =>
+              Stream.chunk(message).covary[IO].to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
+                socket.reads(1024, None).chunks.map(_.toArray)
+            }
           }
-        pc.join(10).onFinalize(IO(println("FINALIZED CLIENTS")))
+        }.join(10)
       }
 
-      // (0 until 100).foreach { _ =>
-      // println("---------------------------------------------------------------------------------------")
-      val result = (echoServer.drain merge clients).take(clientCount).runLog.unsafeRunTimed(timeout).get
+      val result = Stream(echoServer.drain, clients).join(2)take(clientCount).runLog.unsafeRunTimed(timeout).get
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
-      // }
     }
   }
 }
