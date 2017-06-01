@@ -1,6 +1,7 @@
 package fs2.internal
 
 import java.util.concurrent.atomic._
+import scala.collection.mutable.LinkedHashMap
 import scala.concurrent.ExecutionContext
 import cats.~>
 import cats.effect.{ Effect, IO, Sync }
@@ -55,11 +56,19 @@ private[fs2] object Algebra {
   def unconsAsync[F[_],X,Y,O](s: Free[Algebra[F,O,?],Unit])(implicit F: Effect[F], ec: ExecutionContext): Free[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]]] =
     Free.Eval[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]](UnconsAsync(s, F, ec))
 
-  def openScope[F[_],O]: Free[Algebra[F,O,?],(Scope[F],Scope[F])] =
+  private def openScope[F[_],O]: Free[Algebra[F,O,?],(Scope[F],Scope[F])] =
     Free.Eval[Algebra[F,O,?],(Scope[F],Scope[F])](OpenScope())
 
-  def closeScope[F[_],O](toClose: Scope[F], scopeAfterClose: Scope[F]): Free[Algebra[F,O,?],Unit] =
+  private def closeScope[F[_],O](toClose: Scope[F], scopeAfterClose: Scope[F]): Free[Algebra[F,O,?],Unit] =
     Free.Eval[Algebra[F,O,?],Unit](CloseScope(toClose, scopeAfterClose))
+
+  def scope[F[_],O,R](pull: Free[Algebra[F,O,?],R]): Free[Algebra[F,O,?],R] =
+    openScope flatMap { case (oldScope, newScope) =>
+      Free.Bind(pull, (e: Either[Throwable,R]) => e match {
+        case Left(e) => closeScope(newScope, oldScope) flatMap { _ => fail(e) }
+        case Right(r) => closeScope(newScope, oldScope) map { _ => r }
+      })
+    }
 
   def pure[F[_],O,R](r: R): Free[Algebra[F,O,?],R] =
     Free.Pure[Algebra[F,O,?],R](r)
@@ -81,8 +90,8 @@ private[fs2] object Algebra {
     private var closed: Boolean = false
     private var midAcquires: Int = 0
     private var midAcquiresDone: () => Unit = () => ()
-    private val resources: collection.mutable.LinkedHashMap[Token, F[Unit]] = new collection.mutable.LinkedHashMap[Token, F[Unit]]()
-    private var spawns: Vector[Scope[F]] = Vector.empty // TODO Pick a collection with better performance characteristics
+    private val resources: LinkedHashMap[Token, F[Unit]] = new LinkedHashMap[Token, F[Unit]]()
+    private var spawns: Catenable[Scope[F]] = Catenable.empty
 
     def isClosed: Boolean = monitor.synchronized { closed }
 
@@ -118,24 +127,25 @@ private[fs2] object Algebra {
       }
     }
 
-    private def closeAndReturnFinalizers(asyncSupport: Option[(Effect[F], ExecutionContext)]): F[List[(Token,F[Unit])]] = monitor.synchronized {
+    private def closeAndReturnFinalizers(asyncSupport: Option[(Effect[F], ExecutionContext)]): F[Catenable[(Token,F[Unit])]] = monitor.synchronized {
       if (closed || closing) {
-        F.pure(Nil)
+        F.pure(Catenable.empty)
       } else {
         closing = true
-        def finishClose: F[List[(Token,F[Unit])]] = {
+        def finishClose: F[Catenable[(Token,F[Unit])]] = {
           import cats.syntax.traverse._
           import cats.syntax.functor._
-          import cats.instances.list._
-          val spawnFinalizers = spawns.toList.traverse(_.closeAndReturnFinalizers(asyncSupport)).map(_.flatten)
-          spawnFinalizers.map { s =>
-            monitor.synchronized {
-              closed = true
-              val result = s ++ resources.toList
-              resources.clear()
-              result
+          spawns.
+            traverse(_.closeAndReturnFinalizers(asyncSupport)).
+            map(_.foldLeft(Catenable.empty: Catenable[(Token,F[Unit])])(_ ++ _)).
+            map { s =>
+              monitor.synchronized {
+                closed = true
+                val result = s ++ Catenable.fromSeq(resources.toList)
+                resources.clear()
+                result
+              }
             }
-          }
         }
         if (midAcquires == 0) {
           finishClose
@@ -154,9 +164,9 @@ private[fs2] object Algebra {
     }
 
     def close(asyncSupport: Option[(Effect[F],ExecutionContext)]): F[Either[Throwable,Unit]] = {
-      def runAll(sofar: Option[Throwable], finalizers: List[F[Unit]]): F[Either[Throwable,Unit]] = finalizers match {
-        case Nil => F.pure(sofar.toLeft(()))
-        case h :: t => F.flatMap(F.attempt(h)) { res => runAll(sofar orElse res.fold(Some(_), _ => None), t) }
+      def runAll(sofar: Option[Throwable], finalizers: Catenable[F[Unit]]): F[Either[Throwable,Unit]] = finalizers.uncons match {
+        case None => F.pure(sofar.toLeft(()))
+        case Some((h, t)) => F.flatMap(F.attempt(h)) { res => runAll(sofar orElse res.fold(Some(_), _ => None), t) }
       }
       F.flatMap(closeAndReturnFinalizers(asyncSupport)) { finalizers =>
         runAll(None, finalizers.map(_._2))
@@ -199,21 +209,13 @@ private[fs2] object Algebra {
     }
   }
 
-  /** Left-fold the output of a stream, supporting `unconsAsync`. */
+  /** Left-fold the output of a stream. */
   def runFold[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] =
     F.flatMap(F.delay(new Scope[F2]())) { scope =>
       F.flatMap(F.attempt(runFold_(stream, init)(f, scope))) {
         case Left(t) => F.flatMap(scope.close(None))(_ => F.raiseError(t))
         case Right(b) => F.flatMap(scope.close(None))(_ => F.pure(b))
       }
-    }
-
-  def scope[F[_],O,R](pull: Free[Algebra[F,O,?],R]): Free[Algebra[F,O,?],R] =
-    openScope flatMap { case (oldScope, newScope) =>
-      Free.Bind(pull, (e: Either[Throwable,R]) => e match {
-        case Left(e) => closeScope(newScope, oldScope) flatMap { _ => fail(e) }
-        case Right(r) => closeScope(newScope, oldScope) map { _ => r }
-      })
     }
 
   def runFold_[F2[_],O,B](stream: Free[Algebra[F2,O,?],Unit], init: B)(
@@ -238,6 +240,7 @@ private[fs2] object Algebra {
           fx match {
             case wrap: Algebra.Eval[F, O, _] =>
               F.flatMap(F.attempt(wrap.value)) { e => go(scope, asyncSupport, acc, f(e).viewL) }
+
             case acquire: Algebra.Acquire[F2,_,_] =>
               val resource = acquire.resource
               val release = acquire.release
@@ -256,6 +259,7 @@ private[fs2] object Algebra {
               } else {
                 F.raiseError(Interrupted)
               }
+
             case release: Algebra.Release[F2,_] =>
               scope.releaseResource(release.token) match {
                 case None => go(scope, asyncSupport, acc, f(Right(())).viewL)
@@ -269,15 +273,9 @@ private[fs2] object Algebra {
               }
 
             case o: Algebra.OpenScope[F2,_] =>
-            try {
               val innerScope = scope.open
               go(innerScope, asyncSupport, acc, f(Right(scope -> innerScope)).viewL)
-            } catch {
-              case t: Throwable =>
-                // TODO pass t to error handler here?
-                // t.printStackTrace
-                throw t
-            }
+
             case unconsAsync: Algebra.UnconsAsync[F2,_,_,_] =>
               val s = unconsAsync.s
               val effect = unconsAsync.effect
@@ -294,6 +292,7 @@ private[fs2] object Algebra {
                 }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
               }
               F.flatMap(asyncPull) { ap => go(scope, Some(effect -> ec), acc, f(Right(ap)).viewL) }
+
             case _ => sys.error("impossible Segment or Output following uncons")
           }
         case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
@@ -323,15 +322,4 @@ private[fs2] object Algebra {
     }
     fr.translate[Algebra[G,O,?]](algFtoG)
   }
-
-  private def releaseAll[F[_]](sofar: Either[Throwable,Unit], finalizers: List[F[Either[Throwable,Unit]]])(
-    implicit F: cats.Monad[F])
-    : F[Either[Throwable,Unit]] = finalizers match {
-      case Nil => F.pure(sofar)
-      case h :: t => F.flatMap(h) {
-        case Left(e) => sofar.fold(_ => releaseAll(sofar, t), _ => releaseAll(Left(e), t))
-        case _ => releaseAll(sofar, t)
-      }
-    }
-
 }
