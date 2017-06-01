@@ -12,8 +12,10 @@ object hash {
   def sha384[F[_]]: Pipe[F,Byte,Byte] = digest(MessageDigest.getInstance("SHA-384"))
   def sha512[F[_]]: Pipe[F,Byte,Byte] = digest(MessageDigest.getInstance("SHA-512"))
 
-  def digest[F[_]](digest: => MessageDigest): Pipe[F,Byte,Byte] = in => Stream.suspend {
-    val d = digest
-    in.chunks.flatMap { c => d.update(c.toBytes.values); Stream.empty } ++ Stream.chunk(Chunk.bytes(d.digest()))
-  }
+  def digest[F[_]](digest: => MessageDigest): Pipe[F,Byte,Byte] =
+    in => Stream.suspend {
+      in.chunks.
+        fold(digest) { (d, c) => d.update(c.toBytes.values); d }.
+        flatMap { d => Stream.chunk(Chunk.bytes(d.digest())) }
+    }
 }

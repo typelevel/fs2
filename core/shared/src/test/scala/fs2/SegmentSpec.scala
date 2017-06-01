@@ -6,7 +6,7 @@ import Arbitrary.arbitrary
 class SegmentSpec extends Fs2Spec {
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
-    PropertyCheckConfiguration(minSuccessful = 10000, workers = 4)
+    PropertyCheckConfiguration(minSuccessful = 1000, workers = 4)
 
   def genSegment[O](genO: Gen[O]): Gen[Segment[O,Unit]] = Gen.oneOf(
     Gen.const(()).map(Segment.pure(_)),

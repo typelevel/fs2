@@ -754,8 +754,6 @@ object Stream {
    */
   def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
     assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
-    val getScope: Stream[F,Algebra.Scope[F]] = Pull.fromFree(Algebra.getScope[F,Nothing]).flatMap(Pull.output1).stream
-    getScope.flatMap { scope =>
     Stream.eval(async.signalOf(false)) flatMap { killSignal =>
     Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
     Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
@@ -774,7 +772,7 @@ object Stream {
             val s = inner.segments.attempt.
               flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
               interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-            Algebra.runFoldInterruptibly(s.get, () => scope.shouldInterrupt, ())((u,_) => u).flatMap { o =>
+            Algebra.runFold(s.get, ())((u,_) => u).flatMap { o =>
               available.increment >> decrementRunning
             }
           }
@@ -804,7 +802,7 @@ object Stream {
       } onFinalize {
         killSignal.set(true) >> (running.discrete.dropWhile(_ > 0) take 1 run) // await all open inner streams and the outer stream to be terminated
       }
-    }}}}}
+    }}}}
   }
 
   /** Like [[join]] but races all inner streams simultaneously. */
