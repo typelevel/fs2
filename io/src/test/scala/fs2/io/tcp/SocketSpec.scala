@@ -52,7 +52,7 @@ class SocketSpec extends Fs2Spec {
                 Stream.chunk(message).covary[IO].to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
                   socket.reads(1024, None).chunks.map(_.toArray)
               }
-            }
+            } ++ Stream.eval_(IO(println("DONE " + idx)))
           }
         pc.join(10)
       }
