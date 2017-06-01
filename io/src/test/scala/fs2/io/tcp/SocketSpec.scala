@@ -46,7 +46,7 @@ class SocketSpec extends Fs2Spec {
 
       val clients: Stream[IO, Array[Byte]] = {
         val pc: Stream[IO, Stream[IO, Array[Byte]]] =
-          Stream.range(0, clientCount).covary[IO].map { idx =>
+          Stream.range(0, 2 * clientCount).covary[IO].map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
               client[IO](local).flatMap { socket =>
                 Stream.chunk(message).covary[IO].to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
