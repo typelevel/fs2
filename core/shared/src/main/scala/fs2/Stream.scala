@@ -495,19 +495,18 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * `n` elements, only one chunk of this size will be emitted.
    *
    * @example {{{
-   * scala> Stream(1, 2, 3, 4).sliding(2).toList
-   * res0: List[Vector[Int]] = List(Vector(1, 2), Vector(2, 3), Vector(3, 4))
+   * scala> Stream(1, 2, 3, 4).sliding(2).map(_.toList).toList
+   * res0: List[List[Int]] = List(List(1, 2), List(2, 3), List(3, 4))
    * }}}
    * @throws scala.IllegalArgumentException if `n` <= 0
    */
-   // TODO return Catenable[O]?
-  def sliding(n: Int): Stream[F,Vector[O]] = {
+  def sliding(n: Int): Stream[F,Catenable[O]] = {
     require(n > 0, "n must be > 0")
-    def go(window: Vector[O], s: Stream[F,O]): Pull[F,Vector[O],Unit] = {
+    def go(window: Catenable[O], s: Stream[F,O]): Pull[F,Catenable[O],Unit] = {
       s.pull.uncons.flatMap {
         case None => Pull.done
         case Some((hd,tl)) =>
-          hd.scan(window)((w, i) => w.tail :+ i).drop(1) match {
+          hd.scan(window)((w, i) => w.uncons.get._2 :+ i).drop(1) match {
             case Left((w2,_)) => go(w2, tl)
             case Right(out) => Pull.segment(out).flatMap { window => go(window, tl) }
           }
@@ -516,7 +515,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     this.pull.unconsN(n, true).flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
-        val window = hd.toVector
+        val window = hd.toCatenable
         Pull.output1(window) >> go(window, tl)
     }.stream
   }
@@ -1668,7 +1667,7 @@ object Stream {
     def fold[O2](z: O2)(f: (O2, O) => O2): Pull[F,Nothing,O2] =
       uncons.flatMap {
         case None => Pull.pure(z)
-        case Some((hd,tl)) => tl.pull.fold(hd.fold(z)(f).run)(f) // TODO find a way to not call run
+        case Some((hd,tl)) => Pull.segment(hd.fold(z)(f)).flatMap { z => tl.pull.fold(z)(f) }
       }
 
     /**

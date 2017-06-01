@@ -262,7 +262,7 @@ class PipeSpec extends Fs2Spec {
     }
 
     "sliding" in forAll { (s: PureStream[Int], n: SmallPositive) =>
-     s.get.sliding(n.get).toList shouldBe s.get.toList.sliding(n.get).map(_.toVector).toList
+     s.get.sliding(n.get).toList.map(_.toList) shouldBe s.get.toList.sliding(n.get).map(_.toList).toList
     }
 
     "split" in forAll { (s: PureStream[Int], n: SmallPositive) =>

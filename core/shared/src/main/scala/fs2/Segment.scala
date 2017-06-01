@@ -350,6 +350,16 @@ abstract class Segment[+O,+R] { self =>
     while (ok) steps(step, trampoline)
   }
 
+  def foreach(f: O => Unit): Unit = {
+    foreachChunk { c =>
+      var i = 0
+      while (i < c.size) {
+        f(c(i))
+        i += 1
+      }
+    }
+  }
+
   def toChunks: Catenable[Chunk[O]] = {
     var acc: Catenable[Chunk[O]] = Catenable.empty
     foreachChunk(c => acc = acc :+ c)
@@ -368,6 +378,12 @@ abstract class Segment[+O,+R] { self =>
       }
     }
     buf.result
+  }
+
+  def toCatenable: Catenable[O] = {
+    var result: Catenable[O] = Catenable.empty
+    foreach(o => result = result :+ o)
+    result
   }
 
   def toVector: Vector[O] = {
