@@ -26,22 +26,18 @@ class SocketSpec extends Fs2Spec {
     "echo.requests" in {
 
       val message = Chunk.bytes("fs2.rocks".getBytes)
-      val clientCount = 5000
+      val clientCount = 20
 
       val localBindAddress = async.ref[IO, InetSocketAddress].unsafeRunSync()
 
       val echoServer: Stream[IO, Unit] = {
-        val ps =
-          serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
-          .flatMap {
-            case Left(local) => Stream.eval_(localBindAddress.setAsyncPure(local))
-            case Right(s) =>
-              Stream.emit(s.flatMap { socket =>
-                socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)
-              })
-          }
-
-        ps.joinUnbounded
+        serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
+          case Left(local) => Stream.eval_(localBindAddress.setAsyncPure(local))
+          case Right(s) =>
+            Stream.emit(s.flatMap { socket =>
+              socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)
+            })
+        }.joinUnbounded
       }
 
       val clients: Stream[IO, Array[Byte]] = {
@@ -49,6 +45,7 @@ class SocketSpec extends Fs2Spec {
           Stream.range(0, clientCount).covary[IO].map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
               client[IO](local).flatMap { socket =>
+            Stream.eval_(IO(println("START " + idx))) ++
                 Stream.chunk(message).covary[IO].to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
                   socket.reads(1024, None).chunks.map(_.toArray)
               }
@@ -58,7 +55,8 @@ class SocketSpec extends Fs2Spec {
       }
 
       // (0 until 100).foreach { _ =>
-      val result = Stream(echoServer.drain, clients).join(2).take(clientCount).runLog.unsafeRunTimed(timeout).get
+      // println("---------------------------------------------------------------------------------------")
+      val result = (echoServer.drain merge clients).take(clientCount).runLog.unsafeRunTimed(timeout).get
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
       // }

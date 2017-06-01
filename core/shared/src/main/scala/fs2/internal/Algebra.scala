@@ -121,13 +121,14 @@ private[fs2] object Algebra {
         def finishClose: F[Catenable[(Token,F[Unit])]] = monitor.synchronized {
           import cats.syntax.traverse._
           import cats.syntax.functor._
-          spawns.
+          import cats.instances.vector._
+          spawns.toVector.reverse.
             traverse(_.closeAndReturnFinalizers(asyncSupport)).
             map(_.foldLeft(Catenable.empty: Catenable[(Token,F[Unit])])(_ ++ _)).
             map { s =>
               monitor.synchronized {
                 closed = true
-                val result = s ++ Catenable.fromSeq(resources.toList)
+                val result = s ++ Catenable.fromSeq(resources.toVector.reverse)
                 resources.clear()
                 result
               }

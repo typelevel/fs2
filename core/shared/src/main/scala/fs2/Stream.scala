@@ -747,8 +747,8 @@ object Stream {
     Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
     Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
     Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Segment[O,Unit]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-      val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
-      val decrementRunning: F[Unit] = running.modify(_ - 1).as(())
+      val incrementRunning: F[Unit] = running.modify(_ + 1).map(c => println(s"${killSignal.##} $c"))
+      val decrementRunning: F[Unit] = running.modify(_ - 1).map(c => println(s"${killSignal.##} $c"))
 
       // runs inner stream
       // each stream is forked.
@@ -758,12 +758,10 @@ object Stream {
         Stream.eval_(
           available.decrement >> incrementRunning >>
           async.fork {
-            val s = inner.segments.attempt.
+            inner.segments.attempt.
               flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
-              interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-            Algebra.runFold(s.get, ())((u,_) => u).flatMap { o =>
-              available.increment >> decrementRunning
-            }
+              interruptWhen(killSignal). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+              run >> available.increment >> decrementRunning
           }
         )
       }
@@ -789,7 +787,9 @@ object Stream {
         case Left(e) => Stream.fail(e)
         case Right(s) => Stream.segment(s)
       } onFinalize {
-        killSignal.set(true) >> (running.discrete.dropWhile(_ > 0) take 1 run) // await all open inner streams and the outer stream to be terminated
+        F.delay(println("FINALIZING MAX " + maxOpen)) >>
+        killSignal.set(true) >> running.get.flatMap { r => F.delay(println("WAITING FOR RUNNING " + r)) } >>
+        (running.discrete.dropWhile(_ > 0) take 1 run) >> running.get.flatMap { r => F.delay(println("DONE WAITING; " + r)) }
       }
     }}}}
   }
