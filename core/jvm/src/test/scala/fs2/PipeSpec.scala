@@ -418,7 +418,6 @@ class PipeSpec extends Fs2Spec {
        }
      }
      "handle errors from observing sink" in {
-       pending // Needs new unconsAsync resource handling
        forAll { (s: PureStream[Int]) =>
          runLog {
            s.get.covary[IO].observe { _ => Stream.fail(Err) }.attempt
@@ -429,7 +428,6 @@ class PipeSpec extends Fs2Spec {
        }
      }
      "handle finite observing sink" in {
-       pending // Needs new unconsAsync resource handling
        forAll { (s: PureStream[Int]) =>
          runLog {
            s.get.covary[IO].observe { _ => Stream.empty }
@@ -443,7 +441,6 @@ class PipeSpec extends Fs2Spec {
        }
      }
      "handle multiple consecutive observations" in {
-       pending // Needs new unconsAsync resource handling
        forAll { (s: PureStream[Int], f: Failure) =>
          runLog {
            val sink: Sink[IO,Int] = _.evalMap(i => IO(()))
@@ -453,7 +450,7 @@ class PipeSpec extends Fs2Spec {
        }
      }
      "no hangs on failures" in {
-       pending // Needs new unconsAsync resource handling
+       pending // Still broken
        forAll { (s: PureStream[Int], f: Failure) =>
          swallow {
            runLog {
