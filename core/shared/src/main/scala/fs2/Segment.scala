@@ -4,8 +4,6 @@ import cats.Eval
 
 import Segment._
 
-// TODO drain, filter, and collect should periodically emit an empty chunk if they haven't emitted anything in N steps
-
 abstract class Segment[+O,+R] { self =>
   private[fs2]
   def stage0: (Depth, (=> Unit) => Unit, O => Unit, Chunk[O] => Unit, R => Unit) => Eval[Step[O,R]]
@@ -257,8 +255,21 @@ abstract class Segment[+O,+R] { self =>
   final def filter[O2](p: O => Boolean): Segment[O,R] = new Segment[O,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
-        o => if (p(o)) emit(o),
-        os => { var i = 0; while (i < os.size) { val o = os(i); if (p(o)) emit(o); i += 1; } },
+        o => if (p(o)) emit(o) else emits(Chunk.empty),
+        os => {
+          var i = 0
+          var filtered = false
+          var emitted = false
+          while (i < os.size) {
+            val o = os(i)
+            if (p(o)) {
+              emit(o)
+              emitted = true
+            } else filtered = true
+            i += 1
+          }
+          if (os.isEmpty || (filtered && !emitted)) emits(Chunk.empty)
+        },
         done).map(_.mapRemainder(_ filter p))
     }
     override def toString = s"($self).filter(<pf1>)"
@@ -267,8 +278,21 @@ abstract class Segment[+O,+R] { self =>
   final def collect[O2](pf: PartialFunction[O,O2]): Segment[O2,R] = new Segment[O2,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
-        o => if (pf.isDefinedAt(o)) emit(pf(o)),
-        os => { var i = 0; while (i < os.size) { val o = os(i); if (pf.isDefinedAt(o)) emit(pf(o)); i += 1; } },
+        o => if (pf.isDefinedAt(o)) emit(pf(o)) else emits(Chunk.empty),
+        os => {
+          var i = 0
+          var filtered = false
+          var emitted = false
+          while (i < os.size) {
+            val o = os(i)
+            if (pf.isDefinedAt(o)) {
+              emit(pf(o))
+              emitted = true
+            } else filtered = true
+            i += 1
+          }
+          if (os.isEmpty || (filtered && !emitted)) emits(Chunk.empty)
+        },
         done).map(_.mapRemainder(_ collect pf))
     }
     override def toString = s"($self).collect(<pf1>)"
@@ -306,7 +330,15 @@ abstract class Segment[+O,+R] { self =>
 
   final def drain: Segment[Nothing,R] = new Segment[Nothing,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
-      self.stage(depth.increment, defer, o => (), os => (), done).map(_.mapRemainder(_.drain))
+      var sinceLastEmit = 0
+      def maybeEmitEmpty() = {
+        sinceLastEmit += 1
+        if (sinceLastEmit >= 128) {
+          sinceLastEmit = 0
+          emits(Chunk.empty)
+        }
+      }
+      self.stage(depth.increment, defer, o => maybeEmitEmpty(), os => maybeEmitEmpty(), done).map(_.mapRemainder(_.drain))
     }
     override def toString = s"($self).drain"
   }

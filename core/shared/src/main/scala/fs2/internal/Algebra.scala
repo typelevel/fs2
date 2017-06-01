@@ -171,7 +171,7 @@ private[fs2] object Algebra {
       F.flatMap(closeAndReturnFinalizers(asyncSupport)) { finalizers => runAll(None, finalizers) }
     }
 
-    def shouldInterrupt: Boolean = monitor.synchronized { closed && interrupt && false /* TODO */ }
+    def shouldInterrupt: Boolean = monitor.synchronized { closed && interrupt && false }
     def setInterrupt(): Unit = monitor.synchronized {
       spawns.foreach(_.setInterrupt())
       interrupt = true

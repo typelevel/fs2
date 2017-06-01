@@ -703,7 +703,8 @@ object Stream {
   def chunk[O](os: Chunk[O]): Stream[Pure,O] = segment(os)
 
   /** The infinite `Stream`, always emits `o`. */
-  def constant[O](o: O): Stream[Pure,O] = emit(o) ++ constant(o) // TODO fix this to use Segment.constant
+  def constant[O](o: O, segmentSize: Int = 256): Stream[Pure,O] =
+    segment(Segment.constant(o).take(segmentSize).voidResult).repeat
 
   def emit[O](o: O): Stream[Pure,O] = fromFree(Algebra.output1[Pure,O](o))
   def emits[O](os: Seq[O]): Stream[Pure,O] = chunk(Chunk.seq(os))
@@ -789,7 +790,7 @@ object Stream {
       }
 
       // monitors when the all streams (outer/inner) are terminated an then supplies None to output Queue
-      def doneMonitor: F[Unit]= {
+      def doneMonitor: F[Unit] = {
         running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
           Stream.eval(outputQ.enqueue1(None))
         } run
