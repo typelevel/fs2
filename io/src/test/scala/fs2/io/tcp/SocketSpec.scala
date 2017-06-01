@@ -57,11 +57,11 @@ class SocketSpec extends Fs2Spec {
         pc.join(10).onFinalize(IO(println("FINALIZED CLIENTS")))
       }
 
-      (0 until 100).foreach { _ =>
+      // (0 until 100).foreach { _ =>
       val result = Stream(echoServer.drain, clients).join(2).take(clientCount).runLog.unsafeRunTimed(timeout).get
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
-      }
+      // }
     }
   }
 }
