@@ -1,6 +1,5 @@
 package fs2.internal
 
-import java.util.concurrent.atomic._
 import scala.collection.mutable.LinkedHashMap
 import scala.concurrent.ExecutionContext
 import cats.~>
@@ -13,16 +12,8 @@ private[fs2] sealed trait Algebra[F[_],O,R]
 
 private[fs2] object Algebra {
 
-  private val tokenNonce: AtomicLong = new AtomicLong(Long.MinValue)
-  final class Token extends java.lang.Comparable[Token] {
-    val nonce: Long = tokenNonce.incrementAndGet
-    def compareTo(s2: Token) = nonce compareTo s2.nonce
-    override def equals(that: Any): Boolean = that match {
-      case t: Token => nonce == t.nonce
-      case _ => false
-    }
-    override def hashCode: Int = nonce.hashCode
-    override def toString = s"Token(${##}/${nonce})"
+  final class Token {
+    override def toString = s"Token(${##})"
   }
 
   final case class Output[F[_],O](values: Segment[O,Unit]) extends Algebra[F,O,Unit]
@@ -78,11 +69,6 @@ private[fs2] object Algebra {
 
   def suspend[F[_],O,R](f: => Free[Algebra[F,O,?],R]): Free[Algebra[F,O,?],R] =
     Free.suspend[Algebra[F,O,?],R](f)
-
-  def rethrow[F[_],O,R](f: Free[Algebra[F,O,?],Either[Throwable,R]]): Free[Algebra[F,O,?],R] = f flatMap {
-    case Left(err) => fail(err)
-    case Right(r) => pure(r)
-  }
 
   final class Scope[F[_]](implicit F: Sync[F]) {
     private val monitor = this

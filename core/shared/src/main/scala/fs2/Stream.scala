@@ -466,16 +466,6 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
       case Some((hd,tl)) => tl.scan_(hd: O2)(f)
     }.stream
 
-  // /**
-  //  * Used in conjunction with `[[Stream.uncons]]` or `[[Stream.uncons1]]`.
-  //  * When `s.scope` starts, the set of live resources is recorded.
-  //  * When `s.scope` finishes, any newly allocated resources since the start of `s`
-  //  * are all cleaned up.
-  //  */
-  // def scope: Stream[F,O] =
-  //   Stream.mk { StreamCore.scope { self.get } }
-  // TODO Delete this?
-
   /** Outputs segments with a limited maximum size, splitting as necessary. */
   def segmentLimit(n: Int): Stream[F,Segment[O,Unit]] =
     this repeatPull { _.unconsLimit(n) flatMap {
