@@ -193,6 +193,25 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       s.unsafeRunSync
     }
 
+    "finalizers are run in LIFO order - explicit release" in {
+      var o: Vector[Int] = Vector.empty
+      runLog { (0 until 10).foldLeft(Stream.eval(IO(0)))((acc,i) => Stream.bracket(IO(i))(i => acc, i => IO(o = o :+ i))) }
+      o shouldBe (0 until 10).toVector
+    }
+
+    "finalizers are run in LIFO order - scope closure" in {
+      var o: Vector[Int] = Vector.empty
+      runLog {
+        Stream.range(0, 10).covary[IO].repeatPull {
+          _.uncons1.flatMap {
+            case Some((h,t)) => Pull.acquire(IO(h))(h => IO(o = o :+ h)).as(Some(t))
+            case None => Pull.pure(None)
+          }
+        }
+      }
+      o shouldBe (0 until 10).toVector.reverse
+    }
+
     def bracket[A](c: AtomicLong)(s: Stream[IO,A]): Stream[IO,A] = Stream.suspend {
       Stream.bracket(IO { c.decrementAndGet })(
         _ => s,

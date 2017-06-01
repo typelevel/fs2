@@ -1001,7 +1001,8 @@ object Stream {
         },
         {
           val drainQueue: Stream[F,Nothing] =
-            Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
+            Stream.eval(
+              dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
               if (dequeue) q.dequeue.unNoneTerminate.drain
               else Stream.empty
             }
@@ -1175,7 +1176,7 @@ object Stream {
 
     /** Synchronously send values through `sink`. */
     def observe[O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
-      self.diamond(identity)(async.synchronousQueue, sink andThen (_.drain))(_.merge(_))
+      self.diamond(identity)(async.mutable.Queue.synchronousNoneTerminated, sink andThen (_.drain))(_.merge(_))
 
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync[O2>:O](maxQueued: Int)(sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =

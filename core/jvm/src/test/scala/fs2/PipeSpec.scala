@@ -399,68 +399,63 @@ class PipeSpec extends Fs2Spec {
     }
 
     "observe/observeAsync" - {
-     "basic functionality" in {
-       forAll { (s: PureStream[Int]) =>
-         val sum = new AtomicLong(0)
-         val out = runLog {
-           s.get.covary[IO].observe {
-             _.evalMap(i => IO { sum.addAndGet(i.toLong); () })
-           }
-         }
-         out.map(_.toLong).sum shouldBe sum.get
-         sum.set(0)
-         val out2 = runLog {
-           s.get.covary[IO].observeAsync(maxQueued = 10) {
-             _.evalMap(i => IO { sum.addAndGet(i.toLong); () })
-           }
-         }
-         out2.map(_.toLong).sum shouldBe sum.get
-       }
-     }
-     "handle errors from observing sink" in {
-       forAll { (s: PureStream[Int]) =>
-         runLog {
-           s.get.covary[IO].observe { _ => Stream.fail(Err) }.attempt
-         } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
-         runLog {
-           s.get.covary[IO].observeAsync(2) { _ => Stream.fail(Err) }.attempt
-         } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
-       }
-     }
-     "handle finite observing sink" in {
-       forAll { (s: PureStream[Int]) =>
-         runLog {
-           s.get.covary[IO].observe { _ => Stream.empty }
-         } should contain theSameElementsAs s.get.toVector
-         runLog {
-           s.get.covary[IO].observe { _.take(2).drain }
-         } should contain theSameElementsAs s.get.toVector
-         runLog {
-           s.get.covary[IO].observeAsync(2) { _ => Stream.empty }
-         } should contain theSameElementsAs s.get.toVector
-       }
-     }
-     "handle multiple consecutive observations" in {
-       forAll { (s: PureStream[Int], f: Failure) =>
-         runLog {
-           val sink: Sink[IO,Int] = _.evalMap(i => IO(()))
-           val src: Stream[IO, Int] = s.get.covary[IO]
-           src.observe(sink).observe(sink)
-         } shouldBe s.get.toVector
-       }
-     }
-     "no hangs on failures" in {
-       pending // Still broken
-       forAll { (s: PureStream[Int], f: Failure) =>
-         swallow {
-           runLog {
-             val sink: Sink[IO,Int] = in => spuriousFail(in.evalMap(i => IO(i)), f).map(_ => ())
-             val src: Stream[IO, Int] = spuriousFail(s.get.covary[IO], f)
-             src.observe(sink).observe(sink)
-           } shouldBe s.get.toVector
-         }
-       }
-     }
+      "basic functionality" in {
+        forAll { (s: PureStream[Int]) =>
+          val sum = new AtomicLong(0)
+          val out = runLog {
+            s.get.covary[IO].observe { _.evalMap(i => IO { sum.addAndGet(i.toLong); () }) }
+          }
+          out.map(_.toLong).sum shouldBe sum.get
+          sum.set(0)
+          val out2 = runLog {
+            s.get.covary[IO].observeAsync(maxQueued = 10) { _.evalMap(i => IO { sum.addAndGet(i.toLong); () }) }
+          }
+          out2.map(_.toLong).sum shouldBe sum.get
+        }
+      }
+    }
+    "handle errors from observing sink" in {
+      forAll { (s: PureStream[Int]) =>
+        runLog {
+          s.get.covary[IO].observe { _ => Stream.fail(Err) }.attempt
+        } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
+        runLog {
+          s.get.covary[IO].observeAsync(2) { _ => Stream.fail(Err) }.attempt
+        } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
+      }
+    }
+    "handle finite observing sink" in {
+      forAll { (s: PureStream[Int]) =>
+        runLog {
+          s.get.covary[IO].observe { _ => Stream.empty }
+        } should contain theSameElementsAs s.get.toVector
+        runLog {
+          s.get.covary[IO].observe { _.take(2).drain }
+        } should contain theSameElementsAs s.get.toVector
+        runLog {
+          s.get.covary[IO].observeAsync(2) { _ => Stream.empty }
+        } should contain theSameElementsAs s.get.toVector
+      }
+    }
+    "handle multiple consecutive observations" in {
+      forAll { (s: PureStream[Int], f: Failure) =>
+        runLog {
+          val sink: Sink[IO,Int] = _.evalMap(i => IO(()))
+          val src: Stream[IO, Int] = s.get.covary[IO]
+          src.observe(sink).observe(sink)
+        } shouldBe s.get.toVector
+      }
+    }
+    "no hangs on failures" in {
+      forAll { (s: PureStream[Int], f: Failure) =>
+        swallow {
+          runLog {
+            val sink: Sink[IO,Int] = in => spuriousFail(in.evalMap(i => IO(i)), f).map(_ => ())
+            val src: Stream[IO, Int] = spuriousFail(s.get.covary[IO], f)
+            src.observe(sink).observe(sink)
+          }
+        }
+      }
     }
   }
 }

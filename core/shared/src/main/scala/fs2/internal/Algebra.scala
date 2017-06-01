@@ -128,12 +128,12 @@ private[fs2] object Algebra {
       }
     }
 
-    private def closeAndReturnFinalizers(asyncSupport: Option[(Effect[F], ExecutionContext)]): F[List[F[Unit]]] = monitor.synchronized {
+    private def closeAndReturnFinalizers(asyncSupport: Option[(Effect[F], ExecutionContext)]): F[List[(Token,F[Unit])]] = monitor.synchronized {
       if (closed || closing) {
         F.pure(Nil)
       } else {
         closing = true
-        def finishClose: F[List[F[Unit]]] = {
+        def finishClose: F[List[(Token,F[Unit])]] = {
           import cats.syntax.traverse._
           import cats.syntax.functor._
           import cats.instances.list._
@@ -141,7 +141,7 @@ private[fs2] object Algebra {
           spawnFinalizers.map { s =>
             monitor.synchronized {
               closed = true
-              val result = s ++ resources.values.toList
+              val result = s ++ resources.toList
               resources.clear()
               result
             }
@@ -168,7 +168,9 @@ private[fs2] object Algebra {
         case Nil => F.pure(sofar.toLeft(()))
         case h :: t => F.flatMap(F.attempt(h)) { res => runAll(sofar orElse res.fold(Some(_), _ => None), t) }
       }
-      F.flatMap(closeAndReturnFinalizers(asyncSupport)) { finalizers => runAll(None, finalizers) }
+      F.flatMap(closeAndReturnFinalizers(asyncSupport)) { finalizers =>
+        runAll(None, finalizers.map(_._2))
+      }
     }
 
     def shouldInterrupt: Boolean = monitor.synchronized { closed && interrupt && false }
