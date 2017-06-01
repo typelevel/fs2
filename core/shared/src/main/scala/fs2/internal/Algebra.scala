@@ -118,7 +118,7 @@ private[fs2] object Algebra {
         F.pure(Catenable.empty)
       } else {
         closing = true
-        def finishClose: F[Catenable[(Token,F[Unit])]] = {
+        def finishClose: F[Catenable[(Token,F[Unit])]] = monitor.synchronized {
           import cats.syntax.traverse._
           import cats.syntax.functor._
           spawns.
@@ -259,8 +259,12 @@ private[fs2] object Algebra {
               }
 
             case o: Algebra.OpenScope[F2,_] =>
+            try {
               val innerScope = scope.open
               go(innerScope, asyncSupport, acc, f(Right(scope -> innerScope)).viewL)
+            } catch {
+              case t: Throwable => t.printStackTrace; throw t
+            }
 
             case unconsAsync: Algebra.UnconsAsync[F2,_,_,_] =>
               val s = unconsAsync.s

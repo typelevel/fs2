@@ -21,7 +21,7 @@ class SocketSpec extends Fs2Spec {
   "tcp" - {
 
     // spawns echo server, takes whatever client sends and echoes it back
-    // up to 10 clients concurrently (10k total) send message and awaits echo of it
+    // up to 10 clients concurrently (5k total) send message and awaits echo of it
     // success is that all clients got what they have sent
     "echo.requests" in {
 
@@ -46,7 +46,7 @@ class SocketSpec extends Fs2Spec {
 
       val clients: Stream[IO, Array[Byte]] = {
         val pc: Stream[IO, Stream[IO, Array[Byte]]] =
-          Stream.range(0, 2 * clientCount).covary[IO].map { idx =>
+          Stream.range(0, clientCount).covary[IO].map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
               client[IO](local).flatMap { socket =>
                 Stream.chunk(message).covary[IO].to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
@@ -54,12 +54,14 @@ class SocketSpec extends Fs2Spec {
               }
             } ++ Stream.eval_(IO(println("DONE " + idx)))
           }
-        pc.join(10)
+        pc.join(10).onFinalize(IO(println("FINALIZED CLIENTS")))
       }
 
+      (0 until 100).foreach { _ =>
       val result = Stream(echoServer.drain, clients).join(2).take(clientCount).runLog.unsafeRunTimed(timeout).get
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
+      }
     }
   }
 }
