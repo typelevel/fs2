@@ -187,10 +187,7 @@ lazy val coreJVM = core.jvm.enablePlugins(SbtOsgi).
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   ).
-  settings(mimaSettings).
-  settings(
-    fork in Test := true
-  )
+  settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
 lazy val io = project.in(file("io")).
