@@ -454,7 +454,9 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     this.pull.uncons.flatMap {
       case None => Pull.output1(z) >> Pull.done
       case Some((hd,tl)) =>
-        Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc => tl.scan_(acc)(f).stream.pull.echo }
+        Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc =>
+          tl.scan_(acc)(f)
+        }
     }
 
   /** Like `[[scan]]`, but uses the first element of the stream as the seed. */
@@ -701,7 +703,8 @@ object Stream {
   def chunk[O](os: Chunk[O]): Stream[Pure,O] = segment(os)
 
   /** The infinite `Stream`, always emits `o`. */
-  def constant[O](o: O): Stream[Pure,O] = emit(o) ++ constant(o)
+  def constant[O](o: O, segmentSize: Int = 256): Stream[Pure,O] =
+    segment(Segment.constant(o).take(segmentSize).voidResult).repeat
 
   def emit[O](o: O): Stream[Pure,O] = fromFree(Algebra.output1[Pure,O](o))
   def emits[O](os: Seq[O]): Stream[Pure,O] = chunk(Chunk.seq(os))
@@ -751,9 +754,8 @@ object Stream {
    */
   def join[F[_],O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
     assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
-    val outerInterrupt: Stream[F,() => Boolean] =
-      Pull.fromFree(Algebra.interrupt[F,Nothing]).flatMap(Pull.output1).stream
-    outerInterrupt.flatMap { interrupt =>
+    val getScope: Stream[F,Algebra.Scope[F]] = Pull.fromFree(Algebra.getScope[F,Nothing]).flatMap(Pull.output1).stream
+    getScope.flatMap { scope =>
     Stream.eval(async.signalOf(false)) flatMap { killSignal =>
     Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
     Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
@@ -770,25 +772,25 @@ object Stream {
           available.decrement >> incrementRunning >>
           async.fork {
             val s = inner.segments.attempt.
-              flatMap(r => Stream.eval(outputQ.enqueue1(Some(r)))).
+              flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
               interruptWhen(killSignal) // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-            Algebra.runFoldInterruptibly(s.get, interrupt, ())((u,_) => u).flatMap { _ =>
+            Algebra.runFoldInterruptibly(s.get, () => scope.shouldInterrupt, ())((u,_) => u).flatMap { o =>
               available.increment >> decrementRunning
             }
           }
         )
       }
 
-      // runs the outer stream, interrupts when kill == true, and then decrements the `available`
+      // runs the outer stream, interrupts when kill == true, and then decrements the `running`
       def runOuter: F[Unit] = {
-        (outer.interruptWhen(killSignal) flatMap runInner onFinalize decrementRunning run).attempt flatMap {
-          case Right(_) => F.pure(())
-          case Left(err) => outputQ.enqueue1(Some(Left(err)))
+        (outer.interruptWhen(killSignal) flatMap runInner run).attempt flatMap {
+          case Right(_) => decrementRunning
+          case Left(err) => outputQ.enqueue1(Some(Left(err))) >> decrementRunning
         }
       }
 
-      // monitors when the all streams (outer/inner) are terminated an then suplies None to output Queue
-      def doneMonitor: F[Unit]= {
+      // monitors when the all streams (outer/inner) are terminated an then supplies None to output Queue
+      def doneMonitor: F[Unit] = {
         running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
           Stream.eval(outputQ.enqueue1(None))
         } run
@@ -999,7 +1001,8 @@ object Stream {
         },
         {
           val drainQueue: Stream[F,Nothing] =
-            Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
+            Stream.eval(
+              dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
               if (dequeue) q.dequeue.unNoneTerminate.drain
               else Stream.empty
             }
@@ -1173,7 +1176,7 @@ object Stream {
 
     /** Synchronously send values through `sink`. */
     def observe[O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
-      self.diamond(identity)(async.synchronousQueue, sink andThen (_.drain))(_.merge(_))
+      self.diamond(identity)(async.mutable.Queue.synchronousNoneTerminated, sink andThen (_.drain))(_.merge(_))
 
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync[O2>:O](maxQueued: Int)(sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =

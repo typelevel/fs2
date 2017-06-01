@@ -1,7 +1,7 @@
 package fs2
 
 import cats.effect.Sync
-import fs2.internal.{ Algebra, Free, LinkedSet }
+import fs2.internal.{ Algebra, Free }
 
 /**
  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -117,25 +117,11 @@ object Pull {
   def segment[F[_],O,R](s: Segment[O,R]): Pull[F,O,R] =
     fromFree(Algebra.segment[F,O,R](s))
 
-  private def snapshot[F[_],O]: Pull[F,O,LinkedSet[Algebra.Token]] =
-    fromFree[F,O,LinkedSet[Algebra.Token]](Algebra.snapshot)
-
   def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
     output(Chunk.empty).flatMap { _ => p }
 
   private def release[F[_]](token: Algebra.Token): Pull[F,Nothing,Unit] =
     fromFree[F,Nothing,Unit](Algebra.release(token))
-
-  private def releaseAll[F[_]](tokens: LinkedSet[Algebra.Token]): Pull[F,Nothing,Unit] = {
-    def go(err: Option[Throwable], tokens: List[Algebra.Token]): Pull[F,Nothing,Unit] = {
-      tokens match {
-        case Nil => err map (Pull.fail) getOrElse Pull.pure(())
-        case tok :: tokens =>
-          release(tok).onError { e => go(Some(e), tokens) } >> go(err, tokens)
-      }
-    }
-    go(None, tokens.values.toList.reverse)
-  }
 
   implicit def InvariantOps[F[_],O,R](p: Pull[F,O,R]): InvariantOps[F,O,R] = new InvariantOps(p.get)
   final class InvariantOps[F[_],O,R] private[Pull] (private val free: Free[Algebra[F,O,?],R]) extends AnyVal {
@@ -160,20 +146,8 @@ object Pull {
     def onError[O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] =
       Pull.fromFree(self.get[F,O2,R2] onError { e => h(e).get })
 
-    def scope: Pull[F,O,R] = Pull.snapshot[F,O] flatMap { tokens0 =>
-      this flatMap { r =>
-        Pull.snapshot flatMap { tokens1 =>
-          val newTokens = tokens1 -- tokens0.values
-          if (newTokens.isEmpty) Pull.pure(r) else Pull.releaseAll(newTokens).as(r)
-        }
-      } onError { e =>
-        Pull.snapshot flatMap { tokens1 =>
-          val newTokens = tokens1 -- tokens0.values
-          if (newTokens.isEmpty) Pull.fail(e)
-          else Pull.releaseAll(newTokens) >> Pull.fail(e)
-        }
-      }
-    }
+    /** Track any resources acquired during this `Pull` and release them when it completes. */
+    def scope: Pull[F,O,R] = Pull.fromFree(Algebra.scope(free))
   }
 
   implicit def PureOps[O,R](p: Pull[Pure,O,R]): PureOps[O,R] = new PureOps(p.get[Pure,O,R])

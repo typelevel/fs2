@@ -22,7 +22,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s2 = s.foldLeft(Stream.empty: Stream[IO,Int])(_ ++ _)
       swallow { runLog(s2) }
       swallow { runLog(s2.take(1000)) }
-      withClue(f.tag) { 0L shouldBe c.get }
+      withClue(f.tag) { c.get shouldBe 0L }
     }
 
     "bracket ++ throw Err" in forAll { (s: PureStream[Int]) =>
@@ -95,7 +95,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (1)" in {
-      pending
       forAll { (s1: PureStream[Int], f1: Failure) =>
         val c = new AtomicLong(0)
         val b1 = bracket(c)(s1.get)
@@ -121,7 +120,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (2b)" in {
-      pending
       forAll { (s1: PureStream[Int], s2: PureStream[Int], f1: Failure, f2: Failure) =>
         val c = new AtomicLong(0)
         val b1 = bracket(c)(s1.get)
@@ -134,7 +132,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (3)" in {
-      pending
       forAll { (s: PureStream[(PureStream[Int], Option[Failure])], allowFailure: Boolean, f: Failure, n: SmallPositive) =>
         val outer = new AtomicLong(0)
         val inner = new AtomicLong(0)
@@ -162,7 +159,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (5)" in {
-      pending
       forAll { (s: PureStream[PureStream[Int]]) =>
         val signal = async.signalOf[IO,Boolean](false).unsafeRunSync()
         val c = new AtomicLong(0)
@@ -175,7 +171,6 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (6)" in {
-      pending
       // simpler version of (5) above which previously failed reliably, checks the case where a
       // stream is interrupted while in the middle of a resource acquire that is immediately followed
       // by a step that never completes!
@@ -196,6 +191,25 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s = Stream.bracket(IO.pure(()))(Stream.emit(_), _ => IO.pure(())).run
       s.unsafeRunSync
       s.unsafeRunSync
+    }
+
+    "finalizers are run in LIFO order - explicit release" in {
+      var o: Vector[Int] = Vector.empty
+      runLog { (0 until 10).foldLeft(Stream.eval(IO(0)))((acc,i) => Stream.bracket(IO(i))(i => acc, i => IO(o = o :+ i))) }
+      o shouldBe (0 until 10).toVector
+    }
+
+    "finalizers are run in LIFO order - scope closure" in {
+      var o: Vector[Int] = Vector.empty
+      runLog {
+        Stream.range(0, 10).covary[IO].repeatPull {
+          _.uncons1.flatMap {
+            case Some((h,t)) => Pull.acquire(IO(h))(h => IO(o = o :+ h)).as(Some(t))
+            case None => Pull.pure(None)
+          }
+        }
+      }
+      o shouldBe (0 until 10).toVector.reverse
     }
 
     def bracket[A](c: AtomicLong)(s: Stream[IO,A]): Stream[IO,A] = Stream.suspend {

@@ -25,7 +25,8 @@ trait TestUtil extends TestUtilPlatform {
     catch {
       case e: InterruptedException => throw e
       case e: TimeoutException => throw e
-      case NonFatal(e) => ()
+      case Err => ()
+      case NonFatal(e) => e.printStackTrace; ()
     }
 
   implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(
@@ -87,7 +88,8 @@ trait TestUtil extends TestUtilPlatform {
 
     implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
 
-    implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream("shrunk", Stream.chunk(Chunk.seq(as)))) }
+    // implicit
+    def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream("shrunk", Stream.chunk(Chunk.seq(as)))) }
   }
 
   case object Err extends RuntimeException("oh noes!!")
