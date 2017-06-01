@@ -55,7 +55,6 @@ lazy val commonSettings = Seq(
 lazy val testSettings = Seq(
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-  fork in Test := true,
   publishArtifact in Test := true
 )
 
@@ -188,7 +187,10 @@ lazy val coreJVM = core.jvm.enablePlugins(SbtOsgi).
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   ).
-  settings(mimaSettings)
+  settings(mimaSettings).
+  settings(
+    fork in Test := true
+  )
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
 
 lazy val io = project.in(file("io")).
