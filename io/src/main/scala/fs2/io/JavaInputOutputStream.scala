@@ -171,7 +171,7 @@ private[io] object JavaInputOutputStream {
         case Ready(Some(bytes)) =>
           if (bytes.size <= len) Ready(None) -> Some(bytes)
           else {
-            val (out,rem) = bytes.splitAtChunk(len)
+            val (out,rem) = bytes.strict.splitAt(len)
             Ready(Some(rem.toBytes)) -> Some(out.toBytes)
           }
       }
@@ -203,7 +203,7 @@ private[io] object JavaInputOutputStream {
                   val (copy,maybeKeep) =
                     if (bytes.size <= len) bytes -> None
                     else {
-                      val (out,rem) = bytes.splitAtChunk(len)
+                      val (out,rem) = bytes.strict.splitAt(len)
                       out.toBytes -> Some(rem.toBytes)
                     }
                   F.flatMap(F.delay {
