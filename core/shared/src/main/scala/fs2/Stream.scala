@@ -194,7 +194,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
         case None =>
           val o = last(last.size - 1)
           if (p(o)) {
-            val (prefix,_) = last.splitAtChunk(last.size - 1)
+            val (prefix,_) = last.strict.splitAt(last.size - 1)
             Pull.output(prefix)
           } else Pull.output(last)
       }

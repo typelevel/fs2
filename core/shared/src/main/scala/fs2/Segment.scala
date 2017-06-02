@@ -406,7 +406,7 @@ abstract class Segment[+O,+R] { self =>
             out = out :+ os
             rem -= os.size
           } else  {
-            val (before, after) = os.splitAtChunk(rem.toInt) // nb: toInt is safe b/c os.size is an Int and rem < os.size
+            val (before, after) = os.strict.splitAt(rem.toInt) // nb: toInt is safe b/c os.size is an Int and rem < os.size
             out = out :+ before
             result = Some(Right(after))
             rem = 0
@@ -444,7 +444,7 @@ abstract class Segment[+O,+R] { self =>
         }
         if (ok) out = out :+ os
         else {
-          val (before, after) = os.splitAtChunk(if (emitFailure) j + 1 else j)
+          val (before, after) = os.strict.splitAt(if (emitFailure) j + 1 else j)
           out = out :+ before
           result = Some(Right(after))
         }

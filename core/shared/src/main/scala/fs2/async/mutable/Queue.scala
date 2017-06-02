@@ -143,7 +143,7 @@ object Queue {
         def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
 
         def cancellableDequeue1: F[(F[A],F[Unit])] =
-          cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.head),cancel) }
+          cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head),cancel) }
 
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
           cancellableDequeueBatch1(batchSize).flatMap { _._1 }
@@ -189,7 +189,7 @@ object Queue {
           permits.tryDecrement.flatMap { b => if (b) q.offer1(a) else F.pure(false) }
         def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
         override def cancellableDequeue1: F[(F[A], F[Unit])] =
-          cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.head),cancel) }
+          cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head),cancel) }
         override def dequeueBatch1(batchSize: Int): F[Chunk[A]] = cancellableDequeueBatch1(batchSize).flatMap { _._1 }
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]],F[Unit])] =
           q.cancellableDequeueBatch1(batchSize).map { case (deq,cancel) => (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel) }
@@ -211,7 +211,7 @@ object Queue {
           enqueue1(a).as(true)
         def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] = cancellableDequeueBatch1(batchSize).flatMap { _._1 }
-        def cancellableDequeue1: F[(F[A], F[Unit])] = cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.head),cancel) }
+        def cancellableDequeue1: F[(F[A], F[Unit])] = cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head),cancel) }
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]],F[Unit])] =
           q.cancellableDequeueBatch1(batchSize).map { case (deq,cancel) => (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel) }
         def size = q.size
