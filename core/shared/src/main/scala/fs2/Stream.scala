@@ -1698,7 +1698,7 @@ object Stream {
       go(None, self)
     }
 
-    // def output: Pull[F,O,Unit] = Pull.outputs(self) TODO
+    def output: Pull[F,O,Unit] = Pull.fromFree(self.get)
 
     /** Like [[uncons]] but does not consume the segment (i.e., the segment is pushed back). */
     def peek: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
