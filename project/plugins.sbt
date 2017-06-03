@@ -1,4 +1,4 @@
-addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.0-M15")
+addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.0-RC1")
 addSbtPlugin("com.dwijnand" % "sbt-travisci" % "1.1.0")
 addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.5.0")
 addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.9.1")
