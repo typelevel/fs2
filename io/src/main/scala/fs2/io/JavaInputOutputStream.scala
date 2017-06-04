@@ -21,11 +21,9 @@ private[io] object JavaInputOutputStream {
       else Some(Chunk.bytes(buf, 0, numBytes))
     }
 
-  def readInputStreamGeneric[F[_]](fis: F[InputStream], chunkSize: Int, f: (InputStream, Array[Byte]) => F[Option[Chunk[Byte]]], closeAfterUse: Boolean = true)(implicit F: Sync[F]): Stream[F, Byte] = {
-    val buf = new Array[Byte](chunkSize)
-
+  def readInputStreamGeneric[F[_]](fis: F[InputStream], buf: F[Array[Byte]], f: (InputStream, Array[Byte]) => F[Option[Chunk[Byte]]], closeAfterUse: Boolean = true)(implicit F: Sync[F]): Stream[F, Byte] = {
     def useIs(is: InputStream) =
-      Stream.eval(f(is, buf))
+      Stream.eval(buf.flatMap(f(is, _)))
         .repeat
         .through(pipe.unNoneTerminate)
         .flatMap(Stream.chunk)
