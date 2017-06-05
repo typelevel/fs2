@@ -4,6 +4,7 @@ import Free.ViewL
 import Free._
 
 import cats.{ ~>, MonadError }
+import cats.effect.Sync
 
 private[fs2] sealed abstract class Free[F[_], +R] {
 
@@ -106,4 +107,16 @@ private[fs2] object Free {
         case Eval(_) => sys.error("impossible")
       }
     }
+
+  implicit def syncInstance[F[_]]: Sync[Free[F,?]] = new Sync[Free[F,?]] {
+    def pure[A](a: A): Free[F,A] = Free.Pure(a)
+    def handleErrorWith[A](fa: Free[F,A])(f: Throwable => Free[F,A]): Free[F,A] = fa.onError(f)
+    def raiseError[A](t: Throwable): Free[F,A] = Free.Fail(t)
+    def flatMap[A,B](fa: Free[F,A])(f: A => Free[F,B]): Free[F,B] = fa.flatMap(f)
+    def tailRecM[A,B](a: A)(f: A => Free[F,Either[A,B]]): Free[F,B] = f(a).flatMap {
+      case Left(a) => tailRecM(a)(f)
+      case Right(b) => pure(b)
+    }
+    def suspend[A](thunk: => Free[F,A]): Free[F,A] = Free.suspend(thunk)
+  }
 }
