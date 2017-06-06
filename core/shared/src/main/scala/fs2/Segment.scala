@@ -17,6 +17,11 @@ import Segment._
  *
  * The [[Chunk]] type is a subtype of [[Segment]] that supports efficient index-based
  * random access.
+ *
+ * Implementation notes:
+ *  - Some operators ask for a segment remainder from within a callback (e.g., `emits`). As such,
+ *    segments should update state before invoking callbacks so that remainders can be computed
+ *    accurately.
  */
 abstract class Segment[+O,+R] { self =>
   private[fs2]
@@ -122,6 +127,18 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).drain"
   }
 
+  /**
+   * Eagerly drops `n` elements from the head of this segment, returning either the result and the
+   * number of elements remaining to drop, if the end of the segment was reached, or a new segment,
+   * if the end of the segment was not reached.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3,4,5).drop(3).toOption.get.toVector
+   * res0: Vector[Int] = Vector(4, 5)
+   * scala> Segment(1,2,3,4,5).drop(7)
+   * res1: Either[(Unit, Long),Segment[Int,Unit]] = Left(((),2))
+   * }}}
+   */
   final def drop(n: Long): Either[(R,Long),Segment[O,R]] = {
     var rem = n
     var leftovers: Catenable[Chunk[O]] = Catenable.empty
@@ -405,8 +422,18 @@ abstract class Segment[+O,+R] { self =>
 
   /**
    * Lazily takes `n` elements from this segment. The result of the returned segment is either a left
-   * containing the number of elements remaining to take when the end of the source segment was reached,
-   * or a right containing the remainder of the source segment after `n` elements are taken.
+   * containing the result of the original segment and the number of elements remaining to take when
+   * the end of the source segment was reached, or a right containing the remainder of the source
+   * segment after `n` elements are taken.
+   *
+   * @example {{{
+   * scala> Segment.from(0).take(3).toVector
+   * res0: Vector[Long] = Vector(0, 1, 2)
+   * scala> Segment.from(0).take(3).void.run.toOption.get.take(5).toVector
+   * res1: Vector[Long] = Vector(3, 4, 5, 6, 7)
+   * scala> Segment(1, 2, 3).take(5).void.run
+   * res2: Either[(Unit, Long),Segment[Int,Unit]] = Left(((),2))
+   * }}}
    */
   final def take(n: Long): Segment[O,Either[(R,Long),Segment[O,R]]] =
     if (n <= 0) Segment.pure(Right(this))
@@ -430,6 +457,24 @@ abstract class Segment[+O,+R] { self =>
       override def toString = s"($self).take($n)"
     }
 
+  /**
+   * Returns a segment that outputs elements while `p` is true.
+   *
+   * The result of the returned segment is either the result of the original stream, if the end
+   * was reached and the predicate was still passing, or the remaining stream, if the predicate failed.
+   * If `takeFailure` is true, the last element output is the first element which failed the predicate.
+   * If `takeFailure` is false, the first element of the remainder is the first element which failed
+   * the predicate.
+   *
+   * @example {{{
+   * scala> Segment.from(0).takeWhile(_ < 3).toVector
+   * res0: Vector[Long] = Vector(0, 1, 2)
+   * scala> Segment.from(0).takeWhile(_ < 3, takeFailure = true).toVector
+   * res1: Vector[Long] = Vector(0, 1, 2, 3)
+   * scala> Segment.from(0).takeWhile(_ < 3).void.run.toOption.get.take(5).toVector
+   * res2: Vector[Long] = Vector(3, 4, 5, 6, 7)
+   * }}}
+   */
   final def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Segment[O,Either[R,Segment[O,R]]] = new Segment[O,Either[R,Segment[O,R]]] {
     def stage0 = (depth, defer, emit, emits, done) => Eval.later {
       var ok = true
