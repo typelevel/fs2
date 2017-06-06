@@ -20,31 +20,31 @@ import fs2.internal.{ Algebra, Free }
  *   - `empty append s == s` and `s append empty == s`.
  *   - `(s1 append s2) append s3 == s1 append (s2 append s3)`
  *
- * And `push` is consistent with using `append` to prepend a single chunk:
- *   - `push(c)(s) == chunk(c) append s`
+ * And `cons` is consistent with using `++` to prepend a single segment:
+ *   - `s.cons(seg) == Stream.segment(seg) ++ s`
  *
- * `fail` propagates until being caught by `onError`:
- *   - `fail(e) onError h == h(e)`
- *   - `fail(e) append s == fail(e)`
- *   - `fail(e) flatMap f == fail(e)`
+ * `Stream.fail` propagates until being caught by `onError`:
+ *   - `Stream.fail(e) onError h == h(e)`
+ *   - `Stream.fail(e) ++ s == Stream.fail(e)`
+ *   - `Stream.fail(e) flatMap f == Stream.fail(e)`
  *
  * `Stream` forms a monad with `emit` and `flatMap`:
- *   - `emit >=> f == f` (left identity)
- *   - `f >=> emit === f` (right identity - note weaker equality notion here)
+ *   - `Stream.emit >=> f == f` (left identity)
+ *   - `f >=> Stream.emit === f` (right identity - note weaker equality notion here)
  *   - `(f >=> g) >=> h == f >=> (g >=> h)` (associativity)
- *  where `emit(a)` is defined as `chunk(Chunk.singleton(a)) and
+ *  where `Stream.emit(a)` is defined as `segment(Segment.singleton(a)) and
  *  `f >=> g` is defined as `a => a flatMap f flatMap g`
  *
  * The monad is the list-style sequencing monad:
- *   - `(a append b) flatMap f == (a flatMap f) append (b flatMap f)`
- *   - `empty flatMap f == empty`
+ *   - `(a ++ b) flatMap f == (a flatMap f) ++ (b flatMap f)`
+ *   - `Stream.empty flatMap f == Stream.empty`
  *
  * '''Technical notes'''
  *
- * ''Note:'' since the chunk structure of the stream is observable, and
- * `s flatMap (emit)` produces a stream of singleton chunks,
+ * ''Note:'' since the segment structure of the stream is observable, and
+ * `s flatMap Stream.emit` produces a stream of singleton segments,
  * the right identity law uses a weaker notion of equality, `===` which
- * normalizes both sides with respect to chunk structure:
+ * normalizes both sides with respect to segment structure:
  *
  *   `(s1 === s2) = normalize(s1) == normalize(s2)`
  *   where `==` is full equality
@@ -54,11 +54,11 @@ import fs2.internal.{ Algebra, Free }
  * produces a singly-chunked stream from any input stream `s`.
  *
  * ''Note:'' For efficiency `[[Stream.map]]` function operates on an entire
- * chunk at a time and preserves chunk structure, which differs from
- * the `map` derived from the monad (`s map f == s flatMap (f andThen emit)`)
- * which would produce singleton chunks. In particular, if `f` throws errors, the
- * chunked version will fail on the first ''chunk'' with an error, while
- * the unchunked version will fail on the first ''element'' with an error.
+ * segment at a time and preserves segment structure, which differs from
+ * the `map` derived from the monad (`s map f == s flatMap (f andThen Stream.emit)`)
+ * which would produce singleton segments. In particular, if `f` throws errors, the
+ * segmented version will fail on the first ''segment'' with an error, while
+ * the unsegmented version will fail on the first ''element'' with an error.
  * Exceptions in pure code like this are strongly discouraged.
  *
  * @hideImplicitConversion PureOps
@@ -69,47 +69,108 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   private[fs2] def get[F2[x]>:F[x],O2>:O]: Free[Algebra[F2,O2,?],Unit] = free.asInstanceOf[Free[Algebra[F2,O2,?],Unit]]
 
+  /**
+   * Returns a stream of `O` values wrapped in `Right` until the first error, which is emitted wrapped in `Left`.
+   *
+   * @example {{{
+   * scala> (Stream(1,2,3) ++ Stream.fail(new RuntimeException) ++ Stream(4,5,6)).attempt.toList
+   * res0: List[Either[Throwable,Int]] = List(Right(1), Right(2), Right(3), Left(java.lang.RuntimeException))
+   * }}}
+   *
+   * [[rethrow]] is the inverse of `attempt`, with the caveat that anything after the first failure is discarded.
+   */
   def attempt: Stream[F,Either[Throwable,O]] =
     map(Right(_)).onError(e => Stream.emit(Left(e)))
 
-  /** `s as x == s map (_ => x)` */
+  /**
+   * Alias for `_.map(_ => o2)`.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).as(0).toList
+   * res0: List[Int] = List(0, 0, 0)
+   * }}}
+   */
   def as[O2](o2: O2): Stream[F,O2] = map(_ => o2)
 
-  /** Behaves like the identity function, but requests `n` elements at a time from the input. */
+  /**
+   * Behaves like the identity function, but requests `n` elements at a time from the input.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> val buf = new scala.collection.mutable.ListBuffer[String]()
+   * scala> Stream.range(0, 100).covary[IO].
+   *      |   evalMap(i => IO { buf += s">$i"; i }).
+   *      |   buffer(4).
+   *      |   evalMap(i => IO { buf += s"<$i"; i }).
+   *      |   take(10).
+   *      |   runLog.unsafeRunSync
+   * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+   * scala> buf.toList
+   * res1: List[String] = List(>0, >1, >2, >3, <0, <1, <2, <3, >4, >5, >6, >7, <4, <5, <6, <7, >8, >9, >10, >11, <8, <9)
+   * }}}
+   */
   def buffer(n: Int): Stream[F,O] =
     this.repeatPull { _.unconsN(n, allowFewer = true).flatMap {
       case Some((hd,tl)) => Pull.output(hd).as(Some(tl))
       case None => Pull.pure(None)
     }}
 
-  /** Behaves like the identity stream, but emits no output until the source is exhausted. */
+  /**
+   * Behaves like the identity stream, but emits no output until the source is exhausted.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> val buf = new scala.collection.mutable.ListBuffer[String]()
+   * scala> Stream.range(0, 10).covary[IO].
+   *      |   evalMap(i => IO { buf += s">$i"; i }).
+   *      |   bufferAll.
+   *      |   evalMap(i => IO { buf += s"<$i"; i }).
+   *      |   take(4).
+   *      |   runLog.unsafeRunSync
+   * res0: Vector[Int] = Vector(0, 1, 2, 3)
+   * scala> buf.toList
+   * res1: List[String] = List(>0, >1, >2, >3, >4, >5, >6, >7, >8, >9, <0, <1, <2, <3)
+   * }}}
+   */
   def bufferAll: Stream[F,O] = bufferBy(_ => true)
 
   /**
    * Behaves like the identity stream, but requests elements from its
    * input in blocks that end whenever the predicate switches from true to false.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> val buf = new scala.collection.mutable.ListBuffer[String]()
+   * scala> Stream.range(0, 10).covary[IO].
+   *      |   evalMap(i => IO { buf += s">$i"; i }).
+   *      |   bufferBy(_ % 2 == 0).
+   *      |   evalMap(i => IO { buf += s"<$i"; i }).
+   *      |   runLog.unsafeRunSync
+   * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+   * scala> buf.toList
+   * res1: List[String] = List(>0, >1, <0, <1, >2, >3, <2, <3, >4, >5, <4, <5, >6, >7, <6, <7, >8, >9, <8, <9)
+   * }}}
    */
   def bufferBy(f: O => Boolean): Stream[F,O] = {
-    def go(buffer: Vector[Chunk[O]], last: Boolean, s: Stream[F,O]): Pull[F,O,Unit] = {
+    def go(buffer: Catenable[Chunk[O]], last: Boolean, s: Stream[F,O]): Pull[F,O,Unit] = {
       s.pull.unconsChunk.flatMap {
         case Some((hd,tl)) =>
-          val (out, buf, last) = {
-            hd.fold((Vector.empty[Chunk[O]], Vector.empty[O], false)) { case ((out, buf, last), i) =>
+          val (out, buf, newLast) = {
+            hd.fold((Catenable.empty: Catenable[Chunk[O]], Vector.empty[O], last)) { case ((out, buf, last), i) =>
               val cur = f(i)
-              if (!f(i) && last) (out :+ Chunk.vector(buf :+ i), Vector.empty, cur)
+              if (!cur && last) (out :+ Chunk.vector(buf :+ i), Vector.empty, cur)
               else (out, buf :+ i, cur)
             }.run
           }
           if (out.isEmpty) {
-            go(buffer :+ Chunk.vector(buf), last, tl)
+            go(buffer :+ Chunk.vector(buf), newLast, tl)
           } else {
-            (buffer ++ out).foldLeft(Pull.pure(()): Pull[F,O,Unit]) { (acc, c) => acc >> Pull.output(c) } >>
-              go(Vector(Chunk.vector(buf)), last, tl)
+            Pull.output(Segment.catenated(buffer ++ out)) >> go(Catenable.single(Chunk.vector(buf)), newLast, tl)
           }
-        case None => buffer.foldLeft(Pull.pure(()): Pull[F,O,Unit]) { (acc, s) => acc >> Pull.output(s) }
+        case None => Pull.output(Segment.catenated(buffer))
       }
     }
-    go(Vector.empty, false, this).stream
+    go(Catenable.empty, false, this).stream
   }
 
   /**

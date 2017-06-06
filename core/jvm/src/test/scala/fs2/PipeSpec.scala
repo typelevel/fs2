@@ -32,7 +32,7 @@ class PipeSpec extends Fs2Spec {
      runLog { s.get.bufferBy(_ >= 0) } shouldBe s.get.toVector
 
      var counter = 0
-     val s2 = s.get.map(_.abs)
+     val s2 = s.get.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
      val s3 = (s2 ++ Stream.emit(-1) ++ s2).evalMap { i => IO { counter += 1; i }}
      runLog { s3.bufferBy(_ >= 0).take(s.get.toList.size + 2) }
      counter shouldBe (s.get.toList.size * 2 + 1)
@@ -266,7 +266,7 @@ class PipeSpec extends Fs2Spec {
     }
 
     "split" in forAll { (s: PureStream[Int], n: SmallPositive) =>
-     val s2 = s.get.map(_.abs).filter(_ != 0)
+     val s2 = s.get.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs).filter(_ != 0)
      withClue(s"n = $n, s = ${s.get.toList}, s2 = " + s2.toList) {
      runLog { s2.chunkLimit(n.get).intersperse(Chunk.singleton(0)).flatMap(Stream.chunk).split(_ == 0).filter(_.nonEmpty) } shouldBe
        s2.chunkLimit(n.get).filter(_.nonEmpty).map(_.toVector).toVector
