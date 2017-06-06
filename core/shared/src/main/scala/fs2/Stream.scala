@@ -299,19 +299,47 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   /**
    * Removes all output values from this stream.
-   * For example, `Stream.eval(IO(println("x"))).drain.runLog`
-   * will, when `unsafeRunSync` in called, print "x" but return `Vector()`.
+   *
+   * Often used with [[merge]] to run one side of the merge for its effect
+   * while getting outputs from the opposite side of the merge.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> Stream.eval(IO(println("x"))).drain.runLog.unsafeRunSync
+   * res0: Vector[Nothing] = Vector()
+   * }}}
    */
   def drain: Stream[F, Nothing] = this.mapSegments(_ => Segment.empty)
 
-  /** Drops `n` elements of the input, then echoes the rest. */
+  /**
+   * Drops `n` elements of the input, then echoes the rest.
+   *
+   * @example {{{
+   * scala> Stream.range(0,10).drop(5).toList
+   * res0: List[Int] = List(5, 6, 7, 8, 9)
+   * }}}
+   */
   def drop(n: Long): Stream[F,O] =
     this.pull.drop(n).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
 
-  /** Drops the last element. */
+  /**
+   * Drops the last element.
+   *
+   * @example {{{
+   * scala> Stream.range(0,10).dropLast.toList
+   * res0: List[Int] = List(0, 1, 2, 3, 4, 5, 6, 7, 8)
+   * }}}
+   */
   def dropLast: Stream[F,O] = dropLastIf(_ => true)
 
-  /** Drops the last element if the predicate evaluates to true. */
+  /**
+   * Drops the last element if the predicate evaluates to true.
+   *
+   * @example {{{
+   * scala> Stream.range(0,10).dropLastIf(_ > 5).toList
+   * res0: List[Int] = List(0, 1, 2, 3, 4, 5, 6, 7, 8)
+   * }}}
+   */
   def dropLastIf(p: O => Boolean): Stream[F,O] = {
     def go(last: Chunk[O], s: Stream[F,O]): Pull[F,O,Unit] = {
       s.pull.unconsChunk.flatMap {
@@ -339,7 +367,14 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     }.stream
   }
 
-  /** Emits all but the last `n` elements of the input. */
+  /**
+   * Outputs all but the last `n` elements of the input.
+   *
+   * @example {{{
+   * scala> Stream.range(0,10).dropRight(5).toList
+   * res0: List[Int] = List(0, 1, 2, 3, 4)
+   * }}}
+   */
   def dropRight(n: Int): Stream[F,O] = {
     if (n <= 0) this
     else {

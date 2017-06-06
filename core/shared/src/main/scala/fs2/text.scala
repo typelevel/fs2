@@ -12,10 +12,10 @@ object text {
 
   /** Converts UTF-8 encoded `Chunk[Byte]` inputs to `String`. */
   def utf8DecodeC[F[_]]: Pipe[F, Chunk[Byte], String] = {
-    /**
-      * Returns the number of continuation bytes if `b` is an ASCII byte or a
-      * leading byte of a multi-byte sequence, and -1 otherwise.
-      */
+    /*
+     * Returns the number of continuation bytes if `b` is an ASCII byte or a
+     * leading byte of a multi-byte sequence, and -1 otherwise.
+     */
     def continuationBytes(b: Byte): Int = {
       if      ((b & 0x80) == 0x00) 0 // ASCII byte
       else if ((b & 0xE0) == 0xC0) 1 // leading byte of a 2 byte seq
@@ -24,11 +24,11 @@ object text {
       else                        -1 // continuation byte or garbage
     }
 
-    /**
-      * Returns the length of an incomplete multi-byte sequence at the end of
-      * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
-      * 0 is returned.
-      */
+    /*
+     * Returns the length of an incomplete multi-byte sequence at the end of
+     * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
+     * 0 is returned.
+     */
     def lastIncompleteBytes(bs: Array[Byte]): Int = {
       val lastThree = bs.drop(0 max bs.size - 3).toArray.reverseIterator
       lastThree.map(continuationBytes).zipWithIndex.find {
