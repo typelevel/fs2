@@ -181,54 +181,120 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * and hence should be fast (e.g., an accessor). It is not intended to be
    * used for computationally intensive conversions. For such conversions,
    * consider something like: `src.map(o => (o, f(o))).changesBy(_._2).map(_._1)`
+   *
+   * @example {{{
+   * scala> import cats.implicits._
+   * scala> Stream(1,1,2,4,6,9).changesBy(_ % 2).toList
+   * res0: List[Int] = List(1, 2, 9)
+   * }}}
    */
   def changesBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F,O] =
     filterWithPrevious((o1, o2) => eq.neqv(f(o1), f(o2)))
 
-  /** Outputs all chunks from the source stream. */
+  /**
+   * Outputs all chunks from the source stream.
+   *
+   * @example {{{
+   * scala> (Stream(1) ++ Stream(2, 3) ++ Stream(4, 5, 6)).chunks.toList
+   * res0: List[Chunk[Int]] = List(Chunk(1), Chunk(2, 3), Chunk(4, 5, 6))
+   * }}}
+   */
   def chunks: Stream[F,Chunk[O]] =
     this.repeatPull(_.unconsChunk.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) })
 
-  /** Outputs chunk with a limited maximum size, splitting as necessary. */
+  /**
+   * Outputs chunk with a limited maximum size, splitting as necessary.
+   *
+   * @example {{{
+   * scala> (Stream(1) ++ Stream(2, 3) ++ Stream(4, 5, 6)).chunkLimit(2).toList
+   * res0: List[Chunk[Int]] = List(Chunk(1), Chunk(2, 3), Chunk(4, 5), Chunk(6))
+   * }}}
+   */
   def chunkLimit(n: Int): Stream[F,Chunk[O]] =
     this repeatPull { _.unconsLimit(n) flatMap {
       case None => Pull.pure(None)
       case Some((hd,tl)) => Pull.output1(hd.toChunk).as(Some(tl))
     }}
 
-  /** Map/filter simultaneously. Calls `collect` on each `Chunk` in the stream. */
+  /**
+   * Filters and maps simultaneously. Calls `collect` on each segment in the stream.
+   *
+   * @example {{{
+   * scala> Stream(Some(1), Some(2), None, Some(3), None, Some(4)).collect { case Some(i) => i }.toList
+   * res0: List[Int] = List(1, 2, 3, 4)
+   * }}}
+   */
   def collect[O2](pf: PartialFunction[O, O2]): Stream[F,O2] = mapSegments(_.collect(pf))
 
-  /** Emits the first element of the Stream for which the partial function is defined. */
+  /**
+   * Emits the first element of the stream for which the partial function is defined.
+   *
+   * @example {{{
+   * scala> Stream(None, Some(1), Some(2), None, Some(3)).collectFirst { case Some(i) => i }.toList
+   * res0: List[Int] = List(1)
+   * }}}
+   */
   def collectFirst[O2](pf: PartialFunction[O, O2]): Stream[F,O2] =
     this.pull.find(pf.isDefinedAt).flatMap {
       case None => Pull.pure(None)
       case Some((hd,tl)) => Pull.output1(pf(hd)).as(None)
     }.stream
 
-  /** Prepend a single segment onto the front of this stream. */
+  /**
+   * Prepends a segment onto the front of this stream.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).cons(Segment.vector(Vector(-1, 0))).toList
+   * res0: List[Int] = List(-1, 0, 1, 2, 3)
+   * }}}
+   */
   def cons[O2>:O](s: Segment[O2,Unit]): Stream[F,O2] =
     Stream.segment(s) ++ this
 
-  /** Prepend a single chunk onto the front of this stream. */
+  /**
+   * Prepends a chunk onto the front of this stream.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).consChunk(Chunk.vector(Vector(-1, 0))).toList
+   * res0: List[Int] = List(-1, 0, 1, 2, 3)
+   * }}}
+   */
   def consChunk[O2>:O](c: Chunk[O2]): Stream[F,O2] =
     if (c.isEmpty) this else Stream.chunk(c) ++ this
 
-  /** Prepend a single value onto the front of this stream. */
+  /**
+   * Prepends a single value onto the front of this stream.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).cons1(0).toList
+   * res0: List[Int] = List(0, 1, 2, 3)
+   * }}}
+   */
   def cons1[O2>:O](o: O2): Stream[F,O2] =
     cons(Segment.singleton(o))
 
-  /** Lifts this stream to the specified output type. */
+  /**
+   * Lifts this stream to the specified output type.
+   *
+   * @example {{{
+   * scala> Stream(Some(1), Some(2), Some(3)).covaryOutput[Option[Int]]
+   * res0: Stream[Pure,Option[Int]] = Stream(..)
+   * }}}
+   */
   def covaryOutput[O2>:O]: Stream[F,O2] = this.asInstanceOf[Stream[F,O2]]
 
-  /** Skips the first element that matches the predicate. */
+  /**
+   * Skips the first element that matches the predicate.
+   *
+   * @example {{{
+   * scala> Stream.range(1, 10).delete(_ % 2 == 0).toList
+   * res0: List[Int] = List(1, 3, 4, 5, 6, 7, 8, 9)
+   * }}}
+   */
   def delete(p: O => Boolean): Stream[F,O] =
-    this.pull.takeWhile(i => !p(i)).flatMap {
+    this.pull.takeWhile(o => !p(o)).flatMap {
       case None => Pull.pure(None)
-      case Some(s) => s.pull.drop(1).flatMap {
-        case Some(s2) => s2.pull.echo.as(None)
-        case None => Pull.pure(None)
-      }
+      case Some(s) => s.drop(1).pull.output
     }.stream
 
   /**
@@ -959,6 +1025,11 @@ object Stream {
     /**
      * Emits only elements that are distinct from their immediate predecessors,
      * using natural equality for comparison.
+     * @example {{{
+     * scala> import cats.implicits._
+     * scala> Stream(1,1,2,2,2,3,3).changes.toList
+     * res0: List[Int] = List(1, 2, 3)
+     * }}}
      */
     def changes(implicit eq: Eq[O]): Stream[F,O] = self.filterWithPrevious(eq.neqv)
 
@@ -1827,7 +1898,8 @@ object Stream {
     /**
      * Emits the elements of the stream until the predicate `p` fails,
      * and returns the remaining `Stream`. If non-empty, the returned stream will have
-     * a first element `i` for which `p(i)` is `false`. */
+     * a first element `i` for which `p(i)` is `false`.
+     */
     def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, false)
 
     def takeWhile_(p: O => Boolean, takeFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =

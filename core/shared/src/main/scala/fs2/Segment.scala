@@ -187,7 +187,7 @@ abstract class Segment[+O,+R] { self =>
         },
         r => if (ok) done(Left(r)) else done(Right(staged.remainder))
       ).value
-      staged.mapRemainder(rem => if (ok) rem.takeWhile(p) else rem.mapResult(Left(_)))
+      staged.mapRemainder(rem => if (ok) rem.takeWhile(p, takeFailure) else rem.mapResult(Left(_)))
     }
     override def toString = s"($self).takeWhile(<f1>)"
   }
@@ -639,7 +639,7 @@ object Segment {
       Eval.later { step(unfold(s0)(f)) {
         f(s0) match {
           case None => done(())
-          case Some((h,t)) => emit(h); s0 = t
+          case Some((h,t)) => s0 = t; emit(h)
         }
       }}
     }
