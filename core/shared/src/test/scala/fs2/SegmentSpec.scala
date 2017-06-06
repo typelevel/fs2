@@ -14,7 +14,7 @@ class SegmentSpec extends Fs2Spec {
     Gen.listOf(genO).map(Segment.seq(_)),
     Gen.listOf(genO).map(_.foldLeft(Segment.empty[O])((acc, o) => acc ++ Segment.singleton(o))),
     Gen.delay(for { lhs <- genSegment(genO); rhs <- genSegment(genO) } yield lhs ++ rhs),
-    Gen.delay(for { seg <- genSegment(genO); c <- Gen.listOf(genO).map(Chunk.seq) } yield seg.cons(c))
+    Gen.delay(for { seg <- genSegment(genO); c <- Gen.listOf(genO).map(Chunk.seq) } yield seg.prepend(c))
   )
 
   implicit def arbSegment[O: Arbitrary]: Arbitrary[Segment[O,Unit]] =

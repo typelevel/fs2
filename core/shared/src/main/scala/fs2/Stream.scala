@@ -165,7 +165,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
           if (out.isEmpty) {
             go(buffer :+ Chunk.vector(buf), newLast, tl)
           } else {
-            Pull.output(Segment.catenated(buffer ++ out)) >> go(Catenable.single(Chunk.vector(buf)), newLast, tl)
+            Pull.output(Segment.catenated(buffer ++ out)) >> go(Catenable.singleton(Chunk.vector(buf)), newLast, tl)
           }
         case None => Pull.output(Segment.catenated(buffer))
       }

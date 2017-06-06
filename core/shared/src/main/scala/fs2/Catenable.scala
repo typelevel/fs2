@@ -48,7 +48,7 @@ sealed abstract class Catenable[+A] {
 
   /** Returns a new catenable consisting of `a` followed by this. O(1) runtime. */
   final def cons[A2>:A](a: A2): Catenable[A2] =
-    append(single(a), this)
+    append(singleton(a), this)
 
   /** Alias for [[cons]]. */
   final def +:[A2>:A](a: A2): Catenable[A2] =
@@ -56,7 +56,7 @@ sealed abstract class Catenable[+A] {
 
   /** Returns a new catenable consisting of this followed by `a`. O(1) runtime. */
   final def snoc[A2>:A](a: A2): Catenable[A2] =
-    append(this, single(a))
+    append(this, singleton(a))
 
   /** Alias for [[snoc]]. */
   final def :+[A2>:A](a: A2): Catenable[A2] =
@@ -127,7 +127,7 @@ object Catenable {
   val empty: Catenable[Nothing] = Empty
 
   /** Creates a catenable of 1 element. */
-  def single[A](a: A): Catenable[A] = Single(a)
+  def singleton[A](a: A): Catenable[A] = Single(a)
 
   /** Appends two catenables. */
   def append[A](c: Catenable[A], c2: Catenable[A]): Catenable[A] =
@@ -138,20 +138,20 @@ object Catenable {
   /** Creates a catenable from the specified sequence. */
   def fromSeq[A](s: Seq[A]): Catenable[A] =
     if (s.isEmpty) empty
-    else s.view.reverse.map(single).reduceLeft((x, y) => Append(y, x))
+    else s.view.reverse.map(singleton).reduceLeft((x, y) => Append(y, x))
 
   /** Creates a catenable from the specified elements. */
   def apply[A](as: A*): Catenable[A] = {
     as match {
       case w: collection.mutable.WrappedArray[A] =>
         if (w.isEmpty) empty
-        else if (w.size == 1) single(w.head)
+        else if (w.size == 1) singleton(w.head)
         else {
           val arr: Array[A] = w.array
-          var c: Catenable[A] = single(arr.last)
+          var c: Catenable[A] = singleton(arr.last)
           var idx = arr.size - 2
           while (idx >= 0) {
-            c = Append(single(arr(idx)), c)
+            c = Append(singleton(arr(idx)), c)
             idx -= 1
           }
           c

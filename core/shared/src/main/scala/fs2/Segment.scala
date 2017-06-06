@@ -33,6 +33,14 @@ abstract class Segment[+O,+R] { self =>
                r => defer(done(r)))
       }
 
+  /**
+   * Concatenates this segment with `s2`.
+   *
+   * @example {{{
+   * scala> (Segment(1,2,3) ++ Segment(4,5,6)).toVector
+   * res0: Vector[Int] = Vector(1, 2, 3, 4, 5, 6)
+   * }}}
+   */
   final def ++[O2>:O,R2>:R](s2: Segment[O2,R2]): Segment[O2,R2] =
     s2 match {
       case c2: Chunk[O2] if c2.isEmpty => this
@@ -49,6 +57,14 @@ abstract class Segment[+O,+R] { self =>
       }
     }
 
+  /**
+   * Filters and maps simultaneously.
+   *
+   * @example {{{
+   * scala> Segment(Some(1), None, Some(2)).collect { case Some(i) => i }.toVector
+   * res0: Vector[Int] = Vector(1, 2)
+   * }}}
+   */
   final def collect[O2](pf: PartialFunction[O,O2]): Segment[O2,R] = new Segment[O2,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
@@ -72,12 +88,25 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).collect(<pf1>)"
   }
 
-  final def cons[O2>:O](c: Segment[O2,Any]): Segment[O2,R] = {
-    // note - cast is fine, as `this` is guaranteed to provide an `R`,
-    // overriding the `Any` produced by `c`
-    c.asInstanceOf[Segment[O2,R]] ++ this
-  }
+  /**
+   * Equivalent to `Segment.singleton(o2) ++ this`.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).toVector
+   * res0: Vector[Int] = Vector(0, 1, 2, 3)
+   * }}}
+   */
+  final def cons[O2>:O](o2: O2): Segment[O2,R] =
+    prepend(Segment.singleton(o2))
 
+  /**
+   * Returns a segment that suppresses all output and returns the result of this segment when run.
+   *
+   * @example {{{
+   * scala> Segment.from(0).take(3).drain.run.toOption.get.take(5).toVector
+   * res0: Vector[Long] = Vector(3, 4, 5, 6, 7)
+   * }}}
+   */
   final def drain: Segment[Nothing,R] = new Segment[Nothing,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       var sinceLastEmit = 0
@@ -111,8 +140,8 @@ abstract class Segment[+O,+R] { self =>
       r => result = Some(r)).value
     while (rem > 0 && result.isEmpty) steps(step, trampoline)
     result match {
-      case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.cons(Segment.catenated(leftovers)))
-      case Some(r) => if (leftovers.isEmpty) Left((r,rem)) else Right(Segment.pure(r).cons(Segment.catenated(leftovers)))
+      case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
+      case Some(r) => if (leftovers.isEmpty) Left((r,rem)) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
     }
   }
 
@@ -142,8 +171,8 @@ abstract class Segment[+O,+R] { self =>
       r => result = Some(r)).value
     while (dropping && result.isEmpty) steps(step, trampoline)
     result match {
-      case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.cons(Segment.catenated(leftovers)))
-      case Some(r) => if (leftovers.isEmpty) Left(r) else Right(Segment.pure(r).cons(Segment.catenated(leftovers)))
+      case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
+      case Some(r) => if (leftovers.isEmpty) Left(r) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
     }
   }
 
@@ -249,6 +278,20 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).mapResult(<f1>)"
   }
 
+  /**
+   * Equivalent to `s2 ++ this`.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).prepend(Segment(-1, 0)).toVector
+   * res0: Vector[Int] = Vector(-1, 0, 1, 2, 3)
+   * }}}
+   */
+  final def prepend[O2>:O](c: Segment[O2,Any]): Segment[O2,R] = {
+    // note - cast is fine, as `this` is guaranteed to provide an `R`,
+    // overriding the `Any` produced by `c`
+    c.asInstanceOf[Segment[O2,R]] ++ this
+  }
+
   final def run[O2>:O](implicit ev: O2 =:= Unit): R = {
     val _ = ev // Convince scalac that ev is used
     var result: Option[R] = None
@@ -278,7 +321,7 @@ abstract class Segment[+O,+R] { self =>
       var rem = n
       val emits: Chunk[O] => Unit = os => {
         if (result.isDefined) {
-          result = result.map(_.map(_.cons(os)))
+          result = result.map(_.map(_.prepend(os)))
         } else if (os.nonEmpty) {
           if (os.size <= rem) {
             out = out :+ os
@@ -300,7 +343,7 @@ abstract class Segment[+O,+R] { self =>
       while (result.isEmpty) steps(step, trampoline)
       result.map {
         case Left(r) => Left((r,out,rem))
-        case Right(after) => Right((out,step.remainder.cons(after)))
+        case Right(after) => Right((out,step.remainder.prepend(after)))
       }.getOrElse(Right((out, step.remainder)))
     }
   }
@@ -311,7 +354,7 @@ abstract class Segment[+O,+R] { self =>
     var ok = true
     val emits: Chunk[O] => Unit = os => {
       if (result.isDefined) {
-        result = result.map(_.map(_.cons(os)))
+        result = result.map(_.map(_.prepend(os)))
       } else {
         var i = 0
         var j = 0
@@ -337,7 +380,7 @@ abstract class Segment[+O,+R] { self =>
     while (result.isEmpty) steps(step, trampoline)
     result.map {
       case Left(r) => Left((r,out))
-      case Right(after) => Right((out,step.remainder.cons(after)))
+      case Right(after) => Right((out,step.remainder.prepend(after)))
     }.getOrElse(Right((out, step.remainder)))
   }
 
@@ -372,12 +415,12 @@ abstract class Segment[+O,+R] { self =>
         var rem = n
         var staged: Step[O,R] = null
         staged = self.stage(depth.increment, defer,
-          o => { if (rem > 0) { rem -= 1; emit(o) } else done(Right(staged.remainder.cons(Chunk.singleton(o)))) },
+          o => { if (rem > 0) { rem -= 1; emit(o) } else done(Right(staged.remainder.cons(o))) },
           os => { if (os.size <= rem) { rem -= os.size; emits(os) }
                   else {
                     var i = 0
                     while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
-                    done(Right(staged.remainder.drop(i).toOption.get))
+                    done(Right(staged.remainder.prepend(os.strict.splitAt(i)._2)))
                   }
                 },
           r => done(Left(r -> rem))
@@ -392,7 +435,7 @@ abstract class Segment[+O,+R] { self =>
       var ok = true
       var staged: Step[O,R] = null
       staged = self.stage(depth.increment, defer,
-        o => { if (ok) { ok = ok && p(o); if (ok || takeFailure) emit(o) else done(Right(staged.remainder.cons(Chunk.singleton(o)))) } },
+        o => { if (ok) { ok = ok && p(o); if (ok || takeFailure) emit(o) else done(Right(staged.remainder.cons(o))) } },
         os => {
           var i = 0
           while (ok && i < os.size) {
@@ -405,7 +448,8 @@ abstract class Segment[+O,+R] { self =>
             }
             i += 1
           }
-          if (ok) emits(os) else done(Right(staged.remainder.drop(i - 1).toOption.get))
+          if (ok) emits(os) else done(Right(
+            if (i == 0) staged.remainder else staged.remainder.prepend(os.strict.splitAt(i - 1)._2)))
         },
         r => if (ok) done(Left(r)) else done(Right(staged.remainder))
       ).value
@@ -454,7 +498,7 @@ abstract class Segment[+O,+R] { self =>
   def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
     unconsChunks match {
       case Left(r) => Left(r)
-      case Right((cs,tl)) => Right(cs.uncons.map { case (hd,tl2) => hd -> tl.cons(Segment.catenated(tl2)) }.get)
+      case Right((cs,tl)) => Right(cs.uncons.map { case (hd,tl2) => hd -> tl.prepend(Segment.catenated(tl2)) }.get)
     }
 
   @annotation.tailrec
@@ -462,7 +506,7 @@ abstract class Segment[+O,+R] { self =>
     unconsChunk match {
       case Left(r) => Left(r)
       case Right((c, tl)) =>
-        if (c.nonEmpty) Right(c(0) -> tl.cons(Chunk.vector(c.toVector.drop(1))))
+        if (c.nonEmpty) Right(c(0) -> tl.prepend(Chunk.vector(c.toVector.drop(1))))
         else tl.uncons1
     }
 
@@ -565,14 +609,14 @@ abstract class Segment[+O,+R] { self =>
           stepR <- that.stage(depth, defer, o2 => emitsR(Chunk.singleton(o2)), emitsR, res => rResult = Some(res))
         } yield {
           step {
-            val remL: Segment[O,R] = if (lStepped) stepL.remainder.cons(unusedL) else self
-            val remR: Segment[O2,R2] = if (rStepped) stepR.remainder.cons(unusedR) else that
+            val remL: Segment[O,R] = if (lStepped) stepL.remainder.prepend(unusedL) else self
+            val remR: Segment[O2,R2] = if (rStepped) stepR.remainder.prepend(unusedR) else that
             remL.zipWith(remR)(f)
           } {
             if (lResult.isDefined && l.isEmpty) {
-              done(Left(lResult.get -> stepR.remainder.cons(unusedR)))
+              done(Left(lResult.get -> stepR.remainder.prepend(unusedR)))
             } else if (rResult.isDefined && r.isEmpty) {
-              done(Right(rResult.get -> stepL.remainder.cons(unusedL)))
+              done(Right(rResult.get -> stepL.remainder.prepend(unusedL)))
             } else if (lResult.isEmpty && l.isEmpty) { lStepped = true; stepL.step() }
             else { rStepped = true; stepR.step() }
           }
@@ -589,6 +633,9 @@ abstract class Segment[+O,+R] { self =>
 }
 
 object Segment {
+
+  /** Creates a segment with the specified values. */
+  def apply[O](os: O*): Segment[O,Unit] = seq(os)
 
   /** Creates a segment backed by an array. */
   def array[O](os: Array[O]): Segment[O,Unit] = Chunk.array(os)

@@ -26,8 +26,8 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     var emitted = false
     Segment.step(if (emitted) Segment.empty else this) {
       if (!emitted) {
-        emits(this)
         emitted = true
+        emits(this)
       }
       else done(())
     }
@@ -161,7 +161,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] = Right(this -> Chunk.empty)
   override def foreachChunk(f: Chunk[O] => Unit): Unit = f(this)
   override def toChunk: Chunk[O] = this
-  override def toChunks: Catenable[Chunk[O]] = Catenable.single(this)
+  override def toChunks: Catenable[Chunk[O]] = Catenable.singleton(this)
   override def toVector: Vector[O] = {
     val buf = new collection.immutable.VectorBuilder[O]
     var i = 0
