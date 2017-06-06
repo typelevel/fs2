@@ -263,7 +263,10 @@ final class Stream[+F[_],+O] private (private val coreRef: Stream.CoreRef[F,O]) 
   def pure(implicit S: Sub1[F,Pure]): Stream[Pure,O] = covary[Pure]
 
   /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
-  def repeat: Stream[F,O] = self ++ repeat
+  def repeat: Stream[F,O] = for {
+    a <- self.uncons1
+    b <- a.map { case (h, t) => t.cons1(h) ++ repeat }.getOrElse(Stream.empty)
+  } yield b
 
   def runFree: Free[F,Unit] =
     runFoldFree(())((_,_) => ())
