@@ -503,14 +503,60 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).takeWhile(<f1>)"
   }
 
+  /**
+   * Converts this segment to a catenable of output values, discarding the result.
+   *
+   * Caution: calling `toCatenable` on an infinite sequence will not terminate.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).cons(-1).toCatenable.toList
+   * res0: List[Int] = List(-1, 0, 1, 2, 3)
+   * }}}
+   */
+  def toCatenable: Catenable[O] = {
+    var result: Catenable[O] = Catenable.empty
+    foreach(o => result = result :+ o)
+    result
+  }
+
+  /**
+   * Converts this segment to a single chunk, discarding the result.
+   *
+   * Caution: calling `toChunk` on an infinite sequence will not terminate.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).cons(-1).toChunk
+   * res0: Chunk[Int] = Chunk(-1, 0, 1, 2, 3)
+   * }}}
+   */
+  def toChunk: Chunk[O] = Chunk.vector(toVector)
+
+  /**
+   * Converts this segment to a sequence of chunks, discarding the result.
+   *
+   * Caution: calling `toChunks` on an infinite sequence will not terminate.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).cons(-1).toChunks.toList
+   * res0: List[Chunk[Int]] = List(Chunk(-1), Chunk(0), Chunk(1, 2, 3))
+   * }}}
+   */
   def toChunks: Catenable[Chunk[O]] = {
     var acc: Catenable[Chunk[O]] = Catenable.empty
     foreachChunk(c => acc = acc :+ c)
     acc
   }
 
-  def toChunk: Chunk[O] = Chunk.vector(toVector)
-
+  /**
+   * Converts this segment to a list, discarding the result.
+   *
+   * Caution: calling `toList` on an infinite sequence will not terminate.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).cons(-1).toList
+   * res0: List[Int] = List(-1, 0, 1, 2, 3)
+   * }}}
+   */
   def toList: List[O] = {
     val buf = new collection.mutable.ListBuffer[O]
     foreachChunk { c =>
@@ -523,36 +569,64 @@ abstract class Segment[+O,+R] { self =>
     buf.result
   }
 
-  def toCatenable: Catenable[O] = {
-    var result: Catenable[O] = Catenable.empty
-    foreach(o => result = result :+ o)
-    result
-  }
-
+  /**
+   * Converts this segment to a list, discarding the result.
+   *
+   * Caution: calling `toList` on an infinite sequence will not terminate.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).cons(-1).toList
+   * res0: List[Int] = List(-1, 0, 1, 2, 3)
+   * }}}
+   */
   def toVector: Vector[O] = {
     val buf = new collection.immutable.VectorBuilder[O]
     foreachChunk(c => { buf ++= c.toVector; () })
     buf.result
   }
 
+  /**
+   * Returns the first output sub-segment of this segment along with the remainder, wrapped in `Right`, or
+   * if this segment is empty, returns the result wrapped in `Left`.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).uncons
+   * res0: Either[Unit,(Segment[Int,Unit], Segment[Int,Unit])] = Right((Chunk(0),Chunk(1, 2, 3)))
+   * scala> Segment.empty[Int].uncons
+   * res1: Either[Unit,(Segment[Int,Unit], Segment[Int,Unit])] = Left(())
+   * }}}
+   */
   final def uncons: Either[R, (Segment[O,Unit],Segment[O,R])] = unconsChunks match {
     case Left(r) => Left(r)
-    case Right((cs,tl)) => Right(Catenated(cs) -> tl)
+    case Right((cs,tl)) => Right(catenated(cs) -> tl)
   }
 
-  def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
-    unconsChunks match {
-      case Left(r) => Left(r)
-      case Right((cs,tl)) => Right(cs.uncons.map { case (hd,tl2) => hd -> tl.prepend(Segment.catenated(tl2)) }.get)
-    }
-
+  /**
+   * Returns the first output of this segment along with the remainder, wrapped in `Right`, or
+   * if this segment is empty, returns the result wrapped in `Left`.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).uncons1
+   * res0: Either[Unit,(Int, Segment[Int,Unit])] = Right((0,Chunk(1, 2, 3)))
+   * scala> Segment.empty[Int].uncons1
+   * res1: Either[Unit,(Int, Segment[Int,Unit])] = Left(())
+   * }}}
+   */
   @annotation.tailrec
   final def uncons1: Either[R, (O,Segment[O,R])] =
     unconsChunk match {
       case Left(r) => Left(r)
       case Right((c, tl)) =>
-        if (c.nonEmpty) Right(c(0) -> tl.prepend(Chunk.vector(c.toVector.drop(1))))
-        else tl.uncons1
+        val sz = c.size
+        if (sz == 0) tl.uncons1
+        else if (sz == 1) Right(c(0) -> tl)
+        else Right(c(0) -> tl.prepend(Chunk.vector(c.toVector.drop(1))))
+    }
+
+  def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
+    unconsChunks match {
+      case Left(r) => Left(r)
+      case Right((cs,tl)) => Right(cs.uncons.map { case (hd,tl2) => hd -> tl.prepend(Segment.catenated(tl2)) }.get)
     }
 
   final def unconsChunks: Either[R, (Catenable[Chunk[O]],Segment[O,R])] = {
@@ -686,12 +760,20 @@ object Segment {
   def array[O](os: Array[O]): Segment[O,Unit] = Chunk.array(os)
 
   /** Creates a segment backed by 0 or more other segments. */
-  def catenated[O,R](os: Catenable[Segment[O,R]], ifEmpty: R): Segment[O,R] =
-    if (os.isEmpty) Segment.pure(ifEmpty) else Catenated(os)
+  def catenated[O,R](os: Catenable[Segment[O,R]], ifEmpty: => R): Segment[O,R] =
+    os match {
+      case Catenable.Empty => Segment.pure(ifEmpty)
+      case Catenable.Singleton(s) => s
+      case _ => Catenated(os)
+    }
 
   /** Creates a segment backed by 0 or more other segments. */
   def catenated[O](os: Catenable[Segment[O,Unit]]): Segment[O,Unit] =
-    catenated(os, ())
+    os match {
+      case Catenable.Empty => Segment.empty
+      case Catenable.Singleton(s) => s
+      case _ => Catenated(os)
+    }
 
   /** Creates an infinite segment of the specified value. */
   def constant[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
@@ -771,7 +853,7 @@ object Segment {
       var ind = 0
       val staged = s.map(_.stage(depth.increment, defer, emit, emits, r => { res = Some(r); ind += 1 }).value)
       var i = staged
-      def rem = if (i.isEmpty) pure(res.get) else Catenated(i.map(_.remainder))
+      def rem = catenated(i.map(_.remainder), res.get) //if (i.isEmpty) pure(res.get) else Catenated(i.map(_.remainder))
       step(rem) {
         i.uncons match {
           case None => done(res.get)

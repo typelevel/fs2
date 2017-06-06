@@ -27,7 +27,7 @@ sealed abstract class Catenable[+A] {
             c = rights.last
             rights.trimEnd(1)
           }
-        case Single(a) =>
+        case Singleton(a) =>
           val next = if (rights.isEmpty) empty else rights.reduceLeft((x, y) => Append(y,x))
           result = Some(a -> next)
         case Append(l, r) => c = l; rights += r
@@ -86,7 +86,7 @@ sealed abstract class Catenable[+A] {
             c = rights.last
             rights.trimEnd(1)
           }
-        case Single(a) =>
+        case Singleton(a) =>
           f(a)
           c = if (rights.isEmpty) Empty else rights.reduceLeft((x, y) => Append(y,x))
           rights.clear()
@@ -113,13 +113,13 @@ sealed abstract class Catenable[+A] {
 }
 
 object Catenable {
-  private final case object Empty extends Catenable[Nothing] {
+  private[fs2] final case object Empty extends Catenable[Nothing] {
     def isEmpty: Boolean = true
   }
-  private final case class Single[A](a: A) extends Catenable[A] {
+  private[fs2] final case class Singleton[A](a: A) extends Catenable[A] {
     def isEmpty: Boolean = false
   }
-  private final case class Append[A](left: Catenable[A], right: Catenable[A]) extends Catenable[A] {
+  private[fs2] final case class Append[A](left: Catenable[A], right: Catenable[A]) extends Catenable[A] {
     def isEmpty: Boolean = false // b/c `append` constructor doesn't allow either branch to be empty
   }
 
@@ -127,7 +127,7 @@ object Catenable {
   val empty: Catenable[Nothing] = Empty
 
   /** Creates a catenable of 1 element. */
-  def singleton[A](a: A): Catenable[A] = Single(a)
+  def singleton[A](a: A): Catenable[A] = Singleton(a)
 
   /** Appends two catenables. */
   def append[A](c: Catenable[A], c2: Catenable[A]): Catenable[A] =
