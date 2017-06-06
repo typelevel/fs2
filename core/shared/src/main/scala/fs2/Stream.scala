@@ -294,7 +294,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   def delete(p: O => Boolean): Stream[F,O] =
     this.pull.takeWhile(o => !p(o)).flatMap {
       case None => Pull.pure(None)
-      case Some(s) => s.drop(1).pull.output
+      case Some(s) => s.drop(1).pull.echo
     }.stream
 
   /**
@@ -657,18 +657,18 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * `n` elements, only one chunk of this size will be emitted.
    *
    * @example {{{
-   * scala> Stream(1, 2, 3, 4).sliding(2).map(_.toList).toList
-   * res0: List[List[Int]] = List(List(1, 2), List(2, 3), List(3, 4))
+   * scala> Stream(1, 2, 3, 4).sliding(2).toList
+   * res0: List[scala.collection.immutable.Queue[Int]] = List(Queue(1, 2), Queue(2, 3), Queue(3, 4))
    * }}}
    * @throws scala.IllegalArgumentException if `n` <= 0
    */
-  def sliding(n: Int): Stream[F,Catenable[O]] = {
+  def sliding(n: Int): Stream[F,collection.immutable.Queue[O]] = {
     require(n > 0, "n must be > 0")
-    def go(window: Catenable[O], s: Stream[F,O]): Pull[F,Catenable[O],Unit] = {
+    def go(window: collection.immutable.Queue[O], s: Stream[F,O]): Pull[F,collection.immutable.Queue[O],Unit] = {
       s.pull.uncons.flatMap {
         case None => Pull.done
         case Some((hd,tl)) =>
-          hd.scan(window)((w, i) => w.uncons.get._2 :+ i).drop(1) match {
+          hd.scan(window)((w, i) => w.dequeue._2.enqueue(i)).drop(1) match {
             case Left((w2,_)) => go(w2, tl)
             case Right(out) => Pull.segment(out).flatMap { window => go(window, tl) }
           }
@@ -677,7 +677,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     this.pull.unconsN(n, true).flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
-        val window = hd.toCatenable
+        val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).run
         Pull.output1(window) >> go(window, tl)
     }.stream
   }
@@ -1797,7 +1797,7 @@ object Stream {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F,O,Unit] = Pull.loop[F,O,Stream[F,O]](_.pull.echoSegment)(self).as(())
+    def echo: Pull[F,O,Unit] = Pull.fromFree(self.get)
 
     /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
     def echo1: Pull[F,O,Option[Stream[F,O]]] =
@@ -1864,8 +1864,6 @@ object Stream {
         }
       go(None, self)
     }
-
-    def output: Pull[F,O,Unit] = Pull.fromFree(self.get)
 
     /** Like [[uncons]] but does not consume the segment (i.e., the segment is pushed back). */
     def peek: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =

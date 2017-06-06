@@ -109,7 +109,7 @@ sealed abstract class Catenable[+A] {
     builder.result
   }
 
-  override def toString = "Catenable(..)"
+  override def toString = toList.mkString("Catenable(", ", ", ")")
 }
 
 object Catenable {

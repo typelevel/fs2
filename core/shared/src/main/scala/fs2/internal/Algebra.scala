@@ -254,18 +254,15 @@ private[fs2] object Algebra {
                   go(scope, asyncSupport, acc, f(e).viewL)
                 }
               }
+              
             case c: Algebra.CloseScope[F2,_] =>
               F.flatMap(c.toClose.close(asyncSupport)) { e =>
                 go(c.scopeAfterClose, asyncSupport, acc, f(e).viewL)
               }
 
             case o: Algebra.OpenScope[F2,_] =>
-            try {
               val innerScope = scope.open
               go(innerScope, asyncSupport, acc, f(Right(scope -> innerScope)).viewL)
-            } catch {
-              case t: Throwable => t.printStackTrace; throw t
-            }
 
             case unconsAsync: Algebra.UnconsAsync[F2,_,_,_] =>
               val s = unconsAsync.s

@@ -154,8 +154,9 @@ abstract class Segment[+O,+R] { self =>
         }
         rem = 0
       },
-      r => result = Some(r)).value
-    while (rem > 0 && result.isEmpty) steps(step, trampoline)
+      r => { result = Some(r); throw Done }).value
+    try while (rem > 0 && result.isEmpty) steps(step, trampoline)
+    catch { case Done => }
     result match {
       case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
       case Some(r) => if (leftovers.isEmpty) Left((r,rem)) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
@@ -185,8 +186,9 @@ abstract class Segment[+O,+R] { self =>
           }
         }
       },
-      r => result = Some(r)).value
-    while (dropping && result.isEmpty) steps(step, trampoline)
+      r => { result = Some(r); throw Done }).value
+    try while (dropping && result.isEmpty) steps(step, trampoline)
+    catch { case Done => }
     result match {
       case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
       case Some(r) => if (leftovers.isEmpty) Left(r) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
@@ -233,10 +235,10 @@ abstract class Segment[+O,+R] { self =>
   }
 
   def foreachChunk(f: Chunk[O] => Unit): Unit = {
-    var ok = true
     val trampoline = makeTrampoline
-    val step = stage(Depth(0), defer(trampoline), o => f(Chunk.singleton(o)), f, r => { ok = false }).value
-    while (ok) steps(step, trampoline)
+    val step = stage(Depth(0), defer(trampoline), o => f(Chunk.singleton(o)), f, r => throw Done).value
+    try while (true) steps(step, trampoline)
+    catch { case Done => }
   }
 
   def foreach(f: O => Unit): Unit = {
@@ -312,10 +314,10 @@ abstract class Segment[+O,+R] { self =>
   final def run[O2>:O](implicit ev: O2 =:= Unit): R = {
     val _ = ev // Convince scalac that ev is used
     var result: Option[R] = None
-    var ok = true
     val trampoline = makeTrampoline
-    val step = stage(Depth(0), defer(trampoline), _ => (), _ => (), r => { result = Some(r); ok = false }).value
-    while (ok) steps(step, trampoline)
+    val step = stage(Depth(0), defer(trampoline), _ => (), _ => (), r => { result = Some(r); throw Done }).value
+    try while (true) steps(step, trampoline)
+    catch { case Done => }
     result.get
   }
 
@@ -356,8 +358,9 @@ abstract class Segment[+O,+R] { self =>
         defer(trampoline),
         o => emits(Chunk.singleton(o)),
         os => emits(os),
-        r => if (result.isEmpty) result = Some(Left(r))).value
-      while (result.isEmpty) steps(step, trampoline)
+        r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
+      try while (result.isEmpty) steps(step, trampoline)
+      catch { case Done => }
       result.map {
         case Left(r) => Left((r,out,rem))
         case Right(after) => Right((out,step.remainder.prepend(after)))
@@ -393,8 +396,9 @@ abstract class Segment[+O,+R] { self =>
       defer(trampoline),
       o => emits(Chunk.singleton(o)),
       os => emits(os),
-      r => if (result.isEmpty) result = Some(Left(r))).value
-    while (result.isEmpty) steps(step, trampoline)
+      r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
+    try while (result.isEmpty) steps(step, trampoline)
+    catch { case Done => }
     result.map {
       case Left(r) => Left((r,out))
       case Right(after) => Right((out,step.remainder.prepend(after)))
@@ -623,12 +627,36 @@ abstract class Segment[+O,+R] { self =>
         else Right(c(0) -> tl.prepend(Chunk.vector(c.toVector.drop(1))))
     }
 
+  /**
+   * Returns the first output chunk of this segment along with the remainder, wrapped in `Right`, or
+   * if this segment is empty, returns the result wrapped in `Left`.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).unconsChunk
+   * res0: Either[Unit,(Chunk[Int], Segment[Int,Unit])] = Right((Chunk(-1, 0),Chunk(1, 2, 3)))
+   * scala> Segment.empty[Int].unconsChunk
+   * res1: Either[Unit,(Chunk[Int], Segment[Int,Unit])] = Left(())
+   * }}}
+   */
   def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
     unconsChunks match {
       case Left(r) => Left(r)
       case Right((cs,tl)) => Right(cs.uncons.map { case (hd,tl2) => hd -> tl.prepend(Segment.catenated(tl2)) }.get)
     }
 
+  /**
+   * Returns the first output chunks of this segment along with the remainder, wrapped in `Right`, or
+   * if this segment is empty, returns the result wrapped in `Left`.
+   *
+   * Differs from `unconsChunk` when a single step results in multiple outputs.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).unconsChunks
+   * res0: Either[Unit,(Catenable[Chunk[Int]], Segment[Int,Unit])] = Right((Catenable(Chunk(-1, 0)),Chunk(1, 2, 3)))
+   * scala> Segment.empty[Int].unconsChunks
+   * res1: Either[Unit,(Catenable[Chunk[Int]], Segment[Int,Unit])] = Left(())
+   * }}}
+   */
   final def unconsChunks: Either[R, (Catenable[Chunk[O]],Segment[O,R])] = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
@@ -638,8 +666,9 @@ abstract class Segment[+O,+R] { self =>
       defer(trampoline),
       o => { out = out :+ Chunk.singleton(o); ok = false },
       os => { out = out :+ os; ok = false },
-      r => { result = Some(r); ok = false }).value
-    while (ok) steps(step, trampoline)
+      r => { result = Some(r); throw Done }).value
+    try while (ok) steps(step, trampoline)
+    catch { case Done => }
     result match {
       case None =>
         Right(out -> step.remainder)
@@ -812,9 +841,12 @@ object Segment {
     def stage0 = (_, _, emit, _, done) => Eval.later {
       var emitted = false
       step(if (emitted) empty else singleton(o)) {
-        emitted = true
-        emit(o)
-        done(())
+        if (emitted) done(())
+        else {
+          emitted = true
+          emit(o)
+          done(())
+        }
       }
     }
     override def toString = s"singleton($o)"
@@ -883,6 +915,8 @@ object Segment {
     def <(that: Depth): Boolean = value < that.value
   }
   private val MaxFusionDepth: Depth = Depth(50)
+
+  final case object Done extends RuntimeException { override def fillInStackTrace = this }
 
   private def makeTrampoline = new java.util.LinkedList[() => Unit]()
   private def defer(t: java.util.LinkedList[() => Unit]): (=>Unit) => Unit =

@@ -29,7 +29,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
         emitted = true
         emits(this)
       }
-      else done(())
+      done(())
     }
   }
 
