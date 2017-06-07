@@ -343,6 +343,20 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).map(<f1>)"
   }
 
+  /**
+   * Stateful version of map, where the map function depends on a state value initialized to
+   * `init` and updated upon each output value.
+   *
+   * The final state is returned in the result, paired with the result of the source stream.
+   *
+   * @example {{{
+   * scala> val src = Segment("Hello", "World").mapAccumulate(0)((l,s) => (l + s.length, (l, s)))
+   * scala> src.toVector
+   * res0: Vector[(Int,String)] = Vector((0,Hello), (5,World))
+   * scala> src.void.run
+   * res1: (Unit,Int) = ((),10)
+   * }}}
+   */
   def mapAccumulate[S,O2](init: S)(f: (S,O) => (S,O2)): Segment[O2,(R,S)] = new Segment[O2,(R,S)] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       var s = init
