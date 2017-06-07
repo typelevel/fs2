@@ -678,10 +678,34 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
+  /**
+   * Alias for `map(_ => ())`.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).void.toList
+   * res0: List[Unit] = List((), (), ())
+   * }}}
+   */
   final def void: Segment[Unit,R] = map(_ => ())
 
+  /**
+   * Returns a new segment which discards the result and replaces it with unit.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).take(2).voidResult
+   * res0: Segment[Int,Unit] = ((Chunk(1, 2, 3)).take(2)).mapResult(<f1>)
+   * }}}
+   */
   final def voidResult: Segment[O,Unit] = mapResult(_ => ())
 
+  /**
+   * Returns a new segment which includes the number of elements output in the result.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).withLength.void.run
+   * res0: (Unit,Long) = ((),3)
+   * }}}
+   */
   def withLength: Segment[O,(R,Long)] = withLength_(0)
 
   private def withLength_(init: Long): Segment[O,(R,Long)] = new Segment[O,(R,Long)] {
@@ -696,6 +720,15 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).withLength_($init)"
   }
 
+  /**
+   * Zips this segment with another segment using the supplied function to combine elements from this and that.
+   * Terminates when either segment terminates.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3).zipWith(Segment(4,5,6,7))(_+_).toList
+   * res0: List[Int] = List(5, 7, 9)
+   * }}}
+   */
   def zipWith[O2,R2,O3](that: Segment[O2,R2])(f: (O,O2) => O3): Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] =
     new Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] {
       def stage0 = (depth, defer, emit, emits, done) => evalDefer {
