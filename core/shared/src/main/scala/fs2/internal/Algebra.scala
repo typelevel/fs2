@@ -25,6 +25,7 @@ private[fs2] object Algebra {
     extends Algebra[F,X,AsyncPull[F,Option[(Segment[O,Unit],Free[Algebra[F,O,?],Unit])]]]
   final case class OpenScope[F[_],O]() extends Algebra[F,O,(Scope[F],Scope[F])]
   final case class CloseScope[F[_],O](toClose: Scope[F], scopeAfterClose: Scope[F]) extends Algebra[F,O,Unit]
+  final case class Suspend[F[_],O,R](thunk: () => Free[Algebra[F,O,?],R]) extends Algebra[F,O,R]
 
   def output[F[_],O](values: Segment[O,Unit]): Free[Algebra[F,O,?],Unit] =
     Free.Eval[Algebra[F,O,?],Unit](Output(values))
@@ -68,7 +69,7 @@ private[fs2] object Algebra {
     Free.Fail[Algebra[F,O,?],R](t)
 
   def suspend[F[_],O,R](f: => Free[Algebra[F,O,?],R]): Free[Algebra[F,O,?],R] =
-    Free.suspend[Algebra[F,O,?],R](f)
+    Free.Eval[Algebra[F,O,?],R](Suspend(() => f))
 
   final class Scope[F[_]](implicit F: Sync[F]) {
     private val monitor = this
@@ -171,9 +172,9 @@ private[fs2] object Algebra {
         val f = bound.f.asInstanceOf[Either[Throwable,Any] => Free[Algebra[F,O,?],Unit]]
         val fx = bound.fx.asInstanceOf[Free.Eval[Algebra[F,O,?],_]].fr
         fx match {
-          case os : Algebra.Output[F, O] =>
+          case os: Algebra.Output[F, O] =>
             pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some((os.values, f(Right(())))))
-          case os : Algebra.WrapSegment[F, O, x] =>
+          case os: Algebra.WrapSegment[F, O, x] =>
             try {
               def asSegment(c: Catenable[Segment[O,Unit]]): Segment[O,Unit] =
                 c.uncons.flatMap { case (h1,t1) => t1.uncons.map(_ => Segment.catenated(c)).orElse(Some(h1)) }.getOrElse(Segment.empty)
@@ -183,9 +184,12 @@ private[fs2] object Algebra {
                 case Right((segments,tl)) =>
                   pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(asSegment(segments) -> Free.Bind[Algebra[F,O,?],x,Unit](segment(tl), f)))
               }
-            } catch { case e: Throwable => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
+            } catch { case NonFatal(e) => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
               uncons(f(Left(e)), chunkSize)
             }}
+          case Algebra.Suspend(thunk) =>
+            try uncons(Free.Bind(thunk(), f), chunkSize)
+            catch { case NonFatal(e) => uncons(f(Left(e)), chunkSize) }
           case algebra => // Eval, Acquire, Release, OpenScope, CloseScope, UnconsAsync
             Free.Bind[Algebra[F,X,?],Any,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](
               Free.Eval[Algebra[F,X,?],Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
@@ -254,7 +258,7 @@ private[fs2] object Algebra {
                   go(scope, asyncSupport, acc, f(e).viewL)
                 }
               }
-              
+
             case c: Algebra.CloseScope[F2,_] =>
               F.flatMap(c.toClose.close(asyncSupport)) { e =>
                 go(c.scopeAfterClose, asyncSupport, acc, f(e).viewL)
@@ -281,6 +285,10 @@ private[fs2] object Algebra {
               }
               F.flatMap(asyncPull) { ap => go(scope, Some(effect -> ec), acc, f(Right(ap)).viewL) }
 
+            case s: Algebra.Suspend[F2,O,_] =>
+              try go(scope, asyncSupport, acc, Free.Bind(s.thunk(), f).viewL)
+              catch { case NonFatal(e) => go(scope, asyncSupport, acc, f(Left(e)).viewL) }
+
             case _ => sys.error("impossible Segment or Output following uncons")
           }
         case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
@@ -306,6 +314,7 @@ private[fs2] object Algebra {
             case None => Algebra.Eval(u(uu.effect.raiseError[X](new IllegalStateException("unconsAsync encountered while translating synchronously"))))
             case Some(ef) => UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), ef, uu.ec).asInstanceOf[Algebra[G,O2,X]]
           }
+        case s: Suspend[F,O2,X] => Suspend(() => s.thunk().translate(algFtoG))
       }
     }
     fr.translate[Algebra[G,O,?]](algFtoG)

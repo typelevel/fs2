@@ -32,7 +32,16 @@ private[fs2] sealed abstract class Free[F[_], +R] {
     case Eval(_) => sys.error("impossible")
   }
 
-  def viewL: ViewL[F,R] = ViewL(this)
+  private var cachedViewL: Option[ViewL[F,R @annotation.unchecked.uncheckedVariance]] = None
+  def viewL: ViewL[F,R] = {
+    cachedViewL match {
+      case Some(v) => v
+      case None =>
+        val v = ViewL(this)
+        cachedViewL = Some(v) // OK to race multiple threads here
+        v
+    }
+  }
 
   def translate[G[_]](f: F ~> G): Free[G, R] = Free.suspend {
     viewL.get match {

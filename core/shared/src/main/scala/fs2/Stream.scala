@@ -1012,7 +1012,7 @@ object Stream {
     fromFree(Algebra.output[Pure,O](s))
 
   def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
-    emit(()).flatMap { _ => s }
+    fromFree(Algebra.suspend(s.get))
 
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Stream[Pure,O] =
     segment(Segment.unfold(s)(f))

@@ -118,7 +118,7 @@ object Pull {
     fromFree(Algebra.segment[F,O,R](s))
 
   def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
-    output(Chunk.empty).flatMap { _ => p }
+    fromFree(Algebra.suspend(p.get))
 
   private def release[F[_]](token: Algebra.Token): Pull[F,Nothing,Unit] =
     fromFree[F,Nothing,Unit](Algebra.release(token))
