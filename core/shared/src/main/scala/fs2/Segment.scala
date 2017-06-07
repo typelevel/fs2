@@ -163,6 +163,21 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
+  /**
+   * Eagerly drops elements from the head of this segment until the supplied predicate returns false,
+   * returning either the result, if the end of the segment was reached without the predicate failing,
+   * or the remaining segment.
+   *
+   * If `dropFailure` is true, the first element that failed the predicate will be dropped. If false,
+   * the first element that failed the predicate will be the first element of the remainder.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3,4,5).dropWhile(_ < 3).map(_.toVector)
+   * res0: Either[Unit,Vector[Int]] = Right(Vector(3, 4, 5))
+   * scala> Segment(1,2,3,4,5).dropWhile(_ < 10)
+   * res1: Either[Unit,Segment[Int,Unit]] = Left(())
+   * }}}
+   */
   final def dropWhile(p: O => Boolean, dropFailure: Boolean = false): Either[R,Segment[O,R]] = {
     var dropping = true
     var leftovers: Catenable[Chunk[O]] = Catenable.empty
@@ -195,6 +210,14 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
+  /**
+   * Filters output elements of this segment with the supplied predicate.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3,4,5).filter(_ % 2 == 0).toVector
+   * res0: Vector[Int] = Vector(2, 4)
+   * }}}
+   */
   final def filter[O2](p: O => Boolean): Segment[O,R] = new Segment[O,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
@@ -218,6 +241,14 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).filter(<pf1>)"
   }
 
+  /**
+   * Folds the output elements of this segment and returns the result as the result of the returned segment.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3,4,5).fold(0)(_ + _).run
+   * res0: Int = 15
+   * }}}
+   */
   final def fold[B](z: B)(f: (B,O) => B): Segment[Nothing,B] = new Segment[Nothing,B] {
     def stage0 = (depth, defer, emit, emits, done) => {
       var b = z
@@ -229,11 +260,22 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).fold($z)($f)"
   }
 
-  final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = uncons1 match {
+  private[fs2] final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = uncons1 match {
     case Left(_) => z
     case Right((hd,tl)) => f(hd, tl.foldRightLazy(z)(f))
   }
 
+  /**
+   * Invokes `f` on each chunk of this segment.
+   *
+   * @example {{{
+   * scala> val buf = collection.mutable.ListBuffer[Chunk[Int]]()
+   * scala> Segment(1,2,3).cons(0).foreachChunk(c => buf += c)
+   * res0: Unit = ()
+   * scala> buf.toList
+   * res1: List[Chunk[Int]] = List(Chunk(0), Chunk(1, 2, 3))
+   * }}}
+   */
   def foreachChunk(f: Chunk[O] => Unit): Unit = {
     val trampoline = makeTrampoline
     val step = stage(Depth(0), defer(trampoline), o => f(Chunk.singleton(o)), f, r => throw Done).value
@@ -241,6 +283,17 @@ abstract class Segment[+O,+R] { self =>
     catch { case Done => }
   }
 
+  /**
+   * Invokes `f` on each output of this segment.
+   *
+   * @example {{{
+   * scala> val buf = collection.mutable.ListBuffer[Int]()
+   * scala> Segment(1,2,3).cons(0).foreach(i => buf += i)
+   * res0: Unit = ()
+   * scala> buf.toList
+   * res1: List[Int] = List(0, 1, 2, 3)
+   * }}}
+   */
   def foreach(f: O => Unit): Unit = {
     foreachChunk { c =>
       var i = 0
@@ -251,6 +304,15 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
+  /**
+   * Returns a segment that suppresses all output and returns the last element output by
+   * source segment paired with the source segment result.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3).last.run
+   * res0: (Unit, Option[Int]) = ((),Some(3))
+   * }}}
+   */
   def last: Segment[Nothing,(R,Option[O])] = new Segment[Nothing,(R,Option[O])] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       var last: Option[O] = None
@@ -263,6 +325,14 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).last"
   }
 
+  /**
+   * Returns a segment that maps each output using the supplied function.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3).map(_ + 1).toVector
+   * res0: Vector[Int] = Vector(2, 3, 4)
+   * }}}
+   */
   def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer,
