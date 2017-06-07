@@ -184,12 +184,10 @@ private[fs2] object Algebra {
                 case Right((segments,tl)) =>
                   pure[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](Some(asSegment(segments) -> Free.Bind[Algebra[F,O,?],x,Unit](segment(tl), f)))
               }
-            } catch { case NonFatal(e) => suspend[F,X,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]] {
-              uncons(f(Left(e)), chunkSize)
-            }}
+            } catch { case NonFatal(e) => Free.suspend(uncons(f(Left(e)), chunkSize)) }
           case Algebra.Suspend(thunk) =>
             try uncons(Free.Bind(thunk(), f), chunkSize)
-            catch { case NonFatal(e) => uncons(f(Left(e)), chunkSize) }
+            catch { case NonFatal(e) => Free.suspend(uncons(f(Left(e)), chunkSize)) }
           case algebra => // Eval, Acquire, Release, OpenScope, CloseScope, UnconsAsync
             Free.Bind[Algebra[F,X,?],Any,Option[(Segment[O,Unit], Free[Algebra[F,O,?],Unit])]](
               Free.Eval[Algebra[F,X,?],Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
