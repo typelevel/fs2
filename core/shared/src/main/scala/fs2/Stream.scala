@@ -755,7 +755,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /** Zips the elements of the input stream with its indices, and returns the new stream. */
   def zipWithIndex: Stream[F,(O,Long)] =
     this.scanSegments(0L) { (index, s) =>
-      s.withLength.zipWith(Segment.from(index))((_,_)).mapResult {
+      s.withSize.zipWith(Segment.from(index))((_,_)).mapResult {
         case Left(((_, len), remRight)) => len + index
         case Right((_, remLeft)) => sys.error("impossible")
       }

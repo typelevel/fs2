@@ -374,6 +374,14 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).mapAccumulate($init)(<f1>)"
   }
 
+  /**
+   * Maps the supplied function over the result of this segment.
+   *
+   * @example {{{
+   * scala> Segment('a', 'b', 'c').withSize.mapResult { case (_, size) => size }.void.run
+   * res0: Long = 3
+   * }}}
+   */
   final def mapResult[R2](f: R => R2): Segment[O,R2] = new Segment[O,R2] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       self.stage(depth.increment, defer, emit, emits, r => done(f(r))).map(_.mapRemainder(_ mapResult f))
@@ -395,6 +403,15 @@ abstract class Segment[+O,+R] { self =>
     c.asInstanceOf[Segment[O2,R]] ++ this
   }
 
+  /**
+   * Computes the result of this segment. May only be called when `O` is `Unit`, to prevent accidentally ignoring
+   * output values. To intentionally ignore outputs, call `s.void.run`.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).withSize.void.run
+   * res0: (Unit,Long) = ((),3)
+   * }}}
+   */
   final def run[O2>:O](implicit ev: O2 =:= Unit): R = {
     val _ = ev // Convince scalac that ev is used
     var result: Option[R] = None
@@ -405,6 +422,16 @@ abstract class Segment[+O,+R] { self =>
     result.get
   }
 
+  /**
+   * Like fold but outputs intermediate results. If `emitFinal` is true, upon reaching the end of the stream, the accumulated
+   * value is output. If `emitFinal` is false, the accumulated output is not output. Regardless, the accumulated value is
+   * returned as the result of the segment.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3, 4, 5).scan(0)(_+_).toVector
+   * res0: Vector[Int] = Vector(0, 1, 3, 6, 10, 15)
+   * }}}
+   */
   final def scan[B](z: B, emitFinal: Boolean = true)(f: (B,O) => B): Segment[B,B] = new Segment[B,B] {
     def stage0 = (depth, defer, emit, emits, done) => {
       var b = z
@@ -416,7 +443,25 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).scan($z)($f)"
   }
 
-  final def splitAt(n: Long): Either[(R,Catenable[Segment[O,Unit]],Long),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
+  /**
+   * Splits this segment at the specified index by simultaneously taking and dropping.
+   *
+   * If the segment has less than `n` elements, a left is returned, providing the result of the segment,
+   * all sub-segments taken, and the remaining number of elements (i.e., size - n).
+   *
+   * If the segment has more than `n` elements, a right is returned, providing the sub-segments up to
+   * the `n`-th element and a remainder segment.
+   *
+   * The prefix is computed eagerly while the suffix is computed lazily.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3, 4, 5).splitAt(2)
+   * res0: Either[(Unit,Catenable[Segment[Int,Unit]],Long),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Right((Catenable(Chunk(1, 2)),Chunk(3, 4, 5)))
+   * scala> Segment(1, 2, 3, 4, 5).splitAt(7)
+   * res0: Either[(Unit,Catenable[Segment[Int,Unit]],Long),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Left(((),Catenable(Chunk(1, 2, 3, 4, 5)),2))
+   * }}}
+   */
+   final def splitAt(n: Long): Either[(R,Catenable[Segment[O,Unit]],Long),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
     if (n <= 0) Right((Catenable.empty, this))
     else {
       var out: Catenable[Chunk[O]] = Catenable.empty
@@ -452,6 +497,24 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
+  /**
+   * Splits this segment at the first element where the supplied predicate returns false.
+   *
+   * Analagous to siumultaneously running `takeWhile` and `dropWhile`.
+   *
+   * If `emitFailure` is false, the first element which fails the predicate is returned in the suffix segment. If true,
+   * it is returned as the last element in the prefix segment.
+   *
+   * If the end of the segment is reached and the predicate has not failed, a left is returned, providing the segment result
+   * and the catenated sub-segments. Otherwise, a right is returned, providing the prefix sub-segments and the suffix remainder.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3, 4, 5).splitWhile(_ != 3)
+   * res0: Either[(Unit,Catenable[Segment[Int,Unit]]),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Right((Catenable(Chunk(1, 2)),Chunk(3, 4, 5)))
+   * scala> Segment(1, 2, 3, 4, 5).splitWhile(_ != 7)
+   * res0: Either[(Unit,Catenable[Segment[Int,Unit]]),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Left(((),Catenable(Chunk(1, 2, 3, 4, 5))))
+   * }}}
+   */
   final def splitWhile(p: O => Boolean, emitFailure: Boolean = false): Either[(R,Catenable[Segment[O,Unit]]),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[Either[R,Segment[O,Unit]]] = None
@@ -489,9 +552,19 @@ abstract class Segment[+O,+R] { self =>
     }.getOrElse(Right((out, step.remainder)))
   }
 
-  final def sum[N>:O](initial: N)(implicit N: Numeric[N]): Segment[Nothing,N] = new Segment[Nothing,N] {
+  /**
+   * Sums the elements of this segment and returns the sum as the segment result.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3, 4, 5).sum.run
+   * res0: Int = 15
+   * }}}
+   */
+  final def sum[N>:O](implicit N: Numeric[N]): Segment[Nothing,N] = sum_(N.zero)
+
+  private def sum_[N>:O](initial: N)(implicit N: Numeric[N]): Segment[Nothing,N] = new Segment[Nothing,N] {
     def stage0 = (depth, defer, emit, emits, done) => {
-      var b = N.zero
+      var b = initial
       self.stage(depth.increment, defer,
         o => b = N.plus(b, o),
         { case os : Chunk.Longs =>
@@ -503,7 +576,7 @@ abstract class Segment[+O,+R] { self =>
             var i = 0
             while (i < os.size) { b = N.plus(b, os(i)); i += 1 }
         },
-        r => done(b)).map(_.mapRemainder(_.sum(b)))
+        r => done(b)).map(_.mapRemainder(_.sum_(b)))
     }
     override def toString = s"($self).sum($initial)"
   }
@@ -786,22 +859,22 @@ abstract class Segment[+O,+R] { self =>
    * Returns a new segment which includes the number of elements output in the result.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).withLength.void.run
+   * scala> Segment(1, 2, 3).withSize.void.run
    * res0: (Unit,Long) = ((),3)
    * }}}
    */
-  def withLength: Segment[O,(R,Long)] = withLength_(0)
+  def withSize: Segment[O,(R,Long)] = withSize_(0)
 
-  private def withLength_(init: Long): Segment[O,(R,Long)] = new Segment[O,(R,Long)] {
+  private def withSize_(init: Long): Segment[O,(R,Long)] = new Segment[O,(R,Long)] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       var length = init
       self.stage(depth.increment, defer,
         o => { length += 1; emit(o) },
         os => { length += os.size; emits(os) },
         r => done((r,length))
-      ).map(_.mapRemainder(_.withLength_(length)))
+      ).map(_.mapRemainder(_.withSize_(length)))
     }
-    override def toString = s"($self).withLength_($init)"
+    override def toString = s"($self).withSize_($init)"
   }
 
   /**

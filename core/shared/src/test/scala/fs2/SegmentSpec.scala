@@ -136,7 +136,7 @@ class SegmentSpec extends Fs2Spec {
 
     "sum" in {
       forAll { (s: Segment[Int,Unit]) =>
-        s.sum(0).run shouldBe s.toVector.sum
+        s.sum.run shouldBe s.toVector.sum
       }
     }
 
@@ -198,7 +198,7 @@ class SegmentSpec extends Fs2Spec {
     "staging stack safety" in {
       val N = 100000
       val s = (0 until N).foldLeft(Segment.singleton(0))((s,i) => s map (_ + i))
-      s.sum(0).run shouldBe (0 until N).sum
+      s.sum.run shouldBe (0 until N).sum
     }
 
     val Ns = List(2,3,100,200,400,800,1600,3200,6400,12800,25600,51200,102400)
