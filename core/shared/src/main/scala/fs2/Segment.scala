@@ -9,7 +9,7 @@ import Segment._
  *
  * All methods which return a `Segment` support fusion with other arbitrary methods that
  * return `Segment`s. This is similar to the staging approach described in
- * [Stream Fusion, to Completeness](https://arxiv.org/pdf/1612.06668v1.pdf), but without
+ * [[https://arxiv.org/pdf/1612.06668v1.pdf Stream Fusion, to Completeness]], but without
  * code generation in staging.
  *
  * Stack safety is ensured by tracking a fusion depth. If the depth reaches the
