@@ -300,7 +300,7 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /**
    * Removes all output values from this stream.
    *
-   * Often used with [[merge]] to run one side of the merge for its effect
+   * Often used with `merge` to run one side of the merge for its effect
    * while getting outputs from the opposite side of the merge.
    *
    * @example {{{
@@ -390,24 +390,59 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     }
   }
 
-  /** Like [[dropWhile]], but drops the first value which tests false. */
+  /**
+   * Like [[dropWhile]], but drops the first value which tests false.
+   *
+   * @example {{{
+   * scala> Stream.range(0,10).dropThrough(_ != 4).toList
+   * res0: List[Int] = List(5, 6, 7, 8, 9)
+   * }}}
+   */
   def dropThrough(p: O => Boolean): Stream[F,O] =
     this.pull.dropThrough(p).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
 
-  /** Drops the elements of the input until the predicate `p` fails, then echoes the rest. */
+  /**
+   * Drops elements from the head of this stream until the supplied predicate returns false.
+   *
+   * @example {{{
+   * scala> Stream.range(0,10).dropWhile(_ != 4).toList
+   * res0: List[Int] = List(4, 5, 6, 7, 8, 9)
+   * }}}
+   */
   def dropWhile(p: O => Boolean): Stream[F,O] =
     this.pull.dropWhile(p).flatMap(_.map(_.pull.echo).getOrElse(Pull.done)).stream
 
-  /** Emits `true` as soon as a matching element is received, else `false` if no input matches */
+  /**
+   * Emits `true` as soon as a matching element is received, else `false` if no input matches.
+   *
+   * @example {{{
+   * scala> Stream.range(0,10).exists(_ == 4).toList
+   * res0: List[Boolean] = List(true)
+   * scala> Stream.range(0,10).exists(_ == 10).toList
+   * res1: List[Boolean] = List(false)
+   * }}}
+   */
   def exists(p: O => Boolean): Stream[F, Boolean] =
     this.pull.forall(!p(_)).flatMap(r => Pull.output1(!r)).stream
 
-  /** Emits only inputs which match the supplied predicate. */
+  /**
+   * Emits only inputs which match the supplied predicate.
+   *
+   * @example {{{
+   * scala> Stream.range(0,10).filter(_ % 2 == 0).toList
+   * res0: List[Int] = List(0, 2, 4, 6, 8)
+   * }}}
+   */
   def filter(p: O => Boolean): Stream[F,O] = mapSegments(_ filter p)
 
   /**
    * Like `filter`, but the predicate `f` depends on the previously emitted and
    * current elements.
+   *
+   * @example {{{
+   * scala> Stream(1, -1, 2, -2, 3, -3, 4, -4).filterWithPrevious((previous, current) => previous < current).toList
+   * res0: List[Int] = List(1, 2, 3, 4)
+   * }}}
    */
   def filterWithPrevious(f: (O, O) => Boolean): Stream[F,O] = {
     def go(last: O, s: Stream[F,O]): Pull[F,O,Option[Unit]] =
@@ -434,13 +469,25 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     }.stream
   }
 
-  /** Emits the first input (if any) which matches the supplied predicate. */
+  /**
+   * Emits the first input (if any) which matches the supplied predicate.
+   *
+   * @example {{{
+   * scala> Stream.range(1,10).find(_ % 2 == 0).toList
+   * res0: List[Int] = List(2)
+   * }}}
+   */
   def find(f: O => Boolean): Stream[F,O] =
     this.pull.find(f).flatMap { _.map { case (hd,tl) => Pull.output1(hd) }.getOrElse(Pull.done) }.stream
 
   /**
    * Folds all inputs using an initial value `z` and supplied binary operator,
    * and emits a single element stream.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4, 5).fold(0)(_ + _).toList
+   * res0: List[Int] = List(15)
+   * }}}
    */
   def fold[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] =
     this.pull.fold(z)(f).flatMap(Pull.output1).stream
@@ -448,25 +495,51 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /**
    * Folds all inputs using the supplied binary operator, and emits a single-element
    * stream, or the empty stream if the input is empty.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4, 5).fold1(_ + _).toList
+   * res0: List[Int] = List(15)
+   * }}}
    */
   def fold1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] =
     this.pull.fold1(f).flatMap(_.map(Pull.output1).getOrElse(Pull.done)).stream
 
-  /** Alias for `map(f).foldMonoid`. */
+  /**
+   * Alias for `map(f).foldMonoid`.
+   *
+   * @example {{{
+   * scala> import cats.implicits._
+   * scala> Stream(1, 2, 3, 4, 5).foldMap(_ => 1).toList
+   * res0: List[Int] = List(5)
+   * }}}
+   */
   def foldMap[O2](f: O => O2)(implicit O2: Monoid[O2]): Stream[F,O2] =
     fold(O2.empty)((acc, o) => O2.combine(acc, f(o)))
 
   /**
    * Emits a single `true` value if all input matches the predicate.
    * Halts with `false` as soon as a non-matching element is received.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4, 5).forall(_ < 10).toList
+   * res0: List[Boolean] = List(true)
+   * }}}
    */
   def forall(p: O => Boolean): Stream[F, Boolean] =
     this.pull.forall(p).flatMap(Pull.output1).stream
 
   /**
    * Partitions the input into a stream of chunks according to a discriminator function.
-   * Each chunk is annotated with the value of the discriminator function applied to
-   * any of the chunk's elements.
+   *
+   * Each chunk in the source stream is grouped using the supplied discriminator function
+   * and the results of the grouping are emitted each time the discriminator function changes
+   * values.
+   *
+   * @example {{{
+   * scala> import cats.implicits._
+   * scala> Stream("Hello", "Hi", "Greetings", "Hey").groupBy(_.head).toList
+   * res0: List[(Char,Vector[String])] = List((H,Vector(Hello, Hi)), (G,Vector(Greetings)), (H,Vector(Hey)))
+   * }}}
    */
   def groupBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Vector[O])] = {
 
@@ -509,10 +582,24 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
     go(None, this).stream
   }
 
-  /** Emits the first element of this stream (if non-empty) and then halts. */
+  /**
+   * Emits the first element of this stream (if non-empty) and then halts.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3).head.toList
+   * res0: List[Int] = List(1)
+   * }}}
+   */
   def head: Stream[F,O] = take(1)
 
-  /** Emits the specified separator between every pair of elements in the source stream. */
+  /**
+   * Emits the specified separator between every pair of elements in the source stream.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3, 4, 5).intersperse(0).toList
+   * res0: List[Int] = List(1, 0, 2, 0, 3, 0, 4, 0, 5)
+   * }}}
+   */
   def intersperse[O2 >: O](separator: O2): Stream[F,O2] =
     this.pull.echo1.flatMap {
       case None => Pull.pure(None)
@@ -529,11 +616,27 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
         }}.pull.echo
     }.stream
 
-  /** Returns the last element of this stream, if non-empty. */
+  /**
+   * Returns the last element of this stream, if non-empty.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3).last.toList
+   * res0: List[Option[Int]] = List(Some(3))
+   * }}}
+   */
   def last: Stream[F,Option[O]] =
     this.pull.last.flatMap(Pull.output1).stream
 
-  /** Returns the last element of the input `Handle` if non-empty, otherwise li. */
+  /**
+   * Returns the last element of this stream, if non-empty, otherwise the supplied `fallback` value.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3).lastOr(0).toList
+   * res0: List[Int] = List(3)
+   * scala> Stream.empty.lastOr(0).toList
+   * res1: List[Int] = List(0)
+   * }}}
+   */
   def lastOr[O2 >: O](fallback: => O2): Stream[F,O2] =
     this.pull.last.flatMap {
       case Some(o) => Pull.output1(o)
@@ -1206,7 +1309,15 @@ object Stream {
     def >>[O2](s2: => Stream[F,O2]): Stream[F,O2] =
       flatMap { _ => s2 }
 
-    /** Folds this stream with the monoid for `O`. */
+    /**
+     * Folds this stream with the monoid for `O`.
+     *
+     * @example {{{
+     * scala> import cats.implicits._
+     * scala> Stream(1, 2, 3, 4, 5).foldMonoid.toList
+     * res0: List[Int] = List(15)
+     * }}}
+    */
     def foldMonoid(implicit O: Monoid[O]): Stream[F,O] = self.fold(O.empty)(O.combine)
 
     /**
