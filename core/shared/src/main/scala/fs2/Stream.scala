@@ -672,18 +672,58 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 
   /**
    * Applies the specified pure function to each segment in this stream.
+   *
+   * @example {{{
+   * scala> (Stream.range(1,5) ++ Stream.range(5,10)).mapSegments(s => s.scan(0)(_ + _).voidResult).toList
+   * res0: List[Int] = List(0, 1, 3, 6, 10, 0, 5, 11, 18, 26, 35)
+   * }}}
    */
   def mapSegments[O2](f: Segment[O,Unit] => Segment[O2,Unit]): Stream[F,O2] =
     this.repeatPull { _.uncons.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output(f(hd)).as(Some(tl)) }}
 
+  /**
+   * Behaves like the identity function but halts the stream on an error and does not return the error.
+   *
+   * @example {{{
+   * scala> (Stream(1,2,3) ++ Stream.fail(new RuntimeException) ++ Stream(4, 5, 6)).mask.toList
+   * res0: List[Int] = List(1, 2, 3)
+   * }}}
+   */
   def mask: Stream[F,O] = this.onError(_ => Stream.empty)
 
+  /**
+   * Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
+   *
+   * `s.noneTerminate.unNoneTerminate == s`
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).noneTerminate.toList
+   * res0: List[Option[Int]] = List(Some(1), Some(2), Some(3), None)
+   * }}}
+   */
   def noneTerminate: Stream[F,Option[O]] = map(Some(_)) ++ Stream.emit(None)
 
-  /** Repeat this stream an infinite number of times. `s.repeat == s ++ s ++ s ++ ...` */
+  /**
+   * Repeat this stream an infinite number of times.
+   *
+   * `s.repeat == s ++ s ++ s ++ ...`
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).repeat.take(8).toList
+   * res0: List[Int] = List(1, 2, 3, 1, 2, 3, 1, 2)
+   * }}}
+   */
   def repeat: Stream[F,O] = this ++ repeat
 
-  /** Rethrows any `Left(err)`. Preserves chunkiness. */
+  /**
+   * Converts a `Stream[F,Either[Throwable,O]]` to a `Stream[F,O]`, which emits right values and fails upon the first `Left(t)`.
+   * Preserves chunkiness.
+   *
+   * @example {{{
+   * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow.onError(t => Stream(-1)).toList
+   * res0: List[Int] = List(-1)
+   * }}}
+   */
   def rethrow[O2](implicit ev: O <:< Either[Throwable,O2]): Stream[F,O2] = {
     val _ = ev // Convince scalac that ev is used
     this.asInstanceOf[Stream[F,Either[Throwable,O2]]].segments.flatMap { s =>
@@ -724,14 +764,28 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
         }
     }
 
-  /** Like `[[scan]]`, but uses the first element of the stream as the seed. */
+  /**
+   * Like `[[scan]]`, but uses the first element of the stream as the seed.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3,4).scan1(_ + _).toList
+   * res0: List[Int] = List(1, 3, 6, 10)
+   * }}}
+   */
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] =
     this.pull.uncons1.flatMap {
       case None => Pull.done
       case Some((hd,tl)) => tl.scan_(hd: O2)(f)
     }.stream
 
-  /** Outputs segments with a limited maximum size, splitting as necessary. */
+  /**
+   * Outputs the segments of this stream as output values, ensuring each segment has maximum size `n`, splitting segments as necessary.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).repeat.segmentLimit(2).take(5).toList
+   * res0: List[Segment[Int,Unit]] = List(Chunk(1, 2), Chunk(3), Chunk(1, 2), Chunk(3), Chunk(1, 2))
+   * }}}
+   */
   def segmentLimit(n: Int): Stream[F,Segment[O,Unit]] =
     this repeatPull { _.unconsLimit(n) flatMap {
       case Some((hd,tl)) => Pull.output1(hd).as(Some(tl))
@@ -743,6 +797,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    *
    * Segments from the source stream are split as necessary.
    * If `allowFewer` is true, the last segment that is emitted may have less than `n` elements.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).repeat.segmentN(2).take(5).toList
+   * res0: List[Segment[Int,Unit]] = List(Chunk(1, 2), catenated(Chunk(3), Chunk(1)), Chunk(2, 3), Chunk(1, 2), catenated(Chunk(3), Chunk(1)))
+   * }}}
    */
   def segmentN(n: Int, allowFewer: Boolean = true): Stream[F,Segment[O,Unit]] =
     this repeatPull { _.unconsN(n, allowFewer).flatMap {
@@ -750,7 +809,14 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
       case None => Pull.pure(None)
     }}
 
-  /** Outputs all segments from the source stream. */
+  /**
+   * Outputs all segments from the source stream.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).repeat.segments.take(5).toList
+   * res0: List[Segment[Int,Unit]] = List(Chunk(1, 2, 3), Chunk(1, 2, 3), Chunk(1, 2, 3), Chunk(1, 2, 3), Chunk(1, 2, 3))
+   * }}}
+   */
   def segments: Stream[F,Segment[O,Unit]] =
     this.repeatPull(_.uncons.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) })
 
