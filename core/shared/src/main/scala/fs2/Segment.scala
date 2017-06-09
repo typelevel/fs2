@@ -1039,8 +1039,10 @@ object Segment {
     override def toString = "Step$" + ##
   }
 
+  /** Creates a segment backed by a `Seq`. */
   def seq[O](os: Seq[O]): Segment[O,Unit] = Chunk.seq(os)
 
+  /** Creates a segment by repeatedly applying `f` to the current `S`, ending when `f` returns `None`. */
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {
     def stage0 = (depth, _, emit, emits, done) => {
       var s0 = s
@@ -1054,6 +1056,7 @@ object Segment {
     override def toString = s"unfold($s)($f)"
   }
 
+  /** Creates a segment backed by a `Vector`. */
   def vector[O](os: Vector[O]): Segment[O,Unit] = Chunk.vector(os)
 
   private[fs2] case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
@@ -1093,7 +1096,7 @@ object Segment {
   }
   private val MaxFusionDepth: Depth = Depth(50)
 
-  final case object Done extends RuntimeException { override def fillInStackTrace = this }
+  private final case object Done extends RuntimeException { override def fillInStackTrace = this }
 
   private def makeTrampoline = new java.util.LinkedList[() => Unit]()
   private def defer(t: java.util.LinkedList[() => Unit]): (=>Unit) => Unit =
