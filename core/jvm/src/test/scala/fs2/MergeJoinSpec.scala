@@ -27,20 +27,20 @@ class MergeJoinSpec extends Fs2Spec {
 
     "merge/join consistency" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
       runLog { s1.get.covary[IO].merge(s2.get) }.toSet shouldBe
-      runLog { Stream.join(2)(Stream(s1.get.covary[IO], s2.get.covary[IO])) }.toSet
+      runLog { Stream(s1.get.covary[IO], s2.get.covary[IO]).join(2) }.toSet
     }
 
     "join (1)" in forAll { (s1: PureStream[Int]) =>
-      runLog { Stream.join(1)(s1.get.covary[IO].map(Stream.emit(_).covary[IO])) }.toSet shouldBe runLog { s1.get }.toSet
+      runLog { s1.get.covary[IO].map(Stream.emit(_).covary[IO]).join(1) }.toSet shouldBe runLog { s1.get }.toSet
     }
 
     "join (2)" in forAll { (s1: PureStream[Int], n: SmallPositive) =>
-      runLog { Stream.join(n.get)(s1.get.covary[IO].map(Stream.emit(_).covary[IO])) }.toSet shouldBe
+      runLog { s1.get.covary[IO].map(Stream.emit(_).covary[IO]).join(n.get) }.toSet shouldBe
       runLog { s1.get }.toSet
     }
 
     "join (3)" in forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
-      runLog { Stream.join(n.get)(s1.get.map(_.get.covary[IO]).covary[IO]) }.toSet shouldBe
+      runLog { s1.get.map(_.get.covary[IO]).covary[IO].join(n.get) }.toSet shouldBe
       runLog { s1.get.flatMap(_.get) }.toSet
     }
 
