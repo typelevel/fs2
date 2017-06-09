@@ -274,9 +274,9 @@ class PipeSpec extends Fs2Spec {
     }
 
     "split (2)" in {
-     Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector(4))
-     Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3))
-     Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector())
+     Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector(4))
+     Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2), Vector(), Vector(3))
+     Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector())
     }
 
     "take" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>

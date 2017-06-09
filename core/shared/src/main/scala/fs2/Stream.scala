@@ -1208,8 +1208,9 @@ object Stream {
    * Creates a stream that, when run, fails with the supplied exception.
    *
    * @example {{{
-   * scala> try Right(Stream.fail(new RuntimeException).toList) catch { case t: RuntimeException => Left(t) }
-   * res0: Either[RuntimeException,List[Nothing]] = Left(java.lang.RuntimeException)
+   * scala> import scala.util.Try
+   * scala> Try(Stream.fail(new RuntimeException).toList)
+   * res0: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
    * scala> import cats.effect.IO
    * scala> Stream.fail(new RuntimeException).covary[IO].run.attempt.unsafeRunSync
    * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
