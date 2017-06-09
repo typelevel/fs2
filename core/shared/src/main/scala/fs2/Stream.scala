@@ -1817,19 +1817,43 @@ object Stream {
     def mergeHaltR[O2>:O](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       that.mergeHaltL(self)
 
-    /** Synchronously send values through `sink`. */
-    def observe[O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    /**
+     * Synchronously sends values through `sink`.
+     *
+     * @example {{{
+     * scala> import scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO, cats.implicits._
+     * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).runLog.unsafeRunSync
+     * res0: Vector[Int] = Vector(2, 3, 4)
+     * }}}
+     */
+    def observe(sink: Sink[F,O])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       self.diamond(identity)(async.mutable.Queue.synchronousNoneTerminated, sink andThen (_.drain))(_.merge(_))
 
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
-    def observeAsync[O2>:O](maxQueued: Int)(sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    def observeAsync(maxQueued: Int)(sink: Sink[F,O])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       self.diamond(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(_.merge(_))
 
-    /** Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
+    /**
+     * Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`.
+     *
+     * Note: this should *not* be used for resource cleanup! Use `bracket` or `onFinalize` instead.
+     *
+     * @example {{{
+     * scala> Stream(1, 2, 3).onComplete(Stream(4, 5)).toList
+     * res0: List[Int] = List(1, 2, 3, 4, 5)
+     * }}}
+     */
     def onComplete[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       (self onError (e => s2 ++ Stream.fail(e))) ++ s2
 
-    /** If `this` terminates with `Stream.fail(e)`, invoke `h(e)`. */
+    /**
+     * If `this` terminates with `Stream.fail(e)`, invoke `h(e)`.
+     *
+     * @example {{{
+     * scala> Stream(1, 2, 3).append(Stream.fail(new RuntimeException)).onError(t => Stream(0)).toList
+     * res0: List[Int] = List(1, 2, 3, 0)
+     * }}}
+     */
     def onError[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
       Stream.fromFree(self.get[F,O2] onError { e => h(e).get })
 
@@ -1877,7 +1901,7 @@ object Stream {
       }.stream
     }
 
-    /** Alias for `(pauseWhenTrue.discrete through2 this)(pipe2.pause)`. */
+    /** Alias for `pauseWhen(pauseWhenTrue.discrete)`. */
     def pauseWhen(pauseWhenTrue: async.immutable.Signal[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       pauseWhen(pauseWhenTrue.discrete)
 
@@ -1894,53 +1918,171 @@ object Stream {
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
     def pull: Stream.ToPull[F,O] = new Stream.ToPull(self.free)
 
-    def pull2[O2,O3](s2: Stream[F,O2])(using: (Stream.ToPull[F,O], Stream.ToPull[F,O2]) => Pull[F,O3,Any]): Stream[F,O3] =
-      using(pull, s2.pull).stream
-
-    /** Reduces this stream with the Semigroup for `O`. */
+    /**
+     * Reduces this stream with the Semigroup for `O`.
+     *
+     * @example {{{
+     * scala> import cats.implicits._
+     * scala> Stream("The", "quick", "brown", "fox").intersperse(" ").reduceSemigroup.toList
+     * res0: List[String] = List(The quick brown fox)
+     * }}}
+     */
     def reduceSemigroup(implicit S: Semigroup[O]): Stream[F, O] =
       self.reduce(S.combine(_, _))
 
+    /**
+     * Repeatedly invokes `using`, running the resultant `Pull` each time, halting when a pull
+     * returns `None` instead of `Some(nextStream)`.
+     */
     def repeatPull[O2](using: Stream.ToPull[F,O] => Pull[F,O2,Option[Stream[F,O]]]): Stream[F,O2] =
       Pull.loop(using.andThen(_.map(_.map(_.pull))))(self.pull).stream
 
+    /**
+     * Interprets this stream in to a value of the target effect type `F` and
+     * discards any output values of the stream.
+     *
+     * To access the output values of the stream, use one of the other methods that start with `run` --
+     * e.g., [[runFold]], [[runLog]], etc.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     *
+     * To call this method, a `Sync[F]` instance must be implicitly available.
+     */
     def run(implicit F: Sync[F]): F[Unit] =
       runFold(())((u, _) => u)
 
+    /**
+     * Interprets this stream in to a value of the target effect type `F` by folding
+     * the output values together, starting with the provided `init` and combining the
+     * current value with each output value.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     *
+     * To call this method, a `Sync[F]` instance must be implicitly available.
+     */
     def runFold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
       Algebra.runFold(self.get, init)(f)
 
+    /**
+     * Like [[runFold]] but uses the implicitly available `Monoid[O]` to combine elements.
+     *
+     * @example {{{
+     * scala> import cats.implicits._, cats.effect.IO
+     * scala> Stream(1, 2, 3, 4, 5).covary[IO].runFoldMonoid.unsafeRunSync
+     * res0: Int = 15
+     * }}}
+     */
     def runFoldMonoid(implicit F: Sync[F], O: Monoid[O]): F[O] =
       runFold(O.empty)(O.combine)
 
+    /**
+     * Like [[runFold]] but uses the implicitly available `Semigroup[O]` to combine elements.
+     * If the stream emits no elements, `None` is returned.
+     *
+     * @example {{{
+     * scala> import cats.implicits._, cats.effect.IO
+     * scala> Stream(1, 2, 3, 4, 5).covary[IO].runFoldSemigroup.unsafeRunSync
+     * res0: Option[Int] = Some(15)
+     * scala> Stream.empty.covaryAll[IO,Int].runFoldSemigroup.unsafeRunSync
+     * res1: Option[Int] = None
+     * }}}
+     */
     def runFoldSemigroup(implicit F: Sync[F], O: Semigroup[O]): F[Option[O]] =
       runFold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
 
+    /**
+     * Interprets this stream in to a value of the target effect type `F` by logging
+     * the output values to a `Vector`.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     *
+     * To call this method, a `Sync[F]` instance must be implicitly available.
+     *
+     * @example {{{
+     * scala> import cats.effect.IO
+     * scala> Stream.range(0,100).take(5).covary[IO].runLog.unsafeRunSync
+     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
+     * }}}
+     */
     def runLog(implicit F: Sync[F]): F[Vector[O]] = {
       import scala.collection.immutable.VectorBuilder
       F.suspend(F.map(runFold(new VectorBuilder[O])(_ += _))(_.result))
     }
 
+    /**
+     * Interprets this stream in to a value of the target effect type `F`,
+     * returning `None` if the stream emitted no values and returning the
+     * last value emitted wrapped in `Some` if values were emitted.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     *
+     * To call this method, a `Sync[F]` instance must be implicitly available.
+     *
+     * @example {{{
+     * scala> import cats.effect.IO
+     * scala> Stream.range(0,100).take(5).covary[IO].runLog.unsafeRunSync
+     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
+     * }}}
+     */
     def runLast(implicit F: Sync[F]): F[Option[O]] =
       self.runFold(Option.empty[O])((_, a) => Some(a))
 
+    /**
+     * Like `scan` but `f` is applied to each segment of the source stream.
+     * The resulting segment is emitted and the result of the segment is used in the
+     * next invocation of `f`.
+     *
+     * Many stateful pipes can be implemented efficiently (i.e., supporting fusion) with this method.
+     */
     def scanSegments[S,O2](init: S)(f: (S, Segment[O,Unit]) => Segment[O2,S]): Stream[F,O2] =
       scanSegmentsOpt(init)(s => Some(seg => f(s,seg)))
 
+    /**
+     * More general version of `scanSegments` where the current state (i.e., `S`) can be inspected
+     * to determine if another segment should be pulled or if the stream should terminate.
+     * Termination is signaled by returning `None` from `f`. Otherwise, a function which consumes
+     * the next segment is returned wrapped in `Some`.
+     *
+     * @example {{{
+     * scala> def take[F[_],O](s: Stream[F,O], n: Long): Stream[F,O] =
+     *      |   s.scanSegmentsOpt(n) { n => if (n <= 0) None else Some(_.take(n).mapResult(_.fold(_._2, _ => 0))) }
+     * scala> take(Stream.range(0,100), 5).toList
+     * res0: List[Int] = List(0, 1, 2, 3, 4)
+     * }}}
+     */
     def scanSegmentsOpt[S,O2](init: S)(f: S => Option[Segment[O,Unit] => Segment[O2,S]]): Stream[F,O2] =
       self.pull.scanSegmentsOpt(init)(f).stream
 
-    /** Transform this stream using the given `Pipe`. */
+    /**
+     * Transforms this stream using the given `Pipe`.
+     *
+     * @example {{{
+     * scala> Stream("Hello", "world").through(text.utf8Encode).toVector.toArray
+     * res0: Array[Byte] = Array(72, 101, 108, 108, 111, 119, 111, 114, 108, 100)
+     * }}}
+     */
     def through[O2](f: Pipe[F,O,O2]): Stream[F,O2] = f(self)
 
-    /** Transform this stream using the given pure `Pipe`. */
+    /**
+     * Transforms this stream using the given pure `Pipe`.
+     *
+     * Sometimes this has better type inference than `through` (e.g., when `F` is `Nothing`).
+     */
     def throughPure[O2](f: Pipe[Pure,O,O2]): Stream[F,O2] = f(self)
 
-    /** Transform this stream using the given `Pipe2`. */
+    /** Transforms this stream and `s2` using the given `Pipe2`. */
     def through2[O2,O3](s2: Stream[F,O2])(f: Pipe2[F,O,O2,O3]): Stream[F,O3] =
       f(self,s2)
 
-    /** Transform this stream using the given pure `Pipe2`. */
+    /**
+     * Transforms this stream and `s2` using the given pure `Pipe2`.
+     *
+     * Sometimes this has better type inference than `through2` (e.g., when `F` is `Nothing`).
+     */
     def through2Pure[O2,O3](s2: Stream[F,O2])(f: Pipe2[Pure,O,O2,O3]): Stream[F,O3] =
       f(self,s2)
 
@@ -2147,10 +2289,10 @@ object Stream {
     def mergeHaltR[F[_],O2>:O](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].mergeHaltR(that)
 
-    def observe[F[_],O2>:O](sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    def observe[F[_]](sink: Sink[F,O])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       covary[F].observe(sink)
 
-    def observeAsync[F[_],O2>:O](maxQueued: Int)(sink: Sink[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
+    def observeAsync[F[_]](maxQueued: Int)(sink: Sink[F,O])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       covary[F].observeAsync(maxQueued)(sink)
 
     def onComplete[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
