@@ -1027,20 +1027,7 @@ object Segment {
   }
 
   /** Creates a segment which outputs a single value `o`. */
-  def singleton[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
-    def stage0 = (_, _, emit, _, done) => Eval.later {
-      var emitted = false
-      step(if (emitted) empty else singleton(o)) {
-        if (emitted) done(())
-        else {
-          emitted = true
-          emit(o)
-          done(())
-        }
-      }
-    }
-    override def toString = s"singleton($o)"
-  }
+  def singleton[O](o: O): Segment[O,Unit] = Chunk.singleton(o)
 
   def step[O,R](rem: => Segment[O,R])(s: => Unit): Step[O,R] =
     new Step(Eval.always(rem), () => s)

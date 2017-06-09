@@ -855,41 +855,90 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * Breaks the input into chunks where the delimiter matches the predicate.
    * The delimiter does not appear in the output. Two adjacent delimiters in the
    * input result in an empty chunk in the output.
+   *
+   * @example {{{
+   * scala> Stream.range(0, 10).split(_ % 4 == 0).toList
+   * res0: List[Segment[Int,Unit]] = List(empty, catenated(Chunk(1), Chunk(2), Chunk(3), empty), catenated(Chunk(5), Chunk(6), Chunk(7), empty), Chunk(9))
+   * }}}
    */
-  def split(f: O => Boolean): Stream[F,Vector[O]] = {
-    def go(buffer: Catenable[Segment[O,Unit]], s: Stream[F,O]): Pull[F,Vector[O],Unit] = {
+  def split(f: O => Boolean): Stream[F,Segment[O,Unit]] = {
+    def go(buffer: Catenable[Segment[O,Unit]], s: Stream[F,O]): Pull[F,Segment[O,Unit],Unit] = {
       s.pull.uncons.flatMap {
         case Some((hd,tl)) =>
           hd.splitWhile(o => !(f(o))) match {
             case Left((_,out)) =>
-              go(buffer ++ out, tl)
+              if (out.isEmpty) go(buffer, tl)
+              else go(buffer ++ out, tl)
             case Right((out,tl2)) =>
-              Pull.output1(Segment.catenated(buffer ++ out).toVector) >>
+              val b2 = if (out.nonEmpty) buffer ++ out else buffer
+              (if (b2.nonEmpty) Pull.output1(Segment.catenated(b2)) else Pull.pure(())) >>
                 go(Catenable.empty, tl.cons(tl2.drop(1).fold(_ => Segment.empty, identity)))
           }
         case None =>
-          if (buffer.nonEmpty) Pull.output1(Segment.catenated(buffer).toVector) else Pull.done
+          if (buffer.nonEmpty) Pull.output1(Segment.catenated(buffer)) else Pull.done
       }
     }
     go(Catenable.empty, this).stream
   }
 
-  /** Emits all elements of the input except the first one. */
+  /**
+   * Emits all elements of the input except the first one.
+   *
+   * @example {{{
+   * scala> Stream(1,2,3).tail.toList
+   * res0: List[Int] = List(2, 3)
+   * }}}
+   */
   def tail: Stream[F,O] = drop(1)
 
-  /** Emits the first `n` elements of this stream. */
+  /**
+   * Emits the first `n` elements of this stream.
+   *
+   * @example {{{
+   * scala> Stream.range(0,1000).take(5).toList
+   * res0: List[Int] = List(0, 1, 2, 3, 4)
+   * }}}
+   */
   def take(n: Long): Stream[F,O] = this.pull.take(n).stream
 
-  /** Emits the last `n` elements of the input. */
+  /**
+   * Emits the last `n` elements of the input.
+   *
+   * @example {{{
+   * scala> Stream.range(0,1000).takeRight(5).toList
+   * res0: List[Int] = List(995, 996, 997, 998, 999)
+   * }}}
+   */
   def takeRight(n: Long): Stream[F,O] = this.pull.takeRight(n).flatMap(Pull.output).stream
 
-  /** Like [[takeWhile]], but emits the first value which tests false. */
+  /**
+   * Like [[takeWhile]], but emits the first value which tests false.
+   *
+   * @example {{{
+   * scala> Stream.range(0,1000).takeThrough(_ != 5).toList
+   * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
+   * }}}
+   */
   def takeThrough(p: O => Boolean): Stream[F,O] = this.pull.takeThrough(p).stream
 
-  /** Emits the longest prefix of the input for which all elements test true according to `f`. */
+  /**
+   * Emits the longest prefix of the input for which all elements test true according to `f`.
+   *
+   * @example {{{
+   * scala> Stream.range(0,1000).takeWhile(_ != 5).toList
+   * res0: List[Int] = List(0, 1, 2, 3, 4)
+   * }}}
+   */
   def takeWhile(p: O => Boolean): Stream[F,O] = this.pull.takeWhile(p).stream
 
-  /** Converts the input to a stream of 1-element chunks. */
+  /**
+   * Converts the input to a stream of 1-element chunks.
+   *
+   * @example {{{
+   * scala> (Stream(1,2,3) ++ Stream(4,5,6)).unchunk.segments.toList
+   * res0: List[Segment[Int,Unit]] = List(Chunk(1), Chunk(2), Chunk(3), Chunk(4), Chunk(5), Chunk(6))
+   * }}}
+   */
   def unchunk: Stream[F,O] =
     this repeatPull { _.uncons1.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output1(hd).as(Some(tl)) }}
 
@@ -921,7 +970,14 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
         Pull.segment(hd.takeWhile(_.isDefined).map(_.get)).map(_.fold(_ => Some(tl), _ => None))
     }}
 
-  /** Zips the elements of the input stream with its indices, and returns the new stream. */
+  /**
+   * Zips the elements of the input stream with its indices, and returns the new stream.
+   *
+   * @example {{{
+   * scala> Stream("The", "quick", "brown", "fox").zipWithIndex.toList
+   * res0: List[(String,Long)] = List((The,0), (quick,1), (brown,2), (fox,3))
+   * }}}
+   */
   def zipWithIndex: Stream[F,(O,Long)] =
     this.scanSegments(0L) { (index, s) =>
       s.withSize.zipWith(Segment.from(index))((_,_)).mapResult {
@@ -933,6 +989,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /**
    * Zips each element of this stream with the next element wrapped into `Some`.
    * The last element is zipped with `None`.
+   *
+   * @example {{{
+   * scala> Stream("The", "quick", "brown", "fox").zipWithNext.toList
+   * res0: List[(String,Option[String])] = List((The,Some(quick)), (quick,Some(brown)), (brown,Some(fox)), (fox,None))
+   * }}}
    */
   def zipWithNext: Stream[F,(O,Option[O])] = {
     def go(last: O, s: Stream[F,O]): Pull[F,(O,Option[O]),Unit] =
@@ -952,6 +1013,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /**
    * Zips each element of this stream with the previous element wrapped into `Some`.
    * The first element is zipped with `None`.
+   *
+   * @example {{{
+   * scala> Stream("The", "quick", "brown", "fox").zipWithPrevious.toList
+   * res0: List[(Option[String],String)] = List((None,The), (Some(The),quick), (Some(quick),brown), (Some(brown),fox))
+   * }}}
    */
   def zipWithPrevious: Stream[F,(Option[O],O)] =
     mapAccumulate[Option[O],(Option[O],O)](None) {
@@ -962,6 +1028,11 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
    * Zips each element of this stream with its previous and next element wrapped into `Some`.
    * The first element is zipped with `None` as the previous element,
    * the last element is zipped with `None` as the next element.
+   *
+   * @example {{{
+   * scala> Stream("The", "quick", "brown", "fox").zipWithPreviousAndNext.toList
+   * res0: List[(Option[String],String,Option[String])] = List((None,The,Some(quick)), (Some(The),quick,Some(brown)), (Some(quick),brown,Some(fox)), (Some(brown),fox,None))
+   * }}}
    */
   def zipWithPreviousAndNext: Stream[F, (Option[O], O, Option[O])] =
     zipWithPrevious.zipWithNext.map {
@@ -972,7 +1043,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /**
    * Zips the input with a running total according to `S`, up to but not including the current element. Thus the initial
    * `z` value is the first emitted to the output:
-   * {{{
+   *
+   * @example {{{
    * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan(0)(_ + _.length).toList
    * res0: List[(String,Int)] = List((uno,0), (dos,3), (tres,6), (cuatro,10))
    * }}}
@@ -985,7 +1057,8 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
   /**
    * Zips the input with a running total according to `S`, including the current element. Thus the initial
    * `z` value is the first emitted to the output:
-   * {{{
+   *
+   * @example {{{
    * scala> Stream("uno", "dos", "tres", "cuatro").zipWithScan1(0)(_ + _.length).toList
    * res0: List[(String, Int)] = List((uno,3), (dos,6), (tres,10), (cuatro,16))
    * }}}
@@ -1002,14 +1075,43 @@ object Stream {
   private[fs2] def fromFree[F[_],O](free: Free[Algebra[F,O,?],Unit]): Stream[F,O] =
     new Stream(free.asInstanceOf[Free[Algebra[Nothing,Nothing,?],Unit]])
 
+  /** Appends `s2` to the end of `s1`. Alias for `s1 ++ s2`. */
   def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
     fromFree(s1.get.flatMap { _ => s2.get })
 
-  def apply[O](os: O*): Stream[Pure,O] = fromFree(Algebra.output[Pure,O](Chunk.seq(os)))
+  /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use [[covary]]. */
+  def apply[O](os: O*): Stream[Pure,O] = emits(os)
 
+  /**
+   * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails, a `Left`
+   * is emitted. Otherwise, a `Right` is emitted.
+   *
+   * Use [[eval]] instead if a failure while evaluating the effect should fail the stream.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> Stream.attemptEval(IO(10)).runLog.unsafeRunSync
+   * res0: Vector[Either[Throwable,Int]] = Vector(Right(10))
+   * scala> Stream.attemptEval(IO(throw new RuntimeException)).runLog.unsafeRunSync
+   * res1: Vector[Either[Throwable,Nothing]] = Vector(Left(java.lang.RuntimeException))
+   * }}}
+   */
   def attemptEval[F[_],O](fo: F[O]): Stream[F,Either[Throwable,O]] =
     fromFree(Pull.attemptEval(fo).flatMap(Pull.output1).get)
 
+  /**
+   * Creates a stream that depends on a resource allocated by an effect, ensuring the resource is
+   * released regardless of how the stream is used.
+   *
+   * @param r resource to acquire at start of stream
+   * @param use function which uses the acquired resource to generate a stream of effectful outputs
+   * @param release function which returns an effect that releases the resource
+   *
+   * A typical use case for bracket is working with files or network sockets. The resource effect
+   * opens a file and returns a reference to it. The `use` function reads bytes and transforms them
+   * in to some stream of elements (e.g., bytes, strings, lines, etc.). The `release` action closes
+   * the file.
+   */
   def bracket[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,O] =
     fromFree(Algebra.acquire[F,O,R](r, release).flatMap { case (r, token) =>
       use(r).onComplete { fromFree(Algebra.release(token)) }.get
@@ -1020,23 +1122,110 @@ object Stream {
       use(r).map(o => (token,o)).onComplete { fromFree(Algebra.release(token)) }.get
     })
 
+  /**
+   * Creates a pure stream that emits the elements of the supplied chunk.
+   *
+   * @example {{{
+   * scala> Stream.chunk(Chunk(1,2,3)).toList
+   * res0: List[Int] = List(1, 2, 3)
+   * }}}
+   */
   def chunk[O](os: Chunk[O]): Stream[Pure,O] = segment(os)
 
-  /** The infinite `Stream`, always emits `o`. */
+  /**
+   * Creates an infinite pure stream that always returns the supplied value.
+   *
+   * Elements are emitted in finite segments with `segmentSize` number of elements.
+   *
+   * @example {{{
+   * scala> Stream.constant(0).take(5).toList
+   * res0: List[Int] = List(0, 0, 0, 0, 0)
+   * }}}
+   */
   def constant[O](o: O, segmentSize: Int = 256): Stream[Pure,O] =
     segment(Segment.constant(o).take(segmentSize).voidResult).repeat
 
+  /**
+   * Creates a singleton pure stream that emits the supplied value.
+   *
+   * @example {{{
+   * scala> Stream.emit(0).toList
+   * res0: List[Int] = List(0)
+   * }}}
+   */
   def emit[O](o: O): Stream[Pure,O] = fromFree(Algebra.output1[Pure,O](o))
-  def emits[O](os: Seq[O]): Stream[Pure,O] = chunk(Chunk.seq(os))
+
+  /**
+   * Creates a pure stream that emits the supplied values.
+   *
+   * @example {{{
+   * scala> Stream.emits(List(1, 2, 3)).toList
+   * res0: List[Int] = List(1, 2, 3)
+   * }}}
+   */
+  def emits[O](os: Seq[O]): Stream[Pure,O] = {
+    if (os.isEmpty) empty
+    else if (os.size == 1) emit(os.head)
+    else fromFree(Algebra.output[Pure,O](Chunk.seq(os)))
+  }
 
   private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
+
+  /** Empty pure stream. */
   def empty: Stream[Pure,Nothing] = empty_
 
+  /**
+   * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
+   * the returned stream fails.
+   *
+   * Use [[attemptEval]] instead if a failure while evaluating the effect should be emitted as a value.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> Stream.eval(IO(10)).runLog.unsafeRunSync
+   * res0: Vector[Int] = Vector(10)
+   * scala> Stream.eval(IO(throw new RuntimeException)).runLog.attempt.unsafeRunSync
+   * res1: Either[Throwable,Vector[Nothing]] = Left(java.lang.RuntimeException)
+   * }}}
+   */
   def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree(Algebra.eval(fo).flatMap(Algebra.output1))
-  def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa) >> empty
 
+  /**
+   * Creates a stream that evaluates the supplied `fa` for its effect, discarding the output value.
+   * As a result, the returned stream emits no elements and hence has output type `Nothing`.
+   *
+   * Alias for `eval(fa).drain`.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> Stream.eval_(IO(println("Ran"))).runLog.unsafeRunSync
+   * res0: Vector[Nothing] = Vector()
+   * }}}
+   */
+  def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa).drain
+
+  /**
+   * Creates a stream that, when run, fails with the supplied exception.
+   *
+   * @example {{{
+   * scala> try Right(Stream.fail(new RuntimeException).toList) catch { case t: RuntimeException => Left(t) }
+   * res0: Either[RuntimeException,List[Nothing]] = Left(java.lang.RuntimeException)
+   * scala> import cats.effect.IO
+   * scala> Stream.fail(new RuntimeException).covary[IO].run.attempt.unsafeRunSync
+   * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
+   * }}}
+   */
   def fail[O](e: Throwable): Stream[Pure,O] = fromFree(Algebra.fail(e))
 
+  /**
+   * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> Stream.force(IO(Stream(1,2,3).covary[IO])).runLog.unsafeRunSync
+   * res0: Vector[Int] = Vector(1, 2, 3)
+   * }}}
+   */
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     eval(f).flatMap(s => s)
 
@@ -1129,6 +1318,11 @@ object Stream {
    * An infinite `Stream` that repeatedly applies a given function
    * to a start value. `start` is the first value emitted, followed
    * by `f(start)`, then `f(f(start))`, and so on.
+   *
+   * @example {{{
+   * scala> Stream.iterate(0)(_ + 1).take(10).toList
+   * res0: List[Int] = List(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+   * }}}
    */
   def iterate[A](start: A)(f: A => A): Stream[Pure,A] =
     emit(start) ++ iterate(f(start))(f)
@@ -1136,6 +1330,12 @@ object Stream {
   /**
    * Like [[iterate]], but takes an effectful function for producing
    * the next state. `start` is the first value emitted.
+   *
+   * @example {{{
+   * scala> import cats.effect.IO
+   * scala> Stream.iterateEval(0)(i => IO(i + 1)).take(10).runLog.unsafeRunSync
+   * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+   * }}}
    */
   def iterateEval[F[_],A](start: A)(f: A => F[A]): Stream[F,A] =
     emit(start) ++ eval(f(start)).flatMap(iterateEval(_)(f))
