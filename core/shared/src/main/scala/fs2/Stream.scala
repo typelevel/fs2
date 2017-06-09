@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
-import cats.{ ~>, Applicative, Eq, Monoid, Semigroup }
+import cats.{ ~>, Applicative, Eq, Functor, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
 import cats.implicits._
 
@@ -1345,6 +1345,11 @@ object Stream {
    * Lazily produce the range `[start, stopExclusive)`. If you want to produce
    * the sequence in one chunk, instead of lazily, use
    * `emits(start until stopExclusive)`.
+   *
+   * @example {{{
+   * scala> Stream.range(10, 20, 2).toList
+   * res0: List[Int] = List(10, 12, 14, 16, 18)
+   * }}}
    */
   def range(start: Int, stopExclusive: Int, by: Int = 1): Stream[Pure,Int] =
     unfold(start){i =>
@@ -1363,6 +1368,11 @@ object Stream {
    * Note: The last emitted range may be truncated at `stopExclusive`. For
    * instance, `ranges(0,5,4)` results in `(0,4), (4,5)`.
    *
+   * @example {{{
+   * scala> Stream.ranges(0, 20, 5).toList
+   * res0: List[(Int,Int)] = List((0,5), (5,10), (10,15), (15,20))
+   * }}}
+   *
    * @throws IllegalArgumentException if `size` <= 0
    */
   def ranges(start: Int, stopExclusive: Int, size: Int): Stream[Pure,(Int,Int)] = {
@@ -1376,45 +1386,84 @@ object Stream {
     }
   }
 
+  /** Alias for `eval(fo).repeat`. */
   def repeatEval[F[_],O](fo: F[O]): Stream[F,O] = eval(fo).repeat
 
+  /**
+   * Creates a pure stream that emits the values of the supplied segment.
+   *
+   * @example {{{
+   * scala> Stream.segment(Segment.from(0)).take(5).toList
+   * res0: List[Long] = List(0, 1, 2, 3, 4)
+   * }}}
+   */
   def segment[O](s: Segment[O,Unit]): Stream[Pure,O] =
     fromFree(Algebra.output[Pure,O](s))
 
+  /**
+   * Returns a stream that evaluates the supplied by-name each time the stream is used,
+   * allowing use of a mutable value in stream computations.
+   *
+   * Note: it's generally easier to reason about such computations using effectful
+   * values. That is, allocate the mutable value in an effect and then use
+   * `Stream.eval(fa).flatMap { a => ??? }`.
+   *
+   * @example {{{
+   * scala> Stream.suspend {
+   *      |   val digest = java.security.MessageDigest.getInstance("SHA-256")
+   *      |   val bytes: Stream[Pure,Byte] = ???
+   *      |   bytes.chunks.fold(digest) { (d,c) => d.update(c.toBytes.values); d }
+   *      | }
+   * }}}
+   */
   def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
     fromFree(Algebra.suspend(s.get))
 
+  /**
+   * Creates a stream by successively applying `f` until a `None` is returned, emitting
+   * each output `O` and using each output `S` as input to the next invocation of `f`.
+   *
+   * @example {{{
+   * scala> Stream.unfold(0)(i => if (i < 5) Some(i -> (i+1)) else None).toList
+   * res0: List[Int] = List(0, 1, 2, 3, 4)
+   * }}}
+   */
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Stream[Pure,O] =
     segment(Segment.unfold(s)(f))
 
-  /** Produce a (potentially infinite) stream from an unfold of Chunks. */
-  def unfoldChunk[S,A](s0: S)(f: S => Option[(Chunk[A],S)]): Stream[Pure,A] = {
-    def go(s: S): Stream[Pure,A] =
-      f(s) match {
-        case Some((a, sn)) => chunk(a) ++ go(sn)
-        case None => empty
-      }
-    suspend(go(s0))
-  }
+  /**
+   * Like [[unfold]] but each invocation of `f` provides a chunk of output.
+   *
+   * @example {{{
+   * scala> Stream.unfoldSegment(0)(i => if (i < 5) Some(Segment.seq(List.fill(i)(i)) -> (i+1)) else None).toList
+   * res0: List[Int] = List(1, 2, 2, 3, 3, 3, 4, 4, 4, 4)
+   * }}}
+   */
+  def unfoldSegment[S,O](s: S)(f: S => Option[(Segment[O,Unit],S)]): Stream[Pure,O] =
+    unfold(s)(f).flatMap(segment)
 
   /** Like [[unfold]], but takes an effectful function. */
-  def unfoldEval[F[_],S,A](s0: S)(f: S => F[Option[(A,S)]]): Stream[F,A] = {
-    def go(s: S): Stream[F,A] =
+  def unfoldEval[F[_],S,O](s: S)(f: S => F[Option[(O,S)]]): Stream[F,O] = {
+    def go(s: S): Stream[F,O] =
       eval(f(s)).flatMap {
-        case Some((a, sn)) => emit(a) ++ go(sn)
+        case Some((o, s)) => emit(o) ++ go(s)
         case None => empty
       }
-    suspend(go(s0))
+    suspend(go(s))
   }
 
-  /** Like [[unfoldChunk]], but takes an effectful function. */
-  def unfoldChunkEval[F[_],S,A](s0: S)(f: S => F[Option[(Chunk[A],S)]]): Stream[F,A] = {
-    def go(s: S): Stream[F,A] =
+  /** Alias for [[unfoldSegmentEval]] with slightly better type inference when `f` returns a `Chunk`. */
+  def unfoldChunkEval[F[_],S,O](s: S)(f: S => F[Option[(Chunk[O],S)]])(implicit F: Functor[F]): Stream[F,O] =
+    unfoldSegmentEval(s)(s => f(s).widen[Option[(Segment[O,Unit],S)]])
+
+  /** Like [[unfoldSegment]], but takes an effectful function. */
+  def unfoldSegmentEval[F[_],S,O](s: S)(f: S => F[Option[(Segment[O,Unit],S)]]): Stream[F,O] = {
+    def go(s: S): Stream[F,O] =
       eval(f(s)).flatMap {
-        case Some((a, sn)) => chunk(a) ++ go(sn)
+        case Some((o, s)) => segment(o) ++ go(s)
         case None => empty
       }
-    suspend(go(s0))
+    suspend(go(s))
   }
 
   implicit def InvariantOps[F[_],O](s: Stream[F,O]): InvariantOps[F,O] = new InvariantOps(s.get)
@@ -1544,6 +1593,7 @@ object Stream {
     def either[O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,Either[O,O2]] =
       self.map(Left(_)) merge that.map(Right(_))
 
+    /** Alias for `flatMap(o => Stream.eval(f(o)))`. */
     def evalMap[O2](f: O => F[O2]): Stream[F,O2] =
       self.flatMap(o => Stream.eval(f(o)))
 
@@ -1564,6 +1614,15 @@ object Stream {
       }.stream
     }
 
+    /**
+     * Creates a stream whose elements are generated by applying `f` to each output of
+     * the source stream and concatenated all of the results.
+     *
+     * @example {{{
+     * scala> Stream(1, 2, 3).flatMap { i => Stream.segment(Segment.seq(List.fill(i)(i))) }.toList
+     * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
+     * }}}
+     */
     def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] =
       Stream.fromFree(Algebra.uncons(self.get[F,O]).flatMap {
         case None => Stream.empty.covaryAll[F,O2].get
@@ -1718,6 +1777,9 @@ object Stream {
     def onError[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
       Stream.fromFree(self.get[F,O2] onError { e => h(e).get })
 
+    /**
+     * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
+     */
     def onFinalize(f: F[Unit])(implicit F: Applicative[F]): Stream[F,O] =
       Stream.bracket(F.pure(()))(_ => self, _ => f)
 
@@ -1773,6 +1835,7 @@ object Stream {
         case Some((hd, tl)) => tl.pull.prefetch flatMap { p => Pull.output(hd) >> p }
       }}
 
+    /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
     def pull: Stream.ToPull[F,O] = new Stream.ToPull(self.free)
 
     def pull2[O2,O3](s2: Stream[F,O2])(using: (Stream.ToPull[F,O], Stream.ToPull[F,O2]) => Pull[F,O3,Any]): Stream[F,O3] =

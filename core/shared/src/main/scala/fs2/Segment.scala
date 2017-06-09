@@ -1042,7 +1042,10 @@ object Segment {
   /** Creates a segment backed by a `Seq`. */
   def seq[O](os: Seq[O]): Segment[O,Unit] = Chunk.seq(os)
 
-  /** Creates a segment by repeatedly applying `f` to the current `S`, ending when `f` returns `None`. */
+  /**
+   * Creates a segment by successively applying `f` until a `None` is returned, emitting
+   * each output `O` and using each output `S` as input to the next invocation of `f`.
+   */
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {
     def stage0 = (depth, _, emit, emits, done) => {
       var s0 = s
