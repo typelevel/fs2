@@ -14,6 +14,8 @@ import fs2.internal.{ Algebra, Free }
  * A stream producing output of type `O` and which may evaluate `F`
  * effects. If `F` is [[Pure]], the stream evaluates no effects.
  *
+ * Much of the API of `Stream` is defined in [[Stream.InvariantOps]].
+ *
  * Laws (using infix syntax):
  *
  * `append` forms a monoid in conjunction with `empty`:
@@ -1383,7 +1385,9 @@ object Stream {
     suspend(go(s))
   }
 
+  /** Provides syntax for streams that are invariant in `F` and `O`. */
   implicit def InvariantOps[F[_],O](s: Stream[F,O]): InvariantOps[F,O] = new InvariantOps(s.get)
+  /** Provides syntax for streams that are invariant in `F` and `O`. */
   final class InvariantOps[F[_],O] private[Stream] (private val free: Free[Algebra[F,O,?],Unit]) extends AnyVal {
     private def self: Stream[F,O] = Stream.fromFree(free)
 
@@ -2329,6 +2333,7 @@ object Stream {
       covary[F].zipWith(s2)(f)
   }
 
+  /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
   final class ToPull[F[_],O] private[Stream] (private val free: Free[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
 
     private def self: Stream[F,O] = Stream.fromFree(free.asInstanceOf[Free[Algebra[F,O,?],Unit]])
@@ -2362,6 +2367,14 @@ object Stream {
         }
       }
 
+    /**
+     * Like [[uncons]] but waits asynchronously. The result of the returned pull is an
+     * `AsyncPull`, which is available immediately. The `AsyncPull` can be raced with other
+     * `AsyncPull`s and eventually forced via the `.pull` method.
+     *
+     * For example, `merge` is implemented by calling `unconsAsync` on each stream, racing the
+     * resultant `AsyncPull`s, emitting winner of the race, and then repeating.
+     */
     def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
       Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
 
@@ -2386,6 +2399,11 @@ object Stream {
       }
     }
 
+    /**
+     * Like [[uncons]], but returns a segment of exactly `n` elements, splitting segments as necessary.
+     *
+     * `Pull.pure(None)` is returned if the end of the source stream is reached.
+     */
     def unconsN(n: Long, allowFewer: Boolean = false): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
       def go(acc: Catenable[Segment[O,Unit]], n: Long, s: Stream[F,O]): Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] = {
         s.pull.uncons.flatMap {
@@ -2432,7 +2450,7 @@ object Stream {
     def dropWhile(p: O => Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
       dropWhile_(p, false)
 
-    def dropWhile_(p: O => Boolean, dropFailure: Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
+    private def dropWhile_(p: O => Boolean, dropFailure: Boolean): Pull[F,Nothing,Option[Stream[F,O]]] =
       uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
@@ -2526,9 +2544,21 @@ object Stream {
     def prefetch(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,Pull[F,Nothing,Option[Stream[F,O]]]] =
       unconsAsync.map { _.pull.map { _.map { case (hd, h) => h cons hd } } }
 
+    /**
+     * Like `scan` but `f` is applied to each segment of the source stream.
+     * The resulting segment is emitted and the result of the segment is used in the
+     * next invocation of `f`. The final state value is returned as the result of the pull.
+     */
     def scanSegments[S,O2](init: S)(f: (S, Segment[O,Unit]) => Segment[O2,S]): Pull[F,O2,S] =
       scanSegmentsOpt(init)(s => Some(seg => f(s,seg)))
 
+    /**
+     * More general version of `scanSegments` where the current state (i.e., `S`) can be inspected
+     * to determine if another segment should be pulled or if the pull should terminate.
+     * Termination is signaled by returning `None` from `f`. Otherwise, a function which consumes
+     * the next segment is returned wrapped in `Some`. The final state value is returned as the
+     * result of the pull.
+     */
     def scanSegmentsOpt[S,O2](init: S)(f: S => Option[Segment[O,Unit] => Segment[O2,S]]): Pull[F,O2,S] = {
       def go(acc: S, s: Stream[F,O]): Pull[F,O2,S] =
         f(acc) match {
@@ -2581,7 +2611,7 @@ object Stream {
      */
     def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, false)
 
-    def takeWhile_(p: O => Boolean, takeFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =
+    private def takeWhile_(p: O => Boolean, takeFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =
       uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
@@ -2618,13 +2648,20 @@ object Stream {
     def covary[F[_]]: Pipe2[F,I,I2,O] = self.asInstanceOf[Pipe2[F,I,I2,O]]
   }
 
+  /** Implicitly covaries a stream. */
   implicit def covaryPure[F[_],O,O2>:O](s: Stream[Pure,O]): Stream[F,O2] = s.covaryAll[F,O2]
 
+  /** Implicitly covaries a pipe. */
   implicit def covaryPurePipe[F[_],I,O](p: Pipe[Pure,I,O]): Pipe[F,I,O] = p.covary[F]
 
+  /** Implicitly covaries a `Pipe2`. */
   implicit def covaryPurePipe2[F[_],I,I2,O](p: Pipe2[Pure,I,I2,O]): Pipe2[F,I,I2,O] = p.covary[F]
 
-  // Note: non-implicit so that cats syntax doesn't override FS2 syntax
+  /**
+   * `Sync` instance for `Stream`.
+   *
+   * Note: non-implicit so that cats syntax doesn't override FS2 syntax
+   */
   def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
     def pure[A](a: A) = Stream(a)
     def handleErrorWith[A](s: Stream[F,A])(h: Throwable => Stream[F,A]) = s.onError(h)
@@ -2637,6 +2674,7 @@ object Stream {
     def suspend[R](s: => Stream[F,R]) = Stream.suspend(s)
   }
 
+  /** `Monoid` instance for `Stream`. */
   implicit def monoidInstance[F[_],O]: Monoid[Stream[F,O]] = new Monoid[Stream[F,O]] {
     def empty = Stream.empty
     def combine(x: Stream[F,O], y: Stream[F,O]) = x ++ y

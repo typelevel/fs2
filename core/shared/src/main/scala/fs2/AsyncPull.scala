@@ -8,29 +8,30 @@ import cats.implicits._
 
 import fs2.internal.{ Algebra, Free }
 
+/** Result of `unconsAsync`. Conceptually similar to a `Future`. Can be forced via `pull` or `stream`. */
 sealed abstract class AsyncPull[F[_],A] { self =>
 
   protected def get: Free[F, A]
 
   protected def cancellableGet: Free[F, (Free[F, A], Free[F, Unit])]
 
-  /** Converts this future to a pull, that when flat mapped, semantically blocks on the result of the future. */
+  /** Converts to a pull, that when flat mapped, semantically blocks on the result. */
   def pull: Pull[F,Nothing,A] = Pull.fromFree(get.translate[Algebra[F,Nothing,?]](new (F ~> Algebra[F,Nothing,?]) {
     def apply[X](fx: F[X]) = Algebra.Eval(fx)
   }))
 
-  /** Converts this future to a stream, that when flat mapped, semantically blocks on the result of the future. */
+  /** Converts to a stream, that when flat mapped, semantically blocks on the result. */
   def stream: Stream[F,A] = Stream.fromFree(get.translate[Algebra[F,A,?]](new (F ~> Algebra[F,A,?]) {
     def apply[X](fx: F[X]) = Algebra.Eval(fx)
   }).flatMap(Algebra.output1))
 
-  /** Returns a new future from this future by applying `f` with the completed value `A`. */
+  /** Returns a new async pull by applying `f` with the completed value `A`. */
   def map[B](f: A => B): AsyncPull[F,B] = new AsyncPull[F,B] {
     def get = self.get.map(f)
     def cancellableGet = self.cancellableGet.map { case (a, cancelA) => (a.map(f), cancelA) }
   }
 
-  /** Returns a new future that completes with the result of the first future that completes between this future and `b`. */
+  /** Returns a new async pull that completes with the result of the first async pull that completes between this and `b`. */
   def race[B](b: AsyncPull[F,B])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,Either[A,B]] = new AsyncPull[F, Either[A,B]] {
     def get = cancellableGet.flatMap(_._1)
     def cancellableGet = Free.Eval(for {
@@ -49,7 +50,7 @@ sealed abstract class AsyncPull[F[_],A] { self =>
     })
   }
 
-  /** Like [[race]] but requires that the specified future has the same result type as this future. */
+  /** Like [[race]] but requires that the specified async pull has the same result type as this. */
   def raceSame(b: AsyncPull[F,A])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F, AsyncPull.RaceResult[A,AsyncPull[F,A]]] =
     self.race(b).map {
       case Left(a) => AsyncPull.RaceResult(a, b)
