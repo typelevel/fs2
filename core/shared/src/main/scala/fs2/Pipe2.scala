@@ -1,16 +1,16 @@
 package fs2
 
-import fs2.internal.Free
+import fs2.internal.FreeC
 
 object Pipe2 {
   /** Creates a [[Stepper]], which allows incrementally stepping a pure `Pipe2`. */
   def stepper[I,I2,O](p: Pipe2[Pure,I,I2,O]): Stepper[I,I2,O] = {
     type ReadSegment[R] = Either[Option[Segment[I,Unit]] => R, Option[Segment[I2,Unit]] => R]
-    type Read[R] = Free[ReadSegment,R]
+    type Read[R] = FreeC[ReadSegment,R]
     type UO = Option[(Segment[O,Unit],Stream[Read,O])]
 
     def prompts[X](id: ReadSegment[Option[Segment[X,Unit]]]): Stream[Read,X] = {
-      Stream.eval[Read,Option[Segment[X,Unit]]](Free.Eval(id)).flatMap {
+      Stream.eval[Read,Option[Segment[X,Unit]]](FreeC.Eval(id)).flatMap {
         case None => Stream.empty
         case Some(segment) => Stream.segment(segment).append(prompts(id))
       }
@@ -26,19 +26,19 @@ object Pipe2 {
 
     def go(s: Read[UO]): Stepper[I,I2,O] = Stepper.Suspend { () =>
       s.viewL.get match {
-        case Free.Pure(None) => Stepper.Done
-        case Free.Pure(Some((hd,tl))) => Stepper.Emits(hd, go(stepf(tl)))
-        case Free.Fail(t) => Stepper.Fail(t)
-        case bound: Free.Bind[ReadSegment,_,UO] =>
-          val f = bound.asInstanceOf[Free.Bind[ReadSegment,Any,UO]].f
-          val fx = bound.fx.asInstanceOf[Free.Eval[ReadSegment,UO]].fr
+        case FreeC.Pure(None) => Stepper.Done
+        case FreeC.Pure(Some((hd,tl))) => Stepper.Emits(hd, go(stepf(tl)))
+        case FreeC.Fail(t) => Stepper.Fail(t)
+        case bound: FreeC.Bind[ReadSegment,_,UO] =>
+          val f = bound.asInstanceOf[FreeC.Bind[ReadSegment,Any,UO]].f
+          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment,UO]].fr
           fx match {
             case Left(recv) =>
-              Stepper.AwaitL(segment => go(Free.Bind[ReadSegment,UO,UO](Free.Pure(recv(segment)), f)))
+              Stepper.AwaitL(segment => go(FreeC.Bind[ReadSegment,UO,UO](FreeC.Pure(recv(segment)), f)))
             case Right(recv) =>
-              Stepper.AwaitR(segment => go(Free.Bind[ReadSegment,UO,UO](Free.Pure(recv(segment)), f)))
+              Stepper.AwaitR(segment => go(FreeC.Bind[ReadSegment,UO,UO](FreeC.Pure(recv(segment)), f)))
           }
-        case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
+        case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }
     go(stepf(p.covary[Read].apply(promptsL, promptsR)))

@@ -6,18 +6,18 @@ import cats.effect.Effect
 import cats.implicits._
 
 import fs2.async.mutable.Queue
-import fs2.internal.Free
+import fs2.internal.FreeC
 
 object Pipe {
 
   /** Creates a [[Stepper]], which allows incrementally stepping a pure pipe. */
   def stepper[I,O](p: Pipe[Pure,I,O]): Stepper[I,O] = {
     type ReadSegment[R] = Option[Segment[I,Unit]] => R
-    type Read[R] = Free[ReadSegment, R]
+    type Read[R] = FreeC[ReadSegment, R]
     type UO = Option[(Segment[O,Unit],Stream[Read,O])]
 
     def prompts: Stream[Read,I] =
-      Stream.eval[Read,Option[Segment[I,Unit]]](Free.Eval(identity)).flatMap {
+      Stream.eval[Read,Option[Segment[I,Unit]]](FreeC.Eval(identity)).flatMap {
         case None => Stream.empty
         case Some(segment) => Stream.segment(segment).append(prompts)
       }
@@ -30,14 +30,14 @@ object Pipe {
 
     def go(s: Read[UO]): Stepper[I,O] = Stepper.Suspend { () =>
       s.viewL.get match {
-        case Free.Pure(None) => Stepper.Done
-        case Free.Pure(Some((hd,tl))) => Stepper.Emits(hd, go(stepf(tl)))
-        case Free.Fail(t) => Stepper.Fail(t)
-        case bound: Free.Bind[ReadSegment,_,UO] =>
-          val f = bound.asInstanceOf[Free.Bind[ReadSegment,Any,UO]].f
-          val fx = bound.fx.asInstanceOf[Free.Eval[ReadSegment,UO]].fr
-          Stepper.Await(segment => go(Free.Bind[ReadSegment,UO,UO](Free.Pure(fx(segment)), f)))
-        case e => sys.error("Free.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
+        case FreeC.Pure(None) => Stepper.Done
+        case FreeC.Pure(Some((hd,tl))) => Stepper.Emits(hd, go(stepf(tl)))
+        case FreeC.Fail(t) => Stepper.Fail(t)
+        case bound: FreeC.Bind[ReadSegment,_,UO] =>
+          val f = bound.asInstanceOf[FreeC.Bind[ReadSegment,Any,UO]].f
+          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment,UO]].fr
+          Stepper.Await(segment => go(FreeC.Bind[ReadSegment,UO,UO](FreeC.Pure(fx(segment)), f)))
+        case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }
     go(stepf(p.covary[Read].apply(prompts)))

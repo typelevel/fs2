@@ -8,7 +8,7 @@ import cats.effect.{ Effect, IO, Sync }
 import cats.implicits._
 
 import fs2.async.mutable.Queue
-import fs2.internal.{ Algebra, Free }
+import fs2.internal.{ Algebra, FreeC }
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -67,9 +67,9 @@ import fs2.internal.{ Algebra, Free }
  * @hideImplicitConversion EmptyOps
  * @hideImplicitConversion covaryPure
  */
-final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
+final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
 
-  private[fs2] def get[F2[x]>:F[x],O2>:O]: Free[Algebra[F2,O2,?],Unit] = free.asInstanceOf[Free[Algebra[F2,O2,?],Unit]]
+  private[fs2] def get[F2[x]>:F[x],O2>:O]: FreeC[Algebra[F2,O2,?],Unit] = free.asInstanceOf[FreeC[Algebra[F2,O2,?],Unit]]
 
   /**
    * Returns a stream of `O` values wrapped in `Right` until the first error, which is emitted wrapped in `Left`.
@@ -1074,12 +1074,12 @@ final class Stream[+F[_],+O] private(private val free: Free[Algebra[Nothing,Noth
 }
 
 object Stream {
-  private[fs2] def fromFree[F[_],O](free: Free[Algebra[F,O,?],Unit]): Stream[F,O] =
-    new Stream(free.asInstanceOf[Free[Algebra[Nothing,Nothing,?],Unit]])
+  private[fs2] def fromFreeC[F[_],O](free: FreeC[Algebra[F,O,?],Unit]): Stream[F,O] =
+    new Stream(free.asInstanceOf[FreeC[Algebra[Nothing,Nothing,?],Unit]])
 
   /** Appends `s2` to the end of `s1`. Alias for `s1 ++ s2`. */
   def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
-    fromFree(s1.get.flatMap { _ => s2.get })
+    fromFreeC(s1.get.flatMap { _ => s2.get })
 
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use [[covary]]. */
   def apply[O](os: O*): Stream[Pure,O] = emits(os)
@@ -1099,7 +1099,7 @@ object Stream {
    * }}}
    */
   def attemptEval[F[_],O](fo: F[O]): Stream[F,Either[Throwable,O]] =
-    fromFree(Pull.attemptEval(fo).flatMap(Pull.output1).get)
+    fromFreeC(Pull.attemptEval(fo).flatMap(Pull.output1).get)
 
   /**
    * Creates a stream that depends on a resource allocated by an effect, ensuring the resource is
@@ -1115,13 +1115,13 @@ object Stream {
    * the file.
    */
   def bracket[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,O] =
-    fromFree(Algebra.acquire[F,O,R](r, release).flatMap { case (r, token) =>
-      use(r).onComplete { fromFree(Algebra.release(token)) }.get
+    fromFreeC(Algebra.acquire[F,O,R](r, release).flatMap { case (r, token) =>
+      use(r).onComplete { fromFreeC(Algebra.release(token)) }.get
     })
 
   private[fs2] def bracketWithToken[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,(Algebra.Token,O)] =
-    fromFree(Algebra.acquire[F,(Algebra.Token,O),R](r, release).flatMap { case (r, token) =>
-      use(r).map(o => (token,o)).onComplete { fromFree(Algebra.release(token)) }.get
+    fromFreeC(Algebra.acquire[F,(Algebra.Token,O),R](r, release).flatMap { case (r, token) =>
+      use(r).map(o => (token,o)).onComplete { fromFreeC(Algebra.release(token)) }.get
     })
 
   /**
@@ -1155,7 +1155,7 @@ object Stream {
    * res0: List[Int] = List(0)
    * }}}
    */
-  def emit[O](o: O): Stream[Pure,O] = fromFree(Algebra.output1[Pure,O](o))
+  def emit[O](o: O): Stream[Pure,O] = fromFreeC(Algebra.output1[Pure,O](o))
 
   /**
    * Creates a pure stream that emits the supplied values.
@@ -1168,10 +1168,10 @@ object Stream {
   def emits[O](os: Seq[O]): Stream[Pure,O] = {
     if (os.isEmpty) empty
     else if (os.size == 1) emit(os.head)
-    else fromFree(Algebra.output[Pure,O](Chunk.seq(os)))
+    else fromFreeC(Algebra.output[Pure,O](Chunk.seq(os)))
   }
 
-  private[fs2] val empty_ = fromFree[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
+  private[fs2] val empty_ = fromFreeC[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
 
   /** Empty pure stream. */
   def empty: Stream[Pure,Nothing] = empty_
@@ -1190,7 +1190,7 @@ object Stream {
    * res1: Either[Throwable,Vector[Nothing]] = Left(java.lang.RuntimeException)
    * }}}
    */
-  def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFree(Algebra.eval(fo).flatMap(Algebra.output1))
+  def eval[F[_],O](fo: F[O]): Stream[F,O] = fromFreeC(Algebra.eval(fo).flatMap(Algebra.output1))
 
   /**
    * Creates a stream that evaluates the supplied `fa` for its effect, discarding the output value.
@@ -1218,7 +1218,7 @@ object Stream {
    * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
    * }}}
    */
-  def fail[O](e: Throwable): Stream[Pure,O] = fromFree(Algebra.fail(e))
+  def fail[O](e: Throwable): Stream[Pure,O] = fromFreeC(Algebra.fail(e))
 
   /**
    * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
@@ -1317,7 +1317,7 @@ object Stream {
    * }}}
    */
   def segment[O](s: Segment[O,Unit]): Stream[Pure,O] =
-    fromFree(Algebra.output[Pure,O](s))
+    fromFreeC(Algebra.output[Pure,O](s))
 
   /**
    * Returns a stream that evaluates the supplied by-name each time the stream is used,
@@ -1336,7 +1336,7 @@ object Stream {
    * }}}
    */
   def suspend[F[_],O](s: => Stream[F,O]): Stream[F,O] =
-    fromFree(Algebra.suspend(s.get))
+    fromFreeC(Algebra.suspend(s.get))
 
   /**
    * Creates a stream by successively applying `f` until a `None` is returned, emitting
@@ -1388,8 +1388,8 @@ object Stream {
   /** Provides syntax for streams that are invariant in `F` and `O`. */
   implicit def InvariantOps[F[_],O](s: Stream[F,O]): InvariantOps[F,O] = new InvariantOps(s.get)
   /** Provides syntax for streams that are invariant in `F` and `O`. */
-  final class InvariantOps[F[_],O] private[Stream] (private val free: Free[Algebra[F,O,?],Unit]) extends AnyVal {
-    private def self: Stream[F,O] = Stream.fromFree(free)
+  final class InvariantOps[F[_],O] private[Stream] (private val free: FreeC[Algebra[F,O,?],Unit]) extends AnyVal {
+    private def self: Stream[F,O] = Stream.fromFreeC(free)
 
     /** Appends `s2` to the end of this stream. */
     def ++[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
@@ -1600,10 +1600,10 @@ object Stream {
      * }}}
      */
     def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] =
-      Stream.fromFree(Algebra.uncons(self.get[F,O]).flatMap {
+      Stream.fromFreeC(Algebra.uncons(self.get[F,O]).flatMap {
         case None => Stream.empty.covaryAll[F,O2].get
         case Some((hd, tl)) =>
-          val tl2 = Stream.fromFree(tl).flatMap(f)
+          val tl2 = Stream.fromFreeC(tl).flatMap(f)
           (hd.map(f).foldRightLazy(tl2)(Stream.append(_,_))).get
       })
 
@@ -1859,7 +1859,7 @@ object Stream {
      * }}}
      */
     def onError[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
-      Stream.fromFree(self.get[F,O2] onError { e => h(e).get })
+      Stream.fromFreeC(self.get[F,O2] onError { e => h(e).get })
 
     /**
      * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -2118,7 +2118,7 @@ object Stream {
       translate_(u, None)
 
     private def translate_[G[_]](u: F ~> G, G: Option[Effect[G]]): Stream[G,O] =
-      Stream.fromFree[G,O](Algebra.translate[F,G,O,Unit](self.get, u, G))
+      Stream.fromFreeC[G,O](Algebra.translate[F,G,O,Unit](self.get, u, G))
 
     private type ZipWithCont[G[_],I,O2,R] = Either[(Segment[I,Unit], Stream[G,I]), Stream[G,I]] => Pull[G,O2,Option[R]]
 
@@ -2222,8 +2222,8 @@ object Stream {
   /** Provides syntax for pure empty pipes. */
   implicit def EmptyOps(s: Stream[Pure,Nothing]): EmptyOps = new EmptyOps(s.get[Pure,Nothing])
   /** Provides syntax for pure empty pipes. */
-  final class EmptyOps private[Stream] (private val free: Free[Algebra[Pure,Nothing,?],Unit]) extends AnyVal {
-    private def self: Stream[Pure,Nothing] = Stream.fromFree[Pure,Nothing](free)
+  final class EmptyOps private[Stream] (private val free: FreeC[Algebra[Pure,Nothing,?],Unit]) extends AnyVal {
+    private def self: Stream[Pure,Nothing] = Stream.fromFreeC[Pure,Nothing](free)
 
     /** Lifts this stream to the specified effect type. */
     def covary[F[_]]: Stream[F,Nothing] = self.asInstanceOf[Stream[F,Nothing]]
@@ -2235,8 +2235,8 @@ object Stream {
   /** Provides syntax for pure pipes. */
   implicit def PureOps[O](s: Stream[Pure,O]): PureOps[O] = new PureOps(s.get[Pure,O])
   /** Provides syntax for pure pipes. */
-  final class PureOps[O] private[Stream] (private val free: Free[Algebra[Pure,O,?],Unit]) extends AnyVal {
-    private def self: Stream[Pure,O] = Stream.fromFree[Pure,O](free)
+  final class PureOps[O] private[Stream] (private val free: FreeC[Algebra[Pure,O,?],Unit]) extends AnyVal {
+    private def self: Stream[Pure,O] = Stream.fromFreeC[Pure,O](free)
 
     def ++[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       Stream.append(covary[F], s2)
@@ -2334,9 +2334,9 @@ object Stream {
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
-  final class ToPull[F[_],O] private[Stream] (private val free: Free[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
+  final class ToPull[F[_],O] private[Stream] (private val free: FreeC[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
 
-    private def self: Stream[F,O] = Stream.fromFree(free.asInstanceOf[Free[Algebra[F,O,?],Unit]])
+    private def self: Stream[F,O] = Stream.fromFreeC(free.asInstanceOf[FreeC[Algebra[F,O,?],Unit]])
 
     /**
      * Waits for a segment of elements to be available in the source stream.
@@ -2345,7 +2345,7 @@ object Stream {
      * A `None` is returned as the resource of the pull upon reaching the end of the stream.
      */
     def uncons: Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]] =
-      Pull.fromFree(Algebra.uncons(self.get)).map { _.map { case (hd, tl) => (hd, Stream.fromFree(tl)) } }
+      Pull.fromFreeC(Algebra.uncons(self.get)).map { _.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) } }
 
     /** Like [[uncons]] but waits for a chunk instead of an entire segment. */
     def unconsChunk: Pull[F,Nothing,Option[(Chunk[O],Stream[F,O])]] =
@@ -2376,7 +2376,7 @@ object Stream {
      * resultant `AsyncPull`s, emitting winner of the race, and then repeating.
      */
     def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
-      Pull.fromFree(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFree(tl)) }))
+      Pull.fromFreeC(Algebra.unconsAsync(self.get)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }))
 
     /**
      * Like [[uncons]], but returns a segment of no more than `n` elements.
@@ -2461,7 +2461,7 @@ object Stream {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F,O,Unit] = Pull.fromFree(self.get)
+    def echo: Pull[F,O,Unit] = Pull.fromFreeC(self.get)
 
     /** Reads a single element from the input and emits it to the output. Returns the new `Handle`. */
     def echo1: Pull[F,O,Option[Stream[F,O]]] =

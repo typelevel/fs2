@@ -1,7 +1,7 @@
 package fs2
 
 import cats.effect.Sync
-import fs2.internal.{ Algebra, Free }
+import fs2.internal.{ Algebra, FreeC }
 
 /**
  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -25,19 +25,19 @@ import fs2.internal.{ Algebra, Free }
  * @hideImplicitConversion PureOps
  * @hideImplicitConversion covaryPure
  */
-final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Nothing,?],R]) extends AnyVal {
+final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,Nothing,?],R]) extends AnyVal {
 
-  private[fs2] def get[F2[x]>:F[x],O2>:O,R2>:R]: Free[Algebra[F2,O2,?],R2] = free.asInstanceOf[Free[Algebra[F2,O2,?],R2]]
+  private[fs2] def get[F2[x]>:F[x],O2>:O,R2>:R]: FreeC[Algebra[F2,O2,?],R2] = free.asInstanceOf[FreeC[Algebra[F2,O2,?],R2]]
 
   /** Alias for `_.map(_ => o2)`. */
   def as[R2](r2: R2): Pull[F,O,R2] = map(_ => r2)
 
   /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
   def attempt: Pull[F,O,Either[Throwable,R]] =
-    Pull.fromFree(get[F,O,R].map(r => Right(r)).onError(t => Free.Pure(Left(t))))
+    Pull.fromFreeC(get[F,O,R].map(r => Right(r)).onError(t => FreeC.Pure(Left(t))))
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
-  def stream: Stream[F,O] = Stream.fromFree(this.scope.get[F,O,R] map (_ => ()))
+  def stream: Stream[F,O] = Stream.fromFreeC(this.scope.get[F,O,R] map (_ => ()))
 
   /** Lifts this pull to the specified output type. */
   def covaryOutput[O2>:O]: Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
@@ -46,13 +46,13 @@ final class Pull[+F[_],+O,+R] private(private val free: Free[Algebra[Nothing,Not
   def covaryResource[R2>:R]: Pull[F,O,R2] = this.asInstanceOf[Pull[F,O,R2]]
 
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
-  def map[R2](f: R => R2): Pull[F,O,R2] = Pull.fromFree(get map f)
+  def map[R2](f: R => R2): Pull[F,O,R2] = Pull.fromFreeC(get map f)
 }
 
 object Pull {
 
-  private[fs2] def fromFree[F[_],O,R](free: Free[Algebra[F,O,?],R]): Pull[F,O,R] =
-    new Pull(free.asInstanceOf[Free[Algebra[Nothing,Nothing,?],R]])
+  private[fs2] def fromFreeC[F[_],O,R](free: FreeC[Algebra[F,O,?],R]): Pull[F,O,R] =
+    new Pull(free.asInstanceOf[FreeC[Algebra[Nothing,Nothing,?],R]])
 
   /** Result of `acquireCancellable`. */
   sealed abstract class Cancellable[+F[_],+R] {
@@ -97,17 +97,17 @@ object Pull {
    * instead of failing the pull.
    */
   def attemptEval[F[_],R](fr: F[R]): Pull[F,Nothing,Either[Throwable,R]] =
-    fromFree(
+    fromFreeC(
       Algebra.eval[F,Nothing,R](fr).
         map(r => Right(r): Either[Throwable,R]).
         onError(t => Algebra.pure[F,Nothing,Either[Throwable,R]](Left(t))))
 
   /** The completed `Pull`. Reads and outputs nothing. */
-  val done: Pull[Nothing,Nothing,Unit] = fromFree[Nothing,Nothing,Unit](Algebra.pure[Nothing,Nothing,Unit](()))
+  val done: Pull[Nothing,Nothing,Unit] = fromFreeC[Nothing,Nothing,Unit](Algebra.pure[Nothing,Nothing,Unit](()))
 
   /** Evaluates the supplied effectful value and returns the result as the resource of the returned pull. */
   def eval[F[_],R](fr: F[R]): Pull[F,Nothing,R] =
-    fromFree(Algebra.eval[F,Nothing,R](fr))
+    fromFreeC(Algebra.eval[F,Nothing,R](fr))
 
   /** Reads and outputs nothing, and fails with the given error. */
   def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
@@ -122,38 +122,38 @@ object Pull {
 
   /** Ouptuts a single value. */
   def output1[F[_],O](o: O): Pull[F,O,Unit] =
-    fromFree(Algebra.output1[F,O](o))
+    fromFreeC(Algebra.output1[F,O](o))
 
   /** Ouptuts a segment of values. */
   def output[F[_],O](os: Segment[O,Unit]): Pull[F,O,Unit] =
-    fromFree(Algebra.output[F,O](os))
+    fromFreeC(Algebra.output[F,O](os))
 
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[_],R](r: R): Pull[F,Nothing,R] =
-    fromFree(Algebra.pure(r))
+    fromFreeC(Algebra.pure(r))
 
   /**
    * Pull that outputs the specified segment and returns the result of the segment as the result
    * of the pull. Less efficient than [[output]].
    */
   def segment[F[_],O,R](s: Segment[O,R]): Pull[F,O,R] =
-    fromFree(Algebra.segment[F,O,R](s))
+    fromFreeC(Algebra.segment[F,O,R](s))
 
   /**
    * Returns a pull that evaluates the supplied by-name each time the pull is used,
    * allowing use of a mutable value in pull computations.
    */
   def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
-    fromFree(Algebra.suspend(p.get))
+    fromFreeC(Algebra.suspend(p.get))
 
   private def release[F[_]](token: Algebra.Token): Pull[F,Nothing,Unit] =
-    fromFree[F,Nothing,Unit](Algebra.release(token))
+    fromFreeC[F,Nothing,Unit](Algebra.release(token))
 
   /** Provides syntax for pulls that are invariant in `F`, `O`, and `R`. */
   implicit def InvariantOps[F[_],O,R](p: Pull[F,O,R]): InvariantOps[F,O,R] = new InvariantOps(p.get)
   /** Provides syntax for pulls that are invariant in `F`, `O`, and `R`. */
-  final class InvariantOps[F[_],O,R] private[Pull] (private val free: Free[Algebra[F,O,?],R]) extends AnyVal {
-    private def self: Pull[F,O,R] = Pull.fromFree(free)
+  final class InvariantOps[F[_],O,R] private[Pull] (private val free: FreeC[Algebra[F,O,?],R]) extends AnyVal {
+    private def self: Pull[F,O,R] = Pull.fromFreeC(free)
 
     /** Lifts this pull to the specified effect type. */
     def covary[F2[x]>:F[x]]: Pull[F2,O,R] = self.asInstanceOf[Pull[F2,O,R]]
@@ -163,7 +163,7 @@ object Pull {
 
     /** Applies the resource of this pull to `f` and returns the result. */
     def flatMap[O2>:O,R2](f: R => Pull[F,O2,R2]): Pull[F,O2,R2] =
-      Pull.fromFree(self.get[F,O2,R] flatMap { r => f(r).get })
+      Pull.fromFreeC(self.get[F,O2,R] flatMap { r => f(r).get })
 
     /** Alias for `flatMap(_ => p2)`. */
     def >>[O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
@@ -175,17 +175,17 @@ object Pull {
 
     /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
     def onError[O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] =
-      Pull.fromFree(self.get[F,O2,R2] onError { e => h(e).get })
+      Pull.fromFreeC(self.get[F,O2,R2] onError { e => h(e).get })
 
     /** Tracks any resources acquired during this pull and release them when the pull completes. */
-    def scope: Pull[F,O,R] = Pull.fromFree(Algebra.scope(free))
+    def scope: Pull[F,O,R] = Pull.fromFreeC(Algebra.scope(free))
   }
 
   /** Provides syntax for pure pulls. */
   implicit def PureOps[O,R](p: Pull[Pure,O,R]): PureOps[O,R] = new PureOps(p.get[Pure,O,R])
   /** Provides syntax for pure pulls. */
-  final class PureOps[O,R] private[Pull] (private val free: Free[Algebra[Pure,O,?],R]) extends AnyVal {
-    private def self: Pull[Pure,O,R] = Pull.fromFree[Pure,O,R](free)
+  final class PureOps[O,R] private[Pull] (private val free: FreeC[Algebra[Pure,O,?],R]) extends AnyVal {
+    private def self: Pull[Pure,O,R] = Pull.fromFreeC[Pure,O,R](free)
     def covary[F[_]]: Pull[F,O,R] = self.asInstanceOf[Pull[F,O,R]]
     def covaryAll[F[_],O2>:O,R2>:R]: Pull[F,O2,R2] = self.asInstanceOf[Pull[F,O2,R2]]
     def flatMap[F[_],O2>:O,R2](f: R => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F].flatMap(f)
