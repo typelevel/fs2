@@ -673,6 +673,17 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     this.repeatPull(_.uncons.flatMap { case None => Pull.pure(None); case Some((hd, tl)) => Pull.output(hd map f).as(Some(tl)) })
 
   /**
+   * Applies the specified pure function to each chunk in this stream.
+   *
+   * @example {{{
+   * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).mapChunks { c => val arr = c.toInts.values; for (i <- 0 until arr.size) arr(i) = 0; c }.toList
+   * res0: List[Int] = List(0, 0, 0, 0, 0, 0)
+   * }}}
+   */
+  def mapChunks[O2](f: Chunk[O] => Segment[O2,Unit]): Stream[F,O2] =
+    this.repeatPull { _.unconsChunk.flatMap { case None => Pull.pure(None); case Some((hd,tl)) => Pull.output(f(hd)).as(Some(tl)) }}
+
+  /**
    * Applies the specified pure function to each segment in this stream.
    *
    * @example {{{
