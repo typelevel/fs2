@@ -1077,10 +1077,6 @@ object Stream {
   private[fs2] def fromFreeC[F[_],O](free: FreeC[Algebra[F,O,?],Unit]): Stream[F,O] =
     new Stream(free.asInstanceOf[FreeC[Algebra[Nothing,Nothing,?],Unit]])
 
-  /** Appends `s2` to the end of `s1`. Alias for `s1 ++ s2`. */
-  def append[F[_],O](s1: Stream[F,O], s2: => Stream[F,O]): Stream[F,O] =
-    fromFreeC(s1.get.flatMap { _ => s2.get })
-
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use [[covary]]. */
   def apply[O](os: O*): Stream[Pure,O] = emits(os)
 
@@ -1392,12 +1388,11 @@ object Stream {
     private def self: Stream[F,O] = Stream.fromFreeC(free)
 
     /** Appends `s2` to the end of this stream. */
-    def ++[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      Stream.append(self, s2)
+    def ++[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] = self.append(s2)
 
     /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
     def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      Stream.append(self, s2)
+      fromFreeC(self.get.flatMap { _ => s2.get })
 
     /**
      * Emits only elements that are distinct from their immediate predecessors,
@@ -1604,7 +1599,7 @@ object Stream {
         case None => Stream.empty.covaryAll[F,O2].get
         case Some((hd, tl)) =>
           val tl2 = Stream.fromFreeC(tl).flatMap(f)
-          (hd.map(f).foldRightLazy(tl2)(Stream.append(_,_))).get
+          (hd.map(f).foldRightLazy(tl2)(_ ++ _)).get
       })
 
     /** Alias for `flatMap(_ => s2)`. */
@@ -2238,11 +2233,9 @@ object Stream {
   final class PureOps[O] private[Stream] (private val free: FreeC[Algebra[Pure,O,?],Unit]) extends AnyVal {
     private def self: Stream[Pure,O] = Stream.fromFreeC[Pure,O](free)
 
-    def ++[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      Stream.append(covary[F], s2)
+    def ++[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] = covary[F].append(s2)
 
-    def append[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      Stream.append(self.covary[F], s2)
+    def append[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] = covary[F].append(s2)
 
     def covary[F[_]]: Stream[F,O] = self.asInstanceOf[Stream[F,O]]
 
