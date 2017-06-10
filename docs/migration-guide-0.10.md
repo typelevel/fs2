@@ -10,7 +10,7 @@ There's some more detail about this change in [#848](https://github.com/function
 
 As a result of this migration, the `fs2.util` package is significantly smaller. The type classes that existed in `fs2.util` have all been replaced by equivalent type classes in cats and cats-effect.
 
-|0.9|1.0|
+|0.9|0.10|
 |---|---|
 |`fs2.util.Functor`|`cats.Functor`|
 |`fs2.util.Applicative`|`cats.Applicative`|
@@ -50,21 +50,21 @@ As a result `fs2.Task` has been removed. Porting from `Task` to `IO` is relative
 
 Performance is significantly better thanks to the introduction of `fs2.Segment`. A `Segment` is a potentially infinite, lazy, pure data structure which supports a variety of fused operations. This is coincidentally similar to the approach taken in [Stream Fusion, to Completeness](https://arxiv.org/pdf/1612.06668v1.pdf), though using a novel approach that does not require code generation.
 
-TODO
+Instead of a `Stream` being made up of `Chunk`s like in 0.9, it is now made up of `Segment`s. `Chunk[O]` is a subtype of `Segment[O,Unit]`. Many of the operations which operated in terms of chunks now operate in terms of segments. Occassionally, there are operations that are specialized for chunks -- typically when index based access to the underlying elements is more performant than the benefits of operator fusion.
 
 ### API Simplification
 
 #### Built-in Pipes
 
- The `fs2.pipe` and `fs2.pipe2` objects have been removed and built-in stream transformations now exist solely as syntax on `Stream`. E.g., `s.through(pipe.take(n))` is now `s.take(n)`. The `fs2.Pipe` and `fs2.Pipe2` objects now exist and contain advanced operations on pipes, like joining a stream of pipes and stepping pipes.
+ The `fs2.pipe` and `fs2.pipe2` objects have been removed and built-in stream transformations now exist solely as syntax on `Stream`. E.g., `s.through(pipe.take(n))` is now `s.take(n)`. The `fs2.Pipe` and `fs2.Pipe2` objects now exist and contain advanced operations on pipes, like joining a stream of pipes and stepping pipes. In general, 0.10 removes redundant ways of doing things, preferring a single mechanism when possible.
 
 #### Variance Tricks Removed
 
-In 0.9, `Sub1`, `Lub1`, and `RealSupertype` encoded covariance using type-level computations to work around various limitations in type inference. These tricks resulted in confusing type signatures and bad compiler error messages. In 1.0, these type classes have been removed and FS2 uses "regular" covariance.
+In 0.9, `Sub1`, `Lub1`, and `RealSupertype` encoded covariance using type-level computations to work around various limitations in type inference. These tricks resulted in confusing type signatures and bad compiler error messages. In 0.10, these type classes have been removed and FS2 uses "regular" covariance.
 
 In 0.9, `Stream(1, 2, 3)` had type `Stream[F,Int]` for all `F`, and Scala would often infer `F` as `Nothing`. This would generally work out fine, as `Stream` is covariant in `F`, but not it doesn't work out all cases due to Scala's special treatment of `Nothing` during type inference. Working around these cases is what led to tricks like `Sub1`.
 
-In 1.0, we avoid these issues by avoiding use of `Nothing` for an effect type -- i.e., the `Stream` constructors are aggressive about returning `Stream[Pure,O]` when there is no effect type. For example, `Stream(1, 2, 3)` now has type `Stream[Pure,Int]`, `Stream.empty` now has type `Stream[Pure,Nothing]`, and so on. This generally works much better:
+In 0.10, we avoid these issues by avoiding use of `Nothing` for an effect type -- i.e., the `Stream` constructors are aggressive about returning `Stream[Pure,O]` when there is no effect type. For example, `Stream(1, 2, 3)` now has type `Stream[Pure,Int]`, `Stream.empty` now has type `Stream[Pure,Nothing]`, and so on. This generally works much better:
 
 ```scala
 val s1: Stream[IO,Int] = Stream(1, 2, 3)
@@ -73,13 +73,13 @@ val s3: Stream[IO,Int] = s2.flatMap { n => Stream(1, 2, 3) }
 val s4: Stream[IO,Int] = Stream(1,2,3).flatMap { n => Stream(1, 2, 3) }
 ```
 
-There are times when you may have to manually covary a stream -- especially in situations where you had to explicitly supply type parameters in 0.9 (e.g., if in 0.9 you had to write `Stream[IO,Int](1,2,3)`, in 1.0 you *may* have to write `Stream(1,2,3).covary[IO]`).
+There are times when you may have to manually covary a stream -- especially in situations where you had to explicitly supply type parameters in 0.9 (e.g., if in 0.9 you had to write `Stream[IO,Int](1,2,3)`, in 0.10 you *may* have to write `Stream(1,2,3).covary[IO]`).
 
 #### Handle
 
 In 0.9, the `fs2.Handle[F,O]` type provided an API bridge between streams and pulls. Writing a custom pull involved obtaining a handle for a stream and using a method on the handle to obtain a pull (e.g., `receive`). This often involved boilerplate like `s.open.flatMap { h => h.receive { ... }}.close` or `s.pull { h => h.receive { ... } }`.
 
-In 1.0, the `Handle` type has been removed. Instead, custom pulls are written directly against `Stream` objects. The `pull` method on `Stream` now returns a `Stream.ToPull` object, which has methods for getting a `Pull` from the `Stream`. For example:
+In 0.10, the `Handle` type has been removed. Instead, custom pulls are written directly against `Stream` objects. The `pull` method on `Stream` now returns a `Stream.ToPull` object, which has methods for getting a `Pull` from the `Stream`. For example:
 
 ```scala
 // Equivalent to s.take(1)
@@ -101,7 +101,7 @@ There are a number of other minor API changes evident in this example, and many 
 
 The `Pull` API has changed a little -- in 0.9, `Pull[F,O,R]` supported the notion of a "done" pull -- a pull which terminated without returning an `R` value. Internally, the pull type was represented by a free monad with a result type of `Option[R]`. This allowed any `Pull[F,O,R]` to terminate early by using `Pull.done`.
 
-In 1.0, this notion has been removed. A `Pull[F,O,R]` always evaluates to an `R` and there's no direct equivalent to `Pull.done`. To signal early termination, many pulls use an `Option` in the resource position -- e.g., `Pull[F,O,Option[R]]`, where a `None` represents termination (e.g., exhaustion of input from the source stream or an upstream pull terminating early). In the example in the last section, we saw that `uncons1` returns a `Pull[F,Nothing,Option[(O,Stream[F,O])]]` -- this tells us that pulling a single element from the stream either results in termination, if the stream is empty, or a single element along with the tail of the stream.
+In 0.10, this notion has been removed. A `Pull[F,O,R]` always evaluates to an `R` and there's no direct equivalent to `Pull.done`. To signal early termination, many pulls use an `Option` in the resource position -- e.g., `Pull[F,O,Option[R]]`, where a `None` represents termination (e.g., exhaustion of input from the source stream or an upstream pull terminating early). In the example in the last section, we saw that `uncons1` returns a `Pull[F,Nothing,Option[(O,Stream[F,O])]]` -- this tells us that pulling a single element from the stream either results in termination, if the stream is empty, or a single element along with the tail of the stream.
 
 As a result of this change, many combinators have slightly different shapes. Consider `Pull.loop`:
 
@@ -110,12 +110,14 @@ def loop[F[_],O,R](using: R => Pull[F,O,Option[R]]): R => Pull[F,O,Option[R]] =
   r => using(r) flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
 ```
 
-In order for `loop` to know when to stop looping, it needs some indication that `using` is done. In 0.9, this signal was baked in to `Pull` but in 1.0 the returned pull must explicitly signal completion via a `None`.
+In order for `loop` to know when to stop looping, it needs some indication that `using` is done. In 0.9, this signal was baked in to `Pull` but in 0.10 the returned pull must explicitly signal completion via a `None`.
 
 ### Minor API Changes
 
-- The `fs2.concurrent` object is deprecated in favor of calling the `join` method on a `Stream` (e.g., `s.join(n)`).
+- The `fs2.concurrent` object has been removed in favor of calling the `join` method on a `Stream` (e.g., `s.join(n)`).
+- `Stream.append` has been removed in favor of `s.append(s2)` or `s ++ s2`.
 - `fs2.Strategy` has been removed in favor of `scala.concurrent.ExecutionContext`.
+- `Sink` now has a companion object with various common patterns for constructing sinks (e.g., `Sink(s => IO(println(s)))`).
 
 #### Cats Type Class Instances
 
