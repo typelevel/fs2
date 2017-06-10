@@ -81,7 +81,6 @@ private[io] object JavaInputOutputStream {
         }
       }
 
-
       F.flatMap(F.attempt(
         source.chunks
         .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))

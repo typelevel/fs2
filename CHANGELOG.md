@@ -4,6 +4,10 @@
  - `concurrent.join` now fails when outer stream terminated [#869](https://github.com/functional-streams-for-scala/fs2/pull/869)
  
 0.9.5
+=======
+
+ 0.9.5
+>>>>>>> ab0d1d1a... Updated CHANGELOG for 0.9.7
 =====
  - Fixed memory leak in `concurrent.join` where up to `maxOpen` streams that had finished executing were kept in memory until the end of the outer stream was reached. [#834](https://github.com/functional-streams-for-scala/fs2/issues/834)
  - Fixed a bug in `fs2.io.JavaInputOutputStream`, ensuring bytes are converted to 0-255 before being returned.
