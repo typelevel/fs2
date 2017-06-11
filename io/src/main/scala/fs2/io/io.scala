@@ -17,8 +17,8 @@ package object io {
    *
    * Blocks the current thread.
    */
-  def readInputStream[F[_]: Sync](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true): Stream[F, Byte] =
-    readInputStreamGeneric(fis, chunkSize, readBytesFromInputStream[F], closeAfterUse)
+  def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Sync[F]): Stream[F, Byte] =
+    readInputStreamGeneric(fis, F.delay(new Array[Byte](chunkSize)), readBytesFromInputStream[F], closeAfterUse)
 
   /**
    * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
@@ -31,7 +31,40 @@ package object io {
     def readAsync(is: InputStream, buf: Array[Byte]) =
       async.start(readBytesFromInputStream(is, buf)).flatten
 
-    readInputStreamGeneric(fis, chunkSize, readAsync, closeAfterUse)
+    readInputStreamGeneric(fis, F.delay(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
+  }
+
+  /**
+   * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
+   * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
+   *
+   * Recycles an underlying input buffer for performance. It is safe to call
+   * this as long as whatever consumes this `Stream` does not store the `Chunk`
+   * returned or pipe it to a combinator that does (e.g., `buffer`). Use
+   * `readInputStream` for a safe version.
+   *
+   * Blocks the current thread.
+   */
+  def unsafeReadInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Sync[F]): Stream[F, Byte] =
+    readInputStreamGeneric(fis, F.pure(new Array[Byte](chunkSize)), readBytesFromInputStream[F], closeAfterUse)
+
+  /**
+   * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
+   * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
+   *
+   * This will block a thread in the `ExecutionContext`, so the size of any associated
+   * threadpool should be sized appropriately.
+   *
+   * Recycles an underlying input buffer for performance. It is safe to call
+   * this as long as whatever consumes this `Stream` does not store the `Chunk`
+   * returned or pipe it to a combinator that does (e.g. `buffer`). Use
+   * `readInputStream` for a safe version.
+   */
+  def unsafeReadInputStreamAsync[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] = {
+    def readAsync(is: InputStream, buf: Array[Byte]) =
+      async.start(readBytesFromInputStream(is, buf)).flatten
+
+    readInputStreamGeneric(fis, F.pure(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
   }
 
   /**
