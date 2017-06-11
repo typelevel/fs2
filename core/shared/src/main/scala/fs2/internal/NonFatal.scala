@@ -1,7 +1,7 @@
-package fs2.util
+package fs2.internal
 
 /** Alternative to `scala.util.control.NonFatal` that only considers `VirtualMachineError`s as fatal. */
-object NonFatal {
+private[fs2] object NonFatal {
 
   def apply(t: Throwable): Boolean = t match {
     case _: VirtualMachineError => false

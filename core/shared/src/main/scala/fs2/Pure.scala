@@ -3,8 +3,6 @@ package fs2
 /**
  * Indicates that a stream evaluates no effects.
  *
- * A `Stream[Pure,O]` can be safely cast to a `Stream[Nothing,O]`,
- * but `Stream[Pure,O]` has better type inference properties in some places.
- * See usage in `[[Stream.pull]]`.
+ * A `Stream[Pure,O]` can be safely converted to a `Stream[F,O]` for all `F`.
  */
 sealed trait Pure[+A]

@@ -2,13 +2,13 @@ package fs2
 
 import fs2.Stream._
 
-import compress._
-
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Gen
 
 import java.io.ByteArrayOutputStream
 import java.util.zip.{Deflater, DeflaterOutputStream, Inflater, InflaterOutputStream}
+
+import compress._
 
 class CompressSpec extends Fs2Spec {
 
@@ -36,7 +36,7 @@ class CompressSpec extends Fs2Spec {
     "deflate input" in forAll(arbitrary[String], Gen.choose(0, 9), arbitrary[Boolean])
       { (s: String, level: Int, nowrap: Boolean) =>
         val expected = deflateStream(getBytes(s), level, nowrap).toVector
-        val actual = Stream.chunk(Chunk.bytes(getBytes(s))).throughPure(deflate(
+        val actual = Stream.chunk(Chunk.bytes(getBytes(s))).through(deflate(
           level = level,
           nowrap = nowrap
         )).toVector
@@ -47,14 +47,14 @@ class CompressSpec extends Fs2Spec {
     "inflate input" in forAll(arbitrary[String], Gen.choose(0, 9), arbitrary[Boolean])
       { (s: String, level: Int, nowrap: Boolean) =>
         val expectedDeflated = deflateStream(getBytes(s), level, nowrap)
-        val actualDeflated = Stream.chunk(Chunk.bytes(getBytes(s))).throughPure(deflate(
+        val actualDeflated = Stream.chunk(Chunk.bytes(getBytes(s))).through(deflate(
           level = level,
           nowrap = nowrap
         )).toVector
 
         def expectEqual(expected: Array[Byte], actual: Array[Byte]) = {
           val expectedInflated = inflateStream(expected, nowrap).toVector
-          val actualInflated = Stream.chunk(Chunk.bytes(actual)).throughPure(inflate(nowrap = nowrap)).toVector
+          val actualInflated = Stream.chunk(Chunk.bytes(actual)).through(inflate(nowrap = nowrap)).toVector
           actualInflated should equal(expectedInflated)
         }
 
@@ -73,7 +73,7 @@ class CompressSpec extends Fs2Spec {
           |of certain program behaviors by classifying phrases according to the
           |kinds of values they compute."
           |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
-      val compressed = Stream.chunk(Chunk.bytes(uncompressed)).throughPure(deflate(9)).toVector
+      val compressed = Stream.chunk(Chunk.bytes(uncompressed)).through(deflate(9)).toVector
 
       compressed.length should be < uncompressed.length
     }

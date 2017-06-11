@@ -1,18 +1,18 @@
 package fs2
 
 import java.util.concurrent.TimeoutException
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.implicits._
-import fs2.util.NonFatal
+import fs2.internal.NonFatal
 
 trait TestUtil extends TestUtilPlatform {
 
-  val timeout: FiniteDuration = 10.minutes
+  val timeout: FiniteDuration = 60.seconds
 
   def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift >> s.runLog).unsafeToFuture
 
@@ -25,7 +25,8 @@ trait TestUtil extends TestUtilPlatform {
     catch {
       case e: InterruptedException => throw e
       case e: TimeoutException => throw e
-      case NonFatal(e) => ()
+      case Err => ()
+      case NonFatal(e) => e.printStackTrace; ()
     }
 
   implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(
@@ -33,7 +34,7 @@ trait TestUtil extends TestUtilPlatform {
       10 -> Gen.listOf(A.arbitrary).map(as => Chunk.indexedSeq(as.toVector)),
       10 -> Gen.listOf(A.arbitrary).map(Chunk.seq),
       5 -> A.arbitrary.map(a => Chunk.singleton(a)),
-      1 -> Chunk.empty
+      1 -> Chunk.empty[A]
     )
   )
 
@@ -56,13 +57,13 @@ trait TestUtil extends TestUtilPlatform {
     }
     def leftAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
-        val s = as.foldLeft(Stream.empty[Pure,A])((acc,a) => acc ++ Stream.emit(a))
+        val s = as.foldLeft(Stream.empty.covaryOutput[A])((acc,a) => acc ++ Stream.emit(a))
         PureStream("left-associated", s)
       }
     }
     def rightAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
-        val s = Chunk.seq(as).foldRight(Stream.empty[Pure,A])((a,acc) => Stream.emit(a) ++ acc)
+        val s = as.foldRight(Stream.empty.covaryOutput[A])((a,acc) => Stream.emit(a) ++ acc)
         PureStream("right-associated", s)
       }
     }
@@ -84,6 +85,10 @@ trait TestUtil extends TestUtilPlatform {
       Gen.oneOf(
         rightAssociated[A], leftAssociated[A], singleChunk[A],
         unchunked[A], randomlyChunked[A], uniformlyChunked[A])
+
+    implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
+
+    implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream("shrunk", Stream.chunk(Chunk.seq(as)))) }
   }
 
   case object Err extends RuntimeException("oh noes!!")
@@ -98,10 +103,12 @@ trait TestUtil extends TestUtilPlatform {
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
       Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw Err)),
-      Failure("failure-in-pure-pull", Stream.emit[IO,Int](42).pull(h => throw Err)),
+      Failure("failure-in-pure-pull", Stream.emit(42).pull.uncons.map(_ => throw Err).stream),
       Failure("failure-in-async-code",
-        Stream.eval[IO,Int](IO(throw Err)).pull { h =>
-          h.awaitAsync.flatMap(_.pull).flatMap(identity) })
+        Stream.eval[IO,Int](IO(throw Err)).pull.unconsAsync.flatMap { _.pull.flatMap {
+          case None => Pull.pure(())
+          case Some((hd,tl)) => Pull.output(hd) >> Pull.pure(())
+        }}.stream)
     )
   )
 

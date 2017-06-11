@@ -13,8 +13,6 @@ import java.nio.channels.{CancelledKeyException,ClosedChannelException,DatagramC
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue,CountDownLatch}
 
-import fs2.util.Attempt
-
 /**
  * Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
  *
@@ -23,7 +21,7 @@ import fs2.util.Attempt
 sealed trait AsynchronousSocketGroup {
   private[udp] type Context
   private[udp] def register(channel: DatagramChannel): Context
-  private[udp] def read(ctx: Context, timeout: Option[FiniteDuration], cb: Attempt[Packet] => Unit): Unit
+  private[udp] def read(ctx: Context, timeout: Option[FiniteDuration], cb: Either[Throwable,Packet] => Unit): Unit
   private[udp] def write(ctx: Context, packet: Packet, timeout: Option[FiniteDuration], cb: Option[Throwable] => Unit): Unit
   private[udp] def close(ctx: Context): Unit
 
@@ -54,18 +52,18 @@ object AsynchronousSocketGroup {
     }
 
     class Attachment(
-      readers: ArrayDeque[(Attempt[Packet] => Unit,Option[Timeout])] = new ArrayDeque(),
+      readers: ArrayDeque[(Either[Throwable,Packet] => Unit,Option[Timeout])] = new ArrayDeque(),
       writers: ArrayDeque[((Packet,Option[Throwable] => Unit),Option[Timeout])] = new ArrayDeque()
     ) {
 
       def hasReaders: Boolean = !readers.isEmpty
 
-      def peekReader: Option[Attempt[Packet] => Unit] = {
+      def peekReader: Option[Either[Throwable,Packet] => Unit] = {
         if (readers.isEmpty) None
         else Some(readers.peek()._1)
       }
 
-      def dequeueReader: Option[Attempt[Packet] => Unit] = {
+      def dequeueReader: Option[Either[Throwable,Packet] => Unit] = {
         if (readers.isEmpty) None
         else {
           val (reader, timeout) = readers.pop()
@@ -74,7 +72,7 @@ object AsynchronousSocketGroup {
         }
       }
 
-      def queueReader(reader: Attempt[Packet] => Unit, timeout: Option[Timeout]): () => Unit = {
+      def queueReader(reader: Either[Throwable,Packet] => Unit, timeout: Option[Timeout]): () => Unit = {
         if (closed) {
           reader(Left(new ClosedChannelException))
           timeout.foreach(_.cancel)
@@ -151,7 +149,7 @@ object AsynchronousSocketGroup {
       key
     }
 
-    override def read(key: SelectionKey, timeout: Option[FiniteDuration], cb: Attempt[Packet] => Unit): Unit = {
+    override def read(key: SelectionKey, timeout: Option[FiniteDuration], cb: Either[Throwable,Packet] => Unit): Unit = {
       onSelectorThread {
         val channel = key.channel.asInstanceOf[DatagramChannel]
         val attachment = key.attachment.asInstanceOf[Attachment]
@@ -174,7 +172,7 @@ object AsynchronousSocketGroup {
       } { cb(Left(new ClosedChannelException)) }
     }
 
-    private def read1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, reader: Attempt[Packet] => Unit): Boolean = {
+    private def read1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, reader: Either[Throwable,Packet] => Unit): Boolean = {
       readBuffer.clear
       try {
         val src = channel.receive(readBuffer).asInstanceOf[InetSocketAddress]

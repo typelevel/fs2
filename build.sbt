@@ -26,6 +26,7 @@ lazy val commonSettings = Seq(
     "-Ypartial-unification"
   ) ++
     (if (scalaBinaryVersion.value startsWith "2.12") List(
+      "-Xlint",
       "-Xfatal-warnings",
       "-Yno-adapted-args",
       "-Ywarn-value-discard",
@@ -44,7 +45,6 @@ lazy val commonSettings = Seq(
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
   initialCommands := s"""
     import fs2._
-    import fs2.util._
     import cats.effect.IO
     import scala.concurrent.ExecutionContext.Implicits.global
   """,
@@ -55,7 +55,6 @@ lazy val commonSettings = Seq(
 lazy val testSettings = Seq(
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-  // fork in Test := true, Causes issues on Travis
   publishArtifact in Test := true
 )
 
@@ -74,6 +73,7 @@ lazy val scaladocSettings = Seq(
     "-doc-source-url", s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
     "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
     "-implicits",
+    "-implicits-sound-shadowing",
     "-implicits-show-all"
   ),
   scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
@@ -130,7 +130,7 @@ lazy val commonJsSettings = Seq(
   },
   requiresDOM := false,
   scalaJSStage in Test := FastOptStage,
-  jsEnv in Test := NodeJSEnv().value,
+  jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
   scalacOptions in Compile += {
     val dir = project.base.toURI.toString.replaceFirst("[^/]+/?$", "")
     val url = "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
@@ -175,7 +175,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.3"
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.3-d37204d"
   ).
   jsSettings(commonJsSettings: _*)
 

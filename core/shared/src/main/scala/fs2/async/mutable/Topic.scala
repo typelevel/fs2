@@ -20,7 +20,7 @@ import fs2.Stream._
  * Additionally the subscriber has possibility to terminate whenever size of enqueued elements is over certain size
  * by using `subscribeSize`.
  */
-trait Topic[F[_], A] { self =>
+abstract class Topic[F[_], A] { self =>
 
   /**
    * Publishes elements from source of `A` to this topic.

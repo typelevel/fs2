@@ -16,7 +16,7 @@ class RefSpec extends Fs2Spec {
       */
     "Interleaving set and access " in {
 
-      ref[IO, Int].flatMap{ref =>
+      ref[IO, Int].flatMap{ ref =>
         ref.setAsyncPure(1).flatMap{ _ =>
           ref.access.flatMap{ case ((_, set)) =>
             ref.setAsyncPure(2).flatMap{ _ =>
@@ -33,5 +33,4 @@ class RefSpec extends Fs2Spec {
       }.unsafeToFuture.map { _ shouldBe 1 }
     }
   }
-
 }

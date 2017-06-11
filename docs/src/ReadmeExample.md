@@ -28,7 +28,7 @@ Converter.converter.unsafeRunSync()
 
 Let's dissect this line by line.
 
-`Stream[IO, Byte]` is a stream of `Byte` values which may periodically evaluate an `IO` in order to produce additional values. `Stream` is the core data type of FS2. It is parameterized on a type constructor (here, `IO`) which defines what sort of external requests it can make, and an output type (here, `Byte`), which defines what type of values it _emits_.
+`Stream[IO, Byte]` is a stream of `Byte` values which may periodically evaluate an `cats.effect.IO` in order to produce additional values. `Stream` is the core data type of FS2. It is parameterized on a type constructor (here, `IO`) which defines what sort of external requests it can make, and an output type (here, `Byte`), which defines what type of values it _emits_.
 
 Operations on `Stream` are defined for any choice of type constructor, not just `IO`.
 

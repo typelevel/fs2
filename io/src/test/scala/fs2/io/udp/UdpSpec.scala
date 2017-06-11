@@ -28,7 +28,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket.reads().evalMap { packet => serverSocket.write(packet) }.drain
             val client = open[IO]().flatMap { clientSocket =>
-              Stream(Packet(serverAddress, msg)).to(clientSocket.writes()).drain ++ Stream.eval(clientSocket.read())
+              Stream(Packet(serverAddress, msg)).covary[IO].to(clientSocket.writes()).drain ++ Stream.eval(clientSocket.read())
             }
             server mergeHaltBoth client
           }
@@ -42,7 +42,6 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       val numParallelClients = 10
       runLog {
         open[IO]().flatMap { serverSocket =>
-          var log = false
           Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket.reads().evalMap { packet => serverSocket.write(packet) }.drain
@@ -51,7 +50,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
               }
             }
-            val clients = Stream.join(numParallelClients)(Stream.constant(client).take(numClients))
+            val clients = Stream.constant(client).take(numClients).join(numParallelClients)
             server mergeHaltBoth clients
           }
         }
@@ -74,7 +73,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
             val server = Stream.eval_(v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
               serverSocket.reads().evalMap { packet => serverSocket.write(packet) }.drain
             val client = open[IO]().flatMap { clientSocket =>
-              Stream(Packet(new InetSocketAddress(group, serverPort), msg)).to(clientSocket.writes()).drain ++ Stream.eval(clientSocket.read())
+              Stream(Packet(new InetSocketAddress(group, serverPort), msg)).covary[IO].to(clientSocket.writes()).drain ++ Stream.eval(clientSocket.read())
             }
             server mergeHaltBoth client
           }

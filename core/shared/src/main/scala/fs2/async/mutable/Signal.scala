@@ -11,7 +11,7 @@ import cats.implicits._
 import fs2.Stream._
 
 /** Data type of a single value of type `A` that can be read and written in the effect `F`. */
-trait Signal[F[_], A] extends immutable.Signal[F, A] { self =>
+abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
 
   /** Sets the value of this `Signal`. */
   def set(a: A): F[Unit]
@@ -60,7 +60,6 @@ object Signal {
     def get = F.pure(a)
     def continuous = Stream.constant(a)
     def discrete = Stream.empty // never changes, so never any updates
-    def changes = Stream.empty
   }
 
   def apply[F[_],A](initA: A)(implicit F: Effect[F], ec: ExecutionContext): F[Signal[F,A]] = {
@@ -84,9 +83,6 @@ object Signal {
         }
       }
 
-      def changes: Stream[F, Unit] =
-        discrete.map(_ => ())
-
       def continuous: Stream[F, A] =
         Stream.repeatEval(get)
 
@@ -103,13 +99,13 @@ object Signal {
               }
             }
           }
-          eval(getNext).flatMap { case (a, l) => emit[F,A](a) ++ go(id, l) }
+          eval(getNext).flatMap { case (a, l) => emit(a) ++ go(id, l) }
         }
 
         def cleanup(id: ID): F[Unit] = state.modify { s => s.copy(_3 = s._3 - id) }.as(())
 
         bracket(F.delay(new ID))(
-          { id => eval(state.get).flatMap { case (a, l, _) => emit[F,A](a) ++ go(id, l) } }
+          { id => eval(state.get).flatMap { case (a, l, _) => emit(a) ++ go(id, l) } }
           , id => cleanup(id)
         )
       }}

@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
-import fs2.util.NonFatal
+import fs2.internal.NonFatal
 
 /** Provides the ability to schedule evaluation of thunks in the future. */
 trait Scheduler {

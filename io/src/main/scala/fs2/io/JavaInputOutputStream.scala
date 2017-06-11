@@ -9,24 +9,22 @@ import cats.effect.{ Effect, IO, Sync }
 import cats.implicits.{ catsSyntaxEither => _, _ }
 
 import fs2.Chunk.Bytes
-import fs2.async.mutable
-import fs2.async.Ref.Change
-import fs2.util._
+import fs2.async.{ mutable, Ref }
 
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit F: Sync[F]): F[Option[Chunk[Byte]]] =
     F.delay(is.read(buf)).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
-      else Some(Chunk.bytes(buf, 0, numBytes))
+      else Some(Chunk.bytes(buf))
     }
 
   def readInputStreamGeneric[F[_]](fis: F[InputStream], buf: F[Array[Byte]], f: (InputStream, Array[Byte]) => F[Option[Chunk[Byte]]], closeAfterUse: Boolean = true)(implicit F: Sync[F]): Stream[F, Byte] = {
     def useIs(is: InputStream) =
       Stream.eval(buf.flatMap(f(is, _)))
         .repeat
-        .through(pipe.unNoneTerminate)
-        .flatMap(Stream.chunk)
+        .unNoneTerminate
+        .flatMap(c => Stream.chunk(c))
 
     if (closeAfterUse)
       Stream.bracket(fis)(useIs, is => F.delay(is.close()))
@@ -61,7 +59,6 @@ private[io] object JavaInputOutputStream {
         case _ => false
       }
     }
-
 
     /**
       * Takes source and runs it through queue, interrupting when dnState signals stream is done.
@@ -99,7 +96,7 @@ private[io] object JavaInputOutputStream {
       upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Unit = {
-      val done = new SyncVar[Attempt[Unit]]
+      val done = new SyncVar[Either[Throwable,Unit]]
       async.unsafeRunAsync(close(upState,dnState)) { r => IO(done.put(r)) }
       done.get.fold(throw _, identity)
     }
@@ -121,7 +118,7 @@ private[io] object JavaInputOutputStream {
       , queue: mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , dnState: mutable.Signal[F,DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext):Int = {
-      val sync = new SyncVar[Attempt[Int]]
+      val sync = new SyncVar[Either[Throwable,Int]]
       async.unsafeRunAsync(readOnce(dest,off,len,queue,dnState))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
@@ -148,7 +145,7 @@ private[io] object JavaInputOutputStream {
         }
       }
 
-      val sync = new SyncVar[Attempt[Int]]
+      val sync = new SyncVar[Either[Throwable,Int]]
       async.unsafeRunAsync(go(Array.ofDim(1)))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
@@ -160,7 +157,7 @@ private[io] object JavaInputOutputStream {
       , len: Int
       , queue: mutable.Queue[F,Either[Option[Throwable],Bytes]]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext):F[Int] = {
+    )(implicit F: Sync[F]): F[Int] = {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
       // won't modify state if the data cannot be acquired
@@ -171,9 +168,8 @@ private[io] object JavaInputOutputStream {
         case Ready(Some(bytes)) =>
           if (bytes.size <= len) Ready(None) -> Some(bytes)
           else {
-            val out = bytes.take(len).toBytes
-            val rem = bytes.drop(len).toBytes
-            Ready(Some(rem)) -> Some(out)
+            val (out,rem) = bytes.strict.splitAt(len)
+            Ready(Some(rem.toBytes)) -> Some(out.toBytes)
           }
       }
 
@@ -183,13 +179,13 @@ private[io] object JavaInputOutputStream {
       }
 
 
-      F.flatMap[(Change[DownStreamState], Option[Bytes]),Int](dnState.modify2(tryGetChunk)) {
-        case (Change(o,n), Some(bytes)) =>
+      F.flatMap[(Ref.Change[DownStreamState], Option[Bytes]),Int](dnState.modify2(tryGetChunk)) {
+        case (Ref.Change(o,n), Some(bytes)) =>
           F.delay {
-            Array.copy(bytes.values, bytes.offset, dest,off,bytes.size)
+            Array.copy(bytes.values, 0, dest,off,bytes.size)
             bytes.size
           }
-        case (Change(o,n), None) =>
+        case (Ref.Change(o,n), None) =>
           n match {
             case Done(None) => F.pure(-1)
             case Done(Some(err)) => F.raiseError(new IOException("Stream is in failed state", err))
@@ -204,12 +200,11 @@ private[io] object JavaInputOutputStream {
                   val (copy,maybeKeep) =
                     if (bytes.size <= len) bytes -> None
                     else {
-                      val out = bytes.take(len).toBytes
-                      val rem = bytes.drop(len).toBytes
-                      out -> Some(rem)
+                      val (out,rem) = bytes.strict.splitAt(len)
+                      out.toBytes -> Some(rem.toBytes)
                     }
                   F.flatMap(F.delay {
-                    Array.copy(copy.values, copy.offset, dest,off,copy.size)
+                    Array.copy(copy.values, 0, dest,off,copy.size)
                   }) { _ => maybeKeep match {
                     case Some(rem) if rem.size > 0 => F.map(dnState.set(Ready(Some(rem))))(_ => copy.size)
                     case _ => F.pure(copy.size)
@@ -225,7 +220,7 @@ private[io] object JavaInputOutputStream {
     def close(
       upState: mutable.Signal[F,UpStreamState]
       , dnState: mutable.Signal[F,DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext):F[Unit] = {
+    )(implicit F: Effect[F]):F[Unit] = {
       F.flatMap(dnState.modify {
         case s@Done(_) => s
         case other => Done(None)
@@ -264,5 +259,4 @@ private[io] object JavaInputOutputStream {
         }.onFinalize(close(upState,dnState))
       }}}
   }
-
 }

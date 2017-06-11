@@ -10,7 +10,7 @@ import cats.implicits._
 /**
  * An asynchronous semaphore, useful as a concurrency primitive.
  */
-trait Semaphore[F[_]] {
+abstract class Semaphore[F[_]] {
 
   /** Returns the number of permits currently available. Always nonnegative. */
   def available: F[Long]
@@ -68,9 +68,9 @@ object Semaphore {
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is non-empty, and there are n permits available (Right)
-    type S = Either[Vector[(Long,Ref[F,Unit])], Long]
+    type S = Either[Vector[(Long,async.Ref[F,Unit])], Long]
     async.refOf[F,S](Right(n)).map { ref => new Semaphore[F] {
-      private def open(gate: Ref[F,Unit]): F[Unit] =
+      private def open(gate: async.Ref[F,Unit]): F[Unit] =
         gate.setAsyncPure(())
 
       def count = ref.get.map(count_)
@@ -124,9 +124,7 @@ object Semaphore {
             // now compare old and new sizes to figure out which actions to run
             val newSize = change.now.fold(_.size, _ => 0)
             val released = waiting.size - newSize
-            // just using Chunk for its stack-safe foldRight
-            fs2.Chunk.indexedSeq(waiting.take(released))
-                     .foldRight(F.pure(())) { (hd,tl) => open(hd._2) >> tl }
+            waiting.take(released).foldRight(F.pure(())) { (hd,tl) => open(hd._2) >> tl }
           case Right(_) => F.pure(())
         }}
       }

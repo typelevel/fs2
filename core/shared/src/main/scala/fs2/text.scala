@@ -12,10 +12,10 @@ object text {
 
   /** Converts UTF-8 encoded `Chunk[Byte]` inputs to `String`. */
   def utf8DecodeC[F[_]]: Pipe[F, Chunk[Byte], String] = {
-    /**
-      * Returns the number of continuation bytes if `b` is an ASCII byte or a
-      * leading byte of a multi-byte sequence, and -1 otherwise.
-      */
+    /*
+     * Returns the number of continuation bytes if `b` is an ASCII byte or a
+     * leading byte of a multi-byte sequence, and -1 otherwise.
+     */
     def continuationBytes(b: Byte): Int = {
       if      ((b & 0x80) == 0x00) 0 // ASCII byte
       else if ((b & 0xE0) == 0xC0) 1 // leading byte of a 2 byte seq
@@ -24,12 +24,12 @@ object text {
       else                        -1 // continuation byte or garbage
     }
 
-    /**
-      * Returns the length of an incomplete multi-byte sequence at the end of
-      * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
-      * 0 is returned.
-      */
-    def lastIncompleteBytes(bs: Chunk[Byte]): Int = {
+    /*
+     * Returns the length of an incomplete multi-byte sequence at the end of
+     * `bs`. If `bs` ends with an ASCII byte or a complete multi-byte sequence,
+     * 0 is returned.
+     */
+    def lastIncompleteBytes(bs: Array[Byte]): Int = {
       val lastThree = bs.drop(0 max bs.size - 3).toArray.reverseIterator
       lastThree.map(continuationBytes).zipWithIndex.find {
         case (c, _) => c >= 0
@@ -40,30 +40,30 @@ object text {
 
     def processSingleChunk(outputAndBuffer: (List[String], Chunk[Byte]), nextBytes: Chunk[Byte]): (List[String], Chunk[Byte]) = {
       val (output, buffer) = outputAndBuffer
-      val allBytes = Chunk.bytes(Array.concat(buffer.toArray, nextBytes.toArray))
+      val allBytes = Array.concat(buffer.toArray, nextBytes.toArray)
       val splitAt = allBytes.size - lastIncompleteBytes(allBytes)
 
       if (splitAt == allBytes.size)
         (new String(allBytes.toArray, utf8Charset) :: output, Chunk.empty)
       else if (splitAt == 0)
-        (output, allBytes)
+        (output, Chunk.bytes(allBytes))
       else
-        (new String(allBytes.take(splitAt).toArray, utf8Charset) :: output, allBytes.drop(splitAt))
+        (new String(allBytes.take(splitAt).toArray, utf8Charset) :: output, Chunk.bytes(allBytes.drop(splitAt)))
     }
 
-    def doPull(buf: Chunk[Byte])(h: Handle[Pure, Chunk[Byte]]): Pull[Pure, String, Handle[Pure, Chunk[Byte]]] = {
-      h.await.optional flatMap {
+    def doPull(buf: Chunk[Byte], s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Option[Stream[Pure, Chunk[Byte]]]] = {
+      s.pull.unconsChunk.flatMap {
         case Some((byteChunks, tail)) =>
-          val (output, nextBuffer) = byteChunks.foldLeft((Nil: List[String], buf))(processSingleChunk)
-          Pull.output(Chunk.seq(output.reverse)) >> doPull(nextBuffer)(tail)
+          val (output, nextBuffer) = byteChunks.toList.foldLeft((Nil: List[String], buf))(processSingleChunk)
+          Pull.output(Chunk.seq(output.reverse)) >> doPull(nextBuffer, tail)
         case None if !buf.isEmpty =>
-          Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.done
+          Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.pure(None)
         case None =>
-          Pull.done
+          Pull.pure(None)
       }
     }
 
-    pipe.covary[F, Chunk[Byte], String](_.open.flatMap(doPull(Chunk.empty) _).close)
+    ((in: Stream[Pure,Chunk[Byte]]) => doPull(Chunk.empty, in).stream).covary[F]
   }
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
@@ -107,7 +107,7 @@ object text {
         if (remainingInput.isEmpty) {
           (Chunk.indexedSeq(output), buffer, pendingLineFeed)
         } else {
-          var next = remainingInput.head
+          val next = remainingInput.head
           if (pendingLineFeed) {
             if (next.headOption == Some('\n')) {
               val out = (buffer.init :+ buffer.last.init).mkString
@@ -127,15 +127,16 @@ object text {
       loop(chunk.toVector, buffer, Vector.empty, pendingLineFeed)
     }
 
-    def go(buffer: Vector[String], pendingLineFeed: Boolean): Handle[F, String] => Pull[F, String, Unit] = {
-      _.receiveOption {
-        case Some((chunk, h)) =>
+    def go(buffer: Vector[String], pendingLineFeed: Boolean, s: Stream[F, String]): Pull[F, String, Option[Unit]] = {
+      s.pull.unconsChunk.flatMap {
+        case Some((chunk, s)) =>
           val (toOutput, newBuffer, newPendingLineFeed) = extractLines(buffer, chunk, pendingLineFeed)
-          Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed)(h)
-        case None if buffer.nonEmpty => Pull.output1(buffer.mkString)
-        case None => Pull.done
+          Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed, s)
+        case None if buffer.nonEmpty => Pull.output1(buffer.mkString) >> Pull.pure(None)
+        case None => Pull.pure(None)
       }
     }
-    _.pull(go(Vector.empty, false))
+
+    s => go(Vector.empty, false, s).stream
   }
 }

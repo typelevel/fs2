@@ -1,7 +1,6 @@
 package fs2.internal
 
 import scala.concurrent.ExecutionContext
-import fs2.util.NonFatal
 import java.util.concurrent.atomic.AtomicReference
 
 /*

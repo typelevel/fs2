@@ -1,5 +1,4 @@
 package fs2
-package time
 
 import cats.effect.IO
 import cats.implicits._
@@ -18,7 +17,7 @@ class TimeSpec extends AsyncFs2Spec {
       val t = emitAndSleep zip time.duration[IO] drop 1 map { _._2 } runLog
 
       (IO.shift >> t).unsafeToFuture collect {
-        case Vector(d) => assert(d >= delay)
+        case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
       }
     }
 
@@ -26,15 +25,17 @@ class TimeSpec extends AsyncFs2Spec {
       pending // Too finicky on Travis
       type BD = (Boolean, FiniteDuration)
       val durationSinceLastTrue: Pipe[Pure,BD,BD] = {
-        def go(lastTrue: FiniteDuration): Handle[Pure,BD] => Pull[Pure,BD,Unit] = h => {
-          h.receive1 { (pair, tl) =>
-            pair match {
-              case (true , d) => Pull.output1((true , d - lastTrue)) >> go(d)(tl)
-              case (false, d) => Pull.output1((false, d - lastTrue)) >> go(lastTrue)(tl)
-            }
+        def go(lastTrue: FiniteDuration, s: Stream[Pure,BD]): Pull[Pure,BD,Unit] = {
+          s.pull.uncons1.flatMap {
+            case None => Pull.done
+            case Some((pair, tl)) =>
+              pair match {
+                case (true , d) => Pull.output1((true , d - lastTrue)) >> go(d,tl)
+                case (false, d) => Pull.output1((false, d - lastTrue)) >> go(lastTrue,tl)
+              }
           }
         }
-        _ pull go(0.seconds)
+        s => go(0.seconds, s).stream
       }
 
       val delay = 20.millis
@@ -66,7 +67,7 @@ class TimeSpec extends AsyncFs2Spec {
     }
 
     "debounce" in {
-      val delay = 100 milliseconds
+      val delay = 200 milliseconds
       val s1 = Stream(1, 2, 3) ++ time.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ time.sleep[IO](delay / 2) ++ Stream(6)
       val t = s1.debounce(delay) runLog
 

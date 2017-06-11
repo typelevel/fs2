@@ -11,17 +11,17 @@ class TextSpec extends Fs2Spec {
       def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
 
       def checkChar(c: Char) = (1 to 6).foreach { n =>
-        Stream.chunk(utf8Bytes(c.toString)).pure.chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(c.toString)
+        Stream.chunk(utf8Bytes(c.toString)).covary[Pure].chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(c.toString)
       }
 
       def checkBytes(is: Int*) = (1 to 6).foreach { n =>
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-        Stream.chunk(bytes).pure.chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(utf8String(bytes))
+        Stream.chunk(bytes).covary[Pure].chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe List(utf8String(bytes))
       }
 
       def checkBytes2(is: Int*) = {
         val bytes = Chunk.bytes(is.map(_.toByte).toArray)
-        Stream.pure(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe utf8String(bytes)
+        Stream(bytes).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe utf8String(bytes)
       }
 
       "all chars" in forAll { (c: Char) => checkChar(c) }
@@ -37,22 +37,22 @@ class TextSpec extends Fs2Spec {
 
       "preserve complete inputs" in forAll { (l0: List[String]) =>
         val l = l0.filter { _.nonEmpty }
-        Stream.pure(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe l
-        Stream.pure(l0: _*).map(utf8Bytes).through(utf8DecodeC).toList shouldBe l0
+        Stream(l: _*).map(utf8Bytes).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe l
+        Stream(l0: _*).map(utf8Bytes).through(utf8DecodeC).toList shouldBe l0
       }
 
       "utf8Encode |> utf8Decode = id" in forAll { (s: String) =>
-        Stream.pure(s).through(utf8EncodeC).through(utf8DecodeC).toList shouldBe List(s)
-        if (s.nonEmpty) Stream.pure(s).through(utf8Encode).through(utf8Decode).toList shouldBe List(s)
+        Stream(s).through(utf8EncodeC).through(utf8DecodeC).toList shouldBe List(s)
+        if (s.nonEmpty) Stream(s).through(utf8Encode).through(utf8Decode).toList shouldBe List(s)
       }
 
       "1 byte sequences" in forAll { (s: String) =>
-        Stream.chunk(utf8Bytes(s)).pure.chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe s.grouped(1).toList
+        Stream.chunk(utf8Bytes(s)).covary[Pure].chunkLimit(1).flatMap(Stream.chunk).through(utf8Decode).toList shouldBe s.grouped(1).toList
       }
 
       "n byte sequences" in forAll { (s: String) =>
         val n = Gen.choose(1,9).sample.getOrElse(1)
-        Stream.chunk(utf8Bytes(s)).pure.chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe s
+        Stream.chunk(utf8Bytes(s)).covary[Pure].chunkLimit(n).flatMap(Stream.chunk).through(utf8Decode).toList.mkString shouldBe s
       }
 
       // The next tests were taken from:

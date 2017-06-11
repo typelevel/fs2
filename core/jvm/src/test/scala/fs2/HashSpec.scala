@@ -1,9 +1,10 @@
 package fs2
-package hash
 
 import cats.effect.IO
 import java.security.MessageDigest
 import org.scalacheck.Gen
+
+import hash._
 
 class HashSpec extends Fs2Spec {
   def digest(algo: String, str: String): List[Byte] =
@@ -13,7 +14,7 @@ class HashSpec extends Fs2Spec {
     val n = if (str.length > 0) Gen.choose(1, str.length).sample.getOrElse(1) else 1
     val s =
       if (str.isEmpty) Stream.empty
-      else str.getBytes.grouped(n).foldLeft(Stream.empty[Pure,Byte])((acc, c) => acc ++ Stream.chunk(Chunk.bytes(c)))
+      else str.getBytes.grouped(n).foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) => acc ++ Stream.chunk(Chunk.bytes(c)))
 
     s.through(h).toList shouldBe digest(algo, str)
   }
@@ -28,15 +29,15 @@ class HashSpec extends Fs2Spec {
   }
 
   "empty input" in {
-    Stream.empty[Pure,Byte].through(sha1).toList should have size(20)
+    Stream.empty.through(sha1).toList should have size(20)
   }
 
   "zero or one output" in forAll { (lb: List[Array[Byte]]) =>
-    lb.foldLeft(Stream.empty[Pure,Byte])((acc, b) => acc ++ Stream.chunk(Chunk.bytes(b))).through(sha1).toList should have size(20)
+    lb.foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.bytes(b))).through(sha1).toList should have size(20)
   }
 
   "thread-safety" in {
-    val s = Stream.range[IO](1,100)
+    val s = Stream.range(1,100).covary[IO]
       .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
       .through(sha512)
     val vec = Vector.fill(100)(s).par

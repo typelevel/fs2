@@ -161,7 +161,7 @@ protected[tcp] object Socket {
             F.delay { if (ch.isOpen) ch.close() }.attempt.as(())
 
           eval(acceptChannel.attempt).map {
-            case Left(err) => Stream.empty
+            case Left(err) => Stream.empty.covary[F]
             case Right(accepted) => eval(mkSocket(accepted)).onFinalize(close(accepted))
           } ++ go
         }
@@ -278,7 +278,7 @@ protected[tcp] object Socket {
 
         val bytes0 = bytes.toBytes
         go(
-          ByteBuffer.wrap(bytes0.values, bytes0.offset, bytes0.size)
+          ByteBuffer.wrap(bytes0.values, 0, bytes0.size)
           , timeout.map(_.toMillis).getOrElse(0l)
         )
       }

@@ -1,5 +1,6 @@
 package fs2
 package io
+package udp
 
 import java.net.InetSocketAddress
 

@@ -1,12 +1,7 @@
-0.9.7
-=====
- - Fixed a race condition in `concurrent.join` where a failure in the outer stream was not always detected [#876](https://github.com/functional-streams-for-scala/fs2/issues/876)
-
 0.9.6
 =====
  - Empty deflated streams are now handled properly [#865](https://github.com/functional-streams-for-scala/fs2/pull/865)
  - `concurrent.join` now fails when outer stream terminated [#869](https://github.com/functional-streams-for-scala/fs2/pull/869)
-<<<<<<< HEAD
  
 0.9.5
 =======

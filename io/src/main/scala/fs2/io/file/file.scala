@@ -34,13 +34,13 @@ package object file {
    * Reads all data synchronously from the file at the specified `java.nio.file.Path`.
    */
   def readAll[F[_]: Sync](path: Path, chunkSize: Int): Stream[F, Byte] =
-    pulls.fromPath(path, List(StandardOpenOption.READ)).flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource)).close
+    pulls.fromPath(path, List(StandardOpenOption.READ)).flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource)).stream
 
   /**
    * Reads all data asynchronously from the file at the specified `java.nio.file.Path`.
    */
   def readAllAsync[F[_]](path: Path, chunkSize: Int, executorService: Option[ExecutorService] = None)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] =
-    pulls.fromPathAsync(path, List(StandardOpenOption.READ), executorService).flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource)).close
+    pulls.fromPathAsync(path, List(StandardOpenOption.READ), executorService).flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource)).stream
 
   /**
    * Writes all data synchronously to the file at the specified `java.nio.file.Path`.
@@ -48,11 +48,10 @@ package object file {
    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
    */
   def writeAll[F[_]: Sync](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)): Sink[F, Byte] =
-    s => (for {
-      in <- s.open
+    in => (for {
       out <- pulls.fromPath(path, StandardOpenOption.WRITE :: flags.toList)
       _ <- pulls.writeAllToFileHandle(in, out.resource)
-    } yield ()).close
+    } yield ()).stream
 
   /**
    * Writes all data asynchronously to the file at the specified `java.nio.file.Path`.
@@ -60,23 +59,22 @@ package object file {
    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
    */
   def writeAllAsync[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE), executorService: Option[ExecutorService] = None)(implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] =
-    s => (for {
-      in <- s.open
+    in => (for {
       out <- pulls.fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService)
       _ <- _writeAll0(in, out.resource, 0)
-    } yield ()).close
+    } yield ()).stream
 
-  private def _writeAll0[F[_]](in: Handle[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] = for {
-    (hd, tail) <- in.await
-    _ <- _writeAll1(hd, out, offset)
-    next <- _writeAll0(tail, out, offset + hd.size)
-  } yield next
+  private def _writeAll0[F[_]](in: Stream[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =
+    in.pull.unconsChunk.flatMap {
+      case None => Pull.done
+      case Some((hd,tl)) => _writeAll1(hd, out, offset) >> _writeAll0(tl, out, offset + hd.size)
+    }
 
   private def _writeAll1[F[_]](buf: Chunk[Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =
     Pull.eval(out.write(buf, offset)) flatMap { (written: Int) =>
       if (written >= buf.size)
         Pull.pure(())
       else
-        _writeAll1(buf.drop(written), out, offset + written)
+        _writeAll1(buf.drop(written).toOption.get.toChunk, out, offset + written)
     }
 }

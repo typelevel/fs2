@@ -1,11 +1,8 @@
 package fs2.io
 
-import scala.annotation.tailrec
 import cats.effect.IO
 import fs2.{Chunk, Fs2Spec, Stream}
 import org.scalacheck.{Arbitrary, Gen}
-
-
 
 class JavaInputOutputStreamSpec extends Fs2Spec {
 
@@ -36,7 +33,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
           // consume in same thread pool. Production application should never do this,
           // instead they have to fork this to dedicated thread pool
           val buff = Array.ofDim[Byte](20)
-          @tailrec
+          @annotation.tailrec
           def go(acc: Vector[Byte]): IO[Vector[Byte]] = {
             is.read(buff) match {
               case -1 => IO.pure(acc)

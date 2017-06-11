@@ -21,8 +21,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 * [Exercises (concurrency)](#exercises-2)
 * [Talking to the external world](#talking-to-the-external-world)
 * [Learning more](#learning-more)
-* [Appendix: Sane subtyping with better error messages](#a1)
-* [Appendix: How interruption of streams works](#a2)
+* [Appendix: How interruption of streams works](#a1)
 
 _Unless otherwise noted, the type `Stream` mentioned in this document refers to the type `fs2.Stream` and NOT `scala.collection.immutable.Stream`._
 
@@ -48,7 +47,7 @@ val s1a = Stream(1,2,3) // variadic
 val s1b = Stream.emits(List(1,2,3)) // accepts any Seq
 ```
 
-The `s1` stream has the type `Stream[Nothing,Int]`. It's output type is of course `Int`, and its effect type is `Nothing`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are sometimes called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
+The `s1` stream has the type `Stream[Pure,Int]`. It's output type is of course `Int`, and its effect type is `Pure`, which means it does not require evaluation of any effects to produce its output. Streams that don't use any effects are called _pure_ streams. You can convert a pure stream to a `List` or `Vector` using:
 
 ```tut
 s1.toList
@@ -68,7 +67,7 @@ Stream(1,2,3).flatMap(i => Stream(i,i)).toList
 Stream(1,2,3).repeat.take(9).toList
 ```
 
-Of these, only `flatMap` and `++` are primitive, the rest are built using combinations of various other primitives. We'll take a look at how that works shortly.
+Of these, only `flatMap` is primitive, the rest are built using combinations of various other primitives. We'll take a look at how that works shortly.
 
 So far, we've just looked at pure streams. FS2 streams can also include evaluation of effects:
 
@@ -82,7 +81,7 @@ val eff = Stream.eval(IO { println("BEING RUN!!"); 1 + 1 })
 
 The `eval` function works for any effect type, not just `IO`. FS2 does not care what effect type you use for your streams. You may use `IO` for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, and `cats.effect.Effect` if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
 
-```Scala
+```scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
 ```
 
@@ -121,11 +120,13 @@ rc.unsafeRunSync()
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `MonadError[F, Throwable]`---FS2 needs to know how to catch errors that occur during evaluation of `F` effects.
+_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Sync[F]` --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects and how to suspend computations.
 
-### Chunking
+### Segments & Chunks
 
-FS2 streams are chunked internally for performance. You can construct an individual stream chunk using `Stream.chunk`, which accepts an `fs2.Chunk` and lots of functions in the library are chunk-aware and/or try to preserve 'chunkiness' when possible:
+FS2 streams are segmented internally for performance. You can construct an individual stream segment using `Stream.segment`, which accepts an `fs2.Segment` and lots of functions in the library are segment-aware and/or try to preserve segments when possible.
+
+Segments are potentially infinite and support lazy, fused operations. A `Chunk` is a specialized segment that's finite and supports efficient indexed based lookup of elements.
 
 ```tut
 import fs2.Chunk
@@ -134,12 +135,10 @@ val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
 
 s1c.mapChunks { ds =>
   val doubles = ds.toDoubles
-  /* do things unboxed using doubles.{values,offset,size} */
-  doubles
+  /* do things unboxed using doubles.{values,size} */
+ doubles
 }
 ```
-
-_Note:_ The `mapChunks` function is another library primitive. It's used to implement `map` and `filter`.
 
 ### Basic stream operations
 
@@ -193,7 +192,7 @@ The `onError` method lets us catch any of these errors:
 err.onError { e => Stream.emit(e.getMessage) }.toList
 ```
 
-_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a2) for more details._
+_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
 
 ### Resource acquisition
 
@@ -238,101 +237,110 @@ Stream.eval_(IO(println("!!"))).runLog.unsafeRunSync()
 
 We often wish to statefully transform one or more streams in some way, possibly evaluating effects as we do so. As a running example, consider taking just the first 5 elements of a `s: Stream[IO,Int]`. To produce a `Stream[IO,Int]` which takes just the first 5 elements of `s`, we need to repeatedly await (or pull) values from `s`, keeping track of the number of values seen so far and stopping as soon as we hit 5 elements. In more complex scenarios, we may want to evaluate additional effects as we pull from one or more streams.
 
-Regardless of how complex the job, the `fs2.Pull` and `fs2.Handle` types can usually express it. `Handle[F,I]` represents a 'currently open' `Stream[F,I]`. We obtain one using `Stream.open`, or the method on `Stream`, `s.open`, which returns the `Handle` inside an effect type called `Pull`:
-
-```Scala
-// in fs2.Stream object
-def open[F[_],I](s: Stream[F,I]): Pull[F,Nothing,Handle[F,I]]
-```
-
-The `trait Pull[+F[_],+O,+R]` represents a program that may pull values from one or more `Handle` values, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pull` class](../core/shared/src/main/scala/fs2/Pull.scala) for the full set of operations on `Pull`.
-
-Let's look at the core operation for implementing `take`. It's just a recursive function:
+Let's look at an implementation of `take` using the `scanSegmentsOpt` combinator:
 
 ```tut:book
-object Pull_ {
-  import fs2._
+import fs2._
 
-  def take[F[_],O](n: Int)(h: Handle[F,O]): Pull[F,O,Nothing] =
-    for {
-      (chunk, h) <- if (n <= 0) Pull.done else h.awaitLimit(n)
-      tl <- Pull.output(chunk) >> take(n - chunk.size)(h)
-    } yield tl
+def tk[F[_],O](n: Long): Pipe[F,O,O] =
+  in => in.scanSegmentsOpt(n) { n =>
+    if (n <= 0) None
+    else Some(seg => seg.take(n).mapResult {
+      case Left((_,n)) => n
+      case Right(_) => 0
+    })
+  }
+
+Stream(1,2,3,4).through(tk(2)).toList
+```
+
+Let's take this line by line.
+
+```scala
+in => in.scanSegmentsOpt(n) { n =>
+```
+
+Here we create an anonymous function from `Stream[F,O]` to `Stream[F,O]` and we call `scanSegmentsOpt` passing an initial state of `n` and a function which we define on subsequent lines. The function takes the current state as an argument, which we purposefully give the name `s`, shadowing the `n` defined in the signature of `tk`, to make sure we can't accidentally reference it.
+
+```scala
+if (n <= 0) None
+```
+
+If the current state value is 0 (or less), we're done so we return `None`. This indicates to `scanSegmentsOpt` that the stream should terminate.
+
+```scala
+else Some(seg => seg.take(n).mapResult {
+  case Left((_,n)) => n
+  case Right(_) => 0
+})
+```
+
+Otherwise, we return a function which processes the next segment in the stream. The function is implemented by taking `n` elements from the segment. `seg.take(n)` returns a `Segment[O,Either[(Unit,Long),Segment[O,Unit]]]`. We map over the result of the segment and pattern match on the either. If we encounter a `Left`, we discard the unit result and return the new remainder `n` returned from `take`. If instead we encounter a `Right`, we discard the remaining elements in the segment and return 0.
+
+Sometimes, `scanSegmentsOpt` isn't powerful enough to express the stream transformation. Regardless of how complex the job, the `fs2.Pull` type can usually express it.
+
+The `Pull[+F[_],+O,+R]` type represents a program that may pull values from one or more streams, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pull` class](../core/shared/src/main/scala/fs2/Pull.scala) for the full set of operations on `Pull`.
+
+Let's look at an implementation of `take` using `Pull`:
+
+```tut:book
+import fs2._
+
+def tk[F[_],O](n: Long): Pipe[F,O,O] = {
+  def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = {
+    s.pull.uncons.flatMap {
+      case Some((hd,tl)) =>
+        Pull.segment(hd.take(n)).flatMap {
+          case Left((_,rem)) => go(tl,rem)
+          case Right(_) => Pull.done
+        }
+      case None => Pull.done
+    }
+  }
+  in => go(in,n).stream
 }
 
-Stream(1,2,3,4).pure.pull(Pull_.take(2)).toList
+Stream(1,2,3,4).through(tk(2)).toList
 ```
 
-Let's break it down line by line:
+Taking this line by line:
 
-```Scala
-(chunk, h) <- if (n <= 0) Pull.done else h.awaitLimit(n)
+```scala
+def go(s: Stream[F,O], n: Long): Pull[F,O,Unit] = {
 ```
 
-There's a lot going on in this one line:
+We implement this with a recursive function that returns a `Pull`. On each invocation, we provide a `Stream[F,O]` and the number of elements remaining to take `n`.
 
-* If `n <= 0`, we're done, and stop pulling.
-* Otherwise we have more values to `take`, so we `h.awaitLimit(n)`, which returns a `(NonEmptyChunk[A],Handle[F,I])` (again, inside of the `Pull` effect).
-* The `h.awaitLimit(n)` reads from the handle but gives us a `NonEmptyChunk[O]` with _no more than_ `n` elements. (We can also `h.await1` to read just a single element, `h.await` to read a single `NonEmptyChunk` of however many are available, `h.awaitN(n)` to obtain a `List[NonEmptyChunk[A]]` totaling exactly `n` elements, and even `h.awaitAsync` and various other _asynchronous_ awaiting functions which we'll discuss in the [Concurrency](#concurrency) section.)
-* Using the pattern `(chunk, h)`, we destructure this step to its `chunk: NonEmptyChunk[O]` and its `h: Handle[F,O]`. This shadows the outer `h`, which is fine here since it isn't relevant anymore. (Note: nothing stops us from keeping the old `h` around and awaiting from it again if we like, though this isn't usually what we want since it will repeat all the effects of that await.)
-
-Moving on, the `Pull.output(chunk)` writes the chunk we just read to the _output_ of the `Pull`. This binds the `O` type in our `Pull[F,O,R]` we are constructing:
-
-```Scala
-// in fs2.Pull object
-def output[O](c: Chunk[O]): Pull[Nothing,O,Unit]
+```scala
+s.pull.uncons.flatMap {
 ```
 
-It returns a result of `Unit`, which we generally don't care about. The `p >> p2` operator is equivalent to `p flatMap { _ => p2 }`; it just runs `p` for its effects but ignores its result.
+Calling `s.pull` gives us a variety of methods which convert the stream to a `Pull`. We use `uncons` to pull the next segment from the stream, giving us a `Pull[F,Nothing,Option[(Segment[O,Unit],Stream[F,O])]]`. We then `flatMap` in to that pull to access the option.
 
-So this line is writing the chunk we read, ignoring the `Unit` result, then recursively calling `take` with the new `Handle`, `h`:
-
-```Scala
-      ...
-      tl <- Pull.output(chunk) >> take(n - chunk.size)(h)
-    } yield tl
+```scala
+case Some((hd,tl)) =>
+  Pull.segment(hd.take(n)).flatMap {
+    case Left((_,rem)) => go(tl,rem)
+    case Right(_) => Pull.done
+  }
 ```
 
-For the recursive call, we update the state, subtracting the `chunk.size` elements we've seen. Easy!
+If we receive a `Some`, we destructure the tuple as `hd: Segment[O,Unit]` and `tl: Stream[F,O]`. We call then call `hd.take(n)`, resulting in a `Segment[O,Either[(Unit,Long),Segment[O,Unit]]]`. We lift that segment in to `Pull` via `Pull.segment`, which binds the output type of the pull to `O`, resulting in the output elements of the segment being output to the resulting pull. We then `flatMap` the resulting pull, giving us access to the result of the `take` on the head segment. If the result was a left, we call `go` recursively on the tail stream with the new remainder. If it was a right, we're done.
 
-To actually use a `Pull` to transform a `Stream`, we have to `close` it:
+```scala
+in => go(in,n).stream
+```
+
+Finally, we create an anonymous function from `Stream[F,O]` to `Stream[F,O]` and call `go` with the initial `n` value. We're returned a `Pull[F,O,Unit]`, which we convert back to a `Stream[F,O]` via the `.stream` method.
 
 ```tut
-val s2 = Stream(1,2,3,4).pure.pull(Pull_.take(2))
+val s2 = Stream(1,2,3,4).through(tk(2))
 s2.toList
-val s3 = Stream.pure(1,2,3,4).pull(Pull_.take(2)) // alternately
-s3.toList
 ```
 
-_Note:_ The `.pure` converts a `Stream[Nothing,A]` to a `Stream[Pure,A]`. Scala will not infer `Nothing` for a type parameter, so using `Pure` as the effect provides better type inference in some cases.
+FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `.stream` completes. Note again that _nothing happens_ when we call `.stream` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
 
-The `pull` method on `Stream` just calls `open` then `close`. We could express the above as:
-
-```tut
-Stream(1,2,3,4).pure.open.flatMap { _.take(2) }.close
-```
-
-FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `close` completes. Note again that _nothing happens_ when we call `.close` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
-
-There are lots of useful transformation functions in [`pipe`](../core/shared/src/main/scala/fs2/pipe.scala) and [`pipe2`](../core/shared/src/main/scala/fs2/pipe2.scala) built using the `Pull` type, for example:
-
-```tut:book
-import fs2.{pipe, pipe2}
-
-val s = Stream.pure(1,2,3,4,5) // alternately Stream(...).pure
-
-// all equivalent
-pipe.take(2)(s).toList
-s.through(pipe.take(2)).toList
-s.take(2).toList
-
-val ns = Stream.range(10,100,by=10)
-
-// all equivalent
-s.through2(ns)(pipe2.zip).toList
-pipe2.zip(s, ns).toList
-s.zip(ns).toList
-```
+There are lots of useful transformation functions in [`Stream`](../core/shared/src/main/scala/fs2/Stream.scala) built using the `Pull` type.
 
 ### Exercises
 
@@ -498,8 +506,9 @@ _Note:_ Some of these APIs don't provide any means of throttling the producer, i
 
 Let's look at a complete example:
 
-```tut:book
-import fs2.{ async, concurrent }
+```tut:book:reset
+import fs2._
+import fs2.async
 import scala.concurrent.ExecutionContext
 import cats.effect.{ Effect, IO }
 
@@ -513,7 +522,7 @@ def rows[F[_]](h: CSVHandle)(implicit F: Effect[F], ec: ExecutionContext): Strea
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
     _ <- Stream.suspend { h.withRows { e => async.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit) }; Stream.emit(()) }
-    row <- q.dequeue through pipe.rethrow
+    row <- q.dequeue.rethrow
   } yield row
 ```
 
@@ -534,25 +543,7 @@ Want to learn more?
 
 Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
 
-### <a id="a1"></a> Appendix A1: Sane subtyping with better error messages
-
-`Stream[F,O]` and `Pull[F,O,R]` are covariant in `F`, `O`, and `R`. This is important for usability and convenience, but covariance can often paper over what should really be type errors. Luckily, FS2 implements a trick to catch these situations. For instance:
-
-```tut:fail
-Stream.emit(1) ++ Stream.emit("hello")
-```
-
-Informative! If you really want a dubious supertype like `Any`, `AnyRef`, `AnyVal`, `Product`, or `Serializable` to be inferred, just follow the instructions in the error message to supply a `RealSupertype` instance explicitly. The `++` method takes two implicit parameters -- a `RealSupertype` and a `Lub1`, the latter of which allows appending two streams that differ in effect type but share some common effect supertype. In this case, both of our streams have effect type `Nothing`, so we can explicitly provide an identity for the second parameter.
-
-```tut
-import fs2.util.{Lub1,RealSupertype}
-
-Stream.emit(1).++(Stream("hi"))(RealSupertype.allow[Int,Any], Lub1.id[Nothing])
-```
-
-Ugly, as it should be.
-
-### <a id="a2"></a> Appendix A2: How interruption of streams works
+### <a id="a1"></a> Appendix A1: How interruption of streams works
 
 In FS2, a stream can terminate in one of three ways:
 
@@ -595,6 +586,7 @@ Stream(1).covary[IO].
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
 
 ```tut
+import scala.concurrent.ExecutionContext.Implicits.global
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
 val s2 = (Stream.empty ++ Stream.fail(Err)) onError { e => println(e); Stream.fail(e) }
 val merged = s1 merge s2 take 1

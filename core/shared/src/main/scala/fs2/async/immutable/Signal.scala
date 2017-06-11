@@ -9,7 +9,7 @@ import fs2.Stream
 import fs2.async.immutable
 
 /** Data type of a single value of type `A` that can be read in the effect `F`. */
-trait Signal[F[_], A] { self =>
+abstract class Signal[F[_], A] { self =>
 
   /**
    * Returns the discrete version of this signal, updated only when the value

@@ -7,7 +7,7 @@ import cats.effect.{ Async, Effect, IO, Sync }
 import cats.implicits._
 
 /** Provides utilities for working with streams related to time. */
-package object time {
+object time {
 
   /**
    * Discrete stream that every `d` emits elapsed duration
@@ -89,7 +89,7 @@ package object time {
   def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], scheduler: Scheduler, ec: ExecutionContext): Stream[F, Unit] = {
     Stream.eval(F.async[Unit] { cb =>
       scheduler.scheduleOnce(d) {
-        ec.execute { () => cb(Right(())) }
+        ec.execute(() => cb(Right(())))
       }
       ()
     })

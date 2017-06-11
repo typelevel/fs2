@@ -3,11 +3,10 @@ package fs2
 import java.util.concurrent.atomic.AtomicLong
 import org.scalacheck.Gen
 
-import cats.effect.{ Effect, IO }
+import cats.effect.IO
 import cats.implicits._
 
 import fs2.Stream._
-import fs2.pipe._
 
 class PipeSpec extends Fs2Spec {
 
@@ -33,14 +32,14 @@ class PipeSpec extends Fs2Spec {
       runLog { s.get.bufferBy(_ >= 0) } shouldBe s.get.toVector
 
       var counter = 0
-      val s2 = s.get.map(_.abs)
+      val s2 = s.get.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs)
       val s3 = (s2 ++ Stream.emit(-1) ++ s2).evalMap { i => IO { counter += 1; i }}
       runLog { s3.bufferBy(_ >= 0).take(s.get.toList.size + 2) }
       counter shouldBe (s.get.toList.size * 2 + 1)
     }
 
     "changes" in {
-      Stream.empty[Pure, Int].changes.toList shouldBe Nil
+      Stream.empty.covaryOutput[Int].changes.toList shouldBe Nil
       Stream(1, 2, 3, 4).changes.toList shouldBe List(1, 2, 3, 4)
       Stream(1, 1, 2, 2, 3, 3, 4, 3).changes.toList shouldBe List(1, 2, 3, 4, 3)
       Stream("1", "2", "33", "44", "5", "66").changesBy(_.length).toList shouldBe
@@ -52,45 +51,45 @@ class PipeSpec extends Fs2Spec {
       assert(sizeV.forall(_ <= n0.get) && sizeV.combineAll == s.get.toVector.size)
     }
 
-    "chunkN.fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
-      val chunkedV = s.get.chunkN(n0.get, true).toVector
-      val unchunkedV = s.get.toVector
+    "segmentN.fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
+      val segmentedV = s.get.segmentN(n0.get, true).toVector
+      val unsegmentedV = s.get.toVector
       assert {
         // All but last list have n0 values
-        chunkedV.dropRight(1).forall(_.map(_.size).combineAll == n0.get) &&
+        segmentedV.dropRight(1).forall(_.toChunk.size == n0.get) &&
         // Last list has at most n0 values
-        chunkedV.lastOption.fold(true)(_.map(_.size).combineAll <= n0.get) &&
-        // Flattened sequence is equal to vector without chunking
-        chunkedV.foldLeft(Vector.empty[Int])((v, l) =>v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == unchunkedV
+        segmentedV.lastOption.fold(true)(_.toChunk.size <= n0.get) &&
+        // Flattened sequence is equal to vector without segmenting
+        segmentedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unsegmentedV
       }
     }
 
-    "chunkN.no-fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
-      val chunkedV = s.get.chunkN(n0.get, false).toVector
-      val unchunkedV = s.get.toVector
-      val expectedSize = unchunkedV.size - (unchunkedV.size % n0.get)
+    "segmentN.no-fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
+      val segmentedV = s.get.segmentN(n0.get, false).toVector
+      val unsegmentedV = s.get.toVector
+      val expectedSize = unsegmentedV.size - (unsegmentedV.size % n0.get)
       assert {
         // All lists have n0 values
-        chunkedV.forall(_.map(_.size).combineAll == n0.get) &&
-        // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
-        chunkedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.foldLeft(Vector.empty[Int])((v, c) => v ++ c.iterator)) == unchunkedV.take(expectedSize)
+        segmentedV.forall(_.toChunk.size == n0.get) &&
+        // Flattened sequence is equal to vector without segmenting, minus "left over" values that could not fit in a segment
+        segmentedV.foldLeft(Vector.empty[Int])((v, l) => v ++ l.toVector) == unsegmentedV.take(expectedSize)
       }
     }
 
     "chunks" in forAll(nonEmptyNestedVectorGen) { (v0: Vector[Vector[Int]]) =>
       val v = Vector(Vector(11,2,2,2), Vector(2,2,3), Vector(2,3,4), Vector(1,2,2,2,2,2,3,3))
       val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-      runLog(s.throughPure(chunks).map(_.toVector)) shouldBe v
+      runLog(s.chunks.map(_.toVector)) shouldBe v
     }
 
     "chunks (2)" in forAll(nestedVectorGen[Int](0,10, emptyChunks = true)) { (v: Vector[Vector[Int]]) =>
       val s = if (v.isEmpty) Stream.empty else v.map(emits).reduce(_ ++ _)
-      runLog(s.throughPure(chunks).flatMap(Stream.chunk)) shouldBe v.flatten
+      runLog(s.chunks.flatMap(Stream.chunk(_))) shouldBe v.flatten
     }
 
     "collect" in forAll { (s: PureStream[Int]) =>
       val pf: PartialFunction[Int, Int] = { case x if x % 2 == 0 => x }
-      runLog(s.get.through(fs2.pipe.collect(pf))) shouldBe runLog(s.get).collect(pf)
+      runLog(s.get.collect(pf)) shouldBe runLog(s.get).collect(pf)
     }
 
     "collectFirst" in forAll { (s: PureStream[Int]) =>
@@ -106,7 +105,7 @@ class PipeSpec extends Fs2Spec {
 
     "drop" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
       val n = if (negate) -n0.get else n0.get
-      runLog(s.get.through(drop(n))) shouldBe runLog(s.get).drop(n)
+      runLog(s.get.drop(n)) shouldBe runLog(s.get).drop(n)
     }
 
     "dropLast" in forAll { (s: PureStream[Int]) =>
@@ -125,13 +124,13 @@ class PipeSpec extends Fs2Spec {
 
     "dropWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
       val set = runLog(s.get).take(n.get).toSet
-      runLog(s.get.through(dropWhile(set))) shouldBe runLog(s.get).dropWhile(set)
+      runLog(s.get.dropWhile(set)) shouldBe runLog(s.get).dropWhile(set)
     }
 
     "evalScan" in forAll { (s: PureStream[Int], n: String) =>
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
       val g = (a: String, b: Int) => a + b
-      runLog(s.get.covary[IO].evalScan[IO, String](n)(f)) shouldBe runLog(s.get).scanLeft(n)(g)
+      runLog(s.get.covary[IO].evalScan(n)(f)) shouldBe runLog(s.get).scanLeft(n)(g)
     }
 
     "exists" in forAll { (s: PureStream[Int], n: SmallPositive) =>
@@ -146,19 +145,19 @@ class PipeSpec extends Fs2Spec {
 
     "filter (2)" in forAll { (s: PureStream[Double]) =>
       val predicate = (i: Double) => i - i.floor < 0.5
-      val s2 = s.get.mapChunks(c => Chunk.doubles(c.toArray))
+      val s2 = s.get.mapSegments(s => Chunk.doubles(s.toVector.toArray))
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
     "filter (3)" in forAll { (s: PureStream[Byte]) =>
       val predicate = (b: Byte) => b < 0
-      val s2 = s.get.mapChunks(c => Chunk.bytes(c.toArray))
+      val s2 = s.get.mapSegments(s => Chunk.bytes(s.toVector.toArray))
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
     "filter (4)" in forAll { (s: PureStream[Boolean]) =>
       val predicate = (b: Boolean) => !b
-      val s2 = s.get.mapChunks(c => Chunk.booleans(c.toArray))
+      val s2 = s.get.mapSegments(s => Chunk.booleans(s.toVector.toArray))
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
@@ -213,32 +212,28 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.intersperse(n)) shouldBe runLog(s.get).flatMap(i => Vector(i, n)).dropRight(1)
     }
 
-    "mapChunked" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.mapChunks(identity).chunks) shouldBe runLog(s.get.chunks)
+    "mapSegments" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.mapSegments(identity).segments) shouldBe runLog(s.get.segments)
     }
 
     "performance of multi-stage pipeline" in {
       val v = Vector.fill(1000)(Vector.empty[Int])
       val v2 = Vector.fill(1000)(Vector(0))
-      val s = (v.map(Stream.emits): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
+      val s = (v.map(Stream.emits(_)): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
       val s2 = (v2.map(Stream.emits(_)): Vector[Stream[Pure,Int]]).reduce(_ ++ _)
-      val start = System.currentTimeMillis
-      runLog(s.through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id)) shouldBe Vector()
-      runLog(s2.through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id).through(pipe.id)) shouldBe Vector.fill(1000)(0)
+      val id = (_: Stream[Pure,Int]).mapSegments(s => s)
+      runLog(s.through(id).through(id).through(id).through(id).through(id)) shouldBe Vector()
+      runLog(s2.through(id).through(id).through(id).through(id).through(id)) shouldBe Vector.fill(1000)(0)
     }
 
     "last" in forAll { (s: PureStream[Int]) =>
-      val shouldCompile = s.get.last
-      runLog(s.get.through(last)) shouldBe Vector(runLog(s.get).lastOption)
+      val _ = s.get.last
+      runLog(s.get.last) shouldBe Vector(runLog(s.get).lastOption)
     }
 
     "lastOr" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val default = n.get
       runLog(s.get.lastOr(default)) shouldBe Vector(runLog(s.get).lastOption.getOrElse(default))
-    }
-
-    "lift" in forAll { (s: PureStream[Double]) =>
-      runLog(s.get.through(lift(_.toString))) shouldBe runLog(s.get).map(_.toString)
     }
 
     "mapAccumulate" in forAll { (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
@@ -250,15 +245,15 @@ class PipeSpec extends Fs2Spec {
     }
 
     "prefetch" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.covary[IO].through(prefetch)) shouldBe runLog(s.get)
+      runLog(s.get.covary[IO].prefetch) shouldBe runLog(s.get)
     }
 
     "prefetch (timing)" in {
       // should finish in about 3-4 seconds
-      val s = Stream(1,2,3)
-            . evalMap(i => IO { Thread.sleep(1000); i })
-            . through(prefetch)
-            . flatMap { i => Stream.eval(IO { Thread.sleep(1000); i}) }
+      val s = Stream(1,2,3).
+               evalMap(i => IO { Thread.sleep(1000); i }).
+               prefetch.
+               flatMap { i => Stream.eval(IO { Thread.sleep(1000); i}) }
       val start = System.currentTimeMillis
       runLog(s)
       val stop = System.currentTimeMillis
@@ -267,18 +262,21 @@ class PipeSpec extends Fs2Spec {
     }
 
     "sliding" in forAll { (s: PureStream[Int], n: SmallPositive) =>
-      s.get.sliding(n.get).toList shouldBe s.get.toList.sliding(n.get).map(_.toVector).toList
+      s.get.sliding(n.get).toList.map(_.toList) shouldBe s.get.toList.sliding(n.get).map(_.toList).toList
     }
 
     "split" in forAll { (s: PureStream[Int], n: SmallPositive) =>
-      val s2 = s.get.map(_.abs).filter(_ != 0)
-      runLog { s2.chunkLimit(n.get).intersperse(Chunk.singleton(0)).flatMap(Stream.chunk).split(_ == 0) } shouldBe s2.chunkLimit(n.get).map(_.toVector).toVector
+      val s2 = s.get.map(x => if (x == Int.MinValue) x + 1 else x).map(_.abs).filter(_ != 0)
+      withClue(s"n = $n, s = ${s.get.toList}, s2 = " + s2.toList) {
+      runLog { s2.chunkLimit(n.get).intersperse(Chunk.singleton(0)).flatMap(Stream.chunk).split(_ == 0).map(_.toVector).filter(_.nonEmpty) } shouldBe
+        s2.chunkLimit(n.get).filter(_.nonEmpty).map(_.toVector).toVector
+      }
     }
 
     "split (2)" in {
-      Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector(4))
-      Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3))
-      Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector())
+      Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector(4))
+      Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2), Vector(), Vector(3))
+      Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.toVector) shouldBe Vector(Vector(1, 2), Vector(), Vector(3), Vector())
     }
 
     "take" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
@@ -293,19 +291,29 @@ class PipeSpec extends Fs2Spec {
 
     "takeWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
       val set = runLog(s.get).take(n.get).toSet
-      runLog(s.get.through(takeWhile(set))) shouldBe runLog(s.get).takeWhile(set)
+      runLog(s.get.takeWhile(set)) shouldBe runLog(s.get).takeWhile(set)
     }
 
     "takeThrough" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val f = (i: Int) => i % n.get == 0
       val vec = runLog(s.get)
-      val result = if (vec.exists(i => !f(i))) vec.takeWhile(f) ++ vec.find(i => !(f(i))).toVector else vec.takeWhile(f)
-      runLog(s.get.takeThrough(f)) shouldBe result
+      val result = vec.takeWhile(f) ++ vec.dropWhile(f).headOption
+      withClue(s.get.toList)(runLog(s.get.takeThrough(f)) shouldBe result)
+    }
+
+    "scan (simple ex)" in {
+      val s = PureStream("simple", Stream(1).map(x => x)) // note, without the .map, test passes
+      val f = (a: Int, b: Int) => a + b
+      runLog(s.get.scan(0)(f)) shouldBe runLog(s.get).scanLeft(0)(f)
     }
 
     "scan" in forAll { (s: PureStream[Int], n: Int) =>
       val f = (a: Int, b: Int) => a + b
-      runLog(s.get.scan(n)(f)) shouldBe runLog(s.get).scanLeft(n)(f)
+      try runLog(s.get.scan(n)(f)) shouldBe runLog(s.get).scanLeft(n)(f)
+      catch { case e: Throwable =>
+        println(s.get.toList)
+        throw e
+      }
     }
 
     "scan (2)" in forAll { (s: PureStream[Int], n: String) =>
@@ -319,33 +327,25 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.scan1(f)) shouldBe v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f))
     }
 
-    "shiftRight" in forAll { (s: PureStream[Int], v: Vector[Int]) =>
-      runLog(s.get.shiftRight(v: _*)) shouldBe v ++ runLog(s.get)
-    }
-
     "tail" in forAll { (s: PureStream[Int]) =>
       runLog(s.get.tail) shouldBe runLog(s.get).drop(1)
     }
 
-    "take.chunks" in {
-      val s = Stream.pure(1, 2) ++ Stream(3, 4)
-      runLog(s.through(take(3)).through(chunks).map(_.toVector)) shouldBe Vector(Vector(1, 2), Vector(3))
+    "take.segments" in {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      runLog(s.take(3).segments.map(_.toVector)) shouldBe Vector(Vector(1, 2), Vector(3))
     }
 
     "unNone" in forAll { (s: PureStream[Option[Int]]) =>
-      runLog(s.get.unNone.chunks) shouldBe runLog(s.get.filter(_.isDefined).map(_.get).chunks)
-    }
-
-    "vectorChunkN" in forAll { (s: PureStream[Int], n: SmallPositive) =>
-      runLog(s.get.vectorChunkN(n.get)) shouldBe runLog(s.get).grouped(n.get).toVector
+      runLog(s.get.unNone.chunks.filter(_.nonEmpty)) shouldBe runLog(s.get.filter(_.isDefined).map(_.get).chunks)
     }
 
     "zipWithIndex" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.through(zipWithIndex)) shouldBe runLog(s.get).zipWithIndex
+      runLog(s.get.zipWithIndex) shouldBe runLog(s.get).zipWithIndex
     }
 
     "zipWithNext" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.through(zipWithNext)) shouldBe {
+      runLog(s.get.zipWithNext) shouldBe {
         val xs = runLog(s.get)
         xs.zipAll(xs.map(Some(_)).drop(1), -1, None)
       }
@@ -358,7 +358,7 @@ class PipeSpec extends Fs2Spec {
     }
 
     "zipWithPrevious" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.through(zipWithPrevious)) shouldBe {
+      runLog(s.get.zipWithPrevious) shouldBe {
         val xs = runLog(s.get)
         (None +: xs.map(Some(_))).zip(xs)
       }
@@ -371,7 +371,7 @@ class PipeSpec extends Fs2Spec {
     }
 
     "zipWithPreviousAndNext" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.through(zipWithPreviousAndNext)) shouldBe {
+      runLog(s.get.zipWithPreviousAndNext) shouldBe {
         val xs = runLog(s.get)
         val zipWithPrevious = (None +: xs.map(Some(_))).zip(xs)
         val zipWithPreviousAndNext = zipWithPrevious
@@ -403,88 +403,87 @@ class PipeSpec extends Fs2Spec {
         forAll { (s: PureStream[Int]) =>
           val sum = new AtomicLong(0)
           val out = runLog {
-            pipe.observe(s.get.covary[IO]) {
-              _.evalMap(i => IO { sum.addAndGet(i.toLong); () })
-            }
+            s.get.covary[IO].observe { _.evalMap(i => IO { sum.addAndGet(i.toLong); () }) }
           }
           out.map(_.toLong).sum shouldBe sum.get
           sum.set(0)
           val out2 = runLog {
-            pipe.observeAsync(s.get.covary[IO], maxQueued = 10) {
-              _.evalMap(i => IO { sum.addAndGet(i.toLong); () })
-            }
+            s.get.covary[IO].observeAsync(maxQueued = 10) { _.evalMap(i => IO { sum.addAndGet(i.toLong); () }) }
           }
           out2.map(_.toLong).sum shouldBe sum.get
         }
       }
-      "handle errors from observing sink" in {
-        forAll { (s: PureStream[Int]) =>
-          runLog {
-            pipe.observe(s.get.covary[IO]) { _ => Stream.fail(Err) }.attempt
-          } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
-          runLog {
-            pipe.observeAsync(s.get.covary[IO], 2) { _ => Stream.fail(Err) }.attempt
-          } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
-        }
+    }
+    "handle errors from observing sink" in {
+      forAll { (s: PureStream[Int]) =>
+        runLog {
+          s.get.covary[IO].observe { _ => Stream.fail(Err) }.attempt
+        } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
+        runLog {
+          s.get.covary[IO].observeAsync(2) { _ => Stream.fail(Err) }.attempt
+        } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
       }
-      "handle finite observing sink" in {
-        forAll { (s: PureStream[Int]) =>
-          runLog {
-            pipe.observe(s.get.covary[IO]) { _ => Stream.empty }
-          } should contain theSameElementsAs s.get.toVector
-          runLog {
-            pipe.observe(s.get.covary[IO]) { _.take(2).drain }
-          } should contain theSameElementsAs s.get.toVector
-          runLog {
-            pipe.observeAsync(s.get.covary[IO], 2) { _ => Stream.empty }
-          } should contain theSameElementsAs s.get.toVector
-        }
+    }
+    "handle finite observing sink" in {
+      forAll { (s: PureStream[Int]) =>
+        runLog {
+          s.get.covary[IO].observe { _ => Stream.empty }
+        } should contain theSameElementsAs s.get.toVector
+        runLog {
+          s.get.covary[IO].observe { _.take(2).drain }
+        } should contain theSameElementsAs s.get.toVector
+        runLog {
+          s.get.covary[IO].observeAsync(2) { _ => Stream.empty }
+        } should contain theSameElementsAs s.get.toVector
       }
-      "handle multiple consecutive observations" in {
-        forAll { (s: PureStream[Int], f: Failure) =>
+    }
+    "handle multiple consecutive observations" in {
+      forAll { (s: PureStream[Int], f: Failure) =>
+        runLog {
+          val sink: Sink[IO,Int] = _.evalMap(i => IO(()))
+          val src: Stream[IO, Int] = s.get.covary[IO]
+          src.observe(sink).observe(sink)
+        } shouldBe s.get.toVector
+      }
+    }
+    "no hangs on failures" in {
+      forAll { (s: PureStream[Int], f: Failure) =>
+        swallow {
           runLog {
-            val sink: Sink[IO,Int] = _.evalMap(i => IO(()))
-            val src: Stream[IO, Int] = s.get.covary[IO]
+            val sink: Sink[IO,Int] = in => spuriousFail(in.evalMap(i => IO(i)), f).map(_ => ())
+            val src: Stream[IO, Int] = spuriousFail(s.get.covary[IO], f)
             src.observe(sink).observe(sink)
-          } shouldBe s.get.toVector
-        }
-      }
-      "no hangs on failures" in {
-        forAll { (s: PureStream[Int], f: Failure) =>
-          swallow {
-            runLog {
-              val sink: Sink[IO,Int] = in => spuriousFail(in.evalMap(i => IO(i)), f).map(_ => ())
-              val src: Stream[IO, Int] = spuriousFail(s.get.covary[IO], f)
-              src.observe(sink).observe(sink)
-            } shouldBe s.get.toVector
           }
         }
       }
     }
 
-    "sanity-test" in {
-      val s = Stream.range(0,100)
-      val s2 = s.covary[IO].flatMap { i => Stream.emit(i).onFinalize(IO { println(s"finalizing $i")}) }
-      val q = async.unboundedQueue[IO,Int].unsafeRunSync()
-      runLog { merge2(trace("s2")(s2), trace("q")(q.dequeue)).take(10) } shouldBe Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
-    }
-  }
-
-  def trace[F[_],A](msg: String)(s: Stream[F,A]) = s mapChunks { a => println(msg + ": " + a.toList); a }
-
-  def merge2[F[_]:Effect,A](a: Stream[F,A], a2: Stream[F,A]): Stream[F,A] = {
-    type FS = ScopedFuture[F,Stream[F,A]] // Option[Step[Chunk[A],Stream[F,A]]]]
-    def go(fa: FS, fa2: FS): Stream[F,A] = (fa race fa2).stream.flatMap {
-      case Left(sa) => sa.uncons.flatMap {
-        case Some((hd, sa)) => Stream.chunk(hd) ++ (sa.fetchAsync flatMap (go(_,fa2)))
-        case None => println("left stream terminated"); fa2.stream.flatMap(identity)
+    "stepping" - {
+      "example" in {
+        import Pipe.Stepper
+        // Note: this is a useful but unsafe function - for each input (I,A), it remembers the A value, feeds the inner pipe, and then
+        // tags any output values with the remembered A value. This scheme breaks when the inner pipe buffers elements before emitting.
+        def first[I,O,A](p: Pipe[Pure,I,O]): Pipe[Pure,(I,A),(O,A)] = {
+          def go(last: Option[A], stepper: Stepper[I,O], s: Stream[Pure,(I,A)]): Pull[Pure,(O,A),Unit] = {
+            stepper.step match {
+              case Stepper.Done => Pull.done
+              case Stepper.Fail(err) => Pull.fail(err)
+              case Stepper.Emits(segment, next) =>
+                last match {
+                  case Some(a) => Pull.output(segment.map { o => (o,a) }) >> go(last, next, s)
+                  case None => go(last, next, s)
+                }
+              case Stepper.Await(receive) =>
+                s.pull.uncons1.flatMap {
+                  case Some(((i,a),s)) => go(Some(a), receive(Some(Chunk.singleton(i))), s)
+                  case None => go(last, receive(None), s)
+                }
+            }
+          }
+          s => go(None, Pipe.stepper(p), s).stream
+        }
+        Stream.range(0, 100).map(i => (i,i)).through(first(_.map(_ + 1).take(5))).toList shouldBe List((1,0), (2,1), (3,2), (4,3), (5,4))
       }
-      case Right(sa2) => sa2.uncons.flatMap {
-        case Some((hd, sa2)) => Stream.chunk(hd) ++ (sa2.fetchAsync flatMap (go(fa,_)))
-        case None => println("right stream terminated"); fa.stream.flatMap(identity)
-      }
     }
-    a.fetchAsync flatMap { fa =>
-    a2.fetchAsync flatMap { fa2 => go(fa, fa2) }}
   }
 }
