@@ -1445,7 +1445,7 @@ object Stream {
      * @example {{{
      * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
      * scala> implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(1)
-     * scala> val s = Stream(1, 2, 3) ++ time.sleep_[IO](400.millis) ++ Stream(4, 5) ++ time.sleep_[IO](50.millis) ++ Stream(6)
+     * scala> val s = Stream(1, 2, 3) ++ time.sleep_[IO](400.millis) ++ Stream(4, 5) ++ time.sleep_[IO](10.millis) ++ Stream(6)
      * scala> s.debounce(200.milliseconds).runLog.unsafeRunSync
      * res0: Vector[Int] = Vector(3, 6)
      * }}}
@@ -1766,8 +1766,8 @@ object Stream {
      * @example {{{
      * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
      * scala> implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(1)
-     * scala> val s1 = time.awakeEvery[IO](200.millis).scan(0)((acc, i) => acc + 1)
-     * scala> s1.merge(time.sleep_[IO](100.millis) ++ s1).take(6).runLog.unsafeRunSync
+     * scala> val s1 = time.awakeEvery[IO](400.millis).scan(0)((acc, i) => acc + 1)
+     * scala> s1.merge(time.sleep_[IO](200.millis) ++ s1).take(6).runLog.unsafeRunSync
      * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
      * }}}
      */
