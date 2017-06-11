@@ -10,10 +10,8 @@ class RefSpec extends Fs2Spec {
 
   "Ref" - {
 
-    /**
-      * Tests whether set after access causes said access's
-      * set to default to no-op as the value in ref has changed
-      */
+    /* Tests whether set after access causes said access's
+     * set to default to no-op as the value in ref has changed */
     "Interleaving set and access " in {
 
       ref[IO, Int].flatMap{ ref =>
