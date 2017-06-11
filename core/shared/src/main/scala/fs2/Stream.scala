@@ -676,7 +676,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * Applies the specified pure function to each chunk in this stream.
    *
    * @example {{{
-   * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).mapChunks { c => val arr = c.toInts.values; for (i <- 0 until arr.size) arr(i) = 0; c }.toList
+   * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).mapChunks { c => val ints = c.toInts; for (i <- 0 until ints.values.size) ints.values(i) = 0; ints }.toList
    * res0: List[Int] = List(0, 0, 0, 0, 0, 0)
    * }}}
    */
