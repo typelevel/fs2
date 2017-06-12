@@ -85,7 +85,7 @@ In 0.10, the `Handle` type has been removed. Instead, custom pulls are written d
 // Equivalent to s.take(1)
 s.pull.uncons1.flatMap {
   case None => Pull.pure(())
-  case Some((hd, tl)) => Pull.output(1)
+  case Some((hd, tl)) => Pull.output(hd)
 }.stream
 ```
 
@@ -118,6 +118,11 @@ In order for `loop` to know when to stop looping, it needs some indication that 
 - `Stream.append` has been removed in favor of `s.append(s2)` or `s ++ s2`.
 - `fs2.Strategy` has been removed in favor of `scala.concurrent.ExecutionContext`.
 - `Sink` now has a companion object with various common patterns for constructing sinks (e.g., `Sink(s => IO(println(s)))`).
+- `ScopedFuture` has been renamed to `AsyncPull`.
+- There is no `uncons1Async` (or any other equivalent to the old `await1Async`).
+- The `pull2` method on `Stream` no longer exists (unncessary due to lack of `Handle`). Replace by calling `.pull` on either `Stream`.
+- `NonEmptyChunk` no longer exists (and empty `Chunks` *can* be emitted).
+- The `Attempt` alias no longer exists - replace with `Either[Throwable,A]`.
 
 #### Cats Type Class Instances
 
