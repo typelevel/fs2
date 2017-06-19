@@ -19,15 +19,16 @@ Quick links:
 
 FS2 is a streaming I/O library. The design goals are compositionality, expressiveness, resource safety, and speed. Here's a simple example of its use:
 
-``` scala
-import fs2.{io, text, Task}
+```scala
+import cats.effect.{IO, Sync}
+import fs2.{io, text}
 import java.nio.file.Paths
 
 def fahrenheitToCelsius(f: Double): Double =
   (f - 32.0) * (5.0/9.0)
 
-val converter: Task[Unit] =
-  io.file.readAll[Task](Paths.get("testdata/fahrenheit.txt"), 4096)
+def converter[F[_]](implicit F: Sync[F]): F[Unit] =
+  io.file.readAll[F](Paths.get("testdata/fahrenheit.txt"), 4096)
     .through(text.utf8Decode)
     .through(text.lines)
     .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
@@ -38,10 +39,12 @@ val converter: Task[Unit] =
     .run
 
 // at the end of the universe...
-val u: Unit = converter.unsafeRun()
+val u: Unit = converter[IO].unsafeRunSync()
 ```
 
-This will construct a `Task`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blanklines and commented lines. It then parses temperatures in degrees Fahrenheit, converts these to Celsius, UTF-8 encodes the output, and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed upon normal termination or if exceptions occur.
+This will construct a `F[Unit]`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blanklines and commented lines. It then parses temperatures in degrees Fahrenheit, converts these to Celsius, UTF-8 encodes the output, and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed upon normal termination or if exceptions occur.
+
+At the end it's saying that the effect `F` will be of type `cats.effect.IO` and then it's possible to invoke `unsafeRunSync()`. You can choose a different effect type or your own as long as it implements `cats.effect.Sync` for this case. In some other cases the constraints might require to implement interfaces like `cats.effect.MonadError[?, Throwable]`, `cats.effect.Async` and / or `cats.effect.Effect`.
 
 The library supports a number of other interesting use cases:
 
