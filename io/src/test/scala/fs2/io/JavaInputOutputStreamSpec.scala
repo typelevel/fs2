@@ -44,10 +44,8 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
         }.runLog.map(_.flatten).unsafeRunSync()
 
       example shouldBe fromInputStream
-
     }
-
-
+    
     "upstream.is.closed" in  {
       var closed: Boolean = false
       val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO(closed = true))

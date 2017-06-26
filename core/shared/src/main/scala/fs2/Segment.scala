@@ -260,9 +260,20 @@ abstract class Segment[+O,+R] { self =>
     override def toString = s"($self).fold($z)($f)"
   }
 
-  private[fs2] final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = uncons1 match {
-    case Left(_) => z
-    case Right((hd,tl)) => f(hd, tl.foldRightLazy(z)(f))
+  private[fs2] final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = {
+    unconsChunk match {
+      case Right((hd,tl)) =>
+        val sz = hd.size
+        if (sz == 1) f(hd(0), tl.foldRightLazy(z)(f))
+        else {
+          def go(idx: Int): B = {
+            if (idx < sz) f(hd(idx), go(idx + 1))
+            else tl.foldRightLazy(z)(f)
+          }
+          go(0)
+        }
+      case Left(_) => z
+    }
   }
 
   /**
@@ -608,7 +619,7 @@ abstract class Segment[+O,+R] { self =>
                   else {
                     var i = 0
                     while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
-                    done(Right(staged.remainder.prepend(os.strict.splitAt(i)._2)))
+                    done(Right(staged.remainder.prepend(os.strict.drop(i))))
                   }
                 },
           r => done(Left(r -> rem))
@@ -655,7 +666,7 @@ abstract class Segment[+O,+R] { self =>
             i += 1
           }
           if (ok) emits(os) else done(Right(
-            if (i == 0) staged.remainder else staged.remainder.prepend(os.strict.splitAt(i - 1)._2)))
+            if (i == 0) staged.remainder else staged.remainder.prepend(os.strict.drop(i - 1))))
         },
         r => if (ok) done(Left(r)) else done(Right(staged.remainder))
       ).value
@@ -776,12 +787,12 @@ abstract class Segment[+O,+R] { self =>
   @annotation.tailrec
   final def uncons1: Either[R, (O,Segment[O,R])] =
     unconsChunk match {
-      case Left(r) => Left(r)
       case Right((c, tl)) =>
         val sz = c.size
         if (sz == 0) tl.uncons1
         else if (sz == 1) Right(c(0) -> tl)
-        else Right(c(0) -> tl.prepend(Chunk.vector(c.toVector.drop(1))))
+        else Right(c(0) -> tl.prepend(c.strict.drop(1)))
+      case Left(r) => Left(r)
     }
 
   /**

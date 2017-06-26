@@ -52,7 +52,7 @@ import fs2.internal.{ Algebra, FreeC }
  *   where `==` is full equality
  *   (`a == b` iff `f(a)` is identical to `f(b)` for all `f`)
  *
- * `normalize(s)` can be defined as `s.repeatPull(_.echo1)`, which just
+ * `normalize(s)` can be defined as `s.flatMap(Stream.emit)`, which just
  * produces a singly-chunked stream from any input stream `s`.
  *
  * ''Note:'' For efficiency `[[Stream.map]]` function operates on an entire
@@ -1609,8 +1609,7 @@ object Stream {
       Stream.fromFreeC(Algebra.uncons(self.get[F,O]).flatMap {
         case None => Stream.empty.covaryAll[F,O2].get
         case Some((hd, tl)) =>
-          val tl2 = Stream.fromFreeC(tl).flatMap(f)
-          (hd.map(f).foldRightLazy(tl2)(_ ++ _)).get
+          (hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(_ ++ _)).get
       })
 
     /** Alias for `flatMap(_ => s2)`. */

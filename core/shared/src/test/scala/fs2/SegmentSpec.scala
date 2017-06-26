@@ -181,6 +181,18 @@ class SegmentSpec extends Fs2Spec {
       }
     }
 
+    "uncons1 performance" - {
+      val Ns = List(2,3,100,200,400,800,1600,3200,6400,12800,25600,51200,102400)
+      Ns.foreach { N => N.toString in {
+        val s = Segment.from(0).take(N).voidResult
+        def go(s: Segment[Long,Unit]): Unit = s.uncons1 match {
+          case Right((hd,tl)) => go(tl)
+          case Left(_) => ()
+        }
+        go(s)
+      }}
+    }
+
     "zipWith" in {
       forAll { (xs: Segment[Int,Unit], ys: Segment[Int,Unit]) =>
         val xsv = xs.toVector
