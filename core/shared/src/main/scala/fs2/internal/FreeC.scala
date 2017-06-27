@@ -32,16 +32,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
     case Eval(_) => sys.error("impossible")
   }
 
-  private var cachedViewL: Option[ViewL[F,R @annotation.unchecked.uncheckedVariance]] = None
-  def viewL: ViewL[F,R] = {
-    cachedViewL match {
-      case Some(v) => v
-      case None =>
-        val v = ViewL(this)
-        cachedViewL = Some(v) // OK to race multiple threads here
-        v
-    }
-  }
+  def viewL: ViewL[F,R] = mkViewL(this)
 
   def translate[G[_]](f: F ~> G): FreeC[G, R] = FreeC.suspend {
     viewL.get match {
@@ -76,37 +67,38 @@ private[fs2] object FreeC {
   def suspend[F[_], R](fr: FreeC[F, R]): FreeC[F, R] =
     Pure[F, Unit](()).flatMap(_ => fr)
 
-  // Pure(r), Fail(e), Bind(Eval(fx), k),
+  /**
+   * Unrolled view of a `FreeC` structure. The `get` value is guaranteed to be one of:
+   * `Pure(r)`, `Fail(e)`, `Bind(Eval(fx), k)`.
+   */
   final class ViewL[F[_],+R](val get: FreeC[F,R]) extends AnyVal
-  object ViewL {
-    def apply[F[_], R](free: FreeC[F, R]): ViewL[F, R] = {
-      type X = Any
-      @annotation.tailrec
-      def go(free: FreeC[F, X]): ViewL[F, R] = free match {
-        case Pure(x) => new ViewL(free.asInstanceOf[FreeC[F,R]])
-        case Eval(fx) => new ViewL(Bind(free.asInstanceOf[FreeC[F,R]], pureContinuation[F,R]))
-        case Fail(err) => new ViewL(free.asInstanceOf[FreeC[F,R]])
-        case b: FreeC.Bind[F, _, X] =>
-          val fw: FreeC[F, Any] = b.fx.asInstanceOf[FreeC[F, Any]]
-          val f: Either[Throwable,Any] => FreeC[F, X] = b.f.asInstanceOf[Either[Throwable,Any] => FreeC[F, X]]
-          fw match {
-            case Pure(x) => go(f(Right(x)))
-            case Fail(e) => go(f(Left(e)))
-            case Eval(_) => new ViewL(b.asInstanceOf[FreeC[F,R]])
-            case Bind(w, g) => go(Bind(w, kcompose(g, f)))
-          }
-      }
-      go(free.asInstanceOf[FreeC[F,X]])
+
+  private def mkViewL[F[_], R](free: FreeC[F, R]): ViewL[F, R] = {
+    type X = Any
+    @annotation.tailrec
+    def go(free: FreeC[F, X]): ViewL[F, R] = free match {
+      case Pure(x) => new ViewL(free.asInstanceOf[FreeC[F,R]])
+      case Eval(fx) => new ViewL(Bind(free.asInstanceOf[FreeC[F,R]], pureContinuation[F,R]))
+      case Fail(err) => new ViewL(free.asInstanceOf[FreeC[F,R]])
+      case b: FreeC.Bind[F, _, X] =>
+        val fw: FreeC[F, Any] = b.fx.asInstanceOf[FreeC[F, Any]]
+        val f: Either[Throwable,Any] => FreeC[F, X] = b.f.asInstanceOf[Either[Throwable,Any] => FreeC[F, X]]
+        fw match {
+          case Pure(x) => go(f(Right(x)))
+          case Fail(e) => go(f(Left(e)))
+          case Eval(_) => new ViewL(b.asInstanceOf[FreeC[F,R]])
+          case Bind(w, g) => go(Bind(w, kcompose(g, f)))
+        }
     }
+    go(free.asInstanceOf[FreeC[F,X]])
   }
 
-  // todo suspend
   private def kcompose[F[_],A,B,C](
     a: Either[Throwable,A] => FreeC[F,B],
     b: Either[Throwable,B] => FreeC[F,C]): Either[Throwable,A] => FreeC[F,C] =
     e => Bind(a(e), b)
 
-  implicit class FreeCRunOps[F[_],R](val self: FreeC[F,R]) extends AnyVal {
+  implicit final class InvariantOps[F[_],R](private val self: FreeC[F,R]) extends AnyVal {
     def run(implicit F: MonadError[F, Throwable]): F[R] =
       self.viewL.get match {
         case Pure(r) => F.pure(r)
