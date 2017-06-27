@@ -251,7 +251,7 @@ private[fs2] object Algebra {
 
             case release: Algebra.Release[F2,_] =>
               scope.releaseResource(release.token) match {
-                case None => go(scope, asyncSupport, acc, f(Right(())).viewL)
+                case None => F.suspend { go(scope, asyncSupport, acc, f(Right(())).viewL) }
                 case Some(finalizer) => F.flatMap(F.attempt(finalizer)) { e =>
                   go(scope, asyncSupport, acc, f(e).viewL)
                 }
@@ -263,8 +263,10 @@ private[fs2] object Algebra {
               }
 
             case o: Algebra.OpenScope[F2,_] =>
-              val innerScope = scope.open
-              go(innerScope, asyncSupport, acc, f(Right(scope -> innerScope)).viewL)
+              F.suspend {
+                val innerScope = scope.open
+                go(innerScope, asyncSupport, acc, f(Right(scope -> innerScope)).viewL)
+              }
 
             case unconsAsync: Algebra.UnconsAsync[F2,_,_,_] =>
               val s = unconsAsync.s
@@ -284,8 +286,10 @@ private[fs2] object Algebra {
               F.flatMap(asyncPull) { ap => go(scope, Some(effect -> ec), acc, f(Right(ap)).viewL) }
 
             case s: Algebra.Suspend[F2,O,_] =>
-              try go(scope, asyncSupport, acc, FreeC.Bind(s.thunk(), f).viewL)
-              catch { case NonFatal(e) => go(scope, asyncSupport, acc, f(Left(e)).viewL) }
+              F.suspend {
+                try go(scope, asyncSupport, acc, FreeC.Bind(s.thunk(), f).viewL)
+                catch { case NonFatal(e) => go(scope, asyncSupport, acc, f(Left(e)).viewL) }
+              }
 
             case _ => sys.error("impossible Segment or Output following uncons")
           }

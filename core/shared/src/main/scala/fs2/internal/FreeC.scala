@@ -1,9 +1,9 @@
 package fs2.internal
 
-import FreeC._
-
 import cats.{ ~>, MonadError }
 import cats.effect.Sync
+
+import FreeC._
 
 /** Free monad with a catch -- catches exceptions and provides mechanisms for handling them. */
 private[fs2] sealed abstract class FreeC[F[_], +R] {
@@ -37,7 +37,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
   def translate[G[_]](f: F ~> G): FreeC[G, R] = FreeC.suspend {
     viewL.get match {
       case Pure(r) => Pure(r)
-      case Bind(fx, k) => Bind(fx translate f, k andThen (_ translate f))
+      case Bind(fx, k) => Bind(fx translate f, (e: Either[Throwable,Any]) => k(e).translate(f))
       case Fail(e) => Fail(e)
       case Eval(fx) => Eval(f(fx))
     }
@@ -64,7 +64,7 @@ private[fs2] object FreeC {
   def pureContinuation[F[_],R]: Either[Throwable,R] => FreeC[F,R] =
     pureContinuation_.asInstanceOf[Either[Throwable,R] => FreeC[F,R]]
 
-  def suspend[F[_], R](fr: FreeC[F, R]): FreeC[F, R] =
+  def suspend[F[_], R](fr: => FreeC[F, R]): FreeC[F, R] =
     Pure[F, Unit](()).flatMap(_ => fr)
 
   /**
@@ -87,16 +87,11 @@ private[fs2] object FreeC {
           case Pure(x) => go(f(Right(x)))
           case Fail(e) => go(f(Left(e)))
           case Eval(_) => new ViewL(b.asInstanceOf[FreeC[F,R]])
-          case Bind(w, g) => go(Bind(w, kcompose(g, f)))
+          case Bind(w, g) => go(Bind(w, (e: Either[Throwable,X]) => Bind(g(e), f)))
         }
     }
     go(free.asInstanceOf[FreeC[F,X]])
   }
-
-  private def kcompose[F[_],A,B,C](
-    a: Either[Throwable,A] => FreeC[F,B],
-    b: Either[Throwable,B] => FreeC[F,C]): Either[Throwable,A] => FreeC[F,C] =
-    e => Bind(a(e), b)
 
   implicit final class InvariantOps[F[_],R](private val self: FreeC[F,R]) extends AnyVal {
     def run(implicit F: MonadError[F, Throwable]): F[R] =
