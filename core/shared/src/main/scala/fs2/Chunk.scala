@@ -255,7 +255,7 @@ object Chunk {
   }
 
   private def checkBounds(values: Array[_], offset: Int, length: Int): Unit = {
-    require(offset >= 0 && offset < values.size)
+    require(offset >= 0 && offset <= values.size)
     require(length >= 0 && length <= values.size)
     val end = offset + length
     require(end >= 0 && end <= values.size)
