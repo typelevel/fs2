@@ -85,6 +85,12 @@ class StreamPerformanceSpec extends Fs2Spec {
         ok.get shouldBe N
         open.get shouldBe 0
       }
-    }
-  }}
+    }}
+
+    "chunky flatMap" - { Ns.take(9).foreach { N =>
+      N.toString in {
+        runLog(emits(Vector.range(0,N)).flatMap(i => emit(i))) shouldBe Vector.range(0,N)
+      }
+    }}
+  }
 }

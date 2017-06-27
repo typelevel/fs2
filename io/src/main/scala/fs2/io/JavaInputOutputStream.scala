@@ -167,9 +167,10 @@ private[io] object JavaInputOutputStream {
         case Done(Some(err)) => s -> None
         case Ready(None) => s -> None
         case Ready(Some(bytes)) =>
-          if (bytes.size <= len) Ready(None) -> Some(bytes)
+          val cloned = Chunk.Bytes(bytes.toArray)
+          if (bytes.size <= len) Ready(None) -> Some(cloned)
           else {
-            val (out,rem) = bytes.strict.splitAt(len)
+            val (out,rem) = cloned.strict.splitAt(len)
             Ready(Some(rem.toBytes)) -> Some(out.toBytes)
           }
       }

@@ -113,7 +113,7 @@ private[file] object FileHandle {
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] = {
         val buf = ByteBuffer.allocate(numBytes)
         asyncCompletionHandler[F, Integer](f => chan.read(buf, offset, null, f)).map { len =>
-          if (len < 0) None else if (len == 0) Some(Chunk.empty) else Some(Chunk.bytes(buf.array.take(len)))
+          if (len < 0) None else if (len == 0) Some(Chunk.empty) else Some(Chunk.bytes(buf.array, 0, len))
         }
       }
 
@@ -159,7 +159,7 @@ private[file] object FileHandle {
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] = {
         val buf = ByteBuffer.allocate(numBytes)
         F.delay(chan.read(buf, offset)).map { len =>
-          if (len < 0) None else if (len == 0) Some(Chunk.empty) else Some(Chunk.bytes(buf.array.take(len)))
+          if (len < 0) None else if (len == 0) Some(Chunk.empty) else Some(Chunk.bytes(buf.array, 0, len))
         }
       }
 

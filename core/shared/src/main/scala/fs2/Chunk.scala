@@ -76,7 +76,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Booleans => c
-      case other => Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray)
+      case other => Chunk.Booleans(this.asInstanceOf[Chunk[Boolean]].toArray, 0, size)
     }
   }
 
@@ -89,7 +89,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Bytes => c
-      case other => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray)
+      case other => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
   }
 
@@ -102,7 +102,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Shorts => c
-      case other => Chunk.Shorts(this.asInstanceOf[Chunk[Short]].toArray)
+      case other => Chunk.Shorts(this.asInstanceOf[Chunk[Short]].toArray, 0, size)
     }
   }
 
@@ -115,7 +115,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Ints => c
-      case other => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray)
+      case other => Chunk.Ints(this.asInstanceOf[Chunk[Int]].toArray, 0, size)
     }
   }
 
@@ -128,7 +128,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Longs => c
-      case other => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray)
+      case other => Chunk.Longs(this.asInstanceOf[Chunk[Long]].toArray, 0, size)
     }
   }
 
@@ -141,7 +141,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Floats => c
-      case other => Chunk.Floats(this.asInstanceOf[Chunk[Float]].toArray)
+      case other => Chunk.Floats(this.asInstanceOf[Chunk[Float]].toArray, 0, size)
     }
   }
 
@@ -154,7 +154,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     val _ = ev // Convince scalac that ev is used
     this match {
       case c: Chunk.Doubles => c
-      case other => Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray)
+      case other => Chunk.Doubles(this.asInstanceOf[Chunk[Double]].toArray, 0, size)
     }
   }
 
@@ -254,100 +254,139 @@ object Chunk {
     case _ => boxed(values)
   }
 
-  /** Creates a chunk backed by an array. If `A` is a primitive type, elements will be boxed. */
-  def boxed[A](values: Array[A]): Chunk[A] = Boxed(values)
-  final case class Boxed[A](values: Array[A]) extends Chunk[A] {
-    def size = values.length
-    def apply(i: Int) = values(i)
-    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) = {
-      val (fst,snd) = values.splitAt(n)
-      boxed(fst) -> boxed(snd)
-    }
+  private def checkBounds(values: Array[_], offset: Int, length: Int): Unit = {
+    require(offset >= 0 && offset <= values.size)
+    require(length >= 0 && length <= values.size)
+    val end = offset + length
+    require(end >= 0 && end <= values.size)
   }
+
+  /** Creates a chunk backed by an array. If `A` is a primitive type, elements will be boxed. */
+  def boxed[A](values: Array[A]): Chunk[A] = Boxed(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array. If `A` is a primitive type, elements will be boxed. */
+  def boxed[A](values: Array[A], offset: Int, length: Int): Chunk[A] = Boxed(values, offset, length)
+
+  final case class Boxed[A](values: Array[A], offset: Int, length: Int) extends Chunk[A] {
+    checkBounds(values, offset, length)
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) =
+      Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
+  }
+  object Boxed { def apply[A](values: Array[A]): Boxed[A] = Boxed(values, 0, values.length) }
 
   /** Creates a chunk backed by an array of booleans. */
-  def booleans(values: Array[Boolean]): Chunk[Boolean] = Booleans(values)
-  final case class Booleans(values: Array[Boolean]) extends Chunk[Boolean] {
-    def size = values.length
-    def apply(i: Int) = values(i)
-    def at(i: Int) = values(i)
-    protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) = {
-      val (fst,snd) = values.splitAt(n)
-      booleans(fst) -> booleans(snd)
-    }
+  def booleans(values: Array[Boolean]): Chunk[Boolean] = Booleans(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of booleans. */
+  def booleans(values: Array[Boolean], offset: Int, length: Int): Chunk[Boolean] = Booleans(values, offset, length)
+
+  final case class Booleans(values: Array[Boolean], offset: Int, length: Int) extends Chunk[Boolean] {
+    checkBounds(values, offset, length)
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+    protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) =
+      Booleans(values, offset, n) -> Booleans(values, offset + n, length - n)
   }
+  object Booleans { def apply(values: Array[Boolean]): Booleans = Booleans(values, 0, values.length) }
 
   /** Creates a chunk backed by an array of bytes. */
-  def bytes(values: Array[Byte]): Chunk[Byte] = Bytes(values)
-  final case class Bytes(values: Array[Byte]) extends Chunk[Byte] {
-    def size = values.length
-    def apply(i: Int) = values(i)
-    def at(i: Int) = values(i)
-    protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
-      val (fst,snd) = values.splitAt(n)
-      bytes(fst) -> bytes(snd)
-    }
+  def bytes(values: Array[Byte]): Chunk[Byte] = Bytes(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of bytes. */
+  def bytes(values: Array[Byte], offset: Int, length: Int): Chunk[Byte] = Bytes(values, offset, length)
+
+  final case class Bytes(values: Array[Byte], offset: Int, length: Int) extends Chunk[Byte] {
+    checkBounds(values, offset, length)
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+    protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) =
+      Bytes(values, offset, n) -> Bytes(values, offset + n, length - n)
   }
+  object Bytes { def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length) }
 
   /** Creates a chunk backed by an array of shorts. */
-  def shorts(values: Array[Short]): Chunk[Short] = Shorts(values)
-  final case class Shorts(values: Array[Short]) extends Chunk[Short] {
-    def size = values.length
-    def apply(i: Int) = values(i)
-    def at(i: Int) = values(i)
-    protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) = {
-      val (fst,snd) = values.splitAt(n)
-      shorts(fst) -> shorts(snd)
-    }
+  def shorts(values: Array[Short]): Chunk[Short] = Shorts(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of shorts. */
+  def shorts(values: Array[Short], offset: Int, length: Int): Chunk[Short] = Shorts(values, offset, length)
+
+  final case class Shorts(values: Array[Short], offset: Int, length: Int) extends Chunk[Short] {
+    checkBounds(values, offset, length)
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+    protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) =
+      Shorts(values, offset, n) -> Shorts(values, offset + n, length - n)
   }
+  object Shorts { def apply(values: Array[Short]): Shorts = Shorts(values, 0, values.length) }
 
   /** Creates a chunk backed by an array of ints. */
-  def ints(values: Array[Int]): Chunk[Int] = Ints(values)
-  final case class Ints(values: Array[Int]) extends Chunk[Int] {
-    def size = values.length
-    def apply(i: Int) = values(i)
-    def at(i: Int) = values(i)
-    protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) = {
-      val (fst,snd) = values.splitAt(n)
-      ints(fst) -> ints(snd)
-    }
+  def ints(values: Array[Int]): Chunk[Int] = Ints(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of ints. */
+  def ints(values: Array[Int], offset: Int, length: Int): Chunk[Int] = Ints(values, offset, length)
+
+  final case class Ints(values: Array[Int], offset: Int, length: Int) extends Chunk[Int] {
+    checkBounds(values, offset, length)
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+    protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) =
+      Ints(values, offset, n) -> Ints(values, offset + n, length - n)
   }
+  object Ints { def apply(values: Array[Int]): Ints = Ints(values, 0, values.length) }
 
   /** Creates a chunk backed by an array of longs. */
-  def longs(values: Array[Long]): Chunk[Long] = Longs(values)
-  final case class Longs(values: Array[Long]) extends Chunk[Long] {
-    def size = values.length
-    def apply(i: Int) = values(i)
-    def at(i: Int) = values(i)
-    protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) = {
-      val (fst,snd) = values.splitAt(n)
-      longs(fst) -> longs(snd)
-    }
+  def longs(values: Array[Long]): Chunk[Long] = Longs(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of ints. */
+  def longs(values: Array[Long], offset: Int, length: Int): Chunk[Long] = Longs(values, offset, length)
+
+  final case class Longs(values: Array[Long], offset: Int, length: Int) extends Chunk[Long] {
+    checkBounds(values, offset, length)
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+    protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) =
+      Longs(values, offset, n) -> Longs(values, offset + n, length - n)
   }
+  object Longs { def apply(values: Array[Long]): Longs = Longs(values, 0, values.length) }
 
   /** Creates a chunk backed by an array of floats. */
-  def floats(values: Array[Float]): Chunk[Float] = Floats(values)
-  final case class Floats(values: Array[Float]) extends Chunk[Float] {
-    def size = values.length
-    def apply(i: Int) = values(i)
-    def at(i: Int) = values(i)
-    protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) = {
-      val (fst,snd) = values.splitAt(n)
-      floats(fst) -> floats(snd)
-    }
+  def floats(values: Array[Float]): Chunk[Float] = Floats(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of floats. */
+  def floats(values: Array[Float], offset: Int, length: Int): Chunk[Float] = Floats(values, offset, length)
+
+  final case class Floats(values: Array[Float], offset: Int, length: Int) extends Chunk[Float] {
+    checkBounds(values, offset, length)
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+    protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) =
+      Floats(values, offset, n) -> Floats(values, offset + n, length - n)
   }
+  object Floats { def apply(values: Array[Float]): Floats = Floats(values, 0, values.length) }
 
   /** Creates a chunk backed by an array of doubles. */
-  def doubles(values: Array[Double]): Chunk[Double] = Doubles(values)
-  final case class Doubles(values: Array[Double]) extends Chunk[Double] {
-    def size = values.length
-    def apply(i: Int) = values(i)
-    def at(i: Int) = values(i)
-    protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) = {
-      val (fst,snd) = values.splitAt(n)
-      doubles(fst) -> doubles(snd)
-    }
+  def doubles(values: Array[Double]): Chunk[Double] = Doubles(values, 0, values.length)
+
+  /** Creates a chunk backed by a subsequence of an array of doubles. */
+  def doubles(values: Array[Double], offset: Int, length: Int): Chunk[Double] = Doubles(values, offset, length)
+
+  final case class Doubles(values: Array[Double], offset: Int, length: Int) extends Chunk[Double] {
+    checkBounds(values, offset, length)
+    def size = length
+    def apply(i: Int) = values(offset + i)
+    def at(i: Int) = values(offset + i)
+    protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) =
+      Doubles(values, offset, n) -> Doubles(values, offset + n, length - n)
   }
+  object Doubles { def apply(values: Array[Double]): Doubles = Doubles(values, 0, values.length) }
 
   /**
    * Defines operations on a `Chunk` that return a `Chunk` and that might otherwise conflict
@@ -367,5 +406,11 @@ object Chunk {
       else if (n >= self.size) (self, Chunk.empty)
       else self.splitAtChunk_(n)
     }
+
+    /** Takes the first `n` elements of this chunk. */
+    def take(n: Int): Chunk[O] = splitAt(n)._1
+
+    /** drops the first `n` elements of this chunk. */
+    def drop(n: Int): Chunk[O] = splitAt(n)._2
   }
 }
