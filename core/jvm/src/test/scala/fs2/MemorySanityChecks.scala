@@ -106,3 +106,16 @@ object StepperSanityTest extends App {
   val incr: Pipe[Pure,Int,Int] = _.map(_ + 1)
   Stream.constant(0).covary[IO].through(id(incr)).run.unsafeRunSync
 }
+
+object StepperSanityTest2 extends App {
+  import Pipe.Stepper
+  def go[I,O](i: I)(s: Stepper[I,O]): Unit = {
+    s.step match {
+      case Stepper.Done => ()
+      case Stepper.Fail(err) => throw err
+      case Stepper.Emits(s,n) => go(i)(n)
+      case Stepper.Await(r) => go(i)(r(Some(Segment(i))))
+    }
+  }
+  go(0)(Pipe.stepper(_.map(_ + 1)))
+}
