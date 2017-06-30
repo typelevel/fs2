@@ -386,6 +386,24 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
+   * Returns a segment that maps each output using the supplied function and concatenates all the results.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3).mapConcat(o => Chunk.seq(List.range(0, o))).toVector
+   * res0: Vector[Int] = Vector(0, 0, 1, 0, 1, 2)
+   * }}}
+   */
+  def mapConcat[O2](f: O => Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      self.stage(depth.increment, defer,
+        o => emits(f(o)),
+        os => { var i = 0; while (i < os.size) { emits(f(os(i))); i += 1; } },
+        done).map(_.mapRemainder(_ mapConcat f))
+    }
+    override def toString = s"($self).mapConcat(<f1>)"
+  }
+
+  /**
    * Maps the supplied function over the result of this segment.
    *
    * @example {{{
