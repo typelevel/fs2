@@ -242,6 +242,19 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
+   * Flattens a `Segment[Chunk[O2],R]` in to a `Segment[O2,R]`.
+   *
+   * @example {{{
+   * scala> Segment(Chunk(1, 2), Chunk(3, 4, 5)).flattenChunks.toVector
+   * res0: Vector[Int] = Vector(1, 2, 3, 4, 5)
+   * }}}
+   */
+  def flattenChunks[O2](implicit ev: O <:< Chunk[O2]): Segment[O2,R] = {
+    val _ = ev
+    this.asInstanceOf[Segment[Chunk[O2],R]].mapConcat(identity)
+  }
+
+  /**
    * Folds the output elements of this segment and returns the result as the result of the returned segment.
    *
    * @example {{{
