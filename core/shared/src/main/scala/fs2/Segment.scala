@@ -242,6 +242,55 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
+   * List-like `flatMap`, which applies `f` to each element of the segment and concatenates
+   * the results.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).flatMap(i => Segment.seq(List.fill(i)(i))).toVector
+   * res0: Vector[Int] = Vector(1, 2, 2, 3, 3, 3)
+   * }}}
+   */
+  def flatMap[O2,R2 >: R](f: O => Segment[O2,R2]): Segment[O2,R2] = new Segment[O2,R2] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      val q = new collection.mutable.Queue[Segment[O2,R2]]()
+      var inner: Step[O2,R2] = null
+      var outerResult: Option[R2] = None
+      var lastInnerResult: Option[R2] = None
+      val outerStep = self.stage(depth.increment, defer,
+        o => q += f(o),
+        os => os.foreach { o => q += f(o) },
+        r => outerResult = Some(r))
+
+      outerStep.map { outer =>
+        step(inner.remainder ++ outer.remainder.flatMap(f)) {
+          if (inner eq null) {
+            if (q.nonEmpty) {
+              inner = q.dequeue.stage(depth.increment, defer, emit, emits, r => { inner = null; lastInnerResult = Some(r) }).value
+            } else {
+              if (outerResult.isDefined) done(lastInnerResult.orElse(outerResult).get)
+              else outer.step()
+            }
+          } else inner.step()
+        }
+      }
+    }
+    override def toString = s"($self).flatMap(<f1>)"
+  }
+
+  /**
+   * Flattens a `Segment[Segment[O2,R],R]` in to a `Segment[O2,R]`.
+   *
+   * @example {{{
+   * scala> Segment(Segment(1, 2), Segment(3, 4, 5)).flatten.toVector
+   * res0: Vector[Int] = Vector(1, 2, 3, 4, 5)
+   * }}}
+   */
+  def flatten[O2,R2 >: R](implicit ev: O <:< Segment[O2,R2]): Segment[O2,R2] = {
+    val _ = ev
+    this.asInstanceOf[Segment[Segment[O2,R2],R2]].flatMap(identity)
+  }
+
+  /**
    * Flattens a `Segment[Chunk[O2],R]` in to a `Segment[O2,R]`.
    *
    * @example {{{
@@ -270,7 +319,7 @@ abstract class Segment[+O,+R] { self =>
         os => { var i = 0; while (i < os.size) { b = f(b, os(i)); i += 1 } },
         r => done(b)).map(_.mapRemainder(_.fold(b)(f)))
     }
-    override def toString = s"($self).fold($z)($f)"
+    override def toString = s"($self).fold($z)(<f1>)"
   }
 
   private[fs2] final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = {
@@ -1110,7 +1159,7 @@ object Segment {
       var ind = 0
       val staged = s.map(_.stage(depth.increment, defer, emit, emits, r => { res = Some(r); ind += 1 }).value)
       var i = staged
-      def rem = catenated(i.map(_.remainder), res.get) //if (i.isEmpty) pure(res.get) else Catenated(i.map(_.remainder))
+      def rem = catenated(i.map(_.remainder), res.get)
       step(rem) {
         i.uncons match {
           case None => done(res.get)
