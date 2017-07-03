@@ -262,7 +262,13 @@ abstract class Segment[+O,+R] { self =>
         r => outerResult = Some(r))
 
       outerStep.map { outer =>
-        step(inner.remainder.mapResult(r2 => outerResult.get -> Some(r2)) ++ outer.remainder.flatMap(f)) {
+        step {
+          val queued = q.foldLeft(inner.remainder)(_ ++ _)
+          outerResult match {
+            case Some(r) => queued.mapResult(r2 => r -> Some(r2))
+            case None => outer.remainder.flatMap(f).prepend(queued)
+          }
+        } {
           if (inner eq null) {
             if (q.nonEmpty) {
               inner = q.dequeue.stage(depth.increment, defer, emit, emits, r => { inner = null; lastInnerResult = Some(r) }).value
