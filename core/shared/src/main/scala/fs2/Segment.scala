@@ -250,11 +250,11 @@ abstract class Segment[+O,+R] { self =>
    * res0: Vector[Int] = Vector(1, 2, 2, 3, 3, 3)
    * }}}
    */
-  def flatMap[O2,R2 >: R](f: O => Segment[O2,R2]): Segment[O2,R2] = new Segment[O2,R2] {
+  def flatMap[O2,R2](f: O => Segment[O2,R2]): Segment[O2,(R,Option[R2])] = new Segment[O2,(R,Option[R2])] {
     def stage0 = (depth, defer, emit, emits, done) => evalDefer {
       val q = new collection.mutable.Queue[Segment[O2,R2]]()
       var inner: Step[O2,R2] = null
-      var outerResult: Option[R2] = None
+      var outerResult: Option[R] = None
       var lastInnerResult: Option[R2] = None
       val outerStep = self.stage(depth.increment, defer,
         o => q += f(o),
@@ -262,12 +262,12 @@ abstract class Segment[+O,+R] { self =>
         r => outerResult = Some(r))
 
       outerStep.map { outer =>
-        step(inner.remainder ++ outer.remainder.flatMap(f)) {
+        step(inner.remainder.mapResult(r2 => outerResult.get -> Some(r2)) ++ outer.remainder.flatMap(f)) {
           if (inner eq null) {
             if (q.nonEmpty) {
               inner = q.dequeue.stage(depth.increment, defer, emit, emits, r => { inner = null; lastInnerResult = Some(r) }).value
             } else {
-              if (outerResult.isDefined) done(lastInnerResult.orElse(outerResult).get)
+              if (outerResult.isDefined) done(outerResult.get -> lastInnerResult)
               else outer.step()
             }
           } else inner.step()
@@ -287,7 +287,7 @@ abstract class Segment[+O,+R] { self =>
    */
   def flatten[O2,R2 >: R](implicit ev: O <:< Segment[O2,R2]): Segment[O2,R2] = {
     val _ = ev
-    this.asInstanceOf[Segment[Segment[O2,R2],R2]].flatMap(identity)
+    this.asInstanceOf[Segment[Segment[O2,R2],R2]].flatMap(identity).mapResult(_._1)
   }
 
   /**
