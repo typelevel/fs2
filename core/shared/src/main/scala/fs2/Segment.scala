@@ -62,6 +62,9 @@ abstract class Segment[+O,+R] { self =>
       }
     }
 
+  /** Alias for `mapResult( => r2)`. */
+  final def asResult[R2](r2: R2): Segment[O,R2] = mapResult(_ => r2)
+
   /**
    * Filters and maps simultaneously.
    *
@@ -242,6 +245,126 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
+   * List-like `flatMap`, which applies `f` to each element of the segment and concatenates
+   * the results.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).flatMap(i => Segment.seq(List.fill(i)(i))).toVector
+   * res0: Vector[Int] = Vector(1, 2, 2, 3, 3, 3)
+   * }}}
+   */
+  final def flatMap[O2,R2](f: O => Segment[O2,R2]): Segment[O2,(R,Option[R2])] = new Segment[O2,(R,Option[R2])] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      val q = new collection.mutable.Queue[O]()
+      var inner: Step[O2,R2] = null
+      var outerResult: Option[R] = None
+      var lastInnerResult: Option[R2] = None
+      val outerStep = self.stage(depth.increment, defer,
+        o => q += o,
+        os => os.foreach { o => q += o },
+        r => outerResult = Some(r))
+
+      outerStep.map { outer =>
+        step {
+          outerResult match {
+            case Some(r) =>
+              if (q.isEmpty) inner.remainder.mapResult(r2 => r -> Some(r2))
+              else Chunk.indexedSeq(q.toIndexedSeq).asResult(r).flatMap(f).prepend(inner.remainder)
+            case None => outer.remainder.prepend(Chunk.indexedSeq(q.toIndexedSeq)).flatMap(f).prepend(inner.remainder)
+          }
+        } {
+          if (inner eq null) {
+            if (q.nonEmpty) {
+              inner = f(q.dequeue).stage(depth.increment, defer, emit, emits, r => { inner = null; lastInnerResult = Some(r) }).value
+            } else {
+              if (outerResult.isDefined) done(outerResult.get -> lastInnerResult)
+              else outer.step()
+            }
+          } else inner.step()
+        }
+      }
+    }
+    override def toString = s"($self).flatMap(<f1>)"
+  }
+
+  /**
+   * Stateful version of `flatMap`, where the function depends on a state value initialized to
+   * `init` and updated upon each output.
+   *
+   * The final state is returned in the result, paired with the result of the source stream.
+   *
+   * @example {{{
+   * scala> val src = Segment("Hello", "World", "\n", "From", "Mars").flatMapAccumulate(0)((l,s) =>
+   *      |   if (s == "\n") Segment.empty.asResult(0) else Segment((l,s)).asResult(l + s.length))
+   * scala> src.toVector
+   * res0: Vector[(Int,String)] = Vector((0,Hello), (5,World), (0,From), (4,Mars))
+   * scala> src.void.run
+   * res1: (Unit,Int) = ((),8)
+   * }}}
+   */
+  final def flatMapAccumulate[S,O2](init: S)(f: (S,O) => Segment[O2,S]): Segment[O2,(R,S)] = new Segment[O2,(R,S)] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      var state: S = init
+      val q = new collection.mutable.Queue[O]()
+      var inner: Step[O2,S] = null
+      var outerResult: Option[R] = None
+      val outerStep = self.stage(depth.increment, defer,
+        o => q += o,
+        os => os.foreach(o => q += o),
+        r => outerResult = Some(r))
+
+      outerStep.map { outer =>
+        step {
+          outerResult match {
+            case Some(r) =>
+              if (q.isEmpty) inner.remainder.mapResult(s => r -> s)
+              else Chunk.seq(q.toIndexedSeq).asResult(r).flatMapAccumulate(state)(f).prepend(inner.remainder)
+            case None => outer.remainder.prepend(Chunk.seq(q.toIndexedSeq)).flatMapAccumulate(state)(f).prepend(inner.remainder)
+          }
+        } {
+          if (inner eq null) {
+            if (q.nonEmpty) {
+              val next = q.dequeue
+              val innerSegment = f(state, next)
+              inner = innerSegment.stage(depth.increment, defer, emit, emits, r => { inner = null; state = r }).value
+            } else {
+              if (outerResult.isDefined) done(outerResult.get -> state)
+              else outer.step()
+            }
+          } else inner.step()
+        }
+      }
+    }
+    override def toString = s"($self).flatMapAccumulate($init)()<f2>)"
+  }
+
+  /**
+   * Flattens a `Segment[Segment[O2,R],R]` in to a `Segment[O2,R]`.
+   *
+   * @example {{{
+   * scala> Segment(Segment(1, 2), Segment(3, 4, 5)).flatten.toVector
+   * res0: Vector[Int] = Vector(1, 2, 3, 4, 5)
+   * }}}
+   */
+  final def flatten[O2,R2 >: R](implicit ev: O <:< Segment[O2,R2]): Segment[O2,R2] = {
+    val _ = ev
+    this.asInstanceOf[Segment[Segment[O2,R2],R2]].flatMap(identity).mapResult(_._1)
+  }
+
+  /**
+   * Flattens a `Segment[Chunk[O2],R]` in to a `Segment[O2,R]`.
+   *
+   * @example {{{
+   * scala> Segment(Chunk(1, 2), Chunk(3, 4, 5)).flattenChunks.toVector
+   * res0: Vector[Int] = Vector(1, 2, 3, 4, 5)
+   * }}}
+   */
+  final def flattenChunks[O2](implicit ev: O <:< Chunk[O2]): Segment[O2,R] = {
+    val _ = ev
+    this.asInstanceOf[Segment[Chunk[O2],R]].mapConcat(identity)
+  }
+
+  /**
    * Folds the output elements of this segment and returns the result as the result of the returned segment.
    *
    * @example {{{
@@ -257,7 +380,7 @@ abstract class Segment[+O,+R] { self =>
         os => { var i = 0; while (i < os.size) { b = f(b, os(i)); i += 1 } },
         r => done(b)).map(_.mapRemainder(_.fold(b)(f)))
     }
-    override def toString = s"($self).fold($z)($f)"
+    override def toString = s"($self).fold($z)(<f1>)"
   }
 
   private[fs2] final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = {
@@ -383,6 +506,24 @@ abstract class Segment[+O,+R] { self =>
       ).map(_.mapRemainder(_.mapAccumulate(s)(f)))
     }
     override def toString = s"($self).mapAccumulate($init)(<f1>)"
+  }
+
+  /**
+   * Returns a segment that maps each output using the supplied function and concatenates all the results.
+   *
+   * @example {{{
+   * scala> Segment(1,2,3).mapConcat(o => Chunk.seq(List.range(0, o))).toVector
+   * res0: Vector[Int] = Vector(0, 0, 1, 0, 1, 2)
+   * }}}
+   */
+  final def mapConcat[O2](f: O => Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
+    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      self.stage(depth.increment, defer,
+        o => emits(f(o)),
+        os => { var i = 0; while (i < os.size) { emits(f(os(i))); i += 1; } },
+        done).map(_.mapRemainder(_ mapConcat f))
+    }
+    override def toString = s"($self).mapConcat(<f1>)"
   }
 
   /**
@@ -1079,7 +1220,7 @@ object Segment {
       var ind = 0
       val staged = s.map(_.stage(depth.increment, defer, emit, emits, r => { res = Some(r); ind += 1 }).value)
       var i = staged
-      def rem = catenated(i.map(_.remainder), res.get) //if (i.isEmpty) pure(res.get) else Catenated(i.map(_.remainder))
+      def rem = catenated(i.map(_.remainder), res.get)
       step(rem) {
         i.uncons match {
           case None => done(res.get)

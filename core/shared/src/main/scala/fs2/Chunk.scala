@@ -175,6 +175,9 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   /** Strict version of `splitAt` - `n` is guaranteed to be within bounds so implementations do not need to do bounds checking. */
   protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
 
+  /** Strict version of `map`. */
+  protected def mapStrict[O2](f: O => O2): Chunk[O2]
+
   /** Provides access to strict equivalent methods defined lazily on `Segment`. */
   final def strict: Chunk.StrictOps[O] = new Chunk.StrictOps(this)
 
@@ -194,6 +197,7 @@ object Chunk {
     override def foreachChunk(f: Chunk[Nothing] => Unit): Unit = ()
     override def toVector: Vector[Nothing] = Vector.empty
     protected def splitAtChunk_(n: Int): (Chunk[Nothing], Chunk[Nothing]) = sys.error("impossible")
+    protected def mapStrict[O2](f: Nothing => O2): Chunk[O2] = empty
     override def toString = "empty"
   }
 
@@ -201,49 +205,52 @@ object Chunk {
   def empty[A]: Chunk[A] = empty_
 
   /** Creates a chunk consisting of a single element. */
-  def singleton[A](a: A): Chunk[A] = new Chunk[A] {
+  def singleton[O](o: O): Chunk[O] = new Chunk[O] {
     def size = 1
-    def apply(i: Int) = { if (i == 0) a else throw new IndexOutOfBoundsException() }
-    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) = sys.error("impossible")
+    def apply(i: Int) = { if (i == 0) o else throw new IndexOutOfBoundsException() }
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = sys.error("impossible")
+    protected def mapStrict[O2](f: O => O2): Chunk[O2] = singleton(f(o))
   }
 
   /** Creates a chunk backed by a vector. */
-  def vector[A](a: Vector[A]): Chunk[A] = {
-    if (a.isEmpty) empty
-    else new Chunk[A] {
-      def size = a.length
-      def apply(i: Int) = a(i)
-      override def toVector = a
-      protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) = {
-        val (fst,snd) = a.splitAt(n)
+  def vector[O](v: Vector[O]): Chunk[O] = {
+    if (v.isEmpty) empty
+    else new Chunk[O] {
+      def size = v.length
+      def apply(i: Int) = v(i)
+      override def toVector = v
+      protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
+        val (fst,snd) = v.splitAt(n)
         vector(fst) -> vector(snd)
       }
+      protected def mapStrict[O2](f: O => O2): Chunk[O2] = vector(v.map(f))
     }
   }
 
   /** Creates a chunk backed by an `IndexedSeq`. */
-  def indexedSeq[A](a: IndexedSeq[A]): Chunk[A] = {
-    if (a.isEmpty) empty
-    else new Chunk[A] {
-      def size = a.length
-      def apply(i: Int) = a(i)
-      override def toVector = a.toVector
-      protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) = {
-        val (fst,snd) = a.splitAt(n)
+  def indexedSeq[O](s: IndexedSeq[O]): Chunk[O] = {
+    if (s.isEmpty) empty
+    else new Chunk[O] {
+      def size = s.length
+      def apply(i: Int) = s(i)
+      override def toVector = s.toVector
+      protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
+        val (fst,snd) = s.splitAt(n)
         indexedSeq(fst) -> indexedSeq(snd)
       }
+      protected def mapStrict[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
     }
   }
 
   /** Creates a chunk backed by a `Seq`. */
-  def seq[A](a: Seq[A]): Chunk[A] =
-    if (a.isEmpty) empty else indexedSeq(a.toIndexedSeq)
+  def seq[O](s: Seq[O]): Chunk[O] =
+    if (s.isEmpty) empty else indexedSeq(s.toIndexedSeq)
 
   /** Creates a chunk with the specified values. */
-  def apply[A](as: A*): Chunk[A] = seq(as)
+  def apply[O](os: O*): Chunk[O] = seq(os)
 
   /** Creates a chunk backed by an array. */
-  def array[A](values: Array[A]): Chunk[A] = values match {
+  def array[O](values: Array[O]): Chunk[O] = values match {
     case a: Array[Boolean] => booleans(a)
     case a: Array[Byte] => bytes(a)
     case a: Array[Short] => shorts(a)
@@ -261,20 +268,21 @@ object Chunk {
     require(end >= 0 && end <= values.size)
   }
 
-  /** Creates a chunk backed by an array. If `A` is a primitive type, elements will be boxed. */
-  def boxed[A](values: Array[A]): Chunk[A] = Boxed(values, 0, values.length)
+  /** Creates a chunk backed by an array. If `O` is a primitive type, elements will be boxed. */
+  def boxed[O](values: Array[O]): Chunk[O] = Boxed(values, 0, values.length)
 
   /** Creates a chunk backed by a subsequence of an array. If `A` is a primitive type, elements will be boxed. */
-  def boxed[A](values: Array[A], offset: Int, length: Int): Chunk[A] = Boxed(values, offset, length)
+  def boxed[O](values: Array[O], offset: Int, length: Int): Chunk[O] = Boxed(values, offset, length)
 
-  final case class Boxed[A](values: Array[A], offset: Int, length: Int) extends Chunk[A] {
+  final case class Boxed[O](values: Array[O], offset: Int, length: Int) extends Chunk[O] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
-    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) =
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
+    protected def mapStrict[O2](f: O => O2): Chunk[O2] = seq(values.map(f))
   }
-  object Boxed { def apply[A](values: Array[A]): Boxed[A] = Boxed(values, 0, values.length) }
+  object Boxed { def apply[O](values: Array[O]): Boxed[O] = Boxed(values, 0, values.length) }
 
   /** Creates a chunk backed by an array of booleans. */
   def booleans(values: Array[Boolean]): Chunk[Boolean] = Booleans(values, 0, values.length)
@@ -289,6 +297,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) =
       Booleans(values, offset, n) -> Booleans(values, offset + n, length - n)
+    protected def mapStrict[O2](f: Boolean => O2): Chunk[O2] = seq(values.map(f))
   }
   object Booleans { def apply(values: Array[Boolean]): Booleans = Booleans(values, 0, values.length) }
 
@@ -305,6 +314,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) =
       Bytes(values, offset, n) -> Bytes(values, offset + n, length - n)
+    protected def mapStrict[O2](f: Byte => O2): Chunk[O2] = seq(values.map(f))
   }
   object Bytes { def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length) }
 
@@ -321,6 +331,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) =
       Shorts(values, offset, n) -> Shorts(values, offset + n, length - n)
+    protected def mapStrict[O2](f: Short => O2): Chunk[O2] = seq(values.map(f))
   }
   object Shorts { def apply(values: Array[Short]): Shorts = Shorts(values, 0, values.length) }
 
@@ -337,6 +348,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) =
       Ints(values, offset, n) -> Ints(values, offset + n, length - n)
+    protected def mapStrict[O2](f: Int => O2): Chunk[O2] = seq(values.map(f))
   }
   object Ints { def apply(values: Array[Int]): Ints = Ints(values, 0, values.length) }
 
@@ -353,6 +365,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) =
       Longs(values, offset, n) -> Longs(values, offset + n, length - n)
+    protected def mapStrict[O2](f: Long => O2): Chunk[O2] = seq(values.map(f))
   }
   object Longs { def apply(values: Array[Long]): Longs = Longs(values, 0, values.length) }
 
@@ -369,6 +382,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) =
       Floats(values, offset, n) -> Floats(values, offset + n, length - n)
+    protected def mapStrict[O2](f: Float => O2): Chunk[O2] = seq(values.map(f))
   }
   object Floats { def apply(values: Array[Float]): Floats = Floats(values, 0, values.length) }
 
@@ -385,6 +399,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) =
       Doubles(values, offset, n) -> Doubles(values, offset + n, length - n)
+    protected def mapStrict[O2](f: Double => O2): Chunk[O2] = seq(values.map(f))
   }
   object Doubles { def apply(values: Array[Double]): Doubles = Doubles(values, 0, values.length) }
 
@@ -410,7 +425,10 @@ object Chunk {
     /** Takes the first `n` elements of this chunk. */
     def take(n: Int): Chunk[O] = splitAt(n)._1
 
-    /** drops the first `n` elements of this chunk. */
+    /** Drops the first `n` elements of this chunk. */
     def drop(n: Int): Chunk[O] = splitAt(n)._2
+
+    /** Strict version of `map`. */
+    def map[O2](f: O => O2): Chunk[O2] = self.mapStrict(f)
   }
 }

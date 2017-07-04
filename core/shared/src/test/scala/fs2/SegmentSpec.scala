@@ -71,6 +71,28 @@ class SegmentSpec extends Fs2Spec {
       }
     }
 
+    "flatMap" in {
+      forAll { (s: Segment[Int,Unit], f: Int => Segment[Int,Unit]) =>
+        s.flatMap(f).toVector shouldBe s.toVector.flatMap(i => f(i).toVector)
+      }
+    }
+
+    "flatMap (2)" in {
+      forAll { (s: Segment[Int,Unit], f: Int => Segment[Int,Unit], n: Int) =>
+        val s2 = s.flatMap(f).take(n).void.run.toOption
+        s2.foreach { _.toVector shouldBe s.toVector.flatMap(i => f(i).toVector).drop(n) }
+      }
+    }
+
+    "flatMapAccumulate" in {
+      forAll { (s: Segment[Int,Unit], init: Double, f: (Double,Int) => (Double,Int)) =>
+        val s1 = s.flatMapAccumulate(init) { (s,i) => val (s2,o) = f(s,i); Segment.singleton(o).asResult(s2) }
+        val s2 = s.mapAccumulate(init)(f)
+        s1.toVector shouldBe s2.toVector
+        s1.void.run shouldBe s2.void.run
+      }
+    }
+
     "fold" in {
       forAll { (s: Segment[Int,Unit], init: Int, f: (Int, Int) => Int) =>
         s.fold(init)(f).run shouldBe s.toChunk.toVector.foldLeft(init)(f)
