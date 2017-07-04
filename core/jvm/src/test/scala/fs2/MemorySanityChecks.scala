@@ -84,38 +84,3 @@ object ConstantEvalSanityTest extends App {
     }
   }) }.run.unsafeRunSync
 }
-
-object StepperSanityTest extends App {
-  import Pipe.Stepper
-  def id[I,O](p: Pipe[Pure,I,O]): Pipe[Pure,I,O] = {
-    def go(stepper: Stepper[I,O], s: Stream[Pure,I]): Pull[Pure,O,Unit] = {
-      stepper.step match {
-        case Stepper.Done => Pull.done
-        case Stepper.Fail(err) => Pull.fail(err)
-        case Stepper.Emits(segment, next) =>
-          Pull.output(segment) >> go(next, s)
-        case Stepper.Await(receive) =>
-          s.pull.uncons.flatMap {
-            case Some((hd,tl)) => go(receive(Some(hd)), tl)
-            case None => go(receive(None), Stream.empty)
-          }
-      }
-    }
-    s => go(Pipe.stepper(p), s).stream
-  }
-  val incr: Pipe[Pure,Int,Int] = _.map(_ + 1)
-  Stream.constant(0).covary[IO].through(id(incr)).run.unsafeRunSync
-}
-
-object StepperSanityTest2 extends App {
-  import Pipe.Stepper
-  def go[I,O](i: I)(s: Stepper[I,O]): Unit = {
-    s.step match {
-      case Stepper.Done => ()
-      case Stepper.Fail(err) => throw err
-      case Stepper.Emits(s,n) => go(i)(n)
-      case Stepper.Await(r) => go(i)(r(Some(Segment(i))))
-    }
-  }
-  go(0)(Pipe.stepper(_.map(_ + 1)))
-}

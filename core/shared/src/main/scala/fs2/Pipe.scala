@@ -6,70 +6,8 @@ import cats.effect.Effect
 import cats.implicits._
 
 import fs2.async.mutable.Queue
-import fs2.internal.FreeC
 
 object Pipe {
-
-  /** Creates a [[Stepper]], which allows incrementally stepping a pure pipe. */
-  def stepper[I,O](p: Pipe[Pure,I,O]): Stepper[I,O] = {
-    type ReadSegment[R] = Option[Segment[I,Unit]] => R
-    type Read[R] = FreeC[ReadSegment, R]
-    type UO = Option[(Segment[O,Unit],Stream[Read,O])]
-
-    def prompts: Stream[Read,I] =
-      Stream.eval[Read,Option[Segment[I,Unit]]](FreeC.Eval(identity)).flatMap {
-        case None => Stream.empty
-        case Some(segment) => Stream.segment(segment).append(prompts)
-      }
-
-    def stepf(s: Stream[Read,O]): Read[UO] =
-      s.pull.uncons.flatMap {
-        case None => Pull.pure(None)
-        case Some(s) => Pull.output1(s)
-      }.stream.runLast
-
-    def go(s: Read[UO]): Stepper[I,O] = Stepper.Suspend { () =>
-      s.viewL.get match {
-        case FreeC.Pure(None) => Stepper.Done
-        case FreeC.Pure(Some((hd,tl))) => Stepper.Emits(hd, go(stepf(tl)))
-        case FreeC.Fail(t) => Stepper.Fail(t)
-        case bound: FreeC.Bind[ReadSegment,_,UO] =>
-          val f = bound.asInstanceOf[FreeC.Bind[ReadSegment,Any,UO]].f
-          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment,UO]].fr
-          Stepper.Await(segment => go(FreeC.Bind[ReadSegment,UO,UO](FreeC.Pure(fx(segment)), f)))
-        case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
-      }
-    }
-    go(stepf(p.covary[Read].apply(prompts)))
-  }
-
-  /**
-   * Allows stepping of a pure pipe. Each invocation of [[step]] results in
-   * a value of the [[Stepper.Step]] algebra, indicating that the pipe is either done, it
-   * failed with an exception, it emitted a chunk of output, or it is awaiting input.
-   */
-  sealed abstract class Stepper[-A,+B] {
-    @annotation.tailrec
-    final def step: Stepper.Step[A,B] = this match {
-      case Stepper.Suspend(s) => s().step
-      case _ => this.asInstanceOf[Stepper.Step[A,B]]
-    }
-  }
-
-  object Stepper {
-    private[fs2] final case class Suspend[A,B](force: () => Stepper[A,B]) extends Stepper[A,B]
-
-    /** Algebra describing the result of stepping a pure pipe. */
-    sealed abstract class Step[-A,+B] extends Stepper[A,B]
-    /** Pipe indicated it is done. */
-    final case object Done extends Step[Any,Nothing]
-    /** Pipe failed with the specified exception. */
-    final case class Fail(err: Throwable) extends Step[Any,Nothing]
-    /** Pipe emitted a segment of elements. */
-    final case class Emits[A,B](segment: Segment[B,Unit], next: Stepper[A,B]) extends Step[A,B]
-    /** Pipe is awaiting input. */
-    final case class Await[A,B](receive: Option[Segment[A,Unit]] => Stepper[A,B]) extends Step[A,B]
-  }
 
   /** Queue based version of [[join]] that uses the specified queue. */
   def joinQueued[F[_],A,B](q: F[Queue[F,Option[Segment[A,Unit]]]])(s: Stream[F,Pipe[F,A,B]])(implicit F: Effect[F], ec: ExecutionContext): Pipe[F,A,B] = in => {
