@@ -62,6 +62,24 @@ abstract class Segment[+O,+R] { self =>
       }
     }
 
+  /**
+   * Like `++` but allows the result type of `s2` to differ from `R`.
+   */
+  final def append[O2>:O,R2](s2: Segment[O2,R2]): Segment[O2,(R,R2)] = new Segment[O2,(R,R2)] {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.always {
+      var res1: Option[R] = None
+      var res2: Option[R2] = None
+      val leftStaged = self.stage(depth.increment, defer, emit, emits, r => res1 = Some(r)).value
+      val rightStaged = s2.stage(depth.increment, defer, emit, emits, r => res2 = Some(r)).value
+      step(if (res1.isEmpty) leftStaged.remainder.append(s2) else rightStaged.remainder.mapResult(res1.get -> _)) {
+        if (res1.isEmpty) leftStaged.step()
+        else if (res2.isEmpty) rightStaged.step()
+        else done(res1.get -> res2.get)
+      }
+    }
+    override def toString = s"append($self, $s2)"
+  }
+
   /** Alias for `mapResult( => r2)`. */
   final def asResult[R2](r2: R2): Segment[O,R2] = mapResult(_ => r2)
 
