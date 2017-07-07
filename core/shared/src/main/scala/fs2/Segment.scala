@@ -639,7 +639,7 @@ abstract class Segment[+O,+R] { self =>
       var rem = n
       val emits: Chunk[O] => Unit = os => {
         if (result.isDefined) {
-          result = result.map(_.map(_.prepend(os)))
+          result = result.map(_.map(_ ++ os))
         } else if (os.nonEmpty) {
           if (os.size <= rem) {
             out = out :+ os
@@ -691,7 +691,7 @@ abstract class Segment[+O,+R] { self =>
     var ok = true
     val emits: Chunk[O] => Unit = os => {
       if (result.isDefined) {
-        result = result.map(_.map(_.prepend(os)))
+        result = result.map(_.map(_ ++ os))
       } else {
         var i = 0
         var j = 0

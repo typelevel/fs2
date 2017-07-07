@@ -156,6 +156,12 @@ class SegmentSpec extends Fs2Spec {
       }
     }
 
+    "splitWhile (3)" in {
+      val (prefix, suffix) = Segment.seq(List.range(1,10)).map(_ - 1).splitWhile(_ < 5).toOption.get
+      Segment.catenated(prefix).toVector shouldBe Vector(0, 1, 2, 3, 4)
+      suffix.toVector shouldBe Vector(5, 6, 7, 8)
+    }
+
     "sum" in {
       forAll { (s: Segment[Int,Unit]) =>
         s.sum.run shouldBe s.toVector.sum
