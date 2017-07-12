@@ -84,3 +84,8 @@ object ConstantEvalSanityTest extends App {
     }
   }) }.run.unsafeRunSync
 }
+
+object RecursiveFlatMapTest extends App {
+  def loop: Stream[IO,Unit] = Stream(()).covary[IO].flatMap(_ => loop)
+  loop.run.unsafeRunSync
+}

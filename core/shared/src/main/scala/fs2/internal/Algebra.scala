@@ -191,7 +191,7 @@ private[fs2] object Algebra {
           case algebra => // Eval, Acquire, Release, OpenScope, CloseScope, UnconsAsync
             FreeC.Bind[Algebra[F,X,?],Any,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](
               FreeC.Eval[Algebra[F,X,?],Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
-              f andThen (s => uncons[F,X,O](s, chunkSize))
+              (x: Either[Throwable,Any]) => uncons[F,X,O](f(x), chunkSize)
             )
         }
       case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)

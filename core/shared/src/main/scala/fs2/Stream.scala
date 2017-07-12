@@ -1607,9 +1607,21 @@ object Stream {
      */
     def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] =
       Stream.fromFreeC(Algebra.uncons(self.get[F,O]).flatMap {
-        case None => Stream.empty.covaryAll[F,O2].get
         case Some((hd, tl)) =>
-          (hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(_ ++ _)).get
+          // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
+          // check if hd has only a single element, and if so, process it directly instead of folding.
+          // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
+          val only: Option[O] = tl match {
+            case FreeC.Pure(_) =>
+              hd.uncons1.toOption.flatMap { case (o, tl) => tl.uncons1.fold(_ => Some(o), _ => None) }
+            case _ => None
+          }
+          only match {
+            case None =>
+              hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(_ ++ _).get
+            case Some(o) => f(o).get
+          }
+        case None => Stream.empty.covaryAll[F,O2].get
       })
 
     /** Alias for `flatMap(_ => s2)`. */
