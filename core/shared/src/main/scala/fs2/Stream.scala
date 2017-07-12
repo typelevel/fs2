@@ -5,7 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import cats.{ ~>, Applicative, Eq, Functor, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
-import cats.implicits._
+import cats.implicits.{ catsSyntaxEither => _, _ }
 
 import fs2.async.mutable.Queue
 import fs2.internal.{ Algebra, FreeC }
