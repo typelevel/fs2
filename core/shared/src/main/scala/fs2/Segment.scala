@@ -835,6 +835,27 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
+   * Converts this segment to an array, discarding the result.
+   *
+   * Caution: calling `toArray` on an infinite sequence will not terminate.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).cons(0).cons(-1).toArray
+   * res0: Array[Int] = Array(-1, 0, 1, 2, 3)
+   * }}}
+   */
+  def toArray[O2 >: O](implicit ct: reflect.ClassTag[O2]): Array[O2] = {
+    val bldr = collection.mutable.ArrayBuilder.make[O2]
+    foreachChunk { c =>
+      var i = 0
+      while (i < c.size) {
+        bldr += c(i)
+        i += 1
+      }
+    }
+    bldr.result
+  }
+  /**
    * Converts this segment to a catenable of output values, discarding the result.
    *
    * Caution: calling `toCatenable` on an infinite sequence will not terminate.
