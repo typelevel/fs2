@@ -148,7 +148,7 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
    * *Synchronously* sets a reference. The returned value completes evaluating after the reference has been successfully set.
    */
   def setSync(fa: F[A]): F[Unit] =
-    F.liftIO(F.runAsync(F.shift(ec) >> fa) { r => IO.async { cb => actor ! Msg.Set(r, () => cb(Right(()))) } })
+    F.flatMap(F.attempt(fa))(r => F.async(cb => actor ! Msg.Set(r, () => cb(Right(())))))
 
   /**
    * *Synchronously* sets a reference to a pure value.
