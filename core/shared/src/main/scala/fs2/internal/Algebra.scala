@@ -201,13 +201,13 @@ private[fs2] object Algebra {
   /** Left-fold the output of a stream. */
   def runFold[F2[_],O,B](stream: FreeC[Algebra[F2,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F2]): F2[B] =
     F.flatMap(F.delay(new Scope[F2]())) { scope =>
-      F.flatMap(F.attempt(runFold_(stream, init)(f, scope))) {
+      F.flatMap(F.attempt(runFold_(stream, None, init)(f, scope))) {
         case Left(t) => F.flatMap(scope.close(None))(_ => F.raiseError(t))
         case Right(b) => F.flatMap(scope.close(None))(_ => F.pure(b))
       }
     }
 
-  def runFold_[F2[_],O,B](stream: FreeC[Algebra[F2,O,?],Unit], init: B)(
+  def runFold_[F2[_],O,B](stream: FreeC[Algebra[F2,O,?],Unit], asyncSupport: Option[(Effect[F2],ExecutionContext)], init: B)(
       g: (B, O) => B, scope: Scope[F2])(implicit F: Sync[F2]): F2[B] = {
     type AlgebraF[x] = Algebra[F,O,x]
     type F[x] = F2[x] // scala bug, if don't put this here, inner function thinks `F` has kind *
@@ -272,18 +272,20 @@ private[fs2] object Algebra {
               val s = unconsAsync.s
               val effect = unconsAsync.effect
               val ec = unconsAsync.ec
+              val asyncSupport = Some(effect -> ec)
               type UO = Option[(Segment[_,Unit], FreeC[Algebra[F,Any,?],Unit])]
               val asyncPull: F[AsyncPull[F,UO]] = F.flatMap(async.ref[F,Either[Throwable,UO]](effect, ec)) { ref =>
                 F.map(async.fork {
                   F.flatMap(F.attempt(
                     runFold_(
                       uncons(s.asInstanceOf[FreeC[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
+                      asyncSupport,
                       None: UO
                     )((o,a) => a, scope)
                   )) { o => ref.setAsyncPure(o) }
                 }(effect, ec))(_ => AsyncPull.readAttemptRef(ref))
               }
-              F.flatMap(asyncPull) { ap => go(scope, Some(effect -> ec), acc, f(Right(ap)).viewL) }
+              F.flatMap(asyncPull) { ap => go(scope, asyncSupport, acc, f(Right(ap)).viewL) }
 
             case s: Algebra.Suspend[F2,O,_] =>
               F.suspend {
@@ -296,7 +298,7 @@ private[fs2] object Algebra {
         case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }
-    F.suspend { go(scope, None, init, uncons(stream).viewL) }
+    F.suspend { go(scope, asyncSupport, init, uncons(stream).viewL) }
   }
 
   def translate[F[_],G[_],O,R](fr: FreeC[Algebra[F,O,?],R], u: F ~> G, G: Option[Effect[G]]): FreeC[Algebra[G,O,?],R] = {
