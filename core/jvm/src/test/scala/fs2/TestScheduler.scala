@@ -1,5 +1,7 @@
 package fs2
 
+import cats.effect.IO
+
 object TestScheduler {
-  implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(2)
+  implicit val scheduler: Scheduler = Scheduler.allocate[IO](2).map(_._1).unsafeRunSync
 }

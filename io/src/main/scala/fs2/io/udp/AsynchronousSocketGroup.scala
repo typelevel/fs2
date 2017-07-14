@@ -265,7 +265,7 @@ object AsynchronousSocketGroup {
       }
     }
 
-    private val selectorThread: Thread = Scheduler.daemonThreadFactory("fs2-udp-selector").newThread(new Runnable {
+  private val selectorThread: Thread = internal.ThreadFactories.threadFactory("fs2-udp-selector", true).newThread(new Runnable {
       def run = {
         while (!closed && !Thread.currentThread.isInterrupted) {
           runPendingThunks
