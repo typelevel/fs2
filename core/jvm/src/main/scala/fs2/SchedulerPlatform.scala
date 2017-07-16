@@ -19,7 +19,7 @@ private[fs2] trait SchedulerPlatform {
    */
   def allocate[F[_]](corePoolSize: Int, daemon: Boolean = true, threadPrefix: String = "fs2-scheduler", exitJvmOnFatalError: Boolean = true)(implicit F: Sync[F]): F[(Scheduler,F[Unit])] =
     F.delay {
-      val executor = Executors.newScheduledThreadPool(corePoolSize, ThreadFactories.threadFactory(threadPrefix, daemon, exitJvmOnFatalError))
+      val executor = Executors.newScheduledThreadPool(corePoolSize, ThreadFactories.named(threadPrefix, daemon, exitJvmOnFatalError))
       fromScheduledExecutorService(executor) -> F.delay(executor.shutdown)
     }
 

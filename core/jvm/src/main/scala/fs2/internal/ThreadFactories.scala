@@ -6,9 +6,9 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import scala.concurrent.ExecutionContext
 
-private[fs2] object ThreadFactories {
-  /** A `ThreadFactory` which creates daemon threads, using the given name. */
-  def threadFactory(threadPrefix: String, daemon: Boolean, exitJvmOnFatalError: Boolean = true): ThreadFactory = new ThreadFactory {
+object ThreadFactories {
+  /** A `ThreadFactory` which names threads according to the pattern ${threadPrefix}-${count}. */
+  def named(threadPrefix: String, daemon: Boolean, exitJvmOnFatalError: Boolean = true): ThreadFactory = new ThreadFactory {
     val defaultThreadFactory = Executors.defaultThreadFactory()
     val idx = new AtomicInteger(0)
     def newThread(r: Runnable) = {
