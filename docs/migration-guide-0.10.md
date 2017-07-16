@@ -124,6 +124,8 @@ Scheduler[IO](corePoolSize = 1).flatMap { scheduler =>
 }
 ```
 
+The `debounce` pipe has moved to the `Scheduler` class also. As a result, FS2 no longer requires passing schedulers implicitly.
+
 ### Minor API Changes
 
 - The `fs2.concurrent` object has been removed in favor of calling the `join` method on a `Stream` (e.g., `s.join(n)`).

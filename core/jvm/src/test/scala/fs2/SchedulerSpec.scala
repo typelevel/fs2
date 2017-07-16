@@ -69,8 +69,7 @@ class SchedulerSpec extends AsyncFs2Spec {
     "debounce" in {
       val delay = 200 milliseconds
       val s1 = Stream(1, 2, 3) ++ scheduler.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ scheduler.sleep[IO](delay / 2) ++ Stream(6)
-      val t = s1.debounce(delay) runLog
-
+      val t = s1.through(scheduler.debounce(delay)).runLog
       t.unsafeToFuture() map { r =>
         assert(r == Vector(3, 6))
       }

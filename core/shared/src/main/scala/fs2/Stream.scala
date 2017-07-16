@@ -1,7 +1,6 @@
 package fs2
 
 import scala.concurrent.ExecutionContext
-import scala.concurrent.duration.FiniteDuration
 
 import cats.{ ~>, Applicative, Eq, Functor, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
@@ -1438,61 +1437,6 @@ object Stream {
      * }}}
      */
     def covaryAll[F2[x]>:F[x],O2>:O]: Stream[F2,O2] = self.asInstanceOf[Stream[F2,O2]]
-
-    /**
-     * Debounce the stream with a minimum period of `d` between each element.
-     *
-     * @example {{{
-     * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
-     * scala> val s2 = Scheduler[IO](1).flatMap { implicit scheduler =>
-     *      |   val s = Stream(1, 2, 3) ++ scheduler.sleep_[IO](400.millis) ++ Stream(4, 5) ++ scheduler.sleep_[IO](10.millis) ++ Stream(6)
-     *      |   s.debounce(200.milliseconds)
-     *      | }
-     * scala> s2.runLog.unsafeRunSync
-     * res0: Vector[Int] = Vector(3, 6)
-     * }}}
-     */
-    def debounce(d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext, scheduler: Scheduler): Stream[F, O] = {
-      def unconsLatest(s: Stream[F,O]): Pull[F,Nothing,Option[(O,Stream[F,O])]] =
-        s.pull.uncons.flatMap {
-          case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
-            case (_, Some(last)) => Pull.pure(Some(last -> tl))
-            case (_, None) => unconsLatest(tl)
-          }
-          case None => Pull.pure(None)
-        }
-
-      def go(o: O, s: Stream[F,O]): Pull[F,O,Unit] = {
-        scheduler.sleep[F](d).pull.unconsAsync.flatMap { l =>
-          s.pull.unconsAsync.flatMap { r =>
-            (l race r).pull.flatMap {
-              case Left(_) =>
-                Pull.output1(o) >> r.pull.flatMap {
-                  case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
-                    case (_, Some(last)) => go(last, tl)
-                    case (_, None) => unconsLatest(tl).flatMap {
-                      case Some((last, tl)) => go(last, tl)
-                      case None => Pull.done
-                    }
-                  }
-                  case None => Pull.done
-                }
-              case Right(r) => r match {
-                case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
-                  case (_, Some(last)) => go(last, tl)
-                  case (_, None) => go(o, tl)
-                }
-                case None => Pull.output1(o)
-              }
-            }
-          }
-        }
-      }
-      unconsLatest(self).flatMap {
-        case Some((last,tl)) => go(last, tl)
-        case None => Pull.done
-      }.stream
-    }
 
     /**
      * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
