@@ -25,7 +25,7 @@ abstract class Scheduler {
    * Discrete stream that every `d` emits elapsed duration
    * since the start time of stream consumption.
    *
-   * For example: `awakeEvery(5 seconds)` will
+   * For example: `awakeEvery[IO](5 seconds)` will
    * return (approximately) `5s, 10s, 15s`, and will lie dormant
    * between emitted values.
    *
@@ -40,7 +40,7 @@ abstract class Scheduler {
    * periods are able to be published internally, possibly due to
    * an execution context that is slow to evaluate.
    *
-   * @param d           FiniteDuration between emits of the resulting stream
+   * @param d FiniteDuration between emits of the resulting stream
    */
   def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, FiniteDuration] = {
     def metronomeAndSignal: F[(F[Unit],async.immutable.Signal[F,FiniteDuration])] = {
@@ -106,8 +106,11 @@ abstract class Scheduler {
     })
   }
 
-  /** Identical to `sleep(d).drain`. */
-  def sleep_[F[_]](d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Nothing] =
+  /**
+   * Alias for `sleep(d).drain`. Often used in conjunction with `++` (i.e., `sleep_(..) ++ s`) as a more
+   * performant version of `sleep(..) >> s`.
+   */
+  def sleep_[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Nothing] =
     sleep(d).drain
 
   /**
