@@ -3,20 +3,24 @@ package fs2.io.tcp
 import java.net.InetSocketAddress
 import java.net.InetAddress
 import java.nio.channels.AsynchronousChannelGroup
+import java.nio.channels.spi.AsynchronousChannelProvider
 
 import cats.effect.IO
 
 import fs2._
-import fs2.io.TestUtil._
-import fs2.Stream._
+import fs2.internal.ThreadFactories
 
-object SocketSpec {
-  implicit val tcpACG : AsynchronousChannelGroup = namedACG("tcp")
-}
+import org.scalatest.BeforeAndAfterAll
 
-class SocketSpec extends Fs2Spec {
+class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
-  import SocketSpec.tcpACG
+  implicit val tcpACG : AsynchronousChannelGroup = AsynchronousChannelProvider.provider().
+    openAsynchronousChannelGroup(8, ThreadFactories.named("fs2-ag-tcp", true))
+
+  override def afterAll() = {
+    tcpACG.shutdownNow
+    super.afterAll()
+  }
 
   "tcp" - {
 
