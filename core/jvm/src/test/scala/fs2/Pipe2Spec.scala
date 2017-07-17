@@ -179,10 +179,12 @@ class Pipe2Spec extends Fs2Spec {
     "pause" in {
       forAll { (s1: PureStream[Int]) =>
         val pausedStream = Stream.eval(async.signalOf[IO,Boolean](false)).flatMap { pause =>
-          scheduler.awakeEvery[IO](10.millis).scan(0)((acc, _) => acc + 1).evalMap { n =>
-            if (n % 2 != 0) pause.set(true) >> async.start((scheduler.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).run) >> IO.pure(n)
-            else IO.pure(n)
-          }.take(5)
+          mkScheduler.flatMap { scheduler =>
+            scheduler.awakeEvery[IO](10.millis).scan(0)((acc, _) => acc + 1).evalMap { n =>
+              if (n % 2 != 0) pause.set(true) >> async.start((scheduler.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).run) >> IO.pure(n)
+              else IO.pure(n)
+            }.take(5)
+          }
         }
         val out = runLog { pausedStream }
         assert(out == Vector(0, 1, 2, 3, 4))

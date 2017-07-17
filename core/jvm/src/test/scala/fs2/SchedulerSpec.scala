@@ -14,7 +14,7 @@ class SchedulerSpec extends AsyncFs2Spec {
       val blockingSleep = IO { Thread.sleep(delay.toMillis) }
 
       val emitAndSleep = Stream.emit(()) ++ Stream.eval(blockingSleep)
-      val t = emitAndSleep zip scheduler.duration[IO] drop 1 map { _._2 } runLog
+      val t = emitAndSleep zip mkScheduler.flatMap(_.duration[IO]) drop 1 map { _._2 } runLog
 
       (IO.shift >> t).unsafeToFuture collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
@@ -41,7 +41,7 @@ class SchedulerSpec extends AsyncFs2Spec {
       val delay = 20.millis
       val draws = (600.millis / delay) min 50 // don't take forever
 
-      val durationsSinceSpike = scheduler.every[IO](delay).
+      val durationsSinceSpike = mkScheduler.flatMap(_.every[IO](delay)).
         map(d => (d, System.nanoTime.nanos)).
         take(draws.toInt).
         through(durationSinceLastTrue)
@@ -58,8 +58,8 @@ class SchedulerSpec extends AsyncFs2Spec {
       val delay = 200 millis
 
       // force a sync up in duration, then measure how long sleep takes
-      val emitAndSleep = Stream.emit(()) ++ scheduler.sleep[IO](delay)
-      val t = emitAndSleep zip scheduler.duration[IO] drop 1 map { _._2 } runLog
+      val emitAndSleep = Stream.emit(()) ++ mkScheduler.flatMap(_.sleep[IO](delay))
+      val t = emitAndSleep zip mkScheduler.flatMap(_.duration[IO]) drop 1 map { _._2 } runLog
 
       (IO.shift >> t).unsafeToFuture() collect {
         case Vector(d) => assert(d >= delay)
@@ -68,8 +68,10 @@ class SchedulerSpec extends AsyncFs2Spec {
 
     "debounce" in {
       val delay = 200 milliseconds
-      val s1 = Stream(1, 2, 3) ++ scheduler.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ scheduler.sleep[IO](delay / 2) ++ Stream(6)
-      val t = s1.through(scheduler.debounce(delay)).runLog
+      val t = mkScheduler.flatMap { scheduler =>
+        val s1 = Stream(1, 2, 3) ++ scheduler.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ scheduler.sleep[IO](delay / 2) ++ Stream(6)
+        s1.through(scheduler.debounce(delay))
+      }.runLog
       t.unsafeToFuture() map { r =>
         assert(r == Vector(3, 6))
       }

@@ -9,7 +9,7 @@ class AwakeEverySpec extends AsyncFs2Spec {
   "time" - {
 
     "awakeEvery" in {
-      runLogF(scheduler.awakeEvery[IO](500.millis).map(_.toMillis).take(5)).map { r =>
+      runLogF(mkScheduler.flatMap(_.awakeEvery[IO](500.millis)).map(_.toMillis).take(5)).map { r =>
         r.toList.sliding(2).map { s => (s.head, s.tail.head) }.map { case (prev, next) => next - prev }.foreach { delta =>
           delta shouldBe 500L +- 100
         }
@@ -18,7 +18,7 @@ class AwakeEverySpec extends AsyncFs2Spec {
     }
 
     "awakeEvery liveness" in {
-      val s = scheduler.awakeEvery[IO](1.milli).evalMap { i => IO.async[Unit](cb => executionContext.execute(() => cb(Right(())))) }.take(200)
+      val s = mkScheduler.flatMap(_.awakeEvery[IO](1.milli)).evalMap { i => IO.async[Unit](cb => executionContext.execute(() => cb(Right(())))) }.take(200)
       runLogF { Stream(s, s, s, s, s).join(5) }.map { _ => Succeeded }
     }
   }

@@ -10,7 +10,7 @@ import java.util.concurrent.TimeoutException
 trait TestUtilPlatform {
 
   implicit val executionContext: ExecutionContext = ExecutionContext.Implicits.global
-  implicit val scheduler: Scheduler = TestScheduler.scheduler
+  val mkScheduler: Stream[IO,Scheduler] = Scheduler[IO](1)
 
   val timeout: FiniteDuration
 
