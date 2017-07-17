@@ -112,6 +112,20 @@ def loop[F[_],O,R](using: R => Pull[F,O,Option[R]]): R => Pull[F,O,Option[R]] =
 
 In order for `loop` to know when to stop looping, it needs some indication that `using` is done. In 0.9, this signal was baked in to `Pull` but in 0.10 the returned pull must explicitly signal completion via a `None`.
 
+#### Schedulers and Time
+
+The methods on `fs2.time` have been moved to the `fs2.Scheduler` class. The JVM version of the `Scheduler` object supports automatic allocation and shutdown of the thread pool via the `apply` method. The Scala.js version of the `Scheduler` object still provides a single `Scheduler.default` value.
+
+Example usage on the JVM looks like:
+
+```scala
+Scheduler[IO](corePoolSize = 1).flatMap { scheduler =>
+  scheduler.awakeEvery[IO](1.second).flatMap(_ => Stream(1, 2, 3))
+}
+```
+
+The `debounce` pipe has moved to the `Scheduler` class also. As a result, FS2 no longer requires passing schedulers implicitly.
+
 ### Minor API Changes
 
 - The `fs2.concurrent` object has been removed in favor of calling the `join` method on a `Stream` (e.g., `s.join(n)`).
