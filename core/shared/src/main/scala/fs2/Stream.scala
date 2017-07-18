@@ -1497,8 +1497,8 @@ object Stream {
      * @example {{{
      * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
      * scala> val s = Scheduler[IO](1).flatMap { scheduler =>
-     *      |   val s1 = scheduler.awakeEvery[IO](200.millis).scan(0)((acc, i) => acc + 1)
-     *      |   s1.either(scheduler.sleep_[IO](100.millis) ++ s1).take(10)
+     *      |   val s1 = scheduler.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
+     *      |   s1.either(scheduler.sleep_[IO](250.millis) ++ s1).take(10)
      *      | }
      * scala> s.take(10).runLog.unsafeRunSync
      * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
@@ -1725,8 +1725,8 @@ object Stream {
      * @example {{{
      * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
      * scala> val s = Scheduler[IO](1).flatMap { scheduler =>
-     *      |   val s1 = scheduler.awakeEvery[IO](400.millis).scan(0)((acc, i) => acc + 1)
-     *      |   s1.merge(scheduler.sleep_[IO](200.millis) ++ s1)
+     *      |   val s1 = scheduler.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
+     *      |   s1.merge(scheduler.sleep_[IO](250.millis) ++ s1)
      *      | }
      * scala> s.take(6).runLog.unsafeRunSync
      * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)

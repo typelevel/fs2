@@ -119,8 +119,8 @@ abstract class Scheduler {
    * @example {{{
    * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
    * scala> val s2 = Scheduler[IO](1).flatMap { scheduler =>
-   *      |   val s = Stream(1, 2, 3) ++ scheduler.sleep_[IO](400.millis) ++ Stream(4, 5) ++ scheduler.sleep_[IO](10.millis) ++ Stream(6)
-   *      |   s.through(scheduler.debounce(200.milliseconds))
+   *      |   val s = Stream(1, 2, 3) ++ scheduler.sleep_[IO](500.millis) ++ Stream(4, 5) ++ scheduler.sleep_[IO](10.millis) ++ Stream(6)
+   *      |   s.through(scheduler.debounce(100.milliseconds))
    *      | }
    * scala> s2.runLog.unsafeRunSync
    * res0: Vector[Int] = Vector(3, 6)
