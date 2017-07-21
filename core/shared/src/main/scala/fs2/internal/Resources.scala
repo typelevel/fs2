@@ -26,7 +26,7 @@ class Resources[T,R](tokens: Ref[(Status, LinkedMap[T, Either[List[() => Unit], 
   def snapshot: Set[T] = tokens.get._2.keys.toSet
   /** Return the list of tokens allocated since the given snapshot, newest first. */
   def newSince(snapshot: Set[T]): List[T] =
-    tokens.get._2.keys.toList.filter(k => !snapshot(k))
+    tokens.get._2.keys.foldLeft(List.empty[T])((ks, k) => if(snapshot(k)) ks else k :: ks)
   def release(ts: List[T]): Option[(List[R],List[T])] = tokens.access match {
     case ((open,m), update) =>
       if (ts.forall(t => m.get(t).forall(_.fold(_ => false, _ => true)))) {
