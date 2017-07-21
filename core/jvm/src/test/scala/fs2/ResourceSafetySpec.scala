@@ -184,6 +184,37 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       s.unsafeRun
       s.unsafeRun
     }
+	
+    "finalizers are run in LIFO order - explicit release" in {
+      var o: Vector[Int] = Vector.empty
+      runLog { (0 until 10).foldLeft(Stream.eval(Task.delay(0)))((acc,i) => Stream.bracket(Task.delay(i))(i => acc, i => Task.delay(o = o :+ i))) }
+      o shouldBe (0 until 10).toVector
+    }
+
+    "finalizers are run in LIFO order - scope closure" in {
+      var o: Vector[Int] = Vector.empty
+      runLog { (0 until 10).foldLeft(Stream.emit(1).map(_ => (throw Err): Int).covary[Task])((acc,i) => Stream.emit(i) ++ Stream.bracket(Task.delay(i))(i => acc, i => Task.delay(o = o :+ i))).attempt }
+      o shouldBe (0 until 10).toVector
+    }
+
+    "finalizers are run in LIFO order - scope closure (1)" in {
+      var o: Vector[Int] = Vector.empty
+      val str = (Stream.emit(()) ++ Stream.fail(Err))
+        .onFinalize(Task.delay{o = o :+ 1})
+        .onFinalize(Task.delay{o = o :+ 2})
+      runLog { str.attempt }
+       o shouldEqual Vector(1, 2)
+    }
+    
+    "finalizers are run in LIFO order - scope closure (2)" in {
+      var o: Vector[Int] = Vector.empty
+      val str = (Stream.emit(()) ++ Stream.fail(Err))
+        .onFinalize(Task.delay{o = o :+ 1})
+        .onFinalize(Task.delay{o = o :+ 2})
+      o = Vector.empty
+      runLog { str.take(1).attempt }
+      o shouldEqual Vector(1, 2)
+    }
 
     def bracket[A](c: AtomicLong)(s: Stream[Task,A]): Stream[Task,A] = Stream.suspend {
       Stream.bracket(Task.delay { c.decrementAndGet })(
