@@ -114,6 +114,54 @@ abstract class Scheduler {
     sleep(d).drain
 
   /**
+   * Retries `fa` on failure, returning a single element
+   * stream with the result of `fa` as soon as it succeeds.
+   *
+   * @param delay Duration of delay before the first retry
+   *
+   * @param nextDelay Applied to the previous delay to compute the
+   *                  next, e.g. to implement exponential backoff
+   *
+   * @param maxRetries Number of attempts before failing with the
+   *                   latest error, if `fa` never succeeds
+   *
+   * @param retriable Function to determine whether a failure is
+   *                  retriable or not, defaults to retry every
+   *                  `NonFatal`. A failed stream is immediately
+   *                  returned when a non-retriable failure is
+   *                  encountered
+   */
+  def retry[F[_], A](fa: F[A],
+                     delay: FiniteDuration,
+                     nextDelay: FiniteDuration => FiniteDuration,
+                     maxRetries: Int,
+                     retriable: Throwable => Boolean = internal.NonFatal.apply)(
+    implicit F: Async[F], ec: ExecutionContext): Stream[F, A] = {
+     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
+
+    attempts(fa, delays)
+      .take(maxRetries)
+      .takeThrough(_.fold(err => retriable(err), _ => false))
+      .last
+      .map(_.getOrElse(sys.error("[fs2] impossible: empty stream in retry")))
+      .rethrow
+  }
+
+  /**
+   * Retries `fa` on failure, returning a stream of attempts that can
+   * be manipulated with standard stream operations such as `take`,
+   * `collectFirst` and `interruptWhen`.
+   *
+   * Note: The resulting stream does *not* automatically halt at the
+   * first successful attempt. Also see `retry`.
+   */
+  def attempts[F[_], A](fa: F[A], delays: Stream[F, FiniteDuration])(
+    implicit F: Async[F], ec: ExecutionContext): Stream[F, Either[Throwable, A]] =
+    Stream.attemptEval(fa) ++ delays.flatMap { delay =>
+      sleep_(delay) ++ Stream.attemptEval(fa)
+    }
+
+  /**
    * Debounce the stream with a minimum period of `d` between each element.
    *
    * @example {{{
