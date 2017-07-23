@@ -114,8 +114,9 @@ abstract class Scheduler {
     sleep(d).drain
 
   /**
-   * Retries `fa` on failure, returning a single element
-   * stream with the result of `fa` as soon as it succeeds.
+   * Retries `s` on failure, returning a singleton stream with the
+   * result of `s` as soon as it succeeds. `s` must be a singleton
+   * stream.
    *
    * @param delay Duration of delay before the first retry
    *
@@ -131,7 +132,7 @@ abstract class Scheduler {
    *                  returned when a non-retriable failure is
    *                  encountered
    */
-  def retry[F[_], A](fa: F[A],
+  def retry[F[_], A](s: Stream[F, A],
                      delay: FiniteDuration,
                      nextDelay: FiniteDuration => FiniteDuration,
                      maxRetries: Int,
@@ -139,7 +140,7 @@ abstract class Scheduler {
     implicit F: Async[F], ec: ExecutionContext): Stream[F, A] = {
      val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
-    attempts(fa, delays)
+    attempts(s, delays)
       .take(maxRetries)
       .takeThrough(_.fold(err => retriable(err), _ => false))
       .last
@@ -148,18 +149,17 @@ abstract class Scheduler {
   }
 
   /**
-   * Retries `fa` on failure, returning a stream of attempts that can
+   * Retries `s` on failure, returning a stream of attempts that can
    * be manipulated with standard stream operations such as `take`,
-   * `collectFirst` and `interruptWhen`.
+   * `collectFirst` and `interruptWhen`. `s` must be a singleton
+   * stream.
    *
    * Note: The resulting stream does *not* automatically halt at the
    * first successful attempt. Also see `retry`.
    */
-  def attempts[F[_], A](fa: F[A], delays: Stream[F, FiniteDuration])(
+  def attempts[F[_], A](s: Stream[F, A], delays: Stream[F, FiniteDuration])(
     implicit F: Async[F], ec: ExecutionContext): Stream[F, Either[Throwable, A]] =
-    Stream.attemptEval(fa) ++ delays.flatMap { delay =>
-      sleep_(delay) ++ Stream.attemptEval(fa)
-    }
+    s.attempt ++ delays.flatMap(delay => sleep_(delay) ++ s.attempt)
 
   /**
    * Debounce the stream with a minimum period of `d` between each element.
