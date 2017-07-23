@@ -114,6 +114,54 @@ abstract class Scheduler {
     sleep(d).drain
 
   /**
+   * Retries `s` on failure, returning a singleton stream with the
+   * result of `s` as soon as it succeeds. `s` must be a singleton
+   * stream.
+   *
+   * @param delay Duration of delay before the first retry
+   *
+   * @param nextDelay Applied to the previous delay to compute the
+   *                  next, e.g. to implement exponential backoff
+   *
+   * @param maxRetries Number of attempts before failing with the
+   *                   latest error, if `fa` never succeeds
+   *
+   * @param retriable Function to determine whether a failure is
+   *                  retriable or not, defaults to retry every
+   *                  `NonFatal`. A failed stream is immediately
+   *                  returned when a non-retriable failure is
+   *                  encountered
+   */
+  def retry[F[_], A](s: Stream[F, A],
+                     delay: FiniteDuration,
+                     nextDelay: FiniteDuration => FiniteDuration,
+                     maxRetries: Int,
+                     retriable: Throwable => Boolean = internal.NonFatal.apply)(
+    implicit F: Async[F], ec: ExecutionContext): Stream[F, A] = {
+     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
+
+    attempts(s, delays)
+      .take(maxRetries)
+      .takeThrough(_.fold(err => retriable(err), _ => false))
+      .last
+      .map(_.getOrElse(sys.error("[fs2] impossible: empty stream in retry")))
+      .rethrow
+  }
+
+  /**
+   * Retries `s` on failure, returning a stream of attempts that can
+   * be manipulated with standard stream operations such as `take`,
+   * `collectFirst` and `interruptWhen`. `s` must be a singleton
+   * stream.
+   *
+   * Note: The resulting stream does *not* automatically halt at the
+   * first successful attempt. Also see `retry`.
+   */
+  def attempts[F[_], A](s: Stream[F, A], delays: Stream[F, FiniteDuration])(
+    implicit F: Async[F], ec: ExecutionContext): Stream[F, Either[Throwable, A]] =
+    s.attempt ++ delays.flatMap(delay => sleep_(delay) ++ s.attempt)
+
+  /**
    * Debounce the stream with a minimum period of `d` between each element.
    *
    * @example {{{
