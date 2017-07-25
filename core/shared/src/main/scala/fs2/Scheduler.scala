@@ -114,9 +114,8 @@ abstract class Scheduler {
     sleep(d).drain
 
   /**
-   * Retries `s` on failure, returning a singleton stream with the
-   * result of `s` as soon as it succeeds. `s` must be a singleton
-   * stream.
+   * Retries `fa` on failure, returning a singleton stream with the
+   * result of `fa` as soon as it succeeds.
    *
    * @param delay Duration of delay before the first retry
    *
@@ -132,7 +131,7 @@ abstract class Scheduler {
    *                  returned when a non-retriable failure is
    *                  encountered
    */
-  def retry[F[_], A](s: Stream[F, A],
+  def retry[F[_], A](fa: F[A],
                      delay: FiniteDuration,
                      nextDelay: FiniteDuration => FiniteDuration,
                      maxRetries: Int,
@@ -140,7 +139,7 @@ abstract class Scheduler {
     implicit F: Async[F], ec: ExecutionContext): Stream[F, A] = {
      val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
-    attempts(s, delays)
+    attempts(Stream.eval(fa), delays)
       .take(maxRetries)
       .takeThrough(_.fold(err => retriable(err), _ => false))
       .last
@@ -151,8 +150,7 @@ abstract class Scheduler {
   /**
    * Retries `s` on failure, returning a stream of attempts that can
    * be manipulated with standard stream operations such as `take`,
-   * `collectFirst` and `interruptWhen`. `s` must be a singleton
-   * stream.
+   * `collectFirst` and `interruptWhen`.
    *
    * Note: The resulting stream does *not* automatically halt at the
    * first successful attempt. Also see `retry`.
