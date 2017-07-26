@@ -260,7 +260,7 @@ Let's take this line by line.
 in => in.scanSegmentsOpt(n) { n =>
 ```
 
-Here we create an anonymous function from `Stream[F,O]` to `Stream[F,O]` and we call `scanSegmentsOpt` passing an initial state of `n` and a function which we define on subsequent lines. The function takes the current state as an argument, which we purposefully give the name `s`, shadowing the `n` defined in the signature of `tk`, to make sure we can't accidentally reference it.
+Here we create an anonymous function from `Stream[F,O]` to `Stream[F,O]` and we call `scanSegmentsOpt` passing an initial state of `n` and a function which we define on subsequent lines. The function takes the current state as an argument, which we purposefully give the name `n`, shadowing the `n` defined in the signature of `tk`, to make sure we can't accidentally reference it.
 
 ```scala
 if (n <= 0) None
