@@ -9,12 +9,11 @@ class RetrySpec extends AsyncFs2Spec {
   "retry" - {
     "immediate success" in {
       var attempts = 0
-      def job: Stream[IO, String] = Stream.eval {
-        IO {
-          attempts += 1
-          "success"
-        }
+      def job = IO {
+        attempts += 1
+        "success"
       }
+
 
       runLogF(mkScheduler.flatMap(_.retry(job, 1.seconds, x => x, 100))).map { r =>
         attempts shouldBe 1
@@ -24,12 +23,11 @@ class RetrySpec extends AsyncFs2Spec {
 
     "eventual success" in {
       var failures, successes = 0
-      def job: Stream[IO, String] = Stream.eval {
-        IO {
-          if (failures == 5) { successes += 1; "success" }
-          else { failures += 1; throw RetryErr() }
-        }
+      def job = IO {
+        if (failures == 5) { successes += 1; "success" }
+        else { failures += 1; throw RetryErr() }
       }
+
 
       runLogF(mkScheduler.flatMap(_.retry(job, 100.millis, x => x, 100))).map { r =>
         failures shouldBe 5
@@ -40,11 +38,9 @@ class RetrySpec extends AsyncFs2Spec {
 
     "maxRetries" in {
       var failures = 0
-      def job: Stream[IO, String] = Stream.eval {
-        IO {
-          failures += 1
-          throw RetryErr(failures.toString)
-        }
+      def job = IO {
+        failures += 1
+        throw RetryErr(failures.toString)
       }
 
       runLogF(mkScheduler.flatMap(_.retry(job, 100.millis, x => x, 5))).failed.map {
@@ -56,12 +52,10 @@ class RetrySpec extends AsyncFs2Spec {
 
     "fatal" in {
       var failures, successes = 0
-      def job: Stream[IO, String] = Stream.eval {
-        IO {
-          if (failures == 5) { failures += 1; throw RetryErr("fatal") }
-          else if (failures > 5) { successes += 1; "success" }
-          else { failures += 1; throw RetryErr()}
-        }
+      def job = IO {
+        if (failures == 5) { failures += 1; throw RetryErr("fatal") }
+        else if (failures > 5) { successes += 1; "success" }
+        else { failures += 1; throw RetryErr()}
       }
 
       val f: Throwable => Boolean = _.getMessage != "fatal"
@@ -83,13 +77,11 @@ class RetrySpec extends AsyncFs2Spec {
       def getDelays =
         delays.sliding(2).map(s => (s.tail.head - s.head) / unit ).toList
 
-      def job: Stream[IO, Unit] = {
+      def job = {
         val start = System.currentTimeMillis()
-        Stream.eval {
-          IO {
-            delays += System.currentTimeMillis() - start
-            throw new Exception
-          }
+        IO {
+          delays += System.currentTimeMillis() - start
+          throw new Exception
         }
       }
 
