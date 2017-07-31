@@ -36,9 +36,9 @@ lazy val commonSettings = Seq(
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
-    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
-    "org.scalatest" %%% "scalatest" % "3.0.0" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.13.4" % "test"
+    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4"),
+    "org.scalatest" %%% "scalatest" % "3.0.3" % "test",
+    "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
@@ -175,7 +175,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.3"
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.4"
   ).
   jsSettings(commonJsSettings: _*)
 
@@ -207,7 +207,7 @@ lazy val scodec = crossProject.in(file("scodec")).
   settings(commonSettings).
   settings(
     name := "fs2-scodec",
-    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.2"
+    libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.5"
   ).dependsOn(core % "compile->compile;test->test")
   .jsSettings(commonJsSettings: _*)
 
@@ -229,7 +229,7 @@ lazy val benchmarkMacros = project.in(file("benchmark-macros")).
   settings(noPublish).
   settings(
     name := "fs2-benchmark-macros",
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.patch),
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
     libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
 
@@ -241,7 +241,7 @@ lazy val benchmark = project.in(file("benchmark")).
     name := "fs2-benchmark"
   )
   .settings(
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.patch),
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
     libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
   .enablePlugins(JmhPlugin)
