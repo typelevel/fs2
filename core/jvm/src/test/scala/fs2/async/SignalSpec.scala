@@ -7,6 +7,7 @@ import cats.implicits._
 
 class SignalSpec extends Fs2Spec {
   "Signal" - {
+
     "get/set/discrete" in {
       forAll { (vs0: List[Long]) =>
         val vs = vs0 map { n => if (n == 0) 1 else n }
@@ -24,6 +25,7 @@ class SignalSpec extends Fs2Spec {
         })
       }
     }
+
     "discrete" in {
       // verifies that discrete always receives the most recent value, even when updates occur rapidly
       forAll { (v0: Long, vsTl: List[Long]) =>
@@ -36,6 +38,10 @@ class SignalSpec extends Fs2Spec {
         while (r.get != last) {}
         true
       }
+    }
+
+    "holdOption" in {
+      runLog(Stream.range(1,10).covary[IO].through(async.holdOption()))
     }
   }
 }

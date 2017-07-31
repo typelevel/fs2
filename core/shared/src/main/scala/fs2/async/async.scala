@@ -49,20 +49,30 @@ package object async {
     mutable.Queue.circularBuffer[F,A](maxSize)
 
   /**
-   * Converts a discrete stream to a signal. Returns a single-element stream.
+   * Pipe that holds the last seen element of the source stream.
    *
-   * Resulting signal is initially `initial`, and is updated with latest value
-   * produced by `source`. If `source` is empty, the resulting signal will always
-   * be `initial`.
+   * Backed by a discrete or continuous signal, specified via `discrete` parameter.
+   * By default, the returned stream terminates when the source stream terminates, configured
+   * via the `haltWhenSourceHalts` parameter.
    *
-   * @param source   discrete stream publishing values to this signal
+   * @param initial value emitted until first element from source stream is received
+   * @param discrete true if returned stream should be backed by a discrete signal or false if continuous
+   * @param haltWhenSourceHalts true if stream should be terminated when the source stream terminates
    */
-  def hold[F[_]:Effect,A](initial: A, source: Stream[F, A])(implicit ec: ExecutionContext): Stream[F, immutable.Signal[F,A]] =
-     immutable.Signal.hold(initial, source)
+  def hold[F[_]:Effect,A](initial: A, discrete: Boolean = true, haltWhenSourceHalts: Boolean = true)(implicit ec: ExecutionContext): Pipe[F,A,A] =
+    source => Stream.eval(signalOf[F,A](initial)).flatMap { signal =>
+      val in = source.evalMap(signal.set).drain
+      val out = if (discrete) signal.discrete else signal.continuous
+      if (haltWhenSourceHalts) in mergeHaltBoth out
+      else in mergeHaltR out
+    }
 
-  /** Defined as `[[hold]](None, source.map(Some(_)))` */
-  def holdOption[F[_]:Effect,A](source: Stream[F, A])(implicit ec: ExecutionContext): Stream[F, immutable.Signal[F,Option[A]]] =
-     immutable.Signal.holdOption(source)
+  /**
+   * Like `[[hold]]` but emits `None` until a value from the source has been set,
+   * and then emits the last set value wrapped in `Some`.
+   */
+  def holdOption[F[_]:Effect,A](discrete: Boolean = true)(implicit ec: ExecutionContext): Pipe[F,A,Option[A]] =
+    source => hold(Option.empty[A], discrete).apply(source.map(Some(_)))
 
   /**
     * Creates an asynchronous topic, which distributes each published `A` to
