@@ -41,7 +41,7 @@ class SignalSpec extends Fs2Spec {
     }
 
     "holdOption" in {
-      runLog(Stream.range(1,10).covary[IO].through(async.holdOption()))
+      runLog(async.holdOption(Stream.range(1,10).covary[IO]))
     }
   }
 }
