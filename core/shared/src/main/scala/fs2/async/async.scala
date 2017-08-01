@@ -49,7 +49,7 @@ package object async {
     mutable.Queue.circularBuffer[F,A](maxSize)
 
   /**
-   * Pipe that holds the last seen element of the source stream.
+   * Holds the last seen element of the source stream.
    *
    * Each element from the source stream is set to a signal.
    *
