@@ -1211,7 +1211,7 @@ object Segment {
   /** Creates a segment backed by an `IndexedSeq`. */
   def indexedSeq[O](os: IndexedSeq[O]): Segment[O,Unit] = Chunk.indexedSeq(os)
 
-  /** Creates a segment which outputs no values a returns `r`. */
+  /** Creates a segment which outputs no values and returns `r`. */
   def pure[O,R](r: R): Segment[O,R] = new Segment[O,R] {
     def stage0 = (_,_,_,_,done) => Eval.later(step(pure(r))(done(r)))
     override def toString = s"pure($r)"
