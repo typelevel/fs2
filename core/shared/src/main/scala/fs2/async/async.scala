@@ -57,12 +57,14 @@ package object async {
    *
    * @param source   discrete stream publishing values to this signal
    */
-  def hold[F[_]:Effect,A](initial: A, source: Stream[F, A])(implicit ec: ExecutionContext): Stream[F, immutable.Signal[F,A]] =
-     immutable.Signal.hold(initial, source)
+  def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,immutable.Signal[F,A]] =
+    Stream.eval(signalOf[F,A](initial)) flatMap { sig =>
+      Stream(sig).concurrently(source.flatMap(a => Stream.eval_(sig.set(a))))
+    }
 
   /** Defined as `[[hold]](None, source.map(Some(_)))` */
   def holdOption[F[_]:Effect,A](source: Stream[F, A])(implicit ec: ExecutionContext): Stream[F, immutable.Signal[F,Option[A]]] =
-     immutable.Signal.holdOption(source)
+    hold(None, source.map(Some(_)))
 
   /**
     * Creates an asynchronous topic, which distributes each published `A` to

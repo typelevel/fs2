@@ -1417,6 +1417,48 @@ object Stream {
     def changes(implicit eq: Eq[O]): Stream[F,O] = self.filterWithPrevious(eq.neqv)
 
     /**
+     * Runs the supplied stream in the background as elements from this stream are pulled.
+     *
+     * The resulting stream terminates upon termination of this stream. The background stream will
+     * be interrupted at that point. Early termination of `that` does not terminate the resulting stream.
+     *
+     * Any errors that occur in either `this` or `that` stream result in the overall stream terminating
+     * with an error.
+     *
+     * Upon finalization, the resulting stream will interrupt the background stream and wait for it to be
+     * finalized.
+     *
+     * This method is similar to `this mergeHaltL that.drain` but ensures the `that.drain` stream continues
+     * to be evaluated regardless of how `this` is evaluated or how the resulting stream is processed.
+     * This method is also similar to `Stream(this,that).join(2)` but terminates `that` upon termination of
+     * `this`.
+     *
+     * @example {{{
+     * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+     * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
+     * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9).runLast.unsafeRunSync
+     * res0: Option[Int] = Some(8)
+     * }}}
+     */
+    def concurrently[O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
+      Stream.eval(async.signalOf[F,Boolean](false)).flatMap { interruptLeft =>
+      Stream.eval(async.semaphore[F](0)).flatMap { leftFinalized =>
+      Stream.eval(async.signalOf[F,Boolean](false)).flatMap { interruptRight =>
+      Stream.eval(async.signalOf[F,Option[Throwable]](None)).flatMap { leftError =>
+        val left = that.
+          onError(e => Stream.eval_(leftError.set(Some(e)) >> interruptRight.set(true))).
+          interruptWhen(interruptLeft).
+          onFinalize(leftFinalized.increment)
+        val right = self.interruptWhen(interruptRight).onFinalize(
+          interruptLeft.set(true) >>
+          leftFinalized.decrement >>
+          leftError.get.flatMap(_.fold(F.pure(()))(F.raiseError))
+        )
+        Stream.eval_(async.fork(left.run)) ++ right
+      }}}}
+    }
+
+    /**
      * Lifts this stream to the specified effect type.
      *
      * @example {{{
@@ -1722,6 +1764,16 @@ object Stream {
      * eventually terminate with `fail(e)`, possibly after emitting some
      * elements of `s` first.
      *
+     * Note: `this` and `that` are each pulled for a segment. Upon receiving
+     * a segment, it is emitted downstream. Depending on how that element is
+     * processed, the remainder of `this` and `that` may never be consulted
+     * again (e.g., `a.merge(b) >> Stream.constant(0)`). A common case where
+     * this can be problematic is draining a stream that publishes to a
+     * concurrent data structure and merging it with a consumer from the same
+     * data structure. In such cases, use `consumer.concurrently(producer)`
+     * instead of `consumer.mergeHaltR(producer.drain)` to ensure the producer
+     * continues to run in paralle with consumer processing.
+     *
      * @example {{{
      * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
      * scala> val s = Scheduler[IO](1).flatMap { scheduler =>
@@ -1761,20 +1813,6 @@ object Stream {
         }
       }.stream
     }
-
-    /**
-     * Defined as `self.drain merge that`. Runs `self` and `that` concurrently, ignoring
-     * any output of `that`.
-     */
-    def mergeDrainL[O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
-      self.drain.merge(that)
-
-    /**
-     * Defined as `self merge that.drain`. Runs `self` and `that` concurrently, ignoring
-     * any output of `that`.
-     */
-    def mergeDrainR[O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
-      self.merge(that.drain)
 
     /** Like `merge`, but halts as soon as _either_ branch halts. */
     def mergeHaltBoth[O2>:O](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
@@ -2209,6 +2247,9 @@ object Stream {
 
     def append[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] = covary[F].append(s2)
 
+    def concurrently[F[_],O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
+      covary[F].concurrently(that)
+
     def covary[F[_]]: Stream[F,O] = self.asInstanceOf[Stream[F,O]]
 
     def covaryAll[F[_],O2>:O]: Stream[F,O2] = self.asInstanceOf[Stream[F,O2]]
@@ -2242,12 +2283,6 @@ object Stream {
 
     def merge[F[_],O2>:O](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].merge(that)
-
-    def mergeDrainL[F[_],O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
-      covary[F].mergeDrainL(that)
-
-    def mergeDrainR[F[_],O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
-      covary[F].mergeDrainR(that)
 
     def mergeHaltBoth[F[_],O2>:O](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].mergeHaltBoth(that)
