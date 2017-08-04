@@ -49,20 +49,38 @@ package object async {
     mutable.Queue.circularBuffer[F,A](maxSize)
 
   /**
-   * Converts a discrete stream to a signal. Returns a single-element stream.
+   * Holds the last seen element of the source stream.
    *
-   * Resulting signal is initially `initial`, and is updated with latest value
-   * produced by `source`. If `source` is empty, the resulting signal will always
-   * be `initial`.
+   * Each element from the source stream is set to a signal.
    *
-   * @param source   discrete stream publishing values to this signal
+   * The output stream is determined by applying `mk` with the signal. The default
+   * `mk` returns the discrete stream from the applied signal.
+   *
+   * By default, the returned stream terminates when the source stream terminates, configured
+   * via the `haltWhenSourceHalts` parameter.
+   *
+   * @param initial value emitted until first element from source stream is received
+   * @param mk function which generates the output stream from the source signal
+   * @param haltWhenSourceHalts true if stream should be terminated when the source stream terminates
    */
-  def hold[F[_]:Effect,A](initial: A, source: Stream[F, A])(implicit ec: ExecutionContext): Stream[F, immutable.Signal[F,A]] =
-     immutable.Signal.hold(initial, source)
+  def hold[F[_]:Effect,A](initial: A, source: Stream[F,A],
+    mk: immutable.Signal[F,A] => Stream[F,A] = (s: immutable.Signal[F,A]) => s.discrete,
+    haltWhenSourceHalts: Boolean = true)()(implicit ec: ExecutionContext): Stream[F,A] =
+      Stream.eval(signalOf[F,A](initial)).flatMap { signal =>
+        val in = source.evalMap(signal.set).drain
+        val out = mk(signal)
+        if (haltWhenSourceHalts) in mergeHaltBoth out
+        else in mergeHaltR out
+      }
 
-  /** Defined as `[[hold]](None, source.map(Some(_)))` */
-  def holdOption[F[_]:Effect,A](source: Stream[F, A])(implicit ec: ExecutionContext): Stream[F, immutable.Signal[F,Option[A]]] =
-     immutable.Signal.holdOption(source)
+  /**
+   * Like `[[hold]]` but emits `None` until a value from the source has been set,
+   * and then emits the last set value wrapped in `Some`.
+   */
+  def holdOption[F[_]:Effect,A](source: Stream[F,A],
+    mk: immutable.Signal[F,Option[A]] => Stream[F,Option[A]] = (s: immutable.Signal[F,Option[A]]) => s.discrete,
+    haltWhenSourceHalts: Boolean = true)(implicit ec: ExecutionContext): Stream[F,Option[A]] =
+      hold(Option.empty[A], source.map(Some(_)), mk, haltWhenSourceHalts)
 
   /**
     * Creates an asynchronous topic, which distributes each published `A` to
