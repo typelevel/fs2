@@ -1497,8 +1497,8 @@ object Stream {
      * @example {{{
      * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
      * scala> val s = Scheduler[IO](1).flatMap { scheduler =>
-     *      |   val s1 = scheduler.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
-     *      |   s1.either(scheduler.sleep_[IO](250.millis) ++ s1).take(10)
+     *      |   val s1 = scheduler.awakeEvery[IO](1000.millis).scan(0)((acc, i) => acc + 1)
+     *      |   s1.either(scheduler.sleep_[IO](500.millis) ++ s1).take(10)
      *      | }
      * scala> s.take(10).runLog.unsafeRunSync
      * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
