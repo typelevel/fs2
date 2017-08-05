@@ -140,7 +140,7 @@ The general idea behind this pattern is to create a producer and a consumer and 
 
 To address this use case, the `concurrently` method has been added. Instead of `consumer.mergeHaltR(producer.drain)`, use `consumer.concurrently(producer)`. See the ScalaDoc for `concurrently` for more details.
 
-Given that most usage of merging a drained stream with another stream should be replaced with `concurrently`, we've removed `mergeHaltL` and `mergeHaltR`.
+Given that most usage of merging a drained stream with another stream should be replaced with `concurrently`, we've removed `mergeDrainL` and `mergeDrainR`.
 
 ### Minor API Changes
 
