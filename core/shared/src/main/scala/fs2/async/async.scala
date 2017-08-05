@@ -59,7 +59,7 @@ package object async {
    */
   def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,immutable.Signal[F,A]] =
     Stream.eval(signalOf[F,A](initial)) flatMap { sig =>
-      Stream(sig).concurrently(source.flatMap(a => Stream.eval_(sig.set(a))))
+      Stream(sig).concurrently(source.evalMap(sig.set))
     }
 
   /** Defined as `[[hold]](None, source.map(Some(_)))` */

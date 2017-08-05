@@ -1772,7 +1772,7 @@ object Stream {
      * concurrent data structure and merging it with a consumer from the same
      * data structure. In such cases, use `consumer.concurrently(producer)`
      * instead of `consumer.mergeHaltR(producer.drain)` to ensure the producer
-     * continues to run in paralle with consumer processing.
+     * continues to run in parallel with consumer processing.
      *
      * @example {{{
      * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
