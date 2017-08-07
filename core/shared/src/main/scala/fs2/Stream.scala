@@ -1437,7 +1437,6 @@ object Stream {
      * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
      * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
      * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9).runLast.unsafeRunSync
-     * res0: Option[Int] = Some(8)
      * }}}
      */
     def concurrently[O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
