@@ -941,7 +941,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * res0: List[Int] = List(0, 1, 2, 3, 4)
    * }}}
    */
-  def takeWhile(p: O => Boolean): Stream[F,O] = this.pull.takeWhile(p).stream
+  def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Stream[F,O] = this.pull.takeWhile(p, takeFailure).stream
 
   /**
    * Converts the input to a stream of 1-element chunks.
@@ -1436,7 +1436,8 @@ object Stream {
      * @example {{{
      * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
      * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
-     * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9).runLast.unsafeRunSync
+     * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).runLast.unsafeRunSync
+     * res0: Option[Int] = Some(9)
      * }}}
      */
     def concurrently[O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
@@ -2608,7 +2609,7 @@ object Stream {
      * and returns the remaining `Stream`. If non-empty, the returned stream will have
      * a first element `i` for which `p(i)` is `false`.
      */
-    def takeWhile(p: O => Boolean): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, false)
+    def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Pull[F,O,Option[Stream[F,O]]] = takeWhile_(p, takeFailure)
 
     private def takeWhile_(p: O => Boolean, takeFailure: Boolean): Pull[F,O,Option[Stream[F,O]]] =
       uncons.flatMap {
