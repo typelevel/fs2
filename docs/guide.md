@@ -137,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.runLog // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$1661787297
+// ra: cats.effect.IO[Vector[Int]] = IO$220331897
 
 val rb = eff.run // purely for effects
-// rb: cats.effect.IO[Unit] = IO$2452238
+// rb: cats.effect.IO[Unit] = IO$1522849191
 
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$925145229
+// rc: cats.effect.IO[Int] = IO$764768299
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -274,10 +274,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$21832925
+acquire: cats.effect.IO[Unit] = IO$511857483
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$1599874435
+release: cats.effect.IO[Unit] = IO$1537831168
 ```
 
 ```scala
@@ -478,9 +478,9 @@ scala> Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsa
 res38: Vector[Int] = Vector(1, 2, 3, 4)
 ```
 
-The `merge` function is defined in [`pipe2`](../core/shared/src/main/scala/fs2/pipe2.scala), along with other useful concurrency functions, like `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
+The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
 
-The function `concurrent.join` runs multiple streams concurrently. The signature is:
+The function `join` runs multiple streams concurrently. The signature is:
 
 ```Scala
 // note Effect[F] bound and ExecutionContext parameter
@@ -489,25 +489,23 @@ import cats.effect.Effect
 def join[F[_]:Effect,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit ec: ExecutionContext): Stream[F,O]
 ```
 
-It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. `s merge s2` could be implemented as `concurrent.join(2)(Stream(s,s2))`.
+It flattens the nested stream, letting up to `maxOpen` inner streams run at a time.
 
 The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
-If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `h.awaitAsync` requests the next step of a `Handle h` asynchronously. Its signature is:
+If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `unconsAsync` requests the next step of a stream asynchronously. Its signature is:
 
 ```Scala
-type AsyncStep[F[_],A] = ScopedFuture[F, Pull[F, Nothing, (NonEmptyChunk[A], Handle[F,A])]]
-
-def awaitAsync[F2[_],A2>:A](implicit S: Sub1[F,F2], F2: Effect[F2], A2: RealSupertype[A,A2], ec: ExecutionContext): Pull[F2, Nothing, Handle.AsyncStep[F2,A2]]
+def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
 ```
 
-A `ScopedFuture[F,A]` represents a running computation that will eventually yield an `A`. A `ScopedFuture[F,A]` has a method `.pull`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. A `ScopedFuture[F,A]` may be raced with another `ScopedFuture` also---see the implementation of [`pipe2.merge`](../core/shared/src/main/scala/fs2/pipe2.scala).
+An `AsyncPull[F,A]` represents a running computation that will eventually yield an `A`. An `AsyncPull[F,A]` has a method `.pull`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. An `AsyncPull[F,A]` may be raced with another `AsyncPull` also --- see the implementation of `merge` for an example.
 
 In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [`async` package object](../core/shared/src/main/scala/fs2/async/async.scala) for more details. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
 ### Exercises
 
-Without looking at the implementations, try implementing `pipe2.interrupt` and `pipe2.mergeHaltBoth`:
+Without looking at the implementations, try implementing `interrupt` and `mergeHaltBoth`:
 
 ```Scala
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
@@ -556,7 +554,7 @@ import cats.effect.Sync
 // import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@135bb238
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@32c60973
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
@@ -613,12 +611,12 @@ val c = new Connection {
 
 // Effect extends both Sync and Async
 val T = cats.effect.Effect[IO]
-// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@135bb238
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@32c60973
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: cats.effect.IO[Array[Byte]] = IO$1017693571
+// bytes: cats.effect.IO[Array[Byte]] = IO$279427185
 
 Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
 // res42: Vector[List[Byte]] = Vector(List(0, 1, 2))

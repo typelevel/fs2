@@ -24,6 +24,7 @@ class SignalSpec extends Fs2Spec {
         })
       }
     }
+
     "discrete" in {
       // verifies that discrete always receives the most recent value, even when updates occur rapidly
       forAll { (v0: Long, vsTl: List[Long]) =>
@@ -36,6 +37,10 @@ class SignalSpec extends Fs2Spec {
         while (r.get != last) {}
         true
       }
+    }
+
+    "holdOption" in {
+      runLog(async.holdOption(Stream.range(1,10).covary[IO]))
     }
   }
 }

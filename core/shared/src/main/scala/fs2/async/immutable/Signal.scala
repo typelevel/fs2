@@ -6,7 +6,6 @@ import cats.Functor
 import cats.effect.Effect
 
 import fs2.Stream
-import fs2.async.immutable
 
 /** Data type of a single value of type `A` that can be read in the effect `F`. */
 abstract class Signal[F[_], A] { self =>
@@ -54,16 +53,4 @@ object Signal {
   implicit class BooleanSignalSyntax[F[_]] (val self: Signal[F,Boolean]) {
     def interrupt[A](s: Stream[F,A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,A] = s.interruptWhen(self)
   }
-
-  /**
-   * Constructs Stream from the input stream `source`. If `source` terminates
-   * then resulting stream terminates as well.
-   */
-  def holdOption[F[_],A](source:Stream[F,A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,immutable.Signal[F,Option[A]]] =
-    hold(None, source.map(Some(_)))
-
-  def hold[F[_],A](initial: A, source:Stream[F,A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,immutable.Signal[F,A]] =
-    Stream.eval(fs2.async.signalOf[F,A](initial)) flatMap { sig =>
-      Stream(sig).merge(source.flatMap(a => Stream.eval_(sig.set(a))))
-    }
 }

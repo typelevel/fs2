@@ -126,6 +126,22 @@ Scheduler[IO](corePoolSize = 1).flatMap { scheduler =>
 
 The `debounce` pipe has moved to the `Scheduler` class also. As a result, FS2 no longer requires passing schedulers implicitly.
 
+#### Merging
+
+The semantics of merging a drained stream with another stream have changed. In 0.9, it was generally safe to do things like:
+
+```scala
+Stream.eval(async.signalOf[IO]).flatMap { s =>
+  Stream.emit(s) mergeHaltR source.evalMap(s.set).drain
+}
+```
+
+The general idea behind this pattern is to create a producer and a consumer and then combine them in to a single stream by merging the consumer with the result of draining the producer. In 0.10, the two streams used in a merge are only consulted when downstream needs an element. As a result, it's possible to deadlock when using this pattern. This pattern relies on the fact that the drained producer will continue to execute in parallel with the consumer, *even when the downstream never asks for another element from the merged stream*.
+
+To address this use case, the `concurrently` method has been added. Instead of `consumer.mergeHaltR(producer.drain)`, use `consumer.concurrently(producer)`. See the ScalaDoc for `concurrently` for more details.
+
+Given that most usage of merging a drained stream with another stream should be replaced with `concurrently`, we've removed `mergeDrainL` and `mergeDrainR`.
+
 ### Minor API Changes
 
 - The `fs2.concurrent` object has been removed in favor of calling the `join` method on a `Stream` (e.g., `s.join(n)`).
