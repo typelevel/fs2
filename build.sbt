@@ -185,7 +185,15 @@ lazy val coreJVM = core.jvm.enablePlugins(SbtOsgi).
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", "*"),
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
+    osgiSettings,
+    libraryDependencies ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, minor)) if minor >= 13 =>
+          Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "0.1.2" % "test")
+        case _ =>
+          Seq()
+      }
+    }
   ).
   settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
