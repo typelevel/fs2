@@ -40,7 +40,9 @@ class HashSpec extends Fs2Spec {
     val s = Stream.range(1,100).covary[IO]
       .flatMap(i => Stream.chunk(Chunk.bytes(i.toString.getBytes)))
       .through(sha512)
-    val vec = Vector.fill(100)(s).par
+    // avoid using .par here because it's not source-compatible across 2.12/2.13
+    // (2.13 needs an import, but in 2.12 the same import won't compile)
+    val vec = collection.parallel.immutable.ParVector.fill(100)(s)
     val res = s.runLog.unsafeRunSync()
     vec.map(_.runLog.unsafeRunSync()) shouldBe Vector.fill(100)(res)
   }
