@@ -16,7 +16,7 @@ class WatcherSpec extends Fs2Spec {
       "for modifications" in {
         runLog {
           tempFile.flatMap { f =>
-            file.watch[IO](f, modifiers = modifiers).takeWhile(_ != Watcher.Event.Modified(f, 1), true).
+            file.watch[IO](f, modifiers = modifiers).evalMap(i => IO { println(i); i }).takeWhile(_ != Watcher.Event.Modified(f, 1), true).
               concurrently(smallDelay ++ modify(f))
           }
         }
@@ -24,7 +24,7 @@ class WatcherSpec extends Fs2Spec {
       "for deletions" in {
         runLog {
           tempFile.flatMap { f =>
-            file.watch[IO](f, modifiers = modifiers).takeWhile(_ != Watcher.Event.Deleted(f, 1), true).
+            file.watch[IO](f, modifiers = modifiers).evalMap(i => IO { println(i); i }).takeWhile(_ != Watcher.Event.Deleted(f, 1), true).
               concurrently(smallDelay ++ Stream.eval(IO(Files.delete(f))))
           }
         }
@@ -48,7 +48,7 @@ class WatcherSpec extends Fs2Spec {
           tempDirectory.flatMap { dir =>
             val a = dir resolve "a"
             val b = a resolve "b"
-            file.watch[IO](dir, modifiers = modifiers).takeWhile(_ != Watcher.Event.Created(b, 1)).
+            file.watch[IO](dir, modifiers = modifiers).evalMap(i => IO { println(i); i }).takeWhile(_ != Watcher.Event.Created(b, 1)).
               concurrently(smallDelay ++ Stream.eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))))
           }
         }
