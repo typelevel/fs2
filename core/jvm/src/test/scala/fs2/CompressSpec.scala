@@ -77,5 +77,13 @@ class CompressSpec extends Fs2Spec {
 
       compressed.length should be < uncompressed.length
     }
+
+    "inflate and deflate are pure" in forAll { (s: PureStream[Byte]) =>
+      // We need to deflate to inflate an arbitrary stream, so the two
+      // pipes are tested together.  We want to be sure the underlying
+      // {in,de}flater is not closed.
+      val p = s.get.through(compress.deflate()).through(compress.inflate())
+      p.toVector shouldBe p.toVector
+    }
   }
 }
