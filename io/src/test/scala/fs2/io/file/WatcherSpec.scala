@@ -38,7 +38,7 @@ class WatcherSpec extends Fs2Spec {
             val a = dir resolve "a"
             val b = a resolve "b"
             Stream.eval(IO(Files.createDirectory(a)) >> IO(Files.write(b, Array[Byte]()))) >>
-              (file.watch[IO](dir, modifiers = modifiers).takeWhile(_ != Watcher.Event.Modified(b, 1)).
+              (file.watch[IO](dir, modifiers = modifiers).evalMap(i => IO { println(i); i }).takeWhile(_ != Watcher.Event.Modified(b, 1)).
                 concurrently(smallDelay ++ modify(b)))
           }
         }
