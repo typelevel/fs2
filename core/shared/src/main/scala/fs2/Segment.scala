@@ -333,11 +333,12 @@ abstract class Segment[+O,+R] { self =>
 
       outerStep.map { outer =>
         step {
+          val innerRem = if (inner eq null) Segment.empty.asResult(state) else inner.remainder
           outerResult match {
             case Some(r) =>
-              if (q.isEmpty) inner.remainder.mapResult(s => r -> s)
-              else Chunk.seq(q.toIndexedSeq).asResult(r).flatMapAccumulate(state)(f).prepend(inner.remainder)
-            case None => outer.remainder.prepend(Chunk.seq(q.toIndexedSeq)).flatMapAccumulate(state)(f).prepend(inner.remainder)
+              if (q.isEmpty) innerRem.mapResult(s => r -> s)
+              else Chunk.seq(q.toIndexedSeq).asResult(r).flatMapAccumulate(state)(f).prepend(innerRem)
+            case None => outer.remainder.prepend(Chunk.seq(q.toIndexedSeq)).flatMapAccumulate(state)(f).prepend(innerRem)
           }
         } {
           if (inner eq null) {
@@ -353,7 +354,7 @@ abstract class Segment[+O,+R] { self =>
         }
       }
     }
-    override def toString = s"($self).flatMapAccumulate($init)()<f2>)"
+    override def toString = s"($self).flatMapAccumulate($init)(<f2>)"
   }
 
   /**
