@@ -14,7 +14,7 @@ class SchedulerSpec extends AsyncFs2Spec {
       val blockingSleep = IO { Thread.sleep(delay.toMillis) }
 
       val emitAndSleep = Stream.emit(()) ++ Stream.eval(blockingSleep)
-      val t = emitAndSleep zip mkScheduler.flatMap(_.duration[IO]) drop 1 map { _._2 } runLog
+      val t = emitAndSleep zip Stream.duration[IO] drop 1 map { _._2 } runLog
 
       (IO.shift >> t).unsafeToFuture collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
@@ -41,7 +41,7 @@ class SchedulerSpec extends AsyncFs2Spec {
       val delay = 20.millis
       val draws = (600.millis / delay) min 50 // don't take forever
 
-      val durationsSinceSpike = mkScheduler.flatMap(_.every[IO](delay)).
+      val durationsSinceSpike = Stream.every[IO](delay).
         map(d => (d, System.nanoTime.nanos)).
         take(draws.toInt).
         through(durationSinceLastTrue)
@@ -59,7 +59,7 @@ class SchedulerSpec extends AsyncFs2Spec {
 
       // force a sync up in duration, then measure how long sleep takes
       val emitAndSleep = Stream.emit(()) ++ mkScheduler.flatMap(_.sleep[IO](delay))
-      val t = emitAndSleep zip mkScheduler.flatMap(_.duration[IO]) drop 1 map { _._2 } runLog
+      val t = emitAndSleep zip Stream.duration[IO] drop 1 map { _._2 } runLog
 
       (IO.shift >> t).unsafeToFuture() collect {
         case Vector(d) => assert(d >= delay)

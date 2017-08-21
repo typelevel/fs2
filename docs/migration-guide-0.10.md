@@ -124,7 +124,13 @@ Scheduler[IO](corePoolSize = 1).flatMap { scheduler =>
 }
 ```
 
+`Scheduler` has some new low level operations like `fixedDelay` and `fixedRate` which should replace most uses of `awakeEvery`. `fixedRate` is equivalent to `awakeEvery` but returns `Unit` values in the stream instead of the elapsed duration.
+
+`Scheduler` also has some convenience operations like `scheduler.delay(s, 10.seconds)`.
+
 The `debounce` pipe has moved to the `Scheduler` class also. As a result, FS2 no longer requires passing schedulers implicitly.
+
+The `fs2.time.{ duration, every }` methods have been moved to `Stream` as they have no dependency on scheduling.
 
 #### Merging
 

@@ -3,10 +3,17 @@ package fs2
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
-import cats.effect.{ Async, Effect, IO, Sync }
+import cats.effect.{ Async, Effect, IO }
 import cats.implicits._
 
-/** Provides the ability to schedule evaluation of thunks in the future. */
+/**
+ * Provides operations based on the passage of cpu time.
+ *
+ * Operations on this class generally return streams. Some operations return
+ * effectful values instead. These operations are accessed via the `.effect`
+ * method, which returns a projection consisting of operations that return
+ * effects.
+ */
 abstract class Scheduler {
 
   /**
@@ -20,6 +27,14 @@ abstract class Scheduler {
    * Returns a thunk that when evaluated, cancels the execution.
    */
   protected def scheduleAtFixedRate(period: FiniteDuration)(thunk: => Unit): () => Unit
+
+  /**
+   * Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
+   */
+  def awakeDelay[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, FiniteDuration] =
+    Stream.eval(F.delay(System.nanoTime)).flatMap { start =>
+      fixedDelay[F](d) >> Stream.eval(F.delay((System.nanoTime - start).nanos))
+    }
 
   /**
    * Discrete stream that every `d` emits elapsed duration
@@ -42,12 +57,47 @@ abstract class Scheduler {
    *
    * @param d FiniteDuration between emits of the resulting stream
    */
-  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, FiniteDuration] = {
-    def metronomeAndSignal: F[(F[Unit],async.immutable.Signal[F,FiniteDuration])] = {
+  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, FiniteDuration] =
+    Stream.eval(F.delay(System.nanoTime)).flatMap { start =>
+      fixedRate[F](d) >> Stream.eval(F.delay((System.nanoTime - start).nanos))
+    }
+
+  /**
+   * Light weight alternative to [[fixedRate]] that sleeps for duration `d` before each pulled element.
+   *
+   * Behavior differs from `fixedRate` because the sleep between elements occurs after the next element
+   * is pulled whereas `fixedRate` awakes every `d` regardless of when next element is pulled.
+   * This difference can roughly be thought of as the difference between `scheduleWithFixedDelay` and
+   * `scheduleAtFixedRate` in `java.util.concurrent.Scheduler`.
+   *
+   * Alias for `sleep(d).repeat`.
+   */
+  def fixedDelay[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Unit] =
+    sleep(d).repeat
+
+  /**
+   * Discrete stream that emits a unit every `d`.
+   *
+   * This uses an implicit `Scheduler` for the timed events, and
+   * runs the consumer using the `F` `Effect[F]`, to allow for the
+   * stream to decide whether result shall be run on different
+   * thread pool.
+   *
+   * Note: for very small values of `d`, it is possible that multiple
+   * periods elapse and only some of those periods are visible in the
+   * stream. This occurs when the scheduler fires faster than
+   * periods are able to be published internally, possibly due to
+   * an execution context that is slow to evaluate.
+   *
+   * See [[fixedDelay]] for an alternative that sleeps `d` between elements.
+   *
+   * @param d FiniteDuration between emits of the resulting stream
+   */
+  def fixedRate[F[_]](d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Unit] = {
+    def metronomeAndSignal: F[(F[Unit],async.immutable.Signal[F,Unit])] = {
       for {
-        signal <- async.signalOf[F, FiniteDuration](FiniteDuration(0, NANOSECONDS))
+        signal <- async.signalOf[F, Unit](())
         result <- F.delay {
-          val t0 = FiniteDuration(System.nanoTime, NANOSECONDS)
           // Note: we guard execution here because slow systems that are biased towards
           // scheduler threads can result in run away submission to the execution context.
           // This has happened with Scala.js, where the scheduler is backed by setInterval
@@ -55,8 +105,7 @@ abstract class Scheduler {
           val running = new java.util.concurrent.atomic.AtomicBoolean(false)
           val cancel = scheduleAtFixedRate(d) {
             if (running.compareAndSet(false, true)) {
-              val d = FiniteDuration(System.nanoTime, NANOSECONDS) - t0
-              async.unsafeRunAsync(signal.set(d))(_ => IO(running.set(false)))
+              async.unsafeRunAsync(signal.set(()))(_ => IO(running.set(false)))
             }
           }
           (F.delay(cancel()), signal)
@@ -67,44 +116,23 @@ abstract class Scheduler {
   }
 
   /**
-   * A continuous stream of the elapsed time, computed using `System.nanoTime`.
-   * Note that the actual granularity of these elapsed times depends on the OS, for instance
-   * the OS may only update the current time every ten milliseconds or so.
+   * Returns a stream that when run, sleeps for duration `d` and then pulls from `s`.
+   *
+   * Alias for `sleep_[F](d) ++ s`.
    */
-  def duration[F[_]](implicit F: Sync[F]): Stream[F, FiniteDuration] =
-    Stream.eval(F.delay(System.nanoTime)).flatMap { t0 =>
-      Stream.repeatEval(F.delay(FiniteDuration(System.nanoTime - t0, NANOSECONDS)))
-    }
+  def delay[F[_],O](s: Stream[F,O], d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F,O] =
+    sleep_[F](d) ++ s
 
-  /**
-   * A continuous stream which is true after `d, 2d, 3d...` elapsed duration,
-   * and false otherwise.
-   * If you'd like a 'discrete' stream that will actually block until `d` has elapsed,
-   * use `awakeEvery` instead.
-   */
-  def every[F[_]](d: FiniteDuration): Stream[F, Boolean] = {
-    def go(lastSpikeNanos: Long): Stream[F, Boolean] =
-      Stream.suspend {
-        val now = System.nanoTime
-        if ((now - lastSpikeNanos) > d.toNanos) Stream.emit(true) ++ go(now)
-        else Stream.emit(false) ++ go(lastSpikeNanos)
-      }
-    go(0)
-  }
+  /** Provides scheduler methods that return effectful values instead of streams. */
+  def effect: Scheduler.EffectOps = new Scheduler.EffectOps(this)
 
   /**
    * A single-element `Stream` that waits for the duration `d` before emitting unit. This uses the implicit
    * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues
    * on the supplied execution context.
    */
-  def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Unit] = {
-    Stream.eval(F.async[Unit] { cb =>
-      scheduleOnce(d) {
-        ec.execute(() => cb(Right(())))
-      }
-      ()
-    })
-  }
+  def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Unit] =
+    Stream.eval(effect.sleep(d))
 
   /**
    * Alias for `sleep(d).drain`. Often used in conjunction with `++` (i.e., `sleep_(..) ++ s`) as a more
@@ -224,4 +252,27 @@ abstract class Scheduler {
   }
 }
 
-object Scheduler extends SchedulerPlatform
+object Scheduler extends SchedulerPlatform {
+  /** Operations on a scheduler which return effectful values. */
+  final class EffectOps private[Scheduler] (private val scheduler: Scheduler) extends AnyVal {
+
+    /**
+     * Returns an action that when run, sleeps for duration `d` and then evaluates `fa`.
+     *
+     * Note: prefer `scheduler.delay(Stream.eval(fa), d)` over `Stream.eval(scheduler.effect.delay(fa, d))`
+     * as the former can be interrupted while delaying.
+     */
+    def delay[F[_],A](fa: F[A], d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): F[A] =
+      sleep(d) >> fa
+
+    /** Returns an action that when run, sleeps for duration `d` and then completes with `Unit`. */
+    def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): F[Unit] = {
+      F.async[Unit] { cb =>
+        scheduler.scheduleOnce(d) {
+          ec.execute(() => cb(Right(())))
+        }
+        ()
+      }
+    }
+  }
+}

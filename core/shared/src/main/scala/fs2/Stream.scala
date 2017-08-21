@@ -1,6 +1,7 @@
 package fs2
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
 
 import cats.{ ~>, Applicative, Eq, Functor, Monoid, Semigroup }
 import cats.effect.{ Effect, IO, Sync }
@@ -1154,6 +1155,16 @@ object Stream {
     segment(Segment.constant(o).take(segmentSize).voidResult).repeat
 
   /**
+   * A continuous stream of the elapsed time, computed using `System.nanoTime`.
+   * Note that the actual granularity of these elapsed times depends on the OS, for instance
+   * the OS may only update the current time every ten milliseconds or so.
+   */
+  def duration[F[_]](implicit F: Sync[F]): Stream[F, FiniteDuration] =
+    Stream.eval(F.delay(System.nanoTime)).flatMap { t0 =>
+      Stream.repeatEval(F.delay((System.nanoTime - t0).nanos))
+    }
+
+  /**
    * Creates a singleton pure stream that emits the supplied value.
    *
    * @example {{{
@@ -1211,6 +1222,22 @@ object Stream {
    * }}}
    */
   def eval_[F[_],A](fa: F[A]): Stream[F,Nothing] = eval(fa).drain
+
+  /**
+   * A continuous stream which is true after `d, 2d, 3d...` elapsed duration,
+   * and false otherwise.
+   * If you'd like a 'discrete' stream that will actually block until `d` has elapsed,
+   * use `awakeEvery` on [[Scheduler]] instead.
+   */
+  def every[F[_]](d: FiniteDuration): Stream[F, Boolean] = {
+    def go(lastSpikeNanos: Long): Stream[F, Boolean] =
+      Stream.suspend {
+        val now = System.nanoTime
+        if ((now - lastSpikeNanos) > d.toNanos) Stream.emit(true) ++ go(now)
+        else Stream.emit(false) ++ go(lastSpikeNanos)
+      }
+    go(0)
+  }
 
   /**
    * Creates a stream that, when run, fails with the supplied exception.
