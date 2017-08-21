@@ -1,6 +1,8 @@
 package fs2
 package async
 
+import scala.concurrent.duration._
+
 import cats.effect.IO
 import cats.implicits._
 
@@ -42,6 +44,34 @@ class SemaphoreSpec extends Fs2Spec {
         t2.unsafeRunSync()
         s.count.unsafeRunSync() shouldBe 0
       }
+    }
+
+    "timedDecrement" in {
+      runLog(Scheduler[IO](1).flatMap { scheduler =>
+        Stream.eval(
+          for {
+            s <- async.semaphore[IO](1)
+            first <- s.timedDecrement(100.millis, scheduler)
+            second <- s.timedDecrement(100.millis, scheduler)
+            _ <- s.increment
+            third <- s.timedDecrement(100.millis, scheduler)
+          } yield List(first, second, third)
+        )
+      }).flatten shouldBe Vector(true, false, true)
+    }
+
+    "timedDecrementBy" in {
+      runLog(Scheduler[IO](1).flatMap { scheduler =>
+        Stream.eval(
+          for {
+            s <- async.semaphore[IO](7)
+            first <- s.timedDecrementBy(5, 100.millis, scheduler)
+            second <- s.timedDecrementBy(5, 100.millis, scheduler)
+            _ <- s.incrementBy(10)
+            third <- s.timedDecrementBy(5, 100.millis, scheduler)
+          } yield List(first, second, third)
+        )
+      }).flatten shouldBe Vector(0, 3, 0)
     }
   }
 }
