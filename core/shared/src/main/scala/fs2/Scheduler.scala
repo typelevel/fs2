@@ -265,6 +265,21 @@ object Scheduler extends SchedulerPlatform {
     def delay[F[_],A](fa: F[A], d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): F[A] =
       sleep(d) >> fa
 
+    /**
+     * Starts a timer for duration `d` and after completion of the timer, evaluates `fa`.
+     * Returns a "gate" value which allows semantic blocking on the result of `fa` and an action which cancels the timer.
+     * If the cancellation action is invoked, the gate completes with `None`. Otherwise, the gate completes with `Some(a)`.
+     */
+    def delayCancellable[F[_],A](fa: F[A], d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext): F[(F[Option[A]],F[Unit])] =
+      async.ref[F,Option[A]].flatMap { gate =>
+        F.delay {
+          val cancel = scheduler.scheduleOnce(d) {
+            ec.execute(() => async.unsafeRunAsync(fa.flatMap(a => gate.setAsyncPure(Some(a))))(_ => IO.unit))
+          }
+          gate.get -> (F.delay(cancel()) >> gate.setAsyncPure(None))
+        }
+      }
+
     /** Returns an action that when run, sleeps for duration `d` and then completes with `Unit`. */
     def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): F[Unit] = {
       F.async[Unit] { cb =>

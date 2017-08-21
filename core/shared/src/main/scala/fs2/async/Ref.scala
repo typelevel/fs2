@@ -142,7 +142,7 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
    *
    * Satisfies: `r.setAsyncPure(a) flatMap { _ => r.get(a) } == pure(a)`
    */
-  def setAsyncPure(a: A): F[Unit] = setAsync(F.pure(a))
+  def setAsyncPure(a: A): F[Unit] = F.delay { actor ! Msg.Set(Right(a), () => ()) }
 
   /**
    * *Synchronously* sets a reference. The returned value completes evaluating after the reference has been successfully set.
