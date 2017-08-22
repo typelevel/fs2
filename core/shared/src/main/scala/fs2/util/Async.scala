@@ -129,6 +129,18 @@ object Async {
      * Satisfies: `r.setPure(a) flatMap { _ => r.get(a) } == pure(a)`.
      */
     def setPure(a: A): F[Unit] = set(F.pure(a))
+
+    /**
+      * Synchronously sets a reference.
+      * 
+      */
+    def setSync(a: F[A]): F[Unit]
+
+    /**
+      * Synchronously sets a reference to a pure value.
+      * 
+      */
+    def setSyncPure(a: A): F[Unit] = setSync(F.pure(a))
   }
 
   /**

@@ -342,6 +342,9 @@ object Task extends TaskPlatform with TaskInstances {
     def set(t: Task[A]): Task[Unit] =
       Task.delay { S { t.unsafeRunAsync { r => actor ! Msg.Set(r) } }}
 
+    def setSync(t: Task[A]): Task[Unit] =
+      Task.delay { t.unsafeRunAsync { r => actor ! Msg.Set(r) }}
+
     private def getStamped(msg: MsgId): Task[(A,Long)] =
       Task.unforkedAsync[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
 
