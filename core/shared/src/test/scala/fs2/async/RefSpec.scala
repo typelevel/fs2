@@ -34,7 +34,7 @@ class RefSpec extends Fs2Spec {
     }
 
     "timedGet" in {
-      runLog(Scheduler[IO](1).flatMap { scheduler =>
+      mkScheduler.flatMap { scheduler =>
         Stream.eval(
           for {
             r <- async.ref[IO,Int]
@@ -43,7 +43,7 @@ class RefSpec extends Fs2Spec {
             second <- r.timedGet(100.millis, scheduler)
           } yield List(first, second)
         )
-      }).flatten shouldBe Vector(None, Some(42))
+      }.runLog.unsafeToFuture.map(_.flatten shouldBe Vector(None, Some(42)))
     }
   }
 }
