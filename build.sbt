@@ -37,7 +37,7 @@ lazy val commonSettings = Seq(
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4"),
-    "org.scalatest" %%% "scalatest" % "3.0.3" % "test",
+    "org.scalatest" %%% "scalatest" % "3.0.4" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
