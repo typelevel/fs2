@@ -280,7 +280,7 @@ object Task extends TaskPlatform with TaskInstances {
   private object Msg {
     final case class Read[A](cb: Callback[(A, Long)], id: MsgId) extends Msg[A]
     final case class Nevermind[A](id: MsgId, cb: Callback[Boolean]) extends Msg[A]
-    final case class Set[A](r: Attempt[A]) extends Msg[A]
+    final case class Set[A](r: Attempt[A], cb: () => Unit) extends Msg[A]
     final case class TrySet[A](id: Long, r: Attempt[A], cb: Callback[Boolean]) extends Msg[A]
   }
 
@@ -296,7 +296,7 @@ object Task extends TaskPlatform with TaskInstances {
         if (result eq null) waiting = waiting.updated(idf, cb)
         else { val r = result; val id = nonce; S { cb(r.map((_,id))) } }
 
-      case Msg.Set(r) =>
+      case Msg.Set(r, cb) =>
         nonce += 1L
         if (result eq null) {
           val id = nonce
@@ -304,6 +304,7 @@ object Task extends TaskPlatform with TaskInstances {
           waiting = LinkedMap.empty
         }
         result = r
+        cb()
 
       case Msg.TrySet(id, r, cb) =>
         if (id == nonce) {
@@ -340,10 +341,21 @@ object Task extends TaskPlatform with TaskInstances {
      * When it completes it overwrites any previously `put` value.
      */
     def set(t: Task[A]): Task[Unit] =
-      Task.delay { S { t.unsafeRunAsync { r => actor ! Msg.Set(r) } }}
+      Task.delay { S { t.unsafeRunAsync { r => actor ! Msg.Set(r, () => ()) } }}
 
+    /**
+      * Synchronously sets a reference
+      * 
+      */
     def setSync(t: Task[A]): Task[Unit] =
-      Task.delay { t.unsafeRunAsync { r => actor ! Msg.Set(r) }}
+      t.flatMap { a => Task.async { cb => actor ! Msg.Set(Right(a), () => cb(Right(()))) } }
+
+    /**
+      * Synchronously sets a reference to a pure value
+      * 
+      */
+    def setSyncPure(a: A): Task[Unit] =
+      setSync(Task.now(a))
 
     private def getStamped(msg: MsgId): Task[(A,Long)] =
       Task.unforkedAsync[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
@@ -377,7 +389,7 @@ object Task extends TaskPlatform with TaskInstances {
         if (won.compareAndSet(false, true)) {
           val actor = ref.get
           ref.set(null)
-          actor ! Msg.Set(res)
+          actor ! Msg.Set(res, () => ())
         }
       }
       t1.unsafeRunAsync(win)
