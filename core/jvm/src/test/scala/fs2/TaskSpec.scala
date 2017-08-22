@@ -31,6 +31,18 @@ class TaskSpec extends Fs2Spec{
           }
         }.unsafeRun() shouldBe false
       }
+
+      "set sync should be synchronous" in forAll { (x: Int, y: Int) =>
+        val failOnError: fs2.util.Attempt[Unit] => Unit = {
+          case Left(err) => fail(err)
+          case Right(()) => ()
+        }
+        Task.ref[Int].flatMap { ref =>
+          ref.setSyncPure(x).unsafeRunAsync(failOnError)
+          ref.setSyncPure(y).unsafeRunAsync(failOnError)
+          ref.get
+        }.unsafeRun() shouldBe y
+      }
     }
 
     "fromAttempt" - {
