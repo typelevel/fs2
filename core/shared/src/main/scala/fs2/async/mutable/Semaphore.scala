@@ -132,8 +132,7 @@ object Semaphore {
             }
           }
           scheduler.effect.delayCancellable(timedOut, timeout).flatMap { case (timer, cancelTimer) =>
-            val nominal = decrementByImpl(n, gate) >> cancelTimer
-            async.race(nominal, timer).map(_.fold(_ => 0, _.getOrElse(0)))
+            async.race(decrementByImpl(n, gate), timer).flatMap(_.fold(_ => cancelTimer.as(0), o => F.pure(o.getOrElse(0))))
           }
         }
       }

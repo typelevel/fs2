@@ -1,11 +1,14 @@
 package fs2.async
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
+
 
 import cats.Eq
 import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO }
 
+import fs2.Scheduler
 import fs2.internal.{Actor,LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
@@ -79,7 +82,7 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
   /** Obtains the value of the `Ref`, or wait until it has been `set`. */
   def get: F[A] = F.flatMap(F.delay(new MsgId)) { mid => F.map(getStamped(mid))(_._1) }
 
-  /** Like `get`, but returns an `F[Unit]` that can be used cancel the subscription. */
+  /** Like [[get]] but returns an `F[Unit]` that can be used cancel the subscription. */
   def cancellableGet: F[(F[A], F[Unit])] = F.delay {
     val id = new MsgId
     val get = F.map(getStamped(id))(_._1)
@@ -88,6 +91,17 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
     }
     (get, cancel)
   }
+
+  /**
+   * Like [[get]] but if the ref has not been initialized when the timeout is reached, a `None`
+   * is returned.
+   */
+  def timedGet(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
+    cancellableGet.flatMap { case (g, cancelGet) =>
+      scheduler.effect.delayCancellable(F.unit, timeout).flatMap { case (timer, cancelTimer) =>
+        fs2.async.race(g, timer).flatMap(_.fold(a => cancelTimer.as(Some(a)), _ => cancelGet.as(None)))
+      }
+    }
 
   /**
    * Tries modifying the reference once, returning `None` if another

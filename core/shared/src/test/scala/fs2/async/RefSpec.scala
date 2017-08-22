@@ -32,5 +32,18 @@ class RefSpec extends Fs2Spec {
         ref.setSyncPure(0) >> ref.setSync(IO(1)) >> ref.get
       }.unsafeToFuture.map { _ shouldBe 1 }
     }
+
+    "timedGet" in {
+      runLog(Scheduler[IO](1).flatMap { scheduler =>
+        Stream.eval(
+          for {
+            r <- async.ref[IO,Int]
+            first <- r.timedGet(100.millis, scheduler)
+            _ <- r.setSyncPure(42)
+            second <- r.timedGet(100.millis, scheduler)
+          } yield List(first, second)
+        )
+      }).flatten shouldBe Vector(None, Some(42))
+    }
   }
 }
