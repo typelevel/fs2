@@ -11,7 +11,7 @@ class AwakeEverySpec extends AsyncFs2Spec {
     "awakeEvery" in {
       runLogF(mkScheduler.flatMap(_.awakeEvery[IO](500.millis)).map(_.toMillis).take(5)).map { r =>
         r.toList.sliding(2).map { s => (s.head, s.tail.head) }.map { case (prev, next) => next - prev }.foreach { delta =>
-          delta shouldBe 500L +- 100
+          delta shouldBe 500L +- 150
         }
         Succeeded
       }
