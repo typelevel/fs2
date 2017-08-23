@@ -1686,6 +1686,12 @@ object Stream {
      * This halts as soon as either branch halts.
      *
      * Consider using the overload that takes a `Signal`.
+     *
+     * Caution: interruption is checked as elements are pulled from the returned stream. As a result,
+     * streams which stop pulling from the returned stream end up uninterrubtible. For example,
+     * `s.interruptWhen(s2).flatMap(_ => infiniteStream)` will not be interrupted when `s2` is true
+     * because `s1.interruptWhen(s2)` is never pulled for another element after the first element has been
+     * emitted. To fix, consider `s.flatMap(_ => infiniteStream).interruptWhen(s2)`.
      */
     def interruptWhen(haltWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       haltWhenTrue.noneTerminate.either(self.noneTerminate).
