@@ -66,10 +66,10 @@ The 0.10 release is almost complete and will be released when Cats 1.0 is releas
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M5"
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M6"
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M5"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M6"
 ```
 
 The 0.9 release is out and we recommend upgrading. You may want to first [read the 0.9 migration guide](docs/migration-guide-0.9.md) if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
