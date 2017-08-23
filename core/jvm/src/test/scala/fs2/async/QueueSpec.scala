@@ -81,5 +81,8 @@ class QueueSpec extends Fs2Spec {
         )
       }).flatten shouldBe Vector(Some(0), None, Some(1))
     }
+    "size signal is initialized to zero" in {
+      runLog(Stream.eval(async.unboundedQueue[IO,Int]).flatMap(_.size.discrete).take(1)) shouldBe Vector(0)
+    }
   }
 }
