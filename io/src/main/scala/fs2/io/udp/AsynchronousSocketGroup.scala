@@ -217,7 +217,7 @@ object AsynchronousSocketGroup {
 
     private def write1(key: SelectionKey, channel: DatagramChannel, attachment: Attachment, p: Packet, cb: Option[Throwable] => Unit): Boolean = {
       try {
-        val sent = channel.send(ByteBuffer.wrap(p.bytes.toArray), p.remote)
+        val sent = channel.send(ByteBuffer.wrap(p.bytes.toBytes.values), p.remote)
         if (sent > 0) {
           cb(None)
           true
