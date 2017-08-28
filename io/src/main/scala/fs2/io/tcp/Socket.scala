@@ -216,7 +216,7 @@ protected[tcp] object Socket {
         val read = buff.position()
         if (read == 0) F.pure(Chunk.bytes(Array.empty))
         else {
-          val dest = Array.ofDim[Byte](read)
+          val dest = new Array[Byte](read)
           buff.flip()
           buff.get(dest)
           F.pure(Chunk.bytes(dest))

@@ -147,7 +147,7 @@ private[io] object JavaInputOutputStream {
       }
 
       val sync = new SyncVar[Either[Throwable,Int]]
-      async.unsafeRunAsync(go(Array.ofDim(1)))(r => IO(sync.put(r)))
+      async.unsafeRunAsync(go(new Array[Byte](1)))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 
