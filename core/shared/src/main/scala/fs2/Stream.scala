@@ -766,14 +766,15 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *   etc
    */
   def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] =
-    scan_(z)(f).stream
+    (Pull.output1(z) >> scan_(z)(f)).stream
 
   private def scan_[O2](z: O2)(f: (O2, O) => O2): Pull[F,O2,Unit] =
     this.pull.uncons.flatMap {
-      case None => Pull.output1(z) >> Pull.done
+      case None => Pull.done
       case Some((hd,tl)) =>
-        Pull.segment(hd.scan(z, emitFinal = false)(f)).flatMap { acc =>
-          tl.scan_(acc)(f)
+        hd.scan(z)(f).uncons1 match {
+          case Left(acc) => tl.scan_(acc)(f)
+          case Right((_, out)) => Pull.segment(out).flatMap{acc => tl.scan_(acc)(f)}
         }
     }
 
@@ -788,7 +789,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] =
     this.pull.uncons1.flatMap {
       case None => Pull.done
-      case Some((hd,tl)) => tl.scan_(hd: O2)(f)
+      case Some((hd,tl)) => Pull.output1(hd) >> tl.scan_(hd: O2)(f)
     }.stream
 
   /**
