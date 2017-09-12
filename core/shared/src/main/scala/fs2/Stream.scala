@@ -1860,6 +1860,13 @@ object Stream {
       that.mergeHaltL(self)
 
     /**
+     * Like `observe` but observes with a function `O => F[Unit]` instead of a sink.
+     * Alias for `evalMap(o => f(o).as(o))`.
+     */
+    def observe1(f: O => F[Unit])(implicit F: Functor[F]): Stream[F,O] =
+      self.evalMap(o => f(o).as(o))
+
+    /**
      * Synchronously sends values through `sink`.
      *
      * @example {{{
@@ -2325,6 +2332,9 @@ object Stream {
 
     def mergeHaltR[F[_],O2>:O](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O2] =
       covary[F].mergeHaltR(that)
+
+    def observe1[F[_]](f: O => F[Unit])(implicit F: Functor[F]): Stream[F,O] =
+      covary[F].observe1(f)
 
     def observe[F[_]](sink: Sink[F,O])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       covary[F].observe(sink)
