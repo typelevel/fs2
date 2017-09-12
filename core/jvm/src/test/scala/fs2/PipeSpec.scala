@@ -5,6 +5,7 @@ import org.scalacheck.Gen
 
 import cats.effect.IO
 import cats.implicits._
+import scala.concurrent.duration._
 
 import fs2.Stream._
 
@@ -305,6 +306,14 @@ class PipeSpec extends Fs2Spec {
       val s = PureStream("simple", Stream(1).map(x => x)) // note, without the .map, test passes
       val f = (a: Int, b: Int) => a + b
       runLog(s.get.scan(0)(f)) shouldBe runLog(s.get).scanLeft(0)(f)
+    }
+
+    "scan (temporal)" in {
+      val never = Stream.eval(IO.async[Int](_ => ()))
+      val s = Stream(1)
+      val f = (a: Int, b: Int) => a + b
+      val result = s.toVector.scan(0)(f)
+      runLog((s ++ never).scan(0)(f).take(result.size), timeout = 1 second) shouldBe result
     }
 
     "scan" in forAll { (s: PureStream[Int], n: Int) =>
