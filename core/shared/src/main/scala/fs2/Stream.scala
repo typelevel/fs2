@@ -1186,7 +1186,7 @@ object Stream {
   def emits[O](os: Seq[O]): Stream[Pure,O] = {
     if (os.isEmpty) empty
     else if (os.size == 1) emit(os.head)
-    else fromFreeC(Algebra.output[Pure,O](Chunk.seq(os)))
+    else fromFreeC(Algebra.output[Pure,O](Segment.seq(os)))
   }
 
   private[fs2] val empty_ = fromFreeC[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
