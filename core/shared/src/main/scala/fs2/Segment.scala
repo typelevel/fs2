@@ -286,9 +286,16 @@ abstract class Segment[+O,+R] { self =>
         step {
           outerResult match {
             case Some(r) =>
-              if (q.isEmpty) inner.remainder.mapResult(r2 => r -> Some(r2))
-              else Chunk.indexedSeq(q.toIndexedSeq).asResult(r).flatMap(f).prepend(inner.remainder)
-            case None => outer.remainder.prepend(Chunk.indexedSeq(q.toIndexedSeq)).flatMap(f).prepend(inner.remainder)
+              if (q.isEmpty) {
+                if (inner eq null) Segment.empty.asResult(r -> None)
+                else inner.remainder.mapResult(r2 => r -> Some(r2))
+              } else {
+                val s = Chunk.indexedSeq(q.toIndexedSeq).asResult(r).flatMap(f)
+                if (inner eq null) s else s.prepend(inner.remainder)
+              }
+            case None =>
+              val s = outer.remainder.prepend(Chunk.indexedSeq(q.toIndexedSeq)).flatMap(f)
+              if (inner eq null) s else s.prepend(inner.remainder)
           }
         } {
           if (inner eq null) {
