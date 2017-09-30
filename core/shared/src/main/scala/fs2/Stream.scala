@@ -2074,8 +2074,8 @@ object Stream {
      *
      * @example {{{
      * scala> import cats.effect.IO
-     * scala> Stream.range(0,100).take(5).covary[IO].runLog.unsafeRunSync
-     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
+     * scala> Stream.range(0,100).take(5).covary[IO].runLast.unsafeRunSync
+     * res0: Option[Int] = Some(4)
      * }}}
      */
     def runLast(implicit F: Sync[F]): F[Option[O]] =
