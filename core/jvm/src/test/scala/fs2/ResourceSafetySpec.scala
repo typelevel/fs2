@@ -205,6 +205,16 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       o shouldBe (0 until 10).toVector
     }
 
+    "finalizers are run before next appended stream" in {
+      val c = new AtomicLong(0)
+      val s1 = Stream.emit("a").covary[IO]
+      val s2 = Stream.bracket(IO { c.incrementAndGet() shouldBe 1L; () })(
+        _ => Stream.emit("b"),
+        _ => IO { c.decrementAndGet(); ()}
+      )
+      runLog { (s1 ++ s2).take(2).repeat.take(4).merge(Stream.eval_(IO.unit)) }
+    }
+
     def bracket[A](c: AtomicLong)(s: Stream[IO,A]): Stream[IO,A] = Stream.suspend {
       Stream.bracket(IO { c.decrementAndGet })(
         _ => s,
