@@ -65,20 +65,8 @@ abstract class Segment[+O,+R] { self =>
   /**
    * Like `++` but allows the result type of `s2` to differ from `R`.
    */
-  final def append[O2>:O,R2](s2: Segment[O2,R2]): Segment[O2,(R,R2)] = new Segment[O2,(R,R2)] {
-    def stage0 = (depth, defer, emit, emits, done) => Eval.always {
-      var res1: Option[R] = None
-      var res2: Option[R2] = None
-      val leftStaged = self.stage(depth.increment, defer, emit, emits, r => res1 = Some(r)).value
-      val rightStaged = s2.stage(depth.increment, defer, emit, emits, r => res2 = Some(r)).value
-      step(if (res1.isEmpty) leftStaged.remainder.append(s2) else rightStaged.remainder.mapResult(res1.get -> _)) {
-        if (res1.isEmpty) leftStaged.step()
-        else if (res2.isEmpty) rightStaged.step()
-        else done(res1.get -> res2.get)
-      }
-    }
-    override def toString = s"append($self, $s2)"
-  }
+  final def append[O2>:O,R2](s2: Segment[O2,R2]): Segment[O2,(R,R2)] =
+    self.flatMapResult(r => s2.mapResult(r -> _))
 
   /** Alias for `mapResult( => r2)`. */
   final def asResult[R2](r2: R2): Segment[O,R2] = mapResult(_ => r2)
@@ -362,6 +350,25 @@ abstract class Segment[+O,+R] { self =>
       }
     }
     override def toString = s"($self).flatMapAccumulate($init)(<f2>)"
+  }
+
+  /**
+    * Like `append` but allows to use result to continue the segment.
+    */
+  final def flatMapResult[O2>:O,R2](f: R => Segment[O2,R2]): Segment[O2,R2] = new Segment[O2,R2] {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.always {
+      var res1: Option[Step[O2,R2]] = None
+      var res2: Option[R2] = None
+      val staged = self.stage(depth.increment, defer, emit, emits,
+        r => res1 = Some(f(r).stage(depth.increment, defer, emit, emits, r => res2 = Some(r)).value)).value
+
+      step(if (res1.isEmpty) staged.remainder.flatMapResult(f) else res1.get.remainder) {
+        if (res1.isEmpty) staged.step()
+        else if (res2.isEmpty) res1.get.step()
+        else done(res2.get)
+      }
+    }
+    override def toString = s"flatMapResult($self, <f>)"
   }
 
   /**
