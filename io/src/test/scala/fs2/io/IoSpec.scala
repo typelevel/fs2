@@ -1,8 +1,10 @@
 package fs2.io
 
 import java.io.{ByteArrayInputStream, InputStream}
-import cats.effect.IO
-import fs2.Fs2Spec
+import java.nio.file.{Files, Path}
+
+import cats.effect.{IO, Sync}
+import fs2.{Fs2Spec, hash, io}
 
 class IoSpec extends Fs2Spec {
   "readInputStream" - {
@@ -52,6 +54,25 @@ class IoSpec extends Fs2Spec {
       val stream = unsafeReadInputStreamAsync(IO(is), chunkSize.get)
       val example = stream.runLog.unsafeRunSync.toArray
       example shouldBe bytes
+    }
+  }
+
+  "unsafeReadAllSync" - {
+    "readAll and hash" in {
+
+      def checksum[F[_]](f: Path)(implicit F: Sync[F]): F[Vector[Byte]] =
+        io.file.readAll[F](f, 16 * 1024)
+          .through(hash.md5)
+          .runLog
+
+      val data : Array[Byte] = (0 to 111).map(_.asInstanceOf[Byte]).toArray
+      val tmpFile = Files.createTempFile("readAll", "hash")
+      Files.write(tmpFile, data)
+
+      val result = checksum[IO](tmpFile).unsafeRunSync()
+      val str = result.map("%02x" format _).mkString
+
+      str shouldBe "d1fec2ac3715e791ca5f489f300381b3"
     }
   }
 }
