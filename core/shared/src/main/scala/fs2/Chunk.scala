@@ -82,15 +82,11 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
 
   /**
    * Converts this chunk to a `Chunk.Bytes`, allowing access to the underlying array of elements.
-   * If this chunk is already backed by an unboxed array of bytes, this method runs in constant time.
-   * Otherwise, this method will copy of the elements of this chunk in to a single array.
+   * This method will copy of the elements of this chunk (up to size) in to a single array.
    */
   def toBytes[B >: O](implicit ev: B =:= Byte): Chunk.Bytes = {
     val _ = ev // Convince scalac that ev is used
-    this match {
-      case c: Chunk.Bytes => c
-      case other => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
-    }
+    Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
   }
 
   /**
