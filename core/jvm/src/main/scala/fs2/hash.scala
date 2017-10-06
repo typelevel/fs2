@@ -30,7 +30,10 @@ object hash {
   def digest[F[_]](digest: => MessageDigest): Pipe[F,Byte,Byte] =
     in => Stream.suspend {
       in.chunks.
-        fold(digest) { (d, c) => d.update(c.toBytes.values); d }.
-        flatMap { d => Stream.chunk(Chunk.bytes(d.digest())) }
+        fold(digest) { (d, c) =>
+          val bytes = c.toBytes
+          d.update(bytes.values, bytes.offset, bytes.size)
+          d
+        }.flatMap { d => Stream.chunk(Chunk.bytes(d.digest())) }
     }
 }
