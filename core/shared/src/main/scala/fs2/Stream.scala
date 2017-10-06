@@ -63,6 +63,9 @@ import fs2.internal.{ Algebra, FreeC }
  * the unsegmented version will fail on the first ''element'' with an error.
  * Exceptions in pure code like this are strongly discouraged.
  *
+ * If you need `cats` syntax you will need make `[[Stream.syncInstance]]`
+ * implicit.
+ *
  * @hideImplicitConversion PureOps
  * @hideImplicitConversion EmptyOps
  * @hideImplicitConversion covaryPure
@@ -2705,6 +2708,14 @@ object Stream {
    * `Sync` instance for `Stream`.
    *
    * Note: non-implicit so that cats syntax doesn't override FS2 syntax
+   *
+   * @example {{{
+   * scala> import cats.implicits._
+   * scala> import cats.effect.Sync
+   * scala> implicit def si: Sync[Stream[Pure, ?]] = Stream.syncInstance[Pure]
+   * scala> Stream(1, -2, 3).fproduct(_.abs).toList
+   * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
+   * }}}
    */
   def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
     def pure[A](a: A) = Stream(a)
