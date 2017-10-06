@@ -1433,7 +1433,7 @@ object Stream {
 
     /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
     def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      fromFreeC(self.get.flatMap { _ => s2.get })
+      fromFreeC(Algebra.scope(self.get[F, O2]).flatMap { _ => s2.get })
 
     /**
      * Emits only elements that are distinct from their immediate predecessors,
