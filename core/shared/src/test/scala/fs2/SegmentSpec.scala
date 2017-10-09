@@ -93,6 +93,12 @@ class SegmentSpec extends Fs2Spec {
       }
     }
 
+    "flatMapResult" in {
+      forAll { (s: Segment[Int,Unit], r: Int, f: Int => Segment[Int, Unit]) =>
+        s.asResult(r).flatMapResult(f).toVector shouldBe (s ++ f(r)).toVector
+      }
+    }
+
     "fold" in {
       forAll { (s: Segment[Int,Unit], init: Int, f: (Int, Int) => Int) =>
         s.fold(init)(f).run shouldBe s.toChunk.toVector.foldLeft(init)(f)
