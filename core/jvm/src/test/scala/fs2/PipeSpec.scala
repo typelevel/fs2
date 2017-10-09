@@ -128,6 +128,14 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.dropWhile(set)) shouldBe runLog(s.get).dropWhile(set)
     }
 
+    "dropThrough" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
+      val set = runLog(s.get).take(n.get).toSet
+      runLog(s.get.dropThrough(set)) shouldBe {
+        val vec = runLog(s.get).dropWhile(set)
+        if (vec.isEmpty) vec else vec.tail
+      }
+    }
+
     "evalScan" in forAll { (s: PureStream[Int], n: String) =>
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
       val g = (a: String, b: Int) => a + b
