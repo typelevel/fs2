@@ -215,7 +215,7 @@ abstract class Segment[+O,+R] { self =>
     catch { case Done => }
     result match {
       case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
-      case Some(r) => if (leftovers.isEmpty) Left(r) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
+      case Some(r) => if (leftovers.isEmpty && dropping) Left(r) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
     }
   }
 

@@ -66,8 +66,9 @@ class SegmentSpec extends Fs2Spec {
     "dropWhile (2)" in {
       forAll { (s: Segment[Int,Unit], f: Int => Boolean) =>
         val svec = s.toVector
-        val svecD = svec.dropWhile(f)
-        s.dropWhile(f, true).fold(_ => Vector.empty, _.toVector) shouldBe (if (svecD.isEmpty) Vector.empty else svecD.tail)
+        val svecD = if (svec.isEmpty) svec else svec.dropWhile(f).drop(1)
+        val dropping = svec.isEmpty || (svecD.isEmpty && f(svec.last))
+        s.dropWhile(f, true).map(_.toVector) shouldBe (if (dropping) Left(()) else Right(svecD))
       }
     }
 
