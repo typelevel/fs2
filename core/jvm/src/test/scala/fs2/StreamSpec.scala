@@ -188,5 +188,9 @@ class StreamSpec extends Fs2Spec with Inside {
         withClue("false means the delay has not passed: " + tail) { assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay }) }
       }
     }
+
+    "issue #941 - scope closure issue" in {
+      Stream(1,2,3).map(_ + 1).repeat.zip(Stream(4,5,6).map(_ + 1).repeat).take(4).toList
+    }
   }
 }
