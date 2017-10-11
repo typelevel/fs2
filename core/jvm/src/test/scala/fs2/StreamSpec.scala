@@ -109,6 +109,10 @@ class StreamSpec extends Fs2Spec with Inside {
       runLog(s.get.translateSync(cats.arrow.FunctionK.id[Pure]).covary[IO]) shouldBe runLog(s.get)
     }
 
+    "translateSync followed by translate" in forAll { (s: PureStream[Int]) =>
+      runLog(s.get.covary[IO].prefetch.translateSync(cats.arrow.FunctionK.id).translate(cats.arrow.FunctionK.id).covary[IO]) shouldBe runLog(s.get)
+    }
+
     "toList" in forAll { (s: PureStream[Int]) =>
       s.get.toList shouldBe runLog(s.get).toList
     }
