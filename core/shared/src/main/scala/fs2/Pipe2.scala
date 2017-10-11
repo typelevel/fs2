@@ -23,7 +23,7 @@ object Pipe2 {
       Algebra.runFold_(Algebra.uncons(s.get).flatMap {
         case Some((hd,tl)) => Algebra.output1[Read,UO](Some((hd,Stream.fromFreeC(tl))))
         case None => Algebra.pure[Read,UO,Unit](())
-      }, None, None: UO)((x,y) => y, new Algebra.Scope[Read])
+      }, None, None: UO)((x,y) => y, new Algebra.Scope[Read](None))
     }
 
     def go(s: Read[UO]): Stepper[I,I2,O] = Stepper.Suspend { () =>
