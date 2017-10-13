@@ -20,10 +20,14 @@ object Pipe2 {
 
     // Steps `s` without overhead of resource tracking
     def stepf(s: Stream[Read,O]): Read[UO] = {
-      Algebra.runFold_(Algebra.uncons(s.get).flatMap {
-        case Some((hd,tl)) => Algebra.output1[Read,UO](Some((hd,Stream.fromFreeC(tl))))
-        case None => Algebra.pure[Read,UO,Unit](())
-      }, None, None: UO)((x,y) => y, new Algebra.Scope[Read](None))
+      Algebra.runFoldScope(
+        Algebra.Scope.newRoot[Read],
+        None,
+        None,
+        Algebra.uncons(s.get).flatMap {
+          case Some((hd,tl)) => Algebra.output1[Read,UO](Some((hd,Stream.fromFreeC(tl))))
+          case None => Algebra.pure[Read,UO,Unit](())
+        }, None: UO)((x,y) => y)
     }
 
     def go(s: Read[UO]): Stepper[I,I2,O] = Stepper.Suspend { () =>

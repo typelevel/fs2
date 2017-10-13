@@ -120,7 +120,7 @@ rc.unsafeRunSync()
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Sync[F]` --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects and how to suspend computations.
+_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Effect[F]` (or `Sync[F]` for the `run*Sync` functions) --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations, and sometimes how to do asynchronous evaluation.
 
 ### Segments & Chunks
 

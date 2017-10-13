@@ -137,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.runLog // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$220331897
+// ra: cats.effect.IO[Vector[Int]] = IO$13579904
 
 val rb = eff.run // purely for effects
-// rb: cats.effect.IO[Unit] = IO$1522849191
+// rb: cats.effect.IO[Unit] = IO$642121560
 
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$764768299
+// rc: cats.effect.IO[Int] = IO$615336848
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -169,7 +169,7 @@ res15: Int = 2
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Sync[F]` --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects and how to suspend computations.
+_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Effect[F]` (or `Sync[F]` for the `run*Sync` functions) --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations, and sometimes how to do asynchronous evaluation.
 
 ### Segments & Chunks
 
@@ -274,10 +274,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$511857483
+acquire: cats.effect.IO[Unit] = IO$673375754
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$1537831168
+release: cats.effect.IO[Unit] = IO$887603586
 ```
 
 ```scala
@@ -285,7 +285,7 @@ scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsa
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
-  ... 417 elided
+  ... 798 elided
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -554,7 +554,7 @@ import cats.effect.Sync
 // import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@32c60973
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@6345acc2
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
@@ -611,12 +611,12 @@ val c = new Connection {
 
 // Effect extends both Sync and Async
 val T = cats.effect.Effect[IO]
-// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@32c60973
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@6345acc2
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: cats.effect.IO[Array[Byte]] = IO$279427185
+// bytes: cats.effect.IO[Array[Byte]] = IO$1390397804
 
 Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
 // res42: Vector[List[Byte]] = Vector(List(0, 1, 2))

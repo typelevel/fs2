@@ -100,17 +100,9 @@ class StreamSpec extends Fs2Spec with Inside {
         IndexedSeq.range(0, 100)
     }
 
-    "translate (1)" in forAll { (s: PureStream[Int]) =>
+    "translate" in forAll { (s: PureStream[Int]) =>
       runLog(s.get.flatMap(i => Stream.eval(IO.pure(i))).translate(cats.arrow.FunctionK.id[IO])) shouldBe
       runLog(s.get)
-    }
-
-    "translate (2)" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.translateSync(cats.arrow.FunctionK.id[Pure]).covary[IO]) shouldBe runLog(s.get)
-    }
-
-    "translateSync followed by translate" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.covary[IO].prefetch.translateSync(cats.arrow.FunctionK.id).translate(cats.arrow.FunctionK.id).covary[IO]) shouldBe runLog(s.get)
     }
 
     "toList" in forAll { (s: PureStream[Int]) =>
