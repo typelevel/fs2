@@ -1984,6 +1984,36 @@ object Stream {
       self.reduce(S.combine(_, _))
 
     /**
+      * Repartitions the input with the function `p`. On each step `p` is applied
+      * to the input and all elements but the last of the resulting sequence
+      * are emitted. The last element is then appended to the next input using the
+      * Semigroup `S`.
+      *
+      * @example {{{
+      * scala> import cats.implicits._
+      * scala> Stream("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq).toList
+      * res0: List[String] = List(Hello, World)
+      * }}}
+      */
+    def repartition(p: O => IndexedSeq[O])(implicit S: Semigroup[O]): Stream[F,O] = {
+      def go(carry: Option[O], s: Stream[F,O]): Pull[F,O,Unit] = {
+        s.pull.uncons1.flatMap {
+          case Some((hd, tl)) =>
+            val next = carry.fold(hd)(c => S.combine(c, hd))
+            val parts = p(next)
+            parts.size match {
+              case 0 => go(None, tl)
+              case 1 => go(Some(parts.head), tl)
+              case _ => Pull.output(Chunk.indexedSeq(parts.init)) >> go(Some(parts.last), tl)
+            }
+          case None =>
+            carry.fold[Pull[F,O,Unit]](Pull.done)(c => Pull.output1(c))
+        }
+      }
+      go(None, self).stream
+    }
+
+    /**
      * Repeatedly invokes `using`, running the resultant `Pull` each time, halting when a pull
      * returns `None` instead of `Some(nextStream)`.
      */

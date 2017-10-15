@@ -100,6 +100,17 @@ class StreamSpec extends Fs2Spec with Inside {
         IndexedSeq.range(0, 100)
     }
 
+    "repartition" in {
+      Stream("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ").toIndexedSeq).toList ==
+        List("Lorem", "ipsum", "dolor", "sit", "amet") &&
+      Stream("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ==
+        List("he", "ll", "o ", "Wo", "rl", "d") &&
+      Stream(1, 2, 3, 4, 5).repartition(i => Vector(i, i)).toList ==
+        List(1, 3, 6, 10, 15, 15) &&
+      (Stream(): Stream[Nothing, String]).repartition(_ => Vector()).toList == List() &&
+      Stream("hello").repartition(_ => Vector()).toList == List()
+    }
+
     "translate" in forAll { (s: PureStream[Int]) =>
       runLog(s.get.flatMap(i => Stream.eval(IO.pure(i))).translate(cats.arrow.FunctionK.id[IO])) shouldBe
       runLog(s.get)
