@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 import Ref._
 
 /** An asynchronous, concurrent mutable reference. */
-final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
+final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) { self =>
 
   private var result: Either[Throwable,A] = null
   // any waiting calls to `access` before first `set`
