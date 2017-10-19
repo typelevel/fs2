@@ -13,20 +13,19 @@ private[fs2] sealed trait Algebra[F[_],O,R]
 
 private[fs2] object Algebra {
 
-  final class Token {
-    override def toString = s"Token(${##})"
-  }
-
   final case class Output[F[_],O](values: Segment[O,Unit]) extends Algebra[F,O,Unit]
-  final case class WrapSegment[F[_],O,R](values: Segment[O,R]) extends Algebra[F,O,R]
+  final case class Run[F[_],O,R](values: Segment[O,R]) extends Algebra[F,O,R]
   final case class Eval[F[_],O,R](value: F[R]) extends Algebra[F,O,R]
+
   final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
-  final case class UnconsAsync[F[_],X,Y,O](s: FreeC[Algebra[F,O,?],Unit], ec: ExecutionContext)
-    extends Algebra[F,X,AsyncPull[F,Option[(Segment[O,Unit],FreeC[Algebra[F,O,?],Unit])]]]
   final case class OpenScope[F[_],O]() extends Algebra[F,O,Scope[F]]
   final case class CloseScope[F[_],O](toClose: Scope[F]) extends Algebra[F,O,Unit]
+
   final case class Suspend[F[_],O,R](thunk: () => FreeC[Algebra[F,O,?],R]) extends Algebra[F,O,R]
+
+  final case class UnconsAsync[F[_],X,Y,O](s: FreeC[Algebra[F,O,?],Unit], ec: ExecutionContext)
+    extends Algebra[F,X,AsyncPull[F,Option[(Segment[O,Unit],FreeC[Algebra[F,O,?],Unit])]]]
 
   def output[F[_],O](values: Segment[O,Unit]): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](Output(values))
@@ -35,7 +34,7 @@ private[fs2] object Algebra {
     output(Segment.singleton(value))
 
   def segment[F[_],O,R](values: Segment[O,R]): FreeC[Algebra[F,O,?],R] =
-    FreeC.Eval[Algebra[F,O,?],R](WrapSegment(values))
+    FreeC.Eval[Algebra[F,O,?],R](Run(values))
 
   def eval[F[_],O,R](value: F[R]): FreeC[Algebra[F,O,?],R] =
     FreeC.Eval[Algebra[F,O,?],R](Eval(value))
@@ -71,6 +70,8 @@ private[fs2] object Algebra {
 
   def suspend[F[_],O,R](f: => FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
     FreeC.Eval[Algebra[F,O,?],R](Suspend(() => f))
+
+  final class Token
 
   final class Scope[F[_]] private (private val parent: Option[Scope[F]])(implicit F: Sync[F]) {
     private val monitor = this
@@ -197,7 +198,7 @@ private[fs2] object Algebra {
         fx match {
           case os: Algebra.Output[F, O] =>
             pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some((os.values, f(Right(())))))
-          case os: Algebra.WrapSegment[F, O, x] =>
+          case os: Algebra.Run[F, O, x] =>
             try {
               def asSegment(c: Catenable[Segment[O,Unit]]): Segment[O,Unit] =
                 c.uncons.flatMap { case (h1,t1) => t1.uncons.map(_ => Segment.catenated(c)).orElse(Some(h1)) }.getOrElse(Segment.empty)
@@ -338,7 +339,7 @@ private[fs2] object Algebra {
     def algFtoG[O2]: Algebra[F,O2,?] ~> Algebra[G,O2,?] = new (Algebra[F,O2,?] ~> Algebra[G,O2,?]) { self =>
       def apply[X](in: Algebra[F,O2,X]): Algebra[G,O2,X] = in match {
         case o: Output[F,O2] => Output[G,O2](o.values)
-        case WrapSegment(values) => WrapSegment[G,O2,X](values)
+        case Run(values) => Run[G,O2,X](values)
         case Eval(value) => Eval[G,O2,X](u(value))
         case a: Acquire[F,O2,_] => Acquire(u(a.resource), r => u(a.release(r)))
         case r: Release[F,O2] => Release[G,O2](r.token)
