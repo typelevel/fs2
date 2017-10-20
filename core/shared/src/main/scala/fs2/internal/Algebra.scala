@@ -22,8 +22,6 @@ private[fs2] object Algebra {
   final case class OpenScope[F[_],O]() extends Algebra[F,O,Scope[F]]
   final case class CloseScope[F[_],O](toClose: Scope[F]) extends Algebra[F,O,Unit]
 
-  final case class Suspend[F[_],O,R](thunk: () => FreeC[Algebra[F,O,?],R]) extends Algebra[F,O,R]
-
   final case class UnconsAsync[F[_],X,Y,O](s: FreeC[Algebra[F,O,?],Unit], ec: ExecutionContext)
     extends Algebra[F,X,AsyncPull[F,Option[(Segment[O,Unit],FreeC[Algebra[F,O,?],Unit])]]]
 
@@ -69,7 +67,7 @@ private[fs2] object Algebra {
     FreeC.Fail[Algebra[F,O,?],R](t)
 
   def suspend[F[_],O,R](f: => FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
-    FreeC.Eval[Algebra[F,O,?],R](Suspend(() => f))
+    FreeC.suspend(f)
 
   final class Token
 
@@ -209,9 +207,6 @@ private[fs2] object Algebra {
                   pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some(asSegment(segments) -> FreeC.Bind[Algebra[F,O,?],x,Unit](segment(tl), f)))
               }
             } catch { case NonFatal(e) => FreeC.suspend(uncons(f(Left(e)), chunkSize)) }
-          case Algebra.Suspend(thunk) =>
-            try uncons(FreeC.Bind(thunk(), f), chunkSize)
-            catch { case NonFatal(e) => FreeC.suspend(uncons(f(Left(e)), chunkSize)) }
           case algebra => // Eval, Acquire, Release, OpenScope, CloseScope, UnconsAsync
             FreeC.Bind[Algebra[F,X,?],Any,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](
               FreeC.Eval[Algebra[F,X,?],Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
@@ -323,12 +318,6 @@ private[fs2] object Algebra {
                 F.raiseError(new IllegalStateException("unconsAsync encountered but stream was run synchronously"))
             }
 
-          case s: Algebra.Suspend[F,O,_] =>
-            F.suspend {
-              try runFoldLoop(scope, effect, ec, acc, g, FreeC.Bind(s.thunk(), f).viewL)
-              catch { case NonFatal(e) => runFoldLoop(scope, effect, ec, acc, g, f(Left(e)).viewL) }
-            }
-
           case _ => sys.error("impossible Segment or Output following uncons")
         }
       case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
@@ -348,7 +337,6 @@ private[fs2] object Algebra {
         case ua: UnconsAsync[F,_,_,_] =>
           val uu: UnconsAsync[F,Any,Any,Any] = ua.asInstanceOf[UnconsAsync[F,Any,Any,Any]]
           UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), uu.ec).asInstanceOf[Algebra[G,O2,X]]
-        case s: Suspend[F,O2,X] => Suspend(() => s.thunk().translate(algFtoG))
       }
     }
     fr.translate[Algebra[G,O,?]](algFtoG)
