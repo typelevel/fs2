@@ -589,7 +589,7 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
-   * Computes the result of this segment. May only be called when `O` is `Unit`, to prevent accidentally ignoring
+   * Computes the result of this segment. May only be called when `O` is `Nothing`, to prevent accidentally ignoring
    * output values. To intentionally ignore outputs, call `s.drain.run`.
    *
    * @example {{{
