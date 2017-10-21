@@ -311,7 +311,7 @@ abstract class Segment[+O,+R] { self =>
    *      |   if (s == "\n") Segment.empty.asResult(0) else Segment((l,s)).asResult(l + s.length))
    * scala> src.toVector
    * res0: Vector[(Int,String)] = Vector((0,Hello), (5,World), (0,From), (4,Mars))
-   * scala> src.void.run
+   * scala> src.drain.run
    * res1: (Unit,Int) = ((),8)
    * }}}
    */
@@ -520,7 +520,7 @@ abstract class Segment[+O,+R] { self =>
    * scala> val src = Segment("Hello", "World").mapAccumulate(0)((l,s) => (l + s.length, (l, s)))
    * scala> src.toVector
    * res0: Vector[(Int,String)] = Vector((0,Hello), (5,World))
-   * scala> src.void.run
+   * scala> src.drain.run
    * res1: (Unit,Int) = ((),10)
    * }}}
    */
@@ -563,7 +563,7 @@ abstract class Segment[+O,+R] { self =>
    * Maps the supplied function over the result of this segment.
    *
    * @example {{{
-   * scala> Segment('a', 'b', 'c').withSize.mapResult { case (_, size) => size }.void.run
+   * scala> Segment('a', 'b', 'c').withSize.mapResult { case (_, size) => size }.drain.run
    * res0: Long = 3
    * }}}
    */
@@ -590,14 +590,14 @@ abstract class Segment[+O,+R] { self =>
 
   /**
    * Computes the result of this segment. May only be called when `O` is `Unit`, to prevent accidentally ignoring
-   * output values. To intentionally ignore outputs, call `s.void.run`.
+   * output values. To intentionally ignore outputs, call `s.drain.run`.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).withSize.void.run
+   * scala> Segment(1, 2, 3).withSize.drain.run
    * res0: (Unit,Long) = ((),3)
    * }}}
    */
-  final def run[O2>:O](implicit ev: O2 =:= Unit): R = {
+  final def run(implicit ev: O <:< Nothing): R = {
     val _ = ev // Convince scalac that ev is used
     var result: Option[R] = None
     val trampoline = makeTrampoline
@@ -775,9 +775,9 @@ abstract class Segment[+O,+R] { self =>
    * @example {{{
    * scala> Segment.from(0).take(3).toVector
    * res0: Vector[Long] = Vector(0, 1, 2)
-   * scala> Segment.from(0).take(3).void.run.toOption.get.take(5).toVector
+   * scala> Segment.from(0).take(3).drain.run.toOption.get.take(5).toVector
    * res1: Vector[Long] = Vector(3, 4, 5, 6, 7)
-   * scala> Segment(1, 2, 3).take(5).void.run
+   * scala> Segment(1, 2, 3).take(5).drain.run
    * res2: Either[(Unit, Long),Segment[Int,Unit]] = Left(((),2))
    * }}}
    */
@@ -817,7 +817,7 @@ abstract class Segment[+O,+R] { self =>
    * res0: Vector[Long] = Vector(0, 1, 2)
    * scala> Segment.from(0).takeWhile(_ < 3, takeFailure = true).toVector
    * res1: Vector[Long] = Vector(0, 1, 2, 3)
-   * scala> Segment.from(0).takeWhile(_ < 3).void.run.toOption.get.take(5).toVector
+   * scala> Segment.from(0).takeWhile(_ < 3).drain.run.toOption.get.take(5).toVector
    * res2: Vector[Long] = Vector(3, 4, 5, 6, 7)
    * }}}
    */
@@ -1065,7 +1065,7 @@ abstract class Segment[+O,+R] { self =>
    * Returns a new segment which includes the number of elements output in the result.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).withSize.void.run
+   * scala> Segment(1, 2, 3).withSize.drain.run
    * res0: (Unit,Long) = ((),3)
    * }}}
    */
@@ -1142,8 +1142,8 @@ abstract class Segment[+O,+R] { self =>
           if (out1.isDefined) emit(out1.get)
           else if (out ne null) emits(Chunk.vector(out.result))
         }
-        val emitsL: Chunk[O] => Unit = os => { l += os; doZip }
-        val emitsR: Chunk[O2] => Unit = os => { r += os; doZip }
+        val emitsL: Chunk[O] => Unit = os => { if (os.nonEmpty) l += os; doZip }
+        val emitsR: Chunk[O2] => Unit = os => { if (os.nonEmpty) r += os; doZip }
         def unusedL: Segment[O,Unit] = if (l.isEmpty) Segment.empty else l.tail.foldLeft(if (lpos == 0) l.head else l.head.drop(lpos).toOption.get)(_ ++ _)
         def unusedR: Segment[O2,Unit] = if (r.isEmpty) Segment.empty else r.tail.foldLeft(if (rpos == 0) r.head else r.head.drop(rpos).toOption.get)(_ ++ _)
         var lResult: Option[R] = None
@@ -1262,9 +1262,25 @@ object Segment {
         }
       }}
     }
-    override def toString = s"unfold($s)($f)"
+    override def toString = s"unfold($s)(<f1>)"
   }
 
+  /**
+   * Creates a segment by successively applying `f` until a `None` is returned, emitting
+   * each output chunk and using each output `S` as input to the next invocation of `f`.
+   */
+  def unfoldChunk[S,O](s: S)(f: S => Option[(Chunk[O],S)]): Segment[O,Unit] = new Segment[O,Unit] {
+    def stage0 = (depth, _, emit, emits, done) => {
+      var s0 = s
+      Eval.later { step(unfoldChunk(s0)(f)) {
+        f(s0) match {
+          case None => done(())
+          case Some((c,t)) => s0 = t; emits(c)
+        }
+      }}
+    }
+    override def toString = s"unfoldSegment($s)(<f1>)"
+  }
   /** Creates a segment backed by a `Vector`. */
   def vector[O](os: Vector[O]): Segment[O,Unit] = Chunk.vector(os)
 
