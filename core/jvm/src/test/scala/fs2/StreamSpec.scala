@@ -188,5 +188,15 @@ class StreamSpec extends Fs2Spec with Inside {
     "issue #941 - scope closure issue" in {
       Stream(1,2,3).map(_ + 1).repeat.zip(Stream(4,5,6).map(_ + 1).repeat).take(4).toList
     }
+
+    "scope" in {
+       val c = new java.util.concurrent.atomic.AtomicLong(0)
+       val s1 = Stream.emit("a").covary[IO]
+       val s2 = Stream.bracket(IO { c.incrementAndGet() shouldBe 1L; () })(
+         _ => Stream.emit("b"),
+         _ => IO { c.decrementAndGet(); ()}
+       )
+       runLog { (s1.scope ++ s2).take(2).repeat.take(4).merge(Stream.eval_(IO.unit)) }
+     }
   }
 }

@@ -177,7 +177,7 @@ object Pull {
     def onError[O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] =
       Pull.fromFreeC(self.get[F,O2,R2] onError { e => h(e).get })
 
-    /** Tracks any resources acquired during this pull and release them when the pull completes. */
+    /** Tracks any resources acquired during this pull and releases them when the pull completes. */
     def scope: Pull[F,O,R] = Pull.fromFreeC(Algebra.scope(free))
   }
 
