@@ -63,7 +63,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   override def toArray[O2 >: O: ClassTag]: Array[O2] = {
     val arr = new Array[O2](size)
     var i = 0
-    this.map { b => arr(i) = b; i += 1 }.run
+    this.map { b => arr(i) = b; i += 1 }.drain.run
     arr
   }
 
