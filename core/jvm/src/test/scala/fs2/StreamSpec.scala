@@ -101,14 +101,14 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "repartition" in {
-      Stream("Lore", "m ip", "sum dolo", "r sit amet").repartition(_.split(" ").toIndexedSeq).toList ==
+      Stream("Lore", "m ip", "sum dolo", "r sit amet").repartition(s => Segment.array(s.split(" "))).toList ==
         List("Lorem", "ipsum", "dolor", "sit", "amet") &&
-      Stream("hel", "l", "o Wor", "ld").repartition(_.grouped(2).toVector).toList ==
+      Stream("hel", "l", "o Wor", "ld").repartition(s => Segment.indexedSeq(s.grouped(2).toVector)).toList ==
         List("he", "ll", "o ", "Wo", "rl", "d") &&
-      Stream(1, 2, 3, 4, 5).repartition(i => Vector(i, i)).toList ==
+      Stream(1, 2, 3, 4, 5).repartition(i => Segment.indexedSeq(Vector(i, i))).toList ==
         List(1, 3, 6, 10, 15, 15) &&
-      (Stream(): Stream[Nothing, String]).repartition(_ => Vector()).toList == List() &&
-      Stream("hello").repartition(_ => Vector()).toList == List()
+      (Stream(): Stream[Nothing, String]).repartition(_ => Segment.empty).toList == List() &&
+      Stream("hello").repartition(_ => Segment.empty).toList == List()
     }
 
     "translate" in forAll { (s: PureStream[Int]) =>

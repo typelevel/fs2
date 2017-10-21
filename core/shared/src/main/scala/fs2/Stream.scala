@@ -1991,20 +1991,25 @@ object Stream {
       *
       * @example {{{
       * scala> import cats.implicits._
-      * scala> Stream("Hel", "l", "o Wor", "ld").repartition(_.split(" ").toIndexedSeq).toList
+      * scala> Stream("Hel", "l", "o Wor", "ld").repartition(s => Segment.array(s.split(" "))).toList
       * res0: List[String] = List(Hello, World)
       * }}}
       */
-    def repartition(p: O => IndexedSeq[O])(implicit S: Semigroup[O]): Stream[F,O] = {
+    def repartition(p: O => Segment[O, Unit])(implicit S: Semigroup[O]): Stream[F,O] = {
       def go(carry: Option[O], s: Stream[F,O]): Pull[F,O,Unit] = {
-        s.pull.uncons1.flatMap {
-          case Some((hd, tl)) =>
-            val next = carry.fold(hd)(c => S.combine(c, hd))
-            val parts = p(next)
-            parts.size match {
-              case 0 => go(None, tl)
-              case 1 => go(Some(parts.head), tl)
-              case _ => Pull.output(Chunk.indexedSeq(parts.init)) >> go(Some(parts.last), tl)
+        s.pull.uncons.flatMap {
+          case Some((hds, tl)) =>
+            S.combineAllOption(hds.toVector) match {
+              case Some(hd) =>
+                val next = carry.fold(hd)(c => S.combine(c, hd))
+                val parts = p(next).toVector
+                parts.size match {
+                  case 0 => go(None, tl)
+                  case 1 => go(Some(parts.head), tl)
+                  case _ => Pull.output(Chunk.indexedSeq(parts.init)) >> go(Some(parts.last), tl)
+                }
+              case None =>
+                go(None, tl)
             }
           case None =>
             carry.fold[Pull[F,O,Unit]](Pull.done)(c => Pull.output1(c))
