@@ -2012,8 +2012,8 @@ object Stream {
      * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
      * is raised in `F`.
      */
-    def runSync(implicit F: Effect[F]): F[Unit] =
-      runFold(())((u, _) => u)
+    def runSync(implicit F: Sync[F]): F[Unit] =
+      runFoldSync(())((u, _) => u)
 
     /**
      * Interprets this stream in to a value of the target effect type `F` by folding
