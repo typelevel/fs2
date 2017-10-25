@@ -2,7 +2,8 @@ package fs2
 package benchmark
 
 import cats.effect.IO
-import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
+import org.openjdk.jmh.annotations.{Benchmark, BenchmarkMode, Mode, OutputTimeUnit, State, Scope}
+import java.util.concurrent.TimeUnit
 
 @State(Scope.Thread)
 class StreamBenchmark {
@@ -52,5 +53,11 @@ class StreamBenchmark {
         case None => Pull.pure(None)
       }
     }.covary[IO].runLast.unsafeRunSync.get
+  }
+
+  @GenerateN(1, 10, 100, 1000, 10000)
+  @Benchmark @BenchmarkMode(Array(Mode.AverageTime)) @OutputTimeUnit(TimeUnit.NANOSECONDS)
+  def emitsThenFlatMap(N: Int): Vector[Int] = {
+    Stream.emits(0 until N).flatMap(Stream(_)).toVector
   }
 }
