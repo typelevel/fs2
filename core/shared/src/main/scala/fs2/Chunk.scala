@@ -22,14 +22,16 @@ import scala.reflect.ClassTag
 abstract class Chunk[+O] extends Segment[O,Unit] { self =>
 
   private[fs2]
-  def stage0 = (_, _, emit, emits, done) => Eval.now {
+  def stage0 = (_, _, emit, emits, done) => {
     var emitted = false
-    Segment.step(if (emitted) Segment.empty else this) {
-      if (!emitted) {
-        emitted = true
-        emits(this)
+    Eval.now {
+      Segment.step(if (emitted) Segment.empty else this) {
+        if (!emitted) {
+          emitted = true
+          emits(this)
+        }
+        done(())
       }
-      done(())
     }
   }
 
