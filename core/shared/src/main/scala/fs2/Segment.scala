@@ -419,22 +419,22 @@ abstract class Segment[+O,+R] { self =>
   private[fs2] final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = {
     unconsChunks match {
       case Right((hds,tl)) =>
-        def loop(hds: Catenable[Chunk[O]]): B = {
+        def loopOnChunks(hds: Catenable[Chunk[O]]): B = {
           hds.uncons match {
-            case None => tl.foldRightLazy(z)(f)
             case Some((hd,hds)) =>
               val sz = hd.size
-              if (sz == 1) f(hd(0), tl.foldRightLazy(z)(f))
+              if (sz == 1) f(hd(0), loopOnChunks(hds))
               else {
-                def go(idx: Int): B = {
-                  if (idx < sz) f(hd(idx), go(idx + 1))
-                  else loop(hds)
+                def loopOnElements(idx: Int): B = {
+                  if (idx < sz) f(hd(idx), loopOnElements(idx + 1))
+                  else loopOnChunks(hds)
                 }
-                go(0)
+                loopOnElements(0)
               }
+            case None => tl.foldRightLazy(z)(f)
           }
         }
-        loop(hds)
+        loopOnChunks(hds)
 
       case Left(_) => z
     }
