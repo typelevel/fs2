@@ -37,7 +37,15 @@ final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,No
     Pull.fromFreeC(get[F,O,R].map(r => Right(r)).onError(t => FreeC.Pure(Left(t))))
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
-  def stream: Stream[F,O] = Stream.fromFreeC(this.scope.get[F,O,R] map (_ => ()))
+  def stream: Stream[F,O] = Stream.fromFreeC(this.scope.get[F,O,R].map(_ => ()))
+
+  /**
+   * Like [[stream]] but no scope is inserted around the pull, resulting in any resources being 
+   * promoted to the parent scope of the stream, extending the resource lifetime. Typically used
+   * as a performance optimization, where resource lifetime can be extended in exchange for faster
+   * execution.
+   */
+  def streamNoScope: Stream[F,O] = Stream.fromFreeC(get[F,O,R].map(_ => ()))
 
   /** Lifts this pull to the specified output type. */
   def covaryOutput[O2>:O]: Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
@@ -177,7 +185,7 @@ object Pull {
     def onError[O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] =
       Pull.fromFreeC(self.get[F,O2,R2] onError { e => h(e).get })
 
-    /** Tracks any resources acquired during this pull and release them when the pull completes. */
+    /** Tracks any resources acquired during this pull and releases them when the pull completes. */
     def scope: Pull[F,O,R] = Pull.fromFreeC(Algebra.scope(free))
   }
 

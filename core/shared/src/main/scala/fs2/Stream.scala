@@ -796,6 +796,18 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     }.stream
 
   /**
+   * Tracks any resources acquired during this stream and releases them when the stream completes.
+   *
+   * Scopes are typically inserted automatically, at the boundary of a pull (i.e., when a pull
+   * is converted to a stream). This method allows a scope to be explicitly demarcated, so that
+   * resources can be freed earlier than when using automatically inserted scopes.
+   *
+   * One use case is scoping the left hand side of an append: `(s1.scope ++ s2)`, which ensures
+   * resources acquired during `s1` are released onces the end of `s1` has been passed.
+   */
+  def scope: Stream[F,O] = Stream.fromFreeC(Algebra.scope(get))
+
+  /**
    * Outputs the segments of this stream as output values, ensuring each segment has maximum size `n`, splitting segments as necessary.
    *
    * @example {{{
