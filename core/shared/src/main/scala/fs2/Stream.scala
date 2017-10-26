@@ -1998,18 +1998,19 @@ object Stream {
     def repartition(p: O => Segment[O, Unit])(implicit S: Semigroup[O]): Stream[F,O] = {
       def go(carry: Option[O], s: Stream[F,O]): Pull[F,O,Unit] = {
         s.pull.uncons.flatMap {
-          case Some((hds, tl)) =>
-            S.combineAllOption(hds.toVector) match {
-              case Some(hd) =>
-                val next = carry.fold(hd)(c => S.combine(c, hd))
+          case Some((ohd, otl)) =>
+            ohd.uncons1 match {
+              case Right((hhd,htl)) =>
+                val tl = Stream.segment(htl) ++ otl
+                val next = carry.fold(hhd)(c => S.combine(c, hhd))
                 val parts = p(next).toVector
                 parts.size match {
                   case 0 => go(None, tl)
                   case 1 => go(Some(parts.head), tl)
                   case _ => Pull.output(Chunk.indexedSeq(parts.init)) >> go(Some(parts.last), tl)
                 }
-              case None =>
-                go(None, tl)
+              case Left(_) =>
+                carry.fold[Pull[F,O,Unit]](Pull.done)(c => Pull.output1(c))
             }
           case None =>
             carry.fold[Pull[F,O,Unit]](Pull.done)(c => Pull.output1(c))

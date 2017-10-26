@@ -101,14 +101,14 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "repartition" in {
-      Stream("Lore", "m ip", "sum dolo", "r sit amet").repartition(s => Segment.array(s.split(" "))).toList ==
-        List("Lorem", "ipsum", "dolor", "sit", "amet") &&
-      Stream("hel", "l", "o Wor", "ld").repartition(s => Segment.indexedSeq(s.grouped(2).toVector)).toList ==
-        List("he", "ll", "o ", "Wo", "rl", "d") &&
-      Stream(1, 2, 3, 4, 5).repartition(i => Segment.indexedSeq(Vector(i, i))).toList ==
-        List(1, 3, 6, 10, 15, 15) &&
-      (Stream(): Stream[Nothing, String]).repartition(_ => Segment.empty).toList == List() &&
-      Stream("hello").repartition(_ => Segment.empty).toList == List()
+      Stream("Lore", "m ip", "sum dolo", "r sit amet").repartition(s => Segment.array(s.split(" "))).toList shouldBe
+        List("Lorem", "ipsum", "dolor", "sit", "amet")
+      Stream("hel", "l", "o Wor", "ld").repartition(s => Segment.indexedSeq(s.grouped(2).toVector)).toList shouldBe
+        List("he", "ll", "o ", "Wo", "rl", "d")
+      Stream(1, 2, 3, 4, 5).repartition(i => Segment.indexedSeq(Vector(i, i))).toList shouldBe
+        List(1, 3, 6, 10, 15, 15)
+      (Stream(): Stream[Nothing, String]).repartition(_ => Segment.empty).toList shouldBe List()
+      Stream("hello").repartition(_ => Segment.empty).toList shouldBe List()
     }
 
     "translate" in forAll { (s: PureStream[Int]) =>
