@@ -1995,26 +1995,24 @@ object Stream {
       * res0: List[String] = List(Hello, World)
       * }}}
       */
-    def repartition(p: O => Segment[O, Unit])(implicit S: Semigroup[O]): Stream[F,O] = {
-      def go(carry: Option[O], s: Stream[F,O]): Pull[F,O,Unit] = {
-        s.pull.uncons.flatMap {
-          case Some((ohd, otl)) =>
-            ohd.uncons1 match {
-              case Right((hhd,htl)) =>
-                val tl = Stream.segment(htl) ++ otl
-                val next = carry.fold(hhd)(c => S.combine(c, hhd))
-                val parts = p(next).toVector
-                parts.size match {
-                  case 0 => go(None, tl)
-                  case 1 => go(Some(parts.head), tl)
-                  case _ => Pull.output(Chunk.indexedSeq(parts.init)) >> go(Some(parts.last), tl)
+    def repartition(p: O => Segment[O,Unit])(implicit S: Semigroup[O]): Stream[F,O] = {
+      def go(carry: Option[O], s: Stream[F,O], partitions: Segment[O,Unit] = Segment.empty): Pull[F,O,Unit] = {
+        partitions.uncons1.fold({ _ =>
+          s.pull.uncons1.flatMap {
+            case Some((hd, tl)) =>
+                val next = carry.fold(hd)(c => S.combine(c, hd))
+                val parts = p(next).uncons1
+                val parts2 = parts.flatMap(_._2.uncons1)
+                (parts, parts2) match {
+                  case (Left(()), _) => go(None, tl)
+                  case (Right((phd, ptl)), Left(())) => go(Some(phd), tl)
+                  case (Right((phd, ptl)), Right(_)) => Pull.output1(phd) >> go(None, tl, ptl)
                 }
-              case Left(_) =>
-                carry.fold[Pull[F,O,Unit]](Pull.done)(c => Pull.output1(c))
-            }
-          case None =>
-            carry.fold[Pull[F,O,Unit]](Pull.done)(c => Pull.output1(c))
-        }
+            case None =>
+              carry.fold[Pull[F, O, Unit]](Pull.done)(c => Pull.output1(c))
+          }
+        },
+        ps => ps._2.uncons1.fold(_ => go(Some(ps._1), s, ps._2), _ => Pull.output1(ps._1) >> go(None, s, ps._2)))
       }
       go(None, self).stream
     }
