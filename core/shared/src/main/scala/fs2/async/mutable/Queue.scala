@@ -230,7 +230,7 @@ object Queue {
       new Queue[F,A] {
         def upperBound: Option[Int] = Some(maxSize)
         def enqueue1(a:A): F[Unit] =
-          permits.decrement >> q.enqueue1(a)
+          permits.decrement *> q.enqueue1(a)
         def timedEnqueue1(a: A, timeout: FiniteDuration, scheduler: Scheduler): F[Boolean] =
           permits.timedDecrement(timeout, scheduler).ifM(q.enqueue1(a).as(true), F.pure(false))
         def offer1(a: A): F[Boolean] =
@@ -261,7 +261,7 @@ object Queue {
       new Queue[F,A] {
         def upperBound: Option[Int] = Some(maxSize)
         def enqueue1(a:A): F[Unit] =
-          permits.tryDecrement.flatMap { b => if (b) q.enqueue1(a) else (q.dequeue1 >> q.enqueue1(a)) }
+          permits.tryDecrement.flatMap { b => if (b) q.enqueue1(a) else (q.dequeue1 *> q.enqueue1(a)) }
         def timedEnqueue1(a: A, timeout: FiniteDuration, scheduler: Scheduler): F[Boolean] = offer1(a)
         def offer1(a: A): F[Boolean] =
           enqueue1(a).as(true)
@@ -290,7 +290,7 @@ object Queue {
       new Queue[F,A] {
         def upperBound: Option[Int] = Some(0)
         def enqueue1(a: A): F[Unit] =
-          permits.decrement >> q.enqueue1(a)
+          permits.decrement *> q.enqueue1(a)
         def timedEnqueue1(a: A, timeout: FiniteDuration, scheduler: Scheduler): F[Boolean] =
           permits.timedDecrement(timeout, scheduler).ifM(q.enqueue1(a).as(true), F.pure(false))
         def offer1(a: A): F[Boolean] =
@@ -299,12 +299,12 @@ object Queue {
         def timedDequeue1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
           timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head))
         def cancellableDequeue1: F[(F[A],F[Unit])] =
-          permits.increment >> q.cancellableDequeue1
+          permits.increment *> q.cancellableDequeue1
         override def dequeueBatch1(batchSize: Int): F[Chunk[A]] = q.dequeueBatch1(batchSize)
         def timedDequeueBatch1(batchSize: Int, timeout: FiniteDuration, scheduler: Scheduler): F[Option[Chunk[A]]] =
-          permits.increment >> q.timedDequeueBatch1(batchSize, timeout, scheduler)
+          permits.increment *> q.timedDequeueBatch1(batchSize, timeout, scheduler)
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]],F[Unit])] =
-          permits.increment >> q.cancellableDequeueBatch1(batchSize)
+          permits.increment *> q.cancellableDequeueBatch1(batchSize)
         def size = q.size
         def full: immutable.Signal[F, Boolean] = Signal.constant(true)
         def available: immutable.Signal[F, Int] = Signal.constant(0)
@@ -322,7 +322,7 @@ object Queue {
           if (done) F.pure(())
           else a match {
             case None => update(Right(true)).flatMap { successful => if (successful) q.enqueue1(None) else enqueue1(None) }
-            case _ => permits.decrement >> q.enqueue1(a)
+            case _ => permits.decrement *> q.enqueue1(a)
           }
         }
         def timedEnqueue1(a: Option[A], timeout: FiniteDuration, scheduler: Scheduler): F[Boolean] =
@@ -331,20 +331,20 @@ object Queue {
           if (done) F.pure(true)
           else a match {
             case None => update(Right(true)).flatMap { successful => if (successful) q.offer1(None) else offer1(None) }
-            case _ => permits.decrement >> q.offer1(a)
+            case _ => permits.decrement *> q.offer1(a)
           }
         }
         def dequeue1: F[Option[A]] = cancellableDequeue1.flatMap { _._1 }
         def timedDequeue1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[Option[A]]] =
           timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head))
         def cancellableDequeue1: F[(F[Option[A]],F[Unit])] =
-          permits.increment >> q.cancellableDequeue1
+          permits.increment *> q.cancellableDequeue1
         override def dequeueBatch1(batchSize: Int): F[Chunk[Option[A]]] =
           q.dequeueBatch1(batchSize)
         def timedDequeueBatch1(batchSize: Int, timeout: FiniteDuration, scheduler: Scheduler): F[Option[Chunk[Option[A]]]] =
-          permits.increment >> q.timedDequeueBatch1(batchSize, timeout, scheduler)
+          permits.increment *> q.timedDequeueBatch1(batchSize, timeout, scheduler)
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[Option[A]]],F[Unit])] =
-          permits.increment >> q.cancellableDequeueBatch1(batchSize)
+          permits.increment *> q.cancellableDequeueBatch1(batchSize)
         def size = q.size
         def full: immutable.Signal[F, Boolean] = Signal.constant(true)
         def available: immutable.Signal[F, Int] = Signal.constant(0)

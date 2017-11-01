@@ -33,7 +33,7 @@ abstract class Scheduler {
    */
   def awakeDelay[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, FiniteDuration] =
     Stream.eval(F.delay(System.nanoTime)).flatMap { start =>
-      fixedDelay[F](d) >> Stream.eval(F.delay((System.nanoTime - start).nanos))
+      fixedDelay[F](d) *> Stream.eval(F.delay((System.nanoTime - start).nanos))
     }
 
   /**
@@ -59,7 +59,7 @@ abstract class Scheduler {
    */
   def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, FiniteDuration] =
     Stream.eval(F.delay(System.nanoTime)).flatMap { start =>
-      fixedRate[F](d) >> Stream.eval(F.delay((System.nanoTime - start).nanos))
+      fixedRate[F](d) *> Stream.eval(F.delay((System.nanoTime - start).nanos))
     }
 
   /**
@@ -136,7 +136,7 @@ abstract class Scheduler {
 
   /**
    * Alias for `sleep(d).drain`. Often used in conjunction with `++` (i.e., `sleep_(..) ++ s`) as a more
-   * performant version of `sleep(..) >> s`.
+   * performant version of `sleep(..) *> s`.
    */
   def sleep_[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Nothing] =
     sleep(d).drain
@@ -215,7 +215,7 @@ abstract class Scheduler {
         s.pull.unconsAsync.flatMap { r =>
           (l race r).pull.flatMap {
             case Left(_) =>
-              Pull.output1(o) >> r.pull.flatMap {
+              Pull.output1(o) *> r.pull.flatMap {
                 case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
                   case (_, Some(last)) => go(last, tl)
                   case (_, None) => unconsLatest(tl).flatMap {
@@ -263,7 +263,7 @@ object Scheduler extends SchedulerPlatform {
      * as the former can be interrupted while delaying.
      */
     def delay[F[_],A](fa: F[A], d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): F[A] =
-      sleep(d) >> fa
+      sleep(d) *> fa
 
     /**
      * Starts a timer for duration `d` and after completion of the timer, evaluates `fa`.
@@ -276,7 +276,7 @@ object Scheduler extends SchedulerPlatform {
           val cancel = scheduler.scheduleOnce(d) {
             ec.execute(() => async.unsafeRunAsync(fa.flatMap(a => gate.setAsyncPure(Some(a))))(_ => IO.unit))
           }
-          gate.get -> (F.delay(cancel()) >> gate.setAsyncPure(None))
+          gate.get -> (F.delay(cancel()) *> gate.setAsyncPure(None))
         }
       }
 

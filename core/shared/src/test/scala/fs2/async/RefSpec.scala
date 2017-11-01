@@ -19,7 +19,7 @@ class RefSpec extends Fs2Spec {
           ref.access.flatMap{ case ((_, set)) =>
             ref.setAsyncPure(2).flatMap { _ =>
               mkScheduler.runLast.map(_.get).flatMap { scheduler =>
-                IO.shift(scheduler.delayedExecutionContext(100.millis)) >> set(Right(3))
+                IO.shift(scheduler.delayedExecutionContext(100.millis)) *> set(Right(3))
               }
             }
           }
@@ -29,7 +29,7 @@ class RefSpec extends Fs2Spec {
 
     "setSync" in {
       ref[IO, Int].flatMap { ref =>
-        ref.setSyncPure(0) >> ref.setSync(IO(1)) >> ref.get
+        ref.setSyncPure(0) *> ref.setSync(IO(1)) *> ref.get
       }.unsafeToFuture.map { _ shouldBe 1 }
     }
 

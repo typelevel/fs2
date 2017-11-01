@@ -487,7 +487,7 @@ class PipeSpec extends Fs2Spec {
               case Stepper.Fail(err) => Pull.fail(err)
               case Stepper.Emits(segment, next) =>
                 last match {
-                  case Some(a) => Pull.output(segment.map { o => (o,a) }) >> go(last, next, s)
+                  case Some(a) => Pull.output(segment.map { o => (o,a) }) *> go(last, next, s)
                   case None => go(last, next, s)
                 }
               case Stepper.Await(receive) =>

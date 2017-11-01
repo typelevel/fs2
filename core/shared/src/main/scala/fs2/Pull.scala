@@ -174,12 +174,12 @@ object Pull {
       Pull.fromFreeC(self.get[F,O2,R] flatMap { r => f(r).get })
 
     /** Alias for `flatMap(_ => p2)`. */
-    def >>[O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
+    def *>[O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
       this flatMap { _ => p2 }
 
     /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
     def onComplete[O2>:O,R2>:R](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
-      (self onError (e => p2 >> Pull.fail(e))) flatMap { _ =>  p2 }
+      (self onError (e => p2 *> Pull.fail(e))) flatMap { _ =>  p2 }
 
     /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
     def onError[O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] =
@@ -197,7 +197,7 @@ object Pull {
     def covary[F[_]]: Pull[F,O,R] = self.asInstanceOf[Pull[F,O,R]]
     def covaryAll[F[_],O2>:O,R2>:R]: Pull[F,O2,R2] = self.asInstanceOf[Pull[F,O2,R2]]
     def flatMap[F[_],O2>:O,R2](f: R => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F].flatMap(f)
-    def >>[F[_],O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F] >> p2
+    def *>[F[_],O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F] *> p2
     def onComplete[F[_],O2>:O,R2>:R](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F].onComplete(p2)
     def onError[F[_],O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F].onError(h)
     def scope[F[_]]: Pull[F,O,R] = covary[F].scope

@@ -56,7 +56,7 @@ class MergeJoinSpec extends Fs2Spec {
       val hang = Stream.repeatEval(IO.async[Unit] { cb => () }) // never call `cb`!
       val hang2: Stream[IO,Nothing] = full.drain
       val hang3: Stream[IO,Nothing] =
-        Stream.repeatEval[IO,Unit](IO.async[Unit] { cb => cb(Right(())) } >> IO.shift).drain
+        Stream.repeatEval[IO,Unit](IO.async[Unit] { cb => cb(Right(())) } *> IO.shift).drain
 
       "merge" in {
         runLog((full merge hang).take(1)) shouldBe Vector(42)

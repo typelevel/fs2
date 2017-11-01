@@ -32,7 +32,7 @@ object ThisModuleShouldCompile {
     case None => Pull.pure(None)
   }.stream
   Stream(1,2,3).pull.uncons1.flatMap {
-    case Some((hd,_)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd).as(None)
+    case Some((hd,_)) => Pull.eval(IO.pure(1)) *> Pull.output1(hd).as(None)
     case None => Pull.pure(None)
   }.stream
   (Stream(1,2,3).evalMap(IO(_))): Stream[IO,Int]

@@ -11,7 +11,7 @@ class ErrorHandlingSpec extends Fs2Spec {
       try {
         Pull.pure(1)
             .onError(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ => Pull.output1(i) >> Pull.fail(new RuntimeException("woot")) }
+            .flatMap { _ => Pull.output1(i) *> Pull.fail(new RuntimeException("woot")) }
             .stream.toList
         fail("should not reach, exception thrown above")
       }
@@ -23,7 +23,7 @@ class ErrorHandlingSpec extends Fs2Spec {
       try {
         Pull.eval(IO(1))
             .onError(_ => { i += 1; Pull.pure(2) })
-            .flatMap { _ => Pull.output1(i) >> Pull.fail(new RuntimeException("woot")) }
+            .flatMap { _ => Pull.output1(i) *> Pull.fail(new RuntimeException("woot")) }
             .stream.runLog.unsafeRunSync
         fail("should not reach, exception thrown above")
       }
@@ -36,7 +36,7 @@ class ErrorHandlingSpec extends Fs2Spec {
         Pull.eval(IO(1)).flatMap { x =>
           Pull.pure(x)
               .onError(_ => { i += 1; Pull.pure(2) })
-              .flatMap { _ => Pull.output1(i) >> Pull.fail(new RuntimeException("woot")) }
+              .flatMap { _ => Pull.output1(i) *> Pull.fail(new RuntimeException("woot")) }
         }.stream.runLog.unsafeRunSync
         fail("should not reach, exception thrown above")
       }
