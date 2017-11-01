@@ -1,3 +1,7 @@
+0.9.8
+=====
+- Added fs2-crypto (TLSSocket and TLSEngine)
+
 0.9.7
 =====
  - Fixed a race condition in `concurrent.join` where a failure in the outer stream was not always detected [#876](https://github.com/functional-streams-for-scala/fs2/issues/876)

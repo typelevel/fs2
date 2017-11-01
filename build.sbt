@@ -1,6 +1,5 @@
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import sbtrelease.Version
-import com.typesafe.tools.mima.core._
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
@@ -33,8 +32,8 @@ lazy val commonSettings = Seq(
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
-    "org.scalatest" %%% "scalatest" % "3.0.0" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.13.4" % "test"
+    "org.scalatest" %%% "scalatest" % "3.0.4" % "test",
+    "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
@@ -50,17 +49,16 @@ lazy val commonSettings = Seq(
 lazy val testSettings = Seq(
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-  // fork in Test := true, Causes issues on Travis
   publishArtifact in Test := true
 )
 
 def scmBranch(v: String): String = {
   val Some(ver) = Version(v)
   if(ver.qualifier.exists(_ == "-SNAPSHOT"))
-    // support branch (0.9.0-SNAPSHOT -> series/0.9)
-    s"series/${ver.copy(bugfix = None, qualifier = None).string}"
+  // support branch (0.9.0-SNAPSHOT -> series/0.9)
+    s"series/${ver.copy(subversions = ver.subversions.take(1), qualifier = None).string}"
   else
-    // release tag (0.9.0-M2 -> v0.9.0-M2)
+  // release tag (0.9.0-M2 -> v0.9.0-M2)
     s"v${ver.string}"
 }
 
@@ -69,6 +67,7 @@ lazy val scaladocSettings = Seq(
     "-doc-source-url", s"${scmInfo.value.get.browseUrl}/tree/${scmBranch(version.value)}€{FILE_PATH}.scala",
     "-sourcepath", baseDirectory.in(LocalRootProject).value.getAbsolutePath,
     "-implicits",
+    "-implicits-sound-shadowing",
     "-implicits-show-all"
   ),
   scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
@@ -113,9 +112,19 @@ lazy val publishingSettings = Seq(
 )
 
 lazy val commonJsSettings = Seq(
+  scalaJSOptimizerOptions ~= { options =>
+    // https://github.com/scala-js/scala-js/issues/2798
+    try {
+      scala.util.Properties.isJavaAtLeast("1.8")
+      options
+    } catch {
+      case _: NumberFormatException =>
+        options.withParallel(false)
+    }
+  },
   requiresDOM := false,
   scalaJSStage in Test := FastOptStage,
-  jsEnv in Test := NodeJSEnv().value,
+  jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
   scalacOptions in Compile += {
     val dir = project.base.toURI.toString.replaceFirst("[^/]+/?$", "")
     val url = "https://raw.githubusercontent.com/functional-streams-for-scala/fs2"
@@ -140,11 +149,6 @@ lazy val mimaSettings = Seq(
     organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
   }.toSet,
   mimaBinaryIssueFilters ++= Seq(
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.copy"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.this"),
-    ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.util.Free#Pure.apply"),
-    ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.tcp.Socket.mkSocket"),
-    ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.NonEmptyChunk.last")
   )
 )
 
@@ -159,7 +163,7 @@ def previousVersion(currentVersion: String): Option[String] = {
 lazy val root = project.in(file(".")).
   settings(commonSettings).
   settings(noPublish).
-  aggregate(coreJVM, coreJS, io, benchmark)
+  aggregate(coreJVM, coreJS, io, crypto, benchmark)
 
 lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
@@ -174,7 +178,15 @@ lazy val coreJVM = core.jvm.enablePlugins(SbtOsgi).
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", "*"),
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
+    osgiSettings,
+    libraryDependencies ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((2, minor)) if minor >= 13 =>
+          Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "0.1.2" % "test")
+        case _ =>
+          Seq()
+      }
+    }
   ).
   settings(mimaSettings)
 lazy val coreJS = core.js.disablePlugins(DoctestPlugin, MimaPlugin)
@@ -192,14 +204,27 @@ lazy val io = project.in(file("io")).
     osgiSettings
   ).dependsOn(coreJVM % "compile->compile;test->test")
 
+lazy val crypto = project.in(file("crypto")).
+  enablePlugins(SbtOsgi).
+  settings(commonSettings).
+  settings(mimaSettings).
+  settings(
+    name := "fs2-crypto",
+    OsgiKeys.exportPackage := Seq("fs2.crypto.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", """fs2.*;version="${Bundle-Version}"""", "*"),
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings
+  ).dependsOn(io % "compile->compile;test->test", coreJVM % "compile->compile;test->test")
+
 lazy val benchmarkMacros = project.in(file("benchmark-macros")).
   disablePlugins(MimaPlugin).
   settings(commonSettings).
   settings(noPublish).
   settings(
     name := "fs2-benchmark-macros",
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.patch),
+    libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
 
 lazy val benchmark = project.in(file("benchmark")).
@@ -210,14 +235,15 @@ lazy val benchmark = project.in(file("benchmark")).
     name := "fs2-benchmark"
   )
   .settings(
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.patch),
+    libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
   .enablePlugins(JmhPlugin)
   .dependsOn(io, benchmarkMacros)
 
 lazy val docs = project.in(file("docs")).
-  settings(commonSettings ++ tutSettings).
+  enablePlugins(TutPlugin).
+  settings(commonSettings).
   settings(
     name := "fs2-docs",
     tutSourceDirectory := file("docs") / "src",
