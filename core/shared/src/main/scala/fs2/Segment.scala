@@ -31,7 +31,7 @@ abstract class Segment[+O,+R] { self =>
   final def stage: (Depth, (=> Unit)=>Unit, O => Unit, Chunk[O] => Unit, R => Unit) => Eval[Step[O,R]] =
     (depth, defer, emit, emits, done) =>
       if (depth < MaxFusionDepth) stage0(depth.increment, defer, emit, emits, done)
-      else evalDefer {
+      else Eval.defer {
         stage0(Depth(0), defer,
                o => defer(emit(o)),
                os => defer(emits(os)),
@@ -80,7 +80,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def collect[O2](pf: PartialFunction[O,O2]): Segment[O2,R] = new Segment[O2,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       self.stage(depth.increment, defer,
         o => if (pf.isDefinedAt(o)) emit(pf(o)) else emits(Chunk.empty),
         os => {
@@ -122,7 +122,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def drain: Segment[Nothing,R] = new Segment[Nothing,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       var sinceLastEmit = 0
       def maybeEmitEmpty() = {
         sinceLastEmit += 1
@@ -228,7 +228,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def filter[O2](p: O => Boolean): Segment[O,R] = new Segment[O,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       self.stage(depth.increment, defer,
         o => if (p(o)) emit(o) else emits(Chunk.empty),
         os => {
@@ -260,7 +260,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def flatMap[O2,R2](f: O => Segment[O2,R2]): Segment[O2,(R,Option[R2])] = new Segment[O2,(R,Option[R2])] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       val q = new collection.mutable.Queue[O]()
       var inner: Step[O2,R2] = null
       var outerResult: Option[R] = None
@@ -316,7 +316,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def flatMapAccumulate[S,O2](init: S)(f: (S,O) => Segment[O2,S]): Segment[O2,(R,S)] = new Segment[O2,(R,S)] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       var state: S = init
       val q = new collection.mutable.Queue[O]()
       var inner: Step[O2,S] = null
@@ -489,7 +489,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   def last: Segment[Nothing,(R,Option[O])] = new Segment[Nothing,(R,Option[O])] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       var last: Option[O] = None
       self.stage(depth.increment, defer,
         o => last = Some(o),
@@ -509,7 +509,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       self.stage(depth.increment, defer,
         o => emit(f(o)),
         os => { var i = 0; while (i < os.size) { emit(f(os(i))); i += 1; } },
@@ -533,7 +533,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   def mapAccumulate[S,O2](init: S)(f: (S,O) => (S,O2)): Segment[O2,(R,S)] = new Segment[O2,(R,S)] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       var s = init
       def doEmit(o: O) = {
         val (newS,o2) = f(s,o)
@@ -558,7 +558,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def mapConcat[O2](f: O => Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       self.stage(depth.increment, defer,
         o => emits(f(o)),
         os => { var i = 0; while (i < os.size) { emits(f(os(i))); i += 1; } },
@@ -576,7 +576,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def mapResult[R2](f: R => R2): Segment[O,R2] = new Segment[O,R2] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       self.stage(depth.increment, defer, emit, emits, r => done(f(r))).map(_.mapRemainder(_ mapResult f))
     }
     override def toString = s"($self).mapResult(<f1>)"
@@ -1080,7 +1080,7 @@ abstract class Segment[+O,+R] { self =>
   def withSize: Segment[O,(R,Long)] = withSize_(0)
 
   private def withSize_(init: Long): Segment[O,(R,Long)] = new Segment[O,(R,Long)] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
       var length = init
       self.stage(depth.increment, defer,
         o => { length += 1; emit(o) },
@@ -1102,7 +1102,7 @@ abstract class Segment[+O,+R] { self =>
    */
   def zipWith[O2,R2,O3](that: Segment[O2,R2])(f: (O,O2) => O3): Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] =
     new Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] {
-      def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      def stage0 = (depth, defer, emit, emits, done) => Eval.defer {
         val l = new scala.collection.mutable.Queue[Chunk[O]]
         var lpos = 0
         var lStepped = false
@@ -1334,7 +1334,4 @@ object Segment {
   private def makeTrampoline = new java.util.LinkedList[() => Unit]()
   private def defer(t: java.util.LinkedList[() => Unit]): (=>Unit) => Unit =
     u => t.addLast(() => u)
-
-  // note - Eval.defer seems to not be stack safe
-  private def evalDefer[A](e: => Eval[A]): Eval[A] = Eval.now(()) flatMap { _ => e }
 }
