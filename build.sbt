@@ -210,6 +210,7 @@ lazy val crypto = project.in(file("crypto")).
   settings(mimaSettings).
   settings(
     name := "fs2-crypto",
+    mimaPreviousArtifacts := Nil, 
     OsgiKeys.exportPackage := Seq("fs2.crypto.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", """fs2.*;version="${Bundle-Version}"""", "*"),
