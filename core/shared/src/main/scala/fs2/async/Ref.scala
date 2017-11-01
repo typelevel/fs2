@@ -147,7 +147,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
    * `Ref[A]`.
    */
   def setAsync(fa: F[A]): F[Unit] =
-    F.liftIO(F.runAsync(F.shift(ec) >> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
+    F.liftIO(F.runAsync(F.shift(ec) *> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
 
   /**
    * *Asynchronously* sets a reference to a pure value.

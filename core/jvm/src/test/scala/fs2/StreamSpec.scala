@@ -39,8 +39,8 @@ class StreamSpec extends Fs2Spec with Inside {
       runLog(s.get.flatMap(inner => inner.get)) shouldBe { runLog(s.get).flatMap(inner => runLog(inner.get)) }
     }
 
-    ">>" in forAll { (s: PureStream[Int], s2: PureStream[Int] ) =>
-      runLog(s.get >> s2.get) shouldBe { runLog(s.get.flatMap(_ => s2.get)) }
+    "*>" in forAll { (s: PureStream[Int], s2: PureStream[Int] ) =>
+      runLog(s.get *> s2.get) shouldBe { runLog(s.get.flatMap(_ => s2.get)) }
     }
 
     "iterate" in {
@@ -147,7 +147,7 @@ class StreamSpec extends Fs2Spec with Inside {
       val emitAndSleep = Stream.emit(()) ++ Stream.eval(blockingSleep)
       val t = emitAndSleep zip Stream.duration[IO] drop 1 map { _._2 } runLog
 
-      (IO.shift >> t).unsafeToFuture collect {
+      (IO.shift *> t).unsafeToFuture collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
       }
     }
@@ -161,8 +161,8 @@ class StreamSpec extends Fs2Spec with Inside {
             case None => Pull.done
             case Some((pair, tl)) =>
               pair match {
-                case (true , d) => Pull.output1((true , d - lastTrue)) >> go(d,tl)
-                case (false, d) => Pull.output1((false, d - lastTrue)) >> go(lastTrue,tl)
+                case (true , d) => Pull.output1((true , d - lastTrue)) *> go(d,tl)
+                case (false, d) => Pull.output1((false, d - lastTrue)) *> go(lastTrue,tl)
               }
           }
         }
@@ -177,7 +177,7 @@ class StreamSpec extends Fs2Spec with Inside {
         take(draws.toInt).
         through(durationSinceLastTrue)
 
-      (IO.shift >> durationsSinceSpike.runLog).unsafeToFuture().map { result =>
+      (IO.shift *> durationsSinceSpike.runLog).unsafeToFuture().map { result =>
         val (head :: tail) = result.toList
         withClue("every always emits true first") { assert(head._1) }
         withClue("true means the delay has passed: " + tail) { assert(tail.filter(_._1).map(_._2).forall { _ >= delay }) }

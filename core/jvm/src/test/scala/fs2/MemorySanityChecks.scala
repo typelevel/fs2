@@ -21,7 +21,7 @@ object RepeatPullSanityTest extends App {
 object RepeatEvalSanityTest extends App {
   def id[A]: Pipe[Pure, A, A] = {
     def go(s: Stream[Pure, A]): Pull[Pure, A, Unit] =
-      s.pull.uncons1.flatMap { case Some((h, t)) => Pull.output1(h) >> go(t); case None => Pull.done }
+      s.pull.uncons1.flatMap { case Some((h, t)) => Pull.output1(h) *> go(t); case None => Pull.done }
     in => go(in).stream
   }
   Stream.repeatEval(IO(1)).throughPure(id).run.unsafeRunSync()
@@ -97,7 +97,7 @@ object StepperSanityTest extends App {
         case Stepper.Done => Pull.done
         case Stepper.Fail(err) => Pull.fail(err)
         case Stepper.Emits(segment, next) =>
-          Pull.output(segment) >> go(next, s)
+          Pull.output(segment) *> go(next, s)
         case Stepper.Await(receive) =>
           s.pull.uncons.flatMap {
             case Some((hd,tl)) => go(receive(Some(hd)), tl)

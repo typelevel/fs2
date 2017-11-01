@@ -20,7 +20,7 @@ class ConcurrentlySpec extends Fs2Spec {
 
     "when primary stream fails, overall stream fails and background stream is terminated" in forAll { (f: Failure) =>
       var bgDone = false
-      val bg = Stream.repeatEval(IO(1)).onFinalize(IO(bgDone = true))
+      val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
       val prg = Scheduler[IO](1).flatMap(scheduler => (scheduler.sleep_[IO](25.millis) ++ f.get).concurrently(bg))
       an[Err.type] should be thrownBy runLog(prg)
       bgDone shouldBe true
@@ -28,7 +28,7 @@ class ConcurrentlySpec extends Fs2Spec {
 
     "when primary stream termiantes, background stream is terminated" in forAll { (s: PureStream[Int]) =>
       var bgDone = false
-      val bg = Stream.repeatEval(IO(1)).onFinalize(IO(bgDone = true))
+      val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
       val prg = Scheduler[IO](1).flatMap(scheduler => (scheduler.sleep_[IO](25.millis) ++ s.get).concurrently(bg))
       runLog(prg)
       bgDone shouldBe true

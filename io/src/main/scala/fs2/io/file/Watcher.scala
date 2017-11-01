@@ -141,7 +141,7 @@ object Watcher {
 
     private def track(key: WatchKey, r: Registration[F]): F[F[Unit]] =
       registrations.modify(_.updated(key, r)).as(
-        F.delay(key.cancel) >> registrations.modify(_ - key).flatMap(c => c.previous.get(key).map(_.cleanup).getOrElse(F.pure(()))))
+        F.delay(key.cancel) *> registrations.modify(_ - key).flatMap(c => c.previous.get(key).map(_.cleanup).getOrElse(F.pure(()))))
 
     override def watch(path: Path, types: Seq[Watcher.EventType] = Nil, modifiers: Seq[WatchEvent.Modifier] = Nil): F[F[Unit]] = {
       isDir(path).flatMap { dir =>
@@ -211,7 +211,7 @@ object Watcher {
                 val (cancels, events) = x.separate
                 val cancelAll: F[Unit] = cancels.sequence.void
                 val updateRegistration: F[Unit] = this.registrations.modify(m =>
-                  m.get(key).map(r => m.updated(key, r.copy(cleanup = r.cleanup >> cancelAll))).getOrElse(m)
+                  m.get(key).map(r => m.updated(key, r.copy(cleanup = r.cleanup *> cancelAll))).getOrElse(m)
                 ).void
                 updateRegistration.as(events.flatten)
               }

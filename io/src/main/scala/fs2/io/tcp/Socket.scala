@@ -224,21 +224,21 @@ protected[tcp] object Socket {
       }
 
       def read0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
-        readSemaphore.decrement >>
+        readSemaphore.decrement *>
         F.attempt[Option[Chunk[Byte]]](getBufferOf(max) flatMap { buff =>
           readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)) flatMap {
             case (read, _) =>
               if (read < 0) F.pure(None)
               else releaseBuffer(buff) map (Some(_))
           }
-        }).flatMap { r => readSemaphore.increment >> (r match {
+        }).flatMap { r => readSemaphore.increment *> (r match {
           case Left(err) => F.raiseError(err)
           case Right(maybeChunk) => F.pure(maybeChunk)
         })}
       }
 
       def readN0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
-        readSemaphore.decrement >>
+        readSemaphore.decrement *>
         F.attempt(getBufferOf(max) flatMap { buff =>
           def go(timeoutMs: Long): F[Option[Chunk[Byte]]] = {
             readChunk(buff, timeoutMs) flatMap { case (readBytes, took) =>
@@ -250,7 +250,7 @@ protected[tcp] object Socket {
           }
 
           go(timeout.map(_.toMillis).getOrElse(0l))
-        }) flatMap { r => readSemaphore.increment >> (r match {
+        }) flatMap { r => readSemaphore.increment *> (r match {
           case Left(err) => F.raiseError(err)
           case Right(maybeChunk) => F.pure(maybeChunk)
         })}

@@ -55,9 +55,9 @@ object text {
       s.pull.unconsChunk.flatMap {
         case Some((byteChunks, tail)) =>
           val (output, nextBuffer) = byteChunks.toList.foldLeft((Nil: List[String], buf))(processSingleChunk)
-          Pull.output(Chunk.seq(output.reverse)) >> doPull(nextBuffer, tail)
+          Pull.output(Chunk.seq(output.reverse)) *> doPull(nextBuffer, tail)
         case None if !buf.isEmpty =>
-          Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.pure(None)
+          Pull.output1(new String(buf.toArray, utf8Charset)) *> Pull.pure(None)
         case None =>
           Pull.pure(None)
       }
@@ -131,8 +131,8 @@ object text {
       s.pull.unconsChunk.flatMap {
         case Some((chunk, s)) =>
           val (toOutput, newBuffer, newPendingLineFeed) = extractLines(buffer, chunk, pendingLineFeed)
-          Pull.output(toOutput) >> go(newBuffer, newPendingLineFeed, s)
-        case None if buffer.nonEmpty => Pull.output1(buffer.mkString) >> Pull.pure(None)
+          Pull.output(toOutput) *> go(newBuffer, newPendingLineFeed, s)
+        case None if buffer.nonEmpty => Pull.output1(buffer.mkString) *> Pull.pure(None)
         case None => Pull.pure(None)
       }
     }

@@ -68,7 +68,7 @@ package object file {
   private def _writeAll0[F[_]](in: Stream[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =
     in.pull.unconsChunk.flatMap {
       case None => Pull.done
-      case Some((hd,tl)) => _writeAll1(hd, out, offset) >> _writeAll0(tl, out, offset + hd.size)
+      case Some((hd,tl)) => _writeAll1(hd, out, offset) *> _writeAll0(tl, out, offset + hd.size)
     }
 
   private def _writeAll1[F[_]](buf: Chunk[Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =
