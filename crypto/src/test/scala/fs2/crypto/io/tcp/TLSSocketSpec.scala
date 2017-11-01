@@ -13,7 +13,7 @@ import org.scalacheck.{Arbitrary, Gen}
 
 import scala.concurrent.ExecutionContext
 
-object TLSEchoServer {
+object TLSSocketSpec {
 
 
   implicit val S = Strategy.fromExecutionContext(ExecutionContext.Implicits.global)
@@ -41,7 +41,7 @@ object TLSEchoServer {
 
 class TLSSocketSpec extends Fs2Spec {
 
-  import TLSEchoServer.sslCtx
+  import TLSSocketSpec.sslCtx
 
   implicit val streamByteGen: Arbitrary[Vector[String]] = Arbitrary {
     for {

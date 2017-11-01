@@ -46,7 +46,7 @@ object TLSSocket {
     implicit F: Async[F]
   ): F[TLSSocket[F]] = {
     async.semaphore(1).flatMap { wrapSemaphore =>
-    F.refOf(impl.ReadStatus[F](reading = false, Vector.empty, Chunk.empty)) flatMap { readStateRef =>
+    F.refOf(impl.ReadStatus[F](reading = false, initHandshake = false, Vector.empty, Chunk.empty)) flatMap { readStateRef =>
     tlsEngine.startHandshake as {
 
       new TLSSocket[F] { self =>
@@ -122,12 +122,16 @@ object TLSSocket {
 
     /**
       * Reading status of the TLSSocket
-      * @param reading          When true, there is someone alse reading currently
+      * @param reading          When true, there is someone else reading currently
+      * @param initHandshake    When true, indicates, that this initialHandshake was performed.
+      *                         Prevents situation when there is just read from the client so the handshake is started before
+      *                         we start to read from the client
       * @param readDone         Contains signals (reads) to be notified when current read completes.
       * @tparam F
       */
     case class ReadStatus[F[_]](
       reading: Boolean
+      , initHandshake: Boolean
       , readDone: Vector[F[Unit]]
       , buff: Chunk[Byte]
     )
@@ -243,7 +247,17 @@ object TLSSocket {
         }
       }
 
-      go
+      readStateRef.get map { _.initHandshake } flatMap { initialised =>
+        if (initialised) go
+        else {
+          acquireReadLock(readStateRef) *>
+          readStateRef.get map { _.initHandshake } flatMap { initialised => //again read, shadow ok. Only when redLock is acquired, then the initHandshake may be set
+            (if (initialised) F.pure(()) else readHandshake(MoreData.UNWRAP)) *> // cause Unwrap -> Client Hello if not yet initialised after acquiring the lock
+            releaseReadLock(readStateRef) *>
+            go
+          }
+        }
+      }
     }
 
 
@@ -266,6 +280,13 @@ object TLSSocket {
       action: MoreData.Value
     )(implicit F: Async[F]): F[Unit] = {
 
+      // On initial handshake marks the handshake is complete, then, this will just read state and terminate.
+      def signalInitDone: F[Unit] =
+        readStateRef.get map { _.initHandshake } flatMap { initialised =>
+          if (initialised) F.pure(())
+          else readStateRef.modify { _.copy(initHandshake = true) } as (())
+        }
+
       // performs single wrap operation. based on result, this may
       // require further /wrap/unwrap or may terminate.
       def wrap: F[Unit] = {
@@ -273,10 +294,10 @@ object TLSSocket {
         tlsEngine.wrap(EmptyBytes).flatMap { result =>
           (if (result.output.nonEmpty) socket.write(result.output, None) else F.pure(())) *>
             wrapSemaphore.increment *> {
-            if (result.closed) F.pure(())
+            if (result.closed) signalInitDone
             else {
               result.handshake match {
-                case None => F.pure(()) // done with handshake
+                case None => signalInitDone
                 case Some(action) => handleAction(action)
               }
             }
@@ -288,7 +309,7 @@ object TLSSocket {
       def receiveUnwrap: F[Unit] = {
         tlsEngine.unwrapAvailable.flatMap { available =>
         socket.read(available, None).flatMap {
-            case None => F.pure(())
+            case None => signalInitDone
             case Some(bytes) => unwrap(bytes)
         }}
       }
@@ -297,10 +318,10 @@ object TLSSocket {
       def unwrap(bytes: Chunk[Byte]): F[Unit] = {
         tlsEngine.unwrap(bytes) flatMap { result =>
           appendToBuffer(result.output, readStateRef) *> {
-            if (result.closed) F.pure(()) // done with handshake
+            if (result.closed) signalInitDone
             else {
               result.handshake match {
-                case None => F.pure(())
+                case None => signalInitDone
                 case Some(action) => handleAction(action)
               }
             }
@@ -431,7 +452,6 @@ object TLSSocket {
         }
       }.map(_._2)
     }
-
 
 
   }
