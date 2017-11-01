@@ -71,14 +71,14 @@ private[fs2] object Algebra {
 
   final class Token
 
-  final class Scope[F[_]] private (private val parent: Option[Scope[F]])(implicit F: Sync[F]) {
+  final class Scope[F[_]] private (private val id: Token, private val parent: Option[Scope[F]])(implicit F: Sync[F]) {
     private val monitor = this
     private var closing: Boolean = false
     private var closed: Boolean = false
     private var midAcquires: Int = 0
     private var midAcquiresDone: () => Unit = () => ()
     private val resources: LinkedHashMap[Token, F[Unit]] = new LinkedHashMap[Token, F[Unit]]()
-    private var spawns: Catenable[Scope[F]] = Catenable.empty
+    private val spawns: LinkedHashMap[Token, Scope[F]] = new LinkedHashMap[Token, Scope[F]]()
 
     def isClosed: Boolean = monitor.synchronized { closed }
 
@@ -109,8 +109,9 @@ private[fs2] object Algebra {
       val spawn = monitor.synchronized {
         if (closing || closed) None
         else {
-          val spawn = new Scope[F](Some(this))
-          spawns = spawns :+ spawn
+          val spawnId = new Token()
+          val spawn = new Scope[F](spawnId, Some(this))
+          spawns += (spawnId -> spawn)
           Some(spawn)
         }
       }
@@ -130,15 +131,23 @@ private[fs2] object Algebra {
           import cats.syntax.traverse._
           import cats.syntax.functor._
           import cats.instances.vector._
-          spawns.toVector.reverse.
+          spawns.toVector.map(_._2).reverse.
             traverse(_.closeAndReturnFinalizers(asyncSupport)).
             map(_.foldLeft(Catenable.empty: Catenable[(Token,F[Unit])])(_ ++ _)).
-            map { s =>
-              monitor.synchronized {
-                closed = true
-                val result = s ++ Catenable.fromSeq(resources.toVector.reverse)
-                resources.clear()
-                result
+            flatMap { s =>
+              F.delay {
+                val r = monitor.synchronized {
+                  closed = true
+                  val result = s ++ Catenable.fromSeq(resources.toVector.reverse)
+                  resources.clear()
+                  result
+                }
+                parent.foreach { p =>
+                  p.monitor.synchronized {
+                    p.spawns -= id
+                  }
+                }
+                r
               }
             }
         }
@@ -183,7 +192,7 @@ private[fs2] object Algebra {
   }
 
   object Scope {
-    def newRoot[F[_]: Sync]: Scope[F] = new Scope[F](None)
+    def newRoot[F[_]: Sync]: Scope[F] = new Scope[F](new Token(), None)
   }
 
   def uncons[F[_],X,O](s: FreeC[Algebra[F,O,?],Unit], chunkSize: Int = 1024): FreeC[Algebra[F,X,?],Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] = {

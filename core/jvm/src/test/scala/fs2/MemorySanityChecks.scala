@@ -123,3 +123,10 @@ object StepperSanityTest2 extends App {
   }
   go(0)(Pipe.stepper(_.map(_ + 1)))
 }
+
+object EvalFlatMapMapTest extends App {
+  Stream.eval(IO(())).
+    flatMap(_ => Stream.emits(Seq())).
+    map(x => x).
+    repeat.run.unsafeRunSync()
+}
