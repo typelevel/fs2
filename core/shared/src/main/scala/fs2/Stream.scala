@@ -1255,6 +1255,9 @@ object Stream {
     go(0)
   }
 
+  private[fs2] def exportResources[F[_]]: Stream[F,List[Algebra.Resource[F]]] =
+    Stream.fromFreeC(Algebra.exportResources[F,List[Algebra.Resource[F]]].flatMap(Algebra.output1(_)))
+
   /**
    * Creates a stream that, when run, fails with the supplied exception.
    *
@@ -1281,7 +1284,8 @@ object Stream {
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     eval(f).flatMap(s => s)
 
-
+  private[fs2] def importResources[F[_]](resources: List[Algebra.Resource[F]]): Stream[F,Nothing] =
+    Stream.fromFreeC(Algebra.importResources[F,Nothing](resources))
 
   /**
    * An infinite `Stream` that repeatedly applies a given function
@@ -1765,13 +1769,13 @@ object Stream {
         // each stream is forked.
         // terminates when killSignal is true
         // if fails will enq in queue failure
-        def runInner(inner: Stream[F,O2]): Stream[F,Nothing] = {
+        def runInner(inner: Stream[F,O2], importedResources: List[Algebra.Resource[F]]): Stream[F,Nothing] = {
           Stream.eval_(
             available.decrement *> incrementRunning *>
             async.fork {
-              inner.segments.attempt.
+              (Stream.importResources(importedResources) ++ inner.segments.attempt.
                 flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
-                interruptWhen(killSignal). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                interruptWhen(killSignal)). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
                 run *> available.increment *> decrementRunning
             }
           )
@@ -1779,7 +1783,11 @@ object Stream {
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] = {
-          (outer.interruptWhen(killSignal) flatMap runInner run).attempt flatMap {
+          outer.interruptWhen(killSignal).flatMap { inner =>
+            Stream.exportResources[F].flatMap { resources =>
+              runInner(inner, resources)
+            }
+          }.run.attempt flatMap {
             case Right(_) => decrementRunning
             case Left(err) => outputQ.enqueue1(Some(Left(err))) *> decrementRunning
           }

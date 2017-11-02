@@ -2,6 +2,7 @@ package fs2.internal
 
 import scala.collection.mutable.LinkedHashMap
 import scala.concurrent.ExecutionContext
+import java.util.concurrent.atomic.AtomicLong
 import cats.~>
 import cats.effect.{ Effect, IO, Sync }
 import cats.implicits._
@@ -21,6 +22,8 @@ private[fs2] object Algebra {
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
   final case class OpenScope[F[_],O]() extends Algebra[F,O,Scope[F]]
   final case class CloseScope[F[_],O](toClose: Scope[F]) extends Algebra[F,O,Unit]
+  final case class ExportResources[F[_],O]() extends Algebra[F,O,List[Resource[F]]]
+  final case class ImportResources[F[_],O](resources: List[Resource[F]]) extends Algebra[F,O,Unit]
 
   final case class UnconsAsync[F[_],X,Y,O](s: FreeC[Algebra[F,O,?],Unit], ec: ExecutionContext)
     extends Algebra[F,X,AsyncPull[F,Option[(Segment[O,Unit],FreeC[Algebra[F,O,?],Unit])]]]
@@ -60,6 +63,12 @@ private[fs2] object Algebra {
       })
     }
 
+  def exportResources[F[_],O]: FreeC[Algebra[F,O,?],List[Resource[F]]] =
+    FreeC.Eval[Algebra[F,O,?],List[Resource[F]]](ExportResources())
+
+  def importResources[F[_],O](resources: List[Resource[F]]): FreeC[Algebra[F,O,?],Unit] =
+    FreeC.Eval[Algebra[F,O,?],Unit](ImportResources(resources))
+
   def pure[F[_],O,R](r: R): FreeC[Algebra[F,O,?],R] =
     FreeC.Pure[Algebra[F,O,?],R](r)
 
@@ -71,13 +80,41 @@ private[fs2] object Algebra {
 
   final class Token
 
+  sealed trait Resource[F[_]] { self =>
+    private[Algebra] def release: F[Unit]
+    private[Algebra] def increment: F[Unit]
+    private[Algebra] def translate[G[_]](u: F ~> G): Resource[G] = new Resource[G] {
+      def release = u(self.release)
+      def increment = u(self.increment)
+    }
+  }
+
+  object Resource {
+    def apply[F[_]](finalizer: F[Unit])(implicit F: Sync[F]): Resource[F] = {
+      val count = new AtomicLong(1L)
+      new Resource[F] {
+        def release: F[Unit] = {
+          F.delay(count.decrementAndGet).flatMap {
+            case 0L => finalizer
+            case _ => F.unit
+          }
+        }
+        def increment: F[Unit] = F.delay {
+          val cnt = count.incrementAndGet
+          if (cnt <= 1) count.decrementAndGet
+          ()
+        }
+      }
+    }
+  }
+
   final class Scope[F[_]] private (private val id: Token, private val parent: Option[Scope[F]])(implicit F: Sync[F]) {
     private val monitor = this
     private var closing: Boolean = false
     private var closed: Boolean = false
     private var midAcquires: Int = 0
     private var midAcquiresDone: () => Unit = () => ()
-    private val resources: LinkedHashMap[Token, F[Unit]] = new LinkedHashMap[Token, F[Unit]]()
+    private val resources: LinkedHashMap[Token, Resource[F]] = new LinkedHashMap[Token, Resource[F]]()
     private val spawns: LinkedHashMap[Token, Scope[F]] = new LinkedHashMap[Token, Scope[F]]()
 
     def isClosed: Boolean = monitor.synchronized { closed }
@@ -91,7 +128,7 @@ private[fs2] object Algebra {
 
     def finishAcquire(t: Token, finalizer: F[Unit]): Unit = monitor.synchronized {
       if (closed) throw new IllegalStateException("FS2 bug: scope cannot be closed while acquire is outstanding")
-      resources += (t -> finalizer)
+      resources += (t -> Resource(finalizer))
       midAcquires -= 1
       if (midAcquires == 0) midAcquiresDone()
     }
@@ -102,7 +139,7 @@ private[fs2] object Algebra {
     }
 
     def releaseResource(t: Token): Option[F[Unit]] = monitor.synchronized {
-      resources.remove(t)
+      resources.remove(t).map(_.release)
     }
 
     def open: Scope[F] = {
@@ -138,7 +175,7 @@ private[fs2] object Algebra {
               F.delay {
                 val r = monitor.synchronized {
                   closed = true
-                  val result = s ++ Catenable.fromSeq(resources.toVector.reverse)
+                  val result = s ++ Catenable.fromSeq(resources.toVector.reverse.map { case (t,r) => (t,r.release) })
                   resources.clear()
                   result
                 }
@@ -188,7 +225,29 @@ private[fs2] object Algebra {
       parent.toRight(this).flatMap(loop)
     }
 
-    override def toString: String = ##.toString
+    def exportResources: F[List[Resource[F]]] = {
+      def down(s: Scope[F]): Catenable[Resource[F]] = {
+        val (spawns, resources) = s.monitor.synchronized(s.spawns.map(_._2).toList -> s.resources.map(_._2).toList)
+        spawns.map(down).foldLeft(Catenable.empty: Catenable[Resource[F]])(_ ++ _) ++ Catenable.fromSeq(resources)
+      }
+      def root(s: Scope[F]): Scope[F] = s.parent match {
+        case Some(p) => root(p)
+        case None => s
+      }
+      val all = down(root(this)).toList
+      all.traverse(r => r.increment.as(r))
+    }
+
+    def importResources(toImport: List[Resource[F]]): F[Unit] = {
+      monitor.synchronized {
+        if (closing || closed) {
+          toImport.traverse(_.release).void
+        } else {
+          resources ++= toImport.map(r => (new Token() -> r))
+          F.unit
+        }
+      }
+    }
   }
 
   object Scope {
@@ -303,6 +362,14 @@ private[fs2] object Algebra {
               runFoldLoop(innerScope, effect, ec, acc, g, f(Right(innerScope)).viewL)
             }
 
+          case e: ExportResources[F,_] =>
+            scope.exportResources.flatMap { exported =>
+              runFoldLoop(scope, effect, ec, acc, g, f(Right(exported)).viewL)
+            }
+
+          case i: ImportResources[F,_] =>
+            scope.importResources(i.resources) *> runFoldLoop(scope, effect, ec, acc, g, f(Right(())).viewL)
+
           case unconsAsync: Algebra.UnconsAsync[F,_,_,_] =>
             effect match {
               case Some(eff) =>
@@ -343,6 +410,8 @@ private[fs2] object Algebra {
         case r: Release[F,O2] => Release[G,O2](r.token)
         case os: OpenScope[F,O2] => os.asInstanceOf[Algebra[G,O2,X]]
         case cs: CloseScope[F,O2] => cs.asInstanceOf[CloseScope[G,O2]]
+        case er: ExportResources[F,O2] => er.asInstanceOf[Algebra[G,O2,X]]
+        case ir: ImportResources[F,O2] => ImportResources(ir.resources.map(_.translate(u)))
         case ua: UnconsAsync[F,_,_,_] =>
           val uu: UnconsAsync[F,Any,Any,Any] = ua.asInstanceOf[UnconsAsync[F,Any,Any,Any]]
           UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), uu.ec).asInstanceOf[Algebra[G,O2,X]]
