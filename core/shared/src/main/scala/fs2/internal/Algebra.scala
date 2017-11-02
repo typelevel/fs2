@@ -81,10 +81,12 @@ private[fs2] object Algebra {
   final class Token
 
   sealed trait Resource[F[_]] { self =>
-    private[Algebra] def release: F[Unit]
+    private[Algebra] def maybeRelease: F[Unit]
+    private[Algebra] def forceRelease: F[Unit]
     private[Algebra] def increment: F[Unit]
     private[Algebra] def translate[G[_]](u: F ~> G): Resource[G] = new Resource[G] {
-      def release = u(self.release)
+      def maybeRelease = u(self.maybeRelease)
+      def forceRelease = u(self.forceRelease)
       def increment = u(self.increment)
     }
   }
@@ -93,11 +95,18 @@ private[fs2] object Algebra {
     def apply[F[_]](finalizer: F[Unit])(implicit F: Sync[F]): Resource[F] = {
       val count = new AtomicLong(1L)
       new Resource[F] {
-        def release: F[Unit] = {
+        def maybeRelease: F[Unit] = {
           F.delay(count.decrementAndGet).flatMap {
             case 0L => finalizer
             case _ => F.unit
           }
+        }
+        def forceRelease: F[Unit] = {
+          def loop: F[Unit] = F.delay(count.get).flatMap(cnt =>
+            if(cnt > 0) F.delay(count.compareAndSet(cnt, 0)).ifM(finalizer, loop)
+            else F.unit
+          )
+          loop
         }
         def increment: F[Unit] = F.delay {
           val cnt = count.incrementAndGet
@@ -139,7 +148,7 @@ private[fs2] object Algebra {
     }
 
     def releaseResource(t: Token): Option[F[Unit]] = monitor.synchronized {
-      resources.remove(t).map(_.release)
+      resources.remove(t).map(_.forceRelease)
     }
 
     def open: Scope[F] = {
@@ -175,7 +184,7 @@ private[fs2] object Algebra {
               F.delay {
                 val r = monitor.synchronized {
                   closed = true
-                  val result = s ++ Catenable.fromSeq(resources.toVector.reverse.map { case (t,r) => (t,r.release) })
+                  val result = s ++ Catenable.fromSeq(resources.toVector.reverse.map { case (t,r) => (t,r.maybeRelease) })
                   resources.clear()
                   result
                 }
@@ -241,7 +250,7 @@ private[fs2] object Algebra {
     def importResources(toImport: List[Resource[F]]): F[Unit] = {
       monitor.synchronized {
         if (closing || closed) {
-          toImport.traverse(_.release).void
+          toImport.traverse(_.maybeRelease).void
         } else {
           resources ++= toImport.map(r => (new Token() -> r))
           F.unit
