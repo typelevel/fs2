@@ -44,6 +44,15 @@ class MergeJoinSpec extends Fs2Spec {
       runLog { s1.get.flatMap(_.get) }.toSet
     }
 
+    "join - resources acquired in outer stream are released after inner streams complete" in {
+      val bracketed = Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(Stream(_), b => IO(b.set(false)))
+      // Starts an inner stream which fails if the resource b is finalized
+      val s: Stream[IO,Stream[IO,Unit]] = bracketed.map { b =>
+        Stream.eval(IO(b.get)).flatMap(b => if (b) Stream(()) else Stream.fail(Err)).repeat.take(10000)
+      }
+      s.joinUnbounded.run.unsafeRunSync()
+    }
+
     "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
       an[Err.type] should be thrownBy {
         s1.get.merge(f.get).run.unsafeRunSync()

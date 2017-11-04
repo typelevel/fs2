@@ -38,9 +38,9 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
         serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
           case Left(local) => Stream.eval_(localBindAddress.setAsyncPure(local))
           case Right(s) =>
-            Stream.emit(s.flatMap { socket =>
+            s.map { socket =>
               socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)
-            })
+            }
         }.joinUnbounded
       }
 
