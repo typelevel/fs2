@@ -261,7 +261,7 @@ private[fs2] object Algebra {
       }
     }
 
-    def root: Scope[F] = parent match {
+    @annotation.tailrec def root: Scope[F] = parent match {
       case Some(p) => p.root
       case None => this
     }
