@@ -82,11 +82,9 @@ private[fs2] object Algebra {
 
   sealed trait Resource[F[_]] { self =>
     private[Algebra] def maybeRelease: F[Unit]
-    private[Algebra] def forceRelease: F[Unit]
     private[Algebra] def increment: F[Unit]
     private[Algebra] def translate[G[_]](u: F ~> G): Resource[G] = new Resource[G] {
       def maybeRelease = u(self.maybeRelease)
-      def forceRelease = u(self.forceRelease)
       def increment = u(self.increment)
     }
   }
@@ -100,13 +98,6 @@ private[fs2] object Algebra {
             case 0L => finalizer
             case _ => F.unit
           }
-        }
-        def forceRelease: F[Unit] = {
-          def loop: F[Unit] = F.delay(count.get).flatMap(cnt =>
-            if(cnt > 0) F.delay(count.compareAndSet(cnt, 0)).ifM(finalizer, loop)
-            else F.unit
-          )
-          loop
         }
         def increment: F[Unit] = F.delay {
           val cnt = count.incrementAndGet
@@ -147,8 +138,24 @@ private[fs2] object Algebra {
       if (midAcquires == 0) midAcquiresDone()
     }
 
-    def releaseResource(t: Token): Option[F[Unit]] = monitor.synchronized {
-      resources.remove(t).map(_.forceRelease)
+    /**
+     * Releases the resource for token `t`. First searches locally (in this scope and spawned scopes)
+     * and if not found, searches the rest of the scope tree by recurivesly searching ancestors.
+     */
+    def releaseResource(t: Token, excludeSpawn: Option[Scope[F]]): Option[F[Unit]] = {
+      def finalizerInParentScope: Option[F[Unit]] = parent.flatMap(_.releaseResource(t, Some(this)))
+      releaseResourceLocally(t, excludeSpawn) orElse finalizerInParentScope
+    }
+
+    /**
+     * Releases the resource for token `t` that is present in this scope or one of the spawn scopes,
+     * excluding the supplied `excludeSpawn`. Returns a finalizer if resource found or none otherwise.
+     */
+    private def releaseResourceLocally(t: Token, excludeSpawn: Option[Scope[F]]): Option[F[Unit]] = {
+      val finalizerInThisScope: Option[F[Unit]] = monitor.synchronized(resources.remove(t)).map(_.maybeRelease)
+      def finalizerInSpawnScope: Option[F[Unit]] = monitor.synchronized(spawns.map(_._2).toList).
+        foldLeft(Option.empty[F[Unit]])((acc, spawn) => if (Some(spawn) == excludeSpawn) acc else acc.orElse(spawn.releaseResourceLocally(t, None)))
+      finalizerInThisScope.orElse(finalizerInSpawnScope)
     }
 
     def open: Scope[F] = {
@@ -239,11 +246,7 @@ private[fs2] object Algebra {
         val (spawns, resources) = s.monitor.synchronized(s.spawns.map(_._2).toList -> s.resources.map(_._2).toList)
         spawns.map(down).foldLeft(Catenable.empty: Catenable[Resource[F]])(_ ++ _) ++ Catenable.fromSeq(resources)
       }
-      def root(s: Scope[F]): Scope[F] = s.parent match {
-        case Some(p) => root(p)
-        case None => s
-      }
-      val all = down(root(this)).toList
+      val all = down(root).toList
       all.traverse(r => r.increment.as(r))
     }
 
@@ -256,6 +259,11 @@ private[fs2] object Algebra {
           F.unit
         }
       }
+    }
+
+    def root: Scope[F] = parent match {
+      case Some(p) => p.root
+      case None => this
     }
   }
 
@@ -352,11 +360,11 @@ private[fs2] object Algebra {
             }
 
           case release: Algebra.Release[F,_] =>
-            scope.releaseResource(release.token) match {
-              case None => F.suspend { runFoldLoop(scope, effect, ec, acc, g, f(Right(())).viewL) }
+            scope.releaseResource(release.token, None) match {
               case Some(finalizer) => F.flatMap(F.attempt(finalizer)) { e =>
                 runFoldLoop(scope, effect, ec, acc, g, f(e).viewL)
               }
+              case None => F.suspend(runFoldLoop(scope, effect, ec, acc, g, f(Right(())).viewL))
             }
 
           case c: Algebra.CloseScope[F,_] =>
