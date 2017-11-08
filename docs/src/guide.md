@@ -164,10 +164,10 @@ Regardless of how a `Stream` is built up, each operation takes constant time. So
 
 ### Error handling
 
-A stream can raise errors, either explicitly, using `Stream.fail`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
+A stream can raise errors, either explicitly, using `Stream.raiseError`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
 
 ```tut
-val err = Stream.fail(new Exception("oh noes!"))
+val err = Stream.raiseError(new Exception("oh noes!"))
 val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
 val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 ```
@@ -561,13 +561,13 @@ Let's look at some examples of how this plays out, starting with the synchronous
 case object Err extends Throwable
 
 (Stream(1) ++ (throw Err)).take(1).toList
-(Stream(1) ++ Stream.fail(Err)).take(1).toList
+(Stream(1) ++ Stream.raiseError(Err)).take(1).toList
 ```
 
 The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
 
 ```tut
-(Stream(1) ++ Stream.fail(Err)).take(1).toList
+(Stream(1) ++ Stream.raiseError(Err)).take(1).toList
 ```
 
 The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doesn't know this until it actually runs another step of the stream.
@@ -586,7 +586,7 @@ That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponde
 ```tut
 import scala.concurrent.ExecutionContext.Implicits.global
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
-val s2 = (Stream.empty ++ Stream.fail(Err)) handleErrorWith { e => println(e); Stream.fail(e) }
+val s2 = (Stream.empty ++ Stream.raiseError(Err)) handleErrorWith { e => println(e); Stream.raiseError(e) }
 val merged = s1 merge s2 take 1
 ```
 

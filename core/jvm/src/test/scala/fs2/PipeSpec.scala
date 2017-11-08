@@ -434,10 +434,10 @@ class PipeSpec extends Fs2Spec {
     "handle errors from observing sink" in {
       forAll { (s: PureStream[Int]) =>
         runLog {
-          s.get.covary[IO].observe { _ => Stream.fail(Err) }.attempt
+          s.get.covary[IO].observe { _ => Stream.raiseError(Err) }.attempt
         } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
         runLog {
-          s.get.covary[IO].observeAsync(2) { _ => Stream.fail(Err) }.attempt
+          s.get.covary[IO].observeAsync(2) { _ => Stream.raiseError(Err) }.attempt
         } should contain theSameElementsAs Left(Err) +: s.get.toVector.map(Right(_))
       }
     }
@@ -484,7 +484,7 @@ class PipeSpec extends Fs2Spec {
           def go(last: Option[A], stepper: Stepper[I,O], s: Stream[Pure,(I,A)]): Pull[Pure,(O,A),Unit] = {
             stepper.step match {
               case Stepper.Done => Pull.done
-              case Stepper.Fail(err) => Pull.fail(err)
+              case Stepper.Fail(err) => Pull.raiseError(err)
               case Stepper.Emits(segment, next) =>
                 last match {
                   case Some(a) => Pull.output(segment.map { o => (o,a) }) *> go(last, next, s)

@@ -17,8 +17,8 @@ import fs2.internal.{ Algebra, FreeC }
  *   - `(f >=> g) >=> h == f >=> (g >=> h)`
  * where `f >=> g` is defined as `a => a flatMap f flatMap g`
  *
- * `fail` is caught by `handleErrorWith`:
- *   - `handleErrorWith(fail(e))(f) == f(e)`
+ * `raiseError` is caught by `handleErrorWith`:
+ *   - `handleErrorWith(raiseError(e))(f) == f(e)`
  *
  * @hideImplicitConversion covaryPure
  */
@@ -69,9 +69,9 @@ final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,No
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    handleErrorWith(e => p2 *> Pull.fail(e)) flatMap { _ =>  p2 }
+    handleErrorWith(e => p2 *> Pull.raiseError(e)) flatMap { _ =>  p2 }
 
-  /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
+  /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
   def handleErrorWith[F2[x]>:F[x],O2>:O,R2>:R](h: Throwable => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
     Pull.fromFreeC(get[F2,O2,R2] handleErrorWith { e => h(e).get })
 
@@ -118,7 +118,7 @@ object Pull {
    */
   def acquireCancellable[F[_],R](r: F[R])(cleanup: R => F[Unit]): Pull[F,Nothing,Cancellable[F,R]] =
     Stream.bracketWithToken(r)(r => Stream.emit(r), cleanup).pull.uncons1.flatMap {
-      case None => Pull.fail(new RuntimeException("impossible"))
+      case None => Pull.raiseError(new RuntimeException("impossible"))
       case Some(((token, r), tl)) => Pull.pure(Cancellable(release(token), r))
     }
 
@@ -139,13 +139,9 @@ object Pull {
   def eval[F[_],R](fr: F[R]): Pull[F,Nothing,R] =
     fromFreeC(Algebra.eval[F,Nothing,R](fr))
 
-  /** Reads and outputs nothing, and fails with the given error. */
-  def fail(err: Throwable): Pull[Nothing,Nothing,Nothing] =
-    new Pull(Algebra.fail[Nothing,Nothing,Nothing](err))
-
   /**
    * Repeatedly uses the output of the pull as input for the next step of the pull.
-   * Halts when a step terminates with `None` or `Pull.fail`.
+   * Halts when a step terminates with `None` or `Pull.raiseError`.
    */
   def loop[F[_],O,R](using: R => Pull[F,O,Option[R]]): R => Pull[F,O,Option[R]] =
     r => using(r) flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
@@ -161,6 +157,10 @@ object Pull {
   /** Pull that outputs nothing and has result of `r`. */
   def pure[F[_],R](r: R): Pull[F,Nothing,R] =
     fromFreeC(Algebra.pure(r))
+
+  /** Reads and outputs nothing, and fails with the given error. */
+  def raiseError(err: Throwable): Pull[Nothing,Nothing,Nothing] =
+    new Pull(Algebra.raiseError[Nothing,Nothing,Nothing](err))
 
   /**
    * Pull that outputs the specified segment and returns the result of the segment as the result
@@ -186,7 +186,7 @@ object Pull {
   implicit def syncInstance[F[_],O]: Sync[Pull[F,O,?]] = new Sync[Pull[F,O,?]] {
     def pure[A](a: A): Pull[F,O,A] = Pull.pure(a)
     def handleErrorWith[A](p: Pull[F,O,A])(h: Throwable => Pull[F,O,A]) = p.handleErrorWith(h)
-    def raiseError[A](t: Throwable) = Pull.fail(t)
+    def raiseError[A](t: Throwable) = Pull.raiseError(t)
     def flatMap[A,B](p: Pull[F,O,A])(f: A => Pull[F,O,B]) = p.flatMap(f)
     def tailRecM[A, B](a: A)(f: A => Pull[F,O,Either[A,B]]) = f(a).flatMap {
       case Left(a) => tailRecM(a)(f)

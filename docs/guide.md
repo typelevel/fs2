@@ -137,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.runLog // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$418696692
+// ra: cats.effect.IO[Vector[Int]] = IO$1614890140
 
 val rb = eff.run // purely for effects
-// rb: cats.effect.IO[Unit] = IO$112534092
+// rb: cats.effect.IO[Unit] = IO$641485712
 
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$383810460
+// rc: cats.effect.IO[Int] = IO$1612824869
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -224,10 +224,10 @@ Regardless of how a `Stream` is built up, each operation takes constant time. So
 
 ### Error handling
 
-A stream can raise errors, either explicitly, using `Stream.fail`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
+A stream can raise errors, either explicitly, using `Stream.raiseError`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
 
 ```scala
-scala> val err = Stream.fail(new Exception("oh noes!"))
+scala> val err = Stream.raiseError(new Exception("oh noes!"))
 err: fs2.Stream[fs2.Pure,Nothing] = Stream(..)
 
 scala> val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
@@ -274,10 +274,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$1153837958
+acquire: cats.effect.IO[Unit] = IO$1457449558
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$889325626
+release: cats.effect.IO[Unit] = IO$1802561419
 ```
 
 ```scala
@@ -554,7 +554,7 @@ import cats.effect.Sync
 // import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@29f93e7d
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@7b9e7bd5
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
@@ -611,12 +611,12 @@ val c = new Connection {
 
 // Effect extends both Sync and Async
 val T = cats.effect.Effect[IO]
-// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@29f93e7d
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@7b9e7bd5
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: cats.effect.IO[Array[Byte]] = IO$913520968
+// bytes: cats.effect.IO[Array[Byte]] = IO$495158085
 
 Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
 // res42: Vector[List[Byte]] = Vector(List(0, 1, 2))
@@ -702,14 +702,14 @@ defined object Err
 scala> (Stream(1) ++ (throw Err)).take(1).toList
 res0: List[Int] = List(1)
 
-scala> (Stream(1) ++ Stream.fail(Err)).take(1).toList
+scala> (Stream(1) ++ Stream.raiseError(Err)).take(1).toList
 res1: List[Int] = List(1)
 ```
 
 The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
 
 ```scala
-scala> (Stream(1) ++ Stream.fail(Err)).take(1).toList
+scala> (Stream(1) ++ Stream.raiseError(Err)).take(1).toList
 res2: List[Int] = List(1)
 ```
 
@@ -735,7 +735,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 scala> val s1 = (Stream(1) ++ Stream(2)).covary[IO]
 s1: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
-scala> val s2 = (Stream.empty ++ Stream.fail(Err)) handleErrorWith { e => println(e); Stream.fail(e) }
+scala> val s2 = (Stream.empty ++ Stream.raiseError(Err)) handleErrorWith { e => println(e); Stream.raiseError(e) }
 s2: fs2.Stream[fs2.Pure,Nothing] = Stream(..)
 
 scala> val merged = s1 merge s2 take 1
