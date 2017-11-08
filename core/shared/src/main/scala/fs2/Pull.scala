@@ -9,8 +9,6 @@ import fs2.internal.{ Algebra, FreeC }
  *
  * Any resources acquired by `p` are freed following the call to `stream`.
  *
- * Much of the API of `Pull` is defined in [[Pull.InvariantOps]].
- *
  * Laws:
  *
  * `Pull` forms a monad in `R` with `pure` and `flatMap`:
@@ -22,7 +20,6 @@ import fs2.internal.{ Algebra, FreeC }
  * `fail` is caught by `onError`:
  *   - `onError(fail(e))(f) == f(e)`
  *
- * @hideImplicitConversion PureOps
  * @hideImplicitConversion covaryPure
  */
 final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,Nothing,?],R]) extends AnyVal {
@@ -40,12 +37,26 @@ final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,No
   def stream: Stream[F,O] = Stream.fromFreeC(this.scope.get[F,O,R].map(_ => ()))
 
   /**
-   * Like [[stream]] but no scope is inserted around the pull, resulting in any resources being 
+   * Like [[stream]] but no scope is inserted around the pull, resulting in any resources being
    * promoted to the parent scope of the stream, extending the resource lifetime. Typically used
    * as a performance optimization, where resource lifetime can be extended in exchange for faster
    * execution.
    */
   def streamNoScope: Stream[F,O] = Stream.fromFreeC(get[F,O,R].map(_ => ()))
+
+  /** Applies the resource of this pull to `f` and returns the result. */
+  def flatMap[F2[x]>:F[x],O2>:O,R2](f: R => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
+    Pull.fromFreeC(get[F2,O2,R] flatMap { r => f(r).get })
+
+  /** Alias for `flatMap(_ => p2)`. */
+  def *>[F2[x]>:F[x],O2>:O,R2](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
+    this flatMap { _ => p2 }
+
+  /** Lifts this pull to the specified effect type. */
+  def covary[F2[x]>:F[x]]: Pull[F2,O,R] = this.asInstanceOf[Pull[F2,O,R]]
+
+  /** Lifts this pull to the specified effect type, output type, and resource type. */
+  def covaryAll[F2[x]>:F[x],O2>:O,R2>:R]: Pull[F2,O2,R2] = this.asInstanceOf[Pull[F2,O2,R2]]
 
   /** Lifts this pull to the specified output type. */
   def covaryOutput[O2>:O]: Pull[F,O2,R] = this.asInstanceOf[Pull[F,O2,R]]
@@ -55,6 +66,17 @@ final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,No
 
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
   def map[R2](f: R => R2): Pull[F,O,R2] = Pull.fromFreeC(get map f)
+
+  /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
+  def onComplete[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
+    onError(e => p2 *> Pull.fail(e)) flatMap { _ =>  p2 }
+
+  /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
+  def onError[F2[x]>:F[x],O2>:O,R2>:R](h: Throwable => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
+    Pull.fromFreeC(get[F2,O2,R2] onError { e => h(e).get })
+
+  /** Tracks any resources acquired during this pull and releases them when the pull completes. */
+  def scope: Pull[F,O,R] = Pull.fromFreeC(Algebra.scope(get))
 }
 
 object Pull {
@@ -157,61 +179,11 @@ object Pull {
   private def release[F[_]](token: Algebra.Token): Pull[F,Nothing,Unit] =
     fromFreeC[F,Nothing,Unit](Algebra.release(token))
 
-  /** Provides syntax for pulls that are invariant in `F`, `O`, and `R`. */
-  implicit def InvariantOps[F[_],O,R](p: Pull[F,O,R]): InvariantOps[F,O,R] = new InvariantOps(p.get)
-  /** Provides syntax for pulls that are invariant in `F`, `O`, and `R`. */
-  final class InvariantOps[F[_],O,R] private[Pull] (private val free: FreeC[Algebra[F,O,?],R]) extends AnyVal {
-    private def self: Pull[F,O,R] = Pull.fromFreeC(free)
-
-    /** Lifts this pull to the specified effect type. */
-    def covary[F2[x]>:F[x]]: Pull[F2,O,R] = self.asInstanceOf[Pull[F2,O,R]]
-
-    /** Lifts this pull to the specified effect type, output type, and resource type. */
-    def covaryAll[F2[x]>:F[x],O2>:O,R2>:R]: Pull[F2,O2,R2] = self.asInstanceOf[Pull[F2,O2,R2]]
-
-    /** Applies the resource of this pull to `f` and returns the result. */
-    def flatMap[O2>:O,R2](f: R => Pull[F,O2,R2]): Pull[F,O2,R2] =
-      Pull.fromFreeC(self.get[F,O2,R] flatMap { r => f(r).get })
-
-    /** Alias for `flatMap(_ => p2)`. */
-    def *>[O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
-      this flatMap { _ => p2 }
-
-    /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
-    def onComplete[O2>:O,R2>:R](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] =
-      (self onError (e => p2 *> Pull.fail(e))) flatMap { _ =>  p2 }
-
-    /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
-    def onError[O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] =
-      Pull.fromFreeC(self.get[F,O2,R2] onError { e => h(e).get })
-
-    /** Tracks any resources acquired during this pull and releases them when the pull completes. */
-    def scope: Pull[F,O,R] = Pull.fromFreeC(Algebra.scope(free))
-  }
-
-  /** Provides syntax for pure pulls. */
-  implicit def PureOps[O,R](p: Pull[Pure,O,R]): PureOps[O,R] = new PureOps(p.get[Pure,O,R])
-  /** Provides syntax for pure pulls. */
-  final class PureOps[O,R] private[Pull] (private val free: FreeC[Algebra[Pure,O,?],R]) extends AnyVal {
-    private def self: Pull[Pure,O,R] = Pull.fromFreeC[Pure,O,R](free)
-    def covary[F[_]]: Pull[F,O,R] = self.asInstanceOf[Pull[F,O,R]]
-    def covaryAll[F[_],O2>:O,R2>:R]: Pull[F,O2,R2] = self.asInstanceOf[Pull[F,O2,R2]]
-    def flatMap[F[_],O2>:O,R2](f: R => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F].flatMap(f)
-    def *>[F[_],O2>:O,R2](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F] *> p2
-    def onComplete[F[_],O2>:O,R2>:R](p2: => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F].onComplete(p2)
-    def onError[F[_],O2>:O,R2>:R](h: Throwable => Pull[F,O2,R2]): Pull[F,O2,R2] = covary[F].onError(h)
-    def scope[F[_]]: Pull[F,O,R] = covary[F].scope
-  }
-
   /** Implicitly covaries a pull. */
-  implicit def covaryPure[F[_],O,R,O2>:O,R2>:R](p: Pull[Pure,O,R]): Pull[F,O2,R2] = p.covaryAll[F,O2,R2]
+  implicit def covaryPure[F[_],O,R,O2>:O,R2>:R](p: Pull[Pure,O,R]): Pull[F,O2,R2] = p.asInstanceOf[Pull[F,O,R]]
 
-  /**
-   * `Sync` instance for `Stream`.
-   *
-   * Note: non-implicit so that cats syntax doesn't override FS2 syntax
-   */
-  def syncInstance[F[_],O]: Sync[Pull[F,O,?]] = new Sync[Pull[F,O,?]] {
+  /** `Sync` instance for `Stream`. */
+  implicit def syncInstance[F[_],O]: Sync[Pull[F,O,?]] = new Sync[Pull[F,O,?]] {
     def pure[A](a: A): Pull[F,O,A] = Pull.pure(a)
     def handleErrorWith[A](p: Pull[F,O,A])(h: Throwable => Pull[F,O,A]) = p.onError(h)
     def raiseError[A](t: Throwable) = Pull.fail(t)
