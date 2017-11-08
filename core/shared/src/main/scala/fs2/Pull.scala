@@ -17,8 +17,8 @@ import fs2.internal.{ Algebra, FreeC }
  *   - `(f >=> g) >=> h == f >=> (g >=> h)`
  * where `f >=> g` is defined as `a => a flatMap f flatMap g`
  *
- * `fail` is caught by `onError`:
- *   - `onError(fail(e))(f) == f(e)`
+ * `fail` is caught by `handleErrorWith`:
+ *   - `handleErrorWith(fail(e))(f) == f(e)`
  *
  * @hideImplicitConversion covaryPure
  */
@@ -31,7 +31,7 @@ final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,No
 
   /** Returns a pull with the result wrapped in `Right`, or an error wrapped in `Left` if the pull has failed. */
   def attempt: Pull[F,O,Either[Throwable,R]] =
-    Pull.fromFreeC(get[F,O,R].map(r => Right(r)).onError(t => FreeC.Pure(Left(t))))
+    Pull.fromFreeC(get[F,O,R].map(r => Right(r)).handleErrorWith(t => FreeC.Pure(Left(t))))
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
   def stream: Stream[F,O] = Stream.fromFreeC(this.scope.get[F,O,R].map(_ => ()))
@@ -69,11 +69,11 @@ final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,No
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    onError(e => p2 *> Pull.fail(e)) flatMap { _ =>  p2 }
+    handleErrorWith(e => p2 *> Pull.fail(e)) flatMap { _ =>  p2 }
 
   /** If `this` terminates with `Pull.fail(e)`, invoke `h(e)`. */
-  def onError[F2[x]>:F[x],O2>:O,R2>:R](h: Throwable => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    Pull.fromFreeC(get[F2,O2,R2] onError { e => h(e).get })
+  def handleErrorWith[F2[x]>:F[x],O2>:O,R2>:R](h: Throwable => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
+    Pull.fromFreeC(get[F2,O2,R2] handleErrorWith { e => h(e).get })
 
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
   def scope: Pull[F,O,R] = Pull.fromFreeC(Algebra.scope(get))
@@ -130,7 +130,7 @@ object Pull {
     fromFreeC(
       Algebra.eval[F,Nothing,R](fr).
         map(r => Right(r): Either[Throwable,R]).
-        onError(t => Algebra.pure[F,Nothing,Either[Throwable,R]](Left(t))))
+        handleErrorWith(t => Algebra.pure[F,Nothing,Either[Throwable,R]](Left(t))))
 
   /** The completed `Pull`. Reads and outputs nothing. */
   val done: Pull[Nothing,Nothing,Unit] = fromFreeC[Nothing,Nothing,Unit](Algebra.pure[Nothing,Nothing,Unit](()))
@@ -185,7 +185,7 @@ object Pull {
   /** `Sync` instance for `Stream`. */
   implicit def syncInstance[F[_],O]: Sync[Pull[F,O,?]] = new Sync[Pull[F,O,?]] {
     def pure[A](a: A): Pull[F,O,A] = Pull.pure(a)
-    def handleErrorWith[A](p: Pull[F,O,A])(h: Throwable => Pull[F,O,A]) = p.onError(h)
+    def handleErrorWith[A](p: Pull[F,O,A])(h: Throwable => Pull[F,O,A]) = p.handleErrorWith(h)
     def raiseError[A](t: Throwable) = Pull.fail(t)
     def flatMap[A,B](p: Pull[F,O,A])(f: A => Pull[F,O,B]) = p.flatMap(f)
     def tailRecM[A, B](a: A)(f: A => Pull[F,O,Either[A,B]]) = f(a).flatMap {

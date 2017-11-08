@@ -35,7 +35,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     "1 million brackets in sequence" in {
       val c = new AtomicLong(0)
       val b = bracket(c)(Stream.emit(1))
-      val bs = Stream.range(0, 1000000).flatMap(_ => b)
+      val bs = Stream.range(0, 1000000).covary[IO].flatMap(_ => b)
       runLog { bs }
       c.get shouldBe 0
     }

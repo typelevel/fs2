@@ -55,30 +55,30 @@ class StreamSpec extends Fs2Spec with Inside {
       runLog(s.get.map(identity)) shouldBe runLog(s.get)
     }
 
-    "onError (1)" in {
+    "handleErrorWith (1)" in {
       forAll { (s: PureStream[Int], f: Failure) =>
         val s2 = s.get ++ f.get
-        runLog(s2.onError(_ => Stream.empty)) shouldBe runLog(s.get)
+        runLog(s2.handleErrorWith(_ => Stream.empty)) shouldBe runLog(s.get)
       }
     }
 
-    "onError (2)" in {
-      runLog(Stream.fail(Err) onError { _ => Stream.emit(1) }) shouldBe Vector(1)
+    "handleErrorWith (2)" in {
+      runLog(Stream.fail(Err) handleErrorWith { _ => Stream.emit(1) }) shouldBe Vector(1)
     }
 
-    "onError (3)" in {
-      runLog(Stream.emit(1) ++ Stream.fail(Err) onError { _ => Stream.emit(1) }) shouldBe Vector(1,1)
+    "handleErrorWith (3)" in {
+      runLog(Stream.emit(1) ++ Stream.fail(Err) handleErrorWith { _ => Stream.emit(1) }) shouldBe Vector(1,1)
     }
 
-    "onError (4)" in {
-      Stream.eval(IO(throw Err)).map(Right(_)).onError(t => Stream.emit(Left(t)))
+    "handleErrorWith (4)" in {
+      Stream.eval(IO(throw Err)).map(Right(_): Either[Throwable,Int]).handleErrorWith(t => Stream.emit(Left(t)).covary[IO])
             .take(1)
             .runLog.unsafeRunSync() shouldBe Vector(Left(Err))
     }
 
-    "onError (5)" in {
-      val r = Stream.fail(Err).covary[IO].onError(e => Stream.emit(e)).flatMap(Stream.emit(_)).runLog.unsafeRunSync()
-      val r2 = Stream.fail(Err).covary[IO].onError(e => Stream.emit(e)).map(identity).runLog.unsafeRunSync()
+    "handleErrorWith (5)" in {
+      val r = Stream.fail(Err).covary[IO].handleErrorWith(e => Stream.emit(e)).flatMap(Stream.emit(_)).runLog.unsafeRunSync()
+      val r2 = Stream.fail(Err).covary[IO].handleErrorWith(e => Stream.emit(e)).map(identity).runLog.unsafeRunSync()
       val r3 = Stream(Stream.emit(1).covary[IO], Stream.fail(Err).covary[IO], Stream.emit(2).covary[IO]).covary[IO].join(4).attempt.runLog.unsafeRunSync()
       r shouldBe Vector(Err)
       r2 shouldBe Vector(Err)
@@ -101,7 +101,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "translate" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.flatMap(i => Stream.eval(IO.pure(i))).translate(cats.arrow.FunctionK.id[IO])) shouldBe
+      runLog(s.get.covary[IO].flatMap(i => Stream.eval(IO.pure(i))).translate(cats.arrow.FunctionK.id[IO])) shouldBe
       runLog(s.get)
     }
 

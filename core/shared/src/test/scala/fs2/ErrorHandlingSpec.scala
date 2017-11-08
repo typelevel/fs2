@@ -10,7 +10,7 @@ class ErrorHandlingSpec extends Fs2Spec {
       var i = 0
       try {
         Pull.pure(1)
-            .onError(_ => { i += 1; Pull.pure(2) })
+            .handleErrorWith(_ => { i += 1; Pull.pure(2) })
             .flatMap { _ => Pull.output1(i) *> Pull.fail(new RuntimeException("woot")) }
             .stream.toList
         fail("should not reach, exception thrown above")
@@ -22,7 +22,7 @@ class ErrorHandlingSpec extends Fs2Spec {
       var i = 0
       try {
         Pull.eval(IO(1))
-            .onError(_ => { i += 1; Pull.pure(2) })
+            .handleErrorWith(_ => { i += 1; Pull.pure(2) })
             .flatMap { _ => Pull.output1(i) *> Pull.fail(new RuntimeException("woot")) }
             .stream.runLog.unsafeRunSync
         fail("should not reach, exception thrown above")
@@ -35,7 +35,7 @@ class ErrorHandlingSpec extends Fs2Spec {
       try {
         Pull.eval(IO(1)).flatMap { x =>
           Pull.pure(x)
-              .onError(_ => { i += 1; Pull.pure(2) })
+              .handleErrorWith(_ => { i += 1; Pull.pure(2) })
               .flatMap { _ => Pull.output1(i) *> Pull.fail(new RuntimeException("woot")) }
         }.stream.runLog.unsafeRunSync
         fail("should not reach, exception thrown above")
@@ -45,7 +45,7 @@ class ErrorHandlingSpec extends Fs2Spec {
 
     "ex4" in {
       var i = 0
-      Pull.eval(IO(???)).onError(_ => Pull.pure(i += 1)).flatMap { _ => Pull.output1(i) }
+      Pull.eval(IO(???)).handleErrorWith(_ => Pull.pure(i += 1)).flatMap { _ => Pull.output1(i) }
           .stream.runLog.unsafeRunSync
       i shouldBe 1
     }
@@ -61,7 +61,7 @@ class ErrorHandlingSpec extends Fs2Spec {
 
     "ex6" in {
       var i = 0
-      (Stream.range(0, 10).covary[IO] ++ Stream.fail(Err)).onError { t => i += 1; Stream.empty }.run.unsafeRunSync
+      (Stream.range(0, 10).covary[IO] ++ Stream.fail(Err)).handleErrorWith { t => i += 1; Stream.empty }.run.unsafeRunSync
       i shouldBe 1
     }
 
@@ -75,7 +75,7 @@ class ErrorHandlingSpec extends Fs2Spec {
 
     "ex8" in {
       var i = 0
-      (Stream.range(0, 3).covary[IO] ++ Stream.fail(Err)).unchunk.pull.echo.onError { t => i += 1; println(i); Pull.done }.stream.run.unsafeRunSync
+      (Stream.range(0, 3).covary[IO] ++ Stream.fail(Err)).unchunk.pull.echo.handleErrorWith { t => i += 1; println(i); Pull.done }.stream.run.unsafeRunSync
       i shouldBe 1
     }
   }

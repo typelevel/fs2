@@ -20,7 +20,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
       case Left(e) => FreeC.Fail(e)
     })
 
-  def onError[R2>:R](h: Throwable => FreeC[F,R2]): FreeC[F,R2] =
+  def handleErrorWith[R2>:R](h: Throwable => FreeC[F,R2]): FreeC[F,R2] =
     Bind[F,R2,R2](this, e => e match {
       case Right(a) => FreeC.Pure(a)
       case Left(e) => try h(e) catch { case NonFatal(e) => FreeC.Fail(e) } })
@@ -106,7 +106,7 @@ private[fs2] object FreeC {
 
   implicit def syncInstance[F[_]]: Sync[FreeC[F,?]] = new Sync[FreeC[F,?]] {
     def pure[A](a: A): FreeC[F,A] = FreeC.Pure(a)
-    def handleErrorWith[A](fa: FreeC[F,A])(f: Throwable => FreeC[F,A]): FreeC[F,A] = fa.onError(f)
+    def handleErrorWith[A](fa: FreeC[F,A])(f: Throwable => FreeC[F,A]): FreeC[F,A] = fa.handleErrorWith(f)
     def raiseError[A](t: Throwable): FreeC[F,A] = FreeC.Fail(t)
     def flatMap[A,B](fa: FreeC[F,A])(f: A => FreeC[F,B]): FreeC[F,B] = fa.flatMap(f)
     def tailRecM[A,B](a: A)(f: A => FreeC[F,Either[A,B]]): FreeC[F,B] = f(a).flatMap {

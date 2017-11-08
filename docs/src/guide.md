@@ -142,7 +142,7 @@ s1c.mapChunks { ds =>
 
 ### Basic stream operations
 
-Streams have a small but powerful set of operations, some of which we've seen already. The key operations are `++`, `map`, `flatMap`, `onError`, and `bracket`:
+Streams have a small but powerful set of operations, some of which we've seen already. The key operations are `++`, `map`, `flatMap`, `handleErrorWith`, and `bracket`:
 
 ```tut
 val appendEx1 = Stream(1,2,3) ++ Stream.emit(42)
@@ -160,7 +160,7 @@ The `flatMap` operation is the same idea as lists - it maps, then concatenates:
 appendEx1.flatMap(i => Stream.emits(List(i,i))).toList
 ```
 
-Regardless of how a `Stream` is built up, each operation takes constant time. So `s ++ s2` takes constant time, regardless of whether `s` is `Stream.emit(1)` or it's a huge stream with millions of elements and lots of embedded effects. Likewise with `s.flatMap(f)` and `onError`, which we'll see in a minute. The runtime of these operations do not depend on the structure of `s`.
+Regardless of how a `Stream` is built up, each operation takes constant time. So `s ++ s2` takes constant time, regardless of whether `s` is `Stream.emit(1)` or it's a huge stream with millions of elements and lots of embedded effects. Likewise with `s.flatMap(f)` and `handleErrorWith`, which we'll see in a minute. The runtime of these operations do not depend on the structure of `s`.
 
 ### Error handling
 
@@ -186,13 +186,13 @@ try err2.toList catch { case e: Exception => println(e) }
 try err3.run.unsafeRunSync() catch { case e: Exception => println(e) }
 ```
 
-The `onError` method lets us catch any of these errors:
+The `handleErrorWith` method lets us catch any of these errors:
 
 ```tut
-err.onError { e => Stream.emit(e.getMessage) }.toList
+err.handleErrorWith { e => Stream.emit(e.getMessage) }.toList
 ```
 
-_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
+_Note: Don't use `handleErrorWith` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
 
 ### Resource acquisition
 
@@ -552,8 +552,8 @@ In FS2, a stream can terminate in one of three ways:
 Regarding 3:
 
 * A stream will never be interrupted while it is acquiring a resource (via `bracket`) or while it is releasing a resource. The `bracket` function guarantees that if FS2 starts acquiring the resource, the corresponding release action will be run.
-* Other than that, Streams can be interrupted in between any two 'steps' of the stream. The steps themselves are atomic from the perspective of FS2. `Stream.eval(eff)` is a single step, `Stream.emit(1)` is a single step, `Stream(1,2,3)` is a single step (emitting a chunk), and all other operations (like `onError`, `++`, and `flatMap`) are multiple steps and can be interrupted. But importantly, user-provided effects that are passed to `eval` are never interrupted once they are started (and FS2 does not have enough knowledge of user-provided effects to know how to interrupt them anyway).
-* _Always use `bracket` or a `bracket`-based function like `onFinalize` for supplying resource cleanup logic or any other logic you want to be run regardless of how the stream terminates. Don't use `onError` or `++` for this purpose._
+* Other than that, Streams can be interrupted in between any two 'steps' of the stream. The steps themselves are atomic from the perspective of FS2. `Stream.eval(eff)` is a single step, `Stream.emit(1)` is a single step, `Stream(1,2,3)` is a single step (emitting a chunk), and all other operations (like `handleErrorWith`, `++`, and `flatMap`) are multiple steps and can be interrupted. But importantly, user-provided effects that are passed to `eval` are never interrupted once they are started (and FS2 does not have enough knowledge of user-provided effects to know how to interrupt them anyway).
+* _Always use `bracket` or a `bracket`-based function like `onFinalize` for supplying resource cleanup logic or any other logic you want to be run regardless of how the stream terminates. Don't use `handleErrorWith` or `++` for this purpose._
 
 Let's look at some examples of how this plays out, starting with the synchronous interruption case:
 
@@ -586,7 +586,7 @@ That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponde
 ```tut
 import scala.concurrent.ExecutionContext.Implicits.global
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
-val s2 = (Stream.empty ++ Stream.fail(Err)) onError { e => println(e); Stream.fail(e) }
+val s2 = (Stream.empty ++ Stream.fail(Err)) handleErrorWith { e => println(e); Stream.fail(e) }
 val merged = s1 merge s2 take 1
 ```
 
@@ -594,6 +594,6 @@ The result is highly nondeterministic. Here are a few ways it can play out:
 
 * `s1` may complete before the error in `s2` is encountered, in which case nothing will be printed and no error will occur.
 * `s2` may encounter the error before any of `s1` is emitted. When the error is reraised by `s2`, that will terminate the `merge` and asynchronously interrupt `s1`, and the `take` terminates with that same error.
-* `s2` may encounter the error before any of `s1` is emitted, but during the period where the value is caught by `onError`, `s1` may emit a value and the `take(1)` may terminate, triggering interruption of both `s1` and `s2`, before the error is reraised but after the exception is printed! In this case, the stream will still terminate without error.
+* `s2` may encounter the error before any of `s1` is emitted, but during the period where the value is caught by `handleErrorWith`, `s1` may emit a value and the `take(1)` may terminate, triggering interruption of both `s1` and `s2`, before the error is reraised but after the exception is printed! In this case, the stream will still terminate without error.
 
-The correctness of your program should not depend on how different streams interleave, and once again, you should not use `onError` or other interruptible functions for resource cleanup. Use `bracket` or `onFinalize` for this purpose.
+The correctness of your program should not depend on how different streams interleave, and once again, you should not use `handleErrorWith` or other interruptible functions for resource cleanup. Use `bracket` or `onFinalize` for this purpose.

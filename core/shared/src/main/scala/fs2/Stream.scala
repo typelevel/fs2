@@ -25,8 +25,8 @@ import fs2.internal.{ Algebra, FreeC }
  * And `cons` is consistent with using `++` to prepend a single segment:
  *   - `s.cons(seg) == Stream.segment(seg) ++ s`
  *
- * `Stream.fail` propagates until being caught by `onError`:
- *   - `Stream.fail(e) onError h == h(e)`
+ * `Stream.fail` propagates until being caught by `handleErrorWith`:
+ *   - `Stream.fail(e) handleErrorWith h == h(e)`
  *   - `Stream.fail(e) ++ s == Stream.fail(e)`
  *   - `Stream.fail(e) flatMap f == Stream.fail(e)`
  *
@@ -85,7 +85,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * [[rethrow]] is the inverse of `attempt`, with the caveat that anything after the first failure is discarded.
    */
   def attempt: Stream[F,Either[Throwable,O]] =
-    map(Right(_)).onError(e => Stream.emit(Left(e)))
+    map(Right(_): Either[Throwable,O]).handleErrorWith(e => Stream.emit(Left(e)))
 
   /**
    * Alias for `_.map(_ => o2)`.
@@ -705,7 +705,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * res0: List[Int] = List(1, 2, 3)
    * }}}
    */
-  def mask: Stream[F,O] = this.onError(_ => Stream.empty)
+  def mask: Stream[F,O] = this.handleErrorWith(_ => Stream.empty)
 
   /**
    * Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
@@ -736,7 +736,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * Preserves chunkiness.
    *
    * @example {{{
-   * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow.onError(t => Stream(-1)).toList
+   * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow.handleErrorWith(t => Stream(-1)).toList
    * res0: List[Int] = List(-1)
    * }}}
    */
@@ -1493,7 +1493,7 @@ object Stream {
       Stream.eval(async.signalOf[F,Boolean](false)).flatMap { interruptRight =>
       Stream.eval(async.signalOf[F,Option[Throwable]](None)).flatMap { leftError =>
         val left = that.
-          onError(e => Stream.eval_(leftError.set(Some(e)) *> interruptRight.set(true))).
+          handleErrorWith(e => Stream.eval_(leftError.set(Some(e)) *> interruptRight.set(true))).
           interruptWhen(interruptLeft).
           onFinalize(leftFinalized.increment)
         val right = self.interruptWhen(interruptRight).onFinalize(
@@ -1575,7 +1575,7 @@ object Stream {
             unNoneTerminate.
             flatMap { c => Stream.segment(c) }.
             through(g) ++ drainQueue
-          ).onError { t => drainQueue ++ Stream.fail(t) }
+          ).handleErrorWith { t => drainQueue ++ Stream.fail(t) }
         }
       )
     }}}}
@@ -1917,18 +1917,18 @@ object Stream {
      * }}}
      */
     def onComplete[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      (self onError (e => s2 ++ Stream.fail(e))) ++ s2
+      (self handleErrorWith (e => s2 ++ Stream.fail(e))) ++ s2
 
     /**
      * If `this` terminates with `Stream.fail(e)`, invoke `h(e)`.
      *
      * @example {{{
-     * scala> Stream(1, 2, 3).append(Stream.fail(new RuntimeException)).onError(t => Stream(0)).toList
+     * scala> Stream(1, 2, 3).append(Stream.fail(new RuntimeException)).handleErrorWith(t => Stream(0)).toList
      * res0: List[Int] = List(1, 2, 3, 0)
      * }}}
      */
-    def onError[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
-      Stream.fromFreeC(self.get[F,O2] onError { e => h(e).get })
+    def handleErrorWith[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
+      Stream.fromFreeC(self.get[F,O2] handleErrorWith { e => h(e).get })
 
     /**
      * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -2410,8 +2410,8 @@ object Stream {
     def onComplete[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       covary[F].onComplete(s2)
 
-    def onError[F[_],O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
-      covary[F].onError(h)
+    def handleErrorWith[F[_],O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
+      covary[F].handleErrorWith(h)
 
     def onFinalize[F[_]](f: F[Unit])(implicit F: Applicative[F]): Stream[F,O] =
       covary[F].onFinalize(f)
@@ -2768,8 +2768,6 @@ object Stream {
   /**
    * `Sync` instance for `Stream`.
    *
-   * Note: non-implicit so that cats syntax doesn't override FS2 syntax
-   *
    * @example {{{
    * scala> import cats.implicits._
    * scala> import cats.effect.Sync
@@ -2778,9 +2776,9 @@ object Stream {
    * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
    * }}}
    */
-  def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
+  implicit def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
     def pure[A](a: A) = Stream(a)
-    def handleErrorWith[A](s: Stream[F,A])(h: Throwable => Stream[F,A]) = s.onError(h)
+    def handleErrorWith[A](s: Stream[F,A])(h: Throwable => Stream[F,A]) = s.handleErrorWith(h)
     def raiseError[A](t: Throwable) = Stream.fail(t)
     def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]) = s.flatMap(f)
     def tailRecM[A, B](a: A)(f: A => Stream[F,Either[A,B]]) = f(a).flatMap {
