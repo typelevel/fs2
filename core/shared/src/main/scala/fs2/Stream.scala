@@ -2,13 +2,11 @@ package fs2
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-
-import cats.{ ~>, Applicative, Eq, Functor, Monoid, Semigroup }
-import cats.effect.{ Effect, IO, Sync }
-import cats.implicits.{ catsSyntaxEither => _, _ }
-
+import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
+import cats.effect.{Effect, IO, Sync}
+import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.mutable.Queue
-import fs2.internal.{ Algebra, FreeC }
+import fs2.internal.{Algebra, FreeC, Scope}
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -1255,9 +1253,6 @@ object Stream {
     go(0)
   }
 
-  private[fs2] def exportResources[F[_]]: Stream[F,List[Algebra.Resource[F]]] =
-    Stream.fromFreeC(Algebra.exportResources[F,List[Algebra.Resource[F]]].flatMap(Algebra.output1(_)))
-
   /**
    * Creates a stream that, when run, fails with the supplied exception.
    *
@@ -1284,9 +1279,6 @@ object Stream {
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     eval(f).flatMap(s => s)
 
-  private[fs2] def importResources[F[_]](resources: List[Algebra.Resource[F]]): Stream[F,Nothing] =
-    Stream.fromFreeC(Algebra.importResources[F,Nothing](resources))
-
   /**
    * An infinite `Stream` that repeatedly applies a given function
    * to a start value. `start` is the first value emitted, followed
@@ -1312,6 +1304,10 @@ object Stream {
    */
   def iterateEval[F[_],A](start: A)(f: A => F[A]): Stream[F,A] =
     emit(start) ++ eval(f(start)).flatMap(iterateEval(_)(f))
+
+  /** Allows to get current scope during evaluation of the stream **/
+  def getScope[F[_]]: Stream[F, Scope[F]] =
+    Stream.fromFreeC(Algebra.getScope[F, Scope[F]].flatMap(Algebra.output1(_)))
 
   /**
    * Lazily produce the range `[start, stopExclusive)`. If you want to produce
@@ -1745,14 +1741,13 @@ object Stream {
      * concurrently with other stream computations.
      *
      * Finalizers on the outer stream are run after all inner streams have been pulled
-     * from the outer stream -- hence, finalizers on the outer stream will likely run
-     * BEFORE the LAST finalizer on the last inner stream.
+     * from the outer stream but not before all inner streams terminate -- hence finalizers on the outer stream will run
+     * AFTER the LAST finalizer on the very last inner stream.
      *
      * Finalizers on the returned stream are run after the outer stream has finished
      * and all open inner streams have finished.
      *
      * @param maxOpen    Maximum number of open inner streams at any time. Must be > 0.
-     * @param outer      Stream of streams to join.
      */
     def join[O2](maxOpen: Int)(implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] = {
       val _ = ev // Convince scalac that ev is used
@@ -1769,23 +1764,31 @@ object Stream {
         // each stream is forked.
         // terminates when killSignal is true
         // if fails will enq in queue failure
-        def runInner(inner: Stream[F,O2], importedResources: List[Algebra.Resource[F]]): Stream[F,Nothing] = {
+        // note that supplied scope must be acquired before the inner stream forks the execution to another thread
+        // and that it must be released once the inner stream terminates or fails.
+        def runInner(inner: Stream[F,O2], outerScope: Scope[F]): Stream[F,Nothing] = {
           Stream.eval_(
             available.decrement *> incrementRunning *>
-            async.fork {
-              (Stream.importResources(importedResources) ++ inner.segments.attempt.
-                flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
-                interruptWhen(killSignal)). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-                run *> available.increment *> decrementRunning
+            outerScope.acquire.flatMap[Unit] {
+              case Some(releaseScope) =>
+                async.fork {
+                  (inner.onFinalize(releaseScope).segments.attempt.
+                    flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
+                    interruptWhen(killSignal)). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                    run *> available.increment *> decrementRunning
+                }
+              case None =>
+                F.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
             }
+
           )
         }
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] = {
           outer.interruptWhen(killSignal).flatMap { inner =>
-            Stream.exportResources[F].flatMap { resources =>
-              runInner(inner, resources)
+            Stream.getScope[F].flatMap { outerScope =>
+              runInner(inner, outerScope)
             }
           }.run.attempt flatMap {
             case Right(_) => decrementRunning
