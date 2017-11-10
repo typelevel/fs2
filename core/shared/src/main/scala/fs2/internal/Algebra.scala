@@ -1,12 +1,12 @@
 package fs2.internal
 
 import scala.concurrent.ExecutionContext
-import java.util.concurrent.atomic.AtomicLong
-import cats.~>
-import cats.effect.{ Effect, Sync }
-import cats.implicits._
+import java.util.concurrent.atomic.AtomicBoolean
 
-import fs2.{ AsyncPull, Catenable, Segment }
+import cats.~>
+import cats.effect.{Effect, Sync}
+import cats.implicits._
+import fs2.{AsyncPull, Catenable, Segment}
 import fs2.async
 
 private[fs2] sealed trait Algebra[F[_],O,R]
@@ -76,38 +76,17 @@ private[fs2] object Algebra {
   final class Token
 
   sealed trait Resource[F[_]] { self =>
-    private[internal] def maybeRelease: F[Unit]
-    private[internal] def forceRelease: F[Unit]
-    private[internal] def increment: F[Unit]
+    private[internal] def release: F[Unit]
     private[internal] def translate[G[_]](u: F ~> G): Resource[G] = new Resource[G] {
-      def maybeRelease = u(self.maybeRelease)
-      def forceRelease = u(self.forceRelease)
-      def increment = u(self.increment)
+      def release = u(self.release)
     }
   }
 
   object Resource {
     def apply[F[_]](finalizer: F[Unit])(implicit F: Sync[F]): Resource[F] = {
-      val count = new AtomicLong(1L)
+      val released = new AtomicBoolean(false)
       new Resource[F] {
-        def maybeRelease: F[Unit] = {
-          F.delay(count.decrementAndGet).flatMap {
-            case 0L => finalizer
-            case _ => F.unit
-          }
-        }
-        def forceRelease: F[Unit] = {
-          def loop: F[Unit] = F.delay(count.get).flatMap(cnt =>
-            if(cnt > 0) F.delay(count.compareAndSet(cnt, 0)).ifM(finalizer, loop)
-            else F.unit
-          )
-          loop
-        }
-        def increment: F[Unit] = F.delay {
-          val cnt = count.incrementAndGet
-          if (cnt <= 1) count.decrementAndGet
-          ()
-        }
+        def release: F[Unit] = F.delay(released.getAndSet(true)).ifM(F.unit, finalizer)
       }
     }
   }

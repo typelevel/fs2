@@ -75,7 +75,7 @@ final class Scope[F[_]] private (private val id: Token, private val parent: Opti
     */
   private[internal]  def releaseResource(t: Token): F[Option[F[Unit]]] =
     F.map(state.modify { s => s.copy(resources = s.resources - t)}) { c =>
-      c.previous.resources.get(t) map { _.forceRelease }
+      c.previous.resources.get(t) map { _.release }
     }
 
   /**
@@ -132,7 +132,7 @@ final class Scope[F[_]] private (private val id: Token, private val parent: Opti
       .map(_.foldLeft(Catenable.empty: Catenable[(Token, F[Unit])])(_ ++ _))
       .flatMap { s =>
         F.map(parent.map(_.releaseChildScope(self.id)).getOrElse(F.unit)) { _ =>
-          s ++ Catenable.fromSeq(c.previous.resources.toList.reverse.map { case (t, r) => (t, r.maybeRelease) })
+          s ++ Catenable.fromSeq(c.previous.resources.toList.reverse.map { case (t, r) => (t, r.release) })
         }
       }
     }
