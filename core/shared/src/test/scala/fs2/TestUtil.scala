@@ -98,7 +98,7 @@ trait TestUtil extends TestUtilPlatform {
 
   implicit def failingStreamArb: Arbitrary[Failure] = Arbitrary(
     Gen.oneOf[Failure](
-      Failure("pure-failure", Stream.fail(Err)),
+      Failure("pure-failure", Stream.raiseError(Err)),
       Failure("failure-inside-effect", Stream.eval(IO(throw Err))),
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),

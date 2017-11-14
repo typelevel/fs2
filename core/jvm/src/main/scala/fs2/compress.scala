@@ -96,7 +96,7 @@ object compress {
     }
   }
   private def _inflate_finish[F[_]](inflater: Inflater): Pull[F, Nothing, Unit] = {
-    if (!inflater.finished) Pull.fail(new DataFormatException("Insufficient data"))
+    if (!inflater.finished) Pull.raiseError(new DataFormatException("Insufficient data"))
     else { inflater.end(); Pull.done }
   }
 }

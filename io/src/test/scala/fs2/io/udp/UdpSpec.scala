@@ -46,7 +46,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket.reads().evalMap { packet => serverSocket.write(packet) }.drain
             val client = open[IO]().flatMap { clientSocket =>
-              Stream.emits(msgs.map { msg => Packet(serverAddress, msg) }).flatMap { msg =>
+              Stream.emits(msgs.map { msg => Packet(serverAddress, msg) }).covary[IO].flatMap { msg =>
                 Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
               }
             }

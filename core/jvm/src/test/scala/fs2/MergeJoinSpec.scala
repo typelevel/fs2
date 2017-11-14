@@ -48,7 +48,7 @@ class MergeJoinSpec extends Fs2Spec {
       val bracketed = Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(Stream(_), b => IO(b.set(false)))
       // Starts an inner stream which fails if the resource b is finalized
       val s: Stream[IO,Stream[IO,Unit]] = bracketed.map { b =>
-        Stream.eval(IO(b.get)).flatMap(b => if (b) Stream(()) else Stream.fail(Err)).repeat.take(10000)
+        Stream.eval(IO(b.get)).flatMap(b => if (b) Stream(()) else Stream.raiseError(Err)).repeat.take(10000)
       }
       s.joinUnbounded.run.unsafeRunSync()
     }
@@ -85,7 +85,7 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "join - outer-failed" in {
-      an[Err.type] should be thrownBy { runLog(Stream(mkScheduler.flatMap(_.sleep_[IO](1 minute)), Stream.fail(Err).covary[IO]).joinUnbounded) }
+      an[Err.type] should be thrownBy { runLog(Stream(mkScheduler.flatMap(_.sleep_[IO](1 minute)), Stream.raiseError(Err).covary[IO]).joinUnbounded) }
     }
   }
 }
