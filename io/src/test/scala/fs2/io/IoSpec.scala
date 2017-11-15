@@ -54,4 +54,14 @@ class IoSpec extends Fs2Spec {
       example shouldBe bytes
     }
   }
+
+  "readIterator" - {
+    "arbitrary.runLog" in forAll { bytes: Array[Byte] =>
+      val iterator = bytes.toIterator
+      val stream = readIterator[IO, Byte](iterator)
+      val example = stream.runLog.unsafeRunSync.toArray
+      example shouldBe bytes
+    }
+
+  }
 }

@@ -124,4 +124,27 @@ package object io {
     */
   def toInputStream[F[_]](implicit F: Effect[F], ec: ExecutionContext): Pipe[F,Byte,InputStream] =
     JavaInputOutputStream.toInputStream
+
+  /**
+    * Reads all the values of the iterator into a Stream.
+    */
+  def readIterator[F[_], A](iterator: Iterator[A])(implicit F: Effect[F]): Stream[F, A] = {
+    def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
+      F.delay(i.hasNext).flatMap(b => if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None))
+
+    Stream.unfoldEval(iterator)(getNext)
+  }
+
+  /**
+    * Brackets Resource Acquisition for an Iterator
+    */
+  def readBracketedIterator[F[_]: Effect, R, O](acquire: F[R])
+                                               (mkIterator: R => F[Iterator[O]],
+                                                release: R => F[Unit]): Stream[F, O] =
+    Stream.bracket(acquire)(
+      r => Stream.eval(mkIterator(r)).flatMap(readIterator[F, O]),
+      release
+    )
+
+
 }
