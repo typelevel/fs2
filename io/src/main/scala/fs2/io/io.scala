@@ -130,7 +130,10 @@ package object io {
     */
   def readIterator[F[_], A](iterator: Iterator[A])(implicit F: Effect[F]): Stream[F, A] = {
     def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
-      F.delay(i.hasNext).flatMap(b => if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None))
+      F.delay(i.hasNext).flatMap(hasNext =>
+        if (hasNext) F.delay(i.next()).map(a => (a, i).some)
+        else F.pure(None)
+      )
 
     Stream.unfoldEval(iterator)(getNext)
   }
