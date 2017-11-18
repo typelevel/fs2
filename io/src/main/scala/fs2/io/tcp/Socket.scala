@@ -276,11 +276,7 @@ protected[tcp] object Socket {
           }
         }
 
-        val bytes0 = bytes.toBytes
-        go(
-          ByteBuffer.wrap(bytes0.values, 0, bytes0.size)
-          , timeout.map(_.toMillis).getOrElse(0l)
-        )
+        go(bytes.toBytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0l))
       }
 
       ///////////////////////////////////
