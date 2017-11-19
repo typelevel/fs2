@@ -98,7 +98,7 @@ There are a number of ways of interpreting the stream. In this case, we call `ru
 
 ```scala
 scala> val task: IO[Unit] = written.run
-task: cats.effect.IO[Unit] = IO$1426003670
+task: cats.effect.IO[Unit] = IO$1809609665
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.

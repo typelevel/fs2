@@ -55,7 +55,7 @@ private[fs2] object Algebra {
   def scope[F[_],O,R](pull: FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
     openScope flatMap { newScope =>
       FreeC.Bind(pull, (e: Either[Throwable,R]) => e match {
-        case Left(e) => closeScope(newScope) flatMap { _ => fail(e) }
+        case Left(e) => closeScope(newScope) flatMap { _ => raiseError(e) }
         case Right(r) => closeScope(newScope) map { _ => r }
       })
     }
@@ -66,7 +66,7 @@ private[fs2] object Algebra {
   def pure[F[_],O,R](r: R): FreeC[Algebra[F,O,?],R] =
     FreeC.Pure[Algebra[F,O,?],R](r)
 
-  def fail[F[_],O,R](t: Throwable): FreeC[Algebra[F,O,?],R] =
+  def raiseError[F[_],O,R](t: Throwable): FreeC[Algebra[F,O,?],R] =
     FreeC.Fail[Algebra[F,O,?],R](t)
 
   def suspend[F[_],O,R](f: => FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
@@ -80,7 +80,7 @@ private[fs2] object Algebra {
   def uncons[F[_],X,O](s: FreeC[Algebra[F,O,?],Unit], chunkSize: Int = 1024): FreeC[Algebra[F,X,?],Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] = {
     s.viewL.get match {
       case done: FreeC.Pure[Algebra[F,O,?], Unit] => pure(None)
-      case failed: FreeC.Fail[Algebra[F,O,?], _] => fail(failed.error)
+      case failed: FreeC.Fail[Algebra[F,O,?], _] => raiseError(failed.error)
       case bound: FreeC.Bind[Algebra[F,O,?],_,Unit] =>
         val f = bound.f.asInstanceOf[Either[Throwable,Any] => FreeC[Algebra[F,O,?],Unit]]
         val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr

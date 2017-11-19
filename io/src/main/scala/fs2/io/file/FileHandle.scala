@@ -134,7 +134,7 @@ private[file] object FileHandle {
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
         F.map(
-          asyncCompletionHandler[F, Integer](f => chan.write(ByteBuffer.wrap(bytes.toArray), offset, null, f)))(
+          asyncCompletionHandler[F, Integer](f => chan.write(bytes.toBytes.toByteBuffer, offset, null, f)))(
           i => i.toInt
         )
     }
@@ -179,7 +179,7 @@ private[file] object FileHandle {
         F.delay(f.release())
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        F.delay(chan.write(ByteBuffer.wrap(bytes.toArray), offset))
+        F.delay(chan.write(bytes.toBytes.toByteBuffer, offset))
     }
   }
 }

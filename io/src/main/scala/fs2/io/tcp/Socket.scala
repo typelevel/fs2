@@ -166,11 +166,11 @@ protected[tcp] object Socket {
           } ++ go
         }
 
-        go.onError {
+        go.handleErrorWith {
           case err: AsynchronousCloseException =>
-            if (sch.isOpen) Stream.fail(err)
+            if (sch.isOpen) Stream.raiseError(err)
             else Stream.empty
-          case err => Stream.fail(err)
+          case err => Stream.raiseError(err)
         }
       }
 
@@ -276,11 +276,7 @@ protected[tcp] object Socket {
           }
         }
 
-        val bytes0 = bytes.toBytes
-        go(
-          ByteBuffer.wrap(bytes0.values, 0, bytes0.size)
-          , timeout.map(_.toMillis).getOrElse(0l)
-        )
+        go(bytes.toBytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0l))
       }
 
       ///////////////////////////////////

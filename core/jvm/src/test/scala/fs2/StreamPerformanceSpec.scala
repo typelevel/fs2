@@ -59,27 +59,27 @@ class StreamPerformanceSpec extends Fs2Spec {
       }
     }}
 
-    "bracket + onError (1)" - { Ns.foreach { N =>
+    "bracket + handleErrorWith (1)" - { Ns.foreach { N =>
       N.toString in {
         val open = new AtomicInteger(0)
         val ok = new AtomicInteger(0)
         val bracketed = bracket(IO { open.incrementAndGet })(
-          _ => emit(1) ++ Stream.fail(FailWhale),
+          _ => emit(1) ++ Stream.raiseError(FailWhale),
           _ => IO { ok.incrementAndGet; open.decrementAndGet; () }
         )
-        // left-associative onError chains
+        // left-associative handleErrorWith chains
         assert(throws (FailWhale) {
-          List.fill(N)(bracketed).foldLeft(Stream.fail(FailWhale): Stream[IO,Int]) {
-            (acc,hd) => acc onError { _ => hd }
+          List.fill(N)(bracketed).foldLeft(Stream.raiseError(FailWhale): Stream[IO,Int]) {
+            (acc,hd) => acc handleErrorWith { _ => hd }
           }
         })
         ok.get shouldBe N
         open.get shouldBe 0
         ok.set(0)
-        // right-associative onError chains
+        // right-associative handleErrorWith chains
         assert(throws (FailWhale) {
-          List.fill(N)(bracketed).foldLeft(Stream.fail(FailWhale): Stream[IO,Int]) {
-            (tl,hd) => hd onError { _ => tl }
+          List.fill(N)(bracketed).foldLeft(Stream.raiseError(FailWhale): Stream[IO,Int]) {
+            (tl,hd) => hd handleErrorWith { _ => tl }
           }
         })
         ok.get shouldBe N
