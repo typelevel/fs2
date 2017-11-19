@@ -1779,7 +1779,7 @@ object Stream {
                   }
               }
             case None =>
-              Stream.fail(new Throwable("Outer scope is closed during inner stream startup"))
+              Stream.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
           }
         }
 
