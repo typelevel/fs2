@@ -102,20 +102,20 @@ private[internal] object Resource {
     *                   invoked when the resource is released.
     * @param leases     References (leases) of this resource
     */
-  final case class ResourceState[+F[_]](
+  final case class State[+F[_]](
     open: Boolean
     , finalizer: Option[F[Either[Throwable, Unit]]]
     , leases: Int
   )
 
-  val initial = ResourceState(open = true, finalizer = None, leases = 0)
+  val initial = State(open = true, finalizer = None, leases = 0)
 
 
   def create[F[_]](implicit F: Sync[F]): Resource[F] = {
 
     new Resource[F] {
 
-      val state = new SyncRef[F, ResourceState[F]](new AtomicReference[ResourceState[F]](initial))
+      val state = new SyncRef[F, State[F]](new AtomicReference[State[F]](initial))
 
       val id: Token = new Token
 

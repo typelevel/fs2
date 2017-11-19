@@ -3,7 +3,7 @@ package fs2.internal
 import fs2.Catenable
 import Algebra.Token
 import cats.effect.Sync
-import fs2.internal.Scope.{ScopeReleaseFailure, ScopeState}
+import fs2.internal.Scope.{ScopeReleaseFailure, State}
 
 import scala.annotation.tailrec
 
@@ -56,7 +56,7 @@ import scala.annotation.tailrec
   */
 final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scope[F]])(implicit F: Sync[F]) { self =>
 
-  private val state: SyncRef[F, ScopeState[F]] = SyncRef(ScopeState.initial)
+  private val state: SyncRef[F, State[F]] = SyncRef(ScopeState.initial)
 
   /**
     * Registers new resource in this scope.
@@ -256,35 +256,35 @@ object Scope {
     *
     * @tparam F
     */
-  final private[Scope] case class ScopeState[F[_]](
+  final private[Scope] case class State[F[_]](
     open: Boolean
     , resources: Catenable[Resource[F]]
     , children: Catenable[Scope[F]]
   ) { self =>
 
-    def unregisterResource(id: Token): (ScopeState[F], Option[Resource[F]]) = {
+    def unregisterResource(id: Token): (State[F], Option[Resource[F]]) = {
       self.resources.deleteFirst(_.id == id).fold((self, None: Option[Resource[F]])) { case (r, c) =>
         (self.copy(resources = c), Some(r))
       }
     }
 
-    def unregisterChild(id: Token): (ScopeState[F], Option[Scope[F]]) = {
+    def unregisterChild(id: Token): (State[F], Option[Scope[F]]) = {
       self.children.deleteFirst(_.id == id).fold((self, None: Option[Scope[F]])) { case (s, c) =>
         (self.copy(children = c), Some(s))
       }
     }
 
-    def close: ScopeState[F] = ScopeState.closed
+    def close: State[F] = ScopeState.closed
 
   }
 
 
   private[Scope] object ScopeState {
-    private val initial_ = ScopeState[Nothing](open = true, resources = Catenable.empty, children = Catenable.empty)
-    def initial[F[_]]: ScopeState[F] = initial_.asInstanceOf[ScopeState[F]]
+    private val initial_ = State[Nothing](open = true, resources = Catenable.empty, children = Catenable.empty)
+    def initial[F[_]]: State[F] = initial_.asInstanceOf[State[F]]
 
-    private val closed_ = ScopeState[Nothing](open = false, resources = Catenable.empty, children = Catenable.empty)
-    def closed[F[_]]: ScopeState[F] = closed_.asInstanceOf[ScopeState[F]]
+    private val closed_ = State[Nothing](open = false, resources = Catenable.empty, children = Catenable.empty)
+    def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
 
   }
 
