@@ -2108,7 +2108,7 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, a `Sync[F]` instance must be implicitly available.
+     * To call this method, an `Effect[F]` instance must be implicitly available.
      *
      * @example {{{
      * scala> import cats.effect.IO
@@ -2139,7 +2139,7 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, a `Sync[F]` instance must be implicitly available.
+     * To call this method, an `Effect[F]` instance must be implicitly available.
      *
      * @example {{{
      * scala> import cats.effect.IO
