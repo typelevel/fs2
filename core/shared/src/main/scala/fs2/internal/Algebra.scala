@@ -1,13 +1,12 @@
 package fs2.internal
 
 import scala.concurrent.ExecutionContext
-import java.util.concurrent.atomic.AtomicBoolean
-
 import cats.~>
 import cats.effect.{Effect, Sync}
 import cats.implicits._
 import fs2.{AsyncPull, Catenable, Segment}
 import fs2.async
+import fs2.internal.Scope.ScopeReleaseFailure
 
 private[fs2] sealed trait Algebra[F[_],O,R]
 
@@ -73,24 +72,9 @@ private[fs2] object Algebra {
   def suspend[F[_],O,R](f: => FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
     FreeC.suspend(f)
 
-  final class Token
-
-  sealed trait Resource[F[_]] { self =>
-    private[internal] def release: F[Unit]
-    private[internal] def translate[G[_]](u: F ~> G): Resource[G] = new Resource[G] {
-      def release = u(self.release)
-    }
+  final class Token {
+    override def toString: String = s"T[${hashCode.toHexString}]"
   }
-
-  object Resource {
-    def apply[F[_]](finalizer: F[Unit])(implicit F: Sync[F]): Resource[F] = {
-      val released = new AtomicBoolean(false)
-      new Resource[F] {
-        def release: F[Unit] = F.delay(released.getAndSet(true)).ifM(F.unit, finalizer)
-      }
-    }
-  }
-
 
 
   def uncons[F[_],X,O](s: FreeC[Algebra[F,O,?],Unit], chunkSize: Int = 1024): FreeC[Algebra[F,X,?],Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] = {
@@ -135,8 +119,8 @@ private[fs2] object Algebra {
   private def runFold[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], effect: Option[Effect[F]], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
     F.delay(Scope.newRoot).flatMap { scope =>
       runFoldScope[F,O,B](scope, effect, None, stream, init)(f).attempt.flatMap {
-        case Left(t) => scope.close(None) *> F.raiseError(t)
-        case Right(b) => scope.close(None).as(b)
+        case Left(t) => scope.close *> F.raiseError(t)
+        case Right(b) => scope.close as b
       }
     }
 
@@ -163,41 +147,41 @@ private[fs2] object Algebra {
             F.flatMap(F.attempt(wrap.value)) { e => runFoldLoop(scope, effect, ec, acc, g, f(e).viewL) }
 
           case acquire: Algebra.Acquire[F,_,_] =>
-            val resource = acquire.resource
-            val release = acquire.release
-            F.flatMap(scope.beginAcquire) { mayAcquire =>
+            val acquireResource = acquire.resource
+            val resource = Resource.create
+            F.flatMap(scope.register(resource)) { mayAcquire =>
               if (mayAcquire) {
-                F.flatMap(F.attempt(resource)) {
-                  case Left(err) =>
-                    F.flatMap(scope.cancelAcquire) { _ =>
-                      runFoldLoop(scope, effect, ec, acc, g, f(Left(err)).viewL)
-                    }
+                F.flatMap(F.attempt(acquireResource)) {
                   case Right(r) =>
-                    val token = new Token()
-                    lazy val finalizer_ = release(r)
-                    val finalizer = F.suspend { finalizer_ }
-                    F.flatMap(scope.finishAcquire(token, finalizer)) { _ =>
-                      runFoldLoop(scope, effect, ec, acc, g, f(Right((r, token))).viewL)
+                    val finalizer = F.suspend { acquire.release(r) }
+                    F.flatMap(resource.acquired(finalizer)) { result =>
+                      runFoldLoop(scope, effect, ec, acc, g, f(result.right.map { _ => (r, resource.id) }).viewL)
+                    }
+
+                  case Left(err) =>
+                    F.flatMap(scope.releaseResource(resource.id)) { result =>
+                      val failedResult: Either[Throwable, Unit] =
+                        result.left.toOption.map { err0 =>
+                          Left(new ScopeReleaseFailure(err, Catenable.singleton(err0)))
+                         }.getOrElse(Left(err))
+                      runFoldLoop(scope, effect, ec, acc, g, f(failedResult).viewL)
                     }
                 }
               } else {
-                F.raiseError(Interrupted)
+                F.raiseError(Interrupted) // todo: do we really need to signal this as an exception ?
               }
             }
 
 
           case release: Algebra.Release[F,_] =>
-            F.flatMap(scope.releaseResource(release.token))  {
-              case None => F.suspend { runFoldLoop(scope, effect, ec, acc, g, f(Right(())).viewL) }
-              case Some(finalizer) => F.flatMap(F.attempt(finalizer)) { e =>
-                runFoldLoop(scope, effect, ec, acc, g, f(e).viewL)
-              }
+            F.flatMap(scope.releaseResource(release.token))  { result =>
+              runFoldLoop(scope, effect, ec, acc, g, f(result).viewL)
             }
 
           case c: Algebra.CloseScope[F,_] =>
-            F.flatMap(c.toClose.close((effect, ec).tupled)) { e =>
+            F.flatMap(c.toClose.close) { result =>
               F.flatMap(c.toClose.openAncestor) { scopeAfterClose =>
-                runFoldLoop(scopeAfterClose, effect, ec, acc, g, f(e).viewL)
+                runFoldLoop(scopeAfterClose, effect, ec, acc, g, f(result).viewL)
               }
             }
 

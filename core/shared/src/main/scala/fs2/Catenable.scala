@@ -1,9 +1,10 @@
 package fs2
 
-import cats.{ Applicative, Eval, Foldable, Traverse }
+import cats.{Applicative, Eval, Foldable, Traverse}
 import cats.implicits._
-
 import Catenable._
+
+import scala.annotation.tailrec
 
 /**
  * Trivial catenable sequence. Supports O(1) append, and (amortized)
@@ -66,11 +67,42 @@ sealed abstract class Catenable[+A] {
   final def map[B](f: A => B): Catenable[B] =
     foldLeft(empty: Catenable[B])((acc, a) => acc :+ f(a))
 
+  /** Applies the supplied function to each element and returns a new catenable from the concatenated results */
+  final def flatMap[B](f: A => Catenable[B]): Catenable[B] =
+    foldLeft(empty: Catenable[B])((acc, a) => acc ++ f(a))
+
   /** Folds over the elements from left to right using the supplied initial value and function. */
   final def foldLeft[B](z: B)(f: (B, A) => B): B = {
     var result = z
     foreach(a => result = f(result, a))
     result
+  }
+
+  /** collect `B` from this for which `f` is defined **/
+  final def collect[B](f: PartialFunction[A, B]): Catenable[B] = {
+    val predicate = f.lift
+    foldLeft(Catenable.empty: Catenable[B]) { (acc, a) =>
+      predicate(a).fold(acc)(b => acc :+ b)
+    }
+  }
+
+  /**
+    * Yields to Some(a, Catenable[A]) with `a` removed where `f` holds for the first time,
+    * otherwise yields None, if `a` was not found
+    * Traverses only until `a` is found.
+    */
+  final def deleteFirst(f: A => Boolean): Option[(A, Catenable[A])] = {
+    @tailrec
+    def go(rem: Catenable[A], acc: Catenable[A]): Option[(A, Catenable[A])] = {
+      rem.uncons match {
+        case Some((a, tail)) =>
+          if (! f(a)) go(tail, acc :+ a)
+          else Some((a, acc ++ tail))
+
+        case None => None
+      }
+    }
+    go(this, Catenable.empty)
   }
 
   /** Applies the supplied function to each element, left to right. */

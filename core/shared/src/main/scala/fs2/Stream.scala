@@ -1764,33 +1764,32 @@ object Stream {
         // each stream is forked.
         // terminates when killSignal is true
         // if fails will enq in queue failure
-        // note that supplied scope must be acquired before the inner stream forks the execution to another thread
+        // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
         // and that it must be released once the inner stream terminates or fails.
-        def runInner(inner: Stream[F,O2], outerScope: Scope[F]): Stream[F,Nothing] = {
-          Stream.eval_(
-            available.decrement *> incrementRunning *>
-            outerScope.acquire.flatMap[Unit] {
-              case Some(releaseScope) =>
-                async.fork {
-                  (inner.onFinalize(releaseScope).segments.attempt.
-                    flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
-                    interruptWhen(killSignal)). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-                    run *> available.increment *> decrementRunning
-                }
-              case None =>
-                F.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
-            }
-
-          )
+        def runInner2(inner: Stream[F, O2], outerScope: Scope[F]): Stream[F, Nothing] = {
+          Stream.eval(outerScope.lease) flatMap {
+            case Some(cancelLease) =>
+              Stream.eval_ {
+                available.decrement *> incrementRunning *>
+                  async.fork {
+                    (inner.segments.attempt.
+                      flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
+                      interruptWhen(killSignal)). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                      run *> cancelLease *> available.increment *> decrementRunning
+                  }
+              }
+            case None =>
+              Stream.fail(new Throwable("Outer scope is closed during inner stream startup"))
+          }
         }
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] = {
-          outer.interruptWhen(killSignal).flatMap { inner =>
-            Stream.getScope[F].flatMap { outerScope =>
-              runInner(inner, outerScope)
-            }
-          }.run.attempt flatMap {
+          outer.flatMap { inner =>
+          Stream.getScope[F].flatMap { outerScope =>
+            runInner2(inner, outerScope)
+          }}
+          .interruptWhen(killSignal).run.attempt flatMap {
             case Right(_) => decrementRunning
             case Left(err) => outputQ.enqueue1(Some(Left(err))) *> decrementRunning
           }
