@@ -8,6 +8,7 @@ import fs2.internal.Scope.{ScopeReleaseFailure, ScopeState}
 import scala.annotation.tailrec
 
 
+
 /**
   * Scope represents a controlled block of execution of the stream to track resources acquired and released during
   * the interpretation of the Stream.
@@ -210,10 +211,10 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
     F.flatMap(state.get) { s =>
       if (!s.open) F.pure(None)
       else {
-        F.flatMap(T.traverse(s.children)(_.resources)) { childResources =>
+        F.flatMap(T.traverse(s.children :+ self)(_.resources)) { childResources =>
         F.flatMap(ancestors) { anc =>
-        F.flatMap(T.traverse(self +: anc) { _.resources }) { ancestorResources =>
-          val allLeases = (childResources ++ ancestorResources).flatMap(identity)
+        F.flatMap(T.traverse(anc) { _.resources }) { ancestorResources =>
+          val allLeases = childResources.flatMap(identity) ++ ancestorResources.flatMap(identity)
           F.map(T.traverse(allLeases) { r => F.map(r.lease)(leased => (r, leased)) }) { leased =>
             Some(cancel(leased.collect { case (r, true) => r }))
           }
