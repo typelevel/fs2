@@ -3,7 +3,7 @@ package fs2.internal
 import fs2.Catenable
 import Algebra.Token
 import cats.effect.Sync
-import fs2.internal.Scope.{ScopeReleaseFailure, State}
+import fs2.internal.Scope.ScopeReleaseFailure
 
 import scala.annotation.tailrec
 
@@ -56,7 +56,7 @@ import scala.annotation.tailrec
   */
 final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scope[F]])(implicit F: Sync[F]) { self =>
 
-  private val state: SyncRef[F, State[F]] = SyncRef(ScopeState.initial)
+  private val state: SyncRef[F, Scope.State[F]] = SyncRef(Scope.State.initial)
 
   /**
     * Registers new resource in this scope.
@@ -274,12 +274,12 @@ object Scope {
       }
     }
 
-    def close: State[F] = ScopeState.closed
+    def close: State[F] = Scope.State.closed
 
   }
 
 
-  private[Scope] object ScopeState {
+  private[Scope] object State {
     private val initial_ = State[Nothing](open = true, resources = Catenable.empty, children = Catenable.empty)
     def initial[F[_]]: State[F] = initial_.asInstanceOf[State[F]]
 
