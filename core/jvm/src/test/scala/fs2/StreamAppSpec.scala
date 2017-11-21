@@ -24,19 +24,19 @@ class StreamAppSpec extends Fs2Spec {
 
     "Terminate server on a failed stream" in {
       val testApp = new TestStreamApp(_ => Stream.raiseError(new Throwable("Bad Initial Process")))
-      testApp.doMain(List.empty).unsafeRunSync shouldBe ExitCode.error
+      testApp.doMain(List.empty).unsafeRunSync shouldBe ExitCode.Error
       testApp.cleanedUp.get.unsafeRunSync shouldBe true
     }
 
     "Terminate server on a valid stream" in {
-      val testApp = new TestStreamApp(_ => Stream.emit(ExitCode.success))
-      testApp.doMain(List.empty).unsafeRunSync shouldBe ExitCode.success
+      val testApp = new TestStreamApp(_ => Stream.emit(ExitCode.Success))
+      testApp.doMain(List.empty).unsafeRunSync shouldBe ExitCode.Success
       testApp.cleanedUp.get.unsafeRunSync shouldBe true
     }
 
     "Terminate server on an empty stream" in {
       val testApp = new TestStreamApp(_ => Stream.empty)
-      testApp.doMain(List.empty).unsafeRunSync shouldBe ExitCode.success
+      testApp.doMain(List.empty).unsafeRunSync shouldBe ExitCode.Success
       testApp.cleanedUp.get.unsafeRunSync shouldBe true
     }
 
@@ -64,7 +64,7 @@ class StreamAppSpec extends Fs2Spec {
         _ <- requestShutdown.get.flatten
         result <- runApp
         cleanedUp <- testApp.cleanedUp.get
-      } yield (result, cleanedUp)).unsafeRunTimed(5.seconds) shouldBe Some((ExitCode.success, true))
+      } yield (result, cleanedUp)).unsafeRunTimed(5.seconds) shouldBe Some((ExitCode.Success, true))
     }
   }
 }

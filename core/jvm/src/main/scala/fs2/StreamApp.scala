@@ -61,10 +61,10 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
       case Left(t) =>
         IO(t.printStackTrace()) *>
           halted.set(true) *>
-          exitCodeRef.setSyncPure(ExitCode.error)
+          exitCodeRef.setSyncPure(ExitCode.Error)
       case Right(exitCode) =>
         halted.set(true) *>
-          exitCodeRef.setSyncPure(exitCode.getOrElse(ExitCode.success))
+          exitCodeRef.setSyncPure(exitCode.getOrElse(ExitCode.Success))
     } *> exitCodeRef.get
 
   def main(args: Array[String]): Unit =
@@ -76,7 +76,7 @@ object StreamApp {
 
   object ExitCode {
     def fromInt(code: Int): ExitCode = ExitCode(code.toByte)
-    val success: ExitCode = ExitCode(0)
-    val error: ExitCode = ExitCode(1)
+    val Success: ExitCode = ExitCode(0)
+    val Error: ExitCode = ExitCode(1)
   }
 }
