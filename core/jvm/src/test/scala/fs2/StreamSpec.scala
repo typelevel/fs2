@@ -43,6 +43,13 @@ class StreamSpec extends Fs2Spec with Inside {
       runLog(s.get *> s2.get) shouldBe { runLog(s.get.flatMap(_ => s2.get)) }
     }
 
+    "fromIterator" in forAll { vec: Vector[Int] =>
+        val iterator = vec.toIterator
+        val stream = Stream.fromIterator[IO,Int](iterator)
+        val example = stream.runLog.unsafeRunSync
+        example shouldBe vec
+    }
+
     "iterate" in {
       Stream.iterate(0)(_ + 1).take(100).toList shouldBe List.iterate(0, 100)(_ + 1)
     }
