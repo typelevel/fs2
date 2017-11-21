@@ -5,6 +5,8 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.implicits._
 
+import fs2.StreamApp.ExitCode
+
 class StreamAppSpec extends Fs2Spec {
 
   "StreamApp" - {
