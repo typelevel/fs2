@@ -1259,6 +1259,12 @@ object Stream {
     Stream.fromFreeC(Algebra.exportResources[F,List[Algebra.Resource[F]]].flatMap(Algebra.output1(_)))
 
   /**
+   * Lifts an iterator into a Stream
+   */
+  def fromIterator[F[_], A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] =
+    Stream.unfoldEval(iterator)(i => F.delay(i.hasNext.guard[Option].as(i.next -> i)))
+
+  /**
    * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
    *
    * @example {{{
