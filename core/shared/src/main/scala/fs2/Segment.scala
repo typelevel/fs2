@@ -1058,6 +1058,26 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
+   * Returns all output chunks and the result of this segment after stepping it to completion.
+   *
+   * Will not terminate if run on an infinite segment.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).unconsAll
+   * res0: (Catenable[Chunk[Int]], Unit) = (Catenable(Chunk(-1, 0), Chunk(1, 2, 3)),())
+   * }}}
+   */
+  def unconsAll: (Catenable[Chunk[O]],R) = {
+    @annotation.tailrec
+    def go(acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
+      s.unconsChunks match {
+        case Right((hds, tl)) => go(acc ++ hds, tl)
+        case Left(r) => (acc, r)
+      }
+    go(Catenable.empty, this)
+  }
+
+  /**
    * Alias for `map(_ => ())`.
    *
    * @example {{{
