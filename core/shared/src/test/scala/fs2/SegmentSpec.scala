@@ -107,6 +107,16 @@ class SegmentSpec extends Fs2Spec {
       }
     }
 
+    "last" in {
+      forAll { (s: Segment[Int,Unit]) =>
+        val (out, (r, l)) = unconsAll(s.last)
+        // val flattenedOutput = out.toList.flatMap(_.toList)
+        val sList = s.toList
+        // flattenedOutput shouldBe (if (sList.isEmpty) Nil else sList.init)
+        l shouldBe sList.lastOption
+      }
+    }
+
     "map" in {
       forAll { (s: Segment[Int,Unit], f: Int => Double) =>
         s.map(f).toChunk shouldBe s.toChunk.map(f)
