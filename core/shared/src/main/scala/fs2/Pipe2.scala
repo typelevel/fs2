@@ -23,7 +23,6 @@ object Pipe2 {
       Algebra.runFoldScope(
         Scope.newRoot[Read],
         None,
-        None,
         Algebra.uncons(s.get).flatMap {
           case Some((hd,tl)) => Algebra.output1[Read,UO](Some((hd,Stream.fromFreeC(tl))))
           case None => Algebra.pure[Read,UO,Unit](())

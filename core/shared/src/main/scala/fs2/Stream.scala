@@ -1756,7 +1756,7 @@ object Stream {
       Stream.eval(async.signalOf(false)) flatMap { killSignal =>
       Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
       Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
-      Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Segment[O2,Unit]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+      Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable, Chunk[O2]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
         val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
         val decrementRunning: F[Unit] = running.modify(_ - 1).as(())
 
@@ -1766,28 +1766,31 @@ object Stream {
         // if fails will enq in queue failure
         // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
         // and that it must be released once the inner stream terminates or fails.
-        def runInner2(inner: Stream[F, O2], outerScope: Scope[F]): Stream[F, Nothing] = {
-          Stream.eval(outerScope.lease) flatMap {
+        def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] = {
+          outerScope.lease flatMap {
             case Some(cancelLease) =>
-              Stream.eval_ {
-                available.decrement *> incrementRunning *>
-                  async.fork {
-                    (inner.segments.attempt.
-                      flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
-                      interruptWhen(killSignal)). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-                      run *> cancelLease *> available.increment *> decrementRunning
-                  }
-              }
+                available.decrement *>
+                incrementRunning *>
+                async.fork {
+                  inner.chunks.attempt.
+                  flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
+                  interruptWhen(killSignal).// must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                  run *>
+                  cancelLease *>
+                  available.increment *>
+                  decrementRunning
+                }
+
             case None =>
-              Stream.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
+              F.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
           }
         }
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] = {
           outer.flatMap { inner =>
-          Stream.getScope[F].flatMap { outerScope =>
-            runInner2(inner, outerScope)
+          Stream.getScope[F].evalMap { outerScope =>
+            runInner(inner, outerScope)
           }}
           .interruptWhen(killSignal).run.attempt flatMap {
             case Right(_) => decrementRunning
@@ -1806,7 +1809,7 @@ object Stream {
         Stream.eval_(async.start(doneMonitor)) ++
         outputQ.dequeue.unNoneTerminate.flatMap {
           case Left(e) => Stream.raiseError(e)
-          case Right(s) => Stream.segment(s)
+          case Right(s) => Stream.chunk(s)
         } onFinalize { killSignal.set(true) *> (running.discrete.dropWhile(_ > 0) take 1 run) }
       }}}}
     }
