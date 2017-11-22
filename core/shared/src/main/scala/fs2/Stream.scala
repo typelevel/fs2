@@ -2036,13 +2036,13 @@ object Stream {
                 (parts, parts2) match {
                   case (Left(()), _) => go(None, tl)
                   case (Right((phd, ptl)), Left(())) => go(Some(phd), tl)
-                  case (Right((phd, ptl)), Right(_)) => Pull.output1(phd) >> go(None, tl, ptl)
+                  case (Right((phd, ptl)), Right(_)) => Pull.output1(phd) *> go(None, tl, ptl)
                 }
             case None =>
               carry.fold[Pull[F, O, Unit]](Pull.done)(c => Pull.output1(c))
           }
         },
-        ps => ps._2.uncons1.fold(_ => go(Some(ps._1), s, ps._2), _ => Pull.output1(ps._1) >> go(None, s, ps._2)))
+        ps => ps._2.uncons1.fold(_ => go(Some(ps._1), s, ps._2), _ => Pull.output1(ps._1) *> go(None, s, ps._2)))
       }
       go(None, self).stream
     }
