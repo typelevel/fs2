@@ -6,6 +6,7 @@ import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.mutable.Queue
+import fs2.internal.Scope.ScopeReleaseFailure
 import fs2.internal.{Algebra, FreeC, Scope}
 
 /**
@@ -1753,12 +1754,27 @@ object Stream {
       val _ = ev // Convince scalac that ev is used
       assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
       val outer = self.asInstanceOf[Stream[F,Stream[F,O2]]]
-      Stream.eval(async.signalOf(false)) flatMap { killSignal =>
+      Stream.eval(async.signalOf(None: Option[Option[Throwable]])) flatMap { done =>
       Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
       Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
-      Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable, Chunk[O2]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+      Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F, Segment[O2, Unit]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+        // stops the join evaluation
+        // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
+        def stop(rslt: Option[Throwable]): F[Unit] = {
+          done.modify {
+            case rslt0@Some(Some(err0)) =>
+              rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
+                Some(Some(new ScopeReleaseFailure(err0, Catenable.singleton(err))))
+              }
+            case _ => Some(rslt)
+          } *> outputQ.enqueue1(None)
+        }
+
         val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
-        val decrementRunning: F[Unit] = running.modify(_ - 1).as(())
+        val decrementRunning: F[Unit] = running.modify(_ - 1).flatMap { c =>
+          if (c.now == 0) stop(None)
+          else F.unit
+        }
 
         // runs inner stream
         // each stream is forked.
@@ -1772,10 +1788,14 @@ object Stream {
                 available.decrement *>
                 incrementRunning *>
                 async.fork {
-                  inner.chunks.attempt.
-                  flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
-                  interruptWhen(killSignal).// must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-                  run *>
+                  inner.segments.
+                  evalMap { s => outputQ.enqueue1(Some(s)) }.
+                  interruptWhen(done.map(_.nonEmpty)).// must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                  run.attempt.
+                  flatMap {
+                    case Right(()) => F.unit
+                    case Left(err) => stop(Some(err))
+                  } *>
                   cancelLease *>
                   available.increment *>
                   decrementRunning
@@ -1792,25 +1812,28 @@ object Stream {
           Stream.getScope[F].evalMap { outerScope =>
             runInner(inner, outerScope)
           }}
-          .interruptWhen(killSignal).run.attempt flatMap {
-            case Right(_) => decrementRunning
-            case Left(err) => outputQ.enqueue1(Some(Left(err))) *> decrementRunning
+          .interruptWhen(done.map(_.nonEmpty))
+          .run.attempt.flatMap {
+            case Right(_) => F.unit
+            case Left(err) => stop(Some(err))
+          } *> decrementRunning
+        }
+
+        // awaits when all streams (outer + inner) finished,
+        // and then collects result of the stream (outer + inner) execution
+        def signalResult: Stream[F, O2] = {
+          done.discrete.take(1) flatMap {
+            _.flatten.fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
           }
         }
 
-        // monitors when the all streams (outer/inner) are terminated an then supplies None to output Queue
-        def doneMonitor: F[Unit] = {
-          running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
-            Stream.eval(outputQ.enqueue1(None))
-          } run
-        }
 
-        Stream.eval_(async.start(runOuter)) ++
-        Stream.eval_(async.start(doneMonitor)) ++
-        outputQ.dequeue.unNoneTerminate.flatMap {
-          case Left(e) => Stream.raiseError(e)
-          case Right(s) => Stream.chunk(s)
-        } onFinalize { killSignal.set(true) *> (running.discrete.dropWhile(_ > 0) take 1 run) }
+        Stream.eval(async.start(runOuter)) *>
+        outputQ.dequeue.
+        unNoneTerminate.
+        flatMap { Stream.segment(_).covary[F] }.
+        onFinalize { stop(None) *> (running.discrete.dropWhile(_ > 0) take 1 run) } ++
+        signalResult
       }}}}
     }
 
