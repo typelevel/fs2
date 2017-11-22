@@ -48,7 +48,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
 
     "upstream.is.closed" in  {
       var closed: Boolean = false
-      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO(closed = true))
+      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO { closed = true })
 
       s.through(toInputStream).run.unsafeRunSync()
 
@@ -57,7 +57,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
 
     "upstream.is.force-closed" in  {
       var closed: Boolean = false
-      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO(closed = true))
+      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO { closed = true })
 
       val result =
         s.through(toInputStream).evalMap { is =>

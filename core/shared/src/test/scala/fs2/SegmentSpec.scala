@@ -12,6 +12,7 @@ class SegmentSpec extends Fs2Spec {
     Gen.const(()).map(Segment.pure(_)),
     genO.map(Segment.singleton),
     Gen.listOf(genO).map(Segment.seq(_)),
+    Gen.chooseNum(0, 3).flatMap(n => Gen.listOfN(n, Gen.listOf(genO)).flatMap { oss => Segment.unfoldChunk(0)(i => if (i < oss.size) Some(Chunk.seq(oss(i)) -> (i + 1)) else None) }),
     Gen.listOf(genO).map(_.foldLeft(Segment.empty[O])((acc, o) => acc ++ Segment.singleton(o))),
     Gen.delay(for { lhs <- genSegment(genO); rhs <- genSegment(genO) } yield lhs ++ rhs),
     Gen.delay(for { seg <- genSegment(genO); c <- Gen.listOf(genO).map(Chunk.seq) } yield seg.prepend(c))
@@ -80,7 +81,7 @@ class SegmentSpec extends Fs2Spec {
 
     "flatMap (2)" in {
       forAll { (s: Segment[Int,Unit], f: Int => Segment[Int,Unit], n: Int) =>
-        val s2 = s.flatMap(f).take(n).void.run.toOption
+        val s2 = s.flatMap(f).take(n).drain.run.toOption
         s2.foreach { _.toVector shouldBe s.toVector.flatMap(i => f(i).toVector).drop(n) }
       }
     }
@@ -90,7 +91,7 @@ class SegmentSpec extends Fs2Spec {
         val s1 = s.flatMapAccumulate(init) { (s,i) => val (s2,o) = f(s,i); Segment.singleton(o).asResult(s2) }
         val s2 = s.mapAccumulate(init)(f)
         s1.toVector shouldBe s2.toVector
-        s1.void.run shouldBe s2.void.run
+        s1.drain.run shouldBe s2.drain.run
       }
     }
 
@@ -180,9 +181,9 @@ class SegmentSpec extends Fs2Spec {
         val v = s.toVector
         s.take(n).toVector shouldBe v.take(n)
         if (n > 0 && n >= v.size) {
-          s.take(n).void.run shouldBe Left(((), n - v.size))
+          s.take(n).drain.run shouldBe Left(((), n - v.size))
         } else {
-          s.take(n).void.run shouldBe Right(Segment.vector(v.drop(n)))
+          s.take(n).drain.run shouldBe Right(Segment.vector(v.drop(n)))
         }
       }
     }
@@ -204,15 +205,6 @@ class SegmentSpec extends Fs2Spec {
         val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Chunk.array(xs.toArray) ++ acc)
         // Consecutive empty chunks are collapsed to a single empty chunk
         unconsAll(seg)._1.toList.map(_.toVector.toList).filter(_.nonEmpty) shouldBe xss.filter(_.nonEmpty)
-      }
-    }
-
-    "uncons1 on result of uncons always emits" in {
-      forAll { (s: Segment[Int,Unit]) =>
-        s.uncons match {
-          case Left(()) => ()
-          case Right((hd,tl)) => hd.uncons1.toOption.get
-        }
       }
     }
 

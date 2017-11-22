@@ -175,7 +175,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.4"
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.5"
   ).
   jsSettings(commonJsSettings: _*)
 
@@ -183,7 +183,10 @@ lazy val coreJVM = core.jvm.enablePlugins(SbtOsgi).
   settings(
     OsgiKeys.exportPackage := Seq("fs2.*"),
     OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", "*"),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(s"""scala.*;version="[$major.$minor,$major.${minor+1})"""", "*")
+    },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings,
     libraryDependencies ++= {
@@ -206,7 +209,10 @@ lazy val io = project.in(file("io")).
     name := "fs2-io",
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", """fs2.*;version="${Bundle-Version}"""", "*"),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(s"""scala.*;version="[$major.$minor,$major.${minor+1})"""", """fs2.*;version="${Bundle-Version}"""", "*")
+    },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   ).dependsOn(coreJVM % "compile->compile;test->test")
@@ -225,7 +231,10 @@ lazy val scodecJVM = scodec.jvm.
   settings(
     OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
     OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := Seq("""scala.*;version="${range;[==,=+)}"""", """fs2.*;version="${Bundle-Version}"""", "*"),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(s"""scala.*;version="[$major.$minor,$major.${minor+1})"""", """fs2.*;version="${Bundle-Version}"""", "*")
+    },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )

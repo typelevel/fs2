@@ -46,7 +46,7 @@ sealed abstract class AsyncPull[F[_],A] { self =>
       (FreeC.Eval(ref.get.flatMap {
         case Left(a) => cancelB.run.as(Left(a): Either[A, B])
         case Right(b) => cancelA.run.as(Right(b): Either[A, B])
-      }), FreeC.Eval(cancelA.run >> cancelB.run))
+      }), FreeC.Eval(cancelA.run *> cancelB.run))
     })
   }
 

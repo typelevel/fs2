@@ -2,6 +2,7 @@ package fs2
 
 import cats.Eval
 import scala.reflect.ClassTag
+import java.nio.ByteBuffer
 
 /**
  * Segment with a known size and that allows index-based random access of elements.
@@ -22,14 +23,16 @@ import scala.reflect.ClassTag
 abstract class Chunk[+O] extends Segment[O,Unit] { self =>
 
   private[fs2]
-  def stage0 = (_, _, emit, emits, done) => Eval.now {
+  def stage0(depth: Segment.Depth, defer: Segment.Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: Unit => Unit) = {
     var emitted = false
-    Segment.step(if (emitted) Segment.empty else this) {
-      if (!emitted) {
-        emitted = true
-        emits(this)
+    Eval.now {
+      Segment.step(if (emitted) Segment.empty else this) {
+        if (!emitted) {
+          emitted = true
+          emits(this)
+        }
+        done(())
       }
-      done(())
     }
   }
 
@@ -63,7 +66,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   override def toArray[O2 >: O: ClassTag]: Array[O2] = {
     val arr = new Array[O2](size)
     var i = 0
-    this.map { b => arr(i) = b; i += 1 }.run
+    while (i < size) { arr(i) = apply(i); i += 1 }
     arr
   }
 
@@ -192,7 +195,8 @@ object Chunk {
   private val empty_ : Chunk[Nothing] = new Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = sys.error(s"Chunk.empty.apply($i)")
-    override def stage0 = (_,_,_,_,done) => Eval.now(Segment.step(empty_)(done(())))
+    override def stage0(depth: Segment.Depth, defer: Segment.Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: Unit => Unit) =
+      Eval.now(Segment.step(empty_)(done(())))
     override def unconsChunk: Either[Unit, (Chunk[Nothing],Segment[Nothing,Unit])] = Left(())
     override def foreachChunk(f: Chunk[Nothing] => Unit): Unit = ()
     override def toVector: Vector[Nothing] = Vector.empty
@@ -281,6 +285,7 @@ object Chunk {
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
     protected def mapStrict[O2](f: O => O2): Chunk[O2] = seq(values.map(f))
+    override def toArray[O2 >: O: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Boxed { def apply[O](values: Array[O]): Boxed[O] = Boxed(values, 0, values.length) }
 
@@ -298,6 +303,7 @@ object Chunk {
     protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) =
       Booleans(values, offset, n) -> Booleans(values, offset + n, length - n)
     protected def mapStrict[O2](f: Boolean => O2): Chunk[O2] = seq(values.map(f))
+    override def toArray[O2 >: Boolean: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Booleans { def apply(values: Array[Boolean]): Booleans = Booleans(values, 0, values.length) }
 
@@ -315,6 +321,8 @@ object Chunk {
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) =
       Bytes(values, offset, n) -> Bytes(values, offset + n, length - n)
     protected def mapStrict[O2](f: Byte => O2): Chunk[O2] = seq(values.map(f))
+    override def toArray[O2 >: Byte: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
+    def toByteBuffer: ByteBuffer = ByteBuffer.wrap(values, offset, length)
   }
   object Bytes { def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length) }
 
@@ -332,6 +340,7 @@ object Chunk {
     protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) =
       Shorts(values, offset, n) -> Shorts(values, offset + n, length - n)
     protected def mapStrict[O2](f: Short => O2): Chunk[O2] = seq(values.map(f))
+    override def toArray[O2 >: Short: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Shorts { def apply(values: Array[Short]): Shorts = Shorts(values, 0, values.length) }
 
@@ -349,6 +358,7 @@ object Chunk {
     protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) =
       Ints(values, offset, n) -> Ints(values, offset + n, length - n)
     protected def mapStrict[O2](f: Int => O2): Chunk[O2] = seq(values.map(f))
+    override def toArray[O2 >: Int: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Ints { def apply(values: Array[Int]): Ints = Ints(values, 0, values.length) }
 
@@ -366,6 +376,7 @@ object Chunk {
     protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) =
       Longs(values, offset, n) -> Longs(values, offset + n, length - n)
     protected def mapStrict[O2](f: Long => O2): Chunk[O2] = seq(values.map(f))
+    override def toArray[O2 >: Long: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Longs { def apply(values: Array[Long]): Longs = Longs(values, 0, values.length) }
 
@@ -383,6 +394,7 @@ object Chunk {
     protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) =
       Floats(values, offset, n) -> Floats(values, offset + n, length - n)
     protected def mapStrict[O2](f: Float => O2): Chunk[O2] = seq(values.map(f))
+    override def toArray[O2 >: Float: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Floats { def apply(values: Array[Float]): Floats = Floats(values, 0, values.length) }
 
@@ -400,6 +412,7 @@ object Chunk {
     protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) =
       Doubles(values, offset, n) -> Doubles(values, offset + n, length - n)
     protected def mapStrict[O2](f: Double => O2): Chunk[O2] = seq(values.map(f))
+    override def toArray[O2 >: Double: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Doubles { def apply(values: Array[Double]): Doubles = Doubles(values, 0, values.length) }
 

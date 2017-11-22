@@ -33,7 +33,7 @@ object compress {
     case Some((hd,tl)) =>
       deflater.setInput(hd.toArray)
       val result = _deflate_collect(deflater, buffer, ArrayBuffer.empty, false).toArray
-      Pull.output(Chunk.bytes(result)) >> _deflate_stream(deflater, buffer)(tl)
+      Pull.output(Chunk.bytes(result)) *> _deflate_stream(deflater, buffer)(tl)
   }
   private def _deflate_stream[F[_]](deflater: Deflater, buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Option[Stream[F, Byte]]] =
     _.pull.unconsChunk flatMap _deflate_step(deflater, buffer) flatMap {
@@ -72,7 +72,7 @@ object compress {
         val buffer = new Array[Byte](bufferSize)
         inflater.setInput(hd.toArray)
         val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
+        Pull.output(Chunk.bytes(result)) *> _inflate_stream(inflater, buffer)(tl)
     }.stream
   }
   private def _inflate_step[F[_]](inflater: Inflater, buffer: Array[Byte]): Option[(Chunk[Byte], Stream[F, Byte])] => Pull[F, Byte, Option[Stream[F, Byte]]] = {
@@ -80,7 +80,7 @@ object compress {
     case Some((hd,tl)) =>
       inflater.setInput(hd.toArray)
       val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-      Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
+      Pull.output(Chunk.bytes(result)) *> _inflate_stream(inflater, buffer)(tl)
   }
   private def _inflate_stream[F[_]](inflater: Inflater, buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Option[Stream[F, Byte]]] =
     _.pull.unconsChunk.flatMap(_inflate_step(inflater, buffer)).flatMap {
@@ -96,7 +96,7 @@ object compress {
     }
   }
   private def _inflate_finish[F[_]](inflater: Inflater): Pull[F, Nothing, Unit] = {
-    if (!inflater.finished) Pull.fail(new DataFormatException("Insufficient data"))
+    if (!inflater.finished) Pull.raiseError(new DataFormatException("Insufficient data"))
     else { inflater.end(); Pull.done }
   }
 }

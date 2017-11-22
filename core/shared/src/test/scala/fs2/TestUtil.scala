@@ -14,7 +14,7 @@ trait TestUtil extends TestUtilPlatform {
 
   val timeout: FiniteDuration = 60.seconds
 
-  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift >> s.runLog).unsafeToFuture
+  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift *> s.runLog).unsafeToFuture
 
   def spuriousFail(s: Stream[IO,Int], f: Failure): Stream[IO,Int] =
     s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get
@@ -98,7 +98,7 @@ trait TestUtil extends TestUtilPlatform {
 
   implicit def failingStreamArb: Arbitrary[Failure] = Arbitrary(
     Gen.oneOf[Failure](
-      Failure("pure-failure", Stream.fail(Err)),
+      Failure("pure-failure", Stream.raiseError(Err)),
       Failure("failure-inside-effect", Stream.eval(IO(throw Err))),
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
@@ -107,7 +107,7 @@ trait TestUtil extends TestUtilPlatform {
       Failure("failure-in-async-code",
         Stream.eval[IO,Int](IO(throw Err)).pull.unconsAsync.flatMap { _.pull.flatMap {
           case None => Pull.pure(())
-          case Some((hd,tl)) => Pull.output(hd) >> Pull.pure(())
+          case Some((hd,tl)) => Pull.output(hd) *> Pull.pure(())
         }}.stream)
     )
   )

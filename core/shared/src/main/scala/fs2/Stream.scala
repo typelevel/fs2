@@ -25,10 +25,10 @@ import fs2.internal.{ Algebra, FreeC }
  * And `cons` is consistent with using `++` to prepend a single segment:
  *   - `s.cons(seg) == Stream.segment(seg) ++ s`
  *
- * `Stream.fail` propagates until being caught by `onError`:
- *   - `Stream.fail(e) onError h == h(e)`
- *   - `Stream.fail(e) ++ s == Stream.fail(e)`
- *   - `Stream.fail(e) flatMap f == Stream.fail(e)`
+ * `Stream.raiseError` propagates until being caught by `handleErrorWith`:
+ *   - `Stream.raiseError(e) handleErrorWith h == h(e)`
+ *   - `Stream.raiseError(e) ++ s == Stream.raiseError(e)`
+ *   - `Stream.raiseError(e) flatMap f == Stream.raiseError(e)`
  *
  * `Stream` forms a monad with `emit` and `flatMap`:
  *   - `Stream.emit >=> f == f` (left identity)
@@ -78,14 +78,14 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * Returns a stream of `O` values wrapped in `Right` until the first error, which is emitted wrapped in `Left`.
    *
    * @example {{{
-   * scala> (Stream(1,2,3) ++ Stream.fail(new RuntimeException) ++ Stream(4,5,6)).attempt.toList
+   * scala> (Stream(1,2,3) ++ Stream.raiseError(new RuntimeException) ++ Stream(4,5,6)).attempt.toList
    * res0: List[Either[Throwable,Int]] = List(Right(1), Right(2), Right(3), Left(java.lang.RuntimeException))
    * }}}
    *
    * [[rethrow]] is the inverse of `attempt`, with the caveat that anything after the first failure is discarded.
    */
   def attempt: Stream[F,Either[Throwable,O]] =
-    map(Right(_)).onError(e => Stream.emit(Left(e)))
+    map(Right(_): Either[Throwable,O]).handleErrorWith(e => Stream.emit(Left(e)))
 
   /**
    * Alias for `_.map(_ => o2)`.
@@ -170,7 +170,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           if (out.isEmpty) {
             go(buffer :+ Chunk.vector(buf), newLast, tl)
           } else {
-            Pull.output(Segment.catenated(buffer ++ out)) >> go(Catenable.singleton(Chunk.vector(buf)), newLast, tl)
+            Pull.output(Segment.catenated(buffer ++ out)) *> go(Catenable.singleton(Chunk.vector(buf)), newLast, tl)
           }
         case None => Pull.output(Segment.catenated(buffer))
       }
@@ -349,7 +349,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     def go(last: Chunk[O], s: Stream[F,O]): Pull[F,O,Unit] = {
       s.pull.unconsChunk.flatMap {
         case Some((hd,tl)) =>
-          if (hd.nonEmpty) Pull.output(last) >> go(hd,tl)
+          if (hd.nonEmpty) Pull.output(last) *> go(hd,tl)
           else go(last,tl)
         case None =>
           val o = last(last.size - 1)
@@ -388,7 +388,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           case None => Pull.pure(None)
           case Some((hd,tl)) =>
             val all = acc ++ hd.toVector
-            Pull.output(Chunk.vector(all.dropRight(n))) >> go(all.takeRight(n), tl)
+            Pull.output(Chunk.vector(all.dropRight(n))) *> go(all.takeRight(n), tl)
         }
       }
       go(Vector.empty, this).stream
@@ -457,20 +457,20 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           // Check if we can emit this chunk unmodified
           Pull.segment(hd.fold((true, last)) { case ((acc, last), o) => (acc && f(last, o), o) }).flatMap { case (allPass, newLast) =>
             if (allPass) {
-              Pull.output(hd) >> go(newLast, tl)
+              Pull.output(hd) *> go(newLast, tl)
             } else {
               Pull.segment(hd.fold((Vector.empty[O], last)) { case ((acc, last), o) =>
                 if (f(last, o)) (acc :+ o, o)
                 else (acc, last)
               }).flatMap { case (acc, newLast) =>
-                Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
+                Pull.output(Chunk.vector(acc)) *> go(newLast, tl)
               }
             }
           }
       }
     this.pull.uncons1.flatMap {
       case None => Pull.pure(None)
-      case Some((hd, tl)) => Pull.output1(hd) >> go(hd, tl)
+      case Some((hd, tl)) => Pull.output1(hd) *> go(hd, tl)
     }.stream
   }
 
@@ -555,7 +555,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           doChunk(hd, tl, k1, out, Vector.empty)
         case None =>
           val l = current.map { case (k1, out) => Pull.output1((k1, out)) } getOrElse Pull.pure(())
-          l >> Pull.done
+          l *> Pull.done
       }
     }
 
@@ -569,7 +569,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           go(Some((k1, newOut)), s)
         } else {
           // potentially outputs one additional chunk (by splitting the last one in two)
-          Pull.output(Chunk.vector(acc)) >> go(Some((k1, newOut)), s)
+          Pull.output(Chunk.vector(acc)) *> go(Some((k1, newOut)), s)
         }
       } else {
         // at least part of this chunk does not match the current key, need to group and retain chunkiness
@@ -617,7 +617,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
               hd.toVector.foreach { o => bldr += separator; bldr += o }
               Chunk.vector(bldr.result)
             }
-            Pull.output(interspersed) >> Pull.pure(Some(tl))
+            Pull.output(interspersed) *> Pull.pure(Some(tl))
         }}.pull.echo
     }.stream
 
@@ -701,11 +701,11 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * Behaves like the identity function but halts the stream on an error and does not return the error.
    *
    * @example {{{
-   * scala> (Stream(1,2,3) ++ Stream.fail(new RuntimeException) ++ Stream(4, 5, 6)).mask.toList
+   * scala> (Stream(1,2,3) ++ Stream.raiseError(new RuntimeException) ++ Stream(4, 5, 6)).mask.toList
    * res0: List[Int] = List(1, 2, 3)
    * }}}
    */
-  def mask: Stream[F,O] = this.onError(_ => Stream.empty)
+  def mask: Stream[F,O] = this.handleErrorWith(_ => Stream.empty)
 
   /**
    * Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
@@ -736,7 +736,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * Preserves chunkiness.
    *
    * @example {{{
-   * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow.onError(t => Stream(-1)).toList
+   * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow.handleErrorWith(t => Stream(-1)).toList
    * res0: List[Int] = List(-1)
    * }}}
    */
@@ -746,7 +746,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
       val errs = s.collect { case Left(e) => e }
       errs.uncons1 match {
         case Left(()) => Stream.segment(s.collect { case Right(i) => i })
-        case Right((hd,tl)) => Stream.fail(hd)
+        case Right((hd,tl)) => Stream.raiseError(hd)
       }
     }
   }
@@ -769,7 +769,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *   etc
    */
   def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] =
-    (Pull.output1(z) >> scan_(z)(f)).stream
+    (Pull.output1(z) *> scan_(z)(f)).stream
 
   private def scan_[O2](z: O2)(f: (O2, O) => O2): Pull[F,O2,Unit] =
     this.pull.uncons.flatMap {
@@ -792,8 +792,20 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] =
     this.pull.uncons1.flatMap {
       case None => Pull.done
-      case Some((hd,tl)) => Pull.output1(hd) >> tl.scan_(hd: O2)(f)
+      case Some((hd,tl)) => Pull.output1(hd) *> tl.scan_(hd: O2)(f)
     }.stream
+
+  /**
+   * Tracks any resources acquired during this stream and releases them when the stream completes.
+   *
+   * Scopes are typically inserted automatically, at the boundary of a pull (i.e., when a pull
+   * is converted to a stream). This method allows a scope to be explicitly demarcated, so that
+   * resources can be freed earlier than when using automatically inserted scopes.
+   *
+   * One use case is scoping the left hand side of an append: `(s1.scope ++ s2)`, which ensures
+   * resources acquired during `s1` are released onces the end of `s1` has been passed.
+   */
+  def scope: Stream[F,O] = Stream.fromFreeC(Algebra.scope(get))
 
   /**
    * Outputs the segments of this stream as output values, ensuring each segment has maximum size `n`, splitting segments as necessary.
@@ -864,7 +876,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
       case None => Pull.done
       case Some((hd, tl)) =>
         val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).run
-        Pull.output1(window) >> go(window, tl)
+        Pull.output1(window) *> go(window, tl)
     }.stream
   }
 
@@ -888,7 +900,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
               else go(buffer ++ out, tl)
             case Right((out,tl2)) =>
               val b2 = if (out.nonEmpty) buffer ++ out else buffer
-              (if (b2.nonEmpty) Pull.output1(Segment.catenated(b2)) else Pull.pure(())) >>
+              (if (b2.nonEmpty) Pull.output1(Segment.catenated(b2)) else Pull.pure(())) *>
                 go(Catenable.empty, tl.cons(tl2.drop(1).fold(_ => Segment.empty, identity)))
           }
         case None =>
@@ -1243,19 +1255,18 @@ object Stream {
     go(0)
   }
 
+  private[fs2] def exportResources[F[_]]: Stream[F,List[Algebra.Resource[F]]] =
+    Stream.fromFreeC(Algebra.exportResources[F,List[Algebra.Resource[F]]].flatMap(Algebra.output1(_)))
+
   /**
-   * Creates a stream that, when run, fails with the supplied exception.
-   *
-   * @example {{{
-   * scala> import scala.util.Try
-   * scala> Try(Stream.fail(new RuntimeException).toList)
-   * res0: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
-   * scala> import cats.effect.IO
-   * scala> Stream.fail(new RuntimeException).covary[IO].run.attempt.unsafeRunSync
-   * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
-   * }}}
+   * Lifts an iterator into a Stream
    */
-  def fail[O](e: Throwable): Stream[Pure,O] = fromFreeC(Algebra.fail(e))
+  def fromIterator[F[_], A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
+    def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
+      F.delay(i.hasNext).flatMap(b => if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None))
+    Stream.unfoldEval(iterator)(getNext)
+  }
+
 
   /**
    * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
@@ -1269,7 +1280,8 @@ object Stream {
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     eval(f).flatMap(s => s)
 
-
+  private[fs2] def importResources[F[_]](resources: List[Algebra.Resource[F]]): Stream[F,Nothing] =
+    Stream.fromFreeC(Algebra.importResources[F,Nothing](resources))
 
   /**
    * An infinite `Stream` that repeatedly applies a given function
@@ -1296,6 +1308,20 @@ object Stream {
    */
   def iterateEval[F[_],A](start: A)(f: A => F[A]): Stream[F,A] =
     emit(start) ++ eval(f(start)).flatMap(iterateEval(_)(f))
+
+  /**
+   * Creates a stream that, when run, fails with the supplied exception.
+   *
+   * @example {{{
+   * scala> import scala.util.Try
+   * scala> Try(Stream.raiseError(new RuntimeException).toList)
+   * res0: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
+   * scala> import cats.effect.IO
+   * scala> Stream.raiseError(new RuntimeException).covary[IO].run.attempt.unsafeRunSync
+   * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
+   * }}}
+   */
+  def raiseError[O](e: Throwable): Stream[Pure,O] = fromFreeC(Algebra.raiseError(e))
 
   /**
    * Lazily produce the range `[start, stopExclusive)`. If you want to produce
@@ -1477,12 +1503,12 @@ object Stream {
       Stream.eval(async.signalOf[F,Boolean](false)).flatMap { interruptRight =>
       Stream.eval(async.signalOf[F,Option[Throwable]](None)).flatMap { leftError =>
         val left = that.
-          onError(e => Stream.eval_(leftError.set(Some(e)) >> interruptRight.set(true))).
+          handleErrorWith(e => Stream.eval_(leftError.set(Some(e)) *> interruptRight.set(true))).
           interruptWhen(interruptLeft).
           onFinalize(leftFinalized.increment)
         val right = self.interruptWhen(interruptRight).onFinalize(
-          interruptLeft.set(true) >>
-          leftFinalized.decrement >>
+          interruptLeft.set(true) *>
+          leftFinalized.decrement *>
           leftError.get.flatMap(_.fold(F.pure(()))(F.raiseError))
         )
         Stream.eval_(async.fork(left.run)) ++ right
@@ -1537,9 +1563,9 @@ object Stream {
           self.repeatPull {
             _.uncons.flatMap {
               case Some((o, h)) =>
-                Pull.eval(q.enqueue1(Some(o))) >> Pull.output(o).as(Some(h))
+                Pull.eval(q.enqueue1(Some(o))) *> Pull.output(o).as(Some(h))
               case None =>
-                Pull.eval(enqueueNone) >> Pull.pure(None)
+                Pull.eval(enqueueNone) *> Pull.pure(None)
             }
           }.onFinalize(enqueueNone)
         },
@@ -1559,7 +1585,7 @@ object Stream {
             unNoneTerminate.
             flatMap { c => Stream.segment(c) }.
             through(g) ++ drainQueue
-          ).onError { t => drainQueue ++ Stream.fail(t) }
+          ).handleErrorWith { t => drainQueue ++ Stream.raiseError(t) }
         }
       )
     }}}}
@@ -1605,15 +1631,15 @@ object Stream {
       def go(z: O2, s: Stream[F,O]): Pull[F,O2,Option[Stream[F,O2]]] =
         s.pull.uncons1.flatMap {
           case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
-            Pull.output1(o) >> go(o,tl)
+            Pull.output1(o) *> go(o,tl)
           }
           case None => Pull.pure(None)
         }
       self.pull.uncons1.flatMap {
         case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
-          Pull.output(Chunk.seq(List(z,o))) >> go(o,tl)
+          Pull.output(Chunk.seq(List(z,o))) *> go(o,tl)
         }
-        case None => Pull.output1(z) >> Pull.pure(None)
+        case None => Pull.output1(z) *> Pull.pure(None)
       }.stream
     }
 
@@ -1646,7 +1672,7 @@ object Stream {
       })
 
     /** Alias for `flatMap(_ => s2)`. */
-    def >>[O2](s2: => Stream[F,O2]): Stream[F,O2] =
+    def *>[O2](s2: => Stream[F,O2]): Stream[F,O2] =
       flatMap { _ => s2 }
 
     /**
@@ -1753,23 +1779,27 @@ object Stream {
         // each stream is forked.
         // terminates when killSignal is true
         // if fails will enq in queue failure
-        def runInner(inner: Stream[F,O2]): Stream[F,Nothing] = {
+        def runInner(inner: Stream[F,O2], importedResources: List[Algebra.Resource[F]]): Stream[F,Nothing] = {
           Stream.eval_(
-            available.decrement >> incrementRunning >>
+            available.decrement *> incrementRunning *>
             async.fork {
-              inner.segments.attempt.
+              (Stream.importResources(importedResources) ++ inner.segments.attempt.
                 flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
-                interruptWhen(killSignal). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-                run >> available.increment >> decrementRunning
+                interruptWhen(killSignal)). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                run *> available.increment *> decrementRunning
             }
           )
         }
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] = {
-          (outer.interruptWhen(killSignal) flatMap runInner run).attempt flatMap {
+          outer.interruptWhen(killSignal).flatMap { inner =>
+            Stream.exportResources[F].flatMap { resources =>
+              runInner(inner, resources)
+            }
+          }.run.attempt flatMap {
             case Right(_) => decrementRunning
-            case Left(err) => outputQ.enqueue1(Some(Left(err))) >> decrementRunning
+            case Left(err) => outputQ.enqueue1(Some(Left(err))) *> decrementRunning
           }
         }
 
@@ -1783,9 +1813,9 @@ object Stream {
         Stream.eval_(async.start(runOuter)) ++
         Stream.eval_(async.start(doneMonitor)) ++
         outputQ.dequeue.unNoneTerminate.flatMap {
-          case Left(e) => Stream.fail(e)
+          case Left(e) => Stream.raiseError(e)
           case Right(s) => Stream.segment(s)
-        } onFinalize { killSignal.set(true) >> (running.discrete.dropWhile(_ > 0) take 1 run) }
+        } onFinalize { killSignal.set(true) *> (running.discrete.dropWhile(_ > 0) take 1 run) }
       }}}}
     }
 
@@ -1797,14 +1827,14 @@ object Stream {
      * Interleaves the two inputs nondeterministically. The output stream
      * halts after BOTH `s1` and `s2` terminate normally, or in the event
      * of an uncaught failure on either `s1` or `s2`. Has the property that
-     * `merge(Stream.empty, s) == s` and `merge(fail(e), s)` will
-     * eventually terminate with `fail(e)`, possibly after emitting some
+     * `merge(Stream.empty, s) == s` and `merge(raiseError(e), s)` will
+     * eventually terminate with `raiseError(e)`, possibly after emitting some
      * elements of `s` first.
      *
      * Note: `this` and `that` are each pulled for a segment. Upon receiving
      * a segment, it is emitted downstream. Depending on how that element is
      * processed, the remainder of `this` and `that` may never be consulted
-     * again (e.g., `a.merge(b) >> Stream.constant(0)`). A common case where
+     * again (e.g., `a.merge(b) *> Stream.constant(0)`). A common case where
      * this can be problematic is draining a stream that publishes to a
      * concurrent data structure and merging it with a consumer from the same
      * data structure. In such cases, use `consumer.concurrently(producer)`
@@ -1829,17 +1859,17 @@ object Stream {
             l match {
               case None => r.pull.flatMap {
                 case None => Pull.done
-                case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
+                case Some((hd, tl)) => Pull.output(hd) *> tl.pull.echo
               }
-              case Some((hd, tl)) => Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(_, r))
+              case Some((hd, tl)) => Pull.output(hd) *> tl.pull.unconsAsync.flatMap(go(_, r))
             }
           case Right(r) =>
             r match {
               case None => l.pull.flatMap {
                 case None => Pull.done
-                case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
+                case Some((hd, tl)) => Pull.output(hd) *> tl.pull.echo
               }
-              case Some((hd, tl)) => Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(l, _))
+              case Some((hd, tl)) => Pull.output(hd) *> tl.pull.unconsAsync.flatMap(go(l, _))
             }
         }
       }
@@ -1897,18 +1927,18 @@ object Stream {
      * }}}
      */
     def onComplete[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      (self onError (e => s2 ++ Stream.fail(e))) ++ s2
+      (self handleErrorWith (e => s2 ++ Stream.raiseError(e))) ++ s2
 
     /**
-     * If `this` terminates with `Stream.fail(e)`, invoke `h(e)`.
+     * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
      *
      * @example {{{
-     * scala> Stream(1, 2, 3).append(Stream.fail(new RuntimeException)).onError(t => Stream(0)).toList
+     * scala> Stream(1, 2, 3).append(Stream.raiseError(new RuntimeException)).handleErrorWith(t => Stream(0)).toList
      * res0: List[Int] = List(1, 2, 3, 0)
      * }}}
      */
-    def onError[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
-      Stream.fromFreeC(self.get[F,O2] onError { e => h(e).get })
+    def handleErrorWith[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
+      Stream.fromFreeC(self.get[F,O2] handleErrorWith { e => h(e).get })
 
     /**
      * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
@@ -1931,7 +1961,7 @@ object Stream {
               else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
             }
           case Right(Some((c, srcStream))) =>
-            Pull.output(c) >> srcStream.pull.unconsAsync.flatMap(unpaused(controlFuture, _))
+            Pull.output(c) *> srcStream.pull.unconsAsync.flatMap(unpaused(controlFuture, _))
         }
       }
 
@@ -1965,7 +1995,7 @@ object Stream {
     def prefetch(implicit ec: ExecutionContext): Stream[F,O] =
       self repeatPull { _.uncons.flatMap {
         case None => Pull.pure(None)
-        case Some((hd, tl)) => tl.pull.prefetch flatMap { p => Pull.output(hd) >> p }
+        case Some((hd, tl)) => tl.pull.prefetch flatMap { p => Pull.output(hd) *> p }
       }}
 
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
@@ -2046,8 +2076,8 @@ object Stream {
      * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
      * is raised in `F`.
      */
-    def runSync(implicit F: Effect[F]): F[Unit] =
-      runFold(())((u, _) => u)
+    def runSync(implicit F: Sync[F]): F[Unit] =
+      runFoldSync(())((u, _) => u)
 
     /**
      * Interprets this stream in to a value of the target effect type `F` by folding
@@ -2122,7 +2152,7 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, a `Sync[F]` instance must be implicitly available.
+     * To call this method, an `Effect[F]` instance must be implicitly available.
      *
      * @example {{{
      * scala> import cats.effect.IO
@@ -2153,7 +2183,7 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, a `Sync[F]` instance must be implicitly available.
+     * To call this method, an `Effect[F]` instance must be implicitly available.
      *
      * @example {{{
      * scala> import cats.effect.IO
@@ -2299,20 +2329,20 @@ object Stream {
       def cont1(z: Either[(Segment[O,Unit], Stream[F,O]), Stream[F,O]]): Pull[F,O3,Option[Nothing]] = {
         def contLeft(s: Stream[F,O]): Pull[F,O3,Option[Nothing]] = s.pull.uncons.flatMap {
           case None => Pull.pure(None)
-          case Some((hd,tl)) => Pull.output(hd.map(o => f(o,pad2))) >> contLeft(tl)
+          case Some((hd,tl)) => Pull.output(hd.map(o => f(o,pad2))) *> contLeft(tl)
         }
         z match {
-          case Left((hd,tl)) => Pull.output(hd.map(o => f(o,pad2))) >> contLeft(tl)
+          case Left((hd,tl)) => Pull.output(hd.map(o => f(o,pad2))) *> contLeft(tl)
           case Right(h) => contLeft(h)
         }
       }
       def cont2(z: Either[(Segment[O2,Unit], Stream[F,O2]), Stream[F,O2]]): Pull[F,O3,Option[Nothing]] = {
         def contRight(s: Stream[F,O2]): Pull[F,O3,Option[Nothing]] = s.pull.uncons.flatMap {
           case None => Pull.pure(None)
-          case Some((hd,tl)) => Pull.output(hd.map(o2 => f(pad1,o2))) >> contRight(tl)
+          case Some((hd,tl)) => Pull.output(hd.map(o2 => f(pad1,o2))) *> contRight(tl)
         }
         z match {
-          case Left((hd,tl)) => Pull.output(hd.map(o2 => f(pad1,o2))) >> contRight(tl)
+          case Left((hd,tl)) => Pull.output(hd.map(o2 => f(pad1,o2))) *> contRight(tl)
           case Right(h) => contRight(h)
         }
       }
@@ -2382,7 +2412,7 @@ object Stream {
 
     def flatMap[F[_],O2](f: O => Stream[F,O2]): Stream[F,O2] = covary[F].flatMap(f)
 
-    def >>[F[_],O2](s2: => Stream[F,O2]): Stream[F,O2] = flatMap { _ => s2 }
+    def *>[F[_],O2](s2: => Stream[F,O2]): Stream[F,O2] = flatMap { _ => s2 }
 
     def interleave[F[_],O2>:O](s2: Stream[F,O2]): Stream[F,O2] = covaryAll[F,O2].interleave(s2)
 
@@ -2424,8 +2454,8 @@ object Stream {
     def onComplete[F[_],O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
       covary[F].onComplete(s2)
 
-    def onError[F[_],O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
-      covary[F].onError(h)
+    def handleErrorWith[F[_],O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
+      covary[F].handleErrorWith(h)
 
     def onFinalize[F[_]](f: F[Unit])(implicit F: Applicative[F]): Stream[F,O] =
       covary[F].onFinalize(f)
@@ -2782,8 +2812,6 @@ object Stream {
   /**
    * `Sync` instance for `Stream`.
    *
-   * Note: non-implicit so that cats syntax doesn't override FS2 syntax
-   *
    * @example {{{
    * scala> import cats.implicits._
    * scala> import cats.effect.Sync
@@ -2792,10 +2820,10 @@ object Stream {
    * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
    * }}}
    */
-  def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
+  implicit def syncInstance[F[_]]: Sync[Stream[F,?]] = new Sync[Stream[F,?]] {
     def pure[A](a: A) = Stream(a)
-    def handleErrorWith[A](s: Stream[F,A])(h: Throwable => Stream[F,A]) = s.onError(h)
-    def raiseError[A](t: Throwable) = Stream.fail(t)
+    def handleErrorWith[A](s: Stream[F,A])(h: Throwable => Stream[F,A]) = s.handleErrorWith(h)
+    def raiseError[A](t: Throwable) = Stream.raiseError(t)
     def flatMap[A,B](s: Stream[F,A])(f: A => Stream[F,B]) = s.flatMap(f)
     def tailRecM[A, B](a: A)(f: A => Stream[F,Either[A,B]]) = f(a).flatMap {
       case Left(a) => tailRecM(a)(f)

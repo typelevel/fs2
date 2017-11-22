@@ -44,6 +44,15 @@ class MergeJoinSpec extends Fs2Spec {
       runLog { s1.get.flatMap(_.get) }.toSet
     }
 
+    "join - resources acquired in outer stream are released after inner streams complete" in {
+      val bracketed = Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(Stream(_), b => IO(b.set(false)))
+      // Starts an inner stream which fails if the resource b is finalized
+      val s: Stream[IO,Stream[IO,Unit]] = bracketed.map { b =>
+        Stream.eval(IO(b.get)).flatMap(b => if (b) Stream(()) else Stream.raiseError(Err)).repeat.take(10000)
+      }
+      s.joinUnbounded.run.unsafeRunSync()
+    }
+
     "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
       an[Err.type] should be thrownBy {
         s1.get.merge(f.get).run.unsafeRunSync()
@@ -56,7 +65,7 @@ class MergeJoinSpec extends Fs2Spec {
       val hang = Stream.repeatEval(IO.async[Unit] { cb => () }) // never call `cb`!
       val hang2: Stream[IO,Nothing] = full.drain
       val hang3: Stream[IO,Nothing] =
-        Stream.repeatEval[IO,Unit](IO.async[Unit] { cb => cb(Right(())) } >> IO.shift).drain
+        Stream.repeatEval[IO,Unit](IO.async[Unit] { cb => cb(Right(())) } *> IO.shift).drain
 
       "merge" in {
         runLog((full merge hang).take(1)) shouldBe Vector(42)
@@ -76,7 +85,7 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "join - outer-failed" in {
-      an[Err.type] should be thrownBy { runLog(Stream(mkScheduler.flatMap(_.sleep_[IO](1 minute)), Stream.fail(Err).covary[IO]).joinUnbounded) }
+      an[Err.type] should be thrownBy { runLog(Stream(mkScheduler.flatMap(_.sleep_[IO](1 minute)), Stream.raiseError(Err).covary[IO]).joinUnbounded) }
     }
   }
 }

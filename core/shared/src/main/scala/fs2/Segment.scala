@@ -1,5 +1,6 @@
 package fs2
 
+import java.util.{ LinkedList => JLinkedList }
 import cats.Eval
 
 import Segment._
@@ -25,18 +26,17 @@ import Segment._
  */
 abstract class Segment[+O,+R] { self =>
   private[fs2]
-  def stage0: (Depth, (=> Unit) => Unit, O => Unit, Chunk[O] => Unit, R => Unit) => Eval[Step[O,R]]
+  def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: R => Unit): Eval[Step[O,R]]
 
   private[fs2]
-  final def stage: (Depth, (=> Unit)=>Unit, O => Unit, Chunk[O] => Unit, R => Unit) => Eval[Step[O,R]] =
-    (depth, defer, emit, emits, done) =>
-      if (depth < MaxFusionDepth) stage0(depth.increment, defer, emit, emits, done)
-      else evalDefer {
-        stage0(Depth(0), defer,
-               o => defer(emit(o)),
-               os => defer(emits(os)),
-               r => defer(done(r)))
-      }
+  final def stage(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: R => Unit): Eval[Step[O,R]] =
+    if (depth < MaxFusionDepth) stage0(depth.increment, defer, emit, emits, done)
+    else Eval.defer {
+      stage0(Depth(0), defer,
+             o => defer(emit(o)),
+             os => defer(emits(os)),
+             r => defer(done(r)))
+    }
 
   /**
    * Concatenates this segment with `s2`.
@@ -80,7 +80,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def collect[O2](pf: PartialFunction[O,O2]): Segment[O2,R] = new Segment[O2,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O2 => Unit, emits: Chunk[O2] => Unit, done: R => Unit) = Eval.defer {
       self.stage(depth.increment, defer,
         o => if (pf.isDefinedAt(o)) emit(pf(o)) else emits(Chunk.empty),
         os => {
@@ -122,7 +122,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def drain: Segment[Nothing,R] = new Segment[Nothing,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: R => Unit) = Eval.defer {
       var sinceLastEmit = 0
       def maybeEmitEmpty() = {
         sinceLastEmit += 1
@@ -152,8 +152,8 @@ abstract class Segment[+O,+R] { self =>
     var rem = n
     var leftovers: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
-    val trampoline = makeTrampoline
-    val step = stage(Depth(0), defer(trampoline),
+    val trampoline = new Trampoline
+    val step = stage(Depth(0), trampoline.defer,
       o => if (rem > 0) rem -= 1 else leftovers = leftovers :+ Chunk.singleton(o),
       os => if (rem > os.size) rem -= os.size else {
         var i = rem.toInt
@@ -164,7 +164,7 @@ abstract class Segment[+O,+R] { self =>
         rem = 0
       },
       r => { result = Some(r); throw Done }).value
-    try while (rem > 0 && result.isEmpty) steps(step, trampoline)
+    try while (rem > 0 && result.isEmpty) stepAll(step, trampoline)
     catch { case Done => }
     result match {
       case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
@@ -191,8 +191,8 @@ abstract class Segment[+O,+R] { self =>
     var dropping = true
     var leftovers: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
-    val trampoline = makeTrampoline
-    val step = stage(Depth(0), defer(trampoline),
+    val trampoline = new Trampoline
+    val step = stage(Depth(0), trampoline.defer,
       o => { if (dropping) { dropping = p(o); if (!dropping && !dropFailure) leftovers = leftovers :+ Chunk.singleton(o) } },
       os => {
         var i = 0
@@ -211,7 +211,7 @@ abstract class Segment[+O,+R] { self =>
         }
       },
       r => { result = Some(r); throw Done }).value
-    try while (dropping && result.isEmpty) steps(step, trampoline)
+    try while (dropping && result.isEmpty) stepAll(step, trampoline)
     catch { case Done => }
     result match {
       case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
@@ -228,7 +228,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def filter[O2](p: O => Boolean): Segment[O,R] = new Segment[O,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: R => Unit) = Eval.defer {
       self.stage(depth.increment, defer,
         o => if (p(o)) emit(o) else emits(Chunk.empty),
         os => {
@@ -260,7 +260,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def flatMap[O2,R2](f: O => Segment[O2,R2]): Segment[O2,(R,Option[R2])] = new Segment[O2,(R,Option[R2])] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O2 => Unit, emits: Chunk[O2] => Unit, done: ((R,Option[R2])) => Unit) = Eval.defer {
       val q = new collection.mutable.Queue[O]()
       var inner: Step[O2,R2] = null
       var outerResult: Option[R] = None
@@ -311,12 +311,12 @@ abstract class Segment[+O,+R] { self =>
    *      |   if (s == "\n") Segment.empty.asResult(0) else Segment((l,s)).asResult(l + s.length))
    * scala> src.toVector
    * res0: Vector[(Int,String)] = Vector((0,Hello), (5,World), (0,From), (4,Mars))
-   * scala> src.void.run
+   * scala> src.drain.run
    * res1: (Unit,Int) = ((),8)
    * }}}
    */
   final def flatMapAccumulate[S,O2](init: S)(f: (S,O) => Segment[O2,S]): Segment[O2,(R,S)] = new Segment[O2,(R,S)] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O2 => Unit, emits: Chunk[O2] => Unit, done: ((R,S)) => Unit) = Eval.defer {
       var state: S = init
       val q = new collection.mutable.Queue[O]()
       var inner: Step[O2,S] = null
@@ -356,7 +356,7 @@ abstract class Segment[+O,+R] { self =>
     * Like `append` but allows to use result to continue the segment.
     */
   final def flatMapResult[O2>:O,R2](f: R => Segment[O2,R2]): Segment[O2,R2] = new Segment[O2,R2] {
-    def stage0 = (depth, defer, emit, emits, done) => Eval.always {
+    def stage0(depth: Depth, defer: Defer, emit: O2 => Unit, emits: Chunk[O2] => Unit, done: R2 => Unit) = Eval.always {
       var res1: Option[Step[O2,R2]] = None
       var res2: Option[R2] = None
       val staged = self.stage(depth.increment, defer, emit, emits,
@@ -406,7 +406,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def fold[B](z: B)(f: (B,O) => B): Segment[Nothing,B] = new Segment[Nothing,B] {
-    def stage0 = (depth, defer, emit, emits, done) => {
+    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: B => Unit) = {
       var b = z
       self.stage(depth.increment, defer,
         o => b = f(b, o),
@@ -417,17 +417,25 @@ abstract class Segment[+O,+R] { self =>
   }
 
   private[fs2] final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = {
-    unconsChunk match {
-      case Right((hd,tl)) =>
-        val sz = hd.size
-        if (sz == 1) f(hd(0), tl.foldRightLazy(z)(f))
-        else {
-          def go(idx: Int): B = {
-            if (idx < sz) f(hd(idx), go(idx + 1))
-            else tl.foldRightLazy(z)(f)
+    unconsChunks match {
+      case Right((hds,tl)) =>
+        def loopOnChunks(hds: Catenable[Chunk[O]]): B = {
+          hds.uncons match {
+            case Some((hd,hds)) =>
+              val sz = hd.size
+              if (sz == 1) f(hd(0), loopOnChunks(hds))
+              else {
+                def loopOnElements(idx: Int): B = {
+                  if (idx < sz) f(hd(idx), loopOnElements(idx + 1))
+                  else loopOnChunks(hds)
+                }
+                loopOnElements(0)
+              }
+            case None => tl.foldRightLazy(z)(f)
           }
-          go(0)
         }
+        loopOnChunks(hds)
+
       case Left(_) => z
     }
   }
@@ -444,9 +452,9 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   def foreachChunk(f: Chunk[O] => Unit): Unit = {
-    val trampoline = makeTrampoline
-    val step = stage(Depth(0), defer(trampoline), o => f(Chunk.singleton(o)), f, r => throw Done).value
-    try while (true) steps(step, trampoline)
+    val trampoline = new Trampoline
+    val step = stage(Depth(0), trampoline.defer, o => f(Chunk.singleton(o)), f, r => throw Done).value
+    try while (true) stepAll(step, trampoline)
     catch { case Done => }
   }
 
@@ -481,7 +489,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   def last: Segment[Nothing,(R,Option[O])] = new Segment[Nothing,(R,Option[O])] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: ((R,Option[O])) => Unit) = Eval.defer {
       var last: Option[O] = None
       self.stage(depth.increment, defer,
         o => last = Some(o),
@@ -501,7 +509,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   def map[O2](f: O => O2): Segment[O2,R] = new Segment[O2,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O2 => Unit, emits: Chunk[O2] => Unit, done: R => Unit) = Eval.defer {
       self.stage(depth.increment, defer,
         o => emit(f(o)),
         os => { var i = 0; while (i < os.size) { emit(f(os(i))); i += 1; } },
@@ -520,12 +528,12 @@ abstract class Segment[+O,+R] { self =>
    * scala> val src = Segment("Hello", "World").mapAccumulate(0)((l,s) => (l + s.length, (l, s)))
    * scala> src.toVector
    * res0: Vector[(Int,String)] = Vector((0,Hello), (5,World))
-   * scala> src.void.run
+   * scala> src.drain.run
    * res1: (Unit,Int) = ((),10)
    * }}}
    */
   def mapAccumulate[S,O2](init: S)(f: (S,O) => (S,O2)): Segment[O2,(R,S)] = new Segment[O2,(R,S)] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O2 => Unit, emits: Chunk[O2] => Unit, done: ((R,S)) => Unit) = Eval.defer {
       var s = init
       def doEmit(o: O) = {
         val (newS,o2) = f(s,o)
@@ -550,7 +558,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def mapConcat[O2](f: O => Chunk[O2]): Segment[O2,R] = new Segment[O2,R] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O2 => Unit, emits: Chunk[O2] => Unit, done: R => Unit) = Eval.defer {
       self.stage(depth.increment, defer,
         o => emits(f(o)),
         os => { var i = 0; while (i < os.size) { emits(f(os(i))); i += 1; } },
@@ -563,12 +571,12 @@ abstract class Segment[+O,+R] { self =>
    * Maps the supplied function over the result of this segment.
    *
    * @example {{{
-   * scala> Segment('a', 'b', 'c').withSize.mapResult { case (_, size) => size }.void.run
+   * scala> Segment('a', 'b', 'c').withSize.mapResult { case (_, size) => size }.drain.run
    * res0: Long = 3
    * }}}
    */
   final def mapResult[R2](f: R => R2): Segment[O,R2] = new Segment[O,R2] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: R2 => Unit) = Eval.defer {
       self.stage(depth.increment, defer, emit, emits, r => done(f(r))).map(_.mapRemainder(_ mapResult f))
     }
     override def toString = s"($self).mapResult(<f1>)"
@@ -589,20 +597,20 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
-   * Computes the result of this segment. May only be called when `O` is `Unit`, to prevent accidentally ignoring
-   * output values. To intentionally ignore outputs, call `s.void.run`.
+   * Computes the result of this segment. May only be called when `O` is `Nothing`, to prevent accidentally ignoring
+   * output values. To intentionally ignore outputs, call `s.drain.run`.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).withSize.void.run
+   * scala> Segment(1, 2, 3).withSize.drain.run
    * res0: (Unit,Long) = ((),3)
    * }}}
    */
-  final def run[O2>:O](implicit ev: O2 =:= Unit): R = {
+  final def run(implicit ev: O <:< Nothing): R = {
     val _ = ev // Convince scalac that ev is used
     var result: Option[R] = None
-    val trampoline = makeTrampoline
-    val step = stage(Depth(0), defer(trampoline), _ => (), _ => (), r => { result = Some(r); throw Done }).value
-    try while (true) steps(step, trampoline)
+    val trampoline = new Trampoline
+    val step = stage(Depth(0), trampoline.defer, _ => (), _ => (), r => { result = Some(r); throw Done }).value
+    try while (true) stepAll(step, trampoline)
     catch { case Done => }
     result.get
   }
@@ -618,7 +626,7 @@ abstract class Segment[+O,+R] { self =>
    * }}}
    */
   final def scan[B](z: B, emitFinal: Boolean = true)(f: (B,O) => B): Segment[B,B] = new Segment[B,B] {
-    def stage0 = (depth, defer, emit, emits, done) => {
+    def stage0(depth: Depth, defer: Defer, emit: B => Unit, emits: Chunk[B] => Unit, done: B => Unit) = {
       var b = z
       self.stage(depth.increment, defer,
         o => { emit(b); b = f(b, o) },
@@ -667,13 +675,13 @@ abstract class Segment[+O,+R] { self =>
           }
         }
       }
-      val trampoline = makeTrampoline
+      val trampoline = new Trampoline
       val step = stage(Depth(0),
-        defer(trampoline),
+        trampoline.defer,
         o => emits(Chunk.singleton(o)),
         os => emits(os),
         r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
-      try while (result.isEmpty) steps(step, trampoline)
+      try while (result.isEmpty) stepAll(step, trampoline)
       catch { case Done => }
       result.map {
         case Left(r) => Left((r,out,rem))
@@ -723,13 +731,13 @@ abstract class Segment[+O,+R] { self =>
         }
       }
     }
-    val trampoline = makeTrampoline
+    val trampoline = new Trampoline
     val step = stage(Depth(0),
-      defer(trampoline),
+      trampoline.defer,
       o => emits(Chunk.singleton(o)),
       os => emits(os),
       r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
-    try while (result.isEmpty) steps(step, trampoline)
+    try while (result.isEmpty) stepAll(step, trampoline)
     catch { case Done => }
     result.map {
       case Left(r) => Left((r,out))
@@ -748,7 +756,7 @@ abstract class Segment[+O,+R] { self =>
   final def sum[N>:O](implicit N: Numeric[N]): Segment[Nothing,N] = sum_(N.zero)
 
   private def sum_[N>:O](initial: N)(implicit N: Numeric[N]): Segment[Nothing,N] = new Segment[Nothing,N] {
-    def stage0 = (depth, defer, emit, emits, done) => {
+    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: N => Unit) = {
       var b = initial
       self.stage(depth.increment, defer,
         o => b = N.plus(b, o),
@@ -775,16 +783,16 @@ abstract class Segment[+O,+R] { self =>
    * @example {{{
    * scala> Segment.from(0).take(3).toVector
    * res0: Vector[Long] = Vector(0, 1, 2)
-   * scala> Segment.from(0).take(3).void.run.toOption.get.take(5).toVector
+   * scala> Segment.from(0).take(3).drain.run.toOption.get.take(5).toVector
    * res1: Vector[Long] = Vector(3, 4, 5, 6, 7)
-   * scala> Segment(1, 2, 3).take(5).void.run
+   * scala> Segment(1, 2, 3).take(5).drain.run
    * res2: Either[(Unit, Long),Segment[Int,Unit]] = Left(((),2))
    * }}}
    */
   final def take(n: Long): Segment[O,Either[(R,Long),Segment[O,R]]] =
     if (n <= 0) Segment.pure(Right(this))
     else new Segment[O,Either[(R,Long),Segment[O,R]]] {
-      def stage0 = (depth, defer, emit, emits, done) => Eval.later {
+      def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: Either[(R,Long),Segment[O,R]] => Unit) = Eval.later {
         var rem = n
         var staged: Step[O,R] = null
         staged = self.stage(depth.increment, defer,
@@ -817,12 +825,12 @@ abstract class Segment[+O,+R] { self =>
    * res0: Vector[Long] = Vector(0, 1, 2)
    * scala> Segment.from(0).takeWhile(_ < 3, takeFailure = true).toVector
    * res1: Vector[Long] = Vector(0, 1, 2, 3)
-   * scala> Segment.from(0).takeWhile(_ < 3).void.run.toOption.get.take(5).toVector
+   * scala> Segment.from(0).takeWhile(_ < 3).drain.run.toOption.get.take(5).toVector
    * res2: Vector[Long] = Vector(3, 4, 5, 6, 7)
    * }}}
    */
   final def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Segment[O,Either[R,Segment[O,R]]] = new Segment[O,Either[R,Segment[O,R]]] {
-    def stage0 = (depth, defer, emit, emits, done) => Eval.later {
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: Either[R,Segment[O,R]] => Unit) = Eval.later {
       var ok = true
       var staged: Step[O,R] = null
       staged = self.stage(depth.increment, defer,
@@ -1024,13 +1032,13 @@ abstract class Segment[+O,+R] { self =>
     var out: Catenable[Chunk[O]] = Catenable.empty
     var result: Option[R] = None
     var ok = true
-    val trampoline = makeTrampoline
+    val trampoline = new Trampoline
     val step = stage(Depth(0),
-      defer(trampoline),
+      trampoline.defer,
       o => { out = out :+ Chunk.singleton(o); ok = false },
       os => { out = out :+ os; ok = false },
       r => { result = Some(r); throw Done }).value
-    try while (ok) steps(step, trampoline)
+    try while (ok) stepAll(step, trampoline)
     catch { case Done => }
     result match {
       case None =>
@@ -1065,14 +1073,14 @@ abstract class Segment[+O,+R] { self =>
    * Returns a new segment which includes the number of elements output in the result.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).withSize.void.run
+   * scala> Segment(1, 2, 3).withSize.drain.run
    * res0: (Unit,Long) = ((),3)
    * }}}
    */
   def withSize: Segment[O,(R,Long)] = withSize_(0)
 
   private def withSize_(init: Long): Segment[O,(R,Long)] = new Segment[O,(R,Long)] {
-    def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: ((R,Long)) => Unit) = Eval.defer {
       var length = init
       self.stage(depth.increment, defer,
         o => { length += 1; emit(o) },
@@ -1094,7 +1102,7 @@ abstract class Segment[+O,+R] { self =>
    */
   def zipWith[O2,R2,O3](that: Segment[O2,R2])(f: (O,O2) => O3): Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] =
     new Segment[O3,Either[(R,Segment[O2,R2]),(R2,Segment[O,R])]] {
-      def stage0 = (depth, defer, emit, emits, done) => evalDefer {
+      def stage0(depth: Depth, defer: Defer, emit: O3 => Unit, emits: Chunk[O3] => Unit, done: Either[(R,Segment[O2,R2]),(R2,Segment[O,R])] => Unit) = Eval.defer {
         val l = new scala.collection.mutable.Queue[Chunk[O]]
         var lpos = 0
         var lStepped = false
@@ -1142,8 +1150,8 @@ abstract class Segment[+O,+R] { self =>
           if (out1.isDefined) emit(out1.get)
           else if (out ne null) emits(Chunk.vector(out.result))
         }
-        val emitsL: Chunk[O] => Unit = os => { l += os; doZip }
-        val emitsR: Chunk[O2] => Unit = os => { r += os; doZip }
+        val emitsL: Chunk[O] => Unit = os => { if (os.nonEmpty) l += os; doZip }
+        val emitsR: Chunk[O2] => Unit = os => { if (os.nonEmpty) r += os; doZip }
         def unusedL: Segment[O,Unit] = if (l.isEmpty) Segment.empty else l.tail.foldLeft(if (lpos == 0) l.head else l.head.drop(lpos).toOption.get)(_ ++ _)
         def unusedR: Segment[O2,Unit] = if (r.isEmpty) Segment.empty else r.tail.foldLeft(if (rpos == 0) r.head else r.head.drop(rpos).toOption.get)(_ ++ _)
         var lResult: Option[R] = None
@@ -1202,7 +1210,8 @@ object Segment {
 
   /** Creates an infinite segment of the specified value. */
   def constant[O](o: O): Segment[O,Unit] = new Segment[O,Unit] {
-    def stage0 = (depth, defer, emit, emits, done) => Eval.later { step(constant(o)) { emit(o) } }
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: Unit => Unit) =
+      Eval.later { step(constant(o)) { emit(o) } }
     override def toString = s"constant($o)"
   }
 
@@ -1211,7 +1220,7 @@ object Segment {
 
   /** Creates a segment which outputs values starting at `n` and incrementing by `by` between each value. */
   def from(n: Long, by: Long = 1): Segment[Long,Nothing] = new Segment[Long,Nothing] {
-    def stage0 = (_, _, _, emits, _) => {
+    def stage0(depth: Depth, defer: Defer, emit: Long => Unit, emits: Chunk[Long] => Unit, done: Nothing => Unit) = {
       var m = n
       val buf = new Array[Long](32)
       Eval.later { step(from(m,by)) {
@@ -1228,7 +1237,8 @@ object Segment {
 
   /** Creates a segment which outputs no values and returns `r`. */
   def pure[O,R](r: R): Segment[O,R] = new Segment[O,R] {
-    def stage0 = (_,_,_,_,done) => Eval.later(step(pure(r))(done(r)))
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: R => Unit) =
+      Eval.later(step(pure(r))(done(r)))
     override def toString = s"pure($r)"
   }
 
@@ -1253,7 +1263,7 @@ object Segment {
    * each output `O` and using each output `S` as input to the next invocation of `f`.
    */
   def unfold[S,O](s: S)(f: S => Option[(O,S)]): Segment[O,Unit] = new Segment[O,Unit] {
-    def stage0 = (depth, _, emit, emits, done) => {
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: Unit => Unit) = {
       var s0 = s
       Eval.later { step(unfold(s0)(f)) {
         f(s0) match {
@@ -1262,14 +1272,30 @@ object Segment {
         }
       }}
     }
-    override def toString = s"unfold($s)($f)"
+    override def toString = s"unfold($s)(<f1>)"
   }
 
+  /**
+   * Creates a segment by successively applying `f` until a `None` is returned, emitting
+   * each output chunk and using each output `S` as input to the next invocation of `f`.
+   */
+  def unfoldChunk[S,O](s: S)(f: S => Option[(Chunk[O],S)]): Segment[O,Unit] = new Segment[O,Unit] {
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: Unit => Unit) = {
+      var s0 = s
+      Eval.later { step(unfoldChunk(s0)(f)) {
+        f(s0) match {
+          case None => done(())
+          case Some((c,t)) => s0 = t; emits(c)
+        }
+      }}
+    }
+    override def toString = s"unfoldSegment($s)(<f1>)"
+  }
   /** Creates a segment backed by a `Vector`. */
   def vector[O](os: Vector[O]): Segment[O,Unit] = Chunk.vector(os)
 
   private[fs2] case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
-    def stage0 = (depth, defer, emit, emits, done) => Eval.always {
+    def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: R => Unit) = Eval.always {
       var res: Option[R] = None
       var ind = 0
       val staged = s.map(_.stage(depth.increment, defer, emit, emits, r => { res = Some(r); ind += 1 }).value)
@@ -1291,10 +1317,11 @@ object Segment {
     override def toString = s"catenated(${s.toList.mkString(", ")})"
   }
 
-  private def steps(t: Step[Any,Any], tailcalls: java.util.LinkedList[() => Unit]): Unit = {
-    t.step()
-    while (!tailcalls.isEmpty()) {
-      val tc = tailcalls.remove()
+  private def stepAll(s: Step[Any,Any], trampoline: Trampoline): Unit = {
+    s.step()
+    val deferred = trampoline.deferred
+    while (!deferred.isEmpty()) {
+      val tc = deferred.remove()
       tc()
     }
   }
@@ -1305,12 +1332,12 @@ object Segment {
   }
   private val MaxFusionDepth: Depth = Depth(50)
 
+  final type Defer = (=> Unit) => Unit
+
   private final case object Done extends RuntimeException { override def fillInStackTrace = this }
 
-  private def makeTrampoline = new java.util.LinkedList[() => Unit]()
-  private def defer(t: java.util.LinkedList[() => Unit]): (=>Unit) => Unit =
-    u => t.addLast(() => u)
-
-  // note - Eval.defer seems to not be stack safe
-  private def evalDefer[A](e: => Eval[A]): Eval[A] = Eval.now(()) flatMap { _ => e }
+  private final class Trampoline {
+    val deferred: JLinkedList[() => Unit] = new JLinkedList[() => Unit]
+    def defer(t: => Unit): Unit = deferred.addLast(() => t)
+  }
 }

@@ -54,4 +54,5 @@ class IoSpec extends Fs2Spec {
       example shouldBe bytes
     }
   }
+
 }

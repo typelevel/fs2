@@ -32,7 +32,7 @@ object ThisModuleShouldCompile {
     case None => Pull.pure(None)
   }.stream
   Stream(1,2,3).pull.uncons1.flatMap {
-    case Some((hd,_)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd).as(None)
+    case Some((hd,_)) => Pull.eval(IO.pure(1)) *> Pull.output1(hd).as(None)
     case None => Pull.pure(None)
   }.stream
   (Stream(1,2,3).evalMap(IO(_))): Stream[IO,Int]
@@ -52,4 +52,11 @@ object ThisModuleShouldCompile {
 
   val p: Pull[Pure,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = Stream(1, 2, 3).pull.uncons
   val q: Pull[IO,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = p
+
+  // With cats implicits enabled, some of the above fail to compile due to the cats syntax being invariant:
+  {
+    import cats.implicits._
+    Stream(1,2,3).covary[IO].flatMap(i => Stream.eval(IO.pure(i)))
+    (Stream(1,2,3).covary[IO].flatMap(i => Stream.eval(IO(i)))): Stream[IO,Int]
+  }
 }

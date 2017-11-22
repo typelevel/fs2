@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 import Ref._
 
 /** An asynchronous, concurrent mutable reference. */
-final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
+final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) { self =>
 
   private var result: Either[Throwable,A] = null
   // any waiting calls to `access` before first `set`
@@ -145,27 +145,27 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
    * *Asynchronously* sets a reference. After the returned `F[Unit]` is bound,
    * the task is running in the background. Multiple tasks may be added to a
    * `Ref[A]`.
-   *
-   * Satisfies: `r.setAsync(fa) flatMap { _ => r.get } == fa`
    */
   def setAsync(fa: F[A]): F[Unit] =
-    F.liftIO(F.runAsync(F.shift(ec) >> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
+    F.liftIO(F.runAsync(F.shift(ec) *> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
 
   /**
    * *Asynchronously* sets a reference to a pure value.
-   *
-   * Satisfies: `r.setAsyncPure(a) flatMap { _ => r.get(a) } == pure(a)`
    */
   def setAsyncPure(a: A): F[Unit] = F.delay { actor ! Msg.Set(Right(a), () => ()) }
 
   /**
    * *Synchronously* sets a reference. The returned value completes evaluating after the reference has been successfully set.
+   *
+   * Satisfies: `r.setSync(fa) flatMap { _ => r.get } == fa`
    */
   def setSync(fa: F[A]): F[Unit] =
     F.flatMap(F.attempt(fa))(r => F.async(cb => actor ! Msg.Set(r, () => cb(Right(())))))
 
   /**
    * *Synchronously* sets a reference to a pure value.
+   *
+   * Satisfies: `r.setSyncPure(a) flatMap { _ => r.get(a) } == pure(a)`
    */
   def setSyncPure(a: A): F[Unit] = setSync(F.pure(a))
 

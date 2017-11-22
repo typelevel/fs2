@@ -2,7 +2,7 @@ language: scala
 
 scala:
   - 2.11.11
-  - 2.12.3
+  - 2.12.4
 
 jdk:
   - oraclejdk8
@@ -24,7 +24,7 @@ env:
 
 script:
   - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 test mimaReportBinaryIssues
-  - (test $TRAVIS_SCALA_VERSION == "2.11.11" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut) || test $TRAVIS_SCALA_VERSION == "2.12.3"
+  - (test $TRAVIS_SCALA_VERSION == "2.11.11" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut) || test $TRAVIS_SCALA_VERSION == "2.12.4"
 
 after_success:
   - test $PUBLISH == "true" && test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "series/0.10" && sbt +publish
