@@ -21,15 +21,6 @@ class SegmentSpec extends Fs2Spec {
   implicit def arbSegment[O: Arbitrary]: Arbitrary[Segment[O,Unit]] =
     Arbitrary(genSegment(arbitrary[O]))
 
-  def unconsAll[O,R](s: Segment[O,R]): (Catenable[Chunk[O]],R) = {
-    def go(acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
-      s.unconsChunks match {
-        case Right((hds, tl)) => go(acc ++ hds, tl)
-        case Left(r) => (acc, r)
-      }
-    go(Catenable.empty, s)
-  }
-
   "Segment" - {
 
     "++" in {
@@ -109,7 +100,7 @@ class SegmentSpec extends Fs2Spec {
 
     "last" in {
       forAll { (s: Segment[Int,Unit]) =>
-        val (out, (r, l)) = unconsAll(s.last)
+        val (out, (r, l)) = s.last.unconsAll
         val flattenedOutput = out.toList.flatMap(_.toList)
         val sList = s.toList
         flattenedOutput shouldBe (if (sList.isEmpty) Nil else sList.init)
@@ -214,7 +205,7 @@ class SegmentSpec extends Fs2Spec {
       forAll { (xss: List[List[Int]]) =>
         val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Chunk.array(xs.toArray) ++ acc)
         // Consecutive empty chunks are collapsed to a single empty chunk
-        unconsAll(seg)._1.toList.map(_.toVector.toList).filter(_.nonEmpty) shouldBe xss.filter(_.nonEmpty)
+        seg.unconsAll._1.toList.map(_.toVector.toList).filter(_.nonEmpty) shouldBe xss.filter(_.nonEmpty)
       }
     }
 
@@ -235,7 +226,7 @@ class SegmentSpec extends Fs2Spec {
         val xsv = xs.toVector
         val ysv = ys.toVector
         val f: (Int,Int) => (Int,Int) = (_,_)
-        val (segments, leftover) = unconsAll(xs.zipWith(ys)(f))
+        val (segments, leftover) = xs.zipWith(ys)(f).unconsAll
         segments.toVector.flatMap(_.toVector) shouldBe xsv.zip(ysv).map { case (x,y) => f(x,y) }
         leftover match {
           case Left((_,leftoverYs)) => withClue("leftover ys")(leftoverYs.toVector shouldBe ysv.drop(xsv.size))
