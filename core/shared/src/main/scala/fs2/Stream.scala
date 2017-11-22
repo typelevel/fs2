@@ -2014,37 +2014,26 @@ object Stream {
       self.reduce(S.combine(_, _))
 
     /**
-      * Repartitions the input with the function `p`. On each step `p` is applied
+      * Repartitions the input with the function `f`. On each step `f` is applied
       * to the input and all elements but the last of the resulting sequence
       * are emitted. The last element is then appended to the next input using the
       * Semigroup `S`.
       *
       * @example {{{
       * scala> import cats.implicits._
-      * scala> Stream("Hel", "l", "o Wor", "ld").repartition(s => Segment.array(s.split(" "))).toList
+      * scala> Stream("Hel", "l", "o Wor", "ld").repartition(s => Chunk.array(s.split(" "))).toList
       * res0: List[String] = List(Hello, World)
       * }}}
       */
-    def repartition(p: O => Segment[O,Unit])(implicit S: Semigroup[O]): Stream[F,O] = {
-      def go(carry: Option[O], s: Stream[F,O], partitions: Segment[O,Unit] = Segment.empty): Pull[F,O,Unit] = {
-        partitions.uncons1.fold({ _ =>
-          s.pull.uncons1.flatMap {
-            case Some((hd, tl)) =>
-                val next = carry.fold(hd)(c => S.combine(c, hd))
-                val parts = p(next).uncons1
-                val parts2 = parts.flatMap(_._2.uncons1)
-                (parts, parts2) match {
-                  case (Left(()), _) => go(None, tl)
-                  case (Right((phd, ptl)), Left(())) => go(Some(phd), tl)
-                  case (Right((phd, ptl)), Right(_)) => Pull.output1(phd) *> go(None, tl, ptl)
-                }
-            case None =>
-              carry.fold[Pull[F, O, Unit]](Pull.done)(c => Pull.output1(c))
-          }
-        },
-        ps => ps._2.uncons1.fold(_ => go(Some(ps._1), s, ps._2), _ => Pull.output1(ps._1) *> go(None, s, ps._2)))
-      }
-      go(None, self).stream
+    def repartition(f: O => Chunk[O])(implicit S: Semigroup[O]): Stream[F,O] = {
+      pull.scanSegments(Option.empty[O]) { (carry, segment) =>
+        segment.scan((Segment.empty[O], carry)) { case ((_, carry), o) =>
+          val o2: O = carry.fold(o)(S.combine(_, o))
+          val partitions: Chunk[O] = f(o2)
+          if (partitions.isEmpty) partitions -> None
+          else partitions.take(partitions.size - 1).voidResult -> Some(partitions.strict.last)
+        }.flatMap { case (out, carry) => out }.mapResult { case ((out, carry), unit) => carry }
+      }.flatMap { case Some(carry) => Pull.output1(carry); case None => Pull.done }.stream
     }
 
     /**
