@@ -24,7 +24,6 @@ object Pipe {
     def stepf(s: Stream[Read,O]): Read[UO] = {
       Algebra.runFoldScope(
         Scope.newRoot[Read],
-        None,
         Algebra.uncons(s.get).flatMap {
           case Some((hd,tl)) => Algebra.output1[Read,UO](Some((hd,Stream.fromFreeC(tl))))
           case None => Algebra.pure[Read,UO,Unit](())

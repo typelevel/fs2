@@ -1987,7 +1987,7 @@ object Stream {
      * Behaves like `identity`, but starts fetching the next segment before emitting the current,
      * enabling processing on either side of the `prefetch` to run in parallel.
      */
-    def prefetch(implicit ec: ExecutionContext): Stream[F,O] =
+    def prefetch(implicit ec: ExecutionContext, F: Effect[F]): Stream[F,O] =
       self repeatPull { _.uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) => tl.pull.prefetch flatMap { p => Pull.output(hd) *> p }
@@ -2025,20 +2025,10 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, an `Effect[F]` instance must be implicitly available. If there's no
-     * `Effect` instance for `F`, consider using [[runSync]] instead, which only requires a
-     * `Sync[F]`.
      */
-    def run(implicit F: Effect[F]): F[Unit] =
+    def run(implicit F: Sync[F]): F[Unit] =
       runFold(())((u, _) => u)
 
-    /**
-     * Like [[run]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runSync(implicit F: Sync[F]): F[Unit] =
-      runFoldSync(())((u, _) => u)
 
     /**
      * Interprets this stream in to a value of the target effect type `F` by folding
@@ -2048,20 +2038,10 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, an `Effect[F]` instance must be implicitly available. If there's no
-     * `Effect` instance for `F`, consider using [[runFoldSync]] instead, which only requires a
-     * `Sync[F]`.
      */
-    def runFold[B](init: B)(f: (B, O) => B)(implicit F: Effect[F]): F[B] =
-      Algebra.runFoldEffect(self.get, init)(f)
+    def runFold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
+      Algebra.runFold(self.get, init)(f)
 
-    /**
-     * Like [[runFold]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runFoldSync[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
-      Algebra.runFoldSync(self.get, init)(f)
 
     /**
      * Like [[runFold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -2072,16 +2052,9 @@ object Stream {
      * res0: Int = 15
      * }}}
      */
-    def runFoldMonoid(implicit F: Effect[F], O: Monoid[O]): F[O] =
+    def runFoldMonoid(implicit F: Sync[F], O: Monoid[O]): F[O] =
       runFold(O.empty)(O.combine)
 
-    /**
-     * Like [[runFoldMonoid]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runFoldMonoidSync(implicit F: Sync[F], O: Monoid[O]): F[O] =
-      runFoldSync(O.empty)(O.combine)
 
     /**
      * Like [[runFold]] but uses the implicitly available `Semigroup[O]` to combine elements.
@@ -2095,16 +2068,9 @@ object Stream {
      * res1: Option[Int] = None
      * }}}
      */
-    def runFoldSemigroup(implicit F: Effect[F], O: Semigroup[O]): F[Option[O]] =
+    def runFoldSemigroup(implicit F: Sync[F], O: Semigroup[O]): F[Option[O]] =
       runFold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
 
-    /**
-     * Like [[runFoldSemigroup]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runFoldSemigroupSync(implicit F: Sync[F], O: Monoid[O]): F[Option[O]] =
-      runFoldSync(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
 
     /**
      * Interprets this stream in to a value of the target effect type `F` by logging
@@ -2121,20 +2087,11 @@ object Stream {
      * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
      * }}}
      */
-    def runLog(implicit F: Effect[F]): F[Vector[O]] = {
+    def runLog(implicit F: Sync[F]): F[Vector[O]] = {
       import scala.collection.immutable.VectorBuilder
       F.suspend(F.map(runFold(new VectorBuilder[O])(_ += _))(_.result))
     }
 
-    /**
-     * Like [[runLog]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runLogSync(implicit F: Sync[F]): F[Vector[O]] = {
-      import scala.collection.immutable.VectorBuilder
-      F.suspend(F.map(runFoldSync(new VectorBuilder[O])(_ += _))(_.result))
-    }
 
     /**
      * Interprets this stream in to a value of the target effect type `F`,
@@ -2152,16 +2109,10 @@ object Stream {
      * res0: Option[Int] = Some(4)
      * }}}
      */
-    def runLast(implicit F: Effect[F]): F[Option[O]] =
+    def runLast(implicit F: Sync[F]): F[Option[O]] =
       self.runFold(Option.empty[O])((_, a) => Some(a))
 
-    /**
-     * Like [[runLast]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runLastSync(implicit F: Sync[F]): F[Option[O]] =
-      self.runFoldSync(Option.empty[O])((_, a) => Some(a))
+
 
     /**
      * Like `scan` but `f` is applied to each segment of the source stream.
@@ -2232,7 +2183,7 @@ object Stream {
     /**
      * Translates effect type from `F` to `G` using the supplied `FunctionK`.
      */
-    def translate[G[_]](u: F ~> G): Stream[G,O] =
+    def translate[G[_]](u: F ~> G)(implicit G: Effect[G]): Stream[G,O] =
       Stream.fromFreeC[G,O](Algebra.translate[F,G,O,Unit](self.get, u))
 
     private type ZipWithCont[G[_],I,O2,R] = Either[(Segment[I,Unit], Stream[G,I]), Stream[G,I]] => Pull[G,O2,Option[R]]
@@ -2488,7 +2439,7 @@ object Stream {
      * For example, `merge` is implemented by calling `unconsAsync` on each stream, racing the
      * resultant `AsyncPull`s, emitting winner of the race, and then repeating.
      */
-    def unconsAsync(implicit ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
+    def unconsAsync(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
       Pull.fromFreeC(Algebra.unconsAsync(self.get, ec)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }))
 
     /**
@@ -2654,7 +2605,7 @@ object Stream {
      * Like [[uncons]], but runs the `uncons` asynchronously. A `flatMap` into
      * inner `Pull` logically blocks until this await completes.
      */
-    def prefetch(implicit ec: ExecutionContext): Pull[F,Nothing,Pull[F,Nothing,Option[Stream[F,O]]]] =
+    def prefetch(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing,Pull[F,Nothing,Option[Stream[F,O]]]] =
       unconsAsync.map { _.pull.map { _.map { case (hd, h) => h cons hd } } }
 
     /**

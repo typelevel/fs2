@@ -22,7 +22,7 @@ private[fs2] object Algebra {
   final case class CloseScope[F[_],O](toClose: Scope[F]) extends Algebra[F,O,Unit]
   final case class GetScope[F[_],O]() extends Algebra[F,O,Scope[F]]
 
-  final case class UnconsAsync[F[_],X,Y,O](s: FreeC[Algebra[F,O,?],Unit], ec: ExecutionContext)
+  final case class UnconsAsync[F[_],X,Y,O](s: FreeC[Algebra[F,O,?],Unit], ec: ExecutionContext, eff: Effect[F])
     extends Algebra[F,X,AsyncPull[F,Option[(Segment[O,Unit],FreeC[Algebra[F,O,?],Unit])]]]
 
   def output[F[_],O](values: Segment[O,Unit]): FreeC[Algebra[F,O,?],Unit] =
@@ -43,8 +43,8 @@ private[fs2] object Algebra {
   def release[F[_],O](token: Token): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](Release(token))
 
-  def unconsAsync[F[_],X,Y,O](s: FreeC[Algebra[F,O,?],Unit], ec: ExecutionContext): FreeC[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]] =
-    FreeC.Eval[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit],FreeC[Algebra[F,O,?],Unit])]]](UnconsAsync(s, ec))
+  def unconsAsync[F[_],X,Y,O](s: FreeC[Algebra[F,O,?],Unit], ec: ExecutionContext)(implicit F: Effect[F]): FreeC[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]] =
+    FreeC.Eval[Algebra[F,X,?],AsyncPull[F,Option[(Segment[O,Unit],FreeC[Algebra[F,O,?],Unit])]]](UnconsAsync(s, ec, F))
 
   private def openScope[F[_],O]: FreeC[Algebra[F,O,?],Scope[F]] =
     FreeC.Eval[Algebra[F,O,?],Scope[F]](OpenScope())
@@ -108,33 +108,27 @@ private[fs2] object Algebra {
     }
   }
 
-  /** Left-fold the output of a stream, supporting unconsAsync steps. */
-  def runFoldEffect[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Effect[F]): F[B] =
-    runFold(stream, Some(F), init)(f)
 
-  /** Left-fold the output of a stream, not supporting unconsAsync steps. */
-  def runFoldSync[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
-    runFold(stream, None, init)(f)
-
-  private def runFold[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], effect: Option[Effect[F]], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
+  /** Left-fold the output of a stream */
+  def runFold[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
     F.delay(Scope.newRoot).flatMap { scope =>
-      runFoldScope[F,O,B](scope, effect, stream, init)(f).attempt.flatMap {
+      runFoldScope[F,O,B](scope, stream, init)(f).attempt.flatMap {
         case Left(t) => scope.close *> F.raiseError(t)
         case Right(b) => scope.close as b
       }
     }
 
-  private[fs2] def runFoldScope[F[_],O,B](scope: Scope[F], effect: Option[Effect[F]], stream: FreeC[Algebra[F,O,?],Unit], init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
-    runFoldLoop[F,O,B](scope, effect, init, g, uncons(stream).viewL)
+  private[fs2] def runFoldScope[F[_],O,B](scope: Scope[F], stream: FreeC[Algebra[F,O,?],Unit], init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
+    runFoldLoop[F,O,B](scope, init, g, uncons(stream).viewL)
 
-  private def runFoldLoop[F[_],O,B](scope: Scope[F], effect: Option[Effect[F]], acc: B, g: (B, O) => B, v: FreeC.ViewL[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]])(implicit F: Sync[F]): F[B] = {
+  private def runFoldLoop[F[_],O,B](scope: Scope[F], acc: B, g: (B, O) => B, v: FreeC.ViewL[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]])(implicit F: Sync[F]): F[B] = {
     v.get match {
       case done: FreeC.Pure[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] => done.r match {
         case None => F.pure(acc)
         case Some((hd, tl)) =>
           F.suspend {
-            try runFoldLoop[F,O,B](scope, effect, hd.fold(acc)(g).run, g, uncons(tl).viewL)
-            catch { case NonFatal(e) => runFoldLoop[F,O,B](scope, effect, acc, g, uncons(tl.asHandler(e)).viewL) }
+            try runFoldLoop[F,O,B](scope, hd.fold(acc)(g).run, g, uncons(tl).viewL)
+            catch { case NonFatal(e) => runFoldLoop[F,O,B](scope, acc, g, uncons(tl.asHandler(e)).viewL) }
           }
       }
       case failed: FreeC.Fail[Algebra[F,O,?], _] => F.raiseError(failed.error)
@@ -144,7 +138,7 @@ private[fs2] object Algebra {
         val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr
         fx match {
           case wrap: Algebra.Eval[F, O, _] =>
-            F.flatMap(F.attempt(wrap.value)) { e => runFoldLoop(scope, effect, acc, g, f(e).viewL) }
+            F.flatMap(F.attempt(wrap.value)) { e => runFoldLoop(scope, acc, g, f(e).viewL) }
 
           case acquire: Algebra.Acquire[F,_,_] =>
             val acquireResource = acquire.resource
@@ -155,7 +149,7 @@ private[fs2] object Algebra {
                   case Right(r) =>
                     val finalizer = F.suspend { acquire.release(r) }
                     F.flatMap(resource.acquired(finalizer)) { result =>
-                      runFoldLoop(scope, effect, acc, g, f(result.right.map { _ => (r, resource.id) }).viewL)
+                      runFoldLoop(scope, acc, g, f(result.right.map { _ => (r, resource.id) }).viewL)
                     }
 
                   case Left(err) =>
@@ -164,7 +158,7 @@ private[fs2] object Algebra {
                         result.left.toOption.map { err0 =>
                           Left(new ScopeReleaseFailure(err, Catenable.singleton(err0)))
                          }.getOrElse(Left(err))
-                      runFoldLoop(scope, effect, acc, g, f(failedResult).viewL)
+                      runFoldLoop(scope, acc, g, f(failedResult).viewL)
                     }
                 }
               } else {
@@ -175,50 +169,47 @@ private[fs2] object Algebra {
 
           case release: Algebra.Release[F,_] =>
             F.flatMap(scope.releaseResource(release.token))  { result =>
-              runFoldLoop(scope, effect, acc, g, f(result).viewL)
+              runFoldLoop(scope, acc, g, f(result).viewL)
             }
 
           case c: Algebra.CloseScope[F,_] =>
             F.flatMap(c.toClose.close) { result =>
               F.flatMap(c.toClose.openAncestor) { scopeAfterClose =>
-                runFoldLoop(scopeAfterClose, effect, acc, g, f(result).viewL)
+                runFoldLoop(scopeAfterClose, acc, g, f(result).viewL)
               }
             }
 
           case o: Algebra.OpenScope[F,_] =>
             F.flatMap(scope.open) { innerScope =>
-              runFoldLoop(innerScope, effect, acc, g, f(Right(innerScope)).viewL)
+              runFoldLoop(innerScope, acc, g, f(Right(innerScope)).viewL)
             }
 
           case e: GetScope[F,_] =>
             F.suspend {
-              runFoldLoop(scope, effect, acc, g, f(Right(scope)).viewL)
+              runFoldLoop(scope, acc, g, f(Right(scope)).viewL)
             }
 
           case unconsAsync: Algebra.UnconsAsync[F,_,_,_] =>
-            effect match {
-              case Some(eff) =>
-                val s = unconsAsync.s
-                val ec = unconsAsync.ec
-                type UO = Option[(Segment[_,Unit], FreeC[Algebra[F,Any,?],Unit])]
-                val asyncPull: F[AsyncPull[F,UO]] =
-                  F.flatMap(async.ref[F,Either[Throwable,UO]](eff, ec)) { ref =>
-                    val pull =
-                      F.flatMap(F.attempt(
-                        runFoldScope(
-                          scope,
-                          effect,
-                          uncons(s.asInstanceOf[FreeC[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
-                          None: UO
-                        )((_, snd) => snd)
-                      )) { o => ref.setAsyncPure(o) }
+            val s = unconsAsync.s
+            implicit val ec = unconsAsync.ec
+            implicit val F = unconsAsync.eff
+            type UO = Option[(Segment[_,Unit], FreeC[Algebra[F,Any,?],Unit])]
+            val asyncPull: F[AsyncPull[F,UO]] =
+              F.flatMap(async.ref[F,Either[Throwable,UO]]) { ref =>
+                val pull =
+                  F.flatMap(F.attempt(
+                    runFoldScope(
+                      scope,
+                      uncons(s.asInstanceOf[FreeC[Algebra[F,Any,?],Unit]]).flatMap(output1(_)),
+                      None: UO
+                    )((_, snd) => snd)
+                  )) { o => ref.setAsyncPure(o) }
 
-                   F.map(async.fork(pull)(eff, ec))(_ => AsyncPull.readAttemptRef(ref))
-                }
-                F.flatMap(asyncPull) { ap => runFoldLoop(scope, effect, acc, g, f(Right(ap)).viewL) }
-              case None =>
-                F.raiseError(new IllegalStateException("unconsAsync encountered but stream was run synchronously"))
+               F.map(async.fork(pull))(_ => AsyncPull.readAttemptRef(ref))
             }
+            F.flatMap(asyncPull) { ap => runFoldLoop(scope, acc, g, f(Right(ap)).viewL) }
+
+
 
           case _ => sys.error("impossible Segment or Output following uncons")
         }
@@ -226,7 +217,7 @@ private[fs2] object Algebra {
     }
   }
 
-  def translate[F[_],G[_],O,R](fr: FreeC[Algebra[F,O,?],R], u: F ~> G): FreeC[Algebra[G,O,?],R] = {
+  def translate[F[_],G[_],O,R](fr: FreeC[Algebra[F,O,?],R], u: F ~> G)(implicit eff: Effect[G]): FreeC[Algebra[G,O,?],R] = {
     def algFtoG[O2]: Algebra[F,O2,?] ~> Algebra[G,O2,?] = new (Algebra[F,O2,?] ~> Algebra[G,O2,?]) { self =>
       def apply[X](in: Algebra[F,O2,X]): Algebra[G,O2,X] = in match {
         case o: Output[F,O2] => Output[G,O2](o.values)
@@ -239,7 +230,7 @@ private[fs2] object Algebra {
         case gs: GetScope[F,O2] => gs.asInstanceOf[Algebra[G,O2,X]]
         case ua: UnconsAsync[F,_,_,_] =>
           val uu: UnconsAsync[F,Any,Any,Any] = ua.asInstanceOf[UnconsAsync[F,Any,Any,Any]]
-          UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), uu.ec).asInstanceOf[Algebra[G,O2,X]]
+          UnconsAsync(uu.s.translate[Algebra[G,Any,?]](algFtoG), uu.ec, eff).asInstanceOf[Algebra[G,O2,X]]
       }
     }
     fr.translate[Algebra[G,O,?]](algFtoG)
