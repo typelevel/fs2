@@ -2216,7 +2216,7 @@ object Stream {
     /**
      * Translates effect type from `F` to `G` using the supplied `FunctionK`.
      */
-    def translate[G[_]](u: F ~> G)(implicit G: Effect[G]): Stream[G,O] =
+    def translate[G[_]](u: F ~> G): Stream[G,O] =
       Stream.fromFreeC[G,O](Algebra.translate[F,G,O,Unit](self.get, u))
 
     private type ZipWithCont[G[_],I,O2,R] = Either[(Segment[I,Unit], Stream[G,I]), Stream[G,I]] => Pull[G,O2,Option[R]]
@@ -2472,8 +2472,23 @@ object Stream {
      * For example, `merge` is implemented by calling `unconsAsync` on each stream, racing the
      * resultant `AsyncPull`s, emitting winner of the race, and then repeating.
      */
-    def unconsAsync(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
-      Pull.fromFreeC(Algebra.unconsAsync(self.get, ec)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }))
+    def unconsAsync(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing, AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] = {
+      type UO = Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]
+
+      Pull.fromFreeC {
+        val ref = new async.Ref[F, Either[Throwable, Option[(Segment[O,Unit], Stream[F,O])]]]
+        Algebra.getScope[F, Nothing] flatMap { scope =>
+          val runStep =
+            Algebra.runFoldScope(
+              scope
+              , Algebra.uncons(self.get).flatMap(Algebra.output1(_))
+              , None : UO
+            ){ (_, uo) => uo.asInstanceOf[UO] } map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
+
+          Algebra.eval(ref.setAsync(F.attempt(runStep))) map { _ => AsyncPull.readAttemptRef(ref) }
+        }
+      }
+    }
 
     /**
      * Like [[uncons]], but returns a segment of no more than `n` elements.
