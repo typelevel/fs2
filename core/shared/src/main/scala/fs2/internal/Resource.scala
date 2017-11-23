@@ -3,6 +3,7 @@ package fs2.internal
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.effect.Sync
+import fs2.async.SyncRef
 import fs2.internal.Algebra.Token
 
 /**

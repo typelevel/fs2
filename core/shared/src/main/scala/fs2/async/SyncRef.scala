@@ -14,7 +14,7 @@ import scala.annotation.tailrec
  *
  * Unlike `Ref`, a `SyncRef` must be initialized to a value.
  */
-final class SyncRef[F[_], A] private (private val ar: AtomicReference[A])(implicit F: Sync[F]) extends RefOps[F,A] {
+final class SyncRef[F[_], A] private[fs2] (private val ar: AtomicReference[A])(implicit F: Sync[F]) extends RefOps[F,A] {
 
   override def get: F[A] = F.delay(ar.get)
 

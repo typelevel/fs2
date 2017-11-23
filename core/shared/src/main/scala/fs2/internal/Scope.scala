@@ -1,8 +1,11 @@
 package fs2.internal
 
+import java.util.concurrent.atomic.AtomicReference
+
 import fs2.Catenable
 import Algebra.Token
 import cats.effect.Sync
+import fs2.async.SyncRef
 import fs2.internal.Scope.ScopeReleaseFailure
 
 import scala.annotation.tailrec
@@ -56,7 +59,7 @@ import scala.annotation.tailrec
   */
 final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scope[F]])(implicit F: Sync[F]) { self =>
 
-  private val state: SyncRef[F, Scope.State[F]] = SyncRef(Scope.State.initial)
+  private val state: SyncRef[F, Scope.State[F]] = new SyncRef(new AtomicReference(Scope.State.initial))
 
   /**
     * Registers new resource in this scope.
