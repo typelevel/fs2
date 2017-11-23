@@ -146,7 +146,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     F.delay { actor ! Msg.Set(Right(a), () => ()) }
 
   override def setSync(fa: F[A]): F[Unit] =
-    fa.attempt.flatMap(r => F.async[Unit](cb => actor ! Msg.Set(r, () => cb(Right(())))) *> F.shift)
+    fa.flatMap(a => F.async[Unit](cb => actor ! Msg.Set(Right(a), () => cb(Right(())))) *> F.shift)
 
   override def setSyncPure(a: A): F[Unit] =
     setSync(F.pure(a))
