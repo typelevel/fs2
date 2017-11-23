@@ -3,6 +3,7 @@ package fs2.internal
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.effect.Sync
+import fs2.Lease
 import fs2.async.SyncRef
 import fs2.internal.Algebra.Token
 
@@ -15,7 +16,7 @@ import fs2.internal.Algebra.Token
   *
   * 1. Resource is created and registered with the scope (Algebra.Acquire)
   * 2. Resource is acquired
-  * 3. Resource `acquired` is invoked to conform acquisition of the resource.
+  * 3. Resource `acquired` is invoked to confirm acquisition of the resource.
   *
   * The reason for this is that during asynchronous stream evaluation, one scope may cause to close the other scope
   * (i.e merged stream fails while one of the other streams still acquiring asynchronous resources).
@@ -30,13 +31,13 @@ import fs2.internal.Algebra.Token
   *     the Resource and acts like (1).
   * (3) The `acquired` was evaluated after scope was `released` by either (1) or (2). In this case
   *     resource will invoke the finalization immediately if the resource is not leased.
-  * (4) The `cancelLEase` is invoked for previously leased resource. This will invoke resource
+  * (4) The `cancelLease` is invoked for previously leased resource. This will invoke resource
   *     finalization if resource was already acquired and released and there are no more outstanding leases.
   *
-  * Resources may be leased to other scopes. in that case, each scope must lease resource with `lease` and
+  * Resources may be leased to other scopes. In that case, each scope must lease resource with `lease` and
   * when scope is closed (or when the resource lease is no longer required) release the lease with `cancelLease`.
   *
-  * Note thate every method which as part of its invocation may potentially call resource finalizer
+  * Note that every method which as part of its invocation may potentially call resource finalizer
   * is returning `F[Either[Throwable, Unit]]` instead just simple F[Unit] to make sure the errors when releasing resource
   * are properly handled.
   *
@@ -44,7 +45,9 @@ import fs2.internal.Algebra.Token
   */
 private[internal] sealed trait Resource[F[_]] {
 
-  /** if of the resource **/
+  /**
+    * Id of the resource
+    */
   def id: Token
 
   /**
@@ -75,19 +78,11 @@ private[internal] sealed trait Resource[F[_]] {
   /**
     * Signals that this resource was leased by another scope than one allocating this resource.
     *
-    * Yields to true, if this resource was successfully leased, and scope must `cancelLease` it
-    * or to `false` when this resource cannot be leased because resource is already released.
+    * Yields to `Some(lease)`, if this resource was successfully leased, and scope must bind `lease.concel` it when not needed anymore.
+    * or to `None` when this resource cannot be leased because resource is already released.
     */
-  def lease: F[Boolean]
+  def lease: F[Option[Lease[F]]]
 
-  /**
-    * Each leased resource must be canceled when no longer needed by scope that leased it.
-    *
-    * When the lease is returned, this may result in resource's finalizer to be invoked and
-    * thus this may result in finalizer to fail.
-    *
-    */
-  def cancelLease: F[Either[Throwable, Unit]]
 
 }
 
@@ -139,26 +134,35 @@ private[internal] object Resource {
         }
       }
 
-      def lease: F[Boolean] =
+      def lease: F[Option[Lease[F]]] =
         F.map(state.modify { s =>
           if (! s.open) s
           else s.copy(leases = s.leases + 1)
-        }) { c => c.now.open }
-
-
-      def cancelLease: F[Either[Throwable, Unit]] = {
-        F.flatMap(state.modify { s => s.copy(leases = s.leases - 1) }) { c =>
-          if (c.now.open)  F.pure(Right(()))  // scope is open, we don't have to invoke finalizer
-          else if (c.now.leases != 0) F.pure(Right(())) // scope is closed, but leases still pending
-          else  {
-            // scope is closed and this is last lease, assure finalizer is removed from the state and run
-            F.flatMap(state.modify(_.copy(finalizer = None))) { c =>
-              // previous finalizer shall be alwayy present at this point, this shall invoke it
-              c.previous.finalizer.getOrElse(F.pure(Right(())))
+        }) { c =>
+          if (! c.now.open) None
+          else {
+            val lease = new Lease[F] {
+              def cancel: F[Either[Throwable, Unit]] = {
+                F.flatMap(state.modify { s => s.copy(leases = s.leases - 1) }) { c =>
+                  if (c.now.open)  F.pure(Right(()))  // scope is open, we don't have to invoke finalizer
+                  else if (c.now.leases != 0) F.pure(Right(())) // scope is closed, but leases still pending
+                  else  {
+                    // scope is closed and this is last lease, assure finalizer is removed from the state and run
+                    F.flatMap(state.modify(_.copy(finalizer = None))) { c =>
+                      // previous finalizer shall be alwayy present at this point, this shall invoke it
+                      c.previous.finalizer.getOrElse(F.pure(Right(())))
+                    }
+                  }
+                }
+              }
             }
+
+            Some(lease)
           }
         }
-      }
+
+
+
     }
   }
 

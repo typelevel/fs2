@@ -6,8 +6,7 @@ import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.mutable.Queue
-import fs2.internal.Scope.ScopeReleaseFailure
-import fs2.internal.{Algebra, FreeC, Scope}
+import fs2.internal.{Algebra, FreeC}
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -1303,8 +1302,8 @@ object Stream {
     emit(start) ++ eval(f(start)).flatMap(iterateEval(_)(f))
 
   /** Allows to get current scope during evaluation of the stream **/
-  def getScope[F[_]]: Stream[F, Scope[F]] =
-    Stream.fromFreeC(Algebra.getScope[F, Scope[F]].flatMap(Algebra.output1(_)))
+  def getScope[F[_]]: Stream[F, StreamScope[F]] =
+    Stream.fromFreeC(Algebra.getScope[F, StreamScope[F]].flatMap(Algebra.output1(_)))
 
   /**
    * Creates a stream that, when run, fails with the supplied exception.
@@ -1774,7 +1773,7 @@ object Stream {
           done.modify {
             case rslt0@Some(Some(err0)) =>
               rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-                Some(Some(new ScopeReleaseFailure(err0, Catenable.singleton(err))))
+                Some(Some(new CompositeFailure(err0, List(err))))
               }
             case _ => Some(rslt)
           } *> outputQ.enqueue1(None)
@@ -1792,9 +1791,9 @@ object Stream {
         // if fails will enq in queue failure
         // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
         // and that it must be released once the inner stream terminates or fails.
-        def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] = {
+        def runInner(inner: Stream[F, O2], outerScope: StreamScope[F]): F[Unit] = {
           outerScope.lease flatMap {
-            case Some(cancelLease) =>
+            case Some(lease) =>
                 available.decrement *>
                 incrementRunning *>
                 async.fork {
@@ -1806,7 +1805,7 @@ object Stream {
                     case Right(()) => F.unit
                     case Left(err) => stop(Some(err))
                   } *>
-                  cancelLease *>
+                  lease.cancel *>  //todo: propagate failure here on exception ???
                   available.increment *>
                   decrementRunning
                 }

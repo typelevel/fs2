@@ -2,11 +2,10 @@ package fs2.internal
 
 import java.util.concurrent.atomic.AtomicReference
 
-import fs2.Catenable
+import fs2._
 import Algebra.Token
 import cats.effect.Sync
 import fs2.async.SyncRef
-import fs2.internal.Scope.ScopeReleaseFailure
 
 import scala.annotation.tailrec
 
@@ -57,7 +56,7 @@ import scala.annotation.tailrec
   * @param id           Unique identification of the scope
   * @param parent       If empty indicates root scope. If nonemtpy, indicates parent of this scope
   */
-final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scope[F]])(implicit F: Sync[F]) { self =>
+final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scope[F]])(implicit F: Sync[F]) extends StreamScope[F]{ self =>
 
   private val state: SyncRef[F, Scope.State[F]] = new SyncRef(new AtomicReference(Scope.State.initial))
 
@@ -124,14 +123,14 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
   }
 
   /**
-    * Traverses supplued catenable with `f` that may produce failure, and collects theses failures.
-    * Returns failure with collected failures, or Unit on succesfull traversal.
+    * Traverses supplied Catenable with `f` that may produce failure, and collects theses failures.
+    * Returns failure with collected failures, or Unit on successful traversal.
     */
   private def traverseError[A](ca: Catenable[A], f: A => F[Either[Throwable,Unit]]) : F[Either[Throwable, Unit]] = {
     F.map(Catenable.traverseInstance.traverse(ca)(f)) { results =>
       results.collect { case Left(err) => err }.uncons match {
         case None => Right(())
-        case Some((first, others)) => Left(new ScopeReleaseFailure(first, others))
+        case Some((first, others)) => Left(new CompositeFailure(first, others.toList))
       }
     }
   }
@@ -155,9 +154,10 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
     F.flatMap(traverseError[Scope[F]](c.previous.children, _.close)) { resultChildren =>
     F.flatMap(traverseError[Resource[F]](c.previous.resources, _.release)) { resultResources =>
     F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
-     Catenable.fromSeq(resultChildren.left.toSeq ++ resultResources.left.toSeq).uncons match {
+      val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
+      results.headOption match {
        case None => Right(())
-       case Some((h, t)) => Left(new ScopeReleaseFailure(h, t))
+       case Some(h) => Left(new CompositeFailure(h, results.tail.toList))
      }
     }}}}
   }
@@ -202,15 +202,11 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
     * As such this is important to be run only when all resources are known to be not finalized or not being
     * about to be finalized yet.
     *
-    * Wehn this completes all resources available at that time have been successfully leased.
+    * When this completes all resources available at that time have been successfully leased.
     *
     */
-  def lease: F[Option[F[Either[Throwable, Unit]]]] = {
+  def lease: F[Option[Lease[F]]] = {
     val T = Catenable.traverseInstance
-    def cancel(resources: Catenable[Resource[F]]): F[Either[Throwable, Unit]] = {
-      traverseError[Resource[F]](resources, _.cancelLease)
-    }
-
     F.flatMap(state.get) { s =>
       if (!s.open) F.pure(None)
       else {
@@ -218,8 +214,12 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
         F.flatMap(ancestors) { anc =>
         F.flatMap(T.traverse(anc) { _.resources }) { ancestorResources =>
           val allLeases = childResources.flatMap(identity) ++ ancestorResources.flatMap(identity)
-          F.map(T.traverse(allLeases) { r => F.map(r.lease)(leased => (r, leased)) }) { leased =>
-            Some(cancel(leased.collect { case (r, true) => r }))
+          F.map(T.traverse(allLeases) { r => r.lease }) { leased =>
+            val allLeases = leased.collect { case Some(resourceLease) => resourceLease }
+            val lease = new Lease[F] {
+              def cancel: F[Either[Throwable, Unit]] = traverseError[Lease[F]](allLeases, _.cancel)
+            }
+            Some(lease)
           }
         }}}
       }
@@ -234,14 +234,7 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
 object Scope {
   def newRoot[F[_]: Sync]: Scope[F] = new Scope[F](new Token(), None)
 
-  /**
-    * During scope being released multiple resources may fail their finalization.
-    * This contains the first and subsequent failures that causes scope finalization to fail.
-    */
-  class ScopeReleaseFailure(
-    first: Throwable
-    , others: Catenable[Throwable]
-  ) extends Throwable("Resources failed to finalize", first)
+
 
   /**
     * State of the scope

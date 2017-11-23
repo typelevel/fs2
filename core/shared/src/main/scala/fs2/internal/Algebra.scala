@@ -4,9 +4,7 @@ import scala.concurrent.ExecutionContext
 import cats.~>
 import cats.effect.{Effect, Sync}
 import cats.implicits._
-import fs2.{AsyncPull, Catenable, Segment}
-import fs2.async
-import fs2.internal.Scope.ScopeReleaseFailure
+import fs2.{AsyncPull, Catenable, CompositeFailure, Segment, async}
 
 private[fs2] sealed trait Algebra[F[_],O,R]
 
@@ -156,7 +154,7 @@ private[fs2] object Algebra {
                     F.flatMap(scope.releaseResource(resource.id)) { result =>
                       val failedResult: Either[Throwable, Unit] =
                         result.left.toOption.map { err0 =>
-                          Left(new ScopeReleaseFailure(err, Catenable.singleton(err0)))
+                          Left(new CompositeFailure(err, List(err0)))
                          }.getOrElse(Left(err))
                       runFoldLoop(scope, acc, g, f(failedResult).viewL)
                     }
