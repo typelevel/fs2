@@ -2014,6 +2014,29 @@ object Stream {
       self.reduce(S.combine(_, _))
 
     /**
+      * Repartitions the input with the function `f`. On each step `f` is applied
+      * to the input and all elements but the last of the resulting sequence
+      * are emitted. The last element is then appended to the next input using the
+      * Semigroup `S`.
+      *
+      * @example {{{
+      * scala> import cats.implicits._
+      * scala> Stream("Hel", "l", "o Wor", "ld").repartition(s => Chunk.array(s.split(" "))).toList
+      * res0: List[String] = List(Hello, World)
+      * }}}
+      */
+    def repartition(f: O => Chunk[O])(implicit S: Semigroup[O]): Stream[F,O] = {
+      pull.scanSegments(Option.empty[O]) { (carry, segment) =>
+        segment.scan((Segment.empty[O], carry)) { case ((_, carry), o) =>
+          val o2: O = carry.fold(o)(S.combine(_, o))
+          val partitions: Chunk[O] = f(o2)
+          if (partitions.isEmpty) partitions -> None
+          else partitions.take(partitions.size - 1).voidResult -> Some(partitions.strict.last)
+        }.flatMap { case (out, carry) => out }.mapResult { case ((out, carry), unit) => carry }
+      }.flatMap { case Some(carry) => Pull.output1(carry); case None => Pull.done }.stream
+    }
+
+    /**
      * Repeatedly invokes `using`, running the resultant `Pull` each time, halting when a pull
      * returns `None` instead of `Some(nextStream)`.
      */
