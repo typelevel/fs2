@@ -3,8 +3,6 @@ package fs2.async
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
-
-import cats.Eq
 import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO }
 
@@ -15,7 +13,7 @@ import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 import Ref._
 
 /** An asynchronous, concurrent mutable reference. */
-final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) { self =>
+final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) extends RefOps[F,A] { self =>
 
   private var result: Either[Throwable,A] = null
   // any waiting calls to `access` before first `set`
@@ -23,7 +21,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
   // id which increases with each `set` or successful `modify`
   private var nonce: Long = 0
 
-  private val actor: Actor[Msg[A]] = Actor.actor[Msg[A]] {
+  private val actor: Actor[Msg[A]] = Actor[Msg[A]] {
     case Msg.Read(cb, idf) =>
       if (result eq null) {
         waiting = waiting.updated(idf, cb)
@@ -79,8 +77,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       }
     }
 
-  /** Obtains the value of the `Ref`, or wait until it has been `set`. */
-  def get: F[A] = F.flatMap(F.delay(new MsgId)) { mid => F.map(getStamped(mid))(_._1) }
+  override def get: F[A] = F.flatMap(F.delay(new MsgId)) { mid => F.map(getStamped(mid))(_._1) }
 
   /** Like [[get]] but returns an `F[Unit]` that can be used cancel the subscription. */
   def cancellableGet: F[(F[A], F[Unit])] = F.delay {
@@ -103,12 +100,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       }
     }
 
-  /**
-   * Tries modifying the reference once, returning `None` if another
-   * concurrent `set` or `modify` completes between the time
-   * the variable is read and the time it is set.
-   */
-  def tryModify(f: A => A): F[Option[Change[A]]] =
+  override def tryModify(f: A => A): F[Option[Change[A]]] =
     access.flatMap { case (previous,set) =>
       val now = f(previous)
       set(Right(now)).map { b =>
@@ -117,8 +109,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       }
     }
 
-  /** Like `tryModify` but allows to return `B` along with change. **/
-  def tryModify2[B](f: A => (A,B)): F[Option[(Change[A], B)]] =
+  override def tryModify2[B](f: A => (A,B)): F[Option[(Change[A], B)]] =
     access.flatMap { case (previous,set) =>
       val (now,b0) = f(previous)
       set(Right(now)).map { b =>
@@ -127,47 +118,38 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       }
   }
 
-  /** Repeatedly invokes `[[tryModify]](f)` until it succeeds. */
-  def modify(f: A => A): F[Change[A]] =
+  override def modify(f: A => A): F[Change[A]] =
     tryModify(f).flatMap {
       case None => modify(f)
       case Some(change) => F.pure(change)
     }
 
-  /** Like modify, but allows to extra `b` in single step. **/
-  def modify2[B](f: A => (A,B)): F[(Change[A], B)] =
+  override def modify2[B](f: A => (A,B)): F[(Change[A], B)] =
     tryModify2(f).flatMap {
       case None => modify2(f)
       case Some(changeAndB) => F.pure(changeAndB)
     }
 
   /**
-   * *Asynchronously* sets a reference. After the returned `F[Unit]` is bound,
-   * the task is running in the background. Multiple tasks may be added to a
-   * `Ref[A]`.
+   * *Asynchronously* sets the current value to the value computed by `fa`.
+   *
+   * After the returned `F[Unit]` is bound, an update will eventually occur, setting the current value to
+   * the value computed by `fa`.
+   *
+   * Note: upon binding the returned action, `fa` is shifted to the execution context of this `Ref`
+   * and then forked.
    */
   def setAsync(fa: F[A]): F[Unit] =
     F.liftIO(F.runAsync(F.shift(ec) *> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
 
-  /**
-   * *Asynchronously* sets a reference to a pure value.
-   */
-  def setAsyncPure(a: A): F[Unit] = F.delay { actor ! Msg.Set(Right(a), () => ()) }
+  override def setAsyncPure(a: A): F[Unit] =
+    setAsync(F.pure(a))
 
-  /**
-   * *Synchronously* sets a reference. The returned value completes evaluating after the reference has been successfully set.
-   *
-   * Satisfies: `r.setSync(fa) flatMap { _ => r.get } == fa`
-   */
-  def setSync(fa: F[A]): F[Unit] =
-    F.flatMap(F.attempt(fa))(r => F.async(cb => actor ! Msg.Set(r, () => cb(Right(())))))
+  override def setSync(fa: F[A]): F[Unit] =
+    fa.attempt.flatMap(r => F.async(cb => actor ! Msg.Set(r, () => cb(Right(())))))
 
-  /**
-   * *Synchronously* sets a reference to a pure value.
-   *
-   * Satisfies: `r.setSyncPure(a) flatMap { _ => r.get(a) } == pure(a)`
-   */
-  def setSyncPure(a: A): F[Unit] = setSync(F.pure(a))
+  override def setSyncPure(a: A): F[Unit] =
+    setSync(F.pure(a))
 
   /**
    * Runs `f1` and `f2` simultaneously, but only the winner gets to
@@ -204,7 +186,7 @@ object Ref {
 
   /** Creates an asynchronous, concurrent mutable reference, initialized to `a`. */
   def initialized[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] =
-    uninitialized[F, A].flatMap(r => r.setAsyncPure(a).as(r))
+    uninitialized[F, A].flatMap(r => r.setSyncPure(a).as(r))
 
   private final class MsgId
   private sealed abstract class Msg[A]
@@ -213,15 +195,5 @@ object Ref {
     final case class Nevermind[A](id: MsgId, cb: Either[Throwable,Boolean] => Unit) extends Msg[A]
     final case class Set[A](r: Either[Throwable,A], cb: () => Unit) extends Msg[A]
     final case class TrySet[A](id: Long, r: Either[Throwable,A], cb: Either[Throwable,Boolean] => Unit) extends Msg[A]
-  }
-
-  /**
-   * The result of a `Ref` modification. `previous` is the value before modification
-   * (the value passed to modify function, `f` in the call to `modify(f)`. `now`
-   * is the new value computed by `f`.
-   */
-  final case class Change[+A](previous: A, now: A) {
-    def modified[AA >: A](implicit eq: Eq[AA]): Boolean = eq.neqv(previous, now)
-    def map[B](f: A => B): Change[B] = Change(f(previous), f(now))
   }
 }
