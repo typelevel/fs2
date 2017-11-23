@@ -1,10 +1,10 @@
 package fs2.internal
 
+import cats.data.NonEmptyList
 import cats.~>
 import cats.effect.Sync
 import cats.implicits._
 import fs2._
-import fs2.internal.Scope.ScopeReleaseFailure
 
 private[fs2] sealed trait Algebra[F[_],O,R]
 
@@ -16,9 +16,9 @@ private[fs2] object Algebra {
 
   final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
-  final case class OpenScope[F[_],O]() extends Algebra[F,O,Scope[F]]
-  final case class CloseScope[F[_],O](toClose: Scope[F]) extends Algebra[F,O,Unit]
-  final case class GetScope[F[_],O]() extends Algebra[F,O,Scope[F]]
+  final case class OpenScope[F[_],O]() extends Algebra[F,O,RunFoldScope[F]]
+  final case class CloseScope[F[_],O](toClose: RunFoldScope[F]) extends Algebra[F,O,Unit]
+  final case class GetScope[F[_],O]() extends Algebra[F,O,RunFoldScope[F]]
 
   def output[F[_],O](values: Segment[O,Unit]): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](Output(values))
@@ -38,10 +38,10 @@ private[fs2] object Algebra {
   def release[F[_],O](token: Token): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](Release(token))
 
-  private def openScope[F[_],O]: FreeC[Algebra[F,O,?],Scope[F]] =
-    FreeC.Eval[Algebra[F,O,?],Scope[F]](OpenScope())
+  private def openScope[F[_],O]: FreeC[Algebra[F,O,?],RunFoldScope[F]] =
+    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](OpenScope())
 
-  private def closeScope[F[_],O](toClose: Scope[F]): FreeC[Algebra[F,O,?],Unit] =
+  private def closeScope[F[_],O](toClose: RunFoldScope[F]): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](CloseScope(toClose))
 
   def scope[F[_],O,R](pull: FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
@@ -52,8 +52,8 @@ private[fs2] object Algebra {
       })
     }
 
-  def getScope[F[_],O]: FreeC[Algebra[F,O,?],Scope[F]] =
-    FreeC.Eval[Algebra[F,O,?],Scope[F]](GetScope())
+  def getScope[F[_],O]: FreeC[Algebra[F,O,?],RunFoldScope[F]] =
+    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](GetScope())
 
   def pure[F[_],O,R](r: R): FreeC[Algebra[F,O,?],R] =
     FreeC.Pure[Algebra[F,O,?],R](r)
@@ -103,18 +103,18 @@ private[fs2] object Algebra {
 
   /** Left-fold the output of a stream */
   def runFold[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
-    F.delay(Scope.newRoot).flatMap { scope =>
+    F.delay(RunFoldScope.newRoot).flatMap { scope =>
       runFoldScope[F,O,B](scope, stream, init)(f).attempt.flatMap {
         case Left(t) => scope.close *> F.raiseError(t)
         case Right(b) => scope.close as b
       }
     }
 
-  private[fs2] def runFoldScope[F[_],O,B](scope: Scope[F], stream: FreeC[Algebra[F,O,?],Unit], init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
+  private[fs2] def runFoldScope[F[_],O,B](scope: RunFoldScope[F], stream: FreeC[Algebra[F,O,?],Unit], init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
     runFoldLoop[F,O,B](scope, init, g, uncons(stream).viewL)
 
   private def runFoldLoop[F[_],O,B](
-    scope: Scope[F]
+    scope: RunFoldScope[F]
     , acc: B
     , g: (B, O) => B
     , v: FreeC.ViewL[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]
@@ -156,7 +156,7 @@ private[fs2] object Algebra {
                     F.flatMap(scope.releaseResource(resource.id)) { result =>
                       val failedResult: Either[Throwable, Unit] =
                         result.left.toOption.map { err0 =>
-                          Left(new ScopeReleaseFailure(err, Catenable.singleton(err0)))
+                          Left(new CompositeFailure(NonEmptyList.of(err, err0)))
                          }.getOrElse(Left(err))
                       runFoldLoop(scope, acc, g, f(failedResult).viewL)
                     }

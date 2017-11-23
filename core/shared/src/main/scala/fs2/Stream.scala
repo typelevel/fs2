@@ -1,13 +1,14 @@
 package fs2
 
+import cats.data.NonEmptyList
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.mutable.Queue
-import fs2.internal.Scope.ScopeReleaseFailure
-import fs2.internal.{Algebra, FreeC, Scope}
+import fs2.internal.{Algebra, FreeC}
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -1774,7 +1775,7 @@ object Stream {
           done.modify {
             case rslt0@Some(Some(err0)) =>
               rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-                Some(Some(new ScopeReleaseFailure(err0, Catenable.singleton(err))))
+                Some(Some(new CompositeFailure(NonEmptyList.of(err0, err))))
               }
             case _ => Some(rslt)
           } *> outputQ.enqueue1(None)
@@ -1794,7 +1795,7 @@ object Stream {
         // and that it must be released once the inner stream terminates or fails.
         def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] = {
           outerScope.lease flatMap {
-            case Some(cancelLease) =>
+            case Some(lease) =>
                 available.decrement *>
                 incrementRunning *>
                 async.fork {
@@ -1806,7 +1807,7 @@ object Stream {
                     case Right(()) => F.unit
                     case Left(err) => stop(Some(err))
                   } *>
-                  cancelLease *>
+                  lease.cancel *>  //todo: propagate failure here on exception ???
                   available.increment *>
                   decrementRunning
                 }
