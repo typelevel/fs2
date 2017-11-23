@@ -1,14 +1,14 @@
 package fs2
 
+import cats.data.NonEmptyList
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-
-import cats.{ ~>, Applicative, Eq, Functor, Monoid, Semigroup }
-import cats.effect.{ Effect, IO, Sync }
-import cats.implicits.{ catsSyntaxEither => _, _ }
-
+import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
+import cats.effect.{Effect, IO, Sync}
+import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.mutable.Queue
-import fs2.internal.{ Algebra, FreeC }
+import fs2.internal.{Algebra, FreeC}
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -1255,9 +1255,6 @@ object Stream {
     go(0)
   }
 
-  private[fs2] def exportResources[F[_]]: Stream[F,List[Algebra.Resource[F]]] =
-    Stream.fromFreeC(Algebra.exportResources[F,List[Algebra.Resource[F]]].flatMap(Algebra.output1(_)))
-
   /**
    * Lifts an iterator into a Stream
    */
@@ -1279,9 +1276,6 @@ object Stream {
    */
   def force[F[_],A](f: F[Stream[F, A]]): Stream[F,A] =
     eval(f).flatMap(s => s)
-
-  private[fs2] def importResources[F[_]](resources: List[Algebra.Resource[F]]): Stream[F,Nothing] =
-    Stream.fromFreeC(Algebra.importResources[F,Nothing](resources))
 
   /**
    * An infinite `Stream` that repeatedly applies a given function
@@ -1308,6 +1302,10 @@ object Stream {
    */
   def iterateEval[F[_],A](start: A)(f: A => F[A]): Stream[F,A] =
     emit(start) ++ eval(f(start)).flatMap(iterateEval(_)(f))
+
+  /** Allows to get current scope during evaluation of the stream **/
+  def getScope[F[_]]: Stream[F, Scope[F]] =
+    Stream.fromFreeC(Algebra.getScope[F, Scope[F]].flatMap(Algebra.output1(_)))
 
   /**
    * Creates a stream that, when run, fails with the supplied exception.
@@ -1755,67 +1753,98 @@ object Stream {
      * concurrently with other stream computations.
      *
      * Finalizers on the outer stream are run after all inner streams have been pulled
-     * from the outer stream -- hence, finalizers on the outer stream will likely run
-     * BEFORE the LAST finalizer on the last inner stream.
+     * from the outer stream but not before all inner streams terminate -- hence finalizers on the outer stream will run
+     * AFTER the LAST finalizer on the very last inner stream.
      *
      * Finalizers on the returned stream are run after the outer stream has finished
      * and all open inner streams have finished.
      *
      * @param maxOpen    Maximum number of open inner streams at any time. Must be > 0.
-     * @param outer      Stream of streams to join.
      */
     def join[O2](maxOpen: Int)(implicit ev: O <:< Stream[F,O2], F: Effect[F], ec: ExecutionContext): Stream[F,O2] = {
       val _ = ev // Convince scalac that ev is used
       assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
       val outer = self.asInstanceOf[Stream[F,Stream[F,O2]]]
-      Stream.eval(async.signalOf(false)) flatMap { killSignal =>
+      Stream.eval(async.signalOf(None: Option[Option[Throwable]])) flatMap { done =>
       Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
       Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
-      Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F,Either[Throwable,Segment[O2,Unit]]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+      Stream.eval(async.mutable.Queue.synchronousNoneTerminated[F, Segment[O2, Unit]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+        // stops the join evaluation
+        // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
+        def stop(rslt: Option[Throwable]): F[Unit] = {
+          done.modify {
+            case rslt0@Some(Some(err0)) =>
+              rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
+                Some(Some(new CompositeFailure(NonEmptyList.of(err0, err))))
+              }
+            case _ => Some(rslt)
+          } *> outputQ.enqueue1(None)
+        }
+
         val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
-        val decrementRunning: F[Unit] = running.modify(_ - 1).as(())
+        val decrementRunning: F[Unit] = running.modify(_ - 1).flatMap { c =>
+          if (c.now == 0) stop(None)
+          else F.unit
+        }
 
         // runs inner stream
         // each stream is forked.
         // terminates when killSignal is true
         // if fails will enq in queue failure
-        def runInner(inner: Stream[F,O2], importedResources: List[Algebra.Resource[F]]): Stream[F,Nothing] = {
-          Stream.eval_(
-            available.decrement *> incrementRunning *>
-            async.fork {
-              (Stream.importResources(importedResources) ++ inner.segments.attempt.
-                flatMap { r => Stream.eval(outputQ.enqueue1(Some(r))) }.
-                interruptWhen(killSignal)). // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-                run *> available.increment *> decrementRunning
-            }
-          )
+        // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
+        // and that it must be released once the inner stream terminates or fails.
+        def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] = {
+          outerScope.lease flatMap {
+            case Some(lease) =>
+                available.decrement *>
+                incrementRunning *>
+                async.fork {
+                  inner.segments.
+                  evalMap { s => outputQ.enqueue1(Some(s)) }.
+                  interruptWhen(done.map(_.nonEmpty)).// must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                  run.attempt.
+                  flatMap {
+                    case Right(()) => F.unit
+                    case Left(err) => stop(Some(err))
+                  } *>
+                  lease.cancel *>  //todo: propagate failure here on exception ???
+                  available.increment *>
+                  decrementRunning
+                }
+
+            case None =>
+              F.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
+          }
         }
 
         // runs the outer stream, interrupts when kill == true, and then decrements the `running`
         def runOuter: F[Unit] = {
-          outer.interruptWhen(killSignal).flatMap { inner =>
-            Stream.exportResources[F].flatMap { resources =>
-              runInner(inner, resources)
-            }
-          }.run.attempt flatMap {
-            case Right(_) => decrementRunning
-            case Left(err) => outputQ.enqueue1(Some(Left(err))) *> decrementRunning
+          outer.flatMap { inner =>
+          Stream.getScope[F].evalMap { outerScope =>
+            runInner(inner, outerScope)
+          }}
+          .interruptWhen(done.map(_.nonEmpty))
+          .run.attempt.flatMap {
+            case Right(_) => F.unit
+            case Left(err) => stop(Some(err))
+          } *> decrementRunning
+        }
+
+        // awaits when all streams (outer + inner) finished,
+        // and then collects result of the stream (outer + inner) execution
+        def signalResult: Stream[F, O2] = {
+          done.discrete.take(1) flatMap {
+            _.flatten.fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
           }
         }
 
-        // monitors when the all streams (outer/inner) are terminated an then supplies None to output Queue
-        def doneMonitor: F[Unit] = {
-          running.discrete.dropWhile(_ > 0) take 1 flatMap { _ =>
-            Stream.eval(outputQ.enqueue1(None))
-          } run
-        }
 
-        Stream.eval_(async.start(runOuter)) ++
-        Stream.eval_(async.start(doneMonitor)) ++
-        outputQ.dequeue.unNoneTerminate.flatMap {
-          case Left(e) => Stream.raiseError(e)
-          case Right(s) => Stream.segment(s)
-        } onFinalize { killSignal.set(true) *> (running.discrete.dropWhile(_ > 0) take 1 run) }
+        Stream.eval(async.start(runOuter)) *>
+        outputQ.dequeue.
+        unNoneTerminate.
+        flatMap { Stream.segment(_).covary[F] }.
+        onFinalize { stop(None) *> (running.discrete.dropWhile(_ > 0) take 1 run) } ++
+        signalResult
       }}}}
     }
 
@@ -1992,7 +2021,7 @@ object Stream {
      * Behaves like `identity`, but starts fetching the next segment before emitting the current,
      * enabling processing on either side of the `prefetch` to run in parallel.
      */
-    def prefetch(implicit ec: ExecutionContext): Stream[F,O] =
+    def prefetch(implicit ec: ExecutionContext, F: Effect[F]): Stream[F,O] =
       self repeatPull { _.uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) => tl.pull.prefetch flatMap { p => Pull.output(hd) *> p }
@@ -2053,20 +2082,10 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, an `Effect[F]` instance must be implicitly available. If there's no
-     * `Effect` instance for `F`, consider using [[runSync]] instead, which only requires a
-     * `Sync[F]`.
      */
-    def run(implicit F: Effect[F]): F[Unit] =
+    def run(implicit F: Sync[F]): F[Unit] =
       runFold(())((u, _) => u)
 
-    /**
-     * Like [[run]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runSync(implicit F: Sync[F]): F[Unit] =
-      runFoldSync(())((u, _) => u)
 
     /**
      * Interprets this stream in to a value of the target effect type `F` by folding
@@ -2076,20 +2095,10 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, an `Effect[F]` instance must be implicitly available. If there's no
-     * `Effect` instance for `F`, consider using [[runFoldSync]] instead, which only requires a
-     * `Sync[F]`.
      */
-    def runFold[B](init: B)(f: (B, O) => B)(implicit F: Effect[F]): F[B] =
-      Algebra.runFoldEffect(self.get, init)(f)
+    def runFold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
+      Algebra.runFold(self.get, init)(f)
 
-    /**
-     * Like [[runFold]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runFoldSync[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
-      Algebra.runFoldSync(self.get, init)(f)
 
     /**
      * Like [[runFold]] but uses the implicitly available `Monoid[O]` to combine elements.
@@ -2100,16 +2109,9 @@ object Stream {
      * res0: Int = 15
      * }}}
      */
-    def runFoldMonoid(implicit F: Effect[F], O: Monoid[O]): F[O] =
+    def runFoldMonoid(implicit F: Sync[F], O: Monoid[O]): F[O] =
       runFold(O.empty)(O.combine)
 
-    /**
-     * Like [[runFoldMonoid]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runFoldMonoidSync(implicit F: Sync[F], O: Monoid[O]): F[O] =
-      runFoldSync(O.empty)(O.combine)
 
     /**
      * Like [[runFold]] but uses the implicitly available `Semigroup[O]` to combine elements.
@@ -2123,16 +2125,9 @@ object Stream {
      * res1: Option[Int] = None
      * }}}
      */
-    def runFoldSemigroup(implicit F: Effect[F], O: Semigroup[O]): F[Option[O]] =
+    def runFoldSemigroup(implicit F: Sync[F], O: Semigroup[O]): F[Option[O]] =
       runFold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
 
-    /**
-     * Like [[runFoldSemigroup]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runFoldSemigroupSync(implicit F: Sync[F], O: Monoid[O]): F[Option[O]] =
-      runFoldSync(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
 
     /**
      * Interprets this stream in to a value of the target effect type `F` by logging
@@ -2149,20 +2144,11 @@ object Stream {
      * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
      * }}}
      */
-    def runLog(implicit F: Effect[F]): F[Vector[O]] = {
+    def runLog(implicit F: Sync[F]): F[Vector[O]] = {
       import scala.collection.immutable.VectorBuilder
       F.suspend(F.map(runFold(new VectorBuilder[O])(_ += _))(_.result))
     }
 
-    /**
-     * Like [[runLog]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runLogSync(implicit F: Sync[F]): F[Vector[O]] = {
-      import scala.collection.immutable.VectorBuilder
-      F.suspend(F.map(runFoldSync(new VectorBuilder[O])(_ += _))(_.result))
-    }
 
     /**
      * Interprets this stream in to a value of the target effect type `F`,
@@ -2180,16 +2166,10 @@ object Stream {
      * res0: Option[Int] = Some(4)
      * }}}
      */
-    def runLast(implicit F: Effect[F]): F[Option[O]] =
+    def runLast(implicit F: Sync[F]): F[Option[O]] =
       self.runFold(Option.empty[O])((_, a) => Some(a))
 
-    /**
-     * Like [[runLast]] but only requires a `Sync` instance instead of an `Effect` instance.
-     * If an `unconsAsync` step is encountered while running the stream, an `IllegalStateException`
-     * is raised in `F`.
-     */
-    def runLastSync(implicit F: Sync[F]): F[Option[O]] =
-      self.runFoldSync(Option.empty[O])((_, a) => Some(a))
+
 
     /**
      * Like `scan` but `f` is applied to each segment of the source stream.
@@ -2260,7 +2240,7 @@ object Stream {
     /**
      * Translates effect type from `F` to `G` using the supplied `FunctionK`.
      */
-    def translate[G[_]](u: F ~> G): Stream[G,O] =
+    def translate[G[_]](u: F ~> G)(implicit G: Effect[G]): Stream[G,O] =
       Stream.fromFreeC[G,O](Algebra.translate[F,G,O,Unit](self.get, u))
 
     private type ZipWithCont[G[_],I,O2,R] = Either[(Segment[I,Unit], Stream[G,I]), Stream[G,I]] => Pull[G,O2,Option[R]]
@@ -2516,7 +2496,7 @@ object Stream {
      * For example, `merge` is implemented by calling `unconsAsync` on each stream, racing the
      * resultant `AsyncPull`s, emitting winner of the race, and then repeating.
      */
-    def unconsAsync(implicit ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
+    def unconsAsync(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
       Pull.fromFreeC(Algebra.unconsAsync(self.get, ec)).map(_.map(_.map { case (hd, tl) => (hd, Stream.fromFreeC(tl)) }))
 
     /**
@@ -2682,7 +2662,7 @@ object Stream {
      * Like [[uncons]], but runs the `uncons` asynchronously. A `flatMap` into
      * inner `Pull` logically blocks until this await completes.
      */
-    def prefetch(implicit ec: ExecutionContext): Pull[F,Nothing,Pull[F,Nothing,Option[Stream[F,O]]]] =
+    def prefetch(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing,Pull[F,Nothing,Option[Stream[F,O]]]] =
       unconsAsync.map { _.pull.map { _.map { case (hd, h) => h cons hd } } }
 
     /**

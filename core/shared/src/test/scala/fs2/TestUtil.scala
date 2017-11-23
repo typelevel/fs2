@@ -50,26 +50,26 @@ trait TestUtil extends TestUtilPlatform {
 
   object PureStream {
     def singleChunk[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
-      Gen.listOfN(size, A.arbitrary).map(as => PureStream("single chunk", Stream.emits(as)))
+      Gen.listOfN(size, A.arbitrary).map(as => PureStream(s"single chunk: $size $as", Stream.emits(as)))
     }
     def unchunked[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
-      Gen.listOfN(size, A.arbitrary).map(as => PureStream("unchunked", Stream.emits(as).unchunk))
+      Gen.listOfN(size, A.arbitrary).map(as => PureStream(s"unchunked: $size $as", Stream.emits(as).unchunk))
     }
     def leftAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
         val s = as.foldLeft(Stream.empty.covaryOutput[A])((acc,a) => acc ++ Stream.emit(a))
-        PureStream("left-associated", s)
+        PureStream(s"left-associated : $size $as", s)
       }
     }
     def rightAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
         val s = as.foldRight(Stream.empty.covaryOutput[A])((a,acc) => Stream.emit(a) ++ acc)
-        PureStream("right-associated", s)
+        PureStream(s"right-associated : $size $as", s)
       }
     }
     def randomlyChunked[A:Arbitrary]: Gen[PureStream[A]] = Gen.sized { size =>
       nestedVectorGen[A](0, size, true).map { chunks =>
-        PureStream("randomly-chunked", Stream.emits(chunks).flatMap(Stream.emits))
+        PureStream(s"randomly-chunked: $size ${chunks.map(_.size)}", Stream.emits(chunks).flatMap(Stream.emits))
       }
     }
     def uniformlyChunked[A:Arbitrary]: Gen[PureStream[A]] = Gen.sized { size =>
@@ -77,7 +77,7 @@ trait TestUtil extends TestUtilPlatform {
         n <- Gen.choose(0, size)
         chunkSize <- Gen.choose(0, 10)
         chunks <- Gen.listOfN(n, Gen.listOfN(chunkSize, Arbitrary.arbitrary[A]))
-      } yield PureStream(s"uniformly-chunked ($n) ($chunkSize)",
+      } yield PureStream(s"uniformly-chunked $size $n ($chunkSize)",
                          Stream.emits(chunks).flatMap(Stream.emits))
     }
 
@@ -88,7 +88,7 @@ trait TestUtil extends TestUtilPlatform {
 
     implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
 
-    implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream("shrunk", Stream.chunk(Chunk.seq(as)))) }
+    implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream(s"shrunk: ${as.size} from ${s.tag}", Stream.chunk(Chunk.seq(as)))) }
   }
 
   case object Err extends RuntimeException("oh noes!!")
