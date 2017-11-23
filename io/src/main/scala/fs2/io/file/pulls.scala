@@ -19,11 +19,11 @@ object pulls {
   def readAllFromFileHandle[F[_]](chunkSize: Int)(h: FileHandle[F]): Pull[F, Byte, Unit] =
     _readAllFromFileHandle0(chunkSize, 0)(h)
 
-  private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(h: FileHandle[F]): Pull[F, Byte, Unit] = for {
-    res <- Pull.eval(h.read(chunkSize, offset))
-    next <- res.fold[Pull[F, Byte, Unit]](Pull.done)(o => Pull.output(o) *> _readAllFromFileHandle0(chunkSize, offset + o.size)(h))
-  } yield next
-
+  private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(h: FileHandle[F]): Pull[F, Byte, Unit] =
+    Pull.eval(h.read(chunkSize, offset)).flatMap {
+      case Some(o) => Pull.output(o) *> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
+      case None => Pull.done
+    }
 
   /**
    * Given a `Stream[F, Byte]` and `FileHandle[F]`, writes all data from the stream to the file.
