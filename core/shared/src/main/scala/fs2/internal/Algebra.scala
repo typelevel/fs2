@@ -271,7 +271,7 @@ private[fs2] object Algebra {
     def newRoot[F[_]: Sync]: Scope[F] = new Scope[F](new Token(), None)
   }
 
-  def uncons[F[_],X,O](s: FreeC[Algebra[F,O,?],Unit], chunkSize: Int = 1024): FreeC[Algebra[F,X,?],Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] = {
+  def uncons[F[_],X,O](s: FreeC[Algebra[F,O,?],Unit], chunkSize: Int = 1024, maxSteps: Long = 10000): FreeC[Algebra[F,X,?],Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] = {
     s.viewL.get match {
       case done: FreeC.Pure[Algebra[F,O,?], Unit] => pure(None)
       case failed: FreeC.Fail[Algebra[F,O,?], _] => raiseError(failed.error)
@@ -285,7 +285,7 @@ private[fs2] object Algebra {
             try {
               def asSegment(c: Catenable[Segment[O,Unit]]): Segment[O,Unit] =
                 c.uncons.flatMap { case (h1,t1) => t1.uncons.map(_ => Segment.catenated(c)).orElse(Some(h1)) }.getOrElse(Segment.empty)
-              os.values.splitAt(chunkSize) match {
+              os.values.splitAt(chunkSize, Some(maxSteps)) match {
                 case Left((r,segments,rem)) =>
                   pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some(asSegment(segments) -> f(Right(r))))
                 case Right((segments,tl)) =>

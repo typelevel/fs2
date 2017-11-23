@@ -2031,6 +2031,7 @@ object Stream {
           val o2: O = carry.fold(o)(S.combine(_, o))
           val partitions: Chunk[O] = f(o2)
           if (partitions.isEmpty) partitions -> None
+          else if (partitions.size == 1) Chunk.empty -> Some(partitions.strict.last)
           else partitions.take(partitions.size - 1).voidResult -> Some(partitions.strict.last)
         }.flatMap { case (out, carry) => out }.mapResult { case ((out, carry), unit) => carry }
       }.flatMap { case Some(carry) => Pull.output1(carry); case None => Pull.done }.stream

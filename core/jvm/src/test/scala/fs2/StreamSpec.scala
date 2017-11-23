@@ -226,5 +226,9 @@ class StreamSpec extends Fs2Spec with Inside {
        )
        runLog { (s1.scope ++ s2).take(2).repeat.take(4).merge(Stream.eval_(IO.unit)) }
      }
+
+     "infinite segments that emit few elements" in {
+       Stream.segment(Segment.from(0L)).filter(_ < 2).take(2).toVector shouldBe Vector(0L, 1L)
+     }
   }
 }
