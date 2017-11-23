@@ -137,7 +137,8 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
    * the value computed by `fa`.
    *
    * Note: upon binding the returned action, `fa` is shifted to the execution context of this `Ref`
-   * and then forked.
+   * and then forked. Because the evaluation of `fa` is shifted, any errors that occur while evaluating
+   * `fa` are propagated through subsequent calls to `get` (the returned action completes successfully).
    */
   def setAsync(fa: F[A]): F[Unit] =
     F.liftIO(F.runAsync(F.shift(ec) *> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
@@ -145,8 +146,18 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
   override def setAsyncPure(a: A): F[Unit] =
     F.delay { actor ! Msg.Set(Right(a), () => ()) }
 
-  override def setSync(fa: F[A]): F[Unit] =
-    fa.flatMap(a => F.async[Unit](cb => actor ! Msg.Set(Right(a), () => cb(Right(())))) *> F.shift)
+  /**
+   * *Synchronously* sets the current value to the value computed by `fa`.
+   *
+   * The returned value completes evaluating after the reference has been successfully set.
+   *
+   * Satisfies: `r.setSync(fa) *> r.get == fa`
+   *
+   * If `fa` fails, the returned action still completes successfully. The failure will be set as
+   * the value of this ref, and any subsequent calls to `get` will fail with the exception.
+   */
+  def setSync(fa: F[A]): F[Unit] =
+    fa.attempt.flatMap(r => F.async[Unit](cb => actor ! Msg.Set(r, () => cb(Right(())))) *> F.shift)
 
   override def setSyncPure(a: A): F[Unit] =
     setSync(F.pure(a))

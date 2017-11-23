@@ -3,7 +3,6 @@ package fs2.async
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.effect.Sync
-import cats.implicits._
 
 import scala.annotation.tailrec
 
@@ -20,7 +19,6 @@ final class SyncRef[F[_], A] private (private val ar: AtomicReference[A])(implic
   override def get: F[A] = F.delay(ar.get)
 
   override def setAsyncPure(a: A): F[Unit] = F.delay(ar.lazySet(a))
-  override def setSync(fa: F[A]): F[Unit] = fa.flatMap(setSyncPure)
   override def setSyncPure(a: A): F[Unit] = F.delay(ar.set(a))
 
   override def tryModify(f: A => A): F[Option[Change[A]]] = F.delay {

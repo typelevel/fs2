@@ -14,19 +14,7 @@ trait RefOps[F[_], A] {
 
   /** *Asynchronously* sets the current value to the supplied pure value. */
   def setAsyncPure(a: A): F[Unit]
-
-  /**
-   * *Synchronously* sets the current value.
-   *
-   * The returned value completes evaluating after the reference has been successfully set.
-   *
-   * Satisfies: `r.setSync(fa) *> r.get == fa`
-   *
-   * If `fa` fails, the returned action fails with the failure and the value of the ref is unmodified
-   * (`r.get` will return the same value before and after a failed `r.setSync(...)`).
-   */
-  def setSync(fa: F[A]): F[Unit]
-
+  
   /**
    * *Synchronously* sets the current value to the supplied pure value.
    *
