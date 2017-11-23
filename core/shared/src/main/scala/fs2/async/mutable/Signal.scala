@@ -94,7 +94,7 @@ object Signal {
                 if (l != last) s
                 else (a, l, listen + (id -> ref))
               } flatMap { c =>
-                if (c.previous != c.now) ref.get
+                if (c.now != c.previous) ref.get
                 else F.pure((c.now._1, c.now._2))
               }
             }
