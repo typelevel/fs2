@@ -77,8 +77,5 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
       }.runLog.map(_.flatten).unsafeRunSync()
       result shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector
     }
-
   }
-
-
 }

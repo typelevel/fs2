@@ -9,7 +9,7 @@ import cats.effect.{ Effect, IO, Sync }
 import cats.implicits.{ catsSyntaxEither => _, _ }
 
 import fs2.Chunk.Bytes
-import fs2.async.{ mutable, Ref }
+import fs2.async.{ Change, mutable }
 
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit F: Sync[F]): F[Option[Chunk[Byte]]] =
@@ -181,13 +181,13 @@ private[io] object JavaInputOutputStream {
       }
 
 
-      F.flatMap[(Ref.Change[DownStreamState], Option[Bytes]),Int](dnState.modify2(tryGetChunk)) {
-        case (Ref.Change(o,n), Some(bytes)) =>
+      F.flatMap[(Change[DownStreamState], Option[Bytes]),Int](dnState.modify2(tryGetChunk)) {
+        case (Change(o,n), Some(bytes)) =>
           F.delay {
             Array.copy(bytes.values, 0, dest,off,bytes.size)
             bytes.size
           }
-        case (Ref.Change(o,n), None) =>
+        case (Change(o,n), None) =>
           n match {
             case Done(None) => F.pure(-1)
             case Done(Some(err)) => F.raiseError(new IOException("Stream is in failed state", err))

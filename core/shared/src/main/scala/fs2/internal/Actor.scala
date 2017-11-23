@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference
  * This code is copyright Andriy Plokhotnyuk, Runar Bjarnason, and other contributors,
  * and is licensed using 3-clause BSD, see LICENSE file at:
  *
- * https://github.com/scalaz/scalaz/etc/LICENCE
+ * https://github.com/scalaz/scalaz/blob/f20a68eb5bf1cea83d51583cdaed7d523464f3f7/LICENSE.txt
  */
 
 /**
@@ -33,22 +33,16 @@ import java.util.concurrent.atomic.AtomicReference
  * @param ec       Execution context
  * @tparam A       The type of messages accepted by this actor.
  */
-private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable => Unit = ActorUtils.rethrowError)
-                         (implicit val ec: ExecutionContext) {
+private[fs2] final class Actor[A](handler: A => Unit, onError: Throwable => Unit)(implicit val ec: ExecutionContext) {
   private val head = new AtomicReference[Node[A]]
 
-  /** Alias for `apply` */
+  /** Pass the message `a` to the mailbox of this actor */
   def !(a: A): Unit = {
     val n = new Node(a)
     val h = head.getAndSet(n)
     if (h ne null) h.lazySet(n)
     else schedule(n)
   }
-
-  /** Pass the message `a` to the mailbox of this actor */
-  def apply(a: A): Unit = this ! a
-
-  def contramap[B](f: B => A): Actor[B] = new Actor[B](b => this ! f(b), onError)(ec)
 
   private def schedule(n: Node[A]): Unit = ec.execute(() => act(n))
 
@@ -77,12 +71,8 @@ private[fs2] final case class Actor[A](handler: A => Unit, onError: Throwable =>
 
 private class Node[A](val a: A) extends AtomicReference[Node[A]]
 
-private object ActorUtils {
-  val rethrowError: Throwable => Unit = throw _
-}
-
 private[fs2] object Actor {
 
-  def actor[A](handler: A => Unit, onError: Throwable => Unit = ActorUtils.rethrowError)
+  def apply[A](handler: A => Unit, onError: Throwable => Unit = throw _)
               (implicit ec: ExecutionContext): Actor[A] = new Actor[A](handler, onError)(ec)
 }

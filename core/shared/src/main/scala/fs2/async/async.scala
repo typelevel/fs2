@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.Traverse
 import cats.implicits.{ catsSyntaxEither => _, _ }
-import cats.effect.{ Effect, IO }
+import cats.effect.{ Effect, IO, Sync }
 
 /** Provides utilities for asynchronous computations. */
 package object async {
@@ -74,12 +74,14 @@ package object async {
   def topic[F[_]:Effect,A](initial: A)(implicit ec: ExecutionContext): F[mutable.Topic[F,A]] =
     mutable.Topic(initial)
 
-  /** Creates an asynchronous, concurrent mutable reference. */
-  def ref[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] =
-    F.delay(new Ref[F, A])
+  /** Creates an uninitialized `Ref[F,A]`. */
+  def ref[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] = Ref.uninitialized
 
-  /** Creates an asynchronous, concurrent mutable reference, initialized to `a`. */
-  def refOf[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] = ref[F, A].flatMap(r => r.setAsyncPure(a).as(r))
+  /** Creates an initialized `Ref[F,A]`. */
+  def refOf[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] = Ref.initialized(a)
+
+  /** Creates an initialized `SyncRef[F,A]`. */
+  def syncRefOf[F[_]: Sync, A](a: A): F[SyncRef[F,A]] = SyncRef[F,A](a)
 
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
   def parallelTraverse[F[_], G[_], A, B](fa: F[A])(f: A => G[B])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[B]] =
@@ -94,7 +96,7 @@ package object async {
    * bound. The inner `F[A]` will block until the result is available.
    */
   def start[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
-    ref[F, A].flatMap { ref => ref.setAsync(F.shift(ec) *> f).as(ref.get) }
+    ref[F, A].flatMap { ref => ref.setAsync(f).as(ref.get) }
 
   /**
    * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
