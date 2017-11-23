@@ -4,7 +4,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 import fs2._
 import Algebra.Token
+import cats.data.NonEmptyList
 import cats.effect.Sync
+import fs2.Scope.Lease
 import fs2.async.SyncRef
 
 import scala.annotation.tailrec
@@ -56,9 +58,9 @@ import scala.annotation.tailrec
   * @param id           Unique identification of the scope
   * @param parent       If empty indicates root scope. If nonemtpy, indicates parent of this scope
   */
-final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scope[F]])(implicit F: Sync[F]) extends StreamScope[F]{ self =>
+final class RunFoldScope[F[_]]  private (val id: Token, private val parent: Option[RunFoldScope[F]])(implicit F: Sync[F]) extends Scope[F]{ self =>
 
-  private val state: SyncRef[F, Scope.State[F]] = new SyncRef(new AtomicReference(Scope.State.initial))
+  private val state: SyncRef[F, RunFoldScope.State[F]] = new SyncRef(new AtomicReference(RunFoldScope.State.initial))
 
   /**
     * Registers new resource in this scope.
@@ -90,11 +92,11 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
     * and attaches newly creates scope to that scope.
     *
     */
-  private[internal] def open: F[Scope[F]] = {
+  private[internal] def open: F[RunFoldScope[F]] = {
     F.flatMap(state.modify2 { s =>
       if (! s.open) (s, None)
       else {
-        val scope = new Scope[F](new Token(), Some(self))
+        val scope = new RunFoldScope[F](new Token(), Some(self))
         (s.copy(children = scope +: s.children), Some(scope))
       }
     }) {
@@ -130,7 +132,7 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
     F.map(Catenable.traverseInstance.traverse(ca)(f)) { results =>
       results.collect { case Left(err) => err }.uncons match {
         case None => Right(())
-        case Some((first, others)) => Left(new CompositeFailure(first, others.toList))
+        case Some((first, others)) => Left(new CompositeFailure(NonEmptyList(first, others.toList)))
       }
     }
   }
@@ -151,13 +153,13 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
     */
   private[internal] def close: F[Either[Throwable, Unit]] = {
     F.flatMap(state.modify{ _.close }) { c =>
-    F.flatMap(traverseError[Scope[F]](c.previous.children, _.close)) { resultChildren =>
+    F.flatMap(traverseError[RunFoldScope[F]](c.previous.children, _.close)) { resultChildren =>
     F.flatMap(traverseError[Resource[F]](c.previous.resources, _.release)) { resultResources =>
     F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
       val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
       results.headOption match {
        case None => Right(())
-       case Some(h) => Left(new CompositeFailure(h, results.tail.toList))
+       case Some(h) => Left(new CompositeFailure(NonEmptyList(h, results.tail.toList)))
      }
     }}}}
   }
@@ -166,7 +168,7 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
   /**
     * Returns closes open parent scope or root.
     */
-  private[internal] def openAncestor: F[Scope[F]] = {
+  private[internal] def openAncestor: F[RunFoldScope[F]] = {
     self.parent.fold(F.pure(self)) { parent =>
       F.flatMap(parent.state.get) { s =>
         if (s.open) F.pure(parent)
@@ -176,9 +178,9 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
   }
 
   /** gets all ancestors of this scope, inclusive root scope **/
-  private def ancestors: F[Catenable[Scope[F]]] = {
+  private def ancestors: F[Catenable[RunFoldScope[F]]] = {
     @tailrec
-    def go(curr: Scope[F], acc: Catenable[Scope[F]]): F[Catenable[Scope[F]]] = {
+    def go(curr: RunFoldScope[F], acc: Catenable[RunFoldScope[F]]): F[Catenable[RunFoldScope[F]]] = {
       curr.parent match {
         case Some(parent) => go(parent, acc :+ parent)
         case None => F.pure(acc)
@@ -231,8 +233,8 @@ final class Scope[F[_]]  private (val id: Token, private val parent: Option[Scop
 
 }
 
-object Scope {
-  def newRoot[F[_]: Sync]: Scope[F] = new Scope[F](new Token(), None)
+object RunFoldScope {
+  def newRoot[F[_]: Sync]: RunFoldScope[F] = new RunFoldScope[F](new Token(), None)
 
 
 
@@ -252,10 +254,10 @@ object Scope {
     *
     * @tparam F
     */
-  final private[Scope] case class State[F[_]](
+  final private[RunFoldScope] case class State[F[_]](
     open: Boolean
     , resources: Catenable[Resource[F]]
-    , children: Catenable[Scope[F]]
+    , children: Catenable[RunFoldScope[F]]
   ) { self =>
 
     def unregisterResource(id: Token): (State[F], Option[Resource[F]]) = {
@@ -264,18 +266,18 @@ object Scope {
       }
     }
 
-    def unregisterChild(id: Token): (State[F], Option[Scope[F]]) = {
-      self.children.deleteFirst(_.id == id).fold((self, None: Option[Scope[F]])) { case (s, c) =>
+    def unregisterChild(id: Token): (State[F], Option[RunFoldScope[F]]) = {
+      self.children.deleteFirst(_.id == id).fold((self, None: Option[RunFoldScope[F]])) { case (s, c) =>
         (self.copy(children = c), Some(s))
       }
     }
 
-    def close: State[F] = Scope.State.closed
+    def close: State[F] = RunFoldScope.State.closed
 
   }
 
 
-  private[Scope] object State {
+  private[RunFoldScope] object State {
     private val initial_ = State[Nothing](open = true, resources = Catenable.empty, children = Catenable.empty)
     def initial[F[_]]: State[F] = initial_.asInstanceOf[State[F]]
 

@@ -1,5 +1,7 @@
 package fs2
 
+import cats.data.NonEmptyList
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
@@ -1302,8 +1304,8 @@ object Stream {
     emit(start) ++ eval(f(start)).flatMap(iterateEval(_)(f))
 
   /** Allows to get current scope during evaluation of the stream **/
-  def getScope[F[_]]: Stream[F, StreamScope[F]] =
-    Stream.fromFreeC(Algebra.getScope[F, StreamScope[F]].flatMap(Algebra.output1(_)))
+  def getScope[F[_]]: Stream[F, Scope[F]] =
+    Stream.fromFreeC(Algebra.getScope[F, Scope[F]].flatMap(Algebra.output1(_)))
 
   /**
    * Creates a stream that, when run, fails with the supplied exception.
@@ -1773,7 +1775,7 @@ object Stream {
           done.modify {
             case rslt0@Some(Some(err0)) =>
               rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-                Some(Some(new CompositeFailure(err0, List(err))))
+                Some(Some(new CompositeFailure(NonEmptyList.of(err0, err))))
               }
             case _ => Some(rslt)
           } *> outputQ.enqueue1(None)
@@ -1791,7 +1793,7 @@ object Stream {
         // if fails will enq in queue failure
         // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
         // and that it must be released once the inner stream terminates or fails.
-        def runInner(inner: Stream[F, O2], outerScope: StreamScope[F]): F[Unit] = {
+        def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] = {
           outerScope.lease flatMap {
             case Some(lease) =>
                 available.decrement *>

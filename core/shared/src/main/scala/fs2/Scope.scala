@@ -1,5 +1,7 @@
 package fs2
 
+import fs2.Scope.Lease
+
 
 /**
   * Scope represents a controlled block of execution of the stream to track resources acquired and released during
@@ -7,7 +9,7 @@ package fs2
   *
   * Scope's methods are used to perform low-level actions on stream interpretation, such as leasing the resources.
   */
-trait StreamScope[F[_]] {
+trait Scope[F[_]] {
 
 
   /**
@@ -32,18 +34,25 @@ trait StreamScope[F[_]] {
 
 }
 
-
-/**
-  * Wraps leased resources from the scope of the other Stream.
-  */
-trait Lease[F[_]] {
+object Scope {
 
   /**
-    * Cancels lease of the previously leased resources. This may actually run finalizers on some of the resources,
-    * and if these fails, tresulting `F` will be evaluated to left side.
-    * @return
+    * Wraps leased resources from the scope of the other Stream.
     */
-  def cancel: F[Either[Throwable, Unit]]
+  trait Lease[F[_]] {
+
+    /**
+      * Cancels lease of the previously leased resources. This may actually run finalizers on some of the resources,
+      * and if these fails, tresulting `F` will be evaluated to left side.
+      * @return
+      */
+    def cancel: F[Either[Throwable, Unit]]
+
+  }
+
 
 }
+
+
+
 
