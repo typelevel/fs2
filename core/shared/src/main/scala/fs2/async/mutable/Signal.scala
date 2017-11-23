@@ -4,7 +4,7 @@ package mutable
 
 import scala.concurrent.ExecutionContext
 
-import cats.{ Eq, Applicative, Functor }
+import cats.{ Applicative, Functor }
 import cats.effect.Effect
 import cats.implicits._
 
@@ -23,12 +23,12 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
    *
    * `F` returns the result of applying `op` to current value.
    */
-  def modify(f: A => A): F[Ref.Change[A]]
+  def modify(f: A => A): F[Change[A]]
 
   /**
    * Like [[modify]] but allows extraction of a `B` from `A` and returns it along with the `Change`.
    */
-  def modify2[B](f: A => (A,B)):F[(Ref.Change[A], B)]
+  def modify2[B](f: A => (A,B)):F[(Change[A], B)]
 
   /**
    * Asynchronously refreshes the value of the signal,
@@ -47,10 +47,10 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
       def get: F[B] = self.get.map(f)
       def set(b: B): F[Unit] = self.set(g(b))
       def refresh: F[Unit] = self.refresh
-      def modify(bb: B => B): F[Ref.Change[B]] = modify2( b => (bb(b),()) ).map(_._1)
-      def modify2[B2](bb: B => (B,B2)):F[(Ref.Change[B], B2)] =
-        self.modify2 { a =>   val (a2, b2) = bb(f(a)) ; g(a2) -> b2 }
-        .map { case (Ref.Change(prev, now),b2) => Ref.Change(f(prev), f(now)) -> b2 }
+      def modify(bb: B => B): F[Change[B]] = modify2( b => (bb(b),()) ).map(_._1)
+      def modify2[B2](bb: B => (B,B2)):F[(Change[B], B2)] =
+        self.modify2 { a => val (a2, b2) = bb(f(a)); g(a2) -> b2 }
+        .map { case (ch,b2) => ch.map(f) -> b2 }
     }
 }
 
@@ -69,8 +69,8 @@ object Signal {
       def refresh: F[Unit] = modify(identity).as(())
       def set(a: A): F[Unit] = modify(_ => a).as(())
       def get: F[A] = state.get.map(_._1)
-      def modify(f: A => A): F[Ref.Change[A]] = modify2( a => (f(a), ()) ).map(_._1)
-      def modify2[B](f: A => (A,B)):F[(Ref.Change[A], B)] = {
+      def modify(f: A => A): F[Change[A]] = modify2( a => (f(a), ()) ).map(_._1)
+      def modify2[B](f: A => (A,B)):F[(Change[A], B)] = {
         state.modify2 { case (a, l, _) =>
           val (a0, b) = f(a)
           (a0, l+1, Map.empty[ID, Ref[F, (A, Long)]]) -> b
@@ -94,7 +94,7 @@ object Signal {
                 if (l != last) s
                 else (a, l, listen + (id -> ref))
               } flatMap { c =>
-                if (c.modified(Eq.fromUniversalEquals)) ref.get
+                if (c.now != c.previous) ref.get
                 else F.pure((c.now._1, c.now._2))
               }
             }

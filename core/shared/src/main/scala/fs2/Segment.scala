@@ -480,22 +480,30 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
-   * Returns a segment that suppresses all output and returns the last element output by
-   * source segment paired with the source segment result.
+   * Returns a segment that outputs all but the last element from the original segment, returning
+   * the last element as part of the result.
    *
    * @example {{{
-   * scala> Segment(1,2,3).last.run
+   * scala> Segment(1,2,3).last.drain.run
    * res0: (Unit, Option[Int]) = ((),Some(3))
+   * scala> Segment(1,2,3).last.toList
+   * res1: List[Int] = List(1, 2)
    * }}}
    */
-  def last: Segment[Nothing,(R,Option[O])] = new Segment[Nothing,(R,Option[O])] {
-    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: ((R,Option[O])) => Unit) = Eval.defer {
-      var last: Option[O] = None
+  def last: Segment[O,(R,Option[O])] = last_(None)
+
+  private def last_[O2 >: O](lastInit: Option[O2]): Segment[O2,(R,Option[O2])] = new Segment[O2,(R,Option[O2])] {
+    def stage0(depth: Depth, defer: Defer, emit: O2 => Unit, emits: Chunk[O2] => Unit, done: ((R,Option[O2])) => Unit) = Eval.defer {
+      var last: Option[O2] = lastInit
       self.stage(depth.increment, defer,
-        o => last = Some(o),
-        os => last = Some(os(os.size - 1)),
+        o => { if (last.isDefined) emit(last.get); last = Some(o) },
+        os => if (os.nonEmpty) {
+          if (last.isDefined) emit(last.get)
+          var i = 0; while (i < os.size - 1) { emit(os(i)); i += 1 }
+          last = Some(os(os.size - 1))
+        },
         r => done((r,last))
-      ).map(_.mapRemainder(_.last))
+      ).map(_.mapRemainder(_.last_(last)))
     }
     override def toString = s"($self).last"
   }
@@ -1047,6 +1055,26 @@ abstract class Segment[+O,+R] { self =>
         if (out.isEmpty) Left(r)
         else Right(out -> pure(r))
     }
+  }
+
+  /**
+   * Returns all output chunks and the result of this segment after stepping it to completion.
+   *
+   * Will not terminate if run on an infinite segment.
+   *
+   * @example {{{
+   * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).unconsAll
+   * res0: (Catenable[Chunk[Int]], Unit) = (Catenable(Chunk(-1, 0), Chunk(1, 2, 3)),())
+   * }}}
+   */
+  def unconsAll: (Catenable[Chunk[O]],R) = {
+    @annotation.tailrec
+    def go(acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
+      s.unconsChunks match {
+        case Right((hds, tl)) => go(acc ++ hds, tl)
+        case Left(r) => (acc, r)
+      }
+    go(Catenable.empty, this)
   }
 
   /**

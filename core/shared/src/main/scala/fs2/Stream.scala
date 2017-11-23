@@ -1255,6 +1255,16 @@ object Stream {
   }
 
   /**
+   * Lifts an iterator into a Stream
+   */
+  def fromIterator[F[_], A](iterator: Iterator[A])(implicit F: Sync[F]): Stream[F, A] = {
+    def getNext(i: Iterator[A]): F[Option[(A, Iterator[A])]] =
+      F.delay(i.hasNext).flatMap(b => if (b) F.delay(i.next()).map(a => (a, i).some) else F.pure(None))
+    Stream.unfoldEval(iterator)(getNext)
+  }
+
+
+  /**
    * Lifts an effect that generates a stream in to a stream. Alias for `eval(f).flatMap(_)`.
    *
    * @example {{{
@@ -2102,7 +2112,7 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, a `Sync[F]` instance must be implicitly available.
+     * To call this method, an `Effect[F]` instance must be implicitly available.
      *
      * @example {{{
      * scala> import cats.effect.IO
@@ -2124,7 +2134,7 @@ object Stream {
      * When this method has returned, the stream has not begun execution -- this method simply
      * compiles the stream down to the target effect type.
      *
-     * To call this method, a `Sync[F]` instance must be implicitly available.
+     * To call this method, an `Effect[F]` instance must be implicitly available.
      *
      * @example {{{
      * scala> import cats.effect.IO

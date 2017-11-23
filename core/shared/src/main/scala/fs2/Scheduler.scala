@@ -203,7 +203,7 @@ abstract class Scheduler {
   def debounce[F[_],O](d: FiniteDuration)(implicit F: Effect[F], ec: ExecutionContext): Pipe[F,O,O] = {
     def unconsLatest(s: Stream[F,O]): Pull[F,Nothing,Option[(O,Stream[F,O])]] =
       s.pull.uncons.flatMap {
-        case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
+        case Some((hd,tl)) => Pull.segment(hd.last.drain).flatMap {
           case (_, Some(last)) => Pull.pure(Some(last -> tl))
           case (_, None) => unconsLatest(tl)
         }
@@ -216,7 +216,7 @@ abstract class Scheduler {
           (l race r).pull.flatMap {
             case Left(_) =>
               Pull.output1(o) *> r.pull.flatMap {
-                case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
+                case Some((hd,tl)) => Pull.segment(hd.last.drain).flatMap {
                   case (_, Some(last)) => go(last, tl)
                   case (_, None) => unconsLatest(tl).flatMap {
                     case Some((last, tl)) => go(last, tl)
@@ -226,7 +226,7 @@ abstract class Scheduler {
                 case None => Pull.done
               }
             case Right(r) => r match {
-              case Some((hd,tl)) => Pull.segment(hd.last).flatMap {
+              case Some((hd,tl)) => Pull.segment(hd.last.drain).flatMap {
                 case (_, Some(last)) => go(last, tl)
                 case (_, None) => go(o, tl)
               }

@@ -124,4 +124,5 @@ package object io {
     */
   def toInputStream[F[_]](implicit F: Effect[F], ec: ExecutionContext): Pipe[F,Byte,InputStream] =
     JavaInputOutputStream.toInputStream
+
 }
