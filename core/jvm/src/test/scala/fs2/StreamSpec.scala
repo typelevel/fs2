@@ -107,6 +107,27 @@ class StreamSpec extends Fs2Spec with Inside {
         IndexedSeq.range(0, 100)
     }
 
+    "repartition" in {
+      Stream("Lore", "m ip", "sum dolo", "r sit amet").repartition(s => Chunk.array(s.split(" "))).toList shouldBe
+        List("Lorem", "ipsum", "dolor", "sit", "amet")
+      Stream("hel", "l", "o Wor", "ld").repartition(s => Chunk.indexedSeq(s.grouped(2).toVector)).toList shouldBe
+        List("he", "ll", "o ", "Wo", "rl", "d")
+      Stream.empty.covaryOutput[String].repartition(_ => Chunk.empty).toList shouldBe List()
+      Stream("hello").repartition(_ => Chunk.empty).toList shouldBe List()
+
+      def input = Stream("ab").repeat
+      def ones(s: String) = Chunk vector s.grouped(1).toVector
+      input.take(2).repartition(ones).toVector shouldBe Vector("a", "b", "a", "b")
+      input.take(4).repartition(ones).toVector shouldBe Vector("a", "b", "a", "b", "a", "b", "a", "b")
+      input.repartition(ones).take(2).toVector shouldBe Vector("a", "b")
+      input.repartition(ones).take(4).toVector shouldBe Vector("a", "b", "a", "b")
+      Stream.emits(input.take(4).toVector).repartition(ones).toVector shouldBe Vector("a", "b", "a", "b", "a", "b", "a", "b")
+
+      Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList shouldBe List(1, 3, 6, 10, 15, 15)
+
+      Stream(1, 10, 100).repartition(i => Segment.from(i).map(_.toInt).take(1000).toChunk).take(4).toList shouldBe List(1, 2, 3, 4)
+    }
+
     "translate" in forAll { (s: PureStream[Int]) =>
       runLog(s.get.covary[IO].flatMap(i => Stream.eval(IO.pure(i))).translate(cats.arrow.FunctionK.id[IO])) shouldBe
       runLog(s.get)
