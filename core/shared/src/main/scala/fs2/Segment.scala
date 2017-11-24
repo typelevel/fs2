@@ -639,7 +639,7 @@ abstract class Segment[+O,+R] { self =>
       self.stage(depth.increment, defer,
         o => { emit(b); b = f(b, o) },
         os => { var i = 0; while (i < os.size) { emit(b); b = f(b, os(i)); i += 1 } },
-        r => { if (emitFinal) emit(b); done(b) }).map(_.mapRemainder(_.scan(b)(f)))
+        r => { if (emitFinal) emit(b); done(b) }).map(_.mapRemainder(_.scan(b, emitFinal)(f)))
     }
     override def toString = s"($self).scan($z)($f)"
   }
@@ -655,6 +655,11 @@ abstract class Segment[+O,+R] { self =>
    *
    * The prefix is computed eagerly while the suffix is computed lazily.
    *
+   * The `maxSteps` parameter provides a notion of fairness. If specified, steps through the staged machine
+   * are counted while executing and if the limit is reached, execution completes, returning a `Right` consisting
+   * of whatever elements were seen in the first `maxSteps` steps. This provides fairness but yielding the
+   * computation back to the caller but with less than `n` accumulated values.
+   *
    * @example {{{
    * scala> Segment(1, 2, 3, 4, 5).splitAt(2)
    * res0: Either[(Unit,Catenable[Segment[Int,Unit]],Long),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Right((Catenable(Chunk(1, 2)),Chunk(3, 4, 5)))
@@ -662,7 +667,7 @@ abstract class Segment[+O,+R] { self =>
    * res0: Either[(Unit,Catenable[Segment[Int,Unit]],Long),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Left(((),Catenable(Chunk(1, 2, 3, 4, 5)),2))
    * }}}
    */
-   final def splitAt(n: Long): Either[(R,Catenable[Segment[O,Unit]],Long),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
+   final def splitAt(n: Long, maxSteps: Option[Long] = None): Either[(R,Catenable[Segment[O,Unit]],Long),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
     if (n <= 0) Right((Catenable.empty, this))
     else {
       var out: Catenable[Chunk[O]] = Catenable.empty
@@ -689,8 +694,15 @@ abstract class Segment[+O,+R] { self =>
         o => emits(Chunk.singleton(o)),
         os => emits(os),
         r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
-      try while (result.isEmpty) stepAll(step, trampoline)
-      catch { case Done => }
+      try {
+        maxSteps match {
+          case Some(maxSteps) =>
+            var steps = 0L
+            while (result.isEmpty && steps < maxSteps) { steps += stepAll(step, trampoline) }
+          case None =>
+            while (result.isEmpty) { stepAll(step, trampoline) }
+        }
+      } catch { case Done => }
       result.map {
         case Left(r) => Left((r,out,rem))
         case Right(after) => Right((out,step.remainder.prepend(after)))
@@ -1345,13 +1357,16 @@ object Segment {
     override def toString = s"catenated(${s.toList.mkString(", ")})"
   }
 
-  private def stepAll(s: Step[Any,Any], trampoline: Trampoline): Unit = {
+  private def stepAll(s: Step[Any,Any], trampoline: Trampoline): Long = {
+    var steps = 1L
     s.step()
     val deferred = trampoline.deferred
     while (!deferred.isEmpty()) {
+      steps += 1
       val tc = deferred.remove()
       tc()
     }
+    steps
   }
 
   final case class Depth(value: Int) extends AnyVal {
