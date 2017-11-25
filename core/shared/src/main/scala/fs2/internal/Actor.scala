@@ -28,6 +28,8 @@ import java.util.concurrent.atomic.AtomicReference
  * Implementation based on non-intrusive MPSC node-based queue, described by Dmitriy Vyukov:
  * [[http://www.1024cores.net/home/lock-free-algorithms/queues/non-intrusive-mpsc-node-based-queue]]
  *
+ * A detailed analysis of the behaviour of Actor is available at [[https://gist.github.com/djspiewak/671deab9d7ea027cdc42]]
+ * 
  * @param handler  The message handler
  * @param onError  Exception handler, called if the message handler throws any `Throwable`.
  * @param ec       Execution context
