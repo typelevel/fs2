@@ -11,7 +11,8 @@ lazy val contributors = Seq(
   "fthomas" -> "Frank Thomas",
   "runarorama" -> "Rúnar Ó. Bjarnason",
   "jedws" -> "Jed Wesley-Smith",
-  "mpilquist" -> "Michael Pilquist"
+  "mpilquist" -> "Michael Pilquist",
+  "durban" -> "Daniel Urban"
 )
 
 lazy val commonSettings = Seq(
