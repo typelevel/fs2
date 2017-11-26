@@ -159,6 +159,7 @@ object Queue {
       * Internal state of the queue
       * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
       * @param deq      A list of waiting dequeuers, added to when queue is empty
+      * @param peek     The waiting peekers (if any), created when queue is empty
       */
     final case class State(
       queue: Vector[A],
@@ -202,10 +203,7 @@ object Queue {
 
         def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
 
-        def peek1: F[A] = peek1Impl.flatMap {
-          case Left(ref) => ref.get
-          case Right(a) => F.pure(a)
-        }
+        def peek1: F[A] = peek1Impl.flatMap(_.fold(_.get, F.pure))
 
         def timedDequeue1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
           timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head))
@@ -218,16 +216,13 @@ object Queue {
         }
 
         private def peek1Impl: F[Either[Ref[F, A], A]] = ref[F, A].flatMap { ref =>
-          qref.modify2 { state =>
-            if (state.queue.isEmpty) {
-              state.peek match {
-                case None => (state.copy(peek = Some(ref)), Left(ref))
-                case Some(r) => (state, Left(r))
-              }
-            } else {
-              (state, Right(state.queue.head))
-            }
-          }.map(_._2)
+          qref.modify { state =>
+            if (state.queue.isEmpty && state.peek.isEmpty) state.copy(peek = Some(ref))
+            else state
+          }.map { change =>
+            if (change.previous.queue.isEmpty) Left(change.now.peek.get)
+            else Right(change.now.queue.head)
+          }
         }
 
         def cancellableDequeue1: F[(F[A],F[Unit])] =
