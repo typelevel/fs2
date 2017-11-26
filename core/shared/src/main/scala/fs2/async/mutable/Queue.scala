@@ -221,7 +221,7 @@ object Queue {
             else state
           }.map { change =>
             if (change.previous.queue.isEmpty) Left(change.now.peek.get)
-            else Right(change.now.queue.head)
+            else Right(change.previous.queue.head)
           }
         }
 
