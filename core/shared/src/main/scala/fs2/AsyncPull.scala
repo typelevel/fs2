@@ -35,17 +35,20 @@ sealed abstract class AsyncPull[F[_],A] { self =>
   def race[B](b: AsyncPull[F,B])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,Either[A,B]] = new AsyncPull[F, Either[A,B]] {
     def get = cancellableGet.flatMap(_._1)
     def cancellableGet = FreeC.Eval(for {
-      ref <- async.ref[F,Either[A,B]]
+      ref <- async.ref[F,Either[Throwable, Either[A,B]]]
       t0 <- self.cancellableGet.run
       (a, cancelA) = t0
       t1 <- b.cancellableGet.run
       (b, cancelB) = t1
-      _ <- ref.setAsync(a.run.map(Left(_)))
-      _ <- ref.setAsync(b.run.map(Right(_)))
+      fa = a.run.map(Left(_): Either[A, B])
+      fb = b.run.map(Right(_): Either[A, B])
+      _ <-  async.fork(fa.attempt.flatMap(ref.setAsyncPure))
+      _ <-  async.fork(fb.attempt.flatMap(ref.setAsyncPure))
     } yield {
       (FreeC.Eval(ref.get.flatMap {
-        case Left(a) => cancelB.run.as(Left(a): Either[A, B])
-        case Right(b) => cancelA.run.as(Right(b): Either[A, B])
+        case Left(e) => F.raiseError[Either[A, B]](e)
+        case Right(Left(a)) => cancelB.run.as(Left(a): Either[A, B])
+        case Right(Right(b)) => cancelA.run.as(Right(b): Either[A, B])
       }), FreeC.Eval(cancelA.run *> cancelB.run))
     })
   }

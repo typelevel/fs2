@@ -130,19 +130,6 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       case Some(changeAndB) => F.pure(changeAndB)
     }
 
-  /**
-   * *Asynchronously* sets the current value to the value computed by `fa`.
-   *
-   * After the returned `F[Unit]` is bound, an update will eventually occur, setting the current value to
-   * the value computed by `fa`.
-   *
-   * Note: upon binding the returned action, `fa` is shifted to the execution context of this `Ref`
-   * and then forked. Because the evaluation of `fa` is shifted, any errors that occur while evaluating
-   * `fa` are propagated through subsequent calls to `get` (the returned action completes successfully).
-   */
-  def setAsync(fa: F[A]): F[Unit] =
-    F.liftIO(F.runAsync(F.shift(ec) *> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
-
   override def setAsyncPure(a: A): F[Unit] =
     F.delay { actor ! Msg.Set(Right(a), () => ()) }
 
