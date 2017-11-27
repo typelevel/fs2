@@ -60,15 +60,14 @@ package object file {
    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
    */
   def writeAllAsync[F[_]](path: Path, flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE), executorService: Option[ExecutorService] = None)(implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] =
-    in => (for {
-      out <- pulls.fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService)
-      _ <- _writeAll0(in, out.resource, 0)
-    } yield ()).stream
+    in => pulls.fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService).flatMap { out =>
+      _writeAll0(in, out.resource, 0)
+    }.stream
 
   private def _writeAll0[F[_]](in: Stream[F, Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =
     in.pull.unconsChunk.flatMap {
       case None => Pull.done
-      case Some((hd,tl)) => _writeAll1(hd, out, offset) *> _writeAll0(tl, out, offset + hd.size)
+      case Some((hd,tl)) => _writeAll1(hd, out, offset) >> _writeAll0(tl, out, offset + hd.size)
     }
 
   private def _writeAll1[F[_]](buf: Chunk[Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =

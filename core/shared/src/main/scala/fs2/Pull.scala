@@ -49,7 +49,7 @@ final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,No
     Pull.fromFreeC(get[F2,O2,R] flatMap { r => f(r).get })
 
   /** Alias for `flatMap(_ => p2)`. */
-  def *>[F2[x]>:F[x],O2>:O,R2](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
+  def >>[F2[x]>:F[x],O2>:O,R2](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
     this flatMap { _ => p2 }
 
   /** Lifts this pull to the specified effect type. */
@@ -69,7 +69,7 @@ final class Pull[+F[_],+O,+R] private(private val free: FreeC[Algebra[Nothing,No
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x]>:F[x],O2>:O,R2>:R](p2: => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
-    handleErrorWith(e => p2 *> Pull.raiseError(e)) flatMap { _ =>  p2 }
+    handleErrorWith(e => p2 >> Pull.raiseError(e)) >> p2
 
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
   def handleErrorWith[F2[x]>:F[x],O2>:O,R2>:R](h: Throwable => Pull[F2,O2,R2]): Pull[F2,O2,R2] =
