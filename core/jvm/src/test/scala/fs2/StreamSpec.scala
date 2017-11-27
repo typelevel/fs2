@@ -2,7 +2,7 @@ package fs2
 
 import cats.~>
 import cats.effect.IO
-import cats.implicits._
+import cats.implicits.{ catsSyntaxFlatMapOps => _, _ }
 import org.scalacheck.Gen
 import org.scalatest.Inside
 import scala.concurrent.duration._
@@ -39,8 +39,8 @@ class StreamSpec extends Fs2Spec with Inside {
       runLog(s.get.flatMap(inner => inner.get)) shouldBe { runLog(s.get).flatMap(inner => runLog(inner.get)) }
     }
 
-    "*>" in forAll { (s: PureStream[Int], s2: PureStream[Int] ) =>
-      runLog(s.get *> s2.get) shouldBe { runLog(s.get.flatMap(_ => s2.get)) }
+    ">>" in forAll { (s: PureStream[Int], s2: PureStream[Int] ) =>
+      runLog(s.get >> s2.get) shouldBe { runLog(s.get.flatMap(_ => s2.get)) }
     }
 
     "fromIterator" in forAll { vec: Vector[Int] =>
@@ -189,8 +189,8 @@ class StreamSpec extends Fs2Spec with Inside {
             case None => Pull.done
             case Some((pair, tl)) =>
               pair match {
-                case (true , d) => Pull.output1((true , d - lastTrue)) *> go(d,tl)
-                case (false, d) => Pull.output1((false, d - lastTrue)) *> go(lastTrue,tl)
+                case (true , d) => Pull.output1((true , d - lastTrue)) >> go(d,tl)
+                case (false, d) => Pull.output1((false, d - lastTrue)) >> go(lastTrue,tl)
               }
           }
         }

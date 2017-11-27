@@ -21,7 +21,7 @@ object pulls {
 
   private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(h: FileHandle[F]): Pull[F, Byte, Unit] =
     Pull.eval(h.read(chunkSize, offset)).flatMap {
-      case Some(o) => Pull.output(o) *> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
+      case Some(o) => Pull.output(o) >> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
       case None => Pull.done
     }
 
@@ -35,7 +35,7 @@ object pulls {
     in.pull.unconsChunk.flatMap {
       case None => Pull.done
       case Some((hd,tl)) =>
-        _writeAllToFileHandle2(hd, out, offset) *> _writeAllToFileHandle1(tl, out, offset + hd.size)
+        _writeAllToFileHandle2(hd, out, offset) >> _writeAllToFileHandle1(tl, out, offset + hd.size)
     }
 
   private def _writeAllToFileHandle2[F[_]](buf: Chunk[Byte], out: FileHandle[F], offset: Long): Pull[F, Nothing, Unit] =

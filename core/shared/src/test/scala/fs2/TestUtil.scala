@@ -107,7 +107,7 @@ trait TestUtil extends TestUtilPlatform {
       Failure("failure-in-async-code",
         Stream.eval[IO,Int](IO(throw Err)).pull.unconsAsync.flatMap { _.pull.flatMap {
           case None => Pull.pure(())
-          case Some((hd,tl)) => Pull.output(hd) *> Pull.pure(())
+          case Some((hd,tl)) => Pull.output(hd) >> Pull.pure(())
         }}.stream)
     )
   )
