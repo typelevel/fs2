@@ -153,12 +153,12 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       // or the actor directly, and the winner destroys any
       // references behind it!
       if (won.compareAndSet(false, true)) {
+        val actor = ref.get
+        ref.set(null)
+
         res match {
           case Left(e) => throw e
-          case Right(v) =>
-            val actor = ref.get
-            ref.set(null)
-            actor ! Msg.Set(v, () => ())
+          case Right(v) => actor ! Msg.Set(v, () => ())
         }
       }
     }
