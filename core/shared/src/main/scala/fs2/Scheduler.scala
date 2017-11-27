@@ -136,7 +136,7 @@ abstract class Scheduler {
 
   /**
    * Alias for `sleep(d).drain`. Often used in conjunction with `++` (i.e., `sleep_(..) ++ s`) as a more
-   * performant version of `sleep(..) *> s`.
+   * performant version of `sleep(..) >> s`.
    */
   def sleep_[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Nothing] =
     sleep(d).drain
@@ -215,7 +215,7 @@ abstract class Scheduler {
         s.pull.unconsAsync.flatMap { r =>
           (l race r).pull.flatMap {
             case Left(_) =>
-              Pull.output1(o) *> r.pull.flatMap {
+              Pull.output1(o) >> r.pull.flatMap {
                 case Some((hd,tl)) => Pull.segment(hd.last.drain).flatMap {
                   case (_, Some(last)) => go(last, tl)
                   case (_, None) => unconsLatest(tl).flatMap {

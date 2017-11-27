@@ -170,7 +170,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           if (out.isEmpty) {
             go(buffer :+ Chunk.vector(buf), newLast, tl)
           } else {
-            Pull.output(Segment.catenated(buffer ++ out)) *> go(Catenable.singleton(Chunk.vector(buf)), newLast, tl)
+            Pull.output(Segment.catenated(buffer ++ out)) >> go(Catenable.singleton(Chunk.vector(buf)), newLast, tl)
           }
         case None => Pull.output(Segment.catenated(buffer))
       }
@@ -349,7 +349,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     def go(last: Chunk[O], s: Stream[F,O]): Pull[F,O,Unit] = {
       s.pull.unconsChunk.flatMap {
         case Some((hd,tl)) =>
-          if (hd.nonEmpty) Pull.output(last) *> go(hd,tl)
+          if (hd.nonEmpty) Pull.output(last) >> go(hd,tl)
           else go(last,tl)
         case None =>
           val o = last(last.size - 1)
@@ -388,7 +388,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           case None => Pull.pure(None)
           case Some((hd,tl)) =>
             val all = acc ++ hd.toVector
-            Pull.output(Chunk.vector(all.dropRight(n))) *> go(all.takeRight(n), tl)
+            Pull.output(Chunk.vector(all.dropRight(n))) >> go(all.takeRight(n), tl)
         }
       }
       go(Vector.empty, this).stream
@@ -457,20 +457,20 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           // Check if we can emit this chunk unmodified
           Pull.segment(hd.fold((true, last)) { case ((acc, last), o) => (acc && f(last, o), o) }).flatMap { case (allPass, newLast) =>
             if (allPass) {
-              Pull.output(hd) *> go(newLast, tl)
+              Pull.output(hd) >> go(newLast, tl)
             } else {
               Pull.segment(hd.fold((Vector.empty[O], last)) { case ((acc, last), o) =>
                 if (f(last, o)) (acc :+ o, o)
                 else (acc, last)
               }).flatMap { case (acc, newLast) =>
-                Pull.output(Chunk.vector(acc)) *> go(newLast, tl)
+                Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
               }
             }
           }
       }
     this.pull.uncons1.flatMap {
       case None => Pull.pure(None)
-      case Some((hd, tl)) => Pull.output1(hd) *> go(hd, tl)
+      case Some((hd, tl)) => Pull.output1(hd) >> go(hd, tl)
     }.stream
   }
 
@@ -555,7 +555,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           doChunk(hd, tl, k1, out, None)
         case None =>
           val l = current.map { case (k1, out) => Pull.output1((k1, out)) } getOrElse Pull.pure(())
-          l *> Pull.done
+          l >> Pull.done
       }
     }
 
@@ -617,7 +617,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
               hd.toVector.foreach { o => bldr += separator; bldr += o }
               Chunk.vector(bldr.result)
             }
-            Pull.output(interspersed) *> Pull.pure(Some(tl))
+            Pull.output(interspersed) >> Pull.pure(Some(tl))
         }}.pull.echo
     }.stream
 
@@ -769,7 +769,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *   etc
    */
   def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F,O2] =
-    (Pull.output1(z) *> scan_(z)(f)).stream
+    (Pull.output1(z) >> scan_(z)(f)).stream
 
   private def scan_[O2](z: O2)(f: (O2, O) => O2): Pull[F,O2,Unit] =
     this.pull.uncons.flatMap {
@@ -792,7 +792,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
   def scan1[O2 >: O](f: (O2, O2) => O2): Stream[F,O2] =
     this.pull.uncons1.flatMap {
       case None => Pull.done
-      case Some((hd,tl)) => Pull.output1(hd) *> tl.scan_(hd: O2)(f)
+      case Some((hd,tl)) => Pull.output1(hd) >> tl.scan_(hd: O2)(f)
     }.stream
 
   /**
@@ -876,7 +876,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
       case None => Pull.done
       case Some((hd, tl)) =>
         val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).run
-        Pull.output1(window) *> go(window, tl)
+        Pull.output1(window) >> go(window, tl)
     }.stream
   }
 
@@ -900,7 +900,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
               else go(buffer ++ out, tl)
             case Right((out,tl2)) =>
               val b2 = if (out.nonEmpty) buffer ++ out else buffer
-              (if (b2.nonEmpty) Pull.output1(Segment.catenated(b2)) else Pull.pure(())) *>
+              (if (b2.nonEmpty) Pull.output1(Segment.catenated(b2)) else Pull.pure(())) >>
                 go(Catenable.empty, tl.cons(tl2.drop(1).fold(_ => Segment.empty, identity)))
           }
         case None =>
@@ -1561,9 +1561,9 @@ object Stream {
           self.repeatPull {
             _.uncons.flatMap {
               case Some((o, h)) =>
-                Pull.eval(q.enqueue1(Some(o))) *> Pull.output(o).as(Some(h))
+                Pull.eval(q.enqueue1(Some(o))) >> Pull.output(o).as(Some(h))
               case None =>
-                Pull.eval(enqueueNone) *> Pull.pure(None)
+                Pull.eval(enqueueNone) >> Pull.pure(None)
             }
           }.onFinalize(enqueueNone)
         },
@@ -1629,15 +1629,15 @@ object Stream {
       def go(z: O2, s: Stream[F,O]): Pull[F,O2,Option[Stream[F,O2]]] =
         s.pull.uncons1.flatMap {
           case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
-            Pull.output1(o) *> go(o,tl)
+            Pull.output1(o) >> go(o,tl)
           }
           case None => Pull.pure(None)
         }
       self.pull.uncons1.flatMap {
         case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
-          Pull.output(Chunk.seq(List(z,o))) *> go(o,tl)
+          Pull.output(Chunk.seq(List(z,o))) >> go(o,tl)
         }
-        case None => Pull.output1(z) *> Pull.pure(None)
+        case None => Pull.output1(z) >> Pull.pure(None)
       }.stream
     }
 
@@ -1670,7 +1670,7 @@ object Stream {
       })
 
     /** Alias for `flatMap(_ => s2)`. */
-    def *>[O2](s2: => Stream[F,O2]): Stream[F,O2] =
+    def >>[O2](s2: => Stream[F,O2]): Stream[F,O2] =
       flatMap { _ => s2 }
 
     /**
@@ -1839,7 +1839,7 @@ object Stream {
         }
 
 
-        Stream.eval(async.start(runOuter)) *>
+        Stream.eval(async.start(runOuter)) >>
         outputQ.dequeue.
         unNoneTerminate.
         flatMap { Stream.segment(_).covary[F] }.
@@ -1863,7 +1863,7 @@ object Stream {
      * Note: `this` and `that` are each pulled for a segment. Upon receiving
      * a segment, it is emitted downstream. Depending on how that element is
      * processed, the remainder of `this` and `that` may never be consulted
-     * again (e.g., `a.merge(b) *> Stream.constant(0)`). A common case where
+     * again (e.g., `a.merge(b) >> Stream.constant(0)`). A common case where
      * this can be problematic is draining a stream that publishes to a
      * concurrent data structure and merging it with a consumer from the same
      * data structure. In such cases, use `consumer.concurrently(producer)`
@@ -1888,17 +1888,17 @@ object Stream {
             l match {
               case None => r.pull.flatMap {
                 case None => Pull.done
-                case Some((hd, tl)) => Pull.output(hd) *> tl.pull.echo
+                case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
               }
-              case Some((hd, tl)) => Pull.output(hd) *> tl.pull.unconsAsync.flatMap(go(_, r))
+              case Some((hd, tl)) => Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(_, r))
             }
           case Right(r) =>
             r match {
               case None => l.pull.flatMap {
                 case None => Pull.done
-                case Some((hd, tl)) => Pull.output(hd) *> tl.pull.echo
+                case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
               }
-              case Some((hd, tl)) => Pull.output(hd) *> tl.pull.unconsAsync.flatMap(go(l, _))
+              case Some((hd, tl)) => Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(l, _))
             }
         }
       }
@@ -1990,7 +1990,7 @@ object Stream {
               else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
             }
           case Right(Some((c, srcStream))) =>
-            Pull.output(c) *> srcStream.pull.unconsAsync.flatMap(unpaused(controlFuture, _))
+            Pull.output(c) >> srcStream.pull.unconsAsync.flatMap(unpaused(controlFuture, _))
         }
       }
 
@@ -2024,7 +2024,7 @@ object Stream {
     def prefetch(implicit ec: ExecutionContext, F: Effect[F]): Stream[F,O] =
       self repeatPull { _.uncons.flatMap {
         case None => Pull.pure(None)
-        case Some((hd, tl)) => tl.pull.prefetch flatMap { p => Pull.output(hd) *> p }
+        case Some((hd, tl)) => tl.pull.prefetch flatMap { p => Pull.output(hd) >> p }
       }}
 
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
@@ -2299,20 +2299,20 @@ object Stream {
       def cont1(z: Either[(Segment[O,Unit], Stream[F,O]), Stream[F,O]]): Pull[F,O3,Option[Nothing]] = {
         def contLeft(s: Stream[F,O]): Pull[F,O3,Option[Nothing]] = s.pull.uncons.flatMap {
           case None => Pull.pure(None)
-          case Some((hd,tl)) => Pull.output(hd.map(o => f(o,pad2))) *> contLeft(tl)
+          case Some((hd,tl)) => Pull.output(hd.map(o => f(o,pad2))) >> contLeft(tl)
         }
         z match {
-          case Left((hd,tl)) => Pull.output(hd.map(o => f(o,pad2))) *> contLeft(tl)
+          case Left((hd,tl)) => Pull.output(hd.map(o => f(o,pad2))) >> contLeft(tl)
           case Right(h) => contLeft(h)
         }
       }
       def cont2(z: Either[(Segment[O2,Unit], Stream[F,O2]), Stream[F,O2]]): Pull[F,O3,Option[Nothing]] = {
         def contRight(s: Stream[F,O2]): Pull[F,O3,Option[Nothing]] = s.pull.uncons.flatMap {
           case None => Pull.pure(None)
-          case Some((hd,tl)) => Pull.output(hd.map(o2 => f(pad1,o2))) *> contRight(tl)
+          case Some((hd,tl)) => Pull.output(hd.map(o2 => f(pad1,o2))) >> contRight(tl)
         }
         z match {
-          case Left((hd,tl)) => Pull.output(hd.map(o2 => f(pad1,o2))) *> contRight(tl)
+          case Left((hd,tl)) => Pull.output(hd.map(o2 => f(pad1,o2))) >> contRight(tl)
           case Right(h) => contRight(h)
         }
       }
@@ -2382,7 +2382,7 @@ object Stream {
 
     def flatMap[F[_],O2](f: O => Stream[F,O2]): Stream[F,O2] = covary[F].flatMap(f)
 
-    def *>[F[_],O2](s2: => Stream[F,O2]): Stream[F,O2] = flatMap { _ => s2 }
+    def >>[F[_],O2](s2: => Stream[F,O2]): Stream[F,O2] = flatMap { _ => s2 }
 
     def interleave[F[_],O2>:O](s2: Stream[F,O2]): Stream[F,O2] = covaryAll[F,O2].interleave(s2)
 
