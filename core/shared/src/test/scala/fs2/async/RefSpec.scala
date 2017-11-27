@@ -19,7 +19,7 @@ class RefSpec extends Fs2Spec {
           ref.access.flatMap{ case ((_, set)) =>
             ref.setAsyncPure(2).flatMap { _ =>
               mkScheduler.runLast.map(_.get).flatMap { scheduler =>
-                IO.shift(scheduler.delayedExecutionContext(100.millis)) *> set(Right(3))
+                IO.shift(scheduler.delayedExecutionContext(100.millis)) *> set(3)
               }
             }
           }
@@ -27,10 +27,26 @@ class RefSpec extends Fs2Spec {
       }.unsafeToFuture.map { _ shouldBe false }
     }
 
-    "setSync" in {
+    "setSyncPure" in {
       ref[IO, Int].flatMap { ref =>
-        ref.setSyncPure(0) *> ref.setSync(IO(1)) *> ref.get
-      }.unsafeToFuture.map { _ shouldBe 1 }
+        ref.setSyncPure(0) *> ref.get
+      }.unsafeToFuture.map { _ shouldBe 0 }
+    }
+
+    "Successful race" in {
+      mkScheduler.runLast.map(_.get).flatMap { s =>
+          val fast = s.effect.sleep[IO](20.millis) *> true.pure[IO]
+          val slow = s.effect.sleep[IO](200.millis) *> false.pure[IO]
+          ref[IO, Boolean].flatMap(r => r.race(fast, slow) *> r.get)
+      }.unsafeToFuture.map { _ shouldBe true}
+    }
+
+    "Unsuccessful race" in {
+      mkScheduler.runLast.map(_.get).flatMap { s =>
+          val fast = s.effect.sleep[IO](20.millis) *> IO.raiseError[Boolean](new Exception)
+          val slow = s.effect.sleep[IO](200.millis) *> false.pure[IO]
+          ref[IO, Boolean].flatMap(r => r.race(fast, slow))
+      }.attempt.unsafeToFuture.map { _ should be ('left)}
     }
 
     "timedGet" in {

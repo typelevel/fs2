@@ -381,7 +381,7 @@ object Queue {
         def enqueue1(a: Option[A]): F[Unit] = doneRef.access.flatMap { case (done, update) =>
           if (done) F.pure(())
           else a match {
-            case None => update(Right(true)).flatMap { successful => if (successful) q.enqueue1(None) else enqueue1(None) }
+            case None => update(true).flatMap { successful => if (successful) q.enqueue1(None) else enqueue1(None) }
             case _ => permits.decrement *> q.enqueue1(a)
           }
         }
@@ -390,7 +390,7 @@ object Queue {
         def offer1(a: Option[A]): F[Boolean] = doneRef.access.flatMap { case (done, update) =>
           if (done) F.pure(true)
           else a match {
-            case None => update(Right(true)).flatMap { successful => if (successful) q.offer1(None) else offer1(None) }
+            case None => update(true).flatMap { successful => if (successful) q.offer1(None) else offer1(None) }
             case _ => permits.decrement *> q.offer1(a)
           }
         }
