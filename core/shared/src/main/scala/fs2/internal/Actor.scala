@@ -21,9 +21,9 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * Memory consistency guarantee: when each message is processed by the `handler`, any memory that it
  * mutates is guaranteed to be visible by the `handler` when it processes the next message, even if
- * the execution context runs the invocations of `handler` on separate threads. This is achieved because
- * the `Actor` reads a volatile memory location before entering its event loop, and writes to the same
- * location before suspending.
+ * the execution context runs the invocations of `handler` on separate threads. This is achieved because 
+ * the Actor's event loop is either executing on the same thread, or going through a thread pool submission,
+ * which inserts a memory barrier.
  *
  * Implementation based on non-intrusive MPSC node-based queue, described by Dmitriy Vyukov:
  * [[http://www.1024cores.net/home/lock-free-algorithms/queues/non-intrusive-mpsc-node-based-queue]]
@@ -36,13 +36,13 @@ import java.util.concurrent.atomic.AtomicReference
  * @tparam A       The type of messages accepted by this actor.
  */
 private[fs2] final class Actor[A](handler: A => Unit, onError: Throwable => Unit)(implicit val ec: ExecutionContext) {
-  private val head = new AtomicReference[Node[A]]
+  private val last = new AtomicReference[Node[A]]
 
   /** Pass the message `a` to the mailbox of this actor */
   def !(a: A): Unit = {
     val n = new Node(a)
-    val h = head.getAndSet(n)
-    if (h ne null) h.lazySet(n)
+    val l = last.getAndSet(n)
+    if (l ne null) l.lazySet(n)
     else schedule(n)
   }
 
@@ -61,7 +61,7 @@ private[fs2] final class Actor[A](handler: A => Unit, onError: Throwable => Unit
 
   private def scheduleLastTry(n: Node[A]): Unit = ec.execute(() => lastTry(n))
 
-  private def lastTry(n: Node[A]): Unit = if (!head.compareAndSet(n, null)) act(next(n))
+  private def lastTry(n: Node[A]): Unit = if (!last.compareAndSet(n, null)) act(next(n))
 
   @annotation.tailrec
   private def next(n: Node[A]): Node[A] = {
