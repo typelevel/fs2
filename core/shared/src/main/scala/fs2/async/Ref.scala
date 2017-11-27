@@ -15,9 +15,9 @@ import Ref._
 /** An asynchronous, concurrent mutable reference. */
 final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) extends RefOps[F,A] { self =>
 
-  private var result: Either[Throwable,A] = null
+  private var result: Box[A] = null
   // any waiting calls to `access` before first `set`
-  private var waiting: LinkedMap[MsgId, Either[Throwable,(A, Long)] => Unit] = LinkedMap.empty
+  private var waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty
   // id which increases with each `set` or successful `modify`
   private var nonce: Long = 0
 
@@ -26,9 +26,9 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       if (result eq null) {
         waiting = waiting.updated(idf, cb)
       } else {
-        val r = result
+        val r = result.value
         val id = nonce
-        ec.execute { () => cb((r: Either[Throwable, A]).map((_,id))) }
+        ec.execute { () => cb(r -> id) }
       }
 
     case Msg.Set(r, cb) =>
@@ -36,29 +36,29 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       if (result eq null) {
         val id = nonce
         waiting.values.foreach { cb =>
-          ec.execute { () => cb((r: Either[Throwable, A]).map((_,id))) }
+          ec.execute { () => cb(r -> id) }
         }
         waiting = LinkedMap.empty
       }
-      result = r
+      result = new Box(r)
       cb()
 
     case Msg.TrySet(id, r, cb) =>
       if (id == nonce) {
         nonce += 1L; val id2 = nonce
         waiting.values.foreach { cb =>
-          ec.execute { () => cb((r: Either[Throwable, A]).map((_,id2))) }
+          ec.execute { () => cb(r -> id2) }
         }
         waiting = LinkedMap.empty
-        result = r
-        cb(Right(true))
+        result = new Box(r)
+        cb(true)
       }
-      else cb(Right(false))
+      else cb(false)
 
     case Msg.Nevermind(id, cb) =>
       val interrupted = waiting.get(id).isDefined
       waiting = waiting - id
-      ec.execute { () => cb(Right(interrupted)) }
+      ec.execute { () => cb(interrupted) }
   }
 
   /**
@@ -68,11 +68,11 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
    * setter first. Once it has noop'd or been used once, a setter
    * never succeeds again.
    */
-  def access: F[(A, Either[Throwable,A] => F[Boolean])] =
+  def access: F[(A, A => F[Boolean])] =
     F.flatMap(F.delay(new MsgId)) { mid =>
       F.map(getStamped(mid)) { case (a, id) =>
-        val set = (a: Either[Throwable,A]) =>
-          F.async[Boolean] { cb => actor ! Msg.TrySet(id, a, cb) }
+        val set = (a: A) =>
+          F.async[Boolean] { cb => actor ! Msg.TrySet(id, a, x => cb(Right(x))) }
         (a, set)
       }
     }
@@ -84,7 +84,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     val id = new MsgId
     val get = F.map(getStamped(id))(_._1)
     val cancel = F.async[Unit] {
-      cb => actor ! Msg.Nevermind(id, r => cb((r: Either[Throwable, Boolean]).map(_ => ())))
+      cb => actor ! Msg.Nevermind(id, r => cb(Right(()))) // do we need the Nevermind callback to take a boolean?
     }
     (get, cancel)
   }
@@ -103,7 +103,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
   override def tryModify(f: A => A): F[Option[Change[A]]] =
     access.flatMap { case (previous,set) =>
       val now = f(previous)
-      set(Right(now)).map { b =>
+      set(now).map { b =>
         if (b) Some(Change(previous, now))
         else None
       }
@@ -112,7 +112,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
   override def tryModify2[B](f: A => (A,B)): F[Option[(Change[A], B)]] =
     access.flatMap { case (previous,set) =>
       val (now,b0) = f(previous)
-      set(Right(now)).map { b =>
+      set(now).map { b =>
         if (b) Some(Change(previous, now) -> b0)
         else None
       }
@@ -131,10 +131,10 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     }
 
   override def setAsyncPure(a: A): F[Unit] =
-    F.delay { actor ! Msg.Set(Right(a), () => ()) }
+    F.delay { actor ! Msg.Set(a, () => ()) }
 
   override def setSyncPure(a: A): F[Unit] =
-    F.async[Unit](cb => actor ! Msg.Set(Right(a), () => cb(Right(())))) *> F.shift
+    F.async[Unit](cb => actor ! Msg.Set(a, () => cb(Right(())))) *> F.shift
 
   /**
    * Runs `f1` and `f2` simultaneously, but only the winner gets to
@@ -158,7 +158,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
           case Right(v) =>
             val actor = ref.get
             ref.set(null)
-            actor ! Msg.Set(Right(v), () => ())
+            actor ! Msg.Set(v, () => ())
         }
       }
     }
@@ -167,7 +167,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
   }
 
   private def getStamped(msg: MsgId): F[(A,Long)] =
-    F.async[(A,Long)] { cb => actor ! Msg.Read(cb, msg) }
+    F.async[(A,Long)] { cb => actor ! Msg.Read(x => cb(Right(x)), msg) }
 }
 
 object Ref {
@@ -181,11 +181,12 @@ object Ref {
     uninitialized[F, A].flatMap(r => r.setSyncPure(a).as(r))
 
   private final class MsgId
+  private final class Box[A](val value: A)
   private sealed abstract class Msg[A]
   private object Msg {
-    final case class Read[A](cb: Either[Throwable,(A, Long)] => Unit, id: MsgId) extends Msg[A]
-    final case class Nevermind[A](id: MsgId, cb: Either[Throwable,Boolean] => Unit) extends Msg[A]
-    final case class Set[A](r: Either[Throwable,A], cb: () => Unit) extends Msg[A]
-    final case class TrySet[A](id: Long, r: Either[Throwable,A], cb: Either[Throwable,Boolean] => Unit) extends Msg[A]
+    final case class Read[A](cb: ((A, Long)) => Unit, id: MsgId) extends Msg[A]
+    final case class Nevermind[A](id: MsgId, cb: Boolean => Unit) extends Msg[A]
+    final case class Set[A](r: A, cb: () => Unit) extends Msg[A]
+    final case class TrySet[A](id: Long, r: A, cb: Boolean => Unit) extends Msg[A]
   }
 }
