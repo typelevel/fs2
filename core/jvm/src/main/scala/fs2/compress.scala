@@ -28,18 +28,21 @@ object compress {
       _deflate_stream(deflater, buffer)(in)
     }.stream
   }
-  private def _deflate_step[F[_]](deflater: Deflater, buffer: Array[Byte]): Option[(Chunk[Byte], Stream[F, Byte])] => Pull[F, Byte, Option[Stream[F, Byte]]] = {
-    case None => Pull.pure(None)
-    case Some((hd,tl)) =>
-      deflater.setInput(hd.toArray)
-      val result = _deflate_collect(deflater, buffer, ArrayBuffer.empty, false).toArray
-      Pull.output(Chunk.bytes(result)) *> _deflate_stream(deflater, buffer)(tl)
-  }
-  private def _deflate_stream[F[_]](deflater: Deflater, buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Option[Stream[F, Byte]]] =
-    _.pull.unconsChunk flatMap _deflate_step(deflater, buffer) flatMap {
-      case Some(s) => Pull.pure(Some(s))
-      case None => _deflate_finish(deflater, buffer).as(None)
+  
+  private def _deflate_stream[F[_]](deflater: Deflater, buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
+    _.pull.unconsChunk.flatMap {
+      case Some((hd,tl)) =>
+        deflater.setInput(hd.toArray)
+        val result = _deflate_collect(deflater, buffer, ArrayBuffer.empty, false).toArray
+        Pull.output(Chunk.bytes(result)) *> _deflate_stream(deflater, buffer)(tl)
+      case None =>
+        deflater.setInput(Array.empty)
+        deflater.finish()
+        val result = _deflate_collect(deflater, buffer, ArrayBuffer.empty, true).toArray
+        deflater.end()
+        Pull.output(Chunk.bytes(result))
     }
+
   @tailrec
   private def _deflate_collect(deflater: Deflater, buffer: Array[Byte], acc: ArrayBuffer[Byte], fin: Boolean): ArrayBuffer[Byte] = {
     if ((fin && deflater.finished) || (!fin && deflater.needsInput)) acc
@@ -47,13 +50,6 @@ object compress {
       val count = deflater deflate buffer
       _deflate_collect(deflater, buffer, acc ++ buffer.iterator.take(count), fin)
     }
-  }
-  private def _deflate_finish[F[_]](deflater: Deflater, buffer: Array[Byte]): Pull[F,Byte,Unit] = {
-    deflater.setInput(Array.empty)
-    deflater.finish()
-    val result = _deflate_collect(deflater, buffer, ArrayBuffer.empty, true).toArray
-    deflater.end()
-    Pull.output(Chunk.bytes(result))
   }
 
   /**
@@ -75,18 +71,18 @@ object compress {
         Pull.output(Chunk.bytes(result)) *> _inflate_stream(inflater, buffer)(tl)
     }.stream
   }
-  private def _inflate_step[F[_]](inflater: Inflater, buffer: Array[Byte]): Option[(Chunk[Byte], Stream[F, Byte])] => Pull[F, Byte, Option[Stream[F, Byte]]] = {
-    case None => Pull.pure(None)
-    case Some((hd,tl)) =>
-      inflater.setInput(hd.toArray)
-      val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-      Pull.output(Chunk.bytes(result)) *> _inflate_stream(inflater, buffer)(tl)
-  }
-  private def _inflate_stream[F[_]](inflater: Inflater, buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Option[Stream[F, Byte]]] =
-    _.pull.unconsChunk.flatMap(_inflate_step(inflater, buffer)).flatMap {
-      case Some(s) => Pull.pure(Some(s))
-      case None => _inflate_finish(inflater).as(None)
+
+  private def _inflate_stream[F[_]](inflater: Inflater, buffer: Array[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
+    _.pull.unconsChunk.flatMap {
+      case Some((hd,tl)) =>
+        inflater.setInput(hd.toArray)
+        val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
+        Pull.output(Chunk.bytes(result)) *> _inflate_stream(inflater, buffer)(tl)
+      case None =>
+        if (!inflater.finished) Pull.raiseError(new DataFormatException("Insufficient data"))
+        else { inflater.end(); Pull.done }
     }
+
   @tailrec
   private def _inflate_collect(inflater: Inflater, buffer: Array[Byte], acc: ArrayBuffer[Byte]): ArrayBuffer[Byte] = {
     if (inflater.finished || inflater.needsInput) acc
@@ -94,9 +90,5 @@ object compress {
       val count = inflater inflate buffer
       _inflate_collect(inflater, buffer, acc ++ buffer.iterator.take(count))
     }
-  }
-  private def _inflate_finish[F[_]](inflater: Inflater): Pull[F, Nothing, Unit] = {
-    if (!inflater.finished) Pull.raiseError(new DataFormatException("Insufficient data"))
-    else { inflater.end(); Pull.done }
   }
 }
