@@ -133,21 +133,8 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
   override def setAsyncPure(a: A): F[Unit] =
     F.delay { actor ! Msg.Set(Right(a), () => ()) }
 
-  /**
-   * *Synchronously* sets the current value to the value computed by `fa`.
-   *
-   * The returned value completes evaluating after the reference has been successfully set.
-   *
-   * Satisfies: `r.setSync(fa) *> r.get == fa`
-   *
-   * If `fa` fails, the returned action still completes successfully. The failure will be set as
-   * the value of this ref, and any subsequent calls to `get` will fail with the exception.
-   */
-  def setSync(fa: F[A]): F[Unit] =
-    fa.attempt.flatMap(r => F.async[Unit](cb => actor ! Msg.Set(r, () => cb(Right(())))) *> F.shift)
-
   override def setSyncPure(a: A): F[Unit] =
-    setSync(F.pure(a))
+    F.async[Unit](cb => actor ! Msg.Set(Right(a), () => cb(Right(())))) *> F.shift
 
   /**
    * Runs `f1` and `f2` simultaneously, but only the winner gets to
