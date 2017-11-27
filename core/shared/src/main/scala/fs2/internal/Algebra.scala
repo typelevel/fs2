@@ -64,11 +64,6 @@ private[fs2] object Algebra {
   def suspend[F[_],O,R](f: => FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
     FreeC.suspend(f)
 
-  final class Token {
-    override def toString: String = s"T|${hashCode.toHexString}|"
-  }
-
-
   def uncons[F[_],X,O](s: FreeC[Algebra[F,O,?],Unit], chunkSize: Int = 1024, maxSteps: Long = 10000): FreeC[Algebra[F,X,?],Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] = {
     s.viewL.get match {
       case done: FreeC.Pure[Algebra[F,O,?], Unit] => pure(None)
@@ -101,7 +96,7 @@ private[fs2] object Algebra {
   }
 
 
-  /** Left-fold the output of a stream */
+  /** Left-folds the output of a stream. */
   def runFold[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
     F.delay(RunFoldScope.newRoot).flatMap { scope =>
       runFoldScope[F,O,B](scope, stream, init)(f).attempt.flatMap {
@@ -156,7 +151,7 @@ private[fs2] object Algebra {
                     F.flatMap(scope.releaseResource(resource.id)) { result =>
                       val failedResult: Either[Throwable, Unit] =
                         result.left.toOption.map { err0 =>
-                          Left(new CompositeFailure(NonEmptyList.of(err, err0)))
+                          Left(new CompositeFailure(err, NonEmptyList.of(err0)))
                          }.getOrElse(Left(err))
                       runFoldLoop(scope, acc, g, f(failedResult).viewL)
                     }

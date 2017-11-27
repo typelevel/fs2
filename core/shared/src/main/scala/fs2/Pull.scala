@@ -1,7 +1,7 @@
 package fs2
 
 import cats.effect.Sync
-import fs2.internal.{ Algebra, FreeC }
+import fs2.internal.{ Algebra, FreeC, Token }
 
 /**
  * A `p: Pull[F,O,R]` reads values from one or more streams, returns a
@@ -176,7 +176,7 @@ object Pull {
   def suspend[F[_],O,R](p: => Pull[F,O,R]): Pull[F,O,R] =
     fromFreeC(Algebra.suspend(p.get))
 
-  private def release[F[_]](token: Algebra.Token): Pull[F,Nothing,Unit] =
+  private def release[F[_]](token: Token): Pull[F,Nothing,Unit] =
     fromFreeC[F,Nothing,Unit](Algebra.release(token))
 
   /** Implicitly covaries a pull. */

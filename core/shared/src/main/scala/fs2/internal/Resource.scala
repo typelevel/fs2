@@ -3,47 +3,44 @@ package fs2.internal
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.effect.Sync
-import fs2.Scope.Lease
+import fs2.Lease
 import fs2.async.SyncRef
-import fs2.internal.Algebra.Token
 
 /**
-  * Represent resource acquired during stream interpretation
-  *
-  * Resource is acquired by Algebra.Acquire and then released either by Algebra.Release or Algebra.CloseScope.
-  *
-  * The acquisition of the Resource has three steps:
-  *
-  * 1. Resource is created and registered with the scope (Algebra.Acquire)
-  * 2. Resource is acquired
-  * 3. Resource `acquired` is invoked to confirm acquisition of the resource.
-  *
-  * The reason for this is that during asynchronous stream evaluation, one scope may cause to close the other scope
-  * (i.e merged stream fails while one of the other streams still acquiring asynchronous resources).
-  * In that case, the resource may be `released` before `acquired` was evaluated, and as such
-  * will make that resource to be released immediately when resource will be acquired..
-  *
-  * The resource may be released by any of the following methods:
-  *
-  * (1) The Algebra.Resource is interpreted. In this case resource finalization will be invoked if
-  *     the resource was successfully acquired (the `acquired` was evaluated and resource was not leased other scope)
-  * (2) The owning Scope was closed by `Algebra.CloseScope`. This essentially evaluates `release` of
-  *     the Resource and acts like (1).
-  * (3) The `acquired` was evaluated after scope was `released` by either (1) or (2). In this case
-  *     resource will invoke the finalization immediately if the resource is not leased.
-  * (4) The `cancelLease` is invoked for previously leased resource. This will invoke resource
-  *     finalization if resource was already acquired and released and there are no more outstanding leases.
-  *
-  * Resources may be leased to other scopes. In that case, each scope must lease resource with `lease` and
-  * when scope is closed (or when the resource lease is no longer required) release the lease with `cancelLease`.
-  *
-  * Note that every method which as part of its invocation may potentially call resource finalizer
-  * is returning `F[Either[Throwable, Unit]]` instead just simple F[Unit] to make sure the errors when releasing resource
-  * are properly handled.
-  *
-  *
-  */
-private[internal] sealed trait Resource[F[_]] {
+ * Represents a resource acquired during stream interpretation.
+ *
+ * A resource is acquired by `Algebra.Acquire` and then released by either `Algebra.Release` or
+ * `Algebra.CloseScope`.
+ *
+ * The acquisition of a resource has three steps:
+ *
+ * 1. A `Resource` instance is created and registered with the current scope (`Algebra.Acquire`)
+ * 2. Resource acquisition action is evaluated
+ * 3. `acquired` is invoked to confirm acquisition of the resource
+ *
+ * The reason for this is that during asynchronous stream evaluation, one scope may close the other scope
+ * (e.g., merged stream fails while another stream is still acquiring an asynchronous resource).
+ * In such a case, a resource may be `released` before `acquired` was evaluated, resulting
+ * in an immediate finalization after acquisition is confirmed.
+ *
+ * A resource may be released by any of the following methods:
+ *
+ * (1) `Algebra.Release` is interpreted. In this case, the finalizer will be invoked if
+ *     the resource was successfully acquired (the `acquired` was evaluated) and resource was not leased to another scope.
+ * (2) The owning scope was closed by `Algebra.CloseScope`. This essentially evaluates `release` of
+ *     the `Resource` and acts like (1).
+ * (3) `acquired` was evaluated after scope was `released` by either (1) or (2). In this case,
+ *     finalizer will be invoked immediately if the resource is not leased.
+ * (4) `cancel` is invoked on a `Lease` for the resource. This will invoke the finalizer
+ *     if the resource was already acquired and released and there are no other outstanding leases.
+ *
+ * Resources may be leased to other scopes. Each scope must lease with `lease` and  when the other
+ * scope is closed (or when the resource lease is no longer required) release the lease with `Lease#cancel`.
+ *
+ * Note that every method which may potentially call a resource finalizer returns `F[Either[Throwable, Unit]]`
+ * instead of `F[Unit]`` to make sure any errors that occur when releasing the resource are properly handled.
+ */
+private[internal] sealed abstract class Resource[F[_]] {
 
   /**
     * Id of the resource
@@ -82,10 +79,7 @@ private[internal] sealed trait Resource[F[_]] {
     * or to `None` when this resource cannot be leased because resource is already released.
     */
   def lease: F[Option[Lease[F]]]
-
-
 }
-
 
 private[internal] object Resource {
 
@@ -127,8 +121,8 @@ private[internal] object Resource {
       def acquired(finalizer: F[Unit]): F[Either[Throwable, Unit]] = {
         val attemptFinalizer = F.attempt(finalizer)
         F.flatMap(state.modify2 { s =>
-          if (! s.open && s.leases == 0) (s, Some(attemptFinalizer)) // state os closed and there are no leases, finaizer has to be invoked stright away
-          else (s.copy(finalizer = Some(attemptFinalizer)), None) // either state is open, or leases are present, either release ot `cancelLease` will run the finalizer
+          if (! s.open && s.leases == 0) (s, Some(attemptFinalizer)) // state is closed and there are no leases, finalizer has to be invoked stright away
+          else (s.copy(finalizer = Some(attemptFinalizer)), None) // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
         }) { case (c, finalizer) =>
           finalizer.getOrElse(F.pure(Right(())))
         }
@@ -156,15 +150,9 @@ private[internal] object Resource {
                 }
               }
             }
-
             Some(lease)
           }
         }
-
-
-
     }
   }
-
-
 }

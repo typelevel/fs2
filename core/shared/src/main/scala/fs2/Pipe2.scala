@@ -1,6 +1,6 @@
 package fs2
 
-import fs2.internal.{Algebra, FreeC, NonFatal, RunFoldScope}
+import fs2.internal.{Algebra, FreeC, NonFatal}
 
 object Pipe2 {
   /** Creates a [[Stepper]], which allows incrementally stepping a pure `Pipe2`. */
@@ -20,8 +20,7 @@ object Pipe2 {
 
     // Steps `s` without overhead of resource tracking
     def stepf(s: Stream[Read,O]): Read[UO] = {
-      Algebra.runFoldScope(
-        RunFoldScope.newRoot[Read],
+      Algebra.runFold(
         Algebra.uncons(s.get).flatMap {
           case Some((hd,tl)) => Algebra.output1[Read,UO](Some((hd,Stream.fromFreeC(tl))))
           case None => Algebra.pure[Read,UO,Unit](())
