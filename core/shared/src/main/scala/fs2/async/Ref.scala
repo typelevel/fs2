@@ -141,6 +141,9 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
    * `set` to this `ref`. The loser continues running but its reference
    * to this ref is severed, allowing this ref to be garbage collected
    * if it is no longer referenced by anyone other than the loser.
+   *
+   * If the winner fails, the returned `F` fails as well, and this `ref`
+   * is not set.
    */
   def race(f1: F[A], f2: F[A]): F[Unit] = F.delay {
     val ref = new AtomicReference(actor)
@@ -150,9 +153,13 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       // or the actor directly, and the winner destroys any
       // references behind it!
       if (won.compareAndSet(false, true)) {
-        val actor = ref.get
-        ref.set(null)
-        actor ! Msg.Set(res, () => ())
+        res match {
+          case Left(e) => throw e
+          case Right(v) =>
+            val actor = ref.get
+            ref.set(null)
+            actor ! Msg.Set(Right(v), () => ())
+        }
       }
     }
     unsafeRunAsync(f1)(res => IO(win(res)))
