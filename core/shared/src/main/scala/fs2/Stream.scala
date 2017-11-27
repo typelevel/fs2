@@ -8,7 +8,7 @@ import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.mutable.Queue
-import fs2.internal.{Algebra, FreeC}
+import fs2.internal.{Algebra, FreeC, Token}
 
 /**
  * A stream producing output of type `O` and which may evaluate `F`
@@ -1142,8 +1142,8 @@ object Stream {
       use(r).onComplete { fromFreeC(Algebra.release(token)) }.get
     })
 
-  private[fs2] def bracketWithToken[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,(Algebra.Token,O)] =
-    fromFreeC(Algebra.acquire[F,(Algebra.Token,O),R](r, release).flatMap { case (r, token) =>
+  private[fs2] def bracketWithToken[F[_],R,O](r: F[R])(use: R => Stream[F,O], release: R => F[Unit]): Stream[F,(Token,O)] =
+    fromFreeC(Algebra.acquire[F,(Token,O),R](r, release).flatMap { case (r, token) =>
       use(r).map(o => (token,o)).onComplete { fromFreeC(Algebra.release(token)) }.get
     })
 
@@ -1775,7 +1775,7 @@ object Stream {
           done.modify {
             case rslt0@Some(Some(err0)) =>
               rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-                Some(Some(new CompositeFailure(NonEmptyList.of(err0, err))))
+                Some(Some(new CompositeFailure(err0, NonEmptyList.of(err))))
               }
             case _ => Some(rslt)
           } *> outputQ.enqueue1(None)
