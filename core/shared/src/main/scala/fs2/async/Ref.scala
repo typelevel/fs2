@@ -56,9 +56,8 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       else cb(false)
 
     case Msg.Nevermind(id, cb) =>
-      val interrupted = waiting.get(id).isDefined
       waiting = waiting - id
-      ec.execute { () => cb(interrupted) }
+      ec.execute { () => cb() }
   }
 
   /**
@@ -84,7 +83,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     val id = new MsgId
     val get = F.map(getStamped(id))(_._1)
     val cancel = F.async[Unit] {
-      cb => actor ! Msg.Nevermind(id, r => cb(Right(()))) // do we need the Nevermind callback to take a boolean?
+      cb => actor ! Msg.Nevermind(id, () => cb(Right(())))
     }
     (get, cancel)
   }
@@ -185,7 +184,7 @@ object Ref {
   private sealed abstract class Msg[A]
   private object Msg {
     final case class Read[A](cb: ((A, Long)) => Unit, id: MsgId) extends Msg[A]
-    final case class Nevermind[A](id: MsgId, cb: Boolean => Unit) extends Msg[A]
+    final case class Nevermind[A](id: MsgId, cb: () => Unit) extends Msg[A]
     final case class Set[A](r: A, cb: () => Unit) extends Msg[A]
     final case class TrySet[A](id: Long, r: A, cb: Boolean => Unit) extends Msg[A]
   }
