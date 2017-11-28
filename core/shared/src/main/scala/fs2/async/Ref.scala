@@ -7,13 +7,93 @@ import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO }
 
 import fs2.Scheduler
+import fs2.async
 import fs2.internal.{Actor,LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
+
+import scala.annotation.tailrec
 
 import Ref._
 
 /** An asynchronous, concurrent mutable reference. */
 final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) extends RefOps[F,A] { self =>
+
+  private val state = new AtomicReference[St[A]]
+  state.set(new St[A])
+  //TODO in the old implementation Read and Nevermind submit the continuation
+  // to the EC, whereas Set and TrySet call it directly, why?
+  def read(id: MsgId, cb: ((A, Long)) => Unit): Unit = {
+    @tailrec
+    def spin(): Unit = {
+      val st = state.get
+
+      if (st.result eq null) {
+        val newSt: St[A] = new St(st.result, st.waiting.updated(id, cb), st.nonce)
+        if (!state.compareAndSet(st, newSt)) spin
+      } else {
+        ec.execute { () => cb(st.result.value -> st.nonce) }
+      }
+    }
+
+    spin()
+  }
+  
+  def set(r: A, cb: () => Unit): Unit = {
+    var notify: () => Unit = () => ()
+
+    @tailrec
+    def spin(): Unit = {
+      val st = state.get
+      notify = () => ()
+
+      if(st.result eq null) {
+        notify = () => st.waiting.values.foreach { cb =>
+          ec.execute { () => cb(r -> st.nonce) }
+        }
+      }
+
+      val newSt = new St(new Box(r), LinkedMap.empty, st.nonce + 1L )
+      if(!state.compareAndSet(st, newSt)) spin()
+    }
+
+    spin()
+    notify()
+    cb()
+  }
+
+  def trySet(id: Long, r: A, cb: Boolean => Unit): Unit = {
+    var notify: () => Unit = () => ()
+
+    val st = state.get
+
+    if (st.result eq null) {
+        notify = () => st.waiting.values.foreach { cb =>
+          ec.execute { () => cb(r -> st.nonce) }
+        }
+    }
+
+    val expected = new St(st.result, st.waiting, id)
+    val newSt = new St(new Box(r), LinkedMap.empty, st.nonce + 1L)
+
+    if(state.compareAndSet(expected, newSt)) {
+      notify()
+      cb(true)
+    } else {
+      cb(false)
+    }
+  }
+
+  def nevermind(id: MsgId, cb: () => Unit): Unit = {
+    @tailrec
+    def spin(): Unit = {
+      val st = state.get
+      val newSt = new St(st.result, st.waiting - id, nonce)
+      if(!state.compareAndSet(st, newSt)) spin()
+    }
+    // TODO if indeed cb does need the ec submission, should we submit spin as well?
+    spin()
+    ec.execute(() => cb())
+  }
 
   private var result: Box[A] = null
   // any waiting calls to `access` before first `set`
@@ -74,7 +154,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     F.flatMap(F.delay(new MsgId)) { mid =>
       F.map(getStamped(mid)) { case (a, id) =>
         val set = (a: A) =>
-          F.async[Boolean] { cb => actor ! Msg.TrySet(id, a, x => cb(Right(x))) }
+          F.async[Boolean] { cb => trySet(id, a, x => cb(Right(x))) }
         (a, set)
       }
     }
@@ -86,7 +166,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     val id = new MsgId
     val get = F.map(getStamped(id))(_._1)
     val cancel = F.async[Unit] {
-      cb => actor ! Msg.Nevermind(id, () => cb(Right(())))
+      cb => nevermind(id, () => cb(Right(())))
     }
     (get, cancel)
   }
@@ -132,11 +212,15 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       case Some(changeAndB) => F.pure(changeAndB)
     }
 
+  // might want to eliminate this, since one can just fork at call site
   override def setAsyncPure(a: A): F[Unit] =
-    F.delay { actor ! Msg.Set(a, () => ()) }
+    async.fork {
+      F.async[Unit] { cb => set(a, () => cb(Right(()))) }
+    }  //actor ! Msg.Set(a, () => ()) }
 
+  // not sure why the shift here
   override def setSyncPure(a: A): F[Unit] =
-    F.async[Unit](cb => actor ! Msg.Set(a, () => cb(Right(())))) *> F.shift
+    F.async[Unit](cb => set(a, () => cb(Right(())))) *> F.shift
 
   /**
    * Runs `f1` and `f2` simultaneously, but only the winner gets to
@@ -169,7 +253,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
   }
 
   private def getStamped(msg: MsgId): F[(A,Long)] =
-    F.async[(A,Long)] { cb => actor ! Msg.Read(x => cb(Right(x)), msg) }
+    F.async[(A,Long)] { cb => read(msg, x => cb(Right(x))) } //actor ! Msg.Read(x => cb(Right(x)), msg) }
 }
 
 object Ref {
@@ -183,6 +267,7 @@ object Ref {
     uninitialized[F, A].flatMap(r => r.setSyncPure(a).as(r))
 
   private final class MsgId
+  private final class St[A](val result: Box[A] = null, val waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty[MsgId, ((A, Long)) => Unit], val nonce: Long = 0 )
   private final class Box[A](val value: A)
   private sealed abstract class Msg[A]
   private object Msg {
