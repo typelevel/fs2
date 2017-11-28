@@ -35,7 +35,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       }
     }
 
-    spin()
+    ec.execute { () => spin() }
   }
   
   def set(r: A, cb: () => Unit): Unit = {
@@ -56,12 +56,10 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       if(!state.compareAndSet(st, newSt)) spin()
     }
 
-    spin()
-    notify()
-    cb()
+    ec.execute { () => spin(); notify(); cb() }
   }
 
-  def trySet(id: Long, r: A, cb: Boolean => Unit): Unit = {
+  def trySet(id: Long, r: A, cb: Boolean => Unit): Unit = ec.execute { () =>
     var notify: () => Unit = () => ()
 
     val st = state.get
@@ -72,10 +70,10 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
         }
     }
 
-    val expected = new St(st.result, st.waiting, id)
+    st.nonce = id
     val newSt = new St(new Box(r), LinkedMap.empty, st.nonce + 1L)
 
-    if(state.compareAndSet(expected, newSt)) {
+    if(state.compareAndSet(st, newSt)) {
       notify()
       cb(true)
     } else {
@@ -90,9 +88,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       val newSt = new St(st.result, st.waiting - id, nonce)
       if(!state.compareAndSet(st, newSt)) spin()
     }
-    // TODO if indeed cb does need the ec submission, should we submit spin as well?
-    spin()
-    ec.execute(() => cb())
+    ec.execute{ () => spin(); cb() }
   }
 
   private var result: Box[A] = null
@@ -267,7 +263,7 @@ object Ref {
     uninitialized[F, A].flatMap(r => r.setSyncPure(a).as(r))
 
   private final class MsgId
-  private final class St[A](val result: Box[A] = null, val waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty[MsgId, ((A, Long)) => Unit], val nonce: Long = 0 )
+  private final class St[A](val result: Box[A] = null, val waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty[MsgId, ((A, Long)) => Unit], var nonce: Long = 0)
   private final class Box[A](val value: A)
   private sealed abstract class Msg[A]
   private object Msg {
