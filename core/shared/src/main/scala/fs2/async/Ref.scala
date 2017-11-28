@@ -225,4 +225,45 @@ object Ref {
     val waiting: LinkedMap[MsgId, ((A, Long)) => Unit],
     val nonce: Long
   )
+
+  def benchmark() = {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val refSync = async.syncRefOf[IO, Long](0l).unsafeRunSync()
+    val refAsync = async.refOf[IO, Long](0l).unsafeRunSync()
+    val arefAsync = Ref1.initialized[IO, Long](0l).unsafeRunSync()
+
+    val count = 10000000
+
+    def time[A](s: String)(f: IO[A]): A = {
+      val start = System.currentTimeMillis()
+      val a = f.unsafeRunSync()
+      val took = System.currentTimeMillis() - start
+      println(s"Execution of : $s took ${took.toFloat/1000} s")
+      a
+    }
+
+    def op(action: IO[Unit]) : IO[Unit] = {
+      def go(rem: Int): IO[Unit] = {
+        if (rem == 0) IO.unit
+        else action flatMap { _ => go(rem - 1) }
+      }
+      go(count)
+    }
+
+    println(s"Ops: $count")
+
+
+    time("SYNC: setSyncPure")(op(refSync.setSyncPure(1l)))
+    time("ASYNC: setSyncPure")(op(refAsync.setSyncPure(1l)))
+    time("ASYNC ACTOR: setSyncPure")(op(arefAsync.setSyncPure(1l)))
+    time("SYNC: setAsyncPure")(op(refSync.setAsyncPure(1l)))
+    time("ASYNC: setAsyncPure")(op(refAsync.setAsyncPure(1l)))
+    time("ASYNC ACTOR: setAsyncPure")(op(arefAsync.setAsyncPure(1l)))
+    time("SYNC: get")(op(refSync.get.void))
+    time("ASYNC: get")(op(refAsync.get.void))
+    time("ASYNC ACTOR: get")(op(arefAsync.get.void))
+    time("SYNC: modify")(op(refSync.modify { _ => 2 }.void))
+    time("ASYNC: modify")(op(refAsync.modify { _ => 2 }.void))
+    time("ASYNC ACTOR: modify")(op(arefAsync.modify { _ => 2 }.void))
+  }
 }
