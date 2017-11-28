@@ -8,38 +8,36 @@ import cats.effect.{ Effect, IO }
 
 import fs2.Scheduler
 import fs2.async
-//import fs2.internal.{Actor,LinkedMap}
 import fs2.internal.LinkedMap
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import scala.annotation.tailrec
 
-import Ref._
+import Ref.{Box, MsgId}
 
 /** An asynchronous, concurrent mutable reference. */
 final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) extends RefOps[F,A] { self =>
 
-  private val state = new AtomicReference[St[A]]
-  state.set(new St[A])
+  private val state = new AtomicReference[Ref.State[A]]
+  state.set(new Ref.State[A](null, LinkedMap.empty, 0))
+
   //TODO in the old implementation Read and Nevermind submit the continuation
   // to the EC, whereas Set and TrySet call it directly, why?
-  def read(id: MsgId, cb: ((A, Long)) => Unit): Unit = {
+  private def read(id: MsgId, cb: ((A, Long)) => Unit): Unit = {
     @tailrec
     def spin(): Unit = {
       val st = state.get
 
       if (st.result eq null) {
-        val newSt: St[A] = new St(st.result, st.waiting.updated(id, cb), st.nonce)
+        val newSt = new Ref.State(st.result, st.waiting.updated(id, cb), st.nonce)
         if (!state.compareAndSet(st, newSt)) spin
-      } else {
-        ec.execute { () => cb(st.result.value -> st.nonce) }
-      }
+      } else ec.execute { () => cb(st.result.value -> st.nonce) }
     }
 
     ec.execute { () => spin() }
   }
-  
-  def set(r: A, cb: () => Unit): Unit = {
+
+  private def set(r: A, cb: () => Unit): Unit = {
     var notify: () => Unit = () => ()
 
     @tailrec
@@ -53,89 +51,41 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
         }
       }
 
-      val newSt = new St(new Box(r), LinkedMap.empty, st.nonce + 1L )
+      val newSt = new Ref.State(new Box(r), LinkedMap.empty, st.nonce + 1L)
       if(!state.compareAndSet(st, newSt)) spin()
     }
 
     ec.execute { () => spin(); notify(); cb() }
   }
 
-  def trySet(id: Long, r: A, cb: Boolean => Unit): Unit = ec.execute { () =>
+  private def trySet(id: Long, r: A, cb: Boolean => Unit): Unit = ec.execute { () =>
     var notify: () => Unit = () => ()
 
     val st = state.get
+
     if (st.result eq null) {
         notify = () => st.waiting.values.foreach { cb =>
           ec.execute { () => cb(r -> st.nonce) }
         }
     }
-    val newSt = new St(new Box(r), LinkedMap.empty, st.nonce + 1L)
+
+    val newSt = new Ref.State(new Box(r), LinkedMap.empty, st.nonce + 1L)
 
     if(id == st.nonce && state.compareAndSet(st, newSt)) {
       notify()
       cb(true)
-    } else {
-      cb(false)
-    }
+    } else cb(false)
   }
 
-  def nevermind(id: MsgId, cb: () => Unit): Unit = {
+  private def nevermind(id: MsgId, cb: () => Unit): Unit = {
     @tailrec
     def spin(): Unit = {
       val st = state.get
-      val newSt = new St(st.result, st.waiting - id, st.nonce)
+      val newSt = new Ref.State(st.result, st.waiting - id, st.nonce)
       if(!state.compareAndSet(st, newSt)) spin()
     }
     ec.execute{ () => spin(); cb() }
   }
-
-  // private var result: Box[A] = null
-  // // any waiting calls to `access` before first `set`
-  // private var waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty
-  // // id which increases with each `set` or successful `modify`
-  // private var nonce: Long = 0
-
-  // private val actor: Actor[Msg[A]] = Actor[Msg[A]] {
-  //   case Msg.Read(cb, idf) =>
-  //     if (result eq null) {
-  //       waiting = waiting.updated(idf, cb)
-  //     } else {
-  //       val r = result.value
-  //       val id = nonce
-  //       ec.execute { () => cb(r -> id) }
-  //     }
-
-  //   case Msg.Set(r, cb) =>
-  //     nonce += 1L
-  //     if (result eq null) {
-  //       val id = nonce
-  //       waiting.values.foreach { cb =>
-  //         ec.execute { () => cb(r -> id) }
-  //       }
-  //       waiting = LinkedMap.empty
-  //     }
-  //     result = new Box(r)
-  //     cb()
-
-  //   case Msg.TrySet(id, r, cb) =>
-  //     if (id == nonce) {
-  //       nonce += 1L
-  //       if (result eq null) {
-  //         val id2 = nonce
-  //         waiting.values.foreach { cb =>
-  //           ec.execute { () => cb(r -> id2) }
-  //         }
-  //         waiting = LinkedMap.empty
-  //       }
-  //       result = new Box(r)
-  //       cb(true)
-  //     }
-  //     else cb(false)
-
-  //   case Msg.Nevermind(id, cb) =>
-  //     waiting = waiting - id
-  //     ec.execute { () => cb() }
-  // }
 
   /**
    * Obtains a snapshot of the current value of the `Ref`, and a setter
@@ -206,13 +156,15 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
       case Some(changeAndB) => F.pure(changeAndB)
     }
 
-  // might want to eliminate this, since one can just fork at call site
+  // TODO might want to eliminate this, since one can just fork at call site
+  // however is part of SyncOps since SyncRef can implement it more efficiently
+  // so if the two Refs stay separate this should stay.
   override def setAsyncPure(a: A): F[Unit] =
     async.fork {
       F.async[Unit] { cb => set(a, () => cb(Right(()))) }
-    }  //actor ! Msg.Set(a, () => ()) }
+    }
 
-  // not sure why the shift here
+  // TODO not sure why the shift here
   override def setSyncPure(a: A): F[Unit] =
     F.async[Unit](cb => set(a, () => cb(Right(())))) *> F.shift
 
@@ -238,7 +190,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
 
         res match {
           case Left(e) => throw e
-          case Right(v) =>  current.set(v, () => ())//actor ! Msg.Set(v, () => ())
+          case Right(v) =>  current.set(v, () => ())
         }
       }
     }
@@ -247,7 +199,7 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
   }
 
   private def getStamped(msg: MsgId): F[(A,Long)] =
-    F.async[(A,Long)] { cb => read(msg, x => cb(Right(x))) } //actor ! Msg.Read(x => cb(Right(x)), msg) }
+    F.async[(A,Long)] { cb => read(msg, x => cb(Right(x))) }
 }
 
 object Ref {
@@ -261,13 +213,16 @@ object Ref {
     uninitialized[F, A].flatMap(r => r.setSyncPure(a).as(r))
 
   private final class MsgId
-  private final class St[A](val result: Box[A] = null, val waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty[MsgId, ((A, Long)) => Unit], val nonce: Long = 0)
   private final class Box[A](val value: A)
-  // private sealed abstract class Msg[A]
-  // private object Msg {
-  //   final case class Read[A](cb: ((A, Long)) => Unit, id: MsgId) extends Msg[A]
-  //   final case class Nevermind[A](id: MsgId, cb: () => Unit) extends Msg[A]
-  //   final case class Set[A](r: A, cb: () => Unit) extends Msg[A]
-  //   final case class TrySet[A](id: Long, r: A, cb: Boolean => Unit) extends Msg[A]
-  // }
+  /*
+   * A null Box means the Ref is empty.
+   * `waiting` represents any waiting calls before first `set`
+   * `nonce` is an ID which increases with each `set` or successful `modify`
+   *
+   */
+  private final class State[A](
+    val result: Box[A],
+    val waiting: LinkedMap[MsgId, ((A, Long)) => Unit],
+    val nonce: Long
+  )
 }
