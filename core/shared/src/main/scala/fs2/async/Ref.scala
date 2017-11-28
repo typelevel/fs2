@@ -45,11 +45,14 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
 
     case Msg.TrySet(id, r, cb) =>
       if (id == nonce) {
-        nonce += 1L; val id2 = nonce
-        waiting.values.foreach { cb =>
-          ec.execute { () => cb(r -> id2) }
+        nonce += 1L
+        if (result eq null) {
+          val id2 = nonce
+          waiting.values.foreach { cb =>
+            ec.execute { () => cb(r -> id2) }
+          }
+          waiting = LinkedMap.empty
         }
-        waiting = LinkedMap.empty
         result = new Box(r)
         cb(true)
       }
