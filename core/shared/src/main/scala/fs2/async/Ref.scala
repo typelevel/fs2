@@ -64,17 +64,14 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     var notify: () => Unit = () => ()
 
     val st = state.get
-
     if (st.result eq null) {
         notify = () => st.waiting.values.foreach { cb =>
           ec.execute { () => cb(r -> st.nonce) }
         }
     }
-
-    st.nonce = id
     val newSt = new St(new Box(r), LinkedMap.empty, st.nonce + 1L)
 
-    if(state.compareAndSet(st, newSt)) {
+    if(id == st.nonce && state.compareAndSet(st, newSt)) {
       notify()
       cb(true)
     } else {
@@ -264,7 +261,7 @@ object Ref {
     uninitialized[F, A].flatMap(r => r.setSyncPure(a).as(r))
 
   private final class MsgId
-  private final class St[A](val result: Box[A] = null, val waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty[MsgId, ((A, Long)) => Unit], var nonce: Long = 0)
+  private final class St[A](val result: Box[A] = null, val waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty[MsgId, ((A, Long)) => Unit], val nonce: Long = 0)
   private final class Box[A](val value: A)
   // private sealed abstract class Msg[A]
   // private object Msg {
