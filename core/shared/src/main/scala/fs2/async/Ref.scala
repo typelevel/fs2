@@ -1,5 +1,6 @@
 package fs2.async
 
+import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
@@ -7,58 +8,15 @@ import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO }
 
 import fs2.Scheduler
-import fs2.internal.{Actor,LinkedMap}
+import fs2.internal.LinkedMap
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import Ref._
 
-/** An asynchronous, concurrent mutable reference. */
-final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) extends RefOps[F,A] { self =>
+final class Ref[F[_], A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) extends RefOps[F, A] { self =>
 
-  private var result: Box[A] = null
-  // any waiting calls to `access` before first `set`
-  private var waiting: LinkedMap[MsgId, ((A, Long)) => Unit] = LinkedMap.empty
-  // id which increases with each `set` or successful `modify`
-  private var nonce: Long = 0
-
-  private val actor: Actor[Msg[A]] = Actor[Msg[A]] {
-    case Msg.Read(cb, idf) =>
-      if (result eq null) {
-        waiting = waiting.updated(idf, cb)
-      } else {
-        val r = result.value
-        val id = nonce
-        ec.execute { () => cb(r -> id) }
-      }
-
-    case Msg.Set(r, cb) =>
-      nonce += 1L
-      if (result eq null) {
-        val id = nonce
-        waiting.values.foreach { cb =>
-          ec.execute { () => cb(r -> id) }
-        }
-        waiting = LinkedMap.empty
-      }
-      result = new Box(r)
-      cb()
-
-    case Msg.TrySet(id, r, cb) =>
-      if (id == nonce) {
-        nonce += 1L; val id2 = nonce
-        waiting.values.foreach { cb =>
-          ec.execute { () => cb(r -> id2) }
-        }
-        waiting = LinkedMap.empty
-        result = new Box(r)
-        cb(true)
-      }
-      else cb(false)
-
-    case Msg.Nevermind(id, cb) =>
-      waiting = waiting - id
-      ec.execute { () => cb() }
-  }
+  private[this] val state: AtomicReference[State[A]] =
+    new AtomicReference(Waiting(LinkedMap.empty))
 
   /**
    * Obtains a snapshot of the current value of the `Ref`, and a setter
@@ -67,25 +25,23 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
    * setter first. Once it has noop'd or been used once, a setter
    * never succeeds again.
    */
-  def access: F[(A, A => F[Boolean])] =
-    F.flatMap(F.delay(new MsgId)) { mid =>
-      F.map(getStamped(mid)) { case (a, id) =>
-        val set = (a: A) =>
-          F.async[Boolean] { cb => actor ! Msg.TrySet(id, a, x => cb(Right(x))) }
-        (a, set)
+  def access: F[(A, A => F[Boolean])] = {
+    getDone.map { d =>
+      val setter = { a: A =>
+        F.delay { state.compareAndSet(d, Done(a)) }
       }
+      (d.a, setter)
     }
+  }
 
-  override def get: F[A] = F.flatMap(F.delay(new MsgId)) { mid => F.map(getStamped(mid))(_._1) }
+  override def get: F[A] =
+    F.delay(new MsgId).flatMap(get)
 
   /** Like [[get]] but returns an `F[Unit]` that can be used cancel the subscription. */
   def cancellableGet: F[(F[A], F[Unit])] = F.delay {
     val id = new MsgId
-    val get = F.map(getStamped(id))(_._1)
-    val cancel = F.async[Unit] {
-      cb => actor ! Msg.Nevermind(id, () => cb(Right(())))
-    }
-    (get, cancel)
+    val cancel = F.delay { removeCallback(id) }
+    (get(id), cancel)
   }
 
   /**
@@ -100,40 +56,35 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     }
 
   override def tryModify(f: A => A): F[Option[Change[A]]] =
-    access.flatMap { case (previous,set) =>
-      val now = f(previous)
-      set(now).map { b =>
-        if (b) Some(Change(previous, now))
-        else None
-      }
-    }
+    getDone.flatMap { ov => F.delay(singleCas(ov, f(ov.a))) }
 
-  override def tryModify2[B](f: A => (A,B)): F[Option[(Change[A], B)]] =
-    access.flatMap { case (previous,set) =>
-      val (now,b0) = f(previous)
-      set(now).map { b =>
-        if (b) Some(Change(previous, now) -> b0)
-        else None
-      }
+  override def tryModify2[B](f: A => (A, B)): F[Option[(Change[A], B)]] = {
+    getDone.flatMap { ov =>
+      val (nv, b) = f(ov.a)
+      F.delay(singleCas(ov, nv)).map(_.map(ch => (ch, b)))
+    }
   }
 
   override def modify(f: A => A): F[Change[A]] =
-    tryModify(f).flatMap {
-      case None => modify(f)
-      case Some(change) => F.pure(change)
-    }
+    getDone.flatMap { ov => F.delay(casLoop(ov, f)) }
 
-  override def modify2[B](f: A => (A,B)): F[(Change[A], B)] =
-    tryModify2(f).flatMap {
-      case None => modify2(f)
-      case Some(changeAndB) => F.pure(changeAndB)
-    }
+  override def modify2[B](f: A => (A, B)): F[(Change[A], B)] =
+    getDone.flatMap { ov => F.delay(casLoop2(ov, f)) }
 
   override def setAsyncPure(a: A): F[Unit] =
-    F.delay { actor ! Msg.Set(a, () => ()) }
+    setSyncPure(a).as(()) // FIXME
 
-  override def setSyncPure(a: A): F[Unit] =
-    F.async[Unit](cb => actor ! Msg.Set(a, () => cb(Right(())))) *> F.shift
+  override def setSyncPure(a: A): F[Unit] = F.delay {
+    val r = Done(a)
+    state.getAndSet(r) match {
+      case Waiting(cbs) =>
+        // need to notify waiters
+        // FIXME: fork?
+        cbs.values.foreach { cb => cb(r) }
+      case Done(_) =>
+        ()
+    }
+  }
 
   /**
    * Runs `f1` and `f2` simultaneously, but only the winner gets to
@@ -145,19 +96,19 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
    * is not set.
    */
   def race(f1: F[A], f2: F[A]): F[Unit] = F.delay {
-    val ref = new AtomicReference(actor)
+    val ref = new AtomicReference(this)
     val won = new AtomicBoolean(false)
-    val win = (res: Either[Throwable,A]) => {
-      // important for GC: we don't reference this ref
-      // or the actor directly, and the winner destroys any
-      // references behind it!
+    val win = (res: Either[Throwable, A]) => {
+      // Important for GC: we don't reference this ref directly,
+      // and the winner destroys any references behind it!
       if (won.compareAndSet(false, true)) {
-        val actor = ref.get
-        ref.set(null)
-
         res match {
-          case Left(e) => throw e
-          case Right(v) => actor ! Msg.Set(v, () => ())
+          case Left(e) =>
+            ref.set(null)
+            throw e
+          case Right(a) =>
+            val self = ref.getAndSet(null)
+            unsafeRunAsync(self.setSyncPure(a))(_ => IO.unit)
         }
       }
     }
@@ -165,11 +116,83 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     unsafeRunAsync(f2)(res => IO(win(res)))
   }
 
-  private def getStamped(msg: MsgId): F[(A,Long)] =
-    F.async[(A,Long)] { cb => actor ! Msg.Read(x => cb(Right(x)), msg) }
+  private def get(id: MsgId): F[A] =
+    getDone(id).map(_.a)
+
+  private def getDone: F[Done[A]] =
+    F.delay(new MsgId).flatMap(getDone)
+
+  private def getDone(id: MsgId): F[Done[A]] = F.suspend {
+    val s = state.get()
+    s match {
+      case Waiting(cbs) =>
+        F.async[Done[A]] { cb =>
+          insertCallback(s, id, done => cb(Right(done)))
+        }
+      case d @ Done(_) =>
+        F.pure(d)
+    }
+  }
+
+  @tailrec
+  private def insertCallback(curr: State[A], id: MsgId, cb: Done[A] => Unit): Unit = {
+    curr match {
+      case ov @ Waiting(cbs) =>
+        val nv = Waiting[A](cbs.updated(id, cb))
+        if (!state.compareAndSet(ov, nv)) {
+          insertCallback(state.get(), id, cb)
+        }
+      case r @ Done(_) =>
+        cb(r)
+    }
+  }
+
+  @tailrec
+  private def removeCallback(id: MsgId): Unit = {
+    val s = state.get()
+    s match {
+      case ov @ Waiting(cbs) =>
+        val nv = Waiting(cbs - id)
+        if (!state.compareAndSet(ov, nv)) {
+          removeCallback(id)
+        }
+      case Done(_) =>
+        ()
+    }
+  }
+
+  private def singleCas(ov: Done[A], nv: A): Option[Change[A]] = {
+    if (state.compareAndSet(ov, Done(nv))) {
+      Some(Change(previous = ov.a, now = nv))
+    } else {
+      None
+    }
+  }
+
+  @tailrec
+  private def casLoop(curr: Done[A], f: A => A): Change[A] = {
+    val a = curr.a
+    val now = f(a)
+    if (state.compareAndSet(curr, Done(now))) {
+      Change(previous = a, now = now)
+    } else {
+      casLoop(state.get().unsafeAsDone(), f)
+    }
+  }
+
+  @tailrec
+  private def casLoop2[B](curr: Done[A], f: A => (A, B)): (Change[A], B) = {
+    val a = curr.a
+    val (now, b) = f(a)
+    if (state.compareAndSet(curr, Done(now))) {
+      (Change(previous = a, now = now), b)
+    } else {
+      casLoop2(state.get().unsafeAsDone(), f)
+    }
+  }
 }
 
-object Ref {
+final object Ref {
 
   /** Creates an asynchronous, concurrent mutable reference. */
   def uninitialized[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] =
@@ -180,12 +203,16 @@ object Ref {
     uninitialized[F, A].flatMap(r => r.setSyncPure(a).as(r))
 
   private final class MsgId
-  private final class Box[A](val value: A)
-  private sealed abstract class Msg[A]
-  private object Msg {
-    final case class Read[A](cb: ((A, Long)) => Unit, id: MsgId) extends Msg[A]
-    final case class Nevermind[A](id: MsgId, cb: () => Unit) extends Msg[A]
-    final case class Set[A](r: A, cb: () => Unit) extends Msg[A]
-    final case class TrySet[A](id: Long, r: A, cb: Boolean => Unit) extends Msg[A]
+
+  private sealed abstract class State[A] {
+    def unsafeAsDone(): Done[A]
+  }
+
+  private final case class Waiting[A](cbs: LinkedMap[MsgId, Done[A] => Unit]) extends State[A] {
+    override def unsafeAsDone() = throw new IllegalStateException("Waiting.unsafeAsDone()")
+  }
+
+  private final case class Done[A](a: A) extends State[A] {
+    override def unsafeAsDone() = this
   }
 }
