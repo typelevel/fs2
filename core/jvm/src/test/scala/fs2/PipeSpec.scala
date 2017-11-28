@@ -204,13 +204,13 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.forall(f)) shouldBe Vector(runLog(s.get).forall(f))
     }
 
-    "groupBy" in forAll { (s: PureStream[Int], n: SmallPositive) =>
+    "groupAdjacentBy" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val f = (i: Int) => i % n.get
-      val s1 = s.get.groupBy(f)
+      val s1 = s.get.groupAdjacentBy(f)
       val s2 = s.get.map(f).changes
-      runLog(s1.map(_._2)).flatten shouldBe runLog(s.get)
+      runLog(s1.map(_._2)).flatMap(_.toVector) shouldBe runLog(s.get)
       runLog(s1.map(_._1)) shouldBe runLog(s2)
-      runLog(s1.map { case (k, vs) => vs.forall(f(_) == k) }) shouldBe runLog(s2.map(_ => true))
+      runLog(s1.map { case (k, vs) => vs.toVector.forall(f(_) == k) }) shouldBe runLog(s2.map(_ => true))
     }
 
     "head" in forAll { (s: PureStream[Int]) =>

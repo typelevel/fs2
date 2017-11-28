@@ -534,7 +534,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     this.pull.forall(p).flatMap(Pull.output1).stream
 
   /**
-   * Partitions the input into a stream of chunks according to a discriminator function.
+   * Partitions the input into a stream of segments according to a discriminator function.
    *
    * Each chunk in the source stream is grouped using the supplied discriminator function
    * and the results of the grouping are emitted each time the discriminator function changes
@@ -542,17 +542,17 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *
    * @example {{{
    * scala> import cats.implicits._
-   * scala> Stream("Hello", "Hi", "Greetings", "Hey").groupBy(_.head).toList
-   * res0: List[(Char,Vector[String])] = List((H,Vector(Hello, Hi)), (G,Vector(Greetings)), (H,Vector(Hey)))
+   * scala> Stream("Hello", "Hi", "Greetings", "Hey").groupAdjacentBy(_.head).toList.map { case (k,vs) => k -> vs.toList }
+   * res0: List[(Char,List[String])] = List((H,List(Hello, Hi)), (G,List(Greetings)), (H,List(Hey)))
    * }}}
    */
-  def groupBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Vector[O])] = {
+  def groupAdjacentBy[O2](f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Segment[O,Unit])] = {
 
-    def go(current: Option[(O2,Vector[O])], s: Stream[F,O]): Pull[F,(O2,Vector[O]),Unit] = {
+    def go(current: Option[(O2,Segment[O,Unit])], s: Stream[F,O]): Pull[F,(O2,Segment[O,Unit]),Unit] = {
       s.pull.unconsChunk.flatMap {
         case Some((hd,tl)) =>
-          val (k1, out) = current.getOrElse((f(hd(0)), Vector[O]()))
-          doChunk(hd, tl, k1, out, Vector.empty)
+          val (k1, out) = current.getOrElse((f(hd(0)), Segment.empty[O]))
+          doChunk(hd, tl, k1, out, None)
         case None =>
           val l = current.map { case (k1, out) => Pull.output1((k1, out)) } getOrElse Pull.pure(())
           l >> Pull.done
@@ -560,27 +560,27 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     }
 
     @annotation.tailrec
-    def doChunk(chunk: Chunk[O], s: Stream[F,O], k1: O2, out: Vector[O], acc: Vector[(O2, Vector[O])]): Pull[F,(O2,Vector[O]),Unit] = {
+    def doChunk(chunk: Chunk[O], s: Stream[F,O], k1: O2, out: Segment[O,Unit], acc: Option[Segment[(O2, Segment[O,Unit]),Unit]]): Pull[F,(O2,Segment[O,Unit]),Unit] = {
       val differsAt = chunk.indexWhere(v => eq.neqv(f(v), k1)).getOrElse(-1)
       if (differsAt == -1) {
         // whole chunk matches the current key, add this chunk to the accumulated output
-        val newOut: Vector[O] = out ++ chunk.toVector
-        if (acc.isEmpty) {
-          go(Some((k1, newOut)), s)
-        } else {
-          // potentially outputs one additional chunk (by splitting the last one in two)
-          Pull.output(Chunk.vector(acc)) >> go(Some((k1, newOut)), s)
+        val newOut: Segment[O,Unit] = out ++ chunk
+        acc match {
+          case None => go(Some((k1, newOut)), s)
+          case Some(acc) =>
+            // potentially outputs one additional chunk (by splitting the last one in two)
+            Pull.output(acc) >> go(Some((k1, newOut)), s)
         }
       } else {
         // at least part of this chunk does not match the current key, need to group and retain chunkiness
         // split the chunk into the bit where the keys match and the bit where they don't
         val matching = chunk.take(differsAt)
-        val newOut: Vector[O] = out ++ matching.toVector
+        val newOut: Segment[O,Unit] = out ++ matching.voidResult
         val nonMatching = chunk.drop(differsAt).fold(_ => Chunk.empty, identity).toChunk
         // nonMatching is guaranteed to be non-empty here, because we know the last element of the chunk doesn't have
         // the same key as the first
         val k2 = f(nonMatching(0))
-        doChunk(nonMatching, s, k2, Vector[O](), acc :+ ((k1, newOut)))
+        doChunk(nonMatching, s, k2, Segment.empty[O], Some(acc.getOrElse(Segment.empty) ++ Segment((k1, newOut))))
       }
     }
 
