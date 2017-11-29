@@ -64,21 +64,21 @@ object Signal {
 
   def apply[F[_],A](initA: A)(implicit F: Effect[F], ec: ExecutionContext): F[Signal[F,A]] = {
     class ID
-    async.syncRefOf[F, (A, Long, Map[ID, Ref[F, (A, Long)]])]((initA, 0, Map.empty)).map {
+    async.syncRefOf[F, (A, Long, Map[ID, Promise[F, (A, Long)]])]((initA, 0, Map.empty)).map {
     state => new Signal[F,A] {
-      def refresh: F[Unit] = modify(identity).as(())
-      def set(a: A): F[Unit] = modify(_ => a).as(())
+      def refresh: F[Unit] = modify(identity).void
+      def set(a: A): F[Unit] = modify(_ => a).void
       def get: F[A] = state.get.map(_._1)
       def modify(f: A => A): F[Change[A]] = modify2( a => (f(a), ()) ).map(_._1)
       def modify2[B](f: A => (A,B)):F[(Change[A], B)] = {
         state.modify2 { case (a, l, _) =>
           val (a0, b) = f(a)
-          (a0, l+1, Map.empty[ID, Ref[F, (A, Long)]]) -> b
+          (a0, l+1, Map.empty[ID, Promise[F, (A, Long)]]) -> b
         }.flatMap { case (c, b) =>
           if (c.previous._3.isEmpty) F.pure(c.map(_._1) -> b)
           else {
             val now = c.now._1 -> c.now._2
-            c.previous._3.toVector.traverse { case(_, ref) => ref.setAsyncPure(now) } *> F.pure(c.map(_._1) -> b)
+            c.previous._3.toVector.traverse { case(_, promise) => async.fork(promise.setSync(now)) } *> F.pure(c.map(_._1) -> b)
           }
         }
       }
@@ -89,12 +89,12 @@ object Signal {
       def discrete: Stream[F, A] = {
         def go(id: ID, last: Long): Stream[F, A] = {
           def getNext: F[(A, Long)] = {
-            async.ref[F, (A, Long)] flatMap { ref =>
+            async.promise[F, (A, Long)] flatMap { promise =>
               state.modify { case s@(a, l, listen) =>
                 if (l != last) s
-                else (a, l, listen + (id -> ref))
+                else (a, l, listen + (id -> promise))
               } flatMap { c =>
-                if (c.now != c.previous) ref.get
+                if (c.now != c.previous) promise.get
                 else F.pure((c.now._1, c.now._2))
               }
             }
@@ -102,7 +102,7 @@ object Signal {
           eval(getNext).flatMap { case (a, l) => emit(a) ++ go(id, l) }
         }
 
-        def cleanup(id: ID): F[Unit] = state.modify { s => s.copy(_3 = s._3 - id) }.as(())
+        def cleanup(id: ID): F[Unit] = state.modify { s => s.copy(_3 = s._3 - id) }.void
 
         bracket(F.delay(new ID))(
           { id => eval(state.get).flatMap { case (a, l, _) => emit(a) ++ go(id, l) } }

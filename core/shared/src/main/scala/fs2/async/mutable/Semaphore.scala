@@ -85,20 +85,20 @@ object Semaphore {
     ensureNonneg(n)
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is non-empty, and there are n permits available (Right)
-    type S = Either[Vector[(Long,async.Ref[F,Unit])], Long]
-    async.refOf[F,S](Right(n)).map { ref => new Semaphore[F] {
-      private def open(gate: async.Ref[F,Unit]): F[Unit] =
-        gate.setAsyncPure(())
+    type S = Either[Vector[(Long,async.Promise[F, Unit])], Long]
+    async.syncRefOf[F,S](Right(n)).map { state => new Semaphore[F] {
+      private def open(gate: async.Promise[F, Unit]): F[Unit] =
+        async.fork(gate.setSync(()))
 
-      def count = ref.get.map(count_)
+      def count = state.get.map(count_)
 
       def decrementBy(n: Long) = { ensureNonneg(n)
-        if (n == 0) F.pure(())
-        else async.ref[F,Unit].flatMap(decrementByImpl(n, _))
+        if (n == 0) F.unit
+        else async.promise[F,Unit].flatMap(decrementByImpl(n, _))
       }
 
-      private def decrementByImpl(n: Long, gate: Ref[F,Unit]): F[Unit] =
-        ref.modify {
+      private def decrementByImpl(n: Long, gate: Promise[F, Unit]): F[Unit] =
+        state.modify {
           case Left(waiting) => Left(waiting :+ (n -> gate))
           case Right(m) =>
             if (n <= m) Right(m-n)
@@ -108,15 +108,15 @@ object Semaphore {
             case Left(waiting) =>
               def err = sys.error("FS2 bug: Semaphore has empty waiting queue rather than 0 count")
               waiting.lastOption.getOrElse(err)._2.get
-            case Right(_) => F.pure(())
+            case Right(_) => F.unit
           }
         }
 
       def timedDecrementBy(n: Long, timeout: FiniteDuration, scheduler: Scheduler): F[Long] = {
         ensureNonneg(n)
         if (n == 0) F.pure(0)
-        else async.ref[F,Unit].flatMap { gate =>
-          val timedOut: F[Long] = ref.modify {
+        else async.promise[F,Unit].flatMap { gate =>
+          val timedOut: F[Long] = state.modify {
             case Left(waiting) =>
               val w2 = waiting.filter(_._2 ne gate)
               if (w2.isEmpty) Right(0) else Left(w2)
@@ -141,7 +141,7 @@ object Semaphore {
         timedDecrementBy(1, timeout, scheduler).map(_ == 0)
 
       def clear: F[Long] =
-        ref.modify {
+        state.modify {
           case Left(e) => throw new IllegalStateException("cannot clear a semaphore with negative count")
           case Right(n) => Right(0)
         }.flatMap { c => c.previous match {
@@ -154,7 +154,7 @@ object Semaphore {
 
       def incrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(())
-        else ref.modify {
+        else state.modify {
           case Left(waiting) =>
             // just figure out how many to strip from waiting queue,
             // but don't run anything here inside the modify
@@ -182,13 +182,13 @@ object Semaphore {
 
       def tryDecrementBy(n: Long) = { ensureNonneg(n)
         if (n == 0) F.pure(true)
-        else ref.modify {
+        else state.modify {
           case Right(m) if m >= n => Right(m-n)
           case w => w
         }.map { c => c.now.fold(_ => false, n => c.previous.fold(_ => false, m => n != m)) }
       }
 
-      def available = ref.get.map {
+      def available = state.get.map {
         case Left(_) => 0
         case Right(n) => n
       }

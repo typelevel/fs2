@@ -22,7 +22,10 @@ final class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
   // TODO I prefer to not have `setAsync`, and leave forking at call site,
   // since we can't exploit SyncRef lazy set directly
   // I've replaced any setAsyncPure in fs2 with fork(setSync), which would
-  // probably highlight that there's a bunch of unnecessary forks that can be avoided
+  // probably reveal that there's a bunch of unnecessary forks that can be avoided
+  //
+  // NOTE: this differs in behaviour from the old Ref in that by the time readers are notified
+  // the new value is already guaranteed to be in place.
   def setSync(a: A)(implicit F: Effect[F], ec: ExecutionContext): F[Unit] = {
     def notifyReaders(r: State.Unset[A]): Unit =
       r.waiting.values.foreach { cb =>
@@ -119,6 +122,7 @@ object Promise {
     final case class Unset[A](waiting: LinkedMap[MsgId, A => Unit]) extends State[A]
   }
 
+  // TODO move into its proper place, make it proper
   def benchmark() = {
     import scala.concurrent.ExecutionContext.Implicits.global
     val refSync = syncRefOf[IO, Long](0l).unsafeRunSync()

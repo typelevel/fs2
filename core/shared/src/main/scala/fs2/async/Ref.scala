@@ -11,12 +11,10 @@ import fs2.async
 import fs2.internal.LinkedMap
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
-import scala.annotation.tailrec
-
-import Ref.{Box, MsgId}
+import ORef._
 
 /** An asynchronous, concurrent mutable reference. */
-final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) extends RefOps[F,A] { self =>
+final class ORef[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) extends RefOps[F,A] { self =>
 
   private val state = new AtomicReference[Ref.State[A]]
   state.set(new Ref.State[A](null, LinkedMap.empty, 0))
@@ -202,14 +200,14 @@ final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContex
     F.async[(A,Long)] { cb => read(msg, x => cb(Right(x))) }
 }
 
-object Ref {
+object ORef {
 
   /** Creates an asynchronous, concurrent mutable reference. */
-  def uninitialized[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] =
-    F.delay(new Ref[F, A])
+  def uninitialized[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[ORef[F,A]] =
+    F.delay(new ORef[F, A])
 
   /** Creates an asynchronous, concurrent mutable reference, initialized to `a`. */
-  def initialized[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] =
+  def initialized[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[ORef[F,A]] =
     uninitialized[F, A].flatMap(r => r.setSyncPure(a).as(r))
 
   private final class MsgId

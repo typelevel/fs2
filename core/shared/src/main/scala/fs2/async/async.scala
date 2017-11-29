@@ -75,10 +75,13 @@ package object async {
     mutable.Topic(initial)
 
   /** Creates an uninitialized `Ref[F,A]`. */
-  def ref[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] = Ref.uninitialized
+  //def ref[F[_]: Sync, A]: F[Promise[F, A]] = Promise.empty// (implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] = Ref.uninitialized
 
   /** Creates an initialized `Ref[F,A]`. */
-  def refOf[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] = Ref.initialized(a)
+  //def refOf[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] = Ref.initialized(a)
+
+  /** Creates an empty `Promise[F, A]` */
+  def promise[F[_]: Sync, A]: F[Promise[F, A]] = Promise.empty
 
   /** Creates an initialized `SyncRef[F,A]`. */
   def syncRefOf[F[_]: Sync, A](a: A): F[SyncRef[F,A]] = SyncRef[F,A](a)
@@ -96,8 +99,8 @@ package object async {
    * bound. The inner `F[A]` will block until the result is available.
    */
   def start[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
-    ref[F, Either[Throwable, A]].flatMap { ref =>
-      fork(f.attempt.flatMap(ref.setAsyncPure)).as(ref.get.flatMap(F.fromEither))
+    promise[F, Either[Throwable, A]].flatMap { p =>
+      fork(f.attempt.flatMap(x => fork(p.setSync(x)))).as(p.get.flatMap(F.fromEither))
     }
 
   /**
@@ -114,8 +117,8 @@ package object async {
     * nowhere.
    */
   def race[F[_]: Effect, A, B](fa: F[A], fb: F[B])(implicit ec: ExecutionContext): F[Either[A, B]] =
-    ref[F, Either[A,B]].flatMap { ref =>
-      ref.race(fa.map(Left.apply), fb.map(Right.apply)) *> ref.get
+    promise[F, Either[A,B]].flatMap { p =>
+      p.race(fa.map(Left.apply), fb.map(Right.apply)) *> p.get
     }
 
   /**

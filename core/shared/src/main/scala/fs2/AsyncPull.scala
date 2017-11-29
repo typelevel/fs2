@@ -35,17 +35,17 @@ sealed abstract class AsyncPull[F[_],A] { self =>
   def race[B](b: AsyncPull[F,B])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,Either[A,B]] = new AsyncPull[F, Either[A,B]] {
     def get = cancellableGet.flatMap(_._1)
     def cancellableGet = FreeC.Eval(for {
-      ref <- async.ref[F,Either[Throwable, Either[A,B]]]
+      promise <- async.promise[F,Either[Throwable, Either[A,B]]]
       t0 <- self.cancellableGet.run
       (a, cancelA) = t0
       t1 <- b.cancellableGet.run
       (b, cancelB) = t1
       fa = a.run.map(Left(_): Either[A, B])
       fb = b.run.map(Right(_): Either[A, B])
-      _ <-  async.fork(fa.attempt.flatMap(ref.setAsyncPure))
-      _ <-  async.fork(fb.attempt.flatMap(ref.setAsyncPure))
+      _ <-  async.fork(fa.attempt.flatMap(x => async.fork(promise.setSync(x))))
+      _ <-  async.fork(fb.attempt.flatMap(x => async.fork(promise.setSync(x))))
     } yield {
-      (FreeC.Eval(ref.get.flatMap {
+      (FreeC.Eval(promise.get.flatMap {
         case Left(e) => F.raiseError[Either[A, B]](e)
         case Right(Left(a)) => cancelB.run.as(Left(a): Either[A, B])
         case Right(Right(b)) => cancelA.run.as(Right(b): Either[A, B])
@@ -83,21 +83,21 @@ object AsyncPull {
     def cancellableGet = FreeC.Pure((get, FreeC.Pure(())))
   }
 
-  /** Returns an async pull that gets its value from reading the specified ref. */
-  def readRef[F[_],A](r: async.Ref[F,A]): AsyncPull[F,A] =
+  /** Returns an async pull that gets its value from reading the specified promise. */
+  def readPromise[F[_],A](p: async.Promise[F,A])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,A] =
     new AsyncPull[F,A] {
-      def get = FreeC.Eval(r.get)
-      def cancellableGet = FreeC.Eval(r.cancellableGet).map { case (get, cancel) => (FreeC.Eval(get), FreeC.Eval(cancel)) }
+      def get = FreeC.Eval(p.get)
+      def cancellableGet = FreeC.Eval(p.cancellableGet).map { case (get, cancel) => (FreeC.Eval(get), FreeC.Eval(cancel)) }
     }
 
   /**
-   * Like [[readRef]] but reads a `Ref[F,Either[Throwable,A]]` instead of a `Ref[F,A]`. If a `Left(t)` is read,
+   * Like [[readPromise]] but reads a `Promise[F,Either[Throwable,A]]` instead of a `Promise[F,A]`. If a `Left(t)` is read,
    * the `get` action fails with `t`.
    */
-  def readAttemptRef[F[_],A](r: async.Ref[F,Either[Throwable,A]]): AsyncPull[F,A] =
+  def readAttemptPromise[F[_],A](p: async.Promise[F,Either[Throwable,A]])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,A] =
     new AsyncPull[F,A] {
-      def get = FreeC.Eval(r.get).flatMap(_.fold(FreeC.Fail(_), FreeC.Pure(_)))
-      def cancellableGet = FreeC.Eval(r.cancellableGet).map { case (get, cancel) =>
+      def get = FreeC.Eval(p.get).flatMap(_.fold(FreeC.Fail(_), FreeC.Pure(_)))
+      def cancellableGet = FreeC.Eval(p.cancellableGet).map { case (get, cancel) =>
         (FreeC.Eval(get).flatMap(_.fold(FreeC.Fail(_), FreeC.Pure(_))), FreeC.Eval(cancel))
       }
     }

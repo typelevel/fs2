@@ -2501,7 +2501,7 @@ object Stream {
       type UO = Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]
 
       Pull.fromFreeC {
-        val ref = new async.Ref[F, Either[Throwable, Option[(Segment[O,Unit], Stream[F,O])]]]
+         val p = async.Promise.unsafeCreate[F, Either[Throwable, Option[(Segment[O,Unit], Stream[F,O])]]]
         Algebra.getScope[F, Nothing] flatMap { scope =>
           val runStep =
             Algebra.runFoldScope(
@@ -2510,7 +2510,7 @@ object Stream {
               , None : UO
             ){ (_, uo) => uo.asInstanceOf[UO] } map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
 
-          Algebra.eval(async.fork(F.flatMap(F.attempt(runStep))(ref.setAsyncPure))) map { _ => AsyncPull.readAttemptRef(ref) }
+          Algebra.eval(async.fork(F.flatMap(F.attempt(runStep))(x => async.fork(p.setSync(x))))) map { _ => AsyncPull.readAttemptPromise(p) }
         }
       }
     }

@@ -101,18 +101,18 @@ object Topic {
 
       def mkSubscriber(maxQueued: Int):F[Subscriber] = for {
         q <- async.boundedQueue[F,A](maxQueued)
-        firstA <- async.ref[F,A]
-        done <- async.ref[F,Boolean]
+        firstA <- async.promise[F,A]
+        done <- async.promise[F,Boolean]
         sub = new Subscriber {
           def unSubscribe: F[Unit] = for {
             _ <- state.modify { case (a,subs) => a -> subs.filterNot(_.id == id) }
             _ <- subSignal.modify(_ - 1)
-            _ <- done.setAsyncPure(true)
+            _ <- async.fork(done.setSync(true))
           } yield ()
           def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
           def publish(a: A): F[Unit] = {
             q.offer1(a).flatMap { offered =>
-              if (offered) F.pure(())
+              if (offered) F.unit
               else {
                 eval(done.get).interruptWhen(q.full.discrete.map(! _ )).last.flatMap {
                   case None => eval(publish(a))
@@ -127,7 +127,7 @@ object Topic {
         }
         c <- state.modify { case(a,s) => a -> (s :+ sub) }
         _ <- subSignal.modify(_ + 1)
-        _ <- firstA.setAsyncPure(c.now._1)
+        _ <- async.fork(firstA.setSync(c.now._1))
       } yield sub
 
       new Topic[F,A] {
