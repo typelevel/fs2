@@ -168,7 +168,7 @@ object Queue {
     )
 
     Signal(0).flatMap { szSignal =>
-    async.syncRefOf[F,State](State(Vector.empty, Vector.empty, None)).map { qref =>
+    async.refOf[F,State](State(Vector.empty, Vector.empty, None)).map { qref =>
       // Signals size change of queue, if that has changed
       def signalSize(s: State, ns: State) : F[Unit] = {
         if (s.queue.size != ns.queue.size) szSignal.set(ns.queue.size)
@@ -375,7 +375,7 @@ object Queue {
   /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
   def synchronousNoneTerminated[F[_],A](implicit F: Effect[F], ec: ExecutionContext): F[Queue[F,Option[A]]] =
     Semaphore(0).flatMap { permits =>
-    syncRefOf[F, Boolean](false).flatMap { doneRef =>
+    refOf[F, Boolean](false).flatMap { doneRef =>
     unbounded[F,Option[A]].map { q =>
       new Queue[F,Option[A]] {
         def upperBound: Option[Int] = Some(0)

@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import java.util.concurrent.atomic.AtomicReference
 
 import fs2.{ Catenable, CompositeFailure, Lease, Scope }
-import fs2.async.SyncRef
+import fs2.async.Ref
 import cats.effect.Sync
 
 /**
@@ -55,7 +55,7 @@ import cats.effect.Sync
  */
 private[internal] final class RunFoldScope[F[_]] private (val id: Token, private val parent: Option[RunFoldScope[F]])(implicit F: Sync[F]) extends Scope[F] { self =>
 
-  private val state: SyncRef[F, RunFoldScope.State[F]] = new SyncRef(new AtomicReference(RunFoldScope.State.initial))
+  private val state: Ref[F, RunFoldScope.State[F]] = new Ref(new AtomicReference(RunFoldScope.State.initial))
 
   /**
    * Registers supplied resource in this scope.

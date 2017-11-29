@@ -180,7 +180,7 @@ protected[tcp] object Socket {
 
   def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F: Effect[F], ec: ExecutionContext):F[Socket[F]] = {
     async.semaphore(1) flatMap { readSemaphore =>
-    async.syncRefOf[F, ByteBuffer](ByteBuffer.allocate(0)) map { bufferRef =>
+    async.refOf[F, ByteBuffer](ByteBuffer.allocate(0)) map { bufferRef =>
 
       // Reads data to remaining capacity of supplied ByteBuffer
       // Also measures time the read took returning this as tuple

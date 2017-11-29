@@ -86,7 +86,7 @@ object Semaphore {
     // semaphore is either empty, and there are number of outstanding acquires (Left)
     // or it is non-empty, and there are n permits available (Right)
     type S = Either[Vector[(Long,async.Promise[F, Unit])], Long]
-    async.syncRefOf[F,S](Right(n)).map { state => new Semaphore[F] {
+    async.refOf[F,S](Right(n)).map { state => new Semaphore[F] {
       private def open(gate: async.Promise[F, Unit]): F[Unit] =
         async.fork(gate.setSync(()))
 

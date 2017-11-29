@@ -74,17 +74,11 @@ package object async {
   def topic[F[_]:Effect,A](initial: A)(implicit ec: ExecutionContext): F[mutable.Topic[F,A]] =
     mutable.Topic(initial)
 
-  /** Creates an uninitialized `Ref[F,A]`. */
-  //def ref[F[_]: Sync, A]: F[Promise[F, A]] = Promise.empty// (implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] = Ref.uninitialized
-
-  /** Creates an initialized `Ref[F,A]`. */
-  //def refOf[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] = Ref.initialized(a)
-
   /** Creates an empty `Promise[F, A]` */
   def promise[F[_]: Sync, A]: F[Promise[F, A]] = Promise.empty
 
   /** Creates an initialized `SyncRef[F,A]`. */
-  def syncRefOf[F[_]: Sync, A](a: A): F[SyncRef[F,A]] = SyncRef[F,A](a)
+  def refOf[F[_]: Sync, A](a: A): F[Ref[F,A]] = Ref[F,A](a)
 
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
   def parallelTraverse[F[_], G[_], A, B](fa: F[A])(f: A => G[B])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[B]] =

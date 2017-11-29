@@ -14,7 +14,7 @@ import Promise._
 
 // TODO shall we move Effect and EC implicits back up here?
 // TODO scaladoc
-final class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
+final class Promise[F[_], A] private [fs2] (ref: Ref[F, State[A]]) {
 
   def get(implicit F: Effect[F], ec: ExecutionContext): F[A] =
     F.delay(new MsgId).flatMap(getOrWait)
@@ -108,12 +108,16 @@ final class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
   }
 }
 object Promise {
+  // TODO check if constrant on creation of concurrent structures can/should be relaxed
+  // does this come at a cost of needing Effect in ops more often? If so I'd rather create
+  // in Effect and use in a looser constraint, although that probably means loosing the
+  // flexibility of choosing a different EC per op
   def empty[F[_], A](implicit F: Sync[F]): F[Promise[F, A]] =
     F.delay(unsafeCreate[F, A])
 
   // TODO inline?
   private[fs2] def unsafeCreate[F[_]: Sync, A]: Promise[F, A] =
-    new Promise[F, A](new SyncRef(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
+    new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
 
   private final class MsgId
   private[async] sealed abstract class State[A]
@@ -122,10 +126,10 @@ object Promise {
     final case class Unset[A](waiting: LinkedMap[MsgId, A => Unit]) extends State[A]
   }
 
-  // TODO move into its proper place, make it proper
+  // TODO move into its proper place, flesh it out
   def benchmark() = {
     import scala.concurrent.ExecutionContext.Implicits.global
-    val refSync = syncRefOf[IO, Long](0l).unsafeRunSync()
+    val ref = refOf[IO, Long](0l).unsafeRunSync()
     val promise = Promise.empty[IO, Long].unsafeRunSync()
 
     val count = 10000000
@@ -152,11 +156,11 @@ object Promise {
     // since they are typically set once. However, it would be very easy
     // to fast-path optimise it to use SyncRef after first set, achieving essentially
     // the same result.
-    time("SYNC REF: setSyncPure")(op(refSync.setSyncPure(1l)))
+    time("SYNC REF: setSyncPure")(op(ref.setSync(1l)))
     time("PROMISE: setSyncPure")(op(promise.setSync(1l)))
-    time("SYNC REF: setAsyncPure")(op(refSync.setAsyncPure(1l)))
+    time("SYNC REF: setAsyncPure")(op(ref.setAsync(1l)))
     time("PROMISE: setAsyncPure")(op(fork(promise.setSync(1l))))
-    time("SYNC REF: get")(op(refSync.get.void))
+    time("SYNC REF: get")(op(ref.get.void))
     time("PROMISE: get")(op(promise.get.void))
   }
 
