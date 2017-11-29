@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import Promise._
 
-// TODO shall we move Effect and EC implicits back up here
+// TODO shall we move Effect and EC implicits back up here?
 // TODO scaladoc
 final case class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
   def get(implicit F: Effect[F], ec: ExecutionContext): F[A] =
@@ -109,4 +109,42 @@ object Promise {
     final case class Set[A](a: A) extends State[A]
     final case class Unset[A](waiting: LinkedMap[MsgId, A => Unit]) extends State[A]
   }
+
+  def benchmark() = {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val refSync = syncRefOf[IO, Long](0l).unsafeRunSync()
+    val promise = Promise.empty[IO, Long].unsafeRunSync()
+
+    val count = 10000000
+
+    def time[A](s: String)(f: IO[A]): A = {
+      val start = System.currentTimeMillis()
+      val a = f.unsafeRunSync()
+      val took = System.currentTimeMillis() - start
+      println(s"Execution of : $s took ${took.toFloat/1000} s")
+      a
+    }
+
+    def op(action: IO[Unit]) : IO[Unit] = {
+      def go(rem: Int): IO[Unit] = {
+        if (rem == 0) IO.unit
+        else action flatMap { _ => go(rem - 1) }
+      }
+      go(count)
+    }
+
+    println(s"Ops: $count")
+
+    // benchmarking repeated sets for promise doesn't really matter
+    // since they are typically set once. However, it would be very easy
+    // to fast-path optimise it to use SyncRef after first set, achieving essentially
+    // the same result.
+    time("SYNC REF: setSyncPure")(op(refSync.setSyncPure(1l)))
+    time("PROMISE: setSyncPure")(op(promise.setSync(1l)))
+    time("SYNC REF: setAsyncPure")(op(refSync.setAsyncPure(1l)))
+    time("PROMISE: setAsyncPure")(op(fork(promise.setSync(1l))))
+    time("SYNC REF: get")(op(refSync.get.void))
+    time("PROMISE: get")(op(promise.get.void))
+  }
+
 }
