@@ -6,7 +6,7 @@ import cats.effect.Sync
 
 import scala.annotation.tailrec
 
-// TODO Change scaladoc description, add methods scaladoc, rename to Ref, rename to setSync and setAsync
+// TODO Change scaladoc description, add methods scaladoc, rename to Ref, rename to setSync and setAsync, move Change back here, delete RefOps
 /**
  * Lightweight alternative to [[Ref]] backed by an `AtomicReference`.
  *

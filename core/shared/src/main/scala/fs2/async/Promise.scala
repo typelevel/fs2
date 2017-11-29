@@ -27,7 +27,7 @@ final case class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
     // to use SyncRef.set after the first `set`, however imho this pretty much
     // never happens in practice, so it isn't really worth it
     ref.modify2 {
-      case State.Set(_) => State.Set(a) -> F.unit //TODO allow double set, or fail?
+      case State.Set(_) => State.Set(a) -> F.unit //TODO allow double set, or fail? Allow. Useful for AsyncPull race, harmless for anything else (although perhaps the method itself could be simplified if set failed on second attempt)
       case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u))
     }.flatMap(_._2)
   }

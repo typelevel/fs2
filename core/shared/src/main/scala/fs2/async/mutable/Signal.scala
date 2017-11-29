@@ -64,7 +64,7 @@ object Signal {
 
   def apply[F[_],A](initA: A)(implicit F: Effect[F], ec: ExecutionContext): F[Signal[F,A]] = {
     class ID
-    async.refOf[F, (A, Long, Map[ID, Ref[F, (A, Long)]])]((initA, 0, Map.empty)).map {
+    async.syncRefOf[F, (A, Long, Map[ID, Ref[F, (A, Long)]])]((initA, 0, Map.empty)).map {
     state => new Signal[F,A] {
       def refresh: F[Unit] = modify(identity).as(())
       def set(a: A): F[Unit] = modify(_ => a).as(())

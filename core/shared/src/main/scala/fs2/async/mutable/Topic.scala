@@ -96,7 +96,7 @@ object Topic {
       def unSubscribe:F[Unit]
     }
 
-    async.refOf[F,(A,Vector[Subscriber])]((initial,Vector.empty[Subscriber])).flatMap { state =>
+    async.syncRefOf[F,(A,Vector[Subscriber])]((initial,Vector.empty[Subscriber])).flatMap { state =>
     async.signalOf[F,Int](0).map { subSignal =>
 
       def mkSubscriber(maxQueued: Int):F[Subscriber] = for {
