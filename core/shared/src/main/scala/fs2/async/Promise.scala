@@ -14,10 +14,15 @@ import Promise._
 
 // TODO shall we move Effect and EC implicits back up here?
 // TODO scaladoc
-final case class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
+final class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
+
   def get(implicit F: Effect[F], ec: ExecutionContext): F[A] =
     F.delay(new MsgId).flatMap(getOrWait)
 
+  // TODO I prefer to not have `setAsync`, and leave forking at call site,
+  // since we can't exploit SyncRef lazy set directly
+  // I've replaced any setAsyncPure in fs2 with fork(setSync), which would
+  // probably highlight that there's a bunch of unnecessary forks that can be avoided
   def setSync(a: A)(implicit F: Effect[F], ec: ExecutionContext): F[Unit] = {
     def notifyReaders(r: State.Unset[A]): Unit =
       r.waiting.values.foreach { cb =>
@@ -31,7 +36,7 @@ final case class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
       case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u))
     }.flatMap(_._2)
   }
-  
+
   /** Like [[get]] but returns an `F[Unit]` that can be used cancel the subscription. */
   def cancellableGet(implicit F: Effect[F], ec: ExecutionContext): F[(F[A], F[Unit])] = F.delay {
     val id = new MsgId
@@ -82,7 +87,7 @@ final case class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
     unsafeRunAsync(f1)(res => IO(win(res)))
     unsafeRunAsync(f2)(res => IO(win(res)))
   }
-  
+
   private def getOrWait(id: MsgId)(implicit F: Effect[F], ec: ExecutionContext): F[A] = {
     def registerCallBack(cb: A => Unit): Unit = {
       def go = ref.modify2 {
@@ -100,8 +105,12 @@ final case class Promise[F[_], A] private [fs2] (ref: SyncRef[F, State[A]]) {
   }
 }
 object Promise {
-  def empty[F[_]: Sync, A]: F[Promise[F, A]] =
-    SyncRef[F, State[A]](State.Unset(LinkedMap.empty)).map(r => new Promise[F, A](r))
+  def empty[F[_], A](implicit F: Sync[F]): F[Promise[F, A]] =
+    F.delay(unsafeCreate[F, A])
+
+  // TODO inline?
+  private[fs2] def unsafeCreate[F[_]: Sync, A]: Promise[F, A] =
+    new Promise[F, A](new SyncRef(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
 
   private final class MsgId
   private[async] sealed abstract class State[A]
