@@ -6,6 +6,7 @@ import cats.effect.Sync
 
 import scala.annotation.tailrec
 
+// TODO Change scaladoc description, add methods scaladoc, rename to Ref, rename to setSync and setAsync
 /**
  * Lightweight alternative to [[Ref]] backed by an `AtomicReference`.
  *
@@ -20,6 +21,20 @@ final class SyncRef[F[_], A] private[fs2] (private val ar: AtomicReference[A])(i
 
   override def setAsyncPure(a: A): F[Unit] = F.delay(ar.lazySet(a))
   override def setSyncPure(a: A): F[Unit] = F.delay(ar.set(a))
+
+  /**
+   * Obtains a snapshot of the current value of the `Ref`, and a setter
+   * for updating the value. The setter may noop (in which case `false`
+   * is returned) if another concurrent call to `access` uses its
+   * setter first. Once it has noop'd or been used once, a setter
+   * never succeeds again.
+   */
+  def access: F[(A, A => F[Boolean])] = F.delay {
+    def snapshot = ar.get
+    def setter = (a: A) => F.delay(ar.compareAndSet(snapshot, a))
+
+    (snapshot, setter)
+  }
 
   override def tryModify(f: A => A): F[Option[Change[A]]] = F.delay {
     val c = ar.get
