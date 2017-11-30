@@ -30,16 +30,27 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
       r.waiting.values.foreach { cb =>
         ec.execute { () => cb(a) }
       }
-    // TODO if double set is allowed, this can be fast-path optimised
-    // to use SyncRef.set after the first `set`, however imho this pretty much
-    // never happens in practice, so it isn't really worth it
+
     ref.modify2 {
-      case State.Set(_) => State.Set(a) -> F.unit //TODO allow double set, or fail? Allow. Useful for AsyncPull race, harmless for anything else (although perhaps the method itself could be simplified if set failed on second attempt)
+      case s @ State.Set(_) => s -> F.unit
       case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u))
     }.flatMap(_._2)
   }
 
-  /** Like [[get]] but returns an `F[Unit]` that can be used cancel the subscription. */
+  // TODO better name?
+  def trySetSync(a: A): F[Boolean] = {
+    def notifyReaders(r: State.Unset[A]): Unit =
+      r.waiting.values.foreach { cb =>
+        ec.execute { () => cb(a) }
+      }
+
+    ref.modify2 {
+      case s @ State.Set(_) => s -> false.pure[F]
+      case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u)).as(true)
+    }.flatMap(_._2)
+  }
+
+  /** Like [[get]] but returns an `F[Unit]` that can be used to cancel the subscription. */
   def cancellableGet: F[(F[A], F[Unit])] = F.delay {
     val id = new MsgId
     val get = getOrWait(id)
