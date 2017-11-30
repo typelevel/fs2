@@ -3,20 +3,19 @@ package fs2.async
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
-import cats.implicits.{ catsSyntaxEither => _, _ }
-import cats.effect.{ Sync, Effect, IO }
+import cats.implicits.{catsSyntaxEither => _, _}
+import cats.effect.{Effect, IO}
 
 import fs2.Scheduler
 import fs2.internal.LinkedMap
-import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import Promise._
 
-// TODO shall we move Effect and EC implicits back up here?
 // TODO scaladoc
-final class Promise[F[_], A] private [fs2] (ref: Ref[F, State[A]]) {
+final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Effect[F], ec: ExecutionContext) {
 
-  def get(implicit F: Effect[F], ec: ExecutionContext): F[A] =
+  def get: F[A] =
     F.delay(new MsgId).flatMap(getOrWait)
 
   // TODO I prefer to not have `setAsync`, and leave forking at call site,
@@ -26,7 +25,7 @@ final class Promise[F[_], A] private [fs2] (ref: Ref[F, State[A]]) {
   //
   // NOTE: this differs in behaviour from the old Ref in that by the time readers are notified
   // the new value is already guaranteed to be in place.
-  def setSync(a: A)(implicit F: Effect[F], ec: ExecutionContext): F[Unit] = {
+  def setSync(a: A): F[Unit] = {
     def notifyReaders(r: State.Unset[A]): Unit =
       r.waiting.values.foreach { cb =>
         ec.execute { () => cb(a) }
@@ -41,7 +40,7 @@ final class Promise[F[_], A] private [fs2] (ref: Ref[F, State[A]]) {
   }
 
   /** Like [[get]] but returns an `F[Unit]` that can be used cancel the subscription. */
-  def cancellableGet(implicit F: Effect[F], ec: ExecutionContext): F[(F[A], F[Unit])] = F.delay {
+  def cancellableGet: F[(F[A], F[Unit])] = F.delay {
     val id = new MsgId
     val get = getOrWait(id)
     val cancel = ref.modify {
@@ -52,7 +51,7 @@ final class Promise[F[_], A] private [fs2] (ref: Ref[F, State[A]]) {
     (get, cancel)
   }
 
-  def timedGet(timeout: FiniteDuration, scheduler: Scheduler)(implicit F: Effect[F], ec: ExecutionContext): F[Option[A]] =
+  def timedGet(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
     cancellableGet.flatMap { case (g, cancelGet) =>
       scheduler.effect.delayCancellable(F.unit, timeout).flatMap { case (timer, cancelTimer) =>
         fs2.async.race(g, timer).flatMap(_.fold(a => cancelTimer.as(Some(a)), _ => cancelGet.as(None)))
@@ -91,7 +90,7 @@ final class Promise[F[_], A] private [fs2] (ref: Ref[F, State[A]]) {
     unsafeRunAsync(f2)(res => IO(win(res)))
   }
 
-  private def getOrWait(id: MsgId)(implicit F: Effect[F], ec: ExecutionContext): F[A] = {
+  private def getOrWait(id: MsgId): F[A] = {
     def registerCallBack(cb: A => Unit): Unit = {
       def go = ref.modify2 {
         case State.Set(a) => State.Set(a) -> F.delay(cb(a))
@@ -108,15 +107,11 @@ final class Promise[F[_], A] private [fs2] (ref: Ref[F, State[A]]) {
   }
 }
 object Promise {
-  // TODO check if constrant on creation of concurrent structures can/should be relaxed
-  // does this come at a cost of needing Effect in ops more often? If so I'd rather create
-  // in Effect and use in a looser constraint, although that probably means loosing the
-  // flexibility of choosing a different EC per op
-  def empty[F[_], A](implicit F: Sync[F]): F[Promise[F, A]] =
+  def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
     F.delay(unsafeCreate[F, A])
 
   // TODO inline?
-  private[fs2] def unsafeCreate[F[_]: Sync, A]: Promise[F, A] =
+  private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =
     new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
 
   private final class MsgId

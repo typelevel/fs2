@@ -84,7 +84,7 @@ object AsyncPull {
   }
 
   /** Returns an async pull that gets its value from reading the specified promise. */
-  def readPromise[F[_],A](p: async.Promise[F,A])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,A] =
+  def readPromise[F[_],A](p: async.Promise[F,A]): AsyncPull[F,A] =
     new AsyncPull[F,A] {
       def get = FreeC.Eval(p.get)
       def cancellableGet = FreeC.Eval(p.cancellableGet).map { case (get, cancel) => (FreeC.Eval(get), FreeC.Eval(cancel)) }
@@ -94,7 +94,7 @@ object AsyncPull {
    * Like [[readPromise]] but reads a `Promise[F,Either[Throwable,A]]` instead of a `Promise[F,A]`. If a `Left(t)` is read,
    * the `get` action fails with `t`.
    */
-  def readAttemptPromise[F[_],A](p: async.Promise[F,Either[Throwable,A]])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,A] =
+  def readAttemptPromise[F[_],A](p: async.Promise[F,Either[Throwable,A]]): AsyncPull[F,A] =
     new AsyncPull[F,A] {
       def get = FreeC.Eval(p.get).flatMap(_.fold(FreeC.Fail(_), FreeC.Pure(_)))
       def cancellableGet = FreeC.Eval(p.cancellableGet).map { case (get, cancel) =>

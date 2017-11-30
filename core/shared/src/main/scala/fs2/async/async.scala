@@ -75,7 +75,7 @@ package object async {
     mutable.Topic(initial)
 
   /** Creates an empty `Promise[F, A]` */
-  def promise[F[_]: Sync, A]: F[Promise[F, A]] = Promise.empty
+  def promise[F[_]: Effect, A](implicit ec: ExecutionContext): F[Promise[F, A]] = Promise.empty
 
   /** Creates an initialized `SyncRef[F,A]`. */
   def refOf[F[_]: Sync, A](a: A): F[Ref[F,A]] = Ref[F,A](a)
