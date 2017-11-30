@@ -7,7 +7,7 @@ import cats.implicits.{catsSyntaxEither => _, _}
 import cats.effect.{Effect, IO}
 
 import fs2.Scheduler
-import fs2.internal.LinkedMap
+import fs2.internal.{LinkedMap, Token}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import Promise._
@@ -15,8 +15,12 @@ import Promise._
 // TODO scaladoc
 final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Effect[F], ec: ExecutionContext) {
 
-  def get: F[A] =
-    F.delay(new MsgId).flatMap(getOrWait)
+  // TODO add implementation comment on why new Token is side effectful in this case
+  // and the fact that suspend is roughly 2x faster than delay flatMap
+  def get: F[A] = F.suspend {
+    val id = new Token
+    getOrWait(id)
+  }
 
   // TODO I prefer to not have `setAsync`, and leave forking at call site,
   // since we can't exploit SyncRef lazy set directly
@@ -52,10 +56,10 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
 
   /** Like [[get]] but returns an `F[Unit]` that can be used to cancel the subscription. */
   def cancellableGet: F[(F[A], F[Unit])] = F.delay {
-    val id = new MsgId
+    val id = new Token
     val get = getOrWait(id)
     val cancel = ref.modify {
-      case a @ State.Set(_) => a
+      case s @ State.Set(_) => s
       case State.Unset(waiting) => State.Unset(waiting - id)
     }.void
 
@@ -101,10 +105,10 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
     unsafeRunAsync(f2)(res => IO(win(res)))
   }
 
-  private def getOrWait(id: MsgId): F[A] = {
+  private def getOrWait(id: Token): F[A] = {
     def registerCallBack(cb: A => Unit): Unit = {
       def go = ref.modify2 {
-        case State.Set(a) => State.Set(a) -> F.delay(cb(a))
+        case s @ State.Set(a) => s -> F.delay(cb(a))
         case State.Unset(waiting) => State.Unset(waiting.updated(id, cb)) -> F.unit
       }.flatMap(_._2)
 
@@ -125,11 +129,10 @@ object Promise {
   private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =
     new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
 
-  private final class MsgId
   private[async] sealed abstract class State[A]
   private object State {
     final case class Set[A](a: A) extends State[A]
-    final case class Unset[A](waiting: LinkedMap[MsgId, A => Unit]) extends State[A]
+    final case class Unset[A](waiting: LinkedMap[Token, A => Unit]) extends State[A]
   }
 
   // TODO move into its proper place, flesh it out
@@ -168,6 +171,8 @@ object Promise {
     time("PROMISE: setAsyncPure")(op(fork(promise.setSync(1l))))
     time("SYNC REF: get")(op(ref.get.void))
     time("PROMISE: get")(op(promise.get.void))
+    time("SYNC REF: get")(op(ref.get.void))
+    time("PROMISE: get")(op(promise.cancellableGet.void))
   }
 
 }
