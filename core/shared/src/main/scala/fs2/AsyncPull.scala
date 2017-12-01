@@ -42,8 +42,8 @@ sealed abstract class AsyncPull[F[_],A] { self =>
       (b, cancelB) = t1
       fa = a.run.map(Left(_): Either[A, B])
       fb = b.run.map(Right(_): Either[A, B])
-      _ <-  async.fork(fa.attempt.flatMap(x => async.fork(promise.setSync(x))))
-      _ <-  async.fork(fb.attempt.flatMap(x => async.fork(promise.setSync(x))))
+      _ <-  async.fork(fa.attempt.flatMap(x => promise.setSync(x)))
+      _ <-  async.fork(fb.attempt.flatMap(x => promise.setSync(x)))
     } yield {
       (FreeC.Eval(promise.get.flatMap {
         case Left(e) => F.raiseError[Either[A, B]](e)

@@ -94,7 +94,7 @@ package object async {
    */
   def start[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
     promise[F, Either[Throwable, A]].flatMap { p =>
-      fork(f.attempt.flatMap(x => fork(p.setSync(x)))).as(p.get.flatMap(F.fromEither))
+      fork(f.attempt.flatMap(p.setSync)).as(p.get.flatMap(F.fromEither))
     }
 
   /**
