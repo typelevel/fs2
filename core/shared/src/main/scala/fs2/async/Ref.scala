@@ -35,7 +35,7 @@ final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(impli
    * never succeeds again.
    */
   def access: F[(A, A => F[Boolean])] = F.delay {
-    def snapshot = ar.get
+    val snapshot = ar.get
     def setter = (a: A) => F.delay(ar.compareAndSet(snapshot, a))
 
     (snapshot, setter)

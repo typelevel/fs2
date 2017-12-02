@@ -125,11 +125,10 @@ object Promise {
   def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
     F.delay(unsafeCreate[F, A])
 
-  // TODO inline?
   private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =
     new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
 
-  private[async] sealed abstract class State[A]
+  private sealed abstract class State[A]
   private object State {
     final case class Set[A](a: A) extends State[A]
     final case class Unset[A](waiting: LinkedMap[Token, A => Unit]) extends State[A]
@@ -172,7 +171,7 @@ object Promise {
     time("SYNC REF: get")(op(ref.get.void))
     time("PROMISE: get")(op(promise.get.void))
     time("SYNC REF: get")(op(ref.get.void))
-    time("PROMISE: get")(op(promise.cancellableGet.void))
+    time("PROMISE: get")(op(promise.cancellableGet.flatMap(_._1).void))
   }
 
 }
