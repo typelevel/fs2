@@ -6,6 +6,7 @@ val ReleaseTag = """^release/([\d\.]+a?)$""".r
 lazy val contributors = Seq(
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
+  "SystemFw" -> "Fabio Labella",
   "alissapajer" -> "Alissa Pajer",
   "djspiewak" -> "Daniel Spiewak",
   "fthomas" -> "Frank Thomas",
