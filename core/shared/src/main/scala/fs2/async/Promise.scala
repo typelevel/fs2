@@ -36,21 +36,8 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
       }
 
     ref.modify2 {
-      case s @ State.Set(_) => s -> F.unit
+      case s @ State.Set(_) => s -> F.raiseError[Unit](new AlreadySetException)
       case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u))
-    }.flatMap(_._2)
-  }
-
-  // TODO better name?
-  def trySetSync(a: A): F[Boolean] = {
-    def notifyReaders(r: State.Unset[A]): Unit =
-      r.waiting.values.foreach { cb =>
-        ec.execute { () => cb(a) }
-      }
-
-    ref.modify2 {
-      case s @ State.Set(_) => s -> false.pure[F]
-      case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u)).as(true)
     }.flatMap(_._2)
   }
 
@@ -122,11 +109,9 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
   }
 }
 object Promise {
-  def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
-    F.delay(unsafeCreate[F, A])
-
-  private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =
-    new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
+  final class AlreadySetException extends Throwable(
+    s"Trying to set an fs2 Promise that's already been set"
+  )
 
   private sealed abstract class State[A]
   private object State {
@@ -134,44 +119,10 @@ object Promise {
     final case class Unset[A](waiting: LinkedMap[Token, A => Unit]) extends State[A]
   }
 
-  // TODO move into its proper place, flesh it out
-  def benchmark() = {
-    import scala.concurrent.ExecutionContext.Implicits.global
-    val ref = refOf[IO, Long](0l).unsafeRunSync()
-    val promise = Promise.empty[IO, Long].unsafeRunSync()
+  def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
+    F.delay(unsafeCreate[F, A])
 
-    val count = 10000000
-
-    def time[A](s: String)(f: IO[A]): A = {
-      val start = System.currentTimeMillis()
-      val a = f.unsafeRunSync()
-      val took = System.currentTimeMillis() - start
-      println(s"Execution of : $s took ${took.toFloat/1000} s")
-      a
-    }
-
-    def op(action: IO[Unit]) : IO[Unit] = {
-      def go(rem: Int): IO[Unit] = {
-        if (rem == 0) IO.unit
-        else action flatMap { _ => go(rem - 1) }
-      }
-      go(count)
-    }
-
-    println(s"Ops: $count")
-
-    // benchmarking repeated sets for promise doesn't really matter
-    // since they are typically set once. However, it would be very easy
-    // to fast-path optimise it to use SyncRef after first set, achieving essentially
-    // the same result.
-    time("SYNC REF: setSyncPure")(op(ref.setSync(1l)))
-    time("PROMISE: setSyncPure")(op(promise.setSync(1l)))
-    time("SYNC REF: setAsyncPure")(op(ref.setAsync(1l)))
-    time("PROMISE: setAsyncPure")(op(fork(promise.setSync(1l))))
-    time("SYNC REF: get")(op(ref.get.void))
-    time("PROMISE: get")(op(promise.get.void))
-    time("SYNC REF: get")(op(ref.get.void))
-    time("PROMISE: get")(op(promise.cancellableGet.flatMap(_._1).void))
-  }
+  private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =
+    new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
 
 }
