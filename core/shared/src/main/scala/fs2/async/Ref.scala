@@ -11,28 +11,60 @@ import scala.annotation.tailrec
 
 import Ref._
 
-// TODO Change scaladoc description, add methods scaladoc
 /**
- * Lightweight alternative to [[Ref]] backed by an `AtomicReference`.
+ * An asynchronous, concurrent mutable reference.
  *
- * `SyncRef` is less powerful than `Ref` but is significantly faster and only requires a `Sync[F]` instance,
- * as opposed to `Ref`, which requires an `Effect[F]` instance.
+ * Provides safe concurrent access and modification of its content, but no
+ * functionality for synchronisation, which is instead handled by [[Promise]].
+ * For this reason, a `Ref` is always initialised to a value.
  *
- * Unlike `Ref`, a `SyncRef` must be initialized to a value.
+ * The implementation is nonblocking and lightweight, consisting essentially of
+ * a purely functional wrapper over an `AtomicReference`
  */
 final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(implicit F: Sync[F]) {
 
+  /**
+   * Obtains the current value.
+   *
+   * Since `Ref` is always guaranteed to have a value, the returned action
+   * completes immediately after being bound.
+   */
   def get: F[A] = F.delay(ar.get)
 
+
+  /**
+   * *Synchronously* sets the current value to `a`.
+   *
+   * The returned action completes after the reference has been successfully set.
+   *
+   * Satisfies:
+   *   `r.setSync(fa) *> r.get == fa`
+   */
   def setSync(a: A): F[Unit] = F.delay(ar.set(a))
+
+
+  /**
+   * *Asynchronously* sets the current value to the `a`
+   *
+   * After the returned `F[Unit]` is bound, an update will eventually occur,
+   * setting the current value to `a`.
+   *
+   * Satisfies:
+   *   `r.setAsync(fa) == async.fork(r.setSync(a))`
+   * but it's significantly faster.
+   */
   def setAsync(a: A): F[Unit] = F.delay(ar.lazySet(a))
 
   /**
-   * Obtains a snapshot of the current value of the `Ref`, and a setter
-   * for updating the value. The setter may noop (in which case `false`
-   * is returned) if another concurrent call to `access` uses its
-   * setter first. Once it has noop'd or been used once, a setter
-   * never succeeds again.
+   * Obtains a snapshot of the current value, and a setter for updating it.
+   * The setter may noop (in which case `false` is returned) if another concurrent
+   * call to `access` uses its setter first.
+   *
+   * Once it has noop'd or been used once, a setter never succeeds again.
+   *
+   * Satisfies:
+   *   `r.access.map(_._1) == r.get`
+   *   `r.access.flatMap { case (v, setter) => setter(f(v)) } == r.tryModify(f).map(_.isDefined)`
    */
   def access: F[(A, A => F[Boolean])] = F.delay {
     val snapshot = ar.get
@@ -41,6 +73,11 @@ final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(impli
     (snapshot, setter)
   }
 
+  /**
+   * Attempts to modify the current value once, returning `None` if another
+   * concurrent modification completes between the time the variable is
+   * read and the time it is set.
+   */
   def tryModify(f: A => A): F[Option[Change[A]]] = F.delay {
     val c = ar.get
     val u = f(c)
@@ -48,6 +85,7 @@ final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(impli
     else None
   }
 
+  /** Like `tryModify` but allows returning a `B` along with the update. */
   def tryModify2[B](f: A => (A,B)): F[Option[(Change[A], B)]] = F.delay {
     val c = ar.get
     val (u,b) = f(c)
@@ -55,6 +93,12 @@ final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(impli
     else None
   }
 
+  /**
+   * Like `tryModify` but does not complete until the update has been successfully made.
+   *
+   * Satisfies:
+   *   `r.modify(_ => a).void == r.setSync(a)`
+   */
   def modify(f: A => A): F[Change[A]] = {
     @tailrec
     def spin: Change[A] = {
@@ -66,6 +110,7 @@ final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(impli
     F.delay(spin)
   }
 
+  /** Like `modify` but allows returning a `B` along with the update. */
   def modify2[B](f: A => (A, B)): F[(Change[A], B)] = {
     @tailrec
     def spin: (Change[A], B) = {
