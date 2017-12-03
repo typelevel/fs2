@@ -141,6 +141,7 @@ class QueueSpec extends Fs2Spec {
       )).flatten shouldBe Vector(false, 42, 42, 42)
     }
     "peek1 circular buffer" in {
+      pending // known race condition in test
       runLog(Stream.eval(
         for {
           q <- async.circularBuffer[IO, Int](maxSize = 1)
@@ -168,6 +169,7 @@ class QueueSpec extends Fs2Spec {
       )).flatten shouldBe Vector(42, 42, 42)
     }
     "timedPeek1 synchronous queue" in {
+      pending // known race condition in test
       runLog(Scheduler[IO](1).flatMap { scheduler =>
         Stream.eval(
           for {
