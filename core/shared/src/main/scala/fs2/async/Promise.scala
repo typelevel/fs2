@@ -24,8 +24,9 @@ import Promise._
  * `set(a)` on a set `Promise` will not modify its content, and result in a failed `F`.
  *
  * Albeit simple, `Promise` can be used in conjunction with [[Ref]] to build complex concurrent behaviour and
- * data structures like queues and semaphores. Finally, the blocking mentioned above is semantic only, no
- * actual threads are blocked by the implementation.
+ * data structures like queues and semaphores.
+ *
+ * Finally, the blocking mentioned above is semantic only, no  actual threads are blocked by the implementation.
  */
 final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Effect[F], ec: ExecutionContext) {
 
@@ -73,7 +74,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
    * using `attempt` or any other `ApplicativeError`/`MonadError` combinator on the returned action.
    *
    * Satisfies:
-   *   `Promise.empty[F, A].flatMap(r => r.setSync(a) *> r.get) == a`
+   *   `Promise.empty[F, A].flatMap(r => r.setSync(a) *> r.get) == a.pure[F]`
    */
   def setSync(a: A): F[Unit] = {
     def notifyReaders(r: State.Unset[A]): Unit =
@@ -139,7 +140,7 @@ object Promise {
   def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
     F.delay(unsafeCreate[F, A])
 
-  /** Raised when trying to set a `Promise` that's already been set once */
+  /** Raised when trying to set a [[Promise]] that's already been set once */
   final class AlreadySetException extends Throwable(
     s"Trying to set an fs2 Promise that's already been set"
   )
@@ -152,5 +153,4 @@ object Promise {
 
   private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =
     new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
-
 }
