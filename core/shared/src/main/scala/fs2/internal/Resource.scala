@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 import cats.effect.Sync
 import fs2.Lease
-import fs2.async.SyncRef
+import fs2.async.Ref
 
 /**
  * Represents a resource acquired during stream interpretation.
@@ -105,7 +105,7 @@ private[internal] object Resource {
 
     new Resource[F] {
 
-      val state = new SyncRef[F, State[F]](new AtomicReference[State[F]](initial))
+      val state = new Ref[F, State[F]](new AtomicReference[State[F]](initial))
 
       val id: Token = new Token
 

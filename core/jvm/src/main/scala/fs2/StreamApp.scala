@@ -6,7 +6,7 @@ import cats.effect._
 import cats.effect.implicits._
 import cats.implicits._
 
-import fs2.async.Ref
+import fs2.async.Promise
 import fs2.async.mutable.Signal
 import fs2.StreamApp.ExitCode
 
@@ -37,9 +37,10 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
   /** Exposed for testing, so we can check exit values before the dramatic sys.exit */
   private[fs2] def doMain(args: List[String]): IO[ExitCode] = {
     implicit val ec: ExecutionContext = directEC
-    async.ref[IO, ExitCode].flatMap { exitCodeRef =>
+    async.promise[IO, ExitCode].flatMap { exitCodePromise
+ =>
     async.signalOf[IO, Boolean](false).flatMap { halted =>
-      runStream(args, exitCodeRef, halted)
+      runStream(args, exitCodePromise, halted)
     }}
   }
 
@@ -52,7 +53,7 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
     * @param ec Implicit EC to run the application stream
     * @return An IO that will produce an ExitCode
     */
-  private[fs2] def runStream(args: List[String], exitCodeRef: Ref[IO,ExitCode], halted: Signal[IO,Boolean])
+  private[fs2] def runStream(args: List[String], exitCodePromise: Promise[IO,ExitCode], halted: Signal[IO,Boolean])
                             (implicit ec: ExecutionContext): IO[ExitCode] =
     async.signalOf[F, Boolean](false).flatMap { requestShutdown =>
       addShutdownHook(requestShutdown, halted) *>
@@ -61,11 +62,11 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
       case Left(t) =>
         IO(t.printStackTrace()) *>
           halted.set(true) *>
-          exitCodeRef.setSyncPure(ExitCode.Error)
+          exitCodePromise.setSync(ExitCode.Error)
       case Right(exitCode) =>
         halted.set(true) *>
-          exitCodeRef.setSyncPure(exitCode.getOrElse(ExitCode.Success))
-    } *> exitCodeRef.get
+          exitCodePromise.setSync(exitCode.getOrElse(ExitCode.Success))
+    } *> exitCodePromise.get
 
   def main(args: Array[String]): Unit =
     sys.exit(doMain(args.toList).unsafeRunSync.code.toInt)

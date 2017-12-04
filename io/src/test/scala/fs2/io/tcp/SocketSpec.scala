@@ -32,11 +32,11 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val message = Chunk.bytes("fs2.rocks".getBytes)
       val clientCount = 20
 
-      val localBindAddress = async.ref[IO, InetSocketAddress].unsafeRunSync()
+      val localBindAddress = async.promise[IO, InetSocketAddress].unsafeRunSync()
 
       val echoServer: Stream[IO, Unit] = {
         serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
-          case Left(local) => Stream.eval_(localBindAddress.setAsyncPure(local))
+          case Left(local) => Stream.eval_(localBindAddress.setSync(local))
           case Right(s) =>
             s.map { socket =>
               socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)

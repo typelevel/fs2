@@ -180,7 +180,7 @@ protected[tcp] object Socket {
 
   def mkSocket[F[_]](ch:AsynchronousSocketChannel)(implicit F: Effect[F], ec: ExecutionContext):F[Socket[F]] = {
     async.semaphore(1) flatMap { readSemaphore =>
-    async.refOf(ByteBuffer.allocate(0)) map { bufferRef =>
+    async.refOf[F, ByteBuffer](ByteBuffer.allocate(0)) map { bufferRef =>
 
       // Reads data to remaining capacity of supplied ByteBuffer
       // Also measures time the read took returning this as tuple
@@ -190,10 +190,10 @@ protected[tcp] object Socket {
         ch.read(buff, timeoutMs, TimeUnit.MILLISECONDS, (), new CompletionHandler[Integer, Unit] {
           def completed(result: Integer, attachment: Unit): Unit = {
             val took = System.currentTimeMillis() - started
-            async.unsafeRunAsync(F.delay(cb(Right((result, took)))))(_ => IO.pure(()))
+            async.unsafeRunAsync(F.delay(cb(Right((result, took)))))(_ => IO.unit)
           }
           def failed(err: Throwable, attachment: Unit): Unit =
-            async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.pure(()))
+            async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.unit)
         })
       }
 

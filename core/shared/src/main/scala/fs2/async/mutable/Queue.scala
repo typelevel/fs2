@@ -163,8 +163,8 @@ object Queue {
       */
     final case class State(
       queue: Vector[A],
-      deq: Vector[Ref[F,Chunk[A]]],
-      peek: Option[Ref[F, A]]
+      deq: Vector[Promise[F,Chunk[A]]],
+      peek: Option[Promise[F, A]]
     )
 
     Signal(0).flatMap { szSignal =>
@@ -189,14 +189,15 @@ object Queue {
               signalSize(c.previous, c.now)
             } else {
               // queue was empty, we had waiting dequeuers
-              c.previous.deq.head.setAsyncPure(Chunk.singleton(a))
+              async.fork(c.previous.deq.head.setSync(Chunk.singleton(a)))
             }
             val pk = if (c.previous.peek.isEmpty) {
               // no peeker to notify
               F.unit
             } else {
               // notify peekers
-              c.previous.peek.get.setAsyncPure(a)
+              async.fork(c.previous.peek.get.setSync(a))
+
             }
             (dq *> pk).as(true)
           }
@@ -215,9 +216,9 @@ object Queue {
           }
         }
 
-        private def peek1Impl: F[Either[Ref[F, A], A]] = ref[F, A].flatMap { ref =>
+        private def peek1Impl: F[Either[Promise[F, A], A]] = promise[F, A].flatMap { p =>
           qref.modify { state =>
-            if (state.queue.isEmpty && state.peek.isEmpty) state.copy(peek = Some(ref))
+            if (state.queue.isEmpty && state.peek.isEmpty) state.copy(peek = Some(p))
             else state
           }.map { change =>
             if (change.previous.queue.isEmpty) Left(change.now.peek.get)
@@ -245,10 +246,10 @@ object Queue {
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]],F[Unit])] =
           cancellableDequeueBatch1Impl(batchSize, _.fold(_.get, F.pure))
 
-        private def cancellableDequeueBatch1Impl[B](batchSize: Int, f: Either[Ref[F,Chunk[A]],Chunk[A]] => F[B]): F[(F[B],F[Unit])] =
-          ref[F,Chunk[A]].flatMap { r =>
+        private def cancellableDequeueBatch1Impl[B](batchSize: Int, f: Either[Promise[F,Chunk[A]],Chunk[A]] => F[B]): F[(F[B],F[Unit])] =
+          promise[F,Chunk[A]].flatMap { p =>
             qref.modify { s =>
-              if (s.queue.isEmpty) s.copy(deq = s.deq :+ r)
+              if (s.queue.isEmpty) s.copy(deq = s.deq :+ p)
               else s.copy(queue = s.queue.drop(batchSize))
             }.map { c =>
               val out = signalSize(c.previous, c.now).flatMap { _ =>
@@ -258,13 +259,13 @@ object Queue {
                     else
                       f(Right(Chunk.indexedSeq(c.previous.queue.take(batchSize))))
                 }
-                else f(Left(r))
+                else f(Left(p))
               }
               val cleanup =
                 if (c.previous.queue.nonEmpty) F.pure(())
                 else qref.modify { s =>
-                  s.copy(deq = s.deq.filterNot(_ == r))
-                }.as(())
+                  s.copy(deq = s.deq.filterNot(_ == p))
+                }.void
               (out,cleanup)
             }}
 

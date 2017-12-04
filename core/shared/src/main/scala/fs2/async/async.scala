@@ -74,14 +74,11 @@ package object async {
   def topic[F[_]:Effect,A](initial: A)(implicit ec: ExecutionContext): F[mutable.Topic[F,A]] =
     mutable.Topic(initial)
 
-  /** Creates an uninitialized `Ref[F,A]`. */
-  def ref[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Ref[F,A]] = Ref.uninitialized
-
-  /** Creates an initialized `Ref[F,A]`. */
-  def refOf[F[_]: Effect, A](a: A)(implicit ec: ExecutionContext): F[Ref[F,A]] = Ref.initialized(a)
+  /** Creates an empty `Promise[F, A]` */
+  def promise[F[_]: Effect, A](implicit ec: ExecutionContext): F[Promise[F, A]] = Promise.empty
 
   /** Creates an initialized `SyncRef[F,A]`. */
-  def syncRefOf[F[_]: Sync, A](a: A): F[SyncRef[F,A]] = SyncRef[F,A](a)
+  def refOf[F[_]: Sync, A](a: A): F[Ref[F,A]] = Ref[F,A](a)
 
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
   def parallelTraverse[F[_], G[_], A, B](fa: F[A])(f: A => G[B])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[B]] =
@@ -96,8 +93,8 @@ package object async {
    * bound. The inner `F[A]` will block until the result is available.
    */
   def start[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
-    ref[F, Either[Throwable, A]].flatMap { ref =>
-      fork(f.attempt.flatMap(ref.setAsyncPure)).as(ref.get.flatMap(F.fromEither))
+    promise[F, Either[Throwable, A]].flatMap { p =>
+      fork(f.attempt.flatMap(p.setSync)).as(p.get.flatMap(F.fromEither))
     }
 
   /**
@@ -114,8 +111,8 @@ package object async {
     * nowhere.
    */
   def race[F[_]: Effect, A, B](fa: F[A], fb: F[B])(implicit ec: ExecutionContext): F[Either[A, B]] =
-    ref[F, Either[A,B]].flatMap { ref =>
-      ref.race(fa.map(Left.apply), fb.map(Right.apply)) *> ref.get
+    promise[F, Either[A,B]].flatMap { p =>
+      p.race(fa.map(Left.apply), fb.map(Right.apply)) *> p.get
     }
 
   /**
