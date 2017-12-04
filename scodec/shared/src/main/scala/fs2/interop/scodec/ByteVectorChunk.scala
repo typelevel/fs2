@@ -15,7 +15,7 @@ final class ByteVectorChunk private (val toByteVector: ByteVector) extends Chunk
     (ByteVectorChunk(before), ByteVectorChunk(after))
   }
 
-  protected def mapStrict[O2](f: Byte => O2): Chunk[O2] =
+  override def map[O2](f: Byte => O2): Chunk[O2] =
     Chunk.indexedSeq(toByteVector.toIndexedSeq.map(f))
 }
 
