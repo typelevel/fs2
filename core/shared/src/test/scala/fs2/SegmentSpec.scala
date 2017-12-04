@@ -160,7 +160,7 @@ class SegmentSpec extends Fs2Spec {
         Segment.catenatedChunks(chunks).force.toVector shouldBe (svec.takeWhile(f) ++ svec.dropWhile(f).headOption)
         unfinished shouldBe (svec.takeWhile(f).size == svec.size)
         val remainder = svec.dropWhile(f).drop(1)
-        if (remainder.isEmpty) tail shouldBe Segment.empty
+        if (remainder.isEmpty) tail.force.toVector shouldBe Vector.empty
         else tail.force.toVector shouldBe remainder
       }
     }
@@ -184,7 +184,7 @@ class SegmentSpec extends Fs2Spec {
         if (n > 0 && n >= v.size) {
           s.take(n).drain.force.run shouldBe Left(((), n - v.size))
         } else {
-          s.take(n).drain.force.run shouldBe Right(Segment.vector(v.drop(n)))
+          s.take(n).drain.force.run.map(_.force.toVector) shouldBe Right(Segment.vector(v.drop(n)).force.toVector)
         }
       }
     }

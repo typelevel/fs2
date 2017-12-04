@@ -20,6 +20,8 @@ import Segment._
  * Stack safety of fused operations is ensured by tracking a fusion depth. If the depth
  * reaches the limit, the computation is trampolined using `cats.Eval`.
  *
+ * The `equals` and `hashCode` methods are not defined for `Segment`.
+ *
  * Implementation notes:
  *  - Some operators ask for a segment remainder from within a callback (e.g., `emits`). As such,
  *    segments should update state before invoking callbacks so that remainders can be computed
@@ -746,13 +748,6 @@ abstract class Segment[+O,+R] { self =>
       }
       override def toString = s"($self).zipWith($that)(<f1>)"
     }
-
-  // TODO I don't think hashCode and equals should convert to vectors...
-  override def hashCode: Int = force.toVector.hashCode
-  override def equals(a: Any): Boolean = a match {
-    case s: Segment[O,R] => this.force.toVector == s.force.toVector
-    case _ => false
-  }
 }
 
 object Segment {
