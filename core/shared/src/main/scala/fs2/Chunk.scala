@@ -439,11 +439,11 @@ object Chunk {
    */
   final class StrictOps[+O](private val self: Chunk[O]) extends AnyVal {
 
-    /** Gets the first element of this chunk or throws if the chunk is empty. */
-    def head: O = self(0)
+    /** Gets the first element of this chunk. */
+    def head: Option[O] = if (self.isEmpty) None else Some(self(0))
 
-    /** Gets the last element of this chunk or throws if the chunk is empty. */
-    def last: O = self(self.size - 1)
+    /** Gets the last element of this chunk. */
+    def last: Option[O] = if (self.isEmpty) None else Some(self(self.size - 1))
 
     /** Splits this chunk in to two chunks at the specified index. */
     def splitAt(n: Int): (Chunk[O], Chunk[O]) = {

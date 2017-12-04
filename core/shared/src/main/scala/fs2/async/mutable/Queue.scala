@@ -207,7 +207,7 @@ object Queue {
         def peek1: F[A] = peek1Impl.flatMap(_.fold(_.get, F.pure))
 
         def timedDequeue1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
-          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head))
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head.get))
 
         def timedPeek1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] = {
           peek1Impl.flatMap {
@@ -227,7 +227,7 @@ object Queue {
         }
 
         def cancellableDequeue1: F[(F[A],F[Unit])] =
-          cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head),cancel) }
+          cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head.get),cancel) }
 
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
           cancellableDequeueBatch1(batchSize).flatMap { _._1 }
@@ -290,11 +290,11 @@ object Queue {
         def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
         def peek1: F[A] = q.peek1
         def timedDequeue1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
-          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head))
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head.get))
         def timedPeek1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
           q.timedPeek1(timeout, scheduler)
         override def cancellableDequeue1: F[(F[A], F[Unit])] =
-          cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head),cancel) }
+          cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head.get),cancel) }
         override def dequeueBatch1(batchSize: Int): F[Chunk[A]] = cancellableDequeueBatch1(batchSize).flatMap { _._1 }
         def timedDequeueBatch1(batchSize: Int, timeout: FiniteDuration, scheduler: Scheduler): F[Option[Chunk[A]]] =
           q.timedDequeueBatch1(batchSize, timeout, scheduler).flatMap {
@@ -323,7 +323,7 @@ object Queue {
         def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
         def peek1: F[A] = q.peek1
         def timedDequeue1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
-          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head))
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head.get))
         def timedPeek1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
           q.timedPeek1(timeout, scheduler)
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] = cancellableDequeueBatch1(batchSize).flatMap { _._1 }
@@ -332,7 +332,7 @@ object Queue {
             case Some(c) => permits.incrementBy(c.size).as(Some(c))
             case None => F.pure(None)
           }
-        def cancellableDequeue1: F[(F[A], F[Unit])] = cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head),cancel) }
+        def cancellableDequeue1: F[(F[A], F[Unit])] = cancellableDequeueBatch1(1).map { case (deq,cancel) => (deq.map(_.strict.head.get),cancel) }
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]],F[Unit])] =
           q.cancellableDequeueBatch1(batchSize).map { case (deq,cancel) => (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel) }
         def size = q.size
@@ -356,7 +356,7 @@ object Queue {
         def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
         def peek1: F[A] = q.peek1
         def timedDequeue1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
-          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head))
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head.get))
         def timedPeek1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
           q.timedPeek1(timeout, scheduler)
         def cancellableDequeue1: F[(F[A],F[Unit])] =
@@ -398,7 +398,7 @@ object Queue {
         def dequeue1: F[Option[A]] = cancellableDequeue1.flatMap { _._1 }
         def peek1: F[Option[A]] = q.peek1
         def timedDequeue1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[Option[A]]] =
-          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head))
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.strict.head.get))
         def timedPeek1(timeout: FiniteDuration, scheduler: Scheduler): F[Option[Option[A]]] =
           q.timedPeek1(timeout, scheduler)
         def cancellableDequeue1: F[(F[Option[A]],F[Unit])] =
