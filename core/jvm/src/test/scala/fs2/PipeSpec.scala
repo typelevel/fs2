@@ -154,19 +154,19 @@ class PipeSpec extends Fs2Spec {
 
     "filter (2)" in forAll { (s: PureStream[Double]) =>
       val predicate = (i: Double) => i - i.floor < 0.5
-      val s2 = s.get.mapSegments(s => Chunk.doubles(s.force.toArray))
+      val s2 = s.get.mapSegments(s => Chunk.doubles(s.force.toArray).toSegment)
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
     "filter (3)" in forAll { (s: PureStream[Byte]) =>
       val predicate = (b: Byte) => b < 0
-      val s2 = s.get.mapSegments(s => Chunk.bytes(s.force.toArray))
+      val s2 = s.get.mapSegments(s => Chunk.bytes(s.force.toArray).toSegment)
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
     "filter (4)" in forAll { (s: PureStream[Boolean]) =>
       val predicate = (b: Boolean) => !b
-      val s2 = s.get.mapSegments(s => Chunk.booleans(s.force.toArray))
+      val s2 = s.get.mapSegments(s => Chunk.booleans(s.force.toArray).toSegment)
       runLog(s2.filter(predicate)) shouldBe runLog(s2).filter(predicate)
     }
 
@@ -492,7 +492,7 @@ class PipeSpec extends Fs2Spec {
                 }
               case Stepper.Await(receive) =>
                 s.pull.uncons1.flatMap {
-                  case Some(((i,a),s)) => go(Some(a), receive(Some(Chunk.singleton(i))), s)
+                  case Some(((i,a),s)) => go(Some(a), receive(Some(Segment.singleton(i))), s)
                   case None => go(last, receive(None), s)
                 }
             }

@@ -21,7 +21,7 @@ object pulls {
 
   private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(h: FileHandle[F]): Pull[F, Byte, Unit] =
     Pull.eval(h.read(chunkSize, offset)).flatMap {
-      case Some(o) => Pull.output(o) >> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
+      case Some(o) => Pull.outputChunk(o) >> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
       case None => Pull.done
     }
 

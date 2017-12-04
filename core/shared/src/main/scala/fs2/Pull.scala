@@ -150,6 +150,10 @@ object Pull {
   def output1[F[_],O](o: O): Pull[F,O,Unit] =
     fromFreeC(Algebra.output1[F,O](o))
 
+  /** Ouptuts a chunk of values. */
+  def outputChunk[F[_],O](os: Chunk[O]): Pull[F,O,Unit] =
+    output(Segment.chunk(os))
+
   /** Ouptuts a segment of values. */
   def output[F[_],O](os: Segment[O,Unit]): Pull[F,O,Unit] =
     fromFreeC(Algebra.output[F,O](os))

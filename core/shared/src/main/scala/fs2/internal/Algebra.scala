@@ -76,13 +76,13 @@ private[fs2] object Algebra {
             pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some((os.values, f(Right(())))))
           case os: Algebra.Run[F, O, x] =>
             try {
-              def asSegment(c: Catenable[Segment[O,Unit]]): Segment[O,Unit] =
-                c.uncons.flatMap { case (h1,t1) => t1.uncons.map(_ => Segment.catenated(c)).orElse(Some(h1)) }.getOrElse(Segment.empty)
+              def asSegment(c: Catenable[Chunk[O]]): Segment[O,Unit] =
+                c.uncons.flatMap { case (h1,t1) => t1.uncons.map(_ => Segment.catenated(c.map(Segment.chunk))).orElse(Some(Segment.chunk(h1))) }.getOrElse(Segment.empty)
               os.values.force.splitAt(chunkSize, Some(maxSteps)) match {
-                case Left((r,segments,rem)) =>
-                  pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some(asSegment(segments) -> f(Right(r))))
-                case Right((segments,tl)) =>
-                  pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some(asSegment(segments) -> FreeC.Bind[Algebra[F,O,?],x,Unit](segment(tl), f)))
+                case Left((r,chunks,rem)) =>
+                  pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some(asSegment(chunks) -> f(Right(r))))
+                case Right((chunks,tl)) =>
+                  pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some(asSegment(chunks) -> FreeC.Bind[Algebra[F,O,?],x,Unit](segment(tl), f)))
               }
             } catch { case NonFatal(e) => FreeC.suspend(uncons(f(Left(e)), chunkSize)) }
           case algebra => // Eval, Acquire, Release, OpenScope, CloseScope, GetScope

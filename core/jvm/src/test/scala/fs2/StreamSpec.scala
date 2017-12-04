@@ -149,7 +149,7 @@ class StreamSpec extends Fs2Spec with Inside {
 
     "unfoldSegment" in {
       Stream.unfoldSegment(4L) { s =>
-        if(s > 0) Some((Chunk.longs(Array[Long](s,s)), s-1)) else None
+        if(s > 0) Some((Chunk.longs(Array[Long](s,s)).toSegment, s-1)) else None
       }.toList shouldBe List[Long](4,4,3,3,2,2,1,1)
     }
 

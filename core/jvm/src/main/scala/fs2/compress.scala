@@ -34,13 +34,13 @@ object compress {
       case Some((hd,tl)) =>
         deflater.setInput(hd.toArray)
         val result = _deflate_collect(deflater, buffer, ArrayBuffer.empty, false).toArray
-        Pull.output(Chunk.bytes(result)) >> _deflate_stream(deflater, buffer)(tl)
+        Pull.outputChunk(Chunk.bytes(result)) >> _deflate_stream(deflater, buffer)(tl)
       case None =>
         deflater.setInput(Array.empty)
         deflater.finish()
         val result = _deflate_collect(deflater, buffer, ArrayBuffer.empty, true).toArray
         deflater.end()
-        Pull.output(Chunk.bytes(result))
+        Pull.outputChunk(Chunk.bytes(result))
     }
 
   @tailrec
@@ -68,7 +68,7 @@ object compress {
         val buffer = new Array[Byte](bufferSize)
         inflater.setInput(hd.toArray)
         val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
+        Pull.outputChunk(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
     }.stream
   }
 
@@ -77,7 +77,7 @@ object compress {
       case Some((hd,tl)) =>
         inflater.setInput(hd.toArray)
         val result = _inflate_collect(inflater, buffer, ArrayBuffer.empty).toArray
-        Pull.output(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
+        Pull.outputChunk(Chunk.bytes(result)) >> _inflate_stream(inflater, buffer)(tl)
       case None =>
         if (!inflater.finished) Pull.raiseError(new DataFormatException("Insufficient data"))
         else { inflater.end(); Pull.done }
