@@ -63,7 +63,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   }
 
   /** Copies the elements of this chunk to an array. */
-  override def toArray[O2 >: O: ClassTag]: Array[O2] = {
+  def toArray[O2 >: O: ClassTag]: Array[O2] = {
     val arr = new Array[O2](size)
     var i = 0
     while (i < size) { arr(i) = apply(i); i += 1 }
@@ -161,18 +161,39 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     }
   }
 
-  override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] = Right(this -> Chunk.empty)
-  override def foreachChunk(f: Chunk[O] => Unit): Unit = f(this)
-  override def toChunk: Chunk[O] = this
-  override def toChunks: Catenable[Chunk[O]] = Catenable.singleton(this)
-  override def toVector: Vector[O] = {
-    val buf = new collection.immutable.VectorBuilder[O]
+  def foreach(f: O => Unit): Unit = {
     var i = 0
     while (i < size) {
-      buf += apply(i)
+      f(apply(i))
       i += 1
     }
-    buf.result
+  }
+
+  def toList: List[O] = {
+    if (isEmpty) Nil
+    else {
+      val buf = new collection.mutable.ListBuffer[O]
+      var i = 0
+      while (i < size) {
+        buf += apply(i)
+        i += 1
+      }
+      buf.result
+    }
+  }
+
+  def toVector: Vector[O] = {
+    if (isEmpty) Vector.empty
+    else {
+      val buf = new collection.immutable.VectorBuilder[O]
+      buf.sizeHint(size)
+      var i = 0
+      while (i < size) {
+        buf += apply(i)
+        i += 1
+      }
+      buf.result
+    }
   }
 
   /** Strict version of `splitAt` - `n` is guaranteed to be within bounds so implementations do not need to do bounds checking. */
@@ -197,9 +218,6 @@ object Chunk {
     def apply(i: Int) = sys.error(s"Chunk.empty.apply($i)")
     override def stage0(depth: Segment.Depth, defer: Segment.Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: Unit => Unit) =
       Eval.now(Segment.step(empty_)(done(())))
-    override def unconsChunk: Either[Unit, (Chunk[Nothing],Segment[Nothing,Unit])] = Left(())
-    override def foreachChunk(f: Chunk[Nothing] => Unit): Unit = ()
-    override def toVector: Vector[Nothing] = Vector.empty
     protected def splitAtChunk_(n: Int): (Chunk[Nothing], Chunk[Nothing]) = sys.error("impossible")
     protected def mapStrict[O2](f: Nothing => O2): Chunk[O2] = empty
     override def toString = "empty"
@@ -247,8 +265,7 @@ object Chunk {
   }
 
   /** Creates a chunk backed by a `Seq`. */
-  def seq[O](s: Seq[O]): Chunk[O] =
-    if (s.isEmpty) empty else indexedSeq(s.toIndexedSeq)
+  def seq[O](s: Seq[O]): Chunk[O] = vector(s.toVector)
 
   /** Creates a chunk with the specified values. */
   def apply[O](os: O*): Chunk[O] = seq(os)

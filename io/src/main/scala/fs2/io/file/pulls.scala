@@ -43,7 +43,7 @@ object pulls {
       if (written >= buf.size)
         Pull.pure(())
       else
-        _writeAllToFileHandle2(buf.drop(written).toOption.get.toChunk, out, offset + written)
+        _writeAllToFileHandle2(buf.strict.drop(written), out, offset + written)
     }
 
   /**

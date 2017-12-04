@@ -42,7 +42,7 @@ abstract class Segment[+O,+R] { self =>
    * Concatenates this segment with `s2`.
    *
    * @example {{{
-   * scala> (Segment(1,2,3) ++ Segment(4,5,6)).toVector
+   * scala> (Segment(1,2,3) ++ Segment(4,5,6)).force.toVector
    * res0: Vector[Int] = Vector(1, 2, 3, 4, 5, 6)
    * }}}
    */
@@ -75,7 +75,7 @@ abstract class Segment[+O,+R] { self =>
    * Filters and maps simultaneously.
    *
    * @example {{{
-   * scala> Segment(Some(1), None, Some(2)).collect { case Some(i) => i }.toVector
+   * scala> Segment(Some(1), None, Some(2)).collect { case Some(i) => i }.force.toVector
    * res0: Vector[Int] = Vector(1, 2)
    * }}}
    */
@@ -106,7 +106,7 @@ abstract class Segment[+O,+R] { self =>
    * Equivalent to `Segment.singleton(o2) ++ this`.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).toVector
+   * scala> Segment(1, 2, 3).cons(0).force.toVector
    * res0: Vector[Int] = Vector(0, 1, 2, 3)
    * }}}
    */
@@ -117,7 +117,7 @@ abstract class Segment[+O,+R] { self =>
    * Returns a segment that suppresses all output and returns the result of this segment when run.
    *
    * @example {{{
-   * scala> Segment.from(0).take(3).drain.run.toOption.get.take(5).toVector
+   * scala> Segment.from(0).take(3).drain.force.run.toOption.get.take(5).force.toVector
    * res0: Vector[Long] = Vector(3, 4, 5, 6, 7)
    * }}}
    */
@@ -137,93 +137,10 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
-   * Eagerly drops `n` elements from the head of this segment, returning either the result and the
-   * number of elements remaining to drop, if the end of the segment was reached, or a new segment,
-   * if the end of the segment was not reached.
-   *
-   * @example {{{
-   * scala> Segment(1,2,3,4,5).drop(3).toOption.get.toVector
-   * res0: Vector[Int] = Vector(4, 5)
-   * scala> Segment(1,2,3,4,5).drop(7)
-   * res1: Either[(Unit, Long),Segment[Int,Unit]] = Left(((),2))
-   * }}}
-   */
-  final def drop(n: Long): Either[(R,Long),Segment[O,R]] = {
-    var rem = n
-    var leftovers: Catenable[Chunk[O]] = Catenable.empty
-    var result: Option[R] = None
-    val trampoline = new Trampoline
-    val step = stage(Depth(0), trampoline.defer,
-      o => if (rem > 0) rem -= 1 else leftovers = leftovers :+ Chunk.singleton(o),
-      os => if (rem > os.size) rem -= os.size else {
-        var i = rem.toInt
-        while (i < os.size) {
-          leftovers = leftovers :+ Chunk.singleton(os(i))
-          i += 1
-        }
-        rem = 0
-      },
-      r => { result = Some(r); throw Done }).value
-    try while (rem > 0 && result.isEmpty) stepAll(step, trampoline)
-    catch { case Done => }
-    result match {
-      case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
-      case Some(r) => if (leftovers.isEmpty) Left((r,rem)) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
-    }
-  }
-
-  /**
-   * Eagerly drops elements from the head of this segment until the supplied predicate returns false,
-   * returning either the result, if the end of the segment was reached without the predicate failing,
-   * or the remaining segment.
-   *
-   * If `dropFailure` is true, the first element that failed the predicate will be dropped. If false,
-   * the first element that failed the predicate will be the first element of the remainder.
-   *
-   * @example {{{
-   * scala> Segment(1,2,3,4,5).dropWhile(_ < 3).map(_.toVector)
-   * res0: Either[Unit,Vector[Int]] = Right(Vector(3, 4, 5))
-   * scala> Segment(1,2,3,4,5).dropWhile(_ < 10)
-   * res1: Either[Unit,Segment[Int,Unit]] = Left(())
-   * }}}
-   */
-  final def dropWhile(p: O => Boolean, dropFailure: Boolean = false): Either[R,Segment[O,R]] = {
-    var dropping = true
-    var leftovers: Catenable[Chunk[O]] = Catenable.empty
-    var result: Option[R] = None
-    val trampoline = new Trampoline
-    val step = stage(Depth(0), trampoline.defer,
-      o => { if (dropping) { dropping = p(o); if (!dropping && !dropFailure) leftovers = leftovers :+ Chunk.singleton(o) } },
-      os => {
-        var i = 0
-        while (dropping && i < os.size) {
-          dropping = p(os(i))
-          i += 1
-        }
-        if (!dropping) {
-          var j = i - 1
-          if (dropFailure) j += 1
-          if (j == 0) leftovers = leftovers :+ os
-          else while (j < os.size) {
-            leftovers = leftovers :+ Chunk.singleton(os(j))
-            j += 1
-          }
-        }
-      },
-      r => { result = Some(r); throw Done }).value
-    try while (dropping && result.isEmpty) stepAll(step, trampoline)
-    catch { case Done => }
-    result match {
-      case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
-      case Some(r) => if (leftovers.isEmpty && dropping) Left(r) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
-    }
-  }
-
-  /**
    * Filters output elements of this segment with the supplied predicate.
    *
    * @example {{{
-   * scala> Segment(1,2,3,4,5).filter(_ % 2 == 0).toVector
+   * scala> Segment(1,2,3,4,5).filter(_ % 2 == 0).force.toVector
    * res0: Vector[Int] = Vector(2, 4)
    * }}}
    */
@@ -255,7 +172,7 @@ abstract class Segment[+O,+R] { self =>
    * the results.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).flatMap(i => Segment.seq(List.fill(i)(i))).toVector
+   * scala> Segment(1, 2, 3).flatMap(i => Segment.seq(List.fill(i)(i))).force.toVector
    * res0: Vector[Int] = Vector(1, 2, 2, 3, 3, 3)
    * }}}
    */
@@ -278,11 +195,11 @@ abstract class Segment[+O,+R] { self =>
                 if (inner eq null) Segment.empty.asResult(r -> None)
                 else inner.remainder.mapResult(r2 => r -> Some(r2))
               } else {
-                val s = Chunk.indexedSeq(q.toIndexedSeq).asResult(r).flatMap(f)
+                val s = Chunk.seq(q).asResult(r).flatMap(f)
                 if (inner eq null) s else s.prepend(inner.remainder)
               }
             case None =>
-              val s = outer.remainder.prepend(Chunk.indexedSeq(q.toIndexedSeq)).flatMap(f)
+              val s = outer.remainder.prepend(Chunk.seq(q)).flatMap(f)
               if (inner eq null) s else s.prepend(inner.remainder)
           }
         } {
@@ -309,9 +226,9 @@ abstract class Segment[+O,+R] { self =>
    * @example {{{
    * scala> val src = Segment("Hello", "World", "\n", "From", "Mars").flatMapAccumulate(0)((l,s) =>
    *      |   if (s == "\n") Segment.empty.asResult(0) else Segment((l,s)).asResult(l + s.length))
-   * scala> src.toVector
+   * scala> src.force.toVector
    * res0: Vector[(Int,String)] = Vector((0,Hello), (5,World), (0,From), (4,Mars))
-   * scala> src.drain.run
+   * scala> src.drain.force.run
    * res1: (Unit,Int) = ((),8)
    * }}}
    */
@@ -375,7 +292,7 @@ abstract class Segment[+O,+R] { self =>
    * Flattens a `Segment[Segment[O2,R],R]` in to a `Segment[O2,R]`.
    *
    * @example {{{
-   * scala> Segment(Segment(1, 2), Segment(3, 4, 5)).flatten.toVector
+   * scala> Segment(Segment(1, 2), Segment(3, 4, 5)).flatten.force.toVector
    * res0: Vector[Int] = Vector(1, 2, 3, 4, 5)
    * }}}
    */
@@ -388,7 +305,7 @@ abstract class Segment[+O,+R] { self =>
    * Flattens a `Segment[Chunk[O2],R]` in to a `Segment[O2,R]`.
    *
    * @example {{{
-   * scala> Segment(Chunk(1, 2), Chunk(3, 4, 5)).flattenChunks.toVector
+   * scala> Segment(Chunk(1, 2), Chunk(3, 4, 5)).flattenChunks.force.toVector
    * res0: Vector[Int] = Vector(1, 2, 3, 4, 5)
    * }}}
    */
@@ -401,7 +318,7 @@ abstract class Segment[+O,+R] { self =>
    * Folds the output elements of this segment and returns the result as the result of the returned segment.
    *
    * @example {{{
-   * scala> Segment(1,2,3,4,5).fold(0)(_ + _).run
+   * scala> Segment(1,2,3,4,5).fold(0)(_ + _).force.run
    * res0: Int = 15
    * }}}
    */
@@ -417,7 +334,7 @@ abstract class Segment[+O,+R] { self =>
   }
 
   private[fs2] final def foldRightLazy[B](z: B)(f: (O,=>B) => B): B = {
-    unconsChunks match {
+    force.unconsChunks match {
       case Right((hds,tl)) =>
         def loopOnChunks(hds: Catenable[Chunk[O]]): B = {
           hds.uncons match {
@@ -440,53 +357,17 @@ abstract class Segment[+O,+R] { self =>
     }
   }
 
-  /**
-   * Invokes `f` on each chunk of this segment.
-   *
-   * @example {{{
-   * scala> val buf = collection.mutable.ListBuffer[Chunk[Int]]()
-   * scala> Segment(1,2,3).cons(0).foreachChunk(c => buf += c)
-   * res0: Unit = ()
-   * scala> buf.toList
-   * res1: List[Chunk[Int]] = List(Chunk(0), Chunk(1, 2, 3))
-   * }}}
-   */
-  def foreachChunk(f: Chunk[O] => Unit): Unit = {
-    val trampoline = new Trampoline
-    val step = stage(Depth(0), trampoline.defer, o => f(Chunk.singleton(o)), f, r => throw Done).value
-    try while (true) stepAll(step, trampoline)
-    catch { case Done => }
-  }
-
-  /**
-   * Invokes `f` on each output of this segment.
-   *
-   * @example {{{
-   * scala> val buf = collection.mutable.ListBuffer[Int]()
-   * scala> Segment(1,2,3).cons(0).foreach(i => buf += i)
-   * res0: Unit = ()
-   * scala> buf.toList
-   * res1: List[Int] = List(0, 1, 2, 3)
-   * }}}
-   */
-  def foreach(f: O => Unit): Unit = {
-    foreachChunk { c =>
-      var i = 0
-      while (i < c.size) {
-        f(c(i))
-        i += 1
-      }
-    }
-  }
+  /** Provides access to operations which force evaluation of some or all elements of this segment. */
+  def force: Segment.Force[O,R] = new Segment.Force(this)
 
   /**
    * Returns a segment that outputs all but the last element from the original segment, returning
    * the last element as part of the result.
    *
    * @example {{{
-   * scala> Segment(1,2,3).last.drain.run
+   * scala> Segment(1,2,3).last.drain.force.run
    * res0: (Unit, Option[Int]) = ((),Some(3))
-   * scala> Segment(1,2,3).last.toList
+   * scala> Segment(1,2,3).last.force.toList
    * res1: List[Int] = List(1, 2)
    * }}}
    */
@@ -512,7 +393,7 @@ abstract class Segment[+O,+R] { self =>
    * Returns a segment that maps each output using the supplied function.
    *
    * @example {{{
-   * scala> Segment(1,2,3).map(_ + 1).toVector
+   * scala> Segment(1,2,3).map(_ + 1).force.toVector
    * res0: Vector[Int] = Vector(2, 3, 4)
    * }}}
    */
@@ -534,9 +415,9 @@ abstract class Segment[+O,+R] { self =>
    *
    * @example {{{
    * scala> val src = Segment("Hello", "World").mapAccumulate(0)((l,s) => (l + s.length, (l, s)))
-   * scala> src.toVector
+   * scala> src.force.toVector
    * res0: Vector[(Int,String)] = Vector((0,Hello), (5,World))
-   * scala> src.drain.run
+   * scala> src.drain.force.run
    * res1: (Unit,Int) = ((),10)
    * }}}
    */
@@ -561,7 +442,7 @@ abstract class Segment[+O,+R] { self =>
    * Returns a segment that maps each output using the supplied function and concatenates all the results.
    *
    * @example {{{
-   * scala> Segment(1,2,3).mapConcat(o => Chunk.seq(List.range(0, o))).toVector
+   * scala> Segment(1,2,3).mapConcat(o => Chunk.seq(List.range(0, o))).force.toVector
    * res0: Vector[Int] = Vector(0, 0, 1, 0, 1, 2)
    * }}}
    */
@@ -579,7 +460,7 @@ abstract class Segment[+O,+R] { self =>
    * Maps the supplied function over the result of this segment.
    *
    * @example {{{
-   * scala> Segment('a', 'b', 'c').withSize.mapResult { case (_, size) => size }.drain.run
+   * scala> Segment('a', 'b', 'c').withSize.mapResult { case (_, size) => size }.drain.force.run
    * res0: Long = 3
    * }}}
    */
@@ -594,7 +475,7 @@ abstract class Segment[+O,+R] { self =>
    * Equivalent to `s2 ++ this`.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).prepend(Segment(-1, 0)).toVector
+   * scala> Segment(1, 2, 3).prepend(Segment(-1, 0)).force.toVector
    * res0: Vector[Int] = Vector(-1, 0, 1, 2, 3)
    * }}}
    */
@@ -605,31 +486,12 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
-   * Computes the result of this segment. May only be called when `O` is `Nothing`, to prevent accidentally ignoring
-   * output values. To intentionally ignore outputs, call `s.drain.run`.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).withSize.drain.run
-   * res0: (Unit,Long) = ((),3)
-   * }}}
-   */
-  final def run(implicit ev: O <:< Nothing): R = {
-    val _ = ev // Convince scalac that ev is used
-    var result: Option[R] = None
-    val trampoline = new Trampoline
-    val step = stage(Depth(0), trampoline.defer, _ => (), _ => (), r => { result = Some(r); throw Done }).value
-    try while (true) stepAll(step, trampoline)
-    catch { case Done => }
-    result.get
-  }
-
-  /**
    * Like fold but outputs intermediate results. If `emitFinal` is true, upon reaching the end of the stream, the accumulated
    * value is output. If `emitFinal` is false, the accumulated output is not output. Regardless, the accumulated value is
    * returned as the result of the segment.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3, 4, 5).scan(0)(_+_).toVector
+   * scala> Segment(1, 2, 3, 4, 5).scan(0)(_+_).force.toVector
    * res0: Vector[Int] = Vector(0, 1, 3, 6, 10, 15)
    * }}}
    */
@@ -645,131 +507,10 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
-   * Splits this segment at the specified index by simultaneously taking and dropping.
-   *
-   * If the segment has less than `n` elements, a left is returned, providing the result of the segment,
-   * all sub-segments taken, and the remaining number of elements (i.e., size - n).
-   *
-   * If the segment has more than `n` elements, a right is returned, providing the sub-segments up to
-   * the `n`-th element and a remainder segment.
-   *
-   * The prefix is computed eagerly while the suffix is computed lazily.
-   *
-   * The `maxSteps` parameter provides a notion of fairness. If specified, steps through the staged machine
-   * are counted while executing and if the limit is reached, execution completes, returning a `Right` consisting
-   * of whatever elements were seen in the first `maxSteps` steps. This provides fairness but yielding the
-   * computation back to the caller but with less than `n` accumulated values.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3, 4, 5).splitAt(2)
-   * res0: Either[(Unit,Catenable[Segment[Int,Unit]],Long),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Right((Catenable(Chunk(1, 2)),Chunk(3, 4, 5)))
-   * scala> Segment(1, 2, 3, 4, 5).splitAt(7)
-   * res0: Either[(Unit,Catenable[Segment[Int,Unit]],Long),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Left(((),Catenable(Chunk(1, 2, 3, 4, 5)),2))
-   * }}}
-   */
-   final def splitAt(n: Long, maxSteps: Option[Long] = None): Either[(R,Catenable[Segment[O,Unit]],Long),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
-    if (n <= 0) Right((Catenable.empty, this))
-    else {
-      var out: Catenable[Chunk[O]] = Catenable.empty
-      var result: Option[Either[R,Segment[O,Unit]]] = None
-      var rem = n
-      val emits: Chunk[O] => Unit = os => {
-        if (result.isDefined) {
-          result = result.map(_.map(_ ++ os))
-        } else if (os.nonEmpty) {
-          if (os.size <= rem) {
-            out = out :+ os
-            rem -= os.size
-          } else  {
-            val (before, after) = os.strict.splitAt(rem.toInt) // nb: toInt is safe b/c os.size is an Int and rem < os.size
-            out = out :+ before
-            result = Some(Right(after))
-            rem = 0
-          }
-        }
-      }
-      val trampoline = new Trampoline
-      val step = stage(Depth(0),
-        trampoline.defer,
-        o => emits(Chunk.singleton(o)),
-        os => emits(os),
-        r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
-      try {
-        maxSteps match {
-          case Some(maxSteps) =>
-            var steps = 0L
-            while (result.isEmpty && steps < maxSteps) { steps += stepAll(step, trampoline) }
-          case None =>
-            while (result.isEmpty) { stepAll(step, trampoline) }
-        }
-      } catch { case Done => }
-      result.map {
-        case Left(r) => Left((r,out,rem))
-        case Right(after) => Right((out,step.remainder.prepend(after)))
-      }.getOrElse(Right((out, step.remainder)))
-    }
-  }
-
-  /**
-   * Splits this segment at the first element where the supplied predicate returns false.
-   *
-   * Analagous to siumultaneously running `takeWhile` and `dropWhile`.
-   *
-   * If `emitFailure` is false, the first element which fails the predicate is returned in the suffix segment. If true,
-   * it is returned as the last element in the prefix segment.
-   *
-   * If the end of the segment is reached and the predicate has not failed, a left is returned, providing the segment result
-   * and the catenated sub-segments. Otherwise, a right is returned, providing the prefix sub-segments and the suffix remainder.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3, 4, 5).splitWhile(_ != 3)
-   * res0: Either[(Unit,Catenable[Segment[Int,Unit]]),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Right((Catenable(Chunk(1, 2)),Chunk(3, 4, 5)))
-   * scala> Segment(1, 2, 3, 4, 5).splitWhile(_ != 7)
-   * res0: Either[(Unit,Catenable[Segment[Int,Unit]]),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Left(((),Catenable(Chunk(1, 2, 3, 4, 5))))
-   * }}}
-   */
-  final def splitWhile(p: O => Boolean, emitFailure: Boolean = false): Either[(R,Catenable[Segment[O,Unit]]),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
-    var out: Catenable[Chunk[O]] = Catenable.empty
-    var result: Option[Either[R,Segment[O,Unit]]] = None
-    var ok = true
-    val emits: Chunk[O] => Unit = os => {
-      if (result.isDefined) {
-        result = result.map(_.map(_ ++ os))
-      } else {
-        var i = 0
-        var j = 0
-        while (ok && i < os.size) {
-          ok = ok && p(os(i))
-          if (!ok) j = i
-          i += 1
-        }
-        if (ok) out = out :+ os
-        else {
-          val (before, after) = os.strict.splitAt(if (emitFailure) j + 1 else j)
-          out = out :+ before
-          result = Some(Right(after))
-        }
-      }
-    }
-    val trampoline = new Trampoline
-    val step = stage(Depth(0),
-      trampoline.defer,
-      o => emits(Chunk.singleton(o)),
-      os => emits(os),
-      r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
-    try while (result.isEmpty) stepAll(step, trampoline)
-    catch { case Done => }
-    result.map {
-      case Left(r) => Left((r,out))
-      case Right(after) => Right((out,step.remainder.prepend(after)))
-    }.getOrElse(Right((out, step.remainder)))
-  }
-
-  /**
    * Sums the elements of this segment and returns the sum as the segment result.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3, 4, 5).sum.run
+   * scala> Segment(1, 2, 3, 4, 5).sum.force.run
    * res0: Int = 15
    * }}}
    */
@@ -801,11 +542,11 @@ abstract class Segment[+O,+R] { self =>
    * segment after `n` elements are taken.
    *
    * @example {{{
-   * scala> Segment.from(0).take(3).toVector
+   * scala> Segment.from(0).take(3).force.toVector
    * res0: Vector[Long] = Vector(0, 1, 2)
-   * scala> Segment.from(0).take(3).drain.run.toOption.get.take(5).toVector
+   * scala> Segment.from(0).take(3).drain.force.run.toOption.get.take(5).force.toVector
    * res1: Vector[Long] = Vector(3, 4, 5, 6, 7)
-   * scala> Segment(1, 2, 3).take(5).drain.run
+   * scala> Segment(1, 2, 3).take(5).drain.force.run
    * res2: Either[(Unit, Long),Segment[Int,Unit]] = Left(((),2))
    * }}}
    */
@@ -841,11 +582,11 @@ abstract class Segment[+O,+R] { self =>
    * the predicate.
    *
    * @example {{{
-   * scala> Segment.from(0).takeWhile(_ < 3).toVector
+   * scala> Segment.from(0).takeWhile(_ < 3).force.toVector
    * res0: Vector[Long] = Vector(0, 1, 2)
-   * scala> Segment.from(0).takeWhile(_ < 3, takeFailure = true).toVector
+   * scala> Segment.from(0).takeWhile(_ < 3, takeFailure = true).force.toVector
    * res1: Vector[Long] = Vector(0, 1, 2, 3)
-   * scala> Segment.from(0).takeWhile(_ < 3).drain.run.toOption.get.take(5).toVector
+   * scala> Segment.from(0).takeWhile(_ < 3).drain.force.run.toOption.get.take(5).force.toVector
    * res2: Vector[Long] = Vector(3, 4, 5, 6, 7)
    * }}}
    */
@@ -878,222 +619,10 @@ abstract class Segment[+O,+R] { self =>
   }
 
   /**
-   * Converts this segment to an array, discarding the result.
-   *
-   * Caution: calling `toArray` on an infinite sequence will not terminate.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).cons(-1).toArray
-   * res0: Array[Int] = Array(-1, 0, 1, 2, 3)
-   * }}}
-   */
-  def toArray[O2 >: O](implicit ct: reflect.ClassTag[O2]): Array[O2] = {
-    val bldr = collection.mutable.ArrayBuilder.make[O2]
-    foreachChunk { c =>
-      var i = 0
-      while (i < c.size) {
-        bldr += c(i)
-        i += 1
-      }
-    }
-    bldr.result
-  }
-  /**
-   * Converts this segment to a catenable of output values, discarding the result.
-   *
-   * Caution: calling `toCatenable` on an infinite sequence will not terminate.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).cons(-1).toCatenable.toList
-   * res0: List[Int] = List(-1, 0, 1, 2, 3)
-   * }}}
-   */
-  def toCatenable: Catenable[O] = {
-    var result: Catenable[O] = Catenable.empty
-    foreach(o => result = result :+ o)
-    result
-  }
-
-  /**
-   * Converts this segment to a single chunk, discarding the result.
-   *
-   * Caution: calling `toChunk` on an infinite sequence will not terminate.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).cons(-1).toChunk
-   * res0: Chunk[Int] = Chunk(-1, 0, 1, 2, 3)
-   * }}}
-   */
-  def toChunk: Chunk[O] = Chunk.vector(toVector)
-
-  /**
-   * Converts this segment to a sequence of chunks, discarding the result.
-   *
-   * Caution: calling `toChunks` on an infinite sequence will not terminate.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).cons(-1).toChunks.toList
-   * res0: List[Chunk[Int]] = List(Chunk(-1), Chunk(0), Chunk(1, 2, 3))
-   * }}}
-   */
-  def toChunks: Catenable[Chunk[O]] = {
-    var acc: Catenable[Chunk[O]] = Catenable.empty
-    foreachChunk(c => acc = acc :+ c)
-    acc
-  }
-
-  /**
-   * Converts this segment to a list, discarding the result.
-   *
-   * Caution: calling `toList` on an infinite sequence will not terminate.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).cons(-1).toList
-   * res0: List[Int] = List(-1, 0, 1, 2, 3)
-   * }}}
-   */
-  def toList: List[O] = {
-    val buf = new collection.mutable.ListBuffer[O]
-    foreachChunk { c =>
-      var i = 0
-      while (i < c.size) {
-        buf += c(i)
-        i += 1
-      }
-    }
-    buf.result
-  }
-
-  /**
-   * Converts this segment to a list, discarding the result.
-   *
-   * Caution: calling `toList` on an infinite sequence will not terminate.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).cons(-1).toList
-   * res0: List[Int] = List(-1, 0, 1, 2, 3)
-   * }}}
-   */
-  def toVector: Vector[O] = {
-    val buf = new collection.immutable.VectorBuilder[O]
-    foreachChunk(c => { buf ++= c.toVector; () })
-    buf.result
-  }
-
-  /**
-   * Returns the first output sub-segment of this segment along with the remainder, wrapped in `Right`, or
-   * if this segment is empty, returns the result wrapped in `Left`.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).uncons
-   * res0: Either[Unit,(Segment[Int,Unit], Segment[Int,Unit])] = Right((Chunk(0),Chunk(1, 2, 3)))
-   * scala> Segment.empty[Int].uncons
-   * res1: Either[Unit,(Segment[Int,Unit], Segment[Int,Unit])] = Left(())
-   * }}}
-   */
-  final def uncons: Either[R, (Segment[O,Unit],Segment[O,R])] = unconsChunks match {
-    case Left(r) => Left(r)
-    case Right((cs,tl)) => Right(catenated(cs) -> tl)
-  }
-
-  /**
-   * Returns the first output of this segment along with the remainder, wrapped in `Right`, or
-   * if this segment is empty, returns the result wrapped in `Left`.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).cons(0).uncons1
-   * res0: Either[Unit,(Int, Segment[Int,Unit])] = Right((0,Chunk(1, 2, 3)))
-   * scala> Segment.empty[Int].uncons1
-   * res1: Either[Unit,(Int, Segment[Int,Unit])] = Left(())
-   * }}}
-   */
-  @annotation.tailrec
-  final def uncons1: Either[R, (O,Segment[O,R])] =
-    unconsChunk match {
-      case Right((c, tl)) =>
-        val sz = c.size
-        if (sz == 0) tl.uncons1
-        else if (sz == 1) Right(c(0) -> tl)
-        else Right(c(0) -> tl.prepend(c.strict.drop(1)))
-      case Left(r) => Left(r)
-    }
-
-  /**
-   * Returns the first output chunk of this segment along with the remainder, wrapped in `Right`, or
-   * if this segment is empty, returns the result wrapped in `Left`.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).unconsChunk
-   * res0: Either[Unit,(Chunk[Int], Segment[Int,Unit])] = Right((Chunk(-1, 0),Chunk(1, 2, 3)))
-   * scala> Segment.empty[Int].unconsChunk
-   * res1: Either[Unit,(Chunk[Int], Segment[Int,Unit])] = Left(())
-   * }}}
-   */
-  def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] =
-    unconsChunks match {
-      case Left(r) => Left(r)
-      case Right((cs,tl)) => Right(cs.uncons.map { case (hd,tl2) => hd -> tl.prepend(Segment.catenated(tl2)) }.get)
-    }
-
-  /**
-   * Returns the first output chunks of this segment along with the remainder, wrapped in `Right`, or
-   * if this segment is empty, returns the result wrapped in `Left`.
-   *
-   * Differs from `unconsChunk` when a single step results in multiple outputs.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).unconsChunks
-   * res0: Either[Unit,(Catenable[Chunk[Int]], Segment[Int,Unit])] = Right((Catenable(Chunk(-1, 0)),Chunk(1, 2, 3)))
-   * scala> Segment.empty[Int].unconsChunks
-   * res1: Either[Unit,(Catenable[Chunk[Int]], Segment[Int,Unit])] = Left(())
-   * }}}
-   */
-  final def unconsChunks: Either[R, (Catenable[Chunk[O]],Segment[O,R])] = {
-    var out: Catenable[Chunk[O]] = Catenable.empty
-    var result: Option[R] = None
-    var ok = true
-    val trampoline = new Trampoline
-    val step = stage(Depth(0),
-      trampoline.defer,
-      o => { out = out :+ Chunk.singleton(o); ok = false },
-      os => { out = out :+ os; ok = false },
-      r => { result = Some(r); throw Done }).value
-    try while (ok) stepAll(step, trampoline)
-    catch { case Done => }
-    result match {
-      case None =>
-        Right(out -> step.remainder)
-      case Some(r) =>
-        if (out.isEmpty) Left(r)
-        else Right(out -> pure(r))
-    }
-  }
-
-  /**
-   * Returns all output chunks and the result of this segment after stepping it to completion.
-   *
-   * Will not terminate if run on an infinite segment.
-   *
-   * @example {{{
-   * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).unconsAll
-   * res0: (Catenable[Chunk[Int]], Unit) = (Catenable(Chunk(-1, 0), Chunk(1, 2, 3)),())
-   * }}}
-   */
-  def unconsAll: (Catenable[Chunk[O]],R) = {
-    @annotation.tailrec
-    def go(acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
-      s.unconsChunks match {
-        case Right((hds, tl)) => go(acc ++ hds, tl)
-        case Left(r) => (acc, r)
-      }
-    go(Catenable.empty, this)
-  }
-
-  /**
    * Alias for `map(_ => ())`.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).void.toList
+   * scala> Segment(1, 2, 3).void.force.toList
    * res0: List[Unit] = List((), (), ())
    * }}}
    */
@@ -1113,7 +642,7 @@ abstract class Segment[+O,+R] { self =>
    * Returns a new segment which includes the number of elements output in the result.
    *
    * @example {{{
-   * scala> Segment(1, 2, 3).withSize.drain.run
+   * scala> Segment(1, 2, 3).withSize.drain.force.run
    * res0: (Unit,Long) = ((),3)
    * }}}
    */
@@ -1136,7 +665,7 @@ abstract class Segment[+O,+R] { self =>
    * Terminates when either segment terminates.
    *
    * @example {{{
-   * scala> Segment(1,2,3).zipWith(Segment(4,5,6,7))(_+_).toList
+   * scala> Segment(1,2,3).zipWith(Segment(4,5,6,7))(_+_).force.toList
    * res0: List[Int] = List(5, 7, 9)
    * }}}
    */
@@ -1192,8 +721,8 @@ abstract class Segment[+O,+R] { self =>
         }
         val emitsL: Chunk[O] => Unit = os => { if (os.nonEmpty) l += os; doZip }
         val emitsR: Chunk[O2] => Unit = os => { if (os.nonEmpty) r += os; doZip }
-        def unusedL: Segment[O,Unit] = if (l.isEmpty) Segment.empty else l.tail.foldLeft(if (lpos == 0) l.head else l.head.drop(lpos).toOption.get)(_ ++ _)
-        def unusedR: Segment[O2,Unit] = if (r.isEmpty) Segment.empty else r.tail.foldLeft(if (rpos == 0) r.head else r.head.drop(rpos).toOption.get)(_ ++ _)
+        def unusedL: Segment[O,Unit] = if (l.isEmpty) Segment.empty else l.tail.foldLeft(if (lpos == 0) l.head else l.head.force.drop(lpos).toOption.get)(_ ++ _)
+        def unusedR: Segment[O2,Unit] = if (r.isEmpty) Segment.empty else r.tail.foldLeft(if (rpos == 0) r.head else r.head.force.drop(rpos).toOption.get)(_ ++ _)
         var lResult: Option[R] = None
         var rResult: Option[R2] = None
         for {
@@ -1217,9 +746,10 @@ abstract class Segment[+O,+R] { self =>
       override def toString = s"($self).zipWith($that)(<f1>)"
     }
 
-  override def hashCode: Int = toVector.hashCode
+  // TODO I don't think hashCode and equals should convert to vectors...
+  override def hashCode: Int = force.toVector.hashCode
   override def equals(a: Any): Boolean = a match {
-    case s: Segment[O,R] => this.toVector == s.toVector
+    case s: Segment[O,R] => this.force.toVector == s.force.toVector
     case _ => false
   }
 }
@@ -1331,8 +861,506 @@ object Segment {
     }
     override def toString = s"unfoldSegment($s)(<f1>)"
   }
+
   /** Creates a segment backed by a `Vector`. */
   def vector[O](os: Vector[O]): Segment[O,Unit] = Chunk.vector(os)
+
+  /** Operations on a `Segment` which force evaluation of some part or all of a segments elements. */
+  final class Force[+O,+R](private val self: Segment[O,R]) extends AnyVal {
+
+    /**
+     * Eagerly drops `n` elements from the head of this segment, returning either the result and the
+     * number of elements remaining to drop, if the end of the segment was reached, or a new segment,
+     * if the end of the segment was not reached.
+     *
+     * @example {{{
+     * scala> Segment(1,2,3,4,5).force.drop(3).toOption.get.force.toVector
+     * res0: Vector[Int] = Vector(4, 5)
+     * scala> Segment(1,2,3,4,5).force.drop(7)
+     * res1: Either[(Unit, Long),Segment[Int,Unit]] = Left(((),2))
+     * }}}
+     */
+    final def drop(n: Long): Either[(R,Long),Segment[O,R]] = {
+      var rem = n
+      var leftovers: Catenable[Chunk[O]] = Catenable.empty
+      var result: Option[R] = None
+      val trampoline = new Trampoline
+      val step = self.stage(Depth(0), trampoline.defer,
+        o => if (rem > 0) rem -= 1 else leftovers = leftovers :+ Chunk.singleton(o),
+        os => if (rem > os.size) rem -= os.size else {
+          var i = rem.toInt
+          while (i < os.size) {
+            leftovers = leftovers :+ Chunk.singleton(os(i))
+            i += 1
+          }
+          rem = 0
+        },
+        r => { result = Some(r); throw Done }).value
+      try while (rem > 0 && result.isEmpty) stepAll(step, trampoline)
+      catch { case Done => }
+      result match {
+        case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
+        case Some(r) => if (leftovers.isEmpty) Left((r,rem)) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
+      }
+    }
+
+    /**
+     * Eagerly drops elements from the head of this segment until the supplied predicate returns false,
+     * returning either the result, if the end of the segment was reached without the predicate failing,
+     * or the remaining segment.
+     *
+     * If `dropFailure` is true, the first element that failed the predicate will be dropped. If false,
+     * the first element that failed the predicate will be the first element of the remainder.
+     *
+     * @example {{{
+     * scala> Segment(1,2,3,4,5).force.dropWhile(_ < 3).map(_.force.toVector)
+     * res0: Either[Unit,Vector[Int]] = Right(Vector(3, 4, 5))
+     * scala> Segment(1,2,3,4,5).force.dropWhile(_ < 10)
+     * res1: Either[Unit,Segment[Int,Unit]] = Left(())
+     * }}}
+     */
+    final def dropWhile(p: O => Boolean, dropFailure: Boolean = false): Either[R,Segment[O,R]] = {
+      var dropping = true
+      var leftovers: Catenable[Chunk[O]] = Catenable.empty
+      var result: Option[R] = None
+      val trampoline = new Trampoline
+      val step = self.stage(Depth(0), trampoline.defer,
+        o => { if (dropping) { dropping = p(o); if (!dropping && !dropFailure) leftovers = leftovers :+ Chunk.singleton(o) } },
+        os => {
+          var i = 0
+          while (dropping && i < os.size) {
+            dropping = p(os(i))
+            i += 1
+          }
+          if (!dropping) {
+            var j = i - 1
+            if (dropFailure) j += 1
+            if (j == 0) leftovers = leftovers :+ os
+            else while (j < os.size) {
+              leftovers = leftovers :+ Chunk.singleton(os(j))
+              j += 1
+            }
+          }
+        },
+        r => { result = Some(r); throw Done }).value
+      try while (dropping && result.isEmpty) stepAll(step, trampoline)
+      catch { case Done => }
+      result match {
+        case None => Right(if (leftovers.isEmpty) step.remainder else step.remainder.prepend(Segment.catenated(leftovers)))
+        case Some(r) => if (leftovers.isEmpty && dropping) Left(r) else Right(Segment.pure(r).prepend(Segment.catenated(leftovers)))
+      }
+    }
+
+    /**
+     * Invokes `f` on each chunk of this segment.
+     *
+     * @example {{{
+     * scala> val buf = collection.mutable.ListBuffer[Chunk[Int]]()
+     * scala> Segment(1,2,3).cons(0).force.foreachChunk(c => buf += c)
+     * res0: Unit = ()
+     * scala> buf.toList
+     * res1: List[Chunk[Int]] = List(Chunk(0), Chunk(1, 2, 3))
+     * }}}
+     */
+    def foreachChunk(f: Chunk[O] => Unit): Unit = {
+      val trampoline = new Trampoline
+      val step = self.stage(Depth(0), trampoline.defer, o => f(Chunk.singleton(o)), f, r => throw Done).value
+      try while (true) stepAll(step, trampoline)
+      catch { case Done => }
+    }
+
+    /**
+     * Invokes `f` on each output of this segment.
+     *
+     * @example {{{
+     * scala> val buf = collection.mutable.ListBuffer[Int]()
+     * scala> Segment(1,2,3).cons(0).force.foreach(i => buf += i)
+     * res0: Unit = ()
+     * scala> buf.toList
+     * res1: List[Int] = List(0, 1, 2, 3)
+     * }}}
+     */
+    def foreach(f: O => Unit): Unit = {
+      foreachChunk { c =>
+        var i = 0
+        while (i < c.size) {
+          f(c(i))
+          i += 1
+        }
+      }
+    }
+
+    /**
+     * Computes the result of this segment. May only be called when `O` is `Nothing`, to prevent accidentally ignoring
+     * output values. To intentionally ignore outputs, call `s.drain.force.run`.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).withSize.drain.force.run
+     * res0: (Unit,Long) = ((),3)
+     * }}}
+     */
+    final def run(implicit ev: O <:< Nothing): R = {
+      val _ = ev // Convince scalac that ev is used
+      var result: Option[R] = None
+      val trampoline = new Trampoline
+      val step = self.stage(Depth(0), trampoline.defer, _ => (), _ => (), r => { result = Some(r); throw Done }).value
+      try while (true) stepAll(step, trampoline)
+      catch { case Done => }
+      result.get
+    }
+
+    /**
+     * Splits this segment at the specified index by simultaneously taking and dropping.
+     *
+     * If the segment has less than `n` elements, a left is returned, providing the result of the segment,
+     * all sub-segments taken, and the remaining number of elements (i.e., size - n).
+     *
+     * If the segment has more than `n` elements, a right is returned, providing the sub-segments up to
+     * the `n`-th element and a remainder segment.
+     *
+     * The prefix is computed eagerly while the suffix is computed lazily.
+     *
+     * The `maxSteps` parameter provides a notion of fairness. If specified, steps through the staged machine
+     * are counted while executing and if the limit is reached, execution completes, returning a `Right` consisting
+     * of whatever elements were seen in the first `maxSteps` steps. This provides fairness but yielding the
+     * computation back to the caller but with less than `n` accumulated values.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3, 4, 5).force.splitAt(2)
+     * res0: Either[(Unit,Catenable[Segment[Int,Unit]],Long),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Right((Catenable(Chunk(1, 2)),Chunk(3, 4, 5)))
+     * scala> Segment(1, 2, 3, 4, 5).force.splitAt(7)
+     * res0: Either[(Unit,Catenable[Segment[Int,Unit]],Long),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Left(((),Catenable(Chunk(1, 2, 3, 4, 5)),2))
+     * }}}
+     */
+     final def splitAt(n: Long, maxSteps: Option[Long] = None): Either[(R,Catenable[Segment[O,Unit]],Long),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
+      if (n <= 0) Right((Catenable.empty, self))
+      else {
+        var out: Catenable[Chunk[O]] = Catenable.empty
+        var result: Option[Either[R,Segment[O,Unit]]] = None
+        var rem = n
+        val emits: Chunk[O] => Unit = os => {
+          if (result.isDefined) {
+            result = result.map(_.map(_ ++ os))
+          } else if (os.nonEmpty) {
+            if (os.size <= rem) {
+              out = out :+ os
+              rem -= os.size
+            } else  {
+              val (before, after) = os.strict.splitAt(rem.toInt) // nb: toInt is safe b/c os.size is an Int and rem < os.size
+              out = out :+ before
+              result = Some(Right(after))
+              rem = 0
+            }
+          }
+        }
+        val trampoline = new Trampoline
+        val step = self.stage(Depth(0),
+          trampoline.defer,
+          o => emits(Chunk.singleton(o)),
+          os => emits(os),
+          r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
+        try {
+          maxSteps match {
+            case Some(maxSteps) =>
+              var steps = 0L
+              while (result.isEmpty && steps < maxSteps) { steps += stepAll(step, trampoline) }
+            case None =>
+              while (result.isEmpty) { stepAll(step, trampoline) }
+          }
+        } catch { case Done => }
+        result.map {
+          case Left(r) => Left((r,out,rem))
+          case Right(after) => Right((out,step.remainder.prepend(after)))
+        }.getOrElse(Right((out, step.remainder)))
+      }
+    }
+
+    /**
+     * Splits this segment at the first element where the supplied predicate returns false.
+     *
+     * Analagous to siumultaneously running `takeWhile` and `dropWhile`.
+     *
+     * If `emitFailure` is false, the first element which fails the predicate is returned in the suffix segment. If true,
+     * it is returned as the last element in the prefix segment.
+     *
+     * If the end of the segment is reached and the predicate has not failed, a left is returned, providing the segment result
+     * and the catenated sub-segments. Otherwise, a right is returned, providing the prefix sub-segments and the suffix remainder.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3, 4, 5).force.splitWhile(_ != 3)
+     * res0: Either[(Unit,Catenable[Segment[Int,Unit]]),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Right((Catenable(Chunk(1, 2)),Chunk(3, 4, 5)))
+     * scala> Segment(1, 2, 3, 4, 5).force.splitWhile(_ != 7)
+     * res0: Either[(Unit,Catenable[Segment[Int,Unit]]),(Catenable[Segment[Int,Unit]],Segment[Int,Unit])] = Left(((),Catenable(Chunk(1, 2, 3, 4, 5))))
+     * }}}
+     */
+    final def splitWhile(p: O => Boolean, emitFailure: Boolean = false): Either[(R,Catenable[Segment[O,Unit]]),(Catenable[Segment[O,Unit]],Segment[O,R])] = {
+      var out: Catenable[Chunk[O]] = Catenable.empty
+      var result: Option[Either[R,Segment[O,Unit]]] = None
+      var ok = true
+      val emits: Chunk[O] => Unit = os => {
+        if (result.isDefined) {
+          result = result.map(_.map(_ ++ os))
+        } else {
+          var i = 0
+          var j = 0
+          while (ok && i < os.size) {
+            ok = ok && p(os(i))
+            if (!ok) j = i
+            i += 1
+          }
+          if (ok) out = out :+ os
+          else {
+            val (before, after) = os.strict.splitAt(if (emitFailure) j + 1 else j)
+            out = out :+ before
+            result = Some(Right(after))
+          }
+        }
+      }
+      val trampoline = new Trampoline
+      val step = self.stage(Depth(0),
+        trampoline.defer,
+        o => emits(Chunk.singleton(o)),
+        os => emits(os),
+        r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
+      try while (result.isEmpty) stepAll(step, trampoline)
+      catch { case Done => }
+      result.map {
+        case Left(r) => Left((r,out))
+        case Right(after) => Right((out,step.remainder.prepend(after)))
+      }.getOrElse(Right((out, step.remainder)))
+    }
+
+
+    /**
+     * Converts this segment to an array, discarding the result.
+     *
+     * Caution: calling `toArray` on an infinite sequence will not terminate.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).cons(0).cons(-1).force.toArray
+     * res0: Array[Int] = Array(-1, 0, 1, 2, 3)
+     * }}}
+     */
+    def toArray[O2 >: O](implicit ct: reflect.ClassTag[O2]): Array[O2] = {
+      val bldr = collection.mutable.ArrayBuilder.make[O2]
+      foreachChunk { c =>
+        var i = 0
+        while (i < c.size) {
+          bldr += c(i)
+          i += 1
+        }
+      }
+      bldr.result
+    }
+
+    /**
+     * Converts this segment to a catenable of output values, discarding the result.
+     *
+     * Caution: calling `toCatenable` on an infinite sequence will not terminate.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).cons(0).cons(-1).force.toCatenable.toList
+     * res0: List[Int] = List(-1, 0, 1, 2, 3)
+     * }}}
+     */
+    def toCatenable: Catenable[O] = {
+      var result: Catenable[O] = Catenable.empty
+      foreach(o => result = result :+ o)
+      result
+    }
+
+    /**
+     * Converts this segment to a single chunk, discarding the result.
+     *
+     * Caution: calling `toChunk` on an infinite sequence will not terminate.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).cons(0).cons(-1).force.toChunk
+     * res0: Chunk[Int] = Chunk(-1, 0, 1, 2, 3)
+     * }}}
+     */
+    def toChunk: Chunk[O] = Chunk.vector(toVector)
+
+    /**
+     * Converts this segment to a sequence of chunks, discarding the result.
+     *
+     * Caution: calling `toChunks` on an infinite sequence will not terminate.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).cons(0).cons(-1).force.toChunks.toList
+     * res0: List[Chunk[Int]] = List(Chunk(-1), Chunk(0), Chunk(1, 2, 3))
+     * }}}
+     */
+    def toChunks: Catenable[Chunk[O]] = {
+      var acc: Catenable[Chunk[O]] = Catenable.empty
+      foreachChunk(c => acc = acc :+ c)
+      acc
+    }
+
+    /**
+     * Converts this chunk to a list, discarding the result.
+     *
+     * Caution: calling `toList` on an infinite sequence will not terminate.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).cons(0).cons(-1).force.toList
+     * res0: List[Int] = List(-1, 0, 1, 2, 3)
+     * }}}
+     */
+    def toList: List[O] = self match {
+      case c: Chunk[O] => c.toList
+      case _ =>
+        val buf = new collection.mutable.ListBuffer[O]
+        foreachChunk { c =>
+          var i = 0
+          while (i < c.size) {
+            buf += c(i)
+            i += 1
+          }
+        }
+        buf.result
+    }
+
+    /**
+     * Converts this segment to a vector, discarding the result.
+     *
+     * Caution: calling `toVector` on an infinite sequence will not terminate.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).cons(0).cons(-1).force.toVector
+     * res0: Vector[Int] = Vector(-1, 0, 1, 2, 3)
+     * }}}
+     */
+    def toVector: Vector[O] = self match {
+      case c: Chunk[O] => c.toVector
+      case _ =>
+        val buf = new collection.immutable.VectorBuilder[O]
+        foreachChunk(c => { buf ++= c.toVector; () })
+        buf.result
+    }
+
+    /**
+     * Returns the first output sub-segment of this segment along with the remainder, wrapped in `Right`, or
+     * if this segment is empty, returns the result wrapped in `Left`.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).cons(0).force.uncons
+     * res0: Either[Unit,(Segment[Int,Unit], Segment[Int,Unit])] = Right((Chunk(0),Chunk(1, 2, 3)))
+     * scala> Segment.empty[Int].force.uncons
+     * res1: Either[Unit,(Segment[Int,Unit], Segment[Int,Unit])] = Left(())
+     * }}}
+     */
+    final def uncons: Either[R, (Segment[O,Unit],Segment[O,R])] = self match {
+      case c: Chunk[O] =>
+        if (c.isEmpty) Left(().asInstanceOf[R])
+        else Right(c -> empty.asInstanceOf[Segment[O,R]])
+      case _ =>
+        unconsChunks match {
+          case Left(r) => Left(r)
+          case Right((cs,tl)) => Right(catenated(cs) -> tl)
+        }
+    }
+    /**
+     * Returns all output chunks and the result of this segment after stepping it to completion.
+     *
+     * Will not terminate if run on an infinite segment.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).force.unconsAll
+     * res0: (Catenable[Chunk[Int]], Unit) = (Catenable(Chunk(-1, 0), Chunk(1, 2, 3)),())
+     * }}}
+     */
+    final def unconsAll: (Catenable[Chunk[O]],R) = {
+      @annotation.tailrec
+      def go(acc: Catenable[Chunk[O]], s: Segment[O,R]): (Catenable[Chunk[O]],R) =
+        s.force.unconsChunks match {
+          case Right((hds, tl)) => go(acc ++ hds, tl)
+          case Left(r) => (acc, r)
+        }
+      go(Catenable.empty, self)
+    }
+
+    /**
+     * Returns the first output of this segment along with the remainder, wrapped in `Right`, or
+     * if this segment is empty, returns the result wrapped in `Left`.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).cons(0).force.uncons1
+     * res0: Either[Unit,(Int, Segment[Int,Unit])] = Right((0,Chunk(1, 2, 3)))
+     * scala> Segment.empty[Int].force.uncons1
+     * res1: Either[Unit,(Int, Segment[Int,Unit])] = Left(())
+     * }}}
+     */
+    @annotation.tailrec
+    final def uncons1: Either[R, (O,Segment[O,R])] =
+      unconsChunk match {
+        case Right((c, tl)) =>
+          val sz = c.size
+          if (sz == 0) tl.force.uncons1
+          else if (sz == 1) Right(c(0) -> tl)
+          else Right(c(0) -> tl.prepend(c.strict.drop(1)))
+        case Left(r) => Left(r)
+      }
+
+    /**
+     * Returns the first output chunk of this segment along with the remainder, wrapped in `Right`, or
+     * if this segment is empty, returns the result wrapped in `Left`.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).force.unconsChunk
+     * res0: Either[Unit,(Chunk[Int], Segment[Int,Unit])] = Right((Chunk(-1, 0),Chunk(1, 2, 3)))
+     * scala> Segment.empty[Int].force.unconsChunk
+     * res1: Either[Unit,(Chunk[Int], Segment[Int,Unit])] = Left(())
+     * }}}
+     */
+    final def unconsChunk: Either[R, (Chunk[O],Segment[O,R])] = self match {
+      case c: Chunk[O] =>
+        if (c.isEmpty) Left(().asInstanceOf[R])
+        else Right(c -> empty.asInstanceOf[Segment[O,R]])
+      case _ => unconsChunks match {
+        case Left(r) => Left(r)
+        case Right((cs,tl)) => Right(cs.uncons.map { case (hd,tl2) => hd -> tl.prepend(Segment.catenated(tl2)) }.get)
+      }
+    }
+
+    /**
+     * Returns the first output chunks of this segment along with the remainder, wrapped in `Right`, or
+     * if this segment is empty, returns the result wrapped in `Left`.
+     *
+     * Differs from `unconsChunk` when a single step results in multiple outputs.
+     *
+     * @example {{{
+     * scala> Segment(1, 2, 3).prepend(Chunk(-1, 0)).force.unconsChunks
+     * res0: Either[Unit,(Catenable[Chunk[Int]], Segment[Int,Unit])] = Right((Catenable(Chunk(-1, 0)),Chunk(1, 2, 3)))
+     * scala> Segment.empty[Int].force.unconsChunks
+     * res1: Either[Unit,(Catenable[Chunk[Int]], Segment[Int,Unit])] = Left(())
+     * }}}
+     */
+    final def unconsChunks: Either[R, (Catenable[Chunk[O]],Segment[O,R])] = self match {
+      case c: Chunk[O] =>
+        if (c.isEmpty) Left(().asInstanceOf[R])
+        else Right(Catenable.singleton(c) -> empty[O].asInstanceOf[Segment[O,R]])
+      case _ =>
+        var out: Catenable[Chunk[O]] = Catenable.empty
+        var result: Option[R] = None
+        var ok = true
+        val trampoline = new Trampoline
+        val step = self.stage(Depth(0),
+          trampoline.defer,
+          o => { out = out :+ Chunk.singleton(o); ok = false },
+          os => { out = out :+ os; ok = false },
+          r => { result = Some(r); throw Done }).value
+        try while (ok) stepAll(step, trampoline)
+        catch { case Done => }
+        result match {
+          case None =>
+            Right(out -> step.remainder)
+          case Some(r) =>
+            if (out.isEmpty) Left(r)
+            else Right(out -> pure(r))
+        }
+    }
+  }
 
   private[fs2] case class Catenated[+O,+R](s: Catenable[Segment[O,R]]) extends Segment[O,R] {
     def stage0(depth: Depth, defer: Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: R => Unit) = Eval.always {
