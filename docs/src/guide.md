@@ -126,7 +126,7 @@ _Note:_ The various `run*` functions aren't specialized to `IO` and work for any
 
 FS2 streams are segmented internally for performance. You can construct an individual stream segment using `Stream.segment`, which accepts an `fs2.Segment` and lots of functions in the library are segment-aware and/or try to preserve segments when possible.
 
-Segments are potentially infinite and support lazy, fused operations. A `Chunk` is a specialized segment that's finite and supports efficient indexed based lookup of elements.
+Segments are potentially infinite and support lazy, fused operations. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements. A chunk can be lifted to a segment via `Segment.chunk(c)` or `c.toSegment`.
 
 ```tut
 import fs2.Chunk
@@ -136,7 +136,7 @@ val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
 s1c.mapChunks { ds =>
   val doubles = ds.toDoubles
   /* do things unboxed using doubles.{values,size} */
- doubles
+ doubles.toSegment
 }
 ```
 

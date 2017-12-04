@@ -8,13 +8,17 @@ import Segment._
 /**
  * Potentially infinite, pure sequence of values of type `O` and a result of type `R`.
  *
- * All methods which return a `Segment` support fusion with other arbitrary methods that
+ * All methods on `Segment` support fusion with other arbitrary methods that
  * return `Segment`s. This is similar to the staging approach described in
  * [[https://arxiv.org/pdf/1612.06668v1.pdf Stream Fusion, to Completeness]], but without
  * code generation in staging.
  *
- * Stack safety is ensured by tracking a fusion depth. If the depth reaches the
- * limit, the computation is trampolined using `cats.Eval`.
+ * To force evaluation of one or more values of a segment, call `.force` followed by one
+ * of the operations on the returned `Segment.Force` type. For example, to convert a
+ * segment to a vector, call `s.force.toVector`.
+ *
+ * Stack safety of fused operations is ensured by tracking a fusion depth. If the depth
+ * reaches the limit, the computation is trampolined using `cats.Eval`.
  *
  * Implementation notes:
  *  - Some operators ask for a segment remainder from within a callback (e.g., `emits`). As such,

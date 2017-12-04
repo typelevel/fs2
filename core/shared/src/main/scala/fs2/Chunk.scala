@@ -11,6 +11,10 @@ import java.nio.ByteBuffer
  * defines a subtype of `Chunk` for each primitive type, using an unboxed primitive array.
  * To work with unboxed arrays, use methods like `toBytes` to convert a `Chunk[Byte]` to a `Chunk.Bytes`
  * and then access the array directly.
+ *
+ * The operations on `Chunk` are all defined strictly. For example, `c.map(f).map(g).map(h)` results in
+ * intermediate chunks being created (1 per call to `map`). In contrast, a chunk can be lifted to a segment
+ * (via `toSegment`) to get arbitrary operator fusion.
  */
 abstract class Chunk[+O] {
 

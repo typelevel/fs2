@@ -137,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.runLog // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$979725695
+// ra: cats.effect.IO[Vector[Int]] = IO$1881849274
 
 val rb = eff.run // purely for effects
-// rb: cats.effect.IO[Unit] = IO$1344379335
+// rb: cats.effect.IO[Unit] = IO$1701750867
 
 val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$2007225798
+// rc: cats.effect.IO[Int] = IO$1051647402
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -175,7 +175,7 @@ _Note:_ The various `run*` functions aren't specialized to `IO` and work for any
 
 FS2 streams are segmented internally for performance. You can construct an individual stream segment using `Stream.segment`, which accepts an `fs2.Segment` and lots of functions in the library are segment-aware and/or try to preserve segments when possible.
 
-Segments are potentially infinite and support lazy, fused operations. A `Chunk` is a specialized segment that's finite and supports efficient indexed based lookup of elements.
+Segments are potentially infinite and support lazy, fused operations. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements. A chunk can be lifted to a segment via `Segment.chunk(c)` or `c.toSegment`.
 
 ```scala
 scala> import fs2.Chunk
@@ -187,7 +187,7 @@ s1c: fs2.Stream[fs2.Pure,Double] = Stream(..)
 scala> s1c.mapChunks { ds =>
      |   val doubles = ds.toDoubles
      |   /* do things unboxed using doubles.{values,size} */
-     |  doubles
+     |  doubles.toSegment
      | }
 res16: fs2.Stream[fs2.Pure,Double] = Stream(..)
 ```
@@ -274,10 +274,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$810167805
+acquire: cats.effect.IO[Unit] = IO$1461250053
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$1604274982
+release: cats.effect.IO[Unit] = IO$747598215
 ```
 
 ```scala
@@ -554,7 +554,7 @@ import cats.effect.Sync
 // import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@34a1c57e
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@12224dc5
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
@@ -611,12 +611,12 @@ val c = new Connection {
 
 // Effect extends both Sync and Async
 val T = cats.effect.Effect[IO]
-// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@34a1c57e
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@12224dc5
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: cats.effect.IO[Array[Byte]] = IO$1508547038
+// bytes: cats.effect.IO[Array[Byte]] = IO$1101984917
 
 Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
 // res42: Vector[List[Byte]] = Vector(List(0, 1, 2))
