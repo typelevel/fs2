@@ -3,6 +3,9 @@ package fs2
 import scala.reflect.ClassTag
 import java.nio.ByteBuffer
 
+import cats.{Applicative, Eval, Foldable, Monad, Traverse}
+import cats.instances.all._
+
 /**
  * Strict, finite sequence of values that allows index-based random access of elements.
  *
@@ -452,4 +455,19 @@ object Chunk {
     override def toArray[O2 >: Double: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Doubles { def apply(values: Array[Double]): Doubles = Doubles(values, 0, values.length) }
+
+  implicit val instance: Traverse[Chunk] with Monad[Chunk] = new Traverse[Chunk] with Monad[Chunk] {
+    def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
+    def foldRight[A, B](fa: Chunk[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
+      Foldable[Vector].foldRight(fa.toVector, b)(f)
+    override def toList[A](fa: Chunk[A]): List[A] = fa.toList
+    override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
+    def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(implicit G: Applicative[F]): F[Chunk[B]] =
+      G.map(Traverse[Vector].traverse(fa.toVector)(f))(Chunk.vector)
+    def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
+    def flatMap[A,B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] =
+      fa.toSegment.flatMap(f.andThen(_.toSegment)).force.toChunk
+    def tailRecM[A,B](a: A)(f: A => Chunk[Either[A,B]]): Chunk[B] =
+      Chunk.seq(Monad[Vector].tailRecM(a)(f.andThen(_.toVector)))
+  }
 }
