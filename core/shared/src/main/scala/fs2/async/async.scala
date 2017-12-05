@@ -5,6 +5,7 @@ import scala.concurrent.ExecutionContext
 import cats.Traverse
 import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO, Sync }
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 /** Provides utilities for asynchronous computations. */
 package object async {
@@ -105,20 +106,36 @@ package object async {
     F.liftIO(F.runAsync(F.shift *> f) { _ => IO.unit })
 
   /**
-    * Returns an effect that, when run, races evaluation of `fa` and `fb`,
-    * and returns the result of whichever completes first. The losing effect
-    * continues to execute in the background though its result will be sent
-    * nowhere.
-   */
-  def race[F[_]: Effect, A, B](fa: F[A], fb: F[B])(implicit ec: ExecutionContext): F[Either[A, B]] =
-    promise[F, Either[A,B]].flatMap { p =>
-      p.race(fa.map(Left.apply), fb.map(Right.apply)) *> p.get
-    }
-
-  /**
    * Like `unsafeRunSync` but execution is shifted to the supplied execution context.
    * This method returns immediately after submitting execution to the execution context.
    */
   def unsafeRunAsync[F[_], A](fa: F[A])(f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =
     F.runAsync(F.shift(ec) *> fa)(f).unsafeRunSync
+
+  /**
+    * Returns an effect that, when run, races evaluation of `fa` and `fb`,
+    * and returns the result of whichever completes first. The losing effect
+    * continues to execute in the background though its result will be sent
+    * nowhere.
+   */
+private[fs2] def race[F[_], A, B](fa: F[A], fb: F[B])(implicit F: Effect[F], ec: ExecutionContext): F[Either[A, B]] =
+    promise[F, Either[Throwable, Either[A, B]]].flatMap { p =>
+      def go: F[Unit] = F.delay {
+        val refToP = new AtomicReference(p)
+        val won = new AtomicBoolean(false)
+        val win = (res: Either[Throwable, Either[A, B]]) => {
+          // important for GC: we don't reference the promise directly, and the
+          // winner destroys any references behind it!
+          if (won.compareAndSet(false, true)) {
+            val action = refToP.getAndSet(null).complete(res)
+            unsafeRunAsync(action)(_ => IO.unit)
+          }
+        }
+
+        unsafeRunAsync(fa map Left.apply)(res => IO(win(res)))
+        unsafeRunAsync(fb map Right.apply)(res => IO(win(res)))
+      }
+
+      go *> p.get.flatMap(F.fromEither)
+    }
 }

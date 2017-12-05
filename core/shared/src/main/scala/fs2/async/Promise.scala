@@ -8,7 +8,8 @@ import cats.effect.{Effect, IO}
 
 import fs2.Scheduler
 import fs2.internal.{LinkedMap, Token}
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
+
+import java.util.concurrent.atomic.{AtomicReference}
 
 import Promise._
 
@@ -86,37 +87,6 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
       case s @ State.Set(_) => s -> F.raiseError[Unit](new AlreadyCompletedException)
       case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u))
     }.flatMap(_._2)
-  }
-
-  /**
-   * Runs `f1` and `f2` simultaneously, but only the winner gets to
-   * complete this `Promise`. The loser continues running but its reference
-   * to this `Promise` is severed, allowing this `Promise` to be garbage collected
-   * if it is no longer referenced by anyone other than the loser.
-   *
-   * If the winner fails, the returned `F` fails as well, and this `Promise`
-   * is not complete.
-   */
-  def race(f1: F[A], f2: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] = F.delay {
-    val refToSelf = new AtomicReference(this)
-    val won = new AtomicBoolean(false)
-    val win = (res: Either[Throwable,A]) => {
-      // important for GC: we don't reference this ref directly, and the
-      // winner destroys any references behind it!
-      if (won.compareAndSet(false, true)) {
-        res match {
-          case Left(e) =>
-            refToSelf.set(null)
-            throw e
-          case Right(v) =>
-            val action = refToSelf.getAndSet(null).complete(v)
-            unsafeRunAsync(action)(_ => IO.unit)
-        }
-      }
-    }
-
-    unsafeRunAsync(f1)(res => IO(win(res)))
-    unsafeRunAsync(f2)(res => IO(win(res)))
   }
 
   private def getOrWait(id: Token): F[A] = {
