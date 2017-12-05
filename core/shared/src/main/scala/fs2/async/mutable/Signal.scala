@@ -78,7 +78,7 @@ object Signal {
           if (c.previous._3.isEmpty) F.pure(c.map(_._1) -> b)
           else {
             val now = c.now._1 -> c.now._2
-            c.previous._3.toVector.traverse { case(_, promise) => async.fork(promise.setSync(now)) } *> F.pure(c.map(_._1) -> b)
+            c.previous._3.toVector.traverse { case(_, promise) => async.fork(promise.complete(now)) } *> F.pure(c.map(_._1) -> b)
           }
         }
       }

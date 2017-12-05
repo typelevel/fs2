@@ -2510,7 +2510,7 @@ object Stream {
               , None : UO
             ){ (_, uo) => uo.asInstanceOf[UO] } map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
 
-          Algebra.eval(async.fork(F.flatMap(F.attempt(runStep))(x => async.fork(p.setSync(x))))) map { _ => AsyncPull.readAttemptPromise(p) }
+          Algebra.eval(async.fork(F.flatMap(F.attempt(runStep))(x => async.fork(p.complete(x))))) map { _ => AsyncPull.readAttemptPromise(p) }
         }
       }
     }

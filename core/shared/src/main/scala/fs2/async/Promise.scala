@@ -15,22 +15,22 @@ import Promise._
 /**
  * A purely functional synchronisation primitive.
  *
- * When created, a `Promise` is unset. It can then be set exactly once, and never be unset again.
+ * When created, a `Promise` is empty. It can then be completed exactly once, and never be made empty again.
  *
- * `get` on an unset `Promise` will block until the `Promise` is set.
- * `get` on a set `Promise` will always immediately return its content.
+ * `get` on an empty `Promise` will block until the `Promise` is completed.
+ * `get` on a completed `Promise` will always immediately return its content.
  *
- * `set(a)` on an unset `Promise` will set it to `a`, and notify any and all readers currently blocked on a call to `get`.
- * `set(a)` on a set `Promise` will not modify its content, and result in a failed `F`.
+ * `complete(a)` on an empty `Promise` will set it to `a`, and notify any and all readers currently blocked on a call to `get`.
+ * `complete(a)` on a `Promise` that's already been completed will not modify its content, and result in a failed `F`.
  *
  * Albeit simple, `Promise` can be used in conjunction with [[Ref]] to build complex concurrent behaviour and
  * data structures like queues and semaphores.
  *
- * Finally, the blocking mentioned above is semantic only, no  actual threads are blocked by the implementation.
+ * Finally, the blocking mentioned above is semantic only, no actual threads are blocked by the implementation.
  */
 final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Effect[F], ec: ExecutionContext) {
 
-  /** Obtains the value of the `Promise`, or waits until it has been set. */
+  /** Obtains the value of the `Promise`, or waits until it has been completed. */
   def get: F[A] = F.suspend {
     // `new Token` is a side effect because `Token`s are compared with reference equality, it needs to be in `F`.
     // For performance reasons, `suspend` is preferred to `F.delay(...).flatMap` here.
@@ -52,7 +52,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
   }
 
   /**
-   * Like [[get]] but if the `Promise` has not been initialized when the timeout is reached, a `None`
+   * Like [[get]] but if the `Promise` has not been completed when the timeout is reached, a `None`
    * is returned.
    */
   def timedGet(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
@@ -63,39 +63,39 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
     }
 
   /**
-   * If this `Promise` is unset, *synchronously* sets the current value to `a`, and notifies
+   * If this `Promise` is empty, *synchronously* sets the current value to `a`, and notifies
    * any and all readers currently blocked on a `get`.
    *
    * Note that the returned action completes after the reference has been successfully set:
-   * use `async.fork(r.setSync)` if you want asynchronous behaviour.
+   * use `async.fork(r.complete)` if you want asynchronous behaviour.
    *
-   * If this `Promise` is already set, the returned action immediately fails with a [[Ref.AlreadySetException]].
+   * If this `Promise` has already been completed, the returned action immediately fails with a [[Promise.AlreadyCompletedException]].
    * In the uncommon scenario where this behaviour is problematic, you can handle failure explicitly
    * using `attempt` or any other `ApplicativeError`/`MonadError` combinator on the returned action.
    *
    * Satisfies:
-   *   `Promise.empty[F, A].flatMap(r => r.setSync(a) *> r.get) == a.pure[F]`
+   *   `Promise.empty[F, A].flatMap(r => r.complete(a) *> r.get) == a.pure[F]`
    */
-  def setSync(a: A): F[Unit] = {
+  def complete(a: A): F[Unit] = {
     def notifyReaders(r: State.Unset[A]): Unit =
       r.waiting.values.foreach { cb =>
         ec.execute { () => cb(a) }
       }
 
     ref.modify2 {
-      case s @ State.Set(_) => s -> F.raiseError[Unit](new AlreadySetException)
+      case s @ State.Set(_) => s -> F.raiseError[Unit](new AlreadyCompletedException)
       case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u))
     }.flatMap(_._2)
   }
 
   /**
    * Runs `f1` and `f2` simultaneously, but only the winner gets to
-   * set this `Promise`. The loser continues running but its reference
+   * complete this `Promise`. The loser continues running but its reference
    * to this `Promise` is severed, allowing this `Promise` to be garbage collected
    * if it is no longer referenced by anyone other than the loser.
    *
    * If the winner fails, the returned `F` fails as well, and this `Promise`
-   * is not set.
+   * is not complete.
    */
   def race(f1: F[A], f2: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] = F.delay {
     val refToSelf = new AtomicReference(this)
@@ -109,7 +109,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
             refToSelf.set(null)
             throw e
           case Right(v) =>
-            val action = refToSelf.getAndSet(null).setSync(v)
+            val action = refToSelf.getAndSet(null).complete(v)
             unsafeRunAsync(action)(_ => IO.unit)
         }
       }
@@ -140,9 +140,9 @@ object Promise {
   def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
     F.delay(unsafeCreate[F, A])
 
-  /** Raised when trying to set a [[Promise]] that's already been set once */
-  final class AlreadySetException extends Throwable(
-    s"Trying to set an fs2 Promise that's already been set"
+  /** Raised when trying to complete a [[Promise]] that's already been completed */
+  final class AlreadyCompletedException extends Throwable(
+    s"Trying to complete an fs2 Promise that's already been completed"
   )
 
   private sealed abstract class State[A]

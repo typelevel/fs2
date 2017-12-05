@@ -62,10 +62,10 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
       case Left(t) =>
         IO(t.printStackTrace()) *>
           halted.set(true) *>
-          exitCodePromise.setSync(ExitCode.Error)
+          exitCodePromise.complete(ExitCode.Error)
       case Right(exitCode) =>
         halted.set(true) *>
-          exitCodePromise.setSync(exitCode.getOrElse(ExitCode.Success))
+          exitCodePromise.complete(exitCode.getOrElse(ExitCode.Success))
     } *> exitCodePromise.get
 
   def main(args: Array[String]): Unit =
