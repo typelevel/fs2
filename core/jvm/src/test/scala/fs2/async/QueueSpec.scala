@@ -32,7 +32,7 @@ class QueueSpec extends Fs2Spec {
             s.get.noneTerminate.evalMap(q.enqueue1).drain ++ q.dequeueAvailable.unNoneTerminate.segments
           })
           result.size should be < 2
-          result.flatMap(_.toVector) shouldBe s.get.toVector
+          result.flatMap(_.force.toVector) shouldBe s.get.toVector
         }
       }
     }

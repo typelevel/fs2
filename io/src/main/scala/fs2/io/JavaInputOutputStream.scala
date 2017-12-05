@@ -171,7 +171,7 @@ private[io] object JavaInputOutputStream {
           val cloned = Chunk.Bytes(bytes.toArray)
           if (bytes.size <= len) Ready(None) -> Some(cloned)
           else {
-            val (out,rem) = cloned.strict.splitAt(len)
+            val (out,rem) = cloned.splitAt(len)
             Ready(Some(rem.toBytes)) -> Some(out.toBytes)
           }
       }
@@ -203,7 +203,7 @@ private[io] object JavaInputOutputStream {
                   val (copy,maybeKeep) =
                     if (bytes.size <= len) bytes -> None
                     else {
-                      val (out,rem) = bytes.strict.splitAt(len)
+                      val (out,rem) = bytes.splitAt(len)
                       out.toBytes -> Some(rem.toBytes)
                     }
                   F.flatMap(F.delay {

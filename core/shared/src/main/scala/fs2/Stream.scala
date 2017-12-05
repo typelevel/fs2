@@ -157,20 +157,20 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * }}}
    */
   def bufferBy(f: O => Boolean): Stream[F,O] = {
-    def go(buffer: Catenable[Chunk[O]], last: Boolean, s: Stream[F,O]): Pull[F,O,Unit] = {
+    def go(buffer: Catenable[Segment[O,Unit]], last: Boolean, s: Stream[F,O]): Pull[F,O,Unit] = {
       s.pull.unconsChunk.flatMap {
         case Some((hd,tl)) =>
           val (out, buf, newLast) = {
-            hd.fold((Catenable.empty: Catenable[Chunk[O]], Vector.empty[O], last)) { case ((out, buf, last), i) =>
+            hd.foldLeft((Catenable.empty: Catenable[Chunk[O]], Vector.empty[O], last)) { case ((out, buf, last), i) =>
               val cur = f(i)
               if (!cur && last) (out :+ Chunk.vector(buf :+ i), Vector.empty, cur)
               else (out, buf :+ i, cur)
-            }.run
+            }
           }
           if (out.isEmpty) {
-            go(buffer :+ Chunk.vector(buf), newLast, tl)
+            go(buffer :+ Segment.vector(buf), newLast, tl)
           } else {
-            Pull.output(Segment.catenated(buffer ++ out)) >> go(Catenable.singleton(Chunk.vector(buf)), newLast, tl)
+            Pull.output(Segment.catenated(buffer ++ out.map(Segment.chunk))) >> go(Catenable.singleton(Segment.vector(buf)), newLast, tl)
           }
         case None => Pull.output(Segment.catenated(buffer))
       }
@@ -218,7 +218,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
   def chunkLimit(n: Int): Stream[F,Chunk[O]] =
     this repeatPull { _.unconsLimit(n) flatMap {
       case None => Pull.pure(None)
-      case Some((hd,tl)) => Pull.output1(hd.toChunk).as(Some(tl))
+      case Some((hd,tl)) => Pull.output1(hd.force.toChunk).as(Some(tl))
     }}
 
   /**
@@ -349,14 +349,14 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     def go(last: Chunk[O], s: Stream[F,O]): Pull[F,O,Unit] = {
       s.pull.unconsChunk.flatMap {
         case Some((hd,tl)) =>
-          if (hd.nonEmpty) Pull.output(last) >> go(hd,tl)
+          if (hd.nonEmpty) Pull.outputChunk(last) >> go(hd,tl)
           else go(last,tl)
         case None =>
           val o = last(last.size - 1)
           if (p(o)) {
-            val (prefix,_) = last.strict.splitAt(last.size - 1)
-            Pull.output(prefix)
-          } else Pull.output(last)
+            val (prefix,_) = last.splitAt(last.size - 1)
+            Pull.outputChunk(prefix)
+          } else Pull.outputChunk(last)
       }
     }
     def unconsNonEmptyChunk(s: Stream[F,O]): Pull[F,Nothing,Option[(Chunk[O],Stream[F,O])]] =
@@ -387,8 +387,8 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
         s.pull.uncons.flatMap {
           case None => Pull.pure(None)
           case Some((hd,tl)) =>
-            val all = acc ++ hd.toVector
-            Pull.output(Chunk.vector(all.dropRight(n))) >> go(all.takeRight(n), tl)
+            val all = acc ++ hd.force.toVector
+            Pull.output(Segment.vector(all.dropRight(n))) >> go(all.takeRight(n), tl)
         }
       }
       go(Vector.empty, this).stream
@@ -463,7 +463,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
                 if (f(last, o)) (acc :+ o, o)
                 else (acc, last)
               }).flatMap { case (acc, newLast) =>
-                Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
+                Pull.output(Segment.vector(acc)) >> go(newLast, tl)
               }
             }
           }
@@ -542,7 +542,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *
    * @example {{{
    * scala> import cats.implicits._
-   * scala> Stream("Hello", "Hi", "Greetings", "Hey").groupAdjacentBy(_.head).toList.map { case (k,vs) => k -> vs.toList }
+   * scala> Stream("Hello", "Hi", "Greetings", "Hey").groupAdjacentBy(_.head).toList.map { case (k,vs) => k -> vs.force.toList }
    * res0: List[(Char,List[String])] = List((H,List(Hello, Hi)), (G,List(Greetings)), (H,List(Hey)))
    * }}}
    */
@@ -564,7 +564,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
       val differsAt = chunk.indexWhere(v => eq.neqv(f(v), k1)).getOrElse(-1)
       if (differsAt == -1) {
         // whole chunk matches the current key, add this chunk to the accumulated output
-        val newOut: Segment[O,Unit] = out ++ chunk
+        val newOut: Segment[O,Unit] = out ++ Segment.chunk(chunk)
         acc match {
           case None => go(Some((k1, newOut)), s)
           case Some(acc) =>
@@ -574,9 +574,9 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
       } else {
         // at least part of this chunk does not match the current key, need to group and retain chunkiness
         // split the chunk into the bit where the keys match and the bit where they don't
-        val matching = chunk.take(differsAt)
+        val matching = Segment.chunk(chunk).take(differsAt)
         val newOut: Segment[O,Unit] = out ++ matching.voidResult
-        val nonMatching = chunk.drop(differsAt).fold(_ => Chunk.empty, identity).toChunk
+        val nonMatching = chunk.drop(differsAt)
         // nonMatching is guaranteed to be non-empty here, because we know the last element of the chunk doesn't have
         // the same key as the first
         val k2 = f(nonMatching(0))
@@ -614,10 +614,10 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
           case Some((hd,tl)) =>
             val interspersed = {
               val bldr = Vector.newBuilder[O2]
-              hd.toVector.foreach { o => bldr += separator; bldr += o }
+              hd.force.toVector.foreach { o => bldr += separator; bldr += o }
               Chunk.vector(bldr.result)
             }
-            Pull.output(interspersed) >> Pull.pure(Some(tl))
+            Pull.output(Segment.chunk(interspersed)) >> Pull.pure(Some(tl))
         }}.pull.echo
     }.stream
 
@@ -679,7 +679,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * Applies the specified pure function to each chunk in this stream.
    *
    * @example {{{
-   * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).mapChunks { c => val ints = c.toInts; for (i <- 0 until ints.values.size) ints.values(i) = 0; ints }.toList
+   * scala> Stream(1, 2, 3).append(Stream(4, 5, 6)).mapChunks { c => val ints = c.toInts; for (i <- 0 until ints.values.size) ints.values(i) = 0; ints.toSegment }.toList
    * res0: List[Int] = List(0, 0, 0, 0, 0, 0)
    * }}}
    */
@@ -744,7 +744,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     val _ = ev // Convince scalac that ev is used
     this.asInstanceOf[Stream[F,Either[Throwable,O2]]].segments.flatMap { s =>
       val errs = s.collect { case Left(e) => e }
-      errs.uncons1 match {
+      errs.force.uncons1 match {
         case Left(()) => Stream.segment(s.collect { case Right(i) => i })
         case Right((hd,tl)) => Stream.raiseError(hd)
       }
@@ -775,7 +775,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     this.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd,tl)) =>
-        hd.scan(z)(f).uncons1 match {
+        hd.scan(z)(f).force.uncons1 match {
           case Left(acc) => tl.scan_(acc)(f)
           case Right((_, out)) => Pull.segment(out).flatMap{acc => tl.scan_(acc)(f)}
         }
@@ -866,7 +866,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
       s.pull.uncons.flatMap {
         case None => Pull.done
         case Some((hd,tl)) =>
-          hd.scan(window)((w, i) => w.dequeue._2.enqueue(i)).drop(1) match {
+          hd.scan(window)((w, i) => w.dequeue._2.enqueue(i)).force.drop(1) match {
             case Left((w2,_)) => go(w2, tl)
             case Right(out) => Pull.segment(out).flatMap { window => go(window, tl) }
           }
@@ -875,7 +875,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     this.pull.unconsN(n, true).flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
-        val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).run
+        val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).force.run
         Pull.output1(window) >> go(window, tl)
     }.stream
   }
@@ -894,14 +894,14 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     def go(buffer: Catenable[Segment[O,Unit]], s: Stream[F,O]): Pull[F,Segment[O,Unit],Unit] = {
       s.pull.uncons.flatMap {
         case Some((hd,tl)) =>
-          hd.splitWhile(o => !(f(o))) match {
+          hd.force.splitWhile(o => !(f(o))) match {
             case Left((_,out)) =>
               if (out.isEmpty) go(buffer, tl)
-              else go(buffer ++ out, tl)
+              else go(buffer ++ out.map(Segment.chunk), tl)
             case Right((out,tl2)) =>
-              val b2 = if (out.nonEmpty) buffer ++ out else buffer
+              val b2 = if (out.nonEmpty) buffer ++ out.map(Segment.chunk) else buffer
               (if (b2.nonEmpty) Pull.output1(Segment.catenated(b2)) else Pull.pure(())) >>
-                go(Catenable.empty, tl.cons(tl2.drop(1).fold(_ => Segment.empty, identity)))
+                go(Catenable.empty, tl.cons(tl2.force.drop(1).fold(_ => Segment.empty, identity)))
           }
         case None =>
           if (buffer.nonEmpty) Pull.output1(Segment.catenated(buffer)) else Pull.done
@@ -938,7 +938,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * res0: List[Int] = List(995, 996, 997, 998, 999)
    * }}}
    */
-  def takeRight(n: Long): Stream[F,O] = this.pull.takeRight(n).flatMap(Pull.output).stream
+  def takeRight(n: Long): Stream[F,O] = this.pull.takeRight(n).flatMap(c => Pull.output(Segment.chunk(c))).stream
 
   /**
    * Like [[takeWhile]], but emits the first value which tests false.
@@ -1155,7 +1155,7 @@ object Stream {
    * res0: List[Int] = List(1, 2, 3)
    * }}}
    */
-  def chunk[O](os: Chunk[O]): Stream[Pure,O] = segment(os)
+  def chunk[O](os: Chunk[O]): Stream[Pure,O] = segment(Segment.chunk(os))
 
   /**
    * Creates an infinite pure stream that always returns the supplied value.
@@ -1201,7 +1201,7 @@ object Stream {
   def emits[O](os: Seq[O]): Stream[Pure,O] = {
     if (os.isEmpty) empty
     else if (os.size == 1) emit(os.head)
-    else fromFreeC(Algebra.output[Pure,O](Chunk.seq(os)))
+    else fromFreeC(Algebra.output[Pure,O](Segment.seq(os)))
   }
 
   private[fs2] val empty_ = fromFreeC[Nothing,Nothing](Algebra.pure[Nothing,Nothing,Unit](())): Stream[Nothing,Nothing]
@@ -1434,7 +1434,7 @@ object Stream {
 
   /** Alias for [[unfoldSegmentEval]] with slightly better type inference when `f` returns a `Chunk`. */
   def unfoldChunkEval[F[_],S,O](s: S)(f: S => F[Option[(Chunk[O],S)]])(implicit F: Functor[F]): Stream[F,O] =
-    unfoldSegmentEval(s)(s => f(s).widen[Option[(Segment[O,Unit],S)]])
+    unfoldSegmentEval(s)(s => f(s).map(_.map { case (c,s) => Segment.chunk(c) -> s }))
 
   /** Like [[unfoldSegment]], but takes an effectful function. */
   def unfoldSegmentEval[F[_],S,O](s: S)(f: S => F[Option[(Segment[O,Unit],S)]]): Stream[F,O] = {
@@ -1635,7 +1635,7 @@ object Stream {
         }
       self.pull.uncons1.flatMap {
         case Some((hd,tl)) => Pull.eval(f(z,hd)).flatMap { o =>
-          Pull.output(Chunk.seq(List(z,o))) >> go(o,tl)
+          Pull.output(Segment.seq(List(z,o))) >> go(o,tl)
         }
         case None => Pull.output1(z) >> Pull.pure(None)
       }.stream
@@ -1658,7 +1658,7 @@ object Stream {
           // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
           val only: Option[O] = tl match {
             case FreeC.Pure(_) =>
-              hd.uncons1.toOption.flatMap { case (o, tl) => tl.uncons1.fold(_ => Some(o), _ => None) }
+              hd.force.uncons1.toOption.flatMap { case (o, tl) => tl.force.uncons1.fold(_ => Some(o), _ => None) }
             case _ => None
           }
           only match {
@@ -2059,9 +2059,9 @@ object Stream {
         segment.scan((Segment.empty[O], carry)) { case ((_, carry), o) =>
           val o2: O = carry.fold(o)(S.combine(_, o))
           val partitions: Chunk[O] = f(o2)
-          if (partitions.isEmpty) partitions -> None
-          else if (partitions.size == 1) Chunk.empty -> Some(partitions.strict.last)
-          else partitions.take(partitions.size - 1).voidResult -> Some(partitions.strict.last)
+          if (partitions.isEmpty) Segment.chunk(partitions) -> None
+          else if (partitions.size == 1) Segment.empty -> partitions.last
+          else Segment.chunk(partitions.take(partitions.size - 1)) -> partitions.last
         }.flatMap { case (out, carry) => out }.mapResult { case ((out, carry), unit) => carry }
       }.flatMap { case Some(carry) => Pull.output1(carry); case None => Pull.done }.stream
     }
@@ -2473,7 +2473,7 @@ object Stream {
     def unconsChunk: Pull[F,Nothing,Option[(Chunk[O],Stream[F,O])]] =
       uncons.flatMap {
         case None => Pull.pure(None)
-        case Some((hd,tl)) => hd.unconsChunk match {
+        case Some((hd,tl)) => hd.force.unconsChunk match {
           case Left(()) => tl.pull.unconsChunk
           case Right((c,tl2)) => Pull.pure(Some((c, tl.cons(tl2))))
         }
@@ -2483,7 +2483,7 @@ object Stream {
     def uncons1: Pull[F,Nothing,Option[(O,Stream[F,O])]] =
       uncons flatMap {
         case None => Pull.pure(None)
-        case Some((hd, tl)) => hd.uncons1 match {
+        case Some((hd, tl)) => hd.force.uncons1 match {
           case Left(_) => tl.pull.uncons1
           case Right((hd,tl2)) => Pull.pure(Some(hd -> tl.cons(tl2)))
         }
@@ -2528,9 +2528,9 @@ object Stream {
       require(n > 0)
       uncons.flatMap {
         case Some((hd,tl)) =>
-          hd.splitAt(n) match {
-            case Left((_,segments,rem)) => Pull.pure(Some(Segment.catenated(segments) -> tl))
-            case Right((segments,tl2)) => Pull.pure(Some(Segment.catenated(segments) -> tl.cons(tl2)))
+          hd.force.splitAt(n) match {
+            case Left((_,chunks,rem)) => Pull.pure(Some(Segment.catenated(chunks.map(Segment.chunk)) -> tl))
+            case Right((chunks,tl2)) => Pull.pure(Some(Segment.catenated(chunks.map(Segment.chunk)) -> tl.cons(tl2)))
           }
         case None => Pull.pure(None)
       }
@@ -2548,12 +2548,12 @@ object Stream {
             if (allowFewer && acc.nonEmpty) Pull.pure(Some((Segment.catenated(acc), Stream.empty)))
             else Pull.pure(None)
           case Some((hd,tl)) =>
-            hd.splitAt(n) match {
-              case Left((_,segments,rem)) =>
-                if (rem > 0) go(acc ++ segments, rem, tl)
-                else Pull.pure(Some(Segment.catenated(acc ++ segments) -> tl))
-              case Right((segments,tl2)) =>
-                Pull.pure(Some(Segment.catenated(acc ++ segments) -> tl.cons(tl2)))
+            hd.force.splitAt(n) match {
+              case Left((_,chunks,rem)) =>
+                if (rem > 0) go(acc ++ chunks.map(Segment.chunk), rem, tl)
+                else Pull.pure(Some(Segment.catenated(acc ++ chunks.map(Segment.chunk)) -> tl))
+              case Right((chunks,tl2)) =>
+                Pull.pure(Some(Segment.catenated(acc ++ chunks.map(Segment.chunk)) -> tl.cons(tl2)))
             }
         }
       }
@@ -2567,7 +2567,7 @@ object Stream {
       else uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd,tl)) =>
-          hd.drop(n) match {
+          hd.force.drop(n) match {
             case Left((_,rem)) =>
               if (rem > 0) tl.pull.drop(rem)
               else Pull.pure(Some(tl))
@@ -2591,7 +2591,7 @@ object Stream {
       uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
-          hd.dropWhile(p, dropFailure) match {
+          hd.force.dropWhile(p, dropFailure) match {
             case Left(_) => tl.pull.dropWhile_(p, dropFailure)
             case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
           }
@@ -2619,7 +2619,7 @@ object Stream {
         case Some((hd, tl)) =>
           hd.indexWhere(f) match {
             case None => tl.pull.find(f)
-            case Some(idx) if idx + 1 < hd.size => Pull.pure(Some((hd(idx), hd.drop(idx + 1).fold(_ => tl, hd => tl.cons(hd)))))
+            case Some(idx) if idx + 1 < hd.size => Pull.pure(Some((hd(idx), Segment.chunk(hd).force.drop(idx + 1).fold(_ => tl, hd => tl.cons(hd)))))
             case Some(idx) => Pull.pure(Some((hd(idx), tl)))
           }
       }
@@ -2730,7 +2730,7 @@ object Stream {
         s.pull.unconsN(n, true).flatMap {
           case None => Pull.pure(Chunk.vector(acc))
           case Some((hd, tl)) =>
-            val vector = hd.toVector
+            val vector = hd.force.toVector
             go(acc.drop(vector.length) ++ vector, tl)
         }
       }

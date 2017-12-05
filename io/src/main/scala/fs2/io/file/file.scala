@@ -75,7 +75,7 @@ package object file {
       if (written >= buf.size)
         Pull.pure(())
       else
-        _writeAll1(buf.drop(written).toOption.get.toChunk, out, offset + written)
+        _writeAll1(buf.drop(written), out, offset + written)
     }
 
   /**

@@ -1,40 +1,25 @@
 package fs2
 
-import cats.Eval
 import scala.reflect.ClassTag
 import java.nio.ByteBuffer
 
+import cats.{Applicative, Eval, Foldable, Monad, Traverse}
+import cats.instances.all._
+
 /**
- * Segment with a known size and that allows index-based random access of elements.
+ * Strict, finite sequence of values that allows index-based random access of elements.
  *
- * `Chunk`s can be created for a variety of collection types using methods on the `Chunk` companion
+ * `Chunk`s can be created from a variety of collection types using methods on the `Chunk` companion
  * (e.g., `Chunk.vector`, `Chunk.seq`, `Chunk.array`). Additionally, the `Chunk` companion
  * defines a subtype of `Chunk` for each primitive type, using an unboxed primitive array.
  * To work with unboxed arrays, use methods like `toBytes` to convert a `Chunk[Byte]` to a `Chunk.Bytes`
  * and then access the array directly.
  *
- * This type intentionally has a very limited API. Most operations are defined on `Segment` in a lazy/fusable
- * fashion. In general, better performance comes from fusing as many operations as possible. As such, the
- * chunk API is minimal, to encourage use of the fusable operations.
- *
- * Some operations have a lazy/fusable definition (on `Segment`) and a strict definition
- * on `Chunk`. To call such operations, use the `.strict` method -- e.g., `c.strict.splitAt(3)`.
+ * The operations on `Chunk` are all defined strictly. For example, `c.map(f).map(g).map(h)` results in
+ * intermediate chunks being created (1 per call to `map`). In contrast, a chunk can be lifted to a segment
+ * (via `toSegment`) to get arbitrary operator fusion.
  */
-abstract class Chunk[+O] extends Segment[O,Unit] { self =>
-
-  private[fs2]
-  def stage0(depth: Segment.Depth, defer: Segment.Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: Unit => Unit) = {
-    var emitted = false
-    Eval.now {
-      Segment.step(if (emitted) Segment.empty else this) {
-        if (!emitted) {
-          emitted = true
-          emits(this)
-        }
-        done(())
-      }
-    }
-  }
+abstract class Chunk[+O] {
 
   /** Returns the number of elements in this chunk. */
   def size: Int
@@ -47,6 +32,23 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
 
   /** False if size is zero, true otherwise. */
   final def nonEmpty: Boolean = size > 0
+
+  /** Drops the first `n` elements of this chunk. */
+  def drop(n: Int): Chunk[O] = splitAt(n)._2
+
+  /** Left-folds the elements of this chunk. */
+  def foldLeft[A](init: A)(f: (A, O) => A): A = {
+    var i = 0
+    var acc = init
+    while (i < size) {
+      acc = f(acc, apply(i))
+      i += 1
+    }
+    acc
+  }
+
+  /** Gets the first element of this chunk. */
+  def head: Option[O] = if (isEmpty) None else Some(apply(0))
 
   /**
    * Returns the index of the first element which passes the specified predicate (i.e., `p(i) == true`)
@@ -62,8 +64,27 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     if (result == -1) None else Some(result)
   }
 
+  /** Gets the last element of this chunk. */
+  def last: Option[O] = if (isEmpty) None else Some(apply(size - 1))
+
+  /** Creates a new chunk by applying `f` to each element in this chunk. */
+  def map[O2](f: O => O2): Chunk[O2]
+
+  /** Splits this chunk in to two chunks at the specified index. */
+  def splitAt(n: Int): (Chunk[O], Chunk[O]) = {
+    if (n <= 0) (Chunk.empty, this)
+    else if (n >= size) (this, Chunk.empty)
+    else splitAtChunk_(n)
+  }
+
+  /** Splits this chunk in to two chunks at the specified index `n`, which is guaranteed to be in-bounds. */
+  protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
+
+  /** Takes the first `n` elements of this chunk. */
+  def take(n: Int): Chunk[O] = splitAt(n)._1
+
   /** Copies the elements of this chunk to an array. */
-  override def toArray[O2 >: O: ClassTag]: Array[O2] = {
+  def toArray[O2 >: O: ClassTag]: Array[O2] = {
     val arr = new Array[O2](size)
     var i = 0
     while (i < size) { arr(i) = apply(i); i += 1 }
@@ -161,28 +182,53 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
     }
   }
 
-  override def unconsChunk: Either[Unit, (Chunk[O],Segment[O,Unit])] = Right(this -> Chunk.empty)
-  override def foreachChunk(f: Chunk[O] => Unit): Unit = f(this)
-  override def toChunk: Chunk[O] = this
-  override def toChunks: Catenable[Chunk[O]] = Catenable.singleton(this)
-  override def toVector: Vector[O] = {
-    val buf = new collection.immutable.VectorBuilder[O]
+  /** Invokes the supplied function for each element of this chunk. */
+  def foreach(f: O => Unit): Unit = {
     var i = 0
     while (i < size) {
-      buf += apply(i)
+      f(apply(i))
       i += 1
     }
-    buf.result
   }
 
-  /** Strict version of `splitAt` - `n` is guaranteed to be within bounds so implementations do not need to do bounds checking. */
-  protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
+  /** Converts this chunk to a list. */
+  def toList: List[O] = {
+    if (isEmpty) Nil
+    else {
+      val buf = new collection.mutable.ListBuffer[O]
+      var i = 0
+      while (i < size) {
+        buf += apply(i)
+        i += 1
+      }
+      buf.result
+    }
+  }
 
-  /** Strict version of `map`. */
-  protected def mapStrict[O2](f: O => O2): Chunk[O2]
+  /** Converts this chunk to a segment. */
+  def toSegment: Segment[O,Unit] = Segment.chunk(this)
 
-  /** Provides access to strict equivalent methods defined lazily on `Segment`. */
-  final def strict: Chunk.StrictOps[O] = new Chunk.StrictOps(this)
+  /** Converts this chunk to a vector. */
+  def toVector: Vector[O] = {
+    if (isEmpty) Vector.empty
+    else {
+      val buf = new collection.immutable.VectorBuilder[O]
+      buf.sizeHint(size)
+      var i = 0
+      while (i < size) {
+        buf += apply(i)
+        i += 1
+      }
+      buf.result
+    }
+  }
+
+  override def hashCode: Int = toVector.hashCode
+
+  override def equals(a: Any): Boolean = a match {
+    case c: Chunk[O] => toVector == c.toVector
+    case _ => false
+  }
 
   override def toString = {
     val vs = (0 until size).view.map(i => apply(i)).mkString(", ")
@@ -195,13 +241,8 @@ object Chunk {
   private val empty_ : Chunk[Nothing] = new Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = sys.error(s"Chunk.empty.apply($i)")
-    override def stage0(depth: Segment.Depth, defer: Segment.Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: Unit => Unit) =
-      Eval.now(Segment.step(empty_)(done(())))
-    override def unconsChunk: Either[Unit, (Chunk[Nothing],Segment[Nothing,Unit])] = Left(())
-    override def foreachChunk(f: Chunk[Nothing] => Unit): Unit = ()
-    override def toVector: Vector[Nothing] = Vector.empty
     protected def splitAtChunk_(n: Int): (Chunk[Nothing], Chunk[Nothing]) = sys.error("impossible")
-    protected def mapStrict[O2](f: Nothing => O2): Chunk[O2] = empty
+    override def map[O2](f: Nothing => O2): Chunk[O2] = empty
     override def toString = "empty"
   }
 
@@ -213,7 +254,7 @@ object Chunk {
     def size = 1
     def apply(i: Int) = { if (i == 0) o else throw new IndexOutOfBoundsException() }
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = sys.error("impossible")
-    protected def mapStrict[O2](f: O => O2): Chunk[O2] = singleton(f(o))
+    override def map[O2](f: O => O2): Chunk[O2] = singleton(f(o))
   }
 
   /** Creates a chunk backed by a vector. */
@@ -227,7 +268,7 @@ object Chunk {
         val (fst,snd) = v.splitAt(n)
         vector(fst) -> vector(snd)
       }
-      protected def mapStrict[O2](f: O => O2): Chunk[O2] = vector(v.map(f))
+      override def map[O2](f: O => O2): Chunk[O2] = vector(v.map(f))
     }
   }
 
@@ -242,13 +283,12 @@ object Chunk {
         val (fst,snd) = s.splitAt(n)
         indexedSeq(fst) -> indexedSeq(snd)
       }
-      protected def mapStrict[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
+      override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
     }
   }
 
   /** Creates a chunk backed by a `Seq`. */
-  def seq[O](s: Seq[O]): Chunk[O] =
-    if (s.isEmpty) empty else indexedSeq(s.toIndexedSeq)
+  def seq[O](s: Seq[O]): Chunk[O] = vector(s.toVector)
 
   /** Creates a chunk with the specified values. */
   def apply[O](os: O*): Chunk[O] = seq(os)
@@ -284,7 +324,7 @@ object Chunk {
     def apply(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
-    protected def mapStrict[O2](f: O => O2): Chunk[O2] = seq(values.map(f))
+    override def map[O2](f: O => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: O: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Boxed { def apply[O](values: Array[O]): Boxed[O] = Boxed(values, 0, values.length) }
@@ -302,7 +342,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) =
       Booleans(values, offset, n) -> Booleans(values, offset + n, length - n)
-    protected def mapStrict[O2](f: Boolean => O2): Chunk[O2] = seq(values.map(f))
+    override def map[O2](f: Boolean => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Boolean: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Booleans { def apply(values: Array[Boolean]): Booleans = Booleans(values, 0, values.length) }
@@ -320,7 +360,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) =
       Bytes(values, offset, n) -> Bytes(values, offset + n, length - n)
-    protected def mapStrict[O2](f: Byte => O2): Chunk[O2] = seq(values.map(f))
+    override def map[O2](f: Byte => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Byte: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
     def toByteBuffer: ByteBuffer = ByteBuffer.wrap(values, offset, length)
   }
@@ -339,7 +379,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) =
       Shorts(values, offset, n) -> Shorts(values, offset + n, length - n)
-    protected def mapStrict[O2](f: Short => O2): Chunk[O2] = seq(values.map(f))
+    override def map[O2](f: Short => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Short: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Shorts { def apply(values: Array[Short]): Shorts = Shorts(values, 0, values.length) }
@@ -357,7 +397,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) =
       Ints(values, offset, n) -> Ints(values, offset + n, length - n)
-    protected def mapStrict[O2](f: Int => O2): Chunk[O2] = seq(values.map(f))
+    override def map[O2](f: Int => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Int: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Ints { def apply(values: Array[Int]): Ints = Ints(values, 0, values.length) }
@@ -375,7 +415,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) =
       Longs(values, offset, n) -> Longs(values, offset + n, length - n)
-    protected def mapStrict[O2](f: Long => O2): Chunk[O2] = seq(values.map(f))
+    override def map[O2](f: Long => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Long: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Longs { def apply(values: Array[Long]): Longs = Longs(values, 0, values.length) }
@@ -393,7 +433,7 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) =
       Floats(values, offset, n) -> Floats(values, offset + n, length - n)
-    protected def mapStrict[O2](f: Float => O2): Chunk[O2] = seq(values.map(f))
+    override def map[O2](f: Float => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Float: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Floats { def apply(values: Array[Float]): Floats = Floats(values, 0, values.length) }
@@ -411,37 +451,23 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) =
       Doubles(values, offset, n) -> Doubles(values, offset + n, length - n)
-    protected def mapStrict[O2](f: Double => O2): Chunk[O2] = seq(values.map(f))
+    override def map[O2](f: Double => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Double: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Doubles { def apply(values: Array[Double]): Doubles = Doubles(values, 0, values.length) }
 
-  /**
-   * Defines operations on a `Chunk` that return a `Chunk` and that might otherwise conflict
-   * with lazy implementations defined on `Segment`.
-   */
-  final class StrictOps[+O](private val self: Chunk[O]) extends AnyVal {
-
-    /** Gets the first element of this chunk or throws if the chunk is empty. */
-    def head: O = self(0)
-
-    /** Gets the last element of this chunk or throws if the chunk is empty. */
-    def last: O = self(self.size - 1)
-
-    /** Splits this chunk in to two chunks at the specified index. */
-    def splitAt(n: Int): (Chunk[O], Chunk[O]) = {
-      if (n <= 0) (Chunk.empty, self)
-      else if (n >= self.size) (self, Chunk.empty)
-      else self.splitAtChunk_(n)
-    }
-
-    /** Takes the first `n` elements of this chunk. */
-    def take(n: Int): Chunk[O] = splitAt(n)._1
-
-    /** Drops the first `n` elements of this chunk. */
-    def drop(n: Int): Chunk[O] = splitAt(n)._2
-
-    /** Strict version of `map`. */
-    def map[O2](f: O => O2): Chunk[O2] = self.mapStrict(f)
+  implicit val instance: Traverse[Chunk] with Monad[Chunk] = new Traverse[Chunk] with Monad[Chunk] {
+    def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
+    def foldRight[A, B](fa: Chunk[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
+      Foldable[Vector].foldRight(fa.toVector, b)(f)
+    override def toList[A](fa: Chunk[A]): List[A] = fa.toList
+    override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
+    def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(implicit G: Applicative[F]): F[Chunk[B]] =
+      G.map(Traverse[Vector].traverse(fa.toVector)(f))(Chunk.vector)
+    def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
+    def flatMap[A,B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] =
+      fa.toSegment.flatMap(f.andThen(_.toSegment)).force.toChunk
+    def tailRecM[A,B](a: A)(f: A => Chunk[Either[A,B]]): Chunk[B] =
+      Chunk.seq(Monad[Vector].tailRecM(a)(f.andThen(_.toVector)))
   }
 }

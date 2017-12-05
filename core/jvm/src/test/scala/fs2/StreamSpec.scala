@@ -125,7 +125,7 @@ class StreamSpec extends Fs2Spec with Inside {
 
       Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList shouldBe List(1, 3, 6, 10, 15, 15)
 
-      Stream(1, 10, 100).repartition(i => Segment.from(i).map(_.toInt).take(1000).toChunk).take(4).toList shouldBe List(1, 2, 3, 4)
+      Stream(1, 10, 100).repartition(i => Segment.from(i).map(_.toInt).take(1000).force.toChunk).take(4).toList shouldBe List(1, 2, 3, 4)
     }
 
     "translate" in forAll { (s: PureStream[Int]) =>
@@ -149,7 +149,7 @@ class StreamSpec extends Fs2Spec with Inside {
 
     "unfoldSegment" in {
       Stream.unfoldSegment(4L) { s =>
-        if(s > 0) Some((Chunk.longs(Array[Long](s,s)), s-1)) else None
+        if(s > 0) Some((Chunk.longs(Array[Long](s,s)).toSegment, s-1)) else None
       }.toList shouldBe List[Long](4,4,3,3,2,2,1,1)
     }
 

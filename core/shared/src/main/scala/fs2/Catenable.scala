@@ -1,6 +1,6 @@
 package fs2
 
-import cats.{Applicative, Eval, Foldable, Traverse}
+import cats.{Applicative, Eval, Foldable, Monad, Traverse}
 import cats.implicits._
 import Catenable._
 
@@ -192,12 +192,34 @@ object Catenable {
     }
   }
 
-  implicit val traverseInstance: Traverse[Catenable] = new Traverse[Catenable] {
+  implicit val instance: Traverse[Catenable] with Monad[Catenable] = new Traverse[Catenable] with Monad[Catenable] {
     def foldLeft[A, B](fa: Catenable[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
     def foldRight[A, B](fa: Catenable[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = Foldable[List].foldRight(fa.toList, b)(f)
     override def toList[A](fa: Catenable[A]): List[A] = fa.toList
     override def isEmpty[A](fa: Catenable[A]): Boolean = fa.isEmpty
     def traverse[F[_], A, B](fa: Catenable[A])(f: A => F[B])(implicit G: Applicative[F]): F[Catenable[B]] =
       Traverse[List].traverse(fa.toList)(f).map(Catenable.apply)
+    def pure[A](a: A): Catenable[A] = Catenable.singleton(a)
+    def flatMap[A,B](fa: Catenable[A])(f: A => Catenable[B]): Catenable[B] = fa.flatMap(f)
+    def tailRecM[A,B](a: A)(f: A => Catenable[Either[A,B]]): Catenable[B] = {
+      var acc: Catenable[B] = Catenable.empty
+      @tailrec def go(rest: List[Catenable[Either[A, B]]]): Unit = rest match {
+        case hd :: tl =>
+          hd.uncons match {
+            case Some((hdh, hdt)) => hdh match {
+              case Right(b) =>
+                acc = acc :+ b
+                go(hdt :: tl)
+              case Left(a) =>
+                go(f(a) :: hdt :: tl)
+            }
+            case None =>
+              go(tl)
+          }
+        case _ => ()
+      }
+      go(f(a) :: Nil)
+      acc
+    }
   }
 }

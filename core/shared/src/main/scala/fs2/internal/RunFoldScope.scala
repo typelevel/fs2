@@ -127,7 +127,7 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
    * Returns failure with collected failures, or `Unit` on successful traversal.
    */
   private def traverseError[A](ca: Catenable[A], f: A => F[Either[Throwable,Unit]]) : F[Either[Throwable, Unit]] = {
-    F.map(Catenable.traverseInstance.traverse(ca)(f)) { results =>
+    F.map(Catenable.instance.traverse(ca)(f)) { results =>
       CompositeFailure.fromList(results.collect { case Left(err) => err }.toList).toLeft(())
     }
   }
@@ -180,7 +180,7 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
 
   // See docs on [[Scope#lease]]
   def lease: F[Option[Lease[F]]] = {
-    val T = Catenable.traverseInstance
+    val T = Catenable.instance
     F.flatMap(state.get) { s =>
       if (!s.open) F.pure(None)
       else {
