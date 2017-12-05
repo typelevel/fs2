@@ -35,22 +35,20 @@ sealed abstract class AsyncPull[F[_],A] { self =>
   def race[B](b: AsyncPull[F,B])(implicit F: Effect[F], ec: ExecutionContext): AsyncPull[F,Either[A,B]] = new AsyncPull[F, Either[A,B]] {
     def get = cancellableGet.flatMap(_._1)
     def cancellableGet = FreeC.Eval(for {
-      promise <- async.promise[F,Either[Throwable, Either[A,B]]]
+      promise <- async.promise[F, Either[Throwable, Either[A,B]]]
       t0 <- self.cancellableGet.run
       (a, cancelA) = t0
       t1 <- b.cancellableGet.run
       (b, cancelB) = t1
-      fa = a.run.map(Left(_): Either[A, B])
-      fb = b.run.map(Right(_): Either[A, B])
-      _ <-  async.fork(fa.attempt.flatMap(x => promise.complete(x)))
-      _ <-  async.fork(fb.attempt.flatMap(x => promise.complete(x)))
-    } yield {
-      (FreeC.Eval(promise.get.flatMap {
-        case Left(e) => F.raiseError[Either[A, B]](e)
-        case Right(Left(a)) => cancelB.run.as(Left(a): Either[A, B])
-        case Right(Right(b)) => cancelA.run.as(Right(b): Either[A, B])
-      }), FreeC.Eval(cancelA.run *> cancelB.run))
-    })
+      fa = a.run.map(Left.apply).attempt
+      fb = b.run.map(Right.apply).attempt
+      _ <-  async.fork {
+        fa.flatMap(x => promise.complete(x).handleErrorWith(_ => cancelA.run))
+      }
+      _ <-  async.fork {
+        fb.flatMap(x => promise.complete(x).handleErrorWith(_ => cancelB.run))
+      }
+    } yield FreeC.Eval(promise.get.flatMap(F.fromEither)) -> FreeC.Eval(cancelA.run *> cancelB.run))
   }
 
   /** Like [[race]] but requires that the specified async pull has the same result type as this. */
