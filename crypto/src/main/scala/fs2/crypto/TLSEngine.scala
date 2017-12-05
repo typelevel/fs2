@@ -260,7 +260,7 @@ object TLSEngine {
       * As the last operation this releases the acquired lock to prevent concurrent unwraps to be executed simultaneously.
       *
       * @param engine     SSL Engine this operates on
-      * @param bytes      Bytes to wrap
+      * @param bytes      Bytes to unwrap
       * @param buffers    Contains reference to active buffers used to perform I/O.
       *                   The first buffer is buffer with encrypted data. Second buffer is buffer with decrypted data.
       *                   Second buffer is always empty, when this finishes, while first buffer may contain data to be
@@ -300,7 +300,11 @@ object TLSEngine {
                   done(Some(MoreData.WRAP))
 
                 case FINISHED =>
-                  done(None)
+                  // Unwrap during handshake reads only the needed amount of data from the buffer.
+                  // If we got some user data as well with the handshake data, we need to flush those as well.
+                  if (input.hasRemaining) {
+                    done(Some(MoreData.UNWRAP))
+                  } else done(None)
               }
 
             case BUFFER_OVERFLOW =>
