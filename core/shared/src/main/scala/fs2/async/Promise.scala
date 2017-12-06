@@ -112,7 +112,7 @@ object Promise {
 
   /** Raised when trying to complete a [[Promise]] that's already been completed */
   final class AlreadyCompletedException extends Throwable(
-    s"Trying to complete an fs2 Promise that's already been completed"
+    "Trying to complete an fs2 Promise that's already been completed"
   )
 
   private sealed abstract class State[A]
