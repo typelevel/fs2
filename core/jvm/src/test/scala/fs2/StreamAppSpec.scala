@@ -10,11 +10,11 @@ import fs2.StreamApp.ExitCode
 class StreamAppSpec extends Fs2Spec {
 
   "StreamApp" - {
-    /**
-      * Simple Test Rig For Stream Apps
-      * Takes the Stream that constitutes the Stream App
-      * and observably cleans up when the process is stopped.
-      */
+    /*
+     * Simple Test Rig For Stream Apps
+     * Takes the Stream that constitutes the Stream App
+     * and observably cleans up when the process is stopped.
+     */
     class TestStreamApp(stream: IO[Unit] => Stream[IO, ExitCode]) extends StreamApp[IO] {
       val cleanedUp = async.signalOf[IO,Boolean](false).unsafeRunSync
 
