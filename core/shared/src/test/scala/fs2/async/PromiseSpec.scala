@@ -12,15 +12,15 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
   "Promise" - {
     "setSync" in {
       promise[IO, Int].flatMap { p =>
-        p.setSync(0) *> p.get
+        p.complete(0) *> p.get
       }.unsafeToFuture.map { _ shouldBe 0 }
     }
 
     "setSync is only successful once" in {
       promise[IO, Int].flatMap { p =>
-        p.setSync(0) *> p.setSync(1).attempt product p.get
+        p.complete(0) *> p.complete(1).attempt product p.get
       }.unsafeToFuture.map { case (err, value) =>
-          err.left.value shouldBe a[Promise.AlreadySetException]
+          err.left.value shouldBe a[Promise.AlreadyCompletedException]
           value shouldBe 0
       }
     }
@@ -31,10 +31,10 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
         modifyGate <- promise[IO, Unit]
         readGate <- promise[IO, Unit]
         _ <- fork {
-         modifyGate.get *> state.modify(_ * 2) *> readGate.setSync(())
+         modifyGate.get *> state.modify(_ * 2) *> readGate.complete(())
         }
         _ <- fork {
-          state.setSync(1) *> modifyGate.setSync(())
+          state.setSync(1) *> modifyGate.complete(())
         }
         _ <- readGate.get
         res <- state.get
@@ -48,7 +48,7 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
           for {
             p <- async.promise[IO,Int]
             first <- p.timedGet(100.millis, scheduler)
-            _ <- p.setSync(42)
+            _ <- p.complete(42)
             second <- p.timedGet(100.millis, scheduler)
           } yield List(first, second)
       }.runLog.unsafeToFuture.map(_.flatten shouldBe Vector(None, Some(42)))

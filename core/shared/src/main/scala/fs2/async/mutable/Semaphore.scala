@@ -88,7 +88,7 @@ object Semaphore {
     type S = Either[Vector[(Long,async.Promise[F, Unit])], Long]
     async.refOf[F,S](Right(n)).map { state => new Semaphore[F] {
       private def open(gate: async.Promise[F, Unit]): F[Unit] =
-        gate.setSync(())
+        gate.complete(())
 
       def count = state.get.map(count_)
 

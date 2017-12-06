@@ -274,9 +274,9 @@ object Scheduler extends SchedulerPlatform {
       async.promise[F,Option[A]].flatMap { gate =>
         F.delay {
           val cancel = scheduler.scheduleOnce(d) {
-            ec.execute(() => async.unsafeRunAsync(fa.flatMap(a => gate.setSync(Some(a))))(_ => IO.unit))
+            ec.execute(() => async.unsafeRunAsync(fa.flatMap(a => gate.complete(Some(a))))(_ => IO.unit))
           }
-          gate.get -> (F.delay(cancel()) *> gate.setSync(None))
+          gate.get -> (F.delay(cancel()) *> gate.complete(None))
         }
       }
 

@@ -107,7 +107,7 @@ object Topic {
           def unSubscribe: F[Unit] = for {
             _ <- state.modify { case (a,subs) => a -> subs.filterNot(_.id == id) }
             _ <- subSignal.modify(_ - 1)
-            _ <- done.setSync(true)
+            _ <- done.complete(true)
           } yield ()
           def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
           def publish(a: A): F[Unit] = {
@@ -127,7 +127,7 @@ object Topic {
         }
         c <- state.modify { case(a,s) => a -> (s :+ sub) }
         _ <- subSignal.modify(_ + 1)
-        _ <- firstA.setSync(c.now._1)
+        _ <- firstA.complete(c.now._1)
       } yield sub
 
       new Topic[F,A] {
