@@ -1730,7 +1730,8 @@ object Stream {
         }
 
         Stream.eval(async.fork(runR)) >>
-        self.interruptWhen(interruptL.get).onFinalize(interruptR.complete(()) *> doneR.get)
+        self.interruptWhen(interruptL.get)
+        .onFinalize(interruptR.complete(()) *> doneR.get)
 
       }}}
 

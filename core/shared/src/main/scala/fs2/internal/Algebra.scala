@@ -130,7 +130,7 @@ private[fs2] object Algebra {
     , g: (B, O) => B
     , v: FreeC.ViewL[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]
   )(implicit F: Sync[F]): F[B] = {
-    //println(s"RFL(${scope.id}): ${v.get}")
+  //  println(s"RFL(${scope.id}): ${v.get}")
     v.get match {
       case done: FreeC.Pure[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] => done.r match {
         case None => F.pure(acc) // in case of interrupt we ignore interrupt when this is done.

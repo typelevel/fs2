@@ -183,6 +183,26 @@ class Pipe2Spec extends Fs2Spec {
       assert(out.forall(i => i % 7 != 0))
     }
 
+    "interrupt (5)" in forAll { (s1: PureStream[Int]) =>
+      // tests interruption of stream that never terminates in flatMap
+      val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.run.attempt
+      // tests that termination is successful even when flatMapped stream is hung
+      runLog { s1.get.covary[IO].interruptWhen(interrupt).flatMap(_ => Stream.eval_(s.decrement)) } shouldBe Vector()
+    }
+
+    "interrupt (6)" in forAll { (s1: PureStream[Int], f: Failure) =>
+      // tests that failure from the interrupt signal stream will be propagated to main stream
+      // even when flatMap stream is hung
+
+      val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) ++ f.get.map { _ => false } }
+      val prg = (Stream(1) ++ s1.get).covary[IO].interruptWhen(interrupt).flatMap(_ => Stream.eval_(s.decrement))
+      val throws = f.get.run.attempt.unsafeRunSync.isLeft
+      if (throws) an[Err.type] should be thrownBy runLog(prg)
+      else runLog(prg)
+    }
+
     "pause" in {
       forAll { (s1: PureStream[Int]) =>
         val pausedStream = Stream.eval(async.signalOf[IO,Boolean](false)).flatMap { pause =>

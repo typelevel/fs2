@@ -2,6 +2,7 @@ package fs2
 
 import scala.concurrent.duration._
 import cats.effect.IO
+import fs2.async.Promise
 
 class ConcurrentlySpec extends Fs2Spec {
 
@@ -32,6 +33,18 @@ class ConcurrentlySpec extends Fs2Spec {
       val prg = Scheduler[IO](1).flatMap(scheduler => (scheduler.sleep_[IO](25.millis) ++ s.get).concurrently(bg))
       runLog(prg)
       bgDone shouldBe true
+    }
+
+    "when background stream fails, primary stream fails even when hung" in forAll { (s: PureStream[Int], f: Failure) =>
+      val promise = Promise.unsafeCreate[IO, Unit]
+      val prg = Scheduler[IO](1).flatMap{  scheduler =>
+        (scheduler.sleep_[IO](25.millis) ++ (Stream(1) ++ s.get)).concurrently(f.get)
+        .flatMap { i => Stream.eval(promise.get).map { _ => i } }
+      }
+
+      val throws = f.get.run.attempt.unsafeRunSync.isLeft
+      if (throws) an[Err.type] should be thrownBy runLog(prg)
+      else runLog(prg)
     }
   }
 }

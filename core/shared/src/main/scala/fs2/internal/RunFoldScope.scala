@@ -215,7 +215,7 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
     interruptible match {
       case None => F.raiseError(new Throwable("Scope#interrupt called for Scope that cannot be interrupted"))
       case Some((_, _, promise)) =>
-        val interruptRsn  = cause.left.toOption.getOrElse(Interrupted)
+        val interruptRsn  = cause.left.toOption.getOrElse(Interrupted) 
         F.flatMap(state.modify( s => s.copy(interrupted = s.interrupted orElse Some(interruptRsn)))) { c =>
           if (c.previous.open && c.previous.interrupted.isEmpty) promise.complete(interruptRsn)
           else F.unit
