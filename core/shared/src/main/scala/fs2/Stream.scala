@@ -1721,14 +1721,50 @@ object Stream {
      * because `s1.interruptWhen(s2)` is never pulled for another element after the first element has been
      * emitted. To fix, consider `s.flatMap(_ => infiniteStream).interruptWhen(s2)`.
      */
-    def interruptWhen(haltWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
-      haltWhenTrue.noneTerminate.either(self.noneTerminate).
-        takeWhile(_.fold(halt => halt.map(!_).getOrElse(false), o => o.isDefined)).
-        collect { case Right(Some(i)) => i }
+    def interruptWhen(haltWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
+      Stream.eval(async.promise[F, Either[Throwable, Unit]]).flatMap { interruptL =>
+      Stream.eval(async.promise[F, Unit]).flatMap { doneR =>
+      Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
+        def runR = haltWhenTrue.evalMap {
+          case false => F.pure(false)
+          case true => interruptL.complete(Right(())) as true
+        }.takeWhile(! _).interruptWhen(interruptR.get.attempt).run.attempt.flatMap { r =>
+          interruptL.complete(r).attempt *> doneR.complete(())
+        }
+
+        Stream.eval(async.fork(runR)) >>
+        self.interruptWhen(interruptL.get).onFinalize(interruptR.complete(()) *> doneR.get)
+
+      }}}
+
+    }
+//      haltWhenTrue.noneTerminate.either(self.noneTerminate).
+//        takeWhile(_.fold(halt => halt.map(!_).getOrElse(false), o => o.isDefined)).
+//        collect { case Right(Some(i)) => i }
 
     /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
     def interruptWhen(haltWhenTrue: async.immutable.Signal[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       interruptWhen(haltWhenTrue.discrete)
+
+    /**
+      * Interrupts the stream, when `haltOnSignal` finishes its evaluation.
+      */
+    def interruptWhen(haltOnSignal: F[Either[Throwable, Unit]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
+      Stream.getScope[F].flatMap { scope =>
+      Stream.eval(async.fork(haltOnSignal flatMap scope.interrupt)) flatMap { _ =>
+        self
+      }}.interruptScope.handleErrorWith {
+        case internal.Interrupted => Stream.empty
+        case other => Stream.raiseError(other)
+      }
+    }
+
+    /**
+      * Creates a scope that may be interrupted by calling scope#interrupt.
+      */
+    def interruptScope(implicit F: Effect[F], ec: ExecutionContext): Stream[F, O] =
+      Stream.fromFreeC(Algebra.interruptScope(self.get))
+
 
     /**
      * Nondeterministically merges a stream of streams (`outer`) in to a single stream,

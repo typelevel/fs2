@@ -26,4 +26,19 @@ abstract class Scope[F[_]] {
    * successfully leased.
    */
   def lease: F[Option[Lease[F]]]
+
+  /**
+    * Interrupts evaluation of the current scope. Only scopes previously indicated wih Stream.interruptScope may be interrupted.
+    * For other scopes this will fail.
+    *
+    * Interruption is final and may take two forms:
+    *
+    * When invoked on right side, that will interrupt only current scope evaluation, and will resume when control is given
+    * to next scope.
+    *
+    * When invoked on left side, then this will inject given throwable like it will be caused by stream evaluation,
+    * and then, without any error handling the whole stream will fail with supplied throwable.
+    *
+    */
+  def interrupt(cause: Either[Throwable, Unit]): F[Unit]
 }
