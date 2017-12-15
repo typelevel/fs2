@@ -1496,21 +1496,18 @@ object Stream {
      * }}}
      */
     def concurrently[O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
-      Stream.eval(async.signalOf[F,Boolean](false)).flatMap { interruptLeft =>
-      Stream.eval(async.semaphore[F](0)).flatMap { leftFinalized =>
-      Stream.eval(async.signalOf[F,Boolean](false)).flatMap { interruptRight =>
-      Stream.eval(async.signalOf[F,Option[Throwable]](None)).flatMap { leftError =>
-        val left = that.
-          handleErrorWith(e => Stream.eval_(leftError.set(Some(e)) *> interruptRight.set(true))).
-          interruptWhen(interruptLeft).
-          onFinalize(leftFinalized.increment)
-        val right = self.interruptWhen(interruptRight).onFinalize(
-          interruptLeft.set(true) *>
-          leftFinalized.decrement *>
-          leftError.get.flatMap(_.fold(F.pure(()))(F.raiseError))
-        )
-        Stream.eval_(async.fork(left.run)) ++ right
-      }}}}
+      Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
+      Stream.eval(async.promise[F, Unit]).flatMap { doneR =>
+      Stream.eval(async.promise[F, Throwable]).flatMap { interruptL =>
+        def runR = that.interruptWhen(interruptR.get.attempt).run.attempt flatMap {
+          case Right(_) | Left(internal.Interrupted) => doneR.complete(())
+          case Left(err) => interruptL.complete(err) *> doneR.complete(())
+        }
+
+        Stream.eval(async.fork(runR)) >>
+        self.interruptWhen(interruptL.get.map(Left(_):Either[Throwable, Unit])).
+        onFinalize { interruptR.complete(()) *> doneR.get }
+      }}}
     }
 
     /**
@@ -1738,9 +1735,6 @@ object Stream {
       }}}
 
     }
-//      haltWhenTrue.noneTerminate.either(self.noneTerminate).
-//        takeWhile(_.fold(halt => halt.map(!_).getOrElse(false), o => o.isDefined)).
-//        collect { case Right(Some(i)) => i }
 
     /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
     def interruptWhen(haltWhenTrue: async.immutable.Signal[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =

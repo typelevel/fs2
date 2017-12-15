@@ -13,7 +13,7 @@ class ConcurrentlySpec extends Fs2Spec {
 
     "when background stream fails, overall stream fails" in forAll { (s: PureStream[Int], f: Failure) =>
       val prg = Scheduler[IO](1).flatMap(scheduler => (scheduler.sleep_[IO](25.millis) ++ s.get).concurrently(f.get))
-      val throws = f.get.drain.run.attempt.unsafeRunSync.isLeft
+      val throws = f.get.run.attempt.unsafeRunSync.isLeft
       if (throws) an[Err.type] should be thrownBy runLog(prg)
       else runLog(prg)
     }
