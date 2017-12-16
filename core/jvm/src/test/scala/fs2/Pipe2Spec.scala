@@ -1,5 +1,6 @@
 package fs2
 
+
 import scala.concurrent.duration._
 import cats.effect.IO
 import cats.implicits._
@@ -201,6 +202,19 @@ class Pipe2Spec extends Fs2Spec {
       val throws = f.get.run.attempt.unsafeRunSync.isLeft
       if (throws) an[Err.type] should be thrownBy runLog(prg)
       else runLog(prg)
+    }
+
+    "interrupt (7)" in  forAll { s1: PureStream[Int] =>
+
+      // tests that when interrupted, the interruption will resume with append.
+      val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.run.attempt
+      val prg = (
+                  (s1.get.covary[IO].interruptWhen(interrupt).evalMap { _ => s.decrement map { _ => None } }) ++
+                  s1.get.map(Some(_))
+                ).collect { case Some(v) => v }
+
+      runLog(prg) shouldBe runLog(s1.get)
     }
 
     "pause" in {

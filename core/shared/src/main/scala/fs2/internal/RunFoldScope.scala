@@ -98,7 +98,6 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
    * open ancestor of this scope.
    */
   def open(interruptible: Option[(Effect[F], ExecutionContext, Promise[F, Throwable])]): F[RunFoldScope[F]] = {
-   // println(s"OPENING new scope at $id")
     F.flatMap(state.modify2 { s =>
       if (! s.open) (s, None)
       else {
@@ -247,7 +246,7 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
     }
   }
 
-
+  override def toString = s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
 }
 
 private[internal] object RunFoldScope {

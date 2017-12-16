@@ -41,26 +41,31 @@ private[fs2] object Algebra {
   def release[F[_],O](token: Token): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](Release(token))
 
-  private def openScope[F[_],O]: FreeC[Algebra[F,O,?],RunFoldScope[F]] =
-    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](OpenScope(None))
-
-  private def closeScope[F[_],O](toClose: RunFoldScope[F]): FreeC[Algebra[F,O,?],Unit] =
-    FreeC.Eval[Algebra[F,O,?],Unit](CloseScope(toClose))
-
+  /**
+    *  Wraps supplied pull in new scope, that will be opened before this pull is evaluated
+    *  and closed once this pull either finishes its evaluation or when it fails.
+    */
   def scope[F[_],O,R](pull: FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
-    openScope flatMap { newScope =>
-      FreeC.Bind(pull, (e: Either[Throwable,R]) => e match {
-        case Left(e) => closeScope(newScope) flatMap { _ => raiseError(e) }
-        case Right(r) => closeScope(newScope) map { _ => r }
-      })
-    }
+    scope0(pull, None)
 
   /**
     * Like `scope` but allows this scope to be interrupted.
-    * Note that this may fail with `Interrupted` when interruption occured
+    * Note that this may fail with `Interrupted` when interruption occurred
     */
-  private[fs2] def interruptScope[F[_], O, R](pull: FreeC[Algebra[F,O,?],R])(implicit effect: Effect[F], ec: ExecutionContext): FreeC[Algebra[F,O,?],R] = {
-    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](OpenScope(Some((effect, ec, Promise.unsafeCreate)))) flatMap { scope =>
+  private[fs2] def interruptScope[F[_], O, R](pull: FreeC[Algebra[F,O,?],R])(implicit effect: Effect[F], ec: ExecutionContext): FreeC[Algebra[F,O,?],R] =
+    scope0(pull, Some((effect, ec)))
+
+  private def scope0[F[_], O, R](pull: FreeC[Algebra[F,O,?],R], interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F,O,?],R] = {
+
+    def openScope: FreeC[Algebra[F,O,?],RunFoldScope[F]] =
+       FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](
+         OpenScope[F, O](interruptible.map { case (effect, ec) => (effect, ec, Promise.unsafeCreate(effect, ec)) })
+       )
+
+    def closeScope(toClose: RunFoldScope[F]): FreeC[Algebra[F,O,?],Unit] =
+      FreeC.Eval[Algebra[F,O,?],Unit](CloseScope(toClose))
+
+    openScope flatMap { scope =>
       FreeC.Bind(pull, (e: Either[Throwable,R]) => e match {
         case Left(e) => closeScope(scope) flatMap { _ => raiseError(e) }
         case Right(r) => closeScope(scope) map { _ => r }
@@ -130,7 +135,6 @@ private[fs2] object Algebra {
     , g: (B, O) => B
     , v: FreeC.ViewL[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]
   )(implicit F: Sync[F]): F[B] = {
-  //  println(s"RFL(${scope.id}): ${v.get}")
     v.get match {
       case done: FreeC.Pure[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] => done.r match {
         case None => F.pure(acc) // in case of interrupt we ignore interrupt when this is done.
@@ -203,7 +207,6 @@ private[fs2] object Algebra {
 
           case o: Algebra.OpenScope[F,_] =>
             F.flatMap(scope.open(o.interruptible)) { innerScope =>
-              //println(s"RFL(${scope.id}): --- OPEN SCOPE -- ${innerScope.id} interruptible: ${innerScope.interruptible.nonEmpty}")
               runFoldLoop(innerScope, acc, g, f(Right(innerScope)).viewL)
             }
 
