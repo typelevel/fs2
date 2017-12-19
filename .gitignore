@@ -14,3 +14,4 @@ z_local.sbt
 .ensime
 /.ensime_cache
 .tags
+.metaserver

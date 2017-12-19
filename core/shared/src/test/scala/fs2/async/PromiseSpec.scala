@@ -53,5 +53,20 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
           } yield List(first, second)
       }.runLog.unsafeToFuture.map(_.flatten shouldBe Vector(None, Some(42)))
     }
+
+    "cancellableGet - cancel before force" in {
+      (for {
+        r <- async.refOf[IO,Option[Int]](None)
+        p <- async.promise[IO,Int]
+        t <- p.cancellableGet
+        (force, cancel) = t
+        _ <- cancel
+        _ <- async.fork(force.flatMap(i => r.setSync(Some(i))))
+        _ <- IO(Thread.sleep(100))
+        _ <- p.complete(42)
+        _ <- IO(Thread.sleep(100))
+        result <- r.get
+      } yield result).unsafeToFuture.map(_ shouldBe None)
+    }
   }
 }

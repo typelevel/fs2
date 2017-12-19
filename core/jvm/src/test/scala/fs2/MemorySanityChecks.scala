@@ -130,3 +130,25 @@ object EvalFlatMapMapTest extends App {
     map(x => x).
     repeat.run.unsafeRunSync()
 }
+
+object QueueTest extends App {
+  import ExecutionContext.Implicits.global
+  Stream.eval(async.boundedQueue[IO, Either[Throwable, Option[Int]]](10)).flatMap { queue =>
+    queue.dequeueAvailable.rethrow.unNoneTerminate.concurrently(
+      Stream.constant(1, 128).covary[IO].noneTerminate.attempt.evalMap(queue.enqueue1(_))
+    ).evalMap(_ => IO.unit)
+  }.run.unsafeRunSync()
+}
+
+object ProgressMerge extends App {
+  import ExecutionContext.Implicits.global
+  val progress = Stream.constant(1, 128).covary[IO]
+  (progress merge progress).run.unsafeRunSync()
+}
+
+object HungMerge extends App {
+  import ExecutionContext.Implicits.global
+  val hung = Stream.eval(IO.async[Int](_ => ()))
+  val progress = Stream.constant(1, 128).covary[IO]
+  (hung merge progress).run.unsafeRunSync()
+}
