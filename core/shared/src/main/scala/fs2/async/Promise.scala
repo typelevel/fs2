@@ -33,7 +33,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
 
   /** Obtains the value of the `Promise`, or waits until it has been completed. */
   def get: F[A] = F.suspend {
-    // `new Token` is a side effect because `Token`s are compared with reference equality
+    // `new Token` is a side effect because `Token`s are compared with reference equality, it needs to be in `F`.
     // For performance reasons, `suspend` is preferred to `F.delay(...).flatMap` here.
     val id = new Token
     getOrWait(id, true)
@@ -51,7 +51,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
         }.void
         ref.modify2 {
           case s @ State.Set(a) => s -> (F.pure(a) -> F.unit)
-          case State.Unset(waiting) => State.Unset[A](waiting.updated(id, Nil)) -> (getOrWait(id, false) -> cancel)
+          case State.Unset(waiting) => State.Unset(waiting.updated(id, Nil)) -> (getOrWait(id, false) -> cancel)
         }.map(_._2)
     }
   }
