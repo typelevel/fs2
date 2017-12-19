@@ -1457,10 +1457,7 @@ object Stream {
 
     /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
     def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      fromFreeC(self.get.flatMap2 {
-        case Right(_) | Left(internal.Interrupted) => s2.get
-        case Left(err) => Algebra.raiseError[F, O2, Unit](err)
-      })
+      fromFreeC(self.get.flatMap { _ => s2.get })
 
     /**
      * Emits only elements that are distinct from their immediate predecessors,
@@ -1651,11 +1648,6 @@ object Stream {
      * }}}
      */
     def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] = {
-      // unlike the ++ the append in flatMap should be interrupted
-      // by `Interruptible` control exception so this is specific version of append for flatMap
-      def fby[o](s1: Stream[F,o], s2: => Stream[F,o]): Stream[F,o] =
-        fromFreeC(s1.get.flatMap { _ => s2.get })
-
       Stream.fromFreeC(Algebra.uncons(self.get[F,O]).flatMap {
         case Some((hd, tl)) =>
           // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
@@ -1668,8 +1660,31 @@ object Stream {
           }
           only match {
             case None =>
-              hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(fby(_, _)).get
-            case Some(o) => f(o).get
+              // tail mail contain algebra that is critical for proper sequenced scope closure
+              // as such here in the event of the failure we will always drain the algebra
+              // for any `CloseScope` so we will close correct resources and set correct parent scope.
+              // note that resources are guaranteed to be closed by the way how Scope.close is defined, however
+              // in that case, in certain situations, the flatMap followed by `handleErrorWith` may
+              // without this change postpone closure of resources until the handler in handleErrorWith is interpreted.
+
+              def fby( s1: Either[O, Stream[F, O]], s2: => Stream[F,O2]): Stream[F, O2] = {
+                Stream.fromFreeC[F,O2](s1 match {
+                  case Left(o) => f(o).get.flatMap2 {
+                    case Right(_) => s2.get
+                    case Left(err) => Algebra.asHandler[F, O2](s2.get, err) //.asInstanceOf[FreeC[Algebra[F,O2, ?], Unit]] // typecast is safe hence asHandler will never emit any `O`
+                  }
+                  case Right(s) => s.flatMap(f).get.flatMap2 {
+                    case Right(_) => s2.get
+                    case Left(err) => Stream.raiseError[O2](err).covary[F].get
+                  }
+                })
+              }
+
+              (hd.map(Left(_)) ++ Segment.singleton(Right(Stream.fromFreeC(tl))))
+              .foldRightLazy[Stream[F, O2]](empty_) { fby(_, _) }.get
+
+            case Some(o) =>
+              f(o).get
           }
         case None => Stream.empty.covaryAll[F,O2].get
       })

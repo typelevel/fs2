@@ -61,7 +61,11 @@ import scala.concurrent.ExecutionContext
   *                       that eventually allows interruption while eval is evaluating.
   *
  */
-private[internal] final class RunFoldScope[F[_]] private (val id: Token, private val parent: Option[RunFoldScope[F]], val interruptible: Option[(Effect[F], ExecutionContext, Promise[F, Throwable])])(implicit F: Sync[F]) extends Scope[F] { self =>
+private[fs2] final class RunFoldScope[F[_]] private (
+  val id: Token
+  , private val parent: Option[RunFoldScope[F]]
+  , val interruptible: Option[(Effect[F], ExecutionContext, Promise[F, Throwable], Ref[F, (Option[Throwable], Boolean)])]
+)(implicit F: Sync[F]) extends Scope[F] { self =>
 
   private val state: Ref[F, RunFoldScope.State[F]] = new Ref(new AtomicReference(RunFoldScope.State.initial))
 
@@ -97,7 +101,7 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
    * If this scope is currently closed, then the child scope is opened on the first
    * open ancestor of this scope.
    */
-  def open(interruptible: Option[(Effect[F], ExecutionContext, Promise[F, Throwable])]): F[RunFoldScope[F]] = {
+  def open(interruptible: Option[(Effect[F], ExecutionContext, Promise[F, Throwable], Ref[F, (Option[Throwable], Boolean)])]): F[RunFoldScope[F]] = {
     F.flatMap(state.modify2 { s =>
       if (! s.open) (s, None)
       else {
@@ -213,37 +217,71 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
   def interrupt(cause: Either[Throwable, Unit]): F[Unit] = {
     interruptible match {
       case None => F.raiseError(new Throwable("Scope#interrupt called for Scope that cannot be interrupted"))
-      case Some((_, _, promise)) =>
-        val interruptRsn  = cause.left.toOption.getOrElse(Interrupted) 
-        F.flatMap(state.modify( s => s.copy(interrupted = s.interrupted orElse Some(interruptRsn)))) { c =>
-          if (c.previous.open && c.previous.interrupted.isEmpty) promise.complete(interruptRsn)
-          else F.unit
+      case Some((_, _, promise, ref)) =>
+        val interruptRsn  = cause.left.toOption.getOrElse(Interrupted)
+        F.flatMap(F.attempt(promise.complete(interruptRsn))) {
+          case Right(_) =>
+            F.map(ref.modify({ case (interrupted, signalled) => (interrupted orElse Some(interruptRsn), signalled)})) { _ => ()}
+          case Left(_) =>
+            F.unit
         }
+
     }
 
   }
 
-  /** check whether the scope is interrupted **/
-  def isInterrupted: F[Option[Throwable]] =
-    F.map(state.get) { _.interrupted }
+  /**
+    * If evaluates to Some(rsn) then the current step evaluation in stream shall be interrupted by
+    * given reason. Also sets the `interrupted` flag, so this is guaranteed to yield to interrupt only once.
+    *
+    * Used when interruption stream in pure steps between `uncons`
+    */
+  def shallInterrupt: F[Option[Throwable]] = {
+    interruptible match {
+      case None => F.pure(None)
+      case Some((_, _, _, ref)) =>
+        F.flatMap(ref.get) { case (interrupted, signalled) =>
+          if (signalled || interrupted.isEmpty) F.pure(None)
+          else {
+            F.map(ref.modify { case (int, _) => (int, true)}) { c =>
+              if (c.previous._2) None
+              else c.previous._1
+            }
+          }
+        }
+    }
+  }
 
 
   /**
     * When the stream is evaluated, there may be `Eval` that needs to be cancelled early, when asynchronous interruption
     * is taking the place.
-    * This allows to augment eval so whenever this scope is interrupted it will return on left the reason of interruption.
-    * If the eval completes before the scope is interrupted, then this will return `A`.
+    * This allows to augment eval so whenever this scope is interupted it will return on left the reason of interruption.
+    * If the eval completes before the scope is interrupt, then this will return `A`.
     */
-  def interruptibleEval[A](f: F[A]): F[Either[Throwable, A]] = {
+  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Throwable, A]] = {
     interruptible match {
       case None => F.attempt(f)
-      case Some((effect, ec, promise)) =>
-        F.flatMap(promise.cancellableGet) { case (get, cancel) =>
-        F.flatMap(fs2.async.race(get, F.attempt(f))(effect, ec)) {
-          case Right(result) => F.map(cancel) (_ => result)
-          case Left(err) => F.pure(Left(err))
-        }}
+      case Some((effect, ec, promise, ref)) =>
+        F.flatMap(ref.get) { case (_, signalled) =>
+          if (signalled) F.attempt(f)
+          else {
+            // we assume there will be no parallel evals/interpretation in the scope.
+            // the concurrent stream evaluation (like merge, join) shall have independent interruption
+            // for every asynchronous child scope of the stream, so this assumption shall be completely safe.
+            F.flatMap(promise.cancellableGet) { case (get, cancel) =>
+              F.flatMap(fs2.async.race(get, F.attempt(f))(effect, ec)) {
+                case Right(result) => F.map(cancel)(_ => result)
+                case Left(err) =>
+                  // this indicates that we have consumed signalling the interruption
+                  // there is only one interruption allowed per scope.
+                  // as such, we have to set interruption flag
+                  F.map(ref.modify { case (int, sig) => (int, true) })(_ => Left(err))
+              }}
+          }
+        }
     }
+
   }
 
   override def toString = s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
@@ -266,13 +304,11 @@ private[internal] object RunFoldScope {
     *                           split to multiple asynchronously acquired scopes and resources.
     *                           Still, likewise for resources they are released in reverse order.
     *
-    * @param interrupted        When nonempty, this will define the Interruption cause. Interruption cause may be `Interrupt`
-    *                           in case the scope was interrupted w/o any imminent failure, or arbitrary Throwable.
-    *                           Not that this is signalled only once within the scope. Once this is signalled to
-    *                           `runfoldLoop` the reason here is `cleared` like scope was not interrupted at all.
     */
   final private case class State[F[_]](
-    open: Boolean, resources: Catenable[Resource[F]], children: Catenable[RunFoldScope[F]], interrupted: Option[Throwable]
+    open: Boolean
+    , resources: Catenable[Resource[F]]
+    , children: Catenable[RunFoldScope[F]]
   ) { self =>
 
     def unregisterResource(id: Token): (State[F], Option[Resource[F]]) = {
@@ -291,10 +327,10 @@ private[internal] object RunFoldScope {
   }
 
   private object State {
-    private val initial_ = State[Nothing](open = true, resources = Catenable.empty, children = Catenable.empty, interrupted = None)
+    private val initial_ = State[Nothing](open = true, resources = Catenable.empty, children = Catenable.empty)
     def initial[F[_]]: State[F] = initial_.asInstanceOf[State[F]]
 
-    private val closed_ = State[Nothing](open = false, resources = Catenable.empty, children = Catenable.empty, interrupted = None)
+    private val closed_ = State[Nothing](open = false, resources = Catenable.empty, children = Catenable.empty)
     def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
   }
 }

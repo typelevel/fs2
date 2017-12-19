@@ -5,7 +5,7 @@ import cats.~>
 import cats.effect.{Effect, Sync}
 import cats.implicits._
 import fs2._
-import fs2.async.Promise
+import fs2.async.{Promise, Ref}
 
 import scala.concurrent.ExecutionContext
 
@@ -19,7 +19,7 @@ private[fs2] object Algebra {
 
   final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
-  final case class OpenScope[F[_],O](interruptible: Option[(Effect[F], ExecutionContext, Promise[F, Throwable])]) extends Algebra[F,O,RunFoldScope[F]]
+  final case class OpenScope[F[_],O](interruptible: Option[(Effect[F], ExecutionContext, Promise[F, Throwable], Ref[F, (Option[Throwable], Boolean)])]) extends Algebra[F,O,RunFoldScope[F]]
   final case class CloseScope[F[_],O](toClose: RunFoldScope[F]) extends Algebra[F,O,Unit]
   final case class GetScope[F[_],O]() extends Algebra[F,O,RunFoldScope[F]]
 
@@ -59,17 +59,19 @@ private[fs2] object Algebra {
 
     def openScope: FreeC[Algebra[F,O,?],RunFoldScope[F]] =
        FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](
-         OpenScope[F, O](interruptible.map { case (effect, ec) => (effect, ec, Promise.unsafeCreate(effect, ec)) })
+         OpenScope[F, O](interruptible.map { case (effect, ec) =>
+           (effect, ec, Promise.unsafeCreate(effect, ec), Ref.unsafeCreate((None: Option[Throwable], false))(effect))
+         })
        )
 
     def closeScope(toClose: RunFoldScope[F]): FreeC[Algebra[F,O,?],Unit] =
       FreeC.Eval[Algebra[F,O,?],Unit](CloseScope(toClose))
 
     openScope flatMap { scope =>
-      FreeC.Bind(pull, (e: Either[Throwable,R]) => e match {
+      pull.flatMap2 {
         case Left(e) => closeScope(scope) flatMap { _ => raiseError(e) }
         case Right(r) => closeScope(scope) map { _ => r }
-      })
+      }
     }
   }
 
@@ -146,7 +148,7 @@ private[fs2] object Algebra {
 
           if (scope.interruptible.isEmpty) F.suspend(next)
           else {
-            F.flatMap(scope.isInterrupted) {
+            F.flatMap(scope.shallInterrupt) {
               case None => next
               case Some(rsn) => runFoldLoop[F,O,B](scope, acc, g, uncons(tl.asHandler(rsn)).viewL)
             }
@@ -235,5 +237,25 @@ private[fs2] object Algebra {
       }
     }
     fr.translate[Algebra[G,O,?]](algFtoG)
+  }
+
+  /**
+    * Specific version of `Free.asHandler` that will output any CloseScope that may have
+    * been opened before the `rsn` was yielded
+    */
+  def asHandler[F[_], O](free: FreeC[Algebra[F,O,?],Unit], e: Throwable): FreeC[Algebra[F,O,?],Unit] = {
+    free.viewL.get match {
+      case FreeC.Pure(_) => FreeC.Fail(e)
+      case FreeC.Fail(e2) => FreeC.Fail(e)
+      case bound: FreeC.Bind[Algebra[F,O,?], _, Unit] =>
+        val f = bound.f.asInstanceOf[
+          Either[Throwable,Any] => FreeC[Algebra[F,O,?], Unit]]
+        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr
+        fx match {
+          case _: Algebra.CloseScope[F,_] => FreeC.Bind(FreeC.Eval(fx), { (_: Either[Throwable, Any]) => f(Left(e)) })
+          case _ => f(Left(e))
+        }
+      case FreeC.Eval(_) => sys.error("impossible")
+    }
   }
 }
