@@ -83,7 +83,7 @@ package object async {
 
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
   def parallelTraverse[F[_], G[_], A, B](fa: F[A])(f: A => G[B])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[B]] =
-    F.traverse(fa)(f andThen start[G, B]).flatMap(G.sequence(_))
+    F.traverse(fa)(f andThen start[G, B]).flatMap(F.sequence(_))
 
   /** Like `sequence` but each `G[A]` is evaluated in parallel. */
   def parallelSequence[F[_], G[_], A](fga: F[G[A]])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[A]] =

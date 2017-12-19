@@ -177,7 +177,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.5"
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.6"
   ).
   jsSettings(commonJsSettings: _*)
 
