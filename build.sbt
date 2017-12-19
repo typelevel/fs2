@@ -130,7 +130,6 @@ lazy val commonJsSettings = Seq(
         options.withParallel(false)
     }
   },
-  requiresDOM := false,
   scalaJSStage in Test := FastOptStage,
   jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
   scalacOptions in Compile += {
