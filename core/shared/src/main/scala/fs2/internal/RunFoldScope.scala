@@ -4,7 +4,7 @@ package fs2.internal
 import scala.annotation.tailrec
 import java.util.concurrent.atomic.AtomicReference
 
-import fs2.{Catenable, CompositeFailure, Lease, Scope}
+import fs2.{Catenable, CompositeFailure, Interrupted, Lease, Scope}
 import fs2.async.{Promise, Ref}
 import cats.effect.{Effect, Sync}
 
