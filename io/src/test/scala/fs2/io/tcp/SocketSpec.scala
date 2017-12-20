@@ -55,7 +55,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
         }.join(10)
       }
 
-      val result = Stream(echoServer.drain, clients).join(2).take(clientCount).runLog.unsafeRunTimed(timeout).get
+      val result = Stream(echoServer.drain, clients).join(2).take(clientCount).compile.toVector.unsafeRunTimed(timeout).get
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
     }

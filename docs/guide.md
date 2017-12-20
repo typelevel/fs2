@@ -125,25 +125,25 @@ scala> eff.toList
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
 ```scala
-scala> eff.runLog.unsafeRunSync()
+scala> eff.compile.toVector.unsafeRunSync()
 BEING RUN!!
 res11: Vector[Int] = Vector(2)
 ```
 
-The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
+The first `.compile.toVector` is one of several methods available to 'compile' the stream to a single effect:
 
 ```scala
 val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
-val ra = eff.runLog // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$1881849274
+val ra = eff.compile.toVector // gather all output into a Vector
+// ra: cats.effect.IO[Vector[Int]] = IO$1473460473
 
-val rb = eff.run // purely for effects
-// rb: cats.effect.IO[Unit] = IO$1701750867
+val rb = eff.compile.drain // purely for effects
+// rb: cats.effect.IO[Unit] = IO$389935702
 
-val rc = eff.runFold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$1051647402
+val rc = eff.compile.fold(0)(_ + _) // run and accumulate some result
+// rc: cats.effect.IO[Int] = IO$387044598
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -169,7 +169,7 @@ res15: Int = 2
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Effect[F]` (or `Sync[F]` for the `run*Sync` functions) --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations, and sometimes how to do asynchronous evaluation.
+_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Sync[F]` --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations.
 
 ### Segments & Chunks
 
@@ -206,7 +206,7 @@ appendEx2: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 scala> appendEx1.toVector
 res17: Vector[Int] = Vector(1, 2, 3, 42)
 
-scala> appendEx2.runLog.unsafeRunSync()
+scala> appendEx2.compile.toVector.unsafeRunSync()
 res18: Vector[Int] = Vector(1, 2, 3, 4)
 
 scala> appendEx1.map(_ + 1).toList
@@ -252,7 +252,7 @@ res22: Any = ()
 ```
 
 ```scala
-scala> try err3.run.unsafeRunSync() catch { case e: Exception => println(e) }
+scala> try err3.compile.drain.unsafeRunSync() catch { case e: Exception => println(e) }
 java.lang.Exception: error in effect!!!
 ```
 
@@ -274,14 +274,14 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$1461250053
+acquire: cats.effect.IO[Unit] = IO$2108369770
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$747598215
+release: cats.effect.IO[Unit] = IO$190389079
 ```
 
 ```scala
-scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRunSync()
+scala> Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).compile.drain.unsafeRunSync()
 incremented: 1
 decremented: 0
 java.lang.Exception: oh noes!
@@ -314,7 +314,7 @@ res27: List[Int] = List(1, 0, 1, 0, 1, 0)
 scala> Stream(1,2,3).drain.toList
 res28: List[Nothing] = List()
 
-scala> Stream.eval_(IO(println("!!"))).runLog.unsafeRunSync()
+scala> Stream.eval_(IO(println("!!"))).compile.toVector.unsafeRunSync()
 !!
 res29: Vector[Nothing] = Vector()
 
@@ -460,11 +460,11 @@ res36: List[Int] = List(0, 1, 3, 6, 10, 15, 21, 28, 36, 45)
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
 
 ```scala
-scala> Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
+scala> Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 <console>:22: error: Cannot find an implicit ExecutionContext. You might pass
 an (implicit ec: ExecutionContext) parameter to your method
 or import scala.concurrent.ExecutionContext.Implicits.global.
-       Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
+       Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
                           ^
 ```
 
@@ -474,7 +474,7 @@ Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add
 scala> import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.ExecutionContext.Implicits.global
 
-scala> Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
+scala> Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 res38: Vector[Int] = Vector(1, 2, 3, 4)
 ```
 
@@ -542,7 +542,7 @@ def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 val s = Stream.eval_(IO { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
 
-s.runLog.unsafeRunSync()
+s.compile.toVector.unsafeRunSync()
 // BOOOOM!!!
 // res39: Vector[String] = Vector(...moving on)
 ```
@@ -554,12 +554,12 @@ import cats.effect.Sync
 // import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@12224dc5
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@70ac78a6
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
 
-s.runLog.unsafeRunSync()
+s.compile.toVector.unsafeRunSync()
 // BOOOOM!!!
 // res40: Vector[String] = Vector(...moving on)
 ```
@@ -611,14 +611,14 @@ val c = new Connection {
 
 // Effect extends both Sync and Async
 val T = cats.effect.Effect[IO]
-// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@12224dc5
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@70ac78a6
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: cats.effect.IO[Array[Byte]] = IO$1101984917
+// bytes: cats.effect.IO[Array[Byte]] = IO$1817661216
 
-Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
+Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 // res42: Vector[List[Byte]] = Vector(List(0, 1, 2))
 ```
 
@@ -722,6 +722,9 @@ Stream(1).covary[IO].
           onFinalize(IO { println("finalized!") }).
           take(1).
           runLog.unsafeRunSync()
+// <console>:22: warning: method runLog in class InvariantOps is deprecated (since 0.10.0): Use compile.toVector instead
+//                  runLog.unsafeRunSync()
+//                  ^
 // finalized!
 // res3: Vector[Int] = Vector(1)
 ```

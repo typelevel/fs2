@@ -14,7 +14,7 @@ trait TestUtil extends TestUtilPlatform {
 
   val timeout: FiniteDuration = 60.seconds
 
-  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift *> s.runLog).unsafeToFuture
+  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift *> s.compile.toVector).unsafeToFuture
 
   def spuriousFail(s: Stream[IO,Int], f: Failure): Stream[IO,Int] =
     s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get

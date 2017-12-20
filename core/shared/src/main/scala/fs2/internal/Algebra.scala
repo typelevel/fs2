@@ -16,9 +16,9 @@ private[fs2] object Algebra {
 
   final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
-  final case class OpenScope[F[_],O]() extends Algebra[F,O,RunFoldScope[F]]
-  final case class CloseScope[F[_],O](toClose: RunFoldScope[F]) extends Algebra[F,O,Unit]
-  final case class GetScope[F[_],O]() extends Algebra[F,O,RunFoldScope[F]]
+  final case class OpenScope[F[_],O]() extends Algebra[F,O,CompileScope[F]]
+  final case class CloseScope[F[_],O](toClose: CompileScope[F]) extends Algebra[F,O,Unit]
+  final case class GetScope[F[_],O]() extends Algebra[F,O,CompileScope[F]]
 
   def output[F[_],O](values: Segment[O,Unit]): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](Output(values))
@@ -38,10 +38,10 @@ private[fs2] object Algebra {
   def release[F[_],O](token: Token): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](Release(token))
 
-  private def openScope[F[_],O]: FreeC[Algebra[F,O,?],RunFoldScope[F]] =
-    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](OpenScope())
+  private def openScope[F[_],O]: FreeC[Algebra[F,O,?],CompileScope[F]] =
+    FreeC.Eval[Algebra[F,O,?],CompileScope[F]](OpenScope())
 
-  private def closeScope[F[_],O](toClose: RunFoldScope[F]): FreeC[Algebra[F,O,?],Unit] =
+  private def closeScope[F[_],O](toClose: CompileScope[F]): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](CloseScope(toClose))
 
   def scope[F[_],O,R](pull: FreeC[Algebra[F,O,?],R]): FreeC[Algebra[F,O,?],R] =
@@ -52,8 +52,8 @@ private[fs2] object Algebra {
       })
     }
 
-  def getScope[F[_],O]: FreeC[Algebra[F,O,?],RunFoldScope[F]] =
-    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](GetScope())
+  def getScope[F[_],O]: FreeC[Algebra[F,O,?],CompileScope[F]] =
+    FreeC.Eval[Algebra[F,O,?],CompileScope[F]](GetScope())
 
   def pure[F[_],O,R](r: R): FreeC[Algebra[F,O,?],R] =
     FreeC.Pure[Algebra[F,O,?],R](r)
@@ -97,19 +97,19 @@ private[fs2] object Algebra {
 
 
   /** Left-folds the output of a stream. */
-  def runFold[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
-    F.delay(RunFoldScope.newRoot).flatMap { scope =>
-      runFoldScope[F,O,B](scope, stream, init)(f).attempt.flatMap {
+  def compile[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
+    F.delay(CompileScope.newRoot).flatMap { scope =>
+      compileScope[F,O,B](scope, stream, init)(f).attempt.flatMap {
         case Left(t) => scope.close *> F.raiseError(t)
         case Right(b) => scope.close as b
       }
     }
 
-  private[fs2] def runFoldScope[F[_],O,B](scope: RunFoldScope[F], stream: FreeC[Algebra[F,O,?],Unit], init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
-    runFoldLoop[F,O,B](scope, init, g, uncons(stream).viewL)
+  private[fs2] def compileScope[F[_],O,B](scope: CompileScope[F], stream: FreeC[Algebra[F,O,?],Unit], init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
+    compileLoop[F,O,B](scope, init, g, uncons(stream).viewL)
 
-  private def runFoldLoop[F[_],O,B](
-    scope: RunFoldScope[F]
+  private def compileLoop[F[_],O,B](
+    scope: CompileScope[F]
     , acc: B
     , g: (B, O) => B
     , v: FreeC.ViewL[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]
@@ -120,8 +120,8 @@ private[fs2] object Algebra {
         case None => F.pure(acc)
         case Some((hd, tl)) =>
           F.suspend {
-            try runFoldLoop[F,O,B](scope, hd.fold(acc)(g).force.run, g, uncons(tl).viewL)
-            catch { case NonFatal(e) => runFoldLoop[F,O,B](scope, acc, g, uncons(tl.asHandler(e)).viewL) }
+            try compileLoop[F,O,B](scope, hd.fold(acc)(g).force.run, g, uncons(tl).viewL)
+            catch { case NonFatal(e) => compileLoop[F,O,B](scope, acc, g, uncons(tl.asHandler(e)).viewL) }
           }
       }
 
@@ -133,7 +133,7 @@ private[fs2] object Algebra {
         val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr
         fx match {
           case wrap: Algebra.Eval[F, O, _] =>
-            F.flatMap(F.attempt(wrap.value)) { e => runFoldLoop(scope, acc, g, f(e).viewL) }
+            F.flatMap(F.attempt(wrap.value)) { e => compileLoop(scope, acc, g, f(e).viewL) }
 
           case acquire: Algebra.Acquire[F,_,_] =>
             val acquireResource = acquire.resource
@@ -144,7 +144,7 @@ private[fs2] object Algebra {
                   case Right(r) =>
                     val finalizer = F.suspend { acquire.release(r) }
                     F.flatMap(resource.acquired(finalizer)) { result =>
-                      runFoldLoop(scope, acc, g, f(result.right.map { _ => (r, resource.id) }).viewL)
+                      compileLoop(scope, acc, g, f(result.right.map { _ => (r, resource.id) }).viewL)
                     }
 
                   case Left(err) =>
@@ -153,7 +153,7 @@ private[fs2] object Algebra {
                         result.left.toOption.map { err0 =>
                           Left(new CompositeFailure(err, NonEmptyList.of(err0)))
                          }.getOrElse(Left(err))
-                      runFoldLoop(scope, acc, g, f(failedResult).viewL)
+                      compileLoop(scope, acc, g, f(failedResult).viewL)
                     }
                 }
               } else {
@@ -164,24 +164,24 @@ private[fs2] object Algebra {
 
           case release: Algebra.Release[F,_] =>
             F.flatMap(scope.releaseResource(release.token))  { result =>
-              runFoldLoop(scope, acc, g, f(result).viewL)
+              compileLoop(scope, acc, g, f(result).viewL)
             }
 
           case c: Algebra.CloseScope[F,_] =>
             F.flatMap(c.toClose.close) { result =>
               F.flatMap(c.toClose.openAncestor) { scopeAfterClose =>
-                runFoldLoop(scopeAfterClose, acc, g, f(result).viewL)
+                compileLoop(scopeAfterClose, acc, g, f(result).viewL)
               }
             }
 
           case o: Algebra.OpenScope[F,_] =>
             F.flatMap(scope.open) { innerScope =>
-              runFoldLoop(innerScope, acc, g, f(Right(innerScope)).viewL)
+              compileLoop(innerScope, acc, g, f(Right(innerScope)).viewL)
             }
 
           case e: GetScope[F,_] =>
             F.suspend {
-              runFoldLoop(scope, acc, g, f(Right(scope)).viewL)
+              compileLoop(scope, acc, g, f(Right(scope)).viewL)
             }
 
           case other => sys.error(s"impossible Segment or Output following uncons: $other")

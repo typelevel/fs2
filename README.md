@@ -36,15 +36,15 @@ def converter[F[_]](implicit F: Sync[F]): F[Unit] =
     .intersperse("\n")
     .through(text.utf8Encode)
     .through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
-    .run
+    .compile.drain
 
 // at the end of the universe...
 val u: Unit = converter[IO].unsafeRunSync()
 ```
 
-This will construct a `F[Unit]`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blanklines and commented lines. It then parses temperatures in degrees Fahrenheit, converts these to Celsius, UTF-8 encodes the output, and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed upon normal termination or if exceptions occur.
+This will construct a `F[Unit]`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blank lines and commented lines. It then parses temperatures in degrees Fahrenheit, converts these to Celsius, UTF-8 encodes the output, and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed upon normal termination or if exceptions occur.
 
-At the end it's saying that the effect `F` will be of type `cats.effect.IO` and then it's possible to invoke `unsafeRunSync()`. You can choose a different effect type or your own as long as it implements `cats.effect.Sync` for this case. In some other cases the constraints might require to implement interfaces like `cats.effect.MonadError[?, Throwable]`, `cats.effect.Async` and / or `cats.effect.Effect`.
+At the end it's saying that the effect `F` will be of type `cats.effect.IO` and then it's possible to invoke `unsafeRunSync()`. You can choose a different effect type or your own as long as it implements `cats.effect.Sync`.
 
 The library supports a number of other interesting use cases:
 
@@ -66,10 +66,10 @@ The 0.10 release is almost complete and will be released when Cats 1.0 is releas
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M8" // For cats 1.0.0-RC1 and cats-effect 0.5
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M10" // For cats 1.0.0-RC2 and cats-effect 0.6
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M8"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M10"
 ```
 
 The 0.9 release is out and we recommend upgrading. You may want to first [read the 0.9 migration guide](docs/migration-guide-0.9.md) if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:

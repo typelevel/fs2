@@ -20,7 +20,7 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
     F.delay {
       sys.addShutdownHook {
         (requestShutdown.set(true).runAsync(_ => IO.unit) *>
-          halted.discrete.takeWhile(_ == false).run).unsafeRunSync()
+          halted.discrete.takeWhile(_ == false).compile.drain).unsafeRunSync()
       }
       ()
     }
@@ -37,8 +37,7 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
   /** Exposed for testing, so we can check exit values before the dramatic sys.exit */
   private[fs2] def doMain(args: List[String]): IO[ExitCode] = {
     implicit val ec: ExecutionContext = directEC
-    async.promise[IO, ExitCode].flatMap { exitCodePromise
- =>
+    async.promise[IO, ExitCode].flatMap { exitCodePromise =>
     async.signalOf[IO, Boolean](false).flatMap { halted =>
       runStream(args, exitCodePromise, halted)
     }}
@@ -57,7 +56,7 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
                             (implicit ec: ExecutionContext): IO[ExitCode] =
     async.signalOf[F, Boolean](false).flatMap { requestShutdown =>
       addShutdownHook(requestShutdown, halted) *>
-      stream(args, requestShutdown.set(true)).interruptWhen(requestShutdown).take(1).runLast
+      stream(args, requestShutdown.set(true)).interruptWhen(requestShutdown).take(1).compile.last
     }.runAsync {
       case Left(t) =>
         IO(t.printStackTrace()) *>
