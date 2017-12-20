@@ -14,7 +14,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
       case Left(e) => FreeC.Fail(e)
     })
 
-  def flatMap2[R2](f: Either[Throwable, R] => FreeC[F, R2]): FreeC[F, R2] =
+  def transformWith[R2](f: Either[Throwable, R] => FreeC[F, R2]): FreeC[F, R2] =
     Bind[F,R,R2](this, r =>
       try f(r) catch { case NonFatal(e) => FreeC.Fail(e) }
     )

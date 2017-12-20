@@ -1660,28 +1660,7 @@ object Stream {
           }
           only match {
             case None =>
-              // tail mail contain algebra that is critical for proper sequenced scope closure
-              // as such here in the event of the failure we will always drain the algebra
-              // for any `CloseScope` so we will close correct resources and set correct parent scope.
-              // note that resources are guaranteed to be closed by the way how Scope.close is defined, however
-              // in that case, in certain situations, the flatMap followed by `handleErrorWith` may
-              // without this change postpone closure of resources until the handler in handleErrorWith is interpreted.
-
-              def fby( s1: Either[O, Stream[F, O]], s2: => Stream[F,O2]): Stream[F, O2] = {
-                Stream.fromFreeC[F,O2](s1 match {
-                  case Left(o) => f(o).get.flatMap2 {
-                    case Right(_) => s2.get
-                    case Left(err) => Algebra.asHandler[F, O2](s2.get, err) //.asInstanceOf[FreeC[Algebra[F,O2, ?], Unit]] // typecast is safe hence asHandler will never emit any `O`
-                  }
-                  case Right(s) => s.flatMap(f).get.flatMap2 {
-                    case Right(_) => s2.get
-                    case Left(err) => Stream.raiseError[O2](err).covary[F].get
-                  }
-                })
-              }
-
-              (hd.map(Left(_)) ++ Segment.singleton(Right(Stream.fromFreeC(tl))))
-              .foldRightLazy[Stream[F, O2]](empty_) { fby(_, _) }.get
+              hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(_ ++ _).get
 
             case Some(o) =>
               f(o).get
@@ -2021,14 +2000,30 @@ object Stream {
      * res0: List[Int] = List(1, 2, 3, 0)
      * }}}
      */
-    def handleErrorWith[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
-      Stream.fromFreeC(self.get[F,O2] handleErrorWith { e => h(e).get })
+    def handleErrorWith[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] = {
+      fromFreeC(Algebra.openScope[F, O2](None) flatMap { scope =>
+        self.get[F, O2].transformWith {
+          case Left(e) => Algebra.closeScope[F, O2](scope).flatMap { _ => h(e).get[F, O2] }
+          case Right(r) => Algebra.closeScope[F, O2](scope)
+        }
+      })
+
+    }
+
 
     /**
      * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
      */
     def onFinalize(f: F[Unit])(implicit F: Applicative[F]): Stream[F,O] =
       Stream.bracket(F.pure(()))(_ => self, _ => f)
+
+    /** Appends s2, to resume when this was interrupted **/
+    def onInterrupt[O2>:O](s2: => Stream[F, O2]): Stream[F, O2] = {
+      handleErrorWith {
+        case internal.Interrupted => s2
+        case other => Stream.raiseError(other)
+      }
+    }
 
     /** Like `interrupt` but resumes the stream when left branch goes to true. */
     def pauseWhen(pauseWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {

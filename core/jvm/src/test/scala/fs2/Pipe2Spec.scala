@@ -228,9 +228,9 @@ class Pipe2Spec extends Fs2Spec {
       val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
       val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.run.attempt
       val prg = (
-                  (s1.get.covary[IO].interruptWhen(interrupt).evalMap { _ => s.decrement map { _ => None } }) ++
-                  s1.get.map(Some(_))
-                ).collect { case Some(v) => v }
+        (s1.get.covary[IO].interruptWhen(interrupt).evalMap { _ => s.decrement map { _ => None } })
+        .onInterrupt(s1.get.map(Some(_)))
+      ).collect { case Some(v) => v }
 
       runLog(prg) shouldBe runLog(s1.get)
     }

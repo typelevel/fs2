@@ -55,20 +55,20 @@ private[fs2] object Algebra {
   private[fs2] def interruptScope[F[_], O, R](pull: FreeC[Algebra[F,O,?],R])(implicit effect: Effect[F], ec: ExecutionContext): FreeC[Algebra[F,O,?],R] =
     scope0(pull, Some((effect, ec)))
 
+
+  private[fs2] def openScope[F[_], O](interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F,O,?],RunFoldScope[F]] =
+    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](
+      OpenScope[F, O](interruptible.map { case (effect, ec) =>
+        (effect, ec, Promise.unsafeCreate(effect, ec), Ref.unsafeCreate((None: Option[Throwable], false))(effect))
+      })
+    )
+
+  private[fs2] def closeScope[F[_], O](toClose: RunFoldScope[F]): FreeC[Algebra[F,O,?],Unit] =
+    FreeC.Eval[Algebra[F,O,?],Unit](CloseScope(toClose))
+
   private def scope0[F[_], O, R](pull: FreeC[Algebra[F,O,?],R], interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F,O,?],R] = {
-
-    def openScope: FreeC[Algebra[F,O,?],RunFoldScope[F]] =
-       FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](
-         OpenScope[F, O](interruptible.map { case (effect, ec) =>
-           (effect, ec, Promise.unsafeCreate(effect, ec), Ref.unsafeCreate((None: Option[Throwable], false))(effect))
-         })
-       )
-
-    def closeScope(toClose: RunFoldScope[F]): FreeC[Algebra[F,O,?],Unit] =
-      FreeC.Eval[Algebra[F,O,?],Unit](CloseScope(toClose))
-
-    openScope flatMap { scope =>
-      pull.flatMap2 {
+    openScope(interruptible) flatMap { scope =>
+      pull.transformWith {
         case Left(e) => closeScope(scope) flatMap { _ => raiseError(e) }
         case Right(r) => closeScope(scope) map { _ => r }
       }
@@ -239,23 +239,4 @@ private[fs2] object Algebra {
     fr.translate[Algebra[G,O,?]](algFtoG)
   }
 
-  /**
-    * Specific version of `Free.asHandler` that will output any CloseScope that may have
-    * been opened before the `rsn` was yielded
-    */
-  def asHandler[F[_], O](free: FreeC[Algebra[F,O,?],Unit], e: Throwable): FreeC[Algebra[F,O,?],Unit] = {
-    free.viewL.get match {
-      case FreeC.Pure(_) => FreeC.Fail(e)
-      case FreeC.Fail(e2) => FreeC.Fail(e)
-      case bound: FreeC.Bind[Algebra[F,O,?], _, Unit] =>
-        val f = bound.f.asInstanceOf[
-          Either[Throwable,Any] => FreeC[Algebra[F,O,?], Unit]]
-        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr
-        fx match {
-          case _: Algebra.CloseScope[F,_] => FreeC.Bind(FreeC.Eval(fx), { (_: Either[Throwable, Any]) => f(Left(e)) })
-          case _ => f(Left(e))
-        }
-      case FreeC.Eval(_) => sys.error("impossible")
-    }
-  }
 }
