@@ -33,10 +33,9 @@ object Pipe {
         case FreeC.Pure(None) => Stepper.Done
         case FreeC.Pure(Some((hd,tl))) => Stepper.Emits(hd, go(stepf(tl)))
         case FreeC.Fail(t) => Stepper.Fail(t)
-        case bound: FreeC.Bind[ReadSegment,_,UO] =>
-          val f = bound.asInstanceOf[FreeC.Bind[ReadSegment,Any,UO]].f
-          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment,UO]].fr
-          Stepper.Await(segment => try go(f(Right(fx(segment)))) catch { case NonFatal(t) => go(f(Left(t))) })
+        case bound: FreeC.Bind[ReadSegment,x,UO] =>
+          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment,x]].fr
+          Stepper.Await(segment => try go(bound.f(Right(fx(segment)))) catch { case NonFatal(t) => go(bound.f(Left(t))) })
         case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }

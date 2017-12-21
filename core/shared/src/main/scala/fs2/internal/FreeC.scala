@@ -74,23 +74,20 @@ private[fs2] object FreeC {
   final class ViewL[F[_],+R](val get: FreeC[F,R]) extends AnyVal
 
   private def mkViewL[F[_], R](free: FreeC[F, R]): ViewL[F, R] = {
-    type X = Any
     @annotation.tailrec
-    def go(free: FreeC[F, X]): ViewL[F, R] = free match {
+    def go[X](free: FreeC[F, X]): ViewL[F, R] = free match {
       case Pure(x) => new ViewL(free.asInstanceOf[FreeC[F,R]])
       case Eval(fx) => new ViewL(Bind(free.asInstanceOf[FreeC[F,R]], pureContinuation[F,R]))
       case Fail(err) => new ViewL(free.asInstanceOf[FreeC[F,R]])
-      case b: FreeC.Bind[F, _, X] =>
-        val fw: FreeC[F, Any] = b.fx.asInstanceOf[FreeC[F, Any]]
-        val f: Either[Throwable,Any] => FreeC[F, X] = b.f.asInstanceOf[Either[Throwable,Any] => FreeC[F, X]]
-        fw match {
-          case Pure(x) => go(f(Right(x)))
-          case Fail(e) => go(f(Left(e)))
+      case b: FreeC.Bind[F, y, X] =>
+        b.fx match {
+          case Pure(x) => go(b.f(Right(x)))
+          case Fail(e) => go(b.f(Left(e)))
           case Eval(_) => new ViewL(b.asInstanceOf[FreeC[F,R]])
-          case Bind(w, g) => go(Bind(w, (e: Either[Throwable,X]) => Bind(g(e), f)))
+          case Bind(w, g) => go(Bind(w, (e: Either[Throwable,Any]) => Bind(g(e), b.f)))
         }
     }
-    go(free.asInstanceOf[FreeC[F,X]])
+    go(free)
   }
 
   implicit final class InvariantOps[F[_],R](private val self: FreeC[F,R]) extends AnyVal {

@@ -68,27 +68,26 @@ private[fs2] object Algebra {
     s.viewL.get match {
       case done: FreeC.Pure[Algebra[F,O,?], Unit] => pure(None)
       case failed: FreeC.Fail[Algebra[F,O,?], _] => raiseError(failed.error)
-      case bound: FreeC.Bind[Algebra[F,O,?],_,Unit] =>
-        val f = bound.f.asInstanceOf[Either[Throwable,Any] => FreeC[Algebra[F,O,?],Unit]]
-        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr
+      case bound: FreeC.Bind[Algebra[F,O,?],x,Unit] =>
+        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],x]].fr
         fx match {
-          case os: Algebra.Output[F, O] =>
-            pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some((os.values, f(Right(())))))
-          case os: Algebra.Run[F, O, x] =>
+          case os: Algebra.Output[F,O] =>
+            pure(Some((os.values, bound.f(Right(())))))
+          case os: Algebra.Run[F,O,x] =>
             try {
               def asSegment(c: Catenable[Chunk[O]]): Segment[O,Unit] =
                 c.uncons.flatMap { case (h1,t1) => t1.uncons.map(_ => Segment.catenated(c.map(Segment.chunk))).orElse(Some(Segment.chunk(h1))) }.getOrElse(Segment.empty)
               os.values.force.splitAt(chunkSize, Some(maxSteps)) match {
                 case Left((r,chunks,rem)) =>
-                  pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some(asSegment(chunks) -> f(Right(r))))
+                  pure(Some(asSegment(chunks) -> bound.f(Right(r))))
                 case Right((chunks,tl)) =>
-                  pure[F,X,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](Some(asSegment(chunks) -> FreeC.Bind[Algebra[F,O,?],x,Unit](segment(tl), f)))
+                  pure(Some(asSegment(chunks) -> FreeC.Bind(segment(tl), bound.f)))
               }
-            } catch { case NonFatal(e) => FreeC.suspend(uncons(f(Left(e)), chunkSize)) }
+            } catch { case NonFatal(e) => FreeC.suspend(uncons(bound.f(Left(e)), chunkSize)) }
           case algebra => // Eval, Acquire, Release, OpenScope, CloseScope, GetScope
-            FreeC.Bind[Algebra[F,X,?],Any,Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]](
-              FreeC.Eval[Algebra[F,X,?],Any](algebra.asInstanceOf[Algebra[F,X,Any]]),
-              (x: Either[Throwable,Any]) => uncons[F,X,O](f(x), chunkSize)
+            FreeC.Bind(
+              FreeC.Eval(algebra.asInstanceOf[Algebra[F,X,x]]), // O is phantom in these constructors so it is safe to case O to X
+              (e: Either[Throwable,x]) => uncons[F,X,O](bound.f(e), chunkSize)
             )
         }
       case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
@@ -127,13 +126,11 @@ private[fs2] object Algebra {
 
       case failed: FreeC.Fail[Algebra[F,O,?], _] => F.raiseError(failed.error)
 
-      case bound: FreeC.Bind[Algebra[F,O,?], _, Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] =>
-        val f = bound.f.asInstanceOf[
-          Either[Throwable,Any] => FreeC[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]]
-        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr
+      case bound: FreeC.Bind[Algebra[F,O,?],x,Option[(Segment[O,Unit],FreeC[Algebra[F,O,?],Unit])]] =>
+        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],x]].fr
         fx match {
           case wrap: Algebra.Eval[F, O, _] =>
-            F.flatMap(F.attempt(wrap.value)) { e => compileLoop(scope, acc, g, f(e).viewL) }
+            F.flatMap(F.attempt(wrap.value)) { e => compileLoop(scope, acc, g, bound.f(e).viewL) }
 
           case acquire: Algebra.Acquire[F,_,_] =>
             val acquireResource = acquire.resource
@@ -144,16 +141,16 @@ private[fs2] object Algebra {
                   case Right(r) =>
                     val finalizer = F.suspend { acquire.release(r) }
                     F.flatMap(resource.acquired(finalizer)) { result =>
-                      compileLoop(scope, acc, g, f(result.right.map { _ => (r, resource.id) }).viewL)
+                      compileLoop(scope, acc, g, bound.f(result.right.map { _ => (r, resource.id) }).viewL)
                     }
 
                   case Left(err) =>
                     F.flatMap(scope.releaseResource(resource.id)) { result =>
-                      val failedResult: Either[Throwable, Unit] =
+                      val failedResult: Either[Throwable,x] =
                         result.left.toOption.map { err0 =>
                           Left(new CompositeFailure(err, NonEmptyList.of(err0)))
                          }.getOrElse(Left(err))
-                      compileLoop(scope, acc, g, f(failedResult).viewL)
+                      compileLoop(scope, acc, g, bound.f(failedResult).viewL)
                     }
                 }
               } else {
@@ -164,24 +161,24 @@ private[fs2] object Algebra {
 
           case release: Algebra.Release[F,_] =>
             F.flatMap(scope.releaseResource(release.token))  { result =>
-              compileLoop(scope, acc, g, f(result).viewL)
+              compileLoop(scope, acc, g, bound.f(result).viewL)
             }
 
           case c: Algebra.CloseScope[F,_] =>
             F.flatMap(c.toClose.close) { result =>
               F.flatMap(c.toClose.openAncestor) { scopeAfterClose =>
-                compileLoop(scopeAfterClose, acc, g, f(result).viewL)
+                compileLoop(scopeAfterClose, acc, g, bound.f(result).viewL)
               }
             }
 
           case o: Algebra.OpenScope[F,_] =>
             F.flatMap(scope.open) { innerScope =>
-              compileLoop(innerScope, acc, g, f(Right(innerScope)).viewL)
+              compileLoop(innerScope, acc, g, bound.f(Right(innerScope)).viewL)
             }
 
           case e: GetScope[F,_] =>
             F.suspend {
-              compileLoop(scope, acc, g, f(Right(scope)).viewL)
+              compileLoop(scope, acc, g, bound.f(Right(scope)).viewL)
             }
 
           case other => sys.error(s"impossible Segment or Output following uncons: $other")
