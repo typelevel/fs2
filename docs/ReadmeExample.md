@@ -97,11 +97,8 @@ written: fs2.Stream[cats.effect.IO,Unit] = Stream(..)
 There are a number of ways of interpreting the stream. In this case, we call `compile.drain`, which returns a val value of the effect type, `IO`. The output of the stream is ignored - we compile it solely for its effect.
 
 ```scala
-scala> val task: IO[Unit] = written.run
-<console>:21: warning: method run in class InvariantOps is deprecated (since 0.10.0): Use compile.drain instead
-       val task: IO[Unit] = written.run
-                                    ^
-task: cats.effect.IO[Unit] = IO$1142011553
+scala> val task: IO[Unit] = written.compile.drain
+task: cats.effect.IO[Unit] = IO$129936443
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.
