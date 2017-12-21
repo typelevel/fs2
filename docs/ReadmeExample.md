@@ -101,7 +101,7 @@ scala> val task: IO[Unit] = written.run
 <console>:21: warning: method run in class InvariantOps is deprecated (since 0.10.0): Use compile.drain instead
        val task: IO[Unit] = written.run
                                     ^
-task: cats.effect.IO[Unit] = IO$1308901804
+task: cats.effect.IO[Unit] = IO$1142011553
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.

@@ -578,7 +578,7 @@ If instead we use `onFinalize`, the code is guaranteed to run, regardless of whe
 Stream(1).covary[IO].
           onFinalize(IO { println("finalized!") }).
           take(1).
-          runLog.unsafeRunSync()
+          compile.toVector.unsafeRunSync()
 ```
 
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:

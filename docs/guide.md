@@ -137,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.compile.toVector // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$1473460473
+// ra: cats.effect.IO[Vector[Int]] = IO$1153354928
 
 val rb = eff.compile.drain // purely for effects
-// rb: cats.effect.IO[Unit] = IO$389935702
+// rb: cats.effect.IO[Unit] = IO$1263779705
 
 val rc = eff.compile.fold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$387044598
+// rc: cats.effect.IO[Int] = IO$593410330
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -274,10 +274,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$2108369770
+acquire: cats.effect.IO[Unit] = IO$778339107
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$190389079
+release: cats.effect.IO[Unit] = IO$1666732013
 ```
 
 ```scala
@@ -554,7 +554,7 @@ import cats.effect.Sync
 // import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@70ac78a6
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@7254f5ea
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
@@ -611,12 +611,12 @@ val c = new Connection {
 
 // Effect extends both Sync and Async
 val T = cats.effect.Effect[IO]
-// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@70ac78a6
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@7254f5ea
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: cats.effect.IO[Array[Byte]] = IO$1817661216
+// bytes: cats.effect.IO[Array[Byte]] = IO$1355451161
 
 Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 // res42: Vector[List[Byte]] = Vector(List(0, 1, 2))
@@ -721,10 +721,7 @@ If instead we use `onFinalize`, the code is guaranteed to run, regardless of whe
 Stream(1).covary[IO].
           onFinalize(IO { println("finalized!") }).
           take(1).
-          runLog.unsafeRunSync()
-// <console>:22: warning: method runLog in class InvariantOps is deprecated (since 0.10.0): Use compile.toVector instead
-//                  runLog.unsafeRunSync()
-//                  ^
+          compile.toVector.unsafeRunSync()
 // finalized!
 // res3: Vector[Int] = Vector(1)
 ```
