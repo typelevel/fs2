@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 import cats.effect.Effect
 import cats.implicits._
 import fs2.async.mutable.Queue
-import fs2.internal.{Algebra, FreeC, NonFatal}
+import fs2.internal.{FreeC, NonFatal}
 
 object Pipe {
 
@@ -22,11 +22,10 @@ object Pipe {
 
     // Steps `s` without overhead of resource tracking
     def stepf(s: Stream[Read,O]): Read[UO] = {
-      Algebra.compile(
-        Algebra.uncons(s.get).flatMap {
-          case Some((hd,tl)) => Algebra.output1[Read,UO](Some((hd,Stream.fromFreeC(tl))))
-          case None => Algebra.pure[Read,UO,Unit](())
-        }, None: UO)((x,y) => y)
+      s.pull.uncons.flatMap {
+        case Some((hd,tl)) => Pull.output1((hd,tl))
+        case None => Pull.done
+      }.streamNoScope.compile.last
     }
 
     def go(s: Read[UO]): Stepper[I,O] = Stepper.Suspend { () =>
