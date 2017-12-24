@@ -5,7 +5,6 @@ import cats.~>
 import cats.effect.{Effect, Sync}
 import cats.implicits._
 import fs2._
-import fs2.async.{Promise, Ref}
 
 import scala.concurrent.ExecutionContext
 
@@ -19,7 +18,7 @@ private[fs2] object Algebra {
 
   final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Algebra[F,O,(R,Token)]
   final case class Release[F[_],O](token: Token) extends Algebra[F,O,Unit]
-  final case class OpenScope[F[_],O](interruptible: Option[(Effect[F], ExecutionContext, Promise[F, Throwable], Ref[F, (Option[Throwable], Boolean)])]) extends Algebra[F,O,RunFoldScope[F]]
+  final case class OpenScope[F[_],O](interruptible: Option[(Effect[F], ExecutionContext)]) extends Algebra[F,O,RunFoldScope[F]]
   final case class CloseScope[F[_],O](toClose: RunFoldScope[F]) extends Algebra[F,O,Unit]
   final case class GetScope[F[_],O]() extends Algebra[F,O,RunFoldScope[F]]
 
@@ -57,11 +56,7 @@ private[fs2] object Algebra {
 
 
   private[fs2] def openScope[F[_], O](interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F,O,?],RunFoldScope[F]] =
-    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](
-      OpenScope[F, O](interruptible.map { case (effect, ec) =>
-        (effect, ec, Promise.unsafeCreate(effect, ec), Ref.unsafeCreate((None: Option[Throwable], false))(effect))
-      })
-    )
+    FreeC.Eval[Algebra[F,O,?],RunFoldScope[F]](OpenScope[F, O](interruptible))
 
   private[fs2] def closeScope[F[_], O](toClose: RunFoldScope[F]): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](CloseScope(toClose))
@@ -137,7 +132,10 @@ private[fs2] object Algebra {
     , g: (B, O) => B
     , v: FreeC.ViewL[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]
   )(implicit F: Sync[F]): F[B] = {
-    v.get match {
+    println(s"RFLD(${scope.id}) : ${scope.interruptible.nonEmpty}")
+    val x = v.get
+    println(s"RFLD(${scope.id}) : $x")
+    x match {
       case done: FreeC.Pure[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] => done.r match {
         case None => F.pure(acc) // in case of interrupt we ignore interrupt when this is done.
         case Some((hd, tl)) =>
@@ -173,7 +171,7 @@ private[fs2] object Algebra {
             val acquireResource = acquire.resource
             val resource = Resource.create
             F.flatMap(scope.register(resource)) { mayAcquire =>
-              if (!mayAcquire) F.raiseError(Interrupted)
+              if (!mayAcquire) F.raiseError(Interrupted(scope.id)) // todo: Shouldn't that be a root scope id ?
               else {
                 F.flatMap(F.attempt(acquireResource)) {
                   case Right(r) =>
@@ -209,6 +207,7 @@ private[fs2] object Algebra {
 
           case o: Algebra.OpenScope[F,_] =>
             F.flatMap(scope.open(o.interruptible)) { innerScope =>
+              println(s"RFLD(${scope.id}): OPEN: ${innerScope.id}")
               runFoldLoop(innerScope, acc, g, f(Right(innerScope)).viewL)
             }
 

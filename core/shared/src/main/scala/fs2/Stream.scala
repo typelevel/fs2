@@ -1500,7 +1500,7 @@ object Stream {
       Stream.eval(async.promise[F, Unit]).flatMap { doneR =>
       Stream.eval(async.promise[F, Throwable]).flatMap { interruptL =>
         def runR = that.interruptWhen(interruptR.get.attempt).run.attempt flatMap {
-          case Right(_) | Left(Interrupted) => doneR.complete(())
+          case Right(_) | Left(_:Interrupted) => doneR.complete(())
           case Left(err) => interruptL.complete(err) *> doneR.complete(())
         }
 
@@ -1752,7 +1752,7 @@ object Stream {
       Stream.eval(async.fork(haltOnSignal flatMap scope.interrupt)) flatMap { _ =>
         self
       }}.interruptScope.handleErrorWith {
-        case fs2.Interrupted => Stream.empty
+        case _:fs2.Interrupted => Stream.empty
         case other => Stream.raiseError(other)
       }
     }
@@ -2020,7 +2020,7 @@ object Stream {
     /** Appends s2, to resume when this was interrupted **/
     def onInterrupt[O2>:O](s2: => Stream[F, O2]): Stream[F, O2] = {
       handleErrorWith {
-        case fs2.Interrupted => s2
+        case _:fs2.Interrupted => s2
         case other => Stream.raiseError(other)
       }
     }

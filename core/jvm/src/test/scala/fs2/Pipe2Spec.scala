@@ -1,9 +1,12 @@
 package fs2
 
 
+import java.util.concurrent.{Executors, TimeUnit}
+
 import scala.concurrent.duration._
 import cats.effect.IO
 import cats.implicits._
+import fs2.async.Promise
 import org.scalacheck.Gen
 
 class Pipe2Spec extends Fs2Spec {
@@ -233,6 +236,31 @@ class Pipe2Spec extends Fs2Spec {
       ).collect { case Some(v) => v }
 
       runLog(prg) shouldBe runLog(s1.get)
+    }
+
+    "interrupt (11)" in { //forAll { s1: PureStream[Int] =>
+      val s1 = Stream.emits(List(-944365007, -666910873, -1866593690, -71185538)).unchunk
+      val s2 = Stream.emits(List(1,2,3,4)).unchunk
+
+      println(s"XXXX $s1")
+      // tests that interruption works even when flatMap is followed by `collect`
+      val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
+      val es = Executors.newScheduledThreadPool(10)
+      val prom = Promise.unsafeCreate[IO, Unit]
+      es.schedule(new Runnable {
+        override def run(): Unit = prom.complete(()).unsafeRunSync()
+      }, 50, TimeUnit.MILLISECONDS)
+      // val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.run.attempt
+      val prg =
+        (s1.covary[IO].interruptWhen(prom.get.attempt).map { i => None } ++ s2.map(Some(_)))
+          .flatMap {
+            case None => Stream.eval(s.decrement.map { _ => None })
+            case Some(i) => Stream.emit(Some(i))
+          }
+          //.collect { case Some(i) => i }
+
+      runLog(prg) //shouldBe runLog(s1.get)
+      false
     }
 
     "pause" in {
