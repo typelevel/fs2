@@ -62,6 +62,15 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
+* [API docs (fs2-core 0.10.0-M10)][core-api-0.10.0-M10], [API docs (fs2-io 0.10.0-M10)][io-api-0.10.0-M10]
+
+[io-api-0.10.0-M10]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-M10/fs2-io_2.12-0.10.0-M10-javadoc.jar/!/fs2/index.html
+[core-api-0.10.0-M10]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-M10/fs2-core_2.12-0.10.0-M10-javadoc.jar/!/fs2/index.html
+
+
+
 The 0.10 release is almost complete and will be released when Cats 1.0 is released. Milestone builds are available now. The [0.10 migration guide](docs/migration-guide-0.10.md) summarizes the differences between 0.10 and 0.9. To get 0.10, add the following to your SBT build:
 
 ```
