@@ -63,11 +63,17 @@ Blog posts and other external resources are listed on the [Additional Resources]
 ### <a id="getit"></a> Where to get the latest version ###
 
 * [API docs (fs2-core 0.10.0-M10)][core-api-0.10.0-M10], [API docs (fs2-io 0.10.0-M10)][io-api-0.10.0-M10]
+* [API docs (fs2-core 0.10.0-M8)][core-api-0.10.0-M8], [API docs (fs2-io 0.10.0-M8)][io-api-0.10.0-M8]
 
 [io-api-0.10.0-M10]:
 https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-M10/fs2-io_2.12-0.10.0-M10-javadoc.jar/!/fs2/index.html
 [core-api-0.10.0-M10]:
 https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-M10/fs2-core_2.12-0.10.0-M10-javadoc.jar/!/fs2/index.html
+
+[io-api-0.10.0-M8]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-M8/fs2-io_2.12-0.10.0-M8-javadoc.jar/!/fs2/index.html
+[core-api-0.10.0-M8]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-M8/fs2-core_2.12-0.10.0-M8-javadoc.jar/!/fs2/index.html
 
 
 
