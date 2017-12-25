@@ -64,8 +64,8 @@ private[fs2] object Algebra {
   private def scope0[F[_], O, R](pull: FreeC[Algebra[F,O,?],R], interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F,O,?],R] = {
     openScope(interruptible) flatMap { scope =>
       pull.transformWith {
-        case Left(e) => closeScope(scope) flatMap { _ => raiseError(e) }
         case Right(r) => closeScope(scope) map { _ => r }
+        case Left(e) => closeScope(scope) flatMap { _ => raiseError(e) }
       }
     }
   }
@@ -83,7 +83,10 @@ private[fs2] object Algebra {
     FreeC.suspend(f)
 
   def uncons[F[_],X,O](s: FreeC[Algebra[F,O,?],Unit], chunkSize: Int = 1024, maxSteps: Long = 10000): FreeC[Algebra[F,X,?],Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] = {
-    s.viewL.get match {
+    //println(s"UNCONS S: $s")
+    val x = s.viewL.get
+    //println(s"UNCONS X: $x")
+    x match {
       case done: FreeC.Pure[Algebra[F,O,?], Unit] => pure(None)
       case failed: FreeC.Fail[Algebra[F,O,?], _] => raiseError(failed.error)
       case bound: FreeC.Bind[Algebra[F,O,?],_,Unit] =>
@@ -132,9 +135,9 @@ private[fs2] object Algebra {
     , g: (B, O) => B
     , v: FreeC.ViewL[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]]
   )(implicit F: Sync[F]): F[B] = {
-    println(s"RFLD(${scope.id}) : ${scope.interruptible.nonEmpty}")
+    //println(s"RFLD(${scope.id}) : ${scope.interruptible.nonEmpty}")
     val x = v.get
-    println(s"RFLD(${scope.id}) : $x")
+    //println(s"RFLD(${scope.id}) : $x")
     x match {
       case done: FreeC.Pure[Algebra[F,O,?], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]] => done.r match {
         case None => F.pure(acc) // in case of interrupt we ignore interrupt when this is done.
@@ -171,7 +174,7 @@ private[fs2] object Algebra {
             val acquireResource = acquire.resource
             val resource = Resource.create
             F.flatMap(scope.register(resource)) { mayAcquire =>
-              if (!mayAcquire) F.raiseError(Interrupted(scope.id)) // todo: Shouldn't that be a root scope id ?
+              if (!mayAcquire) F.raiseError(Interrupted(scope.id, 0)) // todo: Shouldn't that be a root scope id ?
               else {
                 F.flatMap(F.attempt(acquireResource)) {
                   case Right(r) =>
@@ -207,7 +210,6 @@ private[fs2] object Algebra {
 
           case o: Algebra.OpenScope[F,_] =>
             F.flatMap(scope.open(o.interruptible)) { innerScope =>
-              println(s"RFLD(${scope.id}): OPEN: ${innerScope.id}")
               runFoldLoop(innerScope, acc, g, f(Right(innerScope)).viewL)
             }
 
@@ -236,6 +238,27 @@ private[fs2] object Algebra {
       }
     }
     fr.translate[Algebra[G,O,?]](algFtoG)
+  }
+
+  /**
+    * If the current stream evaluation scope is scope defined in `interrupted` or any ancestors of current scope
+    * then this will continue with evaluation of `s` as interrupted stream.
+    * Otherwise, this continues with `s` normally, and `interrupted` is ignored.
+    */
+  private[fs2] def interruptEventually[F[_], O](s: FreeC[Algebra[F,O,?],Unit], interrupted: Interrupted): FreeC[Algebra[F,O,?],Unit] = {
+    Algebra.getScope.flatMap { scope =>
+      def loopsExceeded: Boolean = interrupted.loop >= scope.interruptible.map(_.maxInterruptDepth).getOrElse(0)
+      if (scope.id == interrupted.scopeId) {
+        if (loopsExceeded) raiseError(interrupted)
+        else s.asHandler(interrupted.copy(loop = interrupted.loop + 1))
+      } else {
+        Algebra.eval(scope.hasAncestor(interrupted.scopeId)).flatMap { hasAncestor =>
+          if (!hasAncestor) s
+          else if (loopsExceeded) raiseError(interrupted.copy(loop = 0))
+          else s.asHandler(interrupted.copy(loop = interrupted.loop + 1))
+        }
+      }
+    }
   }
 
 }

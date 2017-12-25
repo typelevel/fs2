@@ -729,7 +729,13 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * res0: List[Int] = List(1, 2, 3, 1, 2, 3, 1, 2)
    * }}}
    */
-  def repeat: Stream[F,O] = this ++ repeat
+  def repeat: Stream[F,O] =
+    Stream.fromFreeC[F, O](this.get.transformWith {
+      case Right(_) => repeat.get
+      case Left(int: Interrupted) => Algebra.pure(())
+      case Left(err) => Algebra.raiseError(err)
+    })
+
 
   /**
    * Converts a `Stream[F,Either[Throwable,O]]` to a `Stream[F,O]`, which emits right values and fails upon the first `Left(t)`.
@@ -1456,8 +1462,13 @@ object Stream {
     def ++[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] = self.append(s2)
 
     /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
-    def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      fromFreeC(self.get.flatMap { _ => s2.get })
+    def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] = {
+      fromFreeC(self.get[F, O2].transformWith {
+        case Right(_) => s2.get
+        case Left(interrupted: Interrupted) => Algebra.interruptEventually(s2.get, interrupted)
+        case Left(err) => Algebra.raiseError(err)
+      })
+    }
 
     /**
      * Emits only elements that are distinct from their immediate predecessors,
@@ -1648,7 +1659,8 @@ object Stream {
      * }}}
      */
     def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] = {
-      Stream.fromFreeC(Algebra.uncons(self.get[F,O]).flatMap {
+      Stream.fromFreeC[F,O2](Algebra.uncons(self.get[F,O]).flatMap {
+
         case Some((hd, tl)) =>
           // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
           // check if hd has only a single element, and if so, process it directly instead of folding.
@@ -1660,10 +1672,34 @@ object Stream {
           }
           only match {
             case None =>
-              hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(_ ++ _).get
+
+              // specific version of ++, that in case of error or interrupt shortcuts for evaluation immediately to tail.
+              def fby(s1: Stream[F, O2], s2: => Stream[F, O2]): Stream[F, O2] = {
+                fromFreeC[F, O2](s1.get.transformWith {
+                  case Right(()) => s2.get
+                  case Left(int: Interrupted) => fromFreeC(Algebra.interruptEventually(tl, int)).flatMap(f).get
+                  case Left(err) => Algebra.raiseError(err)
+                })
+              }
+
+              hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(fby(_, _)).get
 
             case Some(o) =>
               f(o).get
+
+              //todo: this introduces SoE, but is necessary to interrupt streams, that are single elements only
+              // we need a way how to implement this.
+//              // if we have single element we need to check before every evalaution that scope is not interrupted yet
+//              Algebra.getScope.flatMap { scope =>
+//                if (scope.interruptible.isEmpty) f(o).get
+//                else {
+//                  Algebra.eval(scope.isInterrupted).flatMap { isInterrupted =>
+//                    if (isInterrupted) Algebra.pure[F, O2, Unit](())
+//                    else f(o).get
+//                  }
+//                }
+//              }
+
           }
         case None => Stream.empty.covaryAll[F,O2].get
       })
@@ -1752,7 +1788,7 @@ object Stream {
       Stream.eval(async.fork(haltOnSignal flatMap scope.interrupt)) flatMap { _ =>
         self
       }}.interruptScope.handleErrorWith {
-        case _:fs2.Interrupted => Stream.empty
+        case int: fs2.Interrupted => Stream.empty
         case other => Stream.raiseError(other)
       }
     }
@@ -2017,13 +2053,6 @@ object Stream {
     def onFinalize(f: F[Unit])(implicit F: Applicative[F]): Stream[F,O] =
       Stream.bracket(F.pure(()))(_ => self, _ => f)
 
-    /** Appends s2, to resume when this was interrupted **/
-    def onInterrupt[O2>:O](s2: => Stream[F, O2]): Stream[F, O2] = {
-      handleErrorWith {
-        case _:fs2.Interrupted => s2
-        case other => Stream.raiseError(other)
-      }
-    }
 
     /** Like `interrupt` but resumes the stream when left branch goes to true. */
     def pauseWhen(pauseWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {

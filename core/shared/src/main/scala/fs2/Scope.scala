@@ -41,4 +41,11 @@ abstract class Scope[F[_]] {
     *
     */
   def interrupt(cause: Either[Throwable, Unit]): F[Unit]
+
+  /**
+    * Yields to true, if the scope is interrupted.
+    * Note that when scope is interrupted with error, this yields to false
+    * @return
+    */
+  def isInterrupted: F[Boolean]
 }

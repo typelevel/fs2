@@ -114,6 +114,7 @@ private[fs2] final class RunFoldScope[F[_]] private (
             , promise = Promise.unsafeCreate[F, Throwable](effect, ec)
             , ref = Ref.unsafeCreate[F, (Option[Throwable], Boolean)]((None, false))
             , interruptScopeId = newScopeId
+            , maxInterruptDepth = 256 // todo: want we somehow configure this ?
           )
         }
         val scope = new RunFoldScope[F](newScopeId, Some(self), iCtx orElse self.interruptible)
@@ -202,6 +203,11 @@ private[fs2] final class RunFoldScope[F[_]] private (
     go(self, Catenable.empty)
   }
 
+  /** yields to true, if this scope has ancestor with given scope Id **/
+  def hasAncestor(scopeId: Token): F[Boolean] = {
+    F.map(ancestors) { c => Catenable.instance.exists(c)(_.id == scopeId) }
+  }
+
   // See docs on [[Scope#lease]]
   def lease: F[Option[Lease[F]]] = {
     val T = Catenable.instance
@@ -229,16 +235,24 @@ private[fs2] final class RunFoldScope[F[_]] private (
     interruptible match {
       case None => F.raiseError(new Throwable("Scope#interrupt called for Scope that cannot be interrupted"))
       case Some(iCtx) =>
-        val interruptRsn  = cause.left.toOption.getOrElse(Interrupted(iCtx.interruptScopeId))
+        val interruptRsn  = cause.left.toOption.getOrElse(Interrupted(iCtx.interruptScopeId, 0))
+        //println(s"XXXY INTERRUPT($id): ${iCtx.interruptScopeId} : $cause")
         F.flatMap(F.attempt(iCtx.promise.complete(interruptRsn))) {
           case Right(_) =>
             F.map(iCtx.ref.modify({ case (interrupted, signalled) => (interrupted orElse Some(interruptRsn), signalled)})) { _ => ()}
           case Left(_) =>
             F.unit
         }
-
     }
+  }
 
+  // See docs on [[Scope#isInterrupted]]
+  def isInterrupted: F[Boolean] = {
+    interruptible match {
+      case None => F.pure(false)
+      case Some(iCtx) =>
+        F.map(iCtx.ref.get) { case (interrupted, _) => interrupted.nonEmpty }
+    }
   }
 
   /**
@@ -354,8 +368,12 @@ private[internal] object RunFoldScope {
     * @param ref      Ref guarding the interruption. Option holds Interruption cause and boolean holds wheter scope is known to be
     *                 Interrupted already.
     * @param interruptScopeId An id of the scope, that shall signal end of the interruption. Essentially thats the first
-    *                         scope in the stack that was marked as interruptible scope. Guards
-    *                         proper interruption signalling in nested interruption scopes.
+    *                         scope in the stack that was marked as interruptible scope. Guards, that the interrupt of one stream
+    *                         won't propagate to parent stream, that may be also interrupted but not yet by this stream.
+    * @param maxInterruptDepth In case the stream is interrupted, this is used to prevent infinite stream from searching
+    *                          for cleanup indefinitely. This is consulted only if the stream was interrupted, and if the
+    *                          loop occurred in single given scope.
+    *                          If stream failed with error, this is not used at all.
     * @tparam F
     */
   final private[internal] case class InterruptContext[F[_]](
@@ -364,5 +382,6 @@ private[internal] object RunFoldScope {
     , promise: Promise[F, Throwable]
     , ref: Ref[F, (Option[Throwable], Boolean)]
     , interruptScopeId: Token
+    , maxInterruptDepth: Int
   )
 }
