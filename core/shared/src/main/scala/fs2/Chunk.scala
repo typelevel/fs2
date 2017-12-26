@@ -1,7 +1,8 @@
 package fs2
 
+import scala.collection.immutable.VectorBuilder
 import scala.reflect.ClassTag
-import java.nio.ByteBuffer
+import java.nio.{ByteBuffer => JByteBuffer}
 
 import cats.{Applicative, Eval, Foldable, Monad, Traverse}
 import cats.instances.all._
@@ -114,6 +115,24 @@ abstract class Chunk[+O] {
     this match {
       case c: Chunk.Bytes => c
       case other => Chunk.Bytes(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
+    }
+  }
+
+  def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
+    val _ = ev // Convince scalac that ev is used
+    this match {
+      case c: Chunk.Bytes =>
+        JByteBuffer.wrap(c.values, c.offset, c.length)
+      case c: Chunk.ByteBuffer =>
+        val b = c.buf.asReadOnlyBuffer
+        if (c.offset == 0 && b.position == 0 && c.size == b.limit) b
+        else {
+          b.position(c.offset.toInt)
+          b.limit(c.offset.toInt + c.size)
+          b
+        }
+      case other =>
+        JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
   }
 
@@ -362,9 +381,38 @@ object Chunk {
       Bytes(values, offset, n) -> Bytes(values, offset + n, length - n)
     override def map[O2](f: Byte => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Byte: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
-    def toByteBuffer: ByteBuffer = ByteBuffer.wrap(values, offset, length)
   }
   object Bytes { def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length) }
+
+  /** Creates a chunk backed by an byte buffer, bounded by the current position and limit */
+  def byteBuffer(buf: JByteBuffer): Chunk[Byte] = ByteBuffer(buf)
+
+  final case class ByteBuffer private (buf: JByteBuffer, offset: Int, size: Int) extends Chunk[Byte] {
+    def apply(i: Int): Byte = buf.get(i + offset)
+    protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
+      val first = buf.asReadOnlyBuffer
+      first.limit(n + offset)
+      val second = buf.asReadOnlyBuffer
+      second.position(n + offset)
+      (ByteBuffer(first), ByteBuffer(second))
+    }
+    override def map[O2](f: Byte => O2): Chunk[O2] = {
+      val b = new VectorBuilder[O2]
+      b.sizeHint(size)
+      for (i <- offset until size + offset) {
+        b += f(buf.get(i))
+      }
+      indexedSeq(b.result)
+    }
+    override def toArray[O2 >: Byte: ClassTag]: Array[O2] = {
+      val bs = new Array[Byte](size)
+      val b = buf.duplicate
+      b.position(offset)
+      b.get(bs, 0, size)
+      bs.asInstanceOf[Array[O2]]
+    }
+  }
+  object ByteBuffer { def apply(buf: JByteBuffer): ByteBuffer = ByteBuffer(buf, buf.position, buf.remaining) }
 
   /** Creates a chunk backed by an array of shorts. */
   def shorts(values: Array[Short]): Chunk[Short] = Shorts(values, 0, values.length)
