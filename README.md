@@ -101,6 +101,7 @@ The previous stable release is 0.8.4 ([source](https://github.com/functional-str
 If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it here.
 
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
+* [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
 * [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.
