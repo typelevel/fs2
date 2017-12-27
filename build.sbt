@@ -38,7 +38,7 @@ lazy val commonSettings = Seq(
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
-    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4"),
+    compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.5"),
     "org.scalatest" %%% "scalatest" % "3.0.4" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
   ),
@@ -176,7 +176,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.6"
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.7"
   ).
   jsSettings(commonJsSettings: _*)
 
