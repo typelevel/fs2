@@ -5,7 +5,7 @@ import scala.reflect.ClassTag
 import java.nio.{ByteBuffer => JByteBuffer}
 
 import cats.{Applicative, Eq, Eval, Foldable, Monad, Traverse}
-import cats.instances.all._
+import cats.implicits._
 
 /**
  * Strict, finite sequence of values that allows index-based random access of elements.
@@ -493,7 +493,11 @@ object Chunk {
   }
   object Doubles { def apply(values: Array[Double]): Doubles = Doubles(values, 0, values.length) }
 
-  implicit def fs2EqForChunk[A: Eq]: Eq[Chunk[A]] = Eq.by(_.toVector)
+  implicit def fs2EqForChunk[A: Eq]: Eq[Chunk[A]] = new Eq[Chunk[A]] {
+    def eqv(c1: Chunk[A], c2: Chunk[A]) = {
+      c1.size === c2.size && (0 until c1.size).forall(i => c1(i) === c2(i))
+    }
+  }
 
   implicit val instance: Traverse[Chunk] with Monad[Chunk] = new Traverse[Chunk] with Monad[Chunk] {
     def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
