@@ -160,6 +160,17 @@ Given that most usage of merging a drained stream with another stream should be 
 - `NonEmptyChunk` no longer exists (and empty `Chunks` *can* be emitted).
 - The `Attempt` alias no longer exists - replace with `Either[Throwable,A]`.
 
-#### Cats Type Class Instances
+#### Compiling / Interpreting Streams
 
-Note that both `Stream` and `Pull` have type class instances for `cats.effect.Sync`, and hence all super type classes (e.g., `Monad`). These instances are defined in the `Stream` and `Pull` companion objects but they are *NOT* marked implicit. To use them implicitly, they must be manually assigned to an implicit val. This is because the Cats supplied syntax conflicts with `Stream` and `Pull` syntax, resulting in methods which ignore the covariance of `Stream` and `Pull`. Considering this is almost never the right option, these instances are non-implicit.
+In 0.9, a stream was compiled in to an effectful value via one of the `run` methods -- e.g., `run`, `runLog`, `runLast`. In 0.10, all methods which compile a stream in to an effectful value are under the `compile` prefix:
+
+
+|0.9|0.10|
+|---|---|
+|s.run|s.compile.drain|
+|s.runLog|s.compile.toVector|
+| |s.compile.toList|
+|s.runLast|s.compile.last|
+|s.runFold|s.compile.fold|
+| |s.compile.foldSemigroup|
+| |s.compile.foldMonoid|

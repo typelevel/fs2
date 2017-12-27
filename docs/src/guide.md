@@ -94,17 +94,17 @@ eff.toList
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
 ```tut
-eff.runLog.unsafeRunSync()
+eff.compile.toVector.unsafeRunSync()
 ```
 
-The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
+The first `.compile.toVector` is one of several methods available to 'compile' the stream to a single effect:
 
 ```tut:book
 val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 
-val ra = eff.runLog // gather all output into a Vector
-val rb = eff.run // purely for effects
-val rc = eff.runFold(0)(_ + _) // run and accumulate some result
+val ra = eff.compile.toVector // gather all output into a Vector
+val rb = eff.compile.drain // purely for effects
+val rc = eff.compile.fold(0)(_ + _) // run and accumulate some result
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -120,7 +120,7 @@ rc.unsafeRunSync()
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Effect[F]` (or `Sync[F]` for the `run*Sync` functions) --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations, and sometimes how to do asynchronous evaluation.
+_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Sync[F]` --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations.
 
 ### Segments & Chunks
 
@@ -149,7 +149,7 @@ val appendEx1 = Stream(1,2,3) ++ Stream.emit(42)
 val appendEx2 = Stream(1,2,3) ++ Stream.eval(IO.pure(4))
 
 appendEx1.toVector
-appendEx2.runLog.unsafeRunSync()
+appendEx2.compile.toVector.unsafeRunSync()
 
 appendEx1.map(_ + 1).toList
 ```
@@ -183,7 +183,7 @@ try err2.toList catch { case e: Exception => println(e) }
 ```
 
 ```tut
-try err3.run.unsafeRunSync() catch { case e: Exception => println(e) }
+try err3.compile.drain.unsafeRunSync() catch { case e: Exception => println(e) }
 ```
 
 The `handleErrorWith` method lets us catch any of these errors:
@@ -205,7 +205,7 @@ val release = IO { println("decremented: " + count.decrementAndGet); () }
 ```
 
 ```tut:fail
-Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRunSync()
+Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).compile.drain.unsafeRunSync()
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -229,7 +229,7 @@ Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips a
 ```tut
 Stream(1,0).repeat.take(6).toList
 Stream(1,2,3).drain.toList
-Stream.eval_(IO(println("!!"))).runLog.unsafeRunSync()
+Stream.eval_(IO(println("!!"))).compile.toVector.unsafeRunSync()
 (Stream(1,2) ++ (throw new Exception("nooo!!!"))).attempt.toList
 ```
 
@@ -357,7 +357,7 @@ Stream.range(1,10).scan(0)(_ + _).toList // running sum
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
 
 ```tut:fail
-Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
+Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
 Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add that:
@@ -365,7 +365,7 @@ Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add
 ```tut
 import scala.concurrent.ExecutionContext.Implicits.global
 
-Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
+Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
 The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
@@ -429,7 +429,7 @@ These are easy to deal with. Just wrap these effects in a `Stream.eval`:
 def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 
 val s = Stream.eval_(IO { destroyUniverse() }) ++ Stream("...moving on")
-s.runLog.unsafeRunSync()
+s.compile.toVector.unsafeRunSync()
 ```
 
 The way you bring synchronous effects into your effect type may differ. `Sync.delay` can be used for this generally, without committing to a particular effect:
@@ -439,7 +439,7 @@ import cats.effect.Sync
 
 val T = Sync[IO]
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
-s.runLog.unsafeRunSync()
+s.compile.toVector.unsafeRunSync()
 ```
 
 When using this approach, be sure the expression you pass to delay doesn't throw exceptions.
@@ -491,7 +491,7 @@ val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =
   c.readBytesE(cb)
 }
 
-Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
+Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 ```
 
 Be sure to check out the [`fs2.io`](../io) package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.
@@ -578,7 +578,7 @@ If instead we use `onFinalize`, the code is guaranteed to run, regardless of whe
 Stream(1).covary[IO].
           onFinalize(IO { println("finalized!") }).
           take(1).
-          runLog.unsafeRunSync()
+          compile.toVector.unsafeRunSync()
 ```
 
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:

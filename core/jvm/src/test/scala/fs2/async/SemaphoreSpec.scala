@@ -15,7 +15,7 @@ class SemaphoreSpec extends Fs2Spec {
         val n0 = ((n.abs % 20) + 1).abs
         Stream.eval(async.mutable.Semaphore[IO](n0)).flatMap { s =>
           Stream.emits(0 until n0).evalMap { _ => s.decrement }.drain ++ Stream.eval(s.available)
-        }.runLog.unsafeRunSync() shouldBe Vector(0)
+        }.compile.toVector.unsafeRunSync() shouldBe Vector(0)
       }
     }
 

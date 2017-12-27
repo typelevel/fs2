@@ -53,9 +53,9 @@ import cats.effect.Sync
  * @param id           Unique identification of the scope
  * @param parent       If empty indicates root scope. If non-emtpy, indicates parent of this scope.
  */
-private[internal] final class RunFoldScope[F[_]] private (val id: Token, private val parent: Option[RunFoldScope[F]])(implicit F: Sync[F]) extends Scope[F] { self =>
+private[internal] final class CompileScope[F[_]] private (val id: Token, private val parent: Option[CompileScope[F]])(implicit F: Sync[F]) extends Scope[F] { self =>
 
-  private val state: Ref[F, RunFoldScope.State[F]] = new Ref(new AtomicReference(RunFoldScope.State.initial))
+  private val state: Ref[F, CompileScope.State[F]] = new Ref(new AtomicReference(CompileScope.State.initial))
 
   /**
    * Registers supplied resource in this scope.
@@ -88,11 +88,11 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
    * If this scope is currently closed, then the child scope is opened on the first
    * open ancestor of this scope.
    */
-  def open: F[RunFoldScope[F]] = {
+  def open: F[CompileScope[F]] = {
     F.flatMap(state.modify2 { s =>
       if (! s.open) (s, None)
       else {
-        val scope = new RunFoldScope[F](new Token(), Some(self))
+        val scope = new CompileScope[F](new Token(), Some(self))
         (s.copy(children = scope +: s.children), Some(scope))
       }
     }) {
@@ -147,7 +147,7 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
    */
   def close: F[Either[Throwable, Unit]] = {
     F.flatMap(state.modify{ _.close }) { c =>
-    F.flatMap(traverseError[RunFoldScope[F]](c.previous.children, _.close)) { resultChildren =>
+    F.flatMap(traverseError[CompileScope[F]](c.previous.children, _.close)) { resultChildren =>
     F.flatMap(traverseError[Resource[F]](c.previous.resources, _.release)) { resultResources =>
     F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
       val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
@@ -157,7 +157,7 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
 
 
   /** Returns closest open parent scope or root. */
-  def openAncestor: F[RunFoldScope[F]] = {
+  def openAncestor: F[CompileScope[F]] = {
     self.parent.fold(F.pure(self)) { parent =>
       F.flatMap(parent.state.get) { s =>
         if (s.open) F.pure(parent)
@@ -167,9 +167,9 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
   }
 
   /** Gets all ancestors of this scope, inclusive of root scope. **/
-  private def ancestors: F[Catenable[RunFoldScope[F]]] = {
+  private def ancestors: F[Catenable[CompileScope[F]]] = {
     @tailrec
-    def go(curr: RunFoldScope[F], acc: Catenable[RunFoldScope[F]]): F[Catenable[RunFoldScope[F]]] = {
+    def go(curr: CompileScope[F], acc: Catenable[CompileScope[F]]): F[Catenable[CompileScope[F]]] = {
       curr.parent match {
         case Some(parent) => go(parent, acc :+ parent)
         case None => F.pure(acc)
@@ -201,9 +201,9 @@ private[internal] final class RunFoldScope[F[_]] private (val id: Token, private
   }
 }
 
-private[internal] object RunFoldScope {
+private[internal] object CompileScope {
   /** Creates a new root scope. */
-  def newRoot[F[_]: Sync]: RunFoldScope[F] = new RunFoldScope[F](new Token(), None)
+  def newRoot[F[_]: Sync]: CompileScope[F] = new CompileScope[F](new Token(), None)
 
   /**
     * State of a scope.
@@ -219,7 +219,7 @@ private[internal] object RunFoldScope {
     *                           Still, likewise for resources they are released in reverse order.
     */
   final private case class State[F[_]](
-    open: Boolean, resources: Catenable[Resource[F]], children: Catenable[RunFoldScope[F]]
+    open: Boolean, resources: Catenable[Resource[F]], children: Catenable[CompileScope[F]]
   ) { self =>
 
     def unregisterResource(id: Token): (State[F], Option[Resource[F]]) = {
@@ -228,13 +228,13 @@ private[internal] object RunFoldScope {
       }
     }
 
-    def unregisterChild(id: Token): (State[F], Option[RunFoldScope[F]]) = {
-      self.children.deleteFirst(_.id == id).fold((self, None: Option[RunFoldScope[F]])) { case (s, c) =>
+    def unregisterChild(id: Token): (State[F], Option[CompileScope[F]]) = {
+      self.children.deleteFirst(_.id == id).fold((self, None: Option[CompileScope[F]])) { case (s, c) =>
         (self.copy(children = c), Some(s))
       }
     }
 
-    def close: State[F] = RunFoldScope.State.closed
+    def close: State[F] = CompileScope.State.closed
   }
 
   private object State {

@@ -85,7 +85,7 @@ private[io] object JavaInputOutputStream {
         source.chunks
         .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
         .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
-        .run
+        .compile.drain
       )){ r => markUpstreamDone(r.swap.toOption) }
     }).map(_ => ())
 
@@ -230,7 +230,7 @@ private[io] object JavaInputOutputStream {
       }){ _ =>
         F.flatMap(upState.discrete.collectFirst {
           case UpStreamState(true, maybeErr) => maybeErr // await upStreamDome to yield as true
-        }.runLast){ _.flatten match {
+        }.compile.last){ _.flatten match {
           case None => F.pure(())
           case Some(err) => F.raiseError[Unit](err)
         }}

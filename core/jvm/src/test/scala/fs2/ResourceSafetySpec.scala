@@ -73,7 +73,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "early termination of uncons" in {
       var n = 0
-      Stream(1,2,3).onFinalize(IO { n = 1 }).pull.echoSegment.stream.run.unsafeRunSync
+      Stream(1,2,3).onFinalize(IO { n = 1 }).pull.echoSegment.stream.compile.drain.unsafeRunSync
       n shouldBe 1
     }
 
@@ -164,7 +164,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         val c = new AtomicLong(0)
         (IO.shift *> IO { Thread.sleep(20L) } *> signal.set(true)).unsafeRunSync()
         runLog { s.get.evalMap { inner =>
-          async.start(bracket(c)(inner.get).evalMap { _ => IO.async[Unit](_ => ()) }.interruptWhen(signal.continuous).run)
+          async.start(bracket(c)(inner.get).evalMap { _ => IO.async[Unit](_ => ()) }.interruptWhen(signal.continuous).compile.drain)
         }}
         eventually { c.get shouldBe 0L }
       }
@@ -182,13 +182,13 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         Stream.bracket(IO { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
           _ => inner,
           _ => IO { c.decrementAndGet; () }
-        ).evalMap { _ => IO.async[Unit](_ => ()) }.interruptWhen(signal.discrete).run
+        ).evalMap { _ => IO.async[Unit](_ => ()) }.interruptWhen(signal.discrete).compile.drain
       }}}
       eventually { c.get shouldBe 0L }
     }
 
     "evaluating a bracketed stream multiple times is safe" in {
-      val s = Stream.bracket(IO.pure(()))(Stream.emit(_), _ => IO.pure(())).run
+      val s = Stream.bracket(IO.pure(()))(Stream.emit(_), _ => IO.pure(())).compile.drain
       s.unsafeRunSync
       s.unsafeRunSync
     }

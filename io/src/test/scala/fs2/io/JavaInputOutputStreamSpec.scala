@@ -26,7 +26,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
 
    "arbitrary.streams" in forAll { (stream: Stream[IO, Byte]) =>
 
-      val example = stream.runLog.unsafeRunSync()
+      val example = stream.compile.toVector.unsafeRunSync()
 
       val fromInputStream =
         stream.through(toInputStream).evalMap { is =>
@@ -41,7 +41,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
             }
           }
           go(Vector.empty)
-        }.runLog.map(_.flatten).unsafeRunSync()
+        }.compile.toVector.map(_.flatten).unsafeRunSync()
 
       example shouldBe fromInputStream
     }
@@ -50,7 +50,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
       var closed: Boolean = false
       val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO { closed = true })
 
-      s.through(toInputStream).run.unsafeRunSync()
+      s.through(toInputStream).compile.drain.unsafeRunSync()
 
       closed shouldBe true
     }
@@ -65,7 +65,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
             is.close()
             closed // verifies that once close() terminates upstream was already cleaned up
           }
-        }.runLog.unsafeRunSync()
+        }.compile.toVector.unsafeRunSync()
 
       result shouldBe Vector(true)
     }
@@ -74,7 +74,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
       val s: Stream[IO, Byte] = Stream.range(0, 256, 1).map(_.toByte)
       val result = s.through(toInputStream).map { is =>
         Vector.fill(257)(is.read())
-      }.runLog.map(_.flatten).unsafeRunSync()
+      }.compile.toVector.map(_.flatten).unsafeRunSync()
       result shouldBe (Stream.range(0, 256, 1) ++ Stream(-1)).toVector
     }
   }

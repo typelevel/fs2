@@ -117,7 +117,7 @@ object Topic {
                 eval(done.get).interruptWhen(q.full.discrete.map(! _ )).last.flatMap {
                   case None => eval(publish(a))
                   case Some(_) => Stream.empty
-                }.run
+                }.compile.drain
               }
             }
 

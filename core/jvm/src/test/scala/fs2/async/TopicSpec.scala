@@ -20,7 +20,7 @@ class TopicSpec extends Fs2Spec {
       val publisher = mkScheduler.flatMap(_.sleep[IO](1.second)) ++ Stream.range(0,count).covary[IO].through(topic.publish)
       val subscriber = topic.subscribe(Int.MaxValue).take(count+1).fold(Vector.empty[Int]){ _ :+ _ }
 
-      val result = (Stream.range(0,subs).map(idx => subscriber.map(idx -> _)) ++ publisher.drain).join(subs + 1).runLog.unsafeRunSync()
+      val result = (Stream.range(0,subs).map(idx => subscriber.map(idx -> _)) ++ publisher.drain).join(subs + 1).compile.toVector.unsafeRunSync()
 
       val expected = (for { i <- 0 until subs } yield i).map { idx =>
         idx -> (for { i <- -1 until count } yield i).toVector
@@ -41,7 +41,7 @@ class TopicSpec extends Fs2Spec {
       val publisher = mkScheduler.flatMap(_.sleep[IO](1.second)) ++ Stream.range(0,count).covary[IO].flatMap(i => eval(signal.set(i)).map(_ => i)).through(topic.publish)
       val subscriber = topic.subscribe(1).take(count+1).flatMap { is => eval(signal.get).map(is -> _) }.fold(Vector.empty[(Int,Int)]){ _ :+ _ }
 
-      val result = (Stream.range(0,subs).map(idx => subscriber.map(idx -> _)) ++ publisher.drain).join(subs + 1).runLog.unsafeRunSync()
+      val result = (Stream.range(0,subs).map(idx => subscriber.map(idx -> _)) ++ publisher.drain).join(subs + 1).compile.toVector.unsafeRunSync()
 
       result.toMap.size shouldBe subs
 

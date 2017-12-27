@@ -16,7 +16,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "fail (1)" in forAll { (f: Failure) =>
-      an[Err.type] should be thrownBy f.get.run.unsafeRunSync()
+      an[Err.type] should be thrownBy f.get.compile.drain.unsafeRunSync()
     }
 
     "fail (2)" in {
@@ -46,7 +46,7 @@ class StreamSpec extends Fs2Spec with Inside {
     "fromIterator" in forAll { vec: Vector[Int] =>
         val iterator = vec.toIterator
         val stream = Stream.fromIterator[IO,Int](iterator)
-        val example = stream.runLog.unsafeRunSync
+        val example = stream.compile.toVector.unsafeRunSync
         example shouldBe vec
     }
 
@@ -55,7 +55,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "iterateEval" in {
-      Stream.iterateEval(0)(i => IO(i + 1)).take(100).runLog.unsafeRunSync() shouldBe List.iterate(0, 100)(_ + 1)
+      Stream.iterateEval(0)(i => IO(i + 1)).take(100).compile.toVector.unsafeRunSync() shouldBe List.iterate(0, 100)(_ + 1)
     }
 
     "map" in forAll { (s: PureStream[Int]) =>
@@ -80,13 +80,13 @@ class StreamSpec extends Fs2Spec with Inside {
     "handleErrorWith (4)" in {
       Stream.eval(IO(throw Err)).map(Right(_): Either[Throwable,Int]).handleErrorWith(t => Stream.emit(Left(t)).covary[IO])
             .take(1)
-            .runLog.unsafeRunSync() shouldBe Vector(Left(Err))
+            .compile.toVector.unsafeRunSync() shouldBe Vector(Left(Err))
     }
 
     "handleErrorWith (5)" in {
-      val r = Stream.raiseError(Err).covary[IO].handleErrorWith(e => Stream.emit(e)).flatMap(Stream.emit(_)).runLog.unsafeRunSync()
-      val r2 = Stream.raiseError(Err).covary[IO].handleErrorWith(e => Stream.emit(e)).map(identity).runLog.unsafeRunSync()
-      val r3 = Stream(Stream.emit(1).covary[IO], Stream.raiseError(Err).covary[IO], Stream.emit(2).covary[IO]).covary[IO].join(4).attempt.runLog.unsafeRunSync()
+      val r = Stream.raiseError(Err).covary[IO].handleErrorWith(e => Stream.emit(e)).flatMap(Stream.emit(_)).compile.toVector.unsafeRunSync()
+      val r2 = Stream.raiseError(Err).covary[IO].handleErrorWith(e => Stream.emit(e)).map(identity).compile.toVector.unsafeRunSync()
+      val r3 = Stream(Stream.emit(1).covary[IO], Stream.raiseError(Err).covary[IO], Stream.emit(2).covary[IO]).covary[IO].join(4).attempt.compile.toVector.unsafeRunSync()
       r shouldBe Vector(Err)
       r2 shouldBe Vector(Err)
       r3.contains(Left(Err)) shouldBe true
@@ -103,7 +103,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "ranges" in forAll(Gen.choose(1, 101)) { size =>
-      Stream.ranges(0, 100, size).covary[IO].flatMap { case (i,j) => Stream.emits(i until j) }.runLog.unsafeRunSync() shouldBe
+      Stream.ranges(0, 100, size).covary[IO].flatMap { case (i,j) => Stream.emits(i until j) }.compile.toVector.unsafeRunSync() shouldBe
         IndexedSeq.range(0, 100)
     }
 
@@ -155,16 +155,16 @@ class StreamSpec extends Fs2Spec with Inside {
 
     "unfoldEval" in {
       Stream.unfoldEval(10)(s => IO.pure(if (s > 0) Some((s, s - 1)) else None))
-        .runLog.unsafeRunSync().toList shouldBe List.range(10, 0, -1)
+        .compile.toVector.unsafeRunSync().toList shouldBe List.range(10, 0, -1)
     }
 
     "unfoldChunkEval" in {
       Stream.unfoldChunkEval(true)(s => IO.pure(if(s) Some((Chunk.booleans(Array[Boolean](s)),false)) else None))
-        .runLog.unsafeRunSync().toList shouldBe List(true)
+        .compile.toVector.unsafeRunSync().toList shouldBe List(true)
     }
 
     "translate stack safety" in {
-      Stream.repeatEval(IO(0)).translate(new (IO ~> IO) { def apply[X](x: IO[X]) = IO.suspend(x) }).take(1000000).run.unsafeRunSync()
+      Stream.repeatEval(IO(0)).translate(new (IO ~> IO) { def apply[X](x: IO[X]) = IO.suspend(x) }).take(1000000).compile.drain.unsafeRunSync()
     }
 
     "duration" in {
@@ -173,7 +173,7 @@ class StreamSpec extends Fs2Spec with Inside {
       val blockingSleep = IO { Thread.sleep(delay.toMillis) }
 
       val emitAndSleep = Stream.emit(()) ++ Stream.eval(blockingSleep)
-      val t = emitAndSleep zip Stream.duration[IO] drop 1 map { _._2 } runLog
+      val t = emitAndSleep.zip(Stream.duration[IO]).drop(1).map(_._2).compile.toVector
 
       (IO.shift *> t).unsafeToFuture collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
@@ -205,7 +205,7 @@ class StreamSpec extends Fs2Spec with Inside {
         take(draws.toInt).
         through(durationSinceLastTrue)
 
-      (IO.shift *> durationsSinceSpike.runLog).unsafeToFuture().map { result =>
+      (IO.shift *> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
         val (head :: tail) = result.toList
         withClue("every always emits true first") { assert(head._1) }
         withClue("true means the delay has passed: " + tail) { assert(tail.filter(_._1).map(_._2).forall { _ >= delay }) }
