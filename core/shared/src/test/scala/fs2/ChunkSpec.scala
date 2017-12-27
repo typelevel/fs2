@@ -121,6 +121,11 @@ class ChunkSpec extends Fs2Spec {
     }
   }
 
+  implicit val commutativeMonoidForChar = new CommutativeMonoid[Char] {
+    def combine(x: Char, y: Char): Char = (x + y).toChar
+    def empty: Char = 0
+  }
+
   testChunk[Byte]("Bytes", "Byte")  
   testChunk[Short]("Shorts", "Short")
   testChunk[Int]("Ints", "Int")
@@ -128,6 +133,6 @@ class ChunkSpec extends Fs2Spec {
   // Don't test traverse on Double or Float. They have naughty monoids.
   testChunk[Double]("Doubles", "Double", false)
   testChunk[Float]("Floats", "Float", false)
-  testChunk[Set[Boolean]]("Unspecialized", "Set[Boolean]")
+  testChunk[Char]("Unspecialized", "Char")
   testChunk[Byte]("ByteBuffer", "Byte")(implicitly, implicitly, implicitly, implicitly, implicitly, arbByteBufferChunk)
 }
