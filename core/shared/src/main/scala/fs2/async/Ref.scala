@@ -128,6 +128,9 @@ object Ref {
   def apply[F[_], A](a: A)(implicit F: Sync[F]): F[Ref[F, A]] =
     F.delay(new Ref[F, A](new AtomicReference[A](a)))
 
+  def fromF[F[_], A](fa: F[A])(implicit F: Sync[F]): F[Ref[F, A]] =
+    fa.map(a => new Ref[F, A](new AtomicReference(a)))
+
   /**
     * The result of a modification to a [[Ref]]
     *
