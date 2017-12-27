@@ -4,7 +4,7 @@ import scala.collection.immutable.VectorBuilder
 import scala.reflect.ClassTag
 import java.nio.{ByteBuffer => JByteBuffer}
 
-import cats.{Applicative, Eval, Foldable, Monad, Traverse}
+import cats.{Applicative, Eq, Eval, Foldable, Monad, Traverse}
 import cats.instances.all._
 
 /**
@@ -69,7 +69,12 @@ abstract class Chunk[+O] {
   def last: Option[O] = if (isEmpty) None else Some(apply(size - 1))
 
   /** Creates a new chunk by applying `f` to each element in this chunk. */
-  def map[O2](f: O => O2): Chunk[O2]
+  def map[O2](f: O => O2): Chunk[O2] = {
+    val b = new VectorBuilder[O2]
+    b.sizeHint(size)
+    for (i <- 0 until size) b += f(apply(i))
+    Chunk.indexedSeq(b.result)
+  }
 
   /** Splits this chunk in to two chunks at the specified index. */
   def splitAt(n: Int): (Chunk[O], Chunk[O]) = {
@@ -343,7 +348,6 @@ object Chunk {
     def apply(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
-    override def map[O2](f: O => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: O: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Boxed { def apply[O](values: Array[O]): Boxed[O] = Boxed(values, 0, values.length) }
@@ -361,7 +365,6 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) =
       Booleans(values, offset, n) -> Booleans(values, offset + n, length - n)
-    override def map[O2](f: Boolean => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Boolean: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Booleans { def apply(values: Array[Boolean]): Booleans = Booleans(values, 0, values.length) }
@@ -379,7 +382,6 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) =
       Bytes(values, offset, n) -> Bytes(values, offset + n, length - n)
-    override def map[O2](f: Byte => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Byte: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Bytes { def apply(values: Array[Byte]): Bytes = Bytes(values, 0, values.length) }
@@ -395,14 +397,6 @@ object Chunk {
       val second = buf.asReadOnlyBuffer
       second.position(n + offset)
       (ByteBuffer(first), ByteBuffer(second))
-    }
-    override def map[O2](f: Byte => O2): Chunk[O2] = {
-      val b = new VectorBuilder[O2]
-      b.sizeHint(size)
-      for (i <- offset until size + offset) {
-        b += f(buf.get(i))
-      }
-      indexedSeq(b.result)
     }
     override def toArray[O2 >: Byte: ClassTag]: Array[O2] = {
       val bs = new Array[Byte](size)
@@ -427,7 +421,6 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) =
       Shorts(values, offset, n) -> Shorts(values, offset + n, length - n)
-    override def map[O2](f: Short => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Short: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Shorts { def apply(values: Array[Short]): Shorts = Shorts(values, 0, values.length) }
@@ -445,7 +438,6 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) =
       Ints(values, offset, n) -> Ints(values, offset + n, length - n)
-    override def map[O2](f: Int => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Int: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Ints { def apply(values: Array[Int]): Ints = Ints(values, 0, values.length) }
@@ -463,7 +455,6 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) =
       Longs(values, offset, n) -> Longs(values, offset + n, length - n)
-    override def map[O2](f: Long => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Long: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Longs { def apply(values: Array[Long]): Longs = Longs(values, 0, values.length) }
@@ -481,7 +472,6 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) =
       Floats(values, offset, n) -> Floats(values, offset + n, length - n)
-    override def map[O2](f: Float => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Float: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Floats { def apply(values: Array[Float]): Floats = Floats(values, 0, values.length) }
@@ -499,10 +489,11 @@ object Chunk {
     def at(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) =
       Doubles(values, offset, n) -> Doubles(values, offset + n, length - n)
-    override def map[O2](f: Double => O2): Chunk[O2] = seq(values.map(f))
     override def toArray[O2 >: Double: ClassTag]: Array[O2] = values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
   object Doubles { def apply(values: Array[Double]): Doubles = Doubles(values, 0, values.length) }
+
+  implicit def fs2EqForChunk[A: Eq]: Eq[Chunk[A]] = Eq.by(_.toVector)
 
   implicit val instance: Traverse[Chunk] with Monad[Chunk] = new Traverse[Chunk] with Monad[Chunk] {
     def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
@@ -513,6 +504,7 @@ object Chunk {
     def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(implicit G: Applicative[F]): F[Chunk[B]] =
       G.map(Traverse[Vector].traverse(fa.toVector)(f))(Chunk.vector)
     def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
+    override def map[A, B](fa: Chunk[A])(f: A => B): Chunk[B] = fa.map(f)
     def flatMap[A,B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] =
       fa.toSegment.flatMap(f.andThen(_.toSegment)).force.toChunk
     def tailRecM[A,B](a: A)(f: A => Chunk[Either[A,B]]): Chunk[B] =

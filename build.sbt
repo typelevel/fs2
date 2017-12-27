@@ -40,7 +40,8 @@ lazy val commonSettings = Seq(
   libraryDependencies ++= Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4"),
     "org.scalatest" %%% "scalatest" % "3.0.4" % "test",
-    "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
+    "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test",
+    "org.typelevel" %%% "cats-laws" % "1.0.0" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
