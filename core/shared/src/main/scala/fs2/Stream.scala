@@ -2429,21 +2429,23 @@ object Stream {
       type UO = Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]
       type Res = Option[(Segment[O,Unit], Stream[F,O])]
 
-      Pull.eval(Promise.empty[F, Either[Throwable, Res]]) flatMap { p =>
-        Pull.fromFreeC {
-          Algebra.getScope[F, Nothing] flatMap { scope =>
-            val runStep =
-              Algebra.compileScope(
-                scope
-                  , Algebra.uncons(self.get).flatMap(Algebra.output1(_))
-                  , None : UO
-              ){ (_, uo) => uo.asInstanceOf[UO] } map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
+      Pull.fromFreeC {
+        Algebra.getScope[F, Nothing] flatMap { scope =>
+          val runStep =
+            Algebra.compileScope(
+              scope,
+              Algebra.uncons(self.get).flatMap(Algebra.output1(_)),
+              None: UO
+            )((_, uo) => uo.asInstanceOf[UO]) map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
 
-            Algebra.eval(async.fork(F.flatMap(F.attempt(runStep))(x => p.complete(x)))) map { _ => AsyncPull.readAttemptPromise(p) }
+          Algebra.eval {
+            Promise.empty[F, Either[Throwable, Res]] flatMap { p =>
+            async.fork(runStep.attempt.flatMap(p.complete(_))) as AsyncPull.readAttemptPromise(p)
           }
         }
       }
     }
+  }
 
     /**
      * Like [[uncons]], but returns a segment of no more than `n` elements.
