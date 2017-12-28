@@ -7,6 +7,7 @@ import scala.concurrent.duration._
 import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
+import fs2.async.Promise
 import fs2.async.mutable.Queue
 import fs2.internal.{Algebra, FreeC, Token}
 
@@ -63,8 +64,6 @@ import fs2.internal.{Algebra, FreeC, Token}
  * the unsegmented version will fail on the first ''element'' with an error.
  * Exceptions in pure code like this are strongly discouraged.
  *
- * If you need `cats` syntax you will need make `[[Stream.syncInstance]]`
- * implicit.
  *
  * @hideImplicitConversion PureOps
  * @hideImplicitConversion EmptyOps
@@ -2426,20 +2425,24 @@ object Stream {
      * For example, `merge` is implemented by calling `unconsAsync` on each stream, racing the
      * resultant `AsyncPull`s, emitting winner of the race, and then repeating.
      */
-    def unconsAsync(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing, AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] = {
+    def unconsAsync(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] = {
       type UO = Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]
+      type Res = Option[(Segment[O,Unit], Stream[F,O])]
 
       Pull.fromFreeC {
-         val p = async.Promise.unsafeCreate[F, Either[Throwable, Option[(Segment[O,Unit], Stream[F,O])]]]
         Algebra.getScope[F, Nothing] flatMap { scope =>
           val runStep =
             Algebra.compileScope(
-              scope
-              , Algebra.uncons(self.get).flatMap(Algebra.output1(_))
-              , None : UO
-            ){ (_, uo) => uo.asInstanceOf[UO] } map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
+              scope,
+              Algebra.uncons(self.get).flatMap(Algebra.output1(_)),
+              None: UO
+            )((_, uo) => uo.asInstanceOf[UO]) map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
 
-          Algebra.eval(async.fork(F.flatMap(F.attempt(runStep))(x => async.fork(p.complete(x))))) map { _ => AsyncPull.readAttemptPromise(p) }
+          Algebra.eval {
+            Promise.empty[F, Either[Throwable, Res]] flatMap { p =>
+              async.fork(runStep.attempt.flatMap(p.complete(_))) as AsyncPull.readAttemptPromise(p)
+            }
+          }
         }
       }
     }
