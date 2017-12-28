@@ -2440,12 +2440,12 @@ object Stream {
 
           Algebra.eval {
             Promise.empty[F, Either[Throwable, Res]] flatMap { p =>
-            async.fork(runStep.attempt.flatMap(p.complete(_))) as AsyncPull.readAttemptPromise(p)
+              async.fork(runStep.attempt.flatMap(p.complete(_))) as AsyncPull.readAttemptPromise(p)
+            }
           }
         }
       }
     }
-  }
 
     /**
      * Like [[uncons]], but returns a segment of no more than `n` elements.
