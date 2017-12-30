@@ -4,6 +4,7 @@ package fs2.internal
 import scala.annotation.tailrec
 import java.util.concurrent.atomic.AtomicReference
 
+import cats.data.NonEmptyList
 import fs2.{Catenable, CompositeFailure, Interrupted, Lease, Scope}
 import fs2.async.{Promise, Ref}
 import cats.effect.{Effect, Sync}
@@ -129,6 +130,28 @@ private[fs2] final class RunFoldScope[F[_]] private (
           case Some(parent) => parent.open(interruptible)
           case None => F.raiseError(throw new IllegalStateException("cannot re-open root scope"))
         }
+    }
+  }
+
+  def acquireResource[R](fr: F[R], release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
+    val resource = Resource.create
+    F.flatMap(register(resource)) { mayAcquire =>
+      if (!mayAcquire) F.raiseError(Interrupted(id, 0)) // todo: not sure if we shall signal by interrupted anymore
+      else {
+        F.flatMap(F.attempt(fr)) {
+          case Right(r) =>
+            val finalizer = F.suspend(release(r))
+            F.map(resource.acquired(finalizer)) { result =>
+              result.right.map(_ => (r, resource.id))
+            }
+          case Left(err) =>
+            F.map(releaseResource(resource.id)) { result =>
+              result.left.toOption.map { err0 =>
+                Left(new CompositeFailure(err, NonEmptyList.of(err0)))
+              }.getOrElse(Left(err))
+            }
+        }
+      }
     }
   }
 
