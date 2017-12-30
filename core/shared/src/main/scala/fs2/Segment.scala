@@ -1029,6 +1029,21 @@ object Segment {
     }
 
     /**
+      * Like `run` but allows to run `f` for each `O`.
+      * as they are processed when running this segment.
+      * Allows to perfrom efficient accumulation of `O` while running the stream.
+      */
+    final def runForEach(f: O => Unit): R = {
+      def chunk(ch: Chunk[O]): Unit = ch.foreach(f)
+      var result: Option[R] = None
+      val trampoline = new Trampoline
+      val step = self.stage(Depth(0), trampoline.defer, f, chunk, r => { result = Some(r); throw Done }).value
+      try while (true) stepAll(step, trampoline)
+      catch { case Done => }
+      result.get
+    }
+
+    /**
      * Splits this segment at the specified index by simultaneously taking and dropping.
      *
      * If the segment has less than `n` elements, a left is returned, providing the result of the segment,

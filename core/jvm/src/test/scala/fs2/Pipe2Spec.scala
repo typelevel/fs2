@@ -183,19 +183,19 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     //todo: need to resolve SoE in flatMap
-//    "interrupt (6)" in {
-//      // tests the interruption of the stream that recurse infinitely and never emits
-//      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
-//      def loop: Stream[IO, Int] = Stream.eval(IO{()}).flatMap { _ => loop }
-//      loop.interruptWhen(interrupt).run.unsafeRunSync
-//    }
-//
-//    "interrupt (7)" in {
-//      // tests the interruption of the stream that recurse infinitely, is pure and never emits
-//      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
-//      def loop: Stream[IO, Int] = Stream.emit(()).covary[IO].flatMap { _ => loop }
-//      loop.interruptWhen(interrupt).run.unsafeRunSync
-//    }
+    "interrupt (6)" in {
+      // tests the interruption of the stream that recurse infinitely and never emits
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
+      def loop: Stream[IO, Int] = Stream.eval(IO{()}).flatMap { _ => loop }
+      loop.interruptWhen(interrupt).run.unsafeRunSync
+    }
+
+    "interrupt (7)" in {
+      // tests the interruption of the stream that recurse infinitely, is pure and never emits
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
+      def loop: Stream[IO, Int] = Stream.emit(()).covary[IO].flatMap { _ => loop }
+      loop.interruptWhen(interrupt).run.unsafeRunSync
+    }
 
     "interrupt (8)" in {
       // tests the interruption of the stream that repeatedly evaluates

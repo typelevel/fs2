@@ -1687,19 +1687,6 @@ object Stream {
             case Some(o) =>
               f(o).get
 
-              //todo: this introduces SoE, but is necessary to interrupt streams, that are single elements only
-              // we need a way how to implement this.
-//              // if we have single element we need to check before every evalaution that scope is not interrupted yet
-//              Algebra.getScope.flatMap { scope =>
-//                if (scope.interruptible.isEmpty) f(o).get
-//                else {
-//                  Algebra.eval(scope.isInterrupted).flatMap { isInterrupted =>
-//                    if (isInterrupted) Algebra.pure[F, O2, Unit](())
-//                    else f(o).get
-//                  }
-//                }
-//              }
-
           }
         case None => Stream.empty.covaryAll[F,O2].get
       })

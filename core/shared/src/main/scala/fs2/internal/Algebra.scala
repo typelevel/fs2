@@ -107,7 +107,7 @@ private[fs2] object Algebra {
     , chunkSize: Int
     , maxSteps: Long
   )(implicit F: Sync[F]): F[(RunFoldScope[F], Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])])] = {
-    F.delay(s.viewL.get) flatMap {
+    F.delay(s.viewL.get) flatMap { x => /* println(s"UNCS(${scope.id}): $x"); */ x match {
       case done: FreeC.Pure[Algebra[F,O,?], Unit] => F.pure((scope, None))
       case failed: FreeC.Fail[Algebra[F,O,?], Unit] => F.raiseError(failed.error)
       case bound: FreeC.Bind[Algebra[F,O,?], _, Unit] =>
@@ -139,7 +139,7 @@ private[fs2] object Algebra {
         }
 
       case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was (unconcs): " + e)
-    }
+    }}
 
   }
 
@@ -152,8 +152,8 @@ private[fs2] object Algebra {
     , v: FreeC[Algebra[F, O, ?], Unit]
   )(implicit F: Sync[F]): F[B] = {
     //println(s"RFLD(${scope.id}) : ${scope.interruptible.nonEmpty}")
-    val x = v.viewL.get
-    //println(s"RFLD(${scope.id}) : $x")
+    F.flatMap(F.delay { v.viewL.get }) { x =>
+   // println(s"RFLD(${scope.id}) : $x")
     x match {
       case done: FreeC.Pure[Algebra[F,O,?], Unit] =>
         F.pure(acc)
@@ -164,36 +164,53 @@ private[fs2] object Algebra {
       case bound: FreeC.Bind[Algebra[F,O,?], _, Unit] =>
         val f = bound.f.asInstanceOf[Either[Throwable,Any] => FreeC[Algebra[F,O,?], Unit]]
         val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr
-        fx match {
-          case output: Algebra.Output[F, O] =>
-            val b = output.values.fold(acc)(g).force.run
-            runFoldLoop(scope, b, g, f(Right(())))
+        F.flatMap(scope.shallInterrupt) {
+          case None =>
+            fx match {
+              case output: Algebra.Output[F, O] =>
+                try {
+                  runFoldLoop(scope, output.values.fold(acc)(g).force.run, g, f(Right(())))
+                }
+                catch {
+                  case err: Throwable => runFoldLoop(scope, acc, g, f(Left(err)))
+                }
 
-          case run: Algebra.Run[F, O, r] =>
-            @tailrec
-            def go(values: Segment[O, r], acc: B): (B, r) = {
-              values.force.uncons match {
-                case Left(result) => (acc, result)
-                case Right((h, t)) => go(t, h.fold(acc)(g).force.run)
-              }
+              case run: Algebra.Run[F, O, r] =>
+                try {
+                  @tailrec
+                  def go(values: Segment[O, r], acc: B): (B, r) = {
+                    //println(s">>> $values")
+                    values.force.uncons match {
+                      case Left(r) => (acc, r)
+                      case Right((h, t)) => go(t, h.fold(acc)(g).force.run)
+                    }
+                  }
+
+                  val (b,r) = go(run.values, acc)
+                  runFoldLoop(scope, b, g, f(Right(r)))
+                } catch {
+                  case err: Throwable => runFoldLoop(scope, acc, g, f(Left(err)))
+                }
+
+
+              case uncons: Algebra.Uncons[F, x, O] =>
+                F.flatMap(F.attempt(runUncons(scope, uncons.s, uncons.chunkSize, uncons.maxSteps))) {
+                  case Right((scope, u)) => runFoldLoop(scope, acc, g,
+                    f(Right(u))
+                  )
+                  case Left(err) => runFoldLoop(scope, acc, g, f(Left(err)))
+                }
+
+              case eff: AlgebraEffect[F, O, _] =>
+                F.flatMap(runAlgebraEffect(scope, eff)) { case (scope, r) =>
+                  runFoldLoop(scope, acc, g, f(r))
+                }
+
             }
-            val (b, result) = go(run.values, acc)
-            runFoldLoop(scope, b, g, f(Right(result)))
-
-          case uncons: Algebra.Uncons[F, x, O] =>
-            F.flatMap(F.attempt(runUncons(scope, uncons.s, uncons.chunkSize, uncons.maxSteps))) {
-              case Right((scope, u)) => runFoldLoop(scope, acc, g, f(Right(u)))
-              case Left(err) => runFoldLoop(scope, acc, g, f(Left(err)))
-            }
-
-          case eff: AlgebraEffect[F, O, _] =>
-            F.flatMap(runAlgebraEffect(scope, eff)) { case (scope, r) =>
-              runFoldLoop(scope, acc, g, f(r))
-            }
-
+          case Some(rsn) => runFoldLoop(scope, acc, g, f(Left(rsn)))
         }
       case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
-    }
+    }}
   }
 
   def runAlgebraEffect[F[_], O](
