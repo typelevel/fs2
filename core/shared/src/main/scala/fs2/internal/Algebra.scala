@@ -119,7 +119,7 @@ private[fs2] object Algebra {
         case None => F.pure(acc)
         case Some((hd, tl)) =>
           F.suspend {
-            try compileLoop[F,O,B](scope, hd.fold(acc)(g).force.run, g, uncons(tl).viewL)
+            try compileLoop[F,O,B](scope, hd.fold(acc)(g).force.run._2, g, uncons(tl).viewL)
             catch { case NonFatal(e) => compileLoop[F,O,B](scope, acc, g, uncons(tl.asHandler(e)).viewL) }
           }
       }
