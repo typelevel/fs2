@@ -454,14 +454,14 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
           // Check if we can emit this chunk unmodified
-          Pull.segment(hd.fold((true, last)) { case ((acc, last), o) => (acc && f(last, o), o) }).flatMap { case (allPass, newLast) =>
+          Pull.segment(hd.fold((true, last)) { case ((acc, last), o) => (acc && f(last, o), o) }.mapResult(_._2)).flatMap { case (allPass, newLast) =>
             if (allPass) {
               Pull.output(hd) >> go(newLast, tl)
             } else {
               Pull.segment(hd.fold((Vector.empty[O], last)) { case ((acc, last), o) =>
                 if (f(last, o)) (acc :+ o, o)
                 else (acc, last)
-              }).flatMap { case (acc, newLast) =>
+              }.mapResult(_._2)).flatMap { case (acc, newLast) =>
                 Pull.output(Segment.vector(acc)) >> go(newLast, tl)
               }
             }
@@ -774,7 +774,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     this.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd,tl)) =>
-        hd.scan(z)(f).force.uncons1 match {
+        hd.scan(z)(f).mapResult(_._2).force.uncons1 match {
           case Left(acc) => tl.scan_(acc)(f)
           case Right((_, out)) => Pull.segment(out).flatMap{acc => tl.scan_(acc)(f)}
         }
@@ -865,7 +865,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
       s.pull.uncons.flatMap {
         case None => Pull.done
         case Some((hd,tl)) =>
-          hd.scan(window)((w, i) => w.dequeue._2.enqueue(i)).force.drop(1) match {
+          hd.scan(window)((w, i) => w.dequeue._2.enqueue(i)).mapResult(_._2).force.drop(1) match {
             case Left((w2,_)) => go(w2, tl)
             case Right(out) => Pull.segment(out).flatMap { window => go(window, tl) }
           }
@@ -874,7 +874,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     this.pull.unconsN(n, true).flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
-        val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).force.run
+        val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).force.run._2
         Pull.output1(window) >> go(window, tl)
     }.stream
   }
@@ -1996,7 +1996,7 @@ object Stream {
           case Left(None) => Pull.pure(None)
           case Right(None) => Pull.pure(None)
           case Left(Some((s, controlStream))) =>
-            Pull.segment(s.fold(false)(_ || _)).flatMap { p =>
+            Pull.segment(s.fold(false)(_ || _).mapResult(_._2)).flatMap { p =>
               if (p) paused(controlStream, srcFuture)
               else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
             }
@@ -2073,7 +2073,7 @@ object Stream {
           if (partitions.isEmpty) Segment.chunk(partitions) -> None
           else if (partitions.size == 1) Segment.empty -> partitions.last
           else Segment.chunk(partitions.take(partitions.size - 1)) -> partitions.last
-        }.flatMap { case (out, carry) => out }.mapResult { case ((out, carry), unit) => carry }
+        }.mapResult(_._2).flatMap { case (out, carry) => out }.mapResult { case ((out, carry), unit) => carry }
       }.flatMap { case Some(carry) => Pull.output1(carry); case None => Pull.done }.stream
     }
 
@@ -2563,7 +2563,7 @@ object Stream {
     def fold[O2](z: O2)(f: (O2, O) => O2): Pull[F,Nothing,O2] =
       uncons.flatMap {
         case None => Pull.pure(z)
-        case Some((hd,tl)) => Pull.segment(hd.fold(z)(f)).flatMap { z => tl.pull.fold(z)(f) }
+        case Some((hd,tl)) => Pull.segment(hd.fold(z)(f).mapResult(_._2)).flatMap { z => tl.pull.fold(z)(f) }
       }
 
     /**
@@ -2593,7 +2593,7 @@ object Stream {
       def go(prev: Option[O], s: Stream[F,O]): Pull[F,Nothing,Option[O]] =
         s.pull.uncons.flatMap {
           case None => Pull.pure(prev)
-          case Some((hd,tl)) => Pull.segment(hd.fold(prev)((_,o) => Some(o))).flatMap(go(_,tl))
+          case Some((hd,tl)) => Pull.segment(hd.fold(prev)((_,o) => Some(o)).mapResult(_._2)).flatMap(go(_,tl))
         }
       go(None, self)
     }

@@ -323,16 +323,16 @@ abstract class Segment[+O,+R] { self =>
    *
    * @example {{{
    * scala> Segment(1,2,3,4,5).fold(0)(_ + _).force.run
-   * res0: Int = 15
+   * res0: (Unit, Int) = ((),15)
    * }}}
    */
-  final def fold[B](z: B)(f: (B,O) => B): Segment[Nothing,B] = new Segment[Nothing,B] {
-    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: B => Unit) = {
+  final def fold[B](z: B)(f: (B,O) => B): Segment[Nothing,(R,B)] = new Segment[Nothing,(R,B)] {
+    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: ((R,B)) => Unit) = {
       var b = z
       self.stage(depth.increment, defer,
         o => b = f(b, o),
         os => { var i = 0; while (i < os.size) { b = f(b, os(i)); i += 1 } },
-        r => done(b)).map(_.mapRemainder(_.fold(b)(f)))
+        r => done(r -> b)).map(_.mapRemainder(_.fold(b)(f)))
     }
     override def toString = s"($self).fold($z)(<f1>)"
   }
@@ -499,13 +499,13 @@ abstract class Segment[+O,+R] { self =>
    * res0: Vector[Int] = Vector(0, 1, 3, 6, 10, 15)
    * }}}
    */
-  final def scan[B](z: B, emitFinal: Boolean = true)(f: (B,O) => B): Segment[B,B] = new Segment[B,B] {
-    def stage0(depth: Depth, defer: Defer, emit: B => Unit, emits: Chunk[B] => Unit, done: B => Unit) = {
+  final def scan[B](z: B, emitFinal: Boolean = true)(f: (B,O) => B): Segment[B,(R,B)] = new Segment[B,(R,B)] {
+    def stage0(depth: Depth, defer: Defer, emit: B => Unit, emits: Chunk[B] => Unit, done: ((R,B)) => Unit) = {
       var b = z
       self.stage(depth.increment, defer,
         o => { emit(b); b = f(b, o) },
         os => { var i = 0; while (i < os.size) { emit(b); b = f(b, os(i)); i += 1 } },
-        r => { if (emitFinal) emit(b); done(b) }).map(_.mapRemainder(_.scan(b, emitFinal)(f)))
+        r => { if (emitFinal) emit(b); done(r -> b) }).map(_.mapRemainder(_.scan(b, emitFinal)(f)))
     }
     override def toString = s"($self).scan($z)($f)"
   }
@@ -1448,7 +1448,7 @@ object Segment {
         Traverse[List].traverse(fa.force.toList)(f).map(Segment.seq)
 
       def foldLeft[A, B](fa: Segment[A, Unit], b: B)(f: (B, A) => B): B =
-        fa.fold(b)(f).force.run
+        fa.fold(b)(f).force.run._2
 
       def foldRight[A, B](fa: Segment[A, Unit], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
         Foldable[List].foldRight(fa.force.toList, lb)(f)
