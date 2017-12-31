@@ -5,7 +5,6 @@ import cats.effect.{Effect, Sync}
 import cats.implicits._
 import fs2._
 
-import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext
 
 private[fs2] sealed trait Algebra[F[_],O,R]
@@ -176,17 +175,12 @@ private[fs2] object Algebra {
 
               case run: Algebra.Run[F, O, r] =>
                 try {
-                  @tailrec
-                  def go(values: Segment[O, r], acc: B): (B, r) = {
-                    //println(s">>> $values")
-                    values.force.uncons match {
-                      case Left(r) => (acc, r)
-                      case Right((h, t)) => go(t, h.fold(acc)(g).force.run._2)
+                  val (output, s) =
+                    run.values.force.splitAt(256, Some(10000)) match { // todo somehow abstract these parameters. Perhaps make them part of `Run`?
+                      case Left((r, chunks, _)) => (chunks, f(Right(r)))
+                      case Right((chunks, tail)) => (chunks, segment(tail).transformWith(f))
                     }
-                  }
-
-                  val (b,r) = go(run.values, acc)
-                  runFoldLoop(scope, b, g, f(Right(r)))
+                  runFoldLoop(scope, Segment.catenatedChunks(output).fold(acc)(g).force.run._2, g, s)
                 } catch {
                   case err: Throwable => runFoldLoop(scope, acc, g, f(Left(err)))
                 }
