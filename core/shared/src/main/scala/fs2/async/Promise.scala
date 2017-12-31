@@ -36,20 +36,24 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
     // `new Token` is a side effect because `Token`s are compared with reference equality, it needs to be in `F`.
     // For performance reasons, `suspend` is preferred to `F.delay(...).flatMap` here.
     val id = new Token
-    getOrWait(id)
+    getOrWait(id, true)
   }
 
   /** Like [[get]] but returns an `F[Unit]` that can be used to cancel the subscription. */
-  def cancellableGet: F[(F[A], F[Unit])] = F.delay {
-    // see the comment on `get` about Token
-    val id = new Token
-    val get = getOrWait(id)
-    val cancel = ref.modify {
-      case s @ State.Set(_) => s
-      case State.Unset(waiting) => State.Unset(waiting - id)
-    }.void
-
-    (get, cancel)
+  def cancellableGet: F[(F[A], F[Unit])] = {
+    ref.get.flatMap {
+      case State.Set(a) => F.pure((F.pure(a), F.unit))
+      case State.Unset(_) =>
+        val id = new Token
+        val cancel = ref.modify {
+          case s @ State.Set(_) => s
+          case State.Unset(waiting) => State.Unset(waiting - id)
+        }.void
+        ref.modify2 {
+          case s @ State.Set(a) => s -> (F.pure(a) -> F.unit)
+          case State.Unset(waiting) => State.Unset(waiting.updated(id, Nil)) -> (getOrWait(id, false) -> cancel)
+        }.map(_._2)
+    }
   }
 
   /**
@@ -79,8 +83,10 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
    */
   def complete(a: A): F[Unit] = {
     def notifyReaders(r: State.Unset[A]): Unit =
-      r.waiting.values.foreach { cb =>
-        ec.execute { () => cb(a) }
+      r.waiting.values.foreach { cbs =>
+        cbs.foreach { cb =>
+          ec.execute { () => cb(a) }
+        }
       }
 
     ref.modify2 {
@@ -89,22 +95,26 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
     }.flatMap(_._2)
   }
 
-  private def getOrWait(id: Token): F[A] = {
+  private def getOrWait(id: Token, forceRegistration: Boolean): F[A] = {
     def registerCallBack(cb: A => Unit): Unit = {
       def go = ref.modify2 {
         case s @ State.Set(a) => s -> F.delay(cb(a))
-        case State.Unset(waiting) => State.Unset(waiting.updated(id, cb)) -> F.unit
+        case State.Unset(waiting) =>
+          State.Unset(
+            waiting.get(id).map(cbs => waiting.updated(id, cb :: cbs)).
+                            getOrElse(if (forceRegistration) waiting.updated(id, List(cb)) else waiting)
+            ) -> F.unit
       }.flatMap(_._2)
 
       unsafeRunAsync(go)(_ => IO.unit)
     }
-
     ref.get.flatMap {
       case State.Set(a) => F.pure(a)
       case State.Unset(_) => F.async(cb => registerCallBack(x => cb(Right(x))))
-      }
+    }
   }
 }
+
 object Promise {
   /** Creates a concurrent synchronisation primitive, currently unset **/
   def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
@@ -118,7 +128,7 @@ object Promise {
   private sealed abstract class State[A]
   private object State {
     final case class Set[A](a: A) extends State[A]
-    final case class Unset[A](waiting: LinkedMap[Token, A => Unit]) extends State[A]
+    final case class Unset[A](waiting: LinkedMap[Token, List[A => Unit]]) extends State[A]
   }
 
   private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =

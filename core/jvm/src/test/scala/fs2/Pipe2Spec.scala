@@ -151,7 +151,7 @@ class Pipe2Spec extends Fs2Spec {
 
     "interrupt (1)" in forAll { (s1: PureStream[Int]) =>
       val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.run.attempt
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.compile.drain.attempt
       // tests that termination is successful even if stream being interrupted is hung
       runLog { s1.get.covary[IO].evalMap(_ => s.decrement).interruptWhen(interrupt) } shouldBe Vector()
     }
@@ -165,48 +165,48 @@ class Pipe2Spec extends Fs2Spec {
 
     "interrupt (3)" in {
       // tests the interruption of the constant stream
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
-      Stream.constant(true).covary[IO].interruptWhen(interrupt).run.unsafeRunSync
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
+      Stream.constant(true).covary[IO].interruptWhen(interrupt).compile.drain.unsafeRunSync
     }
 
     "interrupt (4)" in {
       // tests the interruption of the constant stream with flatMap combinator
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
-      Stream.constant(true).covary[IO].interruptWhen(interrupt).flatMap { _ => Stream.emit(1) }.run.unsafeRunSync
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
+      Stream.constant(true).covary[IO].interruptWhen(interrupt).flatMap { _ => Stream.emit(1) }.compile.drain.unsafeRunSync
     }
 
     "interrupt (5)" in {
       // tests the interruption of the stream that recurses infinitelly
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
       def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap { i => Stream.emit(i) ++ loop(i+1) }
-      loop(0).interruptWhen(interrupt).run.unsafeRunSync
+      loop(0).interruptWhen(interrupt).compile.drain.unsafeRunSync
     }
 
     //todo: need to resolve SoE in flatMap
     "interrupt (6)" in {
       // tests the interruption of the stream that recurse infinitely and never emits
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
       def loop: Stream[IO, Int] = Stream.eval(IO{()}).flatMap { _ => loop }
-      loop.interruptWhen(interrupt).run.unsafeRunSync
+      loop.interruptWhen(interrupt).compile.drain.unsafeRunSync
     }
 
     "interrupt (7)" in {
       // tests the interruption of the stream that recurse infinitely, is pure and never emits
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
       def loop: Stream[IO, Int] = Stream.emit(()).covary[IO].flatMap { _ => loop }
-      loop.interruptWhen(interrupt).run.unsafeRunSync
+      loop.interruptWhen(interrupt).compile.drain.unsafeRunSync
     }
 
     "interrupt (8)" in {
       // tests the interruption of the stream that repeatedly evaluates
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
-      Stream.repeatEval(IO{()}).interruptWhen(interrupt).run.unsafeRunSync
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
+      Stream.repeatEval(IO{()}).interruptWhen(interrupt).compile.drain.unsafeRunSync
     }
 
     "interrupt (9)" in {
       // tests the interruption of the constant drained stream
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](1.millis) }.run.attempt
-      Stream.constant(true).dropWhile(! _ ).covary[IO].interruptWhen(interrupt).run.unsafeRunSync
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](1.millis) }.compile.drain.attempt
+      Stream.constant(true).dropWhile(! _ ).covary[IO].interruptWhen(interrupt).compile.drain.unsafeRunSync
     }
 
     "interrupt (10)" in forAll { (s1: PureStream[Int]) =>
@@ -233,7 +233,7 @@ class Pipe2Spec extends Fs2Spec {
     "interrupt (12)" in forAll { (s1: PureStream[Int]) =>
       // tests interruption of stream that never terminates in flatMap
       val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.run.attempt
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.compile.drain.attempt
       // tests that termination is successful even when flatMapped stream is hung
       runLog { s1.get.covary[IO].interruptWhen(interrupt).flatMap(_ => Stream.eval_(s.decrement)) } shouldBe Vector()
     }
@@ -245,7 +245,7 @@ class Pipe2Spec extends Fs2Spec {
       val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
       val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) ++ f.get.map { _ => false } }
       val prg = (Stream(1) ++ s1.get).covary[IO].interruptWhen(interrupt).flatMap(_ => Stream.eval_(s.decrement))
-      val throws = f.get.run.attempt.unsafeRunSync.isLeft
+      val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
       if (throws) an[Err.type] should be thrownBy runLog(prg)
       else runLog(prg)
     }
@@ -253,7 +253,7 @@ class Pipe2Spec extends Fs2Spec {
     "interrupt (14)" in  forAll { s1: PureStream[Int] =>
       // tests that when interrupted, the interruption will resume with append.
       val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.run.attempt
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](50.millis) }.compile.drain.attempt
       val prg = (
         (s1.get.covary[IO].interruptWhen(interrupt).evalMap { _ => s.decrement map { _ => None } })
          ++ (s1.get.map(Some(_)))
@@ -266,7 +266,7 @@ class Pipe2Spec extends Fs2Spec {
       // tests that interruption works even when flatMap is followed by `collect`
       // also tests scenario when interrupted stream is followed by other stream and both have map fusion defined
       val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
-      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
+      val interrupt = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
       val prg =
         (s1.get.covary[IO].interruptWhen(interrupt).map { i => None } ++ s1.get.map(Some(_)))
         .flatMap {
@@ -281,7 +281,7 @@ class Pipe2Spec extends Fs2Spec {
 
     "nested-interrupt (16)" in forAll { s1: PureStream[Int] =>
       val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
-      val interrupt: IO[Either[Throwable, Unit]] = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.run.attempt
+      val interrupt: IO[Either[Throwable, Unit]] = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
       val neverInterrupt = IO.async[Unit] { _ => () }.attempt
 
       val prg =
@@ -301,7 +301,7 @@ class Pipe2Spec extends Fs2Spec {
         val pausedStream = Stream.eval(async.signalOf[IO,Boolean](false)).flatMap { pause =>
           mkScheduler.flatMap { scheduler =>
             scheduler.awakeEvery[IO](10.millis).scan(0)((acc, _) => acc + 1).evalMap { n =>
-              if (n % 2 != 0) pause.set(true) *> async.start((scheduler.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).run) *> IO.pure(n)
+              if (n % 2 != 0) pause.set(true) *> async.start((scheduler.sleep_[IO](10.millis) ++ Stream.eval(pause.set(false))).compile.drain) *> IO.pure(n)
               else IO.pure(n)
             }.take(5)
           }

@@ -50,12 +50,12 @@ class MergeJoinSpec extends Fs2Spec {
       val s: Stream[IO,Stream[IO,Unit]] = bracketed.map { b =>
         Stream.eval(IO(b.get)).flatMap(b => if (b) Stream(()) else Stream.raiseError(Err)).repeat.take(10000)
       }
-      s.joinUnbounded.run.unsafeRunSync()
+      s.joinUnbounded.compile.drain.unsafeRunSync()
     }
 
     "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
       an[Err.type] should be thrownBy {
-        s1.get.merge(f.get).run.unsafeRunSync()
+        s1.get.merge(f.get).compile.drain.unsafeRunSync()
       }
     }
 

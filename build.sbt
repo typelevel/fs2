@@ -130,7 +130,6 @@ lazy val commonJsSettings = Seq(
         options.withParallel(false)
     }
   },
-  requiresDOM := false,
   scalaJSStage in Test := FastOptStage,
   jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
   scalacOptions in Compile += {
@@ -177,7 +176,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.5"
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.6"
   ).
   jsSettings(commonJsSettings: _*)
 

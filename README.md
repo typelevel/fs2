@@ -36,15 +36,15 @@ def converter[F[_]](implicit F: Sync[F]): F[Unit] =
     .intersperse("\n")
     .through(text.utf8Encode)
     .through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
-    .run
+    .compile.drain
 
 // at the end of the universe...
 val u: Unit = converter[IO].unsafeRunSync()
 ```
 
-This will construct a `F[Unit]`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blanklines and commented lines. It then parses temperatures in degrees Fahrenheit, converts these to Celsius, UTF-8 encodes the output, and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed upon normal termination or if exceptions occur.
+This will construct a `F[Unit]`, `converter`, which reads lines incrementally from `testdata/fahrenheit.txt`, skipping blank lines and commented lines. It then parses temperatures in degrees Fahrenheit, converts these to Celsius, UTF-8 encodes the output, and writes incrementally to `testdata/celsius.txt`, using constant memory. The input and output files will be closed upon normal termination or if exceptions occur.
 
-At the end it's saying that the effect `F` will be of type `cats.effect.IO` and then it's possible to invoke `unsafeRunSync()`. You can choose a different effect type or your own as long as it implements `cats.effect.Sync` for this case. In some other cases the constraints might require to implement interfaces like `cats.effect.MonadError[?, Throwable]`, `cats.effect.Async` and / or `cats.effect.Effect`.
+At the end it's saying that the effect `F` will be of type `cats.effect.IO` and then it's possible to invoke `unsafeRunSync()`. You can choose a different effect type or your own as long as it implements `cats.effect.Sync`.
 
 The library supports a number of other interesting use cases:
 
@@ -62,14 +62,29 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
+* [API docs (fs2-core 0.10.0-M10)][core-api-0.10.0-M10], [API docs (fs2-io 0.10.0-M10)][io-api-0.10.0-M10]
+* [API docs (fs2-core 0.10.0-M8)][core-api-0.10.0-M8], [API docs (fs2-io 0.10.0-M8)][io-api-0.10.0-M8]
+
+[io-api-0.10.0-M10]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-M10/fs2-io_2.12-0.10.0-M10-javadoc.jar/!/fs2/index.html
+[core-api-0.10.0-M10]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-M10/fs2-core_2.12-0.10.0-M10-javadoc.jar/!/fs2/index.html
+
+[io-api-0.10.0-M8]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-M8/fs2-io_2.12-0.10.0-M8-javadoc.jar/!/fs2/index.html
+[core-api-0.10.0-M8]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-M8/fs2-core_2.12-0.10.0-M8-javadoc.jar/!/fs2/index.html
+
+
+
 The 0.10 release is almost complete and will be released when Cats 1.0 is released. Milestone builds are available now. The [0.10 migration guide](docs/migration-guide-0.10.md) summarizes the differences between 0.10 and 0.9. To get 0.10, add the following to your SBT build:
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M8" // For cats 1.0.0-RC1 and cats-effect 0.5
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M10" // For cats 1.0.0-RC2 and cats-effect 0.6
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M8"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M10"
 ```
 
 The 0.9 release is out and we recommend upgrading. You may want to first [read the 0.9 migration guide](docs/migration-guide-0.9.md) if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
@@ -101,6 +116,7 @@ The previous stable release is 0.8.4 ([source](https://github.com/functional-str
 If you have a project you'd like to include in this list, either open a PR or let us know in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and we'll add a link to it here.
 
 * [doobie](https://github.com/tpolecat/doobie): Pure functional JDBC built on fs2.
+* [fs2-crypto](https://github.com/Spinoco/fs2-crypto): TLS support for fs2.
 * [fs2-http](https://github.com/Spinoco/fs2-http): Http server and client library implemented in fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
 * [fs2-kafka](https://github.com/Spinoco/fs2-kafka): Simple client for Apache Kafka.

@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 import cats.effect.Effect
 import cats.implicits._
 import fs2.async.mutable.Queue
-import fs2.internal.{Algebra, FreeC, NonFatal}
+import fs2.internal.{FreeC, NonFatal}
 
 object Pipe {
 
@@ -22,11 +22,10 @@ object Pipe {
 
     // Steps `s` without overhead of resource tracking
     def stepf(s: Stream[Read,O]): Read[UO] = {
-      Algebra.runFold(
-        Algebra.uncons(s.get).flatMap {
-          case Some((hd,tl)) => Algebra.output1[Read,UO](Some((hd,Stream.fromFreeC(tl))))
-          case None => Algebra.pure[Read,UO,Unit](())
-        }, None: UO)((x,y) => y)
+      s.pull.uncons.flatMap {
+        case Some((hd,tl)) => Pull.output1((hd,tl))
+        case None => Pull.done
+      }.streamNoScope.compile.last
     }
 
     def go(s: Read[UO]): Stepper[I,O] = Stepper.Suspend { () =>
@@ -34,10 +33,9 @@ object Pipe {
         case FreeC.Pure(None) => Stepper.Done
         case FreeC.Pure(Some((hd,tl))) => Stepper.Emits(hd, go(stepf(tl)))
         case FreeC.Fail(t) => Stepper.Fail(t)
-        case bound: FreeC.Bind[ReadSegment,_,UO] =>
-          val f = bound.asInstanceOf[FreeC.Bind[ReadSegment,Any,UO]].f
-          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment,UO]].fr
-          Stepper.Await(segment => try go(f(Right(fx(segment)))) catch { case NonFatal(t) => go(f(Left(t))) })
+        case bound: FreeC.Bind[ReadSegment,x,UO] =>
+          val fx = bound.fx.asInstanceOf[FreeC.Eval[ReadSegment,x]].fr
+          Stepper.Await(segment => try go(bound.f(Right(fx(segment)))) catch { case NonFatal(t) => go(bound.f(Left(t))) })
         case e => sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }

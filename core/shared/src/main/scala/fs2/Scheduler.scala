@@ -196,7 +196,7 @@ abstract class Scheduler {
    *      |   val s = Stream(1, 2, 3) ++ scheduler.sleep_[IO](500.millis) ++ Stream(4, 5) ++ scheduler.sleep_[IO](10.millis) ++ Stream(6)
    *      |   s.through(scheduler.debounce(100.milliseconds))
    *      | }
-   * scala> s2.runLog.unsafeRunSync
+   * scala> s2.compile.toVector.unsafeRunSync
    * res0: Vector[Int] = Vector(3, 6)
    * }}}
    */

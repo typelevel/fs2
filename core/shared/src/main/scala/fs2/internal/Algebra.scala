@@ -90,15 +90,14 @@ private[fs2] object Algebra {
 
 
   /** Left-folds the output of a stream. */
-  def runFold[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
+  def compile[F[_],O,B](stream: FreeC[Algebra[F,O,?],Unit], init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
     F.delay(RunFoldScope.newRoot).flatMap { scope =>
-      runFoldScope[F,O,B](scope, stream, init)(f).attempt.flatMap {
-        case Left(t) => scope.close *> F.raiseError(t)
-        case Right(b) => scope.close as b
-      }
-    }
+    compileScope[F,O,B](scope, stream, init)(f).attempt.flatMap {
+      case Left(t) => scope.close *> F.raiseError(t)
+      case Right(b) => scope.close as b
+    }}
 
-  private[fs2] def runFoldScope[F[_],O,B](scope: RunFoldScope[F], stream: FreeC[Algebra[F,O,?],Unit], init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
+  private[fs2] def compileScope[F[_],O,B](scope: RunFoldScope[F], stream: FreeC[Algebra[F,O,?],Unit], init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
     runFoldLoop[F,O,B](scope, init, g, stream)
 
   private def runUncons[F[_],X,O](
@@ -169,7 +168,7 @@ private[fs2] object Algebra {
             fx match {
               case output: Algebra.Output[F, O] =>
                 try {
-                  runFoldLoop(scope, output.values.fold(acc)(g).force.run, g, f(Right(())))
+                  runFoldLoop(scope, output.values.fold(acc)(g).force.run._2, g, f(Right(())))
                 }
                 catch {
                   case err: Throwable => runFoldLoop(scope, acc, g, f(Left(err)))
@@ -182,7 +181,7 @@ private[fs2] object Algebra {
                     //println(s">>> $values")
                     values.force.uncons match {
                       case Left(r) => (acc, r)
-                      case Right((h, t)) => go(t, h.fold(acc)(g).force.run)
+                      case Right((h, t)) => go(t, h.fold(acc)(g).force.run._2)
                     }
                   }
 

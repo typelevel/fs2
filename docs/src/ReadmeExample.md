@@ -20,7 +20,7 @@ object Converter {
       .intersperse("\n")
       .through(text.utf8Encode)
       .through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
-      .run
+      .compile.drain
 }
 
 Converter.converter.unsafeRunSync()
@@ -83,10 +83,10 @@ We then write the encoded bytes to a file. Note that nothing has happened at thi
 val written: Stream[IO, Unit] = encodedBytes.through(io.file.writeAll(Paths.get("testdata/celsius.txt")))
 ```
 
-There are a number of ways of interpreting the stream. In this case, we call `run`, which returns a val value of the effect type, `IO`. The output of the stream is ignored - we run it solely for its effect.
+There are a number of ways of interpreting the stream. In this case, we call `compile.drain`, which returns a val value of the effect type, `IO`. The output of the stream is ignored - we compile it solely for its effect.
 
 ```tut
-val task: IO[Unit] = written.run
+val task: IO[Unit] = written.compile.drain
 ```
 
 We still haven't *done* anything yet. Effects only occur when we run the resulting task. We can run a `IO` by calling `unsafeRunSync()` -- the name is telling us that calling it performs effects and hence, it is not referentially transparent.

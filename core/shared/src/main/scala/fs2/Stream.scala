@@ -7,6 +7,7 @@ import scala.concurrent.duration._
 import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
+import fs2.async.Promise
 import fs2.async.mutable.Queue
 import fs2.internal.{Algebra, FreeC, Token}
 
@@ -63,8 +64,6 @@ import fs2.internal.{Algebra, FreeC, Token}
  * the unsegmented version will fail on the first ''element'' with an error.
  * Exceptions in pure code like this are strongly discouraged.
  *
- * If you need `cats` syntax you will need make `[[Stream.syncInstance]]`
- * implicit.
  *
  * @hideImplicitConversion PureOps
  * @hideImplicitConversion EmptyOps
@@ -108,7 +107,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *      |   buffer(4).
    *      |   evalMap(i => IO { buf += s"<$i"; i }).
    *      |   take(10).
-   *      |   runLog.unsafeRunSync
+   *      |   compile.toVector.unsafeRunSync
    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
    * scala> buf.toList
    * res1: List[String] = List(>0, >1, >2, >3, <0, <1, <2, <3, >4, >5, >6, >7, <4, <5, <6, <7, >8, >9, >10, >11, <8, <9)
@@ -131,7 +130,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *      |   bufferAll.
    *      |   evalMap(i => IO { buf += s"<$i"; i }).
    *      |   take(4).
-   *      |   runLog.unsafeRunSync
+   *      |   compile.toVector.unsafeRunSync
    * res0: Vector[Int] = Vector(0, 1, 2, 3)
    * scala> buf.toList
    * res1: List[String] = List(>0, >1, >2, >3, >4, >5, >6, >7, >8, >9, <0, <1, <2, <3)
@@ -150,7 +149,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *      |   evalMap(i => IO { buf += s">$i"; i }).
    *      |   bufferBy(_ % 2 == 0).
    *      |   evalMap(i => IO { buf += s"<$i"; i }).
-   *      |   runLog.unsafeRunSync
+   *      |   compile.toVector.unsafeRunSync
    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
    * scala> buf.toList
    * res1: List[String] = List(>0, >1, <0, <1, >2, >3, <2, <3, >4, >5, <4, <5, >6, >7, <6, <7, >8, >9, <8, <9)
@@ -310,7 +309,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    *
    * @example {{{
    * scala> import cats.effect.IO
-   * scala> Stream.eval(IO(println("x"))).drain.runLog.unsafeRunSync
+   * scala> Stream.eval(IO(println("x"))).drain.compile.toVector.unsafeRunSync
    * res0: Vector[Nothing] = Vector()
    * }}}
    */
@@ -455,14 +454,14 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
           // Check if we can emit this chunk unmodified
-          Pull.segment(hd.fold((true, last)) { case ((acc, last), o) => (acc && f(last, o), o) }).flatMap { case (allPass, newLast) =>
+          Pull.segment(hd.fold((true, last)) { case ((acc, last), o) => (acc && f(last, o), o) }.mapResult(_._2)).flatMap { case (allPass, newLast) =>
             if (allPass) {
               Pull.output(hd) >> go(newLast, tl)
             } else {
               Pull.segment(hd.fold((Vector.empty[O], last)) { case ((acc, last), o) =>
                 if (f(last, o)) (acc :+ o, o)
                 else (acc, last)
-              }).flatMap { case (acc, newLast) =>
+              }.mapResult(_._2)).flatMap { case (acc, newLast) =>
                 Pull.output(Segment.vector(acc)) >> go(newLast, tl)
               }
             }
@@ -781,7 +780,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     this.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd,tl)) =>
-        hd.scan(z)(f).force.uncons1 match {
+        hd.scan(z)(f).mapResult(_._2).force.uncons1 match {
           case Left(acc) => tl.scan_(acc)(f)
           case Right((_, out)) => Pull.segment(out).flatMap{acc => tl.scan_(acc)(f)}
         }
@@ -872,7 +871,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
       s.pull.uncons.flatMap {
         case None => Pull.done
         case Some((hd,tl)) =>
-          hd.scan(window)((w, i) => w.dequeue._2.enqueue(i)).force.drop(1) match {
+          hd.scan(window)((w, i) => w.dequeue._2.enqueue(i)).mapResult(_._2).force.drop(1) match {
             case Left((w2,_)) => go(w2, tl)
             case Right(out) => Pull.segment(out).flatMap { window => go(window, tl) }
           }
@@ -881,7 +880,7 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
     this.pull.unconsN(n, true).flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
-        val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).force.run
+        val window = hd.fold(collection.immutable.Queue.empty[O])(_.enqueue(_)).force.run._2
         Pull.output1(window) >> go(window, tl)
     }.stream
   }
@@ -1121,9 +1120,9 @@ object Stream {
    *
    * @example {{{
    * scala> import cats.effect.IO
-   * scala> Stream.attemptEval(IO(10)).runLog.unsafeRunSync
+   * scala> Stream.attemptEval(IO(10)).compile.toVector.unsafeRunSync
    * res0: Vector[Either[Throwable,Int]] = Vector(Right(10))
-   * scala> Stream.attemptEval(IO(throw new RuntimeException)).runLog.unsafeRunSync
+   * scala> Stream.attemptEval(IO(throw new RuntimeException)).compile.toVector.unsafeRunSync
    * res1: Vector[Either[Throwable,Nothing]] = Vector(Left(java.lang.RuntimeException))
    * }}}
    */
@@ -1223,9 +1222,9 @@ object Stream {
    *
    * @example {{{
    * scala> import cats.effect.IO
-   * scala> Stream.eval(IO(10)).runLog.unsafeRunSync
+   * scala> Stream.eval(IO(10)).compile.toVector.unsafeRunSync
    * res0: Vector[Int] = Vector(10)
-   * scala> Stream.eval(IO(throw new RuntimeException)).runLog.attempt.unsafeRunSync
+   * scala> Stream.eval(IO(throw new RuntimeException)).compile.toVector.attempt.unsafeRunSync
    * res1: Either[Throwable,Vector[Nothing]] = Left(java.lang.RuntimeException)
    * }}}
    */
@@ -1239,7 +1238,7 @@ object Stream {
    *
    * @example {{{
    * scala> import cats.effect.IO
-   * scala> Stream.eval_(IO(println("Ran"))).runLog.unsafeRunSync
+   * scala> Stream.eval_(IO(println("Ran"))).compile.toVector.unsafeRunSync
    * res0: Vector[Nothing] = Vector()
    * }}}
    */
@@ -1276,7 +1275,7 @@ object Stream {
    *
    * @example {{{
    * scala> import cats.effect.IO
-   * scala> Stream.force(IO(Stream(1,2,3).covary[IO])).runLog.unsafeRunSync
+   * scala> Stream.force(IO(Stream(1,2,3).covary[IO])).compile.toVector.unsafeRunSync
    * res0: Vector[Int] = Vector(1, 2, 3)
    * }}}
    */
@@ -1302,7 +1301,7 @@ object Stream {
    *
    * @example {{{
    * scala> import cats.effect.IO
-   * scala> Stream.iterateEval(0)(i => IO(i + 1)).take(10).runLog.unsafeRunSync
+   * scala> Stream.iterateEval(0)(i => IO(i + 1)).take(10).compile.toVector.unsafeRunSync
    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
    * }}}
    */
@@ -1321,7 +1320,7 @@ object Stream {
    * scala> Try(Stream.raiseError(new RuntimeException).toList)
    * res0: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
    * scala> import cats.effect.IO
-   * scala> Stream.raiseError(new RuntimeException).covary[IO].run.attempt.unsafeRunSync
+   * scala> Stream.raiseError(new RuntimeException).covary[IO].compile.drain.attempt.unsafeRunSync
    * res0: Either[Throwable,Unit] = Left(java.lang.RuntimeException)
    * }}}
    */
@@ -1483,6 +1482,18 @@ object Stream {
     def changes(implicit eq: Eq[O]): Stream[F,O] = self.filterWithPrevious(eq.neqv)
 
     /**
+     * Gets a projection of this stream that allows converting it to an `F[..]` in a number of ways.
+     *
+     * @example {{{
+     * scala> import cats.effect.IO
+     * scala> val prg: IO[Vector[Int]] = Stream.eval(IO(1)).append(Stream(2,3,4)).compile.toVector
+     * scala> prg.unsafeRunSync
+     * res2: Vector[Int] = Vector(1, 2, 3, 4)
+     * }}}
+     */
+    def compile: Stream.ToEffect[F, O] = new Stream.ToEffect[F, O](self.free)
+
+    /**
      * Runs the supplied stream in the background as elements from this stream are pulled.
      *
      * The resulting stream terminates upon termination of this stream. The background stream will
@@ -1502,7 +1513,7 @@ object Stream {
      * @example {{{
      * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
      * scala> val data: Stream[IO,Int] = Stream.range(1, 10).covary[IO]
-     * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).runLast.unsafeRunSync
+     * scala> Stream.eval(async.signalOf[IO,Int](0)).flatMap(s => Stream(s).concurrently(data.evalMap(s.set))).flatMap(_.discrete).takeWhile(_ < 9, true).compile.last.unsafeRunSync
      * res0: Option[Int] = Some(9)
      * }}}
      */
@@ -1510,7 +1521,7 @@ object Stream {
       Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
       Stream.eval(async.promise[F, Unit]).flatMap { doneR =>
       Stream.eval(async.promise[F, Throwable]).flatMap { interruptL =>
-        def runR = that.interruptWhen(interruptR.get.attempt).run.attempt flatMap {
+        def runR = that.interruptWhen(interruptR.get.attempt).compile.drain.attempt flatMap {
           case Right(_) | Left(_:Interrupted) => doneR.complete(())
           case Left(err) => interruptL.complete(err) *> doneR.complete(())
         }
@@ -1605,7 +1616,7 @@ object Stream {
      *      |   val s1 = scheduler.awakeEvery[IO](1000.millis).scan(0)((acc, i) => acc + 1)
      *      |   s1.either(scheduler.sleep_[IO](500.millis) ++ s1).take(10)
      *      | }
-     * scala> s.take(10).runLog.unsafeRunSync
+     * scala> s.take(10).compile.toVector.unsafeRunSync
      * res0: Vector[Either[Int,Int]] = Vector(Left(0), Right(0), Left(1), Right(1), Left(2), Right(2), Left(3), Right(3), Left(4), Right(4))
      * }}}
      */
@@ -1617,7 +1628,7 @@ object Stream {
      *
      * @example {{{
      * scala> import cats.effect.IO
-     * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).run.unsafeRunSync
+     * scala> Stream(1,2,3,4).evalMap(i => IO(println(i))).compile.drain.unsafeRunSync
      * res0: Unit = ()
      * }}}
      */
@@ -1629,7 +1640,7 @@ object Stream {
      *
      * @example {{{
      * scala> import cats.effect.IO
-     * scala> Stream(1,2,3,4).evalScan(0)((acc,i) => IO(acc + i)).runLog.unsafeRunSync
+     * scala> Stream(1,2,3,4).evalScan(0)((acc,i) => IO(acc + i)).compile.toVector.unsafeRunSync
      * res0: Vector[Int] = Vector(0, 1, 3, 6, 10)
      * }}}
      */
@@ -1751,7 +1762,7 @@ object Stream {
         def runR = haltWhenTrue.evalMap {
           case false => F.pure(false)
           case true => interruptL.complete(Right(())) as true
-        }.takeWhile(! _).interruptWhen(interruptR.get.attempt).run.attempt.flatMap { r =>
+        }.takeWhile(! _).interruptWhen(interruptR.get.attempt).compile.drain.attempt.flatMap { r =>
           interruptL.complete(r).attempt *> doneR.complete(())
         }
 
@@ -1859,7 +1870,7 @@ object Stream {
                   inner.segments.
                   evalMap { s => outputQ.enqueue1(Some(s)) }.
                   interruptWhen(done.map(_.nonEmpty)).// must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-                  run.attempt.
+                  compile.drain.attempt.
                   flatMap {
                     case Right(()) => F.unit
                     case Left(err) => stop(Some(err))
@@ -1881,7 +1892,7 @@ object Stream {
             runInner(inner, outerScope)
           }}
           .interruptWhen(done.map(_.nonEmpty))
-          .run.attempt.flatMap {
+          .compile.drain.attempt.flatMap {
             case Right(_) => F.unit
             case Left(err) => stop(Some(err))
           } *> decrementRunning
@@ -1900,7 +1911,7 @@ object Stream {
         outputQ.dequeue.
         unNoneTerminate.
         flatMap { Stream.segment(_).covary[F] }.
-        onFinalize { stop(None) *> (running.discrete.dropWhile(_ > 0) take 1 run) } ++
+        onFinalize { stop(None) *> running.discrete.dropWhile(_ > 0).take(1).compile.drain } ++
         signalResult
       }}}}
     }
@@ -1933,7 +1944,7 @@ object Stream {
      *      |   val s1 = scheduler.awakeEvery[IO](500.millis).scan(0)((acc, i) => acc + 1)
      *      |   s1.merge(scheduler.sleep_[IO](250.millis) ++ s1)
      *      | }
-     * scala> s.take(6).runLog.unsafeRunSync
+     * scala> s.take(6).compile.toVector.unsafeRunSync
      * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
      * }}}
      */
@@ -1991,7 +2002,7 @@ object Stream {
      *
      * @example {{{
      * scala> import scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO, cats.implicits._
-     * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).runLog.unsafeRunSync
+     * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
      * res0: Vector[Int] = Vector(2, 3, 4)
      * }}}
      */
@@ -2051,7 +2062,7 @@ object Stream {
           case Left(None) => Pull.pure(None)
           case Right(None) => Pull.pure(None)
           case Left(Some((s, controlStream))) =>
-            Pull.segment(s.fold(false)(_ || _)).flatMap { p =>
+            Pull.segment(s.fold(false)(_ || _).mapResult(_._2)).flatMap { p =>
               if (p) paused(controlStream, srcFuture)
               else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
             }
@@ -2128,7 +2139,7 @@ object Stream {
           if (partitions.isEmpty) Segment.chunk(partitions) -> None
           else if (partitions.size == 1) Segment.empty -> partitions.last
           else Segment.chunk(partitions.take(partitions.size - 1)) -> partitions.last
-        }.flatMap { case (out, carry) => out }.mapResult { case ((out, carry), unit) => carry }
+        }.mapResult(_._2).flatMap { case (out, carry) => out }.mapResult { case ((out, carry), unit) => carry }
       }.flatMap { case Some(carry) => Pull.output1(carry); case None => Pull.done }.stream
     }
 
@@ -2139,104 +2150,21 @@ object Stream {
     def repeatPull[O2](using: Stream.ToPull[F,O] => Pull[F,O2,Option[Stream[F,O]]]): Stream[F,O2] =
       Pull.loop(using.andThen(_.map(_.map(_.pull))))(self.pull).stream
 
-    /**
-     * Interprets this stream in to a value of the target effect type `F` and
-     * discards any output values of the stream.
-     *
-     * To access the output values of the stream, use one of the other methods that start with `run` --
-     * e.g., [[runFold]], [[runLog]], etc.
-     *
-     * When this method has returned, the stream has not begun execution -- this method simply
-     * compiles the stream down to the target effect type.
-     *
-     */
-    def run(implicit F: Sync[F]): F[Unit] =
-      runFold(())((u, _) => u)
+    /** Deprecated alias for `compile.drain`. */
+    @deprecated("Use compile.drain instead", "0.10.0")
+    def run(implicit F: Sync[F]): F[Unit] = compile.drain
 
+    /** Deprecated alias for `compile.fold`. */
+    @deprecated("Use compile.fold instead", "0.10.0")
+    def runFold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] = compile.fold(init)(f)
 
-    /**
-     * Interprets this stream in to a value of the target effect type `F` by folding
-     * the output values together, starting with the provided `init` and combining the
-     * current value with each output value.
-     *
-     * When this method has returned, the stream has not begun execution -- this method simply
-     * compiles the stream down to the target effect type.
-     *
-     */
-    def runFold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
-      Algebra.runFold(self.get, init)(f)
+    /** Deprecated alias for `compile.toVector`. */
+    @deprecated("Use compile.toVector instead", "0.10.0")
+    def runLog(implicit F: Sync[F]): F[Vector[O]] = compile.toVector
+    /** Deprecated alias for `compile.last`. */
 
-
-    /**
-     * Like [[runFold]] but uses the implicitly available `Monoid[O]` to combine elements.
-     *
-     * @example {{{
-     * scala> import cats.implicits._, cats.effect.IO
-     * scala> Stream(1, 2, 3, 4, 5).covary[IO].runFoldMonoid.unsafeRunSync
-     * res0: Int = 15
-     * }}}
-     */
-    def runFoldMonoid(implicit F: Sync[F], O: Monoid[O]): F[O] =
-      runFold(O.empty)(O.combine)
-
-
-    /**
-     * Like [[runFold]] but uses the implicitly available `Semigroup[O]` to combine elements.
-     * If the stream emits no elements, `None` is returned.
-     *
-     * @example {{{
-     * scala> import cats.implicits._, cats.effect.IO
-     * scala> Stream(1, 2, 3, 4, 5).covary[IO].runFoldSemigroup.unsafeRunSync
-     * res0: Option[Int] = Some(15)
-     * scala> Stream.empty.covaryAll[IO,Int].runFoldSemigroup.unsafeRunSync
-     * res1: Option[Int] = None
-     * }}}
-     */
-    def runFoldSemigroup(implicit F: Sync[F], O: Semigroup[O]): F[Option[O]] =
-      runFold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
-
-
-    /**
-     * Interprets this stream in to a value of the target effect type `F` by logging
-     * the output values to a `Vector`.
-     *
-     * When this method has returned, the stream has not begun execution -- this method simply
-     * compiles the stream down to the target effect type.
-     *
-     * To call this method, an `Effect[F]` instance must be implicitly available.
-     *
-     * @example {{{
-     * scala> import cats.effect.IO
-     * scala> Stream.range(0,100).take(5).covary[IO].runLog.unsafeRunSync
-     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
-     * }}}
-     */
-    def runLog(implicit F: Sync[F]): F[Vector[O]] = {
-      import scala.collection.immutable.VectorBuilder
-      F.suspend(F.map(runFold(new VectorBuilder[O])(_ += _))(_.result))
-    }
-
-
-    /**
-     * Interprets this stream in to a value of the target effect type `F`,
-     * returning `None` if the stream emitted no values and returning the
-     * last value emitted wrapped in `Some` if values were emitted.
-     *
-     * When this method has returned, the stream has not begun execution -- this method simply
-     * compiles the stream down to the target effect type.
-     *
-     * To call this method, an `Effect[F]` instance must be implicitly available.
-     *
-     * @example {{{
-     * scala> import cats.effect.IO
-     * scala> Stream.range(0,100).take(5).covary[IO].runLast.unsafeRunSync
-     * res0: Option[Int] = Some(4)
-     * }}}
-     */
-    def runLast(implicit F: Sync[F]): F[Option[O]] =
-      self.runFold(Option.empty[O])((_, a) => Some(a))
-
-
+    @deprecated("Use compile.last instead", "0.10.0")
+    def runLast(implicit F: Sync[F]): F[Option[O]] = compile.last
 
     /**
      * Like `scan` but `f` is applied to each segment of the source stream.
@@ -2298,7 +2226,7 @@ object Stream {
      *
      * @example {{{
      * scala> import cats.effect.IO, cats.implicits._
-     * scala> Stream(1,2,3).covary[IO].to(Sink.showLinesStdOut).run.unsafeRunSync
+     * scala> Stream(1,2,3).covary[IO].to(Sink.showLinesStdOut).compile.drain.unsafeRunSync
      * res0: Unit = ()
      * }}}
      */
@@ -2503,10 +2431,10 @@ object Stream {
       covary[F].pauseWhen(pauseWhenTrue)
 
     /** Runs this pure stream and returns the emitted elements in a list. Note: this method is only available on pure streams. */
-    def toList: List[O] = covary[IO].runFold(List.empty[O])((b, a) => a :: b).unsafeRunSync.reverse
+    def toList: List[O] = covary[IO].compile.toList.unsafeRunSync
 
     /** Runs this pure stream and returns the emitted elements in a vector. Note: this method is only available on pure streams. */
-    def toVector: Vector[O] = covary[IO].runLog.unsafeRunSync
+    def toVector: Vector[O] = covary[IO].compile.toVector.unsafeRunSync
 
     def zipAll[F[_],O2](that: Stream[F,O2])(pad1: O, pad2: O2): Stream[F,(O,O2)] =
       covary[F].zipAll(that)(pad1,pad2)
@@ -2563,20 +2491,24 @@ object Stream {
      * For example, `merge` is implemented by calling `unconsAsync` on each stream, racing the
      * resultant `AsyncPull`s, emitting winner of the race, and then repeating.
      */
-    def unconsAsync(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing, AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] = {
+    def unconsAsync(implicit ec: ExecutionContext, F: Effect[F]): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] = {
       type UO = Option[(Segment[O,Unit], FreeC[Algebra[F,O,?],Unit])]
+      type Res = Option[(Segment[O,Unit], Stream[F,O])]
 
       Pull.fromFreeC {
-         val p = async.Promise.unsafeCreate[F, Either[Throwable, Option[(Segment[O,Unit], Stream[F,O])]]]
         Algebra.getScope[F, Nothing] flatMap { scope =>
           val runStep =
-            Algebra.runFoldScope(
-              scope
-              , Algebra.uncons(self.get).flatMap(Algebra.output1(_))
-              , None : UO
-            ){ (_, uo) => uo.asInstanceOf[UO] } map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
+            Algebra.compileScope(
+              scope,
+              Algebra.uncons(self.get).flatMap(Algebra.output1(_)),
+              None: UO
+            )((_, uo) => uo.asInstanceOf[UO]) map { _ map { case (hd, tl) => (hd, fromFreeC(tl)) }}
 
-          Algebra.eval(async.fork(F.flatMap(F.attempt(runStep))(x => async.fork(p.complete(x))))) map { _ => AsyncPull.readAttemptPromise(p) }
+          Algebra.eval {
+            Promise.empty[F, Either[Throwable, Res]] flatMap { p =>
+              async.fork(runStep.attempt.flatMap(p.complete(_))) as AsyncPull.readAttemptPromise(p)
+            }
+          }
         }
       }
     }
@@ -2697,7 +2629,7 @@ object Stream {
     def fold[O2](z: O2)(f: (O2, O) => O2): Pull[F,Nothing,O2] =
       uncons.flatMap {
         case None => Pull.pure(z)
-        case Some((hd,tl)) => Pull.segment(hd.fold(z)(f)).flatMap { z => tl.pull.fold(z)(f) }
+        case Some((hd,tl)) => Pull.segment(hd.fold(z)(f).mapResult(_._2)).flatMap { z => tl.pull.fold(z)(f) }
       }
 
     /**
@@ -2727,7 +2659,7 @@ object Stream {
       def go(prev: Option[O], s: Stream[F,O]): Pull[F,Nothing,Option[O]] =
         s.pull.uncons.flatMap {
           case None => Pull.pure(prev)
-          case Some((hd,tl)) => Pull.segment(hd.fold(prev)((_,o) => Some(o))).flatMap(go(_,tl))
+          case Some((hd,tl)) => Pull.segment(hd.fold(prev)((_,o) => Some(o)).mapResult(_._2)).flatMap(go(_,tl))
         }
       go(None, self)
     }
@@ -2823,6 +2755,114 @@ object Stream {
             case Right(tl2) => Pull.pure(Some(tl.cons(tl2)))
           }
       }
+  }
+
+  /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to an `F[...]`. */
+  final class ToEffect[F[_],O] private[Stream] (private val free: FreeC[Algebra[Nothing,Nothing,?],Unit]) extends AnyVal {
+
+    private def self: Stream[F,O] = Stream.fromFreeC(free.asInstanceOf[FreeC[Algebra[F,O,?],Unit]])
+
+    /**
+     * Compiles this stream in to a value of the target effect type `F` and
+     * discards any output values of the stream.
+     *
+     * To access the output values of the stream, use one of the other compilation methods --
+     * e.g., [[fold]], [[toVector]], etc.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     */
+    def drain(implicit F: Sync[F]): F[Unit] = fold(())((u,o) => u)
+
+    /**
+     * Compiles this stream in to a value of the target effect type `F` by folding
+     * the output values together, starting with the provided `init` and combining the
+     * current value with each output value.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     */
+    def fold[B](init: B)(f: (B, O) => B)(implicit F: Sync[F]): F[B] =
+      Algebra.compile(self.get, init)(f)
+
+    /**
+     * Like [[fold]] but uses the implicitly available `Monoid[O]` to combine elements.
+     *
+     * @example {{{
+     * scala> import cats.implicits._, cats.effect.IO
+     * scala> Stream(1, 2, 3, 4, 5).covary[IO].compile.foldMonoid.unsafeRunSync
+     * res0: Int = 15
+     * }}}
+     */
+    def foldMonoid(implicit F: Sync[F], O: Monoid[O]): F[O] =
+      fold(O.empty)(O.combine)
+
+    /**
+     * Like [[fold]] but uses the implicitly available `Semigroup[O]` to combine elements.
+     * If the stream emits no elements, `None` is returned.
+     *
+     * @example {{{
+     * scala> import cats.implicits._, cats.effect.IO
+     * scala> Stream(1, 2, 3, 4, 5).covary[IO].compile.foldSemigroup.unsafeRunSync
+     * res0: Option[Int] = Some(15)
+     * scala> Stream.empty.covaryAll[IO,Int].compile.foldSemigroup.unsafeRunSync
+     * res1: Option[Int] = None
+     * }}}
+     */
+    def foldSemigroup(implicit F: Sync[F], O: Semigroup[O]): F[Option[O]] =
+      fold(Option.empty[O])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
+
+    /**
+     * Compiles this stream in to a value of the target effect type `F`,
+     * returning `None` if the stream emitted no values and returning the
+     * last value emitted wrapped in `Some` if values were emitted.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     *
+     * @example {{{
+     * scala> import cats.effect.IO
+     * scala> Stream.range(0,100).take(5).covary[IO].compile.last.unsafeRunSync
+     * res0: Option[Int] = Some(4)
+     * }}}
+     */
+    def last(implicit F: Sync[F]): F[Option[O]] =
+      fold(Option.empty[O])((_, a) => Some(a))
+
+    /**
+     * Compiles this stream in to a value of the target effect type `F` by logging
+     * the output values to a `List`.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     *
+     * @example {{{
+     * scala> import cats.effect.IO
+     * scala> Stream.range(0,100).take(5).covary[IO].compile.toList.unsafeRunSync
+     * res0: List[Int] = List(0, 1, 2, 3, 4)
+     * }}}
+     */
+    def toList(implicit F: Sync[F]): F[List[O]] = {
+      F.suspend(F.map(fold(new collection.mutable.ListBuffer[O])(_ += _))(_.result))
+    }
+
+    /**
+     * Compiles this stream in to a value of the target effect type `F` by logging
+     * the output values to a `Vector`.
+     *
+     * When this method has returned, the stream has not begun execution -- this method simply
+     * compiles the stream down to the target effect type.
+     *
+     * @example {{{
+     * scala> import cats.effect.IO
+     * scala> Stream.range(0,100).take(5).covary[IO].compile.toVector.unsafeRunSync
+     * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
+     * }}}
+     */
+    def toVector(implicit F: Sync[F]): F[Vector[O]] = {
+      import scala.collection.immutable.VectorBuilder
+      F.suspend(F.map(fold(new VectorBuilder[O])(_ += _))(_.result))
+    }
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */

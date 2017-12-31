@@ -94,7 +94,7 @@ class SegmentSpec extends Fs2Spec {
 
     "fold" in {
       forAll { (s: Segment[Int,Unit], init: Int, f: (Int, Int) => Int) =>
-        s.fold(init)(f).force.run shouldBe s.force.toVector.foldLeft(init)(f)
+        s.fold(init)(f).mapResult(_._2).force.run shouldBe s.force.toVector.foldLeft(init)(f)
       }
     }
 

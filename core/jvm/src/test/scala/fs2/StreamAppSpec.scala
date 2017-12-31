@@ -59,7 +59,7 @@ class StreamAppSpec extends Fs2Spec {
       (for {
         runApp <- async.start(testApp.doMain(List.empty))
         // Wait for app to start
-        _ <- requestShutdown.discrete.takeWhile(_ == IO.unit).run
+        _ <- requestShutdown.discrete.takeWhile(_ == IO.unit).compile.drain
         // Run shutdown task
         _ <- requestShutdown.get.flatten
         result <- runApp

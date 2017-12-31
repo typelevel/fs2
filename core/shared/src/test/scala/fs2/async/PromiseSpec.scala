@@ -51,7 +51,24 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
             _ <- p.complete(42)
             second <- p.timedGet(100.millis, scheduler)
           } yield List(first, second)
-      }.runLog.unsafeToFuture.map(_.flatten shouldBe Vector(None, Some(42)))
+      }.compile.toVector.unsafeToFuture.map(_.flatten shouldBe Vector(None, Some(42)))
+    }
+
+    "cancellableGet - cancel before force" in {
+      mkScheduler.evalMap { scheduler =>
+        for {
+          r <- async.refOf[IO,Option[Int]](None)
+          p <- async.promise[IO,Int]
+          t <- p.cancellableGet
+          (force, cancel) = t
+          _ <- cancel
+          _ <- async.fork(force.flatMap(i => r.setSync(Some(i))))
+          _ <- scheduler.effect.sleep[IO](100.millis)
+          _ <- p.complete(42)
+          _ <- scheduler.effect.sleep[IO](100.millis)
+          result <- r.get
+        } yield result
+      }.compile.last.unsafeToFuture.map(_ shouldBe Some(None))
     }
   }
 }

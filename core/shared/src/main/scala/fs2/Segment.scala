@@ -1,7 +1,8 @@
 package fs2
 
 import java.util.{ LinkedList => JLinkedList }
-import cats.Eval
+import cats._
+import cats.implicits.{ catsSyntaxEither => _, _ }
 
 import Segment._
 
@@ -322,16 +323,16 @@ abstract class Segment[+O,+R] { self =>
    *
    * @example {{{
    * scala> Segment(1,2,3,4,5).fold(0)(_ + _).force.run
-   * res0: Int = 15
+   * res0: (Unit, Int) = ((),15)
    * }}}
    */
-  final def fold[B](z: B)(f: (B,O) => B): Segment[Nothing,B] = new Segment[Nothing,B] {
-    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: B => Unit) = {
+  final def fold[B](z: B)(f: (B,O) => B): Segment[Nothing,(R,B)] = new Segment[Nothing,(R,B)] {
+    def stage0(depth: Depth, defer: Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: ((R,B)) => Unit) = {
       var b = z
       self.stage(depth.increment, defer,
         o => b = f(b, o),
         os => { var i = 0; while (i < os.size) { b = f(b, os(i)); i += 1 } },
-        r => done(b)).map(_.mapRemainder(_.fold(b)(f)))
+        r => done(r -> b)).map(_.mapRemainder(_.fold(b)(f)))
     }
     override def toString = s"($self).fold($z)(<f1>)"
   }
@@ -498,13 +499,13 @@ abstract class Segment[+O,+R] { self =>
    * res0: Vector[Int] = Vector(0, 1, 3, 6, 10, 15)
    * }}}
    */
-  final def scan[B](z: B, emitFinal: Boolean = true)(f: (B,O) => B): Segment[B,B] = new Segment[B,B] {
-    def stage0(depth: Depth, defer: Defer, emit: B => Unit, emits: Chunk[B] => Unit, done: B => Unit) = {
+  final def scan[B](z: B, emitFinal: Boolean = true)(f: (B,O) => B): Segment[B,(R,B)] = new Segment[B,(R,B)] {
+    def stage0(depth: Depth, defer: Defer, emit: B => Unit, emits: Chunk[B] => Unit, done: ((R,B)) => Unit) = {
       var b = z
       self.stage(depth.increment, defer,
         o => { emit(b); b = f(b, o) },
         os => { var i = 0; while (i < os.size) { emit(b); b = f(b, os(i)); i += 1 } },
-        r => { if (emitFinal) emit(b); done(b) }).map(_.mapRemainder(_.scan(b, emitFinal)(f)))
+        r => { if (emitFinal) emit(b); done(r -> b) }).map(_.mapRemainder(_.scan(b, emitFinal)(f)))
     }
     override def toString = s"($self).scan($z)($f)"
   }
@@ -1444,5 +1445,51 @@ object Segment {
   private final class Trampoline {
     val deferred: JLinkedList[() => Unit] = new JLinkedList[() => Unit]
     def defer(t: => Unit): Unit = deferred.addLast(() => t)
+  }
+
+  def segmentSemigroupT[A, B]: Semigroup[Segment[A, B]] = new Semigroup[Segment[A, B]]{
+    def combine(x: Segment[A, B], y: Segment[A, B]): Segment[A, B] = x ++ y
+  }
+
+  implicit def segmentMonoidInstance[A]: Monoid[Segment[A, Unit]] = new Monoid[Segment[A, Unit]]{
+    def empty: Segment[A, Unit] = Segment.empty[A]
+
+    def combine(x: Segment[A, Unit], y: Segment[A, Unit]): Segment[A, Unit] = x ++ y
+  }
+
+  implicit val defaultSegmentMonadInstance: Traverse[Segment[?, Unit]] with Monad[Segment[?, Unit]]  =
+    new Traverse[Segment[?, Unit]] with Monad[Segment[?, Unit]] {
+      def traverse[G[_], A, B](fa: Segment[A, Unit])(f: (A) => G[B])(implicit evidence$1: Applicative[G]): G[Segment[B, Unit]] =
+        Traverse[List].traverse(fa.force.toList)(f).map(Segment.seq)
+
+      def foldLeft[A, B](fa: Segment[A, Unit], b: B)(f: (B, A) => B): B =
+        fa.fold(b)(f).force.run._2
+
+      def foldRight[A, B](fa: Segment[A, Unit], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
+        Foldable[List].foldRight(fa.force.toList, lb)(f)
+
+      def flatMap[A, B](fa: Segment[A, Unit])(f: A => Segment[B, Unit]): Segment[B, Unit] =
+        fa.flatMap(f).voidResult
+
+      def tailRecM[A, B](a: A)(f: A => Segment[Either[A, B], Unit]): Segment[B, Unit] =
+        f(a).flatMap[B, Unit]{
+          case Left(l) => tailRecM(l)(f)
+          case Right(r) => Segment(r)
+        }.voidResult
+
+      def pure[A](x: A): Segment[A, Unit] = Segment(x)
+    }
+
+  def resultMonad[T]: Monad[Segment[T, ?]] = new Monad[Segment[T, ?]]{
+    def flatMap[A, B](fa: Segment[T, A])(f: A => Segment[T, B]): Segment[T, B] =
+      fa.flatMapResult(f)
+
+    def tailRecM[A, B](a: A)(f: (A) => Segment[T, Either[A, B]]): Segment[T, B] =
+      f(a).flatMapResult[T, B] {
+        case Left(l) => tailRecM(l)(f)
+        case Right(r) => pure(r)
+      }
+
+    def pure[A](x: A): Segment[T, A] = Segment.pure(x)
   }
 }
