@@ -31,7 +31,7 @@ class StreamPerformanceSpec extends Fs2Spec {
       }
     }}
 
-    "left-associated eval_() ++ flatMap 1" - { Ns.foreach { N =>
+    "left-associated eval() ++ flatMap 1" - { Ns.foreach { N =>
       N.toString in {
         runLog((1 until N).map(emit).foldLeft(emit(0).covary[IO])((acc,a) => acc flatMap { _ => eval(IO {()}) flatMap { _ =>  a }})) shouldBe Vector(N-1)
       }
@@ -43,7 +43,7 @@ class StreamPerformanceSpec extends Fs2Spec {
       }
     }}
 
-    "right-associated eval_() ++ flatMap 1" - { Ns.foreach { N =>
+    "right-associated eval() ++ flatMap 1" - { Ns.foreach { N =>
       N.toString in {
         runLog((1 until N).map(emit).reverse.foldLeft(emit(0).covary[IO])((acc,a) => a flatMap { _ => eval(IO {()}) flatMap { _=> acc } })) shouldBe Vector(0)
       }
