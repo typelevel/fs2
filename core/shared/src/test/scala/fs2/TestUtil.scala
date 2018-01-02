@@ -5,7 +5,6 @@ import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.reflect.ClassTag
 
 import cats.effect.IO
 import cats.implicits._
@@ -39,8 +38,8 @@ trait TestUtil extends TestUtilPlatform {
     )
   )
 
-  implicit def cogenChunk[A: Cogen: ClassTag]: Cogen[Chunk[A]] =
-    Cogen[Array[A]].contramap(_.toArray)
+  implicit def cogenChunk[A: Cogen]: Cogen[Chunk[A]] =
+    Cogen[List[A]].contramap(_.toList)
 
   /** Newtype for generating test cases. Use the `tag` for labeling properties. */
   case class PureStream[+A](tag: String, get: Stream[Pure,A])
