@@ -1084,7 +1084,7 @@ object Segment {
           trampoline.defer,
           o => emits(Chunk.singleton(o)),
           os => emits(os),
-          r => { if (result.isEmpty || result.map(_.map(_ == Segment.empty).getOrElse(false)).getOrElse(false)) result = Some(Left(r)); throw Done }).value
+          r => { if (result.isEmpty || result.flatMap(_.toOption).fold(false)(_ == Segment.empty)) result = Some(Left(r)); throw Done }).value
         try {
           maxSteps match {
             case Some(maxSteps) =>
