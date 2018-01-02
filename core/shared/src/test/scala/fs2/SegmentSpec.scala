@@ -124,7 +124,16 @@ class SegmentSpec extends Fs2Spec {
       forAll { (s: Segment[Int,Unit], n: Int) =>
         val result = s.force.splitAt(n)
         val v = s.force.toVector
-        if (n == 0 || n < v.size) {
+        if (n == v.size) {
+          result match {
+            case Left((_, chunks, rem)) =>
+              chunks.toVector.flatMap(_.toVector) shouldBe v
+              rem shouldBe 0
+            case Right((chunks, rest)) =>
+              chunks.toVector.flatMap(_.toVector) shouldBe v
+              rest.force.toVector shouldBe Vector.empty
+          }
+        } else if (n == 0 || n < v.size) {
           val Right((chunks, rest)) = result
           chunks.toVector.flatMap(_.toVector) shouldBe v.take(n)
           rest.force.toVector shouldBe v.drop(n)
@@ -134,6 +143,11 @@ class SegmentSpec extends Fs2Spec {
           rem shouldBe (n - v.size)
         }
       }
+    }
+
+    "splitAt eagerly exits" in {
+      val Right((chunks, rest)) = Segment.from(0L).filter(_ < 2L).force.splitAt(2)
+      chunks.toVector.flatMap(_.toVector) shouldBe Vector(0L, 1L)
     }
 
     "splitWhile" in {
