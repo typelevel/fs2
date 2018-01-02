@@ -181,12 +181,16 @@ class SegmentSpec extends Fs2Spec {
       forAll { (s: Segment[Int,Unit], n: Int) =>
         val v = s.force.toVector
         s.take(n).force.toVector shouldBe v.take(n)
-        if (n > 0 && n >= v.size) {
+        if (n > 0 && n > v.size) {
           s.take(n).drain.force.run shouldBe Left(((), n - v.size))
         } else {
           s.take(n).drain.force.run.map(_.force.toVector) shouldBe Right(Segment.vector(v.drop(n)).force.toVector)
         }
       }
+    }
+
+    "take eagerly exits" in {
+      Segment.from(0L).filter(_ < 2L).take(2).force.toVector shouldBe Vector(0L, 1L)
     }
 
     "takeWhile" in {

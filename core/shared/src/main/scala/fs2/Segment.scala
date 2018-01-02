@@ -562,12 +562,17 @@ abstract class Segment[+O,+R] { self =>
         var staged: Step[O,R] = null
         staged = self.stage(depth.increment, defer,
           o => { if (rem > 0) { rem -= 1; emit(o) } else done(Right(staged.remainder.cons(o))) },
-          os => { if (os.size <= rem) { rem -= os.size; emits(os) }
-                  else {
+          os => os.size match {
+                  case sz if sz < rem =>
+                    rem -= os.size
+                    emits(os)
+                  case sz if sz == rem =>
+                    emits(os)
+                    done(Right(staged.remainder))
+                  case _ =>
                     var i = 0
                     while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
                     done(Right(staged.remainder.prepend(Segment.chunk(os.drop(i)))))
-                  }
                 },
           r => done(Left(r -> rem))
         ).value
