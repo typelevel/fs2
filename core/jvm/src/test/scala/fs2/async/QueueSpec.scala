@@ -141,16 +141,15 @@ class QueueSpec extends Fs2Spec {
       )).flatten shouldBe Vector(false, 42, 42, 42)
     }
     "peek1 circular buffer" in {
-      pending // known race condition in test
       runLog(Stream.eval(
         for {
           q <- async.circularBuffer[IO, Int](maxSize = 1)
           f <- async.start(q.peek1)
           g <- async.start(q.peek1)
           _ <- q.enqueue1(42)
-          b <- q.offer1(43)
           x <- f
           y <- g
+          b <- q.offer1(43)
           z <- q.peek1
         } yield List(b, x, y, z)
       )).flatten shouldBe Vector(true, 42, 42, 43)
@@ -169,20 +168,17 @@ class QueueSpec extends Fs2Spec {
       )).flatten shouldBe Vector(42, 42, 42)
     }
     "timedPeek1 synchronous queue" in {
-      pending // known race condition in test
       runLog(Scheduler[IO](1).flatMap { scheduler =>
         Stream.eval(
           for {
             q <- async.synchronousQueue[IO, Int]
             none1 <- q.timedPeek1(100.millis, scheduler)
             _ <- async.start(q.enqueue1(42))
-            f <- async.start(q.timedPeek1(1000.millis, scheduler))
             x <- q.dequeue1
-            y <- f
             none2 <- q.timedPeek1(100.millis, scheduler)
-          } yield List(none1, x, y, none2)
+          } yield List(none1, x, none2)
         )
-      }).flatten shouldBe Vector(None, 42, Some(42), None)
+      }).flatten shouldBe Vector(None, 42, None)
     }
     "peek1 synchronous None-terminated queue" in {
       runLog(Stream.eval(
