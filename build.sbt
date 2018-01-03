@@ -56,6 +56,7 @@ lazy val commonSettings = Seq(
 ) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
 
 lazy val testSettings = Seq(
+  fork in Test := ! isScalaJSProject.value,
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true
