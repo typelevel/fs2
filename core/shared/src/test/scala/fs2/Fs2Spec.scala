@@ -30,8 +30,8 @@ trait Fs2SpecLike extends Suite
     PropertyCheckConfiguration(minSuccessful = 25, workers = 1)
 
   override def runTest(testName: String, args: Args): Status = {
-    println("Starting " + testName)
+    if (verbose) println("Starting " + testName)
     try super.runTest(testName, args)
-    finally println("Finished " + testName)
+    finally if (verbose) println("Finished " + testName)
   }
 }

@@ -14,6 +14,8 @@ trait TestUtil extends TestUtilPlatform {
 
   val timeout: FiniteDuration = 60.seconds
 
+  lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
+
   def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift *> s.compile.toVector).unsafeToFuture
 
   def spuriousFail(s: Stream[IO,Int], f: Failure): Stream[IO,Int] =
@@ -26,7 +28,7 @@ trait TestUtil extends TestUtilPlatform {
       case e: InterruptedException => throw e
       case e: TimeoutException => throw e
       case Err => ()
-      case NonFatal(e) => e.printStackTrace; ()
+      case NonFatal(e) => ()
     }
 
   implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(
