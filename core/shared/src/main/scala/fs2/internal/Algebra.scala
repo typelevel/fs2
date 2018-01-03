@@ -57,8 +57,8 @@ private[fs2] object Algebra {
     FreeC.Eval[Algebra[F, O, ?], Unit](Release(token))
 
   /**
-    *  Wraps supplied pull in new scope, that will be opened before this pull is evaluated
-    *  and closed once this pull either finishes its evaluation or when it fails.
+    * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
+    * and closed once this pull either finishes its evaluation or when it fails.
     */
   def scope[F[_], O, R](
       pull: FreeC[Algebra[F, O, ?], R]): FreeC[Algebra[F, O, ?], R] =

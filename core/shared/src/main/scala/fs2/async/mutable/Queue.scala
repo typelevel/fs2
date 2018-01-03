@@ -188,359 +188,356 @@ object Queue {
         peek: Option[Promise[F, A]]
     )
 
-    Signal(0).flatMap { szSignal =>
-      async.refOf[F, State](State(Vector.empty, Vector.empty, None)).map {
-        qref =>
-          // Signals size change of queue, if that has changed
-          def signalSize(s: State, ns: State): F[Unit] = {
-            if (s.queue.size != ns.queue.size) szSignal.set(ns.queue.size)
-            else F.pure(())
-          }
+    for {
+      szSignal <- Signal(0)
+      qref <- async.refOf[F, State](State(Vector.empty, Vector.empty, None))
+    } yield
+      new Queue[F, A] {
+        // Signals size change of queue, if that has changed
+        private def signalSize(s: State, ns: State): F[Unit] = {
+          if (s.queue.size != ns.queue.size) szSignal.set(ns.queue.size)
+          else F.pure(())
+        }
 
-          new Queue[F, A] {
-            def upperBound: Option[Int] = None
-            def enqueue1(a: A): F[Unit] = offer1(a).as(())
-            def timedEnqueue1(a: A,
-                              timeout: FiniteDuration,
-                              scheduler: Scheduler): F[Boolean] = offer1(a)
-            def offer1(a: A): F[Boolean] =
-              qref
-                .modify { s =>
-                  if (s.deq.isEmpty) s.copy(queue = s.queue :+ a, peek = None)
-                  else s.copy(deq = s.deq.tail, peek = None)
-                }
-                .flatMap { c =>
-                  val dq = if (c.previous.deq.isEmpty) {
-                    // we enqueued a value to the queue
-                    signalSize(c.previous, c.now)
-                  } else {
-                    // queue was empty, we had waiting dequeuers
-                    async.fork(c.previous.deq.head.complete(Chunk.singleton(a)))
-                  }
-                  val pk = if (c.previous.peek.isEmpty) {
-                    // no peeker to notify
-                    F.unit
-                  } else {
-                    // notify peekers
-                    async.fork(c.previous.peek.get.complete(a))
-
-                  }
-                  (dq *> pk).as(true)
-                }
-
-            def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
-
-            def peek1: F[A] = peek1Impl.flatMap(_.fold(_.get, F.pure))
-
-            def timedDequeue1(timeout: FiniteDuration,
-                              scheduler: Scheduler): F[Option[A]] =
-              timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
-
-            def timedPeek1(timeout: FiniteDuration,
-                           scheduler: Scheduler): F[Option[A]] = {
-              peek1Impl.flatMap {
-                case Left(ref) => ref.timedGet(timeout, scheduler)
-                case Right(a)  => F.pure(Some(a))
+        def upperBound: Option[Int] = None
+        def enqueue1(a: A): F[Unit] = offer1(a).as(())
+        def timedEnqueue1(a: A,
+                          timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Boolean] = offer1(a)
+        def offer1(a: A): F[Boolean] =
+          qref
+            .modify { s =>
+              if (s.deq.isEmpty) s.copy(queue = s.queue :+ a, peek = None)
+              else s.copy(deq = s.deq.tail, peek = None)
+            }
+            .flatMap { c =>
+              val dq = if (c.previous.deq.isEmpty) {
+                // we enqueued a value to the queue
+                signalSize(c.previous, c.now)
+              } else {
+                // queue was empty, we had waiting dequeuers
+                async.fork(c.previous.deq.head.complete(Chunk.singleton(a)))
               }
+              val pk = if (c.previous.peek.isEmpty) {
+                // no peeker to notify
+                F.unit
+              } else {
+                // notify peekers
+                async.fork(c.previous.peek.get.complete(a))
+
+              }
+              (dq *> pk).as(true)
             }
 
-            private def peek1Impl: F[Either[Promise[F, A], A]] =
-              promise[F, A].flatMap { p =>
-                qref
-                  .modify { state =>
-                    if (state.queue.isEmpty && state.peek.isEmpty)
-                      state.copy(peek = Some(p))
-                    else state
-                  }
-                  .map { change =>
-                    if (change.previous.queue.isEmpty) Left(change.now.peek.get)
-                    else Right(change.previous.queue.head)
-                  }
-              }
+        def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
 
-            def cancellableDequeue1: F[(F[A], F[Unit])] =
-              cancellableDequeueBatch1(1).map {
-                case (deq, cancel) => (deq.map(_.head.get), cancel)
-              }
+        def peek1: F[A] = peek1Impl.flatMap(_.fold(_.get, F.pure))
 
-            def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-              cancellableDequeueBatch1(batchSize).flatMap { _._1 }
+        def timedDequeue1(timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Option[A]] =
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
 
-            def timedDequeueBatch1(batchSize: Int,
-                                   timeout: FiniteDuration,
-                                   scheduler: Scheduler): F[Option[Chunk[A]]] =
-              cancellableDequeueBatch1Impl[Option[Chunk[A]]](
-                batchSize,
-                _ match {
-                  case Left(ref) => ref.timedGet(timeout, scheduler)
-                  case Right(c)  => F.pure(Some(c))
-                }).flatMap {
-                case (get, cancel) =>
-                  get.flatMap {
-                    case Some(c) => F.pure(Some(c))
-                    case None    => cancel.as(None)
-                  }
-              }
-
-            def cancellableDequeueBatch1(
-                batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
-              cancellableDequeueBatch1Impl(batchSize, _.fold(_.get, F.pure))
-
-            private def cancellableDequeueBatch1Impl[B](
-                batchSize: Int,
-                f: Either[Promise[F, Chunk[A]], Chunk[A]] => F[B])
-              : F[(F[B], F[Unit])] =
-              promise[F, Chunk[A]].flatMap { p =>
-                qref
-                  .modify { s =>
-                    if (s.queue.isEmpty) s.copy(deq = s.deq :+ p)
-                    else s.copy(queue = s.queue.drop(batchSize))
-                  }
-                  .map { c =>
-                    val out = signalSize(c.previous, c.now).flatMap { _ =>
-                      if (c.previous.queue.nonEmpty) {
-                        if (batchSize == 1)
-                          f(Right(Chunk.singleton(c.previous.queue.head)))
-                        else
-                          f(Right(
-                            Chunk.indexedSeq(c.previous.queue.take(batchSize))))
-                      } else f(Left(p))
-                    }
-                    val cleanup =
-                      if (c.previous.queue.nonEmpty) F.pure(())
-                      else
-                        qref.modify { s =>
-                          s.copy(deq = s.deq.filterNot(_ == p))
-                        }.void
-                    (out, cleanup)
-                  }
-              }
-
-            def size = szSignal
-            def full: immutable.Signal[F, Boolean] =
-              Signal.constant[F, Boolean](false)
-            def available: immutable.Signal[F, Int] =
-              Signal.constant[F, Int](Int.MaxValue)
+        def timedPeek1(timeout: FiniteDuration,
+                       scheduler: Scheduler): F[Option[A]] = {
+          peek1Impl.flatMap {
+            case Left(ref) => ref.timedGet(timeout, scheduler)
+            case Right(a)  => F.pure(Some(a))
           }
+        }
+
+        private def peek1Impl: F[Either[Promise[F, A], A]] =
+          promise[F, A].flatMap { p =>
+            qref
+              .modify { state =>
+                if (state.queue.isEmpty && state.peek.isEmpty)
+                  state.copy(peek = Some(p))
+                else state
+              }
+              .map { change =>
+                if (change.previous.queue.isEmpty) Left(change.now.peek.get)
+                else Right(change.previous.queue.head)
+              }
+          }
+
+        def cancellableDequeue1: F[(F[A], F[Unit])] =
+          cancellableDequeueBatch1(1).map {
+            case (deq, cancel) => (deq.map(_.head.get), cancel)
+          }
+
+        def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
+          cancellableDequeueBatch1(batchSize).flatMap { _._1 }
+
+        def timedDequeueBatch1(batchSize: Int,
+                               timeout: FiniteDuration,
+                               scheduler: Scheduler): F[Option[Chunk[A]]] =
+          cancellableDequeueBatch1Impl[Option[Chunk[A]]](batchSize, _ match {
+            case Left(ref) => ref.timedGet(timeout, scheduler)
+            case Right(c)  => F.pure(Some(c))
+          }).flatMap {
+            case (get, cancel) =>
+              get.flatMap {
+                case Some(c) => F.pure(Some(c))
+                case None    => cancel.as(None)
+              }
+          }
+
+        def cancellableDequeueBatch1(
+            batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
+          cancellableDequeueBatch1Impl(batchSize, _.fold(_.get, F.pure))
+
+        private def cancellableDequeueBatch1Impl[B](
+            batchSize: Int,
+            f: Either[Promise[F, Chunk[A]], Chunk[A]] => F[B])
+          : F[(F[B], F[Unit])] =
+          promise[F, Chunk[A]].flatMap { p =>
+            qref
+              .modify { s =>
+                if (s.queue.isEmpty) s.copy(deq = s.deq :+ p)
+                else s.copy(queue = s.queue.drop(batchSize))
+              }
+              .map { c =>
+                val out = signalSize(c.previous, c.now).flatMap { _ =>
+                  if (c.previous.queue.nonEmpty) {
+                    if (batchSize == 1)
+                      f(Right(Chunk.singleton(c.previous.queue.head)))
+                    else
+                      f(
+                        Right(
+                          Chunk.indexedSeq(c.previous.queue.take(batchSize))))
+                  } else f(Left(p))
+                }
+                val cleanup =
+                  if (c.previous.queue.nonEmpty) F.pure(())
+                  else
+                    qref.modify { s =>
+                      s.copy(deq = s.deq.filterNot(_ == p))
+                    }.void
+                (out, cleanup)
+              }
+          }
+
+        def size = szSignal
+        def full: immutable.Signal[F, Boolean] =
+          Signal.constant[F, Boolean](false)
+        def available: immutable.Signal[F, Int] =
+          Signal.constant[F, Int](Int.MaxValue)
       }
-    }
   }
 
   /** Creates a queue with the specified size bound. */
   def bounded[F[_], A](maxSize: Int)(implicit F: Effect[F],
                                      ec: ExecutionContext): F[Queue[F, A]] =
-    Semaphore(maxSize.toLong).flatMap { permits =>
-      unbounded[F, A].map { q =>
-        new Queue[F, A] {
-          def upperBound: Option[Int] = Some(maxSize)
-          def enqueue1(a: A): F[Unit] =
-            permits.decrement *> q.enqueue1(a)
-          def timedEnqueue1(a: A,
-                            timeout: FiniteDuration,
-                            scheduler: Scheduler): F[Boolean] =
-            permits
-              .timedDecrement(timeout, scheduler)
-              .ifM(q.enqueue1(a).as(true), F.pure(false))
-          def offer1(a: A): F[Boolean] =
-            permits.tryDecrement.flatMap { b =>
-              if (b) q.offer1(a) else F.pure(false)
-            }
-          def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
-          def peek1: F[A] = q.peek1
-          def timedDequeue1(timeout: FiniteDuration,
-                            scheduler: Scheduler): F[Option[A]] =
-            timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
-          def timedPeek1(timeout: FiniteDuration,
-                         scheduler: Scheduler): F[Option[A]] =
-            q.timedPeek1(timeout, scheduler)
-          override def cancellableDequeue1: F[(F[A], F[Unit])] =
-            cancellableDequeueBatch1(1).map {
-              case (deq, cancel) => (deq.map(_.head.get), cancel)
-            }
-          override def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-            cancellableDequeueBatch1(batchSize).flatMap { _._1 }
-          def timedDequeueBatch1(batchSize: Int,
-                                 timeout: FiniteDuration,
-                                 scheduler: Scheduler): F[Option[Chunk[A]]] =
-            q.timedDequeueBatch1(batchSize, timeout, scheduler).flatMap {
-              case Some(c) => permits.incrementBy(c.size).as(Some(c))
-              case None    => F.pure(None)
-            }
-          def cancellableDequeueBatch1(
-              batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
-            q.cancellableDequeueBatch1(batchSize).map {
-              case (deq, cancel) =>
-                (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel)
-            }
-          def size = q.size
-          def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
-          def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
-        }
+    for {
+      permits <- Semaphore(maxSize.toLong)
+      q <- unbounded[F, A]
+    } yield
+      new Queue[F, A] {
+        def upperBound: Option[Int] = Some(maxSize)
+        def enqueue1(a: A): F[Unit] =
+          permits.decrement *> q.enqueue1(a)
+        def timedEnqueue1(a: A,
+                          timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Boolean] =
+          permits
+            .timedDecrement(timeout, scheduler)
+            .ifM(q.enqueue1(a).as(true), F.pure(false))
+        def offer1(a: A): F[Boolean] =
+          permits.tryDecrement.flatMap { b =>
+            if (b) q.offer1(a) else F.pure(false)
+          }
+        def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
+        def peek1: F[A] = q.peek1
+        def timedDequeue1(timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Option[A]] =
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
+        def timedPeek1(timeout: FiniteDuration,
+                       scheduler: Scheduler): F[Option[A]] =
+          q.timedPeek1(timeout, scheduler)
+        override def cancellableDequeue1: F[(F[A], F[Unit])] =
+          cancellableDequeueBatch1(1).map {
+            case (deq, cancel) => (deq.map(_.head.get), cancel)
+          }
+        override def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
+          cancellableDequeueBatch1(batchSize).flatMap { _._1 }
+        def timedDequeueBatch1(batchSize: Int,
+                               timeout: FiniteDuration,
+                               scheduler: Scheduler): F[Option[Chunk[A]]] =
+          q.timedDequeueBatch1(batchSize, timeout, scheduler).flatMap {
+            case Some(c) => permits.incrementBy(c.size).as(Some(c))
+            case None    => F.pure(None)
+          }
+        def cancellableDequeueBatch1(
+            batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
+          q.cancellableDequeueBatch1(batchSize).map {
+            case (deq, cancel) =>
+              (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel)
+          }
+        def size = q.size
+        def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
+        def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
       }
-    }
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
   def circularBuffer[F[_], A](maxSize: Int)(
       implicit F: Effect[F],
       ec: ExecutionContext): F[Queue[F, A]] =
-    Semaphore(maxSize.toLong).flatMap { permits =>
-      unbounded[F, A].map { q =>
-        new Queue[F, A] {
-          def upperBound: Option[Int] = Some(maxSize)
-          def enqueue1(a: A): F[Unit] =
-            permits.tryDecrement.flatMap { b =>
-              if (b) q.enqueue1(a) else (q.dequeue1 *> q.enqueue1(a))
-            }
-          def timedEnqueue1(a: A,
-                            timeout: FiniteDuration,
-                            scheduler: Scheduler): F[Boolean] = offer1(a)
-          def offer1(a: A): F[Boolean] =
-            enqueue1(a).as(true)
-          def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
-          def peek1: F[A] = q.peek1
-          def timedDequeue1(timeout: FiniteDuration,
-                            scheduler: Scheduler): F[Option[A]] =
-            timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
-          def timedPeek1(timeout: FiniteDuration,
-                         scheduler: Scheduler): F[Option[A]] =
-            q.timedPeek1(timeout, scheduler)
-          def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-            cancellableDequeueBatch1(batchSize).flatMap { _._1 }
-          def timedDequeueBatch1(batchSize: Int,
-                                 timeout: FiniteDuration,
-                                 scheduler: Scheduler): F[Option[Chunk[A]]] =
-            q.timedDequeueBatch1(batchSize, timeout, scheduler).flatMap {
-              case Some(c) => permits.incrementBy(c.size).as(Some(c))
-              case None    => F.pure(None)
-            }
-          def cancellableDequeue1: F[(F[A], F[Unit])] =
-            cancellableDequeueBatch1(1).map {
-              case (deq, cancel) => (deq.map(_.head.get), cancel)
-            }
-          def cancellableDequeueBatch1(
-              batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
-            q.cancellableDequeueBatch1(batchSize).map {
-              case (deq, cancel) =>
-                (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel)
-            }
-          def size = q.size
-          def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
-          def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
-        }
+    for {
+      permits <- Semaphore(maxSize.toLong)
+      q <- unbounded[F, A]
+    } yield
+      new Queue[F, A] {
+        def upperBound: Option[Int] = Some(maxSize)
+        def enqueue1(a: A): F[Unit] =
+          permits.tryDecrement.flatMap { b =>
+            if (b) q.enqueue1(a) else (q.dequeue1 *> q.enqueue1(a))
+          }
+        def timedEnqueue1(a: A,
+                          timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Boolean] = offer1(a)
+        def offer1(a: A): F[Boolean] =
+          enqueue1(a).as(true)
+        def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
+        def peek1: F[A] = q.peek1
+        def timedDequeue1(timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Option[A]] =
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
+        def timedPeek1(timeout: FiniteDuration,
+                       scheduler: Scheduler): F[Option[A]] =
+          q.timedPeek1(timeout, scheduler)
+        def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
+          cancellableDequeueBatch1(batchSize).flatMap { _._1 }
+        def timedDequeueBatch1(batchSize: Int,
+                               timeout: FiniteDuration,
+                               scheduler: Scheduler): F[Option[Chunk[A]]] =
+          q.timedDequeueBatch1(batchSize, timeout, scheduler).flatMap {
+            case Some(c) => permits.incrementBy(c.size).as(Some(c))
+            case None    => F.pure(None)
+          }
+        def cancellableDequeue1: F[(F[A], F[Unit])] =
+          cancellableDequeueBatch1(1).map {
+            case (deq, cancel) => (deq.map(_.head.get), cancel)
+          }
+        def cancellableDequeueBatch1(
+            batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
+          q.cancellableDequeueBatch1(batchSize).map {
+            case (deq, cancel) =>
+              (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel)
+          }
+        def size = q.size
+        def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
+        def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
       }
-    }
 
   /** Creates a queue which allows a single element to be enqueued at any time. */
   def synchronous[F[_], A](implicit F: Effect[F],
                            ec: ExecutionContext): F[Queue[F, A]] =
-    Semaphore(0).flatMap { permits =>
-      unbounded[F, A].map { q =>
-        new Queue[F, A] {
-          def upperBound: Option[Int] = Some(0)
-          def enqueue1(a: A): F[Unit] =
-            permits.decrement *> q.enqueue1(a)
-          def timedEnqueue1(a: A,
-                            timeout: FiniteDuration,
-                            scheduler: Scheduler): F[Boolean] =
-            permits
-              .timedDecrement(timeout, scheduler)
-              .ifM(q.enqueue1(a).as(true), F.pure(false))
-          def offer1(a: A): F[Boolean] =
-            permits.tryDecrement.flatMap { b =>
-              if (b) q.offer1(a) else F.pure(false)
-            }
-          def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
-          def peek1: F[A] = q.peek1
-          def timedDequeue1(timeout: FiniteDuration,
-                            scheduler: Scheduler): F[Option[A]] =
-            timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
-          def timedPeek1(timeout: FiniteDuration,
-                         scheduler: Scheduler): F[Option[A]] =
-            q.timedPeek1(timeout, scheduler)
-          def cancellableDequeue1: F[(F[A], F[Unit])] =
-            permits.increment *> q.cancellableDequeue1
-          override def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-            q.dequeueBatch1(batchSize)
-          def timedDequeueBatch1(batchSize: Int,
-                                 timeout: FiniteDuration,
-                                 scheduler: Scheduler): F[Option[Chunk[A]]] =
-            permits.increment *> q.timedDequeueBatch1(batchSize,
-                                                      timeout,
-                                                      scheduler)
-          def cancellableDequeueBatch1(
-              batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
-            permits.increment *> q.cancellableDequeueBatch1(batchSize)
-          def size = q.size
-          def full: immutable.Signal[F, Boolean] = Signal.constant(true)
-          def available: immutable.Signal[F, Int] = Signal.constant(0)
-        }
+    for {
+      permits <- Semaphore(0)
+      q <- unbounded[F, A]
+    } yield
+      new Queue[F, A] {
+        def upperBound: Option[Int] = Some(0)
+        def enqueue1(a: A): F[Unit] =
+          permits.decrement *> q.enqueue1(a)
+        def timedEnqueue1(a: A,
+                          timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Boolean] =
+          permits
+            .timedDecrement(timeout, scheduler)
+            .ifM(q.enqueue1(a).as(true), F.pure(false))
+        def offer1(a: A): F[Boolean] =
+          permits.tryDecrement.flatMap { b =>
+            if (b) q.offer1(a) else F.pure(false)
+          }
+        def dequeue1: F[A] = cancellableDequeue1.flatMap { _._1 }
+        def peek1: F[A] = q.peek1
+        def timedDequeue1(timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Option[A]] =
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
+        def timedPeek1(timeout: FiniteDuration,
+                       scheduler: Scheduler): F[Option[A]] =
+          q.timedPeek1(timeout, scheduler)
+        def cancellableDequeue1: F[(F[A], F[Unit])] =
+          permits.increment *> q.cancellableDequeue1
+        override def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
+          q.dequeueBatch1(batchSize)
+        def timedDequeueBatch1(batchSize: Int,
+                               timeout: FiniteDuration,
+                               scheduler: Scheduler): F[Option[Chunk[A]]] =
+          permits.increment *> q.timedDequeueBatch1(batchSize,
+                                                    timeout,
+                                                    scheduler)
+        def cancellableDequeueBatch1(
+            batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
+          permits.increment *> q.cancellableDequeueBatch1(batchSize)
+        def size = q.size
+        def full: immutable.Signal[F, Boolean] = Signal.constant(true)
+        def available: immutable.Signal[F, Int] = Signal.constant(0)
       }
-    }
 
   /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
   def synchronousNoneTerminated[F[_], A](
       implicit F: Effect[F],
       ec: ExecutionContext): F[Queue[F, Option[A]]] =
-    Semaphore(0).flatMap { permits =>
-      refOf[F, Boolean](false).flatMap { doneRef =>
-        unbounded[F, Option[A]].map { q =>
-          new Queue[F, Option[A]] {
-            def upperBound: Option[Int] = Some(0)
-            def enqueue1(a: Option[A]): F[Unit] = doneRef.access.flatMap {
-              case (done, update) =>
-                if (done) F.pure(())
-                else
-                  a match {
-                    case None =>
-                      update(true).flatMap { successful =>
-                        if (successful) q.enqueue1(None) else enqueue1(None)
-                      }
-                    case _ => permits.decrement *> q.enqueue1(a)
+    for {
+      permits <- Semaphore(0)
+      doneRef <- refOf[F, Boolean](false)
+      q <- unbounded[F, Option[A]]
+    } yield
+      new Queue[F, Option[A]] {
+        def upperBound: Option[Int] = Some(0)
+        def enqueue1(a: Option[A]): F[Unit] = doneRef.access.flatMap {
+          case (done, update) =>
+            if (done) F.pure(())
+            else
+              a match {
+                case None =>
+                  update(true).flatMap { successful =>
+                    if (successful) q.enqueue1(None) else enqueue1(None)
                   }
-            }
-            def timedEnqueue1(a: Option[A],
-                              timeout: FiniteDuration,
-                              scheduler: Scheduler): F[Boolean] =
-              offer1(a)
-            def offer1(a: Option[A]): F[Boolean] = doneRef.access.flatMap {
-              case (done, update) =>
-                if (done) F.pure(true)
-                else
-                  a match {
-                    case None =>
-                      update(true).flatMap { successful =>
-                        if (successful) q.offer1(None) else offer1(None)
-                      }
-                    case _ => permits.decrement *> q.offer1(a)
-                  }
-            }
-            def dequeue1: F[Option[A]] = cancellableDequeue1.flatMap { _._1 }
-            def peek1: F[Option[A]] = q.peek1
-            def timedDequeue1(timeout: FiniteDuration,
-                              scheduler: Scheduler): F[Option[Option[A]]] =
-              timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
-            def timedPeek1(timeout: FiniteDuration,
-                           scheduler: Scheduler): F[Option[Option[A]]] =
-              q.timedPeek1(timeout, scheduler)
-            def cancellableDequeue1: F[(F[Option[A]], F[Unit])] =
-              permits.increment *> q.cancellableDequeue1
-            override def dequeueBatch1(batchSize: Int): F[Chunk[Option[A]]] =
-              q.dequeueBatch1(batchSize)
-            def timedDequeueBatch1(
-                batchSize: Int,
-                timeout: FiniteDuration,
-                scheduler: Scheduler): F[Option[Chunk[Option[A]]]] =
-              permits.increment *> q.timedDequeueBatch1(batchSize,
-                                                        timeout,
-                                                        scheduler)
-            def cancellableDequeueBatch1(
-                batchSize: Int): F[(F[Chunk[Option[A]]], F[Unit])] =
-              permits.increment *> q.cancellableDequeueBatch1(batchSize)
-            def size = q.size
-            def full: immutable.Signal[F, Boolean] = Signal.constant(true)
-            def available: immutable.Signal[F, Int] = Signal.constant(0)
-          }
+                case _ => permits.decrement *> q.enqueue1(a)
+              }
         }
+        def timedEnqueue1(a: Option[A],
+                          timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Boolean] =
+          offer1(a)
+        def offer1(a: Option[A]): F[Boolean] = doneRef.access.flatMap {
+          case (done, update) =>
+            if (done) F.pure(true)
+            else
+              a match {
+                case None =>
+                  update(true).flatMap { successful =>
+                    if (successful) q.offer1(None) else offer1(None)
+                  }
+                case _ => permits.decrement *> q.offer1(a)
+              }
+        }
+        def dequeue1: F[Option[A]] = cancellableDequeue1.flatMap { _._1 }
+        def peek1: F[Option[A]] = q.peek1
+        def timedDequeue1(timeout: FiniteDuration,
+                          scheduler: Scheduler): F[Option[Option[A]]] =
+          timedDequeueBatch1(1, timeout, scheduler).map(_.map(_.head.get))
+        def timedPeek1(timeout: FiniteDuration,
+                       scheduler: Scheduler): F[Option[Option[A]]] =
+          q.timedPeek1(timeout, scheduler)
+        def cancellableDequeue1: F[(F[Option[A]], F[Unit])] =
+          permits.increment *> q.cancellableDequeue1
+        override def dequeueBatch1(batchSize: Int): F[Chunk[Option[A]]] =
+          q.dequeueBatch1(batchSize)
+        def timedDequeueBatch1(
+            batchSize: Int,
+            timeout: FiniteDuration,
+            scheduler: Scheduler): F[Option[Chunk[Option[A]]]] =
+          permits.increment *> q.timedDequeueBatch1(batchSize,
+                                                    timeout,
+                                                    scheduler)
+        def cancellableDequeueBatch1(
+            batchSize: Int): F[(F[Chunk[Option[A]]], F[Unit])] =
+          permits.increment *> q.cancellableDequeueBatch1(batchSize)
+        def size = q.size
+        def full: immutable.Signal[F, Boolean] = Signal.constant(true)
+        def available: immutable.Signal[F, Int] = Signal.constant(0)
       }
-    }
 }
