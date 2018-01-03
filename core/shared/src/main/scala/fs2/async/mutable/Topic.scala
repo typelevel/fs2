@@ -85,8 +85,7 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Effect[F],
-                                 ec: ExecutionContext): F[Topic[F, A]] = {
+  def apply[F[_], A](initial: A)(implicit F: Effect[F], ec: ExecutionContext): F[Topic[F, A]] = {
     // Id identifying each subscriber uniquely
     class ID
 
@@ -117,7 +116,7 @@ object Topic {
                     _ <- done.complete(true)
                   } yield ()
                 def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
-                def publish(a: A): F[Unit] = {
+                def publish(a: A): F[Unit] =
                   q.offer1(a).flatMap { offered =>
                     if (offered) F.unit
                     else {
@@ -133,10 +132,8 @@ object Topic {
                     }
                   }
 
-                }
                 def subscribeSize: Stream[F, (A, Int)] =
-                  eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(
-                    q.size.continuous)
+                  eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
                 val id: ID = new ID
               }
               c <- state.modify { case (a, s) => a -> (s :+ sub) }

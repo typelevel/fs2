@@ -16,43 +16,35 @@ object pulls {
   /**
     * Given a `FileHandle[F]`, creates a `Pull` which reads all data from the associated file.
     */
-  def readAllFromFileHandle[F[_]](chunkSize: Int)(
-      h: FileHandle[F]): Pull[F, Byte, Unit] =
+  def readAllFromFileHandle[F[_]](chunkSize: Int)(h: FileHandle[F]): Pull[F, Byte, Unit] =
     _readAllFromFileHandle0(chunkSize, 0)(h)
 
   private def _readAllFromFileHandle0[F[_]](chunkSize: Int, offset: Long)(
       h: FileHandle[F]): Pull[F, Byte, Unit] =
     Pull.eval(h.read(chunkSize, offset)).flatMap {
       case Some(o) =>
-        Pull.outputChunk(o) >> _readAllFromFileHandle0(chunkSize,
-                                                       offset + o.size)(h)
+        Pull.outputChunk(o) >> _readAllFromFileHandle0(chunkSize, offset + o.size)(h)
       case None => Pull.done
     }
 
   /**
     * Given a `Stream[F, Byte]` and `FileHandle[F]`, writes all data from the stream to the file.
     */
-  def writeAllToFileHandle[F[_]](in: Stream[F, Byte],
-                                 out: FileHandle[F]): Pull[F, Nothing, Unit] =
+  def writeAllToFileHandle[F[_]](in: Stream[F, Byte], out: FileHandle[F]): Pull[F, Nothing, Unit] =
     _writeAllToFileHandle1(in, out, 0)
 
-  private def _writeAllToFileHandle1[F[_]](
-      in: Stream[F, Byte],
-      out: FileHandle[F],
-      offset: Long): Pull[F, Nothing, Unit] =
+  private def _writeAllToFileHandle1[F[_]](in: Stream[F, Byte],
+                                           out: FileHandle[F],
+                                           offset: Long): Pull[F, Nothing, Unit] =
     in.pull.unconsChunk.flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
-        _writeAllToFileHandle2(hd, out, offset) >> _writeAllToFileHandle1(
-          tl,
-          out,
-          offset + hd.size)
+        _writeAllToFileHandle2(hd, out, offset) >> _writeAllToFileHandle1(tl, out, offset + hd.size)
     }
 
-  private def _writeAllToFileHandle2[F[_]](
-      buf: Chunk[Byte],
-      out: FileHandle[F],
-      offset: Long): Pull[F, Nothing, Unit] =
+  private def _writeAllToFileHandle2[F[_]](buf: Chunk[Byte],
+                                           out: FileHandle[F],
+                                           offset: Long): Pull[F, Nothing, Unit] =
     Pull.eval(out.write(buf, offset)) flatMap { (written: Int) =>
       if (written >= buf.size)
         Pull.pure(())
@@ -65,8 +57,8 @@ object pulls {
     *
     * The `Pull` closes the acquired `java.nio.channels.FileChannel` when it is done.
     */
-  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(implicit F: Sync[F])
-    : Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+  def fromPath[F[_]](path: Path, flags: Seq[OpenOption])(
+      implicit F: Sync[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     fromFileChannel(F.delay(FileChannel.open(path, flags: _*)))
 
   /**
@@ -78,8 +70,7 @@ object pulls {
                           flags: Seq[OpenOption],
                           executorService: Option[ExecutorService] = None)(
       implicit F: Effect[F],
-      ec: ExecutionContext)
-    : Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
+      ec: ExecutionContext): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
     import collection.JavaConverters._
     fromAsynchronousFileChannel(
       F.delay(AsynchronousFileChannel
@@ -91,8 +82,8 @@ object pulls {
     *
     * The `Pull` closes the provided `java.nio.channels.FileChannel` when it is done.
     */
-  def fromFileChannel[F[_]](channel: F[FileChannel])(implicit F: Sync[F])
-    : Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+  def fromFileChannel[F[_]](channel: F[FileChannel])(
+      implicit F: Sync[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     Pull
       .acquireCancellable(channel)(ch => F.delay(ch.close()))
       .map(_.map(FileHandle.fromFileChannel[F]))
@@ -104,8 +95,7 @@ object pulls {
     */
   def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(
       implicit F: Effect[F],
-      ec: ExecutionContext)
-    : Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+      ec: ExecutionContext): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     Pull
       .acquireCancellable(channel)(ch => F.delay(ch.close()))
       .map(_.map(FileHandle.fromAsynchronousFileChannel[F]))

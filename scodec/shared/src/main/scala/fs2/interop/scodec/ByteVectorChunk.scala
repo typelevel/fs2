@@ -3,8 +3,7 @@ package interop.scodec
 
 import scodec.bits.ByteVector
 
-final class ByteVectorChunk private (val toByteVector: ByteVector)
-    extends Chunk[Byte] {
+final class ByteVectorChunk private (val toByteVector: ByteVector) extends Chunk[Byte] {
   def apply(i: Int): Byte =
     toByteVector(i)
 

@@ -25,10 +25,9 @@ class MergeJoinSpec extends Fs2Spec {
       runLog { Stream.empty.merge(s1.get.covary[IO]) } shouldBe runLog(s1.get)
     }
 
-    "merge/join consistency" in forAll {
-      (s1: PureStream[Int], s2: PureStream[Int]) =>
-        runLog { s1.get.covary[IO].merge(s2.get) }.toSet shouldBe
-          runLog { Stream(s1.get.covary[IO], s2.get.covary[IO]).join(2) }.toSet
+    "merge/join consistency" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
+      runLog { s1.get.covary[IO].merge(s2.get) }.toSet shouldBe
+        runLog { Stream(s1.get.covary[IO], s2.get.covary[IO]).join(2) }.toSet
     }
 
     "join (1)" in forAll { (s1: PureStream[Int]) =>
@@ -42,10 +41,9 @@ class MergeJoinSpec extends Fs2Spec {
         runLog { s1.get }.toSet
     }
 
-    "join (3)" in forAll {
-      (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
-        runLog { s1.get.map(_.get.covary[IO]).covary[IO].join(n.get) }.toSet shouldBe
-          runLog { s1.get.flatMap(_.get) }.toSet
+    "join (3)" in forAll { (s1: PureStream[PureStream[Int]], n: SmallPositive) =>
+      runLog { s1.get.map(_.get.covary[IO]).covary[IO].join(n.get) }.toSet shouldBe
+        runLog { s1.get.flatMap(_.get) }.toSet
     }
 
     "join - resources acquired in outer stream are released after inner streams complete" in {
@@ -64,11 +62,10 @@ class MergeJoinSpec extends Fs2Spec {
       s.joinUnbounded.compile.drain.unsafeRunSync()
     }
 
-    "merge (left/right failure)" in forAll {
-      (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
-          s1.get.merge(f.get).compile.drain.unsafeRunSync()
-        }
+    "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
+      an[Err.type] should be thrownBy {
+        s1.get.merge(f.get).compile.drain.unsafeRunSync()
+      }
     }
 
     "hanging awaits" - {
@@ -104,9 +101,8 @@ class MergeJoinSpec extends Fs2Spec {
 
     "join - outer-failed" in {
       an[Err.type] should be thrownBy {
-        runLog(
-          Stream(mkScheduler.flatMap(_.sleep_[IO](1 minute)),
-                 Stream.raiseError(Err).covary[IO]).joinUnbounded)
+        runLog(Stream(mkScheduler.flatMap(_.sleep_[IO](1 minute)),
+                      Stream.raiseError(Err).covary[IO]).joinUnbounded)
       }
     }
   }

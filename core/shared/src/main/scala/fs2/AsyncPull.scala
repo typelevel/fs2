@@ -17,10 +17,9 @@ sealed abstract class AsyncPull[F[_], A] { self =>
 
   /** Converts to a pull, that when flat mapped, semantically blocks on the result. */
   def pull: Pull[F, Nothing, A] =
-    Pull.fromFreeC(
-      get.translate[Algebra[F, Nothing, ?]](new (F ~> Algebra[F, Nothing, ?]) {
-        def apply[X](fx: F[X]) = Algebra.Eval(fx)
-      }))
+    Pull.fromFreeC(get.translate[Algebra[F, Nothing, ?]](new (F ~> Algebra[F, Nothing, ?]) {
+      def apply[X](fx: F[X]) = Algebra.Eval(fx)
+    }))
 
   /** Converts to a stream, that when flat mapped, semantically blocks on the result. */
   def stream: Stream[F, A] =
@@ -40,9 +39,8 @@ sealed abstract class AsyncPull[F[_], A] { self =>
   }
 
   /** Returns a new async pull that completes with the result of the first async pull that completes between this and `b`. */
-  def race[B](b: AsyncPull[F, B])(
-      implicit F: Effect[F],
-      ec: ExecutionContext): AsyncPull[F, Either[A, B]] =
+  def race[B](b: AsyncPull[F, B])(implicit F: Effect[F],
+                                  ec: ExecutionContext): AsyncPull[F, Either[A, B]] =
     new AsyncPull[F, Either[A, B]] {
       def get = cancellableGet.flatMap(_._1)
       def cancellableGet =
@@ -58,13 +56,13 @@ sealed abstract class AsyncPull[F[_], A] { self =>
             _ <- async.fork(fa.flatMap(promise.complete) *> cancelB.run)
             _ <- async.fork(fb.flatMap(promise.complete) *> cancelA.run)
           } yield
-            FreeC.Eval(promise.get.flatMap(F.fromEither)) -> FreeC.Eval(
-              cancelA.run *> cancelB.run))
+            FreeC.Eval(promise.get.flatMap(F.fromEither)) -> FreeC.Eval(cancelA.run *> cancelB.run))
     }
 
   /** Like [[race]] but requires that the specified async pull has the same result type as this. */
-  def raceSame(b: AsyncPull[F, A])(implicit F: Effect[F], ec: ExecutionContext)
-    : AsyncPull[F, AsyncPull.RaceResult[A, AsyncPull[F, A]]] =
+  def raceSame(b: AsyncPull[F, A])(
+      implicit F: Effect[F],
+      ec: ExecutionContext): AsyncPull[F, AsyncPull.RaceResult[A, AsyncPull[F, A]]] =
     self.race(b).map {
       case Left(a)  => AsyncPull.RaceResult(a, b)
       case Right(a) => AsyncPull.RaceResult(a, self)
@@ -107,14 +105,12 @@ object AsyncPull {
     * Like [[readPromise]] but reads a `Promise[F,Either[Throwable,A]]` instead of a `Promise[F,A]`. If a `Left(t)` is read,
     * the `get` action fails with `t`.
     */
-  def readAttemptPromise[F[_], A](
-      p: async.Promise[F, Either[Throwable, A]]): AsyncPull[F, A] =
+  def readAttemptPromise[F[_], A](p: async.Promise[F, Either[Throwable, A]]): AsyncPull[F, A] =
     new AsyncPull[F, A] {
       def get = FreeC.Eval(p.get).flatMap(_.fold(FreeC.Fail(_), FreeC.Pure(_)))
       def cancellableGet = FreeC.Eval(p.cancellableGet).map {
         case (get, cancel) =>
-          (FreeC.Eval(get).flatMap(_.fold(FreeC.Fail(_), FreeC.Pure(_))),
-           FreeC.Eval(cancel))
+          (FreeC.Eval(get).flatMap(_.fold(FreeC.Fail(_), FreeC.Pure(_))), FreeC.Eval(cancel))
       }
     }
 }

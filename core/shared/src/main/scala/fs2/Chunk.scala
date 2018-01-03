@@ -77,11 +77,10 @@ abstract class Chunk[+O] {
   }
 
   /** Splits this chunk in to two chunks at the specified index. */
-  def splitAt(n: Int): (Chunk[O], Chunk[O]) = {
+  def splitAt(n: Int): (Chunk[O], Chunk[O]) =
     if (n <= 0) (Chunk.empty, this)
     else if (n >= size) (this, Chunk.empty)
     else splitAtChunk_(n)
-  }
 
   /** Splits this chunk in to two chunks at the specified index `n`, which is guaranteed to be in-bounds. */
   protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
@@ -220,7 +219,7 @@ abstract class Chunk[+O] {
   }
 
   /** Converts this chunk to a list. */
-  def toList: List[O] = {
+  def toList: List[O] =
     if (isEmpty) Nil
     else {
       val buf = new collection.mutable.ListBuffer[O]
@@ -231,13 +230,12 @@ abstract class Chunk[+O] {
       }
       buf.result
     }
-  }
 
   /** Converts this chunk to a segment. */
   def toSegment: Segment[O, Unit] = Segment.chunk(this)
 
   /** Converts this chunk to a vector. */
-  def toVector: Vector[O] = {
+  def toVector: Vector[O] =
     if (isEmpty) Vector.empty
     else {
       val buf = new collection.immutable.VectorBuilder[O]
@@ -249,7 +247,6 @@ abstract class Chunk[+O] {
       }
       buf.result
     }
-  }
 
   override def hashCode: Int = toVector.hashCode
 
@@ -281,16 +278,15 @@ object Chunk {
   /** Creates a chunk consisting of a single element. */
   def singleton[O](o: O): Chunk[O] = new Chunk[O] {
     def size = 1
-    def apply(i: Int) = {
+    def apply(i: Int) =
       if (i == 0) o else throw new IndexOutOfBoundsException()
-    }
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       sys.error("impossible")
     override def map[O2](f: O => O2): Chunk[O2] = singleton(f(o))
   }
 
   /** Creates a chunk backed by a vector. */
-  def vector[O](v: Vector[O]): Chunk[O] = {
+  def vector[O](v: Vector[O]): Chunk[O] =
     if (v.isEmpty) empty
     else
       new Chunk[O] {
@@ -303,10 +299,9 @@ object Chunk {
         }
         override def map[O2](f: O => O2): Chunk[O2] = vector(v.map(f))
       }
-  }
 
   /** Creates a chunk backed by an `IndexedSeq`. */
-  def indexedSeq[O](s: IndexedSeq[O]): Chunk[O] = {
+  def indexedSeq[O](s: IndexedSeq[O]): Chunk[O] =
     if (s.isEmpty) empty
     else
       new Chunk[O] {
@@ -319,7 +314,6 @@ object Chunk {
         }
         override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
       }
-  }
 
   /** Creates a chunk backed by a `Seq`. */
   def seq[O](s: Seq[O]): Chunk[O] = vector(s.toVector)
@@ -353,8 +347,7 @@ object Chunk {
   def boxed[O](values: Array[O], offset: Int, length: Int): Chunk[O] =
     Boxed(values, offset, length)
 
-  final case class Boxed[O](values: Array[O], offset: Int, length: Int)
-      extends Chunk[O] {
+  final case class Boxed[O](values: Array[O], offset: Int, length: Int) extends Chunk[O] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
@@ -372,9 +365,8 @@ object Chunk {
     Booleans(values, 0, values.length)
 
   /** Creates a chunk backed by a subsequence of an array of booleans. */
-  def booleans(values: Array[Boolean],
-               offset: Int,
-               length: Int): Chunk[Boolean] = Booleans(values, offset, length)
+  def booleans(values: Array[Boolean], offset: Int, length: Int): Chunk[Boolean] =
+    Booleans(values, offset, length)
 
   final case class Booleans(values: Array[Boolean], offset: Int, length: Int)
       extends Chunk[Boolean] {
@@ -399,8 +391,7 @@ object Chunk {
   def bytes(values: Array[Byte], offset: Int, length: Int): Chunk[Byte] =
     Bytes(values, offset, length)
 
-  final case class Bytes(values: Array[Byte], offset: Int, length: Int)
-      extends Chunk[Byte] {
+  final case class Bytes(values: Array[Byte], offset: Int, length: Int) extends Chunk[Byte] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
@@ -448,8 +439,7 @@ object Chunk {
   def shorts(values: Array[Short], offset: Int, length: Int): Chunk[Short] =
     Shorts(values, offset, length)
 
-  final case class Shorts(values: Array[Short], offset: Int, length: Int)
-      extends Chunk[Short] {
+  final case class Shorts(values: Array[Short], offset: Int, length: Int) extends Chunk[Short] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
@@ -470,8 +460,7 @@ object Chunk {
   def ints(values: Array[Int], offset: Int, length: Int): Chunk[Int] =
     Ints(values, offset, length)
 
-  final case class Ints(values: Array[Int], offset: Int, length: Int)
-      extends Chunk[Int] {
+  final case class Ints(values: Array[Int], offset: Int, length: Int) extends Chunk[Int] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
@@ -492,8 +481,7 @@ object Chunk {
   def longs(values: Array[Long], offset: Int, length: Int): Chunk[Long] =
     Longs(values, offset, length)
 
-  final case class Longs(values: Array[Long], offset: Int, length: Int)
-      extends Chunk[Long] {
+  final case class Longs(values: Array[Long], offset: Int, length: Int) extends Chunk[Long] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
@@ -515,8 +503,7 @@ object Chunk {
   def floats(values: Array[Float], offset: Int, length: Int): Chunk[Float] =
     Floats(values, offset, length)
 
-  final case class Floats(values: Array[Float], offset: Int, length: Int)
-      extends Chunk[Float] {
+  final case class Floats(values: Array[Float], offset: Int, length: Int) extends Chunk[Float] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
@@ -538,8 +525,7 @@ object Chunk {
   def doubles(values: Array[Double], offset: Int, length: Int): Chunk[Double] =
     Doubles(values, offset, length)
 
-  final case class Doubles(values: Array[Double], offset: Int, length: Int)
-      extends Chunk[Double] {
+  final case class Doubles(values: Array[Double], offset: Int, length: Int) extends Chunk[Double] {
     checkBounds(values, offset, length)
     def size = length
     def apply(i: Int) = values(offset + i)
@@ -555,22 +541,18 @@ object Chunk {
   }
 
   implicit def fs2EqForChunk[A: Eq]: Eq[Chunk[A]] = new Eq[Chunk[A]] {
-    def eqv(c1: Chunk[A], c2: Chunk[A]) = {
+    def eqv(c1: Chunk[A], c2: Chunk[A]) =
       c1.size === c2.size && (0 until c1.size).forall(i => c1(i) === c2(i))
-    }
   }
 
-  implicit val instance: Traverse[Chunk] with Monad[Chunk] = new Traverse[Chunk]
-  with Monad[Chunk] {
+  implicit val instance: Traverse[Chunk] with Monad[Chunk] = new Traverse[Chunk] with Monad[Chunk] {
     def foldLeft[A, B](fa: Chunk[A], b: B)(f: (B, A) => B): B =
       fa.foldLeft(b)(f)
-    def foldRight[A, B](fa: Chunk[A], b: Eval[B])(
-        f: (A, Eval[B]) => Eval[B]): Eval[B] =
+    def foldRight[A, B](fa: Chunk[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
       Foldable[Vector].foldRight(fa.toVector, b)(f)
     override def toList[A](fa: Chunk[A]): List[A] = fa.toList
     override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
-    def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(
-        implicit G: Applicative[F]): F[Chunk[B]] =
+    def traverse[F[_], A, B](fa: Chunk[A])(f: A => F[B])(implicit G: Applicative[F]): F[Chunk[B]] =
       G.map(Traverse[Vector].traverse(fa.toVector)(f))(Chunk.vector)
     def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
     override def map[A, B](fa: Chunk[A])(f: A => B): Chunk[B] = fa.map(f)

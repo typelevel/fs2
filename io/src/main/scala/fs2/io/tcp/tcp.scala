@@ -33,12 +33,7 @@ package object tcp {
   )(implicit AG: AsynchronousChannelGroup,
     F: Effect[F],
     ec: ExecutionContext): Stream[F, Socket[F]] =
-    Socket.client(to,
-                  reuseAddress,
-                  sendBufferSize,
-                  receiveBufferSize,
-                  keepAlive,
-                  noDelay)
+    Socket.client(to, reuseAddress, sendBufferSize, receiveBufferSize, keepAlive, noDelay)
 
   /**
     * Stream that binds to the specified address and provides a connection for,

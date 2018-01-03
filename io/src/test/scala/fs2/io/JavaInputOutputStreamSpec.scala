@@ -14,13 +14,12 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
         chunkSize <- if (data.length > 0) Gen.chooseNum(1, data.length)
         else Gen.fail
       } yield {
-        def go(rem: String): Stream[IO, Byte] = {
+        def go(rem: String): Stream[IO, Byte] =
           if (chunkSize >= rem.length) Stream.chunk(Chunk.bytes(rem.getBytes))
           else {
             val (out, remainder) = rem.splitAt(chunkSize)
             Stream.chunk(Chunk.bytes(out.getBytes)) ++ go(remainder)
           }
-        }
         go(data)
       }
     }
@@ -36,12 +35,11 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
             // instead they have to fork this to dedicated thread pool
             val buff = new Array[Byte](20)
             @annotation.tailrec
-            def go(acc: Vector[Byte]): IO[Vector[Byte]] = {
+            def go(acc: Vector[Byte]): IO[Vector[Byte]] =
               is.read(buff) match {
                 case -1   => IO.pure(acc)
                 case read => go(acc ++ buff.take(read))
               }
-            }
             go(Vector.empty)
           }
           .compile

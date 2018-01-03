@@ -11,9 +11,7 @@ final class CompositeFailure(
       head)
 
 object CompositeFailure {
-  def apply(first: Throwable,
-            second: Throwable,
-            rest: List[Throwable]): CompositeFailure =
+  def apply(first: Throwable, second: Throwable, rest: List[Throwable]): CompositeFailure =
     new CompositeFailure(first, NonEmptyList(second, rest))
 
   def fromList(errors: List[Throwable]): Option[Throwable] = errors match {

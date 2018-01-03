@@ -53,8 +53,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "iterate" in {
-      Stream.iterate(0)(_ + 1).take(100).toList shouldBe List.iterate(0, 100)(
-        _ + 1)
+      Stream.iterate(0)(_ + 1).take(100).toList shouldBe List.iterate(0, 100)(_ + 1)
     }
 
     "iterateEval" in {
@@ -169,10 +168,7 @@ class StreamSpec extends Fs2Spec with Inside {
 
       def input = Stream("ab").repeat
       def ones(s: String) = Chunk vector s.grouped(1).toVector
-      input.take(2).repartition(ones).toVector shouldBe Vector("a",
-                                                               "b",
-                                                               "a",
-                                                               "b")
+      input.take(2).repartition(ones).toVector shouldBe Vector("a", "b", "a", "b")
       input.take(4).repartition(ones).toVector shouldBe Vector("a",
                                                                "b",
                                                                "a",
@@ -182,17 +178,13 @@ class StreamSpec extends Fs2Spec with Inside {
                                                                "a",
                                                                "b")
       input.repartition(ones).take(2).toVector shouldBe Vector("a", "b")
-      input.repartition(ones).take(4).toVector shouldBe Vector("a",
-                                                               "b",
-                                                               "a",
-                                                               "b")
+      input.repartition(ones).take(4).toVector shouldBe Vector("a", "b", "a", "b")
       Stream
         .emits(input.take(4).toVector)
         .repartition(ones)
         .toVector shouldBe Vector("a", "b", "a", "b", "a", "b", "a", "b")
 
-      Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList shouldBe List(
-          1, 3, 6, 10, 15, 15)
+      Stream(1, 2, 3, 4, 5).repartition(i => Chunk(i, i)).toList shouldBe List(1, 3, 6, 10, 15, 15)
 
       Stream(1, 10, 100)
         .repartition(i => Segment.from(i).map(_.toInt).take(1000).force.toChunk)
@@ -248,8 +240,7 @@ class StreamSpec extends Fs2Spec with Inside {
     "unfoldChunkEval" in {
       Stream
         .unfoldChunkEval(true)(s =>
-          IO.pure(
-            if (s) Some((Chunk.booleans(Array[Boolean](s)), false)) else None))
+          IO.pure(if (s) Some((Chunk.booleans(Array[Boolean](s)), false)) else None))
         .compile
         .toVector
         .unsafeRunSync()
@@ -284,8 +275,7 @@ class StreamSpec extends Fs2Spec with Inside {
       pending // Too finicky on Travis
       type BD = (Boolean, FiniteDuration)
       val durationSinceLastTrue: Pipe[Pure, BD, BD] = {
-        def go(lastTrue: FiniteDuration,
-               s: Stream[Pure, BD]): Pull[Pure, BD, Unit] = {
+        def go(lastTrue: FiniteDuration, s: Stream[Pure, BD]): Pull[Pure, BD, Unit] =
           s.pull.uncons1.flatMap {
             case None => Pull.done
             case Some((pair, tl)) =>
@@ -296,7 +286,6 @@ class StreamSpec extends Fs2Spec with Inside {
                   Pull.output1((false, d - lastTrue)) >> go(lastTrue, tl)
               }
           }
-        }
         s =>
           go(0.seconds, s).stream
       }
@@ -310,16 +299,15 @@ class StreamSpec extends Fs2Spec with Inside {
         .take(draws.toInt)
         .through(durationSinceLastTrue)
 
-      (IO.shift *> durationsSinceSpike.compile.toVector).unsafeToFuture().map {
-        result =>
-          val (head :: tail) = result.toList
-          withClue("every always emits true first") { assert(head._1) }
-          withClue("true means the delay has passed: " + tail) {
-            assert(tail.filter(_._1).map(_._2).forall { _ >= delay })
-          }
-          withClue("false means the delay has not passed: " + tail) {
-            assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay })
-          }
+      (IO.shift *> durationsSinceSpike.compile.toVector).unsafeToFuture().map { result =>
+        val (head :: tail) = result.toList
+        withClue("every always emits true first") { assert(head._1) }
+        withClue("true means the delay has passed: " + tail) {
+          assert(tail.filter(_._1).map(_._2).forall { _ >= delay })
+        }
+        withClue("false means the delay has not passed: " + tail) {
+          assert(tail.filterNot(_._1).map(_._2).forall { _ <= delay })
+        }
       }
     }
 

@@ -20,8 +20,7 @@ import Ref._
   * The implementation is nonblocking and lightweight, consisting essentially of
   * a purely functional wrapper over an `AtomicReference`
   */
-final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(
-    implicit F: Sync[F]) {
+final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(implicit F: Sync[F]) {
 
   /**
     * Obtains the current value.

@@ -9,7 +9,7 @@ import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
-import fs2.async.{mutable, Ref}
+import fs2.async.{Ref, mutable}
 
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
@@ -43,10 +43,10 @@ private[io] object JavaInputOutputStream {
       implicit F: Sync[F]): F[Unit] =
     F.delay(os.write(bytes.toArray))
 
-  def writeOutputStreamGeneric[F[_]](fos: F[OutputStream],
-                                     closeAfterUse: Boolean,
-                                     f: (OutputStream, Chunk[Byte]) => F[Unit])(
-      implicit F: Sync[F]): Sink[F, Byte] = s => {
+  def writeOutputStreamGeneric[F[_]](
+      fos: F[OutputStream],
+      closeAfterUse: Boolean,
+      f: (OutputStream, Chunk[Byte]) => F[Unit])(implicit F: Sync[F]): Sink[F, Byte] = s => {
     def useOs(os: OutputStream): Stream[F, Unit] =
       s.chunks.evalMap(f(os, _))
 
@@ -86,12 +86,10 @@ private[io] object JavaInputOutputStream {
     )(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Unit] =
       Stream
         .eval(async.start {
-          def markUpstreamDone(result: Option[Throwable]): F[Unit] = {
-            F.flatMap(upState.set(UpStreamState(done = true, err = result))) {
-              _ =>
-                queue.enqueue1(Left(result))
+          def markUpstreamDone(result: Option[Throwable]): F[Unit] =
+            F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
+              queue.enqueue1(Left(result))
             }
-          }
 
           F.flatMap(
             F.attempt(
@@ -139,8 +137,7 @@ private[io] object JavaInputOutputStream {
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext): Int = {
       val sync = new SyncVar[Either[Throwable, Int]]
-      async.unsafeRunAsync(readOnce(dest, off, len, queue, dnState))(r =>
-        IO(sync.put(r)))
+      async.unsafeRunAsync(readOnce(dest, off, len, queue, dnState))(r => IO(sync.put(r)))
       sync.get.fold(throw _, identity)
     }
 
@@ -158,13 +155,12 @@ private[io] object JavaInputOutputStream {
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext): Int = {
 
-      def go(acc: Array[Byte]): F[Int] = {
+      def go(acc: Array[Byte]): F[Int] =
         F.flatMap(readOnce(acc, 0, 1, queue, dnState)) { read =>
           if (read < 0) F.pure(-1)
           else if (read == 0) go(acc)
           else F.pure(acc(0) & 0xFF)
         }
-      }
 
       val sync = new SyncVar[Either[Throwable, Int]]
       async.unsafeRunAsync(go(new Array[Byte](1)))(r => IO(sync.put(r)))
@@ -195,14 +191,12 @@ private[io] object JavaInputOutputStream {
             }
         }
 
-      def setDone(rsn: Option[Throwable])(
-          s0: DownStreamState): DownStreamState = s0 match {
+      def setDone(rsn: Option[Throwable])(s0: DownStreamState): DownStreamState = s0 match {
         case s @ Done(_) => s
         case _           => Done(rsn)
       }
 
-      F.flatMap[(Ref.Change[DownStreamState], Option[Bytes]), Int](
-        dnState.modify2(tryGetChunk)) {
+      F.flatMap[(Ref.Change[DownStreamState], Option[Bytes]), Int](dnState.modify2(tryGetChunk)) {
         case (Ref.Change(o, n), Some(bytes)) =>
           F.delay {
             Array.copy(bytes.values, 0, dest, off, bytes.size)
@@ -248,7 +242,7 @@ private[io] object JavaInputOutputStream {
     def close(
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F]): F[Unit] = {
+    )(implicit F: Effect[F]): F[Unit] =
       F.flatMap(dnState.modify {
         case s @ Done(_) => s
         case other       => Done(None)
@@ -267,7 +261,6 @@ private[io] object JavaInputOutputStream {
           }
         }
       }
-    }
 
     /*
      * Implementation note:
@@ -286,8 +279,7 @@ private[io] object JavaInputOutputStream {
         .eval(async.synchronousQueue[F, Either[Option[Throwable], Bytes]])
         .flatMap { queue =>
           Stream
-            .eval(async.signalOf[F, UpStreamState](
-              UpStreamState(done = false, err = None)))
+            .eval(async.signalOf[F, UpStreamState](UpStreamState(done = false, err = None)))
             .flatMap { upState =>
               Stream
                 .eval(async.signalOf[F, DownStreamState](Ready(None)))
@@ -296,8 +288,8 @@ private[io] object JavaInputOutputStream {
                     .map { _ =>
                       new InputStream {
                         override def close(): Unit = closeIs(upState, dnState)
-                        override def read(b: Array[Byte], off: Int, len: Int)
-                          : Int = readIs(b, off, len, queue, dnState)
+                        override def read(b: Array[Byte], off: Int, len: Int): Int =
+                          readIs(b, off, len, queue, dnState)
                         def read(): Int = readIs1(queue, dnState)
                       }
                     }

@@ -17,10 +17,8 @@ package object io {
     *
     * Blocks the current thread.
     */
-  def readInputStream[F[_]](
-      fis: F[InputStream],
-      chunkSize: Int,
-      closeAfterUse: Boolean = true)(implicit F: Sync[F]): Stream[F, Byte] =
+  def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(
+      implicit F: Sync[F]): Stream[F, Byte] =
     readInputStreamGeneric(fis,
                            F.delay(new Array[Byte](chunkSize)),
                            readBytesFromInputStream[F],
@@ -41,10 +39,7 @@ package object io {
     def readAsync(is: InputStream, buf: Array[Byte]) =
       async.start(readBytesFromInputStream(is, buf)).flatten
 
-    readInputStreamGeneric(fis,
-                           F.delay(new Array[Byte](chunkSize)),
-                           readAsync,
-                           closeAfterUse)
+    readInputStreamGeneric(fis, F.delay(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
   }
 
   /**
@@ -87,10 +82,7 @@ package object io {
     def readAsync(is: InputStream, buf: Array[Byte]) =
       async.start(readBytesFromInputStream(is, buf)).flatten
 
-    readInputStreamGeneric(fis,
-                           F.pure(new Array[Byte](chunkSize)),
-                           readAsync,
-                           closeAfterUse)
+    readInputStreamGeneric(fis, F.pure(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
   }
 
   /**
@@ -99,9 +91,8 @@ package object io {
     *
     * Blocks the current thread.
     */
-  def writeOutputStream[F[_]: Sync](
-      fos: F[OutputStream],
-      closeAfterUse: Boolean = true): Sink[F, Byte] =
+  def writeOutputStream[F[_]: Sync](fos: F[OutputStream],
+                                    closeAfterUse: Boolean = true): Sink[F, Byte] =
     writeOutputStreamGeneric(fos, closeAfterUse, writeBytesToOutputStream[F])
 
   /**
@@ -111,8 +102,7 @@ package object io {
     * This will block a thread in the `ExecutorService`, so the size of any associated
     * threadpool should be sized appropriately.
     */
-  def writeOutputStreamAsync[F[_]](fos: F[OutputStream],
-                                   closeAfterUse: Boolean = true)(
+  def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(
       implicit F: Effect[F],
       ec: ExecutionContext): Sink[F, Byte] = {
     def writeAsync(os: OutputStream, buf: Chunk[Byte]) =
@@ -129,8 +119,7 @@ package object io {
     readInputStream(F.delay(System.in), bufSize, false)
 
   /** Stream of bytes read asynchronously from standard input. */
-  def stdinAsync[F[_]](bufSize: Int)(implicit F: Effect[F],
-                                     ec: ExecutionContext): Stream[F, Byte] =
+  def stdinAsync[F[_]](bufSize: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] =
     readInputStreamAsync(F.delay(System.in), bufSize, false)
 
   /** Sink of bytes that writes emitted values to standard output. */
@@ -138,8 +127,7 @@ package object io {
     writeOutputStream(F.delay(System.out), false)
 
   /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdoutAsync[F[_]](implicit F: Effect[F],
-                        ec: ExecutionContext): Sink[F, Byte] =
+  def stdoutAsync[F[_]](implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] =
     writeOutputStreamAsync(F.delay(System.out), false)
 
   /**
@@ -155,8 +143,7 @@ package object io {
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
-  def toInputStream[F[_]](implicit F: Effect[F],
-                          ec: ExecutionContext): Pipe[F, Byte, InputStream] =
+  def toInputStream[F[_]](implicit F: Effect[F], ec: ExecutionContext): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
 
 }

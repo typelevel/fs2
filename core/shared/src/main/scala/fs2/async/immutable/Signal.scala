@@ -52,8 +52,7 @@ object Signal {
   }
 
   implicit class BooleanSignalSyntax[F[_]](val self: Signal[F, Boolean]) {
-    def interrupt[A](s: Stream[F, A])(implicit F: Effect[F],
-                                      ec: ExecutionContext): Stream[F, A] =
+    def interrupt[A](s: Stream[F, A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F, A] =
       s.interruptWhen(self)
   }
 }

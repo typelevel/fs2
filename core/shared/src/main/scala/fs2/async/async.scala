@@ -24,8 +24,7 @@ package object async {
     mutable.Semaphore(initialCount)
 
   /** Creates an unbounded asynchronous queue. See [[mutable.Queue]] for more documentation. */
-  def unboundedQueue[F[_]: Effect, A](
-      implicit ec: ExecutionContext): F[mutable.Queue[F, A]] =
+  def unboundedQueue[F[_]: Effect, A](implicit ec: ExecutionContext): F[mutable.Queue[F, A]] =
     mutable.Queue.unbounded[F, A]
 
   /**
@@ -51,9 +50,8 @@ package object async {
     * the oldest elements. Thus an enqueue process will never wait.
     * @param maxSize The size of the circular buffer (must be > 0)
     */
-  def circularBuffer[F[_], A](maxSize: Int)(
-      implicit F: Effect[F],
-      ec: ExecutionContext): F[mutable.Queue[F, A]] =
+  def circularBuffer[F[_], A](maxSize: Int)(implicit F: Effect[F],
+                                            ec: ExecutionContext): F[mutable.Queue[F, A]] =
     mutable.Queue.circularBuffer[F, A](maxSize)
 
   /**
@@ -74,8 +72,7 @@ package object async {
 
   /** Defined as `[[hold]](None, source.map(Some(_)))` */
   def holdOption[F[_]: Effect, A](source: Stream[F, A])(
-      implicit ec: ExecutionContext)
-    : Stream[F, immutable.Signal[F, Option[A]]] =
+      implicit ec: ExecutionContext): Stream[F, immutable.Signal[F, Option[A]]] =
     hold(None, source.map(Some(_)))
 
   /**
@@ -83,37 +80,30 @@ package object async {
     * an arbitrary number of subscribers. Each subscriber is guaranteed to
     * receive at least the initial `A` or last value published by any publisher.
     */
-  def topic[F[_]: Effect, A](initial: A)(
-      implicit ec: ExecutionContext): F[mutable.Topic[F, A]] =
+  def topic[F[_]: Effect, A](initial: A)(implicit ec: ExecutionContext): F[mutable.Topic[F, A]] =
     mutable.Topic(initial)
 
   /** Creates an empty `Promise[F, A]` */
-  def promise[F[_]: Effect, A](
-      implicit ec: ExecutionContext): F[Promise[F, A]] = Promise.empty
+  def promise[F[_]: Effect, A](implicit ec: ExecutionContext): F[Promise[F, A]] = Promise.empty
 
   /** Creates an initialized `SyncRef[F,A]`. */
   def refOf[F[_]: Sync, A](a: A): F[Ref[F, A]] = Ref[F, A](a)
 
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
-  def parallelTraverse[F[_], G[_], A, B](fa: F[A])(f: A => G[B])(
-      implicit F: Traverse[F],
-      G: Effect[G],
-      ec: ExecutionContext): G[F[B]] =
+  def parallelTraverse[F[_], G[_], A, B](fa: F[A])(
+      f: A => G[B])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[B]] =
     F.traverse(fa)(f andThen start[G, B]).flatMap(F.sequence(_))
 
   /** Like `sequence` but each `G[A]` is evaluated in parallel. */
-  def parallelSequence[F[_], G[_], A](fga: F[G[A]])(
-      implicit F: Traverse[F],
-      G: Effect[G],
-      ec: ExecutionContext): G[F[A]] =
+  def parallelSequence[F[_], G[_], A](
+      fga: F[G[A]])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[A]] =
     parallelTraverse(fga)(identity)
 
   /**
     * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
     * bound. The inner `F[A]` will block until the result is available.
     */
-  def start[F[_], A](f: F[A])(implicit F: Effect[F],
-                              ec: ExecutionContext): F[F[A]] =
+  def start[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
     promise[F, Either[Throwable, A]].flatMap { p =>
       fork(f.attempt.flatMap(p.complete)).as(p.get.flatMap(F.fromEither))
     }
@@ -122,8 +112,7 @@ package object async {
     * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
     * bound. Like `start` but is more efficient.
     */
-  def fork[F[_], A](f: F[A])(implicit F: Effect[F],
-                             ec: ExecutionContext): F[Unit] =
+  def fork[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] =
     F.liftIO(F.runAsync(F.shift *> f) { _ =>
       IO.unit
     })
@@ -132,9 +121,8 @@ package object async {
     * Like `unsafeRunSync` but execution is shifted to the supplied execution context.
     * This method returns immediately after submitting execution to the execution context.
     */
-  def unsafeRunAsync[F[_], A](fa: F[A])(f: Either[Throwable, A] => IO[Unit])(
-      implicit F: Effect[F],
-      ec: ExecutionContext): Unit =
+  def unsafeRunAsync[F[_], A](fa: F[A])(
+      f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =
     F.runAsync(F.shift(ec) *> fa)(f).unsafeRunSync
 
   /**
@@ -143,9 +131,8 @@ package object async {
     * continues to execute in the background though its result will be sent
     * nowhere.
     */
-  private[fs2] def race[F[_], A, B](fa: F[A], fb: F[B])(
-      implicit F: Effect[F],
-      ec: ExecutionContext): F[Either[A, B]] =
+  private[fs2] def race[F[_], A, B](fa: F[A], fb: F[B])(implicit F: Effect[F],
+                                                        ec: ExecutionContext): F[Either[A, B]] =
     promise[F, Either[Throwable, Either[A, B]]].flatMap { p =>
       def go: F[Unit] = F.delay {
         val refToP = new AtomicReference(p)

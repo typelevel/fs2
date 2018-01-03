@@ -100,15 +100,14 @@ private[internal] object Resource {
 
   val initial = State(open = true, finalizer = None, leases = 0)
 
-  def create[F[_]](implicit F: Sync[F]): Resource[F] = {
-
+  def create[F[_]](implicit F: Sync[F]): Resource[F] =
     new Resource[F] {
 
       val state = new Ref[F, State[F]](new AtomicReference[State[F]](initial))
 
       val id: Token = new Token
 
-      def release: F[Either[Throwable, Unit]] = {
+      def release: F[Either[Throwable, Unit]] =
         F.flatMap(state.modify2 { s =>
           if (s.leases != 0)
             (s.copy(open = false), None) // do not allow to run finalizer if there are leases open
@@ -118,7 +117,6 @@ private[internal] object Resource {
           case (c, finalizer) =>
             finalizer.getOrElse(F.pure(Right(())))
         }
-      }
 
       def acquired(finalizer: F[Unit]): F[Either[Throwable, Unit]] = {
         val attemptFinalizer = F.attempt(finalizer)
@@ -141,7 +139,7 @@ private[internal] object Resource {
           if (!c.now.open) None
           else {
             val lease = new Lease[F] {
-              def cancel: F[Either[Throwable, Unit]] = {
+              def cancel: F[Either[Throwable, Unit]] =
                 F.flatMap(state.modify { s =>
                   s.copy(leases = s.leases - 1)
                 }) { c =>
@@ -157,11 +155,9 @@ private[internal] object Resource {
                     }
                   }
                 }
-              }
             }
             Some(lease)
           }
         }
     }
-  }
 }

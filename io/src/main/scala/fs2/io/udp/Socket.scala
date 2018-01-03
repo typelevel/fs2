@@ -68,8 +68,7 @@ sealed trait Socket[F[_]] {
     * @param group address of group to join
     * @param interface network interface upon which to listen for datagrams
     */
-  def join(group: InetAddress,
-           interface: NetworkInterface): F[AnySourceGroupMembership]
+  def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership]
 
   /**
     * Joins a source specific multicast group on a specific network interface.
@@ -78,9 +77,7 @@ sealed trait Socket[F[_]] {
     * @param interface network interface upon which to listen for datagrams
     * @param source limits received packets to those sent by the source
     */
-  def join(group: InetAddress,
-           interface: NetworkInterface,
-           source: InetAddress): F[GroupMembership]
+  def join(group: InetAddress, interface: NetworkInterface, source: InetAddress): F[GroupMembership]
 
   /** Result of joining a multicast group on a UDP socket. */
   sealed trait GroupMembership {
@@ -102,65 +99,63 @@ sealed trait Socket[F[_]] {
 
 private[udp] object Socket {
 
-  private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(
-      implicit AG: AsynchronousSocketGroup,
-      F: Effect[F],
-      ec: ExecutionContext): F[Socket[F]] = F.delay {
-    new Socket[F] {
-      private val ctx = AG.register(channel)
+  private[fs2] def mkSocket[F[_]](channel: DatagramChannel)(implicit AG: AsynchronousSocketGroup,
+                                                            F: Effect[F],
+                                                            ec: ExecutionContext): F[Socket[F]] =
+    F.delay {
+      new Socket[F] {
+        private val ctx = AG.register(channel)
 
-      private def invoke(f: => Unit): Unit =
-        async.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
+        private def invoke(f: => Unit): Unit =
+          async.unsafeRunAsync(F.delay(f))(_ => IO.pure(()))
 
-      def localAddress: F[InetSocketAddress] =
-        F.delay(Option(
-          channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress])
-          .getOrElse(throw new ClosedChannelException))
+        def localAddress: F[InetSocketAddress] =
+          F.delay(
+            Option(channel.socket.getLocalSocketAddress.asInstanceOf[InetSocketAddress])
+              .getOrElse(throw new ClosedChannelException))
 
-      def read(timeout: Option[FiniteDuration]): F[Packet] =
-        F.async(cb => AG.read(ctx, timeout, result => invoke(cb(result))))
+        def read(timeout: Option[FiniteDuration]): F[Packet] =
+          F.async(cb => AG.read(ctx, timeout, result => invoke(cb(result))))
 
-      def reads(timeout: Option[FiniteDuration]): Stream[F, Packet] =
-        Stream.repeatEval(read(timeout))
+        def reads(timeout: Option[FiniteDuration]): Stream[F, Packet] =
+          Stream.repeatEval(read(timeout))
 
-      def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
-        F.async(cb =>
-          AG.write(ctx, packet, timeout, t => invoke(cb(t.toLeft(())))))
+        def write(packet: Packet, timeout: Option[FiniteDuration]): F[Unit] =
+          F.async(cb => AG.write(ctx, packet, timeout, t => invoke(cb(t.toLeft(())))))
 
-      def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =
-        _.flatMap(p => Stream.eval(write(p, timeout)))
+        def writes(timeout: Option[FiniteDuration]): Sink[F, Packet] =
+          _.flatMap(p => Stream.eval(write(p, timeout)))
 
-      def close: F[Unit] = F.delay { AG.close(ctx) }
+        def close: F[Unit] = F.delay { AG.close(ctx) }
 
-      def join(group: InetAddress,
-               interface: NetworkInterface): F[AnySourceGroupMembership] =
-        F.delay {
-          val membership = channel.join(group, interface)
-          new AnySourceGroupMembership {
+        def join(group: InetAddress, interface: NetworkInterface): F[AnySourceGroupMembership] =
+          F.delay {
+            val membership = channel.join(group, interface)
+            new AnySourceGroupMembership {
+              def drop = F.delay { membership.drop }
+              def block(source: InetAddress) = F.delay {
+                membership.block(source); ()
+              }
+              def unblock(source: InetAddress) = F.delay {
+                membership.unblock(source); ()
+              }
+              override def toString = "AnySourceGroupMembership"
+            }
+          }
+
+        def join(group: InetAddress,
+                 interface: NetworkInterface,
+                 source: InetAddress): F[GroupMembership] = F.delay {
+          val membership = channel.join(group, interface, source)
+          new GroupMembership {
             def drop = F.delay { membership.drop }
-            def block(source: InetAddress) = F.delay {
-              membership.block(source); ()
-            }
-            def unblock(source: InetAddress) = F.delay {
-              membership.unblock(source); ()
-            }
-            override def toString = "AnySourceGroupMembership"
+            override def toString = "GroupMembership"
           }
         }
 
-      def join(group: InetAddress,
-               interface: NetworkInterface,
-               source: InetAddress): F[GroupMembership] = F.delay {
-        val membership = channel.join(group, interface, source)
-        new GroupMembership {
-          def drop = F.delay { membership.drop }
-          override def toString = "GroupMembership"
-        }
+        override def toString =
+          s"Socket(${Option(channel.socket.getLocalSocketAddress
+            .asInstanceOf[InetSocketAddress]).getOrElse("<unbound>")})"
       }
-
-      override def toString =
-        s"Socket(${Option(channel.socket.getLocalSocketAddress
-          .asInstanceOf[InetSocketAddress]).getOrElse("<unbound>")})"
     }
-  }
 }

@@ -99,8 +99,7 @@ private[file] object FileHandle {
     * Uses a `java.nio.Channels.CompletionHandler` to handle callbacks from IO operations.
     */
   private[file] def fromAsynchronousFileChannel[F[_]](
-      chan: AsynchronousFileChannel)(implicit F: Effect[F],
-                                     ec: ExecutionContext): FileHandle[F] = {
+      chan: AsynchronousFileChannel)(implicit F: Effect[F], ec: ExecutionContext): FileHandle[F] =
     new FileHandle[F] {
       type Lock = FileLock
 
@@ -111,19 +110,16 @@ private[file] object FileHandle {
         asyncCompletionHandler[F, Lock](f => chan.lock(null, f))
 
       override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
-        asyncCompletionHandler[F, Lock](f =>
-          chan.lock(position, size, shared, null, f))
+        asyncCompletionHandler[F, Lock](f => chan.lock(position, size, shared, null, f))
 
-      override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] = {
+      override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
         F.delay(ByteBuffer.allocate(numBytes)).flatMap { buf =>
-          asyncCompletionHandler[F, Integer](f =>
-            chan.read(buf, offset, null, f)).map { len =>
+          asyncCompletionHandler[F, Integer](f => chan.read(buf, offset, null, f)).map { len =>
             if (len < 0) None
             else if (len == 0) Some(Chunk.empty)
             else Some(Chunk.bytes(buf.array, 0, len))
           }
         }
-      }
 
       override def size: F[Long] =
         F.delay(chan.size)
@@ -134,9 +130,7 @@ private[file] object FileHandle {
       override def tryLock: F[Option[Lock]] =
         F.map(F.delay(chan.tryLock()))(Option.apply)
 
-      override def tryLock(position: Long,
-                           size: Long,
-                           shared: Boolean): F[Option[Lock]] =
+      override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
         F.map(F.delay(chan.tryLock(position, size, shared)))(Option.apply)
 
       override def unlock(f: Lock): F[Unit] =
@@ -148,13 +142,11 @@ private[file] object FileHandle {
           i => i.toInt
         )
     }
-  }
 
   /**
     * Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`.
     */
-  private[file] def fromFileChannel[F[_]](chan: FileChannel)(
-      implicit F: Sync[F]): FileHandle[F] = {
+  private[file] def fromFileChannel[F[_]](chan: FileChannel)(implicit F: Sync[F]): FileHandle[F] =
     new FileHandle[F] {
       type Lock = FileLock
 
@@ -167,7 +159,7 @@ private[file] object FileHandle {
       override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
         F.delay(chan.lock(position, size, shared))
 
-      override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] = {
+      override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
         F.delay(ByteBuffer.allocate(numBytes)).flatMap { buf =>
           F.delay(chan.read(buf, offset)).map { len =>
             if (len < 0) None
@@ -175,7 +167,6 @@ private[file] object FileHandle {
             else Some(Chunk.bytes(buf.array, 0, len))
           }
         }
-      }
 
       override def size: F[Long] =
         F.delay(chan.size)
@@ -186,9 +177,7 @@ private[file] object FileHandle {
       override def tryLock: F[Option[Lock]] =
         F.delay(Option(chan.tryLock()))
 
-      override def tryLock(position: Long,
-                           size: Long,
-                           shared: Boolean): F[Option[Lock]] =
+      override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
         F.delay(Option(chan.tryLock(position, size, shared)))
 
       override def unlock(f: Lock): F[Unit] =
@@ -197,5 +186,4 @@ private[file] object FileHandle {
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
         F.delay(chan.write(bytes.toBytes.toByteBuffer, offset))
     }
-  }
 }

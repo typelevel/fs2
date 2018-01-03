@@ -23,7 +23,7 @@ object Pipe {
         }
 
     // Steps `s` without overhead of resource tracking
-    def stepf(s: Stream[Read, O]): Read[UO] = {
+    def stepf(s: Stream[Read, O]): Read[UO] =
       s.pull.uncons
         .flatMap {
           case Some((hd, tl)) => Pull.output1((hd, tl))
@@ -32,7 +32,6 @@ object Pipe {
         .streamNoScope
         .compile
         .last
-    }
 
     def go(s: Read[UO]): Stepper[I, O] = Stepper.Suspend { () =>
       s.viewL.get match {
@@ -67,8 +66,7 @@ object Pipe {
   }
 
   object Stepper {
-    private[fs2] final case class Suspend[A, B](force: () => Stepper[A, B])
-        extends Stepper[A, B]
+    private[fs2] final case class Suspend[A, B](force: () => Stepper[A, B]) extends Stepper[A, B]
 
     /** Algebra describing the result of stepping a pure pipe. */
     sealed abstract class Step[-A, +B] extends Stepper[A, B]
@@ -80,19 +78,16 @@ object Pipe {
     final case class Fail(err: Throwable) extends Step[Any, Nothing]
 
     /** Pipe emitted a segment of elements. */
-    final case class Emits[A, B](segment: Segment[B, Unit], next: Stepper[A, B])
-        extends Step[A, B]
+    final case class Emits[A, B](segment: Segment[B, Unit], next: Stepper[A, B]) extends Step[A, B]
 
     /** Pipe is awaiting input. */
-    final case class Await[A, B](
-        receive: Option[Segment[A, Unit]] => Stepper[A, B])
+    final case class Await[A, B](receive: Option[Segment[A, Unit]] => Stepper[A, B])
         extends Step[A, B]
   }
 
   /** Queue based version of [[join]] that uses the specified queue. */
   def joinQueued[F[_], A, B](q: F[Queue[F, Option[Segment[A, Unit]]]])(
-      s: Stream[F, Pipe[F, A, B]])(implicit F: Effect[F],
-                                   ec: ExecutionContext): Pipe[F, A, B] =
+      s: Stream[F, Pipe[F, A, B]])(implicit F: Effect[F], ec: ExecutionContext): Pipe[F, A, B] =
     in => {
       for {
         done <- Stream.eval(async.signalOf(false))
@@ -111,8 +106,7 @@ object Pipe {
     }
 
   /** Asynchronous version of [[join]] that queues up to `maxQueued` elements. */
-  def joinAsync[F[_]: Effect, A, B](maxQueued: Int)(
-      s: Stream[F, Pipe[F, A, B]])(
+  def joinAsync[F[_]: Effect, A, B](maxQueued: Int)(s: Stream[F, Pipe[F, A, B]])(
       implicit ec: ExecutionContext): Pipe[F, A, B] =
     joinQueued[F, A, B](async.boundedQueue(maxQueued))(s)
 

@@ -16,13 +16,12 @@ object text {
      * Returns the number of continuation bytes if `b` is an ASCII byte or a
      * leading byte of a multi-byte sequence, and -1 otherwise.
      */
-    def continuationBytes(b: Byte): Int = {
+    def continuationBytes(b: Byte): Int =
       if ((b & 0x80) == 0x00) 0 // ASCII byte
       else if ((b & 0xE0) == 0xC0) 1 // leading byte of a 2 byte seq
       else if ((b & 0xF0) == 0xE0) 2 // leading byte of a 3 byte seq
       else if ((b & 0xF8) == 0xF0) 3 // leading byte of a 4 byte seq
       else -1 // continuation byte or garbage
-    }
 
     /*
      * Returns the length of an incomplete multi-byte sequence at the end of
@@ -38,9 +37,8 @@ object text {
       } getOrElse 0
     }
 
-    def processSingleChunk(
-        outputAndBuffer: (List[String], Chunk[Byte]),
-        nextBytes: Chunk[Byte]): (List[String], Chunk[Byte]) = {
+    def processSingleChunk(outputAndBuffer: (List[String], Chunk[Byte]),
+                           nextBytes: Chunk[Byte]): (List[String], Chunk[Byte]) = {
       val (output, buffer) = outputAndBuffer
       val allBytes = Array.concat(buffer.toArray, nextBytes.toArray)
       val splitAt = allBytes.size - lastIncompleteBytes(allBytes)
@@ -54,19 +52,19 @@ object text {
          Chunk.bytes(allBytes.drop(splitAt)))
     }
 
-    def doPull(buf: Chunk[Byte], s: Stream[Pure, Chunk[Byte]])
-      : Pull[Pure, String, Option[Stream[Pure, Chunk[Byte]]]] = {
+    def doPull(
+        buf: Chunk[Byte],
+        s: Stream[Pure, Chunk[Byte]]): Pull[Pure, String, Option[Stream[Pure, Chunk[Byte]]]] =
       s.pull.unconsChunk.flatMap {
         case Some((byteChunks, tail)) =>
-          val (output, nextBuffer) = byteChunks.toList.foldLeft(
-            (Nil: List[String], buf))(processSingleChunk)
+          val (output, nextBuffer) =
+            byteChunks.toList.foldLeft((Nil: List[String], buf))(processSingleChunk)
           Pull.output(Segment.seq(output.reverse)) >> doPull(nextBuffer, tail)
         case None if !buf.isEmpty =>
           Pull.output1(new String(buf.toArray, utf8Charset)) >> Pull.pure(None)
         case None =>
           Pull.pure(None)
       }
-    }
 
     ((in: Stream[Pure, Chunk[Byte]]) => doPull(Chunk.empty, in).stream)
       .covary[F]
@@ -107,16 +105,14 @@ object text {
       (out, carry)
     }
 
-    def extractLines(
-        buffer: Vector[String],
-        chunk: Chunk[String],
-        pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) = {
+    def extractLines(buffer: Vector[String],
+                     chunk: Chunk[String],
+                     pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) = {
       @annotation.tailrec
       def loop(remainingInput: Vector[String],
                buffer: Vector[String],
                output: Vector[String],
-               pendingLineFeed: Boolean)
-        : (Chunk[String], Vector[String], Boolean) = {
+               pendingLineFeed: Boolean): (Chunk[String], Vector[String], Boolean) =
         if (remainingInput.isEmpty) {
           (Chunk.indexedSeq(output), buffer, pendingLineFeed)
         } else {
@@ -124,10 +120,7 @@ object text {
           if (pendingLineFeed) {
             if (next.headOption == Some('\n')) {
               val out = (buffer.init :+ buffer.last.init).mkString
-              loop(next.tail +: remainingInput.tail,
-                   Vector.empty,
-                   output :+ out,
-                   false)
+              loop(next.tail +: remainingInput.tail, Vector.empty, output :+ out, false)
             } else {
               loop(remainingInput, buffer, output, false)
             }
@@ -142,13 +135,12 @@ object text {
                  pendingLF)
           }
         }
-      }
       loop(chunk.toVector, buffer, Vector.empty, pendingLineFeed)
     }
 
     def go(buffer: Vector[String],
            pendingLineFeed: Boolean,
-           s: Stream[F, String]): Pull[F, String, Option[Unit]] = {
+           s: Stream[F, String]): Pull[F, String, Option[Unit]] =
       s.pull.unconsChunk.flatMap {
         case Some((chunk, s)) =>
           val (toOutput, newBuffer, newPendingLineFeed) =
@@ -158,7 +150,6 @@ object text {
           Pull.output1(buffer.mkString) >> Pull.pure(None)
         case None => Pull.pure(None)
       }
-    }
 
     s =>
       go(Vector.empty, false, s).stream

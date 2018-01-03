@@ -42,8 +42,7 @@ object AppendSanityTest extends App {
 
 object DrainOnCompleteSanityTest extends App {
   import ExecutionContext.Implicits.global
-  val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(
-    IO(println("done")))
+  val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO(println("done")))
   (Stream.empty.covary[IO] merge s).compile.drain.unsafeRunSync()
 }
 
@@ -137,7 +136,7 @@ object RecursiveFlatMapTest extends App {
 object StepperSanityTest extends App {
   import Pipe.Stepper
   def id[I, O](p: Pipe[Pure, I, O]): Pipe[Pure, I, O] = {
-    def go(stepper: Stepper[I, O], s: Stream[Pure, I]): Pull[Pure, O, Unit] = {
+    def go(stepper: Stepper[I, O], s: Stream[Pure, I]): Pull[Pure, O, Unit] =
       stepper.step match {
         case Stepper.Done      => Pull.done
         case Stepper.Fail(err) => Pull.raiseError(err)
@@ -149,7 +148,6 @@ object StepperSanityTest extends App {
             case None           => go(receive(None), Stream.empty)
           }
       }
-    }
     s =>
       go(Pipe.stepper(p), s).stream
   }
@@ -159,14 +157,13 @@ object StepperSanityTest extends App {
 
 object StepperSanityTest2 extends App {
   import Pipe.Stepper
-  def go[I, O](i: I)(s: Stepper[I, O]): Unit = {
+  def go[I, O](i: I)(s: Stepper[I, O]): Unit =
     s.step match {
       case Stepper.Done        => ()
       case Stepper.Fail(err)   => throw err
       case Stepper.Emits(s, n) => go(i)(n)
       case Stepper.Await(r)    => go(i)(r(Some(Segment(i))))
     }
-  }
   go(0)(Pipe.stepper(_.map(_ + 1)))
 }
 

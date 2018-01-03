@@ -66,8 +66,7 @@ class PipeSpec extends Fs2Spec {
 
     "chunkLimit" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
       val sizeV = s.get.chunkLimit(n0.get).toVector.map(_.size)
-      assert(
-        sizeV.forall(_ <= n0.get) && sizeV.combineAll == s.get.toVector.size)
+      assert(sizeV.forall(_ <= n0.get) && sizeV.combineAll == s.get.toVector.size)
     }
 
     "segmentN.fewer" in forAll { (s: PureStream[Int], n0: SmallPositive) =>
@@ -129,10 +128,9 @@ class PipeSpec extends Fs2Spec {
       runLog(s.get.delete(_ == i)) shouldBe v.diff(Vector(i))
     }
 
-    "drop" in forAll {
-      (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-        val n = if (negate) -n0.get else n0.get
-        runLog(s.get.drop(n)) shouldBe runLog(s.get).drop(n)
+    "drop" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.drop(n)) shouldBe runLog(s.get).drop(n)
     }
 
     "dropLast" in forAll { (s: PureStream[Int]) =>
@@ -145,10 +143,9 @@ class PipeSpec extends Fs2Spec {
         .dropRight(1)
     }
 
-    "dropRight" in forAll {
-      (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-        val n = if (negate) -n0.get else n0.get
-        runLog(s.get.dropRight(n)) shouldBe runLog(s.get).dropRight(n)
+    "dropRight" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.dropRight(n)) shouldBe runLog(s.get).dropRight(n)
     }
 
     "dropWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
@@ -257,8 +254,7 @@ class PipeSpec extends Fs2Spec {
     }
 
     "mapSegments" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.mapSegments(identity).segments) shouldBe runLog(
-        s.get.segments)
+      runLog(s.get.mapSegments(identity).segments) shouldBe runLog(s.get.segments)
     }
 
     "performance of multi-stage pipeline" in {
@@ -280,17 +276,15 @@ class PipeSpec extends Fs2Spec {
 
     "lastOr" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val default = n.get
-      runLog(s.get.lastOr(default)) shouldBe Vector(
-        runLog(s.get).lastOption.getOrElse(default))
+      runLog(s.get.lastOr(default)) shouldBe Vector(runLog(s.get).lastOption.getOrElse(default))
     }
 
-    "mapAccumulate" in forAll {
-      (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
-        val f = (_: Int) % n1.get == 0
-        val r = s.get.mapAccumulate(n0)((s, i) => (s + i, f(i)))
+    "mapAccumulate" in forAll { (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
+      val f = (_: Int) % n1.get == 0
+      val r = s.get.mapAccumulate(n0)((s, i) => (s + i, f(i)))
 
-        runLog(r.map(_._1)) shouldBe runLog(s.get).scan(n0)(_ + _).tail
-        runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
+      runLog(r.map(_._1)) shouldBe runLog(s.get).scan(n0)(_ + _).tail
+      runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
     }
 
     "prefetch" in forAll { (s: PureStream[Int]) =>
@@ -339,35 +333,30 @@ class PipeSpec extends Fs2Spec {
     }
 
     "split (2)" in {
-      Stream(1, 2, 0, 0, 3, 0,
-        4).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
+      Stream(1, 2, 0, 0, 3, 0, 4).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
         Vector(1, 2),
         Vector(),
         Vector(3),
         Vector(4))
-      Stream(1, 2, 0, 0, 3,
-        0).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
+      Stream(1, 2, 0, 0, 3, 0).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
         Vector(1, 2),
         Vector(),
         Vector(3))
-      Stream(1, 2, 0, 0, 3, 0,
-        0).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
+      Stream(1, 2, 0, 0, 3, 0, 0).split(_ == 0).toVector.map(_.force.toVector) shouldBe Vector(
         Vector(1, 2),
         Vector(),
         Vector(3),
         Vector())
     }
 
-    "take" in forAll {
-      (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-        val n = if (negate) -n0.get else n0.get
-        runLog(s.get.take(n)) shouldBe runLog(s.get).take(n)
+    "take" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.take(n)) shouldBe runLog(s.get).take(n)
     }
 
-    "takeRight" in forAll {
-      (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
-        val n = if (negate) -n0.get else n0.get
-        runLog(s.get.takeRight(n)) shouldBe runLog(s.get).takeRight(n)
+    "takeRight" in forAll { (s: PureStream[Int], negate: Boolean, n0: SmallNonnegative) =>
+      val n = if (negate) -n0.get else n0.get
+      runLog(s.get.takeRight(n)) shouldBe runLog(s.get).takeRight(n)
     }
 
     "takeWhile" in forAll { (s: PureStream[Int], n: SmallNonnegative) =>
@@ -424,9 +413,7 @@ class PipeSpec extends Fs2Spec {
 
     "take.segments" in {
       val s = Stream(1, 2) ++ Stream(3, 4)
-      runLog(s.take(3).segments.map(_.force.toVector)) shouldBe Vector(
-        Vector(1, 2),
-        Vector(3))
+      runLog(s.take(3).segments.map(_.force.toVector)) shouldBe Vector(Vector(1, 2), Vector(3))
     }
 
     "unNone" in forAll { (s: PureStream[Option[Int]]) =>
@@ -448,9 +435,7 @@ class PipeSpec extends Fs2Spec {
     "zipWithNext (2)" in {
       runLog(Stream().zipWithNext) shouldBe Vector()
       runLog(Stream(0).zipWithNext) shouldBe Vector((0, None))
-      runLog(Stream(0, 1, 2).zipWithNext) shouldBe Vector((0, Some(1)),
-                                                          (1, Some(2)),
-                                                          (2, None))
+      runLog(Stream(0, 1, 2).zipWithNext) shouldBe Vector((0, Some(1)), (1, Some(2)), (2, None))
     }
 
     "zipWithPrevious" in forAll { (s: PureStream[Int]) =>
@@ -463,9 +448,7 @@ class PipeSpec extends Fs2Spec {
     "zipWithPrevious (2)" in {
       runLog(Stream().zipWithPrevious) shouldBe Vector()
       runLog(Stream(0).zipWithPrevious) shouldBe Vector((None, 0))
-      runLog(Stream(0, 1, 2).zipWithPrevious) shouldBe Vector((None, 0),
-                                                              (Some(0), 1),
-                                                              (Some(1), 2))
+      runLog(Stream(0, 1, 2).zipWithPrevious) shouldBe Vector((None, 0), (Some(0), 1), (Some(1), 2))
     }
 
     "zipWithPreviousAndNext" in forAll { (s: PureStream[Int]) =>
@@ -483,10 +466,9 @@ class PipeSpec extends Fs2Spec {
     "zipWithPreviousAndNext (2)" in {
       runLog(Stream().zipWithPreviousAndNext) shouldBe Vector()
       runLog(Stream(0).zipWithPreviousAndNext) shouldBe Vector((None, 0, None))
-      runLog(Stream(0, 1, 2).zipWithPreviousAndNext) shouldBe Vector(
-        (None, 0, Some(1)),
-        (Some(0), 1, Some(2)),
-        (Some(1), 2, None))
+      runLog(Stream(0, 1, 2).zipWithPreviousAndNext) shouldBe Vector((None, 0, Some(1)),
+                                                                     (Some(0), 1, Some(2)),
+                                                                     (Some(1), 2, None))
     }
 
     "zipWithScan" in {
@@ -598,7 +580,7 @@ class PipeSpec extends Fs2Spec {
         def first[I, O, A](p: Pipe[Pure, I, O]): Pipe[Pure, (I, A), (O, A)] = {
           def go(last: Option[A],
                  stepper: Stepper[I, O],
-                 s: Stream[Pure, (I, A)]): Pull[Pure, (O, A), Unit] = {
+                 s: Stream[Pure, (I, A)]): Pull[Pure, (O, A), Unit] =
             stepper.step match {
               case Stepper.Done      => Pull.done
               case Stepper.Fail(err) => Pull.raiseError(err)
@@ -617,7 +599,6 @@ class PipeSpec extends Fs2Spec {
                   case None => go(last, receive(None), s)
                 }
             }
-          }
           s =>
             go(None, Pipe.stepper(p), s).stream
         }

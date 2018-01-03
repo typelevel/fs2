@@ -1,6 +1,6 @@
 package fs2.internal
 
-import cats.{~>, MonadError}
+import cats.{MonadError, ~>}
 import cats.effect.Sync
 
 import FreeC._
@@ -74,8 +74,7 @@ private[fs2] object FreeC {
     override def translate[G[_]](f: F ~> G): FreeC[G, R] = Eval(f(fr))
     override def toString: String = s"FreeC.Eval($fr)"
   }
-  final case class Bind[F[_], X, R](fx: FreeC[F, X],
-                                    f: Either[Throwable, X] => FreeC[F, R])
+  final case class Bind[F[_], X, R](fx: FreeC[F, X], f: Either[Throwable, X] => FreeC[F, R])
       extends FreeC[F, R] {
     override def toString: String = s"FreeC.Bind($fx, $f)"
   }
@@ -122,8 +121,7 @@ private[fs2] object FreeC {
     go(free)
   }
 
-  implicit final class InvariantOps[F[_], R](private val self: FreeC[F, R])
-      extends AnyVal {
+  implicit final class InvariantOps[F[_], R](private val self: FreeC[F, R]) extends AnyVal {
     def run(implicit F: MonadError[F, Throwable]): F[R] =
       self.viewL.get match {
         case Pure(r) => F.pure(r)
@@ -138,8 +136,8 @@ private[fs2] object FreeC {
 
   implicit def syncInstance[F[_]]: Sync[FreeC[F, ?]] = new Sync[FreeC[F, ?]] {
     def pure[A](a: A): FreeC[F, A] = FreeC.Pure(a)
-    def handleErrorWith[A](fa: FreeC[F, A])(
-        f: Throwable => FreeC[F, A]): FreeC[F, A] = fa.handleErrorWith(f)
+    def handleErrorWith[A](fa: FreeC[F, A])(f: Throwable => FreeC[F, A]): FreeC[F, A] =
+      fa.handleErrorWith(f)
     def raiseError[A](t: Throwable): FreeC[F, A] = FreeC.Fail(t)
     def flatMap[A, B](fa: FreeC[F, A])(f: A => FreeC[F, B]): FreeC[F, B] =
       fa.flatMap(f)

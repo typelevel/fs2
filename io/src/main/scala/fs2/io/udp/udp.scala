@@ -3,12 +3,7 @@ package io
 
 import scala.concurrent.ExecutionContext
 
-import java.net.{
-  InetSocketAddress,
-  NetworkInterface,
-  ProtocolFamily,
-  StandardSocketOptions
-}
+import java.net.{InetSocketAddress, NetworkInterface, ProtocolFamily, StandardSocketOptions}
 import java.nio.channels.DatagramChannel
 
 import cats.effect.Effect
@@ -49,32 +44,25 @@ package object udp {
           DatagramChannel.open(pf)
         }
         .getOrElse(DatagramChannel.open())
-      channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR,
-                                           reuseAddress)
+      channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       sendBufferSize.foreach { sz =>
         channel.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sz)
       }
       receiveBufferSize.foreach { sz =>
         channel.setOption[Integer](StandardSocketOptions.SO_RCVBUF, sz)
       }
-      channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_BROADCAST,
-                                           allowBroadcast)
+      channel.setOption[java.lang.Boolean](StandardSocketOptions.SO_BROADCAST, allowBroadcast)
       multicastInterface.foreach { iface =>
-        channel.setOption[NetworkInterface](
-          StandardSocketOptions.IP_MULTICAST_IF,
-          iface)
+        channel.setOption[NetworkInterface](StandardSocketOptions.IP_MULTICAST_IF, iface)
       }
       multicastTTL.foreach { ttl =>
         channel.setOption[Integer](StandardSocketOptions.IP_MULTICAST_TTL, ttl)
       }
-      channel.setOption[java.lang.Boolean](
-        StandardSocketOptions.IP_MULTICAST_LOOP,
-        multicastLoopback)
+      channel
+        .setOption[java.lang.Boolean](StandardSocketOptions.IP_MULTICAST_LOOP, multicastLoopback)
       channel.bind(address)
       channel
     }
-    Stream.bracket(mkChannel.flatMap(ch => Socket.mkSocket(ch)))(
-      s => Stream.emit(s),
-      _.close)
+    Stream.bracket(mkChannel.flatMap(ch => Socket.mkSocket(ch)))(s => Stream.emit(s), _.close)
   }
 }

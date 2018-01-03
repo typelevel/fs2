@@ -11,8 +11,7 @@ class StreamPerformanceSpec extends Fs2Spec {
 
     case object FailWhale extends RuntimeException("the system... is down")
 
-    val Ns = List(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600,
-      51200, 102400)
+    val Ns = List(2, 3, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
 
     "left-associated ++" - {
       Ns.foreach { N =>
@@ -26,9 +25,10 @@ class StreamPerformanceSpec extends Fs2Spec {
     "right-associated ++" - {
       Ns.foreach { N =>
         N.toString in {
-          runLog((0 until N)
-            .map(emit)
-            .foldRight(Stream.empty: Stream[Pure, Int])(_ ++ _)) shouldBe Vector
+          runLog(
+            (0 until N)
+              .map(emit)
+              .foldRight(Stream.empty: Stream[Pure, Int])(_ ++ _)) shouldBe Vector
             .range(0, N)
         }
       }
@@ -151,11 +151,10 @@ class StreamPerformanceSpec extends Fs2Spec {
           assert(throws(FailWhale) {
             List
               .fill(N)(bracketed)
-              .foldLeft(Stream.raiseError(FailWhale): Stream[IO, Int]) {
-                (acc, hd) =>
-                  acc handleErrorWith { _ =>
-                    hd
-                  }
+              .foldLeft(Stream.raiseError(FailWhale): Stream[IO, Int]) { (acc, hd) =>
+                acc handleErrorWith { _ =>
+                  hd
+                }
               }
           })
           ok.get shouldBe N
@@ -165,11 +164,10 @@ class StreamPerformanceSpec extends Fs2Spec {
           assert(throws(FailWhale) {
             List
               .fill(N)(bracketed)
-              .foldLeft(Stream.raiseError(FailWhale): Stream[IO, Int]) {
-                (tl, hd) =>
-                  hd handleErrorWith { _ =>
-                    tl
-                  }
+              .foldLeft(Stream.raiseError(FailWhale): Stream[IO, Int]) { (tl, hd) =>
+                hd handleErrorWith { _ =>
+                  tl
+                }
               }
           })
           ok.get shouldBe N

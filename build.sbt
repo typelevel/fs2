@@ -52,9 +52,8 @@ lazy val commonSettings = Seq(
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test",
     "org.typelevel" %%% "cats-laws" % "1.0.1" % "test"
   ),
-  scmInfo := Some(
-    ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
-            "git@github.com:functional-streams-for-scala/fs2.git")),
+  scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
+                          "git@github.com:functional-streams-for-scala/fs2.git")),
   homepage := Some(url("https://github.com/functional-streams-for-scala/fs2")),
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
   initialCommands := s"""
@@ -110,10 +109,7 @@ lazy val publishingSettings = Seq(
     username <- Option(System.getenv().get("SONATYPE_USERNAME"))
     password <- Option(System.getenv().get("SONATYPE_PASSWORD"))
   } yield
-    Credentials("Sonatype Nexus Repository Manager",
-                "oss.sonatype.org",
-                username,
-                password)).toSeq,
+    Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", username, password)).toSeq,
   publishMavenStyle := true,
   pomIncludeRepository := { _ =>
     false
@@ -216,14 +212,12 @@ lazy val coreJVM = core.jvm
       val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
       Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""", "*")
     },
-    OsgiKeys.additionalHeaders := Map(
-      "-removeheaders" -> "Include-Resource,Private-Package"),
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings,
     libraryDependencies ++= {
       CrossVersion.partialVersion(scalaVersion.value) match {
         case Some((2, minor)) if minor >= 13 =>
-          Seq(
-            "org.scala-lang.modules" %% "scala-parallel-collections" % "0.1.2" % "test")
+          Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "0.1.2" % "test")
         case _ =>
           Seq()
       }
@@ -247,8 +241,7 @@ lazy val io = project
           """fs2.*;version="${Bundle-Version}"""",
           "*")
     },
-    OsgiKeys.additionalHeaders := Map(
-      "-removeheaders" -> "Include-Resource,Private-Package"),
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
@@ -276,8 +269,7 @@ lazy val scodecJVM = scodec.jvm
           """fs2.*;version="${Bundle-Version}"""",
           "*")
     },
-    OsgiKeys.additionalHeaders := Map(
-      "-removeheaders" -> "Include-Resource,Private-Package"),
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
 lazy val scodecJS = scodec.js.disablePlugins(DoctestPlugin, MimaPlugin)
@@ -289,8 +281,7 @@ lazy val benchmarkMacros = project
   .settings(noPublish)
   .settings(
     name := "fs2-benchmark-macros",
-    addCompilerPlugin(
-      "org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
     libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
 
@@ -303,8 +294,7 @@ lazy val benchmark = project
     name := "fs2-benchmark"
   )
   .settings(
-    addCompilerPlugin(
-      "org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
     libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
   .enablePlugins(JmhPlugin)

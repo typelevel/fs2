@@ -32,9 +32,7 @@ abstract class Semaphore[F[_]] {
     * reached, the action completes with the number of permits remaining to be acquired.
     * If the requested number of permits is acquired, the action completes with 0.
     */
-  def timedDecrementBy(n: Long,
-                       timeout: FiniteDuration,
-                       scheduler: Scheduler): F[Long]
+  def timedDecrementBy(n: Long, timeout: FiniteDuration, scheduler: Scheduler): F[Long]
 
   /** Acquires `n` permits now and returns `true`, or returns `false` immediately. Error if `n < 0`. */
   def tryDecrementBy(n: Long): F[Boolean]
@@ -81,8 +79,7 @@ abstract class Semaphore[F[_]] {
 object Semaphore {
 
   /** Creates a new `Semaphore`, initialized with `n` available permits. */
-  def apply[F[_]](n: Long)(implicit F: Effect[F],
-                           ec: ExecutionContext): F[Semaphore[F]] = {
+  def apply[F[_]](n: Long)(implicit F: Effect[F], ec: ExecutionContext): F[Semaphore[F]] = {
     def ensureNonneg(n: Long) =
       assert(n >= 0, s"n must be nonnegative, was: $n ")
 
@@ -115,16 +112,13 @@ object Semaphore {
               c.now match {
                 case Left(waiting) =>
                   def err =
-                    sys.error(
-                      "FS2 bug: Semaphore has empty waiting queue rather than 0 count")
+                    sys.error("FS2 bug: Semaphore has empty waiting queue rather than 0 count")
                   waiting.lastOption.getOrElse(err)._2.get
                 case Right(_) => F.unit
               }
             }
 
-        def timedDecrementBy(n: Long,
-                             timeout: FiniteDuration,
-                             scheduler: Scheduler): F[Long] = {
+        def timedDecrementBy(n: Long, timeout: FiniteDuration, scheduler: Scheduler): F[Long] = {
           ensureNonneg(n)
           if (n == 0) F.pure(0)
           else
@@ -150,22 +144,19 @@ object Semaphore {
                 case (timer, cancelTimer) =>
                   async
                     .race(decrementByImpl(n, gate), timer)
-                    .flatMap(_.fold(_ => cancelTimer.as(0),
-                                    o => F.pure(o.getOrElse(0))))
+                    .flatMap(_.fold(_ => cancelTimer.as(0), o => F.pure(o.getOrElse(0))))
               }
             }
         }
 
-        def timedDecrement(timeout: FiniteDuration,
-                           scheduler: Scheduler): F[Boolean] =
+        def timedDecrement(timeout: FiniteDuration, scheduler: Scheduler): F[Boolean] =
           timedDecrementBy(1, timeout, scheduler).map(_ == 0)
 
         def clear: F[Long] =
           state
             .modify {
               case Left(e) =>
-                throw new IllegalStateException(
-                  "cannot clear a semaphore with negative count")
+                throw new IllegalStateException("cannot clear a semaphore with negative count")
               case Right(n) => Right(0)
             }
             .flatMap { c =>
@@ -224,8 +215,7 @@ object Semaphore {
                 case w                  => w
               }
               .map { c =>
-                c.now.fold(_ => false,
-                           n => c.previous.fold(_ => false, m => n != m))
+                c.now.fold(_ => false, n => c.previous.fold(_ => false, m => n != m))
               }
         }
 

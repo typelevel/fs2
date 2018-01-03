@@ -17,8 +17,7 @@ package object file {
     * Provides a handler for NIO methods which require a `java.nio.channels.CompletionHandler` instance.
     */
   private[fs2] def asyncCompletionHandler[F[_], O](
-      f: CompletionHandler[O, Null] => Unit)(implicit F: Effect[F],
-                                             ec: ExecutionContext): F[O] = {
+      f: CompletionHandler[O, Null] => Unit)(implicit F: Effect[F], ec: ExecutionContext): F[O] =
     F.async[O] { cb =>
       f(new CompletionHandler[O, Null] {
         override def completed(result: O, attachment: Null): Unit =
@@ -27,7 +26,6 @@ package object file {
           async.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.pure(()))
       })
     }
-  }
 
   //
   // Stream constructors
@@ -60,9 +58,9 @@ package object file {
     *
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
-  def writeAll[F[_]: Sync](path: Path,
-                           flags: Seq[StandardOpenOption] = List(
-                             StandardOpenOption.CREATE)): Sink[F, Byte] =
+  def writeAll[F[_]: Sync](
+      path: Path,
+      flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)): Sink[F, Byte] =
     in =>
       (for {
         out <- pulls.fromPath(path, StandardOpenOption.WRITE :: flags.toList)
@@ -75,16 +73,13 @@ package object file {
     * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
     */
   def writeAllAsync[F[_]](path: Path,
-                          flags: Seq[StandardOpenOption] = List(
-                            StandardOpenOption.CREATE),
+                          flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE),
                           executorService: Option[ExecutorService] = None)(
       implicit F: Effect[F],
       ec: ExecutionContext): Sink[F, Byte] =
     in =>
       pulls
-        .fromPathAsync(path,
-                       StandardOpenOption.WRITE :: flags.toList,
-                       executorService)
+        .fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService)
         .flatMap { out =>
           _writeAll0(in, out.resource, 0)
         }
@@ -117,8 +112,7 @@ package object file {
     *
     * @return singleton bracketed stream returning a watcher
     */
-  def watcher[F[_]](implicit F: Effect[F],
-                    ec: ExecutionContext): Stream[F, Watcher[F]] =
+  def watcher[F[_]](implicit F: Effect[F], ec: ExecutionContext): Stream[F, Watcher[F]] =
     Watcher.default
 
   /**

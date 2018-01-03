@@ -24,8 +24,7 @@ package object fs2 {
 
   // Trick to get right-biased syntax for Either in 2.11 while retaining source compatibility with 2.12 and leaving
   // -Xfatal-warnings and -Xwarn-unused-imports enabled. Delete when no longer supporting 2.11.
-  private[fs2] implicit class EitherSyntax[L, R](private val self: Either[L, R])
-      extends AnyVal {
+  private[fs2] implicit class EitherSyntax[L, R](private val self: Either[L, R]) extends AnyVal {
     def map[R2](f: R => R2): Either[L, R2] = self match {
       case Right(r)    => Right(f(r))
       case l @ Left(_) => l.asInstanceOf[Either[L, R2]]

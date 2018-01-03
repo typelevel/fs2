@@ -11,18 +11,16 @@ object Pipe2 {
     type Read[R] = FreeC[ReadSegment, R]
     type UO = Option[(Segment[O, Unit], Stream[Read, O])]
 
-    def prompts[X](
-        id: ReadSegment[Option[Segment[X, Unit]]]): Stream[Read, X] = {
+    def prompts[X](id: ReadSegment[Option[Segment[X, Unit]]]): Stream[Read, X] =
       Stream.eval[Read, Option[Segment[X, Unit]]](FreeC.Eval(id)).flatMap {
         case None          => Stream.empty
         case Some(segment) => Stream.segment(segment).append(prompts(id))
       }
-    }
     def promptsL: Stream[Read, I] = prompts[I](Left(identity))
     def promptsR: Stream[Read, I2] = prompts[I2](Right(identity))
 
     // Steps `s` without overhead of resource tracking
-    def stepf(s: Stream[Read, O]): Read[UO] = {
+    def stepf(s: Stream[Read, O]): Read[UO] =
       s.pull.uncons
         .flatMap {
           case Some((hd, tl)) => Pull.output1((hd, tl))
@@ -31,7 +29,6 @@ object Pipe2 {
         .streamNoScope
         .compile
         .last
-    }
 
     def go(s: Read[UO]): Stepper[I, I2, O] = Stepper.Suspend { () =>
       s.viewL.get match {
@@ -77,8 +74,7 @@ object Pipe2 {
   }
 
   object Stepper {
-    private[fs2] final case class Suspend[I, I2, O](
-        force: () => Stepper[I, I2, O])
+    private[fs2] final case class Suspend[I, I2, O](force: () => Stepper[I, I2, O])
         extends Stepper[I, I2, O]
 
     /** Algebra describing the result of stepping a pure `Pipe2`. */
@@ -91,18 +87,15 @@ object Pipe2 {
     final case class Fail(err: Throwable) extends Step[Any, Any, Nothing]
 
     /** Pipe emitted a segment of elements. */
-    final case class Emits[I, I2, O](segment: Segment[O, Unit],
-                                     next: Stepper[I, I2, O])
+    final case class Emits[I, I2, O](segment: Segment[O, Unit], next: Stepper[I, I2, O])
         extends Step[I, I2, O]
 
     /** Pipe is awaiting input from the left. */
-    final case class AwaitL[I, I2, O](
-        receive: Option[Segment[I, Unit]] => Stepper[I, I2, O])
+    final case class AwaitL[I, I2, O](receive: Option[Segment[I, Unit]] => Stepper[I, I2, O])
         extends Step[I, I2, O]
 
     /** Pipe is awaiting input from the right. */
-    final case class AwaitR[I, I2, O](
-        receive: Option[Segment[I2, Unit]] => Stepper[I, I2, O])
+    final case class AwaitR[I, I2, O](receive: Option[Segment[I2, Unit]] => Stepper[I, I2, O])
         extends Step[I, I2, O]
   }
 }

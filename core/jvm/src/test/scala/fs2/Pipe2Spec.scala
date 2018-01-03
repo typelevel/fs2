@@ -51,12 +51,8 @@ class Pipe2Spec extends Fs2Spec {
     "zip both side infinite" in {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      runLog(ones.zip(as).take(3)) shouldBe Vector("1" -> "A",
-                                                   "1" -> "A",
-                                                   "1" -> "A")
-      runLog(as.zip(ones).take(3)) shouldBe Vector("A" -> "1",
-                                                   "A" -> "1",
-                                                   "A" -> "1")
+      runLog(ones.zip(as).take(3)) shouldBe Vector("1" -> "A", "1" -> "A", "1" -> "A")
+      runLog(as.zip(ones).take(3)) shouldBe Vector("A" -> "1", "A" -> "1", "A" -> "1")
     }
 
     "zipAll left/right side infinite" in {
@@ -77,12 +73,8 @@ class Pipe2Spec extends Fs2Spec {
     "zipAll both side infinite" in {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      runLog(ones.zipAll(as)("2", "Z").take(3)) shouldBe Vector("1" -> "A",
-                                                                "1" -> "A",
-                                                                "1" -> "A")
-      runLog(as.zipAll(ones)("Z", "2").take(3)) shouldBe Vector("A" -> "1",
-                                                                "A" -> "1",
-                                                                "A" -> "1")
+      runLog(ones.zipAll(as)("2", "Z").take(3)) shouldBe Vector("1" -> "A", "1" -> "A", "1" -> "A")
+      runLog(as.zipAll(ones)("Z", "2").take(3)) shouldBe Vector("A" -> "1", "A" -> "1", "A" -> "1")
     }
 
     "interleave left/right side infinite" in {
@@ -166,28 +158,27 @@ class Pipe2Spec extends Fs2Spec {
       }
     }
 
-    "mergeHalt{L/R/Both}" in forAll {
-      (s1: PureStream[Int], s2: PureStream[Int]) =>
-        withClue(s1.tag + " " + s2.tag) {
-          val outBoth = runLog {
-            s1.get.covary[IO].map(Left(_)) mergeHaltBoth s2.get.map(Right(_))
-          }
-          val outL = runLog {
-            s1.get.covary[IO].map(Left(_)) mergeHaltL s2.get.map(Right(_))
-          }
-          val outR = runLog {
-            s1.get.covary[IO].map(Left(_)) mergeHaltR s2.get.map(Right(_))
-          }
-          // out should contain at least all the elements from one of the input streams
-          val e1 = runLog(s1.get)
-          val e2 = runLog(s2.get)
-          assert {
-            (outBoth.collect { case Left(a)  => a } == e1) ||
-            (outBoth.collect { case Right(a) => a } == e2)
-          }
-          outL.collect { case Left(a)  => a } shouldBe e1
-          outR.collect { case Right(a) => a } shouldBe e2
+    "mergeHalt{L/R/Both}" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
+      withClue(s1.tag + " " + s2.tag) {
+        val outBoth = runLog {
+          s1.get.covary[IO].map(Left(_)) mergeHaltBoth s2.get.map(Right(_))
         }
+        val outL = runLog {
+          s1.get.covary[IO].map(Left(_)) mergeHaltL s2.get.map(Right(_))
+        }
+        val outR = runLog {
+          s1.get.covary[IO].map(Left(_)) mergeHaltR s2.get.map(Right(_))
+        }
+        // out should contain at least all the elements from one of the input streams
+        val e1 = runLog(s1.get)
+        val e2 = runLog(s2.get)
+        assert {
+          (outBoth.collect { case Left(a)  => a } == e1) ||
+          (outBoth.collect { case Right(a) => a } == e2)
+        }
+        outL.collect { case Left(a)  => a } shouldBe e1
+        outR.collect { case Right(a) => a } shouldBe e2
+      }
     }
 
     "interrupt (1)" in forAll { (s1: PureStream[Int]) =>
@@ -242,9 +233,8 @@ class Pipe2Spec extends Fs2Spec {
       // tests the interruption of the stream that recurses infinitelly
       val interrupt =
         mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
-      def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap {
-        i =>
-          Stream.emit(i) ++ loop(i + 1)
+      def loop(i: Int): Stream[IO, Int] = Stream.emit(i).covary[IO].flatMap { i =>
+        Stream.emit(i) ++ loop(i + 1)
       }
       loop(0).interruptWhen(interrupt).compile.drain.unsafeRunSync
     }
@@ -298,8 +288,7 @@ class Pipe2Spec extends Fs2Spec {
 
     "interrupt (10)" in forAll { (s1: PureStream[Int]) =>
       // tests that termination is successful even if interruption stream is infinitely false
-      runLog { s1.get.covary[IO].interruptWhen(Stream.constant(false)) } shouldBe runLog(
-        s1.get)
+      runLog { s1.get.covary[IO].interruptWhen(Stream.constant(false)) } shouldBe runLog(s1.get)
     }
 
     "interrupt (11)" in forAll { (s1: PureStream[Int]) =>
@@ -430,9 +419,8 @@ class Pipe2Spec extends Fs2Spec {
                 .scan(0)((acc, _) => acc + 1)
                 .evalMap { n =>
                   if (n % 2 != 0)
-                    pause.set(true) *> async.start(
-                      (scheduler.sleep_[IO](10.millis) ++ Stream.eval(
-                        pause.set(false))).compile.drain) *> IO.pure(n)
+                    pause.set(true) *> async.start((scheduler.sleep_[IO](10.millis) ++ Stream.eval(
+                      pause.set(false))).compile.drain) *> IO.pure(n)
                   else IO.pure(n)
                 }
                 .take(5)

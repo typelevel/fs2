@@ -95,7 +95,7 @@ sealed abstract class Catenable[+A] {
     */
   final def deleteFirst(f: A => Boolean): Option[(A, Catenable[A])] = {
     @tailrec
-    def go(rem: Catenable[A], acc: Catenable[A]): Option[(A, Catenable[A])] = {
+    def go(rem: Catenable[A], acc: Catenable[A]): Option[(A, Catenable[A])] =
       rem.uncons match {
         case Some((a, tail)) =>
           if (!f(a)) go(tail, acc :+ a)
@@ -103,7 +103,6 @@ sealed abstract class Catenable[+A] {
 
         case None => None
       }
-    }
     go(this, Catenable.empty)
   }
 
@@ -159,8 +158,7 @@ object Catenable {
   private[fs2] final case class Singleton[A](a: A) extends Catenable[A] {
     def isEmpty: Boolean = false
   }
-  private[fs2] final case class Append[A](left: Catenable[A],
-                                          right: Catenable[A])
+  private[fs2] final case class Append[A](left: Catenable[A], right: Catenable[A])
       extends Catenable[A] {
     def isEmpty: Boolean =
       false // b/c `append` constructor doesn't allow either branch to be empty
@@ -184,7 +182,7 @@ object Catenable {
     else s.view.reverse.map(singleton).reduceLeft((x, y) => Append(y, x))
 
   /** Creates a catenable from the specified elements. */
-  def apply[A](as: A*): Catenable[A] = {
+  def apply[A](as: A*): Catenable[A] =
     as match {
       case w: collection.mutable.WrappedArray[A] =>
         if (w.isEmpty) empty
@@ -201,14 +199,12 @@ object Catenable {
         }
       case _ => fromSeq(as)
     }
-  }
 
   implicit val instance: Traverse[Catenable] with Monad[Catenable] =
     new Traverse[Catenable] with Monad[Catenable] {
       def foldLeft[A, B](fa: Catenable[A], b: B)(f: (B, A) => B): B =
         fa.foldLeft(b)(f)
-      def foldRight[A, B](fa: Catenable[A], b: Eval[B])(
-          f: (A, Eval[B]) => Eval[B]): Eval[B] =
+      def foldRight[A, B](fa: Catenable[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
         Foldable[List].foldRight(fa.toList, b)(f)
       override def toList[A](fa: Catenable[A]): List[A] = fa.toList
       override def isEmpty[A](fa: Catenable[A]): Boolean = fa.isEmpty
@@ -218,8 +214,7 @@ object Catenable {
       def pure[A](a: A): Catenable[A] = Catenable.singleton(a)
       def flatMap[A, B](fa: Catenable[A])(f: A => Catenable[B]): Catenable[B] =
         fa.flatMap(f)
-      def tailRecM[A, B](a: A)(
-          f: A => Catenable[Either[A, B]]): Catenable[B] = {
+      def tailRecM[A, B](a: A)(f: A => Catenable[Either[A, B]]): Catenable[B] = {
         var acc: Catenable[B] = Catenable.empty
         @tailrec def go(rest: List[Catenable[Either[A, B]]]): Unit =
           rest match {

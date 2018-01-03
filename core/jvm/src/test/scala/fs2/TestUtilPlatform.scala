@@ -15,8 +15,7 @@ trait TestUtilPlatform {
 
   val timeout: FiniteDuration
 
-  def runLog[A](s: Stream[IO, A],
-                timeout: FiniteDuration = timeout): Vector[A] =
+  def runLog[A](s: Stream[IO, A], timeout: FiniteDuration = timeout): Vector[A] =
     s.compile.toVector
       .unsafeRunTimed(timeout)
       .getOrElse(throw new TimeoutException("IO run timed out"))

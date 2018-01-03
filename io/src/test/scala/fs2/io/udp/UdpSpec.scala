@@ -21,31 +21,29 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
 
   implicit val AG = AsynchronousSocketGroup()
 
-  override def afterAll() = {
+  override def afterAll() =
     AG.close
-  }
 
   "udp" - {
     "echo one" in {
       val msg = Chunk.bytes("Hello, world!".getBytes)
       runLog {
         open[IO]().flatMap { serverSocket =>
-          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap {
-            serverPort =>
-              val serverAddress = new InetSocketAddress("localhost", serverPort)
-              val server = serverSocket
-                .reads()
-                .evalMap { packet =>
-                  serverSocket.write(packet)
-                }
-                .drain
-              val client = open[IO]().flatMap { clientSocket =>
-                Stream(Packet(serverAddress, msg))
-                  .covary[IO]
-                  .to(clientSocket.writes())
-                  .drain ++ Stream.eval(clientSocket.read())
+          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+            val serverAddress = new InetSocketAddress("localhost", serverPort)
+            val server = serverSocket
+              .reads()
+              .evalMap { packet =>
+                serverSocket.write(packet)
               }
-              server mergeHaltBoth client
+              .drain
+            val client = open[IO]().flatMap { clientSocket =>
+              Stream(Packet(serverAddress, msg))
+                .covary[IO]
+                .to(clientSocket.writes())
+                .drain ++ Stream.eval(clientSocket.read())
+            }
+            server mergeHaltBoth client
           }
         }
       }.map(_.bytes) shouldBe Vector(msg)
@@ -59,31 +57,29 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       val numParallelClients = 10
       runLog {
         open[IO]().flatMap { serverSocket =>
-          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap {
-            serverPort =>
-              val serverAddress = new InetSocketAddress("localhost", serverPort)
-              val server = serverSocket
-                .reads()
-                .evalMap { packet =>
-                  serverSocket.write(packet)
-                }
-                .drain
-              val client = open[IO]().flatMap { clientSocket =>
-                Stream
-                  .emits(msgs.map { msg =>
-                    Packet(serverAddress, msg)
-                  })
-                  .covary[IO]
-                  .flatMap { msg =>
-                    Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(
-                      clientSocket.read())
-                  }
+          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+            val serverAddress = new InetSocketAddress("localhost", serverPort)
+            val server = serverSocket
+              .reads()
+              .evalMap { packet =>
+                serverSocket.write(packet)
               }
-              val clients = Stream
-                .constant(client)
-                .take(numClients)
-                .join(numParallelClients)
-              server mergeHaltBoth clients
+              .drain
+            val client = open[IO]().flatMap { clientSocket =>
+              Stream
+                .emits(msgs.map { msg =>
+                  Packet(serverAddress, msg)
+                })
+                .covary[IO]
+                .flatMap { msg =>
+                  Stream.eval_(clientSocket.write(msg)) ++ Stream.eval(clientSocket.read())
+                }
+            }
+            val clients = Stream
+              .constant(client)
+              .take(numClients)
+              .join(numParallelClients)
+            server mergeHaltBoth clients
           }
         }
       }.map(p => new String(p.bytes.toArray)).sorted shouldBe Vector
@@ -101,29 +97,26 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
           protocolFamily = Some(StandardProtocolFamily.INET),
           multicastTTL = Some(1)
         ).flatMap { serverSocket =>
-          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap {
-            serverPort =>
-              val v4Interfaces =
-                NetworkInterface.getNetworkInterfaces.asScala.toList.filter {
-                  interface =>
-                    interface.getInetAddresses.asScala.exists(
-                      _.isInstanceOf[Inet4Address])
-                }
-              val server = Stream.eval_(v4Interfaces.traverse(interface =>
-                serverSocket.join(group, interface))) ++
-                serverSocket
-                  .reads()
-                  .evalMap { packet =>
-                    serverSocket.write(packet)
-                  }
-                  .drain
-              val client = open[IO]().flatMap { clientSocket =>
-                Stream(Packet(new InetSocketAddress(group, serverPort), msg))
-                  .covary[IO]
-                  .to(clientSocket.writes())
-                  .drain ++ Stream.eval(clientSocket.read())
+          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+            val v4Interfaces =
+              NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
+                interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
               }
-              server mergeHaltBoth client
+            val server = Stream.eval_(
+              v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
+              serverSocket
+                .reads()
+                .evalMap { packet =>
+                  serverSocket.write(packet)
+                }
+                .drain
+            val client = open[IO]().flatMap { clientSocket =>
+              Stream(Packet(new InetSocketAddress(group, serverPort), msg))
+                .covary[IO]
+                .to(clientSocket.writes())
+                .drain ++ Stream.eval(clientSocket.read())
+            }
+            server mergeHaltBoth client
           }
         }
       }.map(_.bytes) shouldBe Vector(msg)

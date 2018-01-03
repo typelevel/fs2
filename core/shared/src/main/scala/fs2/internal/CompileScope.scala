@@ -105,8 +105,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * If this scope is currently closed, then the child scope is opened on the first
     * open ancestor of this scope.
     */
-  def open(interruptible: Option[(Effect[F], ExecutionContext)])
-    : F[CompileScope[F]] = {
+  def open(interruptible: Option[(Effect[F], ExecutionContext)]): F[CompileScope[F]] =
     F.flatMap(state.modify2 { s =>
       if (!s.open) (s, None)
       else {
@@ -117,15 +116,12 @@ private[fs2] final class CompileScope[F[_]] private (
               effect = effect,
               ec = ec,
               promise = Promise.unsafeCreate[F, Throwable](effect, ec),
-              ref = Ref.unsafeCreate[F, (Option[Throwable], Boolean)](
-                (None, false)),
+              ref = Ref.unsafeCreate[F, (Option[Throwable], Boolean)]((None, false)),
               interruptScopeId = newScopeId,
               maxInterruptDepth = 256
             )
         }
-        val scope = new CompileScope[F](newScopeId,
-                                        Some(self),
-                                        iCtx orElse self.interruptible)
+        val scope = new CompileScope[F](newScopeId, Some(self), iCtx orElse self.interruptible)
         (s.copy(children = scope +: s.children), Some(scope))
       }
     }) {
@@ -136,15 +132,11 @@ private[fs2] final class CompileScope[F[_]] private (
         self.parent match {
           case Some(parent) => parent.open(interruptible)
           case None =>
-            F.raiseError(
-              throw new IllegalStateException("cannot re-open root scope"))
+            F.raiseError(throw new IllegalStateException("cannot re-open root scope"))
         }
     }
-  }
 
-  def acquireResource[R](
-      fr: F[R],
-      release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
+  def acquireResource[R](fr: F[R], release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
     val resource = Resource.create
     F.flatMap(register(resource)) { mayAcquire =>
       if (!mayAcquire) F.raiseError(AcquireAfterScopeClosed)
@@ -180,23 +172,20 @@ private[fs2] final class CompileScope[F[_]] private (
     }
 
   /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). **/
-  def resources: F[Catenable[Resource[F]]] = {
+  def resources: F[Catenable[Resource[F]]] =
     F.map(state.get) { _.resources }
-  }
 
   /**
     * Traverses supplied `Catenable` with `f` that may produce a failure, and collects these failures.
     * Returns failure with collected failures, or `Unit` on successful traversal.
     */
-  private def traverseError[A](
-      ca: Catenable[A],
-      f: A => F[Either[Throwable, Unit]]): F[Either[Throwable, Unit]] = {
+  private def traverseError[A](ca: Catenable[A],
+                               f: A => F[Either[Throwable, Unit]]): F[Either[Throwable, Unit]] =
     F.map(Catenable.instance.traverse(ca)(f)) { results =>
       CompositeFailure
         .fromList(results.collect { case Left(err) => err }.toList)
         .toLeft(())
     }
-  }
 
   /**
     * Closes this scope.
@@ -211,51 +200,43 @@ private[fs2] final class CompileScope[F[_]] private (
     * finalized after this scope is closed, but they will get finalized shortly after. See [[Resource]] for
     * more details.
     */
-  def close: F[Either[Throwable, Unit]] = {
+  def close: F[Either[Throwable, Unit]] =
     F.flatMap(state.modify { _.close }) { c =>
-      F.flatMap(traverseError[CompileScope[F]](c.previous.children, _.close)) {
-        resultChildren =>
-          F.flatMap(traverseError[Resource[F]](c.previous.resources, _.release)) {
-            resultResources =>
-              F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) {
-                _ =>
-                  val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
-                  CompositeFailure.fromList(results.toList).toLeft(())
-              }
+      F.flatMap(traverseError[CompileScope[F]](c.previous.children, _.close)) { resultChildren =>
+        F.flatMap(traverseError[Resource[F]](c.previous.resources, _.release)) { resultResources =>
+          F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
+            val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
+            CompositeFailure.fromList(results.toList).toLeft(())
           }
+        }
       }
     }
-  }
 
   /** Returns closest open parent scope or root. */
-  def openAncestor: F[CompileScope[F]] = {
+  def openAncestor: F[CompileScope[F]] =
     self.parent.fold(F.pure(self)) { parent =>
       F.flatMap(parent.state.get) { s =>
         if (s.open) F.pure(parent)
         else parent.openAncestor
       }
     }
-  }
 
   /** Gets all ancestors of this scope, inclusive of root scope. **/
   private def ancestors: F[Catenable[CompileScope[F]]] = {
     @tailrec
-    def go(curr: CompileScope[F],
-           acc: Catenable[CompileScope[F]]): F[Catenable[CompileScope[F]]] = {
+    def go(curr: CompileScope[F], acc: Catenable[CompileScope[F]]): F[Catenable[CompileScope[F]]] =
       curr.parent match {
         case Some(parent) => go(parent, acc :+ parent)
         case None         => F.pure(acc)
       }
-    }
     go(self, Catenable.empty)
   }
 
   /** yields to true, if this scope has ancestor with given scope Id **/
-  def hasAncestor(scopeId: Token): F[Boolean] = {
+  def hasAncestor(scopeId: Token): F[Boolean] =
     F.map(ancestors) { c =>
       Catenable.instance.exists(c)(_.id == scopeId)
     }
-  }
 
   // See docs on [[Scope#lease]]
   def lease: F[Option[Lease[F]]] = {
@@ -263,38 +244,36 @@ private[fs2] final class CompileScope[F[_]] private (
     F.flatMap(state.get) { s =>
       if (!s.open) F.pure(None)
       else {
-        F.flatMap(T.traverse(s.children :+ self)(_.resources)) {
-          childResources =>
-            F.flatMap(ancestors) { anc =>
-              F.flatMap(T.traverse(anc) { _.resources }) { ancestorResources =>
-                val allLeases = childResources.flatMap(identity) ++ ancestorResources
-                  .flatMap(identity)
-                F.map(T.traverse(allLeases) { r =>
-                  r.lease
-                }) { leased =>
-                  val allLeases = leased.collect {
-                    case Some(resourceLease) => resourceLease
-                  }
-                  val lease = new Lease[F] {
-                    def cancel: F[Either[Throwable, Unit]] =
-                      traverseError[Lease[F]](allLeases, _.cancel)
-                  }
-                  Some(lease)
+        F.flatMap(T.traverse(s.children :+ self)(_.resources)) { childResources =>
+          F.flatMap(ancestors) { anc =>
+            F.flatMap(T.traverse(anc) { _.resources }) { ancestorResources =>
+              val allLeases = childResources.flatMap(identity) ++ ancestorResources
+                .flatMap(identity)
+              F.map(T.traverse(allLeases) { r =>
+                r.lease
+              }) { leased =>
+                val allLeases = leased.collect {
+                  case Some(resourceLease) => resourceLease
                 }
+                val lease = new Lease[F] {
+                  def cancel: F[Either[Throwable, Unit]] =
+                    traverseError[Lease[F]](allLeases, _.cancel)
+                }
+                Some(lease)
               }
             }
+          }
         }
       }
     }
   }
 
   // See docs on [[Scope#interrupt]]
-  def interrupt(cause: Either[Throwable, Unit]): F[Unit] = {
+  def interrupt(cause: Either[Throwable, Unit]): F[Unit] =
     interruptible match {
       case None =>
         F.raiseError(
-          new IllegalStateException(
-            "Scope#interrupt called for Scope that cannot be interrupted"))
+          new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted"))
       case Some(iCtx) =>
         val interruptRsn =
           cause.left.toOption.getOrElse(Interrupted(iCtx.interruptScopeId, 0))
@@ -310,16 +289,14 @@ private[fs2] final class CompileScope[F[_]] private (
             F.unit
         }
     }
-  }
 
   // See docs on [[Scope#isInterrupted]]
-  def isInterrupted: F[Boolean] = {
+  def isInterrupted: F[Boolean] =
     interruptible match {
       case None => F.pure(false)
       case Some(iCtx) =>
         F.map(iCtx.ref.get) { case (interrupted, _) => interrupted.nonEmpty }
     }
-  }
 
   /**
     * If evaluates to Some(rsn) then the current step evaluation in stream shall be interrupted by
@@ -327,7 +304,7 @@ private[fs2] final class CompileScope[F[_]] private (
     *
     * Used when interruption stream in pure steps between `uncons`
     */
-  def shallInterrupt: F[Option[Throwable]] = {
+  def shallInterrupt: F[Option[Throwable]] =
     interruptible match {
       case None => F.pure(None)
       case Some(iCtx) =>
@@ -342,7 +319,6 @@ private[fs2] final class CompileScope[F[_]] private (
             }
         }
     }
-  }
 
   /**
     * When the stream is evaluated, there may be `Eval` that needs to be cancelled early, when asynchronous interruption
@@ -350,8 +326,7 @@ private[fs2] final class CompileScope[F[_]] private (
     * This allows to augment eval so whenever this scope is interrupted it will return on left the reason of interruption.
     * If the eval completes before the scope is interrupt, then this will return `A`.
     */
-  private[internal] def interruptibleEval[A](
-      f: F[A]): F[Either[Throwable, A]] = {
+  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Throwable, A]] =
     interruptible match {
       case None => F.attempt(f)
       case Some(iCtx) =>
@@ -364,22 +339,18 @@ private[fs2] final class CompileScope[F[_]] private (
               // for every asynchronous child scope of the stream, so this assumption shall be completely safe.
               F.flatMap(iCtx.promise.cancellableGet) {
                 case (get, cancel) =>
-                  F.flatMap(
-                    fs2.async.race(get, F.attempt(f))(iCtx.effect, iCtx.ec)) {
+                  F.flatMap(fs2.async.race(get, F.attempt(f))(iCtx.effect, iCtx.ec)) {
                     case Right(result) => F.map(cancel)(_ => result)
                     case Left(err)     =>
                       // this indicates that we have consumed signalling the interruption
                       // there is only one interruption allowed per scope.
                       // as such, we have to set interruption flag
-                      F.map(iCtx.ref.modify { case (int, sig) => (int, true) })(
-                        _ => Left(err))
+                      F.map(iCtx.ref.modify { case (int, sig) => (int, true) })(_ => Left(err))
                   }
               }
             }
         }
     }
-
-  }
 
   override def toString =
     s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
@@ -411,36 +382,32 @@ private[internal] object CompileScope {
       children: Catenable[CompileScope[F]]
   ) { self =>
 
-    def unregisterResource(id: Token): (State[F], Option[Resource[F]]) = {
+    def unregisterResource(id: Token): (State[F], Option[Resource[F]]) =
       self.resources
         .deleteFirst(_.id == id)
         .fold((self, None: Option[Resource[F]])) {
           case (r, c) =>
             (self.copy(resources = c), Some(r))
         }
-    }
 
-    def unregisterChild(id: Token): (State[F], Option[CompileScope[F]]) = {
+    def unregisterChild(id: Token): (State[F], Option[CompileScope[F]]) =
       self.children
         .deleteFirst(_.id == id)
         .fold((self, None: Option[CompileScope[F]])) {
           case (s, c) =>
             (self.copy(children = c), Some(s))
         }
-    }
 
     def close: State[F] = CompileScope.State.closed
   }
 
   private object State {
-    private val initial_ = State[Nothing](open = true,
-                                          resources = Catenable.empty,
-                                          children = Catenable.empty)
+    private val initial_ =
+      State[Nothing](open = true, resources = Catenable.empty, children = Catenable.empty)
     def initial[F[_]]: State[F] = initial_.asInstanceOf[State[F]]
 
-    private val closed_ = State[Nothing](open = false,
-                                         resources = Catenable.empty,
-                                         children = Catenable.empty)
+    private val closed_ =
+      State[Nothing](open = false, resources = Catenable.empty, children = Catenable.empty)
     def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
   }
 

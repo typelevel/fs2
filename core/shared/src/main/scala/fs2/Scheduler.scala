@@ -26,15 +26,13 @@ abstract class Scheduler {
     * Evaluates the thunk every period.
     * Returns a thunk that when evaluated, cancels the execution.
     */
-  protected def scheduleAtFixedRate(period: FiniteDuration)(
-      thunk: => Unit): () => Unit
+  protected def scheduleAtFixedRate(period: FiniteDuration)(thunk: => Unit): () => Unit
 
   /**
     * Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
     */
-  def awakeDelay[F[_]](d: FiniteDuration)(
-      implicit F: Async[F],
-      ec: ExecutionContext): Stream[F, FiniteDuration] =
+  def awakeDelay[F[_]](d: FiniteDuration)(implicit F: Async[F],
+                                          ec: ExecutionContext): Stream[F, FiniteDuration] =
     Stream.eval(F.delay(System.nanoTime)).flatMap { start =>
       fixedDelay[F](d) *> Stream.eval(F.delay((System.nanoTime - start).nanos))
     }
@@ -60,9 +58,8 @@ abstract class Scheduler {
     *
     * @param d FiniteDuration between emits of the resulting stream
     */
-  def awakeEvery[F[_]](d: FiniteDuration)(
-      implicit F: Effect[F],
-      ec: ExecutionContext): Stream[F, FiniteDuration] =
+  def awakeEvery[F[_]](d: FiniteDuration)(implicit F: Effect[F],
+                                          ec: ExecutionContext): Stream[F, FiniteDuration] =
     Stream.eval(F.delay(System.nanoTime)).flatMap { start =>
       fixedRate[F](d) *> Stream.eval(F.delay((System.nanoTime - start).nanos))
     }
@@ -77,9 +74,8 @@ abstract class Scheduler {
     *
     * Alias for `sleep(d).repeat`.
     */
-  def fixedDelay[F[_]](d: FiniteDuration)(
-      implicit F: Async[F],
-      ec: ExecutionContext): Stream[F, Unit] =
+  def fixedDelay[F[_]](d: FiniteDuration)(implicit F: Async[F],
+                                          ec: ExecutionContext): Stream[F, Unit] =
     sleep(d).repeat
 
   /**
@@ -100,10 +96,9 @@ abstract class Scheduler {
     *
     * @param d FiniteDuration between emits of the resulting stream
     */
-  def fixedRate[F[_]](d: FiniteDuration)(
-      implicit F: Effect[F],
-      ec: ExecutionContext): Stream[F, Unit] = {
-    def metronomeAndSignal: F[(F[Unit], async.immutable.Signal[F, Unit])] = {
+  def fixedRate[F[_]](d: FiniteDuration)(implicit F: Effect[F],
+                                         ec: ExecutionContext): Stream[F, Unit] = {
+    def metronomeAndSignal: F[(F[Unit], async.immutable.Signal[F, Unit])] =
       for {
         signal <- async.signalOf[F, Unit](())
         result <- F.delay {
@@ -120,7 +115,6 @@ abstract class Scheduler {
           (F.delay(cancel()), signal)
         }
       } yield result
-    }
     Stream.bracket(metronomeAndSignal)({
       case (_, signal) => signal.discrete.drop(1)
     }, { case (cm, _)  => cm })
@@ -131,9 +125,8 @@ abstract class Scheduler {
     *
     * Alias for `sleep_[F](d) ++ s`.
     */
-  def delay[F[_], O](s: Stream[F, O], d: FiniteDuration)(
-      implicit F: Async[F],
-      ec: ExecutionContext): Stream[F, O] =
+  def delay[F[_], O](s: Stream[F, O], d: FiniteDuration)(implicit F: Async[F],
+                                                         ec: ExecutionContext): Stream[F, O] =
     sleep_[F](d) ++ s
 
   /** Provides scheduler methods that return effectful values instead of streams. */
@@ -144,17 +137,15 @@ abstract class Scheduler {
     * `Scheduler` to signal duration and avoid blocking on thread. After the signal, the execution continues
     * on the supplied execution context.
     */
-  def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F],
-                                     ec: ExecutionContext): Stream[F, Unit] =
+  def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Unit] =
     Stream.eval(effect.sleep(d))
 
   /**
     * Alias for `sleep(d).drain`. Often used in conjunction with `++` (i.e., `sleep_(..) ++ s`) as a more
     * performant version of `sleep(..) >> s`.
     */
-  def sleep_[F[_]](d: FiniteDuration)(
-      implicit F: Async[F],
-      ec: ExecutionContext): Stream[F, Nothing] =
+  def sleep_[F[_]](d: FiniteDuration)(implicit F: Async[F],
+                                      ec: ExecutionContext): Stream[F, Nothing] =
     sleep(d).drain
 
   /**
@@ -218,11 +209,9 @@ abstract class Scheduler {
     * res0: Vector[Int] = Vector(3, 6)
     * }}}
     */
-  def debounce[F[_], O](d: FiniteDuration)(
-      implicit F: Effect[F],
-      ec: ExecutionContext): Pipe[F, O, O] = {
-    def unconsLatest(
-        s: Stream[F, O]): Pull[F, Nothing, Option[(O, Stream[F, O])]] =
+  def debounce[F[_], O](d: FiniteDuration)(implicit F: Effect[F],
+                                           ec: ExecutionContext): Pipe[F, O, O] = {
+    def unconsLatest(s: Stream[F, O]): Pull[F, Nothing, Option[(O, Stream[F, O])]] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           Pull.segment(hd.last.drain).flatMap {
@@ -232,7 +221,7 @@ abstract class Scheduler {
         case None => Pull.pure(None)
       }
 
-    def go(o: O, s: Stream[F, O]): Pull[F, O, Unit] = {
+    def go(o: O, s: Stream[F, O]): Pull[F, O, Unit] =
       sleep[F](d).pull.unconsAsync.flatMap { l =>
         s.pull.unconsAsync.flatMap { r =>
           (l race r).pull.flatMap {
@@ -261,7 +250,6 @@ abstract class Scheduler {
           }
         }
       }
-    }
     in =>
       unconsLatest(in).flatMap {
         case Some((last, tl)) => go(last, tl)
@@ -272,23 +260,22 @@ abstract class Scheduler {
   /**
     * Returns an execution context that executes all tasks after a specified delay.
     */
-  def delayedExecutionContext(delay: FiniteDuration,
-                              reporter: Throwable => Unit =
-                                ExecutionContext.defaultReporter)
-    : ExecutionContext = new ExecutionContext {
-    def execute(runnable: Runnable): Unit = {
-      scheduleOnce(delay)(runnable.run); ()
+  def delayedExecutionContext(
+      delay: FiniteDuration,
+      reporter: Throwable => Unit = ExecutionContext.defaultReporter): ExecutionContext =
+    new ExecutionContext {
+      def execute(runnable: Runnable): Unit = {
+        scheduleOnce(delay)(runnable.run); ()
+      }
+      def reportFailure(cause: Throwable): Unit = reporter(cause)
+      override def toString = s"DelayedExecutionContext($delay)"
     }
-    def reportFailure(cause: Throwable): Unit = reporter(cause)
-    override def toString = s"DelayedExecutionContext($delay)"
-  }
 }
 
 object Scheduler extends SchedulerPlatform {
 
   /** Operations on a scheduler which return effectful values. */
-  final class EffectOps private[Scheduler] (private val scheduler: Scheduler)
-      extends AnyVal {
+  final class EffectOps private[Scheduler] (private val scheduler: Scheduler) extends AnyVal {
 
     /**
       * Returns an action that when run, sleeps for duration `d` and then evaluates `fa`.
@@ -296,9 +283,8 @@ object Scheduler extends SchedulerPlatform {
       * Note: prefer `scheduler.delay(Stream.eval(fa), d)` over `Stream.eval(scheduler.effect.delay(fa, d))`
       * as the former can be interrupted while delaying.
       */
-    def delay[F[_], A](fa: F[A], d: FiniteDuration)(
-        implicit F: Async[F],
-        ec: ExecutionContext): F[A] =
+    def delay[F[_], A](fa: F[A], d: FiniteDuration)(implicit F: Async[F],
+                                                    ec: ExecutionContext): F[A] =
       sleep(d) *> fa
 
     /**
@@ -313,22 +299,19 @@ object Scheduler extends SchedulerPlatform {
         F.delay {
           val cancel = scheduler.scheduleOnce(d) {
             ec.execute(() =>
-              async.unsafeRunAsync(fa.flatMap(a => gate.complete(Some(a))))(_ =>
-                IO.unit))
+              async.unsafeRunAsync(fa.flatMap(a => gate.complete(Some(a))))(_ => IO.unit))
           }
           gate.get -> (F.delay(cancel()) *> gate.complete(None))
         }
       }
 
     /** Returns an action that when run, sleeps for duration `d` and then completes with `Unit`. */
-    def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F],
-                                       ec: ExecutionContext): F[Unit] = {
+    def sleep[F[_]](d: FiniteDuration)(implicit F: Async[F], ec: ExecutionContext): F[Unit] =
       F.async[Unit] { cb =>
         scheduler.scheduleOnce(d) {
           ec.execute(() => cb(Right(())))
         }
         ()
       }
-    }
   }
 }

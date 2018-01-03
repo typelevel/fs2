@@ -45,8 +45,7 @@ class WatcherSpec extends Fs2Spec {
           tempDirectory.flatMap { dir =>
             val a = dir resolve "a"
             val b = a resolve "b"
-            Stream.eval(IO(Files.createDirectory(a)) *> IO(
-              Files.write(b, Array[Byte]()))) *>
+            Stream.eval(IO(Files.createDirectory(a)) *> IO(Files.write(b, Array[Byte]()))) *>
               (file
                 .watch[IO](dir, modifiers = modifiers)
                 .takeWhile({
@@ -66,8 +65,8 @@ class WatcherSpec extends Fs2Spec {
               .takeWhile({
                 case Watcher.Event.Created(b, _) => false; case _ => true
               })
-              .concurrently(smallDelay ++ Stream.eval(IO(
-                Files.createDirectory(a)) *> IO(Files.write(b, Array[Byte]()))))
+              .concurrently(smallDelay ++ Stream.eval(
+                IO(Files.createDirectory(a)) *> IO(Files.write(b, Array[Byte]()))))
           }
         }
       }
@@ -75,9 +74,8 @@ class WatcherSpec extends Fs2Spec {
   }
 
   private def tempDirectory: Stream[IO, Path] =
-    Stream.bracket(IO(Files.createTempDirectory("WatcherSpec")))(
-      Stream.emit(_),
-      deleteDirectoryRecursively(_))
+    Stream.bracket(IO(Files.createTempDirectory("WatcherSpec")))(Stream.emit(_),
+                                                                 deleteDirectoryRecursively(_))
 
   private def tempFile: Stream[IO, Path] =
     tempDirectory.flatMap(dir => aFile(dir))

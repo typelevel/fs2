@@ -55,10 +55,10 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
     * @param ec Implicit EC to run the application stream
     * @return An IO that will produce an ExitCode
     */
-  private[fs2] def runStream(args: List[String],
-                             exitCodePromise: Promise[IO, ExitCode],
-                             halted: Signal[IO, Boolean])(
-      implicit ec: ExecutionContext): IO[ExitCode] =
+  private[fs2] def runStream(
+      args: List[String],
+      exitCodePromise: Promise[IO, ExitCode],
+      halted: Signal[IO, Boolean])(implicit ec: ExecutionContext): IO[ExitCode] =
     async
       .signalOf[F, Boolean](false)
       .flatMap { requestShutdown =>

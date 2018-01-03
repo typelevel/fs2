@@ -17,9 +17,7 @@ private[fs2] class LinkedMap[K, +V](val entries: Map[K, (V, Long)],
     (this - k).updated_(k, v)
 
   private def updated_[V2 >: V](k: K, v: V2): LinkedMap[K, V2] =
-    new LinkedMap(entries.updated(k, (v, nextID)),
-                  insertionOrder.updated(nextID, k),
-                  nextID + 1)
+    new LinkedMap(entries.updated(k, (v, nextID)), insertionOrder.updated(nextID, k), nextID + 1)
 
   def edit[V2 >: V](k: K, f: Option[V2] => Option[V2]): LinkedMap[K, V2] =
     entries.get(k) match {

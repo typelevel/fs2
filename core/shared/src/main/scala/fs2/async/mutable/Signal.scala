@@ -60,20 +60,17 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
 
 object Signal {
 
-  def constant[F[_], A](a: A)(
-      implicit F: Applicative[F]): immutable.Signal[F, A] =
+  def constant[F[_], A](a: A)(implicit F: Applicative[F]): immutable.Signal[F, A] =
     new immutable.Signal[F, A] {
       def get = F.pure(a)
       def continuous = Stream.constant(a)
       def discrete = Stream.empty // never changes, so never any updates
     }
 
-  def apply[F[_], A](initA: A)(implicit F: Effect[F],
-                               ec: ExecutionContext): F[Signal[F, A]] = {
+  def apply[F[_], A](initA: A)(implicit F: Effect[F], ec: ExecutionContext): F[Signal[F, A]] = {
     class ID
     async
-      .refOf[F, (A, Long, Map[ID, Promise[F, (A, Long)]])](
-        (initA, 0, Map.empty))
+      .refOf[F, (A, Long, Map[ID, Promise[F, (A, Long)]])]((initA, 0, Map.empty))
       .map { state =>
         new Signal[F, A] {
           def refresh: F[Unit] = modify(identity).void
@@ -81,7 +78,7 @@ object Signal {
           def get: F[A] = state.get.map(_._1)
           def modify(f: A => A): F[Ref.Change[A]] =
             modify2(a => (f(a), ())).map(_._1)
-          def modify2[B](f: A => (A, B)): F[(Ref.Change[A], B)] = {
+          def modify2[B](f: A => (A, B)): F[(Ref.Change[A], B)] =
             state
               .modify2 {
                 case (a, l, _) =>
@@ -98,14 +95,13 @@ object Signal {
                     } *> F.pure(c.map(_._1) -> b)
                   }
               }
-          }
 
           def continuous: Stream[F, A] =
             Stream.repeatEval(get)
 
           def discrete: Stream[F, A] = {
             def go(id: ID, last: Long): Stream[F, A] = {
-              def getNext: F[(A, Long)] = {
+              def getNext: F[(A, Long)] =
                 async.promise[F, (A, Long)] flatMap { promise =>
                   state.modify {
                     case s @ (a, l, listen) =>
@@ -116,7 +112,6 @@ object Signal {
                     else F.pure((c.now._1, c.now._2))
                   }
                 }
-              }
               eval(getNext).flatMap { case (a, l) => emit(a) ++ go(id, l) }
             }
 

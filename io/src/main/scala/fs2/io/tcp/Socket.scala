@@ -42,15 +42,13 @@ trait Socket[F[_]] {
     * This may return None, as well when end of stream has been reached before timeout expired and no data
     * has been received.
     */
-  def read(maxBytes: Int,
-           timeout: Option[FiniteDuration] = None): F[Option[Chunk[Byte]]]
+  def read(maxBytes: Int, timeout: Option[FiniteDuration] = None): F[Option[Chunk[Byte]]]
 
   /**
     * Reads stream of bytes from this socket with `read` semantics. Terminates when eof is received.
     * On timeout, this fails with `java.nio.channels.InterruptedByTimeoutException`.
     */
-  def reads(maxBytes: Int,
-            timeout: Option[FiniteDuration] = None): Stream[F, Byte]
+  def reads(maxBytes: Int, timeout: Option[FiniteDuration] = None): Stream[F, Byte]
 
   /**
     * Reads exactly `numBytes` from the peer in a single chunk.
@@ -59,8 +57,7 @@ trait Socket[F[_]] {
     *
     * When returned size of bytes is < `numBytes` that indicates end-of-stream has been reached.
     */
-  def readN(numBytes: Int,
-            timeout: Option[FiniteDuration] = None): F[Option[Chunk[Byte]]]
+  def readN(numBytes: Int, timeout: Option[FiniteDuration] = None): F[Option[Chunk[Byte]]]
 
   /** Indicates that this channel will not read more data. Causes `End-Of-Stream` be signalled to `available`. */
   def endOfInput: F[Unit]
@@ -111,14 +108,11 @@ protected[tcp] object Socket {
     def setup: Stream[F, AsynchronousSocketChannel] = Stream.suspend {
       val ch =
         AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)
-      ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR,
-                                      reuseAddress)
+      ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
       ch.setOption[Integer](StandardSocketOptions.SO_SNDBUF, sendBufferSize)
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-      ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE,
-                                      keepAlive)
-      ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY,
-                                      noDelay)
+      ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
+      ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
       Stream.emit(ch)
     }
 
@@ -160,10 +154,8 @@ protected[tcp] object Socket {
         val ch = AsynchronousChannelProvider
           .provider()
           .openAsynchronousServerSocketChannel(AG)
-        ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR,
-                                        reuseAddress)
-        ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF,
-                              receiveBufferSize)
+        ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
+        ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
         ch.bind(address)
         ch
       }
@@ -172,21 +164,17 @@ protected[tcp] object Socket {
         if (sch.isOpen) sch.close()
       }
 
-      def acceptIncoming(sch: AsynchronousServerSocketChannel)
-        : Stream[F, Stream[F, Socket[F]]] = {
+      def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Stream[F, Socket[F]]] = {
         def go: Stream[F, Stream[F, Socket[F]]] = {
           def acceptChannel: F[AsynchronousSocketChannel] =
             F.async[AsynchronousSocketChannel] { cb =>
               sch.accept(
                 null,
                 new CompletionHandler[AsynchronousSocketChannel, Void] {
-                  def completed(ch: AsynchronousSocketChannel,
-                                attachment: Void): Unit =
-                    async.unsafeRunAsync(F.delay(cb(Right(ch))))(_ =>
-                      IO.pure(()))
+                  def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                    async.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.pure(()))
                   def failed(rsn: Throwable, attachment: Void): Unit =
-                    async.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ =>
-                      IO.pure(()))
+                    async.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.pure(()))
                 }
               )
             }
@@ -209,17 +197,16 @@ protected[tcp] object Socket {
         }
       }
 
-      Stream.bracket(setup)(sch =>
-                              Stream.emit(
-                                Left(sch.getLocalAddress.asInstanceOf[
-                                  InetSocketAddress])) ++ acceptIncoming(sch)
-                                .map(Right(_)),
-                            cleanup)
+      Stream.bracket(setup)(
+        sch =>
+          Stream.emit(Left(sch.getLocalAddress.asInstanceOf[InetSocketAddress])) ++ acceptIncoming(
+            sch)
+            .map(Right(_)),
+        cleanup)
     }
 
-  def mkSocket[F[_]](ch: AsynchronousSocketChannel)(
-      implicit F: Effect[F],
-      ec: ExecutionContext): F[Socket[F]] = {
+  def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: Effect[F],
+                                                    ec: ExecutionContext): F[Socket[F]] = {
     async.semaphore(1) flatMap { readSemaphore =>
       async.refOf[F, ByteBuffer](ByteBuffer.allocate(0)) map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
@@ -236,8 +223,7 @@ protected[tcp] object Socket {
               new CompletionHandler[Integer, Unit] {
                 def completed(result: Integer, attachment: Unit): Unit = {
                   val took = System.currentTimeMillis() - started
-                  async.unsafeRunAsync(F.delay(cb(Right((result, took)))))(_ =>
-                    IO.unit)
+                  async.unsafeRunAsync(F.delay(cb(Right((result, took)))))(_ => IO.unit)
                 }
                 def failed(err: Throwable, attachment: Unit): Unit =
                   async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.unit)
@@ -248,7 +234,7 @@ protected[tcp] object Socket {
         // gets buffer of desired capacity, ready for the first read operation
         // If the buffer does not have desired capacity it is resized (recreated)
         // buffer is also reset to be ready to be written into.
-        def getBufferOf(sz: Int): F[ByteBuffer] = {
+        def getBufferOf(sz: Int): F[ByteBuffer] =
           bufferRef.get.flatMap { buff =>
             if (buff.capacity() < sz) bufferRef.modify { _ =>
               ByteBuffer.allocate(sz)
@@ -257,7 +243,6 @@ protected[tcp] object Socket {
               F.pure(buff)
             }
           }
-        }
 
         // When the read operation is done, this will read up to buffer's position bytes from the buffer
         // this expects the buffer's position to be at bytes read + 1
@@ -272,8 +257,7 @@ protected[tcp] object Socket {
           }
         }
 
-        def read0(max: Int,
-                  timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] = {
+        def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
           readSemaphore.decrement *>
             F.attempt[Option[Chunk[Byte]]](getBufferOf(max) flatMap { buff =>
                 readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)) flatMap {
@@ -288,13 +272,11 @@ protected[tcp] object Socket {
                   case Right(maybeChunk) => F.pure(maybeChunk)
                 })
               }
-        }
 
-        def readN0(max: Int,
-                   timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] = {
+        def readN0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
           readSemaphore.decrement *>
             F.attempt(getBufferOf(max) flatMap { buff =>
-              def go(timeoutMs: Long): F[Option[Chunk[Byte]]] = {
+              def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
                 readChunk(buff, timeoutMs) flatMap {
                   case (readBytes, took) =>
                     if (readBytes < 0 || buff.position() >= max) {
@@ -302,7 +284,6 @@ protected[tcp] object Socket {
                       releaseBuffer(buff) map (Some(_))
                     } else go((timeoutMs - took) max 0)
                 }
-              }
 
               go(timeout.map(_.toMillis).getOrElse(0l))
             }) flatMap { r =>
@@ -311,11 +292,9 @@ protected[tcp] object Socket {
               case Right(maybeChunk) => F.pure(maybeChunk)
             })
           }
-        }
 
-        def write0(bytes: Chunk[Byte],
-                   timeout: Option[FiniteDuration]): F[Unit] = {
-          def go(buff: ByteBuffer, remains: Long): F[Unit] = {
+        def write0(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] = {
+          def go(buff: ByteBuffer, remains: Long): F[Unit] =
             F.async[Option[Long]] { cb =>
                 val start = System.currentTimeMillis()
                 ch.write(
@@ -324,16 +303,15 @@ protected[tcp] object Socket {
                   TimeUnit.MILLISECONDS,
                   (),
                   new CompletionHandler[Integer, Unit] {
-                    def completed(result: Integer, attachment: Unit): Unit = {
+                    def completed(result: Integer, attachment: Unit): Unit =
                       async.unsafeRunAsync(
-                        F.delay(cb(Right(
-                          if (buff.remaining() <= 0) None
-                          else Some(System.currentTimeMillis() - start)
-                        ))))(_ => IO.pure(()))
-                    }
+                        F.delay(
+                          cb(Right(
+                            if (buff.remaining() <= 0) None
+                            else Some(System.currentTimeMillis() - start)
+                          ))))(_ => IO.pure(()))
                     def failed(err: Throwable, attachment: Unit): Unit =
-                      async.unsafeRunAsync(F.delay(cb(Left(err))))(_ =>
-                        IO.pure(()))
+                      async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.pure(()))
                   }
                 )
               }
@@ -341,7 +319,6 @@ protected[tcp] object Socket {
                 case None       => F.pure(())
                 case Some(took) => go(buff, (remains - took) max 0)
               }
-          }
 
           go(bytes.toBytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0l))
         }
@@ -350,23 +327,18 @@ protected[tcp] object Socket {
         ///////////////////////////////////
 
         new Socket[F] {
-          def readN(numBytes: Int,
-                    timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+          def readN(numBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
             readN0(numBytes, timeout)
-          def read(maxBytes: Int,
-                   timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
+          def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
             read0(maxBytes, timeout)
-          def reads(maxBytes: Int,
-                    timeout: Option[FiniteDuration]): Stream[F, Byte] = {
+          def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] =
             Stream.eval(read(maxBytes, timeout)) flatMap {
               case Some(bytes) =>
                 Stream.chunk(bytes) ++ reads(maxBytes, timeout)
               case None => Stream.empty
             }
-          }
 
-          def write(bytes: Chunk[Byte],
-                    timeout: Option[FiniteDuration]): F[Unit] =
+          def write(bytes: Chunk[Byte], timeout: Option[FiniteDuration]): F[Unit] =
             write0(bytes, timeout)
           def writes(timeout: Option[FiniteDuration]): Sink[F, Byte] =
             _.chunks.flatMap { bs =>

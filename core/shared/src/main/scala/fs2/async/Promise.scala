@@ -29,9 +29,8 @@ import Promise._
   *
   * Finally, the blocking mentioned above is semantic only, no actual threads are blocked by the implementation.
   */
-final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(
-    implicit F: Effect[F],
-    ec: ExecutionContext) {
+final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Effect[F],
+                                                                  ec: ExecutionContext) {
 
   /** Obtains the value of the `Promise`, or waits until it has been completed. */
   def get: F[A] = F.suspend {
@@ -42,7 +41,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(
   }
 
   /** Like [[get]] but returns an `F[Unit]` that can be used to cancel the subscription. */
-  def cancellableGet: F[(F[A], F[Unit])] = {
+  def cancellableGet: F[(F[A], F[Unit])] =
     ref.get.flatMap {
       case State.Set(a) => F.pure((F.pure(a), F.unit))
       case State.Unset(_) =>
@@ -59,7 +58,6 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(
           }
           .map(_._2)
     }
-  }
 
   /**
     * Like [[get]] but if the `Promise` has not been completed when the timeout is reached, a `None`
@@ -72,8 +70,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(
           case (timer, cancelTimer) =>
             fs2.async
               .race(g, timer)
-              .flatMap(
-                _.fold(a => cancelTimer.as(Some(a)), _ => cancelGet.as(None)))
+              .flatMap(_.fold(a => cancelTimer.as(Some(a)), _ => cancelGet.as(None)))
         }
     }
 
@@ -121,9 +118,8 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(
                 waiting
                   .get(id)
                   .map(cbs => waiting.updated(id, cb :: cbs))
-                  .getOrElse(
-                    if (forceRegistration) waiting.updated(id, List(cb))
-                    else waiting)
+                  .getOrElse(if (forceRegistration) waiting.updated(id, List(cb))
+                  else waiting)
               ) -> F.unit
           }
           .flatMap(_._2)
@@ -140,8 +136,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(
 object Promise {
 
   /** Creates a concurrent synchronisation primitive, currently unset **/
-  def empty[F[_], A](implicit F: Effect[F],
-                     ec: ExecutionContext): F[Promise[F, A]] =
+  def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
     F.delay(unsafeCreate[F, A])
 
   /** Raised when trying to complete a [[Promise]] that's already been completed */
@@ -153,12 +148,9 @@ object Promise {
   private sealed abstract class State[A]
   private object State {
     final case class Set[A](a: A) extends State[A]
-    final case class Unset[A](waiting: LinkedMap[Token, List[A => Unit]])
-        extends State[A]
+    final case class Unset[A](waiting: LinkedMap[Token, List[A => Unit]]) extends State[A]
   }
 
-  private[fs2] def unsafeCreate[F[_]: Effect, A](
-      implicit ec: ExecutionContext): Promise[F, A] =
-    new Promise[F, A](
-      new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
+  private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =
+    new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
 }

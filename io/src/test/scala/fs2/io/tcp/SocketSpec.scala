@@ -37,8 +37,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
         async.promise[IO, InetSocketAddress].unsafeRunSync()
 
       val echoServer: Stream[IO, Unit] = {
-        serverWithLocalAddress[IO](
-          new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
+        serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
           case Left(local) => Stream.eval_(localBindAddress.complete(local))
           case Right(s) =>
             s.map { socket =>

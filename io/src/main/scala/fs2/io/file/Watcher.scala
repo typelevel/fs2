@@ -91,9 +91,7 @@ object Watcher {
     final case class Deleted(path: Path, count: Int) extends Event
     final case class Modified(path: Path, count: Int) extends Event
     final case class Overflow(count: Int) extends Event
-    final case class NonStandard(event: WatchEvent[_],
-                                 registeredDirectory: Path)
-        extends Event
+    final case class NonStandard(event: WatchEvent[_], registeredDirectory: Path) extends Event
 
     /**
       * Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
@@ -103,14 +101,11 @@ object Watcher {
       */
     def fromWatchEvent(e: WatchEvent[_], registeredDirectory: Path): Event =
       e match {
-        case e: WatchEvent[Path] @unchecked
-            if e.kind == StandardWatchEventKinds.ENTRY_CREATE =>
+        case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_CREATE =>
           Event.Created(registeredDirectory resolve e.context, e.count)
-        case e: WatchEvent[Path] @unchecked
-            if e.kind == StandardWatchEventKinds.ENTRY_MODIFY =>
+        case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_MODIFY =>
           Event.Modified(registeredDirectory resolve e.context, e.count)
-        case e: WatchEvent[Path] @unchecked
-            if e.kind == StandardWatchEventKinds.ENTRY_DELETE =>
+        case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_DELETE =>
           Event.Deleted(registeredDirectory resolve e.context, e.count)
         case e if e.kind == StandardWatchEventKinds.OVERFLOW =>
           Event.Overflow(e.count)
@@ -131,17 +126,14 @@ object Watcher {
   }
 
   /** Creates a watcher for the default file system. */
-  def default[F[_]](implicit F: Effect[F],
-                    ec: ExecutionContext): Stream[F, Watcher[F]] =
+  def default[F[_]](implicit F: Effect[F], ec: ExecutionContext): Stream[F, Watcher[F]] =
     Stream.eval(F.delay(FileSystems.getDefault)).flatMap(fromFileSystem(_))
 
   /** Creates a watcher for the supplied file system. */
-  def fromFileSystem[F[_]](fs: FileSystem)(
-      implicit F: Effect[F],
-      ec: ExecutionContext): Stream[F, Watcher[F]] =
-    Stream.bracket(F.delay(fs.newWatchService))(
-      ws => Stream.eval(fromWatchService(ws)),
-      ws => F.delay(ws.close))
+  def fromFileSystem[F[_]](fs: FileSystem)(implicit F: Effect[F],
+                                           ec: ExecutionContext): Stream[F, Watcher[F]] =
+    Stream.bracket(F.delay(fs.newWatchService))(ws => Stream.eval(fromWatchService(ws)),
+                                                ws => F.delay(ws.close))
 
   private case class Registration[F[_]](types: Seq[EventType],
                                         modifiers: Seq[WatchEvent.Modifier],
@@ -151,17 +143,15 @@ object Watcher {
                                         cleanup: F[Unit])
 
   /** Creates a watcher for the supplied NIO `WatchService`. */
-  def fromWatchService[F[_]](ws: WatchService)(
-      implicit F: Effect[F],
-      ec: ExecutionContext): F[Watcher[F]] =
+  def fromWatchService[F[_]](ws: WatchService)(implicit F: Effect[F],
+                                               ec: ExecutionContext): F[Watcher[F]] =
     async
       .signalOf[F, Map[WatchKey, Registration[F]]](Map.empty)
       .map(new DefaultWatcher(ws, _))
 
   private class DefaultWatcher[F[_]](
       ws: WatchService,
-      registrations: async.mutable.Signal[F, Map[WatchKey, Registration[F]]])(
-      implicit F: Sync[F])
+      registrations: async.mutable.Signal[F, Map[WatchKey, Registration[F]]])(implicit F: Sync[F])
       extends Watcher[F] {
 
     private def isDir(p: Path): F[Boolean] = F.delay(Files.isDirectory(p))
@@ -172,37 +162,29 @@ object Watcher {
         .as(
           F.delay(key.cancel) *> registrations
             .modify(_ - key)
-            .flatMap(c =>
-              c.previous.get(key).map(_.cleanup).getOrElse(F.pure(()))))
+            .flatMap(c => c.previous.get(key).map(_.cleanup).getOrElse(F.pure(()))))
 
-    override def watch(
-        path: Path,
-        types: Seq[Watcher.EventType] = Nil,
-        modifiers: Seq[WatchEvent.Modifier] = Nil): F[F[Unit]] = {
+    override def watch(path: Path,
+                       types: Seq[Watcher.EventType] = Nil,
+                       modifiers: Seq[WatchEvent.Modifier] = Nil): F[F[Unit]] =
       isDir(path).flatMap { dir =>
         if (dir) watchDirectory(path, types, modifiers)
         else watchFile(path, types, modifiers)
       }
-    }
 
-    private def watchDirectory(
-        path: Path,
-        types: Seq[EventType],
-        modifiers: Seq[WatchEvent.Modifier]): F[F[Unit]] = {
+    private def watchDirectory(path: Path,
+                               types: Seq[EventType],
+                               modifiers: Seq[WatchEvent.Modifier]): F[F[Unit]] = {
       val (supplementedTypes, suppressCreated) =
         if (types.isEmpty)
-          (List(EventType.Created,
-                EventType.Deleted,
-                EventType.Modified,
-                EventType.Overflow),
+          (List(EventType.Created, EventType.Deleted, EventType.Modified, EventType.Overflow),
            false)
         else if (types.contains(EventType.Created)) (types, false)
         else (EventType.Created +: types, true)
       val dirs: F[List[Path]] = F.delay {
         var dirs: List[Path] = Nil
         Files.walkFileTree(path, new SimpleFileVisitor[Path] {
-          override def preVisitDirectory(path: Path,
-                                         attrs: BasicFileAttributes) = {
+          override def preVisitDirectory(path: Path, attrs: BasicFileAttributes) = {
             dirs = path :: dirs
             FileVisitResult.CONTINUE
           }
@@ -210,50 +192,38 @@ object Watcher {
         dirs
       }
       dirs.flatMap(
-        _.traverse(
-          registerUntracked(_, supplementedTypes, modifiers).flatMap(
-            key =>
-              track(key,
-                    Registration(supplementedTypes,
-                                 modifiers,
-                                 _ => true,
-                                 true,
-                                 suppressCreated,
-                                 F.unit)))).map(_.sequence.void))
+        _.traverse(registerUntracked(_, supplementedTypes, modifiers).flatMap(key =>
+          track(
+            key,
+            Registration(supplementedTypes, modifiers, _ => true, true, suppressCreated, F.unit))))
+          .map(_.sequence.void))
     }
 
     private def watchFile(path: Path,
                           types: Seq[Watcher.EventType],
-                          modifiers: Seq[WatchEvent.Modifier]): F[F[Unit]] = {
+                          modifiers: Seq[WatchEvent.Modifier]): F[F[Unit]] =
       registerUntracked(path.getParent, types, modifiers).flatMap(
         key =>
           track(key,
-                Registration(
-                  types,
-                  modifiers,
-                  e => Event.pathOf(e).map(ep => path == ep).getOrElse(true),
-                  false,
-                  false,
-                  F.unit)))
-    }
+                Registration(types,
+                             modifiers,
+                             e => Event.pathOf(e).map(ep => path == ep).getOrElse(true),
+                             false,
+                             false,
+                             F.unit)))
 
     override def register(path: Path,
                           types: Seq[Watcher.EventType],
                           modifiers: Seq[WatchEvent.Modifier]): F[F[Unit]] =
       registerUntracked(path, types, modifiers).flatMap(key =>
-        track(key,
-              Registration(types, modifiers, _ => true, false, false, F.unit)))
+        track(key, Registration(types, modifiers, _ => true, false, false, F.unit)))
 
-    private def registerUntracked(
-        path: Path,
-        types: Seq[Watcher.EventType],
-        modifiers: Seq[WatchEvent.Modifier]): F[WatchKey] = F.delay {
+    private def registerUntracked(path: Path,
+                                  types: Seq[Watcher.EventType],
+                                  modifiers: Seq[WatchEvent.Modifier]): F[WatchKey] = F.delay {
       val typesWithDefaults =
         if (types.isEmpty)
-          List(EventType.Created,
-               EventType.Deleted,
-               EventType.Modified,
-               EventType.Overflow)
+          List(EventType.Created, EventType.Deleted, EventType.Modified, EventType.Overflow)
         else types
       val kinds = typesWithDefaults.map(EventType.toWatchEventKind)
       path.register(ws, kinds.toArray, modifiers: _*)
@@ -272,12 +242,10 @@ object Watcher {
           val recurse: Stream[F, Event] =
             if (reg.map(_.recurse).getOrElse(false)) {
               val created = events.collect { case Event.Created(p, _) => p }
-              def watchIfDirectory(p: Path): F[(F[Unit], List[Event])] = {
+              def watchIfDirectory(p: Path): F[(F[Unit], List[Event])] =
                 F.delay(Files.isDirectory(p))
                   .ifM(
-                    watch(p,
-                          Seq(EventType.Created),
-                          reg.map(_.modifiers).getOrElse(Nil)).flatMap {
+                    watch(p, Seq(EventType.Created), reg.map(_.modifiers).getOrElse(Nil)).flatMap {
                       cancel =>
                         val events: F[List[Event]] = F.delay {
                           var dirs: List[Path] = Nil
@@ -288,7 +256,6 @@ object Watcher {
                     },
                     F.pure(F.pure(()) -> List.empty[Event])
                   )
-              }
               val subregisters: F[List[Event]] =
                 created.traverse(watchIfDirectory).flatMap { x =>
                   val (cancels, events) = x.separate
@@ -297,9 +264,7 @@ object Watcher {
                     .modify(
                       m =>
                         m.get(key)
-                          .map(r =>
-                            m.updated(key,
-                                      r.copy(cleanup = r.cleanup *> cancelAll)))
+                          .map(r => m.updated(key, r.copy(cleanup = r.cleanup *> cancelAll)))
                           .getOrElse(m))
                     .void
                   updateRegistration.as(events.flatten)
