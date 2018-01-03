@@ -4,7 +4,7 @@ import cats.data.NonEmptyList
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
+import cats.{~>, Applicative, Eq, Functor, Monoid, Semigroup}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.Promise

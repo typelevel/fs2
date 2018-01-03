@@ -5,7 +5,7 @@ package udp
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.FiniteDuration
 
-import java.net.{InetAddress, NetworkInterface, InetSocketAddress}
+import java.net.{InetAddress, InetSocketAddress, NetworkInterface}
 import java.nio.channels.{ClosedChannelException, DatagramChannel}
 
 import cats.effect.{Effect, IO}

@@ -9,7 +9,7 @@ import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
-import fs2.async.{Ref, mutable}
+import fs2.async.{mutable, Ref}
 
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(

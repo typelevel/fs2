@@ -5,15 +5,15 @@ package tcp
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
-import java.net.{StandardSocketOptions, InetSocketAddress, SocketAddress}
+import java.net.{InetSocketAddress, SocketAddress, StandardSocketOptions}
 import java.nio.ByteBuffer
 import java.nio.channels.spi.AsynchronousChannelProvider
 import java.nio.channels.{
+  AsynchronousChannelGroup,
   AsynchronousCloseException,
   AsynchronousServerSocketChannel,
-  CompletionHandler,
   AsynchronousSocketChannel,
-  AsynchronousChannelGroup
+  CompletionHandler
 }
 import java.util.concurrent.TimeUnit
 

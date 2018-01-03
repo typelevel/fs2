@@ -1,7 +1,7 @@
 package fs2
 package benchmark
 
-import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
+import org.openjdk.jmh.annotations.{Benchmark, Scope, State}
 
 @State(Scope.Thread)
 class CatenableBenchmark {

@@ -1,7 +1,7 @@
 package fs2
 package benchmark
 
-import org.openjdk.jmh.annotations.{Benchmark, Param, Setup, State, Scope}
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, Setup, State}
 import java.nio.ByteBuffer
 
 @State(Scope.Thread)

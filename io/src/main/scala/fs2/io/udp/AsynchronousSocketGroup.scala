@@ -14,8 +14,8 @@ import java.nio.channels.{
   ClosedChannelException,
   DatagramChannel,
   InterruptedByTimeoutException,
-  Selector,
-  SelectionKey
+  SelectionKey,
+  Selector
 }
 import java.util.ArrayDeque
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch}

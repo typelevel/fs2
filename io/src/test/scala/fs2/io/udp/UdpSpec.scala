@@ -3,8 +3,8 @@ package io
 package udp
 
 import java.net.{
-  InetAddress,
   Inet4Address,
+  InetAddress,
   InetSocketAddress,
   NetworkInterface,
   StandardProtocolFamily

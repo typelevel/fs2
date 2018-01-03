@@ -2,7 +2,7 @@ package fs2
 package benchmark
 
 import cats.effect.IO
-import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
+import org.openjdk.jmh.annotations.{Benchmark, Scope, State}
 
 import fs2.internal.FreeC
 

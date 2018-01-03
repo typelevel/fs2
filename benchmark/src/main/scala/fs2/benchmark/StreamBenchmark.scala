@@ -7,8 +7,8 @@ import org.openjdk.jmh.annotations.{
   BenchmarkMode,
   Mode,
   OutputTimeUnit,
-  State,
-  Scope
+  Scope,
+  State
 }
 import java.util.concurrent.TimeUnit
 

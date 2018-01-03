@@ -3,7 +3,7 @@ package benchmark
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import cats.effect.IO
-import org.openjdk.jmh.annotations.{Benchmark, State, Scope}
+import org.openjdk.jmh.annotations.{Benchmark, Scope, State}
 
 @State(Scope.Thread)
 class ConcurrentBenchmark {
