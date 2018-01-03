@@ -13,13 +13,19 @@ class FreeCBenchmark {
 
   @Benchmark
   def nestedMaps = {
-    val nestedMapsFreeC = (0 to N).foldLeft(FreeC.Pure[IO,Int](0): FreeC[IO,Int]) { (acc, i) => acc.map(_ + i) }
+    val nestedMapsFreeC =
+      (0 to N).foldLeft(FreeC.Pure[IO, Int](0): FreeC[IO, Int]) { (acc, i) =>
+        acc.map(_ + i)
+      }
     nestedMapsFreeC.run
   }
 
   @Benchmark
   def nestedFlatMaps = {
-    val nestedFlatMapsFreeC = (0 to N).foldLeft(FreeC.Pure[IO,Int](0): FreeC[IO,Int]) { (acc, i) => acc.flatMap(j => FreeC.Pure(i + j)) }
+    val nestedFlatMapsFreeC =
+      (0 to N).foldLeft(FreeC.Pure[IO, Int](0): FreeC[IO, Int]) { (acc, i) =>
+        acc.flatMap(j => FreeC.Pure(i + j))
+      }
     nestedFlatMapsFreeC.run
   }
 }

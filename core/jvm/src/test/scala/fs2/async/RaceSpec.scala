@@ -14,17 +14,23 @@ class RaceSpec extends AsyncFs2Spec with EitherValues {
       )
     }
 
-    runLogF(stream).map { x => x.head shouldBe ('left) }
+    runLogF(stream).map { x =>
+      x.head shouldBe ('left)
+    }
   }
 
   "Unsuccessful race" in {
     val stream = mkScheduler.evalMap { s =>
-      async.race(
-        s.effect.sleep[IO](4.seconds),
-        IO.raiseError[Unit](new Exception)
-      ).attempt
+      async
+        .race(
+          s.effect.sleep[IO](4.seconds),
+          IO.raiseError[Unit](new Exception)
+        )
+        .attempt
     }
 
-    runLogF(stream).map { x => x.head.left.value shouldBe a[Exception] }
+    runLogF(stream).map { x =>
+      x.head.left.value shouldBe a[Exception]
+    }
   }
 }

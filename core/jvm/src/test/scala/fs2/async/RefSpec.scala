@@ -13,21 +13,24 @@ class RefSpec extends Fs2Spec with EventuallySupport {
       // Cannot use streams, parallelSequence or Promise since they are implemented with Ref
       val r = refOf[IO, Int](0).unsafeRunSync
 
-      List.fill(finalValue) {
-        fork(r.modify(_ + 1))
-      }.sequence.unsafeRunSync
+      List
+        .fill(finalValue) {
+          fork(r.modify(_ + 1))
+        }
+        .sequence
+        .unsafeRunSync
 
       eventually { r.get.unsafeRunSync shouldBe finalValue }
     }
 
     "successful access" in {
-     val op = for {
-       r <- refOf[IO, Int](0)
-       valueAndSetter <- r.access
-       (value, setter) = valueAndSetter
-       success <- setter(value + 1)
-       result <- r.get
-     } yield success && result == 1
+      val op = for {
+        r <- refOf[IO, Int](0)
+        valueAndSetter <- r.access
+        (value, setter) = valueAndSetter
+        success <- setter(value + 1)
+        result <- r.get
+      } yield success && result == 1
 
       op.unsafeRunSync shouldBe true
     }

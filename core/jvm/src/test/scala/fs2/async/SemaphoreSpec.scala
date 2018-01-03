@@ -13,9 +13,19 @@ class SemaphoreSpec extends Fs2Spec {
     "decrement n synchronously" in {
       forAll { (s: PureStream[Int], n: Int) =>
         val n0 = ((n.abs % 20) + 1).abs
-        Stream.eval(async.mutable.Semaphore[IO](n0)).flatMap { s =>
-          Stream.emits(0 until n0).evalMap { _ => s.decrement }.drain ++ Stream.eval(s.available)
-        }.compile.toVector.unsafeRunSync() shouldBe Vector(0)
+        Stream
+          .eval(async.mutable.Semaphore[IO](n0))
+          .flatMap { s =>
+            Stream
+              .emits(0 until n0)
+              .evalMap { _ =>
+                s.decrement
+              }
+              .drain ++ Stream.eval(s.available)
+          }
+          .compile
+          .toVector
+          .unsafeRunSync() shouldBe Vector(0)
       }
     }
 
@@ -37,7 +47,9 @@ class SemaphoreSpec extends Fs2Spec {
         val t2: IO[Unit] = for {
           // N parallel incrementing tasks and N parallel decrementing tasks
           decrs <- async.start { async.parallelTraverse(longs)(s.decrementBy) }
-          incrs <- async.start { async.parallelTraverse(longsRev)(s.incrementBy) }
+          incrs <- async.start {
+            async.parallelTraverse(longsRev)(s.incrementBy)
+          }
           _ <- decrs: IO[Vector[Unit]]
           _ <- incrs: IO[Vector[Unit]]
         } yield ()

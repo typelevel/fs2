@@ -14,8 +14,9 @@ import org.scalatest.BeforeAndAfterAll
 
 class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
-  implicit val tcpACG : AsynchronousChannelGroup = AsynchronousChannelProvider.provider().
-    openAsynchronousChannelGroup(8, ThreadFactories.named("fs2-ag-tcp", true))
+  implicit val tcpACG: AsynchronousChannelGroup = AsynchronousChannelProvider
+    .provider()
+    .openAsynchronousChannelGroup(8, ThreadFactories.named("fs2-ag-tcp", true))
 
   override def afterAll() = {
     tcpACG.shutdownNow
@@ -32,30 +33,50 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val message = Chunk.bytes("fs2.rocks".getBytes)
       val clientCount = 20
 
-      val localBindAddress = async.promise[IO, InetSocketAddress].unsafeRunSync()
+      val localBindAddress =
+        async.promise[IO, InetSocketAddress].unsafeRunSync()
 
       val echoServer: Stream[IO, Unit] = {
-        serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
+        serverWithLocalAddress[IO](
+          new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
           case Left(local) => Stream.eval_(localBindAddress.complete(local))
           case Right(s) =>
             s.map { socket =>
-              socket.reads(1024).to(socket.writes()).onFinalize(socket.endOfOutput)
+              socket
+                .reads(1024)
+                .to(socket.writes())
+                .onFinalize(socket.endOfOutput)
             }
         }.joinUnbounded
       }
 
       val clients: Stream[IO, Array[Byte]] = {
-        Stream.range(0, clientCount).covary[IO].map { idx =>
-          Stream.eval(localBindAddress.get).flatMap { local =>
-            client[IO](local).flatMap { socket =>
-              Stream.chunk(message).covary[IO].to(socket.writes()).drain.onFinalize(socket.endOfOutput) ++
-                socket.reads(1024, None).chunks.map(_.toArray)
+        Stream
+          .range(0, clientCount)
+          .covary[IO]
+          .map { idx =>
+            Stream.eval(localBindAddress.get).flatMap { local =>
+              client[IO](local).flatMap { socket =>
+                Stream
+                  .chunk(message)
+                  .covary[IO]
+                  .to(socket.writes())
+                  .drain
+                  .onFinalize(socket.endOfOutput) ++
+                  socket.reads(1024, None).chunks.map(_.toArray)
+              }
             }
           }
-        }.join(10)
+          .join(10)
       }
 
-      val result = Stream(echoServer.drain, clients).join(2).take(clientCount).compile.toVector.unsafeRunTimed(timeout).get
+      val result = Stream(echoServer.drain, clients)
+        .join(2)
+        .take(clientCount)
+        .compile
+        .toVector
+        .unsafeRunTimed(timeout)
+        .get
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
     }

@@ -11,7 +11,9 @@ class ConcurrentBenchmark {
   @GenerateN(1, 2, 4, 7, 16, 32, 64, 128, 256)
   @Benchmark
   def join(N: Int): Int = {
-    val each = Stream.segment(Segment.seq(0 to 1000).map(i => Stream.eval(IO.pure(i)))).covary[IO]
+    val each = Stream
+      .segment(Segment.seq(0 to 1000).map(i => Stream.eval(IO.pure(i))))
+      .covary[IO]
     each.join(N).compile.last.unsafeRunSync.get
   }
 }

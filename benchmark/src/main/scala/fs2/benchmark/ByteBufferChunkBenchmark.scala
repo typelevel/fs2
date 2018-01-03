@@ -49,7 +49,7 @@ class ByteBufferChunkBenchmark {
     Chunk.byteBuffer(bbIndirect).toArray
 
   @Benchmark
-  def byteBufferToArrayDirect(): Array[Byte] = 
+  def byteBufferToArrayDirect(): Array[Byte] =
     Chunk.byteBuffer(bbDirect).toArray
 
   @Benchmark

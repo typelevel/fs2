@@ -15,15 +15,18 @@ class StreamAppSpec extends Fs2Spec {
      * Takes the Stream that constitutes the Stream App
      * and observably cleans up when the process is stopped.
      */
-    class TestStreamApp(stream: IO[Unit] => Stream[IO, ExitCode]) extends StreamApp[IO] {
-      val cleanedUp = async.signalOf[IO,Boolean](false).unsafeRunSync
+    class TestStreamApp(stream: IO[Unit] => Stream[IO, ExitCode])
+        extends StreamApp[IO] {
+      val cleanedUp = async.signalOf[IO, Boolean](false).unsafeRunSync
 
-      override def stream(args: List[String], requestShutdown: IO[Unit]): Stream[IO, ExitCode] =
+      override def stream(args: List[String],
+                          requestShutdown: IO[Unit]): Stream[IO, ExitCode] =
         stream(requestShutdown).onFinalize(cleanedUp.set(true))
     }
 
     "Terminate server on a failed stream" in {
-      val testApp = new TestStreamApp(_ => Stream.raiseError(new Throwable("Bad Initial Process")))
+      val testApp = new TestStreamApp(
+        _ => Stream.raiseError(new Throwable("Bad Initial Process")))
       testApp.doMain(List.empty).unsafeRunSync shouldBe ExitCode.Error
       testApp.cleanedUp.get.unsafeRunSync shouldBe true
     }
@@ -47,14 +50,14 @@ class StreamAppSpec extends Fs2Spec {
     }
 
     "Shut down a server from a separate thread" in {
-      val requestShutdown = async.signalOf[IO,IO[Unit]](IO.unit).unsafeRunSync
+      val requestShutdown = async.signalOf[IO, IO[Unit]](IO.unit).unsafeRunSync
 
       val testApp = new TestStreamApp(
         shutdown =>
           Stream.eval(requestShutdown.set(shutdown)) *>
             // run forever, emit nothing
             Stream.eval_(IO.async[Nothing] { _ =>
-            }))
+              }))
 
       (for {
         runApp <- async.start(testApp.doMain(List.empty))
@@ -64,7 +67,8 @@ class StreamAppSpec extends Fs2Spec {
         _ <- requestShutdown.get.flatten
         result <- runApp
         cleanedUp <- testApp.cleanedUp.get
-      } yield (result, cleanedUp)).unsafeRunTimed(5.seconds) shouldBe Some((ExitCode.Success, true))
+      } yield (result, cleanedUp)).unsafeRunTimed(5.seconds) shouldBe Some(
+        (ExitCode.Success, true))
     }
   }
 }
