@@ -38,6 +38,9 @@ trait TestUtil extends TestUtilPlatform {
     )
   )
 
+  implicit def cogenChunk[A: Cogen]: Cogen[Chunk[A]] =
+    Cogen[List[A]].contramap(_.toList)
+
   /** Newtype for generating test cases. Use the `tag` for labeling properties. */
   case class PureStream[+A](tag: String, get: Stream[Pure,A])
   implicit def arbPureStream[A:Arbitrary] = Arbitrary(PureStream.gen[A])

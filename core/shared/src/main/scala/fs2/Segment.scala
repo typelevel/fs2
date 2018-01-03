@@ -562,12 +562,17 @@ abstract class Segment[+O,+R] { self =>
         var staged: Step[O,R] = null
         staged = self.stage(depth.increment, defer,
           o => { if (rem > 0) { rem -= 1; emit(o) } else done(Right(staged.remainder.cons(o))) },
-          os => { if (os.size <= rem) { rem -= os.size; emits(os) }
-                  else {
+          os => os.size match {
+                  case sz if sz < rem =>
+                    rem -= os.size
+                    emits(os)
+                  case sz if sz == rem =>
+                    emits(os)
+                    done(Right(staged.remainder))
+                  case _ =>
                     var i = 0
                     while (rem > 0) { rem -= 1; emit(os(i)); i += 1 }
                     done(Right(staged.remainder.prepend(Segment.chunk(os.drop(i)))))
-                  }
                 },
           r => done(Left(r -> rem))
         ).value
@@ -1080,6 +1085,7 @@ object Segment {
             if (os.size <= rem) {
               out = out :+ os
               rem -= os.size
+              if (rem == 0) result = Some(Right(Segment.empty))
             } else  {
               val (before, after) = os.splitAt(rem.toInt) // nb: toInt is safe b/c os.size is an Int and rem < os.size
               out = out :+ before
@@ -1093,7 +1099,7 @@ object Segment {
           trampoline.defer,
           o => emits(Chunk.singleton(o)),
           os => emits(os),
-          r => { if (result.isEmpty) result = Some(Left(r)); throw Done }).value
+          r => { if (result.isEmpty || result.flatMap(_.toOption).fold(false)(_ == Segment.empty)) result = Some(Left(r)); throw Done }).value
         try {
           maxSteps match {
             case Some(maxSteps) =>
