@@ -203,10 +203,7 @@ lazy val core = crossProject
   .settings(
     name := "fs2-core",
     libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.8",
-    sourceDirectories in (Compile, scalafmt) ++= Seq(
-      baseDirectory.value / "../shared/src/main/scala",
-      baseDirectory.value / "../js/src/main/scala"
-    )
+    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala"
   )
   .jsSettings(commonJsSettings: _*)
 
@@ -262,10 +259,7 @@ lazy val scodec = crossProject
   .settings(
     name := "fs2-scodec",
     libraryDependencies += "org.scodec" %%% "scodec-bits" % "1.1.5",
-    sourceDirectories in (Compile, scalafmt) ++= Seq(
-      baseDirectory.value / "../shared/src/main/scala",
-      baseDirectory.value / "../js/src/main/scala"
-    )
+    sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala"
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsSettings(commonJsSettings: _*)
