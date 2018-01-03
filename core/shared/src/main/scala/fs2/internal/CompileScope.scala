@@ -8,7 +8,7 @@ import cats.data.NonEmptyList
 import fs2.{Catenable, CompositeFailure, Interrupted, Lease, Scope}
 import fs2.async.{Promise, Ref}
 import cats.effect.{Effect, Sync}
-import fs2.internal.RunFoldScope.InterruptContext
+import fs2.internal.CompileScope.InterruptContext
 
 import scala.concurrent.ExecutionContext
 
@@ -63,13 +63,13 @@ import scala.concurrent.ExecutionContext
   *                       that eventually allows interruption while eval is evaluating.
   *
  */
-private[fs2] final class RunFoldScope[F[_]] private (
+private[fs2] final class CompileScope[F[_]] private (
   val id: Token
-  , private val parent: Option[RunFoldScope[F]]
+  , private val parent: Option[CompileScope[F]]
   , val interruptible: Option[InterruptContext[F]]
 )(implicit F: Sync[F]) extends Scope[F] { self =>
 
-  private val state: Ref[F, RunFoldScope.State[F]] = new Ref(new AtomicReference(RunFoldScope.State.initial))
+  private val state: Ref[F, CompileScope.State[F]] = new Ref(new AtomicReference(CompileScope.State.initial))
 
 
   /**
@@ -103,7 +103,7 @@ private[fs2] final class RunFoldScope[F[_]] private (
    * If this scope is currently closed, then the child scope is opened on the first
    * open ancestor of this scope.
    */
-  def open(interruptible: Option[(Effect[F], ExecutionContext)]): F[RunFoldScope[F]] = {
+  def open(interruptible: Option[(Effect[F], ExecutionContext)]): F[CompileScope[F]] = {
     F.flatMap(state.modify2 { s =>
       if (! s.open) (s, None)
       else {
@@ -118,7 +118,7 @@ private[fs2] final class RunFoldScope[F[_]] private (
             , maxInterruptDepth = 256 // todo: want we somehow configure this ?
           )
         }
-        val scope = new RunFoldScope[F](newScopeId, Some(self), iCtx orElse self.interruptible)
+        val scope = new CompileScope[F](newScopeId, Some(self), iCtx orElse self.interruptible)
         (s.copy(children = scope +: s.children), Some(scope))
       }
     }) {
@@ -195,7 +195,7 @@ private[fs2] final class RunFoldScope[F[_]] private (
    */
   def close: F[Either[Throwable, Unit]] = {
     F.flatMap(state.modify{ _.close }) { c =>
-    F.flatMap(traverseError[RunFoldScope[F]](c.previous.children, _.close)) { resultChildren =>
+    F.flatMap(traverseError[CompileScope[F]](c.previous.children, _.close)) { resultChildren =>
     F.flatMap(traverseError[Resource[F]](c.previous.resources, _.release)) { resultResources =>
     F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
       val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
@@ -205,7 +205,7 @@ private[fs2] final class RunFoldScope[F[_]] private (
 
 
   /** Returns closest open parent scope or root. */
-  def openAncestor: F[RunFoldScope[F]] = {
+  def openAncestor: F[CompileScope[F]] = {
     self.parent.fold(F.pure(self)) { parent =>
       F.flatMap(parent.state.get) { s =>
         if (s.open) F.pure(parent)
@@ -215,9 +215,9 @@ private[fs2] final class RunFoldScope[F[_]] private (
   }
 
   /** Gets all ancestors of this scope, inclusive of root scope. **/
-  private def ancestors: F[Catenable[RunFoldScope[F]]] = {
+  private def ancestors: F[Catenable[CompileScope[F]]] = {
     @tailrec
-    def go(curr: RunFoldScope[F], acc: Catenable[RunFoldScope[F]]): F[Catenable[RunFoldScope[F]]] = {
+    def go(curr: CompileScope[F], acc: Catenable[CompileScope[F]]): F[Catenable[CompileScope[F]]] = {
       curr.parent match {
         case Some(parent) => go(parent, acc :+ parent)
         case None => F.pure(acc)
@@ -259,7 +259,6 @@ private[fs2] final class RunFoldScope[F[_]] private (
       case None => F.raiseError(new Throwable("Scope#interrupt called for Scope that cannot be interrupted"))
       case Some(iCtx) =>
         val interruptRsn  = cause.left.toOption.getOrElse(Interrupted(iCtx.interruptScopeId, 0))
-        //println(s"XXXY INTERRUPT($id): ${iCtx.interruptScopeId} : $cause")
         F.flatMap(F.attempt(iCtx.promise.complete(interruptRsn))) {
           case Right(_) =>
             F.map(iCtx.ref.modify({ case (interrupted, signalled) => (interrupted orElse Some(interruptRsn), signalled)})) { _ => ()}
@@ -335,9 +334,9 @@ private[fs2] final class RunFoldScope[F[_]] private (
   override def toString = s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
 }
 
-private[internal] object RunFoldScope {
+private[internal] object CompileScope {
   /** Creates a new root scope. */
-  def newRoot[F[_]: Sync]: RunFoldScope[F] = new RunFoldScope[F](new Token(), None, None)
+  def newRoot[F[_]: Sync]: CompileScope[F] = new CompileScope[F](new Token(), None, None)
 
   /**
     * State of a scope.
@@ -356,7 +355,7 @@ private[internal] object RunFoldScope {
   final private case class State[F[_]](
     open: Boolean
     , resources: Catenable[Resource[F]]
-    , children: Catenable[RunFoldScope[F]]
+    , children: Catenable[CompileScope[F]]
   ) { self =>
 
     def unregisterResource(id: Token): (State[F], Option[Resource[F]]) = {
@@ -365,13 +364,13 @@ private[internal] object RunFoldScope {
       }
     }
 
-    def unregisterChild(id: Token): (State[F], Option[RunFoldScope[F]]) = {
-      self.children.deleteFirst(_.id == id).fold((self, None: Option[RunFoldScope[F]])) { case (s, c) =>
+    def unregisterChild(id: Token): (State[F], Option[CompileScope[F]]) = {
+      self.children.deleteFirst(_.id == id).fold((self, None: Option[CompileScope[F]])) { case (s, c) =>
         (self.copy(children = c), Some(s))
       }
     }
 
-    def close: State[F] = RunFoldScope.State.closed
+    def close: State[F] = CompileScope.State.closed
   }
 
   private object State {

@@ -279,7 +279,7 @@ class Pipe2Spec extends Fs2Spec {
 
     }
 
-    "nested-interrupt (16)" in forAll { s1: PureStream[Int] =>
+    "nested-interrupt (1)" in forAll { s1: PureStream[Int] =>
       val s = async.mutable.Semaphore[IO](0).unsafeRunSync()
       val interrupt: IO[Either[Throwable, Unit]] = mkScheduler.flatMap { _.sleep_[IO](20.millis) }.compile.drain.attempt
       val neverInterrupt = IO.async[Unit] { _ => () }.attempt

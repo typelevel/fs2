@@ -2034,16 +2034,8 @@ object Stream {
      * res0: List[Int] = List(1, 2, 3, 0)
      * }}}
      */
-    def handleErrorWith[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] = {
-      fromFreeC(Algebra.openScope[F, O2](None) flatMap { scope =>
-        self.get[F, O2].transformWith {
-          case Left(e) => Algebra.closeScope[F, O2](scope).flatMap { _ => h(e).get[F, O2] }
-          case Right(r) => Algebra.closeScope[F, O2](scope)
-        }
-      })
-
-    }
-
+    def handleErrorWith[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
+      fromFreeC(Algebra.scope(self.get[F,O2]).handleErrorWith { e =>  h(e).get[F, O2] } )
 
     /**
      * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
