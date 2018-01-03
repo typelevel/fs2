@@ -728,7 +728,13 @@ final class Stream[+F[_],+O] private(private val free: FreeC[Algebra[Nothing,Not
    * res0: List[Int] = List(1, 2, 3, 1, 2, 3, 1, 2)
    * }}}
    */
-  def repeat: Stream[F,O] = this ++ repeat
+  def repeat: Stream[F,O] =
+    Stream.fromFreeC[F, O](this.get.transformWith {
+      case Right(_) => repeat.get
+      case Left(int: Interrupted) => Algebra.pure(())
+      case Left(err) => Algebra.raiseError(err)
+    })
+
 
   /**
    * Converts a `Stream[F,Either[Throwable,O]]` to a `Stream[F,O]`, which emits right values and fails upon the first `Left(t)`.
@@ -1455,8 +1461,13 @@ object Stream {
     def ++[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] = self.append(s2)
 
     /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
-    def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] =
-      fromFreeC(self.get.flatMap { _ => s2.get })
+    def append[O2>:O](s2: => Stream[F,O2]): Stream[F,O2] = {
+      fromFreeC(self.get[F, O2].transformWith {
+        case Right(_) => s2.get
+        case Left(interrupted: Interrupted) => Algebra.interruptEventually(s2.get, interrupted)
+        case Left(err) => Algebra.raiseError(err)
+      })
+    }
 
     /**
      * Emits only elements that are distinct from their immediate predecessors,
@@ -1507,21 +1518,18 @@ object Stream {
      * }}}
      */
     def concurrently[O2](that: Stream[F,O2])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
-      Stream.eval(async.signalOf[F,Boolean](false)).flatMap { interruptLeft =>
-      Stream.eval(async.semaphore[F](0)).flatMap { leftFinalized =>
-      Stream.eval(async.signalOf[F,Boolean](false)).flatMap { interruptRight =>
-      Stream.eval(async.signalOf[F,Option[Throwable]](None)).flatMap { leftError =>
-        val left = that.
-          handleErrorWith(e => Stream.eval_(leftError.set(Some(e)) *> interruptRight.set(true))).
-          interruptWhen(interruptLeft).
-          onFinalize(leftFinalized.increment)
-        val right = self.interruptWhen(interruptRight).onFinalize(
-          interruptLeft.set(true) *>
-          leftFinalized.decrement *>
-          leftError.get.flatMap(_.fold(F.pure(()))(F.raiseError))
-        )
-        Stream.eval_(async.fork(left.compile.drain)) ++ right
-      }}}}
+      Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
+      Stream.eval(async.promise[F, Unit]).flatMap { doneR =>
+      Stream.eval(async.promise[F, Throwable]).flatMap { interruptL =>
+        def runR = that.interruptWhen(interruptR.get.attempt).compile.drain.attempt flatMap {
+          case Right(_) | Left(_:Interrupted) => doneR.complete(())
+          case Left(err) => interruptL.complete(err) *> doneR.complete(())
+        }
+
+        Stream.eval(async.fork(runR)) >>
+        self.interruptWhen(interruptL.get.map(Left(_):Either[Throwable, Unit])).
+        onFinalize { interruptR.complete(()) *> doneR.get }
+      }}}
     }
 
     /**
@@ -1661,8 +1669,9 @@ object Stream {
      * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
      * }}}
      */
-    def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] =
-      Stream.fromFreeC(Algebra.uncons(self.get[F,O]).flatMap {
+    def flatMap[O2](f: O => Stream[F,O2]): Stream[F,O2] = {
+      Stream.fromFreeC[F,O2](Algebra.uncons(self.get[F,O]).flatMap {
+
         case Some((hd, tl)) =>
           // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
           // check if hd has only a single element, and if so, process it directly instead of folding.
@@ -1674,11 +1683,25 @@ object Stream {
           }
           only match {
             case None =>
-              hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(_ ++ _).get
-            case Some(o) => f(o).get
+
+              // specific version of ++, that in case of error or interrupt shortcuts for evaluation immediately to tail.
+              def fby(s1: Stream[F, O2], s2: => Stream[F, O2]): Stream[F, O2] = {
+                fromFreeC[F, O2](s1.get.transformWith {
+                  case Right(()) => s2.get
+                  case Left(int: Interrupted) => fromFreeC(Algebra.interruptEventually(tl, int)).flatMap(f).get
+                  case Left(err) => Algebra.raiseError(err)
+                })
+              }
+
+              hd.map(f).foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(fby(_, _)).get
+
+            case Some(o) =>
+              f(o).get
+
           }
         case None => Stream.empty.covaryAll[F,O2].get
       })
+    }
 
     /** Alias for `flatMap(_ => s2)`. */
     def >>[O2](s2: => Stream[F,O2]): Stream[F,O2] =
@@ -1732,14 +1755,48 @@ object Stream {
      * because `s1.interruptWhen(s2)` is never pulled for another element after the first element has been
      * emitted. To fix, consider `s.flatMap(_ => infiniteStream).interruptWhen(s2)`.
      */
-    def interruptWhen(haltWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
-      haltWhenTrue.noneTerminate.either(self.noneTerminate).
-        takeWhile(_.fold(halt => halt.map(!_).getOrElse(false), o => o.isDefined)).
-        collect { case Right(Some(i)) => i }
+    def interruptWhen(haltWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
+      Stream.eval(async.promise[F, Either[Throwable, Unit]]).flatMap { interruptL =>
+      Stream.eval(async.promise[F, Unit]).flatMap { doneR =>
+      Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
+        def runR = haltWhenTrue.evalMap {
+          case false => F.pure(false)
+          case true => interruptL.complete(Right(())) as true
+        }.takeWhile(! _).interruptWhen(interruptR.get.attempt).compile.drain.attempt.flatMap { r =>
+          interruptL.complete(r).attempt *> doneR.complete(())
+        }
+
+        Stream.eval(async.fork(runR)) >>
+        self.interruptWhen(interruptL.get)
+        .onFinalize(interruptR.complete(()) *> doneR.get)
+
+      }}}
+
+    }
 
     /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
     def interruptWhen(haltWhenTrue: async.immutable.Signal[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] =
       interruptWhen(haltWhenTrue.discrete)
+
+    /**
+      * Interrupts the stream, when `haltOnSignal` finishes its evaluation.
+      */
+    def interruptWhen(haltOnSignal: F[Either[Throwable, Unit]])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
+      Stream.getScope[F].flatMap { scope =>
+      Stream.eval(async.fork(haltOnSignal flatMap scope.interrupt)) flatMap { _ =>
+        self
+      }}.interruptScope.handleErrorWith {
+        case int: fs2.Interrupted => Stream.empty
+        case other => Stream.raiseError(other)
+      }
+    }
+
+    /**
+      * Creates a scope that may be interrupted by calling scope#interrupt.
+      */
+    def interruptScope(implicit F: Effect[F], ec: ExecutionContext): Stream[F, O] =
+      Stream.fromFreeC(Algebra.interruptScope(self.get))
+
 
     /**
      * Nondeterministically merges a stream of streams (`outer`) in to a single stream,
@@ -1978,7 +2035,7 @@ object Stream {
      * }}}
      */
     def handleErrorWith[O2>:O](h: Throwable => Stream[F,O2]): Stream[F,O2] =
-      Stream.fromFreeC(self.get[F,O2] handleErrorWith { e => h(e).get })
+      fromFreeC(Algebra.scope(self.get[F,O2]).handleErrorWith { e =>  h(e).get[F, O2] } )
 
     /**
      * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.

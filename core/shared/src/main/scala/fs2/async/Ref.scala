@@ -126,7 +126,10 @@ final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(impli
 object Ref {
   /** Creates an asynchronous, concurrent mutable reference initialized to the supplied value. */
   def apply[F[_], A](a: A)(implicit F: Sync[F]): F[Ref[F, A]] =
-    F.delay(new Ref[F, A](new AtomicReference[A](a)))
+    F.delay(unsafeCreate(a))
+
+  private[fs2] def unsafeCreate[F[_]: Sync, A](a: A): Ref[F, A] =
+    new Ref[F, A](new AtomicReference[A](a))
 
   /**
     * The result of a modification to a [[Ref]]

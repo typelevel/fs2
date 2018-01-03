@@ -1,12 +1,16 @@
 package fs2.internal
 
-import scala.annotation.tailrec
 
+import scala.annotation.tailrec
 import java.util.concurrent.atomic.AtomicReference
 
-import fs2.{ Catenable, CompositeFailure, Lease, Scope }
-import fs2.async.Ref
-import cats.effect.Sync
+import cats.data.NonEmptyList
+import fs2.{Catenable, CompositeFailure, Interrupted, Lease, Scope}
+import fs2.async.{Promise, Ref}
+import cats.effect.{Effect, Sync}
+import fs2.internal.CompileScope.InterruptContext
+
+import scala.concurrent.ExecutionContext
 
 /**
  * Implementation of [[Scope]] for the internal stream interpreter.
@@ -50,12 +54,23 @@ import cats.effect.Sync
  * Resources are allocated when the interpreter interprets the `Acquire` element, which is typically constructed
  * via `Stream.bracket` or `Pull.acquire`. See [[Resource]] docs for more information.
  *
- * @param id           Unique identification of the scope
- * @param parent       If empty indicates root scope. If non-emtpy, indicates parent of this scope.
+ * @param id              Unique identification of the scope
+ * @param parent          If empty indicates root scope. If non-emtpy, indicates parent of this scope.
+ * @param interruptible   If defined, allows this scope to interrupt any of its operation. Interruption
+  *                       is performed using the supplied context.
+  *                       Normally the interruption awaits next step in Algebra to be evaluated, with exception
+  *                       of Eval, that when interruption is enabled on scope will be wrapped in race,
+  *                       that eventually allows interruption while eval is evaluating.
+  *
  */
-private[internal] final class CompileScope[F[_]] private (val id: Token, private val parent: Option[CompileScope[F]])(implicit F: Sync[F]) extends Scope[F] { self =>
+private[fs2] final class CompileScope[F[_]] private (
+  val id: Token
+  , private val parent: Option[CompileScope[F]]
+  , val interruptible: Option[InterruptContext[F]]
+)(implicit F: Sync[F]) extends Scope[F] { self =>
 
   private val state: Ref[F, CompileScope.State[F]] = new Ref(new AtomicReference(CompileScope.State.initial))
+
 
   /**
    * Registers supplied resource in this scope.
@@ -88,11 +103,22 @@ private[internal] final class CompileScope[F[_]] private (val id: Token, private
    * If this scope is currently closed, then the child scope is opened on the first
    * open ancestor of this scope.
    */
-  def open: F[CompileScope[F]] = {
+  def open(interruptible: Option[(Effect[F], ExecutionContext)]): F[CompileScope[F]] = {
     F.flatMap(state.modify2 { s =>
       if (! s.open) (s, None)
       else {
-        val scope = new CompileScope[F](new Token(), Some(self))
+        val newScopeId = new Token
+        def iCtx = interruptible.map { case (effect, ec) =>
+          InterruptContext(
+            effect = effect
+            , ec = ec
+            , promise = Promise.unsafeCreate[F, Throwable](effect, ec)
+            , ref = Ref.unsafeCreate[F, (Option[Throwable], Boolean)]((None, false))
+            , interruptScopeId = newScopeId
+            , maxInterruptDepth = 256
+          )
+        }
+        val scope = new CompileScope[F](newScopeId, Some(self), iCtx orElse self.interruptible)
         (s.copy(children = scope +: s.children), Some(scope))
       }
     }) {
@@ -101,9 +127,31 @@ private[internal] final class CompileScope[F[_]] private (val id: Token, private
         // This scope is already closed so try to promote the open to an ancestor; this can fail
         // if the root scope has already been closed, in which case, we can safely throw
         self.parent match {
-          case Some(parent) => parent.open
+          case Some(parent) => parent.open(interruptible)
           case None => F.raiseError(throw new IllegalStateException("cannot re-open root scope"))
         }
+    }
+  }
+
+  def acquireResource[R](fr: F[R], release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
+    val resource = Resource.create
+    F.flatMap(register(resource)) { mayAcquire =>
+      if (!mayAcquire) F.raiseError(AcquireAfterScopeClosed)
+      else {
+        F.flatMap(F.attempt(fr)) {
+          case Right(r) =>
+            val finalizer = F.suspend(release(r))
+            F.map(resource.acquired(finalizer)) { result =>
+              result.right.map(_ => (r, resource.id))
+            }
+          case Left(err) =>
+            F.map(releaseResource(resource.id)) { result =>
+              result.left.toOption.map { err0 =>
+                Left(new CompositeFailure(err, NonEmptyList.of(err0)))
+              }.getOrElse(Left(err))
+            }
+        }
+      }
     }
   }
 
@@ -178,6 +226,11 @@ private[internal] final class CompileScope[F[_]] private (val id: Token, private
     go(self, Catenable.empty)
   }
 
+  /** yields to true, if this scope has ancestor with given scope Id **/
+  def hasAncestor(scopeId: Token): F[Boolean] = {
+    F.map(ancestors) { c => Catenable.instance.exists(c)(_.id == scopeId) }
+  }
+
   // See docs on [[Scope#lease]]
   def lease: F[Option[Lease[F]]] = {
     val T = Catenable.instance
@@ -199,11 +252,91 @@ private[internal] final class CompileScope[F[_]] private (val id: Token, private
       }
     }
   }
+
+  // See docs on [[Scope#interrupt]]
+  def interrupt(cause: Either[Throwable, Unit]): F[Unit] = {
+    interruptible match {
+      case None => F.raiseError(new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted"))
+      case Some(iCtx) =>
+        val interruptRsn  = cause.left.toOption.getOrElse(Interrupted(iCtx.interruptScopeId, 0))
+        F.flatMap(F.attempt(iCtx.promise.complete(interruptRsn))) {
+          case Right(_) =>
+            F.map(iCtx.ref.modify({ case (interrupted, signalled) => (interrupted orElse Some(interruptRsn), signalled)})) { _ => ()}
+          case Left(_) =>
+            F.unit
+        }
+    }
+  }
+
+  // See docs on [[Scope#isInterrupted]]
+  def isInterrupted: F[Boolean] = {
+    interruptible match {
+      case None => F.pure(false)
+      case Some(iCtx) =>
+        F.map(iCtx.ref.get) { case (interrupted, _) => interrupted.nonEmpty }
+    }
+  }
+
+  /**
+    * If evaluates to Some(rsn) then the current step evaluation in stream shall be interrupted by
+    * given reason. Also sets the `interrupted` flag, so this is guaranteed to yield to interrupt only once.
+    *
+    * Used when interruption stream in pure steps between `uncons`
+    */
+  def shallInterrupt: F[Option[Throwable]] = {
+    interruptible match {
+      case None => F.pure(None)
+      case Some(iCtx) =>
+        F.flatMap(iCtx.ref.get) { case (interrupted, signalled) =>
+          if (signalled || interrupted.isEmpty) F.pure(None)
+          else {
+            F.map(iCtx.ref.modify { case (int, _) => (int, true)}) { c =>
+              if (c.previous._2) None
+              else c.previous._1
+            }
+          }
+        }
+    }
+  }
+
+
+  /**
+    * When the stream is evaluated, there may be `Eval` that needs to be cancelled early, when asynchronous interruption
+    * is taking place.
+    * This allows to augment eval so whenever this scope is interrupted it will return on left the reason of interruption.
+    * If the eval completes before the scope is interrupt, then this will return `A`.
+    */
+  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Throwable, A]] = {
+    interruptible match {
+      case None => F.attempt(f)
+      case Some(iCtx) =>
+        F.flatMap(iCtx.ref.get) { case (_, signalled) =>
+          if (signalled) F.attempt(f)
+          else {
+            // we assume there will be no parallel evals/interpretation in the scope.
+            // the concurrent stream evaluation (like merge, join) shall have independent interruption
+            // for every asynchronous child scope of the stream, so this assumption shall be completely safe.
+            F.flatMap(iCtx.promise.cancellableGet) { case (get, cancel) =>
+              F.flatMap(fs2.async.race(get, F.attempt(f))(iCtx.effect, iCtx.ec)) {
+                case Right(result) => F.map(cancel)(_ => result)
+                case Left(err) =>
+                  // this indicates that we have consumed signalling the interruption
+                  // there is only one interruption allowed per scope.
+                  // as such, we have to set interruption flag
+                  F.map(iCtx.ref.modify { case (int, sig) => (int, true) })(_ => Left(err))
+              }}
+          }
+        }
+    }
+
+  }
+
+  override def toString = s"RunFoldScope(id=$id,interruptible=${interruptible.nonEmpty})"
 }
 
 private[internal] object CompileScope {
   /** Creates a new root scope. */
-  def newRoot[F[_]: Sync]: CompileScope[F] = new CompileScope[F](new Token(), None)
+  def newRoot[F[_]: Sync]: CompileScope[F] = new CompileScope[F](new Token(), None, None)
 
   /**
     * State of a scope.
@@ -217,9 +350,12 @@ private[internal] object CompileScope {
     * @param children           Children of this scope. Children may appear during the parallel pulls where one scope may
     *                           split to multiple asynchronously acquired scopes and resources.
     *                           Still, likewise for resources they are released in reverse order.
+    *
     */
   final private case class State[F[_]](
-    open: Boolean, resources: Catenable[Resource[F]], children: Catenable[CompileScope[F]]
+    open: Boolean
+    , resources: Catenable[Resource[F]]
+    , children: Catenable[CompileScope[F]]
   ) { self =>
 
     def unregisterResource(id: Token): (State[F], Option[Resource[F]]) = {
@@ -244,4 +380,30 @@ private[internal] object CompileScope {
     private val closed_ = State[Nothing](open = false, resources = Catenable.empty, children = Catenable.empty)
     def closed[F[_]]: State[F] = closed_.asInstanceOf[State[F]]
   }
+
+  /**
+    * A context of interruption status. This is shared from the parent that was created as interruptible to all
+    * its children. It assures consistent view of the interruption through the stack
+    * @param effect   Effect, used to create interruption at Eval.
+    * @param ec       Execution context used to create promise and ref, and interruption at Eval.
+    * @param promise  Promise signalling once the interruption to the scopes. Onlycompleed once.
+    * @param ref      Ref guarding the interruption. Option holds Interruption cause and boolean holds wheter scope is known to be
+    *                 Interrupted already.
+    * @param interruptScopeId An id of the scope, that shall signal end of the interruption. Essentially thats the first
+    *                         scope in the stack that was marked as interruptible scope. Guards, that the interrupt of one stream
+    *                         won't propagate to parent stream, that may be also interrupted but not yet by this stream.
+    * @param maxInterruptDepth In case the stream is interrupted, this is used to prevent infinite stream from searching
+    *                          for cleanup indefinitely. This is consulted only if the stream was interrupted, and if the
+    *                          loop occurred in single given scope.
+    *                          If stream failed with error, this is not used at all.
+    * @tparam F
+    */
+  final private[internal] case class InterruptContext[F[_]](
+    effect: Effect[F]
+    , ec: ExecutionContext
+    , promise: Promise[F, Throwable]
+    , ref: Ref[F, (Option[Throwable], Boolean)]
+    , interruptScopeId: Token
+    , maxInterruptDepth: Int
+  )
 }

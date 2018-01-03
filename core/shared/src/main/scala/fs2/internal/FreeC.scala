@@ -14,6 +14,11 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
       case Left(e) => FreeC.Fail(e)
     })
 
+  def transformWith[R2](f: Either[Throwable, R] => FreeC[F, R2]): FreeC[F, R2] =
+    Bind[F,R,R2](this, r =>
+      try f(r) catch { case NonFatal(e) => FreeC.Fail(e) }
+    )
+
   def map[R2](f: R => R2): FreeC[F,R2] =
     Bind(this, (r: Either[Throwable,R]) => r match {
       case Right(r) => try FreeC.Pure(f(r)) catch { case NonFatal(e) => FreeC.Fail(e) }
@@ -47,13 +52,18 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
 private[fs2] object FreeC {
   final case class Pure[F[_], R](r: R) extends FreeC[F, R] {
     override def translate[G[_]](f: F ~> G): FreeC[G, R] = this.asInstanceOf[FreeC[G,R]]
+    override def toString: String = s"FreeC.Pure($r)"
   }
   final case class Eval[F[_], R](fr: F[R]) extends FreeC[F, R] {
     override def translate[G[_]](f: F ~> G): FreeC[G, R] = Eval(f(fr))
+    override def toString: String = s"FreeC.Eval($fr)"
   }
-  final case class Bind[F[_], X, R](fx: FreeC[F, X], f: Either[Throwable,X] => FreeC[F, R]) extends FreeC[F, R]
+  final case class Bind[F[_], X, R](fx: FreeC[F, X], f: Either[Throwable,X] => FreeC[F, R]) extends FreeC[F, R] {
+    override def toString: String = s"FreeC.Bind($fx, $f)"
+  }
   final case class Fail[F[_], R](error: Throwable) extends FreeC[F,R] {
     override def translate[G[_]](f: F ~> G): FreeC[G, R] = this.asInstanceOf[FreeC[G,R]]
+    override def toString: String = s"FreeC.Fail($error)"
   }
 
   private val pureContinuation_ = (e: Either[Throwable,Any]) => e match {
