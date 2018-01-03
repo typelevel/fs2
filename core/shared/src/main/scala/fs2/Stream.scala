@@ -2043,7 +2043,6 @@ object Stream {
     def onFinalize(f: F[Unit])(implicit F: Applicative[F]): Stream[F,O] =
       Stream.bracket(F.pure(()))(_ => self, _ => f)
 
-
     /** Like `interrupt` but resumes the stream when left branch goes to true. */
     def pauseWhen(pauseWhenTrue: Stream[F,Boolean])(implicit F: Effect[F], ec: ExecutionContext): Stream[F,O] = {
       def unpaused(
@@ -2153,8 +2152,8 @@ object Stream {
     /** Deprecated alias for `compile.toVector`. */
     @deprecated("Use compile.toVector instead", "0.10.0")
     def runLog(implicit F: Sync[F]): F[Vector[O]] = compile.toVector
-    /** Deprecated alias for `compile.last`. */
 
+    /** Deprecated alias for `compile.last`. */
     @deprecated("Use compile.last instead", "0.10.0")
     def runLast(implicit F: Sync[F]): F[Option[O]] = compile.last
 

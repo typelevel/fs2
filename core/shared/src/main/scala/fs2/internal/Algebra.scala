@@ -9,8 +9,7 @@ import scala.concurrent.ExecutionContext
 
 private[fs2] sealed trait Algebra[F[_],O,R]
 
-// Shared algebra between fold/uncons
-private[fs2] sealed trait AlgebraShared[F[_], O, R] extends Algebra[F, O, R]
+
 
 private[fs2] object Algebra {
 
@@ -18,12 +17,15 @@ private[fs2] object Algebra {
   final case class Run[F[_],O,R](values: Segment[O,R]) extends Algebra[F,O,R]
   final case class Uncons[F[_], X, O](s: FreeC[Algebra[F,X,?],Unit], chunkSize: Int, maxSteps: Long) extends Algebra[F, O, Option[(Segment[X,Unit], FreeC[Algebra[F,X,?],Unit])]]
 
-  final case class Eval[F[_],O,R](value: F[R]) extends AlgebraShared[F,O,R]
-  final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends AlgebraShared[F,O,(R,Token)]
-  final case class Release[F[_],O](token: Token) extends AlgebraShared[F,O,Unit]
-  final case class OpenScope[F[_],O](interruptible: Option[(Effect[F], ExecutionContext)]) extends AlgebraShared[F,O,CompileScope[F]]
-  final case class CloseScope[F[_],O](toClose: CompileScope[F]) extends AlgebraShared[F,O,Unit]
-  final case class GetScope[F[_],O]() extends AlgebraShared[F,O,CompileScope[F]]
+  // Algebra types performing side effects
+  private[fs2] sealed trait Effectful[F[_], O, R] extends Algebra[F, O, R]
+
+  final case class Eval[F[_],O,R](value: F[R]) extends Effectful[F,O,R]
+  final case class Acquire[F[_],O,R](resource: F[R], release: R => F[Unit]) extends Effectful[F,O,(R,Token)]
+  final case class Release[F[_],O](token: Token) extends Effectful[F,O,Unit]
+  final case class OpenScope[F[_],O](interruptible: Option[(Effect[F], ExecutionContext)]) extends Effectful[F,O,CompileScope[F]]
+  final case class CloseScope[F[_],O](toClose: CompileScope[F]) extends Effectful[F,O,Unit]
+  final case class GetScope[F[_],O]() extends Effectful[F,O,CompileScope[F]]
 
   def output[F[_],O](values: Segment[O,Unit]): FreeC[Algebra[F,O,?],Unit] =
     FreeC.Eval[Algebra[F,O,?],Unit](Output(values))
@@ -109,9 +111,9 @@ private[fs2] object Algebra {
     F.delay(s.viewL.get) flatMap {
       case done: FreeC.Pure[Algebra[F,O,?], Unit] => F.pure((scope, None))
       case failed: FreeC.Fail[Algebra[F,O,?], Unit] => F.raiseError(failed.error)
-      case bound: FreeC.Bind[Algebra[F,O,?], _, Unit] =>
+      case bound: FreeC.Bind[Algebra[F,O,?], x, Unit] =>
         val f = bound.f.asInstanceOf[Either[Throwable,Any] => FreeC[Algebra[F,O,?], Unit]]
-        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],_]].fr
+        val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F,O,?],x]].fr
         fx match {
           case output: Algebra.Output[F, O] =>
             F.pure((scope, Some((output.values, f(Right(()))))))
@@ -130,7 +132,7 @@ private[fs2] object Algebra {
               case Left(err) => compileUncons(scope, FreeC.suspend(f(Left(err))), chunkSize, maxSteps)
             }
 
-          case alg: AlgebraShared[F, O, _] =>
+          case alg: Effectful[F, O, r] =>
             F.flatMap(compileShared(scope, alg)) { case (scope, r) =>
               compileUncons(scope, f(r), chunkSize, maxSteps)
             }
@@ -164,7 +166,7 @@ private[fs2] object Algebra {
                   compileFoldLoop(scope, output.values.fold(acc)(g).force.run._2, g, f(Right(())))
                 }
                 catch {
-                  case err: Throwable => compileFoldLoop(scope, acc, g, f(Left(err)))
+                  case NonFatal(err) => compileFoldLoop(scope, acc, g, f(Left(err)))
                 }
 
               case run: Algebra.Run[F, O, r] =>
@@ -172,7 +174,7 @@ private[fs2] object Algebra {
                   val (r, b) = run.values.fold(acc)(g).force.run
                   compileFoldLoop(scope, b, g, f(Right(r)))
                 } catch {
-                  case err: Throwable => compileFoldLoop(scope, acc, g, f(Left(err)))
+                  case NonFatal(err) => compileFoldLoop(scope, acc, g, f(Left(err)))
                 }
 
               case uncons: Algebra.Uncons[F, x, O] =>
@@ -183,7 +185,7 @@ private[fs2] object Algebra {
                   case Left(err) => compileFoldLoop(scope, acc, g, f(Left(err)))
                 }
 
-              case alg: AlgebraShared[F, O, _] =>
+              case alg: Effectful[F, O, _] =>
                 F.flatMap(compileShared(scope, alg)) { case (scope, r) =>
                   compileFoldLoop(scope, acc, g, f(r))
                 }
@@ -197,7 +199,7 @@ private[fs2] object Algebra {
 
   def compileShared[F[_], O](
     scope: CompileScope[F]
-    , eff: AlgebraShared[F, O, _]
+    , eff: Effectful[F, O, _]
   )(implicit F: Sync[F]): F[(CompileScope[F], Either[Throwable,Any])] = {
     eff match {
       case eval: Algebra.Eval[F, O, _] =>
@@ -228,7 +230,7 @@ private[fs2] object Algebra {
         case o: Output[F,O2] => Output[G,O2](o.values)
         case Run(values) => Run[G,O2,X](values)
         case Eval(value) => Eval[G,O2,X](u(value))
-        case un:Uncons[F,x,O2] => Uncons[G,x,O2](FreeC.suspend(un.s.translate(algFtoG)), un.chunkSize, un.maxSteps).asInstanceOf[Algebra[G,O2,X]]
+        case un:Uncons[F,x,O2] => Uncons[G,x,O2](un.s.translate(algFtoG), un.chunkSize, un.maxSteps).asInstanceOf[Algebra[G,O2,X]]
         case a: Acquire[F,O2,_] => Acquire(u(a.resource), r => u(a.release(r)))
         case r: Release[F,O2] => Release[G,O2](r.token)
         case os: OpenScope[F,O2] => os.asInstanceOf[Algebra[G,O2,X]]

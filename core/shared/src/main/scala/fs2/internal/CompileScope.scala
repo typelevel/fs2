@@ -115,7 +115,7 @@ private[fs2] final class CompileScope[F[_]] private (
             , promise = Promise.unsafeCreate[F, Throwable](effect, ec)
             , ref = Ref.unsafeCreate[F, (Option[Throwable], Boolean)]((None, false))
             , interruptScopeId = newScopeId
-            , maxInterruptDepth = 256 // todo: want we somehow configure this ?
+            , maxInterruptDepth = 256
           )
         }
         val scope = new CompileScope[F](newScopeId, Some(self), iCtx orElse self.interruptible)
@@ -136,7 +136,7 @@ private[fs2] final class CompileScope[F[_]] private (
   def acquireResource[R](fr: F[R], release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
     val resource = Resource.create
     F.flatMap(register(resource)) { mayAcquire =>
-      if (!mayAcquire) F.raiseError(Interrupted(id, 0)) // todo: not sure if we shall signal by interrupted anymore
+      if (!mayAcquire) F.raiseError(AcquireAfterScopeClosed)
       else {
         F.flatMap(F.attempt(fr)) {
           case Right(r) =>
@@ -256,7 +256,7 @@ private[fs2] final class CompileScope[F[_]] private (
   // See docs on [[Scope#interrupt]]
   def interrupt(cause: Either[Throwable, Unit]): F[Unit] = {
     interruptible match {
-      case None => F.raiseError(new Throwable("Scope#interrupt called for Scope that cannot be interrupted"))
+      case None => F.raiseError(new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted"))
       case Some(iCtx) =>
         val interruptRsn  = cause.left.toOption.getOrElse(Interrupted(iCtx.interruptScopeId, 0))
         F.flatMap(F.attempt(iCtx.promise.complete(interruptRsn))) {
@@ -302,8 +302,8 @@ private[fs2] final class CompileScope[F[_]] private (
 
   /**
     * When the stream is evaluated, there may be `Eval` that needs to be cancelled early, when asynchronous interruption
-    * is taking the place.
-    * This allows to augment eval so whenever this scope is interupted it will return on left the reason of interruption.
+    * is taking place.
+    * This allows to augment eval so whenever this scope is interrupted it will return on left the reason of interruption.
     * If the eval completes before the scope is interrupt, then this will return `A`.
     */
   private[internal] def interruptibleEval[A](f: F[A]): F[Either[Throwable, A]] = {
