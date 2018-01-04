@@ -133,7 +133,7 @@ protected[tcp] object Socket {
     def cleanup(ch: AsynchronousSocketChannel): F[Unit] =
       F.delay { ch.close() }
 
-    setup flatMap { ch =>
+    setup.flatMap { ch =>
       Stream.bracket(connect(ch))({ _ =>
         eval(mkSocket(ch))
       }, cleanup)
@@ -207,8 +207,8 @@ protected[tcp] object Socket {
 
   def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: Effect[F],
                                                     ec: ExecutionContext): F[Socket[F]] = {
-    async.semaphore(1) flatMap { readSemaphore =>
-      async.refOf[F, ByteBuffer](ByteBuffer.allocate(0)) map { bufferRef =>
+    async.semaphore(1).flatMap { readSemaphore =>
+      async.refOf[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
         // Also measures time the read took returning this as tuple
         // of (bytes_read, read_duration)
@@ -236,9 +236,12 @@ protected[tcp] object Socket {
         // buffer is also reset to be ready to be written into.
         def getBufferOf(sz: Int): F[ByteBuffer] =
           bufferRef.get.flatMap { buff =>
-            if (buff.capacity() < sz) bufferRef.modify { _ =>
-              ByteBuffer.allocate(sz)
-            } map { _.now } else {
+            if (buff.capacity() < sz)
+              bufferRef
+                .modify { _ =>
+                  ByteBuffer.allocate(sz)
+                }
+                .map { _.now } else {
               buff.clear()
               F.pure(buff)
             }
@@ -259,11 +262,11 @@ protected[tcp] object Socket {
 
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
           readSemaphore.decrement *>
-            F.attempt[Option[Chunk[Byte]]](getBufferOf(max) flatMap { buff =>
-                readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)) flatMap {
+            F.attempt[Option[Chunk[Byte]]](getBufferOf(max).flatMap { buff =>
+                readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)).flatMap {
                   case (read, _) =>
                     if (read < 0) F.pure(None)
-                    else releaseBuffer(buff) map (Some(_))
+                    else releaseBuffer(buff).map(Some(_))
                 }
               })
               .flatMap { r =>
@@ -274,19 +277,19 @@ protected[tcp] object Socket {
               }
 
         def readN0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-          readSemaphore.decrement *>
-            F.attempt(getBufferOf(max) flatMap { buff =>
+          (readSemaphore.decrement *>
+            F.attempt(getBufferOf(max).flatMap { buff =>
               def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
-                readChunk(buff, timeoutMs) flatMap {
+                readChunk(buff, timeoutMs).flatMap {
                   case (readBytes, took) =>
                     if (readBytes < 0 || buff.position() >= max) {
                       // read is done
-                      releaseBuffer(buff) map (Some(_))
-                    } else go((timeoutMs - took) max 0)
+                      releaseBuffer(buff).map(Some(_))
+                    } else go((timeoutMs - took).max(0))
                 }
 
               go(timeout.map(_.toMillis).getOrElse(0l))
-            }) flatMap { r =>
+            })).flatMap { r =>
             readSemaphore.increment *> (r match {
               case Left(err)         => F.raiseError(err)
               case Right(maybeChunk) => F.pure(maybeChunk)
@@ -305,11 +308,10 @@ protected[tcp] object Socket {
                   new CompletionHandler[Integer, Unit] {
                     def completed(result: Integer, attachment: Unit): Unit =
                       async.unsafeRunAsync(
-                        F.delay(
-                          cb(Right(
-                            if (buff.remaining() <= 0) None
-                            else Some(System.currentTimeMillis() - start)
-                          ))))(_ => IO.pure(()))
+                        F.delay(cb(Right(
+                          if (buff.remaining() <= 0) None
+                          else Some(System.currentTimeMillis() - start)
+                        ))))(_ => IO.pure(()))
                     def failed(err: Throwable, attachment: Unit): Unit =
                       async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.pure(()))
                   }
@@ -317,7 +319,7 @@ protected[tcp] object Socket {
               }
               .flatMap {
                 case None       => F.pure(())
-                case Some(took) => go(buff, (remains - took) max 0)
+                case Some(took) => go(buff, (remains - took).max(0))
               }
 
           go(bytes.toBytes.toByteBuffer, timeout.map(_.toMillis).getOrElse(0l))
@@ -332,7 +334,7 @@ protected[tcp] object Socket {
           def read(maxBytes: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
             read0(maxBytes, timeout)
           def reads(maxBytes: Int, timeout: Option[FiniteDuration]): Stream[F, Byte] =
-            Stream.eval(read(maxBytes, timeout)) flatMap {
+            Stream.eval(read(maxBytes, timeout)).flatMap {
               case Some(bytes) =>
                 Stream.chunk(bytes) ++ reads(maxBytes, timeout)
               case None => Stream.empty

@@ -224,7 +224,7 @@ abstract class Scheduler {
     def go(o: O, s: Stream[F, O]): Pull[F, O, Unit] =
       sleep[F](d).pull.unconsAsync.flatMap { l =>
         s.pull.unconsAsync.flatMap { r =>
-          (l race r).pull.flatMap {
+          l.race(r).pull.flatMap {
             case Left(_) =>
               Pull.output1(o) >> r.pull.flatMap {
                 case Some((hd, tl)) =>

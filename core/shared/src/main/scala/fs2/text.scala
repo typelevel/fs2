@@ -29,12 +29,17 @@ object text {
      * 0 is returned.
      */
     def lastIncompleteBytes(bs: Array[Byte]): Int = {
-      val lastThree = bs.drop(0 max bs.size - 3).toArray.reverseIterator
-      lastThree.map(continuationBytes).zipWithIndex.find {
-        case (c, _) => c >= 0
-      } map {
-        case (c, i) => if (c == i) 0 else i + 1
-      } getOrElse 0
+      val lastThree = bs.drop(0.max(bs.size - 3)).toArray.reverseIterator
+      lastThree
+        .map(continuationBytes)
+        .zipWithIndex
+        .find {
+          case (c, _) => c >= 0
+        }
+        .map {
+          case (c, i) => if (c == i) 0 else i + 1
+        }
+        .getOrElse(0)
     }
 
     def processSingleChunk(outputAndBuffer: (List[String], Chunk[Byte]),

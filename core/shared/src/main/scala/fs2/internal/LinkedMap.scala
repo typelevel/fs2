@@ -45,7 +45,7 @@ private[fs2] class LinkedMap[K, +V](val entries: Map[K, (V, Long)],
 
   def removeKeys(ks: Seq[K]) = ks.foldLeft(this)((m, k) => m - k)
 
-  def orderedEntries: Iterable[(K, V)] = keys zip values
+  def orderedEntries: Iterable[(K, V)] = keys.zip(values)
 
   /** The keys of this map, in the order they were added. */
   def keys: Iterable[K] = insertionOrder.values
@@ -55,9 +55,9 @@ private[fs2] class LinkedMap[K, +V](val entries: Map[K, (V, Long)],
 
   def isEmpty = entries.isEmpty
 
-  def size = entries.size max insertionOrder.size
+  def size = entries.size.max(insertionOrder.size)
 
-  override def toString = (keys zip values).mkString("{ ", "  ", " }")
+  override def toString = keys.zip(values).mkString("{ ", "  ", " }")
 }
 
 private[fs2] object LinkedMap {
@@ -70,7 +70,7 @@ private[fs2] object LinkedMap {
 private[fs2] class LinkedSet[K](ks: LinkedMap[K, Unit]) {
   def +(k: K) = new LinkedSet(ks.updated(k, ()))
   def -(k: K) = new LinkedSet(ks - k)
-  def --(keys: Iterable[K]) = new LinkedSet(ks removeKeys keys.toSeq)
+  def --(keys: Iterable[K]) = new LinkedSet(ks.removeKeys(keys.toSeq))
   def values: Iterable[K] = ks.keys
   def iterator = ks.insertionOrder.iterator
   def isEmpty = ks.isEmpty

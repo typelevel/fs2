@@ -9,7 +9,7 @@ class SignalSpec extends Fs2Spec {
   "Signal" - {
     "get/set/discrete" in {
       forAll { (vs0: List[Long]) =>
-        val vs = vs0 map { n =>
+        val vs = vs0.map { n =>
           if (n == 0) 1 else n
         }
         val s = async.signalOf[IO, Long](0L).unsafeRunSync()

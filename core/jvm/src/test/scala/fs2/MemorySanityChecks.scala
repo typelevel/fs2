@@ -14,9 +14,9 @@ object ResourceTrackerSanityTest extends App {
 }
 
 object RepeatPullSanityTest extends App {
-  def id[A]: Pipe[Pure, A, A] = _ repeatPull {
+  def id[A]: Pipe[Pure, A, A] = _.repeatPull {
     _.uncons1.flatMap {
-      case Some((h, t)) => Pull.output1(h) as Some(t);
+      case Some((h, t)) => Pull.output1(h).as(Some(t));
       case None         => Pull.pure(None)
     }
   }
@@ -43,7 +43,7 @@ object AppendSanityTest extends App {
 object DrainOnCompleteSanityTest extends App {
   import ExecutionContext.Implicits.global
   val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO(println("done")))
-  (Stream.empty.covary[IO] merge s).compile.drain.unsafeRunSync()
+  Stream.empty.covary[IO].merge(s).compile.drain.unsafeRunSync()
 }
 
 object ConcurrentJoinSanityTest extends App {
@@ -63,7 +63,7 @@ object DanglingDequeueSanityTest extends App {
     .eval(async.unboundedQueue[IO, Int])
     .flatMap { q =>
       Stream.constant(1).flatMap { _ =>
-        Stream.empty mergeHaltBoth q.dequeue
+        Stream.empty.mergeHaltBoth(q.dequeue)
       }
     }
     .compile
@@ -202,12 +202,12 @@ object QueueTest extends App {
 object ProgressMerge extends App {
   import ExecutionContext.Implicits.global
   val progress = Stream.constant(1, 128).covary[IO]
-  (progress merge progress).compile.drain.unsafeRunSync()
+  progress.merge(progress).compile.drain.unsafeRunSync()
 }
 
 object HungMerge extends App {
   import ExecutionContext.Implicits.global
   val hung = Stream.eval(IO.async[Int](_ => ()))
   val progress = Stream.constant(1, 128).covary[IO]
-  (hung merge progress).compile.drain.unsafeRunSync()
+  hung.merge(progress).compile.drain.unsafeRunSync()
 }

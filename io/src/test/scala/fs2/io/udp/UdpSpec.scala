@@ -43,7 +43,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 .to(clientSocket.writes())
                 .drain ++ Stream.eval(clientSocket.read())
             }
-            server mergeHaltBoth client
+            server.mergeHaltBoth(client)
           }
         }
       }.map(_.bytes) shouldBe Vector(msg)
@@ -79,7 +79,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
               .constant(client)
               .take(numClients)
               .join(numParallelClients)
-            server mergeHaltBoth clients
+            server.mergeHaltBoth(clients)
           }
         }
       }.map(p => new String(p.bytes.toArray)).sorted shouldBe Vector
@@ -116,7 +116,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 .to(clientSocket.writes())
                 .drain ++ Stream.eval(clientSocket.read())
             }
-            server mergeHaltBoth client
+            server.mergeHaltBoth(client)
           }
         }
       }.map(_.bytes) shouldBe Vector(msg)

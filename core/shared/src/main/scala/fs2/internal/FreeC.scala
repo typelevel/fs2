@@ -57,7 +57,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
     viewL.get match {
       case Pure(r) => Pure(r)
       case Bind(fx, k) =>
-        Bind(fx translate f, (e: Either[Throwable, Any]) => k(e).translate(f))
+        Bind(fx.translate(f), (e: Either[Throwable, Any]) => k(e).translate(f))
       case Fail(e)  => Fail(e)
       case Eval(fx) => Eval(f(fx))
     }

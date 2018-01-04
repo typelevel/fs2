@@ -143,7 +143,7 @@ object Topic {
 
           new Topic[F, A] {
             def publish: Sink[F, A] =
-              _ flatMap (a => eval(publish1(a)))
+              _.flatMap(a => eval(publish1(a)))
 
             def subscribers: Signal[F, Int] = subSignal
 

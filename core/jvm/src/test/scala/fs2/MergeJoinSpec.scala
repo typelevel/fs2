@@ -83,12 +83,12 @@ class MergeJoinSpec extends Fs2Spec {
           .drain
 
       "merge" in {
-        runLog((full merge hang).take(1)) shouldBe Vector(42)
-        runLog((full merge hang2).take(1)) shouldBe Vector(42)
-        runLog((full merge hang3).take(1)) shouldBe Vector(42)
-        runLog((hang merge full).take(1)) shouldBe Vector(42)
-        runLog((hang2 merge full).take(1)) shouldBe Vector(42)
-        runLog((hang3 merge full).take(1)) shouldBe Vector(42)
+        runLog(full.merge(hang).take(1)) shouldBe Vector(42)
+        runLog(full.merge(hang2).take(1)) shouldBe Vector(42)
+        runLog(full.merge(hang3).take(1)) shouldBe Vector(42)
+        runLog(hang.merge(full).take(1)) shouldBe Vector(42)
+        runLog(hang2.merge(full).take(1)) shouldBe Vector(42)
+        runLog(hang3.merge(full).take(1)) shouldBe Vector(42)
       }
 
       "join" in {

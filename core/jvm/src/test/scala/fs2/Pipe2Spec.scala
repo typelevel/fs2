@@ -153,7 +153,7 @@ class Pipe2Spec extends Fs2Spec {
     "merge (left/right failure)" in {
       forAll { (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
-          runLog((s1.get.covary[IO] merge f.get))
+          runLog(s1.get.covary[IO].merge(f.get))
         }
       }
     }
@@ -161,13 +161,13 @@ class Pipe2Spec extends Fs2Spec {
     "mergeHalt{L/R/Both}" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
       withClue(s1.tag + " " + s2.tag) {
         val outBoth = runLog {
-          s1.get.covary[IO].map(Left(_)) mergeHaltBoth s2.get.map(Right(_))
+          s1.get.covary[IO].map(Left(_)).mergeHaltBoth(s2.get.map(Right(_)))
         }
         val outL = runLog {
-          s1.get.covary[IO].map(Left(_)) mergeHaltL s2.get.map(Right(_))
+          s1.get.covary[IO].map(Left(_)).mergeHaltL(s2.get.map(Right(_)))
         }
         val outR = runLog {
-          s1.get.covary[IO].map(Left(_)) mergeHaltR s2.get.map(Right(_))
+          s1.get.covary[IO].map(Left(_)).mergeHaltR(s2.get.map(Right(_)))
         }
         // out should contain at least all the elements from one of the input streams
         val e1 = runLog(s1.get)
@@ -300,7 +300,7 @@ class Pipe2Spec extends Fs2Spec {
           barrier.decrement.map(_ => i)
         } else IO.pure(i)
       }
-      val interrupt = Stream.eval(enableInterrupt.decrement) flatMap { _ =>
+      val interrupt = Stream.eval(enableInterrupt.decrement).flatMap { _ =>
         Stream.emit(false)
       }
       val out = runLog { interruptedS1.interruptWhen(interrupt) }
@@ -350,7 +350,7 @@ class Pipe2Spec extends Fs2Spec {
         mkScheduler.flatMap { _.sleep_[IO](50.millis) }.compile.drain.attempt
       val prg = (
         (s1.get.covary[IO].interruptWhen(interrupt).evalMap { _ =>
-          s.decrement map { _ =>
+          s.decrement.map { _ =>
             None
           }
         })

@@ -121,7 +121,7 @@ private[fs2] final class CompileScope[F[_]] private (
               maxInterruptDepth = 256
             )
         }
-        val scope = new CompileScope[F](newScopeId, Some(self), iCtx orElse self.interruptible)
+        val scope = new CompileScope[F](newScopeId, Some(self), iCtx.orElse(self.interruptible))
         (s.copy(children = scope +: s.children), Some(scope))
       }
     }) {
@@ -281,7 +281,7 @@ private[fs2] final class CompileScope[F[_]] private (
           case Right(_) =>
             F.map(iCtx.ref.modify({
               case (interrupted, signalled) =>
-                (interrupted orElse Some(interruptRsn), signalled)
+                (interrupted.orElse(Some(interruptRsn)), signalled)
             })) { _ =>
               ()
             }

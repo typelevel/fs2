@@ -178,7 +178,7 @@ object AsynchronousSocketGroup {
         val channel = key.channel.asInstanceOf[DatagramChannel]
         val attachment = key.attachment.asInstanceOf[Attachment]
         var cancelReader: () => Unit = null
-        val t = timeout map { t0 =>
+        val t = timeout.map { t0 =>
           Timeout(t0) {
             cb(Left(new InterruptedByTimeoutException))
             if (cancelReader ne null) cancelReader()
@@ -244,7 +244,7 @@ object AsynchronousSocketGroup {
         val channel = key.channel.asInstanceOf[DatagramChannel]
         val attachment = key.attachment.asInstanceOf[Attachment]
         var cancelWriter: () => Unit = null
-        val t = timeout map { t0 =>
+        val t = timeout.map { t0 =>
           Timeout(t0) {
             cb(Some(new InterruptedByTimeoutException))
             if (cancelWriter ne null) cancelWriter()
@@ -326,7 +326,7 @@ object AsynchronousSocketGroup {
           while (!closed && !Thread.currentThread.isInterrupted) {
             runPendingThunks
             val timeout = pendingTimeouts.headOption.map { t =>
-              (t.expiry - System.currentTimeMillis) max 0L
+              (t.expiry - System.currentTimeMillis).max(0L)
             }
             selector.select(timeout.getOrElse(0L))
             val selectedKeys = selector.selectedKeys.iterator

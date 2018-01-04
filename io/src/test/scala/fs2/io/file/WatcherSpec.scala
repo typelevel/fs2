@@ -43,8 +43,8 @@ class WatcherSpec extends Fs2Spec {
       "static recursive watching" in {
         runLog {
           tempDirectory.flatMap { dir =>
-            val a = dir resolve "a"
-            val b = a resolve "b"
+            val a = dir.resolve("a")
+            val b = a.resolve("b")
             Stream.eval(IO(Files.createDirectory(a)) *> IO(Files.write(b, Array[Byte]()))) *>
               (file
                 .watch[IO](dir, modifiers = modifiers)
@@ -58,8 +58,8 @@ class WatcherSpec extends Fs2Spec {
       "dynamic recursive watching" in {
         runLog {
           tempDirectory.flatMap { dir =>
-            val a = dir resolve "a"
-            val b = a resolve "b"
+            val a = dir.resolve("a")
+            val b = a.resolve("b")
             file
               .watch[IO](dir, modifiers = modifiers)
               .takeWhile({

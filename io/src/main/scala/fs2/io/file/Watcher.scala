@@ -102,11 +102,11 @@ object Watcher {
     def fromWatchEvent(e: WatchEvent[_], registeredDirectory: Path): Event =
       e match {
         case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_CREATE =>
-          Event.Created(registeredDirectory resolve e.context, e.count)
+          Event.Created(registeredDirectory.resolve(e.context), e.count)
         case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_MODIFY =>
-          Event.Modified(registeredDirectory resolve e.context, e.count)
+          Event.Modified(registeredDirectory.resolve(e.context), e.count)
         case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_DELETE =>
-          Event.Deleted(registeredDirectory resolve e.context, e.count)
+          Event.Deleted(registeredDirectory.resolve(e.context), e.count)
         case e if e.kind == StandardWatchEventKinds.OVERFLOW =>
           Event.Overflow(e.count)
         case e => Event.NonStandard(e, registeredDirectory)
@@ -120,7 +120,7 @@ object Watcher {
       case Event.Overflow(_)    => None
       case Event.NonStandard(e, registeredDirectory) =>
         if (e.context.isInstanceOf[Path])
-          Some(registeredDirectory resolve e.context.asInstanceOf[Path])
+          Some(registeredDirectory.resolve(e.context.asInstanceOf[Path]))
         else None
     }
   }

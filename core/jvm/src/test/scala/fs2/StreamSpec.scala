@@ -77,13 +77,13 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "handleErrorWith (2)" in {
-      runLog(Stream.raiseError(Err) handleErrorWith { _ =>
+      runLog(Stream.raiseError(Err).handleErrorWith { _ =>
         Stream.emit(1)
       }) shouldBe Vector(1)
     }
 
     "handleErrorWith (3)" in {
-      runLog(Stream.emit(1) ++ Stream.raiseError(Err) handleErrorWith { _ =>
+      runLog((Stream.emit(1) ++ Stream.raiseError(Err)).handleErrorWith { _ =>
         Stream.emit(1)
       }) shouldBe Vector(1, 1)
     }
@@ -167,7 +167,7 @@ class StreamSpec extends Fs2Spec with Inside {
       Stream("hello").repartition(_ => Chunk.empty).toList shouldBe List()
 
       def input = Stream("ab").repeat
-      def ones(s: String) = Chunk vector s.grouped(1).toVector
+      def ones(s: String) = Chunk.vector(s.grouped(1).toVector)
       input.take(2).repartition(ones).toVector shouldBe Vector("a", "b", "a", "b")
       input.take(4).repartition(ones).toVector shouldBe Vector("a",
                                                                "b",
@@ -266,7 +266,7 @@ class StreamSpec extends Fs2Spec with Inside {
       val t =
         emitAndSleep.zip(Stream.duration[IO]).drop(1).map(_._2).compile.toVector
 
-      (IO.shift *> t).unsafeToFuture collect {
+      (IO.shift *> t).unsafeToFuture.collect {
         case Vector(d) => assert(d.toMillis >= delay.toMillis - 5)
       }
     }
@@ -291,7 +291,7 @@ class StreamSpec extends Fs2Spec with Inside {
       }
 
       val delay = 20.millis
-      val draws = (600.millis / delay) min 50 // don't take forever
+      val draws = (600.millis / delay).min(50) // don't take forever
 
       val durationsSinceSpike = Stream
         .every[IO](delay)

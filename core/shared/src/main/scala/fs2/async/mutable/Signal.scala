@@ -102,15 +102,17 @@ object Signal {
           def discrete: Stream[F, A] = {
             def go(id: ID, last: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
-                async.promise[F, (A, Long)] flatMap { promise =>
-                  state.modify {
-                    case s @ (a, l, listen) =>
-                      if (l != last) s
-                      else (a, l, listen + (id -> promise))
-                  } flatMap { c =>
-                    if (c.now != c.previous) promise.get
-                    else F.pure((c.now._1, c.now._2))
-                  }
+                async.promise[F, (A, Long)].flatMap { promise =>
+                  state
+                    .modify {
+                      case s @ (a, l, listen) =>
+                        if (l != last) s
+                        else (a, l, listen + (id -> promise))
+                    }
+                    .flatMap { c =>
+                      if (c.now != c.previous) promise.get
+                      else F.pure((c.now._1, c.now._2))
+                    }
                 }
               eval(getNext).flatMap { case (a, l) => emit(a) ++ go(id, l) }
             }

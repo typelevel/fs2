@@ -133,7 +133,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       // `s2` completes with failure before the resource is acquired by `s2`.
       // `b1` has just caught `s1` error when `s2` fails
       // `b1` fully completes before `s2` fails
-      swallow { runLog { b1 merge b2 } }
+      swallow { runLog { b1.merge(b2) } }
       eventually { c.get shouldBe 0L }
     }
 
@@ -142,9 +142,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         val c = new AtomicLong(0)
         val b1 = bracket(c)(s1.get)
         val b2 = bracket(c)(s2.get)
-        swallow { runLog { spuriousFail(b1, f1) merge b2 } }
-        swallow { runLog { b1 merge spuriousFail(b2, f2) } }
-        swallow { runLog { spuriousFail(b1, f1) merge spuriousFail(b2, f2) } }
+        swallow { runLog { spuriousFail(b1, f1).merge(b2) } }
+        swallow { runLog { b1.merge(spuriousFail(b2, f2)) } }
+        swallow { runLog { spuriousFail(b1, f1).merge(spuriousFail(b2, f2)) } }
         eventually { c.get shouldBe 0L }
       }
     }

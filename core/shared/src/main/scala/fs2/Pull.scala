@@ -49,13 +49,13 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
 
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    Pull.fromFreeC(get[F2, O2, R] flatMap { r =>
+    Pull.fromFreeC(get[F2, O2, R].flatMap { r =>
       f(r).get
     })
 
   /** Alias for `flatMap(_ => p2)`. */
   def >>[F2[x] >: F[x], O2 >: O, R2](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    this flatMap { _ =>
+    this.flatMap { _ =>
       p2
     }
 
@@ -74,7 +74,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
     this.asInstanceOf[Pull[F, O, R2]]
 
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
-  def map[R2](f: R => R2): Pull[F, O, R2] = Pull.fromFreeC(get map f)
+  def map[R2](f: R => R2): Pull[F, O, R2] = Pull.fromFreeC(get.map(f))
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
@@ -83,7 +83,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
   /** If `this` terminates with `Pull.raiseError(e)`, invoke `h(e)`. */
   def handleErrorWith[F2[x] >: F[x], O2 >: O, R2 >: R](
       h: Throwable => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
-    Pull.fromFreeC(get[F2, O2, R2] handleErrorWith { e =>
+    Pull.fromFreeC(get[F2, O2, R2].handleErrorWith { e =>
       h(e).get
     })
 
@@ -166,7 +166,7 @@ object Pull {
     * Halts when a step terminates with `None` or `Pull.raiseError`.
     */
   def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
-    r => using(r) flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
+    r => using(r).flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
 
   /** Ouptuts a single value. */
   def output1[F[_], O](o: O): Pull[F, O, Unit] =

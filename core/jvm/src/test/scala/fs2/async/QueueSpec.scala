@@ -128,10 +128,10 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.unboundedQueue[IO, Int]
-            f <- async.start(q.peek1 product q.dequeue1)
+            f <- async.start(q.peek1.product(q.dequeue1))
             _ <- q.enqueue1(42)
             x <- f
-            g <- async.start((q.peek1 product q.dequeue1) product (q.peek1 product q.dequeue1))
+            g <- async.start((q.peek1.product(q.dequeue1)).product(q.peek1.product(q.dequeue1)))
             _ <- q.enqueue1(43)
             _ <- q.enqueue1(44)
             yz <- g

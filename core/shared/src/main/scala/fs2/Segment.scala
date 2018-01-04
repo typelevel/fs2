@@ -119,7 +119,7 @@ abstract class Segment[+O, +R] { self =>
             },
             done
           )
-          .map(_.mapRemainder(_ collect pf))
+          .map(_.mapRemainder(_.collect(pf)))
       }
       override def toString = s"($self).collect(<pf1>)"
     }
@@ -199,7 +199,7 @@ abstract class Segment[+O, +R] { self =>
           },
           done
         )
-        .map(_.mapRemainder(_ filter p))
+        .map(_.mapRemainder(_.filter(p)))
     }
     override def toString = s"($self).filter(<pf1>)"
   }
@@ -511,7 +511,7 @@ abstract class Segment[+O, +R] { self =>
         .stage(depth.increment, defer, o => emit(f(o)), os => {
           var i = 0; while (i < os.size) { emit(f(os(i))); i += 1; }
         }, done)
-        .map(_.mapRemainder(_ map f))
+        .map(_.mapRemainder(_.map(f)))
     }
     override def toString = s"($self).map(<f1>)"
   }
@@ -571,7 +571,7 @@ abstract class Segment[+O, +R] { self =>
           .stage(depth.increment, defer, o => emits(f(o)), os => {
             var i = 0; while (i < os.size) { emits(f(os(i))); i += 1; }
           }, done)
-          .map(_.mapRemainder(_ mapConcat f))
+          .map(_.mapRemainder(_.mapConcat(f)))
       }
       override def toString = s"($self).mapConcat(<f1>)"
     }
@@ -592,7 +592,7 @@ abstract class Segment[+O, +R] { self =>
                done: R2 => Unit) = Eval.defer {
       self
         .stage(depth.increment, defer, emit, emits, r => done(f(r)))
-        .map(_.mapRemainder(_ mapResult f))
+        .map(_.mapRemainder(_.mapResult(f)))
     }
     override def toString = s"($self).mapResult(<f1>)"
   }
@@ -876,7 +876,7 @@ abstract class Segment[+O, +R] { self =>
             var out1: Option[O3] = None
             var out: scala.collection.immutable.VectorBuilder[O3] = null
             while ((lh ne null) && lpos < lh.size && (rh ne null) && rpos < rh.size) {
-              val zipCount = (lh.size - lpos) min (rh.size - rpos)
+              val zipCount = (lh.size - lpos).min(rh.size - rpos)
               if (zipCount == 1 && out1 == None && (out eq null)) {
                 out1 = Some(f(lh(lpos), rh(rpos)))
                 lpos += 1
@@ -1073,7 +1073,7 @@ object Segment {
   final class Step[+O, +R](val remainder0: Eval[Segment[O, R]], val step: () => Unit) {
     final def remainder: Segment[O, R] = remainder0.value
     final def mapRemainder[O2, R2](f: Segment[O, R] => Segment[O2, R2]): Step[O2, R2] =
-      new Step(remainder0 map f, step)
+      new Step(remainder0.map(f), step)
     override def toString = "Step$" + ##
   }
 

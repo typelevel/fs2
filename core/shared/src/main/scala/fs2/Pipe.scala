@@ -97,11 +97,12 @@ object Pipe {
           .evalMap(q.enqueue1)
           .drain
           .onFinalize(q.enqueue1(None))
-          .onFinalize(done.set(true)) merge done.interrupt(s).flatMap { f =>
-          f(q.dequeue.unNoneTerminate flatMap { x =>
-            Stream.segment(x)
+          .onFinalize(done.set(true))
+          .merge(done.interrupt(s).flatMap { f =>
+            f(q.dequeue.unNoneTerminate.flatMap { x =>
+              Stream.segment(x)
+            })
           })
-        }
       } yield b
     }
 

@@ -97,7 +97,7 @@ package object file {
   private def _writeAll1[F[_]](buf: Chunk[Byte],
                                out: FileHandle[F],
                                offset: Long): Pull[F, Nothing, Unit] =
-    Pull.eval(out.write(buf, offset)) flatMap { (written: Int) =>
+    Pull.eval(out.write(buf, offset)).flatMap { (written: Int) =>
       if (written >= buf.size)
         Pull.pure(())
       else

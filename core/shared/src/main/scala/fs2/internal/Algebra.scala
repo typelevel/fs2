@@ -75,14 +75,14 @@ private[fs2] object Algebra {
   private def scope0[F[_], O, R](
       pull: FreeC[Algebra[F, O, ?], R],
       interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F, O, ?], R] =
-    openScope(interruptible) flatMap { scope =>
+    openScope(interruptible).flatMap { scope =>
       pull.transformWith {
         case Right(r) =>
-          closeScope(scope) map { _ =>
+          closeScope(scope).map { _ =>
             r
           }
         case Left(e) =>
-          closeScope(scope) flatMap { _ =>
+          closeScope(scope).flatMap { _ =>
             raiseError(e)
           }
       }
@@ -113,7 +113,7 @@ private[fs2] object Algebra {
     F.delay(CompileScope.newRoot).flatMap { scope =>
       compileScope[F, O, B](scope, stream, init)(f).attempt.flatMap {
         case Left(t)  => scope.close *> F.raiseError(t)
-        case Right(b) => scope.close as b
+        case Right(b) => scope.close.as(b)
       }
     }
 
@@ -129,7 +129,7 @@ private[fs2] object Algebra {
       maxSteps: Long
   )(implicit F: Sync[F])
     : F[(CompileScope[F], Option[(Segment[O, Unit], FreeC[Algebra[F, O, ?], Unit])])] =
-    F.delay(s.viewL.get) flatMap {
+    F.delay(s.viewL.get).flatMap {
       case done: FreeC.Pure[Algebra[F, O, ?], Unit] => F.pure((scope, None))
       case failed: FreeC.Fail[Algebra[F, O, ?], Unit] =>
         F.raiseError(failed.error)

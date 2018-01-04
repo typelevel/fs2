@@ -16,7 +16,7 @@ class SchedulerSpec extends AsyncFs2Spec {
       val t =
         emitAndSleep.zip(Stream.duration[IO]).drop(1).map(_._2).compile.toVector
 
-      (IO.shift *> t).unsafeToFuture() collect {
+      (IO.shift *> t).unsafeToFuture().collect {
         case Vector(d) => assert(d >= delay)
       }
     }
@@ -31,7 +31,7 @@ class SchedulerSpec extends AsyncFs2Spec {
         }
         .compile
         .toVector
-      t.unsafeToFuture() map { r =>
+      t.unsafeToFuture().map { r =>
         assert(r == Vector(3, 6))
       }
     }

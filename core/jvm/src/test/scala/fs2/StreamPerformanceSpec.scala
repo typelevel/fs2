@@ -41,7 +41,7 @@ class StreamPerformanceSpec extends Fs2Spec {
             (1 until N)
               .map(emit)
               .foldLeft(emit(0))((acc, a) =>
-                acc flatMap { _ =>
+                acc.flatMap { _ =>
                   a
               })) shouldBe Vector(N - 1)
         }
@@ -55,8 +55,8 @@ class StreamPerformanceSpec extends Fs2Spec {
             (1 until N)
               .map(emit)
               .foldLeft(emit(0).covary[IO])((acc, a) =>
-                acc flatMap { _ =>
-                  eval(IO { () }) flatMap { _ =>
+                acc.flatMap { _ =>
+                  eval(IO { () }).flatMap { _ =>
                     a
                   }
               })) shouldBe Vector(N - 1)
@@ -72,7 +72,7 @@ class StreamPerformanceSpec extends Fs2Spec {
               .map(emit)
               .reverse
               .foldLeft(emit(0))((acc, a) =>
-                a flatMap { _ =>
+                a.flatMap { _ =>
                   acc
               })) shouldBe Vector(0)
         }
@@ -87,8 +87,8 @@ class StreamPerformanceSpec extends Fs2Spec {
               .map(emit)
               .reverse
               .foldLeft(emit(0).covary[IO])((acc, a) =>
-                a flatMap { _ =>
-                  eval(IO { () }) flatMap { _ =>
+                a.flatMap { _ =>
+                  eval(IO { () }).flatMap { _ =>
                     acc
                   }
               })) shouldBe Vector(0)
@@ -103,7 +103,7 @@ class StreamPerformanceSpec extends Fs2Spec {
             (1 until N)
               .map(emit)
               .foldLeft(emit(0) ++ emit(1) ++ emit(2))((acc, a) =>
-                acc flatMap { _ =>
+                acc.flatMap { _ =>
                   a
               })) shouldBe Vector(N - 1, N - 1, N - 1)
         }
@@ -118,7 +118,7 @@ class StreamPerformanceSpec extends Fs2Spec {
               .map(emit)
               .reverse
               .foldLeft(emit(0) ++ emit(1) ++ emit(2))((acc, a) =>
-                a flatMap { _ =>
+                a.flatMap { _ =>
                   acc
               })) shouldBe Vector(0, 1, 2)
         }
@@ -152,7 +152,7 @@ class StreamPerformanceSpec extends Fs2Spec {
             List
               .fill(N)(bracketed)
               .foldLeft(Stream.raiseError(FailWhale): Stream[IO, Int]) { (acc, hd) =>
-                acc handleErrorWith { _ =>
+                acc.handleErrorWith { _ =>
                   hd
                 }
               }
@@ -165,7 +165,7 @@ class StreamPerformanceSpec extends Fs2Spec {
             List
               .fill(N)(bracketed)
               .foldLeft(Stream.raiseError(FailWhale): Stream[IO, Int]) { (tl, hd) =>
-                hd handleErrorWith { _ =>
+                hd.handleErrorWith { _ =>
                   tl
                 }
               }

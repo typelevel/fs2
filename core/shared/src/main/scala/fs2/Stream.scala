@@ -226,8 +226,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def chunkLimit(n: Int): Stream[F, Chunk[O]] =
-    this repeatPull {
-      _.unconsLimit(n) flatMap {
+    this.repeatPull {
+      _.unconsLimit(n).flatMap {
         case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output1(hd.force.toChunk).as(Some(tl))
       }
@@ -460,7 +460,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * res0: List[Int] = List(0, 2, 4, 6, 8)
     * }}}
     */
-  def filter(p: O => Boolean): Stream[F, O] = mapSegments(_ filter p)
+  def filter(p: O => Boolean): Stream[F, O] = mapSegments(_.filter(p))
 
   /**
     * Like `filter`, but the predicate `f` depends on the previously emitted and
@@ -595,8 +595,10 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
           val (k1, out) = current.getOrElse((f(hd(0)), Segment.empty[O]))
           doChunk(hd, tl, k1, out, None)
         case None =>
-          val l = current.map { case (k1, out) => Pull.output1((k1, out)) } getOrElse Pull
-            .pure(())
+          val l = current
+            .map { case (k1, out) => Pull.output1((k1, out)) }
+            .getOrElse(Pull
+              .pure(()))
           l >> Pull.done
       }
 
@@ -731,7 +733,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def map[O2](f: O => O2): Stream[F, O2] =
     this.repeatPull(_.uncons.flatMap {
       case None           => Pull.pure(None);
-      case Some((hd, tl)) => Pull.output(hd map f).as(Some(tl))
+      case Some((hd, tl)) => Pull.output(hd.map(f)).as(Some(tl))
     })
 
   /**
@@ -893,8 +895,8 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def segmentLimit(n: Int): Stream[F, Segment[O, Unit]] =
-    this repeatPull {
-      _.unconsLimit(n) flatMap {
+    this.repeatPull {
+      _.unconsLimit(n).flatMap {
         case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
         case None           => Pull.pure(None)
       }
@@ -912,7 +914,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def segmentN(n: Int, allowFewer: Boolean = true): Stream[F, Segment[O, Unit]] =
-    this repeatPull {
+    this.repeatPull {
       _.unconsN(n, allowFewer).flatMap {
         case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
         case None           => Pull.pure(None)
@@ -1071,7 +1073,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def unchunk: Stream[F, O] =
-    this repeatPull {
+    this.repeatPull {
       _.uncons1.flatMap {
         case None           => Pull.pure(None);
         case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
@@ -1488,7 +1490,7 @@ object Stream {
     require(size > 0, "size must be > 0, was: " + size)
     unfold(start) { lower =>
       if (lower < stopExclusive)
-        Some((lower -> ((lower + size) min stopExclusive), lower + size))
+        Some((lower -> ((lower + size).min(stopExclusive)), lower + size))
       else
         None
     }
@@ -1657,10 +1659,11 @@ object Stream {
                 .interruptWhen(interruptR.get.attempt)
                 .compile
                 .drain
-                .attempt flatMap {
-                case Right(_) | Left(_: Interrupted) => doneR.complete(())
-                case Left(err)                       => interruptL.complete(err) *> doneR.complete(())
-              }
+                .attempt
+                .flatMap {
+                  case Right(_) | Left(_: Interrupted) => doneR.complete(())
+                  case Left(err)                       => interruptL.complete(err) *> doneR.complete(())
+                }
 
             Stream.eval(async.fork(runR)) >>
               self
@@ -1708,9 +1711,9 @@ object Stream {
     def diamond[B, C, D](f: Pipe[F, O, B])(qs: F[Queue[F, Option[Segment[O, Unit]]]],
                                            g: Pipe[F, O, C])(
         combine: Pipe2[F, B, C, D])(implicit F: Effect[F], ec: ExecutionContext): Stream[F, D] =
-      Stream.eval(qs) flatMap { q =>
-        Stream.eval(async.semaphore[F](1)) flatMap { enqueueNoneSemaphore =>
-          Stream.eval(async.semaphore[F](1)) flatMap { dequeueNoneSemaphore =>
+      Stream.eval(qs).flatMap { q =>
+        Stream.eval(async.semaphore[F](1)).flatMap { enqueueNoneSemaphore =>
+          Stream.eval(async.semaphore[F](1)).flatMap { dequeueNoneSemaphore =>
             combine(
               f {
                 val enqueueNone: F[Unit] =
@@ -1770,7 +1773,7 @@ object Stream {
       */
     def either[O2](that: Stream[F, O2])(implicit F: Effect[F],
                                         ec: ExecutionContext): Stream[F, Either[O, O2]] =
-      self.map(Left(_)) merge that.map(Right(_))
+      self.map(Left(_)).merge(that.map(Right(_)))
 
     /**
       * Alias for `flatMap(o => Stream.eval(f(o)))`.
@@ -1926,7 +1929,7 @@ object Stream {
               haltWhenTrue
                 .evalMap {
                   case false => F.pure(false)
-                  case true  => interruptL.complete(Right(())) as true
+                  case true  => interruptL.complete(Right(())).as(true)
                 }
                 .takeWhile(!_)
                 .interruptWhen(interruptR.get.attempt)
@@ -1961,7 +1964,7 @@ object Stream {
       Stream
         .getScope[F]
         .flatMap { scope =>
-          Stream.eval(async.fork(haltOnSignal flatMap scope.interrupt)) flatMap { _ =>
+          Stream.eval(async.fork(haltOnSignal.flatMap(scope.interrupt))).flatMap { _ =>
             self
           }
         }
@@ -2014,101 +2017,106 @@ object Stream {
       val _ = ev // Convince scalac that ev is used
       assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
       val outer = self.asInstanceOf[Stream[F, Stream[F, O2]]]
-      Stream.eval(async.signalOf(None: Option[Option[Throwable]])) flatMap { done =>
-        Stream.eval(async.semaphore(maxOpen)) flatMap { available =>
-          Stream.eval(async.signalOf(1l)) flatMap { running => // starts with 1 because outer stream is running by default
-            Stream.eval(async.mutable.Queue
-              .synchronousNoneTerminated[F, Segment[O2, Unit]]) flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-              // stops the join evaluation
-              // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
-              def stop(rslt: Option[Throwable]): F[Unit] =
-                done.modify {
-                  case rslt0 @ Some(Some(err0)) =>
-                    rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-                      Some(Some(new CompositeFailure(err0, NonEmptyList.of(err))))
+      Stream.eval(async.signalOf(None: Option[Option[Throwable]])).flatMap { done =>
+        Stream.eval(async.semaphore(maxOpen)).flatMap { available =>
+          Stream
+            .eval(async.signalOf(1l))
+            .flatMap { running => // starts with 1 because outer stream is running by default
+              Stream
+                .eval(async.mutable.Queue
+                  .synchronousNoneTerminated[F, Segment[O2, Unit]])
+                .flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+                  // stops the join evaluation
+                  // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
+                  def stop(rslt: Option[Throwable]): F[Unit] =
+                    done.modify {
+                      case rslt0 @ Some(Some(err0)) =>
+                        rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
+                          Some(Some(new CompositeFailure(err0, NonEmptyList.of(err))))
+                        }
+                      case _ => Some(rslt)
+                    } *> outputQ.enqueue1(None)
+
+                  val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
+                  val decrementRunning: F[Unit] =
+                    running.modify(_ - 1).flatMap { c =>
+                      if (c.now == 0) stop(None)
+                      else F.unit
                     }
-                  case _ => Some(rslt)
-                } *> outputQ.enqueue1(None)
 
-              val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
-              val decrementRunning: F[Unit] =
-                running.modify(_ - 1).flatMap { c =>
-                  if (c.now == 0) stop(None)
-                  else F.unit
-                }
-
-              // runs inner stream
-              // each stream is forked.
-              // terminates when killSignal is true
-              // if fails will enq in queue failure
-              // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
-              // and that it must be released once the inner stream terminates or fails.
-              def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] =
-                outerScope.lease flatMap {
-                  case Some(lease) =>
-                    available.decrement *>
-                      incrementRunning *>
-                      async.fork {
-                        inner.segments
-                          .evalMap { s =>
-                            outputQ.enqueue1(Some(s))
+                  // runs inner stream
+                  // each stream is forked.
+                  // terminates when killSignal is true
+                  // if fails will enq in queue failure
+                  // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
+                  // and that it must be released once the inner stream terminates or fails.
+                  def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] =
+                    outerScope.lease.flatMap {
+                      case Some(lease) =>
+                        available.decrement *>
+                          incrementRunning *>
+                          async.fork {
+                            inner.segments
+                              .evalMap { s =>
+                                outputQ.enqueue1(Some(s))
+                              }
+                              .interruptWhen(done.map(_.nonEmpty))
+                              . // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                              compile
+                              .drain
+                              .attempt
+                              .flatMap {
+                                case Right(()) => F.unit
+                                case Left(err) => stop(Some(err))
+                              } *>
+                              lease.cancel *> //todo: propagate failure here on exception ???
+                              available.increment *>
+                              decrementRunning
                           }
-                          .interruptWhen(done.map(_.nonEmpty))
-                          . // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
-                          compile
-                          .drain
-                          .attempt
-                          .flatMap {
-                            case Right(()) => F.unit
-                            case Left(err) => stop(Some(err))
-                          } *>
-                          lease.cancel *> //todo: propagate failure here on exception ???
-                          available.increment *>
-                          decrementRunning
-                      }
 
-                  case None =>
-                    F.raiseError(new Throwable("Outer scope is closed during inner stream startup"))
-                }
-
-              // runs the outer stream, interrupts when kill == true, and then decrements the `running`
-              def runOuter: F[Unit] =
-                outer
-                  .flatMap { inner =>
-                    Stream.getScope[F].evalMap { outerScope =>
-                      runInner(inner, outerScope)
+                      case None =>
+                        F.raiseError(
+                          new Throwable("Outer scope is closed during inner stream startup"))
                     }
-                  }
-                  .interruptWhen(done.map(_.nonEmpty))
-                  .compile
-                  .drain
-                  .attempt
-                  .flatMap {
-                    case Right(_)  => F.unit
-                    case Left(err) => stop(Some(err))
-                  } *> decrementRunning
 
-              // awaits when all streams (outer + inner) finished,
-              // and then collects result of the stream (outer + inner) execution
-              def signalResult: Stream[F, O2] =
-                done.discrete.take(1) flatMap {
-                  _.flatten
-                    .fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
-                }
-
-              Stream.eval(async.start(runOuter)) >>
-                outputQ.dequeue.unNoneTerminate
-                  .flatMap { Stream.segment(_).covary[F] }
-                  .onFinalize {
-                    stop(None) *> running.discrete
-                      .dropWhile(_ > 0)
-                      .take(1)
+                  // runs the outer stream, interrupts when kill == true, and then decrements the `running`
+                  def runOuter: F[Unit] =
+                    outer
+                      .flatMap { inner =>
+                        Stream.getScope[F].evalMap { outerScope =>
+                          runInner(inner, outerScope)
+                        }
+                      }
+                      .interruptWhen(done.map(_.nonEmpty))
                       .compile
                       .drain
-                  } ++
-                  signalResult
+                      .attempt
+                      .flatMap {
+                        case Right(_)  => F.unit
+                        case Left(err) => stop(Some(err))
+                      } *> decrementRunning
+
+                  // awaits when all streams (outer + inner) finished,
+                  // and then collects result of the stream (outer + inner) execution
+                  def signalResult: Stream[F, O2] =
+                    done.discrete.take(1).flatMap {
+                      _.flatten
+                        .fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
+                    }
+
+                  Stream.eval(async.start(runOuter)) >>
+                    outputQ.dequeue.unNoneTerminate
+                      .flatMap { Stream.segment(_).covary[F] }
+                      .onFinalize {
+                        stop(None) *> running.discrete
+                          .dropWhile(_ > 0)
+                          .take(1)
+                          .compile
+                          .drain
+                      } ++
+                      signalResult
+                }
             }
-          }
         }
       }
     }
@@ -2218,13 +2226,13 @@ object Stream {
       * }}}
       */
     def observe(sink: Sink[F, O])(implicit F: Effect[F], ec: ExecutionContext): Stream[F, O] =
-      self.diamond(identity)(async.mutable.Queue.synchronousNoneTerminated, sink andThen (_.drain))(
+      self.diamond(identity)(async.mutable.Queue.synchronousNoneTerminated, sink.andThen(_.drain))(
         _.merge(_))
 
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Effect[F],
                                                        ec: ExecutionContext): Stream[F, O] =
-      self.diamond(identity)(async.boundedQueue(maxQueued), sink andThen (_.drain))(_.merge(_))
+      self.diamond(identity)(async.boundedQueue(maxQueued), sink.andThen(_.drain))(_.merge(_))
 
     /**
       * Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`.
@@ -2237,7 +2245,7 @@ object Stream {
       * }}}
       */
     def onComplete[O2 >: O](s2: => Stream[F, O2]): Stream[F, O2] =
-      (self handleErrorWith (e => s2 ++ Stream.raiseError(e))) ++ s2
+      (self.handleErrorWith(e => s2 ++ Stream.raiseError(e))) ++ s2
 
     /**
       * If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
@@ -2265,7 +2273,7 @@ object Stream {
           controlFuture: AsyncPull[F, Option[(Segment[Boolean, Unit], Stream[F, Boolean])]],
           srcFuture: AsyncPull[F, Option[(Segment[O, Unit], Stream[F, O])]]
       ): Pull[F, O, Option[Nothing]] =
-        (controlFuture race srcFuture).pull.flatMap {
+        controlFuture.race(srcFuture).pull.flatMap {
           case Left(None)  => Pull.pure(None)
           case Right(None) => Pull.pure(None)
           case Left(Some((s, controlStream))) =>
@@ -2308,11 +2316,11 @@ object Stream {
       * enabling processing on either side of the `prefetch` to run in parallel.
       */
     def prefetch(implicit ec: ExecutionContext, F: Effect[F]): Stream[F, O] =
-      self repeatPull {
+      self.repeatPull {
         _.uncons.flatMap {
           case None => Pull.pure(None)
           case Some((hd, tl)) =>
-            tl.pull.prefetch flatMap { p =>
+            tl.pull.prefetch.flatMap { p =>
               Pull.output(hd) >> p
             }
         }
@@ -2757,7 +2765,7 @@ object Stream {
 
     /** Like [[uncons]] but waits for a single element instead of an entire segment. */
     def uncons1: Pull[F, Nothing, Option[(O, Stream[F, O])]] =
-      uncons flatMap {
+      uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
           hd.force.uncons1 match {
@@ -2781,20 +2789,24 @@ object Stream {
       type Res = Option[(Segment[O, Unit], Stream[F, O])]
 
       Pull.fromFreeC {
-        Algebra.getScope[F, Nothing] flatMap { scope =>
+        Algebra.getScope[F, Nothing].flatMap { scope =>
           val runStep =
-            Algebra.compileScope(
-              scope,
-              Algebra.uncons(self.get).flatMap(Algebra.output1(_)),
-              None: UO
-            )((_, uo) => uo.asInstanceOf[UO]) map {
-              _ map { case (hd, tl) => (hd, fromFreeC(tl)) }
-            }
+            Algebra
+              .compileScope(
+                scope,
+                Algebra.uncons(self.get).flatMap(Algebra.output1(_)),
+                None: UO
+              )((_, uo) => uo.asInstanceOf[UO])
+              .map {
+                _.map { case (hd, tl) => (hd, fromFreeC(tl)) }
+              }
 
           Algebra.eval {
-            Promise.empty[F, Either[Throwable, Res]] flatMap { p =>
-              async.fork(runStep.attempt.flatMap(p.complete(_))) as AsyncPull
-                .readAttemptPromise(p)
+            Promise.empty[F, Either[Throwable, Res]].flatMap { p =>
+              async
+                .fork(runStep.attempt.flatMap(p.complete(_)))
+                .as(AsyncPull
+                  .readAttemptPromise(p))
             }
           }
         }
@@ -3002,7 +3014,7 @@ object Stream {
       */
     def prefetch(implicit ec: ExecutionContext,
                  F: Effect[F]): Pull[F, Nothing, Pull[F, Nothing, Option[Stream[F, O]]]] =
-      unconsAsync.map { _.pull.map { _.map { case (hd, h) => h cons hd } } }
+      unconsAsync.map { _.pull.map { _.map { case (hd, h) => h.cons(hd) } } }
 
     /**
       * Like `scan` but `f` is applied to each segment of the source stream.

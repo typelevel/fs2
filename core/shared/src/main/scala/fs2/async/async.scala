@@ -66,7 +66,7 @@ package object async {
   def hold[F[_], A](initial: A, source: Stream[F, A])(
       implicit F: Effect[F],
       ec: ExecutionContext): Stream[F, immutable.Signal[F, A]] =
-    Stream.eval(signalOf[F, A](initial)) flatMap { sig =>
+    Stream.eval(signalOf[F, A](initial)).flatMap { sig =>
       Stream(sig).concurrently(source.evalMap(sig.set))
     }
 
@@ -92,7 +92,7 @@ package object async {
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
   def parallelTraverse[F[_], G[_], A, B](fa: F[A])(
       f: A => G[B])(implicit F: Traverse[F], G: Effect[G], ec: ExecutionContext): G[F[B]] =
-    F.traverse(fa)(f andThen start[G, B]).flatMap(F.sequence(_))
+    F.traverse(fa)(f.andThen(start[G, B])).flatMap(F.sequence(_))
 
   /** Like `sequence` but each `G[A]` is evaluated in parallel. */
   def parallelSequence[F[_], G[_], A](
@@ -146,8 +146,8 @@ package object async {
           }
         }
 
-        unsafeRunAsync(fa map Left.apply)(res => IO(win(res)))
-        unsafeRunAsync(fb map Right.apply)(res => IO(win(res)))
+        unsafeRunAsync(fa.map(Left.apply))(res => IO(win(res)))
+        unsafeRunAsync(fb.map(Right.apply))(res => IO(win(res)))
       }
 
       go *> p.get.flatMap(F.fromEither)
