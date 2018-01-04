@@ -87,7 +87,7 @@ The 0.10 release is almost complete and will be released when Cats 1.0 is releas
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M11" // For cats 1.0.0-RC2 and cats-effect 0.6
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M11" // For cats 1.0.0 and cats-effect 0.7
 
 // optional I/O library
 libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M11"
