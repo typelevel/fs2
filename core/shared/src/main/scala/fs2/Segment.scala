@@ -1269,13 +1269,17 @@ object Segment {
       * res1: List[Chunk[Int]] = List(Chunk(0), Chunk(1, 2, 3))
       * }}}
       */
-    def foreachChunk(f: Chunk[O] => Unit): Unit = {
+    def foreachChunk(f: Chunk[O] => Unit): R = {
+      var result: Option[R] = None
       val trampoline = new Trampoline
       val step = self
-        .stage(Depth(0), trampoline.defer, o => f(Chunk.singleton(o)), f, r => throw Done)
+        .stage(Depth(0), trampoline.defer, o => f(Chunk.singleton(o)), f, r => {
+          result = Some(r); throw Done
+        })
         .value
       try while (true) stepAll(step, trampoline)
       catch { case Done => }
+      result.get
     }
 
     /**
@@ -1289,7 +1293,7 @@ object Segment {
       * res1: List[Int] = List(0, 1, 2, 3)
       * }}}
       */
-    def foreach(f: O => Unit): Unit =
+    def foreach(f: O => Unit): R =
       foreachChunk { c =>
         var i = 0
         while (i < c.size) {
@@ -1313,25 +1317,6 @@ object Segment {
       val trampoline = new Trampoline
       val step = self
         .stage(Depth(0), trampoline.defer, _ => (), _ => (), r => {
-          result = Some(r); throw Done
-        })
-        .value
-      try while (true) stepAll(step, trampoline)
-      catch { case Done => }
-      result.get
-    }
-
-    /**
-      * Like `run` but allows to run `f` for each `O`.
-      * as they are processed when running this segment.
-      * Allows to perfrom efficient accumulation of `O` while running the stream.
-      */
-    final def runForEach(f: O => Unit): R = {
-      def chunk(ch: Chunk[O]): Unit = ch.foreach(f)
-      var result: Option[R] = None
-      val trampoline = new Trampoline
-      val step = self
-        .stage(Depth(0), trampoline.defer, f, chunk, r => {
           result = Some(r); throw Done
         })
         .value
