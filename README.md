@@ -62,8 +62,14 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
+* [API docs (fs2-core 0.10.0-M11)][core-api-0.10.0-M11], [API docs (fs2-io 0.10.0-M11)][io-api-0.10.0-M11]
 * [API docs (fs2-core 0.10.0-M10)][core-api-0.10.0-M10], [API docs (fs2-io 0.10.0-M10)][io-api-0.10.0-M10]
 * [API docs (fs2-core 0.10.0-M8)][core-api-0.10.0-M8], [API docs (fs2-io 0.10.0-M8)][io-api-0.10.0-M8]
+
+[io-api-0.10.0-M11]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-M11/fs2-io_2.12-0.10.0-M11-javadoc.jar/!/fs2/index.html
+[core-api-0.10.0-M11]:
+https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-M11/fs2-core_2.12-0.10.0-M11-javadoc.jar/!/fs2/index.html
 
 [io-api-0.10.0-M10]:
 https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-M10/fs2-io_2.12-0.10.0-M10-javadoc.jar/!/fs2/index.html
@@ -81,10 +87,10 @@ The 0.10 release is almost complete and will be released when Cats 1.0 is releas
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M10" // For cats 1.0.0-RC2 and cats-effect 0.6
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-M11" // For cats 1.0.0-RC2 and cats-effect 0.6
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M10"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-M11"
 ```
 
 The 0.9 release is out and we recommend upgrading. You may want to first [read the 0.9 migration guide](docs/migration-guide-0.9.md) if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
