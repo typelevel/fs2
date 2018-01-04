@@ -159,7 +159,7 @@ private[fs2] object Algebra {
             }
 
           case alg: Effectful[F, O, r] =>
-            F.flatMap(compileShared(scope, alg)) {
+            F.flatMap(compileEffect(scope, alg)) {
               case (scope, r) =>
                 compileUncons(scope, f(r), chunkSize, maxSteps)
             }
@@ -216,19 +216,43 @@ private[fs2] object Algebra {
                 }
 
               case alg: Effectful[F, O, _] =>
-                F.flatMap(compileShared(scope, alg)) {
+                F.flatMap(compileEffect(scope, alg)) {
                   case (scope, r) =>
                     compileFoldLoop(scope, acc, g, f(r))
                 }
 
             }
-          case Some(rsn) => compileFoldLoop(scope, acc, g, f(Left(rsn)))
+          case Some(int: Interrupted) =>
+            fx match {
+              case uncons: Algebra.Uncons[F, x, O] =>
+                F.flatMap(
+                  F.attempt(
+                    compileUncons(scope,
+                                  uncons.s.asHandler(int),
+                                  uncons.chunkSize,
+                                  uncons.maxSteps))) {
+                  case Right((scope, u)) =>
+                    compileFoldLoop(scope, acc, g, f(Right(u)))
+                  case Left(err) => compileFoldLoop(scope, acc, g, f(Left(err)))
+                }
+
+              case c: Algebra.CloseScope[F, O] =>
+                F.flatMap(c.toClose.close) { result =>
+                  F.flatMap(c.toClose.openAncestor) { scopeAfterClose =>
+                    compileFoldLoop(scopeAfterClose, acc, g, f(Left(int)))
+                  }
+                }
+
+              case other => compileFoldLoop(scope, acc, g, f(Left(int)))
+            }
+          case Some(rsn) =>
+            compileFoldLoop(scope, acc, g, f(Left(rsn)))
         }
       case e =>
         sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
     }
 
-  def compileShared[F[_], O](
+  def compileEffect[F[_], O](
       scope: CompileScope[F],
       eff: Effectful[F, O, _]
   )(implicit F: Sync[F]): F[(CompileScope[F], Either[Throwable, Any])] =
