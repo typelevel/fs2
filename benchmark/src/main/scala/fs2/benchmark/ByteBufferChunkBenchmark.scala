@@ -1,7 +1,7 @@
 package fs2
 package benchmark
 
-import org.openjdk.jmh.annotations.{Benchmark, Param, Setup, State, Scope}
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, Setup, State}
 import java.nio.ByteBuffer
 
 @State(Scope.Thread)
@@ -23,33 +23,31 @@ class ByteBufferChunkBenchmark {
     Chunk.bytes(bbIndirect.array).toArray
 
   @Benchmark
-  def bytesToArrayDirect(): Array[Byte] = {
+  def bytesToArrayDirect(): Array[Byte] =
     Chunk.bytes {
       val arr = new Array[Byte](bbDirect.remaining)
       bbDirect.slice.get(arr, 0, bbDirect.remaining)
       arr
     }.toArray
-  }
 
   @Benchmark
   def bytesToByteBufferIndirect(): ByteBuffer =
     Chunk.bytes(bbIndirect.array).toByteBuffer
 
   @Benchmark
-  def bytesToByteBufferDirect(): ByteBuffer = {
+  def bytesToByteBufferDirect(): ByteBuffer =
     Chunk.bytes {
       val arr = new Array[Byte](bbDirect.remaining)
       bbDirect.slice.get(arr, 0, bbDirect.remaining)
       arr
     }.toByteBuffer
-  }
 
   @Benchmark
   def byteBufferToArrayIndirect(): Array[Byte] =
     Chunk.byteBuffer(bbIndirect).toArray
 
   @Benchmark
-  def byteBufferToArrayDirect(): Array[Byte] = 
+  def byteBufferToArrayDirect(): Array[Byte] =
     Chunk.byteBuffer(bbDirect).toArray
 
   @Benchmark

@@ -7,11 +7,11 @@ import Catenable._
 import scala.annotation.tailrec
 
 /**
- * Trivial catenable sequence. Supports O(1) append, and (amortized)
- * O(1) `uncons`, such that walking the sequence via N successive `uncons`
- * steps takes O(N). Like a difference list, conversion to a `Seq[A]`
- * takes linear time, regardless of how the sequence is built up.
- */
+  * Trivial catenable sequence. Supports O(1) append, and (amortized)
+  * O(1) `uncons`, such that walking the sequence via N successive `uncons`
+  * steps takes O(N). Like a difference list, conversion to a `Seq[A]`
+  * takes linear time, regardless of how the sequence is built up.
+  */
 sealed abstract class Catenable[+A] {
 
   /** Returns the head and tail of this catenable if non empty, none otherwise. Amortized O(1). */
@@ -29,7 +29,9 @@ sealed abstract class Catenable[+A] {
             rights.trimEnd(1)
           }
         case Singleton(a) =>
-          val next = if (rights.isEmpty) empty else rights.reduceLeft((x, y) => Append(y,x))
+          val next =
+            if (rights.isEmpty) empty
+            else rights.reduceLeft((x, y) => Append(y, x))
           result = Some(a -> next)
         case Append(l, r) => c = l; rights += r
       }
@@ -44,23 +46,23 @@ sealed abstract class Catenable[+A] {
   def nonEmpty: Boolean = !isEmpty
 
   /** Concatenates this with `c` in O(1) runtime. */
-  final def ++[A2>:A](c: Catenable[A2]): Catenable[A2] =
+  final def ++[A2 >: A](c: Catenable[A2]): Catenable[A2] =
     append(this, c)
 
   /** Returns a new catenable consisting of `a` followed by this. O(1) runtime. */
-  final def cons[A2>:A](a: A2): Catenable[A2] =
+  final def cons[A2 >: A](a: A2): Catenable[A2] =
     append(singleton(a), this)
 
   /** Alias for [[cons]]. */
-  final def +:[A2>:A](a: A2): Catenable[A2] =
+  final def +:[A2 >: A](a: A2): Catenable[A2] =
     cons(a)
 
   /** Returns a new catenable consisting of this followed by `a`. O(1) runtime. */
-  final def snoc[A2>:A](a: A2): Catenable[A2] =
+  final def snoc[A2 >: A](a: A2): Catenable[A2] =
     append(this, singleton(a))
 
   /** Alias for [[snoc]]. */
-  final def :+[A2>:A](a: A2): Catenable[A2] =
+  final def :+[A2 >: A](a: A2): Catenable[A2] =
     snoc(a)
 
   /** Applies the supplied function to each element and returns a new catenable. */
@@ -93,15 +95,14 @@ sealed abstract class Catenable[+A] {
     */
   final def deleteFirst(f: A => Boolean): Option[(A, Catenable[A])] = {
     @tailrec
-    def go(rem: Catenable[A], acc: Catenable[A]): Option[(A, Catenable[A])] = {
+    def go(rem: Catenable[A], acc: Catenable[A]): Option[(A, Catenable[A])] =
       rem.uncons match {
         case Some((a, tail)) =>
-          if (! f(a)) go(tail, acc :+ a)
+          if (!f(a)) go(tail, acc :+ a)
           else Some((a, acc ++ tail))
 
         case None => None
       }
-    }
     go(this, Catenable.empty)
   }
 
@@ -120,7 +121,9 @@ sealed abstract class Catenable[+A] {
           }
         case Singleton(a) =>
           f(a)
-          c = if (rights.isEmpty) Empty else rights.reduceLeft((x, y) => Append(y,x))
+          c =
+            if (rights.isEmpty) Empty
+            else rights.reduceLeft((x, y) => Append(y, x))
           rights.clear()
         case Append(l, r) => c = l; rights += r
       }
@@ -130,14 +133,18 @@ sealed abstract class Catenable[+A] {
   /** Converts to a list. */
   final def toList: List[A] = {
     val builder = List.newBuilder[A]
-    foreach { a => builder += a; () }
+    foreach { a =>
+      builder += a; ()
+    }
     builder.result
   }
 
   /** Converts to a vector. */
   final def toVector: Vector[A] = {
     val builder = new scala.collection.immutable.VectorBuilder[A]()
-    foreach { a => builder += a; () }
+    foreach { a =>
+      builder += a; ()
+    }
     builder.result
   }
 
@@ -151,8 +158,10 @@ object Catenable {
   private[fs2] final case class Singleton[A](a: A) extends Catenable[A] {
     def isEmpty: Boolean = false
   }
-  private[fs2] final case class Append[A](left: Catenable[A], right: Catenable[A]) extends Catenable[A] {
-    def isEmpty: Boolean = false // b/c `append` constructor doesn't allow either branch to be empty
+  private[fs2] final case class Append[A](left: Catenable[A], right: Catenable[A])
+      extends Catenable[A] {
+    def isEmpty: Boolean =
+      false // b/c `append` constructor doesn't allow either branch to be empty
   }
 
   /** Empty catenable. */
@@ -173,7 +182,7 @@ object Catenable {
     else s.view.reverse.map(singleton).reduceLeft((x, y) => Append(y, x))
 
   /** Creates a catenable from the specified elements. */
-  def apply[A](as: A*): Catenable[A] = {
+  def apply[A](as: A*): Catenable[A] =
     as match {
       case w: collection.mutable.WrappedArray[A] =>
         if (w.isEmpty) empty
@@ -190,36 +199,42 @@ object Catenable {
         }
       case _ => fromSeq(as)
     }
-  }
 
-  implicit val instance: Traverse[Catenable] with Monad[Catenable] = new Traverse[Catenable] with Monad[Catenable] {
-    def foldLeft[A, B](fa: Catenable[A], b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
-    def foldRight[A, B](fa: Catenable[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = Foldable[List].foldRight(fa.toList, b)(f)
-    override def toList[A](fa: Catenable[A]): List[A] = fa.toList
-    override def isEmpty[A](fa: Catenable[A]): Boolean = fa.isEmpty
-    def traverse[F[_], A, B](fa: Catenable[A])(f: A => F[B])(implicit G: Applicative[F]): F[Catenable[B]] =
-      Traverse[List].traverse(fa.toList)(f).map(Catenable.apply)
-    def pure[A](a: A): Catenable[A] = Catenable.singleton(a)
-    def flatMap[A,B](fa: Catenable[A])(f: A => Catenable[B]): Catenable[B] = fa.flatMap(f)
-    def tailRecM[A,B](a: A)(f: A => Catenable[Either[A,B]]): Catenable[B] = {
-      var acc: Catenable[B] = Catenable.empty
-      @tailrec def go(rest: List[Catenable[Either[A, B]]]): Unit = rest match {
-        case hd :: tl =>
-          hd.uncons match {
-            case Some((hdh, hdt)) => hdh match {
-              case Right(b) =>
-                acc = acc :+ b
-                go(hdt :: tl)
-              case Left(a) =>
-                go(f(a) :: hdt :: tl)
-            }
-            case None =>
-              go(tl)
+  implicit val instance: Traverse[Catenable] with Monad[Catenable] =
+    new Traverse[Catenable] with Monad[Catenable] {
+      def foldLeft[A, B](fa: Catenable[A], b: B)(f: (B, A) => B): B =
+        fa.foldLeft(b)(f)
+      def foldRight[A, B](fa: Catenable[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
+        Foldable[List].foldRight(fa.toList, b)(f)
+      override def toList[A](fa: Catenable[A]): List[A] = fa.toList
+      override def isEmpty[A](fa: Catenable[A]): Boolean = fa.isEmpty
+      def traverse[F[_], A, B](fa: Catenable[A])(f: A => F[B])(
+          implicit G: Applicative[F]): F[Catenable[B]] =
+        Traverse[List].traverse(fa.toList)(f).map(Catenable.apply)
+      def pure[A](a: A): Catenable[A] = Catenable.singleton(a)
+      def flatMap[A, B](fa: Catenable[A])(f: A => Catenable[B]): Catenable[B] =
+        fa.flatMap(f)
+      def tailRecM[A, B](a: A)(f: A => Catenable[Either[A, B]]): Catenable[B] = {
+        var acc: Catenable[B] = Catenable.empty
+        @tailrec def go(rest: List[Catenable[Either[A, B]]]): Unit =
+          rest match {
+            case hd :: tl =>
+              hd.uncons match {
+                case Some((hdh, hdt)) =>
+                  hdh match {
+                    case Right(b) =>
+                      acc = acc :+ b
+                      go(hdt :: tl)
+                    case Left(a) =>
+                      go(f(a) :: hdt :: tl)
+                  }
+                case None =>
+                  go(tl)
+              }
+            case _ => ()
           }
-        case _ => ()
+        go(f(a) :: Nil)
+        acc
       }
-      go(f(a) :: Nil)
-      acc
     }
-  }
 }

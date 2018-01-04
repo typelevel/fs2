@@ -7,11 +7,13 @@ private[fs2] trait SchedulerPlatform {
   val default: Scheduler = new Scheduler {
     override def scheduleOnce(delay: FiniteDuration)(thunk: => Unit): () => Unit = {
       val handle = setTimeout(delay)(thunk)
-      () => { clearTimeout(handle) }
+      () =>
+        { clearTimeout(handle) }
     }
     override def scheduleAtFixedRate(period: FiniteDuration)(thunk: => Unit): () => Unit = {
       val handle = setInterval(period)(thunk)
-      () => { clearInterval(handle) }
+      () =>
+        { clearInterval(handle) }
     }
     override def toString = "Scheduler"
   }

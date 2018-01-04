@@ -15,7 +15,9 @@ class ScalaJsSanityTests extends AsyncFs2Spec {
         Stream.repeatEval(IO(i)).take(10)
       }
     runLogF(src.join(10)).map { result =>
-      result.sorted shouldBe (1 until 100).toVector.flatMap(Vector.fill(10)(_)).sorted
+      result.sorted shouldBe (1 until 100).toVector
+        .flatMap(Vector.fill(10)(_))
+        .sorted
     }
   }
 }

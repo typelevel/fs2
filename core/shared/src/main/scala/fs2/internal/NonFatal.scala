@@ -5,7 +5,7 @@ object NonFatal {
 
   def apply(t: Throwable): Boolean = t match {
     case _: VirtualMachineError => false
-    case _ => true
+    case _                      => true
   }
 
   def unapply(t: Throwable): Option[Throwable] =
