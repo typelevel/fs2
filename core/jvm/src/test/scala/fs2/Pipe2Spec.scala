@@ -215,7 +215,6 @@ class Pipe2Spec extends Fs2Spec {
 
     "interrupt (4)" in {
       // tests the interruption of the constant stream with flatMap combinator
-      // for { i <- 0 until 1000} yield {
       val interrupt =
         mkScheduler
           .flatMap {
@@ -234,7 +233,6 @@ class Pipe2Spec extends Fs2Spec {
         .compile
         .drain
         .unsafeRunSync
-      // }
     }
 
     "interrupt (5)" in {
