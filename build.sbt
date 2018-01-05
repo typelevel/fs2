@@ -27,7 +27,7 @@ lazy val commonSettings = Seq(
     "-language:postfixOps",
     "-Ypartial-unification"
   ) ++
-    (if (scalaBinaryVersion.value startsWith "2.12")
+    (if (scalaBinaryVersion.value.startsWith("2.12"))
        List(
          "-Xlint",
          "-Xfatal-warnings",
@@ -35,7 +35,7 @@ lazy val commonSettings = Seq(
          "-Ywarn-value-discard",
          "-Ywarn-unused-import"
        )
-     else Nil) ++ (if (scalaBinaryVersion.value startsWith "2.11")
+     else Nil) ++ (if (scalaBinaryVersion.value.startsWith("2.11"))
                      List("-Xexperimental")
                    else
                      Nil), // 2.11 needs -Xexperimental to enable SAM conversion
@@ -93,7 +93,7 @@ lazy val scaladocSettings = Seq(
     "-implicits-sound-shadowing",
     "-implicits-show-all"
   ),
-  scalacOptions in (Compile, doc) ~= { _ filterNot { _ == "-Xfatal-warnings" } },
+  scalacOptions in (Compile, doc) ~= { _.filterNot { _ == "-Xfatal-warnings" } },
   autoAPIMappings := true
 )
 
@@ -101,9 +101,9 @@ lazy val publishingSettings = Seq(
   publishTo := {
     val nexus = "https://oss.sonatype.org/"
     if (version.value.trim.endsWith("SNAPSHOT"))
-      Some("snapshots" at nexus + "content/repositories/snapshots")
+      Some("snapshots".at(nexus + "content/repositories/snapshots"))
     else
-      Some("releases" at nexus + "service/local/staging/deploy/maven2")
+      Some("releases".at(nexus + "service/local/staging/deploy/maven2"))
   },
   credentials ++= (for {
     username <- Option(System.getenv().get("SONATYPE_USERNAME"))
@@ -281,7 +281,7 @@ lazy val benchmarkMacros = project
   .settings(noPublish)
   .settings(
     name := "fs2-benchmark-macros",
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
+    addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.patch)),
     libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
 
@@ -294,7 +294,7 @@ lazy val benchmark = project
     name := "fs2-benchmark"
   )
   .settings(
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.patch),
+    addCompilerPlugin(("org.scalamacros" % "paradise" % "2.1.1").cross(CrossVersion.patch)),
     libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value
   )
   .enablePlugins(JmhPlugin)
