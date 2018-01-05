@@ -37,7 +37,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
   def stream: Stream[F, O] =
-    Stream.fromFreeC(this.scope.get[F, O, R].map(_ => ()))
+    Stream.fromFreeC(this.scope.get[F, O, Unit])
 
   /**
     * Like [[stream]] but no scope is inserted around the pull, resulting in any resources being
@@ -88,7 +88,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
     })
 
   /** Tracks any resources acquired during this pull and releases them when the pull completes. */
-  def scope: Pull[F, O, R] = Pull.fromFreeC(Algebra.scope(get))
+  def scope: Pull[F, O, Unit] = Pull.fromFreeC(Algebra.scope(get[F, O, R].map(_ => ())))
 }
 
 object Pull {

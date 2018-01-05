@@ -53,16 +53,16 @@ private[fs2] object Algebra {
     * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
     */
-  def scope[F[_], O, R](pull: FreeC[Algebra[F, O, ?], R]): FreeC[Algebra[F, O, ?], R] =
+  def scope[F[_], O](pull: FreeC[Algebra[F, O, ?], Unit]): FreeC[Algebra[F, O, ?], Unit] =
     scope0(pull, None)
 
   /**
     * Like `scope` but allows this scope to be interrupted.
     * Note that this may fail with `Interrupted` when interruption occurred
     */
-  private[fs2] def interruptScope[F[_], O, R](pull: FreeC[Algebra[F, O, ?], R])(
+  private[fs2] def interruptScope[F[_], O](pull: FreeC[Algebra[F, O, ?], Unit])(
       implicit effect: Effect[F],
-      ec: ExecutionContext): FreeC[Algebra[F, O, ?], R] =
+      ec: ExecutionContext): FreeC[Algebra[F, O, ?], Unit] =
     scope0(pull, Some((effect, ec)))
 
   private[fs2] def openScope[F[_], O](interruptible: Option[(Effect[F], ExecutionContext)])
@@ -72,9 +72,9 @@ private[fs2] object Algebra {
   private[fs2] def closeScope[F[_], O](toClose: CompileScope[F]): FreeC[Algebra[F, O, ?], Unit] =
     FreeC.Eval[Algebra[F, O, ?], Unit](CloseScope(toClose))
 
-  private def scope0[F[_], O, R](
-      pull: FreeC[Algebra[F, O, ?], R],
-      interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F, O, ?], R] =
+  private def scope0[F[_], O](
+      pull: FreeC[Algebra[F, O, ?], Unit],
+      interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F, O, ?], Unit] =
     openScope(interruptible).flatMap { scope =>
       pull.transformWith {
         case Right(r) =>
@@ -187,67 +187,58 @@ private[fs2] object Algebra {
         val f = bound.f
           .asInstanceOf[Either[Throwable, Any] => FreeC[Algebra[F, O, ?], Unit]]
         val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F, O, ?], _]].fr
-        F.flatMap(scope.shallInterrupt) {
-          case None =>
-            fx match {
-              case output: Algebra.Output[F, O] =>
-                try {
-                  compileFoldLoop(scope, output.values.fold(acc)(g).force.run._2, g, f(Right(())))
-                } catch {
-                  case NonFatal(err) =>
-                    compileFoldLoop(scope, acc, g, f(Left(err)))
+        fx match {
+          case output: Algebra.Output[F, O] =>
+            F.flatMap(scope.shallInterrupt) { shallInterrupt =>
+              try {
+                shallInterrupt match {
+                  case None =>
+                    compileFoldLoop(scope, output.values.fold(acc)(g).force.run._2, g, f(Right(())))
+                  case Some(rsn) =>
+                    compileFoldLoop(scope, acc, g, f(Left(rsn)))
                 }
 
-              case run: Algebra.Run[F, O, r] =>
-                try {
-                  val (r, b) = run.values.fold(acc)(g).force.run
-                  compileFoldLoop(scope, b, g, f(Right(r)))
-                } catch {
-                  case NonFatal(err) =>
-                    compileFoldLoop(scope, acc, g, f(Left(err)))
-                }
-
-              case uncons: Algebra.Uncons[F, x, O] =>
-                F.flatMap(
-                  F.attempt(compileUncons(scope, uncons.s, uncons.chunkSize, uncons.maxSteps))) {
-                  case Right((scope, u)) =>
-                    compileFoldLoop(scope, acc, g, f(Right(u)))
-                  case Left(err) => compileFoldLoop(scope, acc, g, f(Left(err)))
-                }
-
-              case alg: Effectful[F, O, _] =>
-                F.flatMap(compileEffect(scope, alg)) {
-                  case (scope, r) =>
-                    compileFoldLoop(scope, acc, g, f(r))
-                }
-
+              } catch {
+                case NonFatal(err) =>
+                  compileFoldLoop(scope, acc, g, f(Left(err)))
+              }
             }
-          case Some(int: Interrupted) =>
-            fx match {
-              case uncons: Algebra.Uncons[F, x, O] =>
-                F.flatMap(
-                  F.attempt(
-                    compileUncons(scope,
-                                  uncons.s.asHandler(int),
-                                  uncons.chunkSize,
-                                  uncons.maxSteps))) {
-                  case Right((scope, u)) =>
-                    compileFoldLoop(scope, acc, g, f(Right(u)))
-                  case Left(err) => compileFoldLoop(scope, acc, g, f(Left(err)))
+
+          case run: Algebra.Run[F, O, r] =>
+            F.flatMap(scope.shallInterrupt) { shallInterrupt =>
+              try {
+                shallInterrupt match {
+                  case None =>
+                    val (r, b) = run.values.fold(acc)(g).force.run
+                    compileFoldLoop(scope, b, g, f(Right(r)))
+                  case Some(rsn) =>
+                    compileFoldLoop(scope, acc, g, f(Left(rsn)))
                 }
 
-              case c: Algebra.CloseScope[F, O] =>
-                F.flatMap(c.toClose.close) { result =>
-                  F.flatMap(c.toClose.openAncestor) { scopeAfterClose =>
-                    compileFoldLoop(scopeAfterClose, acc, g, f(Left(int)))
-                  }
-                }
-
-              case other => compileFoldLoop(scope, acc, g, f(Left(int)))
+              } catch {
+                case NonFatal(err) =>
+                  compileFoldLoop(scope, acc, g, f(Left(err)))
+              }
             }
-          case Some(rsn) =>
-            compileFoldLoop(scope, acc, g, f(Left(rsn)))
+
+          case uncons: Algebra.Uncons[F, x, O] =>
+            F.flatMap(scope.shallInterrupt) { shallInterrupt =>
+              val next = shallInterrupt.fold(uncons.s)(uncons.s.asHandler)
+              F.flatMap(F.attempt(compileUncons(scope, next, uncons.chunkSize, uncons.maxSteps))) {
+                case Right((scope, u)) =>
+                  compileFoldLoop(scope, acc, g, f(Right(u)))
+                case Left(err) => compileFoldLoop(scope, acc, g, f(Left(err)))
+              }
+            }
+
+          case alg: Effectful[F, O, _] =>
+            F.flatMap(compileEffect(scope, alg)) {
+              case (scope, r) =>
+                compileFoldLoop(scope, acc, g, f(r))
+            }
+
         }
+
       case e =>
         sys.error("FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
     }
