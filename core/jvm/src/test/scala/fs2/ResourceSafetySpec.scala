@@ -4,6 +4,8 @@ import java.util.concurrent.atomic.AtomicLong
 import cats.effect.IO
 import cats.implicits._
 import org.scalacheck._
+import org.scalatest.concurrent.PatienceConfiguration.Timeout
+import scala.concurrent.duration._
 
 class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
@@ -119,7 +121,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         val b2 = f1.get
         swallow { runLog { b1.merge(b2) } }
         swallow { runLog { b2.merge(b1) } }
-        eventually { c.get shouldBe 0L }
+        eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
       }
     }
 
@@ -134,7 +136,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       // `b1` has just caught `s1` error when `s2` fails
       // `b1` fully completes before `s2` fails
       swallow { runLog { b1.merge(b2) } }
-      eventually { c.get shouldBe 0L }
+      eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (2b)" in {
@@ -145,7 +147,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         swallow { runLog { spuriousFail(b1, f1).merge(b2) } }
         swallow { runLog { b1.merge(spuriousFail(b2, f2)) } }
         swallow { runLog { spuriousFail(b1, f1).merge(spuriousFail(b2, f2)) } }
-        eventually { c.get shouldBe 0L }
+        eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
       }
     }
 
@@ -166,8 +168,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           })
           swallow { runLog { s2.join(n.get).take(10) } }
           swallow { runLog { s2.join(n.get) } }
+          eventually(Timeout(3 second)) { outer.get shouldBe 0L }
           outer.get shouldBe 0L
-          eventually { inner.get shouldBe 0L }
+          eventually(Timeout(3 seconds)) { inner.get shouldBe 0L }
       }
     }
 
@@ -180,7 +183,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       swallow { runLog { s2.prefetch } }
       swallow { runLog { s2.prefetch.prefetch } }
       swallow { runLog { s2.prefetch.prefetch.prefetch } }
-      eventually { c.get shouldBe 0L }
+      eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
     }
 
     "asynchronous resource allocation (5)" in {
@@ -201,7 +204,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
                 .drain)
           }
         }
-        eventually { c.get shouldBe 0L }
+        eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
       }
     }
 
@@ -230,7 +233,8 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           }
         }
       }
-      eventually { c.get shouldBe 0L }
+      // required longer delay here, hence the sleep of 2s and async.start that is not bound.
+      eventually(Timeout(5 second)) { c.get shouldBe 0L }
     }
 
     "evaluating a bracketed stream multiple times is safe" in {
