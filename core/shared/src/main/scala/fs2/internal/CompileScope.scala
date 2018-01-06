@@ -238,6 +238,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     go(self, Catenable.empty)
   }
 
+  /** finds ancestor of this scope given `scopeId` **/
   def findAncestor(scopeId: Token): F[Option[CompileScope[F, O]]] = {
     @tailrec
     def go(curr: CompileScope[F, O]): Option[CompileScope[F, O]] =
@@ -291,7 +292,6 @@ private[fs2] final class CompileScope[F[_], O] private (
         val interruptCause = cause.left.toOption
         F.flatMap(F.attempt(iCtx.promise.complete(interruptCause))) { _ =>
           F.map(iCtx.ref.modify { _.orElse(Some(interruptCause)) }) { _ =>
-            // println(s"XXXR INTERRUPTED: $cause")
             ()
           }
         }
@@ -314,21 +314,14 @@ private[fs2] final class CompileScope[F[_], O] private (
           case Some(Some(err)) => F.pure(Some(Left(err)))
         }
     }
-  //    interruptible match {
-//      case None => F.pure(None)
-//      case Some(iCtx) =>
-//        F.flatMap(iCtx.ref.get) {
-//          case (interrupted, signalled) =>
-//            if (signalled || interrupted.isEmpty) F.pure(None)
-//            else {
-//              F.map(iCtx.ref.modify { case (int, _) => (int, true) }) { c =>
-//                if (c.previous._2) None
-//                else c.previous._1
-//              }
-//            }
-//        }
-//    }
 
+  /**
+    * Builds continuation in case of scope being iterrupted w/o an failure
+    * This finds root scope of the interrupt, then that scope is closed and new `ancestor` scope is opened.
+    * As the last step builds cached `continuation` of the interrupt to continue just after the scope is closed.
+    * @param iCtx
+    * @return
+    */
   private def mkContinuation(iCtx: InterruptContext[F, O])
     : F[Either[Throwable, (CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])]] =
     // find the scope that has to be interrupted
