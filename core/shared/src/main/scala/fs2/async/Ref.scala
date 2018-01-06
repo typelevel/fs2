@@ -129,6 +129,9 @@ object Ref {
   private[fs2] def unsafeCreate[F[_]: Sync, A](a: A): Ref[F, A] =
     new Ref[F, A](new AtomicReference[A](a))
 
+  def fromF[F[_], A](fa: F[A])(implicit F: Sync[F]): F[Ref[F, A]] =
+    fa.map(a => new Ref[F, A](new AtomicReference(a)))
+
   /**
     * The result of a modification to a [[Ref]]
     *
