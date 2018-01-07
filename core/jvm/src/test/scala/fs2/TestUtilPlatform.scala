@@ -23,6 +23,7 @@ trait TestUtilPlatform {
   def throws[A](err: Throwable)(s: Stream[IO, A]): Boolean =
     s.compile.toVector.attempt.unsafeRunSync() match {
       case Left(e) if e == err => true
+      case Left(e)             => println(s"EXPECTED: $err, thrown: $e"); false
       case _                   => false
     }
 }

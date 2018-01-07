@@ -801,11 +801,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def repeat: Stream[F, O] =
-    Stream.fromFreeC[F, O](this.get.transformWith {
-      case Right(_)               => repeat.get
-      case Left(int: Interrupted) => Algebra.pure(())
-      case Left(err)              => Algebra.raiseError(err)
-    })
+    this ++ repeat
 
   /**
     * Converts a `Stream[F,Either[Throwable,O]]` to a `Stream[F,O]`, which emits right values and fails upon the first `Left(t)`.
@@ -1593,11 +1589,8 @@ object Stream {
 
     /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
     def append[O2 >: O](s2: => Stream[F, O2]): Stream[F, O2] =
-      fromFreeC(self.get[F, O2].transformWith {
-        case Right(_) => s2.get
-        case Left(interrupted: Interrupted) =>
-          Algebra.interruptEventually(s2.get, interrupted)
-        case Left(err) => Algebra.raiseError(err)
+      fromFreeC(self.get[F, O2].flatMap { _ =>
+        s2.get
       })
 
     /**
@@ -1661,8 +1654,8 @@ object Stream {
                 .drain
                 .attempt
                 .flatMap {
-                  case Right(_) | Left(_: Interrupted) => doneR.complete(())
-                  case Left(err)                       => interruptL.complete(err) *> doneR.complete(())
+                  case Right(_)  => doneR.complete(())
+                  case Left(err) => interruptL.complete(err) *> doneR.complete(())
                 }
 
             Stream.eval(async.fork(runR)) >>
@@ -1839,19 +1832,8 @@ object Stream {
           }
           only match {
             case None =>
-              // specific version of ++, that in case of error or interrupt shortcuts for evaluation immediately to tail.
-              def fby(s1: Stream[F, O2], s2: => Stream[F, O2]): Stream[F, O2] =
-                fromFreeC[F, O2](s1.get.transformWith {
-                  case Right(()) => s2.get
-                  case Left(int: Interrupted) =>
-                    fromFreeC(Algebra.interruptEventually(tl, int))
-                      .flatMap(f)
-                      .get
-                  case Left(err) => Algebra.raiseError(err)
-                })
-
               hd.map(f)
-                .foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(fby(_, _))
+                .foldRightLazy(Stream.fromFreeC(tl).flatMap(f))(_ ++ _)
                 .get
 
             case Some(o) =>
@@ -1969,10 +1951,6 @@ object Stream {
           }
         }
         .interruptScope
-        .handleErrorWith {
-          case int: fs2.Interrupted => Stream.empty
-          case other                => Stream.raiseError(other)
-        }
 
     /**
       * Creates a scope that may be interrupted by calling scope#interrupt.
@@ -2793,7 +2771,7 @@ object Stream {
           val runStep =
             Algebra
               .compileScope(
-                scope,
+                scope.asInstanceOf[fs2.internal.CompileScope[F, UO]], // todo: resolve cast
                 Algebra.uncons(self.get).flatMap(Algebra.output1(_)),
                 None: UO
               )((_, uo) => uo.asInstanceOf[UO])
