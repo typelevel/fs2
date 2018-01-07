@@ -133,6 +133,7 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
 * [circe-fs2](https://github.com/circe/circe-fs2): Streaming JSON manipulation with [circe](https://github.com/circe/circe).
+* [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch
 
 ### Related projects ###
 
