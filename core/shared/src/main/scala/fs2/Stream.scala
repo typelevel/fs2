@@ -2113,15 +2113,22 @@ object Stream {
       * eventually terminate with `raiseError(e)`, possibly after emitting some
       * elements of `s` first.
       *
-      * Note: `this` and `that` are each pulled for a segment. Upon receiving
-      * a segment, it is emitted downstream. Depending on how that element is
-      * processed, the remainder of `this` and `that` may never be consulted
-      * again (e.g., `a.merge(b) >> Stream.constant(0)`). A common case where
-      * this can be problematic is draining a stream that publishes to a
-      * concurrent data structure and merging it with a consumer from the same
-      * data structure. In such cases, use `consumer.concurrently(producer)`
-      * instead of `consumer.mergeHaltR(producer.drain)` to ensure the producer
-      * continues to run in parallel with consumer processing.
+      * The implementation always tries to pull one chunk from each side
+      * before waiting for it to be consumed by resulting stream.
+      * As such, there may be up to two chunks (one from each stream)
+      * waiting to be processed while the resulting stream
+      * is processing elements.
+      *
+      * Also note that if either side produces empty chunk,
+      * the processing on that side continues,
+      * w/o downstream requiring to consume result.
+      *
+      * If either side does not emit anything (i.e. as result of drain) that side
+      * will continue to run even when the resulting stream did not ask for more data.
+      *
+      * Note that even when `s1.merge(s2.drain) == s1.concurrently(s2)`, the `concurrently` alternative is
+      * more efficient.
+      *
       *
       * @example {{{
       * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
@@ -2134,43 +2141,59 @@ object Stream {
       * }}}
       */
     def merge[O2 >: O](that: Stream[F, O2])(implicit F: Effect[F],
-                                            ec: ExecutionContext): Stream[F, O2] = {
-      def go(l: AsyncPull[F, Option[(Segment[O2, Unit], Stream[F, O2])]],
-             r: AsyncPull[F, Option[(Segment[O2, Unit], Stream[F, O2])]]): Pull[F, O2, Unit] =
-        l.race(r).pull.flatMap {
-          case Left(l) =>
-            l match {
-              case None =>
-                r.pull.flatMap {
-                  case None           => Pull.done
-                  case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
-                }
-              case Some((hd, tl)) =>
-                Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(_, r))
-            }
-          case Right(r) =>
-            r match {
-              case None =>
-                l.pull.flatMap {
-                  case None           => Pull.done
-                  case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
-                }
-              case Some((hd, tl)) =>
-                Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(l, _))
-            }
-        }
+                                            ec: ExecutionContext): Stream[F, O2] =
+      Stream.eval(async.semaphore(0)).flatMap { doneSem =>
+        Stream.eval(async.promise[F, Unit]).flatMap { interruptL =>
+          Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
+            Stream.eval(async.promise[F, Throwable]).flatMap { interruptY =>
+              Stream
+                .eval(async.unboundedQueue[F, Option[(F[Unit], Chunk[O2])]])
+                .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
+                  def runUpstream(s: Stream[F, O2], interrupt: Promise[F, Unit]): F[Unit] =
+                    async.semaphore(1).flatMap { quard =>
+                      s.chunks
+                        .interruptWhen(interrupt.get.attempt)
+                        .evalMap { chunk =>
+                          if (chunk.isEmpty) F.pure(())
+                          else {
+                            quard.decrement >>
+                              outQ.enqueue1(Some((quard.increment, chunk)))
+                          }
+                        }
+                        .compile
+                        .drain
+                        .attempt
+                        .flatMap {
+                          case Right(_) =>
+                            doneSem.increment >>
+                              doneSem.decrementBy(2) >>
+                              async.fork(outQ.enqueue1(None))
+                          case Left(err) =>
+                            interruptY.complete(err) >>
+                              doneSem.increment
+                        }
+                    }
 
-      self
-        .covaryOutput[O2]
-        .pull
-        .unconsAsync
-        .flatMap { s1 =>
-          that.pull.unconsAsync.flatMap { s2 =>
-            go(s1, s2)
+                  Stream.eval(async.fork(runUpstream(self, interruptL))) >>
+                    Stream.eval(async.fork(runUpstream(that, interruptR))) >>
+                    outQ.dequeue.unNoneTerminate
+                      .flatMap {
+                        case (signal, chunk) =>
+                          Stream.eval(signal) >>
+                            Stream.chunk(chunk)
+                      }
+                      .interruptWhen(interruptY.get.map(Left(_): Either[Throwable, Unit]))
+                      .onFinalize {
+                        interruptL.complete(()) >>
+                          interruptR.complete(())
+                      }
+
+                }
+
+            }
           }
         }
-        .stream
-    }
+      }
 
     /** Like `merge`, but halts as soon as _either_ branch halts. */
     def mergeHaltBoth[O2 >: O](that: Stream[F, O2])(implicit F: Effect[F],

@@ -68,6 +68,34 @@ class MergeJoinSpec extends Fs2Spec {
       }
     }
 
+    "merge (left/right failure) never-ending flatMap, failure after emit" in forAll {
+      (s1: PureStream[Int], f: Failure) =>
+        an[Err.type] should be thrownBy {
+          s1.get
+            .merge(f.get)
+            .flatMap { _ =>
+              Stream.eval(IO.async[Unit](_ => ()))
+            }
+            .compile
+            .drain
+            .unsafeRunSync()
+        }
+    }
+
+    "merge (left/right failure) constant flatMap, failure after emit" in forAll {
+      (s1: PureStream[Int], f: Failure) =>
+        an[Err.type] should be thrownBy {
+          s1.get
+            .merge(f.get)
+            .flatMap { _ =>
+              Stream.constant(true)
+            }
+            .compile
+            .drain
+            .unsafeRunSync()
+        }
+    }
+
     "hanging awaits" - {
 
       val full = Stream.constant(42).covary[IO]
