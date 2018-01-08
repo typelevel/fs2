@@ -72,7 +72,10 @@ class MergeJoinSpec extends Fs2Spec {
       (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           s1.get
-            .merge(f.get)
+          // To ensure errors are generated before the merge occurs, we chunk/unchunk here to force any segment computations
+          // This is necessary b/c this test depends on any errors in f occurring before the first flatMapped output of the
+          // merged stream
+            .merge(f.get.chunks.flatMap(Stream.chunk(_)))
             .flatMap { _ =>
               Stream.eval(IO.async[Unit](_ => ()))
             }
@@ -86,7 +89,10 @@ class MergeJoinSpec extends Fs2Spec {
       (s1: PureStream[Int], f: Failure) =>
         an[Err.type] should be thrownBy {
           s1.get
-            .merge(f.get)
+          // To ensure errors are generated before the merge occurs, we chunk/unchunk here to force any segment computations
+          // This is necessary b/c this test depends on any errors in f occurring before the first flatMapped output of the
+          // merged stream
+            .merge(f.get.chunks.flatMap(Stream.chunk(_)))
             .flatMap { _ =>
               Stream.constant(true)
             }
