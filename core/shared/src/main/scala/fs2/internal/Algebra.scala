@@ -360,7 +360,7 @@ private[fs2] object Algebra {
           case gs: GetScope[F, O2]   => gs.asInstanceOf[Algebra[G, O2, X]]
         }
       }
-    FreeC.suspend(fr.translate[Algebra[G, O, ?]](algFtoG))
+    fr.translate[Algebra[G, O, ?]](algFtoG)
   }
 
 }
