@@ -236,13 +236,9 @@ protected[tcp] object Socket {
         // buffer is also reset to be ready to be written into.
         def getBufferOf(sz: Int): F[ByteBuffer] =
           bufferRef.get.flatMap { buff =>
-            if (buff.capacity() < sz) {
-              bufferRef
-                .modify { _ =>
-                  ByteBuffer.allocate(sz)
-                }
-                .map { _.now }
-            } else
+            if (buff.capacity() < sz)
+              F.delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.setSync)
+            else
               F.delay {
                 buff.clear()
                 buff.limit(sz)
