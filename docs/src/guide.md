@@ -94,17 +94,17 @@ eff.toList
 Here's a complete example of running an effectful stream. We'll explain this in a minute:
 
 ```tut
-eff.runLog.unsafeRunSync()
+eff.compile.toVector.unsafeRunSync()
 ```
 
-The first `.runLog` is one of several methods available to 'run' (or perhaps 'compile') the stream to a single effect:
+The first `.compile.toVector` is one of several methods available to 'compile' the stream to a single effect:
 
 ```tut:book
 val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 
-val ra = eff.runLog // gather all output into a Vector
-val rb = eff.run // purely for effects
-val rc = eff.runFold(0)(_ + _) // run and accumulate some result
+val ra = eff.compile.toVector // gather all output into a Vector
+val rb = eff.compile.drain // purely for effects
+val rc = eff.compile.fold(0)(_ + _) // run and accumulate some result
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -120,13 +120,13 @@ rc.unsafeRunSync()
 
 Here we finally see the tasks being executed. As is shown with `rc`, rerunning a task executes the entire computation again; nothing is cached for you automatically.
 
-_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Effect[F]` (or `Sync[F]` for the `run*Sync` functions) --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations, and sometimes how to do asynchronous evaluation.
+_Note:_ The various `run*` functions aren't specialized to `IO` and work for any `F[_]` with an implicit `Sync[F]` --- FS2 needs to know how to catch errors that occur during evaluation of `F` effects, how to suspend computations.
 
 ### Segments & Chunks
 
 FS2 streams are segmented internally for performance. You can construct an individual stream segment using `Stream.segment`, which accepts an `fs2.Segment` and lots of functions in the library are segment-aware and/or try to preserve segments when possible.
 
-Segments are potentially infinite and support lazy, fused operations. A `Chunk` is a specialized segment that's finite and supports efficient indexed based lookup of elements.
+Segments are potentially infinite and support lazy, fused operations. A `Chunk` is a strict, finite sequence of values that supports efficient indexed based lookup of elements. A chunk can be lifted to a segment via `Segment.chunk(c)` or `c.toSegment`.
 
 ```tut
 import fs2.Chunk
@@ -136,20 +136,20 @@ val s1c = Stream.chunk(Chunk.doubles(Array(1.0, 2.0, 3.0)))
 s1c.mapChunks { ds =>
   val doubles = ds.toDoubles
   /* do things unboxed using doubles.{values,size} */
- doubles
+ doubles.toSegment
 }
 ```
 
 ### Basic stream operations
 
-Streams have a small but powerful set of operations, some of which we've seen already. The key operations are `++`, `map`, `flatMap`, `onError`, and `bracket`:
+Streams have a small but powerful set of operations, some of which we've seen already. The key operations are `++`, `map`, `flatMap`, `handleErrorWith`, and `bracket`:
 
 ```tut
 val appendEx1 = Stream(1,2,3) ++ Stream.emit(42)
 val appendEx2 = Stream(1,2,3) ++ Stream.eval(IO.pure(4))
 
 appendEx1.toVector
-appendEx2.runLog.unsafeRunSync()
+appendEx2.compile.toVector.unsafeRunSync()
 
 appendEx1.map(_ + 1).toList
 ```
@@ -160,14 +160,14 @@ The `flatMap` operation is the same idea as lists - it maps, then concatenates:
 appendEx1.flatMap(i => Stream.emits(List(i,i))).toList
 ```
 
-Regardless of how a `Stream` is built up, each operation takes constant time. So `s ++ s2` takes constant time, regardless of whether `s` is `Stream.emit(1)` or it's a huge stream with millions of elements and lots of embedded effects. Likewise with `s.flatMap(f)` and `onError`, which we'll see in a minute. The runtime of these operations do not depend on the structure of `s`.
+Regardless of how a `Stream` is built up, each operation takes constant time. So `s ++ s2` takes constant time, regardless of whether `s` is `Stream.emit(1)` or it's a huge stream with millions of elements and lots of embedded effects. Likewise with `s.flatMap(f)` and `handleErrorWith`, which we'll see in a minute. The runtime of these operations do not depend on the structure of `s`.
 
 ### Error handling
 
-A stream can raise errors, either explicitly, using `Stream.fail`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
+A stream can raise errors, either explicitly, using `Stream.raiseError`, or implicitly via an exception in pure code or inside an effect passed to `eval`:
 
 ```tut
-val err = Stream.fail(new Exception("oh noes!"))
+val err = Stream.raiseError(new Exception("oh noes!"))
 val err2 = Stream(1,2,3) ++ (throw new Exception("!@#$"))
 val err3 = Stream.eval(IO(throw new Exception("error in effect!!!")))
 ```
@@ -183,16 +183,16 @@ try err2.toList catch { case e: Exception => println(e) }
 ```
 
 ```tut
-try err3.run.unsafeRunSync() catch { case e: Exception => println(e) }
+try err3.compile.drain.unsafeRunSync() catch { case e: Exception => println(e) }
 ```
 
-The `onError` method lets us catch any of these errors:
+The `handleErrorWith` method lets us catch any of these errors:
 
 ```tut
-err.onError { e => Stream.emit(e.getMessage) }.toList
+err.handleErrorWith { e => Stream.emit(e.getMessage) }.toList
 ```
 
-_Note: Don't use `onError` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
+_Note: Don't use `handleErrorWith` for doing resource cleanup; use `bracket` as discussed in the next section. Also see [this section of the appendix](#a1) for more details._
 
 ### Resource acquisition
 
@@ -205,7 +205,7 @@ val release = IO { println("decremented: " + count.decrementAndGet); () }
 ```
 
 ```tut:fail
-Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).run.unsafeRunSync()
+Stream.bracket(acquire)(_ => Stream(1,2,3) ++ err, _ => release).compile.drain.unsafeRunSync()
 ```
 
 The inner stream fails, but notice the `release` action is still run:
@@ -229,7 +229,7 @@ Implement `repeat`, which repeats a stream indefinitely, `drain`, which strips a
 ```tut
 Stream(1,0).repeat.take(6).toList
 Stream(1,2,3).drain.toList
-Stream.eval_(IO(println("!!"))).runLog.unsafeRunSync()
+Stream.eval_(IO(println("!!"))).compile.toVector.unsafeRunSync()
 (Stream(1,2) ++ (throw new Exception("nooo!!!"))).attempt.toList
 ```
 
@@ -357,7 +357,7 @@ Stream.range(1,10).scan(0)(_ + _).toList // running sum
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
 
 ```tut:fail
-Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
+Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
 Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add that:
@@ -365,7 +365,7 @@ Oops, we need a `scala.concurrent.ExecutionContext` in implicit scope. Let's add
 ```tut
 import scala.concurrent.ExecutionContext.Implicits.global
 
-Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).runLog.unsafeRunSync()
+Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
 The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interrupt` (halts if the left branch produces `false`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
@@ -429,7 +429,7 @@ These are easy to deal with. Just wrap these effects in a `Stream.eval`:
 def destroyUniverse(): Unit = { println("BOOOOM!!!"); } // stub implementation
 
 val s = Stream.eval_(IO { destroyUniverse() }) ++ Stream("...moving on")
-s.runLog.unsafeRunSync()
+s.compile.toVector.unsafeRunSync()
 ```
 
 The way you bring synchronous effects into your effect type may differ. `Sync.delay` can be used for this generally, without committing to a particular effect:
@@ -439,7 +439,7 @@ import cats.effect.Sync
 
 val T = Sync[IO]
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
-s.runLog.unsafeRunSync()
+s.compile.toVector.unsafeRunSync()
 ```
 
 When using this approach, be sure the expression you pass to delay doesn't throw exceptions.
@@ -491,7 +491,7 @@ val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =
   c.readBytesE(cb)
 }
 
-Stream.eval(bytes).map(_.toList).runLog.unsafeRunSync()
+Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 ```
 
 Be sure to check out the [`fs2.io`](../io) package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.
@@ -552,8 +552,8 @@ In FS2, a stream can terminate in one of three ways:
 Regarding 3:
 
 * A stream will never be interrupted while it is acquiring a resource (via `bracket`) or while it is releasing a resource. The `bracket` function guarantees that if FS2 starts acquiring the resource, the corresponding release action will be run.
-* Other than that, Streams can be interrupted in between any two 'steps' of the stream. The steps themselves are atomic from the perspective of FS2. `Stream.eval(eff)` is a single step, `Stream.emit(1)` is a single step, `Stream(1,2,3)` is a single step (emitting a chunk), and all other operations (like `onError`, `++`, and `flatMap`) are multiple steps and can be interrupted. But importantly, user-provided effects that are passed to `eval` are never interrupted once they are started (and FS2 does not have enough knowledge of user-provided effects to know how to interrupt them anyway).
-* _Always use `bracket` or a `bracket`-based function like `onFinalize` for supplying resource cleanup logic or any other logic you want to be run regardless of how the stream terminates. Don't use `onError` or `++` for this purpose._
+* Other than that, Streams can be interrupted in between any two 'steps' of the stream. The steps themselves are atomic from the perspective of FS2. `Stream.eval(eff)` is a single step, `Stream.emit(1)` is a single step, `Stream(1,2,3)` is a single step (emitting a chunk), and all other operations (like `handleErrorWith`, `++`, and `flatMap`) are multiple steps and can be interrupted. But importantly, user-provided effects that are passed to `eval` are never interrupted once they are started (and FS2 does not have enough knowledge of user-provided effects to know how to interrupt them anyway).
+* _Always use `bracket` or a `bracket`-based function like `onFinalize` for supplying resource cleanup logic or any other logic you want to be run regardless of how the stream terminates. Don't use `handleErrorWith` or `++` for this purpose._
 
 Let's look at some examples of how this plays out, starting with the synchronous interruption case:
 
@@ -561,13 +561,13 @@ Let's look at some examples of how this plays out, starting with the synchronous
 case object Err extends Throwable
 
 (Stream(1) ++ (throw Err)).take(1).toList
-(Stream(1) ++ Stream.fail(Err)).take(1).toList
+(Stream(1) ++ Stream.raiseError(Err)).take(1).toList
 ```
 
 The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
 
 ```tut
-(Stream(1) ++ Stream.fail(Err)).take(1).toList
+(Stream(1) ++ Stream.raiseError(Err)).take(1).toList
 ```
 
 The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doesn't know this until it actually runs another step of the stream.
@@ -578,7 +578,7 @@ If instead we use `onFinalize`, the code is guaranteed to run, regardless of whe
 Stream(1).covary[IO].
           onFinalize(IO { println("finalized!") }).
           take(1).
-          runLog.unsafeRunSync()
+          compile.toVector.unsafeRunSync()
 ```
 
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
@@ -586,7 +586,7 @@ That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponde
 ```tut
 import scala.concurrent.ExecutionContext.Implicits.global
 val s1 = (Stream(1) ++ Stream(2)).covary[IO]
-val s2 = (Stream.empty ++ Stream.fail(Err)) onError { e => println(e); Stream.fail(e) }
+val s2 = (Stream.empty ++ Stream.raiseError(Err)) handleErrorWith { e => println(e); Stream.raiseError(e) }
 val merged = s1 merge s2 take 1
 ```
 
@@ -594,6 +594,6 @@ The result is highly nondeterministic. Here are a few ways it can play out:
 
 * `s1` may complete before the error in `s2` is encountered, in which case nothing will be printed and no error will occur.
 * `s2` may encounter the error before any of `s1` is emitted. When the error is reraised by `s2`, that will terminate the `merge` and asynchronously interrupt `s1`, and the `take` terminates with that same error.
-* `s2` may encounter the error before any of `s1` is emitted, but during the period where the value is caught by `onError`, `s1` may emit a value and the `take(1)` may terminate, triggering interruption of both `s1` and `s2`, before the error is reraised but after the exception is printed! In this case, the stream will still terminate without error.
+* `s2` may encounter the error before any of `s1` is emitted, but during the period where the value is caught by `handleErrorWith`, `s1` may emit a value and the `take(1)` may terminate, triggering interruption of both `s1` and `s2`, before the error is reraised but after the exception is printed! In this case, the stream will still terminate without error.
 
-The correctness of your program should not depend on how different streams interleave, and once again, you should not use `onError` or other interruptible functions for resource cleanup. Use `bracket` or `onFinalize` for this purpose.
+The correctness of your program should not depend on how different streams interleave, and once again, you should not use `handleErrorWith` or other interruptible functions for resource cleanup. Use `bracket` or `onFinalize` for this purpose.

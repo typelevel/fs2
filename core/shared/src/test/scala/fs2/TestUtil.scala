@@ -14,7 +14,9 @@ trait TestUtil extends TestUtilPlatform {
 
   val timeout: FiniteDuration = 60.seconds
 
-  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift *> s.runLog).unsafeToFuture
+  lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
+
+  def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift *> s.compile.toVector).unsafeToFuture
 
   def spuriousFail(s: Stream[IO,Int], f: Failure): Stream[IO,Int] =
     s.flatMap { i => if (i % (math.random * 10 + 1).toInt == 0) f.get
@@ -26,7 +28,7 @@ trait TestUtil extends TestUtilPlatform {
       case e: InterruptedException => throw e
       case e: TimeoutException => throw e
       case Err => ()
-      case NonFatal(e) => e.printStackTrace; ()
+      case NonFatal(e) => ()
     }
 
   implicit def arbChunk[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] = Arbitrary(
@@ -37,6 +39,9 @@ trait TestUtil extends TestUtilPlatform {
       1 -> Chunk.empty[A]
     )
   )
+
+  implicit def cogenChunk[A: Cogen]: Cogen[Chunk[A]] =
+    Cogen[List[A]].contramap(_.toList)
 
   /** Newtype for generating test cases. Use the `tag` for labeling properties. */
   case class PureStream[+A](tag: String, get: Stream[Pure,A])
@@ -50,26 +55,26 @@ trait TestUtil extends TestUtilPlatform {
 
   object PureStream {
     def singleChunk[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
-      Gen.listOfN(size, A.arbitrary).map(as => PureStream("single chunk", Stream.emits(as)))
+      Gen.listOfN(size, A.arbitrary).map(as => PureStream(s"single chunk: $size $as", Stream.emits(as)))
     }
     def unchunked[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
-      Gen.listOfN(size, A.arbitrary).map(as => PureStream("unchunked", Stream.emits(as).unchunk))
+      Gen.listOfN(size, A.arbitrary).map(as => PureStream(s"unchunked: $size $as", Stream.emits(as).unchunk))
     }
     def leftAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
         val s = as.foldLeft(Stream.empty.covaryOutput[A])((acc,a) => acc ++ Stream.emit(a))
-        PureStream("left-associated", s)
+        PureStream(s"left-associated : $size $as", s)
       }
     }
     def rightAssociated[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map { as =>
         val s = as.foldRight(Stream.empty.covaryOutput[A])((a,acc) => Stream.emit(a) ++ acc)
-        PureStream("right-associated", s)
+        PureStream(s"right-associated : $size $as", s)
       }
     }
     def randomlyChunked[A:Arbitrary]: Gen[PureStream[A]] = Gen.sized { size =>
       nestedVectorGen[A](0, size, true).map { chunks =>
-        PureStream("randomly-chunked", Stream.emits(chunks).flatMap(Stream.emits))
+        PureStream(s"randomly-chunked: $size ${chunks.map(_.size)}", Stream.emits(chunks).flatMap(Stream.emits))
       }
     }
     def uniformlyChunked[A:Arbitrary]: Gen[PureStream[A]] = Gen.sized { size =>
@@ -77,7 +82,7 @@ trait TestUtil extends TestUtilPlatform {
         n <- Gen.choose(0, size)
         chunkSize <- Gen.choose(0, 10)
         chunks <- Gen.listOfN(n, Gen.listOfN(chunkSize, Arbitrary.arbitrary[A]))
-      } yield PureStream(s"uniformly-chunked ($n) ($chunkSize)",
+      } yield PureStream(s"uniformly-chunked $size $n ($chunkSize)",
                          Stream.emits(chunks).flatMap(Stream.emits))
     }
 
@@ -88,7 +93,7 @@ trait TestUtil extends TestUtilPlatform {
 
     implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
 
-    implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream("shrunk", Stream.chunk(Chunk.seq(as)))) }
+    implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream(s"shrunk: ${as.size} from ${s.tag}", Stream.chunk(Chunk.seq(as)))) }
   }
 
   case object Err extends RuntimeException("oh noes!!")
@@ -98,7 +103,7 @@ trait TestUtil extends TestUtilPlatform {
 
   implicit def failingStreamArb: Arbitrary[Failure] = Arbitrary(
     Gen.oneOf[Failure](
-      Failure("pure-failure", Stream.fail(Err)),
+      Failure("pure-failure", Stream.raiseError(Err)),
       Failure("failure-inside-effect", Stream.eval(IO(throw Err))),
       Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
       Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
@@ -107,7 +112,7 @@ trait TestUtil extends TestUtilPlatform {
       Failure("failure-in-async-code",
         Stream.eval[IO,Int](IO(throw Err)).pull.unconsAsync.flatMap { _.pull.flatMap {
           case None => Pull.pure(())
-          case Some((hd,tl)) => Pull.output(hd) *> Pull.pure(())
+          case Some((hd,tl)) => Pull.output(hd) >> Pull.pure(())
         }}.stream)
     )
   )

@@ -9,10 +9,12 @@ class SignalSpec extends Fs2Spec {
   "Signal" - {
     "get/set/discrete" in {
       forAll { (vs0: List[Long]) =>
-        val vs = vs0 map { n => if (n == 0) 1 else n }
-        val s = async.signalOf[IO,Long](0L).unsafeRunSync()
+        val vs = vs0.map { n =>
+          if (n == 0) 1 else n
+        }
+        val s = async.signalOf[IO, Long](0L).unsafeRunSync()
         val r = new AtomicLong(0)
-        (IO.shift *> s.discrete.map(r.set).run).unsafeToFuture()
+        (IO.shift *> s.discrete.map(r.set).compile.drain).unsafeToFuture()
         assert(vs.forall { v =>
           s.set(v).unsafeRunSync()
           while (s.get.unsafeRunSync() != v) {} // wait for set to arrive
@@ -29,10 +31,17 @@ class SignalSpec extends Fs2Spec {
       // verifies that discrete always receives the most recent value, even when updates occur rapidly
       forAll { (v0: Long, vsTl: List[Long]) =>
         val vs = v0 :: vsTl
-        val s = async.signalOf[IO,Long](0L).unsafeRunSync()
+        val s = async.signalOf[IO, Long](0L).unsafeRunSync()
         val r = new AtomicLong(0)
-        (IO.shift *> s.discrete.map { i => Thread.sleep(10); r.set(i) }.run).unsafeToFuture()
-        vs.foreach { v => s.set(v).unsafeRunSync() }
+        (IO.shift *> s.discrete
+          .map { i =>
+            Thread.sleep(10); r.set(i)
+          }
+          .compile
+          .drain).unsafeToFuture()
+        vs.foreach { v =>
+          s.set(v).unsafeRunSync()
+        }
         val last = vs.last
         while (r.get != last) {}
         true
@@ -40,7 +49,7 @@ class SignalSpec extends Fs2Spec {
     }
 
     "holdOption" in {
-      runLog(async.holdOption(Stream.range(1,10).covary[IO]))
+      runLog(async.holdOption(Stream.range(1, 10).covary[IO]))
     }
   }
 }

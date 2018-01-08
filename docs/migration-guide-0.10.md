@@ -50,7 +50,7 @@ As a result `fs2.Task` has been removed. Porting from `Task` to `IO` is relative
 
 Performance is significantly better thanks to the introduction of `fs2.Segment`. A `Segment` is a potentially infinite, lazy, pure data structure which supports a variety of fused operations. This is coincidentally similar to the approach taken in [Stream Fusion, to Completeness](https://arxiv.org/pdf/1612.06668v1.pdf), though using a novel approach that does not require code generation.
 
-Instead of a `Stream` being made up of `Chunk`s like in 0.9, it is now made up of `Segment`s. `Chunk[O]` is a subtype of `Segment[O,Unit]`. Many of the operations which operated in terms of chunks now operate in terms of segments. Occassionally, there are operations that are specialized for chunks -- typically when index based access to the underlying elements is more performant than the benefits of operator fusion.
+Instead of a `Stream` being made up of `Chunk`s like in 0.9, it is now made up of `Segment`s. A `Segment[O,Unit]` can wrap a `Chunk[O]` (via `Segment.chunk(c)`) but can also be formed in a lot of other ways. Many of the operations which operated in terms of chunks now operate in terms of segments. Occasionally, there are operations that are specialized for chunks -- typically when index based access to the underlying elements is more performant than the benefits of operator fusion.
 
 ### API Simplification
 
@@ -160,6 +160,17 @@ Given that most usage of merging a drained stream with another stream should be 
 - `NonEmptyChunk` no longer exists (and empty `Chunks` *can* be emitted).
 - The `Attempt` alias no longer exists - replace with `Either[Throwable,A]`.
 
-#### Cats Type Class Instances
+#### Compiling / Interpreting Streams
 
-Note that both `Stream` and `Pull` have type class instances for `cats.effect.Sync`, and hence all super type classes (e.g., `Monad`). These instances are defined in the `Stream` and `Pull` companion objects but they are *NOT* marked implicit. To use them implicitly, they must be manually assigned to an implicit val. This is because the Cats supplied syntax conflicts with `Stream` and `Pull` syntax, resulting in methods which ignore the covariance of `Stream` and `Pull`. Considering this is almost never the right option, these instances are non-implicit.
+In 0.9, a stream was compiled in to an effectful value via one of the `run` methods -- e.g., `run`, `runLog`, `runLast`. In 0.10, all methods which compile a stream in to an effectful value are under the `compile` prefix:
+
+
+|0.9|0.10|
+|---|---|
+|s.run|s.compile.drain|
+|s.runLog|s.compile.toVector|
+| |s.compile.toList|
+|s.runLast|s.compile.last|
+|s.runFold|s.compile.fold|
+| |s.compile.foldSemigroup|
+| |s.compile.foldMonoid|
