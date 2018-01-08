@@ -14,7 +14,7 @@ object Pipe2 {
     def prompts[X](id: ReadSegment[Option[Segment[X, Unit]]]): Stream[Read, X] =
       Stream.eval[Read, Option[Segment[X, Unit]]](FreeC.Eval(id)).flatMap {
         case None          => Stream.empty
-        case Some(segment) => Stream.segment(segment).appendWithoutScope(prompts(id))
+        case Some(segment) => Stream.segment(segment).append(prompts(id))
       }
     def promptsL: Stream[Read, I] = prompts[I](Left(identity))
     def promptsR: Stream[Read, I2] = prompts[I2](Right(identity))

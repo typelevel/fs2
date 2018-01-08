@@ -873,9 +873,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   /**
     * Tracks any resources acquired during this stream and releases them when the stream completes.
     *
-    * Scopes are typically inserted automatically, in between stream appends (i.e., in `s1 ++ s2`,
-    * a scope is inserted around `s1` when appending) This method allows a scope to be explicitly
-    * demarcated, so that resources can be freed earlier than when using automatically inserted scopes.
+    * Scopes are sometimes inserted automatically, (e.g., as a result of calling `handleErrorWith`).
+    * This method allows a scope to be explicitly demarcated, so that resources can be freed earlier
+    * than when using automatically inserted scopes.
+    *
+    * One use case is scoping the left hand side of an append: `(s1.scope ++ s2)`, which ensures
+    * resources acquired during `s1` are released onces the end of `s1` has been passed.
     */
   def scope: Stream[F, O] = Stream.fromFreeC(Algebra.scope(get))
 
@@ -1589,12 +1592,6 @@ object Stream {
 
     /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
     def append[O2 >: O](s2: => Stream[F, O2]): Stream[F, O2] =
-      fromFreeC(self.scope.get[F, O2].flatMap { _ =>
-        s2.get
-      })
-
-    /** Appends `s2` to the end of this stream without introducing a new scope around this stream. */
-    def appendWithoutScope[O2 >: O](s2: => Stream[F, O2]): Stream[F, O2] =
       fromFreeC(self.get[F, O2].flatMap { _ =>
         s2.get
       })
@@ -2602,9 +2599,6 @@ object Stream {
 
     def append[F[_], O2 >: O](s2: => Stream[F, O2]): Stream[F, O2] =
       covary[F].append(s2)
-
-    def appendWithoutScope[F[_], O2 >: O](s2: => Stream[F, O2]): Stream[F, O2] =
-      covary[F].appendWithoutScope(s2)
 
     def concurrently[F[_], O2](that: Stream[F, O2])(implicit F: Effect[F],
                                                     ec: ExecutionContext): Stream[F, O] =
