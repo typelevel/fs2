@@ -242,11 +242,12 @@ protected[tcp] object Socket {
                   ByteBuffer.allocate(sz)
                 }
                 .map { _.now }
-            } else {
-              buff.clear()
-              buff.limit(sz)
-              F.pure(buff)
-            }
+            } else
+              F.delay {
+                buff.clear()
+                buff.limit(sz)
+                buff
+              }
           }
 
         // When the read operation is done, this will read up to buffer's position bytes from the buffer
