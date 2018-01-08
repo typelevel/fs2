@@ -202,9 +202,11 @@ protected[tcp] object Socket {
       // buffer is also reset to be ready to be written into.
       def getBufferOf(sz: Int): F[ByteBuffer] = {
         bufferRef.get.flatMap { buff =>
-          if (buff.capacity() < sz) bufferRef.modify { _ => ByteBuffer.allocate(sz) } map { _.now }
-          else {
+          if (buff.capacity() < sz) {
+            bufferRef.modify { _ => ByteBuffer.allocate(sz) }.map { _.now }
+          } else {
             buff.clear()
+            buff.limit(sz)
             F.pure(buff)
           }
         }
@@ -212,15 +214,18 @@ protected[tcp] object Socket {
 
       // When the read operation is done, this will read up to buffer's position bytes from the buffer
       // this expects the buffer's position to be at bytes read + 1
-      def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] = {
+      def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] = F.delay {
         val read = buff.position()
-        if (read == 0) F.pure(Chunk.bytes(Array.empty))
-        else {
+        val result = if (read == 0) {
+          Chunk.bytes(Array.empty)
+        } else {
           val dest = new Array[Byte](read)
           buff.flip()
           buff.get(dest)
-          F.pure(Chunk.bytes(dest))
+          Chunk.bytes(dest)
         }
+        buff.clear()
+        result
       }
 
       def read0(max:Int, timeout:Option[FiniteDuration]):F[Option[Chunk[Byte]]] = {
