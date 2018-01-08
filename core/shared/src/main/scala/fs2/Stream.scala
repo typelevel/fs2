@@ -876,9 +876,6 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * Scopes are sometimes inserted automatically, (e.g., as a result of calling `handleErrorWith`).
     * This method allows a scope to be explicitly demarcated, so that resources can be freed earlier
     * than when using automatically inserted scopes.
-    *
-    * One use case is scoping the left hand side of an append: `(s1.scope ++ s2)`, which ensures
-    * resources acquired during `s1` are released onces the end of `s1` has been passed.
     */
   def scope: Stream[F, O] = Stream.fromFreeC(Algebra.scope(get))
 
