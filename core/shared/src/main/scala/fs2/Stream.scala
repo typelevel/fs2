@@ -8,7 +8,6 @@ import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.Promise
-import fs2.async.mutable.Queue
 import fs2.internal.{Algebra, FreeC, Token}
 
 /**
@@ -1690,68 +1689,6 @@ object Stream {
       self.asInstanceOf[Stream[F2, O2]]
 
     /**
-      * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
-      * Implemented by enqueueing elements as they are seen by `f` onto a `Queue` used by the `g` branch.
-      * USE EXTREME CARE WHEN USING THIS FUNCTION. Deadlocks are possible if `combine` pulls from the `g`
-      * branch synchronously before the queue has been populated by the `f` branch.
-      *
-      * The `combine` function receives an `F[Int]` effect which evaluates to the current size of the
-      * `g`-branch's queue.
-      *
-      * When possible, use one of the safe combinators like `[[observe]]`, which are built using this function,
-      * in preference to using this function directly.
-      */
-    def diamond[B, C, D](f: Pipe[F, O, B])(qs: F[Queue[F, Option[Segment[O, Unit]]]],
-                                           g: Pipe[F, O, C])(
-        combine: Pipe2[F, B, C, D])(implicit F: Effect[F], ec: ExecutionContext): Stream[F, D] =
-      Stream.eval(qs).flatMap { q =>
-        Stream.eval(async.semaphore[F](1)).flatMap { enqueueNoneSemaphore =>
-          Stream.eval(async.semaphore[F](1)).flatMap { dequeueNoneSemaphore =>
-            combine(
-              f {
-                val enqueueNone: F[Unit] =
-                  enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
-                    if (decremented) q.enqueue1(None)
-                    else F.pure(())
-                  }
-                self
-                  .repeatPull {
-                    _.uncons.flatMap {
-                      case Some((o, h)) =>
-                        Pull.eval(q.enqueue1(Some(o))) >> Pull
-                          .output(o)
-                          .as(Some(h))
-                      case None =>
-                        Pull.eval(enqueueNone) >> Pull.pure(None)
-                    }
-                  }
-                  .onFinalize(enqueueNone)
-              }, {
-                val drainQueue: Stream[F, Nothing] =
-                  Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
-                    if (dequeue) q.dequeue.unNoneTerminate.drain
-                    else Stream.empty
-                  }
-
-                (q.dequeue
-                  .evalMap { c =>
-                    if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
-                    else F.pure(c)
-                  }
-                  .unNoneTerminate
-                  .flatMap { c =>
-                    Stream.segment(c)
-                  }
-                  .through(g) ++ drainQueue).handleErrorWith { t =>
-                  drainQueue ++ Stream.raiseError(t)
-                }
-              }
-            )
-          }
-        }
-      }
-
-    /**
       * Like `[[merge]]`, but tags each output with the branch it came from.
       *
       * @example {{{
@@ -2150,15 +2087,12 @@ object Stream {
                 .eval(async.unboundedQueue[F, Option[(F[Unit], Chunk[O2])]])
                 .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
                   def runUpstream(s: Stream[F, O2], interrupt: Promise[F, Unit]): F[Unit] =
-                    async.semaphore(1).flatMap { quard =>
+                    async.semaphore(1).flatMap { guard =>
                       s.chunks
                         .interruptWhen(interrupt.get.attempt)
                         .evalMap { chunk =>
-                          if (chunk.isEmpty) F.pure(())
-                          else {
-                            quard.decrement >>
-                              outQ.enqueue1(Some((quard.increment, chunk)))
-                          }
+                          guard.decrement >>
+                            outQ.enqueue1(Some((guard.increment, chunk)))
                         }
                         .compile
                         .drain
@@ -2220,6 +2154,12 @@ object Stream {
     /**
       * Synchronously sends values through `sink`.
       *
+      * If `sink` fails, then resulting stream will fail. If sink `halts` the evaluation will halt too.
+      *
+      * Note that observe will only output full segments of `O` that are known to be successfully processed
+      * by `sink`. So if Sink terminates/fail in midle of segment processing, the segment will not be available
+      * in resulting stream.
+      *
       * @example {{{
       * scala> import scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO, cats.implicits._
       * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
@@ -2227,13 +2167,41 @@ object Stream {
       * }}}
       */
     def observe(sink: Sink[F, O])(implicit F: Effect[F], ec: ExecutionContext): Stream[F, O] =
-      self.diamond(identity)(async.mutable.Queue.synchronousNoneTerminated, sink.andThen(_.drain))(
-        _.merge(_))
+      observeAsync(1)(sink)
 
-    /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+    /** Send chunks through `sink`, allowing up to `maxQueued` pending _segments_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Effect[F],
                                                        ec: ExecutionContext): Stream[F, O] =
-      self.diamond(identity)(async.boundedQueue(maxQueued), sink.andThen(_.drain))(_.merge(_))
+      Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { outQ =>
+        Stream.eval(async.boundedQueue[F, Option[Segment[O, Unit]]](maxQueued)).flatMap { sinkQ =>
+          // input stream takes `O` and feeds them to `sinkQ` that is bounded on `maxQueued`.
+          // then sinkStream feeds any `O` to `sink, and when segment is processed, it will feed it
+          // to outQ, that is emitting the segment to resulting stream.
+          // if any of the streams fails, the output stream fails (interruption)
+          // if inputStream or sinkStream halts, then resulting stream halts too.
+
+          val inputStream: Stream[F, Unit] =
+            self.segments.noneTerminate
+              .evalMap { maybeSegment =>
+                sinkQ.enqueue1(maybeSegment)
+              }
+
+          val sinkStream: Stream[F, Unit] =
+            sinkQ.dequeue.unNoneTerminate.flatMap { segment =>
+              Stream.segment(segment) ++ Stream.eval_(outQ.enqueue1(Some(segment)))
+            } to sink
+
+          // Because the finalizers have priority over result of the stream termination
+          // we have to append (None) only in case of the normal termination of sinkStream/inputStream
+          val runner = sinkStream.concurrently(inputStream) ++ Stream.eval(outQ.enqueue1(None))
+
+          val outputStream: Stream[F, O] =
+            outQ.dequeue.unNoneTerminate
+              .flatMap(Stream.segment(_))
+
+          outputStream.concurrently(runner)
+        }
+      }
 
     /**
       * Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`.
