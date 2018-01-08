@@ -321,6 +321,7 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "scope" in {
+      // TODO This test should be replaced with one that shows proper usecase for .scope
       val c = new java.util.concurrent.atomic.AtomicLong(0)
       val s1 = Stream.emit("a").covary[IO]
       val s2 = Stream.bracket(IO { c.incrementAndGet() shouldBe 1L; () })(
@@ -328,7 +329,7 @@ class StreamSpec extends Fs2Spec with Inside {
         _ => IO { c.decrementAndGet(); () }
       )
       runLog {
-        (s1.scope ++ s2).take(2).repeat.take(4).merge(Stream.eval_(IO.unit))
+        (s1.scope ++ s2).take(2).scope.repeat.take(4).merge(Stream.eval_(IO.unit))
       }
     }
 

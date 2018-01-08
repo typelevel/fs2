@@ -29,7 +29,7 @@ object Pipe {
           case Some((hd, tl)) => Pull.output1((hd, tl))
           case None           => Pull.done
         }
-        .streamNoScope
+        .stream
         .compile
         .last
 

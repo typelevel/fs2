@@ -37,15 +37,7 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
 
   /** Interpret this `Pull` to produce a `Stream`. The result type `R` is discarded. */
   def stream: Stream[F, O] =
-    Stream.fromFreeC(this.scope.get[F, O, Unit])
-
-  /**
-    * Like [[stream]] but no scope is inserted around the pull, resulting in any resources being
-    * promoted to the parent scope of the stream, extending the resource lifetime. Typically used
-    * as a performance optimization, where resource lifetime can be extended in exchange for faster
-    * execution.
-    */
-  def streamNoScope: Stream[F, O] = Stream.fromFreeC(get[F, O, R].map(_ => ()))
+    Stream.fromFreeC(this.get[F, O, R].map(_ => ()))
 
   /** Applies the resource of this pull to `f` and returns the result. */
   def flatMap[F2[x] >: F[x], O2 >: O, R2](f: R => Pull[F2, O2, R2]): Pull[F2, O2, R2] =

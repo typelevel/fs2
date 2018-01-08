@@ -137,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.compile.toVector // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$1874296212
+// ra: cats.effect.IO[Vector[Int]] = IO$2094280090
 
 val rb = eff.compile.drain // purely for effects
-// rb: cats.effect.IO[Unit] = IO$2100089851
+// rb: cats.effect.IO[Unit] = IO$1715372649
 
 val rc = eff.compile.fold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$440495402
+// rc: cats.effect.IO[Int] = IO$767519369
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -274,10 +274,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$477876869
+acquire: cats.effect.IO[Unit] = IO$350659135
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$1801684415
+release: cats.effect.IO[Unit] = IO$1048497406
 ```
 
 ```scala
@@ -436,7 +436,7 @@ scala> s2.toList
 res33: List[Int] = List(1, 2)
 ```
 
-FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the `.stream` completes. Note again that _nothing happens_ when we call `.stream` on a `Pull`, it is merely establishing a scope in which all resource allocations are tracked so that they may be appropriately freed.
+FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the stream completes. Note again that _nothing happens_ when we call `.stream` on a `Pull`, it is merely converting back to the `Stream` API.
 
 There are lots of useful transformation functions in [`Stream`](../core/shared/src/main/scala/fs2/Stream.scala) built using the `Pull` type.
 
@@ -554,7 +554,7 @@ import cats.effect.Sync
 // import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@3f28af56
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@698f7fb0
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
@@ -611,12 +611,12 @@ val c = new Connection {
 
 // Effect extends both Sync and Async
 val T = cats.effect.Effect[IO]
-// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@3f28af56
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@698f7fb0
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: cats.effect.IO[Array[Byte]] = IO$795809508
+// bytes: cats.effect.IO[Array[Byte]] = IO$1494894241
 
 Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 // res42: Vector[List[Byte]] = Vector(List(0, 1, 2))
