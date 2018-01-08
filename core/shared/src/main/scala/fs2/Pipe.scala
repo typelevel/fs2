@@ -19,7 +19,7 @@ object Pipe {
         .eval[Read, Option[Segment[I, Unit]]](FreeC.Eval(identity))
         .flatMap {
           case None          => Stream.empty
-          case Some(segment) => Stream.segment(segment).append(prompts)
+          case Some(segment) => Stream.segment(segment).appendWithoutScope(prompts)
         }
 
     // Steps `s` without overhead of resource tracking
@@ -29,7 +29,7 @@ object Pipe {
           case Some((hd, tl)) => Pull.output1((hd, tl))
           case None           => Pull.done
         }
-        .streamNoScope
+        .stream
         .compile
         .last
 

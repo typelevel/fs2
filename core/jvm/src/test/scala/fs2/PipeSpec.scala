@@ -605,6 +605,7 @@ class PipeSpec extends Fs2Spec {
         Stream
           .range(0, 100)
           .map(i => (i, i))
+          .scope
           .through(first(_.map(_ + 1).take(5)))
           .toList shouldBe List((1, 0), (2, 1), (3, 2), (4, 3), (5, 4))
       }

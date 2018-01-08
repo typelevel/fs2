@@ -57,7 +57,10 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
                                                 _ => IO { c.incrementAndGet; throw Err })
       val nested = s0.foldRight(innermost)((i, inner) => bracket(c)(Stream.emit(i) ++ inner))
       try { runLog { nested }; throw Err } // this test should always fail, so the `run` should throw
-      catch { case Err => () }
+      catch {
+        case Err                                                           => ()
+        case e: CompositeFailure if e.all.forall(_.isInstanceOf[Err.type]) => ()
+      }
       withClue(f.tag) { 0L shouldBe c.get }
     }
 
