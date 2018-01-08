@@ -79,5 +79,54 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       result.size shouldBe clientCount
       result.map { new String(_) }.toSet shouldBe Set("fs2.rocks")
     }
+
+    // Ensure that readN yields chunks of the requested size
+    "readN" in {
+
+      val message = Chunk.bytes("123456789012345678901234567890".getBytes)
+
+      val localBindAddress =
+        async.promise[IO, InetSocketAddress].unsafeRunSync()
+
+      val junkServer: Stream[IO, Nothing] =
+        serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
+          .flatMap {
+            case Left(local) => Stream.eval_(localBindAddress.complete(local))
+            case Right(s) =>
+              Stream.emit(s.flatMap { socket =>
+                Stream
+                  .chunk(message)
+                  .covary[IO]
+                  .to(socket.writes())
+                  .drain
+                  .onFinalize(socket.endOfOutput)
+              })
+          }
+          .joinUnbounded
+          .drain
+
+      val sizes = Vector(1, 2, 3, 4, 3, 2, 1)
+
+      val klient: Stream[IO, Int] =
+        for {
+          addr <- Stream.eval(localBindAddress.get)
+          sock <- client[IO](addr)
+          size <- Stream.emits(sizes).covary[IO]
+          op <- Stream.eval(sock.readN(size, None))
+        } yield op.map(_.size).getOrElse(-1)
+
+      val result =
+        Stream(junkServer, klient)
+          .join(2)
+          .take(sizes.length)
+          .compile
+          .toVector
+          .unsafeRunTimed(timeout)
+          .get
+      result shouldBe sizes
+
+    }
+
   }
+
 }

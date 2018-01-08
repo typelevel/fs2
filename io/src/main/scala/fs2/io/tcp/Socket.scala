@@ -237,27 +237,29 @@ protected[tcp] object Socket {
         def getBufferOf(sz: Int): F[ByteBuffer] =
           bufferRef.get.flatMap { buff =>
             if (buff.capacity() < sz)
-              bufferRef
-                .modify { _ =>
-                  ByteBuffer.allocate(sz)
-                }
-                .map { _.now } else {
-              buff.clear()
-              F.pure(buff)
-            }
+              F.delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.setSync)
+            else
+              F.delay {
+                buff.clear()
+                buff.limit(sz)
+                buff
+              }
           }
 
         // When the read operation is done, this will read up to buffer's position bytes from the buffer
         // this expects the buffer's position to be at bytes read + 1
-        def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] = {
+        def releaseBuffer(buff: ByteBuffer): F[Chunk[Byte]] = F.delay {
           val read = buff.position()
-          if (read == 0) F.pure(Chunk.bytes(Array.empty))
-          else {
-            val dest = new Array[Byte](read)
-            buff.flip()
-            buff.get(dest)
-            F.pure(Chunk.bytes(dest))
-          }
+          val result =
+            if (read == 0) Chunk.bytes(Array.empty)
+            else {
+              val dest = new Array[Byte](read)
+              buff.flip()
+              buff.get(dest)
+              Chunk.bytes(dest)
+            }
+          buff.clear()
+          result
         }
 
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
