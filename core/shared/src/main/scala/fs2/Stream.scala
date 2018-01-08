@@ -2237,42 +2237,22 @@ object Stream {
 
     /** Like `interrupt` but resumes the stream when left branch goes to true. */
     def pauseWhen(pauseWhenTrue: Stream[F, Boolean])(implicit F: Effect[F],
-                                                     ec: ExecutionContext): Stream[F, O] = {
-      def unpaused(
-          controlFuture: AsyncPull[F, Option[(Segment[Boolean, Unit], Stream[F, Boolean])]],
-          srcFuture: AsyncPull[F, Option[(Segment[O, Unit], Stream[F, O])]]
-      ): Pull[F, O, Option[Nothing]] =
-        controlFuture.race(srcFuture).pull.flatMap {
-          case Left(None)  => Pull.pure(None)
-          case Right(None) => Pull.pure(None)
-          case Left(Some((s, controlStream))) =>
-            Pull.segment(s.fold(false)(_ || _).mapResult(_._2)).flatMap { p =>
-              if (p) paused(controlStream, srcFuture)
-              else
-                controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
+                                                     ec: ExecutionContext): Stream[F, O] =
+      async.hold[F, Option[Boolean]](Some(false), pauseWhenTrue.noneTerminate).flatMap {
+        pauseSignal =>
+          def pauseIfNeeded: F[Unit] =
+            pauseSignal.get.flatMap {
+              case Some(false) => F.pure(())
+              case _           => pauseSignal.discrete.dropWhile(_.getOrElse(true)).take(1).compile.drain
             }
-          case Right(Some((c, srcStream))) =>
-            Pull.output(c) >> srcStream.pull.unconsAsync
-              .flatMap(unpaused(controlFuture, _))
-        }
 
-      def paused(
-          controlStream: Stream[F, Boolean],
-          srcFuture: AsyncPull[F, Option[(Segment[O, Unit], Stream[F, O])]]
-      ): Pull[F, O, Option[Nothing]] =
-        controlStream.pull.unconsChunk.flatMap {
-          case None => Pull.pure(None)
-          case Some((c, controlStream)) =>
-            if (c(c.size - 1)) paused(controlStream, srcFuture)
-            else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
-        }
-
-      pauseWhenTrue.pull.unconsAsync.flatMap { controlFuture =>
-        self.pull.unconsAsync.flatMap { srcFuture =>
-          unpaused(controlFuture, srcFuture)
-        }
-      }.stream
-    }
+          self.segments
+            .flatMap { segment =>
+              Stream.eval(pauseIfNeeded) >>
+                Stream.segment(segment)
+            }
+            .interruptWhen(pauseSignal.discrete.map(_.isEmpty))
+      }
 
     /** Alias for `pauseWhen(pauseWhenTrue.discrete)`. */
     def pauseWhen(pauseWhenTrue: async.immutable.Signal[F, Boolean])(
