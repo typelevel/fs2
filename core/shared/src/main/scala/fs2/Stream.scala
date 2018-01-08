@@ -2084,15 +2084,15 @@ object Stream {
           Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
             Stream.eval(async.promise[F, Throwable]).flatMap { interruptY =>
               Stream
-                .eval(async.unboundedQueue[F, Option[(F[Unit], Chunk[O2])]])
+                .eval(async.unboundedQueue[F, Option[(F[Unit], Segment[O2, Unit])]])
                 .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
                   def runUpstream(s: Stream[F, O2], interrupt: Promise[F, Unit]): F[Unit] =
                     async.semaphore(1).flatMap { guard =>
-                      s.chunks
+                      s.segments
                         .interruptWhen(interrupt.get.attempt)
-                        .evalMap { chunk =>
+                        .evalMap { segment =>
                           guard.decrement >>
-                            outQ.enqueue1(Some((guard.increment, chunk)))
+                            outQ.enqueue1(Some((guard.increment, segment)))
                         }
                         .compile
                         .drain
@@ -2112,9 +2112,9 @@ object Stream {
                     Stream.eval(async.fork(runUpstream(that, interruptR))) >>
                     outQ.dequeue.unNoneTerminate
                       .flatMap {
-                        case (signal, chunk) =>
+                        case (signal, segment) =>
                           Stream.eval(signal) >>
-                            Stream.chunk(chunk)
+                            Stream.segment(segment)
                       }
                       .interruptWhen(interruptY.get.map(Left(_): Either[Throwable, Unit]))
                       .onFinalize {
