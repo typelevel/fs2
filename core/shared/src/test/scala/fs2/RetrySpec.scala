@@ -72,15 +72,15 @@ class RetrySpec extends AsyncFs2Spec {
 
     "delays" in {
       val delays = scala.collection.mutable.ListBuffer.empty[Long]
-      val unit = 200
+      val unit = 500
       val maxTries = 5
       def getDelays =
-        delays.sliding(2).map(s => (s.tail.head - s.head) / unit ).toList
+        delays.synchronized(delays.toList).sliding(2).map(s => (s.tail.head - s.head) / unit ).toList
 
       def job = {
         val start = System.currentTimeMillis()
         IO {
-          delays += System.currentTimeMillis() - start
+          delays.synchronized { delays += System.currentTimeMillis() - start }
           throw new Exception
         }
       }
