@@ -576,18 +576,13 @@ class PipeSpec extends Fs2Spec {
       }
     }
     "no hangs on failures" in {
-      (0 until 1000).foreach { n =>
-        println(s"----------------- Iteration $n ----------------------------------------------")
-        forAll { (s: PureStream[Int], f: Failure) =>
-          println(
-            s"$n ----------------- s = $s, f = ${f.tag} ----------------------------------------------")
-          swallow {
-            runLog {
-              val sink: Sink[IO, Int] =
-                in => spuriousFail(in.evalMap(i => IO(i)), f).map(_ => ())
-              val src: Stream[IO, Int] = spuriousFail(s.get.covary[IO], f)
-              src.observe(sink).observe(sink)
-            }
+      forAll { (s: PureStream[Int], f: Failure) =>
+        swallow {
+          runLog {
+            val sink: Sink[IO, Int] =
+              in => spuriousFail(in.evalMap(i => IO(i)), f).map(_ => ())
+            val src: Stream[IO, Int] = spuriousFail(s.get.covary[IO], f)
+            src.observe(sink).observe(sink)
           }
         }
       }

@@ -71,9 +71,8 @@ class RetrySpec extends AsyncFs2Spec {
     }
 
     "delays" in {
-      pending // Too finicky on Travis
       val delays = scala.collection.mutable.ListBuffer.empty[Long]
-      val unit = 200
+      val unit = 500
       val maxTries = 5
       def getDelays =
         delays.synchronized(delays.toList).sliding(2).map(s => (s.tail.head - s.head) / unit ).toList
