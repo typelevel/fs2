@@ -40,9 +40,6 @@ object ThisModuleShouldCompile {
 
   val s: Stream[IO,Int] = if (true) Stream(1,2,3) else Stream.eval(IO(10))
 
-  import scala.concurrent.ExecutionContext.Implicits.global
-  Stream.eval(IO.pure(1)).pull.unconsAsync.stream
-
   val t2p: Pipe[Pure,Int,Int] = _.take(2)
   val t2: Pipe[IO,Int,Int] = _.take(2)
   t2p.covary[IO]

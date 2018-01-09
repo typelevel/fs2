@@ -2260,19 +2260,21 @@ object Stream {
         ec: ExecutionContext): Stream[F, O] =
       pauseWhen(pauseWhenTrue.discrete)
 
+    /** Alias for `prefetchN(1)`. */
+    def prefetch(implicit ec: ExecutionContext, F: Effect[F]): Stream[F, O] = prefetchN(1)
+
     /**
-      * Behaves like `identity`, but starts fetching the next segment before emitting the current,
-      * enabling processing on either side of the `prefetch` to run in parallel.
+      * Behaves like `identity`, but starts fetches up to `n` segments in parallel with downstream
+      * consumption, enabling processing on either side of the `prefetchN` to run in parallel.
       */
-    def prefetch(implicit ec: ExecutionContext, F: Effect[F]): Stream[F, O] =
-      self.repeatPull {
-        _.uncons.flatMap {
-          case None => Pull.pure(None)
-          case Some((hd, tl)) =>
-            tl.pull.prefetch.flatMap { p =>
-              Pull.output(hd) >> p
-            }
-        }
+    def prefetchN(n: Int)(implicit ec: ExecutionContext, F: Effect[F]): Stream[F, O] =
+      Stream.eval(async.boundedQueue[F, Option[Segment[O, Unit]]](n)).flatMap { queue =>
+        // TODO Replace the join-based implementation with this one based on concurrently when it passes tests
+        // queue.dequeue.unNoneTerminate
+        //   .flatMap(Stream.segment(_))
+        //   .concurrently(self.segments.noneTerminate.to(queue.enqueue))
+        Stream(queue.dequeue.unNoneTerminate.flatMap(Stream.segment(_)),
+               self.segments.noneTerminate.to(queue.enqueue).drain).joinUnbounded
       }
 
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
@@ -2724,45 +2726,6 @@ object Stream {
       }
 
     /**
-      * Like [[uncons]] but waits asynchronously. The result of the returned pull is an
-      * `AsyncPull`, which is available immediately. The `AsyncPull` can be raced with other
-      * `AsyncPull`s and eventually forced via the `.pull` method.
-      *
-      * For example, `merge` is implemented by calling `unconsAsync` on each stream, racing the
-      * resultant `AsyncPull`s, emitting winner of the race, and then repeating.
-      */
-    def unconsAsync(
-        implicit ec: ExecutionContext,
-        F: Effect[F]): Pull[F, Nothing, AsyncPull[F, Option[(Segment[O, Unit], Stream[F, O])]]] = {
-      type UO = Option[(Segment[O, Unit], FreeC[Algebra[F, O, ?], Unit])]
-      type Res = Option[(Segment[O, Unit], Stream[F, O])]
-
-      Pull.fromFreeC {
-        Algebra.getScope[F, Nothing].flatMap { scope =>
-          val runStep =
-            Algebra
-              .compileScope(
-                scope.asInstanceOf[fs2.internal.CompileScope[F, UO]], // todo: resolve cast
-                Algebra.uncons(self.get).flatMap(Algebra.output1(_)),
-                None: UO
-              )((_, uo) => uo.asInstanceOf[UO])
-              .map {
-                _.map { case (hd, tl) => (hd, fromFreeC(tl)) }
-              }
-
-          Algebra.eval {
-            Promise.empty[F, Either[Throwable, Res]].flatMap { p =>
-              async
-                .fork(runStep.attempt.flatMap(p.complete(_)))
-                .as(AsyncPull
-                  .readAttemptPromise(p))
-            }
-          }
-        }
-      }
-    }
-
-    /**
       * Like [[uncons]], but returns a segment of no more than `n` elements.
       *
       * The returned segment has a result tuple consisting of the remaining limit
@@ -2956,14 +2919,6 @@ object Stream {
         case None           => Pull.pure(None);
         case Some((hd, tl)) => Pull.pure(Some((hd, tl.cons1(hd))))
       }
-
-    /**
-      * Like [[uncons]], but runs the `uncons` asynchronously. A `flatMap` into
-      * inner `Pull` logically blocks until this await completes.
-      */
-    def prefetch(implicit ec: ExecutionContext,
-                 F: Effect[F]): Pull[F, Nothing, Pull[F, Nothing, Option[Stream[F, O]]]] =
-      unconsAsync.map { _.pull.map { _.map { case (hd, h) => h.cons(hd) } } }
 
     /**
       * Like `scan` but `f` is applied to each segment of the source stream.
