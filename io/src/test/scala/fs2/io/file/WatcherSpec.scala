@@ -10,6 +10,8 @@ import java.io.IOException
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 
+import TestUtil._
+
 class WatcherSpec extends Fs2Spec {
   "Watcher" - {
     "supports watching a file" - {

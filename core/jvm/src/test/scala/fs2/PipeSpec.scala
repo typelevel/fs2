@@ -7,6 +7,7 @@ import cats.effect.IO
 import cats.implicits._
 import scala.concurrent.duration._
 
+import TestUtil._
 import fs2.Stream._
 
 class PipeSpec extends Fs2Spec {
@@ -382,7 +383,7 @@ class PipeSpec extends Fs2Spec {
       val s = Stream(1)
       val f = (a: Int, b: Int) => a + b
       val result = s.toVector.scan(0)(f)
-      runLog((s ++ never).scan(0)(f).take(result.size), timeout = 1 second) shouldBe result
+      runLog((s ++ never).scan(0)(f).take(result.size))(1 second) shouldBe result
     }
 
     "scan" in forAll { (s: PureStream[Int], n: Int) =>

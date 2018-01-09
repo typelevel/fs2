@@ -7,6 +7,8 @@ import org.scalacheck.Gen
 import org.scalatest.Inside
 import scala.concurrent.duration._
 
+import TestUtil._
+
 class StreamSpec extends Fs2Spec with Inside {
 
   "Stream" - {

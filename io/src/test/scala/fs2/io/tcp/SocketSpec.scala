@@ -12,6 +12,8 @@ import fs2.internal.ThreadFactories
 
 import org.scalatest.BeforeAndAfterAll
 
+import TestUtil._
+
 class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
   implicit val tcpACG: AsynchronousChannelGroup = AsynchronousChannelProvider

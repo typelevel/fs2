@@ -4,6 +4,8 @@ package async
 import cats.effect.IO
 import cats.implicits._
 
+import TestUtil._
+
 class RefSpec extends Fs2Spec with EventuallySupport {
 
   "Ref" - {

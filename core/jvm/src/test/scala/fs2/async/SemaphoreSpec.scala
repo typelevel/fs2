@@ -6,6 +6,8 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.implicits._
 
+import TestUtil._
+
 class SemaphoreSpec extends Fs2Spec {
 
   "Semaphore" - {

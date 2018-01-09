@@ -9,6 +9,7 @@ import java.nio.ByteBuffer
 import org.scalacheck.{ Arbitrary, Cogen, Gen }
 import scala.reflect.ClassTag
 
+import TestUtil._
 import ChunkProps._
 
 class ChunkSpec extends Fs2Spec {
@@ -105,7 +106,7 @@ class ChunkSpec extends Fs2Spec {
   def testChunk[A: Arbitrary: ClassTag: Cogen: CommutativeMonoid: Eq](name: String, of: String, testTraverse: Boolean = true)(implicit C: Arbitrary[Chunk[A]]): Unit = {
     s"$name" - {
       "size" in propSize[A, Chunk[A]]
-      "take" in propTake[A, Chunk[A]]      
+      "take" in propTake[A, Chunk[A]]
       "drop" in propDrop[A, Chunk[A]]
       "isempty" in propIsEmpty[A, Chunk[A]]
       "toarray" in propToArray[A, Chunk[A]]
@@ -126,7 +127,7 @@ class ChunkSpec extends Fs2Spec {
     def empty: Char = 0
   }
 
-  testChunk[Byte]("Bytes", "Byte")  
+  testChunk[Byte]("Bytes", "Byte")
   testChunk[Short]("Shorts", "Short")
   testChunk[Int]("Ints", "Int")
   testChunk[Long]("Longs", "Long")

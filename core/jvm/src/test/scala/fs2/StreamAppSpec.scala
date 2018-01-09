@@ -7,6 +7,8 @@ import cats.implicits._
 
 import fs2.StreamApp.ExitCode
 
+import TestUtil._
+
 class StreamAppSpec extends Fs2Spec {
 
   "StreamApp" - {

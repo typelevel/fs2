@@ -4,6 +4,7 @@ package async
 import java.util.concurrent.atomic.AtomicLong
 import cats.effect.IO
 import cats.implicits._
+import TestUtil._
 
 class SignalSpec extends Fs2Spec {
   "Signal" - {

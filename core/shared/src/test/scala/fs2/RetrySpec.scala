@@ -3,6 +3,8 @@ package fs2
 import scala.concurrent.duration._
 import cats.effect.IO
 
+import TestUtil._
+
 class RetrySpec extends AsyncFs2Spec {
   case class RetryErr(msg: String = "") extends RuntimeException(msg)
 

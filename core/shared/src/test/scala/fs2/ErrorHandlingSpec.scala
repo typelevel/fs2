@@ -1,6 +1,7 @@
 package fs2
 
 import cats.effect._
+import TestUtil._
 
 class ErrorHandlingSpec extends Fs2Spec {
 

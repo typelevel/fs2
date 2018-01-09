@@ -5,6 +5,8 @@ import cats.effect.IO
 import scala.concurrent.duration._
 import org.scalatest.EitherValues
 
+import TestUtil._
+
 class RaceSpec extends AsyncFs2Spec with EitherValues {
   "Successful race" in {
     val stream = mkScheduler.evalMap { s =>

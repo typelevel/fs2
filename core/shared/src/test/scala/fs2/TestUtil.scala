@@ -4,17 +4,12 @@ import java.util.concurrent.TimeoutException
 import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 
 import scala.concurrent.Future
-import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.implicits._
 import fs2.internal.NonFatal
 
-trait TestUtil extends TestUtilPlatform {
-
-  val timeout: FiniteDuration = 60.seconds
-
-  lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
+object TestUtil extends TestUtilPlatform {
 
   def runLogF[A](s: Stream[IO,A]): Future[Vector[A]] = (IO.shift *> s.compile.toVector).unsafeToFuture
 
@@ -129,5 +124,3 @@ trait TestUtil extends TestUtilPlatform {
 
   val nonEmptyNestedVectorGen: Gen[Vector[Vector[Int]]] = nestedVectorGen[Int](1,10)
 }
-
-object TestUtil extends TestUtil

@@ -4,6 +4,8 @@ import cats.effect.IO
 import cats.implicits._
 import scala.concurrent.duration._
 
+import TestUtil._
+
 class SchedulerSpec extends AsyncFs2Spec {
 
   "Scheduler" - {
