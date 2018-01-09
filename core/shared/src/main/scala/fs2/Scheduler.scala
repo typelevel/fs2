@@ -6,6 +6,8 @@ import scala.concurrent.duration._
 import cats.effect.{Async, Effect, IO}
 import cats.implicits._
 
+import fs2.async.Ref
+
 /**
   * Provides operations based on the passage of cpu time.
   *
@@ -210,51 +212,40 @@ abstract class Scheduler {
     * }}}
     */
   def debounce[F[_], O](d: FiniteDuration)(implicit F: Effect[F],
-                                           ec: ExecutionContext): Pipe[F, O, O] = {
-    def unconsLatest(s: Stream[F, O]): Pull[F, Nothing, Option[(O, Stream[F, O])]] =
-      s.pull.uncons.flatMap {
-        case Some((hd, tl)) =>
-          Pull.segment(hd.last.drain).flatMap {
-            case (_, Some(last)) => Pull.pure(Some(last -> tl))
-            case (_, None)       => unconsLatest(tl)
-          }
-        case None => Pull.pure(None)
+                                           ec: ExecutionContext): Pipe[F, O, O] = { in =>
+    val atemporal: Stream[F, O] = in.segments
+      .flatMap { s =>
+        val lastOpt = s.last.drain.mapResult(_._2)
+        Pull.segment(lastOpt).flatMap(_.map(Pull.output1(_)).getOrElse(Pull.done)).stream
       }
 
-    def go(o: O, s: Stream[F, O]): Pull[F, O, Unit] =
-      sleep[F](d).pull.unconsAsync.flatMap { l =>
-        s.pull.unconsAsync.flatMap { r =>
-          l.race(r).pull.flatMap {
-            case Left(_) =>
-              Pull.output1(o) >> r.pull.flatMap {
-                case Some((hd, tl)) =>
-                  Pull.segment(hd.last.drain).flatMap {
-                    case (_, Some(last)) => go(last, tl)
-                    case (_, None) =>
-                      unconsLatest(tl).flatMap {
-                        case Some((last, tl)) => go(last, tl)
-                        case None             => Pull.done
-                      }
-                  }
-                case None => Pull.done
-              }
-            case Right(r) =>
-              r match {
-                case Some((hd, tl)) =>
-                  Pull.segment(hd.last.drain).flatMap {
-                    case (_, Some(last)) => go(last, tl)
-                    case (_, None)       => go(o, tl)
-                  }
-                case None => Pull.output1(o)
-              }
+    Stream.eval(async.boundedQueue[F, Option[O]](1)).flatMap { queue =>
+      Stream.eval(async.refOf[F, Option[O]](None)).flatMap { ref =>
+        def enqueueLatestAfterDelay: F[Unit] =
+          async.fork {
+            effect.sleep(d) >> ref.modify(_ => None).flatMap {
+              case Ref.Change(Some(o), None) => queue.enqueue1(Some(o))
+              case _                         => F.unit
+            }
           }
-        }
+
+        val in: Stream[F, Unit] = atemporal.evalMap { o =>
+          ref.modify(_ => Some(o)).flatMap {
+            case Ref.Change(None, Some(o)) => enqueueLatestAfterDelay
+            case _                         => F.unit
+          }
+        } ++ Stream.eval_(queue.enqueue1(None))
+
+        val out: Stream[F, O] = queue.dequeue.unNoneTerminate ++ Stream
+          .eval(ref.modify(_ => None).map {
+            case Ref.Change(Some(o), None) => Some(o)
+            case _                         => None
+          })
+          .flatMap(_.map(Stream.emit(_)).getOrElse(Stream.empty))
+
+        out.concurrently(in)
       }
-    in =>
-      unconsLatest(in).flatMap {
-        case Some((last, tl)) => go(last, tl)
-        case None             => Pull.done
-      }.stream
+    }
   }
 
   /**

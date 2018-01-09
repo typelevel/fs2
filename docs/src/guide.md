@@ -383,32 +383,17 @@ It flattens the nested stream, letting up to `maxOpen` inner streams run at a ti
 
 The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
-If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `unconsAsync` requests the next step of a stream asynchronously. Its signature is:
-
-```Scala
-def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
-```
-
-An `AsyncPull[F,A]` represents a running computation that will eventually yield an `A`. An `AsyncPull[F,A]` has a method `.pull`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. An `AsyncPull[F,A]` may be raced with another `AsyncPull` also --- see the implementation of `merge` for an example.
-
 In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [`async` package object](../core/shared/src/main/scala/fs2/async/async.scala) for more details. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
 ### Exercises
 
-Without looking at the implementations, try implementing `interrupt` and `mergeHaltBoth`:
+Without looking at the implementations, try implementing `mergeHaltBoth`:
 
 ```Scala
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
 /** Like `merge`, but halts as soon as _either_ branch halts. */
 def mergeHaltBoth[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) => ???
-
-/**
- * Let through the `s2` branch as long as the `s1` branch is `false`,
- * listening asynchronously for the left branch to become `true`.
- * This halts as soon as either branch halts.
- */
-def interrupt[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe2[F,Boolean,I,I] = (s1, s2) => ???
 ```
 
 ### Talking to the external world

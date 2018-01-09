@@ -137,13 +137,13 @@ val eff = Stream.eval(IO { println("TASK BEING RUN!!"); 1 + 1 })
 // eff: fs2.Stream[cats.effect.IO,Int] = Stream(..)
 
 val ra = eff.compile.toVector // gather all output into a Vector
-// ra: cats.effect.IO[Vector[Int]] = IO$2094280090
+// ra: cats.effect.IO[Vector[Int]] = IO$511292953
 
 val rb = eff.compile.drain // purely for effects
-// rb: cats.effect.IO[Unit] = IO$1715372649
+// rb: cats.effect.IO[Unit] = IO$419067809
 
 val rc = eff.compile.fold(0)(_ + _) // run and accumulate some result
-// rc: cats.effect.IO[Int] = IO$767519369
+// rc: cats.effect.IO[Int] = IO$513858238
 ```
 
 Notice these all return a `IO` of some sort, but this process of compilation doesn't actually _perform_ any of the effects (nothing gets printed).
@@ -274,10 +274,10 @@ scala> val count = new java.util.concurrent.atomic.AtomicLong(0)
 count: java.util.concurrent.atomic.AtomicLong = 0
 
 scala> val acquire = IO { println("incremented: " + count.incrementAndGet); () }
-acquire: cats.effect.IO[Unit] = IO$350659135
+acquire: cats.effect.IO[Unit] = IO$525857365
 
 scala> val release = IO { println("decremented: " + count.decrementAndGet); () }
-release: cats.effect.IO[Unit] = IO$1048497406
+release: cats.effect.IO[Unit] = IO$1921511559
 ```
 
 ```scala
@@ -493,32 +493,17 @@ It flattens the nested stream, letting up to `maxOpen` inner streams run at a ti
 
 The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
-If you examine the implementations of the above functions, you'll see a few primitive functions used. Let's look at those. First, `unconsAsync` requests the next step of a stream asynchronously. Its signature is:
-
-```Scala
-def unconsAsync(implicit F: Effect[F], ec: ExecutionContext): Pull[F,Nothing,AsyncPull[F,Option[(Segment[O,Unit], Stream[F,O])]]] =
-```
-
-An `AsyncPull[F,A]` represents a running computation that will eventually yield an `A`. An `AsyncPull[F,A]` has a method `.pull`, of type `Pull[F,Nothing,A]` that can be used to block until the result is available. An `AsyncPull[F,A]` may be raced with another `AsyncPull` also --- see the implementation of `merge` for an example.
-
 In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [`async` package object](../core/shared/src/main/scala/fs2/async/async.scala) for more details. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
 ### Exercises
 
-Without looking at the implementations, try implementing `interrupt` and `mergeHaltBoth`:
+Without looking at the implementations, try implementing `mergeHaltBoth`:
 
 ```Scala
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
 /** Like `merge`, but halts as soon as _either_ branch halts. */
 def mergeHaltBoth[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) => ???
-
-/**
- * Let through the `s2` branch as long as the `s1` branch is `false`,
- * listening asynchronously for the left branch to become `true`.
- * This halts as soon as either branch halts.
- */
-def interrupt[F[_]:Effect,I](implicit ec: ExecutionContext): Pipe2[F,Boolean,I,I] = (s1, s2) => ???
 ```
 
 ### Talking to the external world
@@ -554,7 +539,7 @@ import cats.effect.Sync
 // import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@698f7fb0
+// T: cats.effect.Sync[cats.effect.IO] = cats.effect.IOInstances$$anon$1@515f12b9
 
 val s = Stream.eval_(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s: fs2.Stream[cats.effect.IO,String] = Stream(..)
@@ -611,12 +596,12 @@ val c = new Connection {
 
 // Effect extends both Sync and Async
 val T = cats.effect.Effect[IO]
-// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@698f7fb0
+// T: cats.effect.Effect[cats.effect.IO] = cats.effect.IOInstances$$anon$1@515f12b9
 
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
-// bytes: cats.effect.IO[Array[Byte]] = IO$1494894241
+// bytes: cats.effect.IO[Array[Byte]] = IO$1790085376
 
 Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 // res42: Vector[List[Byte]] = Vector(List(0, 1, 2))
