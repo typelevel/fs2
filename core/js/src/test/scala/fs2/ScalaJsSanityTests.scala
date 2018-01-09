@@ -1,6 +1,7 @@
 package fs2
 
 import cats.effect.IO
+import TestUtil._
 
 // ScalaTest doesn't currently support use of forAll with futures, which means
 // tests that run streams from within forAll cannot be expressed. Until

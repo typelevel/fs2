@@ -4,6 +4,8 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import fs2.async.Promise
 
+import TestUtil._
+
 class ConcurrentlySpec extends Fs2Spec {
 
   "concurrently" - {

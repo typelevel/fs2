@@ -20,7 +20,7 @@ import cats.implicits._
   * intermediate chunks being created (1 per call to `map`). In contrast, a chunk can be lifted to a segment
   * (via `toSegment`) to get arbitrary operator fusion.
   */
-abstract class Chunk[+O] {
+abstract class Chunk[+O] extends Serializable {
 
   /** Returns the number of elements in this chunk. */
   def size: Int

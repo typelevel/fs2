@@ -3,6 +3,8 @@ package fs2
 import org.scalacheck._
 import fs2.text._
 
+import TestUtil._
+
 class TextSpec extends Fs2Spec {
   "text" - {
     "utf8Decoder" - {

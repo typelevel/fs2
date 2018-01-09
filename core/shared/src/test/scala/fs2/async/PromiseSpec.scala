@@ -7,6 +7,8 @@ import cats.implicits._
 import scala.concurrent.duration._
 import org.scalatest.EitherValues
 
+import TestUtil._
+
 class PromiseSpec extends AsyncFs2Spec with EitherValues {
 
   "Promise" - {

@@ -8,6 +8,7 @@ import org.scalacheck.Gen
 import java.io.ByteArrayOutputStream
 import java.util.zip.{Deflater, DeflaterOutputStream, Inflater, InflaterOutputStream}
 
+import TestUtil._
 import compress._
 
 class CompressSpec extends Fs2Spec {

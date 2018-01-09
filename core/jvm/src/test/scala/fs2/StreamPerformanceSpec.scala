@@ -3,6 +3,8 @@ package fs2
 import java.util.concurrent.atomic.AtomicInteger
 import cats.effect.IO
 
+import TestUtil._
+
 class StreamPerformanceSpec extends Fs2Spec {
 
   "Stream Performance" - {

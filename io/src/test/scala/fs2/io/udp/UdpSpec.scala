@@ -17,6 +17,8 @@ import cats.effect.IO
 import cats.implicits._
 import org.scalatest.BeforeAndAfterAll
 
+import TestUtil._
+
 class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
 
   implicit val AG = AsynchronousSocketGroup()

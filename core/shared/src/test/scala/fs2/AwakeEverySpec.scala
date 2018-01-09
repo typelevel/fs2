@@ -4,6 +4,8 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import org.scalatest.Succeeded
 
+import TestUtil._
+
 class AwakeEverySpec extends AsyncFs2Spec {
 
   "time" - {

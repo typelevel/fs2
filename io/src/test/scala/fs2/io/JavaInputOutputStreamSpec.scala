@@ -2,6 +2,7 @@ package fs2.io
 
 import cats.effect.IO
 import fs2.{Chunk, Fs2Spec, Stream}
+import fs2.TestUtil._
 import org.scalacheck.{Arbitrary, Gen}
 
 class JavaInputOutputStreamSpec extends Fs2Spec {

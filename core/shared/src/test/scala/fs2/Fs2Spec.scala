@@ -1,6 +1,7 @@
 package fs2
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
 
 import org.typelevel.discipline.Laws
 import org.scalatest.{ Args, AsyncFreeSpec, FreeSpec, Matchers, Status, Suite }
@@ -23,8 +24,11 @@ abstract class AsyncFs2Spec extends AsyncFreeSpec with Fs2SpecLike with AsyncTim
 
 trait Fs2SpecLike extends Suite
   with GeneratorDrivenPropertyChecks
-  with Matchers
-  with TestUtil {
+  with Matchers {
+
+  implicit val timeout: FiniteDuration = 60.seconds
+
+  lazy val verbose: Boolean = sys.props.get("fs2.test.verbose").isDefined
 
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(minSuccessful = 25, workers = 1)

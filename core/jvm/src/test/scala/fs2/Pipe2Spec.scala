@@ -5,6 +5,8 @@ import cats.effect.IO
 import cats.implicits._
 import org.scalacheck.Gen
 
+import TestUtil._
+
 class Pipe2Spec extends Fs2Spec {
 
   // number of interrupt tests to run successive
