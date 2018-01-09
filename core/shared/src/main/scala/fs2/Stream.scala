@@ -8,7 +8,6 @@ import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.Promise
-import fs2.async.mutable.Queue
 import fs2.internal.{Algebra, FreeC, Token}
 
 /**
@@ -1690,68 +1689,6 @@ object Stream {
       self.asInstanceOf[Stream[F2, O2]]
 
     /**
-      * Pass elements of `s` through both `f` and `g`, then combine the two resulting streams.
-      * Implemented by enqueueing elements as they are seen by `f` onto a `Queue` used by the `g` branch.
-      * USE EXTREME CARE WHEN USING THIS FUNCTION. Deadlocks are possible if `combine` pulls from the `g`
-      * branch synchronously before the queue has been populated by the `f` branch.
-      *
-      * The `combine` function receives an `F[Int]` effect which evaluates to the current size of the
-      * `g`-branch's queue.
-      *
-      * When possible, use one of the safe combinators like `[[observe]]`, which are built using this function,
-      * in preference to using this function directly.
-      */
-    def diamond[B, C, D](f: Pipe[F, O, B])(qs: F[Queue[F, Option[Segment[O, Unit]]]],
-                                           g: Pipe[F, O, C])(
-        combine: Pipe2[F, B, C, D])(implicit F: Effect[F], ec: ExecutionContext): Stream[F, D] =
-      Stream.eval(qs).flatMap { q =>
-        Stream.eval(async.semaphore[F](1)).flatMap { enqueueNoneSemaphore =>
-          Stream.eval(async.semaphore[F](1)).flatMap { dequeueNoneSemaphore =>
-            combine(
-              f {
-                val enqueueNone: F[Unit] =
-                  enqueueNoneSemaphore.tryDecrement.flatMap { decremented =>
-                    if (decremented) q.enqueue1(None)
-                    else F.pure(())
-                  }
-                self
-                  .repeatPull {
-                    _.uncons.flatMap {
-                      case Some((o, h)) =>
-                        Pull.eval(q.enqueue1(Some(o))) >> Pull
-                          .output(o)
-                          .as(Some(h))
-                      case None =>
-                        Pull.eval(enqueueNone) >> Pull.pure(None)
-                    }
-                  }
-                  .onFinalize(enqueueNone)
-              }, {
-                val drainQueue: Stream[F, Nothing] =
-                  Stream.eval(dequeueNoneSemaphore.tryDecrement).flatMap { dequeue =>
-                    if (dequeue) q.dequeue.unNoneTerminate.drain
-                    else Stream.empty
-                  }
-
-                (q.dequeue
-                  .evalMap { c =>
-                    if (c.isEmpty) dequeueNoneSemaphore.tryDecrement.as(c)
-                    else F.pure(c)
-                  }
-                  .unNoneTerminate
-                  .flatMap { c =>
-                    Stream.segment(c)
-                  }
-                  .through(g) ++ drainQueue).handleErrorWith { t =>
-                  drainQueue ++ Stream.raiseError(t)
-                }
-              }
-            )
-          }
-        }
-      }
-
-    /**
       * Like `[[merge]]`, but tags each output with the branch it came from.
       *
       * @example {{{
@@ -2113,15 +2050,22 @@ object Stream {
       * eventually terminate with `raiseError(e)`, possibly after emitting some
       * elements of `s` first.
       *
-      * Note: `this` and `that` are each pulled for a segment. Upon receiving
-      * a segment, it is emitted downstream. Depending on how that element is
-      * processed, the remainder of `this` and `that` may never be consulted
-      * again (e.g., `a.merge(b) >> Stream.constant(0)`). A common case where
-      * this can be problematic is draining a stream that publishes to a
-      * concurrent data structure and merging it with a consumer from the same
-      * data structure. In such cases, use `consumer.concurrently(producer)`
-      * instead of `consumer.mergeHaltR(producer.drain)` to ensure the producer
-      * continues to run in parallel with consumer processing.
+      * The implementation always tries to pull one chunk from each side
+      * before waiting for it to be consumed by resulting stream.
+      * As such, there may be up to two chunks (one from each stream)
+      * waiting to be processed while the resulting stream
+      * is processing elements.
+      *
+      * Also note that if either side produces empty chunk,
+      * the processing on that side continues,
+      * w/o downstream requiring to consume result.
+      *
+      * If either side does not emit anything (i.e. as result of drain) that side
+      * will continue to run even when the resulting stream did not ask for more data.
+      *
+      * Note that even when `s1.merge(s2.drain) == s1.concurrently(s2)`, the `concurrently` alternative is
+      * more efficient.
+      *
       *
       * @example {{{
       * scala> import scala.concurrent.duration._, scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO
@@ -2134,43 +2078,56 @@ object Stream {
       * }}}
       */
     def merge[O2 >: O](that: Stream[F, O2])(implicit F: Effect[F],
-                                            ec: ExecutionContext): Stream[F, O2] = {
-      def go(l: AsyncPull[F, Option[(Segment[O2, Unit], Stream[F, O2])]],
-             r: AsyncPull[F, Option[(Segment[O2, Unit], Stream[F, O2])]]): Pull[F, O2, Unit] =
-        l.race(r).pull.flatMap {
-          case Left(l) =>
-            l match {
-              case None =>
-                r.pull.flatMap {
-                  case None           => Pull.done
-                  case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
-                }
-              case Some((hd, tl)) =>
-                Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(_, r))
-            }
-          case Right(r) =>
-            r match {
-              case None =>
-                l.pull.flatMap {
-                  case None           => Pull.done
-                  case Some((hd, tl)) => Pull.output(hd) >> tl.pull.echo
-                }
-              case Some((hd, tl)) =>
-                Pull.output(hd) >> tl.pull.unconsAsync.flatMap(go(l, _))
-            }
-        }
+                                            ec: ExecutionContext): Stream[F, O2] =
+      Stream.eval(async.semaphore(0)).flatMap { doneSem =>
+        Stream.eval(async.promise[F, Unit]).flatMap { interruptL =>
+          Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
+            Stream.eval(async.promise[F, Throwable]).flatMap { interruptY =>
+              Stream
+                .eval(async.unboundedQueue[F, Option[(F[Unit], Segment[O2, Unit])]])
+                .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
+                  def runUpstream(s: Stream[F, O2], interrupt: Promise[F, Unit]): F[Unit] =
+                    async.semaphore(1).flatMap { guard =>
+                      s.segments
+                        .interruptWhen(interrupt.get.attempt)
+                        .evalMap { segment =>
+                          guard.decrement >>
+                            outQ.enqueue1(Some((guard.increment, segment)))
+                        }
+                        .compile
+                        .drain
+                        .attempt
+                        .flatMap {
+                          case Right(_) =>
+                            doneSem.increment >>
+                              doneSem.decrementBy(2) >>
+                              async.fork(outQ.enqueue1(None))
+                          case Left(err) =>
+                            interruptY.complete(err) >>
+                              doneSem.increment
+                        }
+                    }
 
-      self
-        .covaryOutput[O2]
-        .pull
-        .unconsAsync
-        .flatMap { s1 =>
-          that.pull.unconsAsync.flatMap { s2 =>
-            go(s1, s2)
+                  Stream.eval(async.fork(runUpstream(self, interruptL))) >>
+                    Stream.eval(async.fork(runUpstream(that, interruptR))) >>
+                    outQ.dequeue.unNoneTerminate
+                      .flatMap {
+                        case (signal, segment) =>
+                          Stream.eval(signal) >>
+                            Stream.segment(segment)
+                      }
+                      .interruptWhen(interruptY.get.map(Left(_): Either[Throwable, Unit]))
+                      .onFinalize {
+                        interruptL.complete(()) >>
+                          interruptR.complete(())
+                      }
+
+                }
+
+            }
           }
         }
-        .stream
-    }
+      }
 
     /** Like `merge`, but halts as soon as _either_ branch halts. */
     def mergeHaltBoth[O2 >: O](that: Stream[F, O2])(implicit F: Effect[F],
@@ -2197,6 +2154,12 @@ object Stream {
     /**
       * Synchronously sends values through `sink`.
       *
+      * If `sink` fails, then resulting stream will fail. If sink `halts` the evaluation will halt too.
+      *
+      * Note that observe will only output full segments of `O` that are known to be successfully processed
+      * by `sink`. So if Sink terminates/fail in midle of segment processing, the segment will not be available
+      * in resulting stream.
+      *
       * @example {{{
       * scala> import scala.concurrent.ExecutionContext.Implicits.global, cats.effect.IO, cats.implicits._
       * scala> Stream(1, 2, 3).covary[IO].observe(Sink.showLinesStdOut).map(_ + 1).compile.toVector.unsafeRunSync
@@ -2204,13 +2167,41 @@ object Stream {
       * }}}
       */
     def observe(sink: Sink[F, O])(implicit F: Effect[F], ec: ExecutionContext): Stream[F, O] =
-      self.diamond(identity)(async.mutable.Queue.synchronousNoneTerminated, sink.andThen(_.drain))(
-        _.merge(_))
+      observeAsync(1)(sink)
 
-    /** Send chunks through `sink`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+    /** Send chunks through `sink`, allowing up to `maxQueued` pending _segments_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Effect[F],
                                                        ec: ExecutionContext): Stream[F, O] =
-      self.diamond(identity)(async.boundedQueue(maxQueued), sink.andThen(_.drain))(_.merge(_))
+      Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { outQ =>
+        Stream.eval(async.boundedQueue[F, Option[Segment[O, Unit]]](maxQueued)).flatMap { sinkQ =>
+          // input stream takes `O` and feeds them to `sinkQ` that is bounded on `maxQueued`.
+          // then sinkStream feeds any `O` to `sink, and when segment is processed, it will feed it
+          // to outQ, that is emitting the segment to resulting stream.
+          // if any of the streams fails, the output stream fails (interruption)
+          // if inputStream or sinkStream halts, then resulting stream halts too.
+
+          val inputStream: Stream[F, Unit] =
+            self.segments.noneTerminate
+              .evalMap { maybeSegment =>
+                sinkQ.enqueue1(maybeSegment)
+              }
+
+          val sinkStream: Stream[F, Unit] =
+            sinkQ.dequeue.unNoneTerminate.flatMap { segment =>
+              Stream.segment(segment) ++ Stream.eval_(outQ.enqueue1(Some(segment)))
+            } to sink
+
+          // Because the finalizers have priority over result of the stream termination
+          // we have to append (None) only in case of the normal termination of sinkStream/inputStream
+          val runner = sinkStream.concurrently(inputStream) ++ Stream.eval(outQ.enqueue1(None))
+
+          val outputStream: Stream[F, O] =
+            outQ.dequeue.unNoneTerminate
+              .flatMap(Stream.segment(_))
+
+          outputStream.concurrently(runner)
+        }
+      }
 
     /**
       * Run `s2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`.
@@ -2246,42 +2237,22 @@ object Stream {
 
     /** Like `interrupt` but resumes the stream when left branch goes to true. */
     def pauseWhen(pauseWhenTrue: Stream[F, Boolean])(implicit F: Effect[F],
-                                                     ec: ExecutionContext): Stream[F, O] = {
-      def unpaused(
-          controlFuture: AsyncPull[F, Option[(Segment[Boolean, Unit], Stream[F, Boolean])]],
-          srcFuture: AsyncPull[F, Option[(Segment[O, Unit], Stream[F, O])]]
-      ): Pull[F, O, Option[Nothing]] =
-        controlFuture.race(srcFuture).pull.flatMap {
-          case Left(None)  => Pull.pure(None)
-          case Right(None) => Pull.pure(None)
-          case Left(Some((s, controlStream))) =>
-            Pull.segment(s.fold(false)(_ || _).mapResult(_._2)).flatMap { p =>
-              if (p) paused(controlStream, srcFuture)
-              else
-                controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
+                                                     ec: ExecutionContext): Stream[F, O] =
+      async.hold[F, Option[Boolean]](Some(false), pauseWhenTrue.noneTerminate).flatMap {
+        pauseSignal =>
+          def pauseIfNeeded: F[Unit] =
+            pauseSignal.get.flatMap {
+              case Some(false) => F.pure(())
+              case _           => pauseSignal.discrete.dropWhile(_.getOrElse(true)).take(1).compile.drain
             }
-          case Right(Some((c, srcStream))) =>
-            Pull.output(c) >> srcStream.pull.unconsAsync
-              .flatMap(unpaused(controlFuture, _))
-        }
 
-      def paused(
-          controlStream: Stream[F, Boolean],
-          srcFuture: AsyncPull[F, Option[(Segment[O, Unit], Stream[F, O])]]
-      ): Pull[F, O, Option[Nothing]] =
-        controlStream.pull.unconsChunk.flatMap {
-          case None => Pull.pure(None)
-          case Some((c, controlStream)) =>
-            if (c(c.size - 1)) paused(controlStream, srcFuture)
-            else controlStream.pull.unconsAsync.flatMap(unpaused(_, srcFuture))
-        }
-
-      pauseWhenTrue.pull.unconsAsync.flatMap { controlFuture =>
-        self.pull.unconsAsync.flatMap { srcFuture =>
-          unpaused(controlFuture, srcFuture)
-        }
-      }.stream
-    }
+          self.segments
+            .flatMap { segment =>
+              Stream.eval(pauseIfNeeded) >>
+                Stream.segment(segment)
+            }
+            .interruptWhen(pauseSignal.discrete.map(_.isEmpty))
+      }
 
     /** Alias for `pauseWhen(pauseWhenTrue.discrete)`. */
     def pauseWhen(pauseWhenTrue: async.immutable.Signal[F, Boolean])(
