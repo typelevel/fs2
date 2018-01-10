@@ -1668,7 +1668,7 @@ object Stream {
             // evaluation of the result.
             Stream.eval(async.fork(runR)) >>
               self
-                .interruptWhen(interruptL.get.map(Either.left))
+                .interruptWhen(interruptL.get.map(Either.left[Throwable, Unit]))
                 .onFinalize { interruptR.complete(()) }
                 .append(Stream.eval(doneR.get).flatMap {
                   case None      => Stream.empty
