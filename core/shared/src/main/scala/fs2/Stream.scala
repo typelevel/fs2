@@ -1654,10 +1654,14 @@ object Stream {
                 .attempt
                 .map { _.left.toOption }
                 .flatMap { r =>
-                  doneR.complete(r) >>
+                  doneR.complete(r) >> // to prevent deadlock, done must be signalled before `interruptL`
                     r.fold(F.pure(()))(interruptL.complete)
                 }
 
+            // There is slight chance that interruption in case of failure will arrive later than
+            // `self` terminates.
+            // To prevent such interruption to be `swallowed` we append stream, that results in
+            // evaluation of the result.
             Stream.eval(async.fork(runR)) >>
               self
                 .interruptWhen(interruptL.get.map(Left(_): Either[Throwable, Unit]))
