@@ -3,10 +3,10 @@ package fs2
 import scala.concurrent.duration._
 import cats.effect.IO
 import fs2.async.Promise
-
 import TestUtil._
+import org.scalatest.concurrent.PatienceConfiguration.Timeout
 
-class ConcurrentlySpec extends Fs2Spec {
+class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
 
   "concurrently" - {
 
@@ -34,7 +34,7 @@ class ConcurrentlySpec extends Fs2Spec {
         val prg = Scheduler[IO](1).flatMap(scheduler =>
           (scheduler.sleep_[IO](25.millis) ++ f.get).concurrently(bg))
         an[Err.type] should be thrownBy runLog(prg)
-        bgDone shouldBe true
+        eventually(Timeout(3 seconds)) { bgDone shouldBe true }
     }
 
     "when primary stream termiantes, background stream is terminated" in forAll {
