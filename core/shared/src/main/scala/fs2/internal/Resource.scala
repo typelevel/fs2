@@ -3,7 +3,7 @@ package fs2.internal
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.effect.Sync
-import fs2.Lease
+import fs2.Scope
 import fs2.async.Ref
 
 /**
@@ -78,7 +78,7 @@ private[internal] sealed abstract class Resource[F[_]] {
     * Yields to `Some(lease)`, if this resource was successfully leased, and scope must bind `lease.concel` it when not needed anymore.
     * or to `None` when this resource cannot be leased because resource is already released.
     */
-  def lease: F[Option[Lease[F]]]
+  def lease: F[Option[Scope.Lease[F]]]
 }
 
 private[internal] object Resource {
@@ -131,14 +131,14 @@ private[internal] object Resource {
         }
       }
 
-      def lease: F[Option[Lease[F]]] =
+      def lease: F[Option[Scope.Lease[F]]] =
         F.map(state.modify { s =>
           if (!s.open) s
           else s.copy(leases = s.leases + 1)
         }) { c =>
           if (!c.now.open) None
           else {
-            val lease = new Lease[F] {
+            val lease = new Scope.Lease[F] {
               def cancel: F[Either[Throwable, Unit]] =
                 F.flatMap(state.modify { s =>
                   s.copy(leases = s.leases - 1)
