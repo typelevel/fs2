@@ -22,7 +22,7 @@ As a result of this migration, the `fs2.util` package has been removed. The type
 |`fs2.util.Effect`|`cats.effect.Effect`|
 |`fs2.util.UF1`|`cats.~>`|
 
-Note that cats-effect divides effect functionality up in to type classes a little differently than FS2 0.9. The `cats.effect.Async` type class describes a type constructor that supports the `async` constructor whereas `fs2.util.Async` included concurrency behavior. The type classes in cats-effect purposefully do not provide any means for concurrency. FS2 layers concurrency on top of `cats.effect.Effect` using the same `Ref` based scheme used in 0.9, but defined polymorphically for any `Effect`. This functionality is provided by `fs2.async.ref` and other methods in the `async` package. As a result, most implicit usages of `fs2.util.Async` should be replaced with `cats.effect.Effect` and `scala.concurrent.ExecutionContext`.
+Note that cats-effect divides effect functionality up in to type classes a little differently than FS2 0.9. The `cats.effect.Async` type class describes a type constructor that supports the `async` constructor whereas `fs2.util.Async` included concurrency behavior. The type classes in cats-effect purposefully do not provide any means for concurrency. FS2 layers concurrency on top of `cats.effect.Effect` using a `Ref` + `Promise` scheme similar to the one used in 0.9, but defined polymorphically for any `Effect`. This functionality is provided by `fs2.async.refOf`, `fs2.async.promise` and other methods in the `async` package. As a result, most implicit usages of `fs2.util.Async` should be replaced with `cats.effect.Effect` and `scala.concurrent.ExecutionContext`.
 
 #### Task/IO
 
@@ -43,7 +43,7 @@ As a result `fs2.Task` has been removed. Porting from `Task` to `IO` is relative
 |`t.unsafeRunAsync(cb)`|`io.unsafeRunAsync(cb)`| |
 |`t.unsafeRunFor(limit)`|`io.unsafeRunTimed(limit)`| |
 |`t.unsafeRunAsyncFuture`|`io.unsafeToFuture`| |
-|`Task.fromFuture(Future { ... })`|`IO.fromFuture(Eval.always(Future { ... }))`| Laziness is explicit via use of `cats.Eval` |
+|`Task.fromFuture(Future { ... })`|`IO.fromFuture(IO(Future { ... }))`| Effect capture is explicit via use of the inner `cats.effect.IO` |
 |`Task.async(reg => ...)`|`IO.async(reg => ...)`|Note that `IO.async` does *NOT* thread-shift, unlike `Task.async`. Use `IO.shift` as appropriate (`IO.async` is semantically equivalent to `Task.unforkedAsync`)|
 
 ### Performance
@@ -133,6 +133,7 @@ The `debounce` pipe has moved to the `Scheduler` class also. As a result, FS2 no
 The `fs2.time.{ duration, every }` methods have been moved to `Stream` as they have no dependency on scheduling.
 
 #### Merging
+TODO: obsolete now (fixed)? We could just say that `concurrently` covers this use case conveniently
 
 The semantics of merging a drained stream with another stream have changed. In 0.9, it was generally safe to do things like:
 
