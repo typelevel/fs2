@@ -221,27 +221,20 @@ abstract class Scheduler {
 
     Stream.eval(async.boundedQueue[F, Option[O]](1)).flatMap { queue =>
       Stream.eval(async.refOf[F, Option[O]](None)).flatMap { ref =>
-        def enqueueLatestAfterDelay: F[Unit] =
-          async.fork {
-            effect.sleep(d) >> ref.modify(_ => None).flatMap {
-              case Ref.Change(Some(o), None) => queue.enqueue1(Some(o))
-              case _                         => F.unit
-            }
+        def enqueueLatest: F[Unit] =
+          ref.modify(_ => None).flatMap {
+            case Ref.Change(Some(o), None) => queue.enqueue1(Some(o))
+            case _                         => F.unit
           }
 
         val in: Stream[F, Unit] = atemporal.evalMap { o =>
           ref.modify(_ => Some(o)).flatMap {
-            case Ref.Change(None, Some(o)) => enqueueLatestAfterDelay
+            case Ref.Change(None, Some(o)) => async.fork(effect.sleep(d) >> enqueueLatest)
             case _                         => F.unit
           }
-        } ++ Stream.eval_(queue.enqueue1(None))
+        } ++ Stream.eval_(enqueueLatest *> queue.enqueue1(None))
 
-        val out: Stream[F, O] = queue.dequeue.unNoneTerminate ++ Stream
-          .eval(ref.modify(_ => None).map {
-            case Ref.Change(Some(o), None) => Some(o)
-            case _                         => None
-          })
-          .flatMap(_.map(Stream.emit(_)).getOrElse(Stream.empty))
+        val out: Stream[F, O] = queue.dequeue.unNoneTerminate
 
         out.concurrently(in)
       }
