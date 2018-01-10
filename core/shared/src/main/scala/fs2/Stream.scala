@@ -1654,8 +1654,12 @@ object Stream {
                 .attempt
                 .map { _.left.toOption }
                 .flatMap { r =>
-                  doneR.complete(r) >> // to prevent deadlock, done must be signalled before `interruptL`
-                    r.fold(F.pure(()))(interruptL.complete)
+                  // to prevent deadlock, done must be signalled before `interruptL`
+                  // in case the interruptL is signaled before the `L` stream may be in
+                  // its `append` code, that requires `get` to complete, which won't ever complete,
+                  // b/c it will be evaluated after `interruptL`
+                  doneR.complete(r) >>
+                    r.fold(F.unit)(interruptL.complete)
                 }
 
             // There is slight chance that interruption in case of failure will arrive later than
@@ -1664,7 +1668,7 @@ object Stream {
             // evaluation of the result.
             Stream.eval(async.fork(runR)) >>
               self
-                .interruptWhen(interruptL.get.map(Left(_): Either[Throwable, Unit]))
+                .interruptWhen(interruptL.get.map(Either.left))
                 .onFinalize { interruptR.complete(()) }
                 .append(Stream.eval(doneR.get).flatMap {
                   case None      => Stream.empty
