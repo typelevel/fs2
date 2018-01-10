@@ -4,7 +4,7 @@ import scala.annotation.tailrec
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.data.NonEmptyList
-import fs2.{Catenable, CompositeFailure, Lease, Scope}
+import fs2.{Catenable, CompositeFailure, Scope}
 import fs2.async.{Promise, Ref}
 import cats.effect.{Effect, Sync}
 import fs2.internal.CompileScope.InterruptContext
@@ -252,7 +252,7 @@ private[fs2] final class CompileScope[F[_], O] private (
   }
 
   // See docs on [[Scope#lease]]
-  def lease: F[Option[Lease[F]]] = {
+  def lease: F[Option[Scope.Lease[F]]] = {
     val T = Catenable.instance
     F.flatMap(state.get) { s =>
       if (!s.open) F.pure(None)
@@ -268,9 +268,9 @@ private[fs2] final class CompileScope[F[_], O] private (
                 val allLeases = leased.collect {
                   case Some(resourceLease) => resourceLease
                 }
-                val lease = new Lease[F] {
+                val lease = new Scope.Lease[F] {
                   def cancel: F[Either[Throwable, Unit]] =
-                    traverseError[Lease[F]](allLeases, _.cancel)
+                    traverseError[Scope.Lease[F]](allLeases, _.cancel)
                 }
                 Some(lease)
               }
