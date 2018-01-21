@@ -124,78 +124,30 @@ private[fs2] final class CompileScope[F[_], O] private (
       *     close the listening on parent scope close when the new scope will close.
       *
       *  The new scope is interruptible but this scope is not interruptible -
-      *     This is a new interrupt root that can be only interrupted from bottom. Create new interrupt context.
+      *     This is a new interrupt root that can be only interrupted from withing the new scope or its children scopes.
       *
       *  The new scope is interruptible as well as this scope is interruptible -
-      *     This is a new interrupt root that can be interrupted from bottom or as a result of
-      *     interrupting this scope. But it should not propagate its own interruption to this scope.
+      *     This is a new interrupt root that can be interrupted from withing the new scope, its children scopes
+      *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
       *
       */
-    def createScopeContext: F[(Option[InterruptContext[F, O]], Token)] =
-      interruptible match {
+    def createScopeContext: F[(Option[InterruptContext[F, O]], Token)] = {
+      val newScopeId = new Token
+      self.interruptible match {
         case None =>
-          F.pure(
-            self.interruptible.map(iCtx =>
-              InterruptContext[F, O](
-                effect = iCtx.effect,
-                ec = iCtx.ec,
-                promise = iCtx.promise,
-                ref = iCtx.ref,
-                interruptRoot = iCtx.interruptRoot,
-                whenInterrupted = iCtx.whenInterrupted,
-                cancelParent = F.unit
-            )) -> new Token)
+          F.pure(InterruptContext.unsafeFromInteruptible(interruptible, newScopeId) -> newScopeId)
 
-        case Some((effect, ec, whenInterrupted)) =>
-          self.interruptible match {
-            case None =>
-              val newScopeId = new Token
-              F.pure(
-                Some(
-                  InterruptContext[F, O](
-                    effect = effect,
-                    ec = ec,
-                    promise = Promise.unsafeCreate[F, Either[Throwable, Token]](effect, ec),
-                    ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
-                    interruptRoot = newScopeId,
-                    whenInterrupted = whenInterrupted,
-                    cancelParent = F.unit
-                  )
-                ) -> newScopeId)
-
-            case Some(parentInterruptible) =>
-              F.flatMap(parentInterruptible.promise.cancellableGet) {
-                case (get, cancel) =>
-                  val newScopeId = new Token
-                  val context =
-                    InterruptContext[F, O](
-                      effect = effect,
-                      ec = ec,
-                      promise = Promise.unsafeCreate[F, Either[Throwable, Token]](effect, ec),
-                      ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
-                      interruptRoot = newScopeId,
-                      whenInterrupted = whenInterrupted,
-                      cancelParent = cancel
-                    )
-
-                  F.map(fs2.async.fork(F.flatMap(get)(interrupt =>
-                    F.flatMap(context.ref.modify(_.orElse(Some(interrupt)))) { _ =>
-                      F.map(F.attempt(context.promise.complete(interrupt)))(_ => ())
-                  }))(effect, ec)) { _ =>
-                    Some(context) -> newScopeId
-                  }
-
-              }
-
-          }
+        case Some(parentICtx) =>
+          F.map(parentICtx.childContext(interruptible, newScopeId))(Some(_) -> newScopeId)
       }
+    }
 
     F.flatMap(createScopeContext) {
-      case (context, newScopeId) =>
+      case (iCtx, newScopeId) =>
         F.flatMap(state.modify2 { s =>
           if (!s.open) (s, None)
           else {
-            val scope = new CompileScope[F, O](newScopeId, Some(self), context)
+            val scope = new CompileScope[F, O](newScopeId, Some(self), iCtx)
             (s.copy(children = s.children :+ scope), Some(scope))
           }
         }) {
@@ -426,26 +378,26 @@ private[fs2] final class CompileScope[F[_], O] private (
     * When the stream is evaluated, there may be `Eval` that needs to be cancelled early,
     * when scope allows interruption.
     * Instead of just allowing eval to complete, this will race between eval and interruption promise.
-    * Then, if eval completes without interrupting, this will return on `Right` - `Right`.
+    * Then, if eval completes without interrupting, this will return on `Right`.
     *
-    * However when the evaluation is normally interrupted the this evaluates on `Right` - `Left` where we signal
+    * However when the evaluation is normally interrupted the this evaluates on `Left` - `Right` where we signal
     * what is the next scope from which we should calculate the next step to take.
     *
-    * Or if the evaluation is interrupted by a failure this evaluates on `Left` where the exception
+    * Or if the evaluation is interrupted by a failure this evaluates on `Left` - `Left` where the exception
     * that caused the interruption is returned so that it can be handled.
     */
-  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Throwable, Either[Token, A]]] =
+  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
     interruptible match {
-      case None => F.map(F.attempt(f)) { _.right.map(Right(_)) }
+      case None => F.map(F.attempt(f)) { _.left.map(Left(_)) }
       case Some(iCtx) =>
         F.flatMap(iCtx.promise.cancellableGet) {
           case (get, cancel) =>
             // note the order of gett and attempt(f) is important, so if the
             // promise was completed it get higher chance to be completed before the attempt(f)
             F.flatMap(fs2.async.race(get, F.attempt(f))(iCtx.effect, iCtx.ec)) {
-              case Right(result)      => F.map(cancel)(_ => result.right.map(Right(_)))
-              case Left(Right(token)) => F.pure(Right(Left(token)))
-              case Left(Left(err))    => F.pure(Left(err))
+              case Right(result)      => F.map(cancel)(_ => result.left.map(Left(_)))
+              case Left(Right(token)) => F.pure(Left(Right(token)))
+              case Left(Left(err))    => F.pure(Left(Left(err)))
             }
         }
     }
@@ -523,7 +475,6 @@ private[internal] object CompileScope {
     *                      Once interrupted, this scope must be closed and `whenInterrupted` must be consulted to provide next step of evaluation.
     * @param whenInterrupted Contains next step to be evaluated, when interruption occurs.
     * @param cancelParent  Cancels listening on parent's interrupt.
-    * @tparam F
     */
   final private[internal] case class InterruptContext[F[_], O](
       effect: Effect[F],
@@ -533,5 +484,82 @@ private[internal] object CompileScope {
       interruptRoot: Token,
       whenInterrupted: FreeC[Algebra[F, O, ?], Unit],
       cancelParent: F[Unit]
-  )
+  ) { self =>
+
+    /**
+      * Creates a [[InterruptContext]] for a child scope which can be interruptible as well.
+      *
+      * In case the child scope is interruptible, this will ensure that this scope interrupt will
+      * interrupt the child scope as well.
+      *
+      * In any case this will make sure that a close of the child scope will not cancel listening
+      * on parent interrupt for this scope.
+      *
+      * @param interruptible  Whether the child scope should be interruptible.
+      * @param newScopeId     The id of the new scope.
+      */
+    def childContext(
+        interruptible: Option[
+          (Effect[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+        ],
+        newScopeId: Token
+    )(implicit F: Sync[F]): F[InterruptContext[F, O]] =
+      interruptible
+        .map {
+          case (effect, ec, whenInterrupted) =>
+            F.flatMap(self.promise.cancellableGet) {
+              case (get, cancel) =>
+                val context = InterruptContext[F, O](
+                  effect = effect,
+                  ec = ec,
+                  promise = Promise.unsafeCreate[F, Either[Throwable, Token]](effect, ec),
+                  ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
+                  interruptRoot = newScopeId,
+                  whenInterrupted = whenInterrupted,
+                  cancelParent = cancel
+                )
+
+                F.map(fs2.async.fork(F.flatMap(get)(interrupt =>
+                  F.flatMap(context.ref.modify(_.orElse(Some(interrupt)))) { _ =>
+                    F.map(F.attempt(context.promise.complete(interrupt)))(_ => ())
+                }))(effect, ec)) { _ =>
+                  context
+                }
+            }
+        }
+        .getOrElse(F.pure(copy(cancelParent = F.unit)))
+
+  }
+
+  private object InterruptContext {
+
+    /**
+      * Creates a new interrupt context for a new scope if the scope is interruptible.
+      *
+      * This is UNSAFE method as we are creating promise and ref directly here.
+      *
+      * @param interruptible  Whether the scope is interruptible by providing effect, execution context and the
+      *                       continuation in case of interruption.
+      * @param newScopeId     The id of the new scope.
+      */
+    def unsafeFromInteruptible[F[_], O](
+        interruptible: Option[
+          (Effect[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+        ],
+        newScopeId: Token
+    )(implicit F: Sync[F]): Option[InterruptContext[F, O]] =
+      interruptible.map {
+        case (effect, ec, whenInterrupted) =>
+          InterruptContext[F, O](
+            effect = effect,
+            ec = ec,
+            promise = Promise.unsafeCreate[F, Either[Throwable, Token]](effect, ec),
+            ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
+            interruptRoot = newScopeId,
+            whenInterrupted = whenInterrupted,
+            cancelParent = F.unit
+          )
+      }
+
+  }
 }

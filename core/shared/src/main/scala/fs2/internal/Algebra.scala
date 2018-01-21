@@ -206,9 +206,9 @@ private[fs2] object Algebra {
 
             case eval: Algebra.Eval[F, X, _] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
-                case Right(Right(r))    => uncons(f(Right(r)), chunkSize, maxSteps)
-                case Right(Left(token)) => F.pure(Interrupted(token))
-                case Left(err)          => uncons(f(Left(err)), chunkSize, maxSteps)
+                case Right(r)           => uncons(f(Right(r)), chunkSize, maxSteps)
+                case Left(Right(token)) => F.pure(Interrupted(token))
+                case Left(Left(err))    => uncons(f(Left(err)), chunkSize, maxSteps)
 
               }
 
@@ -320,9 +320,9 @@ private[fs2] object Algebra {
 
           case eval: Algebra.Eval[F, O, _] =>
             F.flatMap(scope.interruptibleEval(eval.value)) {
-              case Right(Right(r))    => compileFoldLoop(scope, acc, g, f(Right(r)))
-              case Right(Left(token)) => onInterrupt(Right(token))
-              case Left(err)          => compileFoldLoop(scope, acc, g, f(Left(err)))
+              case Right(r)           => compileFoldLoop(scope, acc, g, f(Right(r)))
+              case Left(Right(token)) => onInterrupt(Right(token))
+              case Left(Left(err))    => compileFoldLoop(scope, acc, g, f(Left(err)))
 
             }
 
