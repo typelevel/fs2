@@ -135,7 +135,8 @@ private[fs2] object Algebra {
   )(implicit F: Sync[F]): F[B] = {
 
     // Uncons is interrupted, fallback on `compileFoldLoop` has to be invoked
-    case class Interrupted[X]() extends UR[X]
+    // The token is a scope from which we should recover.
+    case class Interrupted[X](token: Token) extends UR[X]
     // uncons is done
     case class Done[X](result: Option[(Segment[X, Unit], FreeC[Algebra[F, X, ?], Unit])])
         extends UR[X]
@@ -178,16 +179,16 @@ private[fs2] object Algebra {
                   F.pure(Done(Some((Segment.catenatedChunks(h), t))))
 
                 case Some(interrupted) =>
-                  interrupted.fold(F.raiseError, _ => F.pure(Interrupted[X]()))
+                  interrupted.fold(F.raiseError, token => F.pure(Interrupted[X](token)))
               }
 
             case u: Algebra.Uncons[F, y, X] =>
               F.flatMap(scope.isInterrupted) {
                 case None =>
                   F.flatMap(F.attempt(uncons[y](u.s, u.chunkSize, u.maxSteps))) {
-                    case Left(err)            => uncons(f(Left(err)), chunkSize, maxSteps)
-                    case Right(Done(r))       => uncons(f(Right(r)), chunkSize, maxSteps)
-                    case Right(Interrupted()) => F.pure(Interrupted())
+                    case Left(err)                 => uncons(f(Left(err)), chunkSize, maxSteps)
+                    case Right(Done(r))            => uncons(f(Right(r)), chunkSize, maxSteps)
+                    case Right(Interrupted(token)) => F.pure(Interrupted(token))
                     case Right(cont: Continue[y, r]) =>
                       F.pure(
                         Continue[X, r](
@@ -200,14 +201,14 @@ private[fs2] object Algebra {
 
                   }
                 case Some(interrupted) =>
-                  interrupted.fold(F.raiseError, _ => F.pure(Interrupted[X]()))
+                  interrupted.fold(F.raiseError, token => F.pure(Interrupted[X](token)))
               }
 
             case eval: Algebra.Eval[F, X, _] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
-                case Right(Some(r)) => uncons(f(Right(r)), chunkSize, maxSteps)
-                case Right(None)    => F.pure(Interrupted())
-                case Left(err)      => uncons(f(Left(err)), chunkSize, maxSteps)
+                case Right(r)           => uncons(f(Right(r)), chunkSize, maxSteps)
+                case Left(Right(token)) => F.pure(Interrupted(token))
+                case Left(Left(err))    => uncons(f(Left(err)), chunkSize, maxSteps)
 
               }
 
@@ -247,11 +248,11 @@ private[fs2] object Algebra {
           .asInstanceOf[Either[Throwable, Any] => FreeC[Algebra[F, O, ?], Unit]]
         val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[F, O, ?], _]].fr
 
-        def onInterrupt(r: Either[Throwable, Unit]) =
+        def onInterrupt(r: Either[Throwable, Token]) =
           r.fold(
             err => compileFoldLoop(scope, acc, g, f(Left(err))),
-            _ =>
-              F.flatMap(scope.whenInterrupted) {
+            token =>
+              F.flatMap(scope.whenInterrupted(token)) {
                 case (scope, next) => compileFoldLoop(scope, acc, g, next)
             }
           )
@@ -297,8 +298,8 @@ private[fs2] object Algebra {
                   case Right(Done(r)) =>
                     compileFoldLoop(scope, acc, g, f(Right(r)))
 
-                  case Right(Interrupted()) =>
-                    onInterrupt(Right(()))
+                  case Right(Interrupted(token)) =>
+                    onInterrupt(Right(token))
 
                   case Right(cont: Continue[x, r]) =>
                     val next =
@@ -319,9 +320,9 @@ private[fs2] object Algebra {
 
           case eval: Algebra.Eval[F, O, _] =>
             F.flatMap(scope.interruptibleEval(eval.value)) {
-              case Right(Some(r)) => compileFoldLoop(scope, acc, g, f(Right(r)))
-              case Right(None)    => onInterrupt(Right(()))
-              case Left(err)      => compileFoldLoop(scope, acc, g, f(Left(err)))
+              case Right(r)           => compileFoldLoop(scope, acc, g, f(Right(r)))
+              case Left(Right(token)) => onInterrupt(Right(token))
+              case Left(Left(err))    => compileFoldLoop(scope, acc, g, f(Left(err)))
 
             }
 

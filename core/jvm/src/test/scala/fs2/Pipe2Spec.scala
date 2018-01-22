@@ -525,6 +525,28 @@ class Pipe2Spec extends Fs2Spec {
 
     }
 
+    "nested-interrupt (2)" in {
+      //Tests whether an interrupt in enclosing scope interrupts the inner scope.
+      val prg =
+        Stream
+          .eval(IO.async[Unit](_ => ()))
+          .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
+          .interruptWhen(IO(Right(())))
+
+      runLog(prg) shouldBe Vector()
+    }
+
+    "nested-interrupt (3)" in {
+      //Tests whether an interrupt in enclosing scope correctly recovers.
+      val prg =
+        (Stream
+          .eval(IO.async[Unit](_ => ()))
+          .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ())) ++ Stream(1))
+          .interruptWhen(IO(Right(()))) ++ Stream(2)
+
+      runLog(prg) shouldBe Vector(2)
+    }
+
     "pause" in {
       forAll { (s1: PureStream[Int]) =>
         val pausedStream =
