@@ -280,6 +280,10 @@ private[fs2] final class CompileScope[F[_], O] private (
     go(self)
   }
 
+  def findSelfOrAncestor(scopeId: Token): Option[CompileScope[F, O]] =
+    if (self.id == scopeId) Some(self)
+    else findAncestor(scopeId)
+
   // See docs on [[Scope#lease]]
   def lease: F[Option[Scope.Lease[F]]] = {
     val T = Catenable.instance
