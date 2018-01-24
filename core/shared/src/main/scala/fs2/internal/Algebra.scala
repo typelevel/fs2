@@ -1,6 +1,5 @@
 package fs2.internal
 
-import cats.arrow.FunctionK
 import cats.~>
 import cats.effect.{Effect, Sync}
 import cats.implicits._
@@ -27,7 +26,9 @@ private[fs2] object Algebra {
       extends AlgScope[F, O, Option[CompileScope[F, O]]]
   final case class CloseScope[F[_], O](scopeId: Token) extends AlgScope[F, O, Unit]
   final case class GetScope[F[_], O]() extends AlgEffect[F, O, CompileScope[F, O]]
-  final case class Translate[F[_], G[_], O](s: FreeC[Algebra[G, O, ?], Unit], fK: G ~> F)
+  final case class Translate[F[_], G[_], O](s: FreeC[Algebra[G, O, ?], Unit],
+                                            fK: G ~> F,
+                                            effect: Option[Effect[F]])
       extends Algebra[F, O, Unit]
 
   sealed trait AlgEffect[F[_], O, R] extends Algebra[F, O, R]
@@ -44,9 +45,18 @@ private[fs2] object Algebra {
       self match {
         case a: Acquire[F, O, r] =>
           Acquire[G, O, r](fK(a.resource), r => fK(a.release(r))).asInstanceOf[AlgEffect[G, O, R]]
-        case e: Eval[F, O, R]    => Eval[G, O, R](fK(e.value))
+        case e: Eval[F, O, R] => Eval[G, O, R](fK(e.value))
+        case o: OpenScope[F, O] =>
+          OpenScope[G, O](
+            o.interruptible.flatMap {
+              case (_, ec) =>
+                effect.map { eff =>
+                  (eff, ec)
+                }
+            }
+          ).asInstanceOf[AlgEffect[G, O, R]]
+
         case r: Release[F, O]    => r.asInstanceOf[AlgEffect[G, O, R]]
-        case o: OpenScope[F, O]  => o.asInstanceOf[AlgEffect[G, O, R]]
         case c: CloseScope[F, O] => c.asInstanceOf[AlgEffect[G, O, R]]
         case g: GetScope[F, O]   => g.asInstanceOf[AlgEffect[G, O, R]]
       }
@@ -256,7 +266,8 @@ private[fs2] object Algebra {
               F.pure(Continue(scope, f))
 
             case translate: Translate[F, h, X] @unchecked =>
-              uncons(compileTranslate[F, h, X](translate.fK, translate.s).transformWith(f),
+              uncons(compileTranslate[F, h, X](translate.fK, translate.s, translate.effect)
+                       .transformWith(f),
                      chunkSize,
                      maxSteps)
 
@@ -398,7 +409,8 @@ private[fs2] object Algebra {
             compileFoldLoop(scope,
                             acc,
                             g,
-                            compileTranslate[F, h, O](translate.fK, translate.s).transformWith(f))
+                            compileTranslate[F, h, O](translate.fK, translate.s, translate.effect)
+                              .transformWith(f))
 
         }
 
@@ -409,7 +421,8 @@ private[fs2] object Algebra {
 
   def compileTranslate[F[_], G[_], O](
       fK: G ~> F,
-      s: FreeC[Algebra[G, O, ?], Unit]
+      s: FreeC[Algebra[G, O, ?], Unit],
+      effect: Option[Effect[F]]
   ): FreeC[Algebra[F, O, ?], Unit] = {
 
     // Uncons is interrupted, fallback on `compileFoldLoop` has to be invoked
@@ -478,7 +491,8 @@ private[fs2] object Algebra {
               Continue(effect, f)
 
             case translate: Algebra.Translate[G, h, X] @unchecked =>
-              uncons(compileTranslate[G, h, X](translate.fK, translate.s).transformWith(f),
+              uncons(compileTranslate[G, h, X](translate.fK, translate.s, translate.effect)
+                       .transformWith(f),
                      chunkSize,
                      maxSteps)
 
@@ -504,41 +518,42 @@ private[fs2] object Algebra {
         fx match {
           case output: Algebra.Output[G, O] =>
             Algebra.output(output.values).transformWith { r =>
-              compileTranslate(fK, f(r))
+              compileTranslate(fK, f(r), effect)
             }
 
           case run: Algebra.Run[G, O, r] =>
             Algebra.segment(run.values).transformWith { r =>
-              compileTranslate(fK, f(r))
+              compileTranslate(fK, f(r), effect)
             }
 
           case u: Algebra.Uncons[G, x, O] =>
             uncons[x](u.s, u.chunkSize, u.maxSteps) match {
-              case Done(r) => compileTranslate(fK, f(Right(r)))
+              case Done(r) => compileTranslate(fK, f(Right(r)), effect)
               case Interrupted(_) =>
                 compileTranslate(fK,
-                                 f(Left(new Throwable("Translated scope cannot be interrupted"))))
+                                 f(Left(new Throwable("Translated scope cannot be interrupted"))),
+                                 effect)
               case cont: Continue[x, r] =>
                 FreeC
                   .Eval[Algebra[F, O, ?], r](cont.alg.covaryOutput[O].translate[F](None, fK))
                   .transformWith { r =>
                     val next: FreeC[Algebra[G, O, ?], Unit] =
                       Algebra.uncons(cont.f(r), u.chunkSize, u.maxSteps).transformWith(f)
-                    compileTranslate(fK, next)
+                    compileTranslate(fK, next, effect)
                   }
 
-              case Error(rsn) => compileTranslate(fK, f(Left(rsn)))
+              case Error(rsn) => compileTranslate(fK, f(Left(rsn)), effect)
             }
 
-          case effect: Algebra.AlgEffect[G, O, r] =>
-            FreeC.Eval[Algebra[F, O, ?], r](effect.translate[F](None, fK)).transformWith { r =>
-              compileTranslate(fK, f(r))
+          case alg: Algebra.AlgEffect[G, O, r] =>
+            FreeC.Eval[Algebra[F, O, ?], r](alg.translate[F](effect, fK)).transformWith { r =>
+              compileTranslate(fK, f(r), effect)
             }
 
           case translate: Algebra.Translate[G, h, O] @unchecked =>
             // nested translate is not supported hence we don't have a way to build Sync[G] from Sync[F] and G ~> F
-            val sg = compileTranslate(translate.fK, translate.s).transformWith(f)
-            compileTranslate(fK, sg)
+            val sg = compileTranslate(translate.fK, translate.s, translate.effect).transformWith(f)
+            compileTranslate(fK, sg, effect)
         }
 
       case e =>
@@ -549,7 +564,7 @@ private[fs2] object Algebra {
   def translate[F[_], G[_], O](
       s: FreeC[Algebra[F, O, ?], Unit],
       u: F ~> G
-  ): FreeC[Algebra[G, O, ?], Unit] =
-    FreeC.Eval[Algebra[G, O, ?], Unit](Algebra.Translate[G, F, O](s, u))
+  )(implicit G: TranslateInterrupt[G]): FreeC[Algebra[G, O, ?], Unit] =
+    FreeC.Eval[Algebra[G, O, ?], Unit](Algebra.Translate[G, F, O](s, u, G.effectInstance))
 
 }
