@@ -104,42 +104,69 @@ private[fs2] final class CompileScope[F[_], O] private (
     *
     * If this scope is currently closed, then the child scope is opened on the first
     * open ancestor of this scope.
+    *
+    * Returns scope that has to be used in next compilation step and the next stream
+    * to be evaluated
+    *
     */
   def open(
       interruptible: Option[
-        (Effect[F],
-         ExecutionContext,
-         CompileScope[F, O] => F[(CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])])])
-    : F[CompileScope[F, O]] =
-    F.flatMap(state.modify2 { s =>
-      if (!s.open) (s, None)
-      else {
-        val newScopeId = new Token
-        def iCtx = interruptible.map {
-          case (effect, ec, whenInterrupted) =>
-            InterruptContext[F, O](
-              effect = effect,
-              ec = ec,
-              promise = Promise.unsafeCreate[F, Option[Throwable]](effect, ec),
-              ref = Ref.unsafeCreate[F, Option[Option[Throwable]]](None),
-              whenInterrupted = whenInterrupted,
-              interruptRoot = newScopeId
-            )
-        }
-        val scope = new CompileScope[F, O](newScopeId, Some(self), iCtx.orElse(self.interruptible))
-        (s.copy(children = scope +: s.children), Some(scope))
+        (Effect[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+      ]
+  ): F[CompileScope[F, O]] = {
+
+    /**
+      * Creates a context for a new scope.
+      *
+      * We need to differentiate between three states:
+      *  The new scope is not interruptible -
+      *     It should respect the interrupt of the current scope. But it should not
+      *     close the listening on parent scope close when the new scope will close.
+      *
+      *  The new scope is interruptible but this scope is not interruptible -
+      *     This is a new interrupt root that can be only interrupted from withing the new scope or its children scopes.
+      *
+      *  The new scope is interruptible as well as this scope is interruptible -
+      *     This is a new interrupt root that can be interrupted from withing the new scope, its children scopes
+      *     or as a result of interrupting this scope. But it should not propagate its own interruption to this scope.
+      *
+      */
+    def createScopeContext: F[(Option[InterruptContext[F, O]], Token)] = {
+      val newScopeId = new Token
+      self.interruptible match {
+        case None =>
+          F.pure(InterruptContext.unsafeFromInteruptible(interruptible, newScopeId) -> newScopeId)
+
+        case Some(parentICtx) =>
+          F.map(parentICtx.childContext(interruptible, newScopeId))(Some(_) -> newScopeId)
       }
-    }) {
-      case (c, Some(s)) => F.pure(s)
-      case (_, None)    =>
-        // This scope is already closed so try to promote the open to an ancestor; this can fail
-        // if the root scope has already been closed, in which case, we can safely throw
-        self.parent match {
-          case Some(parent) => parent.open(interruptible)
-          case None =>
-            F.raiseError(throw new IllegalStateException("cannot re-open root scope"))
+    }
+
+    F.flatMap(createScopeContext) {
+      case (iCtx, newScopeId) =>
+        F.flatMap(state.modify2 { s =>
+          if (!s.open) (s, None)
+          else {
+            val scope = new CompileScope[F, O](newScopeId, Some(self), iCtx)
+            (s.copy(children = s.children :+ scope), Some(scope))
+          }
+        }) {
+          case (_, Some(s)) => F.pure(s)
+          case (_, None)    =>
+            // This scope is already closed so try to promote the open to an ancestor; this can fail
+            // if the root scope has already been closed, in which case, we can safely throw
+            self.parent match {
+              case Some(parent) =>
+                F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
+                  parent.open(interruptible)
+                }
+
+              case None =>
+                F.raiseError(throw new IllegalStateException("cannot re-open root scope"))
+            }
         }
     }
+  }
 
   def acquireResource[R](fr: F[R], release: R => F[Unit]): F[Either[Throwable, (R, Token)]] = {
     val resource = Resource.create
@@ -209,9 +236,11 @@ private[fs2] final class CompileScope[F[_], O] private (
     F.flatMap(state.modify { _.close }) { c =>
       F.flatMap(traverseError[CompileScope[F, O]](c.previous.children, _.close)) { resultChildren =>
         F.flatMap(traverseError[Resource[F]](c.previous.resources, _.release)) { resultResources =>
-          F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
-            val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
-            CompositeFailure.fromList(results.toList).toLeft(())
+          F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
+            F.map(self.parent.fold(F.unit)(_.releaseChildScope(self.id))) { _ =>
+              val results = resultChildren.left.toSeq ++ resultResources.left.toSeq
+              CompositeFailure.fromList(results.toList).toLeft(())
+            }
           }
         }
       }
@@ -239,7 +268,7 @@ private[fs2] final class CompileScope[F[_], O] private (
   }
 
   /** finds ancestor of this scope given `scopeId` **/
-  def findAncestor(scopeId: Token): F[Option[CompileScope[F, O]]] = {
+  def findAncestor(scopeId: Token): Option[CompileScope[F, O]] = {
     @tailrec
     def go(curr: CompileScope[F, O]): Option[CompileScope[F, O]] =
       if (curr.id == scopeId) Some(curr)
@@ -248,8 +277,12 @@ private[fs2] final class CompileScope[F[_], O] private (
           case Some(scope) => go(scope)
           case None        => None
         }
-    F.pure(go(self))
+    go(self)
   }
+
+  def findSelfOrAncestor(scopeId: Token): Option[CompileScope[F, O]] =
+    if (self.id == scopeId) Some(self)
+    else findAncestor(scopeId)
 
   // See docs on [[Scope#lease]]
   def lease: F[Option[Scope.Lease[F]]] = {
@@ -289,7 +322,7 @@ private[fs2] final class CompileScope[F[_], O] private (
           new IllegalStateException("Scope#interrupt called for Scope that cannot be interrupted"))
       case Some(iCtx) =>
         // note that we guard interruption here by Attempt to prevent failure on multiple sets.
-        val interruptCause = cause.left.toOption
+        val interruptCause = cause.right.map(_ => iCtx.interruptRoot)
         F.flatMap(F.attempt(iCtx.promise.complete(interruptCause))) { _ =>
           F.map(iCtx.ref.modify { _.orElse(Some(interruptCause)) }) { _ =>
             ()
@@ -303,44 +336,47 @@ private[fs2] final class CompileScope[F[_], O] private (
     * If yields to Some(Right(scope,next)) that yields to next `scope`, that has to be run and `next`  stream
     * to evaluate
     */
-  def isInterrupted
-    : F[Option[Either[Throwable, (CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])]]] =
+  def isInterrupted: F[Option[Either[Throwable, Token]]] =
     interruptible match {
-      case None => F.pure(None)
-      case Some(iCtx) =>
-        F.flatMap(iCtx.ref.get) {
-          case None            => F.pure(None)
-          case Some(None)      => F.map(mkContinuation(iCtx))(Some(_))
-          case Some(Some(err)) => F.pure(Some(Left(err)))
-        }
+      case None       => F.pure(None)
+      case Some(iCtx) => iCtx.ref.get
     }
 
   /**
-    * Builds continuation in case of scope being iterrupted w/o an failure
-    * This finds root scope of the interrupt, then that scope is closed and new `ancestor` scope is opened.
-    * As the last step builds cached `continuation` of the interrupt to continue just after the scope is closed.
-    * @param iCtx
-    * @return
+    * Consulted in interruptible scope when interrupt occurred to determine next step of the evaluation.
+    *
+    * This will try to find an ancestor scope with the token of the interrupted scope. Which will be used
+    * to recover from interrupt.
+    *
+    * Also note once this is evaluated, then, we clear the `interruptible` step and instead this will result in failure
     */
-  private def mkContinuation(iCtx: InterruptContext[F, O])
-    : F[Either[Throwable, (CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])]] =
-    // find the scope that has to be interrupted
-    F.flatMap(findAncestor(iCtx.interruptRoot)) {
-      case Some(interruptRoot) =>
-        F.flatMap(interruptRoot.close) {
-          case Right(_) =>
-            F.flatMap(interruptRoot.openAncestor) { scope =>
-              F.map(iCtx.whenInterrupted(scope))(Right(_))
-            }
+  def whenInterrupted(
+      interruptedScope: Token): F[(CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])] = {
+    // need to close the scope first and then, return the evaluation of the next step
+    val toClose =
+      if (interruptedScope == self.id) Some(self)
+      else findAncestor(interruptedScope)
 
-          case Left(err) =>
-            F.pure(Left(err))
-        }
-
+    toClose match {
       case None =>
-        // impossible
-        F.raiseError(new IllegalStateException("Scope being interrupted but no interruptRoot"))
+        F.pure(
+          (self,
+           Algebra.raiseError(new IllegalStateException("Interrupt root scope cannot be found"))))
+      case Some(scope) =>
+        scope.interruptible match {
+          case None =>
+            F.raiseError(new IllegalStateException("Non-interruptible scope was interrupted"))
+          case Some(iCtx) =>
+            F.flatMap(scope.close) { r =>
+              F.map(scope.openAncestor) { scope =>
+                (scope, r.left.toOption.fold(iCtx.whenInterrupted) { err =>
+                  Algebra.raiseError(err)
+                })
+              }
+            }
+        }
     }
+  }
 
   /**
     * When the stream is evaluated, there may be `Eval` that needs to be cancelled early,
@@ -348,13 +384,13 @@ private[fs2] final class CompileScope[F[_], O] private (
     * Instead of just allowing eval to complete, this will race between eval and interruption promise.
     * Then, if eval completes without interrupting, this will return on `Right`.
     *
-    * However when the evaluation is interrupted, then this evaluates on `Left`, where it either indicates
-    * the next stream step to take, when the evaluation was interrupted together with next scope.
-    * or the failure if the scope was interrupted by failure.
+    * However when the evaluation is normally interrupted the this evaluates on `Left` - `Right` where we signal
+    * what is the next scope from which we should calculate the next step to take.
     *
+    * Or if the evaluation is interrupted by a failure this evaluates on `Left` - `Left` where the exception
+    * that caused the interruption is returned so that it can be handled.
     */
-  private[internal] def interruptibleEval[A](f: F[A])
-    : F[Either[Either[Throwable, (CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])], A]] =
+  private[internal] def interruptibleEval[A](f: F[A]): F[Either[Either[Throwable, Token], A]] =
     interruptible match {
       case None => F.map(F.attempt(f)) { _.left.map(Left(_)) }
       case Some(iCtx) =>
@@ -363,9 +399,9 @@ private[fs2] final class CompileScope[F[_], O] private (
             // note the order of gett and attempt(f) is important, so if the
             // promise was completed it get higher chance to be completed before the attempt(f)
             F.flatMap(fs2.async.race(get, F.attempt(f))(iCtx.effect, iCtx.ec)) {
-              case Right(result)   => F.map(cancel)(_ => result.left.map(Left(_)))
-              case Left(None)      => F.map(mkContinuation(iCtx))(Left(_))
-              case Left(Some(err)) => F.pure(Left(Left(err)))
+              case Right(result)      => F.map(cancel)(_ => result.left.map(Left(_)))
+              case Left(Right(token)) => F.pure(Left(Right(token)))
+              case Left(Left(err))    => F.pure(Left(Left(err)))
             }
         }
     }
@@ -439,14 +475,95 @@ private[internal] object CompileScope {
     * @param ref      When None, scope is not interrupted,
     *                 when Some(None) scope was interrupted, and shall continue with `whenInterrupted`
     *                 when Some(Some(err)) scope has to be terminated with supplied failure.
-    * @tparam F
+    * @param interruptRoot Id of the scope that is root of this interruption andis guaranteed to be a parent of this scope.
+    *                      Once interrupted, this scope must be closed and `whenInterrupted` must be consulted to provide next step of evaluation.
+    * @param whenInterrupted Contains next step to be evaluated, when interruption occurs.
+    * @param cancelParent  Cancels listening on parent's interrupt.
     */
   final private[internal] case class InterruptContext[F[_], O](
       effect: Effect[F],
       ec: ExecutionContext,
-      promise: Promise[F, Option[Throwable]],
-      ref: Ref[F, Option[Option[Throwable]]],
-      whenInterrupted: CompileScope[F, O] => F[(CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])],
-      interruptRoot: Token
-  )
+      promise: Promise[F, Either[Throwable, Token]],
+      ref: Ref[F, Option[Either[Throwable, Token]]],
+      interruptRoot: Token,
+      whenInterrupted: FreeC[Algebra[F, O, ?], Unit],
+      cancelParent: F[Unit]
+  ) { self =>
+
+    /**
+      * Creates a [[InterruptContext]] for a child scope which can be interruptible as well.
+      *
+      * In case the child scope is interruptible, this will ensure that this scope interrupt will
+      * interrupt the child scope as well.
+      *
+      * In any case this will make sure that a close of the child scope will not cancel listening
+      * on parent interrupt for this scope.
+      *
+      * @param interruptible  Whether the child scope should be interruptible.
+      * @param newScopeId     The id of the new scope.
+      */
+    def childContext(
+        interruptible: Option[
+          (Effect[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+        ],
+        newScopeId: Token
+    )(implicit F: Sync[F]): F[InterruptContext[F, O]] =
+      interruptible
+        .map {
+          case (effect, ec, whenInterrupted) =>
+            F.flatMap(self.promise.cancellableGet) {
+              case (get, cancel) =>
+                val context = InterruptContext[F, O](
+                  effect = effect,
+                  ec = ec,
+                  promise = Promise.unsafeCreate[F, Either[Throwable, Token]](effect, ec),
+                  ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
+                  interruptRoot = newScopeId,
+                  whenInterrupted = whenInterrupted,
+                  cancelParent = cancel
+                )
+
+                F.map(fs2.async.fork(F.flatMap(get)(interrupt =>
+                  F.flatMap(context.ref.modify(_.orElse(Some(interrupt)))) { _ =>
+                    F.map(F.attempt(context.promise.complete(interrupt)))(_ => ())
+                }))(effect, ec)) { _ =>
+                  context
+                }
+            }
+        }
+        .getOrElse(F.pure(copy(cancelParent = F.unit)))
+
+  }
+
+  private object InterruptContext {
+
+    /**
+      * Creates a new interrupt context for a new scope if the scope is interruptible.
+      *
+      * This is UNSAFE method as we are creating promise and ref directly here.
+      *
+      * @param interruptible  Whether the scope is interruptible by providing effect, execution context and the
+      *                       continuation in case of interruption.
+      * @param newScopeId     The id of the new scope.
+      */
+    def unsafeFromInteruptible[F[_], O](
+        interruptible: Option[
+          (Effect[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+        ],
+        newScopeId: Token
+    )(implicit F: Sync[F]): Option[InterruptContext[F, O]] =
+      interruptible.map {
+        case (effect, ec, whenInterrupted) =>
+          InterruptContext[F, O](
+            effect = effect,
+            ec = ec,
+            promise = Promise.unsafeCreate[F, Either[Throwable, Token]](effect, ec),
+            ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
+            interruptRoot = newScopeId,
+            whenInterrupted = whenInterrupted,
+            cancelParent = F.unit
+          )
+      }
+
+  }
 }

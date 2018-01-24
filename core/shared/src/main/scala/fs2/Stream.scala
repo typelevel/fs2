@@ -2443,7 +2443,7 @@ object Stream {
       * Translates effect type from `F` to `G` using the supplied `FunctionK`.
       */
     def translate[G[_]](u: F ~> G): Stream[G, O] =
-      Stream.fromFreeC[G, O](Algebra.translate[F, G, O, Unit](self.get, u))
+      Stream.fromFreeC[G, O](Algebra.translate[F, G, O](self.get, u))
 
     private type ZipWithCont[G[_], I, O2, R] =
       Either[(Segment[I, Unit], Stream[G, I]), Stream[G, I]] => Pull[G, O2, Option[R]]
