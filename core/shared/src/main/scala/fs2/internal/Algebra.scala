@@ -1,5 +1,6 @@
 package fs2.internal
 
+import cats.arrow.FunctionK
 import cats.~>
 import cats.effect.{Effect, Sync}
 import cats.implicits._
@@ -406,7 +407,7 @@ private[fs2] object Algebra {
 
   def compileTranslate[F[_], G[_], O](
       fK: G ~> F,
-      s: FreeC[Algebra[G, O, ?], Unit],
+      s: FreeC[Algebra[G, O, ?], Unit]
   )(implicit F: Sync[F]): F[FreeC[Algebra[F, O, ?], Unit]] = {
 
     // Uncons is interrupted, fallback on `compileFoldLoop` has to be invoked
@@ -595,8 +596,10 @@ private[fs2] object Algebra {
           "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (compileTranslate) was: " + e)
     }
   }
-  def translate[F[_], G[_], O](s: FreeC[Algebra[F, O, ?], Unit],
-                               u: F ~> G): FreeC[Algebra[G, O, ?], Unit] =
+  def translate[F[_], G[_], O](
+      s: FreeC[Algebra[F, O, ?], Unit],
+      u: F ~> G
+  ): FreeC[Algebra[G, O, ?], Unit] =
     FreeC.Eval[Algebra[G, O, ?], Unit](Algebra.Translate[G, F, O](s, u))
 
 }
