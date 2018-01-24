@@ -19,7 +19,7 @@ private[fs2] object Algebra {
                                       maxSteps: Long)
       extends Algebra[F, O, Option[(Segment[X, Unit], FreeC[Algebra[F, X, ?], Unit])]]
 
-  final case class Eval[F[_], O, R](value: F[R]) extends Algebra[F, O, R]
+  final case class Eval[F[_], O, R](value: F[R]) extends AlgEffect[F, O, R]
   final case class Acquire[F[_], O, R](resource: F[R], release: R => F[Unit])
       extends AlgEffect[F, O, (R, Token)]
   final case class Release[F[_], O](token: Token) extends AlgEffect[F, O, Unit]
@@ -44,6 +44,7 @@ private[fs2] object Algebra {
       self match {
         case a: Acquire[F, O, r] =>
           Acquire[G, O, r](fK(a.resource), r => fK(a.release(r))).asInstanceOf[AlgEffect[G, O, R]]
+        case e: Eval[F, O, R]    => Eval[G, O, R](fK(e.value))
         case r: Release[F, O]    => r.asInstanceOf[AlgEffect[G, O, R]]
         case o: OpenScope[F, O]  => o.asInstanceOf[AlgEffect[G, O, R]]
         case c: CloseScope[F, O] => c.asInstanceOf[AlgEffect[G, O, R]]
@@ -255,9 +256,9 @@ private[fs2] object Algebra {
               F.pure(Continue(scope, f))
 
             case translate: Translate[F, h, X] @unchecked =>
-              F.flatMap(compileTranslate[F, h, X](translate.fK, translate.s)) { fs =>
-                uncons(fs.transformWith(f), chunkSize, maxSteps)
-              }
+              uncons(compileTranslate[F, h, X](translate.fK, translate.s).transformWith(f),
+                     chunkSize,
+                     maxSteps)
 
           }
 
@@ -394,9 +395,10 @@ private[fs2] object Algebra {
             compileFoldLoop(scope, acc, g, f(Right(scope)))
 
           case translate: Translate[F, h, O] @unchecked =>
-            F.flatMap(compileTranslate[F, h, O](translate.fK, translate.s)) { fs =>
-              compileFoldLoop(scope, acc, g, fs.transformWith(f))
-            }
+            compileFoldLoop(scope,
+                            acc,
+                            g,
+                            compileTranslate[F, h, O](translate.fK, translate.s).transformWith(f))
 
         }
 
@@ -408,7 +410,7 @@ private[fs2] object Algebra {
   def compileTranslate[F[_], G[_], O](
       fK: G ~> F,
       s: FreeC[Algebra[G, O, ?], Unit]
-  )(implicit F: Sync[F]): F[FreeC[Algebra[F, O, ?], Unit]] = {
+  ): FreeC[Algebra[F, O, ?], Unit] = {
 
     // Uncons is interrupted, fallback on `compileFoldLoop` has to be invoked
     // The token is a scope from which we should recover.
@@ -421,19 +423,22 @@ private[fs2] object Algebra {
     case class Continue[X, R](alg: AlgEffect[G, X, R],
                               f: Either[Throwable, R] => FreeC[Algebra[G, X, ?], Unit])
         extends UR[X]
+
+    case class Error[X](rsn: Throwable) extends UR[X]
+
     sealed trait UR[X]
 
     def uncons[X](
         xs: FreeC[Algebra[G, X, ?], Unit],
         chunkSize: Int,
         maxSteps: Long
-    ): F[UR[X]] =
-      F.flatMap(F.delay(xs.viewL.get)) {
+    ): UR[X] =
+      xs.viewL.get match {
         case done: FreeC.Pure[Algebra[G, X, ?], Unit] =>
-          F.pure(Done(None))
+          Done(None)
 
         case failed: FreeC.Fail[Algebra[G, X, ?], Unit] =>
-          F.raiseError(failed.error)
+          Error(failed.error)
 
         case bound: FreeC.Bind[Algebra[G, X, ?], y, Unit] =>
           val f = bound.f
@@ -442,7 +447,7 @@ private[fs2] object Algebra {
 
           fx match {
             case output: Algebra.Output[G, X] =>
-              F.pure(Done(Some((output.values, f(Right(()))))))
+              Done(Some((output.values, f(Right(())))))
 
             case run: Algebra.Run[G, X, r] =>
               val (h, t) =
@@ -452,36 +457,31 @@ private[fs2] object Algebra {
                     (chunks, segment(tail).transformWith(f))
                 }
 
-              F.pure(Done(Some((Segment.catenatedChunks(h), t))))
+              Done(Some((Segment.catenatedChunks(h), t)))
 
             case u: Algebra.Uncons[G, y, X] =>
-              F.flatMap[Either[Throwable, UR[y]], UR[X]](
-                F.attempt(uncons[y](u.s, u.chunkSize, u.maxSteps))) {
-                case Left(err)                 => uncons(f(Left(err)), chunkSize, maxSteps)
-                case Right(Done(r))            => uncons(f(Right(r)), chunkSize, maxSteps)
-                case Right(Interrupted(token)) => F.pure(Interrupted[X](token))
-                case Right(cont: Continue[y, r]) =>
-                  F.pure(
-                    Continue[X, r](
-                      cont.alg.covaryOutput[X],
-                      r =>
-                        Algebra
-                          .uncons[G, X, y](cont.f(r), u.chunkSize, u.maxSteps)
-                          .transformWith(f)
-                    ))
-              }
-
-            case eval: Algebra.Eval[G, X, r] =>
-              F.flatMap(F.attempt(fK(eval.value))) { r => // todo: interruption ???
-                uncons(f(r), chunkSize, maxSteps)
+              uncons[y](u.s, u.chunkSize, u.maxSteps) match {
+                case Done(r)            => uncons(f(Right(r)), chunkSize, maxSteps)
+                case Interrupted(token) => Interrupted[X](token)
+                case cont: Continue[y, r] =>
+                  Continue[X, r](
+                    cont.alg.covaryOutput[X],
+                    r =>
+                      Algebra
+                        .uncons[G, X, y](cont.f(r), u.chunkSize, u.maxSteps)
+                        .transformWith(f)
+                  )
+                case Error(err) => uncons(f(Left(err)), chunkSize, maxSteps)
               }
 
             case effect: Algebra.AlgEffect[G, X, r] =>
-              F.pure(Continue(effect, f))
+              Continue(effect, f)
 
             case translate: Algebra.Translate[G, h, X] @unchecked =>
-              // nested translate not yet supported
-              uncons(f(Left(new Throwable("Cannot translate steam twice"))), chunkSize, maxSteps)
+              uncons(compileTranslate[G, h, X](translate.fK, translate.s).transformWith(f),
+                     chunkSize,
+                     maxSteps)
+
           }
 
         case e =>
@@ -489,12 +489,12 @@ private[fs2] object Algebra {
             "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (compileTranslate) was: " + e)
       }
 
-    F.flatMap(F.delay(s.viewL.get)) {
+    s.viewL.get match {
       case done: FreeC.Pure[Algebra[G, O, ?], Unit] =>
-        F.pure(Algebra.output(Segment.empty))
+        FreeC.Pure[Algebra[F, O, ?], Unit](())
 
       case failed: FreeC.Fail[Algebra[G, O, ?], Unit] =>
-        F.pure(Algebra.raiseError(failed.error))
+        Algebra.raiseError(failed.error)
 
       case bound: FreeC.Bind[Algebra[G, O, ?], _, Unit] =>
         val f = bound.f
@@ -503,92 +503,42 @@ private[fs2] object Algebra {
 
         fx match {
           case output: Algebra.Output[G, O] =>
-            F.pure(
-              Algebra.output(output.values).transformWith { r =>
-                Algebra.eval(compileTranslate(fK, f(r))).flatMap(identity)
-              }
-            )
+            Algebra.output(output.values).transformWith { r =>
+              compileTranslate(fK, f(r))
+            }
 
           case run: Algebra.Run[G, O, r] =>
-            F.pure(
-              Algebra.segment(run.values).transformWith { r =>
-                Algebra.eval(compileTranslate(fK, f(r))).flatMap(identity)
-              }
-            )
+            Algebra.segment(run.values).transformWith { r =>
+              compileTranslate(fK, f(r))
+            }
 
           case u: Algebra.Uncons[G, x, O] =>
-            F.flatMap(F.attempt(uncons[x](u.s, u.chunkSize, u.maxSteps))) {
-              case Left(err)      => compileTranslate(fK, f(Left(err)))
-              case Right(Done(r)) => compileTranslate(fK, f(Right(r)))
-              case Right(Interrupted(_)) =>
+            uncons[x](u.s, u.chunkSize, u.maxSteps) match {
+              case Done(r) => compileTranslate(fK, f(Right(r)))
+              case Interrupted(_) =>
                 compileTranslate(fK,
                                  f(Left(new Throwable("Translated scope cannot be interrupted"))))
-              case Right(cont: Continue[x, r]) =>
-                F.pure(
-                  FreeC
-                    .Eval[Algebra[F, O, ?], r](cont.alg.covaryOutput[O].translate[F](None, fK))
-                    .transformWith { r =>
-                      val next: FreeC[Algebra[G, O, ?], Unit] =
-                        Algebra.uncons(cont.f(r), u.chunkSize, u.maxSteps).transformWith(f)
-                      Algebra
-                        .eval(compileTranslate(fK, next))
-                        .flatMap(identity)
-                    }
-                )
-            }
-
-          case eval: Algebra.Eval[G, O, r] =>
-            F.pure(
-              Algebra.eval[F, O, r](fK(eval.value)).transformWith { r =>
-                Algebra.eval(compileTranslate(fK, f(r))).flatMap(identity)
-              }
-            )
-
-          case acquire: Algebra.Acquire[G, O, r] =>
-            F.pure(
-              Algebra
-                .acquire[F, O, r](fK(acquire.resource), r => fK(acquire.release(r)))
-                .transformWith { r =>
-                  Algebra.eval(compileTranslate(fK, f(r))).flatMap(identity)
-                }
-            )
-
-          case release: Algebra.Release[G, O] =>
-            F.pure(
-              Algebra.release[F, O](release.token).transformWith { r =>
-                Algebra.eval(compileTranslate(fK, f(r))).flatMap(identity)
-              }
-            )
-          case open: Algebra.OpenScope[G, O] =>
-            open.interruptible match {
-              case None =>
-                F.pure(
-                  Algebra.openScope[F, O](None).transformWith { r =>
-                    Algebra.eval(compileTranslate(fK, f(r))).flatMap(identity)
+              case cont: Continue[x, r] =>
+                FreeC
+                  .Eval[Algebra[F, O, ?], r](cont.alg.covaryOutput[O].translate[F](None, fK))
+                  .transformWith { r =>
+                    val next: FreeC[Algebra[G, O, ?], Unit] =
+                      Algebra.uncons(cont.f(r), u.chunkSize, u.maxSteps).transformWith(f)
+                    compileTranslate(fK, next)
                   }
-                )
-              case Some(_) =>
-                // there seems to be no way to build Effect[F] from [Effect[G]] given the Sync[F] and G ~> F
-                // so far this will fail as such
-                compileTranslate(fK, f(Left(new Throwable("Cannot translate interruptible scope"))))
+
+              case Error(rsn) => compileTranslate(fK, f(Left(rsn)))
             }
 
-          case close: Algebra.CloseScope[G, O] =>
-            F.pure(
-              Algebra.closeScope[F, O](close.scopeId).transformWith { r =>
-                Algebra.eval(compileTranslate(fK, f(r))).flatMap(identity)
-              }
-            )
+          case effect: Algebra.AlgEffect[G, O, r] =>
+            FreeC.Eval[Algebra[F, O, ?], r](effect.translate[F](None, fK)).transformWith { r =>
+              compileTranslate(fK, f(r))
+            }
 
-          case e: Algebra.GetScope[G, O] =>
-            F.pure(
-              Algebra.getScope[F, O].transformWith { r =>
-                Algebra.eval(compileTranslate(fK, f(r))).flatMap(identity)
-              }
-            )
           case translate: Algebra.Translate[G, h, O] @unchecked =>
             // nested translate is not supported hence we don't have a way to build Sync[G] from Sync[F] and G ~> F
-            compileTranslate(fK, f(Left(new Throwable("Cannot translate steam twice"))))
+            val sg = compileTranslate(translate.fK, translate.s).transformWith(f)
+            compileTranslate(fK, sg)
         }
 
       case e =>

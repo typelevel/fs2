@@ -215,6 +215,24 @@ class StreamSpec extends Fs2Spec with Inside {
       ) shouldBe runLog(s.get)
     }
 
+    "translate (3)" in forAll { (s: PureStream[Int]) =>
+      // tests that it is ok to have multiple successive translate
+      runLog(
+        s.get
+          .covary[Function0]
+          .flatMap(i => Stream.eval(() => i))
+          .flatMap(i => Stream.eval(() => i))
+          .translate(new (Function0 ~> Some) {
+            def apply[A](thunk: Function0[A]) = Some(thunk())
+          })
+          .flatMap(i => Stream.eval(Some(i)))
+          .flatMap(i => Stream.eval(Some(i)))
+          .translate(new (Some ~> IO) {
+            def apply[A](some: Some[A]) = IO(some.get)
+          })
+      ) shouldBe runLog(s.get)
+    }
+
     "toList" in forAll { (s: PureStream[Int]) =>
       s.get.toList shouldBe runLog(s.get).toList
     }
