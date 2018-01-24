@@ -26,10 +26,6 @@ private[fs2] object Algebra {
       extends AlgScope[F, O, Option[CompileScope[F, O]]]
   final case class CloseScope[F[_], O](scopeId: Token) extends AlgScope[F, O, Unit]
   final case class GetScope[F[_], O]() extends AlgEffect[F, O, CompileScope[F, O]]
-  final case class Translate[F[_], G[_], O](s: FreeC[Algebra[G, O, ?], Unit],
-                                            fK: G ~> F,
-                                            effect: Option[Effect[F]])
-      extends Algebra[F, O, Unit]
 
   sealed trait AlgEffect[F[_], O, R] extends Algebra[F, O, R]
 
@@ -141,6 +137,12 @@ private[fs2] object Algebra {
 
   def suspend[F[_], O, R](f: => FreeC[Algebra[F, O, ?], R]): FreeC[Algebra[F, O, ?], R] =
     FreeC.suspend(f)
+
+  def translate[F[_], G[_], O](
+      s: FreeC[Algebra[F, O, ?], Unit],
+      u: F ~> G
+  )(implicit G: TranslateInterrupt[G]): FreeC[Algebra[G, O, ?], Unit] =
+    translate0[G, F, O](u, s, G.effectInstance)
 
   def uncons[F[_], X, O](s: FreeC[Algebra[F, O, ?], Unit],
                          chunkSize: Int = 1024,
@@ -264,12 +266,6 @@ private[fs2] object Algebra {
 
             case scope: AlgScope[F, X, r] =>
               F.pure(Continue(scope, f))
-
-            case translate: Translate[F, h, X] @unchecked =>
-              uncons(compileTranslate[F, h, X](translate.fK, translate.s, translate.effect)
-                       .transformWith(f),
-                     chunkSize,
-                     maxSteps)
 
           }
 
@@ -405,13 +401,6 @@ private[fs2] object Algebra {
           case e: GetScope[F, O] =>
             compileFoldLoop(scope, acc, g, f(Right(scope)))
 
-          case translate: Translate[F, h, O] @unchecked =>
-            compileFoldLoop(scope,
-                            acc,
-                            g,
-                            compileTranslate[F, h, O](translate.fK, translate.s, translate.effect)
-                              .transformWith(f))
-
         }
 
       case e =>
@@ -419,7 +408,7 @@ private[fs2] object Algebra {
     }
   }
 
-  def compileTranslate[F[_], G[_], O](
+  private def translate0[F[_], G[_], O](
       fK: G ~> F,
       s: FreeC[Algebra[G, O, ?], Unit],
       effect: Option[Effect[F]]
@@ -490,17 +479,11 @@ private[fs2] object Algebra {
             case effect: Algebra.AlgEffect[G, X, r] =>
               Continue(effect, f)
 
-            case translate: Algebra.Translate[G, h, X] @unchecked =>
-              uncons(compileTranslate[G, h, X](translate.fK, translate.s, translate.effect)
-                       .transformWith(f),
-                     chunkSize,
-                     maxSteps)
-
           }
 
         case e =>
           sys.error(
-            "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (compileTranslate) was: " + e)
+            "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (translate) was: " + e)
       }
 
     s.viewL.get match {
@@ -518,53 +501,44 @@ private[fs2] object Algebra {
         fx match {
           case output: Algebra.Output[G, O] =>
             Algebra.output(output.values).transformWith { r =>
-              compileTranslate(fK, f(r), effect)
+              translate0(fK, f(r), effect)
             }
 
           case run: Algebra.Run[G, O, r] =>
             Algebra.segment(run.values).transformWith { r =>
-              compileTranslate(fK, f(r), effect)
+              translate0(fK, f(r), effect)
             }
 
           case u: Algebra.Uncons[G, x, O] =>
             uncons[x](u.s, u.chunkSize, u.maxSteps) match {
-              case Done(r) => compileTranslate(fK, f(Right(r)), effect)
+              case Done(r) => translate0(fK, f(Right(r)), effect)
               case Interrupted(_) =>
-                compileTranslate(fK,
-                                 f(Left(new Throwable("Translated scope cannot be interrupted"))),
-                                 effect)
+                translate0(fK,
+                           f(Left(new Throwable("Translated scope cannot be interrupted"))),
+                           effect)
               case cont: Continue[x, r] =>
                 FreeC
-                  .Eval[Algebra[F, O, ?], r](cont.alg.covaryOutput[O].translate[F](None, fK))
+                  .Eval[Algebra[F, O, ?], r](cont.alg.covaryOutput[O].translate[F](effect, fK))
                   .transformWith { r =>
                     val next: FreeC[Algebra[G, O, ?], Unit] =
                       Algebra.uncons(cont.f(r), u.chunkSize, u.maxSteps).transformWith(f)
-                    compileTranslate(fK, next, effect)
+                    translate0(fK, next, effect)
                   }
 
-              case Error(rsn) => compileTranslate(fK, f(Left(rsn)), effect)
+              case Error(rsn) => translate0(fK, f(Left(rsn)), effect)
             }
 
           case alg: Algebra.AlgEffect[G, O, r] =>
             FreeC.Eval[Algebra[F, O, ?], r](alg.translate[F](effect, fK)).transformWith { r =>
-              compileTranslate(fK, f(r), effect)
+              translate0(fK, f(r), effect)
             }
 
-          case translate: Algebra.Translate[G, h, O] @unchecked =>
-            // nested translate is not supported hence we don't have a way to build Sync[G] from Sync[F] and G ~> F
-            val sg = compileTranslate(translate.fK, translate.s, translate.effect).transformWith(f)
-            compileTranslate(fK, sg, effect)
         }
 
       case e =>
         sys.error(
-          "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (compileTranslate) was: " + e)
+          "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (translate0) was: " + e)
     }
   }
-  def translate[F[_], G[_], O](
-      s: FreeC[Algebra[F, O, ?], Unit],
-      u: F ~> G
-  )(implicit G: TranslateInterrupt[G]): FreeC[Algebra[G, O, ?], Unit] =
-    FreeC.Eval[Algebra[G, O, ?], Unit](Algebra.Translate[G, F, O](s, u, G.effectInstance))
 
 }
