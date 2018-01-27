@@ -1,3 +1,10 @@
+---
+layout: page
+title:  "Guide"
+section: "guide"
+position: 1
+---
+
 <!--
 This markdown file contains code examples which can be compiled using tut. Switch to `project docs`, then do `tut`. Output is produced in `docs/`.
 -->

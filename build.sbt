@@ -1,3 +1,4 @@
+import microsites.ExtraMdFileConfig
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import sbtrelease.Version
 
@@ -313,5 +314,26 @@ lazy val docs = project
         .filterNot("-Xfatal-warnings" == _)
     },
     scalacOptions in Tut += "-Ydelambdafy:inline"
+  )
+  .dependsOn(coreJVM, io)
+
+lazy val microsite = project
+  .in(file("site"))
+  .enablePlugins(MicrositesPlugin)
+  .settings(commonSettings)
+  .settings(
+    tutSourceDirectory := file("site") / "src",
+    micrositeName := "fs2",
+    micrositeDescription := "fs2 - Functional Streams for Scala",
+    micrositeGithubOwner := "functional-streams-for-scala",
+    micrositeGithubRepo := "fs2",
+    micrositeBaseUrl := "/fs2",
+    micrositeExtraMdFiles := Map(
+      file("README.md") -> ExtraMdFileConfig(
+        "index.md",
+        "home",
+        Map("title" -> "Home", "section" -> "home", "position" -> "0")
+      )
+    )
   )
   .dependsOn(coreJVM, io)
