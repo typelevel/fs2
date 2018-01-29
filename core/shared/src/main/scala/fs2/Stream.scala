@@ -2290,12 +2290,9 @@ object Stream {
       */
     def prefetchN(n: Int)(implicit ec: ExecutionContext, F: Effect[F]): Stream[F, O] =
       Stream.eval(async.boundedQueue[F, Option[Segment[O, Unit]]](n)).flatMap { queue =>
-        // TODO Replace the join-based implementation with this one based on concurrently when it passes tests
-        // queue.dequeue.unNoneTerminate
-        //   .flatMap(Stream.segment(_))
-        //   .concurrently(self.segments.noneTerminate.to(queue.enqueue))
-        Stream(queue.dequeue.unNoneTerminate.flatMap(Stream.segment(_)),
-               self.segments.noneTerminate.to(queue.enqueue).drain).joinUnbounded
+        queue.dequeue.unNoneTerminate
+          .flatMap(Stream.segment(_))
+          .concurrently(self.segments.noneTerminate.to(queue.enqueue))
       }
 
     /** Gets a projection of this stream that allows converting it to a `Pull` in a number of ways. */
