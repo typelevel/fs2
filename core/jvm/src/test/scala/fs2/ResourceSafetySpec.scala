@@ -219,16 +219,17 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       // by a step that never completes!
       val s = Stream(Stream(1))
       val signal = async.signalOf[IO, Boolean](false).unsafeRunSync()
-      val c = new AtomicLong(1)
-      (IO.shift *> IO { Thread.sleep(20L) } *> signal.set(true))
-        .unsafeRunSync() // after 20 ms, interrupt
+      val c = new AtomicLong(0)
+      async
+        .fork(IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true))
+        .unsafeRunSync() // after 50 ms, interrupt
       runLog {
         s.evalMap { inner =>
           async.start {
             Stream
-              .bracket(IO { Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
-                                                  _ => inner,
-                                                  _ => IO { c.decrementAndGet; () })
+              .bracket(IO { c.incrementAndGet; Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
+                _ => inner,
+                _ => IO { c.decrementAndGet; () })
               .evalMap { _ =>
                 IO.async[Unit](_ => ())
               }
