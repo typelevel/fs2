@@ -160,9 +160,9 @@ lazy val commonJsSettings = Seq(
 )
 
 lazy val noPublish = Seq(
-  publish := (),
-  publishLocal := (),
-  publishSigned := (),
+  publish := {},
+  publishLocal := {},
+  publishSigned := {},
   publishArtifact := false
 )
 
