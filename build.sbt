@@ -61,7 +61,6 @@ lazy val commonSettings = Seq(
     import cats.effect.IO
     import scala.concurrent.ExecutionContext.Implicits.global
   """,
-  doctestWithDependencies := false,
   doctestTestFramework := DoctestTestFramework.ScalaTest,
   scalafmtOnCompile := true
 ) ++ testSettings ++ scaladocSettings ++ publishingSettings ++ releaseSettings
