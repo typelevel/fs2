@@ -307,6 +307,11 @@ lazy val docs = project
     name := "fs2-docs",
     tutSourceDirectory := file("docs") / "src",
     tutTargetDirectory := file("docs"),
-    scalacOptions ~= { _.filterNot("-Ywarn-unused-import" == _) }
+    scalacOptions in Tut ~= {
+      _.filterNot("-Ywarn-unused-import" == _)
+        .filterNot("-Xlint" == _)
+        .filterNot("-Xfatal-warnings" == _)
+    },
+    scalacOptions in Tut += "-Ydelambdafy:inline"
   )
   .dependsOn(coreJVM, io)
