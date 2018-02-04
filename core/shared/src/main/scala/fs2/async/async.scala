@@ -119,18 +119,13 @@ package object async {
     refOf[F, Option[Promise[F, Either[Throwable, A]]]](None).map { ref =>
       for {
         p <- promise[F, Either[Throwable, A]]
-        ch <- ref.modify {
+        ca <- ref.modify2 {
           case None =>
-            Some(p)
-          case s @ Some(_) =>
-            s
+            (Some(p), f.attempt.flatTap(p.complete))
+          case s @ Some(other) =>
+            (s, other.get)
         }
-        ma <- ch.previous match {
-          case None =>
-            f.attempt.flatMap(ma => p.complete(ma) *> F.pure(ma))
-          case Some(other) =>
-            other.get
-        }
+        ma <- ca._2
         a <- F.fromEither(ma)
       } yield a
     }
