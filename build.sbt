@@ -73,6 +73,15 @@ lazy val testSettings = Seq(
   publishArtifact in Test := true
 )
 
+lazy val tutSettings = Seq(
+  scalacOptions in Tut ~= {
+    _.filterNot("-Ywarn-unused-import" == _)
+      .filterNot("-Xlint" == _)
+      .filterNot("-Xfatal-warnings" == _)
+  },
+  scalacOptions in Tut += "-Ydelambdafy:inline"
+)
+
 def scmBranch(v: String): String = {
   val Some(ver) = Version(v)
   if (ver.qualifier.exists(_ == "-SNAPSHOT"))
@@ -307,14 +316,9 @@ lazy val docs = project
   .settings(
     name := "fs2-docs",
     tutSourceDirectory := file("docs") / "src",
-    tutTargetDirectory := file("docs"),
-    scalacOptions in Tut ~= {
-      _.filterNot("-Ywarn-unused-import" == _)
-        .filterNot("-Xlint" == _)
-        .filterNot("-Xfatal-warnings" == _)
-    },
-    scalacOptions in Tut += "-Ydelambdafy:inline"
+    tutTargetDirectory := file("docs")
   )
+  .settings(tutSettings)
   .dependsOn(coreJVM, io)
 
 lazy val microsite = project
@@ -336,4 +340,5 @@ lazy val microsite = project
       )
     )
   )
+  .settings(tutSettings)
   .dependsOn(coreJVM, io)
