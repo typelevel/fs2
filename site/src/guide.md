@@ -1,3 +1,10 @@
+---
+layout: page
+title:  "Guide"
+section: "guide"
+position: 1
+---
+
 <!--
 This markdown file contains code examples which can be compiled using tut. Switch to `project docs`, then do `tut`. Output is produced in `docs/`.
 -->
@@ -279,7 +286,9 @@ Otherwise, we return a function which processes the next segment in the stream. 
 
 Sometimes, `scanSegmentsOpt` isn't powerful enough to express the stream transformation. Regardless of how complex the job, the `fs2.Pull` type can usually express it.
 
-The `Pull[+F[_],+O,+R]` type represents a program that may pull values from one or more streams, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the [`Pull` class](../core/shared/src/main/scala/fs2/Pull.scala) for the full set of operations on `Pull`.
+The `Pull[+F[_],+O,+R]` type represents a program that may pull values from one or more streams, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the
+[`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/Pull.scala)
+for the full set of operations on `Pull`.
 
 Let's look at an implementation of `take` using `Pull`:
 
@@ -340,7 +349,9 @@ s2.toList
 
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the stream completes. Note again that _nothing happens_ when we call `.stream` on a `Pull`, it is merely converting back to the `Stream` API.
 
-There are lots of useful transformation functions in [`Stream`](../core/shared/src/main/scala/fs2/Stream.scala) built using the `Pull` type.
+There are lots of useful transformation functions in
+[`Stream`](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/Stream.scala)
+built using the `Pull` type.
 
 ### Exercises
 
@@ -383,7 +394,7 @@ It flattens the nested stream, letting up to `maxOpen` inner streams run at a ti
 
 The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
 
-In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [`async` package object](../core/shared/src/main/scala/fs2/async/async.scala) for more details. We'll make use of some of these in the next section when discussing how to talk to the external world.
+In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [`async` package object](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/async/async.scala) for more details. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
 ### Exercises
 
@@ -479,7 +490,9 @@ val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =
 Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 ```
 
-Be sure to check out the [`fs2.io`](../io) package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.
+Be sure to check out the
+[`fs2.io`](https://github.com/functional-streams-for-scala/fs2/tree/series/0.10/io/)
+package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.
 
 #### Asynchronous effects (callbacks invoked multiple times)
 
@@ -509,14 +522,15 @@ def rows[F[_]](h: CSVHandle)(implicit F: Effect[F], ec: ExecutionContext): Strea
   } yield row
 ```
 
-See [`Queue`](../core/shared/src/main/scala/fs2/async/mutable/Queue.scala) for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
+See [`Queue`](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/core/shared/src/main/scala/fs2/async/mutable/Queue.scala)
+for more useful methods. All asynchronous queues in FS2 track their size, which is handy for implementing size-based throttling of the producer.
 
 ### Learning more
 
 Want to learn more?
 
 * Worked examples: these present a nontrivial example of use of the library, possibly making use of lots of different library features.
-  * [The README example](ReadmeExample.md)
+  * [The README example](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/ReadmeExample.md)
   * More contributions welcome! Open a PR, following the style of one of the examples above. You can either start with a large block of code and break it down line by line, or work up to something more complicated using some smaller bits of code first.
 * Detailed coverage of different modules in the library:
   * File I/O

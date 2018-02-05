@@ -1,3 +1,4 @@
+import microsites.ExtraMdFileConfig
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import sbtrelease.Version
 
@@ -70,6 +71,15 @@ lazy val testSettings = Seq(
   parallelExecution in Test := false,
   testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
   publishArtifact in Test := true
+)
+
+lazy val tutSettings = Seq(
+  scalacOptions in Tut ~= {
+    _.filterNot("-Ywarn-unused-import" == _)
+      .filterNot("-Xlint" == _)
+      .filterNot("-Xfatal-warnings" == _)
+  },
+  scalacOptions in Tut += "-Ydelambdafy:inline"
 )
 
 def scmBranch(v: String): String = {
@@ -306,12 +316,29 @@ lazy val docs = project
   .settings(
     name := "fs2-docs",
     tutSourceDirectory := file("docs") / "src",
-    tutTargetDirectory := file("docs"),
-    scalacOptions in Tut ~= {
-      _.filterNot("-Ywarn-unused-import" == _)
-        .filterNot("-Xlint" == _)
-        .filterNot("-Xfatal-warnings" == _)
-    },
-    scalacOptions in Tut += "-Ydelambdafy:inline"
+    tutTargetDirectory := file("docs")
   )
+  .settings(tutSettings)
+  .dependsOn(coreJVM, io)
+
+lazy val microsite = project
+  .in(file("site"))
+  .enablePlugins(MicrositesPlugin)
+  .settings(commonSettings)
+  .settings(
+    tutSourceDirectory := file("site") / "src",
+    micrositeName := "fs2",
+    micrositeDescription := "fs2 - Functional Streams for Scala",
+    micrositeGithubOwner := "functional-streams-for-scala",
+    micrositeGithubRepo := "fs2",
+    micrositeBaseUrl := "/fs2",
+    micrositeExtraMdFiles := Map(
+      file("README.md") -> ExtraMdFileConfig(
+        "index.md",
+        "home",
+        Map("title" -> "Home", "section" -> "home", "position" -> "0")
+      )
+    )
+  )
+  .settings(tutSettings)
   .dependsOn(coreJVM, io)
