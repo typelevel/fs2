@@ -64,10 +64,12 @@ class MergeJoinSpec extends Fs2Spec {
       s.joinUnbounded.compile.drain.unsafeRunSync()
     }
 
-    "merge (left/right failure)" in forAll { (s1: PureStream[Int], f: Failure) =>
+    "merge (left/right failure)" in {
       pending
-      an[Err.type] should be thrownBy {
-        s1.get.merge(f.get).compile.drain.unsafeRunSync()
+      forAll { (s1: PureStream[Int], f: Failure) =>
+        an[Err.type] should be thrownBy {
+          s1.get.merge(f.get).compile.drain.unsafeRunSync()
+        }
       }
     }
 
