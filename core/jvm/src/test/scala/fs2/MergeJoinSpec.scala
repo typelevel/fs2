@@ -73,21 +73,24 @@ class MergeJoinSpec extends Fs2Spec {
       }
     }
 
-    "merge (left/right failure) never-ending flatMap, failure after emit" in forAll {
-      (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
-          s1.get
-          // To ensure errors are generated before the merge occurs, we chunk/unchunk here to force any segment computations
-          // This is necessary b/c this test depends on any errors in f occurring before the first flatMapped output of the
-          // merged stream
-            .merge(f.get.chunks.flatMap(Stream.chunk(_)))
-            .flatMap { _ =>
-              Stream.eval(IO.async[Unit](_ => ()))
-            }
-            .compile
-            .drain
-            .unsafeRunSync()
-        }
+    "merge (left/right failure) never-ending flatMap, failure after emit" in {
+      pending
+      forAll {
+        (s1: PureStream[Int], f: Failure) =>
+          an[Err.type] should be thrownBy {
+            s1.get
+            // To ensure errors are generated before the merge occurs, we chunk/unchunk here to force any segment computations
+            // This is necessary b/c this test depends on any errors in f occurring before the first flatMapped output of the
+            // merged stream
+              .merge(f.get.chunks.flatMap(Stream.chunk(_)))
+              .flatMap { _ =>
+                Stream.eval(IO.async[Unit](_ => ()))
+              }
+              .compile
+              .drain
+              .unsafeRunSync()
+          }
+      }
     }
 
     "merge (left/right failure) constant flatMap, failure after emit" in forAll {
