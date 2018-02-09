@@ -62,8 +62,8 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-* [API docs (fs2-core 0.10.0-RC1)](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-RC1/fs2-io_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html),
-[API docs (fs2-io 0.10.0-RC1)](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-RC1/fs2-core_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html)
+* [API docs (fs2-core 0.10.0-RC1)](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-RC1/fs2-core_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html)
+[API docs (fs2-io 0.10.0-RC1)](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-RC1/fs2-io_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html)
 
 The 0.10 release is almost complete and will be released when Cats 1.0 is released. Milestone builds are available now. The
 [0.10 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.10.md)
