@@ -82,6 +82,13 @@ class Pipe2Spec extends Fs2Spec {
       runLog(as.zipAll(ones)("Z", "2").take(3)) shouldBe Vector("A" -> "1", "A" -> "1", "A" -> "1")
     }
 
+    "zip with scopes" in {
+      // this tests that streams opening resources on each branch will close
+      // scopes independently.
+      val s = Stream(0).scope
+      (s ++ s).zip(s).toList
+    }
+
     "interleave left/right side infinite" in {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
