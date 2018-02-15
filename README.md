@@ -54,23 +54,20 @@ The library supports a number of other interesting use cases:
 
 ### <a id="docs"></a>Documentation and getting help ###
 
-* [The official guide](docs/guide.md) is a good starting point for learning more about the library.
-* [The FAQ](docs/faq.md) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
+* [The official guide](https://functional-streams-for-scala.github.io/fs2/guide.html) is a good starting point for learning more about the library.
+* [The FAQ](https://functional-streams-for-scala.github.io/fs2/faq.html) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
 * Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
 
 Blog posts and other external resources are listed on the [Additional Resources](https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources) page.
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-* [API docs (fs2-core 0.10.0-RC1)][core-api-0.10.0-RC1], [API docs (fs2-io 0.10.0-RC1)][io-api-0.10.0-RC1]
+* [API docs (fs2-core 0.10.0-RC1)](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-RC1/fs2-core_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html)
+[API docs (fs2-io 0.10.0-RC1)](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-RC1/fs2-io_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html)
 
-[io-api-0.10.0-RC1]:
-https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-RC1/fs2-io_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html
-[core-api-0.10.0-RC1]:
-https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-RC1/fs2-core_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html
-
-
-The 0.10 release is almost complete and will be released when Cats 1.0 is released. Milestone builds are available now. The [0.10 migration guide](docs/migration-guide-0.10.md) summarizes the differences between 0.10 and 0.9. To get 0.10, add the following to your SBT build:
+The 0.10 release is almost complete and will be released when Cats 1.0 is released. Milestone builds are available now. The
+[0.10 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.10.md)
+summarizes the differences between 0.10 and 0.9. To get 0.10, add the following to your SBT build:
 
 ```
 // available for Scala 2.11, 2.12
@@ -80,7 +77,9 @@ libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-RC1" // For cats 1.0.1 a
 libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-RC1"
 ```
 
-The 0.9 release is out and we recommend upgrading. You may want to first [read the 0.9 migration guide](docs/migration-guide-0.9.md) if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
+The 0.9 release is out and we recommend upgrading. You may want to first
+[read the 0.9 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.9.md)
+if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
 
 ```
 // available for Scala 2.11, 2.12

@@ -37,5 +37,16 @@ class SchedulerSpec extends AsyncFs2Spec {
         assert(r == Vector(3, 6))
       }
     }
+
+    "delay cancellable: cancel after completion is no op" in {
+      val s = mkScheduler
+        .evalMap { s =>
+          s.effect.delayCancellable(IO.unit, 20.millis).flatMap(t => t._1 <* t._2)
+        }
+
+      runLogF(s).map { r =>
+        r.head shouldBe Some(())
+      }
+    }
   }
 }

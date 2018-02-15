@@ -109,6 +109,28 @@ package object async {
     }
 
   /**
+    * Lazily memoize `f`. For every time the returned `F[F[A]]` is
+    * bound, the effect `f` will be performed at most once (when the
+    * inner `F[A]` is bound the first time).
+    *
+    * @see `start` for eager memoization.
+    */
+  def once[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[F[A]] =
+    refOf[F, Option[Promise[F, Either[Throwable, A]]]](None).map { ref =>
+      for {
+        p <- promise[F, Either[Throwable, A]]
+        ca <- ref.modify2 {
+          case None =>
+            (Some(p), f.attempt.flatTap(p.complete))
+          case s @ Some(other) =>
+            (s, other.get)
+        }
+        ma <- ca._2
+        a <- F.fromEither(ma)
+      } yield a
+    }
+
+  /**
     * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
     * bound. Like `start` but is more efficient.
     */

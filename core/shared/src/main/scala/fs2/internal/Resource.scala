@@ -75,7 +75,7 @@ private[internal] sealed abstract class Resource[F[_]] {
   /**
     * Signals that this resource was leased by another scope than one allocating this resource.
     *
-    * Yields to `Some(lease)`, if this resource was successfully leased, and scope must bind `lease.concel` it when not needed anymore.
+    * Yields to `Some(lease)`, if this resource was successfully leased, and scope must bind `lease.cancel` it when not needed anymore.
     * or to `None` when this resource cannot be leased because resource is already released.
     */
   def lease: F[Option[Scope.Lease[F]]]

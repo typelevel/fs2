@@ -274,18 +274,20 @@ object Scheduler extends SchedulerPlatform {
     /**
       * Starts a timer for duration `d` and after completion of the timer, evaluates `fa`.
       * Returns a "gate" value which allows semantic blocking on the result of `fa` and an action which cancels the timer.
-      * If the cancellation action is invoked, the gate completes with `None`. Otherwise, the gate completes with `Some(a)`.
+      * If the cancellation action is invoked before the timer completes, the gate completes with `None`. Otherwise, the
+      * gate completes with `Some(a)`.
       */
     def delayCancellable[F[_], A](fa: F[A], d: FiniteDuration)(
         implicit F: Effect[F],
         ec: ExecutionContext): F[(F[Option[A]], F[Unit])] =
       async.promise[F, Option[A]].flatMap { gate =>
         F.delay {
+          // needs to be a val, executes the task
           val cancel = scheduler.scheduleOnce(d) {
             ec.execute(() =>
               async.unsafeRunAsync(fa.flatMap(a => gate.complete(Some(a))))(_ => IO.unit))
           }
-          gate.get -> (F.delay(cancel()) *> gate.complete(None))
+          gate.get -> (F.delay(cancel()) *> gate.complete(None).handleError(_ => ()))
         }
       }
 
