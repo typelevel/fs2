@@ -8,7 +8,7 @@ import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.Promise
-import fs2.internal.{Algebra, FreeC, Token}
+import fs2.internal.{Algebra, CompileScope, FreeC, Token}
 
 /**
   * A stream producing output of type `O` and which may evaluate `F`
@@ -2448,29 +2448,28 @@ object Stream {
     private def zipWith_[O2, O3](that: Stream[F, O2])(
         k1: ZipWithCont[F, O, O3, Nothing],
         k2: ZipWithCont[F, O2, O3, Nothing])(f: (O, O2) => O3): Stream[F, O3] = {
-      def go(t1: (Segment[O, Unit], Stream[F, O]),
-             t2: (Segment[O2, Unit], Stream[F, O2])): Pull[F, O3, Option[Nothing]] =
-        (t1, t2) match {
-          case ((hd1, tl1), (hd2, tl2)) =>
-            Pull.segment(hd1.zipWith(hd2)(f)).flatMap {
-              case Left(((), extra2)) =>
-                tl1.pull.uncons.flatMap {
-                  case None      => k2(Left((extra2, tl2)))
-                  case Some(tl1) => go(tl1, (extra2, tl2))
-                }
-              case Right(((), extra1)) =>
-                tl2.pull.uncons.flatMap {
-                  case None      => k1(Left((extra1, tl1)))
-                  case Some(tl2) => go((extra1, tl1), tl2)
-                }
+      def go(leg1: StreamLeg[F, O], leg2: StreamLeg[F, O2]): Pull[F, O3, Option[Nothing]] =
+        Pull.segment(leg1.head.zipWith(leg2.head)(f)).flatMap {
+          case Left(((), extra2)) =>
+            leg1.uncons.flatMap {
+              case None      => k2(Left((extra2, leg2.stream)))
+              case Some(tl1) => go(tl1, leg2.setHead(extra2))
+            }
+          case Right(((), extra1)) =>
+            leg2.uncons.flatMap {
+              case None      => k1(Left((extra1, leg1.stream)))
+              case Some(tl2) => go(leg1.setHead(extra1), leg2)
             }
         }
-      self.pull.uncons.flatMap {
-        case Some(s1) =>
-          that.pull.uncons.flatMap {
-            case Some(s2) => go(s1, s2)
-            case None     => k1(Left(s1))
-          }
+
+      self.pull.unconsLeg.flatMap {
+        case Some(leg1) =>
+          that.pull.unconsLeg
+            .flatMap {
+              case Some(leg2) => go(leg1, leg2)
+              case None       => k1(Left((leg1.head, leg1.stream)))
+            }
+
         case None => k2(Right(that))
       }.stream
     }
@@ -2742,6 +2741,19 @@ object Stream {
             case Right((hd, tl2)) => Pull.pure(Some(hd -> tl.cons(tl2)))
           }
       }
+
+    /**
+      * Like uncons, but instead performing normal uncons, this will
+      * run the strema up to first segment available.
+      * UsUsefulhen zipping multiple streams (legs) into one stream.
+      * Assures that scopes are correctly held for each stream `leg`
+      */
+    def unconsLeg: Pull[F, Nothing, Option[StreamLeg[F, O]]] =
+      Pull
+        .fromFreeC(Algebra.getScope.asInstanceOf[FreeC[Algebra[F, Nothing, ?], CompileScope[F, O]]])
+        .flatMap { scope =>
+          new StreamLeg[F, O](Segment.empty, scope, self.get).uncons
+        }
 
     /**
       * Like [[uncons]], but returns a segment of no more than `n` elements.
