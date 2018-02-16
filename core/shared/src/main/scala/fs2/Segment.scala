@@ -767,9 +767,10 @@ abstract class Segment[+O, +R] { self =>
             defer,
             o => {
               if (ok) {
-                ok = ok && p(o);
-                if (ok || takeFailure) emit(o)
-                else done(Right(staged.remainder.cons(o)))
+                ok = ok && p(o)
+                if (ok) emit(o)
+                else if (takeFailure) { emit(o); done(Right(staged.remainder)) } else
+                  done(Right(staged.remainder.cons(o)))
               }
             },
             os => {
