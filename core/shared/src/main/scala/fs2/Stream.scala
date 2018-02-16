@@ -2448,23 +2448,23 @@ object Stream {
     private def zipWith_[O2, O3](that: Stream[F, O2])(
         k1: ZipWithCont[F, O, O3, Nothing],
         k2: ZipWithCont[F, O2, O3, Nothing])(f: (O, O2) => O3): Stream[F, O3] = {
-      def go(leg1: StreamLeg[F, O], leg2: StreamLeg[F, O2]): Pull[F, O3, Option[Nothing]] =
+      def go(leg1: StepLeg[F, O], leg2: StepLeg[F, O2]): Pull[F, O3, Option[Nothing]] =
         Pull.segment(leg1.head.zipWith(leg2.head)(f)).flatMap {
           case Left(((), extra2)) =>
-            leg1.uncons.flatMap {
+            leg1.stepLeg.flatMap {
               case None      => k2(Left((extra2, leg2.stream)))
               case Some(tl1) => go(tl1, leg2.setHead(extra2))
             }
           case Right(((), extra1)) =>
-            leg2.uncons.flatMap {
+            leg2.stepLeg.flatMap {
               case None      => k1(Left((extra1, leg1.stream)))
               case Some(tl2) => go(leg1.setHead(extra1), tl2)
             }
         }
 
-      self.pull.unconsLeg.flatMap {
+      self.pull.stepLeg.flatMap {
         case Some(leg1) =>
-          that.pull.unconsLeg
+          that.pull.stepLeg
             .flatMap {
               case Some(leg2) => go(leg1, leg2)
               case None       => k1(Left((leg1.head, leg1.stream)))
@@ -2743,16 +2743,19 @@ object Stream {
       }
 
     /**
-      * Like uncons, but instead performing normal uncons, this will
-      * run the strema up to first segment available.
-      * UsUsefulhen zipping multiple streams (legs) into one stream.
+      * Like `uncons`, but instead performing normal `uncons`, this will
+      * run the stream up to first segment available.
+      * Useful when zipping multiple streams (legs) into one stream.
       * Assures that scopes are correctly held for each stream `leg`
+      * indepndently of scopes from other legs.
+      *
+      * If you are not mergin mulitple streams, consider using `uncons`.
       */
-    def unconsLeg: Pull[F, Nothing, Option[StreamLeg[F, O]]] =
+    def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
       Pull
         .fromFreeC(Algebra.getScope.asInstanceOf[FreeC[Algebra[F, Nothing, ?], CompileScope[F, O]]])
         .flatMap { scope =>
-          new StreamLeg[F, O](Segment.empty, scope, self.get).uncons
+          new StepLeg[F, O](Segment.empty, scope, self.get).stepLeg
         }
 
     /**
@@ -3142,6 +3145,55 @@ object Stream {
       import scala.collection.immutable.VectorBuilder
       F.suspend(F.map(fold(new VectorBuilder[O])(_ += _))(_.result))
     }
+  }
+
+  /**
+    * When merging multiple streams, this represents step of one leg.
+    *
+    * It is common to `uncons`, however unlike `uncons`, it keeps track
+    * of stream scope independently of the main scope of the stream.
+    *
+    * This assures, that after each next `stepLeg` each Stream `leg` keeps its scope
+    * when interpreting.
+    *
+    * Usual scenarios is to first invoke `stream.pull.stepLeg` and then consume whatever is
+    * available in `leg.head`. If the next step is required `leg.stepLeg` will yield next `Leg`.
+    *
+    * Once the stream will stop to be interleaved (merged), then `stream` allows to return to normal stream
+    * invocation.
+    *
+    */
+  final class StepLeg[F[_], O](
+      val head: Segment[O, Unit],
+      private val scope: CompileScope[F, O],
+      private val next: FreeC[Algebra[F, O, ?], Unit]
+  ) {
+
+    /**
+      * Converts this leg back to regular stream. Scope is updated to one of this leg.
+      * Note that when this is invoked, no more interleaving legs are allowed, and this must be very last
+      * leg remaining.
+      *
+      *
+      * Note that resulting stream won't contain the `head` of this leg.
+      *
+      * @return
+      */
+    def stream: Stream[F, O] =
+      Stream.fromFreeC(Algebra.setScope(scope.id).flatMap { _ =>
+        next
+      })
+
+    /** replaces head of this leg. usefull when head was not fully consumed **/
+    def setHead(nextHead: Segment[O, Unit]): StepLeg[F, O] =
+      new StepLeg[F, O](nextHead, scope, next)
+
+    /** provides an uncons operation on leg of the stream **/
+    def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
+      Pull
+        .eval(Algebra.compileLoop(scope, next)(scope.F))
+        .map { _.map { case (segment, scope, next) => new StepLeg[F, O](segment, scope, next) } }
+
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */
