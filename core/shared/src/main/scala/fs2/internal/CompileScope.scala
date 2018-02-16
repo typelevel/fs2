@@ -66,7 +66,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     val id: Token,
     private val parent: Option[CompileScope[F, O]],
     val interruptible: Option[InterruptContext[F, O]]
-)(implicit F: Sync[F])
+)(implicit private[fs2] val F: Sync[F])
     extends Scope[F] { self =>
 
   private val state: Ref[F, CompileScope.State[F, O]] = new Ref(
@@ -283,6 +283,31 @@ private[fs2] final class CompileScope[F[_], O] private (
   def findSelfOrAncestor(scopeId: Token): Option[CompileScope[F, O]] =
     if (self.id == scopeId) Some(self)
     else findAncestor(scopeId)
+
+  /** finds scope in child hierarchy of current scope **/
+  def findSelfOrChild(scopeId: Token): F[Option[CompileScope[F, O]]] = {
+    def go(scopes: Catenable[CompileScope[F, O]]): F[Option[CompileScope[F, O]]] =
+      scopes.uncons match {
+        case None => F.pure(None)
+        case Some((scope, tail)) =>
+          if (scope.id == scopeId) F.pure(Some(scope))
+          else {
+            F.flatMap(scope.state.get) { s =>
+              if (s.children.isEmpty) go(tail)
+              else
+                F.flatMap(go(s.children)) {
+                  case None        => go(tail)
+                  case Some(scope) => F.pure(Some(scope))
+                }
+            }
+          }
+      }
+    if (self.id == scopeId) F.pure(Some(self))
+    else
+      F.flatMap(state.get) { s =>
+        go(s.children)
+      }
+  }
 
   // See docs on [[Scope#lease]]
   def lease: F[Option[Scope.Lease[F]]] = {

@@ -12,20 +12,29 @@ private[fs2] sealed trait Algebra[F[_], O, R]
 private[fs2] object Algebra {
 
   final case class Output[F[_], O](values: Segment[O, Unit]) extends Algebra[F, O, Unit]
+
   final case class Run[F[_], O, R](values: Segment[O, R]) extends Algebra[F, O, R]
+
   final case class Uncons[F[_], X, O](s: FreeC[Algebra[F, X, ?], Unit],
                                       chunkSize: Int,
                                       maxSteps: Long)
       extends Algebra[F, O, Option[(Segment[X, Unit], FreeC[Algebra[F, X, ?], Unit])]]
 
   final case class Eval[F[_], O, R](value: F[R]) extends AlgEffect[F, O, R]
+
   final case class Acquire[F[_], O, R](resource: F[R], release: R => F[Unit])
       extends AlgEffect[F, O, (R, Token)]
+
   final case class Release[F[_], O](token: Token) extends AlgEffect[F, O, Unit]
+
   final case class OpenScope[F[_], O](interruptible: Option[(Effect[F], ExecutionContext)])
       extends AlgScope[F, O, Option[CompileScope[F, O]]]
+
   final case class CloseScope[F[_], O](scopeId: Token, interruptFallback: Boolean)
       extends AlgScope[F, O, Unit]
+
+  final case class SetScope[F[_], O](scopeId: Token) extends AlgScope[F, O, Unit]
+
   final case class GetScope[F[_], O]() extends AlgEffect[F, O, CompileScope[F, O]]
 
   sealed trait AlgEffect[F[_], O, R] extends Algebra[F, O, R]
@@ -56,6 +65,7 @@ private[fs2] object Algebra {
         case r: Release[F, O]    => r.asInstanceOf[AlgEffect[G, O, R]]
         case c: CloseScope[F, O] => c.asInstanceOf[AlgEffect[G, O, R]]
         case g: GetScope[F, O]   => g.asInstanceOf[AlgEffect[G, O, R]]
+        case s: SetScope[F, O]   => s.asInstanceOf[AlgEffect[G, O, R]]
       }
   }
 
@@ -130,6 +140,10 @@ private[fs2] object Algebra {
   def getScope[F[_], O]: FreeC[Algebra[F, O, ?], CompileScope[F, O]] =
     FreeC.Eval[Algebra[F, O, ?], CompileScope[F, O]](GetScope())
 
+  /** sets active scope. Must be child scope of current scope **/
+  private[fs2] def setScope[F[_], O](scopeId: Token): FreeC[Algebra[F, O, ?], Unit] =
+    FreeC.Eval[Algebra[F, O, ?], Unit](SetScope(scopeId))
+
   def pure[F[_], O, R](r: R): FreeC[Algebra[F, O, ?], R] =
     FreeC.Pure[Algebra[F, O, ?], R](r)
 
@@ -165,16 +179,26 @@ private[fs2] object Algebra {
   private[fs2] def compileScope[F[_], O, B](scope: CompileScope[F, O],
                                             stream: FreeC[Algebra[F, O, ?], Unit],
                                             init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
-    compileFoldLoop[F, O, B](scope, init, g, stream)
+    compileLoop[F, O](scope, stream).flatMap {
+      case Some((output, scope, tail)) =>
+        try {
+          val b = output.fold(init)(g).force.run._2
+          compileScope(scope, tail, b)(g)
+        } catch {
+          case NonFatal(err) =>
+            compileScope(scope, tail.asHandler(err), init)(g)
+        }
+      case None =>
+        F.pure(init)
+    }
 
-  private def compileFoldLoop[F[_], O, B](
+  private[fs2] def compileLoop[F[_], O](
       scope: CompileScope[F, O],
-      acc: B,
-      g: (B, O) => B,
       v: FreeC[Algebra[F, O, ?], Unit]
-  )(implicit F: Sync[F]): F[B] = {
+  )(implicit F: Sync[F])
+    : F[Option[(Segment[O, Unit], CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])]] = {
 
-    // Uncons is interrupted, fallback on `compileFoldLoop` has to be invoked
+    // Uncons is interrupted, fallback on `compileLoop` has to be invoked
     // The token is a scope from which we should recover.
     case class Interrupted[X](token: Token) extends UR[X]
     // uncons is done
@@ -278,7 +302,7 @@ private[fs2] object Algebra {
 
     F.flatMap(F.delay(v.viewL.get)) {
       case done: FreeC.Pure[Algebra[F, O, ?], Unit] =>
-        F.pure(acc)
+        F.pure(None)
 
       case failed: FreeC.Fail[Algebra[F, O, ?], Unit] =>
         F.raiseError(failed.error)
@@ -290,10 +314,10 @@ private[fs2] object Algebra {
 
         def onInterrupt(r: Either[Throwable, Token]) =
           r.fold(
-            err => compileFoldLoop(scope, acc, g, f(Left(err))),
+            err => compileLoop(scope, f(Left(err))),
             token =>
               F.flatMap(scope.whenInterrupted(token)) {
-                case (scope, next) => compileFoldLoop(scope, acc, g, next)
+                case (scope, next) => compileLoop(scope, next)
             }
           )
 
@@ -302,11 +326,10 @@ private[fs2] object Algebra {
             F.flatMap(scope.isInterrupted) {
               case None =>
                 try {
-                  val b = output.values.fold(acc)(g).force.run._2
-                  compileFoldLoop(scope, b, g, f(Right(())))
+                  F.pure(Some((output.values, scope, f(Right(())))))
                 } catch {
                   case NonFatal(err) =>
-                    compileFoldLoop(scope, acc, g, f(Left(err)))
+                    compileLoop(scope, f(Left(err)))
                 }
               case Some(interrupted) =>
                 onInterrupt(interrupted)
@@ -317,11 +340,11 @@ private[fs2] object Algebra {
             F.flatMap(scope.isInterrupted) {
               case None =>
                 try {
-                  val (r, b) = run.values.fold(acc)(g).force.run
-                  compileFoldLoop(scope, b, g, f(Right(r)))
+                  val (chunks, r) = run.values.force.unconsAll
+                  F.pure(Some((Segment.catenatedChunks(chunks), scope, f(Right(r)))))
                 } catch {
                   case NonFatal(err) =>
-                    compileFoldLoop(scope, acc, g, f(Left(err)))
+                    compileLoop(scope, f(Left(err)))
                 }
               case Some(interrupted) =>
                 onInterrupt(interrupted)
@@ -333,10 +356,10 @@ private[fs2] object Algebra {
               case None =>
                 F.flatMap(F.attempt(uncons[x](u.s, u.chunkSize, u.maxSteps))) {
                   case Left(err) =>
-                    compileFoldLoop(scope, acc, g, f(Left(err)))
+                    compileLoop(scope, f(Left(err)))
 
                   case Right(Done(r)) =>
-                    compileFoldLoop(scope, acc, g, f(Right(r)))
+                    compileLoop(scope, f(Right(r)))
 
                   case Right(Interrupted(token)) =>
                     onInterrupt(Right(token))
@@ -351,7 +374,7 @@ private[fs2] object Algebra {
                             .transformWith(f)
                         }
 
-                    compileFoldLoop(scope, acc, g, next)
+                    compileLoop(scope, next)
 
                 }
               case Some(interrupted) =>
@@ -360,20 +383,20 @@ private[fs2] object Algebra {
 
           case eval: Algebra.Eval[F, O, _] =>
             F.flatMap(scope.interruptibleEval(eval.value)) {
-              case Right(r)           => compileFoldLoop(scope, acc, g, f(Right(r)))
+              case Right(r)           => compileLoop(scope, f(Right(r)))
               case Left(Right(token)) => onInterrupt(Right(token))
-              case Left(Left(err))    => compileFoldLoop(scope, acc, g, f(Left(err)))
+              case Left(Left(err))    => compileLoop(scope, f(Left(err)))
 
             }
 
           case acquire: Algebra.Acquire[F, O, _] =>
             F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
-              compileFoldLoop(scope, acc, g, f(r))
+              compileLoop(scope, f(r))
             }
 
           case release: Algebra.Release[F, O] =>
             F.flatMap(scope.releaseResource(release.token)) { r =>
-              compileFoldLoop(scope, acc, g, f(r))
+              compileLoop(scope, f(r))
             }
 
           case open: Algebra.OpenScope[F, O] =>
@@ -382,7 +405,7 @@ private[fs2] object Algebra {
                 case (effect, ec) => (effect, ec, f(Right(None)))
               }
             F.flatMap(scope.open(interruptible)) { childScope =>
-              compileFoldLoop(childScope, acc, g, f(Right(Some(childScope))))
+              compileLoop(childScope, f(Right(Some(childScope))))
             }
 
           case close: Algebra.CloseScope[F, O] =>
@@ -392,18 +415,26 @@ private[fs2] object Algebra {
                 case Some(toClose) =>
                   F.flatMap(toClose.close) { r =>
                     F.flatMap(toClose.openAncestor) { ancestor =>
-                      compileFoldLoop(ancestor, acc, g, f(r))
+                      compileLoop(ancestor, f(r))
                     }
                   }
                 case None =>
                   val rsn = new IllegalStateException(
                     "Failed to close scope that is not active scope or ancestor")
-                  compileFoldLoop(scope, acc, g, f(Left(rsn)))
+                  compileLoop(scope, f(Left(rsn)))
               }
             }
 
+          case set: Algebra.SetScope[F, O] =>
+            F.flatMap(scope.findSelfOrChild(set.scopeId)) {
+              case Some(scope) => compileLoop(scope, f(Right(())))
+              case None =>
+                val rsn = new IllegalStateException("Failed to find child scope of current scope")
+                compileLoop(scope, f(Left(rsn)))
+            }
+
           case e: GetScope[F, O] =>
-            compileFoldLoop(scope, acc, g, f(Right(scope)))
+            compileLoop(scope, f(Right(scope)))
 
         }
 
@@ -418,7 +449,7 @@ private[fs2] object Algebra {
       effect: Option[Effect[F]]
   ): FreeC[Algebra[F, O, ?], Unit] = {
 
-    // Uncons is interrupted, fallback on `compileFoldLoop` has to be invoked
+    // Uncons is interrupted, fallback on `compileLoop` has to be invoked
     // The token is a scope from which we should recover.
     case class Interrupted[X](token: Token) extends UR[X]
     // uncons is done
