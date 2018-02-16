@@ -12,8 +12,8 @@ Quick links:
 * [API docs (fs2-core)][core-api], [API docs (fs2-io)][io-api]
 * [Docs and getting help](#docs)
 
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.9.6/fs2-io_2.12-0.9.6-javadoc.jar/!/fs2/io/index.html
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.9.6/fs2-core_2.12-0.9.6-javadoc.jar/!/fs2/index.html
+[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.1/fs2-io_2.12-0.10.1-javadoc.jar/!/fs2/io/index.html
+[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.1/fs2-core_2.12-0.10.1-javadoc.jar/!/fs2/index.html
 
 ### <a id="about"></a>About the library ###
 
@@ -62,22 +62,23 @@ Blog posts and other external resources are listed on the [Additional Resources]
 
 ### <a id="getit"></a> Where to get the latest version ###
 
-* [API docs (fs2-core 0.10.0-RC1)](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.12/0.10.0-RC1/fs2-core_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html)
-[API docs (fs2-io 0.10.0-RC1)](https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.12/0.10.0-RC1/fs2-io_2.12-0.10.0-RC1-javadoc.jar/!/fs2/index.html)
+* [API docs (fs2-core 0.10.1)][core-api]
+* [API docs (fs2-io 0.10.1)][io-api]
 
-The 0.10 release is almost complete and will be released when Cats 1.0 is released. Milestone builds are available now. The
-[0.10 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.10.md)
-summarizes the differences between 0.10 and 0.9. To get 0.10, add the following to your SBT build:
+The latest version is 0.10.x. See the badge at the top of the README for the exact version number.
+
+The [0.10 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.10.md)
+summarizes the differences between 0.10 and 0.9. To get 0.10.x, add the following to your SBT build:
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.0-RC1" // For cats 1.0.1 and cats-effect 0.8
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.1" // For cats 1.0.1 and cats-effect 0.8
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.0-RC1"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.1"
 ```
 
-The 0.9 release is out and we recommend upgrading. You may want to first
+The previous stable release is 0.9.7. You may want to first
 [read the 0.9 migration guide](https://github.com/functional-streams-for-scala/fs2/blob/series/0.10/docs/migration-guide-0.9.md)
 if you are upgrading from 0.8 or earlier. To get 0.9, add the following to your SBT build:
 
@@ -100,8 +101,6 @@ API docs:
 
 * [The core library][core-api]
 * [The `io` library][io-api], FS2 bindings for NIO-based file I/O and TCP/UDP networking
-
-The previous stable release is 0.8.4 ([source](https://github.com/functional-streams-for-scala/fs2/tree/release/0.8.4)).
 
 ### Projects using FS2 ###
 
