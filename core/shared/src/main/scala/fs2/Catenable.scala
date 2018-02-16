@@ -1,6 +1,6 @@
 package fs2
 
-import cats.{Applicative, Eval, Foldable, Monad, Traverse}
+import cats.{Alternative, Applicative, Eval, Foldable, Monad, Monoid, Traverse}
 import cats.implicits._
 import Catenable._
 
@@ -200,8 +200,13 @@ object Catenable {
       case _ => fromSeq(as)
     }
 
-  implicit val instance: Traverse[Catenable] with Monad[Catenable] =
-    new Traverse[Catenable] with Monad[Catenable] {
+  implicit def catenableMonoid[A]: Monoid[Catenable[A]] = new Monoid[Catenable[A]] {
+    def empty: Catenable[A] = Catenable.empty
+    def combine(c: Catenable[A], c2: Catenable[A]): Catenable[A] = Catenable.append(c, c2)
+  }
+
+  implicit val instance: Traverse[Catenable] with Alternative[Catenable] with Monad[Catenable] =
+    new Traverse[Catenable] with Alternative[Catenable] with Monad[Catenable] {
       def foldLeft[A, B](fa: Catenable[A], b: B)(f: (B, A) => B): B =
         fa.foldLeft(b)(f)
       def foldRight[A, B](fa: Catenable[A], b: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] =
@@ -211,6 +216,8 @@ object Catenable {
       def traverse[F[_], A, B](fa: Catenable[A])(f: A => F[B])(
           implicit G: Applicative[F]): F[Catenable[B]] =
         Traverse[List].traverse(fa.toList)(f).map(Catenable.apply)
+      def empty[A]: Catenable[A] = Catenable.empty
+      def combineK[A](c: Catenable[A], c2: Catenable[A]): Catenable[A] = Catenable.append(c, c2)
       def pure[A](a: A): Catenable[A] = Catenable.singleton(a)
       def flatMap[A, B](fa: Catenable[A])(f: A => Catenable[B]): Catenable[B] =
         fa.flatMap(f)
