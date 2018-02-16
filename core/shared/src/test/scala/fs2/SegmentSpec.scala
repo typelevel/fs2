@@ -219,6 +219,10 @@ class SegmentSpec extends Fs2Spec {
       }
     }
 
+    "takeWhile (3)" in {
+      Segment.catenated(Segment.unfold(0)(i => if (i < 1000) Some((i, i + 1)) else None).takeWhile(_ != 5, true).force.unconsAll._1.map(Segment.chunk)).force.toList shouldBe List(0, 1, 2, 3, 4, 5)
+    }
+
     "unconsChunk" in {
       forAll { (xss: List[List[Int]]) =>
         val seg = xss.foldRight(Segment.empty[Int])((xs, acc) => Segment.array(xs.toArray) ++ acc)
