@@ -1430,7 +1430,7 @@ object Stream {
     * This is a low-level method and generally should not be used by user code.
     */
   def getScope[F[_]]: Stream[F, Scope[F]] =
-    Stream.fromFreeC(Algebra.getScope[F, Scope[F]].flatMap(Algebra.output1(_)))
+    Stream.fromFreeC(Algebra.getScope[F, Scope[F], Scope[F]].flatMap(Algebra.output1(_)))
 
   /**
     * Creates a stream that, when run, fails with the supplied exception.
@@ -2743,22 +2743,6 @@ object Stream {
       }
 
     /**
-      * Like `uncons`, but instead performing normal `uncons`, this will
-      * run the stream up to first segment available.
-      * Useful when zipping multiple streams (legs) into one stream.
-      * Assures that scopes are correctly held for each stream `leg`
-      * indepndently of scopes from other legs.
-      *
-      * If you are not mergin mulitple streams, consider using `uncons`.
-      */
-    def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
-      Pull
-        .fromFreeC(Algebra.getScope.asInstanceOf[FreeC[Algebra[F, Nothing, ?], CompileScope[F, O]]])
-        .flatMap { scope =>
-          new StepLeg[F, O](Segment.empty, scope, self.get).stepLeg
-        }
-
-    /**
       * Like [[uncons]], but returns a segment of no more than `n` elements.
       *
       * The returned segment has a result tuple consisting of the remaining limit
@@ -2986,6 +2970,22 @@ object Stream {
       go(init, self)
     }
 
+    /**
+      * Like `uncons`, but instead of performing normal `uncons`, this will
+      * run the stream up to the first segment available.
+      * Useful when zipping multiple streams (legs) into one stream.
+      * Assures that scopes are correctly held for each stream `leg`
+      * indepentently of scopes from other legs.
+      *
+      * If you are not pulling from mulitple streams, consider using `uncons`.
+      */
+    def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
+      Pull
+        .fromFreeC(Algebra.getScope[F, Nothing, O])
+        .flatMap { scope =>
+          new StepLeg[F, O](Segment.empty, scope, self.get).stepLeg
+        }
+
     /** Emits the first `n` elements of the input. */
     def take(n: Long): Pull[F, O, Option[Stream[F, O]]] =
       if (n <= 0) Pull.pure(None)
@@ -3170,30 +3170,26 @@ object Stream {
   ) {
 
     /**
-      * Converts this leg back to regular stream. Scope is updated to one of this leg.
+      * Converts this leg back to regular stream. Scope is updated to the scope associated with this leg.
       * Note that when this is invoked, no more interleaving legs are allowed, and this must be very last
       * leg remaining.
       *
-      *
       * Note that resulting stream won't contain the `head` of this leg.
-      *
-      * @return
       */
     def stream: Stream[F, O] =
       Stream.fromFreeC(Algebra.setScope(scope.id).flatMap { _ =>
         next
       })
 
-    /** replaces head of this leg. usefull when head was not fully consumed **/
+    /** Replaces head of this leg. Useful when the head was not fully consumed. */
     def setHead(nextHead: Segment[O, Unit]): StepLeg[F, O] =
       new StepLeg[F, O](nextHead, scope, next)
 
-    /** provides an uncons operation on leg of the stream **/
+    /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
       Pull
         .eval(Algebra.compileLoop(scope, next)(scope.F))
         .map { _.map { case (segment, scope, next) => new StepLeg[F, O](segment, scope, next) } }
-
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */
