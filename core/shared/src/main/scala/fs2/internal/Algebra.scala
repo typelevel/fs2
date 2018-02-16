@@ -170,7 +170,6 @@ private[fs2] object Algebra {
   def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, O) => B)(
       implicit F: Sync[F]): F[B] =
     F.delay(CompileScope.newRoot[F, O]).flatMap { scope =>
-      //   println(s"ROOT: ${scope.id}")
       compileScope[F, O, B](scope, stream, init)(f).attempt.flatMap {
         case Left(t)  => scope.close *> F.raiseError(t)
         case Right(b) => scope.close.as(b)
@@ -217,7 +216,7 @@ private[fs2] object Algebra {
         chunkSize: Int,
         maxSteps: Long
     ): F[UR[X]] =
-      F.flatMap(F.delay { xs.viewL.get }) {
+      F.flatMap(F.delay(xs.viewL.get)) {
         case done: FreeC.Pure[Algebra[F, X, ?], Unit] =>
           F.pure(Done(None))
 
@@ -301,7 +300,7 @@ private[fs2] object Algebra {
 
       }
 
-    F.flatMap(F.delay { v.viewL.get }) {
+    F.flatMap(F.delay(v.viewL.get)) {
       case done: FreeC.Pure[Algebra[F, O, ?], Unit] =>
         F.pure(None)
 
@@ -427,7 +426,7 @@ private[fs2] object Algebra {
             }
 
           case set: Algebra.SetScope[F, O] =>
-            F.flatMap(scope.findChildScope(set.scopeId)) {
+            F.flatMap(scope.findSelfOrChild(set.scopeId)) {
               case Some(scope) => compileLoop(scope, f(Right(())))
               case None =>
                 val rsn = new IllegalStateException("Failed to find child scope of current scope")

@@ -285,7 +285,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     else findAncestor(scopeId)
 
   /** finds scope in child hierarchy of current scope **/
-  def findChildScope(scopeId: Token): F[Option[CompileScope[F, O]]] = {
+  def findSelfOrChild(scopeId: Token): F[Option[CompileScope[F, O]]] = {
     def go(scopes: Catenable[CompileScope[F, O]]): F[Option[CompileScope[F, O]]] =
       scopes.uncons match {
         case None => F.pure(None)
@@ -302,9 +302,11 @@ private[fs2] final class CompileScope[F[_], O] private (
             }
           }
       }
-    F.flatMap(state.get) { s =>
-      go(s.children)
-    }
+    if (self.id == scopeId) F.pure(Some(self))
+    else
+      F.flatMap(state.get) { s =>
+        go(s.children)
+      }
   }
 
   // See docs on [[Scope#lease]]

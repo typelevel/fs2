@@ -2458,7 +2458,7 @@ object Stream {
           case Right(((), extra1)) =>
             leg2.uncons.flatMap {
               case None      => k1(Left((extra1, leg1.stream)))
-              case Some(tl2) => go(leg1.setHead(extra1), leg2)
+              case Some(tl2) => go(leg1.setHead(extra1), tl2)
             }
         }
 
