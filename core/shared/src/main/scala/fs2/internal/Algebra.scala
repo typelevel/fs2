@@ -35,7 +35,7 @@ private[fs2] object Algebra {
 
   final case class SetScope[F[_], O](scopeId: Token) extends AlgScope[F, O, Unit]
 
-  final case class GetScope[F[_], O]() extends AlgEffect[F, O, CompileScope[F, O]]
+  final case class GetScope[F[_], O, X]() extends AlgEffect[F, O, CompileScope[F, X]]
 
   sealed trait AlgEffect[F[_], O, R] extends Algebra[F, O, R]
 
@@ -62,10 +62,10 @@ private[fs2] object Algebra {
             }
           ).asInstanceOf[AlgEffect[G, O, R]]
 
-        case r: Release[F, O]    => r.asInstanceOf[AlgEffect[G, O, R]]
-        case c: CloseScope[F, O] => c.asInstanceOf[AlgEffect[G, O, R]]
-        case g: GetScope[F, O]   => g.asInstanceOf[AlgEffect[G, O, R]]
-        case s: SetScope[F, O]   => s.asInstanceOf[AlgEffect[G, O, R]]
+        case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
+        case c: CloseScope[F, O]  => c.asInstanceOf[AlgEffect[G, O, R]]
+        case g: GetScope[F, O, x] => g.asInstanceOf[AlgEffect[G, O, R]]
+        case s: SetScope[F, O]    => s.asInstanceOf[AlgEffect[G, O, R]]
       }
   }
 
@@ -137,8 +137,8 @@ private[fs2] object Algebra {
         }
     }
 
-  def getScope[F[_], O]: FreeC[Algebra[F, O, ?], CompileScope[F, O]] =
-    FreeC.Eval[Algebra[F, O, ?], CompileScope[F, O]](GetScope())
+  def getScope[F[_], O, X]: FreeC[Algebra[F, O, ?], CompileScope[F, X]] =
+    FreeC.Eval[Algebra[F, O, ?], CompileScope[F, X]](GetScope())
 
   /** sets active scope. Must be child scope of current scope **/
   private[fs2] def setScope[F[_], O](scopeId: Token): FreeC[Algebra[F, O, ?], Unit] =
@@ -286,7 +286,7 @@ private[fs2] object Algebra {
                 uncons(f(r), chunkSize, maxSteps)
               }
 
-            case get: Algebra.GetScope[F, X] =>
+            case get: Algebra.GetScope[F, X, y] =>
               uncons(f(Right(scope)), chunkSize, maxSteps)
 
             case scope: AlgScope[F, X, r] =>
@@ -433,7 +433,7 @@ private[fs2] object Algebra {
                 compileLoop(scope, f(Left(rsn)))
             }
 
-          case e: GetScope[F, O] =>
+          case e: Algebra.GetScope[F, O, x] =>
             compileLoop(scope, f(Right(scope)))
 
         }
