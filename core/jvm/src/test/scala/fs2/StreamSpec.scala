@@ -372,5 +372,15 @@ class StreamSpec extends Fs2Spec with Inside {
         .take(2)
         .toVector shouldBe Vector(0L, 1L)
     }
+
+    "regression #1089" in {
+      (Stream.chunk(Chunk.bytes(Array.fill(2000)(1.toByte))) ++ Stream.eval(
+        IO.async[Byte](_ => ())))
+        .take(2000)
+        .chunks
+        .compile
+        .toVector
+        .unsafeRunSync()
+    }
   }
 }

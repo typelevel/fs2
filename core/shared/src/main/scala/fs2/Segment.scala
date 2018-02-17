@@ -718,6 +718,7 @@ abstract class Segment[+O, +R] { self =>
                       rem -= os.size
                       emits(os)
                     case sz if sz == rem =>
+                      rem -= os.size
                       emits(os)
                       done(Right(staged.remainder))
                     case _ =>
