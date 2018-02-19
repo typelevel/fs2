@@ -1989,7 +1989,7 @@ object Stream {
                                 outputQ.enqueue1(Some(s))
                               }
                               .interruptWhen(done.map(_.nonEmpty))
-                              . // must be AFTER enqueue to the the sync queue, otherwise the process may hang to enq last item while being interrupted
+                              . // must be AFTER enqueue to the sync queue, otherwise the process may hang to enq last item while being interrupted
                               compile
                               .drain
                               .attempt
