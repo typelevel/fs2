@@ -28,7 +28,7 @@ object hash {
     digest(MessageDigest.getInstance("SHA-512"))
 
   /**
-    * Computes the digest of the the source stream, emitting the digest as a chunk
+    * Computes the digest of the source stream, emitting the digest as a chunk
     * after completion of the source stream.
     */
   def digest[F[_]](digest: => MessageDigest): Pipe[F, Byte, Byte] =
