@@ -20,7 +20,18 @@ These data structures could be very handy in a few cases scenarios. See below ex
 
 ### Concurrent Counter
 
-This is probably one of the most common uses of the primitive `Ref[F, A]`.
+This is probably one of the most common uses of the primitive `fs2.async.Ref[F, A]`.
+
+The workers will concurrently run and modify the value of the Ref so this is one possible outcome showing "#worker >> currentCount":
+
+```
+#1 >> 0
+#3 >> 0
+#2 >> 0
+#1 >> 2
+#2 >> 3
+#3 >> 3
+```
 
 ```scala
 import cats.effect.{Effect, IO}
@@ -35,15 +46,6 @@ object CounterApp extends Counter[IO]
 /**
   * Concurrent counter that demonstrates the use of [[fs2.async.Ref]].
   *
-  * The workers will concurrently run and modify the value of the Ref so this is one
-  * possible outcome showing "#worker >> currentCount":
-  *
-  * #1 >> 0
-  * #3 >> 0
-  * #2 >> 0
-  * #1 >> 2
-  * #2 >> 3
-  * #3 >> 3
   * */
 class Counter[F[_] : Effect] extends StreamApp[F] {
 
@@ -77,7 +79,13 @@ class Worker[F[_]](number: Int, ref: Ref[F, Int])
 
 ### Only Once
 
-Whenever you are in a scenario when many processes can modify the same value but you only care about the first one in doing so and stop processing, then this is the use case of a `Promise[F, A]`.
+Whenever you are in a scenario when many processes can modify the same value but you only care about the first one in doing so and stop processing, then this is the use case of a `fs2.async.Promise[F, A]`.
+
+Two processes will try to complete the promise at the same time but only one will succeed, completing the promise exactly once. The loser one will raise an error when trying to complete a promise already completed, that's why we call `attempt` on the evaluation.
+
+Notice that the loser process will remain running in the background and the program will end on completion of all of the inner streams.
+
+So it's a "race" in the sense that both processes will try to complete the promise at the same time but conceptually is different from "race". So for example, if you schedule one of the processes to run in 10 seconds from now, then the entire program will finish after 10 seconds and you can know for sure that the process completing the promise is going to be the first one.
 
 ```scala
 import cats.effect.{Effect, IO}
@@ -89,23 +97,6 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 object OnceApp extends Once[IO]
 
-/**
-  * Demonstrate the use of [[fs2.async.Promise]]
-  *
-  * Two processes will try to complete the promise at the same time but only one will succeed,
-  * completing the promise exactly once.
-  * The loser one will raise an error when trying to complete a promise already completed,
-  * that's why we call `attempt` on the evaluation.
-  *
-  * Notice that the loser process will remain running in the background and the program will
-  * end on completion of all of the inner streams.
-  *
-  * So it's a "race" in the sense that both processes will try to complete the promise at the
-  * same time but conceptually is different from "race". So for example, if you schedule one
-  * of the processes to run in 10 seconds from now, then the entire program will finish after
-  * 10 seconds and you can know for sure that the process completing the promise is going to
-  * be the first one.
-  * */
 class Once[F[_]: Effect] extends StreamApp[F] {
 
   override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
@@ -135,7 +126,9 @@ class ConcurrentCompletion[F[_]](p: Promise[F, Int])(implicit F: Effect[F]) {
 
 ### FIFO (First IN / First OUT)
 
-A typical use case of a `Queue[F, A]`, also quite useful to communicate with the external word as shown in the [guide](link).
+A typical use case of a `fs2.async.mutable.Queue[F, A]`, also quite useful to communicate with the external word as shown in the [guide](guide#talking-to-the-external-world).
+
+q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.
 
 ```scala
 import cats.effect.{Effect, IO}
@@ -148,12 +141,6 @@ import scala.concurrent.duration._
 
 object FifoApp extends Fifo[IO]
 
-/**
-  * Represents a FIFO (First IN First OUT) system built on top of two [[fs2.async.mutable.Queue]].
-  *
-  * q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when
-  * pulling elements out of the q2.
-  * */
 class Fifo[F[_]: Effect] extends StreamApp[F] {
 
   override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
@@ -183,7 +170,13 @@ class Buffering[F[_]](q1: Queue[F, Int], q2: Queue[F, Int])(implicit F: Effect[F
 
 ### Single Publisher / Multiple Subscriber
 
-Having a Kafka like system built on top of concurrency primitives is possible by making use of `Topic[F, A]`. In this more complex example, we will also show you how to make use of a `Signal[F, A]` to interrupt a scheduled Stream.
+Having a Kafka like system built on top of concurrency primitives is possible by making use of `fs2.async.mutable.Topic[F, A]`. In this more complex example, we will also show you how to make use of a `fs2.async.mutable.Signal[F, A]` to interrupt a scheduled Stream.
+
+The program ends after 15 seconds when the signal interrupts the publishing of more events given that the final streaming merge halts on the end of its left stream (the publisher).
+
+- Subscriber #1 should receive 15 events + the initial empty event
+- Subscriber #2 should receive 10 events
+- Subscriber #3 should receive 5 events
 
 ```scala
 import cats.effect.{Effect, IO}
@@ -195,6 +188,25 @@ import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 case class Event(value: String)
+
+object PubSubApp extends PubSub[IO]
+
+class PubSub[F[_]: Effect] extends StreamApp[F] {
+
+  override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
+    Scheduler(corePoolSize = 4).flatMap { implicit S =>
+      for {
+        topic     <- Stream.eval(async.topic[F, Event](Event("")))
+        signal    <- Stream.eval(async.signalOf[F, Boolean](false))
+        service   = new EventService[F](topic, signal)
+        exitCode  <- Stream(
+                      S.delay(Stream.eval(signal.set(true)), 15.seconds),
+                      service.startPublisher concurrently service.startSubscribers
+                    ).join(2).drain ++ Stream.emit(ExitCode.Success)
+      } yield exitCode
+    }
+
+}
 
 class EventService[F[_]](eventsTopic: Topic[F, Event],
                          interrupter: Signal[F, Boolean])
@@ -220,41 +232,36 @@ class EventService[F[_]](eventsTopic: Topic[F, Event],
   }
 
 }
-
-object PubSubApp extends PubSub[IO]
-
-/**
-  * Single Publisher / Multiple Subscribers application implemented on top of
-  * [[fs2.async.mutable.Topic]] and [[fs2.async.mutable.Signal]].
-  *
-  * The program ends after 15 seconds when the signal interrupts the publishing of more events
-  * given that the final streaming merge halts on the end of its left stream (the publisher).
-  *
-  * - Subscriber #1 should receive 15 events + the initial empty event
-  * - Subscriber #2 should receive 10 events
-  * - Subscriber #3 should receive 5 events
-  * */
-class PubSub[F[_]: Effect] extends StreamApp[F] {
-
-  override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
-    Scheduler(corePoolSize = 4).flatMap { implicit S =>
-      for {
-        topic     <- Stream.eval(async.topic[F, Event](Event("")))
-        signal    <- Stream.eval(async.signalOf[F, Boolean](false))
-        service   = new EventService[F](topic, signal)
-        exitCode  <- Stream(
-                      S.delay(Stream.eval(signal.set(true)), 15.seconds),
-                      service.startPublisher concurrently service.startSubscribers
-                    ).join(2).drain ++ Stream.emit(ExitCode.Success)
-      } yield exitCode
-    }
-
-}
 ```
 
 ### Shared Resource
 
-When multiple processes try to access a precious resource you might want to constraint the number of accesses. Here is where `Semaphore[F]` comes in useful.
+When multiple processes try to access a precious resource you might want to constraint the number of accesses. Here is where `fs2.async.mutable.Semaphore[F]` comes in useful.
+
+Three processes are trying to access a shared resource at the same time but only one at a time will be granted access and the next process have to wait until the resource gets available again (availability is one as indicated by the semaphore counter).
+
+R1, R2 & R3 will request access of the precious resource concurrently so this could be one possible outcome:
+
+```
+R1 >> Availability: 1
+R2 >> Availability: 1
+R2 >> Started | Availability: 0
+R3 >> Availability: 0
+--------------------------------
+R1 >> Started | Availability: 0
+R2 >> Done | Availability: 0
+--------------------------------
+R3 >> Started | Availability: 0
+R1 >> Done | Availability: 0
+--------------------------------
+R3 >> Done | Availability: 1
+```
+
+This means when R1 and R2 requested the availability it was one and R2 was faster in getting access to the resource so it started processing. R3 was the slowest and saw that there was no availability from the beginning.
+
+Once R2 was done R1 started processing immediately showing no availability.
+Once R1 was done R3 started processing immediately showing no availability.
+Finally, R3 was done showing an availability of one once again.
 
 ```scala
 import cats.effect.{Effect, IO}
@@ -268,39 +275,6 @@ import scala.concurrent.duration._
 
 object ResourcesApp extends Resources[IO]
 
-/**
-  * It demonstrates one of the possible uses of [[fs2.async.mutable.Semaphore]]
-  *
-  * Three processes are trying to access a shared resource at the same time but only one at
-  * a time will be granted access and the next process have to wait until the resource gets
-  * available again (availability is one as indicated by the semaphore counter).
-  *
-  * R1, R2 & R3 will request access of the precious resource concurrently so this could be
-  * one possible outcome:
-  *
-  * R1 >> Availability: 1
-  * R2 >> Availability: 1
-  * R2 >> Started | Availability: 0
-  * R3 >> Availability: 0
-  * --------------------------------
-  * R1 >> Started | Availability: 0
-  * R2 >> Done | Availability: 0
-  * --------------------------------
-  * R3 >> Started | Availability: 0
-  * R1 >> Done | Availability: 0
-  * --------------------------------
-  * R3 >> Done | Availability: 1
-  *
-  * This means when R1 and R2 requested the availability it was one and R2 was faster in
-  * getting access to the resource so it started processing. R3 was the slowest and saw
-  * that there was no availability from the beginning.
-  *
-  * Once R2 was done R1 started processing immediately showing no availability.
-  *
-  * Once R1 was done R3 started processing immediately showing no availability.
-  *
-  * Finally, R3 was done showing an availability of one once again.
-  * */
 class Resources[F[_]: Effect] extends StreamApp[F] {
 
   override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
