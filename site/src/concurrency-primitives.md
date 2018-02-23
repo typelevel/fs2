@@ -16,7 +16,7 @@ In the [`fs2.async` package object](https://github.com/functional-streams-for-sc
 - `Signal[F, A]`
 - `Semaphore[F]`
 
-These data structures could be very handy in a few cases scenarios. See below examples of each of them originally taken from [gvolpe examples](https://github.com/gvolpe/advanced-http4s/tree/master/src/main/scala/com/github/gvolpe/fs2):
+These data structures could be very handy in a few cases. See below examples of each of them originally taken from [gvolpe examples](https://github.com/gvolpe/advanced-http4s/tree/master/src/main/scala/com/github/gvolpe/fs2):
 
 ### Concurrent Counter
 
@@ -47,9 +47,9 @@ class Worker[F[_]](number: Int, ref: Ref[F, Int])(implicit F: Effect[F]) {
 
   def start: Stream[F, Unit] =
     for {
-      _ <- Stream.eval(ref.get) to sink
+      _ <- Stream.eval(ref.get).to(sink)
       _ <- Stream.eval(ref.modify(_ + 1))
-      _ <- Stream.eval(ref.get) to sink
+      _ <- Stream.eval(ref.get).to(sink)
     } yield ()
 
 }
@@ -134,8 +134,8 @@ class Buffering[F[_]](q1: Queue[F, Int], q2: Queue[F, Int])(implicit F: Effect[F
 
   def start: Stream[F, Unit] =
     Stream(
-      Stream.range(0, 1000).covary[F] to q1.enqueue,
-      q1.dequeue to q2.enqueue,
+      Stream.range(0, 1000).covary[F].to(q1.enqueue),
+      q1.dequeue.to(q2.enqueue),
       //.map won't work here as you're trying to map a pure value with a side effect. Use `evalMap` instead.
       q2.dequeue.evalMap(n => F.delay(println(s"Pulling out $n from Queue #2")))
     ).join(3)
@@ -199,7 +199,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event],
     def sink(subscriberNumber: Int): Sink[F, Event] =
       _.evalMap(e => F.delay(println(s"Subscriber #$subscriberNumber processing event: $e")))
 
-    Stream(s1 to sink(1), s2 to sink(2), s3 to sink(3)).join(3)
+    Stream(s1.to(sink(1)), s2.to(sink(2)), s3.to(sink(3))).join(3)
   }
 
 }
@@ -214,7 +214,7 @@ class PubSub[F[_]: Effect] extends StreamApp[F] {
         service   = new EventService[F](topic, signal)
         exitCode  <- Stream(
                       S.delay(Stream.eval(signal.set(true)), 15.seconds),
-                      service.startPublisher concurrently service.startSubscribers
+                      service.startPublisher.concurrently(service.startSubscribers)
                     ).join(2).drain ++ Stream.emit(ExitCode.Success)
       } yield exitCode
     }
