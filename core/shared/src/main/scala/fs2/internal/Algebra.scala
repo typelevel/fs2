@@ -411,17 +411,23 @@ private[fs2] object Algebra {
           case close: Algebra.CloseScope[F, O] =>
             if (close.interruptFallback) onInterrupt(Right(close.scopeId))
             else {
-              scope.findSelfOrAncestor(close.scopeId) match {
-                case Some(toClose) =>
-                  F.flatMap(toClose.close) { r =>
-                    F.flatMap(toClose.openAncestor) { ancestor =>
-                      compileLoop(ancestor, f(r))
-                    }
+              def closeAndGo(toClose: CompileScope[F, O]) =
+                F.flatMap(toClose.close) { r =>
+                  F.flatMap(toClose.openAncestor) { ancestor =>
+                    compileLoop(ancestor, f(r))
                   }
+                }
+
+              scope.findSelfOrAncestor(close.scopeId) match {
+                case Some(toClose) => closeAndGo(toClose)
                 case None =>
-                  val rsn = new IllegalStateException(
-                    "Failed to close scope that is not active scope or ancestor")
-                  compileLoop(scope, f(Left(rsn)))
+                  scope.findSelfOrChild(close.scopeId).flatMap {
+                    case Some(toClose) => closeAndGo(toClose)
+                    case None          =>
+                      // indicates the scope is already closed
+                      compileLoop(scope, f(Right(())))
+                  }
+
               }
             }
 
