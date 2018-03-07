@@ -16,6 +16,7 @@ import fs2.async.Ref
   * method, which returns a projection consisting of operations that return
   * effects.
   */
+@deprecated("Use cats.effect.Timer along with methods on Stream", "0.11")
 abstract class Scheduler {
 
   /**

@@ -18,7 +18,7 @@ class TopicSpec extends Fs2Spec {
       val topic = async.topic[IO, Int](-1).unsafeRunSync()
       val count = 100
       val subs = 10
-      val publisher = mkScheduler.flatMap(_.sleep[IO](1.second)) ++ Stream
+      val publisher = Stream.sleep[IO](1.second) ++ Stream
         .range(0, count)
         .covary[IO]
         .through(topic.publish)
@@ -50,7 +50,7 @@ class TopicSpec extends Fs2Spec {
       val count = 100
       val subs = 10
 
-      val publisher = mkScheduler.flatMap(_.sleep[IO](1.second)) ++ Stream
+      val publisher = Stream.sleep[IO](1.second) ++ Stream
         .range(0, count)
         .covary[IO]
         .flatMap(i => eval(signal.set(i)).map(_ => i))

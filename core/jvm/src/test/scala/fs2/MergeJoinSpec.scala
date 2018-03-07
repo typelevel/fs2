@@ -144,8 +144,7 @@ class MergeJoinSpec extends Fs2Spec {
 
     "join - outer-failed" in {
       an[Err.type] should be thrownBy {
-        runLog(Stream(mkScheduler.flatMap(_.sleep_[IO](1 minute)),
-                      Stream.raiseError(Err).covary[IO]).joinUnbounded)
+        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(Err).covary[IO]).joinUnbounded)
       }
     }
   }

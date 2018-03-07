@@ -1,7 +1,7 @@
 package fs2
 package async
 
-import cats.effect.IO
+import cats.effect.{IO, Timer}
 import cats.implicits._
 
 import scala.concurrent.duration._
@@ -57,35 +57,33 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
     }
 
     "cancellableGet - cancel before force" in {
-      mkScheduler.evalMap { scheduler =>
-        for {
-          r <- async.refOf[IO,Option[Int]](None)
+      val t = for {
+        r <- async.refOf[IO,Option[Int]](None)
           p <- async.promise[IO,Int]
           t <- p.cancellableGet
           (force, cancel) = t
           _ <- cancel
           _ <- async.fork(force.flatMap(i => r.setSync(Some(i))))
-          _ <- scheduler.effect.sleep[IO](100.millis)
+          _ <- Timer[IO].sleep(100.millis)
           _ <- p.complete(42)
-          _ <- scheduler.effect.sleep[IO](100.millis)
+          _ <- Timer[IO].sleep(100.millis)
           result <- r.get
         } yield result
-      }.compile.last.unsafeToFuture.map(_ shouldBe Some(None))
+      t.unsafeToFuture.map(_ shouldBe None)
     }
   }
 
   "async.once" - {
 
     "effect is not evaluated if the inner `F[A]` isn't bound" in {
-      mkScheduler.evalMap { scheduler =>
-        for {
-          ref <- async.refOf[IO, Int](42)
-          act = ref.modify(_ + 1)
-          _ <- async.once(act)
-          _ <- scheduler.effect.sleep[IO](100.millis)
-          v <- ref.get
-        } yield v
-      }.compile.last.unsafeToFuture.map(_ shouldBe Some(42))
+      val t = for {
+        ref <- async.refOf[IO, Int](42)
+        act = ref.modify(_ + 1)
+        _ <- async.once(act)
+        _ <- Timer[IO].sleep(100.millis)
+        v <- ref.get
+      } yield v
+      t.unsafeToFuture.map(_ shouldBe 42)
     }
 
     "effect is evaluated once if the inner `F[A]` is bound twice" in {
@@ -101,32 +99,30 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
     }
 
     "effect is evaluated once if the inner `F[A]` is bound twice (race)" in {
-      mkScheduler.evalMap { scheduler =>
-        for {
-          ref <- async.refOf[IO, Int](42)
-          act = ref.modify(_ + 1).map(_.now)
-          memoized <- async.once(act)
-          _ <- async.fork(memoized)
-          x <- memoized
-          _ <- scheduler.effect.sleep[IO](100.millis)
-          v <- ref.get
-        } yield (x, v)
-      }.compile.last.unsafeToFuture.map(_ shouldBe Some((43, 43)))
+      val t = for {
+        ref <- async.refOf[IO, Int](42)
+        act = ref.modify(_ + 1).map(_.now)
+        memoized <- async.once(act)
+        _ <- async.fork(memoized)
+        x <- memoized
+        _ <- Timer[IO].sleep(100.millis)
+        v <- ref.get
+      } yield (x, v)
+      t.unsafeToFuture.map(_ shouldBe ((43, 43)))
     }
 
     "once andThen flatten is identity" in {
       val n = 10
-      mkScheduler.evalMap { scheduler =>
-        for {
-          ref <- async.refOf[IO, Int](42)
-          act1 = ref.modify(_ + 1).map(_.now)
-          act2 = async.once(act1).flatten
-          _ <- async.fork(Stream.repeatEval(act1).take(n).compile.drain)
-          _ <- async.fork(Stream.repeatEval(act2).take(n).compile.drain)
-          _ <- scheduler.effect.sleep[IO](200.millis)
-          v <- ref.get
-        } yield v
-      }.compile.last.unsafeToFuture.map(_ shouldBe Some(42 + 2 * n))
+      val t = for {
+        ref <- async.refOf[IO, Int](42)
+        act1 = ref.modify(_ + 1).map(_.now)
+        act2 = async.once(act1).flatten
+        _ <- async.fork(Stream.repeatEval(act1).take(n).compile.drain)
+        _ <- async.fork(Stream.repeatEval(act2).take(n).compile.drain)
+        _ <- Timer[IO].sleep(200.millis)
+        v <- ref.get
+      } yield v
+      t.unsafeToFuture.map(_ shouldBe (42 + 2 * n))
     }
   }
 }
