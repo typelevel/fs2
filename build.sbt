@@ -207,7 +207,7 @@ lazy val core = crossProject
   .settings(commonSettings: _*)
   .settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.10-ea8fbc9",
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.10-c64e7c9",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala"
   )
   .jsSettings(commonJsSettings: _*)

@@ -4,9 +4,9 @@ import scala.annotation.tailrec
 import java.util.concurrent.atomic.AtomicReference
 
 import cats.data.NonEmptyList
+import cats.effect.{Async, Concurrent, Sync}
 import fs2.{Catenable, CompositeFailure, Scope}
 import fs2.async.{Promise, Ref}
-import cats.effect.{Effect, Sync}
 import fs2.internal.CompileScope.InterruptContext
 
 import scala.concurrent.ExecutionContext
@@ -111,7 +111,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     */
   def open(
       interruptible: Option[
-        (Effect[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+        (Concurrent[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
       ]
   ): F[CompileScope[F, O]] = {
 
@@ -419,15 +419,12 @@ private[fs2] final class CompileScope[F[_], O] private (
     interruptible match {
       case None => F.map(F.attempt(f)) { _.left.map(Left(_)) }
       case Some(iCtx) =>
-        F.flatMap(iCtx.promise.cancellableGet) {
-          case (get, cancel) =>
-            // note the order of gett and attempt(f) is important, so if the
-            // promise was completed it get higher chance to be completed before the attempt(f)
-            F.flatMap(fs2.async.race(get, F.attempt(f))(iCtx.effect, iCtx.ec)) {
-              case Right(result)      => F.map(cancel)(_ => result.left.map(Left(_)))
-              case Left(Right(token)) => F.pure(Left(Right(token)))
-              case Left(Left(err))    => F.pure(Left(Left(err)))
-            }
+        F.map(
+          iCtx.concurrent
+            .race(iCtx.promise.get,
+                  F.flatMap(Async.shift[F](iCtx.ec)(iCtx.concurrent))(_ => F.attempt(f)))) {
+          case Right(result) => result.left.map(Left(_))
+          case Left(other)   => Left(other)
         }
     }
 
@@ -493,7 +490,7 @@ private[internal] object CompileScope {
   /**
     * A context of interruption status. This is shared from the parent that was created as interruptible to all
     * its children. It assures consistent view of the interruption through the stack
-    * @param effect   Effect, used to create interruption at Eval.
+    * @param concurrent   Concurrent, used to create interruption at Eval.
     * @param ec       Execution context used to create promise and ref, and interruption at Eval.
     * @param promise  Promise signalling once the interruption to the scopes. Only completed once.
     *                 If signalled with None, normal interruption is signalled. If signaled with Some(err) failure is signalled.
@@ -506,7 +503,7 @@ private[internal] object CompileScope {
     * @param cancelParent  Cancels listening on parent's interrupt.
     */
   final private[internal] case class InterruptContext[F[_], O](
-      effect: Effect[F],
+      concurrent: Concurrent[F],
       ec: ExecutionContext,
       promise: Promise[F, Either[Throwable, Token]],
       ref: Ref[F, Option[Either[Throwable, Token]]],
@@ -529,31 +526,30 @@ private[internal] object CompileScope {
       */
     def childContext(
         interruptible: Option[
-          (Effect[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+          (Concurrent[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
         ],
         newScopeId: Token
     )(implicit F: Sync[F]): F[InterruptContext[F, O]] =
       interruptible
         .map {
-          case (effect, ec, whenInterrupted) =>
-            F.flatMap(self.promise.cancellableGet) {
-              case (get, cancel) =>
-                val context = InterruptContext[F, O](
-                  effect = effect,
-                  ec = ec,
-                  promise = Promise.unsafeCreate[F, Either[Throwable, Token]](effect, ec),
-                  ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
-                  interruptRoot = newScopeId,
-                  whenInterrupted = whenInterrupted,
-                  cancelParent = cancel
-                )
+          case (concurrent, ec, whenInterrupted) =>
+            F.flatMap(concurrent.start(self.promise.get)) { fiber =>
+              val context = InterruptContext[F, O](
+                concurrent = concurrent,
+                ec = ec,
+                promise = Promise.unsafeCreate[F, Either[Throwable, Token]](concurrent),
+                ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
+                interruptRoot = newScopeId,
+                whenInterrupted = whenInterrupted,
+                cancelParent = fiber.cancel
+              )
 
-                F.map(fs2.async.fork(F.flatMap(get)(interrupt =>
-                  F.flatMap(context.ref.modify(_.orElse(Some(interrupt)))) { _ =>
-                    F.map(F.attempt(context.promise.complete(interrupt)))(_ => ())
-                }))(effect, ec)) { _ =>
-                  context
-                }
+              F.map(fs2.async.fork(F.flatMap(fiber.join)(interrupt =>
+                F.flatMap(context.ref.modify(_.orElse(Some(interrupt)))) { _ =>
+                  F.map(F.attempt(context.promise.complete(interrupt)))(_ => ())
+              }))(concurrent, ec)) { _ =>
+                context
+              }
             }
         }
         .getOrElse(F.pure(copy(cancelParent = F.unit)))
@@ -573,16 +569,16 @@ private[internal] object CompileScope {
       */
     def unsafeFromInteruptible[F[_], O](
         interruptible: Option[
-          (Effect[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+          (Concurrent[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
         ],
         newScopeId: Token
     )(implicit F: Sync[F]): Option[InterruptContext[F, O]] =
       interruptible.map {
-        case (effect, ec, whenInterrupted) =>
+        case (concurrent, ec, whenInterrupted) =>
           InterruptContext[F, O](
-            effect = effect,
+            concurrent = concurrent,
             ec = ec,
-            promise = Promise.unsafeCreate[F, Either[Throwable, Token]](effect, ec),
+            promise = Promise.unsafeCreate[F, Either[Throwable, Token]](concurrent),
             ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
             interruptRoot = newScopeId,
             whenInterrupted = whenInterrupted,

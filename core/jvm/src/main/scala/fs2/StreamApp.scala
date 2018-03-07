@@ -10,7 +10,7 @@ import fs2.async.Promise
 import fs2.async.mutable.Signal
 import fs2.StreamApp.ExitCode
 
-abstract class StreamApp[F[_]](implicit F: Effect[F]) {
+abstract class StreamApp[F[_]](implicit F: ConcurrentEffect[F]) {
 
   /** An application stream that should never emit or emit a single ExitCode */
   def stream(args: List[String], requestShutdown: F[Unit]): Stream[F, ExitCode]

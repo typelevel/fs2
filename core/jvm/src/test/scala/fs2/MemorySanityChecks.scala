@@ -74,8 +74,8 @@ object DanglingDequeueSanityTest extends App {
 object AwakeEverySanityTest extends App {
   import scala.concurrent.duration._
   import ExecutionContext.Implicits.global
-  Scheduler[IO](1)
-    .flatMap { _.awakeEvery[IO](1.millis) }
+  Stream
+    .awakeEvery[IO](1.millis)
     .flatMap { _ =>
       Stream.eval(IO(()))
     }

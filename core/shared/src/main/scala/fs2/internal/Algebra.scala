@@ -1,7 +1,7 @@
 package fs2.internal
 
 import cats.~>
-import cats.effect.{Effect, Sync}
+import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import fs2._
 
@@ -27,7 +27,7 @@ private[fs2] object Algebra {
 
   final case class Release[F[_], O](token: Token) extends AlgEffect[F, O, Unit]
 
-  final case class OpenScope[F[_], O](interruptible: Option[(Effect[F], ExecutionContext)])
+  final case class OpenScope[F[_], O](interruptible: Option[(Concurrent[F], ExecutionContext)])
       extends AlgScope[F, O, Option[CompileScope[F, O]]]
 
   final case class CloseScope[F[_], O](scopeId: Token, interruptFallback: Boolean)
@@ -46,7 +46,7 @@ private[fs2] object Algebra {
 
     // safe to cast, used in translate only
     // if interruption has to be supported effect for G has to be passed
-    private[internal] def translate[G[_]](effect: Option[Effect[G]],
+    private[internal] def translate[G[_]](effect: Option[Concurrent[G]],
                                           fK: F ~> G): AlgEffect[G, O, R] =
       self match {
         case a: Acquire[F, O, r] =>
@@ -108,11 +108,11 @@ private[fs2] object Algebra {
     * Note that this may fail with `Interrupted` when interruption occurred
     */
   private[fs2] def interruptScope[F[_], O](s: FreeC[Algebra[F, O, ?], Unit])(
-      implicit effect: Effect[F],
+      implicit F: Concurrent[F],
       ec: ExecutionContext): FreeC[Algebra[F, O, ?], Unit] =
-    scope0(s, Some((effect, ec)))
+    scope0(s, Some((F, ec)))
 
-  private[fs2] def openScope[F[_], O](interruptible: Option[(Effect[F], ExecutionContext)])
+  private[fs2] def openScope[F[_], O](interruptible: Option[(Concurrent[F], ExecutionContext)])
     : FreeC[Algebra[F, O, ?], Option[CompileScope[F, O]]] =
     FreeC.Eval[Algebra[F, O, ?], Option[CompileScope[F, O]]](OpenScope(interruptible))
 
@@ -122,7 +122,7 @@ private[fs2] object Algebra {
 
   private def scope0[F[_], O](
       s: FreeC[Algebra[F, O, ?], Unit],
-      interruptible: Option[(Effect[F], ExecutionContext)]): FreeC[Algebra[F, O, ?], Unit] =
+      interruptible: Option[(Concurrent[F], ExecutionContext)]): FreeC[Algebra[F, O, ?], Unit] =
     openScope(interruptible).flatMap {
       case None =>
         pure(()) // in case of interruption the scope closure is handled by scope itself, before next step is returned
@@ -402,7 +402,7 @@ private[fs2] object Algebra {
           case open: Algebra.OpenScope[F, O] =>
             val interruptible =
               open.interruptible.map {
-                case (effect, ec) => (effect, ec, f(Right(None)))
+                case (concurrent, ec) => (concurrent, ec, f(Right(None)))
               }
             F.flatMap(scope.open(interruptible)) { childScope =>
               compileLoop(childScope, f(Right(Some(childScope))))
@@ -452,7 +452,7 @@ private[fs2] object Algebra {
   private def translate0[F[_], G[_], O](
       fK: G ~> F,
       s: FreeC[Algebra[G, O, ?], Unit],
-      effect: Option[Effect[F]]
+      effect: Option[Concurrent[F]]
   ): FreeC[Algebra[F, O, ?], Unit] = {
 
     // Uncons is interrupted, fallback on `compileLoop` has to be invoked

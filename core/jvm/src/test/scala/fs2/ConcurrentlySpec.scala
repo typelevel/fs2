@@ -13,15 +13,13 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
     "when background stream terminates, overall stream continues" in forAll {
       (s1: PureStream[Int], s2: PureStream[Int]) =>
         runLog(
-          Scheduler[IO](1).flatMap(scheduler =>
-            (scheduler.sleep_[IO](25.millis) ++ s1.get)
-              .concurrently(s2.get))) shouldBe s1.get.toVector
+          (Stream.sleep_[IO](25.millis) ++ s1.get)
+            .concurrently(s2.get)) shouldBe s1.get.toVector
     }
 
     "when background stream fails, overall stream fails" in forAll {
       (s: PureStream[Int], f: Failure) =>
-        val prg = Scheduler[IO](1).flatMap(scheduler =>
-          (scheduler.sleep_[IO](25.millis) ++ s.get).concurrently(f.get))
+        val prg = (Stream.sleep_[IO](25.millis) ++ s.get).concurrently(f.get)
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
         if (throws) an[Err.type] should be thrownBy runLog(prg)
         else runLog(prg)
@@ -31,8 +29,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
       (f: Failure) =>
         var bgDone = false
         val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
-        val prg = Scheduler[IO](1).flatMap(scheduler =>
-          (scheduler.sleep_[IO](25.millis) ++ f.get).concurrently(bg))
+        val prg = (Stream.sleep_[IO](25.millis) ++ f.get).concurrently(bg)
         an[Err.type] should be thrownBy runLog(prg)
         eventually(Timeout(3 seconds)) { bgDone shouldBe true }
     }
@@ -41,8 +38,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
       (s: PureStream[Int]) =>
         var bgDone = false
         val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
-        val prg = Scheduler[IO](1).flatMap(scheduler =>
-          (scheduler.sleep_[IO](25.millis) ++ s.get).concurrently(bg))
+        val prg = (Stream.sleep_[IO](25.millis) ++ s.get).concurrently(bg)
         runLog(prg)
         bgDone shouldBe true
     }
@@ -50,15 +46,13 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
     "when background stream fails, primary stream fails even when hung" in forAll {
       (s: PureStream[Int], f: Failure) =>
         val promise = Promise.unsafeCreate[IO, Unit]
-        val prg = Scheduler[IO](1).flatMap { scheduler =>
-          (scheduler.sleep_[IO](25.millis) ++ (Stream(1) ++ s.get))
-            .concurrently(f.get)
-            .flatMap { i =>
-              Stream.eval(promise.get).map { _ =>
-                i
-              }
+        val prg = (Stream.sleep_[IO](25.millis) ++ (Stream(1) ++ s.get))
+          .concurrently(f.get)
+          .flatMap { i =>
+            Stream.eval(promise.get).map { _ =>
+              i
             }
-        }
+          }
 
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
         if (throws) an[Err.type] should be thrownBy runLog(prg)

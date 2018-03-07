@@ -1,15 +1,11 @@
 package fs2.async
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.duration._
-
 import cats.implicits.{catsSyntaxEither => _, _}
-import cats.effect.{Effect, IO}
+import cats.effect.{Concurrent, IO}
 
-import fs2.Scheduler
 import fs2.internal.{LinkedMap, Token}
 
-import java.util.concurrent.atomic.{AtomicReference}
+import java.util.concurrent.atomic.AtomicReference
 
 import Promise._
 
@@ -29,48 +25,37 @@ import Promise._
   *
   * Finally, the blocking mentioned above is semantic only, no actual threads are blocked by the implementation.
   */
-final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Effect[F],
-                                                                  ec: ExecutionContext) {
+final class Promise[F[_], A] private[fs2] (ref: AtomicReference[State[A]])(
+    implicit F: Concurrent[F]) {
 
   /** Obtains the value of the `Promise`, or waits until it has been completed. */
-  def get: F[A] = F.suspend {
-    // `new Token` is a side effect because `Token`s are compared with reference equality, it needs to be in `F`.
-    // For performance reasons, `suspend` is preferred to `F.delay(...).flatMap` here.
-    val id = new Token
-    getOrWait(id, true)
-  }
-
-  /** Like [[get]] but returns an `F[Unit]` that can be used to cancel the subscription. */
-  def cancellableGet: F[(F[A], F[Unit])] =
-    ref.get.flatMap {
-      case State.Set(a) => F.pure((F.pure(a), F.unit))
+  def get: F[A] =
+    F.delay(ref.get).flatMap {
+      case State.Set(a) => F.pure(a)
       case State.Unset(_) =>
-        val id = new Token
-        val cancel = ref.modify {
-          case s @ State.Set(_)     => s
-          case State.Unset(waiting) => State.Unset(waiting - id)
-        }.void
-        ref
-          .modify2 {
-            case s @ State.Set(a) => s -> (F.pure(a) -> F.unit)
-            case State.Unset(waiting) =>
-              State.Unset(waiting.updated(id, Nil)) -> (getOrWait(id, false) -> cancel)
-          }
-          .map(_._2)
-    }
+        F.cancelable { cb =>
+          val id = new Token
 
-  /**
-    * Like [[get]] but if the `Promise` has not been completed when the timeout is reached, a `None`
-    * is returned.
-    */
-  def timedGet(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
-    cancellableGet.flatMap {
-      case (g, cancelGet) =>
-        scheduler.effect.delayCancellable(F.unit, timeout).flatMap {
-          case (timer, cancelTimer) =>
-            fs2.async
-              .race(g, timer)
-              .flatMap(_.fold(a => cancelTimer.as(Some(a)), _ => cancelGet.as(None)))
+          def register: Option[A] =
+            ref.get match {
+              case State.Set(a) => Some(a)
+              case s @ State.Unset(waiting) =>
+                val updated = State.Unset(waiting.updated(id, (a: A) => cb(Right(a))))
+                if (ref.compareAndSet(s, updated)) None
+                else register
+            }
+
+          register.foreach(a => cb(Right(a)))
+
+          def unregister(): Unit =
+            ref.get match {
+              case State.Set(_) => ()
+              case s @ State.Unset(waiting) =>
+                val updated = State.Unset(waiting - id)
+                if (ref.compareAndSet(s, updated)) ()
+                else unregister
+            }
+          IO(unregister())
         }
     }
 
@@ -90,45 +75,16 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
     */
   def complete(a: A): F[Unit] = {
     def notifyReaders(r: State.Unset[A]): Unit =
-      r.waiting.values.foreach { cbs =>
-        cbs.foreach { cb =>
-          ec.execute { () =>
-            cb(a)
-          }
-        }
+      r.waiting.values.foreach { cb =>
+        cb(a)
       }
 
-    ref
-      .modify2 {
-        case s @ State.Set(_) =>
-          s -> F.raiseError[Unit](new AlreadyCompletedException)
-        case u @ State.Unset(_) => State.Set(a) -> F.delay(notifyReaders(u))
-      }
-      .flatMap(_._2)
-  }
-
-  private def getOrWait(id: Token, forceRegistration: Boolean): F[A] = {
-    def registerCallBack(cb: A => Unit): Unit = {
-      def go =
-        ref
-          .modify2 {
-            case s @ State.Set(a) => s -> F.delay(cb(a))
-            case State.Unset(waiting) =>
-              State.Unset(
-                waiting
-                  .get(id)
-                  .map(cbs => waiting.updated(id, cb :: cbs))
-                  .getOrElse(if (forceRegistration) waiting.updated(id, List(cb))
-                  else waiting)
-              ) -> F.unit
-          }
-          .flatMap(_._2)
-
-      unsafeRunAsync(go)(_ => IO.unit)
-    }
-    ref.get.flatMap {
-      case State.Set(a)   => F.pure(a)
-      case State.Unset(_) => F.async(cb => registerCallBack(x => cb(Right(x))))
+    F.delay(ref.get).flatMap {
+      case s @ State.Set(_) => F.raiseError[Unit](new AlreadyCompletedException)
+      case s @ State.Unset(_) =>
+        if (ref.compareAndSet(s, State.Set(a))) {
+          F.delay(notifyReaders(s))
+        } else complete(a)
     }
   }
 }
@@ -136,7 +92,7 @@ final class Promise[F[_], A] private[fs2] (ref: Ref[F, State[A]])(implicit F: Ef
 object Promise {
 
   /** Creates a concurrent synchronisation primitive, currently unset **/
-  def empty[F[_], A](implicit F: Effect[F], ec: ExecutionContext): F[Promise[F, A]] =
+  def empty[F[_], A](implicit F: Concurrent[F]): F[Promise[F, A]] =
     F.delay(unsafeCreate[F, A])
 
   /** Raised when trying to complete a [[Promise]] that's already been completed */
@@ -148,9 +104,9 @@ object Promise {
   private sealed abstract class State[A]
   private object State {
     final case class Set[A](a: A) extends State[A]
-    final case class Unset[A](waiting: LinkedMap[Token, List[A => Unit]]) extends State[A]
+    final case class Unset[A](waiting: LinkedMap[Token, A => Unit]) extends State[A]
   }
 
-  private[fs2] def unsafeCreate[F[_]: Effect, A](implicit ec: ExecutionContext): Promise[F, A] =
-    new Promise[F, A](new Ref(new AtomicReference(Promise.State.Unset(LinkedMap.empty))))
+  private[fs2] def unsafeCreate[F[_]: Concurrent, A]: Promise[F, A] =
+    new Promise[F, A](new AtomicReference(Promise.State.Unset(LinkedMap.empty)))
 }

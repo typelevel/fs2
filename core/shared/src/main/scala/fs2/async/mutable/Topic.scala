@@ -4,7 +4,7 @@ package mutable
 
 import scala.concurrent.ExecutionContext
 
-import cats.effect.Effect
+import cats.effect.Concurrent
 import cats.implicits._
 
 import fs2.Stream._
@@ -85,7 +85,8 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Effect[F], ec: ExecutionContext): F[Topic[F, A]] = {
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F],
+                                 ec: ExecutionContext): F[Topic[F, A]] = {
     // Id identifying each subscriber uniquely
     class ID
 

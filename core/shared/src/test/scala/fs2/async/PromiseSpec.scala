@@ -1,24 +1,22 @@
 package fs2
 package async
 
-import cats.effect.{IO, Timer}
+import cats.effect.{Concurrent, IO, Timer}
 import cats.implicits._
 
 import scala.concurrent.duration._
 import org.scalatest.EitherValues
 
-import TestUtil._
-
 class PromiseSpec extends AsyncFs2Spec with EitherValues {
 
   "Promise" - {
-    "setSync" in {
+    "complete" in {
       promise[IO, Int].flatMap { p =>
         p.complete(0) *> p.get
       }.unsafeToFuture.map { _ shouldBe 0 }
     }
 
-    "setSync is only successful once" in {
+    "complete is only successful once" in {
       promise[IO, Int].flatMap { p =>
         p.complete(0) *> p.complete(1).attempt product p.get
       }.unsafeToFuture.map { case (err, value) =>
@@ -45,25 +43,13 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
       op.unsafeToFuture.map(_ shouldBe 2)
     }
 
-    "timedGet" in {
-      mkScheduler.evalMap { scheduler =>
-          for {
-            p <- async.promise[IO,Int]
-            first <- p.timedGet(100.millis, scheduler)
-            _ <- p.complete(42)
-            second <- p.timedGet(100.millis, scheduler)
-          } yield List(first, second)
-      }.compile.toVector.unsafeToFuture.map(_.flatten shouldBe Vector(None, Some(42)))
-    }
-
-    "cancellableGet - cancel before force" in {
+    "get - cancel before force" in {
       val t = for {
         r <- async.refOf[IO,Option[Int]](None)
           p <- async.promise[IO,Int]
-          t <- p.cancellableGet
-          (force, cancel) = t
-          _ <- cancel
-          _ <- async.fork(force.flatMap(i => r.setSync(Some(i))))
+          fiber <- Concurrent[IO].start(p.get)
+          _ <- fiber.cancel
+          _ <- async.fork(fiber.join.flatMap(i => r.setSync(Some(i))))
           _ <- Timer[IO].sleep(100.millis)
           _ <- p.complete(42)
           _ <- Timer[IO].sleep(100.millis)

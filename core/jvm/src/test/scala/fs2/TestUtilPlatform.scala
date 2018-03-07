@@ -11,7 +11,6 @@ trait TestUtilPlatform {
 
   implicit val executionContext: ExecutionContext =
     ExecutionContext.Implicits.global
-  val mkScheduler: Stream[IO, Scheduler] = Scheduler[IO](1)
 
   def runLog[A](s: Stream[IO, A])(implicit timeout: FiniteDuration): Vector[A] =
     s.compile.toVector
