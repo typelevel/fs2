@@ -5,7 +5,7 @@ import scala.concurrent.{ExecutionContext, SyncVar}
 
 import java.io.{IOException, InputStream, OutputStream}
 
-import cats.effect.{Effect, IO, Sync}
+import cats.effect.{Concurrent, ConcurrentEffect, Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
@@ -56,7 +56,7 @@ private[io] object JavaInputOutputStream {
       Stream.eval(fos).flatMap(useOs)
   }
 
-  def toInputStream[F[_]](implicit F: Effect[F],
+  def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
                           ec: ExecutionContext): Pipe[F, Byte, InputStream] = {
 
     /** See Implementation notes at the end of this code block **/
@@ -83,7 +83,7 @@ private[io] object JavaInputOutputStream {
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Unit] =
+    )(implicit F: Concurrent[F], ec: ExecutionContext): Stream[F, Unit] =
       Stream
         .eval(async.start {
           def markUpstreamDone(result: Option[Throwable]): F[Unit] =

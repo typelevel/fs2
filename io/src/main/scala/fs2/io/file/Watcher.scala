@@ -126,11 +126,11 @@ object Watcher {
   }
 
   /** Creates a watcher for the default file system. */
-  def default[F[_]](implicit F: Effect[F], ec: ExecutionContext): Stream[F, Watcher[F]] =
+  def default[F[_]](implicit F: Concurrent[F], ec: ExecutionContext): Stream[F, Watcher[F]] =
     Stream.eval(F.delay(FileSystems.getDefault)).flatMap(fromFileSystem(_))
 
   /** Creates a watcher for the supplied file system. */
-  def fromFileSystem[F[_]](fs: FileSystem)(implicit F: Effect[F],
+  def fromFileSystem[F[_]](fs: FileSystem)(implicit F: Concurrent[F],
                                            ec: ExecutionContext): Stream[F, Watcher[F]] =
     Stream.bracket(F.delay(fs.newWatchService))(ws => Stream.eval(fromWatchService(ws)),
                                                 ws => F.delay(ws.close))
@@ -143,7 +143,7 @@ object Watcher {
                                         cleanup: F[Unit])
 
   /** Creates a watcher for the supplied NIO `WatchService`. */
-  def fromWatchService[F[_]](ws: WatchService)(implicit F: Effect[F],
+  def fromWatchService[F[_]](ws: WatchService)(implicit F: Concurrent[F],
                                                ec: ExecutionContext): F[Watcher[F]] =
     async
       .signalOf[F, Map[WatchKey, Registration[F]]](Map.empty)

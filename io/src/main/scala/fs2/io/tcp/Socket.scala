@@ -17,7 +17,7 @@ import java.nio.channels.{
 }
 import java.util.concurrent.TimeUnit
 
-import cats.effect.{Effect, IO}
+import cats.effect.{ConcurrentEffect, IO}
 import cats.implicits._
 
 import fs2.Stream._
@@ -101,7 +101,7 @@ protected[tcp] object Socket {
       noDelay: Boolean
   )(
       implicit AG: AsynchronousChannelGroup,
-      F: Effect[F],
+      F: ConcurrentEffect[F],
       ec: ExecutionContext
   ): Stream[F, Socket[F]] = Stream.suspend {
 
@@ -145,7 +145,7 @@ protected[tcp] object Socket {
                    reuseAddress: Boolean,
                    receiveBufferSize: Int)(
       implicit AG: AsynchronousChannelGroup,
-      F: Effect[F],
+      F: ConcurrentEffect[F],
       ec: ExecutionContext
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
     Stream.suspend {
@@ -205,7 +205,7 @@ protected[tcp] object Socket {
         cleanup)
     }
 
-  def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: Effect[F],
+  def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: ConcurrentEffect[F],
                                                     ec: ExecutionContext): F[Socket[F]] = {
     async.semaphore(1).flatMap { readSemaphore =>
       async.refOf[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>

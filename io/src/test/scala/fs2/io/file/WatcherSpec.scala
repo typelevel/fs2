@@ -106,7 +106,7 @@ class WatcherSpec extends Fs2Spec {
   }
 
   private def smallDelay: Stream[IO, Nothing] =
-    Scheduler[IO](1).flatMap(_.sleep_[IO](1000.millis))
+    Stream.sleep_[IO](1000.millis)
 
   // Tries to load the Oracle specific SensitivityWatchEventModifier to increase sensitivity of polling
   private val modifiers: Seq[WatchEvent.Modifier] = {

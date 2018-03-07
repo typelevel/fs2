@@ -6,7 +6,7 @@ import scala.concurrent.ExecutionContext
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
 
-import cats.effect.Effect
+import cats.effect.ConcurrentEffect
 
 /** Provides support for TCP networking. */
 package object tcp {
@@ -31,7 +31,7 @@ package object tcp {
       keepAlive: Boolean = false,
       noDelay: Boolean = false
   )(implicit AG: AsynchronousChannelGroup,
-    F: Effect[F],
+    F: ConcurrentEffect[F],
     ec: ExecutionContext): Stream[F, Socket[F]] =
     Socket.client(to, reuseAddress, sendBufferSize, receiveBufferSize, keepAlive, noDelay)
 
@@ -60,7 +60,7 @@ package object tcp {
                    reuseAddress: Boolean = true,
                    receiveBufferSize: Int = 256 * 1024)(
       implicit AG: AsynchronousChannelGroup,
-      F: Effect[F],
+      F: ConcurrentEffect[F],
       ec: ExecutionContext
   ): Stream[F, Stream[F, Socket[F]]] =
     serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize)
@@ -76,7 +76,7 @@ package object tcp {
                                    reuseAddress: Boolean = true,
                                    receiveBufferSize: Int = 256 * 1024)(
       implicit AG: AsynchronousChannelGroup,
-      F: Effect[F],
+      F: ConcurrentEffect[F],
       ec: ExecutionContext
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
     Socket.server(flatMap, maxQueued, reuseAddress, receiveBufferSize)
