@@ -422,7 +422,8 @@ private[fs2] final class CompileScope[F[_], O] private (
         F.map(
           iCtx.concurrent
             .race(iCtx.promise.get,
-                  F.flatMap(Async.shift[F](iCtx.ec)(iCtx.concurrent))(_ => F.attempt(f)))) {
+                  F.flatMap(Async.shift[F](iCtx.ec)(iCtx.concurrent))(_ =>
+                    F.attempt(iCtx.concurrent.uncancelable(f))))) {
           case Right(result) => result.left.map(Left(_))
           case Left(other)   => Left(other)
         }

@@ -79,13 +79,15 @@ final class Promise[F[_], A] private[fs2] (ref: AtomicReference[State[A]])(
         cb(a)
       }
 
-    F.delay(ref.get).flatMap {
-      case s @ State.Set(_) => F.raiseError[Unit](new AlreadyCompletedException)
-      case s @ State.Unset(_) =>
-        if (ref.compareAndSet(s, State.Set(a))) {
-          F.delay(notifyReaders(s))
-        } else complete(a)
-    }
+    def loop(): Unit =
+      ref.get match {
+        case s @ State.Set(_) => throw new AlreadyCompletedException
+        case s @ State.Unset(_) =>
+          if (ref.compareAndSet(s, State.Set(a))) notifyReaders(s)
+          else loop()
+      }
+
+    F.delay(loop())
   }
 }
 

@@ -173,7 +173,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           })
           swallow { runLog { s2.join(n.get).take(10) } }
           swallow { runLog { s2.join(n.get) } }
-          eventually(Timeout(3 second)) { outer.get shouldBe 0L }
+          eventually(Timeout(3 seconds)) { outer.get shouldBe 0L }
           outer.get shouldBe 0L
           eventually(Timeout(3 seconds)) { inner.get shouldBe 0L }
       }
