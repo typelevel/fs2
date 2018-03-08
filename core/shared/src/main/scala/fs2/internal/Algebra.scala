@@ -65,7 +65,14 @@ private[fs2] object Algebra {
             }
           ).asInstanceOf[AlgEffect[G, O, R]]
 
-        case r: RunLeg[F, x, O]   => r.asInstanceOf[AlgEffect[G, O, R]]
+        case run: RunLeg[F, x, O] =>
+          RunLeg[G, x, O](
+            new Stream.StepLeg[G, x](
+              head = run.l.head,
+              scope = run.l.scope.asInstanceOf[CompileScope[G, x]],
+              next = Algebra.translate0(fK, run.l.next, effect)
+            )).asInstanceOf[AlgEffect[G, O, R]]
+
         case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
         case c: CloseScope[F, O]  => c.asInstanceOf[AlgEffect[G, O, R]]
         case g: GetScope[F, O, x] => g.asInstanceOf[AlgEffect[G, O, R]]
