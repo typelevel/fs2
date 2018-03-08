@@ -20,6 +20,9 @@ private[fs2] object Algebra {
                                       maxSteps: Long)
       extends Algebra[F, O, Option[(Segment[X, Unit], FreeC[Algebra[F, X, ?], Unit])]]
 
+  final case class RunLeg[F[_], X, O](l: Stream.StepLeg[F, X])
+      extends AlgEffect[F, O, Option[Stream.StepLeg[F, X]]]
+
   final case class Eval[F[_], O, R](value: F[R]) extends AlgEffect[F, O, R]
 
   final case class Acquire[F[_], O, R](resource: F[R], release: R => F[Unit])
@@ -62,6 +65,14 @@ private[fs2] object Algebra {
             }
           ).asInstanceOf[AlgEffect[G, O, R]]
 
+        case run: RunLeg[F, x, O] =>
+          RunLeg[G, x, O](
+            new Stream.StepLeg[G, x](
+              head = run.l.head,
+              scope = run.l.scope.asInstanceOf[CompileScope[G, x]],
+              next = Algebra.translate0(fK, run.l.next, effect)
+            )).asInstanceOf[AlgEffect[G, O, R]]
+
         case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
         case c: CloseScope[F, O]  => c.asInstanceOf[AlgEffect[G, O, R]]
         case g: GetScope[F, O, x] => g.asInstanceOf[AlgEffect[G, O, R]]
@@ -95,6 +106,10 @@ private[fs2] object Algebra {
 
   def release[F[_], O](token: Token): FreeC[Algebra[F, O, ?], Unit] =
     FreeC.Eval[Algebra[F, O, ?], Unit](Release(token))
+
+  def stepLeg[F[_], O](
+      leg: Stream.StepLeg[F, O]): FreeC[Algebra[F, Nothing, ?], Option[Stream.StepLeg[F, O]]] =
+    FreeC.Eval[Algebra[F, Nothing, ?], Option[Stream.StepLeg[F, O]]](RunLeg(leg))
 
   /**
     * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
@@ -268,6 +283,21 @@ private[fs2] object Algebra {
                   interrupted.fold(F.raiseError, token => F.pure(Interrupted[X](token)))
               }
 
+            case step: Algebra.RunLeg[F, y, _] =>
+              F.flatMap(scope.interruptibleEval(compileLoop(step.l.scope, step.l.next))) {
+                case Right(None) =>
+                  uncons(f(Right(None)), chunkSize, maxSteps)
+
+                case Right(Some((segment, nextScope, next))) =>
+                  uncons(f(Right(Some(new Stream.StepLeg[F, y](segment, nextScope, next)))),
+                         chunkSize,
+                         maxSteps)
+
+                case Left(Right(token)) => F.pure(Interrupted(token))
+                case Left(Left(err))    => uncons(f(Left(err)), chunkSize, maxSteps)
+
+              }
+
             case eval: Algebra.Eval[F, X, _] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
                 case Right(r)           => uncons(f(Right(r)), chunkSize, maxSteps)
@@ -379,6 +409,20 @@ private[fs2] object Algebra {
                 }
               case Some(interrupted) =>
                 onInterrupt(interrupted)
+            }
+
+          case step: RunLeg[F, x, O] =>
+            F.flatMap(scope.interruptibleEval(compileLoop(step.l.scope, step.l.next))) {
+              case Right(None) =>
+                compileLoop(scope, f(Right(None)))
+
+              case Right(Some((segment, nextScope, next))) =>
+                compileLoop(scope,
+                            f(Right(Some(new Stream.StepLeg[F, x](segment, nextScope, next)))))
+
+              case Left(Right(token)) => onInterrupt(Right(token))
+              case Left(Left(err))    => compileLoop(scope, f(Left(err)))
+
             }
 
           case eval: Algebra.Eval[F, O, _] =>

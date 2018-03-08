@@ -233,6 +233,22 @@ class StreamSpec extends Fs2Spec with Inside {
       ) shouldBe runLog(s.get)
     }
 
+    "translate (4)" in {
+      // tests that it is ok to have translate after zip with effects
+
+      val stream: Stream[Function0, Int] =
+        Stream.eval(() => 1)
+
+      stream
+        .zip(stream)
+        .translate(new (Function0 ~> IO) {
+          def apply[A](thunk: Function0[A]) = IO(thunk())
+        })
+        .compile
+        .toList
+        .unsafeRunSync shouldBe List((1, 1))
+    }
+
     "toList" in forAll { (s: PureStream[Int]) =>
       s.get.toList shouldBe runLog(s.get).toList
     }

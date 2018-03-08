@@ -3165,9 +3165,9 @@ object Stream {
     */
   final class StepLeg[F[_], O](
       val head: Segment[O, Unit],
-      private val scope: CompileScope[F, O],
-      private val next: FreeC[Algebra[F, O, ?], Unit]
-  ) {
+      private[fs2] val scope: CompileScope[F, O],
+      private[fs2] val next: FreeC[Algebra[F, O, ?], Unit]
+  ) { self =>
 
     /**
       * Converts this leg back to regular stream. Scope is updated to the scope associated with this leg.
@@ -3187,9 +3187,7 @@ object Stream {
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
-      Pull
-        .eval(Algebra.compileLoop(scope, next)(scope.F))
-        .map { _.map { case (segment, scope, next) => new StepLeg[F, O](segment, scope, next) } }
+      Pull.fromFreeC(Algebra.stepLeg(self))
   }
 
   /** Provides operations on effectful pipes for syntactic convenience. */
