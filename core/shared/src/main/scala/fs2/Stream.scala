@@ -3165,8 +3165,8 @@ object Stream {
     */
   final class StepLeg[F[_], O](
       val head: Segment[O, Unit],
-      val scope: CompileScope[F, O],
-      val next: FreeC[Algebra[F, O, ?], Unit]
+      private[fs2] val scope: CompileScope[F, O],
+      private[fs2] val next: FreeC[Algebra[F, O, ?], Unit]
   ) { self =>
 
     /**

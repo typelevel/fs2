@@ -65,7 +65,7 @@ private[fs2] object Algebra {
             }
           ).asInstanceOf[AlgEffect[G, O, R]]
 
-        case r: RunLeg[F, x, O]  => r.asInstanceOf[AlgEffect[G, O, R]]
+        case r: RunLeg[F, x, O]   => r.asInstanceOf[AlgEffect[G, O, R]]
         case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
         case c: CloseScope[F, O]  => c.asInstanceOf[AlgEffect[G, O, R]]
         case g: GetScope[F, O, x] => g.asInstanceOf[AlgEffect[G, O, R]]
