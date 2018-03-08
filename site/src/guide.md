@@ -86,7 +86,7 @@ val eff = Stream.eval(IO { println("BEING RUN!!"); 1 + 1 })
 
 `IO` is an effect type we'll see a lot in these examples. Creating an `IO` has no side effects, and `Stream.eval` doesn't do anything at the time of creation, it's just a description of what needs to happen when the stream is eventually interpreted. Notice the type of `eff` is now `Stream[IO,Int]`.
 
-The `eval` function works for any effect type, not just `IO`. FS2 does not care what effect type you use for your streams. You may use `IO` for effects or bring your own, just by implementing a few interfaces for your effect type (`cats.effect.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, and `cats.effect.Effect` if you wish to use various concurrent operations discussed later). Here's the signature of `eval`:
+The `eval` function works for any effect type, not just `IO`. FS2 does not care what effect type you use for your streams. You may use `IO` for effects or bring your own, just by implementing a few interfaces for your effect type (e.g., `cats.MonadError[?, Throwable]`, `cats.effect.Sync`, `cats.effect.Async`, `cats.effect.Concurrent`, and `cats.effect.Effect`). Here's the signature of `eval`:
 
 ```scala
 def eval[F[_],A](f: F[A]): Stream[F,A]
@@ -384,15 +384,15 @@ The `merge` function supports concurrency. FS2 has a number of other useful conc
 The function `join` runs multiple streams concurrently. The signature is:
 
 ```Scala
-// note Effect[F] bound and ExecutionContext parameter
+// note Concurrent[F] bound and ExecutionContext parameter
 import scala.concurrent.ExecutionContext
-import cats.effect.Effect
-def join[F[_]:Effect,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit ec: ExecutionContext): Stream[F,O]
+import cats.effect.Concurrent
+def join[F[_]:Concurrent,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit ec: ExecutionContext): Stream[F,O]
 ```
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time.
 
-The `Effect` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Effect` instance and have an `ExecutionContext` in implicit scope.
+The `Concurrent` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance and have an `ExecutionContext` in implicit scope.
 
 In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [Concurrency Primitives section](concurrency-primitives) for more examples. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
@@ -404,7 +404,7 @@ Without looking at the implementations, try implementing `mergeHaltBoth`:
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
 /** Like `merge`, but halts as soon as _either_ branch halts. */
-def mergeHaltBoth[F[_]:Effect,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) => ???
+def mergeHaltBoth[F[_]:Concurrent,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) => ???
 ```
 
 ### Talking to the external world
@@ -481,8 +481,8 @@ val c = new Connection {
   }
 }
 
-// Effect extends both Sync and Async
-val T = cats.effect.Effect[IO]
+// Concurrent extends both Sync and Async
+val T = cats.effect.Concurrent[IO]
 val bytes = T.async[Array[Byte]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
   c.readBytesE(cb)
 }
@@ -506,7 +506,7 @@ Let's look at a complete example:
 import fs2._
 import fs2.async
 import scala.concurrent.ExecutionContext
-import cats.effect.{ Effect, IO }
+import cats.effect.{ ConcurrentEffect, IO }
 
 type Row = List[String]
 
@@ -514,7 +514,7 @@ trait CSVHandle {
   def withRows(cb: Either[Throwable,Row] => Unit): Unit
 }
 
-def rows[F[_]](h: CSVHandle)(implicit F: Effect[F], ec: ExecutionContext): Stream[F,Row] =
+def rows[F[_]](h: CSVHandle)(implicit F: ConcurrentEffect[F], ec: ExecutionContext): Stream[F,Row] =
   for {
     q <- Stream.eval(async.unboundedQueue[F,Either[Throwable,Row]])
     _ <-  Stream.eval { F.delay(h.withRows(e => async.unsafeRunAsync(q.enqueue1(e))(_ => IO.unit))) }

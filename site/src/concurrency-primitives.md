@@ -34,14 +34,14 @@ The workers will concurrently run and modify the value of the Ref so this is one
 ```
 
 ```tut:silent
-import cats.effect.{Effect, IO}
+import cats.effect.{Concurrent, ConcurrentEffect, IO}
 import fs2.StreamApp.ExitCode
 import fs2.async.Ref
-import fs2.{Scheduler, Sink, Stream, StreamApp, async}
+import fs2.{Sink, Stream, StreamApp, async}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class Worker[F[_]](number: Int, ref: Ref[F, Int])(implicit F: Effect[F]) {
+class Worker[F[_]](number: Int, ref: Ref[F, Int])(implicit F: Concurrent[F]) {
 
   private val sink: Sink[F, Int] = _.evalMap(n => F.delay(println(s"#$number >> $n")))
 
@@ -54,19 +54,16 @@ class Worker[F[_]](number: Int, ref: Ref[F, Int])(implicit F: Effect[F]) {
 
 }
 
-class Counter[F[_] : Effect] extends StreamApp[F] {
+class Counter[F[_] : ConcurrentEffect] extends StreamApp[F] {
 
   override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
-    Scheduler(corePoolSize = 10).flatMap { implicit S =>
-      for {
-        ref <- Stream.eval(async.refOf[F, Int](0))
-        w1  = new Worker[F](1, ref)
-        w2  = new Worker[F](2, ref)
-        w3  = new Worker[F](3, ref)
-        ec  <- Stream(w1.start, w2.start, w3.start).join(3).drain ++ Stream.emit(ExitCode.Success)
-      } yield ec
-    }
-
+    for {
+      ref <- Stream.eval(async.refOf[F, Int](0))
+      w1  = new Worker[F](1, ref)
+      w2  = new Worker[F](2, ref)
+      w3  = new Worker[F](3, ref)
+      ec  <- Stream(w1.start, w2.start, w3.start).join(3).drain ++ Stream.emit(ExitCode.Success)
+    } yield ec
 }
 ```
 
@@ -81,14 +78,14 @@ Notice that the loser process will remain running in the background and the prog
 So it's a "race" in the sense that both processes will try to complete the promise at the same time but conceptually is different from "race". So for example, if you schedule one of the processes to run in 10 seconds from now, then the entire program will finish after 10 seconds and you can know for sure that the process completing the promise is going to be the first one.
 
 ```tut:silent
-import cats.effect.{Effect, IO}
+import cats.effect.{Concurrent, ConcurrentEffect, IO}
 import fs2.StreamApp.ExitCode
 import fs2.async.Promise
-import fs2.{Scheduler, Stream, StreamApp, async}
+import fs2.{Stream, StreamApp, async}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class ConcurrentCompletion[F[_]](p: Promise[F, Int])(implicit F: Effect[F]) {
+class ConcurrentCompletion[F[_]](p: Promise[F, Int])(implicit F: Concurrent[F]) {
 
   private def attemptPromiseCompletion(n: Int): Stream[F, Unit] =
     Stream.eval(p.complete(n)).attempt.drain
@@ -102,16 +99,13 @@ class ConcurrentCompletion[F[_]](p: Promise[F, Int])(implicit F: Effect[F]) {
 
 }
 
-class Once[F[_]: Effect] extends StreamApp[F] {
+class Once[F[_]: ConcurrentEffect] extends StreamApp[F] {
 
   override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
-    Scheduler(corePoolSize = 4).flatMap { implicit scheduler =>
-      for {
-        p <- Stream.eval(async.promise[F, Int])
-        e <- new ConcurrentCompletion[F](p).start
-      } yield e
-    }
-
+    for {
+      p <- Stream.eval(async.promise[F, Int])
+      e <- new ConcurrentCompletion[F](p).start
+    } yield e
 }
 ```
 
@@ -122,15 +116,15 @@ A typical use case of a `fs2.async.mutable.Queue[F, A]`, also quite useful to co
 q1 has a buffer size of 1 while q2 has a buffer size of 100 so you will notice the buffering when  pulling elements out of the q2.
 
 ```tut:silent
-import cats.effect.{Effect, IO}
+import cats.effect.{Concurrent, IO, Timer}
 import fs2.StreamApp.ExitCode
 import fs2.async.mutable.Queue
-import fs2.{Scheduler, Stream, StreamApp, async}
+import fs2.{Stream, StreamApp, async}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
-class Buffering[F[_]](q1: Queue[F, Int], q2: Queue[F, Int])(implicit F: Effect[F]) {
+class Buffering[F[_]](q1: Queue[F, Int], q2: Queue[F, Int])(implicit F: Concurrent[F]) {
 
   def start: Stream[F, Unit] =
     Stream(
@@ -142,18 +136,17 @@ class Buffering[F[_]](q1: Queue[F, Int], q2: Queue[F, Int])(implicit F: Effect[F
 
 }
 
-class Fifo[F[_]: Effect] extends StreamApp[F] {
+class Fifo[F[_]: ConcurrentEffect] extends StreamApp[F] {
 
-  override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
-    Scheduler(corePoolSize = 4).flatMap { implicit S =>
-      for {
-        q1 <- Stream.eval(async.boundedQueue[F, Int](1))
-        q2 <- Stream.eval(async.boundedQueue[F, Int](100))
-        bp = new Buffering[F](q1, q2)
-        ec <- S.delay(Stream.emit(ExitCode.Success).covary[F], 5.seconds) concurrently bp.start.drain
-      } yield ec
-    }
-
+  override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] = {
+    implicit val timer: Timer[F] = Timer.derive[F]
+    for {
+      q1 <- Stream.eval(async.boundedQueue[F, Int](1))
+      q2 <- Stream.eval(async.boundedQueue[F, Int](100))
+      bp = new Buffering[F](q1, q2)
+      ec <- (Stream.sleep_[F](5.seconds) ++ Stream.emit(ExitCode.Success)) concurrently bp.start.drain
+    } yield ec
+  }
 }
 ```
 
@@ -170,10 +163,10 @@ The program ends after 15 seconds when the signal interrupts the publishing of m
 ```
 
 ```scala
-import cats.effect.{Effect, IO}
+import cats.effect.{Concurrent, IO}
 import fs2.StreamApp.ExitCode
 import fs2.async.mutable.{Signal, Topic}
-import fs2.{Scheduler, Sink, Stream, StreamApp, async}
+import fs2.{Sink, Stream, StreamApp, async}
 
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -181,11 +174,11 @@ import scala.concurrent.ExecutionContext.Implicits.global
 case class Event(value: String)
 
 class EventService[F[_]](eventsTopic: Topic[F, Event],
-                         interrupter: Signal[F, Boolean])(implicit F: Effect[F], S: Scheduler) {
+                         interrupter: Signal[F, Boolean])(implicit F: Concurrent[F], timer: Timer[F]) {
 
   // Publishing events every one second until signaling interruption
   def startPublisher: Stream[F, Unit] =
-    S.awakeEvery(1.second).flatMap { _ =>
+    Stream.awakeEvery(1.second).flatMap { _ =>
       val event = Event(System.currentTimeMillis().toString)
       Stream.eval(eventsTopic.publish1(event))
     }.interruptWhen(interrupter)
@@ -193,8 +186,8 @@ class EventService[F[_]](eventsTopic: Topic[F, Event],
   // Creating 3 subscribers in a different period of time and join them to run concurrently
   def startSubscribers: Stream[F, Unit] = {
     val s1: Stream[F, Event] = eventsTopic.subscribe(10)
-    val s2: Stream[F, Event] = S.delay(eventsTopic.subscribe(10), 5.seconds)
-    val s3: Stream[F, Event] = S.delay(eventsTopic.subscribe(10), 10.seconds)
+    val s2: Stream[F, Event] = Stream.sleep_[F](5.seconds) ++ eventsTopic.subscribe(10)
+    val s3: Stream[F, Event] = Stream.sleep_[F](10.seconds) ++ eventsTopic.subscribe(10)
 
     def sink(subscriberNumber: Int): Sink[F, Event] =
       _.evalMap(e => F.delay(println(s"Subscriber #$subscriberNumber processing event: $e")))
@@ -204,20 +197,18 @@ class EventService[F[_]](eventsTopic: Topic[F, Event],
 
 }
 
-class PubSub[F[_]: Effect] extends StreamApp[F] {
+class PubSub[F[_]: Concurrent] extends StreamApp[F] {
 
   override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
-    Scheduler(corePoolSize = 4).flatMap { implicit S =>
-      for {
-        topic     <- Stream.eval(async.topic[F, Event](Event("")))
-        signal    <- Stream.eval(async.signalOf[F, Boolean](false))
-        service   = new EventService[F](topic, signal)
-        exitCode  <- Stream(
-                      S.delay(Stream.eval(signal.set(true)), 15.seconds),
-                      service.startPublisher.concurrently(service.startSubscribers)
-                    ).join(2).drain ++ Stream.emit(ExitCode.Success)
-      } yield exitCode
-    }
+    for {
+      topic     <- Stream.eval(async.topic[F, Event](Event("")))
+      signal    <- Stream.eval(async.signalOf[F, Boolean](false))
+      service   = new EventService[F](topic, signal)
+      exitCode  <- Stream(
+                    S.delay(Stream.eval(signal.set(true)), 15.seconds),
+                    service.startPublisher.concurrently(service.startSubscribers)
+                  ).join(2).drain ++ Stream.emit(ExitCode.Success)
+    } yield exitCode
 
 }
 ```
@@ -252,41 +243,40 @@ Once R1 was done R3 started processing immediately showing no availability.
 Finally, R3 was done showing an availability of one once again.
 
 ```tut:silent
-import cats.effect.{Effect, IO}
+import cats.effect.{Concurrent, IO}
 import cats.syntax.functor._
 import fs2.StreamApp.ExitCode
 import fs2.async.mutable.Semaphore
-import fs2.{Scheduler, Stream, StreamApp, async}
+import fs2.{Stream, StreamApp, async}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
-class PreciousResource[F[_]: Effect](name: String, s: Semaphore[F])(implicit S: Scheduler) {
+class PreciousResource[F[_]: Concurrent](name: String, s: Semaphore[F]) {
 
-  def use: Stream[F, Unit] =
+  def use: Stream[F, Unit] = {
+    implicit val timer: Timer[F] = Timer.derive[F]
     for {
       _ <- Stream.eval(s.available.map(a => println(s"$name >> Availability: $a")))
       _ <- Stream.eval(s.decrement)
       _ <- Stream.eval(s.available.map(a => println(s"$name >> Started | Availability: $a")))
-      _ <- S.sleep(3.seconds)
+      _ <- Stream.sleep(3.seconds)
       _ <- Stream.eval(s.increment)
       _ <- Stream.eval(s.available.map(a => println(s"$name >> Done | Availability: $a")))
     } yield ()
+  }
 
 }
 
-class Resources[F[_]: Effect] extends StreamApp[F] {
+class Resources[F[_]: ConcurrentEffect] extends StreamApp[F] {
 
   override def stream(args: List[String], requestShutdown: F[Unit]): fs2.Stream[F, ExitCode] =
-    Scheduler(corePoolSize = 4).flatMap { implicit scheduler =>
-      for {
-        s   <- Stream.eval(async.semaphore[F](1))
-        r1  = new PreciousResource[F]("R1", s)
-        r2  = new PreciousResource[F]("R2", s)
-        r3  = new PreciousResource[F]("R3", s)
-        ec  <- Stream(r1.use, r2.use, r3.use).join(3).drain ++ Stream.emit(ExitCode.Success)
-      } yield ec
-    }
-
+    for {
+      s   <- Stream.eval(async.semaphore[F](1))
+      r1  = new PreciousResource[F]("R1", s)
+      r2  = new PreciousResource[F]("R2", s)
+      r3  = new PreciousResource[F]("R3", s)
+      ec  <- Stream(r1.use, r2.use, r3.use).join(3).drain ++ Stream.emit(ExitCode.Success)
+    } yield ec
 }
 ```
