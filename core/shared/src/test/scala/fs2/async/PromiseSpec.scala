@@ -30,10 +30,10 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
         state <- refOf[IO, Int](0)
         modifyGate <- promise[IO, Unit]
         readGate <- promise[IO, Unit]
-        _ <- fork {
+        _ <- shiftStart {
          modifyGate.get *> state.modify(_ * 2) *> readGate.complete(())
         }
-        _ <- fork {
+        _ <- shiftStart {
           state.setSync(1) *> modifyGate.complete(())
         }
         _ <- readGate.get
@@ -49,7 +49,7 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
           p <- async.promise[IO,Int]
           fiber <- Concurrent[IO].start(p.get)
           _ <- fiber.cancel
-          _ <- async.fork(fiber.join.flatMap(i => r.setSync(Some(i))))
+          _ <- async.shiftStart(fiber.join.flatMap(i => r.setSync(Some(i))))
           _ <- Timer[IO].sleep(100.millis)
           _ <- p.complete(42)
           _ <- Timer[IO].sleep(100.millis)
@@ -89,7 +89,7 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
         ref <- async.refOf[IO, Int](42)
         act = ref.modify(_ + 1).map(_.now)
         memoized <- async.once(act)
-        _ <- async.fork(memoized)
+        _ <- async.shiftStart(memoized)
         x <- memoized
         _ <- Timer[IO].sleep(100.millis)
         v <- ref.get
@@ -103,8 +103,8 @@ class PromiseSpec extends AsyncFs2Spec with EitherValues {
         ref <- async.refOf[IO, Int](42)
         act1 = ref.modify(_ + 1).map(_.now)
         act2 = async.once(act1).flatten
-        _ <- async.fork(Stream.repeatEval(act1).take(n).compile.drain)
-        _ <- async.fork(Stream.repeatEval(act2).take(n).compile.drain)
+        _ <- async.shiftStart(Stream.repeatEval(act1).take(n).compile.drain)
+        _ <- async.shiftStart(Stream.repeatEval(act2).take(n).compile.drain)
         _ <- Timer[IO].sleep(200.millis)
         v <- ref.get
       } yield v

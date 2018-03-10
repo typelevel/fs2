@@ -140,13 +140,15 @@ package object async {
     * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
     * bound.
     */
-  // TODO Consider deprecating this
-  //@deprecated("Use Concurrent[F].start(Async.shift(ec) *> f) instead.", "1.0.0")
+  @deprecated("Use Concurrent[F].start(Async.shift(ec) *> f) instead.", "1.0.0")
   def fork[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[Unit] =
     shiftStart(f).void
 
-  private[fs2] def shiftStart[F[_], A](f: F[A])(implicit F: Concurrent[F],
-                                                ec: ExecutionContext): F[Fiber[F, A]] =
+  /**
+    * Shifts `f` to the supplied execution context and then starts it, returning the spawned fiber.
+    */
+  def shiftStart[F[_], A](f: F[A])(implicit F: Concurrent[F],
+                                   ec: ExecutionContext): F[Fiber[F, A]] =
     F.start(Async.shift(ec) *> f)
 
   /**

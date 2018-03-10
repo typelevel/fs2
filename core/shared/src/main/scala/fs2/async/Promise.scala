@@ -64,7 +64,7 @@ final class Promise[F[_], A] private[fs2] (ref: AtomicReference[State[A]])(
     * any and all readers currently blocked on a `get`.
     *
     * Note that the returned action completes after the reference has been successfully set:
-    * use `async.fork(r.complete)` if you want asynchronous behaviour.
+    * use `async.shiftStart(r.complete)` if you want asynchronous behaviour.
     *
     * If this `Promise` has already been completed, the returned action immediately fails with a [[Promise.AlreadyCompletedException]].
     * In the uncommon scenario where this behaviour is problematic, you can handle failure explicitly

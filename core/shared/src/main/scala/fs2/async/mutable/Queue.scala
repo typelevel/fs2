@@ -164,14 +164,14 @@ object Queue {
                 signalSize(c.previous, c.now)
               } else {
                 // queue was empty, we had waiting dequeuers
-                async.fork(c.previous.deq.head.complete(Chunk.singleton(a)))
+                async.shiftStart(c.previous.deq.head.complete(Chunk.singleton(a)))
               }
               val pk = if (c.previous.peek.isEmpty) {
                 // no peeker to notify
                 F.unit
               } else {
                 // notify peekers
-                async.fork(c.previous.peek.get.complete(a))
+                async.shiftStart(c.previous.peek.get.complete(a))
 
               }
               (dq *> pk).as(true)

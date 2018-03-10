@@ -47,7 +47,7 @@ final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(impli
     * setting the current value to `a`.
     *
     * Satisfies:
-    *   `r.setAsync(fa) == async.fork(r.setSync(a))`
+    *   `r.setAsync(fa) == async.shiftStart(r.setSync(a))`
     * but it's significantly faster.
     */
   def setAsync(a: A): F[Unit] = F.delay(ar.lazySet(a))
