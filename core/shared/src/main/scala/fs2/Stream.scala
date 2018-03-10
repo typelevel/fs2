@@ -2201,7 +2201,7 @@ object Stream {
                         .fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
                     }
 
-                  Stream.eval(async.start(runOuter)) >>
+                  Stream.eval(async.fork(runOuter)) >>
                     outputQ.dequeue.unNoneTerminate
                       .flatMap { Stream.segment(_).covary[F] }
                       .onFinalize {

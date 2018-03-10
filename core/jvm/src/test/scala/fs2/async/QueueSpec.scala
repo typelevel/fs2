@@ -88,11 +88,11 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.unboundedQueue[IO, Int]
-            f <- async.start(q.peek1)
-            g <- async.start(q.peek1)
+            f <- async.shiftStart(q.peek1)
+            g <- async.shiftStart(q.peek1)
             _ <- q.enqueue1(42)
-            x <- f
-            y <- g
+            x <- f.join
+            y <- g.join
           } yield List(x, y)
         )).flatten shouldBe Vector(42, 42)
     }
@@ -101,13 +101,14 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.unboundedQueue[IO, Int]
-            f <- async.start(q.peek1.product(q.dequeue1))
+            f <- async.shiftStart(q.peek1.product(q.dequeue1))
             _ <- q.enqueue1(42)
-            x <- f
-            g <- async.start((q.peek1.product(q.dequeue1)).product(q.peek1.product(q.dequeue1)))
+            x <- f.join
+            g <- async.shiftStart(
+              (q.peek1.product(q.dequeue1)).product(q.peek1.product(q.dequeue1)))
             _ <- q.enqueue1(43)
             _ <- q.enqueue1(44)
-            yz <- g
+            yz <- g.join
             (y, z) = yz
           } yield List(x, y, z)
         )).flatten shouldBe Vector((42, 42), (43, 43), (44, 44))
@@ -117,12 +118,12 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.boundedQueue[IO, Int](maxSize = 1)
-            f <- async.start(q.peek1)
-            g <- async.start(q.peek1)
+            f <- async.shiftStart(q.peek1)
+            g <- async.shiftStart(q.peek1)
             _ <- q.enqueue1(42)
             b <- q.offer1(43)
-            x <- f
-            y <- g
+            x <- f.join
+            y <- g.join
             z <- q.dequeue1
           } yield List(b, x, y, z)
         )).flatten shouldBe Vector(false, 42, 42, 42)
@@ -132,11 +133,11 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.circularBuffer[IO, Int](maxSize = 1)
-            f <- async.start(q.peek1)
-            g <- async.start(q.peek1)
+            f <- async.shiftStart(q.peek1)
+            g <- async.shiftStart(q.peek1)
             _ <- q.enqueue1(42)
-            x <- f
-            y <- g
+            x <- f.join
+            y <- g.join
             b <- q.offer1(43)
             z <- q.peek1
           } yield List(b, x, y, z)
@@ -147,12 +148,12 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.synchronousQueue[IO, Int]
-            f <- async.start(q.peek1)
-            g <- async.start(q.peek1)
-            _ <- async.start(q.enqueue1(42))
+            f <- async.shiftStart(q.peek1)
+            g <- async.shiftStart(q.peek1)
+            _ <- async.shiftStart(q.enqueue1(42))
             x <- q.dequeue1
-            y <- f
-            z <- g
+            y <- f.join
+            z <- g.join
           } yield List(x, y, z)
         )).flatten shouldBe Vector(42, 42, 42)
     }
@@ -161,11 +162,11 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.mutable.Queue.synchronousNoneTerminated[IO, Int]
-            f <- async.start(q.peek1)
-            g <- async.start(q.peek1)
+            f <- async.shiftStart(q.peek1)
+            g <- async.shiftStart(q.peek1)
             _ <- q.enqueue1(None)
-            y <- f
-            z <- g
+            y <- f.join
+            z <- g.join
             x <- q.dequeue1
           } yield List(x, y, z)
         )).flatten shouldBe Vector(None, None, None)

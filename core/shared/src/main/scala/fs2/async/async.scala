@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.Traverse
 import cats.implicits.{catsSyntaxEither => _, _}
-import cats.effect.{Async, Concurrent, Effect, IO, Sync}
+import cats.effect.{Async, Concurrent, Effect, Fiber, IO, Sync}
 
 /** Provides utilities for asynchronous computations. */
 package object async {
@@ -89,11 +89,19 @@ package object async {
   def refOf[F[_]: Sync, A](a: A): F[Ref[F, A]] = Ref[F, A](a)
 
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
+  @deprecated(
+    "Use cats.Parallel.parTraverse instead. If G = IO and you want each IO to start executing on a pool thread, use cats.Parallel.parTraverse(IO.shift(ec) *> f(_)).",
+    "1.0.0"
+  )
   def parallelTraverse[F[_], G[_], A, B](fa: F[A])(
       f: A => G[B])(implicit F: Traverse[F], G: Concurrent[G], ec: ExecutionContext): G[F[B]] =
     F.traverse(fa)(f.andThen(start[G, B])).flatMap(F.sequence(_))
 
   /** Like `sequence` but each `G[A]` is evaluated in parallel. */
+  @deprecated(
+    "Use cats.Parallel.parSequence instead. If G = IO and you want each IO start executing on a pool thread, use cats.Parallel.parTraverse(IO.shift(ec) *> _).",
+    "1.0.0"
+  )
   def parallelSequence[F[_], G[_], A](
       fga: F[G[A]])(implicit F: Traverse[F], G: Concurrent[G], ec: ExecutionContext): G[F[A]] =
     parallelTraverse(fga)(identity)
@@ -102,8 +110,9 @@ package object async {
     * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
     * bound. The inner `F[A]` will block until the result is available.
     */
+  @deprecated("Use Concurrent[F].start(Async.shift(ec) *> f) instead.", "1.0.0")
   def start[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[F[A]] =
-    F.start(Async.shift(ec) *> f).map(fiber => fiber.join)
+    shiftStart(f).map(_.join)
 
   /**
     * Lazily memoize `f`. For every time the returned `F[F[A]]` is
@@ -129,10 +138,16 @@ package object async {
 
   /**
     * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
-    * bound. Like `start` but is more efficient.
+    * bound.
     */
+  // TODO Consider deprecating this
+  //@deprecated("Use Concurrent[F].start(Async.shift(ec) *> f) instead.", "1.0.0")
   def fork[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[Unit] =
-    F.start(Async.shift(ec) *> f).void
+    shiftStart(f).void
+
+  private[fs2] def shiftStart[F[_], A](f: F[A])(implicit F: Concurrent[F],
+                                                ec: ExecutionContext): F[Fiber[F, A]] =
+    F.start(Async.shift(ec) *> f)
 
   /**
     * Like `unsafeRunSync` but execution is shifted to the supplied execution context.

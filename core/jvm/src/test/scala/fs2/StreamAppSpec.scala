@@ -59,12 +59,12 @@ class StreamAppSpec extends Fs2Spec {
               }))
 
       (for {
-        runApp <- async.start(testApp.doMain(List.empty))
+        runApp <- async.shiftStart(testApp.doMain(List.empty))
         // Wait for app to start
         _ <- requestShutdown.discrete.takeWhile(_ == IO.unit).compile.drain
         // Run shutdown task
         _ <- requestShutdown.get.flatten
-        result <- runApp
+        result <- runApp.join
         cleanedUp <- testApp.cleanedUp.get
       } yield (result, cleanedUp)).unsafeRunTimed(5.seconds) shouldBe Some((ExitCode.Success, true))
     }
