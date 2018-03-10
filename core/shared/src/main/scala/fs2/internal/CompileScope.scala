@@ -66,7 +66,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     val id: Token,
     private val parent: Option[CompileScope[F, O]],
     val interruptible: Option[InterruptContext[F, O]]
-)(implicit private val F: Sync[F])
+)(implicit val F: Sync[F])
     extends Scope[F] { self =>
 
   private val state: Ref[F, CompileScope.State[F, O]] = new Ref(
