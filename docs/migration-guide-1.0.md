@@ -6,7 +6,8 @@ This release is focused on taking advantage of new features added to cats-effect
 
 The new `cats.effect.Timer` type was introduced in cats-effect 0.10. This type provides much of the same functionality as the `fs2.Scheduler` type with the added functionality of supporting cancelation of sleeps. Hence, `fs2.Scheduler` has been removed and all of the stream-specific methods have been moved to the `fs2.Stream` companion. A `Timer[IO]` instance is available implicitly for both the JVM and Scala.js, meaning there's no need to allocate and shutdown a timer. Timer instances for other effect types can either be defined manually or derived from the `Timer[IO]` instance via `Timer.derive[F]`.
 
-||0.10 API||1.0 API||
+|0.10 API|1.0 API|
+|--------|-------|
 |`scheduler.effect.sleep[F](duration)`|`Timer[F].sleep(duration)`|
 |`scheduler.sleep[F](duration)`|`Stream.sleep[F](duration)`|
 |`scheduler.sleep_[F](duration)`|`Stream.sleep_[F](duration)`|
