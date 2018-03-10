@@ -15,6 +15,7 @@ The new `cats.effect.Timer` type was introduced in cats-effect 0.10. This type p
 |`scheduler.retry(task, delay, nextDelay, maxRetries)`|`Stream.retry(task, delay, nextDelay, maxRetries)`|
 |`scheduler.debounce[F](duration).through(source)`|`source.debounce(duration)`|
 |`scheduler.delayCancellable(task, duration)`|`Concurrent[F].race(task, Timer[F].sleep(duration))`|
+|`scheduler.delay(source, duration)`|`source.delayBy(duratin)`|
 
 ### Cancelation
 

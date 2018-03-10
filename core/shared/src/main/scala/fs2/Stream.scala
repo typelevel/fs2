@@ -1320,14 +1320,6 @@ object Stream {
     segment(Segment.constant(o).take(segmentSize).voidResult).repeat
 
   /**
-    * Returns a stream that when run, sleeps for duration `d` and then pulls from `s`.
-    *
-    * Alias for `sleep_[F](d) ++ s`.
-    */
-  def delay[F[_], O](s: Stream[F, O], d: FiniteDuration)(implicit F: Timer[F]): Stream[F, O] =
-    sleep_[F](d) ++ s
-
-  /**
     * A continuous stream of the elapsed time, computed using `System.nanoTime`.
     * Note that the actual granularity of these elapsed times depends on the OS, for instance
     * the OS may only update the current time every ten milliseconds or so.
@@ -1871,6 +1863,14 @@ object Stream {
         }
       }
     }
+
+    /**
+      * Returns a stream that when run, sleeps for duration `d` and then pulls from this stream.
+      *
+      * Alias for `sleep_[F](d) ++ this`.
+      */
+    def delayBy(d: FiniteDuration)(implicit F: Timer[F]): Stream[F, O] =
+      Stream.sleep_[F](d) ++ self
 
     /**
       * Like `[[merge]]`, but tags each output with the branch it came from.
@@ -2762,6 +2762,12 @@ object Stream {
 
     def covaryAll[F[_], O2 >: O]: Stream[F, O2] =
       self.asInstanceOf[Stream[F, O2]]
+
+    def debounce[F[_]](d: FiniteDuration)(implicit F: Concurrent[F],
+                                          ec: ExecutionContext,
+                                          timer: Timer[F]): Stream[F, O] = covary[F].debounce(d)
+
+    def delayBy[F[_]](d: FiniteDuration)(implicit F: Timer[F]): Stream[F, O] = covary[F].delayBy(d)
 
     def either[F[_], O2](s2: Stream[F, O2])(implicit F: Concurrent[F],
                                             ec: ExecutionContext): Stream[F, Either[O, O2]] =
