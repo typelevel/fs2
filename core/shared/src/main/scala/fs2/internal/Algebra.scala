@@ -20,6 +20,9 @@ private[fs2] object Algebra {
                                       maxSteps: Long)
       extends Algebra[F, O, Option[(Segment[X, Unit], FreeC[Algebra[F, X, ?], Unit])]]
 
+  final case class RunLeg[F[_], X, O](l: Stream.StepLeg[F, X])
+      extends Algebra[F, O, Option[Stream.StepLeg[F, X]]]
+
   final case class Eval[F[_], O, R](value: F[R]) extends AlgEffect[F, O, R]
 
   final case class Acquire[F[_], O, R](resource: F[R], release: R => F[Unit])
@@ -95,6 +98,10 @@ private[fs2] object Algebra {
 
   def release[F[_], O](token: Token): FreeC[Algebra[F, O, ?], Unit] =
     FreeC.Eval[Algebra[F, O, ?], Unit](Release(token))
+
+  def stepLeg[F[_], O](
+      leg: Stream.StepLeg[F, O]): FreeC[Algebra[F, Nothing, ?], Option[Stream.StepLeg[F, O]]] =
+    FreeC.Eval[Algebra[F, Nothing, ?], Option[Stream.StepLeg[F, O]]](RunLeg(leg))
 
   /**
     * Wraps supplied pull in new scope, that will be opened before this pull is evaluated
@@ -268,6 +275,21 @@ private[fs2] object Algebra {
                   interrupted.fold(F.raiseError, token => F.pure(Interrupted[X](token)))
               }
 
+            case step: Algebra.RunLeg[F, y, _] =>
+              F.flatMap(scope.interruptibleEval(compileLoop(step.l.scope, step.l.next))) {
+                case Right(None) =>
+                  uncons(f(Right(None)), chunkSize, maxSteps)
+
+                case Right(Some((segment, nextScope, next))) =>
+                  uncons(f(Right(Some(new Stream.StepLeg[F, y](segment, nextScope, next)))),
+                         chunkSize,
+                         maxSteps)
+
+                case Left(Right(token)) => F.pure(Interrupted(token))
+                case Left(Left(err))    => uncons(f(Left(err)), chunkSize, maxSteps)
+
+              }
+
             case eval: Algebra.Eval[F, X, _] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
                 case Right(r)           => uncons(f(Right(r)), chunkSize, maxSteps)
@@ -381,6 +403,20 @@ private[fs2] object Algebra {
                 onInterrupt(interrupted)
             }
 
+          case step: RunLeg[F, x, O] =>
+            F.flatMap(scope.interruptibleEval(compileLoop(step.l.scope, step.l.next))) {
+              case Right(None) =>
+                compileLoop(scope, f(Right(None)))
+
+              case Right(Some((segment, nextScope, next))) =>
+                compileLoop(scope,
+                            f(Right(Some(new Stream.StepLeg[F, x](segment, nextScope, next)))))
+
+              case Left(Right(token)) => onInterrupt(Right(token))
+              case Left(Left(err))    => compileLoop(scope, f(Left(err)))
+
+            }
+
           case eval: Algebra.Eval[F, O, _] =>
             F.flatMap(scope.interruptibleEval(eval.value)) {
               case Right(r)           => compileLoop(scope, f(Right(r)))
@@ -455,29 +491,27 @@ private[fs2] object Algebra {
       effect: Option[Concurrent[F]]
   ): FreeC[Algebra[F, O, ?], Unit] = {
 
-    // Uncons is interrupted, fallback on `compileLoop` has to be invoked
-    // The token is a scope from which we should recover.
-    case class Interrupted[X](token: Token) extends UR[X]
     // uncons is done
-    case class Done[X](result: Option[(Segment[X, Unit], FreeC[Algebra[G, X, ?], Unit])])
-        extends UR[X]
+    case class Done[X, XO](result: Option[(Segment[X, Unit], FreeC[Algebra[G, X, ?], Unit])])
+        extends UR[X, XO]
+
     // uncons shall continue with result of `f` once `alg` is evaluated
     // used in OpenScope and CloseScope, to assure scopes are opened and closed only on main Loop.
-    case class Continue[X, R](alg: AlgEffect[G, X, R],
-                              f: Either[Throwable, R] => FreeC[Algebra[G, X, ?], Unit])
-        extends UR[X]
+    case class Continue[X, R, XO](alg: FreeC[Algebra[F, XO, ?], R],
+                                  f: Either[Throwable, R] => FreeC[Algebra[G, X, ?], Unit])
+        extends UR[X, XO]
 
-    case class Error[X](rsn: Throwable) extends UR[X]
+    case class Error[X, XO](rsn: Throwable) extends UR[X, XO]
 
-    sealed trait UR[X]
+    sealed trait UR[X, XO]
 
-    def uncons[X](
+    def uncons[X, XO](
         xs: FreeC[Algebra[G, X, ?], Unit],
         chunkSize: Int,
         maxSteps: Long
-    ): UR[X] =
+    ): UR[X, XO] =
       xs.viewL.get match {
-        case done: FreeC.Pure[Algebra[G, X, ?], Unit] =>
+        case _: FreeC.Pure[Algebra[G, X, ?], Unit] =>
           Done(None)
 
         case failed: FreeC.Fail[Algebra[G, X, ?], Unit] =>
@@ -503,22 +537,37 @@ private[fs2] object Algebra {
               Done(Some((Segment.catenatedChunks(h), t)))
 
             case u: Algebra.Uncons[G, y, X] =>
-              uncons[y](u.s, u.chunkSize, u.maxSteps) match {
-                case Done(r)            => uncons(f(Right(r)), chunkSize, maxSteps)
-                case Interrupted(token) => Interrupted[X](token)
-                case cont: Continue[y, r] =>
-                  Continue[X, r](
-                    cont.alg.covaryOutput[X],
+              uncons[y, XO](u.s, u.chunkSize, u.maxSteps) match {
+                case Done(r) => uncons(f(Right(r)), chunkSize, maxSteps)
+                case cont: Continue[y, r, XO] =>
+                  Continue[X, r, XO](
+                    cont.alg,
                     r =>
                       Algebra
                         .uncons[G, X, y](cont.f(r), u.chunkSize, u.maxSteps)
                         .transformWith(f)
                   )
+
                 case Error(err) => uncons(f(Left(err)), chunkSize, maxSteps)
               }
 
-            case effect: Algebra.AlgEffect[G, X, r] =>
-              Continue(effect, f)
+            case run: Algebra.RunLeg[G, x, X] =>
+              Continue(
+                FreeC.Eval[Algebra[F, XO, ?], Option[Stream.StepLeg[F, x]]](
+                  RunLeg[F, x, XO](
+                    new Stream.StepLeg[F, x](
+                      head = run.l.head,
+                      // Scope cast safe as the G in the scope is actually F
+                      // since the Sync is provided when we are compiling the sream.
+                      scope = run.l.scope.asInstanceOf[CompileScope[F, x]],
+                      next = translateLeg[x](run.l.next)
+                    ))
+                ),
+                f
+              )
+
+            case effectAlg: Algebra.AlgEffect[G, X, r] =>
+              Continue(FreeC.Eval(effectAlg.translate[F](effect, fK).covaryOutput[XO]), f)
 
           }
 
@@ -527,8 +576,96 @@ private[fs2] object Algebra {
             "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (translate) was: " + e)
       }
 
+    /**
+      * Translates given free for use in a [[Stream.StepLeg]].
+      *
+      * As such this only translates up to the point where evaluation in compileLoop returns a value.
+      * The rest of the free is kept untranslated. So that next step can translate its
+      * required part of the free or if we force the [[Stream.StepLeg]] back into a stream.
+      *
+      * Otherwise we would be getting the same free translated twice.
+      *
+      * @param next The free that should be translated until it returns a value.
+      */
+    def translateLeg[X](next: FreeC[Algebra[G, X, ?], Unit]): FreeC[Algebra[F, X, ?], Unit] =
+      next.viewL.get match {
+        case _: FreeC.Pure[Algebra[G, X, ?], Unit] =>
+          FreeC.Pure[Algebra[F, X, ?], Unit](())
+
+        case failed: FreeC.Fail[Algebra[G, X, ?], Unit] =>
+          Algebra.raiseError(failed.error)
+
+        case bound: FreeC.Bind[Algebra[G, X, ?], _, Unit] =>
+          val f = bound.f
+            .asInstanceOf[Either[Throwable, Any] => FreeC[Algebra[G, X, ?], Unit]]
+          val fx = bound.fx.asInstanceOf[FreeC.Eval[Algebra[G, X, ?], _]].fr
+
+          fx match {
+            case output: Algebra.Output[G, X] =>
+              Algebra.output[F, X](output.values).transformWith {
+                case Right(v) =>
+                  // Cast is safe here, as at this point the evaluation of this RunStep will end
+                  // and the remainder of the free will be passed to the new Stream.StepLeg, as the next
+                  // thus in the next RunStep, this remainder will be evaluated again.
+                  f(Right(v))
+                    .asInstanceOf[FreeC[Algebra[F, X, ?], Unit]]
+                case Left(err) => translateLeg(f(Left(err)))
+              }
+
+            case run: Algebra.Run[G, X, r] =>
+              Algebra.segment[F, X, r](run.values).transformWith {
+                case Right(v) =>
+                  // Cast is safe here, as at this point the evaluation of this RunStep will end
+                  // and the remainder of the free will be passed to the new Stream.StepLeg, as the next
+                  // thus in the next RunStep, this remainder will be evaluated again.
+                  f(Right(v))
+                    .asInstanceOf[FreeC[Algebra[F, X, ?], Unit]]
+                case Left(err) => translateLeg(f(Left(err)))
+              }
+
+            case u: Algebra.Uncons[G, x, X] =>
+              uncons[x, X](u.s, u.chunkSize, u.maxSteps) match {
+                case Done(r) => translateLeg(f(Right(r)))
+                case cont: Continue[x, r, X] =>
+                  cont.alg.transformWith { r =>
+                    val next: FreeC[Algebra[G, X, ?], Unit] =
+                      Algebra.uncons(cont.f(r), u.chunkSize, u.maxSteps).transformWith(f)
+                    translateLeg(next)
+                  }
+
+                case Error(rsn) => translateLeg(f(Left(rsn)))
+              }
+
+            case run: Algebra.RunLeg[G, x, X] =>
+              FreeC
+                .Eval[Algebra[F, X, ?], Option[Stream.StepLeg[F, x]]](
+                  RunLeg(
+                    new Stream.StepLeg[F, x](
+                      head = run.l.head,
+                      // Scope cast safe as the G in the scope is actually F
+                      // since the Sync is provided when we are compiling the sream.
+                      scope = run.l.scope.asInstanceOf[CompileScope[F, x]],
+                      next = translateLeg[x](run.l.next)
+                    ))
+                )
+                .transformWith { r =>
+                  translateLeg(f(r))
+                }
+
+            case alg: Algebra.AlgEffect[G, X, r] =>
+              FreeC.Eval[Algebra[F, X, ?], r](alg.translate[F](effect, fK)).transformWith { r =>
+                translateLeg(f(r))
+              }
+
+          }
+
+        case e =>
+          sys.error(
+            "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), (translateLeg) was: " + e)
+      }
+
     s.viewL.get match {
-      case done: FreeC.Pure[Algebra[G, O, ?], Unit] =>
+      case _: FreeC.Pure[Algebra[G, O, ?], Unit] =>
         FreeC.Pure[Algebra[F, O, ?], Unit](())
 
       case failed: FreeC.Fail[Algebra[G, O, ?], Unit] =>
@@ -551,20 +688,33 @@ private[fs2] object Algebra {
             }
 
           case u: Algebra.Uncons[G, x, O] =>
-            uncons[x](u.s, u.chunkSize, u.maxSteps) match {
-              case Done(r)              => translate0(fK, f(Right(r)), effect)
-              case Interrupted(tokenId) => closeScope(tokenId, interruptFallBack = true)
-              case cont: Continue[x, r] =>
-                FreeC
-                  .Eval[Algebra[F, O, ?], r](cont.alg.covaryOutput[O].translate[F](effect, fK))
-                  .transformWith { r =>
-                    val next: FreeC[Algebra[G, O, ?], Unit] =
-                      Algebra.uncons(cont.f(r), u.chunkSize, u.maxSteps).transformWith(f)
-                    translate0(fK, next, effect)
-                  }
+            uncons[x, O](u.s, u.chunkSize, u.maxSteps) match {
+              case Done(r) => translate0(fK, f(Right(r)), effect)
+              case cont: Continue[x, r, O] =>
+                cont.alg.transformWith { r =>
+                  val next: FreeC[Algebra[G, O, ?], Unit] =
+                    Algebra.uncons(cont.f(r), u.chunkSize, u.maxSteps).transformWith(f)
+                  translate0(fK, next, effect)
+                }
 
               case Error(rsn) => translate0(fK, f(Left(rsn)), effect)
             }
+
+          case run: Algebra.RunLeg[G, x, O] =>
+            FreeC
+              .Eval[Algebra[F, O, ?], Option[Stream.StepLeg[F, x]]](
+                RunLeg(
+                  new Stream.StepLeg[F, x](
+                    head = run.l.head,
+                    // Scope cast safe as the G in the scope is actually F
+                    // since the Sync is provided when we are compiling the sream.
+                    scope = run.l.scope.asInstanceOf[CompileScope[F, x]],
+                    next = translateLeg[x](run.l.next)
+                  ))
+              )
+              .transformWith { r =>
+                translate0(fK, f(r), effect)
+              }
 
           case alg: Algebra.AlgEffect[G, O, r] =>
             FreeC.Eval[Algebra[F, O, ?], r](alg.translate[F](effect, fK)).transformWith { r =>

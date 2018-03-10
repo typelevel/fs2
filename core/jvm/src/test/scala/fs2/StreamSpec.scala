@@ -233,6 +233,91 @@ class StreamSpec extends Fs2Spec with Inside {
       ) shouldBe runLog(s.get)
     }
 
+    "translate (4)" in {
+      // tests that it is ok to have translate after zip with effects
+
+      val stream: Stream[Function0, Int] =
+        Stream.eval(() => 1)
+
+      stream
+        .zip(stream)
+        .translate(new (Function0 ~> IO) {
+          def apply[A](thunk: Function0[A]) = IO(thunk())
+        })
+        .compile
+        .toList
+        .unsafeRunSync shouldBe List((1, 1))
+    }
+
+    "translate (5)" in {
+      // tests that it is ok to have translate step leg that emits multiple segments
+
+      def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+        step match {
+          case None       => Pull.done
+          case Some(step) => Pull.output(step.head) >> step.stepLeg.flatMap(goStep)
+        }
+
+      (Stream.eval(() => 1) ++ Stream.eval(() => 2)).pull.stepLeg
+        .flatMap(goStep)
+        .stream
+        .translate(new (Function0 ~> IO) {
+          def apply[A](thunk: Function0[A]) = IO(thunk())
+        })
+        .compile
+        .toList
+        .unsafeRunSync shouldBe List(1, 2)
+    }
+
+    "translate (6)" in {
+      // tests that it is ok to have translate step leg that has uncons in its structure.
+
+      def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+        step match {
+          case None       => Pull.done
+          case Some(step) => Pull.output(step.head) >> step.stepLeg.flatMap(goStep)
+        }
+
+      (Stream.eval(() => 1) ++ Stream.eval(() => 2))
+        .flatMap { a =>
+          Stream.emit(a)
+        }
+        .flatMap { a =>
+          Stream.eval(() => a + 1) ++ Stream.eval(() => a + 2)
+        }
+        .pull
+        .stepLeg
+        .flatMap(goStep)
+        .stream
+        .translate(new (Function0 ~> IO) {
+          def apply[A](thunk: Function0[A]) = IO(thunk())
+        })
+        .compile
+        .toList
+        .unsafeRunSync shouldBe List(2, 3, 3, 4)
+    }
+
+    "translate (7)" in {
+      // tests that it is ok to have translate step leg that is later forced back into stream
+
+      def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+        step match {
+          case None => Pull.done
+          case Some(step) =>
+            Pull.output(step.head) >> step.stream.pull.echo
+        }
+
+      (Stream.eval(() => 1) ++ Stream.eval(() => 2)).pull.stepLeg
+        .flatMap(goStep)
+        .stream
+        .translate(new (Function0 ~> IO) {
+          def apply[A](thunk: Function0[A]) = IO(thunk())
+        })
+        .compile
+        .toList
+        .unsafeRunSync shouldBe List(1, 2)
+    }
+
     "toList" in forAll { (s: PureStream[Int]) =>
       s.get.toList shouldBe runLog(s.get).toList
     }
