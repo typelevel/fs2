@@ -59,8 +59,8 @@ lazy val commonSettings = Seq(
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
   initialCommands := s"""
     import fs2._
-    import cats.effect.IO
-    import scala.concurrent.ExecutionContext.Implicits.global
+    import cats.effect._
+    import scala.concurrent.ExecutionContext.Implicits.global, scala.concurrent.duration._
   """,
   doctestTestFramework := DoctestTestFramework.ScalaTest,
   scalafmtOnCompile := true
