@@ -11,13 +11,13 @@ final class ByteVectorChunk private (val toByteVector: ByteVector) extends Chunk
     toByteVector.size.toInt
 
   override def drop(n: Int): Chunk[Byte] =
-    if (n <= 0) Chunk.empty
+    if (n <= 0) this
     else if (n >= size) Chunk.empty
     else ByteVectorChunk(toByteVector.drop(n))
 
   override def take(n: Int): Chunk[Byte] =
     if (n <= 0) Chunk.empty
-    else if (n >= size) Chunk.empty
+    else if (n >= size) this
     else ByteVectorChunk(toByteVector.take(n))
 
   protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
