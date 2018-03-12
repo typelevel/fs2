@@ -173,7 +173,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           })
           swallow { runLog { s2.join(n.get).take(10) } }
           swallow { runLog { s2.join(n.get) } }
-          eventually(Timeout(3 second)) { outer.get shouldBe 0L }
+          eventually(Timeout(3 seconds)) { outer.get shouldBe 0L }
           outer.get shouldBe 0L
           eventually(Timeout(3 seconds)) { inner.get shouldBe 0L }
       }
@@ -199,7 +199,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           .unsafeRunSync()
         runLog {
           s.get.evalMap { inner =>
-            async.start(
+            async.shiftStart(
               bracket(c)(inner.get)
                 .evalMap { _ =>
                   IO.async[Unit](_ => ())
@@ -221,11 +221,11 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val signal = async.signalOf[IO, Boolean](false).unsafeRunSync()
       val c = new AtomicLong(0)
       async
-        .fork(IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true))
+        .shiftStart(IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true))
         .unsafeRunSync() // after 50 ms, interrupt
       runLog {
         s.evalMap { inner =>
-          async.start {
+          async.shiftStart {
             Stream
               .bracket(IO { c.incrementAndGet; Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
                 _ => inner,
@@ -239,7 +239,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           }
         }
       }
-      // required longer delay here, hence the sleep of 2s and async.start that is not bound.
+      // required longer delay here, hence the sleep of 2s and async.shiftStart that is not bound.
       eventually(Timeout(5 second)) { c.get shouldBe 0L }
     }
 

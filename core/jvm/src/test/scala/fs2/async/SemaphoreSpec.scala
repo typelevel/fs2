@@ -1,8 +1,7 @@
 package fs2
 package async
 
-import scala.concurrent.duration._
-
+import cats.Parallel
 import cats.effect.IO
 import cats.implicits._
 
@@ -38,54 +37,26 @@ class SemaphoreSpec extends Fs2Spec {
         val longsRev = longs.reverse
         val t: IO[Unit] = for {
           // just two parallel tasks, one incrementing, one decrementing
-          decrs <- async.start { longs.traverse(s.decrementBy) }
-          incrs <- async.start { longsRev.traverse(s.incrementBy) }
-          _ <- decrs: IO[Vector[Unit]]
-          _ <- incrs: IO[Vector[Unit]]
+          decrs <- async.shiftStart { longs.traverse(s.decrementBy) }
+          incrs <- async.shiftStart { longsRev.traverse(s.incrementBy) }
+          _ <- decrs.join: IO[Vector[Unit]]
+          _ <- incrs.join: IO[Vector[Unit]]
         } yield ()
         t.unsafeRunSync()
         s.count.unsafeRunSync() shouldBe 0
 
         val t2: IO[Unit] = for {
           // N parallel incrementing tasks and N parallel decrementing tasks
-          decrs <- async.start { async.parallelTraverse(longs)(s.decrementBy) }
-          incrs <- async.start {
-            async.parallelTraverse(longsRev)(s.incrementBy)
+          decrs <- async.shiftStart { Parallel.parTraverse(longs)(IO.shift *> s.decrementBy(_)) }
+          incrs <- async.shiftStart {
+            Parallel.parTraverse(longsRev)(IO.shift *> s.incrementBy(_))
           }
-          _ <- decrs: IO[Vector[Unit]]
-          _ <- incrs: IO[Vector[Unit]]
+          _ <- decrs.join: IO[Vector[Unit]]
+          _ <- incrs.join: IO[Vector[Unit]]
         } yield ()
         t2.unsafeRunSync()
         s.count.unsafeRunSync() shouldBe 0
       }
-    }
-
-    "timedDecrement" in {
-      runLog(Scheduler[IO](1).flatMap { scheduler =>
-        Stream.eval(
-          for {
-            s <- async.semaphore[IO](1)
-            first <- s.timedDecrement(100.millis, scheduler)
-            second <- s.timedDecrement(100.millis, scheduler)
-            _ <- s.increment
-            third <- s.timedDecrement(100.millis, scheduler)
-          } yield List(first, second, third)
-        )
-      }).flatten shouldBe Vector(true, false, true)
-    }
-
-    "timedDecrementBy" in {
-      runLog(Scheduler[IO](1).flatMap { scheduler =>
-        Stream.eval(
-          for {
-            s <- async.semaphore[IO](7)
-            first <- s.timedDecrementBy(5, 100.millis, scheduler)
-            second <- s.timedDecrementBy(5, 100.millis, scheduler)
-            _ <- s.incrementBy(10)
-            third <- s.timedDecrementBy(5, 100.millis, scheduler)
-          } yield List(first, second, third)
-        )
-      }).flatten shouldBe Vector(0, 3, 0)
     }
   }
 }

@@ -17,7 +17,7 @@ class RetrySpec extends AsyncFs2Spec {
       }
 
 
-      runLogF(mkScheduler.flatMap(_.retry(job, 1.seconds, x => x, 100))).map { r =>
+      runLogF(Stream.retry(job, 1.seconds, x => x, 100)).map { r =>
         attempts shouldBe 1
         r shouldBe Vector("success")
       }
@@ -31,7 +31,7 @@ class RetrySpec extends AsyncFs2Spec {
       }
 
 
-      runLogF(mkScheduler.flatMap(_.retry(job, 100.millis, x => x, 100))).map { r =>
+      runLogF(Stream.retry(job, 100.millis, x => x, 100)).map { r =>
         failures shouldBe 5
         successes shouldBe 1
         r shouldBe Vector("success")
@@ -45,7 +45,7 @@ class RetrySpec extends AsyncFs2Spec {
         throw RetryErr(failures.toString)
       }
 
-      runLogF(mkScheduler.flatMap(_.retry(job, 100.millis, x => x, 5))).failed.map {
+      runLogF(Stream.retry(job, 100.millis, x => x, 5)).failed.map {
         case RetryErr(msg) =>
           failures shouldBe 5
           msg shouldBe "5"
@@ -62,7 +62,7 @@ class RetrySpec extends AsyncFs2Spec {
 
       val f: Throwable => Boolean = _.getMessage != "fatal"
 
-      runLogF(mkScheduler.flatMap(_.retry(job, 100.millis, x => x, 100, f)))
+      runLogF(Stream.retry(job, 100.millis, x => x, 100, f))
         .failed
         .map {
           case RetryErr(msg) =>
@@ -88,7 +88,7 @@ class RetrySpec extends AsyncFs2Spec {
         }
       }
 
-      runLogF(mkScheduler.flatMap(_.retry(job, unit.millis, _ + unit.millis, maxTries)))
+      runLogF(Stream.retry(job, unit.millis, _ + unit.millis, maxTries))
         .failed
         .map { r =>
           getDelays shouldBe List.range(1, maxTries)

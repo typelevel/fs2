@@ -59,8 +59,8 @@ lazy val commonSettings = Seq(
   licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
   initialCommands := s"""
     import fs2._
-    import cats.effect.IO
-    import scala.concurrent.ExecutionContext.Implicits.global
+    import cats.effect._
+    import scala.concurrent.ExecutionContext.Implicits.global, scala.concurrent.duration._
   """,
   doctestTestFramework := DoctestTestFramework.ScalaTest,
   scalafmtOnCompile := true
@@ -207,7 +207,7 @@ lazy val core = crossProject
   .settings(commonSettings: _*)
   .settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.9",
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.10-c64e7c9",
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala"
   )
   .jsSettings(commonJsSettings: _*)

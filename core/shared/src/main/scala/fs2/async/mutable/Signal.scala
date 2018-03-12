@@ -5,7 +5,7 @@ package mutable
 import scala.concurrent.ExecutionContext
 
 import cats.{Applicative, Functor}
-import cats.effect.Effect
+import cats.effect.Concurrent
 import cats.implicits._
 
 import fs2.Stream._
@@ -67,7 +67,7 @@ object Signal {
       def discrete = Stream.empty // never changes, so never any updates
     }
 
-  def apply[F[_], A](initA: A)(implicit F: Effect[F], ec: ExecutionContext): F[Signal[F, A]] = {
+  def apply[F[_], A](initA: A)(implicit F: Concurrent[F], ec: ExecutionContext): F[Signal[F, A]] = {
     class ID
     async
       .refOf[F, (A, Long, Map[ID, Promise[F, (A, Long)]])]((initA, 0, Map.empty))
@@ -91,7 +91,7 @@ object Signal {
                   else {
                     val now = c.now._1 -> c.now._2
                     c.previous._3.toVector.traverse {
-                      case (_, promise) => async.fork(promise.complete(now))
+                      case (_, promise) => async.shiftStart(promise.complete(now))
                     } *> F.pure(c.map(_._1) -> b)
                   }
               }

@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 
 import java.io.{InputStream, OutputStream}
 
-import cats.effect.{Effect, Sync}
+import cats.effect.{Concurrent, ConcurrentEffect, Sync}
 import cats.implicits._
 
 /** Provides various ways to work with streams that perform IO. */
@@ -34,10 +34,10 @@ package object io {
   def readInputStreamAsync[F[_]](fis: F[InputStream],
                                  chunkSize: Int,
                                  closeAfterUse: Boolean = true)(
-      implicit F: Effect[F],
+      implicit F: Concurrent[F],
       ec: ExecutionContext): Stream[F, Byte] = {
     def readAsync(is: InputStream, buf: Array[Byte]) =
-      async.start(readBytesFromInputStream(is, buf)).flatten
+      async.shiftStart(readBytesFromInputStream(is, buf)).flatMap(_.join)
 
     readInputStreamGeneric(fis, F.delay(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
   }
@@ -77,10 +77,10 @@ package object io {
   def unsafeReadInputStreamAsync[F[_]](fis: F[InputStream],
                                        chunkSize: Int,
                                        closeAfterUse: Boolean = true)(
-      implicit F: Effect[F],
+      implicit F: Concurrent[F],
       ec: ExecutionContext): Stream[F, Byte] = {
     def readAsync(is: InputStream, buf: Array[Byte]) =
-      async.start(readBytesFromInputStream(is, buf)).flatten
+      async.shiftStart(readBytesFromInputStream(is, buf)).flatMap(_.join)
 
     readInputStreamGeneric(fis, F.pure(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
   }
@@ -103,10 +103,10 @@ package object io {
     * threadpool should be sized appropriately.
     */
   def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(
-      implicit F: Effect[F],
+      implicit F: Concurrent[F],
       ec: ExecutionContext): Sink[F, Byte] = {
     def writeAsync(os: OutputStream, buf: Chunk[Byte]) =
-      async.start(writeBytesToOutputStream(os, buf)).flatMap(identity)
+      async.shiftStart(writeBytesToOutputStream(os, buf)).flatMap(_.join)
 
     writeOutputStreamGeneric(fos, closeAfterUse, writeAsync)
   }
@@ -119,7 +119,8 @@ package object io {
     readInputStream(F.delay(System.in), bufSize, false)
 
   /** Stream of bytes read asynchronously from standard input. */
-  def stdinAsync[F[_]](bufSize: Int)(implicit F: Effect[F], ec: ExecutionContext): Stream[F, Byte] =
+  def stdinAsync[F[_]](bufSize: Int)(implicit F: Concurrent[F],
+                                     ec: ExecutionContext): Stream[F, Byte] =
     readInputStreamAsync(F.delay(System.in), bufSize, false)
 
   /** Sink of bytes that writes emitted values to standard output. */
@@ -127,7 +128,7 @@ package object io {
     writeOutputStream(F.delay(System.out), false)
 
   /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdoutAsync[F[_]](implicit F: Effect[F], ec: ExecutionContext): Sink[F, Byte] =
+  def stdoutAsync[F[_]](implicit F: Concurrent[F], ec: ExecutionContext): Sink[F, Byte] =
     writeOutputStreamAsync(F.delay(System.out), false)
 
   /**
@@ -143,7 +144,8 @@ package object io {
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
-  def toInputStream[F[_]](implicit F: Effect[F], ec: ExecutionContext): Pipe[F, Byte, InputStream] =
+  def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
+                          ec: ExecutionContext): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
 
 }

@@ -17,7 +17,7 @@ class RefSpec extends Fs2Spec with EventuallySupport {
 
       List
         .fill(finalValue) {
-          fork(r.modify(_ + 1))
+          shiftStart(r.modify(_ + 1))
         }
         .sequence
         .unsafeRunSync
