@@ -2185,14 +2185,14 @@ object Stream {
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _segments_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Effect[F],
                                                        ec: ExecutionContext): Stream[F, O] =
-      Stream.eval(async.semaphore[F](maxQueued)).flatMap { guard =>
+      Stream.eval(async.semaphore[F](maxQueued - 1)).flatMap { guard =>
         Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { outQ =>
           Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { sinkQ =>
             val inputStream =
               self.segments.noneTerminate.evalMap {
                 case Some(segment) =>
-                  guard.decrement >>
-                    sinkQ.enqueue1(Some(segment))
+                  sinkQ.enqueue1(Some(segment)) >>
+                    guard.decrement
 
                 case None =>
                   sinkQ.enqueue1(None)
@@ -2214,8 +2214,8 @@ object Stream {
             val outputStream =
               outQ.dequeue.unNoneTerminate
                 .flatMap { segment =>
-                  Stream.eval(guard.increment) >>
-                    Stream.segment(segment)
+                  Stream.segment(segment) ++
+                    Stream.eval_(guard.increment)
                 }
 
             outputStream.concurrently(runner)
