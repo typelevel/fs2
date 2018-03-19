@@ -2246,7 +2246,9 @@ object Stream {
       * }}}
       */
     def handleErrorWith[O2 >: O](h: Throwable => Stream[F, O2]): Stream[F, O2] =
-      fromFreeC(Algebra.scope(self.get[F, O2]).handleErrorWith { e =>
+      // TODO restore scope here once #1107 is fixed
+      // fromFreeC(Algebra.scope(self.get[F, O2]).handleErrorWith { e =>
+      fromFreeC(self.get[F, O2].handleErrorWith { e =>
         h(e).get[F, O2]
       })
 

@@ -467,5 +467,32 @@ class StreamSpec extends Fs2Spec with Inside {
         .toVector
         .unsafeRunSync()
     }
+
+    "regression #1107 - scope" in {
+      pending
+      Stream(0)
+        .covary[IO]
+        .scope // Create a source that opens/closes a new scope for every element emitted
+        .repeat
+        .take(10000)
+        .flatMap(_ => Stream.empty) // Never emit an element downstream
+        .mapSegments(identity) // Use a combinator that calls Stream#pull.uncons
+        .compile
+        .drain
+        .unsafeRunSync()
+    }
+
+    "regression #1107 - queue" in {
+      Stream
+        .range(0, 10000)
+        .covary[IO]
+        .unchunk
+        .prefetch
+        .flatMap(_ => Stream.empty)
+        .mapSegments(identity)
+        .compile
+        .drain
+        .unsafeRunSync()
+    }
   }
 }
