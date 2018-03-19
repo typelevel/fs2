@@ -51,7 +51,7 @@ lazy val commonSettings = Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.6"),
     "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test",
-    "org.typelevel" %%% "cats-laws" % "1.0.1" % "test"
+    "org.typelevel" %%% "cats-laws" % "1.1.0" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
@@ -207,7 +207,8 @@ lazy val core = crossProject
   .settings(commonSettings: _*)
   .settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.9",
+    libraryDependencies ++= Seq("org.typelevel" %%% "cats-effect" % "0.10",
+                                "org.typelevel" %%% "cats-core" % "1.1.0"),
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala"
   )
   .jsSettings(commonJsSettings: _*)
