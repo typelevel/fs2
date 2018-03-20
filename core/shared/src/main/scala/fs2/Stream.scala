@@ -9,7 +9,7 @@ import cats.effect.{Concurrent, IO, Sync, Timer}
 import cats.effect._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.{Promise, Ref}
-import fs2.internal.{Algebra, CompileScope, FreeC, Token}
+import fs2.internal.{Algebra, FreeC, Token}
 
 /**
   * A stream producing output of type `O` and which may evaluate `F`
@@ -2353,14 +2353,14 @@ object Stream {
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _segments_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Concurrent[F],
                                                        ec: ExecutionContext): Stream[F, O] =
-      Stream.eval(async.semaphore[F](maxQueued)).flatMap { guard =>
+      Stream.eval(async.semaphore[F](maxQueued - 1)).flatMap { guard =>
         Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { outQ =>
           Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { sinkQ =>
             val inputStream =
               self.segments.noneTerminate.evalMap {
                 case Some(segment) =>
-                  guard.decrement >>
-                    sinkQ.enqueue1(Some(segment))
+                  sinkQ.enqueue1(Some(segment)) >>
+                    guard.decrement
 
                 case None =>
                   sinkQ.enqueue1(None)
@@ -2382,8 +2382,8 @@ object Stream {
             val outputStream =
               outQ.dequeue.unNoneTerminate
                 .flatMap { segment =>
-                  Stream.eval(guard.increment) >>
-                    Stream.segment(segment)
+                  Stream.segment(segment) ++
+                    Stream.eval_(guard.increment)
                 }
 
             outputStream.concurrently(runner)
@@ -3158,7 +3158,7 @@ object Stream {
       Pull
         .fromFreeC(Algebra.getScope[F, Nothing, O])
         .flatMap { scope =>
-          new StepLeg[F, O](Segment.empty, scope, self.get).stepLeg
+          new StepLeg[F, O](Segment.empty, scope.id, self.get).stepLeg
         }
 
     /** Emits the first `n` elements of the input. */
@@ -3340,7 +3340,7 @@ object Stream {
     */
   final class StepLeg[F[_], O](
       val head: Segment[O, Unit],
-      private[fs2] val scope: CompileScope[F, O],
+      private[fs2] val scopeId: Token,
       private[fs2] val next: FreeC[Algebra[F, O, ?], Unit]
   ) { self =>
 
@@ -3352,13 +3352,15 @@ object Stream {
       * Note that resulting stream won't contain the `head` of this leg.
       */
     def stream: Stream[F, O] =
-      Stream.fromFreeC(Algebra.setScope(scope.id).flatMap { _ =>
-        next
-      })
+      Pull
+        .loop[F, O, StepLeg[F, O]] { leg =>
+          Pull.output(leg.head).flatMap(_ => leg.stepLeg)
+        }(self.setHead(Segment.empty))
+        .stream
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
     def setHead(nextHead: Segment[O, Unit]): StepLeg[F, O] =
-      new StepLeg[F, O](nextHead, scope, next)
+      new StepLeg[F, O](nextHead, scopeId, next)
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =

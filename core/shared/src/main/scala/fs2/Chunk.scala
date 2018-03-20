@@ -297,6 +297,17 @@ object Chunk {
           val (fst, snd) = v.splitAt(n)
           vector(fst) -> vector(snd)
         }
+
+        override def drop(n: Int): Chunk[O] =
+          if (n <= 0) this
+          else if (n >= size) Chunk.empty
+          else vector(v.drop(n))
+
+        override def take(n: Int): Chunk[O] =
+          if (n <= 0) Chunk.empty
+          else if (n >= size) this
+          else vector(v.take(n))
+
         override def map[O2](f: O => O2): Chunk[O2] = vector(v.map(f))
       }
 
@@ -308,6 +319,17 @@ object Chunk {
         def size = s.length
         def apply(i: Int) = s(i)
         override def toVector = s.toVector
+
+        override def drop(n: Int): Chunk[O] =
+          if (n <= 0) this
+          else if (n >= size) Chunk.empty
+          else indexedSeq(s.drop(n))
+
+        override def take(n: Int): Chunk[O] =
+          if (n <= 0) Chunk.empty
+          else if (n >= size) this
+          else indexedSeq(s.take(n))
+
         protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
           val (fst, snd) = s.splitAt(n)
           indexedSeq(fst) -> indexedSeq(snd)
@@ -353,6 +375,17 @@ object Chunk {
     def apply(i: Int) = values(offset + i)
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
+
+    override def drop(n: Int): Chunk[O] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Boxed(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[O] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Boxed(values, offset, n)
+
     override def toArray[O2 >: O: ClassTag]: Array[O2] =
       values.slice(offset, offset + length).asInstanceOf[Array[O2]]
   }
@@ -374,6 +407,17 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    override def drop(n: Int): Chunk[Boolean] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Booleans(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Boolean] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Booleans(values, offset, n)
+
     protected def splitAtChunk_(n: Int): (Chunk[Boolean], Chunk[Boolean]) =
       Booleans(values, offset, n) -> Booleans(values, offset + n, length - n)
     override def toArray[O2 >: Boolean: ClassTag]: Array[O2] =
@@ -396,6 +440,17 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    override def drop(n: Int): Chunk[Byte] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Bytes(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Byte] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Bytes(values, offset, n)
+
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) =
       Bytes(values, offset, n) -> Bytes(values, offset + n, length - n)
     override def toArray[O2 >: Byte: ClassTag]: Array[O2] =
@@ -411,6 +466,25 @@ object Chunk {
   final case class ByteBuffer private (buf: JByteBuffer, offset: Int, size: Int)
       extends Chunk[Byte] {
     def apply(i: Int): Byte = buf.get(i + offset)
+
+    override def drop(n: Int): Chunk[Byte] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else {
+        val second = buf.asReadOnlyBuffer
+        second.position(n + offset)
+        ByteBuffer(second)
+      }
+
+    override def take(n: Int): Chunk[Byte] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else {
+        val first = buf.asReadOnlyBuffer
+        first.limit(n + offset)
+        ByteBuffer(first)
+      }
+
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
       val first = buf.asReadOnlyBuffer
       first.limit(n + offset)
@@ -444,6 +518,17 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    override def drop(n: Int): Chunk[Short] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Shorts(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Short] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Shorts(values, offset, n)
+
     protected def splitAtChunk_(n: Int): (Chunk[Short], Chunk[Short]) =
       Shorts(values, offset, n) -> Shorts(values, offset + n, length - n)
     override def toArray[O2 >: Short: ClassTag]: Array[O2] =
@@ -465,6 +550,17 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    override def drop(n: Int): Chunk[Int] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Ints(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Int] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Ints(values, offset, n)
+
     protected def splitAtChunk_(n: Int): (Chunk[Int], Chunk[Int]) =
       Ints(values, offset, n) -> Ints(values, offset + n, length - n)
     override def toArray[O2 >: Int: ClassTag]: Array[O2] =
@@ -486,6 +582,17 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    override def drop(n: Int): Chunk[Long] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Longs(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Long] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Longs(values, offset, n)
+
     protected def splitAtChunk_(n: Int): (Chunk[Long], Chunk[Long]) =
       Longs(values, offset, n) -> Longs(values, offset + n, length - n)
     override def toArray[O2 >: Long: ClassTag]: Array[O2] =
@@ -508,6 +615,17 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    override def drop(n: Int): Chunk[Float] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Floats(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Float] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Floats(values, offset, n)
+
     protected def splitAtChunk_(n: Int): (Chunk[Float], Chunk[Float]) =
       Floats(values, offset, n) -> Floats(values, offset + n, length - n)
     override def toArray[O2 >: Float: ClassTag]: Array[O2] =
@@ -530,6 +648,17 @@ object Chunk {
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
+
+    override def drop(n: Int): Chunk[Double] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else Doubles(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[Double] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else Doubles(values, offset, n)
+
     protected def splitAtChunk_(n: Int): (Chunk[Double], Chunk[Double]) =
       Doubles(values, offset, n) -> Doubles(values, offset + n, length - n)
     override def toArray[O2 >: Double: ClassTag]: Array[O2] =
