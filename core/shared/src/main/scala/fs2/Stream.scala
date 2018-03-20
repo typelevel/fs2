@@ -8,7 +8,7 @@ import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.Promise
-import fs2.internal.{Algebra, CompileScope, FreeC, Token}
+import fs2.internal.{Algebra, FreeC, Token}
 
 /**
   * A stream producing output of type `O` and which may evaluate `F`
@@ -2983,7 +2983,7 @@ object Stream {
       Pull
         .fromFreeC(Algebra.getScope[F, Nothing, O])
         .flatMap { scope =>
-          new StepLeg[F, O](Segment.empty, scope, self.get).stepLeg
+          new StepLeg[F, O](Segment.empty, scope.id, self.get).stepLeg
         }
 
     /** Emits the first `n` elements of the input. */
@@ -3165,7 +3165,7 @@ object Stream {
     */
   final class StepLeg[F[_], O](
       val head: Segment[O, Unit],
-      private[fs2] val scope: CompileScope[F, O],
+      private[fs2] val scopeId: Token,
       private[fs2] val next: FreeC[Algebra[F, O, ?], Unit]
   ) { self =>
 
@@ -3177,13 +3177,15 @@ object Stream {
       * Note that resulting stream won't contain the `head` of this leg.
       */
     def stream: Stream[F, O] =
-      Stream.fromFreeC(Algebra.setScope(scope.id).flatMap { _ =>
-        next
-      })
+      Pull
+        .loop[F, O, StepLeg[F, O]] { leg =>
+          Pull.output(leg.head).flatMap(_ => leg.stepLeg)
+        }(self.setHead(Segment.empty))
+        .stream
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
     def setHead(nextHead: Segment[O, Unit]): StepLeg[F, O] =
-      new StepLeg[F, O](nextHead, scope, next)
+      new StepLeg[F, O](nextHead, scopeId, next)
 
     /** Provides an `uncons`-like operation on this leg of the stream. */
     def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =

@@ -309,6 +309,35 @@ private[fs2] final class CompileScope[F[_], O] private (
       }
   }
 
+  /**
+    * Tries to locate scope for the step.
+    * It is good chance, that scope is either current scope or the sibling of current scope.
+    * As such the order of search is:
+    * - check if id is current scope,
+    * - check if id is parent or any of its children
+    * - traverse all known scope ids, starting from the root.
+    *
+    */
+  def findStepScope(scopeId: Token): F[Option[CompileScope[F, O]]] = {
+    def go(scope: CompileScope[F, O]): CompileScope[F, O] =
+      scope.parent match {
+        case None         => scope
+        case Some(parent) => go(parent)
+      }
+
+    if (scopeId == self.id) F.pure(Some(self))
+    else {
+      self.parent match {
+        case None => F.pure(None)
+        case Some(parent) =>
+          F.flatMap(parent.findSelfOrChild(scopeId)) {
+            case Some(scope) => F.pure(Some(scope))
+            case None        => go(self).findSelfOrChild(scopeId)
+          }
+      }
+    }
+  }
+
   // See docs on [[Scope#lease]]
   def lease: F[Option[Scope.Lease[F]]] = {
     val T = Catenable.instance

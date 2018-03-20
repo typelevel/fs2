@@ -469,7 +469,6 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "regression #1107 - scope" in {
-      pending
       Stream(0)
         .covary[IO]
         .scope // Create a source that opens/closes a new scope for every element emitted
@@ -483,7 +482,6 @@ class StreamSpec extends Fs2Spec with Inside {
     }
 
     "regression #1107 - queue" in {
-      pending
       Stream
         .range(0, 10000)
         .covary[IO]
