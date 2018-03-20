@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.Traverse
 import cats.implicits.{catsSyntaxEither => _, _}
-import cats.effect.{Effect, IO, Sync}
+import cats.effect.{Async, Effect, IO, Sync}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 /** Provides utilities for asynchronous computations. */
@@ -135,7 +135,7 @@ package object async {
     * bound. Like `start` but is more efficient.
     */
   def fork[F[_], A](f: F[A])(implicit F: Effect[F], ec: ExecutionContext): F[Unit] =
-    F.liftIO(F.runAsync(F.shift *> f) { _ =>
+    F.liftIO(F.runAsync(Async.shift(ec) *> f) { _ =>
       IO.unit
     })
 
@@ -145,7 +145,7 @@ package object async {
     */
   def unsafeRunAsync[F[_], A](fa: F[A])(
       f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =
-    F.runAsync(F.shift(ec) *> fa)(f).unsafeRunSync
+    F.runAsync(Async.shift(ec) *> fa)(f).unsafeRunSync
 
   /**
     * Returns an effect that, when run, races evaluation of `fa` and `fb`,

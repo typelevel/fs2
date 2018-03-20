@@ -72,10 +72,10 @@ summarizes the differences between 0.10 and 0.9. To get 0.10.x, add the followin
 
 ```
 // available for Scala 2.11, 2.12
-libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.1" // For cats 1.0.1 and cats-effect 0.8
+libraryDependencies += "co.fs2" %% "fs2-core" % "0.10.2" // For cats 1.0.1 and cats-effect 0.9
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.1"
+libraryDependencies += "co.fs2" %% "fs2-io" % "0.10.2"
 ```
 
 The previous stable release is 0.9.7. You may want to first
