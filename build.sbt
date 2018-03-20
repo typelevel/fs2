@@ -1,5 +1,6 @@
 import microsites.ExtraMdFileConfig
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
+import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
 import sbtrelease.Version
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
@@ -186,7 +187,9 @@ lazy val mimaSettings = Seq(
     organization.value % (normalizedName.value + "_" + scalaBinaryVersion.value) % pv
   }.toSet,
   mimaBinaryIssueFilters ++= Seq(
-    )
+    ProblemFilters.exclude[Problem]("fs2.internal.*"),
+    ProblemFilters.exclude[Problem]("fs2.Stream#StepLeg.this")
+  )
 )
 
 def previousVersion(currentVersion: String): Option[String] = {

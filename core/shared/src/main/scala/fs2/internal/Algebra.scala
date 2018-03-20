@@ -17,9 +17,7 @@ private[fs2] object Algebra {
 
   final case class Step[F[_], X, O](
       stream: FreeC[Algebra[F, X, ?], Unit],
-      scope: Option[Token],
-      chunkSize: Int,
-      maxSteps: Long
+      scope: Option[Token]
   ) extends Algebra[F, O, Option[(Segment[X, Unit], Token, FreeC[Algebra[F, X, ?], Unit])]]
 
   final case class Eval[F[_], O, R](value: F[R]) extends AlgEffect[F, O, R]
@@ -101,21 +99,17 @@ private[fs2] object Algebra {
     */
   private def step[F[_], O, X](
       stream: FreeC[Algebra[F, O, ?], Unit],
-      scopeId: Option[Token],
-      chunkSize: Int,
-      maxSteps: Long
+      scopeId: Option[Token]
   ): FreeC[Algebra[F, X, ?], Option[(Segment[O, Unit], Token, FreeC[Algebra[F, O, ?], Unit])]] =
     FreeC
       .Eval[Algebra[F, X, ?], Option[(Segment[O, Unit], Token, FreeC[Algebra[F, O, ?], Unit])]](
-        Algebra.Step[F, O, X](stream, scopeId, chunkSize, maxSteps))
+        Algebra.Step[F, O, X](stream, scopeId))
 
   def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]): FreeC[Algebra[F, Nothing, ?], Option[Stream.StepLeg[F, O]]] =
     step[F, O, Nothing](
       leg.next,
-      Some(leg.scopeId),
-      1024,
-      100000
+      Some(leg.scopeId)
     ).map {
       _.map { case (h, id, t) => new Stream.StepLeg[F, O](h, id, t) }
     }
@@ -179,11 +173,9 @@ private[fs2] object Algebra {
   )(implicit G: TranslateInterrupt[G]): FreeC[Algebra[G, O, ?], Unit] =
     translate0[F, G, O](u, s, G.effectInstance)
 
-  def uncons[F[_], X, O](s: FreeC[Algebra[F, O, ?], Unit],
-                         chunkSize: Int = 1024,
-                         maxSteps: Long = 10000)
+  def uncons[F[_], X, O](s: FreeC[Algebra[F, O, ?], Unit])
     : FreeC[Algebra[F, X, ?], Option[(Segment[O, Unit], FreeC[Algebra[F, O, ?], Unit])]] =
-    step(s, None, chunkSize, maxSteps).map { _.map { case (h, id, t) => (h, t) } }
+    step(s, None).map { _.map { case (h, _, t) => (h, t) } }
 
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, O) => B)(
@@ -198,7 +190,7 @@ private[fs2] object Algebra {
   private[fs2] def compileScope[F[_], O, B](scope: CompileScope[F, O],
                                             stream: FreeC[Algebra[F, O, ?], Unit],
                                             init: B)(g: (B, O) => B)(implicit F: Sync[F]): F[B] =
-    compileLoop[F, O](scope, stream, 1024, 10000).flatMap {
+    compileLoop[F, O](scope, stream).flatMap {
       case Some((output, scope, tail)) =>
         try {
           val b = output.fold(init)(g).force.run._2
@@ -213,9 +205,7 @@ private[fs2] object Algebra {
 
   private[fs2] def compileLoop[F[_], O](
       scope: CompileScope[F, O],
-      stream: FreeC[Algebra[F, O, ?], Unit],
-      chunkSize: Int,
-      maxSteps: Int
+      stream: FreeC[Algebra[F, O, ?], Unit]
   )(implicit F: Sync[F])
     : F[Option[(Segment[O, Unit], CompileScope[F, O], FreeC[Algebra[F, O, ?], Unit])]] = {
 
@@ -238,9 +228,7 @@ private[fs2] object Algebra {
 
     def go[X](
         scope: CompileScope[F, O],
-        stream: FreeC[Algebra[F, X, ?], Unit],
-        chunkSize: Int,
-        maxSteps: Long
+        stream: FreeC[Algebra[F, X, ?], Unit]
     ): F[R[X]] = {
       F.flatMap(F.delay(stream.viewL.get)) {
         case _: FreeC.Pure[Algebra[F, X, ?], Unit] =>
@@ -263,7 +251,7 @@ private[fs2] object Algebra {
             F.flatMap(scope.isInterrupted) {
               case None => next
               case Some(Left(err)) =>
-                go(scope, f(Left(err)), chunkSize, maxSteps)
+                go(scope, f(Left(err)))
               case Some(Right(scopeId)) =>
                 scope.whenInterrupted(scopeId).map {
                   case (scope0, next) => Interrupted[X](scope0, next)
@@ -280,7 +268,8 @@ private[fs2] object Algebra {
             case run: Algebra.Run[F, X, r] =>
               interruptGuard {
                 val (h, t) =
-                  run.values.force.splitAt(chunkSize, Some(maxSteps)) match {
+                  // Values hardcoded here until we figure out how to properly expose them
+                  run.values.force.splitAt(1024, Some(10000)) match {
                     case Left((r, chunks, _)) => (chunks, f(Right(r)))
                     case Right((chunks, tail)) =>
                       (chunks, segment(tail).transformWith(f))
@@ -296,26 +285,26 @@ private[fs2] object Algebra {
                   scope.findStepScope(scopeId)
               }) {
                 case Some(stepScope) =>
-                  F.flatMap(F.attempt(go[y](stepScope, u.stream, u.chunkSize, u.maxSteps))) {
+                  F.flatMap(F.attempt(go[y](stepScope, u.stream))) {
                     case Right(Done(scope)) =>
                       interruptGuard(
-                        go(scope, f(Right(None)), chunkSize, maxSteps)
+                        go(scope, f(Right(None)))
                       )
                     case Right(Out(head, _, tail)) =>
                       interruptGuard(
-                        go(scope, f(Right(Some((head, scope.id, tail)))), chunkSize, maxSteps)
+                        go(scope, f(Right(Some((head, scope.id, tail)))))
                       )
                     case Right(Interrupted(scope, next)) => F.pure(Interrupted(scope, next))
                     case Right(OpenInterruptibly(scope, effect, ec, onInterrupt, next)) =>
                       def transform(s: FreeC[Algebra[F, y, ?], Unit]) =
-                        step(s, None, u.chunkSize, u.maxSteps).transformWith(f)
+                        step(s, None).transformWith(f)
                       F.pure(
                         OpenInterruptibly(scope, effect, ec, transform(onInterrupt), next.andThen {
                           s =>
                             transform(s)
                         }))
                     case Left(err) =>
-                      go(scope, f(Left(err)), chunkSize, maxSteps)
+                      go(scope, f(Left(err)))
                   }
                 case None =>
                   F.raiseError(
@@ -325,8 +314,8 @@ private[fs2] object Algebra {
 
             case eval: Algebra.Eval[F, X, r] =>
               F.flatMap(scope.interruptibleEval(eval.value)) {
-                case Right(r)        => go[X](scope, f(Right(r)), chunkSize, maxSteps)
-                case Left(Left(err)) => go[X](scope, f(Left(err)), chunkSize, maxSteps)
+                case Right(r)        => go[X](scope, f(Right(r)))
+                case Left(Left(err)) => go[X](scope, f(Left(err)))
                 case Left(Right(token)) =>
                   scope.whenInterrupted(token).map {
                     case (scope0, next) => Interrupted[X](scope0, next)
@@ -336,24 +325,24 @@ private[fs2] object Algebra {
             case acquire: Algebra.Acquire[F, X, r] =>
               interruptGuard {
                 F.flatMap(scope.acquireResource(acquire.resource, acquire.release)) { r =>
-                  go[X](scope, f(r), chunkSize, maxSteps)
+                  go[X](scope, f(r))
                 }
               }
 
             case release: Algebra.Release[F, X] =>
               F.flatMap(scope.releaseResource(release.token)) { r =>
-                go[X](scope, f(r), chunkSize, maxSteps)
+                go[X](scope, f(r))
               }
 
             case _: Algebra.GetScope[F, X, y] =>
-              go(scope, f(Right(scope)), chunkSize, maxSteps)
+              go(scope, f(Right(scope)))
 
             case open: Algebra.OpenScope[F, X] =>
               interruptGuard {
                 open.interruptible match {
                   case None =>
                     F.flatMap(scope.open(None)) { childScope =>
-                      go(childScope, f(Right(Some(childScope.id))), chunkSize, maxSteps)
+                      go(childScope, f(Right(Some(childScope.id))))
                     }
 
                   case Some((effect, ec)) =>
@@ -375,7 +364,7 @@ private[fs2] object Algebra {
                 def closeAndGo(toClose: CompileScope[F, O]) =
                   F.flatMap(toClose.close) { r =>
                     F.flatMap(toClose.openAncestor) { ancestor =>
-                      go(ancestor, f(r), chunkSize, maxSteps)
+                      go(ancestor, f(r))
                     }
                   }
                 scope.findSelfOrAncestor(close.scopeId) match {
@@ -386,7 +375,7 @@ private[fs2] object Algebra {
                         closeAndGo(toClose)
                       case None =>
                         // scope already closed, continue with current scope
-                        go(scope, f(Right(())), chunkSize, maxSteps)
+                        go(scope, f(Right(())))
                     }
                 }
               }
@@ -396,13 +385,13 @@ private[fs2] object Algebra {
       }
     }
 
-    F.flatMap(go(scope, stream, chunkSize, maxSteps)) {
+    F.flatMap(go(scope, stream)) {
       case Done(_)                  => F.pure(None)
       case Out(head, scopeId, tail) => F.pure(Some((head, scopeId, tail)))
-      case Interrupted(scope, next) => compileLoop(scope, next, chunkSize, maxSteps)
+      case Interrupted(scope, next) => compileLoop(scope, next)
       case OpenInterruptibly(scope, effect, ec, onInterrupt, next) =>
         F.flatMap(scope.open(Some((effect, ec, onInterrupt)))) { childScope =>
-          compileLoop(childScope, next(Right(childScope)), chunkSize, maxSteps)
+          compileLoop(childScope, next(Right(childScope)))
         }
     }
   }
@@ -453,9 +442,7 @@ private[fs2] object Algebra {
                     Option[(Segment[x, Unit], Token, FreeC[Algebra[G, x, ?], Unit])]](
                 Algebra.Step[G, x, X](
                   stream = translateStep[F, G, x](fK, step.stream, effect),
-                  scope = step.scope,
-                  chunkSize = step.chunkSize,
-                  maxSteps = step.maxSteps
+                  scope = step.scope
                 ))
               .transformWith { r =>
                 translateStep[F, G, X](fK, f(r), effect)
@@ -507,9 +494,7 @@ private[fs2] object Algebra {
                     Option[(Segment[x, Unit], Token, FreeC[Algebra[G, x, ?], Unit])]](
                 Algebra.Step[G, x, O](
                   stream = translateStep[F, G, x](fK, step.stream, effect),
-                  scope = step.scope,
-                  chunkSize = step.chunkSize,
-                  maxSteps = step.maxSteps
+                  scope = step.scope
                 ))
               .transformWith { r =>
                 translate0(fK, f(r), effect)

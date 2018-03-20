@@ -75,7 +75,6 @@ abstract class StreamApp[F[_]](implicit F: Effect[F]) {
             halted.set(true) *>
             exitCodePromise.complete(ExitCode.Error)
         case Right(exitCode) =>
-          println("XXXA returning code: " + exitCode)
           halted.set(true) *>
             exitCodePromise.complete(exitCode.getOrElse(ExitCode.Success))
       } *> exitCodePromise.get
