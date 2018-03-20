@@ -3177,9 +3177,11 @@ object Stream {
       * Note that resulting stream won't contain the `head` of this leg.
       */
     def stream: Stream[F, O] =
-      Stream.fromFreeC(Algebra.setScope(scopeId).flatMap { _ =>
-        next
-      })
+      Pull
+        .loop[F, O, StepLeg[F, O]] { leg =>
+          Pull.output(leg.head).flatMap(_ => leg.stepLeg)
+        }(self.setHead(Segment.empty))
+        .stream
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
     def setHead(nextHead: Segment[O, Unit]): StepLeg[F, O] =
