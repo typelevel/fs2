@@ -1255,7 +1255,10 @@ object Stream {
   def bracket[F[_], R, O](r: F[R])(use: R => Stream[F, O], release: R => F[Unit]): Stream[F, O] =
     fromFreeC(Algebra.acquire[F, O, R](r, release).flatMap {
       case (r, token) =>
-        use(r).onComplete { fromFreeC(Algebra.release(token)) }.get
+        use(r).get[F, O].transformWith {
+          case Left(err) => Algebra.release(token).flatMap(_ => FreeC.Fail(err))
+          case Right(_)  => Algebra.release(token)
+        }
     })
 
   private[fs2] def bracketWithToken[F[_], R, O](
@@ -1264,8 +1267,11 @@ object Stream {
       case (r, token) =>
         use(r)
           .map(o => (token, o))
-          .onComplete { fromFreeC(Algebra.release(token)) }
-          .get
+          .get[F, (Token, O)]
+          .transformWith {
+            case Left(err) => Algebra.release(token).flatMap(_ => FreeC.Fail(err))
+            case Right(_)  => Algebra.release(token)
+          }
     })
 
   /**
@@ -1359,7 +1365,8 @@ object Stream {
     * res0: Vector[Nothing] = Vector()
     * }}}
     */
-  def eval_[F[_], A](fa: F[A]): Stream[F, Nothing] = eval(fa).drain
+  def eval_[F[_], A](fa: F[A]): Stream[F, Nothing] =
+    fromFreeC(Algebra.eval(fa).map(_ => ()))
 
   /**
     * A continuous stream which is true after `d, 2d, 3d...` elapsed duration,
