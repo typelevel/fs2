@@ -9,6 +9,8 @@ import cats.Functor
 import cats.effect.Effect
 import cats.implicits._
 
+import fs2.internal.Token
+
 /**
   * Asynchronous queue interface. Operations are all nonblocking in their
   * implementations, but may be 'semantically' blocking. For instance,
@@ -90,17 +92,10 @@ abstract class Queue[F[_], A] { self =>
   def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]], F[Unit])]
 
   /** Repeatedly calls `dequeue1` forever. */
-  def dequeue: Stream[F, A] =
-    Stream
-      .bracket(cancellableDequeue1)(d => Stream.eval(d._1), d => d._2)
-      .repeat
+  def dequeue: Stream[F, A]
 
   /** Calls `dequeueBatch1` once with a provided bound on the elements dequeued. */
-  def dequeueBatch: Pipe[F, Int, A] = _.flatMap { batchSize =>
-    Stream.bracket(cancellableDequeueBatch1(batchSize))(
-      d => Stream.eval(d._1).flatMap(Stream.chunk(_)),
-      d => d._2)
-  }
+  def dequeueBatch: Pipe[F, Int, A]
 
   /** Calls `dequeueBatch1` forever, with a bound of `Int.MaxValue` */
   def dequeueAvailable: Stream[F, A] =
@@ -162,6 +157,8 @@ abstract class Queue[F[_], A] { self =>
         self
           .cancellableDequeueBatch1(batchSize)
           .map(bu => bu._1.map(_.map(f)) -> bu._2)
+      def dequeue: Stream[F, B] = self.dequeue.map(f)
+      def dequeueBatch: Pipe[F, Int, B] = batchSizes => self.dequeueBatch(batchSizes).map(f)
     }
 }
 
@@ -177,7 +174,7 @@ object Queue {
      */
     final case class State(
         queue: Vector[A],
-        deq: Vector[Promise[F, Chunk[A]]],
+        deq: Vector[(Token, Promise[F, Chunk[A]])],
         peek: Option[Promise[F, A]]
     )
 
@@ -207,7 +204,7 @@ object Queue {
                 signalSize(c.previous, c.now)
               } else {
                 // queue was empty, we had waiting dequeuers
-                async.fork(c.previous.deq.head.complete(Chunk.singleton(a)))
+                async.fork(c.previous.deq.head._2.complete(Chunk.singleton(a)))
               }
               val pk = if (c.previous.peek.isEmpty) {
                 // no peeker to notify
@@ -258,7 +255,7 @@ object Queue {
         def timedDequeueBatch1(batchSize: Int,
                                timeout: FiniteDuration,
                                scheduler: Scheduler): F[Option[Chunk[A]]] =
-          cancellableDequeueBatch1Impl[Option[Chunk[A]]](batchSize, _ match {
+          cancellableDequeueBatch1Impl[Option[Chunk[A]]](batchSize, new Token, _ match {
             case Left(ref) => ref.timedGet(timeout, scheduler)
             case Right(c)  => F.pure(Some(c))
           }).flatMap {
@@ -270,15 +267,16 @@ object Queue {
           }
 
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
-          cancellableDequeueBatch1Impl(batchSize, _.fold(_.get, F.pure))
+          cancellableDequeueBatch1Impl(batchSize, new Token, _.fold(_.get, F.pure))
 
         private def cancellableDequeueBatch1Impl[B](
             batchSize: Int,
+            token: Token,
             f: Either[Promise[F, Chunk[A]], Chunk[A]] => F[B]): F[(F[B], F[Unit])] =
           promise[F, Chunk[A]].flatMap { p =>
             qref
               .modify { s =>
-                if (s.queue.isEmpty) s.copy(deq = s.deq :+ p)
+                if (s.queue.isEmpty) s.copy(deq = s.deq :+ (token -> p))
                 else s.copy(queue = s.queue.drop(batchSize))
               }
               .map { c =>
@@ -294,11 +292,34 @@ object Queue {
                   if (c.previous.queue.nonEmpty) F.pure(())
                   else
                     qref.modify { s =>
-                      s.copy(deq = s.deq.filterNot(_ == p))
+                      s.copy(deq = s.deq.filterNot(_._2 == p))
                     }.void
                 (out, cleanup)
               }
           }
+
+        def dequeue: Stream[F, A] =
+          Stream.bracket(F.delay(new Token))(
+            t =>
+              Stream.repeatEval(
+                cancellableDequeueBatch1Impl(1, t, _.fold(_.get, F.pure))
+                  .flatMap(_._1)
+                  .map(_.head.get)),
+            t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t))).void
+          )
+
+        def dequeueBatch: Pipe[F, Int, A] =
+          batchSizes =>
+            Stream.bracket(F.delay(new Token))(
+              t =>
+                batchSizes.flatMap(
+                  batchSize =>
+                    Stream
+                      .eval(cancellableDequeueBatch1Impl(batchSize, t, _.fold(_.get, F.pure))
+                        .flatMap(_._1))
+                      .flatMap(Stream.chunk(_))),
+              t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t))).void
+          )
 
         def size = szSignal
         def full: immutable.Signal[F, Boolean] =
@@ -350,6 +371,10 @@ object Queue {
             case (deq, cancel) =>
               (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel)
           }
+        def dequeue: Stream[F, A] = q.dequeue.evalMap(a => permits.increment.as(a))
+        def dequeueBatch: Pipe[F, Int, A] =
+          q.dequeueBatch.andThen(_.chunks.flatMap(c =>
+            Stream.eval(permits.incrementBy(c.size)).flatMap(_ => Stream.chunk(c))))
         def size = q.size
         def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
         def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
@@ -396,6 +421,10 @@ object Queue {
             case (deq, cancel) =>
               (deq.flatMap(a => permits.incrementBy(a.size).as(a)), cancel)
           }
+        def dequeue: Stream[F, A] = q.dequeue.evalMap(a => permits.increment.as(a))
+        def dequeueBatch: Pipe[F, Int, A] =
+          q.dequeueBatch.andThen(_.chunks.flatMap(c =>
+            Stream.eval(permits.incrementBy(c.size)).flatMap(_ => Stream.chunk(c))))
         def size = q.size
         def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
         def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
@@ -435,6 +464,23 @@ object Queue {
           permits.increment *> q.timedDequeueBatch1(batchSize, timeout, scheduler)
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[A]], F[Unit])] =
           permits.increment *> q.cancellableDequeueBatch1(batchSize)
+        def dequeue: Stream[F, A] = {
+          def loop(s: Stream[F, A]): Pull[F, A, Unit] =
+            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
+              case Some((h, t)) => Pull.output1(h) >> loop(t)
+              case None         => Pull.done
+            }
+          loop(q.dequeue).stream
+        }
+        def dequeueBatch: Pipe[F, Int, A] = {
+          def loop(s: Stream[F, A]): Pull[F, A, Unit] =
+            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
+              case Some((h, t)) => Pull.output1(h) >> loop(t)
+              case None         => Pull.done
+            }
+          in =>
+            loop(q.dequeueBatch(in)).stream
+        }
         def size = q.size
         def full: immutable.Signal[F, Boolean] = Signal.constant(true)
         def available: immutable.Signal[F, Int] = Signal.constant(0)
@@ -492,6 +538,23 @@ object Queue {
           permits.increment *> q.timedDequeueBatch1(batchSize, timeout, scheduler)
         def cancellableDequeueBatch1(batchSize: Int): F[(F[Chunk[Option[A]]], F[Unit])] =
           permits.increment *> q.cancellableDequeueBatch1(batchSize)
+        def dequeue: Stream[F, Option[A]] = {
+          def loop(s: Stream[F, Option[A]]): Pull[F, Option[A], Unit] =
+            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
+              case Some((h, t)) => Pull.output1(h) >> loop(t)
+              case None         => Pull.done
+            }
+          loop(q.dequeue).stream
+        }
+        def dequeueBatch: Pipe[F, Int, Option[A]] = {
+          def loop(s: Stream[F, Option[A]]): Pull[F, Option[A], Unit] =
+            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
+              case Some((h, t)) => Pull.output1(h) >> loop(t)
+              case None         => Pull.done
+            }
+          in =>
+            loop(q.dequeueBatch(in)).stream
+        }
         def size = q.size
         def full: immutable.Signal[F, Boolean] = Signal.constant(true)
         def available: immutable.Signal[F, Int] = Signal.constant(0)
