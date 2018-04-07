@@ -119,6 +119,8 @@ If you have a project you'd like to include in this list, either open a PR or le
 * [fs2-reactive-streams](https://github.com/zainab-ali/fs2-reactive-streams): A reactive streams implementation for fs2.
 * [circe-fs2](https://github.com/circe/circe-fs2): Streaming JSON manipulation with [circe](https://github.com/circe/circe).
 * [fs2-elastic](https://github.com/amarrella/fs2-elastic): Simple client for Elasticsearch
+* [fs2-grpc](https://github.com/fiadliel/fs2-grpc): gRPC implementation for FS2/cats-effect
+* [fs2-blobstore](https://github.com/lendup/fs2-blobstore): Minimal, idiomatic, stream-based Scala interface for key/value store implementations.
 
 ### Related projects ###
 
