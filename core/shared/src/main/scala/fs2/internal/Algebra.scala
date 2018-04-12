@@ -290,9 +290,12 @@ private[fs2] object Algebra {
                       interruptGuard(
                         go(scope, f(Right(None)))
                       )
-                    case Right(Out(head, _, tail)) =>
+                    case Right(Out(head, outScope, tail)) =>
+                      // if we originally swapped scopes we want to return the original
+                      // scope back to the go as that is the scope that is expected to be here.
+                      val nextScope = u.scope.fold(outScope)(_ => scope)
                       interruptGuard(
-                        go(scope, f(Right(Some((head, scope.id, tail)))))
+                        go(nextScope, f(Right(Some((head, outScope.id, tail)))))
                       )
                     case Right(Interrupted(scope, next)) => F.pure(Interrupted(scope, next))
                     case Right(OpenInterruptibly(scope, effect, ec, onInterrupt, next)) =>
@@ -387,7 +390,7 @@ private[fs2] object Algebra {
 
     F.flatMap(go(scope, stream)) {
       case Done(_)                  => F.pure(None)
-      case Out(head, scopeId, tail) => F.pure(Some((head, scopeId, tail)))
+      case Out(head, scope, tail)   => F.pure(Some((head, scope, tail)))
       case Interrupted(scope, next) => compileLoop(scope, next)
       case OpenInterruptibly(scope, effect, ec, onInterrupt, next) =>
         F.flatMap(scope.open(Some((effect, ec, onInterrupt)))) { childScope =>
