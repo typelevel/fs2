@@ -328,7 +328,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     if (scopeId == self.id) F.pure(Some(self))
     else {
       self.parent match {
-        case None => F.pure(None)
+        case None => self.findSelfOrChild(scopeId)
         case Some(parent) =>
           F.flatMap(parent.findSelfOrChild(scopeId)) {
             case Some(scope) => F.pure(Some(scope))

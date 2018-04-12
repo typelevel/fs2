@@ -89,6 +89,19 @@ class Pipe2Spec extends Fs2Spec {
       (s ++ s).zip(s).toList
     }
 
+    "issue #1120 - zip with uncons" in {
+      // this tests we can properly look up scopes for the zipped streams
+      //
+      val rangeStream = Stream.emits((0 to 3).toList).covary[IO]
+
+      runLog(rangeStream.zip(rangeStream).attempt.map(identity)) shouldBe Vector(
+        Right((0, 0)),
+        Right((1, 1)),
+        Right((2, 2)),
+        Right((3, 3))
+      )
+    }
+
     "interleave left/right side infinite" in {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
