@@ -1,5 +1,5 @@
 package fs2.internal
 
-final case object AcquireAfterScopeClosed extends Throwable {
+private[fs2] final case object AcquireAfterScopeClosed extends Throwable {
   override def fillInStackTrace = this
 }

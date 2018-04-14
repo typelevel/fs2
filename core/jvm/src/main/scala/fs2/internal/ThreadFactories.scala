@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import scala.concurrent.ExecutionContext
 
-object ThreadFactories {
+private[fs2] object ThreadFactories {
 
   /** A `ThreadFactory` which names threads according to the pattern ${threadPrefix}-${count}. */
   def named(threadPrefix: String,
