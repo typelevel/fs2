@@ -1743,7 +1743,7 @@ object Stream {
       * @example {{{
       * scala> import cats.effect.IO
       * scala> Stream(1,2,3,4).covary[IO].evalMapAccumulate(0)((acc,i) => IO((i, acc + i))).compile.toVector.unsafeRunSync
-      * res0: Vector[(Int, Int)] = Vector((1, 1), (2, 3), (3, 5), (4, 7))
+      * res0: Vector[(Int, Int)] = Vector((1,1), (2,3), (3,5), (4,7))
       * }}}
       */
     def evalMapAccumulate[S, O2](s: S)(f: (S, O) => F[(S, O2)]): Stream[F, (S, O2)] = {
