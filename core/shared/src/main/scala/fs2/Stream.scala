@@ -1738,6 +1738,29 @@ object Stream {
       self.flatMap(o => Stream.eval(f(o)))
 
     /**
+      * Like `[[Stream#mapAccumulate]]`, but accepts a function returning an `F[_]`.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream(1,2,3,4).covary[IO].evalMapAccumulate(0)((acc,i) => IO((i, acc + i))).compile.toVector.unsafeRunSync
+      * res0: Vector[(Int, Int)] = Vector((1, 1), (2, 3), (3, 5), (4, 7))
+      * }}}
+      */
+    def evalMapAccumulate[S, O2](s: S)(f: (S, O) => F[(S, O2)]): Stream[F, (S, O2)] = {
+      def go(s: S, in: Stream[F, O]): Pull[F, (S, O2), Unit] =
+        in.pull.uncons1.flatMap {
+          case None => Pull.done
+          case Some((hd, tl)) =>
+            Pull.eval(f(s, hd)).flatMap {
+              case (ns, o) =>
+                Pull.output1((ns, o)) >> go(ns, tl)
+            }
+        }
+
+      go(s, self).stream
+    }
+
+    /**
       * Like `[[Stream#scan]]`, but accepts a function returning an `F[_]`.
       *
       * @example {{{
