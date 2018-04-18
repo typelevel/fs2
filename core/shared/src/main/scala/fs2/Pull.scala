@@ -1,6 +1,6 @@
 package fs2
 
-import cats.effect.Sync
+import cats.effect.{ExitCase, Sync}
 import fs2.internal.{Algebra, FreeC, Token}
 
 /**
@@ -215,5 +215,8 @@ object Pull {
           case Right(b) => Pull.pure(b)
         }
       def suspend[R](p: => Pull[F, O, R]) = Pull.suspend(p)
+      def bracketCase[A, B](acquire: Pull[F, O, A])(use: A => Pull[F, O, B])(
+          release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
+        ???
     }
 }

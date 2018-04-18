@@ -1,15 +1,13 @@
 package fs2
 
-import cats.data.NonEmptyList
-
-import scala.concurrent.ExecutionContext
-import scala.concurrent.duration._
 import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
-import cats.effect.{Concurrent, IO, Sync, Timer}
+import cats.data.NonEmptyList
 import cats.effect._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.{Promise, Ref}
 import fs2.internal.{Algebra, FreeC, Token}
+import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
 
 /**
   * A stream producing output of type `O` and which may evaluate `F`
@@ -3458,6 +3456,9 @@ object Stream {
       case Right(b) => Stream(b)
     }
     def suspend[R](s: => Stream[F, R]) = Stream.suspend(s)
+    def bracketCase[A, B](acquire: Stream[F, A])(use: A => Stream[F, B])(
+        release: (A, ExitCase[Throwable]) => Stream[F, Unit]): Stream[F, B] =
+      ???
   }
 
   /** `Monoid` instance for `Stream`. */

@@ -1,8 +1,9 @@
 package fs2.internal
 
 import cats.{MonadError, ~>}
-import cats.effect.Sync
+import cats.effect.{ExitCase, Sync}
 
+import fs2.CompositeFailure
 import FreeC._
 
 /** Free monad with a catch -- catches exceptions and provides mechanisms for handling them. */
@@ -147,5 +148,18 @@ private[fs2] object FreeC {
         case Right(b) => pure(b)
       }
     def suspend[A](thunk: => FreeC[F, A]): FreeC[F, A] = FreeC.suspend(thunk)
+    def bracketCase[A, B](acquire: FreeC[F, A])(use: A => FreeC[F, B])(
+        release: (A, ExitCase[Throwable]) => FreeC[F, Unit]): FreeC[F, B] =
+      acquire.flatMap { a =>
+        val used =
+          try use(a)
+          catch { case NonFatal(t) => FreeC.Fail[F, B](t) }
+        used.transformWith { result =>
+          release(a, ExitCase.attempt(result)).transformWith {
+            case Left(t2) => FreeC.Fail(result.fold(t => CompositeFailure(t, t2, Nil), _ => t2))
+            case Right(_) => result.fold(FreeC.Fail(_), FreeC.Pure(_))
+          }
+        }
+      }
   }
 }
