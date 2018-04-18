@@ -162,6 +162,14 @@ class PipeSpec extends Fs2Spec {
       }
     }
 
+    "evalMapAccumulate" in forAll { (s: PureStream[Int], n0: Int, n1: SmallPositive) =>
+      val f = (_: Int) % n1.get == 0
+      val r = s.get.covary[IO].evalMapAccumulate(n0)((s, i) => IO.pure((s + i, f(i))))
+
+      runLog(r.map(_._1)) shouldBe runLog(s.get).scan(n0)(_ + _).tail
+      runLog(r.map(_._2)) shouldBe runLog(s.get).map(f)
+    }
+
     "evalScan" in forAll { (s: PureStream[Int], n: String) =>
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
       val g = (a: String, b: Int) => a + b
