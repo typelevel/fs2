@@ -4,15 +4,13 @@ package internal
 import cats.Eq
 import cats.implicits._
 import cats.effect.IO
-import cats.effect.laws.util.TestInstances._
-import cats.effect.laws.util.TestContext
-import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.discipline.SyncTests
+import cats.effect.laws.discipline.arbitrary._
+import cats.effect.laws.util.TestContext
+import cats.effect.laws.util.TestInstances._
 
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import Arbitrary.{arbitrary, arbFunction1}
-
-import TestUtil._
 
 class FreeCSpec extends Fs2Spec {
 
@@ -22,9 +20,9 @@ class FreeCSpec extends Fs2Spec {
     Arbitrary(freeGen[IO, O](4))
 
   // Adapted from Cats, under MIT License (https://github.com/typelevel/cats/blob/ef05c76d92076f7ba0e1589b8a736cb973a9f610/COPYING)
-  // from commit ef05c76d92076f7ba0e1589b8a736cb973a9f610 - only change is addition of Fail nodes
+  // from commit ef05c76d92076f7ba0e1589b8a736cb973a9f610 - only change is addition of Fail nodes and replaced flatMap with transformWith
   private def freeGen[F[_], A](maxDepth: Int)(implicit F: Arbitrary[F[A]], A: Arbitrary[A]): Gen[FreeC[F, A]] = {
-    val noFlatMapped = Gen.oneOf(
+    val noBinds = Gen.oneOf(
       A.arbitrary.map(FreeC.Pure[F, A](_)),
       F.arbitrary.map(FreeC.Eval[F, A](_)),
       arbitrary[Throwable].map(FreeC.Fail[F, A](_))
@@ -32,15 +30,15 @@ class FreeCSpec extends Fs2Spec {
 
     val nextDepth = Gen.chooseNum(1, math.max(1, maxDepth - 1))
 
-    def withFlatMapped = for {
+    def withBinds = for {
       fDepth <- nextDepth
       freeDepth <- nextDepth
-      f <- arbFunction1[A, FreeC[F, A]](Arbitrary(freeGen[F, A](fDepth)), Cogen[Unit].contramap(_ => ())).arbitrary
+      f <- arbFunction1[Either[Throwable, A], FreeC[F, A]](Arbitrary(freeGen[F, A](fDepth)), Cogen[Unit].contramap(_ => ())).arbitrary
       freeFA <- freeGen[F, A](freeDepth)
-    } yield freeFA.flatMap(f)
+    } yield freeFA.transformWith(f)
 
-    if (maxDepth <= 1) noFlatMapped
-    else Gen.oneOf(noFlatMapped, withFlatMapped)
+    if (maxDepth <= 1) noBinds
+    else Gen.oneOf(noBinds, withBinds)
   }
 
   implicit def eqFreeCAlg[O: Eq]: Eq[FreeC[IO, O]] = Eq.instance((x, y) => Eq.eqv(x.run, y.run))

@@ -1,5 +1,6 @@
 package fs2
 
+import cats.~>
 import cats.effect.{ExitCase, Sync}
 import fs2.internal.{Algebra, FreeC, Token}
 
@@ -67,6 +68,9 @@ final class Pull[+F[_], +O, +R] private (private val free: FreeC[Algebra[Nothing
 
   /** Applies the resource of this pull to `f` and returns the result in a new `Pull`. */
   def map[R2](f: R => R2): Pull[F, O, R2] = Pull.fromFreeC(get.map(f))
+
+  /** Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
+  def mapOutput[O2](f: O => O2): Pull[F, O2, R] = Pull.mapOutput(this)(f)
 
   /** Run `p2` after `this`, regardless of errors during `this`, then reraise any errors encountered during `this`. */
   def onComplete[F2[x] >: F[x], O2 >: O, R2 >: R](p2: => Pull[F2, O2, R2]): Pull[F2, O2, R2] =
@@ -160,6 +164,17 @@ object Pull {
   def loop[F[_], O, R](using: R => Pull[F, O, Option[R]]): R => Pull[F, O, Option[R]] =
     r => using(r).flatMap { _.map(loop(using)).getOrElse(Pull.pure(None)) }
 
+  private def mapOutput[F[_], O, O2, R](p: Pull[F, O, R])(f: O => O2): Pull[F, O2, R] =
+    Pull.fromFreeC(
+      p.get[F, O, R]
+        .translate(new (Algebra[F, O, ?] ~> Algebra[F, O2, ?]) {
+          def apply[X](in: Algebra[F, O, X]): Algebra[F, O2, X] = in match {
+            case o: Algebra.Output[F, O] => Algebra.Output(o.values.map(f))
+            case o: Algebra.Run[F, O, X] => Algebra.Run(o.values.map(f))
+            case other                   => other.asInstanceOf[Algebra[F, O2, X]]
+          }
+        }))
+
   /** Ouptuts a single value. */
   def output1[F[_], O](o: O): Pull[F, O, Unit] =
     fromFreeC(Algebra.output1[F, O](o))
@@ -217,6 +232,9 @@ object Pull {
       def suspend[R](p: => Pull[F, O, R]) = Pull.suspend(p)
       def bracketCase[A, B](acquire: Pull[F, O, A])(use: A => Pull[F, O, B])(
           release: (A, ExitCase[Throwable]) => Pull[F, O, Unit]): Pull[F, O, B] =
-        ???
+        Pull.fromFreeC(
+          FreeC
+            .syncInstance[Algebra[F, O, ?]]
+            .bracketCase(acquire.get)(a => use(a).get)((a, c) => release(a, c).get))
     }
 }

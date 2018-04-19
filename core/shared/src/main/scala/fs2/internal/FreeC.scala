@@ -60,7 +60,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
       case Bind(fx, k) =>
         Bind(fx.translate(f), (e: Either[Throwable, Any]) => k(e).translate(f))
       case Fail(e)  => Fail(e)
-      case Eval(fx) => Eval(f(fx))
+      case Eval(fx) => sys.error("impossible")
     }
   }
 }
@@ -72,7 +72,9 @@ private[fs2] object FreeC {
     override def toString: String = s"FreeC.Pure($r)"
   }
   final case class Eval[F[_], R](fr: F[R]) extends FreeC[F, R] {
-    override def translate[G[_]](f: F ~> G): FreeC[G, R] = Eval(f(fr))
+    override def translate[G[_]](f: F ~> G): FreeC[G, R] =
+      try Eval(f(fr))
+      catch { case NonFatal(t) => Fail[G, R](t) }
     override def toString: String = s"FreeC.Eval($fr)"
   }
   final case class Bind[F[_], X, R](fx: FreeC[F, X], f: Either[Throwable, X] => FreeC[F, R])

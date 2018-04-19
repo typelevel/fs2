@@ -729,10 +729,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
-    this.repeatPull(_.uncons.flatMap {
-      case None           => Pull.pure(None);
-      case Some((hd, tl)) => Pull.output(hd.map(f)).as(Some(tl))
-    })
+    mapSegments(_.map(f))
+  // TODO replace the above with the following once ResourceSafetySpec passes
+  // this.pull.echo.mapOutput(f).stream
 
   /**
     * Applies the specified pure function to each chunk in this stream.
@@ -745,7 +744,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def mapChunks[O2](f: Chunk[O] => Segment[O2, Unit]): Stream[F, O2] =
     this.repeatPull {
       _.unconsChunk.flatMap {
-        case None           => Pull.pure(None);
+        case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
       }
     }
@@ -761,7 +760,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def mapSegments[O2](f: Segment[O, Unit] => Segment[O2, Unit]): Stream[F, O2] =
     this.repeatPull {
       _.uncons.flatMap {
-        case None           => Pull.pure(None);
+        case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
       }
     }
