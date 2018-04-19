@@ -1,6 +1,6 @@
 package fs2
 
-import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
+import cats.{Applicative, Eq, Functor, MonadError, Monoid, Semigroup, ~>}
 import cats.data.NonEmptyList
 import cats.effect._
 import cats.implicits.{catsSyntaxEither => _, _}
@@ -3434,31 +3434,26 @@ object Stream {
     p.covary[F]
 
   /**
-    * `Sync` instance for `Stream`.
+    * `MonadError` instance for `Stream`.
     *
     * @example {{{
     * scala> import cats.implicits._
-    * scala> import cats.effect.Sync
-    * scala> implicit def si: Sync[Stream[Pure, ?]] = Stream.syncInstance[Pure]
     * scala> Stream(1, -2, 3).fproduct(_.abs).toList
     * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
     * }}}
     */
-  implicit def syncInstance[F[_]]: Sync[Stream[F, ?]] = new Sync[Stream[F, ?]] {
-    def pure[A](a: A) = Stream(a)
-    def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
-      s.handleErrorWith(h)
-    def raiseError[A](t: Throwable) = Stream.raiseError(t)
-    def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
-    def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) = f(a).flatMap {
-      case Left(a)  => tailRecM(a)(f)
-      case Right(b) => Stream(b)
+  implicit def monadErrorInstance[F[_]]: MonadError[Stream[F, ?], Throwable] =
+    new MonadError[Stream[F, ?], Throwable] {
+      def pure[A](a: A) = Stream(a)
+      def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
+        s.handleErrorWith(h)
+      def raiseError[A](t: Throwable) = Stream.raiseError(t)
+      def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
+      def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) = f(a).flatMap {
+        case Left(a)  => tailRecM(a)(f)
+        case Right(b) => Stream(b)
+      }
     }
-    def suspend[R](s: => Stream[F, R]) = Stream.suspend(s)
-    def bracketCase[A, B](acquire: Stream[F, A])(use: A => Stream[F, B])(
-        release: (A, ExitCase[Throwable]) => Stream[F, Unit]): Stream[F, B] =
-      ???
-  }
 
   /** `Monoid` instance for `Stream`. */
   implicit def monoidInstance[F[_], O]: Monoid[Stream[F, O]] =
