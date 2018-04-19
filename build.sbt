@@ -31,11 +31,11 @@ lazy val commonSettings = Seq(
   ) ++
     (if (scalaBinaryVersion.value.startsWith("2.12"))
        List(
-         //  "-Xlint",
-         //  "-Xfatal-warnings",
-         //  "-Yno-adapted-args",
-         //  "-Ywarn-value-discard",
-         //  "-Ywarn-unused-import"
+         "-Xlint",
+         "-Xfatal-warnings",
+         "-Yno-adapted-args",
+         "-Ywarn-value-discard",
+         "-Ywarn-unused-import"
        )
      else Nil) ++ (if (scalaBinaryVersion.value.startsWith("2.11"))
                      List("-Xexperimental")
