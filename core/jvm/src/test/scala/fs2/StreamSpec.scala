@@ -2,7 +2,6 @@ package fs2
 
 import cats.{Eq, ~>}
 import cats.effect.IO
-import cats.effect.laws.discipline.SyncTests
 import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
