@@ -3072,6 +3072,8 @@ object Stream {
       private val free: FreeC[Algebra[Nothing, Nothing, ?], Unit])
       extends AnyVal {
 
+    import scala.collection.generic.CanBuildFrom
+
     private def self: Stream[F, O] =
       Stream.fromFreeC(free.asInstanceOf[FreeC[Algebra[F, O, ?], Unit]])
 
@@ -3143,8 +3145,24 @@ object Stream {
       fold(Option.empty[O])((_, a) => Some(a))
 
     /**
+      * Compiles this stream into a value of the target effect type `F` by logging
+      * the output values to a `C`, given a `CanBuildFrom`.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream.range(0,100).take(5).covary[IO].compile.to[List].unsafeRunSync
+      * res0: List[Int] = List(0, 1, 2, 3, 4)
+      * }}}
+      */
+    def to[C[_]](implicit F: Sync[F], cbf: CanBuildFrom[Nothing, O, C[O]]): F[C[O]] =
+      F.suspend(F.map(fold(cbf())(_ += _))(_.result))
+
+    /**
       * Compiles this stream in to a value of the target effect type `F` by logging
-      * the output values to a `List`.
+      * the output values to a `List`. Equivalent to `to[List]`.
       *
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
@@ -3156,11 +3174,11 @@ object Stream {
       * }}}
       */
     def toList(implicit F: Sync[F]): F[List[O]] =
-      F.suspend(F.map(fold(new collection.mutable.ListBuffer[O])(_ += _))(_.result))
+      to[List]
 
     /**
       * Compiles this stream in to a value of the target effect type `F` by logging
-      * the output values to a `Vector`.
+      * the output values to a `Vector`. Equivalent to `to[Vector]`.
       *
       * When this method has returned, the stream has not begun execution -- this method simply
       * compiles the stream down to the target effect type.
@@ -3171,10 +3189,9 @@ object Stream {
       * res0: Vector[Int] = Vector(0, 1, 2, 3, 4)
       * }}}
       */
-    def toVector(implicit F: Sync[F]): F[Vector[O]] = {
-      import scala.collection.immutable.VectorBuilder
-      F.suspend(F.map(fold(new VectorBuilder[O])(_ += _))(_.result))
-    }
+    def toVector(implicit F: Sync[F]): F[Vector[O]] =
+      to[Vector]
+
   }
 
   /**
