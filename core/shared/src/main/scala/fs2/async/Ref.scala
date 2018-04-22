@@ -1,13 +1,12 @@
 package fs2.async
 
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import cats.{Eq, Show}
 import cats.effect.Sync
 import cats.implicits._
 
 import scala.annotation.tailrec
-
 import Ref._
 
 /**
@@ -65,7 +64,15 @@ final class Ref[F[_], A] private[fs2] (private val ar: AtomicReference[A])(impli
     */
   def access: F[(A, A => F[Boolean])] = F.delay {
     val snapshot = ar.get
-    def setter = (a: A) => F.delay(ar.compareAndSet(snapshot, a))
+    val hasBeenCalled = new AtomicBoolean(false)
+    def setter =
+      (a: A) =>
+        F.delay {
+          if (hasBeenCalled.compareAndSet(false, true))
+            ar.compareAndSet(snapshot, a)
+          else
+            false
+      }
 
     (snapshot, setter)
   }
