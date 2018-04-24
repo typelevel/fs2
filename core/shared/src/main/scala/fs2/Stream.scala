@@ -1,15 +1,13 @@
 package fs2
 
+import cats.{Applicative, Eq, Functor, MonadError, Monoid, Semigroup, ~>}
 import cats.data.NonEmptyList
-
-import scala.concurrent.ExecutionContext
-import scala.concurrent.duration._
-import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
-import cats.effect.{Concurrent, IO, Sync, Timer}
 import cats.effect._
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.{Promise, Ref}
 import fs2.internal.{Algebra, FreeC, Token}
+import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
 
 /**
   * A stream producing output of type `O` and which may evaluate `F`
@@ -731,10 +729,9 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
-    this.repeatPull(_.uncons.flatMap {
-      case None           => Pull.pure(None);
-      case Some((hd, tl)) => Pull.output(hd.map(f)).as(Some(tl))
-    })
+    mapSegments(_.map(f))
+  // TODO replace the above with the following once ResourceSafetySpec passes
+  // this.pull.echo.mapOutput(f).stream
 
   /**
     * Applies the specified pure function to each chunk in this stream.
@@ -747,7 +744,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def mapChunks[O2](f: Chunk[O] => Segment[O2, Unit]): Stream[F, O2] =
     this.repeatPull {
       _.unconsChunk.flatMap {
-        case None           => Pull.pure(None);
+        case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
       }
     }
@@ -763,7 +760,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
   def mapSegments[O2](f: Segment[O, Unit] => Segment[O2, Unit]): Stream[F, O2] =
     this.repeatPull {
       _.uncons.flatMap {
-        case None           => Pull.pure(None);
+        case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
       }
     }
@@ -3437,28 +3434,26 @@ object Stream {
     p.covary[F]
 
   /**
-    * `Sync` instance for `Stream`.
+    * `MonadError` instance for `Stream`.
     *
     * @example {{{
     * scala> import cats.implicits._
-    * scala> import cats.effect.Sync
-    * scala> implicit def si: Sync[Stream[Pure, ?]] = Stream.syncInstance[Pure]
     * scala> Stream(1, -2, 3).fproduct(_.abs).toList
     * res0: List[(Int, Int)] = List((1,1), (-2,2), (3,3))
     * }}}
     */
-  implicit def syncInstance[F[_]]: Sync[Stream[F, ?]] = new Sync[Stream[F, ?]] {
-    def pure[A](a: A) = Stream(a)
-    def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
-      s.handleErrorWith(h)
-    def raiseError[A](t: Throwable) = Stream.raiseError(t)
-    def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
-    def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) = f(a).flatMap {
-      case Left(a)  => tailRecM(a)(f)
-      case Right(b) => Stream(b)
+  implicit def monadErrorInstance[F[_]]: MonadError[Stream[F, ?], Throwable] =
+    new MonadError[Stream[F, ?], Throwable] {
+      def pure[A](a: A) = Stream(a)
+      def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
+        s.handleErrorWith(h)
+      def raiseError[A](t: Throwable) = Stream.raiseError(t)
+      def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
+      def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) = f(a).flatMap {
+        case Left(a)  => tailRecM(a)(f)
+        case Right(b) => Stream(b)
+      }
     }
-    def suspend[R](s: => Stream[F, R]) = Stream.suspend(s)
-  }
 
   /** `Monoid` instance for `Stream`. */
   implicit def monoidInstance[F[_], O]: Monoid[Stream[F, O]] =

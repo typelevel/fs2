@@ -1,8 +1,9 @@
 package fs2.internal
 
 import cats.{MonadError, ~>}
-import cats.effect.Sync
+import cats.effect.{ExitCase, Sync}
 
+import fs2.CompositeFailure
 import FreeC._
 
 /** Free monad with a catch -- catches exceptions and provides mechanisms for handling them. */
@@ -59,7 +60,7 @@ private[fs2] sealed abstract class FreeC[F[_], +R] {
       case Bind(fx, k) =>
         Bind(fx.translate(f), (e: Either[Throwable, Any]) => k(e).translate(f))
       case Fail(e)  => Fail(e)
-      case Eval(fx) => Eval(f(fx))
+      case Eval(fx) => sys.error("impossible")
     }
   }
 }
@@ -71,7 +72,9 @@ private[fs2] object FreeC {
     override def toString: String = s"FreeC.Pure($r)"
   }
   final case class Eval[F[_], R](fr: F[R]) extends FreeC[F, R] {
-    override def translate[G[_]](f: F ~> G): FreeC[G, R] = Eval(f(fr))
+    override def translate[G[_]](f: F ~> G): FreeC[G, R] =
+      try Eval(f(fr))
+      catch { case NonFatal(t) => Fail[G, R](t) }
     override def toString: String = s"FreeC.Eval($fr)"
   }
   final case class Bind[F[_], X, R](fx: FreeC[F, X], f: Either[Throwable, X] => FreeC[F, R])
@@ -147,5 +150,18 @@ private[fs2] object FreeC {
         case Right(b) => pure(b)
       }
     def suspend[A](thunk: => FreeC[F, A]): FreeC[F, A] = FreeC.suspend(thunk)
+    def bracketCase[A, B](acquire: FreeC[F, A])(use: A => FreeC[F, B])(
+        release: (A, ExitCase[Throwable]) => FreeC[F, Unit]): FreeC[F, B] =
+      acquire.flatMap { a =>
+        val used =
+          try use(a)
+          catch { case NonFatal(t) => FreeC.Fail[F, B](t) }
+        used.transformWith { result =>
+          release(a, ExitCase.attempt(result)).transformWith {
+            case Left(t2) => FreeC.Fail(result.fold(t => CompositeFailure(t, t2, Nil), _ => t2))
+            case Right(_) => result.fold(FreeC.Fail(_), FreeC.Pure(_))
+          }
+        }
+      }
   }
 }

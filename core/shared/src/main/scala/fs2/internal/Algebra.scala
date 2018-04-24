@@ -262,7 +262,7 @@ private[fs2] object Algebra {
           fx match {
             case output: Algebra.Output[F, X] =>
               interruptGuard(
-                F.pure(Out(output.values, scope, f(Right(()))))
+                F.pure(Out(output.values, scope, FreeC.Pure(()).transformWith(f)))
               )
 
             case run: Algebra.Run[F, X, r] =>
@@ -270,7 +270,7 @@ private[fs2] object Algebra {
                 val (h, t) =
                   // Values hardcoded here until we figure out how to properly expose them
                   run.values.force.splitAt(1024, Some(10000)) match {
-                    case Left((r, chunks, _)) => (chunks, f(Right(r)))
+                    case Left((r, chunks, _)) => (chunks, FreeC.Pure(r).transformWith(f))
                     case Right((chunks, tail)) =>
                       (chunks, segment(tail).transformWith(f))
                   }
@@ -373,6 +373,7 @@ private[fs2] object Algebra {
                       go(ancestor, f(r))
                     }
                   }
+
                 scope.findSelfOrAncestor(close.scopeId) match {
                   case Some(toClose) => closeAndGo(toClose)
                   case None =>
