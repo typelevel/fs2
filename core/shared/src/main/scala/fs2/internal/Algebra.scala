@@ -182,8 +182,17 @@ private[fs2] object Algebra {
       implicit F: Sync[F]): F[B] =
     F.delay(CompileScope.newRoot[F, O]).flatMap { scope =>
       compileScope[F, O, B](scope, stream, init)(f).attempt.flatMap {
-        case Left(t)  => scope.close *> F.raiseError(t)
-        case Right(b) => scope.close.as(b)
+        case Left(t) =>
+          scope.close.flatMap {
+            case Left(err) => F.raiseError(CompositeFailure(t, err, Nil))
+            case _         => F.raiseError(t)
+          }
+
+        case Right(b) =>
+          scope.close.flatMap {
+            case Left(err) => F.raiseError(err)
+            case _         => F.pure(b)
+          }
       }
     }
 

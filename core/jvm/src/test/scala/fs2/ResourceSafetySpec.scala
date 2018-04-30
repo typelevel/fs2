@@ -1,12 +1,13 @@
 package fs2
 
 import java.util.concurrent.atomic.AtomicLong
+
 import cats.effect.IO
 import cats.implicits._
 import org.scalacheck._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
-import scala.concurrent.duration._
 
+import scala.concurrent.duration._
 import TestUtil._
 
 class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
@@ -270,6 +271,15 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           .attempt
       }
       o shouldBe (0 until 10).toVector
+    }
+
+    "propagate error from closing the root scope" in {
+      val s1 = Stream.bracket(IO(1))(Stream.emit(_), _ => IO.pure(()))
+      val s2 = Stream.bracket(IO("a"))(Stream.emit(_), _ => IO.raiseError(Err))
+
+      s1.zip(s2).compile.drain.attempt.unsafeRunSync() shouldBe Left(Err)
+      s2.zip(s1).compile.drain.attempt.unsafeRunSync() shouldBe Left(Err)
+
     }
 
     def bracket[A](c: AtomicLong)(s: Stream[IO, A]): Stream[IO, A] =
