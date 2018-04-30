@@ -729,9 +729,7 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
     * }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
-    mapSegments(_.map(f))
-  // TODO replace the above with the following once ResourceSafetySpec passes
-  // this.pull.echo.mapOutput(f).stream
+    this.pull.echo.mapOutput(f).stream
 
   /**
     * Applies the specified pure function to each chunk in this stream.

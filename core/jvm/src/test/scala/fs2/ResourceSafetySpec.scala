@@ -1,12 +1,14 @@
 package fs2
 
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
+
 import cats.effect.IO
 import cats.implicits._
 import org.scalacheck._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
-import scala.concurrent.duration._
 
+import scala.concurrent.duration._
 import TestUtil._
 
 class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
@@ -263,7 +265,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "finalizers are run in LIFO order - scope closure" in {
       var o: Vector[Int] = Vector.empty
-      runLog {
+      throws(Err) {
         (0 until 10)
           .foldLeft(Stream.emit(1).map(_ => throw Err).covaryAll[IO, Int])((acc, i) =>
             Stream.emit(i) ++ Stream.bracket(IO(i))(i => acc, i => IO { o = o :+ i }))

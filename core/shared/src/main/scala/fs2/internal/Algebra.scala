@@ -197,7 +197,7 @@ private[fs2] object Algebra {
           compileScope(scope, tail, b)(g)
         } catch {
           case NonFatal(err) =>
-            compileScope(scope, tail.asHandler(err), init)(g)
+            F.raiseError(err)
         }
       case None =>
         F.pure(init)
