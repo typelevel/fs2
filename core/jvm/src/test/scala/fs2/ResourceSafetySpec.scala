@@ -1,6 +1,5 @@
 package fs2
 
-import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 
 import cats.effect.IO
