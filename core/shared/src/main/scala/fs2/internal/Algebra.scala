@@ -267,17 +267,19 @@ private[fs2] object Algebra {
 
             case run: Algebra.Run[F, X, r] =>
               // We need to wrap this in delay, as this is forcing an segment which can throw.
-              interruptGuard { F.delay {
-                val (h, t) =
-                  // Values hardcoded here until we figure out how to properly expose them
-                  run.values.force.splitAt(1024, Some(10000)) match {
-                    case Left((r, chunks, _)) => (chunks, FreeC.Pure(r).transformWith(f))
-                    case Right((chunks, tail)) =>
-                      (chunks, segment(tail).transformWith(f))
-                  }
+              interruptGuard {
+                F.delay {
+                  val (h, t) =
+                    // Values hardcoded here until we figure out how to properly expose them
+                    run.values.force.splitAt(1024, Some(10000)) match {
+                      case Left((r, chunks, _)) => (chunks, FreeC.Pure(r).transformWith(f))
+                      case Right((chunks, tail)) =>
+                        (chunks, segment(tail).transformWith(f))
+                    }
 
-                Out(Segment.catenatedChunks(h), scope, t)
-              }}
+                  Out(Segment.catenatedChunks(h), scope, t)
+                }
+              }
 
             case u: Algebra.Step[F, y, X] =>
               // if scope was specified in step, try to find it, otherwise use the current scope.
