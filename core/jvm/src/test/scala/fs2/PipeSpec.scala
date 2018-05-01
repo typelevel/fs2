@@ -177,6 +177,18 @@ class PipeSpec extends Fs2Spec {
         .scanLeft(n)(g)
     }
 
+    "mapAsync" in forAll { s: PureStream[Int] =>
+      val f = (_: Int) + 1
+      val r = s.get.covary[IO].mapAsync(16)(i => IO(f(i)))
+      runLog(r) shouldBe runLog(s.get).map(f)
+    }
+
+    "mapAsyncUnordered" in forAll { s: PureStream[Int] =>
+      val f = (_: Int) + 1
+      val r = s.get.covary[IO].mapAsyncUnordered(16)(i => IO(f(i)))
+      runLog(r) should contain theSameElementsAs runLog(s.get).map(f)
+    }
+
     "exists" in forAll { (s: PureStream[Int], n: SmallPositive) =>
       val f = (i: Int) => i % n.get == 0
       runLog(s.get.exists(f)) shouldBe Vector(runLog(s.get).exists(f))
