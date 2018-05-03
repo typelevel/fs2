@@ -1968,8 +1968,9 @@ object Stream {
       * res0: Unit = ()
       * }}}
       */
-    def mapAsync[O2](parallelism: Int)(
-        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
+    def mapAsync[O2](parallelism: Int)(f: O => F[O2])(
+        implicit F: Concurrent[F],
+        executionContext: ExecutionContext): Stream[F, O2] =
       Stream
         .eval(async.mutable.Queue.bounded[F, Option[F[Either[Throwable, O2]]]](parallelism))
         .flatMap { queue =>
@@ -2003,8 +2004,9 @@ object Stream {
       * res0: Unit = ()
       * }}}
       */
-    def mapAsyncUnordered[O2](parallelism: Int)(
-        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
+    def mapAsyncUnordered[O2](parallelism: Int)(f: O => F[O2])(
+        implicit F: Concurrent[F],
+        executionContext: ExecutionContext): Stream[F, O2] =
       self.map(o => Stream.eval(f(o))).join(parallelism)
 
     /**
@@ -2859,12 +2861,14 @@ object Stream {
     def evalScan[F[_], O2](z: O2)(f: (O2, O) => F[O2]): Stream[F, O2] =
       covary[F].evalScan(z)(f)
 
-    def mapAsync[F[_], O2](parallelism: Int)(
-        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
+    def mapAsync[F[_], O2](parallelism: Int)(f: O => F[O2])(
+        implicit F: Concurrent[F],
+        executionContext: ExecutionContext): Stream[F, O2] =
       covary[F].mapAsync(parallelism)(f)
 
-    def mapAsyncUnordered[F[_], O2](parallelism: Int)(
-        f: O => F[O2])(implicit F: Effect[F], executionContext: ExecutionContext): Stream[F, O2] =
+    def mapAsyncUnordered[F[_], O2](parallelism: Int)(f: O => F[O2])(
+        implicit F: Concurrent[F],
+        executionContext: ExecutionContext): Stream[F, O2] =
       covary[F].mapAsyncUnordered(parallelism)(f)
 
     def flatMap[F[_], O2](f: O => Stream[F, O2]): Stream[F, O2] =
