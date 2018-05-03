@@ -37,7 +37,7 @@ class RefSpec extends Fs2Spec with EventuallySupport {
       op.unsafeRunSync shouldBe true
     }
 
-    "failed access" in {
+    "failed access if modified before access" in {
       val op = for {
         r <- refOf[IO, Int](0)
         valueAndSetter <- r.access
@@ -46,6 +46,20 @@ class RefSpec extends Fs2Spec with EventuallySupport {
         success <- setter(value + 1)
         result <- r.get
       } yield !success && result == 5
+
+      op.unsafeRunSync shouldBe true
+    }
+
+    "failed access if used once" in {
+      val op = for {
+        r <- refOf[IO, Int](0)
+        valueAndSetter <- r.access
+        (value, setter) = valueAndSetter
+        cond1 <- setter(value + 1)
+        _ <- r.setSync(value)
+        cond2 <- setter(value + 1)
+        result <- r.get
+      } yield cond1 && !cond2 && result == 0
 
       op.unsafeRunSync shouldBe true
     }
