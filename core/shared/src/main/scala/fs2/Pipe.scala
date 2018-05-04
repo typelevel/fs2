@@ -3,7 +3,7 @@ package fs2
 import scala.concurrent.ExecutionContext
 import cats.effect.Concurrent
 import cats.implicits._
-import fs2.async.mutable.Queue
+import fs2.async.mutable.SignallingQueue
 import fs2.internal.{FreeC, NonFatal}
 
 object Pipe {
@@ -86,7 +86,7 @@ object Pipe {
   }
 
   /** Queue based version of [[join]] that uses the specified queue. */
-  def joinQueued[F[_], A, B](q: F[Queue[F, Option[Segment[A, Unit]]]])(
+  def joinQueued[F[_], A, B](q: F[SignallingQueue[F, Option[Segment[A, Unit]]]])(
       s: Stream[F, Pipe[F, A, B]])(implicit F: Concurrent[F], ec: ExecutionContext): Pipe[F, A, B] =
     in => {
       for {

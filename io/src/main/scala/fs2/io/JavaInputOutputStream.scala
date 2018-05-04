@@ -80,7 +80,7 @@ private[io] object JavaInputOutputStream {
       */
     def processInput(
         source: Stream[F, Byte],
-        queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
+        queue: mutable.SignallingQueue[F, Either[Option[Throwable], Bytes]],
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Concurrent[F], ec: ExecutionContext): Stream[F, Unit] =
@@ -133,7 +133,7 @@ private[io] object JavaInputOutputStream {
         dest: Array[Byte],
         off: Int,
         len: Int,
-        queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
+        queue: mutable.SignallingQueue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext): Int = {
       val sync = new SyncVar[Either[Throwable, Int]]
@@ -151,7 +151,7 @@ private[io] object JavaInputOutputStream {
       *
       */
     def readIs1(
-        queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
+        queue: mutable.SignallingQueue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Effect[F], ec: ExecutionContext): Int = {
 
@@ -171,7 +171,7 @@ private[io] object JavaInputOutputStream {
         dest: Array[Byte],
         off: Int,
         len: Int,
-        queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
+        queue: mutable.SignallingQueue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Sync[F]): F[Int] = {
       // in case current state has any data available from previous read

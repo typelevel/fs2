@@ -2,17 +2,18 @@ package fs2
 package async
 package mutable
 
-import scala.concurrent.ExecutionContext
+import java.util.concurrent.{ArrayBlockingQueue, LinkedBlockingQueue}
 
 import cats.Functor
-import cats.effect.Concurrent
+import cats.effect.Sync
 import cats.implicits._
 
-import fs2.internal.{Canceled, Token}
+import scala.annotation.tailrec
+import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 
 /**
-  * Asynchronous queue interface. Operations are all nonblocking in their
-  * implementations, but may be 'semantically' blocking. For instance,
+  * A pure queue interface. Operations may or may not be asynchronous. For instance,
   * a queue may have a bound on its size, in which case enqueuing may
   * block until there is an offsetting dequeue.
   */
@@ -70,7 +71,7 @@ abstract class Queue[F[_], A] { self =>
     * only when size changes. Offsetting enqueues and de-queues may
     * not result in refreshes.
     */
-  def size: immutable.Signal[F, Int]
+  def size: F[Int]
 
   /** The size bound on the queue. `None` if the queue is unbounded. */
   def upperBound: Option[Int]
@@ -79,13 +80,13 @@ abstract class Queue[F[_], A] { self =>
     * Returns the available number of entries in the queue.
     * Always `Int.MaxValue` when the queue is unbounded.
     */
-  def available: immutable.Signal[F, Int]
+  def available: F[Int]
 
   /**
     * Returns `true` when the queue has reached its upper size bound.
     * Always `false` when the queue is unbounded.
     */
-  def full: immutable.Signal[F, Boolean]
+  def full: F[Boolean]
 
   /**
     * Returns an alternate view of this `Queue` where its elements are of type `B`,
@@ -93,9 +94,9 @@ abstract class Queue[F[_], A] { self =>
     */
   def imap[B](f: A => B)(g: B => A)(implicit F: Functor[F]): Queue[F, B] =
     new Queue[F, B] {
-      def available: immutable.Signal[F, Int] = self.available
-      def full: immutable.Signal[F, Boolean] = self.full
-      def size: immutable.Signal[F, Int] = self.size
+      def size: F[Int] = self.size
+      def available: F[Int] = self.available
+      def full: F[Boolean] = self.full
       def upperBound: Option[Int] = self.upperBound
       def enqueue1(a: B): F[Unit] = self.enqueue1(g(a))
       def offer1(a: B): F[Boolean] = self.offer1(g(a))
@@ -111,291 +112,100 @@ abstract class Queue[F[_], A] { self =>
 
 object Queue {
 
-  /** Creates a queue with no size bound. */
-  def unbounded[F[_], A](implicit F: Concurrent[F], ec: ExecutionContext): F[Queue[F, A]] = {
-    /*
-     * Internal state of the queue
-     * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
-     * @param deq      A list of waiting dequeuers, added to when queue is empty
-     * @param peek     The waiting peekers (if any), created when queue is empty
-     */
-    final case class State(
-        queue: Vector[A],
-        deq: Vector[(Token, Promise[F, Chunk[A]])],
-        peek: Option[Promise[F, A]]
-    )
+  /** A pure analog of java's `ArrayBlockingQueue`. Operations are all synchronous,
+    * thus not cancellable.
+    *
+    * @param queueSize the queue's size bound
+    * @param fair if set, elements are pulled by blocked threads in the order
+    *             they were requested
+    * @return
+    */
+  def synchronousBounded[F[_], A](queueSize: Int, fair: Boolean = true)(
+      implicit F: Sync[F]): F[Queue[F, A]] =
+    F.delay {
+      val internalQueue = new ArrayBlockingQueue[A](queueSize, fair)
 
-    for {
-      szSignal <- Signal(0)
-      qref <- async.refOf[F, State](State(Vector.empty, Vector.empty, None))
-    } yield
       new Queue[F, A] {
-        // Signals size change of queue, if that has changed
-        private def signalSize(s: State, ns: State): F[Unit] =
-          if (s.queue.size != ns.queue.size) szSignal.set(ns.queue.size)
-          else F.pure(())
+        def enqueue1(a: A): F[Unit] = F.delay(internalQueue.put(a))
 
-        def upperBound: Option[Int] = None
-        def enqueue1(a: A): F[Unit] = offer1(a).as(())
+        def offer1(a: A): F[Boolean] = F.delay(internalQueue.offer(a))
 
-        def offer1(a: A): F[Boolean] =
-          qref
-            .modify { s =>
-              if (s.deq.isEmpty) s.copy(queue = s.queue :+ a, peek = None)
-              else s.copy(deq = s.deq.tail, peek = None)
-            }
-            .flatMap { c =>
-              val dq = if (c.previous.deq.isEmpty) {
-                // we enqueued a value to the queue
-                signalSize(c.previous, c.now)
-              } else {
-                // queue was empty, we had waiting dequeuers
-                async.shiftStart(c.previous.deq.head._2.complete(Chunk.singleton(a)))
-              }
-              val pk = if (c.previous.peek.isEmpty) {
-                // no peeker to notify
-                F.unit
-              } else {
-                // notify peekers
-                async.shiftStart(c.previous.peek.get.complete(a))
+        def dequeue1: F[A] = F.delay(internalQueue.take())
 
-              }
-              (dq *> pk).as(true)
-            }
+        def dequeueBatch1(batchSize: Int): F[Chunk[A]] = F.delay {
+          val listBuffer = new ListBuffer[A]
+          val j = listBuffer.asJava
+          internalQueue.drainTo(j, batchSize)
+          Chunk.seq(listBuffer.toList)
+        }
 
-        def dequeue1: F[A] = dequeueBatch1(1).map(_.head.get)
+        def dequeue: Stream[F, A] = Stream.repeatEval(dequeue1)
 
-        def dequeue: Stream[F, A] =
-          Stream.bracket(F.delay(new Token))(
-            t => Stream.repeatEval(dequeueBatch1Impl(1, t).map(_.head.get)),
-            t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t))).void)
+        def dequeueBatch: Pipe[F, Int, A] = _.flatMap { i =>
+          Stream.eval(dequeueBatch1(i)).flatMap(Stream.chunk(_))
+        }
 
-        def dequeueBatch: Pipe[F, Int, A] =
-          batchSizes =>
-            Stream.bracket(F.delay(new Token))(
-              t =>
-                batchSizes.flatMap(batchSize =>
-                  Stream.eval(dequeueBatch1Impl(batchSize, t)).flatMap(Stream.chunk(_))),
-              t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t))).void
-          )
+        def peek1: F[A] = {
+          @tailrec def basicSpin(a: A): A =
+            if (a == null) basicSpin(internalQueue.peek())
+            else a
 
-        def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-          dequeueBatch1Impl(batchSize, new Token)
+          F.delay(basicSpin(internalQueue.peek()))
+        }
 
-        private def dequeueBatch1Impl(batchSize: Int, token: Token): F[Chunk[A]] =
-          promise[F, Chunk[A]].flatMap { p =>
-            qref
-              .modify { s =>
-                if (s.queue.isEmpty) s.copy(deq = s.deq :+ (token -> p))
-                else s.copy(queue = s.queue.drop(batchSize))
-              }
-              .flatMap { c =>
-                val cleanup =
-                  if (c.previous.queue.nonEmpty) F.pure(())
-                  else
-                    qref.modify { s =>
-                      s.copy(deq = s.deq.filterNot(_._2 == p))
-                    }.void
-                val out = signalSize(c.previous, c.now).flatMap { _ =>
-                  if (c.previous.queue.nonEmpty) {
-                    if (batchSize == 1)
-                      F.pure(Chunk.singleton(c.previous.queue.head))
-                    else
-                      F.pure(Chunk.indexedSeq(c.previous.queue.take(batchSize)))
-                  } else
-                    F.onCancelRaiseError(p.get, Canceled).recoverWith {
-                      case Canceled => cleanup *> F.async[Chunk[A]](cb => ())
-                    }
-                }
-                out
-              }
-          }
+        def size: F[Int] = F.delay(internalQueue.size())
 
-        def peek1: F[A] =
-          promise[F, A].flatMap { p =>
-            qref
-              .modify { state =>
-                if (state.queue.isEmpty && state.peek.isEmpty)
-                  state.copy(peek = Some(p))
-                else state
-              }
-              .flatMap { change =>
-                if (change.previous.queue.isEmpty) {
-                  F.onCancelRaiseError(change.now.peek.get.get, Canceled).recoverWith {
-                    case Canceled =>
-                      qref.modify { state =>
-                        if (state.peek == Some(p)) state.copy(peek = None) else state
-                      } *> F.async[A](cb => ())
-                  }
-                } else F.pure(change.previous.queue.head)
-              }
-          }
+        val upperBound: Option[Int] = Some(queueSize)
 
-        def size = szSignal
-        def full: immutable.Signal[F, Boolean] =
-          Signal.constant[F, Boolean](false)
-        def available: immutable.Signal[F, Int] =
-          Signal.constant[F, Int](Int.MaxValue)
+        def available: F[Int] = F.delay(internalQueue.remainingCapacity())
+
+        def full: F[Boolean] = F.delay(internalQueue.remainingCapacity() == 0)
       }
+    }
+
+  /** A pure analog of java's `LinkedBlockingQueue`. Operations are all synchronous,
+    * thus not cancellable.
+    *
+    * @return
+    */
+  def synchronousLinked[F[_], A](implicit F: Sync[F]): F[Queue[F, A]] = F.delay {
+    val internalQueue = new LinkedBlockingQueue[A]()
+    new Queue[F, A] {
+      def enqueue1(a: A): F[Unit] = F.delay(internalQueue.put(a))
+
+      def offer1(a: A): F[Boolean] = F.delay(internalQueue.offer(a))
+
+      def dequeue1: F[A] = F.delay(internalQueue.take())
+
+      def dequeueBatch1(batchSize: Int): F[Chunk[A]] = F.delay {
+        val listBuffer = new ListBuffer[A]
+        val j = listBuffer.asJava
+        internalQueue.drainTo(j, batchSize)
+        Chunk.seq(listBuffer.toList)
+      }
+
+      def dequeue: Stream[F, A] = Stream.repeatEval(dequeue1)
+
+      def dequeueBatch: Pipe[F, Int, A] = _.flatMap { i =>
+        Stream.eval(dequeueBatch1(i)).flatMap(Stream.chunk(_))
+      }
+
+      def peek1: F[A] = {
+        @tailrec def basicSpin(a: A): A =
+          if (a == null) basicSpin(internalQueue.peek())
+          else a
+
+        F.delay(basicSpin(internalQueue.peek()))
+      }
+
+      def size: F[Int] = F.delay(internalQueue.size())
+
+      def upperBound: Option[Int] = Some(Int.MaxValue)
+
+      def available: F[Int] = F.delay(internalQueue.remainingCapacity())
+
+      def full: F[Boolean] = F.delay(internalQueue.remainingCapacity() == 0)
+    }
+
   }
-
-  /** Creates a queue with the specified size bound. */
-  def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F],
-                                     ec: ExecutionContext): F[Queue[F, A]] =
-    for {
-      permits <- Semaphore(maxSize.toLong)
-      q <- unbounded[F, A]
-    } yield
-      new Queue[F, A] {
-        def upperBound: Option[Int] = Some(maxSize)
-        def enqueue1(a: A): F[Unit] =
-          permits.decrement *> q.enqueue1(a)
-        def offer1(a: A): F[Boolean] =
-          permits.tryDecrement.flatMap { b =>
-            if (b) q.offer1(a) else F.pure(false)
-          }
-        def dequeue1: F[A] = dequeueBatch1(1).map(_.head.get)
-        def dequeue: Stream[F, A] = q.dequeue.evalMap(a => permits.increment.as(a))
-        def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-          q.dequeueBatch1(batchSize).flatMap { chunk =>
-            permits.incrementBy(chunk.size).as(chunk)
-          }
-        def dequeueBatch: Pipe[F, Int, A] =
-          q.dequeueBatch.andThen(_.chunks.flatMap(c =>
-            Stream.eval(permits.incrementBy(c.size)).flatMap(_ => Stream.chunk(c))))
-        def peek1: F[A] = q.peek1
-        def size = q.size
-        def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
-        def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
-      }
-
-  /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
-  def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F],
-                                            ec: ExecutionContext): F[Queue[F, A]] =
-    for {
-      permits <- Semaphore(maxSize.toLong)
-      q <- unbounded[F, A]
-    } yield
-      new Queue[F, A] {
-        def upperBound: Option[Int] = Some(maxSize)
-        def enqueue1(a: A): F[Unit] =
-          permits.tryDecrement.flatMap { b =>
-            if (b) q.enqueue1(a) else (q.dequeue1 *> q.enqueue1(a))
-          }
-        def offer1(a: A): F[Boolean] =
-          enqueue1(a).as(true)
-        def dequeue1: F[A] = dequeueBatch1(1).map(_.head.get)
-        def dequeue: Stream[F, A] = q.dequeue.evalMap(a => permits.increment.as(a))
-        def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-          q.dequeueBatch1(batchSize).flatMap { chunk =>
-            permits.incrementBy(chunk.size).as(chunk)
-          }
-        def dequeueBatch: Pipe[F, Int, A] =
-          q.dequeueBatch.andThen(_.chunks.flatMap(c =>
-            Stream.eval(permits.incrementBy(c.size)).flatMap(_ => Stream.chunk(c))))
-        def peek1: F[A] = q.peek1
-        def size = q.size
-        def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
-        def available: immutable.Signal[F, Int] = q.size.map(maxSize - _)
-      }
-
-  /** Creates a queue which allows a single element to be enqueued at any time. */
-  def synchronous[F[_], A](implicit F: Concurrent[F], ec: ExecutionContext): F[Queue[F, A]] =
-    for {
-      permits <- Semaphore(0)
-      q <- unbounded[F, A]
-    } yield
-      new Queue[F, A] {
-        def upperBound: Option[Int] = Some(0)
-        def enqueue1(a: A): F[Unit] =
-          permits.decrement *> q.enqueue1(a)
-        def offer1(a: A): F[Boolean] =
-          permits.tryDecrement.flatMap { b =>
-            if (b) q.offer1(a) else F.pure(false)
-          }
-        def dequeue1: F[A] = permits.increment *> q.dequeue1
-        def dequeue: Stream[F, A] = {
-          def loop(s: Stream[F, A]): Pull[F, A, Unit] =
-            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
-              case Some((h, t)) => Pull.output1(h) >> loop(t)
-              case None         => Pull.done
-            }
-          loop(q.dequeue).stream
-        }
-        def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-          permits.increment *> q.dequeueBatch1(batchSize)
-        def dequeueBatch: Pipe[F, Int, A] = {
-          def loop(s: Stream[F, A]): Pull[F, A, Unit] =
-            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
-              case Some((h, t)) => Pull.output1(h) >> loop(t)
-              case None         => Pull.done
-            }
-          in =>
-            loop(q.dequeueBatch(in)).stream
-        }
-        def peek1: F[A] = q.peek1
-        def size = q.size
-        def full: immutable.Signal[F, Boolean] = Signal.constant(true)
-        def available: immutable.Signal[F, Int] = Signal.constant(0)
-      }
-
-  /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
-  def synchronousNoneTerminated[F[_], A](implicit F: Concurrent[F],
-                                         ec: ExecutionContext): F[Queue[F, Option[A]]] =
-    for {
-      permits <- Semaphore(0)
-      doneRef <- refOf[F, Boolean](false)
-      q <- unbounded[F, Option[A]]
-    } yield
-      new Queue[F, Option[A]] {
-        def upperBound: Option[Int] = Some(0)
-        def enqueue1(a: Option[A]): F[Unit] = doneRef.access.flatMap {
-          case (done, update) =>
-            if (done) F.pure(())
-            else
-              a match {
-                case None =>
-                  update(true).flatMap { successful =>
-                    if (successful) q.enqueue1(None) else enqueue1(None)
-                  }
-                case _ => permits.decrement *> q.enqueue1(a)
-              }
-        }
-        def offer1(a: Option[A]): F[Boolean] = doneRef.access.flatMap {
-          case (done, update) =>
-            if (done) F.pure(true)
-            else
-              a match {
-                case None =>
-                  update(true).flatMap { successful =>
-                    if (successful) q.offer1(None) else offer1(None)
-                  }
-                case _ => permits.decrement *> q.offer1(a)
-              }
-        }
-        def dequeue1: F[Option[A]] = permits.increment *> q.dequeue1
-        def dequeue: Stream[F, Option[A]] = {
-          def loop(s: Stream[F, Option[A]]): Pull[F, Option[A], Unit] =
-            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
-              case Some((h, t)) => Pull.output1(h) >> loop(t)
-              case None         => Pull.done
-            }
-          loop(q.dequeue).stream
-        }
-        def dequeueBatch1(batchSize: Int): F[Chunk[Option[A]]] =
-          permits.increment *> q.dequeueBatch1(batchSize)
-        def dequeueBatch: Pipe[F, Int, Option[A]] = {
-          def loop(s: Stream[F, Option[A]]): Pull[F, Option[A], Unit] =
-            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
-              case Some((h, t)) => Pull.output1(h) >> loop(t)
-              case None         => Pull.done
-            }
-          in =>
-            loop(q.dequeueBatch(in)).stream
-        }
-        def peek1: F[Option[A]] = q.peek1
-        def size = q.size
-        def full: immutable.Signal[F, Boolean] = Signal.constant(true)
-        def available: immutable.Signal[F, Int] = Signal.constant(0)
-      }
 }
