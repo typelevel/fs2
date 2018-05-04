@@ -1972,7 +1972,8 @@ object Stream {
         implicit F: Concurrent[F],
         executionContext: ExecutionContext): Stream[F, O2] =
       Stream
-        .eval(async.mutable.Queue.bounded[F, Option[F[Either[Throwable, O2]]]](parallelism))
+        .eval(
+          async.mutable.SignallingQueue.bounded[F, Option[F[Either[Throwable, O2]]]](parallelism))
         .flatMap { queue =>
           queue.dequeue.unNoneTerminate
             .evalMap(identity)
@@ -2203,7 +2204,7 @@ object Stream {
             .eval(async.signalOf(1l))
             .flatMap { running => // starts with 1 because outer stream is running by default
               Stream
-                .eval(async.mutable.Queue
+                .eval(async.mutable.SignallingQueue
                   .synchronousNoneTerminated[F, Segment[O2, Unit]])
                 .flatMap { outputQ => // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
                   // stops the join evaluation

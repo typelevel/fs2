@@ -122,7 +122,7 @@ object Topic {
                     if (offered) F.unit
                     else {
                       eval(done.get)
-                        .interruptWhen(q.full.discrete.map(!_))
+                        .interruptWhen(q.fullSignal.discrete.map(!_))
                         .last
                         .flatMap {
                           case None    => eval(publish(a))
@@ -134,7 +134,7 @@ object Topic {
                   }
 
                 def subscribeSize: Stream[F, (A, Int)] =
-                  eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
+                  eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.sizeSignal.continuous)
                 val id: ID = new ID
               }
               c <- state.modify { case (a, s) => a -> (s :+ sub) }

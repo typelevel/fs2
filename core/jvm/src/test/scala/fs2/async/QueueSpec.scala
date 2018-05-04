@@ -80,7 +80,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream
           .eval(async.unboundedQueue[IO, Int])
-          .flatMap(_.size.discrete)
+          .flatMap(_.sizeSignal.discrete)
           .take(1)) shouldBe Vector(0)
     }
     "peek1" in {
@@ -161,7 +161,7 @@ class QueueSpec extends Fs2Spec {
       runLog(
         Stream.eval(
           for {
-            q <- async.mutable.Queue.synchronousNoneTerminated[IO, Int]
+            q <- async.mutable.SignallingQueue.synchronousNoneTerminated[IO, Int]
             f <- async.shiftStart(q.peek1)
             g <- async.shiftStart(q.peek1)
             _ <- q.enqueue1(None)
