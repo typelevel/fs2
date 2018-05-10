@@ -213,6 +213,9 @@ lazy val core = crossProject
   .settings(commonSettings: _*)
   .settings(
     name := "fs2-core",
+    resolvers += Resolver.sonatypeRepo("snapshots"),
+    libraryDependencies ++= Seq("org.typelevel" %%% "cats-effect" % "1.0.0-SNAPSHOT",
+                                "org.typelevel" %%% "cats-core" % "1.1.0"),
     sourceDirectories in (Compile, scalafmt) += baseDirectory.value / "../shared/src/main/scala"
   )
   .jsSettings(commonJsSettings: _*)
