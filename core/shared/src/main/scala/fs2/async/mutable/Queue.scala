@@ -250,20 +250,20 @@ object Queue {
       new Queue[F, A] {
         def upperBound: Option[Int] = Some(maxSize)
         def enqueue1(a: A): F[Unit] =
-          permits.decrement *> q.enqueue1(a)
+          permits.acquire *> q.enqueue1(a)
         def offer1(a: A): F[Boolean] =
-          permits.tryDecrement.flatMap { b =>
+          permits.tryAcquire.flatMap { b =>
             if (b) q.offer1(a) else F.pure(false)
           }
         def dequeue1: F[A] = dequeueBatch1(1).map(_.head.get)
-        def dequeue: Stream[F, A] = q.dequeue.evalMap(a => permits.increment.as(a))
+        def dequeue: Stream[F, A] = q.dequeue.evalMap(a => permits.release.as(a))
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
           q.dequeueBatch1(batchSize).flatMap { chunk =>
-            permits.incrementBy(chunk.size).as(chunk)
+            permits.releaseN(chunk.size).as(chunk)
           }
         def dequeueBatch: Pipe[F, Int, A] =
           q.dequeueBatch.andThen(_.chunks.flatMap(c =>
-            Stream.eval(permits.incrementBy(c.size)).flatMap(_ => Stream.chunk(c))))
+            Stream.eval(permits.releaseN(c.size)).flatMap(_ => Stream.chunk(c))))
         def peek1: F[A] = q.peek1
         def size = q.size
         def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
@@ -280,20 +280,20 @@ object Queue {
       new Queue[F, A] {
         def upperBound: Option[Int] = Some(maxSize)
         def enqueue1(a: A): F[Unit] =
-          permits.tryDecrement.flatMap { b =>
+          permits.tryAcquire.flatMap { b =>
             if (b) q.enqueue1(a) else (q.dequeue1 *> q.enqueue1(a))
           }
         def offer1(a: A): F[Boolean] =
           enqueue1(a).as(true)
         def dequeue1: F[A] = dequeueBatch1(1).map(_.head.get)
-        def dequeue: Stream[F, A] = q.dequeue.evalMap(a => permits.increment.as(a))
+        def dequeue: Stream[F, A] = q.dequeue.evalMap(a => permits.release.as(a))
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
           q.dequeueBatch1(batchSize).flatMap { chunk =>
-            permits.incrementBy(chunk.size).as(chunk)
+            permits.releaseN(chunk.size).as(chunk)
           }
         def dequeueBatch: Pipe[F, Int, A] =
           q.dequeueBatch.andThen(_.chunks.flatMap(c =>
-            Stream.eval(permits.incrementBy(c.size)).flatMap(_ => Stream.chunk(c))))
+            Stream.eval(permits.releaseN(c.size)).flatMap(_ => Stream.chunk(c))))
         def peek1: F[A] = q.peek1
         def size = q.size
         def full: immutable.Signal[F, Boolean] = q.size.map(_ >= maxSize)
@@ -309,25 +309,25 @@ object Queue {
       new Queue[F, A] {
         def upperBound: Option[Int] = Some(0)
         def enqueue1(a: A): F[Unit] =
-          permits.decrement *> q.enqueue1(a)
+          permits.acquire *> q.enqueue1(a)
         def offer1(a: A): F[Boolean] =
-          permits.tryDecrement.flatMap { b =>
+          permits.tryAcquire.flatMap { b =>
             if (b) q.offer1(a) else F.pure(false)
           }
-        def dequeue1: F[A] = permits.increment *> q.dequeue1
+        def dequeue1: F[A] = permits.release *> q.dequeue1
         def dequeue: Stream[F, A] = {
           def loop(s: Stream[F, A]): Pull[F, A, Unit] =
-            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
+            Pull.eval(permits.release) >> s.pull.uncons1.flatMap {
               case Some((h, t)) => Pull.output1(h) >> loop(t)
               case None         => Pull.done
             }
           loop(q.dequeue).stream
         }
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
-          permits.increment *> q.dequeueBatch1(batchSize)
+          permits.release *> q.dequeueBatch1(batchSize)
         def dequeueBatch: Pipe[F, Int, A] = {
           def loop(s: Stream[F, A]): Pull[F, A, Unit] =
-            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
+            Pull.eval(permits.release) >> s.pull.uncons1.flatMap {
               case Some((h, t)) => Pull.output1(h) >> loop(t)
               case None         => Pull.done
             }
@@ -359,7 +359,7 @@ object Queue {
                   update(true).flatMap { successful =>
                     if (successful) q.enqueue1(None) else enqueue1(None)
                   }
-                case _ => permits.decrement *> q.enqueue1(a)
+                case _ => permits.acquire *> q.enqueue1(a)
               }
         }
         def offer1(a: Option[A]): F[Boolean] = doneRef.access.flatMap {
@@ -371,23 +371,23 @@ object Queue {
                   update(true).flatMap { successful =>
                     if (successful) q.offer1(None) else offer1(None)
                   }
-                case _ => permits.decrement *> q.offer1(a)
+                case _ => permits.acquire *> q.offer1(a)
               }
         }
-        def dequeue1: F[Option[A]] = permits.increment *> q.dequeue1
+        def dequeue1: F[Option[A]] = permits.release *> q.dequeue1
         def dequeue: Stream[F, Option[A]] = {
           def loop(s: Stream[F, Option[A]]): Pull[F, Option[A], Unit] =
-            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
+            Pull.eval(permits.release) >> s.pull.uncons1.flatMap {
               case Some((h, t)) => Pull.output1(h) >> loop(t)
               case None         => Pull.done
             }
           loop(q.dequeue).stream
         }
         def dequeueBatch1(batchSize: Int): F[Chunk[Option[A]]] =
-          permits.increment *> q.dequeueBatch1(batchSize)
+          permits.release *> q.dequeueBatch1(batchSize)
         def dequeueBatch: Pipe[F, Int, Option[A]] = {
           def loop(s: Stream[F, Option[A]]): Pull[F, Option[A], Unit] =
-            Pull.eval(permits.increment) >> s.pull.uncons1.flatMap {
+            Pull.eval(permits.release) >> s.pull.uncons1.flatMap {
               case Some((h, t)) => Pull.output1(h) >> loop(t)
               case None         => Pull.done
             }

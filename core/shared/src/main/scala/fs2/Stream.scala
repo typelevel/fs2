@@ -2233,7 +2233,7 @@ object Stream {
                   def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] =
                     outerScope.lease.flatMap {
                       case Some(lease) =>
-                        available.decrement *>
+                        available.acquire *>
                           incrementRunning *>
                           async.shiftStart {
                             inner.segments
@@ -2250,7 +2250,7 @@ object Stream {
                                 case Left(err) => stop(Some(err))
                               } *>
                               lease.cancel *> //todo: propagate failure here on exception ???
-                              available.increment *>
+                              available.release *>
                               decrementRunning
                           }.void
 
@@ -2354,20 +2354,20 @@ object Stream {
                       s.segments
                         .interruptWhen(interrupt.get.attempt)
                         .evalMap { segment =>
-                          guard.decrement >>
-                            outQ.enqueue1(Some((guard.increment, segment)))
+                          guard.acquire >>
+                            outQ.enqueue1(Some((guard.release, segment)))
                         }
                         .compile
                         .drain
                         .attempt
                         .flatMap {
                           case Right(_) =>
-                            doneSem.increment >>
-                              doneSem.decrementBy(2) >>
+                            doneSem.release >>
+                              doneSem.acquireN(2) >>
                               async.shiftStart(outQ.enqueue1(None)).void
                           case Left(err) =>
                             interruptY.complete(err) >>
-                              doneSem.increment
+                              doneSem.release
                         }
                     }
 
@@ -2442,7 +2442,7 @@ object Stream {
               self.segments.noneTerminate.evalMap {
                 case Some(segment) =>
                   sinkQ.enqueue1(Some(segment)) >>
-                    guard.decrement
+                    guard.acquire
 
                 case None =>
                   sinkQ.enqueue1(None)
@@ -2465,7 +2465,7 @@ object Stream {
               outQ.dequeue.unNoneTerminate
                 .flatMap { segment =>
                   Stream.segment(segment) ++
-                    Stream.eval_(guard.increment)
+                    Stream.eval_(guard.release)
                 }
 
             outputStream.concurrently(runner)
