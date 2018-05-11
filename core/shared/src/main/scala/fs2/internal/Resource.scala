@@ -1,10 +1,8 @@
 package fs2.internal
 
-import java.util.concurrent.atomic.AtomicReference
-
 import cats.effect.Sync
+import cats.effect.concurrent.Ref
 import fs2.Scope
-import fs2.async.Ref
 
 /**
   * Represents a resource acquired during stream interpretation.
@@ -103,7 +101,7 @@ private[internal] object Resource {
   def create[F[_]](implicit F: Sync[F]): Resource[F] =
     new Resource[F] {
 
-      val state = new Ref[F, State[F]](new AtomicReference[State[F]](initial))
+      val state = Ref.unsafe(initial)
 
       val id: Token = new Token
 

@@ -5,6 +5,7 @@ import scala.concurrent.ExecutionContext
 import cats.Traverse
 import cats.implicits.{catsSyntaxEither => _, _}
 import cats.effect.{Async, Concurrent, Effect, Fiber, IO, Sync}
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 
 /** Provides utilities for asynchronous computations. */
 package object async {
@@ -18,8 +19,8 @@ package object async {
     mutable.Signal(initialValue)
 
   /** Creates a `[[mutable.Semaphore]]`, initialized to the given count. */
-  def semaphore[F[_]: Concurrent](initialCount: Long): F[mutable.Semaphore[F]] =
-    mutable.Semaphore(initialCount)
+  def semaphore[F[_]: Concurrent](initialCount: Long): F[Semaphore[F]] =
+    Semaphore(initialCount)
 
   /** Creates an unbounded asynchronous queue. See [[mutable.Queue]] for more documentation. */
   def unboundedQueue[F[_]: Concurrent, A](implicit ec: ExecutionContext): F[mutable.Queue[F, A]] =
@@ -82,8 +83,8 @@ package object async {
       implicit ec: ExecutionContext): F[mutable.Topic[F, A]] =
     mutable.Topic(initial)
 
-  /** Creates an empty `Promise[F, A]` */
-  def promise[F[_]: Concurrent, A]: F[Promise[F, A]] = Promise.empty
+  /** Creates an empty `Deferred[F, A]` */
+  def deferred[F[_]: Concurrent, A]: F[Deferred[F, A]] = Deferred[F, A]
 
   /** Creates an initialized `SyncRef[F,A]`. */
   def refOf[F[_]: Sync, A](a: A): F[Ref[F, A]] = Ref[F, A](a)
@@ -122,12 +123,12 @@ package object async {
     * @see `start` for eager memoization.
     */
   def once[F[_], A](f: F[A])(implicit F: Concurrent[F]): F[F[A]] =
-    refOf[F, Option[Promise[F, Either[Throwable, A]]]](None).map { ref =>
+    refOf[F, Option[Deferred[F, Either[Throwable, A]]]](None).map { ref =>
       for {
-        p <- promise[F, Either[Throwable, A]]
+        d <- deferred[F, Either[Throwable, A]]
         ca <- ref.modify2 {
           case None =>
-            (Some(p), f.attempt.flatTap(p.complete))
+            (Some(d), f.attempt.flatTap(d.complete))
           case s @ Some(other) =>
             (s, other.get)
         }

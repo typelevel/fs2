@@ -6,6 +6,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.{Applicative, Functor}
 import cats.effect.Concurrent
+import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 
 import fs2.Stream._
@@ -70,7 +71,7 @@ object Signal {
   def apply[F[_], A](initA: A)(implicit F: Concurrent[F], ec: ExecutionContext): F[Signal[F, A]] = {
     class ID
     async
-      .refOf[F, (A, Long, Map[ID, Promise[F, (A, Long)]])]((initA, 0, Map.empty))
+      .refOf[F, (A, Long, Map[ID, Deferred[F, (A, Long)]])]((initA, 0, Map.empty))
       .map { state =>
         new Signal[F, A] {
           def refresh: F[Unit] = modify(identity).void
@@ -83,7 +84,7 @@ object Signal {
               .modify2 {
                 case (a, l, _) =>
                   val (a0, b) = f(a)
-                  (a0, l + 1, Map.empty[ID, Promise[F, (A, Long)]]) -> b
+                  (a0, l + 1, Map.empty[ID, Deferred[F, (A, Long)]]) -> b
               }
               .flatMap {
                 case (c, b) =>
@@ -91,7 +92,7 @@ object Signal {
                   else {
                     val now = c.now._1 -> c.now._2
                     c.previous._3.toVector.traverse {
-                      case (_, promise) => async.shiftStart(promise.complete(now))
+                      case (_, deferred) => async.shiftStart(deferred.complete(now))
                     } *> F.pure(c.map(_._1) -> b)
                   }
               }
@@ -102,15 +103,15 @@ object Signal {
           def discrete: Stream[F, A] = {
             def go(id: ID, last: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
-                async.promise[F, (A, Long)].flatMap { promise =>
+                async.deferred[F, (A, Long)].flatMap { deferred =>
                   state
                     .modify {
                       case s @ (a, l, listen) =>
                         if (l != last) s
-                        else (a, l, listen + (id -> promise))
+                        else (a, l, listen + (id -> deferred))
                     }
                     .flatMap { c =>
-                      if (c.now != c.previous) promise.get
+                      if (c.now != c.previous) deferred.get
                       else F.pure((c.now._1, c.now._2))
                     }
                 }

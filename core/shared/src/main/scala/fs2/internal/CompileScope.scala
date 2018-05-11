@@ -1,12 +1,11 @@
 package fs2.internal
 
 import scala.annotation.tailrec
-import java.util.concurrent.atomic.AtomicReference
 
 import cats.data.NonEmptyList
 import cats.effect.{Async, Concurrent, Sync}
+import cats.effect.concurrent.{Deferred, Ref}
 import fs2.{Catenable, CompositeFailure, Scope}
-import fs2.async.{Promise, Ref}
 import fs2.internal.CompileScope.InterruptContext
 
 import scala.concurrent.ExecutionContext
@@ -69,8 +68,8 @@ private[fs2] final class CompileScope[F[_], O] private (
 )(implicit val F: Sync[F])
     extends Scope[F] { self =>
 
-  private val state: Ref[F, CompileScope.State[F, O]] = new Ref(
-    new AtomicReference(CompileScope.State.initial))
+  private val state: Ref[F, CompileScope.State[F, O]] =
+    Ref.unsafe(CompileScope.State.initial)
 
   /**
     * Registers supplied resource in this scope.
@@ -377,7 +376,7 @@ private[fs2] final class CompileScope[F[_], O] private (
       case Some(iCtx) =>
         // note that we guard interruption here by Attempt to prevent failure on multiple sets.
         val interruptCause = cause.right.map(_ => iCtx.interruptRoot)
-        F.flatMap(F.attempt(iCtx.promise.complete(interruptCause))) { _ =>
+        F.flatMap(F.attempt(iCtx.deferred.complete(interruptCause))) { _ =>
           F.map(iCtx.ref.modify { _.orElse(Some(interruptCause)) }) { _ =>
             ()
           }
@@ -450,7 +449,7 @@ private[fs2] final class CompileScope[F[_], O] private (
       case Some(iCtx) =>
         F.map(
           iCtx.concurrent
-            .race(iCtx.promise.get,
+            .race(iCtx.deferred.get,
                   F.flatMap(Async.shift[F](iCtx.ec)(iCtx.concurrent))(_ =>
                     F.attempt(iCtx.concurrent.uncancelable(f))))) {
           case Right(result) => result.left.map(Left(_))
@@ -535,7 +534,7 @@ private[internal] object CompileScope {
   final private[internal] case class InterruptContext[F[_], O](
       concurrent: Concurrent[F],
       ec: ExecutionContext,
-      promise: Promise[F, Either[Throwable, Token]],
+      deferred: Deferred[F, Either[Throwable, Token]],
       ref: Ref[F, Option[Either[Throwable, Token]]],
       interruptRoot: Token,
       whenInterrupted: FreeC[Algebra[F, O, ?], Unit],
@@ -563,12 +562,12 @@ private[internal] object CompileScope {
       interruptible
         .map {
           case (concurrent, ec, whenInterrupted) =>
-            F.flatMap(concurrent.start(self.promise.get)) { fiber =>
+            F.flatMap(concurrent.start(self.deferred.get)) { fiber =>
               val context = InterruptContext[F, O](
                 concurrent = concurrent,
                 ec = ec,
-                promise = Promise.unsafeCreate[F, Either[Throwable, Token]](concurrent),
-                ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
+                deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
+                ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
                 interruptRoot = newScopeId,
                 whenInterrupted = whenInterrupted,
                 cancelParent = fiber.cancel
@@ -576,7 +575,7 @@ private[internal] object CompileScope {
 
               F.map(fs2.async.shiftStart(F.flatMap(fiber.join)(interrupt =>
                 F.flatMap(context.ref.modify(_.orElse(Some(interrupt)))) { _ =>
-                  F.map(F.attempt(context.promise.complete(interrupt)))(_ => ())
+                  F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
               }))(concurrent, ec)) { _ =>
                 context
               }
@@ -608,8 +607,8 @@ private[internal] object CompileScope {
           InterruptContext[F, O](
             concurrent = concurrent,
             ec = ec,
-            promise = Promise.unsafeCreate[F, Either[Throwable, Token]](concurrent),
-            ref = Ref.unsafeCreate[F, Option[Either[Throwable, Token]]](None),
+            deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
+            ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
             interruptRoot = newScopeId,
             whenInterrupted = whenInterrupted,
             cancelParent = F.unit

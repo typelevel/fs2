@@ -6,6 +6,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.Functor
 import cats.effect.Concurrent
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 
 import fs2.internal.{Canceled, Token}
@@ -121,8 +122,8 @@ object Queue {
      */
     final case class State(
         queue: Vector[A],
-        deq: Vector[(Token, Promise[F, Chunk[A]])],
-        peek: Option[Promise[F, A]]
+        deq: Vector[(Token, Deferred[F, Chunk[A]])],
+        peek: Option[Deferred[F, A]]
     )
 
     for {
@@ -183,10 +184,10 @@ object Queue {
           dequeueBatch1Impl(batchSize, new Token)
 
         private def dequeueBatch1Impl(batchSize: Int, token: Token): F[Chunk[A]] =
-          promise[F, Chunk[A]].flatMap { p =>
+          deferred[F, Chunk[A]].flatMap { d =>
             qref
               .modify { s =>
-                if (s.queue.isEmpty) s.copy(deq = s.deq :+ (token -> p))
+                if (s.queue.isEmpty) s.copy(deq = s.deq :+ (token -> d))
                 else s.copy(queue = s.queue.drop(batchSize))
               }
               .flatMap { c =>
@@ -194,7 +195,7 @@ object Queue {
                   if (c.previous.queue.nonEmpty) F.pure(())
                   else
                     qref.modify { s =>
-                      s.copy(deq = s.deq.filterNot(_._2 == p))
+                      s.copy(deq = s.deq.filterNot(_._2 == d))
                     }.void
                 val out = signalSize(c.previous, c.now).flatMap { _ =>
                   if (c.previous.queue.nonEmpty) {
@@ -203,7 +204,7 @@ object Queue {
                     else
                       F.pure(Chunk.indexedSeq(c.previous.queue.take(batchSize)))
                   } else
-                    F.onCancelRaiseError(p.get, Canceled).recoverWith {
+                    F.onCancelRaiseError(d.get, Canceled).recoverWith {
                       case Canceled => cleanup *> F.async[Chunk[A]](cb => ())
                     }
                 }
@@ -212,11 +213,11 @@ object Queue {
           }
 
         def peek1: F[A] =
-          promise[F, A].flatMap { p =>
+          deferred[F, A].flatMap { d =>
             qref
               .modify { state =>
                 if (state.queue.isEmpty && state.peek.isEmpty)
-                  state.copy(peek = Some(p))
+                  state.copy(peek = Some(d))
                 else state
               }
               .flatMap { change =>
@@ -224,7 +225,7 @@ object Queue {
                   F.onCancelRaiseError(change.now.peek.get.get, Canceled).recoverWith {
                     case Canceled =>
                       qref.modify { state =>
-                        if (state.peek == Some(p)) state.copy(peek = None) else state
+                        if (state.peek == Some(d)) state.copy(peek = None) else state
                       } *> F.async[A](cb => ())
                   }
                 } else F.pure(change.previous.queue.head)

@@ -105,8 +105,8 @@ object Topic {
           def mkSubscriber(maxQueued: Int): F[Subscriber] =
             for {
               q <- async.boundedQueue[F, A](maxQueued)
-              firstA <- async.promise[F, A]
-              done <- async.promise[F, Boolean]
+              firstA <- async.deferred[F, A]
+              done <- async.deferred[F, Boolean]
               sub = new Subscriber {
                 def unSubscribe: F[Unit] =
                   for {
