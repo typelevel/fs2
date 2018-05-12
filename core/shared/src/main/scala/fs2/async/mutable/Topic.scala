@@ -137,9 +137,9 @@ object Topic {
                   eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
                 val id: ID = new ID
               }
-              c <- state.modify { case (a, s) => a -> (s :+ sub) }
+              a <- state.modifyAndReturn { case (a, s) => (a, s :+ sub) -> a }
               _ <- subSignal.modify(_ + 1)
-              _ <- firstA.complete(c.now._1)
+              _ <- firstA.complete(a)
             } yield sub
 
           new Topic[F, A] {
@@ -149,9 +149,10 @@ object Topic {
             def subscribers: Signal[F, Int] = subSignal
 
             def publish1(a: A): F[Unit] =
-              state.modify { case (_, subs) => a -> subs }.flatMap { c =>
-                c.now._2.traverse(_.publish(a)).as(())
-              }
+              state.modifyAndReturn {
+                case (_, subs) =>
+                  (a, subs) -> subs.traverse_(_.publish(a))
+              }.flatten
 
             def subscribe(maxQueued: Int): Stream[F, A] =
               bracket(mkSubscriber(maxQueued))(_.subscribe, _.unSubscribe)
