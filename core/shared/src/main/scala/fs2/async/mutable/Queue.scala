@@ -134,42 +134,40 @@ object Queue {
         // Signals size change of queue, if that has changed
         private def signalSize(s: State, ns: State): F[Unit] =
           if (s.queue.size != ns.queue.size) szSignal.set(ns.queue.size)
-          else F.pure(())
+          else F.unit
 
         def upperBound: Option[Int] = None
         def enqueue1(a: A): F[Unit] = offer1(a).as(())
 
         def offer1(a: A): F[Boolean] =
           qref
-            .modify { s =>
-              if (s.deq.isEmpty) s.copy(queue = s.queue :+ a, peek = None)
-              else s.copy(deq = s.deq.tail, peek = None)
-            }
-            .flatMap { c =>
-              val dq = if (c.previous.deq.isEmpty) {
-                // we enqueued a value to the queue
-                signalSize(c.previous, c.now)
-              } else {
-                // queue was empty, we had waiting dequeuers
-                async.shiftStart(c.previous.deq.head._2.complete(Chunk.singleton(a)))
+            .modifyAndReturn { s =>
+              val (newState, signalDequeuers) = s.deq match {
+                case dequeuers if dequeuers.isEmpty =>
+                  // we enqueue a value to the queue
+                  val ns = s.copy(queue = s.queue :+ a, peek = None)
+                  ns -> signalSize(s, ns)
+                case (_, firstDequeuer) +: dequeuers =>
+                  // we await the first dequeuer
+                  s.copy(deq = dequeuers, peek = None) -> async.shiftStart {
+                    firstDequeuer.complete(Chunk.singleton(a))
+                  }.void
               }
-              val pk = if (c.previous.peek.isEmpty) {
-                // no peeker to notify
-                F.unit
-              } else {
-                // notify peekers
-                async.shiftStart(c.previous.peek.get.complete(a))
 
-              }
-              (dq *> pk).as(true)
+              val signalPeekers =
+                s.peek.fold(F.unit)(p => async.shiftStart(p.complete(a)).void)
+
+              newState -> (signalDequeuers *> signalPeekers)
             }
+            .flatten
+            .as(true)
 
         def dequeue1: F[A] = dequeueBatch1(1).map(_.head.get)
 
         def dequeue: Stream[F, A] =
           Stream.bracket(F.delay(new Token))(
             t => Stream.repeatEval(dequeueBatch1Impl(1, t).map(_.head.get)),
-            t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t))).void)
+            t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t))))
 
         def dequeueBatch: Pipe[F, Int, A] =
           batchSizes =>
@@ -177,7 +175,7 @@ object Queue {
               t =>
                 batchSizes.flatMap(batchSize =>
                   Stream.eval(dequeueBatch1Impl(batchSize, t)).flatMap(Stream.chunk(_))),
-              t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t))).void
+              t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t)))
           )
 
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
@@ -185,51 +183,50 @@ object Queue {
 
         private def dequeueBatch1Impl(batchSize: Int, token: Token): F[Chunk[A]] =
           deferred[F, Chunk[A]].flatMap { d =>
-            qref
-              .modify { s =>
+            qref.modifyAndReturn { s =>
+              val newState =
                 if (s.queue.isEmpty) s.copy(deq = s.deq :+ (token -> d))
                 else s.copy(queue = s.queue.drop(batchSize))
+
+              val cleanup =
+                if (s.queue.nonEmpty) F.pure(())
+                else qref.modify(s => s.copy(deq = s.deq.filterNot(_._2 == d)))
+
+              val dequeueBatch = signalSize(s, newState).flatMap { _ =>
+                if (s.queue.nonEmpty) {
+                  if (batchSize == 1) Chunk.singleton(s.queue.head).pure[F]
+                  else Chunk.indexedSeq(s.queue.take(batchSize)).pure[F]
+                } else
+                  F.onCancelRaiseError(d.get, Canceled).recoverWith {
+                    case Canceled => cleanup *> F.never
+                  }
               }
-              .flatMap { c =>
-                val cleanup =
-                  if (c.previous.queue.nonEmpty) F.pure(())
-                  else
-                    qref.modify { s =>
-                      s.copy(deq = s.deq.filterNot(_._2 == d))
-                    }.void
-                val out = signalSize(c.previous, c.now).flatMap { _ =>
-                  if (c.previous.queue.nonEmpty) {
-                    if (batchSize == 1)
-                      F.pure(Chunk.singleton(c.previous.queue.head))
-                    else
-                      F.pure(Chunk.indexedSeq(c.previous.queue.take(batchSize)))
-                  } else
-                    F.onCancelRaiseError(d.get, Canceled).recoverWith {
-                      case Canceled => cleanup *> F.async[Chunk[A]](cb => ())
-                    }
-                }
-                out
-              }
+
+              newState -> dequeueBatch
+            }.flatten
           }
 
         def peek1: F[A] =
           deferred[F, A].flatMap { d =>
-            qref
-              .modify { state =>
+            qref.modifyAndReturn { state =>
+              val newState =
                 if (state.queue.isEmpty && state.peek.isEmpty)
                   state.copy(peek = Some(d))
                 else state
+
+              val cleanup = qref.modify { state =>
+                if (state.peek == Some(d)) state.copy(peek = None) else state
               }
-              .flatMap { change =>
-                if (change.previous.queue.isEmpty) {
-                  F.onCancelRaiseError(change.now.peek.get.get, Canceled).recoverWith {
-                    case Canceled =>
-                      qref.modify { state =>
-                        if (state.peek == Some(d)) state.copy(peek = None) else state
-                      } *> F.async[A](cb => ())
+
+              val peekAction =
+                state.queue.headOption.map(_.pure[F]).getOrElse {
+                  F.onCancelRaiseError(newState.peek.get.get, Canceled).recoverWith {
+                    case Canceled => cleanup *> F.never
                   }
-                } else F.pure(change.previous.queue.head)
-              }
+                }
+
+              newState -> peekAction
+            }.flatten
           }
 
         def size = szSignal
