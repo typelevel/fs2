@@ -18,18 +18,19 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
   def set(a: A): F[Unit]
 
   /**
-    * Asynchronously sets the current value of this `Signal` and returns new value of this `Signal`.
+    * Modifies the current value using the supplied update function. If another modification
+    * occurs between the time the current value is read and subsequently updated, the modification
+    * is retried using the new value. Hence, `f` may be invoked multiple times.
     *
-    * `f` is consulted to set this signal.
-    *
-    * `F` returns the result of applying `op` to current value.
+    * Satisfies:
+    *   `r.modify(_ => a) == r.set(a)`
     */
-  def modify(f: A => A): F[Ref.Change[A]]
+  def modify(f: A => A): F[Unit]
 
   /**
-    * Like [[modify]] but allows extraction of a `B` from `A` and returns it along with the `Change`.
+    * Like [[modify]] but allows the update function to return an output value of type `B`
     */
-  def modify2[B](f: A => (A, B)): F[(Ref.Change[A], B)]
+  def modifyAndReturn[B](f: A => (A, B)): F[B]
 
   /**
     * Asynchronously refreshes the value of the signal,
@@ -48,14 +49,14 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
       def get: F[B] = self.get.map(f)
       def set(b: B): F[Unit] = self.set(g(b))
       def refresh: F[Unit] = self.refresh
-      def modify(bb: B => B): F[Ref.Change[B]] =
-        modify2(b => (bb(b), ())).map(_._1)
-      def modify2[B2](bb: B => (B, B2)): F[(Ref.Change[B], B2)] =
+      def modify(bb: B => B): F[Unit] =
+        modifyAndReturn(b => (bb(b), ()))
+      def modifyAndReturn[B2](bb: B => (B, B2)): F[B2] =
         self
-          .modify2 { a =>
-            val (a2, b2) = bb(f(a)); g(a2) -> b2
+          .modifyAndReturn { a =>
+            val (a2, b2) = bb(f(a))
+            g(a2) -> b2
           }
-          .map { case (ch, b2) => ch.map(f) -> b2 }
     }
 }
 
@@ -74,60 +75,51 @@ object Signal {
       .refOf[F, (A, Long, Map[ID, Deferred[F, (A, Long)]])]((initA, 0, Map.empty))
       .map { state =>
         new Signal[F, A] {
-          def refresh: F[Unit] = modify(identity).void
-          def set(a: A): F[Unit] = modify(_ => a).void
+          def refresh: F[Unit] = modify(identity)
+          def set(a: A): F[Unit] = modify(_ => a)
           def get: F[A] = state.get.map(_._1)
-          def modify(f: A => A): F[Ref.Change[A]] =
-            modify2(a => (f(a), ())).map(_._1)
-          def modify2[B](f: A => (A, B)): F[(Ref.Change[A], B)] =
-            state
-              .modify2 {
-                case (a, l, _) =>
-                  val (a0, b) = f(a)
-                  (a0, l + 1, Map.empty[ID, Deferred[F, (A, Long)]]) -> b
-              }
-              .flatMap {
-                case (c, b) =>
-                  if (c.previous._3.isEmpty) F.pure(c.map(_._1) -> b)
-                  else {
-                    val now = c.now._1 -> c.now._2
-                    c.previous._3.toVector.traverse {
-                      case (_, deferred) => async.shiftStart(deferred.complete(now))
-                    } *> F.pure(c.map(_._1) -> b)
-                  }
-              }
+          def modify(f: A => A): F[Unit] =
+            modifyAndReturn(a => (f(a), ()))
+          def modifyAndReturn[B](f: A => (A, B)): F[B] =
+            state.modifyAndReturn {
+              case (a, updates, listeners) =>
+                val (newA, result) = f(a)
+                val newUpdates = updates + 1
+                val newState = (newA, newUpdates, Map.empty[ID, Deferred[F, (A, Long)]])
+                val action = listeners.toVector.traverse {
+                  case (_, deferred) =>
+                    async.shiftStart(deferred.complete(newA -> newUpdates))
+                }
+
+                newState -> (action *> result.pure[F])
+            }.flatten
 
           def continuous: Stream[F, A] =
             Stream.repeatEval(get)
 
           def discrete: Stream[F, A] = {
-            def go(id: ID, last: Long): Stream[F, A] = {
+            def go(id: ID, lastUpdate: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
-                async.deferred[F, (A, Long)].flatMap { deferred =>
-                  state
-                    .modify {
-                      case s @ (a, l, listen) =>
-                        if (l != last) s
-                        else (a, l, listen + (id -> deferred))
-                    }
-                    .flatMap { c =>
-                      if (c.now != c.previous) deferred.get
-                      else F.pure((c.now._1, c.now._2))
-                    }
-                }
+                async
+                  .deferred[F, (A, Long)]
+                  .flatMap { deferred =>
+                    state.modifyAndReturn {
+                      case s @ (a, updates, listeners) =>
+                        if (updates != lastUpdate) s -> (a -> updates).pure[F]
+                        else (a, updates, listeners + (id -> deferred)) -> deferred.get
+                    }.flatten
+                  }
+
               eval(getNext).flatMap { case (a, l) => emit(a) ++ go(id, l) }
             }
 
             def cleanup(id: ID): F[Unit] =
-              state.modify { s =>
-                s.copy(_3 = s._3 - id)
-              }.void
+              state.modify(s => s.copy(_3 = s._3 - id))
 
             bracket(F.delay(new ID))(
-              { id =>
+              id =>
                 eval(state.get).flatMap {
                   case (a, l, _) => emit(a) ++ go(id, l)
-                }
               },
               id => cleanup(id)
             )

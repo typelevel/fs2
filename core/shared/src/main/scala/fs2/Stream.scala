@@ -2216,12 +2216,12 @@ object Stream {
                       case _ => Some(rslt)
                     } *> outputQ.enqueue1(None)
 
-                  val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
+                  val incrementRunning: F[Unit] = running.modify(_ + 1)
                   val decrementRunning: F[Unit] =
-                    running.modify(_ - 1).flatMap { c =>
-                      if (c.now == 0) stop(None)
-                      else F.unit
-                    }
+                    running.modifyAndReturn { n =>
+                      val now = n - 1
+                      now -> (if (now == 0) stop(None) else F.unit)
+                    }.flatten
 
                   // runs inner stream
                   // each stream is forked.
