@@ -124,17 +124,16 @@ package object async {
     */
   def once[F[_], A](f: F[A])(implicit F: Concurrent[F]): F[F[A]] =
     refOf[F, Option[Deferred[F, Either[Throwable, A]]]](None).map { ref =>
-      for {
-        d <- deferred[F, Either[Throwable, A]]
-        ca <- ref.modify2 {
-          case None =>
-            (Some(d), f.attempt.flatTap(d.complete))
-          case s @ Some(other) =>
-            (s, other.get)
-        }
-        ma <- ca._2
-        a <- F.fromEither(ma)
-      } yield a
+      deferred[F, Either[Throwable, A]].flatMap { d =>
+        ref
+          .modifyAndReturn {
+            case None =>
+              Some(d) -> f.attempt.flatTap(d.complete)
+            case s @ Some(other) => s -> other.get
+          }
+          .flatten
+          .rethrow
+      }
     }
 
   /**
