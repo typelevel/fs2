@@ -1849,16 +1849,15 @@ object Stream {
       Stream.eval(async.boundedQueue[F, Option[O]](1)).flatMap { queue =>
         Stream.eval(async.refOf[F, Option[O]](None)).flatMap { ref =>
           def enqueueLatest: F[Unit] =
-            ref.modify(_ => None).flatMap {
-              case Ref.Change(Some(o), None) => queue.enqueue1(Some(o))
-              case _                         => F.unit
+            ref.modifyAndReturn(s => None -> s).flatMap {
+              case v @ Some(_) => queue.enqueue1(v)
+              case None        => F.unit
             }
 
           val in: Stream[F, Unit] = atemporal.evalMap { o =>
-            ref.modify(_ => Some(o)).flatMap {
-              case Ref.Change(None, Some(o)) =>
-                async.shiftStart(timer.sleep(d) >> enqueueLatest).void
-              case _ => F.unit
+            ref.modifyAndReturn(s => o.some -> s).flatMap {
+              case None    => async.shiftStart(timer.sleep(d) >> enqueueLatest).void
+              case Some(_) => F.unit
             }
           } ++ Stream.eval_(enqueueLatest *> queue.enqueue1(None))
 
