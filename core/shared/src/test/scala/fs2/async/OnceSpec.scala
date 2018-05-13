@@ -1,7 +1,7 @@
 package fs2
 package async
 
-import cats.effect.{Concurrent, IO, Timer}
+import cats.effect.{IO, Timer}
 import cats.implicits._
 
 import scala.concurrent.duration._

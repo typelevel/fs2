@@ -6,7 +6,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.Functor
 import cats.effect.Concurrent
-import cats.effect.concurrent.{Deferred, Ref, Semaphore}
+import cats.effect.concurrent.{Deferred, Semaphore}
 import cats.implicits._
 
 import fs2.internal.{Canceled, Token}

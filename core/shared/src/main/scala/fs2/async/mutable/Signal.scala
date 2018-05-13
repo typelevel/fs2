@@ -6,7 +6,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.{Applicative, Functor}
 import cats.effect.Concurrent
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.concurrent.Deferred
 import cats.implicits._
 
 import fs2.Stream._

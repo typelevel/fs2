@@ -104,8 +104,7 @@ class QueueSpec extends Fs2Spec {
             f <- async.fork(q.peek1.product(q.dequeue1))
             _ <- q.enqueue1(42)
             x <- f.join
-            g <- async.fork(
-              (q.peek1.product(q.dequeue1)).product(q.peek1.product(q.dequeue1)))
+            g <- async.fork((q.peek1.product(q.dequeue1)).product(q.peek1.product(q.dequeue1)))
             _ <- q.enqueue1(43)
             _ <- q.enqueue1(44)
             yz <- g.join

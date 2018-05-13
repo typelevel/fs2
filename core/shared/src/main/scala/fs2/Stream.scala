@@ -3,7 +3,7 @@ package fs2
 import cats.{Applicative, Eq, Functor, MonadError, Monoid, Semigroup, ~>}
 import cats.data.NonEmptyList
 import cats.effect._
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.concurrent.Deferred
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.internal.{Algebra, FreeC, Token}
 import scala.concurrent.ExecutionContext

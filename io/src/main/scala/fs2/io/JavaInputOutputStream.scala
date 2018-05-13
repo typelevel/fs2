@@ -6,7 +6,6 @@ import scala.concurrent.{ExecutionContext, SyncVar}
 import java.io.{IOException, InputStream, OutputStream}
 
 import cats.effect.{Concurrent, ConcurrentEffect, Effect, IO, Sync}
-import cats.effect.concurrent.Ref
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
