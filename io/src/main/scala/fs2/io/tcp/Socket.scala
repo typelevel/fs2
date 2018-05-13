@@ -237,7 +237,7 @@ protected[tcp] object Socket {
         def getBufferOf(sz: Int): F[ByteBuffer] =
           bufferRef.get.flatMap { buff =>
             if (buff.capacity() < sz)
-              F.delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.setSync)
+              F.delay(ByteBuffer.allocate(sz)).flatTap(bufferRef.set)
             else
               F.delay {
                 buff.clear()
@@ -263,7 +263,7 @@ protected[tcp] object Socket {
         }
 
         def read0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-          readSemaphore.decrement *>
+          readSemaphore.acquire *>
             F.attempt[Option[Chunk[Byte]]](getBufferOf(max).flatMap { buff =>
                 readChunk(buff, timeout.map(_.toMillis).getOrElse(0l)).flatMap {
                   case (read, _) =>
@@ -272,14 +272,14 @@ protected[tcp] object Socket {
                 }
               })
               .flatMap { r =>
-                readSemaphore.increment *> (r match {
+                readSemaphore.release *> (r match {
                   case Left(err)         => F.raiseError(err)
                   case Right(maybeChunk) => F.pure(maybeChunk)
                 })
               }
 
         def readN0(max: Int, timeout: Option[FiniteDuration]): F[Option[Chunk[Byte]]] =
-          (readSemaphore.decrement *>
+          (readSemaphore.acquire *>
             F.attempt(getBufferOf(max).flatMap { buff =>
               def go(timeoutMs: Long): F[Option[Chunk[Byte]]] =
                 readChunk(buff, timeoutMs).flatMap {
@@ -292,7 +292,7 @@ protected[tcp] object Socket {
 
               go(timeout.map(_.toMillis).getOrElse(0l))
             })).flatMap { r =>
-            readSemaphore.increment *> (r match {
+            readSemaphore.release *> (r match {
               case Left(err)         => F.raiseError(err)
               case Right(maybeChunk) => F.pure(maybeChunk)
             })
@@ -313,9 +313,9 @@ protected[tcp] object Socket {
                         F.delay(cb(Right(
                           if (buff.remaining() <= 0) None
                           else Some(System.currentTimeMillis() - start)
-                        ))))(_ => IO.pure(()))
+                        ))))(_ => IO.unit)
                     def failed(err: Throwable, attachment: Unit): Unit =
-                      async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.pure(()))
+                      async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.unit)
                   }
                 )
               }
