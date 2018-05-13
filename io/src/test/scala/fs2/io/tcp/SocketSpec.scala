@@ -36,7 +36,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val clientCount = 20
 
       val localBindAddress =
-        async.promise[IO, InetSocketAddress].unsafeRunSync()
+        async.deferred[IO, InetSocketAddress].unsafeRunSync()
 
       val echoServer: Stream[IO, Unit] = {
         serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
@@ -88,7 +88,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val message = Chunk.bytes("123456789012345678901234567890".getBytes)
 
       val localBindAddress =
-        async.promise[IO, InetSocketAddress].unsafeRunSync()
+        async.deferred[IO, InetSocketAddress].unsafeRunSync()
 
       val junkServer: Stream[IO, Nothing] =
         serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))

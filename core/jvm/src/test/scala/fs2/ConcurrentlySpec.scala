@@ -1,8 +1,8 @@
 package fs2
 
 import scala.concurrent.duration._
+import cats.implicits._
 import cats.effect.IO
-import fs2.async.Promise
 import TestUtil._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 
@@ -45,13 +45,11 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
 
     "when background stream fails, primary stream fails even when hung" in forAll {
       (s: PureStream[Int], f: Failure) =>
-        val promise = Promise.unsafeCreate[IO, Unit]
-        val prg = (Stream.sleep_[IO](25.millis) ++ (Stream(1) ++ s.get))
-          .concurrently(f.get)
-          .flatMap { i =>
-            Stream.eval(promise.get).map { _ =>
-              i
-            }
+        val prg =
+          Stream.eval(async.deferred[IO, Unit]).flatMap { gate =>
+            (Stream.sleep_[IO](25.millis) ++ Stream(1) ++ s.get)
+              .concurrently(f.get)
+              .evalMap(i => gate.get.as(i))
           }
 
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
