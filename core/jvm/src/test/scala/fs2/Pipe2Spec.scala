@@ -503,7 +503,7 @@ class Pipe2Spec extends Fs2Spec {
               .scan(0)((acc, _) => acc + 1)
               .evalMap { n =>
                 if (n % 2 != 0)
-                  pause.set(true) *> async.shiftStart((Stream.sleep_[IO](10.millis) ++ Stream.eval(
+                  pause.set(true) *> async.fork((Stream.sleep_[IO](10.millis) ++ Stream.eval(
                     pause.set(false))).compile.drain) *> IO.pure(n)
                 else IO.pure(n)
               }

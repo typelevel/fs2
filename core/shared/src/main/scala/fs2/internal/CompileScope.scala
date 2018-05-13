@@ -569,7 +569,7 @@ private[internal] object CompileScope {
                 cancelParent = fiber.cancel
               )
 
-              F.map(fs2.async.shiftStart(F.flatMap(fiber.join)(interrupt =>
+              F.map(fs2.async.fork(F.flatMap(fiber.join)(interrupt =>
                 F.flatMap(context.ref.modify(_.orElse(Some(interrupt)))) { _ =>
                   F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
               }))(concurrent, ec)) { _ =>

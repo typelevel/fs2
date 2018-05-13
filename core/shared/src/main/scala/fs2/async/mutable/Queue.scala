@@ -149,13 +149,13 @@ object Queue {
                   ns -> signalSize(s, ns)
                 case (_, firstDequeuer) +: dequeuers =>
                   // we await the first dequeuer
-                  s.copy(deq = dequeuers, peek = None) -> async.shiftStart {
+                  s.copy(deq = dequeuers, peek = None) -> async.fork {
                     firstDequeuer.complete(Chunk.singleton(a))
                   }.void
               }
 
               val signalPeekers =
-                s.peek.fold(F.unit)(p => async.shiftStart(p.complete(a)).void)
+                s.peek.fold(F.unit)(p => async.fork(p.complete(a)).void)
 
               newState -> (signalDequeuers *> signalPeekers)
             }

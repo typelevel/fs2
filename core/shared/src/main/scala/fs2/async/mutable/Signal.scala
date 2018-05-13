@@ -88,7 +88,7 @@ object Signal {
                 val newState = (newA, newUpdates, Map.empty[ID, Deferred[F, (A, Long)]])
                 val action = listeners.toVector.traverse {
                   case (_, deferred) =>
-                    async.shiftStart(deferred.complete(newA -> newUpdates))
+                    async.fork(deferred.complete(newA -> newUpdates))
                 }
 
                 newState -> (action *> result.pure[F])

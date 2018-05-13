@@ -1791,7 +1791,7 @@ object Stream {
             // `self` terminates.
             // To prevent such interruption to be `swallowed` we append stream, that results in
             // evaluation of the result.
-            Stream.eval(async.shiftStart(runR)) >>
+            Stream.eval(async.fork(runR)) >>
               self
                 .interruptWhen(interruptL.get.map(Either.left[Throwable, Unit]))
                 .onFinalize { interruptR.complete(()) }
@@ -1856,7 +1856,7 @@ object Stream {
 
           val in: Stream[F, Unit] = atemporal.evalMap { o =>
             ref.modifyAndReturn(s => o.some -> s).flatMap {
-              case None    => async.shiftStart(timer.sleep(d) >> enqueueLatest).void
+              case None    => async.fork(timer.sleep(d) >> enqueueLatest).void
               case Some(_) => F.unit
             }
           } ++ Stream.eval_(enqueueLatest *> queue.enqueue1(None))
@@ -2123,7 +2123,7 @@ object Stream {
                   interruptL.complete(r).attempt *> doneR.complete(())
                 }
 
-            Stream.eval(async.shiftStart(runR)) >>
+            Stream.eval(async.fork(runR)) >>
               self
                 .interruptWhen(interruptL.get)
                 .onFinalize(interruptR.complete(()) *> doneR.get)
@@ -2147,7 +2147,7 @@ object Stream {
       Stream
         .getScope[F]
         .flatMap { scope =>
-          Stream.eval(async.shiftStart(haltOnSignal.flatMap(scope.interrupt))).flatMap { _ =>
+          Stream.eval(async.fork(haltOnSignal.flatMap(scope.interrupt))).flatMap { _ =>
             self
           }
         }
@@ -2234,7 +2234,7 @@ object Stream {
                       case Some(lease) =>
                         available.acquire *>
                           incrementRunning *>
-                          async.shiftStart {
+                          async.fork {
                             inner.segments
                               .evalMap { s =>
                                 outputQ.enqueue1(Some(s))
@@ -2283,7 +2283,7 @@ object Stream {
                         .fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
                     }
 
-                  Stream.eval(async.shiftStart(runOuter)) >>
+                  Stream.eval(async.fork(runOuter)) >>
                     outputQ.dequeue.unNoneTerminate
                       .flatMap { Stream.segment(_).covary[F] }
                       .onFinalize {
@@ -2363,15 +2363,15 @@ object Stream {
                           case Right(_) =>
                             doneSem.release >>
                               doneSem.acquireN(2) >>
-                              async.shiftStart(outQ.enqueue1(None)).void
+                              async.fork(outQ.enqueue1(None)).void
                           case Left(err) =>
                             interruptY.complete(err) >>
                               doneSem.release
                         }
                     }
 
-                  Stream.eval(async.shiftStart(runUpstream(self, interruptL))) >>
-                    Stream.eval(async.shiftStart(runUpstream(that, interruptR))) >>
+                  Stream.eval(async.fork(runUpstream(self, interruptL))) >>
+                    Stream.eval(async.fork(runUpstream(that, interruptR))) >>
                     outQ.dequeue.unNoneTerminate
                       .flatMap {
                         case (signal, segment) =>

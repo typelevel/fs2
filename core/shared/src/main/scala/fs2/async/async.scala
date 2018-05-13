@@ -108,14 +108,6 @@ package object async {
     parallelTraverse(fga)(identity)
 
   /**
-    * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
-    * bound. The inner `F[A]` will block until the result is available.
-    */
-  @deprecated("Use Concurrent[F].start(Async.shift(ec) *> f) instead.", "1.0.0")
-  def start[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[F[A]] =
-    shiftStart(f).map(_.join)
-
-  /**
     * Lazily memoize `f`. For every time the returned `F[F[A]]` is
     * bound, the effect `f` will be performed at most once (when the
     * inner `F[A]` is bound the first time).
@@ -137,18 +129,17 @@ package object async {
     }
 
   /**
-    * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
-    * bound.
+    * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
+    * bound. The inner `F[A]` will block until the result is available.
     */
-  @deprecated("Use Concurrent[F].start(Async.shift(ec) *> f) instead.", "1.0.0")
-  def fork[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[Unit] =
-    shiftStart(f).void
+  @deprecated("Use async.fork instead.", "1.0.0")
+  def start[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[F[A]] =
+    fork(f).map(_.join)
 
   /**
     * Shifts `f` to the supplied execution context and then starts it, returning the spawned fiber.
     */
-  def shiftStart[F[_], A](f: F[A])(implicit F: Concurrent[F],
-                                   ec: ExecutionContext): F[Fiber[F, A]] =
+  def fork[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[Fiber[F, A]] =
     F.start(Async.shift(ec) *> f)
 
   /**

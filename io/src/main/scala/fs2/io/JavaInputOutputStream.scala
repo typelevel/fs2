@@ -86,7 +86,7 @@ private[io] object JavaInputOutputStream {
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Concurrent[F], ec: ExecutionContext): Stream[F, Unit] =
       Stream
-        .eval(async.shiftStart {
+        .eval(async.fork {
           def markUpstreamDone(result: Option[Throwable]): F[Unit] =
             F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
               queue.enqueue1(Left(result))
