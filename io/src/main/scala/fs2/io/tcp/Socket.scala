@@ -18,6 +18,7 @@ import java.nio.channels.{
 import java.util.concurrent.TimeUnit
 
 import cats.effect.{ConcurrentEffect, IO}
+import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
 
 import fs2.Stream._
@@ -207,8 +208,8 @@ protected[tcp] object Socket {
 
   def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: ConcurrentEffect[F],
                                                     ec: ExecutionContext): F[Socket[F]] = {
-    async.semaphore(1).flatMap { readSemaphore =>
-      async.refOf[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
+    Semaphore(1).flatMap { readSemaphore =>
+      Ref[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
         // Also measures time the read took returning this as tuple
         // of (bytes_read, read_duration)
@@ -310,10 +311,11 @@ protected[tcp] object Socket {
                   new CompletionHandler[Integer, Unit] {
                     def completed(result: Integer, attachment: Unit): Unit =
                       async.unsafeRunAsync(
-                        F.delay(cb(Right(
-                          if (buff.remaining() <= 0) None
-                          else Some(System.currentTimeMillis() - start)
-                        ))))(_ => IO.unit)
+                        F.delay(
+                          cb(Right(
+                            if (buff.remaining() <= 0) None
+                            else Some(System.currentTimeMillis() - start)
+                          ))))(_ => IO.unit)
                     def failed(err: Throwable, attachment: Unit): Unit =
                       async.unsafeRunAsync(F.delay(cb(Left(err))))(_ => IO.unit)
                   }

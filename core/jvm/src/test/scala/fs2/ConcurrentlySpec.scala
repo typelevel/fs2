@@ -3,6 +3,7 @@ package fs2
 import scala.concurrent.duration._
 import cats.implicits._
 import cats.effect.IO
+import cats.effect.concurrent.Deferred
 import TestUtil._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 
@@ -46,7 +47,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
     "when background stream fails, primary stream fails even when hung" in forAll {
       (s: PureStream[Int], f: Failure) =>
         val prg =
-          Stream.eval(async.deferred[IO, Unit]).flatMap { gate =>
+          Stream.eval(Deferred[IO, Unit]).flatMap { gate =>
             (Stream.sleep_[IO](25.millis) ++ Stream(1) ++ s.get)
               .concurrently(f.get)
               .evalMap(i => gate.get.as(i))

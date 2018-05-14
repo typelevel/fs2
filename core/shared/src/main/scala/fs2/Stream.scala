@@ -3,7 +3,7 @@ package fs2
 import cats.{Applicative, Eq, Functor, MonadError, Monoid, Semigroup, ~>}
 import cats.data.NonEmptyList
 import cats.effect._
-import cats.effect.concurrent.Deferred
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.internal.{Algebra, FreeC, Token}
 import scala.concurrent.ExecutionContext
@@ -1768,9 +1768,9 @@ object Stream {
       */
     def concurrently[O2](that: Stream[F, O2])(implicit F: Concurrent[F],
                                               ec: ExecutionContext): Stream[F, O] =
-      Stream.eval(async.deferred[F, Unit]).flatMap { interruptR =>
-        Stream.eval(async.deferred[F, Option[Throwable]]).flatMap { doneR =>
-          Stream.eval(async.deferred[F, Throwable]).flatMap { interruptL =>
+      Stream.eval(Deferred[F, Unit]).flatMap { interruptR =>
+        Stream.eval(Deferred[F, Option[Throwable]]).flatMap { doneR =>
+          Stream.eval(Deferred[F, Throwable]).flatMap { interruptL =>
             def runR =
               that
                 .interruptWhen(interruptR.get.attempt)
@@ -1847,7 +1847,7 @@ object Stream {
         }
 
       Stream.eval(async.boundedQueue[F, Option[O]](1)).flatMap { queue =>
-        Stream.eval(async.refOf[F, Option[O]](None)).flatMap { ref =>
+        Stream.eval(Ref[F, Option[O]](None)).flatMap { ref =>
           def enqueueLatest: F[Unit] =
             ref.modifyAndReturn(s => None -> s).flatMap {
               case v @ Some(_) => queue.enqueue1(v)
@@ -1979,7 +1979,7 @@ object Stream {
             .concurrently {
               self
                 .evalMap { o =>
-                  async.deferred[F, Either[Throwable, O2]].flatMap { value =>
+                  Deferred[F, Either[Throwable, O2]].flatMap { value =>
                     queue.enqueue1(Some(value.get)).as {
                       Stream.eval(f(o).attempt).evalMap(value.complete)
                     }
@@ -2105,9 +2105,9 @@ object Stream {
       */
     def interruptWhen(haltWhenTrue: Stream[F, Boolean])(implicit F: Concurrent[F],
                                                         ec: ExecutionContext): Stream[F, O] =
-      Stream.eval(async.deferred[F, Either[Throwable, Unit]]).flatMap { interruptL =>
-        Stream.eval(async.deferred[F, Unit]).flatMap { doneR =>
-          Stream.eval(async.deferred[F, Unit]).flatMap { interruptR =>
+      Stream.eval(Deferred[F, Either[Throwable, Unit]]).flatMap { interruptL =>
+        Stream.eval(Deferred[F, Unit]).flatMap { doneR =>
+          Stream.eval(Deferred[F, Unit]).flatMap { interruptR =>
             def runR =
               haltWhenTrue
                 .evalMap {
@@ -2197,7 +2197,7 @@ object Stream {
       assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
       val outer = self.asInstanceOf[Stream[F, Stream[F, O2]]]
       Stream.eval(async.signalOf(None: Option[Option[Throwable]])).flatMap { done =>
-        Stream.eval(async.semaphore(maxOpen)).flatMap { available =>
+        Stream.eval(Semaphore(maxOpen)).flatMap { available =>
           Stream
             .eval(async.signalOf(1l))
             .flatMap { running => // starts with 1 because outer stream is running by default
@@ -2341,15 +2341,15 @@ object Stream {
       */
     def merge[O2 >: O](that: Stream[F, O2])(implicit F: Concurrent[F],
                                             ec: ExecutionContext): Stream[F, O2] =
-      Stream.eval(async.semaphore(0)).flatMap { doneSem =>
-        Stream.eval(async.deferred[F, Unit]).flatMap { interruptL =>
-          Stream.eval(async.deferred[F, Unit]).flatMap { interruptR =>
-            Stream.eval(async.deferred[F, Throwable]).flatMap { interruptY =>
+      Stream.eval(Semaphore(0)).flatMap { doneSem =>
+        Stream.eval(Deferred[F, Unit]).flatMap { interruptL =>
+          Stream.eval(Deferred[F, Unit]).flatMap { interruptR =>
+            Stream.eval(Deferred[F, Throwable]).flatMap { interruptY =>
               Stream
                 .eval(async.unboundedQueue[F, Option[(F[Unit], Segment[O2, Unit])]])
                 .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
                   def runUpstream(s: Stream[F, O2], interrupt: Deferred[F, Unit]): F[Unit] =
-                    async.semaphore(1).flatMap { guard =>
+                    Semaphore(1).flatMap { guard =>
                       s.segments
                         .interruptWhen(interrupt.get.attempt)
                         .evalMap { segment =>
@@ -2434,7 +2434,7 @@ object Stream {
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _segments_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Concurrent[F],
                                                        ec: ExecutionContext): Stream[F, O] =
-      Stream.eval(async.semaphore[F](maxQueued - 1)).flatMap { guard =>
+      Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
         Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { outQ =>
           Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { sinkQ =>
             val inputStream =

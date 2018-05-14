@@ -6,7 +6,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.{Applicative, Functor}
 import cats.effect.Concurrent
-import cats.effect.concurrent.Deferred
+import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 
 import fs2.Stream._
@@ -71,8 +71,8 @@ object Signal {
 
   def apply[F[_], A](initA: A)(implicit F: Concurrent[F], ec: ExecutionContext): F[Signal[F, A]] = {
     class ID
-    async
-      .refOf[F, (A, Long, Map[ID, Deferred[F, (A, Long)]])]((initA, 0, Map.empty))
+
+    Ref[F, (A, Long, Map[ID, Deferred[F, (A, Long)]])]((initA, 0, Map.empty))
       .map { state =>
         new Signal[F, A] {
           def refresh: F[Unit] = modify(identity)
@@ -100,8 +100,7 @@ object Signal {
           def discrete: Stream[F, A] = {
             def go(id: ID, lastUpdate: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
-                async
-                  .deferred[F, (A, Long)]
+                Deferred[F, (A, Long)]
                   .flatMap { deferred =>
                     state.modifyAndReturn {
                       case s @ (a, updates, listeners) =>

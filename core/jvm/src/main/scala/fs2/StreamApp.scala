@@ -39,7 +39,7 @@ abstract class StreamApp[F[_]](implicit F: ConcurrentEffect[F]) {
   /** Exposed for testing, so we can check exit values before the dramatic sys.exit */
   private[fs2] def doMain(args: List[String]): IO[ExitCode] = {
     implicit val ec: ExecutionContext = directEC
-    async.deferred[IO, ExitCode].flatMap { exitCode =>
+    Deferred[IO, ExitCode].flatMap { exitCode =>
       async.signalOf[IO, Boolean](false).flatMap { halted =>
         runStream(args, exitCode, halted)
       }

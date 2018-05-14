@@ -5,6 +5,7 @@ package mutable
 import scala.concurrent.ExecutionContext
 
 import cats.effect.Concurrent
+import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 
 import fs2.Stream._
@@ -98,15 +99,14 @@ object Topic {
       def unSubscribe: F[Unit]
     }
 
-    async
-      .refOf[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
+    Ref[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
       .flatMap { state =>
         async.signalOf[F, Int](0).map { subSignal =>
           def mkSubscriber(maxQueued: Int): F[Subscriber] =
             for {
               q <- async.boundedQueue[F, A](maxQueued)
-              firstA <- async.deferred[F, A]
-              done <- async.deferred[F, Boolean]
+              firstA <- Deferred[F, A]
+              done <- Deferred[F, Boolean]
               sub = new Subscriber {
                 def unSubscribe: F[Unit] =
                   for {

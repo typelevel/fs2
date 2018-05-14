@@ -6,7 +6,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.Functor
 import cats.effect.Concurrent
-import cats.effect.concurrent.{Deferred, Semaphore}
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 
 import fs2.internal.{Canceled, Token}
@@ -128,7 +128,7 @@ object Queue {
 
     for {
       szSignal <- Signal(0)
-      qref <- async.refOf[F, State](State(Vector.empty, Vector.empty, None))
+      qref <- Ref[F, State](State(Vector.empty, Vector.empty, None))
     } yield
       new Queue[F, A] {
         // Signals size change of queue, if that has changed
@@ -137,7 +137,7 @@ object Queue {
           else F.unit
 
         def upperBound: Option[Int] = None
-        def enqueue1(a: A): F[Unit] = offer1(a).as(())
+        def enqueue1(a: A): F[Unit] = offer1(a).void
 
         def offer1(a: A): F[Boolean] =
           qref
@@ -182,14 +182,14 @@ object Queue {
           dequeueBatch1Impl(batchSize, new Token)
 
         private def dequeueBatch1Impl(batchSize: Int, token: Token): F[Chunk[A]] =
-          deferred[F, Chunk[A]].flatMap { d =>
+          Deferred[F, Chunk[A]].flatMap { d =>
             qref.modifyAndReturn { s =>
               val newState =
                 if (s.queue.isEmpty) s.copy(deq = s.deq :+ (token -> d))
                 else s.copy(queue = s.queue.drop(batchSize))
 
               val cleanup =
-                if (s.queue.nonEmpty) F.pure(())
+                if (s.queue.nonEmpty) F.unit
                 else qref.modify(s => s.copy(deq = s.deq.filterNot(_._2 == d)))
 
               val dequeueBatch = signalSize(s, newState).flatMap { _ =>
@@ -207,7 +207,7 @@ object Queue {
           }
 
         def peek1: F[A] =
-          deferred[F, A].flatMap { d =>
+          Deferred[F, A].flatMap { d =>
             qref.modifyAndReturn { state =>
               val newState =
                 if (state.queue.isEmpty && state.peek.isEmpty)
@@ -342,14 +342,14 @@ object Queue {
                                          ec: ExecutionContext): F[Queue[F, Option[A]]] =
     for {
       permits <- Semaphore(0)
-      doneRef <- refOf[F, Boolean](false)
+      doneRef <- Ref[F, Boolean](false)
       q <- unbounded[F, Option[A]]
     } yield
       new Queue[F, Option[A]] {
         def upperBound: Option[Int] = Some(0)
         def enqueue1(a: Option[A]): F[Unit] = doneRef.access.flatMap {
           case (done, update) =>
-            if (done) F.pure(())
+            if (done) F.unit
             else
               a match {
                 case None =>

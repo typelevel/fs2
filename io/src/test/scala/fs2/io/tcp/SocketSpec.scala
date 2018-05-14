@@ -6,6 +6,7 @@ import java.nio.channels.AsynchronousChannelGroup
 import java.nio.channels.spi.AsynchronousChannelProvider
 
 import cats.effect.IO
+import cats.effect.concurrent.Deferred
 
 import fs2._
 import fs2.internal.ThreadFactories
@@ -36,7 +37,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val clientCount = 20
 
       val localBindAddress =
-        async.deferred[IO, InetSocketAddress].unsafeRunSync()
+        Deferred[IO, InetSocketAddress].unsafeRunSync()
 
       val echoServer: Stream[IO, Unit] = {
         serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
@@ -88,7 +89,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val message = Chunk.bytes("123456789012345678901234567890".getBytes)
 
       val localBindAddress =
-        async.deferred[IO, InetSocketAddress].unsafeRunSync()
+        Deferred[IO, InetSocketAddress].unsafeRunSync()
 
       val junkServer: Stream[IO, Nothing] =
         serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0))
