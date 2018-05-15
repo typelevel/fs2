@@ -1,11 +1,12 @@
 package fs2.async.immutable
 
+import cats.data.OptionT
+
 import scala.concurrent.ExecutionContext
-
-import cats.Functor
+import cats.{Applicative, Functor}
 import cats.effect.Effect
-
-import fs2.Stream
+import cats.implicits._
+import fs2.{Pull, Stream}
 
 /** Data type of a single value of type `A` that can be read in the effect `F`. */
 abstract class Signal[F[_], A] { self =>
@@ -37,6 +38,44 @@ abstract class Signal[F[_], A] { self =>
 }
 
 object Signal {
+  implicit def signalIsApplicative[F[_]](
+      implicit effectEv: Effect[F],
+      ec: ExecutionContext
+  ): Applicative[({ type L[X] = Signal[F, X] })#L] =
+    new Applicative[({ type L[X] = Signal[F, X] })#L] {
+      override def pure[A](x: A): Signal[F, A] = fs2.async.mutable.Signal.constant(x)
+
+      override def ap[A, B](ff: Signal[F, A => B])(fa: Signal[F, A]): Signal[F, B] =
+        new Signal[F, B] {
+          private def nondeterministicZip[A0, A1](xs: Stream[F, A0],
+                                                  ys: Stream[F, A1]): Stream[F, (A0, A1)] = {
+            type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
+            val firstPull = for {
+              firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
+              (x, restOfXs) = firstXAndRestOfXs
+              firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
+              (y, restOfYs) = firstYAndRestOfYs
+              _ <- OptionT.liftF(Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)))
+            } yield ()
+            firstPull.value.stream
+              .covaryOutput[PullOutput]
+              .flatMap {
+                case (x, y, restOfXs, restOfYs) =>
+                  restOfXs.either(restOfYs).scan((x, y)) {
+                    case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
+                    case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
+                  }
+              }
+          }
+
+          override def discrete: Stream[F, B] =
+            nondeterministicZip(ff.discrete, fa.discrete).map { case (f, a) => f(a) }
+
+          override def continuous: Stream[F, B] = Stream.repeatEval(get)
+
+          override def get: F[B] = ff.get.ap(fa.get)
+        }
+    }
 
   implicit class ImmutableSignalSyntax[F[_], A](val self: Signal[F, A]) {
 
