@@ -38,6 +38,11 @@ abstract class Signal[F[_], A] { self =>
 }
 
 object Signal {
+  implicit def signalIsFunctor[F[_]: Functor]: Functor[({ type L[X] = Signal[F, X] })#L] =
+    new Functor[({ type L[X] = Signal[F, X] })#L] {
+      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = fa.map(f)
+    }
+
   implicit def signalIsApplicative[F[_]](
       implicit effectEv: Effect[F],
       ec: ExecutionContext

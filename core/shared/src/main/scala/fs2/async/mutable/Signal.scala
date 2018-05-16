@@ -3,11 +3,9 @@ package async
 package mutable
 
 import scala.concurrent.ExecutionContext
-
-import cats.{Applicative, Functor}
+import cats.{Applicative, Functor, Invariant}
 import cats.effect.Effect
 import cats.implicits._
-
 import fs2.Stream._
 
 /** Data type of a single value of type `A` that can be read and written in the effect `F`. */
@@ -64,6 +62,7 @@ object Signal {
     new immutable.Signal[F, A] {
       def get = F.pure(a)
       def continuous = Stream.constant(a)
+
       /**
         * We put a single element here because otherwise the implementations of
         * Signal as a Monad or Applicative get more annoying. In particular if
@@ -141,4 +140,10 @@ object Signal {
         }
       }
   }
+
+  implicit def signalIsInvariantFunctor[F[_]: Functor]
+    : Invariant[({ type L[X] = Signal[F, X] })#L] =
+    new Invariant[({ type L[X] = Signal[F, X] })#L] {
+      override def imap[A, B](fa: Signal[F, A])(f: A => B)(g: B => A): Signal[F, B] = fa.imap(f)(g)
+    }
 }
