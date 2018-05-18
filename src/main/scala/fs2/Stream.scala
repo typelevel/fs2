@@ -84,6 +84,13 @@ object Stream {
       extends AnyVal {
     private def self: Stream[F, O] = Stream.fromFold(fold)
 
+    /** Appends `s2` to the end of this stream. */
+    def ++[O2 >: O](s2: => Stream[F, O2]): Stream[F, O2] = self.append(s2)
+
+    /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
+    def append[O2 >: O](s2: => Stream[F, O2]): Stream[F, O2] =
+      fromFold(self.fold >> s2.fold)
+
     /**
       * Gets a projection of this stream that allows converting it to an `F[..]` in a number of ways.
       *
@@ -95,6 +102,33 @@ object Stream {
       * }}}
       */
     def compile: Stream.ToEffect[F, O] = new Stream.ToEffect[F, O](self._fold)
+
+    def flatMap[O2](f: O => Stream[F, O2]): Stream[F, O2] =
+      Stream.fromFold[F, O2](self.fold[F, O].unfold.flatMap {
+        case Right((hd, tl)) =>
+          hd.map(f)
+            .foldRightLazy(Stream.fromFold(tl).flatMap(f))(_ ++ _)
+            .fold
+        case Left(()) =>
+          Stream.empty.covaryAll[F, O2].fold
+      })
+  }
+
+  /** Provides syntax for pure empty pipes. */
+  implicit def EmptyOps(s: Stream[Pure, Nothing]): EmptyOps =
+    new EmptyOps(s.fold[Pure, Nothing])
+
+  /** Provides syntax for pure empty pipes. */
+  final class EmptyOps private[Stream] (private val fold: Fold[Pure, Nothing, Unit])
+      extends AnyVal {
+    private def self: Stream[Pure, Nothing] =
+      Stream.fromFold[Pure, Nothing](fold)
+
+    /** Lifts this stream to the specified effect type. */
+    def covary[F[_]]: Stream[F, Nothing] = self.asInstanceOf[Stream[F, Nothing]]
+
+    /** Lifts this stream to the specified effect and output types. */
+    def covaryAll[F[_], O]: Stream[F, O] = self.asInstanceOf[Stream[F, O]]
   }
 
   /** Provides syntax for pure pipes. */
