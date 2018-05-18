@@ -4,7 +4,7 @@ import cats.data.NonEmptyList
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-import cats.{Applicative, Eq, Functor, Monoid, Semigroup, ~>}
+import cats.{Applicative, Eq, Functor, Id, Monoid, Semigroup, ~>}
 import cats.effect.{Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.Promise
@@ -65,6 +65,7 @@ import fs2.internal.{Algebra, FreeC, Token}
   *
   *
   * @hideImplicitConversion PureOps
+  * @hideImplicitConversion IdOps
   * @hideImplicitConversion EmptyOps
   * @hideImplicitConversion covaryPure
   */
@@ -2790,6 +2791,20 @@ object Stream {
 
     def zipWith[F[_], O2, O3](s2: Stream[F, O2])(f: (O, O2) => O3): Stream[F, O3] =
       covary[F].zipWith(s2)(f)
+  }
+
+  implicit def IdOps[O](s: Stream[Id, O]): IdOps[O] =
+    new IdOps(s.get[Id, O])
+
+  /** Provides syntax for pure pipes based on `cats.Id`. */
+  final class IdOps[O] private[Stream] (private val free: FreeC[Algebra[Id, O, ?], Unit])
+      extends AnyVal {
+    private def self: Stream[Id, O] = Stream.fromFreeC[Id, O](free)
+
+    private def idToApplicative[F[_]: Applicative]: Id ~> F =
+      new (Id ~> F) { def apply[A](a: Id[A]) = a.pure[F] }
+
+    def covaryId[F[_]: Applicative]: Stream[F, O] = self.translate(idToApplicative[F])
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
