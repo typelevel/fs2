@@ -4,8 +4,6 @@ import cats._
 import cats.implicits._
 import cats.effect._
 
-import scala.collection.generic.CanBuildFrom
-
 trait Fold[F[_], O, R] { self =>
   def fold[S](initial: S)(f: (S, O) => S)(implicit F: Sync[F]): F[(S, R)]
 
@@ -16,9 +14,6 @@ trait Fold[F[_], O, R] { self =>
 
   final def >>[O2 >: O, R2 >: R](that: => Fold[F, O2, R2]): Fold[F, O2, R2] =
     flatMap(_ => that)
-
-  final def to[C[_]](implicit F: Sync[F], cbf: CanBuildFrom[Nothing, O, C[O]]): F[C[O]] =
-    F.suspend(F.map(self.fold(cbf())(_ += _))(_._1.result))
 }
 
 object Fold {
@@ -29,16 +24,18 @@ object Fold {
 
   def output1[F[_], O](o: O): Fold[F, O, Unit] = new Fold[F, O, Unit] {
     def fold[S](initial: S)(f: (S, O) => S)(implicit F: Sync[F]): F[(S, Unit)] =
-      (f(initial, o), ()).pure[F]
+      F.delay((f(initial, o), ()))
+  }
+
+  def output[F[_], O](os: Segment[O, Unit]): Fold[F, O, Unit] = new Fold[F, O, Unit] {
+    def fold[S](initial: S)(f: (S, O) => S)(implicit F: Sync[F]): F[(S, Unit)] =
+      F.delay((os.fold(initial)(f).force.run._2, ())) // TODO add cancelation boundary every so often
   }
 
   def eval[F[_], O, R](fr: F[R]): Fold[F, O, R] = new Fold[F, O, R] {
     def fold[S](initial: S)(f: (S, O) => S)(implicit F: Sync[F]): F[(S, R)] =
       fr.map(r => (initial, r))
   }
-
-  def output1Eval[F[_], O](fo: F[O]): Fold[F, O, Unit] =
-    eval(fo).flatMap(o => output1[F, O](o))
 
   def bracket[F[_], A, O, R](acquire: F[A])(use: A => Fold[F, O, R],
                                             release: A => F[Unit]): Fold[F, O, R] =
@@ -57,10 +54,4 @@ object Fold {
           case Right(b) => Fold.pure[F, O, B](b)
         }
     }
-}
-
-object FoldUsage {
-  val p1 = Fold.output1(42) >> Fold.output1Eval(IO(1))
-  val p2 =
-    Fold.bracket(IO(println("acquired")))(_ => Fold.output1(42), _ => IO(println("released")))
 }
