@@ -181,8 +181,19 @@ private[fs2] object Algebra {
   def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, O) => B)(
       implicit F: Sync[F]): F[B] =
     F.delay(CompileScope.newRoot[F, O]).flatMap { scope =>
-      F.bracket(F.unit)(u => compileScope[F, O, B](scope, stream, init)(f))(u =>
-        scope.close.rethrow)
+      compileScope[F, O, B](scope, stream, init)(f).attempt.flatMap {
+        case Left(t) =>
+          scope.close.flatMap {
+            case Left(err) => F.raiseError(CompositeFailure(t, err, Nil))
+            case _         => F.raiseError(t)
+          }
+
+        case Right(b) =>
+          scope.close.flatMap {
+            case Left(err) => F.raiseError(err)
+            case _         => F.pure(b)
+          }
+      }
     }
 
   private[fs2] def compileScope[F[_], O, B](scope: CompileScope[F, O],
