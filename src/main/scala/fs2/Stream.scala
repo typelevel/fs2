@@ -104,7 +104,7 @@ object Stream {
     def compile: Stream.ToEffect[F, O] = new Stream.ToEffect[F, O](self._fold)
 
     def flatMap[O2](f: O => Stream[F, O2]): Stream[F, O2] =
-      Stream.fromFold[F, O2](self.fold[F, O].unfold.flatMap {
+      Stream.fromFold[F, O2](self.fold[F, O].step.flatMap {
         case Right((hd, tl)) =>
           hd.map(f)
             .foldRightLazy(Stream.fromFold(tl).flatMap(f))(_ ++ _)
