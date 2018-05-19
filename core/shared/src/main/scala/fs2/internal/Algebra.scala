@@ -180,21 +180,8 @@ private[fs2] object Algebra {
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, O) => B)(
       implicit F: Sync[F]): F[B] =
-    F.delay(CompileScope.newRoot[F, O]).flatMap { scope =>
-      compileScope[F, O, B](scope, stream, init)(f).attempt.flatMap {
-        case Left(t) =>
-          scope.close.flatMap {
-            case Left(err) => F.raiseError(CompositeFailure(t, err, Nil))
-            case _         => F.raiseError(t)
-          }
-
-        case Right(b) =>
-          scope.close.flatMap {
-            case Left(err) => F.raiseError(err)
-            case _         => F.pure(b)
-          }
-      }
-    }
+    F.bracket(F.delay(CompileScope.newRoot[F, O]))(scope =>
+      compileScope[F, O, B](scope, stream, init)(f))(scope => scope.close.rethrow)
 
   private[fs2] def compileScope[F[_], O, B](scope: CompileScope[F, O],
                                             stream: FreeC[Algebra[F, O, ?], Unit],
