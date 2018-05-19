@@ -200,7 +200,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           .unsafeRunSync()
         runLog {
           s.get.evalMap { inner =>
-            async.shiftStart(
+            async.fork(
               bracket(c)(inner.get)
                 .evalMap { _ =>
                   IO.async[Unit](_ => ())
@@ -222,11 +222,11 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val signal = async.signalOf[IO, Boolean](false).unsafeRunSync()
       val c = new AtomicLong(0)
       async
-        .shiftStart(IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true))
+        .fork(IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true))
         .unsafeRunSync() // after 50 ms, interrupt
       runLog {
         s.evalMap { inner =>
-          async.shiftStart {
+          async.fork {
             Stream
               .bracket(IO { c.incrementAndGet; Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
                 _ => inner,
@@ -240,7 +240,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           }
         }
       }
-      // required longer delay here, hence the sleep of 2s and async.shiftStart that is not bound.
+      // required longer delay here, hence the sleep of 2s and async.fork that is not bound.
       eventually(Timeout(5 second)) { c.get shouldBe 0L }
     }
 

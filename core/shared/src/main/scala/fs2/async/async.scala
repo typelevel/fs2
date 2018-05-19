@@ -4,7 +4,8 @@ import scala.concurrent.ExecutionContext
 
 import cats.Traverse
 import cats.implicits.{catsSyntaxEither => _, _}
-import cats.effect.{Async, Concurrent, Effect, Fiber, IO, Sync}
+import cats.effect.{Async, Concurrent, Effect, Fiber, IO}
+import cats.effect.concurrent.{Deferred, Ref}
 
 /** Provides utilities for asynchronous computations. */
 package object async {
@@ -16,10 +17,6 @@ package object async {
   def signalOf[F[_]: Concurrent, A](initialValue: A)(
       implicit ec: ExecutionContext): F[mutable.Signal[F, A]] =
     mutable.Signal(initialValue)
-
-  /** Creates a `[[mutable.Semaphore]]`, initialized to the given count. */
-  def semaphore[F[_]: Concurrent](initialCount: Long): F[mutable.Semaphore[F]] =
-    mutable.Semaphore(initialCount)
 
   /** Creates an unbounded asynchronous queue. See [[mutable.Queue]] for more documentation. */
   def unboundedQueue[F[_]: Concurrent, A](implicit ec: ExecutionContext): F[mutable.Queue[F, A]] =
@@ -82,12 +79,6 @@ package object async {
       implicit ec: ExecutionContext): F[mutable.Topic[F, A]] =
     mutable.Topic(initial)
 
-  /** Creates an empty `Promise[F, A]` */
-  def promise[F[_]: Concurrent, A]: F[Promise[F, A]] = Promise.empty
-
-  /** Creates an initialized `SyncRef[F,A]`. */
-  def refOf[F[_]: Sync, A](a: A): F[Ref[F, A]] = Ref[F, A](a)
-
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
   @deprecated(
     "Use cats.Parallel.parTraverse instead. If G = IO and you want each IO to start executing on a pool thread, use cats.Parallel.parTraverse(IO.shift(ec) *> f(_)).",
@@ -107,14 +98,6 @@ package object async {
     parallelTraverse(fga)(identity)
 
   /**
-    * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
-    * bound. The inner `F[A]` will block until the result is available.
-    */
-  @deprecated("Use Concurrent[F].start(Async.shift(ec) *> f) instead.", "1.0.0")
-  def start[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[F[A]] =
-    shiftStart(f).map(_.join)
-
-  /**
     * Lazily memoize `f`. For every time the returned `F[F[A]]` is
     * bound, the effect `f` will be performed at most once (when the
     * inner `F[A]` is bound the first time).
@@ -122,33 +105,31 @@ package object async {
     * @see `start` for eager memoization.
     */
   def once[F[_], A](f: F[A])(implicit F: Concurrent[F]): F[F[A]] =
-    refOf[F, Option[Promise[F, Either[Throwable, A]]]](None).map { ref =>
-      for {
-        p <- promise[F, Either[Throwable, A]]
-        ca <- ref.modify2 {
-          case None =>
-            (Some(p), f.attempt.flatTap(p.complete))
-          case s @ Some(other) =>
-            (s, other.get)
-        }
-        ma <- ca._2
-        a <- F.fromEither(ma)
-      } yield a
+    Ref[F, Option[Deferred[F, Either[Throwable, A]]]](None).map { ref =>
+      Deferred[F, Either[Throwable, A]].flatMap { d =>
+        ref
+          .modifyAndReturn {
+            case None =>
+              Some(d) -> f.attempt.flatTap(d.complete)
+            case s @ Some(other) => s -> other.get
+          }
+          .flatten
+          .rethrow
+      }
     }
 
   /**
-    * Begins asynchronous evaluation of `f` when the returned `F[Unit]` is
-    * bound.
+    * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
+    * bound. The inner `F[A]` will block until the result is available.
     */
-  @deprecated("Use Concurrent[F].start(Async.shift(ec) *> f) instead.", "1.0.0")
-  def fork[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[Unit] =
-    shiftStart(f).void
+  @deprecated("Use async.fork instead.", "1.0.0")
+  def start[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[F[A]] =
+    fork(f).map(_.join)
 
   /**
     * Shifts `f` to the supplied execution context and then starts it, returning the spawned fiber.
     */
-  def shiftStart[F[_], A](f: F[A])(implicit F: Concurrent[F],
-                                   ec: ExecutionContext): F[Fiber[F, A]] =
+  def fork[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[Fiber[F, A]] =
     F.start(Async.shift(ec) *> f)
 
   /**

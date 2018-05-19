@@ -37,7 +37,7 @@ package object io {
       implicit F: Concurrent[F],
       ec: ExecutionContext): Stream[F, Byte] = {
     def readAsync(is: InputStream, buf: Array[Byte]) =
-      async.shiftStart(readBytesFromInputStream(is, buf)).flatMap(_.join)
+      async.fork(readBytesFromInputStream(is, buf)).flatMap(_.join)
 
     readInputStreamGeneric(fis, F.delay(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
   }
@@ -80,7 +80,7 @@ package object io {
       implicit F: Concurrent[F],
       ec: ExecutionContext): Stream[F, Byte] = {
     def readAsync(is: InputStream, buf: Array[Byte]) =
-      async.shiftStart(readBytesFromInputStream(is, buf)).flatMap(_.join)
+      async.fork(readBytesFromInputStream(is, buf)).flatMap(_.join)
 
     readInputStreamGeneric(fis, F.pure(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
   }
@@ -106,7 +106,7 @@ package object io {
       implicit F: Concurrent[F],
       ec: ExecutionContext): Sink[F, Byte] = {
     def writeAsync(os: OutputStream, buf: Chunk[Byte]) =
-      async.shiftStart(writeBytesToOutputStream(os, buf)).flatMap(_.join)
+      async.fork(writeBytesToOutputStream(os, buf)).flatMap(_.join)
 
     writeOutputStreamGeneric(fos, closeAfterUse, writeAsync)
   }

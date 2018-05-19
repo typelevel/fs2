@@ -3,10 +3,10 @@ package fs2
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 
 import cats.effect._
+import cats.effect.concurrent.Deferred
 import cats.effect.implicits._
 import cats.implicits._
 
-import fs2.async.Promise
 import fs2.async.mutable.Signal
 import fs2.StreamApp.ExitCode
 
@@ -39,9 +39,9 @@ abstract class StreamApp[F[_]](implicit F: ConcurrentEffect[F]) {
   /** Exposed for testing, so we can check exit values before the dramatic sys.exit */
   private[fs2] def doMain(args: List[String]): IO[ExitCode] = {
     implicit val ec: ExecutionContext = directEC
-    async.promise[IO, ExitCode].flatMap { exitCodePromise =>
+    Deferred[IO, ExitCode].flatMap { exitCode =>
       async.signalOf[IO, Boolean](false).flatMap { halted =>
-        runStream(args, exitCodePromise, halted)
+        runStream(args, exitCode, halted)
       }
     }
   }
@@ -57,7 +57,7 @@ abstract class StreamApp[F[_]](implicit F: ConcurrentEffect[F]) {
     */
   private[fs2] def runStream(
       args: List[String],
-      exitCodePromise: Promise[IO, ExitCode],
+      exitCode: Deferred[IO, ExitCode],
       halted: Signal[IO, Boolean])(implicit ec: ExecutionContext): IO[ExitCode] =
     async
       .signalOf[F, Boolean](false)
@@ -73,11 +73,11 @@ abstract class StreamApp[F[_]](implicit F: ConcurrentEffect[F]) {
         case Left(t) =>
           IO(t.printStackTrace()) *>
             halted.set(true) *>
-            exitCodePromise.complete(ExitCode.Error)
-        case Right(exitCode) =>
+            exitCode.complete(ExitCode.Error)
+        case Right(code) =>
           halted.set(true) *>
-            exitCodePromise.complete(exitCode.getOrElse(ExitCode.Success))
-      } *> exitCodePromise.get
+            exitCode.complete(code.getOrElse(ExitCode.Success))
+      } *> exitCode.get
 
   def main(args: Array[String]): Unit =
     sys.exit(doMain(args.toList).unsafeRunSync.code.toInt)

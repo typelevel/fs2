@@ -9,7 +9,7 @@ import cats.effect.{Concurrent, ConcurrentEffect, Effect, IO, Sync}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
-import fs2.async.{Ref, mutable}
+import fs2.async.mutable
 
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
@@ -85,7 +85,7 @@ private[io] object JavaInputOutputStream {
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Concurrent[F], ec: ExecutionContext): Stream[F, Unit] =
       Stream
-        .eval(async.shiftStart {
+        .eval(async.fork {
           def markUpstreamDone(result: Option[Throwable]): F[Unit] =
             F.flatMap(upState.set(UpStreamState(done = true, err = result))) { _ =>
               queue.enqueue1(Left(result))
@@ -196,44 +196,50 @@ private[io] object JavaInputOutputStream {
         case _           => Done(rsn)
       }
 
-      F.flatMap[(Ref.Change[DownStreamState], Option[Bytes]), Int](dnState.modify2(tryGetChunk)) {
-        case (Ref.Change(o, n), Some(bytes)) =>
-          F.delay {
-            Array.copy(bytes.values, 0, dest, off, bytes.size)
-            bytes.size
-          }
-        case (Ref.Change(o, n), None) =>
-          n match {
-            case Done(None) => F.pure(-1)
-            case Done(Some(err)) =>
-              F.raiseError(new IOException("Stream is in failed state", err))
-            case _ =>
-              // Ready is guaranteed at this time to be empty
-              F.flatMap(queue.dequeue1) {
-                case Left(None) =>
-                  F.map(dnState.modify(setDone(None)))(_ => -1) // update we are done, next read won't succeed
-                case Left(Some(err)) => // update we are failed, next read won't succeed
-                  F.flatMap(dnState.modify(setDone(Some(err))))(_ =>
-                    F.raiseError[Int](new IOException("UpStream failed", err)))
-                case Right(bytes) =>
-                  val (copy, maybeKeep) =
-                    if (bytes.size <= len) bytes -> None
-                    else {
-                      val (out, rem) = bytes.splitAt(len)
-                      out.toBytes -> Some(rem.toBytes)
-                    }
-                  F.flatMap(F.delay {
-                    Array.copy(copy.values, 0, dest, off, copy.size)
-                  }) { _ =>
-                    maybeKeep match {
+      dnState.modifyAndReturn { s =>
+        val (n, out) = tryGetChunk(s)
+
+        val result = out match {
+          case Some(bytes) =>
+            F.delay {
+              Array.copy(bytes.values, 0, dest, off, bytes.size)
+              bytes.size
+            }
+          case None =>
+            n match {
+              case Done(None) => (-1).pure[F]
+              case Done(Some(err)) =>
+                F.raiseError[Int](new IOException("Stream is in failed state", err))
+              case _ =>
+                // Ready is guaranteed at this time to be empty
+                queue.dequeue1.flatMap {
+                  case Left(None) =>
+                    dnState
+                      .modify(setDone(None))
+                      .as(-1) // update we are done, next read won't succeed
+                  case Left(Some(err)) => // update we are failed, next read won't succeed
+                    dnState.modify(setDone(err.some)) *> F.raiseError[Int](
+                      new IOException("UpStream failed", err))
+                  case Right(bytes) =>
+                    val (copy, maybeKeep) =
+                      if (bytes.size <= len) bytes -> None
+                      else {
+                        val (out, rem) = bytes.splitAt(len)
+                        out.toBytes -> rem.toBytes.some
+                      }
+                    F.delay {
+                      Array.copy(copy.values, 0, dest, off, copy.size)
+                    } *> (maybeKeep match {
                       case Some(rem) if rem.size > 0 =>
-                        F.map(dnState.set(Ready(Some(rem))))(_ => copy.size)
-                      case _ => F.pure(copy.size)
-                    }
-                  }
-              }
-          }
-      }
+                        dnState.set(Ready(rem.some)).as(copy.size)
+                      case _ => copy.size.pure[F]
+                    })
+                }
+            }
+        }
+
+        n -> result
+      }.flatten
     }
 
     /**

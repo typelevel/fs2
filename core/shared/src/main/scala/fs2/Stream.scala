@@ -3,8 +3,8 @@ package fs2
 import cats.{Applicative, Eq, Functor, MonadError, Monoid, Semigroup, ~>}
 import cats.data.NonEmptyList
 import cats.effect._
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits.{catsSyntaxEither => _, _}
-import fs2.async.{Promise, Ref}
 import fs2.internal.{Algebra, FreeC, Token}
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
@@ -1768,9 +1768,9 @@ object Stream {
       */
     def concurrently[O2](that: Stream[F, O2])(implicit F: Concurrent[F],
                                               ec: ExecutionContext): Stream[F, O] =
-      Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
-        Stream.eval(async.promise[F, Option[Throwable]]).flatMap { doneR =>
-          Stream.eval(async.promise[F, Throwable]).flatMap { interruptL =>
+      Stream.eval(Deferred[F, Unit]).flatMap { interruptR =>
+        Stream.eval(Deferred[F, Option[Throwable]]).flatMap { doneR =>
+          Stream.eval(Deferred[F, Throwable]).flatMap { interruptL =>
             def runR =
               that
                 .interruptWhen(interruptR.get.attempt)
@@ -1791,7 +1791,7 @@ object Stream {
             // `self` terminates.
             // To prevent such interruption to be `swallowed` we append stream, that results in
             // evaluation of the result.
-            Stream.eval(async.shiftStart(runR)) >>
+            Stream.eval(async.fork(runR)) >>
               self
                 .interruptWhen(interruptL.get.map(Either.left[Throwable, Unit]))
                 .onFinalize { interruptR.complete(()) }
@@ -1847,18 +1847,17 @@ object Stream {
         }
 
       Stream.eval(async.boundedQueue[F, Option[O]](1)).flatMap { queue =>
-        Stream.eval(async.refOf[F, Option[O]](None)).flatMap { ref =>
+        Stream.eval(Ref[F, Option[O]](None)).flatMap { ref =>
           def enqueueLatest: F[Unit] =
-            ref.modify(_ => None).flatMap {
-              case Ref.Change(Some(o), None) => queue.enqueue1(Some(o))
-              case _                         => F.unit
+            ref.modifyAndReturn(s => None -> s).flatMap {
+              case v @ Some(_) => queue.enqueue1(v)
+              case None        => F.unit
             }
 
           val in: Stream[F, Unit] = atemporal.evalMap { o =>
-            ref.modify(_ => Some(o)).flatMap {
-              case Ref.Change(None, Some(o)) =>
-                async.shiftStart(timer.sleep(d) >> enqueueLatest).void
-              case _ => F.unit
+            ref.modifyAndReturn(s => o.some -> s).flatMap {
+              case None    => async.fork(timer.sleep(d) >> enqueueLatest).void
+              case Some(_) => F.unit
             }
           } ++ Stream.eval_(enqueueLatest *> queue.enqueue1(None))
 
@@ -1980,9 +1979,9 @@ object Stream {
             .concurrently {
               self
                 .evalMap { o =>
-                  Promise.empty[F, Either[Throwable, O2]].flatMap { promise =>
-                    queue.enqueue1(Some(promise.get)).as {
-                      Stream.eval(f(o).attempt).evalMap(promise.complete)
+                  Deferred[F, Either[Throwable, O2]].flatMap { value =>
+                    queue.enqueue1(Some(value.get)).as {
+                      Stream.eval(f(o).attempt).evalMap(value.complete)
                     }
                   }
                 }
@@ -2106,9 +2105,9 @@ object Stream {
       */
     def interruptWhen(haltWhenTrue: Stream[F, Boolean])(implicit F: Concurrent[F],
                                                         ec: ExecutionContext): Stream[F, O] =
-      Stream.eval(async.promise[F, Either[Throwable, Unit]]).flatMap { interruptL =>
-        Stream.eval(async.promise[F, Unit]).flatMap { doneR =>
-          Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
+      Stream.eval(Deferred[F, Either[Throwable, Unit]]).flatMap { interruptL =>
+        Stream.eval(Deferred[F, Unit]).flatMap { doneR =>
+          Stream.eval(Deferred[F, Unit]).flatMap { interruptR =>
             def runR =
               haltWhenTrue
                 .evalMap {
@@ -2124,7 +2123,7 @@ object Stream {
                   interruptL.complete(r).attempt *> doneR.complete(())
                 }
 
-            Stream.eval(async.shiftStart(runR)) >>
+            Stream.eval(async.fork(runR)) >>
               self
                 .interruptWhen(interruptL.get)
                 .onFinalize(interruptR.complete(()) *> doneR.get)
@@ -2148,7 +2147,7 @@ object Stream {
       Stream
         .getScope[F]
         .flatMap { scope =>
-          Stream.eval(async.shiftStart(haltOnSignal.flatMap(scope.interrupt))).flatMap { _ =>
+          Stream.eval(async.fork(haltOnSignal.flatMap(scope.interrupt))).flatMap { _ =>
             self
           }
         }
@@ -2198,7 +2197,7 @@ object Stream {
       assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
       val outer = self.asInstanceOf[Stream[F, Stream[F, O2]]]
       Stream.eval(async.signalOf(None: Option[Option[Throwable]])).flatMap { done =>
-        Stream.eval(async.semaphore(maxOpen)).flatMap { available =>
+        Stream.eval(Semaphore(maxOpen)).flatMap { available =>
           Stream
             .eval(async.signalOf(1l))
             .flatMap { running => // starts with 1 because outer stream is running by default
@@ -2217,12 +2216,12 @@ object Stream {
                       case _ => Some(rslt)
                     } *> outputQ.enqueue1(None)
 
-                  val incrementRunning: F[Unit] = running.modify(_ + 1).as(())
+                  val incrementRunning: F[Unit] = running.modify(_ + 1)
                   val decrementRunning: F[Unit] =
-                    running.modify(_ - 1).flatMap { c =>
-                      if (c.now == 0) stop(None)
-                      else F.unit
-                    }
+                    running.modifyAndReturn { n =>
+                      val now = n - 1
+                      now -> (if (now == 0) stop(None) else F.unit)
+                    }.flatten
 
                   // runs inner stream
                   // each stream is forked.
@@ -2233,9 +2232,9 @@ object Stream {
                   def runInner(inner: Stream[F, O2], outerScope: Scope[F]): F[Unit] =
                     outerScope.lease.flatMap {
                       case Some(lease) =>
-                        available.decrement *>
+                        available.acquire *>
                           incrementRunning *>
-                          async.shiftStart {
+                          async.fork {
                             inner.segments
                               .evalMap { s =>
                                 outputQ.enqueue1(Some(s))
@@ -2250,7 +2249,7 @@ object Stream {
                                 case Left(err) => stop(Some(err))
                               } *>
                               lease.cancel *> //todo: propagate failure here on exception ???
-                              available.increment *>
+                              available.release *>
                               decrementRunning
                           }.void
 
@@ -2284,7 +2283,7 @@ object Stream {
                         .fold[Stream[Pure, O2]](Stream.empty)(Stream.raiseError)
                     }
 
-                  Stream.eval(async.shiftStart(runOuter)) >>
+                  Stream.eval(async.fork(runOuter)) >>
                     outputQ.dequeue.unNoneTerminate
                       .flatMap { Stream.segment(_).covary[F] }
                       .onFinalize {
@@ -2342,37 +2341,37 @@ object Stream {
       */
     def merge[O2 >: O](that: Stream[F, O2])(implicit F: Concurrent[F],
                                             ec: ExecutionContext): Stream[F, O2] =
-      Stream.eval(async.semaphore(0)).flatMap { doneSem =>
-        Stream.eval(async.promise[F, Unit]).flatMap { interruptL =>
-          Stream.eval(async.promise[F, Unit]).flatMap { interruptR =>
-            Stream.eval(async.promise[F, Throwable]).flatMap { interruptY =>
+      Stream.eval(Semaphore(0)).flatMap { doneSem =>
+        Stream.eval(Deferred[F, Unit]).flatMap { interruptL =>
+          Stream.eval(Deferred[F, Unit]).flatMap { interruptR =>
+            Stream.eval(Deferred[F, Throwable]).flatMap { interruptY =>
               Stream
                 .eval(async.unboundedQueue[F, Option[(F[Unit], Segment[O2, Unit])]])
                 .flatMap { outQ => // note that the queue actually contains up to 2 max elements thanks to semaphores guarding each side.
-                  def runUpstream(s: Stream[F, O2], interrupt: Promise[F, Unit]): F[Unit] =
-                    async.semaphore(1).flatMap { guard =>
+                  def runUpstream(s: Stream[F, O2], interrupt: Deferred[F, Unit]): F[Unit] =
+                    Semaphore(1).flatMap { guard =>
                       s.segments
                         .interruptWhen(interrupt.get.attempt)
                         .evalMap { segment =>
-                          guard.decrement >>
-                            outQ.enqueue1(Some((guard.increment, segment)))
+                          guard.acquire >>
+                            outQ.enqueue1(Some((guard.release, segment)))
                         }
                         .compile
                         .drain
                         .attempt
                         .flatMap {
                           case Right(_) =>
-                            doneSem.increment >>
-                              doneSem.decrementBy(2) >>
-                              async.shiftStart(outQ.enqueue1(None)).void
+                            doneSem.release >>
+                              doneSem.acquireN(2) >>
+                              async.fork(outQ.enqueue1(None)).void
                           case Left(err) =>
                             interruptY.complete(err) >>
-                              doneSem.increment
+                              doneSem.release
                         }
                     }
 
-                  Stream.eval(async.shiftStart(runUpstream(self, interruptL))) >>
-                    Stream.eval(async.shiftStart(runUpstream(that, interruptR))) >>
+                  Stream.eval(async.fork(runUpstream(self, interruptL))) >>
+                    Stream.eval(async.fork(runUpstream(that, interruptR))) >>
                     outQ.dequeue.unNoneTerminate
                       .flatMap {
                         case (signal, segment) =>
@@ -2435,14 +2434,14 @@ object Stream {
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _segments_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Concurrent[F],
                                                        ec: ExecutionContext): Stream[F, O] =
-      Stream.eval(async.semaphore[F](maxQueued - 1)).flatMap { guard =>
+      Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
         Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { outQ =>
           Stream.eval(async.unboundedQueue[F, Option[Segment[O, Unit]]]).flatMap { sinkQ =>
             val inputStream =
               self.segments.noneTerminate.evalMap {
                 case Some(segment) =>
                   sinkQ.enqueue1(Some(segment)) >>
-                    guard.decrement
+                    guard.acquire
 
                 case None =>
                   sinkQ.enqueue1(None)
@@ -2465,7 +2464,7 @@ object Stream {
               outQ.dequeue.unNoneTerminate
                 .flatMap { segment =>
                   Stream.segment(segment) ++
-                    Stream.eval_(guard.increment)
+                    Stream.eval_(guard.release)
                 }
 
             outputStream.concurrently(runner)

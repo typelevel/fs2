@@ -1,10 +1,8 @@
 package fs2.internal
 
-import java.util.concurrent.atomic.AtomicReference
-
 import cats.effect.Sync
+import cats.effect.concurrent.Ref
 import fs2.Scope
-import fs2.async.Ref
 
 /**
   * Represents a resource acquired during stream interpretation.
@@ -103,56 +101,52 @@ private[internal] object Resource {
   def create[F[_]](implicit F: Sync[F]): Resource[F] =
     new Resource[F] {
 
-      val state = new Ref[F, State[F]](new AtomicReference[State[F]](initial))
+      val state: Ref[F, State[F]] = Ref.unsafe(initial)
 
       val id: Token = new Token
 
       def release: F[Either[Throwable, Unit]] =
-        F.flatMap(state.modify2 { s =>
+        F.flatMap(state.modifyAndReturn { s =>
           if (s.leases != 0)
             (s.copy(open = false), None) // do not allow to run finalizer if there are leases open
           else
             (s.copy(open = false, finalizer = None), s.finalizer) // reset finalizer to None, will be run, it available, otherwise the acquire will take care of it
-        }) {
-          case (c, finalizer) =>
-            finalizer.getOrElse(F.pure(Right(())))
-        }
+        })(finalizer => finalizer.getOrElse(F.pure(Right(()))))
 
       def acquired(finalizer: F[Unit]): F[Either[Throwable, Unit]] = {
         val attemptFinalizer = F.attempt(finalizer)
-        F.flatMap(state.modify2 { s =>
+        F.flatten(state.modifyAndReturn { s =>
           if (!s.open && s.leases == 0)
-            (s, Some(attemptFinalizer)) // state is closed and there are no leases, finalizer has to be invoked stright away
+            s -> attemptFinalizer // state is closed and there are no leases, finalizer has to be invoked stright away
           else
-            (s.copy(finalizer = Some(attemptFinalizer)), None) // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
-        }) {
-          case (c, finalizer) =>
-            finalizer.getOrElse(F.pure(Right(())))
-        }
+            s.copy(finalizer = Some(attemptFinalizer)) -> F
+              .pure(Right(())) // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
+        })
       }
 
       def lease: F[Option[Scope.Lease[F]]] =
-        F.map(state.modify { s =>
-          if (!s.open) s
-          else s.copy(leases = s.leases + 1)
-        }) { c =>
-          if (!c.now.open) None
+        F.map(state.modifyAndReturn { s =>
+          val now = if (!s.open) s else s.copy(leases = s.leases + 1)
+          now -> now
+        }) { now =>
+          if (!now.open) None
           else {
             val lease = new Scope.Lease[F] {
               def cancel: F[Either[Throwable, Unit]] =
-                F.flatMap(state.modify { s =>
-                  s.copy(leases = s.leases - 1)
-                }) { c =>
-                  if (c.now.open)
+                F.flatMap(state.modifyAndReturn { s =>
+                  val now = s.copy(leases = s.leases - 1)
+                  now -> now
+                }) { now =>
+                  if (now.open)
                     F.pure(Right(())) // scope is open, we don't have to invoke finalizer
-                  else if (c.now.leases != 0)
+                  else if (now.leases != 0)
                     F.pure(Right(())) // scope is closed, but leases still pending
                   else {
                     // scope is closed and this is last lease, assure finalizer is removed from the state and run
-                    F.flatMap(state.modify(_.copy(finalizer = None))) { c =>
+                    F.flatten(state.modifyAndReturn { s =>
                       // previous finalizer shall be alwayy present at this point, this shall invoke it
-                      c.previous.finalizer.getOrElse(F.pure(Right(())))
-                    }
+                      s.copy(finalizer = None) -> s.finalizer.getOrElse(F.pure(Right(())))
+                    })
                   }
                 }
             }

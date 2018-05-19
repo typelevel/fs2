@@ -159,10 +159,11 @@ object Watcher {
     private def track(key: WatchKey, r: Registration[F]): F[F[Unit]] =
       registrations
         .modify(_.updated(key, r))
-        .as(
-          F.delay(key.cancel) *> registrations
-            .modify(_ - key)
-            .flatMap(c => c.previous.get(key).map(_.cleanup).getOrElse(F.pure(()))))
+        .as {
+          F.delay(key.cancel) *> registrations.modifyAndReturn { s =>
+            (s - key) -> s.get(key).map(_.cleanup).getOrElse(F.unit)
+          }.flatten
+        }
 
     override def watch(path: Path,
                        types: Seq[Watcher.EventType] = Nil,
