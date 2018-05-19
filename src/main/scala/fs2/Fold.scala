@@ -26,6 +26,9 @@ trait Fold[F[_], O, R] { self =>
   final def >>[O2 >: O, R2 >: R](that: => Fold[F, O2, R2]): Fold[F, O2, R2] =
     flatMap(_ => that)
 
+  final def map[R2](f: R => R2): Fold[F, O, R2] =
+    flatMap(r => Fold.pure(f(r)))
+
   def translate[G[_]](f: F ~> G): Fold[G, O, R]
 }
 
@@ -55,6 +58,20 @@ object Fold {
     def step: Fold[F, Nothing, Either[Unit, (Segment[O, Unit], Fold[F, O, Unit])]] =
       pure(Either.right[Unit, (Segment[O, Unit], Fold[F, O, Unit])]((os, pure[F, O, Unit](()))))
     def translate[G[_]](f: F ~> G): Fold[G, O, Unit] = output(os)
+  }
+
+  def segment[F[_], O, R](os: Segment[O, R]): Fold[F, O, R] = new Fold[F, O, R] {
+    def fold[S](initial: S)(f: (S, O) => S)(implicit F: Sync[F]): F[(S, R)] =
+      F.delay(os.fold(initial)(f).force.run.swap) // TODO add cancelation boundary every so often
+    def step: Fold[F, Nothing, Either[R, (Segment[O, Unit], Fold[F, O, R])]] =
+      os.force.splitAt(1024, Some(10000)) match {
+        case Left((r, chunks, _)) =>
+          if (chunks.isEmpty) pure(Left(r))
+          else pure(Right((Segment.catenatedChunks(chunks), pure(r))))
+        case Right((chunks, tail)) =>
+          pure(Right((Segment.catenatedChunks(chunks), segment(tail))))
+      }
+    def translate[G[_]](f: F ~> G): Fold[G, O, R] = segment(os)
   }
 
   def eval[F[_], O, R](fr: F[R]): Fold[F, O, R] = new Fold[F, O, R] {

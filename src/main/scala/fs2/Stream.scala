@@ -18,6 +18,22 @@ object Stream {
 
   def apply[O](os: O*): Stream[Pure, O] = emits(os)
 
+  /**
+    * Creates a stream that depends on a resource allocated by an effect, ensuring the resource is
+    * released regardless of how the stream is used.
+    *
+    * @param r resource to acquire at start of stream
+    * @param use function which uses the acquired resource to generate a stream of effectful outputs
+    * @param release function which returns an effect that releases the resource
+    *
+    * A typical use case for bracket is working with files or network sockets. The resource effect
+    * opens a file and returns a reference to it. The `use` function reads bytes and transforms them
+    * in to some stream of elements (e.g., bytes, strings, lines, etc.). The `release` action closes
+    * the file.
+    */
+  def bracket[F[_], R, O](r: F[R])(use: R => Stream[F, O], release: R => F[Unit]): Stream[F, O] =
+    fromFold(Fold.bracket[F, R, O, Unit](r)(r => use(r).fold, release))
+
   def emit[O](o: O): Stream[Pure, O] = fromFold(Fold.output1[Pure, O](o))
 
   def emits[O](os: Seq[O]): Stream[Pure, O] =
