@@ -2,6 +2,7 @@ package fs2
 
 import cats.data.NonEmptyList
 
+import scala.collection.generic.CanBuildFrom
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import cats.{Applicative, Eq, Functor, Id, Monoid, Semigroup, ~>}
@@ -2772,6 +2773,10 @@ object Stream {
         implicit F: Effect[F],
         ec: ExecutionContext): Stream[F, O] =
       covary[F].pauseWhen(pauseWhenTrue)
+
+    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
+    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): C[O] =
+      covary[IO].compile.to[C].unsafeRunSync
 
     /** Runs this pure stream and returns the emitted elements in a list. Note: this method is only available on pure streams. */
     def toList: List[O] = covary[IO].compile.toList.unsafeRunSync
