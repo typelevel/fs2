@@ -180,8 +180,10 @@ private[fs2] object Algebra {
   /** Left-folds the output of a stream. */
   def compile[F[_], O, B](stream: FreeC[Algebra[F, O, ?], Unit], init: B)(f: (B, O) => B)(
       implicit F: Sync[F]): F[B] =
-    F.bracket(F.delay(CompileScope.newRoot[F, O]))(scope =>
-      compileScope[F, O, B](scope, stream, init)(f))(scope => scope.close.rethrow)
+    F.delay(CompileScope.newRoot[F, O]).flatMap { scope =>
+      F.bracket(F.unit)(u => compileScope[F, O, B](scope, stream, init)(f))(u =>
+        scope.close.rethrow)
+    }
 
   private[fs2] def compileScope[F[_], O, B](scope: CompileScope[F, O],
                                             stream: FreeC[Algebra[F, O, ?], Unit],
