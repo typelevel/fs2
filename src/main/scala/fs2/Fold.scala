@@ -19,10 +19,14 @@ trait Fold[F[_], O, R] { self =>
         case Left(r) =>
           f(r).unfold
       }
+    def translate[G[_]](g: F ~> G): Fold[G, O2, R2] =
+      self.translate(g).flatMap(r => f(r).translate(g))
   }
 
   final def >>[O2 >: O, R2 >: R](that: => Fold[F, O2, R2]): Fold[F, O2, R2] =
     flatMap(_ => that)
+
+  def translate[G[_]](f: F ~> G): Fold[G, O, R]
 }
 
 object Fold {
@@ -31,6 +35,7 @@ object Fold {
       (initial, r).pure[F]
     def unfold: Fold[F, Nothing, Either[R, (Segment[O, Unit], Fold[F, O, R])]] =
       pure(Either.left[R, (Segment[O, Unit], Fold[F, O, R])](r))
+    def translate[G[_]](f: F ~> G): Fold[G, O, R] = pure[G, O, R](r)
   }
 
   def output1[F[_], O](o: O): Fold[F, O, Unit] = new Fold[F, O, Unit] {
@@ -41,6 +46,7 @@ object Fold {
         Either
           .right[Unit, (Segment[O, Unit], Fold[F, O, Unit])](
             (Segment.singleton(o), pure[F, O, Unit](()))))
+    def translate[G[_]](f: F ~> G): Fold[G, O, Unit] = output1(o)
   }
 
   def output[F[_], O](os: Segment[O, Unit]): Fold[F, O, Unit] = new Fold[F, O, Unit] {
@@ -48,6 +54,7 @@ object Fold {
       F.delay((os.fold(initial)(f).force.run._2, ())) // TODO add cancelation boundary every so often
     def unfold: Fold[F, Nothing, Either[Unit, (Segment[O, Unit], Fold[F, O, Unit])]] =
       pure(Either.right[Unit, (Segment[O, Unit], Fold[F, O, Unit])]((os, pure[F, O, Unit](()))))
+    def translate[G[_]](f: F ~> G): Fold[G, O, Unit] = output(os)
   }
 
   def eval[F[_], O, R](fr: F[R]): Fold[F, O, R] = new Fold[F, O, R] {
@@ -56,6 +63,7 @@ object Fold {
     def unfold: Fold[F, Nothing, Either[R, (Segment[O, Unit], Fold[F, O, R])]] =
       eval[F, Nothing, R](fr).flatMap[Either[R, (Segment[O, Unit], Fold[F, O, R])], Nothing](r =>
         pure(Either.left[R, (Segment[O, Unit], Fold[F, O, R])](r)))
+    def translate[G[_]](f: F ~> G): Fold[G, O, R] = eval(f(fr))
   }
 
   def bracket[F[_], A, O, R](acquire: F[A])(use: A => Fold[F, O, R],
@@ -67,6 +75,8 @@ object Fold {
         bracket[F, A, Nothing, Either[R, (Segment[O, Unit], Fold[F, O, R])]](acquire)(
           a => use(a).unfold,
           release)
+      def translate[G[_]](f: F ~> G): Fold[G, O, R] =
+        bracket[G, A, O, R](f(acquire))(a => use(a).translate(f), a => f(release(a)))
     }
 
   implicit def monadInstance[F[_], O]: Monad[Fold[F, O, ?]] =

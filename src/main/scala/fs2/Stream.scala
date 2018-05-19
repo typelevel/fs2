@@ -112,6 +112,12 @@ object Stream {
         case Left(()) =>
           Stream.empty.covaryAll[F, O2].fold
       })
+
+    /**
+      * Translates effect type from `F` to `G` using the supplied `FunctionK`.
+      */
+    def translate[G[_]](u: F ~> G): Stream[G, O] =
+      Stream.fromFold[G, O](self.fold.translate(u))
   }
 
   /** Provides syntax for pure empty pipes. */
