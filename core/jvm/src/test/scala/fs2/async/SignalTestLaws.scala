@@ -125,8 +125,10 @@ class SignalTestLaws extends FunSuite with Discipline {
     FunctorTests.apply[SignalIO](immutable.Signal.signalIsFunctor).functor[String, Int, Double]
   )
 
+  private val executor = Executors.newFixedThreadPool(2)
+
   private implicit val testExecutionContext: ExecutionContextExecutor =
-    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(2))
+    ExecutionContext.fromExecutor(executor)
 
   // Overlap between Functor and Applicative instances is probably causing this
   // need for an explicit Isomorphisms that would otherwise be implied by
@@ -139,4 +141,7 @@ class SignalTestLaws extends FunSuite with Discipline {
     "immutable.Signal",
     ApplicativeTests.apply[SignalIO].applicative[String, Int, Double]
   )
+
+  executor.shutdown()
+
 }
