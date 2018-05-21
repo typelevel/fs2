@@ -1,5 +1,6 @@
 package fs2
 
+import cats.{Applicative, Id}
 import cats.effect.IO
 
 object ThisModuleShouldCompile {
@@ -49,6 +50,11 @@ object ThisModuleShouldCompile {
 
   val p: Pull[Pure,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = Stream(1, 2, 3).pull.uncons
   val q: Pull[IO,Nothing,Option[(Segment[Int,Unit],Stream[Pure,Int])]] = p
+
+  val streamId: Stream[Id, Int] = Stream(1,2,3)
+  (streamId.covaryId[IO]): Stream[IO, Int]
+
+  def polyId[F[_]: Applicative, A](stream: Stream[Id, A]): Stream[F, A] = stream.covaryId[F] through (_.take(2))
 
   // With cats implicits enabled, some of the above fail to compile due to the cats syntax being invariant:
   {

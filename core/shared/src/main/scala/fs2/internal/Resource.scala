@@ -106,7 +106,7 @@ private[internal] object Resource {
       val id: Token = new Token
 
       def release: F[Either[Throwable, Unit]] =
-        F.flatMap(state.modifyAndReturn { s =>
+        F.flatMap(state.modify { s =>
           if (s.leases != 0)
             (s.copy(open = false), None) // do not allow to run finalizer if there are leases open
           else
@@ -115,7 +115,7 @@ private[internal] object Resource {
 
       def acquired(finalizer: F[Unit]): F[Either[Throwable, Unit]] = {
         val attemptFinalizer = F.attempt(finalizer)
-        F.flatten(state.modifyAndReturn { s =>
+        F.flatten(state.modify { s =>
           if (!s.open && s.leases == 0)
             s -> attemptFinalizer // state is closed and there are no leases, finalizer has to be invoked stright away
           else
@@ -125,7 +125,7 @@ private[internal] object Resource {
       }
 
       def lease: F[Option[Scope.Lease[F]]] =
-        F.map(state.modifyAndReturn { s =>
+        F.map(state.modify { s =>
           val now = if (!s.open) s else s.copy(leases = s.leases + 1)
           now -> now
         }) { now =>
@@ -133,7 +133,7 @@ private[internal] object Resource {
           else {
             val lease = new Scope.Lease[F] {
               def cancel: F[Either[Throwable, Unit]] =
-                F.flatMap(state.modifyAndReturn { s =>
+                F.flatMap(state.modify { s =>
                   val now = s.copy(leases = s.leases - 1)
                   now -> now
                 }) { now =>
@@ -143,7 +143,7 @@ private[internal] object Resource {
                     F.pure(Right(())) // scope is closed, but leases still pending
                   else {
                     // scope is closed and this is last lease, assure finalizer is removed from the state and run
-                    F.flatten(state.modifyAndReturn { s =>
+                    F.flatten(state.modify { s =>
                       // previous finalizer shall be alwayy present at this point, this shall invoke it
                       s.copy(finalizer = None) -> s.finalizer.getOrElse(F.pure(Right(())))
                     })

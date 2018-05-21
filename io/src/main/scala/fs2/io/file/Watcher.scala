@@ -158,9 +158,9 @@ object Watcher {
 
     private def track(key: WatchKey, r: Registration[F]): F[F[Unit]] =
       registrations
-        .modify(_.updated(key, r))
+        .update(_.updated(key, r))
         .as {
-          F.delay(key.cancel) *> registrations.modifyAndReturn { s =>
+          F.delay(key.cancel) *> registrations.modify { s =>
             (s - key) -> s.get(key).map(_.cleanup).getOrElse(F.unit)
           }.flatten
         }
@@ -262,7 +262,7 @@ object Watcher {
                   val (cancels, events) = x.separate
                   val cancelAll: F[Unit] = cancels.sequence.void
                   val updateRegistration: F[Unit] = this.registrations
-                    .modify(
+                    .update(
                       m =>
                         m.get(key)
                           .map(r => m.updated(key, r.copy(cleanup = r.cleanup *> cancelAll)))

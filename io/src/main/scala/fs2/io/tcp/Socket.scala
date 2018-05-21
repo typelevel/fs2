@@ -209,7 +209,7 @@ protected[tcp] object Socket {
   def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: ConcurrentEffect[F],
                                                     ec: ExecutionContext): F[Socket[F]] = {
     Semaphore(1).flatMap { readSemaphore =>
-      Ref[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
+      Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
         // Also measures time the read took returning this as tuple
         // of (bytes_read, read_duration)

@@ -10,6 +10,7 @@ import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
 
 import fs2.Stream._
+import fs2.internal.Token
 
 /** Data type of a single value of type `A` that can be read and written in the effect `F`. */
 abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
@@ -18,19 +19,19 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
   def set(a: A): F[Unit]
 
   /**
-    * Modifies the current value using the supplied update function. If another modification
+    * Updates the current value using the supplied update function. If another modification
     * occurs between the time the current value is read and subsequently updated, the modification
     * is retried using the new value. Hence, `f` may be invoked multiple times.
     *
     * Satisfies:
     *   `r.modify(_ => a) == r.set(a)`
     */
-  def modify(f: A => A): F[Unit]
+  def update(f: A => A): F[Unit]
 
   /**
-    * Like [[modify]] but allows the update function to return an output value of type `B`
+    * Like [[update]] but allows the update function to return an output value of type `B`
     */
-  def modifyAndReturn[B](f: A => (A, B)): F[B]
+  def modify[B](f: A => (A, B)): F[B]
 
   /**
     * Asynchronously refreshes the value of the signal,
@@ -49,11 +50,11 @@ abstract class Signal[F[_], A] extends immutable.Signal[F, A] { self =>
       def get: F[B] = self.get.map(f)
       def set(b: B): F[Unit] = self.set(g(b))
       def refresh: F[Unit] = self.refresh
-      def modify(bb: B => B): F[Unit] =
-        modifyAndReturn(b => (bb(b), ()))
-      def modifyAndReturn[B2](bb: B => (B, B2)): F[B2] =
+      def update(bb: B => B): F[Unit] =
+        modify(b => (bb(b), ()))
+      def modify[B2](bb: B => (B, B2)): F[B2] =
         self
-          .modifyAndReturn { a =>
+          .modify { a =>
             val (a2, b2) = bb(f(a))
             g(a2) -> b2
           }
@@ -69,23 +70,22 @@ object Signal {
       def discrete = Stream.empty // never changes, so never any updates
     }
 
-  def apply[F[_], A](initA: A)(implicit F: Concurrent[F], ec: ExecutionContext): F[Signal[F, A]] = {
-    class ID
-
-    Ref[F, (A, Long, Map[ID, Deferred[F, (A, Long)]])]((initA, 0, Map.empty))
+  def apply[F[_], A](initA: A)(implicit F: Concurrent[F], ec: ExecutionContext): F[Signal[F, A]] =
+    Ref
+      .of[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]((initA, 0, Map.empty))
       .map { state =>
         new Signal[F, A] {
-          def refresh: F[Unit] = modify(identity)
-          def set(a: A): F[Unit] = modify(_ => a)
+          def refresh: F[Unit] = update(identity)
+          def set(a: A): F[Unit] = update(_ => a)
           def get: F[A] = state.get.map(_._1)
-          def modify(f: A => A): F[Unit] =
-            modifyAndReturn(a => (f(a), ()))
-          def modifyAndReturn[B](f: A => (A, B)): F[B] =
-            state.modifyAndReturn {
+          def update(f: A => A): F[Unit] =
+            modify(a => (f(a), ()))
+          def modify[B](f: A => (A, B)): F[B] =
+            state.modify {
               case (a, updates, listeners) =>
                 val (newA, result) = f(a)
                 val newUpdates = updates + 1
-                val newState = (newA, newUpdates, Map.empty[ID, Deferred[F, (A, Long)]])
+                val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
                 val action = listeners.toVector.traverse {
                   case (_, deferred) =>
                     async.fork(deferred.complete(newA -> newUpdates))
@@ -98,11 +98,11 @@ object Signal {
             Stream.repeatEval(get)
 
           def discrete: Stream[F, A] = {
-            def go(id: ID, lastUpdate: Long): Stream[F, A] = {
+            def go(id: Token, lastUpdate: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
                 Deferred[F, (A, Long)]
                   .flatMap { deferred =>
-                    state.modifyAndReturn {
+                    state.modify {
                       case s @ (a, updates, listeners) =>
                         if (updates != lastUpdate) s -> (a -> updates).pure[F]
                         else (a, updates, listeners + (id -> deferred)) -> deferred.get
@@ -112,10 +112,10 @@ object Signal {
               eval(getNext).flatMap { case (a, l) => emit(a) ++ go(id, l) }
             }
 
-            def cleanup(id: ID): F[Unit] =
-              state.modify(s => s.copy(_3 = s._3 - id))
+            def cleanup(id: Token): F[Unit] =
+              state.update(s => s.copy(_3 = s._3 - id))
 
-            bracket(F.delay(new ID))(
+            bracket(F.delay(new Token))(
               id =>
                 eval(state.get).flatMap {
                   case (a, l, _) => emit(a) ++ go(id, l)
@@ -125,5 +125,4 @@ object Signal {
           }
         }
       }
-  }
 }

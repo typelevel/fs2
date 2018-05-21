@@ -14,8 +14,8 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
 
     "effect is not evaluated if the inner `F[A]` isn't bound" in {
       val t = for {
-        ref <- Ref[IO, Int](42)
-        act = ref.modify(_ + 1)
+        ref <- Ref.of[IO, Int](42)
+        act = ref.update(_ + 1)
         _ <- async.once(act)
         _ <- Timer[IO].sleep(100.millis)
         v <- ref.get
@@ -25,8 +25,8 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
 
     "effect is evaluated once if the inner `F[A]` is bound twice" in {
       val tsk = for {
-        ref <- Ref[IO, Int](42)
-        act = ref.modifyAndReturn { s =>
+        ref <- Ref.of[IO, Int](42)
+        act = ref.modify { s =>
           val ns = s + 1
           ns -> ns
         }
@@ -40,8 +40,8 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
 
     "effect is evaluated once if the inner `F[A]` is bound twice (race)" in {
       val t = for {
-        ref <- Ref[IO, Int](42)
-        act = ref.modifyAndReturn { s =>
+        ref <- Ref.of[IO, Int](42)
+        act = ref.modify { s =>
           val ns = s + 1
           ns -> ns
         }
@@ -57,8 +57,8 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
     "once andThen flatten is identity" in {
       val n = 10
       val t = for {
-        ref <- Ref[IO, Int](42)
-        act1 = ref.modifyAndReturn { s =>
+        ref <- Ref.of[IO, Int](42)
+        act1 = ref.modify { s =>
           val ns = s + 1
           ns -> ns
         }

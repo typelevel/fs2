@@ -1,11 +1,12 @@
 package fs2
 
-import cats.{Applicative, Eq, Functor, MonadError, Monoid, Semigroup, ~>}
+import cats.{Applicative, Eq, Functor, Id, MonadError, Monoid, Semigroup, ~>}
 import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.internal.{Algebra, FreeC, Token}
+import scala.collection.generic.CanBuildFrom
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
@@ -64,6 +65,7 @@ import scala.concurrent.duration._
   *
   *
   * @hideImplicitConversion PureOps
+  * @hideImplicitConversion IdOps
   * @hideImplicitConversion EmptyOps
   * @hideImplicitConversion covaryPure
   */
@@ -1847,15 +1849,15 @@ object Stream {
         }
 
       Stream.eval(async.boundedQueue[F, Option[O]](1)).flatMap { queue =>
-        Stream.eval(Ref[F, Option[O]](None)).flatMap { ref =>
+        Stream.eval(Ref.of[F, Option[O]](None)).flatMap { ref =>
           def enqueueLatest: F[Unit] =
-            ref.modifyAndReturn(s => None -> s).flatMap {
+            ref.modify(s => None -> s).flatMap {
               case v @ Some(_) => queue.enqueue1(v)
               case None        => F.unit
             }
 
           val in: Stream[F, Unit] = atemporal.evalMap { o =>
-            ref.modifyAndReturn(s => o.some -> s).flatMap {
+            ref.modify(s => o.some -> s).flatMap {
               case None    => async.fork(timer.sleep(d) >> enqueueLatest).void
               case Some(_) => F.unit
             }
@@ -2208,7 +2210,7 @@ object Stream {
                   // stops the join evaluation
                   // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
                   def stop(rslt: Option[Throwable]): F[Unit] =
-                    done.modify {
+                    done.update {
                       case rslt0 @ Some(Some(err0)) =>
                         rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
                           Some(Some(new CompositeFailure(err0, NonEmptyList.of(err))))
@@ -2216,9 +2218,9 @@ object Stream {
                       case _ => Some(rslt)
                     } *> outputQ.enqueue1(None)
 
-                  val incrementRunning: F[Unit] = running.modify(_ + 1)
+                  val incrementRunning: F[Unit] = running.update(_ + 1)
                   val decrementRunning: F[Unit] =
-                    running.modifyAndReturn { n =>
+                    running.modify { n =>
                       val now = n - 1
                       now -> (if (now == 0) stop(None) else F.unit)
                     }.flatten
@@ -2947,6 +2949,10 @@ object Stream {
         ec: ExecutionContext): Stream[F, O] =
       covary[F].pauseWhen(pauseWhenTrue)
 
+    /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
+    def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): C[O] =
+      covary[IO].compile.to[C].unsafeRunSync
+
     /** Runs this pure stream and returns the emitted elements in a list. Note: this method is only available on pure streams. */
     def toList: List[O] = covary[IO].compile.toList.unsafeRunSync
 
@@ -2965,6 +2971,20 @@ object Stream {
 
     def zipWith[F[_], O2, O3](s2: Stream[F, O2])(f: (O, O2) => O3): Stream[F, O3] =
       covary[F].zipWith(s2)(f)
+  }
+
+  implicit def IdOps[O](s: Stream[Id, O]): IdOps[O] =
+    new IdOps(s.get[Id, O])
+
+  /** Provides syntax for pure pipes based on `cats.Id`. */
+  final class IdOps[O] private[Stream] (private val free: FreeC[Algebra[Id, O, ?], Unit])
+      extends AnyVal {
+    private def self: Stream[Id, O] = Stream.fromFreeC[Id, O](free)
+
+    private def idToApplicative[F[_]: Applicative]: Id ~> F =
+      new (Id ~> F) { def apply[A](a: Id[A]) = a.pure[F] }
+
+    def covaryId[F[_]: Applicative]: Stream[F, O] = self.translate(idToApplicative[F])
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
