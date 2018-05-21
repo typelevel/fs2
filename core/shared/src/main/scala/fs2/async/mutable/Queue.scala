@@ -128,7 +128,7 @@ object Queue {
 
     for {
       szSignal <- Signal(0)
-      qref <- Ref[F, State](State(Vector.empty, Vector.empty, None))
+      qref <- Ref.of[F, State](State(Vector.empty, Vector.empty, None))
     } yield
       new Queue[F, A] {
         // Signals size change of queue, if that has changed
@@ -141,7 +141,7 @@ object Queue {
 
         def offer1(a: A): F[Boolean] =
           qref
-            .modifyAndReturn { s =>
+            .modify { s =>
               val (newState, signalDequeuers) = s.deq match {
                 case dequeuers if dequeuers.isEmpty =>
                   // we enqueue a value to the queue
@@ -167,7 +167,7 @@ object Queue {
         def dequeue: Stream[F, A] =
           Stream.bracket(F.delay(new Token))(
             t => Stream.repeatEval(dequeueBatch1Impl(1, t).map(_.head.get)),
-            t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t))))
+            t => qref.update(s => s.copy(deq = s.deq.filterNot(_._1 == t))))
 
         def dequeueBatch: Pipe[F, Int, A] =
           batchSizes =>
@@ -175,7 +175,7 @@ object Queue {
               t =>
                 batchSizes.flatMap(batchSize =>
                   Stream.eval(dequeueBatch1Impl(batchSize, t)).flatMap(Stream.chunk(_))),
-              t => qref.modify(s => s.copy(deq = s.deq.filterNot(_._1 == t)))
+              t => qref.update(s => s.copy(deq = s.deq.filterNot(_._1 == t)))
           )
 
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
@@ -183,14 +183,14 @@ object Queue {
 
         private def dequeueBatch1Impl(batchSize: Int, token: Token): F[Chunk[A]] =
           Deferred[F, Chunk[A]].flatMap { d =>
-            qref.modifyAndReturn { s =>
+            qref.modify { s =>
               val newState =
                 if (s.queue.isEmpty) s.copy(deq = s.deq :+ (token -> d))
                 else s.copy(queue = s.queue.drop(batchSize))
 
               val cleanup =
                 if (s.queue.nonEmpty) F.unit
-                else qref.modify(s => s.copy(deq = s.deq.filterNot(_._2 == d)))
+                else qref.update(s => s.copy(deq = s.deq.filterNot(_._2 == d)))
 
               val dequeueBatch = signalSize(s, newState).flatMap { _ =>
                 if (s.queue.nonEmpty) {
@@ -208,13 +208,13 @@ object Queue {
 
         def peek1: F[A] =
           Deferred[F, A].flatMap { d =>
-            qref.modifyAndReturn { state =>
+            qref.modify { state =>
               val newState =
                 if (state.queue.isEmpty && state.peek.isEmpty)
                   state.copy(peek = Some(d))
                 else state
 
-              val cleanup = qref.modify { state =>
+              val cleanup = qref.update { state =>
                 if (state.peek == Some(d)) state.copy(peek = None) else state
               }
 
@@ -342,7 +342,7 @@ object Queue {
                                          ec: ExecutionContext): F[Queue[F, Option[A]]] =
     for {
       permits <- Semaphore(0)
-      doneRef <- Ref[F, Boolean](false)
+      doneRef <- Ref.of[F, Boolean](false)
       q <- unbounded[F, Option[A]]
     } yield
       new Queue[F, Option[A]] {

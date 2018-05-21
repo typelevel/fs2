@@ -76,7 +76,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     * Returns false if the resource may not be registered because scope is closed already.
     */
   def register(resource: Resource[F]): F[Boolean] =
-    state.modifyAndReturn { s =>
+    state.modify { s =>
       val now = if (!s.open) s else s.copy(resources = resource +: s.resources)
       now -> now.open
     }
@@ -89,7 +89,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     * it may have been `leased` to other scopes.
     */
   def releaseResource(id: Token): F[Either[Throwable, Unit]] =
-    F.flatMap(state.modifyAndReturn { _.unregisterResource(id) }) {
+    F.flatMap(state.modify { _.unregisterResource(id) }) {
       case Some(resource) => resource.release
       case None           => F.pure(Right(())) // resource does not exist in scope any more.
     }
@@ -139,7 +139,7 @@ private[fs2] final class CompileScope[F[_], O] private (
 
     F.flatMap(createScopeContext) {
       case (iCtx, newScopeId) =>
-        F.flatMap(state.modifyAndReturn { s =>
+        F.flatMap(state.modify { s =>
           if (!s.open) (s, None)
           else {
             val scope = new CompileScope[F, O](newScopeId, Some(self), iCtx)
@@ -194,7 +194,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     * reachable from its parent.
     */
   def releaseChildScope(id: Token): F[Unit] =
-    F.map(state.modifyAndReturn { _.unregisterChild(id) }) { _ =>
+    F.map(state.modify { _.unregisterChild(id) }) { _ =>
       ()
     }
 
@@ -228,7 +228,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     * more details.
     */
   def close: F[Either[Throwable, Unit]] =
-    F.flatMap(state.modifyAndReturn(s => s.close -> s)) { previous =>
+    F.flatMap(state.modify(s => s.close -> s)) { previous =>
       F.flatMap(traverseError[CompileScope[F, O]](previous.children, _.close)) { resultChildren =>
         F.flatMap(traverseError[Resource[F]](previous.resources, _.release)) { resultResources =>
           F.flatMap(self.interruptible.map(_.cancelParent).getOrElse(F.unit)) { _ =>
@@ -373,9 +373,7 @@ private[fs2] final class CompileScope[F[_], O] private (
         // note that we guard interruption here by Attempt to prevent failure on multiple sets.
         val interruptCause = cause.right.map(_ => iCtx.interruptRoot)
         F.flatMap(F.attempt(iCtx.deferred.complete(interruptCause))) { _ =>
-          F.map(iCtx.ref.modify { _.orElse(Some(interruptCause)) }) { _ =>
-            ()
-          }
+          iCtx.ref.update { _.orElse(Some(interruptCause)) }
         }
     }
 
@@ -570,7 +568,7 @@ private[internal] object CompileScope {
               )
 
               F.map(fs2.async.fork(F.flatMap(fiber.join)(interrupt =>
-                F.flatMap(context.ref.modify(_.orElse(Some(interrupt)))) { _ =>
+                F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
                   F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
               }))(concurrent, ec)) { _ =>
                 context

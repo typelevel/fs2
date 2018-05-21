@@ -1849,15 +1849,15 @@ object Stream {
         }
 
       Stream.eval(async.boundedQueue[F, Option[O]](1)).flatMap { queue =>
-        Stream.eval(Ref[F, Option[O]](None)).flatMap { ref =>
+        Stream.eval(Ref.of[F, Option[O]](None)).flatMap { ref =>
           def enqueueLatest: F[Unit] =
-            ref.modifyAndReturn(s => None -> s).flatMap {
+            ref.modify(s => None -> s).flatMap {
               case v @ Some(_) => queue.enqueue1(v)
               case None        => F.unit
             }
 
           val in: Stream[F, Unit] = atemporal.evalMap { o =>
-            ref.modifyAndReturn(s => o.some -> s).flatMap {
+            ref.modify(s => o.some -> s).flatMap {
               case None    => async.fork(timer.sleep(d) >> enqueueLatest).void
               case Some(_) => F.unit
             }
@@ -2210,7 +2210,7 @@ object Stream {
                   // stops the join evaluation
                   // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
                   def stop(rslt: Option[Throwable]): F[Unit] =
-                    done.modify {
+                    done.update {
                       case rslt0 @ Some(Some(err0)) =>
                         rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
                           Some(Some(new CompositeFailure(err0, NonEmptyList.of(err))))
@@ -2218,9 +2218,9 @@ object Stream {
                       case _ => Some(rslt)
                     } *> outputQ.enqueue1(None)
 
-                  val incrementRunning: F[Unit] = running.modify(_ + 1)
+                  val incrementRunning: F[Unit] = running.update(_ + 1)
                   val decrementRunning: F[Unit] =
-                    running.modifyAndReturn { n =>
+                    running.modify { n =>
                       val now = n - 1
                       now -> (if (now == 0) stop(None) else F.unit)
                     }.flatten

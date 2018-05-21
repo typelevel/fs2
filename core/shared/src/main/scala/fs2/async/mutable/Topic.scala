@@ -99,7 +99,8 @@ object Topic {
       def unSubscribe: F[Unit]
     }
 
-    Ref[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
+    Ref
+      .of[F, (A, Vector[Subscriber])]((initial, Vector.empty[Subscriber]))
       .flatMap { state =>
         async.signalOf[F, Int](0).map { subSignal =>
           def mkSubscriber(maxQueued: Int): F[Subscriber] =
@@ -110,10 +111,10 @@ object Topic {
               sub = new Subscriber {
                 def unSubscribe: F[Unit] =
                   for {
-                    _ <- state.modify {
+                    _ <- state.update {
                       case (a, subs) => a -> subs.filterNot(_.id == id)
                     }
-                    _ <- subSignal.modify(_ - 1)
+                    _ <- subSignal.update(_ - 1)
                     _ <- done.complete(true)
                   } yield ()
                 def subscribe: Stream[F, A] = eval(firstA.get) ++ q.dequeue
@@ -137,8 +138,8 @@ object Topic {
                   eval(firstA.get).map(_ -> 0) ++ q.dequeue.zip(q.size.continuous)
                 val id: ID = new ID
               }
-              a <- state.modifyAndReturn { case (a, s) => (a, s :+ sub) -> a }
-              _ <- subSignal.modify(_ + 1)
+              a <- state.modify { case (a, s) => (a, s :+ sub) -> a }
+              _ <- subSignal.update(_ + 1)
               _ <- firstA.complete(a)
             } yield sub
 
@@ -149,7 +150,7 @@ object Topic {
             def subscribers: Signal[F, Int] = subSignal
 
             def publish1(a: A): F[Unit] =
-              state.modifyAndReturn {
+              state.modify {
                 case (_, subs) =>
                   (a, subs) -> subs.traverse_(_.publish(a))
               }.flatten
