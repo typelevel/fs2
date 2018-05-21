@@ -105,10 +105,10 @@ package object async {
     * @see `start` for eager memoization.
     */
   def once[F[_], A](f: F[A])(implicit F: Concurrent[F]): F[F[A]] =
-    Ref[F, Option[Deferred[F, Either[Throwable, A]]]](None).map { ref =>
+    Ref.of[F, Option[Deferred[F, Either[Throwable, A]]]](None).map { ref =>
       Deferred[F, Either[Throwable, A]].flatMap { d =>
         ref
-          .modifyAndReturn {
+          .modify {
             case None =>
               Some(d) -> f.attempt.flatTap(d.complete)
             case s @ Some(other) => s -> other.get

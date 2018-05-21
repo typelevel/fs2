@@ -196,7 +196,7 @@ private[io] object JavaInputOutputStream {
         case _           => Done(rsn)
       }
 
-      dnState.modifyAndReturn { s =>
+      dnState.modify { s =>
         val (n, out) = tryGetChunk(s)
 
         val result = out match {
@@ -215,10 +215,10 @@ private[io] object JavaInputOutputStream {
                 queue.dequeue1.flatMap {
                   case Left(None) =>
                     dnState
-                      .modify(setDone(None))
+                      .update(setDone(None))
                       .as(-1) // update we are done, next read won't succeed
                   case Left(Some(err)) => // update we are failed, next read won't succeed
-                    dnState.modify(setDone(err.some)) *> F.raiseError[Int](
+                    dnState.update(setDone(err.some)) *> F.raiseError[Int](
                       new IOException("UpStream failed", err))
                   case Right(bytes) =>
                     val (copy, maybeKeep) =
@@ -249,7 +249,7 @@ private[io] object JavaInputOutputStream {
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
     )(implicit F: Effect[F]): F[Unit] =
-      F.flatMap(dnState.modify {
+      F.flatMap(dnState.update {
         case s @ Done(_) => s
         case other       => Done(None)
       }) { _ =>
