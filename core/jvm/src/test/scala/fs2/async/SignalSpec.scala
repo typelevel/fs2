@@ -159,7 +159,7 @@ class SignalSpec extends Fs2Spec {
 
   checkAll(
     "immutable.Signal (stand-alone functor instance)",
-    FunctorTests[SignalIO](immutable.Signal.signalIsFunctor).functor[String, Int, Double]
+    FunctorTests[SignalIO](immutable.Signal.functorInstance).functor[String, Int, Double]
   )
 
   checkAll(

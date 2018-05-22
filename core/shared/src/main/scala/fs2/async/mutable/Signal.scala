@@ -141,9 +141,8 @@ object Signal {
       }
   }
 
-  implicit def signalIsInvariantFunctor[F[_]: Functor]
-    : Invariant[({ type L[X] = Signal[F, X] })#L] =
-    new Invariant[({ type L[X] = Signal[F, X] })#L] {
+  implicit def invariantInstance[F[_]: Functor]: Invariant[Signal[F, ?]] =
+    new Invariant[Signal[F, ?]] {
       override def imap[A, B](fa: Signal[F, A])(f: A => B)(g: B => A): Signal[F, B] = fa.imap(f)(g)
     }
 }

@@ -37,13 +37,13 @@ abstract class Signal[F[_], A] { self =>
   def get: F[A]
 }
 
-object Signal extends LowPrioritySignalImplicits {
+object Signal extends SignalLowPriorityImplicits {
 
-  implicit def signalIsApplicative[F[_]](
+  implicit def applicativeInstance[F[_]](
       implicit effectEv: Effect[F],
       ec: ExecutionContext
-  ): Applicative[({ type L[X] = Signal[F, X] })#L] =
-    new Applicative[({ type L[X] = Signal[F, X] })#L] {
+  ): Applicative[Signal[F, ?]] =
+    new Applicative[Signal[F, ?]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = Signal.map(fa)(f)
 
       override def pure[A](x: A): Signal[F, A] = fs2.async.mutable.Signal.constant(x)
@@ -105,23 +105,23 @@ object Signal extends LowPrioritySignalImplicits {
   }
 }
 
-trait LowPrioritySignalImplicits {
+trait SignalLowPriorityImplicits {
 
   /**
-    * Note that this is not subsumed by [[Signal.signalIsApplicative]] because
-    * [[Signal.signalIsApplicative]] requires an [[ExecutionContext]] and
+    * Note that this is not subsumed by [[Signal.applicativeInstance]] because
+    * [[Signal.applicativeInstance]] requires an [[ExecutionContext]] and
     * [[Effect]] to work with since it non-deterministically zips elements
     * together while our [[Functor]] instance has no other constraints.
     *
     * Separating the two instances allows us to make the [[Functor]] instance
     * more general.
     *
-    * We put this in a [[LowPrioritySignalImplicits]] to resolve ambiguous
-    * implicits if the [[Signal.signalIsApplicative]] is applicable, allowing
+    * We put this in a [[SignalLowPriorityImplicits]] to resolve ambiguous
+    * implicits if the [[Signal.applicativeInstance]] is applicable, allowing
     * the [[Applicative]]'s [[Functor]] instance to win.
     */
-  implicit def signalIsFunctor[F[_]: Functor]: Functor[({ type L[X] = Signal[F, X] })#L] =
-    new Functor[({ type L[X] = Signal[F, X] })#L] {
+  implicit def functorInstance[F[_]: Functor]: Functor[Signal[F, ?]] =
+    new Functor[Signal[F, ?]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = Signal.map(fa)(f)
     }
 }
