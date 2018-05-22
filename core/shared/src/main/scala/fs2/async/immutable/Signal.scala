@@ -44,29 +44,6 @@ object Signal extends LowPrioritySignalImplicits {
       ec: ExecutionContext
   ): Applicative[({ type L[X] = Signal[F, X] })#L] =
     new Applicative[({ type L[X] = Signal[F, X] })#L] {
-      private def nondeterministicZip[A0, A1](xs: Stream[F, A0], ys: Stream[F, A1])(
-          implicit effectEv: Effect[F],
-          ec: ExecutionContext
-      ): Stream[F, (A0, A1)] = {
-        type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
-        val firstPull = for {
-          firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
-          (x, restOfXs) = firstXAndRestOfXs
-          firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
-          (y, restOfYs) = firstYAndRestOfYs
-          _ <- OptionT.liftF(Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)))
-        } yield ()
-        firstPull.value.stream
-          .covaryOutput[PullOutput]
-          .flatMap {
-            case (x, y, restOfXs, restOfYs) =>
-              restOfXs.either(restOfYs).scan((x, y)) {
-                case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
-                case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
-              }
-          }
-      }
-
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = Signal.map(fa)(f)
 
       override def pure[A](x: A): Signal[F, A] = fs2.async.mutable.Signal.constant(x)
@@ -82,6 +59,29 @@ object Signal extends LowPrioritySignalImplicits {
           override def get: F[B] = ff.get.ap(fa.get)
         }
     }
+
+  private def nondeterministicZip[F[_], A0, A1](xs: Stream[F, A0], ys: Stream[F, A1])(
+      implicit effectEv: Effect[F],
+      ec: ExecutionContext
+  ): Stream[F, (A0, A1)] = {
+    type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
+    val firstPull = for {
+      firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
+      (x, restOfXs) = firstXAndRestOfXs
+      firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
+      (y, restOfYs) = firstYAndRestOfYs
+      _ <- OptionT.liftF(Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)))
+    } yield ()
+    firstPull.value.stream
+      .covaryOutput[PullOutput]
+      .flatMap {
+        case (x, y, restOfXs, restOfYs) =>
+          restOfXs.either(restOfYs).scan((x, y)) {
+            case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
+            case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
+          }
+      }
+  }
 
   def map[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
     new Signal[F, B] {
