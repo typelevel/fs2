@@ -37,41 +37,37 @@ abstract class Signal[F[_], A] { self =>
   def get: F[A]
 }
 
-object Signal {
-  implicit def signalIsFunctor[F[_]: Functor]: Functor[({ type L[X] = Signal[F, X] })#L] =
-    new Functor[({ type L[X] = Signal[F, X] })#L] {
-      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = fa.map(f)
-    }
-
+object Signal extends LowPrioritySignalImplicits {
   implicit def signalIsApplicative[F[_]](
       implicit effectEv: Effect[F],
       ec: ExecutionContext
   ): Applicative[({ type L[X] = Signal[F, X] })#L] =
     new Applicative[({ type L[X] = Signal[F, X] })#L] {
+      private def nondeterministicZip[A0, A1](xs: Stream[F, A0],
+                                              ys: Stream[F, A1]): Stream[F, (A0, A1)] = {
+        type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
+        val firstPull = for {
+          firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
+          (x, restOfXs) = firstXAndRestOfXs
+          firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
+          (y, restOfYs) = firstYAndRestOfYs
+          _ <- OptionT.liftF(Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)))
+        } yield ()
+        firstPull.value.stream
+          .covaryOutput[PullOutput]
+          .flatMap {
+            case (x, y, restOfXs, restOfYs) =>
+              restOfXs.either(restOfYs).scan((x, y)) {
+                case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
+                case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
+              }
+          }
+      }
+
       override def pure[A](x: A): Signal[F, A] = fs2.async.mutable.Signal.constant(x)
 
       override def ap[A, B](ff: Signal[F, A => B])(fa: Signal[F, A]): Signal[F, B] =
         new Signal[F, B] {
-          private def nondeterministicZip[A0, A1](xs: Stream[F, A0],
-                                                  ys: Stream[F, A1]): Stream[F, (A0, A1)] = {
-            type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
-            val firstPull = for {
-              firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
-              (x, restOfXs) = firstXAndRestOfXs
-              firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
-              (y, restOfYs) = firstYAndRestOfYs
-              _ <- OptionT.liftF(Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)))
-            } yield ()
-            firstPull.value.stream
-              .covaryOutput[PullOutput]
-              .flatMap {
-                case (x, y, restOfXs, restOfYs) =>
-                  restOfXs.either(restOfYs).scan((x, y)) {
-                    case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
-                    case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
-                  }
-              }
-          }
 
           override def discrete: Stream[F, B] =
             nondeterministicZip(ff.discrete, fa.discrete).map { case (f, a) => f(a) }
@@ -99,4 +95,25 @@ object Signal {
     def interrupt[A](s: Stream[F, A])(implicit F: Effect[F], ec: ExecutionContext): Stream[F, A] =
       s.interruptWhen(self)
   }
+}
+
+trait LowPrioritySignalImplicits {
+
+  /**
+    * Note that this is not subsumed by [[Signal.signalIsApplicative]] because
+    * [[Signal.signalIsApplicative]] requires an [[ExecutionContext]] and
+    * [[Effect]] to work with since it non-deterministically zips elements
+    * together while our [[Functor]] instance has no other constraints.
+    *
+    * Separating the two instances allows us to make the [[Functor]] instance
+    * more general.
+    *
+    * We put this in a [[LowPrioritySignalImplicits]] to resolve ambiguous
+    * implicits if the [[Signal.signalIsApplicative]] is applicable, allowing
+    * the [[Applicative]]'s [[Functor]] instance to win.
+    */
+  implicit def signalIsFunctor[F[_]: Functor]: Functor[({ type L[X] = Signal[F, X] })#L] =
+    new Functor[({ type L[X] = Signal[F, X] })#L] {
+      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = fa.map(f)
+    }
 }

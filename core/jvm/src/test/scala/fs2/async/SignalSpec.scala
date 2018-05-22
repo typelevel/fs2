@@ -8,7 +8,6 @@ import cats.effect.{IO, Sync}
 import cats.implicits._
 import TestUtil._
 import cats.laws.discipline.{ApplicativeTests, FunctorTests}
-import cats.laws.discipline.SemigroupalTests.Isomorphisms
 import org.scalacheck.Arbitrary
 
 class SignalSpec extends Fs2Spec {
@@ -159,19 +158,12 @@ class SignalSpec extends Fs2Spec {
   }
 
   checkAll(
-    "immutable.Signal",
-    FunctorTests.apply[SignalIO](immutable.Signal.signalIsFunctor).functor[String, Int, Double]
+    "immutable.Signal (stand-alone functor instance)",
+    FunctorTests[SignalIO](immutable.Signal.signalIsFunctor).functor[String, Int, Double]
   )
-
-  // Overlap between Functor and Applicative instances is probably causing this
-  // need for an explicit Isomorphisms that would otherwise be implied by
-  // Applicative. Note that this would go away if we accepted Applicative and
-  // did away with the explicit Functor instance
-  private implicit val isomorphismsInstance: Isomorphisms[SignalIO] =
-    Isomorphisms.invariant[SignalIO](immutable.Signal.signalIsApplicative[IO])
 
   checkAll(
     "immutable.Signal",
-    ApplicativeTests.apply[SignalIO].applicative[String, Int, Double]
+    ApplicativeTests[SignalIO].applicative[String, Int, Double]
   )
 }
