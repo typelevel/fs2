@@ -83,7 +83,7 @@ object Signal extends SignalLowPriorityImplicits {
       }
   }
 
-  def map[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
+  private[immutable] def map[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
     new Signal[F, B] {
       def continuous: Stream[F, B] = fa.continuous.map(f)
       def discrete: Stream[F, B] = fa.discrete.map(f)
