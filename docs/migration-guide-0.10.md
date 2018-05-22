@@ -84,7 +84,7 @@ In 0.10, the `Handle` type has been removed. Instead, custom pulls are written d
 ```scala
 // Equivalent to s.take(1)
 s.pull.uncons1.flatMap {
-  case None => Pull.pure(())
+  case None => Pull.done
   case Some((hd, tl)) => Pull.output1(hd)
 }.stream
 ```
