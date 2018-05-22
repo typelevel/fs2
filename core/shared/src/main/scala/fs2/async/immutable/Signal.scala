@@ -38,13 +38,16 @@ abstract class Signal[F[_], A] { self =>
 }
 
 object Signal extends LowPrioritySignalImplicits {
+
   implicit def signalIsApplicative[F[_]](
       implicit effectEv: Effect[F],
       ec: ExecutionContext
   ): Applicative[({ type L[X] = Signal[F, X] })#L] =
     new Applicative[({ type L[X] = Signal[F, X] })#L] {
-      private def nondeterministicZip[A0, A1](xs: Stream[F, A0],
-                                              ys: Stream[F, A1]): Stream[F, (A0, A1)] = {
+      private def nondeterministicZip[A0, A1](xs: Stream[F, A0], ys: Stream[F, A1])(
+          implicit effectEv: Effect[F],
+          ec: ExecutionContext
+      ): Stream[F, (A0, A1)] = {
         type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
         val firstPull = for {
           firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
@@ -64,6 +67,8 @@ object Signal extends LowPrioritySignalImplicits {
           }
       }
 
+      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = Signal.map(fa)(f)
+
       override def pure[A](x: A): Signal[F, A] = fs2.async.mutable.Signal.constant(x)
 
       override def ap[A, B](ff: Signal[F, A => B])(fa: Signal[F, A]): Signal[F, B] =
@@ -78,17 +83,20 @@ object Signal extends LowPrioritySignalImplicits {
         }
     }
 
+  def map[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
+    new Signal[F, B] {
+      def continuous: Stream[F, B] = fa.continuous.map(f)
+      def discrete: Stream[F, B] = fa.discrete.map(f)
+      def get: F[B] = Functor[F].map(fa.get)(f)
+    }
+
   implicit class ImmutableSignalSyntax[F[_], A](val self: Signal[F, A]) {
 
     /**
       * Converts this signal to signal of `B` by applying `f`.
       */
     def map[B](f: A => B)(implicit F: Functor[F]): Signal[F, B] =
-      new Signal[F, B] {
-        def continuous: Stream[F, B] = self.continuous.map(f)
-        def discrete: Stream[F, B] = self.discrete.map(f)
-        def get: F[B] = F.map(self.get)(f)
-      }
+      Signal.map(self)(f)
   }
 
   implicit class BooleanSignalSyntax[F[_]](val self: Signal[F, Boolean]) {
@@ -114,6 +122,6 @@ trait LowPrioritySignalImplicits {
     */
   implicit def signalIsFunctor[F[_]: Functor]: Functor[({ type L[X] = Signal[F, X] })#L] =
     new Functor[({ type L[X] = Signal[F, X] })#L] {
-      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = fa.map(f)
+      override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = Signal.map(fa)(f)
     }
 }
