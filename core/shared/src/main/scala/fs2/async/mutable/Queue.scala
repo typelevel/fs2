@@ -2,8 +2,6 @@ package fs2
 package async
 package mutable
 
-import scala.concurrent.ExecutionContext
-
 import cats.Functor
 import cats.effect.Concurrent
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
@@ -113,7 +111,7 @@ abstract class Queue[F[_], A] { self =>
 object Queue {
 
   /** Creates a queue with no size bound. */
-  def unbounded[F[_], A](implicit F: Concurrent[F], ec: ExecutionContext): F[Queue[F, A]] = {
+  def unbounded[F[_], A](implicit F: Concurrent[F]): F[Queue[F, A]] = {
     /*
      * Internal state of the queue
      * @param queue    Queue, expressed as vector for fast cons/uncons from head/tail
@@ -149,13 +147,13 @@ object Queue {
                   ns -> signalSize(s, ns)
                 case (_, firstDequeuer) +: dequeuers =>
                   // we await the first dequeuer
-                  s.copy(deq = dequeuers, peek = None) -> async.fork {
+                  s.copy(deq = dequeuers, peek = None) -> F.start {
                     firstDequeuer.complete(Chunk.singleton(a))
                   }.void
               }
 
               val signalPeekers =
-                s.peek.fold(F.unit)(p => async.fork(p.complete(a)).void)
+                s.peek.fold(F.unit)(p => F.start(p.complete(a)).void)
 
               newState -> (signalDequeuers *> signalPeekers)
             }
@@ -238,8 +236,7 @@ object Queue {
   }
 
   /** Creates a queue with the specified size bound. */
-  def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F],
-                                     ec: ExecutionContext): F[Queue[F, A]] =
+  def bounded[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
     for {
       permits <- Semaphore(maxSize.toLong)
       q <- unbounded[F, A]
@@ -268,8 +265,7 @@ object Queue {
       }
 
   /** Creates a queue which stores the last `maxSize` enqueued elements and which never blocks on enqueue. */
-  def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F],
-                                            ec: ExecutionContext): F[Queue[F, A]] =
+  def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[Queue[F, A]] =
     for {
       permits <- Semaphore(maxSize.toLong)
       q <- unbounded[F, A]
@@ -298,7 +294,7 @@ object Queue {
       }
 
   /** Creates a queue which allows a single element to be enqueued at any time. */
-  def synchronous[F[_], A](implicit F: Concurrent[F], ec: ExecutionContext): F[Queue[F, A]] =
+  def synchronous[F[_], A](implicit F: Concurrent[F]): F[Queue[F, A]] =
     for {
       permits <- Semaphore(0)
       q <- unbounded[F, A]
@@ -338,8 +334,7 @@ object Queue {
       }
 
   /** Like `Queue.synchronous`, except that an enqueue or offer of `None` will never block. */
-  def synchronousNoneTerminated[F[_], A](implicit F: Concurrent[F],
-                                         ec: ExecutionContext): F[Queue[F, Option[A]]] =
+  def synchronousNoneTerminated[F[_], A](implicit F: Concurrent[F]): F[Queue[F, Option[A]]] =
     for {
       permits <- Semaphore(0)
       doneRef <- Ref.of[F, Boolean](false)

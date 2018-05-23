@@ -3,12 +3,10 @@ package fs2.internal
 import scala.annotation.tailrec
 
 import cats.data.NonEmptyList
-import cats.effect.{Async, Concurrent, Sync}
+import cats.effect.{Concurrent, Sync}
 import cats.effect.concurrent.{Deferred, Ref}
 import fs2.{Catenable, CompositeFailure, Scope}
 import fs2.internal.CompileScope.InterruptContext
-
-import scala.concurrent.ExecutionContext
 
 /**
   * Implementation of [[Scope]] for the internal stream interpreter.
@@ -106,7 +104,7 @@ private[fs2] final class CompileScope[F[_], O] private (
     */
   def open(
       interruptible: Option[
-        (Concurrent[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+        (Concurrent[F], FreeC[Algebra[F, O, ?], Unit])
       ]
   ): F[CompileScope[F, O]] = {
 
@@ -443,9 +441,7 @@ private[fs2] final class CompileScope[F[_], O] private (
       case Some(iCtx) =>
         F.map(
           iCtx.concurrent
-            .race(iCtx.deferred.get,
-                  F.flatMap(Async.shift[F](iCtx.ec)(iCtx.concurrent))(_ =>
-                    F.attempt(iCtx.concurrent.uncancelable(f))))) {
+            .race(iCtx.deferred.get, F.attempt(iCtx.concurrent.uncancelable(f)))) {
           case Right(result) => result.left.map(Left(_))
           case Left(other)   => Left(other)
         }
@@ -527,7 +523,6 @@ private[internal] object CompileScope {
     */
   final private[internal] case class InterruptContext[F[_], O](
       concurrent: Concurrent[F],
-      ec: ExecutionContext,
       deferred: Deferred[F, Either[Throwable, Token]],
       ref: Ref[F, Option[Either[Throwable, Token]]],
       interruptRoot: Token,
@@ -549,17 +544,16 @@ private[internal] object CompileScope {
       */
     def childContext(
         interruptible: Option[
-          (Concurrent[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+          (Concurrent[F], FreeC[Algebra[F, O, ?], Unit])
         ],
         newScopeId: Token
     )(implicit F: Sync[F]): F[InterruptContext[F, O]] =
       interruptible
         .map {
-          case (concurrent, ec, whenInterrupted) =>
+          case (concurrent, whenInterrupted) =>
             F.flatMap(concurrent.start(self.deferred.get)) { fiber =>
               val context = InterruptContext[F, O](
                 concurrent = concurrent,
-                ec = ec,
                 deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
                 ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
                 interruptRoot = newScopeId,
@@ -567,10 +561,10 @@ private[internal] object CompileScope {
                 cancelParent = fiber.cancel
               )
 
-              F.map(fs2.async.fork(F.flatMap(fiber.join)(interrupt =>
+              F.map(concurrent.start(F.flatMap(fiber.join)(interrupt =>
                 F.flatMap(context.ref.update(_.orElse(Some(interrupt)))) { _ =>
                   F.map(F.attempt(context.deferred.complete(interrupt)))(_ => ())
-              }))(concurrent, ec)) { _ =>
+              }))) { _ =>
                 context
               }
             }
@@ -592,15 +586,14 @@ private[internal] object CompileScope {
       */
     def unsafeFromInteruptible[F[_], O](
         interruptible: Option[
-          (Concurrent[F], ExecutionContext, FreeC[Algebra[F, O, ?], Unit])
+          (Concurrent[F], FreeC[Algebra[F, O, ?], Unit])
         ],
         newScopeId: Token
     )(implicit F: Sync[F]): Option[InterruptContext[F, O]] =
       interruptible.map {
-        case (concurrent, ec, whenInterrupted) =>
+        case (concurrent, whenInterrupted) =>
           InterruptContext[F, O](
             concurrent = concurrent,
-            ec = ec,
             deferred = Deferred.unsafe[F, Either[Throwable, Token]](concurrent),
             ref = Ref.unsafe[F, Option[Either[Throwable, Token]]](None),
             interruptRoot = newScopeId,

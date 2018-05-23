@@ -46,7 +46,7 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
           ns -> ns
         }
         memoized <- async.once(act)
-        _ <- async.fork(memoized)
+        _ <- memoized.start
         x <- memoized
         _ <- Timer[IO].sleep(100.millis)
         v <- ref.get
@@ -63,8 +63,8 @@ class OnceSpec extends AsyncFs2Spec with EitherValues {
           ns -> ns
         }
         act2 = async.once(act1).flatten
-        _ <- async.fork(Stream.repeatEval(act1).take(n).compile.drain)
-        _ <- async.fork(Stream.repeatEval(act2).take(n).compile.drain)
+        _ <- Stream.repeatEval(act1).take(n).compile.drain.start
+        _ <- Stream.repeatEval(act2).take(n).compile.drain.start
         _ <- Timer[IO].sleep(200.millis)
         v <- ref.get
       } yield v

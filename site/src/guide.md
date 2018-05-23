@@ -384,15 +384,14 @@ The `merge` function supports concurrency. FS2 has a number of other useful conc
 The function `join` runs multiple streams concurrently. The signature is:
 
 ```Scala
-// note Concurrent[F] bound and ExecutionContext parameter
-import scala.concurrent.ExecutionContext
+// note Concurrent[F] bound
 import cats.effect.Concurrent
-def join[F[_]:Concurrent,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]])(implicit ec: ExecutionContext): Stream[F,O]
+def join[F[_]:Concurrent,O](maxOpen: Int)(outer: Stream[F,Stream[F,O]]): Stream[F,O]
 ```
 
 It flattens the nested stream, letting up to `maxOpen` inner streams run at a time.
 
-The `Concurrent` bound on `F` along with the `ExecutionContext` implicit parameter is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance and have an `ExecutionContext` in implicit scope.
+The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance in implicit scope.
 
 In addition, there are a number of other concurrency primitives---asynchronous queues, signals, and semaphores. See the [Concurrency Primitives section](concurrency-primitives) for more examples. We'll make use of some of these in the next section when discussing how to talk to the external world.
 
@@ -404,7 +403,7 @@ Without looking at the implementations, try implementing `mergeHaltBoth`:
 type Pipe2[F[_],-I,-I2,+O] = (Stream[F,I], Stream[F,I2]) => Stream[F,O]
 
 /** Like `merge`, but halts as soon as _either_ branch halts. */
-def mergeHaltBoth[F[_]:Concurrent,O](implicit ec: ExecutionContext): Pipe2[F,O,O,O] = (s1, s2) => ???
+def mergeHaltBoth[F[_]:Concurrent,O]: Pipe2[F,O,O,O] = (s1, s2) => ???
 ```
 
 ### Talking to the external world

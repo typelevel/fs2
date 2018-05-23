@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.Traverse
 import cats.implicits.{catsSyntaxEither => _, _}
-import cats.effect.{Async, Concurrent, Effect, Fiber, IO}
+import cats.effect.{Async, Concurrent, Effect, IO}
 import cats.effect.concurrent.{Deferred, Ref}
 
 /** Provides utilities for asynchronous computations. */
@@ -14,20 +14,18 @@ package object async {
     * Creates a new continuous signal which may be controlled asynchronously,
     * and immediately sets the value to `initialValue`.
     */
-  def signalOf[F[_]: Concurrent, A](initialValue: A)(
-      implicit ec: ExecutionContext): F[mutable.Signal[F, A]] =
+  def signalOf[F[_]: Concurrent, A](initialValue: A): F[mutable.Signal[F, A]] =
     mutable.Signal(initialValue)
 
   /** Creates an unbounded asynchronous queue. See [[mutable.Queue]] for more documentation. */
-  def unboundedQueue[F[_]: Concurrent, A](implicit ec: ExecutionContext): F[mutable.Queue[F, A]] =
+  def unboundedQueue[F[_]: Concurrent, A]: F[mutable.Queue[F, A]] =
     mutable.Queue.unbounded[F, A]
 
   /**
     * Creates a bounded asynchronous queue. Calls to `enqueue1` will wait until the
     * queue's size is less than `maxSize`. See [[mutable.Queue]] for more documentation.
     */
-  def boundedQueue[F[_]: Concurrent, A](maxSize: Int)(
-      implicit ec: ExecutionContext): F[mutable.Queue[F, A]] =
+  def boundedQueue[F[_]: Concurrent, A](maxSize: Int): F[mutable.Queue[F, A]] =
     mutable.Queue.bounded[F, A](maxSize)
 
   /**
@@ -35,8 +33,7 @@ package object async {
     * block until there is an offsetting call to `dequeue1`. Any calls to `dequeue1`
     * block until there is an offsetting call to `enqueue1`.
     */
-  def synchronousQueue[F[_], A](implicit F: Concurrent[F],
-                                ec: ExecutionContext): F[mutable.Queue[F, A]] =
+  def synchronousQueue[F[_], A](implicit F: Concurrent[F]): F[mutable.Queue[F, A]] =
     mutable.Queue.synchronous[F, A]
 
   /**
@@ -45,8 +42,7 @@ package object async {
     * the oldest elements. Thus an enqueue process will never wait.
     * @param maxSize The size of the circular buffer (must be > 0)
     */
-  def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F],
-                                            ec: ExecutionContext): F[mutable.Queue[F, A]] =
+  def circularBuffer[F[_], A](maxSize: Int)(implicit F: Concurrent[F]): F[mutable.Queue[F, A]] =
     mutable.Queue.circularBuffer[F, A](maxSize)
 
   /**
@@ -59,15 +55,14 @@ package object async {
     * @param source   discrete stream publishing values to this signal
     */
   def hold[F[_], A](initial: A, source: Stream[F, A])(
-      implicit F: Concurrent[F],
-      ec: ExecutionContext): Stream[F, immutable.Signal[F, A]] =
+      implicit F: Concurrent[F]): Stream[F, immutable.Signal[F, A]] =
     Stream.eval(signalOf[F, A](initial)).flatMap { sig =>
       Stream(sig).concurrently(source.evalMap(sig.set))
     }
 
   /** Defined as `[[hold]](None, source.map(Some(_)))` */
-  def holdOption[F[_]: Concurrent, A](source: Stream[F, A])(
-      implicit ec: ExecutionContext): Stream[F, immutable.Signal[F, Option[A]]] =
+  def holdOption[F[_]: Concurrent, A](
+      source: Stream[F, A]): Stream[F, immutable.Signal[F, Option[A]]] =
     hold(None, source.map(Some(_)))
 
   /**
@@ -75,8 +70,7 @@ package object async {
     * an arbitrary number of subscribers. Each subscriber is guaranteed to
     * receive at least the initial `A` or last value published by any publisher.
     */
-  def topic[F[_]: Concurrent, A](initial: A)(
-      implicit ec: ExecutionContext): F[mutable.Topic[F, A]] =
+  def topic[F[_]: Concurrent, A](initial: A): F[mutable.Topic[F, A]] =
     mutable.Topic(initial)
 
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
@@ -122,15 +116,18 @@ package object async {
     * Begins asynchronous evaluation of `f` when the returned `F[F[A]]` is
     * bound. The inner `F[A]` will block until the result is available.
     */
-  @deprecated("Use async.fork instead.", "1.0.0")
-  def start[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[F[A]] =
-    fork(f).map(_.join)
+  @deprecated("Use F.start(f).map(_.join) instead.", "1.0.0")
+  def start[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[F[A]] = {
+    identity(ec) // unused
+    F.start(f).map(_.join)
+  }
 
   /**
     * Shifts `f` to the supplied execution context and then starts it, returning the spawned fiber.
     */
-  def fork[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[Fiber[F, A]] =
-    F.start(Async.shift(ec) *> f)
+  @deprecated("Use F.start(f).void instead.", "1.0.0")
+  def fork[F[_], A](f: F[A])(implicit F: Concurrent[F], ec: ExecutionContext): F[Unit] =
+    start(f).void
 
   /**
     * Like `unsafeRunSync` but execution is shifted to the supplied execution context.

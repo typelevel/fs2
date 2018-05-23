@@ -88,8 +88,8 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.unboundedQueue[IO, Int]
-            f <- async.fork(q.peek1)
-            g <- async.fork(q.peek1)
+            f <- q.peek1.start
+            g <- q.peek1.start
             _ <- q.enqueue1(42)
             x <- f.join
             y <- g.join
@@ -101,10 +101,10 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.unboundedQueue[IO, Int]
-            f <- async.fork(q.peek1.product(q.dequeue1))
+            f <- q.peek1.product(q.dequeue1).start
             _ <- q.enqueue1(42)
             x <- f.join
-            g <- async.fork((q.peek1.product(q.dequeue1)).product(q.peek1.product(q.dequeue1)))
+            g <- q.peek1.product(q.dequeue1).product(q.peek1.product(q.dequeue1)).start
             _ <- q.enqueue1(43)
             _ <- q.enqueue1(44)
             yz <- g.join
@@ -117,8 +117,8 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.boundedQueue[IO, Int](maxSize = 1)
-            f <- async.fork(q.peek1)
-            g <- async.fork(q.peek1)
+            f <- q.peek1.start
+            g <- q.peek1.start
             _ <- q.enqueue1(42)
             b <- q.offer1(43)
             x <- f.join
@@ -132,8 +132,8 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.circularBuffer[IO, Int](maxSize = 1)
-            f <- async.fork(q.peek1)
-            g <- async.fork(q.peek1)
+            f <- q.peek1.start
+            g <- q.peek1.start
             _ <- q.enqueue1(42)
             x <- f.join
             y <- g.join
@@ -147,9 +147,9 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.synchronousQueue[IO, Int]
-            f <- async.fork(q.peek1)
-            g <- async.fork(q.peek1)
-            _ <- async.fork(q.enqueue1(42))
+            f <- q.peek1.start
+            g <- q.peek1.start
+            _ <- q.enqueue1(42).start
             x <- q.dequeue1
             y <- f.join
             z <- g.join
@@ -161,8 +161,8 @@ class QueueSpec extends Fs2Spec {
         Stream.eval(
           for {
             q <- async.mutable.Queue.synchronousNoneTerminated[IO, Int]
-            f <- async.fork(q.peek1)
-            g <- async.fork(q.peek1)
+            f <- q.peek1.start
+            g <- q.peek1.start
             _ <- q.enqueue1(None)
             y <- f.join
             z <- g.join
