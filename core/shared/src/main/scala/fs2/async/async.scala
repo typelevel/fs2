@@ -74,19 +74,13 @@ package object async {
     mutable.Topic(initial)
 
   /** Like `traverse` but each `G[B]` computed from an `A` is evaluated in parallel. */
-  @deprecated(
-    "Use cats.Parallel.parTraverse instead. If G = IO and you want each IO to start executing on a pool thread, use cats.Parallel.parTraverse(IO.shift(ec) *> f(_)).",
-    "1.0.0"
-  )
+  @deprecated("Use fa.parTraverse(f) instead.", "1.0.0")
   def parallelTraverse[F[_], G[_], A, B](fa: F[A])(
       f: A => G[B])(implicit F: Traverse[F], G: Concurrent[G], ec: ExecutionContext): G[F[B]] =
     F.traverse(fa)(f.andThen(start[G, B])).flatMap(F.sequence(_))
 
   /** Like `sequence` but each `G[A]` is evaluated in parallel. */
-  @deprecated(
-    "Use cats.Parallel.parSequence instead. If G = IO and you want each IO start executing on a pool thread, use cats.Parallel.parTraverse(IO.shift(ec) *> _).",
-    "1.0.0"
-  )
+  @deprecated("Use fa.parSequence(f) instead.", "1.0.0")
   def parallelSequence[F[_], G[_], A](
       fga: F[G[A]])(implicit F: Traverse[F], G: Concurrent[G], ec: ExecutionContext): G[F[A]] =
     parallelTraverse(fga)(identity)
