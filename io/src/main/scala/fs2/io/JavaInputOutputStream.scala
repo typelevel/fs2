@@ -1,11 +1,11 @@
 package fs2
 package io
 
-import scala.concurrent.{ExecutionContext, SyncVar}
+import scala.concurrent.{SyncVar, blocking}
 
 import java.io.{IOException, InputStream, OutputStream}
 
-import cats.effect.{Concurrent, ConcurrentEffect, Effect, IO, Sync}
+import cats.effect.{Concurrent, ConcurrentEffect, Effect, IO, Sync, Timer}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
@@ -57,7 +57,7 @@ private[io] object JavaInputOutputStream {
   }
 
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
-                          ec: ExecutionContext): Pipe[F, Byte, InputStream] = {
+                          timer: Timer[F]): Pipe[F, Byte, InputStream] = {
 
     /** See Implementation notes at the end of this code block **/
     /** state of the upstream, we only indicate whether upstream is done and if it failed **/
@@ -112,12 +112,12 @@ private[io] object JavaInputOutputStream {
     def closeIs(
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext): Unit = {
+    )(implicit F: Effect[F], timer: Timer[F]): Unit = {
       val done = new SyncVar[Either[Throwable, Unit]]
       async.unsafeRunAsync(close(upState, dnState)) { r =>
         IO(done.put(r))
       }
-      done.get.fold(throw _, identity)
+      blocking(done.get.fold(throw _, identity))
     }
 
     /**
@@ -135,10 +135,10 @@ private[io] object JavaInputOutputStream {
         len: Int,
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext): Int = {
+    )(implicit F: Effect[F], timer: Timer[F]): Int = {
       val sync = new SyncVar[Either[Throwable, Int]]
       async.unsafeRunAsync(readOnce(dest, off, len, queue, dnState))(r => IO(sync.put(r)))
-      sync.get.fold(throw _, identity)
+      blocking(sync.get.fold(throw _, identity))
     }
 
     /**
@@ -153,7 +153,7 @@ private[io] object JavaInputOutputStream {
     def readIs1(
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], ec: ExecutionContext): Int = {
+    )(implicit F: Effect[F], timer: Timer[F]): Int = {
 
       def go(acc: Array[Byte]): F[Int] =
         F.flatMap(readOnce(acc, 0, 1, queue, dnState)) { read =>
@@ -164,7 +164,7 @@ private[io] object JavaInputOutputStream {
 
       val sync = new SyncVar[Either[Throwable, Int]]
       async.unsafeRunAsync(go(new Array[Byte](1)))(r => IO(sync.put(r)))
-      sync.get.fold(throw _, identity)
+      blocking(sync.get.fold(throw _, identity))
     }
 
     def readOnce(

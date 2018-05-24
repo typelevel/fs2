@@ -1,12 +1,10 @@
 package fs2
 package io
 
-import scala.concurrent.ExecutionContext
-
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
 
-import cats.effect.ConcurrentEffect
+import cats.effect.{ConcurrentEffect, Timer}
 
 /** Provides support for TCP networking. */
 package object tcp {
@@ -32,7 +30,7 @@ package object tcp {
       noDelay: Boolean = false
   )(implicit AG: AsynchronousChannelGroup,
     F: ConcurrentEffect[F],
-    ec: ExecutionContext): Stream[F, Socket[F]] =
+    timer: Timer[F]): Stream[F, Socket[F]] =
     Socket.client(to, reuseAddress, sendBufferSize, receiveBufferSize, keepAlive, noDelay)
 
   /**
@@ -61,7 +59,7 @@ package object tcp {
                    receiveBufferSize: Int = 256 * 1024)(
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
-      ec: ExecutionContext
+      timer: Timer[F]
   ): Stream[F, Stream[F, Socket[F]]] =
     serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize)
       .collect { case Right(s) => s }
@@ -77,7 +75,7 @@ package object tcp {
                                    receiveBufferSize: Int = 256 * 1024)(
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
-      ec: ExecutionContext
+      timer: Timer[F]
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
     Socket.server(flatMap, maxQueued, reuseAddress, receiveBufferSize)
 }

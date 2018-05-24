@@ -1,12 +1,10 @@
 package fs2
 package io
 
-import scala.concurrent.ExecutionContext
-
 import java.net.{InetSocketAddress, NetworkInterface, ProtocolFamily, StandardSocketOptions}
 import java.nio.channels.DatagramChannel
 
-import cats.effect.Effect
+import cats.effect.{Effect, Timer}
 import cats.implicits._
 
 /** Provides support for UDP networking. */
@@ -35,9 +33,7 @@ package object udp {
       multicastInterface: Option[NetworkInterface] = None,
       multicastTTL: Option[Int] = None,
       multicastLoopback: Boolean = true
-  )(implicit AG: AsynchronousSocketGroup,
-    F: Effect[F],
-    ec: ExecutionContext): Stream[F, Socket[F]] = {
+  )(implicit AG: AsynchronousSocketGroup, F: Effect[F], timer: Timer[F]): Stream[F, Socket[F]] = {
     val mkChannel = F.delay {
       val channel = protocolFamily
         .map { pf =>

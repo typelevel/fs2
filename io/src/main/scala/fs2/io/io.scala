@@ -1,10 +1,8 @@
 package fs2
 
-import scala.concurrent.ExecutionContext
-
 import java.io.{InputStream, OutputStream}
 
-import cats.effect.{Concurrent, ConcurrentEffect, Sync}
+import cats.effect.{Concurrent, ConcurrentEffect, Sync, Timer}
 import cats.implicits._
 
 /** Provides various ways to work with streams that perform IO. */
@@ -28,7 +26,7 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * This will block a thread in the `ExecutionContext`, so the size of any associated
+    * This will block a thread, so the size of any associated
     * threadpool should be sized appropriately.
     */
   def readInputStreamAsync[F[_]](
@@ -65,7 +63,7 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * This will block a thread in the `ExecutionContext`, so the size of any associated
+    * This will block a thread, so the size of any associated
     * threadpool should be sized appropriately.
     *
     * Recycles an underlying input buffer for performance. It is safe to call
@@ -135,13 +133,13 @@ package object io {
     * original stream completely terminates.
     *
     * Because all `InputStream` methods block (including `close`), the resulting `InputStream`
-    * should be consumed on a different thread pool than the one that is backing the `ExecutionContext`.
+    * should be consumed on a different thread pool than the one that is backing the `Timer`.
     *
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
-                          ec: ExecutionContext): Pipe[F, Byte, InputStream] =
+                          timer: Timer[F]): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
 
 }

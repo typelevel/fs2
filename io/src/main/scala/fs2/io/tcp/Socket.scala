@@ -2,7 +2,6 @@ package fs2
 package io
 package tcp
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import java.net.{InetSocketAddress, SocketAddress, StandardSocketOptions}
@@ -17,7 +16,7 @@ import java.nio.channels.{
 }
 import java.util.concurrent.TimeUnit
 
-import cats.effect.{ConcurrentEffect, IO}
+import cats.effect.{ConcurrentEffect, IO, Timer}
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
 
@@ -103,7 +102,7 @@ protected[tcp] object Socket {
   )(
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
-      ec: ExecutionContext
+      timer: Timer[F]
   ): Stream[F, Socket[F]] = Stream.suspend {
 
     def setup: Stream[F, AsynchronousSocketChannel] = Stream.suspend {
@@ -147,7 +146,7 @@ protected[tcp] object Socket {
                    receiveBufferSize: Int)(
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
-      ec: ExecutionContext
+      timer: Timer[F]
   ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
     Stream.suspend {
 
@@ -207,7 +206,7 @@ protected[tcp] object Socket {
     }
 
   def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: ConcurrentEffect[F],
-                                                    ec: ExecutionContext): F[Socket[F]] = {
+                                                    timer: Timer[F]): F[Socket[F]] = {
     Semaphore(1).flatMap { readSemaphore =>
       Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer

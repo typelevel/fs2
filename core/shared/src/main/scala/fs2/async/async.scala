@@ -4,7 +4,7 @@ import scala.concurrent.ExecutionContext
 
 import cats.Traverse
 import cats.implicits.{catsSyntaxEither => _, _}
-import cats.effect.{Async, Concurrent, Effect, IO}
+import cats.effect.{Concurrent, Effect, IO, Timer}
 import cats.effect.concurrent.{Deferred, Ref}
 
 /** Provides utilities for asynchronous computations. */
@@ -134,6 +134,6 @@ package object async {
     * This method returns immediately after submitting execution to the execution context.
     */
   def unsafeRunAsync[F[_], A](fa: F[A])(
-      f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], ec: ExecutionContext): Unit =
-    F.runAsync(Async.shift(ec) *> fa)(f).unsafeRunSync
+      f: Either[Throwable, A] => IO[Unit])(implicit F: Effect[F], timer: Timer[F]): Unit =
+    F.runAsync(timer.shift *> fa)(f).unsafeRunSync
 }
