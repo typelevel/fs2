@@ -34,11 +34,15 @@ package object io {
   def readInputStreamAsync[F[_]](
       fis: F[InputStream],
       chunkSize: Int,
-      closeAfterUse: Boolean = true)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Byte] =
-    readInputStreamGeneric(fis,
-                           F.delay(new Array[Byte](chunkSize)),
-                           (is, buf) => Async.shift(ec) *> readBytesFromInputStream(is, buf),
-                           closeAfterUse)
+      blockingExecutionContext: ExecutionContext,
+      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Stream[F, Byte] =
+    readInputStreamGeneric(
+      fis,
+      F.delay(new Array[Byte](chunkSize)),
+      (is, buf) =>
+        Async.shift(blockingExecutionContext) *> readBytesFromInputStream(is, buf) <* timer.shift,
+      closeAfterUse
+    )
 
   /**
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
@@ -75,11 +79,15 @@ package object io {
   def unsafeReadInputStreamAsync[F[_]](
       fis: F[InputStream],
       chunkSize: Int,
-      closeAfterUse: Boolean = true)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Byte] =
-    readInputStreamGeneric(fis,
-                           F.pure(new Array[Byte](chunkSize)),
-                           (is, buf) => Async.shift(ec) *> readBytesFromInputStream(is, buf),
-                           closeAfterUse)
+      blockingExecutionContext: ExecutionContext,
+      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Stream[F, Byte] =
+    readInputStreamGeneric(
+      fis,
+      F.pure(new Array[Byte](chunkSize)),
+      (is, buf) =>
+        Async.shift(blockingExecutionContext) *> readBytesFromInputStream(is, buf) <* timer.shift,
+      closeAfterUse
+    )
 
   /**
     * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
@@ -98,12 +106,15 @@ package object io {
     * Each write operation is performed on the supplied execution context. Writes are
     * blocking so the execution context should be configured appropriately.
     */
-  def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(
-      implicit F: Async[F],
-      ec: ExecutionContext): Sink[F, Byte] =
-    writeOutputStreamGeneric(fos,
-                             closeAfterUse,
-                             (os, buf) => Async.shift(ec) *> writeBytesToOutputStream(os, buf))
+  def writeOutputStreamAsync[F[_]](
+      fos: F[OutputStream],
+      blockingExecutionContext: ExecutionContext,
+      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Sink[F, Byte] =
+    writeOutputStreamGeneric(
+      fos,
+      closeAfterUse,
+      (os, buf) =>
+        Async.shift(blockingExecutionContext) *> writeBytesToOutputStream(os, buf) <* timer.shift)
 
   //
   // STDIN/STDOUT Helpers
@@ -113,16 +124,20 @@ package object io {
     readInputStream(F.delay(System.in), bufSize, false)
 
   /** Stream of bytes read asynchronously from standard input. */
-  def stdinAsync[F[_]](bufSize: Int)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Byte] =
-    readInputStreamAsync(F.delay(System.in), bufSize, false)
+  def stdinAsync[F[_]](bufSize: Int, blockingExecutionContext: ExecutionContext)(
+      implicit F: Async[F],
+      timer: Timer[F]): Stream[F, Byte] =
+    readInputStreamAsync(F.delay(System.in), bufSize, blockingExecutionContext, false)
 
   /** Sink of bytes that writes emitted values to standard output. */
   def stdout[F[_]](implicit F: Sync[F]): Sink[F, Byte] =
     writeOutputStream(F.delay(System.out), false)
 
   /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdoutAsync[F[_]](implicit F: Async[F], ec: ExecutionContext): Sink[F, Byte] =
-    writeOutputStreamAsync(F.delay(System.out), false)
+  def stdoutAsync[F[_]](blockingExecutionContext: ExecutionContext)(
+      implicit F: Async[F],
+      timer: Timer[F]): Sink[F, Byte] =
+    writeOutputStreamAsync(F.delay(System.out), blockingExecutionContext, false)
 
   /**
     * Pipe that converts a stream of bytes to a stream that will emits a single `java.io.InputStream`,

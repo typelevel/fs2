@@ -26,14 +26,14 @@ class IoSpec extends Fs2Spec {
   "readInputStreamAsync" - {
     "non-buffered" in forAll { (bytes: Array[Byte], chunkSize: SmallPositive) =>
       val is: InputStream = new ByteArrayInputStream(bytes)
-      val stream = readInputStreamAsync(IO(is), chunkSize.get)
+      val stream = readInputStreamAsync(IO(is), chunkSize.get, executionContext)
       val example = stream.compile.toVector.unsafeRunSync.toArray
       example shouldBe bytes
     }
 
     "buffered" in forAll { (bytes: Array[Byte], chunkSize: SmallPositive) =>
       val is: InputStream = new ByteArrayInputStream(bytes)
-      val stream = readInputStreamAsync(IO(is), chunkSize.get)
+      val stream = readInputStreamAsync(IO(is), chunkSize.get, executionContext)
       val example =
         stream.buffer(chunkSize.get * 2).compile.toVector.unsafeRunSync.toArray
       example shouldBe bytes
@@ -52,7 +52,7 @@ class IoSpec extends Fs2Spec {
   "unsafeReadInputStreamAsync" - {
     "non-buffered" in forAll { (bytes: Array[Byte], chunkSize: SmallPositive) =>
       val is: InputStream = new ByteArrayInputStream(bytes)
-      val stream = unsafeReadInputStreamAsync(IO(is), chunkSize.get)
+      val stream = unsafeReadInputStreamAsync(IO(is), chunkSize.get, executionContext)
       val example = stream.compile.toVector.unsafeRunSync.toArray
       example shouldBe bytes
     }
