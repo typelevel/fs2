@@ -4,6 +4,7 @@ import cats.~>
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import fs2._
+import scala.util.control.NonFatal
 
 private[fs2] sealed trait Algebra[F[_], O, R]
 

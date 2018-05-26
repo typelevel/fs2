@@ -1580,7 +1580,7 @@ object Stream {
                      delay: FiniteDuration,
                      nextDelay: FiniteDuration => FiniteDuration,
                      maxRetries: Int,
-                     retriable: Throwable => Boolean = internal.NonFatal.apply)(
+                     retriable: Throwable => Boolean = scala.util.control.NonFatal.apply)(
       implicit F: Timer[F]): Stream[F, O] = {
     val delays = Stream.unfold(delay)(d => Some(d -> nextDelay(d))).covary[F]
 
