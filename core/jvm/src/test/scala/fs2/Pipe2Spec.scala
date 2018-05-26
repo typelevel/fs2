@@ -233,13 +233,12 @@ class Pipe2Spec extends Fs2Spec {
       (1 until interruptN).foreach { _ =>
         val interrupt =
           Stream.sleep_[IO](20.millis).compile.drain.attempt
-        Stream
-          .constant(true)
-          .covary[IO]
-          .interruptWhen(interrupt)
-          .compile
-          .drain
-          .unsafeRunSync
+        runLog(
+          Stream
+            .constant(true)
+            .covary[IO]
+            .interruptWhen(interrupt)
+            .drain)
       }
     }
 
@@ -248,16 +247,13 @@ class Pipe2Spec extends Fs2Spec {
       (1 until interruptN).foreach { _ =>
         val interrupt =
           Stream.sleep_[IO](20.millis).compile.drain.attempt
-        Stream
-          .constant(true)
-          .covary[IO]
-          .interruptWhen(interrupt)
-          .flatMap { _ =>
-            Stream.emit(1)
-          }
-          .compile
-          .drain
-          .unsafeRunSync
+        runLog(
+          Stream
+            .constant(true)
+            .covary[IO]
+            .interruptWhen(interrupt)
+            .flatMap(_ => Stream.emit(1))
+            .drain)
       }
     }
 
@@ -271,7 +267,7 @@ class Pipe2Spec extends Fs2Spec {
           Stream.emit(i) ++ loop(i + 1)
         }
 
-        loop(0).interruptWhen(interrupt).compile.drain.unsafeRunSync
+        runLog(loop(0).interruptWhen(interrupt).drain)
       }
     }
 
@@ -290,7 +286,7 @@ class Pipe2Spec extends Fs2Spec {
               loop
             }
 
-        loop.interruptWhen(interrupt).compile.drain.unsafeRunSync
+        runLog(loop.interruptWhen(interrupt).drain)
       }
     }
 
@@ -304,7 +300,7 @@ class Pipe2Spec extends Fs2Spec {
           loop
         }
 
-        loop.interruptWhen(interrupt).compile.drain.unsafeRunSync
+        runLog(loop.interruptWhen(interrupt).drain)
       }
     }
 
@@ -313,14 +309,11 @@ class Pipe2Spec extends Fs2Spec {
         // tests the interruption of the stream that repeatedly evaluates
         val interrupt =
           Stream.sleep_[IO](20.millis).compile.drain.attempt
-        Stream
-          .repeatEval(IO {
-            ()
-          })
-          .interruptWhen(interrupt)
-          .compile
-          .drain
-          .unsafeRunSync
+        runLog(
+          Stream
+            .repeatEval(IO.unit)
+            .interruptWhen(interrupt)
+            .drain)
       }
     }
 
@@ -329,14 +322,13 @@ class Pipe2Spec extends Fs2Spec {
       (1 until interruptN).foreach { _ =>
         val interrupt =
           Stream.sleep_[IO](1.millis).compile.drain.attempt
-        Stream
-          .constant(true)
-          .dropWhile(!_)
-          .covary[IO]
-          .interruptWhen(interrupt)
-          .compile
-          .drain
-          .unsafeRunSync
+        runLog(
+          Stream
+            .constant(true)
+            .dropWhile(!_)
+            .covary[IO]
+            .interruptWhen(interrupt)
+            .drain)
       }
     }
 
@@ -367,7 +359,6 @@ class Pipe2Spec extends Fs2Spec {
       // so there should be no elements in the output that are divisible by 7
       // this also checks that interruption works fine even if one or both streams are in a hung state
       assert(out.forall(i => i % 7 != 0))
-
     }
 
     "interrupt (12)" in forAll { (s1: PureStream[Int]) =>
