@@ -2,8 +2,10 @@ package fs2
 
 import java.io.{InputStream, OutputStream}
 
-import cats.effect.{Concurrent, ConcurrentEffect, Sync, Timer}
+import cats.effect.{Async, ConcurrentEffect, Sync, Timer}
 import cats.implicits._
+
+import scala.concurrent.ExecutionContext
 
 /** Provides various ways to work with streams that perform IO. */
 package object io {
@@ -13,7 +15,7 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * Blocks the current thread.
+    * Blocks on read operations from the input stream.
     */
   def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(
       implicit F: Sync[F]): Stream[F, Byte] =
@@ -26,18 +28,17 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * This will block a thread, so the size of any associated
-    * threadpool should be sized appropriately.
+    * Like `readInputStream` but each read operation is performed on the supplied execution
+    * context. Reads are blocking so the execution context should be configured appropriately.
     */
   def readInputStreamAsync[F[_]](
       fis: F[InputStream],
       chunkSize: Int,
-      closeAfterUse: Boolean = true)(implicit F: Concurrent[F]): Stream[F, Byte] = {
-    def readAsync(is: InputStream, buf: Array[Byte]) =
-      F.start(readBytesFromInputStream(is, buf)).flatMap(_.join)
-
-    readInputStreamGeneric(fis, F.delay(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
-  }
+      closeAfterUse: Boolean = true)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Byte] =
+    readInputStreamGeneric(fis,
+                           F.delay(new Array[Byte](chunkSize)),
+                           (is, buf) => Async.shift(ec) *> readBytesFromInputStream(is, buf),
+                           closeAfterUse)
 
   /**
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
@@ -48,7 +49,7 @@ package object io {
     * returned or pipe it to a combinator that does (e.g., `buffer`). Use
     * `readInputStream` for a safe version.
     *
-    * Blocks the current thread.
+    * Blocks on read operations from the input stream.
     */
   def unsafeReadInputStream[F[_]](
       fis: F[InputStream],
@@ -63,8 +64,8 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * This will block a thread, so the size of any associated
-    * threadpool should be sized appropriately.
+    * Each read operation is performed on the supplied execution context. Reads are
+    * blocking so the execution context should be configured appropriately.
     *
     * Recycles an underlying input buffer for performance. It is safe to call
     * this as long as whatever consumes this `Stream` does not store the `Chunk`
@@ -74,18 +75,17 @@ package object io {
   def unsafeReadInputStreamAsync[F[_]](
       fis: F[InputStream],
       chunkSize: Int,
-      closeAfterUse: Boolean = true)(implicit F: Concurrent[F]): Stream[F, Byte] = {
-    def readAsync(is: InputStream, buf: Array[Byte]) =
-      F.start(readBytesFromInputStream(is, buf)).flatMap(_.join)
-
-    readInputStreamGeneric(fis, F.pure(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
-  }
+      closeAfterUse: Boolean = true)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Byte] =
+    readInputStreamGeneric(fis,
+                           F.pure(new Array[Byte](chunkSize)),
+                           (is, buf) => Async.shift(ec) *> readBytesFromInputStream(is, buf),
+                           closeAfterUse)
 
   /**
     * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
     * the `OutputStream` should not be closed after use.
     *
-    * Blocks the current thread.
+    * Blocks on write operations to the input stream.
     */
   def writeOutputStream[F[_]: Sync](fos: F[OutputStream],
                                     closeAfterUse: Boolean = true): Sink[F, Byte] =
@@ -95,16 +95,15 @@ package object io {
     * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
     * the `OutputStream` should not be closed after use.
     *
-    * This will block a thread in the `ExecutorService`, so the size of any associated
-    * threadpool should be sized appropriately.
+    * Each write operation is performed on the supplied execution context. Writes are
+    * blocking so the execution context should be configured appropriately.
     */
   def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(
-      implicit F: Concurrent[F]): Sink[F, Byte] = {
-    def writeAsync(os: OutputStream, buf: Chunk[Byte]) =
-      F.start(writeBytesToOutputStream(os, buf)).flatMap(_.join)
-
-    writeOutputStreamGeneric(fos, closeAfterUse, writeAsync)
-  }
+      implicit F: Async[F],
+      ec: ExecutionContext): Sink[F, Byte] =
+    writeOutputStreamGeneric(fos,
+                             closeAfterUse,
+                             (os, buf) => Async.shift(ec) *> writeBytesToOutputStream(os, buf))
 
   //
   // STDIN/STDOUT Helpers
@@ -114,7 +113,7 @@ package object io {
     readInputStream(F.delay(System.in), bufSize, false)
 
   /** Stream of bytes read asynchronously from standard input. */
-  def stdinAsync[F[_]](bufSize: Int)(implicit F: Concurrent[F]): Stream[F, Byte] =
+  def stdinAsync[F[_]](bufSize: Int)(implicit F: Async[F], ec: ExecutionContext): Stream[F, Byte] =
     readInputStreamAsync(F.delay(System.in), bufSize, false)
 
   /** Sink of bytes that writes emitted values to standard output. */
@@ -122,7 +121,7 @@ package object io {
     writeOutputStream(F.delay(System.out), false)
 
   /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdoutAsync[F[_]](implicit F: Concurrent[F]): Sink[F, Byte] =
+  def stdoutAsync[F[_]](implicit F: Async[F], ec: ExecutionContext): Sink[F, Byte] =
     writeOutputStreamAsync(F.delay(System.out), false)
 
   /**

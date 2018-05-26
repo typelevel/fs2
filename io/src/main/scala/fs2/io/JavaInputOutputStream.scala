@@ -5,7 +5,7 @@ import scala.concurrent.{SyncVar, blocking}
 
 import java.io.{IOException, InputStream, OutputStream}
 
-import cats.effect.{Concurrent, ConcurrentEffect, Effect, IO, Sync, Timer}
+import cats.effect.{ConcurrentEffect, IO, Sync, Timer}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
@@ -14,7 +14,7 @@ import fs2.async.mutable
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
       implicit F: Sync[F]): F[Option[Chunk[Byte]]] =
-    F.delay(is.read(buf)).map { numBytes =>
+    F.delay(blocking(is.read(buf))).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
       else if (numBytes < buf.size) Some(Chunk.bytes(buf.slice(0, numBytes)))
@@ -41,7 +41,7 @@ private[io] object JavaInputOutputStream {
 
   def writeBytesToOutputStream[F[_]](os: OutputStream, bytes: Chunk[Byte])(
       implicit F: Sync[F]): F[Unit] =
-    F.delay(os.write(bytes.toArray))
+    F.delay(blocking(os.write(bytes.toArray)))
 
   def writeOutputStreamGeneric[F[_]](
       fos: F[OutputStream],
@@ -83,7 +83,7 @@ private[io] object JavaInputOutputStream {
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Concurrent[F]): Stream[F, Unit] =
+    ): Stream[F, Unit] =
       Stream
         .eval(F.start {
           def markUpstreamDone(result: Option[Throwable]): F[Unit] =
@@ -112,7 +112,7 @@ private[io] object JavaInputOutputStream {
     def closeIs(
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], timer: Timer[F]): Unit = {
+    ): Unit = {
       val done = new SyncVar[Either[Throwable, Unit]]
       async.unsafeRunAsync(close(upState, dnState)) { r =>
         IO(done.put(r))
@@ -126,8 +126,6 @@ private[io] object JavaInputOutputStream {
       * This is implementation of InputStream#read.
       *
       * Inherently this method will block until data from the queue are available
-      *
-      *
       */
     def readIs(
         dest: Array[Byte],
@@ -135,7 +133,7 @@ private[io] object JavaInputOutputStream {
         len: Int,
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], timer: Timer[F]): Int = {
+    ): Int = {
       val sync = new SyncVar[Either[Throwable, Int]]
       async.unsafeRunAsync(readOnce(dest, off, len, queue, dnState))(r => IO(sync.put(r)))
       blocking(sync.get.fold(throw _, identity))
@@ -153,7 +151,7 @@ private[io] object JavaInputOutputStream {
     def readIs1(
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F], timer: Timer[F]): Int = {
+    ): Int = {
 
       def go(acc: Array[Byte]): F[Int] =
         F.flatMap(readOnce(acc, 0, 1, queue, dnState)) { read =>
@@ -173,7 +171,7 @@ private[io] object JavaInputOutputStream {
         len: Int,
         queue: mutable.Queue[F, Either[Option[Throwable], Bytes]],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Sync[F]): F[Int] = {
+    ): F[Int] = {
       // in case current state has any data available from previous read
       // this will cause the data to be acquired, state modified and chunk returned
       // won't modify state if the data cannot be acquired
@@ -248,7 +246,7 @@ private[io] object JavaInputOutputStream {
     def close(
         upState: mutable.Signal[F, UpStreamState],
         dnState: mutable.Signal[F, DownStreamState]
-    )(implicit F: Effect[F]): F[Unit] =
+    ): F[Unit] =
       F.flatMap(dnState.update {
         case s @ Done(_) => s
         case other       => Done(None)
