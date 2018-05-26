@@ -346,3 +346,6 @@ lazy val microsite = project
   )
   .settings(tutSettings)
   .dependsOn(coreJVM, io)
+
+addCommandAlias("testJVM", ";coreJVM/test;io/test;scodecJVM/test;benchmark/test")
+addCommandAlias("testJS", ";coreJS/test;scodecJS/test")
