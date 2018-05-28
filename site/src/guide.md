@@ -17,7 +17,7 @@ This is the official FS2 guide. It gives an overview of the library and its feat
 
 * [Overview](#overview)
 * [Building streams](#building-streams)
-* [Chunking](#chunking)
+* [Segments & Chunks](#segments--chunks)
 * [Basic stream operations](#basic-stream-operations)
 * [Error handling](#error-handling)
 * [Resource acquisition](#resource-acquisition)
