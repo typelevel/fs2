@@ -2,6 +2,7 @@ import microsites.ExtraMdFileConfig
 import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
 import sbtrelease.Version
+import sbtcrossproject.crossProject
 
 val ReleaseTag = """^release/([\d\.]+a?)$""".r
 
@@ -212,7 +213,7 @@ lazy val root = project
   .settings(noPublish)
   .aggregate(coreJVM, coreJS, io, scodecJVM, scodecJS, benchmark)
 
-lazy val core = crossProject
+lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
   .settings(commonSettings: _*)
   .settings(
@@ -264,7 +265,7 @@ lazy val io = project
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
-lazy val scodec = crossProject
+lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .in(file("scodec"))
   .settings(commonSettings)
   .settings(
