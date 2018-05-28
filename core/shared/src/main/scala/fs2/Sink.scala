@@ -3,7 +3,7 @@ package fs2
 import java.io.PrintStream
 
 import cats.Show
-import cats.effect.{Effect, Sync}
+import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 
 import scala.concurrent.ExecutionContext
@@ -38,7 +38,7 @@ object Sink {
     * If either of `left` or `right` fails, then resulting stream will fail.
     * If either `halts` the evaluation will halt too.
     */
-  def either[F[_]: Effect, L, R](
+  def either[F[_]: Concurrent, L, R](
       left: Sink[F, L],
       right: Sink[F, R]
   )(
