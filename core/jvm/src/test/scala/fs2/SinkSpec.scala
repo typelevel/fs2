@@ -1,8 +1,8 @@
 package fs2
 
 import cats.effect.IO
+import cats.effect.concurrent.Ref
 import cats.implicits._
-import fs2.async.Ref
 
 import TestUtil._
 
@@ -11,14 +11,14 @@ class SinkSpec extends AsyncFs2Spec {
     val s = Stream.emits(Seq(Left(1), Right("a"))).repeat.covary[IO]
 
     "either - does not drop elements" in {
-      val is = Ref[IO, Vector[Int]](Vector.empty)
-      val as = Ref[IO, Vector[String]](Vector.empty)
+      val is = Ref.of[IO, Vector[Int]](Vector.empty)
+      val as = Ref.of[IO, Vector[String]](Vector.empty)
 
       val test = for {
         iref <- is
         aref <- as
-        iSink = Sink((i: Int) => iref.modify(_ :+ i).void)
-        aSink = Sink((a: String) => aref.modify(_ :+ a).void)
+        iSink = Sink((i: Int) => iref.update(_ :+ i))
+        aSink = Sink((a: String) => aref.update(_ :+ a))
         eSink = Sink.either(left = iSink, right = aSink)
         _ <- s.take(10).to(eSink).compile.drain
         iResult <- iref.get
