@@ -6,8 +6,6 @@ import cats.Show
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 
-import scala.concurrent.ExecutionContext
-
 /** Companion for [[Sink]]. */
 object Sink {
 
@@ -41,8 +39,6 @@ object Sink {
   def either[F[_]: Concurrent, L, R](
       left: Sink[F, L],
       right: Sink[F, R]
-  )(
-      implicit ec: ExecutionContext
   ): Sink[F, Either[L, R]] =
     _.observe(_.collect { case Left(l) => l } to left)
       .to(_.collect { case Right(r) => r } to right)
