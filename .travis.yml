@@ -7,7 +7,8 @@ scala:
 jdk:
   - oraclejdk8
 
-sudo: false
+sudo: required
+dist: trusty
 
 cache:
   directories:
@@ -23,7 +24,9 @@ env:
     - PUBLISH=true
 
 script:
-  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.verbose test mimaReportBinaryIssues
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.verbose testJVM
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -Dfs2.test.verbose testJS
+  - sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 doc mimaReportBinaryIssues
   - (test $TRAVIS_SCALA_VERSION == "2.11.12" && sbt ++$TRAVIS_SCALA_VERSION -Dfile.encoding=UTF8 -J-Xms2g -J-Xmx2g docs/tut) || test $TRAVIS_SCALA_VERSION == "2.12.4"
 
 after_success:

@@ -6,6 +6,8 @@ import cats.effect.{ExitCase, Sync}
 import fs2.CompositeFailure
 import FreeC._
 
+import scala.util.control.NonFatal
+
 /** Free monad with a catch -- catches exceptions and provides mechanisms for handling them. */
 private[fs2] sealed abstract class FreeC[F[_], +R] {
 

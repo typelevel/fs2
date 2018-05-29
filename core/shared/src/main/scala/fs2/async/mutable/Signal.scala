@@ -2,8 +2,6 @@ package fs2
 package async
 package mutable
 
-import scala.concurrent.ExecutionContext
-
 import cats.{Applicative, Functor}
 import cats.effect.Concurrent
 import cats.effect.concurrent.{Deferred, Ref}
@@ -70,7 +68,7 @@ object Signal {
       def discrete = Stream.empty // never changes, so never any updates
     }
 
-  def apply[F[_], A](initA: A)(implicit F: Concurrent[F], ec: ExecutionContext): F[Signal[F, A]] =
+  def apply[F[_], A](initA: A)(implicit F: Concurrent[F]): F[Signal[F, A]] =
     Ref
       .of[F, (A, Long, Map[Token, Deferred[F, (A, Long)]])]((initA, 0, Map.empty))
       .map { state =>
@@ -88,7 +86,7 @@ object Signal {
                 val newState = (newA, newUpdates, Map.empty[Token, Deferred[F, (A, Long)]])
                 val action = listeners.toVector.traverse {
                   case (_, deferred) =>
-                    async.fork(deferred.complete(newA -> newUpdates))
+                    F.start(deferred.complete(newA -> newUpdates))
                 }
 
                 newState -> (action *> result.pure[F])

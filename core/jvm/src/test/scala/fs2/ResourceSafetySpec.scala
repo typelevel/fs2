@@ -200,14 +200,14 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
           .unsafeRunSync()
         runLog {
           s.get.evalMap { inner =>
-            async.fork(
-              bracket(c)(inner.get)
-                .evalMap { _ =>
-                  IO.async[Unit](_ => ())
-                }
-                .interruptWhen(signal.continuous)
-                .compile
-                .drain)
+            bracket(c)(inner.get)
+              .evalMap { _ =>
+                IO.async[Unit](_ => ())
+              }
+              .interruptWhen(signal.continuous)
+              .compile
+              .drain
+              .start
           }
         }
         eventually(Timeout(3 seconds)) { c.get shouldBe 0L }
@@ -221,26 +221,24 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val s = Stream(Stream(1))
       val signal = async.signalOf[IO, Boolean](false).unsafeRunSync()
       val c = new AtomicLong(0)
-      async
-        .fork(IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true))
+      (IO.shift *> IO { Thread.sleep(50L) } *> signal.set(true)).start
         .unsafeRunSync() // after 50 ms, interrupt
       runLog {
         s.evalMap { inner =>
-          async.fork {
-            Stream
-              .bracket(IO { c.incrementAndGet; Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
-                _ => inner,
-                _ => IO { c.decrementAndGet; () })
-              .evalMap { _ =>
-                IO.async[Unit](_ => ())
-              }
-              .interruptWhen(signal.discrete)
-              .compile
-              .drain
-          }
+          Stream
+            .bracket(IO { c.incrementAndGet; Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
+              _ => inner,
+              _ => IO { c.decrementAndGet; () })
+            .evalMap { _ =>
+              IO.async[Unit](_ => ())
+            }
+            .interruptWhen(signal.discrete)
+            .compile
+            .drain
+            .start
         }
       }
-      // required longer delay here, hence the sleep of 2s and async.fork that is not bound.
+      // required longer delay here due to the sleep of 2s
       eventually(Timeout(5 second)) { c.get shouldBe 0L }
     }
 

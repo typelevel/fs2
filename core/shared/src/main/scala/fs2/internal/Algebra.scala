@@ -4,8 +4,7 @@ import cats.~>
 import cats.effect.{Concurrent, Sync}
 import cats.implicits._
 import fs2._
-
-import scala.concurrent.ExecutionContext
+import scala.util.control.NonFatal
 
 private[fs2] sealed trait Algebra[F[_], O, R]
 
@@ -27,7 +26,7 @@ private[fs2] object Algebra {
 
   final case class Release[F[_], O](token: Token) extends AlgEffect[F, O, Unit]
 
-  final case class OpenScope[F[_], O](interruptible: Option[(Concurrent[F], ExecutionContext)])
+  final case class OpenScope[F[_], O](interruptible: Option[Concurrent[F]])
       extends AlgScope[F, O, Option[Token]]
 
   final case class CloseScope[F[_], O](scopeId: Token, interruptFallback: Boolean)
@@ -46,17 +45,8 @@ private[fs2] object Algebra {
       self match {
         case a: Acquire[F, O, r] =>
           Acquire[G, O, r](fK(a.resource), r => fK(a.release(r))).asInstanceOf[AlgEffect[G, O, R]]
-        case e: Eval[F, O, R] => Eval[G, O, R](fK(e.value))
-        case o: OpenScope[F, O] =>
-          OpenScope[G, O](
-            o.interruptible.flatMap {
-              case (_, ec) =>
-                concurrent.map { con =>
-                  (con, ec)
-                }
-            }
-          ).asInstanceOf[AlgEffect[G, O, R]]
-
+        case e: Eval[F, O, R]     => Eval[G, O, R](fK(e.value))
+        case o: OpenScope[F, O]   => OpenScope[G, O](concurrent).asInstanceOf[AlgEffect[G, O, R]]
         case r: Release[F, O]     => r.asInstanceOf[AlgEffect[G, O, R]]
         case c: CloseScope[F, O]  => c.asInstanceOf[AlgEffect[G, O, R]]
         case g: GetScope[F, O, x] => g.asInstanceOf[AlgEffect[G, O, R]]
@@ -126,21 +116,19 @@ private[fs2] object Algebra {
     * Note that this may fail with `Interrupted` when interruption occurred
     */
   private[fs2] def interruptScope[F[_], O](s: FreeC[Algebra[F, O, ?], Unit])(
-      implicit F: Concurrent[F],
-      ec: ExecutionContext): FreeC[Algebra[F, O, ?], Unit] =
-    scope0(s, Some((F, ec)))
+      implicit F: Concurrent[F]): FreeC[Algebra[F, O, ?], Unit] =
+    scope0(s, Some(F))
 
-  private[fs2] def openScope[F[_], O](interruptible: Option[(Concurrent[F], ExecutionContext)])
-    : FreeC[Algebra[F, O, ?], Option[Token]] =
+  private[fs2] def openScope[F[_], O](
+      interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Option[Token]] =
     FreeC.Eval[Algebra[F, O, ?], Option[Token]](OpenScope(interruptible))
 
   private[fs2] def closeScope[F[_], O](token: Token,
                                        interruptFallBack: Boolean): FreeC[Algebra[F, O, ?], Unit] =
     FreeC.Eval[Algebra[F, O, ?], Unit](CloseScope(token, interruptFallBack))
 
-  private def scope0[F[_], O](
-      s: FreeC[Algebra[F, O, ?], Unit],
-      interruptible: Option[(Concurrent[F], ExecutionContext)]): FreeC[Algebra[F, O, ?], Unit] =
+  private def scope0[F[_], O](s: FreeC[Algebra[F, O, ?], Unit],
+                              interruptible: Option[Concurrent[F]]): FreeC[Algebra[F, O, ?], Unit] =
     openScope(interruptible).flatMap {
       case None =>
         pure(()) // in case of interruption the scope closure is handled by scope itself, before next step is returned
@@ -215,7 +203,6 @@ private[fs2] object Algebra {
     case class OpenInterruptibly[X](
         scope: CompileScope[F, O],
         concurrent: Concurrent[F],
-        ec: ExecutionContext,
         onInterrupt: FreeC[Algebra[F, X, ?], Unit],
         next: Either[Throwable, CompileScope[F, O]] => FreeC[Algebra[F, X, ?], Unit]
     ) extends R[X]
@@ -294,17 +281,14 @@ private[fs2] object Algebra {
                         go(nextScope, f(Right(Some((head, outScope.id, tail)))))
                       )
                     case Right(Interrupted(scope, next)) => F.pure(Interrupted(scope, next))
-                    case Right(OpenInterruptibly(scope, concurrent, ec, onInterrupt, next)) =>
+                    case Right(OpenInterruptibly(scope, concurrent, onInterrupt, next)) =>
                       def transform(s: FreeC[Algebra[F, y, ?], Unit]) =
                         step(s, None).transformWith(f)
                       F.pure(
-                        OpenInterruptibly(scope,
-                                          concurrent,
-                                          ec,
-                                          transform(onInterrupt),
-                                          next.andThen { s =>
-                                            transform(s)
-                                          }))
+                        OpenInterruptibly(scope, concurrent, transform(onInterrupt), next.andThen {
+                          s =>
+                            transform(s)
+                        }))
                     case Left(err) =>
                       go(scope, f(Left(err)))
                   }
@@ -347,11 +331,10 @@ private[fs2] object Algebra {
                       go(childScope, f(Right(Some(childScope.id))))
                     }
 
-                  case Some((concurrent, ec)) =>
+                  case Some(concurrent) =>
                     F.pure(
                       OpenInterruptibly(scope,
                                         concurrent,
-                                        ec,
                                         FreeC.suspend(f(Right(None))),
                                         r => f(r.right.map(scope => Some(scope.id)))))
                 }
@@ -392,8 +375,8 @@ private[fs2] object Algebra {
       case Done(_)                  => F.pure(None)
       case Out(head, scope, tail)   => F.pure(Some((head, scope, tail)))
       case Interrupted(scope, next) => compileLoop(scope, next)
-      case OpenInterruptibly(scope, concurrent, ec, onInterrupt, next) =>
-        F.flatMap(scope.open(Some((concurrent, ec, onInterrupt)))) { childScope =>
+      case OpenInterruptibly(scope, concurrent, onInterrupt, next) =>
+        F.flatMap(scope.open(Some((concurrent, onInterrupt)))) { childScope =>
           compileLoop(childScope, next(Right(childScope)))
         }
     }

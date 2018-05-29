@@ -2,13 +2,11 @@ package fs2
 package io
 package file
 
-import scala.concurrent.ExecutionContext
-
 import java.nio.channels._
 import java.nio.file._
 import java.util.concurrent.ExecutorService
 
-import cats.effect.{Effect, Sync}
+import cats.effect.{Effect, Sync, Timer}
 
 /** Provides various `Pull`s for working with files. */
 object pulls {
@@ -70,7 +68,7 @@ object pulls {
                           flags: Seq[OpenOption],
                           executorService: Option[ExecutorService] = None)(
       implicit F: Effect[F],
-      ec: ExecutionContext): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
+      timer: Timer[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] = {
     import collection.JavaConverters._
     fromAsynchronousFileChannel(
       F.delay(AsynchronousFileChannel
@@ -95,7 +93,7 @@ object pulls {
     */
   def fromAsynchronousFileChannel[F[_]](channel: F[AsynchronousFileChannel])(
       implicit F: Effect[F],
-      ec: ExecutionContext): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
+      timer: Timer[F]): Pull[F, Nothing, Pull.Cancellable[F, FileHandle[F]]] =
     Pull
       .acquireCancellable(channel)(ch => F.delay(ch.close()))
       .map(_.map(FileHandle.fromAsynchronousFileChannel[F]))

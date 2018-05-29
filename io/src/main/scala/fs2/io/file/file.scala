@@ -1,14 +1,13 @@
 package fs2
 package io
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption, WatchEvent}
 import java.util.concurrent.ExecutorService
 
-import cats.effect.{Concurrent, Effect, IO, Sync}
+import cats.effect.{Concurrent, Effect, IO, Sync, Timer}
 
 /** Provides support for working with files. */
 package object file {
@@ -17,13 +16,13 @@ package object file {
     * Provides a handler for NIO methods which require a `java.nio.channels.CompletionHandler` instance.
     */
   private[fs2] def asyncCompletionHandler[F[_], O](
-      f: CompletionHandler[O, Null] => Unit)(implicit F: Effect[F], ec: ExecutionContext): F[O] =
+      f: CompletionHandler[O, Null] => Unit)(implicit F: Effect[F], timer: Timer[F]): F[O] =
     F.async[O] { cb =>
       f(new CompletionHandler[O, Null] {
         override def completed(result: O, attachment: Null): Unit =
-          async.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.pure(()))
+          async.unsafeRunAsync(F.delay(cb(Right(result))))(_ => IO.unit)
         override def failed(exc: Throwable, attachment: Null): Unit =
-          async.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.pure(()))
+          async.unsafeRunAsync(F.delay(cb(Left(exc))))(_ => IO.unit)
       })
     }
 
@@ -47,7 +46,7 @@ package object file {
                          chunkSize: Int,
                          executorService: Option[ExecutorService] = None)(
       implicit F: Effect[F],
-      ec: ExecutionContext): Stream[F, Byte] =
+      timer: Timer[F]): Stream[F, Byte] =
     pulls
       .fromPathAsync(path, List(StandardOpenOption.READ), executorService)
       .flatMap(c => pulls.readAllFromFileHandle(chunkSize)(c.resource))
@@ -76,7 +75,7 @@ package object file {
                           flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE),
                           executorService: Option[ExecutorService] = None)(
       implicit F: Effect[F],
-      ec: ExecutionContext): Sink[F, Byte] =
+      timer: Timer[F]): Sink[F, Byte] =
     in =>
       pulls
         .fromPathAsync(path, StandardOpenOption.WRITE :: flags.toList, executorService)
@@ -112,7 +111,7 @@ package object file {
     *
     * @return singleton bracketed stream returning a watcher
     */
-  def watcher[F[_]](implicit F: Concurrent[F], ec: ExecutionContext): Stream[F, Watcher[F]] =
+  def watcher[F[_]](implicit F: Concurrent[F]): Stream[F, Watcher[F]] =
     Watcher.default
 
   /**
@@ -120,12 +119,11 @@ package object file {
     *
     * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
     */
-  def watch[F[_]](path: Path,
-                  types: Seq[Watcher.EventType] = Nil,
-                  modifiers: Seq[WatchEvent.Modifier] = Nil,
-                  pollTimeout: FiniteDuration = 1.second)(
-      implicit F: Concurrent[F],
-      ec: ExecutionContext): Stream[F, Watcher.Event] =
+  def watch[F[_]](
+      path: Path,
+      types: Seq[Watcher.EventType] = Nil,
+      modifiers: Seq[WatchEvent.Modifier] = Nil,
+      pollTimeout: FiniteDuration = 1.second)(implicit F: Concurrent[F]): Stream[F, Watcher.Event] =
     Watcher.default.flatMap(w =>
       Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
 }

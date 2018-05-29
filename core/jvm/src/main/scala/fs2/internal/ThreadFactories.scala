@@ -5,6 +5,7 @@ import java.util.concurrent.{Executors, ThreadFactory}
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.concurrent.ExecutionContext
+import scala.util.control.NonFatal
 
 private[fs2] object ThreadFactories {
 

@@ -1,11 +1,10 @@
 package fs2
 
-import scala.concurrent.ExecutionContext
-
 import java.io.{InputStream, OutputStream}
 
-import cats.effect.{Concurrent, ConcurrentEffect, Sync}
-import cats.implicits._
+import cats.effect.{Async, ConcurrentEffect, Sync, Timer}
+
+import scala.concurrent.ExecutionContext
 
 /** Provides various ways to work with streams that perform IO. */
 package object io {
@@ -15,7 +14,7 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * Blocks the current thread.
+    * Blocks on read operations from the input stream.
     */
   def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(
       implicit F: Sync[F]): Stream[F, Byte] =
@@ -28,19 +27,22 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * This will block a thread in the `ExecutionContext`, so the size of any associated
-    * threadpool should be sized appropriately.
+    * Like `readInputStream` but each read operation is performed on the supplied execution
+    * context. Reads are blocking so the execution context should be configured appropriately.
     */
-  def readInputStreamAsync[F[_]](fis: F[InputStream],
-                                 chunkSize: Int,
-                                 closeAfterUse: Boolean = true)(
-      implicit F: Concurrent[F],
-      ec: ExecutionContext): Stream[F, Byte] = {
-    def readAsync(is: InputStream, buf: Array[Byte]) =
-      async.fork(readBytesFromInputStream(is, buf)).flatMap(_.join)
-
-    readInputStreamGeneric(fis, F.delay(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
-  }
+  def readInputStreamAsync[F[_]](
+      fis: F[InputStream],
+      chunkSize: Int,
+      blockingExecutionContext: ExecutionContext,
+      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Stream[F, Byte] =
+    readInputStreamGeneric(
+      fis,
+      F.delay(new Array[Byte](chunkSize)),
+      (is, buf) =>
+        F.bracket(Async.shift(blockingExecutionContext))(_ => readBytesFromInputStream(is, buf))(
+          _ => timer.shift),
+      closeAfterUse
+    )
 
   /**
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
@@ -51,7 +53,7 @@ package object io {
     * returned or pipe it to a combinator that does (e.g., `buffer`). Use
     * `readInputStream` for a safe version.
     *
-    * Blocks the current thread.
+    * Blocks on read operations from the input stream.
     */
   def unsafeReadInputStream[F[_]](
       fis: F[InputStream],
@@ -66,30 +68,33 @@ package object io {
     * Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *
-    * This will block a thread in the `ExecutionContext`, so the size of any associated
-    * threadpool should be sized appropriately.
+    * Each read operation is performed on the supplied execution context. Reads are
+    * blocking so the execution context should be configured appropriately.
     *
     * Recycles an underlying input buffer for performance. It is safe to call
     * this as long as whatever consumes this `Stream` does not store the `Chunk`
     * returned or pipe it to a combinator that does (e.g. `buffer`). Use
     * `readInputStream` for a safe version.
     */
-  def unsafeReadInputStreamAsync[F[_]](fis: F[InputStream],
-                                       chunkSize: Int,
-                                       closeAfterUse: Boolean = true)(
-      implicit F: Concurrent[F],
-      ec: ExecutionContext): Stream[F, Byte] = {
-    def readAsync(is: InputStream, buf: Array[Byte]) =
-      async.fork(readBytesFromInputStream(is, buf)).flatMap(_.join)
-
-    readInputStreamGeneric(fis, F.pure(new Array[Byte](chunkSize)), readAsync, closeAfterUse)
-  }
+  def unsafeReadInputStreamAsync[F[_]](
+      fis: F[InputStream],
+      chunkSize: Int,
+      blockingExecutionContext: ExecutionContext,
+      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Stream[F, Byte] =
+    readInputStreamGeneric(
+      fis,
+      F.pure(new Array[Byte](chunkSize)),
+      (is, buf) =>
+        F.bracket(Async.shift(blockingExecutionContext))(_ => readBytesFromInputStream(is, buf))(
+          _ => timer.shift),
+      closeAfterUse
+    )
 
   /**
     * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
     * the `OutputStream` should not be closed after use.
     *
-    * Blocks the current thread.
+    * Blocks on write operations to the input stream.
     */
   def writeOutputStream[F[_]: Sync](fos: F[OutputStream],
                                     closeAfterUse: Boolean = true): Sink[F, Byte] =
@@ -99,17 +104,18 @@ package object io {
     * Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
     * the `OutputStream` should not be closed after use.
     *
-    * This will block a thread in the `ExecutorService`, so the size of any associated
-    * threadpool should be sized appropriately.
+    * Each write operation is performed on the supplied execution context. Writes are
+    * blocking so the execution context should be configured appropriately.
     */
-  def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(
-      implicit F: Concurrent[F],
-      ec: ExecutionContext): Sink[F, Byte] = {
-    def writeAsync(os: OutputStream, buf: Chunk[Byte]) =
-      async.fork(writeBytesToOutputStream(os, buf)).flatMap(_.join)
-
-    writeOutputStreamGeneric(fos, closeAfterUse, writeAsync)
-  }
+  def writeOutputStreamAsync[F[_]](
+      fos: F[OutputStream],
+      blockingExecutionContext: ExecutionContext,
+      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Sink[F, Byte] =
+    writeOutputStreamGeneric(fos,
+                             closeAfterUse,
+                             (os, buf) =>
+                               F.bracket(Async.shift(blockingExecutionContext))(_ =>
+                                 writeBytesToOutputStream(os, buf))(_ => timer.shift))
 
   //
   // STDIN/STDOUT Helpers
@@ -119,17 +125,20 @@ package object io {
     readInputStream(F.delay(System.in), bufSize, false)
 
   /** Stream of bytes read asynchronously from standard input. */
-  def stdinAsync[F[_]](bufSize: Int)(implicit F: Concurrent[F],
-                                     ec: ExecutionContext): Stream[F, Byte] =
-    readInputStreamAsync(F.delay(System.in), bufSize, false)
+  def stdinAsync[F[_]](bufSize: Int, blockingExecutionContext: ExecutionContext)(
+      implicit F: Async[F],
+      timer: Timer[F]): Stream[F, Byte] =
+    readInputStreamAsync(F.delay(System.in), bufSize, blockingExecutionContext, false)
 
   /** Sink of bytes that writes emitted values to standard output. */
   def stdout[F[_]](implicit F: Sync[F]): Sink[F, Byte] =
     writeOutputStream(F.delay(System.out), false)
 
   /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdoutAsync[F[_]](implicit F: Concurrent[F], ec: ExecutionContext): Sink[F, Byte] =
-    writeOutputStreamAsync(F.delay(System.out), false)
+  def stdoutAsync[F[_]](blockingExecutionContext: ExecutionContext)(
+      implicit F: Async[F],
+      timer: Timer[F]): Sink[F, Byte] =
+    writeOutputStreamAsync(F.delay(System.out), blockingExecutionContext, false)
 
   /**
     * Pipe that converts a stream of bytes to a stream that will emits a single `java.io.InputStream`,
@@ -139,13 +148,13 @@ package object io {
     * original stream completely terminates.
     *
     * Because all `InputStream` methods block (including `close`), the resulting `InputStream`
-    * should be consumed on a different thread pool than the one that is backing the `ExecutionContext`.
+    * should be consumed on a different thread pool than the one that is backing the `Timer`.
     *
     * Note that the implementation is not thread safe -- only one thread is allowed at any time
     * to operate on the resulting `java.io.InputStream`.
     */
   def toInputStream[F[_]](implicit F: ConcurrentEffect[F],
-                          ec: ExecutionContext): Pipe[F, Byte, InputStream] =
+                          timer: Timer[F]): Pipe[F, Byte, InputStream] =
     JavaInputOutputStream.toInputStream
 
 }

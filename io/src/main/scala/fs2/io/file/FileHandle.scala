@@ -2,12 +2,10 @@ package fs2
 package io
 package file
 
-import scala.concurrent.ExecutionContext
-
 import java.nio.ByteBuffer
 import java.nio.channels.{AsynchronousFileChannel, FileChannel, FileLock}
 
-import cats.effect.{Effect, Sync}
+import cats.effect.{Effect, Sync, Timer}
 import cats.implicits._
 
 /**
@@ -99,7 +97,7 @@ private[file] object FileHandle {
     * Uses a `java.nio.Channels.CompletionHandler` to handle callbacks from IO operations.
     */
   private[file] def fromAsynchronousFileChannel[F[_]](
-      chan: AsynchronousFileChannel)(implicit F: Effect[F], ec: ExecutionContext): FileHandle[F] =
+      chan: AsynchronousFileChannel)(implicit F: Effect[F], timer: Timer[F]): FileHandle[F] =
     new FileHandle[F] {
       type Lock = FileLock
 

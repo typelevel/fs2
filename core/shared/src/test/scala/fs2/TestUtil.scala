@@ -4,10 +4,10 @@ import java.util.concurrent.TimeoutException
 import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 
 import scala.concurrent.Future
+import scala.util.control.NonFatal
 
 import cats.effect.IO
 import cats.implicits._
-import fs2.internal.NonFatal
 
 object TestUtil extends TestUtilPlatform {
 

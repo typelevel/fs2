@@ -2,8 +2,6 @@ package fs2
 package async
 package mutable
 
-import scala.concurrent.ExecutionContext
-
 import cats.effect.Concurrent
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
@@ -86,8 +84,7 @@ abstract class Topic[F[_], A] { self =>
 
 object Topic {
 
-  def apply[F[_], A](initial: A)(implicit F: Concurrent[F],
-                                 ec: ExecutionContext): F[Topic[F, A]] = {
+  def apply[F[_], A](initial: A)(implicit F: Concurrent[F]): F[Topic[F, A]] = {
     // Id identifying each subscriber uniquely
     class ID
 
