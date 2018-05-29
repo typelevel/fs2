@@ -3,7 +3,6 @@ package fs2
 import java.io.{InputStream, OutputStream}
 
 import cats.effect.{Async, ConcurrentEffect, Sync, Timer}
-import cats.implicits._
 
 import scala.concurrent.ExecutionContext
 
@@ -40,7 +39,8 @@ package object io {
       fis,
       F.delay(new Array[Byte](chunkSize)),
       (is, buf) =>
-        Async.shift(blockingExecutionContext) *> readBytesFromInputStream(is, buf) <* timer.shift,
+        F.bracket(Async.shift(blockingExecutionContext))(_ => readBytesFromInputStream(is, buf))(
+          _ => timer.shift),
       closeAfterUse
     )
 
@@ -85,7 +85,8 @@ package object io {
       fis,
       F.pure(new Array[Byte](chunkSize)),
       (is, buf) =>
-        Async.shift(blockingExecutionContext) *> readBytesFromInputStream(is, buf) <* timer.shift,
+        F.bracket(Async.shift(blockingExecutionContext))(_ => readBytesFromInputStream(is, buf))(
+          _ => timer.shift),
       closeAfterUse
     )
 
@@ -110,11 +111,11 @@ package object io {
       fos: F[OutputStream],
       blockingExecutionContext: ExecutionContext,
       closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Sink[F, Byte] =
-    writeOutputStreamGeneric(
-      fos,
-      closeAfterUse,
-      (os, buf) =>
-        Async.shift(blockingExecutionContext) *> writeBytesToOutputStream(os, buf) <* timer.shift)
+    writeOutputStreamGeneric(fos,
+                             closeAfterUse,
+                             (os, buf) =>
+                               F.bracket(Async.shift(blockingExecutionContext))(_ =>
+                                 writeBytesToOutputStream(os, buf))(_ => timer.shift))
 
   //
   // STDIN/STDOUT Helpers
