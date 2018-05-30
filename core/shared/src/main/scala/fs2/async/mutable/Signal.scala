@@ -2,11 +2,10 @@ package fs2
 package async
 package mutable
 
-import cats.{Applicative, Functor}
+import cats.{Applicative, Functor, Invariant}
 import cats.effect.Concurrent
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits._
-
 import fs2.Stream._
 import fs2.internal.Token
 
@@ -65,7 +64,15 @@ object Signal {
     new immutable.Signal[F, A] {
       def get = F.pure(a)
       def continuous = Stream.constant(a)
-      def discrete = Stream.empty // never changes, so never any updates
+
+      /**
+        * We put a single element here because otherwise the implementations of
+        * Signal as a Monad or Applicative get more annoying. In particular if
+        * this stream were empty, Applicatively zipping another Signal in the
+        * straightforward way would cause the (non-deterministically) zipped
+        * stream to be empty.
+        */
+      def discrete = Stream(a)
     }
 
   def apply[F[_], A](initA: A)(implicit F: Concurrent[F]): F[Signal[F, A]] =
@@ -123,4 +130,9 @@ object Signal {
           }
         }
       }
+
+  implicit def invariantInstance[F[_]: Functor]: Invariant[Signal[F, ?]] =
+    new Invariant[Signal[F, ?]] {
+      override def imap[A, B](fa: Signal[F, A])(f: A => B)(g: B => A): Signal[F, B] = fa.imap(f)(g)
+    }
 }
