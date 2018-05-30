@@ -30,7 +30,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
     "echo one" in {
       val msg = Chunk.bytes("Hello, world!".getBytes)
       runLog {
-        open[IO]().flatMap { serverSocket =>
+        Stream.resource(open[IO]()).flatMap { serverSocket =>
           Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket
@@ -39,7 +39,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 serverSocket.write(packet)
               }
               .drain
-            val client = open[IO]().flatMap { clientSocket =>
+            val client = Stream.resource(open[IO]()).flatMap { clientSocket =>
               Stream(Packet(serverAddress, msg))
                 .covary[IO]
                 .to(clientSocket.writes())
@@ -58,7 +58,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       val numClients = 50
       val numParallelClients = 10
       runLog {
-        open[IO]().flatMap { serverSocket =>
+        Stream.resource(open[IO]()).flatMap { serverSocket =>
           Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
             val serverAddress = new InetSocketAddress("localhost", serverPort)
             val server = serverSocket
@@ -67,7 +67,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
                 serverSocket.write(packet)
               }
               .drain
-            val client = open[IO]().flatMap { clientSocket =>
+            val client = Stream.resource(open[IO]()).flatMap { clientSocket =>
               Stream
                 .emits(msgs.map { msg =>
                   Packet(serverAddress, msg)
@@ -95,39 +95,42 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
       val group = InetAddress.getByName("232.10.10.10")
       val msg = Chunk.bytes("Hello, world!".getBytes)
       runLog {
-        open[IO](
-          protocolFamily = Some(StandardProtocolFamily.INET),
-          multicastTTL = Some(1)
-        ).flatMap { serverSocket =>
-          Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
-            val v4Interfaces =
-              NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
-                interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
-              }
-            val server = Stream.eval_(
-              v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
-              serverSocket
-                .reads()
-                .evalMap { packet =>
-                  serverSocket.write(packet)
+        Stream
+          .resource(
+            open[IO](
+              protocolFamily = Some(StandardProtocolFamily.INET),
+              multicastTTL = Some(1)
+            ))
+          .flatMap { serverSocket =>
+            Stream.eval(serverSocket.localAddress).map { _.getPort }.flatMap { serverPort =>
+              val v4Interfaces =
+                NetworkInterface.getNetworkInterfaces.asScala.toList.filter { interface =>
+                  interface.getInetAddresses.asScala.exists(_.isInstanceOf[Inet4Address])
                 }
-                .drain
-            val client = open[IO]().flatMap { clientSocket =>
-              Stream(Packet(new InetSocketAddress(group, serverPort), msg))
-                .covary[IO]
-                .to(clientSocket.writes())
-                .drain ++ Stream.eval(clientSocket.read())
+              val server = Stream.eval_(
+                v4Interfaces.traverse(interface => serverSocket.join(group, interface))) ++
+                serverSocket
+                  .reads()
+                  .evalMap { packet =>
+                    serverSocket.write(packet)
+                  }
+                  .drain
+              val client = Stream.resource(open[IO]()).flatMap { clientSocket =>
+                Stream(Packet(new InetSocketAddress(group, serverPort), msg))
+                  .covary[IO]
+                  .to(clientSocket.writes())
+                  .drain ++ Stream.eval(clientSocket.read())
+              }
+              server.mergeHaltBoth(client)
             }
-            server.mergeHaltBoth(client)
           }
-        }
       }.map(_.bytes) shouldBe Vector(msg)
     }
 
     "timeouts supported" in {
       an[InterruptedByTimeoutException] should be thrownBy {
         runLog {
-          open[IO]().flatMap { socket =>
+          Stream.resource(open[IO]()).flatMap { socket =>
             socket.reads(timeout = Some(50.millis))
           }
         }

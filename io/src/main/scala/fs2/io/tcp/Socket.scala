@@ -16,7 +16,7 @@ import java.nio.channels.{
 }
 import java.util.concurrent.TimeUnit
 
-import cats.effect.{ConcurrentEffect, IO, Timer}
+import cats.effect.{ConcurrentEffect, IO, Resource, Timer}
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.implicits._
 
@@ -103,9 +103,9 @@ protected[tcp] object Socket {
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
       timer: Timer[F]
-  ): Stream[F, Socket[F]] = Stream.suspend {
+  ): Resource[F, Socket[F]] = {
 
-    def setup: Stream[F, AsynchronousSocketChannel] = Stream.suspend {
+    def setup: F[AsynchronousSocketChannel] = F.delay {
       val ch =
         AsynchronousChannelProvider.provider().openAsynchronousSocketChannel(AG)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
@@ -113,7 +113,7 @@ protected[tcp] object Socket {
       ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_KEEPALIVE, keepAlive)
       ch.setOption[java.lang.Boolean](StandardSocketOptions.TCP_NODELAY, noDelay)
-      Stream.emit(ch)
+      ch
     }
 
     def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
@@ -123,21 +123,14 @@ protected[tcp] object Socket {
           null,
           new CompletionHandler[Void, Void] {
             def completed(result: Void, attachment: Void): Unit =
-              async.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.pure(()))
+              async.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.unit)
             def failed(rsn: Throwable, attachment: Void): Unit =
-              async.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.pure(()))
+              async.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.unit)
           }
         )
       }
 
-    def cleanup(ch: AsynchronousSocketChannel): F[Unit] =
-      F.delay { ch.close() }
-
-    setup.flatMap { ch =>
-      Stream.bracket(connect(ch))({ _ =>
-        eval(mkSocket(ch))
-      }, cleanup)
-    }
+    Resource.liftF(setup.flatMap(connect)).flatMap(mkSocket(_))
   }
 
   def server[F[_]](address: InetSocketAddress,
@@ -147,67 +140,63 @@ protected[tcp] object Socket {
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
       timer: Timer[F]
-  ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
-    Stream.suspend {
+  ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] = {
 
-      def setup: F[AsynchronousServerSocketChannel] = F.delay {
-        val ch = AsynchronousChannelProvider
-          .provider()
-          .openAsynchronousServerSocketChannel(AG)
-        ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
-        ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
-        ch.bind(address)
-        ch
-      }
-
-      def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] = F.delay {
-        if (sch.isOpen) sch.close()
-      }
-
-      def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Stream[F, Socket[F]]] = {
-        def go: Stream[F, Stream[F, Socket[F]]] = {
-          def acceptChannel: F[AsynchronousSocketChannel] =
-            F.async[AsynchronousSocketChannel] { cb =>
-              sch.accept(
-                null,
-                new CompletionHandler[AsynchronousSocketChannel, Void] {
-                  def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                    async.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.pure(()))
-                  def failed(rsn: Throwable, attachment: Void): Unit =
-                    async.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.pure(()))
-                }
-              )
-            }
-
-          def close(ch: AsynchronousSocketChannel): F[Unit] =
-            F.delay { if (ch.isOpen) ch.close() }.attempt.as(())
-
-          eval(acceptChannel.attempt).map {
-            case Left(err) => Stream.empty.covary[F]
-            case Right(accepted) =>
-              eval(mkSocket(accepted)).onFinalize(close(accepted))
-          } ++ go
-        }
-
-        go.handleErrorWith {
-          case err: AsynchronousCloseException =>
-            if (sch.isOpen) Stream.raiseError(err)
-            else Stream.empty
-          case err => Stream.raiseError(err)
-        }
-      }
-
-      Stream.bracket(setup)(
-        sch =>
-          Stream.emit(Left(sch.getLocalAddress.asInstanceOf[InetSocketAddress])) ++ acceptIncoming(
-            sch)
-            .map(Right(_)),
-        cleanup)
+    def setup: F[AsynchronousServerSocketChannel] = F.delay {
+      val ch = AsynchronousChannelProvider
+        .provider()
+        .openAsynchronousServerSocketChannel(AG)
+      ch.setOption[java.lang.Boolean](StandardSocketOptions.SO_REUSEADDR, reuseAddress)
+      ch.setOption[Integer](StandardSocketOptions.SO_RCVBUF, receiveBufferSize)
+      ch.bind(address)
+      ch
     }
 
+    def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] = F.delay {
+      if (sch.isOpen) sch.close()
+    }
+
+    def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Stream[F, Socket[F]]] = {
+      def go: Stream[F, Stream[F, Socket[F]]] = {
+        def acceptChannel: F[AsynchronousSocketChannel] =
+          F.async[AsynchronousSocketChannel] { cb =>
+            sch.accept(
+              null,
+              new CompletionHandler[AsynchronousSocketChannel, Void] {
+                def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                  async.unsafeRunAsync(F.delay(cb(Right(ch))))(_ => IO.pure(()))
+                def failed(rsn: Throwable, attachment: Void): Unit =
+                  async.unsafeRunAsync(F.delay(cb(Left(rsn))))(_ => IO.pure(()))
+              }
+            )
+          }
+
+        eval(acceptChannel.attempt).map {
+          case Left(err) => Stream.empty.covary[F]
+          case Right(accepted) =>
+            Stream.resource(mkSocket(accepted))
+        } ++ go
+      }
+
+      go.handleErrorWith {
+        case err: AsynchronousCloseException =>
+          if (sch.isOpen) Stream.raiseError(err)
+          else Stream.empty
+        case err => Stream.raiseError(err)
+      }
+    }
+
+    Stream.bracket(setup)(
+      sch =>
+        Stream.emit(Left(sch.getLocalAddress.asInstanceOf[InetSocketAddress])) ++ acceptIncoming(
+          sch)
+          .map(Right(_)),
+      cleanup)
+  }
+
   def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: ConcurrentEffect[F],
-                                                    timer: Timer[F]): F[Socket[F]] = {
-    Semaphore(1).flatMap { readSemaphore =>
+                                                    timer: Timer[F]): Resource[F, Socket[F]] = {
+    val socket = Semaphore(1).flatMap { readSemaphore =>
       Ref.of[F, ByteBuffer](ByteBuffer.allocate(0)).map { bufferRef =>
         // Reads data to remaining capacity of supplied ByteBuffer
         // Also measures time the read took returning this as tuple
@@ -358,5 +347,6 @@ protected[tcp] object Socket {
         }
       }
     }
+    Resource.make(socket)(_ => F.delay(if (ch.isOpen) ch.close else ()).attempt.void)
   }
 }

@@ -7,7 +7,8 @@ import java.nio.channels.CompletionHandler
 import java.nio.file.{Path, StandardOpenOption, WatchEvent}
 import java.util.concurrent.ExecutorService
 
-import cats.effect.{Concurrent, Effect, IO, Sync, Timer}
+import cats.effect.{Concurrent, Effect, IO, Resource, Sync, Timer}
+import cats.implicits._
 
 /** Provides support for working with files. */
 package object file {
@@ -111,7 +112,7 @@ package object file {
     *
     * @return singleton bracketed stream returning a watcher
     */
-  def watcher[F[_]](implicit F: Concurrent[F]): Stream[F, Watcher[F]] =
+  def watcher[F[_]](implicit F: Concurrent[F]): Resource[F, Watcher[F]] =
     Watcher.default
 
   /**
@@ -124,6 +125,7 @@ package object file {
       types: Seq[Watcher.EventType] = Nil,
       modifiers: Seq[WatchEvent.Modifier] = Nil,
       pollTimeout: FiniteDuration = 1.second)(implicit F: Concurrent[F]): Stream[F, Watcher.Event] =
-    Watcher.default.flatMap(w =>
-      Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
+    Stream
+      .resource(Watcher.default)
+      .flatMap(w => Stream.eval_(w.watch(path, types, modifiers)) ++ w.events(pollTimeout))
 }

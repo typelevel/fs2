@@ -4,14 +4,14 @@ package io
 import java.net.{InetSocketAddress, NetworkInterface, ProtocolFamily, StandardSocketOptions}
 import java.nio.channels.DatagramChannel
 
-import cats.effect.{Effect, Timer}
+import cats.effect.{Effect, Resource, Timer}
 import cats.implicits._
 
 /** Provides support for UDP networking. */
 package object udp {
 
   /**
-    * Provides a singleton stream of a UDP Socket that, when run, will bind to the specified adress.
+    * Provides a UDP Socket that, when run, will bind to the specified adress.
     *
     * @param address              address to bind to; defaults to an ephemeral port on all interfaces
     * @param reuseAddress         whether address has to be reused (see `java.net.StandardSocketOptions.SO_REUSEADDR`)
@@ -33,7 +33,7 @@ package object udp {
       multicastInterface: Option[NetworkInterface] = None,
       multicastTTL: Option[Int] = None,
       multicastLoopback: Boolean = true
-  )(implicit AG: AsynchronousSocketGroup, F: Effect[F], timer: Timer[F]): Stream[F, Socket[F]] = {
+  )(implicit AG: AsynchronousSocketGroup, F: Effect[F], timer: Timer[F]): Resource[F, Socket[F]] = {
     val mkChannel = F.delay {
       val channel = protocolFamily
         .map { pf =>
@@ -59,6 +59,6 @@ package object udp {
       channel.bind(address)
       channel
     }
-    Stream.bracket(mkChannel.flatMap(ch => Socket.mkSocket(ch)))(s => Stream.emit(s), _.close)
+    Resource(mkChannel.flatMap(ch => Socket.mkSocket(ch).map(s => s -> s.close)))
   }
 }
