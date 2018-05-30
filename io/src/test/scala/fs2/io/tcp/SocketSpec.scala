@@ -43,7 +43,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
         serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
           case Left(local) => Stream.eval_(localBindAddress.complete(local))
           case Right(s) =>
-            s.map { socket =>
+            Stream.resource(s).map { socket =>
               socket
                 .reads(1024)
                 .to(socket.writes())
@@ -58,7 +58,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
           .covary[IO]
           .map { idx =>
             Stream.eval(localBindAddress.get).flatMap { local =>
-              client[IO](local).flatMap { socket =>
+              Stream.resource(client[IO](local)).flatMap { socket =>
                 Stream
                   .chunk(message)
                   .covary[IO]
@@ -96,7 +96,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
             case Right(s) =>
-              Stream.emit(s.flatMap { socket =>
+              Stream.emit(Stream.resource(s).flatMap { socket =>
                 Stream
                   .chunk(message)
                   .covary[IO]
@@ -113,7 +113,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       val klient: Stream[IO, Int] =
         for {
           addr <- Stream.eval(localBindAddress.get)
-          sock <- client[IO](addr)
+          sock <- Stream.resource(client[IO](addr))
           size <- Stream.emits(sizes).covary[IO]
           op <- Stream.eval(sock.readN(size, None))
         } yield op.map(_.size).getOrElse(-1)

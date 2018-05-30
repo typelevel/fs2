@@ -4,7 +4,7 @@ package io
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousChannelGroup
 
-import cats.effect.{ConcurrentEffect, Timer}
+import cats.effect.{ConcurrentEffect, Resource, Timer}
 
 /** Provides support for TCP networking. */
 package object tcp {
@@ -30,7 +30,7 @@ package object tcp {
       noDelay: Boolean = false
   )(implicit AG: AsynchronousChannelGroup,
     F: ConcurrentEffect[F],
-    timer: Timer[F]): Stream[F, Socket[F]] =
+    timer: Timer[F]): Resource[F, Socket[F]] =
     Socket.client(to, reuseAddress, sendBufferSize, receiveBufferSize, keepAlive, noDelay)
 
   /**
@@ -60,7 +60,7 @@ package object tcp {
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
       timer: Timer[F]
-  ): Stream[F, Stream[F, Socket[F]]] =
+  ): Stream[F, Resource[F, Socket[F]]] =
     serverWithLocalAddress(bind, maxQueued, reuseAddress, receiveBufferSize)
       .collect { case Right(s) => s }
 
@@ -76,6 +76,6 @@ package object tcp {
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
       timer: Timer[F]
-  ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] =
+  ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] =
     Socket.server(flatMap, maxQueued, reuseAddress, receiveBufferSize)
 }

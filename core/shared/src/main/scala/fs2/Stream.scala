@@ -1558,6 +1558,10 @@ object Stream {
   /** Alias for `eval(fo).repeat`. */
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
+  /** Converts the supplied resource in to a singleton stream. */
+  def resource[F[_], O](r: Resource[F, O]): Stream[F, O] =
+    Stream.bracket(r.allocate)(t => Stream.emit(t._1), t => t._2)
+
   /**
     * Retries `fo` on failure, returning a singleton stream with the
     * result of `fo` as soon as it succeeds.
