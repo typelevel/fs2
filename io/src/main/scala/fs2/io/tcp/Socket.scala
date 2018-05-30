@@ -140,9 +140,9 @@ protected[tcp] object Socket {
       implicit AG: AsynchronousChannelGroup,
       F: ConcurrentEffect[F],
       timer: Timer[F]
-  ): Stream[F, Either[InetSocketAddress, Stream[F, Socket[F]]]] = {
+  ): Stream[F, Either[InetSocketAddress, Resource[F, Socket[F]]]] = {
 
-    def setup: F[AsynchronousServerSocketChannel] = F.delay {
+    val setup: F[AsynchronousServerSocketChannel] = F.delay {
       val ch = AsynchronousChannelProvider
         .provider()
         .openAsynchronousServerSocketChannel(AG)
@@ -152,12 +152,11 @@ protected[tcp] object Socket {
       ch
     }
 
-    def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] = F.delay {
-      if (sch.isOpen) sch.close()
-    }
+    def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] =
+      F.delay(if (sch.isOpen) sch.close())
 
-    def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Stream[F, Socket[F]]] = {
-      def go: Stream[F, Stream[F, Socket[F]]] = {
+    def acceptIncoming(sch: AsynchronousServerSocketChannel): Stream[F, Resource[F, Socket[F]]] = {
+      def go: Stream[F, Resource[F, Socket[F]]] = {
         def acceptChannel: F[AsynchronousSocketChannel] =
           F.async[AsynchronousSocketChannel] { cb =>
             sch.accept(
@@ -171,10 +170,9 @@ protected[tcp] object Socket {
             )
           }
 
-        eval(acceptChannel.attempt).map {
-          case Left(err) => Stream.empty.covary[F]
-          case Right(accepted) =>
-            Stream.resource(mkSocket(accepted))
+        eval(acceptChannel.attempt).flatMap {
+          case Left(err)       => Stream.empty.covary[F]
+          case Right(accepted) => Stream.emit(mkSocket(accepted))
         } ++ go
       }
 

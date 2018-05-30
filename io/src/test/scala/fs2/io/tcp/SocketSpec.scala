@@ -43,7 +43,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
         serverWithLocalAddress[IO](new InetSocketAddress(InetAddress.getByName(null), 0)).flatMap {
           case Left(local) => Stream.eval_(localBindAddress.complete(local))
           case Right(s) =>
-            s.map { socket =>
+            Stream.resource(s).map { socket =>
               socket
                 .reads(1024)
                 .to(socket.writes())
@@ -96,7 +96,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
           .flatMap {
             case Left(local) => Stream.eval_(localBindAddress.complete(local))
             case Right(s) =>
-              Stream.emit(s.flatMap { socket =>
+              Stream.emit(Stream.resource(s).flatMap { socket =>
                 Stream
                   .chunk(message)
                   .covary[IO]
