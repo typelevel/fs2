@@ -370,7 +370,7 @@ private[fs2] final class CompileScope[F[_], O] private (
       case Some(iCtx) =>
         // note that we guard interruption here by Attempt to prevent failure on multiple sets.
         val interruptCause = cause.right.map(_ => iCtx.interruptRoot)
-        F.flatMap(F.attempt(iCtx.deferred.complete(interruptCause))) { _ =>
+        F.guarantee(iCtx.deferred.complete(interruptCause)) {
           iCtx.ref.update { _.orElse(Some(interruptCause)) }
         }
     }

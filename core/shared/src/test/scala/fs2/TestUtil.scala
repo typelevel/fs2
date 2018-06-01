@@ -22,7 +22,7 @@ object TestUtil extends TestUtilPlatform {
     catch {
       case e: InterruptedException => throw e
       case e: TimeoutException => throw e
-      case Err => ()
+      case e: Err => ()
       case NonFatal(e) => ()
     }
 
@@ -91,19 +91,19 @@ object TestUtil extends TestUtilPlatform {
     implicit def pureStreamShrink[A]: Shrink[PureStream[A]] = Shrink { s => Shrink.shrink(s.get.toList).map(as => PureStream(s"shrunk: ${as.size} from ${s.tag}", Stream.chunk(Chunk.seq(as)))) }
   }
 
-  case object Err extends RuntimeException("oh noes!!")
+  class Err extends RuntimeException("oh noes!!")
 
   /** Newtype for generating various failing streams. */
   case class Failure(tag: String, get: Stream[IO,Int])
 
   implicit def failingStreamArb: Arbitrary[Failure] = Arbitrary(
     Gen.oneOf[Failure](
-      Failure("pure-failure", Stream.raiseError(Err)),
-      Failure("failure-inside-effect", Stream.eval(IO(throw Err))),
-      Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw Err))),
-      Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw Err)),
-      Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw Err)),
-      Failure("failure-in-pure-pull", Stream.emit(42).pull.uncons.map(_ => throw Err).stream)
+      Failure("pure-failure", Stream.raiseError(new Err)),
+      Failure("failure-inside-effect", Stream.eval(IO(throw new Err))),
+      Failure("failure-mid-effect", Stream.eval(IO.pure(()).flatMap(_ => throw new Err))),
+      Failure("failure-in-pure-code", Stream.emit(42).map(_ => throw new Err)),
+      Failure("failure-in-pure-code(2)", Stream.emit(42).flatMap(_ => throw new Err)),
+      Failure("failure-in-pure-pull", Stream.emit(42).pull.uncons.map(_ => throw new Err).stream)
     )
   )
 

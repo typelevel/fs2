@@ -3,11 +3,11 @@ package async
 package mutable
 
 import cats.Functor
-import cats.effect.Concurrent
+import cats.effect.{Concurrent, ExitCase}
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
 
-import fs2.internal.{Canceled, Token}
+import fs2.internal.Token
 
 /**
   * Asynchronous queue interface. Operations are all nonblocking in their
@@ -196,8 +196,10 @@ object Queue {
                   if (batchSize == 1) Chunk.singleton(s.queue.head).pure[F]
                   else Chunk.indexedSeq(s.queue.take(batchSize)).pure[F]
                 } else
-                  F.onCancelRaiseError(d.get, Canceled).recoverWith {
-                    case Canceled => cleanup *> F.never
+                  F.guaranteeCase(d.get) {
+                    case ExitCase.Completed => F.unit
+                    case ExitCase.Error(t)  => cleanup *> F.raiseError(t)
+                    case ExitCase.Canceled  => cleanup *> F.never
                   }
               }
 
@@ -219,8 +221,10 @@ object Queue {
 
               val peekAction =
                 state.queue.headOption.map(_.pure[F]).getOrElse {
-                  F.onCancelRaiseError(newState.peek.get.get, Canceled).recoverWith {
-                    case Canceled => cleanup *> F.never
+                  F.guaranteeCase(newState.peek.get.get) {
+                    case ExitCase.Completed => F.unit
+                    case ExitCase.Error(t)  => cleanup *> F.raiseError(t)
+                    case ExitCase.Canceled  => cleanup *> F.never
                   }
                 }
 

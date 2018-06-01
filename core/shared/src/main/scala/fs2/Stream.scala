@@ -5,7 +5,7 @@ import cats.data.NonEmptyList
 import cats.effect._
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits.{catsSyntaxEither => _, _}
-import fs2.internal.{Algebra, FreeC, Token}
+import fs2.internal.{Algebra, Canceled, FreeC, Token}
 import scala.collection.generic.CanBuildFrom
 import scala.concurrent.duration._
 
@@ -2112,19 +2112,23 @@ object Stream {
         Stream.eval(Deferred[F, Unit]).flatMap { doneR =>
           Stream.eval(Deferred[F, Unit]).flatMap { interruptR =>
             def runR =
-              haltWhenTrue
-                .evalMap {
-                  case false => F.pure(false)
-                  case true  => interruptL.complete(Right(())).as(true)
+              F.guaranteeCase(
+                haltWhenTrue
+                  .evalMap {
+                    case false => F.pure(false)
+                    case true  => interruptL.complete(Right(())).as(true)
+                  }
+                  .takeWhile(!_)
+                  .interruptWhen(interruptR.get.attempt)
+                  .compile
+                  .drain) { c =>
+                val r = c match {
+                  case ExitCase.Completed => Right(())
+                  case ExitCase.Error(t)  => Left(t)
+                  case ExitCase.Canceled  => Left(Canceled)
                 }
-                .takeWhile(!_)
-                .interruptWhen(interruptR.get.attempt)
-                .compile
-                .drain
-                .attempt
-                .flatMap { r =>
-                  interruptL.complete(r).attempt *> doneR.complete(())
-                }
+                interruptL.complete(r).attempt *> doneR.complete(())
+              }
 
             Stream.eval(F.start(runR)) >>
               self

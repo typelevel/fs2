@@ -56,7 +56,7 @@ class MergeJoinSpec extends Fs2Spec {
       val s: Stream[IO, Stream[IO, Unit]] = bracketed.map { b =>
         Stream
           .eval(IO(b.get))
-          .flatMap(b => if (b) Stream(()) else Stream.raiseError(Err))
+          .flatMap(b => if (b) Stream(()) else Stream.raiseError(new Err))
           .repeat
           .take(10000)
       }
@@ -66,7 +66,7 @@ class MergeJoinSpec extends Fs2Spec {
     "merge (left/right failure)" in {
       pending
       forAll { (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
+        an[Err] should be thrownBy {
           s1.get.merge(f.get).compile.drain.unsafeRunSync()
         }
       }
@@ -75,7 +75,7 @@ class MergeJoinSpec extends Fs2Spec {
     "merge (left/right failure) never-ending flatMap, failure after emit" in {
       pending
       forAll { (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
+        an[Err] should be thrownBy {
           s1.get
           // To ensure errors are generated before the merge occurs, we chunk/unchunk here to force any segment computations
           // This is necessary b/c this test depends on any errors in f occurring before the first flatMapped output of the
@@ -94,7 +94,7 @@ class MergeJoinSpec extends Fs2Spec {
     "merge (left/right failure) constant flatMap, failure after emit" in {
       pending
       forAll { (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
+        an[Err] should be thrownBy {
           s1.get
           // To ensure errors are generated before the merge occurs, we chunk/unchunk here to force any segment computations
           // This is necessary b/c this test depends on any errors in f occurring before the first flatMapped output of the
@@ -142,8 +142,9 @@ class MergeJoinSpec extends Fs2Spec {
     }
 
     "join - outer-failed" in {
-      an[Err.type] should be thrownBy {
-        runLog(Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(Err).covary[IO]).joinUnbounded)
+      an[Err] should be thrownBy {
+        runLog(
+          Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(new Err).covary[IO]).joinUnbounded)
       }
     }
   }

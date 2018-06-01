@@ -178,7 +178,7 @@ class Pipe2Spec extends Fs2Spec {
 
     "merge (left/right failure)" in {
       forAll { (s1: PureStream[Int], f: Failure) =>
-        an[Err.type] should be thrownBy {
+        an[Err] should be thrownBy {
           runLog(s1.get.covary[IO].merge(f.get))
         }
       }
@@ -389,7 +389,7 @@ class Pipe2Spec extends Fs2Spec {
         .interruptWhen(interrupt)
         .flatMap(_ => Stream.eval_(s.acquire))
       val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
-      if (throws) an[Err.type] should be thrownBy runLog(prg)
+      if (throws) an[Err] should be thrownBy runLog(prg)
       else runLog(prg)
 
     }

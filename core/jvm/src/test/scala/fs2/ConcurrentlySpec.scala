@@ -22,7 +22,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
       (s: PureStream[Int], f: Failure) =>
         val prg = (Stream.sleep_[IO](25.millis) ++ s.get).concurrently(f.get)
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
-        if (throws) an[Err.type] should be thrownBy runLog(prg)
+        if (throws) an[Err] should be thrownBy runLog(prg)
         else runLog(prg)
     }
 
@@ -31,7 +31,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
         var bgDone = false
         val bg = Stream.repeatEval(IO(1)).onFinalize(IO { bgDone = true })
         val prg = (Stream.sleep_[IO](25.millis) ++ f.get).concurrently(bg)
-        an[Err.type] should be thrownBy runLog(prg)
+        an[Err] should be thrownBy runLog(prg)
         eventually(Timeout(3 seconds)) { bgDone shouldBe true }
     }
 
@@ -54,7 +54,7 @@ class ConcurrentlySpec extends Fs2Spec with EventuallySupport {
           }
 
         val throws = f.get.compile.drain.attempt.unsafeRunSync.isLeft
-        if (throws) an[Err.type] should be thrownBy runLog(prg)
+        if (throws) an[Err] should be thrownBy runLog(prg)
         else runLog(prg)
     }
   }

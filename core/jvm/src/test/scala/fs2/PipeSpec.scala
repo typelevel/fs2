@@ -556,39 +556,47 @@ class PipeSpec extends Fs2Spec {
     }
     "handle errors from observing sink" in {
       forAll { (s: PureStream[Int]) =>
-        runLog {
+        val r1 = runLog {
           s.get
             .covary[IO]
             .observe { _ =>
-              Stream.raiseError(Err)
+              Stream.raiseError(new Err)
             }
             .attempt
-        } shouldBe Vector(Left(Err))
-        runLog {
+        }
+        r1 should have size (1)
+        r1.head.swap.toOption.get shouldBe an[Err]
+        val r2 = runLog {
           s.get
             .covary[IO]
             .observeAsync(2) { _ =>
-              Stream.raiseError(Err)
+              Stream.raiseError(new Err)
             }
             .attempt
-        } shouldBe Vector(Left(Err))
+        }
+        r2 should have size (1)
+        r2.head.swap.toOption.get shouldBe an[Err]
       }
     }
 
     "propagate error from source" in {
       forAll { (f: Failure) =>
-        runLog {
+        val r1 = runLog {
           f.get
             .covary[IO]
             .observe(_.drain)
             .attempt
-        } shouldBe Vector(Left(Err))
-        runLog {
+        }
+        r1 should have size (1)
+        r1.head.swap.toOption.get shouldBe an[Err]
+        val r2 = runLog {
           f.get
             .covary[IO]
             .observeAsync(2)(_.drain)
             .attempt
-        } shouldBe Vector(Left(Err))
+        }
+        r2 should have size (1)
+        r2.head.swap.toOption.get shouldBe an[Err]
       }
     }
 

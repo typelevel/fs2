@@ -15,8 +15,8 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
   "Resource Safety" - {
 
     "pure fail" in {
-      an[Err.type] should be thrownBy {
-        Stream.emit(0).flatMap(_ => Stream.raiseError(Err)).toVector
+      an[Err] should be thrownBy {
+        Stream.emit(0).flatMap(_ => Stream.raiseError(new Err)).toVector
         ()
       }
     }
@@ -35,7 +35,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "bracket ++ throw Err" in forAll { (s: PureStream[Int]) =>
       val c = new AtomicLong(0)
-      val b = bracket(c)(s.get ++ ((throw Err): Stream[Pure, Int]))
+      val b = bracket(c)(s.get ++ ((throw new Err): Stream[Pure, Int]))
       swallow { b }
       c.get shouldBe 0
     }
@@ -57,13 +57,13 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         if (!finalizerFail) f.get
         else
           Stream
-            .bracket(IO(c.decrementAndGet))(_ => IO { c.incrementAndGet; throw Err })
+            .bracket(IO(c.decrementAndGet))(_ => IO { c.incrementAndGet; throw new Err })
             .flatMap(_ => f.get)
       val nested = s0.foldRight(innermost)((i, inner) => bracket(c)(Stream.emit(i) ++ inner))
-      try { runLog { nested }; throw Err } // this test should always fail, so the `run` should throw
+      try { runLog { nested }; throw new Err } // this test should always fail, so the `run` should throw
       catch {
-        case Err => ()
-        case e: CompositeFailure if e.all.forall { case Err => true; case _ => false } => ()
+        case e: Err => ()
+        case e: CompositeFailure if e.all.forall { case e: Err => true; case _ => false } => ()
       }
       withClue(f.tag) { 0L shouldBe c.get }
     }
@@ -136,8 +136,8 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     }
 
     "asynchronous resource allocation (2a)" in forAll { (u: Unit) =>
-      val s1 = Stream.raiseError(Err)
-      val s2 = Stream.raiseError(Err)
+      val s1 = Stream.raiseError(new Err)
+      val s2 = Stream.raiseError(new Err)
       val c = new AtomicLong(0)
       val b1 = bracket(c)(s1)
       val b2 = s2: Stream[IO, Int]
@@ -266,7 +266,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       var o: Vector[Int] = Vector.empty
       runLog {
         (0 until 10)
-          .foldLeft(Stream.emit(1).map(_ => throw Err).covaryAll[IO, Int])((acc, i) =>
+          .foldLeft(Stream.emit(1).map(_ => throw new Err).covaryAll[IO, Int])((acc, i) =>
             Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc))
           .attempt
       }
@@ -275,11 +275,12 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "propagate error from closing the root scope" in {
       val s1 = Stream.bracket(IO(1))(_ => IO.unit)
-      val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(Err))
+      val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(new Err))
 
-      s1.zip(s2).compile.drain.attempt.unsafeRunSync() shouldBe Left(Err)
-      s2.zip(s1).compile.drain.attempt.unsafeRunSync() shouldBe Left(Err)
-
+      val r1 = s1.zip(s2).compile.drain.attempt.unsafeRunSync()
+      r1.swap.toOption.get shouldBe an[Err]
+      val r2 = s2.zip(s1).compile.drain.attempt.unsafeRunSync()
+      r2.swap.toOption.get shouldBe an[Err]
     }
 
     def bracket[A](c: AtomicLong)(s: Stream[IO, A]): Stream[IO, A] =

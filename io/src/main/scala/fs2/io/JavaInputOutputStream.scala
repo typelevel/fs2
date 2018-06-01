@@ -5,11 +5,12 @@ import scala.concurrent.{SyncVar, blocking}
 
 import java.io.{IOException, InputStream, OutputStream}
 
-import cats.effect.{ConcurrentEffect, IO, Sync, Timer}
+import cats.effect.{ConcurrentEffect, ExitCase, IO, Sync, Timer}
 import cats.implicits.{catsSyntaxEither => _, _}
 
 import fs2.Chunk.Bytes
 import fs2.async.mutable
+import fs2.internal.Canceled
 
 private[io] object JavaInputOutputStream {
   def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
@@ -91,15 +92,16 @@ private[io] object JavaInputOutputStream {
               queue.enqueue1(Left(result))
             }
 
-          F.flatMap(
-            F.attempt(
-              source.chunks
-                .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
-                .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
-                .compile
-                .drain
-            )) { r =>
-            markUpstreamDone(r.swap.toOption)
+          F.guaranteeCase(
+            source.chunks
+              .evalMap(ch => queue.enqueue1(Right(ch.toBytes)))
+              .interruptWhen(dnState.discrete.map(_.isDone).filter(identity))
+              .compile
+              .drain
+          ) {
+            case ExitCase.Completed => markUpstreamDone(None)
+            case ExitCase.Error(t)  => markUpstreamDone(Some(t))
+            case ExitCase.Canceled  => markUpstreamDone(Some(Canceled))
           }
         })
         .map(_ => ())
