@@ -218,15 +218,12 @@ object ZipThenBindThenJoin extends App {
 
   val sources: Stream[IO, Stream[IO, Int]] = Stream(Stream.empty.covaryAll).repeat
 
-  Scheduler[IO](8)
-    .flatMap { sched =>
-      sched
-        .fixedDelay[IO](1.milliseconds)
-        .zip(sources)
-        .flatMap {
-          case (_, s) =>
-            s.map(Stream.constant(_).covary).joinUnbounded
-        }
+  Stream
+    .fixedDelay[IO](1.milliseconds)
+    .zip(sources)
+    .flatMap {
+      case (_, s) =>
+        s.map(Stream.constant(_).covary).joinUnbounded
     }
     .compile
     .drain
