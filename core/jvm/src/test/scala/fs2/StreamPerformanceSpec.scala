@@ -145,10 +145,9 @@ class StreamPerformanceSpec extends Fs2Spec {
         N.toString in {
           val open = new AtomicInteger(0)
           val ok = new AtomicInteger(0)
-          val bracketed = bracket(IO { open.incrementAndGet })(
-            _ => emit(1) ++ Stream.raiseError(FailWhale),
-            _ => IO { ok.incrementAndGet; open.decrementAndGet; () }
-          )
+          val bracketed = bracket(IO { open.incrementAndGet }) { _ =>
+            IO { ok.incrementAndGet; open.decrementAndGet; () }
+          }.flatMap(_ => emit(1) ++ Stream.raiseError(FailWhale))
           // left-associative handleErrorWith chains
           assert(throws(FailWhale) {
             List

@@ -56,8 +56,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       val innermost =
         if (!finalizerFail) f.get
         else
-          Stream.bracket(IO(c.decrementAndGet))(_ => f.get,
-                                                _ => IO { c.incrementAndGet; throw Err })
+          Stream
+            .bracket(IO(c.decrementAndGet))(_ => IO { c.incrementAndGet; throw Err })
+            .flatMap(_ => f.get)
       val nested = s0.foldRight(innermost)((i, inner) => bracket(c)(Stream.emit(i) ++ inner))
       try { runLog { nested }; throw Err } // this test should always fail, so the `run` should throw
       catch {
@@ -106,13 +107,16 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
     "bracket release should not be called until necessary" in {
       val buffer = collection.mutable.ListBuffer[Symbol]()
       runLog {
-        val s = Stream.bracket(IO(buffer += 'Acquired))(_ => {
-          buffer += 'Used
-          Stream.emit(())
-        }, _ => {
-          buffer += 'ReleaseInvoked
-          IO { buffer += 'Released; () }
-        })
+        val s = Stream
+          .bracket(IO(buffer += 'Acquired)) { _ =>
+            buffer += 'ReleaseInvoked
+            IO { buffer += 'Released; () }
+          }
+          .flatMap { _ =>
+            buffer += 'Used
+            Stream.emit(())
+          }
+
         s.flatMap { s =>
           buffer += 'FlatMapped; Stream.emit(s)
         }
@@ -227,11 +231,9 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
         s.evalMap { inner =>
           Stream
             .bracket(IO { c.incrementAndGet; Thread.sleep(2000) })( // which will be in the middle of acquiring the resource
-              _ => inner,
               _ => IO { c.decrementAndGet; () })
-            .evalMap { _ =>
-              IO.async[Unit](_ => ())
-            }
+            .flatMap(_ => inner)
+            .evalMap(_ => IO.never)
             .interruptWhen(signal.discrete)
             .compile
             .drain
@@ -244,7 +246,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     "evaluating a bracketed stream multiple times is safe" in {
       val s = Stream
-        .bracket(IO.pure(()))(Stream.emit(_), _ => IO.pure(()))
+        .bracket(IO.unit)(_ => IO.unit)
         .compile
         .drain
       s.unsafeRunSync
@@ -255,7 +257,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       var o: Vector[Int] = Vector.empty
       runLog {
         (0 until 10).foldLeft(Stream.eval(IO(0)))((acc, i) =>
-          Stream.bracket(IO(i))(i => acc, i => IO { o = o :+ i }))
+          Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc))
       }
       o shouldBe (0 until 10).toVector
     }
@@ -265,15 +267,15 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
       runLog {
         (0 until 10)
           .foldLeft(Stream.emit(1).map(_ => throw Err).covaryAll[IO, Int])((acc, i) =>
-            Stream.emit(i) ++ Stream.bracket(IO(i))(i => acc, i => IO { o = o :+ i }))
+            Stream.emit(i) ++ Stream.bracket(IO(i))(i => IO { o = o :+ i }).flatMap(i => acc))
           .attempt
       }
       o shouldBe (0 until 10).toVector
     }
 
     "propagate error from closing the root scope" in {
-      val s1 = Stream.bracket(IO(1))(Stream.emit(_), _ => IO.pure(()))
-      val s2 = Stream.bracket(IO("a"))(Stream.emit(_), _ => IO.raiseError(Err))
+      val s1 = Stream.bracket(IO(1))(_ => IO.unit)
+      val s2 = Stream.bracket(IO("a"))(_ => IO.raiseError(Err))
 
       s1.zip(s2).compile.drain.attempt.unsafeRunSync() shouldBe Left(Err)
       s2.zip(s1).compile.drain.attempt.unsafeRunSync() shouldBe Left(Err)
@@ -282,7 +284,7 @@ class ResourceSafetySpec extends Fs2Spec with EventuallySupport {
 
     def bracket[A](c: AtomicLong)(s: Stream[IO, A]): Stream[IO, A] =
       Stream.suspend {
-        Stream.bracket(IO { c.decrementAndGet })(_ => s, _ => IO { c.incrementAndGet; () })
+        Stream.bracket(IO { c.decrementAndGet })(_ => IO { c.incrementAndGet; () }).flatMap(_ => s)
       }
   }
 }

@@ -130,7 +130,7 @@ object Pull {
   def acquireCancellable[F[_], R](r: F[R])(
       cleanup: R => F[Unit]): Pull[F, Nothing, Cancellable[F, R]] =
     Stream
-      .bracketWithToken(r)(r => Stream.emit(r), cleanup)
+      .bracketWithToken(r)(cleanup)
       .pull
       .uncons1
       .flatMap {

@@ -8,7 +8,7 @@ import cats.effect.IO
 
 object ResourceTrackerSanityTest extends App {
   val big = Stream.constant(1).flatMap { n =>
-    Stream.bracket(IO(()))(_ => Stream.emits(List(1, 2, 3)), _ => IO(()))
+    Stream.bracket(IO(()))(_ => IO(())).flatMap(_ => Stream.emits(List(1, 2, 3)))
   }
   big.compile.drain.unsafeRunSync()
 }

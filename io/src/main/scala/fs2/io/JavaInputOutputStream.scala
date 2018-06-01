@@ -34,7 +34,7 @@ private[io] object JavaInputOutputStream {
         .flatMap(c => Stream.chunk(c))
 
     if (closeAfterUse)
-      Stream.bracket(fis)(useIs, is => F.delay(is.close()))
+      Stream.bracket(fis)(is => F.delay(is.close())).flatMap(useIs)
     else
       Stream.eval(fis).flatMap(useIs)
   }
@@ -51,7 +51,7 @@ private[io] object JavaInputOutputStream {
       s.chunks.evalMap(f(os, _))
 
     if (closeAfterUse)
-      Stream.bracket(fos)(useOs, os => F.delay(os.close()))
+      Stream.bracket(fos)(os => F.delay(os.close())).flatMap(useOs)
     else
       Stream.eval(fos).flatMap(useOs)
   }

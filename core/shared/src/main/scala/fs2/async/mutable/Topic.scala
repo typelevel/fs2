@@ -153,10 +153,10 @@ object Topic {
               }.flatten
 
             def subscribe(maxQueued: Int): Stream[F, A] =
-              bracket(mkSubscriber(maxQueued))(_.subscribe, _.unSubscribe)
+              bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribe)
 
             def subscribeSize(maxQueued: Int): Stream[F, (A, Int)] =
-              bracket(mkSubscriber(maxQueued))(_.subscribeSize, _.unSubscribe)
+              bracket(mkSubscriber(maxQueued))(_.unSubscribe).flatMap(_.subscribeSize)
           }
         }
       }
