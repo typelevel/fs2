@@ -5,7 +5,7 @@ import cats.effect.IO
 import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.util.TestContext
 import cats.effect.laws.util.TestInstances._
-import cats.implicits.{catsSyntaxFlatMapOps => _, _}
+import cats.implicits.{catsSyntaxEither => _, catsSyntaxFlatMapOps => _, _}
 import cats.laws.discipline.MonadErrorTests
 
 import org.scalacheck.{Arbitrary, Gen}

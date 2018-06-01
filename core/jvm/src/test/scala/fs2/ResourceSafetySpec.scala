@@ -3,7 +3,7 @@ package fs2
 import java.util.concurrent.atomic.AtomicLong
 
 import cats.effect.IO
-import cats.implicits._
+import cats.implicits.{catsSyntaxEither => _, _}
 import org.scalacheck._
 import org.scalatest.concurrent.PatienceConfiguration.Timeout
 
