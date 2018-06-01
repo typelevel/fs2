@@ -211,3 +211,24 @@ object HungMerge extends App {
   val progress = Stream.constant(1, 128).covary[IO]
   hung.merge(progress).compile.drain.unsafeRunSync()
 }
+
+object ZipThenBindThenJoin extends App {
+  import scala.concurrent.ExecutionContext.Implicits.global
+  import scala.concurrent.duration._
+
+  val sources: Stream[IO, Stream[IO, Int]] = Stream(Stream.empty.covaryAll).repeat
+
+  Scheduler[IO](8)
+    .flatMap { sched =>
+      sched
+        .fixedDelay[IO](1.milliseconds)
+        .zip(sources)
+        .flatMap {
+          case (_, s) =>
+            s.map(Stream.constant(_).covary).joinUnbounded
+        }
+    }
+    .compile
+    .drain
+    .unsafeRunSync()
+}
