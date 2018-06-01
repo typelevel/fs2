@@ -2239,22 +2239,25 @@ object Stream {
                         available.acquire *>
                           incrementRunning *>
                           F.start {
-                            inner.segments
-                              .evalMap { s =>
-                                outputQ.enqueue1(Some(s))
+                            F.guaranteeCase(
+                              inner.segments
+                                .evalMap { s =>
+                                  outputQ.enqueue1(Some(s))
+                                }
+                                .interruptWhen(done.map(_.nonEmpty))
+                                . // must be AFTER enqueue to the sync queue, otherwise the process may hang to enq last item while being interrupted
+                                compile
+                                .drain) { c =>
+                              val r = c match {
+                                case ExitCase.Completed => F.unit
+                                case ExitCase.Error(t)  => stop(Some(t))
+                                case ExitCase.Canceled  => stop(Some(Canceled))
                               }
-                              .interruptWhen(done.map(_.nonEmpty))
-                              . // must be AFTER enqueue to the sync queue, otherwise the process may hang to enq last item while being interrupted
-                              compile
-                              .drain
-                              .attempt
-                              .flatMap {
-                                case Right(()) => F.unit
-                                case Left(err) => stop(Some(err))
-                              } *>
-                              lease.cancel *> //todo: propagate failure here on exception ???
-                              available.release *>
-                              decrementRunning
+                              r *>
+                                lease.cancel *> //todo: propagate failure here on exception ???
+                                available.release *>
+                                decrementRunning
+                            }
                           }.void
 
                       case None =>
@@ -2264,20 +2267,23 @@ object Stream {
 
                   // runs the outer stream, interrupts when kill == true, and then decrements the `running`
                   def runOuter: F[Unit] =
-                    outer
-                      .flatMap { inner =>
-                        Stream.getScope[F].evalMap { outerScope =>
-                          runInner(inner, outerScope)
+                    F.guaranteeCase(
+                      outer
+                        .flatMap { inner =>
+                          Stream.getScope[F].evalMap { outerScope =>
+                            runInner(inner, outerScope)
+                          }
                         }
+                        .interruptWhen(done.map(_.nonEmpty))
+                        .compile
+                        .drain) { c =>
+                      val r = c match {
+                        case ExitCase.Completed => F.unit
+                        case ExitCase.Error(t)  => stop(Some(t))
+                        case ExitCase.Canceled  => stop(Some(Canceled))
                       }
-                      .interruptWhen(done.map(_.nonEmpty))
-                      .compile
-                      .drain
-                      .attempt
-                      .flatMap {
-                        case Right(_)  => F.unit
-                        case Left(err) => stop(Some(err))
-                      } *> decrementRunning
+                      r *> decrementRunning
+                    }
 
                   // awaits when all streams (outer + inner) finished,
                   // and then collects result of the stream (outer + inner) execution
