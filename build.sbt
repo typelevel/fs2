@@ -49,6 +49,7 @@ lazy val commonSettings = Seq(
   },
   scalacOptions in (Compile, console) += "-Ydelambdafy:inline",
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
+  javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.6"),
     "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
