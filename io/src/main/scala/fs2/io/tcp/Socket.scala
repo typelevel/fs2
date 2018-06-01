@@ -184,12 +184,13 @@ protected[tcp] object Socket {
       }
     }
 
-    Stream.bracket(setup)(
-      sch =>
+    Stream
+      .bracket(setup)(cleanup)
+      .flatMap { sch =>
         Stream.emit(Left(sch.getLocalAddress.asInstanceOf[InetSocketAddress])) ++ acceptIncoming(
           sch)
-          .map(Right(_)),
-      cleanup)
+          .map(Right(_))
+      }
   }
 
   def mkSocket[F[_]](ch: AsynchronousSocketChannel)(implicit F: ConcurrentEffect[F],

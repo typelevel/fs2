@@ -54,7 +54,7 @@ class ErrorHandlingSpec extends Fs2Spec {
     "ex5" in {
       var i = 0
       try {
-        Stream.bracket(IO(1))(_ => Stream.eval(IO(???)), _ => IO(i += 1)).compile.toVector.unsafeRunSync
+        Stream.bracket(IO(1))(_ => IO(i += 1)).flatMap(_ => Stream.eval(IO(???))).compile.toVector.unsafeRunSync
         fail("SHOULD NOT REACH")
       }
       catch { case e: Throwable => i shouldBe 1 }

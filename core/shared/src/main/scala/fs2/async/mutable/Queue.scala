@@ -163,18 +163,19 @@ object Queue {
         def dequeue1: F[A] = dequeueBatch1(1).map(_.head.get)
 
         def dequeue: Stream[F, A] =
-          Stream.bracket(F.delay(new Token))(
-            t => Stream.repeatEval(dequeueBatch1Impl(1, t).map(_.head.get)),
-            t => qref.update(s => s.copy(deq = s.deq.filterNot(_._1 == t))))
+          Stream
+            .bracket(F.delay(new Token))(t =>
+              qref.update(s => s.copy(deq = s.deq.filterNot(_._1 == t))))
+            .flatMap(t => Stream.repeatEval(dequeueBatch1Impl(1, t).map(_.head.get)))
 
         def dequeueBatch: Pipe[F, Int, A] =
           batchSizes =>
-            Stream.bracket(F.delay(new Token))(
-              t =>
+            Stream
+              .bracket(F.delay(new Token))(t =>
+                qref.update(s => s.copy(deq = s.deq.filterNot(_._1 == t))))
+              .flatMap(t =>
                 batchSizes.flatMap(batchSize =>
-                  Stream.eval(dequeueBatch1Impl(batchSize, t)).flatMap(Stream.chunk(_))),
-              t => qref.update(s => s.copy(deq = s.deq.filterNot(_._1 == t)))
-          )
+                  Stream.eval(dequeueBatch1Impl(batchSize, t)).flatMap(Stream.chunk(_))))
 
         def dequeueBatch1(batchSize: Int): F[Chunk[A]] =
           dequeueBatch1Impl(batchSize, new Token)

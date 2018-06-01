@@ -120,13 +120,11 @@ object Signal {
             def cleanup(id: Token): F[Unit] =
               state.update(s => s.copy(_3 = s._3 - id))
 
-            bracket(F.delay(new Token))(
-              id =>
-                eval(state.get).flatMap {
-                  case (a, l, _) => emit(a) ++ go(id, l)
-              },
-              id => cleanup(id)
-            )
+            bracket(F.delay(new Token))(cleanup).flatMap { id =>
+              eval(state.get).flatMap {
+                case (a, l, _) => emit(a) ++ go(id, l)
+              }
+            }
           }
         }
       }

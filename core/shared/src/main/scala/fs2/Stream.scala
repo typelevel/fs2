@@ -1266,34 +1266,37 @@ object Stream {
     }
 
   /**
-    * Creates a stream that depends on a resource allocated by an effect, ensuring the resource is
-    * released regardless of how the stream is used.
+    * Creates a stream that emits a resource allocated by an effect, ensuring the resource is
+    * eventually released regardless of how the stream is used.
     *
-    * @param r resource to acquire at start of stream
-    * @param use function which uses the acquired resource to generate a stream of effectful outputs
+    * @param acquire resource to acquire at start of stream
     * @param release function which returns an effect that releases the resource
     *
     * A typical use case for bracket is working with files or network sockets. The resource effect
-    * opens a file and returns a reference to it. The `use` function reads bytes and transforms them
-    * in to some stream of elements (e.g., bytes, strings, lines, etc.). The `release` action closes
-    * the file.
+    * opens a file and returns a reference to it. One can then flatMap on the returned Stream to access
+    *  the file, e.g to read bytes and transform them in to some stream of elements
+    * (e.g., bytes, strings, lines, etc.).
+    * The `release` action then closes the file once the result Stream terminates, even in case of interruption
+    * or errors.
     */
-  def bracket[F[_], R, O](r: F[R])(use: R => Stream[F, O], release: R => F[Unit]): Stream[F, O] =
-    fromFreeC(Algebra.acquire[F, O, R](r, release).flatMap {
+  def bracket[F[_], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
+    fromFreeC(Algebra.acquire[F, R, R](acquire, release).flatMap {
       case (r, token) =>
-        use(r).get[F, O].transformWith {
+        Stream.emit(r).covary[F].get[F, R].transformWith {
           case Left(err) => Algebra.release(token).flatMap(_ => FreeC.Fail(err))
           case Right(_)  => Algebra.release(token)
         }
     })
 
-  private[fs2] def bracketWithToken[F[_], R, O](
-      r: F[R])(use: R => Stream[F, O], release: R => F[Unit]): Stream[F, (Token, O)] =
-    fromFreeC(Algebra.acquire[F, (Token, O), R](r, release).flatMap {
+  private[fs2] def bracketWithToken[F[_], R](acquire: F[R])(
+      release: R => F[Unit]): Stream[F, (Token, R)] =
+    fromFreeC(Algebra.acquire[F, (Token, R), R](acquire, release).flatMap {
       case (r, token) =>
-        use(r)
+        Stream
+          .emit(r)
+          .covary[F]
           .map(o => (token, o))
-          .get[F, (Token, O)]
+          .get[F, (Token, R)]
           .transformWith {
             case Left(err) => Algebra.release(token).flatMap(_ => FreeC.Fail(err))
             case Right(_)  => Algebra.release(token)
@@ -1560,7 +1563,7 @@ object Stream {
 
   /** Converts the supplied resource in to a singleton stream. */
   def resource[F[_], O](r: Resource[F, O]): Stream[F, O] =
-    Stream.bracket(r.allocate)(t => Stream.emit(t._1), t => t._2)
+    Stream.bracket(r.allocate)(_._2).map(_._1)
 
   /**
     * Retries `fo` on failure, returning a singleton stream with the
@@ -2490,7 +2493,7 @@ object Stream {
       * Run the supplied effectful action at the end of this stream, regardless of how the stream terminates.
       */
     def onFinalize(f: F[Unit])(implicit F: Applicative[F]): Stream[F, O] =
-      Stream.bracket(F.pure(()))(_ => self, _ => f)
+      Stream.bracket(F.unit)(_ => f) >> self
 
     /** Like `interrupt` but resumes the stream when left branch goes to true. */
     def pauseWhen(pauseWhenTrue: Stream[F, Boolean])(implicit F: Concurrent[F]): Stream[F, O] =
