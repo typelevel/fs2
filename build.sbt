@@ -52,12 +52,12 @@ lazy val commonSettings = Seq(
   javaOptions in (Test, run) ++= Seq("-Xms64m", "-Xmx64m"),
   libraryDependencies ++= Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.6"),
-    "org.typelevel" %%% "cats-effect" % "1.0.0-RC2-d7181dc",
+    "org.typelevel" %%% "cats-effect" % "1.0.0-RC2",
     "org.typelevel" %%% "cats-core" % "1.1.0",
     "org.scalatest" %%% "scalatest" % "3.0.5" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test",
     "org.typelevel" %%% "cats-laws" % "1.1.0" % "test",
-    "org.typelevel" %%% "cats-effect-laws" % "1.0.0-RC2-d7181dc" % "test"
+    "org.typelevel" %%% "cats-effect-laws" % "1.0.0-RC2" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"),
                           "git@github.com:functional-streams-for-scala/fs2.git")),
