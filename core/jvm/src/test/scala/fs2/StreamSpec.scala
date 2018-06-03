@@ -1,13 +1,17 @@
 package fs2
 
+import java.util.concurrent.TimeUnit
+
 import cats.~>
 import cats.effect.IO
 import cats.implicits.{catsSyntaxFlatMapOps => _, _}
+import cats.laws.discipline.arbitrary._
 import org.scalacheck.Gen
 import org.scalatest.Inside
-import scala.concurrent.duration._
 
+import scala.concurrent.duration._
 import TestUtil._
+import cats.data.NonEmptyList
 
 class StreamSpec extends Fs2Spec with Inside {
 
@@ -52,6 +56,53 @@ class StreamSpec extends Fs2Spec with Inside {
       val stream = Stream.fromIterator[IO, Int](iterator)
       val example = stream.compile.toVector.unsafeRunSync
       example shouldBe vec
+    }
+
+    "groupedTimed should never lose any elements" in forAll {
+      (s: PureStream[VeryShortFiniteDuration],
+       d: ShortFiniteDuration,
+       maxGroupSize: SmallPositive) =>
+        val result = s.get.toVector
+        val action = Scheduler[IO](1).flatMap { scheduler =>
+          s.get
+            .covary[IO]
+            .observe1(shortDuration => IO.sleep(shortDuration.get))
+            .groupedTimed(maxGroupSize.get, d.get, scheduler)
+            .flatMap(chunk => Stream.emits(chunk.toList))
+        }
+        runLog(action) shouldBe (result)
+    }
+
+    "groupedTimed should never have more elements than in its specified limit" in forAll {
+      (s: PureStream[VeryShortFiniteDuration],
+       d: ShortFiniteDuration,
+       maxGroupSize: SmallPositive) =>
+        val maxGroupSizeAsInt = maxGroupSize.get
+        val action = Scheduler[IO](1).flatMap { scheduler =>
+          s.get
+            .covary[IO]
+            .observe1(shortDuration => IO.sleep(shortDuration.get))
+            .groupedTimed(maxGroupSizeAsInt, d.get, scheduler)
+            .map(_.size)
+        }
+        runLog(action).foreach(size => size shouldBe <=(maxGroupSizeAsInt))
+    }
+
+    "groupedTimed should return a finite stream back in a single chunk given a group size equal to the stream size and an absurdly high duration" in forAll {
+      (streamAsList: NonEmptyList[Int]) =>
+        println(s"Our test input: $streamAsList")
+        val action = Scheduler[IO](1).flatMap { scheduler =>
+          Stream
+            .emits(streamAsList.toList)
+            .covary[IO]
+            .groupedTimed(streamAsList.size,
+                          FiniteDuration(Long.MaxValue - 1L, TimeUnit.NANOSECONDS),
+                          scheduler)
+        }
+        val fullResult = runLog(action)
+        withClue(s"Our full result looked like: $fullResult") {
+          fullResult.head.toList shouldBe streamAsList.toList
+        }
     }
 
     "iterate" in {
