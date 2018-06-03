@@ -6,7 +6,7 @@ import scala.collection.generic.CanBuildFrom
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import cats.{Applicative, Eq, Functor, Id, Monoid, Semigroup, ~>}
-import cats.effect.{Effect, IO, Sync}
+import cats.effect.{Effect, IO, Sync, Timer}
 import cats.implicits.{catsSyntaxEither => _, _}
 import fs2.async.Promise
 import fs2.internal.{Algebra, FreeC, Token}
@@ -1898,6 +1898,54 @@ object Stream {
       */
     def foldMonoid(implicit O: Monoid[O]): Stream[F, O] =
       self.fold(O.empty)(O.combine)
+
+    def groupWithin(n: Int, d: FiniteDuration)(
+        implicit F: Effect[F],
+        timer: Timer[F],
+        ec: ExecutionContext): Stream[F, Segment[O, Unit]] = {
+      type Tick = Int
+
+      Stream.eval(async.unboundedQueue[F, Option[Either[Tick, O]]]).flatMap { q =>
+        def startTimeout(i: Tick): Stream[F, Nothing] =
+          Stream.eval {
+            async.fork {
+              timer.sleep(d) *> q.enqueue1(i.asLeft.some)
+            }
+          }.drain
+
+        def producer = self.map(Right(_)).noneTerminate.to(q.enqueue)
+
+        // note: if empty sequences are emitted instead, a `startTimeout` before `go` is needed
+        def emitNonEmpty(c: Catenable[Segment[O, Unit]]): Stream[F, Segment[O, Unit]] =
+          if (c.nonEmpty) Stream.emit(Segment.catenated(c))
+          else Stream.empty
+
+        def go(acc: Catenable[Segment[O, Unit]],
+               elems: Int,
+               currentTimeout: Tick): Stream[F, Segment[O, Unit]] =
+          Stream.eval(q.dequeue1).flatMap {
+            case None => emitNonEmpty(acc)
+            case Some(e) =>
+              e match {
+                case Left(t) if t > currentTimeout => throw new Exception
+                case Left(t) if t < currentTimeout => go(acc, elems, currentTimeout)
+                case Left(t) if t == currentTimeout =>
+                  emitNonEmpty(acc) ++ startTimeout(currentTimeout + 1) ++ go(Catenable.empty,
+                                                                              0,
+                                                                              currentTimeout + 1)
+                case Right(a) if elems >= n =>
+                  emitNonEmpty(acc) ++ startTimeout(currentTimeout + 1) ++ go(
+                    Catenable.singleton(Segment.singleton(a)),
+                    0,
+                    currentTimeout + 1)
+                case Right(a) if elems < n =>
+                  go(acc.snoc(Segment.singleton(a)), elems + 1, currentTimeout)
+              }
+          }
+
+        go(Catenable.empty, 0, 0).concurrently(producer)
+      }
+    }
 
     /**
       * Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.
