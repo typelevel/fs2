@@ -1943,7 +1943,7 @@ object Stream {
               }
           }
 
-        go(Catenable.empty, 0, 0).concurrently(producer)
+        startTimeout(0) ++ go(Catenable.empty, 0, 0).concurrently(producer)
       }
     }
 
