@@ -338,7 +338,41 @@ object Chunk {
       }
 
   /** Creates a chunk backed by a `Seq`. */
-  def seq[O](s: Seq[O]): Chunk[O] = vector(s.toVector)
+  def seq[O](s: Seq[O]): Chunk[O] = s match {
+    case a: collection.mutable.WrappedArray[O] => array(a.array)
+    case v: Vector[O]                          => vector(v)
+    case ix: IndexedSeq[O]                     => indexedSeq(ix)
+    case _                                     => buffer(collection.mutable.Buffer(s: _*))
+  }
+
+  /**
+    * Creates a chunk backed by a mutable buffer. The underlying buffer must not be modified after
+    * it is passed to this function.
+    */
+  def buffer[O](b: collection.mutable.Buffer[O]): Chunk[O] =
+    if (b.isEmpty) empty
+    else
+      new Chunk[O] {
+        def size = b.length
+        def apply(i: Int) = b(i)
+        override def toVector = b.toVector
+
+        override def drop(n: Int): Chunk[O] =
+          if (n <= 0) this
+          else if (n >= size) Chunk.empty
+          else buffer(b.drop(n))
+
+        override def take(n: Int): Chunk[O] =
+          if (n <= 0) Chunk.empty
+          else if (n >= size) this
+          else buffer(b.take(n))
+
+        protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
+          val (fst, snd) = b.splitAt(n)
+          buffer(fst) -> buffer(snd)
+        }
+        override def map[O2](f: O => O2): Chunk[O2] = buffer(b.map(f))
+      }
 
   /** Creates a chunk with the specified values. */
   def apply[O](os: O*): Chunk[O] = seq(os)
