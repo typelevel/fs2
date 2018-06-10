@@ -1939,7 +1939,7 @@ object Stream {
                 case Right(a) if elems >= n =>
                   emitNonEmpty(acc) ++ startTimeout(currentTimeout + 1) ++ go(
                     Catenable.singleton(Segment.singleton(a)),
-                    0,
+                    1,
                     currentTimeout + 1)
                 case Right(a) if elems < n =>
                   go(acc.snoc(Segment.singleton(a)), elems + 1, currentTimeout)
