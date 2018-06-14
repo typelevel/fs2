@@ -1,6 +1,5 @@
 package fs2
 
-import scala.collection.immutable.VectorBuilder
 import scala.reflect.ClassTag
 import java.nio.{ByteBuffer => JByteBuffer}
 
@@ -70,10 +69,10 @@ abstract class Chunk[+O] extends Serializable {
 
   /** Creates a new chunk by applying `f` to each element in this chunk. */
   def map[O2](f: O => O2): Chunk[O2] = {
-    val b = new VectorBuilder[O2]
+    val b = collection.mutable.Buffer.newBuilder[O2]
     b.sizeHint(size)
     for (i <- 0 until size) b += f(apply(i))
-    Chunk.indexedSeq(b.result)
+    Chunk.buffer(b.result)
   }
 
   /** Splits this chunk in to two chunks at the specified index. */
