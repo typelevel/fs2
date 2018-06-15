@@ -1,9 +1,14 @@
 package fs2
 package interop.scodec
 
+import scala.reflect.ClassTag
 import scodec.bits.ByteVector
 
-final class ByteVectorChunk private (val toByteVector: ByteVector) extends Chunk[Byte] {
+final class ByteVectorChunk private (val toByteVector: ByteVector)
+    extends Chunk[Byte]
+    with Chunk.KnownElementType[Byte] {
+  def elementClassTag = ClassTag.Byte
+
   def apply(i: Int): Byte =
     toByteVector(i)
 

@@ -268,6 +268,15 @@ abstract class Chunk[+O] extends Serializable { self =>
       buf.result
     }
 
+  /**
+    * Returns true if this chunk is known to have elements of type `B`.
+    * This is determined by checking if the chunk type mixes in `Chunk.KnownElementType`.
+    */
+  def knownElementType[B](implicit classTag: ClassTag[B]): Boolean = this match {
+    case ket: Chunk.KnownElementType[_] if ket.elementClassTag eq classTag => true
+    case _                                                                 => false
+  }
+
   override def hashCode: Int = toVector.hashCode
 
   override def equals(a: Any): Boolean = a match {
@@ -282,6 +291,11 @@ abstract class Chunk[+O] extends Serializable { self =>
 }
 
 object Chunk {
+
+  /** Optional mix-in that provides the class tag of the element type in a chunk. */
+  trait KnownElementType[A] { self: Chunk[A] =>
+    def elementClassTag: ClassTag[A]
+  }
 
   private val empty_ : Chunk[Nothing] = new Chunk[Nothing] {
     def size = 0
@@ -468,8 +482,10 @@ object Chunk {
     Booleans(values, offset, length)
 
   final case class Booleans(values: Array[Boolean], offset: Int, length: Int)
-      extends Chunk[Boolean] {
+      extends Chunk[Boolean]
+      with KnownElementType[Boolean] {
     checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Boolean
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
@@ -507,8 +523,11 @@ object Chunk {
   def bytes(values: Array[Byte], offset: Int, length: Int): Chunk[Byte] =
     Bytes(values, offset, length)
 
-  final case class Bytes(values: Array[Byte], offset: Int, length: Int) extends Chunk[Byte] {
+  final case class Bytes(values: Array[Byte], offset: Int, length: Int)
+      extends Chunk[Byte]
+      with KnownElementType[Byte] {
     checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Byte
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
@@ -542,7 +561,10 @@ object Chunk {
   def byteBuffer(buf: JByteBuffer): Chunk[Byte] = ByteBuffer(buf)
 
   final case class ByteBuffer private (buf: JByteBuffer, offset: Int, size: Int)
-      extends Chunk[Byte] {
+      extends Chunk[Byte]
+      with KnownElementType[Byte] {
+    def elementClassTag = ClassTag.Byte
+
     def apply(i: Int): Byte = buf.get(i + offset)
 
     def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit = {
@@ -605,8 +627,11 @@ object Chunk {
   def shorts(values: Array[Short], offset: Int, length: Int): Chunk[Short] =
     Shorts(values, offset, length)
 
-  final case class Shorts(values: Array[Short], offset: Int, length: Int) extends Chunk[Short] {
+  final case class Shorts(values: Array[Short], offset: Int, length: Int)
+      extends Chunk[Short]
+      with KnownElementType[Short] {
     checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Short
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
@@ -643,8 +668,11 @@ object Chunk {
   def ints(values: Array[Int], offset: Int, length: Int): Chunk[Int] =
     Ints(values, offset, length)
 
-  final case class Ints(values: Array[Int], offset: Int, length: Int) extends Chunk[Int] {
+  final case class Ints(values: Array[Int], offset: Int, length: Int)
+      extends Chunk[Int]
+      with KnownElementType[Int] {
     checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Int
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
@@ -681,8 +709,11 @@ object Chunk {
   def longs(values: Array[Long], offset: Int, length: Int): Chunk[Long] =
     Longs(values, offset, length)
 
-  final case class Longs(values: Array[Long], offset: Int, length: Int) extends Chunk[Long] {
+  final case class Longs(values: Array[Long], offset: Int, length: Int)
+      extends Chunk[Long]
+      with KnownElementType[Long] {
     checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Long
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
@@ -720,8 +751,11 @@ object Chunk {
   def floats(values: Array[Float], offset: Int, length: Int): Chunk[Float] =
     Floats(values, offset, length)
 
-  final case class Floats(values: Array[Float], offset: Int, length: Int) extends Chunk[Float] {
+  final case class Floats(values: Array[Float], offset: Int, length: Int)
+      extends Chunk[Float]
+      with KnownElementType[Float] {
     checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Float
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
@@ -759,8 +793,11 @@ object Chunk {
   def doubles(values: Array[Double], offset: Int, length: Int): Chunk[Double] =
     Doubles(values, offset, length)
 
-  final case class Doubles(values: Array[Double], offset: Int, length: Int) extends Chunk[Double] {
+  final case class Doubles(values: Array[Double], offset: Int, length: Int)
+      extends Chunk[Double]
+      with KnownElementType[Double] {
     checkBounds(values, offset, length)
+    def elementClassTag = ClassTag.Double
     def size = length
     def apply(i: Int) = values(offset + i)
     def at(i: Int) = values(offset + i)
@@ -795,35 +832,19 @@ object Chunk {
   def concat[A](chunks: Seq[Chunk[A]]): Chunk[A] =
     if (chunks.isEmpty) {
       Chunk.empty
-    } else if (chunks.forall(c =>
-                 c.isInstanceOf[Chunk.Booleans] ||
-                   c.forall(_.isInstanceOf[Boolean]))) {
+    } else if (chunks.forall(c => c.knownElementType[Boolean] || c.forall(_.isInstanceOf[Boolean]))) {
       concatBooleans(chunks.asInstanceOf[Seq[Chunk[Boolean]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(
-                 c =>
-                   c.isInstanceOf[Chunk.Bytes] ||
-                     c.isInstanceOf[Chunk.ByteBuffer] ||
-                     c.forall(_.isInstanceOf[Byte]))) {
+    } else if (chunks.forall(c => c.knownElementType[Byte] || c.forall(_.isInstanceOf[Byte]))) {
       concatBytes(chunks.asInstanceOf[Seq[Chunk[Byte]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c =>
-                 c.isInstanceOf[Chunk.Floats] ||
-                   c.forall(_.isInstanceOf[Float]))) {
+    } else if (chunks.forall(c => c.knownElementType[Float] || c.forall(_.isInstanceOf[Float]))) {
       concatFloats(chunks.asInstanceOf[Seq[Chunk[Float]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c =>
-                 c.isInstanceOf[Chunk.Doubles] ||
-                   c.forall(_.isInstanceOf[Double]))) {
+    } else if (chunks.forall(c => c.knownElementType[Double] || c.forall(_.isInstanceOf[Double]))) {
       concatDoubles(chunks.asInstanceOf[Seq[Chunk[Double]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c =>
-                 c.isInstanceOf[Chunk.Shorts] ||
-                   c.forall(_.isInstanceOf[Short]))) {
+    } else if (chunks.forall(c => c.knownElementType[Short] || c.forall(_.isInstanceOf[Short]))) {
       concatShorts(chunks.asInstanceOf[Seq[Chunk[Short]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c =>
-                 c.isInstanceOf[Chunk.Ints] ||
-                   c.forall(_.isInstanceOf[Int]))) {
+    } else if (chunks.forall(c => c.knownElementType[Int] || c.forall(_.isInstanceOf[Int]))) {
       concatInts(chunks.asInstanceOf[Seq[Chunk[Int]]]).asInstanceOf[Chunk[A]]
-    } else if (chunks.forall(c =>
-                 c.isInstanceOf[Chunk.Longs] ||
-                   c.forall(_.isInstanceOf[Long]))) {
+    } else if (chunks.forall(c => c.knownElementType[Long] || c.forall(_.isInstanceOf[Long]))) {
       concatLongs(chunks.asInstanceOf[Seq[Chunk[Long]]]).asInstanceOf[Chunk[A]]
     } else {
       val size = chunks.foldLeft(0)(_ + _.size)
