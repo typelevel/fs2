@@ -1658,10 +1658,7 @@ object Segment {
         unconsChunks match {
           case Left(r) => Left(r)
           case Right((cs, tl)) =>
-            Right(cs.uncons.map {
-              case (hd, tl2) =>
-                hd -> tl.prepend(Segment.catenated(tl2.map(Segment.chunk)))
-            }.get)
+            Right(Chunk.concat(cs.toList) -> tl)
         }
     }
 
