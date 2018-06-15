@@ -108,11 +108,13 @@ class ChunkSpec extends Fs2Spec {
       "size" in propSize[A, Chunk[A]]
       "take" in propTake[A, Chunk[A]]
       "drop" in propDrop[A, Chunk[A]]
-      "isempty" in propIsEmpty[A, Chunk[A]]
-      "toarray" in propToArray[A, Chunk[A]]
+      "isEmpty" in propIsEmpty[A, Chunk[A]]
+      "toArray" in propToArray[A, Chunk[A]]
+      "copyToArray" in propCopyToArray[A, Chunk[A]]
+      "concat" in propConcat[A, Chunk[A]]
 
       if (implicitly[ClassTag[A]] == ClassTag.Byte)
-        "tobytebuffer.byte" in propToByteBuffer[Chunk[Byte]]
+        "toByteBuffer.byte" in propToByteBuffer[Chunk[Byte]]
 
       checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
       checkAll(s"Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
