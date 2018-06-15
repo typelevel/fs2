@@ -437,7 +437,7 @@ object Chunk {
       if (xs.isInstanceOf[Array[AnyRef]])
         System.arraycopy(values, offset, xs, start, length)
       else
-        values.iterator.slice(offset, offset + length).copyToArray(xs)
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
 
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       Boxed(values, offset, n) -> Boxed(values, offset + n, length - n)
@@ -478,7 +478,7 @@ object Chunk {
       if (xs.isInstanceOf[Array[Boolean]])
         System.arraycopy(values, offset, xs, start, length)
       else
-        values.iterator.slice(offset, offset + length).copyToArray(xs)
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
 
     override def drop(n: Int): Chunk[Boolean] =
       if (n <= 0) this
@@ -517,7 +517,7 @@ object Chunk {
       if (xs.isInstanceOf[Array[Byte]])
         System.arraycopy(values, offset, xs, start, length)
       else
-        values.iterator.slice(offset, offset + length).copyToArray(xs)
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
 
     override def drop(n: Int): Chunk[Byte] =
       if (n <= 0) this
@@ -615,7 +615,7 @@ object Chunk {
       if (xs.isInstanceOf[Array[Short]])
         System.arraycopy(values, offset, xs, start, length)
       else
-        values.iterator.slice(offset, offset + length).copyToArray(xs)
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
 
     override def drop(n: Int): Chunk[Short] =
       if (n <= 0) this
@@ -653,7 +653,7 @@ object Chunk {
       if (xs.isInstanceOf[Array[Int]])
         System.arraycopy(values, offset, xs, start, length)
       else
-        values.iterator.slice(offset, offset + length).copyToArray(xs)
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
 
     override def drop(n: Int): Chunk[Int] =
       if (n <= 0) this
@@ -691,7 +691,7 @@ object Chunk {
       if (xs.isInstanceOf[Array[Long]])
         System.arraycopy(values, offset, xs, start, length)
       else
-        values.iterator.slice(offset, offset + length).copyToArray(xs)
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
 
     override def drop(n: Int): Chunk[Long] =
       if (n <= 0) this
@@ -730,7 +730,7 @@ object Chunk {
       if (xs.isInstanceOf[Array[Float]])
         System.arraycopy(values, offset, xs, start, length)
       else
-        values.iterator.slice(offset, offset + length).copyToArray(xs)
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
 
     override def drop(n: Int): Chunk[Float] =
       if (n <= 0) this
@@ -769,7 +769,7 @@ object Chunk {
       if (xs.isInstanceOf[Array[Double]])
         System.arraycopy(values, offset, xs, start, length)
       else
-        values.iterator.slice(offset, offset + length).copyToArray(xs)
+        values.iterator.slice(offset, offset + length).copyToArray(xs, start)
 
     override def drop(n: Int): Chunk[Double] =
       if (n <= 0) this
