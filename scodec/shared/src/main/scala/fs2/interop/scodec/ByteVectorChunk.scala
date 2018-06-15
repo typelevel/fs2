@@ -10,6 +10,11 @@ final class ByteVectorChunk private (val toByteVector: ByteVector) extends Chunk
   def size: Int =
     toByteVector.size.toInt
 
+  def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit =
+    if (xs.isInstanceOf[Array[Byte]])
+      toByteVector.copyToArray(xs.asInstanceOf[Array[Byte]], start)
+    else toByteVector.toIndexedSeq.copyToArray(xs)
+
   override def drop(n: Int): Chunk[Byte] =
     if (n <= 0) this
     else if (n >= size) Chunk.empty
