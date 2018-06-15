@@ -72,6 +72,13 @@ object TestUtil extends TestUtilPlatform {
         PureStream(s"randomly-chunked: $size ${chunks.map(_.size)}", Stream.emits(chunks).flatMap(Stream.emits))
       }
     }
+    def filtered[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] =
+      Gen.sized { size =>
+        A.arbitrary.flatMap { a =>
+          Gen.listOfN(size, A.arbitrary).map(as =>
+            PureStream(s"filtered: $a $size $as", Stream.emits(as).unchunk.filter(_ == a)))
+        }
+      }
     def uniformlyChunked[A:Arbitrary]: Gen[PureStream[A]] = Gen.sized { size =>
       for {
         n <- Gen.choose(0, size)
@@ -84,7 +91,8 @@ object TestUtil extends TestUtilPlatform {
     def gen[A:Arbitrary]: Gen[PureStream[A]] =
       Gen.oneOf(
         rightAssociated[A], leftAssociated[A], singleChunk[A],
-        unchunked[A], randomlyChunked[A], uniformlyChunked[A])
+        unchunked[A], randomlyChunked[A], uniformlyChunked[A],
+        filtered[A])
 
     implicit def pureStreamCoGen[A: Cogen]: Cogen[PureStream[A]] = Cogen[List[A]].contramap[PureStream[A]](_.get.toList)
 
