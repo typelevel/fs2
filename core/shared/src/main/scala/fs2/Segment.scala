@@ -3,6 +3,7 @@ package fs2
 import java.util.{LinkedList => JLinkedList}
 import cats._
 import cats.implicits.{catsSyntaxEither => _, _}
+import scala.collection.mutable.Buffer
 
 import Segment._
 
@@ -1650,17 +1651,34 @@ object Segment {
       * res1: Either[Unit,(Chunk[Int], Segment[Int,Unit])] = Left(())
       * }}}
       */
-    final def unconsChunk: Either[R, (Chunk[O], Segment[O, R])] = self match {
-      case c: SingleChunk[O] =>
-        if (c.chunk.isEmpty) Left(().asInstanceOf[R])
-        else Right(c.chunk -> empty.asInstanceOf[Segment[O, R]])
-      case _ =>
-        unconsChunks match {
-          case Left(r) => Left(r)
-          case Right((cs, tl)) =>
-            Right(Chunk.concat(cs.toList) -> tl)
-        }
-    }
+    final def unconsChunk: Either[R, (Chunk[O], Segment[O, R])] =
+      self match {
+        case c: SingleChunk[O] =>
+          if (c.chunk.isEmpty) Left(().asInstanceOf[R])
+          else
+            Right(c.chunk -> empty[O].asInstanceOf[Segment[O, R]])
+        case _ =>
+          var out: Buffer[O] = Buffer[O]()
+          var result: Option[R] = None
+          var ok = true
+          val trampoline = new Trampoline
+          val step = self
+            .stage(Depth(0), trampoline.defer, o => { out = out += o; ok = false }, os => {
+              out ++= os.iterator; ok = false
+            }, r => {
+              result = Some(r); throw Done
+            })
+            .value
+          try while (ok) stepAll(step, trampoline)
+          catch { case Done => }
+          result match {
+            case None =>
+              Right(Chunk.buffer(out) -> step.remainder)
+            case Some(r) =>
+              if (out.isEmpty) Left(r)
+              else Right(Chunk.buffer(out) -> pure(r))
+          }
+      }
 
     /**
       * Returns the first output chunks of this segment along with the remainder, wrapped in `Right`, or
