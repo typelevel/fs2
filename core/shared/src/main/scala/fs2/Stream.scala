@@ -593,8 +593,12 @@ final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, 
            s: Stream[F, O]): Pull[F, (O2, Segment[O, Unit]), Unit] =
       s.pull.unconsChunk.flatMap {
         case Some((hd, tl)) =>
-          val (k1, out) = current.getOrElse((f(hd(0)), Segment.empty[O]))
-          doChunk(hd, tl, k1, out, None)
+          if (hd.nonEmpty) {
+            val (k1, out) = current.getOrElse((f(hd(0)), Segment.empty[O]))
+            doChunk(hd, tl, k1, out, None)
+          } else {
+            go(current, tl)
+          }
         case None =>
           val l = current
             .map { case (k1, out) => Pull.output1((k1, out)) }
