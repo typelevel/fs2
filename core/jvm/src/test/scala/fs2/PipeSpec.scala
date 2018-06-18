@@ -275,7 +275,7 @@ class PipeSpec extends Fs2Spec {
     }
 
     "mapSegments" in forAll { (s: PureStream[Int]) =>
-      runLog(s.get.mapSegments(identity).segments) shouldBe runLog(s.get.segments)
+      runLog(s.get.mapSegments(identity).segments.map(_.force.toVector)) shouldBe runLog(s.get.segments.map(_.force.toVector))
     }
 
     "performance of multi-stage pipeline" in {
