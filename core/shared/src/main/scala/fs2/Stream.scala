@@ -1734,6 +1734,14 @@ object Stream {
                                         ec: ExecutionContext): Stream[F, Either[O, O2]] =
       self.map(Left(_)).merge(that.map(Right(_)))
 
+    def eitherHaltBoth[O2](that: Stream[F, O2])(implicit F: Effect[F],
+                                                ec: ExecutionContext): Stream[F, Either[O, O2]] =
+      self.map(Left(_)).mergeHaltBoth(that.map(Right(_)))
+
+    def eitherHaltL[O2](that: Stream[F, O2])(implicit F: Effect[F],
+                                             ec: ExecutionContext): Stream[F, Either[O, O2]] =
+      self.map(Left(_)).mergeHaltL(that.map(Right(_)))
+
     /**
       * Alias for `flatMap(o => Stream.eval(f(o)))`.
       *
@@ -1902,6 +1910,107 @@ object Stream {
       */
     def foldMonoid(implicit O: Monoid[O]): Stream[F, O] =
       self.fold(O.empty)(O.combine)
+
+    private def ioToF(implicit F: Effect[F]) = new (IO ~> F) {
+      override def apply[A](fa: IO[A]): F[A] = F.liftIO(fa)
+    }
+
+    def groupedTimed(sizeLimit: Int, timeLimit: FiniteDuration, scheduler: Scheduler)(
+        implicit F: Effect[F],
+        ec: ExecutionContext): Stream[F, Chunk[O]] = {
+      assert(sizeLimit > 0, "sizeLimit must be > 0, was: " + sizeLimit)
+
+      val action = for {
+        // We use an expliict semaphore here instead of a bounded Queue because
+        // we want the ability to fire off a trigger based on the last element
+        // going into the queue. That is as soon as the queue is full, we want
+        // to flush it, whereas with a bounded Queue we only know that the queue
+        // is full when we go to add another element, rather than when we try to
+        // add the last element.
+        sizeRemaining <- async.mutable.Semaphore[F](sizeLimit.toLong - 1L)
+        queue <- async.mutable.Queue.unbounded[F, Option[O]]
+        queueLimitReachedSignal <- async.mutable.Signal[F, Unit](())
+        timeOutCancellation <- F.liftIO(async.refOf[IO, IO[Unit]](().pure[IO]))
+        timedOutSignal <- F.liftIO(async.mutable.Signal[IO, Unit](()))
+      } yield {
+        def setTimeoutIO: IO[Unit] =
+          IO.shift(ec) *> scheduler.effect
+            .sleep[IO](timeLimit)
+            .*>(IO.cancelBoundary)
+            .*>(timedOutSignal.refresh)
+            .start
+            .flatMap(fiber => timeOutCancellation.setSync(fiber.cancel *> IO.suspend(setTimeoutIO)))
+        val setTimeout = F.liftIO(setTimeoutIO)
+        val writeIntoQueue =
+          self.noneTerminate.evalMap { x =>
+            println(s"We want to write into the queue this: $x")
+            val putIntoQueue = sizeRemaining.tryDecrement
+              .ifM(
+                ifTrue = queue.enqueue1(x),
+                ifFalse = queue.enqueue1(x) *>
+                  queueLimitReachedSignal.refresh *>
+                  F.liftIO(timeOutCancellation.get.flatten)
+              )
+            putIntoQueue
+          }
+        val timeOutStream = timedOutSignal.discrete.translate(ioToF).evalMap(_ => setTimeout)
+        val readFromQueue = queueLimitReachedSignal.discrete
+          .merge(timeOutStream)
+          .++(Stream.eval_(F.delay(println(s"We finished our read signal streams!"))))
+          .evalMap { _ =>
+            queue
+              .dequeueBatch1(sizeLimit)
+              .flatMap(chunk => sizeRemaining.incrementBy(chunk.size.toLong).as(chunk))
+          }
+          // This whole next part is because we don't have a good way of
+          // terminating queues and must therefore use a noneTerminate hack
+          // that causes the elements of our batch dequeued chunks to be wrapped
+          // in Option, which we must deal with by examining whether the last
+          // element is None and if so terminating the stream.
+          .flatMap { chunk =>
+            println(s"This is the chunk we dequeued: $chunk")
+            val (newChunkBuffer, lastElemWasNone) = chunk.foldLeft((List.empty[O], false)) {
+              case ((currentChunkBuffer, _), Some(x)) =>
+                (x :: currentChunkBuffer, false)
+              case ((currentChunkBuffer, false), None) =>
+                (currentChunkBuffer, true)
+              case ((_, true), None) =>
+                throw new IllegalStateException(
+                  "If you see this, please file this as a bug.\n" +
+                    "This should be impossible to reach. The input to our queue " +
+                    "should be a `noneTerminate`d stream, which should only " +
+                    "have a None as its very last value. That means that when " +
+                    "batch dequeueing from our queue, only our very last value " +
+                    "of our chunk can be None, so we should never set our flag " +
+                    "indicating the last element was already None to true " +
+                    "before our last element."
+                )
+            }
+            val newChunk = Some(Chunk.seq(newChunkBuffer.reverse))
+            println(s"This is the new chunk: $newChunk")
+            if (lastElemWasNone) {
+              println(s"We are in the lastElemWasNone branch and emitting: $newChunk")
+              Stream.emit(newChunk) ++ Stream.emit(None)
+            } else {
+              println(s"We are not in the lastElemWasNone branch and emitting: $newChunk")
+              Stream.emit(newChunk)
+            }
+          }
+          .unNoneTerminate
+        // We use an either instead of something like concurrently because we
+        // want writes into our queue to also be demand-driven; if our
+        // downstream consumer doesn't ask for any more elements, we don't want
+        // to keep writing into our queue
+        readFromQueue
+          .++(Stream.eval_(F.delay(println(s"readFromQueue halted"))))
+          .eitherHaltL(writeIntoQueue)
+          .collect { case Left(chunk) => chunk }
+          .++(Stream.eval_(F.delay(println(s"Our entire stream halted"))))
+      }
+      Stream
+        .force(action)
+        .++(Stream.eval_(F.delay(println(s"REALLY Our entire stream halted"))))
+    }
 
     /**
       * Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.

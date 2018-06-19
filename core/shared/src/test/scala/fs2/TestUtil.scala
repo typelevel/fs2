@@ -1,13 +1,15 @@
 package fs2
 
-import java.util.concurrent.TimeoutException
+import java.util.concurrent.{TimeUnit, TimeoutException}
+
 import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 
 import scala.concurrent.Future
-
 import cats.effect.IO
 import cats.implicits._
 import fs2.internal.NonFatal
+
+import scala.concurrent.duration.FiniteDuration
 
 object TestUtil extends TestUtilPlatform {
 
@@ -47,6 +49,20 @@ object TestUtil extends TestUtilPlatform {
 
   case class SmallNonnegative(get: Int)
   implicit def arbSmallNonnegative = Arbitrary(Gen.choose(0,20).map(SmallNonnegative(_)))
+
+  case class ShortFiniteDuration(get: FiniteDuration)
+  implicit def arbShortFiniteDuration = Arbitrary{
+    Gen.choose(1L, 50000L)
+      .map(FiniteDuration(_, TimeUnit.MICROSECONDS))
+      .map(ShortFiniteDuration(_))
+  }
+
+  case class VeryShortFiniteDuration(get: FiniteDuration)
+  implicit def arbVeryShortFiniteDuration = Arbitrary{
+    Gen.choose(1L, 500L)
+      .map(FiniteDuration(_, TimeUnit.MICROSECONDS))
+      .map(VeryShortFiniteDuration(_))
+  }
 
   object PureStream {
     def singleChunk[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
