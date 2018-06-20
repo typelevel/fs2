@@ -53,14 +53,14 @@ object TestUtil extends TestUtilPlatform {
 
   case class ShortFiniteDuration(get: FiniteDuration)
   implicit def arbShortFiniteDuration = Arbitrary{
-    Gen.choose(1L, 50000L)
+    Gen.choose(1L, 10000L)
       .map(_.microseconds)
       .map(ShortFiniteDuration(_))
   }
 
   case class VeryShortFiniteDuration(get: FiniteDuration)
   implicit def arbVeryShortFiniteDuration = Arbitrary{
-    Gen.choose(1L, 500L)
+    Gen.choose(1L, 1000L)
       .map(_.microseconds)
       .map(VeryShortFiniteDuration(_))
   }

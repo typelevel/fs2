@@ -9,7 +9,9 @@ import TestUtil._
 
 class GroupWithinSpec extends Fs2Spec {
   "groupWithin should never lose any elements" in forAll {
-    (s: PureStream[VeryShortFiniteDuration], d: ShortFiniteDuration, maxGroupSize: SmallPositive) =>
+    (s: PureStream[VeryShortFiniteDuration],
+     d: VeryShortFiniteDuration,
+     maxGroupSize: SmallPositive) =>
       val result = s.get.toVector
       val action =
         s.get
@@ -46,6 +48,12 @@ class GroupWithinSpec extends Fs2Spec {
       withClue(s"Our full result looked like: $fullResult") {
         fullResult.head.force.toList shouldBe streamAsList.toList
       }
+  }
+
+  "groupWithin should timeout with an empty chunk if the upstream stream never returns" in forAll {
+    (n: SmallPositive, d: ShortFiniteDuration) =>
+      val grouped = Stream.eval(IO.never).groupWithin(n.get, d.get).head
+      runLog(grouped).head.force.toList shouldBe List.empty
   }
 
 }

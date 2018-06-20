@@ -1731,6 +1731,27 @@ object Stream {
       self.map(Left(_)).merge(that.map(Right(_)))
 
     /**
+      * Like `either`, but halts as soon as `self` halts.
+      */
+    def eitherHaltL[O2](that: Stream[F, O2])(implicit F: Effect[F],
+                                             ec: ExecutionContext): Stream[F, Either[O, O2]] =
+      self.map(Left(_)).mergeHaltL(that.map(Right(_)))
+
+    /**
+      * Like `either`, but halts as soon as `that` halts.
+      */
+    def eitherHaltR[O2](that: Stream[F, O2])(implicit F: Effect[F],
+                                             ec: ExecutionContext): Stream[F, Either[O, O2]] =
+      self.map(Left(_)).mergeHaltR(that.map(Right(_)))
+
+    /**
+      * Like `either`, but halts as soon as either `self` or `that` halts.
+      */
+    def eitherHaltBoth[O2](that: Stream[F, O2])(implicit F: Effect[F],
+                                                ec: ExecutionContext): Stream[F, Either[O, O2]] =
+      self.map(Left(_)).mergeHaltBoth(that.map(Right(_)))
+
+    /**
       * Alias for `flatMap(o => Stream.eval(f(o)))`.
       *
       * @example {{{
@@ -1902,52 +1923,98 @@ object Stream {
     /**
       * Divide this streams into groups of elements received within a time window,
       * or limited by the number of the elements, whichever happens first.
-      * Empty groups, which can occur if no elements can be pulled from upstream
-      * in a given time window, will not be emitted.
       *
-      * Note: a time window starts each time downstream pulls.
+      * Empty groups can occur if no elements can be pulled from upstream
+      * in a given time window. If you would like to have only non-empty groups,
+      * you can `collect` out the empty groups (see the provided example).
+      *
+      * Note that n must be a positive integer.
+      *
+      * @example {{{
+      * scala> import cats.data.NonEmptyVector, scala.concurrent.duration._
+      *
+      * scala> import cats.effect.IO, scala.concurrent.ExecutionContext.Implicits.global
+      *
+      * scala> val grouped = Stream(1, 2, 3, 4, 5).covary[IO].groupWithinV(2, 10.seconds)
+      *
+      * scala> grouped.compile.toVector.unsafeRunSync
+      * res0: Vector[Vector[Int]] = Vector(Vector(1, 2), Vector(3, 4), Vector(5))
+      *
+      * // Or you can filter non-empty groups
+      * scala> val emptyGrouped = Stream.empty
+      *      |   .covaryOutput[Int]
+      *      |   .covary[IO]
+      *      |   .groupWithinV(2, 10.milliseconds)
+      *      |   .map(NonEmptyVector.fromVector)
+      *      |   .collect{case Some(nonEmpty) => nonEmpty}
+      *
+      * scala> emptyGrouped.compile.toVector.unsafeRunSync
+      * res1: Vector[NonEmptyVector[Int]] = Vector()
+      * }}}
       */
-    def groupWithin(n: Int, d: FiniteDuration)(implicit F: Effect[F],
-                                               timer: Timer[F],
-                                               ec: ExecutionContext): Stream[F, Segment[O, Unit]] =
-      Stream.eval(async.boundedQueue[F, Option[Either[Int, O]]](n)).flatMap { q =>
-        def startTimeout(tick: Int): Stream[F, Nothing] =
-          Stream.eval {
-            async.fork {
-              timer.sleep(d) *> q.enqueue1(tick.asLeft.some)
-            }
-          }.drain
+    def groupWithinV(n: Int, d: FiniteDuration)(implicit F: Effect[F],
+                                                timer: Timer[F],
+                                                ec: ExecutionContext): Stream[F, Vector[O]] = {
+      require(n > 0)
 
-        def producer = self.map(_.asRight.some).to(q.enqueue).onFinalize(q.enqueue1(None))
+      type TimeoutTick = Object
 
-        def emitNonEmpty(c: Catenable[Segment[O, Unit]]): Stream[F, Segment[O, Unit]] =
-          if (c.nonEmpty) Stream.emit(Segment.catenated(c))
-          else Stream.empty
+      // Note that this is NOT referentially transparent
+      def unsafeNewTimeoutTick: TimeoutTick = new Object
 
-        def go(acc: Catenable[Segment[O, Unit]],
-               elems: Int,
-               currentTimeout: Int): Stream[F, Segment[O, Unit]] =
-          Stream.eval(q.dequeue1).flatMap {
-            case None => emitNonEmpty(acc)
-            case Some(e) =>
-              e match {
-                case Left(t) if t == currentTimeout =>
-                  emitNonEmpty(acc) ++ startTimeout(currentTimeout + 1) ++ go(Catenable.empty,
-                                                                              0,
-                                                                              currentTimeout + 1)
-                case Left(t) => go(acc, elems, currentTimeout)
-                case Right(a) if elems >= n =>
-                  emitNonEmpty(acc) ++ startTimeout(currentTimeout + 1) ++ go(
-                    Catenable.singleton(Segment.singleton(a)),
-                    1,
-                    currentTimeout + 1)
-                case Right(a) if elems < n =>
-                  go(acc.snoc(Segment.singleton(a)), elems + 1, currentTimeout)
+      def startTimeout[A](tick: A, queue: async.mutable.Queue[F, A]): F[Unit] =
+        async.fork {
+          timer.sleep(d) *> queue.enqueue1(tick)
+        }
+
+      def startTimeoutPull[A](tick: A, queue: async.mutable.Queue[F, A]): Pull[F, Nothing, Unit] =
+        Pull.eval(startTimeout(tick, queue))
+
+      def go(acc: Vector[O],
+             currentTimeout: TimeoutTick,
+             stream: Stream[F, Either[TimeoutTick, O]],
+             tickQueue: async.mutable.Queue[F, TimeoutTick]): Pull[F, Vector[O], Unit] =
+        stream.pull
+          .unconsLimit(n.toLong - acc.size.toLong)
+          .covaryOutput[Vector[O]]
+          .flatMap[F, Vector[O], Unit] {
+            case None => Pull.output1(acc)
+            case Some((segment, restOfStream)) =>
+              val (timeoutOpt, elems) =
+                segment.force.toVector.foldLeft((Option.empty[TimeoutTick], Vector.empty[O])) {
+                  case (innerAcc, Left(timeout))               => innerAcc.copy(_1 = Some(timeout))
+                  case ((timeout, builtUpVector), Right(elem)) => (timeout, builtUpVector :+ elem)
+                }
+              val totalNewElems = acc ++ elems
+              val newTick = unsafeNewTimeoutTick
+              val outputAndRestartTimeout =
+                Pull.output1(totalNewElems) >> startTimeoutPull(newTick, tickQueue)
+              val restartGo = go(Vector.empty, newTick, restOfStream, tickQueue)
+              timeoutOpt match {
+                case Some(timedout) if timedout == currentTimeout =>
+                  outputAndRestartTimeout >> restartGo
+                case Some(_) =>
+                  go(totalNewElems, currentTimeout, restOfStream, tickQueue)
+                case None if totalNewElems.size >= n =>
+                  outputAndRestartTimeout >> restartGo
+                case None =>
+                  go(totalNewElems, currentTimeout, restOfStream, tickQueue)
               }
           }
 
-        startTimeout(0) ++ go(Catenable.empty, 0, 0).concurrently(producer)
-      }
+      for {
+        tickQueue <- Stream.eval(async.mutable.Queue.synchronous[F, TimeoutTick](F, ec))
+        mergedStreams = tickQueue.dequeue.eitherHaltR(self)
+        newTick = unsafeNewTimeoutTick
+        _ <- Stream.eval(startTimeout(newTick, tickQueue))
+        result <- go(Vector.empty, newTick, mergedStreams, tickQueue).stream
+      } yield result
+    }
+
+    def groupWithin(n: Int, d: FiniteDuration)(implicit F: Effect[F],
+                                               timer: Timer[F],
+                                               ec: ExecutionContext): Stream[F, Segment[O, Unit]] =
+      groupWithinV(n, d).map(Segment.vector)
 
     /**
       * Determinsitically interleaves elements, starting on the left, terminating when the ends of both branches are reached naturally.
