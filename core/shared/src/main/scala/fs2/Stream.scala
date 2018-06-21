@@ -1989,16 +1989,21 @@ object Stream {
               val newTick = unsafeNewTimeoutTick
               val outputAndRestartTimeout =
                 Pull.output1(totalNewElems) >> startTimeoutPull(newTick, tickQueue)
+              val continueAccumulating = go(totalNewElems, currentTimeout, restOfStream, tickQueue)
               val restartGo = go(Vector.empty, newTick, restOfStream, tickQueue)
               timeoutOpt match {
                 case Some(timedout) if timedout == currentTimeout =>
                   outputAndRestartTimeout >> restartGo
                 case Some(_) =>
-                  go(totalNewElems, currentTimeout, restOfStream, tickQueue)
+                  // We continue accumulating because the timeout we see is no
+                  // longer a valid timeout, it's been invalidated by a new
+                  // startTimeoutPull call, i.e. it's been invalidated by a restart
+                  // in outputAndRestartTimeout
+                  continueAccumulating
                 case None if totalNewElems.size >= n =>
                   outputAndRestartTimeout >> restartGo
                 case None =>
-                  go(totalNewElems, currentTimeout, restOfStream, tickQueue)
+                  continueAccumulating
               }
           }
 
