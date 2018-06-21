@@ -1989,8 +1989,10 @@ object Stream {
               val newTick = unsafeNewTimeoutTick
               val outputAndRestartTimeout =
                 Pull.output1(totalNewElems) >> startTimeoutPull(newTick, tickQueue)
-              val continueAccumulating = go(totalNewElems, currentTimeout, restOfStream, tickQueue)
-              val restartGo = go(Vector.empty, newTick, restOfStream, tickQueue)
+              val continueAccumulating =
+                Pull.suspend(go(totalNewElems, currentTimeout, restOfStream, tickQueue))
+              val restartGo =
+                Pull.suspend(go(Vector.empty, newTick, restOfStream, tickQueue))
               timeoutOpt match {
                 case Some(timedout) if timedout == currentTimeout =>
                   outputAndRestartTimeout >> restartGo
