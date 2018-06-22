@@ -253,6 +253,7 @@ lazy val io = project
   .settings(mimaSettings)
   .settings(
     name := "fs2-io",
+    libraryDependencies ++= Seq("io.chrisdavenport" %% "linebacker" % "0.2.0-M1"),
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {

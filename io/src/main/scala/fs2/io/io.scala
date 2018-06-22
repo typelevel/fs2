@@ -2,9 +2,9 @@ package fs2
 
 import java.io.{InputStream, OutputStream}
 
-import cats.effect.{Async, ConcurrentEffect, Sync, Timer}
+import cats.effect.{Async, ConcurrentEffect, Timer}
 
-import scala.concurrent.ExecutionContext
+import _root_.io.chrisdavenport.linebacker.Linebacker
 
 /** Provides various ways to work with streams that perform IO. */
 package object io {
@@ -17,7 +17,9 @@ package object io {
     * Blocks on read operations from the input stream.
     */
   def readInputStream[F[_]](fis: F[InputStream], chunkSize: Int, closeAfterUse: Boolean = true)(
-      implicit F: Sync[F]): Stream[F, Byte] =
+      implicit F: Async[F],
+      linebacker: Linebacker[F],
+      timer: Timer[F]): Stream[F, Byte] =
     readInputStreamGeneric(fis,
                            F.delay(new Array[Byte](chunkSize)),
                            readBytesFromInputStream[F],
@@ -30,17 +32,15 @@ package object io {
     * Like `readInputStream` but each read operation is performed on the supplied execution
     * context. Reads are blocking so the execution context should be configured appropriately.
     */
-  def readInputStreamAsync[F[_]](
-      fis: F[InputStream],
-      chunkSize: Int,
-      blockingExecutionContext: ExecutionContext,
-      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Stream[F, Byte] =
+  def readInputStreamAsync[F[_]](fis: F[InputStream],
+                                 chunkSize: Int,
+                                 closeAfterUse: Boolean = true)(implicit F: Async[F],
+                                                                linebacker: Linebacker[F],
+                                                                timer: Timer[F]): Stream[F, Byte] =
     readInputStreamGeneric(
       fis,
       F.delay(new Array[Byte](chunkSize)),
-      (is, buf) =>
-        F.bracket(Async.shift(blockingExecutionContext))(_ => readBytesFromInputStream(is, buf))(
-          _ => timer.shift),
+      (is, buf) => Linebacker[F].blockTimer(readBytesFromInputStream(is, buf)),
       closeAfterUse
     )
 
@@ -55,10 +55,11 @@ package object io {
     *
     * Blocks on read operations from the input stream.
     */
-  def unsafeReadInputStream[F[_]](
-      fis: F[InputStream],
-      chunkSize: Int,
-      closeAfterUse: Boolean = true)(implicit F: Sync[F]): Stream[F, Byte] =
+  def unsafeReadInputStream[F[_]](fis: F[InputStream],
+                                  chunkSize: Int,
+                                  closeAfterUse: Boolean = true)(implicit F: Async[F],
+                                                                 linebacker: Linebacker[F],
+                                                                 timer: Timer[F]): Stream[F, Byte] =
     readInputStreamGeneric(fis,
                            F.pure(new Array[Byte](chunkSize)),
                            readBytesFromInputStream[F],
@@ -76,17 +77,16 @@ package object io {
     * returned or pipe it to a combinator that does (e.g. `buffer`). Use
     * `readInputStream` for a safe version.
     */
-  def unsafeReadInputStreamAsync[F[_]](
-      fis: F[InputStream],
-      chunkSize: Int,
-      blockingExecutionContext: ExecutionContext,
-      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Stream[F, Byte] =
+  def unsafeReadInputStreamAsync[F[_]](fis: F[InputStream],
+                                       chunkSize: Int,
+                                       closeAfterUse: Boolean = true)(
+      implicit F: Async[F],
+      linebacker: Linebacker[F],
+      timer: Timer[F]): Stream[F, Byte] =
     readInputStreamGeneric(
       fis,
       F.pure(new Array[Byte](chunkSize)),
-      (is, buf) =>
-        F.bracket(Async.shift(blockingExecutionContext))(_ => readBytesFromInputStream(is, buf))(
-          _ => timer.shift),
+      (is, buf) => Linebacker[F].blockTimer(readBytesFromInputStream(is, buf)),
       closeAfterUse
     )
 
@@ -96,8 +96,9 @@ package object io {
     *
     * Blocks on write operations to the input stream.
     */
-  def writeOutputStream[F[_]: Sync](fos: F[OutputStream],
-                                    closeAfterUse: Boolean = true): Sink[F, Byte] =
+  def writeOutputStream[F[_]: Async: Linebacker: Timer](
+      fos: F[OutputStream],
+      closeAfterUse: Boolean = true): Sink[F, Byte] =
     writeOutputStreamGeneric(fos, closeAfterUse, writeBytesToOutputStream[F])
 
   /**
@@ -107,38 +108,41 @@ package object io {
     * Each write operation is performed on the supplied execution context. Writes are
     * blocking so the execution context should be configured appropriately.
     */
-  def writeOutputStreamAsync[F[_]](
-      fos: F[OutputStream],
-      blockingExecutionContext: ExecutionContext,
-      closeAfterUse: Boolean = true)(implicit F: Async[F], timer: Timer[F]): Sink[F, Byte] =
-    writeOutputStreamGeneric(fos,
-                             closeAfterUse,
-                             (os, buf) =>
-                               F.bracket(Async.shift(blockingExecutionContext))(_ =>
-                                 writeBytesToOutputStream(os, buf))(_ => timer.shift))
+  def writeOutputStreamAsync[F[_]](fos: F[OutputStream], closeAfterUse: Boolean = true)(
+      implicit F: Async[F],
+      linebacker: Linebacker[F],
+      timer: Timer[F]): Sink[F, Byte] =
+    writeOutputStreamGeneric(
+      fos,
+      closeAfterUse,
+      (os, buf) => Linebacker[F].blockTimer(writeBytesToOutputStream(os, buf)))
 
   //
   // STDIN/STDOUT Helpers
 
   /** Stream of bytes read from standard input. */
-  def stdin[F[_]](bufSize: Int)(implicit F: Sync[F]): Stream[F, Byte] =
+  def stdin[F[_]](bufSize: Int)(implicit F: Async[F],
+                                linebacker: Linebacker[F],
+                                timer: Timer[F]): Stream[F, Byte] =
     readInputStream(F.delay(System.in), bufSize, false)
 
   /** Stream of bytes read asynchronously from standard input. */
-  def stdinAsync[F[_]](bufSize: Int, blockingExecutionContext: ExecutionContext)(
-      implicit F: Async[F],
-      timer: Timer[F]): Stream[F, Byte] =
-    readInputStreamAsync(F.delay(System.in), bufSize, blockingExecutionContext, false)
+  def stdinAsync[F[_]](bufSize: Int)(implicit F: Async[F],
+                                     linebacker: Linebacker[F],
+                                     timer: Timer[F]): Stream[F, Byte] =
+    readInputStreamAsync(F.delay(System.in), bufSize, false)
 
   /** Sink of bytes that writes emitted values to standard output. */
-  def stdout[F[_]](implicit F: Sync[F]): Sink[F, Byte] =
+  def stdout[F[_]](implicit F: Async[F],
+                   linebacker: Linebacker[F],
+                   timer: Timer[F]): Sink[F, Byte] =
     writeOutputStream(F.delay(System.out), false)
 
   /** Sink of bytes that writes emitted values to standard output asynchronously. */
-  def stdoutAsync[F[_]](blockingExecutionContext: ExecutionContext)(
-      implicit F: Async[F],
-      timer: Timer[F]): Sink[F, Byte] =
-    writeOutputStreamAsync(F.delay(System.out), blockingExecutionContext, false)
+  def stdoutAsync[F[_]](implicit F: Async[F],
+                        linebacker: Linebacker[F],
+                        timer: Timer[F]): Sink[F, Byte] =
+    writeOutputStreamAsync(F.delay(System.out), false)
 
   /**
     * Pipe that converts a stream of bytes to a stream that will emits a single `java.io.InputStream`,

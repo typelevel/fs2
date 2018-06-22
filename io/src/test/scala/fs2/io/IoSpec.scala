@@ -5,7 +5,12 @@ import cats.effect.IO
 import fs2.Fs2Spec
 import fs2.TestUtil._
 
+import _root_.io.chrisdavenport.linebacker.Linebacker
+
 class IoSpec extends Fs2Spec {
+  // Use an actual blocking pool for production
+  implicit val linebacker = Linebacker.fromExecutionContext[IO](executionContext)
+
   "readInputStream" - {
     "non-buffered" in forAll { (bytes: Array[Byte], chunkSize: SmallPositive) =>
       val is: InputStream = new ByteArrayInputStream(bytes)
@@ -22,18 +27,17 @@ class IoSpec extends Fs2Spec {
       example shouldBe bytes
     }
   }
-
   "readInputStreamAsync" - {
     "non-buffered" in forAll { (bytes: Array[Byte], chunkSize: SmallPositive) =>
       val is: InputStream = new ByteArrayInputStream(bytes)
-      val stream = readInputStreamAsync(IO(is), chunkSize.get, executionContext)
+      val stream = readInputStreamAsync(IO(is), chunkSize.get)
       val example = stream.compile.toVector.unsafeRunSync.toArray
       example shouldBe bytes
     }
 
     "buffered" in forAll { (bytes: Array[Byte], chunkSize: SmallPositive) =>
       val is: InputStream = new ByteArrayInputStream(bytes)
-      val stream = readInputStreamAsync(IO(is), chunkSize.get, executionContext)
+      val stream = readInputStreamAsync(IO(is), chunkSize.get)
       val example =
         stream.buffer(chunkSize.get * 2).compile.toVector.unsafeRunSync.toArray
       example shouldBe bytes
@@ -52,7 +56,7 @@ class IoSpec extends Fs2Spec {
   "unsafeReadInputStreamAsync" - {
     "non-buffered" in forAll { (bytes: Array[Byte], chunkSize: SmallPositive) =>
       val is: InputStream = new ByteArrayInputStream(bytes)
-      val stream = unsafeReadInputStreamAsync(IO(is), chunkSize.get, executionContext)
+      val stream = unsafeReadInputStreamAsync(IO(is), chunkSize.get)
       val example = stream.compile.toVector.unsafeRunSync.toArray
       example shouldBe bytes
     }
