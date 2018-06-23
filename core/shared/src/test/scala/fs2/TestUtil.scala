@@ -1,13 +1,16 @@
 package fs2
 
 import java.util.concurrent.TimeoutException
+
 import org.scalacheck.{Arbitrary, Cogen, Gen, Shrink}
 
 import scala.concurrent.Future
-
+import scala.concurrent.duration._
 import cats.effect.IO
 import cats.implicits._
 import fs2.internal.NonFatal
+
+import scala.concurrent.duration.FiniteDuration
 
 object TestUtil extends TestUtilPlatform {
 
@@ -48,6 +51,20 @@ object TestUtil extends TestUtilPlatform {
   case class SmallNonnegative(get: Int)
   implicit def arbSmallNonnegative = Arbitrary(Gen.choose(0,20).map(SmallNonnegative(_)))
 
+  case class ShortFiniteDuration(get: FiniteDuration)
+  implicit def arbShortFiniteDuration = Arbitrary{
+    Gen.choose(1L, 10000L)
+      .map(_.microseconds)
+      .map(ShortFiniteDuration(_))
+  }
+
+  case class VeryShortFiniteDuration(get: FiniteDuration)
+  implicit def arbVeryShortFiniteDuration = Arbitrary{
+    Gen.choose(1L, 1000L)
+      .map(_.microseconds)
+      .map(VeryShortFiniteDuration(_))
+  }
+
   object PureStream {
     def singleChunk[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] = Gen.sized { size =>
       Gen.listOfN(size, A.arbitrary).map(as => PureStream(s"single chunk: $size $as", Stream.emits(as)))
@@ -69,7 +86,7 @@ object TestUtil extends TestUtilPlatform {
     }
     def randomlyChunked[A:Arbitrary]: Gen[PureStream[A]] = Gen.sized { size =>
       nestedVectorGen[A](0, size, true).map { chunks =>
-        PureStream(s"randomly-chunked: $size ${chunks.map(_.size)}", Stream.emits(chunks).flatMap(Stream.emits))
+        PureStream(s"randomly-chunked: $chunks $size ${chunks.map(_.size)}", Stream.emits(chunks).flatMap(Stream.emits))
       }
     }
     def filtered[A](implicit A: Arbitrary[A]): Gen[PureStream[A]] =
