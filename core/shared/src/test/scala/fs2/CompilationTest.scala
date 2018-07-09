@@ -7,9 +7,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 object ThisModuleShouldCompile {
 
   /* Some checks that `.pull` can be used without annotations */
-  // Stream(1,2,3,4) through ((_: Stream[Pure, Int]).take(2)) // was: Stream(1,2,3,4) through (_.take(2))
   Stream(1,2,3,4) through (_.take(2))
-  // Stream.eval(IO.pure(1)) through (_.take(2))
   Stream.eval(IO.pure(1)) through (_.take(2))
   Stream(1,2,3,4) through[Int] (_.take(2))
   Stream(1,2,3).covary[IO].pull.uncons1.stream
