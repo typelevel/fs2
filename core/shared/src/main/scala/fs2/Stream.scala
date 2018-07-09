@@ -798,7 +798,7 @@ final class Stream[+F[x] >: Pure[x], +O] private (
             f(o).get
 
         }
-      case None => Stream.empty[F2].get
+      case None => Stream.empty.get
     })
 
   /** Alias for `flatMap(_ => s2)`. */
@@ -2322,7 +2322,7 @@ object Stream {
     fromFreeC[Pure, Nothing](Algebra.pure[Pure, Nothing, Unit](())): Stream[Pure, Nothing]
 
   /** Empty pure stream. */
-  def empty[F[x] >: Pure[x]]: Stream[F, Nothing] = empty_
+  def empty: Stream[Pure, Nothing] = empty_
 
   /**
     * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
@@ -2792,6 +2792,9 @@ object Stream {
   final class PureOps[O] private[Stream] (private val free: FreeC[Algebra[Pure, O, ?], Unit])
       extends AnyVal {
     private def self: Stream[Pure, O] = Stream.fromFreeC[Pure, O](free)
+
+    /** Alias for covary, to be able to write `Stream.empty[X]`. */
+    def apply[F[_]]: Stream[F, O] = covary
 
     def covary[F[_]]: Stream[F, O] = self
 
