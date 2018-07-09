@@ -2793,6 +2793,9 @@ object Stream {
       extends AnyVal {
     private def self: Stream[Pure, O] = Stream.fromFreeC[Pure, O](free)
 
+    /** Alias for covary, to be able to write `Stream.empty[X]`. */
+    def apply[F[_]]: Stream[F, O] = covary
+
     def covary[F[_]]: Stream[F, O] = self
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */

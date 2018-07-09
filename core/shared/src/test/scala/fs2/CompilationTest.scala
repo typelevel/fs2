@@ -18,6 +18,11 @@ object ThisModuleShouldCompile {
   def b[F[x] >: Pure[x],A](s: Stream[F,A]): Stream[F,A] = s through (_.take(2))
   def c[F[x] >: Pure[x],A](s: Stream[F,A]): Stream[F,A] = s through (_.take(2))
 
+  Stream.empty[IO]
+  Stream.empty.covary[IO]
+  Stream.empty.covaryAll[IO, Int]
+  Stream.empty.covaryOutput[Int]
+
   Stream(1,2,3) ++ Stream(4,5,6)
   Stream(1,2,3) ++ Stream.eval(IO.pure(4))
   Stream(1,2,3) ++ Stream.eval(IO.pure(4))
