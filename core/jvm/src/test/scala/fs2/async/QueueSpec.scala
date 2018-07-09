@@ -53,7 +53,6 @@ class QueueSpec extends Fs2Spec {
           runLog(Stream.eval(async.unboundedQueue[IO, Option[Int]]).flatMap { q =>
             s.get.noneTerminate.evalMap(q.enqueue1).drain ++ Stream
               .constant(batchSize.get)
-              .covary[IO]
               .through(q.dequeueBatch)
               .unNoneTerminate
           }) shouldBe s.get.toVector
@@ -69,7 +68,6 @@ class QueueSpec extends Fs2Spec {
               .flatMap { q =>
                 s.get.noneTerminate.evalMap(q.enqueue1).drain ++ Stream
                   .constant(batchSize.get)
-                  .covary[IO]
                   .through(q.dequeueBatch)
                   .unNoneTerminate
               }) shouldBe s.get.toVector.takeRight(maxSize.get)

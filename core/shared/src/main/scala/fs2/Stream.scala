@@ -1224,7 +1224,7 @@ final class Stream[+F[x] >: Pure[x], +O] private (
   }
 
   /** Like [[join]] but races all inner streams simultaneously. */
-  def joinUnbounded[F2[x], O2](implicit ev: O <:< Stream[F2, O2],
+  def joinUnbounded[F2[_], O2](implicit ev: O <:< Stream[F2, O2],
                                ev2: F[_] <:< F2[_],
                                F2: Concurrent[F2]): Stream[F2, O2] =
     join(Int.MaxValue)
