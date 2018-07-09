@@ -7,11 +7,11 @@ object text {
   private val utf8Charset = Charset.forName("UTF-8")
 
   /** Converts UTF-8 encoded byte stream to a stream of `String`. */
-  def utf8Decode[F[x] >: Pure[x]]: Pipe[F, Byte, String] =
+  def utf8Decode[F[_]]: Pipe[F, Byte, String] =
     _.chunks.through(utf8DecodeC)
 
   /** Converts UTF-8 encoded `Chunk[Byte]` inputs to `String`. */
-  def utf8DecodeC[F[x] >: Pure[x]]: Pipe[F, Chunk[Byte], String] = {
+  def utf8DecodeC[F[_]]: Pipe[F, Chunk[Byte], String] = {
     /*
      * Returns the number of continuation bytes if `b` is an ASCII byte or a
      * leading byte of a multi-byte sequence, and -1 otherwise.
@@ -76,15 +76,15 @@ object text {
   }
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
-  def utf8Encode[F[x] >: Pure[x]]: Pipe[F, String, Byte] =
+  def utf8Encode[F[_]]: Pipe[F, String, Byte] =
     _.flatMap(s => Stream.chunk(Chunk.bytes(s.getBytes(utf8Charset))))
 
   /** Encodes a stream of `String` in to a stream of `Chunk[Byte]` using the UTF-8 charset. */
-  def utf8EncodeC[F[x] >: Pure[x]]: Pipe[F, String, Chunk[Byte]] =
+  def utf8EncodeC[F[_]]: Pipe[F, String, Chunk[Byte]] =
     _.map(s => Chunk.bytes(s.getBytes(utf8Charset)))
 
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
-  def lines[F[x] >: Pure[x]]: Pipe[F, String, String] = {
+  def lines[F[_]]: Pipe[F, String, String] = {
 
     def linesFromString(string: String): (Vector[String], String) = {
       var i = 0

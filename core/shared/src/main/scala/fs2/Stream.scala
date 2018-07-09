@@ -1889,9 +1889,31 @@ final class Stream[+F[x] >: Pure[x], +O] private (
   def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Stream[F, O] =
     this.pull.takeWhile(p, takeFailure).stream
 
+  /**
+    * Transforms this stream using the given `Pipe`.
+    *
+    * @example {{{
+    * scala> Stream("Hello", "world").through(text.utf8Encode).toVector.toArray
+    * res0: Array[Byte] = Array(72, 101, 108, 108, 111, 119, 111, 114, 108, 100)
+    * }}}
+    */
+  def through[F2[x] >: F[x], O2](f: Stream[F, O] => Stream[F2, O2]): Stream[F2, O2] = f(this)
+
   /** Transforms this stream and `s2` using the given `Pipe2`. */
-  def through2[F2[x] >: F[x], O2, O3](s2: Stream[F2, O2])(f: Pipe2[F2, O, O2, O3]): Stream[F2, O3] =
+  def through2[F2[x] >: F[x], O2, O3](s2: Stream[F2, O2])(
+      f: (Stream[F, O], Stream[F2, O2]) => Stream[F2, O3]): Stream[F2, O3] =
     f(this, s2)
+
+  /**
+    * Applies the given sink to this stream.
+    *
+    * @example {{{
+    * scala> import cats.effect.IO, cats.implicits._
+    * scala> Stream(1,2,3).covary[IO].to(Sink.showLinesStdOut).compile.drain.unsafeRunSync
+    * res0: Unit = ()
+    * }}}
+    */
+  def to[F2[x] >: F[x]](f: Stream[F, O] => Stream[F2, Unit]): Stream[F2, Unit] = f(this)
 
   /**
     * Translates effect type from `F` to `G` using the supplied `FunctionK`.
@@ -2745,26 +2767,6 @@ object Stream {
         using: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]): Stream[F, O2] =
       Pull.loop(using.andThen(_.map(_.map(_.pull))))(pull).stream
 
-    /**
-      * Transforms this stream using the given `Pipe`.
-      *
-      * @example {{{
-      * scala> Stream("Hello", "world").through(text.utf8Encode).toVector.toArray
-      * res0: Array[Byte] = Array(72, 101, 108, 108, 111, 119, 111, 114, 108, 100)
-      * }}}
-      */
-    def through[O2](f: Pipe[F, O, O2]): Stream[F, O2] = f(self)
-
-    /**
-      * Applies the given sink to this stream.
-      *
-      * @example {{{
-      * scala> import cats.effect.IO, cats.implicits._
-      * scala> Stream(1,2,3).covary[IO].to(Sink.showLinesStdOut).compile.drain.unsafeRunSync
-      * res0: Unit = ()
-      * }}}
-      */
-    def to(f: Sink[F, O]): Stream[F, Unit] = f(self)
   }
 
   /** Provides syntax for pure empty pipes. */

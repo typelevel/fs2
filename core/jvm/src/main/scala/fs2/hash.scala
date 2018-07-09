@@ -6,32 +6,32 @@ import java.security.MessageDigest
 object hash {
 
   /** Computes an MD2 digest. */
-  def md2[F[x] >: Pure[x]]: Pipe[F, Byte, Byte] = digest(MessageDigest.getInstance("MD2"))
+  def md2[F[_]]: Pipe[F, Byte, Byte] = digest(MessageDigest.getInstance("MD2"))
 
   /** Computes an MD5 digest. */
-  def md5[F[x] >: Pure[x]]: Pipe[F, Byte, Byte] = digest(MessageDigest.getInstance("MD5"))
+  def md5[F[_]]: Pipe[F, Byte, Byte] = digest(MessageDigest.getInstance("MD5"))
 
   /** Computes a SHA-1 digest. */
-  def sha1[F[x] >: Pure[x]]: Pipe[F, Byte, Byte] =
+  def sha1[F[_]]: Pipe[F, Byte, Byte] =
     digest(MessageDigest.getInstance("SHA-1"))
 
   /** Computes a SHA-256 digest. */
-  def sha256[F[x] >: Pure[x]]: Pipe[F, Byte, Byte] =
+  def sha256[F[_]]: Pipe[F, Byte, Byte] =
     digest(MessageDigest.getInstance("SHA-256"))
 
   /** Computes a SHA-384 digest. */
-  def sha384[F[x] >: Pure[x]]: Pipe[F, Byte, Byte] =
+  def sha384[F[_]]: Pipe[F, Byte, Byte] =
     digest(MessageDigest.getInstance("SHA-384"))
 
   /** Computes a SHA-512 digest. */
-  def sha512[F[x] >: Pure[x]]: Pipe[F, Byte, Byte] =
+  def sha512[F[_]]: Pipe[F, Byte, Byte] =
     digest(MessageDigest.getInstance("SHA-512"))
 
   /**
     * Computes the digest of the source stream, emitting the digest as a chunk
     * after completion of the source stream.
     */
-  def digest[F[x] >: Pure[x]](digest: => MessageDigest): Pipe[F, Byte, Byte] =
+  def digest[F[_]](digest: => MessageDigest): Pipe[F, Byte, Byte] =
     in =>
       Stream.suspend {
         in.chunks
