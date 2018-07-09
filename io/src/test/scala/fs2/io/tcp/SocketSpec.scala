@@ -73,6 +73,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
       }
 
       val result = Stream(echoServer.drain, clients)
+        .covary[IO]
         .join(2)
         .take(clientCount)
         .compile
@@ -120,6 +121,7 @@ class SocketSpec extends Fs2Spec with BeforeAndAfterAll {
 
       val result =
         Stream(junkServer, klient)
+          .covary[IO]
           .join(2)
           .take(sizes.length)
           .compile

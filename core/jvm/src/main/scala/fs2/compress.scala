@@ -17,16 +17,17 @@ object compress {
     *                   compressor. Default size is 32 KB.
     * @param strategy compression strategy -- see `java.util.zip.Deflater` for details
     */
-  def deflate[F[_]](level: Int = Deflater.DEFAULT_COMPRESSION,
-                    nowrap: Boolean = false,
-                    bufferSize: Int = 1024 * 32,
-                    strategy: Int = Deflater.DEFAULT_STRATEGY): Pipe[F, Byte, Byte] = { in =>
-    Pull.suspend {
-      val deflater = new Deflater(level, nowrap)
-      deflater.setStrategy(strategy)
-      val buffer = new Array[Byte](bufferSize)
-      _deflate_stream(deflater, buffer)(in)
-    }.stream
+  def deflate[F[x] >: Pure[x]](level: Int = Deflater.DEFAULT_COMPRESSION,
+                               nowrap: Boolean = false,
+                               bufferSize: Int = 1024 * 32,
+                               strategy: Int = Deflater.DEFAULT_STRATEGY): Pipe[F, Byte, Byte] = {
+    in =>
+      Pull.suspend {
+        val deflater = new Deflater(level, nowrap)
+        deflater.setStrategy(strategy)
+        val buffer = new Array[Byte](bufferSize)
+        _deflate_stream(deflater, buffer)(in)
+      }.stream
   }
 
   private def _deflate_stream[F[_]](deflater: Deflater,
@@ -64,7 +65,8 @@ object compress {
     * @param bufferSize size of the internal buffer that is used by the
     *                   decompressor. Default size is 32 KB.
     */
-  def inflate[F[_]](nowrap: Boolean = false, bufferSize: Int = 1024 * 32): Pipe[F, Byte, Byte] =
+  def inflate[F[x] >: Pure[x]](nowrap: Boolean = false,
+                               bufferSize: Int = 1024 * 32): Pipe[F, Byte, Byte] =
     _.pull.unconsChunk.flatMap {
       case None => Pull.pure(None)
       case Some((hd, tl)) =>

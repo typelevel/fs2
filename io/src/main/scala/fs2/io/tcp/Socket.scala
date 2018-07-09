@@ -171,7 +171,7 @@ protected[tcp] object Socket {
           }
 
         eval(acceptChannel.attempt).flatMap {
-          case Left(err)       => Stream.empty.covary[F]
+          case Left(err)       => Stream.empty[F]
           case Right(accepted) => Stream.emit(mkSocket(accepted))
         } ++ go
       }

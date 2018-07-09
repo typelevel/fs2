@@ -1,7 +1,6 @@
 package fs2
 
 import cats.effect.Concurrent
-import cats.implicits._
 import fs2.async.mutable.Queue
 import fs2.internal.FreeC
 import scala.util.control.NonFatal
@@ -49,7 +48,7 @@ object Pipe {
             "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }
-    go(stepf(prompts.through(p)))
+    go(stepf(prompts.through(p.covary[Read])))
   }
 
   /**

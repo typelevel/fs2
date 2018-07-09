@@ -80,6 +80,7 @@ class UdpSpec extends Fs2Spec with BeforeAndAfterAll {
             val clients = Stream
               .constant(client)
               .take(numClients)
+              .covary[IO]
               .join(numParallelClients)
             server.mergeHaltBoth(clients)
           }

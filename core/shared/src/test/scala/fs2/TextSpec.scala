@@ -165,15 +165,15 @@ class TextSpec extends Fs2Spec {
 
       "newlines appear in between chunks" in forAll { (lines0: PureStream[String]) =>
         val lines = lines0.get.map(escapeCrLf)
-        lines.intersperse("\n").throughPure(text.lines).toList shouldBe lines.toList
-        lines.intersperse("\r\n").throughPure(text.lines).toList shouldBe lines.toList
+        lines.intersperse("\n").through(text.lines).toList shouldBe lines.toList
+        lines.intersperse("\r\n").through(text.lines).toList shouldBe lines.toList
       }
 
       "single string" in forAll { (lines0: PureStream[String]) =>
         val lines = lines0.get.map(escapeCrLf)
         if (lines.toList.nonEmpty) {
           val s = lines.intersperse("\r\n").toList.mkString
-          Stream.emit(s).throughPure(text.lines).toList shouldBe lines.toList
+          Stream.emit(s).through(text.lines).toList shouldBe lines.toList
         }
       }
 
@@ -181,10 +181,10 @@ class TextSpec extends Fs2Spec {
         val lines = lines0.get.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
         if (s.isEmpty) {
-          Stream.emits(s).throughPure(text.lines).toList shouldBe Nil
+          Stream.emits(s).through(text.lines).toList shouldBe Nil
         } else {
-          Stream.emits(s).throughPure(text.lines).toList shouldBe lines.toList
-          Stream.emits(s).unchunk.throughPure(text.lines).toList shouldBe lines.toList
+          Stream.emits(s).through(text.lines).toList shouldBe lines.toList
+          Stream.emits(s).unchunk.through(text.lines).toList shouldBe lines.toList
         }
       }
     }

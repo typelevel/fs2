@@ -172,8 +172,8 @@ class Pipe2Spec extends Fs2Spec {
     }
 
     "merge (left/right identity)" in forAll { (s1: PureStream[Int]) =>
-      runLog { s1.get.covary[IO].merge(Stream.empty) } shouldBe runLog(s1.get)
-      runLog { Stream.empty.merge(s1.get.covary[IO]) } shouldBe runLog(s1.get)
+      runLog { s1.get.covary[IO].merge(Stream.empty[IO]) } shouldBe runLog(s1.get)
+      runLog { Stream.empty[IO].merge(s1.get.covary[IO]) } shouldBe runLog(s1.get)
     }
 
     "merge (left/right failure)" in {
@@ -470,7 +470,7 @@ class Pipe2Spec extends Fs2Spec {
         Stream
           .eval(IO.async[Unit](_ => ()))
           .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ()))
-          .interruptWhen(IO(Right(())))
+          .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
 
       runLog(prg) shouldBe Vector()
     }
@@ -481,7 +481,7 @@ class Pipe2Spec extends Fs2Spec {
         (Stream
           .eval(IO.async[Unit](_ => ()))
           .interruptWhen(IO.async[Either[Throwable, Unit]](_ => ())) ++ Stream(1))
-          .interruptWhen(IO(Right(()))) ++ Stream(2)
+          .interruptWhen(IO(Right(()): Either[Throwable, Unit])) ++ Stream(2)
 
       runLog(prg) shouldBe Vector(2)
     }

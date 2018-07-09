@@ -20,7 +20,7 @@ object RepeatPullSanityTest extends App {
       case None         => Pull.pure(None)
     }
   }
-  Stream.constant(1).covary[IO].throughPure(id).compile.drain.unsafeRunSync()
+  Stream.constant(1).covary[IO].through(id[Int]).compile.drain.unsafeRunSync()
 }
 
 object RepeatEvalSanityTest extends App {
@@ -32,7 +32,7 @@ object RepeatEvalSanityTest extends App {
     in =>
       go(in).stream
   }
-  Stream.repeatEval(IO(1)).throughPure(id).compile.drain.unsafeRunSync()
+  Stream.repeatEval(IO(1)).through(id[Int]).compile.drain.unsafeRunSync()
 }
 
 object AppendSanityTest extends App {
@@ -43,13 +43,13 @@ object AppendSanityTest extends App {
 object DrainOnCompleteSanityTest extends App {
   import ExecutionContext.Implicits.global
   val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO(println("done")))
-  Stream.empty.covary[IO].merge(s).compile.drain.unsafeRunSync()
+  Stream.empty[Pure].covary[IO].merge(s).compile.drain.unsafeRunSync()
 }
 
 object ConcurrentJoinSanityTest extends App {
   import ExecutionContext.Implicits.global
   Stream
-    .constant(Stream.empty.covary[IO])
+    .constant(Stream.empty[IO])
     .covary[IO]
     .join(5)
     .compile
@@ -63,7 +63,7 @@ object DanglingDequeueSanityTest extends App {
     .eval(async.unboundedQueue[IO, Int])
     .flatMap { q =>
       Stream.constant(1).flatMap { _ =>
-        Stream.empty.mergeHaltBoth(q.dequeue)
+        Stream.empty[IO].mergeHaltBoth(q.dequeue)
       }
     }
     .compile
@@ -216,7 +216,7 @@ object ZipThenBindThenJoin extends App {
   import scala.concurrent.ExecutionContext.Implicits.global
   import scala.concurrent.duration._
 
-  val sources: Stream[IO, Stream[IO, Int]] = Stream(Stream.empty.covaryAll).repeat
+  val sources: Stream[IO, Stream[IO, Int]] = Stream(Stream.empty[IO]).repeat
 
   Stream
     .fixedDelay[IO](1.milliseconds)
