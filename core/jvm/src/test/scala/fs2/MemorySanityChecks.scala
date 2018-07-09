@@ -49,7 +49,7 @@ object DrainOnCompleteSanityTest extends App {
 object ConcurrentJoinSanityTest extends App {
   import ExecutionContext.Implicits.global
   Stream
-    .constant(Stream.empty[IO])
+    .constant(Stream.empty)
     .covary[IO]
     .join(5)
     .compile
@@ -63,7 +63,7 @@ object DanglingDequeueSanityTest extends App {
     .eval(async.unboundedQueue[IO, Int])
     .flatMap { q =>
       Stream.constant(1).flatMap { _ =>
-        Stream.empty[IO].mergeHaltBoth(q.dequeue)
+        Stream.empty.mergeHaltBoth(q.dequeue)
       }
     }
     .compile
@@ -216,7 +216,7 @@ object ZipThenBindThenJoin extends App {
   import scala.concurrent.ExecutionContext.Implicits.global
   import scala.concurrent.duration._
 
-  val sources: Stream[IO, Stream[IO, Int]] = Stream(Stream.empty[IO]).repeat
+  val sources: Stream[IO, Stream[IO, Int]] = Stream(Stream.empty).repeat
 
   Stream
     .fixedDelay[IO](1.milliseconds)

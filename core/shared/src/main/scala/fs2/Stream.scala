@@ -403,7 +403,7 @@ final class Stream[+F[x] >: Pure[x], +O] private (
     *
     * @example {{{
     * scala> import cats.effect.IO
-    * scala> Stream.empty[Pure].covaryAll[IO,Int]
+    * scala> Stream.empty.covaryAll[IO,Int]
     * res0: Stream[IO,Int] = Stream(..)
     * }}}
     */
@@ -2793,9 +2793,6 @@ object Stream {
       extends AnyVal {
     private def self: Stream[Pure, O] = Stream.fromFreeC[Pure, O](free)
 
-    /** Alias for covary, to be able to write `Stream.empty[X]`. */
-    def apply[F[_]]: Stream[F, O] = covary
-
     def covary[F[_]]: Stream[F, O] = self
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
@@ -3211,7 +3208,7 @@ object Stream {
       * scala> import cats.implicits._, cats.effect.IO
       * scala> Stream(1, 2, 3, 4, 5).covary[IO].compile.foldSemigroup.unsafeRunSync
       * res0: Option[Int] = Some(15)
-      * scala> Stream.empty[Pure].compile[IO, Int].foldSemigroup.unsafeRunSync
+      * scala> Stream.empty.compile[IO, Int].foldSemigroup.unsafeRunSync
       * res1: Option[Int] = None
       * }}}
       */
