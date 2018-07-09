@@ -223,7 +223,7 @@ object ZipThenBindThenJoin extends App {
     .zip(sources)
     .flatMap {
       case (_, s) =>
-        s.map(Stream.constant(_).covary).joinUnbounded
+        s.map(Stream.constant(_).covary[IO]).joinUnbounded
     }
     .compile
     .drain

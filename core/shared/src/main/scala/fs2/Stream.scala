@@ -407,8 +407,7 @@ final class Stream[+F[x] >: Pure[x], +O] private (
     * res0: Stream[IO,Int] = Stream(..)
     * }}}
     */
-  def covaryAll[F2[x] >: F[x], O2 >: O]: Stream[F2, O2] =
-    this.asInstanceOf[Stream[F2, O2]]
+  def covaryAll[F2[x] >: F[x], O2 >: O]: Stream[F2, O2] = this
 
   /**
     * Lifts this stream to the specified output type.
@@ -418,7 +417,7 @@ final class Stream[+F[x] >: Pure[x], +O] private (
     * res0: Stream[Pure,Option[Int]] = Stream(..)
     * }}}
     */
-  def covaryOutput[O2 >: O]: Stream[F, O2] = this.asInstanceOf[Stream[F, O2]]
+  def covaryOutput[O2 >: O]: Stream[F, O2] = this
 
   /**
     * Debounce the stream with a minimum period of `d` between each element.
@@ -2666,6 +2665,17 @@ object Stream {
     private def self: Stream[F, O] = Stream.fromFreeC(free)
 
     /**
+      * Lifts this stream to the specified effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream(1, 2, 3).covary[IO]
+      * res0: Stream[IO,Int] = Stream(..)
+      * }}}
+      */
+    def covary[F2[x] >: F[x]]: Stream[F2, O] = self
+
+    /**
       * Synchronously sends values through `sink`.
       *
       * If `sink` fails, then resulting stream will fail. If sink `halts` the evaluation will halt too.
@@ -2682,17 +2692,6 @@ object Stream {
       */
     def observe(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
       observeAsync(1)(sink)
-
-    /**
-      * Lifts this stream to the specified effect type.
-      *
-      * @example {{{
-      * scala> import cats.effect.IO
-      * scala> Stream(1, 2, 3).covary[IO]
-      * res0: Stream[IO,Int] = Stream(..)
-      * }}}
-      */
-    def covary[F2[x] >: F[x]]: Stream[F2, O] = self
 
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _segments_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
@@ -2779,10 +2778,10 @@ object Stream {
       Stream.fromFreeC[Pure, Nothing](free)
 
     /** Lifts this stream to the specified effect type. */
-    def covary[F[_]]: Stream[F, Nothing] = self.asInstanceOf[Stream[F, Nothing]]
+    def covary[F[_]]: Stream[F, Nothing] = self
 
     /** Lifts this stream to the specified effect and output types. */
-    def covaryAll[F[_], O]: Stream[F, O] = self.asInstanceOf[Stream[F, O]]
+    def covaryAll[F[_], O]: Stream[F, O] = self
   }
 
   /** Provides syntax for pure pipes. */
@@ -3355,17 +3354,9 @@ object Stream {
     def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
-  // /** Implicitly covaries a stream. */
-  // implicit def covaryPure[F[_], O, O2 >: O](s: Stream[Pure, O]): Stream[F, O2] =
-  //   s.covaryAll[F, O2]
-
   /** Implicitly covaries a pipe. */
   implicit def covaryPurePipe[F[_], I, O](p: Pipe[Pure, I, O]): Pipe[F, I, O] =
     p.covary[F]
-
-  // /** Implicitly covaries a `Pipe2`. */
-  // implicit def covaryPurePipe2[F[_], I, I2, O](p: Pipe2[Pure, I, I2, O]): Pipe2[F, I, I2, O] =
-  //   p.covary[F]
 
   /**
     * `MonadError` instance for `Stream`.
