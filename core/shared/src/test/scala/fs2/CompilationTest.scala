@@ -69,6 +69,6 @@ object ThisModuleShouldCompile {
     (Stream(1,2,3).flatMap(i => Stream.eval(IO(i)))): Stream[IO,Int]
   }
 
-  // Join a pure stream of effectful streams requires a covary on outer stream
-  Stream(s, s).covary[IO].joinUnbounded
+  // Join a pure stream of effectful streams without type annotations
+  Stream(s, s).joinUnbounded
 }

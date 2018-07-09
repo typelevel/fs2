@@ -49,8 +49,7 @@ object DrainOnCompleteSanityTest extends App {
 object ConcurrentJoinSanityTest extends App {
   import ExecutionContext.Implicits.global
   Stream
-    .constant(Stream.empty)
-    .covary[IO]
+    .constant(Stream.empty[IO])
     .join(5)
     .compile
     .drain

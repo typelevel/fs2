@@ -21,7 +21,7 @@ object Sink {
     * using the `Show` instance for the input type.
     */
   def showLines[F[_]: Sync, I: Show](out: PrintStream): Sink[F, I] =
-    _.map(_.show).to(lines[F](out))
+    _.map(_.show).to(lines(out))
 
   /**
     * Sink that prints each element from the source to the standard out

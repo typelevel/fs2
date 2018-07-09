@@ -29,7 +29,7 @@ class MergeJoinSpec extends Fs2Spec {
 
     "merge/join consistency" in forAll { (s1: PureStream[Int], s2: PureStream[Int]) =>
       runLog { s1.get.covary[IO].merge(s2.get) }.toSet shouldBe
-        runLog { Stream(s1.get.covary[IO], s2.get.covary[IO]).covary[IO].join(2) }.toSet
+        runLog { Stream(s1.get.covary[IO], s2.get.covary[IO]).join(2) }.toSet
     }
 
     "join (1)" in forAll { (s1: PureStream[Int]) =>
@@ -134,19 +134,17 @@ class MergeJoinSpec extends Fs2Spec {
       }
 
       "join" in {
-        runLog(Stream(full, hang).covary[IO].join(10).take(1)) shouldBe Vector(42)
-        runLog(Stream(full, hang2).covary[IO].join(10).take(1)) shouldBe Vector(42)
-        runLog(Stream(full, hang3).covary[IO].join(10).take(1)) shouldBe Vector(42)
-        runLog(Stream(hang3, hang2, full).covary[IO].join(10).take(1)) shouldBe Vector(42)
+        runLog(Stream(full, hang).join(10).take(1)) shouldBe Vector(42)
+        runLog(Stream(full, hang2).join(10).take(1)) shouldBe Vector(42)
+        runLog(Stream(full, hang3).join(10).take(1)) shouldBe Vector(42)
+        runLog(Stream(hang3, hang2, full).join(10).take(1)) shouldBe Vector(42)
       }
     }
 
     "join - outer-failed" in {
       an[Err] should be thrownBy {
         runLog(
-          Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(new Err).covary[IO])
-            .covary[IO]
-            .joinUnbounded)
+          Stream(Stream.sleep_[IO](1 minute), Stream.raiseError(new Err).covary[IO]).joinUnbounded)
       }
     }
   }

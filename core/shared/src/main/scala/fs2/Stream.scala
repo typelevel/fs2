@@ -1107,10 +1107,11 @@ final class Stream[+F[x] >: Pure[x], +O] private (
     *
     * @param maxOpen    Maximum number of open inner streams at any time. Must be > 0.
     */
-  def join[F2[x] >: F[x], O2](maxOpen: Int)(implicit ev: O <:< Stream[F2, O2],
-                                            F2: Concurrent[F2]): Stream[F2, O2] = {
+  def join[F2[_], O2](maxOpen: Int)(implicit ev: O <:< Stream[F2, O2],
+                                    ev2: F[_] <:< F2[_],
+                                    F2: Concurrent[F2]): Stream[F2, O2] = {
     assert(maxOpen > 0, "maxOpen must be > 0, was: " + maxOpen)
-    val _ = ev
+    val _ = (ev, ev2)
     val outer = this.asInstanceOf[Stream[F2, Stream[F2, O2]]]
     Stream.eval(async.signalOf(None: Option[Option[Throwable]])).flatMap { done =>
       Stream.eval(Semaphore(maxOpen)).flatMap { available =>
@@ -1223,9 +1224,10 @@ final class Stream[+F[x] >: Pure[x], +O] private (
   }
 
   /** Like [[join]] but races all inner streams simultaneously. */
-  def joinUnbounded[F2[x] >: F[x], O2](implicit ev: O <:< Stream[F2, O2],
-                                       F2: Concurrent[F2]): Stream[F2, O2] =
-    join[F2, O2](Int.MaxValue)
+  def joinUnbounded[F2[x], O2](implicit ev: O <:< Stream[F2, O2],
+                               ev2: F[_] <:< F2[_],
+                               F2: Concurrent[F2]): Stream[F2, O2] =
+    join(Int.MaxValue)
 
   /**
     * Returns the last element of this stream, if non-empty.
@@ -1329,7 +1331,7 @@ final class Stream[+F[x] >: Pure[x], +O] private (
     */
   def mapAsyncUnordered[F2[x] >: F[x]: Concurrent, O2](parallelism: Int)(
       f: O => F2[O2]): Stream[F2, O2] =
-    map(o => Stream.eval(f(o))).join[F2, O2](parallelism)
+    map(o => Stream.eval(f(o))).join(parallelism)
 
   /**
     * Applies the specified pure function to each chunk in this stream.

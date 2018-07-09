@@ -48,7 +48,7 @@ object Pipe {
             "FreeC.ViewL structure must be Pure(a), Fail(e), or Bind(Eval(fx),k), was: " + e)
       }
     }
-    go(stepf(prompts.through(p.covary[Read])))
+    go(stepf(prompts.through(p)))
   }
 
   /**
