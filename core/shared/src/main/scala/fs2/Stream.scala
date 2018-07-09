@@ -399,17 +399,6 @@ final class Stream[+F[x] >: Pure[x], +O] private (
     cons(Segment.singleton(o))
 
   /**
-    * Lifts this stream to the specified effect type.
-    *
-    * @example {{{
-    * scala> import cats.effect.IO
-    * scala> Stream(1, 2, 3).covary[IO]
-    * res0: Stream[IO,Int] = Stream(..)
-    * }}}
-    */
-  def covary[F2[x] >: F[x]]: Stream[F2, O] = this.asInstanceOf[Stream[F2, O]]
-
-  /**
     * Lifts this stream to the specified effect and output types.
     *
     * @example {{{
@@ -2694,6 +2683,17 @@ object Stream {
     def observe(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
       observeAsync(1)(sink)
 
+    /**
+      * Lifts this stream to the specified effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> Stream(1, 2, 3).covary[IO]
+      * res0: Stream[IO,Int] = Stream(..)
+      * }}}
+      */
+    def covary[F2[x] >: F[x]]: Stream[F2, O] = self
+
     /** Send chunks through `sink`, allowing up to `maxQueued` pending _segments_ before blocking `s`. */
     def observeAsync(maxQueued: Int)(sink: Sink[F, O])(implicit F: Concurrent[F]): Stream[F, O] =
       Stream.eval(Semaphore[F](maxQueued - 1)).flatMap { guard =>
@@ -2793,6 +2793,8 @@ object Stream {
   final class PureOps[O] private[Stream] (private val free: FreeC[Algebra[Pure, O, ?], Unit])
       extends AnyVal {
     private def self: Stream[Pure, O] = Stream.fromFreeC[Pure, O](free)
+
+    def covary[F[_]]: Stream[F, O] = self
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
     def to[C[_]](implicit cbf: CanBuildFrom[Nothing, O, C[O]]): C[O] =

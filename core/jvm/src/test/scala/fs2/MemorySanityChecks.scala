@@ -43,7 +43,7 @@ object AppendSanityTest extends App {
 object DrainOnCompleteSanityTest extends App {
   import ExecutionContext.Implicits.global
   val s = Stream.repeatEval(IO(1)).pull.echo.stream.drain ++ Stream.eval_(IO(println("done")))
-  Stream.empty[Pure].covary[IO].merge(s).compile.drain.unsafeRunSync()
+  Stream.empty.covary[IO].merge(s).compile.drain.unsafeRunSync()
 }
 
 object ConcurrentJoinSanityTest extends App {
