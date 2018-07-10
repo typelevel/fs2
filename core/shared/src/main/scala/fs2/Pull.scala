@@ -157,8 +157,8 @@ object Pull {
         .handleErrorWith(t => Algebra.pure[F, Nothing, Either[Throwable, R]](Left(t))))
 
   /** The completed `Pull`. Reads and outputs nothing. */
-  val done: Pull[Nothing, Nothing, Unit] =
-    fromFreeC[Nothing, Nothing, Unit](Algebra.pure[Nothing, Nothing, Unit](()))
+  val done: Pull[Pure, Nothing, Unit] =
+    fromFreeC[Pure, Nothing, Unit](Algebra.pure[Pure, Nothing, Unit](()))
 
   /** Evaluates the supplied effectful value and returns the result as the resource of the returned pull. */
   def eval[F[_], R](fr: F[R]): Pull[F, Nothing, R] =

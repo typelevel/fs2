@@ -2325,7 +2325,7 @@ object Stream {
     * res0: List[Int] = List(0)
     * }}}
     */
-  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = fromFreeC(Algebra.output1[Pure, O](o))
+  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = fromFreeC(Algebra.output1[F, O](o))
 
   /**
     * Creates a pure stream that emits the supplied values.
@@ -2338,13 +2338,11 @@ object Stream {
   def emits[F[x] >: Pure[x], O](os: Seq[O]): Stream[F, O] =
     if (os.isEmpty) empty
     else if (os.size == 1) emit(os.head)
-    else fromFreeC(Algebra.output[Pure, O](Segment.seq(os)))
-
-  private[fs2] val empty_ =
-    fromFreeC[Pure, Nothing](Algebra.pure[Pure, Nothing, Unit](())): Stream[Pure, Nothing]
+    else fromFreeC(Algebra.output[F, O](Segment.seq(os)))
 
   /** Empty pure stream. */
-  def empty: Stream[Pure, Nothing] = empty_
+  val empty: Stream[Pure, Nothing] =
+    fromFreeC[Pure, Nothing](Algebra.pure[Pure, Nothing, Unit](())): Stream[Pure, Nothing]
 
   /**
     * Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
