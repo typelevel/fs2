@@ -2771,23 +2771,6 @@ object Stream {
 
   }
 
-  /** Provides syntax for pure empty pipes. */
-  implicit def EmptyOps(s: Stream[Pure, Nothing]): EmptyOps =
-    new EmptyOps(s.get[Pure, Nothing])
-
-  /** Provides syntax for pure empty pipes. */
-  final class EmptyOps private[Stream] (private val free: FreeC[Algebra[Pure, Nothing, ?], Unit])
-      extends AnyVal {
-    private def self: Stream[Pure, Nothing] =
-      Stream.fromFreeC[Pure, Nothing](free)
-
-    /** Lifts this stream to the specified effect type. */
-    def covary[F[_]]: Stream[F, Nothing] = self
-
-    /** Lifts this stream to the specified effect and output types. */
-    def covaryAll[F[_], O]: Stream[F, O] = self
-  }
-
   /** Provides syntax for pure pipes. */
   implicit def PureOps[O](s: Stream[Pure, O]): PureOps[O] =
     new PureOps(s.get[Pure, O])
@@ -2800,6 +2783,7 @@ object Stream {
     /** Alias for covary, to be able to write `Stream.empty[X]`. */
     def apply[F[_]]: Stream[F, O] = covary
 
+    /** Lifts this stream to the specified effect type. */
     def covary[F[_]]: Stream[F, O] = self
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
