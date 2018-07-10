@@ -62,21 +62,19 @@ import scala.concurrent.duration._
   * the unsegmented version will fail on the first ''element'' with an error.
   * Exceptions in pure code like this are strongly discouraged.
   *
-  *
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
-  * @hideImplicitConversion EmptyOps
-  * @hideImplicitConversion covaryPure
   */
-final class Stream[+F[x] >: Pure[x], +O] private (
-    private val free: FreeC[Algebra[Nothing, Nothing, ?], Unit])
+final class Stream[+F[_], +O] private (private val free: FreeC[Algebra[Nothing, Nothing, ?], Unit])
     extends AnyVal {
 
   private[fs2] def get[F2[x] >: F[x], O2 >: O]: FreeC[Algebra[F2, O2, ?], Unit] =
     free.asInstanceOf[FreeC[Algebra[F2, O2, ?], Unit]]
 
-  def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] = this.append(s2)
+  /** Appends `s2` to the end of this stream. */
+  def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] = append(s2)
 
+  /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
   def append[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
     Stream.fromFreeC(get[F2, O2].flatMap(_ => s2.get))
 
