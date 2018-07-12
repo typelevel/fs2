@@ -179,6 +179,7 @@ object Catenable {
   /** Creates a catenable from the specified sequence. */
   def fromSeq[A](s: Seq[A]): Catenable[A] =
     if (s.isEmpty) empty
+    else if (s.size == 1) singleton(s.head)
     else s.view.reverse.map(singleton).reduceLeft((x, y) => Append(y, x))
 
   /** Creates a catenable from the specified elements. */
