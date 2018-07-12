@@ -219,7 +219,7 @@ object Pull {
   private def release[F[x] >: Pure[x]](token: Token): Pull[F, Nothing, Unit] =
     fromFreeC[F, Nothing, Unit](Algebra.release(token))
 
-  /** `Sync` instance for `Stream`. */
+  /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_], O]: Sync[Pull[F, O, ?]] =
     new Sync[Pull[F, O, ?]] {
       def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)

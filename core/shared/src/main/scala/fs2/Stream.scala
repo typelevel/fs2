@@ -13,8 +13,6 @@ import scala.concurrent.duration._
   * A stream producing output of type `O` and which may evaluate `F`
   * effects. If `F` is [[Pure]], the stream evaluates no effects.
   *
-  * Much of the API of `Stream` is defined in [[Stream.InvariantOps]].
-  *
   * Laws (using infix syntax):
   *
   * `append` forms a monoid in conjunction with `empty`:
